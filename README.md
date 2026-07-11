@@ -15,6 +15,14 @@ stars". The star (`*`) is the program.*
 
 ![Fastra in light mode](screenshots/editor-light.png)
 
+## Download / Releases
+
+Ready-made builds are available as DMGs on the
+[releases page](https://github.com/DanielMuellerIR/fastra/releases):
+download the DMG, open it, and drag Fastra into your Applications folder.
+The DMG is signed with a Developer ID and notarized by Apple — Gatekeeper
+opens it without warnings. Requires macOS 14+ (Apple Silicon).
+
 ## The `*` wildcard — power without the syntax
 
 Everyday restructuring tasks are impossible in a plain text editor and

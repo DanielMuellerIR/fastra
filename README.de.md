@@ -15,6 +15,14 @@ Sternen". Das Sternchen (`*`) ist der Star.*
 
 ![Fastra im Light-Mode](screenshots/editor-light.png)
 
+## Download / Releases
+
+Fertige Builds gibt es als DMG auf der
+[Releases-Seite](https://github.com/DanielMuellerIR/fastra/releases):
+DMG laden, öffnen und Fastra in den Programme-Ordner ziehen. Das DMG ist
+mit einer Developer-ID signiert und von Apple notariell beglaubigt —
+Gatekeeper öffnet es ohne Warnung. Voraussetzung: macOS 14+ (Apple Silicon).
+
 ## Das `*`-Sternchen — Mächtigkeit ohne Syntax
 
 Alltägliche Umbau-Aufgaben sind in einem normalen Texteditor schlicht
