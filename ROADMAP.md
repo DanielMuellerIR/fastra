@@ -28,6 +28,62 @@ Was die App können muss, um v1.0 zu sein. Die Reihenfolge folgt der Roadmap, ni
 
 ---
 
+## Projekt- & Git-Ausbau (beschlossen 2026-07-11, nächste große Etappe)
+
+Fastra bekommt Projekt-Bewusstsein und Git-Sichtbarkeit — ohne zum VS-Code-Klon zu
+werden. Leitfrage für jedes Teilfeature: „Braucht man das täglich, und können wir es
+dauerhaft in guter Qualität warten?" — nicht „Hat VS Code das auch?".
+
+**Philosophie: Git liefert Logik und Daten, Fastra liefert Sichtbarkeit und Knöpfe.**
+Alle Git-Funktionen sind dünne Frontends über das installierte `git`-CLI (kein libgit2,
+kein Eigenbau). Der CLI-Weg erbt automatisch die Auth-Konfiguration des Nutzers
+(SSH-Keys, Keychain-Helper). Schwerpunkt **lesend + wenige Shortcuts für die häufigsten
+Aktionen**, keine breite Git-Unterstützung.
+
+**Etappe 1 — Projekte & Seitenleiste:**
+- **Willkommensbildschirm** beim Start / neuen Fenster ohne geöffnete Datei: Liste der
+  zuletzt benutzten Projekte, ein Klick lädt das Projekt.
+- **Projekt = geöffneter Ordner mit `.git`** — wird automatisch gemerkt (damit bekommt
+  das offene „Projekt-Konzept" des Scope-Tabs seine Definition).
+- **Hierarchische Datei-Seitenleiste** (SwiftUI `OutlineGroup` + `FileManager`) — die
+  einzige echte Eigenentwicklung dieser Etappe.
+
+**Etappe 2 — Git-Sichtbarkeit (read-first):**
+- **Status in der Seitenleiste:** geänderte/neue Dateien einfärben, Branch anzeigen
+  (`git status --porcelain`).
+- **History als read-only-Tab:** `git log --graph --oneline --decorate` liefert den
+  Graphen fertig als ASCII — Monospace-Anzeige haben wir. Klick auf Commit →
+  `git show <hash>` in weiterem Tab. Kein eigenes Graph-Rendering.
+- **Diff als read-only-Tab:** `git diff` (unified) als Text. Die aufgeschobene
+  Side-by-side-Ansicht (Funktionsumfang D) ist Ausbaustufe, nicht Voraussetzung.
+- **Kuratierte Aktionen** über Buttons/Popup-Menüs: die häufigsten Aufrufe plus eine
+  Handvoll „pfiffiger" Varianten, deren Syntax sich niemand merkt (z. B.
+  Fast-Forward-Only-Pull, `git log -S` Pickaxe-Suche, amend ohne Message-Änderung).
+  Zielgruppe: Leute, die Git verstehen, aber Syntax/Parameter nicht auswendig behalten
+  wollen.
+- **Dezente Hilfe-Texte** direkt an den Aktionen (z. B. was Fast-Forward gegenüber
+  Merge bringt) — Tooltip/Untertitel-Niveau, nie modal, nie im Weg.
+
+**UX-Regeln (verbindlich):**
+- **Discovery-Prinzip:** Wichtiges easy, schnell und schick; Fortgeschrittenes
+  angedeutet und mit wenig Erkundung gefunden — keine Feature-Friedhöfe, kein Geklicke.
+- **Git fehlt → Funktionen bleiben still weg.** Keine Dialoge, keine Installations-
+  Aufforderung, kein Gefrage. Wer git nicht installiert hat, braucht die Funktionen nicht.
+- **Nie den Main-Thread blockieren** (Push/Pull über langsames Netz) — async wie die
+  Folder-Suche.
+- **Fehler = echte git-Ausgabe als Text zeigen**, nicht wegabstrahieren. Ehrlich und billig.
+
+**Bewusst verworfen (statt dessen):** eigener History-Graph (→ ASCII-Tab),
+Merge-GUI (→ Konflikt-Marker sind editierbarer Text; Button „In FileMerge öffnen" via
+`opendiff` aus den Xcode-CLT), eingebettetes Terminal/SwiftTerm (→ Button „Im Terminal
+öffnen"), Minify HTML/JS/CSS (keine brauchbare native Lösung, niedrige Priorität).
+
+**Release-Gate:** Diese Etappen sind eine größere Änderung — **keine GitHub-Pushes,
+bis alles ordentlich getestet ist** (Daniel, 2026-07-11). Commits + internes Backup
+laufen normal weiter.
+
+---
+
 ## v1.1+ (zurückgestellt)
 
 - **HexFiend-Bridge (Hex-View für Binärdateien)** — aus v1.0 verschoben (2026-06-11).
@@ -36,7 +92,7 @@ Was die App können muss, um v1.0 zu sein. Die Reihenfolge folgt der Roadmap, ni
 - **Chunk-basiertes / memory-mapped Laden großer Dateien** — pragmatische v1.0-Auslegung (async ohne UI-Block) reicht erstmal; echtes Chunk-Loading bräuchte tiefe CESE-Eingriffe (2026-06-11).
 - **Voll ausgebaute Side-by-side Diff-Vorschau** im Hauptfenster (Vorher/Nachher in zwei Panels, rot/grün). Erst aktiv angehen, wenn Nutzer-Feedback zeigt, dass die Sofort-Trefferliste nicht reicht.
 - **Extrahieren-Dialog** mit Trennzeichen-Auswahl (Zeilenumbruch / Komma / Semikolon / Tab / eigenes), Ziel (Clipboard / neue Datei), Quoting-Optionen, Dedup.
-- **Projekt-Konzept** für den Scope-Tab (gespeicherte Datei-Sets + Filter + Excludes — Definition noch offen).
+- **Projekt-Konzept** für den Scope-Tab (gespeicherte Datei-Sets + Filter + Excludes) — Grunddefinition „Projekt = Ordner mit `.git`" jetzt beschlossen, siehe Sektion „Projekt- & Git-Ausbau"; Datei-Sets/Filter/Excludes weiter offen.
 - **Englische Lokalisierung** (`Localizable.strings`-Umbau, alle UI-Strings durchziehen).
 - **Vorlagen-Editor** — eigene Patterns speichern, Import/Export.
 - Inline-Diff am Ort der Änderung (L5-Layout).

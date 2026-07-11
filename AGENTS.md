@@ -175,6 +175,9 @@ aus veralteter Doku zu halluzinieren.
 - **Rückfrage erforderlich bei:** destruktiven Git-Operationen (force-push,
   reset --hard, branch -D), Architektur-Entscheidungen, allem, was außerhalb des
   Projekts sichtbar wird (Public Releases, Tags pushen, gh release create).
+- **Push-Stopp (Daniel, 2026-07-11):** Während des Projekt- & Git-Ausbaus (siehe
+  ROADMAP.md) **keine Pushes zum GitHub-Remote**, bis die Etappen ordentlich
+  getestet sind. Commits + internes Backup-Remote laufen normal weiter.
 - **Beim Version-Bump immer parallel:** Header in AGENTS.md aktualisieren,
   CHANGELOG-Eintrag schreiben, Git-Tag setzen, Commit-Message mit Versionsnummer.
 
