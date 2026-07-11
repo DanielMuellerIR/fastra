@@ -1,0 +1,295 @@
+// FolderSearchTests.swift
+//
+// Sichert die Folder-Scope-Suche ab. Reproduzierbarer kleiner Korpus
+// pro Test (eigenes Temp-Verzeichnis), damit Tests parallel laufen
+// können ohne sich gegenseitig zu sehen.
+
+import Testing
+import Foundation
+@testable import Fastra
+
+// MARK: - Mini-Korpus für Folder-Tests
+
+private final class FolderCorpus {
+    let root: URL
+    init() throws {
+        root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-folder-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+    deinit { try? FileManager.default.removeItem(at: root) }
+
+    @discardableResult
+    func write(_ name: String, _ content: String, encoding: String.Encoding = .utf8,
+               in subfolder: String? = nil) throws -> URL {
+        let dir = subfolder.map { root.appendingPathComponent($0, isDirectory: true) } ?? root
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(name)
+        try content.data(using: encoding)!.write(to: url)
+        return url
+    }
+
+    @discardableResult
+    func writeRaw(_ name: String, _ bytes: Data, in subfolder: String? = nil) throws -> URL {
+        let dir = subfolder.map { root.appendingPathComponent($0, isDirectory: true) } ?? root
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(name)
+        try bytes.write(to: url)
+        return url
+    }
+}
+
+// MARK: - File-Type-Filter
+
+@Test("Filter .all lässt alles durch, auch Endungen wie .bin")
+func filter_allAcceptsAnything() {
+    let url = URL(fileURLWithPath: "/tmp/test.bin")
+    #expect(FolderSearch.passesFilter(url: url, filter: .all) == true)
+}
+
+@Test("Filter .knownText lässt bekannte Text-Endungen durch")
+func filter_knownTextAcceptsTextExts() {
+    for ext in ["txt", "md", "swift", "json", "csv", "yaml"] {
+        let url = URL(fileURLWithPath: "/tmp/x.\(ext)")
+        #expect(FolderSearch.passesFilter(url: url, filter: .knownText) == true, "\(ext) sollte durchgehen")
+    }
+}
+
+@Test("Filter .knownText lehnt Binär-Endungen und nackte Dateien ab")
+func filter_knownTextRejectsBinary() {
+    for ext in ["pdf", "png", "jpg", "zip", "exe", "dmg"] {
+        let url = URL(fileURLWithPath: "/tmp/x.\(ext)")
+        #expect(FolderSearch.passesFilter(url: url, filter: .knownText) == false, "\(ext) sollte rausfliegen")
+    }
+    let noExt = URL(fileURLWithPath: "/tmp/Makefile")
+    #expect(FolderSearch.passesFilter(url: noExt, filter: .knownText) == false)
+}
+
+@Test("Filter ist case-insensitive bei der Endung")
+func filter_caseInsensitiveExt() {
+    let upper = URL(fileURLWithPath: "/tmp/README.MD")
+    #expect(FolderSearch.passesFilter(url: upper, filter: .knownText) == true)
+}
+
+// MARK: - Empty / ungültiges Pattern
+
+@Test("Leerer Find-String → leeres Ergebnis")
+func find_emptyPatternIsEmpty() throws {
+    let c = try FolderCorpus()
+    try c.write("a.txt", "foo bar")
+    let r = FolderSearch.find(in: [c.root], filter: .knownText,
+                              options: SearchOptions(find: "", replace: "x"))
+    #expect(r.perFile.isEmpty)
+    #expect(r.invalidPatternMessage == nil)
+}
+
+@Test("Ungültige RegEx → invalidPatternMessage, kein perFile-Lauf")
+func find_invalidPatternAborts() throws {
+    let c = try FolderCorpus()
+    try c.write("a.txt", "foo bar")
+    let r = FolderSearch.find(in: [c.root], filter: .knownText,
+                              options: SearchOptions(find: "(unbalanced", replace: "x", isRegex: true))
+    #expect(r.invalidPatternMessage != nil)
+    #expect(r.perFile.isEmpty)
+}
+
+// MARK: - Trefferzählung über mehrere Dateien
+
+@Test("Treffer werden über mehrere Dateien gefunden und gezählt")
+func find_countsAcrossFiles() throws {
+    let c = try FolderCorpus()
+    try c.write("a.txt", "foo bar foo")
+    try c.write("b.md",  "irgendwas foo hier")
+    try c.write("c.json", "{\"x\": \"keine\"}")
+    let r = FolderSearch.find(in: [c.root], filter: .knownText,
+                              options: SearchOptions(find: "foo", replace: "X",
+                                                     isRegex: false, caseSensitive: true))
+    #expect(r.filesWithMatches.count == 2)
+    #expect(r.totalMatches == 3)
+}
+
+@Test("Rekursion in Unterordner funktioniert")
+func find_recursesIntoSubfolders() throws {
+    let c = try FolderCorpus()
+    try c.write("top.txt", "foo")
+    try c.write("nested.txt", "foo foo", in: "sub1")
+    try c.write("deeper.txt", "foo", in: "sub1/sub2")
+    let r = FolderSearch.find(in: [c.root], filter: .knownText,
+                              options: SearchOptions(find: "foo", replace: "X",
+                                                     isRegex: false))
+    #expect(r.totalMatches == 4)
+}
+
+// MARK: - Binär-Schutz
+
+@Test("Binärdateien werden mit Grund .binary übersprungen, NICHT durchsucht")
+func find_skipsBinariesEvenInAllFilter() throws {
+    let c = try FolderCorpus()
+    // Binärdatei mit ".txt"-Endung, um den Filter zu umgehen — die
+    // Binär-Heuristik MUSS sie trotzdem fangen.
+    try c.writeRaw("trojan.txt",
+                   Data([0x66, 0x6F, 0x6F, 0x00, 0x66, 0x6F, 0x6F])) // "foo\0foo"
+    try c.write("plain.txt", "foo")
+    let r = FolderSearch.find(in: [c.root], filter: .all,
+                              options: SearchOptions(find: "foo", replace: "X",
+                                                     isRegex: false))
+    let trojan = r.perFile.first { $0.url.lastPathComponent == "trojan.txt" }
+    let plain = r.perFile.first { $0.url.lastPathComponent == "plain.txt" }
+    #expect(trojan?.skipped == .binary)
+    #expect(trojan?.matches.isEmpty == true)
+    #expect(plain?.matches.count == 1)
+}
+
+// MARK: - Encoding-Vielfalt
+
+@Test("Latin-1- und UTF-8-Dateien werden gleichermaßen durchsucht")
+func find_handlesMultipleEncodings() throws {
+    let c = try FolderCorpus()
+    try c.write("u.txt", "Müller", encoding: .utf8)
+    try c.write("l.txt", "Müller", encoding: .isoLatin1)
+    let r = FolderSearch.find(in: [c.root], filter: .knownText,
+                              options: SearchOptions(find: "Müller", replace: "X",
+                                                     isRegex: false))
+    #expect(r.totalMatches == 2)
+}
+
+// MARK: - Filter wirkt vorm Lesen
+
+@Test("Dateien mit nicht-erlaubter Endung tauchen nicht im Ergebnis auf")
+func find_filterDropsFilesPreLoad() throws {
+    let c = try FolderCorpus()
+    try c.write("y.txt", "foo")
+    try c.write("z.pdf", "foo")  // Pseudo-PDF, würde sonst gematched
+    let r = FolderSearch.find(in: [c.root], filter: .knownText,
+                              options: SearchOptions(find: "foo", replace: "X",
+                                                     isRegex: false))
+    #expect(r.perFile.count == 1)
+    #expect(r.perFile.first?.url.lastPathComponent == "y.txt")
+}
+
+// MARK: - maxMatches-Kappung (pro Datei)
+
+@Test("maxResultsPerFile kappt die Trefferliste pro Datei")
+func find_capsMatchesPerFile() throws {
+    let c = try FolderCorpus()
+    try c.write("many.txt", String(repeating: "foo\n", count: 100))
+    let r = FolderSearch.find(in: [c.root], filter: .knownText,
+                              options: SearchOptions(find: "foo", replace: "X",
+                                                     isRegex: false),
+                              maxResultsPerFile: 10)
+    #expect(r.perFile.first?.matches.count == 10)
+}
+
+// MARK: - Gesamt-Cap (maxTotalMatches)
+
+@Test("Gesamt-Cap löst aus wenn Treffer > cap → wasCapped == true, Anzahl ≤ cap")
+func find_totalCap_triggers() throws {
+    // Corpus: eine einzige Datei mit 50 "foo"-Vorkommen, Cap auf 10 gesetzt.
+    // Der Cap MUSS greifen, da die eine Datei 50 > 10 Treffer liefert.
+    let c = try FolderCorpus()
+    try c.write("many.txt", String(repeating: "foo\n", count: 50))
+    let r = FolderSearch.find(in: [c.root], filter: .knownText,
+                              options: SearchOptions(find: "foo", replace: "X",
+                                                     isRegex: false),
+                              maxResultsPerFile: 5000,
+                              maxTotalMatches: 10)
+    // Cap muss ausgelöst haben.
+    #expect(r.wasCapped == true)
+    // MATERIALISIERT wird höchstens der Cap (Speicher-/Arbeitsschutz).
+    #expect(r.perFile.reduce(0) { $0 + $1.matches.count } <= 10)
+    // ABER: totalMatches meldet seit dem Review-Fix 2026-06-23 den WAHREN
+    // Count der gescannten Datei (50), nicht die materialisierte Zahl —
+    // sonst untercountete eine Datei mit mehr Treffern als dem Cap. `wasCapped`
+    // signalisiert, dass die LISTE unvollständig ist.
+    #expect(r.totalMatches == 50)
+    // Pattern-Fehler darf nicht gesetzt sein.
+    #expect(r.invalidPatternMessage == nil)
+}
+
+@Test("Per-Datei-Cap: totalMatches meldet WAHREN Count, Liste bleibt gekappt (Review 2026-06-23)")
+func find_perFileCap_reportsTrueTotal() throws {
+    // Eine Datei mit 8000 Treffern, Pro-Datei-Cap 5000, Gesamt-Cap weit darüber.
+    // Vor dem Fix zeigte totalMatches die materialisierten 5000 (Undercount);
+    // jetzt den wahren Count 8000. matches bleibt auf 5000 begrenzt (UI-Speicher).
+    let c = try FolderCorpus()
+    try c.write("many.txt", String(repeating: "foo\n", count: 8000))
+    let r = FolderSearch.find(in: [c.root], filter: .knownText,
+                              options: SearchOptions(find: "foo", replace: "X",
+                                                     isRegex: false),
+                              maxResultsPerFile: 5000,
+                              maxTotalMatches: 100_000)
+    #expect(r.perFile.first?.matches.count == 5000)
+    #expect(r.perFile.first?.totalMatches == 8000)
+    #expect(r.totalMatches == 8000)
+    #expect(r.wasCapped == false)  // Gesamt-Cap NICHT ausgelöst
+}
+
+@Test("Gesamt-Cap löst NICHT aus wenn Treffer ≤ cap → wasCapped == false")
+func find_totalCap_doesNotTriggerBelowCap() throws {
+    // Corpus: fünf Treffer insgesamt, Cap auf 100 gesetzt → kein Kappen.
+    let c = try FolderCorpus()
+    try c.write("a.txt", "foo foo foo")   // 3 Treffer
+    try c.write("b.txt", "foo foo")       // 2 Treffer
+    let r = FolderSearch.find(in: [c.root], filter: .knownText,
+                              options: SearchOptions(find: "foo", replace: "X",
+                                                     isRegex: false),
+                              maxResultsPerFile: 5000,
+                              maxTotalMatches: 100)
+    #expect(r.wasCapped == false)
+    #expect(r.totalMatches == 5)
+}
+
+@Test("Gesamt-Cap bricht dateiübergreifend ab: 3 Dateien à 5 Treffer, Cap 7 → Gesamt ≤ 7")
+func find_totalCap_breaksAcrossFiles() throws {
+    // Jede Datei hat genau 5 Treffer. Cap = 7. Nach Datei 1 (5) + einem
+    // Teil von Datei 2 (2) oder nach Datei 1 + Datei 2 (10 > 7) muss die
+    // Enumeration abbrechen. Der Gesamt-Cap ist dateiweise — sobald nach
+    // dem Einlesen einer Datei totalSoFar >= cap, bricht die Schleife ab.
+    // Bei cap 7: Datei 1 liefert 5, addiert → 5 < 7; Datei 2 liefert 5,
+    // addiert → 10 >= 7 → capped. Ergebnis: perFile hat ≤ 3 Dateien,
+    // totalMatches ≤ 10 (per-file-cap 5000, 2 volle Dateien à 5 = 10).
+    let c = try FolderCorpus()
+    // Feste Namen erzwingen stabile Enumerationsreihenfolge (alphabetisch).
+    try c.write("a.txt", "foo foo foo foo foo")  // 5 Treffer
+    try c.write("b.txt", "foo foo foo foo foo")  // 5 Treffer
+    try c.write("c.txt", "foo foo foo foo foo")  // 5 Treffer (wird evtl. nie gelesen)
+    let r = FolderSearch.find(in: [c.root], filter: .knownText,
+                              options: SearchOptions(find: "foo", replace: "X",
+                                                     isRegex: false),
+                              maxResultsPerFile: 5000,
+                              maxTotalMatches: 7)
+    // Cap muss ausgelöst haben.
+    #expect(r.wasCapped == true)
+    // Nicht alle drei Dateien konnten vollständig gezählt werden:
+    // totalMatches ≤ 10 (maximal 2 Dateien à 5 — dritte wird nie angefangen
+    // oder auch der letzte Lauf bricht bei ≥ cap ab).
+    #expect(r.totalMatches <= 10)
+    // Mindestens eine Datei muss enthalten sein (sonst wäre das Ergebnis leer,
+    // was bedeuten würde, die Suche hätte gar nicht stattgefunden).
+    #expect(r.filesWithMatches.count >= 1)
+}
+
+@Test("Gesamt-Cap zählt den WAHREN Per-Datei-Count, nicht die gekappte Liste (Review 2026-07-03)")
+func find_totalCap_usesTrueCountAcrossFiles() throws {
+    // Zwei Dateien mit je 6 echten Treffern, Pro-Datei-Cap 3, Gesamt-Cap 5.
+    // Die ERSTE Datei überschreitet mit ihrem wahren Count (6) bereits den
+    // Gesamt-Cap (5) → die zweite Datei darf NIE gelesen werden.
+    // Vor dem Fix zählte der Cap nur die materialisierten 3 Treffer
+    // (3 < 5) und las die zweite Datei fälschlich noch mit.
+    let c = try FolderCorpus()
+    try c.write("a.txt", "foo foo foo foo foo foo")  // 6 echte Treffer
+    try c.write("b.txt", "foo foo foo foo foo foo")  // 6 echte Treffer
+    let r = FolderSearch.find(in: [c.root], filter: .knownText,
+                              options: SearchOptions(find: "foo", replace: "X",
+                                                     isRegex: false),
+                              maxResultsPerFile: 3,
+                              maxTotalMatches: 5)
+    #expect(r.wasCapped == true)
+    // Nur EINE Datei im Ergebnis — egal welche die Enumeration zuerst
+    // liefert (beide sind identisch aufgebaut, der Test ist reihenfolge-fest).
+    #expect(r.perFile.count == 1)
+    // Der wahre Count der einen gelesenen Datei wird gemeldet …
+    #expect(r.totalMatches == 6)
+    // … materialisiert bleibt die Liste auf den Pro-Datei-Cap begrenzt.
+    #expect(r.perFile.first?.matches.count == 3)
+}

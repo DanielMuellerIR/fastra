@@ -1,0 +1,28 @@
+# Build-Artefakte (Swift Package Manager)
+.swiftpm/
+.build/
+*.o
+*.d
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Editor
+.swp
+*.swp
+*~
+
+# Claude Code interne State-Dateien
+.claude/.DS_Store
+
+# Kontext-Quellen für den Agenten:
+# lokal geklonter Fremd-Framework-Source als Grep-Referenz, nicht mitversionieren.
+# Siehe AGENTS.md → „Kontext-Quellen für den Agenten (repos/)".
+app/repos/
+
+# Release-Artefakte (DMGs aus release.sh) — lokal bauen, nicht versionieren
+app/dist/
+
+# Doppelklick-Kopie des zuletzt gebauten App-Bundles (build.sh)
+/Fastra.app/

@@ -1,0 +1,370 @@
+#!/usr/bin/env bash
+# Fastra V1 — Phase-2-Build-Workflow
+#
+# Wrappt `swift build` so, dass:
+#   1. Die Xcode-Toolchain (statt CommandLineTools) genutzt wird — sonst scheitert der
+#      Build an den `#Preview`-Macros in CodeEditSourceEditor (Macro-Plugin nur in Xcode).
+#   2. Die SwiftLint-Build-Plugins in CodeEditSourceEditor und CodeEditTextView lokal
+#      auskommentiert werden — das prebuilt SwiftLint-Binary findet
+#      `sourcekitdInProc.framework` nicht und kippt den Build.
+#   3. Die fehlende `resources:`-Deklaration in CodeEditSymbols/Package.swift ergänzt wird —
+#      sonst gibt es `type 'Bundle' has no member 'module'`.
+#
+# Die Patches sind nicht-invasiv (kommentieren statt löschen) und werden bei jedem
+# `swift package update` zurückgesetzt — dann muss dieses Skript erneut laufen.
+#
+# Voraussetzung: Xcode unter /Applications/Xcode.app installiert. CommandLineTools allein
+# reicht nicht.
+
+set -e
+cd "$(dirname "$0")"
+
+# Sicherheitshalber alle laufenden Fastra-Instanzen beenden — sonst kann
+# das spätere Bundle-Kopieren auf ein offenes Binary treffen und nur
+# halb überschreiben. Das hatte uns einmal eine Stunde Debug gekostet.
+if pgrep -x Fastra >/dev/null 2>&1; then
+  echo "→ Vorhandene Fastra-Instanz beenden"
+  pkill -x Fastra || true
+  sleep 1
+fi
+
+CHECKOUTS=".build/checkouts"
+
+# 1. Sources erst resolven, damit .build/checkouts/ existiert
+if [ ! -d "$CHECKOUTS/CodeEditSourceEditor" ]; then
+  echo "→ Dependencies werden gelöst…"
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun --toolchain XcodeDefault swift package resolve
+fi
+
+# 2. Patch CodeEditSourceEditor — SwiftLint-Plugin entfernen
+CESE="$CHECKOUTS/CodeEditSourceEditor/Package.swift"
+if grep -q 'plugin(name: "SwiftLint", package: "SwiftLintPlugin")' "$CESE" 2>/dev/null; then
+  echo "→ Patche CodeEditSourceEditor/Package.swift (SwiftLint-Plugin aus)"
+  # Plugin im Target rauspatchen (perl statt sed, weil sed-multiline auf macOS
+  # brüchig ist — siehe LESSONS-LEARNED, Sektion F).
+  /usr/bin/perl -i -0pe 's|plugins: \[\s*\.plugin\(name: "SwiftLint", package: "SwiftLintPlugin"\)\s*\]|plugins: []|g' "$CESE"
+  # Dependency rauspatchen
+  /usr/bin/perl -i -0pe 's|\.package\(\s*url: "https://github.com/lukepistrol/SwiftLintPlugin",\s*from: "0\.2\.2"\s*\),?||g' "$CESE"
+fi
+
+# 3. Patch CodeEditTextView — gleicher Plugin-Block
+CETV="$CHECKOUTS/CodeEditTextView/Package.swift"
+if grep -q 'plugin(name: "SwiftLint", package: "SwiftLintPlugin")' "$CETV" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView/Package.swift (SwiftLint-Plugin aus)"
+  /usr/bin/perl -i -0pe 's|plugins: \[\s*\.plugin\(name: "SwiftLint", package: "SwiftLintPlugin"\)\s*\]|plugins: []|g' "$CETV"
+  /usr/bin/perl -i -0pe 's|\.package\(\s*url: "https://github.com/lukepistrol/SwiftLintPlugin",\s*from: "0\.52\.2"\s*\),?||g' "$CETV"
+fi
+
+# 4. Patch CodeEditSymbols — `resources:` ergänzen, damit Bundle.module entsteht
+CESYM="$CHECKOUTS/CodeEditSymbols/Package.swift"
+if grep -q '"CodeEditSymbols",' "$CESYM" 2>/dev/null && ! grep -q 'Symbols.xcassets' "$CESYM" 2>/dev/null; then
+  echo "→ Patche CodeEditSymbols/Package.swift (Symbols.xcassets-Resource ergänzen)"
+  /usr/bin/perl -i -0pe 's|\.target\(\s*name: "CodeEditSymbols",\s*dependencies: \[\]\s*\)|.target(\n            name: "CodeEditSymbols",\n            dependencies: [],\n            resources: [.process("Symbols.xcassets")]\n        )|g' "$CESYM"
+fi
+
+# 4b. Patch CodeEditSourceEditor — Editor-eigenen CMD+F-Handler neutralisieren
+#     (Zombie-Find-Bar deterministisch killen).
+#
+# Der Editor installiert beim Laden einen eigenen lokalen keyDown-Monitor, der
+# bei CMD+F sein internes Find-Panel öffnet (TextViewController.handleCommand →
+# showFindPanel). Das Rennen der konkurrierenden NSEvent-Monitore ist nicht
+# zuverlässig gewinnbar — das Panel blitzt deshalb gelegentlich auf, bevor
+# unsere Reconciliation in EditorView es wieder schließt ("Zombie"). Hier
+# patchen wir den Handler so, dass CMD+F durchgereicht wird (return event)
+# statt das Panel zu zeigen. Damit fängt CMD+F ausschließlich unser App-Monitor
+# ab und öffnet unsere eigene Suchmaske — deterministisch, unabhängig von der
+# Monitor-Reihenfolge. Siehe CLAUDE.md → QA-Strategie (Zombie-Find-Bar).
+CESE_LC="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/Controller/TextViewController+Lifecycle.swift"
+if grep -q 'self.findViewController?.showFindPanel()' "$CESE_LC" 2>/dev/null; then
+  echo "→ Patche CodeEditSourceEditor (CMD+F → eigene Suchmaske, Zombie-Kill)"
+  /usr/bin/perl -i -0pe 's/case \(commandKey, "f"\):\s*\n\s*_ = self\.textView\.resignFirstResponder\(\)\s*\n\s*self\.findViewController\?\.showFindPanel\(\)\s*\n\s*return nil/case (commandKey, "f"):\n            return event  \/\/ Fastra-Patch: CMD+F oeffnet unsere Suchmaske statt des Editor-Find-Panels/' "$CESE_LC"
+  # Verifizieren, dass der Patch wirklich gegriffen hat — sonst kehrt der
+  # Zombie lautlos zurück (z.B. nach Versions-Bump mit geänderter Quelle).
+  if grep -q 'self.findViewController?.showFindPanel()' "$CESE_LC" 2>/dev/null; then
+    echo "✗ FEHLER: CMD+F-Zombie-Patch hat NICHT gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
+    exit 1
+  fi
+  # WICHTIG: SPM trackt Quell-Änderungen INNERHALB von .build/checkouts NICHT
+  # (Dependencies gelten als immutable — nur ein `swift build` ohne Recompile).
+  # Damit der Patch in die Binärdatei gelangt, die CESE-Build-Produkte
+  # verwerfen → SPM muss das Modul neu übersetzen. Greift nur in diesem
+  # Zweig, also nur direkt nach dem (Neu-)Patchen.
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4c. Patch CodeEditSourceEditor — toten cursorPositions-Reconcile reparieren.
+#
+# In SourceEditor.updateControllerWithState steht upstream:
+#     if let cursorPositions = state.cursorPositions,
+#        cursorPositions != state.cursorPositions { … }
+# Die Bedingung vergleicht die lokale Kopie mit SICH SELBST → IMMER false.
+# Folge: setCursorPositions() läuft nur einmal in makeNSViewController (bei
+# Editor-Erzeugung); ein späteres Setzen von state.cursorPositions von außen
+# (genau unser Treffer-Sprung CMD+G / Listen-Klick / „Voriger/Nächster")
+# bewegt die Editor-Selektion NIE. Reine Unit-Tests sahen das nicht — der
+# Selbsttest `-selftest jump` deckte es auf. Fix: gegen den IST-Stand des
+# Controllers vergleichen (controller.cursorPositions) und beim Anwenden in
+# Sicht scrollen (scrollToVisible), damit der Sprung auch sichtbar wird.
+CESE_SE="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/SourceEditor/SourceEditor.swift"
+if grep -q 'cursorPositions != state.cursorPositions' "$CESE_SE" 2>/dev/null; then
+  echo "→ Patche CodeEditSourceEditor (toten cursorPositions-Reconcile reparieren)"
+  /usr/bin/perl -i -0pe 's/cursorPositions != state\.cursorPositions \{\s*\n\s*controller\.setCursorPositions\(cursorPositions\)/cursorPositions != controller.cursorPositions {  \/\/ Fastra-Patch: upstream verglich state.cursorPositions mit sich selbst (immer false) -> externer Sprung wirkte nie\n            controller.setCursorPositions(cursorPositions, scrollToVisible: true)/' "$CESE_SE"
+  # Verifizieren, dass der Patch gegriffen hat — sonst bleibt der Sprung tot.
+  if grep -q 'cursorPositions != state.cursorPositions' "$CESE_SE" 2>/dev/null; then
+    echo "✗ FEHLER: cursorPositions-Reconcile-Patch hat NICHT gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
+    exit 1
+  fi
+  # Wie bei 4b: SPM trackt Quell-Änderungen in .build/checkouts NICHT →
+  # CESE-Build-Produkte verwerfen, damit der Patch neu übersetzt wird.
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4d. Patch CodeEditTextView — Drag-Selektion über die Gutter-Spalte reparieren.
+#
+# In TextView+Mouse.swift (mouseDragged) wird die Mausposition auf den TextView-
+# Frame geclampt: `x: max(0.0, min(locationInWindow.x, frame.width))`. Der Gutter
+# (Zeilennummern) ist ein FLOATING-Subview über der linken TextView-Kante; der Text
+# beginnt erst rechts davon (Container-Inset = layoutManager.edgeInsets.left). Zieht
+# man die Selektion schnell nach links in die Gutter-Spalte, landet x zwischen 0 und
+# dem Inset — dort liefert `layoutManager.textOffsetAtPoint(...)` nil (kein Glyph),
+# und das `guard let endPosition = … else { return }` in mouseDragged bricht ab: die
+# Selektion „wächst nicht mehr" und stoppt vor der ersten Spalte (Daniel-Befund
+# 2026-06-22). Fix: x mindestens auf den linken Text-Inset clampen, dann mappt der
+# Punkt auf den Zeilenanfang statt auf nil — die Selektion reicht sauber bis Spalte 1.
+CETV_MOUSE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+Mouse.swift"
+if grep -q 'x: max(0.0, min(locationInWindow.x, frame.width))' "$CETV_MOUSE" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (Drag-Selektion über Gutter clampen)"
+  /usr/bin/perl -i -pe 's/x: max\(0\.0, min\(locationInWindow\.x, frame\.width\)\),/x: max(layoutManager.edgeInsets.left, min(locationInWindow.x, frame.width)),  \/\/ Fastra-Patch: im Gutter-Bereich auf Zeilenanfang clampen statt nil (Drag friert sonst ein)/' "$CETV_MOUSE"
+  # Verifizieren, dass der Patch gegriffen hat — sonst kehrt der Bug lautlos zurück.
+  if grep -q 'x: max(0.0, min(locationInWindow.x, frame.width))' "$CETV_MOUSE" 2>/dev/null; then
+    echo "✗ FEHLER: Gutter-Drag-Patch hat NICHT gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
+    exit 1
+  fi
+  # Wie bei 4b/4c: SPM trackt Quell-Änderungen in .build/checkouts NICHT →
+  # CETV-Build-Produkte verwerfen, damit der Patch neu übersetzt wird.
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+fi
+
+# 4e. Patch CodeEditSourceEditor — horizontalen Scrollbalken + System-Scrollstil.
+#
+# `styleScrollView()` (TextViewController+StyleViews.swift) setzt nur
+# `hasVerticalScroller = true` und erzwingt `scrollerStyle = .overlay`. Zwei
+# Folgen (Daniel-Befund 2026-06-23):
+#   1. `hasHorizontalScroller` wird bei der Erst-Erzeugung NIE gesetzt (nur im
+#      Appearance-Config-Reconcile, der initial nicht greift). Ohne Umbruch ist
+#      langer Text dann gar nicht erreichbar — kein Scrollbalken (Showstopper).
+#   2. Das erzwungene `.overlay` überschreibt die System-Einstellung
+#      „Rollbalken: immer einblenden" → Balken bleiben unsichtbar, obwohl der
+#      Nutzer dauerhaft sichtbare will.
+# Fix: H-Scroller passend zum Umbruch initial setzen und `.overlay` NICHT
+# erzwingen (NSScrollView nutzt dann `NSScroller.preferredScrollerStyle`,
+# respektiert also die System-Präferenz).
+CESE_STYLE="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/Controller/TextViewController+StyleViews.swift"
+if grep -q 'scrollView.scrollerStyle = .overlay' "$CESE_STYLE" 2>/dev/null; then
+  echo "→ Patche CodeEditSourceEditor (H-Scroller initial + System-Scrollstil)"
+  /usr/bin/perl -i -0pe 's/scrollView\.hasVerticalScroller = true\s*\n\s*scrollView\.scrollerStyle = \.overlay/scrollView.hasVerticalScroller = true\n        scrollView.hasHorizontalScroller = !configuration.appearance.wrapLines  \/\/ Fastra-Patch: H-Scroller initial setzen (CESE tat das nur im Config-Reconcile)\n        \/\/ Fastra-Patch: kein erzwungenes .overlay -> System-Scrollbalken-Einstellung respektieren ("immer einblenden")/' "$CESE_STYLE"
+  if grep -q 'scrollView.scrollerStyle = .overlay' "$CESE_STYLE" 2>/dev/null; then
+    echo "✗ FEHLER: Scrollbalken-Patch hat NICHT gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
+    exit 1
+  fi
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4f. Patch CodeEditTextView — gemessene Zeilenbreite ging verloren (kein H-Scroll
+# bei „Umbruch aus").
+#
+# In TextLayoutManager+Layout.swift bekommt `layoutLine(...)` die maximale gefundene
+# Zeilenbreite als `inout maxFoundLineWidth` herein. Direkt nach dem Vermessen der
+# Zeile deklariert der Code aber `var maxFoundLineWidth = maxFoundLineWidth` — eine
+# LOKALE Kopie, die den inout-Parameter überschattet. Die Messung
+# `if maxFoundLineWidth < lineSize.width { maxFoundLineWidth = lineSize.width }`
+# schreibt damit nur in die Kopie; sie wird beim Return verworfen und nie in den
+# inout zurückgeschrieben. Folge: `layoutLines` sieht die Zeilenbreite nie,
+# `maxLineWidth` bleibt 0, `estimatedWidth()` liefert nur die EdgeInsets (~67 px) →
+# die TextView wächst bei „Umbruch aus" nicht auf die Inhaltsbreite, es gibt keinen
+# horizontalen Scrollbereich (Daniel-Befund 2026-06-23, per -selftest hscroll auf
+# est=67->67 / docW=clipW eingegrenzt). Fix: die Shadow-Kopie entfernen, dann
+# schreibt die Messung direkt in den inout-Parameter. Im Umbruch-AN-Fall unschädlich
+# (Frame-Breite ist dort ohnehin die Clip-Breite).
+CETV_LAYOUT="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextLayoutManager/TextLayoutManager+Layout.swift"
+if grep -q 'var maxFoundLineWidth = maxFoundLineWidth' "$CETV_LAYOUT" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (Shadow-Kopie maxFoundLineWidth entfernen → H-Scroll)"
+  /usr/bin/perl -i -pe 's|var maxFoundLineWidth = maxFoundLineWidth|// Fastra-Patch: Shadow-Kopie entfernt — sie verschluckte die gemessene Zeilenbreite (inout wurde nie zurückgeschrieben), maxLineWidth blieb 0 → kein H-Scroll bei „Umbruch aus".|' "$CETV_LAYOUT"
+  if grep -q 'var maxFoundLineWidth = maxFoundLineWidth' "$CETV_LAYOUT" 2>/dev/null; then
+    echo "✗ FEHLER: maxFoundLineWidth-Patch hat NICHT gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
+    exit 1
+  fi
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+fi
+
+# 4g. Patch CodeEditLanguages — exotische Sprach-Grammatiken ausschneiden.
+#
+# CodeEditLanguages bindet ~40 Tree-sitter-Grammatiken über das prebuilt
+# XCFramework CodeLanguagesContainer (binaryTarget, statisches ar-Archiv) ein.
+# Jeder `case .X: return tree_sitter_X()` in CodeLanguage.swift referenziert
+# die jeweilige C-Parser-Funktion — DAS zwingt den Linker, die zugehörige
+# Grammatik-Objektdatei (TreeSitterX.o, einzelne teils zweistellige MB)
+# statisch ins Fastra-Binary zu ziehen. Ersetzt man den Rückgabewert durch
+# `return nil`, fällt die Referenz weg und der Linker lässt die .o draußen →
+# das Binary schrumpft. Die Sprache verliert damit ihr Syntax-Highlighting
+# (der Editor behandelt sie als Plaintext); alles andere bleibt unberührt
+# (tsLanguage == nil wird in `.language` sauber abgefangen).
+# Daniel-Entscheidung 2026-07-08: Bundle-Größe drücken, Apple-Silicon-only.
+# Ausgeschnitten (moderate Liste, Dart bewusst BEHALTEN): Verilog, OCaml
+# (+Interface), Julia, Haskell, Scala, Agda, Elixir, Zig — zusammen ~50 MB.
+CEL_LANG="$CHECKOUTS/CodeEditLanguages/Sources/CodeEditLanguages/CodeLanguage.swift"
+if grep -q 'return tree_sitter_verilog()' "$CEL_LANG" 2>/dev/null; then
+  echo "→ Patche CodeEditLanguages (exotische Grammatiken ausschneiden)"
+  # Nur den Rückgabe-Ausdruck ersetzen; die `case`-Labels + das Enum bleiben
+  # unangetastet. Funktionsnamen sind eindeutig; `tree_sitter_ocaml()` matcht
+  # dank der literalen `()` NICHT das längere `tree_sitter_ocaml_interface()`.
+  for fn in agda elixir haskell julia ocaml ocaml_interface scala verilog zig; do
+    /usr/bin/perl -i -pe "s/return tree_sitter_${fn}\\(\\)/return nil  \\/\\/ Fastra-Patch: exotische Sprache ausgeschnitten (Bundle-Groesse, Apple-Silicon-only)/" "$CEL_LANG"
+  done
+  # Verifizieren, dass ALLE Ziel-Referenzen weg sind — sonst zieht der Linker
+  # die Grammatik doch wieder rein und die Ersparnis verpufft lautlos.
+  if grep -qE 'return tree_sitter_(agda|elixir|haskell|julia|ocaml|ocaml_interface|scala|verilog|zig)\(\)' "$CEL_LANG" 2>/dev/null; then
+    echo "✗ FEHLER: Sprach-Ausschnitt-Patch hat NICHT (vollständig) gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
+    exit 1
+  fi
+  # Wie 4b–4f: SPM trackt Quell-Änderungen in .build/checkouts NICHT →
+  # CodeEditLanguages-Build-Produkte verwerfen, damit CodeLanguage.swift neu
+  # übersetzt UND das Fastra-Binary neu gelinkt wird (nur beim Relink fallen
+  # die nun unreferenzierten Grammatik-.o aus dem statischen Archiv weg).
+  rm -rf .build/*/debug/CodeEditLanguages.build .build/*/release/CodeEditLanguages.build
+  rm -f .build/*/debug/Modules/CodeEditLanguages.swiftmodule \
+        .build/*/release/Modules/CodeEditLanguages.swiftmodule
+fi
+
+# 4h. Patch CodeEditLanguages — Highlight-Query-Pfad layout-robust auflösen.
+#
+# ROOT CAUSE „Sprache erkannt, aber alles monochrom" (Daniel-Befund
+# 2026-07-10, Selbsttest `highlight`): `CodeLanguage.queryURL` baut den Pfad
+# als `resourceURL + "Resources/tree-sitter-<name>/highlights.scm"`.
+# `Bundle.module.resourceURL` zeigt bei unserem SPM-Resource-Bundle-Layout
+# aber bereits auf `…bundle/Resources` → der Pfad wird zu
+# `…/Resources/Resources/…` und existiert NIE. TreeSitterClient läuft dann
+# ohne Highlight-Queries: kein Fehler, keine Farben. Der Patch prüft beide
+# Layouts (Bundle-Wurzel wie upstream-dev vs. bereits-in-Resources wie bei
+# uns) und nimmt den existierenden Pfad.
+if ! grep -q 'Fastra-Patch: Query-Pfad layout-robust' "$CEL_LANG" 2>/dev/null; then
+  echo "→ Patche CodeEditLanguages (Highlight-Query-Pfad layout-robust)"
+  # SPM legt Checkout-Dateien read-only ab (444). perl -i (4b–4g) umgeht das
+  # durch unlink+neu; Python schreibt in-place → Schreibrecht kurz geben.
+  chmod u+w "$CEL_LANG"
+  /usr/bin/python3 - "$CEL_LANG" <<'PYEOF'
+import sys
+path = sys.argv[1]
+src = open(path).read()
+old = '''    internal func queryURL(for highlights: String = "highlights") -> URL? {
+        return resourceURL?
+            .appendingPathComponent("Resources/tree-sitter-\\(tsName)/\\(highlights).scm")
+    }'''
+new = '''    internal func queryURL(for highlights: String = "highlights") -> URL? {
+        // Fastra-Patch: Query-Pfad layout-robust aufloesen. resourceURL zeigt je
+        // nach Bundle-Layout auf die Bundle-Wurzel ODER schon auf .../Resources —
+        // das doppelte "Resources/Resources" liess highlights.scm nie finden
+        // (Sprache erkannt, aber kein Highlighting).
+        guard let base = resourceURL else { return nil }
+        let nested = base.appendingPathComponent("Resources/tree-sitter-\\(tsName)/\\(highlights).scm")
+        if FileManager.default.fileExists(atPath: nested.path) { return nested }
+        return base.appendingPathComponent("tree-sitter-\\(tsName)/\\(highlights).scm")
+    }'''
+if old not in src:
+    sys.exit("queryURL-Quelltext hat sich geaendert — Patch 4h passt nicht mehr")
+open(path, "w").write(src.replace(old, new))
+PYEOF
+  # Verifizieren, dass der Patch drin ist — sonst bleibt Highlighting still tot.
+  if ! grep -q 'Fastra-Patch: Query-Pfad layout-robust' "$CEL_LANG" 2>/dev/null; then
+    echo "✗ FEHLER: Query-Pfad-Patch hat NICHT gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
+    exit 1
+  fi
+  # Wie 4b–4g: Checkout-Änderungen trackt SPM nicht → Build-Produkte verwerfen.
+  rm -rf .build/*/debug/CodeEditLanguages.build .build/*/release/CodeEditLanguages.build
+  rm -f .build/*/debug/Modules/CodeEditLanguages.swiftmodule \
+        .build/*/release/Modules/CodeEditLanguages.swiftmodule
+fi
+
+# 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
+rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
+
+# 6. Build über Xcode-Toolchain (PreviewsMacros + SourceKit liegen dort)
+CONFIG="${1:-debug}"
+echo "→ Build (Konfiguration: $CONFIG)"
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun --toolchain XcodeDefault swift build -c "$CONFIG"
+
+# 7. Als .app-Bundle verpacken
+#
+# Ohne Bundle läuft das Binary zwar (Info.plist ist ins Binary einkompiliert),
+# bekommt aber **keine reguläre Menüleiste** und CMD-Shortcuts landen im
+# Terminal statt in der App. Erst der Bundle-Wrapper macht aus dem Binary
+# eine vollwertige macOS-App.
+APP=".build/$CONFIG/Fastra.app"
+echo "→ Bundle bauen ($APP)"
+rm -rf "$APP"
+mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/Resources"
+cp ".build/$CONFIG/Fastra" "$APP/Contents/MacOS/Fastra"
+cp Info.plist "$APP/Contents/Info.plist"
+
+# App-Icon auf Bundle-Ebene. Info.plist verweist via CFBundleIconFile
+# auf "AppIcon" → Contents/Resources/AppIcon.icns. Ohne diese Datei
+# zeigt Finder/Dock nur das generische Platzhalter-Icon.
+if [ -f AppIcon.icns ]; then
+  cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+fi
+
+# Ressourcen-Bundles (Assets.xcassets, CodeEdit-Symbols, ...) übernehmen,
+# damit sie zur Laufzeit per `Bundle.module` gefunden werden.
+for bundle in ".build/$CONFIG/"*.bundle; do
+  if [ -d "$bundle" ]; then
+    cp -R "$bundle" "$APP/Contents/Resources/"
+  fi
+done
+
+# CodeEditLanguages liefert seine Tree-sitter-Grammatiken als prebuilt
+# XCFramework (CodeLanguagesContainer, binaryTarget). Das ist ein STATISCHES
+# Archiv (früher universal x86_64+arm64, ~375 MB): es wird zur BUILD-Zeit ins
+# Fastra-Binary gelinkt und zur Laufzeit NIE geladen — dyld kann ein ar-Archiv
+# gar nicht laden, und das Binary hat keine passende Load-Command (nicht in
+# `otool -L`). Früher wurde es dennoch nach Contents/Frameworks kopiert: reines
+# totes Gewicht, das das Bundle vervierfachte. Wir kopieren es daher NICHT mehr.
+# (Apple-Silicon-only — die x86_64-Hälfte des Archivs wäre ohnehin unnütz.)
+# Sollte je ein ECHT dynamisches Framework (.dylib-Binary) dazukommen, müsste
+# hier wieder selektiv kopiert werden — statische Archive aber bewusst nicht.
+
+# Release-Bundle verschlanken: Debug-Symbole aus dem Binary strippen.
+# strip entfernt hier nur wenige MB (der Löwenanteil des Binaries sind die
+# einkompilierten Grammatiken, nicht Symbole), invalidiert aber auf Apple
+# Silicon die (ad-hoc-)Signatur → danach ZWINGEND ad-hoc neu signieren, sonst
+# killt Gatekeeper den Start ("code signature invalid"). Nur im Release-Build;
+# Debug behält seine Symbole für die Crash-/lldb-Diagnose.
+if [ "$CONFIG" = "release" ]; then
+  echo "→ Release: Binary strippen + ad-hoc neu signieren"
+  strip -x "$APP/Contents/MacOS/Fastra"
+  codesign --force --sign - "$APP/Contents/MacOS/Fastra"
+fi
+
+# Fertiges Bundle zusätzlich ins Projekt-Hauptverzeichnis kopieren —
+# dort ist es sichtbar und bequem doppelklickbar, statt im versteckten
+# .build-Ordner zu stecken. Es liegt immer die ZULETZT gebaute Variante
+# dort (debug oder release). ditto statt cp -R: ersetzt sauber in-place,
+# erhält Rechte/Symlinks im Bundle.
+ROOT_APP="../Fastra.app"
+rm -rf "$ROOT_APP"
+ditto "$APP" "$ROOT_APP"
+
+echo
+echo "✔ Fertig. App-Bundle: $APP"
+echo "  Kopie zum Doppelklicken: $(cd .. && pwd)/Fastra.app ($CONFIG)"
+echo "  Start mit: open $ROOT_APP"
