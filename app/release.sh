@@ -7,6 +7,7 @@
 #      Umgebungsvariable FASTRA_SIGN_IDENTITY) oder mit Ad-hoc-Signierung (-s -)
 #      für lokale Tests ohne Apple-Konto.
 #   3. DMG bauen via hdiutil — App + Alias auf /Applications, Volume-Name "Fastra",
+#      mit Hintergrundbild (src/DmgBackground.png) und Finder-Icon-Layout,
 #      Ausgabe in dist/Fastra-<version>.dmg.
 #   4. Signatur des DMG-Inhalts verifizieren.
 #   5. Notarisierung — läuft automatisch, WENN echt signiert wurde
@@ -27,12 +28,37 @@
 #         --apple-id "<deine Apple-ID>" --team-id "<deine Team-ID>"
 #     (KEIN --password-Argument — das Tool fragt interaktiv nach dem
 #      App-Specific-Password; so landet es nie in Shell-History/Transkript)
+#
+# Aufruf:
+#   ./release.sh                      # kompletter Release-Flow
+#   ./release.sh --no-finder-layout   # ohne AppleScript-Finder-Layout (headless)
 
 set -e
 
 # Skript läuft immer relativ zu seinem eigenen Verzeichnis — macht das Skript
 # unabhängig vom Arbeitsverzeichnis, aus dem es aufgerufen wird.
 cd "$(dirname "$0")"
+
+# ─────────────────────────────────────────────────────────────────
+# Argumente
+# ─────────────────────────────────────────────────────────────────
+# --no-finder-layout: überspringt in Schritt 3 das AppleScript-Finder-Layout
+#   (Fenstergröße, Icon-Positionen, Hintergrundbild einstellen). Nützlich auf
+#   Headless-/CI-Maschinen ohne GUI-Finder — das DMG funktioniert trotzdem,
+#   das Fenster sieht beim Öffnen nur schlichter aus.
+FINDER_LAYOUT=1
+for arg in "$@"; do
+  case "$arg" in
+    --no-finder-layout)
+      FINDER_LAYOUT=0
+      ;;
+    *)
+      echo "Unbekannte Option: $arg" >&2
+      echo "Aufruf: ./release.sh [--no-finder-layout]" >&2
+      exit 1
+      ;;
+  esac
+done
 
 echo "▶ Fastra Release-Build"
 echo
@@ -100,14 +126,17 @@ echo "   ✔ Bundle signiert: $APP"
 echo
 
 # ─────────────────────────────────────────────────────────────────
-# Schritt 3: DMG bauen
+# Schritt 3: DMG bauen — mit Hintergrundbild und Finder-Layout
 # ─────────────────────────────────────────────────────────────────
 # Ablauf:
-#   a) Temporäres Verzeichnis als "Vorlage" für den DMG-Inhalt anlegen
-#   b) App-Bundle hineinkopieren
-#   c) Symbolischen Link auf /Applications anlegen (Drag-to-install-UI im Finder)
-#   d) hdiutil create baut den DMG aus dem Verzeichnis
-#   e) Temporäres Verzeichnis aufräumen
+#   a) Hintergrundbild als HiDPI-TIFF aufbereiten (1x + 2x kombiniert)
+#   b) Beschreibbares (RW-)DMG erzeugen und mounten
+#   c) App-Bundle, /Applications-Alias und verstecktes .background-Verzeichnis
+#      auf das gemountete Volume kopieren
+#   d) Finder per AppleScript das Fenster-Layout einstellen lassen
+#      (Fenstergröße, Icon-Positionen, Hintergrundbild) — die Einstellungen
+#      landen in der .DS_Store des Volumes und bleiben im fertigen DMG erhalten
+#   e) RW-DMG aushängen und in ein komprimiertes read-only DMG konvertieren
 
 echo "→ Schritt 3/5: DMG bauen"
 
@@ -125,32 +154,100 @@ if [ -f "$DMG_PATH" ]; then
   rm -f "$DMG_PATH"
 fi
 
-# Temporäres Staging-Verzeichnis als DMG-Vorlage
+# Temporäres Arbeitsverzeichnis für alle Zwischenprodukte
+# (RW-DMG, skalierte Hintergrundbilder, kombiniertes TIFF)
 DMG_STAGING=$(mktemp -d)
-# Aufräumen garantieren — auch bei Fehler (trap auf EXIT)
-trap 'rm -rf "$DMG_STAGING"' EXIT
+RW_DMG="$DMG_STAGING/fastra_rw.dmg"
+VOL_NAME="Fastra"
+MOUNT_DIR="/Volumes/$VOL_NAME"
 
-echo "   Staging-Verzeichnis: $DMG_STAGING"
+# Aufräumen garantieren — auch bei Fehler (trap auf EXIT): erst ein evtl.
+# noch gemountetes Volume aushängen, dann das Arbeitsverzeichnis löschen
+trap 'hdiutil detach "$MOUNT_DIR" -quiet 2>/dev/null || true; rm -rf "$DMG_STAGING"' EXIT
 
-# App ins Staging-Verzeichnis kopieren (cp -R: Bundle-Struktur vollständig)
-cp -R "$APP" "$DMG_STAGING/Fastra.app"
+echo "   Arbeitsverzeichnis: $DMG_STAGING"
 
-# Symbolischen Link auf /Applications anlegen — Nutzer ziehen die App
-# per Drag & Drop aus dem DMG-Fenster in den Applications-Ordner
-ln -s /Applications "$DMG_STAGING/Applications"
+# a) Hintergrundbild aufbereiten: Der Finder zeigt auf Retina-Displays nur
+#    dann ein scharfes Bild, wenn das TIFF BEIDE Auflösungen enthält
+#    (1x = 600×420 Punkte bei 72 dpi, 2x = 1200×840 Pixel bei 144 dpi).
+#    sips skaliert die Quelle auf beide Größen, tiffutil kombiniert sie zu
+#    einem Multi-Resolution-TIFF (-cathidpicheck prüft das 1x/2x-Verhältnis).
+echo "   Hintergrundbild aufbereiten (1x + 2x → HiDPI-TIFF)"
+sips -s format png -s dpiWidth 72  -s dpiHeight 72  -z 420 600 \
+  src/DmgBackground.png --out "$DMG_STAGING/DmgBg_1x.png" >/dev/null
+sips -s format png -s dpiWidth 144 -s dpiHeight 144 -z 840 1200 \
+  src/DmgBackground.png --out "$DMG_STAGING/DmgBg_2x.png" >/dev/null
+tiffutil -cathidpicheck "$DMG_STAGING/DmgBg_1x.png" "$DMG_STAGING/DmgBg_2x.png" \
+  -out "$DMG_STAGING/DmgBackground.tiff"
 
-# DMG erzeugen:
-#   -volname: Name des eingehängten Volumes (erscheint auf dem Desktop)
-#   -srcfolder: Inhalt des DMG (= unser Staging-Verzeichnis)
-#   -ov: bestehende Datei überschreiben (extra Sicherheit, rm oben reicht
-#        normalerweise, aber -ov schadet nicht)
-#   -format UDZO: komprimiertes DMG (gzip) — kleinere Datei
-hdiutil create \
-  -volname "Fastra" \
-  -srcfolder "$DMG_STAGING" \
-  -ov \
-  -format UDZO \
-  "$DMG_PATH"
+# b) Beschreibbares DMG erzeugen und mounten. Die Größe (200m) ist bewusst
+#    großzügig — beim Konvertieren (Schritt e) wird ohnehin auf die echte
+#    Größe komprimiert. Hängt von einem früheren, abgebrochenen Lauf noch
+#    ein "Fastra"-Volume, erst aushängen — sonst schlägt der Mount fehl.
+if [ -d "$MOUNT_DIR" ]; then
+  echo "   Altes Volume von früherem Lauf aushängen: $MOUNT_DIR"
+  hdiutil detach "$MOUNT_DIR" -quiet 2>/dev/null || true
+fi
+hdiutil create -size 200m -fs HFS+ -volname "$VOL_NAME" -ov -quiet "$RW_DMG"
+hdiutil attach -readwrite -noverify -noautoopen -quiet \
+  -mountpoint "$MOUNT_DIR" "$RW_DMG"
+
+# c) Inhalt aufs Volume: App-Bundle (cp -R: Bundle-Struktur vollständig),
+#    Symlink auf /Applications als Drag-&-Drop-Installationsziel und das
+#    Hintergrundbild in einem versteckten Verzeichnis (Punkt-Präfix —
+#    der Finder blendet es aus, das Bild bleibt aber referenzierbar)
+cp -R "$APP" "$MOUNT_DIR/Fastra.app"
+ln -s /Applications "$MOUNT_DIR/Applications"
+mkdir "$MOUNT_DIR/.background"
+cp "$DMG_STAGING/DmgBackground.tiff" "$MOUNT_DIR/.background/DmgBackground.tiff"
+
+# d) Finder-Layout per AppleScript: Icon-Ansicht, Fenster 600×420 Punkte
+#    (= Größe des 1x-Hintergrundbilds), Icons auf die im Bild gezeichneten
+#    Slots setzen. Öffnet kurz ein Finder-Fenster — mit --no-finder-layout
+#    überspringbar (z.B. headless), das DMG bleibt voll funktionsfähig.
+if [ "$FINDER_LAYOUT" = "1" ]; then
+  echo "   Finder-Layout einstellen (Fenster, Icon-Positionen, Hintergrund)"
+  osascript <<EOF
+tell application "Finder"
+    tell disk "$VOL_NAME"
+        open
+        set current view of container window to icon view
+        set toolbar visible of container window to false
+        set statusbar visible of container window to false
+        set viewOptions to the icon view options of container window
+        set arrangement of viewOptions to not arranged
+        set icon size of viewOptions to 96
+        set background picture of viewOptions to file ".background:DmgBackground.tiff"
+        -- Icons auf die Slots im Hintergrundbild setzen
+        set position of item "Fastra.app" of container window to {150, 300}
+        set position of item "Applications" of container window to {450, 300}
+        -- Fensterrechteck {links, oben, rechts, unten} → 600×420 Punkte.
+        -- Mit Read-back-Retry: der Finder übernimmt ein einmaliges
+        -- "set bounds" nicht zuverlässig (erbt sonst die Größe eines
+        -- vorhandenen Fensters) — deshalb setzen, zurücklesen, ggf.
+        -- wiederholen, bis die Zielgröße wirklich anliegt.
+        repeat with i from 1 to 5
+            set the bounds of container window to {200, 120, 800, 540}
+            delay 1
+            if (bounds of container window) = {200, 120, 800, 540} then exit repeat
+        end repeat
+        update without registering applications
+        delay 2
+        close
+    end tell
+end tell
+EOF
+else
+  echo "   ⚠ --no-finder-layout gesetzt → Finder-Layout übersprungen"
+fi
+
+# e) Aushängen und konvertieren:
+#    -format UDZO: komprimiertes read-only DMG (gzip) — kleinere Datei;
+#    zlib-level=9 = maximale Kompression. Das kurze sleep gibt dem Finder
+#    Zeit, die .DS_Store fertig zu schreiben, bevor ausgehängt wird.
+sleep 2
+hdiutil detach "$MOUNT_DIR" -quiet || hdiutil detach -force "$MOUNT_DIR"
+hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -quiet -o "$DMG_PATH"
 
 echo "   ✔ DMG gebaut: $DMG_PATH"
 echo
