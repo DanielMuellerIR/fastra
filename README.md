@@ -2,7 +2,7 @@
   <img src="screenshots/app-icon.png" width="128" alt="Fastra app icon">
 </p>
 
-# Fastra
+# Fastra: Native macOS text editor
 
 **🌐 Sprache / Language:** [English](README.md) · [Deutsch](README.de.md)
 
