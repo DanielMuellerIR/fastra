@@ -21,9 +21,9 @@
 #   - Xcode unter /Applications/Xcode.app (wie bei build.sh)
 #   - Für echte Signierung: gültiges Developer-ID-Zertifikat im Schlüsselbund
 #     und FASTRA_SIGN_IDENTITY gesetzt (z.B. in ~/.zshenv oder .envrc)
-#   - Für Notarization: ein notarytool-Keychain-Profil (Default "fftabsNotary",
+#   - Für Notarization: ein notarytool-Keychain-Profil (Default "notary",
 #     über NOTARY_PROFILE überschreibbar), pro Mac einmalig eingerichtet via:
-#       xcrun notarytool store-credentials "fftabsNotary" \
+#       xcrun notarytool store-credentials "notary" \
 #         --apple-id "<deine Apple-ID>" --team-id "<deine Team-ID>"
 #     (KEIN --password-Argument — das Tool fragt interaktiv nach dem
 #      App-Specific-Password; so landet es nie in Shell-History/Transkript)
@@ -188,17 +188,17 @@ echo
 # werden — dann wird dieser Schritt übersprungen.
 #
 # Das notarytool-Keychain-Profil ist PRO MAC eingerichtet (Schlüsselbund wird
-# nicht über Macs gesynct). Default-Profilname "fftabsNotary" wird laut intern-
-# Rezept projektübergreifend wiederverwendet; über die Umgebungsvariable
+# nicht über Macs gesynct). Default-Profilname "notary" wird
+# projektübergreifend wiederverwendet; über die Umgebungsvariable
 # NOTARY_PROFILE überschreibbar. Einmalig je Mac angelegt via:
-#   xcrun notarytool store-credentials "fftabsNotary" \
+#   xcrun notarytool store-credentials "notary" \
 #     --apple-id "<deine Apple-ID>" --team-id "<deine Team-ID>"
 #   (fragt interaktiv nach dem App-Specific-Password — landet so nie in der
 #    Shell-History; Team-ID ist nicht geheim.)
 echo "→ Schritt 5/5: Notarisierung"
 
 # Profilname: Umgebungsvariable hat Vorrang, sonst der projektweite Default.
-NOTARY_PROFILE="${NOTARY_PROFILE:-fftabsNotary}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-notary}"
 
 if [ "$SIGN_IDENTITY" = "-" ]; then
   # Ad-hoc signiert → Notarisierung technisch nicht möglich, sauber überspringen.
