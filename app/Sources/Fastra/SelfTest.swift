@@ -2144,8 +2144,10 @@ enum SelfTest {
     private static func runWildcardShot() {
         testLabel = "wildcardshot"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        // Fester, lesbarer Name — der Dateiname erscheint im Trefferbaum und
+        // damit auf README-Screenshots (UUID-Namen sähen dort wüst aus).
         let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("fastra-wildcardshot-\(UUID().uuidString).txt")
+            .appendingPathComponent("Filmliste.txt")
         // Mehrere Zeilen → die Live-Vorschau zeigt „erste 3 + … und N weitere".
         let demo = "ring, The\nhobbit, The\nempire, The\nphantom menace, The\nmatrix, The\n"
         do { try demo.write(to: tmp, atomically: true, encoding: .utf8) }
@@ -2169,8 +2171,9 @@ enum SelfTest {
     private static func runRegexShot() {
         testLabel = "regexshot"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        // Fester, lesbarer Name — erscheint im Trefferbaum (README-Screenshots).
         let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("fastra-regexshot-\(UUID().uuidString).txt")
+            .appendingPathComponent("Filmliste.txt")
         let demo = "ring, The\nhobbit, The\nempire, The\nphantom menace, The\nmatrix, The\n"
         do { try demo.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
