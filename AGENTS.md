@@ -178,6 +178,10 @@ aus veralteter Doku zu halluzinieren.
 - **Push-Stopp (Daniel, 2026-07-11):** Während des Projekt- & Git-Ausbaus (siehe
   ROADMAP.md) **keine Pushes zum GitHub-Remote**, bis die Etappen ordentlich
   getestet sind. Commits + internes Backup-Remote laufen normal weiter.
+- **GitHub-Remote existiert generell** (`github.com/DanielMuellerIR/fastra`,
+  öffentlich, mit Releases) — auch wenn es im lokalen Clone eines Rechners nicht
+  als Remote konfiguriert ist. Aus `git remote -v` ohne GitHub-Eintrag NICHT
+  schließen, das Projekt sei nicht auf GitHub.
 - **Beim Version-Bump immer parallel:** Header in AGENTS.md aktualisieren,
   CHANGELOG-Eintrag schreiben, Git-Tag setzen, Commit-Message mit Versionsnummer.
 
