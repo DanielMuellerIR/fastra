@@ -1213,7 +1213,9 @@ final class Workspace: ObservableObject {
     /// Kern für alle Git-Text-Tabs: git asynchron ausführen und das Ergebnis in
     /// einen read-only-Tab schreiben. Dedup: pro `(kind, title)` genau ein Tab —
     /// erneuter Aufruf frischt den bestehenden Tab auf, statt zu duplizieren.
-    private func loadGitTab(kind: GitTabKind, title: String, args: [String], emptyText: String) {
+    /// `internal` (nicht private), damit die Git-Aktionen in `GitActions.swift`
+    /// den Pickaxe-Verlauf öffnen können.
+    func loadGitTab(kind: GitTabKind, title: String, args: [String], emptyText: String) {
         guard let root = projectURL, GitRunner.isAvailable else { return }
         GitRunner.run(args, in: root) { [weak self] result in
             guard let self else { return }

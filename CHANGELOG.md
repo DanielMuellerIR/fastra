@@ -9,7 +9,9 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
-Projekt- & Git-Ausbau, Etappe 2 (Git-Sichtbarkeit) — in Arbeit.
+## [v1.5.0] — 2026-07-12
+
+Projekt- & Git-Ausbau, Etappe 2 (Git-Sichtbarkeit + kuratierte Aktionen).
 
 ### Hinzugefügt
 
@@ -33,6 +35,14 @@ Projekt- & Git-Ausbau, Etappe 2 (Git-Sichtbarkeit) — in Arbeit.
   (hinzugefügt grün, entfernt rot, Hunk-/Datei-Header und Commit-Metadaten
   betont). Öffnen über das ±-Symbol in der Branch-Zeile. Beide Git-Tabs sind
   gegen ⌘S/Speichern-unter abgesichert und pro Art dedupliziert.
+- **Kuratierte Git-Aktionen** (Popup in der Branch-Zeile + „Git"-Menü in der
+  Menüleiste, gleiche Einträge): Alles committen, Letzten Commit ergänzen
+  (amend --no-edit), Push, Pull (Fast-Forward), Pull (mit Merge), Fetch,
+  Verlauf durchsuchen (Pickaxe `log -S`) und Zum vorherigen Branch (`switch -`).
+  Jeder Punkt trägt einen dezenten Hilfe-Text als Tooltip. Aktionen laufen
+  asynchron; Erfolg frischt Status + offene Git-Tabs auf, Fehler zeigt die
+  wörtliche git-Ausgabe. Selbsttest `gitactions` prüft Push/Pull/Amend/Switch/
+  Pickaxe end-to-end gegen ein lokales bare-Remote.
 
 ### Behoben
 

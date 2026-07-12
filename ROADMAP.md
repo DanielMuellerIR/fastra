@@ -52,21 +52,20 @@ Aktionen**, keine breite Git-Unterstützung.
   Dateisystem-Änderungen (aktuell wird bei Render gelesen), Kontextmenü (Umbenennen/
   Löschen/Neu), Aufklapp-Zustand über Sessions merken.
 
-**Etappe 2 — Git-Sichtbarkeit (read-first):**
-- **Status in der Seitenleiste:** geänderte/neue Dateien einfärben, Branch anzeigen
-  (`git status --porcelain`).
-- **History als read-only-Tab:** `git log --graph --oneline --decorate` liefert den
-  Graphen fertig als ASCII — Monospace-Anzeige haben wir. Klick auf Commit →
-  `git show <hash>` in weiterem Tab. Kein eigenes Graph-Rendering.
-- **Diff als read-only-Tab:** `git diff` (unified) als Text. Die aufgeschobene
-  Side-by-side-Ansicht (Funktionsumfang D) ist Ausbaustufe, nicht Voraussetzung.
-- **Kuratierte Aktionen** über Buttons/Popup-Menüs: die häufigsten Aufrufe plus eine
-  Handvoll „pfiffiger" Varianten, deren Syntax sich niemand merkt (z. B.
-  Fast-Forward-Only-Pull, `git log -S` Pickaxe-Suche, amend ohne Message-Änderung).
-  Zielgruppe: Leute, die Git verstehen, aber Syntax/Parameter nicht auswendig behalten
-  wollen.
-- **Dezente Hilfe-Texte** direkt an den Aktionen (z. B. was Fast-Forward gegenüber
-  Merge bringt) — Tooltip/Untertitel-Niveau, nie modal, nie im Weg.
+**Etappe 2 — Git-Sichtbarkeit + kuratierte Aktionen (umgesetzt in v1.5.0, 2026-07-12):**
+- **Status in der Seitenleiste:** geänderte/neue Dateien eingefärbt + Kürzel-Badge,
+  Branch mit Ahead/Behind (`git status --porcelain=v1 -b`), Ordner-Rollup-Punkt. ✓
+- **History als read-only-Tab:** `git log --graph --oneline --decorate`, Klick auf
+  Commit → `git show <hash>` in weiterem Tab. ✓
+- **Diff als read-only-Tab:** `git diff HEAD` gefärbt (added/removed/Hunk/Header). Die
+  aufgeschobene Side-by-side-Ansicht (Funktionsumfang D) bleibt Ausbaustufe. ✓
+- **Kuratierte Aktionen** (Popup in der Branch-Zeile + „Git"-Menü in der Menüleiste):
+  Alles committen, Amend (--no-edit), Push, Pull (Fast-Forward / mit Merge), Fetch,
+  Pickaxe (`log -S`), Zum vorherigen Branch (`switch -`). ✓
+- **Dezente Hilfe-Texte** als Tooltip an jedem Menüpunkt. ✓
+- Noch offen für spätere Feinarbeit: Stage/Unstage einzelner Dateien (Kontextmenü),
+  Branch-Auswahl aus Liste, erster Push mit automatischem `-u`, Erfolgs-Feedback bei
+  Netzwerk-Aktionen (aktuell nur sichtbar über Ahead/Behind + Baum-Änderung).
 
 **UX-Regeln (verbindlich):**
 - **Discovery-Prinzip:** Wichtiges easy, schnell und schick; Fortgeschrittenes

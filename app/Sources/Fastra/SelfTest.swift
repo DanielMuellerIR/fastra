@@ -136,6 +136,10 @@ enum SelfTest {
             // Fensterlos — Git-Status end-to-end (Etappe 2): echtes Temp-Repo,
             // Datei-Zustände, Branch, Ordner-Rollup, dialogfreie git-Auflösung.
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runGitTest() }
+        case "gitactions":
+            // Fensterlos — kuratierte Git-Aktionen end-to-end mit bare-Remote
+            // (Push/Pull-FF/Amend/Switch/Pickaxe), Etappe 2 Schritt 4.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runGitActionsTest() }
         case "openscope":
             // Fensterlos — Such-Scope „Geöffnet" end-to-end über Workspace +
             // SearchRunner (Multi-Tab-Suche + Alle-ersetzen über alle Tabs).
@@ -184,7 +188,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, cmdw, fields, tabswitch, highlight, jump, replaceall, pilldrop, navmatch, search, project, git, selsearch, wildcard, textop, colsel, contrast, windows)")
+                + "(bekannt: findbar, newwindow, cmdw, fields, tabswitch, highlight, jump, replaceall, pilldrop, navmatch, search, project, git, gitactions, selsearch, wildcard, textop, colsel, contrast, windows)")
         }
     }
 
@@ -2160,6 +2164,193 @@ enum SelfTest {
         if tick >= maxTicks { try? fm.removeItem(at: repo); finish(false, "(diff) Timeout") }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
             pollGitDiff(ws, repo: repo, fm: fm, tick: tick + 1)
+        }
+    }
+
+    // MARK: - Selbsttest: Git-Aktionen (Etappe 2, Schritt 4)
+
+    /// Führt eine Kette von git-Kommandos seriell aus (Setup-Helfer). Bricht bei
+    /// erstem Fehler ab und meldet ihn über den Completion (`false`, Fehlertext).
+    private static func runGitSequence(_ cmds: [[String]], in dir: URL,
+                                       _ completion: @escaping (Bool, String) -> Void) {
+        guard let first = cmds.first else { completion(true, ""); return }
+        GitRunner.run(first, in: dir) { r in
+            guard let r, r.ok else {
+                completion(false, "\(first.joined(separator: " ")): \(r?.stderr ?? "nil")")
+                return
+            }
+            runGitSequence(Array(cmds.dropFirst()), in: dir, completion)
+        }
+    }
+
+    /// Fensterlos — kuratierte Git-Aktionen end-to-end über die echten
+    /// Workspace-Methoden mit einem lokalen bare-Remote: Push, Pull
+    /// (Fast-Forward), Amend, Branch-Wechsel, Pickaxe. Braucht installiertes git.
+    private static func runGitActionsTest() {
+        testLabel = "gitactions"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        guard GitRunner.isAvailable else {
+            finish(true, "git nicht verfügbar — Aktionen bleiben still weg (erwartet)")
+        }
+        // Fehler-Dialoge unterdrücken, damit ein unerwarteter Fehler den Lauf
+        // nicht an einem modalen NSAlert aufhängt.
+        Workspace.presentGitDialogs = false
+
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory.appendingPathComponent("fastra-gitactions-\(UUID().uuidString)")
+        let repo = base.appendingPathComponent("work")
+        let bare = base.appendingPathComponent("remote.git")
+        do {
+            try fm.createDirectory(at: repo, withIntermediateDirectories: true)
+            try fm.createDirectory(at: bare, withIntermediateDirectories: true)
+            try "PICKAXE_MARKER\n".write(to: repo.appendingPathComponent("marker.txt"),
+                                         atomically: true, encoding: .utf8)
+            try "v1\n".write(to: repo.appendingPathComponent("app.txt"),
+                             atomically: true, encoding: .utf8)
+        } catch { finish(false, "(setup) \(error)") }
+
+        // Setup: bare-Remote initialisieren, Arbeitskopie einrichten + push -u.
+        runGitSequence([["init", "--bare", "-b", "main"]], in: bare) { ok0, e0 in
+            guard ok0 else { finish(false, "(bare) \(e0)") }
+            let setup: [[String]] = [
+                ["init", "-b", "main"],
+                ["config", "user.email", "t@t"],
+                ["config", "user.name", "T"],
+                ["add", "-A"],
+                ["commit", "-m", "init"],
+                ["remote", "add", "origin", bare.path],
+                ["push", "-u", "origin", "main"],
+            ]
+            runGitSequence(setup, in: repo) { ok1, e1 in
+                guard ok1 else { finish(false, "(setup) \(e1)") }
+                ws.openProject(at: repo)
+                gitActionsPush(ws, repo: repo, bare: bare, base: base, fm: fm)
+            }
+        }
+    }
+
+    /// PUSH: neuen Commit lokal anlegen, `gitPush()` aufrufen, warten bis der
+    /// bare-Remote 2 Commits hat (Ground Truth statt lokalem Status-Cache —
+    /// der Cache-Wert vor der Aktion würde sonst eine Race auslösen).
+    private static func gitActionsPush(_ ws: Workspace, repo: URL, bare: URL, base: URL, fm: FileManager) {
+        try? "feature\n".write(to: repo.appendingPathComponent("feature.txt"),
+                               atomically: true, encoding: .utf8)
+        runGitSequence([["add", "-A"], ["commit", "-m", "feature"]], in: repo) { ok, e in
+            guard ok else { try? fm.removeItem(at: base); finish(false, "(push-setup) \(e)") }
+            ws.gitPush()
+            pollAsync(maxTicks: 150, base: base, fm: fm, label: "push",
+                      check: { done in
+                          GitRunner.run(["rev-list", "--count", "main"], in: bare) { r in
+                              done(Int(r?.stdout.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") == 2)
+                          }
+                      },
+                      next: { gitActionsPull(ws, repo: repo, bare: bare, base: base, fm: fm) })
+        }
+    }
+
+    /// PULL (Fast-Forward): über einen zweiten Klon einen Remote-Commit erzeugen,
+    /// dann `gitPullFastForward()` im Original — die neue Datei muss auftauchen.
+    private static func gitActionsPull(_ ws: Workspace, repo: URL, bare: URL, base: URL, fm: FileManager) {
+        let clone = base.appendingPathComponent("clone")
+        runGitSequence([["clone", bare.path, clone.path]], in: base) { ok, e in
+            guard ok else { try? fm.removeItem(at: base); finish(false, "(clone) \(e)") }
+            try? "vom-remote\n".write(to: clone.appendingPathComponent("remote.txt"),
+                                      atomically: true, encoding: .utf8)
+            let push2: [[String]] = [
+                ["config", "user.email", "t@t"], ["config", "user.name", "T"],
+                ["add", "-A"], ["commit", "-m", "remote-commit"], ["push"],
+            ]
+            runGitSequence(push2, in: clone) { ok2, e2 in
+                guard ok2 else { try? fm.removeItem(at: base); finish(false, "(push2) \(e2)") }
+                ws.gitPullFastForward()
+                pollUntil(maxTicks: 150, base: base, fm: fm, label: "pull",
+                          cond: { fm.fileExists(atPath: repo.appendingPathComponent("remote.txt").path) },
+                          next: { gitActionsAmend(ws, repo: repo, bare: bare, base: base, fm: fm) })
+            }
+        }
+    }
+
+    /// AMEND: app.txt ändern, `gitAmendNoEdit()` — die Änderung muss in den
+    /// letzten Commit wandern (`show HEAD:app.txt` == v2, Commit-Zahl gleich).
+    /// Ground Truth via git, um den lokalen Status-Cache-Race zu vermeiden.
+    private static func gitActionsAmend(_ ws: Workspace, repo: URL, bare: URL, base: URL, fm: FileManager) {
+        GitRunner.run(["rev-list", "--count", "HEAD"], in: repo) { before in
+            let countBefore = Int(before?.stdout.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") ?? -1
+            try? "v2\n".write(to: repo.appendingPathComponent("app.txt"),
+                              atomically: true, encoding: .utf8)
+            ws.gitAmendNoEdit()
+            pollAsync(maxTicks: 150, base: base, fm: fm, label: "amend",
+                      check: { done in
+                          GitRunner.run(["show", "HEAD:app.txt"], in: repo) { r in
+                              done(r?.ok == true && r!.stdout.contains("v2"))
+                          }
+                      },
+                      next: {
+                          GitRunner.run(["rev-list", "--count", "HEAD"], in: repo) { after in
+                              let countAfter = Int(after?.stdout.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") ?? -2
+                              guard countAfter == countBefore else {
+                                  try? fm.removeItem(at: base)
+                                  finish(false, "(amend) Commit-Zahl \(countBefore) → \(countAfter) (amend darf nicht erhöhen)")
+                              }
+                              gitActionsSwitch(ws, repo: repo, bare: bare, base: base, fm: fm)
+                          }
+                      })
+        }
+    }
+
+    /// SWITCH: neuen Branch anlegen, `gitSwitchPrevious()` — muss zurück auf main
+    /// (`git branch --show-current`, Ground Truth statt Status-Cache).
+    private static func gitActionsSwitch(_ ws: Workspace, repo: URL, bare: URL, base: URL, fm: FileManager) {
+        runGitSequence([["switch", "-c", "feature"]], in: repo) { ok, e in
+            guard ok else { try? fm.removeItem(at: base); finish(false, "(switch-setup) \(e)") }
+            ws.gitSwitchPrevious()
+            pollAsync(maxTicks: 150, base: base, fm: fm, label: "switch",
+                      check: { done in
+                          GitRunner.run(["branch", "--show-current"], in: repo) { r in
+                              done(r?.stdout.trimmingCharacters(in: .whitespacesAndNewlines) == "main")
+                          }
+                      },
+                      next: { gitActionsPickaxe(ws, repo: repo, bare: bare, base: base, fm: fm) })
+        }
+    }
+
+    /// PICKAXE: `git log -S` muss den Commit finden, der PICKAXE_MARKER einführte.
+    private static func gitActionsPickaxe(_ ws: Workspace, repo: URL, bare: URL, base: URL, fm: FileManager) {
+        GitRunner.run(["log", "-SPICKAXE_MARKER", "--oneline"], in: repo) { r in
+            try? fm.removeItem(at: base)
+            guard let r, r.ok, !r.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                finish(false, "(pickaxe) kein Treffer: \(r?.stderr ?? "nil")")
+            }
+            finish(true, "Git-Aktionen: Push (ahead→0), Pull-FF (Remote-Datei da), "
+                + "Amend (Datei in Commit, Zahl gleich), Switch (zurück auf main), Pickaxe ok")
+        }
+    }
+
+    /// Kleiner Poll-Helfer: ruft `cond` alle 30 ms, bei `true` → `next`; nach
+    /// `maxTicks` → FAIL mit Label. Räumt bei Timeout das Basis-Verzeichnis ab.
+    private static func pollUntil(maxTicks: Int, base: URL, fm: FileManager, label: String,
+                                  cond: @escaping () -> Bool, next: @escaping () -> Void, tick: Int = 0) {
+        if cond() { next(); return }
+        if tick >= maxTicks { try? fm.removeItem(at: base); finish(false, "(\(label)) Timeout") }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            pollUntil(maxTicks: maxTicks, base: base, fm: fm, label: label,
+                      cond: cond, next: next, tick: tick + 1)
+        }
+    }
+
+    /// Wie `pollUntil`, aber mit ASYNCHRONER Bedingung (`check` liefert das
+    /// Ergebnis über einen Callback) — für Ground-Truth-Checks, die selbst git
+    /// aufrufen. Vermeidet den Race mit dem lokalen Status-Cache.
+    private static func pollAsync(maxTicks: Int, base: URL, fm: FileManager, label: String,
+                                  check: @escaping (@escaping (Bool) -> Void) -> Void,
+                                  next: @escaping () -> Void, tick: Int = 0) {
+        check { ok in
+            if ok { next(); return }
+            if tick >= maxTicks { try? fm.removeItem(at: base); finish(false, "(\(label)) Timeout") }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+                pollAsync(maxTicks: maxTicks, base: base, fm: fm, label: label,
+                          check: check, next: next, tick: tick + 1)
+            }
         }
     }
 

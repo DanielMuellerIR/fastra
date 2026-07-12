@@ -212,6 +212,17 @@ struct FastraApp: App {
                 Button(TextOpKind.precomposeUnicode.title) { postTextOp(.precomposeUnicode) }
                 Button(TextOpKind.decomposeUnicode.title)  { postTextOp(.decomposeUnicode) }
             }
+
+            // „Git"-Menü (Projekt- & Git-Ausbau, Etappe 2). Dieselben kuratierten
+            // Aktionen wie das Popup in der Branch-Zeile (GitActionMenu), plus
+            // Verlauf/Diff öffnen. Nur aktiv, wenn ein Git-Projekt offen ist —
+            // ohne Projekt/git bleibt das Menü sichtbar, aber gedimmt.
+            CommandMenu("Git") {
+                Button("Verlauf anzeigen") { commandWorkspace.openGitLog() }
+                Button("Änderungen anzeigen (Diff)") { commandWorkspace.openGitDiff() }
+                Divider()
+                GitActionMenu(workspace: commandWorkspace)
+            }
         }
 
         // Einstellungs-Dialog (⌘,). SwiftUI bindet die Settings-Scene automatisch

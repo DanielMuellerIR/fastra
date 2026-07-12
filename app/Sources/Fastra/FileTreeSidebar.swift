@@ -84,6 +84,20 @@ struct FileTreeSidebar: View {
                     }
                     .buttonStyle(.plain)
                     .help("Änderungen anzeigen (git diff)")
+                    // Aktions-Menü (Commit/Push/Pull + pfiffige Varianten).
+                    // Die dezenten Hilfe-Texte hängen als Tooltip an jedem Punkt.
+                    Menu {
+                        gitActionMenuItems
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.system(size: 10))
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help("Git-Aktionen")
+
                     Button {
                         workspace.refreshGitStatus()
                     } label: {
@@ -105,6 +119,45 @@ struct FileTreeSidebar: View {
                 .padding(.bottom, 6)
             }
         }
+    }
+
+    /// Die Git-Aktions-Einträge — geteilt zwischen Seitenleisten-Popup und dem
+    /// „Git"-Menü in der Menüleiste (via `GitActionMenu`).
+    @ViewBuilder private var gitActionMenuItems: some View {
+        GitActionMenu(workspace: workspace)
+    }
+}
+
+/// Die kuratierten Git-Aktionen als Menü-Einträge (Etappe 2, Schritt 4).
+/// Einmal definiert, an zwei Stellen eingehängt: Seitenleisten-Popup und
+/// „Git"-Menü in der Menüleiste. Jeder Punkt trägt seinen dezenten Hilfe-Text
+/// als Tooltip (`.help`) — sichtbar bei Bedarf, nie aufdringlich.
+struct GitActionMenu: View {
+    @ObservedObject var workspace: Workspace
+
+    var body: some View {
+        Button("Alles committen…") { workspace.gitCommitAll() }
+            .help("Alle Änderungen stagen und committen (git add -A + commit).")
+        Button("Letzten Commit ergänzen") { workspace.gitAmendNoEdit() }
+            .help("Aktuelle Änderungen in den letzten Commit aufnehmen, Botschaft bleibt (git commit --amend --no-edit).")
+
+        Divider()
+
+        Button("Push") { workspace.gitPush() }
+            .help("Lokale Commits zum entfernten Repository hochladen (git push).")
+        Button("Pull (Fast-Forward)") { workspace.gitPullFastForward() }
+            .help("Entfernte Commits nur übernehmen, wenn nichts kollidiert — kein Merge-Commit (git pull --ff-only).")
+        Button("Pull (mit Merge)") { workspace.gitPull() }
+            .help("Entfernte Commits holen und einbinden, notfalls mit Merge-Commit (git pull).")
+        Button("Fetch") { workspace.gitFetch() }
+            .help("Entfernten Stand holen, ohne lokal etwas zu ändern (git fetch).")
+
+        Divider()
+
+        Button("Verlauf durchsuchen…") { workspace.gitPickaxe() }
+            .help("Finde den Commit, der eine Textstelle eingeführt oder entfernt hat (git log -S).")
+        Button("Zum vorherigen Branch") { workspace.gitSwitchPrevious() }
+            .help("Zum zuletzt ausgecheckten Branch zurückspringen (git switch -).")
     }
 }
 
