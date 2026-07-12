@@ -9,6 +9,22 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.7.0] — 2026-07-12
+
+### Hinzugefügt
+
+- **Git-Graph in der Seitenleiste** (dritter Modus neben „Dateien" und
+  „Änderungen", nur bei Git-Repos): zeigt die Commit-Historie mit echten
+  VS-Code-artigen Multi-Lane-Verzweigungslinien — parallele Branches liegen in
+  eigenen, farbigen Spalten, Merges gabeln und laufen sichtbar wieder zusammen.
+  Jede Zeile trägt Branch-/Tag-Pillen (HEAD-Branch fett, Tags mit Symbol),
+  Betreff, Autor und Datum; ein Klick öffnet den Commit als Diff-Tab. Die
+  Historie lädt asynchron beim Projekt-Öffnen und nach jedem Commit neu.
+- Die Graph-Kernlogik (`git log`-Parser + Lane-Zuweisung) liegt rein und ist
+  durch Unit-Tests abgedeckt (linear, Verzweigung + Merge, geteilter Parent,
+  Root, Refs-Parsing). Neuer Screenshot-Selbsttest `graphshot` für die visuelle
+  Abnahme.
+
 ## [v1.6.1] — 2026-07-12
 
 ### Behoben

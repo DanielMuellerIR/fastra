@@ -78,10 +78,14 @@ Aktionen**, keine breite Git-Unterstützung.
   Folder-Suche.
 - **Fehler = echte git-Ausgabe als Text zeigen**, nicht wegabstrahieren. Ehrlich und billig.
 
-**Bewusst verworfen (statt dessen):** eigener History-Graph (→ ASCII-Tab),
+**Bewusst verworfen (statt dessen):**
 Merge-GUI (→ Konflikt-Marker sind editierbarer Text; Button „In FileMerge öffnen" via
 `opendiff` aus den Xcode-CLT), eingebettetes Terminal/SwiftTerm (→ Button „Im Terminal
 öffnen"), Minify HTML/JS/CSS (keine brauchbare native Lösung, niedrige Priorität).
+
+**Nachträglich umgesetzt (Daniel, 2026-07-12):** der zunächst verworfene History-Graph
+kam als nativer Seitenleisten-Modus „Graph" mit echten Multi-Lane-Verzweigungslinien
+(VS-Code-Stil) doch hinzu — der ASCII-`git log`-Tab bleibt zusätzlich bestehen (v1.7.0).
 
 **Release-Gate:** Diese Etappen sind eine größere Änderung — **keine GitHub-Pushes,
 bis alles ordentlich getestet ist** (Daniel, 2026-07-11). Commits + internes Backup

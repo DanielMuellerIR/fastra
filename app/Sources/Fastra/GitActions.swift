@@ -90,6 +90,7 @@ extension Workspace {
         let done: () -> Void = { [weak self] in
             self?.commitMessage = ""
             self?.refreshGitStatus()
+            self?.refreshGitLog()          // Graph-Tab nach Commit aktualisieren
             self?.refreshOpenGitViews()
         }
         if gitStatus?.stagedChanges.isEmpty == false {

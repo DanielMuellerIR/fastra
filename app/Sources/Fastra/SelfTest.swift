@@ -186,6 +186,11 @@ enum SelfTest {
             // Diagnose: Git-Seitenleiste (Branch-Zeile + eingefärbte Dateien)
             // mit echtem Repo fürs fenstergezielte Capture (Etappe 2).
             waitForMainWindow { runGitShot() }
+        case "graphshot":
+            // Diagnose: Git-Graph-Seitenleiste (Multi-Lane-Verzweigung + Merge)
+            // mit echtem Branch/Merge-Repo fürs fenstergezielte Capture (Phase 3).
+            // Setzt FASTRA_SIDEBAR=graph voraus (Seitenleisten-Vorwahl).
+            waitForMainWindow { runGraphShot() }
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
@@ -2981,6 +2986,52 @@ enum SelfTest {
                 }
             }
         }
+    }
+
+    /// Baut ein kleines Repo MIT Verzweigung und Merge, öffnet es und hält das
+    /// Fenster fürs Graph-Capture. Der Graph-Modus wird über FASTRA_SIDEBAR=graph
+    /// vorgewählt (Test-Hook in EditorView).
+    private static func runGraphShot() {
+        testLabel = "graphshot"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        guard GitRunner.isAvailable else { finish(false, "git nicht verfügbar") }
+        let fm = FileManager.default
+        let repo = fm.temporaryDirectory.appendingPathComponent("GraphDemo")
+        try? fm.removeItem(at: repo)
+        try? fm.createDirectory(at: repo, withIntermediateDirectories: true)
+
+        let id = ["-c", "user.email=t@t", "-c", "user.name=Demo"]
+        // Kette von git-Aufrufen, die eine echte Verzweigung + Merge erzeugt.
+        func write(_ name: String, _ text: String) {
+            try? text.write(to: repo.appendingPathComponent(name), atomically: true, encoding: .utf8)
+        }
+        func step(_ args: [String], _ next: @escaping () -> Void) {
+            GitRunner.run(id + args, in: repo) { r in
+                guard let r, r.ok else { finish(false, "(git \(args.first ?? "")) \(r?.stderr ?? "")") }
+                next()
+            }
+        }
+
+        write("f.txt", "a\n")
+        step(["-c", "init.defaultBranch=main", "init"]) {
+        step(["add", "."]) { step(["commit", "-m", "Erster Commit"]) {
+        write("f.txt", "a\nb\n"); step(["commit", "-am", "Zweiter Commit"]) {
+        step(["tag", "v0.1"]) {
+        step(["checkout", "-b", "feature"]) {
+        write("f.txt", "a\nb\nfeat\n"); step(["commit", "-am", "Feature: Teil 1"]) {
+        write("f.txt", "a\nb\nfeat\nfeat2\n"); step(["commit", "-am", "Feature: Teil 2"]) {
+        step(["checkout", "main"]) {
+        write("g.txt", "main\n"); step(["add", "."]) { step(["commit", "-m", "Main: Fix nebenher"]) {
+        step(["merge", "--no-ff", "feature", "-m", "Merge feature in main"]) {
+        step(["checkout", "-b", "hotfix", "HEAD~1"]) {
+        write("h.txt", "hot\n"); step(["add", "."]) { step(["commit", "-m", "Hotfix offen"]) {
+        step(["checkout", "main"]) {
+            ws.openProject(at: repo)
+            // Nach dem Öffnen ist der Graph über FASTRA_SIDEBAR=graph aktiv.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                dumpMainWindowThenExit(prefix: "GRAPHSHOT-WINDOW")
+            }
+        } } } } } } } } } } } } } } } }
     }
 
     /// Gemeinsames Shot-Finale: größtes sichtbares Fenster (= Hauptfenster)

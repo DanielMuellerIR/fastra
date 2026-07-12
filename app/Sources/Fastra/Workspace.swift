@@ -186,6 +186,10 @@ final class Workspace: ObservableObject {
     /// kein Repo oder git nicht installiert → keine Git-Anzeige. Asynchron
     /// über `refreshGitStatus()` gefüllt.
     @Published var gitStatus: GitStatusSummary?
+    /// Commit-Historie des aktuellen Projekts für den Graph-Tab (Phase 3).
+    /// Leer = kein Repo/keine Commits oder noch nicht geladen. Asynchron über
+    /// `refreshGitLog()` gefüllt.
+    @Published var gitLog: [GitCommit] = []
     /// Commit-Botschaft des Änderungen-Tabs (VS-Code-artiges Eingabefeld). Pro
     /// Fenster; nach erfolgreichem Commit geleert.
     @Published var commitMessage: String = ""
@@ -1206,6 +1210,7 @@ final class Workspace: ObservableObject {
         dismissWelcomeTab()
         noteRecentProject(url)
         refreshGitStatus()
+        refreshGitLog()
     }
 
     /// Blendet den Projekt-Dateibaum wieder aus (Seitenleiste zeigt dann
@@ -1213,6 +1218,7 @@ final class Workspace: ObservableObject {
     func closeProject() {
         projectURL = nil
         gitStatus = nil
+        gitLog = []
     }
 
     // MARK: - Git-Status (Projekt- & Git-Ausbau, Etappe 2)
@@ -1233,6 +1239,24 @@ final class Workspace: ObservableObject {
                 return
             }
             self.gitStatus = GitStatusParser.parse(result.stdout)
+        }
+    }
+
+    /// Lädt die Commit-Historie für den Graph-Tab asynchron (`git log --all`).
+    /// Kein Projekt/kein git → leere Liste. Wird beim Projekt-Öffnen und beim
+    /// Anzeigen des Graph-Tabs sowie nach einem Commit angestoßen.
+    func refreshGitLog() {
+        guard let root = projectURL, GitRunner.isAvailable else {
+            gitLog = []
+            return
+        }
+        GitRunner.run(GitGraph.arguments, in: root) { [weak self] result in
+            guard let self, self.projectURL == root else { return }
+            guard let result, result.ok else {
+                self.gitLog = []
+                return
+            }
+            self.gitLog = GitGraph.parse(result.stdout)
         }
     }
 

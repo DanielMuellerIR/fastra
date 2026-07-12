@@ -597,9 +597,9 @@ struct EditorView: View {
     private var isGitRepo: Bool { workspace.gitStatus != nil }
 
     /// Verfügbare Modi: ohne Repo nur „Dateien", mit Repo zusätzlich
-    /// „Änderungen" (Graph folgt in einer weiteren Etappe).
+    /// „Änderungen" und „Graph".
     private var availableModes: [SidebarMode] {
-        isGitRepo ? [.files, .changes] : [.files]
+        isGitRepo ? [.files, .changes, .graph] : [.files]
     }
 
     /// Effektiver Modus — fällt auf „Dateien" zurück, wenn der gewählte Modus
@@ -619,7 +619,16 @@ struct EditorView: View {
             switch effectiveMode {
             case .files:   filesSidebar
             case .changes: GitChangesView()
-            case .graph:   filesSidebar   // Platzhalter bis Graph-Etappe
+            case .graph:   GitGraphView()
+            }
+        }
+        // Test-Hook (nur Selbsttests): Seitenleisten-Modus vorwählen, damit ein
+        // Screenshot gezielt „Änderungen"/„Graph" zeigen kann. Im Normalbetrieb
+        // ist FASTRA_SIDEBAR nicht gesetzt → kein Effekt.
+        .onAppear {
+            if let raw = ProcessInfo.processInfo.environment["FASTRA_SIDEBAR"],
+               let mode = SidebarMode.allCases.first(where: { $0.rawValue == raw || "\($0)" == raw }) {
+                sidebarMode = mode
             }
         }
     }
