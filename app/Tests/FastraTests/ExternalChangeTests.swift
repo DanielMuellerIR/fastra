@@ -21,7 +21,9 @@ private func writeTmpUTF8(_ content: String) throws -> URL {
     let url = FileManager.default.temporaryDirectory
         .appendingPathComponent("fastra-extchange-\(UUID().uuidString).txt")
     try content.write(to: url, atomically: true, encoding: .utf8)
-    return url
+    // Kanonische Form — genau die trägt der Tab nach loadFile (siehe
+    // WorkspaceLoadTests-Helper), damit `$0.url == url` in /var-Temp matcht.
+    return url.canonicalFileURL
 }
 
 /// Schreibt neuen Inhalt und setzt das Änderungsdatum EXPLIZIT in die

@@ -97,7 +97,8 @@ func loadFile_removesEmptyScratchTab() async throws {
 
     // Der leere Scratch ist weg, nur der geladene Datei-Tab bleibt.
     #expect(ws.tabs.count == 1)
-    #expect(ws.tabs.first?.url == url)
+    // loadFile kanonisiert die URL (`/var` → `/private/var`); dagegen prüfen.
+    #expect(ws.tabs.first?.url == url.canonicalFileURL)
     #expect(!ws.tabs.contains(where: { $0.id == scratch.id }))
 }
 

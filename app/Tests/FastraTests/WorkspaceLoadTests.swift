@@ -17,11 +17,15 @@ private func makeFreshDefaults() -> (UserDefaults, suiteName: String) {
 }
 
 /// Schreibt `content` mit UTF-8 in eine temporäre Datei und gibt die URL zurück.
+/// Liefert die KANONISCHE Form (`canonicalFileURL`) — genau die trägt der Tab
+/// nach `loadFile` (das intern kanonisiert, damit `/var` und `/private/var`
+/// nicht als zwei Dateien gelten). Ohne diese Angleichung schlügen die
+/// `$0.url == url`-Vergleiche in Temp-Verzeichnissen fehl.
 private func writeTmpUTF8(_ content: String) throws -> URL {
     let url = FileManager.default.temporaryDirectory
         .appendingPathComponent("fastra-wsload-\(UUID().uuidString).txt")
     try content.write(to: url, atomically: true, encoding: .utf8)
-    return url
+    return url.canonicalFileURL
 }
 
 // MARK: - Tests: Normaler Ladevorgang
