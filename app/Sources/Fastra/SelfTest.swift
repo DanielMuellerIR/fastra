@@ -138,6 +138,10 @@ enum SelfTest {
             // Fensterlos — Projekt- & Git-Ausbau Etappe 1 (Willkommen-
             // Bedingung, Projekt öffnen, Dateibaum, Repo-Erkennung).
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runProjectTest() }
+        case "localization":
+            // Fensterlos — prüft zusätzlich zum Unit-Test das fertig gepackte
+            // Haupt-App-Bundle. Genau dort sucht SwiftUI statische Schlüssel.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runLocalizationTest() }
         case "git":
             // Fensterlos — Git-Status end-to-end (Etappe 2): echtes Temp-Repo,
             // Datei-Zustände, Branch, Ordner-Rollup, dialogfreie git-Auflösung.
@@ -2228,6 +2232,29 @@ enum SelfTest {
             ws.runFolderSearchNow()
             pollProjectScope(ws, base: base, tick: 0)
         }
+    }
+
+    /// Stellt sicher, dass die Build-Verpackung die englischen SwiftUI- und
+    /// Info.plist-Tabellen ins Haupt-App-Bundle kopiert. Ein Eintrag nur im
+    /// SwiftPM-Modulbundle reicht für dynamische `L10n`-Texte, aber nicht für
+    /// statische `Text("…")`-Schlüssel.
+    private static func runLocalizationTest() {
+        testLabel = "localization"
+        guard let lproj = Bundle.main.url(forResource: "en", withExtension: "lproj"),
+              let english = Bundle(url: lproj) else {
+            finish(false, "englisches en.lproj fehlt im Haupt-App-Bundle")
+        }
+        let scope = english.localizedString(forKey: "Suchbereich",
+                                            value: "Suchbereich", table: nil)
+        let infoURL = lproj.appendingPathComponent("InfoPlist.strings")
+        guard scope == "Search Scope", FileManager.default.fileExists(atPath: infoURL.path) else {
+            finish(false, "Haupt-Bundle unvollständig: Suchbereich=\(scope), "
+                + "InfoPlist=\(FileManager.default.fileExists(atPath: infoURL.path))")
+        }
+        guard L10n.string("Abbrechen", language: "en") == "Cancel" else {
+            finish(false, "SwiftPM-Modulbundle löst Englisch nicht auf")
+        }
+        finish(true, "englische SwiftUI-, AppKit- und Info.plist-Tabellen im App-Bundle")
     }
 
     private static func pollProjectScope(_ ws: Workspace, base: URL, tick: Int) {

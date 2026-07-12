@@ -193,13 +193,13 @@ final class MarkdownPreviewController {
                 // Workspace schwach halten, um Retain-Cycle zu vermeiden.
                 guard let ws = workspace,
                       let tab = ws.activeTab else {
-                    return "Markdown-Vorschau"
+                    return L10n.string("Markdown-Vorschau")
                 }
                 let lower = tab.title.lowercased()
                 guard lower.hasSuffix(".md") || lower.hasSuffix(".markdown") else {
-                    return "Markdown-Vorschau"
+                    return L10n.string("Markdown-Vorschau")
                 }
-                return "Markdown-Vorschau — \(tab.title)"
+                return L10n.format("Markdown-Vorschau — %@", tab.title)
             }
             // Auf den MainActor wechseln, bevor wir window.title schreiben.
             .receive(on: DispatchQueue.main)

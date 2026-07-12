@@ -97,7 +97,7 @@ struct GitChangesView: View {
                                action: @escaping () -> Void,
                                actionIcon: String, actionHelp: String) -> some View {
         HStack(spacing: 6) {
-            Text(title)
+            Text(verbatim: L10n.string(title))
                 .fastraFont(size: 10, weight: .semibold)
                 .tracking(0.6)
                 .foregroundColor(Theme.textSecondary)
@@ -116,7 +116,7 @@ struct GitChangesView: View {
                     .foregroundColor(Theme.textSecondary)
             }
             .buttonStyle(.plain)
-            .help(actionHelp)
+            .help(L10n.string(actionHelp))
         }
         .padding(.horizontal, 14)
         .padding(.top, 12)

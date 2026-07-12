@@ -130,8 +130,16 @@ die bewusste Release-Abnahme, kein Bug mehr.)
 - Projekt-Scope mit pro Projekt persistenten Datei-Sets, Dateitypfilter und
   projekt-relativen Glob-Ausschlüssen. Überlappende Wurzeln werden dedupliziert. ✓
 
+## Englische Lokalisierung (umgesetzt in v1.12.0, 2026-07-12)
+
+- Vollständige englische Oberfläche zusätzlich zum deutschen Quelltext:
+  SwiftUI, AppKit-Dialoge, Menüs, Tooltips, Statusmeldungen, Vorlagen,
+  Regex-Lernhilfen, Erststart-Demo und Finder-Metadaten folgen automatisch der
+  macOS-Sprachreihenfolge. ✓
+- Ein Quellstring-Audit, Unit-Tests und der gepackte In-App-Selbsttest
+  `localization` verhindern fehlende Schlüssel und Bundle-Drift. ✓
+
 ## v1.1+ (noch offen)
-- **Englische Lokalisierung** (`Localizable.strings`-Umbau, alle UI-Strings durchziehen).
 - **Vorlagen-Editor** — eigene Patterns speichern, Import/Export.
 - Inline-Diff am Ort der Änderung (L5-Layout).
 - `ripgrep`-Bundle für ultraschnelle Folder-Suche.

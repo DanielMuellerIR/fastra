@@ -144,12 +144,12 @@ struct ContentView: View {
     /// eigenes SwiftUI-Sheet wäre für diesen einen Eingabe-Slot Overkill.
     private func showGotoLineDialog() {
         let alert = NSAlert()
-        alert.messageText = "Zu Zeile springen"
-        alert.informativeText = "Eingabe: Zeile oder Zeile:Spalte"
-        alert.addButton(withTitle: "Springen")
-        alert.addButton(withTitle: "Abbrechen")
+        alert.messageText = L10n.string("Zu Zeile springen")
+        alert.informativeText = L10n.string("Eingabe: Zeile oder Zeile:Spalte")
+        alert.addButton(withTitle: L10n.string("Springen"))
+        alert.addButton(withTitle: L10n.string("Abbrechen"))
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
-        field.placeholderString = "z.B. 42 oder 42:8"
+        field.placeholderString = L10n.string("z.B. 42 oder 42:8")
         alert.accessoryView = field
         // Initial-Fokus aufs Textfeld setzen, damit der Nutzer direkt
         // tippen kann; sonst müsste er erst klicken.

@@ -65,7 +65,7 @@ extension String.Encoding {
         case .isoLatin2:            return "Latin-2"
         case .windowsCP1252:        return "Win-1252"
         case .macOSRoman:           return "Mac Roman"
-        default:                    return "Unbekannt"
+        default:                    return L10n.string("Unbekannt")
         }
     }
 }
@@ -446,7 +446,7 @@ final class Workspace: ObservableObject {
         if DemoData.consumeFirstLaunch(defaults: defaults) {
             let demo = EditorTab(
                 title: "contacts.md",
-                path: "Demo · noch nicht gespeichert",
+                path: L10n.string("Demo · noch nicht gespeichert"),
                 content: DemoData.editorContent(for: "contacts.md"),
                 hits: 8
             )
@@ -468,7 +468,7 @@ final class Workspace: ObservableObject {
             // „Ohne Titel" bzw. „Untitled" zeigt. KEIN vorbelegtes Pattern.
             let welcome = EditorTab(
                 title: Workspace.untitledBaseName,
-                path: "noch nicht gespeichert",
+                path: L10n.string("noch nicht gespeichert"),
                 isWelcome: true
             )
             self.tabs = [welcome]
@@ -543,14 +543,10 @@ final class Workspace: ObservableObject {
         tabs.first(where: { $0.id == activeTabID }) ?? tabs.first
     }
 
-    /// Basisname für unbenannte Dokumente, lokalisiert nach der macOS-
-    /// Systemsprache: „Ohne Titel" bei deutscher Oberfläche, sonst „Untitled"
-    /// (Daniel-Wunsch 2026-07-12, analog TextEdit). Die App ist ansonsten
-    /// durchgehend deutsch — nur dieser Dokumentname folgt der Systemsprache,
-    /// deshalb kein volles `Localizable.strings`-Setup.
+    /// Basisname für unbenannte Dokumente aus derselben Lokalisierung wie die
+    /// übrige Oberfläche (analog zu TextEdit).
     static var untitledBaseName: String {
-        let lang = Locale.preferredLanguages.first ?? "en"
-        return lang.hasPrefix("de") ? "Ohne Titel" : "Untitled"
+        L10n.string("Ohne Titel")
     }
 
     /// Titel für einen neuen unbenannten Tab an 1-basierter `position`. macOS-
@@ -632,11 +628,11 @@ final class Workspace: ObservableObject {
     static func defaultCloseConfirmation(_ title: String) -> CloseConfirmation {
         let alert = NSAlert()
         // codereview-ok: „…“ (U+201E/U+201C) IST das korrekte deutsche Anführungszeichen-Paar; U+201D wäre englisch (2026-07-06)
-        alert.messageText = "Möchten Sie die Änderungen an „\(title)“ sichern?"
-        alert.informativeText = "Ihre Änderungen gehen verloren, wenn Sie sie nicht sichern."
-        alert.addButton(withTitle: "Sichern")          // .alertFirstButtonReturn  (Default, rechts)
-        alert.addButton(withTitle: "Abbrechen")        // .alertSecondButtonReturn (Mitte)
-        alert.addButton(withTitle: "Nicht sichern")    // .alertThirdButtonReturn  (links)
+        alert.messageText = L10n.format("Möchten Sie die Änderungen an „%@“ sichern?", title)
+        alert.informativeText = L10n.string("Ihre Änderungen gehen verloren, wenn Sie sie nicht sichern.")
+        alert.addButton(withTitle: L10n.string("Sichern"))
+        alert.addButton(withTitle: L10n.string("Abbrechen"))
+        alert.addButton(withTitle: L10n.string("Nicht sichern"))
         switch alert.runModal() {
         case .alertFirstButtonReturn: return .save
         case .alertThirdButtonReturn: return .dontSave
@@ -813,12 +809,15 @@ final class Workspace: ObservableObject {
         }
         if tabs[idx].isDirty {
             let alert = NSAlert()
-            alert.messageText = "Ungespeicherte Änderungen verwerfen?"
+            alert.messageText = L10n.string("Ungespeicherte Änderungen verwerfen?")
             // codereview-ok: „…“ (U+201E/U+201C) IST das korrekte deutsche Anführungszeichen-Paar; U+201D wäre englisch (2026-07-06)
-            alert.informativeText = "„\(tabs[idx].title)“ wird mit \(encoding.displayName) neu von der Platte geladen. Deine ungespeicherten Änderungen gehen dabei verloren."
+            alert.informativeText = L10n.format(
+                "„%@“ wird mit %@ neu von der Platte geladen. Deine ungespeicherten Änderungen gehen dabei verloren.",
+                tabs[idx].title, encoding.displayName
+            )
             alert.alertStyle = .warning
-            alert.addButton(withTitle: "Neu laden")
-            alert.addButton(withTitle: "Abbrechen")
+            alert.addButton(withTitle: L10n.string("Neu laden"))
+            alert.addButton(withTitle: L10n.string("Abbrechen"))
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
 
@@ -853,8 +852,8 @@ final class Workspace: ObservableObject {
                     // Bytes passen nicht zum gewählten Encoding → Tab unverändert
                     // lassen (kein Datenverlust), Spinner aus, Hinweis zeigen.
                     self.tabs[i].isLoading = false
-                    NSAlert.runWarning(title: "Neu öffnen fehlgeschlagen",
-                        text: "Die Datei lässt sich nicht als \(encoding.displayName) lesen. Der bisherige Inhalt bleibt unverändert.")
+                    NSAlert.runWarning(title: L10n.string("Neu öffnen fehlgeschlagen"),
+                        text: L10n.format("Die Datei lässt sich nicht als %@ lesen. Der bisherige Inhalt bleibt unverändert.", encoding.displayName))
                 }
             }
         }
@@ -871,11 +870,11 @@ final class Workspace: ObservableObject {
     /// über Abbrechen-Position — Datenverlust nur auf expliziten Klick.
     static func defaultExternalReloadConfirmation(_ title: String) -> Bool {
         let alert = NSAlert()
-        alert.messageText = "„\(title)“ wurde außerhalb von Fastra geändert."
-        alert.informativeText = "Die Datei auf der Festplatte ist neuer, dieser Tab enthält aber ungespeicherte Änderungen. Neu laden verwirft deine Änderungen."
+        alert.messageText = L10n.format("„%@“ wurde außerhalb von Fastra geändert.", title)
+        alert.informativeText = L10n.string("Die Datei auf der Festplatte ist neuer, dieser Tab enthält aber ungespeicherte Änderungen. Neu laden verwirft deine Änderungen.")
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Behalten")     // sicherer Default
-        alert.addButton(withTitle: "Neu laden")
+        alert.addButton(withTitle: L10n.string("Behalten"))
+        alert.addButton(withTitle: L10n.string("Neu laden"))
         return alert.runModal() == .alertSecondButtonReturn
     }
 
@@ -986,8 +985,8 @@ final class Workspace: ObservableObject {
         // (Git-Erkennung inklusive), eine Datei landet in einem Tab.
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.message = "Datei oder Ordner öffnen"
-        panel.prompt = "Öffnen"
+        panel.message = L10n.string("Datei oder Ordner öffnen")
+        panel.prompt = L10n.string("Öffnen")
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
         openFileOrFolder(at: url)
@@ -1178,7 +1177,7 @@ final class Workspace: ObservableObject {
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
         panel.nameFieldStringValue = tabs[idx].title
-        panel.message = "Datei speichern unter…"
+        panel.message = L10n.string("Datei speichern unter…")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         write(tab: tabs[idx], to: url)
         tabs[idx].url = url
@@ -1382,22 +1381,22 @@ final class Workspace: ObservableObject {
 
     /// Öffnet den Verlaufs-Graphen (`git log --graph`) als read-only-Tab.
     func openGitLog() {
-        loadGitTab(kind: .log, title: "Git-Verlauf", args: GitLog.arguments,
-                   emptyText: "Noch keine Commits.")
+        loadGitTab(kind: .log, title: L10n.string("Git-Verlauf"), args: GitLog.arguments,
+                   emptyText: L10n.string("Noch keine Commits."))
     }
 
     /// Öffnet den Arbeitsverzeichnis-Diff (`git diff HEAD`) als read-only-Tab.
     func openGitDiff() {
-        loadGitTab(kind: .diff, title: "Git-Diff", args: GitDiff.arguments,
-                   emptyText: "Keine Änderungen gegenüber HEAD.")
+        loadGitTab(kind: .diff, title: L10n.string("Git-Diff"), args: GitDiff.arguments,
+                   emptyText: L10n.string("Keine Änderungen gegenüber HEAD."))
     }
 
     /// Öffnet einen einzelnen Commit (`git show <hash>`) als read-only-Tab —
     /// aus dem Verlaufs-Tab per Klick auf eine Commit-Zeile aufgerufen.
     func openGitCommit(hash: String) {
-        loadGitTab(kind: .commit, title: "Commit \(hash)",
+        loadGitTab(kind: .commit, title: L10n.format("Commit %@", hash),
                    args: GitDiff.showArguments(hash: hash),
-                   emptyText: "Kein Inhalt.")
+                   emptyText: L10n.string("Kein Inhalt."))
     }
 
     /// Kern für alle Git-Text-Tabs: git asynchron ausführen und das Ergebnis in
@@ -1446,7 +1445,7 @@ final class Workspace: ObservableObject {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.message = "Ordner als Projekt öffnen"
+        panel.message = L10n.string("Ordner als Projekt öffnen")
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
         openProject(at: url)
@@ -1609,7 +1608,7 @@ final class Workspace: ObservableObject {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = true
-        panel.message = "Ordner zum Durchsuchen auswählen"
+        panel.message = L10n.string("Ordner zum Durchsuchen auswählen")
         guard panel.runModal() == .OK else { return }
         recentSearchFolders = Workspace.prependingFolders(panel.urls.map(\.path),
                                                           to: recentSearchFolders)
@@ -1712,10 +1711,14 @@ final class Workspace: ObservableObject {
         let totalBytes = plan.files.reduce(0) { $0 + $1.originalBytes.count }
         if totalBytes > Workspace.folderApplyWarnBytes {
             let alert = NSAlert()
-            alert.messageText = "Große Replace-Operation"
-            alert.informativeText = "Insgesamt \(ByteCountFormatter.string(fromByteCount: Int64(totalBytes), countStyle: .file)) in \(plan.changedFiles.count) Dateien. Trotzdem ausführen?"
-            alert.addButton(withTitle: "Ausführen")
-            alert.addButton(withTitle: "Abbrechen")
+            alert.messageText = L10n.string("Große Replace-Operation")
+            alert.informativeText = L10n.format(
+                "Insgesamt %@ in %ld Dateien. Trotzdem ausführen?",
+                ByteCountFormatter.string(fromByteCount: Int64(totalBytes), countStyle: .file),
+                plan.changedFiles.count
+            )
+            alert.addButton(withTitle: L10n.string("Ausführen"))
+            alert.addButton(withTitle: L10n.string("Abbrechen"))
             alert.alertStyle = .warning
             guard alert.runModal() == .alertFirstButtonReturn else { return false }
         }
@@ -1726,15 +1729,16 @@ final class Workspace: ObservableObject {
             reloadOpenTabs(for: session.entries.map { URL(fileURLWithPath: $0.originalPath) })
             return true
         } catch ApplyError.planNotApplyable(let msg) {
-            NSAlert.runWarning(title: "Apply abgelehnt", text: msg)
+            NSAlert.runWarning(title: L10n.string("Apply abgelehnt"), text: msg)
             return false
         } catch ApplyError.backupFailed(let msg) {
-            NSAlert.runWarning(title: "Backup fehlgeschlagen", text: "Es wurde nichts verändert.\n\n\(msg)")
+            NSAlert.runWarning(title: L10n.string("Backup fehlgeschlagen"),
+                               text: L10n.format("Es wurde nichts verändert.\n\n%@", msg))
             return false
         } catch ApplyError.writeFailed(let session, let msg) {
             lastApplySession = session
-            NSAlert.runWarning(title: "Apply teilweise fehlgeschlagen",
-                               text: "\(msg)\n\nBereits geschriebene Dateien können über die Rückgängig-Aktion zurückgespielt werden.")
+            NSAlert.runWarning(title: L10n.string("Apply teilweise fehlgeschlagen"),
+                               text: L10n.format("%@\n\nBereits geschriebene Dateien können über die Rückgängig-Aktion zurückgespielt werden.", msg))
             reloadOpenTabs(for: session.entries.map { URL(fileURLWithPath: $0.originalPath) })
             return false
         } catch {
@@ -2062,7 +2066,7 @@ extension NSAlert {
         a.messageText = title
         a.informativeText = text
         a.alertStyle = .warning
-        a.addButton(withTitle: "OK")
+        a.addButton(withTitle: L10n.string("OK"))
         a.runModal()
     }
 }

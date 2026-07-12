@@ -14,7 +14,7 @@ struct TabBarView: View {
                                 // „Willkommen" (per-Tab, nicht global): steht ein
                                 // zweiter Editor-Tab daneben, behält NUR der
                                 // Willkommen-Tab diese Beschriftung.
-                                displayTitle: tab.isWelcome ? "Willkommen" : tab.title,
+                                displayTitle: tab.isWelcome ? L10n.string("Willkommen") : tab.title,
                                 isActive: tab.id == workspace.activeTabID,
                                 canCloseOthers: workspace.tabs.count > 1) {
                             // Klick wechselt nur den aktiven Tab. Ist es der

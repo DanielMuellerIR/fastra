@@ -28,9 +28,9 @@ extension Workspace {
     func gitCommitAll() {
         guard projectURL != nil else { return }
         guard let message = Self.promptForText(
-            title: "Commit",
-            info: "Alle Änderungen werden committet. Kurze Botschaft:",
-            placeholder: "z.B. Tippfehler in README behoben"
+            title: L10n.string("Commit"),
+            info: L10n.string("Alle Änderungen werden committet. Kurze Botschaft:"),
+            placeholder: L10n.string("z.B. Tippfehler in README behoben")
         ), !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         runGitAction(["add", "-A"], label: "Stagen") { [weak self] in
@@ -117,13 +117,13 @@ extension Workspace {
         guard presentGitDialogs else { return true }
         let alert = NSAlert()
         // codereview-ok: „…“ (U+201E/U+201C) IST das korrekte deutsche Anführungszeichen-Paar (2026-07-12)
-        alert.messageText = "Änderungen an „\(name)“ verwerfen?"
+        alert.messageText = L10n.format("Änderungen an „%@“ verwerfen?", name)
         alert.informativeText = untracked
-            ? "Die nicht versionierte Datei wird gelöscht. Das lässt sich nicht rückgängig machen."
-            : "Die Änderungen an dieser Datei gehen verloren. Das lässt sich nicht rückgängig machen."
+            ? L10n.string("Die nicht versionierte Datei wird gelöscht. Das lässt sich nicht rückgängig machen.")
+            : L10n.string("Die Änderungen an dieser Datei gehen verloren. Das lässt sich nicht rückgängig machen.")
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Verwerfen")
-        alert.addButton(withTitle: "Abbrechen")
+        alert.addButton(withTitle: L10n.string("Verwerfen"))
+        alert.addButton(withTitle: L10n.string("Abbrechen"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 
@@ -185,7 +185,7 @@ extension Workspace {
         guard gitBranches.first(where: { $0.isCurrent })?.name != name else { return }
         runGitAction(["switch", name], label: "Branch-Wechsel") { [weak self] in
             guard let self else { return }
-            self.recordGitSuccess("Branch „\(name)“ aktiv")
+            self.recordGitSuccess(L10n.format("Branch „%@“ aktiv", name))
             self.refreshGitStatus()
             self.refreshGitLog()
             self.refreshGitBranches()
@@ -199,14 +199,14 @@ extension Workspace {
     func gitPickaxe() {
         guard projectURL != nil else { return }
         guard let term = Self.promptForText(
-            title: "Verlauf durchsuchen",
-            info: "Findet Commits, die diesen Text eingeführt oder entfernt haben:",
-            placeholder: "z.B. deprecatedFunction"
+            title: L10n.string("Verlauf durchsuchen"),
+            info: L10n.string("Findet Commits, die diesen Text eingeführt oder entfernt haben:"),
+            placeholder: L10n.string("z.B. deprecatedFunction")
         ), !term.isEmpty else { return }
 
-        loadGitTab(kind: .log, title: "Suche: \(term)",
+        loadGitTab(kind: .log, title: L10n.format("Suche: %@", term),
                    args: ["log", "-S" + term, "--oneline", "--decorate"],
-                   emptyText: "Keine Commits berühren diesen Text.")
+                   emptyText: L10n.string("Keine Commits berühren diesen Text."))
     }
 
     // MARK: - Ausführung & Rückmeldung
@@ -228,7 +228,7 @@ extension Workspace {
             if let then {
                 then()
             } else {
-                if let successMessage { self.recordGitSuccess(successMessage) }
+                if let successMessage { self.recordGitSuccess(L10n.string(successMessage)) }
                 // Kette fertig: Status + offene Verlauf-/Diff-Tabs auffrischen.
                 self.refreshGitStatus()
                 self.refreshGitBranches()
@@ -253,10 +253,10 @@ extension Workspace {
     /// schreibenden Aktion auf (Snapshot war sonst veraltet). Commit-Tabs
     /// (`git show <hash>`) bleiben gültig (historisch) und werden nicht angefasst.
     private func refreshOpenGitViews() {
-        if tabs.contains(where: { $0.gitKind == .log && $0.title == "Git-Verlauf" }) {
+        if tabs.contains(where: { $0.gitKind == .log && $0.title == L10n.string("Git-Verlauf") }) {
             openGitLog()
         }
-        if tabs.contains(where: { $0.gitKind == .diff && $0.title == "Git-Diff" }) {
+        if tabs.contains(where: { $0.gitKind == .diff && $0.title == L10n.string("Git-Diff") }) {
             openGitDiff()
         }
     }
@@ -269,8 +269,8 @@ extension Workspace {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = info
-        alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Abbrechen")
+        alert.addButton(withTitle: L10n.string("OK"))
+        alert.addButton(withTitle: L10n.string("Abbrechen"))
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
         field.placeholderString = placeholder
         alert.accessoryView = field
@@ -291,11 +291,13 @@ extension Workspace {
         let raw = [result?.stderr, result?.stdout]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first(where: { !$0.isEmpty })
-        let text = raw ?? "git lieferte keine Meldung (Exit-Code \(result?.exitCode ?? -1))."
+        let text = raw ?? L10n.format("git lieferte keine Meldung (Exit-Code %ld).",
+                                      Int(result?.exitCode ?? -1))
         guard presentGitDialogs else {
             FileHandle.standardError.write(Data("GIT-ERROR [\(label)]: \(text)\n".utf8))
             return
         }
-        NSAlert.runWarning(title: "\(label) fehlgeschlagen", text: text)
+        NSAlert.runWarning(title: L10n.format("%@ fehlgeschlagen", L10n.string(label)),
+                           text: text)
     }
 }

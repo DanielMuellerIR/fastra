@@ -45,39 +45,40 @@ enum TextOpKind: Int, CaseIterable {
 
     /// Menü-Beschriftung.
     var title: String {
-        switch self {
-        case .uppercase:        return "GROSSBUCHSTABEN"
-        case .lowercase:        return "kleinbuchstaben"
-        case .titlecase:        return "Wörter Groß"
-        case .trimTrailing:     return "Leerzeichen am Zeilenende entfernen"
-        case .detab:            return "Tabs → Leerzeichen"
-        case .entab:            return "Leerzeichen → Tabs"
-        case .zapGremlins:      return "Steuerzeichen entfernen"
-        case .straightenQuotes: return "Anführungszeichen gerade richten"
-        case .educateQuotes:    return "Anführungszeichen schwungvoll (englisch)"
-        case .convertEscapeSequences: return "Escape-Sequenzen auflösen"
-        case .shiftRight:       return "Einrücken"
-        case .shiftLeft:        return "Ausrücken"
-        case .reverseLines:     return "Zeilen umkehren"
-        case .removeBlankLines: return "Leerzeilen entfernen"
-        case .joinLines:        return "Zeilen verbinden (mit Leerzeichen)"
-        case .joinLinesTight:   return "Zeilen verbinden (ohne Trenner)"
-        case .prefixLines:      return "Präfix an Zeilen…"
-        case .suffixLines:      return "Suffix an Zeilen…"
-        case .addLineNumbers:     return "Zeilennummern hinzufügen"
-        case .removeLineNumbers:  return "Zeilennummern entfernen"
-        case .exchangeCharacters: return "Zeichen tauschen"
-        case .exchangeWords:      return "Wörter tauschen"
-        case .keepLinesMatching:        return "Nur Zeilen mit Treffer behalten…"
-        case .deleteLinesMatching:      return "Zeilen mit Treffer löschen…"
-        case .keepDuplicateLines:       return "Nur doppelte Zeilen behalten"
-        case .removeAllDuplicatedLines: return "Mehrfach vorkommende Zeilen entfernen"
-        case .hardWrap:                 return "Zeilen hart umbrechen…"
-        case .normalizeSpaces:   return "Leerzeichen vereinheitlichen"
-        case .stripDiacriticals: return "Diakritische Zeichen entfernen"
-        case .precomposeUnicode: return "Unicode zusammensetzen (NFC)"
-        case .decomposeUnicode:  return "Unicode zerlegen (NFD)"
+        let key = switch self {
+        case .uppercase:        "GROSSBUCHSTABEN"
+        case .lowercase:        "kleinbuchstaben"
+        case .titlecase:        "Wörter Groß"
+        case .trimTrailing:     "Leerzeichen am Zeilenende entfernen"
+        case .detab:            "Tabs → Leerzeichen"
+        case .entab:            "Leerzeichen → Tabs"
+        case .zapGremlins:      "Steuerzeichen entfernen"
+        case .straightenQuotes: "Anführungszeichen gerade richten"
+        case .educateQuotes:    "Anführungszeichen schwungvoll (englisch)"
+        case .convertEscapeSequences: "Escape-Sequenzen auflösen"
+        case .shiftRight:       "Einrücken"
+        case .shiftLeft:        "Ausrücken"
+        case .reverseLines:     "Zeilen umkehren"
+        case .removeBlankLines: "Leerzeilen entfernen"
+        case .joinLines:        "Zeilen verbinden (mit Leerzeichen)"
+        case .joinLinesTight:   "Zeilen verbinden (ohne Trenner)"
+        case .prefixLines:      "Präfix an Zeilen…"
+        case .suffixLines:      "Suffix an Zeilen…"
+        case .addLineNumbers:     "Zeilennummern hinzufügen"
+        case .removeLineNumbers:  "Zeilennummern entfernen"
+        case .exchangeCharacters: "Zeichen tauschen"
+        case .exchangeWords:      "Wörter tauschen"
+        case .keepLinesMatching:        "Nur Zeilen mit Treffer behalten…"
+        case .deleteLinesMatching:      "Zeilen mit Treffer löschen…"
+        case .keepDuplicateLines:       "Nur doppelte Zeilen behalten"
+        case .removeAllDuplicatedLines: "Mehrfach vorkommende Zeilen entfernen"
+        case .hardWrap:                 "Zeilen hart umbrechen…"
+        case .normalizeSpaces:   "Leerzeichen vereinheitlichen"
+        case .stripDiacriticals: "Diakritische Zeichen entfernen"
+        case .precomposeUnicode: "Unicode zusammensetzen (NFC)"
+        case .decomposeUnicode:  "Unicode zerlegen (NFD)"
         }
+        return L10n.string(key)
     }
 
     /// `true`, wenn die Operation vorher eine Texteingabe braucht: Präfix/Suffix
@@ -145,36 +146,36 @@ final class EditorContextMenu: NSObject {
         let menu = NSMenu()
         let hasSelection = textView.selectedRange().length > 0
 
-        let cut = NSMenuItem(title: "Ausschneiden", action: #selector(NSText.cut(_:)), keyEquivalent: "")
+        let cut = NSMenuItem(title: L10n.string("Ausschneiden"), action: #selector(NSText.cut(_:)), keyEquivalent: "")
         cut.target = textView
         cut.isEnabled = hasSelection
-        let copy = NSMenuItem(title: "Kopieren", action: #selector(NSText.copy(_:)), keyEquivalent: "")
+        let copy = NSMenuItem(title: L10n.string("Kopieren"), action: #selector(NSText.copy(_:)), keyEquivalent: "")
         copy.target = textView
         copy.isEnabled = hasSelection
-        let paste = NSMenuItem(title: "Einfügen", action: #selector(NSText.paste(_:)), keyEquivalent: "")
+        let paste = NSMenuItem(title: L10n.string("Einfügen"), action: #selector(NSText.paste(_:)), keyEquivalent: "")
         paste.target = textView
 
-        let smartPaste = NSMenuItem(title: "Formatiert als Markdown einfügen",
+        let smartPaste = NSMenuItem(title: L10n.string("Formatiert als Markdown einfügen"),
                                     action: #selector(performSmartPaste(_:)),
                                     keyEquivalent: "")
         smartPaste.target = self
-        smartPaste.toolTip = "Formatierten Inhalt aus der Zwischenablage (z.B. aus dem Browser) als sauberes Markdown einfügen."
+        smartPaste.toolTip = L10n.string("Formatierten Inhalt aus der Zwischenablage (z.B. aus dem Browser) als sauberes Markdown einfügen.")
 
-        let sort = NSMenuItem(title: "Zeilen sortieren",
+        let sort = NSMenuItem(title: L10n.string("Zeilen sortieren"),
                               action: #selector(sortLines(_:)),
                               keyEquivalent: "")
         sort.target = self
-        sort.toolTip = "Sortiert die selektierten Zeilen alphabetisch — sind sie schon sortiert, wird die Reihenfolge umgedreht. Ohne Auswahl: die ganze Datei."
+        sort.toolTip = L10n.string("Sortiert die selektierten Zeilen alphabetisch — sind sie schon sortiert, wird die Reihenfolge umgedreht. Ohne Auswahl: die ganze Datei.")
 
-        let dedupe = NSMenuItem(title: "Duplikate entfernen",
+        let dedupe = NSMenuItem(title: L10n.string("Duplikate entfernen"),
                                 action: #selector(removeDuplicates(_:)),
                                 keyEquivalent: "")
         dedupe.target = self
-        dedupe.toolTip = "Entfernt doppelte Zeilen — das erste Vorkommen bleibt stehen. Ohne Auswahl: die ganze Datei."
+        dedupe.toolTip = L10n.string("Entfernt doppelte Zeilen — das erste Vorkommen bleibt stehen. Ohne Auswahl: die ganze Datei.")
 
         // „Text"-Submenü mit den BBEdit-Basics (TextOperations). Tag trägt die
         // TextOpKind; ein gemeinsamer Handler liest ihn. Gruppen durch Trenner.
-        let textItem = NSMenuItem(title: "Text", action: nil, keyEquivalent: "")
+        let textItem = NSMenuItem(title: L10n.string("Text"), action: nil, keyEquivalent: "")
         let textSub = NSMenu()
         let groupBreaksAfter: Set<TextOpKind> = [.titlecase, .entab, .convertEscapeSequences, .shiftLeft, .joinLinesTight, .removeLineNumbers, .exchangeWords, .removeAllDuplicatedLines, .hardWrap]
         for kind in TextOpKind.allCases {
@@ -237,8 +238,10 @@ final class EditorContextMenu: NSObject {
         case .prefixLines, .suffixLines:
             let isPrefix = (kind == .prefixLines)
             guard let input = promptForText(
-                title: isPrefix ? "Präfix an jede Zeile" : "Suffix an jede Zeile",
-                message: "Text, der an jeden Zeilen-" + (isPrefix ? "anfang" : "ende") + " angefügt wird:"),
+                title: L10n.string(isPrefix ? "Präfix an jede Zeile" : "Suffix an jede Zeile"),
+                message: L10n.string(isPrefix
+                    ? "Text, der an jeden Zeilenanfang angefügt wird:"
+                    : "Text, der an jedes Zeilenende angefügt wird:")),
                 !input.isEmpty else { return }
             applyLineOperation(on: textView) { text, selection in
                 isPrefix
@@ -250,10 +253,10 @@ final class EditorContextMenu: NSObject {
             // BBEdit „Process Lines Containing": ein RegEx-Muster filtert die Zeilen.
             let keep = (kind == .keepLinesMatching)
             guard let pattern = promptForText(
-                title: keep ? "Nur Zeilen mit Treffer behalten" : "Zeilen mit Treffer löschen",
-                message: "RegEx-Muster — "
-                    + (keep ? "nur Zeilen mit Treffer bleiben stehen" : "Zeilen mit Treffer werden gelöscht")
-                    + " (Groß-/Kleinschreibung egal):"),
+                title: L10n.string(keep ? "Nur Zeilen mit Treffer behalten" : "Zeilen mit Treffer löschen"),
+                message: L10n.string(keep
+                    ? "RegEx-Muster — nur Zeilen mit Treffer bleiben stehen (Groß-/Kleinschreibung egal):"
+                    : "RegEx-Muster — Zeilen mit Treffer werden gelöscht (Groß-/Kleinschreibung egal):")),
                 !pattern.isEmpty else { return }
             applyLineOperation(on: textView) { text, selection in
                 LineFilter.filter(in: text, selection: selection, pattern: pattern, keepMatching: keep)
@@ -262,8 +265,8 @@ final class EditorContextMenu: NSObject {
         case .hardWrap:
             // BBEdit „Hard Wrap": Spaltenbreite abfragen (Default 72), dann umbrechen.
             guard let raw = promptForText(
-                title: "Zeilen hart umbrechen",
-                message: "Maximale Zeilenbreite in Zeichen:",
+                title: L10n.string("Zeilen hart umbrechen"),
+                message: L10n.string("Maximale Zeilenbreite in Zeichen:"),
                 defaultValue: "72") else { return }
             // Ungültige Eingabe (keine positive Zahl) → Beep, kein Umbruch.
             guard let column = Int(raw.trimmingCharacters(in: .whitespaces)), column > 0 else {
@@ -328,8 +331,8 @@ final class EditorContextMenu: NSObject {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
-        alert.addButton(withTitle: "Anwenden")
-        alert.addButton(withTitle: "Abbrechen")
+        alert.addButton(withTitle: L10n.string("Anwenden"))
+        alert.addButton(withTitle: L10n.string("Abbrechen"))
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
         field.stringValue = defaultValue
         alert.accessoryView = field

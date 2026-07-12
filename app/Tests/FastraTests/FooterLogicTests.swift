@@ -110,39 +110,40 @@ func stats_format() {
 @Test("Datei-Scope mit Treffern: Text zeigt Anzahl, Label ist Datei")
 func searchSummary_file_withMatches() {
     let r = FooterLogic.searchSummary(scope: .file, bufferCount: 7, folderTotal: 0, folderFiles: 0)
-    #expect(r.text  == "7 Treffer")
-    #expect(r.label == "Datei")
+    #expect(r.text  == L10n.format("%ld Treffer", 7))
+    #expect(r.label == L10n.string("Datei"))
 }
 
 @Test("Datei-Scope ohne Treffer: Text ist 'Keine Treffer', Label ist Datei")
 func searchSummary_file_noMatches() {
     let r = FooterLogic.searchSummary(scope: .file, bufferCount: 0, folderTotal: 0, folderFiles: 0)
-    #expect(r.text  == "Keine Treffer")
-    #expect(r.label == "Datei")
+    #expect(r.text  == L10n.string("Keine Treffer"))
+    #expect(r.label == L10n.string("Datei"))
 }
 
 @Test("Ordner-Scope mit Treffern: Text zeigt Treffer und Dateianzahl, Label ist Ordner")
 func searchSummary_folder_withMatches() {
     let r = FooterLogic.searchSummary(scope: .folder, bufferCount: 0, folderTotal: 51, folderFiles: 4)
-    #expect(r.text  == "51 Treffer · 4 Dateien")
-    #expect(r.label == "Ordner")
+    #expect(r.text  == L10n.format("%ld Treffer · %ld Dateien", 51, 4))
+    #expect(r.label == L10n.string("Ordner"))
 }
 
 @Test("Ordner-Scope ohne Treffer: Text ist 'Keine Treffer', Label ist Ordner")
 func searchSummary_folder_noMatches() {
     let r = FooterLogic.searchSummary(scope: .folder, bufferCount: 0, folderTotal: 0, folderFiles: 0)
-    #expect(r.text  == "Keine Treffer")
-    #expect(r.label == "Ordner")
+    #expect(r.text  == L10n.string("Keine Treffer"))
+    #expect(r.label == L10n.string("Ordner"))
 }
 
 @Test("Datei-Scope: bufferCount 1 liefert '1 Treffer' (singular)")
 func searchSummary_file_singleMatch() {
     let r = FooterLogic.searchSummary(scope: .file, bufferCount: 1, folderTotal: 0, folderFiles: 0)
-    #expect(r.text == "1 Treffer")
+    #expect(r.text == L10n.string("1 Treffer"))
 }
 
 @Test("Ordner-Scope: eine Datei mit einem Treffer korrekt formatiert")
 func searchSummary_folder_singleFileMatch() {
     let r = FooterLogic.searchSummary(scope: .folder, bufferCount: 0, folderTotal: 1, folderFiles: 1)
-    #expect(r.text == "1 Treffer · 1 Dateien")
+    #expect(r.text == L10n.format("%@ · %@", L10n.string("1 Treffer"),
+                                  L10n.string("1 Datei")))
 }

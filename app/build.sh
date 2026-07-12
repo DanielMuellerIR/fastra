@@ -379,6 +379,19 @@ for bundle in ".build/$CONFIG/"*.bundle; do
   fi
 done
 
+# Finder-/LaunchServices-Texte gehören ins Haupt-App-Bundle, nicht nur in das
+# SwiftPM-Ressourcenbundle. So erscheint z. B. der Dokumenttyp auf englischen
+# Systemen als „Text File“.
+if [ -d Sources/Fastra/Resources/en.lproj ]; then
+  mkdir -p "$APP/Contents/Resources/en.lproj"
+  for localized_file in Localizable.strings InfoPlist.strings; do
+    if [ -f "Sources/Fastra/Resources/en.lproj/$localized_file" ]; then
+      cp "Sources/Fastra/Resources/en.lproj/$localized_file" \
+        "$APP/Contents/Resources/en.lproj/$localized_file"
+    fi
+  done
+fi
+
 # CodeEditLanguages liefert seine Tree-sitter-Grammatiken als prebuilt
 # XCFramework (CodeLanguagesContainer, binaryTarget). Das ist ein STATISCHES
 # Archiv (früher universal x86_64+arm64, ~375 MB): es wird zur BUILD-Zeit ins

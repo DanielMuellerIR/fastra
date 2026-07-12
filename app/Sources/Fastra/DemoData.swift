@@ -27,7 +27,7 @@ enum DemoData {
     static func editorContent(for title: String?) -> String {
         switch title {
         case "contacts.md":
-            return """
+            let german = """
             # Adressbuch — Team Q2
 
             ## Vertrieb
@@ -49,8 +49,13 @@ enum DemoData {
             - newsletter@example.com
             - presse@example.com
             """
+            return L10n.string("demo.contacts", defaultValue: german)
         default:
-            return "// Datei: \(title ?? "—")\n\nDies ist ein Placeholder. Der echte Editor (CodeEditSourceEditor + tree-sitter) wird in Phase 2 integriert."
+            return L10n.format(
+                "demo.placeholder.%@",
+                defaultValue: "// Datei: %@\n\nDies ist ein Placeholder. Der echte Editor (CodeEditSourceEditor + tree-sitter) wird in Phase 2 integriert.",
+                title ?? "—"
+            )
         }
     }
 }

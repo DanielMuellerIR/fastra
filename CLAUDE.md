@@ -90,6 +90,10 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
 - **Coverage:** über 700 Tests; Schwerpunkte sind RegEx-/Platzhalter-Parsing,
   Capture Groups, Find/Replace, Datei-/Projekt-/Git-Logik, Encoding,
   Zeilenenden, Hex-/Großdatei-Routing und Textoperationen.
+- **Lokalisierung:** `cd app && ./localization-audit.sh` vergleicht statische
+  SwiftUI-Schlüssel mit der englischen Tabelle und prüft Format-Platzhalter.
+  `./selftest.sh localization` prüft danach die Tabellen im fertig gepackten
+  Haupt-App- und SwiftPM-Ressourcenbundle.
 - **Test-Pflicht pro Phase:** Phase 1 keine (reines UI-Gerüst), Phase 2 Encoding+Line-Endings+Stats, Phase 3 Tokenizer+Capture-Groups+Find/Replace (Kernlogik), Phase 4 File-Search+Threshold-Logik, Phase 5 keine (reine Bridges zu getesteten OSS-Komponenten).
 - **Nicht getestet:** visuelles Rendering von Diff/Tokens/Pillen und
   OSS-Framework-Interna (MarkdownUI, CodeEditSourceEditor). Kritische

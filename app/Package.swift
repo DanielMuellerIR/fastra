@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Fastra",
+    defaultLocalization: "de",
     platforms: [.macOS(.v14)],
     products: [
         .executable(name: "Fastra", targets: ["Fastra"])

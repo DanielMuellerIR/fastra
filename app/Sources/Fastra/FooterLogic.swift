@@ -89,28 +89,38 @@ enum FooterLogic {
         switch scope {
         case .file:
             let text  = bufferCount == 0
-                ? "Keine Treffer"
-                : "\(bufferCount) Treffer"
-            return SearchSummary(text: text, label: "Datei")
+                ? L10n.string("Keine Treffer")
+                : localizedMatchCount(bufferCount)
+            return SearchSummary(text: text, label: L10n.string("Datei"))
 
         case .open:
             // „Geöffnete Dateien"-Scope: verhält sich wie Ordner-Scope,
             // zeigt aber kein Datei-Label (nur Treffer-Summe).
             let text = folderTotal == 0
-                ? "Keine Treffer"
-                : "\(folderTotal) Treffer · \(folderFiles) Dateien"
-            return SearchSummary(text: text, label: "Geöffnet")
+                ? L10n.string("Keine Treffer")
+                : localizedMultiFileCount(matches: folderTotal, files: folderFiles)
+            return SearchSummary(text: text, label: L10n.string("Geöffnet"))
 
         case .folder, .project:
             let text: String
             if folderTotal == 0 {
-                text = "Keine Treffer"
+                text = L10n.string("Keine Treffer")
             } else {
-                text = "\(folderTotal) Treffer · \(folderFiles) Dateien"
+                text = localizedMultiFileCount(matches: folderTotal, files: folderFiles)
             }
             return SearchSummary(text: text,
-                                 label: scope == .project ? "Projekt" : "Ordner")
+                                 label: L10n.string(scope == .project ? "Projekt" : "Ordner"))
         }
+    }
+
+    private static func localizedMatchCount(_ count: Int) -> String {
+        count == 1 ? L10n.string("1 Treffer") : L10n.format("%ld Treffer", count)
+    }
+
+    private static func localizedMultiFileCount(matches: Int, files: Int) -> String {
+        let matchText = localizedMatchCount(matches)
+        let fileText = files == 1 ? L10n.string("1 Datei") : L10n.format("%ld Dateien", files)
+        return L10n.format("%@ · %@", matchText, fileText)
     }
 }
 

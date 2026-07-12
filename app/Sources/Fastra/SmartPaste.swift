@@ -153,19 +153,16 @@ enum SmartPasteError: Error, Equatable {
         case .mdClipNotInstalled:
             // Hinweis: Releases auf GitHub, damit der Nutzer weiß, wo er
             // das Tool herbekommt.
-            return "„md-clip“ ist nicht installiert. Das Tool wird benötigt, "
-                + "um formatierten Text (HTML/RTF) in Markdown zu konvertieren.\n\n"
-                + "Bitte installiere es über:\n"
-                + "https://github.com/DanielMuellerIR/md-clip/releases"
+            return L10n.format(
+                "„md-clip“ ist nicht installiert. Das Tool wird benötigt, um formatierten Text (HTML/RTF) in Markdown zu konvertieren.\n\nBitte installiere es über:\n%@",
+                "https://github.com/DanielMuellerIR/md-clip/releases"
+            )
         case .noFormattedContent:
-            return "Das Clipboard enthält keinen formatierten Inhalt (HTML oder RTF). "
-                + "Smart-Paste benötigt kopierten Text aus einem Browser oder einer "
-                + "Office-Anwendung."
+            return L10n.string("Das Clipboard enthält keinen formatierten Inhalt (HTML oder RTF). Smart-Paste benötigt kopierten Text aus einem Browser oder einer Office-Anwendung.")
         case .conversionFailed(let detail):
-            return "Die Markdown-Konvertierung ist fehlgeschlagen.\n\nDetails: \(detail)"
+            return L10n.format("Die Markdown-Konvertierung ist fehlgeschlagen.\n\nDetails: %@", detail)
         case .timeout:
-            return "Die Konvertierung hat zu lange gedauert (Zeitlimit: 10 Sekunden). "
-                + "Bitte versuche es erneut oder verwende kleinere Inhalte."
+            return L10n.string("Die Konvertierung hat zu lange gedauert (Zeitlimit: 10 Sekunden). Bitte versuche es erneut oder verwende kleinere Inhalte.")
         }
     }
 }
@@ -286,7 +283,7 @@ enum SmartPaste {
         do {
             try process.run()
         } catch {
-            return .failure(.conversionFailed("Prozess konnte nicht gestartet werden: \(error.localizedDescription)"))
+            return .failure(.conversionFailed(L10n.format("Prozess konnte nicht gestartet werden: %@", error.localizedDescription)))
         }
 
         // Auf Abschluss warten — in der App maximal 10 Sekunden. Der Parameter
@@ -326,7 +323,9 @@ enum SmartPaste {
         if exitCode != 0 {
             // stderr-Inhalt als Detail mitgeben.
             let detail = String(data: stderrData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "(kein stderr)"
-            return .failure(.conversionFailed("md-clip beendete sich mit Code \(exitCode). \(detail)"))
+            return .failure(.conversionFailed(L10n.format(
+                "md-clip beendete sich mit Code %ld. %@", Int(exitCode), detail
+            )))
         }
 
         // stdout lesen und als Markdown zurückgeben.
@@ -446,9 +445,9 @@ enum SmartPaste {
     private static func showErrorAlert(_ error: SmartPasteError) {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Smart-Paste nicht möglich"
+        alert.messageText = L10n.string("Smart-Paste nicht möglich")
         alert.informativeText = error.userMessage
-        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: L10n.string("OK"))
         alert.runModal()
     }
 }

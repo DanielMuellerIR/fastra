@@ -417,7 +417,7 @@ extension ApplyEngine {
         // bleiben — die signalisieren „auch NICHT versuchen").
         for file in plan.files {
             if case .invalidPattern(let msg) = file.skipped {
-                throw ApplyError.planNotApplyable("ungültige RegEx: \(msg)")
+                throw ApplyError.planNotApplyable(L10n.format("ungültige RegEx: %@", msg))
             }
         }
 
@@ -439,7 +439,7 @@ extension ApplyEngine {
         do {
             try FileManager.default.createDirectory(at: filesDir, withIntermediateDirectories: true)
         } catch {
-            throw ApplyError.backupFailed("Backup-Ordner anlegen: \(error)")
+            throw ApplyError.backupFailed(L10n.format("Backup-Ordner anlegen: %@", error.localizedDescription))
         }
 
         // 1. Backup-Phase: ALLE Originale zuerst sichern. Erst wenn das
@@ -454,7 +454,9 @@ extension ApplyEngine {
             } catch {
                 // Aufräumen: angefangene Session-Ordner wieder weg.
                 try? FileManager.default.removeItem(at: sessionDir)
-                throw ApplyError.backupFailed("Backup schreiben (\(file.url.lastPathComponent)): \(error)")
+                throw ApplyError.backupFailed(L10n.format("Backup schreiben (%@): %@",
+                                                          file.url.lastPathComponent,
+                                                          error.localizedDescription))
             }
             let hash = sha256Hex(file.originalBytes)
             entries.append(UndoEntry(originalPath: file.url.path,
@@ -469,7 +471,7 @@ extension ApplyEngine {
             try writeManifest(session)
         } catch {
             try? FileManager.default.removeItem(at: sessionDir)
-            throw ApplyError.backupFailed("Manifest schreiben: \(error)")
+            throw ApplyError.backupFailed(L10n.format("Manifest schreiben: %@", error.localizedDescription))
         }
 
         // 3. Schreibphase: pro Datei atomar via replaceItemAt.
@@ -486,7 +488,9 @@ extension ApplyEngine {
                 // Partieller Apply. Wir liefern die bisher gültige Session
                 // zurück, damit der Aufrufer per undo(_:) zurückrollen kann.
                 throw ApplyError.writeFailed(partial: session,
-                                             message: "\(file.url.lastPathComponent): \(error)")
+                                             message: L10n.format("%@: %@",
+                                                                  file.url.lastPathComponent,
+                                                                  error.localizedDescription))
             }
         }
 
@@ -503,7 +507,8 @@ extension ApplyEngine {
             // Ordner manipuliert — wir brechen ab, statt potenziell
             // falsche Bytes zurückzuspielen.
             guard sha256Hex(backupBytes) == entry.originalSHA256 else {
-                throw ApplyError.backupFailed("Backup-Hash stimmt nicht: \(entry.backupRelativePath)")
+                throw ApplyError.backupFailed(L10n.format("Backup-Hash stimmt nicht: %@",
+                                                          entry.backupRelativePath))
             }
             // Über eine separate Tmp-Datei, damit replaceItemAt
             // unsere Backup-Datei nicht verschiebt (Backup soll

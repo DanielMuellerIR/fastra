@@ -71,7 +71,7 @@ private struct GitLogRow: View {
             .contentShape(Rectangle())
             .onHover { if hash != nil { hovered = $0 } }
             .onTapGesture { if let hash { workspace.openGitCommit(hash: hash) } }
-            .help(hash != nil ? "Commit \(hash!) anzeigen (git show)" : "")
+            .help(hash != nil ? L10n.format("Commit %@ anzeigen (git show)", hash!) : "")
     }
 }
 

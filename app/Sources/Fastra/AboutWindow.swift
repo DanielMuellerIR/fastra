@@ -39,7 +39,7 @@ enum AboutWindow {
             backing: .buffered,
             defer: false
         )
-        w.title = "Über Fastra"
+        w.title = L10n.string("Über Fastra")
         w.titlebarAppearsTransparent = false
         w.isMovableByWindowBackground = true
         // Fenster wirklich freigeben, wenn es geschlossen wird —
@@ -104,7 +104,7 @@ private struct AboutView: View {
                 .padding(.top, 16)
 
             // --- Version ---
-            Text("Version \(appVersion)")
+            Text(verbatim: L10n.format("Version %@", appVersion))
                 .fastraFont(.ui)
                 .foregroundColor(Theme.textSecondary)
                 .padding(.top, 4)

@@ -38,14 +38,11 @@ struct SettingsView: View {
             Section {
                 Picker("Dark Mode", selection: $appearanceRaw) {
                     ForEach(AppearanceSetting.allCases) { setting in
-                        Text(setting.label).tag(setting.rawValue)
+                        Text(verbatim: L10n.string(setting.label)).tag(setting.rawValue)
                     }
                 }
                 .pickerStyle(.segmented)
-                Text("„Automatisch“ folgt dem macOS-Erscheinungsbild "
-                     + "(Systemeinstellungen → Erscheinungsbild). „Hell“ und "
-                     + "„Dunkel“ legen das Erscheinungsbild von Fastra fest, "
-                     + "unabhängig vom System.")
+                Text(verbatim: L10n.string("„Automatisch“ folgt dem macOS-Erscheinungsbild (Systemeinstellungen → Erscheinungsbild). „Hell“ und „Dunkel“ legen das Erscheinungsbild von Fastra fest, unabhängig vom System."))
                     .fastraFont(.small)
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -55,9 +52,7 @@ struct SettingsView: View {
 
             Section {
                 Toggle("Lange Zeilen am Fensterrand umbrechen", isOn: $wrapLines)
-                Text("Wirkt sofort in allen geöffneten Tabs. Ohne Umbruch lässt sich "
-                     + "langer Text horizontal scrollen. Auch über „Darstellung → "
-                     + "Zeilen umbrechen“ (⌘⇧L) umschaltbar.")
+                Text(verbatim: L10n.string("Wirkt sofort in allen geöffneten Tabs. Ohne Umbruch lässt sich langer Text horizontal scrollen. Auch über „Darstellung → Zeilen umbrechen“ (⌘⇧L) umschaltbar."))
                     .fastraFont(.small)
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

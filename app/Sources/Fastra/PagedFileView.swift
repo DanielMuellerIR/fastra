@@ -82,7 +82,8 @@ private struct FilePageNavigation: View {
             }
             .disabled(model.pageIndex >= model.pageCount - 1)
 
-            Text("Abschnitt \(model.pageIndex + 1) / \(model.pageCount)")
+            Text(verbatim: L10n.format("Abschnitt %ld / %ld",
+                                       model.pageIndex + 1, model.pageCount))
                 .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
                 .fixedSize()

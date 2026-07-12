@@ -9,6 +9,29 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.12.0] — 2026-07-12
+
+### Hinzugefügt
+
+- **Vollständige englische Lokalisierung zusätzlich zu Deutsch:** Statische
+  SwiftUI-Texte, dynamische Status-/Zählertexte, AppKit-Menüs und -Dialoge,
+  Tooltips, Git-Rückmeldungen, Suchvorlagen, Regex-Lernhilfen, der
+  Erststart-Demo-Inhalt und Finder-Metadaten folgen automatisch der
+  macOS-Sprachreihenfolge.
+- Der zentrale `L10n`-Zugriff lokalisiert auch Enum-Rohwerte und formatierte
+  Meldungen, die SwiftUI nicht selbst extrahieren kann. Das Haupt-App-Bundle
+  und das SwiftPM-Modulbundle erhalten beide ihre benötigten Tabellen.
+- `localization-audit.sh` vergleicht alle statisch erkannten SwiftUI-Schlüssel
+  mit 498 englischen Einträgen und prüft Format-Platzhalter. Drei Unit-Tests
+  sichern dynamische Werte, alle Vorlagen und Regex-Hilfen; der fensterlose
+  Selbsttest `localization` prüft die tatsächliche App-Verpackung. Ein echter
+  englischer Suchfenster-Screenshot wurde visuell abgenommen.
+
+### Verbessert
+
+- Treffer-/Dateizähler verwenden nun auch im Englischen korrekte Singular-
+  und Pluralformen.
+
 ## [v1.11.0] — 2026-07-12
 
 ### Hinzugefügt

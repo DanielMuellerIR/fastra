@@ -73,7 +73,7 @@ struct StatusBarView: View {
     private var cursorPosition: String {
         let line = workspace.cursorLine.map(String.init) ?? "—"
         let col  = workspace.cursorColumn.map(String.init) ?? "—"
-        return "Z \(line) · Sp \(col)"
+        return L10n.format("Z %@ · Sp %@", line, col)
     }
 
     private var encoding: String {
@@ -119,9 +119,9 @@ struct StatusBarView: View {
                 } label: {
                     // Häkchen am aktuell gewählten Zeilenende.
                     if workspace.activeTab?.lineEnding == le {
-                        Label(le.menuLabel, systemImage: "checkmark")
+                        Label(L10n.string(le.menuLabel), systemImage: "checkmark")
                     } else {
-                        Text(le.menuLabel)
+                        Text(verbatim: L10n.string(le.menuLabel))
                     }
                 }
             }

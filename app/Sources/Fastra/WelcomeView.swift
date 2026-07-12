@@ -102,7 +102,7 @@ struct WelcomeView: View {
                     .foregroundColor(Theme.accentReadable)
                     .fastraFont(size: 13)
                     .frame(width: 18)
-                Text(title)
+                Text(verbatim: L10n.string(title))
                     .fastraFont(.ui)
                     .foregroundColor(Theme.textPrimary)
                 Text(shortcut)

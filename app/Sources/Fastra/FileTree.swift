@@ -81,9 +81,9 @@ enum FileTreeOperationError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidName:
-            return "Der Name darf nicht leer sein und weder „/“ noch nur Punkte enthalten."
+            return L10n.string("Der Name darf nicht leer sein und weder „/“ noch nur Punkte enthalten.")
         case .alreadyExists(let name):
-            return "„\(name)“ existiert in diesem Ordner bereits."
+            return L10n.format("„%@“ existiert in diesem Ordner bereits.", name)
         }
     }
 }

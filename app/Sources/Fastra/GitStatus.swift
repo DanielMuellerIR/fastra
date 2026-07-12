@@ -26,12 +26,12 @@ enum GitFileState: Equatable {
     /// allein sagt Nicht-Git-Profis wenig.
     var tooltip: String {
         switch self {
-        case .modified:   return "Geändert (M)"
-        case .added:      return "Neu, bereitgestellt (A)"
-        case .deleted:    return "Gelöscht (D)"
-        case .untracked:  return "Nicht versioniert (U)"
-        case .renamed:    return "Umbenannt (R)"
-        case .conflicted: return "Merge-Konflikt (!)"
+        case .modified:   return L10n.string("Geändert (M)")
+        case .added:      return L10n.string("Neu, bereitgestellt (A)")
+        case .deleted:    return L10n.string("Gelöscht (D)")
+        case .untracked:  return L10n.string("Nicht versioniert (U)")
+        case .renamed:    return L10n.string("Umbenannt (R)")
+        case .conflicted: return L10n.string("Merge-Konflikt (!)")
         }
     }
 }

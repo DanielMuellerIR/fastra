@@ -360,11 +360,12 @@ private struct FileTreeContextMenu: View {
     }
 
     private func create(isDirectory: Bool) {
-        let kind = isDirectory ? "Ordner" : "Datei"
+        let kindKey = isDirectory ? "Ordner" : "Datei"
+        let kind = L10n.string(kindKey)
         guard let name = Workspace.promptForText(
-            title: "Neuer \(kind)",
-            info: "Name im Ordner „\(directory.lastPathComponent)“:",
-            placeholder: isDirectory ? "Neuer Ordner" : "Neue Datei.txt"
+            title: L10n.format("Neu: %@", kind),
+            info: L10n.format("Name im Ordner „%@“:", directory.lastPathComponent),
+            placeholder: L10n.string(isDirectory ? "Neuer Ordner" : "Neue Datei.txt")
         ) else { return }
         do {
             let created = try FileTreeOperations.create(named: name, in: directory,
@@ -372,14 +373,14 @@ private struct FileTreeContextMenu: View {
             onMutation()
             if !isDirectory { workspace.loadFile(at: created) }
         } catch {
-            showError(title: "\(kind) konnte nicht angelegt werden", error: error)
+            showError(title: L10n.format("%@ konnte nicht angelegt werden", kind), error: error)
         }
     }
 
     private func rename(_ node: FileTreeNode) {
         guard let name = Workspace.promptForText(
-            title: "Umbenennen",
-            info: "Neuer Name für „\(node.name)“:",
+            title: L10n.string("Umbenennen"),
+            info: L10n.format("Neuer Name für „%@“:", node.name),
             placeholder: node.name
         ) else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -389,23 +390,23 @@ private struct FileTreeContextMenu: View {
             workspace.handleFileTreeMove(from: node.url, to: destination)
             onMutation()
         } catch {
-            showError(title: "„\(node.name)“ konnte nicht umbenannt werden", error: error)
+            showError(title: L10n.format("„%@“ konnte nicht umbenannt werden", node.name), error: error)
         }
     }
 
     private func trash(_ node: FileTreeNode) {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "„\(node.name)“ in den Papierkorb legen?"
-        alert.informativeText = "Der Eintrag kann über den Finder wiederhergestellt werden."
-        alert.addButton(withTitle: "In den Papierkorb")
-        alert.addButton(withTitle: "Abbrechen")
+        alert.messageText = L10n.format("„%@“ in den Papierkorb legen?", node.name)
+        alert.informativeText = L10n.string("Der Eintrag kann über den Finder wiederhergestellt werden.")
+        alert.addButton(withTitle: L10n.string("In den Papierkorb"))
+        alert.addButton(withTitle: L10n.string("Abbrechen"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
         NSWorkspace.shared.recycle([node.url]) { _, error in
             DispatchQueue.main.async {
                 if let error {
-                    showError(title: "„\(node.name)“ konnte nicht verschoben werden",
+                    showError(title: L10n.format("„%@“ konnte nicht verschoben werden", node.name),
                               error: error)
                 } else {
                     workspace.handleFileTreeTrash(node.url)

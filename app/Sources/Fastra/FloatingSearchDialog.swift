@@ -195,7 +195,7 @@ struct FloatingSearchDialog: View {
                         // (Daniel-Befund 2026-06-22). Die echte Treffer-Zahl
                         // steht unten bei „Treffer (N)". Die Scope-Auswahl bleibt
                         // über die Sand-Füllung markiert.
-                        Text(s.rawValue)
+                        Text(verbatim: L10n.string(s.rawValue))
                             .fastraFont(.small)
                             .padding(.horizontal, 9)
                             .padding(.vertical, 5)
@@ -222,10 +222,10 @@ struct FloatingSearchDialog: View {
 
     private func tooltip(for scope: Workspace.SearchScope) -> String {
         switch scope {
-        case .file:   return "Nur in der aktuell sichtbaren Datei suchen."
-        case .open:   return "In allen geöffneten Tabs suchen."
-        case .folder: return "In einem oder mehreren Ordnern suchen — Ordner werden weiter unten ausgewählt."
-        case .project: return "Im aktiven Projekt suchen — mit gespeichertem Datei-Set, Filter und Ausschlüssen."
+        case .file:   return L10n.string("Nur in der aktuell sichtbaren Datei suchen.")
+        case .open:   return L10n.string("In allen geöffneten Tabs suchen.")
+        case .folder: return L10n.string("In einem oder mehreren Ordnern suchen — Ordner werden weiter unten ausgewählt.")
+        case .project: return L10n.string("Im aktiven Projekt suchen — mit gespeichertem Datei-Set, Filter und Ausschlüssen.")
         }
     }
 
@@ -290,7 +290,7 @@ struct FloatingSearchDialog: View {
 
                 Picker("Dateitypen", selection: $workspace.fileTypeFilter) {
                     ForEach(FileTypeFilter.allCases) { f in
-                        Text(f.rawValue).tag(f)
+                        Text(verbatim: L10n.string(f.rawValue)).tag(f)
                     }
                 }
                 .pickerStyle(.menu)
@@ -314,7 +314,7 @@ struct FloatingSearchDialog: View {
                     set: { workspace.projectSearchConfiguration.activeSetID = $0 }
                 )) {
                     ForEach(workspace.projectSearchConfiguration.fileSets) { set in
-                        Text(set.name).tag(set.id)
+                        Text(verbatim: L10n.string(set.name)).tag(set.id)
                     }
                 }
                 .labelsHidden()
@@ -336,7 +336,7 @@ struct FloatingSearchDialog: View {
                     set: { workspace.projectSearchConfiguration.fileTypeFilter = $0 }
                 )) {
                     ForEach(FileTypeFilter.allCases) { filter in
-                        Text(filter.rawValue).tag(filter)
+                        Text(verbatim: L10n.string(filter.rawValue)).tag(filter)
                     }
                 }
                 .pickerStyle(.menu)
@@ -404,9 +404,9 @@ struct FloatingSearchDialog: View {
                 }
                 Divider()
                 ForEach(PatternCategory.allCases, id: \.self) { category in
-                    Section(category.rawValue) {
+                    Section(L10n.string(category.rawValue)) {
                         ForEach(BuiltInPatterns.patterns(in: category)) { template in
-                            Button(template.name) {
+                            Button(L10n.string(template.name)) {
                                 applyTemplate(template)
                             }
                         }
@@ -442,8 +442,8 @@ struct FloatingSearchDialog: View {
         guard
             let id = workspace.selectedTemplateID,
             let template = BuiltInPatterns.all.first(where: { $0.id == id })
-        else { return "— Vorlage auswählen —" }
-        return template.name
+        else { return L10n.string("— Vorlage auswählen —") }
+        return L10n.string(template.name)
     }
 
     /// Vorlage anwenden: Find-Pattern setzen, ggf. Replace-Vorschlag
@@ -477,7 +477,7 @@ struct FloatingSearchDialog: View {
             RegexFieldView(
                 text: $workspace.findPattern,
                 tokenization: findTokenization,
-                placeholder: "Suchausdruck…",
+                placeholder: L10n.string("Suchausdruck…"),
                 controller: findFieldController,
                 onSubmit: {
                     if workspace.scope.isFolderLike {
@@ -671,8 +671,8 @@ struct FloatingSearchDialog: View {
         guard replaceStars > findStars else { return nil }
         let extra = replaceStars - findStars
         return extra == 1
-            ? "Ersetzen hat ein ∗ mehr als Suchen — das überzählige ∗ bleibt leer."
-            : "Ersetzen hat \(extra) ∗ mehr als Suchen — die überzähligen bleiben leer."
+            ? L10n.string("Ersetzen hat ein ∗ mehr als Suchen — das überzählige ∗ bleibt leer.")
+            : L10n.format("Ersetzen hat %ld ∗ mehr als Suchen — die überzähligen bleiben leer.", extra)
     }
 
     private var replaceRow: some View {
@@ -691,7 +691,7 @@ struct FloatingSearchDialog: View {
             RegexFieldView(
                 text: $workspace.replacePattern,
                 tokenization: nil,
-                placeholder: "Ersetzen durch… ($1, $2 für Gruppen)",
+                placeholder: L10n.string("Ersetzen durch… ($1, $2 für Gruppen)"),
                 controller: replaceFieldController,
                 accessibilityID: "fastra.replaceField"
             )
@@ -831,7 +831,10 @@ struct FloatingSearchDialog: View {
                     // Ehrlich über die Begrenzung (App-Linie „keine stille
                     // Trunkierung"): auf das vollständige Sheet verweisen.
                     if preview.totalChangedLines > preview.rows.count {
-                        Text("… und \(preview.totalChangedLines - preview.rows.count) weitere geänderte Zeilen — „Vorschau der Änderungen\" zeigt alle.")
+                        Text(verbatim: L10n.format(
+                            "… und %ld weitere geänderte Zeilen — „Vorschau der Änderungen\" zeigt alle.",
+                            preview.totalChangedLines - preview.rows.count
+                        ))
                             .fastraFont(size: 10)
                             .foregroundColor(Theme.textSecondary)
                     }
@@ -852,7 +855,7 @@ struct FloatingSearchDialog: View {
     private var hitsSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Treffer (\(scopeTotalMatches))")
+                Text(verbatim: L10n.format("Treffer (%ld)", scopeTotalMatches))
                     .fastraFont(.small)
                     .foregroundColor(Theme.textPrimary)
                 // Spinner, solange im Hintergrund gesucht wird — Folder- ODER
@@ -899,9 +902,9 @@ struct FloatingSearchDialog: View {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
-                    Text(workspace.scope.isFolderLike
+                    Text(verbatim: L10n.string(workspace.scope.isFolderLike
                          ? "Trefferliste auf 10.000 gekappt — Suchbegriff verfeinern."
-                         : "Trefferliste gekappt — Zähler zeigt die wahre Gesamtzahl.")
+                         : "Trefferliste gekappt — Zähler zeigt die wahre Gesamtzahl."))
                         .fastraFont(size: 11)
                         .foregroundColor(.orange)
                         .lineLimit(2)
@@ -923,7 +926,10 @@ struct FloatingSearchDialog: View {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
-                    Text("Erste \(workspace.bufferMatches.count) von \(workspace.bufferTotalMatches) Treffern gelistet — Suchbegriff verfeinern. „Alle ersetzen“ erfasst dennoch alle.")
+                    Text(verbatim: L10n.format(
+                        "Erste %ld von %ld Treffern gelistet — Suchbegriff verfeinern. „Alle ersetzen“ erfasst dennoch alle.",
+                        workspace.bufferMatches.count, workspace.bufferTotalMatches
+                    ))
                         .fastraFont(size: 11)
                         .foregroundColor(.orange)
                         .lineLimit(3)
@@ -974,7 +980,8 @@ struct FloatingSearchDialog: View {
                                     .listRowBackground(Color.clear)
                                 }
                             } header: {
-                                Text("\(group.label) (\(group.matches.count))")
+                                Text(verbatim: L10n.format("%@ (%ld)", group.label,
+                                                          group.matches.count))
                                     .fastraFont(size: 11, weight: .semibold)
                                     .foregroundColor(Theme.textSecondary)
                             }
@@ -1052,7 +1059,7 @@ struct FloatingSearchDialog: View {
                                 tabID: $0.id, matches: $0.matches) }
         }
         guard !workspace.bufferMatches.isEmpty else { return [] }
-        let title = workspace.activeTab?.title ?? "Aktiver Buffer"
+        let title = workspace.activeTab?.title ?? L10n.string("Aktiver Buffer")
         return [HitGroup(label: title, url: nil, matches: workspace.bufferMatches)]
     }
 
@@ -1069,23 +1076,23 @@ struct FloatingSearchDialog: View {
 
     /// Hinweistext bei leerer Trefferliste, scope-spezifisch formuliert.
     private var emptyHint: String {
-        if workspace.findPattern.isEmpty { return "Suchausdruck eingeben…" }
+        if workspace.findPattern.isEmpty { return L10n.string("Suchausdruck eingeben…") }
         if workspace.scope.isFolderLike {
             if workspace.activeMultiFileSearchURLs.isEmpty {
                 return workspace.scope == .project
-                    ? "Das aktive Datei-Set enthält keine vorhandenen Pfade."
-                    : "Kein Ordner ausgewählt. Mindestens einen aktivieren."
+                    ? L10n.string("Das aktive Datei-Set enthält keine vorhandenen Pfade.")
+                    : L10n.string("Kein Ordner ausgewählt. Mindestens einen aktivieren.")
             }
             // Unter der Live-Mindestlänge sucht der Ordner-Scope nicht
             // automatisch (Freeze-Schutz bei kurzen Pattern, siehe
             // SearchRunner.shouldRunFolderLive) — Hinweis statt „Keine Treffer.".
             if !SearchRunner.shouldRunFolderLive(for: workspace.findPattern) {
-                return "Mindestens \(SearchRunner.minFolderLiveChars) Zeichen für die Live-Ordner-Suche — oder „Suchen“ klicken."
+                return L10n.format("Mindestens %ld Zeichen für die Live-Ordner-Suche — oder „Suchen“ klicken.", SearchRunner.minFolderLiveChars)
             }
             // Ab Mindestlänge wird live gesucht; ist noch nichts da (z.B.
             // direkt nach Scope-Wechsel, vor dem Debounce), explizit anstoßen.
             if workspace.folderNeedsSearch {
-                return "„Suchen“ klicken oder Return drücken, um die Ordner zu durchsuchen."
+                return L10n.string("„Suchen“ klicken oder Return drücken, um die Ordner zu durchsuchen.")
             }
         }
         // Ordner-Scope, Suche abgeschlossen, 0 Treffer: informativer Hinweis
@@ -1094,9 +1101,9 @@ struct FloatingSearchDialog: View {
         if workspace.scope.isFolderLike
             && !workspace.folderNeedsSearch
             && !workspace.folderSearching {
-            return "Keine Treffer in den durchsuchten Ordnern."
+            return L10n.string("Keine Treffer in den durchsuchten Ordnern.")
         }
-        return "Keine Treffer."
+        return L10n.string("Keine Treffer.")
     }
 
     /// Click-Handler für eine Treffer-Zeile. Im Buffer-Scope einfach den
@@ -1210,10 +1217,12 @@ struct FloatingSearchDialog: View {
     private var detailSection: some View {
         let fileLabel = Self.detailFileLabel(for: activeNavMatch,
                                              tabs: workspace.tabs,
-                                             fallback: workspace.activeTab?.title ?? "Aktiver Buffer")
-        let lineText = activeMatch.map { "Zeile \($0.line) · Spalte \($0.column)" } ?? "kein Treffer"
+                                             fallback: workspace.activeTab?.title ?? L10n.string("Aktiver Buffer"))
+        let lineText = activeMatch.map {
+            L10n.format("Zeile %ld · Spalte %ld", $0.line, $0.column)
+        } ?? L10n.string("kein Treffer")
         return VStack(alignment: .leading, spacing: 6) {
-            Text("Detail · \(fileLabel) · \(lineText)")
+            Text(verbatim: L10n.format("Detail · %@ · %@", fileLabel, lineText))
                 .fastraFont(size: 11, weight: .medium)
                 .foregroundColor(Theme.textSecondary)
 
@@ -1402,7 +1411,7 @@ struct FloatingSearchDialog: View {
                         .buttonStyle(.bordered)
                         .disabled(workspace.findPattern.isEmpty
                                   || workspace.activeMultiFileSearchURLs.isEmpty)
-                        .help("Die ausgewählten Ordner jetzt durchsuchen. Ab \(SearchRunner.minFolderLiveChars) Zeichen läuft die Ordner-Suche live beim Tippen mit; Klick oder Return erzwingen sie auch bei kürzeren Suchausdrücken und ohne Wartezeit.")
+                        .help(L10n.format("Die ausgewählten Ordner jetzt durchsuchen. Ab %ld Zeichen läuft die Ordner-Suche live beim Tippen mit; Klick oder Return erzwingen sie auch bei kürzeren Suchausdrücken und ohne Wartezeit.", SearchRunner.minFolderLiveChars))
                 }
 
                 Button("Voriger") {
@@ -1459,7 +1468,7 @@ struct FloatingSearchDialog: View {
                         .help("Spielt die letzte Ordner-Apply-Session bit-exakt aus dem Backup-Ordner zurück.")
                 }
 
-                Button("Alle ersetzen · \(scopeTotalMatches)") {
+                Button(L10n.format("Alle ersetzen · %ld", scopeTotalMatches)) {
                     switch workspace.scope {
                     case .folder, .project: workspace.applyAllInFolder()
                     case .open:   workspace.applyAllInOpenTabs()
@@ -1473,11 +1482,11 @@ struct FloatingSearchDialog: View {
                     .help({
                         switch workspace.scope {
                         case .folder, .project:
-                            return "Alle Treffer in allen aktivierten Ordnern ersetzen — atomar pro Datei, mit automatischem Backup unter ~/Library/Application Support/Fastra/undo/."
+                            return L10n.string("Alle Treffer in allen aktivierten Ordnern ersetzen — atomar pro Datei, mit automatischem Backup unter ~/Library/Application Support/Fastra/undo/.")
                         case .open:
-                            return "Alle Treffer in ALLEN geöffneten Tabs ersetzen — nur im Speicher, geänderte Tabs werden als ungesichert markiert. Speichern wie gewohnt mit ⌘S."
+                            return L10n.string("Alle Treffer in ALLEN geöffneten Tabs ersetzen — nur im Speicher, geänderte Tabs werden als ungesichert markiert. Speichern wie gewohnt mit ⌘S.")
                         case .file:
-                            return "Alle Treffer im aktiven Buffer durch das Replace-Pattern ersetzen."
+                            return L10n.string("Alle Treffer im aktiven Buffer durch das Replace-Pattern ersetzen.")
                         }
                     }())
             }
@@ -1546,7 +1555,7 @@ private struct GroupPill: View {
         if let name = group.name, !name.isEmpty { return name }
         let ns = patternText as NSString
         guard group.innerRange.location + group.innerRange.length <= ns.length else {
-            return "Gruppe \(group.number)"
+            return L10n.format("Gruppe %ld", group.number)
         }
         let inner = ns.substring(with: group.innerRange)
         return inner.count > 14 ? String(inner.prefix(13)) + "…" : inner
@@ -1560,7 +1569,7 @@ private struct GroupPill: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Text("$\(group.number)")
+            Text(verbatim: "$\(group.number)")
                 .fastraFont(size: 11, weight: .bold, design: .monospaced)
                 .foregroundColor(Theme.textPrimary)
             Text(label)
@@ -1578,7 +1587,7 @@ private struct GroupPill: View {
         // (NSTextView) nimmt ihn nativ an der Maus-Position an.
         .onDrag { NSItemProvider(object: "$\(group.number)" as NSString) }
         .onTapGesture(perform: onInsert)
-        .help("Gruppe \(group.number) ins Ersetzen-Feld übernehmen — Pille dorthin ziehen oder einfach klicken (fügt $\(group.number) ein).")
+        .help(L10n.format("Gruppe %ld ins Ersetzen-Feld übernehmen — Pille dorthin ziehen oder einfach klicken (fügt $%ld ein).", group.number, group.number))
     }
 }
 
@@ -1605,7 +1614,7 @@ private struct WildcardPill: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Text("$\(number)")
+            Text(verbatim: "$\(number)")
                 .fastraFont(size: 11, weight: .bold, design: .monospaced)
                 .foregroundColor(Theme.textPrimary)
             // Der Stern als Inhalts-Hinweis (statt eines Gruppen-Texts) — macht
@@ -1622,7 +1631,7 @@ private struct WildcardPill: View {
         // ihn nativ an (exakt dieselbe Mechanik wie GroupPill).
         .onDrag { NSItemProvider(object: "$\(number)" as NSString) }
         .onTapGesture(perform: onInsert)
-        .help("Platzhalter \(number) (der \(number). Stern ∗) ins Ersetzen-Feld übernehmen — Pille dorthin ziehen oder einfach klicken (fügt $\(number) ein).")
+        .help(L10n.format("Platzhalter %ld (der %ld. Stern ∗) ins Ersetzen-Feld übernehmen — Pille dorthin ziehen oder einfach klicken (fügt $%ld ein).", number, number, number))
     }
 }
 
@@ -1670,7 +1679,7 @@ private struct ElementPickerView: View {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(RegexElements.categories) { category in
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(category.name.uppercased())
+                        Text(verbatim: L10n.string(category.name).uppercased())
                             .fastraFont(size: 10, weight: .semibold)
                             .tracking(0.6)
                             .foregroundColor(Theme.textSecondary)
@@ -1685,7 +1694,7 @@ private struct ElementPickerView: View {
                                         .fastraFont(size: 12, weight: .semibold, design: .monospaced)
                                         .foregroundColor(Theme.tokenCharClass)
                                         .frame(width: 56, alignment: .leading)
-                                    Text(element.hint)
+                                    Text(verbatim: L10n.string(element.hint))
                                         .fastraFont(.small)
                                         .foregroundColor(Theme.textPrimary)
                                     Spacer(minLength: 0)
@@ -1791,7 +1800,7 @@ private struct ExtractionDialog: View {
             Form {
                 Picker("Trennzeichen", selection: $options.separator) {
                     ForEach(HitExtraction.Separator.allCases) { separator in
-                        Text(separator.rawValue).tag(separator)
+                        Text(verbatim: L10n.string(separator.rawValue)).tag(separator)
                     }
                 }
                 if options.separator == .custom {
@@ -1799,12 +1808,12 @@ private struct ExtractionDialog: View {
                 }
                 Picker("Ziel", selection: $options.destination) {
                     ForEach(HitExtraction.Destination.allCases) { destination in
-                        Text(destination.rawValue).tag(destination)
+                        Text(verbatim: L10n.string(destination.rawValue)).tag(destination)
                     }
                 }
                 Picker("Quoting", selection: $options.quoting) {
                     ForEach(HitExtraction.Quoting.allCases) { quoting in
-                        Text(quoting.rawValue).tag(quoting)
+                        Text(verbatim: L10n.string(quoting.rawValue)).tag(quoting)
                     }
                 }
                 Toggle("Duplikate entfernen", isOn: $options.deduplicate)

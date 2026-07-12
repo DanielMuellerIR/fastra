@@ -99,7 +99,7 @@ final class SearchPanelController {
         // ist hier keine Doppelung mehr). Daniel: „Bitte den Fenstertitel
         // wieder setzen" — gibt dem Fenster eine eindeutige Beschriftung
         // in Window-Listen und Mission Control.
-        w.title = "Suchen & Ersetzen"
+        w.title = L10n.string("Suchen & Ersetzen")
         w.titlebarAppearsTransparent = false
         w.isMovableByWindowBackground = false
         w.isReleasedWhenClosed = false

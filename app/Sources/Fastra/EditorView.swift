@@ -147,7 +147,7 @@ struct EditorView: View {
                 VStack(spacing: 12) {
                     ProgressView()
                         .controlSize(.regular)
-                    Text("Lade \(workspace.activeTab?.title ?? "…")")
+                    Text(verbatim: L10n.format("Lade %@", workspace.activeTab?.title ?? "…"))
                         .fastraFont(.small)
                         .foregroundColor(Theme.textSecondary)
                 }
@@ -701,7 +701,7 @@ private struct SidebarModePicker: View {
                 Button {
                     selection = mode
                 } label: {
-                    Text(mode.rawValue)
+                    Text(verbatim: L10n.string(mode.rawValue))
                         .fastraFont(.small)
                         .foregroundColor(selection == mode ? Theme.textPrimary : Theme.textSecondary)
                         .frame(maxWidth: .infinity)
@@ -732,7 +732,7 @@ private struct FileRow: View {
                 .fastraFont(size: 11)
             // Willkommen-Tab konsistent zur Tab-Leiste als „Willkommen"
             // beschriften (nicht mit seinem Unterbau-Titel „Ohne Titel").
-            Text(tab.isWelcome ? "Willkommen" : tab.title)
+            Text(verbatim: tab.isWelcome ? L10n.string("Willkommen") : tab.title)
                 .fastraFont(.small)
                 .foregroundColor(isActive ? Theme.textPrimary : Theme.textSecondary)
                 .lineLimit(1)

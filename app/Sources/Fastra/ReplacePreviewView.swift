@@ -34,8 +34,10 @@ struct ReplacePreviewView: View {
                     }
                 }
                 if result.truncated {
-                    Text("… und \(result.totalRows - result.rows.count) weitere ausgerichtete "
-                         + "Zeilen (Anzeige auf \(maxRows) begrenzt).")
+                    Text(verbatim: L10n.format(
+                        "… und %ld weitere ausgerichtete Zeilen (Anzeige auf %ld begrenzt).",
+                        result.totalRows - result.rows.count, maxRows
+                    ))
                         .fastraFont(.small)
                         .foregroundColor(Theme.textSecondary)
                         .padding(.vertical, 6)
@@ -71,8 +73,9 @@ struct ReplacePreviewView: View {
 
     private var summaryText: String {
         let n = result.changedRows
-        if n == 0 { return "Keine Änderungen" }
-        return n == 1 ? "1 geänderte Zeile" : "\(n) geänderte Zeilen"
+        if n == 0 { return L10n.string("Keine Änderungen") }
+        return n == 1 ? L10n.string("1 geänderte Zeile")
+            : L10n.format("%ld geänderte Zeilen", n)
     }
 
     private var columnHeader: some View {
@@ -98,8 +101,7 @@ struct ReplacePreviewView: View {
             Text("Keine Ersetzungen in der aktuellen Datei.")
                 .fastraFont(.headline)
                 .foregroundColor(Theme.textSecondary)
-            Text("Suchbegriff UND Ersetzen-Text eingeben — die Vorschau zeigt dann "
-                 + "jede betroffene Zeile vorher und nachher.")
+            Text(verbatim: L10n.string("Suchbegriff UND Ersetzen-Text eingeben — die Vorschau zeigt dann jede betroffene Zeile vorher und nachher."))
                 .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
                 .multilineTextAlignment(.center)
