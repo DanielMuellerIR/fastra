@@ -1391,8 +1391,31 @@ final class Workspace: ObservableObject {
                    emptyText: L10n.string("Keine Änderungen gegenüber HEAD."))
     }
 
+    /// Öffnet aus der Git-Änderungen-Ansicht genau den Diff der gewählten
+    /// Datei. Index und Working-Tree bleiben getrennt; dadurch zeigt eine Datei,
+    /// die in beiden Abschnitten vorkommt, jeweils den dort gemeinten Stand.
+    func openGitChangeDiff(change: GitChange, staged: Bool) {
+        let state = staged ? change.staged : change.unstaged
+        let args: [String]
+        let acceptedExitCodes: Set<Int32>
+        if state == .untracked {
+            args = GitDiff.untrackedFileArguments(path: change.path)
+            // `git diff --no-index` meldet gefundene Unterschiede mit Code 1.
+            acceptedExitCodes = [0, 1]
+        } else if staged {
+            args = GitDiff.stagedFileArguments(path: change.path)
+            acceptedExitCodes = [0]
+        } else {
+            args = GitDiff.unstagedFileArguments(path: change.path)
+            acceptedExitCodes = [0]
+        }
+        loadGitTab(kind: .diff, title: L10n.format("Git-Diff: %@", change.path),
+                   args: args, emptyText: L10n.string("Kein Inhalt."),
+                   acceptedExitCodes: acceptedExitCodes)
+    }
+
     /// Öffnet einen einzelnen Commit (`git show <hash>`) als read-only-Tab —
-    /// aus dem Verlaufs-Tab per Klick auf eine Commit-Zeile aufgerufen.
+    /// aus dem Verlauf per Klick oder aus dem Graph per Doppelklick aufgerufen.
     func openGitCommit(hash: String) {
         loadGitTab(kind: .commit, title: L10n.format("Commit %@", hash),
                    args: GitDiff.showArguments(hash: hash),
@@ -1414,11 +1437,12 @@ final class Workspace: ObservableObject {
     /// erneuter Aufruf frischt den bestehenden Tab auf, statt zu duplizieren.
     /// `internal` (nicht private), damit die Git-Aktionen in `GitActions.swift`
     /// den Pickaxe-Verlauf öffnen können.
-    func loadGitTab(kind: GitTabKind, title: String, args: [String], emptyText: String) {
+    func loadGitTab(kind: GitTabKind, title: String, args: [String], emptyText: String,
+                    acceptedExitCodes: Set<Int32> = [0]) {
         guard let root = projectURL, GitRunner.isAvailable else { return }
         GitRunner.run(args, in: root) { [weak self] result in
             guard let self else { return }
-            guard let result, result.ok else {
+            guard let result, acceptedExitCodes.contains(result.exitCode) else {
                 // Fehler ehrlich zeigen (UX-Regel: echte git-Ausgabe), statt zu
                 // schlucken. stderr in den Tab, damit der Nutzer den Grund sieht.
                 let msg = result?.stderr.trimmingCharacters(in: .whitespacesAndNewlines)

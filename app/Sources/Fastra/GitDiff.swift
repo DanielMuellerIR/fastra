@@ -18,7 +18,28 @@ enum GitDiff {
 
     /// Argumente für `git show <hash>` (Commit-Header + Diff).
     static func showArguments(hash: String) -> [String] {
-        ["show", hash]
+        // `--stat` nennt die geänderten Dateien gut lesbar vor dem eigentlichen
+        // Patch; `--patch` hält die bisherige vollständige Diff-Ausgabe fest.
+        ["show", "--stat", "--patch", hash]
+    }
+
+    /// Nur die bereitgestellte Fassung einer Datei mit dem letzten Commit
+    /// vergleichen. Das entspricht exakt einer Zeile im Abschnitt
+    /// „Bereitgestellt“ der Änderungen-Ansicht.
+    static func stagedFileArguments(path: String) -> [String] {
+        ["diff", "--cached", "--", path]
+    }
+
+    /// Nur die noch nicht bereitgestellte Fassung einer Datei mit dem Index
+    /// vergleichen. So vermischt ein „MM“-Eintrag seine beiden Stände nicht.
+    static func unstagedFileArguments(path: String) -> [String] {
+        ["diff", "--", path]
+    }
+
+    /// Eine unversionierte Datei hat noch keine Git-Gegenseite. `--no-index`
+    /// erzeugt deshalb einen normalen Patch gegen die leere Datei `/dev/null`.
+    static func untrackedFileArguments(path: String) -> [String] {
+        ["diff", "--no-index", "--", "/dev/null", path]
     }
 
     /// Nur den Patch einer Datei aus einem Commit laden. `--` trennt den

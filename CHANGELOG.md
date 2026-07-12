@@ -9,6 +9,27 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.14.0] — 2026-07-13
+
+### Hinzugefügt
+
+- Ein Doppelklick auf einen Commit im Git-Graph öffnet wieder dessen
+  vollständigen Diff; der Einzelklick zum Auf- und Zuklappen der Dateiliste
+  bleibt parallel erhalten.
+- Ein Doppelklick auf eine Datei in der Git-Änderungen-Ansicht öffnet ihren
+  abschnittsgenauen Diff. Bereitgestellte, offene und unversionierte Dateien
+  werden dabei passend gegen Index, Working-Tree oder eine leere Datei verglichen.
+
+### Verbessert
+
+- Der vollständige Commit-Diff zeigt vor den einzelnen Patches eine kompakte
+  Liste der betroffenen Dateinamen und Änderungszahlen.
+
+### Qualitätssicherung
+
+- Zwei neue Argumenttests sichern die Commit-Dateiliste und alle drei Arten
+  von Datei-Diffs; 733 Unit-Tests und der Lokalisierungs-Audit sind erfolgreich.
+
 ## [v1.13.1] — 2026-07-13
 
 ### Behoben

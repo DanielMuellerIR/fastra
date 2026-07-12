@@ -7,10 +7,27 @@ import Foundation
 import Testing
 @testable import Fastra
 
+@Test("Commit-Diff zeigt Dateiliste und Patch")
+func gitDiff_commitArguments() {
+    #expect(GitDiff.showArguments(hash: "abc123")
+            == ["show", "--stat", "--patch", "abc123"])
+}
+
 @Test("Datei-Diff trennt Pfad sicher von git-Optionen")
 func gitDiff_fileArguments() {
     #expect(GitDiff.showFileArguments(hash: "abc123", path: "Sources/-test.swift")
             == ["show", "--format=", "abc123", "--", "Sources/-test.swift"])
+}
+
+@Test("Datei-Diffs trennen Index, Working-Tree und unversionierte Dateien")
+func gitDiff_changeFileArguments() {
+    let path = "Sources/-test.swift"
+    #expect(GitDiff.stagedFileArguments(path: path)
+            == ["diff", "--cached", "--", path])
+    #expect(GitDiff.unstagedFileArguments(path: path)
+            == ["diff", "--", path])
+    #expect(GitDiff.untrackedFileArguments(path: path)
+            == ["diff", "--no-index", "--", "/dev/null", path])
 }
 
 // MARK: - git log

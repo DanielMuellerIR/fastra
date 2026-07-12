@@ -174,8 +174,20 @@ private struct GitChangeRow: View {
         .background(hovering ? Theme.surfaceRaised : Color.clear)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onTapGesture { openFile() }
+        // Ein Einzelklick öffnet weiterhin die Datei. Der exklusive
+        // Doppelklick öffnet stattdessen nur ihren passenden Git-Diff.
+        .gesture(
+            TapGesture(count: 2)
+                .exclusively(before: TapGesture(count: 1))
+                .onEnded { value in
+                    switch value {
+                    case .first: openDiff()
+                    case .second: openFile()
+                    }
+                }
+        )
         .contextMenu { contextItems }
+        .help(L10n.format("Doppelklick: Diff für %@ öffnen", change.path))
     }
 
     /// Hover-Aktionen: Verwerfen/Bereitstellen (unstaged) bzw. Unstage (staged).
@@ -195,8 +207,9 @@ private struct GitChangeRow: View {
         }
     }
 
-    /// Kontextmenü mit denselben Aktionen (plus „Datei öffnen").
+    /// Kontextmenü mit denselben Aktionen sowie Diff und „Datei öffnen“.
     @ViewBuilder private var contextItems: some View {
+        Button("Änderungen anzeigen (Diff)") { openDiff() }
         Button("Datei öffnen") { openFile() }
         Divider()
         switch section {
@@ -225,5 +238,10 @@ private struct GitChangeRow: View {
     private func openFile() {
         guard let root = workspace.projectURL else { return }
         workspace.loadFile(at: root.appendingPathComponent(change.path))
+    }
+
+    /// Zeigt genau den Diff des Abschnitts, in dem diese Zeile steht.
+    private func openDiff() {
+        workspace.openGitChangeDiff(change: change, staged: section == .staged)
     }
 }

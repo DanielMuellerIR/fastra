@@ -5,7 +5,8 @@ import SwiftUI
 // Kompakter Git-Graph nach dem VS-Code/Codium-Modell: Die Graphbreite richtet
 // sich pro Zeile nach den tatsächlich sichtbaren Lanes, der Autor hängt direkt
 // am Betreff und Detaildaten wandern in den Tooltip. Commits lassen sich inline
-// aufklappen; ein Doppelklick auf eine Datei öffnet ihren Commit-Diff im Editor.
+// aufklappen; ein Doppelklick auf einen Commit oder eine seiner Dateien öffnet
+// den jeweiligen Diff im Editor.
 
 struct GitGraphView: View {
     @EnvironmentObject var workspace: Workspace
@@ -132,13 +133,25 @@ private struct GraphRowView: View {
         .background(hovering ? Theme.surfaceRaised : Color.clear)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onTapGesture {
-            if row.commit.files.isEmpty {
-                workspace.openGitCommit(hash: row.commit.hash)
-            } else {
-                toggleExpanded()
-            }
-        }
+        // Einzel- und Doppelklick werden exklusiv ausgewertet. Sonst würde ein
+        // Doppelklick zuerst den Commit aufklappen und erst danach den Diff
+        // öffnen, was als sichtbares Flackern und Zustandswechsel auffällt.
+        .gesture(
+            TapGesture(count: 2)
+                .exclusively(before: TapGesture(count: 1))
+                .onEnded { value in
+                    switch value {
+                    case .first:
+                        workspace.openGitCommit(hash: row.commit.hash)
+                    case .second:
+                        if row.commit.files.isEmpty {
+                            workspace.openGitCommit(hash: row.commit.hash)
+                        } else {
+                            toggleExpanded()
+                        }
+                    }
+                }
+        )
         .help(tooltip)
     }
 

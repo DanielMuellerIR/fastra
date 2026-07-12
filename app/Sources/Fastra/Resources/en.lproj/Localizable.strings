@@ -417,6 +417,7 @@
 "Ohne Titel" = "Untitled";
 "Git-Verlauf" = "Git History";
 "Git-Diff" = "Git Diff";
+"Git-Diff: %@" = "Git Diff: %@";
 "Keine Änderungen gegenüber HEAD." = "No changes compared with HEAD.";
 "Commit %@" = "Commit %@";
 "Kein Inhalt." = "No Content.";
