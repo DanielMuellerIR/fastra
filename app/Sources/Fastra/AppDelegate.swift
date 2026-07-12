@@ -235,8 +235,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return count
     }
 
+    /// Default (Daniel 2026-07-12): Nach dem Schließen des letzten Fensters
+    /// bleibt die App AKTIV — Fenster-schließen ≠ App-beenden. Fortgeschrittene
+    /// Nutzer wollen oft die letzte Datei schließen und dann eine neue öffnen,
+    /// ohne die App neu zu starten. Über UserDefaults „app.quitOnLastWindowClose"
+    /// umschaltbar (später als Einstellungs-Dialog-Option); unbelegt = false =
+    /// aktiv bleiben.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        UserDefaults.standard.bool(forKey: "app.quitOnLastWindowClose")
+    }
+
+    /// Klick aufs Dock-Icon (oder Reopen), wenn kein Fenster offen ist: ein
+    /// neues, leeres Dokumentfenster öffnen — sonst wäre die aktive App ohne
+    /// Fenster nicht mehr bedienbar (Gegenstück zum „nicht beenden"-Default).
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            DocumentWindowController.openNewDocument()
+        }
+        return true
     }
 
     /// ⌘Q / „Beenden": Bevor die App endet, bei ungespeicherten Änderungen
