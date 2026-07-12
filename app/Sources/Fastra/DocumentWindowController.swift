@@ -19,6 +19,13 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
 
     private init(defaults: UserDefaults) {
         workspace = Workspace(defaults: defaults)
+        // Der Willkommensbildschirm ist die EINMALIGE Einstiegs-Fläche des
+        // Startfensters. Ein per ⌘N geöffnetes Fenster ist dagegen eine aktive
+        // „ich will arbeiten"-Absicht → es startet direkt mit dem leeren Editor,
+        // nicht mit einer weiteren Willkommensseite. Sonst ließen sich per ⌘N
+        // beliebig viele Willkommens-Fenster stapeln (Daniel-Befund 2026-07-12:
+        // „nie mehr als ein Willkommen").
+        workspace.welcomeDismissed = true
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1100, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -28,7 +35,13 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         super.init()
 
         window.identifier = NSUserInterfaceItemIdentifier("Fastra.DocumentWindow")
-        window.title = workspace.activeTab?.title ?? "Ohne Titel"
+        // Ein frisches ⌘N-Fenster startet im Willkommen-Zustand (leerer,
+        // unbenannter Tab) → Titel wie das Startfenster, nicht „Ohne Titel".
+        // Danach hält die `MainWindowTitleBridge` (in ContentView) den Titel
+        // live aktuell, sobald echte Dateien geöffnet werden.
+        window.title = workspace.isWelcomeScreen
+            ? "Fastra – Texteditor"
+            : (workspace.activeTab?.title ?? "Fastra")
         window.isReleasedWhenClosed = false
         window.contentMinSize = NSSize(width: 1100, height: 720)
         window.delegate = self
@@ -62,6 +75,14 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         let controller = DocumentWindowController(defaults: defaults)
         openControllers[ObjectIdentifier(controller.window)] = controller
         controller.window.makeKeyAndOrderFront(nil)
+        // Ins „Fenster"-Menü aufnehmen. Per AppKit erzeugte Fenster tauchen dort
+        // sonst nicht auf — bei mehreren Fenstern war nur das SwiftUI-Startfenster
+        // gelistet (Daniel-Befund 2026-07-12). Den Titel hält AppKit danach
+        // automatisch synchron zu `window.title`; `removeWindowsItem` räumt beim
+        // Schließen wieder auf.
+        NSApp.addWindowsItem(controller.window,
+                             title: controller.window.title,
+                             filename: false)
         Workspace.shared = controller.workspace
         return controller.workspace
     }
@@ -79,6 +100,7 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         workspace.showSearchDialog = false
+        NSApp.removeWindowsItem(window)
         Self.openControllers.removeValue(forKey: ObjectIdentifier(window))
     }
 }

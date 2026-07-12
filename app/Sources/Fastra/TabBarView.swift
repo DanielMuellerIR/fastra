@@ -9,6 +9,11 @@ struct TabBarView: View {
                 HStack(spacing: 1) {
                     ForEach(workspace.tabs) { tab in
                         TabPill(tab: tab,
+                                // Im Willkommen-Zustand ist das einzige (leere,
+                                // unbenannte) Start-Dokument keine echte Datei —
+                                // der Tab heißt dann „Willkommen" und meint die
+                                // Willkommensseite, nicht „Ohne Titel".
+                                displayTitle: workspace.isWelcomeScreen ? "Willkommen" : tab.title,
                                 isActive: tab.id == workspace.activeTabID,
                                 canCloseOthers: workspace.tabs.count > 1) {
                             workspace.activeTabID = tab.id
@@ -48,6 +53,9 @@ struct TabBarView: View {
 
 private struct TabPill: View {
     let tab: EditorTab
+    /// Anzuzeigende Beschriftung. Normalerweise `tab.title`; im Willkommen-
+    /// Zustand vom Aufrufer auf „Willkommen" gesetzt.
+    let displayTitle: String
     let isActive: Bool
     let canCloseOthers: Bool
     let onSelect: () -> Void
@@ -70,7 +78,7 @@ private struct TabPill: View {
                         .font(.system(size: 11))
                         .foregroundColor(Theme.textSecondary)
                 }
-                Text(tab.title)
+                Text(displayTitle)
                     .font(Theme.uiSmall)
                     .lineLimit(1)
                     .foregroundColor(isActive ? Theme.textPrimary : Theme.textSecondary)

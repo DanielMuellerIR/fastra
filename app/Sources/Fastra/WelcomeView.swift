@@ -34,10 +34,18 @@ struct WelcomeView: View {
             Text("Fastra")
                 .font(.system(size: 34, weight: .semibold, design: .default))
                 .foregroundColor(Theme.textPrimary)
-            Text("Suchen & Ersetzen, das niemand sonst hat.")
+            // Latein-Motto (Umkehrung von „per aspera ad astra") — kursiv,
+            // identisch zum AboutWindow. Darunter die sachliche Erklärung,
+            // was Fastra ist (ersetzt den früheren werblichen Ein-Zeiler).
+            Text("facillime ad astra")
                 .font(Theme.uiFont)
+                .italic()
                 .foregroundColor(Theme.textSecondary)
                 .padding(.top, 4)
+            Text("Texteditor mit besonderen Suchen-&-Ersetzen-Fähigkeiten")
+                .font(Theme.uiSmall)
+                .foregroundColor(Theme.textSecondary)
+                .padding(.top, 2)
 
             // Einstiegs-Aktionen.
             VStack(alignment: .leading, spacing: 10) {

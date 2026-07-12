@@ -506,6 +506,18 @@ final class Workspace: ObservableObject {
         tabs.first(where: { $0.id == activeTabID }) ?? tabs.first
     }
 
+    /// `true`, wenn dieses Fenster gerade den Willkommensbildschirm zeigt
+    /// (noch keine echte Datei offen). Bündelt die pure `WelcomeLogic` mit dem
+    /// aktuellen Workspace-Zustand an EINER Stelle — Tab-Beschriftung
+    /// („Willkommen") und Fenstertitel (kein „Ohne Titel") greifen darauf zu,
+    /// damit beide dieselbe Wahrheit nutzen wie die Editor-/Welcome-Umschaltung
+    /// in `ContentView`.
+    var isWelcomeScreen: Bool {
+        WelcomeLogic.shouldShow(tabs: tabs,
+                                hasProject: projectURL != nil,
+                                dismissed: welcomeDismissed)
+    }
+
     private var activeTabIndex: Int? {
         guard let id = activeTabID else { return nil }
         return tabs.firstIndex(where: { $0.id == id })

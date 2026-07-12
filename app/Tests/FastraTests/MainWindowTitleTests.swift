@@ -40,3 +40,14 @@ func missingTabFallsBackToAppName() {
     #expect(metadata.title == "Fastra")
     #expect(metadata.representedURL == nil)
 }
+
+@Test("Willkommen-Zustand zeigt App-Titel statt Dateiname, kein Pfadmenü")
+func welcomeStateShowsAppTitleNotUntitled() {
+    // Selbst wenn der (leere) Start-Tab „Ohne Titel" heißt: im Willkommen-
+    // Zustand darf die Titelzeile das nicht zeigen (es ist noch keine Datei).
+    let tab = EditorTab(title: "Ohne Titel", path: "noch nicht gespeichert")
+    let metadata = MainWindowTitleMetadata.from(tab, welcomeActive: true)
+    #expect(metadata.title == "Fastra – Texteditor")
+    #expect(metadata.representedURL == nil)
+    #expect(!metadata.isDocumentEdited)
+}

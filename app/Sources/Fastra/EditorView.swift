@@ -27,12 +27,34 @@ struct EditorView: View {
     /// hervorheben). Reiner UI-Zustand.
     @State private var isDropTargeted = false
 
+    /// Seitenleisten-Breite beim Beginn eines Splitter-Ziehvorgangs. `nil`
+    /// zwischen den Zieh-Vorgängen. Nötig, weil `DragGesture.translation`
+    /// den Gesamt-Versatz seit Zieh-Beginn liefert (kein Einzel-Delta).
+    @State private var sidebarDragStart: Double?
+
     /// Zeilenumbruch am Fensterrand (BBEdit „Soft Wrap Text"). App-weite,
     /// persistente Einstellung — gesetzt über den Menüpunkt „Zeilen umbrechen"
     /// (FastraApp) bzw. später den Einstellungs-Dialog. Default AN: ohne
     /// Umbruch ist langer Text bei fehlendem Start-Scrollbalken sonst gar
     /// nicht erreichbar (siehe `syncHorizontalScroller`).
     @AppStorage("editor.wrapLines") private var wrapLines = true
+
+    /// Rechter Vorschau-Streifen (CESE-Minimap) an/aus. App-weit und persistent,
+    /// umschaltbar über „Darstellung → Minimap anzeigen". Default AUS
+    /// (Daniel-Befund 2026-07-12): Die Minimap verdeckte rechts Text, bis ein
+    /// Relayout griff, und stand im Verdacht, über eine Exception im
+    /// Minimap-Layout-Pfad die Editor-Darstellung einfrieren zu lassen. Wie
+    /// `wrapLines` reconciled CESE die Änderung live (`peripherals.showMinimap`).
+    @AppStorage("editor.showMinimap") private var showMinimap = false
+
+    /// Breite der linken Seitenleiste (Dateibaum/„GEÖFFNET"). App-weit und
+    /// persistent; über den Splitter zwischen Seitenleiste und Editor ziehbar
+    /// (Daniel-Wunsch 2026-07-12). Geklemmt auf einen sinnvollen Bereich.
+    @AppStorage("editor.sidebarWidth") private var sidebarWidth = 200.0
+
+    /// Grenzen der Seitenleisten-Breite beim Ziehen des Splitters.
+    private let sidebarMinWidth: CGFloat = 140
+    private let sidebarMaxWidth: CGFloat = 480
 
     /// Effektives Erscheinungsbild des Fensters (hell/dunkel) — wählt das
     /// CESE-Editor-Theme. Ändert sich die Appearance (System-Wechsel oder
@@ -44,10 +66,13 @@ struct EditorView: View {
     var body: some View {
         HStack(spacing: 0) {
             sidebar
-                .frame(width: 200)
+                // Breite kommt aus der persistenten Einstellung; per Splitter
+                // ziehbar (siehe `sidebarSplitter`). Klemmen schützt vor einer
+                // gespeicherten Un-Breite (z.B. 0) aus einer früheren Version.
+                .frame(width: min(max(CGFloat(sidebarWidth), sidebarMinWidth), sidebarMaxWidth))
                 .background(Theme.surfaceSand.opacity(0.4))
 
-            Divider().opacity(0.3)
+            sidebarSplitter
 
             sourceEditor
                 .background(Theme.surfaceRaised)
@@ -473,7 +498,12 @@ struct EditorView: View {
                 wrapLines: wrapLines,
                 tabWidth: 4
             ),
-            layout: .init(contentInsets: NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0))
+            layout: .init(contentInsets: NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)),
+            // Rechter Vorschau-Streifen (Minimap) reaktiv aus `showMinimap`.
+            // Eine echte Änderung erzeugt eine ungleiche Config → CESE
+            // reconciled `minimapView.isHidden` + Text-Insets live (gleicher
+            // Mechanismus wie bei `wrapLines`).
+            peripherals: .init(showMinimap: showMinimap)
         )
     }
 
@@ -526,6 +556,38 @@ struct EditorView: View {
     }
 
     // MARK: Sidebar (Projekt-Dateibaum + geöffnete Dateien)
+
+    /// Ziehbarer Splitter zwischen Seitenleiste und Editor. Optisch die bisherige
+    /// dünne Trennlinie, aber mit etwas breiterer, unsichtbarer Greiffläche und
+    /// Resize-Cursor (↔). Ziehen aktualisiert die persistente `sidebarWidth`.
+    private var sidebarSplitter: some View {
+        Divider()
+            .opacity(0.3)
+            .overlay(
+                Color.clear
+                    .frame(width: 8)
+                    .contentShape(Rectangle())
+                    // Mauszeiger zum Resize-Cursor, solange er über dem
+                    // Splitter steht; beim Verlassen zurücksetzen.
+                    .onHover { hovering in
+                        if hovering { NSCursor.resizeLeftRight.push() }
+                        else { NSCursor.pop() }
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                // Startbreite beim ersten Änderungs-Event merken.
+                                let start = sidebarDragStart ?? sidebarWidth
+                                if sidebarDragStart == nil { sidebarDragStart = start }
+                                let proposed = start + Double(value.translation.width)
+                                // Auf den erlaubten Bereich klemmen.
+                                sidebarWidth = min(max(proposed, Double(sidebarMinWidth)),
+                                                   Double(sidebarMaxWidth))
+                            }
+                            .onEnded { _ in sidebarDragStart = nil }
+                    )
+            )
+    }
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 1) {

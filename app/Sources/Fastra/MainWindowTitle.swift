@@ -25,7 +25,20 @@ struct MainWindowTitleMetadata: Equatable {
     let representedURL: URL?
     let isDocumentEdited: Bool
 
-    static func from(_ tab: EditorTab?) -> MainWindowTitleMetadata {
+    /// - Parameter welcomeActive: `true`, solange das Fenster den
+    ///   Willkommensbildschirm zeigt (noch keine echte Datei offen). Dann
+    ///   soll die Titelzeile NICHT „Ohne Titel" anzeigen (das leere Start-
+    ///   Dokument ist noch keine Datei), sondern schlicht den App-Namen mit
+    ///   Zusatz — und kein Datei-Icon/Pfadmenü (Daniel-Befund 2026-07-12).
+    static func from(_ tab: EditorTab?, welcomeActive: Bool = false) -> MainWindowTitleMetadata {
+        if welcomeActive {
+            return MainWindowTitleMetadata(
+                title: "Fastra – Texteditor",
+                representedURL: nil,
+                isDocumentEdited: false
+            )
+        }
+
         guard let tab else {
             return MainWindowTitleMetadata(
                 title: "Fastra",

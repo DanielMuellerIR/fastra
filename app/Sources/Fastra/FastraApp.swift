@@ -15,6 +15,9 @@ struct FastraApp: App {
     // Zeilenumbruch am Fensterrand — app-weite, persistente Einstellung,
     // geteilt mit EditorView über denselben AppStorage-Schlüssel. Default AN.
     @AppStorage("editor.wrapLines") private var wrapLines = true
+    // Rechter Vorschau-Streifen (Minimap) an/aus — geteilt mit EditorView über
+    // denselben AppStorage-Schlüssel. Default AUS (siehe EditorView-Kommentar).
+    @AppStorage("editor.showMinimap") private var showMinimap = false
 
     var body: some Scene {
         // Das Startfenster bleibt eine einzelne `Window`-Scene. So kann SwiftUI
@@ -69,6 +72,9 @@ struct FastraApp: App {
                 // Toggle in den Commands → checkbarer Menüpunkt im „Darstellung".
                 Toggle("Zeilen umbrechen", isOn: $wrapLines)
                     .keyboardShortcut("l", modifiers: [.command, .shift])
+                // Rechter Vorschau-Streifen (Minimap). Default AUS — verdeckte
+                // rechts Text und stand im Freeze-Verdacht (Daniel 2026-07-12).
+                Toggle("Minimap anzeigen", isOn: $showMinimap)
                 Button("Markdown-Vorschau ein-/ausblenden") {
                     markdownPreview.toggle(for: commandWorkspace)
                 }

@@ -34,9 +34,7 @@ struct ContentView: View {
             // ersetzt den Editor-Bereich, solange nichts geöffnet ist
             // (Bedingung pur in WelcomeLogic, getestet). Tab-Leiste und
             // Footer bleiben stehen — nur die Editor-Fläche wechselt.
-            if WelcomeLogic.shouldShow(tabs: workspace.tabs,
-                                       hasProject: workspace.projectURL != nil,
-                                       dismissed: workspace.welcomeDismissed) {
+            if workspace.isWelcomeScreen {
                 WelcomeView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -65,7 +63,9 @@ struct ContentView: View {
         // nativen Fenster. AppKit baut daraus das CMD-Klick-Pfadmenü und kann
         // dessen Ordner direkt im Finder öffnen.
         .background(
-            MainWindowTitleBridge(metadata: .from(workspace.activeTab), workspace: workspace)
+            MainWindowTitleBridge(metadata: .from(workspace.activeTab,
+                                                  welcomeActive: workspace.isWelcomeScreen),
+                                  workspace: workspace)
                 .frame(width: 0, height: 0)
         )
         // „Vorschau der Änderungen" (v0.10): Sheet mit echtem Vorher/Nachher-Diff
