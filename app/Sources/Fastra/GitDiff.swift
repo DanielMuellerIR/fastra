@@ -21,6 +21,12 @@ enum GitDiff {
         ["show", hash]
     }
 
+    /// Nur den Patch einer Datei aus einem Commit laden. `--` trennt den
+    /// Repo-Pfad sicher von Optionen (auch bei Dateinamen, die mit `-` starten).
+    static func showFileArguments(hash: String, path: String) -> [String] {
+        ["show", "--format=", hash, "--", path]
+    }
+
     /// Klassifiziert eine einzelne Diff-Zeile für die Färbung. Pure Funktion.
     static func classify(_ line: String) -> GitDiffLineKind {
         if line.hasPrefix("diff --git") || line.hasPrefix("index ")

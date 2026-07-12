@@ -1399,6 +1399,16 @@ final class Workspace: ObservableObject {
                    emptyText: L10n.string("Kein Inhalt."))
     }
 
+    /// Öffnet aus einem aufgeklappten Graph-Commit genau den Patch der
+    /// doppelgeklickten Datei im Hauptbereich. Der vollständige Repo-Pfad im
+    /// Titel verhindert Kollisionen bei gleichnamigen Dateien in Unterordnern.
+    func openGitCommitFile(hash: String, path: String) {
+        let title = L10n.format("%@ in %@", path, String(hash.prefix(7)))
+        loadGitTab(kind: .commit, title: title,
+                   args: GitDiff.showFileArguments(hash: hash, path: path),
+                   emptyText: L10n.string("Kein Inhalt."))
+    }
+
     /// Kern für alle Git-Text-Tabs: git asynchron ausführen und das Ergebnis in
     /// einen read-only-Tab schreiben. Dedup: pro `(kind, title)` genau ein Tab —
     /// erneuter Aufruf frischt den bestehenden Tab auf, statt zu duplizieren.

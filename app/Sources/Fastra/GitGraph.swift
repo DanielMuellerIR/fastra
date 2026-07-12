@@ -13,18 +13,50 @@ import Foundation
 // MARK: - Datenmodell
 
 /// Ein einzelner Commit, so wie ihn `git log` liefert. Rein datenhaltend.
+struct GitCommitFile: Equatable, Identifiable {
+    let path: String
+    let status: String
+    let additions: Int?
+    let deletions: Int?
+
+    var id: String { path }
+    var name: String { (path as NSString).lastPathComponent }
+    var directory: String {
+        let value = (path as NSString).deletingLastPathComponent
+        return value == "." ? "" : value
+    }
+}
+
 struct GitCommit: Equatable, Identifiable {
     let hash: String          // voller SHA-1
     let parents: [String]     // Eltern-Hashes; leer = Root, ≥2 = Merge
     let author: String        // Autorname
     let date: String          // Autor-Datum, ISO-kurz (YYYY-MM-DD)
+    let timestamp: Int64      // Autor-Datum als Unix-Zeit für Tooltip/Relativzeit
     let refs: [String]        // Decorations: "HEAD -> main", "origin/main", "tag: v1.0"
     let subject: String       // erste Commit-Zeile
+    let files: [GitCommitFile]
 
     var id: String { hash }
 
     /// Kurz-Hash für die Anzeige (VS-Code-Stil: 7 Zeichen).
     var shortHash: String { String(hash.prefix(7)) }
+
+    var additions: Int { files.compactMap(\.additions).reduce(0, +) }
+    var deletions: Int { files.compactMap(\.deletions).reduce(0, +) }
+
+    init(hash: String, parents: [String], author: String, date: String,
+         timestamp: Int64 = 0, refs: [String], subject: String,
+         files: [GitCommitFile] = []) {
+        self.hash = hash
+        self.parents = parents
+        self.author = author
+        self.date = date
+        self.timestamp = timestamp
+        self.refs = refs
+        self.subject = subject
+        self.files = files
+    }
 }
 
 /// Eine gezeichnete Linie innerhalb EINER Graph-Zeile. Die Zeile ist ein festes
@@ -68,7 +100,9 @@ enum GitGraph {
     // Steuerzeichen als Trennzeichen, damit `|`/Kommas in Betreff/Refs nicht
     // stören: RS (0x1e) trennt Commits, US (0x1f) trennt Felder.
     //   %H = voller Hash · %P = Eltern (leer-getrennt) · %an = Autor
-    //   %as = Autor-Datum (YYYY-MM-DD) · %D = Decorations · %s = Betreff
+    //   %as = Autor-Datum (YYYY-MM-DD) · %at = Unix-Zeit
+    //   %D = Decorations · %s = Betreff. Danach liefern `--raw --numstat`
+    //   pro Datei Status sowie Einfügungen/Löschungen.
     private static let recordSep = "\u{1e}"
     private static let unitSep   = "\u{1f}"
 
@@ -77,7 +111,10 @@ enum GitGraph {
     /// die Obergrenze deckelt sehr große Historien.
     static let arguments: [String] = [
         "log", "--all", "--topo-order", "-2000",
-        "--pretty=format:\u{1e}%H\u{1f}%P\u{1f}%an\u{1f}%as\u{1f}%D\u{1f}%s",
+        "--pretty=format:\u{1e}%H\u{1f}%P\u{1f}%an\u{1f}%as\u{1f}%at\u{1f}%D\u{1f}%s",
+        // Merge-Dateien relativ zum ersten Eltern-Commit zeigen. Ohne diese
+        // Option lässt git bei Merge-Commits Raw-/Numstat-Daten komplett weg.
+        "--raw", "--numstat", "--diff-merges=first-parent",
     ]
 
     /// Wandelt die rohe `git log`-Ausgabe in Commits. Robust gegen Sonderzeichen
@@ -86,7 +123,7 @@ enum GitGraph {
     static func parse(_ raw: String) -> [GitCommit] {
         raw.components(separatedBy: recordSep).compactMap { record -> GitCommit? in
             let fields = record.components(separatedBy: unitSep)
-            guard fields.count >= 6 else { return nil }
+            guard fields.count >= 7 else { return nil }
             let hash = fields[0].trimmingCharacters(in: .whitespacesAndNewlines)
             guard !hash.isEmpty else { return nil }
 
@@ -95,20 +132,57 @@ enum GitGraph {
                 .map(String.init)
 
             // Decorations: git trennt sie mit ", ". Leerer String → keine Refs.
-            let refs = fields[4]
+            let refs = fields[5]
                 .components(separatedBy: ", ")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
+
+            // Das letzte Feld enthält zuerst den Betreff, danach die von
+            // `--raw --numstat` erzeugten Dateizeilen.
+            let payload = fields[6...].joined(separator: unitSep)
+            let payloadLines = payload.components(separatedBy: .newlines)
+            let subject = payloadLines.first ?? ""
+            let detailLines = payloadLines.dropFirst().filter { !$0.isEmpty }
+
+            // `--raw`: Status steht nach dem ersten Tab, bei Umbenennungen ist
+            // der letzte Pfad der neue Zielpfad. Reihenfolge entspricht numstat.
+            let statuses: [(status: String, path: String)] = detailLines.compactMap { line in
+                guard line.hasPrefix(":") else { return nil }
+                let parts = line.components(separatedBy: "\t")
+                guard parts.count >= 2,
+                      let rawStatus = parts[0].split(separator: " ").last else { return nil }
+                return (String(rawStatus.prefix(1)), parts.last ?? "")
+            }
+            let counts: [(additions: Int?, deletions: Int?, path: String)] = detailLines.compactMap { line in
+                let parts = line.components(separatedBy: "\t")
+                guard parts.count >= 3, !line.hasPrefix(":"),
+                      Int(parts[0]) != nil || parts[0] == "-",
+                      Int(parts[1]) != nil || parts[1] == "-" else { return nil }
+                return (Int(parts[0]), Int(parts[1]), parts.last ?? "")
+            }
+            let fileCount = max(statuses.count, counts.count)
+            let files = (0..<fileCount).map { index -> GitCommitFile in
+                let status: (status: String, path: String) = index < statuses.count
+                    ? statuses[index] : (status: "M", path: "")
+                let count: (additions: Int?, deletions: Int?, path: String) = index < counts.count
+                    ? counts[index] : (additions: nil, deletions: nil, path: "")
+                return GitCommitFile(
+                    path: status.path.isEmpty ? count.path : status.path,
+                    status: status.status,
+                    additions: count.additions,
+                    deletions: count.deletions
+                )
+            }
 
             return GitCommit(
                 hash: hash,
                 parents: parents,
                 author: fields[2],
                 date: fields[3],
+                timestamp: Int64(fields[4]) ?? 0,
                 refs: refs,
-                // Betreff kann selbst US enthalten? Nein — US ist im Text extrem
-                // selten; zur Sicherheit den Rest ab Feld 5 wieder zusammenfügen.
-                subject: fields[5...].joined(separator: unitSep)
+                subject: subject,
+                files: files
             )
         }
     }

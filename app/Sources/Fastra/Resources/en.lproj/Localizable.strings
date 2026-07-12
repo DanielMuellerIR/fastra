@@ -193,6 +193,9 @@
 "Dateien" = "Files";
 "Änderungen" = "Changes";
 "Graph" = "Graph";
+"%lld Dateien geändert, %lld Einfügungen(+), %lld Löschungen(-)" = "%lld files changed, %lld insertions(+), %lld deletions(-)";
+"Doppelklick: Diff für %@ öffnen" = "Double-click: Open diff for %@";
+"%@ in %@" = "%@ in %@";
 "Identifikatoren" = "Identifiers";
 "Datum & Zeit" = "Date & Time";
 "Text-Strukturen" = "Text Structures";

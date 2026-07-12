@@ -94,6 +94,8 @@ Merge-GUI (→ Konflikt-Marker sind editierbarer Text; Button „In FileMerge ö
 **Nachträglich umgesetzt (Daniel, 2026-07-12):** der zunächst verworfene History-Graph
 kam als nativer Seitenleisten-Modus „Graph" mit echten Multi-Lane-Verzweigungslinien
 (VS-Code-Stil) doch hinzu — der ASCII-`git log`-Tab bleibt zusätzlich bestehen (v1.7.0).
+Seit v1.13.0 hängen Autor und Betreff platzsparend zusammen; Commit-Details liegen
+im Tooltip, Commits sind aufklappbar und Datei-Doppelklicks öffnen ihren Diff.
 
 **Release-Gate:** Diese Etappen sind eine größere Änderung — **keine GitHub-Pushes,
 bis alles ordentlich getestet ist** (Daniel, 2026-07-11). Commits + internes Backup

@@ -9,6 +9,33 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.13.0] — 2026-07-13
+
+### Hinzugefügt
+
+- Commits im Git-Graph lassen sich inline aufklappen. Die Dateiliste zeigt
+  Pfad und Git-Status; ein Doppelklick öffnet ausschließlich den Diff dieser
+  Datei aus dem gewählten Commit im Hauptbereich.
+- Der Commit-Tooltip zeigt Autor, relatives und exaktes Datum, Betreff,
+  Datei-/Einfügungs-/Löschungszahlen sowie den Kurz-Hash.
+
+### Verbessert
+
+- Der Graph folgt enger der VS-Code-/Codium-Darstellung: Hauptlane blau,
+  Nebenäste orange, Merge-Knoten als Ring und kompaktere Kurven. Jede Zeile
+  reserviert nur noch die tatsächlich belegten Lanes.
+- Autor und Betreff stehen gemeinsam in einer Zeile; die separate Datumsspalte
+  entfällt zugunsten eines längeren sichtbaren Commit-Texts.
+- Auch Merge-Commits liefern ihre Dateiliste und Änderungszahlen relativ zum
+  ersten Eltern-Commit.
+
+### Qualitätssicherung
+
+- Parser-Tests decken Zeitstempel, Dateistatus und Numstat-Zahlen ab; ein
+  weiterer Test sichert den dateispezifischen Diff-Aufruf und die Merge-Option.
+- 731 Unit-Tests, Lokalisierungs-Audit, App-Build und Graph-Screenshot sind
+  erfolgreich.
+
 ## [v1.12.2] — 2026-07-13
 
 ### Behoben

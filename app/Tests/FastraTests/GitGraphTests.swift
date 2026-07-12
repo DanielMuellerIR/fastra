@@ -10,17 +10,24 @@ import Testing
 
 // Kurzschreibweise: baut die rohe git-log-Ausgabe im erwarteten Format nach
 // (RS = \u{1e} vor jedem Commit, US = \u{1f} zwischen den Feldern).
-private func rawLog(_ commits: [(h: String, p: String, an: String, d: String, refs: String, s: String)]) -> String {
+private func rawLog(_ commits: [(h: String, p: String, an: String, d: String, ts: String, refs: String, s: String)]) -> String {
     commits.map { c in
-        "\u{1e}\(c.h)\u{1f}\(c.p)\u{1f}\(c.an)\u{1f}\(c.d)\u{1f}\(c.refs)\u{1f}\(c.s)"
+        "\u{1e}\(c.h)\u{1f}\(c.p)\u{1f}\(c.an)\u{1f}\(c.d)\u{1f}\(c.ts)\u{1f}\(c.refs)\u{1f}\(c.s)"
     }.joined()
 }
 
 // MARK: - Parser
 
+@Test("Log-Argumente liefern auch für Merge-Commits Dateidetails")
+func arguments_includeMergeDetails() {
+    #expect(GitGraph.arguments.contains("--raw"))
+    #expect(GitGraph.arguments.contains("--numstat"))
+    #expect(GitGraph.arguments.contains("--diff-merges=first-parent"))
+}
+
 @Test("Parser: einzelner Commit, alle Felder")
 func parse_singleCommit() {
-    let raw = rawLog([("abc123", "", "Dana", "2026-07-12", "HEAD -> main", "Erster Commit")])
+    let raw = rawLog([("abc123", "", "Dana", "2026-07-12", "1783872000", "HEAD -> main", "Erster Commit")])
     let commits = GitGraph.parse(raw)
     #expect(commits.count == 1)
     let c = commits[0]
@@ -28,6 +35,7 @@ func parse_singleCommit() {
     #expect(c.parents.isEmpty)
     #expect(c.author == "Dana")
     #expect(c.date == "2026-07-12")
+    #expect(c.timestamp == 1_783_872_000)
     #expect(c.refs == ["HEAD -> main"])
     #expect(c.subject == "Erster Commit")
     #expect(c.shortHash == "abc123")
@@ -35,20 +43,38 @@ func parse_singleCommit() {
 
 @Test("Parser: mehrere Eltern (Merge) leer-getrennt")
 func parse_mergeParents() {
-    let raw = rawLog([("m", "a b", "Dana", "2026-07-12", "", "Merge")])
+    let raw = rawLog([("m", "a b", "Dana", "2026-07-12", "0", "", "Merge")])
     #expect(GitGraph.parse(raw)[0].parents == ["a", "b"])
 }
 
 @Test("Parser: mehrere Decorations werden an ', ' getrennt")
 func parse_refsSplit() {
-    let raw = rawLog([("h", "", "Dana", "2026-07-12", "HEAD -> main, origin/main, tag: v1.0", "x")])
+    let raw = rawLog([("h", "", "Dana", "2026-07-12", "0", "HEAD -> main, origin/main, tag: v1.0", "x")])
     #expect(GitGraph.parse(raw)[0].refs == ["HEAD -> main", "origin/main", "tag: v1.0"])
 }
 
 @Test("Parser: Betreff mit Sonderzeichen (Pipe, Komma) bleibt heil")
 func parse_subjectWithSpecials() {
-    let raw = rawLog([("h", "", "Dana", "2026-07-12", "", "fix(ui): a | b, c")])
+    let raw = rawLog([("h", "", "Dana", "2026-07-12", "0", "", "fix(ui): a | b, c")])
     #expect(GitGraph.parse(raw)[0].subject == "fix(ui): a | b, c")
+}
+
+@Test("Parser: Dateistatus und Änderungszahlen bleiben am Commit")
+func parse_fileDetails() {
+    let raw = rawLog([(
+        "h", "", "Dana", "2026-07-12", "1783872000", "", "Dateien\n"
+        + ":100644 100644 aaaaaaa bbbbbbb M\tSources/App.swift\n"
+        + ":000000 100644 0000000 ccccccc A\tREADME.md\n"
+        + "12\t3\tSources/App.swift\n"
+        + "8\t0\tREADME.md"
+    )])
+    let commit = GitGraph.parse(raw)[0]
+    #expect(commit.files == [
+        GitCommitFile(path: "Sources/App.swift", status: "M", additions: 12, deletions: 3),
+        GitCommitFile(path: "README.md", status: "A", additions: 8, deletions: 0),
+    ])
+    #expect(commit.additions == 20)
+    #expect(commit.deletions == 3)
 }
 
 @Test("Parser: leere/kaputte Datensätze werden übersprungen")

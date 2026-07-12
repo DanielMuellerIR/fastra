@@ -7,6 +7,12 @@ import Foundation
 import Testing
 @testable import Fastra
 
+@Test("Datei-Diff trennt Pfad sicher von git-Optionen")
+func gitDiff_fileArguments() {
+    #expect(GitDiff.showFileArguments(hash: "abc123", path: "Sources/-test.swift")
+            == ["show", "--format=", "abc123", "--", "Sources/-test.swift"])
+}
+
 // MARK: - git log
 
 @Test("Hash aus einfacher Graph-Zeile")
