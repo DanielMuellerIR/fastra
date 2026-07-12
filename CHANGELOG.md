@@ -9,6 +9,15 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.12.1] — 2026-07-13
+
+### Behoben
+
+- Der Git-Graph begrenzt seinen Inhalt nun fest auf die Seitenleistenbreite.
+  Lange Branch-Namen können beim Scrollen zu älteren Verzweigungen keine
+  endlose SwiftUI-Layout-Neuberechnung mit stark wachsendem Speicherverbrauch
+  mehr auslösen.
+
 ## [v1.12.0] — 2026-07-12
 
 ### Hinzugefügt

@@ -39,8 +39,16 @@ struct GitGraphView: View {
                                          nodeRadius: nodeRadius)
                         }
                     }
+                    // Die Breite muss von der Seitenleiste kommen, nicht vom
+                    // breitesten erst beim Scrollen erzeugten Branch-Namen.
+                    // Sonst kann SwiftUI zwischen LazyVStack-Inhalt und
+                    // ScrollView-Breite rückkoppeln und endlos neu layouten.
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 4)
                 }
+                // Überlange Ref-Namen dürfen weder zeichnen noch hit-testen,
+                // außerhalb der tatsächlich sichtbaren Seitenleistenspalte.
+                .clipped()
             }
         }
         .onAppear {
@@ -89,8 +97,13 @@ private struct GraphRowView: View {
             graphCell
             info
         }
-        .frame(height: rowHeight)
         .padding(.horizontal, 8)
+        // Der Rahmen liegt bewusst NACH dem Padding: So meldet die komplette
+        // Zeile immer die verfügbare Breite zurück, auch wenn mehrere feste
+        // Branch-Pillen zusammen breiter wären.
+        .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight,
+               alignment: .leading)
+        .clipped()
         .background(hovering ? Theme.surfaceRaised : Color.clear)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
