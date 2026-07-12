@@ -27,18 +27,18 @@ struct WelcomeView: View {
 
             // Wortmarke — bewusst schlicht (kein Icon-Zirkus), Ton wie AboutWindow.
             Text("Fastra")
-                .font(.system(size: 34, weight: .semibold, design: .default))
+                .fastraFont(size: 34, weight: .semibold, design: .default)
                 .foregroundColor(Theme.textPrimary)
             // Latein-Motto (Umkehrung von „per aspera ad astra") — kursiv,
             // identisch zum AboutWindow. Darunter die sachliche Erklärung,
             // was Fastra ist (ersetzt den früheren werblichen Ein-Zeiler).
             Text("facillime ad astra")
-                .font(Theme.uiFont)
+                .fastraFont(.ui)
                 .italic()
                 .foregroundColor(Theme.textSecondary)
                 .padding(.top, 4)
             Text("Texteditor mit besonderen Suchen-&-Ersetzen-Fähigkeiten")
-                .font(Theme.uiSmall)
+                .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
                 .padding(.top, 2)
 
@@ -62,7 +62,7 @@ struct WelcomeView: View {
             // Zuletzt benutzte Projekte.
             VStack(alignment: .leading, spacing: 2) {
                 Text("ZULETZT BENUTZTE PROJEKTE")
-                    .font(.system(size: 10, weight: .semibold))
+                    .fastraFont(size: 10, weight: .semibold)
                     .tracking(0.6)
                     .foregroundColor(Theme.textSecondary)
                     .padding(.bottom, 6)
@@ -71,7 +71,7 @@ struct WelcomeView: View {
                     // Dezente Erklärung statt leerer Fläche — sagt zugleich,
                     // WIE Projekte in die Liste kommen (automatisch).
                     Text("Projekte merkt sich Fastra von selbst: Öffne eine Datei aus einem Git-Repository oder einen Ordner.")
-                        .font(Theme.uiSmall)
+                        .fastraFont(.small)
                         .foregroundColor(Theme.textSecondary)
                         .frame(maxWidth: 320, alignment: .leading)
                 } else {
@@ -100,13 +100,13 @@ struct WelcomeView: View {
             HStack(spacing: 8) {
                 Image(systemName: system)
                     .foregroundColor(Theme.accentReadable)
-                    .font(.system(size: 13))
+                    .fastraFont(size: 13)
                     .frame(width: 18)
                 Text(title)
-                    .font(Theme.uiFont)
+                    .fastraFont(.ui)
                     .foregroundColor(Theme.textPrimary)
                 Text(shortcut)
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .foregroundColor(Theme.textSecondary)
             }
         }
@@ -125,14 +125,14 @@ private struct ProjectRow: View {
             HStack(spacing: 8) {
                 Image(systemName: "folder")
                     .foregroundColor(Theme.accentReadable)
-                    .font(.system(size: 12))
+                    .fastraFont(size: 12)
                     .frame(width: 18)
                 Text(entry.name)
-                    .font(Theme.uiFont)
+                    .fastraFont(.ui)
                     .foregroundColor(Theme.textPrimary)
                     .lineLimit(1)
                 Text(entry.path)
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .foregroundColor(Theme.textSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)

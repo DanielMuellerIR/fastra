@@ -13,6 +13,7 @@ import CodeEditTextView
 /// Phase-2-Editor: echter Text-Editor mit Sprach-Highlighting via CodeEditSourceEditor.
 struct EditorView: View {
     @EnvironmentObject var workspace: Workspace
+    @Environment(\.uiScale) private var uiScale
     @State private var editorState = SourceEditorState(cursorPositions: [], findPanelVisible: false)
 
     /// Anker-Offset der laufenden Selektion (Zeichen-Index der *fixen*
@@ -147,7 +148,7 @@ struct EditorView: View {
                     ProgressView()
                         .controlSize(.regular)
                     Text("Lade \(workspace.activeTab?.title ?? "…")")
-                        .font(Theme.uiSmall)
+                        .fastraFont(.small)
                         .foregroundColor(Theme.textSecondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -265,7 +266,7 @@ struct EditorView: View {
                     && workspace.activeTabContent.wrappedValue.isEmpty {
                     VStack(spacing: 6) {
                         Text("Datei öffnen (⌘O), Text eingeben oder Datei hierher ziehen")
-                            .font(Theme.uiSmall)
+                            .fastraFont(.small)
                             .foregroundColor(Theme.textSecondary)
                             .multilineTextAlignment(.center)
                     }
@@ -497,7 +498,7 @@ struct EditorView: View {
         .init(
             appearance: .init(
                 theme: colorScheme == .dark ? Self.fastraThemeDark : Self.fastraTheme,
-                font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
+                font: .fastraMonospaced(size: 13, scale: uiScale),
                 wrapLines: wrapLines,
                 tabWidth: 4
             ),
@@ -647,7 +648,7 @@ struct EditorView: View {
             }
 
             Text("GEÖFFNET")
-                .font(.system(size: 10, weight: .semibold))
+                .fastraFont(size: 10, weight: .semibold)
                 .tracking(0.6)
                 .foregroundColor(Theme.textSecondary)
                 .padding(.horizontal, 14)
@@ -668,7 +669,7 @@ struct EditorView: View {
                 workspace.openFile()
             } label: {
                 Label("Datei öffnen…", systemImage: "plus")
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .foregroundColor(Theme.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14)
@@ -692,7 +693,7 @@ private struct SidebarModePicker: View {
                     selection = mode
                 } label: {
                     Text(mode.rawValue)
-                        .font(Theme.uiSmall)
+                        .fastraFont(.small)
                         .foregroundColor(selection == mode ? Theme.textPrimary : Theme.textSecondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 5)
@@ -719,24 +720,24 @@ private struct FileRow: View {
             // braucht ausreichend Kontrast (~4,0:1 statt ~1,4:1 mit Goldgelb).
             Image(systemName: "doc")
                 .foregroundColor(isActive ? Theme.accentReadable : Theme.textSecondary)
-                .font(.system(size: 11))
+                .fastraFont(size: 11)
             // Willkommen-Tab konsistent zur Tab-Leiste als „Willkommen"
             // beschriften (nicht mit seinem Unterbau-Titel „Ohne Titel").
             Text(tab.isWelcome ? "Willkommen" : tab.title)
-                .font(Theme.uiSmall)
+                .fastraFont(.small)
                 .foregroundColor(isActive ? Theme.textPrimary : Theme.textSecondary)
                 .lineLimit(1)
             if tab.isDirty {
                 // Dirty-Punkt: accentReadable statt accent — kleines
                 // Zeichen auf hellem Grund braucht besseren Kontrast.
                 Text("•")
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .foregroundColor(Theme.accentReadable)
             }
             Spacer()
             if tab.hits > 0 {
                 Text("\(tab.hits)")
-                    .font(.system(size: 10, design: .monospaced))
+                    .fastraFont(size: 10, design: .monospaced)
                     .foregroundColor(Theme.textSecondary)
             }
         }

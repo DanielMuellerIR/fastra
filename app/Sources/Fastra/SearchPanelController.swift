@@ -115,6 +115,7 @@ final class SearchPanelController {
         let host = NSHostingController(
             rootView: FloatingSearchDialog()
                 .environmentObject(workspace)
+                .fastraScalingRoot()
         )
         w.contentViewController = host
         w.contentMinSize = NSSize(width: minWidth, height: compactMinHeight)

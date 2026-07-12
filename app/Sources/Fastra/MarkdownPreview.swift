@@ -178,6 +178,7 @@ final class MarkdownPreviewController {
         WorkspaceWindowRegistry.register(workspace, for: window)
         window.contentViewController = NSHostingController(
             rootView: MarkdownPreviewView(workspace: workspace)
+                .fastraScalingRoot()
         )
 
         // Fenstertitel via Combine aktuell halten.
@@ -297,10 +298,10 @@ struct MarkdownPreviewView: View {
             // Leere .md-Datei: Platzhalter statt leerem ScrollView.
             VStack(spacing: 12) {
                 Image(systemName: "doc.text")
-                    .font(.system(size: 40))
+                    .fastraFont(size: 40)
                     .foregroundColor(Theme.textSecondary)
                 Text("Diese Markdown-Datei ist noch leer.")
-                    .font(Theme.uiFont)
+                    .fastraFont(.ui)
                     .foregroundColor(Theme.textSecondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -331,14 +332,14 @@ struct MarkdownPreviewView: View {
         VStack(spacing: 12) {
             // SF-Symbol als visuellen Anker — kein Emoji.
             Image(systemName: "doc.text")
-                .font(.system(size: 40))
+                .fastraFont(size: 40)
                 // textSecondary: sRGB-Wert aus Theme.swift, kein Gray-Colorspace.
                 .foregroundColor(Theme.textSecondary)
             Text("Die Vorschau zeigt Markdown-Dateien (.md)")
-                .font(Theme.uiFont)
+                .fastraFont(.ui)
                 .foregroundColor(Theme.textSecondary)
             Text("Der aktive Tab ist keine Markdown-Datei.")
-                .font(Theme.uiSmall)
+                .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

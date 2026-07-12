@@ -55,6 +55,7 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         window.contentViewController = NSHostingController(
             rootView: ContentView()
                 .environmentObject(workspace)
+                .fastraScalingRoot()
                 .frame(minWidth: 320, minHeight: 200)
                 .background(Theme.surfaceBase.ignoresSafeArea())
         )

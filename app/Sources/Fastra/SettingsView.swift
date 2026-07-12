@@ -22,6 +22,7 @@ import SwiftUI
 /// (eigene `wrapLinesWidth = Spalte × Zeichenbreite`) → als v1.1-Entscheidung
 /// zurückgestellt (siehe todo.md / _log/decisions.md).
 struct SettingsView: View {
+    @Environment(\.uiScale) private var uiScale
     /// App-weiter Umbruch-Default. Gleicher Schlüssel wie EditorView/FastraApp
     /// → die drei Stellen teilen exakt einen Wert.
     @AppStorage("editor.wrapLines") private var wrapLines = true
@@ -45,7 +46,7 @@ struct SettingsView: View {
                      + "(Systemeinstellungen → Erscheinungsbild). „Hell“ und "
                      + "„Dunkel“ legen das Erscheinungsbild von Fastra fest, "
                      + "unabhängig vom System.")
-                    .font(.caption)
+                    .fastraFont(.small)
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } header: {
@@ -57,7 +58,7 @@ struct SettingsView: View {
                 Text("Wirkt sofort in allen geöffneten Tabs. Ohne Umbruch lässt sich "
                      + "langer Text horizontal scrollen. Auch über „Darstellung → "
                      + "Zeilen umbrechen“ (⌘⇧L) umschaltbar.")
-                    .font(.caption)
+                    .fastraFont(.small)
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } header: {
@@ -65,7 +66,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: 300)
+        .frame(width: 420 * uiScale, height: 300 * uiScale)
         // Auswahl sofort app-weit anwenden — alle Fenster (Dokument, Suche,
         // Über, dieser Dialog) wechseln live; die dynamischen Theme-Farben
         // und das Editor-Theme ziehen automatisch mit.

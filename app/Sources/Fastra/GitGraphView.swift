@@ -25,7 +25,7 @@ struct GitGraphView: View {
                 VStack {
                     Spacer()
                     Text("Noch keine Commits.")
-                        .font(Theme.uiSmall)
+                        .fastraFont(.small)
                         .foregroundColor(Theme.textSecondary)
                         .frame(maxWidth: .infinity)
                     Spacer()
@@ -160,17 +160,17 @@ private struct GraphRowView: View {
                 refPill(ref)
             }
             Text(row.commit.subject)
-                .font(Theme.uiSmall)
+                .fastraFont(.small)
                 .foregroundColor(Theme.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 8)
             Text(row.commit.author)
-                .font(.system(size: 10))
+                .fastraFont(size: 10)
                 .foregroundColor(Theme.textSecondary)
                 .lineLimit(1)
             Text(row.commit.date)
-                .font(.system(size: 10, design: .monospaced))
+                .fastraFont(size: 10, design: .monospaced)
                 .foregroundColor(Theme.textSecondary)
                 .lineLimit(1)
         }
@@ -186,10 +186,10 @@ private struct GraphRowView: View {
             .replacingOccurrences(of: "HEAD -> ", with: "")
         return HStack(spacing: 2) {
             if isTag {
-                Image(systemName: "tag.fill").font(.system(size: 7))
+                Image(systemName: "tag.fill").fastraFont(size: 7)
             }
             Text(label)
-                .font(.system(size: 9, weight: isHead ? .bold : .regular, design: .monospaced))
+                .fastraFont(size: 9, weight: isHead ? .bold : .regular, design: .monospaced)
                 .lineLimit(1)
         }
         .foregroundColor(Theme.accentReadable)

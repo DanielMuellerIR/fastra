@@ -89,7 +89,18 @@ kam als nativer Seitenleisten-Modus „Graph" mit echten Multi-Lane-Verzweigungs
 
 **Release-Gate:** Diese Etappen sind eine größere Änderung — **keine GitHub-Pushes,
 bis alles ordentlich getestet ist** (Daniel, 2026-07-11). Commits + internes Backup
-laufen normal weiter.
+laufen normal weiter. (Der frühere technische ghosttext-Blocker ist seit v1.6.1,
+Commit `8656f56`, behoben + per Selbsttest `ghosttext` abgesichert — offen bleibt nur
+die bewusste Release-Abnahme, kein Bug mehr.)
+
+---
+
+## Globale UI-Skalierung (umgesetzt in v1.8.0, 2026-07-12)
+
+- **Globale UI-Skalierung ⌘ +/− / ⌘0:** Schrift, native Controls und die
+  zentralen Leisten-/Feldhöhen skalieren über eine persistente Zoomstufe.
+  `Theme.swift` stellt semantische, per Environment skalierbare Schriftrollen
+  bereit; auch SourceEditor und AppKit-Such-/Trefferfelder ziehen live mit. ✓
 
 ---
 

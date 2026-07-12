@@ -17,7 +17,7 @@ struct FileTreeSidebar: View {
             // Kopfzeile: Projektname + dezenter Schließen-Knopf.
             HStack(spacing: 6) {
                 Text(rootURL.lastPathComponent.uppercased())
-                    .font(.system(size: 10, weight: .semibold))
+                    .fastraFont(size: 10, weight: .semibold)
                     .tracking(0.6)
                     .foregroundColor(Theme.textSecondary)
                     .lineLimit(1)
@@ -26,7 +26,7 @@ struct FileTreeSidebar: View {
                     workspace.closeProject()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .semibold))
+                        .fastraFont(size: 9, weight: .semibold)
                         .foregroundColor(Theme.textSecondary)
                 }
                 .buttonStyle(.plain)
@@ -42,23 +42,23 @@ struct FileTreeSidebar: View {
             if let status = workspace.gitStatus, let branch = status.branch {
                 HStack(spacing: 5) {
                     Image(systemName: "arrow.triangle.branch")
-                        .font(.system(size: 10))
+                        .fastraFont(size: 10)
                         .foregroundColor(Theme.accentReadable)
                     Text(branch)
-                        .font(Theme.uiSmall)
+                        .fastraFont(.small)
                         .foregroundColor(Theme.textPrimary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     if status.ahead > 0 {
                         Label("\(status.ahead)", systemImage: "arrow.up")
                             .labelStyle(.titleAndIcon)
-                            .font(.system(size: 9))
+                            .fastraFont(size: 9)
                             .foregroundColor(Theme.textSecondary)
                     }
                     if status.behind > 0 {
                         Label("\(status.behind)", systemImage: "arrow.down")
                             .labelStyle(.titleAndIcon)
-                            .font(.system(size: 9))
+                            .fastraFont(size: 9)
                             .foregroundColor(Theme.textSecondary)
                     }
                     Spacer(minLength: 0)
@@ -67,7 +67,7 @@ struct FileTreeSidebar: View {
                         workspace.openGitLog()
                     } label: {
                         Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 10))
+                            .fastraFont(size: 10)
                             .foregroundColor(Theme.textSecondary)
                     }
                     .buttonStyle(.plain)
@@ -79,7 +79,7 @@ struct FileTreeSidebar: View {
                         workspace.openGitDiff()
                     } label: {
                         Image(systemName: "plusminus")
-                            .font(.system(size: 10))
+                            .fastraFont(size: 10)
                             .foregroundColor(status.entries.isEmpty ? Theme.textSecondary.opacity(0.5) : Theme.textSecondary)
                     }
                     .buttonStyle(.plain)
@@ -90,7 +90,7 @@ struct FileTreeSidebar: View {
                         gitActionMenuItems
                     } label: {
                         Image(systemName: "ellipsis.circle")
-                            .font(.system(size: 10))
+                            .fastraFont(size: 10)
                             .foregroundColor(Theme.textSecondary)
                     }
                     .menuStyle(.borderlessButton)
@@ -102,7 +102,7 @@ struct FileTreeSidebar: View {
                         workspace.refreshGitStatus()
                     } label: {
                         Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 9, weight: .semibold))
+                            .fastraFont(size: 9, weight: .semibold)
                             .foregroundColor(Theme.textSecondary)
                     }
                     .buttonStyle(.plain)
@@ -227,20 +227,20 @@ private struct FileTreeRow: View {
             HStack(spacing: 5) {
                 if node.isDirectory {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 8, weight: .semibold))
+                        .fastraFont(size: 8, weight: .semibold)
                         .foregroundColor(Theme.textSecondary)
                         .frame(width: 10)
                     Image(systemName: isExpanded ? "folder.fill" : "folder")
-                        .font(.system(size: 11))
+                        .fastraFont(size: 11)
                         .foregroundColor(Theme.textSecondary)
                 } else {
                     Spacer().frame(width: 10)
                     Image(systemName: "doc")
-                        .font(.system(size: 11))
+                        .fastraFont(size: 11)
                         .foregroundColor(isActive ? Theme.accentReadable : Theme.textSecondary)
                 }
                 Text(node.name)
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .foregroundColor(nameColor)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -249,7 +249,7 @@ private struct FileTreeRow: View {
                 // Punkt am Ordner, dessen Inhalt Änderungen enthält.
                 if let gitState {
                     Text(gitState.badge)
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .fastraFont(size: 10, weight: .semibold, design: .monospaced)
                         .foregroundColor(Theme.gitColor(for: gitState))
                         .help(gitState.tooltip)
                 } else if gitFolderChanged {

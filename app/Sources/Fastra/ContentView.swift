@@ -5,6 +5,7 @@ import SwiftUI
 /// das Hauptfenster bleibt während der Suche bedienbar.
 struct ContentView: View {
     @EnvironmentObject var workspace: Workspace
+    @Environment(\.uiScale) private var uiScale
 
     /// Lebenszeit des Panel-Controllers an die ContentView gebunden.
     /// `@State` reicht — der Controller selbst ist keine ObservableObject,
@@ -19,7 +20,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             TabBarView()
-                .frame(height: 44)
+                .frame(height: 44 * uiScale)
 
             Divider().opacity(0.4)
 
@@ -55,7 +56,7 @@ struct ContentView: View {
             }
 
             StatusBarView()
-                .frame(height: 24)
+                .frame(height: 24 * uiScale)
         }
         .background(Theme.surfaceBase)
         .foregroundColor(Theme.textPrimary)

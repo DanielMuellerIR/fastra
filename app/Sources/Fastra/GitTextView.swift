@@ -62,7 +62,7 @@ private struct GitLogRow: View {
 
     var body: some View {
         Text(line.isEmpty ? " " : line)
-            .font(Theme.monoSmall)
+            .fastraFont(.monoSmall)
             .foregroundColor(hash == nil ? Theme.textSecondary : Theme.textPrimary)
             .fixedSize(horizontal: true, vertical: false)
             .padding(.vertical, 1)
@@ -103,7 +103,7 @@ private struct GitDiffRow: View {
 
     var body: some View {
         Text(line.isEmpty ? " " : line)
-            .font(Theme.monoSmall)
+            .fastraFont(.monoSmall)
             .foregroundColor(foreground)
             .fixedSize(horizontal: true, vertical: false)
             .padding(.vertical, 0.5)

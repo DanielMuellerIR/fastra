@@ -311,6 +311,8 @@ final class RegexFieldScrollView: NSScrollView {
 /// ```
 struct RegexFieldView: NSViewRepresentable {
 
+    @Environment(\.uiScale) private var uiScale
+
     // MARK: Parameter
 
     /// Bidirektionales Binding zum Pattern-String.
@@ -380,7 +382,7 @@ struct RegexFieldView: NSViewRepresentable {
         textView.autoresizingMask = [.width]
 
         // Font: Monospaced, wie Theme.monoSmall (11 pt) — passt zur Maske.
-        textView.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        textView.font = .fastraMonospaced(size: 11, scale: uiScale)
 
         // Text und Hintergrund — dynamisch hell/dunkel (Dark Mode v1.1);
         // Insertion-Point mitziehen, sonst bliebe er im Dunkeln schwarz.
@@ -402,7 +404,7 @@ struct RegexFieldView: NSViewRepresentable {
         textView.isAutomaticTextReplacementEnabled = false
 
         // Einzug: TextContainerInset für optisches Padding (wie .roundedBorder).
-        textView.textContainerInset = NSSize(width: 6, height: 4)
+        textView.textContainerInset = NSSize(width: 6 * uiScale, height: 4 * uiScale)
 
         // Delegate: der Coordinator übernimmt textDidChange + doCommandBy.
         textView.delegate = context.coordinator
@@ -468,6 +470,16 @@ struct RegexFieldView: NSViewRepresentable {
         // brauchen den aktuellen Coordinator, nicht den aus makeNSView).
         context.coordinator.parent = self
         textView.delegate = context.coordinator
+
+        // Environment-Änderungen erreichen NSViewRepresentable über diesen
+        // Update-Pfad. So skaliert ein bereits fokussiertes Feld live, ohne
+        // Text, Auswahl oder Undo-Historie neu aufzubauen.
+        let scaledFont = NSFont.fastraMonospaced(size: 11, scale: uiScale)
+        if textView.font?.pointSize != scaledFont.pointSize {
+            textView.font = scaledFont
+            textView.typingAttributes[.font] = scaledFont
+            textView.textContainerInset = NSSize(width: 6 * uiScale, height: 4 * uiScale)
+        }
 
         // Placeholder und onSubmit aktualisieren (können sich ändern).
         textView.placeholder = placeholder

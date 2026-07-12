@@ -143,7 +143,7 @@ struct DonationBannerView: View {
 
             // --- Informationstext ---
             Text("Fastra ist Donationware — wenn es dir hilft, freut sich der Entwickler über eine Spende.")
-                .font(Theme.uiSmall)
+                .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -154,7 +154,7 @@ struct DonationBannerView: View {
                 // URL im Standard-Browser öffnen.
                 NSWorkspace.shared.open(DonationPrompt.donationURL)
             }
-            .font(Theme.uiSmall)
+            .fastraFont(.small)
             .buttonStyle(.borderedProminent)
             .tint(Theme.accent)
 
@@ -162,7 +162,7 @@ struct DonationBannerView: View {
             Button("Später") {
                 onDismiss()
             }
-            .font(Theme.uiSmall)
+            .fastraFont(.small)
             .buttonStyle(.bordered)
         }
         .padding(.horizontal, 16)

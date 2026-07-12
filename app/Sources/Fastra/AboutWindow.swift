@@ -49,7 +49,7 @@ enum AboutWindow {
         // codereview-ok: weak window → ARC gibt das Fenster nach Close frei, weak-Ref wird nil, nächster show() baut korrekt neu; kein Leak (2026-07-01)
 
         // SwiftUI-Inhalt einhängen.
-        let host = NSHostingController(rootView: AboutView())
+        let host = NSHostingController(rootView: AboutView().fastraScalingRoot())
         w.contentViewController = host
         // Fenstergröße darf nicht geändert werden.
         w.contentMinSize = NSSize(width: 320, height: 420)
@@ -99,19 +99,19 @@ private struct AboutView: View {
 
             // --- Name ---
             Text("Fastra")
-                .font(.system(size: 22, weight: .semibold, design: .default))
+                .fastraFont(size: 22, weight: .semibold, design: .default)
                 .foregroundColor(Theme.textPrimary)
                 .padding(.top, 16)
 
             // --- Version ---
             Text("Version \(appVersion)")
-                .font(Theme.uiFont)
+                .fastraFont(.ui)
                 .foregroundColor(Theme.textSecondary)
                 .padding(.top, 4)
 
             // --- Tagline ---
             Text("Suchen & Ersetzen — einfach mit *,\nmächtig mit RegEx. Nativ für den Mac.")
-                .font(Theme.uiFont)
+                .fastraFont(.ui)
                 .foregroundColor(Theme.textPrimary)
                 .multilineTextAlignment(.center)
                 .padding(.top, 16)
@@ -119,7 +119,7 @@ private struct AboutView: View {
 
             // --- Motto (dezent in Sekundärfarbe) ---
             Text("facillime ad astra")
-                .font(Theme.uiSmall)
+                .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
                 .padding(.top, 8)
 
@@ -127,7 +127,7 @@ private struct AboutView: View {
 
             // --- Copyright ---
             Text("© 2026 Daniel Müller")
-                .font(Theme.uiSmall)
+                .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
                 .padding(.bottom, 20)
         }

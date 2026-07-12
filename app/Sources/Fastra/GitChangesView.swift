@@ -27,7 +27,7 @@ struct GitChangesView: View {
                 VStack {
                     Spacer()
                     Text("Keine Änderungen")
-                        .font(Theme.uiSmall)
+                        .fastraFont(.small)
                         .foregroundColor(Theme.textSecondary)
                         .frame(maxWidth: .infinity)
                     Spacer()
@@ -63,7 +63,7 @@ struct GitChangesView: View {
         VStack(spacing: 6) {
             TextField("Nachricht (⌘Enter committet)", text: $workspace.commitMessage, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(Theme.uiSmall)
+                .fastraFont(.small)
                 .lineLimit(1...4)
                 .padding(6)
                 .background(
@@ -76,7 +76,7 @@ struct GitChangesView: View {
                 workspace.gitCommit(message: workspace.commitMessage)
             } label: {
                 Label("Commit", systemImage: "checkmark")
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 5)
             }
@@ -98,13 +98,13 @@ struct GitChangesView: View {
                                actionIcon: String, actionHelp: String) -> some View {
         HStack(spacing: 6) {
             Text(title)
-                .font(.system(size: 10, weight: .semibold))
+                .fastraFont(size: 10, weight: .semibold)
                 .tracking(0.6)
                 .foregroundColor(Theme.textSecondary)
                 .lineLimit(1)                       // nie umbrechen (Daniel 2026-07-12)
                 .fixedSize(horizontal: true, vertical: false)
             Text("\(count)")
-                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .fastraFont(size: 9, weight: .semibold, design: .monospaced)
                 .foregroundColor(Theme.textSecondary)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 1)
@@ -112,7 +112,7 @@ struct GitChangesView: View {
             Spacer(minLength: 0)
             Button(action: action) {
                 Image(systemName: actionIcon)
-                    .font(.system(size: 10, weight: .bold))
+                    .fastraFont(size: 10, weight: .bold)
                     .foregroundColor(Theme.textSecondary)
             }
             .buttonStyle(.plain)
@@ -142,16 +142,16 @@ private struct GitChangeRow: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "doc")
-                .font(.system(size: 11))
+                .fastraFont(size: 11)
                 .foregroundColor(Theme.textSecondary)
             Text(change.name)
-                .font(Theme.uiSmall)
+                .fastraFont(.small)
                 .foregroundColor(Theme.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.middle)
             if !change.directory.isEmpty {
                 Text(change.directory)
-                    .font(.system(size: 10))
+                    .fastraFont(size: 10)
                     .foregroundColor(Theme.textSecondary)
                     .lineLimit(1)
                     .truncationMode(.head)
@@ -162,7 +162,7 @@ private struct GitChangeRow: View {
             }
             // Status-Badge (farbig, mit erklärendem Tooltip).
             Text(state.badge)
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .fastraFont(size: 10, weight: .semibold, design: .monospaced)
                 .foregroundColor(Theme.gitColor(for: state))
                 .help(state.tooltip)
         }
@@ -208,7 +208,7 @@ private struct GitChangeRow: View {
     private func iconButton(_ system: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: system)
-                .font(.system(size: 11, weight: .medium))
+                .fastraFont(size: 11, weight: .medium)
                 .foregroundColor(Theme.textSecondary)
                 .frame(width: 16, height: 16)
                 .contentShape(Rectangle())

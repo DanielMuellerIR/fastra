@@ -20,18 +20,18 @@ struct StatusBarView: View {
                 encodingMenu
                 FooterChip(label: fileType)
                 Text(cursorPosition)
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .foregroundColor(Theme.textSecondary)
                 lineEndingMenu
                 Text(workspace.documentStatsText)
-                    .font(.system(size: 11, design: .monospaced))
+                    .fastraFont(size: 11, design: .monospaced)
                     .foregroundColor(Theme.textSecondary)
                     .help(workspace.statsIsSelection
                           ? "Zeichen / Wörter / Zeilen (Selektion)"
                           : "Zeichen / Wörter / Zeilen (ganze Datei)")
                 if workspace.statsIsSelection {
                     Text("Sel")
-                        .font(.system(size: 9, weight: .semibold))
+                        .fastraFont(size: 9, weight: .semibold)
                         .foregroundColor(Theme.textSecondary)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
@@ -48,15 +48,15 @@ struct StatusBarView: View {
                     // Goldgelb lieferte dort nur ~1,4:1.
                     Circle().fill(Theme.accentReadable).frame(width: 7, height: 7)
                     Text(footerSummary.text)
-                        .font(Theme.uiSmall)
+                        .fastraFont(.small)
                         .foregroundColor(Theme.textSecondary)
                 }
                 Text("⌘F  Suchen")
-                    .font(.system(size: 11, design: .monospaced))
+                    .fastraFont(size: 11, design: .monospaced)
                     .foregroundColor(Theme.textSecondary.opacity(0.7))
                 // Scope-Label (Datei / Ordner) aus den echten Workspace-Daten.
                 Text(footerSummary.label)
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .foregroundColor(Theme.textSecondary)
             }
         }
@@ -100,7 +100,7 @@ struct StatusBarView: View {
             }
         } label: {
             Text(encoding)
-                .font(.system(size: 11, weight: .medium))
+                .fastraFont(size: 11, weight: .medium)
                 .foregroundColor(Theme.textSecondary)
         }
         .menuStyle(.borderlessButton)
@@ -127,7 +127,7 @@ struct StatusBarView: View {
             }
         } label: {
             Text(lineEnding)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .fastraFont(size: 11, weight: .semibold, design: .monospaced)
                 .foregroundColor(Theme.textSecondary)
         }
         .menuStyle(.borderlessButton)
@@ -174,7 +174,7 @@ private struct FooterChip: View {
     let label: String
     var body: some View {
         Text(label)
-            .font(.system(size: 11, weight: .medium))
+            .fastraFont(size: 11, weight: .medium)
             .foregroundColor(Theme.textSecondary)
     }
 }

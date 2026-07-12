@@ -9,6 +9,28 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.8.0] — 2026-07-12
+
+### Hinzugefügt
+
+- **Globale UI-Skalierung über ⌘+, ⌘− und ⌘0:** Editor, Suchfelder,
+  Seitenleiste, Datei-/Änderungs-/Graph-Ansichten, Tab-Leiste, Footer,
+  Willkommensseite, Vorschauen und Hilfsfenster verwenden eine gemeinsame,
+  persistente Zoomstufe. Native SwiftUI-Controls wechseln passend zwischen
+  kleinen, regulären und großen Kontrollgrößen.
+- Semantische Schriftrollen und ein zentraler `uiScale`-Environment-Wert
+  ersetzen die zuvor in `Theme.swift` und Einzelansichten verteilten festen
+  SwiftUI-Schriften. Eingebettete AppKit-Textansichten und der SourceEditor
+  ziehen live mit, ohne Text, Auswahl oder Undo-Historie neu aufzubauen.
+- Unit-Tests sichern Normalstufe, Grenzwerte und monotone Skalierung ab.
+
+### Geändert
+
+- Tab-Leiste, Footer, Suchfelder und die wichtigsten eigenen Control-Rahmen
+  skalieren ihre Höhe zusammen mit der Schrift; die Zoomstufe ist auf einen
+  layoutstabilen Bereich von −3 bis +5 begrenzt und bleibt über App-Starts
+  erhalten.
+
 ## [v1.7.0] — 2026-07-12
 
 ### Hinzugefügt

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TabBarView: View {
     @EnvironmentObject var workspace: Workspace
+    @Environment(\.uiScale) private var uiScale
 
     var body: some View {
         HStack(spacing: 0) {
@@ -34,8 +35,8 @@ struct TabBarView: View {
 
             Button(action: workspace.openNewTab) {
                 Image(systemName: "plus")
-                    .font(.system(size: 12, weight: .medium))
-                    .frame(width: 28, height: 28)
+                    .fastraFont(size: 12, weight: .medium)
+                    .frame(width: 28 * uiScale, height: 28 * uiScale)
                     .foregroundColor(Theme.textSecondary)
             }
             .buttonStyle(.plain)
@@ -63,6 +64,7 @@ private struct TabPill: View {
     let onCloseOthers: () -> Void
 
     @State private var hovering = false
+    @Environment(\.uiScale) private var uiScale
 
     var body: some View {
         Button(action: onSelect) {
@@ -72,21 +74,21 @@ private struct TabPill: View {
                 if tab.isLoading {
                     ProgressView()
                         .controlSize(.small)
-                        .frame(width: 11, height: 11)
+                        .frame(width: 11 * uiScale, height: 11 * uiScale)
                 } else {
                     Image(systemName: "doc.text")
-                        .font(.system(size: 11))
+                        .fastraFont(size: 11)
                         .foregroundColor(Theme.textSecondary)
                 }
                 Text(displayTitle)
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .lineLimit(1)
                     .foregroundColor(isActive ? Theme.textPrimary : Theme.textSecondary)
                 // Treffer-Badge nur anzeigen, wenn die Datei vollständig geladen ist
                 // — während isLoading sind die Treffer noch nicht berechnet.
                 if !tab.isLoading, tab.hits > 0 {
                     Text("\(tab.hits)")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .fastraFont(size: 10, weight: .semibold, design: .monospaced)
                         .foregroundColor(isActive ? Theme.textPrimary : Theme.textSecondary)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
@@ -97,8 +99,8 @@ private struct TabPill: View {
                     // Tab nicht überfahren wird (BBEdit-Stil). Beim Hover wird
                     // daraus das Schließen-X. Gespeicherte Tabs zeigen immer X.
                     Image(systemName: (tab.isDirty && !hovering) ? "circle.fill" : "xmark")
-                        .font(.system(size: (tab.isDirty && !hovering) ? 7 : 8, weight: .bold))
-                        .frame(width: 14, height: 14)
+                        .fastraFont(size: (tab.isDirty && !hovering) ? 7 : 8, weight: .bold)
+                        .frame(width: 14 * uiScale, height: 14 * uiScale)
                         .foregroundColor(hovering ? Theme.textPrimary
                                          : (tab.isDirty ? Theme.accentReadable
                                             : Theme.textSecondary.opacity(0.5)))
@@ -107,7 +109,7 @@ private struct TabPill: View {
                 .help(tab.isDirty ? "Ungespeicherte Änderungen — klicken zum Schließen" : "Tab schließen")
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 7)
+            .padding(.vertical, 7 * uiScale)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(isActive ? Theme.surfaceRaised : Color.clear)

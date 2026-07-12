@@ -124,11 +124,132 @@ enum Theme {
     static let stroke       = dynamic(light: rgb(0, 0, 0, 0.08), dark: rgb(0xFF, 0xFF, 0xFF, 0.10))
     static let strokeStrong = dynamic(light: rgb(0, 0, 0, 0.14), dark: rgb(0xFF, 0xFF, 0xFF, 0.18))
 
-    // MARK: Fonts
+    // Schriftgrößen liegen absichtlich NICHT mehr als fertige `Font`-Werte
+    // hier. Ein fertiger Font kann den Skalierungsfaktor aus dem SwiftUI-
+    // Environment nicht sehen. `FastraFontModifier` weiter unten baut ihn
+    // deshalb erst an der verwendenden View aus Rolle + Faktor zusammen.
+}
 
-    static let uiFont   = Font.system(size: 13, design: .default)
-    static let uiSmall  = Font.system(size: 11, design: .default)
-    static let monoFont = Font.system(size: 13, design: .monospaced)
-    static let monoSmall = Font.system(size: 11, design: .monospaced)
-    static let headline  = Font.system(size: 15, weight: .semibold, design: .default)
+// MARK: - Globale UI-Skalierung
+
+/// Persistente Zoomstufe der gesamten Fastra-Oberfläche.
+///
+/// Eine diskrete Stufe ist stabiler als ein frei gespeicherter Double-Wert:
+/// wiederholtes Vergrößern/Verkleinern sammelt keine Rundungsfehler an und
+/// ⌘0 besitzt immer einen eindeutig definierten Ausgangspunkt.
+enum UIZoom {
+    static let defaultsKey = "ui.zoomLevel"
+    static let minimumLevel = -3
+    static let maximumLevel = 5
+    static let step: CGFloat = 0.13
+
+    static func clamped(_ level: Int) -> Int {
+        min(max(level, minimumLevel), maximumLevel)
+    }
+
+    static func scale(for level: Int) -> CGFloat {
+        1 + CGFloat(clamped(level)) * step
+    }
+}
+
+private struct UIScaleEnvironmentKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 1
+}
+
+extension EnvironmentValues {
+    /// Zentraler Faktor für SwiftUI- und eingebettete AppKit-Oberflächen.
+    var uiScale: CGFloat {
+        get { self[UIScaleEnvironmentKey.self] }
+        set { self[UIScaleEnvironmentKey.self] = newValue }
+    }
+}
+
+/// Semantische Schriftrollen statt verteilter fester Punktgrößen.
+enum FastraFontRole {
+    case ui
+    case small
+    case mono
+    case monoSmall
+    case headline
+
+    fileprivate var size: CGFloat {
+        switch self {
+        case .ui, .mono: return 13
+        case .small, .monoSmall: return 11
+        case .headline: return 15
+        }
+    }
+
+    fileprivate var weight: Font.Weight {
+        self == .headline ? .semibold : .regular
+    }
+
+    fileprivate var design: Font.Design {
+        switch self {
+        case .mono, .monoSmall: return .monospaced
+        default: return .default
+        }
+    }
+}
+
+private struct FastraFontModifier: ViewModifier {
+    @Environment(\.uiScale) private var scale
+    let size: CGFloat
+    let weight: Font.Weight
+    let design: Font.Design
+
+    func body(content: Content) -> some View {
+        content.font(.system(size: size * scale, weight: weight, design: design))
+    }
+}
+
+/// Wurzel-Modifikator für eigenständige Fenster und Panels. Er liest dieselbe
+/// AppStorage-Stufe wie die Menübefehle und reicht den daraus berechneten Faktor
+/// per Environment weiter. Die diskrete `controlSize` lässt native SwiftUI-
+/// Controls passend zur Schrift mitwachsen beziehungsweise schrumpfen.
+private struct FastraScalingRootModifier: ViewModifier {
+    @AppStorage(UIZoom.defaultsKey) private var zoomLevel = 0
+
+    private var scale: CGFloat { UIZoom.scale(for: zoomLevel) }
+    private var controlSize: ControlSize {
+        if scale < 0.9 { return .small }
+        if scale > 1.25 { return .large }
+        return .regular
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.uiScale, scale)
+            .controlSize(controlSize)
+    }
+}
+
+extension View {
+    /// Semantische Fastra-Schrift, die automatisch auf ⌘+/−/0 reagiert.
+    func fastraFont(_ role: FastraFontRole) -> some View {
+        modifier(FastraFontModifier(size: role.size,
+                                    weight: role.weight,
+                                    design: role.design))
+    }
+
+    /// Skalierbarer Sonderfont für Icons, Badges und bewusst abweichende Titel.
+    func fastraFont(size: CGFloat,
+                    weight: Font.Weight = .regular,
+                    design: Font.Design = .default) -> some View {
+        modifier(FastraFontModifier(size: size, weight: weight, design: design))
+    }
+
+    /// Versorgt eine eigenständige SwiftUI-View-Hierarchie mit dem UI-Faktor.
+    func fastraScalingRoot() -> some View {
+        modifier(FastraScalingRootModifier())
+    }
+}
+
+extension NSFont {
+    /// AppKit-Gegenstück zu `fastraFont`: NSTextView und SourceEditor erhalten
+    /// denselben Faktor wie die umgebende SwiftUI-Oberfläche.
+    static func fastraMonospaced(size: CGFloat, scale: CGFloat,
+                                 weight: NSFont.Weight = .regular) -> NSFont {
+        .monospacedSystemFont(ofSize: size * scale, weight: weight)
+    }
 }

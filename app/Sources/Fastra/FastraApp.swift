@@ -18,6 +18,9 @@ struct FastraApp: App {
     // Rechter Vorschau-Streifen (Minimap) an/aus — geteilt mit EditorView über
     // denselben AppStorage-Schlüssel. Default AUS (siehe EditorView-Kommentar).
     @AppStorage("editor.showMinimap") private var showMinimap = false
+    // Globale, persistente UI-Zoomstufe. Die eigentliche Weitergabe an alle
+    // SwiftUI-/AppKit-Unteransichten erledigt `fastraScalingRoot()`.
+    @AppStorage(UIZoom.defaultsKey) private var uiZoomLevel = 0
 
     var body: some Scene {
         // Das Startfenster bleibt eine einzelne `Window`-Scene. So kann SwiftUI
@@ -28,6 +31,7 @@ struct FastraApp: App {
         Window("Fastra", id: "main") {
             ContentView()
                 .environmentObject(workspace)
+                .fastraScalingRoot()
                 // Klein ziehbar (Daniel-Wunsch 2026-07-12): ein Texteditor soll
                 // sich auch als schmaler Streifen neben andere Programme legen
                 // lassen — bei kleiner Größe rücken/verschwinden Dinge, das ist ok.
@@ -70,6 +74,20 @@ struct FastraApp: App {
             // NICHT als CommandMenu("Darstellung") — das legt ein ZWEITES
             // Menü gleichen Namens daneben (Befund Screenshot 2026-06-11).
             CommandGroup(after: .sidebar) {
+                Divider()
+                Button("Darstellung vergrößern") {
+                    uiZoomLevel = UIZoom.clamped(uiZoomLevel + 1)
+                }
+                .keyboardShortcut("+", modifiers: .command)
+                .disabled(uiZoomLevel >= UIZoom.maximumLevel)
+                Button("Darstellung verkleinern") {
+                    uiZoomLevel = UIZoom.clamped(uiZoomLevel - 1)
+                }
+                .keyboardShortcut("-", modifiers: .command)
+                .disabled(uiZoomLevel <= UIZoom.minimumLevel)
+                Button("Originalgröße") { uiZoomLevel = 0 }
+                    .keyboardShortcut("0", modifiers: .command)
+                    .disabled(uiZoomLevel == 0)
                 Divider()
                 // Zeilenumbruch am Fensterrand (BBEdit „Soft Wrap Text").
                 // Toggle in den Commands → checkbarer Menüpunkt im „Darstellung".
@@ -238,6 +256,7 @@ struct FastraApp: App {
         // an ⌘, und legt den Menüpunkt „Einstellungen…" unter dem App-Menü an.
         Settings {
             SettingsView()
+                .fastraScalingRoot()
         }
     }
 

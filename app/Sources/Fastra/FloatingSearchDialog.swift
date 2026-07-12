@@ -21,6 +21,7 @@ import AppKit
 
 struct FloatingSearchDialog: View {
     @EnvironmentObject var workspace: Workspace
+    @Environment(\.uiScale) private var uiScale
 
     /// Steuert das Element-Picker-Popover am `[+]`-Button.
     @State private var showElementPicker = false
@@ -46,7 +47,7 @@ struct FloatingSearchDialog: View {
         // Card-Hintergrund, kein interner Header (Fenster-Titel weg via
         // `titleVisibility = .hidden`, Schließen geht über die roten
         // Punkte der Titelleiste oder den Abbrechen-Button unten).
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12 * uiScale) {
             scopeRow
 
             // Wachsender Ordner-Block — nur bei Scope „Ordner" sichtbar,
@@ -74,7 +75,7 @@ struct FloatingSearchDialog: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
                     Text(warn)
-                        .font(.system(size: 11))
+                        .fastraFont(size: 11)
                         .foregroundColor(.orange)
                         .lineLimit(2)
                 }
@@ -111,8 +112,8 @@ struct FloatingSearchDialog: View {
 
             actionRow
         }
-        .padding(16)
-        .frame(minWidth: 500, maxWidth: .infinity, alignment: .topLeading)
+        .padding(16 * uiScale)
+        .frame(minWidth: 500 * uiScale, maxWidth: .infinity, alignment: .topLeading)
         .background(Theme.surfaceRaised.ignoresSafeArea())
         .animation(.easeOut(duration: 0.22), value: workspace.scope)
         .animation(.easeOut(duration: 0.18), value: workspace.useRegex)
@@ -150,9 +151,9 @@ struct FloatingSearchDialog: View {
     private var scopeRow: some View {
         HStack(spacing: 8) {
             Text("Suchbereich")
-                .font(Theme.uiSmall)
+                .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
-                .frame(width: 80, alignment: .leading)
+                .frame(width: 80 * uiScale, alignment: .leading)
 
             HStack(spacing: 4) {
                 // `.open` („Geöffnet") ist noch NICHT wirklich implementiert:
@@ -173,7 +174,7 @@ struct FloatingSearchDialog: View {
                         // steht unten bei „Treffer (N)". Die Scope-Auswahl bleibt
                         // über die Sand-Füllung markiert.
                         Text(s.rawValue)
-                            .font(Theme.uiSmall)
+                            .fastraFont(.small)
                             .padding(.horizontal, 9)
                             .padding(.vertical, 5)
                             .background(
@@ -214,11 +215,11 @@ struct FloatingSearchDialog: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text("Ordner")
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .foregroundColor(Theme.textSecondary)
-                    .frame(width: 80, alignment: .leading)
+                    .frame(width: 80 * uiScale, alignment: .leading)
                 Text("Zuletzt verwendete Ordner (Auswahl zum Durchsuchen ankreuzen):")
-                    .font(.system(size: 11))
+                    .fastraFont(size: 11)
                     .foregroundColor(Theme.textSecondary)
                 Spacer()
             }
@@ -230,7 +231,7 @@ struct FloatingSearchDialog: View {
                             .toggleStyle(.checkbox)
                             .labelsHidden()
                         Text(entry.path)
-                            .font(.system(size: 11, design: .monospaced))
+                            .fastraFont(size: 11, design: .monospaced)
                             .foregroundColor(Theme.textPrimary)
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -239,7 +240,7 @@ struct FloatingSearchDialog: View {
                             workspace.recentSearchFolders.removeAll { $0.id == entry.id }
                         } label: {
                             Image(systemName: "minus.circle")
-                                .font(.system(size: 11))
+                                .fastraFont(size: 11)
                                 .foregroundColor(Theme.textSecondary.opacity(0.6))
                         }
                         .buttonStyle(.plain)
@@ -256,7 +257,7 @@ struct FloatingSearchDialog: View {
             )
 
             HStack(spacing: 8) {
-                Spacer().frame(width: 80)
+                Spacer().frame(width: 80 * uiScale)
                 Button("Ordner hinzufügen…") {
                     workspace.addSearchFolders()
                 }
@@ -285,9 +286,9 @@ struct FloatingSearchDialog: View {
     private var templateRow: some View {
         HStack(spacing: 8) {
             Text("Vorlage")
-                .font(Theme.uiSmall)
+                .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
-                .frame(width: 80, alignment: .leading)
+                .frame(width: 80 * uiScale, alignment: .leading)
 
             // Vorlage-Dropdown ist **immer** aktiv. Alle Vorlagen sind
             // RegEx-Patterns — beim Auswählen wird der RegEx-Schalter
@@ -309,11 +310,11 @@ struct FloatingSearchDialog: View {
             } label: {
                 HStack {
                     Text(currentTemplateLabel)
-                        .font(Theme.uiSmall)
+                        .fastraFont(.small)
                         .foregroundColor(Theme.textPrimary)
                     Spacer()
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
+                        .fastraFont(size: 9, weight: .semibold)
                         .foregroundColor(Theme.textSecondary)
                 }
                 .padding(.horizontal, 10)
@@ -358,9 +359,9 @@ struct FloatingSearchDialog: View {
     private var findRow: some View {
         HStack(spacing: 8) {
             Text("Suchen")
-                .font(Theme.uiSmall)
+                .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
-                .frame(width: 80, alignment: .leading)
+                .frame(width: 80 * uiScale, alignment: .leading)
 
             // Editierbares Feld MIT Inline-Token-Highlighting (v0.7):
             // NSTextView-basiert (RegexFieldView), Farben pro Token-Typ
@@ -382,7 +383,7 @@ struct FloatingSearchDialog: View {
                 },
                 accessibilityID: "fastra.findField"
             )
-            .frame(height: 24)
+            .frame(height: 24 * uiScale)
             .padding(.horizontal, 4)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -404,7 +405,7 @@ struct FloatingSearchDialog: View {
                 showElementPicker = true
             } label: {
                 Image(systemName: "plus.circle")
-                    .font(.system(size: 14, weight: .regular))
+                    .fastraFont(size: 14, weight: .regular)
                     // Dunkelgrau statt Gelb — gelb auf weiß war zu undeutlich.
                     .foregroundColor(workspace.useRegex ? Theme.textPrimary : Theme.textSecondary.opacity(0.4))
             }
@@ -440,7 +441,7 @@ struct FloatingSearchDialog: View {
             }
         } label: {
             Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 14, weight: .regular))
+                .fastraFont(size: 14, weight: .regular)
                 .foregroundColor(Theme.textPrimary)
         }
         .menuStyle(.borderlessButton)
@@ -468,15 +469,15 @@ struct FloatingSearchDialog: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 14) {
                 Text("Optionen")
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .foregroundColor(Theme.textSecondary)
-                    .frame(width: 80, alignment: .leading)
+                    .frame(width: 80 * uiScale, alignment: .leading)
 
                 // Alle Toggles mit fixedSize, damit ihre Labels bei
                 // minimaler Fensterbreite nicht auf mehrere Zeilen umbrechen.
                 Toggle("RegEx", isOn: $workspace.useRegex)
                     .toggleStyle(.checkbox)
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .fixedSize(horizontal: true, vertical: false)
                     .help("Suchausdruck als regulären Ausdruck behandeln. Aus = wörtliche Suche; Sonderzeichen wie . oder ? werden buchstäblich gesucht.")
 
@@ -488,19 +489,19 @@ struct FloatingSearchDialog: View {
                     set: { workspace.caseSensitive = !$0 }
                 ))
                     .toggleStyle(.checkbox)
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .fixedSize(horizontal: true, vertical: false)
                     .help("Groß- und Kleinschreibung gleich behandeln. Aus = unterscheiden; „Max\" findet dann nicht „max\". Standard: an.")
 
                 Toggle("Ganzes Wort", isOn: $workspace.wholeWord)
                     .toggleStyle(.checkbox)
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .fixedSize(horizontal: true, vertical: false)
                     .help("Findet nur vollständige Wörter. „Test\" findet „Test\", aber nicht „Tester\" oder „Kontest\".")
 
                 Toggle("Wrap-around", isOn: $workspace.wrapAround)
                     .toggleStyle(.checkbox)
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .fixedSize(horizontal: true, vertical: false)
                     .help("Nach dem letzten Treffer geht die Suche oben wieder von vorn los. Aus = die Suche hält am Dateiende an.")
 
@@ -513,7 +514,7 @@ struct FloatingSearchDialog: View {
                         set: { workspace.setSearchInSelectionOnly($0) }
                     ))
                         .toggleStyle(.checkbox)
-                        .font(Theme.uiSmall)
+                        .fastraFont(.small)
                         .fixedSize(horizontal: true, vertical: false)
                         .disabled(workspace.selectionRange == nil && !workspace.searchInSelectionOnly)
                         .help("Suchen und Ersetzen nur innerhalb des aktuell im Editor markierten Texts. Aktivierbar, sobald etwas selektiert ist; die Auswahl wird beim Einschalten eingefroren.")
@@ -533,7 +534,7 @@ struct FloatingSearchDialog: View {
                 HStack {
                     Toggle("∗ wörtlich", isOn: $workspace.treatWildcardLiterally)
                         .toggleStyle(.checkbox)
-                        .font(Theme.uiSmall)
+                        .fastraFont(.small)
                         .fixedSize(horizontal: true, vertical: false)
                         .help("Den Stern ∗ als gewöhnliches Zeichen suchen statt als Platzhalter für beliebigen Text innerhalb einer Zeile (∗∗ fängt auch über Zeilenumbrüche). Standard: aus (∗ ist Platzhalter).")
 
@@ -572,9 +573,9 @@ struct FloatingSearchDialog: View {
     private var replaceRow: some View {
         HStack(spacing: 8) {
             Text("Ersetzen")
-                .font(Theme.uiSmall)
+                .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
-                .frame(width: 80, alignment: .leading)
+                .frame(width: 80 * uiScale, alignment: .leading)
             // Seit v0.7 ebenfalls NSTextView-basiert (RegexFieldView):
             // nimmt Drops der Gruppen-Pills nativ an der Maus-Position an
             // und erlaubt Caret-genaues Einfügen per Pill-Klick (über den
@@ -589,7 +590,7 @@ struct FloatingSearchDialog: View {
                 controller: replaceFieldController,
                 accessibilityID: "fastra.replaceField"
             )
-            .frame(height: 24)
+            .frame(height: 24 * uiScale)
             .padding(.horizontal, 4)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -607,7 +608,7 @@ struct FloatingSearchDialog: View {
                 workspace.swapFindReplace()
             } label: {
                 Image(systemName: "arrow.up.arrow.down")
-                    .font(.system(size: 13, weight: .regular))
+                    .fastraFont(size: 13, weight: .regular)
                     .foregroundColor(Theme.textPrimary)
             }
             .buttonStyle(.plain)
@@ -620,10 +621,10 @@ struct FloatingSearchDialog: View {
     private var groupsRow: some View {
         HStack(spacing: 8) {
             Text("GRUPPEN")
-                .font(.system(size: 10, weight: .semibold))
+                .fastraFont(size: 10, weight: .semibold)
                 .tracking(0.8)
                 .foregroundColor(Theme.textSecondary)
-                .frame(width: 80, alignment: .leading)
+                .frame(width: 80 * uiScale, alignment: .leading)
 
             // Pills LIVE aus der Tokenisierung (v0.7) — eine pro fangender
             // Gruppe im Find-Pattern. Drag ins Replace-Feld ODER Klick
@@ -641,7 +642,7 @@ struct FloatingSearchDialog: View {
                 // Kein Klammern-Wissen voraussetzen: sagen, wie Gruppen
                 // entstehen — tippen ODER geführt im Detail-Bereich.
                 Text("Keine Gruppen — (…) im Suchausdruck setzen oder unten im Detail markieren + „Gruppe definieren\".")
-                    .font(.system(size: 11))
+                    .fastraFont(size: 11)
                     .foregroundColor(Theme.textSecondary)
             }
         }
@@ -658,7 +659,7 @@ struct FloatingSearchDialog: View {
     private var wildcardGroupsRow: some View {
         HStack(spacing: 8) {
             Text("PLATZHALTER")
-                .font(.system(size: 10, weight: .semibold))
+                .fastraFont(size: 10, weight: .semibold)
                 .tracking(0.8)
                 .foregroundColor(Theme.textSecondary)
                 // „PLATZHALTER" ist breiter als die 80-pt-Label-Spalte (anders
@@ -666,7 +667,7 @@ struct FloatingSearchDialog: View {
                 // Eine Zeile erzwingen und bei Bedarf leicht schrumpfen.
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .frame(width: 80, alignment: .leading)
+                .frame(width: 80 * uiScale, alignment: .leading)
 
             // Eine Pille pro Stern. `max(1, …)` ist nur eine defensive Klammer:
             // die Zeile rendert ohnehin nur bei `usesWildcard` (≥ 1 Stern), aber
@@ -716,7 +717,7 @@ struct FloatingSearchDialog: View {
             if !preview.rows.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("VORSCHAU")
-                        .font(.system(size: 10, weight: .semibold))
+                        .fastraFont(size: 10, weight: .semibold)
                         .tracking(0.8)
                         .foregroundColor(Theme.textSecondary)
                     ForEach(preview.rows) { row in
@@ -726,7 +727,7 @@ struct FloatingSearchDialog: View {
                     // Trunkierung"): auf das vollständige Sheet verweisen.
                     if preview.totalChangedLines > preview.rows.count {
                         Text("… und \(preview.totalChangedLines - preview.rows.count) weitere geänderte Zeilen — „Vorschau der Änderungen\" zeigt alle.")
-                            .font(.system(size: 10))
+                            .fastraFont(size: 10)
                             .foregroundColor(Theme.textSecondary)
                     }
                 }
@@ -747,7 +748,7 @@ struct FloatingSearchDialog: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("Treffer (\(scopeTotalMatches))")
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .foregroundColor(Theme.textPrimary)
                 // Spinner, solange im Hintergrund gesucht wird — Folder- ODER
                 // Buffer-Scope (beide laufen async). „Suche noch läuft"-Signal,
@@ -770,7 +771,7 @@ struct FloatingSearchDialog: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.red)
                     Text(msg)
-                        .font(.system(size: 11))
+                        .fastraFont(size: 11)
                         .foregroundColor(.red)
                         .lineLimit(2)
                 }
@@ -796,7 +797,7 @@ struct FloatingSearchDialog: View {
                     Text(workspace.scope == .folder
                          ? "Trefferliste auf 10.000 gekappt — Suchbegriff verfeinern."
                          : "Trefferliste gekappt — Zähler zeigt die wahre Gesamtzahl.")
-                        .font(.system(size: 11))
+                        .fastraFont(size: 11)
                         .foregroundColor(.orange)
                         .lineLimit(2)
                 }
@@ -818,7 +819,7 @@ struct FloatingSearchDialog: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
                     Text("Erste \(workspace.bufferMatches.count) von \(workspace.bufferTotalMatches) Treffern gelistet — Suchbegriff verfeinern. „Alle ersetzen“ erfasst dennoch alle.")
-                        .font(.system(size: 11))
+                        .fastraFont(size: 11)
                         .foregroundColor(.orange)
                         .lineLimit(3)
                 }
@@ -848,7 +849,7 @@ struct FloatingSearchDialog: View {
                     // Leerer Zustand: nur der Hinweis (kein List-Chrome), volle
                     // Breite/Höhe, damit die dunkle Box gefüllt wirkt.
                     Text(emptyHint)
-                        .font(.system(size: 11))
+                        .fastraFont(size: 11)
                         .foregroundColor(Theme.textSecondary)
                         .padding(.horizontal, 8)
                         .padding(.top, 8)
@@ -869,7 +870,7 @@ struct FloatingSearchDialog: View {
                                 }
                             } header: {
                                 Text("\(group.label) (\(group.matches.count))")
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .fastraFont(size: 11, weight: .semibold)
                                     .foregroundColor(Theme.textSecondary)
                             }
                         }
@@ -1069,7 +1070,7 @@ struct FloatingSearchDialog: View {
                     NotificationCenter.default.post(name: .fastraGotoPreviousMatch, object: nil)
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 10, weight: .semibold))
+                        .fastraFont(size: 10, weight: .semibold)
                 }
                 .buttonStyle(.plain)
                 .disabled(workspace.navMatches.isEmpty)
@@ -1078,14 +1079,14 @@ struct FloatingSearchDialog: View {
                 Text(workspace.navMatches.isEmpty
                      ? "0 / 0"
                      : "\(workspace.activeMatchIndex + 1) / \(workspace.navMatches.count)")
-                    .font(.system(size: 11, design: .monospaced))
+                    .fastraFont(size: 11, design: .monospaced)
                     .foregroundColor(Theme.textSecondary)
 
                 Button {
                     NotificationCenter.default.post(name: .fastraGotoNextMatch, object: nil)
                 } label: {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
+                        .fastraFont(size: 10, weight: .semibold)
                 }
                 .buttonStyle(.plain)
                 .disabled(workspace.navMatches.isEmpty)
@@ -1109,7 +1110,7 @@ struct FloatingSearchDialog: View {
         let lineText = activeMatch.map { "Zeile \($0.line) · Spalte \($0.column)" } ?? "kein Treffer"
         return VStack(alignment: .leading, spacing: 6) {
             Text("Detail · \(fileLabel) · \(lineText)")
-                .font(.system(size: 11, weight: .medium))
+                .fastraFont(size: 11, weight: .medium)
                 .foregroundColor(Theme.textSecondary)
 
             // Bei aktivem Treffer: selektierbarer Match-Text mit Gruppen-
@@ -1132,7 +1133,7 @@ struct FloatingSearchDialog: View {
                     )
             } else {
                 Text("Kein Treffer ausgewählt.")
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .foregroundColor(Theme.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 10)
@@ -1395,13 +1396,13 @@ private struct HitRow: View {
                 // `lineLimit(1)` + `fixedSize` verhindern den Umbruch bei ≥5-stelligen Zeilen
                 // (feste 28 pt waren dafür zu schmal); `minWidth` hält die rechtsbündige Spalte.
                 Text(verbatim: FloatingSearchDialog.hitLineLabel(match.line))
-                    .font(.system(size: 10, design: .monospaced))
+                    .fastraFont(size: 10, design: .monospaced)
                     .foregroundColor(Theme.textSecondary)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
                     .frame(minWidth: 28, alignment: .trailing)
                 Text(match.matchText)
-                    .font(Theme.monoSmall)
+                    .fastraFont(.monoSmall)
                     .foregroundColor(Theme.textPrimary)
                     .lineLimit(1)
                 Spacer()
@@ -1453,10 +1454,10 @@ private struct GroupPill: View {
     var body: some View {
         HStack(spacing: 4) {
             Text("$\(group.number)")
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .fastraFont(size: 11, weight: .bold, design: .monospaced)
                 .foregroundColor(Theme.textPrimary)
             Text(label)
-                .font(.system(size: 11, design: .monospaced))
+                .fastraFont(size: 11, design: .monospaced)
                 .foregroundColor(Theme.textPrimary.opacity(0.8))
         }
         .padding(.horizontal, 9)
@@ -1498,12 +1499,12 @@ private struct WildcardPill: View {
     var body: some View {
         HStack(spacing: 4) {
             Text("$\(number)")
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .fastraFont(size: 11, weight: .bold, design: .monospaced)
                 .foregroundColor(Theme.textPrimary)
             // Der Stern als Inhalts-Hinweis (statt eines Gruppen-Texts) — macht
             // sichtbar, dass diese Pille zum N-ten `*` gehört.
             Text("∗")
-                .font(.system(size: 11, design: .monospaced))
+                .fastraFont(size: 11, design: .monospaced)
                 .foregroundColor(Theme.textPrimary.opacity(0.8))
         }
         .padding(.horizontal, 9)
@@ -1528,20 +1529,20 @@ private struct LivePreviewRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(verbatim: "\(row.line)")
-                .font(.system(size: 10, design: .monospaced))
+                .fastraFont(size: 10, design: .monospaced)
                 .foregroundColor(Theme.textSecondary)
                 .frame(width: 40, alignment: .trailing)
             Text(row.before)
-                .font(Theme.monoSmall)
+                .fastraFont(.monoSmall)
                 .foregroundColor(Theme.diffRemovedFG)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: "arrow.right")
-                .font(.system(size: 9))
+                .fastraFont(size: 9)
                 .foregroundColor(Theme.textSecondary)
             Text(row.after)
-                .font(Theme.monoSmall)
+                .fastraFont(.monoSmall)
                 .foregroundColor(Theme.diffAddedFG)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -1563,7 +1564,7 @@ private struct ElementPickerView: View {
                 ForEach(RegexElements.categories) { category in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(category.name.uppercased())
-                            .font(.system(size: 10, weight: .semibold))
+                            .fastraFont(size: 10, weight: .semibold)
                             .tracking(0.6)
                             .foregroundColor(Theme.textSecondary)
                             .padding(.bottom, 2)
@@ -1574,11 +1575,11 @@ private struct ElementPickerView: View {
                             } label: {
                                 HStack(spacing: 10) {
                                     Text(element.symbol)
-                                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                        .fastraFont(size: 12, weight: .semibold, design: .monospaced)
                                         .foregroundColor(Theme.tokenCharClass)
                                         .frame(width: 56, alignment: .leading)
                                     Text(element.hint)
-                                        .font(Theme.uiSmall)
+                                        .fastraFont(.small)
                                         .foregroundColor(Theme.textPrimary)
                                     Spacer(minLength: 0)
                                 }

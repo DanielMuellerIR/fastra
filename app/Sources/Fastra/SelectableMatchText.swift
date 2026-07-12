@@ -17,6 +17,7 @@ import AppKit
 
 /// Read-only, selektierbarer Match-Text mit Gruppen-Hinterlegung.
 struct SelectableMatchText: NSViewRepresentable {
+    @Environment(\.uiScale) private var uiScale
     /// Der exakte Match-Text (nur der Treffer, kein Kontext).
     let matchText: String
     /// Beiträge bestehender Gruppen im Match-Text: (Gruppennummer, Range).
@@ -34,7 +35,7 @@ struct SelectableMatchText: NSViewRepresentable {
         textView.isEditable = false
         textView.isSelectable = true
         textView.drawsBackground = false
-        textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        textView.font = .fastraMonospaced(size: 13, scale: uiScale)
         // Kein Umbruch nötig — Treffer sind kurz; bei Überlänge bricht
         // NSTextView von selbst um (View wächst mit dem SwiftUI-Layout).
         textView.textContainerInset = .zero
@@ -49,6 +50,7 @@ struct SelectableMatchText: NSViewRepresentable {
 
     func updateNSView(_ textView: NSTextView, context: Context) {
         context.coordinator.parent = self
+        textView.font = .fastraMonospaced(size: 13, scale: uiScale)
         // Inhalt + Attribute komplett neu setzen — der Text ist read-only
         // und kurz, ein Voll-Rebuild ist hier unkritisch (kein Tipp-Cursor,
         // der springen könnte).

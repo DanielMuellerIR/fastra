@@ -36,7 +36,7 @@ struct ReplacePreviewView: View {
                 if result.truncated {
                     Text("… und \(result.totalChangedLines - result.rows.count) weitere geänderte "
                          + "Zeilen (Anzeige auf \(maxRows) begrenzt).")
-                        .font(Theme.uiSmall)
+                        .fastraFont(.small)
                         .foregroundColor(Theme.textSecondary)
                         .padding(.vertical, 6)
                 }
@@ -53,15 +53,15 @@ struct ReplacePreviewView: View {
             Image(systemName: "eye.fill")
                 .foregroundColor(Theme.accentReadable)
             Text("Vorschau der Änderungen")
-                .font(Theme.headline)
+                .fastraFont(.headline)
             if let title = workspace.activeTab?.title {
                 Text("· \(title)")
-                    .font(Theme.uiSmall)
+                    .fastraFont(.small)
                     .foregroundColor(Theme.textSecondary)
             }
             Spacer()
             Text(summaryText)
-                .font(Theme.uiSmall)
+                .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
         }
         .padding(.horizontal, 16)
@@ -85,7 +85,7 @@ struct ReplacePreviewView: View {
             Text("Nachher")
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .font(.system(size: 10, weight: .semibold))
+        .fastraFont(size: 10, weight: .semibold)
         .foregroundColor(Theme.textSecondary)
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
@@ -96,14 +96,14 @@ struct ReplacePreviewView: View {
         VStack(spacing: 8) {
             Spacer()
             Image(systemName: "eye.slash")
-                .font(.system(size: 28))
+                .fastraFont(size: 28)
                 .foregroundColor(Theme.textSecondary)
             Text("Keine Ersetzungen in der aktuellen Datei.")
-                .font(Theme.headline)
+                .fastraFont(.headline)
                 .foregroundColor(Theme.textSecondary)
             Text("Suchbegriff UND Ersetzen-Text eingeben — die Vorschau zeigt dann "
                  + "jede betroffene Zeile vorher und nachher.")
-                .font(Theme.uiSmall)
+                .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 420)
@@ -138,12 +138,12 @@ private struct DiffRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             Text(verbatim: "\(row.line)")
-                .font(.system(size: 10, design: .monospaced))
+                .fastraFont(size: 10, design: .monospaced)
                 .foregroundColor(Theme.textSecondary)
                 .frame(width: 56, alignment: .trailing)
                 .padding(.trailing, 8)
             Text(row.before)
-                .font(Theme.monoSmall)
+                .fastraFont(.monoSmall)
                 .foregroundColor(Theme.diffRemovedFG)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -151,7 +151,7 @@ private struct DiffRow: View {
                 .padding(.vertical, 2)
                 .background(Theme.diffRemovedBG)
             Text(row.after)
-                .font(Theme.monoSmall)
+                .fastraFont(.monoSmall)
                 .foregroundColor(Theme.diffAddedFG)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
