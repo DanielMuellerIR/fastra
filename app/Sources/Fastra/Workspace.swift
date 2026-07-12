@@ -186,6 +186,9 @@ final class Workspace: ObservableObject {
     /// kein Repo oder git nicht installiert → keine Git-Anzeige. Asynchron
     /// über `refreshGitStatus()` gefüllt.
     @Published var gitStatus: GitStatusSummary?
+    /// Commit-Botschaft des Änderungen-Tabs (VS-Code-artiges Eingabefeld). Pro
+    /// Fenster; nach erfolgreichem Commit geleert.
+    @Published var commitMessage: String = ""
     // Startet GESCHLOSSEN (Daniel 2026-06-22: „nicht mehr mit offenem Suchdialog
     // starten, das war nur zum Testen"). CMD+F / CMD+SHIFT+F öffnen sie. Die
     // fenster-abhängigen Selbsttests (cmdw/fields) öffnen sie jetzt selbst,

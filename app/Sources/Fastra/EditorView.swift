@@ -31,6 +31,9 @@ struct EditorView: View {
     /// zwischen den Zieh-Vorgängen. Nötig, weil `DragGesture.translation`
     /// den Gesamt-Versatz seit Zieh-Beginn liefert (kein Einzel-Delta).
     @State private var sidebarDragStart: Double?
+    /// Aktueller Seitenleisten-Modus (Dateien / Änderungen / Graph). Nur bei
+    /// Git-Repo umschaltbar; ohne Repo immer „Dateien".
+    @State private var sidebarMode: SidebarMode = .files
 
     /// Zeilenumbruch am Fensterrand (BBEdit „Soft Wrap Text"). App-weite,
     /// persistente Einstellung — gesetzt über den Menüpunkt „Zeilen umbrechen"
@@ -589,7 +592,41 @@ struct EditorView: View {
             )
     }
 
+    /// Ein Git-Repo ist geladen? (Nur dann erscheinen Änderungen/Graph.) Der
+    /// Status wird für Repos asynchron gefüllt und ist für Nicht-Repos `nil`.
+    private var isGitRepo: Bool { workspace.gitStatus != nil }
+
+    /// Verfügbare Modi: ohne Repo nur „Dateien", mit Repo zusätzlich
+    /// „Änderungen" (Graph folgt in einer weiteren Etappe).
+    private var availableModes: [SidebarMode] {
+        isGitRepo ? [.files, .changes] : [.files]
+    }
+
+    /// Effektiver Modus — fällt auf „Dateien" zurück, wenn der gewählte Modus
+    /// gerade nicht verfügbar ist (z.B. Projekt/Git geschlossen).
+    private var effectiveMode: SidebarMode {
+        availableModes.contains(sidebarMode) ? sidebarMode : .files
+    }
+
     private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Umschalter nur zeigen, wenn es überhaupt etwas umzuschalten gibt.
+            if availableModes.count > 1 {
+                SidebarModePicker(modes: availableModes, selection: $sidebarMode)
+                Divider().opacity(0.3)
+            }
+
+            switch effectiveMode {
+            case .files:   filesSidebar
+            case .changes: GitChangesView()
+            case .graph:   filesSidebar   // Platzhalter bis Graph-Etappe
+            }
+        }
+    }
+
+    /// Bisheriger Seitenleisten-Inhalt: Projekt-Dateibaum (falls geladen) plus
+    /// die „GEÖFFNET"-Liste der offenen Tabs.
+    private var filesSidebar: some View {
         VStack(alignment: .leading, spacing: 1) {
             // Projekt geladen → hierarchischer Dateibaum oben, er bekommt
             // den flexiblen Platz; die „GEÖFFNET"-Liste rückt kompakt nach
@@ -629,8 +666,37 @@ struct EditorView: View {
                     .padding(.vertical, 8)
             }
             .buttonStyle(.plain)
-            .help("Datei zum Bearbeiten öffnen (⌘O)")
+            .help("Datei oder Ordner öffnen (⌘O)")
         }
+    }
+}
+
+/// Kleine Segment-Leiste über der Seitenleiste (Dateien / Änderungen / Graph).
+private struct SidebarModePicker: View {
+    let modes: [SidebarMode]
+    @Binding var selection: SidebarMode
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(modes, id: \.self) { mode in
+                Button {
+                    selection = mode
+                } label: {
+                    Text(mode.rawValue)
+                        .font(Theme.uiSmall)
+                        .foregroundColor(selection == mode ? Theme.textPrimary : Theme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(selection == mode ? Theme.surfaceRaised : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
     }
 }
 

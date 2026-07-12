@@ -36,16 +36,46 @@ enum GitFileState: Equatable {
     }
 }
 
+/// Eine Datei mit getrenntem Index- (gestaged) und Working-Tree-Zustand
+/// (ungestaged) — die Grundlage der VS-Code-artigen Änderungen-Ansicht. Eine
+/// Datei kann gleichzeitig gestaged UND ungestaged geändert sein (z.B. Porcelain
+/// „MM"): dann ist sie in beiden Abschnitten sichtbar.
+struct GitChange: Equatable, Identifiable {
+    /// Repo-relativer Pfad (wie git ihn liefert).
+    let path: String
+    /// Zustand im Index (Porcelain-Spalte X) — `nil`, wenn nichts bereitgestellt.
+    let staged: GitFileState?
+    /// Zustand im Working-Tree (Porcelain-Spalte Y) — `nil`, wenn dort nichts offen.
+    let unstaged: GitFileState?
+
+    var id: String { path }
+
+    /// Nur der Dateiname (letzte Pfadkomponente) für die kompakte Anzeige.
+    var name: String { (path as NSString).lastPathComponent }
+    /// Ordner-Anteil (ohne Dateiname) als dezenter Zusatz, „" wenn im Wurzelordner.
+    var directory: String { (path as NSString).deletingLastPathComponent }
+}
+
 /// Zusammenfassung von `git status` für die UI: Branch, Ahead/Behind-Zähler
 /// und der Zustand je Datei (Pfad RELATIV zum Repo-Root, wie git ihn liefert).
 struct GitStatusSummary: Equatable {
     var branch: String?
     var ahead: Int
     var behind: Int
-    /// Repo-relativer Pfad → Zustand. Eine Datei erscheint höchstens einmal.
+    /// Repo-relativer Pfad → kombinierter Zustand. Für die Einfärbung im
+    /// Dateibaum (eine Datei erscheint höchstens einmal).
     var entries: [String: GitFileState]
+    /// Getrennte Index-/Working-Tree-Zustände für die Änderungen-Ansicht,
+    /// in git-Reihenfolge.
+    var changes: [GitChange]
 
-    static let empty = GitStatusSummary(branch: nil, ahead: 0, behind: 0, entries: [:])
+    static let empty = GitStatusSummary(branch: nil, ahead: 0, behind: 0,
+                                        entries: [:], changes: [])
+
+    /// Bereitgestellte Änderungen (Index) — für den „Bereitgestellt"-Abschnitt.
+    var stagedChanges: [GitChange] { changes.filter { $0.staged != nil } }
+    /// Nicht bereitgestellte Änderungen (Working-Tree, inkl. untracked).
+    var unstagedChanges: [GitChange] { changes.filter { $0.unstaged != nil } }
 }
 
 /// Parst die Ausgabe von `git status --porcelain=v1 -b -z` bzw. mit `\n`.
@@ -110,6 +140,35 @@ enum GitStatusParser {
         path = unquote(path)
         guard !path.isEmpty else { return }
         summary.entries[path] = state(x: x, y: y)
+        summary.changes.append(change(x: x, y: y, path: path))
+    }
+
+    /// Zerlegt die zwei Porcelain-Zeichen in getrennten Index-/Working-Tree-
+    /// Zustand für die Änderungen-Ansicht (staged = X, unstaged = Y).
+    private static func change(x: Character, y: Character, path: String) -> GitChange {
+        // Untracked: nur im Working-Tree, nichts gestaged.
+        if x == "?" && y == "?" {
+            return GitChange(path: path, staged: nil, unstaged: .untracked)
+        }
+        // Unmerged/Konflikt: als ungestagete Konflikt-Änderung zeigen.
+        if x == "U" || y == "U" || (x == "D" && y == "D") || (x == "A" && y == "A") {
+            return GitChange(path: path, staged: nil, unstaged: .conflicted)
+        }
+        return GitChange(path: path, staged: sideState(x), unstaged: sideState(y))
+    }
+
+    /// Bildet EIN Porcelain-Zeichen (einer Spalte) auf unseren Zustand ab.
+    /// Leerzeichen = nichts an dieser Stelle.
+    private static func sideState(_ c: Character) -> GitFileState? {
+        switch c {
+        case "M":       return .modified
+        case "A":       return .added
+        case "D":       return .deleted
+        case "R":       return .renamed
+        case "C":       return .modified   // kopiert → als Änderung behandeln
+        case "?":       return .untracked
+        default:        return nil          // " " (nichts) und Unbekanntes
+        }
     }
 
     /// Bildet die zwei Porcelain-Zeichen auf unseren reduzierten Zustand ab.

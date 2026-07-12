@@ -39,6 +39,84 @@ extension Workspace {
         }
     }
 
+    // MARK: - Datei-genaues Staging (Änderungen-Ansicht, VS-Code-artig)
+
+    /// Eine Datei bereitstellen (`git add -- <path>`). Deckt geänderte, gelöschte
+    /// (die Löschung wird bereitgestellt) und untracked Dateien ab.
+    func gitStage(path: String) {
+        runGitAction(["add", "--", path], label: "Bereitstellen")
+    }
+
+    /// Alle Änderungen bereitstellen (`git add -A`).
+    func gitStageAll() {
+        runGitAction(["add", "-A"], label: "Alles bereitstellen")
+    }
+
+    /// Eine Datei aus dem Index nehmen (`git reset -q HEAD -- <path>`). Bewusst
+    /// `reset` statt `restore --staged` — breit kompatibel auch mit älterem git.
+    func gitUnstage(path: String) {
+        runGitAction(["reset", "-q", "HEAD", "--", path], label: "Aus Bereitstellung nehmen")
+    }
+
+    /// Alle bereitgestellten Änderungen aus dem Index nehmen (`git reset -q HEAD`).
+    func gitUnstageAll() {
+        runGitAction(["reset", "-q", "HEAD"], label: "Bereitstellung aufheben")
+    }
+
+    /// Ungespeicherte Änderungen an einer Datei VERWERFEN (destruktiv!). Erst
+    /// Rückfrage. Untracked → Datei löschen (git kennt sie nicht); getrackt →
+    /// Working-Tree auf den Index-/HEAD-Stand zurücksetzen (`git checkout --`).
+    /// Nur in der Unstaged-Sektion angeboten (VS-Code-Platzierung).
+    func gitDiscard(change: GitChange) {
+        guard let root = projectURL else { return }
+        let isUntracked = change.unstaged == .untracked
+        guard Self.confirmDiscard(name: change.name, untracked: isUntracked) else { return }
+        if isUntracked {
+            // Untracked: Datei physisch entfernen (VS-Code-Verhalten „Discard").
+            try? FileManager.default.removeItem(at: root.appendingPathComponent(change.path))
+            refreshGitStatus()
+            refreshOpenGitViews()
+        } else {
+            runGitAction(["checkout", "--", change.path], label: "Verwerfen")
+        }
+    }
+
+    /// Bereitgestellte Änderungen committen. Nichts bereitgestellt → erst alles
+    /// bereitstellen, dann committen (VS-Code-Verhalten). Leere Botschaft = Beep.
+    func gitCommit(message: String) {
+        let msg = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !msg.isEmpty else { NSSound.beep(); return }
+        guard projectURL != nil else { return }
+        let done: () -> Void = { [weak self] in
+            self?.commitMessage = ""
+            self?.refreshGitStatus()
+            self?.refreshOpenGitViews()
+        }
+        if gitStatus?.stagedChanges.isEmpty == false {
+            runGitAction(["commit", "-m", msg], label: "Commit", then: done)
+        } else {
+            runGitAction(["add", "-A"], label: "Bereitstellen") { [weak self] in
+                self?.runGitAction(["commit", "-m", msg], label: "Commit", then: done)
+            }
+        }
+    }
+
+    /// Destruktive Verwerfen-Rückfrage (in Selbsttests via `presentGitDialogs`
+    /// unterdrückt → dort implizit „ja").
+    static func confirmDiscard(name: String, untracked: Bool) -> Bool {
+        guard presentGitDialogs else { return true }
+        let alert = NSAlert()
+        // codereview-ok: „…“ (U+201E/U+201C) IST das korrekte deutsche Anführungszeichen-Paar (2026-07-12)
+        alert.messageText = "Änderungen an „\(name)“ verwerfen?"
+        alert.informativeText = untracked
+            ? "Die nicht versionierte Datei wird gelöscht. Das lässt sich nicht rückgängig machen."
+            : "Die Änderungen an dieser Datei gehen verloren. Das lässt sich nicht rückgängig machen."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Verwerfen")
+        alert.addButton(withTitle: "Abbrechen")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
     // MARK: Netzwerk
 
     /// Lokale Commits hochladen (`git push`). Pfiffiges Extra: hat der aktuelle
