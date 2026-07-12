@@ -22,11 +22,17 @@ Notary-Keychain-Profilname steht bewusst NICHT im Skript; per `NOTARY_PROFILE`
 signiert (schnell, läuft auf diesem Mac sofort).
 
 **Agent-bindend (Daniel, 2026-07-12):** Fastra ist Daniels Daily Driver (löst
-BBEdit/MacDown/TextEdit/VS Codium ab). Deshalb **nach jeder größeren fertigen
-Etappe UND immer bevor Daniel per Hand testen soll: notarisierten Build via
-`install.sh` nach `/Applications` legen** — nicht nur `build.sh`. Beim
-Version-Bump `app/Info.plist` mitziehen (siehe AGENTS.md), sonst zeigt die App
-eine veraltete Version.
+BBEdit/MacDown/TextEdit/VS Codium ab). **NICHT jeden Build notarisieren/
+installieren** — Notarisierung dauert ~2 Min pro Lauf. Notarisierter Build via
+`install.sh` nach `/Applications` nur bei:
+- einer **abgeschlossenen, verifizierten größeren Etappe** (Release-reifer Stand,
+  den Daniel produktiv nutzen soll), oder
+- **auf Ansage** („leg mir einen frischen Build hin").
+
+Für normale Zwischen-Iterationen und Handtests genügt der **Debug-Build**
+(`build.sh` → `../Fastra.app`) oder `install.sh --no-notarize` (signiert, sofort,
+läuft trotzdem gatekeeper-frei). Beim Version-Bump `app/Info.plist` mitziehen
+(siehe AGENTS.md), sonst zeigt die App eine veraltete Version.
 
 `build.sh` kapselt Xcode-Toolchain-Switch + acht Checkout-Patches
 (SwiftLint-Plugin aus, CodeEditSymbols Resources, #Preview-Macro,
