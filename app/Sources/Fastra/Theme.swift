@@ -85,14 +85,18 @@ enum Theme {
 
     // MARK: Git-Status (Etappe 2)
 
+    /// Git-Status-Farben (VS-Code-Sprache, Daniel-Wunsch 2026-07-12): geändert =
+    /// Orange, nicht versioniert = Blau, gelöscht/Konflikt = Rot, neu bereit-
+    /// gestellt = Grün. Eigene, kontraststarke Tokens statt der Diff-Palette.
+    static let gitModified  = dynamic(light: rgb(0xB5, 0x6C, 0x1A), dark: rgb(0xDF, 0xA2, 0x5A)) // orange
+    static let gitUntracked = dynamic(light: rgb(0x2A, 0x66, 0xB5), dark: rgb(0x7F, 0xB0, 0xEE)) // blau
+
     /// Farbe für die Einfärbung eines Datei-Git-Zustands in der Seitenleiste.
-    /// Bewusst aus der vorhandenen Diff-/Akzent-Palette bedient (keine neuen
-    /// Grundfarben): geändert/umbenannt = Gold, neu/hinzugefügt = Grün,
-    /// gelöscht/Konflikt = Rot.
     static func gitColor(for state: GitFileState) -> Color {
         switch state {
-        case .modified, .renamed:   return accentReadable
-        case .untracked, .added:    return diffAddedFG
+        case .modified, .renamed:   return gitModified
+        case .untracked:            return gitUntracked
+        case .added:                return diffAddedFG
         case .deleted, .conflicted: return diffRemovedFG
         }
     }

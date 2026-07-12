@@ -251,6 +251,7 @@ private struct FileTreeRow: View {
                     Text(gitState.badge)
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundColor(Theme.gitColor(for: gitState))
+                        .help(gitState.tooltip)
                 } else if gitFolderChanged {
                     Circle()
                         .fill(Theme.accentReadable)

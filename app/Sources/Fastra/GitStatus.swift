@@ -21,6 +21,19 @@ enum GitFileState: Equatable {
         case .conflicted: return "!"
         }
     }
+
+    /// Erklärender Tooltip zum Badge (Daniel-Wunsch 2026-07-12): das Kürzel
+    /// allein sagt Nicht-Git-Profis wenig.
+    var tooltip: String {
+        switch self {
+        case .modified:   return "Geändert (M)"
+        case .added:      return "Neu, bereitgestellt (A)"
+        case .deleted:    return "Gelöscht (D)"
+        case .untracked:  return "Nicht versioniert (U)"
+        case .renamed:    return "Umbenannt (R)"
+        case .conflicted: return "Merge-Konflikt (!)"
+        }
+    }
 }
 
 /// Zusammenfassung von `git status` für die UI: Branch, Ahead/Behind-Zähler

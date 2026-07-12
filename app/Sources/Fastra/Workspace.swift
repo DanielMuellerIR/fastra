@@ -950,12 +950,33 @@ final class Workspace: ObservableObject {
     func openFile() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
-        panel.canChooseDirectories = false
+        // Ordner ebenfalls wählbar (Daniel-Wunsch 2026-07-12): ein gewählter
+        // Ordner wird wie über den Willkommensbildschirm als Projekt geladen
+        // (Git-Erkennung inklusive), eine Datei landet in einem Tab.
+        panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.message = "Datei zum Bearbeiten öffnen"
+        panel.message = "Datei oder Ordner öffnen"
+        panel.prompt = "Öffnen"
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        loadFile(at: url)
+        openFileOrFolder(at: url)
+    }
+
+    /// Öffnet die gewählte URL passend: Ordner → als Projekt laden (Dateibaum +
+    /// Git wie über den Willkommensbildschirm), Datei → in einen Tab. Gemeinsamer
+    /// Einstieg für ⌘O.
+    func openFileOrFolder(at url: URL) {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else {
+            // Nicht mehr vorhanden → loadFile durchlaufen lassen, das meldet den Fehler.
+            loadFile(at: url)
+            return
+        }
+        if isDir.boolValue {
+            openProject(at: url)
+        } else {
+            loadFile(at: url)
+        }
     }
 
     /// Entfernt „leere Notizzettel"-Tabs — außer dem Tab `keepID`. Ein Tab gilt
