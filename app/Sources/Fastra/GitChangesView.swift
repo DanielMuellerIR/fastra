@@ -157,9 +157,12 @@ private struct GitChangeRow: View {
                     .truncationMode(.head)
             }
             Spacer(minLength: 4)
-            if hovering {
-                actionButtons
-            }
+            // Die Knöpfe bleiben im Layout, damit die Zeile beim Hover weder
+            // höher wird noch ihren Text um ein paar Pixel verschiebt.
+            actionButtons
+                .opacity(hovering ? 1 : 0)
+                .allowsHitTesting(hovering)
+                .accessibilityHidden(!hovering)
             // Status-Badge (farbig, mit erklärendem Tooltip).
             Text(state.badge)
                 .fastraFont(size: 10, weight: .semibold, design: .monospaced)

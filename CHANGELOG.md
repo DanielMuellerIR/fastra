@@ -9,6 +9,13 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.13.1] — 2026-07-13
+
+### Behoben
+
+- Zeilen in der Git-Änderungen-Ansicht behalten beim Einblenden ihrer
+  Hover-Aktionen jetzt ihre Höhe und Textposition bei.
+
 ## [v1.13.0] — 2026-07-13
 
 ### Hinzugefügt
