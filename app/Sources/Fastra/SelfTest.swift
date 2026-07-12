@@ -116,6 +116,7 @@ enum SelfTest {
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
         case "highlight": waitForMainWindow { runHighlightTest() }
         case "jump":      waitForMainWindow { runJumpTest() }
+        case "ghosttext": waitForMainWindow { runGhostTextTest() }
         case "replaceall": waitForMainWindow { runReplaceAllTest() }
         case "pilldrop":  waitForMainWindow { openSearchThen { runPillDropTest() } }
         case "navmatch":  waitForMainWindow { openSearchThen { runNavMatchTest() } }
@@ -188,7 +189,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, cmdw, fields, tabswitch, highlight, jump, replaceall, pilldrop, navmatch, search, project, git, gitactions, selsearch, wildcard, textop, colsel, contrast, windows)")
+                + "(bekannt: findbar, newwindow, cmdw, fields, tabswitch, highlight, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, git, gitactions, selsearch, wildcard, textop, colsel, contrast, windows)")
         }
     }
 
@@ -332,6 +333,13 @@ enum SelfTest {
                   newTab.title == "Ohne Titel",
                   newTab.content.isEmpty else {
                 finish(false, "zweites Fenster enthält kein einzelnes leeres neues Dokument")
+            }
+            // „Nie mehr als ein Willkommen" (Daniel-Befund 2026-07-12): Ein
+            // per ⌘N geöffnetes Fenster muss direkt den Editor zeigen, NICHT
+            // erneut die Willkommensseite — sonst ließen sich beliebig viele
+            // Willkommens-Fenster stapeln.
+            guard !newWorkspace.isWelcomeScreen else {
+                finish(false, "⌘N-Fenster zeigt erneut den Willkommensbildschirm")
             }
 
             newWorkspace.activeTabContent.wrappedValue = "Inhalt nur im zweiten Fenster"
@@ -1025,6 +1033,127 @@ enum SelfTest {
                 }
             }
         }
+    }
+
+    // MARK: - -selftest ghosttext
+
+    /// Sichert gegen den „Text-Geist" (Daniel-Befund 2026-07-12): eine lange
+    /// Zeile wurde bei zwei verschiedenen Umbruch-Breiten ausgelegt, die alte
+    /// (zu breite) Fragment-View blieb sichtbar stehen → dasselbe Wort doppelt,
+    /// Text lief rechts raus.
+    ///
+    /// CESE positioniert jedes Zeilenfragment als eigene `LineFragmentView`-
+    /// Subview der `TextView` (über eine Reuse-Queue, die alte Views nur in
+    /// EINEM Sweep am Pass-Ende einsammelt). Der Test lädt sehr lange Zeilen,
+    /// erzwingt mehrere Breiten-Wechsel (Fenster schmal/breit) und prüft nach
+    /// jedem Settle die INVARIANTE:
+    ///   (a) keine zwei LIVE-Fragment-Views mit überlappendem `documentRange`
+    ///       (= derselbe Text zweimal ausgelegt), und
+    ///   (b) bei Umbruch AN (endliche Umbruch-Breite) keine Live-Fragment-View
+    ///       breiter als diese Breite (= überlaufendes Geist-Fragment).
+    /// Genau die Render-Geist-Klasse, die reine Modell-Tests NICHT fangen (das
+    /// Textmodell ist korrekt; nur die gezeichneten Fragment-Views hängen nach).
+    private static func runGhostTextTest() {
+        testLabel = "ghosttext"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard let mainWindow = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        }), let root = mainWindow.contentView else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        mainWindow.makeKeyAndOrderFront(nil)
+
+        // Mehrere SEHR lange Zeilen (deutlich breiter als jedes Testfenster) —
+        // so greift der Umbruch zwingend und ein zu breites Rest-Fragment fällt
+        // sofort auf. Das Wort aus Daniels Screenshot bewusst wiederholt.
+        let long = String(repeating: "Willkommensbildschirm ", count: 40)
+        let content = (1...6).map { "Zeile \($0): \(long)" }.joined(separator: "\n")
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-ghosttext-\(UUID().uuidString).txt")
+        do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+
+        ws.loadFile(at: tmp) { ok in
+            try? FileManager.default.removeItem(at: tmp)
+            guard ok else { finish(false, "loadFile schlug fehl (completion false)") }
+            // Breiten-Sequenz: jeder Schritt ändert die Umbruch-Breite und ist
+            // damit eine Gelegenheit für einen stehenbleibenden Geist. Nach
+            // jedem Settle wird die Invariante geprüft.
+            // Realistischer Fall (wie Daniels Paste): frischer Editor, langer
+            // Inhalt, nach dem Settle einmal prüfen. Danach ein Fenster-Resize
+            // als zusätzlicher Auslöser (der Geist entsteht schon ohne).
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                if let violation = ghostViolation(in: root) {
+                    finish(false, "Text-Geist nach Laden: \(violation)")
+                }
+                var f = mainWindow.frame
+                f.size.width = 700
+                mainWindow.setFrame(f, display: true)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    if let violation = ghostViolation(in: root) {
+                        finish(false, "Text-Geist nach Resize: \(violation)")
+                    }
+                    finish(true, "kein Text-Geist nach Laden und Resize "
+                           + "(keine überlappenden/überlaufenden Fragment-Views)")
+                }
+            }
+        }
+    }
+
+    /// Prüft die aktuell im Editor gezeichneten Zeilenfragmente auf die zwei
+    /// Geist-Signaturen. Gibt `nil` zurück, wenn alles sauber ist, sonst eine
+    /// erklärende Meldung. Sammelt die `LineFragmentView`s rekursiv aus dem
+    /// TextView-Teilbaum (robust, falls CESE sie je in einen Container legt).
+    private static func ghostViolation(in root: NSView) -> String? {
+        guard let tv = editorTextView(in: root) as? TextView else {
+            // Kein Editor sichtbar (z.B. transienter Zustand) → nichts zu prüfen.
+            return nil
+        }
+        var fragments: [LineFragmentView] = []
+        func collect(_ view: NSView) {
+            if let frag = view as? LineFragmentView { fragments.append(frag) }
+            view.subviews.forEach(collect)
+        }
+        collect(tv)
+
+        // Nur LIVE-Fragmente: geparkte Reuse-Views sind versteckt / auf .zero.
+        let live = fragments.filter {
+            !$0.isHidden && $0.frame != .zero && $0.lineFragment != nil
+        }
+
+        let wrapWidth = tv.layoutManager.maxLineLayoutWidth
+        // (b) Überlauf: bei endlicher Umbruch-Breite (Umbruch AN) darf KEIN
+        // sichtbares Fragment breiter als diese Breite sein. Ein zu breites
+        // Fragment ist die überlaufende „Willkommensb"-Rest-View aus dem Screenshot.
+        if wrapWidth.isFinite {
+            for v in live where v.frame.width > wrapWidth + 2 {
+                let r = v.lineFragment!.documentRange
+                return "sichtbares Zeilenfragment breiter als die Umbruch-Breite "
+                    + "(frameW=\(Int(v.frame.width)) > wrap=\(Int(wrapWidth)), documentRange=\(r), "
+                    + "live-Fragmente=\(live.count)) — nicht umbrochene/überlaufende Geist-View"
+            }
+        }
+        // (a) Überlappung: zwei sichtbare Fragmente, deren documentRange sich
+        // schneidet → derselbe Text ist zweimal ausgelegt (Geist + korrekte
+        // Umbruch-Version nebeneinander). Benachbarte Umbruch-Fragmente einer
+        // Zeile haben lückenlose, NICHT überlappende Ranges → kein Fehlalarm.
+        for i in 0..<live.count {
+            let a = live[i].lineFragment!.documentRange
+            guard a.location != NSNotFound else { continue }
+            for j in (i + 1)..<live.count {
+                let b = live[j].lineFragment!.documentRange
+                guard b.location != NSNotFound else { continue }
+                if NSIntersectionRange(a, b).length > 0 {
+                    return "zwei sichtbare Fragmente mit überlappendem Text "
+                        + "(documentRange a=\(a), b=\(b)) — Zeile doppelt ausgelegt"
+                }
+            }
+        }
+        return nil
     }
 
     // MARK: - -selftest replaceall

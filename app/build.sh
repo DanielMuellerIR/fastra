@@ -295,6 +295,62 @@ PYEOF
         .build/*/release/Modules/CodeEditLanguages.swiftmodule
 fi
 
+# 4i. Patch CodeEditTextView — Breitenwechsel-Erkennung repariert den „Text-Geist".
+#
+# ROOT CAUSE (Daniel-Befund 2026-07-12, Selbsttest `ghosttext`): Eine lange
+# Zeile wurde bei zwei verschiedenen Umbruch-Breiten ausgelegt, die alte
+# (zu breite) `LineFragmentView` blieb als Geist sichtbar stehen — dasselbe
+# Wort doppelt, Text lief rechts raus. `TextLine.needsLayout(maxWidth:)`
+# erkannte einen Breitenwechsel NUR, wenn ALTE UND NEUE Breite endlich sind
+# (`maxWidth.isFinite && storedMaxWidth.isFinite`). Der Übergang endlich↔
+# unendlich (`.infinity` liefert `textViewportSize()`, solange noch kein
+# ScrollView hängt — genau beim frischen Editor-Mount mit langem Inhalt) wurde
+# verschluckt: die Zeile wurde NICHT neu umbrochen, das zu breite Fragment
+# blieb. Fix: zusätzlich neu auslegen, sobald sich die Endlichkeit ändert.
+# Idempotent (Marker-Check); CETV-Build-Produkte verwerfen, sonst greift der
+# Patch nicht (SPM trackt Checkout-Änderungen nicht — wie 4b–4h).
+CETV_TEXTLINE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextLine/TextLine.swift"
+if ! grep -q 'Fastra-Patch: Breitenwechsel auch bei' "$CETV_TEXTLINE" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (Breitenwechsel-Erkennung → Text-Geist-Fix)"
+  chmod u+w "$CETV_TEXTLINE"
+  /usr/bin/python3 - "$CETV_TEXTLINE" <<'PYEOF'
+import sys
+path = sys.argv[1]
+src = open(path).read()
+old = '''    func needsLayout(maxWidth: CGFloat) -> Bool {
+        needsLayout // Force layout
+        || (
+            // Both max widths we're comparing are finite
+            maxWidth.isFinite
+            && (self.maxWidth ?? 0.0).isFinite
+            && maxWidth != (self.maxWidth ?? 0.0)
+        )
+    }'''
+new = '''    func needsLayout(maxWidth: CGFloat) -> Bool {
+        // Fastra-Patch: Breitenwechsel auch bei Uebergang endlich<->unendlich
+        // erkennen. Upstream verlangte, dass BEIDE Breiten endlich sind, und
+        // verschluckte damit den Wechsel von/zu .infinity (kein ScrollView beim
+        // frischen Editor-Mount) -> die lange Zeile wurde nicht neu umbrochen,
+        // eine zu breite Fragment-View blieb als Geist stehen (Selbsttest
+        // ghosttext). Zusaetzliche Bedingung: Endlichkeit hat sich geaendert.
+        let stored = self.maxWidth ?? 0.0
+        return needsLayout // Force layout
+            || (maxWidth.isFinite && stored.isFinite && maxWidth != stored)
+            || (maxWidth.isFinite != stored.isFinite)
+    }'''
+if old not in src:
+    sys.exit("needsLayout-Quelltext hat sich geaendert — Patch 4i passt nicht mehr")
+open(path, "w").write(src.replace(old, new))
+PYEOF
+  if ! grep -q 'Fastra-Patch: Breitenwechsel auch bei' "$CETV_TEXTLINE" 2>/dev/null; then
+    echo "✗ FEHLER: Text-Geist-Patch hat NICHT gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
+    exit 1
+  fi
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+fi
+
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 
