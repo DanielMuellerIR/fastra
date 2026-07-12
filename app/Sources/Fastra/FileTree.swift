@@ -47,3 +47,84 @@ enum FileTree {
         }
     }
 }
+
+// MARK: - Persistenter Aufklappzustand
+
+enum FileTreeExpansionStore {
+    private static let keyPrefix = "fileTree.expanded."
+
+    /// Der kanonische Projektpfad ist als Defaults-Schlüssel eindeutig. Die
+    /// Prozentkodierung verhindert, dass Sonderzeichen im Pfad den Schlüssel
+    /// schwer lesbar oder mehrdeutig machen.
+    static func key(for rootURL: URL) -> String {
+        let path = rootURL.standardizedFileURL.path
+        let encoded = Data(path.utf8).base64EncodedString()
+        return keyPrefix + encoded
+    }
+
+    static func load(for rootURL: URL, defaults: UserDefaults = .standard) -> Set<String> {
+        Set(defaults.stringArray(forKey: key(for: rootURL)) ?? [])
+    }
+
+    static func save(_ paths: Set<String>, for rootURL: URL,
+                     defaults: UserDefaults = .standard) {
+        defaults.set(paths.sorted(), forKey: key(for: rootURL))
+    }
+}
+
+// MARK: - Dateiaktionen des Kontextmenüs
+
+enum FileTreeOperationError: LocalizedError {
+    case invalidName
+    case alreadyExists(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidName:
+            return "Der Name darf nicht leer sein und weder „/“ noch nur Punkte enthalten."
+        case .alreadyExists(let name):
+            return "„\(name)“ existiert in diesem Ordner bereits."
+        }
+    }
+}
+
+enum FileTreeOperations {
+    static func destination(named rawName: String, in directory: URL,
+                            fileManager: FileManager = .default) throws -> URL {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != ".", name != "..", !name.contains("/") else {
+            throw FileTreeOperationError.invalidName
+        }
+        let destination = directory.appendingPathComponent(name)
+        guard !fileManager.fileExists(atPath: destination.path) else {
+            throw FileTreeOperationError.alreadyExists(name)
+        }
+        return destination
+    }
+
+    @discardableResult
+    static func create(named name: String, in directory: URL, isDirectory: Bool,
+                       fileManager: FileManager = .default) throws -> URL {
+        let destination = try destination(named: name, in: directory,
+                                          fileManager: fileManager)
+        if isDirectory {
+            try fileManager.createDirectory(at: destination,
+                                            withIntermediateDirectories: false)
+        } else {
+            guard fileManager.createFile(atPath: destination.path, contents: Data()) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+        }
+        return destination
+    }
+
+    @discardableResult
+    static func rename(_ source: URL, to newName: String,
+                       fileManager: FileManager = .default) throws -> URL {
+        let destination = try destination(named: newName,
+                                          in: source.deletingLastPathComponent(),
+                                          fileManager: fileManager)
+        try fileManager.moveItem(at: source, to: destination)
+        return destination
+    }
+}

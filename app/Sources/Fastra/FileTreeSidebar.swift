@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Hierarchischer Projekt-Dateibaum in der Seitenleiste. Lädt lazy: jede
 /// Ordner-Ebene erst beim Aufklappen (`FileTree.children`), kein rekursiver
@@ -8,9 +9,19 @@ struct FileTreeSidebar: View {
     let rootURL: URL
     @EnvironmentObject var workspace: Workspace
 
+    /// Rekursiver FSEvents-Wächter; seine Generation macht externe Änderungen
+    /// zu echten SwiftUI-State-Änderungen und löst damit ein neues Listing aus.
+    @StateObject private var watcher: ProjectFileWatcher
+
     /// Aufgeklappte Ordner (Pfad-Set). Identität über Pfade, damit der
     /// Zustand ein Neuladen der Ebenen überlebt.
-    @State private var expanded: Set<String> = []
+    @State private var expanded: Set<String>
+
+    init(rootURL: URL) {
+        self.rootURL = rootURL
+        _watcher = StateObject(wrappedValue: ProjectFileWatcher(rootURL: rootURL))
+        _expanded = State(initialValue: FileTreeExpansionStore.load(for: rootURL))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -35,6 +46,11 @@ struct FileTreeSidebar: View {
             .padding(.horizontal, 14)
             .padding(.top, 14)
             .padding(.bottom, 6)
+            .contextMenu {
+                FileTreeContextMenu(directory: rootURL, node: nil,
+                                    onMutation: handleTreeMutation)
+                    .environmentObject(workspace)
+            }
 
             // Branch-Zeile (Etappe 2): nur sichtbar, wenn das Projekt ein
             // Git-Repo ist und git verfügbar (sonst still weg). Zeigt Branch,
@@ -44,11 +60,33 @@ struct FileTreeSidebar: View {
                     Image(systemName: "arrow.triangle.branch")
                         .fastraFont(size: 10)
                         .foregroundColor(Theme.accentReadable)
-                    Text(branch)
-                        .fastraFont(.small)
-                        .foregroundColor(Theme.textPrimary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    Menu {
+                        ForEach(workspace.gitBranches) { candidate in
+                            Button {
+                                workspace.gitSwitchBranch(candidate.name)
+                            } label: {
+                                if candidate.isCurrent {
+                                    Label(candidate.name, systemImage: "checkmark")
+                                } else {
+                                    Text(candidate.name)
+                                }
+                            }
+                            .disabled(candidate.isCurrent)
+                        }
+                        if workspace.gitBranches.isEmpty {
+                            Button("Keine lokalen Branches") { }.disabled(true)
+                        }
+                    } label: {
+                        Text(branch)
+                            .fastraFont(.small)
+                            .foregroundColor(Theme.textPrimary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.visible)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .help("Lokalen Branch auswählen")
                     if status.ahead > 0 {
                         Label("\(status.ahead)", systemImage: "arrow.up")
                             .labelStyle(.titleAndIcon)
@@ -112,13 +150,36 @@ struct FileTreeSidebar: View {
                 .padding(.bottom, 6)
             }
 
+            if let feedback = workspace.gitFeedback {
+                Label(feedback.message, systemImage: "checkmark.circle.fill")
+                    .fastraFont(.small)
+                    .foregroundColor(Theme.diffAddedFG)
+                    .lineLimit(2)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 6)
+                    .transition(.opacity)
+                    .accessibilityIdentifier("gitSuccessFeedback")
+            }
+
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    FileTreeLevel(url: rootURL, depth: 0, expanded: $expanded)
+                    FileTreeLevel(url: rootURL, depth: 0, expanded: $expanded,
+                                  onMutation: handleTreeMutation)
                 }
                 .padding(.bottom, 6)
             }
         }
+        // Das Lesen bindet die Published-Generation an diesen View. Der Wert
+        // selbst ist unwichtig; jede Änderung baut die sichtbaren Ebenen neu.
+        .id(watcher.generation)
+        .onChange(of: expanded) {
+            FileTreeExpansionStore.save(expanded, for: rootURL)
+        }
+    }
+
+    private func handleTreeMutation() {
+        watcher.refresh()
+        workspace.refreshGitStatus()
     }
 
     /// Die Git-Aktions-Einträge — geteilt zwischen Seitenleisten-Popup und dem
@@ -173,6 +234,7 @@ private struct FileTreeLevel: View {
     let depth: Int
     @Binding var expanded: Set<String>
     @EnvironmentObject var workspace: Workspace
+    let onMutation: () -> Void
 
     var body: some View {
         ForEach(FileTree.children(of: url)) { node in
@@ -182,7 +244,8 @@ private struct FileTreeLevel: View {
                         isActive: workspace.activeTab?.url == node.url,
                         gitState: workspace.gitState(for: node.url),
                         gitFolderChanged: node.isDirectory
-                            && workspace.gitFolderHasChanges(node.url)) {
+                            && workspace.gitFolderHasChanges(node.url),
+                        onMutation: onMutation) {
                 if node.isDirectory {
                     if expanded.contains(node.id) {
                         expanded.remove(node.id)
@@ -194,7 +257,8 @@ private struct FileTreeLevel: View {
                 }
             }
             if node.isDirectory && expanded.contains(node.id) {
-                FileTreeLevel(url: node.url, depth: depth + 1, expanded: $expanded)
+                FileTreeLevel(url: node.url, depth: depth + 1,
+                              expanded: $expanded, onMutation: onMutation)
             }
         }
     }
@@ -212,6 +276,7 @@ private struct FileTreeRow: View {
     let gitState: GitFileState?
     /// Enthält dieser Ordner geänderte Dateien? (Rollup-Punkt an Ordnern.)
     let gitFolderChanged: Bool
+    let onMutation: () -> Void
     let action: () -> Void
 
     /// Textfarbe des Namens: geänderte Datei in ihrer Git-Farbe, aktive Datei
@@ -265,5 +330,92 @@ private struct FileTreeRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            FileTreeContextMenu(directory: node.isDirectory
+                                ? node.url : node.url.deletingLastPathComponent(),
+                                node: node,
+                                onMutation: onMutation)
+        }
+    }
+}
+
+/// Native Dateiaktionen am Baum. Löschen bedeutet bewusst „in den Papierkorb“
+/// statt unwiderruflichem `removeItem`; Umbenennen und Neu validieren Namen
+/// zentral über `FileTreeOperations`.
+private struct FileTreeContextMenu: View {
+    let directory: URL
+    let node: FileTreeNode?
+    let onMutation: () -> Void
+    @EnvironmentObject var workspace: Workspace
+
+    var body: some View {
+        Button("Neue Datei…") { create(isDirectory: false) }
+        Button("Neuer Ordner…") { create(isDirectory: true) }
+
+        if let node {
+            Divider()
+            Button("Umbenennen…") { rename(node) }
+            Button("In den Papierkorb legen…", role: .destructive) { trash(node) }
+        }
+    }
+
+    private func create(isDirectory: Bool) {
+        let kind = isDirectory ? "Ordner" : "Datei"
+        guard let name = Workspace.promptForText(
+            title: "Neuer \(kind)",
+            info: "Name im Ordner „\(directory.lastPathComponent)“:",
+            placeholder: isDirectory ? "Neuer Ordner" : "Neue Datei.txt"
+        ) else { return }
+        do {
+            let created = try FileTreeOperations.create(named: name, in: directory,
+                                                        isDirectory: isDirectory)
+            onMutation()
+            if !isDirectory { workspace.loadFile(at: created) }
+        } catch {
+            showError(title: "\(kind) konnte nicht angelegt werden", error: error)
+        }
+    }
+
+    private func rename(_ node: FileTreeNode) {
+        guard let name = Workspace.promptForText(
+            title: "Umbenennen",
+            info: "Neuer Name für „\(node.name)“:",
+            placeholder: node.name
+        ) else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != node.name else { return }
+        do {
+            let destination = try FileTreeOperations.rename(node.url, to: trimmed)
+            workspace.handleFileTreeMove(from: node.url, to: destination)
+            onMutation()
+        } catch {
+            showError(title: "„\(node.name)“ konnte nicht umbenannt werden", error: error)
+        }
+    }
+
+    private func trash(_ node: FileTreeNode) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "„\(node.name)“ in den Papierkorb legen?"
+        alert.informativeText = "Der Eintrag kann über den Finder wiederhergestellt werden."
+        alert.addButton(withTitle: "In den Papierkorb")
+        alert.addButton(withTitle: "Abbrechen")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        NSWorkspace.shared.recycle([node.url]) { _, error in
+            DispatchQueue.main.async {
+                if let error {
+                    showError(title: "„\(node.name)“ konnte nicht verschoben werden",
+                              error: error)
+                } else {
+                    workspace.handleFileTreeTrash(node.url)
+                    onMutation()
+                }
+            }
+        }
+    }
+
+    private func showError(title: String, error: Error) {
+        NSAlert.runWarning(title: title, text: error.localizedDescription)
     }
 }

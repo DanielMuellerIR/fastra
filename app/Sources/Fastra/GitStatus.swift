@@ -83,7 +83,10 @@ struct GitStatusSummary: Equatable {
 enum GitStatusParser {
     /// Argumente, mit denen `GitStatusSummary` gefüllt werden kann. `-b` bringt
     /// die Branch-Kopfzeile, `--porcelain=v1` das stabile Maschinen-Format.
-    static let arguments = ["status", "--porcelain=v1", "-b"]
+    // `git status` darf seinen Stat-Cache normalerweise im Index auffrischen
+    // und nimmt dafür kurz `index.lock`. Da Fastra Status parallel zu echten
+    // Aktionen lädt, verbieten wir diesen rein optionalen Schreibzugriff.
+    static let arguments = ["--no-optional-locks", "status", "--porcelain=v1", "-b"]
 
     /// Parst den kompletten Porcelain-Text. Unbekannte/leere Zeilen werden
     /// übersprungen.

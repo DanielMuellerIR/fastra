@@ -190,6 +190,10 @@ final class Workspace: ObservableObject {
     /// Leer = kein Repo/keine Commits oder noch nicht geladen. Asynchron über
     /// `refreshGitLog()` gefüllt.
     @Published var gitLog: [GitCommit] = []
+    /// Lokale Branches für die Auswahl in der Projekt-Seitenleiste.
+    @Published var gitBranches: [GitBranch] = []
+    /// Kurzlebige, nicht-modale Rückmeldung erfolgreicher Git-Aktionen.
+    @Published var gitFeedback: GitActionFeedback?
     /// Commit-Botschaft des Änderungen-Tabs (VS-Code-artiges Eingabefeld). Pro
     /// Fenster; nach erfolgreichem Commit geleert.
     @Published var commitMessage: String = ""
@@ -1211,6 +1215,7 @@ final class Workspace: ObservableObject {
         noteRecentProject(url)
         refreshGitStatus()
         refreshGitLog()
+        refreshGitBranches()
     }
 
     /// Blendet den Projekt-Dateibaum wieder aus (Seitenleiste zeigt dann
@@ -1219,6 +1224,51 @@ final class Workspace: ObservableObject {
         projectURL = nil
         gitStatus = nil
         gitLog = []
+        gitBranches = []
+        gitFeedback = nil
+    }
+
+    /// Zieht offene Tabs nach einer Datei- oder Ordner-Umbenennung mit. Ohne
+    /// diese Kopplung würde ein späteres ⌘S am alten Pfad eine zweite Datei
+    /// erzeugen. Bei Ordnern werden alle darin geöffneten Dateien angepasst.
+    func handleFileTreeMove(from source: URL, to destination: URL) {
+        for index in tabs.indices {
+            guard let oldURL = tabs[index].url,
+                  let newURL = Self.movedURL(oldURL, from: source, to: destination)
+            else { continue }
+            tabs[index].url = newURL.canonicalFileURL
+            tabs[index].title = newURL.lastPathComponent
+            tabs[index].path = newURL.deletingLastPathComponent().path
+            tabs[index].diskModificationDate = ExternalChange.diskModificationDate(of: newURL)
+        }
+    }
+
+    /// Offene Inhalte bleiben nach dem Verschieben in den Papierkorb als
+    /// unbenannte, geänderte Tabs erhalten. Das schützt auch noch nicht
+    /// gespeicherte Änderungen und verhindert ein Wiederanlegen am alten Pfad.
+    func handleFileTreeTrash(_ source: URL) {
+        let sourcePath = source.standardizedFileURL.path
+        let prefix = sourcePath + "/"
+        for index in tabs.indices {
+            guard let url = tabs[index].url else { continue }
+            let path = url.standardizedFileURL.path
+            guard path == sourcePath || path.hasPrefix(prefix) else { continue }
+            tabs[index].url = nil
+            tabs[index].path = "Aus Papierkorb gerettet"
+            tabs[index].diskModificationDate = nil
+            tabs[index].isDirty = true
+        }
+    }
+
+    static func movedURL(_ candidate: URL, from source: URL,
+                         to destination: URL) -> URL? {
+        let candidatePath = candidate.standardizedFileURL.path
+        let sourcePath = source.standardizedFileURL.path
+        if candidatePath == sourcePath { return destination }
+        let prefix = sourcePath + "/"
+        guard candidatePath.hasPrefix(prefix) else { return nil }
+        let suffix = String(candidatePath.dropFirst(prefix.count))
+        return destination.appendingPathComponent(suffix)
     }
 
     // MARK: - Git-Status (Projekt- & Git-Ausbau, Etappe 2)
@@ -1257,6 +1307,21 @@ final class Workspace: ObservableObject {
                 return
             }
             self.gitLog = GitGraph.parse(result.stdout)
+        }
+    }
+
+    /// Lädt die lokalen Branches asynchron. Remote-Branches bleiben bewusst
+    /// außen vor: Ein Klick soll keinen impliziten Tracking-Branch erzeugen.
+    func refreshGitBranches() {
+        guard let root = projectURL, GitRunner.isAvailable else {
+            gitBranches = []
+            return
+        }
+        GitRunner.run(GitBranchList.arguments, in: root) { [weak self] result in
+            guard let self, self.projectURL == root else { return }
+            self.gitBranches = result?.ok == true
+                ? GitBranchList.parse(result?.stdout ?? "")
+                : []
         }
     }
 

@@ -1,5 +1,14 @@
 import AppKit
 
+struct GitActionFeedback: Identifiable, Equatable {
+    let id = UUID()
+    let message: String
+
+    static func == (lhs: GitActionFeedback, rhs: GitActionFeedback) -> Bool {
+        lhs.id == rhs.id && lhs.message == rhs.message
+    }
+}
+
 /// Kuratierte Git-Aktionen (Projekt- & Git-Ausbau, Etappe 2, Schritt 4).
 /// Philosophie: **Git liefert Logik, Fastra macht die häufigen — und ein paar
 /// pfiffige — Aufrufe per Knopf zugänglich**, für Leute, die Git verstehen,
@@ -131,29 +140,58 @@ extension Workspace {
         GitRunner.run(["rev-parse", "--abbrev-ref", "@{u}"], in: root) { [weak self] result in
             guard let self else { return }
             if result?.ok == true {
-                self.runGitAction(["push"], label: "Push")
+                self.runGitAction(["push"], label: "Push",
+                                  successMessage: "Push erfolgreich")
             } else {
-                self.runGitAction(["push", "-u", "origin", "HEAD"], label: "Push (Upstream anlegen)")
+                self.runGitAction(["push", "-u", "origin", "HEAD"],
+                                  label: "Push (Upstream anlegen)",
+                                  successMessage: "Push erfolgreich · Upstream angelegt")
             }
         }
     }
 
     /// Entfernten Stand holen und einbinden (`git pull`, erzeugt bei Bedarf
     /// einen Merge-Commit).
-    func gitPull() { runGitAction(["pull"], label: "Pull") }
+    func gitPull() {
+        runGitAction(["pull"], label: "Pull", successMessage: "Pull erfolgreich")
+    }
 
     /// Fast-Forward-only Pull (`git pull --ff-only`) — die pfiffige Variante:
     /// übernimmt entfernte Commits NUR, wenn nichts kollidiert, nie ein
     /// Merge-Commit. Hält die Historie linear.
-    func gitPullFastForward() { runGitAction(["pull", "--ff-only"], label: "Pull (Fast-Forward)") }
+    func gitPullFastForward() {
+        runGitAction(["pull", "--ff-only"], label: "Pull (Fast-Forward)",
+                     successMessage: "Pull erfolgreich")
+    }
 
     /// Entfernten Stand holen, ohne lokal etwas zu ändern (`git fetch`).
-    func gitFetch() { runGitAction(["fetch"], label: "Fetch") }
+    func gitFetch() {
+        runGitAction(["fetch"], label: "Fetch", successMessage: "Fetch erfolgreich")
+    }
 
     // MARK: Pfiffige Extras
 
     /// Zum zuletzt ausgecheckten Branch zurück (`git switch -`).
     func gitSwitchPrevious() { runGitAction(["switch", "-"], label: "Branch-Wechsel") }
+
+    /// Wechselt zu einem explizit ausgewählten lokalen Branch. Argumente gehen
+    /// getrennt an `Process`, daher werden auch Namen mit Leerzeichen sicher
+    /// und ohne Shell-Interpolation behandelt.
+    func gitSwitchBranch(_ name: String) {
+        guard !name.isEmpty else { return }
+        // Die Branch-Liste ist die Quelle des Auswahlmenüs. `gitStatus` kann
+        // nach einem externen Wechsel noch den alten Branch enthalten; darauf
+        // zu guard-en würde dann genau den gewünschten Wechsel verschlucken.
+        guard gitBranches.first(where: { $0.isCurrent })?.name != name else { return }
+        runGitAction(["switch", name], label: "Branch-Wechsel") { [weak self] in
+            guard let self else { return }
+            self.recordGitSuccess("Branch „\(name)“ aktiv")
+            self.refreshGitStatus()
+            self.refreshGitLog()
+            self.refreshGitBranches()
+            self.refreshOpenGitViews()
+        }
+    }
 
     /// Pickaxe-Suche (`git log -S<text>`): findet die Commits, die eine
     /// Textstelle eingeführt oder entfernt haben. Öffnet das Ergebnis als
@@ -177,7 +215,9 @@ extension Workspace {
     /// ruft optional `then` (für verkettete Schritte wie add→commit). Bei einem
     /// Fehler zeigt es die echte git-Ausgabe in einem Dialog und bricht die
     /// Kette ab.
-    private func runGitAction(_ args: [String], label: String, then: (() -> Void)? = nil) {
+    private func runGitAction(_ args: [String], label: String,
+                              successMessage: String? = nil,
+                              then: (() -> Void)? = nil) {
         guard let root = projectURL, GitRunner.isAvailable else { return }
         GitRunner.run(args, in: root) { [weak self] result in
             guard let self else { return }
@@ -188,10 +228,24 @@ extension Workspace {
             if let then {
                 then()
             } else {
+                if let successMessage { self.recordGitSuccess(successMessage) }
                 // Kette fertig: Status + offene Verlauf-/Diff-Tabs auffrischen.
                 self.refreshGitStatus()
+                self.refreshGitBranches()
                 self.refreshOpenGitViews()
             }
+        }
+    }
+
+    /// Zeigt Erfolg für wenige Sekunden direkt in der Seitenleiste. Eine ID
+    /// verhindert, dass der Timer einer älteren Aktion eine neuere Meldung
+    /// vorzeitig ausblendet.
+    func recordGitSuccess(_ message: String) {
+        let feedback = GitActionFeedback(message: message)
+        gitFeedback = feedback
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard self?.gitFeedback?.id == feedback.id else { return }
+            self?.gitFeedback = nil
         }
     }
 

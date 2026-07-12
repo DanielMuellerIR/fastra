@@ -2441,19 +2441,29 @@ enum SelfTest {
         }
     }
 
-    /// SWITCH: neuen Branch anlegen, `gitSwitchPrevious()` — muss zurück auf main
-    /// (`git branch --show-current`, Ground Truth statt Status-Cache).
+    /// SWITCH: neuen Branch anlegen, Liste neu laden und über die neue explizite
+    /// Branch-Auswahl zurück auf main wechseln. Prüft zugleich Erfolgs-Feedback.
     private static func gitActionsSwitch(_ ws: Workspace, repo: URL, bare: URL, base: URL, fm: FileManager) {
         runGitSequence([["switch", "-c", "feature"]], in: repo) { ok, e in
             guard ok else { try? fm.removeItem(at: base); finish(false, "(switch-setup) \(e)") }
-            ws.gitSwitchPrevious()
-            pollAsync(maxTicks: 150, base: base, fm: fm, label: "switch",
-                      check: { done in
-                          GitRunner.run(["branch", "--show-current"], in: repo) { r in
-                              done(r?.stdout.trimmingCharacters(in: .whitespacesAndNewlines) == "main")
-                          }
+            ws.refreshGitBranches()
+            pollUntil(maxTicks: 150, base: base, fm: fm, label: "branch-list",
+                      cond: {
+                          ws.gitBranches.contains(where: { $0.name == "main" })
+                              && ws.gitBranches.contains(where: { $0.name == "feature" && $0.isCurrent })
                       },
-                      next: { gitActionsPickaxe(ws, repo: repo, bare: bare, base: base, fm: fm) })
+                      next: {
+                          ws.gitSwitchBranch("main")
+                          pollAsync(maxTicks: 150, base: base, fm: fm, label: "switch",
+                                    check: { done in
+                                        GitRunner.run(["branch", "--show-current"], in: repo) { r in
+                                            let onMain = r?.stdout.trimmingCharacters(in: .whitespacesAndNewlines) == "main"
+                                            let feedback = ws.gitFeedback?.message.contains("main") == true
+                                            done(onMain && feedback)
+                                        }
+                                    },
+                                    next: { gitActionsPickaxe(ws, repo: repo, bare: bare, base: base, fm: fm) })
+                      })
         }
     }
 
@@ -2484,7 +2494,7 @@ enum SelfTest {
                       next: {
                           try? fm.removeItem(at: base)
                           finish(true, "Git-Aktionen: Push (ahead→0), Pull-FF (Remote-Datei da), "
-                              + "Amend (Datei in Commit, Zahl gleich), Switch (zurück auf main), "
+                              + "Amend (Datei in Commit, Zahl gleich), Branch-Liste + Auswahl, "
                               + "Pickaxe, Auto-Upstream-Push ok")
                       })
         }

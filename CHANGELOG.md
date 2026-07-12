@@ -9,6 +9,31 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.9.0] — 2026-07-12
+
+### Hinzugefügt
+
+- **Live-Dateibaum über FSEvents:** Externe Änderungen durch Terminal, Git oder
+  andere Programme aktualisieren auch tiefe, aufgeklappte Projektordner ohne
+  Polling. Ein rekursiver Integrationstest sichert das echte macOS-Ereignis ab.
+- **Dateibaum-Kontextmenü:** neue Dateien und Ordner anlegen, Einträge
+  umbenennen und nach nativer Bestätigung in den Papierkorb verschieben.
+  Namen werden zentral validiert; Fehler erscheinen verständlich im Dialog.
+- Der Aufklappzustand wird pro Projekt gespeichert und beim nächsten Öffnen
+  wiederhergestellt.
+- Die Branch-Zeile bietet alle lokalen Branches als Liste an und wechselt
+  asynchron per `git switch`. Der bestehende Git-End-to-End-Selbsttest prüft
+  nun Branch-Laden, Auswahl und echten Wechsel.
+- Push, Pull und Fetch zeigen nach Erfolg für drei Sekunden eine nicht-modale
+  Bestätigung in der Seitenleiste. Fehler zeigen weiterhin die echte
+  Git-Ausgabe.
+
+### Behoben
+
+- Parallele Statusabfragen verwenden `--no-optional-locks`, damit ein beim
+  Projektöffnen laufendes `git status` nicht mehr kurz mit Commit-, Stage- oder
+  anderen schreibenden Aktionen um `index.lock` konkurriert.
+
 ## [v1.8.0] — 2026-07-12
 
 ### Hinzugefügt

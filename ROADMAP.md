@@ -48,9 +48,9 @@ Aktionen**, keine breite Git-Unterstützung.
   öffnen…" (⇧⌘O) für Ordner ohne Git. ✓
 - **Hierarchische Datei-Seitenleiste** (SwiftUI + `FileManager`, lazy pro Ebene) — die
   einzige echte Eigenentwicklung dieser Etappe. ✓
-- Noch offen für spätere Feinarbeit: Live-Aktualisierung des Baums bei externen
-  Dateisystem-Änderungen (aktuell wird bei Render gelesen), Kontextmenü (Umbenennen/
-  Löschen/Neu), Aufklapp-Zustand über Sessions merken.
+- **Feinarbeit in v1.9.0:** rekursive Live-Aktualisierung über FSEvents,
+  Kontextmenü für Umbenennen/Papierkorb/Neu und projektweise persistenter
+  Aufklapp-Zustand. ✓
 
 **Etappe 2 — Git-Sichtbarkeit + kuratierte Aktionen (umgesetzt in v1.5.0, 2026-07-12):**
 - **Status in der Seitenleiste:** geänderte/neue Dateien eingefärbt + Kürzel-Badge,
@@ -65,9 +65,9 @@ Aktionen**, keine breite Git-Unterstützung.
 - **Dezente Hilfe-Texte** als Tooltip an jedem Menüpunkt. ✓
 - Erster Push mit automatischem `-u` erledigt (v1.5.1): fehlt der Upstream, macht
   „Push" selbstständig `push -u origin HEAD`. ✓
-- Noch offen für spätere Feinarbeit: Stage/Unstage einzelner Dateien (Kontextmenü),
-  Branch-Auswahl aus Liste, Erfolgs-Feedback bei Netzwerk-Aktionen (aktuell nur
-  sichtbar über Ahead/Behind + Baum-Änderung).
+- **Feinarbeit abgeschlossen:** Stage/Unstage einzelner Dateien über die
+  „Änderungen"-Ansicht, lokale Branch-Auswahl aus einer Liste und nicht-modales
+  Erfolgs-Feedback für Netzwerk-Aktionen. ✓
 
 **UX-Regeln (verbindlich):**
 - **Discovery-Prinzip:** Wichtiges easy, schnell und schick; Fortgeschrittenes
