@@ -9,6 +9,41 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.4.0] — 2026-07-12
+
+Projekt- & Git-Ausbau, Etappe 1 (siehe ROADMAP.md → „Projekt- & Git-Ausbau").
+
+### Hinzugefügt
+
+- **Willkommensbildschirm:** Erscheint statt des Editors, wenn nichts geöffnet
+  ist (Folgestart mit leerem unbenanntem Tab; der Demo-Tab des Erststarts hat
+  Vorrang). Bietet „Neue Datei", „Datei öffnen…", „Ordner öffnen…" und die
+  Liste der zuletzt benutzten Projekte — ein Klick lädt das Projekt.
+  Sichtbarkeits-Bedingung pur in `WelcomeLogic` (getestet); Tab-Klick, ⌘T
+  oder jede Öffnen-Aktion blenden ihn aus.
+- **Projekte:** Ein Projekt ist ein Ordner — explizit über „Ordner öffnen…"
+  (⇧⌘O, neuer Menüpunkt) gewählt oder automatisch still gemerkt, sobald eine
+  Datei aus einem Git-Repository geladen wird (`.git`-Erkennung aufwärts,
+  auch `git worktree`-Dateien). Persistenz in `fastra.recentProjects`
+  (JSON, max. 12, Muster RecentSearchFoldersStore).
+- **Hierarchische Datei-Seitenleiste:** Bei geladenem Projekt zeigt die
+  Seitenleiste den Dateibaum (Ordner zuerst, Finder-Sortierung, Versteckte
+  übersprungen; lazy pro Ebene, kein Vollscan). Klick auf Datei lädt sie in
+  einen Tab (inkl. Aktiv-Markierung), Klick auf Ordner klappt auf/zu; die
+  „GEÖFFNET"-Liste rückt kompakt darunter. Schließen-Knopf blendet den
+  Baum wieder aus.
+- Selbsttest `project` (fensterlos, end-to-end) + Diagnose-Shots
+  `welcomeshot`/`projectshot`; ~30 neue Unit-Tests (ProjectStore, FileTree,
+  WelcomeLogic, URL-Kanonisierung).
+
+### Behoben
+
+- **Datei-URLs werden beim Öffnen kanonisiert** (`/var` ≠ `/private/var`,
+  `canonicalPathKey`): Vorher konnten Tab-Dedup und die Aktiv-Markierung im
+  Projektbaum an unterschiedlichen URL-Formen derselben Datei scheitern.
+  `resolvingSymlinksInPath` reicht dafür nicht (lässt `/private`-Aliasse
+  dokumentiert stehen).
+
 ## [v1.3.0] — 2026-07-10
 
 ### Hinzugefügt

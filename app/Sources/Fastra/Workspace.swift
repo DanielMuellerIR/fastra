@@ -156,6 +156,20 @@ enum CloseConfirmation {
 final class Workspace: ObservableObject {
     @Published var tabs: [EditorTab]
     @Published var activeTabID: UUID?
+    // MARK: - Projekt-Zustand (Projekt- & Git-Ausbau, Etappe 1)
+    /// Wurzelordner des aktuell geladenen Projekts — steuert die
+    /// Dateibaum-Seitenleiste. `nil` = kein Projekt geladen (flache
+    /// „GEÖFFNET"-Seitenleiste wie bisher). Bewusst NICHT persistiert:
+    /// Der nächste Start beginnt mit dem Willkommensbildschirm.
+    @Published var projectURL: URL?
+    /// Zuletzt benutzte Projekte für den Willkommensbildschirm. Wird
+    /// automatisch gepflegt: explizit geöffnete Ordner und erkannte
+    /// Git-Repositories geöffneter Dateien (Persistenz via Combine-Sink
+    /// in `init`, Muster recentFiles).
+    @Published var recentProjects: [ProjectEntry] = []
+    /// Nutzer hat den Willkommensbildschirm aktiv verlassen („Neue Datei",
+    /// Tab-Klick, ⌘T). Nicht persistiert — gilt pro Fenster-Lebenszeit.
+    @Published var welcomeDismissed: Bool = false
     // Startet GESCHLOSSEN (Daniel 2026-06-22: „nicht mehr mit offenem Suchdialog
     // starten, das war nur zum Testen"). CMD+F / CMD+SHIFT+F öffnen sie. Die
     // fenster-abhängigen Selbsttests (cmdw/fields) öffnen sie jetzt selbst,
@@ -454,6 +468,13 @@ final class Workspace: ObservableObject {
             .sink { paths in RecentFilesStore.save(paths, to: defaults) }
             .store(in: &persistenceBag)
 
+        // Zuletzt benutzte Projekte (Willkommensbildschirm) — gleiches Muster.
+        self.recentProjects = ProjectStore.load(from: defaults)
+        $recentProjects
+            .dropFirst()
+            .sink { entries in ProjectStore.save(entries, to: defaults) }
+            .store(in: &persistenceBag)
+
         self.searchHistory = SearchHistoryStore.load(from: defaults)
         $searchHistory
             .dropFirst()
@@ -506,6 +527,9 @@ final class Workspace: ObservableObject {
         )
         tabs.append(new)
         activeTabID = new.id
+        // Ein neuer Tab ist eine aktive Editor-Absicht — der Willkommens-
+        // bildschirm würde den (noch leeren) Tab sonst weiter verdecken.
+        welcomeDismissed = true
     }
 
     /// BBEdit-Stil-Rückfrage beim Schließen eines Tabs mit ungespeicherten
@@ -913,6 +937,13 @@ final class Workspace: ObservableObject {
     ///    Bei Fehler: Beep, Platzhalter entfernen, vorherige activeTabID
     ///    wiederherstellen, completion(false).
     func loadFile(at url: URL, completion: ((Bool) -> Void)? = nil) {
+        // URL-Form vereinheitlichen: dieselbe Datei kommt je nach Quelle in
+        // verschiedenen Formen an — programmatisch gebaut `/var/…`, aus
+        // Verzeichnis-Listings (Projektbaum!) und NSOpenPanel dagegen
+        // `/private/var/…`. Ohne Normalisierung scheitern Tab-Dedup und
+        // Aktiv-Markierung im Projektbaum an `/var` ≠ `/private/var`
+        // (Befund Screenshot 2026-07-12).
+        let url = url.canonicalFileURL
         // ── (1) Dedup ──────────────────────────────────────────────────────
         // Wenn die Datei schon als Tab offen ist, nur aktivieren — kein zweiter Tab.
         if let existingIdx = tabs.firstIndex(where: { $0.url == url }) {
@@ -1059,8 +1090,53 @@ final class Workspace: ObservableObject {
 
     /// Merkt sich eine gerade geöffnete Datei oben in `recentFiles`
     /// (Persistenz läuft automatisch über den Combine-Sink in `init`).
+    /// Liegt die Datei in einem Git-Repository, wird dessen Wurzelordner
+    /// nebenbei still als Projekt gemerkt (Projekt- & Git-Ausbau: Repos
+    /// merken sich „standardmäßig", ohne Rückfrage, ohne Meldung).
     func noteRecentFile(_ url: URL) {
         recentFiles = RecentFilesStore.prepending(url.path, to: recentFiles)
+        if let root = ProjectStore.repositoryRoot(for: url) {
+            noteRecentProject(root)
+        }
+    }
+
+    // MARK: - Projekte (Projekt- & Git-Ausbau, Etappe 1)
+
+    /// Merkt sich einen Projekt-Ordner oben in `recentProjects` — nur die
+    /// Liste, lädt NICHT das Projekt (Persistenz via Combine-Sink in `init`).
+    func noteRecentProject(_ url: URL) {
+        recentProjects = ProjectStore.prepending(url.path, to: recentProjects)
+    }
+
+    /// Lädt einen Ordner als Projekt: Dateibaum-Seitenleiste zeigt ihn,
+    /// der Ordner wandert in die Zuletzt-benutzt-Liste, der Willkommens-
+    /// bildschirm verschwindet. URL wird kanonisiert — gleiche Begründung
+    /// wie in `loadFile` (Dedup über URL-Formen hinweg).
+    func openProject(at url: URL) {
+        let url = url.canonicalFileURL
+        projectURL = url
+        welcomeDismissed = true
+        noteRecentProject(url)
+    }
+
+    /// Blendet den Projekt-Dateibaum wieder aus (Seitenleiste zeigt dann
+    /// wie bisher nur die geöffneten Tabs). Offene Tabs bleiben unberührt.
+    func closeProject() {
+        projectURL = nil
+    }
+
+    /// „Ordner öffnen…" (⇧⌘O): Ordner wählen und als Projekt laden.
+    /// Auch Ordner ohne `.git` sind erlaubt — die explizite Nutzerwahl
+    /// zählt mehr als die Repo-Heuristik.
+    func openFolderAsProject() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Ordner als Projekt öffnen"
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        openProject(at: url)
     }
 
     // MARK: - Such-Verlauf (K4)
@@ -1604,6 +1680,22 @@ struct SearchFolderEntry: Identifiable, Hashable, Codable {
     /// Tilde-expandierte Datei-URL für die tatsächliche Suche.
     var url: URL {
         URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+    }
+}
+
+extension URL {
+    /// Kanonische Form einer Datei-URL für Identitäts-Vergleiche (Tab-Dedup,
+    /// Aktiv-Markierung im Projektbaum). WICHTIG: `resolvingSymlinksInPath`
+    /// reicht NICHT — es lässt die `/private`-Aliasse (`/var`, `/tmp`, `/etc`)
+    /// per dokumentierter Ausnahme stehen, Verzeichnis-Listings liefern aber
+    /// die `/private/…`-Form (Befund 2026-07-12). `canonicalPathKey` löst
+    /// vollständig auf (inkl. Groß-/Kleinschreibung des Dateisystems).
+    /// Nicht existierende Pfade bleiben unverändert.
+    var canonicalFileURL: URL {
+        guard let path = try? resourceValues(forKeys: [.canonicalPathKey]).canonicalPath else {
+            return self
+        }
+        return URL(fileURLWithPath: path)
     }
 }
 

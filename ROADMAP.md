@@ -40,13 +40,17 @@ kein Eigenbau). Der CLI-Weg erbt automatisch die Auth-Konfiguration des Nutzers
 (SSH-Keys, Keychain-Helper). Schwerpunkt **lesend + wenige Shortcuts für die häufigsten
 Aktionen**, keine breite Git-Unterstützung.
 
-**Etappe 1 — Projekte & Seitenleiste:**
+**Etappe 1 — Projekte & Seitenleiste (umgesetzt in v1.4.0, 2026-07-12):**
 - **Willkommensbildschirm** beim Start / neuen Fenster ohne geöffnete Datei: Liste der
-  zuletzt benutzten Projekte, ein Klick lädt das Projekt.
+  zuletzt benutzten Projekte, ein Klick lädt das Projekt. ✓
 - **Projekt = geöffneter Ordner mit `.git`** — wird automatisch gemerkt (damit bekommt
-  das offene „Projekt-Konzept" des Scope-Tabs seine Definition).
-- **Hierarchische Datei-Seitenleiste** (SwiftUI `OutlineGroup` + `FileManager`) — die
-  einzige echte Eigenentwicklung dieser Etappe.
+  das offene „Projekt-Konzept" des Scope-Tabs seine Definition). Zusätzlich „Ordner
+  öffnen…" (⇧⌘O) für Ordner ohne Git. ✓
+- **Hierarchische Datei-Seitenleiste** (SwiftUI + `FileManager`, lazy pro Ebene) — die
+  einzige echte Eigenentwicklung dieser Etappe. ✓
+- Noch offen für spätere Feinarbeit: Live-Aktualisierung des Baums bei externen
+  Dateisystem-Änderungen (aktuell wird bei Render gelesen), Kontextmenü (Umbenennen/
+  Löschen/Neu), Aufklapp-Zustand über Sessions merken.
 
 **Etappe 2 — Git-Sichtbarkeit (read-first):**
 - **Status in der Seitenleiste:** geänderte/neue Dateien einfärben, Branch anzeigen

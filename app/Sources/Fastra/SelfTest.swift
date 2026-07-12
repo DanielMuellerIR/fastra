@@ -128,6 +128,10 @@ enum SelfTest {
             // Fensterlos — braucht nur Workspace + SearchRunner. Die
             // Engine ist nach fixer Anlaufzeit sicher initialisiert.
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runSearchTest() }
+        case "project":
+            // Fensterlos — Projekt- & Git-Ausbau Etappe 1 (Willkommen-
+            // Bedingung, Projekt öffnen, Dateibaum, Repo-Erkennung).
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runProjectTest() }
         case "openscope":
             // Fensterlos — Such-Scope „Geöffnet" end-to-end über Workspace +
             // SearchRunner (Multi-Tab-Suche + Alle-ersetzen über alle Tabs).
@@ -161,10 +165,18 @@ enum SelfTest {
             // Felder mit Capture Groups und Token-Highlighting, für
             // README-Screenshots des RegEx-Zustands.
             waitForMainWindow { openSearchThen { runRegexShot() } }
+        case "welcomeshot":
+            // Diagnose: Willkommensbildschirm mit gefüllter Projektliste
+            // fürs fenstergezielte Capture (Projekt- & Git-Ausbau, Etappe 1).
+            waitForMainWindow { runWelcomeShot() }
+        case "projectshot":
+            // Diagnose: Projekt-Dateibaum in der Seitenleiste + geladene
+            // Datei fürs fenstergezielte Capture.
+            waitForMainWindow { runProjectShot() }
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, cmdw, fields, tabswitch, highlight, jump, replaceall, pilldrop, navmatch, search, selsearch, wildcard, textop, colsel, contrast, windows)")
+                + "(bekannt: findbar, newwindow, cmdw, fields, tabswitch, highlight, jump, replaceall, pilldrop, navmatch, search, project, selsearch, wildcard, textop, colsel, contrast, windows)")
         }
     }
 
@@ -1883,6 +1895,99 @@ enum SelfTest {
         }
     }
 
+    /// Fensterlos — Projekt- & Git-Ausbau Etappe 1 end-to-end über den echten
+    /// Workspace: Willkommens-Bedingung, Projekt öffnen (Dateibaum-Wurzel,
+    /// Zuletzt-benutzt-Liste), Datei aus dem Baum laden, automatische
+    /// Repo-Erkennung ohne Duplikat in der Projektliste.
+    private static func runProjectTest() {
+        testLabel = "project"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+
+        // ── Testprojekt im Temp-Ordner bauen: repo/.git + Dateien ─────────
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-selftest-project-\(UUID().uuidString)")
+        let repo = base.appendingPathComponent("repo")
+        do {
+            try fm.createDirectory(at: repo.appendingPathComponent(".git"),
+                                   withIntermediateDirectories: true)
+            try fm.createDirectory(at: repo.appendingPathComponent("sub"),
+                                   withIntermediateDirectories: true)
+            try "PROJEKTTEST-A".write(to: repo.appendingPathComponent("a.txt"),
+                                      atomically: true, encoding: .utf8)
+            try "PROJEKTTEST-B".write(to: repo.appendingPathComponent("sub/b.txt"),
+                                      atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "(setup) Testprojekt nicht anlegbar: \(error)")
+        }
+
+        // ── (a) Willkommens-Bedingung ─────────────────────────────────────
+        // Erststart-Demo-Tab (hat Inhalt) → Willkommen verborgen. Danach
+        // Folgestart simulieren (ein leerer unbenannter Tab) → sichtbar.
+        ws.tabs = [EditorTab(title: "contacts.md", path: "Demo", content: "Demo-Inhalt")]
+        ws.activeTabID = ws.tabs[0].id
+        if WelcomeLogic.shouldShow(tabs: ws.tabs, hasProject: ws.projectURL != nil,
+                                   dismissed: ws.welcomeDismissed) {
+            finish(false, "(a) Willkommen sichtbar, obwohl der Demo-Tab Inhalt hat")
+        }
+        ws.tabs = [EditorTab(title: "Ohne Titel", path: "noch nicht gespeichert")]
+        ws.activeTabID = ws.tabs[0].id
+        ws.welcomeDismissed = false
+        ws.projectURL = nil
+        guard WelcomeLogic.shouldShow(tabs: ws.tabs, hasProject: false,
+                                      dismissed: false) else {
+            finish(false, "(a) Willkommen verborgen trotz jungfräulichem Zustand")
+        }
+
+        // ── (b) Projekt öffnen ────────────────────────────────────────────
+        // openProject/loadFile kanonisieren URLs (`/var` → `/private/var`,
+        // via canonicalPathKey) — die Erwartungswerte entsprechend auch.
+        let resolved = repo.canonicalFileURL
+        ws.openProject(at: repo)
+        guard ws.projectURL == resolved else {
+            finish(false, "(b) projectURL=\(String(describing: ws.projectURL)) statt \(resolved.path)")
+        }
+        guard ws.welcomeDismissed else {
+            finish(false, "(b) openProject hat den Willkommensbildschirm nicht geschlossen")
+        }
+        guard ws.recentProjects.first?.url.path == resolved.path else {
+            finish(false, "(b) Projekt nicht oben in recentProjects: \(ws.recentProjects.map(\.path))")
+        }
+
+        // ── (c) Dateibaum-Ebene: Ordner zuerst, .git übersprungen ─────────
+        let children = FileTree.children(of: repo)
+        guard children.map(\.name) == ["sub", "a.txt"] else {
+            finish(false, "(c) Dateibaum-Ebene falsch: \(children.map(\.name))")
+        }
+
+        // ── (d) Datei „aus dem Baum" laden + stille Repo-Erkennung ────────
+        ws.loadFile(at: repo.appendingPathComponent("a.txt")) { ok in
+            guard ok else {
+                finish(false, "(d) loadFile scheiterte")
+            }
+            guard ws.activeTab?.content == "PROJEKTTEST-A" else {
+                finish(false, "(d) Tab-Inhalt falsch: \(ws.activeTab?.content ?? "nil")")
+            }
+            // Der Tab muss die NORMALISIERTE URL tragen — sonst schlüge die
+            // Aktiv-Markierung im Projektbaum fehl (Listing liefert
+            // `/private/…`-Form).
+            guard ws.activeTab?.url == resolved.appendingPathComponent("a.txt") else {
+                finish(false, "(d) Tab-URL nicht normalisiert: \(ws.activeTab?.url?.path ?? "nil")")
+            }
+            // Die Repo-Erkennung in noteRecentFile darf KEIN Duplikat neben
+            // dem openProject-Eintrag anlegen (gleiche Pfad-Normalisierung).
+            let matches = ws.recentProjects.filter { $0.url.path == resolved.path }
+            guard matches.count == 1, ws.recentProjects.first?.url.path == resolved.path else {
+                finish(false, "(d) Projektliste falsch (Duplikat?): \(ws.recentProjects.map(\.path))")
+            }
+            try? fm.removeItem(at: base)
+            finish(true, "Willkommen-Bedingung, Projekt öffnen, Dateibaum-Ebene, "
+                + "Datei-Laden + Repo-Dedup ok")
+        }
+    }
+
     private static func runSearchTest() {
         testLabel = "search"
         guard let ws = Workspace.shared else {
@@ -2227,6 +2332,83 @@ enum SelfTest {
         }
         win.orderFront(nil)
         FileHandle.standardError.write(Data("SEARCHSHOT-WINDOW \(win.windowNumber)\n".utf8))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12) { exit(0) }
+    }
+
+    /// Diagnose (`-selftest welcomeshot`): Willkommensbildschirm mit gefüllter
+    /// Projektliste herstellen, Fenster-Nummer des Hauptfensters ausgeben
+    /// (für `screencapture -l`), nach 12 s Selbst-Exit. Kein Funktionstest —
+    /// die Logik deckt der `project`-Selbsttest ab.
+    private static func runWelcomeShot() {
+        testLabel = "welcomeshot"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        // Folgestart-Zustand simulieren (die Selbsttest-Suite ist frisch →
+        // die App startete mit dem Demo-Tab): leerer unbenannter Tab plus
+        // Beispiel-Projekte, damit die Liste auf dem Screenshot gefüllt ist.
+        ws.tabs = [EditorTab(title: "Ohne Titel", path: "noch nicht gespeichert")]
+        ws.activeTabID = ws.tabs.first?.id
+        ws.projectURL = nil
+        ws.welcomeDismissed = false
+        ws.recentProjects = [
+            ProjectEntry(path: "~/git/fastra"),
+            ProjectEntry(path: "~/git/intern"),
+            ProjectEntry(path: "~/Projekte/Newsletter"),
+        ]
+        dumpMainWindowThenExit(prefix: "WELCOMESHOT-WINDOW")
+    }
+
+    /// Diagnose (`-selftest projectshot`): Temp-Projekt mit sprechenden
+    /// Dateinamen anlegen, als Projekt laden (Dateibaum in der Seitenleiste)
+    /// und eine Datei öffnen — dann Fenster-Nummer fürs Capture ausgeben,
+    /// nach 12 s Selbst-Exit. Kein Funktionstest.
+    private static func runProjectShot() {
+        testLabel = "projectshot"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        let fm = FileManager.default
+        let repo = fm.temporaryDirectory.appendingPathComponent("Webseite")
+        do {
+            try? fm.removeItem(at: repo)
+            try fm.createDirectory(at: repo.appendingPathComponent(".git"),
+                                   withIntermediateDirectories: true)
+            try fm.createDirectory(at: repo.appendingPathComponent("styles"),
+                                   withIntermediateDirectories: true)
+            try fm.createDirectory(at: repo.appendingPathComponent("js"),
+                                   withIntermediateDirectories: true)
+            try "<!doctype html>\n<html lang=\"de\">\n<head>\n  <meta charset=\"utf-8\">\n  <title>Webseite</title>\n</head>\n<body>\n  <h1>Hallo!</h1>\n</body>\n</html>\n"
+                .write(to: repo.appendingPathComponent("index.html"),
+                       atomically: true, encoding: .utf8)
+            try "# Webseite\n\nDemo-Projekt für den Screenshot.\n"
+                .write(to: repo.appendingPathComponent("README.md"),
+                       atomically: true, encoding: .utf8)
+            try "body { margin: 0; }\n"
+                .write(to: repo.appendingPathComponent("styles/main.css"),
+                       atomically: true, encoding: .utf8)
+            try "console.log(\"Hallo\");\n"
+                .write(to: repo.appendingPathComponent("js/app.js"),
+                       atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "(setup) Temp-Projekt nicht anlegbar: \(error)")
+        }
+        ws.openProject(at: repo)
+        ws.loadFile(at: repo.appendingPathComponent("index.html")) { ok in
+            guard ok else { finish(false, "loadFile schlug fehl (completion false)") }
+            // Ein Runloop-Tick, damit Dateibaum + Editor fertig gerendert sind.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                dumpMainWindowThenExit(prefix: "PROJECTSHOT-WINDOW")
+            }
+        }
+    }
+
+    /// Gemeinsames Shot-Finale: größtes sichtbares Fenster (= Hauptfenster)
+    /// nach vorn ordnen, Fenster-Nummer auf stderr ausgeben, nach 12 s
+    /// Selbst-Exit — gleiche Mechanik wie die Suchmasken-Shots.
+    private static func dumpMainWindowThenExit(prefix: String) {
+        let main = NSApp.windows
+            .filter { $0.isVisible }
+            .max(by: { ($0.frame.width * $0.frame.height) < ($1.frame.width * $1.frame.height) })
+        guard let win = main else { finish(false, "kein sichtbares Hauptfenster") }
+        win.orderFront(nil)
+        FileHandle.standardError.write(Data("\(prefix) \(win.windowNumber)\n".utf8))
         DispatchQueue.main.asyncAfter(deadline: .now() + 12) { exit(0) }
     }
 

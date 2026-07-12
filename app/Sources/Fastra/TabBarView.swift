@@ -12,6 +12,9 @@ struct TabBarView: View {
                                 isActive: tab.id == workspace.activeTabID,
                                 canCloseOthers: workspace.tabs.count > 1) {
                             workspace.activeTabID = tab.id
+                            // Klick auf einen Tab = „ich will den Editor sehen" —
+                            // verdeckt der Willkommensbildschirm ihn, weg damit.
+                            workspace.welcomeDismissed = true
                         } onClose: {
                             // Zentrale Schließen-Logik inkl. BBEdit-Rückfrage bei
                             // ungespeicherten Änderungen (statt direktem Entfernen).

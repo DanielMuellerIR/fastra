@@ -29,8 +29,20 @@ struct ContentView: View {
             // in der Suchmaske erfüllt den primären Bedarf. Eine
             // ausgewachsene Side-by-side-Diff-Vorschau wird bei Bedarf
             // erst in v0.9 oder v1.1+ wieder eingeblendet.
-            EditorView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            //
+            // Willkommensbildschirm (Projekt- & Git-Ausbau, Etappe 1):
+            // ersetzt den Editor-Bereich, solange nichts geöffnet ist
+            // (Bedingung pur in WelcomeLogic, getestet). Tab-Leiste und
+            // Footer bleiben stehen — nur die Editor-Fläche wechselt.
+            if WelcomeLogic.shouldShow(tabs: workspace.tabs,
+                                       hasProject: workspace.projectURL != nil,
+                                       dismissed: workspace.welcomeDismissed) {
+                WelcomeView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                EditorView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
 
             Divider().opacity(0.5)
 

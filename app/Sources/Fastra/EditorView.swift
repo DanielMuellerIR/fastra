@@ -521,10 +521,19 @@ struct EditorView: View {
         return .default
     }
 
-    // MARK: Sidebar (geöffnete Dateien)
+    // MARK: Sidebar (Projekt-Dateibaum + geöffnete Dateien)
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 1) {
+            // Projekt geladen → hierarchischer Dateibaum oben, er bekommt
+            // den flexiblen Platz; die „GEÖFFNET"-Liste rückt kompakt nach
+            // unten. Ohne Projekt bleibt die Seitenleiste wie bisher.
+            if let projectURL = workspace.projectURL {
+                FileTreeSidebar(rootURL: projectURL)
+                    .frame(maxHeight: .infinity)
+                Divider().opacity(0.3)
+            }
+
             Text("GEÖFFNET")
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(0.6)
@@ -539,7 +548,9 @@ struct EditorView: View {
                     .onTapGesture { workspace.activeTabID = tab.id }
             }
 
-            Spacer()
+            if workspace.projectURL == nil {
+                Spacer()
+            }
 
             Button {
                 workspace.openFile()

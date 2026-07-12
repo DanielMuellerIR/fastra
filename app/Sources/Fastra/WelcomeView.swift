@@ -1,0 +1,145 @@
+import SwiftUI
+
+/// Entscheidet, ob der Willkommensbildschirm den Editor-Bereich ersetzt.
+/// Pure Funktion → unit-testbar (Muster: KeyRouting, FooterLogic).
+enum WelcomeLogic {
+    /// Der Willkommensbildschirm erscheint nur im „jungfräulichen" Zustand:
+    /// kein Projekt geladen, nicht aktiv weggeklickt, und ALLE Tabs sind
+    /// wertlose leere Notizzettel (unbenannt, leer, unverändert, nicht am
+    /// Laden — dieselbe Definition wie `tabsRemovingEmptyScratch`). Sobald
+    /// irgendwo echter Inhalt existiert, hat der Editor Vorrang. Der
+    /// Demo-Tab des allerersten Starts hat Inhalt → dort gewinnt das Demo.
+    static func shouldShow(tabs: [EditorTab],
+                           hasProject: Bool,
+                           dismissed: Bool) -> Bool {
+        guard !hasProject, !dismissed else { return false }
+        return tabs.allSatisfy { tab in
+            tab.url == nil && tab.content.isEmpty && !tab.isDirty && !tab.isLoading
+        }
+    }
+}
+
+/// Willkommensbildschirm (VS-Code-Muster, aber Apple-dezent): erscheint statt
+/// des Editors, wenn noch nichts geöffnet ist. Bietet die drei Einstiegs-
+/// Aktionen und die Liste der zuletzt benutzten Projekte — ein Klick lädt
+/// das Projekt in die Seitenleiste.
+struct WelcomeView: View {
+    @EnvironmentObject var workspace: Workspace
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 24)
+
+            // Wortmarke — bewusst schlicht (kein Icon-Zirkus), Ton wie AboutWindow.
+            Text("Fastra")
+                .font(.system(size: 34, weight: .semibold, design: .default))
+                .foregroundColor(Theme.textPrimary)
+            Text("Suchen & Ersetzen, das niemand sonst hat.")
+                .font(Theme.uiFont)
+                .foregroundColor(Theme.textSecondary)
+                .padding(.top, 4)
+
+            // Einstiegs-Aktionen.
+            VStack(alignment: .leading, spacing: 10) {
+                welcomeAction("Neue Datei", system: "square.and.pencil", shortcut: "⌘T") {
+                    workspace.welcomeDismissed = true
+                }
+                welcomeAction("Datei öffnen…", system: "doc", shortcut: "⌘O") {
+                    workspace.openFile()
+                }
+                welcomeAction("Ordner öffnen…", system: "folder", shortcut: "⇧⌘O") {
+                    workspace.openFolderAsProject()
+                }
+            }
+            .padding(.top, 28)
+
+            // Zuletzt benutzte Projekte.
+            VStack(alignment: .leading, spacing: 2) {
+                Text("ZULETZT BENUTZTE PROJEKTE")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.6)
+                    .foregroundColor(Theme.textSecondary)
+                    .padding(.bottom, 6)
+
+                if workspace.recentProjects.isEmpty {
+                    // Dezente Erklärung statt leerer Fläche — sagt zugleich,
+                    // WIE Projekte in die Liste kommen (automatisch).
+                    Text("Projekte merkt sich Fastra von selbst: Öffne eine Datei aus einem Git-Repository oder einen Ordner.")
+                        .font(Theme.uiSmall)
+                        .foregroundColor(Theme.textSecondary)
+                        .frame(maxWidth: 320, alignment: .leading)
+                } else {
+                    ForEach(workspace.recentProjects) { entry in
+                        ProjectRow(entry: entry) {
+                            workspace.openProject(at: entry.url)
+                        }
+                    }
+                }
+            }
+            .padding(.top, 32)
+            .frame(maxWidth: 380, alignment: .leading)
+
+            Spacer(minLength: 24)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.surfaceRaised)
+    }
+
+    /// Eine Einstiegs-Aktion: Icon + Titel + dezenter Shortcut-Hinweis.
+    private func welcomeAction(_ title: String,
+                               system: String,
+                               shortcut: String,
+                               action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: system)
+                    .foregroundColor(Theme.accentReadable)
+                    .font(.system(size: 13))
+                    .frame(width: 18)
+                Text(title)
+                    .font(Theme.uiFont)
+                    .foregroundColor(Theme.textPrimary)
+                Text(shortcut)
+                    .font(Theme.uiSmall)
+                    .foregroundColor(Theme.textSecondary)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Eine Zeile der Projekt-Liste: Ordner-Icon, Name, gedimmter Pfad.
+private struct ProjectRow: View {
+    let entry: ProjectEntry
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: "folder")
+                    .foregroundColor(Theme.accentReadable)
+                    .font(.system(size: 12))
+                    .frame(width: 18)
+                Text(entry.name)
+                    .font(Theme.uiFont)
+                    .foregroundColor(Theme.textPrimary)
+                    .lineLimit(1)
+                Text(entry.path)
+                    .font(Theme.uiSmall)
+                    .foregroundColor(Theme.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(isHovered ? Theme.surfaceSand.opacity(0.6) : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+    }
+}
