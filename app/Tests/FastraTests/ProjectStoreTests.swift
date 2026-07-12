@@ -142,3 +142,36 @@ func canonical_missingPathUnchanged() {
     let missing = URL(fileURLWithPath: "/definitiv/nicht/da/\(UUID().uuidString)")
     #expect(missing.canonicalFileURL == missing)
 }
+
+@Test("Projekt-Suchkonfiguration bleibt pro Projekt getrennt erhalten")
+func projectSearchStore_roundtripPerProject() throws {
+    let suiteName = "fastra-project-search-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let first = URL(fileURLWithPath: "/tmp/projekt-a")
+    let second = URL(fileURLWithPath: "/tmp/projekt-b")
+    var config = ProjectSearchConfiguration.fresh()
+    let sources = ProjectFileSet(name: "Quellen", paths: ["Sources", "Package.swift"])
+    config.fileSets.append(sources)
+    config.activeSetID = sources.id
+    config.excludePatternsText = "build, *.generated.swift"
+
+    ProjectSearchStore.save(config, for: first, defaults: defaults)
+    #expect(ProjectSearchStore.load(for: first, defaults: defaults) == config)
+    #expect(ProjectSearchStore.load(for: second, defaults: defaults) != config)
+}
+
+@Test("Projekt-Suchkonfiguration repariert eine ungültige aktive Auswahl")
+func projectSearchStore_normalizesInvalidSelection() throws {
+    let suiteName = "fastra-project-search-invalid-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let root = URL(fileURLWithPath: "/tmp/projekt")
+    let only = ProjectFileSet(name: "Quellen", paths: ["Sources"])
+    let config = ProjectSearchConfiguration(fileSets: [only], activeSetID: UUID(),
+                                            fileTypeFilter: .knownText,
+                                            excludePatternsText: "")
+    ProjectSearchStore.save(config, for: root, defaults: defaults)
+    let loaded = ProjectSearchStore.load(for: root, defaults: defaults)
+    #expect(loaded.activeSetID == only.id)
+}

@@ -28,8 +28,8 @@ struct ContentView: View {
             // DiffPanelView ist mit v0.5 aus dem Hauptfenster entfernt
             // (Daniel-Entscheidung 2026-05-26): Die Sofort-Trefferliste
             // in der Suchmaske erfüllt den primären Bedarf. Eine
-            // ausgewachsene Side-by-side-Diff-Vorschau wird bei Bedarf
-            // erst in v0.9 oder v1.1+ wieder eingeblendet.
+            // ausgewachsene Side-by-side-Diff-Vorschau erscheint bei Bedarf
+            // als Sheet über diesem Hauptfenster.
             //
             // Willkommensbildschirm (Projekt- & Git-Ausbau, Etappe 1):
             // ersetzt den Editor-Bereich, solange nichts geöffnet ist

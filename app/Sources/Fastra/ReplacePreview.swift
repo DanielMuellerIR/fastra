@@ -19,6 +19,27 @@ import Foundation
 
 enum ReplacePreview {
 
+    enum SideKind: Equatable {
+        case unchanged, changed, removed, added
+    }
+
+    struct SideBySideRow: Identifiable, Equatable {
+        let id: Int
+        let beforeLine: Int?
+        let afterLine: Int?
+        let before: String?
+        let after: String?
+        let kind: SideKind
+    }
+
+    struct SideBySideResult: Equatable {
+        let rows: [SideBySideRow]
+        let totalRows: Int
+        let changedRows: Int
+        var truncated: Bool { rows.count < totalRows }
+        static let empty = SideBySideResult(rows: [], totalRows: 0, changedRows: 0)
+    }
+
     /// Eine betroffene Zeile mit Original- und Ersetzungs-Fassung.
     struct Row: Identifiable, Equatable {
         /// 1-basierte Zeilennummer (wie in der Trefferliste). Dient ZUGLEICH als
@@ -96,6 +117,94 @@ enum ReplacePreview {
             }
         }
         return Result(rows: rows, totalChangedLines: changed)
+    }
+
+    /// Vollständiger Dokument-Diff. Zuerst entsteht der echte Nachher-Text
+    /// über alle Treffer hinweg; anschließend richtet `CollectionDifference`
+    /// eingefügte und entfernte Zeilen aus. Damit bleiben auch mehrzeilige
+    /// Ersetzungen korrekt — anders als bei der kompakten Inline-Vorschau.
+    static func buildSideBySide(text: String, matches: [BufferSearch.Match],
+                                maxRows: Int = 5_000) -> SideBySideResult {
+        let ns = text as NSString
+        let valid = matches
+            .filter { $0.range.location >= 0 && NSMaxRange($0.range) <= ns.length }
+            .sorted { $0.range.location < $1.range.location }
+        guard !valid.isEmpty else { return .empty }
+
+        var after = ""
+        var cursor = 0
+        for match in valid where match.range.location >= cursor {
+            if match.range.location > cursor {
+                after += ns.substring(with: NSRange(location: cursor,
+                                                    length: match.range.location - cursor))
+            }
+            after += match.replacedText
+            cursor = NSMaxRange(match.range)
+        }
+        if cursor < ns.length {
+            after += ns.substring(from: cursor)
+        }
+
+        let beforeLines = text.components(separatedBy: .newlines)
+        let afterLines = after.components(separatedBy: .newlines)
+        let difference = afterLines.difference(from: beforeLines)
+        var removed = Set<Int>()
+        var inserted = Set<Int>()
+        for change in difference {
+            switch change {
+            case .remove(let offset, _, _): removed.insert(offset)
+            case .insert(let offset, _, _): inserted.insert(offset)
+            }
+        }
+
+        var all: [SideBySideRow] = []
+        var beforeIndex = 0
+        var afterIndex = 0
+        var changedRows = 0
+        while beforeIndex < beforeLines.count || afterIndex < afterLines.count {
+            let isRemoved = beforeIndex < beforeLines.count && removed.contains(beforeIndex)
+            let isInserted = afterIndex < afterLines.count && inserted.contains(afterIndex)
+            let row: SideBySideRow
+            if isRemoved && isInserted {
+                row = SideBySideRow(id: all.count, beforeLine: beforeIndex + 1,
+                                    afterLine: afterIndex + 1,
+                                    before: beforeLines[beforeIndex], after: afterLines[afterIndex],
+                                    kind: .changed)
+                beforeIndex += 1; afterIndex += 1; changedRows += 1
+            } else if isRemoved {
+                row = SideBySideRow(id: all.count, beforeLine: beforeIndex + 1,
+                                    afterLine: nil, before: beforeLines[beforeIndex],
+                                    after: nil, kind: .removed)
+                beforeIndex += 1; changedRows += 1
+            } else if isInserted {
+                row = SideBySideRow(id: all.count, beforeLine: nil,
+                                    afterLine: afterIndex + 1, before: nil,
+                                    after: afterLines[afterIndex], kind: .added)
+                afterIndex += 1; changedRows += 1
+            } else if beforeIndex < beforeLines.count && afterIndex < afterLines.count {
+                let kind: SideKind = beforeLines[beforeIndex] == afterLines[afterIndex]
+                    ? .unchanged : .changed
+                row = SideBySideRow(id: all.count, beforeLine: beforeIndex + 1,
+                                    afterLine: afterIndex + 1,
+                                    before: beforeLines[beforeIndex], after: afterLines[afterIndex],
+                                    kind: kind)
+                beforeIndex += 1; afterIndex += 1
+                if kind == .changed { changedRows += 1 }
+            } else if beforeIndex < beforeLines.count {
+                row = SideBySideRow(id: all.count, beforeLine: beforeIndex + 1,
+                                    afterLine: nil, before: beforeLines[beforeIndex],
+                                    after: nil, kind: .removed)
+                beforeIndex += 1; changedRows += 1
+            } else {
+                row = SideBySideRow(id: all.count, beforeLine: nil,
+                                    afterLine: afterIndex + 1, before: nil,
+                                    after: afterLines[afterIndex], kind: .added)
+                afterIndex += 1; changedRows += 1
+            }
+            all.append(row)
+        }
+        return SideBySideResult(rows: Array(all.prefix(maxRows)), totalRows: all.count,
+                                changedRows: changedRows)
     }
 
     // MARK: - Intern

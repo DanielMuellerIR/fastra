@@ -62,6 +62,8 @@ final class SearchRunner {
             workspace.$scope.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             workspace.$recentSearchFolders.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             workspace.$fileTypeFilter.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            workspace.$projectSearchConfiguration.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            workspace.$projectURL.dropFirst().map { _ in () }.eraseToAnyPublisher(),
         ]
 
         Publishers.MergeMany(triggers)
@@ -86,8 +88,8 @@ final class SearchRunner {
     /// (siehe `shouldRunFolderLive` / `rerun`). Pur + statisch → unit-testbar.
     static func runsLive(for scope: Workspace.SearchScope) -> Bool {
         switch scope {
-        case .file, .open: return true
-        case .folder:      return false
+        case .file, .open:       return true
+        case .folder, .project:  return false
         }
     }
 
@@ -151,7 +153,7 @@ final class SearchRunner {
         // expliziten Such-Lauf vormerken (Prompt in der leeren Liste).
         guard SearchRunner.shouldRunFolderLive(for: ws.findPattern),
               !ws.currentSearchOptions.isEmpty,
-              !ws.enabledSearchFolderURLs.isEmpty else {
+              !ws.activeMultiFileSearchURLs.isEmpty else {
             ws.folderResults = []
             ws.folderTotalMatches = 0
             ws.folderResultsWereCapped = false
@@ -290,7 +292,7 @@ final class SearchRunner {
     /// ausgelöst (Konzept Abschnitt C). Läuft asynchron via `Task.detached`
     /// und bricht eine schon laufende Suche ab.
     func runFolderSearch() {
-        guard let ws = workspace, ws.scope == .folder else { return }
+        guard let ws = workspace, ws.scope.isFolderLike else { return }
         folderTask?.cancel()
         folderTask = nil
 
@@ -315,12 +317,17 @@ final class SearchRunner {
             return
         }
 
-        let urls = ws.enabledSearchFolderURLs
-        let filter = ws.fileTypeFilter
+        let urls = ws.activeMultiFileSearchURLs
+        let filter = ws.activeMultiFileFilter
+        let exclusions = ws.scope == .project
+            ? ws.projectSearchConfiguration.excludePatterns : []
+        let projectRoot = ws.scope == .project ? ws.projectURL : nil
         ws.folderSearching = !options.isEmpty && !urls.isEmpty
         ws.searchError = nil
         folderTask = Task.detached(priority: .userInitiated) { [weak ws] in
-            let result = FolderSearch.find(in: urls, filter: filter, options: options)
+            let result = FolderSearch.find(in: urls, filter: filter, options: options,
+                                           excludedPatterns: exclusions,
+                                           relativeTo: projectRoot)
             if Task.isCancelled { return }
             await MainActor.run { [ws] in
                 guard let ws else { return }

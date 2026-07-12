@@ -293,3 +293,42 @@ func find_totalCap_usesTrueCountAcrossFiles() throws {
     // … materialisiert bleibt die Liste auf den Pro-Datei-Cap begrenzt.
     #expect(r.perFile.first?.matches.count == 3)
 }
+
+@Test("Projekt-Globs schließen Ordner rekursiv und Dateimuster aus")
+func folderSearch_projectExclusions() throws {
+    let c = try FolderCorpus()
+    try c.write("artifact.txt", "NADEL", in: "build")
+    try c.write("foo.generated.swift", "NADEL")
+    try c.write("keep.swift", "NADEL")
+    let result = FolderSearch.find(
+        in: [c.root], filter: .knownText,
+        options: SearchOptions(find: "NADEL", replace: "", isRegex: false),
+        excludedPatterns: ["build", "*.generated.swift"], relativeTo: c.root
+    )
+    #expect(result.filesWithMatches.map { $0.url.lastPathComponent } == ["keep.swift"])
+}
+
+@Test("Datei-Set darf eine einzelne Datei als Suchwurzel enthalten")
+func folderSearch_directFileRoot() throws {
+    let c = try FolderCorpus()
+    let file = try c.write("single.txt", "EINZEL")
+    let result = FolderSearch.find(
+        in: [file], filter: .knownText,
+        options: SearchOptions(find: "EINZEL", replace: "", isRegex: false)
+    )
+    #expect(result.totalMatches == 1)
+    #expect(result.filesWithMatches.first?.url == file)
+}
+
+@Test("Überlappende Datei-Set-Wurzeln liefern jede Datei nur einmal")
+func folderSearch_deduplicatesOverlappingRoots() throws {
+    let c = try FolderCorpus()
+    let sources = c.root.appendingPathComponent("Sources")
+    try c.write("main.swift", "EINMAL", in: "Sources")
+    let result = FolderSearch.find(
+        in: [c.root, sources], filter: .knownText,
+        options: SearchOptions(find: "EINMAL", replace: "", isRegex: false)
+    )
+    #expect(result.totalMatches == 1)
+    #expect(result.filesWithMatches.count == 1)
+}

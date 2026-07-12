@@ -2131,7 +2131,7 @@ enum SelfTest {
     /// Fensterlos — Projekt- & Git-Ausbau Etappe 1 end-to-end über den echten
     /// Workspace: Willkommens-Bedingung, Projekt öffnen (Dateibaum-Wurzel,
     /// Zuletzt-benutzt-Liste), Datei aus dem Baum laden, automatische
-    /// Repo-Erkennung ohne Duplikat in der Projektliste.
+    /// Repo-Erkennung ohne Duplikat und Projekt-Datei-Set samt Ausschluss.
     private static func runProjectTest() {
         testLabel = "project"
         guard let ws = Workspace.shared else {
@@ -2213,9 +2213,39 @@ enum SelfTest {
             guard matches.count == 1, ws.recentProjects.first?.url.path == resolved.path else {
                 finish(false, "(d) Projektliste falsch (Duplikat?): \(ws.recentProjects.map(\.path))")
             }
-            try? fm.removeItem(at: base)
-            finish(true, "Willkommen-Bedingung, Projekt öffnen, Dateibaum-Ebene, "
-                + "Datei-Laden + Repo-Dedup ok")
+
+            // ── (e) Projekt-Scope mit gespeichertem Datei-Set ────────────
+            // Die Projektwurzel enthält zwei Trefferdateien; „sub" wird
+            // ausgeschlossen, daher darf nur a.txt im Ergebnis stehen.
+            let set = ProjectFileSet(name: "Nur Quellen", paths: ["."])
+            ws.projectSearchConfiguration = ProjectSearchConfiguration(
+                fileSets: [set], activeSetID: set.id, fileTypeFilter: .knownText,
+                excludePatternsText: "sub"
+            )
+            ws.scope = .project
+            ws.findPattern = "PROJEKTTEST"
+            ws.useRegex = false
+            ws.runFolderSearchNow()
+            pollProjectScope(ws, base: base, tick: 0)
+        }
+    }
+
+    private static func pollProjectScope(_ ws: Workspace, base: URL, tick: Int) {
+        if !ws.folderSearching, !ws.folderNeedsSearch {
+            let urls = ws.folderResults.filter { !$0.matches.isEmpty }.map(\.url.lastPathComponent)
+            guard ws.folderTotalMatches == 1, urls == ["a.txt"] else {
+                finish(false, "(e) Projekt-Scope missachtet Datei-Set/Ausschluss: "
+                    + "total=\(ws.folderTotalMatches), Dateien=\(urls)")
+            }
+            try? FileManager.default.removeItem(at: base)
+            finish(true, "Willkommen, Projekt öffnen, Dateibaum, Datei-Laden, "
+                + "Repo-Dedup + Projekt-Datei-Set/Ausschluss ok")
+        }
+        guard tick < 200 else {
+            finish(false, "(e) Timeout der Projekt-Suche")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            pollProjectScope(ws, base: base, tick: tick + 1)
         }
     }
 

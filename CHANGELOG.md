@@ -9,6 +9,29 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.11.0] — 2026-07-12
+
+### Hinzugefügt
+
+- **Vollständige Side-by-side-Diff-Vorschau:** Vorher- und Nachher-Dokument
+  werden zeilenweise synchron ausgerichtet; Einfügungen, Löschungen,
+  Ersetzungen und unveränderte Kontextzeilen bleiben in zwei gleich breiten
+  Panels nachvollziehbar. Mehrzeilige Ersetzungen sind abgedeckt, die Anzeige
+  wird bei 5.000 Zeilen mit ehrlichem Gesamtzähler begrenzt.
+- **Konfigurierbarer Extrahieren-Dialog:** Treffer lassen sich mit
+  Zeilenumbruch, Komma, Semikolon, Tab oder eigenem Trennzeichen in ein neues
+  Dokument oder die Zwischenablage schreiben. Optional stehen CSV-artiges
+  Quoting, Deduplizierung und Transformation durch das Ersetzungsmuster bereit.
+- **Vollständiger Projekt-Scope:** Pro Projekt persistente Datei-Sets können
+  Ordner und Einzeldateien kombinieren. Eigene Dateitypfilter und
+  projekt-relative Glob-Ausschlüsse begrenzen die Suche; ungültige Pfade
+  bleiben außerhalb des Projekts und überlappende Wurzeln erzeugen keine
+  doppelten Treffer.
+- Unit-Tests prüfen Diff-Ausrichtung und -Kappung, alle Extraktionsoptionen,
+  Konfigurationspersistenz und -reparatur, Globs, direkte Dateien und
+  überlappende Wurzeln. Der `project`-Selbsttest prüft Datei-Set und Ausschluss
+  über den echten Workspace/SearchRunner-Pfad.
+
 ## [v1.10.0] — 2026-07-12
 
 ### Hinzugefügt

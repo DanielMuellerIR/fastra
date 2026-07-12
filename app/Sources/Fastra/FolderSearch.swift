@@ -132,6 +132,8 @@ enum FolderSearch {
     static func find(in folders: [URL],
                      filter: FileTypeFilter,
                      options: SearchOptions,
+                     excludedPatterns: [String] = [],
+                     relativeTo projectRoot: URL? = nil,
                      maxResultsPerFile: Int = 5000,
                      maxTotalMatches: Int = 10_000) -> Result {
         guard !options.isEmpty else { return .empty }
@@ -151,19 +153,47 @@ enum FolderSearch {
         var totalSoFar = 0
         // Wurde der Cap während der Enumeration ausgelöst?
         var capped = false
+        // Überlappende Datei-Set-Wurzeln (z. B. „.“ und „Sources“) dürfen
+        // dieselbe Datei nicht zweimal durchsuchen oder ersetzen.
+        var seenFiles = Set<String>()
 
         outerLoop:
         for folder in folders {
             let fm = FileManager.default
+            var rootIsDirectory: ObjCBool = false
+            guard fm.fileExists(atPath: folder.path, isDirectory: &rootIsDirectory) else {
+                continue
+            }
+            // Datei-Sets dürfen neben Ordnern auch einzelne Dateien enthalten.
+            if !rootIsDirectory.boolValue {
+                guard !PathExclusion.matches(folder, patterns: excludedPatterns,
+                                             relativeTo: projectRoot),
+                      passesFilter(url: folder, filter: filter),
+                      seenFiles.insert(folder.canonicalFileURL.path).inserted else { continue }
+                let result = searchOneFile(at: folder, options: options,
+                                           maxMatches: min(maxResultsPerFile,
+                                                           maxTotalMatches - totalSoFar))
+                if result.skipped != nil || !result.matches.isEmpty { perFile.append(result) }
+                totalSoFar += result.totalMatches
+                if totalSoFar >= maxTotalMatches { capped = true; break outerLoop }
+                continue
+            }
             guard let enumerator = fm.enumerator(
                 at: folder,
-                includingPropertiesForKeys: [.isRegularFileKey],
+                includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
                 options: [.skipsHiddenFiles, .skipsPackageDescendants]
             ) else { continue }
 
             for case let url as URL in enumerator {
-                let isFile = (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile ?? false
+                let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isDirectoryKey])
+                if PathExclusion.matches(url, patterns: excludedPatterns,
+                                         relativeTo: projectRoot) {
+                    if values?.isDirectory == true { enumerator.skipDescendants() }
+                    continue
+                }
+                let isFile = values?.isRegularFile ?? false
                 guard isFile else { continue }
+                guard seenFiles.insert(url.canonicalFileURL.path).inserted else { continue }
                 if !passesFilter(url: url, filter: filter) {
                     // Filter-Skips werden NICHT ins Ergebnis aufgenommen
                     // (zu viel Lärm in jeder Liste). Bei Bedarf einklappbar
@@ -240,5 +270,58 @@ enum FolderSearch {
         // bleiben materialisiert begrenzt (UI-Speicher).
         return PerFileResult(url: url, matches: capped,
                              totalMatches: search.totalMatches, skipped: nil)
+    }
+}
+
+/// Projekt-relative Glob-Ausschlüsse. Ein Muster ohne Slash gilt für jede
+/// Pfadkomponente (`build`, `*.generated.swift`); mit Slash für den gesamten
+/// relativen Pfad. Unterstützt `*`, `?` und `**`.
+enum PathExclusion {
+    static func matches(_ url: URL, patterns: [String], relativeTo root: URL?) -> Bool {
+        guard !patterns.isEmpty else { return false }
+        let relative: String
+        if let root {
+            let rootPath = root.standardizedFileURL.path
+            let path = url.standardizedFileURL.path
+            guard path == rootPath || path.hasPrefix(rootPath + "/") else { return false }
+            relative = path == rootPath ? "" : String(path.dropFirst(rootPath.count + 1))
+        } else {
+            relative = url.lastPathComponent
+        }
+        let components = relative.split(separator: "/").map(String.init)
+        return patterns.contains { raw in
+            let pattern = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !pattern.isEmpty else { return false }
+            if pattern.contains("/") {
+                return glob(pattern, matches: relative)
+            }
+            return components.contains { glob(pattern, matches: $0) }
+        }
+    }
+
+    static func glob(_ pattern: String, matches value: String) -> Bool {
+        var regex = "^"
+        var index = pattern.startIndex
+        while index < pattern.endIndex {
+            let char = pattern[index]
+            if char == "*" {
+                let next = pattern.index(after: index)
+                if next < pattern.endIndex, pattern[next] == "*" {
+                    regex += ".*"
+                    index = pattern.index(after: next)
+                } else {
+                    regex += "[^/]*"
+                    index = next
+                }
+            } else if char == "?" {
+                regex += "[^/]"
+                index = pattern.index(after: index)
+            } else {
+                regex += NSRegularExpression.escapedPattern(for: String(char))
+                index = pattern.index(after: index)
+            }
+        }
+        regex += "$"
+        return value.range(of: regex, options: .regularExpression) != nil
     }
 }

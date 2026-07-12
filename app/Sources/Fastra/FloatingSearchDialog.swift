@@ -41,6 +41,8 @@ struct FloatingSearchDialog: View {
     /// über Re-Render hinweg stabil; die Klassen selbst sind leichtgewichtig.)
     @State private var findFieldController = RegexFieldController()
     @State private var replaceFieldController = RegexFieldController()
+    @State private var showProjectFileSetEditor = false
+    @State private var showExtractionDialog = false
 
     var body: some View {
         // Maske ist seit v0.5 in einem eigenen NSWindow — kein eigener
@@ -53,8 +55,14 @@ struct FloatingSearchDialog: View {
             // Wachsender Ordner-Block — nur bei Scope „Ordner" sichtbar,
             // animiert. Konzept-Frage 1 (Daniel, 2026-05-26): „Maske
             // wächst dynamisch statt zwei separate Fenster".
-            if workspace.scope == .folder {
-                folderSourcesSection
+            if workspace.scope.isFolderLike {
+                Group {
+                    if workspace.scope == .project {
+                        projectSourcesSection
+                    } else {
+                        folderSourcesSection
+                    }
+                }
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
@@ -122,6 +130,20 @@ struct FloatingSearchDialog: View {
         .onAppear { retokenize() }
         .onChange(of: workspace.findPattern) { retokenize() }
         .onChange(of: workspace.useRegex) { retokenize() }
+        .sheet(isPresented: $showProjectFileSetEditor) {
+            ProjectFileSetEditor { name, paths in
+                var config = workspace.projectSearchConfiguration
+                let set = ProjectFileSet(name: name, paths: paths)
+                config.fileSets.append(set)
+                config.activeSetID = set.id
+                workspace.projectSearchConfiguration = config
+            }
+        }
+        .sheet(isPresented: $showExtractionDialog) {
+            ExtractionDialog(defaultUseReplacement: !workspace.replacePattern.isEmpty) { options in
+                _ = workspace.extractHits(options: options)
+            }
+        }
     }
 
     /// Tokenisiert das Find-Pattern neu (oder setzt `nil` bei RegEx=aus).
@@ -190,6 +212,7 @@ struct FloatingSearchDialog: View {
                     // der gewählte Scope bereits über die Sand-Füllung markiert
                     // ist (Daniel-Befund 2026-06-13). Auswahl ≠ Fokus.
                     .focusEffectDisabled()
+                    .disabled(s == .project && workspace.projectURL == nil)
                     .help(tooltip(for: s))
                 }
             }
@@ -202,6 +225,7 @@ struct FloatingSearchDialog: View {
         case .file:   return "Nur in der aktuell sichtbaren Datei suchen."
         case .open:   return "In allen geöffneten Tabs suchen."
         case .folder: return "In einem oder mehreren Ordnern suchen — Ordner werden weiter unten ausgewählt."
+        case .project: return "Im aktiven Projekt suchen — mit gespeichertem Datei-Set, Filter und Ausschlüssen."
         }
     }
 
@@ -276,6 +300,87 @@ struct FloatingSearchDialog: View {
                 Spacer()
             }
         }
+    }
+
+    private var projectSourcesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Datei-Set")
+                    .fastraFont(.small)
+                    .foregroundColor(Theme.textSecondary)
+                    .frame(width: 80 * uiScale, alignment: .leading)
+                Picker("", selection: Binding(
+                    get: { workspace.projectSearchConfiguration.activeSetID },
+                    set: { workspace.projectSearchConfiguration.activeSetID = $0 }
+                )) {
+                    ForEach(workspace.projectSearchConfiguration.fileSets) { set in
+                        Text(set.name).tag(set.id)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 220)
+                Button { showProjectFileSetEditor = true } label: {
+                    Image(systemName: "plus.circle")
+                }
+                .buttonStyle(.plain)
+                .help("Gespeichertes Datei-Set anlegen")
+                Button { removeActiveProjectFileSet() } label: {
+                    Image(systemName: "minus.circle")
+                }
+                .buttonStyle(.plain)
+                .disabled(workspace.projectSearchConfiguration.fileSets.count <= 1)
+                .help("Aktives Datei-Set löschen")
+
+                Picker("Dateitypen", selection: Binding(
+                    get: { workspace.projectSearchConfiguration.fileTypeFilter },
+                    set: { workspace.projectSearchConfiguration.fileTypeFilter = $0 }
+                )) {
+                    ForEach(FileTypeFilter.allCases) { filter in
+                        Text(filter.rawValue).tag(filter)
+                    }
+                }
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                Spacer()
+            }
+
+            HStack(spacing: 8) {
+                Text("Pfade")
+                    .fastraFont(.small)
+                    .foregroundColor(Theme.textSecondary)
+                    .frame(width: 80 * uiScale, alignment: .leading)
+                Text(workspace.projectSearchConfiguration.activeSet?.paths.joined(separator: ", ") ?? "—")
+                    .fastraFont(.monoSmall)
+                    .foregroundColor(Theme.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+            }
+
+            HStack(spacing: 8) {
+                Text("Ausschlüsse")
+                    .fastraFont(.small)
+                    .foregroundColor(Theme.textSecondary)
+                    .frame(width: 80 * uiScale, alignment: .leading)
+                TextField("z.B. .git, build, *.generated.swift",
+                          text: Binding(
+                            get: { workspace.projectSearchConfiguration.excludePatternsText },
+                            set: { workspace.projectSearchConfiguration.excludePatternsText = $0 }
+                          ))
+                    .textFieldStyle(.roundedBorder)
+                    .fastraFont(.small)
+            }
+        }
+    }
+
+    private func removeActiveProjectFileSet() {
+        var config = workspace.projectSearchConfiguration
+        guard config.fileSets.count > 1,
+              let index = config.fileSets.firstIndex(where: { $0.id == config.activeSetID })
+        else { return }
+        config.fileSets.remove(at: index)
+        config.activeSetID = config.fileSets[0].id
+        workspace.projectSearchConfiguration = config
     }
 
     // MARK: - Vorlagen-Dropdown
@@ -375,7 +480,7 @@ struct FloatingSearchDialog: View {
                 placeholder: "Suchausdruck…",
                 controller: findFieldController,
                 onSubmit: {
-                    if workspace.scope == .folder {
+                    if workspace.scope.isFolderLike {
                         workspace.runFolderSearchNow()
                     } else {
                         NotificationCenter.default.post(name: .fastraGotoNextMatch, object: nil)
@@ -706,7 +811,7 @@ struct FloatingSearchDialog: View {
     /// Tippen frisch, die Vorschau also korrekt.
     @ViewBuilder
     private var livePreviewStrip: some View {
-        if workspace.scope != .folder,
+        if !workspace.scope.isFolderLike,
            !workspace.replacePattern.isEmpty,
            !workspace.bufferMatches.isEmpty {
             let preview = ReplacePreview.build(text: workspace.activeTab?.content ?? "",
@@ -789,12 +894,12 @@ struct FloatingSearchDialog: View {
             // ausgelöst hat — stilles Abschneiden ist schlechter UX.
             // Stil analog zum Fehler-Streifen, aber Gelb/Orange statt Rot,
             // da es kein Fehler ist, sondern ein informativer Hinweis.
-            if (workspace.scope == .folder && workspace.folderResultsWereCapped)
+            if (workspace.scope.isFolderLike && workspace.folderResultsWereCapped)
                 || (workspace.scope == .open && workspace.openResultsWereCapped) {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
-                    Text(workspace.scope == .folder
+                    Text(workspace.scope.isFolderLike
                          ? "Trefferliste auf 10.000 gekappt — Suchbegriff verfeinern."
                          : "Trefferliste gekappt — Zähler zeigt die wahre Gesamtzahl.")
                         .fastraFont(size: 11)
@@ -814,7 +919,7 @@ struct FloatingSearchDialog: View {
             // sind als Liste materialisiert. Der Header zeigt die echte
             // Gesamtzahl; hier steht ehrlich, wie viele davon gelistet sind.
             // „Alle ersetzen" wirkt trotzdem auf ALLE Treffer (Voll-Replace).
-            if workspace.scope != .folder && workspace.bufferResultsWereCapped {
+            if !workspace.scope.isFolderLike && workspace.bufferResultsWereCapped {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
@@ -931,7 +1036,7 @@ struct FloatingSearchDialog: View {
     /// Treffer gruppiert nach Datei. Im Datei-Scope eine Gruppe (= aktiver
     /// Tab); im Folder-Scope eine Gruppe pro Datei mit Treffern.
     private var groupedHits: [HitGroup] {
-        if workspace.scope == .folder {
+        if workspace.scope.isFolderLike {
             return workspace.folderResults
                 .filter { !$0.matches.isEmpty }
                 .map { HitGroup(label: $0.url.lastPathComponent,
@@ -956,7 +1061,7 @@ struct FloatingSearchDialog: View {
         // Echte Gesamtzahl (kann > materialisierte Liste sein, wenn der
         // Cap griff) — ehrlicher Count wie BBEdits Statuszeile.
         switch workspace.scope {
-        case .folder: return workspace.folderTotalMatches
+        case .folder, .project: return workspace.folderTotalMatches
         case .open:   return workspace.openTotalMatches
         case .file:   return workspace.bufferTotalMatches
         }
@@ -965,9 +1070,11 @@ struct FloatingSearchDialog: View {
     /// Hinweistext bei leerer Trefferliste, scope-spezifisch formuliert.
     private var emptyHint: String {
         if workspace.findPattern.isEmpty { return "Suchausdruck eingeben…" }
-        if workspace.scope == .folder {
-            if workspace.enabledSearchFolderURLs.isEmpty {
-                return "Kein Ordner ausgewählt. Mindestens einen aktivieren."
+        if workspace.scope.isFolderLike {
+            if workspace.activeMultiFileSearchURLs.isEmpty {
+                return workspace.scope == .project
+                    ? "Das aktive Datei-Set enthält keine vorhandenen Pfade."
+                    : "Kein Ordner ausgewählt. Mindestens einen aktivieren."
             }
             // Unter der Live-Mindestlänge sucht der Ordner-Scope nicht
             // automatisch (Freeze-Schutz bei kurzen Pattern, siehe
@@ -984,7 +1091,7 @@ struct FloatingSearchDialog: View {
         // Ordner-Scope, Suche abgeschlossen, 0 Treffer: informativer Hinweis
         // statt generischem „Keine Treffer.", damit klar ist, dass tatsächlich
         // Dateien durchsucht wurden und nicht nur noch kein Suchlauf lief.
-        if workspace.scope == .folder
+        if workspace.scope.isFolderLike
             && !workspace.folderNeedsSearch
             && !workspace.folderSearching {
             return "Keine Treffer in den durchsuchten Ordnern."
@@ -999,7 +1106,7 @@ struct FloatingSearchDialog: View {
     // codereview-ok: Tap-Handler und Ergebnis-Zuweisung laufen beide serialisiert auf dem Main-Actor, firstIndex-Lookup ist synchron; schlägt er fehl, bleibt activeMatchIndex unverändert — kein Race, benigne (2026-07-01)
     private func handleMatchTap(match: BufferSearch.Match, fileURL: URL?,
                                 tabID: UUID? = nil) {
-        if workspace.scope == .folder, let url = fileURL {
+        if workspace.scope.isFolderLike, let url = fileURL {
             // activeMatchIndex auf den flachen Treffer-Index setzen, damit
             // CMD+G beim nächsten Treffer ansetzt — schon VOR dem loadFile,
             // damit der Index auch dann stimmt, wenn Completion schnell kommt.
@@ -1039,29 +1146,26 @@ struct FloatingSearchDialog: View {
         }
     }
 
-    /// „Treffer kopieren"-Button + Pfeile + Anzeige „2 / 9" für die
-    /// Detail-Navigation. Der Extrahieren-Dialog (Trennzeichen-Wahl,
-    /// Quoting, Dedup) folgt erst nach v1.0 — siehe AGENTS.md
-    /// „v1.1+ Roadmap".
+    /// Schnelles Kopieren, konfigurierbares Extrahieren und die Anzeige
+    /// „2 / 9" für die Detail-Navigation.
     private var hitNavigator: some View {
         HStack(spacing: 10) {
             // Textbutton statt Icon — das Feature ist zu praktisch, um
-            // hinter einem kleinen Symbol zu verstecken (Daniel,
-            // 2026-05-26). Voller Extrahieren-Dialog folgt in v1.1+.
+            // hinter einem kleinen Symbol zu verstecken (Daniel, 2026-05-26).
             Button("Treffer kopieren") {
                 workspace.copyHitsToClipboard()
             }
             .controlSize(.small)
-            .help("Alle gefundenen Treffer als Liste ins Clipboard kopieren — je Treffer eine Zeile, ohne Duplikat-Filter. Erweiterter Extrahieren-Dialog mit Trennzeichen-Auswahl folgt nach v1.0.")
+            .help("Alle gefundenen Treffer schnell als LF-getrennte Liste in die Zwischenablage kopieren.")
 
             // BBEdit „Extract" (Handbuch S. 168/193): Treffer in ein neues
             // Dokument statt ins Clipboard — mit gefülltem Ersetzen-Feld
             // transformiert ($1/\U/Pillen), sonst roh.
             Button("Treffer extrahieren") {
-                workspace.extractHitsToNewTab()
+                showExtractionDialog = true
             }
             .controlSize(.small)
-            .help("Alle gefundenen Treffer in ein neues Dokument extrahieren — je Treffer eine Zeile. Ist das Ersetzen-Feld gefüllt, wird jeder Treffer zuerst damit transformiert (z.B. $1 für eine reine Gruppen-Liste); leer = Treffer unverändert übernehmen.")
+            .help("Extrahieren mit Trennzeichen, Ziel, Quoting, Duplikatfilter und optionaler Ersetzung konfigurieren.")
 
             Divider().frame(height: 14)
 
@@ -1292,12 +1396,12 @@ struct FloatingSearchDialog: View {
                 // der Ordner zwar automatisch beim Tippen, aber Klick/Return
                 // erzwingen die Suche auch bei kürzeren Pattern (umgeht die
                 // Schwelle) bzw. lösen sofort aus, ohne aufs Debounce zu warten.
-                if workspace.scope == .folder {
+                if workspace.scope.isFolderLike {
                     Button("Suchen") { workspace.runFolderSearchNow() }
                         .keyboardShortcut(.return, modifiers: [])
                         .buttonStyle(.bordered)
                         .disabled(workspace.findPattern.isEmpty
-                                  || workspace.enabledSearchFolderURLs.isEmpty)
+                                  || workspace.activeMultiFileSearchURLs.isEmpty)
                         .help("Die ausgewählten Ordner jetzt durchsuchen. Ab \(SearchRunner.minFolderLiveChars) Zeichen läuft die Ordner-Suche live beim Tippen mit; Klick oder Return erzwingen sie auch bei kürzeren Suchausdrücken und ohne Wartezeit.")
                 }
 
@@ -1313,7 +1417,7 @@ struct FloatingSearchDialog: View {
                     // Return = weitersuchen (BBEdit-Verhalten) — aber nur in
                     // Buffer-Scopes. Im Ordner-Scope gehört Return zu „Suchen"
                     // (zwei Views mit demselben Shortcut wären mehrdeutig).
-                    .keyboardShortcut(workspace.scope == .folder
+                    .keyboardShortcut(workspace.scope.isFolderLike
                                       ? nil
                                       : KeyboardShortcut(.return, modifiers: []))
                     .disabled(workspace.navMatches.isEmpty)
@@ -1334,27 +1438,30 @@ struct FloatingSearchDialog: View {
 
                 Button("Vorschau der Änderungen") { workspace.livePreview = true }
                     .buttonStyle(.bordered)
+                    .disabled(workspace.scope != .file
+                              || workspace.bufferMatches.isEmpty
+                              || workspace.searchError != nil)
                     .help("Zeigt im Hauptfenster ein Vorher/Nachher-Diff aller Ersetzungen im aktiven Buffer — jede betroffene Zeile vorher und nachher.")
 
                 // Einzel-Ersetzen (ein Treffer + zum nächsten springen). Nur im
                 // Buffer-Scope (Datei/Geöffnet) — Ordner-Einzelersetzen schreibt
                 // auf die Platte und kommt mit dem Ergebnis-Fenster (Schritt 2).
                 Button("Ersetzen") { workspace.replaceActiveMatch() }
-                    .disabled(workspace.scope == .folder
+                    .disabled(workspace.scope.isFolderLike
                               || workspace.bufferMatches.isEmpty
                               || workspace.searchError != nil)
                     .help("Nur den aktiven Treffer ersetzen und zum nächsten springen. Im Ordner-Modus (noch) nicht verfügbar.")
 
                 // Im Folder-Scope und nach einem erfolgreichen Apply gibt es
                 // eine Rückgängig-Möglichkeit aus dem Backup-Ordner.
-                if workspace.scope == .folder, workspace.lastApplySession != nil {
+                if workspace.scope.isFolderLike, workspace.lastApplySession != nil {
                     Button("Rückgängig") { workspace.undoLastFolderApply() }
                         .help("Spielt die letzte Ordner-Apply-Session bit-exakt aus dem Backup-Ordner zurück.")
                 }
 
                 Button("Alle ersetzen · \(scopeTotalMatches)") {
                     switch workspace.scope {
-                    case .folder: workspace.applyAllInFolder()
+                    case .folder, .project: workspace.applyAllInFolder()
                     case .open:   workspace.applyAllInOpenTabs()
                     case .file:   workspace.applyAllInActiveBuffer()
                     }
@@ -1365,7 +1472,7 @@ struct FloatingSearchDialog: View {
                     .disabled(scopeTotalMatches == 0 || workspace.searchError != nil)
                     .help({
                         switch workspace.scope {
-                        case .folder:
+                        case .folder, .project:
                             return "Alle Treffer in allen aktivierten Ordnern ersetzen — atomar pro Datei, mit automatischem Backup unter ~/Library/Application Support/Fastra/undo/."
                         case .open:
                             return "Alle Treffer in ALLEN geöffneten Tabs ersetzen — nur im Speicher, geänderte Tabs werden als ungesichert markiert. Speichern wie gewohnt mit ⌘S."
@@ -1611,5 +1718,115 @@ private struct ElementRowButtonStyle: ButtonStyle {
                     .fill(hovering ? Theme.surfaceSand : Color.clear)
             )
             .onHover { hovering = $0 }
+    }
+}
+
+/// Kleiner Editor für ein persistentes Projekt-Datei-Set. Pfade sind bewusst
+/// projekt-relativ und komma-/zeilengetrennt, damit ein Set schnell aus einer
+/// Handvoll Ordner oder Einzeldateien zusammengestellt werden kann.
+private struct ProjectFileSetEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var paths = "Sources, Tests"
+    let onSave: (String, [String]) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Projekt-Datei-Set")
+                .fastraFont(.headline)
+            TextField("Name", text: $name)
+            Text("Projekt-relative Dateien oder Ordner, durch Komma oder Zeilenumbruch getrennt:")
+                .fastraFont(.small)
+                .foregroundColor(Theme.textSecondary)
+            TextEditor(text: $paths)
+                .fastraFont(.monoSmall)
+                .frame(minHeight: 100)
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Theme.stroke))
+            HStack {
+                Button("Abbrechen") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Sichern") {
+                    let parsed = paths
+                        .split(whereSeparator: { $0 == "," || $0.isNewline })
+                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .filter { !$0.isEmpty }
+                    onSave(name.trimmingCharacters(in: .whitespacesAndNewlines), parsed)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                          || parsedPaths.isEmpty)
+            }
+        }
+        .padding(18)
+        .frame(width: 440)
+        .background(Theme.surfaceRaised)
+    }
+
+    private var parsedPaths: [String] {
+        paths.split(whereSeparator: { $0 == "," || $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+}
+
+private struct ExtractionDialog: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var options: HitExtraction.Options
+    let onExtract: (HitExtraction.Options) -> Void
+
+    init(defaultUseReplacement: Bool,
+         onExtract: @escaping (HitExtraction.Options) -> Void) {
+        var initial = HitExtraction.Options()
+        initial.useReplacement = defaultUseReplacement
+        _options = State(initialValue: initial)
+        self.onExtract = onExtract
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Treffer extrahieren")
+                .fastraFont(.headline)
+            Form {
+                Picker("Trennzeichen", selection: $options.separator) {
+                    ForEach(HitExtraction.Separator.allCases) { separator in
+                        Text(separator.rawValue).tag(separator)
+                    }
+                }
+                if options.separator == .custom {
+                    TextField("Eigenes Trennzeichen", text: $options.customSeparator)
+                }
+                Picker("Ziel", selection: $options.destination) {
+                    ForEach(HitExtraction.Destination.allCases) { destination in
+                        Text(destination.rawValue).tag(destination)
+                    }
+                }
+                Picker("Quoting", selection: $options.quoting) {
+                    ForEach(HitExtraction.Quoting.allCases) { quoting in
+                        Text(quoting.rawValue).tag(quoting)
+                    }
+                }
+                Toggle("Duplikate entfernen", isOn: $options.deduplicate)
+                Toggle("Ersetzungsmuster auf Treffer anwenden",
+                       isOn: $options.useReplacement)
+            }
+            .formStyle(.grouped)
+
+            HStack {
+                Button("Abbrechen") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Extrahieren") {
+                    onExtract(options)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(options.separator == .custom && options.customSeparator.isEmpty)
+            }
+        }
+        .padding(18)
+        .frame(width: 460)
+        .background(Theme.surfaceRaised)
     }
 }

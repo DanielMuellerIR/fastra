@@ -518,6 +518,16 @@ final class Workspace: ObservableObject {
             .sink { entries in SearchHistoryStore.save(entries, to: defaults) }
             .store(in: &persistenceBag)
 
+        // Die Konfiguration wird erst beim Öffnen eines konkreten Projekts
+        // geladen. Danach schreibt jede UI-Änderung unter dessen Pfad zurück.
+        $projectSearchConfiguration
+            .dropFirst()
+            .sink { [weak self] config in
+                guard let root = self?.projectURL else { return }
+                ProjectSearchStore.save(config, for: root, defaults: defaults)
+            }
+            .store(in: &persistenceBag)
+
         // Beim KALTEN Start kann eine per Finder/CLI geöffnete Datei schon
         // VOR diesem init im AppDelegate gepuffert worden sein → jetzt, wo
         // `Workspace.shared` steht, dem AppDelegate signalisieren, dass es
@@ -1225,6 +1235,9 @@ final class Workspace: ObservableObject {
     func openProject(at url: URL) {
         let url = url.canonicalFileURL
         projectURL = url
+        projectSearchConfiguration = ProjectSearchStore.load(
+            for: url, defaults: defaultsStore
+        )
         // Willkommen-Tab (falls aktiv) in ein normales leeres Dokument
         // umwandeln → Editor + Projekt-Seitenleiste statt Willkommensseite.
         dismissWelcomeTab()
@@ -1524,14 +1537,15 @@ final class Workspace: ObservableObject {
 
     // MARK: Suche
 
-    /// Such-Scope. „Projekt" wurde nach v1.1+ verschoben — Definition
-    /// noch offen (vermutlich gespeichertes Datei-Set + Filter), gehört
-    /// nicht in v1.0.
+    /// Such-Scope. „Projekt" verwendet das pro Projekt gespeicherte aktive
+    /// Datei-Set samt eigenem Dateitypfilter und Ausschlussmustern.
     enum SearchScope: String, CaseIterable, Identifiable {
         case file    = "Datei"
         case open    = "Geöffnet"
         case folder  = "Ordner"
+        case project = "Projekt"
         var id: String { rawValue }
+        var isFolderLike: Bool { self == .folder || self == .project }
     }
 
     // MARK: - Ordner-Quellen (Sichtbar nur bei scope == .folder)
@@ -1558,6 +1572,33 @@ final class Workspace: ObservableObject {
     /// Input für `FolderSearch.find`.
     var enabledSearchFolderURLs: [URL] {
         recentSearchFolders.filter(\.enabled).map(\.url)
+    }
+
+    /// Projekt-spezifische Datei-Sets, Filter und Ausschlüsse. Beim
+    /// Projektwechsel wird die passende persistente Konfiguration geladen.
+    @Published var projectSearchConfiguration = ProjectSearchConfiguration.fresh()
+
+    var projectSearchURLs: [URL] {
+        guard let root = projectURL,
+              let set = projectSearchConfiguration.activeSet else { return [] }
+        let rootPath = root.standardizedFileURL.path
+        return set.paths.compactMap { relative in
+            let candidate = relative == "."
+                ? root.standardizedFileURL
+                : root.appendingPathComponent(relative).standardizedFileURL
+            let path = candidate.path
+            guard path == rootPath || path.hasPrefix(rootPath + "/"),
+                  FileManager.default.fileExists(atPath: path) else { return nil }
+            return candidate
+        }
+    }
+
+    var activeMultiFileSearchURLs: [URL] {
+        scope == .project ? projectSearchURLs : enabledSearchFolderURLs
+    }
+
+    var activeMultiFileFilter: FileTypeFilter {
+        scope == .project ? projectSearchConfiguration.fileTypeFilter : fileTypeFilter
     }
 
     /// Öffnet einen NSOpenPanel zur Ordner-Auswahl und hängt das Ergebnis
@@ -1612,7 +1653,7 @@ final class Workspace: ObservableObject {
     }
 
     var navMatches: [NavMatch] {
-        if scope == .folder {
+        if scope.isFolderLike {
             return folderResults.flatMap { pf in
                 pf.matches.map { NavMatch(id: $0.id, url: pf.url, match: $0) }
             }
@@ -1657,7 +1698,7 @@ final class Workspace: ObservableObject {
     /// alten Inhalt).
     @discardableResult
     func applyAllInFolder() -> Bool {
-        guard scope == .folder,
+        guard scope.isFolderLike,
               searchError == nil,
               !folderResults.isEmpty else { return false }
         let urls = folderResults.filter { !$0.matches.isEmpty }.map(\.url)
@@ -1847,7 +1888,7 @@ final class Workspace: ObservableObject {
     /// Scope schreibt auf die Platte und kommt erst mit dem persistenten
     /// Ergebnis-Fenster (Schritt 2); deshalb hier bewusst ausgeklammert.
     func replaceActiveMatch() {
-        guard scope != .folder, searchError == nil,
+        guard !scope.isFolderLike, searchError == nil,
               activeMatchIndex < bufferMatches.count else { return }
         recordSearchHistory()
         let match = bufferMatches[activeMatchIndex]
@@ -1906,8 +1947,7 @@ final class Workspace: ObservableObject {
     }
 
     /// Trefferliste als LF-getrennten String ins Clipboard kopieren —
-    /// „Treffer kopieren"-Button. Roh, ohne Dedup; Dedup + andere
-    /// Trennzeichen kommen erst mit dem Extrahieren-Dialog in v1.1+.
+    /// schneller Direktweg neben dem konfigurierbaren Extrahieren-Dialog.
     /// Im Folder-Scope werden Treffer aus allen Dateien zusammengezogen.
     func copyHitsToClipboard() {
         let texts = navMatches.map(\.match.matchText)
@@ -1930,8 +1970,16 @@ final class Workspace: ObservableObject {
     /// orangen Hinweis an.
     @discardableResult
     func extractHitsToNewTab() -> Bool {
+        var options = HitExtraction.Options()
+        options.useReplacement = !replacePattern.isEmpty
+        options.destination = .newDocument
+        return extractHits(options: options)
+    }
+
+    @discardableResult
+    func extractHits(options: HitExtraction.Options) -> Bool {
         let matches: [BufferSearch.Match]
-        if scope == .folder || scope == .open {
+        if scope.isFolderLike || scope == .open {
             // Materialisierte Multi-Quellen-Treffer (Ordner bzw. offene
             // Tabs) — deren Cap zeigt die Maske bereits als Hinweis an.
             matches = navMatches.map(\.match)
@@ -1943,8 +1991,12 @@ final class Workspace: ObservableObject {
         }
         guard !matches.isEmpty else { return false }
         recordSearchHistory()
-        let content = HitExtraction.content(matches: matches,
-                                            useReplacement: !replacePattern.isEmpty)
+        let content = HitExtraction.content(matches: matches, options: options)
+        if options.destination == .clipboard {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(content, forType: .string)
+            return true
+        }
         // Neues unbenanntes Dokument mit dem Extrakt — dirty, damit die
         // Schließen-Rückfrage greift (Inhalt existiert nur im Speicher).
         let tab = EditorTab(title: Workspace.untitledName(position: tabs.count + 1),
@@ -2043,7 +2095,7 @@ enum RecentSearchFoldersStore {
 }
 
 /// Dateityp-Filter im Ordner-Modus.
-enum FileTypeFilter: String, CaseIterable, Identifiable {
+enum FileTypeFilter: String, CaseIterable, Identifiable, Codable {
     case knownText = "Bekannte Textformate"
     case all       = "Alle Dateien"
     var id: String { rawValue }

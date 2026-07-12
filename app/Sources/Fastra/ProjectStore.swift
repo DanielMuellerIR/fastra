@@ -108,3 +108,90 @@ enum ProjectStore {
         return nil
     }
 }
+
+// MARK: - Gespeicherte Such-Datei-Sets pro Projekt
+
+struct ProjectFileSet: Identifiable, Codable, Equatable {
+    var id: UUID
+    var name: String
+    /// Projekt-relative Dateien oder Ordner. „.“ bezeichnet die Projektwurzel.
+    var paths: [String]
+
+    init(id: UUID = UUID(), name: String, paths: [String]) {
+        self.id = id
+        self.name = name
+        self.paths = paths
+    }
+}
+
+struct ProjectSearchConfiguration: Codable, Equatable {
+    var fileSets: [ProjectFileSet]
+    var activeSetID: UUID
+    var fileTypeFilter: FileTypeFilter
+    /// Komma- oder zeilengetrennte Globs, relativ zur Projektwurzel.
+    var excludePatternsText: String
+
+    static func fresh() -> ProjectSearchConfiguration {
+        let all = ProjectFileSet(name: "Gesamtes Projekt", paths: ["."])
+        return ProjectSearchConfiguration(fileSets: [all], activeSetID: all.id,
+                                          fileTypeFilter: .knownText,
+                                          excludePatternsText: ".git, .build, build")
+    }
+
+    var activeSet: ProjectFileSet? {
+        fileSets.first { $0.id == activeSetID }
+    }
+
+    var excludePatterns: [String] {
+        excludePatternsText
+            .split(whereSeparator: { $0 == "," || $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+}
+
+enum ProjectSearchStore {
+    static let key = "fastra.projectSearchConfigurations"
+
+    private static func storageKey(for rootURL: URL) -> String {
+        rootURL.standardizedFileURL.path
+    }
+
+    static func load(for rootURL: URL,
+                     defaults: UserDefaults = .standard) -> ProjectSearchConfiguration {
+        guard let data = defaults.data(forKey: key),
+              let all = try? JSONDecoder().decode([String: ProjectSearchConfiguration].self,
+                                                  from: data),
+              let config = all[storageKey(for: rootURL)] else {
+            return .fresh()
+        }
+        return normalized(config)
+    }
+
+    static func save(_ config: ProjectSearchConfiguration, for rootURL: URL,
+                     defaults: UserDefaults = .standard) {
+        var all: [String: ProjectSearchConfiguration] = [:]
+        if let data = defaults.data(forKey: key),
+           let decoded = try? JSONDecoder().decode([String: ProjectSearchConfiguration].self,
+                                                   from: data) {
+            all = decoded
+        }
+        all[storageKey(for: rootURL)] = normalized(config)
+        if let data = try? JSONEncoder().encode(all) {
+            defaults.set(data, forKey: key)
+        }
+    }
+
+    /// Auch manuell bearbeitete oder ältere Defaults dürfen nie einen Picker
+    /// ohne gültige Auswahl erzeugen. Die UI verhindert den Leerfall bereits;
+    /// diese Normalisierung schützt zusätzlich die Persistenzgrenze.
+    private static func normalized(_ config: ProjectSearchConfiguration)
+        -> ProjectSearchConfiguration {
+        guard !config.fileSets.isEmpty else { return .fresh() }
+        var result = config
+        if !result.fileSets.contains(where: { $0.id == result.activeSetID }) {
+            result.activeSetID = result.fileSets[0].id
+        }
+        return result
+    }
+}

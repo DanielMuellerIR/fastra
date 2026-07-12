@@ -146,3 +146,30 @@ func preview_staleMatchesMixed() {
     #expect(r.rows.count == 1)
     #expect(r.rows.first?.after == "Max Mustermann")
 }
+
+@Test("Vollständiger Side-by-side-Diff richtet mehrzeilige Ersetzung aus")
+func preview_sideBySideMultilineAlignment() {
+    let text = "a\nMARK\nz"
+    let found = matches(in: text, find: "MARK", replace: "x\ny")
+    let result = ReplacePreview.buildSideBySide(text: text, matches: found)
+
+    #expect(result.changedRows == 2)
+    #expect(result.rows.map(\.kind) == [.unchanged, .changed, .added, .unchanged])
+    #expect(result.rows[1].before == "MARK")
+    #expect(result.rows[1].after == "x")
+    #expect(result.rows[2].before == nil)
+    #expect(result.rows[2].after == "y")
+    #expect(result.rows[3].before == "z")
+    #expect(result.rows[3].after == "z")
+}
+
+@Test("Side-by-side-Diff kappt nur die Anzeige und behält Gesamtzahlen")
+func preview_sideBySideTruncation() {
+    let text = "eins\nzwei\ndrei"
+    let found = matches(in: text, find: "zwei", replace: "ZWEI")
+    let result = ReplacePreview.buildSideBySide(text: text, matches: found, maxRows: 2)
+    #expect(result.rows.count == 2)
+    #expect(result.totalRows == 3)
+    #expect(result.changedRows == 1)
+    #expect(result.truncated)
+}

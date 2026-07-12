@@ -10,7 +10,10 @@ Was die App können muss, um v1.0 zu sein. Die Reihenfolge folgt der Roadmap, ni
 - **A. Floating Search Dialog** — schwebender Such/Ersetzen-Dialog statt starrer Sidebar. Scope-Tabs (Datei / Geöffnet / Ordner / Projekt) als Segmented Control. Find- und Replace-Felder voll breit, Monospace, kein Wrap. Trefferbaum mit Zählern direkt im Dialog. **Such-Optionen** als schmale Toggle-Zeile unter dem Find-Feld: `RegEx` (Default aus — siehe Konzept B.5), `Groß-/Kleinschreibung`, `Ganzes Wort`, `Wrap-around`. Jeder Toggle mit Tooltip-Erklärung. Wenn `RegEx` aus ist, sind Token-Highlighting, Element-Picker und Vorlagen-Dropdown deaktiviert (nicht versteckt).
 - **B. Drag & Drop von Capture Groups** — Kernmechanik: Gruppen aus dem Find-Feld lassen sich per Drag & Drop ins Replace-Feld ziehen, dort als `$1`, `$2` … eingefügt. Auto-Erkennung von `(...)`. Anspruch ist **einfache Benutzerführung**, nicht visuelle Effekthascherei. Visualisierung der Gruppen (Inline-Spans vs. Tray vs. hybrid) ist eine offene Designentscheidung, hängt am Suchmasken-Konzept.
 - **C. Token-Highlighting im Find-Feld** — RegEx-Bestandteile werden als farbige Inline-Tokens dargestellt: Anker rötlich, Zeichenklassen bläulich, Quantifier ocker, Literale Standard. Parsing via `tree-sitter-regex`.
-- **D. Diff & Preview** — Side-by-side Diff in zwei Panels (rot/grün, Treffer-Highlighting). **Implementierung verschoben (Daniel, 2026-05-26):** Die Sofort-Trefferliste in der Suchmaske erfüllt den primären Bedarf bereits weitgehend. Die ausgewachsene Diff-Implementierung rutscht auf v0.9 oder v1.1+ — Entscheidung nach erstem Nutzer-Feedback. Der Button „Vorschau der Änderungen" bleibt als Stub in der Maske. Inline-Diff am Ort der Änderung weiterhin v1.1+.
+- **D. Diff & Preview** — seit v1.11.0 vollständiger Dokument-Diff in zwei
+  synchron ausgerichteten Panels (Vorher/Nachher, rot/grün, Zeilennummern),
+  einschließlich mehrzeiliger Ersetzungen und begrenzter Darstellung sehr
+  großer Diffs. Inline-Diff am Ort der Änderung bleibt eine Ausbaustufe. ✓
 - **E. Performance & große Dateien** — Asynchrones Laden ohne UI-Block; seit
   v1.10.0 öffnen Textdateien über 32 MiB in einer speicherbegrenzten,
   schreibgeschützten 256-KiB-Abschnittsansicht. Folder-Suche läuft in
@@ -63,7 +66,7 @@ Aktionen**, keine breite Git-Unterstützung.
 - **History als read-only-Tab:** `git log --graph --oneline --decorate`, Klick auf
   Commit → `git show <hash>` in weiterem Tab. ✓
 - **Diff als read-only-Tab:** `git diff HEAD` gefärbt (added/removed/Hunk/Header). Die
-  aufgeschobene Side-by-side-Ansicht (Funktionsumfang D) bleibt Ausbaustufe. ✓
+  Side-by-side-Ansicht des aktiven Dokuments ist seit v1.11.0 umgesetzt. ✓
 - **Kuratierte Aktionen** (Popup in der Branch-Zeile + „Git"-Menü in der Menüleiste):
   Alles committen, Amend (--no-edit), Push, Pull (Fast-Forward / mit Merge), Fetch,
   Pickaxe (`log -S`), Zum vorherigen Branch (`switch -`). ✓
@@ -118,10 +121,16 @@ die bewusste Release-Abnahme, kein Bug mehr.)
   `backgroundColor` des Frameworks. ✓
 - Speicherbegrenztes, abschnittsweises Lesen großer Textdateien. ✓
 
+## Suche, Vorschau & Projekt-Scope (umgesetzt in v1.11.0, 2026-07-12)
+
+- Vollständiger Side-by-side-Dokument-Diff mit ausgerichteten Einfügungen,
+  Löschungen und unveränderten Kontextzeilen. ✓
+- Extrahieren-Dialog mit Trennzeichen, Ziel, Quoting, Dedup und optionaler
+  Anwendung des Ersetzungsmusters. ✓
+- Projekt-Scope mit pro Projekt persistenten Datei-Sets, Dateitypfilter und
+  projekt-relativen Glob-Ausschlüssen. Überlappende Wurzeln werden dedupliziert. ✓
+
 ## v1.1+ (noch offen)
-- **Voll ausgebaute Side-by-side Diff-Vorschau** im Hauptfenster (Vorher/Nachher in zwei Panels, rot/grün). Erst aktiv angehen, wenn Nutzer-Feedback zeigt, dass die Sofort-Trefferliste nicht reicht.
-- **Extrahieren-Dialog** mit Trennzeichen-Auswahl (Zeilenumbruch / Komma / Semikolon / Tab / eigenes), Ziel (Clipboard / neue Datei), Quoting-Optionen, Dedup.
-- **Projekt-Konzept** für den Scope-Tab (gespeicherte Datei-Sets + Filter + Excludes) — Grunddefinition „Projekt = Ordner mit `.git`" jetzt beschlossen, siehe Sektion „Projekt- & Git-Ausbau"; Datei-Sets/Filter/Excludes weiter offen.
 - **Englische Lokalisierung** (`Localizable.strings`-Umbau, alle UI-Strings durchziehen).
 - **Vorlagen-Editor** — eigene Patterns speichern, Import/Export.
 - Inline-Diff am Ort der Änderung (L5-Layout).

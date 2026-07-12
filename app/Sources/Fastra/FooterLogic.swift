@@ -101,14 +101,15 @@ enum FooterLogic {
                 : "\(folderTotal) Treffer · \(folderFiles) Dateien"
             return SearchSummary(text: text, label: "Geöffnet")
 
-        case .folder:
+        case .folder, .project:
             let text: String
             if folderTotal == 0 {
                 text = "Keine Treffer"
             } else {
                 text = "\(folderTotal) Treffer · \(folderFiles) Dateien"
             }
-            return SearchSummary(text: text, label: "Ordner")
+            return SearchSummary(text: text,
+                                 label: scope == .project ? "Projekt" : "Ordner")
         }
     }
 }

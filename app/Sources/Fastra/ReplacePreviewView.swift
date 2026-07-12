@@ -9,12 +9,12 @@ struct ReplacePreviewView: View {
     @EnvironmentObject var workspace: Workspace
 
     /// Obergrenze angezeigter Zeilen — bei mehr erscheint ein Hinweis.
-    private let maxRows = 500
+    private let maxRows = 5_000
 
-    private var result: ReplacePreview.Result {
-        ReplacePreview.build(text: workspace.activeTab?.content ?? "",
-                             matches: workspace.bufferMatches,
-                             maxRows: maxRows)
+    private var result: ReplacePreview.SideBySideResult {
+        ReplacePreview.buildSideBySide(text: workspace.activeTab?.content ?? "",
+                                       matches: workspace.bufferMatches,
+                                       maxRows: maxRows)
     }
 
     var body: some View {
@@ -29,12 +29,12 @@ struct ReplacePreviewView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(result.rows) { row in
-                            DiffRow(row: row)
+                            DocumentDiffRow(row: row)
                         }
                     }
                 }
                 if result.truncated {
-                    Text("… und \(result.totalChangedLines - result.rows.count) weitere geänderte "
+                    Text("… und \(result.totalRows - result.rows.count) weitere ausgerichtete "
                          + "Zeilen (Anzeige auf \(maxRows) begrenzt).")
                         .fastraFont(.small)
                         .foregroundColor(Theme.textSecondary)
@@ -70,16 +70,13 @@ struct ReplacePreviewView: View {
     }
 
     private var summaryText: String {
-        let n = result.totalChangedLines
+        let n = result.changedRows
         if n == 0 { return "Keine Änderungen" }
         return n == 1 ? "1 geänderte Zeile" : "\(n) geänderte Zeilen"
     }
 
     private var columnHeader: some View {
         HStack(spacing: 0) {
-            Text("Zeile")
-                .frame(width: 56, alignment: .trailing)
-                .padding(.trailing, 8)
             Text("Vorher")
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text("Nachher")
@@ -132,34 +129,51 @@ struct ReplacePreviewView: View {
 
 /// Eine Diff-Zeile: Zeilennummer · Vorher (getönt entfernt) · Nachher (getönt
 /// hinzugefügt). Monospaced, beide Spalten gleich breit.
-private struct DiffRow: View {
-    let row: ReplacePreview.Row
+private struct DocumentDiffRow: View {
+    let row: ReplacePreview.SideBySideRow
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
-            Text(verbatim: "\(row.line)")
-                .fastraFont(size: 10, design: .monospaced)
-                .foregroundColor(Theme.textSecondary)
-                .frame(width: 56, alignment: .trailing)
-                .padding(.trailing, 8)
-            Text(row.before)
-                .fastraFont(.monoSmall)
-                .foregroundColor(Theme.diffRemovedFG)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Theme.diffRemovedBG)
-            Text(row.after)
-                .fastraFont(.monoSmall)
-                .foregroundColor(Theme.diffAddedFG)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Theme.diffAddedBG)
+            pane(line: row.beforeLine, text: row.before, before: true)
+            Divider()
+            pane(line: row.afterLine, text: row.after, before: false)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 1)
+    }
+
+    private func pane(line: Int?, text: String?, before: Bool) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text(line.map(String.init) ?? "")
+                .fastraFont(size: 10, design: .monospaced)
+                .foregroundColor(Theme.textSecondary)
+                .frame(width: 44, alignment: .trailing)
+            Text(text ?? " ")
+                .fastraFont(.monoSmall)
+                .foregroundColor(foreground(before: before))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(background(before: before))
+    }
+
+    private func foreground(before: Bool) -> Color {
+        switch row.kind {
+        case .unchanged: return Theme.textSecondary
+        case .added: return before ? Theme.textSecondary : Theme.diffAddedFG
+        case .removed: return before ? Theme.diffRemovedFG : Theme.textSecondary
+        case .changed: return before ? Theme.diffRemovedFG : Theme.diffAddedFG
+        }
+    }
+
+    private func background(before: Bool) -> Color {
+        switch row.kind {
+        case .unchanged: return .clear
+        case .added: return before ? Theme.surfaceSand.opacity(0.2) : Theme.diffAddedBG
+        case .removed: return before ? Theme.diffRemovedBG : Theme.surfaceSand.opacity(0.2)
+        case .changed: return before ? Theme.diffRemovedBG : Theme.diffAddedBG
+        }
     }
 }

@@ -164,7 +164,7 @@ final class SearchPanelController {
     /// respektieren wir).
     private func growIfNeeded(for scope: Workspace.SearchScope) {
         guard let win = window else { return }
-        let required: CGFloat = (scope == .folder) ? folderMinHeight : compactMinHeight
+        let required: CGFloat = scope.isFolderLike ? folderMinHeight : compactMinHeight
 
         // Auch die contentMinSize anpassen, damit der Nutzer das
         // Fenster nicht unter das Minimum schrumpfen kann.

@@ -100,3 +100,35 @@ func workspace_extractIgnoresListCap() {
     // 2500 Treffer-Zeilen + 1 leeres Element hinter dem End-Newline.
     #expect(lines.count == 2501)
 }
+
+@Test("Extrahieren: Semikolon, Dedup und CSV-Quoting kombinieren sich")
+func extraction_optionsCombine() {
+    let first = BufferSearch.find(
+        in: "a;b a;b schlicht",
+        options: SearchOptions(find: "(a;b|schlicht)", replace: "", isRegex: true)
+    ).matches
+    let duplicate = BufferSearch.find(
+        in: "a;b",
+        options: SearchOptions(find: "a;b", replace: "", isRegex: false)
+    ).matches
+    var options = HitExtraction.Options()
+    options.separator = .semicolon
+    options.quoting = .whenNeeded
+    options.deduplicate = true
+    #expect(HitExtraction.content(matches: first + duplicate, options: options)
+            == "\"a;b\";schlicht")
+}
+
+@Test("Extrahieren: eigenes Trennzeichen und immer quoten")
+func extraction_customSeparator() {
+    let found = BufferSearch.find(
+        in: "rot blau",
+        options: SearchOptions(find: "(rot|blau)", replace: "", isRegex: true)
+    ).matches
+    var options = HitExtraction.Options()
+    options.separator = .custom
+    options.customSeparator = " | "
+    options.quoting = .always
+    #expect(HitExtraction.content(matches: found, options: options)
+            == "\"rot\" | \"blau\"")
+}
