@@ -645,7 +645,9 @@ private struct FileRow: View {
             Image(systemName: "doc")
                 .foregroundColor(isActive ? Theme.accentReadable : Theme.textSecondary)
                 .font(.system(size: 11))
-            Text(tab.title)
+            // Willkommen-Tab konsistent zur Tab-Leiste als „Willkommen"
+            // beschriften (nicht mit seinem Unterbau-Titel „Ohne Titel").
+            Text(tab.isWelcome ? "Willkommen" : tab.title)
                 .font(Theme.uiSmall)
                 .foregroundColor(isActive ? Theme.textPrimary : Theme.textSecondary)
                 .lineLimit(1)

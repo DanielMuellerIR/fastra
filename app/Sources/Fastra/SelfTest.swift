@@ -330,7 +330,7 @@ enum SelfTest {
         if let newWorkspace, let newWindow {
             guard newWorkspace.tabs.count == 1,
                   let newTab = newWorkspace.activeTab,
-                  newTab.title == "Ohne Titel",
+                  newTab.title == Workspace.untitledBaseName,
                   newTab.content.isEmpty else {
                 finish(false, "zweites Fenster enthält kein einzelnes leeres neues Dokument")
             }
@@ -2080,17 +2080,15 @@ enum SelfTest {
         // Folgestart simulieren (ein leerer unbenannter Tab) → sichtbar.
         ws.tabs = [EditorTab(title: "contacts.md", path: "Demo", content: "Demo-Inhalt")]
         ws.activeTabID = ws.tabs[0].id
-        if WelcomeLogic.shouldShow(tabs: ws.tabs, hasProject: ws.projectURL != nil,
-                                   dismissed: ws.welcomeDismissed) {
-            finish(false, "(a) Willkommen sichtbar, obwohl der Demo-Tab Inhalt hat")
+        if ws.isWelcomeScreen {
+            finish(false, "(a) Willkommen sichtbar, obwohl der aktive Tab kein Willkommen-Tab ist")
         }
-        ws.tabs = [EditorTab(title: "Ohne Titel", path: "noch nicht gespeichert")]
+        ws.tabs = [EditorTab(title: Workspace.untitledBaseName,
+                             path: "noch nicht gespeichert", isWelcome: true)]
         ws.activeTabID = ws.tabs[0].id
-        ws.welcomeDismissed = false
         ws.projectURL = nil
-        guard WelcomeLogic.shouldShow(tabs: ws.tabs, hasProject: false,
-                                      dismissed: false) else {
-            finish(false, "(a) Willkommen verborgen trotz jungfräulichem Zustand")
+        guard ws.isWelcomeScreen else {
+            finish(false, "(a) Willkommen verborgen trotz aktivem Willkommen-Tab")
         }
 
         // ── (b) Projekt öffnen ────────────────────────────────────────────
@@ -2101,7 +2099,7 @@ enum SelfTest {
         guard ws.projectURL == resolved else {
             finish(false, "(b) projectURL=\(String(describing: ws.projectURL)) statt \(resolved.path)")
         }
-        guard ws.welcomeDismissed else {
+        guard !ws.isWelcomeScreen else {
             finish(false, "(b) openProject hat den Willkommensbildschirm nicht geschlossen")
         }
         guard ws.recentProjects.first?.url.path == resolved.path else {
@@ -2872,10 +2870,10 @@ enum SelfTest {
         // Folgestart-Zustand simulieren (die Selbsttest-Suite ist frisch →
         // die App startete mit dem Demo-Tab): leerer unbenannter Tab plus
         // Beispiel-Projekte, damit die Liste auf dem Screenshot gefüllt ist.
-        ws.tabs = [EditorTab(title: "Ohne Titel", path: "noch nicht gespeichert")]
+        ws.tabs = [EditorTab(title: Workspace.untitledBaseName,
+                             path: "noch nicht gespeichert", isWelcome: true)]
         ws.activeTabID = ws.tabs.first?.id
         ws.projectURL = nil
-        ws.welcomeDismissed = false
         ws.recentProjects = [
             ProjectEntry(path: "~/git/fastra"),
             ProjectEntry(path: "~/git/intern"),

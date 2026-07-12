@@ -17,15 +17,18 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     let workspace: Workspace
     private let window: NSWindow
 
-    private init(defaults: UserDefaults) {
+    private init(defaults: UserDefaults, showWelcome: Bool) {
         workspace = Workspace(defaults: defaults)
-        // Der Willkommensbildschirm ist die EINMALIGE Einstiegs-Fläche des
-        // Startfensters. Ein per ⌘N geöffnetes Fenster ist dagegen eine aktive
-        // „ich will arbeiten"-Absicht → es startet direkt mit dem leeren Editor,
-        // nicht mit einer weiteren Willkommensseite. Sonst ließen sich per ⌘N
-        // beliebig viele Willkommens-Fenster stapeln (Daniel-Befund 2026-07-12:
-        // „nie mehr als ein Willkommen").
-        workspace.welcomeDismissed = true
+        // Willkommen nur, wenn dies das ERSTE/einzige Dokumentfenster ist
+        // (Daniel-Wunsch 2026-07-12): Beim Start ohne offenes Fenster — auch
+        // per ⌘N — soll die Willkommensseite kommen. Ist dagegen schon ein
+        // Fenster offen, startet das neue direkt im Editor, damit sich nicht
+        // beliebig viele Willkommens-Fenster stapeln. Der Workspace legt beim
+        // Folgestart ohnehin einen Willkommen-Tab an; ohne Willkommen wandeln
+        // wir ihn hier in ein normales leeres Dokument um.
+        if !showWelcome {
+            workspace.dismissWelcomeTab()
+        }
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1100, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -35,12 +38,11 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         super.init()
 
         window.identifier = NSUserInterfaceItemIdentifier("Fastra.DocumentWindow")
-        // Ein frisches ⌘N-Fenster startet im Willkommen-Zustand (leerer,
-        // unbenannter Tab) → Titel wie das Startfenster, nicht „Ohne Titel".
-        // Danach hält die `MainWindowTitleBridge` (in ContentView) den Titel
-        // live aktuell, sobald echte Dateien geöffnet werden.
+        // Titel wie das Startfenster: im Willkommen-Zustand Version + Datum,
+        // sonst der Tab-Titel. Danach hält die `MainWindowTitleBridge` (in
+        // ContentView) den Titel live aktuell, sobald Dateien geöffnet werden.
         window.title = workspace.isWelcomeScreen
-            ? "Fastra – Texteditor"
+            ? AppInfo.welcomeWindowTitle
             : (workspace.activeTab?.title ?? "Fastra")
         window.isReleasedWhenClosed = false
         window.contentMinSize = NSSize(width: 1100, height: 720)
@@ -68,11 +70,26 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         }
     }
 
+    /// `true`, wenn bereits ein sichtbares Dokumentfenster offen ist. Bestimmt,
+    /// ob ein neu geöffnetes Fenster die Willkommensseite zeigt: nur das erste/
+    /// einzige tut das. Zählt Startfenster (SwiftUI) und ⌘N-Fenster (AppKit)
+    /// über ihre Workspace-Zuordnung bzw. den Fenster-Identifier.
+    private static func hasOpenDocumentWindow() -> Bool {
+        NSApp.windows.contains { win in
+            guard win.isVisible else { return false }
+            if win.identifier?.rawValue == "Fastra.DocumentWindow" { return true }
+            return WorkspaceWindowRegistry.workspace(for: win) != nil
+        }
+    }
+
     /// Öffnet ein leeres, unabhängiges Dokumentfenster und gibt dessen
-    /// Workspace für den Fenster-Selbsttest zurück.
+    /// Workspace für den Fenster-Selbsttest zurück. Willkommen zeigt es nur,
+    /// wenn noch kein anderes Dokumentfenster offen ist (Daniel-Wunsch
+    /// 2026-07-12): ⌘N ohne offenes Fenster → Willkommen, sonst direkt Editor.
     @discardableResult
     static func openNewDocument(defaults: UserDefaults = SelfTest.workspaceDefaults()) -> Workspace {
-        let controller = DocumentWindowController(defaults: defaults)
+        let showWelcome = !hasOpenDocumentWindow()
+        let controller = DocumentWindowController(defaults: defaults, showWelcome: showWelcome)
         openControllers[ObjectIdentifier(controller.window)] = controller
         controller.window.makeKeyAndOrderFront(nil)
         // Ins „Fenster"-Menü aufnehmen. Per AppKit erzeugte Fenster tauchen dort

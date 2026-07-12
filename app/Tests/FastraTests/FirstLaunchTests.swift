@@ -57,7 +57,10 @@ func workspace_secondLaunch_startsEmpty() {
     let second = Workspace(defaults: defaults)
 
     #expect(second.tabs.count == 1)
-    #expect(second.tabs.first?.title == "Ohne Titel")
+    // Folgestart legt den Willkommen-Tab an; sein Unterbau-Titel ist der
+    // lokalisierte Basisname (de: „Ohne Titel", sonst „Untitled").
+    #expect(second.tabs.first?.title == Workspace.untitledBaseName)
+    #expect(second.tabs.first?.isWelcome == true)
     #expect(second.tabs.first?.content.isEmpty == true)
     #expect(second.findPattern.isEmpty == true)
     #expect(second.replacePattern.isEmpty == true)

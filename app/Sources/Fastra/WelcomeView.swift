@@ -3,19 +3,14 @@ import SwiftUI
 /// Entscheidet, ob der Willkommensbildschirm den Editor-Bereich ersetzt.
 /// Pure Funktion → unit-testbar (Muster: KeyRouting, FooterLogic).
 enum WelcomeLogic {
-    /// Der Willkommensbildschirm erscheint nur im „jungfräulichen" Zustand:
-    /// kein Projekt geladen, nicht aktiv weggeklickt, und ALLE Tabs sind
-    /// wertlose leere Notizzettel (unbenannt, leer, unverändert, nicht am
-    /// Laden — dieselbe Definition wie `tabsRemovingEmptyScratch`). Sobald
-    /// irgendwo echter Inhalt existiert, hat der Editor Vorrang. Der
-    /// Demo-Tab des allerersten Starts hat Inhalt → dort gewinnt das Demo.
-    static func shouldShow(tabs: [EditorTab],
-                           hasProject: Bool,
-                           dismissed: Bool) -> Bool {
-        guard !hasProject, !dismissed else { return false }
-        return tabs.allSatisfy { tab in
-            tab.url == nil && tab.content.isEmpty && !tab.isDirty && !tab.isLoading
-        }
+    /// Der Willkommensbildschirm erscheint genau dann, wenn der AKTIVE Tab der
+    /// Willkommen-Tab ist (per-Tab-Flag `isWelcome`). Er ist ein eigener Tab,
+    /// der bestehen bleibt: ein zweiter (leerer) Editor-Tab daneben zeigt den
+    /// Editor, nicht die Willkommensseite (Daniel-Wunsch 2026-07-12). Beim
+    /// Öffnen einer Datei wird der Willkommen-Tab als leerer Scratch abgeräumt,
+    /// beim Öffnen eines Projekts in ein normales Dokument umgewandelt.
+    static func shouldShow(activeTab: EditorTab?) -> Bool {
+        activeTab?.isWelcome == true
     }
 }
 
@@ -50,7 +45,10 @@ struct WelcomeView: View {
             // Einstiegs-Aktionen.
             VStack(alignment: .leading, spacing: 10) {
                 welcomeAction("Neue Datei", system: "square.and.pencil", shortcut: "⌘T") {
-                    workspace.welcomeDismissed = true
+                    // Identisch zum ⌘T-Menübefehl: legt DANEBEN einen neuen
+                    // Editor-Tab an und springt hinein — der Willkommen-Tab
+                    // bleibt als eigener Tab „Willkommen" erhalten.
+                    workspace.openNewTab()
                 }
                 welcomeAction("Datei öffnen…", system: "doc", shortcut: "⌘O") {
                     workspace.openFile()

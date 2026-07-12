@@ -1,6 +1,32 @@
 import AppKit
 import SwiftUI
 
+/// App-Metadaten aus dem Bundle (`Info.plist`) — zur Laufzeit gelesen, nicht
+/// hartkodiert. Beide Werte werden beim Version-Bump in `Info.plist` gepflegt
+/// (`CFBundleShortVersionString` + der eigene Schlüssel `FastraVersionDate`).
+enum AppInfo {
+    /// Anzeige-Version, z.B. „1.6.2".
+    static var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
+            as? String ?? "—"
+    }
+
+    /// Datum der aktuellen Version im ISO-Format „YYYY-MM-DD" (eigener
+    /// Info.plist-Schlüssel `FastraVersionDate`). Leer, falls nicht gesetzt.
+    static var versionDate: String {
+        Bundle.main.object(forInfoDictionaryKey: "FastraVersionDate")
+            as? String ?? ""
+    }
+
+    /// Fenstertitel im Willkommens-/Leerzustand: „Fastra v1.6.2 2026-07-12"
+    /// (Daniel-Wunsch 2026-07-12: Version + zugehöriges Datum statt des
+    /// bisherigen „Fastra – Texteditor"). Fehlt das Datum, nur die Version.
+    static var welcomeWindowTitle: String {
+        let date = versionDate
+        return date.isEmpty ? "Fastra v\(version)" : "Fastra v\(version) \(date)"
+    }
+}
+
 /// Schwache Zuordnung eines AppKit-Fensters zu seinem Dokument-Workspace.
 /// AppDelegate fragt sie bei jedem `didBecomeKey` ab; damit folgen globale
 /// Commands auch dann zuverlässig dem Vorderfenster, wenn SwiftUI seine
@@ -28,12 +54,17 @@ struct MainWindowTitleMetadata: Equatable {
     /// - Parameter welcomeActive: `true`, solange das Fenster den
     ///   Willkommensbildschirm zeigt (noch keine echte Datei offen). Dann
     ///   soll die Titelzeile NICHT „Ohne Titel" anzeigen (das leere Start-
-    ///   Dokument ist noch keine Datei), sondern schlicht den App-Namen mit
-    ///   Zusatz — und kein Datei-Icon/Pfadmenü (Daniel-Befund 2026-07-12).
-    static func from(_ tab: EditorTab?, welcomeActive: Bool = false) -> MainWindowTitleMetadata {
+    ///   Dokument ist noch keine Datei), sondern Version + Datum der App —
+    ///   und kein Datei-Icon/Pfadmenü (Daniel-Wunsch 2026-07-12).
+    /// - Parameter welcomeTitle: der im Willkommens-Zustand angezeigte Titel.
+    ///   Default = `AppInfo.welcomeWindowTitle` (aus dem Bundle); als Parameter
+    ///   injizierbar, damit die pure Umwandlung ohne echtes Bundle testbar bleibt.
+    static func from(_ tab: EditorTab?,
+                     welcomeActive: Bool = false,
+                     welcomeTitle: String = AppInfo.welcomeWindowTitle) -> MainWindowTitleMetadata {
         if welcomeActive {
             return MainWindowTitleMetadata(
-                title: "Fastra – Texteditor",
+                title: welcomeTitle,
                 representedURL: nil,
                 isDocumentEdited: false
             )

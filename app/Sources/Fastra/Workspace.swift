@@ -95,6 +95,13 @@ struct EditorTab: Identifiable, Hashable {
     /// `nil` = normale, editierbare Datei. Git-Tabs sind read-only, haben
     /// `url == nil` und werden nicht gespeichert.
     var gitKind: GitTabKind?
+    /// `true`, wenn dieser Tab der Willkommen-Tab ist (zeigt statt des Editors
+    /// die Willkommensseite und trägt in der Leiste „Willkommen"). Bleibt ein
+    /// eigener Tab bestehen, bis er geschlossen wird — ⌘T/„Neue Datei" legen
+    /// DANEBEN einen echten Editor-Tab an, statt diesen umzubenennen (Daniel-
+    /// Wunsch 2026-07-12). Beim Öffnen einer Datei/eines Projekts wird er
+    /// abgeräumt bzw. in ein normales leeres Dokument umgewandelt.
+    var isWelcome: Bool
 
     init(
         id: UUID = UUID(),
@@ -108,7 +115,8 @@ struct EditorTab: Identifiable, Hashable {
         isDirty: Bool = false,
         isLoading: Bool = false,
         diskModificationDate: Date? = nil,
-        gitKind: GitTabKind? = nil
+        gitKind: GitTabKind? = nil,
+        isWelcome: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -122,6 +130,7 @@ struct EditorTab: Identifiable, Hashable {
         self.isLoading = isLoading
         self.diskModificationDate = diskModificationDate
         self.gitKind = gitKind
+        self.isWelcome = isWelcome
     }
 }
 
@@ -173,9 +182,6 @@ final class Workspace: ObservableObject {
     /// Git-Repositories geöffneter Dateien (Persistenz via Combine-Sink
     /// in `init`, Muster recentFiles).
     @Published var recentProjects: [ProjectEntry] = []
-    /// Nutzer hat den Willkommensbildschirm aktiv verlassen („Neue Datei",
-    /// Tab-Klick, ⌘T). Nicht persistiert — gilt pro Fenster-Lebenszeit.
-    @Published var welcomeDismissed: Bool = false
     /// Git-Status des aktuellen Projekts (Etappe 2). `nil` = kein Projekt,
     /// kein Repo oder git nicht installiert → keine Git-Anzeige. Asynchron
     /// über `refreshGitStatus()` gefüllt.
@@ -438,14 +444,18 @@ final class Workspace: ObservableObject {
             // Einstieg, den das Demo verhindern soll (Befund 2026-06-11).
             self.scope = .file
         } else {
-            // Folgestarts: leerer, unbenannter Tab wie in einem normalen
-            // Editor — und KEIN vorbelegtes Such-Pattern.
-            let empty = EditorTab(
-                title: "Ohne Titel",
-                path: "noch nicht gespeichert"
+            // Folgestarts: der Willkommen-Tab. Er zeigt die Willkommensseite
+            // (isWelcome) und heißt in der Leiste „Willkommen"; sein
+            // Unterbau-Titel ist der lokalisierte Basisname, damit er beim
+            // Umwandeln in ein echtes Dokument (Datei-/Projekt-Öffnen) direkt
+            // „Ohne Titel" bzw. „Untitled" zeigt. KEIN vorbelegtes Pattern.
+            let welcome = EditorTab(
+                title: Workspace.untitledBaseName,
+                path: "noch nicht gespeichert",
+                isWelcome: true
             )
-            self.tabs = [empty]
-            self.activeTabID = empty.id
+            self.tabs = [welcome]
+            self.activeTabID = welcome.id
             self.findPattern = ""
             self.replacePattern = ""
         }
@@ -506,16 +516,39 @@ final class Workspace: ObservableObject {
         tabs.first(where: { $0.id == activeTabID }) ?? tabs.first
     }
 
-    /// `true`, wenn dieses Fenster gerade den Willkommensbildschirm zeigt
-    /// (noch keine echte Datei offen). Bündelt die pure `WelcomeLogic` mit dem
-    /// aktuellen Workspace-Zustand an EINER Stelle — Tab-Beschriftung
-    /// („Willkommen") und Fenstertitel (kein „Ohne Titel") greifen darauf zu,
-    /// damit beide dieselbe Wahrheit nutzen wie die Editor-/Welcome-Umschaltung
-    /// in `ContentView`.
+    /// Basisname für unbenannte Dokumente, lokalisiert nach der macOS-
+    /// Systemsprache: „Ohne Titel" bei deutscher Oberfläche, sonst „Untitled"
+    /// (Daniel-Wunsch 2026-07-12, analog TextEdit). Die App ist ansonsten
+    /// durchgehend deutsch — nur dieser Dokumentname folgt der Systemsprache,
+    /// deshalb kein volles `Localizable.strings`-Setup.
+    static var untitledBaseName: String {
+        let lang = Locale.preferredLanguages.first ?? "en"
+        return lang.hasPrefix("de") ? "Ohne Titel" : "Untitled"
+    }
+
+    /// Titel für einen neuen unbenannten Tab an 1-basierter `position`. macOS-
+    /// Konvention: der erste unbenannte Tab trägt nur den Basisnamen, weitere
+    /// bekommen eine laufende Nummer („Ohne Titel", „Ohne Titel 2", …).
+    static func untitledName(position: Int) -> String {
+        position <= 1 ? untitledBaseName : "\(untitledBaseName) \(position)"
+    }
+
+    /// `true`, wenn dieses Fenster gerade den Willkommensbildschirm zeigt —
+    /// nämlich genau dann, wenn der AKTIVE Tab der Willkommen-Tab ist. Andere
+    /// Tabs (auch leere) zeigen den Editor. Tab-Beschriftung („Willkommen"),
+    /// Fenstertitel (Version+Datum statt Dateiname) und die Editor-/Welcome-
+    /// Umschaltung in `ContentView` greifen auf dieselbe Wahrheit zu.
     var isWelcomeScreen: Bool {
-        WelcomeLogic.shouldShow(tabs: tabs,
-                                hasProject: projectURL != nil,
-                                dismissed: welcomeDismissed)
+        WelcomeLogic.shouldShow(activeTab: activeTab)
+    }
+
+    /// Wandelt einen etwaigen Willkommen-Tab in ein normales leeres Dokument um
+    /// (zeigt dann den Editor statt der Willkommensseite). Für „Ordner öffnen"
+    /// und für ⌘N-Fenster, die neben einem bereits offenen Fenster entstehen.
+    func dismissWelcomeTab() {
+        for idx in tabs.indices where tabs[idx].isWelcome {
+            tabs[idx].isWelcome = false
+        }
     }
 
     private var activeTabIndex: Int? {
@@ -543,15 +576,16 @@ final class Workspace: ObservableObject {
 
     func openNewTab() {
         let new = EditorTab(
-            title: "untitled-\(tabs.count + 1).txt",
+            title: Workspace.untitledName(position: tabs.count + 1),
             path: "—",
             content: ""
         )
         tabs.append(new)
         activeTabID = new.id
-        // Ein neuer Tab ist eine aktive Editor-Absicht — der Willkommens-
-        // bildschirm würde den (noch leeren) Tab sonst weiter verdecken.
-        welcomeDismissed = true
+        // Kein Willkommen-Dismiss: ein etwaiger Willkommen-Tab bleibt als
+        // eigener Tab erhalten. Der neue Tab ist NICHT `isWelcome` → er zeigt
+        // sofort den Editor, während wir hineinspringen (Daniel-Wunsch
+        // 2026-07-12: „Willkommen stehen lassen, in den zweiten Tab springen").
     }
 
     /// BBEdit-Stil-Rückfrage beim Schließen eines Tabs mit ungespeicherten
@@ -1143,7 +1177,9 @@ final class Workspace: ObservableObject {
     func openProject(at url: URL) {
         let url = url.canonicalFileURL
         projectURL = url
-        welcomeDismissed = true
+        // Willkommen-Tab (falls aktiv) in ein normales leeres Dokument
+        // umwandeln → Editor + Projekt-Seitenleiste statt Willkommensseite.
+        dismissWelcomeTab()
         noteRecentProject(url)
         refreshGitStatus()
     }
@@ -1255,7 +1291,9 @@ final class Workspace: ObservableObject {
             tabs.append(tab)
             activeTabID = tab.id
         }
-        welcomeDismissed = true
+        // Der Git-Tab ist aktiv und nicht `isWelcome` → zeigt den Editor.
+        // (Git-Aktionen setzen ohnehin ein geladenes Projekt voraus, dessen
+        // Öffnen den Willkommen-Tab bereits umgewandelt hat.)
     }
 
     /// „Ordner öffnen…" (⇧⌘O): Ordner wählen und als Projekt laden.
@@ -1778,7 +1816,7 @@ final class Workspace: ObservableObject {
                                             useReplacement: !replacePattern.isEmpty)
         // Neues unbenanntes Dokument mit dem Extrakt — dirty, damit die
         // Schließen-Rückfrage greift (Inhalt existiert nur im Speicher).
-        let tab = EditorTab(title: "untitled-\(tabs.count + 1).txt",
+        let tab = EditorTab(title: Workspace.untitledName(position: tabs.count + 1),
                             path: "—", content: content, isDirty: true)
         tabs.append(tab)
         activeTabID = tab.id

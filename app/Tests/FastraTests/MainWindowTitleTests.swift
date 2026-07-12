@@ -41,13 +41,16 @@ func missingTabFallsBackToAppName() {
     #expect(metadata.representedURL == nil)
 }
 
-@Test("Willkommen-Zustand zeigt App-Titel statt Dateiname, kein Pfadmenü")
-func welcomeStateShowsAppTitleNotUntitled() {
+@Test("Willkommen-Zustand zeigt Version+Datum statt Dateiname, kein Pfadmenü")
+func welcomeStateShowsVersionTitleNotUntitled() {
     // Selbst wenn der (leere) Start-Tab „Ohne Titel" heißt: im Willkommen-
-    // Zustand darf die Titelzeile das nicht zeigen (es ist noch keine Datei).
+    // Zustand zeigt die Titelzeile Version + Datum (es ist noch keine Datei).
+    // Der Titel wird injiziert, damit die pure Umwandlung ohne echtes Bundle
+    // testbar bleibt (im Programm liefert ihn `AppInfo.welcomeWindowTitle`).
     let tab = EditorTab(title: "Ohne Titel", path: "noch nicht gespeichert")
-    let metadata = MainWindowTitleMetadata.from(tab, welcomeActive: true)
-    #expect(metadata.title == "Fastra – Texteditor")
+    let metadata = MainWindowTitleMetadata.from(tab, welcomeActive: true,
+                                                welcomeTitle: "Fastra v1.6.2 2026-07-12")
+    #expect(metadata.title == "Fastra v1.6.2 2026-07-12")
     #expect(metadata.representedURL == nil)
     #expect(!metadata.isDocumentEdited)
 }

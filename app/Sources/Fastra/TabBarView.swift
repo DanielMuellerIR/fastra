@@ -9,17 +9,17 @@ struct TabBarView: View {
                 HStack(spacing: 1) {
                     ForEach(workspace.tabs) { tab in
                         TabPill(tab: tab,
-                                // Im Willkommen-Zustand ist das einzige (leere,
-                                // unbenannte) Start-Dokument keine echte Datei —
-                                // der Tab heißt dann „Willkommen" und meint die
-                                // Willkommensseite, nicht „Ohne Titel".
-                                displayTitle: workspace.isWelcomeScreen ? "Willkommen" : tab.title,
+                                // Der Willkommen-Tab heißt in der Leiste
+                                // „Willkommen" (per-Tab, nicht global): steht ein
+                                // zweiter Editor-Tab daneben, behält NUR der
+                                // Willkommen-Tab diese Beschriftung.
+                                displayTitle: tab.isWelcome ? "Willkommen" : tab.title,
                                 isActive: tab.id == workspace.activeTabID,
                                 canCloseOthers: workspace.tabs.count > 1) {
+                            // Klick wechselt nur den aktiven Tab. Ist es der
+                            // Willkommen-Tab, bleibt die Willkommensseite; jeder
+                            // andere Tab zeigt den Editor.
                             workspace.activeTabID = tab.id
-                            // Klick auf einen Tab = „ich will den Editor sehen" —
-                            // verdeckt der Willkommensbildschirm ihn, weg damit.
-                            workspace.welcomeDismissed = true
                         } onClose: {
                             // Zentrale Schließen-Logik inkl. BBEdit-Rückfrage bei
                             // ungespeicherten Änderungen (statt direktem Entfernen).
