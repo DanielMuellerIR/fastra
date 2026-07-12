@@ -78,6 +78,8 @@ struct EditorTab: Identifiable, Hashable {
     var content: String
     var encoding: String.Encoding
     var lineEnding: LineEnding
+    var displayMode: EditorDisplayMode
+    var fileSize: UInt64
     var hits: Int
     var isDirty: Bool
     /// `true`, während die Datei im Hintergrund geladen wird.
@@ -111,6 +113,8 @@ struct EditorTab: Identifiable, Hashable {
         content: String = "",
         encoding: String.Encoding = .utf8,
         lineEnding: LineEnding = .lf,
+        displayMode: EditorDisplayMode = .text,
+        fileSize: UInt64 = 0,
         hits: Int = 0,
         isDirty: Bool = false,
         isLoading: Bool = false,
@@ -125,6 +129,8 @@ struct EditorTab: Identifiable, Hashable {
         self.content = content
         self.encoding = encoding
         self.lineEnding = lineEnding
+        self.displayMode = displayMode
+        self.fileSize = fileSize
         self.hits = hits
         self.isDirty = isDirty
         self.isLoading = isLoading
@@ -828,6 +834,8 @@ final class Workspace: ObservableObject {
                     self.tabs[i].content    = loaded.content
                     self.tabs[i].encoding   = loaded.encoding
                     self.tabs[i].lineEnding = loaded.lineEnding
+                    self.tabs[i].displayMode = loaded.displayMode
+                    self.tabs[i].fileSize = loaded.fileSize
                     self.tabs[i].isDirty    = false
                     self.tabs[i].isLoading  = false
                     self.tabs[i].diskModificationDate = ExternalChange.diskModificationDate(of: url)
@@ -922,6 +930,8 @@ final class Workspace: ObservableObject {
                     self.tabs[i].content    = loaded.content
                     self.tabs[i].encoding   = loaded.encoding
                     self.tabs[i].lineEnding = loaded.lineEnding
+                    self.tabs[i].displayMode = loaded.displayMode
+                    self.tabs[i].fileSize = loaded.fileSize
                     self.tabs[i].isDirty    = false
                     self.tabs[i].isLoading  = false
                     self.tabs[i].diskModificationDate = ExternalChange.diskModificationDate(of: url)
@@ -1111,6 +1121,8 @@ final class Workspace: ObservableObject {
                     self.tabs[idx].content    = loaded.content
                     self.tabs[idx].encoding   = loaded.encoding
                     self.tabs[idx].lineEnding = loaded.lineEnding
+                    self.tabs[idx].displayMode = loaded.displayMode
+                    self.tabs[idx].fileSize = loaded.fileSize
                     // Basis-Datum für die Extern-Änderungs-Erkennung merken.
                     self.tabs[idx].diskModificationDate = ExternalChange.diskModificationDate(of: url)
                     self.tabs[idx].isDirty    = false
@@ -1138,6 +1150,9 @@ final class Workspace: ObservableObject {
         guard let idx = activeTabIndex else { return }
         // Git-Text-Tabs (Verlauf/Diff) sind read-only — ⌘S tut nichts.
         if tabs[idx].gitKind != nil { return }
+        // Abschnitts- und Hex-Views halten absichtlich keinen vollständigen
+        // editierbaren Buffer; Speichern wäre daher eine Trunkierungsgefahr.
+        guard tabs[idx].displayMode == .text else { NSSound.beep(); return }
         if let url = tabs[idx].url {
             write(tab: tabs[idx], to: url)
         } else {
@@ -1149,6 +1164,7 @@ final class Workspace: ObservableObject {
         guard let idx = activeTabIndex else { return }
         // Read-only Git-Tabs lassen sich nicht „speichern unter".
         if tabs[idx].gitKind != nil { return }
+        guard tabs[idx].displayMode == .text else { NSSound.beep(); return }
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
         panel.nameFieldStringValue = tabs[idx].title
@@ -1751,6 +1767,8 @@ final class Workspace: ObservableObject {
                         self.tabs[idx].content    = loaded.content
                         self.tabs[idx].encoding   = loaded.encoding
                         self.tabs[idx].lineEnding = loaded.lineEnding
+                        self.tabs[idx].displayMode = loaded.displayMode
+                        self.tabs[idx].fileSize = loaded.fileSize
                         self.tabs[idx].isDirty    = false
                         self.tabs[idx].isLoading  = false
                     } else {

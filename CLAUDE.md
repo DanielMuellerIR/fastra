@@ -87,9 +87,13 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
 - **Logik** automatisiert via [Swift Testing](https://developer.apple.com/xcode/swift-testing/) (Apple, ab Xcode 16). **UI und Visuelles** manuell — XCUITest ist aus Wartungssicht nicht vertretbar.
 - **Laufzeit:** komplette Suite < 5 Sekunden lokal.
 - **Workflow:** Tests werden parallel zur Implementierung geschrieben. Eine Phase gilt erst als abgeschlossen, wenn alle Tests grün sind.
-- **Coverage-Schwerpunkte (~120 Tests gesamt):** RegEx-Tokenizer (~40), Capture-Group-Extraktion (~15), Find/Replace-Engine (~25), Footer-Statistik (~15), Encoding-Erkennung (~10), Line-Endings (~5), File-Search-Core (~10).
+- **Coverage:** über 700 Tests; Schwerpunkte sind RegEx-/Platzhalter-Parsing,
+  Capture Groups, Find/Replace, Datei-/Projekt-/Git-Logik, Encoding,
+  Zeilenenden, Hex-/Großdatei-Routing und Textoperationen.
 - **Test-Pflicht pro Phase:** Phase 1 keine (reines UI-Gerüst), Phase 2 Encoding+Line-Endings+Stats, Phase 3 Tokenizer+Capture-Groups+Find/Replace (Kernlogik), Phase 4 File-Search+Threshold-Logik, Phase 5 keine (reine Bridges zu getesteten OSS-Komponenten).
-- **Nicht getestet:** Drag&Drop-UI-Interaktionen, visuelles Rendering von Diff/Tokens/Pillen, OSS-Framework-Interna (HexFiend, MarkdownUI, CodeEditSourceEditor).
+- **Nicht getestet:** visuelles Rendering von Diff/Tokens/Pillen und
+  OSS-Framework-Interna (MarkdownUI, CodeEditSourceEditor). Kritische
+  App-weite Bridges werden dagegen über In-App-Selbsttests abgesichert.
 
 ### Regressions-Schutz — Lehre aus dem „Zombie-Find-Bar" (2026-05-27)
 

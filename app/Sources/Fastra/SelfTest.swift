@@ -125,6 +125,11 @@ enum SelfTest {
         case "crjump":    waitForMainWindow { runCRJumpTest() }
         case "textop":    waitForMainWindow { runTextOpTest() }
         case "colsel":    waitForMainWindow { runColumnSelectionTest() }
+        case "gutterdim": waitForMainWindow { runGutterDimmingTest() }
+        case "filemodes":
+            // Fensterlos — echte Dateien durch den Workspace-Ladepfad routen:
+            // Null-Bytes → Hex, große Textdatei → abschnittsweise.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runFileModesTest() }
         case "search":
             // Fensterlos — braucht nur Workspace + SearchRunner. Die
             // Engine ist nach fixer Anlaufzeit sicher initialisiert.
@@ -194,7 +199,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, cmdw, fields, tabswitch, highlight, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, git, gitactions, selsearch, wildcard, textop, colsel, contrast, windows)")
+                + "(bekannt: findbar, newwindow, cmdw, fields, tabswitch, highlight, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, contrast, windows)")
         }
     }
 
@@ -1948,6 +1953,68 @@ enum SelfTest {
         }
     }
 
+    private static func runGutterDimmingTest() {
+        testLabel = "gutterdim"
+        guard let mainWindow = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        }), let root = mainWindow.contentView else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+        guard let gutter = findView(named: "GutterView", in: root) else {
+            finish(false, "echter CodeEditSourceEditor-Gutter nicht gefunden")
+        }
+        GutterDimming.apply(in: root, windowIsKey: false)
+        let dimmed = gutter.alphaValue
+        GutterDimming.apply(in: root, windowIsKey: true)
+        let active = gutter.alphaValue
+        finish(dimmed < 0.5 && active == 1,
+               "echter Gutter alpha hinten=\(dimmed), vorn=\(active)")
+    }
+
+    // MARK: - -selftest filemodes
+
+    private static func runFileModesTest() {
+        testLabel = "filemodes"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory.appendingPathComponent(
+            "fastra-filemodes-\(UUID().uuidString)", isDirectory: true
+        )
+        let binary = base.appendingPathComponent("binary.dat")
+        let large = base.appendingPathComponent("large.log")
+        do {
+            try fm.createDirectory(at: base, withIntermediateDirectories: true)
+            try Data([0x46, 0x41, 0x53, 0x54, 0, 0x52, 0x41]).write(to: binary)
+            try Data(repeating: 0x41, count: FileLoader.binaryProbeSize).write(to: large)
+            let handle = try FileHandle(forWritingTo: large)
+            try handle.seek(toOffset: FileLoader.largeFileThreshold + 100)
+            try handle.write(contentsOf: Data([0x41]))
+            try handle.close()
+        } catch {
+            try? fm.removeItem(at: base)
+            finish(false, "Setup fehlgeschlagen: \(error.localizedDescription)")
+        }
+
+        ws.loadFile(at: binary) { binaryOK in
+            guard binaryOK, ws.activeTab?.displayMode == .hex,
+                  ws.activeTab?.content.isEmpty == true else {
+                try? fm.removeItem(at: base)
+                finish(false, "Binärdatei wurde nicht als Hex geroutet")
+            }
+            ws.loadFile(at: large) { largeOK in
+                let tab = ws.activeTab
+                let ok = largeOK && tab?.displayMode == .chunkedText
+                    && tab?.content.isEmpty == true
+                    && (tab?.fileSize ?? 0) > FileLoader.largeFileThreshold
+                try? fm.removeItem(at: base)
+                finish(ok, ok
+                       ? "Null-Byte → Hex; >32 MiB Text → Abschnittsansicht ohne Voll-Buffer"
+                       : "Großdatei wurde nicht abschnittsweise geroutet: \(String(describing: tab))")
+            }
+        }
+    }
+
     /// Findet die Haupt-Textfläche des Editors. CodeEditSourceEditor nutzt
     /// keine `NSTextView`, sondern eine eigene `TextView: NSView` (Modul
     /// CodeEditTextView) — daher Suche über den Klassennamen.
@@ -1958,6 +2025,15 @@ enum SelfTest {
         }
         for sub in view.subviews {
             if let tv = editorTextView(in: sub) { return tv }
+        }
+        return nil
+    }
+
+    private static func findView(named className: String, in view: NSView) -> NSView? {
+        let name = String(describing: type(of: view))
+        if name == className || name.hasSuffix(".\(className)") { return view }
+        for child in view.subviews {
+            if let found = findView(named: className, in: child) { return found }
         }
         return nil
     }

@@ -157,6 +157,14 @@ struct EditorView: View {
                 // sich die Tab-ID NICHT, aber die `Group`-Verzweigung wechselt.
                 // Das `.id` hier ist nur Sicherheitsnetz für den Editor unten.
                 .id(workspace.activeTab?.id)
+            } else if let tab = workspace.activeTab, tab.displayMode == .hex,
+                      let url = tab.url {
+                HexFileView(url: url, fileSize: tab.fileSize)
+                    .id(tab.id)
+            } else if let tab = workspace.activeTab, tab.displayMode == .chunkedText,
+                      let url = tab.url {
+                ChunkedTextFileView(url: url, fileSize: tab.fileSize)
+                    .id(tab.id)
             } else {
                 actualEditor
             }
@@ -171,6 +179,7 @@ struct EditorView: View {
             configuration: editorConfiguration,
             state: $editorState
         )
+        .background(GutterDimmingBridge().frame(width: 0, height: 0))
         // Einmaliger Relayout, damit die Umbruch-Breite die Minimap-Breite
         // berücksichtigt (sonst Text unter der Minimap bis zum ersten Resize).
         .onAppear { Self.forceInitialRelayout() }

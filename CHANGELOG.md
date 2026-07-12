@@ -9,6 +9,29 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.10.0] — 2026-07-12
+
+### Hinzugefügt
+
+- **Native Hex+ASCII-Ansicht für Binärdateien:** Eine Null-Byte-Probe routet
+  Binärdateien automatisch in einen schreibgeschützten, adressierten Hex-View.
+  Pro Seite werden nur 4 KiB gelesen und 256 Zeilen virtualisiert; Fastra
+  benötigt keine zusätzliche HexFiend-Abhängigkeit.
+- **Abschnittsweises Laden großer Textdateien:** Dateien über 32 MiB öffnen in
+  einer schreibgeschützten 256-KiB-Seitenansicht mit freier Navigation. Der
+  Speicherbedarf bleibt unabhängig von der Dateigröße begrenzt; Speichern ist
+  gesperrt, damit ein Teilbuffer niemals die Originaldatei überschreibt.
+- **Gutter-Dimmen:** Zeilennummern treten in nicht-vorderen Dokumentfenstern
+  zurück und erhalten beim Fokuswechsel sofort wieder volle Deckkraft.
+- Die bereits von der gepinnten CodeEditTextView-Version unterstützte
+  Rectangle Selection per ALT-Drag ist nun als verbindliches Verhalten
+  dokumentiert und ihr bestehender Mehrfachselektions-Selbsttest läuft in der
+  Standardsuite.
+- Neue Selbsttests `filemodes`, `colsel` und `gutterdim` prüfen das echte
+  Workspace-Routing, die echte Editor-Mehrfachselektion und den echten
+  CodeEditSourceEditor-Gutter. Unit-Tests sichern Binärerkennung,
+  Großdatei-Schwelle und seitenweises Lesen ab.
+
 ## [v1.9.0] — 2026-07-12
 
 ### Hinzugefügt

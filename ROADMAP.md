@@ -11,11 +11,16 @@ Was die App können muss, um v1.0 zu sein. Die Reihenfolge folgt der Roadmap, ni
 - **B. Drag & Drop von Capture Groups** — Kernmechanik: Gruppen aus dem Find-Feld lassen sich per Drag & Drop ins Replace-Feld ziehen, dort als `$1`, `$2` … eingefügt. Auto-Erkennung von `(...)`. Anspruch ist **einfache Benutzerführung**, nicht visuelle Effekthascherei. Visualisierung der Gruppen (Inline-Spans vs. Tray vs. hybrid) ist eine offene Designentscheidung, hängt am Suchmasken-Konzept.
 - **C. Token-Highlighting im Find-Feld** — RegEx-Bestandteile werden als farbige Inline-Tokens dargestellt: Anker rötlich, Zeichenklassen bläulich, Quantifier ocker, Literale Standard. Parsing via `tree-sitter-regex`.
 - **D. Diff & Preview** — Side-by-side Diff in zwei Panels (rot/grün, Treffer-Highlighting). **Implementierung verschoben (Daniel, 2026-05-26):** Die Sofort-Trefferliste in der Suchmaske erfüllt den primären Bedarf bereits weitgehend. Die ausgewachsene Diff-Implementierung rutscht auf v0.9 oder v1.1+ — Entscheidung nach erstem Nutzer-Feedback. Der Button „Vorschau der Änderungen" bleibt als Stub in der Maske. Inline-Diff am Ort der Änderung weiterhin v1.1+.
-- **E. Performance & große Dateien** — **Pragmatische Auslegung (Entscheidung 2026-06-11):** Asynchrones Datei-Laden ohne UI-Block (Spinner statt Beachball) + reale Messung mit großen Testdateien. Chunk-basiertes / memory-mapped Loading bräuchte tiefe CESE-Eingriffe → v1.1+. Folder-Suche in `Task.detached`. Kein Hard-Cap; Warn-Dialog erst unmittelbar vor Preview/Apply bei Dateien > ~200 MB.
+- **E. Performance & große Dateien** — Asynchrones Laden ohne UI-Block; seit
+  v1.10.0 öffnen Textdateien über 32 MiB in einer speicherbegrenzten,
+  schreibgeschützten 256-KiB-Abschnittsansicht. Folder-Suche läuft in
+  `Task.detached`; große Replace-Operationen behalten ihr Sicherheits-Gate.
 - **F. Footer (BBEdit-Style)** — Encoding · Line-Endings · Chars/Words/Lines. Statistiken asynchron berechnet, blockieren nie die UI; Placeholder `— / — / —` während Berechnung. Encoding-Erkennung via `NSString.stringEncoding(for:)`.
 - **G. Syntax-Highlighting** — via `CodeEditLanguages` (~40 Sprachen out-of-the-box, tree-sitter). Auswahl per Dateiendung, Plain-Text-Fallback.
 - **H. Markdown-Vorschau** — **hohe Priorität** (Daniel-Präferenz). Separates Fenster, read-only, GFM (Tabellen, Task-Listen, Code-Blöcke). Implementierung via `MarkdownUI`. Zusätzlich Integration von [`md-clip`](https://github.com/DanielMuellerIR/md-clip) (eigenes Tool): zwei Paste-Modi — *Plain Text* und *Formatiert → Markdown konvertiert*. md-clip ist bereits gelöst, übernehmen wir in Teilen.
-- **I. Hex-View für Binärdateien** — **Auf v1.1 verschoben (Entscheidung 2026-06-11).** Read-only Hex+ASCII via HexFiend, automatisch bei erkannten Binärdateien (Null-Byte-Check). Binärdateien bleiben in v1.0 durch den Binär-Schutz der Suche abgefangen.
+- **I. Hex-View für Binärdateien** — seit v1.10.0 native, read-only Hex+ASCII-
+  Ansicht mit Null-Byte-Erkennung und 4-KiB-Seiten; keine externe Runtime-
+  Abhängigkeit. ✓
 - **J. Platzhalter-Suche (`*`) ohne RegEx-Kenntnisse** — **In v1.0 gezogen (Daniel, 2026-06-14).** Der Kernanspruch des Produkts auf den Punkt: alltägliche Umstell-Aufgaben müssen **ohne jede RegEx-Kenntnis und ohne Nachlesen** lösbar sein. Auslösender Fall: nachgestellter Artikel in Titel-Listen — `ring, The` → `The ring`, gelöst durch `*, the` (suchen) / `the *` (ersetzen). Die kuratierte Vorlagen-Liste reicht dafür nicht — eine Vorlage setzt das Verständnis der Mechanik voraus.
   - **Kein eigener Modus.** `*` wirkt **im bestehenden Zustand „RegEx aus"** (= Default). Bewusste Entscheidung gegen einen dritten Modus: ein Modus, den der Nutzer erst finden und umschalten muss, ist genau die Hürde, die das Feature beseitigen soll.
   - **Ein-Sternchen-Fall** (`*, the` → `the *`) funktioniert wortlos — der 80-%-Fall.
@@ -104,12 +109,16 @@ die bewusste Release-Abnahme, kein Bug mehr.)
 
 ---
 
-## v1.1+ (zurückgestellt)
+## Editor-Ausbau (umgesetzt in v1.10.0, 2026-07-12)
 
-- **HexFiend-Bridge (Hex-View für Binärdateien)** — aus v1.0 verschoben (2026-06-11).
-- **Rectangle Selection (ALT-Spalten-Drag wie BBEdit)** — aus v0.8 verschoben (2026-06-11): CodeEditTextView bietet kein eingebautes Spalten-Select; Nachrüsten = tiefes Maus-Handling.
-- **Gutter-Dimmen bei nicht-vorderem Fenster** — aus v0.5/v0.6 verschoben (2026-06-11): `GutterView.backgroundColor` ist `internal`.
-- **Chunk-basiertes / memory-mapped Laden großer Dateien** — pragmatische v1.0-Auslegung (async ohne UI-Block) reicht erstmal; echtes Chunk-Loading bräuchte tiefe CESE-Eingriffe (2026-06-11).
+- Native Hex+ASCII-Ansicht mit automatischer Binärerkennung. ✓
+- Rectangle Selection per ALT-Spalten-Drag; CodeEditTextView stellt inzwischen
+  `selectColumns` bereit, Fastra sichert die Mehrfachselektion per Selbsttest. ✓
+- Gutter-Dimmen über den Key-Window-Status, ohne Zugriff auf die interne
+  `backgroundColor` des Frameworks. ✓
+- Speicherbegrenztes, abschnittsweises Lesen großer Textdateien. ✓
+
+## v1.1+ (noch offen)
 - **Voll ausgebaute Side-by-side Diff-Vorschau** im Hauptfenster (Vorher/Nachher in zwei Panels, rot/grün). Erst aktiv angehen, wenn Nutzer-Feedback zeigt, dass die Sofort-Trefferliste nicht reicht.
 - **Extrahieren-Dialog** mit Trennzeichen-Auswahl (Zeilenumbruch / Komma / Semikolon / Tab / eigenes), Ziel (Clipboard / neue Datei), Quoting-Optionen, Dedup.
 - **Projekt-Konzept** für den Scope-Tab (gespeicherte Datei-Sets + Filter + Excludes) — Grunddefinition „Projekt = Ordner mit `.git`" jetzt beschlossen, siehe Sektion „Projekt- & Git-Ausbau"; Datei-Sets/Filter/Excludes weiter offen.

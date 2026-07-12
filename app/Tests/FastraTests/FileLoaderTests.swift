@@ -116,8 +116,8 @@ func fileLoader_nonexistent_throws() {
     }
 }
 
-@Test("FileLoader: Binärmüll (Null-Bytes) wirft LoadError.unreadable")
-func fileLoader_binaryNullBytes_throws() throws {
+@Test("FileLoader: Binärmüll (Null-Bytes) öffnet automatisch die Hex-Ansicht")
+func fileLoader_binaryNullBytes_opensHex() throws {
     // Datei mit Null-Bytes und ungültigem UTF-8 — typisch für Binärdateien.
     // Foundation's Heuristik schlägt fehl, und auch der UTF-8-Fallback
     // scheitert bei rohen Null-Bytes + ungültigem Multi-Byte-Sequel.
@@ -125,9 +125,21 @@ func fileLoader_binaryNullBytes_throws() throws {
                              0xC0, 0x80, 0xFF, 0xFE, 0x00, 0x01])
     defer { try? FileManager.default.removeItem(at: url) }
 
-    #expect(throws: FileLoader.LoadError.unreadable) {
-        try FileLoader.load(url: url)
-    }
+    let result = try FileLoader.load(url: url)
+    #expect(result.displayMode == .hex)
+    #expect(result.content.isEmpty)
+    #expect(result.fileSize == 14)
+}
+
+@Test("FileLoader: große Textdatei wird ohne Voll-Laden abschnittsweise geöffnet")
+func fileLoader_largeText_opensChunked() throws {
+    let url = try writeTmp(Array("abcdefghijklmnopqrstuvwxyz".utf8))
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    let result = try FileLoader.load(url: url, largeFileThreshold: 10)
+    #expect(result.displayMode == .chunkedText)
+    #expect(result.content.isEmpty)
+    #expect(result.fileSize == 26)
 }
 
 @Test("FileLoader: ungültiges UTF-8 ohne BOM wirft LoadError.unreadable")
