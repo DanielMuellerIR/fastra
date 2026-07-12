@@ -63,9 +63,11 @@ Aktionen**, keine breite Git-Unterstützung.
   Alles committen, Amend (--no-edit), Push, Pull (Fast-Forward / mit Merge), Fetch,
   Pickaxe (`log -S`), Zum vorherigen Branch (`switch -`). ✓
 - **Dezente Hilfe-Texte** als Tooltip an jedem Menüpunkt. ✓
+- Erster Push mit automatischem `-u` erledigt (v1.5.1): fehlt der Upstream, macht
+  „Push" selbstständig `push -u origin HEAD`. ✓
 - Noch offen für spätere Feinarbeit: Stage/Unstage einzelner Dateien (Kontextmenü),
-  Branch-Auswahl aus Liste, erster Push mit automatischem `-u`, Erfolgs-Feedback bei
-  Netzwerk-Aktionen (aktuell nur sichtbar über Ahead/Behind + Baum-Änderung).
+  Branch-Auswahl aus Liste, Erfolgs-Feedback bei Netzwerk-Aktionen (aktuell nur
+  sichtbar über Ahead/Behind + Baum-Änderung).
 
 **UX-Regeln (verbindlich):**
 - **Discovery-Prinzip:** Wichtiges easy, schnell und schick; Fortgeschrittenes

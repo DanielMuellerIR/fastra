@@ -41,8 +41,23 @@ extension Workspace {
 
     // MARK: Netzwerk
 
-    /// Lokale Commits hochladen (`git push`).
-    func gitPush() { runGitAction(["push"], label: "Push") }
+    /// Lokale Commits hochladen (`git push`). Pfiffiges Extra: hat der aktuelle
+    /// Branch noch keinen Upstream (typischer erster Push eines neuen Branches),
+    /// wird automatisch `push -u origin HEAD` gemacht — statt die kryptische
+    /// „has no upstream branch"-Fehlermeldung zu zeigen, die genau Daniels
+    /// Zielgruppe ausbremst.
+    func gitPush() {
+        guard let root = projectURL, GitRunner.isAvailable else { return }
+        // Upstream vorhanden? `@{u}` löst nur mit gesetztem Upstream auf.
+        GitRunner.run(["rev-parse", "--abbrev-ref", "@{u}"], in: root) { [weak self] result in
+            guard let self else { return }
+            if result?.ok == true {
+                self.runGitAction(["push"], label: "Push")
+            } else {
+                self.runGitAction(["push", "-u", "origin", "HEAD"], label: "Push (Upstream anlegen)")
+            }
+        }
+    }
 
     /// Entfernten Stand holen und einbinden (`git pull`, erzeugt bei Bedarf
     /// einen Merge-Commit).

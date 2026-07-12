@@ -2317,12 +2317,33 @@ enum SelfTest {
     /// PICKAXE: `git log -S` muss den Commit finden, der PICKAXE_MARKER einführte.
     private static func gitActionsPickaxe(_ ws: Workspace, repo: URL, bare: URL, base: URL, fm: FileManager) {
         GitRunner.run(["log", "-SPICKAXE_MARKER", "--oneline"], in: repo) { r in
-            try? fm.removeItem(at: base)
             guard let r, r.ok, !r.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                try? fm.removeItem(at: base)
                 finish(false, "(pickaxe) kein Treffer: \(r?.stderr ?? "nil")")
             }
-            finish(true, "Git-Aktionen: Push (ahead→0), Pull-FF (Remote-Datei da), "
-                + "Amend (Datei in Commit, Zahl gleich), Switch (zurück auf main), Pickaxe ok")
+            gitActionsAutoUpstream(ws, repo: repo, bare: bare, base: base, fm: fm)
+        }
+    }
+
+    /// AUTO-UPSTREAM: neuen Branch OHNE Upstream anlegen, `gitPush()` muss ihn
+    /// selbstständig mit `-u` beim Remote anlegen (der pfiffige Erst-Push).
+    private static func gitActionsAutoUpstream(_ ws: Workspace, repo: URL, bare: URL, base: URL, fm: FileManager) {
+        runGitSequence([["switch", "-c", "ohne-upstream"]], in: repo) { ok, e in
+            guard ok else { try? fm.removeItem(at: base); finish(false, "(auto-u setup) \(e)") }
+            ws.gitPush()
+            pollAsync(maxTicks: 150, base: base, fm: fm, label: "auto-upstream",
+                      check: { done in
+                          // Der Branch muss jetzt im bare-Remote als Ref existieren.
+                          GitRunner.run(["rev-parse", "--verify", "refs/heads/ohne-upstream"], in: bare) { r in
+                              done(r?.ok == true)
+                          }
+                      },
+                      next: {
+                          try? fm.removeItem(at: base)
+                          finish(true, "Git-Aktionen: Push (ahead→0), Pull-FF (Remote-Datei da), "
+                              + "Amend (Datei in Commit, Zahl gleich), Switch (zurück auf main), "
+                              + "Pickaxe, Auto-Upstream-Push ok")
+                      })
         }
     }
 

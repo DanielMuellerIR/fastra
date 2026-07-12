@@ -9,6 +9,15 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.5.1] — 2026-07-12
+
+### Hinzugefügt
+
+- **Erster Push legt den Upstream selbst an:** Hat der aktuelle Branch noch
+  keinen Upstream, macht die „Push"-Aktion automatisch `push -u origin HEAD`,
+  statt die kryptische „has no upstream branch"-Meldung zu zeigen. Selbsttest
+  `gitactions` deckt den Fall ab.
+
 ## [v1.5.0] — 2026-07-12
 
 Projekt- & Git-Ausbau, Etappe 2 (Git-Sichtbarkeit + kuratierte Aktionen).
