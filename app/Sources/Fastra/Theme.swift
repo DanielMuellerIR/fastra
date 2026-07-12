@@ -83,6 +83,20 @@ enum Theme {
     static let diffAddedBG   = dynamic(light: rgb(0xE2, 0xEF, 0xE3), dark: rgb(0x1F, 0x3A, 0x26))
     static let diffAddedFG   = dynamic(light: rgb(0x2F, 0x5D, 0x3A), dark: rgb(0x94, 0xCE, 0x9F))
 
+    // MARK: Git-Status (Etappe 2)
+
+    /// Farbe für die Einfärbung eines Datei-Git-Zustands in der Seitenleiste.
+    /// Bewusst aus der vorhandenen Diff-/Akzent-Palette bedient (keine neuen
+    /// Grundfarben): geändert/umbenannt = Gold, neu/hinzugefügt = Grün,
+    /// gelöscht/Konflikt = Rot.
+    static func gitColor(for state: GitFileState) -> Color {
+        switch state {
+        case .modified, .renamed:   return accentReadable
+        case .untracked, .added:    return diffAddedFG
+        case .deleted, .conflicted: return diffRemovedFG
+        }
+    }
+
     // MARK: Token colors (RegEx)
 
     static let tokenAnchor    = dynamic(light: rgb(0xA3, 0x39, 0x2A), dark: rgb(0xE8, 0x8D, 0x7C))

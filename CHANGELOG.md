@@ -9,6 +9,31 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+Projekt- & Git-Ausbau, Etappe 2 (Git-Sichtbarkeit) — in Arbeit.
+
+### Hinzugefügt
+
+- **Git-Status in der Projekt-Seitenleiste:** Bei einem Git-Projekt zeigt der
+  Kopf den aktuellen Branch mit Ahead/Behind-Zählern und einem Auffrisch-Knopf;
+  geänderte Dateien im Dateibaum werden eingefärbt und mit einem Kürzel
+  markiert (M/U/A/D/R/!), Ordner mit geändertem Inhalt bekommen einen Punkt.
+  Alles über das `git`-CLI (`GitRunner`), asynchron, nie den Main-Thread
+  blockierend. Auto-Auffrischung beim Zurückwechseln in die App und nach
+  Speichern.
+- **git wird dialogfrei erkannt** (`GitRunner`): Homebrew- bzw. das echte
+  CLT-git werden direkt angesprochen, nie der `/usr/bin/git`-Stub (der sonst
+  den Command-Line-Tools-Installationsdialog auslöst). Fehlt git komplett,
+  bleibt die gesamte Git-UI still weg — keine Meldung, kein Dialog.
+- Selbsttest `git` (fensterlos, echtes Temp-Repo end-to-end) + Diagnose-Shot
+  `gitshot`; Unit-Tests für Status-Parsing und git-Pfad-Auflösung.
+
+### Behoben
+
+- **Regression aus v1.4.0:** Die dortige URL-Kanonisierung (`/var` →
+  `/private/var`) hatte drei bestehende Unit-Tests in Temp-Verzeichnissen rot
+  gemacht (ein force-unwrap crashte den Testlauf und maskierte es beim
+  Abschluss). Test-Helper an die kanonische Tab-URL angeglichen.
+
 ## [v1.4.0] — 2026-07-12
 
 Projekt- & Git-Ausbau, Etappe 1 (siehe ROADMAP.md → „Projekt- & Git-Ausbau").

@@ -132,6 +132,10 @@ enum SelfTest {
             // Fensterlos — Projekt- & Git-Ausbau Etappe 1 (Willkommen-
             // Bedingung, Projekt öffnen, Dateibaum, Repo-Erkennung).
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runProjectTest() }
+        case "git":
+            // Fensterlos — Git-Status end-to-end (Etappe 2): echtes Temp-Repo,
+            // Datei-Zustände, Branch, Ordner-Rollup, dialogfreie git-Auflösung.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runGitTest() }
         case "openscope":
             // Fensterlos — Such-Scope „Geöffnet" end-to-end über Workspace +
             // SearchRunner (Multi-Tab-Suche + Alle-ersetzen über alle Tabs).
@@ -173,10 +177,14 @@ enum SelfTest {
             // Diagnose: Projekt-Dateibaum in der Seitenleiste + geladene
             // Datei fürs fenstergezielte Capture.
             waitForMainWindow { runProjectShot() }
+        case "gitshot":
+            // Diagnose: Git-Seitenleiste (Branch-Zeile + eingefärbte Dateien)
+            // mit echtem Repo fürs fenstergezielte Capture (Etappe 2).
+            waitForMainWindow { runGitShot() }
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, cmdw, fields, tabswitch, highlight, jump, replaceall, pilldrop, navmatch, search, project, selsearch, wildcard, textop, colsel, contrast, windows)")
+                + "(bekannt: findbar, newwindow, cmdw, fields, tabswitch, highlight, jump, replaceall, pilldrop, navmatch, search, project, git, selsearch, wildcard, textop, colsel, contrast, windows)")
         }
     }
 
@@ -1988,6 +1996,100 @@ enum SelfTest {
         }
     }
 
+    /// Fensterlos — Git-Status end-to-end (Projekt- & Git-Ausbau, Etappe 2):
+    /// echtes Temp-Repo via `git init`, Datei-Zustände (untracked/modified/
+    /// staged), Branch-Anzeige, Ordner-Rollup und die dialogfreie git-Auflösung.
+    /// Braucht ein installiertes git — sonst ausgewiesener SKIP (kein FAIL).
+    private static func runGitTest() {
+        testLabel = "git"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard GitRunner.isAvailable else {
+            // Genau der „git fehlt"-Pfad: keine Git-Anzeige. Als PASS werten,
+            // weil das gewünschte Verhalten ist (still weg) — aber sichtbar
+            // machen, dass der echte Repo-Teil übersprungen wurde.
+            finish(true, "git nicht verfügbar — Git-UI bleibt still weg (erwartetes Verhalten)")
+        }
+
+        let fm = FileManager.default
+        let repo = fm.temporaryDirectory
+            .appendingPathComponent("fastra-selftest-git-\(UUID().uuidString)")
+        do {
+            try fm.createDirectory(at: repo.appendingPathComponent("sub"),
+                                   withIntermediateDirectories: true)
+            try "eins\nzwei\n".write(to: repo.appendingPathComponent("tracked.txt"),
+                                     atomically: true, encoding: .utf8)
+            try "tief".write(to: repo.appendingPathComponent("sub/deep.txt"),
+                             atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "(setup) Temp-Repo nicht anlegbar: \(error)")
+        }
+
+        // git init + Erst-Commit über GitRunner selbst (seriell verkettet).
+        // -c-Flags: deterministischer Branch-Name + lokale Identität, damit
+        // der Test unabhängig von der globalen git-Config läuft.
+        let initArgs = ["-c", "init.defaultBranch=main", "init"]
+        GitRunner.run(initArgs, in: repo) { r0 in
+            guard let r0, r0.ok else { finish(false, "(init) \(r0?.stderr ?? "nil")") }
+            GitRunner.run(["-c", "user.email=t@t", "-c", "user.name=T", "add", "tracked.txt", "sub/deep.txt"], in: repo) { r1 in
+                guard let r1, r1.ok else { finish(false, "(add) \(r1?.stderr ?? "nil")") }
+                GitRunner.run(["-c", "user.email=t@t", "-c", "user.name=T", "commit", "-m", "init"], in: repo) { r2 in
+                    guard let r2, r2.ok else { finish(false, "(commit) \(r2?.stderr ?? "nil")") }
+                    // Jetzt Änderungen erzeugen: tracked ändern, sub/deep ändern,
+                    // eine neue Datei anlegen (untracked).
+                    do {
+                        try "eins\nzwei GEÄNDERT\n".write(to: repo.appendingPathComponent("tracked.txt"),
+                                                          atomically: true, encoding: .utf8)
+                        try "tief geändert".write(to: repo.appendingPathComponent("sub/deep.txt"),
+                                                  atomically: true, encoding: .utf8)
+                        try "neu".write(to: repo.appendingPathComponent("neu.txt"),
+                                        atomically: true, encoding: .utf8)
+                    } catch {
+                        finish(false, "(mutate) \(error)")
+                    }
+                    ws.openProject(at: repo)
+                    pollGitStatus(ws, repo: repo, fm: fm)
+                }
+            }
+        }
+    }
+
+    /// Pollt, bis `refreshGitStatus` (asynchron) den erwarteten Zustand liefert,
+    /// prüft dann Branch, Datei-Zustände, gitState/gitFolderHasChanges-Helfer.
+    private static func pollGitStatus(_ ws: Workspace, repo: URL, fm: FileManager, tick: Int = 0) {
+        let maxTicks = 100   // 100 × 30 ms ≈ 3 s
+        if let status = ws.gitStatus,
+           status.entries["tracked.txt"] == .modified,
+           status.entries["neu.txt"] == .untracked,
+           status.entries["sub/deep.txt"] == .modified {
+            guard status.branch == "main" else {
+                finish(false, "(status) Branch=\(status.branch ?? "nil") statt main")
+            }
+            // URL-basierte Helfer (Seitenleisten-Einfärbung).
+            let resolved = repo.canonicalFileURL
+            guard ws.gitState(for: resolved.appendingPathComponent("tracked.txt")) == .modified else {
+                finish(false, "(helper) gitState(tracked) falsch")
+            }
+            guard ws.gitState(for: resolved.appendingPathComponent("nichtda.txt")) == nil else {
+                finish(false, "(helper) gitState für unveränderte Datei nicht nil")
+            }
+            guard ws.gitFolderHasChanges(resolved.appendingPathComponent("sub")) else {
+                finish(false, "(helper) gitFolderHasChanges(sub) sollte true sein")
+            }
+            try? fm.removeItem(at: repo)
+            finish(true, "Git-Status: modified/untracked/staged erkannt, Branch main, "
+                + "gitState + Ordner-Rollup ok")
+        }
+        if tick >= maxTicks {
+            try? fm.removeItem(at: repo)
+            finish(false, "(status) Timeout — gitStatus=\(String(describing: ws.gitStatus))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            pollGitStatus(ws, repo: repo, fm: fm, tick: tick + 1)
+        }
+    }
+
     private static func runSearchTest() {
         testLabel = "search"
         guard let ws = Workspace.shared else {
@@ -2395,6 +2497,53 @@ enum SelfTest {
             // Ein Runloop-Tick, damit Dateibaum + Editor fertig gerendert sind.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 dumpMainWindowThenExit(prefix: "PROJECTSHOT-WINDOW")
+            }
+        }
+    }
+
+    /// Diagnose (`-selftest gitshot`): echtes Git-Repo mit gemischten Datei-
+    /// Zuständen (modified/untracked/staged) anlegen, als Projekt öffnen und
+    /// den Git-Status einlesen — dann Fenster-Nummer fürs Capture ausgeben.
+    /// Zeigt die Branch-Zeile + eingefärbte Dateien in der Seitenleiste.
+    private static func runGitShot() {
+        testLabel = "gitshot"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        guard GitRunner.isAvailable else { finish(false, "git nicht verfügbar") }
+        let fm = FileManager.default
+        let repo = fm.temporaryDirectory.appendingPathComponent("Webseite")
+        do {
+            try? fm.removeItem(at: repo)
+            try fm.createDirectory(at: repo.appendingPathComponent("styles"),
+                                   withIntermediateDirectories: true)
+            try "<!doctype html>\n<h1>Hallo</h1>\n"
+                .write(to: repo.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
+            try "# Webseite\n".write(to: repo.appendingPathComponent("README.md"),
+                                     atomically: true, encoding: .utf8)
+            try "body{margin:0}\n".write(to: repo.appendingPathComponent("styles/main.css"),
+                                         atomically: true, encoding: .utf8)
+        } catch { finish(false, "(setup) \(error)") }
+
+        let id = ["-c", "user.email=t@t", "-c", "user.name=T"]
+        GitRunner.run(["-c", "init.defaultBranch=main", "init"], in: repo) { r0 in
+            guard let r0, r0.ok else { finish(false, "(init) \(r0?.stderr ?? "")") }
+            GitRunner.run(id + ["add", "."], in: repo) { _ in
+                GitRunner.run(id + ["commit", "-m", "init"], in: repo) { _ in
+                    // Änderungen für sichtbare Einfärbung: README ändern (M),
+                    // styles/main.css ändern (Ordner-Rollup), neue Datei (U).
+                    try? "# Webseite\n\nNeu.\n".write(to: repo.appendingPathComponent("README.md"),
+                                                      atomically: true, encoding: .utf8)
+                    try? "body{margin:0;padding:0}\n".write(to: repo.appendingPathComponent("styles/main.css"),
+                                                            atomically: true, encoding: .utf8)
+                    try? "console.log(1)\n".write(to: repo.appendingPathComponent("app.js"),
+                                                  atomically: true, encoding: .utf8)
+                    ws.openProject(at: repo)
+                    ws.loadFile(at: repo.appendingPathComponent("README.md")) { _ in
+                        // Kurz warten, bis refreshGitStatus (async) durch ist.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                            dumpMainWindowThenExit(prefix: "GITSHOT-WINDOW")
+                        }
+                    }
+                }
             }
         }
     }

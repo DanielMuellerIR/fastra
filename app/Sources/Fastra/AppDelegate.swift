@@ -136,6 +136,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Bei mehreren Dokumentfenstern jede Datei prüfen, nicht nur den
             // Workspace des vordersten Fensters.
             Workspace.allLive.forEach { $0.checkExternalChanges() }
+            // Gleicher Anlass, gleiche Geste (Etappe 2): der Git-Status kann
+            // sich außerhalb geändert haben (Terminal-Commit, Branch-Wechsel).
+            // Beim Zurückwechseln still auffrischen.
+            Workspace.allLive.forEach { $0.refreshGitStatus() }
         }
 
         // Hinweis zum Zombie-Find-Bar: Der Editor (CodeEditSourceEditor) hat

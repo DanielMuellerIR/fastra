@@ -36,6 +36,46 @@ struct FileTreeSidebar: View {
             .padding(.top, 14)
             .padding(.bottom, 6)
 
+            // Branch-Zeile (Etappe 2): nur sichtbar, wenn das Projekt ein
+            // Git-Repo ist und git verfügbar (sonst still weg). Zeigt Branch,
+            // Ahead/Behind und einen dezenten Auffrisch-Knopf.
+            if let status = workspace.gitStatus, let branch = status.branch {
+                HStack(spacing: 5) {
+                    Image(systemName: "arrow.triangle.branch")
+                        .font(.system(size: 10))
+                        .foregroundColor(Theme.accentReadable)
+                    Text(branch)
+                        .font(Theme.uiSmall)
+                        .foregroundColor(Theme.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if status.ahead > 0 {
+                        Label("\(status.ahead)", systemImage: "arrow.up")
+                            .labelStyle(.titleAndIcon)
+                            .font(.system(size: 9))
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    if status.behind > 0 {
+                        Label("\(status.behind)", systemImage: "arrow.down")
+                            .labelStyle(.titleAndIcon)
+                            .font(.system(size: 9))
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    Spacer(minLength: 0)
+                    Button {
+                        workspace.refreshGitStatus()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Git-Status neu einlesen")
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 6)
+            }
+
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     FileTreeLevel(url: rootURL, depth: 0, expanded: $expanded)
@@ -64,7 +104,10 @@ private struct FileTreeLevel: View {
             FileTreeRow(node: node,
                         depth: depth,
                         isExpanded: expanded.contains(node.id),
-                        isActive: workspace.activeTab?.url == node.url) {
+                        isActive: workspace.activeTab?.url == node.url,
+                        gitState: workspace.gitState(for: node.url),
+                        gitFolderChanged: node.isDirectory
+                            && workspace.gitFolderHasChanges(node.url)) {
                 if node.isDirectory {
                     if expanded.contains(node.id) {
                         expanded.remove(node.id)
@@ -90,7 +133,19 @@ private struct FileTreeRow: View {
     let depth: Int
     let isExpanded: Bool
     let isActive: Bool
+    /// Git-Zustand dieser Datei (nil = unverändert / kein Repo).
+    let gitState: GitFileState?
+    /// Enthält dieser Ordner geänderte Dateien? (Rollup-Punkt an Ordnern.)
+    let gitFolderChanged: Bool
     let action: () -> Void
+
+    /// Textfarbe des Namens: geänderte Datei in ihrer Git-Farbe, aktive Datei
+    /// betont, sonst gedämpft. Git-Farbe schlägt den Aktiv-Zustand nicht —
+    /// die Aktiv-Hervorhebung reicht über den Hintergrund.
+    private var nameColor: Color {
+        if let gitState { return Theme.gitColor(for: gitState) }
+        return isActive ? Theme.textPrimary : Theme.textSecondary
+    }
 
     var body: some View {
         Button(action: action) {
@@ -111,10 +166,21 @@ private struct FileTreeRow: View {
                 }
                 Text(node.name)
                     .font(Theme.uiSmall)
-                    .foregroundColor(isActive ? Theme.textPrimary : Theme.textSecondary)
+                    .foregroundColor(nameColor)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 0)
+                // Git-Badge rechts: Datei-Kürzel (M/U/A/…) oder ein dezenter
+                // Punkt am Ordner, dessen Inhalt Änderungen enthält.
+                if let gitState {
+                    Text(gitState.badge)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundColor(Theme.gitColor(for: gitState))
+                } else if gitFolderChanged {
+                    Circle()
+                        .fill(Theme.accentReadable)
+                        .frame(width: 5, height: 5)
+                }
             }
             .padding(.leading, 14 + CGFloat(depth) * 12)
             .padding(.trailing, 8)

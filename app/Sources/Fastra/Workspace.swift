@@ -170,6 +170,10 @@ final class Workspace: ObservableObject {
     /// Nutzer hat den Willkommensbildschirm aktiv verlassen („Neue Datei",
     /// Tab-Klick, ⌘T). Nicht persistiert — gilt pro Fenster-Lebenszeit.
     @Published var welcomeDismissed: Bool = false
+    /// Git-Status des aktuellen Projekts (Etappe 2). `nil` = kein Projekt,
+    /// kein Repo oder git nicht installiert → keine Git-Anzeige. Asynchron
+    /// über `refreshGitStatus()` gefüllt.
+    @Published var gitStatus: GitStatusSummary?
     // Startet GESCHLOSSEN (Daniel 2026-06-22: „nicht mehr mit offenem Suchdialog
     // starten, das war nur zum Testen"). CMD+F / CMD+SHIFT+F öffnen sie. Die
     // fenster-abhängigen Selbsttests (cmdw/fields) öffnen sie jetzt selbst,
@@ -1081,6 +1085,8 @@ final class Workspace: ObservableObject {
             // nachziehen, sonst schlüge die Erkennung beim nächsten
             // App-Wechsel auf die selbst geschriebene Datei an.
             tabs[idx].diskModificationDate = ExternalChange.diskModificationDate(of: url)
+            // Speichern kann den Git-Status geändert haben (Datei jetzt „M").
+            refreshGitStatus()
         } catch {
             NSAlert(error: error).runModal()
         }
@@ -1117,12 +1123,59 @@ final class Workspace: ObservableObject {
         projectURL = url
         welcomeDismissed = true
         noteRecentProject(url)
+        refreshGitStatus()
     }
 
     /// Blendet den Projekt-Dateibaum wieder aus (Seitenleiste zeigt dann
     /// wie bisher nur die geöffneten Tabs). Offene Tabs bleiben unberührt.
     func closeProject() {
         projectURL = nil
+        gitStatus = nil
+    }
+
+    // MARK: - Git-Status (Projekt- & Git-Ausbau, Etappe 2)
+
+    /// Aktualisiert `gitStatus` für das aktuelle Projekt asynchron über das
+    /// git-CLI. Kein Projekt oder git fehlt → `gitStatus = nil` (die Git-UI
+    /// blendet sich dann still aus). Blockiert nie den Main-Thread.
+    func refreshGitStatus() {
+        guard let root = projectURL, GitRunner.isAvailable else {
+            gitStatus = nil
+            return
+        }
+        GitRunner.run(GitStatusParser.arguments, in: root) { [weak self] result in
+            guard let self, self.projectURL == root else { return }
+            // Kein Repo (Ordner ohne .git) oder Fehler → keine Git-Anzeige.
+            guard let result, result.ok else {
+                self.gitStatus = nil
+                return
+            }
+            self.gitStatus = GitStatusParser.parse(result.stdout)
+        }
+    }
+
+    /// Git-Zustand einer Datei anhand ihrer URL — für die Einfärbung in der
+    /// Seitenleiste und der Tab-Liste. `nil` = kein Projekt, keine Änderung,
+    /// oder Datei außerhalb des Projekts.
+    func gitState(for url: URL?) -> GitFileState? {
+        guard let url, let root = projectURL, let status = gitStatus else { return nil }
+        let rootPath = root.path.hasSuffix("/") ? root.path : root.path + "/"
+        guard url.path.hasPrefix(rootPath) else { return nil }
+        let relative = String(url.path.dropFirst(rootPath.count))
+        return status.entries[relative]
+    }
+
+    /// Ob ein Ordner (per URL) geänderte Dateien enthält — für den Rollup-Punkt
+    /// an Ordner-Zeilen im Dateibaum (VS-Code-Verhalten). Prüft, ob irgendein
+    /// geänderter Pfad unterhalb des Ordners liegt.
+    func gitFolderHasChanges(_ url: URL) -> Bool {
+        guard let root = projectURL, let status = gitStatus, !status.entries.isEmpty else {
+            return false
+        }
+        let rootPath = root.path.hasSuffix("/") ? root.path : root.path + "/"
+        guard url.path.hasPrefix(rootPath) else { return false }
+        let folderRelative = String(url.path.dropFirst(rootPath.count)) + "/"
+        return status.entries.keys.contains { $0.hasPrefix(folderRelative) }
     }
 
     /// „Ordner öffnen…" (⇧⌘O): Ordner wählen und als Projekt laden.
