@@ -9,6 +9,22 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.12.2] — 2026-07-13
+
+### Behoben
+
+- Fastra und die betroffenen Editor-Module suchen ihre SwiftPM-Ressourcen in
+  einer gepackten App nun zuerst im standardkonformen Ressourcenordner.
+  Zuvor kaschierte ein absoluter lokaler Build-Pfad den Verpackungsfehler auf
+  dem Build-Mac; auf anderen Macs stürzte Fastra beim Start sofort ab.
+
+### Qualitätssicherung
+
+- Jeder Debug- und Release-Build blendet vor Abschluss alle lokalen
+  SwiftPM-Build-Fallbacks aus und muss den fensterlosen Lokalisierungsstart
+  bestehen. `install.sh` wiederholt dieselbe Prüfung mit der tatsächlich nach
+  `/Applications` kopierten App und meldet erst danach Erfolg.
+
 ## [v1.12.1] — 2026-07-13
 
 ### Behoben

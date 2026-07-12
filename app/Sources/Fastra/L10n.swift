@@ -5,7 +5,20 @@ import Foundation
 /// Statusmeldungen). Statische `Text("…")`-Schlüssel lokalisiert SwiftUI
 /// direkt aus demselben Paket-Bundle.
 enum L10n {
-    private static let resourceBundle = Bundle.module
+    /// Im CLI-/Test-Build liefert SwiftPM `Bundle.module`; in der gepackten
+    /// macOS-App liegt dasselbe Bundle standardkonform unter
+    /// `Contents/Resources`. Der explizite App-Pfad verhindert, dass ein auf
+    /// dem Build-Mac vorhandener absoluter SwiftPM-Fallback einen kaputten
+    /// verteilten Build kaschiert.
+    private static let resourceBundle: Bundle = {
+        if let resources = Bundle.main.resourceURL,
+           let packaged = Bundle(
+               url: resources.appendingPathComponent("Fastra_Fastra.bundle")
+           ) {
+            return packaged
+        }
+        return Bundle.module
+    }()
 
     static func string(_ key: String) -> String {
         resourceBundle.localizedString(forKey: key, value: key, table: nil)

@@ -21,6 +21,19 @@ Notary-Keychain-Profilname steht bewusst NICHT im Skript; per `NOTARY_PROFILE`
 `~/git/intern/knowledge/fastra.md`). `./install.sh --no-notarize` = nur
 signiert (schnell, läuft auf diesem Mac sofort).
 
+**Pflicht-Gate für Installationen (seit v1.12.2):** SwiftPMs generierte
+`Bundle.module`-Accessor erwarten beim CLI-Build Ressourcen neben dem
+Executable und enthalten zusätzlich einen absoluten Fallback in
+`.build/<Konfiguration>`. Eine signierbare macOS-App braucht die Bundles aber
+unter `Contents/Resources`. Fastras Locator und die `build.sh`-Patches für
+CodeEditSymbols/CodeEditLanguages bevorzugen deshalb
+`Bundle.main.resourceURL`; danach ruft der Build `verify-portable-app.sh` auf: Alle
+lokalen `.build/*.bundle`-Fallbacks werden kurz ausgeblendet, dann muss der
+fensterlose Selbsttest `localization` aus der gepackten App starten.
+`install.sh` wiederholt dieses Gate nach dem Kopieren mit der tatsächlich
+installierten App. Signatur-, Stapler- und Gatekeeper-Prüfungen ersetzen
+diesen echten Zielstart nicht.
+
 **Agent-bindend (Daniel, 2026-07-12):** Fastra ist Daniels Daily Driver (löst
 BBEdit/MacDown/TextEdit/VS Codium ab). **NICHT jeden Build notarisieren/
 installieren** — Notarisierung dauert ~2 Min pro Lauf. Notarisierter Build via

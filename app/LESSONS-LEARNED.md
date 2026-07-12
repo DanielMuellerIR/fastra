@@ -47,6 +47,26 @@ Anders als befürchtet wird `Assets.xcassets` (inkl. `AppIcon.appiconset`) vom S
 
 **Lösung für volle Mac-App-Erfahrung:** `open -a Xcode Package.swift`, dann ▶. Xcode produziert ein echtes `.app`-Bundle. Alternativ manuelles Bundling per Skript.
 
+### A.5 `Bundle.module` kann einen kaputten Release auf dem Build-Mac kaschieren
+
+**Beobachtung:** SwiftPMs generierter `resource_bundle_accessor.swift` sucht ein
+Ressourcenbundle zuerst direkt unter `Bundle.main.bundleURL`. Als zweiten Pfad
+kompiliert SwiftPM den absoluten lokalen `.build/<Konfiguration>`-Pfad ein.
+Fastra legte die Bundles fälschlich unter `Contents/Resources` ab. Auf dem
+Build-Mac startete die App trotzdem über den absoluten Fallback; auf einem
+anderen Mac crashte sie sofort in `Bundle.module`.
+
+**Verbindliche Lösung:** In Fastra und betroffenen Fremdmodulen eigene Locator
+verwenden, die in einer gepackten App zuerst `Bundle.main.resourceURL` prüfen,
+und SwiftPM-`.bundle`-Verzeichnisse unter `Contents/Resources` kopieren.
+Bundles direkt in der `.app`-Wurzel sind keine Alternative: Codesign lehnt sie
+als „unsealed contents" ab. Danach
+`verify-portable-app.sh` ausführen: Das Skript blendet alle lokalen
+Build-Bundles kurz aus und verlangt einen echten fensterlosen `localization`-
+Start aus der gepackten App. `build.sh` und `install.sh` rufen dieses Gate
+automatisch auf. Codesign, Notarisierung, Stapler und Gatekeeper prüfen
+Integrität und Vertrauen, aber nicht, ob die App ihre Laufzeitressourcen findet.
+
 ---
 
 ## B · SwiftUI/macOS-Patterns die in den Prototypen sauber funktionieren

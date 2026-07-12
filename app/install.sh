@@ -109,6 +109,12 @@ DEST="/Applications/Fastra.app"
 rm -rf "$DEST"
 cp -R "$APP" "$DEST"
 
+# Nicht nur Signatur und Gatekeeper prüfen: Die tatsächlich installierte App
+# muss ohne die absoluten SwiftPM-Build-Fallbacks starten. Genau dieses Gate
+# verhindert, dass ein auf dem Build-Mac scheinbar funktionierendes Bundle auf
+# einem anderen Mac bei `Bundle.module` sofort abstürzt.
+./verify-portable-app.sh "$DEST" ".build/release"
+
 VERSION="$(defaults read "$DEST/Contents/Info" CFBundleShortVersionString 2>/dev/null || echo "?")"
 echo
 echo "INSTALL OK: $DEST ($VERSION)"

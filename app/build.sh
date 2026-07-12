@@ -342,6 +342,81 @@ PYEOF
         .build/*/release/Modules/CodeEditTextView.swiftmodule
 fi
 
+# 4j. CodeEditSymbols — Bundle.module in einer gepackten App portabel machen.
+# Der SwiftPM-CLI-Accessor sucht Ressourcen neben Fastra.app statt unter dem
+# signierbaren Standardpfad Contents/Resources. Auf dem Build-Mac kaschiert
+# sein absoluter .build-Fallback diesen Fehler; auf anderen Macs crasht er.
+CESYM_SRC="$CHECKOUTS/CodeEditSymbols/Sources/CodeEditSymbols/CodeEditSymbols.swift"
+if ! grep -q 'Fastra-Patch: portables CodeEditSymbols-Ressourcenbundle' "$CESYM_SRC" 2>/dev/null; then
+  echo "→ Patche CodeEditSymbols (portables Ressourcenbundle)"
+  chmod u+w "$CESYM_SRC"
+  /usr/bin/python3 - "$CESYM_SRC" <<'PYEOF'
+import sys
+path = sys.argv[1]
+src = open(path).read()
+marker = '''import SwiftUI
+
+// Fastra-Patch: portables CodeEditSymbols-Ressourcenbundle. In der gepackten
+// App liegt es standardkonform unter Contents/Resources; Bundle.module bleibt
+// der Fallback fuer SwiftPM-CLI-Builds und Tests.
+private let fastraCodeEditSymbolsBundle: Bundle = {
+    if let resources = Bundle.main.resourceURL,
+       let packaged = Bundle(
+           url: resources.appendingPathComponent("CodeEditSymbols_CodeEditSymbols.bundle")
+       ) {
+        return packaged
+    }
+    return Bundle.module
+}()'''
+if 'import SwiftUI' not in src:
+    sys.exit("CodeEditSymbols-Import hat sich geaendert")
+src = src.replace('import SwiftUI', marker, 1)
+src = src.replace('Bundle.module', 'fastraCodeEditSymbolsBundle')
+# Den absichtlich erhaltenen CLI-Fallback im neuen Helper wiederherstellen.
+src = src.replace('return fastraCodeEditSymbolsBundle\n}()', 'return Bundle.module\n}()', 1)
+open(path, 'w').write(src)
+PYEOF
+  rm -rf .build/*/debug/CodeEditSymbols.build .build/*/release/CodeEditSymbols.build
+  rm -f .build/*/debug/Modules/CodeEditSymbols.swiftmodule \
+        .build/*/release/Modules/CodeEditSymbols.swiftmodule
+fi
+
+# 4k. CodeEditLanguages — gleicher portabler Ressourcenpfad für Queries.
+if ! grep -q 'Fastra-Patch: portables CodeEditLanguages-Ressourcenbundle' "$CEL_LANG" 2>/dev/null; then
+  echo "→ Patche CodeEditLanguages (portables Ressourcenbundle)"
+  chmod u+w "$CEL_LANG"
+  /usr/bin/python3 - "$CEL_LANG" <<'PYEOF'
+import sys
+path = sys.argv[1]
+src = open(path).read()
+helper = '''import Foundation
+
+// Fastra-Patch: portables CodeEditLanguages-Ressourcenbundle. In der
+// gepackten App liegt es unter Contents/Resources; Bundle.module bleibt der
+// Fallback fuer SwiftPM-CLI-Builds und Tests.
+private let fastraCodeEditLanguagesResourceURL: URL? = {
+    if let resources = Bundle.main.resourceURL,
+       let packaged = Bundle(
+           url: resources.appendingPathComponent("CodeEditLanguages_CodeEditLanguages.bundle")
+       ) {
+        return packaged.resourceURL
+    }
+    return Bundle.module.resourceURL
+}()'''
+if 'import Foundation' not in src:
+    sys.exit("CodeEditLanguages-Import hat sich geaendert")
+src = src.replace('import Foundation', helper, 1)
+old = 'internal var resourceURL: URL? = Bundle.module.resourceURL'
+if old not in src:
+    sys.exit("CodeEditLanguages-resourceURL hat sich geaendert")
+src = src.replace(old, 'internal var resourceURL: URL? = fastraCodeEditLanguagesResourceURL', 1)
+open(path, 'w').write(src)
+PYEOF
+  rm -rf .build/*/debug/CodeEditLanguages.build .build/*/release/CodeEditLanguages.build
+  rm -f .build/*/debug/Modules/CodeEditLanguages.swiftmodule \
+        .build/*/release/Modules/CodeEditLanguages.swiftmodule
+fi
+
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 
@@ -371,8 +446,9 @@ if [ -f AppIcon.icns ]; then
   cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 fi
 
-# Ressourcen-Bundles (Assets.xcassets, CodeEdit-Symbols, ...) übernehmen,
-# damit sie zur Laufzeit per `Bundle.module` gefunden werden.
+# Ressourcen-Bundles (Assets.xcassets, CodeEdit-Symbols, ...) an den für
+# signierbare macOS-Apps standardkonformen Ort kopieren. Fastras Locator und
+# die beiden Fremdmodul-Patches bevorzugen dort `Bundle.main.resourceURL`.
 for bundle in ".build/$CONFIG/"*.bundle; do
   if [ -d "$bundle" ]; then
     cp -R "$bundle" "$APP/Contents/Resources/"
@@ -414,6 +490,12 @@ if [ "$CONFIG" = "release" ]; then
   strip -x "$APP/Contents/MacOS/Fastra"
   codesign --force --sign - "$APP/Contents/MacOS/Fastra"
 fi
+
+# Pflicht-Gate für verteilbare Bundles: Blendet die absoluten SwiftPM-
+# Build-Fallbacks kurz aus und startet den fensterlosen Lokalisierungstest.
+# So wird ein auf diesem Mac funktionierender, fremd-Mac-toter Build bereits
+# hier abgewiesen und erreicht weder Notarisierung noch Installation.
+./verify-portable-app.sh "$APP" ".build/$CONFIG"
 
 # Fertiges Bundle zusätzlich ins Projekt-Hauptverzeichnis kopieren —
 # dort ist es sichtbar und bequem doppelklickbar, statt im versteckten
