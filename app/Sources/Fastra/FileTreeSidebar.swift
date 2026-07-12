@@ -62,6 +62,28 @@ struct FileTreeSidebar: View {
                             .foregroundColor(Theme.textSecondary)
                     }
                     Spacer(minLength: 0)
+                    // Verlauf öffnen (git log --graph als read-only-Tab).
+                    Button {
+                        workspace.openGitLog()
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 10))
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Verlauf anzeigen (git log)")
+                    // Diff öffnen (git diff HEAD als read-only-Tab). Nur sinnvoll,
+                    // wenn es überhaupt Änderungen gibt — sonst gedimmt lassen,
+                    // aber klickbar (zeigt dann „keine Änderungen").
+                    Button {
+                        workspace.openGitDiff()
+                    } label: {
+                        Image(systemName: "plusminus")
+                            .font(.system(size: 10))
+                            .foregroundColor(status.entries.isEmpty ? Theme.textSecondary.opacity(0.5) : Theme.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Änderungen anzeigen (git diff)")
                     Button {
                         workspace.refreshGitStatus()
                     } label: {

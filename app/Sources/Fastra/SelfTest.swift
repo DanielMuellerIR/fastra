@@ -2077,9 +2077,10 @@ enum SelfTest {
             guard ws.gitFolderHasChanges(resolved.appendingPathComponent("sub")) else {
                 finish(false, "(helper) gitFolderHasChanges(sub) sollte true sein")
             }
-            try? fm.removeItem(at: repo)
-            finish(true, "Git-Status: modified/untracked/staged erkannt, Branch main, "
-                + "gitState + Ordner-Rollup ok")
+            // Weiter mit Schritt 2+3: Verlauf + Diff als read-only-Tabs.
+            ws.openGitLog()
+            pollGitLog(ws, repo: repo, fm: fm)
+            return
         }
         if tick >= maxTicks {
             try? fm.removeItem(at: repo)
@@ -2087,6 +2088,78 @@ enum SelfTest {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
             pollGitStatus(ws, repo: repo, fm: fm, tick: tick + 1)
+        }
+    }
+
+    /// Wartet auf den Verlaufs-Tab (git log), extrahiert einen Commit-Hash und
+    /// öffnet ihn per `openGitCommit` (git show), dann weiter zum Diff.
+    private static func pollGitLog(_ ws: Workspace, repo: URL, fm: FileManager, tick: Int = 0) {
+        let maxTicks = 100
+        if let tab = ws.tabs.first(where: { $0.gitKind == .log }), !tab.content.isEmpty {
+            // Der Log-Tab muss aktiv und read-only sein; sein Inhalt muss den
+            // Init-Commit enthalten und einen klickbaren Hash liefern.
+            guard ws.activeTab?.id == tab.id else {
+                finish(false, "(log) Verlaufs-Tab nicht aktiv")
+            }
+            let hash = tab.content
+                .split(separator: "\n")
+                .compactMap { GitLog.commitHash(inLine: String($0)) }
+                .first
+            guard let hash else {
+                finish(false, "(log) kein Commit-Hash im Verlauf: \(tab.content.prefix(80))")
+            }
+            ws.openGitCommit(hash: hash)
+            pollGitCommit(ws, repo: repo, fm: fm, hash: hash)
+            return
+        }
+        if tick >= maxTicks { try? fm.removeItem(at: repo); finish(false, "(log) Timeout") }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            pollGitLog(ws, repo: repo, fm: fm, tick: tick + 1)
+        }
+    }
+
+    /// Wartet auf den Commit-Tab (git show) und prüft, dass er den Diff enthält.
+    private static func pollGitCommit(_ ws: Workspace, repo: URL, fm: FileManager, hash: String, tick: Int = 0) {
+        let maxTicks = 100
+        if let tab = ws.tabs.first(where: { $0.gitKind == .commit }), !tab.content.isEmpty {
+            guard tab.content.contains("commit \(hash)") || tab.content.contains(hash) else {
+                finish(false, "(commit) git show ohne passenden Hash")
+            }
+            ws.openGitDiff()
+            pollGitDiff(ws, repo: repo, fm: fm)
+            return
+        }
+        if tick >= maxTicks { try? fm.removeItem(at: repo); finish(false, "(commit) Timeout") }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            pollGitCommit(ws, repo: repo, fm: fm, hash: hash, tick: tick + 1)
+        }
+    }
+
+    /// Wartet auf den Diff-Tab (git diff HEAD) und prüft, dass die Änderung an
+    /// tracked.txt drinsteht — plus die Dedup-Garantie (kein zweiter Diff-Tab).
+    private static func pollGitDiff(_ ws: Workspace, repo: URL, fm: FileManager, tick: Int = 0) {
+        let maxTicks = 100
+        if let tab = ws.tabs.first(where: { $0.gitKind == .diff }), !tab.content.isEmpty {
+            guard tab.content.contains("tracked.txt"), tab.content.contains("GEÄNDERT") else {
+                finish(false, "(diff) Änderung fehlt: \(tab.content.prefix(120))")
+            }
+            // Dedup: nochmal öffnen darf keinen zweiten Diff-Tab erzeugen.
+            let before = ws.tabs.filter { $0.gitKind == .diff }.count
+            ws.openGitDiff()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                let after = ws.tabs.filter { $0.gitKind == .diff }.count
+                try? fm.removeItem(at: repo)
+                guard before == 1, after == 1 else {
+                    finish(false, "(diff) Dedup verletzt: \(before) → \(after)")
+                }
+                finish(true, "Status + Verlauf (klickbarer Hash → git show) + Diff (gefärbt, "
+                    + "dedupliziert) ok")
+            }
+            return
+        }
+        if tick >= maxTicks { try? fm.removeItem(at: repo); finish(false, "(diff) Timeout") }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            pollGitDiff(ws, repo: repo, fm: fm, tick: tick + 1)
         }
     }
 
@@ -2537,11 +2610,23 @@ enum SelfTest {
                     try? "console.log(1)\n".write(to: repo.appendingPathComponent("app.js"),
                                                   atomically: true, encoding: .utf8)
                     ws.openProject(at: repo)
-                    ws.loadFile(at: repo.appendingPathComponent("README.md")) { _ in
-                        // Kurz warten, bis refreshGitStatus (async) durch ist.
+                    // Über FASTRA_GITSHOT wählbar, was im Editor-Bereich steht:
+                    // "diff" / "log" öffnen den jeweiligen read-only-Tab, sonst
+                    // eine geladene Datei (Seitenleisten-Einfärbung).
+                    let variant = ProcessInfo.processInfo.environment["FASTRA_GITSHOT"] ?? "sidebar"
+                    let afterStatus = {
+                        switch variant {
+                        case "diff": ws.openGitDiff()
+                        case "log":  ws.openGitLog()
+                        default:     break
+                        }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                             dumpMainWindowThenExit(prefix: "GITSHOT-WINDOW")
                         }
+                    }
+                    ws.loadFile(at: repo.appendingPathComponent("README.md")) { _ in
+                        // Kurz warten, bis refreshGitStatus (async) durch ist.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: afterStatus)
                     }
                 }
             }

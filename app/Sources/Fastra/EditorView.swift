@@ -108,7 +108,11 @@ struct EditorView: View {
     /// greift nicht.
     private var sourceEditor: some View {
         Group {
-            if workspace.activeTab?.isLoading == true {
+            if let kind = workspace.activeTab?.gitKind {
+                // Git-Text-Tab (Etappe 2): read-only Verlauf/Diff statt CESE.
+                GitTextView(kind: kind, content: workspace.activeTab?.content ?? "")
+                    .id(workspace.activeTab?.id)
+            } else if workspace.activeTab?.isLoading == true {
                 // Lade-Zustand: Spinner + Dateiname, kein Editor.
                 // Der Editor wird erst nach Completion neu eingeblendet.
                 VStack(spacing: 12) {

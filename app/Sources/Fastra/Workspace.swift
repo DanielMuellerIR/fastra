@@ -91,6 +91,10 @@ struct EditorTab: Identifiable, Hashable {
     /// wurde die Datei außerhalb von Fastra geändert. `nil` bei
     /// unbenannten Tabs.
     var diskModificationDate: Date?
+    /// Art eines Git-Text-Tabs (Etappe 2): `.log` / `.diff` / `.commit`.
+    /// `nil` = normale, editierbare Datei. Git-Tabs sind read-only, haben
+    /// `url == nil` und werden nicht gespeichert.
+    var gitKind: GitTabKind?
 
     init(
         id: UUID = UUID(),
@@ -103,7 +107,8 @@ struct EditorTab: Identifiable, Hashable {
         hits: Int = 0,
         isDirty: Bool = false,
         isLoading: Bool = false,
-        diskModificationDate: Date? = nil
+        diskModificationDate: Date? = nil,
+        gitKind: GitTabKind? = nil
     ) {
         self.id = id
         self.title = title
@@ -116,6 +121,7 @@ struct EditorTab: Identifiable, Hashable {
         self.isDirty = isDirty
         self.isLoading = isLoading
         self.diskModificationDate = diskModificationDate
+        self.gitKind = gitKind
     }
 }
 
@@ -1052,6 +1058,8 @@ final class Workspace: ObservableObject {
 
     func saveActiveTab() {
         guard let idx = activeTabIndex else { return }
+        // Git-Text-Tabs (Verlauf/Diff) sind read-only — ⌘S tut nichts.
+        if tabs[idx].gitKind != nil { return }
         if let url = tabs[idx].url {
             write(tab: tabs[idx], to: url)
         } else {
@@ -1061,6 +1069,8 @@ final class Workspace: ObservableObject {
 
     func saveActiveTabAs() {
         guard let idx = activeTabIndex else { return }
+        // Read-only Git-Tabs lassen sich nicht „speichern unter".
+        if tabs[idx].gitKind != nil { return }
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
         panel.nameFieldStringValue = tabs[idx].title
@@ -1176,6 +1186,62 @@ final class Workspace: ObservableObject {
         guard url.path.hasPrefix(rootPath) else { return false }
         let folderRelative = String(url.path.dropFirst(rootPath.count)) + "/"
         return status.entries.keys.contains { $0.hasPrefix(folderRelative) }
+    }
+
+    // MARK: - Git-Text-Tabs: History & Diff (Etappe 2, Schritt 2+3)
+
+    /// Öffnet den Verlaufs-Graphen (`git log --graph`) als read-only-Tab.
+    func openGitLog() {
+        loadGitTab(kind: .log, title: "Git-Verlauf", args: GitLog.arguments,
+                   emptyText: "Noch keine Commits.")
+    }
+
+    /// Öffnet den Arbeitsverzeichnis-Diff (`git diff HEAD`) als read-only-Tab.
+    func openGitDiff() {
+        loadGitTab(kind: .diff, title: "Git-Diff", args: GitDiff.arguments,
+                   emptyText: "Keine Änderungen gegenüber HEAD.")
+    }
+
+    /// Öffnet einen einzelnen Commit (`git show <hash>`) als read-only-Tab —
+    /// aus dem Verlaufs-Tab per Klick auf eine Commit-Zeile aufgerufen.
+    func openGitCommit(hash: String) {
+        loadGitTab(kind: .commit, title: "Commit \(hash)",
+                   args: GitDiff.showArguments(hash: hash),
+                   emptyText: "Kein Inhalt.")
+    }
+
+    /// Kern für alle Git-Text-Tabs: git asynchron ausführen und das Ergebnis in
+    /// einen read-only-Tab schreiben. Dedup: pro `(kind, title)` genau ein Tab —
+    /// erneuter Aufruf frischt den bestehenden Tab auf, statt zu duplizieren.
+    private func loadGitTab(kind: GitTabKind, title: String, args: [String], emptyText: String) {
+        guard let root = projectURL, GitRunner.isAvailable else { return }
+        GitRunner.run(args, in: root) { [weak self] result in
+            guard let self else { return }
+            guard let result, result.ok else {
+                // Fehler ehrlich zeigen (UX-Regel: echte git-Ausgabe), statt zu
+                // schlucken. stderr in den Tab, damit der Nutzer den Grund sieht.
+                let msg = result?.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                self.setGitTab(kind: kind, title: title,
+                               content: (msg?.isEmpty == false ? msg! : "git-Aufruf fehlgeschlagen."))
+                return
+            }
+            let text = result.stdout.isEmpty ? emptyText : result.stdout
+            self.setGitTab(kind: kind, title: title, content: text)
+        }
+    }
+
+    /// Legt einen Git-Tab an oder aktualisiert den vorhandenen gleicher Art +
+    /// gleichen Titels, und aktiviert ihn.
+    private func setGitTab(kind: GitTabKind, title: String, content: String) {
+        if let idx = tabs.firstIndex(where: { $0.gitKind == kind && $0.title == title }) {
+            tabs[idx].content = content
+            activeTabID = tabs[idx].id
+        } else {
+            let tab = EditorTab(title: title, path: "Git", content: content, gitKind: kind)
+            tabs.append(tab)
+            activeTabID = tab.id
+        }
+        welcomeDismissed = true
     }
 
     /// „Ordner öffnen…" (⇧⌘O): Ordner wählen und als Projekt laden.

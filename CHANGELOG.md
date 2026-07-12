@@ -26,6 +26,13 @@ Projekt- & Git-Ausbau, Etappe 2 (Git-Sichtbarkeit) — in Arbeit.
   bleibt die gesamte Git-UI still weg — keine Meldung, kein Dialog.
 - Selbsttest `git` (fensterlos, echtes Temp-Repo end-to-end) + Diagnose-Shot
   `gitshot`; Unit-Tests für Status-Parsing und git-Pfad-Auflösung.
+- **Verlauf als read-only-Tab** (`git log --graph`): Commit-Zeilen sind
+  anklickbar und öffnen den Commit per `git show` in einem weiteren Tab.
+  Öffnen über das Uhr-Symbol in der Branch-Zeile.
+- **Diff als read-only-Tab** (`git diff HEAD`): Unified-Diff mit Färbung
+  (hinzugefügt grün, entfernt rot, Hunk-/Datei-Header und Commit-Metadaten
+  betont). Öffnen über das ±-Symbol in der Branch-Zeile. Beide Git-Tabs sind
+  gegen ⌘S/Speichern-unter abgesichert und pro Art dedupliziert.
 
 ### Behoben
 
