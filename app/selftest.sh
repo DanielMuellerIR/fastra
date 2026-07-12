@@ -41,7 +41,7 @@ cd "$(dirname "$0")"
 
 APP_BIN=".build/debug/Fastra.app/Contents/MacOS/Fastra"
 APP_BUNDLE=".build/debug/Fastra.app"
-ALL_TESTS=(windows newwindow findbar fields tabswitch highlight jump replaceall pilldrop navmatch search project git gitactions selsearch wildcard openscope contrast cmdw)
+ALL_TESTS=(windows newwindow findbar fields tabswitch highlight jump ghosttext replaceall pilldrop navmatch search project git gitactions selsearch wildcard openscope contrast cmdw)
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
 WINDOWLESS_TESTS=(search project git gitactions selsearch wildcard openscope)
 # Pro Test max. Wartezeit in Sekunden, bis die SELFTEST-Zeile da sein muss.

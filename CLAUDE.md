@@ -34,10 +34,11 @@ Für normale Zwischen-Iterationen und Handtests genügt der **Debug-Build**
 läuft trotzdem gatekeeper-frei). Beim Version-Bump `app/Info.plist` mitziehen
 (siehe AGENTS.md), sonst zeigt die App eine veraltete Version.
 
-`build.sh` kapselt Xcode-Toolchain-Switch + acht Checkout-Patches
-(SwiftLint-Plugin aus, CodeEditSymbols Resources, #Preview-Macro,
-CMD+F-Zombie-Kill, toter cursorPositions-Reconcile, Gutter-Drag-Clamp,
-exotische Sprachen ausschneiden, Highlight-Query-Pfad layout-robust).
+`build.sh` kapselt Xcode-Toolchain-Switch + elf Checkout-Patches
+(SwiftLint-Plugins aus, CodeEditSymbols Resources, CMD+F-Zombie-Kill,
+toter cursorPositions-Reconcile, Gutter-Drag-Clamp, horizontaler Scrollbalken,
+Zeilenbreiten-Messung, exotische Sprachen ausschneiden, Highlight-Query-Pfad
+layout-robust und Text-Geist-Fix).
 Details in `app/LESSONS-LEARNED.md` Sektion F (F.9 = CMD+F, F.10 = Reconcile).
 Patch 4h (Highlight-Query-Pfad, 2026-07-10): `CodeLanguage.queryURL` baute
 `resourceURL + "Resources/…"`, aber `Bundle.module.resourceURL` zeigt bei
@@ -46,6 +47,12 @@ unserem Bundle-Layout schon auf `…/Resources` → doppeltes
 blieb monochrom (Sprache wurde trotzdem korrekt erkannt — betraf auch den
 abgenommenen v1.0-Release). Regressions-Wächter: Selbsttest `highlight`
 (zählt echte Vordergrundfarben im Editor-TextStorage).
+Patch 4i (Text-Geist, 2026-07-12): CodeEditTextViews Break-Helfer liefert
+einen absoluten Endindex im Content-Run, der Typesetter verwendete ihn aber
+fälschlich als `NSRange.length`. Dadurch überlappten die gezeichneten
+CoreText-Bereiche ab dem zweiten Umbruchfragment. Der Patch berechnet die
+Länge als Endindex minus Startindex. Regressions-Wächter: Selbsttest
+`ghosttext` (CoreText-Nutzlast, Fragmentbreite und doppelte Dokumentbereiche).
 Gutter-Drag-Clamp (4d in build.sh): CESEs `mouseDragged` clampt die Drag-Position
 auf `max(0, …)` → über der Gutter-Spalte liefert `textOffsetAtPoint` nil und die
 Selektion friert ein; Patch clampt auf `max(layoutManager.edgeInsets.left, …)`.
@@ -96,6 +103,11 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
 2. **VERBOTENER Irrweg (kostete eine Session):** `NSApplication` zu subclassen, um CMD+F in `sendEvent` abzufangen — egal ob via `NSPrincipalClass` (wird unter SwiftUI ignoriert) oder via eigenem `main.swift`, der `CustomApp.shared` vor `App.main()` verankert. Letzteres ERSETZT SwiftUIs interne `SwiftUI.AppKitApplication`, deren eigenes Event-Routing dann fehlt → **die gesamte App wird maus-tot** (keine Klicks, kein Fenster-Schließen, CMD+Tab bringt nicht nach vorn). **Niemals NSApplication unter SwiftUI-Lifecycle subclassen.** Zur Laufzeit ist `NSApp.className == "SwiftUI.AppKitApplication"` — das ist korrekt und soll so bleiben.
 
 3. **In-App-Selbsttests** (`SelfTest.swift`, kein Accessibility nötig — Events werden intern gepostet). **Aufruf: bevorzugt über den Runner `./selftest.sh` (alle Tests oder `./selftest.sh findbar jump`), direkt via `Fastra -selftest findbar -ApplePersistenceIgnoreState YES` oder Umgebungsvariable `FASTRA_SELFTEST=findbar`.** `-selftest findbar` postet ein echtes CMD+F bei fokussiertem Editor und **pollt ~1,2 s engmaschig**, ob das Editor-Find-Panel AUCH NUR KURZ auftaucht (eine Einzel-Messung am Ende würde das Aufblitzen verpassen). `-selftest newwindow` löst den echten ⌘N-Menübefehl aus, prüft ein zweites leeres Dokumentfenster mit unabhängigem Workspace, wechselt den Fokus zurück, belegt per echtem ⌘T das Routing globaler Commands und schließt anschließend den letzten Tab des Zweitfensters per echtem ⌘W (Fenster muss verschwinden; braucht ECHTEN Fenster-Fokus, s.u.). `-selftest fields` prüft, ob Suchen- UND Ersetzen-Feld echte, editierbare, betippbare Texteingaben sind (fing den toten Find-Feld-Bug). `-selftest tabswitch` prüft, ob der Editor beim Tab-Wechsel neu erzeugt wird (CESE schiebt Binding-Text nicht zurück → ohne `.id(activeTab.id)` bliebe der Inhalt stehen; via Objekt-Identität vorher≠nachher belegt). `-selftest cmdw` prüft CMD+W-Schließen (braucht ECHTEN Fenster-Fokus, s.u.). `-selftest jump` lädt Text mit unterschiedlich langen Vorzeilen (inkl. Emoji als UTF-16-Surrogatpaar) in einen Tab, postet exakt wie die GUI einen Treffer-Sprung (Zeile/Spalte-Pfad über `postMatchJump`) und liest die ECHTE Editor-Selektion zurück (`CodeEditTextView.TextView.selectedRange()`): der selektierte Text muss exakt der Treffer sein. Fing den toten Treffer-Sprung — CESE 0.15.x reconcilet `cursorPositions` von außen NIE (Bedingung `!= state.cursorPositions` vergleicht mit sich selbst, immer false; in `build.sh` gepatcht auf `!= controller.cursorPositions` + `scrollToVisible`). `-selftest replaceall` lädt den Demo-Inhalt („Nachname, Vorname"), setzt `(\w+), (\w+)` → `$2 $1`, ruft `applyAllInActiveBuffer()` und liest den ECHTEN Editor-`.string` zurück: er muss nach dem Replace den ersetzten Text zeigen (== Modell-Inhalt). Fing die Regression, dass „Alle ersetzen" im Editor folgenlos blieb (CESE übernimmt Binding-Änderungen nicht → in `EditorView` über `editorReloadNonce` an der `.id` eine Neuerzeugung erzwungen). `-selftest pilldrop` fokussiert das Ersetzen-Feld und treibt dessen Drag-Destination-Methoden mit einem `NSDraggingInfo`-Mock („$1"): Annahme (`draggingEntered == .copy`) + Einfügung müssen AUCH bei Fokus klappen. Fing den Bug, dass ein Gruppen-Pillen-Drop aufs fokussierte Ersetzen-Feld verpuffte (NSTextView lehnt Drops bei First-Responder ab → in `RegexFieldTextView` die Destination-Methoden überschrieben). `-selftest windows` ist ein reines Diagnose-Flag (Fenster-Dump über 10 s). Alle geben `SELFTEST <name>: PASS/FAIL` + Exit-Code aus; Fenster-Tests POLLEN bis 15 s auf ihr Fenster statt nach fixer Frist zu guarden. **Genau die Bug-Klasse (App-weites Event-/Eingabe-Verhalten), die reine Unit-Tests NICHT fangen.** Nach jeder Änderung an Lifecycle/Fenster/Monitoren mehrfach laufen lassen (Flakiness zeigt Race-Conditions).
+   `-selftest ghosttext` lädt mehrere lange Zeilen und prüft nach Laden und
+   Resize die echten CoreText-Fragmente: gezeichnete Nutzlast entspricht dem
+   Dokumentbereich, kein Fragment überschreitet die Umbruch-Breite und kein
+   Dokumentbereich ist doppelt sichtbar. Er sichert den Fehler ab, bei dem
+   Wörter nach Paste/Laden mehrfach erschienen und rechts aus dem Editor liefen.
    **Umgebungs-Fallen beim Selbsttest-Aufruf (2026-06-11, alle in `selftest.sh` gekapselt):**
    - **NIEMALS positionale `--selftest-…`-Argumente verwenden (Root Cause des „kein Hauptfenster"-Bugs).** AppKit interpretiert unbekannte positionale Argumente als „zu öffnende Datei" — die App durchläuft dann den Open-File-Launchpfad statt `applicationOpenUntitledFile`, und SwiftUI erzeugt das WindowGroup-Hauptfenster NIE (`NSApp.windows` bleibt leer, Main-Thread idle; empirisch: JEDES `--flag` löst das aus). `-Key Value`-Argumente (NSArgumentDomain) sind unschädlich → daher `-selftest <name>`. Dass die Fenster-Tests früher trotz `--selftest-…` grün waren, lag mutmaßlich an der Fenster-Restauration aus dem Saved State — die seit 2026-06-11 mitgegebene `-ApplePersistenceIgnoreState YES` schaltete genau diese Krücke ab und machte den Bug sichtbar. Alte Aufrufform wird erkannt und FAILt sofort mit Hinweis.
    - **Immer `-ApplePersistenceIgnoreState YES` mitgeben** (`Fastra -selftest findbar -ApplePersistenceIgnoreState YES`). Nach einem abgebrochenen Lauf (z.B. `pkill` in build.sh) zeigt macOS sonst beim nächsten Start den modalen „Fenster wiederherstellen?"-Dialog (`NSPersistentUIManager`) — die App hängt dann VOR dem Selbsttest endlos (per `sample` diagnostiziert: Main-Thread in `promptToIgnorePersistentStateWithCrashHistory`).

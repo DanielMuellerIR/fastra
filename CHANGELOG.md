@@ -9,6 +9,38 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.6.1] — 2026-07-12
+
+### Behoben
+
+- **„Text-Geist" bei langen umgebrochenen Zeilen beseitigt:** Wörter werden
+  nach Paste oder Datei-Laden nicht mehr mehrfach gezeichnet, und Text läuft
+  nicht mehr rechts aus dem Editor. Ursache war ein Fehler in
+  CodeEditTextView: Der absolute Endindex eines CoreText-Zeilenumbruchs wurde
+  als Bereichslänge verwendet. Ab dem zweiten Fragment überlappten die
+  gezeichneten Bereiche dadurch immer stärker. Checkout-Patch 4i rechnet nun
+  korrekt `Länge = Endindex - Startindex`; der Patch verifiziert sich beim
+  Build selbst.
+- Der In-App-Selbsttest `ghosttext` prüft die tatsächliche CoreText-Nutzlast,
+  Fragmentbreiten und doppelt belegte Dokumentbereiche nach Laden und Resize.
+  Er gehört jetzt zur standardmäßig ausgeführten Selbsttest-Suite.
+
+## [v1.6.0] — 2026-07-12
+
+### Hinzugefügt
+
+- Minimap-Schalter im Menü „Darstellung"; die Minimap ist standardmäßig aus.
+- Ziehbarer, persistenter Splitter für die Breite der Projekt-Seitenleiste.
+- Per ⌘N erzeugte Zusatzfenster erscheinen im Menü „Fenster".
+
+### Geändert
+
+- Willkommensseite und Fenstertitel sind sachlicher formuliert; der
+  Willkommenszustand heißt im Tab ebenfalls „Willkommen".
+- ⌘N öffnet direkt einen leeren Editor statt weiterer Willkommensseiten.
+- Das Schließen des letzten Fensters beendet Fastra nicht mehr; die App bleibt
+  für ein neues Fenster aktiv.
+
 ## [v1.5.1] — 2026-07-12
 
 ### Hinzugefügt

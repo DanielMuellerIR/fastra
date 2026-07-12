@@ -295,54 +295,45 @@ PYEOF
         .build/*/release/Modules/CodeEditLanguages.swiftmodule
 fi
 
-# 4i. Patch CodeEditTextView — Breitenwechsel-Erkennung repariert den „Text-Geist".
+# 4i. Patch CodeEditTextView — überlappende Umbruch-Fragmente reparieren
+# („Text-Geist").
 #
-# ROOT CAUSE (Daniel-Befund 2026-07-12, Selbsttest `ghosttext`): Eine lange
-# Zeile wurde bei zwei verschiedenen Umbruch-Breiten ausgelegt, die alte
-# (zu breite) `LineFragmentView` blieb als Geist sichtbar stehen — dasselbe
-# Wort doppelt, Text lief rechts raus. `TextLine.needsLayout(maxWidth:)`
-# erkannte einen Breitenwechsel NUR, wenn ALTE UND NEUE Breite endlich sind
-# (`maxWidth.isFinite && storedMaxWidth.isFinite`). Der Übergang endlich↔
-# unendlich (`.infinity` liefert `textViewportSize()`, solange noch kein
-# ScrollView hängt — genau beim frischen Editor-Mount mit langem Inhalt) wurde
-# verschluckt: die Zeile wurde NICHT neu umbrochen, das zu breite Fragment
-# blieb. Fix: zusätzlich neu auslegen, sobald sich die Endlichkeit ändert.
-# Idempotent (Marker-Check); CETV-Build-Produkte verwerfen, sonst greift der
-# Patch nicht (SPM trackt Checkout-Änderungen nicht — wie 4b–4h).
-CETV_TEXTLINE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextLine/TextLine.swift"
-if ! grep -q 'Fastra-Patch: Breitenwechsel auch bei' "$CETV_TEXTLINE" 2>/dev/null; then
-  echo "→ Patche CodeEditTextView (Breitenwechsel-Erkennung → Text-Geist-Fix)"
-  chmod u+w "$CETV_TEXTLINE"
-  /usr/bin/python3 - "$CETV_TEXTLINE" <<'PYEOF'
+# ROOT CAUSE (Trace + Selbsttest `ghosttext`, 2026-07-12):
+# `CTTypesetter+SuggestLineBreak` liefert den ABSOLUTEN Endindex innerhalb des
+# Content-Runs. `Typesetter.layoutTextUntilLineBreak` setzte diesen Endindex aber
+# direkt als LÄNGE der nächsten `CFRange` ein. Ab Fragment 2 begann der Bereich
+# zwar korrekt am vorherigen Break, reichte aber um dessen kompletten Offset zu
+# weit. Die CoreText-Fragmente überlappten dadurch immer stärker: Wörter wurden
+# mehrfach gezeichnet und die Fragment-Views liefen trotz Umbruch rechts hinaus.
+#
+# Fix: Länge = Endindex - Startindex. Upstream `main` enthält denselben Fehler
+# am 2026-07-12 weiterhin. Idempotent (Marker-Check); CETV-Build-Produkte
+# verwerfen, weil SPM Änderungen in Checkouts nicht selbst erkennt.
+CETV_TYPESETTER="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextLine/Typesetter/Typesetter.swift"
+if ! grep -q 'Fastra-Patch: Break-Endindex in Fragmentlaenge umrechnen' "$CETV_TYPESETTER" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (überlappende Umbruch-Fragmente → Text-Geist-Fix)"
+  chmod u+w "$CETV_TYPESETTER"
+  /usr/bin/python3 - "$CETV_TYPESETTER" <<'PYEOF'
 import sys
 path = sys.argv[1]
 src = open(path).read()
-old = '''    func needsLayout(maxWidth: CGFloat) -> Bool {
-        needsLayout // Force layout
-        || (
-            // Both max widths we're comparing are finite
-            maxWidth.isFinite
-            && (self.maxWidth ?? 0.0).isFinite
-            && maxWidth != (self.maxWidth ?? 0.0)
-        )
-    }'''
-new = '''    func needsLayout(maxWidth: CGFloat) -> Bool {
-        // Fastra-Patch: Breitenwechsel auch bei Uebergang endlich<->unendlich
-        // erkennen. Upstream verlangte, dass BEIDE Breiten endlich sind, und
-        // verschluckte damit den Wechsel von/zu .infinity (kein ScrollView beim
-        // frischen Editor-Mount) -> die lange Zeile wurde nicht neu umbrochen,
-        // eine zu breite Fragment-View blieb als Geist stehen (Selbsttest
-        // ghosttext). Zusaetzliche Bedingung: Endlichkeit hat sich geaendert.
-        let stored = self.maxWidth ?? 0.0
-        return needsLayout // Force layout
-            || (maxWidth.isFinite && stored.isFinite && maxWidth != stored)
-            || (maxWidth.isFinite != stored.isFinite)
-    }'''
+old = '''            let typesetSubrange = NSRange(location: context.currentPosition - range.location, length: lineBreak)
+            let typesetData = typesetLine(typesetter: typesetter, range: typesetSubrange)'''
+new = '''            // Fastra-Patch: Break-Endindex in Fragmentlaenge umrechnen.
+            // `lineBreak` ist ein absoluter Endindex im Content-Run, waehrend
+            // NSRange.length eine Laenge erwartet. Ohne die Subtraktion
+            // ueberlappt jedes Folgefragment den bereits umbrochenen Text.
+            let relativeStart = context.currentPosition - range.location
+            let typesetSubrange = NSRange(
+                location: relativeStart,
+                length: lineBreak - relativeStart
+            )
+            let typesetData = typesetLine(typesetter: typesetter, range: typesetSubrange)'''
 if old not in src:
-    sys.exit("needsLayout-Quelltext hat sich geaendert — Patch 4i passt nicht mehr")
+    sys.exit("Typesetter-Quelltext hat sich geaendert — Patch 4i passt nicht mehr")
 open(path, "w").write(src.replace(old, new))
 PYEOF
-  if ! grep -q 'Fastra-Patch: Breitenwechsel auch bei' "$CETV_TEXTLINE" 2>/dev/null; then
+  if ! grep -q 'Fastra-Patch: Break-Endindex in Fragmentlaenge umrechnen' "$CETV_TYPESETTER" 2>/dev/null; then
     echo "✗ FEHLER: Text-Geist-Patch hat NICHT gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
     exit 1
   fi

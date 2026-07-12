@@ -1037,22 +1037,20 @@ enum SelfTest {
 
     // MARK: - -selftest ghosttext
 
-    /// Sichert gegen den „Text-Geist" (Daniel-Befund 2026-07-12): eine lange
-    /// Zeile wurde bei zwei verschiedenen Umbruch-Breiten ausgelegt, die alte
-    /// (zu breite) Fragment-View blieb sichtbar stehen → dasselbe Wort doppelt,
-    /// Text lief rechts raus.
+    /// Sichert gegen den „Text-Geist" (Daniel-Befund 2026-07-12): Der
+    /// CodeEditTextView-Typesetter verwendete den absoluten Endindex eines
+    /// Zeilenumbruchs als `NSRange.length`. Ab dem zweiten Umbruchfragment
+    /// überlappten die gezeichneten CoreText-Bereiche dadurch immer stärker →
+    /// dasselbe Wort erschien mehrfach und Text lief rechts hinaus.
     ///
     /// CESE positioniert jedes Zeilenfragment als eigene `LineFragmentView`-
-    /// Subview der `TextView` (über eine Reuse-Queue, die alte Views nur in
-    /// EINEM Sweep am Pass-Ende einsammelt). Der Test lädt sehr lange Zeilen,
-    /// erzwingt mehrere Breiten-Wechsel (Fenster schmal/breit) und prüft nach
-    /// jedem Settle die INVARIANTE:
-    ///   (a) keine zwei LIVE-Fragment-Views mit überlappendem `documentRange`
-    ///       (= derselbe Text zweimal ausgelegt), und
-    ///   (b) bei Umbruch AN (endliche Umbruch-Breite) keine Live-Fragment-View
-    ///       breiter als diese Breite (= überlaufendes Geist-Fragment).
-    /// Genau die Render-Geist-Klasse, die reine Modell-Tests NICHT fangen (das
-    /// Textmodell ist korrekt; nur die gezeichneten Fragment-Views hängen nach).
+    /// Subview der `TextView`. Der Test lädt sehr lange Zeilen, erzwingt einen
+    /// Breitenwechsel und prüft nach jedem Settle drei Invarianten:
+    ///   (a) CoreText-Nutzlast und `documentRange` sind gleich lang,
+    ///   (b) bei Umbruch AN ist keine Fragment-View breiter als die Grenze,
+    ///   (c) keine zwei Live-Views belegen denselben Dokumentbereich.
+    /// Genau diese Render-Fehlerklasse entgeht reinen Modell-Tests: Der
+    /// gespeicherte Text war auch beim Geist jederzeit korrekt.
     private static func runGhostTextTest() {
         testLabel = "ghosttext"
         guard let ws = Workspace.shared else {
@@ -1126,6 +1124,19 @@ enum SelfTest {
         }
 
         let wrapWidth = tv.layoutManager.maxLineLayoutWidth
+        // (a) Direkter Wächter für den gefundenen Root Cause: Der Range des
+        // gezeichneten CTLine-Inhalts darf nicht länger sein als der zugehörige
+        // Dokumentbereich. Beim Bug war ab Fragment 2 `lineBreak` (Endindex)
+        // statt `lineBreak - start` (Länge) an CoreText gegangen.
+        for v in live {
+            let fragment = v.lineFragment!
+            let drawnLength = fragment.contents.reduce(0) { $0 + $1.length }
+            if drawnLength != fragment.documentRange.length {
+                return "CoreText-Nutzlast und Dokumentbereich sind verschieden lang "
+                    + "(drawn=\(drawnLength), documentRange=\(fragment.documentRange)) — "
+                    + "Umbruchfragmente überlappen intern"
+            }
+        }
         // (b) Überlauf: bei endlicher Umbruch-Breite (Umbruch AN) darf KEIN
         // sichtbares Fragment breiter als diese Breite sein. Ein zu breites
         // Fragment ist die überlaufende „Willkommensb"-Rest-View aus dem Screenshot.
