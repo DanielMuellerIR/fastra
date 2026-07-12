@@ -183,7 +183,10 @@ aus veralteter Doku zu halluzinieren.
   als Remote konfiguriert ist. Aus `git remote -v` ohne GitHub-Eintrag NICHT
   schließen, das Projekt sei nicht auf GitHub.
 - **Beim Version-Bump immer parallel:** Header in AGENTS.md aktualisieren,
-  CHANGELOG-Eintrag schreiben, Git-Tag setzen, Commit-Message mit Versionsnummer.
+  CHANGELOG-Eintrag schreiben, Git-Tag setzen, Commit-Message mit Versionsnummer,
+  **`app/Info.plist` mitziehen** (`CFBundleShortVersionString` = Version,
+  `CFBundleVersion` hochzählen) — sonst zeigt die gebaute/notarisierte App im
+  „Über Fastra" eine veraltete Version (Drift bis v1.5.1 passiert).
 
 ### Tests & Verifikation (agent-bindend)
 

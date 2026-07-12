@@ -7,9 +7,26 @@
 
 ```bash
 cd app
-./build.sh          # debug
-./build.sh release  # release
+./build.sh                 # debug
+./build.sh release         # release (signiert ad-hoc)
+NOTARY_PROFILE=<profil> ./install.sh   # notarisiert → /Applications/Fastra.app
 ```
+
+**Installations-Workflow (`app/install.sh`):** baut Release, signiert mit
+Developer ID + Hardened Runtime, notarisiert bei Apple (`--wait`), stapelt das
+Ticket und kopiert nach `/Applications`. Die Signatur-Identität wird zur Laufzeit
+aus dem Schlüsselbund ermittelt (nichts Privates im Skript — public Repo). Der
+Notary-Keychain-Profilname steht bewusst NICHT im Skript; per `NOTARY_PROFILE`
+übergeben (der fleet-spezifische Profilname steht in
+`~/git/intern/knowledge/fastra.md`). `./install.sh --no-notarize` = nur
+signiert (schnell, läuft auf diesem Mac sofort).
+
+**Agent-bindend (Daniel, 2026-07-12):** Fastra ist Daniels Daily Driver (löst
+BBEdit/MacDown/TextEdit/VS Codium ab). Deshalb **nach jeder größeren fertigen
+Etappe UND immer bevor Daniel per Hand testen soll: notarisierten Build via
+`install.sh` nach `/Applications` legen** — nicht nur `build.sh`. Beim
+Version-Bump `app/Info.plist` mitziehen (siehe AGENTS.md), sonst zeigt die App
+eine veraltete Version.
 
 `build.sh` kapselt Xcode-Toolchain-Switch + acht Checkout-Patches
 (SwiftLint-Plugin aus, CodeEditSymbols Resources, #Preview-Macro,
