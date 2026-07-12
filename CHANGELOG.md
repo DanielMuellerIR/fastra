@@ -9,6 +9,13 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.14.1] — 2026-07-13
+
+### Hinzugefügt
+
+- Das Kontextmenü der Projekt-Dateiliste kann Dateien, Ordner und den
+  Projektordner mit „Im Finder zeigen…“ direkt im Finder auswählen.
+
 ## [v1.14.0] — 2026-07-13
 
 ### Hinzugefügt

@@ -67,6 +67,7 @@
 "Hex + ASCII · schreibgeschützt" = "Hex + ASCII · read-only";
 "In Ordnern suchen…" = "Search in Folders…";
 "In den Papierkorb legen…" = "Move to Trash…";
+"Im Finder zeigen…" = "Show in Finder…";
 "Kein Treffer ausgewählt." = "No match selected.";
 "Keine Ersetzungen in der aktuellen Datei." = "No replacements in the current file.";
 "Keine Gruppen — (…) im Suchausdruck setzen oder unten im Detail markieren + „Gruppe definieren\"." = "No groups—add (…) to the search expression or select text in the detail view and choose ‘Define Group’.";

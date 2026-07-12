@@ -352,11 +352,21 @@ private struct FileTreeContextMenu: View {
         Button("Neue Datei…") { create(isDirectory: false) }
         Button("Neuer Ordner…") { create(isDirectory: true) }
 
+        Divider()
+        Button("Im Finder zeigen…") { revealInFinder() }
+
         if let node {
             Divider()
             Button("Umbenennen…") { rename(node) }
             Button("In den Papierkorb legen…", role: .destructive) { trash(node) }
         }
+    }
+
+    /// Zeigt den angeklickten Eintrag im Finder. Beim Kontextmenü der
+    /// Projektüberschrift gibt es keinen einzelnen Knoten; dort wird stattdessen
+    /// der Projektordner selbst ausgewählt.
+    private func revealInFinder() {
+        NSWorkspace.shared.activateFileViewerSelecting([node?.url ?? directory])
     }
 
     private func create(isDirectory: Bool) {
