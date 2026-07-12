@@ -28,7 +28,10 @@ struct FastraApp: App {
         Window("Fastra", id: "main") {
             ContentView()
                 .environmentObject(workspace)
-                .frame(minWidth: 1100, minHeight: 720)
+                // Klein ziehbar (Daniel-Wunsch 2026-07-12): ein Texteditor soll
+                // sich auch als schmaler Streifen neben andere Programme legen
+                // lassen — bei kleiner Größe rücken/verschwinden Dinge, das ist ok.
+                .frame(minWidth: 320, minHeight: 200)
                 .background(Theme.surfaceBase.ignoresSafeArea())
         }
         // Die native Titelzeile zeigt den aktiven Dateinamen. Zusammen mit

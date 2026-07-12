@@ -45,7 +45,8 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
             ? AppInfo.welcomeWindowTitle
             : (workspace.activeTab?.title ?? "Fastra")
         window.isReleasedWhenClosed = false
-        window.contentMinSize = NSSize(width: 1100, height: 720)
+        // Klein ziehbar (Daniel-Wunsch 2026-07-12) — siehe FastraApp-Kommentar.
+        window.contentMinSize = NSSize(width: 320, height: 200)
         window.delegate = self
         WorkspaceWindowRegistry.register(workspace, for: window)
 
@@ -54,7 +55,7 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         window.contentViewController = NSHostingController(
             rootView: ContentView()
                 .environmentObject(workspace)
-                .frame(minWidth: 1100, minHeight: 720)
+                .frame(minWidth: 320, minHeight: 200)
                 .background(Theme.surfaceBase.ignoresSafeArea())
         )
 

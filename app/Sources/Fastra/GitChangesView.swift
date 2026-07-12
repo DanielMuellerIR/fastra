@@ -36,7 +36,7 @@ struct GitChangesView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 1) {
                         if !staged.isEmpty {
-                            sectionHeader("BEREITGESTELLTE ÄNDERUNGEN", count: staged.count,
+                            sectionHeader("BEREITGESTELLT", count: staged.count,
                                           action: { workspace.gitUnstageAll() },
                                           actionIcon: "minus", actionHelp: "Alle aus Bereitstellung nehmen")
                             ForEach(staged) { change in
@@ -101,6 +101,8 @@ struct GitChangesView: View {
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(0.6)
                 .foregroundColor(Theme.textSecondary)
+                .lineLimit(1)                       // nie umbrechen (Daniel 2026-07-12)
+                .fixedSize(horizontal: true, vertical: false)
             Text("\(count)")
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
                 .foregroundColor(Theme.textSecondary)
