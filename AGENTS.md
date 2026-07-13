@@ -255,3 +255,19 @@ Donationware. Ein unaufdringlicher Spendenaufruf in der App ruft zur freiwillige
 Unterstützung auf — kein Abo, keine Lizenzschlüssel, keine Trial-Wall. Der
 Spendenaufruf ist derzeit per Hauptschalter deaktiviert
 (`DonationPrompt.isEnabled = false`); die Logik bleibt vollständig erhalten.
+
+## Verzeichnisstruktur
+
+<!-- directory-structure: generated -->
+- [AGENTS.md](AGENTS.md) — Projektprofil, Arbeitsregeln und dieses Datei-Verzeichnis.
+- [CHANGELOG.md](CHANGELOG.md) — Projektdokumentation.
+- [CLAUDE.md](CLAUDE.md) — Projektdokumentation.
+- [README.de.md](README.de.md) — Projekt-Einstieg und Nutzerdokumentation.
+- [README.md](README.md) — Projekt-Einstieg und Nutzerdokumentation.
+- [RELEASE-CANDIDATE.md](RELEASE-CANDIDATE.md) — Projektdokumentation.
+- [ROADMAP.md](ROADMAP.md) — Projektdokumentation.
+- `Fastra.app/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
+- `app/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
+- `docs/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
+- `screenshots/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
+<!-- /directory-structure -->
