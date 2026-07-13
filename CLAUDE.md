@@ -34,18 +34,19 @@ fensterlose Selbsttest `localization` aus der gepackten App starten.
 installierten App. Signatur-, Stapler- und Gatekeeper-Prüfungen ersetzen
 diesen echten Zielstart nicht.
 
-**Agent-bindend (Daniel, 2026-07-12):** Fastra ist Daniels Daily Driver (löst
-BBEdit/MacDown/TextEdit/VS Codium ab). **NICHT jeden Build notarisieren/
-installieren** — Notarisierung dauert ~2 Min pro Lauf. Notarisierter Build via
-`install.sh` nach `/Applications` nur bei:
+**Agent-bindend (2026-07-13):** `build.sh` kopiert **jeden erfolgreichen
+Build** nach `/Applications/Fastra.app` — auch Debug-Builds.
+Nicht jeder Build wird jedoch notarisiert: Der notarisierten Release-Workflow
+via `install.sh` bleibt für:
 - einer **abgeschlossenen, verifizierten größeren Etappe** (Release-reifer Stand,
   den Daniel produktiv nutzen soll), oder
 - **auf Ansage** („leg mir einen frischen Build hin").
 
-Für normale Zwischen-Iterationen und Handtests genügt der **Debug-Build**
-(`build.sh` → `../Fastra.app`) oder `install.sh --no-notarize` (signiert, sofort,
-läuft trotzdem gatekeeper-frei). Beim Version-Bump `app/Info.plist` mitziehen
-(siehe AGENTS.md), sonst zeigt die App eine veraltete Version.
+Für normale Zwischen-Iterationen genügt `build.sh`; die frisch gebaute
+Debug-App liegt danach ebenfalls unter `/Applications/Fastra.app`. Für eine
+signierte, aber nicht notarisierten Variante dient weiter `install.sh --no-notarize`.
+Beim Version-Bump `app/Info.plist` mitziehen (siehe AGENTS.md), sonst zeigt die
+App eine veraltete Version.
 
 `build.sh` kapselt Xcode-Toolchain-Switch + elf Checkout-Patches
 (SwiftLint-Plugins aus, CodeEditSymbols Resources, CMD+F-Zombie-Kill,

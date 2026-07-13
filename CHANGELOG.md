@@ -9,6 +9,13 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.14.3] — 2026-07-13
+
+### Geändert
+
+- Jeder erfolgreiche `build.sh`-Lauf kopiert Fastra anschließend nach
+  `/Applications/Fastra.app`; auch Debug-Builds sind damit sofort startbereit.
+
 ## [v1.14.2] — 2026-07-13
 
 ### Hinzugefügt
