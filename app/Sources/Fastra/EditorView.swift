@@ -79,7 +79,7 @@ struct EditorView: View {
                     // einem fensterbreiten zweiten Header. Rechts kann der
                     // Editor deshalb direkt unter den obersten Tabs beginnen.
                     SidebarBrandView()
-                        .frame(height: 48 * uiScale)
+                        .frame(height: 44 * uiScale)
                     Divider().opacity(0.4)
                     sidebar
                 }
@@ -88,12 +88,17 @@ struct EditorView: View {
                 // gespeicherten Un-Breite (z.B. 0) aus einer früheren Version.
                 .frame(width: min(max(CGFloat(sidebarWidth), sidebarMinWidth), sidebarMaxWidth))
                 .frame(maxHeight: .infinity)
-                    .background(Theme.surfaceBase)
+                .background(Theme.surfaceBase)
+                // AppKit-Editor und Vorschau besitzen kräftige Idealgrößen.
+                // Die linke Navigation bleibt dennoch stets am Fensterrand.
+                .layoutPriority(2)
 
                 sidebarSplitter
             }
 
             sourceEditor
+                .frame(minWidth: 0, maxWidth: .infinity)
+                .layoutPriority(1)
                 .background(Theme.surfaceRaised)
                 // Gutter-Durchschuss-Fix (Daniel-Befund 2026-06-22): CESEs
                 // Gutter ist ein FLOATING-Subview des ScrollViews und zeichnet

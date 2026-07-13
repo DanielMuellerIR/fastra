@@ -20,9 +20,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             TabBarView()
-                .frame(height: 38 * uiScale)
-
-            Divider().opacity(0.4)
+                .frame(height: 36 * uiScale)
 
             // Editor nimmt jetzt den ganzen Platz ein. Das untere
             // DiffPanelView ist mit v0.5 aus dem Hauptfenster entfernt

@@ -9,6 +9,27 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.6] — 2026-07-13
+
+### Geändert
+
+- Haupt- und zusätzliche Dokumentfenster verwenden dieselbe Startgröße und
+  eine bedienbare Mindestgröße von 760 × 400 Punkten.
+- Der Schalter für die linke Seitenleiste ist kompakter; der Markenblock sitzt
+  höher und besitzt keine Trennlinie mehr zur Titelleiste.
+
+### Behoben
+
+- ⌘N übernimmt keine unbedienbar kleine Fenstergröße mehr.
+- Bei schmalen Fenstern bleibt die linke Seitenleiste vollständig sichtbar.
+  Der komprimierbare Hauptbereich schiebt sie nicht mehr aus dem linken
+  Fensterrand; Programmname und Tab-Leiste bleiben erreichbar.
+
+### Qualitätssicherung
+
+- Zwei neue Tests sichern Mindestgröße, Kaskadenversatz und die Übernahme
+  ausreichend großer Vorderfenster. Alle 771 Swift-Tests sind erfolgreich.
+
 ## [v1.16.5] — 2026-07-13
 
 ### Behoben

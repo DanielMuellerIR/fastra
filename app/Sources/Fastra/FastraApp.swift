@@ -31,16 +31,18 @@ struct FastraApp: App {
             ContentView()
                 .environmentObject(workspace)
                 .fastraScalingRoot()
-                // Klein ziehbar (Daniel-Wunsch 2026-07-12): ein Texteditor soll
-                // sich auch als schmaler Streifen neben andere Programme legen
-                // lassen — bei kleiner Größe rücken/verschwinden Dinge, das ist ok.
-                .frame(minWidth: 320, minHeight: 200)
+                // Unterhalb dieser Größe wären Tab-Leiste, feste Seitenleiste
+                // und Editor nicht mehr gleichzeitig bedienbar.
+                .frame(minWidth: MainWindowSizing.minimumWidth,
+                       minHeight: MainWindowSizing.minimumHeight)
                 .background(Theme.surfaceBase.ignoresSafeArea())
         }
         // Kein sichtbarer nativer Titelbalken: Der eigene Fenster-Chrome darf
         // bis neben die Ampelknöpfe reichen und dort Tabs/Schalter aufnehmen.
         // Die Ampeln bleiben echte AppKit-Controls.
         .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: MainWindowSizing.defaultWidth,
+                     height: MainWindowSizing.defaultHeight)
         .commands {
             // SwiftUI ergänzt automatisch ein „Edit"-Menü mit Items wie
             // „Find… (⌘F)" / „Find Next" etc. — diese binden CMD+F an

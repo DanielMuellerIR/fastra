@@ -30,7 +30,9 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
             workspace.dismissWelcomeTab()
         }
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1100, height: 720),
+            contentRect: NSRect(x: 0, y: 0,
+                                width: MainWindowSizing.defaultWidth,
+                                height: MainWindowSizing.defaultHeight),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -45,8 +47,8 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
             ? AppInfo.welcomeWindowTitle
             : (workspace.activeTab?.title ?? "Fastra")
         window.isReleasedWhenClosed = false
-        // Klein ziehbar (Daniel-Wunsch 2026-07-12) — siehe FastraApp-Kommentar.
-        window.contentMinSize = NSSize(width: 320, height: 200)
+        window.contentMinSize = NSSize(width: MainWindowSizing.minimumWidth,
+                                       height: MainWindowSizing.minimumHeight)
         window.delegate = self
         WorkspaceWindowRegistry.register(workspace, for: window)
 
@@ -56,17 +58,16 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
             rootView: ContentView()
                 .environmentObject(workspace)
                 .fastraScalingRoot()
-                .frame(minWidth: 320, minHeight: 200)
+                .frame(minWidth: MainWindowSizing.minimumWidth,
+                       minHeight: MainWindowSizing.minimumHeight)
                 .background(Theme.surfaceBase.ignoresSafeArea())
         )
 
         // Neue Fenster leicht versetzt zum bisherigen Vorderfenster öffnen,
         // damit sofort sichtbar ist, dass tatsächlich ein zweites entstand.
         if let front = NSApp.keyWindow {
-            var frame = front.frame
-            frame.origin.x += 24
-            frame.origin.y -= 24
-            window.setFrame(frame, display: false)
+            window.setFrame(MainWindowSizing.cascadedFrame(from: front.frame),
+                            display: false)
         } else {
             window.center()
         }

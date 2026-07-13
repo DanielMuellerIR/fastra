@@ -24,7 +24,7 @@ struct TabBarView: View {
 
     var body: some View {
         titlebarControls
-            .frame(height: 38 * uiScale)
+            .frame(height: 36 * uiScale)
             // Header-Hintergründe dienen zugleich als greifbare Fläche zum
             // Verschieben des Fensters (`isMovableByWindowBackground`).
             .background(Theme.surfaceRaised)
@@ -92,8 +92,8 @@ struct TabBarView: View {
 
     private func titlebarIcon(_ systemName: String, active: Bool) -> some View {
         Image(systemName: systemName)
-            .fastraFont(size: 14, weight: .medium)
-            .frame(width: 30, height: 26)
+            .fastraFont(size: 12, weight: .medium)
+            .frame(width: 26, height: 22)
             .foregroundColor(Theme.textSecondary)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)

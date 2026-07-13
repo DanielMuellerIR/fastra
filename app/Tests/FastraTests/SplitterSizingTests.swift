@@ -1,8 +1,28 @@
+import CoreGraphics
 import Testing
 @testable import Fastra
 
 @Suite("Stabile Splitter")
 struct SplitterSizingTests {
+    @Test("Dokumentfenster unterschreiten die bedienbare Mindestgröße nicht")
+    func documentWindowClampsSmallFrontWindow() {
+        let front = CGRect(x: 100, y: 200, width: 320, height: 200)
+        let result = MainWindowSizing.cascadedFrame(from: front)
+
+        #expect(result.width == MainWindowSizing.minimumWidth)
+        #expect(result.height == MainWindowSizing.minimumHeight)
+        #expect(result.origin.x == 124)
+        #expect(result.origin.y == 176)
+    }
+
+    @Test("Dokumentfenster übernehmen eine bereits ausreichende Größe")
+    func documentWindowKeepsLargeFrontWindow() {
+        let front = CGRect(x: 10, y: 20, width: 1200, height: 800)
+        let result = MainWindowSizing.cascadedFrame(from: front)
+
+        #expect(result.size == front.size)
+    }
+
     @Test("Splitter-Klick kann das Fenster nicht verschieben")
     @MainActor
     func splitterDoesNotMoveWindow() {
