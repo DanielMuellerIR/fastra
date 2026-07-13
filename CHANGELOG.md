@@ -9,6 +9,20 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.4] — 2026-07-13
+
+### Behoben
+
+- Bei Merge-Historien bleibt die blaue HEAD-Lane auch dann bis zur gemeinsamen
+  Vorgeschichte erhalten, wenn `git log` den Nebenast zuerst ausgibt. Die
+  Neben-Lane mündet am gemeinsamen Vorfahren ein, statt dessen Farbe bis zum
+  Root-Commit zu übernehmen.
+
+### Qualitätssicherung
+
+- Ein neuer Graph-Regressionstest bildet die beobachtete Topo-Reihenfolge nach.
+  Alle 769 Swift-Tests und der App-Build sind erfolgreich.
+
 ## [v1.16.3] — 2026-07-13
 
 ### Geändert

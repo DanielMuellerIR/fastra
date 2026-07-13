@@ -177,6 +177,12 @@ private struct GraphRowView: View {
                     addBend(&path,
                             from: CGPoint(x: x(line.fromColumn), y: midY),
                             to: CGPoint(x: x(line.toColumn), y: size.height))
+                case .joining:
+                    // Der gemeinsame Commit folgt erst in der nächsten Zeile;
+                    // die Neben-Lane läuft daher an diesem Knoten vorbei.
+                    addBend(&path,
+                            from: CGPoint(x: x(line.fromColumn), y: 0),
+                            to: CGPoint(x: x(line.toColumn), y: size.height))
                 }
                 context.stroke(path, with: .color(Self.color(line.colorIndex)), lineWidth: 1.7)
             }
@@ -253,7 +259,7 @@ private struct GraphRowView: View {
     private var continuationLanes: [(column: Int, colorIndex: Int)] {
         var seen: Set<Int> = []
         return row.lines.compactMap { line in
-            guard line.kind == .through || line.kind == .outgoing,
+            guard line.kind == .through || line.kind == .outgoing || line.kind == .joining,
                   seen.insert(line.toColumn).inserted else { return nil }
             return (line.toColumn, line.colorIndex)
         }

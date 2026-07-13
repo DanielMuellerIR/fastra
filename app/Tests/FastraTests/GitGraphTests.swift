@@ -207,3 +207,38 @@ func layout_mergeColorsDistinct() {
     let colors = Set(outgoing.map { $0.colorIndex })
     #expect(colors.count == 2)   // die beiden Äste sind farblich unterscheidbar
 }
+
+@Test("Layout: Haupt-Lane bleibt nach später abgearbeitetem Merge-Ast blau")
+func layout_primaryLaneWinsAtCommonAncestor() {
+    // Gemeldete Problemform: Der Topo-Order zeigt nach dem Merge zuerst den
+    // Nebenast. Er merkt dadurch `base` vor, bevor der Hauptast dort ankommt.
+    let commits = [
+        GitCommit(hash: "M", parents: ["main1", "side1"], author: "", date: "",
+                  refs: ["HEAD -> main"], subject: "Merge"),
+        GitCommit(hash: "side1", parents: ["side2"], author: "", date: "",
+                  refs: [], subject: "Nebenast 1"),
+        GitCommit(hash: "side2", parents: ["base"], author: "", date: "",
+                  refs: [], subject: "Nebenast 2"),
+        GitCommit(hash: "main1", parents: ["main2"], author: "", date: "",
+                  refs: [], subject: "Hauptast 1"),
+        GitCommit(hash: "main2", parents: ["base"], author: "", date: "",
+                  refs: [], subject: "Hauptast 2"),
+        GitCommit(hash: "base", parents: ["root"], author: "", date: "",
+                  refs: [], subject: "Gemeinsame Basis"),
+        GitCommit(hash: "root", parents: [], author: "", date: "",
+                  refs: [], subject: "Initiale Version"),
+    ]
+
+    let layout = GitGraph.layout(commits)
+    let lastMain = layout.rows[4]
+    let base = layout.rows[5]
+    let root = layout.rows[6]
+
+    #expect(lastMain.lines.contains {
+        $0.kind == .joining && $0.colorIndex != 0 && $0.toColumn == lastMain.column
+    })
+    #expect(base.column == 0)
+    #expect(base.colorIndex == 0)
+    #expect(root.column == 0)
+    #expect(root.colorIndex == 0)
+}

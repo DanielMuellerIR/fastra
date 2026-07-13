@@ -68,6 +68,7 @@ struct GraphLine: Equatable {
         case through    // unberührte Lane: senkrecht von Ober- zu Unterkante
         case incoming   // von oben (Spalte oben) herab zum Knoten (Mitte)
         case outgoing   // vom Knoten (Mitte) hinab zur Spalte an der Unterkante
+        case joining    // Neben-Lane mündet zwischen zwei Commit-Zeilen ein
     }
     let fromColumn: Int   // Spalte am oberen Ende des Segments
     let toColumn: Int     // Spalte am unteren Ende des Segments
@@ -272,10 +273,29 @@ enum GitGraph {
             //        (hält lineare Historie senkrecht in derselben Spalte).
             //    (c) jeder weitere neue Elternteil bekommt eine eigene Lane+Farbe.
             var mainLaneClaimed = false
-            for parent in commit.parents {
+            for (parentIndex, parent) in commit.parents.enumerated() {
                 if let existing = lanes.firstIndex(where: { $0?.target == parent }) {
-                    lines.append(GraphLine(fromColumn: nodeColumn, toColumn: existing,
-                                           colorIndex: lanes[existing]!.colorIndex, kind: .outgoing))
+                    if parentIndex == 0, nodeColor == 0, existing != nodeColumn {
+                        // Die blaue HEAD-Lane darf am gemeinsamen Vorfahren nicht
+                        // von einer früher abgearbeiteten Neben-Lane übernommen
+                        // werden. Das passiert bei Topo-Reihenfolgen wie
+                        // Merge → Nebenast → Hauptast → gemeinsame Basis: Der
+                        // Nebenast hat die Basis dann bereits vorgemerkt. Wir
+                        // legen die Basis auf die Hauptspalte um und lassen die
+                        // Nebenfarbe zwischen dieser und der nächsten Zeile
+                        // einmünden – genau wie VS Codium.
+                        let joiningColor = lanes[existing]!.colorIndex
+                        lanes[existing] = nil
+                        lanes[nodeColumn] = Lane(target: parent, colorIndex: nodeColor)
+                        lines.append(GraphLine(fromColumn: existing, toColumn: nodeColumn,
+                                               colorIndex: joiningColor, kind: .joining))
+                        lines.append(GraphLine(fromColumn: nodeColumn, toColumn: nodeColumn,
+                                               colorIndex: nodeColor, kind: .outgoing))
+                        mainLaneClaimed = true
+                    } else {
+                        lines.append(GraphLine(fromColumn: nodeColumn, toColumn: existing,
+                                               colorIndex: lanes[existing]!.colorIndex, kind: .outgoing))
+                    }
                 } else if !mainLaneClaimed {
                     lanes[nodeColumn] = Lane(target: parent, colorIndex: nodeColor)
                     lines.append(GraphLine(fromColumn: nodeColumn, toColumn: nodeColumn,
