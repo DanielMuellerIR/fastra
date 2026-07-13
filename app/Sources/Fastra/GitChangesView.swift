@@ -6,6 +6,15 @@ enum SidebarMode: String, CaseIterable {
     case files    = "Dateien"
     case changes  = "Änderungen"
     case graph    = "Graph"
+
+    /// Kompakte, auch in einer schmalen Seitenleiste eindeutige Symbole.
+    var systemImage: String {
+        switch self {
+        case .files:   return "folder"
+        case .changes: return "square.and.pencil"
+        case .graph:   return "point.3.connected.trianglepath.dotted"
+        }
+    }
 }
 
 /// VS-Code-artige Änderungen-Ansicht: Commit-Feld + Commit-Knopf oben, darunter

@@ -9,6 +9,29 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.1] — 2026-07-13
+
+### Geändert
+
+- Der Seitenleisten-Umschalter verwendet kompakte Symbole für Dateien,
+  Änderungen und Graph. Der Markenblock zeigt den Programmnamen etwas kleiner,
+  Version und Datum dagegen besser lesbar.
+
+### Behoben
+
+- Der linke Splitter konsumiert seine Mausgeste nun in einer eigenen
+  AppKit-Fläche und verschiebt beim Verbreitern der Seitenleiste nicht länger
+  gleichzeitig das Hauptfenster.
+- Kopieren aus der Markdown-Vorschau schreibt neben Klartext und HTML auch
+  natives RTF in die Zwischenablage. Dadurch übernimmt Pages Überschriften,
+  Listen und Hervorhebungen als formatierten Text.
+
+### Qualitätssicherung
+
+- Neue Regressionstests sichern die Trennung zwischen Splitter- und
+  Fenster-Drag sowie die RTF-Repräsentation. Alle 764 Swift-Tests sind
+  erfolgreich.
+
 ## [v1.16.0] — 2026-07-13
 
 ### Hinzugefügt

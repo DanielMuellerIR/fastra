@@ -109,7 +109,7 @@ struct SidebarBrandView: View {
     var body: some View {
         HStack(alignment: .center, spacing: 7) {
             Text("Fastra")
-                .fastraFont(size: 22, weight: .semibold)
+                .fastraFont(size: 19, weight: .semibold)
                 .foregroundColor(Theme.textPrimary)
                 .lineLimit(1)
 
@@ -117,7 +117,7 @@ struct SidebarBrandView: View {
                 Text(verbatim: "v\(AppInfo.version)")
                 Text(verbatim: AppInfo.versionDate)
             }
-            .fastraFont(size: 8, weight: .medium)
+            .fastraFont(size: 9.5, weight: .medium)
             .foregroundColor(Theme.textSecondary)
             .lineLimit(1)
 

@@ -405,8 +405,16 @@ enum MarkdownRichText {
           for (let index = 0; index < selection.rangeCount; index++) {
             rich.appendChild(selection.getRangeAt(index).cloneContents());
           }
-          event.clipboardData.setData('text/plain', selection.toString());
-          event.clipboardData.setData('text/html', rich.innerHTML);
+          const plain = selection.toString();
+          const html = rich.innerHTML;
+          event.clipboardData.setData('text/plain', plain);
+          event.clipboardData.setData('text/html', html);
+          // WebKit reicht selbst gesetztes HTML nicht an jedes native Ziel
+          // weiter (Pages sah deshalb nur Klartext). Der native Handler ergänzt
+          // das macOS-Pasteboard synchron um HTML und echtes RTF.
+          if (window.webkit?.messageHandlers?.markdownCopy) {
+            window.webkit.messageHandlers.markdownCopy.postMessage({ plain, html });
+          }
           event.preventDefault();
         });
         </script></head><body>\(fragment)</body></html>
@@ -473,6 +481,44 @@ enum MarkdownRichText {
     }
 }
 
+/// Schreibt eine Markdown-Auswahl in allen für native Mac-Programme relevanten
+/// Darstellungen. Pages bevorzugt RTF, Browser und Web-Editoren können HTML
+/// verwenden, reine Textziele fallen weiterhin sauber auf Klartext zurück.
+enum MarkdownPasteboard {
+    @discardableResult
+    static func write(plain: String,
+                      htmlFragment: String,
+                      to pasteboard: NSPasteboard = .general) -> Bool {
+        let html = """
+        <!doctype html><html><head><meta charset="utf-8"></head>
+        <body>\(htmlFragment)</body></html>
+        """
+        guard let htmlData = html.data(using: .utf8) else { return false }
+
+        let attributed = try? NSAttributedString(
+            data: htmlData,
+            options: [
+                .documentType: NSAttributedString.DocumentType.html,
+                .characterEncoding: String.Encoding.utf8.rawValue
+            ],
+            documentAttributes: nil
+        )
+        let rtf = attributed?.rtf(
+            from: NSRange(location: 0, length: attributed?.length ?? 0),
+            documentAttributes: [:]
+        )
+
+        pasteboard.clearContents()
+        var types: [NSPasteboard.PasteboardType] = [.html, .string]
+        if rtf != nil { types.insert(.rtf, at: 0) }
+        pasteboard.declareTypes(types, owner: nil)
+        if let rtf { pasteboard.setData(rtf, forType: .rtf) }
+        pasteboard.setString(html, forType: .html)
+        pasteboard.setString(plain, forType: .string)
+        return true
+    }
+}
+
 /// SwiftUI-Brücke zu WebKit. Der Browser-Unterbau ist hier bewusst passend:
 /// Er kann GFM-Tabellen und Listen layouttreu darstellen, Text über mehrere
 /// Blöcke markieren und beim nativen ⌘C HTML plus Klartext bereitstellen.
@@ -489,6 +535,7 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         // Keine Cookies, kein Cache und keine persistente Website-Historie:
         // die Vorschau bleibt ein lokaler Dokument-Renderer.
         configuration.websiteDataStore = .nonPersistent()
+        configuration.userContentController.add(context.coordinator, name: "markdownCopy")
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.underPageBackgroundColor = darkMode
@@ -528,11 +575,20 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         coordinator.replaceBody(with: fragment, in: webView)
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         var styleIdentity = ""
         var markdown = ""
         var isReady = false
         var pendingFragment: String?
+
+        func userContentController(_ userContentController: WKUserContentController,
+                                   didReceive message: WKScriptMessage) {
+            guard message.name == "markdownCopy",
+                  let payload = message.body as? [String: Any],
+                  let plain = payload["plain"] as? String,
+                  let html = payload["html"] as? String else { return }
+            MarkdownPasteboard.write(plain: plain, htmlFragment: html)
+        }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             isReady = true

@@ -1,3 +1,4 @@
+import AppKit
 import Testing
 @testable import Fastra
 
@@ -58,6 +59,23 @@ struct MarkdownRichTextTests {
         #expect(document.contains("selection.toString()"))
         #expect(document.contains("setData('text/plain'"))
         #expect(document.contains("setData('text/html'"))
+        #expect(document.contains("markdownCopy.postMessage"))
         #expect(document.contains("<strong>Fettung</strong>"))
+    }
+
+    @Test("Native Zwischenablage enthält RTF für Pages")
+    @MainActor
+    func nativePasteboardContainsRTF() throws {
+        let pasteboard = NSPasteboard(name: .init("fastra.test.markdown-rich-copy"))
+        let didWrite = MarkdownPasteboard.write(
+            plain: "Titel\nFett",
+            htmlFragment: "<h1>Titel</h1><p><strong>Fett</strong></p>",
+            to: pasteboard
+        )
+
+        #expect(didWrite)
+        #expect(pasteboard.string(forType: .string) == "Titel\nFett")
+        #expect(pasteboard.data(forType: .html) != nil)
+        #expect(pasteboard.data(forType: .rtf) != nil)
     }
 }

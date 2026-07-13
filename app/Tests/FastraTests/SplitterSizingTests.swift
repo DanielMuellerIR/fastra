@@ -3,6 +3,14 @@ import Testing
 
 @Suite("Stabile Splitter")
 struct SplitterSizingTests {
+    @Test("Splitter-Klick kann das Fenster nicht verschieben")
+    @MainActor
+    func splitterDoesNotMoveWindow() {
+        let view = SplitterDragView(value: 200, range: 140...480,
+                                    direction: 1, onChange: { _ in })
+        #expect(view.mouseDownCanMoveWindow == false)
+    }
+
     @Test("Seitliche Breite nutzt stets den Ziehbeginn")
     func sidebarUsesStartWidth() {
         #expect(SplitterSizing.width(start: 200, translation: 30, direction: 1, minimum: 140, maximum: 480) == 230)

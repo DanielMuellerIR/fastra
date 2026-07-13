@@ -710,7 +710,7 @@ struct EditorView: View {
     }
 }
 
-/// Kleine Segment-Leiste über der Seitenleiste (Dateien / Änderungen / Graph).
+/// Kleine Symbol-Leiste über der Seitenleiste (Dateien / Änderungen / Graph).
 private struct SidebarModePicker: View {
     let modes: [SidebarMode]
     @Binding var selection: SidebarMode
@@ -721,17 +721,19 @@ private struct SidebarModePicker: View {
                 Button {
                     selection = mode
                 } label: {
-                    Text(verbatim: L10n.string(mode.rawValue))
-                        .fastraFont(.small)
+                    Image(systemName: mode.systemImage)
+                        .fastraFont(size: 15, weight: .medium)
                         .foregroundColor(selection == mode ? Theme.textPrimary : Theme.textSecondary)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 5)
+                        .frame(height: 28)
                         .background(
                             RoundedRectangle(cornerRadius: 5, style: .continuous)
                                 .fill(selection == mode ? Theme.surfaceRaised : Color.clear)
                         )
                 }
                 .buttonStyle(.plain)
+                .help(L10n.string(mode.rawValue))
+                .accessibilityLabel(Text(L10n.string(mode.rawValue)))
             }
         }
         .padding(.horizontal, 8)
