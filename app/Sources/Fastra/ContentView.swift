@@ -67,7 +67,8 @@ struct ContentView: View {
         .background(
             MainWindowTitleBridge(metadata: .from(workspace.activeTab,
                                                   welcomeActive: workspace.isWelcomeScreen),
-                                  workspace: workspace)
+                                  workspace: workspace,
+                                  chromeHeight: 36 * uiScale)
                 .frame(width: 0, height: 0)
         )
         // „Vorschau der Änderungen" (v0.10): Sheet mit echtem Vorher/Nachher-Diff

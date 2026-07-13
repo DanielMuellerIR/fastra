@@ -94,14 +94,17 @@ struct MainWindowTitleMetadata: Equatable {
 struct MainWindowTitleBridge: NSViewRepresentable {
     let metadata: MainWindowTitleMetadata
     let workspace: Workspace
+    let chromeHeight: CGFloat
 
     func makeNSView(context: Context) -> WindowMetadataView {
-        WindowMetadataView(metadata: metadata, workspace: workspace)
+        WindowMetadataView(metadata: metadata, workspace: workspace,
+                           chromeHeight: chromeHeight)
     }
 
     func updateNSView(_ nsView: WindowMetadataView, context: Context) {
         nsView.metadata = metadata
         nsView.workspace = workspace
+        nsView.chromeHeight = chromeHeight
 
         // SwiftUI kann aktualisieren, während AppKit die View gerade in eine
         // Fensterhierarchie einhängt. Der nächste Main-Loop-Durchlauf deckt
@@ -116,12 +119,17 @@ struct MainWindowTitleBridge: NSViewRepresentable {
             didSet { applyMetadataToWindow() }
         }
         weak var workspace: Workspace?
+        var chromeHeight: CGFloat {
+            didSet { positionTrafficLights() }
+        }
         private weak var observedWindow: NSWindow?
         private var keyObserver: NSObjectProtocol?
 
-        init(metadata: MainWindowTitleMetadata, workspace: Workspace) {
+        init(metadata: MainWindowTitleMetadata, workspace: Workspace,
+             chromeHeight: CGFloat) {
             self.metadata = metadata
             self.workspace = workspace
+            self.chromeHeight = chromeHeight
             super.init(frame: .zero)
         }
 
@@ -205,6 +213,31 @@ struct MainWindowTitleBridge: NSViewRepresentable {
             }
             if !window.isMovableByWindowBackground {
                 window.isMovableByWindowBackground = true
+            }
+
+            // Die nativen Ampeln kennen Fastras skalierte Chrome-Höhe nicht
+            // und kleben sonst optisch am oberen Rand. Nach AppKits eigenem
+            // Titelleisten-Layout zentrieren wir sie zur sichtbaren Leiste.
+            positionTrafficLights()
+            DispatchQueue.main.async { [weak self] in
+                self?.positionTrafficLights()
+            }
+        }
+
+        private func positionTrafficLights() {
+            guard let window else { return }
+            for kind in [NSWindow.ButtonType.closeButton,
+                         .miniaturizeButton,
+                         .zoomButton] {
+                guard let button = window.standardWindowButton(kind),
+                      let container = button.superview else { continue }
+                let y = MainWindowSizing.trafficLightOriginY(
+                    superviewHeight: container.bounds.height,
+                    buttonHeight: button.frame.height,
+                    chromeHeight: chromeHeight,
+                    isFlipped: container.isFlipped
+                )
+                button.setFrameOrigin(NSPoint(x: button.frame.origin.x, y: y))
             }
         }
     }

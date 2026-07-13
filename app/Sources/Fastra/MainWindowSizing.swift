@@ -19,4 +19,21 @@ enum MainWindowSizing {
             height: max(front.height, minimumHeight)
         )
     }
+
+    /// Vertikale Position eines nativen Ampelknopfs innerhalb seiner AppKit-
+    /// Titelleisten-View. Fastras sichtbarer Chrome kann durch den UI-Zoom
+    /// höher als die native 28-Punkte-Titelleiste sein; der Knopf rückt dann
+    /// so weit wie möglich zur Mitte des sichtbaren Chromes nach unten.
+    static func trafficLightOriginY(superviewHeight: CGFloat,
+                                    buttonHeight: CGFloat,
+                                    chromeHeight: CGFloat,
+                                    isFlipped: Bool) -> CGFloat {
+        let desired: CGFloat
+        if isFlipped {
+            desired = chromeHeight / 2 - buttonHeight / 2
+        } else {
+            desired = superviewHeight - chromeHeight / 2 - buttonHeight / 2
+        }
+        return min(max(desired, 0), max(0, superviewHeight - buttonHeight))
+    }
 }

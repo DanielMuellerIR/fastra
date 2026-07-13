@@ -23,6 +23,22 @@ struct SplitterSizingTests {
         #expect(result.size == front.size)
     }
 
+    @Test("Skalierter Fenster-Chrome rückt native Ampeln nach unten")
+    func trafficLightsFollowScaledChrome() {
+        let normal = MainWindowSizing.trafficLightOriginY(
+            superviewHeight: 28, buttonHeight: 14,
+            chromeHeight: 28, isFlipped: false
+        )
+        let enlarged = MainWindowSizing.trafficLightOriginY(
+            superviewHeight: 28, buttonHeight: 14,
+            chromeHeight: 40, isFlipped: false
+        )
+
+        #expect(normal == 7)
+        #expect(enlarged == 1)
+        #expect(enlarged < normal)
+    }
+
     @Test("Splitter-Klick kann das Fenster nicht verschieben")
     @MainActor
     func splitterDoesNotMoveWindow() {

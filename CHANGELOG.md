@@ -9,6 +9,20 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.7] — 2026-07-14
+
+### Behoben
+
+- Die nativen macOS-Ampelknöpfe werden vertikal an Fastras tatsächlich
+  sichtbarer, per UI-Zoom skalierter Titelleiste ausgerichtet. Bei vergrößerter
+  Oberfläche kleben sie nicht mehr optisch am oberen Fensterrand; der Abstand
+  zum Programmnamen entspricht dadurch dem übrigen Fenster-Chrome.
+
+### Qualitätssicherung
+
+- Ein neuer Geometrietest sichert die Ampelposition bei normaler und skalierter
+  Titelleistenhöhe. Alle 772 Swift-Tests sind erfolgreich.
+
 ## [v1.16.6] — 2026-07-13
 
 ### Geändert
