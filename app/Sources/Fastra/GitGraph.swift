@@ -205,7 +205,15 @@ enum GitGraph {
         struct Lane { let target: String; let colorIndex: Int }
 
         var lanes: [Lane?] = []
-        var colorCounter = 0
+        // Farbe 0 (Blau) ist exklusiv für den ausgecheckten Branch reserviert.
+        // `git log --all` kann einen neueren fremden Branch vor HEAD liefern;
+        // ohne Reservierung bekam dieser Blau und die eigentliche main-Linie
+        // darunter Orange. VS Codium hält dagegen die aktuelle Branch-Linie
+        // blau, unabhängig von der Sortierung der übrigen Branch-Tips.
+        let primaryHash = commits.first(where: { commit in
+            commit.refs.contains { $0.hasPrefix("HEAD -> ") }
+        })?.hash ?? commits.first?.hash
+        var colorCounter = 1
         var rows: [GraphRow] = []
         var maxColumn = 0
 
@@ -224,7 +232,13 @@ enum GitGraph {
             // 2. Knotenspalte + Knotenfarbe bestimmen.
             let nodeColumn: Int
             let nodeColor: Int
-            if let first = consumed.first {
+            if commit.hash == primaryHash {
+                // Trifft ein neuerer Nebenast direkt auf HEAD, endet seine
+                // Farbe am HEAD-Knoten; die First-Parent-Linie läuft ab hier
+                // in reserviertem Blau weiter.
+                nodeColumn = consumed.first ?? firstFreeColumn()
+                nodeColor = 0
+            } else if let first = consumed.first {
                 nodeColumn = first
                 nodeColor = lanes[first]!.colorIndex
             } else {

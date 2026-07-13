@@ -111,6 +111,7 @@ private struct GraphRowView: View {
                 ForEach(row.commit.files) { file in
                     GraphCommitFileRow(
                         file: file,
+                        author: row.commit.author,
                         hash: row.commit.hash,
                         graphWidth: graphWidth,
                         laneWidth: laneWidth,
@@ -285,6 +286,7 @@ private struct GraphRowView: View {
 
 private struct GraphCommitFileRow: View {
     let file: GitCommitFile
+    let author: String
     let hash: String
     let graphWidth: CGFloat
     let laneWidth: CGFloat
@@ -305,14 +307,15 @@ private struct GraphCommitFileRow: View {
                 .fastraFont(.small)
                 .foregroundColor(Theme.textPrimary)
                 .lineLimit(1)
-                .truncationMode(.middle)
-            if !file.directory.isEmpty {
-                Text(file.directory)
-                    .fastraFont(size: 10)
-                    .foregroundColor(Theme.textSecondary)
-                    .lineLimit(1)
-                    .truncationMode(.head)
-            }
+                // Der Dateiname erhält Vorrang und wird nicht mehr zugunsten
+                // eines langen Verzeichnispfads in der Mitte verstümmelt.
+                .layoutPriority(2)
+            Text(author)
+                .fastraFont(size: 10)
+                .foregroundColor(Theme.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(1)
             Spacer(minLength: 3)
             Text(file.status)
                 .fastraFont(size: 10, weight: .semibold, design: .monospaced)

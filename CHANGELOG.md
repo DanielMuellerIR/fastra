@@ -9,6 +9,27 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.2] — 2026-07-13
+
+### Geändert
+
+- Aufgeklappte Graph-Commits zeigen neben dem vollständigen Dateinamen den
+  Autor statt des Verzeichnispfads. Der Dateiname erhält dabei Vorrang vor
+  nachrangigen Metadaten.
+- Die Symbole des Seitenleisten-Umschalters sind rund 20 Prozent kleiner; die
+  gesamte Segmentfläche reagiert nun auf Klicks.
+
+### Behoben
+
+- Die blaue Graph-Lane ist fest für den ausgecheckten Branch reserviert. Auch
+  wenn `git log --all` einen neueren Neben-Branch zuerst liefert, bleibt die
+  darunterliegende `main`- beziehungsweise HEAD-Historie wie in VS Codium blau.
+
+### Qualitätssicherung
+
+- Ein neuer Lane-Test bildet einen Neben-Branch oberhalb von HEAD nach. Alle
+  765 Swift-Tests sind erfolgreich.
+
 ## [v1.16.1] — 2026-07-13
 
 ### Geändert

@@ -120,6 +120,28 @@ func layout_linear() {
     #expect(l.rows[2].lines == [GraphLine(fromColumn: 0, toColumn: 0, colorIndex: 0, kind: .incoming)])
 }
 
+@Test("Layout: HEAD/main bleibt blau, auch wenn ein anderer Tip zuerst kommt")
+func layout_primaryBranchKeepsBlue() {
+    // `--all` darf einen fremden, neueren Tip vor HEAD liefern. Dieser Tip
+    // bekommt eine Nebenfarbe; ab HEAD läuft die First-Parent-Linie blau.
+    let commits = [
+        GitCommit(hash: "feature", parents: ["head"], author: "", date: "",
+                  refs: ["feature"], subject: ""),
+        GitCommit(hash: "head", parents: ["base"], author: "", date: "",
+                  refs: ["HEAD -> main"], subject: ""),
+        GitCommit(hash: "base", parents: [], author: "", date: "",
+                  refs: [], subject: ""),
+    ]
+    let layout = GitGraph.layout(commits)
+
+    #expect(layout.rows[0].colorIndex != 0)
+    #expect(layout.rows[1].colorIndex == 0)
+    #expect(layout.rows[1].lines.contains {
+        $0.kind == .outgoing && $0.colorIndex == 0
+    })
+    #expect(layout.rows[2].colorIndex == 0)
+}
+
 // MARK: - Layout: Verzweigung + Merge (der wichtige Fall)
 
 @Test("Layout: Diamond (Merge M über A und B, gemeinsame Basis)")

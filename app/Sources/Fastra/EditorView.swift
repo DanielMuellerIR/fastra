@@ -721,11 +721,17 @@ private struct SidebarModePicker: View {
                 Button {
                     selection = mode
                 } label: {
-                    Image(systemName: mode.systemImage)
-                        .fastraFont(size: 15, weight: .medium)
-                        .foregroundColor(selection == mode ? Theme.textPrimary : Theme.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 28)
+                    ZStack {
+                        // Eine echte Fläche statt nur des Symbols: Bei
+                        // `.plain` wäre sonst lediglich der gezeichnete Teil
+                        // des SF Symbols als Klickziel zuverlässig aktiv.
+                        Color.clear
+                        Image(systemName: mode.systemImage)
+                            .fastraFont(size: 12, weight: .medium)
+                            .foregroundColor(selection == mode ? Theme.textPrimary : Theme.textSecondary)
+                    }
+                        .frame(maxWidth: .infinity, minHeight: 28, maxHeight: 28)
+                        .contentShape(Rectangle())
                         .background(
                             RoundedRectangle(cornerRadius: 5, style: .continuous)
                                 .fill(selection == mode ? Theme.surfaceRaised : Color.clear)
