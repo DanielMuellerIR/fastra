@@ -9,6 +9,13 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.14.4] — 2026-07-13
+
+### Verbessert
+
+- Das Fastra-App-Icon nutzt die verfügbare Icon-Fläche jetzt vollständig aus;
+  der bisherige transparente Rand ließ es neben anderen Apps unnötig klein wirken.
+
 ## [v1.14.3] — 2026-07-13
 
 ### Geändert
