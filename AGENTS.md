@@ -1,6 +1,6 @@
 # Fastra — Projektstand & Wissen (agent-agnostisch)
 
-**Aktuelle Version: v1.14.1** — Details und vollständige Historie in [`CHANGELOG.md`](CHANGELOG.md).
+**Aktuelle Version: v1.14.2** — Details und vollständige Historie in [`CHANGELOG.md`](CHANGELOG.md).
 
 Dieses Dokument hält **nur, was sich nicht aus dem Code ablesen lässt**: Vision,
 Konventionen, Produktprinzipien und Pointer auf die übrigen Wissens-Schichten. Bewusst

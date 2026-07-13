@@ -42,22 +42,26 @@ struct StatusBarView: View {
             }
             Spacer()
             HStack(spacing: 12) {
-                HStack(spacing: 4) {
-                    // accentReadable statt accent: 7 px Indikator-Kreis
-                    // auf hellem Hintergrund braucht ~4:1 Kontrast;
-                    // Goldgelb lieferte dort nur ~1,4:1.
-                    Circle().fill(Theme.accentReadable).frame(width: 7, height: 7)
-                    Text(footerSummary.text)
-                        .fastraFont(.small)
-                        .foregroundColor(Theme.textSecondary)
+                if FooterLogic.shouldShowSearchSummary(isWelcomeScreen: workspace.isWelcomeScreen) {
+                    HStack(spacing: 4) {
+                        // accentReadable statt accent: 7 px Indikator-Kreis
+                        // auf hellem Hintergrund braucht ~4:1 Kontrast;
+                        // Goldgelb lieferte dort nur ~1,4:1.
+                        Circle().fill(Theme.accentReadable).frame(width: 7, height: 7)
+                        Text(footerSummary.text)
+                            .fastraFont(.small)
+                            .foregroundColor(Theme.textSecondary)
+                    }
                 }
                 Text("⌘F  Suchen")
                     .fastraFont(size: 11, design: .monospaced)
                     .foregroundColor(Theme.textSecondary.opacity(0.7))
                 // Scope-Label (Datei / Ordner) aus den echten Workspace-Daten.
-                Text(footerSummary.label)
-                    .fastraFont(.small)
-                    .foregroundColor(Theme.textSecondary)
+                if FooterLogic.shouldShowSearchSummary(isWelcomeScreen: workspace.isWelcomeScreen) {
+                    Text(footerSummary.label)
+                        .fastraFont(.small)
+                        .foregroundColor(Theme.textSecondary)
+                }
             }
         }
         .padding(.horizontal, 16)

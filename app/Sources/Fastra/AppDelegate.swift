@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import CodeEditTextView
 
 /// Notifications, die AppDelegate beim Drücken globaler Shortcuts postet.
 /// Die SwiftUI-Schicht (`ContentView`) abonniert sie und aktualisiert den
@@ -345,6 +346,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 keyCode: event.keyCode,
                 isSearchWindowKey: isSearchKey
             )
+
+            // FN+←/FN+→ (Home/End) sind nur im echten Code-Editor sinnvoll.
+            // Suchfelder und andere AppKit-Steuerelemente behalten deshalb ihr
+            // normales Verhalten. CodeEditTextView erledigt Auswahl, Cursor-
+            // Aktualisierung und Scrollen in seinen vorhandenen Aktionen selbst.
+            switch route {
+            case .moveToBeginningOfDocument(let modifySelection):
+                guard let textView = NSApp.keyWindow?.firstResponder as? TextView else {
+                    return event
+                }
+                if modifySelection {
+                    textView.moveToBeginningOfDocumentAndModifySelection(nil)
+                } else {
+                    textView.moveToBeginningOfDocument(nil)
+                }
+                return nil
+
+            case .moveToEndOfDocument(let modifySelection):
+                guard let textView = NSApp.keyWindow?.firstResponder as? TextView else {
+                    return event
+                }
+                if modifySelection {
+                    textView.moveToEndOfDocumentAndModifySelection(nil)
+                } else {
+                    textView.moveToEndOfDocument(nil)
+                }
+                return nil
+
+            default:
+                break
+            }
 
             guard let name = KeyRouting.notificationName(for: route) else {
                 return event   // nicht abfangen

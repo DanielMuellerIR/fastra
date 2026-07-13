@@ -30,6 +30,10 @@ enum KeyRoute: Equatable {
     case gotoPreviousMatch
     /// CMD+J — „Zu Zeile springen"-Dialog öffnen.
     case showGotoLine
+    /// Home bzw. FN+← — an den Anfang des Dokuments springen.
+    case moveToBeginningOfDocument(modifySelection: Bool)
+    /// End bzw. FN+→ — an das Ende des Dokuments springen.
+    case moveToEndOfDocument(modifySelection: Bool)
     /// Event nicht abfangen — normal weiterreichen.
     case passThrough
 }
@@ -37,6 +41,10 @@ enum KeyRoute: Equatable {
 enum KeyRouting {
     /// macOS-Keycode der ESC-Taste.
     static let escapeKeyCode: UInt16 = 53
+    /// macOS-Keycodes der echten Home-/End-Tasten. Die eingebaute
+    /// MacBook-Tastatur sendet dieselben Codes für FN+← beziehungsweise FN+→.
+    static let homeKeyCode: UInt16 = 115
+    static let endKeyCode: UInt16 = 119
 
     /// Entscheidet rein anhand der Event-Eigenschaften, welche Aktion ein
     /// Tasten-Event auslöst. Keine Seiteneffekte, kein AppKit-State außer
@@ -56,6 +64,22 @@ enum KeyRouting {
         isSearchWindowKey: Bool
     ) -> KeyRoute {
         guard isKeyDown else { return .passThrough }
+
+        // CodeEditTextView kennt die AppKit-Aktionen „zum Dokumentanfang/-ende",
+        // ordnet die Home-/End-Keycodes aber nicht selbst zuverlässig zu.
+        // Shift erweitert dabei – wie in nativen Editoren üblich – die Auswahl.
+        // Command, Option und Control bleiben ausdrücklich unangetastet, damit
+        // bestehende System- und Nutzer-Shortcuts weiterhin durchgereicht werden.
+        let navigationModifiers = modifierFlags.intersection([.command, .option, .control])
+        if navigationModifiers.isEmpty {
+            let modifiesSelection = modifierFlags.contains(.shift)
+            if keyCode == homeKeyCode {
+                return .moveToBeginningOfDocument(modifySelection: modifiesSelection)
+            }
+            if keyCode == endKeyCode {
+                return .moveToEndOfDocument(modifySelection: modifiesSelection)
+            }
+        }
 
         // ESC blendet die Suchmaske aus — aber nur, wenn sie vorn ist.
         // Sonst nicht abfangen (würde andere Dialoge/Menüs stören).
@@ -112,6 +136,10 @@ enum KeyRouting {
         case .gotoNextMatch:      return .fastraGotoNextMatch
         case .gotoPreviousMatch:  return .fastraGotoPreviousMatch
         case .showGotoLine:       return .fastraShowGotoLine
+        case .moveToBeginningOfDocument, .moveToEndOfDocument:
+            // Diese Aktionen gehen direkt an die fokussierte Editor-TextView;
+            // eine globale Notification würde Suchfelder versehentlich erfassen.
+            return nil
         case .passThrough:        return nil
         }
     }

@@ -97,6 +97,36 @@ func nonKeyDown_passesThrough() {
     #expect(route == .passThrough)
 }
 
+@Test("Home/FN+← springt im Editor an den Dokumentanfang")
+func home_movesToBeginningOfDocument() {
+    let route = KeyRouting.route(
+        isKeyDown: true, modifierFlags: [.function],
+        charactersIgnoringModifiers: nil, keyCode: KeyRouting.homeKeyCode,
+        isSearchWindowKey: false
+    )
+    #expect(route == .moveToBeginningOfDocument(modifySelection: false))
+}
+
+@Test("Shift+End/FN+⇧→ erweitert die Auswahl bis zum Dokumentende")
+func shiftEnd_movesToEndOfDocumentAndModifiesSelection() {
+    let route = KeyRouting.route(
+        isKeyDown: true, modifierFlags: [.function, .shift],
+        charactersIgnoringModifiers: nil, keyCode: KeyRouting.endKeyCode,
+        isSearchWindowKey: false
+    )
+    #expect(route == .moveToEndOfDocument(modifySelection: true))
+}
+
+@Test("CMD+Home bleibt ein System-Shortcut")
+func cmdHome_passesThrough() {
+    let route = KeyRouting.route(
+        isKeyDown: true, modifierFlags: [.command],
+        charactersIgnoringModifiers: nil, keyCode: KeyRouting.homeKeyCode,
+        isSearchWindowKey: false
+    )
+    #expect(route == .passThrough)
+}
+
 @Test("CMD+W schließt Suchmaske nur, wenn sie Key-Window ist")
 func cmdW_hidesOnlyWhenSearchKey() {
     let whenKey = KeyRouting.route(

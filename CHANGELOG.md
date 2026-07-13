@@ -9,6 +9,18 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.14.2] — 2026-07-13
+
+### Hinzugefügt
+
+- `Fn`+← und `Fn`+→ (Home/End) springen im fokussierten Editor an den
+  Anfang beziehungsweise das Ende der Datei. Mit ⇧ wird die Auswahl erweitert.
+
+### Behoben
+
+- Der Footer zeigt im Willkommen-Tab keinen irreführenden Trefferstatus mehr,
+  bevor eine Suche überhaupt sinnvoll ist.
+
 ## [v1.14.1] — 2026-07-13
 
 ### Hinzugefügt

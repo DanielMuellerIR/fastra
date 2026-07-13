@@ -107,6 +107,12 @@ func stats_format() {
 
 // MARK: - FooterLogic.searchSummary
 
+@Test("Willkommen-Tab zeigt keinen irreführenden Suchstatus")
+func welcomeTab_hidesSearchSummary() {
+    #expect(!FooterLogic.shouldShowSearchSummary(isWelcomeScreen: true))
+    #expect(FooterLogic.shouldShowSearchSummary(isWelcomeScreen: false))
+}
+
 @Test("Datei-Scope mit Treffern: Text zeigt Anzahl, Label ist Datei")
 func searchSummary_file_withMatches() {
     let r = FooterLogic.searchSummary(scope: .file, bufferCount: 7, folderTotal: 0, folderFiles: 0)

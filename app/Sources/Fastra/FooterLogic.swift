@@ -65,6 +65,14 @@ enum CursorFooter {
 /// Gehalten als pure Funktion, damit sie isoliert unit-testbar ist.
 enum FooterLogic {
 
+    /// Im Willkommen-Tab hat der Nutzer noch keinen Arbeitskontext. Ein
+    /// pauschales „Keine Treffer" suggeriert dort fälschlich eine Suche.
+    /// Die Entscheidung bleibt hier rein und damit testbar; die View blendet
+    /// nur die Ergebnis- und Scope-Anzeige aus, der Shortcut-Hinweis bleibt.
+    static func shouldShowSearchSummary(isWelcomeScreen: Bool) -> Bool {
+        !isWelcomeScreen
+    }
+
     /// Ergebnis-Tuple für die Footer-Anzeige.
     struct SearchSummary: Equatable {
         /// z.B. „3 Treffer · 2 Dateien", „Keine Treffer", „1 Treffer"
