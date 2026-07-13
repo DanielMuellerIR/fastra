@@ -15,6 +15,7 @@ struct EditorView: View {
     @EnvironmentObject var workspace: Workspace
     @Environment(\.uiScale) private var uiScale
     @State private var editorState = SourceEditorState(cursorPositions: [], findPanelVisible: false)
+    @StateObject private var minimapLayoutCoordinator = MinimapLayoutCoordinator()
 
     /// Anker-Offset der laufenden Selektion (Zeichen-Index der *fixen*
     /// Kante). Brauchen wir, weil `CursorPosition` nur den Bereich kennt
@@ -60,7 +61,7 @@ struct EditorView: View {
     @AppStorage("editor.sidebarWidth") private var sidebarWidth = 200.0
 
     /// Grenzen der Seitenleisten-Breite beim Ziehen des Splitters.
-    private let sidebarMinWidth: CGFloat = 140
+    private let sidebarMinWidth: CGFloat = 180
     private let sidebarMaxWidth: CGFloat = 480
 
     /// Effektives Erscheinungsbild des Fensters (hell/dunkel) — wählt das
@@ -126,6 +127,13 @@ struct EditorView: View {
                 .allowsHitTesting(false)
                 .animation(.easeOut(duration: 0.12), value: isDropTargeted)
         )
+        .onAppear {
+            // Alte gespeicherte Werte konnten bis 140 pt reichen. Den Wert
+            // selbst anheben, damit der erste Splitter-Drag nicht von einer
+            // unsichtbaren 140-pt-Ausgangslage auf 180 pt springt.
+            sidebarWidth = min(max(sidebarWidth, Double(sidebarMinWidth)),
+                               Double(sidebarMaxWidth))
+        }
     }
 
     private var showsIntegratedMarkdownPreview: Bool {
@@ -210,12 +218,10 @@ struct EditorView: View {
             workspace.activeTabContent,
             language: detectedLanguage,
             configuration: editorConfiguration,
-            state: $editorState
+            state: $editorState,
+            coordinators: [minimapLayoutCoordinator]
         )
         .background(GutterDimmingBridge().frame(width: 0, height: 0))
-        // Einmaliger Relayout, damit die Umbruch-Breite die Minimap-Breite
-        // berücksichtigt (sonst Text unter der Minimap bis zum ersten Resize).
-        .onAppear { Self.forceInitialRelayout() }
         // Frisch erscheinender Editor (neuer Tab ⌘T, Tab-Wechsel, fertig geladene
         // Datei, programmatischer Reload) soll sofort den Tastaturfokus bekommen —
         // sonst verpuffte nach ⌘T ein direktes ⌘V (Daniel-Befund 2026-06-25).
@@ -553,42 +559,6 @@ struct EditorView: View {
             peripherals: .init(showMinimap: showMinimap)
         )
     }
-
-    /// Erzwingt EINMALIG beim ersten Editor-Auftauchen einen Relayout, damit
-    /// die Wrap-Breite die Minimap-Breite berücksichtigt (Daniel-Befund
-    /// 2026-06-23): die Wrap-Breite ist `viewport − edgeInsets`, und die
-    /// Minimap-Breite steckt erst nach einem Layout-Pass in `edgeInsets` →
-    /// initial bricht der Text zu spät um und verschwindet unter der Minimap.
-    /// Ein minimaler Fenster-Nudge (Breite +1/−1, netto 0) löst genau den
-    /// Relayout aus, den ein echter Resize manuell auslöste.
-    /// (Der horizontale Scrollbalken für „Umbruch aus" wird NICHT hier, sondern
-    /// deterministisch in CESE selbst gesetzt — build.sh-Patch 4e.)
-    private static func forceInitialRelayout(attempt: Int = 0) {
-        guard !didInitialRelayout else { return }
-        DispatchQueue.main.async {
-            guard let win = NSApp.windows.first(where: {
-                $0.frameAutosaveName != SearchWindow.frameAutosaveName
-                    && $0.contentView != nil && $0.isVisible
-            }) else {
-                if attempt < 5 {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        forceInitialRelayout(attempt: attempt + 1)
-                    }
-                }
-                return
-            }
-            didInitialRelayout = true
-            var f = win.frame
-            f.size.width += 1
-            win.setFrame(f, display: true)
-            f.size.width -= 1
-            win.setFrame(f, display: true)
-        }
-    }
-
-    /// Einmal-Schalter: der erzwungene Erst-Relayout (Minimap-Wrap-Breite)
-    /// muss nur beim allerersten Editor-Auftauchen laufen.
-    private static var didInitialRelayout = false
 
     private var detectedLanguage: CodeLanguage {
         if let url = workspace.activeTab?.url {

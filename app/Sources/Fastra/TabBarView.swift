@@ -14,7 +14,7 @@ struct TabBarView: View {
     @AppStorage("editor.sidebarWidth") private var sidebarWidth = 200.0
     @AppStorage("markdown.integratedPreview") private var showPreview = true
 
-    private let sidebarMinWidth = 140.0
+    private let sidebarMinWidth = 180.0
     private let sidebarMaxWidth = 480.0
     private let dividerWidth: CGFloat = 11
 
@@ -112,14 +112,28 @@ struct SidebarBrandView: View {
                 .fastraFont(size: 19, weight: .semibold)
                 .foregroundColor(Theme.textPrimary)
                 .lineLimit(1)
+                // Der Markenname ist die unveränderliche Identität und darf
+                // deshalb niemals zugunsten der Metadaten gekürzt werden.
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(2)
 
-            VStack(alignment: .leading, spacing: 0) {
+            ViewThatFits(in: .horizontal) {
+                // Das Datum erscheint nur, wenn es vollständig hineinpasst.
+                // `fixedSize` macht diese Variante unteilbar; bei Platzmangel
+                // wählt ViewThatFits automatisch die reine Versionszeile.
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(verbatim: "v\(AppInfo.version)")
+                    Text(verbatim: AppInfo.versionDate)
+                }
+                .fixedSize(horizontal: true, vertical: false)
+
                 Text(verbatim: "v\(AppInfo.version)")
-                Text(verbatim: AppInfo.versionDate)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
             .fastraFont(size: 9.5, weight: .medium)
             .foregroundColor(Theme.textSecondary)
-            .lineLimit(1)
+            .layoutPriority(1)
 
             Spacer(minLength: 0)
         }

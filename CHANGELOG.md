@@ -9,6 +9,28 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.3] — 2026-07-13
+
+### Geändert
+
+- Die Seitenleiste ist mindestens 180 Punkte breit. „Fastra“ bleibt immer
+  vollständig sichtbar; bei wenig Platz wird zuerst das Datum vollständig
+  ausgeblendet und erst danach darf die Version gekürzt werden.
+
+### Behoben
+
+- Jeder neu erzeugte Editor synchronisiert nach seinem ersten Auto-Layout die
+  tatsächliche Minimap-Breite mit dem rechten Text-Inset. Zeilen umbrechen
+  dadurch sofort vor der Minimap und nicht erst nach einem manuellen Resize.
+- Alte gespeicherte Seitenleistenbreiten unterhalb des neuen Minimums werden
+  beim Anzeigen normalisiert, sodass der erste Splitter-Drag nicht springt.
+
+### Qualitätssicherung
+
+- Drei neue Minimap-Tests prüfen die Inset-Regel sowie einen echten
+  CodeEditSourceEditor-Controller mit sichtbarer Minimap. Alle 768 Swift-Tests
+  sind erfolgreich.
+
 ## [v1.16.2] — 2026-07-13
 
 ### Geändert
