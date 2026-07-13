@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import UniformTypeIdentifiers
 import CodeEditSourceEditor
 import CodeEditLanguages
 import CodeEditTextView
@@ -24,10 +23,6 @@ struct EditorView: View {
     /// Mauszeiger) zeigen — dafür merken wir uns, welche Kante stillsteht.
     /// `nil` = aktuell keine Selektion (nur Cursor).
     @State private var selectionAnchor: Int?
-
-    /// `true`, während eine Datei über den Editor schwebt (Drop-Ziel
-    /// hervorheben). Reiner UI-Zustand.
-    @State private var isDropTargeted = false
 
     /// Aktueller Seitenleisten-Modus (Dateien / Änderungen / Graph). Nur bei
     /// Git-Repo umschaltbar; ohne Repo immer „Dateien".
@@ -115,23 +110,6 @@ struct EditorView: View {
                     .clipped()
             }
         }
-        // Datei(en) in den Editor ziehen → in Tabs laden. Akzeptiert
-        // ausschließlich Datei-URLs; die Filterung (reguläre Dateien,
-        // keine Ordner, dedupliziert) liegt pur in `DropHandling`.
-        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-            loadDroppedFiles(from: providers)
-            return true
-        }
-        // Dezenter Akzent-Rahmen, solange ein Drop schwebt — gibt dem
-        // Nutzer Rückmeldung, dass der Editor das Drop annimmt.
-        // Der lesbare blaue Akzent bleibt als schmale Rückmeldung erkennbar.
-        .overlay(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .stroke(Theme.accentReadable, lineWidth: 2)
-                .opacity(isDropTargeted ? 1 : 0)
-                .allowsHitTesting(false)
-                .animation(.easeOut(duration: 0.12), value: isDropTargeted)
-        )
         .onAppear {
             // Alte gespeicherte Werte konnten bis 140 pt reichen. Den Wert
             // selbst anheben, damit der erste Splitter-Drag nicht von einer
@@ -153,24 +131,6 @@ struct EditorView: View {
                          direction: -1,
                          surface: Theme.surfaceRaised,
                          help: "Ziehen, um die Breite der Markdown-Vorschau anzupassen")
-    }
-
-    /// Lädt gedroppte Datei-URLs asynchron aus den `NSItemProvider`n und
-    /// öffnet jede ladbare Datei in einem Tab. Das Laden selbst läuft über
-    /// `Workspace.loadFile` (Encoding-Erkennung, Dedup gegen offene Tabs).
-    private func loadDroppedFiles(from providers: [NSItemProvider]) {
-        for provider in providers {
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                guard let url else { return }
-                DispatchQueue.main.async {
-                    // loadFile kehrt sofort zurück (asynchron), Rückgabewert
-                    // gibt es nicht mehr — kein `_ =` nötig.
-                    for file in DropHandling.loadableFiles(from: [url]) {
-                        workspace.loadFile(at: file)
-                    }
-                }
-            }
-        }
     }
 
     // MARK: Source-Editor-Pane
@@ -594,6 +554,7 @@ struct EditorView: View {
         ResizableDivider(value: $sidebarWidth,
                          range: Double(sidebarMinWidth)...Double(sidebarMaxWidth),
                          surface: Theme.surfaceBase,
+                         trailingSurface: Theme.surfaceRaised,
                          help: "Ziehen, um die Breite der Seitenleiste anzupassen")
     }
 

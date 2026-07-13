@@ -74,3 +74,15 @@ func loadable_dedupsKeepsOrder() throws {
 func loadable_emptyStaysEmpty() {
     #expect(DropHandling.loadableFiles(from: []).isEmpty)
 }
+
+@Test("Öffnen-Drop akzeptiert Dateien und Ordner")
+func openable_acceptsFilesAndDirectories() throws {
+    try withTempDir { root in
+        let directory = root.appendingPathComponent("projekt")
+        let file = root.appendingPathComponent("datei.txt")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try "x".write(to: file, atomically: true, encoding: .utf8)
+
+        #expect(DropHandling.openableItems(from: [directory, file]) == [directory, file])
+    }
+}

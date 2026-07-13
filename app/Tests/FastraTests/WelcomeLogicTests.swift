@@ -40,3 +40,16 @@ func welcome_hiddenWithFileTab() {
 func welcome_hiddenWithoutActiveTab() {
     #expect(!WelcomeLogic.shouldShow(activeTab: nil))
 }
+
+@Test("Projektliste zeigt nur vollständig passende Zeilen")
+func welcome_recentProjectsFitAvailableHeight() {
+    #expect(WelcomeLayout.visibleRecentProjectCount(
+        availableHeight: 800, uiScale: 1.7, total: 10
+    ) == 4)
+    #expect(WelcomeLayout.visibleRecentProjectCount(
+        availableHeight: 350, uiScale: 1.7, total: 10
+    ) == 0)
+    #expect(WelcomeLayout.visibleRecentProjectCount(
+        availableHeight: 800, uiScale: 1, total: 3
+    ) == 3)
+}

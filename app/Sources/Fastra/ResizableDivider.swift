@@ -12,19 +12,18 @@ struct ResizableDivider: View {
     let range: ClosedRange<Double>
     var direction: Double = 1
     let surface: Color
+    var trailingSurface: Color? = nil
     let help: String
 
     private let hitWidth: CGFloat = 11
 
     var body: some View {
-        ZStack {
-            // Die breite Trefferfläche ist absichtlich opak und trägt den Ton
-            // des Nachbarbereichs. Eine transparente Fläche ließe im Dark Mode
-            // den Fenstergrund als auffälliges helles Band durchscheinen.
-            surface
-            Rectangle()
-                .fill(Theme.strokeStrong)
-                .frame(width: 1)
+        HStack(spacing: 0) {
+            // Die breite Trefferfläche bleibt opak, kann aber links und rechts
+            // exakt die Farben der angrenzenden Bereiche weiterführen.
+            surface.frame(width: 5)
+            Rectangle().fill(Theme.strokeStrong).frame(width: 1)
+            (trailingSurface ?? surface).frame(width: 5)
         }
         .frame(width: hitWidth)
         .frame(maxHeight: .infinity)

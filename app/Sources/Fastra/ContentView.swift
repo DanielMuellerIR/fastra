@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Variante 1: Editor oben (45 %), Vorschau-Hero unten (55 %).
 /// Die Suchmaske ist seit v0.5 ein eigenes, draggbares NSPanel —
@@ -16,6 +17,9 @@ struct ContentView: View {
     /// Entscheidung beim Erscheinen über die pure DonationPrompt-Logik
     /// (ab dem 10. Start, 90 Tage Ruhe nach „Später").
     @State private var showDonationBanner = false
+    /// Gemeinsames Drop-Ziel des ganzen Dokumentfensters — gilt dadurch auch
+    /// auf der Willkommen-Seite, auf der noch kein `EditorView` existiert.
+    @State private var isDropTargeted = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -58,6 +62,19 @@ struct ContentView: View {
         }
         .background(Theme.surfaceBase)
         .foregroundColor(Theme.textPrimary)
+        // Dateien → Tabs, Ordner → Projekt. Der Hook sitzt an der gemeinsamen
+        // Fensterwurzel und funktioniert in jedem Inhaltszustand.
+        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+            loadDroppedItems(from: providers)
+            return true
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .stroke(Theme.accentReadable, lineWidth: 2)
+                .opacity(isDropTargeted ? 1 : 0)
+                .allowsHitTesting(false)
+                .animation(.easeOut(duration: 0.12), value: isDropTargeted)
+        )
         // Der eigene Chrome darf bis hinter die transparente macOS-Titelleiste
         // reichen. Die oberen 38 Punkte lassen dabei den Ampelknöpfen Platz.
         .ignoresSafeArea(.container, edges: .top)
@@ -139,6 +156,21 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .fastraShowGotoLine)) { _ in
             guard Workspace.shared === workspace else { return }
             showGotoLineDialog()
+        }
+    }
+
+    /// Holt die Datei-URLs asynchron aus den Drag-Providern und routet sie auf
+    /// dem Main-Thread über denselben Einstieg wie ⌘O.
+    private func loadDroppedItems(from providers: [NSItemProvider]) {
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url else { return }
+                DispatchQueue.main.async {
+                    for item in DropHandling.openableItems(from: [url]) {
+                        workspace.openFileOrFolder(at: item)
+                    }
+                }
+            }
         }
     }
 

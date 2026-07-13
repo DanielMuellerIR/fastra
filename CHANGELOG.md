@@ -9,6 +9,38 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.9] — 2026-07-14
+
+### Hinzugefügt
+
+- Auf das Fastra-Fenster oder App-Symbol gezogene Ordner werden als Projekt
+  geladen. Ist kein Dokumentfenster offen, erzeugen Datei- und Ordner-Öffnen
+  automatisch ein neues Fenster.
+
+### Geändert
+
+- Beim Öffnen eines Projekts schließt Fastra saubere Datei-Tabs außerhalb des
+  neuen Ordners. Ungesicherte Tabs, unbenannte Notizzettel und Dateien aus dem
+  neuen Ordner samt Unterordnern bleiben erhalten.
+- Die Willkommen-Seite zeigt abhängig von Fensterhöhe und UI-Skalierung nur
+  vollständig passende Einträge der zuletzt benutzten Projekte.
+
+### Behoben
+
+- Dateinamen und Pfade der Änderungen-Ansicht nutzen den Platz bis kurz vor
+  dem weiter rechts stehenden Git-Status. Hover-Aktionen überlagern den Text
+  erst bei Bedarf, statt dauerhaft unsichtbare Breite zu reservieren.
+- Der Seitenleisten-Hintergrund endet im Inhalt und im Fenster-Chrome exakt an
+  der Splitterlinie; rechts davon beginnt ohne hellen beziehungsweise dunklen
+  Überstand die Editorfläche.
+- Der Markenname auf der Willkommen-Seite wird bei kleinen Fenstern und großer
+  UI-Skalierung nicht mehr über den oberen Fensterrand hinausgeschoben.
+
+### Qualitätssicherung
+
+- Vier neue Tests sichern Ordner-Drops, Projektwechsel über Verzeichnisgrenzen
+  und die höhenabhängige Willkommen-Liste. Alle 776 Swift-Tests sind erfolgreich.
+
 ## [v1.16.8] — 2026-07-14
 
 ### Behoben

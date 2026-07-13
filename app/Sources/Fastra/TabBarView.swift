@@ -178,9 +178,10 @@ private extension TabBarView {
     /// Elf Punkte breit wie der echte Splitter unterhalb des Headers. Nur die
     /// mittige Ein-Punkt-Linie ist sichtbar; dadurch fluchten beide Bereiche.
     private var chromeDivider: some View {
-        ZStack {
-            Theme.surfaceRaised
+        HStack(spacing: 0) {
+            Theme.surfaceBase.frame(width: 5)
             Rectangle().fill(Theme.strokeStrong).frame(width: 1)
+            Theme.surfaceRaised.frame(width: 5)
         }
         .frame(width: dividerWidth)
     }

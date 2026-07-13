@@ -116,12 +116,16 @@ struct FastraApp: App {
                 .keyboardShortcut("n", modifiers: .command)
                 Button("Neuer Tab") { commandWorkspace.openNewTab() }
                     .keyboardShortcut("t", modifiers: .command)
-                Button("Datei öffnen…") { commandWorkspace.openFile() }
+                Button("Datei öffnen…") {
+                    DocumentWindowController.workspaceForOpening().openFile()
+                }
                     .keyboardShortcut("o", modifiers: .command)
                 // Ordner als Projekt öffnen (Projekt- & Git-Ausbau, Etappe 1):
                 // lädt den Dateibaum in die Seitenleiste und merkt den Ordner
                 // in „Zuletzt benutzte Projekte" (Willkommensbildschirm).
-                Button("Ordner öffnen…") { commandWorkspace.openFolderAsProject() }
+                Button("Ordner öffnen…") {
+                    DocumentWindowController.workspaceForOpening().openFolderAsProject()
+                }
                     .keyboardShortcut("o", modifiers: [.command, .shift])
                 // Zuletzt benutzte Dateien (K2). Eigene View mit
                 // @ObservedObject, damit das Untermenü auf Änderungen der

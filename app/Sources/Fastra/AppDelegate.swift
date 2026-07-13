@@ -288,16 +288,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // `Workspace.shared` steht (`Workspace.init` ruft `deliverPendingOpenFiles`).
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        // Nur echte Dateien (keine Verzeichnisse) durchlassen — Fastra öffnet
-        // Dateien in Tabs; ein Ordner gehört in die Ordner-Suche, nicht in
-        // einen Editor-Tab.
-        let fileURLs = urls.filter { url in
-            var isDir: ObjCBool = false
-            let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
-            return exists && !isDir.boolValue
-        }
-        guard !fileURLs.isEmpty else { return }
-        openFilesInbox.enqueue(fileURLs)
+        // Finder, Dock und `open -a` dürfen Dateien UND Ordner liefern.
+        // Ordner werden später über denselben Router als Projekt geladen.
+        let openableURLs = DropHandling.openableItems(from: urls)
+        guard !openableURLs.isEmpty else { return }
+        openFilesInbox.enqueue(openableURLs)
         deliverPendingOpenFiles()
     }
 
@@ -305,9 +300,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// ist. Sonst bleiben sie im Puffer und werden vom nächsten Aufruf (aus
     /// `Workspace.init`) ausgeliefert. Idempotent.
     func deliverPendingOpenFiles() {
-        guard let ws = Workspace.shared else { return }   // noch nicht bereit
-        for url in openFilesInbox.drain() {
-            ws.loadFile(at: url)
+        guard Workspace.shared != nil else { return }   // noch nicht bereit
+        // SwiftUIs Startfenster und seine Registry-Brücke dürfen zunächst
+        // ihren aktuellen Main-Loop abschließen. Bei einer bereits laufenden
+        // App ist dadurch zugleich sicher erkennbar, ob wirklich kein Fenster
+        // mehr sichtbar ist.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let urls = self.openFilesInbox.drain()
+            guard !urls.isEmpty else { return }
+            let workspace = DocumentWindowController.workspaceForOpening()
+            for url in urls {
+                workspace.openFileOrFolder(at: url)
+            }
         }
     }
 

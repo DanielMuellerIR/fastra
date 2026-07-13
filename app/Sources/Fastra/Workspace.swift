@@ -1233,6 +1233,21 @@ final class Workspace: ObservableObject {
     /// wie in `loadFile` (Dedup über URL-Formen hinweg).
     func openProject(at url: URL) {
         let url = url.canonicalFileURL
+        let previousActive = activeTabID
+        tabs = Self.tabsAfterOpeningProject(tabs, root: url)
+        if let previousActive, tabs.contains(where: { $0.id == previousActive }) {
+            activeTabID = previousActive
+        } else {
+            activeTabID = tabs.first?.id
+        }
+        // Wurden ausschließlich saubere Dateien eines anderen Projekts
+        // geschlossen, braucht das neue Projekt wieder einen Editor-Tab.
+        if tabs.isEmpty {
+            let tab = EditorTab(title: Workspace.untitledBaseName,
+                                path: L10n.string("noch nicht gespeichert"))
+            tabs = [tab]
+            activeTabID = tab.id
+        }
         projectURL = url
         projectSearchConfiguration = ProjectSearchStore.load(
             for: url, defaults: defaultsStore
@@ -1244,6 +1259,20 @@ final class Workspace: ObservableObject {
         refreshGitStatus()
         refreshGitLog()
         refreshGitBranches()
+    }
+
+    /// Beim Projektwechsel bleiben ungesicherte Inhalte immer erhalten.
+    /// Saubere Dateien außerhalb des neuen Projektbaums und alte Git-Ansichten
+    /// werden geschlossen; saubere unbenannte Notizzettel bleiben bestehen.
+    static func tabsAfterOpeningProject(_ tabs: [EditorTab], root: URL) -> [EditorTab] {
+        let root = root.canonicalFileURL
+        let prefix = root.path.hasSuffix("/") ? root.path : root.path + "/"
+        return tabs.filter { tab in
+            if tab.isDirty || tab.isWelcome { return true }
+            if tab.gitKind != nil { return false }
+            guard let file = tab.url?.canonicalFileURL else { return true }
+            return file.path.hasPrefix(prefix)
+        }
     }
 
     /// Blendet den Projekt-Dateibaum wieder aus (Seitenleiste zeigt dann

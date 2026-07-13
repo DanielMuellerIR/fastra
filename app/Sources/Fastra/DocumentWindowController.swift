@@ -85,6 +85,26 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         }
     }
 
+    /// Liefert den Workspace des vordersten sichtbaren Dokumentfensters.
+    /// Ein geschlossenes Fenster darf nicht über `Workspace.shared` weiter
+    /// Ziel eines Öffnen-Befehls bleiben.
+    static func frontmostVisibleWorkspace() -> Workspace? {
+        for window in NSApp.orderedWindows where window.isVisible {
+            if let workspace = WorkspaceWindowRegistry.workspace(for: window) {
+                return workspace
+            }
+        }
+        return nil
+    }
+
+    /// Ziel für Datei-/Ordner-Öffnen: vorhandenes Vorderfenster oder ein neu
+    /// erzeugtes Dokumentfenster, wenn der Nutzer alle Fenster geschlossen hat.
+    static func workspaceForOpening(
+        defaults: UserDefaults = SelfTest.workspaceDefaults()
+    ) -> Workspace {
+        frontmostVisibleWorkspace() ?? openNewDocument(defaults: defaults)
+    }
+
     /// Öffnet ein leeres, unabhängiges Dokumentfenster und gibt dessen
     /// Workspace für den Fenster-Selbsttest zurück. Willkommen zeigt es nur,
     /// wenn noch kein anderes Dokumentfenster offen ist (Daniel-Wunsch

@@ -153,35 +153,46 @@ private struct GitChangeRow: View {
             Image(systemName: "doc")
                 .fastraFont(size: 11)
                 .foregroundColor(Theme.textSecondary)
-            Text(change.name)
-                .fastraFont(.small)
-                .foregroundColor(Theme.textPrimary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                // Dateinamen sind wichtiger als der ergänzende Ordnerpfad:
-                // SwiftUI kürzt deshalb zuerst den Pfad und erst danach den Namen.
-                .layoutPriority(1)
-            if !change.directory.isEmpty {
-                Text(change.directory)
-                    .fastraFont(size: 10)
-                    .foregroundColor(Theme.textSecondary)
-                    .lineLimit(1)
-                    .truncationMode(.head)
+            ZStack(alignment: .trailing) {
+                HStack(spacing: 6) {
+                    Text(change.name)
+                        .fastraFont(.small)
+                        .foregroundColor(Theme.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        // Dateinamen sind wichtiger als der ergänzende Ordnerpfad:
+                        // SwiftUI kürzt deshalb zuerst den Pfad und erst danach den Namen.
+                        .layoutPriority(1)
+                    if !change.directory.isEmpty {
+                        Text(change.directory)
+                            .fastraFont(size: 10)
+                            .foregroundColor(Theme.textSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        Spacer(minLength: 0)
+                    }
+                }
+
+                // Die Aktionen überlagern nur beim Hover das rechte Textende.
+                // So bleibt die Zeile stabil, ohne unsichtbar Platz zu sperren.
+                actionButtons
+                    .padding(.leading, 4)
+                    .background(Theme.surfaceRaised)
+                    .opacity(hovering ? 1 : 0)
+                    .allowsHitTesting(hovering)
+                    .accessibilityHidden(!hovering)
             }
-            Spacer(minLength: 4)
-            // Die Knöpfe bleiben im Layout, damit die Zeile beim Hover weder
-            // höher wird noch ihren Text um ein paar Pixel verschiebt.
-            actionButtons
-                .opacity(hovering ? 1 : 0)
-                .allowsHitTesting(hovering)
-                .accessibilityHidden(!hovering)
+            .frame(maxWidth: .infinity)
             // Status-Badge (farbig, mit erklärendem Tooltip).
             Text(state.badge)
                 .fastraFont(size: 10, weight: .semibold, design: .monospaced)
                 .foregroundColor(Theme.gitColor(for: state))
                 .help(state.tooltip)
         }
-        .padding(.horizontal, 14)
+        .padding(.leading, 14)
+        .padding(.trailing, 8)
         .padding(.vertical, 3)
         .background(hovering ? Theme.surfaceRaised : Color.clear)
         .contentShape(Rectangle())

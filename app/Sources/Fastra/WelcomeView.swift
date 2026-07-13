@@ -14,16 +14,44 @@ enum WelcomeLogic {
     }
 }
 
+/// Höhenbudget der Willkommen-Seite. Die Liste zeigt nur vollständige Zeilen;
+/// bei großem UI-Zoom darf sie die Wortmarke niemals nach oben hinausschieben.
+enum WelcomeLayout {
+    private static let fixedContentHeight: CGFloat = 327
+    private static let projectRowHeight: CGFloat = 30
+
+    static func visibleRecentProjectCount(availableHeight: CGFloat,
+                                          uiScale: CGFloat,
+                                          total: Int) -> Int {
+        guard total > 0, uiScale > 0 else { return 0 }
+        let remaining = availableHeight - fixedContentHeight * uiScale
+        guard remaining >= projectRowHeight * uiScale else { return 0 }
+        return min(total, max(0, Int(remaining / (projectRowHeight * uiScale))))
+    }
+}
+
 /// Willkommensbildschirm (VS-Code-Muster, aber Apple-dezent): erscheint statt
 /// des Editors, wenn noch nichts geöffnet ist. Bietet die drei Einstiegs-
 /// Aktionen und die Liste der zuletzt benutzten Projekte — ein Klick lädt
 /// das Projekt in die Seitenleiste.
 struct WelcomeView: View {
     @EnvironmentObject var workspace: Workspace
+    @Environment(\.uiScale) private var uiScale
 
     var body: some View {
+        GeometryReader { geometry in
+            welcomeContent(visibleProjectCount: WelcomeLayout.visibleRecentProjectCount(
+                availableHeight: geometry.size.height,
+                uiScale: uiScale,
+                total: workspace.recentProjects.count
+            ))
+        }
+        .background(Theme.surfaceRaised)
+    }
+
+    private func welcomeContent(visibleProjectCount: Int) -> some View {
         VStack(spacing: 0) {
-            Spacer(minLength: 24)
+            Spacer(minLength: 24 * uiScale)
 
             // Wortmarke — bewusst schlicht (kein Icon-Zirkus), Ton wie AboutWindow.
             Text("Fastra")
@@ -60,35 +88,36 @@ struct WelcomeView: View {
             .padding(.top, 28)
 
             // Zuletzt benutzte Projekte.
-            VStack(alignment: .leading, spacing: 2) {
-                Text("ZULETZT BENUTZTE PROJEKTE")
-                    .fastraFont(size: 10, weight: .semibold)
-                    .tracking(0.6)
-                    .foregroundColor(Theme.textSecondary)
-                    .padding(.bottom, 6)
-
-                if workspace.recentProjects.isEmpty {
-                    // Dezente Erklärung statt leerer Fläche — sagt zugleich,
-                    // WIE Projekte in die Liste kommen (automatisch).
-                    Text("Projekte merkt sich Fastra von selbst: Öffne eine Datei aus einem Git-Repository oder einen Ordner.")
-                        .fastraFont(.small)
+            if workspace.recentProjects.isEmpty || visibleProjectCount > 0 {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("ZULETZT BENUTZTE PROJEKTE")
+                        .fastraFont(size: 10, weight: .semibold)
+                        .tracking(0.6)
                         .foregroundColor(Theme.textSecondary)
-                        .frame(maxWidth: 320, alignment: .leading)
-                } else {
-                    ForEach(workspace.recentProjects) { entry in
-                        ProjectRow(entry: entry) {
-                            workspace.openProject(at: entry.url)
+                        .padding(.bottom, 6)
+
+                    if workspace.recentProjects.isEmpty {
+                        // Dezente Erklärung statt leerer Fläche — sagt zugleich,
+                        // WIE Projekte in die Liste kommen (automatisch).
+                        Text("Projekte merkt sich Fastra von selbst: Öffne eine Datei aus einem Git-Repository oder einen Ordner.")
+                            .fastraFont(.small)
+                            .foregroundColor(Theme.textSecondary)
+                            .frame(maxWidth: 320, alignment: .leading)
+                    } else {
+                        ForEach(Array(workspace.recentProjects.prefix(visibleProjectCount))) { entry in
+                            ProjectRow(entry: entry) {
+                                workspace.openProject(at: entry.url)
+                            }
                         }
                     }
                 }
+                .padding(.top, 32)
+                .frame(maxWidth: 380, alignment: .leading)
             }
-            .padding(.top, 32)
-            .frame(maxWidth: 380, alignment: .leading)
 
-            Spacer(minLength: 24)
+            Spacer(minLength: 24 * uiScale)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.surfaceRaised)
     }
 
     /// Eine Einstiegs-Aktion: Icon + Titel + dezenter Shortcut-Hinweis.
@@ -119,6 +148,7 @@ private struct ProjectRow: View {
     let entry: ProjectEntry
     let action: () -> Void
     @State private var isHovered = false
+    @Environment(\.uiScale) private var uiScale
 
     var body: some View {
         Button(action: action) {
@@ -139,7 +169,7 @@ private struct ProjectRow: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 5)
+            .frame(height: 30 * uiScale)
             .background(
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .fill(isHovered ? Theme.surfaceSand.opacity(0.6) : Color.clear)
