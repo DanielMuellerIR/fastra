@@ -9,6 +9,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.5] — 2026-07-13
+
+### Behoben
+
+- Zusammenlaufende Graph-Lanes bleiben bis zum gemeinsamen Commit vollständig
+  sichtbar; die Neben-Lane endet nicht mehr eine Zeile vorher im Nichts.
+- Seitlich wechselnde Graph-Linien treffen und verlassen Commit-Knoten an der
+  passenden linken beziehungsweise rechten Kante statt am oberen oder unteren
+  Rand.
+
+### Qualitätssicherung
+
+- Der Merge-Regressionstest prüft nun beide eingehenden Lanes direkt am
+  gemeinsamen Commit. Alle 769 Swift-Tests und der App-Build sind erfolgreich.
+
 ## [v1.16.4] — 2026-07-13
 
 ### Behoben

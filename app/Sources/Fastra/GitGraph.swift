@@ -68,7 +68,6 @@ struct GraphLine: Equatable {
         case through    // unberührte Lane: senkrecht von Ober- zu Unterkante
         case incoming   // von oben (Spalte oben) herab zum Knoten (Mitte)
         case outgoing   // vom Knoten (Mitte) hinab zur Spalte an der Unterkante
-        case joining    // Neben-Lane mündet zwischen zwei Commit-Zeilen ein
     }
     let fromColumn: Int   // Spalte am oberen Ende des Segments
     let toColumn: Int     // Spalte am unteren Ende des Segments
@@ -280,15 +279,10 @@ enum GitGraph {
                         // von einer früher abgearbeiteten Neben-Lane übernommen
                         // werden. Das passiert bei Topo-Reihenfolgen wie
                         // Merge → Nebenast → Hauptast → gemeinsame Basis: Der
-                        // Nebenast hat die Basis dann bereits vorgemerkt. Wir
-                        // legen die Basis auf die Hauptspalte um und lassen die
-                        // Nebenfarbe zwischen dieser und der nächsten Zeile
-                        // einmünden – genau wie VS Codium.
-                        let joiningColor = lanes[existing]!.colorIndex
-                        lanes[existing] = nil
+                        // Nebenast hat die Basis dann bereits vorgemerkt. Beide
+                        // Lanes dürfen denselben Commit erwarten; erst in dessen
+                        // Zeile laufen sie sichtbar am Knoten zusammen.
                         lanes[nodeColumn] = Lane(target: parent, colorIndex: nodeColor)
-                        lines.append(GraphLine(fromColumn: existing, toColumn: nodeColumn,
-                                               colorIndex: joiningColor, kind: .joining))
                         lines.append(GraphLine(fromColumn: nodeColumn, toColumn: nodeColumn,
                                                colorIndex: nodeColor, kind: .outgoing))
                         mainLaneClaimed = true

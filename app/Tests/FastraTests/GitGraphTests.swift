@@ -230,12 +230,16 @@ func layout_primaryLaneWinsAtCommonAncestor() {
     ]
 
     let layout = GitGraph.layout(commits)
-    let lastMain = layout.rows[4]
     let base = layout.rows[5]
     let root = layout.rows[6]
 
-    #expect(lastMain.lines.contains {
-        $0.kind == .joining && $0.colorIndex != 0 && $0.toColumn == lastMain.column
+    // Beide Äste treffen erst direkt am gemeinsamen Commit zusammen. So endet
+    // keine Nebenfarbe eine Zeile zu früh als sichtbare Sackgasse.
+    #expect(base.lines.contains {
+        $0.kind == .incoming && $0.fromColumn == 0 && $0.toColumn == 0 && $0.colorIndex == 0
+    })
+    #expect(base.lines.contains {
+        $0.kind == .incoming && $0.fromColumn == 1 && $0.toColumn == 0 && $0.colorIndex != 0
     })
     #expect(base.column == 0)
     #expect(base.colorIndex == 0)

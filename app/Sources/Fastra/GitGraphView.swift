@@ -170,18 +170,28 @@ private struct GraphRowView: View {
                     path.move(to: CGPoint(x: x(line.fromColumn), y: 0))
                     path.addLine(to: CGPoint(x: x(line.fromColumn), y: size.height))
                 case .incoming:
+                    let targetX: CGFloat
+                    if line.fromColumn < line.toColumn {
+                        targetX = x(line.toColumn) - nodeRadius
+                    } else if line.fromColumn > line.toColumn {
+                        targetX = x(line.toColumn) + nodeRadius
+                    } else {
+                        targetX = x(line.toColumn)
+                    }
                     addBend(&path,
                             from: CGPoint(x: x(line.fromColumn), y: 0),
-                            to: CGPoint(x: x(line.toColumn), y: midY))
+                            to: CGPoint(x: targetX, y: midY))
                 case .outgoing:
+                    let sourceX: CGFloat
+                    if line.toColumn < line.fromColumn {
+                        sourceX = x(line.fromColumn) - nodeRadius
+                    } else if line.toColumn > line.fromColumn {
+                        sourceX = x(line.fromColumn) + nodeRadius
+                    } else {
+                        sourceX = x(line.fromColumn)
+                    }
                     addBend(&path,
-                            from: CGPoint(x: x(line.fromColumn), y: midY),
-                            to: CGPoint(x: x(line.toColumn), y: size.height))
-                case .joining:
-                    // Der gemeinsame Commit folgt erst in der nächsten Zeile;
-                    // die Neben-Lane läuft daher an diesem Knoten vorbei.
-                    addBend(&path,
-                            from: CGPoint(x: x(line.fromColumn), y: 0),
+                            from: CGPoint(x: sourceX, y: midY),
                             to: CGPoint(x: x(line.toColumn), y: size.height))
                 }
                 context.stroke(path, with: .color(Self.color(line.colorIndex)), lineWidth: 1.7)
@@ -259,7 +269,7 @@ private struct GraphRowView: View {
     private var continuationLanes: [(column: Int, colorIndex: Int)] {
         var seen: Set<Int> = []
         return row.lines.compactMap { line in
-            guard line.kind == .through || line.kind == .outgoing || line.kind == .joining,
+            guard line.kind == .through || line.kind == .outgoing,
                   seen.insert(line.toColumn).inserted else { return nil }
             return (line.toColumn, line.colorIndex)
         }
