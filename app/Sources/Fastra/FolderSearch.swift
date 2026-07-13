@@ -178,21 +178,23 @@ enum FolderSearch {
                 if totalSoFar >= maxTotalMatches { capped = true; break outerLoop }
                 continue
             }
-            guard let enumerator = fm.enumerator(
-                at: folder,
-                includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
-                options: [.skipsHiddenFiles, .skipsPackageDescendants]
-            ) else { continue }
-
-            for case let url as URL in enumerator {
-                let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isDirectoryKey])
+            // `rg --files` ist hier der schnelle Standardpfad. Er liefert
+            // nullgetrennte Dateinamen und respektiert dank `--no-ignore`
+            // bewusst NICHT .gitignore — exakt wie die frühere Rekursion.
+            // Startet das gebündelte Werkzeug nicht (defekte App-Ressource,
+            // ungewohnte Sandbox), bleibt der alte FileManager-Pfad als
+            // vollständiger, sicherer Fallback erhalten.
+            let urls = (try? RipgrepFileEnumerator.files(in: folder))
+                ?? legacyFileURLs(in: folder)
+            for url in urls {
+                // `rg --files` kennt macOS-Pakete nicht. Ohne diesen Check
+                // würden etwa `.app`- oder `.bundle`-Inhalte anders als im
+                // bisherigen FileManager-Pfad durchsuchbar.
+                guard !isInsidePackage(url, below: folder) else { continue }
                 if PathExclusion.matches(url, patterns: excludedPatterns,
                                          relativeTo: projectRoot) {
-                    if values?.isDirectory == true { enumerator.skipDescendants() }
                     continue
                 }
-                let isFile = values?.isRegularFile ?? false
-                guard isFile else { continue }
                 guard seenFiles.insert(url.canonicalFileURL.path).inserted else { continue }
                 if !passesFilter(url: url, filter: filter) {
                     // Filter-Skips werden NICHT ins Ergebnis aufgenommen
@@ -237,6 +239,33 @@ enum FolderSearch {
             }
         }
         return Result(perFile: perFile, invalidPatternMessage: nil, wasCapped: capped)
+    }
+
+    /// Der bewusst schmale Fallback für Umgebungen, in denen der mitgelieferte
+    /// ripgrep-Prozess nicht starten kann. Er bildet das frühere Verhalten
+    /// nach: versteckte Dateien und Paket-Inhalte bleiben außen vor.
+    private static func legacyFileURLs(in folder: URL) -> [URL] {
+        guard let enumerator = FileManager.default.enumerator(
+            at: folder,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else { return [] }
+        return enumerator.compactMap { item in
+            guard let url = item as? URL,
+                  (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { return nil }
+            return url
+        }
+    }
+
+    private static func isInsidePackage(_ url: URL, below root: URL) -> Bool {
+        let rootPath = root.standardizedFileURL.path
+        var parent = url.deletingLastPathComponent()
+        while parent.path.hasPrefix(rootPath) {
+            if (try? parent.resourceValues(forKeys: [.isPackageKey]).isPackage) == true { return true }
+            if parent.standardizedFileURL.path == rootPath { break }
+            parent.deleteLastPathComponent()
+        }
+        return false
     }
 
     /// Sucht in genau einer Datei. Liest die Datei, dekodiert sie

@@ -143,6 +143,12 @@ struct ChunkedTextFileView: View {
 /// durch Null-Byte-Probe hierher geroutet; Bearbeitung ist bewusst deaktiviert.
 struct HexFileView: View {
     @StateObject private var model: FilePageModel
+    @StateObject private var edits = HexEditSession()
+    @State private var editingEnabled = false
+    @State private var requestEditingConfirmation = false
+    @State private var showsChangesPreview = false
+    @State private var requestSaveConfirmation = false
+    @State private var saveError: String?
 
     init(url: URL, fileSize: UInt64) {
         _model = StateObject(wrappedValue: FilePageModel(
@@ -152,10 +158,7 @@ struct HexFileView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Label("Hex + ASCII · schreibgeschützt", systemImage: "number")
-                .fastraFont(.small)
-                .foregroundColor(Theme.textSecondary)
-                .padding(.vertical, 5)
+            header
             Divider()
             if model.isLoading && model.data.isEmpty {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -166,9 +169,13 @@ struct HexFileView: View {
                 ScrollView([.vertical, .horizontal]) {
                     LazyVStack(alignment: .leading, spacing: 1) {
                         ForEach(Array(stride(from: 0, to: model.data.count, by: 16)), id: \.self) { row in
-                            Text(hexLine(at: row))
-                                .fastraFont(.mono)
-                                .textSelection(.enabled)
+                            if editingEnabled {
+                                editableRow(at: row)
+                            } else {
+                                Text(hexLine(at: row))
+                                    .fastraFont(.mono)
+                                    .textSelection(.enabled)
+                            }
                         }
                     }
                     .padding(12)
@@ -178,6 +185,70 @@ struct HexFileView: View {
             FilePageNavigation(model: model)
         }
         .background(Theme.surfaceRaised)
+        .alert("Hex-Bearbeitung erlauben?", isPresented: $requestEditingConfirmation) {
+            Button("Abbrechen", role: .cancel) { }
+            Button("Bearbeiten erlauben", role: .destructive) { editingEnabled = true }
+        } message: {
+            Text("Binärdateien können unbrauchbar werden. Fastra schreibt erst nach einer sichtbaren Änderungsvorschau und einer zweiten Bestätigung.")
+        }
+        .sheet(isPresented: $showsChangesPreview) {
+            HexChangesPreview(changes: edits.preview) {
+                showsChangesPreview = false
+                requestSaveConfirmation = true
+            }
+        }
+        .alert("Hex-Änderungen schreiben?", isPresented: $requestSaveConfirmation) {
+            Button("Abbrechen", role: .cancel) { }
+            Button("Änderungen schreiben", role: .destructive) { saveChanges() }
+        } message: {
+            Text("\(edits.preview.count) Byte-Änderungen werden atomar gespeichert. Die Originaldatei wird dabei ersetzt.")
+        }
+        .alert("Speichern fehlgeschlagen", isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
+            Button("OK", role: .cancel) { saveError = nil }
+        } message: { Text(saveError ?? "") }
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            Label(editingEnabled ? "Hex + ASCII · Bearbeitung aktiv" : "Hex + ASCII · schreibgeschützt", systemImage: "number")
+                .fastraFont(.small).foregroundColor(editingEnabled ? Theme.diffRemovedFG : Theme.textSecondary)
+            Spacer()
+            if edits.hasChanges {
+                Text("\(edits.preview.count) Byte geändert")
+                    .fastraFont(.small).foregroundColor(Theme.diffRemovedFG)
+                Button("Vorschau & Speichern…") { showsChangesPreview = true }
+                Button("Verwerfen") { edits.discard() }
+            }
+            Toggle("Bearbeiten erlauben", isOn: Binding(
+                get: { editingEnabled },
+                set: { enabled in
+                    if enabled && !editingEnabled { requestEditingConfirmation = true }
+                    else if !enabled { editingEnabled = false }
+                }
+            ))
+            .toggleStyle(.switch)
+            .fastraFont(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 5)
+    }
+
+    private func editableRow(at row: Int) -> some View {
+        let count = min(16, model.data.count - row)
+        return HStack(spacing: 8) {
+            Text(String(format: "%012llX", model.offset + UInt64(row)))
+                .fastraFont(.monoSmall).foregroundColor(Theme.textSecondary)
+            TextField("", text: Binding(
+                get: { edits.textForRow(data: model.data, baseOffset: model.offset, row: row) },
+                set: { edits.editRow($0, data: model.data, baseOffset: model.offset, row: row) }
+            ))
+            .textFieldStyle(.plain)
+            .fastraFont(.mono)
+            .frame(width: CGFloat(count * 3 * 8))
+            Text("|\(asciiRow(at: row))|")
+                .fastraFont(.mono).foregroundColor(Theme.textSecondary)
+        }
+        .padding(.vertical, 1)
     }
 
     private func hexLine(at row: Int) -> String {
@@ -190,5 +261,51 @@ struct HexFileView: View {
             (32...126).contains(byte) ? Character(UnicodeScalar(byte)) : "."
         })
         return "\(address)  \(hex)  |\(ascii)|"
+    }
+
+    private func asciiRow(at row: Int) -> String {
+        let end = min(row + 16, model.data.count)
+        return String((row..<end).map { index in
+            let offset = model.offset + UInt64(index)
+            let byte = edits.changes[offset]?.newValue ?? model.data[index]
+            return (32...126).contains(byte) ? Character(UnicodeScalar(byte)) : "."
+        })
+    }
+
+    private func saveChanges() {
+        do {
+            try edits.save(to: model.url)
+            model.load(page: model.pageIndex)
+        } catch {
+            saveError = error.localizedDescription
+        }
+    }
+}
+
+/// Zeigt jede geplante Byte-Änderung, bevor die Datei ersetzt wird. So kann
+/// der Nutzer auch bei großen Binärdateien gezielt prüfen, was geschrieben wird.
+private struct HexChangesPreview: View {
+    let changes: [HexByteChange]
+    let confirm: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Hex-Änderungsvorschau").fastraFont(.headline)
+            Text("Erst nach der folgenden Bestätigung schreibt Fastra diese \(changes.count) Bytes.")
+                .fastraFont(.ui).foregroundColor(Theme.textSecondary)
+            List(changes) { change in
+                Text(change.description).fastraFont(.mono)
+            }
+            .frame(minHeight: 180)
+            HStack {
+                Spacer()
+                Button("Abbrechen", role: .cancel) { dismiss() }
+                Button("Weiter zur Bestätigung", action: confirm)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 520, minHeight: 320)
     }
 }

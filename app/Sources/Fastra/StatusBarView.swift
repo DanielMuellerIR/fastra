@@ -161,18 +161,7 @@ struct StatusBarView: View {
     }
 
     private var fileType: String {
-        guard let title = workspace.activeTab?.title else { return "Plain" }
-        if title.hasSuffix(".md")   { return "Markdown" }
-        if title.hasSuffix(".csv")  { return "CSV" }
-        if title.hasSuffix(".json") { return "JSON" }
-        if title.hasSuffix(".html") { return "HTML" }
-        if title.hasSuffix(".swift"){ return "Swift" }
-        if title.hasSuffix(".py")   { return "Python" }
-        if title.hasSuffix(".js")   { return "JavaScript" }
-        if title.hasSuffix(".ts")   { return "TypeScript" }
-        if title.hasSuffix(".rs")   { return "Rust" }
-        if title.hasSuffix(".go")   { return "Go" }
-        return "Plain"
+        DocumentKind.footerLabel(filename: workspace.activeTab?.title ?? "")
     }
 }
 

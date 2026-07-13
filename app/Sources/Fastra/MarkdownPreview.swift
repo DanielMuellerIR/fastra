@@ -267,6 +267,8 @@ struct MarkdownPreviewView: View {
     /// übergeben — der Controller erzeugt die View mit dem konkreten Workspace,
     /// unabhängig davon ob er im SwiftUI-Environment registriert ist.
     @ObservedObject var workspace: Workspace
+    @AppStorage(DocumentZoom.defaultsKey) private var documentZoomLevel = 0
+    @AppStorage(PreviewFonts.defaultsKey) private var previewFontName = PreviewFonts.systemName
 
     var body: some View {
         Group {
@@ -317,6 +319,7 @@ struct MarkdownPreviewView: View {
                 // `Fastra.Theme`, der ein enum ist).
                 Markdown(tab.content)
                     .markdownTheme(.gitHub)
+                    .font(previewFont)
                     // 20 pt Innenabstand auf allen Seiten: Text klebt nicht am Rand.
                     .padding(20)
                     // Volle Breite ausnutzen; Höhe wächst mit dem Inhalt (→ ScrollView).
@@ -325,6 +328,13 @@ struct MarkdownPreviewView: View {
             // Hintergrund auch innerhalb des ScrollViews weiß.
             .background(Theme.surfaceRaised)
         }
+    }
+
+    private var previewFont: Font {
+        let size = 14 * DocumentZoom.scale(for: documentZoomLevel)
+        return previewFontName == PreviewFonts.systemName
+            ? .system(size: size)
+            : .custom(previewFontName, size: size)
     }
 
     /// Platzhalter, wenn der aktive Tab keine Markdown-Datei ist.

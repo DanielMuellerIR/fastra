@@ -43,6 +43,9 @@ struct FloatingSearchDialog: View {
     @State private var replaceFieldController = RegexFieldController()
     @State private var showProjectFileSetEditor = false
     @State private var showExtractionDialog = false
+    @StateObject private var patternLibrary = PatternLibrary()
+    @State private var showPatternEditor = false
+    @State private var showExampleTransformation = false
 
     var body: some View {
         // Maske ist seit v0.5 in einem eigenen NSWindow — kein eigener
@@ -142,6 +145,20 @@ struct FloatingSearchDialog: View {
         .sheet(isPresented: $showExtractionDialog) {
             ExtractionDialog(defaultUseReplacement: !workspace.replacePattern.isEmpty) { options in
                 _ = workspace.extractHits(options: options)
+            }
+        }
+        .sheet(isPresented: $showPatternEditor) {
+            PatternEditorView(library: patternLibrary, onApply: applyTemplate)
+        }
+        .sheet(isPresented: $showExampleTransformation) {
+            ExampleTransformationView { inference in
+                // Die Ableitung nutzt absichtlich den bestehenden Platzhalter-
+                // Modus. So gelten dieselben Capture- und Preview-Regeln wie
+                // bei manuell eingegebenem `*`.
+                workspace.useRegex = false
+                workspace.treatWildcardLiterally = false
+                workspace.findPattern = inference.findPattern
+                workspace.replacePattern = inference.replacePattern
             }
         }
     }
@@ -412,6 +429,16 @@ struct FloatingSearchDialog: View {
                         }
                     }
                 }
+                if !patternLibrary.templates.isEmpty {
+                    Divider()
+                    Section("Eigene Vorlagen") {
+                        ForEach(patternLibrary.templates) { template in
+                            Button(template.name) { applyTemplate(template) }
+                        }
+                    }
+                }
+                Divider()
+                Button("Vorlagen verwalten…") { showPatternEditor = true }
             } label: {
                 HStack {
                     Text(currentTemplateLabel)
@@ -435,13 +462,18 @@ struct FloatingSearchDialog: View {
             }
             .menuStyle(.borderlessButton)
             .help("Fertige Such-Patterns einsetzen — z.B. E-Mail, ISO-Datum, Dateipfad. Auswahl füllt das Suchen-Feld komplett.")
+            Button { showPatternEditor = true } label: {
+                Image(systemName: "slider.horizontal.3")
+            }
+            .buttonStyle(.borderless)
+            .help("Eigene Vorlagen speichern sowie importieren oder exportieren")
         }
     }
 
     private var currentTemplateLabel: String {
         guard
             let id = workspace.selectedTemplateID,
-            let template = BuiltInPatterns.all.first(where: { $0.id == id })
+            let template = (BuiltInPatterns.all + patternLibrary.templates).first(where: { $0.id == id })
         else { return L10n.string("— Vorlage auswählen —") }
         return L10n.string(template.name)
     }
@@ -1444,6 +1476,9 @@ struct FloatingSearchDialog: View {
                     .help("Suchmaske ausblenden. Tastenkürzel: Escape.")
 
                 Spacer()
+
+                Button("Aus Beispiel…") { showExampleTransformation = true }
+                    .help("Leitet aus einem Vorher/Nachher-Beispiel ein Platzhalter-Muster ab.")
 
                 Button("Vorschau der Änderungen") { workspace.livePreview = true }
                     .buttonStyle(.bordered)

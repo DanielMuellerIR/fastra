@@ -152,6 +152,57 @@ enum UIZoom {
     }
 }
 
+/// Vom UI-Zoom unabhängige Größe des Dokumentinhalts. Damit bleiben Menüs
+/// und Seitenleisten lesbar, wenn nur der Quelltext mehr oder weniger Platz
+/// braucht (⇧⌘+/−/0).
+enum DocumentZoom {
+    static let defaultsKey = "editor.documentZoomLevel"
+    static let minimumLevel = -4
+    static let maximumLevel = 8
+    static let step: CGFloat = 0.12
+    static func clamped(_ level: Int) -> Int { min(max(level, minimumLevel), maximumLevel) }
+    static func scale(for level: Int) -> CGFloat { 1 + CGFloat(clamped(level)) * step }
+}
+
+enum EditorFonts {
+    static let defaultsKey = "editor.fontName"
+    static let systemMonospacedName = "SFMono-Regular"
+    static func monospacedNames(current: String) -> [String] {
+        let preferred = [current] + [systemMonospacedName, "Menlo-Regular", "Monaco", "Courier"]
+            .filter { NSFont(name: $0, size: 12)?.isFixedPitch == true }
+        let all = NSFontManager.shared.availableFontFamilies.reduce(into: [String]()) { names, family in
+            for member in NSFontManager.shared.availableMembers(ofFontFamily: family) ?? [] {
+                guard let name = member[0] as? String,
+                      NSFont(name: name, size: 12)?.isFixedPitch == true else { continue }
+                names.append(name)
+            }
+        }.sorted()
+        return orderedUnique(preferred + all)
+    }
+}
+
+enum PreviewFonts {
+    static let defaultsKey = "markdown.previewFontName"
+    static let systemName = ".AppleSystemUIFont"
+    static func readingNames(current: String) -> [String] {
+        let preferred = [current, systemName] + ["NewYork", "Georgia", "Palatino-Roman"]
+            .filter { NSFont(name: $0, size: 12)?.isFixedPitch == false }
+        let all = NSFontManager.shared.availableFontFamilies.reduce(into: [String]()) { names, family in
+            for member in NSFontManager.shared.availableMembers(ofFontFamily: family) ?? [] {
+                guard let name = member[0] as? String,
+                      NSFont(name: name, size: 12)?.isFixedPitch == false else { continue }
+                names.append(name)
+            }
+        }.sorted()
+        return orderedUnique(preferred + all)
+    }
+}
+
+private func orderedUnique(_ names: [String]) -> [String] {
+    var seen = Set<String>()
+    return names.filter { seen.insert($0).inserted }
+}
+
 private struct UIScaleEnvironmentKey: EnvironmentKey {
     static let defaultValue: CGFloat = 1
 }
@@ -251,5 +302,11 @@ extension NSFont {
     static func fastraMonospaced(size: CGFloat, scale: CGFloat,
                                  weight: NSFont.Weight = .regular) -> NSFont {
         .monospacedSystemFont(ofSize: size * scale, weight: weight)
+    }
+
+    static func fastraEditorFont(name: String, size: CGFloat, scale: CGFloat) -> NSFont {
+        let requested = NSFont(name: name, size: size * scale)
+        return (requested?.isFixedPitch == true ? requested : nil)
+            ?? .monospacedSystemFont(ofSize: size * scale, weight: .regular)
     }
 }

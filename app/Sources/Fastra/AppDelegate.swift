@@ -27,6 +27,9 @@ extension Notification.Name {
     /// Menüleisten-„Text"-Operation: `object` = `TextOpKind.rawValue` (Int).
     /// Der AppDelegate wendet sie auf den aktiven Editor an (EditorContextMenu).
     static let fastraTextOp           = Notification.Name("fastra.text.op")
+    /// Menüleisten-Formatierung. Der Editor-Kontext führt sie über seine
+    /// native TextView aus, damit sie mit ⌘Z rückgängig gemacht werden kann.
+    static let fastraFormatDocument   = Notification.Name("fastra.format.document")
 }
 
 /// Autosave-Name unseres Suchfensters. Konstant gehalten an einer
@@ -90,6 +93,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let raw = note.object as? Int,
                   let kind = TextOpKind(rawValue: raw) else { return }
             self?.editorContextMenu.applyToActiveEditor(kind)
+        }
+        NotificationCenter.default.addObserver(
+            forName: .fastraFormatDocument,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.editorContextMenu.formatActiveDocument()
         }
 
         // WICHTIG (Zombie-Find-Bar): CodeEditSourceEditor installiert beim

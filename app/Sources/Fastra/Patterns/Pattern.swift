@@ -31,7 +31,7 @@ public enum PatternCategory: String, CaseIterable, Sendable, Codable {
 /// Die Vorlagen liegen statisch in `BuiltInPatterns.all`. Eigene Vorlagen
 /// (User-defined) sind erst für v1.1+ geplant — die Struktur ist trotzdem
 /// schon vorhanden, damit der Datenfluss von Anfang an einheitlich bleibt.
-public struct PatternTemplate: Identifiable, Hashable, Sendable {
+public struct PatternTemplate: Identifiable, Hashable, Sendable, Codable {
     /// Stabiler Bezeichner (snake_case, intern). Wird **nicht** lokalisiert
     /// und nicht angezeigt. Wichtig für persistente Verweise (z.B. „zuletzt
     /// benutzte Vorlage" im UserDefaults).

@@ -1,6 +1,6 @@
 # Fastra — Projektstand & Wissen (agent-agnostisch)
 
-**Aktuelle Version: v1.14.5** — Details und vollständige Historie in [`CHANGELOG.md`](CHANGELOG.md).
+**Aktuelle Version: v1.15.0** — Details und vollständige Historie in [`CHANGELOG.md`](CHANGELOG.md).
 
 Dieses Dokument hält **nur, was sich nicht aus dem Code ablesen lässt**: Vision,
 Konventionen, Produktprinzipien und Pointer auf die übrigen Wissens-Schichten. Bewusst
@@ -203,26 +203,6 @@ und Regressions-Lehren: [`CLAUDE.md`](CLAUDE.md) → QA-Strategie.)
   durch Bedienung verifizierbar ist, aktiv vorschlagen: *„Bitte teste jetzt X."*
 - **Grenze:** Nicht testen, was die QA-Strategie explizit ausschließt
   (UI-Rendering, OSS-Framework-Interna, DnD-Mausgesten).
-
----
-
-## Ordnerstruktur
-
-```
-fastra/
-├── AGENTS.md            ← Vision, Konventionen, Schichten-Map (diese Datei)
-├── ROADMAP.md           ← v1.0-Funktionsumfang + v1.1+
-├── CLAUDE.md            ← Build · Test · QA
-├── CHANGELOG.md         ← vollständige Versions-Historie
-├── README.md · README.de.md · LICENSE · screenshots/
-├── app/                 ← die App (SwiftPM-Package)
-│   ├── Sources/ · Tests/             ← Swift-Quellcode + Swift-Testing-Suite
-│   ├── build.sh · selftest.sh · release.sh
-│   ├── repos/                        ← Fremd-Framework-Source als Grep-Referenz (gitignored)
-│   ├── dist/                         ← Release-DMGs (gitignored)
-│   └── LESSONS-LEARNED.md            ← Build-Gotchas, Pattern-Bewertungen
-├── build.sh · selftest.sh · release.sh   ← Wrapper auf app/
-```
 
 ---
 

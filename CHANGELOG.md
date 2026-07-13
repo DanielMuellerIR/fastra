@@ -9,6 +9,40 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.15.0] — 2026-07-13
+
+### Hinzugefügt
+
+- Die Vorlagenverwaltung speichert eigene Such- und Ersetzungsvorlagen und
+  importiert oder exportiert sie als JSON. Aus einem Vorher-/Nachher-Beispiel
+  lässt sich zudem ein Platzhalter-Muster ableiten.
+- Markdown-Dokumente erhalten standardmäßig eine integrierte rechte Vorschau;
+  sie folgt der Dokument-Skalierung und bietet eine getrennte Leseschriftwahl.
+- Hex-Dateien bleiben zunächst schreibgeschützt. Ein bewusster Bearbeitungsmodus
+  zeigt vor dem atomaren Speichern alle geänderten Bytes und verlangt eine
+  Bestätigung.
+- ⌘−, ⌘+ und ⌘0 skalieren die Oberfläche dauerhaft; die Varianten mit ⇧
+  skalieren ausschließlich die Dokument-Schrift. JSON und XML lassen sich
+  verlustarm formatieren.
+
+### Verbessert
+
+- Folder-Suchen verwenden das mitgelieferte ripgrep zur Dateiauflistung und
+  behalten bei Fehlern den bisherigen Dateisystem-Fallback bei. Methodik und
+  Messwerte stehen in `docs/ripgrep-benchmark.md`.
+- XML wird beim Öffnen zentral erkannt, im Footer ausgewiesen und erhält die
+  verfügbare strukturbezogene Syntaxhervorhebung. Live-Vorschau, Inline-Diff,
+  dynamische Such-Tokenfarben und stabile persistente Splitter ergänzen die
+  Suche und Vorschau.
+- Einstellungen öffnen ausreichend groß, bleiben verkleinerbar und schließen
+  mit ⌘W ausschließlich ihr eigenes Fenster.
+
+### Qualitätssicherung
+
+- Neue Tests sichern Vorlagen, Dateisuche, Hex-Änderungen, Dokumenttypen,
+  Skalierungen, Splitter und Formatierung. 759 Swift-Tests sowie 24
+  In-App-Selbsttests sind erfolgreich.
+
 ## [v1.14.5] — 2026-07-13
 
 ### Behoben

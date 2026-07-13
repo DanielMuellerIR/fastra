@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Einstellungs-Dialog (⌘,) — Stage B des Umbruch-Features.
 ///
@@ -8,19 +9,8 @@ import SwiftUI
 /// App-Voreinstellungen — bisher war der Umbruch-Default nur über den
 /// versteckten Menüpunkt „Zeilen umbrechen" (⌘⇧L) erreichbar.
 ///
-/// Umfang bewusst klein gehalten (Karpathy: nichts Spekulatives):
-///   - Erscheinungsbild (Dark Mode): automatisch/hell/dunkel — gespeichert
-///     als `AppearanceSetting.rawValue`, sofort app-weit angewendet.
-///   - Umbruch-Default an/aus — derselbe `@AppStorage("editor.wrapLines")` wie
-///     in `EditorView`/`FastraApp`; Änderung wirkt sofort app-weit (CESE
-///     reconcilet die ungleiche Config live).
-///
-/// BEWUSST NICHT enthalten — „Soft-Wrap an fester Spalte N" (+ Spaltenzahl):
-/// CodeEditSourceEditor kennt nur `wrapLines: Bool` (Umbruch am Fensterrand
-/// vs. gar nicht). `reformatAtColumn` ist nur eine visuelle Hilfslinie, KEIN
-/// echter Umbruch. Spaltenbasiertes Soft-Wrap bräuchte tiefe CESE-Chirurgie
-/// (eigene `wrapLinesWidth = Spalte × Zeichenbreite`) → als v1.1-Entscheidung
-/// zurückgestellt (siehe todo.md / _log/decisions.md).
+/// Zusätzlich liegen hier Schriftwahl, die zwei getrennten Skalierungen und
+/// die integrierte Markdown-Vorschau. Alle Werte sind app-weit persistent.
 struct SettingsView: View {
     @Environment(\.uiScale) private var uiScale
     /// App-weiter Umbruch-Default. Gleicher Schlüssel wie EditorView/FastraApp
@@ -32,6 +22,11 @@ struct SettingsView: View {
     /// `AppearanceSetting.current()`, das der AppDelegate beim Start liest.
     @AppStorage(AppearanceSetting.defaultsKey)
     private var appearanceRaw = AppearanceSetting.system.rawValue
+    @AppStorage(UIZoom.defaultsKey) private var uiZoomLevel = 0
+    @AppStorage(DocumentZoom.defaultsKey) private var documentZoomLevel = 0
+    @AppStorage(EditorFonts.defaultsKey) private var editorFontName = EditorFonts.systemMonospacedName
+    @AppStorage("markdown.integratedPreview") private var showMarkdownPreview = true
+    @AppStorage(PreviewFonts.defaultsKey) private var previewFontName = PreviewFonts.systemName
 
     var body: some View {
         Form {
@@ -59,9 +54,35 @@ struct SettingsView: View {
             } header: {
                 Text("Editor")
             }
+
+            Section("Schrift und Größe") {
+                Picker("Dokumentschrift", selection: $editorFontName) {
+                    ForEach(EditorFonts.monospacedNames(current: editorFontName), id: \.self) { name in
+                        Text(name).tag(name)
+                    }
+                }
+                Stepper("Gesamte Oberfläche: \(uiZoomLevel > 0 ? "+" : "")\(uiZoomLevel)", value: $uiZoomLevel, in: UIZoom.minimumLevel...UIZoom.maximumLevel)
+                Stepper("Dokumentschrift: \(documentZoomLevel > 0 ? "+" : "")\(documentZoomLevel)", value: $documentZoomLevel, in: DocumentZoom.minimumLevel...DocumentZoom.maximumLevel)
+                Text("⌘−/⌘+/⌘0 skaliert die Oberfläche. ⇧⌘−/⇧⌘+/⇧⌘0 ändert nur die Dokument-Schrift.")
+                    .fastraFont(.small).foregroundColor(.secondary)
+            }
+
+            Section("Markdown-Vorschau") {
+                Toggle("Bei Markdown rechts anzeigen", isOn: $showMarkdownPreview)
+                Picker("Vorschau-Schrift", selection: $previewFontName) {
+                    ForEach(PreviewFonts.readingNames(current: previewFontName), id: \.self) { name in
+                        Text(name == PreviewFonts.systemName ? "Systemschrift" : name).tag(name)
+                    }
+                }
+                Text("Die Vorschau übernimmt die Dokument-Schriftgröße, nutzt aber bewusst nur proportionale Leseschriften.")
+                    .fastraFont(.small).foregroundColor(.secondary)
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 420 * uiScale, height: 300 * uiScale)
+        .background(SettingsWindowConfiguration(
+            preferredContentSize: NSSize(width: 680 * uiScale, height: 720 * uiScale),
+            minimumContentSize: NSSize(width: 480 * uiScale, height: 380 * uiScale)
+        ))
         // Auswahl sofort app-weit anwenden — alle Fenster (Dokument, Suche,
         // Über, dieser Dialog) wechseln live; die dynamischen Theme-Farben
         // und das Editor-Theme ziehen automatisch mit.

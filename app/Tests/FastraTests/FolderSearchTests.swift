@@ -120,6 +120,19 @@ func find_recursesIntoSubfolders() throws {
     #expect(r.totalMatches == 4)
 }
 
+@Test("Gebündeltes ripgrep liefert auch mehr Ausgaben als ein Pipe-Puffer")
+func ripgrepEnumerationDrainsLargeOutput() throws {
+    let c = try FolderCorpus()
+    // 2.000 absolute Pfade liegen deutlich über einem üblichen 64-KiB-Puffer.
+    // Der Test schützt gegen den früheren Deadlock „Prozess wartet auf Pipe,
+    // Aufrufer wartet auf Prozessende“.
+    for index in 0..<2_000 {
+        try c.write("entry-\(index).txt", "needle", in: "many")
+    }
+    let files = try RipgrepFileEnumerator.files(in: c.root)
+    #expect(files.count == 2_000)
+}
+
 // MARK: - Binär-Schutz
 
 @Test("Binärdateien werden mit Grund .binary übersprungen, NICHT durchsucht")

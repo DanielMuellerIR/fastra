@@ -8,10 +8,6 @@ struct FastraApp: App {
     // UserDefaults-Suite (immer „erster Start" → Demo-Tab vorhanden,
     // echtes Erststart-Flag bleibt unangetastet). Normalbetrieb: .standard.
     @StateObject private var workspace = Workspace(defaults: SelfTest.workspaceDefaults())
-    // Controller des Markdown-Vorschau-Fensters (v0.8). Lebt hier, damit
-    // der Menüpunkt ihn erreicht; @State hält die Instanz über
-    // Re-Render hinweg stabil.
-    @State private var markdownPreview = MarkdownPreviewController()
     // Zeilenumbruch am Fensterrand — app-weite, persistente Einstellung,
     // geteilt mit EditorView über denselben AppStorage-Schlüssel. Default AN.
     @AppStorage("editor.wrapLines") private var wrapLines = true
@@ -21,6 +17,8 @@ struct FastraApp: App {
     // Globale, persistente UI-Zoomstufe. Die eigentliche Weitergabe an alle
     // SwiftUI-/AppKit-Unteransichten erledigt `fastraScalingRoot()`.
     @AppStorage(UIZoom.defaultsKey) private var uiZoomLevel = 0
+    @AppStorage(DocumentZoom.defaultsKey) private var documentZoomLevel = 0
+    @AppStorage("markdown.integratedPreview") private var showMarkdownPreview = true
 
     var body: some Scene {
         // Das Startfenster bleibt eine einzelne `Window`-Scene. So kann SwiftUI
@@ -68,8 +66,7 @@ struct FastraApp: App {
                 .keyboardShortcut("v", modifiers: [.command, .shift])
             }
 
-            // Markdown-Vorschau (ROADMAP H): separates Read-only-Fenster,
-            // folgt dem aktiven Tab. WICHTIG: in das BESTEHENDE System-
+            // Darstellungskommandos in das BESTEHENDE System-
             // „Darstellung"-Menü einhängen (CommandGroup after .sidebar),
             // NICHT als CommandMenu("Darstellung") — das legt ein ZWEITES
             // Menü gleichen Namens daneben (Befund Screenshot 2026-06-11).
@@ -89,6 +86,13 @@ struct FastraApp: App {
                     .keyboardShortcut("0", modifiers: .command)
                     .disabled(uiZoomLevel == 0)
                 Divider()
+                Button("Dokumentschrift vergrößern") { documentZoomLevel = DocumentZoom.clamped(documentZoomLevel + 1) }
+                    .keyboardShortcut("+", modifiers: [.command, .shift])
+                Button("Dokumentschrift verkleinern") { documentZoomLevel = DocumentZoom.clamped(documentZoomLevel - 1) }
+                    .keyboardShortcut("-", modifiers: [.command, .shift])
+                Button("Dokumentschrift: Originalgröße") { documentZoomLevel = 0 }
+                    .keyboardShortcut("0", modifiers: [.command, .shift])
+                Divider()
                 // Zeilenumbruch am Fensterrand (BBEdit „Soft Wrap Text").
                 // Toggle in den Commands → checkbarer Menüpunkt im „Darstellung".
                 Toggle("Zeilen umbrechen", isOn: $wrapLines)
@@ -96,9 +100,7 @@ struct FastraApp: App {
                 // Rechter Vorschau-Streifen (Minimap). Default AUS — verdeckte
                 // rechts Text und stand im Freeze-Verdacht (Daniel 2026-07-12).
                 Toggle("Minimap anzeigen", isOn: $showMinimap)
-                Button("Markdown-Vorschau ein-/ausblenden") {
-                    markdownPreview.toggle(for: commandWorkspace)
-                }
+                Toggle("Markdown-Vorschau rechts anzeigen", isOn: $showMarkdownPreview)
                 .keyboardShortcut("m", modifiers: [.command, .shift])
             }
 
@@ -179,6 +181,10 @@ struct FastraApp: App {
             // den aktiven Editor an (gleiche Logik wie das Rechtsklick-Submenü).
             // Operieren auf der Selektion bzw. — ohne Selektion — der ganzen Datei.
             CommandMenu("Text") {
+                Button("Dokument formatieren") { postDocumentFormatting() }
+                    .disabled(!DocumentFormatter.supports(fileExtension: commandWorkspace.activeTab?.url?.pathExtension
+                        ?? (commandWorkspace.activeTab?.title as NSString?)?.pathExtension))
+                Divider()
                 Button(TextOpKind.uppercase.title)  { postTextOp(.uppercase) }
                 Button(TextOpKind.lowercase.title)  { postTextOp(.lowercase) }
                 Button(TextOpKind.titlecase.title)  { postTextOp(.titlecase) }
@@ -272,6 +278,10 @@ struct FastraApp: App {
     /// Notification kommt (siehe `.fastraTextOp`).
     private func postTextOp(_ kind: TextOpKind) {
         NotificationCenter.default.post(name: .fastraTextOp, object: kind.rawValue)
+    }
+
+    private func postDocumentFormatting() {
+        NotificationCenter.default.post(name: .fastraFormatDocument, object: nil)
     }
 }
 

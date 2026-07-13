@@ -32,6 +32,7 @@ struct EditorView: View {
     /// zwischen den Zieh-Vorgängen. Nötig, weil `DragGesture.translation`
     /// den Gesamt-Versatz seit Zieh-Beginn liefert (kein Einzel-Delta).
     @State private var sidebarDragStart: Double?
+    @State private var previewDragStart: Double?
     /// Aktueller Seitenleisten-Modus (Dateien / Änderungen / Graph). Nur bei
     /// Git-Repo umschaltbar; ohne Repo immer „Dateien".
     @State private var sidebarMode: SidebarMode = .files
@@ -50,6 +51,10 @@ struct EditorView: View {
     /// Minimap-Layout-Pfad die Editor-Darstellung einfrieren zu lassen. Wie
     /// `wrapLines` reconciled CESE die Änderung live (`peripherals.showMinimap`).
     @AppStorage("editor.showMinimap") private var showMinimap = false
+    @AppStorage(DocumentZoom.defaultsKey) private var documentZoomLevel = 0
+    @AppStorage(EditorFonts.defaultsKey) private var editorFontName = EditorFonts.systemMonospacedName
+    @AppStorage("markdown.integratedPreview") private var showMarkdownPreview = true
+    @AppStorage("markdown.previewWidth") private var markdownPreviewWidth = 420.0
 
     /// Breite der linken Seitenleiste (Dateibaum/„GEÖFFNET"). App-weit und
     /// persistent; über den Splitter zwischen Seitenleiste und Editor ziehbar
@@ -88,6 +93,12 @@ struct EditorView: View {
                 // `.clipped()` begrenzt die Editor-Darstellung hart auf ihren
                 // eigenen Rahmen, der bereits unter der Tab-Leiste liegt.
                 .clipped()
+            if showsIntegratedMarkdownPreview {
+                markdownSplitter
+                MarkdownPreviewView(workspace: workspace)
+                    .frame(width: min(max(CGFloat(markdownPreviewWidth), 260), 760))
+                    .clipped()
+            }
         }
         // Datei(en) in den Editor ziehen → in Tabs laden. Akzeptiert
         // ausschließlich Datei-URLs; die Filterung (reguläre Dateien,
@@ -106,6 +117,31 @@ struct EditorView: View {
                 .opacity(isDropTargeted ? 1 : 0)
                 .allowsHitTesting(false)
                 .animation(.easeOut(duration: 0.12), value: isDropTargeted)
+        )
+    }
+
+    private var showsIntegratedMarkdownPreview: Bool {
+        guard showMarkdownPreview, let tab = workspace.activeTab else { return false }
+        let name = tab.title.lowercased()
+        return name.hasSuffix(".md") || name.hasSuffix(".markdown")
+    }
+
+    private var markdownSplitter: some View {
+        Divider().opacity(0.3).overlay(
+            Color.clear.frame(width: 8).contentShape(Rectangle())
+                .onHover { hovering in
+                    if hovering { NSCursor.resizeLeftRight.push() }
+                    else { NSCursor.pop() }
+                }
+                .gesture(DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let start = previewDragStart ?? markdownPreviewWidth
+                        if previewDragStart == nil { previewDragStart = start }
+                        markdownPreviewWidth = SplitterSizing.width(start: start,
+                                                                      translation: Double(value.translation.width),
+                                                                      direction: -1, minimum: 260, maximum: 760)
+                    }
+                    .onEnded { _ in previewDragStart = nil })
         )
     }
 
@@ -507,7 +543,8 @@ struct EditorView: View {
         .init(
             appearance: .init(
                 theme: colorScheme == .dark ? Self.fastraThemeDark : Self.fastraTheme,
-                font: .fastraMonospaced(size: 13, scale: uiScale),
+                font: .fastraEditorFont(name: editorFontName, size: 13,
+                                        scale: DocumentZoom.scale(for: documentZoomLevel)),
                 wrapLines: wrapLines,
                 tabWidth: 4
             ),
@@ -558,10 +595,18 @@ struct EditorView: View {
 
     private var detectedLanguage: CodeLanguage {
         if let url = workspace.activeTab?.url {
+            if ["xml", "xsd", "xsl", "xslt", "plist"].contains(url.pathExtension.lowercased()) {
+                // CodeEditLanguages bündelt keine separate XML-Grammatik.
+                // Die HTML-Grammatik zeichnet Tags, Attribute und Strings
+                // jedoch verlustfrei auch für XML und ist der passende
+                // robuste Syntax-Fallback für Finder-geöffnete XML-Dateien.
+                return .html
+            }
             return CodeLanguage.detectLanguageFrom(url: url)
         }
         // Ohne URL: Sprache aus der angezeigten Dateiendung des Tabs raten.
         if let title = workspace.activeTab?.title {
+            if DocumentKind.isXML(filename: title) { return .html }
             let fakeURL = URL(fileURLWithPath: title)
             return CodeLanguage.detectLanguageFrom(url: fakeURL)
         }
@@ -592,10 +637,12 @@ struct EditorView: View {
                                 // Startbreite beim ersten Änderungs-Event merken.
                                 let start = sidebarDragStart ?? sidebarWidth
                                 if sidebarDragStart == nil { sidebarDragStart = start }
-                                let proposed = start + Double(value.translation.width)
                                 // Auf den erlaubten Bereich klemmen.
-                                sidebarWidth = min(max(proposed, Double(sidebarMinWidth)),
-                                                   Double(sidebarMaxWidth))
+                                sidebarWidth = SplitterSizing.width(start: start,
+                                                                     translation: Double(value.translation.width),
+                                                                     direction: 1,
+                                                                     minimum: Double(sidebarMinWidth),
+                                                                     maximum: Double(sidebarMaxWidth))
                             }
                             .onEnded { _ in sidebarDragStart = nil }
                     )

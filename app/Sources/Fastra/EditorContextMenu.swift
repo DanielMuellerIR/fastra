@@ -173,6 +173,15 @@ final class EditorContextMenu: NSObject {
         dedupe.target = self
         dedupe.toolTip = L10n.string("Entfernt doppelte Zeilen — das erste Vorkommen bleibt stehen. Ohne Auswahl: die ganze Datei.")
 
+        let format = NSMenuItem(title: L10n.string("Dokument formatieren"),
+                                action: #selector(formatDocument(_:)),
+                                keyEquivalent: "")
+        format.target = self
+        format.toolTip = L10n.string("Formatiert JSON oder XML. Eine Auswahl wird einzeln formatiert.")
+        let filename = Workspace.shared?.activeTab?.url?.pathExtension
+            ?? (Workspace.shared?.activeTab?.title as NSString?)?.pathExtension
+        format.isEnabled = DocumentFormatter.supports(fileExtension: filename)
+
         // „Text"-Submenü mit den BBEdit-Basics (TextOperations). Tag trägt die
         // TextOpKind; ein gemeinsamer Handler liest ihn. Gruppen durch Trenner.
         let textItem = NSMenuItem(title: L10n.string("Text"), action: nil, keyEquivalent: "")
@@ -194,7 +203,7 @@ final class EditorContextMenu: NSObject {
             .separator(),
             smartPaste,
             .separator(),
-            sort, dedupe,
+            sort, dedupe, format,
             .separator(),
             textItem,
         ]
@@ -220,6 +229,37 @@ final class EditorContextMenu: NSObject {
         guard let kind = TextOpKind(rawValue: sender.tag),
               let textView = targetTextView else { NSSound.beep(); return }
         apply(kind, on: textView)
+    }
+
+    /// Ersetzt über die native TextView statt über das SwiftUI-Binding. Damit
+    /// bleibt die Formatierung eine einzelne Undo-Aktion und die Auswahl gilt
+    /// genau für den vom Nutzer markierten Bereich.
+    @objc private func formatDocument(_ sender: Any?) {
+        guard let textView = targetTextView else { NSSound.beep(); return }
+        format(on: textView)
+    }
+
+    private func format(on textView: TextView) {
+        guard let tab = Workspace.shared?.activeTab else { NSSound.beep(); return }
+        let fileExtension = tab.url?.pathExtension ?? (tab.title as NSString).pathExtension
+        do {
+            guard let result = try DocumentFormatter.format(in: textView.string,
+                                                            selection: textView.selectedRange(),
+                                                            fileExtension: fileExtension) else {
+                NSSound.beep()
+                return
+            }
+            textView.replaceCharacters(in: result.affectedRange, with: result.replacement)
+        } catch {
+            NSAlert.runWarning(title: L10n.string("Formatieren fehlgeschlagen"),
+                               text: error.localizedDescription)
+        }
+    }
+
+    /// Menüleisten-Pfad für „Text → Dokument formatieren“.
+    func formatActiveDocument() {
+        guard let textView = activeEditorTextView() else { NSSound.beep(); return }
+        format(on: textView)
     }
 
     /// Wendet eine Text-Operation auf den AKTIVEN Editor an (Aufruf aus der

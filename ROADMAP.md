@@ -1,19 +1,29 @@
 # Fastra — Roadmap
 
-> **Funktionsumfang v1.0** (was die App können *muss*) + zurückgestellte **v1.1+**-Themen.
 > Schichtenmodell: Roadmap lebt hier, nicht in [AGENTS.md](AGENTS.md).
 
-## Funktionsumfang v1.0
+## Jetzt
+
+Keine offenen Ausbauarbeiten.
+
+## Später – nur auf ausdrückliche Anfrage
+
+- Cross-Platform-Portabilität (Windows/Linux). Weder Machbarkeit noch
+  Implementierung werden ohne ausdrücklichen Auftrag untersucht.
+
+## Erledigt
+
+### Funktionsumfang v1.0
 
 Was die App können muss, um v1.0 zu sein. Die Reihenfolge folgt der Roadmap, nicht der Wichtigkeit.
 
 - **A. Floating Search Dialog** — schwebender Such/Ersetzen-Dialog statt starrer Sidebar. Scope-Tabs (Datei / Geöffnet / Ordner / Projekt) als Segmented Control. Find- und Replace-Felder voll breit, Monospace, kein Wrap. Trefferbaum mit Zählern direkt im Dialog. **Such-Optionen** als schmale Toggle-Zeile unter dem Find-Feld: `RegEx` (Default aus — siehe Konzept B.5), `Groß-/Kleinschreibung`, `Ganzes Wort`, `Wrap-around`. Jeder Toggle mit Tooltip-Erklärung. Wenn `RegEx` aus ist, sind Token-Highlighting, Element-Picker und Vorlagen-Dropdown deaktiviert (nicht versteckt).
-- **B. Drag & Drop von Capture Groups** — Kernmechanik: Gruppen aus dem Find-Feld lassen sich per Drag & Drop ins Replace-Feld ziehen, dort als `$1`, `$2` … eingefügt. Auto-Erkennung von `(...)`. Anspruch ist **einfache Benutzerführung**, nicht visuelle Effekthascherei. Visualisierung der Gruppen (Inline-Spans vs. Tray vs. hybrid) ist eine offene Designentscheidung, hängt am Suchmasken-Konzept.
-- **C. Token-Highlighting im Find-Feld** — RegEx-Bestandteile werden als farbige Inline-Tokens dargestellt: Anker rötlich, Zeichenklassen bläulich, Quantifier ocker, Literale Standard. Parsing via `tree-sitter-regex`.
+- **B. Drag & Drop von Capture Groups** — Kernmechanik: Gruppen aus dem Find-Feld lassen sich per Drag & Drop ins Replace-Feld ziehen, dort als `$1`, `$2` … eingefügt. Auto-Erkennung von `(...)`; die Hybrid-Darstellung führt die Gruppen sichtbar. ✓
+- **C. Token-Highlighting im Find-Feld** — RegEx-Bestandteile werden als farbige Inline-Tokens dargestellt: Anker rötlich, Zeichenklassen bläulich, Quantifier ocker, Literale Standard. Parsing via `tree-sitter-regex`. ✓
 - **D. Diff & Preview** — seit v1.11.0 vollständiger Dokument-Diff in zwei
   synchron ausgerichteten Panels (Vorher/Nachher, rot/grün, Zeilennummern),
   einschließlich mehrzeiliger Ersetzungen und begrenzter Darstellung sehr
-  großer Diffs. Inline-Diff am Ort der Änderung bleibt eine Ausbaustufe. ✓
+  großer Diffs sowie kompakter Live-Zeilen am jeweiligen Treffer. ✓
 - **E. Performance & große Dateien** — Asynchrones Laden ohne UI-Block; seit
   v1.10.0 öffnen Textdateien über 32 MiB in einer speicherbegrenzten,
   schreibgeschützten 256-KiB-Abschnittsansicht. Folder-Suche läuft in
@@ -36,7 +46,7 @@ Was die App können muss, um v1.0 zu sein. Die Reihenfolge folgt der Roadmap, ni
 
 ---
 
-## Projekt- & Git-Ausbau (beschlossen 2026-07-11, nächste große Etappe)
+### Projekt- & Git-Ausbau (beschlossen 2026-07-11, nächste große Etappe)
 
 Fastra bekommt Projekt-Bewusstsein und Git-Sichtbarkeit — ohne zum VS-Code-Klon zu
 werden. Leitfrage für jedes Teilfeature: „Braucht man das täglich, und können wir es
@@ -100,12 +110,11 @@ im Tooltip, Commits sind aufklappbar und Datei-Doppelklicks öffnen ihren Diff.
 **Release-Gate:** Diese Etappen sind eine größere Änderung — **keine GitHub-Pushes,
 bis alles ordentlich getestet ist** (Daniel, 2026-07-11). Commits + internes Backup
 laufen normal weiter. (Der frühere technische ghosttext-Blocker ist seit v1.6.1,
-Commit `8656f56`, behoben + per Selbsttest `ghosttext` abgesichert — offen bleibt nur
-die bewusste Release-Abnahme, kein Bug mehr.)
+Commit `8656f56`, behoben + per Selbsttest `ghosttext` abgesichert; kein Bug mehr.)
 
 ---
 
-## Globale UI-Skalierung (umgesetzt in v1.8.0, 2026-07-12)
+### Globale UI-Skalierung (umgesetzt in v1.8.0, 2026-07-12)
 
 - **Globale UI-Skalierung ⌘ +/− / ⌘0:** Schrift, native Controls und die
   zentralen Leisten-/Feldhöhen skalieren über eine persistente Zoomstufe.
@@ -114,7 +123,7 @@ die bewusste Release-Abnahme, kein Bug mehr.)
 
 ---
 
-## Editor-Ausbau (umgesetzt in v1.10.0, 2026-07-12)
+### Editor-Ausbau (umgesetzt in v1.10.0, 2026-07-12)
 
 - Native Hex+ASCII-Ansicht mit automatischer Binärerkennung. ✓
 - Rectangle Selection per ALT-Spalten-Drag; CodeEditTextView stellt inzwischen
@@ -123,7 +132,7 @@ die bewusste Release-Abnahme, kein Bug mehr.)
   `backgroundColor` des Frameworks. ✓
 - Speicherbegrenztes, abschnittsweises Lesen großer Textdateien. ✓
 
-## Suche, Vorschau & Projekt-Scope (umgesetzt in v1.11.0, 2026-07-12)
+### Suche, Vorschau & Projekt-Scope (umgesetzt in v1.11.0, 2026-07-12)
 
 - Vollständiger Side-by-side-Dokument-Diff mit ausgerichteten Einfügungen,
   Löschungen und unveränderten Kontextzeilen. ✓
@@ -132,7 +141,7 @@ die bewusste Release-Abnahme, kein Bug mehr.)
 - Projekt-Scope mit pro Projekt persistenten Datei-Sets, Dateitypfilter und
   projekt-relativen Glob-Ausschlüssen. Überlappende Wurzeln werden dedupliziert. ✓
 
-## Englische Lokalisierung (umgesetzt in v1.12.0, 2026-07-12)
+### Englische Lokalisierung (umgesetzt in v1.12.0, 2026-07-12)
 
 - Vollständige englische Oberfläche zusätzlich zum deutschen Quelltext:
   SwiftUI, AppKit-Dialoge, Menüs, Tooltips, Statusmeldungen, Vorlagen,
@@ -141,15 +150,18 @@ die bewusste Release-Abnahme, kein Bug mehr.)
 - Ein Quellstring-Audit, Unit-Tests und der gepackte In-App-Selbsttest
   `localization` verhindern fehlende Schlüssel und Bundle-Drift. ✓
 
-## v1.1+ (noch offen)
-- **Vorlagen-Editor** — eigene Patterns speichern, Import/Export.
-- Inline-Diff am Ort der Änderung (L5-Layout).
-- `ripgrep`-Bundle für ultraschnelle Folder-Suche.
-- Live-Preview während des Tippens (falls Diff-Vorschau überhaupt erhalten bleibt).
-- Eigenes Akzentfarben-Token-System (statt System-Accent).
-- Hex-Editor mit Edit-Modus (HexFiend kann es, v1.0 read-only).
-- Dark Mode polishing.
-- Cross-Platform-Portabilität (Windows/Linux) — **Machbarkeit zu prüfen**.
-- **Find-Panel-Rest-Aufblitzen endgültig beseitigen** (Daniel, 2026-05-27): Bei sehr schnellem CMD+F-Hämmern blitzt CodeEditSourceEditors Find-Panel gelegentlich noch kurz auf, bevor die Reconciliation es schließt (siehe [CLAUDE.md](CLAUDE.md) → QA-Strategie). Aktueller Stand reicht für jetzt. Komplett flackerfrei vermutlich nur, indem der Editor-eigene CMD+F-Monitor an der Quelle neutralisiert wird (kostet dann ggf. CMD+/, CMD+[ /], Tab-Indent — Abwägung). Nach v1.0 angehen.
+### Ausbau v1.15 (erledigt 2026-07-13)
 
-- **Transformation per Beispiel** (Ausbaustufe des Platzhalter-Verhaltens, Funktionsumfang J): Nutzer gibt `ring, The` → `The ring` als Beispielpaar ein, das Programm leitet das Muster selbst ab (wie Excel-Blitzvorschau). Mächtig, aber deutlich aufwändiger und fehleranfälliger als das `*`-Platzhalter-Verhalten. Vision, nicht v1.0.
+- Vorlagen-Editor: eigene Patterns speichern, importieren und exportieren. ✓
+- Transformation per Beispiel leitet ein Platzhalter-Muster aus Vorher/Nachher ab. ✓
+- Live-Vorschau und kompakter Inline-Diff aktualisieren beim Tippen. ✓
+- Eigene dynamische Token-Farben für helles und dunkles Erscheinungsbild. ✓
+- Gebündeltes ripgrep für die Folder-Dateiermittlung, mit Semantik-Fallback;
+  reproduzierbare Messung unter [`docs/ripgrep-benchmark.md`](docs/ripgrep-benchmark.md). ✓
+- Hex-Ansicht standardmäßig schreibgeschützt, mit sichtbarer Byte-Vorschau,
+  doppelter Bestätigung und atomarem Edit-Modus. ✓
+- Getrennte persistente UI- und Dokument-Skalierung, Monospace-Editorfont und
+  proportionaler Markdown-Vorschau-Font. ✓
+- Integrierte Markdown-Vorschau rechts mit persistentem Splitter. ✓
+- XML-Erkennung für Finder-Dateien, Footer und Syntax-Fallback. ✓
+- JSON- und XML-Formatierung mit Auswahl, No-op, Fehlerpfad und Undo. ✓
