@@ -107,10 +107,12 @@ func stats_format() {
 
 // MARK: - FooterLogic.searchSummary
 
-@Test("Willkommen-Tab zeigt keinen irreführenden Suchstatus")
-func welcomeTab_hidesSearchSummary() {
-    #expect(!FooterLogic.shouldShowSearchSummary(isWelcomeScreen: true))
-    #expect(FooterLogic.shouldShowSearchSummary(isWelcomeScreen: false))
+@Test("Leerer Suchausdruck zeigt keinen irreführenden Suchstatus")
+func emptySearch_hidesSearchSummary() {
+    #expect(!FooterLogic.shouldShowSearchSummary(isWelcomeScreen: true, findPattern: "Treffer"))
+    #expect(!FooterLogic.shouldShowSearchSummary(isWelcomeScreen: false, findPattern: ""))
+    #expect(!FooterLogic.shouldShowSearchSummary(isWelcomeScreen: false, findPattern: "  \n"))
+    #expect(FooterLogic.shouldShowSearchSummary(isWelcomeScreen: false, findPattern: "Treffer"))
 }
 
 @Test("Datei-Scope mit Treffern: Text zeigt Anzahl, Label ist Datei")

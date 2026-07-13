@@ -42,7 +42,8 @@ struct StatusBarView: View {
             }
             Spacer()
             HStack(spacing: 12) {
-                if FooterLogic.shouldShowSearchSummary(isWelcomeScreen: workspace.isWelcomeScreen) {
+                if FooterLogic.shouldShowSearchSummary(isWelcomeScreen: workspace.isWelcomeScreen,
+                                                       findPattern: workspace.findPattern) {
                     HStack(spacing: 4) {
                         // accentReadable statt accent: 7 px Indikator-Kreis
                         // auf hellem Hintergrund braucht ~4:1 Kontrast;
@@ -57,7 +58,8 @@ struct StatusBarView: View {
                     .fastraFont(size: 11, design: .monospaced)
                     .foregroundColor(Theme.textSecondary.opacity(0.7))
                 // Scope-Label (Datei / Ordner) aus den echten Workspace-Daten.
-                if FooterLogic.shouldShowSearchSummary(isWelcomeScreen: workspace.isWelcomeScreen) {
+                if FooterLogic.shouldShowSearchSummary(isWelcomeScreen: workspace.isWelcomeScreen,
+                                                       findPattern: workspace.findPattern) {
                     Text(footerSummary.label)
                         .fastraFont(.small)
                         .foregroundColor(Theme.textSecondary)

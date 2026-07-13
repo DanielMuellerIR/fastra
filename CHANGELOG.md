@@ -9,6 +9,13 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.14.5] — 2026-07-13
+
+### Behoben
+
+- Der Footer zeigt in geöffneten Dokumenten keinen Trefferstatus, solange
+  noch kein Suchausdruck eingegeben wurde.
+
 ## [v1.14.4] — 2026-07-13
 
 ### Verbessert
