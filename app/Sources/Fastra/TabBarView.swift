@@ -1,36 +1,152 @@
 import SwiftUI
 
+/// Einzeiliger Fenster-Chrome nach dem Muster der Codex-Desktop-App.
+///
+/// Die obere Zeile liegt im vollflächigen Inhaltsbereich an Stelle einer
+/// sichtbaren macOS-Titelleiste: Ampelknöpfe und Bereichsschalter bleiben
+/// nativ, die Tabs sitzen daneben als kompakte, abgerundete Controls. Der
+/// Markenblock gehört zur Seitenleiste unterhalb dieser Zeile.
 struct TabBarView: View {
     @EnvironmentObject var workspace: Workspace
     @Environment(\.uiScale) private var uiScale
 
+    @AppStorage("editor.sidebarVisible") private var showSidebar = true
+    @AppStorage("editor.sidebarWidth") private var sidebarWidth = 200.0
+    @AppStorage("markdown.integratedPreview") private var showPreview = true
+
+    private let sidebarMinWidth = 140.0
+    private let sidebarMaxWidth = 480.0
+    private let dividerWidth: CGFloat = 11
+
+    private var effectiveSidebarWidth: CGFloat {
+        CGFloat(min(max(sidebarWidth, sidebarMinWidth), sidebarMaxWidth))
+    }
+
     var body: some View {
+        titlebarControls
+            .frame(height: 38 * uiScale)
+            // Header-Hintergründe dienen zugleich als greifbare Fläche zum
+            // Verschieben des Fensters (`isMovableByWindowBackground`).
+            .background(Theme.surfaceRaised)
+            .focusEffectDisabled()
+    }
+
+    private var titlebarControls: some View {
+        HStack(spacing: 0) {
+            titlebarLeadingControls
+
+            if showSidebar {
+                chromeDivider
+            }
+
+            tabs
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            previewToggle
+                .padding(.trailing, 8)
+        }
+        .background(Theme.surfaceRaised)
+    }
+
+    /// Links bleiben die ersten rund 120 Punkte für die echten Ampelknöpfe
+    /// frei. Der Schalter sitzt am rechten Rand dieses Bereichs wie in Codex.
+    /// Ohne Seitenleiste bleibt ein kompakter Vorlauf, damit Tabs nie unter
+    /// den Ampeln liegen und der Einblende-Schalter weiterhin erreichbar ist.
+    private var titlebarLeadingControls: some View {
+        HStack(spacing: 0) {
+            Spacer(minLength: 120)
+            Button { showSidebar.toggle() } label: {
+                titlebarIcon("sidebar.left", active: !showSidebar)
+            }
+            .buttonStyle(.plain)
+            .help(showSidebar ? "Seitenleiste ausblenden" : "Seitenleiste einblenden")
+            .padding(.trailing, 8)
+        }
+        .frame(width: showSidebar ? effectiveSidebarWidth : 180)
+        .frame(maxHeight: .infinity)
+        .background(showSidebar ? Theme.surfaceBase : Theme.surfaceRaised)
+    }
+
+    /// Rechter Schalter für die integrierte Markdown-Vorschau. Bei normalen
+    /// Textdateien bleibt er an Ort und Stelle, ist aber deaktiviert.
+    private var previewToggle: some View {
+        Button {
+            guard activeTabIsMarkdown else { return }
+            showPreview.toggle()
+        } label: {
+            titlebarIcon("sidebar.right", active: activeTabIsMarkdown && showPreview)
+                .foregroundColor(activeTabIsMarkdown && showPreview
+                                 ? Theme.accentReadable : Theme.textSecondary)
+        }
+        .buttonStyle(.plain)
+        .disabled(!activeTabIsMarkdown)
+        .help(showPreview
+              ? "Markdown-Vorschau ausblenden"
+              : "Markdown-Vorschau einblenden")
+    }
+
+    private var activeTabIsMarkdown: Bool {
+        guard let title = workspace.activeTab?.title.lowercased() else { return false }
+        return title.hasSuffix(".md") || title.hasSuffix(".markdown")
+    }
+
+    private func titlebarIcon(_ systemName: String, active: Bool) -> some View {
+        Image(systemName: systemName)
+            .fastraFont(size: 14, weight: .medium)
+            .frame(width: 30, height: 26)
+            .foregroundColor(Theme.textSecondary)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(active ? Theme.surfaceSand : Color.clear)
+            )
+    }
+
+}
+
+/// Markenblock am Kopf der sichtbaren Seitenleiste. Liegt absichtlich in
+/// `EditorView`, damit rechts daneben kein leerer zweiter Header entsteht.
+struct SidebarBrandView: View {
+    var body: some View {
+        HStack(alignment: .center, spacing: 7) {
+            Text("Fastra")
+                .fastraFont(size: 22, weight: .semibold)
+                .foregroundColor(Theme.textPrimary)
+                .lineLimit(1)
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(verbatim: "v\(AppInfo.version)")
+                Text(verbatim: AppInfo.versionDate)
+            }
+            .fastraFont(size: 8, weight: .medium)
+            .foregroundColor(Theme.textSecondary)
+            .lineLimit(1)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(Theme.surfaceBase)
+    }
+}
+
+private extension TabBarView {
+    private var tabs: some View {
         HStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 1) {
+                HStack(spacing: 6) {
                     ForEach(workspace.tabs) { tab in
-                        TabPill(tab: tab,
-                                // Der Willkommen-Tab heißt in der Leiste
-                                // „Willkommen" (per-Tab, nicht global): steht ein
-                                // zweiter Editor-Tab daneben, behält NUR der
-                                // Willkommen-Tab diese Beschriftung.
-                                displayTitle: tab.isWelcome ? L10n.string("Willkommen") : tab.title,
-                                isActive: tab.id == workspace.activeTabID,
-                                canCloseOthers: workspace.tabs.count > 1) {
-                            // Klick wechselt nur den aktiven Tab. Ist es der
-                            // Willkommen-Tab, bleibt die Willkommensseite; jeder
-                            // andere Tab zeigt den Editor.
-                            workspace.activeTabID = tab.id
-                        } onClose: {
-                            // Zentrale Schließen-Logik inkl. BBEdit-Rückfrage bei
-                            // ungespeicherten Änderungen (statt direktem Entfernen).
-                            workspace.closeTab(id: tab.id)
-                        } onCloseOthers: {
-                            workspace.closeOtherTabs(keeping: tab.id)
-                        }
+                        TabPill(
+                            tab: tab,
+                            displayTitle: tab.isWelcome ? L10n.string("Willkommen") : tab.title,
+                            isActive: tab.id == workspace.activeTabID,
+                            canCloseOthers: workspace.tabs.count > 1,
+                            onSelect: { workspace.activeTabID = tab.id },
+                            onClose: { workspace.closeTab(id: tab.id) },
+                            onCloseOthers: { workspace.closeOtherTabs(keeping: tab.id) }
+                        )
                     }
                 }
-                .padding(.horizontal, 6)
+                .padding(.horizontal, 10)
             }
 
             Button(action: workspace.openNewTab) {
@@ -41,21 +157,23 @@ struct TabBarView: View {
             }
             .buttonStyle(.plain)
             .help("Neuer Tab (⌘T)")
-            .padding(.horizontal, 6)
+            .padding(.trailing, 8)
         }
-        .background(Theme.surfaceSand.opacity(0.7))
-        // Kein macOS-Fokusrahmen auf der Tab-Leiste: die Tabs/Buttons sind
-        // anklickbare Controls, sollen aber keinen blauen Fokus-Ring zeigen,
-        // wenn sie den Tastatur-Fokus bekommen (z.B. der Start-Tab des leeren
-        // Dokuments). Gilt für den gesamten Leisten-Teilbaum.
-        .focusEffectDisabled()
+    }
+
+    /// Elf Punkte breit wie der echte Splitter unterhalb des Headers. Nur die
+    /// mittige Ein-Punkt-Linie ist sichtbar; dadurch fluchten beide Bereiche.
+    private var chromeDivider: some View {
+        ZStack {
+            Theme.surfaceRaised
+            Rectangle().fill(Theme.strokeStrong).frame(width: 1)
+        }
+        .frame(width: dividerWidth)
     }
 }
 
 private struct TabPill: View {
     let tab: EditorTab
-    /// Anzuzeigende Beschriftung. Normalerweise `tab.title`; im Willkommen-
-    /// Zustand vom Aufrufer auf „Willkommen" gesetzt.
     let displayTitle: String
     let isActive: Bool
     let canCloseOthers: Bool
@@ -68,61 +186,57 @@ private struct TabPill: View {
 
     var body: some View {
         Button(action: onSelect) {
-            HStack(spacing: 8) {
-                // Ladeanimation statt Datei-Icon während isLoading = true.
-                // Sobald isLoading auf false kippt, erscheint das normale Icon.
+            HStack(spacing: 7) {
                 if tab.isLoading {
                     ProgressView()
                         .controlSize(.small)
                         .frame(width: 11 * uiScale, height: 11 * uiScale)
                 } else {
-                    Image(systemName: "doc.text")
+                    Image(systemName: tab.isWelcome ? "sparkles" : "doc.text")
                         .fastraFont(size: 11)
                         .foregroundColor(Theme.textSecondary)
                 }
+
                 Text(displayTitle)
                     .fastraFont(.small)
                     .lineLimit(1)
                     .foregroundColor(isActive ? Theme.textPrimary : Theme.textSecondary)
-                // Treffer-Badge nur anzeigen, wenn die Datei vollständig geladen ist
-                // — während isLoading sind die Treffer noch nicht berechnet.
+
                 if !tab.isLoading, tab.hits > 0 {
                     Text("\(tab.hits)")
                         .fastraFont(size: 10, weight: .semibold, design: .monospaced)
-                        .foregroundColor(isActive ? Theme.textPrimary : Theme.textSecondary)
+                        .foregroundColor(Theme.textSecondary)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
-                        .background(Capsule().fill(Theme.surfaceSand))
+                        .background(Capsule().fill(Theme.surfaceRaised))
                 }
+
                 Button(action: onClose) {
-                    // Ungespeichert (K8): gefüllter Punkt statt X, solange der
-                    // Tab nicht überfahren wird (BBEdit-Stil). Beim Hover wird
-                    // daraus das Schließen-X. Gespeicherte Tabs zeigen immer X.
                     Image(systemName: (tab.isDirty && !hovering) ? "circle.fill" : "xmark")
                         .fastraFont(size: (tab.isDirty && !hovering) ? 7 : 8, weight: .bold)
                         .frame(width: 14 * uiScale, height: 14 * uiScale)
                         .foregroundColor(hovering ? Theme.textPrimary
                                          : (tab.isDirty ? Theme.accentReadable
-                                            : Theme.textSecondary.opacity(0.5)))
+                                            : Theme.textSecondary.opacity(0.55)))
                 }
                 .buttonStyle(.plain)
-                .help(tab.isDirty ? "Ungespeicherte Änderungen — klicken zum Schließen" : "Tab schließen")
+                .help(tab.isDirty
+                      ? "Ungespeicherte Änderungen — klicken zum Schließen"
+                      : "Tab schließen")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 7 * uiScale)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isActive ? Theme.surfaceRaised : Color.clear)
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(isActive ? Theme.surfaceSand : Color.clear)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(isActive ? Theme.stroke : Color.clear, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .stroke(isActive ? Theme.strokeStrong : Color.clear, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        // Rechtsklick: „Andere Tabs schließen" (K8). Nur aktiv, wenn es
-        // überhaupt andere Tabs gibt.
         .contextMenu {
             Button("Andere Tabs schließen", action: onCloseOthers)
                 .disabled(!canCloseOthers)

@@ -20,7 +20,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             TabBarView()
-                .frame(height: 44 * uiScale)
+                .frame(height: 38 * uiScale)
 
             Divider().opacity(0.4)
 
@@ -60,6 +60,9 @@ struct ContentView: View {
         }
         .background(Theme.surfaceBase)
         .foregroundColor(Theme.textPrimary)
+        // Der eigene Chrome darf bis hinter die transparente macOS-Titelleiste
+        // reichen. Die oberen 38 Punkte lassen dabei den Ampelknöpfen Platz.
+        .ignoresSafeArea(.container, edges: .top)
         // Zero-Size-AppKit-Brücke: synchronisiert die aktive Datei mit dem
         // nativen Fenster. AppKit baut daraus das CMD-Klick-Pfadmenü und kann
         // dessen Ordner direkt im Finder öffnen.

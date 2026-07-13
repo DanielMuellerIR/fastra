@@ -28,11 +28,6 @@ struct EditorView: View {
     /// hervorheben). Reiner UI-Zustand.
     @State private var isDropTargeted = false
 
-    /// Seitenleisten-Breite beim Beginn eines Splitter-Ziehvorgangs. `nil`
-    /// zwischen den Zieh-Vorgängen. Nötig, weil `DragGesture.translation`
-    /// den Gesamt-Versatz seit Zieh-Beginn liefert (kein Einzel-Delta).
-    @State private var sidebarDragStart: Double?
-    @State private var previewDragStart: Double?
     /// Aktueller Seitenleisten-Modus (Dateien / Änderungen / Graph). Nur bei
     /// Git-Repo umschaltbar; ohne Repo immer „Dateien".
     @State private var sidebarMode: SidebarMode = .files
@@ -55,6 +50,9 @@ struct EditorView: View {
     @AppStorage(EditorFonts.defaultsKey) private var editorFontName = EditorFonts.systemMonospacedName
     @AppStorage("markdown.integratedPreview") private var showMarkdownPreview = true
     @AppStorage("markdown.previewWidth") private var markdownPreviewWidth = 420.0
+    /// Direkter Seitenleisten-Schalter im Fenster-Chrome, wie in Codex.
+    /// AppStorage hält alle Dokumentfenster und den Menüpunkt synchron.
+    @AppStorage("editor.sidebarVisible") private var showSidebar = true
 
     /// Breite der linken Seitenleiste (Dateibaum/„GEÖFFNET"). App-weit und
     /// persistent; über den Splitter zwischen Seitenleiste und Editor ziehbar
@@ -74,14 +72,25 @@ struct EditorView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            sidebar
+            if showSidebar {
+                VStack(spacing: 0) {
+                    // Wie in Codex gehört die Marke zur Seitenleiste, nicht zu
+                    // einem fensterbreiten zweiten Header. Rechts kann der
+                    // Editor deshalb direkt unter den obersten Tabs beginnen.
+                    SidebarBrandView()
+                        .frame(height: 48 * uiScale)
+                    Divider().opacity(0.4)
+                    sidebar
+                }
                 // Breite kommt aus der persistenten Einstellung; per Splitter
                 // ziehbar (siehe `sidebarSplitter`). Klemmen schützt vor einer
                 // gespeicherten Un-Breite (z.B. 0) aus einer früheren Version.
                 .frame(width: min(max(CGFloat(sidebarWidth), sidebarMinWidth), sidebarMaxWidth))
-                .background(Theme.surfaceSand.opacity(0.4))
+                .frame(maxHeight: .infinity)
+                    .background(Theme.surfaceBase)
 
-            sidebarSplitter
+                sidebarSplitter
+            }
 
             sourceEditor
                 .background(Theme.surfaceRaised)
@@ -109,8 +118,7 @@ struct EditorView: View {
         }
         // Dezenter Akzent-Rahmen, solange ein Drop schwebt — gibt dem
         // Nutzer Rückmeldung, dass der Editor das Drop annimmt.
-        // accentReadable statt accent: Goldgelb war als Stroke auf
-        // hellem Grund (~1,4:1) kaum erkennbar.
+        // Der lesbare blaue Akzent bleibt als schmale Rückmeldung erkennbar.
         .overlay(
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .stroke(Theme.accentReadable, lineWidth: 2)
@@ -127,22 +135,11 @@ struct EditorView: View {
     }
 
     private var markdownSplitter: some View {
-        Divider().opacity(0.3).overlay(
-            Color.clear.frame(width: 8).contentShape(Rectangle())
-                .onHover { hovering in
-                    if hovering { NSCursor.resizeLeftRight.push() }
-                    else { NSCursor.pop() }
-                }
-                .gesture(DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        let start = previewDragStart ?? markdownPreviewWidth
-                        if previewDragStart == nil { previewDragStart = start }
-                        markdownPreviewWidth = SplitterSizing.width(start: start,
-                                                                      translation: Double(value.translation.width),
-                                                                      direction: -1, minimum: 260, maximum: 760)
-                    }
-                    .onEnded { _ in previewDragStart = nil })
-        )
+        ResizableDivider(value: $markdownPreviewWidth,
+                         range: 260...760,
+                         direction: -1,
+                         surface: Theme.surfaceRaised,
+                         help: "Ziehen, um die Breite der Markdown-Vorschau anzupassen")
     }
 
     /// Lädt gedroppte Datei-URLs asynchron aus den `NSItemProvider`n und
@@ -615,38 +612,14 @@ struct EditorView: View {
 
     // MARK: Sidebar (Projekt-Dateibaum + geöffnete Dateien)
 
-    /// Ziehbarer Splitter zwischen Seitenleiste und Editor. Optisch die bisherige
-    /// dünne Trennlinie, aber mit etwas breiterer, unsichtbarer Greiffläche und
-    /// Resize-Cursor (↔). Ziehen aktualisiert die persistente `sidebarWidth`.
+    /// Ziehbarer Splitter zwischen Seitenleiste und Editor. Die gemeinsame
+    /// Komponente besitzt eine breite Trefferfläche, einen stabilen Cursor und
+    /// misst im globalen Koordinatenraum gegen das frühere Zappeln.
     private var sidebarSplitter: some View {
-        Divider()
-            .opacity(0.3)
-            .overlay(
-                Color.clear
-                    .frame(width: 8)
-                    .contentShape(Rectangle())
-                    // Mauszeiger zum Resize-Cursor, solange er über dem
-                    // Splitter steht; beim Verlassen zurücksetzen.
-                    .onHover { hovering in
-                        if hovering { NSCursor.resizeLeftRight.push() }
-                        else { NSCursor.pop() }
-                    }
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                // Startbreite beim ersten Änderungs-Event merken.
-                                let start = sidebarDragStart ?? sidebarWidth
-                                if sidebarDragStart == nil { sidebarDragStart = start }
-                                // Auf den erlaubten Bereich klemmen.
-                                sidebarWidth = SplitterSizing.width(start: start,
-                                                                     translation: Double(value.translation.width),
-                                                                     direction: 1,
-                                                                     minimum: Double(sidebarMinWidth),
-                                                                     maximum: Double(sidebarMaxWidth))
-                            }
-                            .onEnded { _ in sidebarDragStart = nil }
-                    )
-            )
+        ResizableDivider(value: $sidebarWidth,
+                         range: Double(sidebarMinWidth)...Double(sidebarMaxWidth),
+                         surface: Theme.surfaceBase,
+                         help: "Ziehen, um die Breite der Seitenleiste anzupassen")
     }
 
     /// Ein Git-Repo ist geladen? (Nur dann erscheinen Änderungen/Graph.) Der
@@ -806,7 +779,7 @@ private struct FileRow: View {
 // MARK: - Theme
 
 extension EditorView {
-    /// Hellscheiniges Editor-Theme passend zu Moodboard A (Cream / Ink / Gold).
+    /// Helles, neutrales Editor-Theme passend zum Codex-nahen Fenster-Chrome.
     /// Token-Farben sind bewusst dezent — der Editor soll lesbar bleiben, nicht überfärbt.
     ///
     /// **Wichtig:** Alle NSColor-Werte werden mit `srgbRed:green:blue:alpha:` konstruiert.
@@ -815,49 +788,49 @@ extension EditorView {
     /// das wirft auf Gray-Colorspace-Farben eine NSInvalidArgumentException
     /// ("not valid for the NSColor Generic Gray Profile colorspace; need to convert").
     static let fastraTheme: EditorTheme = EditorTheme(
-        text:           .init(color: rgb(0x1A, 0x18, 0x10)),
-        insertionPoint: rgb(0x1A, 0x18, 0x10),
-        invisibles:     .init(color: rgb(0x1A, 0x18, 0x10, 0.18)),
+        text:           .init(color: rgb(0x36, 0x36, 0x36)),
+        insertionPoint: rgb(0x36, 0x36, 0x36),
+        invisibles:     .init(color: rgb(0x36, 0x36, 0x36, 0.18)),
         background:     rgb(0xFF, 0xFF, 0xFF),
-        lineHighlight:  rgb(0xE8, 0xE0, 0xCB, 0.45),
-        selection:      rgb(0xFF, 0xCC, 0x00, 0.35),
+        lineHighlight:  rgb(0xEC, 0xEC, 0xEC, 0.55),
+        selection:      rgb(0x78, 0xA7, 0xE8, 0.42),
         keywords:   .init(color: rgb(0xA3, 0x39, 0x2A), bold: true),
         commands:   .init(color: rgb(0x2A, 0x66, 0xB5)),
         types:      .init(color: rgb(0x2A, 0x66, 0xB5), bold: true),
         attributes: .init(color: rgb(0xB5, 0x6C, 0x1A)),
-        variables:  .init(color: rgb(0x1A, 0x18, 0x10)),
+        variables:  .init(color: rgb(0x36, 0x36, 0x36)),
         values:     .init(color: rgb(0xB5, 0x6C, 0x1A)),
         numbers:    .init(color: rgb(0xB5, 0x6C, 0x1A)),
         strings:    .init(color: rgb(0x2F, 0x5D, 0x3A)),
         characters: .init(color: rgb(0x2F, 0x5D, 0x3A)),
-        comments:   .init(color: rgb(0x6C, 0x65, 0x5A), italic: true)
+        comments:   .init(color: rgb(0x78, 0x78, 0x78), italic: true)
     )
 
-    /// Dunkles Editor-Theme — warmes Pendant zu `fastraTheme` (gleiche
+    /// Dunkles Editor-Theme — neutrales Pendant zu `fastraTheme` (gleiche
     /// Token-Semantik, aufgehellte Farbwerte für dunklen Grund). Hintergrund
     /// = `Theme.surfaceRaised` (dunkel), damit Editor und umgebendes UI wie
-    /// im Light-Mode dieselbe erhöhte Fläche teilen. Selektion bleibt Gold-
-    /// Gelb, nur transparenter (0,28), damit heller Text darauf lesbar bleibt.
+    /// im Light-Mode dieselbe erhöhte Fläche teilen. Die Selektion verwendet
+    /// denselben gedämpften Blauton wie das übrige UI.
     /// Bewusst STATISCHE sRGB-Farben, keine dynamischen Provider-Farben —
     /// CESEs Minimap ruft `brightnessComponent` auf (siehe Kommentar oben);
     /// die Umschaltung passiert in `editorConfiguration` über `colorScheme`.
     static let fastraThemeDark: EditorTheme = EditorTheme(
-        text:           .init(color: rgb(0xEC, 0xE7, 0xDB)),
-        insertionPoint: rgb(0xEC, 0xE7, 0xDB),
-        invisibles:     .init(color: rgb(0xEC, 0xE7, 0xDB, 0.22)),
-        background:     rgb(0x1E, 0x20, 0x26),
-        lineHighlight:  rgb(0x2A, 0x2C, 0x33, 0.55),
-        selection:      rgb(0xFF, 0xCC, 0x00, 0.28),
+        text:           .init(color: rgb(0xF2, 0xF2, 0xF2)),
+        insertionPoint: rgb(0xF2, 0xF2, 0xF2),
+        invisibles:     .init(color: rgb(0xF2, 0xF2, 0xF2, 0.22)),
+        background:     rgb(0x17, 0x17, 0x17),
+        lineHighlight:  rgb(0x33, 0x33, 0x33, 0.62),
+        selection:      rgb(0x5E, 0x8E, 0xCC, 0.48),
         keywords:   .init(color: rgb(0xE8, 0x8D, 0x7C), bold: true),
         commands:   .init(color: rgb(0x7F, 0xB0, 0xEE)),
         types:      .init(color: rgb(0x7F, 0xB0, 0xEE), bold: true),
         attributes: .init(color: rgb(0xDF, 0xA2, 0x5A)),
-        variables:  .init(color: rgb(0xEC, 0xE7, 0xDB)),
+        variables:  .init(color: rgb(0xF2, 0xF2, 0xF2)),
         values:     .init(color: rgb(0xDF, 0xA2, 0x5A)),
         numbers:    .init(color: rgb(0xDF, 0xA2, 0x5A)),
         strings:    .init(color: rgb(0x94, 0xCE, 0x9F)),
         characters: .init(color: rgb(0x94, 0xCE, 0x9F)),
-        comments:   .init(color: rgb(0x8E, 0x87, 0x7B), italic: true)
+        comments:   .init(color: rgb(0x9A, 0x9A, 0x9A), italic: true)
     )
 
     private static func rgb(_ r: Int, _ g: Int, _ b: Int, _ a: CGFloat = 1) -> NSColor {

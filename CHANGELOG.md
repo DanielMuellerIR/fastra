@@ -9,6 +9,46 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.0] — 2026-07-13
+
+### Hinzugefügt
+
+- Die linke Seitenliste und die integrierte Markdown-Vorschau lassen sich über
+  direkte Schalter in der obersten Fensterzeile ein- und ausblenden. Der
+  Seitenleistenkopf zeigt Fastra samt Version und Versionsdatum.
+- Die Markdown-Vorschau erlaubt Textauswahl über mehrere Blöcke hinweg. Beim
+  Kopieren landen Klartext und semantisches HTML gemeinsam in der Zwischenablage;
+  Überschriften, Listen, Tabellen, Links und Hervorhebungen bleiben dadurch in
+  Rich-Text-Zielen formatiert.
+
+### Geändert
+
+- Das Hauptfenster verwendet keinen sichtbaren nativen Titelbalken mehr. Tabs
+  und Bereichsschalter sitzen direkt neben den macOS-Ampelknöpfen; der
+  Fastra-/Versionsblock gehört allein zur Seitenleiste und der Editor beginnt
+  ohne leere zweite Kopfzeile unmittelbar unter den Tabs.
+- Fenster-Chrome, Tabs, Seitenleisten, Editor und Vorschau verwenden eine
+  ruhige neutrale Hell-/Dunkelpalette mit blauem Akzent. Die frühere gelbe
+  Markenfarbe wurde entfernt; aktive Tabs erscheinen als kompakte Pillen.
+- Der lokale Markdown-Renderer stellt alle verwendeten GFM-Erweiterungen als
+  HTML dar, speichert keine Website-Daten und lädt keine externen Bilder.
+
+### Behoben
+
+- Alle vertikalen Splitter messen Ziehbewegungen nun in globalen Koordinaten,
+  behalten den Ausgangswert eines Drags und besitzen eine mittige 11-Punkt-
+  Trefferfläche. Dadurch zappeln sie nicht mehr, lassen sich beidseitig leicht
+  greifen und halten den Links-rechts-Cursor zuverlässig sichtbar.
+- Die AppKit-Eigenschaften des eigenen Fenster-Chromes werden nur bei einer
+  tatsächlichen Wertänderung gesetzt. Das verhindert einen AttributeGraph-
+  Absturz beim Start beziehungsweise beim Wechsel des Erscheinungsbilds.
+
+### Qualitätssicherung
+
+- Drei neue Rich-Text-Tests sichern GFM-Tabellen, die zweifache Clipboard-
+  Repräsentation und das Blockieren externer Bilder. Alle 762 Swift-Tests und
+  der Lokalisierungs-Audit mit 225 verwendeten Schlüsseln sind erfolgreich.
+
 ## [v1.15.0] — 2026-07-13
 
 ### Hinzugefügt

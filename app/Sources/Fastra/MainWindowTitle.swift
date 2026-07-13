@@ -186,7 +186,26 @@ struct MainWindowTitleBridge: NSViewRepresentable {
             window.representedURL = metadata.representedURL
             window.title = metadata.title
             window.isDocumentEdited = metadata.isDocumentEdited
-            window.titleVisibility = .visible
+            // Codex-artiger Fensteraufbau: SwiftUI zeichnet den Chrome bis
+            // hinter die native Titelleiste. Die Ampelknöpfe bleiben echte
+            // AppKit-Controls; nur Dateititel und Hintergrund werden ersetzt.
+            // AppKit meldet diese Properties per KVO an SwiftUI. Erneutes
+            // Schreiben desselben Werts während eines SwiftUI-Updates kann
+            // AttributeGraph reentrant betreten (beim Dark-Mode-Start als
+            // reproduzierbarer Crash sichtbar). Deshalb nur echte Änderungen
+            // setzen; nach dem ersten Fensteraufbau bleibt der Pfad schreibfrei.
+            if !window.styleMask.contains(.fullSizeContentView) {
+                window.styleMask.insert(.fullSizeContentView)
+            }
+            if !window.titlebarAppearsTransparent {
+                window.titlebarAppearsTransparent = true
+            }
+            if window.titleVisibility != .hidden {
+                window.titleVisibility = .hidden
+            }
+            if !window.isMovableByWindowBackground {
+                window.isMovableByWindowBackground = true
+            }
         }
     }
 }

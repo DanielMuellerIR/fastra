@@ -26,8 +26,11 @@
 
 import AppKit
 import Combine
+import Darwin
 import SwiftUI
-import MarkdownUI
+import WebKit
+import cmark_gfm
+import cmark_gfm_extensions
 
 // MARK: - Konstante für den Autosave-Namen
 
@@ -269,6 +272,7 @@ struct MarkdownPreviewView: View {
     @ObservedObject var workspace: Workspace
     @AppStorage(DocumentZoom.defaultsKey) private var documentZoomLevel = 0
     @AppStorage(PreviewFonts.defaultsKey) private var previewFontName = PreviewFonts.systemName
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Group {
@@ -280,13 +284,12 @@ struct MarkdownPreviewView: View {
                 placeholderView
             }
         }
-        // Hintergrundfarbe: Theme.surfaceRaised (reines Weiß in sRGB) für
-        // den äußeren Rahmen. MarkdownUI bringt sein eigenes Farbschema
-        // mit; der Rahmen außen bleibt neutral hell.
+        // Hintergrundfarbe für den äußeren Rahmen. Die eingebettete HTML-
+        // Vorschau erhält dieselben neutralen Hell-/Dunkelwerte in ihrem CSS.
         // LESSONS-LEARNED F.6b: kein Gray-Colorspace — Theme.surfaceRaised
         // ist als sRGB-Wert definiert, passt also für beide Appearance-Modi.
         .background(Theme.surfaceRaised)
-        .frame(minWidth: 400, minHeight: 300)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: Teilansichten
@@ -309,32 +312,21 @@ struct MarkdownPreviewView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.surfaceRaised)
         } else {
-            ScrollView(.vertical, showsIndicators: true) {
-                // Markdown(String) ist die direkte String-Variante aus der
-                // echten MarkdownUI-API (Markdown.swift Extension, Zeile 237).
-                //
-                // .markdownTheme(.gitHub) — der Compiler löst `.gitHub` als
-                // MarkdownUI.Theme.gitHub auf, weil der Argument-Typ des Modifiers
-                // `markdownTheme(_:)` explizit `MarkdownUI.Theme` ist (nicht
-                // `Fastra.Theme`, der ein enum ist).
-                Markdown(tab.content)
-                    .markdownTheme(.gitHub)
-                    .font(previewFont)
-                    // 20 pt Innenabstand auf allen Seiten: Text klebt nicht am Rand.
-                    .padding(20)
-                    // Volle Breite ausnutzen; Höhe wächst mit dem Inhalt (→ ScrollView).
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-            // Hintergrund auch innerhalb des ScrollViews weiß.
+            // Ein einzelnes lokales WebKit-Dokument statt vieler separater
+            // SwiftUI-Textblöcke: Auswahl kann über Absätze hinweg gezogen
+            // werden und ⌘C schreibt Klartext plus semantisches HTML.
+            MarkdownRichTextView(
+                markdown: tab.content,
+                fontName: previewFontName,
+                fontSize: previewFontSize,
+                darkMode: colorScheme == .dark
+            )
             .background(Theme.surfaceRaised)
         }
     }
 
-    private var previewFont: Font {
-        let size = 14 * DocumentZoom.scale(for: documentZoomLevel)
-        return previewFontName == PreviewFonts.systemName
-            ? .system(size: size)
-            : .custom(previewFontName, size: size)
+    private var previewFontSize: CGFloat {
+        14 * DocumentZoom.scale(for: documentZoomLevel)
     }
 
     /// Platzhalter, wenn der aktive Tab keine Markdown-Datei ist.
@@ -363,5 +355,220 @@ struct MarkdownPreviewView: View {
     private func isMarkdown(_ filename: String) -> Bool {
         let lower = filename.lowercased()
         return lower.hasSuffix(".md") || lower.hasSuffix(".markdown")
+    }
+}
+
+// MARK: - Auswählbare Rich-Text-Vorschau
+
+/// Erzeugt aus GFM-Markdown ein vollständiges, lokal gerendertes HTML-Dokument.
+/// Der Copy-Handler schreibt sowohl Klartext als auch das semantische HTML der
+/// Auswahl; Rich-Text-Ziele behalten dadurch Überschriften, Fettung und Listen.
+enum MarkdownRichText {
+    static func htmlDocument(markdown: String,
+                             fontName: String,
+                             fontSize: CGFloat,
+                             darkMode: Bool) -> String {
+        let fragment = htmlFragment(markdown: markdown)
+        let bodyColor = darkMode ? "#F2F2F2" : "#363636"
+        let secondary = darkMode ? "#A8A8A8" : "#737373"
+        let surface = darkMode ? "#171717" : "#FFFFFF"
+        let control = darkMode ? "#333333" : "#ECECEC"
+        let border = darkMode ? "#484848" : "#D7D7D7"
+        let link = darkMode ? "#8BB7F2" : "#3F69A8"
+        let cssFont = fontName == PreviewFonts.systemName
+            ? "-apple-system, BlinkMacSystemFont, sans-serif"
+            : "'\(cssEscaped(fontName))', -apple-system, sans-serif"
+
+        return """
+        <!doctype html>
+        <html><head><meta charset="utf-8"><style>
+        body { margin: 0; padding: 20px; box-sizing: border-box;
+               color: \(bodyColor); background: \(surface);
+               font-family: \(cssFont); font-size: \(fontSize)px; line-height: 1.55; }
+        h1, h2, h3, h4, h5, h6 { color: \(bodyColor); margin: 1.1em 0 0.45em; }
+        h1 { font-size: 2em; } h2 { font-size: 1.55em; } h3 { font-size: 1.25em; }
+        p, ul, ol, pre, blockquote, table { margin: 0.65em 0; }
+        code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+               background: \(control); border-radius: 4px; padding: 0.12em 0.3em; }
+        pre { background: \(control); border-radius: 8px; padding: 0.85em; }
+        pre code { padding: 0; background: transparent; }
+        blockquote { color: \(secondary); border-left: 3px solid \(border);
+                     margin-left: 0; padding-left: 0.9em; }
+        table { border-collapse: collapse; } th, td { border: 1px solid \(border);
+                padding: 0.35em 0.6em; } a { color: \(link); }
+        hr { border: 0; border-top: 1px solid \(border); }
+        </style><script>
+        document.addEventListener('copy', function(event) {
+          const selection = window.getSelection();
+          if (!selection || selection.rangeCount === 0) return;
+          const rich = document.createElement('div');
+          for (let index = 0; index < selection.rangeCount; index++) {
+            rich.appendChild(selection.getRangeAt(index).cloneContents());
+          }
+          event.clipboardData.setData('text/plain', selection.toString());
+          event.clipboardData.setData('text/html', rich.innerHTML);
+          event.preventDefault();
+        });
+        </script></head><body>\(fragment)</body></html>
+        """
+    }
+
+    static func htmlFragment(markdown: String) -> String {
+        // cmark rendert Erweiterungen nur, wenn dieselbe Extension-Liste auch
+        // an den HTML-Renderer gereicht wird. Fehlt sie dort, würden Tabellen
+        // trotz korrektem Parsing zu unstrukturiertem Fließtext.
+        cmark_gfm_core_extensions_ensure_registered()
+        guard let parser = cmark_parser_new(CMARK_OPT_DEFAULT) else {
+            return escapedPlainText(markdown)
+        }
+        defer { cmark_parser_free(parser) }
+
+        for extensionName in ["autolink", "strikethrough", "tagfilter", "tasklist", "table"] {
+            extensionName.withCString { name in
+                if let syntaxExtension = cmark_find_syntax_extension(name) {
+                    cmark_parser_attach_syntax_extension(parser, syntaxExtension)
+                }
+            }
+        }
+
+        markdown.withCString { bytes in
+            cmark_parser_feed(parser, bytes, markdown.utf8.count)
+        }
+        guard let document = cmark_parser_finish(parser) else {
+            return escapedPlainText(markdown)
+        }
+        defer { cmark_node_free(document) }
+
+        let extensions = cmark_parser_get_syntax_extensions(parser)
+        guard let rendered = cmark_render_html(document, CMARK_OPT_DEFAULT, extensions) else {
+            return escapedPlainText(markdown)
+        }
+        defer { free(rendered) }
+
+        // Externe Bilder würden bereits beim Anzeigen Netzverkehr auslösen.
+        // Links bleiben klickbar, aber Remote-Ressourcen bekommen keine URL.
+        return String(cString: rendered).replacingOccurrences(
+            of: #"(?i)\bsrc\s*=\s*["']https?://[^"']*["']"#,
+            with: #"src="""#,
+            options: .regularExpression
+        )
+    }
+
+    /// Fehler-Fallback ohne HTML-Injektion. Normalerweise wird dieser Pfad nur
+    /// bei einer Speicherknappheit im C-Parser erreicht.
+    private static func escapedPlainText(_ value: String) -> String {
+        value.replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&#39;")
+            .replacingOccurrences(of: "\n", with: "<br>\n")
+    }
+
+    /// Ein Fontname kommt aus der installierten Fontliste, wird für CSS aber
+    /// trotzdem defensiv escaped, damit Apostrophe und Backslashes harmlos sind.
+    private static func cssEscaped(_ value: String) -> String {
+        value.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+    }
+}
+
+/// SwiftUI-Brücke zu WebKit. Der Browser-Unterbau ist hier bewusst passend:
+/// Er kann GFM-Tabellen und Listen layouttreu darstellen, Text über mehrere
+/// Blöcke markieren und beim nativen ⌘C HTML plus Klartext bereitstellen.
+private struct MarkdownRichTextView: NSViewRepresentable {
+    let markdown: String
+    let fontName: String
+    let fontSize: CGFloat
+    let darkMode: Bool
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        // Keine Cookies, kein Cache und keine persistente Website-Historie:
+        // die Vorschau bleibt ein lokaler Dokument-Renderer.
+        configuration.websiteDataStore = .nonPersistent()
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.navigationDelegate = context.coordinator
+        webView.underPageBackgroundColor = darkMode
+            ? NSColor(srgbRed: 0x17 / 255, green: 0x17 / 255, blue: 0x17 / 255, alpha: 1)
+            : NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+        update(webView: webView, coordinator: context.coordinator)
+        return webView
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        update(webView: webView, coordinator: context.coordinator)
+    }
+
+    private func update(webView: WKWebView, coordinator: Coordinator) {
+        let styleIdentity = "\(darkMode)|\(fontName)|\(fontSize)"
+        if coordinator.styleIdentity != styleIdentity {
+            coordinator.styleIdentity = styleIdentity
+            coordinator.markdown = markdown
+            coordinator.isReady = false
+            let document = MarkdownRichText.htmlDocument(
+                markdown: markdown,
+                fontName: fontName,
+                fontSize: fontSize,
+                darkMode: darkMode
+            )
+            webView.loadHTMLString(document, baseURL: nil)
+            return
+        }
+
+        guard coordinator.markdown != markdown else { return }
+        coordinator.markdown = markdown
+        let fragment = MarkdownRichText.htmlFragment(markdown: markdown)
+        guard coordinator.isReady else {
+            coordinator.pendingFragment = fragment
+            return
+        }
+        coordinator.replaceBody(with: fragment, in: webView)
+    }
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        var styleIdentity = ""
+        var markdown = ""
+        var isReady = false
+        var pendingFragment: String?
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            isReady = true
+            if let pendingFragment {
+                self.pendingFragment = nil
+                replaceBody(with: pendingFragment, in: webView)
+            }
+        }
+
+        /// Nur der Body wird live ersetzt. Scrollposition und Auswahl bleiben
+        /// so stabiler als bei einem vollständigen Seiten-Reload pro Tastendruck.
+        func replaceBody(with fragment: String, in webView: WKWebView) {
+            guard let data = try? JSONSerialization.data(withJSONObject: [fragment]),
+                  let json = String(data: data, encoding: .utf8) else { return }
+            let script = """
+            (() => {
+              const x = window.scrollX, y = window.scrollY;
+              document.body.innerHTML = \(json)[0];
+              window.scrollTo(x, y);
+            })();
+            """
+            webView.evaluateJavaScript(script)
+        }
+
+        /// Ein bewusster Link-Klick darf den Standardbrowser öffnen; die lokale
+        /// Vorschau selbst navigiert nie von ihrem Dokument weg.
+        func webView(_ webView: WKWebView,
+                     decidePolicyFor navigationAction: WKNavigationAction,
+                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            if navigationAction.navigationType == .linkActivated,
+               let url = navigationAction.request.url {
+                NSWorkspace.shared.open(url)
+                decisionHandler(.cancel)
+            } else {
+                decisionHandler(.allow)
+            }
+        }
     }
 }

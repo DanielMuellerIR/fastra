@@ -19,6 +19,7 @@ struct FastraApp: App {
     @AppStorage(UIZoom.defaultsKey) private var uiZoomLevel = 0
     @AppStorage(DocumentZoom.defaultsKey) private var documentZoomLevel = 0
     @AppStorage("markdown.integratedPreview") private var showMarkdownPreview = true
+    @AppStorage("editor.sidebarVisible") private var showSidebar = true
 
     var body: some Scene {
         // Das Startfenster bleibt eine einzelne `Window`-Scene. So kann SwiftUI
@@ -36,9 +37,10 @@ struct FastraApp: App {
                 .frame(minWidth: 320, minHeight: 200)
                 .background(Theme.surfaceBase.ignoresSafeArea())
         }
-        // Die native Titelzeile zeigt den aktiven Dateinamen. Zusammen mit
-        // `NSWindow.representedURL` liefert AppKit außerdem automatisch das
-        // hierarchische Pfadmenü beim Command-Klick auf Titel oder Datei-Icon.
+        // Kein sichtbarer nativer Titelbalken: Der eigene Fenster-Chrome darf
+        // bis neben die Ampelknöpfe reichen und dort Tabs/Schalter aufnehmen.
+        // Die Ampeln bleiben echte AppKit-Controls.
+        .windowStyle(.hiddenTitleBar)
         .commands {
             // SwiftUI ergänzt automatisch ein „Edit"-Menü mit Items wie
             // „Find… (⌘F)" / „Find Next" etc. — diese binden CMD+F an
@@ -100,6 +102,7 @@ struct FastraApp: App {
                 // Rechter Vorschau-Streifen (Minimap). Default AUS — verdeckte
                 // rechts Text und stand im Freeze-Verdacht (Daniel 2026-07-12).
                 Toggle("Minimap anzeigen", isOn: $showMinimap)
+                Toggle("Seitenleiste anzeigen", isOn: $showSidebar)
                 Toggle("Markdown-Vorschau rechts anzeigen", isOn: $showMarkdownPreview)
                 .keyboardShortcut("m", modifiers: [.command, .shift])
             }

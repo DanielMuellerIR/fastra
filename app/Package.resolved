@@ -1,5 +1,5 @@
 {
-  "originHash" : "8de549f3ec1f486cab91a7d7a35f9d9085f35d9a2c33dccd0a1e35c7b6efd228",
+  "originHash" : "bfefa9a00836914374a3b6d2d27060defeb802ad6ae1e4a89b527fadd506add8",
   "pins" : [
     {
       "identity" : "codeeditlanguages",
@@ -38,15 +38,6 @@
       }
     },
     {
-      "identity" : "networkimage",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/gonzalezreal/NetworkImage",
-      "state" : {
-        "revision" : "2849f5323265386e200484b0d0f896e73c3411b9",
-        "version" : "6.0.1"
-      }
-    },
-    {
       "identity" : "rearrange",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/ChimeHQ/Rearrange",
@@ -71,15 +62,6 @@
       "state" : {
         "revision" : "fea17c02d767f46b23070fdfdacc28a03a39232a",
         "version" : "1.5.1"
-      }
-    },
-    {
-      "identity" : "swift-markdown-ui",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/gonzalezreal/swift-markdown-ui",
-      "state" : {
-        "revision" : "5f613358148239d0292c0cef674a3c2314737f9e",
-        "version" : "2.4.1"
       }
     },
     {

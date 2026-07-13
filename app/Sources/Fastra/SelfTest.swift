@@ -191,6 +191,10 @@ enum SelfTest {
             // Diagnose: Projekt-Dateibaum in der Seitenleiste + geladene
             // Datei fürs fenstergezielte Capture.
             waitForMainWindow { runProjectShot() }
+        case "markdownshot":
+            // Diagnose: Markdown-Datei mit integrierter Rich-Text-Vorschau.
+            // Dient der visuellen Kontrolle von Chrome, Splitter und Typografie.
+            waitForMainWindow { runMarkdownShot() }
         case "gitshot":
             // Diagnose: Git-Seitenleiste (Branch-Zeile + eingefärbte Dateien)
             // mit echtem Repo fürs fenstergezielte Capture (Etappe 2).
@@ -3068,6 +3072,45 @@ enum SelfTest {
             // Ein Runloop-Tick, damit Dateibaum + Editor fertig gerendert sind.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 dumpMainWindowThenExit(prefix: "PROJECTSHOT-WINDOW")
+            }
+        }
+    }
+
+    /// Diagnose (`-selftest markdownshot`): öffnet ein kleines GFM-Dokument,
+    /// erzwingt die integrierte Vorschau und gibt die Hauptfenster-Nummer aus.
+    /// Auswahl und Clipboard-Formate decken Unit-Tests ab; dieser Helfer prüft
+    /// bewusst nur die tatsächliche Fensteraufteilung und Rich-Text-Typografie.
+    private static func runMarkdownShot() {
+        testLabel = "markdownshot"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Fastra-Markdown-Vorschau.md")
+        let demo = """
+        # Markdown-Vorschau
+
+        Markierter Text wird als **formatierter Rich Text** und als Klartext kopiert.
+
+        ## Funktionen
+
+        - Auswahl über mehrere Absätze
+        - Links wie [Fastra](https://example.invalid)
+        - Inline-Code wie `NSPasteboard`
+
+        | Format | Clipboard |
+        | --- | --- |
+        | Klartext | ja |
+        | Formatiertes HTML | ja |
+        """
+        do { try demo.write(to: file, atomically: true, encoding: .utf8) }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+
+        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        ws.loadFile(at: file) { ok in
+            guard ok else { finish(false, "Markdown-Datei konnte nicht geladen werden") }
+            // WebKit braucht nach dem Tabwechsel einen Layoutdurchlauf, bevor
+            // ein Screenshot vollständig aussagekräftig ist.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                dumpMainWindowThenExit(prefix: "MARKDOWNSHOT-WINDOW")
             }
         }
     }

@@ -28,10 +28,10 @@ let package = Package(
         // resolved) — hier explizit, damit unser RegexTokenizer die
         // Parser-/Node-API typsicher nutzen kann.
         .package(url: "https://github.com/ChimeHQ/SwiftTreeSitter", from: "0.25.0"),
-        // Markdown-Vorschau (Phase 5, v0.8): GFM-Rendering (Tabellen,
-        // Task-Listen, Code-Blöcke) als SwiftUI-View. Entscheidung siehe
-        // ROADMAP H — hohe Priorität (Daniel-Präferenz).
-        .package(url: "https://github.com/gonzalezreal/swift-markdown-ui", from: "2.4.0"),
+        // Markdown-Vorschau: direkter GFM-Parser für Tabellen, Task-Listen,
+        // Durchstreichungen und Code-Blöcke. Die direkte Einbindung ist nötig,
+        // damit dieselbe Extension-Liste vom Parser bis zum HTML-Renderer reicht.
+        .package(url: "https://github.com/swiftlang/swift-cmark", from: "0.4.0"),
     ],
     targets: [
         .executableTarget(
@@ -42,7 +42,8 @@ let package = Package(
                 .product(name: "CodeEditTextView",     package: "CodeEditTextView"),
                 .product(name: "TreeSitterRegex",      package: "tree-sitter-regex"),
                 .product(name: "SwiftTreeSitter",      package: "SwiftTreeSitter"),
-                .product(name: "MarkdownUI",           package: "swift-markdown-ui"),
+                .product(name: "cmark-gfm",            package: "swift-cmark"),
+                .product(name: "cmark-gfm-extensions", package: "swift-cmark"),
             ],
             resources: [
                 .process("Resources")

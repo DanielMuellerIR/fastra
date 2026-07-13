@@ -74,7 +74,7 @@ struct SettingsView: View {
                         Text(name == PreviewFonts.systemName ? "Systemschrift" : name).tag(name)
                     }
                 }
-                Text("Die Vorschau übernimmt die Dokument-Schriftgröße, nutzt aber bewusst nur proportionale Leseschriften.")
+                Text("Die Vorschau übernimmt die Dokument-Schriftgröße. Markierter Text wird als Klartext und formatiertes HTML kopiert.")
                     .fastraFont(.small).foregroundColor(.secondary)
             }
         }

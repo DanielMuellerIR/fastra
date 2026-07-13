@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// Design Tokens — Moodboard A "Solo-Profi".
+/// Design-Tokens im ruhigen, neutralen Stil der Codex-Desktop-App.
 ///
 /// Seit v1.1 sind alle Farb-Tokens DYNAMISCH: jede Farbe trägt eine helle
 /// und eine dunkle Ausprägung und löst sich zur Zeichenzeit über die
@@ -9,10 +9,10 @@ import AppKit
 /// Damit folgt das gesamte UI automatisch dem Erscheinungsbild — gesteuert
 /// über `AppearanceSetting` (Einstellungen → Erscheinungsbild).
 ///
-/// Dark-Palette: warmes Dunkel passend zum Cream/Ink/Gold-Light-Theme —
-/// Flächen leicht warm abgetönt (kein reines Schwarz/Blau), Text als warmes
-/// Off-White, Goldgelb bleibt unverändert der Marken-Akzent (leuchtet auf
-/// dunklem Grund von selbst).
+/// Die Palette trennt Arbeitsfläche und Seitenleiste nur über nahe Grautöne.
+/// Dadurch bleibt die Struktur sichtbar, ohne dass Konturen oder eine eigene
+/// Markenfarbe um Aufmerksamkeit konkurrieren. Interaktive Akzente sind blau;
+/// die frühere Cream-/Gold-Palette aus der cRegEx-Zeit ist vollständig entfernt.
 ///
 /// WICHTIG: Die CESE-Editor-Themes (`EditorView.fastraTheme[Dark]`) nutzen
 /// diese dynamischen Farben bewusst NICHT — CodeEditSourceEditors Minimap
@@ -48,33 +48,28 @@ enum Theme {
 
     // MARK: Backgrounds
 
-    /// Grundfläche: Cream ↔ warmes, sehr dunkles Grau.
-    static let surfaceBase   = dynamic(light: rgb(0xFB, 0xF7, 0xEC), dark: rgb(0x15, 0x16, 0x1B))
-    /// Erhöhte Fläche (Editor, Karten): Weiß ↔ eine Stufe heller als Base.
-    static let surfaceRaised = dynamic(light: rgb(0xFF, 0xFF, 0xFF), dark: rgb(0x1E, 0x20, 0x26))
-    /// Sand-Ton (Sidebar, Zeilen-Highlight): Sand ↔ warmes Anthrazit.
-    static let surfaceSand   = dynamic(light: rgb(0xE8, 0xE0, 0xCB), dark: rgb(0x2A, 0x2C, 0x33))
-    /// Night (historischer Token aus dem Moodboard, aktuell ungenutzt).
-    static let surfaceNight  = Color(nsColor: rgb(0x0E, 0x10, 0x15))
+    /// Seitenleiste und Fenster-Chrome: sehr helles ↔ mittleres neutrales Grau.
+    static let surfaceBase   = dynamic(light: rgb(0xF7, 0xF7, 0xF7), dark: rgb(0x27, 0x27, 0x27))
+    /// Hauptarbeitsfläche: Weiß ↔ fast schwarzes Anthrazit.
+    static let surfaceRaised = dynamic(light: rgb(0xFF, 0xFF, 0xFF), dark: rgb(0x17, 0x17, 0x17))
+    /// Controls, Hover und Auswahlflächen: neutrales Grau ohne Gelbstich.
+    static let surfaceSand   = dynamic(light: rgb(0xEC, 0xEC, 0xEC), dark: rgb(0x33, 0x33, 0x33))
+    /// Dunkle Grundfläche für Stellen, die eine statische Farbe benötigen.
+    static let surfaceNight  = Color(nsColor: rgb(0x17, 0x17, 0x17))
 
     // MARK: Text
 
-    /// Primärtext: Ink ↔ warmes Off-White.
-    static let textPrimary   = dynamic(light: rgb(0x1A, 0x18, 0x10), dark: rgb(0xEC, 0xE7, 0xDB))
+    /// Primärtext: neutrales Anthrazit ↔ kühles Off-White.
+    static let textPrimary   = dynamic(light: rgb(0x36, 0x36, 0x36), dark: rgb(0xF2, 0xF2, 0xF2))
     /// Sekundärtext (gedämpft) — beide Richtungen ≥ 4,5:1 auf ihrer Base.
-    static let textSecondary = dynamic(light: rgb(0x6C, 0x65, 0x5A), dark: rgb(0xA2, 0x9B, 0x8E))
+    static let textSecondary = dynamic(light: rgb(0x86, 0x86, 0x86), dark: rgb(0xA8, 0xA8, 0xA8))
 
     // MARK: Accent
 
-    /// Goldgelb — Marken-Akzent, in beiden Modi identisch (Flächen unter
-    /// dunklem Text; leuchtet auf dunklem Grund ohne Anpassung).
-    static let accent        = Color(nsColor: rgb(0xFF, 0xCC, 0x00))
-
-    /// Lesbares Akzent-Gelb für KLEINE Akzente (Icons, Strokes, Indikator-
-    /// Punkte). Hell: dunkles Bernstein (#A07800 ≈ 4,0:1 auf Weiß — das
-    /// helle Gold hätte nur ~1,4:1). Dunkel: kräftiges Gold (#E6B800), auf
-    /// dunklem Grund von selbst kontraststark.
-    static let accentReadable = dynamic(light: rgb(0xA0, 0x78, 0x00), dark: rgb(0xE6, 0xB8, 0x00))
+    /// Blauer System-naher Akzent. Beide Varianten bleiben auch als kleines
+    /// Symbol oder Auswahlpunkt auf der jeweiligen Fläche gut erkennbar.
+    static let accent         = dynamic(light: rgb(0x4E, 0x78, 0xB7), dark: rgb(0x82, 0xAC, 0xEA))
+    static let accentReadable = dynamic(light: rgb(0x3F, 0x69, 0xA8), dark: rgb(0x8B, 0xB7, 0xF2))
 
     // MARK: Diff
 
@@ -109,10 +104,11 @@ enum Theme {
 
     // MARK: Capture-Group-Farben (G1, G2, G3)
 
-    /// Gesättigte Füllfarben mit dunklem Text darauf — funktionieren auf
-    /// hellen wie dunklen Flächen, daher bewusst statisch.
+    /// Gesättigte Füllfarben mit dunklem Text darauf. Die erste Gruppe ist
+    /// jetzt blau statt gelb, damit auch die Capture-Pillen die alte cRegEx-
+    /// Markenfarbe nicht wieder in die Oberfläche zurückbringen.
     static let groupColors: [Color] = [
-        Color(red: 1.00, green: 0.85, blue: 0.20),  // Yellow
+        Color(red: 0.48, green: 0.70, blue: 0.96),  // Blau
         Color(red: 0.35, green: 0.78, blue: 0.78),  // Türkis
         Color(red: 0.65, green: 0.40, blue: 0.85),  // Violett
     ]
