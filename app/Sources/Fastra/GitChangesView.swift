@@ -157,7 +157,10 @@ private struct GitChangeRow: View {
                 .fastraFont(.small)
                 .foregroundColor(Theme.textPrimary)
                 .lineLimit(1)
-                .truncationMode(.middle)
+                .truncationMode(.tail)
+                // Dateinamen sind wichtiger als der ergänzende Ordnerpfad:
+                // SwiftUI kürzt deshalb zuerst den Pfad und erst danach den Namen.
+                .layoutPriority(1)
             if !change.directory.isEmpty {
                 Text(change.directory)
                     .fastraFont(size: 10)

@@ -9,6 +9,15 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.8] — 2026-07-14
+
+### Behoben
+
+- Die Änderungen-Ansicht gibt dem wichtigen Dateinamen jetzt Vorrang vor dem
+  ergänzenden Ordnerpfad. Bei wenig Platz wird zuerst der Pfad an seinem Anfang
+  gekürzt; nur wenn nötig endet der Dateiname kurz vor dem Git-Status mit einer
+  Ellipse, statt bereits in seiner Mitte abgeschnitten zu werden.
+
 ## [v1.16.7] — 2026-07-14
 
 ### Behoben
