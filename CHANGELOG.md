@@ -9,6 +9,22 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.16] — 2026-07-15
+
+### Behoben
+
+- Return im Suchfeld aktiviert den ersten Treffer, ohne den Tastaturfokus an
+  den verdeckten Dokumenteditor abzugeben. Das Suchfenster bleibt aktiv; Pfeil
+  hoch/runter navigiert durch die Treffer und Return springt zum nächsten.
+  Suchsprünge scrollen und selektieren weiterhin im zugehörigen Dokument,
+  können dort aber keine nachfolgenden Tastatureingaben mehr auslösen.
+
+### Qualitätssicherung
+
+- Der `navmatch`-Selbsttest prüft den echten Return-Pfad vom Suchfeld zur
+  Trefferliste, einen zweiten Return zur Weiternavigation, den unveränderten
+  Dokumentinhalt und den beim Suchfenster verbleibenden Tastaturfokus.
+
 ## [v1.16.15] — 2026-07-14
 
 ### Behoben

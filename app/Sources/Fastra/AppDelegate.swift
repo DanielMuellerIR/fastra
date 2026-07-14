@@ -16,6 +16,8 @@ extension Notification.Name {
     static let fastraGotoNextMatch    = Notification.Name("fastra.goto.next.match")
     /// CMD+SHIFT+G — zum vorigen Treffer springen.
     static let fastraGotoPreviousMatch = Notification.Name("fastra.goto.previous.match")
+    /// Return im Suchfeld — zum ersten Treffer springen.
+    static let fastraGotoFirstMatch   = Notification.Name("fastra.goto.first.match")
     /// Editor des in `object` enthaltenen Workspace soll zur Range springen.
     /// Die explizite Zieladresse ist bei mehreren Dokumentfenstern zwingend:
     /// eine app-weite Notification ohne Workspace ließe alle Editoren reagieren.

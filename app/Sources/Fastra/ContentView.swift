@@ -153,6 +153,10 @@ struct ContentView: View {
             guard Workspace.shared === workspace else { return }
             navigateMatch(direction: -1)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .fastraGotoFirstMatch)) { _ in
+            guard Workspace.shared === workspace else { return }
+            navigateMatch(to: 0)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .fastraShowGotoLine)) { _ in
             guard Workspace.shared === workspace else { return }
             showGotoLineDialog()
@@ -208,16 +212,26 @@ struct ContentView: View {
         let list = workspace.navMatches
         let count = list.count
         guard count > 0 else { return }
-        // Diskrete Such-Aktion → ins Such-History-Popup aufnehmen (K4).
-        workspace.recordSearchHistory()
         var next = workspace.activeMatchIndex + direction
         if workspace.wrapAround {
             next = ((next % count) + count) % count
         } else {
             next = max(0, min(count - 1, next))
         }
-        workspace.activeMatchIndex = next
-        let target = list[next]
+        navigateMatch(to: next)
+    }
+
+    /// Aktiviert einen bestimmten Treffer und führt den gemeinsamen
+    /// Tab-/Dateiwechsel samt Editor-Sprung aus. Return im Suchfeld nutzt
+    /// diesen Pfad mit Index 0, damit es unabhängig vom vorherigen Stand
+    /// immer beim ersten sichtbaren Treffer beginnt.
+    private func navigateMatch(to index: Int) {
+        let list = workspace.navMatches
+        guard list.indices.contains(index) else { return }
+        // Diskrete Such-Aktion → ins Such-History-Popup aufnehmen (K4).
+        workspace.recordSearchHistory()
+        workspace.activeMatchIndex = index
+        let target = list[index]
         if let tabID = target.tabID {
             // Geöffnet-Scope: Ziel ist ein offener Tab (auch ungespeichert).
             // Tab aktivieren, Sprung einen Runloop-Tick später posten — der

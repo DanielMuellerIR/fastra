@@ -46,6 +46,9 @@ struct FloatingSearchDialog: View {
     @StateObject private var patternLibrary = PatternLibrary()
     @State private var showPatternEditor = false
     @State private var showExampleTransformation = false
+    /// Tastaturfokus der Trefferliste. Solange er aktiv ist, bleiben Return
+    /// und Pfeiltasten im Suchfenster und können das Dokument nicht ändern.
+    @FocusState private var hitListFocused: Bool
 
     var body: some View {
         // Maske ist seit v0.5 in einem eigenen NSWindow — kein eigener
@@ -514,8 +517,14 @@ struct FloatingSearchDialog: View {
                 onSubmit: {
                     if workspace.scope.isFolderLike {
                         workspace.runFolderSearchNow()
+                    } else if !workspace.navMatches.isEmpty {
+                        // Return im Suchfeld beginnt bewusst beim ersten
+                        // Treffer. Danach gehört der Tastaturfokus der Liste,
+                        // nicht dem im Hintergrund sichtbaren Dokumenteditor.
+                        NotificationCenter.default.post(name: .fastraGotoFirstMatch, object: nil)
+                        DispatchQueue.main.async { hitListFocused = true }
                     } else {
-                        NotificationCenter.default.post(name: .fastraGotoNextMatch, object: nil)
+                        NSSound.beep()
                     }
                 },
                 accessibilityID: "fastra.findField"
@@ -1029,6 +1038,25 @@ struct FloatingSearchDialog: View {
             // Flexibel — wächst mit dem Fenster. `maxWidth: .infinity`: die Box
             // füllt immer die volle Maskenbreite, egal wie kurz der Inhalt ist.
             .frame(maxWidth: .infinity, minHeight: 80, maxHeight: .infinity)
+            // Die Liste ist ein eigener Tastaturbereich: Pfeil hoch/runter
+            // navigiert, Return geht zum nächsten Treffer. Der Editor bleibt
+            // dabei nur Scroll-/Selektionsziel und erhält keine Eingaben.
+            .focusable()
+            .focused($hitListFocused)
+            .onMoveCommand { direction in
+                switch direction {
+                case .up:
+                    NotificationCenter.default.post(name: .fastraGotoPreviousMatch, object: nil)
+                case .down:
+                    NotificationCenter.default.post(name: .fastraGotoNextMatch, object: nil)
+                default:
+                    break
+                }
+            }
+            .onKeyPress(.return) {
+                NotificationCenter.default.post(name: .fastraGotoNextMatch, object: nil)
+                return .handled
+            }
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Theme.surfaceSand.opacity(0.5))
@@ -1145,6 +1173,9 @@ struct FloatingSearchDialog: View {
     // codereview-ok: Tap-Handler und Ergebnis-Zuweisung laufen beide serialisiert auf dem Main-Actor, firstIndex-Lookup ist synchron; schlägt er fehl, bleibt activeMatchIndex unverändert — kein Race, benigne (2026-07-01)
     private func handleMatchTap(match: BufferSearch.Match, fileURL: URL?,
                                 tabID: UUID? = nil) {
+        // Nach einem Klick gehören weitere Pfeil-/Return-Eingaben ebenfalls
+        // der Trefferliste, nicht dem Dokumenteditor.
+        hitListFocused = true
         if workspace.scope.isFolderLike, let url = fileURL {
             // activeMatchIndex auf den flachen Treffer-Index setzen, damit
             // CMD+G beim nächsten Treffer ansetzt — schon VOR dem loadFile,

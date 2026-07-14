@@ -245,17 +245,11 @@ struct EditorView: View {
             } else if let value = info?["range"] as? NSValue {
                 editorState.cursorPositions = [CursorPosition(range: value.rangeValue)]
             }
-            // SICHTBAR machen: Der Sprung wird typischerweise aus der
-            // schwebenden Suchmaske ausgelöst (Listen-Klick / CMD+G / Chevron).
-            // Dann ist das Editor-Fenster NICHT Key und die TextView NICHT
-            // First Responder — CodeEditSourceEditor zeichnet die Selektion
-            // dann nicht und scrollt nicht hin („springt nicht"). Wir machen
-            // das Editor-Fenster Key + die TextView First Responder, damit der
-            // Sprung für den Nutzer sichtbar ankommt. (Selbsttest `navmatch`
-            // sichert genau diese Bedingung ab.)
-            EditorView.focusEditorForVisibleJump(in: workspace,
-                                                 targetLine: jumpLine,
-                                                 fallbackRange: fallbackRange)
+            // Sichtbar scrollen, aber den Fokus in der Suchmaske lassen. Der
+            // nächste Tastendruck darf das Dokument niemals verändern.
+            EditorView.scrollEditorForVisibleJump(in: workspace,
+                                                  targetLine: jumpLine,
+                                                  fallbackRange: fallbackRange)
         }
         // WICHTIG: CodeEditSourceEditor setzt den Text NUR EINMAL in
         // `makeNSViewController`. Sein `updateNSViewController` schiebt
@@ -366,18 +360,13 @@ struct EditorView: View {
         return targetWorkspace === workspace
     }
 
-    /// Macht das Editor-Hauptfenster Key + die CodeEdit-TextView First
-    /// Responder, damit ein Treffer-Sprung SICHTBAR wird (Selektion gezeichnet
-    /// + scrollToVisible). Wird aus dem `.fastraJumpToRange`-Handler gerufen.
-    ///
-    /// Hintergrund: Wird ein Sprung aus der schwebenden Suchmaske ausgelöst,
-    /// ist deren Fenster Key — der Editor zeichnet dann keine Selektion und
-    /// scrollt nicht. `makeKey()` (ohne `orderFront`) behält die Z-Reihenfolge
-    /// bei, sodass die Suchmaske sichtbar bleibt; sie verliert nur den Key-
-    /// Status und bleibt anklickbar. Leicht verzögert (`async`), damit CESE die
-    /// neue Cursor-Position schon übernommen hat, bevor wir fokussieren.
-    static func focusEditorForVisibleJump(in workspace: Workspace,
-                                          targetLine: Int?, fallbackRange: NSRange?) {
+    /// Scrollt den Editor sichtbar zum Suchtreffer, ohne dem Suchfenster den
+    /// Tastaturfokus zu entreißen. Die TextView darf dabei ausdrücklich NICHT
+    /// First Responder werden: Sonst landet das nächste Return unbemerkt im
+    /// Dokument. Leicht verzögert (`async`), damit CESE die neue Cursor-
+    /// Position schon übernommen hat, bevor wir scrollen.
+    static func scrollEditorForVisibleJump(in workspace: Workspace,
+                                           targetLine: Int?, fallbackRange: NSRange?) {
         DispatchQueue.main.async {
             guard let mainWindow = NSApp.windows.first(where: {
                 !SearchWindow.isSearchWindow($0)
@@ -385,8 +374,6 @@ struct EditorView: View {
                     && $0.contentView != nil && $0.isVisible
             }), let root = mainWindow.contentView,
                   let tv = firstEditorTextView(in: root) else { return }
-            mainWindow.makeKey()
-            mainWindow.makeFirstResponder(tv)
             guard let textView = tv as? CodeEditTextView.TextView else { return }
             // Robust zum Treffer scrollen (Daniel-Befund 2026-06-22: Treffer
             // markiert, aber Dokument scrollte in einer 41k-Zeilen-Datei NICHT
@@ -433,7 +420,8 @@ struct EditorView: View {
     /// sofortiges ⌘V verpuffte, bis man einmal in den Text klickte (Daniel-Befund
     /// 2026-06-25).
     ///
-    /// Anders als `focusEditorForVisibleJump` wird das Fenster NICHT Key gemacht:
+    /// Anders als `scrollEditorForVisibleJump` wird diese Methode nur beim
+    /// normalen Editor-Aufbau verwendet:
     /// Ist gerade die schwebende Suchmaske vorne (der Nutzer tippt dort), darf der
     /// Editor ihr den Tastaturfokus NICHT entreißen — wir fokussieren nur, wenn das
     /// Hauptfenster ohnehin schon Key ist (der Normalfall direkt nach ⌘T/Tab-Klick).

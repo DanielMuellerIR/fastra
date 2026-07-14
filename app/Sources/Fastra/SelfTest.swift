@@ -634,7 +634,8 @@ enum SelfTest {
             }
             NotificationCenter.default.postMatchJump(target, for: secondWorkspace)
             pollMultiWindowJump(firstTV: firstTV, secondTV: secondTV,
-                                firstWindow: firstWindow, secondWindow: secondWindow)
+                                firstWindow: firstWindow, secondWindow: secondWindow,
+                                secondSearchWindow: secondSearchWindow)
             return
         }
         if tick >= 100 {
@@ -652,6 +653,7 @@ enum SelfTest {
 
     private static func pollMultiWindowJump(firstTV: TextView, secondTV: TextView,
                                             firstWindow: NSWindow, secondWindow: NSWindow,
+                                            secondSearchWindow: NSWindow,
                                             tick: Int = 0) {
         let secondRange = secondTV.selectedRange()
         if secondRange.location != NSNotFound,
@@ -674,24 +676,26 @@ enum SelfTest {
                 .textLineForPosition(secondTV.visibleRect.midY)
                 .map { $0.index + 1 }
             let isVisiblyAtTarget = shownLine.map { abs($0 - 110) <= 8 } ?? false
-            if secondWindow.isKeyWindow,
-               secondWindow.firstResponder === secondTV,
+            if secondSearchWindow.isKeyWindow,
+               !secondWindow.isKeyWindow,
                isVisiblyAtTarget {
-                finish(true, "subagent wurde nur im zweiten Editor selektiert und sichtbar; erster Editor blieb unverändert")
+                finish(true, "subagent wurde nur im zweiten Editor selektiert und sichtbar; "
+                    + "zweite Suchmaske blieb Key, erster Editor unverändert")
             }
         }
         if tick >= 60 {
             let shownLine = secondTV.layoutManager
                 .textLineForPosition(secondTV.visibleRect.midY)
                 .map { $0.index + 1 }
-            finish(false, "zweiter Editor erreichte binnen 1,8 s nicht vollständig Auswahl, Fokus und Sichtbarkeit "
-                   + "(selection=\(secondRange), key=\(secondWindow.isKeyWindow), "
-                   + "firstResponder=\(secondWindow.firstResponder === secondTV), "
+            finish(false, "zweiter Editor erreichte binnen 1,8 s nicht vollständig Auswahl und Sichtbarkeit "
+                   + "bei sicherem Suchfenster-Fokus (selection=\(secondRange), "
+                   + "searchKey=\(secondSearchWindow.isKeyWindow), documentKey=\(secondWindow.isKeyWindow), "
                    + "sichtbare Zeile=\(shownLine.map(String.init) ?? "nil"))")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
             pollMultiWindowJump(firstTV: firstTV, secondTV: secondTV,
                                 firstWindow: firstWindow, secondWindow: secondWindow,
+                                secondSearchWindow: secondSearchWindow,
                                 tick: tick + 1)
         }
     }
@@ -836,6 +840,22 @@ enum SelfTest {
         ) {
             NSApp.postEvent(key, atStart: false)
         }
+    }
+
+    /// Postet einen unmodifizierten Tastendruck an das angegebene Fenster.
+    /// Damit prüft `navmatch` den echten SwiftUI-Fokus-/onKeyPress-Pfad der
+    /// Trefferliste statt bloß die zugrunde liegende Notification aufzurufen.
+    private static func postKey(_ char: String, keyCode: UInt16, windowNumber: Int) {
+        guard let key = NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: windowNumber, context: nil,
+            characters: char, charactersIgnoringModifiers: char,
+            isARepeat: false, keyCode: keyCode
+        ) else {
+            finish(false, "konnte Key-Event (keyCode=\(keyCode)) nicht bauen")
+        }
+        NSApp.postEvent(key, atStart: false)
     }
 
     private static func runFindBarTest() {
@@ -1626,28 +1646,33 @@ enum SelfTest {
                 ws.useRegex = false
                 ws.caseSensitive = true
                 ws.findPattern = "TREFFER"
-                pollNavReady(ws, tv: tv, searchWinNumber: searchWin.windowNumber)
+                pollNavReady(ws, tv: tv, searchWindow: searchWin, originalText: content)
             }
         }
     }
 
-    /// Wartet, bis die (async) Suche 3 Treffer geliefert hat, postet dann EINEN
-    /// „nächster Treffer"-Befehl (identisch zu CMD+G und zum Listen-Klick-Pfad)
-    /// und prüft, ob der Editor daraufhin tatsächlich einen Treffer selektiert.
+    /// Wartet auf drei Treffer und drückt Return im echten Suchfeld. Das muss
+    /// Treffer 0 aktivieren und den Fokus an die Trefferliste weitergeben.
     private static func pollNavReady(_ ws: Workspace, tv: TextView,
-                                     searchWinNumber: Int, tick: Int = 0) {
+                                     searchWindow: NSWindow, originalText: String,
+                                     tick: Int = 0) {
         let maxTicks = 100   // ~3 s
         if !ws.bufferSearching && ws.bufferMatches.count == 3 {
-            // activeMatchIndex steht nach frischer Suche auf 0 → ein „nächster"
-            // springt auf Treffer-Index 1 (Zeile 4).
-            ws.activeMatchIndex = 0
-            // ECHTES CMD+G in die Suchmaske posten — kompletter realer Pfad:
-            // Tastenevent → App-Monitor → KeyRouting → Notification →
-            // navigateMatch → Editor-Sprung. (Nicht die Notification direkt
-            // posten — das würde den Monitor/Field-Konflikt umgehen, also genau
-            // die Eingabe-Ebene, die Daniel als kaputt meldete.) keyCode 5 = „g".
-            postCmd("g", keyCode: 5, windowNumber: searchWinNumber)
-            pollNavSelection(ws, tv: tv)
+            guard let root = searchWindow.contentView else {
+                finish(false, "(navmatch) Suchmaske ohne contentView")
+            }
+            var fields: [NSView] = []
+            collectTypeableFields(in: root, into: &fields)
+            guard let findField = fields.compactMap({ $0 as? RegexFieldTextView }).first(where: {
+                $0.accessibilityIdentifier() == "fastra.findField"
+            }), searchWindow.makeFirstResponder(findField) else {
+                finish(false, "(navmatch) Suchfeld nicht gefunden/fokussierbar")
+            }
+            // Derselbe AppKit-onSubmit-Pfad wie eine physische Return-Taste.
+            findField.insertNewline(nil)
+            pollNavSelection(ws, tv: tv, searchWindow: searchWindow,
+                             originalText: originalText, expectedIndex: 0,
+                             thenPressReturnInList: true)
             return
         }
         if tick >= maxTicks {
@@ -1656,44 +1681,55 @@ enum SelfTest {
                 + "error=\(ws.searchError ?? "nil"))")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollNavReady(ws, tv: tv, searchWinNumber: searchWinNumber, tick: tick + 1)
+            pollNavReady(ws, tv: tv, searchWindow: searchWindow,
+                         originalText: originalText, tick: tick + 1)
         }
     }
 
-    /// Prüft, ob der „nächster Treffer"-Befehl im Editor eine sichtbare
-    /// Selektion auf einem TREFFER erzeugt hat. Genau hier scheitert die App,
-    /// wenn der Sprung nur bei Key-Hauptfenster wirkt.
-    private static func pollNavSelection(_ ws: Workspace, tv: TextView, tick: Int = 0) {
+    /// Prüft unabhängig beobachtbar: richtige Selektion, Suchfenster bleibt
+    /// Key, Editor bleibt ohne First-Responder und sein Text unverändert.
+    private static func pollNavSelection(_ ws: Workspace, tv: TextView,
+                                         searchWindow: NSWindow, originalText: String,
+                                         expectedIndex: Int, thenPressReturnInList: Bool,
+                                         tick: Int = 0) {
         let maxTicks = 60   // ~1,8 s
         let editorText = tv.string as NSString
         let sel = tv.selectedRange()
-        if sel.location != NSNotFound, sel.length > 0, NSMaxRange(sel) <= editorText.length {
+        if ws.activeMatchIndex == expectedIndex,
+           sel.location != NSNotFound, sel.length > 0, NSMaxRange(sel) <= editorText.length {
             let selectedText = editorText.substring(with: sel)
             if selectedText != "TREFFER" {
                 finish(false, "(navmatch) Sprung selektierte \"\(selectedText)\", erwartet \"TREFFER\"")
             }
-            // SICHTBARKEITS-Bedingung: Eine intern gesetzte Selektion reicht
-            // NICHT — der Nutzer sieht sie nur, wenn das Editor-Fenster Key UND
-            // die TextView First Responder ist (sonst zeichnet CESE nichts und
-            // scrollt nicht → „springt nicht"). Genau das prüfen wir jetzt mit.
-            let win = tv.window
-            let isKey = win?.isKeyWindow ?? false
-            let isFR = (win?.firstResponder === tv)
-            if !isKey || !isFR {
-                finish(false, "(navmatch) Sprung setzte die Selektion nur INTERN — "
-                    + "Editor nicht sichtbar fokussiert (isKeyWindow=\(isKey), isFirstResponder=\(isFR)). "
-                    + "Aus der Suchmaske heraus bleibt der Sprung für den Nutzer unsichtbar.")
+            guard searchWindow.isKeyWindow else {
+                finish(false, "(navmatch) Suchmaske verlor nach Treffer \(expectedIndex) den Key-Status")
             }
-            finish(true, "Treffer-Navigation aus der Suchmaske wirkt SICHTBAR: CMD+G "
-                + "selektierte \"\(selectedText)\", Editor ist Key+FirstResponder "
-                + "(activeMatchIndex=\(ws.activeMatchIndex))")
+            if tv.window?.firstResponder === tv {
+                finish(false, "(navmatch) Editor wurde nach Treffer \(expectedIndex) First Responder")
+            }
+            guard tv.string == originalText else {
+                finish(false, "(navmatch) Dokumenttext wurde durch Return verändert")
+            }
+            if thenPressReturnInList {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    postKey("\r", keyCode: 36, windowNumber: searchWindow.windowNumber)
+                    pollNavSelection(ws, tv: tv, searchWindow: searchWindow,
+                                     originalText: originalText, expectedIndex: 1,
+                                     thenPressReturnInList: false)
+                }
+                return
+            }
+            finish(true, "Return im Suchfeld fokussiert Treffer 1; zweites Return "
+                + "springt zu Treffer 2; Suchmaske bleibt Key, Editor unverändert")
         }
         if tick >= maxTicks {
             finish(false, "(navmatch) \"nächster Treffer\" erzeugte über \(maxTicks) Ticks KEINE "
                 + "Editor-Selektion (selectedRange=\(sel)) — Navigation aus der Suchmaske wirkungslos")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollNavSelection(ws, tv: tv, tick: tick + 1)
+            pollNavSelection(ws, tv: tv, searchWindow: searchWindow,
+                             originalText: originalText, expectedIndex: expectedIndex,
+                             thenPressReturnInList: thenPressReturnInList, tick: tick + 1)
         }
     }
 
