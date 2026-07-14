@@ -15,7 +15,9 @@ concurrency:
 jobs:
   swift-tests:
     name: Swift-Tests
-    runs-on: macos-14
+    # Fastras aufgelöste Abhängigkeiten benötigen Swift 6.2. Der offizielle
+    # macOS-26-Runner stellt Xcode 26 auf Apple Silicon bereit.
+    runs-on: macos-26
     timeout-minutes: 30
 
     steps:
