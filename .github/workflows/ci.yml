@@ -24,6 +24,10 @@ jobs:
       - name: Repository auschecken
         uses: actions/checkout@v7
 
+      - name: Abhängigkeiten vorbereiten und App bauen
+        working-directory: app
+        run: ./build.sh
+
       - name: Swift-Tests ausführen
         working-directory: app
         run: swift test
