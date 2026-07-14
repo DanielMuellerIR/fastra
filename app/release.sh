@@ -107,6 +107,23 @@ else
   SIGN_IDENTITY="-"
 fi
 
+# SwiftPM legt ausführbare Ressourcen nicht in den üblichen Bundle-Verzeichnissen
+# `Frameworks` oder `Helpers` ab. `codesign --deep` erkennt solche Mach-O-Dateien
+# deshalb nicht zuverlässig. Wir signieren sie vor dem äußeren App-Bundle einzeln;
+# sonst lehnt Apples Notarisierung beispielsweise das gebündelte `rg` und seine
+# PCRE2-Dylib trotz lokal erfolgreicher `codesign --verify`-Prüfung ab.
+echo "   Eingebettete Mach-O-Dateien signieren"
+while IFS= read -r -d '' embedded_file; do
+  if file -b "$embedded_file" | grep -q 'Mach-O'; then
+    codesign \
+      --force \
+      --options runtime \
+      --timestamp \
+      --sign "$SIGN_IDENTITY" \
+      "$embedded_file"
+  fi
+done < <(find "$APP/Contents/Resources" -type f -print0)
+
 # --deep: signiert alle Frameworks und Hilfsprogramme im Bundle rekursiv.
 # --force: überschreibt eine vorhandene Signatur (z.B. nach erneutem build.sh).
 # --options runtime: Hardened Runtime aktivieren — Pflicht für Notarization.

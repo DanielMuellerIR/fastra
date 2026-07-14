@@ -9,6 +9,14 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.14] — 2026-07-14
+
+### Behoben
+
+- Der Release-Workflow signiert ausführbare Mach-O-Ressourcen in SwiftPM-Bundles
+  nun explizit mit Developer ID, Secure Timestamp und Hardened Runtime. Dadurch
+  akzeptiert Apples Notarisierung auch das gebündelte `rg` und seine PCRE2-Dylib.
+
 ## [v1.16.13] — 2026-07-14
 
 ### Hinzugefügt
