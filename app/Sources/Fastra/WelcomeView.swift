@@ -57,18 +57,12 @@ struct WelcomeView: View {
             Text("Fastra")
                 .fastraFont(size: 34, weight: .semibold, design: .default)
                 .foregroundColor(Theme.textPrimary)
-            // Latein-Motto (Umkehrung von „per aspera ad astra") — kursiv,
-            // identisch zum AboutWindow. Darunter die sachliche Erklärung,
-            // was Fastra ist (ersetzt den früheren werblichen Ein-Zeiler).
-            Text("facillime ad astra")
-                .fastraFont(.ui)
-                .italic()
-                .foregroundColor(Theme.textSecondary)
-                .padding(.top, 4)
-            Text("Texteditor mit besonderen Suchen-&-Ersetzen-Fähigkeiten")
+            // Die Startseite bleibt sachlich: Unter der Wortmarke stehen nur
+            // die gebaute Version und ihr ISO-Datum aus der Info.plist.
+            Text(verbatim: welcomeVersionLine)
                 .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
-                .padding(.top, 2)
+                .padding(.top, 5)
 
             // Einstiegs-Aktionen.
             VStack(alignment: .leading, spacing: 10) {
@@ -118,6 +112,15 @@ struct WelcomeView: View {
             Spacer(minLength: 24 * uiScale)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Lokalisierte Versionsbezeichnung mit dem unveränderlichen ISO-Datum.
+    /// Fehlt das Datum in einem Entwicklungs-Bundle, bleibt die Zeile sauber.
+    private var welcomeVersionLine: String {
+        let version = L10n.format("Version %@", AppInfo.version)
+        return AppInfo.versionDate.isEmpty
+            ? version
+            : "\(version) · \(AppInfo.versionDate)"
     }
 
     /// Eine Einstiegs-Aktion: Icon + Titel + dezenter Shortcut-Hinweis.

@@ -9,6 +9,14 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.12] — 2026-07-14
+
+### Geändert
+
+- Die Willkommen-Seite zeigt unter dem Programmnamen jetzt dezent die
+  Versionsnummer und das zugehörige ISO-Datum. Der lateinische Wahlspruch und
+  die bisherige Texteditor-Beschreibung entfallen dort.
+
 ## [v1.16.11] — 2026-07-14
 
 ### Hinzugefügt
