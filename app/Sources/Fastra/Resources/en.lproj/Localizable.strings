@@ -162,6 +162,7 @@
 "Zum vorherigen Treffer springen — im Dokument an die Fundstelle. Tastenkürzel: ⇧⌘G." = "Jump to the previous match in the document. Shortcut: ⇧⌘G.";
 "Zum zuletzt ausgecheckten Branch zurückspringen (git switch -)." = "Return to the previously checked-out branch (git switch -).";
 "facillime ad astra" = "facillime ad astra";
+"facillime ad astra — „mit größter Leichtigkeit zu den Sternen“" = "facillime ad astra — “with the greatest ease to the stars”";
 "z.B. .git, build, *.generated.swift" = "e.g. .git, build, *.generated.swift";
 "© 2026 Daniel Müller" = "© 2026 Daniel Müller";
 "Änderungen anzeigen (Diff)" = "Show Changes (Diff)";

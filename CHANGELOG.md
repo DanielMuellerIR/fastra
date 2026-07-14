@@ -9,6 +9,15 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.10] — 2026-07-14
+
+### Geändert
+
+- Der „Über Fastra"-Dialog folgt jetzt der Anordnung des Favenio-Dialogs: Der
+  lateinische Wahlspruch steht — mit deutscher Übersetzung nach Favenio-Muster
+  („mit größter Leichtigkeit zu den Sternen") — direkt unter der Version und
+  oberhalb der Tagline; die Abstände sind kompakter.
+
 ## [v1.16.9] — 2026-07-14
 
 ### Hinzugefügt

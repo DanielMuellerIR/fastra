@@ -32,9 +32,9 @@ enum AboutWindow {
             return
         }
 
-        // Fenstergröße: ca. 320 × 420 pt, passend für Icon + Texte.
+        // Fenstergröße: ca. 320 × 360 pt, passend für Icon + Texte.
         let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 360),
             styleMask: [.titled, .closable],   // bewusst KEIN .resizable
             backing: .buffered,
             defer: false
@@ -52,8 +52,8 @@ enum AboutWindow {
         let host = NSHostingController(rootView: AboutView().fastraScalingRoot())
         w.contentViewController = host
         // Fenstergröße darf nicht geändert werden.
-        w.contentMinSize = NSSize(width: 320, height: 420)
-        w.contentMaxSize = NSSize(width: 320, height: 420)
+        w.contentMinSize = NSSize(width: 320, height: 360)
+        w.contentMaxSize = NSSize(width: 320, height: 360)
 
         // Zentrieren (Systemkonvention für Info-Dialoge).
         w.center()
@@ -86,6 +86,8 @@ private struct AboutView: View {
     }
 
     var body: some View {
+        // Reihenfolge und knapper Abstand angelehnt an Favenios Über-Dialog:
+        // Icon → Name → Version → Motto-mit-Übersetzung → Tagline.
         VStack(spacing: 0) {
 
             // --- App-Icon ---
@@ -95,13 +97,13 @@ private struct AboutView: View {
                 .interpolation(.high)
                 .antialiased(true)
                 .frame(width: 128, height: 128)
-                .padding(.top, 32)
+                .padding(.top, 28)
 
             // --- Name ---
             Text("Fastra")
                 .fastraFont(size: 22, weight: .semibold, design: .default)
                 .foregroundColor(Theme.textPrimary)
-                .padding(.top, 16)
+                .padding(.top, 12)
 
             // --- Version ---
             Text(verbatim: L10n.format("Version %@", appVersion))
@@ -109,19 +111,23 @@ private struct AboutView: View {
                 .foregroundColor(Theme.textSecondary)
                 .padding(.top, 4)
 
+            // --- Motto mit Übersetzung ---
+            // Wie in Favenio: lateinischer Spruch, Gedankenstrich,
+            // deutsche Übersetzung in Anführungszeichen.
+            Text("facillime ad astra — „mit größter Leichtigkeit zu den Sternen“")
+                .fastraFont(.small)
+                .foregroundColor(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.top, 12)
+                .padding(.horizontal, 24)
+
             // --- Tagline ---
             Text("Suchen & Ersetzen — einfach mit *,\nmächtig mit RegEx. Nativ für den Mac.")
                 .fastraFont(.ui)
                 .foregroundColor(Theme.textPrimary)
                 .multilineTextAlignment(.center)
-                .padding(.top, 16)
-                .padding(.horizontal, 24)
-
-            // --- Motto (dezent in Sekundärfarbe) ---
-            Text("facillime ad astra")
-                .fastraFont(.small)
-                .foregroundColor(Theme.textSecondary)
                 .padding(.top, 8)
+                .padding(.horizontal, 24)
 
             Spacer()
 
@@ -129,10 +135,10 @@ private struct AboutView: View {
             Text("© 2026 Daniel Müller")
                 .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
-                .padding(.bottom, 20)
+                .padding(.bottom, 16)
         }
         // Hintergrundfarbe aus Theme — konsistent mit dem Rest der App.
-        .frame(width: 320, height: 420)
+        .frame(width: 320, height: 360)
         .background(Theme.surfaceBase)
     }
 }
