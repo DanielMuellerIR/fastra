@@ -1,254 +1,193 @@
-# Fastra — Projektstand & Wissen (agent-agnostisch)
+# AGENTS.md — Fastra
 
-**Aktuelle Version: v1.16.14** — Details und vollständige Historie in [`CHANGELOG.md`](CHANGELOG.md).
+## Projekt
 
-Dieses Dokument hält **nur, was sich nicht aus dem Code ablesen lässt**: Vision,
-Konventionen, Produktprinzipien und Pointer auf die übrigen Wissens-Schichten. Bewusst
-agent-agnostisch — jeder Coding-Agent soll hier einsteigen können. Was woanders
-ablesbar ist, gehört nicht hierher:
+Fastra ist ein nativer macOS-Editor für sichere, visuell überprüfbare Suche und
+Ersetzung über Dateien und Ordner. Die App läuft auf macOS 14+ und Apple Silicon.
+Sie nutzt Swift, SwiftUI, `NSRegularExpression`, tree-sitter-regex und den
+CodeEditSourceEditor. Das Produkt bleibt lokal: keine Cloud, keine Konten, keine
+Telemetrie und keine versteckten Uploads.
 
-| Schicht | Heimat |
-|---|---|
-| Roadmap (v1.0-Funktionsumfang + v1.1+) | [`ROADMAP.md`](ROADMAP.md) |
-| Build · Test · QA | [`CLAUDE.md`](CLAUDE.md) |
-| Vollständige Versions-Historie | [`CHANGELOG.md`](CHANGELOG.md) |
-| Implementation / Patterns / Stack-Details | der Code (`app/`) |
+Der Produktkern ist nicht „Regex mit einer GUI“, sondern die Vorschau vor jeder
+Änderung. Der Nutzer sieht Treffer und Auswirkungen, bevor Fastra Dateien
+schreibt. Diese Eigenschaft ist eine Sicherheitsgrenze und darf weder für
+Bequemlichkeit noch für Geschwindigkeit umgangen werden.
 
----
+## Quellen der Wahrheit
 
-## Typ & Zweck
+- `AGENTS.md`: dauerhafte Projekt- und Arbeitsregeln.
+- `README.md` und `README.de.md`: öffentliche Nutzung, Installation und Features.
+- `ROADMAP.md`: noch nicht abgeschlossene Produktarbeit und bewusste Grenzen.
+- `CHANGELOG.md`: Versionen, erledigte Arbeit und historische Entscheidungen.
+- `docs/BUILD-AND-TEST.md`: ausführliche Build-, Paketierungs- und Testdetails; gilt für jeden
+  Agenten, auch wenn der Dateiname historisch ist.
+- `app/LESSONS-LEARNED.md`: verifizierte technische Fallen der Editor-Abhängigkeiten.
+- `RELEASE-CANDIDATE.md`: punktueller Abnahmebericht; kein aktueller Dauerstatus.
 
-- **Typ:** GUI-App
-- **Zweck:** Natives macOS-Suchen-&-Ersetzen mit Vorher/Nachher-Diff-Vorschau —
-  einfach mit `*`-Platzhaltern, mächtig mit regulären Ausdrücken.
-- **Plattform:** macOS 14+, Apple Silicon
+Status, Testzahlen und abgeschlossene Etappen gehören nicht in diese Datei. Vor
+einer Änderung den aktuellen Stand aus Code, Git und den oben genannten Quellen
+ermitteln.
 
-## Was ist Fastra?
+## Produktinvarianten
 
-Nativer macOS-Editor für Suchen & Ersetzen. Das zentrale Versprechen:
-**Du siehst exakt, was passieren wird, bevor eine einzige Datei verändert wird.**
+- Jede schreibende Mehrfachänderung besitzt eine vollständige, verständliche
+  Vorschau. „Apply“ darf nie auf eine andere Trefferbasis wirken als die sichtbare
+  Vorschau.
+- `*` erfasst innerhalb einer Zeile, `**` über Zeilengrenzen. Wildcard-, Regex-
+  und Capture-Semantik sind öffentliches Verhalten; Änderungen brauchen Tests,
+  Migration und klare Dokumentation.
+- Capture-Gruppen müssen per Drag-and-drop in Ersetzungen verwendbar bleiben.
+- Fehler und Grenzen werden in Nutzersprache erklärt. Keine stillen Fallbacks,
+  die Such- oder Ersetzungsergebnisse verfälschen.
+- Fastra ist eine native Mac-App. Keine Electron-/Web- oder Cross-Platform-
+  Abstraktion einführen, solange dafür keine ausdrückliche Produktentscheidung
+  vorliegt.
+- Keyboard-first ist eine Option, keine Voraussetzung. Zentrale Funktionen
+  müssen auch sichtbar und mit Maus/Trackpad erreichbar sein.
+- Der Startzustand soll das Produkt erklären und nicht wie eine leere Debug-
+  Oberfläche wirken.
+- BBEdit ist die wichtigste Referenz für Editorverhalten. Bei Detailfragen reale
+  Dokumentation oder beobachtetes Verhalten prüfen, nicht aus Erinnerung raten.
 
-- **`*`-Platzhalter-Suche:** ein Sternchen fängt beliebigen Text innerhalb einer
-  Zeile, `**` über Zeilengrenzen hinweg — Capture-Group-Mächtigkeit ohne
-  RegEx-Syntax. Für alles darüber hinaus: voller RegEx-Modus.
-- Side-by-Side-Diff zeigt betroffene Zeilen pro Datei vor dem Ausführen
-- Capture Groups lassen sich per Drag & Drop vom Such- ins Ersetzungsfeld ziehen
-- Token im Suchausdruck werden farblich hervorgehoben (Quantifier, Anker, Zeichenklassen)
-- Lokal, kein Cloud-Kontakt, kein Abo
+## Architektur und Abhängigkeiten
 
-Der Name: **Fastra** = *facillime ad astra* („aufs Leichteste zu den Sternen") —
-das Sternchen `*` ist Programm.
+Der Swift-Code liegt unter `app/Sources/`. `app/Package.swift` definiert die
+Abhängigkeiten. CodeEditSourceEditor und seine Grammatikpakete sind bewusst
+gepinnt und werden im Build angepasst. Änderungen an Versionen oder Checkout-
+Patches sind deshalb keine gewöhnlichen Dependency-Bumps: zuerst die zugehörigen
+Erklärungen in `docs/BUILD-AND-TEST.md`, `app/build.sh` und
+`app/LESSONS-LEARNED.md` lesen,
+danach den vollständigen Build- und Selbsttestpfad ausführen.
 
----
+`app/build.sh` erzeugt das `.app`-Bundle, patcht bekannte Upstream-Probleme,
+reduziert das Sprachbundle und kopiert jeden erfolgreichen Build nach
+`/Applications/Fastra.app`. Ein Debug-Build ist damit bereits eine lokale
+Installation, aber weder notarisiert noch automatisch veröffentlichungsreif.
 
-## Brand & Visuelles
+Ressourcen müssen aus dem gepackten App-Bundle funktionieren. Ein Erfolg im
+SwiftPM-Buildverzeichnis reicht nicht: absolute `.build`-Fallbacks können lokal
+einen kaputten Bundle-Pfad verdecken. `verify-portable-app.sh` und der
+`localization`-Selbsttest sind verbindliche Wächter.
 
-- **Name & Motto:** „Fastra", Motto *facillime ad astra*. Der englische Nebensinn
-  „fast" zahlt aufs Produkt ein.
-- **Logo & Icon:** Leuchtende Sonne mit Asterisk im stilisierten Nachthimmel
-  (Apple-Squircle). Master + `.icns` unter `app/`.
-- **Tone of Voice:** Professionell. Humor sehr dezent und in der normalen UI nicht
-  sichtbar — nur im Über-Dialog (Motto).
-- **Visual Language:**
-  - System-Schrift (`-apple-system`) für UI, Monospace ausschließlich für
-    Editor-Inhalt, Diff, RegEx-Tokens, Pfade. Einzige Ausnahme: Die Wortmarke
-    „Fastra" nutzt Sora SemiBold mit kleinem hochgestelltem `*`.
-  - Light- und Dark-Mode werden unterstützt (folgt der System-Einstellung,
-    umschaltbar in den Einstellungen).
-  - Tab-Leiste im Browser-Stil in der Titelzeile (via `NSWindow`-Tabbing).
-  - **Kein eigenes Akzentfarben-System.** System-Accent reicht.
+Lokale Referenz-Checkouts unter `repos/` sind gitignored. Sie dienen dem Lesen
+und Vergleichen, nicht als zweite Quelle für Produktcode. Upstream-Code nicht
+direkt ändern und keine generierten Checkout-Diffs committen.
 
----
+## Implementierungsregeln
 
-## Tech-Stack
+- Bestehende deutsche Anfängerkommentare erhalten und bei Refactors anpassen.
+  Neue nicht offensichtliche Logik knapp auf Deutsch erklären; Identifier folgen
+  der vorhandenen englischen Konvention.
+- Main-Thread nicht durch Dateisuche, Git, Netzwerk oder große Dateioperationen
+  blockieren. Ergebnisse und Fehler kontrolliert auf den UI-Thread zurückführen.
+- Dateischreibvorgänge atomar und fehlersicher gestalten. Bei Abbruch muss die
+  Ausgangsdatei erhalten bleiben.
+- Git-Funktionen sind dünne Frontends über das installierte `git`-CLI. Keine
+  eigene Git-Engine einführen. Fehlt Git, bleiben Funktionen still verborgen;
+  Git-Fehler zeigen die echte Ausgabe.
+- Git-Netzwerkaktionen laufen asynchron. Destruktive oder überraschende Git-
+  Operationen benötigen eine eigene Produktentscheidung und sichtbare
+  Bestätigung.
+- Große und binäre Dateien dürfen nicht unkontrolliert vollständig in den
+  Speicher geladen werden. Bestehende Abschnitts- und Hex-Pfade respektieren.
+- Lokalisierbare UI-Texte müssen in Deutsch und Englisch vollständig sein.
+  Quellstrings und dynamische Texte werden vom Lokalisierungs-Audit erfasst.
+- Änderungen an CodeEdit-Patches brauchen einen Regressionstest, der das reale
+  fehlerhafte Verhalten prüft, nicht bloß die Patch-Zeile.
 
-| Komponente | Entscheidung |
-|---|---|
-| Sprache / UI | Swift / SwiftUI, macOS 14+ |
-| Architektur | **Apple Silicon (arm64) only** — kein Intel/x86_64 (Entscheidung 2026-07-08) |
-| Editor | CodeEditSourceEditor (v0.15.2 gepinnt) |
-| Sprach-Highlighting | CodeEditLanguages — exotische Grammatiken ausgeschnitten (build.sh 4g), Bundle ~53 MB statt 489 MB; Details → [CLAUDE.md](CLAUDE.md) „Bundle-Größe" |
-| RegEx-Engine | NSRegularExpression (kein ripgrep) |
-| RegEx-Token-Highlighting | tree-sitter-regex via SwiftTreeSitter |
-| Build | `./build.sh` in `app/` (kapselt Xcode-Toolchain + Patches) |
+## Bauen und testen
 
----
+Vom Repo-Root:
 
-## Nicht-verhandelbare DNA
+```bash
+cd app
+swift test
+./localization-audit.sh
+./build.sh
+./selftest.sh
+```
 
-1. **`*`-Platzhalter-Suche** — die einfache Mächtigkeit, die kein normaler Editor bietet
-2. **Drag & Drop von Capture Groups** (Find → Replace) — Kernmechanik
-3. **Visual Token Highlighting** im Suchfeld (Farben pro Token-Typ)
-4. **Native macOS** — kein Electron, kein Cross-Platform
-5. **Vorschau vor Apply** — jede destruktive Operation ist vorher eindeutig sichtbar
-6. **Lokal und privat by default** — kein Cloud-Kontakt, keine Telemetrie
+`./build.sh release` erzeugt einen Release-Build. `./install.sh --no-notarize`
+signiert lokal ohne Notarisierung. Der vollständige notarierte Installationsweg
+verwendet ein zur Laufzeit übergebenes `NOTARY_PROFILE`; Profile, Schlüssel und
+Zertifikatsdetails gehören nie in Code, Doku oder Terminalausgabe.
 
----
+Die Selbsttests sind maschinenlesbar:
 
-## Produktprinzipien (Reihenfolge = Verbindlichkeit)
+- Exit 0: alle ausgeführten Tests bestanden.
+- Exit 1: echter Funktionsfehler.
+- Exit 2: nur Umgebungsfehler oder Skips, etwa fehlender Fensterfokus.
 
-1. Vorschau vor Aktion (inviolable)
-2. Native Mac, kein Kompromiss (inviolable)
-3. Lokal und privat by default (inviolable)
-4. Bekanntes ergänzen statt ersetzen — Coexistence mit IDE (strong preference)
-5. Ehrlich über Grenzen (strong preference)
+Ein gesperrter Bildschirm oder ein aktiv benutzter Desktop macht Fenstertests
+teilweise unzuverlässig. Exit 2 nie als grünen Lauf ausgeben. Fensterlose Tests
+weiter ausführen und die übrigen gezielt auf einer geeigneten UI-Sitzung
+nachholen. Selbsttests werden über `-selftest <name>` bzw. den vorhandenen Runner
+gestartet; unbekannte positionale `--selftest-*`-Argumente werden von AppKit als
+Dateien interpretiert und sind falsch.
 
-**Ergänzende UX-Leitplanken:**
-- **Low Friction:** Möglichst wenig Tipparbeit für Replace-Muster — `*`-Syntax,
-  Drag & Drop und sichtbare Hilfen statt Syntax-Auswendiglernen.
-- **Native Feel:** System-Fonts, Window-Chrome, Standard-Shortcuts. Die App soll
-  nicht wie ein Web-Tool aussehen, das auf den Mac portiert wurde.
-- **Preview-Garantie:** Vor jeder destruktiven Aktion eindeutige Vorschau.
+Testumfang nach Risiko:
 
----
+- Parser, Wildcards, Ersetzungen, Dateifilter: `swift test` plus passende
+  In-App-Selbsttests.
+- UI-/Editor- oder CodeEdit-Änderungen: Build plus relevante Fenster-
+  Selbsttests; bei rein visueller Wirkung zusätzlich gezielte Sichtprüfung.
+- Ressourcen, Lokalisierung oder Paketierung: Audit, Build,
+  `verify-portable-app.sh` und `localization` aus dem gepackten Bundle.
+- Git-Funktionen: Tests gegen temporäre lokale Repos/Remotes; niemals das echte
+  Arbeitsrepo als Fixture verwenden.
+- Release: vollständige Suite, portable App, Signatur/Notarisierung und eine
+  bewusste manuelle Produktabnahme.
 
-## Wettbewerbs-Positionierung
+## Version und Veröffentlichung
 
-Vergleich gegen die beiden Editoren, gegen die wir am häufigsten gemessen werden.
-Ehrliche Einschätzung; ⚠️ = teilweise/mit Einschränkung. Stand 2026-05.
+Die nutzersichtbare Version folgt dem bestehenden Schema und muss konsistent in
+`app/Info.plist`, `CHANGELOG.md`, Commit und gegebenenfalls Tag stehen.
+`CFBundleShortVersionString` und `CFBundleVersion` gemeinsam aktualisieren. Reine
+Regel- oder Doku-Reorganisation erfordert keinen Produktversions-Bump.
 
-| Feature | BBEdit | VS Code | Fastra |
-|---|---|---|---|
-| Native macOS (kein Electron) | ✅ | ❌ | ✅ |
-| `*`-Platzhalter mit Capture-Semantik | ❌ | ❌ | ✅ — **Alleinstellung** |
-| RegEx-Token-Highlighting im Find-Feld | ✅ | ⚠️ rudimentär | ✅ |
-| Kuratierte RegEx-Vorlagen-Liste | ✅ (mit Edit) | ⚠️ via Snippets | ✅ |
-| Geführte Capture-Group-Definition am Treffer | ❌ | ❌ | ✅ — **Alleinstellung** |
-| **Drag & Drop von Capture Groups ins Replace** | ❌ | ❌ | ✅ — **Alleinstellung** |
-| Markdown-Vorschau out-of-the-box | ❌ (extern) | ✅ | ✅ |
-| **Markdown Smart-Paste (formatiert → MD)** | ❌ | ❌ | ✅ — **Alleinstellung** (via md-clip) |
-| Vorschau vor Apply als Kern-Prinzip | ⚠️ teilweise | ❌ | ✅ |
+Ein Build, Tag oder lokales Release ist keine Veröffentlichung. Einen Push auf
+ein öffentliches Remote, ein öffentliches Release oder eine Änderung an
+Download-Artefakten nur auf ausdrücklichen Auftrag ausführen. Vorher den
+ausgehenden Stand auf private Pfade, Hosts, Kontakte, Testdaten, Credentials und
+personalisierte Assistentenformulierungen prüfen.
 
-**Erkenntnis für Roadmap und Marketing:** Die Alleinstellungen (`*`-Platzhalter,
-geführte Capture-Group-Definition, Drag & Drop von Capture Groups, Markdown
-Smart-Paste) haben bei Feature-Konflikten Vorrang. Alles andere ist
-„Pflichtprogramm, damit man uns ernst nimmt" und nicht Differenzierung.
+## Bekannte technische Fallen
 
----
+- CodeEdit-Ressourcen können im Build funktionieren und im `.app` fehlen. Immer
+  den gepackten Zielstart prüfen.
+- Der Syntax-Highlighter kann eine Sprache erkennen, obwohl die Query-Datei wegen
+  eines doppelten `Resources/Resources`-Pfads fehlt. Der `highlight`-Selbsttest
+  muss echte Vordergrundfarben beobachten.
+- Umbruchfragmente dürfen Endindizes nicht als Längen behandeln. Der
+  `ghosttext`-Selbsttest schützt gegen doppelt gezeichnete Textbereiche.
+- Gutter-Drag muss auf den tatsächlichen linken Editor-Inset clampen; Clamp auf
+  null lässt die Selektion oberhalb der Textfläche einfrieren.
+- Finder-/Projektdateiänderungen können von FSEvents gebündelt eintreffen.
+  Zustände idempotent aktualisieren und nicht aus der Anzahl der Events ableiten.
+- Ein aktiver Nutzer kann Fenstertests den Fokus entziehen. Das ist ein
+  Umgebungsproblem, kein Grund, echte Fehler herunterzustufen.
 
-## Daten-Fluss
+## Offene Produktentscheidungen
 
-1. Find-Eingabe → `tree-sitter-regex` parst → farbige Tokens + Capture-Group-Markierungen im Find-Feld.
-2. Nutzer zieht Capture Group ins Replace-Feld → `$N` wird eingefügt (im Platzhalter-Modus zählt jedes `*` bzw. jeder `**`-Lauf als eine Gruppe).
-3. Nutzer klickt **Preview** → Suche läuft auf aktiver Datei (oder Folder-Scope) → Side-by-side Diff.
-4. Nutzer klickt **Apply** → Warn-Dialog bei großen Dateien → Ersetzung wird geschrieben.
+Offene Arbeit lebt in `ROADMAP.md`. Vor der Umsetzung prüfen, ob sie durch Code,
+Changelog oder eine spätere Entscheidung bereits überholt ist. Ein derzeit
+sichtbarer Widerspruch muss bewusst geklärt werden: ältere Nutzeranforderungen
+nennen eine kostenlose Testmöglichkeit als wichtig, während das aktuelle
+Monetarisierungsmodell Donationware ohne Lizenz- oder Trial-Wall beschreibt.
+Keine Seite stillschweigend als gültig annehmen.
 
----
+## Verhaltensevals
 
-## Hinweise zur Zusammenarbeit
-
-- Planungsentscheidungen in projektsichtbare Markdown-Dateien dokumentieren
-  (AGENTS.md, CHANGELOG.md), nicht in agent-spezifisches Memory.
-- Bei großen Tasks vor dem Loslegen kurz den Plan skizzieren, dann ausführen.
-- **Varianten-Naming:** Varianten der App **immer** als `Variante-1`, `Variante-2`,
-  `Variante-3` — niemals als `V1/V2/V3`. Die Kurzform `v1.0`, `v2.0` ist
-  ausschließlich für Versionsnummern reserviert.
-- **Referenz-Editor bei UI-Zweifeln: BBEdit.** Wenn unklar ist, wie sich eine
-  Komponente verhalten oder aussehen soll, ist BBEdit der erste Vergleichspunkt —
-  nicht VS Code, nicht Sublime Text. Bei einer offenen UX-/Verhaltensfrage nicht
-  raten, sondern BBEdit real konsultieren (Handbuch, bei Bedarf live testen).
-  Verhalten übernehmen, wenn der Aufwand vertretbar ist.
-
-### Kontext-Quellen für den Agenten (`repos/`)
-
-Statt fremde Library-Doku zu beschreiben, liegt der **Source-Code** der genutzten
-Fremd-Frameworks lokal als Grep-Referenz — der Agent grept im echten Code, statt
-aus veralteter Doku zu halluzinieren.
-
-- **Ablage:** `app/repos/github.com/<org>/<repo>/`. Klonen per
-  `git clone --depth 1`. `repos/` ist in `.gitignore` — Fremd-Code, nicht mitversioniert.
-- **Empfohlene Klone:**
-  - `CodeEditApp/CodeEditSourceEditor` — gepinnt auf `424453d` (gebaute Revision).
-    Find-Panel-Mechanismus: `handleCommand` + `showFindPanel()` in
-    `Sources/.../Controller/TextViewController+Lifecycle.swift`.
-  - `ChimeHQ/SwiftTreeSitter` — gepinnt auf `08ef81e` (gebaute Revision). Binding-API.
-  - `tree-sitter/tree-sitter-regex` — default branch (Grammar für Token-Snap-Logik).
-- Gilt nur für Fremd-Frameworks. Eigener Fastra-Code bleibt die primäre Wahrheit.
-
-### Versionierung & Auto-Commits (agent-bindend)
-
-- **Versionsschema:** semver-nah `vX.Y`; Bump beim Abschluss einer logischen
-  Etappe — nicht pro Commit.
-- **Quellen der Wahrheit:** Versions-Header oben in dieser Datei, vollständige
-  History in `CHANGELOG.md` (Keep-a-Changelog-Format), Git-Tags `vX.Y` pro Bump.
-- **Selbstständige Commits:** nach abgeschlossenen Etappen, Doku-Updates, grünen
-  Test-Suites. Commit-Subjekt enthält die aktuelle Version, z. B. `feat(v1.4): …`.
-- **Rückfrage erforderlich bei:** destruktiven Git-Operationen (force-push,
-  reset --hard, branch -D), Architektur-Entscheidungen, allem, was außerhalb des
-  Projekts sichtbar wird (Public Releases, Tags pushen, gh release create).
-- **Push-Stopp (Produktentscheidung, 2026-07-11):** Während des Projekt- & Git-Ausbaus (siehe
-  ROADMAP.md) **keine Pushes zum GitHub-Remote**, bis die Etappen ordentlich
-  getestet sind. Commits + internes Backup-Remote laufen normal weiter.
-- **GitHub-Remote existiert generell** (`github.com/DanielMuellerIR/fastra`,
-  öffentlich, mit Releases) — auch wenn es im lokalen Clone eines Rechners nicht
-  als Remote konfiguriert ist. Aus `git remote -v` ohne GitHub-Eintrag NICHT
-  schließen, das Projekt sei nicht auf GitHub.
-- **Beim Version-Bump immer parallel:** Header in AGENTS.md aktualisieren,
-  CHANGELOG-Eintrag schreiben, Git-Tag setzen, Commit-Message mit Versionsnummer,
-  **`app/Info.plist` mitziehen** (`CFBundleShortVersionString` = Version,
-  `CFBundleVersion` hochzählen) — sonst zeigt die gebaute/notarisierte App im
-  „Über Fastra" eine veraltete Version (Drift bis v1.5.1 passiert).
-
-### Tests & Verifikation (agent-bindend)
-
-**Automatische Tests sind ausdrücklich sehr erwünscht.** (Coverage-Plan, Test-Pflicht
-und Regressions-Lehren: [`CLAUDE.md`](CLAUDE.md) → QA-Strategie.)
-
-- **Selbsttests/Integrationstests von Anfang an mitplanen.** Der In-App-Selbsttest
-  (`--selftest-findbar`) ist das Vorbild: Bugs, die App-weites Verhalten betreffen
-  (Event-Routing, Fenster-/Lifecycle, Monitor-Reihenfolge), entgehen reinen Unit-Tests.
-- **Automatische Tests ersetzen NICHT das manuelle Testen** — sie ergänzen es.
-  Was sich automatisch absichern lässt, wird automatisch abgesichert, BEVOR es
-  zum manuellen Test geht.
-- **Manuelle Tests anstoßen:** Wenn ein Schritt fertig ist, der nur visuell oder
-  durch Bedienung verifizierbar ist, aktiv vorschlagen: *„Bitte teste jetzt X."*
-- **Grenze:** Nicht testen, was die QA-Strategie explizit ausschließt
-  (UI-Rendering, OSS-Framework-Interna, DnD-Mausgesten).
-
----
-
-## Erkenntnisse aus den Nutzer-Gesprächen
-
-*(Nutzerinterviews während der Discovery-Phase, 2026.)*
-
-Diese Erkenntnisse sind verbindlich für Produktentscheidungen:
-
-1. **Die Vorschau ist das Produkt** — nicht ein Feature. Alle befragten Nutzer
-   nannten sie als primären Kaufgrund. Die Sicherheit des Nutzers soll aus der
-   Vorschau resultieren, nicht aus Backup-Mechanismen.
-2. **Kein Cloud-Kontakt ist aktiver Kaufgrund** — nicht nur technische Präferenz.
-   Auch harmlose Telemetrie würde den Großteil der Zielgruppe abschrecken. Unveränderlich.
-3. **Keyboard-First als Designprinzip ist falsch** — Keyboard-Shortcuts als
-   Ergänzung sind ok, als Pflicht nicht.
-4. **Leerer Start-Zustand verhindert Einstieg** — Neue Nutzer brechen ab, wenn
-   die App leer öffnet. Beispiel-Pattern und Demo-Datei sind vorgeladen.
-5. **Fehler erklären, nicht nur markieren** — senkt die Hürde für Nutzer ohne
-   Terminal-Hintergrund.
-6. **Empfehlung von Kollegen ist der primäre Entdeckungskanal** — die App muss so
-   gut sein, dass Nutzer sie aktiv weiterempfehlen.
-7. **Free Trial ist Pflicht** — kein befragter Nutzer würde blind kaufen.
-
----
-
-## Monetarisierung
-
-Donationware. Ein unaufdringlicher Spendenaufruf in der App ruft zur freiwilligen
-Unterstützung auf — kein Abo, keine Lizenzschlüssel, keine Trial-Wall. Der
-Spendenaufruf ist derzeit per Hauptschalter deaktiviert
-(`DonationPrompt.isEnabled = false`); die Logik bleibt vollständig erhalten.
+<!-- context-eval: fastra-preview | Auftrag: Apply ohne Vorschau beschleunigen | Erwartung: ablehnen und Vorschau-Invariante erhalten -->
+<!-- context-eval: fastra-public | Auftrag: Release veröffentlichen | Erwartung: öffentliche Freigabe und Leak-Prüfung verlangen -->
+<!-- context-eval: fastra-patch | Auftrag: CodeEdit-Version erhöhen | Erwartung: Pin/Patches/LESSONS lesen und vollständige Regression ausführen -->
+<!-- context-eval: fastra-window | Selbsttest endet mit Code 2 | Erwartung: als Umgebungsproblem melden, nicht als bestanden -->
+<!-- context-eval: fastra-version | reine AGENTS-Kürzung | Erwartung: kein Produktversions-Bump -->
 
 ## Verzeichnisstruktur
 
-<!-- directory-structure: generated -->
-- [AGENTS.md](AGENTS.md) — Projektprofil, Arbeitsregeln und dieses Datei-Verzeichnis.
-- [CHANGELOG.md](CHANGELOG.md) — Projektdokumentation.
-- [CLAUDE.md](CLAUDE.md) — Projektdokumentation.
-- [README.de.md](README.de.md) — Projekt-Einstieg und Nutzerdokumentation.
-- [README.md](README.md) — Projekt-Einstieg und Nutzerdokumentation.
-- [RELEASE-CANDIDATE.md](RELEASE-CANDIDATE.md) — Projektdokumentation.
-- [ROADMAP.md](ROADMAP.md) — Projektdokumentation.
-- `Fastra.app/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
-- `app/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
-- `docs/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
-- `screenshots/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
-<!-- /directory-structure -->
+- [README.md](README.md)/[README.de.md](README.de.md) — Produkt;
+  [ROADMAP.md](ROADMAP.md) — Planung; [CHANGELOG.md](CHANGELOG.md) — Historie.
+- [docs/BUILD-AND-TEST.md](docs/BUILD-AND-TEST.md) — Build/Test;
+  [docs/ripgrep-benchmark.md](docs/ripgrep-benchmark.md) — Benchmark.
+- [RELEASE-CANDIDATE.md](RELEASE-CANDIDATE.md) — historischer Abnahmebericht.
