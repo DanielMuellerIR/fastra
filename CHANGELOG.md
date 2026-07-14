@@ -9,6 +9,20 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.13] — 2026-07-14
+
+### Hinzugefügt
+
+- Ein GitHub-Actions-Workflow führt bei Änderungen an `main` und bei Pull
+  Requests die vollständigen Swift-Tests sowie die Lokalisierungsprüfung aus.
+
+### Geändert
+
+- Der Programmname erscheint auf der Willkommen-Seite, links oben in der App
+  und im Über-Dialog einheitlich in Sora SemiBold mit einem kleinen
+  hochgestellten Sternchen. Die Schrift wird samt SIL-OFL-Lizenz gebündelt;
+  alle übrigen UI-Texte bleiben in der macOS-Systemschrift.
+
 ## [v1.16.12] — 2026-07-14
 
 ### Geändert

@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift-tests:
+    name: Swift-Tests
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v7
+
+      - name: Swift-Tests ausführen
+        working-directory: app
+        run: swift test
+
+      - name: Lokalisierung prüfen
+        working-directory: app
+        run: ./localization-audit.sh

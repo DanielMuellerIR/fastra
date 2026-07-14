@@ -191,6 +191,12 @@ enum SelfTest {
             // Diagnose: Projekt-Dateibaum in der Seitenleiste + geladene
             // Datei fürs fenstergezielte Capture.
             waitForMainWindow { runProjectShot() }
+        case "aboutshot":
+            // Diagnose: Über-Dialog für die visuelle Kontrolle von Icon,
+            // Wortmarke, Version und Textabständen.
+            waitForMainWindow {
+                Task { @MainActor in runAboutShot() }
+            }
         case "markdownshot":
             // Diagnose: Markdown-Datei mit integrierter Rich-Text-Vorschau.
             // Dient der visuellen Kontrolle von Chrome, Splitter und Typografie.
@@ -3028,10 +3034,30 @@ enum SelfTest {
         ws.projectURL = nil
         ws.recentProjects = [
             ProjectEntry(path: "~/git/fastra"),
-            ProjectEntry(path: "~/git/intern"),
+            ProjectEntry(path: "~/git/Beispielprojekt"),
             ProjectEntry(path: "~/Projekte/Newsletter"),
         ]
         dumpMainWindowThenExit(prefix: "WELCOMESHOT-WINDOW")
+    }
+
+    /// Diagnose (`-selftest aboutshot`): Über-Dialog öffnen und seine
+    /// Fenster-Nummer für ein gezieltes `screencapture -l` ausgeben.
+    @MainActor
+    private static func runAboutShot() {
+        testLabel = "aboutshot"
+        AboutWindow.show()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            guard let win = NSApp.windows.first(where: {
+                $0.isVisible && $0.title == L10n.string("Über Fastra")
+            }) else {
+                finish(false, "(aboutshot) Über-Dialog nicht sichtbar")
+            }
+            win.orderFront(nil)
+            FileHandle.standardError.write(
+                Data("ABOUTSHOT-WINDOW \(win.windowNumber)\n".utf8)
+            )
+            DispatchQueue.main.asyncAfter(deadline: .now() + 12) { exit(0) }
+        }
     }
 
     /// Diagnose (`-selftest projectshot`): Temp-Projekt mit sprechenden

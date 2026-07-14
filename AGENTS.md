@@ -1,6 +1,6 @@
 # Fastra — Projektstand & Wissen (agent-agnostisch)
 
-**Aktuelle Version: v1.16.12** — Details und vollständige Historie in [`CHANGELOG.md`](CHANGELOG.md).
+**Aktuelle Version: v1.16.13** — Details und vollständige Historie in [`CHANGELOG.md`](CHANGELOG.md).
 
 Dieses Dokument hält **nur, was sich nicht aus dem Code ablesen lässt**: Vision,
 Konventionen, Produktprinzipien und Pointer auf die übrigen Wissens-Schichten. Bewusst
@@ -51,7 +51,8 @@ das Sternchen `*` ist Programm.
   sichtbar — nur im Über-Dialog (Motto).
 - **Visual Language:**
   - System-Schrift (`-apple-system`) für UI, Monospace ausschließlich für
-    Editor-Inhalt, Diff, RegEx-Tokens, Pfade.
+    Editor-Inhalt, Diff, RegEx-Tokens, Pfade. Einzige Ausnahme: Die Wortmarke
+    „Fastra" nutzt Sora SemiBold mit kleinem hochgestelltem `*`.
   - Light- und Dark-Mode werden unterstützt (folgt der System-Einstellung,
     umschaltbar in den Einstellungen).
   - Tab-Leiste im Browser-Stil in der Titelzeile (via `NSWindow`-Tabbing).
@@ -175,7 +176,7 @@ aus veralteter Doku zu halluzinieren.
 - **Rückfrage erforderlich bei:** destruktiven Git-Operationen (force-push,
   reset --hard, branch -D), Architektur-Entscheidungen, allem, was außerhalb des
   Projekts sichtbar wird (Public Releases, Tags pushen, gh release create).
-- **Push-Stopp (Daniel, 2026-07-11):** Während des Projekt- & Git-Ausbaus (siehe
+- **Push-Stopp (Produktentscheidung, 2026-07-11):** Während des Projekt- & Git-Ausbaus (siehe
   ROADMAP.md) **keine Pushes zum GitHub-Remote**, bis die Etappen ordentlich
   getestet sind. Commits + internes Backup-Remote laufen normal weiter.
 - **GitHub-Remote existiert generell** (`github.com/DanielMuellerIR/fastra`,

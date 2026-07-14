@@ -108,8 +108,7 @@ struct TabBarView: View {
 struct SidebarBrandView: View {
     var body: some View {
         HStack(alignment: .center, spacing: 7) {
-            Text("Fastra")
-                .fastraFont(size: 19, weight: .semibold)
+            BrandWordmark(size: 19)
                 .foregroundColor(Theme.textPrimary)
                 .lineLimit(1)
                 // Der Markenname ist die unveränderliche Identität und darf

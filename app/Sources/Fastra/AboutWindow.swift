@@ -100,8 +100,7 @@ private struct AboutView: View {
                 .padding(.top, 28)
 
             // --- Name ---
-            Text("Fastra")
-                .fastraFont(size: 22, weight: .semibold, design: .default)
+            BrandWordmark(size: 22)
                 .foregroundColor(Theme.textPrimary)
                 .padding(.top, 12)
 

@@ -20,8 +20,7 @@ Developer ID + Hardened Runtime, notarisiert bei Apple (`--wait`), stapelt das
 Ticket und kopiert nach `/Applications`. Die Signatur-Identität wird zur Laufzeit
 aus dem Schlüsselbund ermittelt (nichts Privates im Skript — public Repo). Der
 Notary-Keychain-Profilname steht bewusst NICHT im Skript; per `NOTARY_PROFILE`
-übergeben (der fleet-spezifische Profilname steht in
-`~/git/intern/knowledge/fastra.md`). `./install.sh --no-notarize` = nur
+übergeben. `./install.sh --no-notarize` = nur
 signiert (schnell, läuft auf diesem Mac sofort).
 
 Der Root-Wrapper `./install.sh` reicht Optionen und Umgebungsvariablen
@@ -45,8 +44,8 @@ diesen echten Zielstart nicht.
 Build** nach `/Applications/Fastra.app` — auch Debug-Builds.
 Nicht jeder Build wird jedoch notarisiert: Der notarisierten Release-Workflow
 via `install.sh` bleibt für:
-- einer **abgeschlossenen, verifizierten größeren Etappe** (Release-reifer Stand,
-  den Daniel produktiv nutzen soll), oder
+- einer **abgeschlossenen, verifizierten größeren Etappe** (Release-reifer Stand
+  für den produktiven Einsatz), oder
 - **auf Ansage** („leg mir einen frischen Build hin").
 
 Für normale Zwischen-Iterationen genügt `build.sh`; die frisch gebaute
@@ -83,7 +82,7 @@ Editor in `EditorView`), KEIN Checkout-Patch.
 ### Bundle-Größe — Apple-Silicon-only, ~53 MB (Stand 2026-07-08)
 
 Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
-1. **Kein Intel.** Fastra wird nur für arm64 gebaut (Daniel-Entscheidung 2026-07-08).
+1. **Kein Intel.** Fastra wird nur für arm64 gebaut (Produktentscheidung 2026-07-08).
    `swift build` baut ohnehin nur die Host-Arch; die einzige x86_64-Quelle war das
    Grammatik-XCFramework (s. u.), das jetzt nicht mehr mitwandert.
 2. **Grammatik-XCFramework NICHT mehr ins Bundle kopiert** (Bundle-Schritt in build.sh).

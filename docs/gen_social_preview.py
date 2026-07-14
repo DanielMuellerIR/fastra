@@ -4,6 +4,8 @@
 Design: dunkler Verlauf, großes Wildcard-Sternchen als Markenmotiv,
 Titel + Untertitel, Mono-Zeile mit Suchen-→-Ersetzen-Beispiel.
 """
+from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFont
 
 W, H = 1280, 640
@@ -72,6 +74,6 @@ badge = "macOS  ·  Swift  ·  notarized"
 wb = d.textlength(badge, font=f_small)
 d.text((W - wb - 70, H - 70), badge, font=f_small, fill=MUTED)
 
-out = "/private/tmp/claude-501/-Users-dm0-git-profil-irenner/ce29d51f-f8b5-47fa-9ee5-237fe2f91b3f/scratchpad/fastra-social-preview.png"
+out = Path(__file__).with_name("fastra-social-preview.png")
 img.convert("RGB").save(out, "PNG")
 print("OK:", out)

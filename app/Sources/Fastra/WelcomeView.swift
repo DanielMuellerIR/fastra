@@ -54,8 +54,7 @@ struct WelcomeView: View {
             Spacer(minLength: 24 * uiScale)
 
             // Wortmarke — bewusst schlicht (kein Icon-Zirkus), Ton wie AboutWindow.
-            Text("Fastra")
-                .fastraFont(size: 34, weight: .semibold, design: .default)
+            BrandWordmark(size: 34)
                 .foregroundColor(Theme.textPrimary)
             // Die Startseite bleibt sachlich: Unter der Wortmarke stehen nur
             // die gebaute Version und ihr ISO-Datum aus der Info.plist.
