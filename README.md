@@ -55,14 +55,53 @@ token highlighting, curated patterns, and guided capture groups.
 - **`*` wildcard search** with capture semantics, no regex knowledge needed.
 - **Full RegEx mode** with colored token highlighting and a curated pattern library.
 - **Drag & drop capture groups** from the find field into the replace field.
-- **Scopes**: Current file, all open tabs, or whole folders.
-- **A well-stocked Text menu** (see below).
-- **Markdown preview** and Smart Paste, which turns formatted clipboard
-  content into Markdown.
+- **Scopes**: Current file, all open tabs, folders, or a configured file set in
+  the current project.
+- **Projects, Git and Markdown** live alongside ordinary text editing; each is
+  explained below.
 - **Light & dark mode**, native SwiftUI/AppKit, no Electron.
 - **Local & private**: No cloud contact, no telemetry, no subscription.
 
 ![Fastra in dark mode](screenshots/editor-dark.png)
+
+## Projects and Git, in the editor
+
+Open a folder and Fastra gives it a live, hierarchical file sidebar. Git
+repositories are recognised automatically, remembered on the welcome screen,
+and remain ordinary local folders: Fastra is a text editor first, not a
+replacement for a full Git client.
+
+- The **Changes** view separates staged and unstaged files. Stage, unstage or
+  discard individual files, inspect their diff, write a commit message and
+  commit from the sidebar.
+- The **Graph** view renders branches and merges as a native multi-lane history,
+  with branch and tag labels. Expand a commit to see its files; double-click a
+  commit or file to open its diff in an editor tab.
+- The current branch, ahead/behind state and file status are visible in the
+  project sidebar. Choose a local branch, amend the last commit, fetch, pull
+  (including fast-forward-only), push, or search history for the commit that
+  introduced or removed text.
+
+Git support is a thin, asynchronous front end to the installed `git` command.
+If Git is unavailable, these controls stay out of the way; when Git reports an
+error, Fastra shows its actual message rather than hiding it.
+
+## Markdown that stays local
+
+Markdown files can show an optional live preview on the right, separated from
+the editor by a persistent splitter. The renderer supports GitHub-flavoured
+Markdown including tables, task lists, strikethrough, code blocks and links;
+selecting and copying from the preview preserves plain text, HTML and rich text
+where the receiving app supports it.
+
+The preview is rendered locally. Remote images are deliberately not loaded, so
+opening a Markdown file does not quietly contact the network. A link opens only
+when you choose it.
+
+**Smart Paste** converts formatted clipboard content from browsers or office
+apps into clean Markdown at the cursor. It uses the separately installed
+[md-clip](https://github.com/DanielMuellerIR/md-clip) command-line tool, and
+explains how to install it when it is not available.
 
 ## More than search & replace
 
@@ -79,7 +118,11 @@ editors. The more advanced ones:
 - **Unicode normalization** (NFC/NFD), strip diacriticals, straight ⇄ typographic
   quotes, escape sequences.
 - Sort, join and deduplicate lines, hard wrap, add/remove line numbers,
-  exchange words.
+  exchange words, and format JSON or XML.
+- **Transform from an example** derives a wildcard pattern from before/after
+  text; save, import and export reusable search patterns.
+- Large and binary files have guarded views, including a read-only hex view
+  with an explicit edit mode.
 
 Fastra deliberately stays approachable: There are editors with even more
 machinery, and a matching learning curve to go with it. Fastra covers the

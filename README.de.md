@@ -57,14 +57,56 @@ Capture Groups.
 - **`*`-Platzhalter-Suche** mit Capture-Semantik, ganz ohne RegEx-Kenntnisse.
 - **Voller RegEx-Modus** mit farbigem Token-Highlighting und kuratierter Vorlagen-Bibliothek.
 - **Capture Groups per Drag & Drop** vom Such- ins Ersetzen-Feld.
-- **Scopes**: Aktuelle Datei, alle offenen Tabs oder ganze Ordner.
-- **Ein gut gefülltes Text-Menü** (siehe unten).
-- **Markdown-Vorschau** und Smart-Paste, das aus formatierter Zwischenablage
-  Markdown macht.
+- **Bereiche**: Aktuelle Datei, alle offenen Tabs, Ordner oder eine konfigurierte
+  Dateimenge im aktuellen Projekt.
+- **Projekte, Git und Markdown** ergänzen den normalen Texteditor; die Details
+  stehen unten.
 - **Light- & Dark-Mode**, natives SwiftUI/AppKit, kein Electron.
 - **Lokal & privat**: Kein Cloud-Kontakt, keine Telemetrie, kein Abo.
 
 ![Fastra im Dark-Mode](screenshots/editor-dark.png)
+
+## Projekte und Git direkt im Editor
+
+Beim Öffnen eines Ordners zeigt Fastra einen lebenden, hierarchischen Dateibaum.
+Git-Repositories erkennt die App automatisch und merkt sie für den Startbildschirm.
+Dabei bleiben sie ganz normale lokale Ordner: Fastra ist zuerst ein Texteditor,
+nicht der Ersatz für einen vollwertigen Git-Client.
+
+- Die Ansicht **Änderungen** trennt bereitgestellte von noch offenen Dateien.
+  Einzelne Dateien lassen sich bereitstellen, aus der Bereitstellung nehmen oder
+  nach Rückfrage verwerfen; ihr Diff öffnet sich im Editor. Darüber stehen
+  Commit-Nachricht und Commit-Schaltfläche.
+- Die Ansicht **Graph** zeichnet Branches und Merges als nativen mehrspurigen
+  Verlauf mit Branch- und Tag-Markierungen. Commits lassen sich aufklappen;
+  ein Doppelklick auf Commit oder Datei öffnet den passenden Diff-Tab.
+- In der Projekt-Seitenleiste stehen aktueller Branch, Ahead/Behind-Stand und
+  Dateistatus. Lokale Branches wechseln, den letzten Commit ergänzen, Fetch,
+  Pull (auch nur Fast-Forward), Push und die Suche nach Commits, die Text
+  eingeführt oder entfernt haben, bleiben direkt erreichbar.
+
+Die Git-Funktionen sind eine schlanke, asynchrone Oberfläche für das installierte
+`git`-Kommando. Fehlt Git, bleiben die zugehörigen Bedienelemente unsichtbar;
+bei Fehlern zeigt Fastra die tatsächliche Git-Meldung statt einer unklaren
+Ersatzmeldung.
+
+## Markdown bleibt lokal
+
+Für Markdown-Dateien lässt sich rechts neben dem Editor eine optionale,
+live aktualisierte Vorschau mit dauerhaftem Splitter einblenden. Der lokale
+Renderer beherrscht GitHub-Flavoured Markdown, darunter Tabellen, Aufgabenlisten,
+Durchstreichungen, Code-Blöcke und Links. Markierter Vorschau-Text lässt sich als
+Klartext, HTML oder Rich Text kopieren, sofern das Zielprogramm es unterstützt.
+
+Die Vorschau rendert ausschließlich lokal. Externe Bilder werden bewusst nicht
+nachgeladen; schon das Öffnen einer Markdown-Datei erzeugt also keinen stillen
+Netzwerkverkehr. Links öffnet Fastra nur nach einem bewussten Klick.
+
+**Smart-Paste** wandelt formatierten Inhalt aus Browsern oder Office-Programmen
+an der Cursorposition in sauberes Markdown um. Dafür nutzt Fastra das separat
+installierte Kommandozeilenwerkzeug
+[md-clip](https://github.com/DanielMuellerIR/md-clip); fehlt es, erklärt Fastra
+die Installation.
 
 ## Mehr als Suchen & Ersetzen
 
@@ -82,7 +124,12 @@ Editoren greifen muss. Die anspruchsvolleren darunter:
 - **Unicode-Normalisierung** (NFC/NFD), Diakritika entfernen, gerade ⇄
   typografische Anführungszeichen, Escape-Sequenzen.
 - Zeilen sortieren/verbinden/deduplizieren, harter Umbruch, Zeilennummern
-  hinzufügen/entfernen, Wörter tauschen.
+  hinzufügen/entfernen, Wörter tauschen sowie JSON oder XML formatieren.
+- **Transformation per Beispiel** leitet aus Vorher/Nachher-Text ein
+  Platzhalter-Muster ab; eigene Suchvorlagen lassen sich speichern,
+  importieren und exportieren.
+- Große und binäre Dateien bleiben beherrschbar, unter anderem mit einer
+  schreibgeschützten Hex-Ansicht und einem ausdrücklich aktivierten Edit-Modus.
 
 Fastra bleibt dabei bewusst zugänglich: Es gibt Editoren mit noch mehr
 Maschinerie, und mit entsprechender Lernkurve. Fastra deckt die Alltagsfälle
