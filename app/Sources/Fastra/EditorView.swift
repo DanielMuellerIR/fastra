@@ -190,7 +190,7 @@ struct EditorView: View {
         // Frisch erscheinender Editor (neuer Tab ⌘T, Tab-Wechsel, fertig geladene
         // Datei, programmatischer Reload) soll sofort den Tastaturfokus bekommen —
         // sonst verpuffte nach ⌘T ein direktes ⌘V (Daniel-Befund 2026-06-25).
-        .onAppear { Self.focusActiveEditor() }
+        .onAppear { Self.focusActiveEditor(in: workspace) }
         // Cursor-Position aus dem Editor-State in den Workspace spiegeln,
         // damit der Footer (StatusBarView) Zeile/Spalte zeigen kann.
         .onChange(of: editorState.cursorPositions) { _, positions in
@@ -427,17 +427,29 @@ struct EditorView: View {
     /// Hauptfenster ohnehin schon Key ist (der Normalfall direkt nach ⌘T/Tab-Klick).
     /// Leicht verzögert (`async` + kleiner Delay), damit die frisch erzeugte
     /// TextView schon in der View-Hierarchie hängt, bevor wir sie fokussieren.
-    static func focusActiveEditor() {
+    static func focusActiveEditor(in workspace: Workspace) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             guard let mainWindow = NSApp.windows.first(where: {
                 !SearchWindow.isSearchWindow($0)
+                    && WorkspaceWindowRegistry.workspace(for: $0) === workspace
                     && $0.contentView != nil && $0.isVisible
             }), let root = mainWindow.contentView,
                   let tv = firstEditorTextView(in: root) else { return }
             // Nur fokussieren, wenn das Hauptfenster Key ist — sonst (offene
             // Suchmaske vorne) würden wir der Maske den Tastaturfokus klauen.
             guard mainWindow.isKeyWindow else { return }
-            mainWindow.makeFirstResponder(tv)
+            guard mainWindow.makeFirstResponder(tv) else { return }
+            // Eine frisch montierte CodeEdit-TextView kann noch keine
+            // Textselektion besitzen. Dann ist sie zwar First Responder, aber
+            // `paste(_:)` hat keinen Einfügepunkt und verwirft ein sofortiges
+            // ⌘V. Nur in diesem leeren Initialzustand den Cursor an Position 0
+            // anlegen; bestehende Cursor und Selektionen bleiben unangetastet.
+            if let textView = tv as? CodeEditTextView.TextView,
+               textView.selectionManager.textSelections.isEmpty {
+                textView.selectionManager.setSelectedRange(
+                    NSRange(location: 0, length: 0)
+                )
+            }
         }
     }
 

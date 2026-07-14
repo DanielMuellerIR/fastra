@@ -9,6 +9,20 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.17] — 2026-07-15
+
+### Behoben
+
+- Ein mit ⌘N geöffnetes leeres Dokumentfenster erhält jetzt zuverlässig
+  den Tastaturfokus und einen gültigen Einfügepunkt. Text kann dadurch sofort
+  getippt oder aus der Zwischenablage eingefügt werden.
+
+### Qualitätssicherung
+
+- Der Mehrfenster-Selbsttest prüft nach einem echten ⌘N das neue Key-Window,
+  dessen reale Editor-TextView als First Responder und den Einfügepunkt am
+  Dokumentanfang.
+
 ## [v1.16.16] — 2026-07-15
 
 ### Behoben

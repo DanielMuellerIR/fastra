@@ -370,6 +370,45 @@ enum SelfTest {
                 finish(false, "⌘N-Fenster zeigt erneut den Willkommensbildschirm")
             }
 
+            // Nicht bloß den Modellzustand prüfen: Direkt nach dem echten ⌘N
+            // muss die echte CodeEdit-TextView First Responder sein und einen
+            // gültigen Einfügepunkt besitzen. Erst dann kann ein sofortiges
+            // Tippen oder ⌘V im neuen Dokument landen.
+            pollForNewWindowEditorFocus(
+                original: original,
+                originalWindow: originalWindow,
+                marker: marker,
+                newWorkspace: newWorkspace,
+                newWindow: newWindow
+            )
+            return
+        }
+
+        if tick >= 100 {
+            finish(false, "kein zweites Dokumentfenster binnen 5 s — \(windowsSummary())")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollForNewWindow(
+                original: original,
+                originalWindow: originalWindow,
+                marker: marker,
+                tick: tick + 1
+            )
+        }
+    }
+
+    private static func pollForNewWindowEditorFocus(
+        original: Workspace,
+        originalWindow: NSWindow,
+        marker: String,
+        newWorkspace: Workspace,
+        newWindow: NSWindow,
+        tick: Int = 0
+    ) {
+        let editor = newWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
+        if newWindow.isKeyWindow, let editor,
+           newWindow.firstResponder === editor,
+           editor.selectionManager.textSelections.map(\.range) == [NSRange(location: 0, length: 0)] {
             newWorkspace.activeTabContent.wrappedValue = "Inhalt nur im zweiten Fenster"
             guard original.activeTab?.content == marker else {
                 finish(false, "Dokumentinhalt wird zwischen den Fenstern geteilt")
@@ -401,13 +440,21 @@ enum SelfTest {
         }
 
         if tick >= 100 {
-            finish(false, "kein zweites Dokumentfenster binnen 5 s — \(windowsSummary())")
+            if !newWindow.isKeyWindow {
+                finish(false, "⌘N-Fenster wurde nie Key-Window (Umgebungsproblem)")
+            }
+            finish(false, "⌘N-Fenster hat keinen fokussierten Editor "
+                + "(Editor=\(editor != nil), FirstResponder="
+                + "\(String(describing: newWindow.firstResponder)), "
+                + "Selektionen=\(editor?.selectionManager.textSelections.map(\.range) ?? []))")
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollForNewWindow(
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            pollForNewWindowEditorFocus(
                 original: original,
                 originalWindow: originalWindow,
                 marker: marker,
+                newWorkspace: newWorkspace,
+                newWindow: newWindow,
                 tick: tick + 1
             )
         }
