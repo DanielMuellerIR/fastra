@@ -9,6 +9,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.15] — 2026-07-14
+
+### Behoben
+
+- Trefferklicks und Sprungbefehle aus einer Suchmaske wirken bei mehreren
+  Dokumentfenstern nur noch auf den zugehörigen Editor. Eigene Suchdialoge je
+  Fenster können dadurch gleichzeitig offen bleiben, ohne Auswahl, Fokus oder
+  Scrollposition eines anderen Dokuments zu verändern.
+
+### Qualitätssicherung
+
+- Ein neuer In-App-Selbsttest öffnet zwei Dokumentfenster mit je eigener
+  Suchmaske und prüft die tatsächliche Selektion, sichtbare Zielzeile und den
+  unveränderten Editor des anderen Fensters.
+
 ## [v1.16.14] — 2026-07-14
 
 ### Behoben

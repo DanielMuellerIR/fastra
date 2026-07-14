@@ -28,6 +28,9 @@ enum SelfTest {
     /// erneut leeren, hielte sich auch das zweite Fenster fälschlich für den
     /// allerersten App-Start und bekäme den Demo-Inhalt statt eines Leer-Tabs.
     private static var cachedWorkspaceDefaults: UserDefaults?
+    /// Hält die beiden produktiven Suchfenster des `multisearch`-Tests bis
+    /// zum Prozessende stark am Leben, analog zu `ContentView.searchPanel`.
+    private static var retainedSearchPanels: [SearchPanelController] = []
 
     /// Name des angeforderten Selbsttests („findbar", „cmdw", …) oder `nil`.
     ///
@@ -111,6 +114,7 @@ enum SelfTest {
         switch name {
         case "findbar":   waitForMainWindow { runFindBarTest() }
         case "newwindow": waitForMainWindow { runNewWindowTest() }
+        case "multisearch": waitForMainWindow { runMultiWindowSearchJumpTest() }
         case "cmdw":      waitForMainWindow { openSearchThen { runCmdWTest() } }
         case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
@@ -534,6 +538,161 @@ enum SelfTest {
                 closedWindow: closedWindow,
                 tick: tick + 1
             )
+        }
+    }
+
+    // MARK: - unabhängige Suchdialoge in mehreren Dokumentfenstern
+
+    /// Reproduziert den gemeldeten Befund mit zwei Dokumentfenstern und je einer
+    /// eigenen Suchmaske: Ein Trefferklick im zweiten Suchdialog darf weder
+    /// Selektion noch Scrollziel des ersten Editors verändern.
+    private static func runMultiWindowSearchJumpTest() {
+        testLabel = "multisearch"
+        guard let firstWorkspace = Workspace.shared,
+              let firstWindow = NSApp.windows.first(where: {
+                  !SearchWindow.isSearchWindow($0)
+                      && WorkspaceWindowRegistry.workspace(for: $0) === firstWorkspace
+                      && $0.isVisible
+              }) else {
+            finish(false, "kein erstes Dokumentfenster mit Workspace-Zuordnung")
+        }
+
+        // `waitForMainWindow` ruft uns über DispatchQueue.main auf. Diese
+        // explizite Grenze macht die Main-Actor-Garantie auch dem Compiler
+        // sichtbar, ohne den allgemeinen Selbsttest-Dispatcher umzubauen.
+        let secondWorkspace = MainActor.assumeIsolated {
+            DocumentWindowController.openNewDocument(defaults: workspaceDefaults())
+        }
+        guard let secondWindow = NSApp.windows.first(where: {
+            !SearchWindow.isSearchWindow($0)
+                && WorkspaceWindowRegistry.workspace(for: $0) === secondWorkspace
+                && $0.isVisible
+        }) else {
+            finish(false, "kein zweites Dokumentfenster mit Workspace-Zuordnung")
+        }
+
+        let firstLines = (1...140).map { "Erstes Fenster, Zeile \($0): goal" }
+        var secondLines = (1...140).map { "Zweites Fenster, Zeile \($0): leer" }
+        secondLines[109] = "Zweites Fenster, Zeile 110: subagent"
+        firstWorkspace.activeTabContent.wrappedValue = firstLines.joined(separator: "\n")
+        secondWorkspace.activeTabContent.wrappedValue = secondLines.joined(separator: "\n")
+        // CESE übernimmt programmatische Binding-Änderungen nicht live. Der
+        // produktive Reload-Zähler remountet beide Editoren mit dem Testinhalt.
+        firstWorkspace.editorReloadNonce += 1
+        secondWorkspace.editorReloadNonce += 1
+
+        firstWorkspace.findPattern = "goal"
+        secondWorkspace.findPattern = "subagent"
+        firstWorkspace.scope = .file
+        secondWorkspace.scope = .file
+
+        NSApp.activate(ignoringOtherApps: true)
+        MainActor.assumeIsolated {
+            let firstPanel = SearchPanelController(workspace: firstWorkspace)
+            let secondPanel = SearchPanelController(workspace: secondWorkspace)
+            retainedSearchPanels = [firstPanel, secondPanel]
+            firstPanel.show()
+            secondPanel.show()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            pollMultiWindowSearchSetup(secondWorkspace: secondWorkspace,
+                                       firstWindow: firstWindow,
+                                       secondWindow: secondWindow)
+        }
+    }
+
+    /// SwiftUI montiert die zweite ContentView und deren Editor asynchron.
+    /// Wie die übrigen Fenster-Selbsttests warten wir auf den echten Zustand,
+    /// statt mit einer geratenen festen Verzögerung zu messen.
+    private static func pollMultiWindowSearchSetup(secondWorkspace: Workspace,
+                                                   firstWindow: NSWindow,
+                                                   secondWindow: NSWindow,
+                                                   tick: Int = 0) {
+        let searchWindows = NSApp.windows.filter {
+            SearchWindow.isSearchWindow($0) && $0.isVisible
+        }
+        let firstTV = firstWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
+        let secondTV = secondWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
+        let secondSearchWindow = searchWindows.first {
+            WorkspaceWindowRegistry.workspace(for: $0) === secondWorkspace
+        }
+
+        if searchWindows.count == 2,
+           let firstTV, let secondTV, let secondSearchWindow {
+
+            firstTV.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
+            secondTV.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
+            secondSearchWindow.makeKeyAndOrderFront(nil)
+
+            let result = BufferSearch.find(
+                in: secondWorkspace.activeTab?.content ?? "",
+                options: SearchOptions(find: "subagent", replace: "",
+                                       isRegex: false, caseSensitive: true)
+            )
+            guard let target = result.matches.first, target.line == 110 else {
+                finish(false, "subagent-Testtreffer auf Zeile 110 fehlt")
+            }
+            NotificationCenter.default.postMatchJump(target, for: secondWorkspace)
+            pollMultiWindowJump(firstTV: firstTV, secondTV: secondTV,
+                                firstWindow: firstWindow, secondWindow: secondWindow)
+            return
+        }
+        if tick >= 100 {
+            finish(false, "zwei Dokumentfenster wurden nicht samt zwei Suchdialogen und Editoren bereit "
+                   + "(Suchdialoge=\(searchWindows.count), erster Editor=\(firstTV != nil), "
+                   + "zweiter Editor=\(secondTV != nil), zweiter Suchdialog=\(secondSearchWindow != nil))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollMultiWindowSearchSetup(secondWorkspace: secondWorkspace,
+                                       firstWindow: firstWindow,
+                                       secondWindow: secondWindow,
+                                       tick: tick + 1)
+        }
+    }
+
+    private static func pollMultiWindowJump(firstTV: TextView, secondTV: TextView,
+                                            firstWindow: NSWindow, secondWindow: NSWindow,
+                                            tick: Int = 0) {
+        let secondRange = secondTV.selectedRange()
+        if secondRange.location != NSNotFound,
+           secondRange.length > 0,
+           NSMaxRange(secondRange) <= (secondTV.string as NSString).length {
+            let selected = (secondTV.string as NSString).substring(with: secondRange)
+            guard selected == "subagent" else {
+                finish(false, "zweiter Editor selektierte \"\(selected)\" statt subagent")
+            }
+            let firstRange = firstTV.selectedRange()
+            guard firstRange.length == 0 else {
+                finish(false, "Treffer-Sprung veränderte auch den ersten Editor: \(firstRange)")
+            }
+            guard firstWindow.isVisible else {
+                finish(false, "erster Editor wurde beim Sprung ausgeblendet")
+            }
+            // Scroll unabhängig über die tatsächlich sichtbare Editorzeile
+            // prüfen, nicht über denselben Ziel-Offset wie der Sprung selbst.
+            let shownLine = secondTV.layoutManager
+                .textLineForPosition(secondTV.visibleRect.midY)
+                .map { $0.index + 1 }
+            let isVisiblyAtTarget = shownLine.map { abs($0 - 110) <= 8 } ?? false
+            if secondWindow.isKeyWindow,
+               secondWindow.firstResponder === secondTV,
+               isVisiblyAtTarget {
+                finish(true, "subagent wurde nur im zweiten Editor selektiert und sichtbar; erster Editor blieb unverändert")
+            }
+        }
+        if tick >= 60 {
+            let shownLine = secondTV.layoutManager
+                .textLineForPosition(secondTV.visibleRect.midY)
+                .map { $0.index + 1 }
+            finish(false, "zweiter Editor erreichte binnen 1,8 s nicht vollständig Auswahl, Fokus und Sichtbarkeit "
+                   + "(selection=\(secondRange), key=\(secondWindow.isKeyWindow), "
+                   + "firstResponder=\(secondWindow.firstResponder === secondTV), "
+                   + "sichtbare Zeile=\(shownLine.map(String.init) ?? "nil"))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            pollMultiWindowJump(firstTV: firstTV, secondTV: secondTV,
+                                firstWindow: firstWindow, secondWindow: secondWindow,
+                                tick: tick + 1)
         }
     }
 
@@ -1051,7 +1210,7 @@ enum SelfTest {
 
                 // Sprung exakt wie GUI: Zeile/Spalte-Pfad über postMatchJump.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    NotificationCenter.default.postMatchJump(match)
+                    NotificationCenter.default.postMatchJump(match, for: ws)
                     pollForSelection(tv, expected: match.matchText, line: match.line,
                                      column: match.column, label: label, onPass: onPass)
                 }
@@ -1633,7 +1792,7 @@ enum SelfTest {
                     finish(false, "kein Treffer ab Zeile 1900 — max gelistete Zeile \(lineSeq.max() ?? 0)")
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    NotificationCenter.default.postMatchJump(target)
+                    NotificationCenter.default.postMatchJump(target, for: ws)
                     pollForScrollVisible(tv, matchLocation: target.range.location,
                                          line: target.line, tick: 0)
                 }
@@ -1838,7 +1997,7 @@ enum SelfTest {
                     finish(false, "ZIELMARKE nicht gefunden (Inhalt/CR nicht geladen?)")
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    NotificationCenter.default.postMatchJump(match)
+                    NotificationCenter.default.postMatchJump(match, for: ws)
                     // Settle lassen, dann UNABHÄNGIG prüfen, welche Zeile sichtbar ist.
                     // 2,0 s statt 1,3 s — convergeScroll iteriert bei Tiefe 40000
                     // länger bis zur Konvergenz.

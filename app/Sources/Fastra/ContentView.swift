@@ -197,7 +197,7 @@ struct ContentView: View {
         let text = workspace.activeTabContent.wrappedValue
         let range = BufferSearch.nsRange(forLine: line, column: col, in: text)
         NotificationCenter.default.post(name: .fastraJumpToRange,
-                                        object: nil,
+                                        object: workspace,
                                         userInfo: ["range": NSValue(range: range)])
     }
 
@@ -226,7 +226,7 @@ struct ContentView: View {
             // Completion im Ordner-Pfad).
             if workspace.activeTabID != tabID { workspace.activeTabID = tabID }
             DispatchQueue.main.async {
-                NotificationCenter.default.postMatchJump(target.match)
+                NotificationCenter.default.postMatchJump(target.match, for: workspace)
             }
         } else if let url = target.url, workspace.activeTab?.url != url {
             // Datei asynchron laden — Editor-Sprung erst in der Completion,
@@ -234,13 +234,13 @@ struct ContentView: View {
             workspace.loadFile(at: url) { ok in
                 guard ok else { return }
                 DispatchQueue.main.async {
-                    NotificationCenter.default.postMatchJump(target.match)
+                    NotificationCenter.default.postMatchJump(target.match, for: workspace)
                 }
             }
         } else {
             // Datei ist schon offen — Sprung sofort ausführbar.
             DispatchQueue.main.async {
-                NotificationCenter.default.postMatchJump(target.match)
+                NotificationCenter.default.postMatchJump(target.match, for: workspace)
             }
         }
     }

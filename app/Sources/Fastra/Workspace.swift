@@ -2002,7 +2002,7 @@ final class Workspace: ObservableObject {
         // springen — analog zu navigateMatch in ContentView.
         guard activeMatchIndex < bufferMatches.count else { return }
         let target = bufferMatches[activeMatchIndex]
-        NotificationCenter.default.postMatchJump(target)
+        NotificationCenter.default.postMatchJump(target, for: self)
     }
 
     /// Stößt die explizite Ordner-Suche an („Suchen"-Klick / Return in der

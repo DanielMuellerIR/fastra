@@ -16,7 +16,9 @@ extension Notification.Name {
     static let fastraGotoNextMatch    = Notification.Name("fastra.goto.next.match")
     /// CMD+SHIFT+G — zum vorigen Treffer springen.
     static let fastraGotoPreviousMatch = Notification.Name("fastra.goto.previous.match")
-    /// Editor soll zur enthaltenen NSRange springen (UserInfo: "range").
+    /// Editor des in `object` enthaltenen Workspace soll zur Range springen.
+    /// Die explizite Zieladresse ist bei mehreren Dokumentfenstern zwingend:
+    /// eine app-weite Notification ohne Workspace ließe alle Editoren reagieren.
     static let fastraJumpToRange      = Notification.Name("fastra.jump.to.range")
     /// CMD+J — Zu-Zeile-Springen-Dialog öffnen.
     static let fastraShowGotoLine     = Notification.Name("fastra.show.goto.line")
@@ -37,6 +39,15 @@ extension Notification.Name {
 /// kennen.
 enum SearchWindow {
     static let frameAutosaveName = "Fastra.SearchWindow"
+    static let identifier = NSUserInterfaceItemIdentifier("Fastra.SearchWindow")
+
+    /// Der Autosave-Name ist bei mehreren gleichzeitigen Suchfenstern nicht
+    /// eindeutig verfügbar: AppKit akzeptiert ihn nur für eine Instanz. Die
+    /// feste Fenster-ID klassifiziert deshalb auch den zweiten Dialog sicher.
+    static func isSearchWindow(_ window: NSWindow) -> Bool {
+        window.identifier == identifier
+            || window.frameAutosaveName == frameAutosaveName
+    }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -353,7 +364,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             // Reine `KeyRouting`-Logik (auch in KeyRoutingTests abgedeckt).
-            let isSearchKey = NSApp.keyWindow?.frameAutosaveName == SearchWindow.frameAutosaveName
+            let isSearchKey = NSApp.keyWindow.map(SearchWindow.isSearchWindow) ?? false
             let route = KeyRouting.route(
                 isKeyDown: event.type == .keyDown,
                 modifierFlags: event.modifierFlags,

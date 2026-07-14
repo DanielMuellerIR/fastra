@@ -9,6 +9,10 @@ import Foundation
 import Testing
 @testable import Fastra
 
+private final class JumpNotificationCapture: @unchecked Sendable {
+    var notification: Notification?
+}
+
 /// Erzeugt einen echten Suchtreffer für die Navigationsziel-Tests. Dadurch
 /// hängen die Tests nicht von einem handgebauten Match mit erfundenen Ranges
 /// ab, sondern verwenden denselben Datentyp wie der produktive SearchRunner.
@@ -65,4 +69,35 @@ func detailLabelFallsBackForBufferMatch() {
 func hitLineLabelHasNoPrefixOrThousandsSeparator() {
     #expect(FloatingSearchDialog.hitLineLabel(1) == "1")
     #expect(FloatingSearchDialog.hitLineLabel(12_345) == "12345")
+}
+
+@MainActor
+@Test("Treffer-Sprung ist ausschließlich an sein Dokumentfenster adressiert")
+func matchJumpTargetsOnlyItsWorkspace() {
+    let first = Workspace(defaults: UserDefaults(
+        suiteName: "search-jump-first-\(UUID().uuidString)"
+    )!)
+    let second = Workspace(defaults: UserDefaults(
+        suiteName: "search-jump-second-\(UUID().uuidString)"
+    )!)
+    let match = dialogTestMatch()
+    let capture = JumpNotificationCapture()
+    let observer = NotificationCenter.default.addObserver(
+        forName: .fastraJumpToRange,
+        object: nil,
+        queue: .main
+    ) { note in
+        capture.notification = note
+    }
+    defer { NotificationCenter.default.removeObserver(observer) }
+
+    NotificationCenter.default.postMatchJump(match, for: second)
+
+    guard let received = capture.notification else {
+        #expect(capture.notification != nil)
+        return
+    }
+    #expect(received.object as? Workspace === second)
+    #expect(EditorView.jumpNotification(received, targets: second))
+    #expect(!EditorView.jumpNotification(received, targets: first))
 }

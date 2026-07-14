@@ -384,7 +384,7 @@ final class EditorContextMenu: NSObject {
     /// Such-Panel). Für Menüleisten-Aktionen, die kein Rechtsklick-Ziel haben.
     private func activeEditorTextView() -> TextView? {
         for window in NSApp.windows where window.isVisible {
-            if window.frameAutosaveName == SearchWindow.frameAutosaveName { continue }
+            if SearchWindow.isSearchWindow(window) { continue }
             if let content = window.contentView, let tv = descendantTextView(in: content) {
                 return tv
             }

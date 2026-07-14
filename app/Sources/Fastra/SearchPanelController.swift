@@ -100,6 +100,7 @@ final class SearchPanelController {
         // wieder setzen" — gibt dem Fenster eine eindeutige Beschriftung
         // in Window-Listen und Mission Control.
         w.title = L10n.string("Suchen & Ersetzen")
+        w.identifier = SearchWindow.identifier
         w.titlebarAppearsTransparent = false
         w.isMovableByWindowBackground = false
         w.isReleasedWhenClosed = false
@@ -107,8 +108,9 @@ final class SearchPanelController {
 
         // Frame zwischen App-Starts merken — der Nutzer kann das Fenster
         // einmal in passende Größe ziehen und es bleibt so.
-        // Der Name muss zu `SearchWindow.frameAutosaveName` passen, damit
-        // der globale ESC-Handler in AppDelegate das Fenster erkennt.
+        // Alle Masken teilen sich bewusst dieselbe gespeicherte Geometrie.
+        // Die Laufzeit-Erkennung nutzt zusätzlich die eindeutige Fenster-ID,
+        // weil AppKit denselben Autosave-Namen nicht zweimal registriert.
         w.setFrameAutosaveName(SearchWindow.frameAutosaveName)
 
         // SwiftUI-Inhalt einhängen.

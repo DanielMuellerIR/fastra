@@ -1159,7 +1159,7 @@ struct FloatingSearchDialog: View {
             workspace.loadFile(at: url) { ok in
                 guard ok else { return }
                 DispatchQueue.main.async {
-                    NotificationCenter.default.postMatchJump(match)
+                    NotificationCenter.default.postMatchJump(match, for: workspace)
                 }
             }
             return
@@ -1175,13 +1175,13 @@ struct FloatingSearchDialog: View {
             }
             if workspace.activeTabID != tabID { workspace.activeTabID = tabID }
             DispatchQueue.main.async {
-                NotificationCenter.default.postMatchJump(match)
+                NotificationCenter.default.postMatchJump(match, for: workspace)
             }
             return
         }
         if let idx = workspace.bufferMatches.firstIndex(where: { $0.id == match.id }) {
             workspace.activeMatchIndex = idx
-            NotificationCenter.default.postMatchJump(match)
+            NotificationCenter.default.postMatchJump(match, for: workspace)
         }
     }
 

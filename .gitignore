@@ -26,3 +26,6 @@ app/dist/
 
 # Doppelklick-Kopie des zuletzt gebauten App-Bundles (build.sh)
 /Fastra.app/
+
+# Lokaler Schutz gegen parallele Commit-Blöcke
+.commit-lock

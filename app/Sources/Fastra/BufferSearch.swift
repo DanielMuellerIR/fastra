@@ -317,11 +317,14 @@ extension NotificationCenter {
     ///
     /// Die absolute Range bleibt als Fallback im userInfo (z.B. für Sprünge
     /// ohne Treffer-Kontext wie „Zu Zeile springen").
-    func postMatchJump(_ match: BufferSearch.Match) {
+    func postMatchJump(_ match: BufferSearch.Match, for workspace: Workspace) {
         let end = BufferSearch.endLineColumn(startLine: match.line,
                                              startColumn: match.column,
                                              matchText: match.matchText)
-        post(name: .fastraJumpToRange, object: nil, userInfo: [
+        // `object` adressiert genau EIN Dokumentfenster. Ohne diese Zuordnung
+        // würden bei mehreren offenen Workspaces alle EditorView-Instanzen
+        // denselben Treffer-Sprung verarbeiten.
+        post(name: .fastraJumpToRange, object: workspace, userInfo: [
             "range": NSValue(range: match.range),
             "startLine": match.line, "startColumn": match.column,
             "endLine": end.line, "endColumn": end.column,

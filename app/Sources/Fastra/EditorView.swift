@@ -223,6 +223,10 @@ struct EditorView: View {
         // CodeEditSourceEditor synchronisiert das in eine Selektion +
         // scrollt automatisch in die sichtbare Region.
         .onReceive(NotificationCenter.default.publisher(for: .fastraJumpToRange)) { note in
+            // NotificationCenter ist app-weit. Jedes Dokumentfenster besitzt
+            // aber einen eigenen Workspace und darf ausschließlich seine
+            // eigenen Suchtreffer verarbeiten.
+            guard Self.jumpNotification(note, targets: workspace) else { return }
             let info = note.userInfo
             // Absolute Range als Fallback fürs Scrollen (z.B. „Zu Zeile
             // springen", CMD+J, ohne Zeile/Spalte im userInfo).
@@ -249,7 +253,9 @@ struct EditorView: View {
             // das Editor-Fenster Key + die TextView First Responder, damit der
             // Sprung für den Nutzer sichtbar ankommt. (Selbsttest `navmatch`
             // sichert genau diese Bedingung ab.)
-            EditorView.focusEditorForVisibleJump(targetLine: jumpLine, fallbackRange: fallbackRange)
+            EditorView.focusEditorForVisibleJump(in: workspace,
+                                                 targetLine: jumpLine,
+                                                 fallbackRange: fallbackRange)
         }
         // WICHTIG: CodeEditSourceEditor setzt den Text NUR EINMAL in
         // `makeNSViewController`. Sein `updateNSViewController` schiebt
@@ -351,6 +357,15 @@ struct EditorView: View {
         workspace.cursorColumn = column
     }
 
+    /// Prüft die Fensteradresse eines Editor-Sprungs unabhängig von SwiftUI.
+    /// Diese kleine Grenze ist unit-testbar; die tatsächliche Selektion und das
+    /// Scrollen bleiben Aufgabe des In-App-Selbsttests.
+    static func jumpNotification(_ notification: Notification,
+                                 targets workspace: Workspace) -> Bool {
+        guard let targetWorkspace = notification.object as? Workspace else { return false }
+        return targetWorkspace === workspace
+    }
+
     /// Macht das Editor-Hauptfenster Key + die CodeEdit-TextView First
     /// Responder, damit ein Treffer-Sprung SICHTBAR wird (Selektion gezeichnet
     /// + scrollToVisible). Wird aus dem `.fastraJumpToRange`-Handler gerufen.
@@ -361,10 +376,12 @@ struct EditorView: View {
     /// bei, sodass die Suchmaske sichtbar bleibt; sie verliert nur den Key-
     /// Status und bleibt anklickbar. Leicht verzögert (`async`), damit CESE die
     /// neue Cursor-Position schon übernommen hat, bevor wir fokussieren.
-    static func focusEditorForVisibleJump(targetLine: Int?, fallbackRange: NSRange?) {
+    static func focusEditorForVisibleJump(in workspace: Workspace,
+                                          targetLine: Int?, fallbackRange: NSRange?) {
         DispatchQueue.main.async {
             guard let mainWindow = NSApp.windows.first(where: {
-                $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                !SearchWindow.isSearchWindow($0)
+                    && WorkspaceWindowRegistry.workspace(for: $0) === workspace
                     && $0.contentView != nil && $0.isVisible
             }), let root = mainWindow.contentView,
                   let tv = firstEditorTextView(in: root) else { return }
@@ -425,7 +442,7 @@ struct EditorView: View {
     static func focusActiveEditor() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             guard let mainWindow = NSApp.windows.first(where: {
-                $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                !SearchWindow.isSearchWindow($0)
                     && $0.contentView != nil && $0.isVisible
             }), let root = mainWindow.contentView,
                   let tv = firstEditorTextView(in: root) else { return }
