@@ -10,6 +10,9 @@ cd app
 ./build.sh                 # debug
 ./build.sh release         # release (signiert ad-hoc)
 NOTARY_PROFILE=<profil> ./install.sh   # notarisiert → /Applications/Fastra.app
+
+# Gleiches bequem direkt aus dem Projekt-Root:
+NOTARY_PROFILE=<profil> ./install.sh
 ```
 
 **Installations-Workflow (`app/install.sh`):** baut Release, signiert mit
@@ -20,6 +23,10 @@ Notary-Keychain-Profilname steht bewusst NICHT im Skript; per `NOTARY_PROFILE`
 übergeben (der fleet-spezifische Profilname steht in
 `~/git/intern/knowledge/fastra.md`). `./install.sh --no-notarize` = nur
 signiert (schnell, läuft auf diesem Mac sofort).
+
+Der Root-Wrapper `./install.sh` reicht Optionen und Umgebungsvariablen
+unverändert an `app/install.sh` weiter; dadurch funktioniert der komplette Lauf
+auch ohne vorheriges `cd app`.
 
 **Pflicht-Gate für Installationen (seit v1.12.2):** SwiftPMs generierte
 `Bundle.module`-Accessor erwarten beim CLI-Build Ressourcen neben dem

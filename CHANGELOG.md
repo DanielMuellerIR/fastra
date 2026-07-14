@@ -9,6 +9,15 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.16.11] — 2026-07-14
+
+### Hinzugefügt
+
+- Der Root-Aufruf `./install.sh` startet jetzt denselben vollständigen
+  Release-, Notarisierungs- und Installationsablauf wie `app/install.sh`.
+  `NOTARY_PROFILE` und Optionen wie `--no-notarize` werden unverändert
+  durchgereicht.
+
 ## [v1.16.10] — 2026-07-14
 
 ### Geändert
