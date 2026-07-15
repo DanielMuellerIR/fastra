@@ -1,29 +1,7 @@
 import Foundation
 
-/// Statische Demo-Daten, damit das UI ohne echten Editor / echte Suche Sinn ergibt.
+/// Statische Demo-Daten für gezielte Selbsttests und Screenshots.
 enum DemoData {
-    /// UserDefaults-Schlüssel, der nach dem allerersten App-Start gesetzt
-    /// wird. Solange er fehlt, gilt der Start als „erster Start".
-    static let hasLaunchedBeforeKey = "fastra.hasLaunchedBefore"
-
-    /// Liefert `true` GENAU beim ersten Start (Schlüssel fehlt noch) und
-    /// setzt den Schlüssel dabei sofort — jeder weitere Aufruf liefert
-    /// `false`. „Consume", weil Abfrage und Verbrauch ein Schritt sind:
-    /// So kann kein zweiter Code-Pfad versehentlich auch noch „erster
-    /// Start" sehen. Der `defaults`-Parameter ist für Tests injizierbar
-    /// (eigene Suite statt der echten App-Defaults).
-    ///
-    /// Hintergrund (Interview-Erkenntnis 4, AGENTS.md): Ein LEERER
-    /// Start-Zustand verhindert den Einstieg — neue Nutzer brechen ab.
-    /// Deshalb lädt der allererste Start einen Demo-Tab mit vorbelegtem
-    /// Beispiel-Pattern. Alle folgenden Starts beginnen wie ein normaler
-    /// Editor mit leerem, unbenanntem Tab.
-    static func consumeFirstLaunch(defaults: UserDefaults = .standard) -> Bool {
-        if defaults.bool(forKey: hasLaunchedBeforeKey) { return false }
-        defaults.set(true, forKey: hasLaunchedBeforeKey)
-        return true
-    }
-
     static func editorContent(for title: String?) -> String {
         switch title {
         case "contacts.md":

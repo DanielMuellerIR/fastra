@@ -198,6 +198,7 @@ echo "   Arbeitsverzeichnis: $DMG_STAGING"
 #    sips skaliert die Quelle auf beide Größen, tiffutil kombiniert sie zu
 #    einem Multi-Resolution-TIFF (-cathidpicheck prüft das 1x/2x-Verhältnis).
 echo "   Hintergrundbild aufbereiten (1x + 2x → HiDPI-TIFF)"
+xcrun swift tools/generate-dmg-background.swift
 sips -s format png -s dpiWidth 72  -s dpiHeight 72  -z 420 600 \
   src/DmgBackground.png --out "$DMG_STAGING/DmgBg_1x.png" >/dev/null
 sips -s format png -s dpiWidth 144 -s dpiHeight 144 -z 840 1200 \
@@ -226,8 +227,9 @@ ln -s /Applications "$MOUNT_DIR/Applications"
 mkdir "$MOUNT_DIR/.background"
 cp "$DMG_STAGING/DmgBackground.tiff" "$MOUNT_DIR/.background/DmgBackground.tiff"
 
-# d) Finder-Layout per AppleScript: Icon-Ansicht, Fenster 600×420 Punkte
-#    (= Größe des 1x-Hintergrundbilds), Icons auf die im Bild gezeichneten
+# d) Finder-Layout per AppleScript: Icon-Ansicht, Inhaltsfläche 600×420 Punkte.
+#    Seit macOS 26 beansprucht der Finder-Chrome etwa 68 Punkte zusätzlich;
+#    das äußere Fenster ist deshalb 600×488 Punkte groß. Icons auf die im Bild gezeichneten
 #    Slots setzen. Öffnet kurz ein Finder-Fenster — mit --no-finder-layout
 #    überspringbar (z.B. headless), das DMG bleibt voll funktionsfähig.
 if [ "$FINDER_LAYOUT" = "1" ]; then
@@ -246,15 +248,17 @@ tell application "Finder"
         -- Icons auf die Slots im Hintergrundbild setzen
         set position of item "Fastra.app" of container window to {150, 300}
         set position of item "Applications" of container window to {450, 300}
-        -- Fensterrechteck {links, oben, rechts, unten} → 600×420 Punkte.
+        -- Fensterrechteck {links, oben, rechts, unten} → 600×488 Punkte.
+        -- So bleiben die 420 Punkte Hintergrund vollständig sichtbar, statt
+        -- unter dem höheren aktuellen Finder-Chrome unten abgeschnitten zu sein.
         -- Mit Read-back-Retry: der Finder übernimmt ein einmaliges
         -- "set bounds" nicht zuverlässig (erbt sonst die Größe eines
         -- vorhandenen Fensters) — deshalb setzen, zurücklesen, ggf.
         -- wiederholen, bis die Zielgröße wirklich anliegt.
         repeat with i from 1 to 5
-            set the bounds of container window to {200, 120, 800, 540}
+            set the bounds of container window to {200, 120, 800, 608}
             delay 1
-            if (bounds of container window) = {200, 120, 800, 540} then exit repeat
+            if (bounds of container window) = {200, 120, 800, 608} then exit repeat
         end repeat
         update without registering applications
         delay 2

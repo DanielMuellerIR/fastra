@@ -9,6 +9,23 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.17.3] — 2026-07-15
+
+### Behoben
+
+- Eine frische Installation startet nicht mehr mit dem automatisch erzeugten
+  Musterdokument `contacts.md`, das wie eine unbekannte fremde Datei wirken
+  konnte, sondern immer mit dem erklärenden Willkommensbildschirm ohne
+  vorbelegte Such- oder Ersetzungsdaten.
+- Das DMG-Fenster berücksichtigt den höheren Finder-Chrome aktueller
+  macOS-Versionen und zeigt seinen Hintergrund bis zur unteren Anleitung
+  vollständig statt abgeschnitten.
+
+### Geändert
+
+- Der reproduzierbar erzeugte DMG-Hintergrund verwendet für den Programmtitel
+  Sora SemiBold und beschreibt Fastra als „Native macOS text editor“.
+
 ## [v1.17.2] — 2026-07-15
 
 ### Behoben

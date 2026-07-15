@@ -59,6 +59,9 @@ private func makeWorkspace(content: String, find: String, replace: String = "",
     ws.findPattern = find
     ws.replacePattern = replace
     ws.useRegex = isRegex
+    // Der Fixture prüft Extraktion aus genau diesem Tab. Nicht implizit auf
+    // Seiteneffekte eines früheren Erststart-Demos verlassen.
+    ws.scope = .file
     return ws
 }
 

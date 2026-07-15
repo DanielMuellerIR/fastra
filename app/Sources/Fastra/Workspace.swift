@@ -439,43 +439,19 @@ final class Workspace: ObservableObject {
         // Nutzer-Defaults gemüllt (Befund 2026-06-11, 16 Leichen).
         self.defaultsStore = defaults
 
-        // Demo-Inhalt NUR beim allerersten Start (Interview-Erkenntnis 4:
-        // leerer Start verhindert Einstieg — aber wer die App kennt, will
-        // nicht bei jedem Start das Adressbuch-Demo wegklicken müssen).
-        // `consumeFirstLaunch` setzt das UserDefaults-Flag gleich mit.
-        if DemoData.consumeFirstLaunch(defaults: defaults) {
-            let demo = EditorTab(
-                title: "contacts.md",
-                path: L10n.string("Demo · noch nicht gespeichert"),
-                content: DemoData.editorContent(for: "contacts.md"),
-                hits: 8
-            )
-            self.tabs = [demo]
-            self.activeTabID = demo.id
-            // Das vorbelegte E-Mail-Pattern (Property-Default oben) bleibt
-            // beim ersten Start stehen — Demo-Text und Pattern gehören
-            // als Paar zusammen.
-            // Scope auf DATEI statt Ordner: das Demo-Pattern matcht im
-            // Demo-Tab (Buffer). Im Ordner-Scope sähe ein neuer Nutzer
-            // stattdessen „Kein Ordner ausgewählt." — genau der leere
-            // Einstieg, den das Demo verhindern soll (Befund 2026-06-11).
-            self.scope = .file
-        } else {
-            // Folgestarts: der Willkommen-Tab. Er zeigt die Willkommensseite
-            // (isWelcome) und heißt in der Leiste „Willkommen"; sein
-            // Unterbau-Titel ist der lokalisierte Basisname, damit er beim
-            // Umwandeln in ein echtes Dokument (Datei-/Projekt-Öffnen) direkt
-            // „Ohne Titel" bzw. „Untitled" zeigt. KEIN vorbelegtes Pattern.
-            let welcome = EditorTab(
-                title: Workspace.untitledBaseName,
-                path: L10n.string("noch nicht gespeichert"),
-                isWelcome: true
-            )
-            self.tabs = [welcome]
-            self.activeTabID = welcome.id
-            self.findPattern = ""
-            self.replacePattern = ""
-        }
+        // Auch eine vollständig frische Installation startet ausschließlich
+        // mit dem erklärenden Willkommen-Zustand. Ein automatisch geöffnetes
+        // Musterdokument wirkt wie eine fremde Datei und untergräbt bei einem
+        // lokalen Editor das Vertrauen in die Herkunft der angezeigten Daten.
+        let welcome = EditorTab(
+            title: Workspace.untitledBaseName,
+            path: L10n.string("noch nicht gespeichert"),
+            isWelcome: true
+        )
+        self.tabs = [welcome]
+        self.activeTabID = welcome.id
+        self.findPattern = ""
+        self.replacePattern = ""
         self.searchRunner = SearchRunner(workspace: self)
         Workspace.registerLive(self)
         Workspace.shared = self
