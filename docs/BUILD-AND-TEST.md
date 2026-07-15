@@ -9,29 +9,34 @@
 cd app
 ./build.sh                 # debug
 ./build.sh release         # release (signiert ad-hoc)
-NOTARY_PROFILE=<profil> ./install.sh   # notarisiert → /Applications/Fastra.app
+./install.sh                           # notarisiert → /Applications/Fastra.app
 
 # Gleiches bequem direkt aus dem Projekt-Root:
-NOTARY_PROFILE=<profil> ./install.sh
+./install.sh
 ```
 
-Der konkrete Profilname kann alternativ einmalig nur für diesen Clone gesetzt
-werden:
+Beim ersten notarisierten Lauf prüft das Skript das Profil vor dem Build. Fehlt
+die Clone-Einstellung, fragt es interaktiv nach dem Profilnamen; fehlt auch das
+Profil im lokalen Schlüsselbund, bietet es die sichere interaktive Einrichtung
+mit `notarytool store-credentials` an. Das App-spezifische Passwort wird dabei
+nie als Argument übergeben. Optional kann der Profilname vorab gesetzt werden:
 
 ```bash
 git config --local fastra.notaryProfile <profil>
 ```
 
-`release.sh` und `install.sh` verwenden dann diese Einstellung, sofern
-`NOTARY_PROFILE` nicht ausdrücklich gesetzt ist. Der Wert liegt ausschließlich
-in `.git/config` und wird weder committed noch zu einem Remote übertragen.
+`release.sh` und `install.sh` verwenden diese Einstellung, sofern
+`NOTARY_PROFILE` nicht ausdrücklich gesetzt ist. Der Name liegt ausschließlich
+in `.git/config`; Credentials bleiben im macOS-Schlüsselbund. Beides wird weder
+committed noch zu einem Remote übertragen. Auf jedem weiteren Mac ist der
+interaktive Bootstrap einmal nötig, weil iCloud notarytool-Profile nicht synct.
 
 **Installations-Workflow (`app/install.sh`):** baut Release, signiert mit
 Developer ID + Hardened Runtime, notarisiert bei Apple (`--wait`), stapelt das
 Ticket und kopiert nach `/Applications`. Die Signatur-Identität wird zur Laufzeit
 aus dem Schlüsselbund ermittelt (nichts Privates im Skript — public Repo). Der
 Notary-Keychain-Profilname steht bewusst NICHT im Skript; er wird per
-`NOTARY_PROFILE` oder lokaler Git-Konfiguration übergeben. `./install.sh --no-notarize` = nur
+`NOTARY_PROFILE`, lokaler Git-Konfiguration oder Erstdialog ermittelt. `./install.sh --no-notarize` = nur
 signiert (schnell, läuft auf diesem Mac sofort).
 
 Der Root-Wrapper `./install.sh` reicht Optionen und Umgebungsvariablen

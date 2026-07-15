@@ -60,6 +60,14 @@ for arg in "$@"; do
   esac
 done
 
+# Bei echter Developer-ID-Signierung vor dem langen Build sicherstellen, dass
+# das lokale Keychain-Profil auf genau diesem Mac verwendbar ist.
+if [ -n "${FASTRA_SIGN_IDENTITY:-}" ]; then
+  # shellcheck source=notary-profile.sh
+  source "./notary-profile.sh"
+  fastra_require_notary_profile
+fi
+
 echo "▶ Fastra Release-Build"
 echo
 
@@ -310,16 +318,6 @@ echo
 #   (fragt interaktiv nach dem App-Specific-Password — landet so nie in der
 #    Shell-History; Team-ID ist nicht geheim.)
 echo "→ Schritt 5/5: Notarisierung"
-
-# Profilname: Die Umgebungsvariable hat Vorrang. Ein konkreter lokaler Name
-# kann danach dauerhaft in `.git/config` stehen, ohne ins öffentliche Repo zu
-# gelangen: `git config --local fastra.notaryProfile <profil>`. Erst wenn auch
-# diese Einstellung fehlt, gilt der bewusst neutrale öffentliche Platzhalter.
-NOTARY_PROFILE="${NOTARY_PROFILE:-}"
-if [ -z "$NOTARY_PROFILE" ]; then
-  NOTARY_PROFILE="$(git config --local --get fastra.notaryProfile 2>/dev/null || true)"
-fi
-NOTARY_PROFILE="${NOTARY_PROFILE:-notary}"
 
 if [ "$SIGN_IDENTITY" = "-" ]; then
   # Ad-hoc signiert → Notarisierung technisch nicht möglich, sauber überspringen.

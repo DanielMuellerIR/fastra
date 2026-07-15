@@ -14,16 +14,11 @@
 #   - Xcode unter /Applications/Xcode.app (wie bei build.sh)
 #   - Ein „Developer ID Application"-Zertifikat im Schlüsselbund (wird
 #     automatisch gefunden; per FASTRA_SIGN_IDENTITY überschreibbar).
-#   - Ein notarytool-Keychain-Profil. Der Name ist NICHT im Skript hinterlegt
-#     (öffentliches Repo) — per Umgebungsvariable NOTARY_PROFILE übergeben oder
-#     als Default „notary" anlegen:
-#       xcrun notarytool store-credentials notary \
-#         --apple-id "<apple-id>" --team-id "<team-id>"
-#     (KEIN --password-Argument — das Tool fragt interaktiv nach dem
-#      App-Specific-Password; so landet es nie in Shell-History/Transkript.)
+#   - Ein notarytool-Keychain-Profil. Beim ersten Lauf wird es geprüft und bei
+#     Bedarf interaktiv eingerichtet. Keychain-Profile sind pro Mac lokal.
 #
 # Aufruf:
-#   ./install.sh                          # Default-Profil „notary"
+#   ./install.sh                          # lokales Profil prüfen/verwenden
 #   NOTARY_PROFILE=<profil> ./install.sh  # anderes Keychain-Profil
 #
 # Schneller Test-Modus ohne Notarisierung (nur Developer-ID-signiert — läuft
@@ -41,6 +36,15 @@ for arg in "$@"; do
        echo "Aufruf: ./install.sh [--no-notarize]" >&2; exit 1 ;;
   esac
 done
+
+# Der Profilcheck läuft vor dem teuren Build. Beim ersten Lauf auf einem Mac
+# wird nur der Profilname clone-lokal gespeichert; Credentials bleiben im
+# Schlüsselbund und das Passwort wird nie als Argument oder Datei verwendet.
+if [ "$NOTARIZE" -eq 1 ]; then
+  # shellcheck source=notary-profile.sh
+  source "./notary-profile.sh"
+  fastra_require_notary_profile
+fi
 
 # ─────────────────────────────────────────────────────────────────
 # Developer-ID-Identität ermitteln (public-safe: nichts Privates im Skript,
@@ -80,14 +84,6 @@ codesign --verify --deep --strict --verbose=2 "$APP"
 #    blockiert bis Apples Prüfung fertig ist (typisch 1–10 Min).
 # ─────────────────────────────────────────────────────────────────
 if [ "$NOTARIZE" -eq 1 ]; then
-  # Konkrete Profilnamen bleiben lokal: Die Repo-Konfiguration wird nicht
-  # versioniert und kann den öffentlichen Platzhalter dauerhaft ersetzen.
-  # Eine explizite Umgebungsvariable behält immer Vorrang.
-  NOTARY_PROFILE="${NOTARY_PROFILE:-}"
-  if [ -z "$NOTARY_PROFILE" ]; then
-    NOTARY_PROFILE="$(git config --local --get fastra.notaryProfile 2>/dev/null || true)"
-  fi
-  NOTARY_PROFILE="${NOTARY_PROFILE:-notary}"
   TMP="$(mktemp -d)"
   ZIP="$TMP/Fastra.zip"
   echo "→ Notarisiere via Profil '$NOTARY_PROFILE' (wartet auf Apple)…"

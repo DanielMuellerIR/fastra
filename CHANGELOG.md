@@ -9,6 +9,17 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.17.1] — 2026-07-15
+
+### Behoben
+
+- Notarisierte Installationen und Releases prüfen das lokale notarytool-Profil
+  jetzt vor dem teuren Build. Auf einem neuen Mac führt ein interaktiver,
+  clone-lokaler Bootstrap durch die Keychain-Einrichtung, ohne Credentials,
+  Apple-ID oder internen Profilnamen ins öffentliche Repository zu schreiben.
+  Nichtinteraktive Läufe brechen früh mit einer sicheren Einrichtungsanleitung
+  ab, statt erst beim Upload nach dem Build zu scheitern.
+
 ## [v1.17.0] — 2026-07-15
 
 ### Hinzugefügt
