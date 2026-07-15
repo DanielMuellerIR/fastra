@@ -14,6 +14,7 @@
 // gepostet, nicht über die Systemsteuerung simuliert.
 
 import AppKit
+import WebKit
 // Echte Editor-Klasse von CodeEditSourceEditor (Modul CodeEditTextView).
 // Wird gebraucht, um im Sprung-Selbsttest die TATSÄCHLICHE Selektion des
 // Editors (`TextView.selectedRange()` + `.string`) zurückzulesen.
@@ -119,6 +120,7 @@ enum SelfTest {
         case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
         case "highlight": waitForMainWindow { runHighlightTest() }
+        case "markdown":  waitForMainWindow { runMarkdownRenderTest() }
         case "jump":      waitForMainWindow { runJumpTest() }
         case "ghosttext": waitForMainWindow { runGhostTextTest() }
         case "replaceall": waitForMainWindow { runReplaceAllTest() }
@@ -217,7 +219,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, cmdw, fields, tabswitch, highlight, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, contrast, windows)")
+                + "(bekannt: findbar, newwindow, cmdw, fields, tabswitch, highlight, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, contrast, windows)")
         }
     }
 
@@ -2506,7 +2508,11 @@ enum SelfTest {
         guard L10n.string("Abbrechen", language: "en") == "Cancel" else {
             finish(false, "SwiftPM-Modulbundle löst Englisch nicht auf")
         }
-        finish(true, "englische SwiftUI-, AppKit- und Info.plist-Tabellen im App-Bundle")
+        let markdownResources = ["katex.js", "highlight.js", "highlight.css", "mermaid.js"]
+        guard markdownResources.allSatisfy({ MarkdownPreviewAssets.resource(named: $0) != nil }) else {
+            finish(false, "lokale Markdown-Renderbibliotheken fehlen im gepackten Ressourcenbundle")
+        }
+        finish(true, "englische Tabellen + lokale Markdown-Renderbibliotheken im App-Bundle")
     }
 
     private static func pollProjectScope(_ ws: Workspace, base: URL, tick: Int) {
@@ -3342,6 +3348,107 @@ enum SelfTest {
                 dumpMainWindowThenExit(prefix: "PROJECTSHOT-WINDOW")
             }
         }
+    }
+
+    /// Prüft die echte WebKit-Vorschau samt gebündelten Bibliotheken. Anders als
+    /// ein String-Test beobachtet dieser Pfad das fertige DOM: Bild dekodiert,
+    /// KaTeX-MathML erzeugt, Mermaid-SVG gezeichnet und Code hervorgehoben.
+    private static func runMarkdownRenderTest() {
+        testLabel = "markdown"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Fastra-Markdown-Selbsttest-\(UUID().uuidString)")
+        let file = directory.appendingPathComponent("Vorschau.md")
+        let image = directory.appendingPathComponent("pixel.png")
+        let demo = """
+        # Render-Test
+
+        ![Lokales Pixel](pixel.png)
+
+        Inline $x^2 + y^2$.
+
+        ```swift
+        let answer = 42
+        ```
+
+        ```mermaid
+        flowchart LR
+          A --> B
+        ```
+        """
+        // Kleines echtes PNG: Der DOM-Test prüft `naturalWidth`, nicht nur das
+        // Vorhandensein eines <img>-Elements.
+        let pixelPNG = Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")!
+        do {
+            try FileManager.default.createDirectory(at: directory,
+                                                    withIntermediateDirectories: true)
+            try pixelPNG.write(to: image, options: .atomic)
+            try demo.write(to: file, atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "Markdown-Testdateien nicht schreibbar: \(error.localizedDescription)")
+        }
+
+        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        ws.loadFile(at: file) { ok in
+            guard ok else { finish(false, "Markdown-Datei konnte nicht geladen werden") }
+            pollMarkdownDOM(directory: directory, tick: 0)
+        }
+    }
+
+    private static func pollMarkdownDOM(directory: URL, tick: Int) {
+        guard tick < 120 else {
+            try? FileManager.default.removeItem(at: directory)
+            finish(false, "WebKit-DOM nach 12 s nicht vollständig gerendert")
+        }
+        guard let root = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        })?.contentView,
+              let webView = markdownWebView(in: root) else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                pollMarkdownDOM(directory: directory, tick: tick + 1)
+            }
+            return
+        }
+
+        let script = """
+        (() => ({
+          image: Array.from(document.images).some(image => image.naturalWidth > 0),
+          math: !!document.querySelector('.math-inline math'),
+          mermaid: !!document.querySelector('.mermaid-render svg'),
+          highlight: !!document.querySelector('pre code.hljs span')
+        }))()
+        """
+        webView.evaluateJavaScript(script) { result, error in
+            let flags = result as? [String: Bool]
+            let passed = flags?["image"] == true
+                && flags?["math"] == true
+                && flags?["mermaid"] == true
+                && flags?["highlight"] == true
+            if passed {
+                try? FileManager.default.removeItem(at: directory)
+                finish(true, "lokales Bild + KaTeX + Mermaid + Syntax-Highlighting im echten DOM")
+            }
+            if tick == 119 {
+                try? FileManager.default.removeItem(at: directory)
+                if let error {
+                    finish(false, "JavaScript-Fehler: \(error.localizedDescription)")
+                }
+                finish(false, "DOM unvollständig: \(String(describing: flags))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                pollMarkdownDOM(directory: directory, tick: tick + 1)
+            }
+        }
+    }
+
+    private static func markdownWebView(in view: NSView) -> WKWebView? {
+        if let webView = view as? WKWebView { return webView }
+        for child in view.subviews {
+            if let webView = markdownWebView(in: child) { return webView }
+        }
+        return nil
     }
 
     /// Diagnose (`-selftest markdownshot`): öffnet ein kleines GFM-Dokument,

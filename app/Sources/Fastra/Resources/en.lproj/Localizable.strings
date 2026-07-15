@@ -30,6 +30,7 @@
 "Die Capture Group im markierten Bereich wieder auflösen — die Klammern verschwinden, der Inhalt bleibt." = "Remove the capture group around the selected range—the parentheses disappear while the content remains.";
 "Die Vorschau zeigt Markdown-Dateien (.md)" = "Preview Markdown files (.md)";
 "Diese Markdown-Datei ist noch leer." = "This Markdown file is still empty.";
+"Diagramm konnte nicht gerendert werden." = "The diagram could not be rendered.";
 "Diesen Ordner aus der Liste entfernen." = "Remove this folder from the list.";
 "Duplikate entfernen" = "Remove Duplicates";
 "Editor" = "Editor";

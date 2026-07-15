@@ -47,6 +47,103 @@ struct MarkdownRichTextTests {
         #expect(!fragment.contains("src=\"https://"))
     }
 
+    @Test("Lokale Bilder werden relativ zur Markdown-Datei sicher aufgelöst")
+    func localImagesUseOpaquePreviewURLs() {
+        let documentURL = URL(fileURLWithPath: "/tmp/Fastra Handbuch/README.md")
+        let fragment = MarkdownRichText.renderedFragment(
+            markdown: "![Fenster](screenshots/editor%20light.png)",
+            documentURL: documentURL
+        )
+
+        #expect(fragment.html.contains("src=\"fastra-preview://image/image-0\""))
+        #expect(fragment.imageURLs["image-0"]?.path ==
+                "/tmp/Fastra Handbuch/screenshots/editor light.png")
+        #expect(!fragment.html.contains("/tmp/Fastra"))
+    }
+
+    @Test("Nichtlokale und nicht unterstützte Bildquellen bleiben gesperrt",
+          arguments: [
+            "//example.com/bild.png",
+            "file:///tmp/bild.png",
+            "/tmp/bild.png",
+            "javascript:alert(1)",
+            "grafik.svg"
+          ])
+    func unsupportedImageSourcesStayBlocked(source: String) {
+        let fragment = MarkdownRichText.renderedFragment(
+            markdown: "![Bild](\(source))",
+            documentURL: URL(fileURLWithPath: "/tmp/README.md")
+        )
+
+        #expect(fragment.imageURLs.isEmpty)
+        #expect(!fragment.html.contains("fastra-preview://image/"))
+    }
+
+    @Test("Inline- und Blockformeln werden zu lokalen KaTeX-Zielen")
+    func formulasBecomeSafeRenderTargets() {
+        let fragment = MarkdownRichText.htmlFragment(markdown: """
+        Inline $x^2 + y^2$.
+
+        $$
+        a = \\sqrt{b^2 + c^2}
+        $$
+        """)
+
+        #expect(fragment.contains("class=\"math-inline\""))
+        #expect(fragment.contains("data-tex=\"x^2 + y^2\""))
+        #expect(fragment.contains("class=\"math-block\""))
+        #expect(fragment.contains(#"data-tex="a = \sqrt{b^2 + c^2}""#))
+        #expect(!fragment.contains("<p><div class=\"math-block\""))
+    }
+
+    @Test("Währungen und Dollarzeichen in Code werden nicht als Formel behandelt")
+    func currencyAndCodeStayLiteral() {
+        let fragment = MarkdownRichText.htmlFragment(markdown: """
+        Das kostet $5 und $10 zusammen. Nutze `echo $HOME`.
+
+        ```bash
+        echo $PATH
+        ```
+        """)
+
+        #expect(!fragment.contains("data-tex"))
+        #expect(fragment.contains("echo $HOME"))
+        #expect(fragment.contains("echo $PATH"))
+    }
+
+    @Test("Mermaid-Fences und lokale Renderbibliotheken sind verdrahtet")
+    func mermaidAndOfflineLibrariesAreWired() {
+        let document = MarkdownRichText.htmlDocument(
+            markdown: """
+            ```mermaid
+            flowchart LR
+              A --> B
+            ```
+            """,
+            fontName: PreviewFonts.systemName,
+            fontSize: 14,
+            darkMode: false
+        )
+
+        #expect(document.contains("language-mermaid"))
+        #expect(document.contains("fastra-preview://resource/katex.js"))
+        #expect(document.contains("fastra-preview://resource/highlight.js"))
+        #expect(document.contains("fastra-preview://resource/mermaid.js"))
+        #expect(document.contains("securityLevel: 'strict'"))
+        #expect(document.contains("htmlLabels: false"))
+        #expect(document.contains("default-src 'none'"))
+        #expect(document.contains("connect-src 'none'"))
+        #expect(document.contains("max-width: 100%"))
+    }
+
+    @Test("Gebündelte Markdown-Bibliotheken sind im Ressourcenbundle auffindbar")
+    func bundledRenderLibrariesExist() {
+        #expect(MarkdownPreviewAssets.resource(named: "katex.js") != nil)
+        #expect(MarkdownPreviewAssets.resource(named: "highlight.js") != nil)
+        #expect(MarkdownPreviewAssets.resource(named: "highlight.css") != nil)
+        #expect(MarkdownPreviewAssets.resource(named: "mermaid.js") != nil)
+    }
+
     @Test("Copy-Handler liefert Klartext und formatiertes HTML")
     func clipboardScriptOffersPlainAndRichRepresentations() {
         let document = MarkdownRichText.htmlDocument(

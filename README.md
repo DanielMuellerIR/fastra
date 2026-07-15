@@ -34,7 +34,9 @@ text**, and in the replace field you simply reuse it.
 > Search `*, The`, replace `The *`. Done. No regex, no manual, no risk:
 > The live preview shows every change before you apply it.
 
-![Search dialog with wildcards](screenshots/search-wildcards.png)
+<p align="center">
+  <img src="screenshots/search-wildcards.png" width="84.2%" alt="Search dialog with wildcards">
+</p>
 
 - Each `*` becomes a numbered, draggable capture pill. Reorder text by
   dragging pills into the replace field.
@@ -46,7 +48,9 @@ text**, and in the replace field you simply reuse it.
 And when a task really needs the full power, switch on RegEx mode and get
 token highlighting, curated patterns, and guided capture groups.
 
-![Search dialog in RegEx mode](screenshots/search-regex.png)
+<p align="center">
+  <img src="screenshots/search-regex.png" width="84.2%" alt="Search dialog in RegEx mode">
+</p>
 
 ## Features
 
@@ -90,13 +94,16 @@ error, Fastra shows its actual message rather than hiding it.
 
 Markdown files can show an optional live preview on the right, separated from
 the editor by a persistent splitter. The renderer supports GitHub-flavoured
-Markdown including tables, task lists, strikethrough, code blocks and links;
-selecting and copying from the preview preserves plain text, HTML and rich text
-where the receiving app supports it.
+Markdown including tables, task lists, strikethrough, syntax-highlighted code
+blocks and links. It also displays local images, TeX formulas written as `$…$`
+or `$$…$$`, and diagrams from fenced `mermaid` blocks. Selecting and copying
+from the preview preserves plain text, HTML and rich text where the receiving
+app supports it.
 
-The preview is rendered locally. Remote images are deliberately not loaded, so
-opening a Markdown file does not quietly contact the network. A link opens only
-when you choose it.
+The preview and all of its rendering libraries stay local. Image paths are
+resolved relative to the Markdown file; remote images are deliberately not
+loaded, so opening a file does not quietly contact the network. A link opens
+only when you choose it.
 
 **Smart Paste** converts formatted clipboard content from browsers or office
 apps into clean Markdown at the cursor. It uses the separately installed

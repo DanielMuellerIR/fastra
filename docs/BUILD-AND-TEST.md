@@ -79,7 +79,7 @@ Selektion friert ein; Patch clampt auf `max(layoutManager.edgeInsets.left, …)`
 Der zugehörige Gutter-Durchschuss-ins-Header-Fix ist App-seitig (`.clipped()` am
 Editor in `EditorView`), KEIN Checkout-Patch.
 
-### Bundle-Größe — Apple-Silicon-only, ~53 MB (Stand 2026-07-08)
+### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 
 Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
 1. **Kein Intel.** Fastra wird nur für arm64 gebaut (Produktentscheidung 2026-07-08).
@@ -113,10 +113,15 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
 - **Lokalisierung:** `cd app && ./localization-audit.sh` vergleicht statische
   SwiftUI-Schlüssel mit der englischen Tabelle und prüft Format-Platzhalter.
   `./selftest.sh localization` prüft danach die Tabellen im fertig gepackten
-  Haupt-App- und SwiftPM-Ressourcenbundle.
+  Haupt-App- und SwiftPM-Ressourcenbundle sowie die lokalen KaTeX-, Mermaid-
+  und highlight.js-Dateien.
+- **Markdown-Vorschau:** `./selftest.sh markdown` lädt ein echtes temporäres PNG,
+  eine TeX-Formel, einen Swift-Code-Block und ein Mermaid-Diagramm. Der Test liest
+  unabhängig das fertige WebKit-DOM: Bildbreite, MathML, SVG und Highlight-Spans
+  müssen tatsächlich vorhanden sein.
 - **Test-Pflicht pro Phase:** Phase 1 keine (reines UI-Gerüst), Phase 2 Encoding+Line-Endings+Stats, Phase 3 Tokenizer+Capture-Groups+Find/Replace (Kernlogik), Phase 4 File-Search+Threshold-Logik, Phase 5 keine (reine Bridges zu getesteten OSS-Komponenten).
 - **Nicht getestet:** visuelles Rendering von Diff/Tokens/Pillen und
-  OSS-Framework-Interna (MarkdownUI, CodeEditSourceEditor). Kritische
+  OSS-Framework-Interna von CodeEditSourceEditor. Kritische
   App-weite Bridges werden dagegen über In-App-Selbsttests abgesichert.
 
 ### Regressions-Schutz — Lehre aus dem „Zombie-Find-Bar" (2026-05-27)
@@ -134,6 +139,9 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
    `-selftest multisearch` öffnet zwei Dokumentfenster mit je eigener
    Suchmaske und belegt, dass ein Treffer-Sprung ausschließlich Selektion,
    Fokus und Scrollziel des adressierten Workspace verändert.
+   `-selftest markdown` prüft die echte WKWebView-Ausgabe eines lokalen Bildes,
+   einer KaTeX-Formel, eines Mermaid-Diagramms und eines hervorgehobenen
+   Code-Blocks; ein bloß vorhandenes HTML-Zielelement genügt nicht.
    `-selftest ghosttext` lädt mehrere lange Zeilen und prüft nach Laden und
    Resize die echten CoreText-Fragmente: gezeichnete Nutzlast entspricht dem
    Dokumentbereich, kein Fragment überschreitet die Umbruch-Breite und kein

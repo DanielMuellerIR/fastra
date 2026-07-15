@@ -317,6 +317,7 @@ struct MarkdownPreviewView: View {
             // werden und ⌘C schreibt Klartext plus semantisches HTML.
             MarkdownRichTextView(
                 markdown: tab.content,
+                documentURL: tab.url,
                 fontName: previewFontName,
                 fontSize: previewFontSize,
                 darkMode: colorScheme == .dark
@@ -365,10 +366,11 @@ struct MarkdownPreviewView: View {
 /// Auswahl; Rich-Text-Ziele behalten dadurch Überschriften, Fettung und Listen.
 enum MarkdownRichText {
     static func htmlDocument(markdown: String,
+                             documentURL: URL? = nil,
                              fontName: String,
                              fontSize: CGFloat,
                              darkMode: Bool) -> String {
-        let fragment = htmlFragment(markdown: markdown)
+        let fragment = renderedFragment(markdown: markdown, documentURL: documentURL)
         let bodyColor = darkMode ? "#F2F2F2" : "#363636"
         let secondary = darkMode ? "#A8A8A8" : "#737373"
         let surface = darkMode ? "#171717" : "#FFFFFF"
@@ -381,7 +383,10 @@ enum MarkdownRichText {
 
         return """
         <!doctype html>
-        <html><head><meta charset="utf-8"><style>
+        <html><head><meta charset="utf-8">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: fastra-preview:; style-src 'unsafe-inline' fastra-preview:; script-src 'unsafe-inline' fastra-preview:; connect-src 'none'; media-src 'none'; frame-src 'none'">
+        <link rel="stylesheet" href="fastra-preview://resource/highlight.css">
+        <style>
         body { margin: 0; padding: 20px; box-sizing: border-box;
                color: \(bodyColor); background: \(surface);
                font-family: \(cssFont); font-size: \(fontSize)px; line-height: 1.55; }
@@ -396,8 +401,82 @@ enum MarkdownRichText {
                      margin-left: 0; padding-left: 0.9em; }
         table { border-collapse: collapse; } th, td { border: 1px solid \(border);
                 padding: 0.35em 0.6em; } a { color: \(link); }
+        img { display: block; max-width: 100%; height: auto; margin: 0.8em 0;
+              border-radius: 6px; }
+        .math-inline math { font-size: 1.05em; }
+        .math-block { max-width: 100%; margin: 1em 0; overflow-x: auto;
+                      text-align: center; }
+        .mermaid-render { max-width: 100%; margin: 1em 0; overflow-x: auto;
+                          text-align: center; }
+        .mermaid-render svg { max-width: 100%; height: auto; }
+        pre.mermaid-error::before { content: attr(data-error); display: block;
+                                    color: \(secondary); margin-bottom: 0.55em; }
         hr { border: 0; border-top: 1px solid \(border); }
-        </style><script>
+        </style>
+        <script src="fastra-preview://resource/katex.js"></script>
+        <script src="fastra-preview://resource/highlight.js"></script>
+        <script src="fastra-preview://resource/mermaid.js"></script>
+        <script>
+        const mermaidError = "\(javascriptEscaped(L10n.string("Diagramm konnte nicht gerendert werden.")))";
+        if (window.mermaid) {
+          mermaid.initialize({
+            startOnLoad: false,
+            securityLevel: 'strict',
+            htmlLabels: false,
+            maxTextSize: 100000,
+            maxEdges: 500,
+            theme: '\(darkMode ? "dark" : "default")'
+          });
+        }
+
+        async function enhanceMarkdown(root) {
+          if (window.katex) {
+            root.querySelectorAll('[data-tex]:not([data-rendered])').forEach(element => {
+              try {
+                katex.render(element.getAttribute('data-tex'), element, {
+                  displayMode: element.classList.contains('math-block'),
+                  output: 'mathml',
+                  throwOnError: false,
+                  trust: false
+                });
+              } catch (_) {
+                element.textContent = element.getAttribute('data-tex');
+              }
+              element.dataset.rendered = '1';
+            });
+          }
+
+          root.querySelectorAll('pre > code').forEach(code => {
+            if (code.classList.contains('language-mermaid')) return;
+            if (window.hljs && !code.dataset.highlighted) {
+              try { hljs.highlightElement(code); } catch (_) {}
+            }
+          });
+
+          if (window.mermaid) {
+            const blocks = Array.from(
+              root.querySelectorAll('pre > code.language-mermaid:not([data-rendered])')
+            );
+            for (const code of blocks) {
+              code.dataset.rendered = '1';
+              const pre = code.parentElement;
+              const diagram = document.createElement('div');
+              diagram.className = 'mermaid mermaid-render';
+              diagram.textContent = code.textContent;
+              pre.before(diagram);
+              try {
+                await mermaid.run({ nodes: [diagram], suppressErrors: true });
+                if (!diagram.querySelector('svg')) throw new Error('render failed');
+                pre.remove();
+              } catch (_) {
+                diagram.remove();
+                pre.classList.add('mermaid-error');
+                pre.dataset.error = mermaidError;
+              }
+            }
+          }
+        }
+
         document.addEventListener('copy', function(event) {
           const selection = window.getSelection();
           if (!selection || selection.rangeCount === 0) return;
@@ -417,17 +496,24 @@ enum MarkdownRichText {
           }
           event.preventDefault();
         });
-        </script></head><body>\(fragment)</body></html>
+        window.addEventListener('DOMContentLoaded', () => enhanceMarkdown(document.body));
+        </script></head><body>\(fragment.html)</body></html>
         """
     }
 
     static func htmlFragment(markdown: String) -> String {
+        renderedFragment(markdown: markdown, documentURL: nil).html
+    }
+
+    static func renderedFragment(markdown: String,
+                                 documentURL: URL?) -> MarkdownRenderedFragment {
+        let math = MarkdownMath.extract(from: markdown)
         // cmark rendert Erweiterungen nur, wenn dieselbe Extension-Liste auch
         // an den HTML-Renderer gereicht wird. Fehlt sie dort, würden Tabellen
         // trotz korrektem Parsing zu unstrukturiertem Fließtext.
         cmark_gfm_core_extensions_ensure_registered()
         guard let parser = cmark_parser_new(CMARK_OPT_DEFAULT) else {
-            return escapedPlainText(markdown)
+            return MarkdownRenderedFragment(html: escapedPlainText(markdown), imageURLs: [:])
         }
         defer { cmark_parser_free(parser) }
 
@@ -439,27 +525,22 @@ enum MarkdownRichText {
             }
         }
 
-        markdown.withCString { bytes in
-            cmark_parser_feed(parser, bytes, markdown.utf8.count)
+        math.markdown.withCString { bytes in
+            cmark_parser_feed(parser, bytes, math.markdown.utf8.count)
         }
         guard let document = cmark_parser_finish(parser) else {
-            return escapedPlainText(markdown)
+            return MarkdownRenderedFragment(html: escapedPlainText(markdown), imageURLs: [:])
         }
         defer { cmark_node_free(document) }
 
         let extensions = cmark_parser_get_syntax_extensions(parser)
         guard let rendered = cmark_render_html(document, CMARK_OPT_DEFAULT, extensions) else {
-            return escapedPlainText(markdown)
+            return MarkdownRenderedFragment(html: escapedPlainText(markdown), imageURLs: [:])
         }
         defer { free(rendered) }
 
-        // Externe Bilder würden bereits beim Anzeigen Netzverkehr auslösen.
-        // Links bleiben klickbar, aber Remote-Ressourcen bekommen keine URL.
-        return String(cString: rendered).replacingOccurrences(
-            of: #"(?i)\bsrc\s*=\s*["']https?://[^"']*["']"#,
-            with: #"src="""#,
-            options: .regularExpression
-        )
+        let withMath = math.insertingHTML(into: String(cString: rendered))
+        return MarkdownImages.resolve(in: withMath, relativeTo: documentURL)
     }
 
     /// Fehler-Fallback ohne HTML-Injektion. Normalerweise wird dieser Pfad nur
@@ -478,6 +559,13 @@ enum MarkdownRichText {
     private static func cssEscaped(_ value: String) -> String {
         value.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
+    }
+
+    private static func javascriptEscaped(_ value: String) -> String {
+        value.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
     }
 }
 
@@ -524,6 +612,7 @@ enum MarkdownPasteboard {
 /// Blöcke markieren und beim nativen ⌘C HTML plus Klartext bereitstellen.
 private struct MarkdownRichTextView: NSViewRepresentable {
     let markdown: String
+    let documentURL: URL?
     let fontName: String
     let fontSize: CGFloat
     let darkMode: Bool
@@ -536,6 +625,10 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         // die Vorschau bleibt ein lokaler Dokument-Renderer.
         configuration.websiteDataStore = .nonPersistent()
         configuration.userContentController.add(context.coordinator, name: "markdownCopy")
+        configuration.setURLSchemeHandler(
+            context.coordinator.assetHandler,
+            forURLScheme: MarkdownPreviewAssets.scheme
+        )
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.underPageBackgroundColor = darkMode
@@ -550,13 +643,19 @@ private struct MarkdownRichTextView: NSViewRepresentable {
     }
 
     private func update(webView: WKWebView, coordinator: Coordinator) {
-        let styleIdentity = "\(darkMode)|\(fontName)|\(fontSize)"
+        let styleIdentity = "\(darkMode)|\(fontName)|\(fontSize)|\(documentURL?.path ?? "")"
         if coordinator.styleIdentity != styleIdentity {
             coordinator.styleIdentity = styleIdentity
             coordinator.markdown = markdown
             coordinator.isReady = false
+            let fragment = MarkdownRichText.renderedFragment(
+                markdown: markdown,
+                documentURL: documentURL
+            )
+            coordinator.assetHandler.setImageURLs(fragment.imageURLs)
             let document = MarkdownRichText.htmlDocument(
                 markdown: markdown,
+                documentURL: documentURL,
                 fontName: fontName,
                 fontSize: fontSize,
                 darkMode: darkMode
@@ -567,7 +666,11 @@ private struct MarkdownRichTextView: NSViewRepresentable {
 
         guard coordinator.markdown != markdown else { return }
         coordinator.markdown = markdown
-        let fragment = MarkdownRichText.htmlFragment(markdown: markdown)
+        let fragment = MarkdownRichText.renderedFragment(
+            markdown: markdown,
+            documentURL: documentURL
+        )
+        coordinator.assetHandler.setImageURLs(fragment.imageURLs)
         guard coordinator.isReady else {
             coordinator.pendingFragment = fragment
             return
@@ -579,7 +682,8 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         var styleIdentity = ""
         var markdown = ""
         var isReady = false
-        var pendingFragment: String?
+        var pendingFragment: MarkdownRenderedFragment?
+        let assetHandler = MarkdownPreviewSchemeHandler()
 
         func userContentController(_ userContentController: WKUserContentController,
                                    didReceive message: WKScriptMessage) {
@@ -594,20 +698,27 @@ private struct MarkdownRichTextView: NSViewRepresentable {
             isReady = true
             if let pendingFragment {
                 self.pendingFragment = nil
-                replaceBody(with: pendingFragment, in: webView)
+                replaceBody(with: pendingFragment.html, in: webView)
             }
         }
 
         /// Nur der Body wird live ersetzt. Scrollposition und Auswahl bleiben
         /// so stabiler als bei einem vollständigen Seiten-Reload pro Tastendruck.
-        func replaceBody(with fragment: String, in webView: WKWebView) {
+        func replaceBody(with fragment: MarkdownRenderedFragment, in webView: WKWebView) {
+            replaceBody(with: fragment.html, in: webView)
+        }
+
+        private func replaceBody(with fragment: String, in webView: WKWebView) {
             guard let data = try? JSONSerialization.data(withJSONObject: [fragment]),
                   let json = String(data: data, encoding: .utf8) else { return }
             let script = """
-            (() => {
+            (async () => {
               const x = window.scrollX, y = window.scrollY;
+              window.markdownGeneration = (window.markdownGeneration || 0) + 1;
+              const generation = window.markdownGeneration;
               document.body.innerHTML = \(json)[0];
-              window.scrollTo(x, y);
+              await enhanceMarkdown(document.body);
+              if (generation === window.markdownGeneration) window.scrollTo(x, y);
             })();
             """
             webView.evaluateJavaScript(script)
@@ -619,7 +730,8 @@ private struct MarkdownRichTextView: NSViewRepresentable {
                      decidePolicyFor navigationAction: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             if navigationAction.navigationType == .linkActivated,
-               let url = navigationAction.request.url {
+               let url = navigationAction.request.url,
+               ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "") {
                 NSWorkspace.shared.open(url)
                 decisionHandler(.cancel)
             } else {

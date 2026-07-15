@@ -35,7 +35,9 @@ einfach wieder.
 > Suchen `*, The`, Ersetzen `The *`. Fertig. Kein RegEx, kein Nachschlagen,
 > kein Risiko: Die Live-Vorschau zeigt jede Änderung, bevor sie angewendet wird.
 
-![Suchdialog mit Sternchen](screenshots/search-wildcards.png)
+<p align="center">
+  <img src="screenshots/search-wildcards.png" width="84.2%" alt="Suchdialog mit Sternchen">
+</p>
 
 - Jedes `*` wird zur nummerierten, ziehbaren Fang-Pille. Text umstellen
   heißt: Pillen ins Ersetzen-Feld ziehen.
@@ -48,7 +50,9 @@ Und wenn eine Aufgabe wirklich die volle Kraft braucht, schaltet man den
 RegEx-Modus ein: Token-Highlighting, kuratierte Vorlagen und geführte
 Capture Groups.
 
-![Suchdialog im RegEx-Modus](screenshots/search-regex.png)
+<p align="center">
+  <img src="screenshots/search-regex.png" width="84.2%" alt="Suchdialog im RegEx-Modus">
+</p>
 
 ## Funktionen
 
@@ -95,12 +99,15 @@ Ersatzmeldung.
 Für Markdown-Dateien lässt sich rechts neben dem Editor eine optionale,
 live aktualisierte Vorschau mit dauerhaftem Splitter einblenden. Der lokale
 Renderer beherrscht GitHub-Flavoured Markdown, darunter Tabellen, Aufgabenlisten,
-Durchstreichungen, Code-Blöcke und Links. Markierter Vorschau-Text lässt sich als
-Klartext, HTML oder Rich Text kopieren, sofern das Zielprogramm es unterstützt.
+Durchstreichungen, syntaxhervorgehobene Code-Blöcke und Links. Er zeigt außerdem
+lokale Bilder, TeX-Formeln in `$…$` oder `$$…$$` und Diagramme aus
+`mermaid`-Code-Blöcken. Markierter Vorschau-Text lässt sich als Klartext, HTML
+oder Rich Text kopieren, sofern das Zielprogramm es unterstützt.
 
-Die Vorschau rendert ausschließlich lokal. Externe Bilder werden bewusst nicht
-nachgeladen; schon das Öffnen einer Markdown-Datei erzeugt also keinen stillen
-Netzwerkverkehr. Links öffnet Fastra nur nach einem bewussten Klick.
+Die Vorschau und ihre Render-Bibliotheken arbeiten ausschließlich lokal.
+Bildpfade werden relativ zur Markdown-Datei aufgelöst; externe Bilder werden
+bewusst nicht nachgeladen. Schon das Öffnen einer Datei erzeugt also keinen
+stillen Netzwerkverkehr. Links öffnet Fastra nur nach einem bewussten Klick.
 
 **Smart-Paste** wandelt formatierten Inhalt aus Browsern oder Office-Programmen
 an der Cursorposition in sauberes Markdown um. Dafür nutzt Fastra das separat

@@ -9,6 +9,42 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.17.0] — 2026-07-15
+
+### Hinzugefügt
+
+- Die lokale Markdown-Vorschau zeigt relative Rasterbilder aus dem Ordner der
+  geöffneten Markdown-Datei, TeX-Formeln in `$…$` und `$$…$$`, Mermaid-Diagramme
+  aus `mermaid`-Code-Blöcken sowie Syntaxhervorhebung in übrigen Code-Blöcken.
+- KaTeX, Mermaid und highlight.js werden mit ihren Lizenzen im App-Bundle
+  mitgeliefert. Die Vorschau benötigt dafür weder ein CDN noch eine andere
+  Netzverbindung.
+
+### Geändert
+
+- Die Suchdialog-Screenshots in beiden READMEs erscheinen mit 84,2 Prozent der
+  Dokumentfensterbreite. Damit entspricht ihre Darstellung wieder dem realen
+  Fensterbreitenverhältnis von 640 zu 760 Punkten.
+
+### Sicherheit
+
+- Ein internes URL-Schema liefert ausschließlich freigegebene Render-Ressourcen
+  und lokale Rasterbilder bis 32 MiB. Remote-Bilder, freie Dateipfade und SVG-
+  Ressourcen bleiben gesperrt; eine Content Security Policy unterbindet
+  Netz-Subressourcen, Frames und Medien.
+- Mermaid läuft im strikten Sicherheitsmodus ohne HTML-Beschriftungen; KaTeX
+  rendert ohne vertrauenswürdige Befehle als natives MathML.
+
+### Qualitätssicherung
+
+- Zehn Markdown-Unit-Tests sichern GFM, Bildpfade, Netzsperre, Formelsemantik,
+  Code-Ausnahmen, CSP, Bibliotheken und Mermaid-Verdrahtung. Alle 784 Swift-Tests
+  sind erfolgreich.
+- Der neue In-App-Selbsttest `markdown` beobachtet im echten WebKit-DOM ein
+  dekodiertes lokales Bild, KaTeX-MathML, Mermaid-SVG und hervorgehobenen Code.
+  Die Portabilitätsprüfung kontrolliert zusätzlich die Render-Bibliotheken im
+  gepackten Ressourcenbundle.
+
 ## [v1.16.17] — 2026-07-15
 
 ### Behoben
