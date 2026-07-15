@@ -10,13 +10,15 @@ enum MainWindowSizing {
     static let defaultHeight: CGFloat = 720
 
     /// Übernimmt Größe und Position des Vorderfensters, klemmt aber alte oder
-    /// ungewöhnlich kleine gespeicherte Frames auf die bedienbare Mindestgröße.
+    /// ungewöhnlich kleine gespeicherte Frames auf die normale Startgröße.
+    /// Die technische Mindestgröße reicht für den vollständigen Fensterinhalt
+    /// nicht als angenehme Ausgangsgröße eines neuen Dokuments.
     static func cascadedFrame(from front: CGRect) -> CGRect {
         CGRect(
             x: front.origin.x + 24,
             y: front.origin.y - 24,
-            width: max(front.width, minimumWidth),
-            height: max(front.height, minimumHeight)
+            width: max(front.width, defaultWidth),
+            height: max(front.height, defaultHeight)
         )
     }
 

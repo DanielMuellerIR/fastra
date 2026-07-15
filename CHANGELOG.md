@@ -9,6 +9,15 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.17.2] — 2026-07-15
+
+### Behoben
+
+- Neue Dokumentfenster über ⌘N übernehmen weiterhin ausreichend große
+  Vorderfenster, starten nach kleinen oder fehlerhaft restaurierten Frames aber
+  mindestens in der normalen Größe 1100 × 720 statt in der knappen technischen
+  Mindestgröße.
+
 ## [v1.17.1] — 2026-07-15
 
 ### Behoben
