@@ -25,6 +25,9 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 - Die Suchdialog-Screenshots in beiden READMEs erscheinen mit 84,2 Prozent der
   Dokumentfensterbreite. Damit entspricht ihre Darstellung wieder dem realen
   Fensterbreitenverhältnis von 640 zu 760 Punkten.
+- Release- und Installationsskript können den lokalen Notary-Profilnamen aus
+  `fastra.notaryProfile` in der nicht veröffentlichten `.git/config` lesen;
+  eine explizite `NOTARY_PROFILE`-Umgebungsvariable hat weiterhin Vorrang.
 
 ### Sicherheit
 

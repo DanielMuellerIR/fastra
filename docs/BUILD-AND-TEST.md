@@ -15,12 +15,23 @@ NOTARY_PROFILE=<profil> ./install.sh   # notarisiert → /Applications/Fastra.ap
 NOTARY_PROFILE=<profil> ./install.sh
 ```
 
+Der konkrete Profilname kann alternativ einmalig nur für diesen Clone gesetzt
+werden:
+
+```bash
+git config --local fastra.notaryProfile <profil>
+```
+
+`release.sh` und `install.sh` verwenden dann diese Einstellung, sofern
+`NOTARY_PROFILE` nicht ausdrücklich gesetzt ist. Der Wert liegt ausschließlich
+in `.git/config` und wird weder committed noch zu einem Remote übertragen.
+
 **Installations-Workflow (`app/install.sh`):** baut Release, signiert mit
 Developer ID + Hardened Runtime, notarisiert bei Apple (`--wait`), stapelt das
 Ticket und kopiert nach `/Applications`. Die Signatur-Identität wird zur Laufzeit
 aus dem Schlüsselbund ermittelt (nichts Privates im Skript — public Repo). Der
-Notary-Keychain-Profilname steht bewusst NICHT im Skript; per `NOTARY_PROFILE`
-übergeben. `./install.sh --no-notarize` = nur
+Notary-Keychain-Profilname steht bewusst NICHT im Skript; er wird per
+`NOTARY_PROFILE` oder lokaler Git-Konfiguration übergeben. `./install.sh --no-notarize` = nur
 signiert (schnell, läuft auf diesem Mac sofort).
 
 Der Root-Wrapper `./install.sh` reicht Optionen und Umgebungsvariablen

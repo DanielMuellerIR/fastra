@@ -80,6 +80,13 @@ codesign --verify --deep --strict --verbose=2 "$APP"
 #    blockiert bis Apples Prüfung fertig ist (typisch 1–10 Min).
 # ─────────────────────────────────────────────────────────────────
 if [ "$NOTARIZE" -eq 1 ]; then
+  # Konkrete Profilnamen bleiben lokal: Die Repo-Konfiguration wird nicht
+  # versioniert und kann den öffentlichen Platzhalter dauerhaft ersetzen.
+  # Eine explizite Umgebungsvariable behält immer Vorrang.
+  NOTARY_PROFILE="${NOTARY_PROFILE:-}"
+  if [ -z "$NOTARY_PROFILE" ]; then
+    NOTARY_PROFILE="$(git config --local --get fastra.notaryProfile 2>/dev/null || true)"
+  fi
   NOTARY_PROFILE="${NOTARY_PROFILE:-notary}"
   TMP="$(mktemp -d)"
   ZIP="$TMP/Fastra.zip"
