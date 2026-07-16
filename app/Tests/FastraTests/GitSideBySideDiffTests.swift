@@ -434,7 +434,10 @@ func sideBySideRealMergeConflict() async throws {
         .appendingPathComponent("fastra-conflict-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
-    _ = try await completedGit(["init", "-q"], in: root)
+    // Default-Branch ausdrücklich festlegen: ohne -b bestimmt die Umgebung
+    // (init.defaultBranch) den Namen, und der checkout unten würde auf Rechnern
+    // mit abweichender Git-Konfiguration fehlschlagen.
+    _ = try await completedGit(["init", "-q", "-b", "main"], in: root)
     _ = try await completedGit(["config", "user.name", "Fastra Test"], in: root)
     _ = try await completedGit(["config", "user.email", "test@example.invalid"], in: root)
     let file = root.appendingPathComponent("konflikt.txt")
@@ -444,9 +447,9 @@ func sideBySideRealMergeConflict() async throws {
     _ = try await completedGit(["checkout", "-q", "-b", "seite"], in: root)
     try Data("seite\n".utf8).write(to: file)
     _ = try await completedGit(["commit", "-qam", "seite"], in: root)
-    _ = try await completedGit(["checkout", "-q", "master"], in: root)
-    try Data("master\n".utf8).write(to: file)
-    _ = try await completedGit(["commit", "-qam", "master"], in: root)
+    _ = try await completedGit(["checkout", "-q", "main"], in: root)
+    try Data("main\n".utf8).write(to: file)
+    _ = try await completedGit(["commit", "-qam", "main"], in: root)
     _ = try await completedGit(["merge", "seite"], acceptedExitCodes: [1], in: root)
     let result = try await completedGit(
         ["diff", "--cc", "--no-color", "--no-ext-diff", "--no-textconv"], in: root
