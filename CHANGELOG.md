@@ -9,6 +9,16 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.18.1] — 2026-07-16
+
+### Behoben
+
+- Die Rückfrage zum automatischen Fetch sagte zu, dass „weder Dateien noch der
+  aktuelle Branch“ geändert werden. `git fetch` schreibt aber sehr wohl in den
+  `.git`-Ordner: Remote-Tracking-Refs, `FETCH_HEAD` und neue Objekte. Der Text
+  sichert jetzt genau das zu, was tatsächlich gilt — Projektdateien und aktueller
+  Branch bleiben unverändert.
+
 ## [v1.18.0] — 2026-07-16
 
 ### Hinzugefügt

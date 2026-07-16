@@ -582,7 +582,7 @@
 "Entfernte Commits mit der gewählten Pull-Strategie einbinden" = "Integrate remote commits using the selected pull strategy";
 "Entfernte Commits mit der in Fastra gewählten expliziten Strategie einbinden." = "Integrate remote commits using the explicit strategy selected in Fastra.";
 "Es gibt noch ungelöste Konflikte. Löse sie und schließe den laufenden Git-Vorgang ab, bevor du erneut pullst." = "There are unresolved conflicts. Resolve them and finish the current Git operation before pulling again.";
-"Fastra kann im Hintergrund regelmäßig git fetch ausführen. Das ändert weder Dateien noch den aktuellen Branch." = "Fastra can run git fetch periodically in the background. This changes neither files nor the current branch.";
+"Fastra kann im Hintergrund regelmäßig git fetch ausführen. Das holt nur den Remote-Stand ab. Deine Projektdateien und der aktuelle Branch bleiben unverändert." = "Fastra can run git fetch periodically in the background. It only retrieves the remote state. Your project files and the current branch stay unchanged.";
 "Fastra legt keinen automatischen Stash an. Git bricht ab, bevor lokale Arbeit überschrieben würde; eine echte Git-Fehlermeldung bleibt sichtbar." = "Fastra does not create an automatic stash. Git stops before local work would be overwritten, and its actual error remains visible.";
 "Fetch-Intervall: %ld Sekunden" = "Fetch Interval: %ld Seconds";
 "Führt git fetch aus und ändert keine lokalen Dateien." = "Runs git fetch and does not change local files.";

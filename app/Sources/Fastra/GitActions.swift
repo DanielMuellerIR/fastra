@@ -531,7 +531,7 @@ extension Workspace {
         guard presentGitDialogs else { completion(.later); return }
         let alert = NSAlert()
         alert.messageText = L10n.string("Remote-Änderungen automatisch abrufen?")
-        alert.informativeText = L10n.string("Fastra kann im Hintergrund regelmäßig git fetch ausführen. Das ändert weder Dateien noch den aktuellen Branch.")
+        alert.informativeText = L10n.string("Fastra kann im Hintergrund regelmäßig git fetch ausführen. Das holt nur den Remote-Stand ab. Deine Projektdateien und der aktuelle Branch bleiben unverändert.")
         alert.addButton(withTitle: L10n.string("Automatisch (empfohlen)"))
         alert.addButton(withTitle: L10n.string("Nein"))
         alert.addButton(withTitle: L10n.string("Später"))
