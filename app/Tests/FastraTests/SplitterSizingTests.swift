@@ -60,4 +60,31 @@ struct SplitterSizingTests {
         #expect(SplitterSizing.width(start: 420, translation: 999, direction: -1, minimum: 260, maximum: 760) == 260)
         #expect(SplitterSizing.width(start: 420, translation: -999, direction: -1, minimum: 260, maximum: 760) == 760)
     }
+
+    @Test("Vorschau darf bis zur Editor-Mindestbreite wachsen (Daniel-Befund 2026-07-16)")
+    func previewMaximumFollowsWindowWidth() {
+        // Breites Fenster (1600 pt), Seitenleiste 200 + Splitter 11, Editor
+        // mindestens 240: Die Vorschau muss über die frühere Festbreite von
+        // 760 pt hinausdürfen, sonst lässt sich der Editor nicht schmal ziehen.
+        let wide = SplitterSizing.trailingMaximum(total: 1600, occupiedLeading: 211,
+                                                  splitter: 11, minimumLeading: 240,
+                                                  minimumTrailing: 260)
+        #expect(wide == 1138)
+        #expect(wide > 760)
+
+        // Der so erreichte Zustand ist derselbe, den ein schmaleres Fenster
+        // ohnehin erzeugt — genau das war per Splitter vorher unmöglich.
+        #expect(SplitterSizing.width(start: 420, translation: -999, direction: -1,
+                                     minimum: 260, maximum: wide) == 1138)
+    }
+
+    @Test("Zu schmales Fenster lässt die Vorschau nicht unter ihr Minimum fallen")
+    func previewMaximumNeverGoesBelowMinimum() {
+        // 400 pt Gesamtbreite: Editor-Mindestbreite und Vorschau-Minimum passen
+        // nicht beide hinein. Die Rechnung darf keine negative Breite liefern.
+        let narrow = SplitterSizing.trailingMaximum(total: 400, occupiedLeading: 211,
+                                                    splitter: 11, minimumLeading: 240,
+                                                    minimumTrailing: 260)
+        #expect(narrow == 260)
+    }
 }

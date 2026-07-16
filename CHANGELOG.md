@@ -13,6 +13,13 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ### Behoben
 
+- Der Splitter zwischen Dokumentinhalt und Markdown-Vorschau ließ sich nur
+  begrenzt bewegen: Die Vorschau war auf 760 Punkte gedeckelt, weshalb der
+  Dokumentinhalt in einem breiten Fenster nie schmal gezogen werden konnte —
+  obwohl dasselbe schmale Layout beim Verkleinern des Fensters entstand. Die
+  Vorschau darf jetzt so breit werden, wie das Fenster es zulässt; dem
+  Dokumentinhalt bleiben mindestens 240 Punkte. Die gewünschte Breite bleibt
+  beim Verkleinern des Fensters erhalten und kehrt beim Aufziehen zurück.
 - Die Rückfrage zum automatischen Fetch sagte zu, dass „weder Dateien noch der
   aktuelle Branch“ geändert werden. `git fetch` schreibt aber sehr wohl in den
   `.git`-Ordner: Remote-Tracking-Refs, `FETCH_HEAD` und neue Objekte. Der Text

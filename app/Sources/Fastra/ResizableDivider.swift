@@ -15,7 +15,12 @@ struct ResizableDivider: View {
     var trailingSurface: Color? = nil
     let help: String
 
-    private let hitWidth: CGFloat = 11
+    /// Gesamtbreite, die der Splitter im Layout belegt. Öffentlich, damit
+    /// Aufrufer die verbleibende Breite für ihre Bereiche korrekt ausrechnen
+    /// können, statt die 11 Punkte an anderer Stelle zu wiederholen.
+    static let thickness: CGFloat = 11
+
+    private let hitWidth: CGFloat = ResizableDivider.thickness
 
     var body: some View {
         HStack(spacing: 0) {

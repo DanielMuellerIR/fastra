@@ -59,6 +59,17 @@ struct EditorView: View {
     private let sidebarMinWidth: CGFloat = 180
     private let sidebarMaxWidth: CGFloat = 480
 
+    /// Schmalste Breite, die dem Dokumentinhalt beim Ziehen des Markdown-
+    /// Splitters bleiben muss. Kleiner darf der Editor nur werden, wenn das
+    /// Fenster selbst zu schmal ist — dann drückt das Layout ihn zusammen.
+    private let editorMinWidth: CGFloat = 240
+    private let markdownPreviewMinWidth: CGFloat = 260
+
+    /// Gemessene Breite des gesamten Editor-Fensterinhalts (Seitenleiste,
+    /// Editor, Vorschau und die Splitter dazwischen). Erst damit lässt sich
+    /// ausrechnen, wie breit die Vorschau höchstens werden darf.
+    @State private var contentWidth: CGFloat = 0
+
     /// Effektives Erscheinungsbild des Fensters (hell/dunkel) — wählt das
     /// CESE-Editor-Theme. Ändert sich die Appearance (System-Wechsel oder
     /// Einstellungs-Dialog), rendert SwiftUI neu → `editorConfiguration`
@@ -106,10 +117,20 @@ struct EditorView: View {
             if showsIntegratedMarkdownPreview {
                 markdownSplitter
                 MarkdownPreviewView(workspace: workspace)
-                    .frame(width: min(max(CGFloat(markdownPreviewWidth), 260), 760))
+                    .frame(width: effectiveMarkdownPreviewWidth)
                     .clipped()
             }
         }
+        // Die Breite wird im Hintergrund gemessen statt über einen
+        // GeometryReader um den HStack: Der Reader würde die Ausrichtung der
+        // Bereiche verändern, diese Messung lässt das Layout unberührt.
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { contentWidth = proxy.size.width }
+                    .onChange(of: proxy.size.width) { _, width in contentWidth = width }
+            }
+        )
         .onAppear {
             // Alte gespeicherte Werte konnten bis 140 pt reichen. Den Wert
             // selbst anheben, damit der erste Splitter-Drag nicht von einer
@@ -126,6 +147,40 @@ struct EditorView: View {
         }
     }
 
+    /// Aktuell wirksame Breite der Seitenleiste inklusive ihres Splitters.
+    private var sidebarOccupiedWidth: CGFloat {
+        guard showSidebar else { return 0 }
+        return min(max(CGFloat(sidebarWidth), sidebarMinWidth), sidebarMaxWidth)
+            + ResizableDivider.thickness
+    }
+
+    /// Obergrenze der Vorschau (Daniel-Befund 2026-07-16): Früher war hier eine
+    /// feste Breite von 760 pt verdrahtet. Auf einem breiten Fenster ließ sich
+    /// der Editor deshalb per Splitter nicht schmal ziehen — die Vorschau
+    /// konnte den freiwerdenden Platz gar nicht übernehmen, obwohl dasselbe
+    /// schmale Layout beim Verkleinern des Fensters entstand. Die Grenze folgt
+    /// jetzt dem echten Platzangebot: Die Vorschau darf alles einnehmen, was
+    /// dem Editor über `editorMinWidth` hinaus bleibt.
+    private var markdownPreviewMaxWidth: CGFloat {
+        // Vor der ersten Messung bleibt die bisherige Breite gültig, damit der
+        // erste Frame nicht mit einer Un-Breite erscheint.
+        guard contentWidth > 0 else { return 760 }
+        return CGFloat(SplitterSizing.trailingMaximum(
+            total: Double(contentWidth),
+            occupiedLeading: Double(sidebarOccupiedWidth),
+            splitter: Double(ResizableDivider.thickness),
+            minimumLeading: Double(editorMinWidth),
+            minimumTrailing: Double(markdownPreviewMinWidth)
+        ))
+    }
+
+    /// Gespeicherte Breite, geklemmt auf das, was im Fenster gerade möglich
+    /// ist. Der gespeicherte Wert selbst bleibt unangetastet: Wird das Fenster
+    /// wieder breiter, kehrt die Vorschau zu ihrer Wunschbreite zurück.
+    private var effectiveMarkdownPreviewWidth: CGFloat {
+        min(max(CGFloat(markdownPreviewWidth), markdownPreviewMinWidth), markdownPreviewMaxWidth)
+    }
+
     private var showsIntegratedMarkdownPreview: Bool {
         guard showMarkdownPreview, let tab = workspace.activeTab else { return false }
         let name = tab.title.lowercased()
@@ -133,11 +188,19 @@ struct EditorView: View {
     }
 
     private var markdownSplitter: some View {
-        ResizableDivider(value: $markdownPreviewWidth,
-                         range: 260...760,
-                         direction: -1,
-                         surface: Theme.surfaceRaised,
-                         help: "Ziehen, um die Breite der Markdown-Vorschau anzupassen")
+        // Der Splitter zieht an der *sichtbaren* Breite. Läse er den rohen
+        // gespeicherten Wert, würde die Vorschau in einem zu schmalen Fenster
+        // beim ersten Ziehen von der geklemmten auf die gespeicherte Breite
+        // springen.
+        let width = Binding<Double>(
+            get: { Double(effectiveMarkdownPreviewWidth) },
+            set: { markdownPreviewWidth = $0 }
+        )
+        return ResizableDivider(value: width,
+                                range: Double(markdownPreviewMinWidth)...Double(markdownPreviewMaxWidth),
+                                direction: -1,
+                                surface: Theme.surfaceRaised,
+                                help: "Ziehen, um die Breite der Markdown-Vorschau anzupassen")
     }
 
     // MARK: Source-Editor-Pane
