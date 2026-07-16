@@ -15,11 +15,40 @@ import Foundation
 /// Ein einzelner Commit, so wie ihn `git log` liefert. Rein datenhaltend.
 struct GitCommitFile: Equatable, Identifiable {
     let path: String
+    let rawPath: Data
+    let originalPath: String?
+    let rawOriginalPath: Data?
     let status: String
     let additions: Int?
     let deletions: Int?
 
-    var id: String { path }
+    init(path: String, originalPath: String? = nil, status: String,
+         additions: Int?, deletions: Int?) {
+        self.path = path
+        self.rawPath = Data(path.utf8)
+        self.originalPath = originalPath
+        self.rawOriginalPath = originalPath.map { Data($0.utf8) }
+        self.status = status
+        self.additions = additions
+        self.deletions = deletions
+    }
+
+    init(rawPath: Data, rawOriginalPath: Data? = nil, status: String,
+         additions: Int?, deletions: Int?) {
+        self.rawPath = rawPath
+        self.path = String(decoding: rawPath, as: UTF8.self)
+        self.rawOriginalPath = rawOriginalPath
+        self.originalPath = rawOriginalPath.map { String(decoding: $0, as: UTF8.self) }
+        self.status = status
+        self.additions = additions
+        self.deletions = deletions
+    }
+
+    var id: Data { rawPath }
+    /// `Process.arguments` kann keine ungültigen UTF-8-Bytes transportieren.
+    /// Der Pfad bleibt lesbar, die zugehörige Aktion wird aber ehrlich gesperrt.
+    var actionPath: String? { String(data: rawPath, encoding: .utf8) }
+    var isPathActionable: Bool { actionPath != nil }
     var name: String { (path as NSString).lastPathComponent }
     var directory: String {
         let value = (path as NSString).deletingLastPathComponent
@@ -82,6 +111,9 @@ struct GraphRow: Identifiable, Equatable {
     let column: Int          // Spalte des Knoten-Kreises
     let colorIndex: Int      // Farbe des Knotens (= Farbe seiner Haupt-Lane)
     let lines: [GraphLine]
+    /// Ausschließlich aus der exakten OID von `git status`, nie aus einem
+    /// Decoration-Text wie `HEAD -> main` abgeleitet.
+    let isHEAD: Bool
 
     var id: String { commit.hash }
 }
@@ -90,6 +122,51 @@ struct GraphRow: Identifiable, Equatable {
 struct GraphLayout: Equatable {
     let rows: [GraphRow]
     let laneCount: Int       // Anzahl benötigter Spalten (≥ 1)
+}
+
+/// Pure Präsentation des exakt ermittelten HEAD-Zustands. Branch-Decorations
+/// sind kein Input; der Branchname stammt aus demselben Status-Snapshot wie die
+/// HEAD-OID.
+struct GitHeadPresentation: Equatable {
+    let label: String
+    let tooltip: String
+    let isDetached: Bool
+
+    static func make(row: GraphRow, branch: String?) -> GitHeadPresentation? {
+        guard row.isHEAD else { return nil }
+        if let branch, !branch.isEmpty {
+            return GitHeadPresentation(
+                label: L10n.format("HEAD · %@", branch),
+                tooltip: L10n.format("HEAD bezeichnet den aktuell ausgecheckten Commit. Der lokale Branch ist %@.", branch),
+                isDetached: false
+            )
+        }
+        return GitHeadPresentation(
+            label: L10n.format("HEAD · %@ · detached", row.commit.shortHash),
+            tooltip: L10n.format("HEAD bezeichnet den aktuell ausgecheckten Commit. Detached HEAD: Kein lokaler Branch ist ausgecheckt; HEAD zeigt direkt auf %@.", row.commit.shortHash),
+            isDetached: true
+        )
+    }
+}
+
+enum GitGraphAccessibility {
+    static func commitHint(isHEAD: Bool, hasFiles: Bool, isExpanded: Bool) -> String {
+        var parts: [String] = []
+        if isHEAD { parts.append(L10n.string("HEAD bezeichnet den aktuell ausgecheckten Commit.")) }
+        parts.append(L10n.string("Die Aktion „Commit-Diff öffnen“ zeigt den vollständigen Commit-Diff."))
+        if hasFiles {
+            parts.append(isExpanded
+                         ? L10n.string("Die Dateiliste ist ausgeklappt und kann eingeklappt werden.")
+                         : L10n.string("Die Dateiliste ist eingeklappt und kann ausgeklappt werden."))
+        }
+        return parts.joined(separator: " ")
+    }
+
+    static func fileHint(actionable: Bool) -> String {
+        actionable
+            ? L10n.string("Öffnet den Vorher-Nachher-Diff dieser Datei.")
+            : L10n.string("Dieser Dateipfad enthält ungültiges UTF-8 und kann nicht sicher an Git übergeben werden.")
+    }
 }
 
 // MARK: - Parser + Layout
@@ -103,89 +180,136 @@ enum GitGraph {
     //   %as = Autor-Datum (YYYY-MM-DD) · %at = Unix-Zeit
     //   %D = Decorations · %s = Betreff. Danach liefern `--raw --numstat`
     //   pro Datei Status sowie Einfügungen/Löschungen.
-    private static let recordSep = "\u{1e}"
-    private static let unitSep   = "\u{1f}"
+    private static let recordSep: UInt8 = 0x1e
+    private static let unitSep: UInt8 = 0x1f
 
     /// Argumente für `git log`. `--all` zeigt alle Branches (echter Graph),
     /// `--topo-order` hält Verzweigungen zusammenhängend (kein Datums-Zickzack),
     /// die Obergrenze deckelt sehr große Historien.
     static let arguments: [String] = [
         "log", "--all", "--topo-order", "-2000",
-        "--pretty=format:\u{1e}%H\u{1f}%P\u{1f}%an\u{1f}%as\u{1f}%at\u{1f}%D\u{1f}%s",
+        "--pretty=format:%x1e%H%x1f%P%x1f%an%x1f%as%x1f%at%x1f%D%x1f%s%x00",
         // Merge-Dateien relativ zum ersten Eltern-Commit zeigen. Ohne diese
         // Option lässt git bei Merge-Commits Raw-/Numstat-Daten komplett weg.
-        "--raw", "--numstat", "--diff-merges=first-parent",
+        "-z", "--raw", "--numstat", "--find-renames", "--diff-merges=first-parent",
     ]
 
-    /// Wandelt die rohe `git log`-Ausgabe in Commits. Robust gegen Sonderzeichen
-    /// im Betreff (eigene Trennzeichen). Leere/kaputte Datensätze werden still
-    /// übersprungen.
-    static func parse(_ raw: String) -> [GitCommit] {
-        raw.components(separatedBy: recordSep).compactMap { record -> GitCommit? in
-            let fields = record.components(separatedBy: unitSep)
-            guard fields.count >= 7 else { return nil }
-            let hash = fields[0].trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !hash.isEmpty else { return nil }
-
-            let parents = fields[1]
-                .split(separator: " ", omittingEmptySubsequences: true)
-                .map(String.init)
-
-            // Decorations: git trennt sie mit ", ". Leerer String → keine Refs.
-            let refs = fields[5]
-                .components(separatedBy: ", ")
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }
-
-            // Das letzte Feld enthält zuerst den Betreff, danach die von
-            // `--raw --numstat` erzeugten Dateizeilen.
-            let payload = fields[6...].joined(separator: unitSep)
-            let payloadLines = payload.components(separatedBy: .newlines)
-            let subject = payloadLines.first ?? ""
-            let detailLines = payloadLines.dropFirst().filter { !$0.isEmpty }
-
-            // `--raw`: Status steht nach dem ersten Tab, bei Umbenennungen ist
-            // der letzte Pfad der neue Zielpfad. Reihenfolge entspricht numstat.
-            let statuses: [(status: String, path: String)] = detailLines.compactMap { line in
-                guard line.hasPrefix(":") else { return nil }
-                let parts = line.components(separatedBy: "\t")
-                guard parts.count >= 2,
-                      let rawStatus = parts[0].split(separator: " ").last else { return nil }
-                return (String(rawStatus.prefix(1)), parts.last ?? "")
-            }
-            let counts: [(additions: Int?, deletions: Int?, path: String)] = detailLines.compactMap { line in
-                let parts = line.components(separatedBy: "\t")
-                guard parts.count >= 3, !line.hasPrefix(":"),
-                      Int(parts[0]) != nil || parts[0] == "-",
-                      Int(parts[1]) != nil || parts[1] == "-" else { return nil }
-                return (Int(parts[0]), Int(parts[1]), parts.last ?? "")
-            }
-            let fileCount = max(statuses.count, counts.count)
-            let files = (0..<fileCount).map { index -> GitCommitFile in
-                let status: (status: String, path: String) = index < statuses.count
-                    ? statuses[index] : (status: "M", path: "")
-                let count: (additions: Int?, deletions: Int?, path: String) = index < counts.count
-                    ? counts[index] : (additions: nil, deletions: nil, path: "")
-                return GitCommitFile(
-                    path: status.path.isEmpty ? count.path : status.path,
-                    status: status.status,
-                    additions: count.additions,
-                    deletions: count.deletions
-                )
-            }
-
-            return GitCommit(
-                hash: hash,
-                parents: parents,
-                author: fields[2],
-                date: fields[3],
-                timestamp: Int64(fields[4]) ?? 0,
-                refs: refs,
-                subject: subject,
-                files: files
-            )
+    /// Parst ausschließlich das dokumentierte NUL-Protokoll von `git log -z`.
+    /// Pfade werden erst nach der strukturellen Trennung dekodiert; Tabs und
+    /// Zeilenumbrüche im Dateinamen bleiben deshalb echte Pfadbytes.
+    static func parse(_ raw: Data) -> [GitCommit] {
+        struct RawFile {
+            let path: Data
+            let originalPath: Data?
+            let status: String
         }
+        struct Builder {
+            let fields: [Data]
+            var files: [RawFile] = []
+            var counts: [Data: (Int?, Int?)] = [:]
+        }
+
+        let tokens = [UInt8](raw).split(separator: 0, omittingEmptySubsequences: false)
+            .map { Data($0) }
+        var commits: [GitCommit] = []
+        var builder: Builder?
+        var index = 0
+
+        func decoded(_ data: Data) -> String { String(decoding: data, as: UTF8.self) }
+        func appendBuilder(_ value: Builder?) {
+            guard let value, value.fields.count >= 7 else { return }
+            let hash = decoded(value.fields[0])
+            guard !hash.isEmpty else { return }
+            let parents = decoded(value.fields[1]).split(separator: " ").map(String.init)
+            let refs = decoded(value.fields[5]).components(separatedBy: ", ")
+                .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            let files = value.files.map { file in
+                let count = value.counts[file.path]
+                return GitCommitFile(rawPath: file.path, rawOriginalPath: file.originalPath,
+                                     status: file.status, additions: count?.0,
+                                     deletions: count?.1)
+            }
+            commits.append(GitCommit(hash: hash, parents: parents,
+                                     author: decoded(value.fields[2]),
+                                     date: decoded(value.fields[3]),
+                                     timestamp: Int64(decoded(value.fields[4])) ?? 0,
+                                     refs: refs, subject: decoded(value.fields[6]),
+                                     files: files))
+        }
+
+        while index < tokens.count {
+            var token = tokens[index]
+            if token.first == recordSep {
+                appendBuilder(builder)
+                token.removeFirst()
+                builder = Builder(fields: [UInt8](token).split(
+                    separator: unitSep, omittingEmptySubsequences: false
+                ).map { Data($0) })
+                index += 1
+                continue
+            }
+            guard builder != nil else { index += 1; continue }
+            // Git setzt genau vor den ersten Raw-Header eines Commits ein LF.
+            // Nur dieses strukturelle LF entfernen; ein Pfadfeld darf selbst
+            // mit beliebig vielen Zeilenumbrüchen beginnen.
+            if token.first == 0x0a, token.dropFirst().first == 0x3a { token.removeFirst() }
+            if token.first == 0x3a, // ':' — Raw-Header, Pfade folgen als NUL-Felder
+               let rawStatus = token.split(separator: 0x20).last,
+               let statusByte = rawStatus.first {
+                let status = String(UnicodeScalar(statusByte))
+                let pathCount = statusByte == 0x52 || statusByte == 0x43 ? 2 : 1 // R/C
+                guard index + pathCount < tokens.count else { index += 1; continue }
+                let original = pathCount == 2 ? tokens[index + 1] : nil
+                let path = tokens[index + pathCount]
+                if !path.isEmpty {
+                    builder?.files.append(RawFile(path: path, originalPath: original,
+                                                  status: status))
+                }
+                index += pathCount + 1
+                continue
+            }
+            if let parsed = parseNumstatToken(token, following: tokens, index: index) {
+                builder?.counts[parsed.path] = (parsed.additions, parsed.deletions)
+                index += parsed.consumed
+                continue
+            }
+            index += 1
+        }
+        appendBuilder(builder)
+        return commits
     }
+
+    /// Numstat besitzt zwei fest definierte TAB-Felder für Zahlen; mit `-z`
+    /// ist alles danach ein NUL-begrenzter Pfad. Bei Rename/Copy folgen alter
+    /// und neuer Pfad als zwei weitere NUL-Felder.
+    private static func parseNumstatToken(_ token: Data, following tokens: [Data], index: Int)
+        -> (additions: Int?, deletions: Int?, path: Data, consumed: Int)? {
+        guard let firstTab = token.firstIndex(of: 0x09),
+              let secondTab = token[token.index(after: firstTab)...].firstIndex(of: 0x09)
+        else { return nil }
+        let additionsRaw = token[..<firstTab]
+        let deletionsRaw = token[token.index(after: firstTab)..<secondTab]
+        guard additionsRaw == Data("-".utf8) || Int(String(decoding: additionsRaw, as: UTF8.self)) != nil,
+              deletionsRaw == Data("-".utf8) || Int(String(decoding: deletionsRaw, as: UTF8.self)) != nil
+        else { return nil }
+        let inlinePath = Data(token[token.index(after: secondTab)...])
+        let path: Data
+        let consumed: Int
+        if inlinePath.isEmpty { // Rename/Copy: <counts>\0<old>\0<new>\0
+            guard index + 2 < tokens.count else { return nil }
+            path = tokens[index + 2]
+            consumed = 3
+        } else {
+            path = inlinePath
+            consumed = 1
+        }
+        return (Int(String(decoding: additionsRaw, as: UTF8.self)),
+                Int(String(decoding: deletionsRaw, as: UTF8.self)), path, consumed)
+    }
+
+    /// Nur für kleine handgeschriebene Metadaten-Fixtures. Produktionsaufrufe
+    /// verwenden immer `Data` und das NUL-Protokoll.
+    static func parse(_ raw: String) -> [GitCommit] { parse(Data(raw.utf8)) }
 
     /// Weist jedem Commit eine Spalte zu und beschreibt die Verzweigungslinien.
     ///
@@ -200,19 +324,16 @@ enum GitGraph {
     ///     offene („outgoing"-Linien).
     ///   • Alle übrigen offenen Lanes laufen senkrecht durch die Zeile („through").
     /// Spalten bleiben stabil (kein Verdichten) — nur so fluchten die Zell-Kanten.
-    static func layout(_ commits: [GitCommit]) -> GraphLayout {
+    static func layout(_ commits: [GitCommit], headOID: String? = nil) -> GraphLayout {
         /// Eine offene Lane: erwarteter nächster Commit + stabile Farbe.
         struct Lane { let target: String; let colorIndex: Int }
 
         var lanes: [Lane?] = []
-        // Farbe 0 (Blau) ist exklusiv für den ausgecheckten Branch reserviert.
-        // `git log --all` kann einen neueren fremden Branch vor HEAD liefern;
-        // ohne Reservierung bekam dieser Blau und die eigentliche main-Linie
-        // darunter Orange. VS Codium hält dagegen die aktuelle Branch-Linie
-        // blau, unabhängig von der Sortierung der übrigen Branch-Tips.
-        let primaryHash = commits.first(where: { commit in
-            commit.refs.contains { $0.hasPrefix("HEAD -> ") }
-        })?.hash ?? commits.first?.hash
+        // Farbe 0 (Blau) folgt der exakten HEAD-OID aus `git status`. Graph-
+        // Decorations sind reine Anzeige und dürfen HEAD nicht mehr erraten.
+        // Ohne Status (z.B. pure Layout-Nutzung) erhält nur die erste sichtbare
+        // Lane die Grundfarbe; das ist ausdrücklich keine HEAD-Aussage.
+        let primaryHash = headOID ?? commits.first?.hash
         var colorCounter = 1
         var rows: [GraphRow] = []
         var maxColumn = 0
@@ -310,7 +431,8 @@ enum GitGraph {
             maxColumn = max(maxColumn, touched.max() ?? 0)
 
             rows.append(GraphRow(commit: commit, column: nodeColumn,
-                                 colorIndex: nodeColor, lines: lines))
+                                 colorIndex: nodeColor, lines: lines,
+                                 isHEAD: headOID == commit.hash))
         }
 
         return GraphLayout(rows: rows, laneCount: max(1, maxColumn + 1))

@@ -77,6 +77,7 @@ struct EditorTab: Identifiable, Hashable {
     var url: URL?
     var content: String
     var encoding: String.Encoding
+    var bom: Data
     var lineEnding: LineEnding
     var displayMode: EditorDisplayMode
     var fileSize: UInt64
@@ -97,6 +98,13 @@ struct EditorTab: Identifiable, Hashable {
     /// `nil` = normale, editierbare Datei. Git-Tabs sind read-only, haben
     /// `url == nil` und werden nicht gespeichert.
     var gitKind: GitTabKind?
+    /// Strukturierter Side-by-side-Diff. `nil` bei normalen Dateien sowie beim
+    /// kompatiblen Unified-Fallback für Verlauf/Commit-Metadaten.
+    var gitDiffRequest: GitDiffRequest?
+    var gitDiffDocument: GitDiffDocument?
+    /// Jede neue Ladung desselben Diff-Tabs erhöht diesen Wert. Nur die
+    /// Completion derselben Generation darf den Tab noch verändern.
+    var gitDiffLoadGeneration: UInt64
     /// `true`, wenn dieser Tab der Willkommen-Tab ist (zeigt statt des Editors
     /// die Willkommensseite und trägt in der Leiste „Willkommen"). Bleibt ein
     /// eigener Tab bestehen, bis er geschlossen wird — ⌘T/„Neue Datei" legen
@@ -112,6 +120,7 @@ struct EditorTab: Identifiable, Hashable {
         url: URL? = nil,
         content: String = "",
         encoding: String.Encoding = .utf8,
+        bom: Data = Data(),
         lineEnding: LineEnding = .lf,
         displayMode: EditorDisplayMode = .text,
         fileSize: UInt64 = 0,
@@ -120,6 +129,9 @@ struct EditorTab: Identifiable, Hashable {
         isLoading: Bool = false,
         diskModificationDate: Date? = nil,
         gitKind: GitTabKind? = nil,
+        gitDiffRequest: GitDiffRequest? = nil,
+        gitDiffDocument: GitDiffDocument? = nil,
+        gitDiffLoadGeneration: UInt64 = 0,
         isWelcome: Bool = false
     ) {
         self.id = id
@@ -128,6 +140,7 @@ struct EditorTab: Identifiable, Hashable {
         self.url = url
         self.content = content
         self.encoding = encoding
+        self.bom = bom
         self.lineEnding = lineEnding
         self.displayMode = displayMode
         self.fileSize = fileSize
@@ -136,6 +149,9 @@ struct EditorTab: Identifiable, Hashable {
         self.isLoading = isLoading
         self.diskModificationDate = diskModificationDate
         self.gitKind = gitKind
+        self.gitDiffRequest = gitDiffRequest
+        self.gitDiffDocument = gitDiffDocument
+        self.gitDiffLoadGeneration = gitDiffLoadGeneration
         self.isWelcome = isWelcome
     }
 }
@@ -174,6 +190,11 @@ enum CloseConfirmation {
     case cancel      // Schließen abbrechen, Tab bleibt offen
 }
 
+private struct GitDiffLoadLease {
+    let generation: UInt64
+    let lease: GitCancelling
+}
+
 final class Workspace: ObservableObject {
     @Published var tabs: [EditorTab]
     @Published var activeTabID: UUID?
@@ -192,6 +213,8 @@ final class Workspace: ObservableObject {
     /// kein Repo oder git nicht installiert → keine Git-Anzeige. Asynchron
     /// über `refreshGitStatus()` gefüllt.
     @Published var gitStatus: GitStatusSummary?
+    /// Atomarer, gemeinsam revidierter Zustand aller Git-Oberflächen.
+    @Published var gitRepositorySnapshot: GitRepositorySnapshot?
     /// Commit-Historie des aktuellen Projekts für den Graph-Tab (Phase 3).
     /// Leer = kein Repo/keine Commits oder noch nicht geladen. Asynchron über
     /// `refreshGitLog()` gefüllt.
@@ -200,6 +223,20 @@ final class Workspace: ObservableObject {
     @Published var gitBranches: [GitBranch] = []
     /// Kurzlebige, nicht-modale Rückmeldung erfolgreicher Git-Aktionen.
     @Published var gitFeedback: GitActionFeedback?
+    /// Sicher über `git rev-parse --git-path …` erkannter laufender Vorgang.
+    /// Der Wert ist nur eine UI-Hilfe; jede Mutation prüft ihn im exklusiven
+    /// Repository-Slot unmittelbar vor der Ausführung erneut.
+    @Published var gitOperationState: GitOperationState?
+    /// Lokal und global getrennt gelesene Commit-Identität des Projekts.
+    @Published var gitIdentity: GitIdentitySnapshot?
+    /// Aktuell fokussierter Markerblock im normalen Editor.
+    @Published var activeConflictIndex: Int = 0
+    @Published var showsConflictBase: Bool = false
+    /// Von Git pfadspezifisch aufgelöste `conflict-marker-size`-Werte.
+    @Published var gitConflictMarkerSizes: [Data: Int] = [:]
+    /// Git-eigene Attributklassifikation offener Konfliktpfade. Ein fehlender
+    /// oder laufender Befund ist absichtlich kein impliziter Text-Fallback.
+    @Published var gitConflictInspections: [Data: GitConflictInspection] = [:]
     /// Commit-Botschaft des Änderungen-Tabs (VS-Code-artiges Eingabefeld). Pro
     /// Fenster; nach erfolgreichem Commit geleert.
     @Published var commitMessage: String = ""
@@ -403,6 +440,32 @@ final class Workspace: ObservableObject {
     /// eine isolierte, Normalbetrieb `.standard`. ALLE Persistenz-Pfade
     /// des Workspace müssen über diese Suite laufen (siehe init-Kommentar).
     private let defaultsStore: UserDefaults
+    let gitPreferencesStore: GitPreferencesStore
+    let gitOperationsCoordinator: GitOperationsCoordinator
+    let gitRepositoryStore: GitRepositoryStore
+    private var gitRepositoryObservation: GitRepositoryObservation?
+    private let gitRepositoryIdentityResolver: GitRepositoryIdentityResolving?
+    private let gitAutoFetchController: GitAutoFetchController?
+    private let terminalOpener: TerminalOpening
+    private let terminalDirectoryResolver: TerminalDirectoryResolving
+    private var gitDiffLoadLeases: [UUID: GitDiffLoadLease] = [:]
+    private var gitIdentityResolution: GitCancelling?
+    var gitOperationStateInspection: GitCancelling?
+    var gitIdentityInspection: GitCancelling?
+    var gitConflictInspectionLease: GitCancelling?
+    var gitConflictInspectionRequestIDs: [Data: UUID] = [:]
+    private var gitAutoFetchObservation: GitRepositoryObservation?
+    /// Erhöht sich bei jedem Projektwechsel. Asynchrone Aktionsketten binden
+    /// sich an diesen Wert und können nie in ein später geöffnetes Repo laufen.
+    private(set) var projectGeneration: UInt64 = 0
+
+    /// In Tests injizierbar; der Produktpfad postet an den sichtbaren nativen
+    /// Editor und läuft damit durch dessen Undo-Manager.
+    var conflictTextReplacementHandler: ConflictTextReplacementHandler = ConflictEditorBridge.post
+    var confirmIntentionalConflictMarkersHandler: (String) -> Bool = Workspace.defaultConfirmIntentionalConflictMarkers
+    var gitMutationConfirmationHandler: (GitMutationConfirmation) -> Bool = Workspace.defaultGitMutationConfirmation
+    var gitIdentityPromptHandler: (GitIdentitySnapshot?) -> GitIdentityConfiguration? = Workspace.defaultGitIdentityPrompt
+    var gitBranchNamePromptHandler: (String?) -> String? = Workspace.defaultGitBranchNamePrompt
 
     /// Schwache Referenz auf den Workspace des gerade aktiven Dokumentfensters.
     /// Die In-App-Selbsttests verwenden denselben Hook. Seit mehrere
@@ -431,13 +494,45 @@ final class Workspace: ObservableObject {
         liveWorkspaces.add(workspace)
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard,
+         gitOperationsCoordinator: GitOperationsCoordinator = .shared,
+         gitRepositoryStore: GitRepositoryStore? = nil,
+         gitRepositoryIdentityResolver: GitRepositoryIdentityResolving? = nil,
+         gitAutoFetchController: GitAutoFetchController? = nil,
+         terminalOpener: TerminalOpening = ExternalTerminalLauncher(),
+         terminalDirectoryResolver: TerminalDirectoryResolving = DefaultTerminalDirectoryResolver()) {
         // Die injizierten Defaults merken — ALLE Persistenz-Pfade des
         // Workspace müssen dieselbe Suite nutzen. Vorher schrieb der
         // recentSearchFolders-Sink hart in `.standard`: Selbsttest-Läufe
         // (isolierte Suite!) haben so ihre Temp-Ordner in die ECHTEN
         // Nutzer-Defaults gemüllt (Befund 2026-06-11, 16 Leichen).
         self.defaultsStore = defaults
+        self.gitPreferencesStore = GitPreferencesStore(defaults: defaults)
+        self.gitOperationsCoordinator = gitOperationsCoordinator
+        self.terminalOpener = terminalOpener
+        self.terminalDirectoryResolver = terminalDirectoryResolver
+        if let gitRepositoryStore {
+            self.gitRepositoryStore = gitRepositoryStore
+        } else if gitOperationsCoordinator === GitOperationsCoordinator.shared {
+            self.gitRepositoryStore = .shared
+        } else {
+            self.gitRepositoryStore = GitRepositoryStore(
+                executor: GitRunnerExecutor(), coordinator: gitOperationsCoordinator
+            )
+        }
+        if gitOperationsCoordinator === GitOperationsCoordinator.shared {
+            // Isolierte Test-Suites dürfen weder echte Standard-Defaults noch
+            // den appweiten Scheduler berühren. Tests können beide Bausteine
+            // gezielt injizieren; der normale App-Pfad nutzt `.standard`.
+            let usesApplicationDefaults = defaults === UserDefaults.standard
+            self.gitRepositoryIdentityResolver = gitRepositoryIdentityResolver
+                ?? (usesApplicationDefaults ? GitRepositoryIdentityResolver() : nil)
+            self.gitAutoFetchController = gitAutoFetchController
+                ?? (usesApplicationDefaults ? .shared : nil)
+        } else {
+            self.gitRepositoryIdentityResolver = gitRepositoryIdentityResolver
+            self.gitAutoFetchController = gitAutoFetchController
+        }
 
         // Auch eine vollständig frische Installation startet ausschließlich
         // mit dem erklärenden Willkommen-Zustand. Ein automatisch geöffnetes
@@ -494,6 +589,19 @@ final class Workspace: ObservableObject {
             .sink { entries in SearchHistoryStore.save(entries, to: defaults) }
             .store(in: &persistenceBag)
 
+        NotificationCenter.default.publisher(for: .fastraGitIdentityChanged)
+            .sink { [weak self] notification in
+                guard let self,
+                      let notice = notification.object as? GitIdentityChangeNotice else { return }
+                // Lokale Identitäten betreffen nur Fenster desselben Repositories;
+                // globale Werte können dagegen in jedem offenen Projekt greifen.
+                if let repositoryKey = self.currentGitActionContext?.repositoryKey,
+                   notice.applies(to: repositoryKey) {
+                    self.refreshGitIdentity(force: true)
+                }
+            }
+            .store(in: &persistenceBag)
+
         // Die Konfiguration wird erst beim Öffnen eines konkreten Projekts
         // geladen. Danach schreibt jede UI-Änderung unter dessen Pfad zurück.
         $projectSearchConfiguration
@@ -517,6 +625,33 @@ final class Workspace: ObservableObject {
 
     var activeTab: EditorTab? {
         tabs.first(where: { $0.id == activeTabID }) ?? tabs.first
+    }
+
+    /// Ziel des globalen Menübefehls. Ein Projekt hat Vorrang; ohne Projekt
+    /// dient nur eine echte aktive Datei als Quelle.
+    var terminalDirectory: URL? {
+        terminalDirectoryResolver.resolve(projectURL: projectURL,
+                                          activeFileURL: activeTab?.url)
+    }
+
+    var terminalUnavailableReason: String {
+        terminalDirectory == nil
+            ? L10n.string("Öffne zuerst ein Projekt oder eine gespeicherte Datei.") : ""
+    }
+
+    func openTerminal(at explicitDirectory: URL? = nil) {
+        guard let directory = explicitDirectory?.standardizedFileURL ?? terminalDirectory else {
+            NSAlert.runWarning(title: L10n.string("Terminal konnte nicht geöffnet werden"),
+                               text: TerminalOpenError.noDirectory.localizedDescription)
+            return
+        }
+        terminalOpener.open(directory: directory) { result in
+            guard case .failure(let error) = result else { return }
+            DispatchQueue.main.async {
+                NSAlert.runWarning(title: L10n.string("Terminal konnte nicht geöffnet werden"),
+                                   text: error.localizedDescription)
+            }
+        }
     }
 
     /// Basisname für unbenannte Dokumente aus derselben Lokalisierung wie die
@@ -668,6 +803,7 @@ final class Workspace: ObservableObject {
         let previousActive = activeTabID
         guard mayCloseTab(id: id) else { return }           // Abbrechen → Tab bleibt
         guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
+        cancelGitDiffLoad(tabID: id)
         tabs.remove(at: idx)
         // Aktiven Tab konsistent halten: war ein ANDERER Tab aktiv und existiert
         // noch, bleibt er aktiv (mayCloseTab kann activeTabID fürs Sichern kurz
@@ -699,6 +835,7 @@ final class Workspace: ObservableObject {
                 return false
             }
         }
+        cancelAllGitDiffLoads()
         tabs.removeAll()
         activeTabID = nil
         return true
@@ -712,6 +849,9 @@ final class Workspace: ObservableObject {
         guard tabs.contains(where: { $0.id == id }) else { return }
         for otherID in tabs.map(\.id) where otherID != id {
             guard mayCloseTab(id: otherID) else { return }   // Abbrechen → alles bleibt
+        }
+        for removedID in tabs.map(\.id) where removedID != id {
+            cancelGitDiffLoad(tabID: removedID)
         }
         tabs.removeAll { $0.id != id }
         activeTabID = id
@@ -818,6 +958,7 @@ final class Workspace: ObservableObject {
                 case .success(let loaded):
                     self.tabs[i].content    = loaded.content
                     self.tabs[i].encoding   = loaded.encoding
+                    self.tabs[i].bom        = loaded.bom
                     self.tabs[i].lineEnding = loaded.lineEnding
                     self.tabs[i].displayMode = loaded.displayMode
                     self.tabs[i].fileSize = loaded.fileSize
@@ -914,6 +1055,7 @@ final class Workspace: ObservableObject {
                 case .success(let loaded):
                     self.tabs[i].content    = loaded.content
                     self.tabs[i].encoding   = loaded.encoding
+                    self.tabs[i].bom        = loaded.bom
                     self.tabs[i].lineEnding = loaded.lineEnding
                     self.tabs[i].displayMode = loaded.displayMode
                     self.tabs[i].fileSize = loaded.fileSize
@@ -1105,6 +1247,7 @@ final class Workspace: ObservableObject {
                     }
                     self.tabs[idx].content    = loaded.content
                     self.tabs[idx].encoding   = loaded.encoding
+                    self.tabs[idx].bom        = loaded.bom
                     self.tabs[idx].lineEnding = loaded.lineEnding
                     self.tabs[idx].displayMode = loaded.displayMode
                     self.tabs[idx].fileSize = loaded.fileSize
@@ -1167,8 +1310,11 @@ final class Workspace: ObservableObject {
             // Zeilenenden auf die gewählte Konvention bringen (K7) — der Editor
             // hält intern u.U. andere Umbrüche; maßgeblich ist die im Footer
             // gewählte `lineEnding`. converting() normalisiert auch gemischte.
-            let out = tab.lineEnding.converting(tab.content)
-            try out.write(to: url, atomically: true, encoding: tab.encoding)
+            guard let out = FileLoader.encodedData(
+                content: tab.content, encoding: tab.encoding,
+                bom: tab.bom, lineEnding: tab.lineEnding
+            ) else { throw CocoaError(.fileWriteInapplicableStringEncoding) }
+            try out.write(to: url, options: .atomic)
             tabs[idx].isDirty = false
             // Unser eigener Write ist keine „externe" Änderung — Basis-Datum
             // nachziehen, sonst schlüge die Erkennung beim nächsten
@@ -1209,6 +1355,7 @@ final class Workspace: ObservableObject {
     /// wie in `loadFile` (Dedup über URL-Formen hinweg).
     func openProject(at url: URL) {
         let url = url.canonicalFileURL
+        cancelAllGitDiffLoads()
         let previousActive = activeTabID
         tabs = Self.tabsAfterOpeningProject(tabs, root: url)
         if let previousActive, tabs.contains(where: { $0.id == previousActive }) {
@@ -1224,7 +1371,38 @@ final class Workspace: ObservableObject {
             tabs = [tab]
             activeTabID = tab.id
         }
+        projectGeneration &+= 1
+        gitRepositoryObservation?.cancel()
+        gitIdentityResolution?.cancel()
+        gitOperationStateInspection?.cancel()
+        gitIdentityInspection?.cancel()
+        gitConflictInspectionLease?.cancel()
+        gitConflictInspectionLease = nil
+        gitAutoFetchObservation?.cancel()
+        gitAutoFetchObservation = nil
+        // Bis der erste Snapshot des neuen Roots eintrifft, darf keine Git-UI
+        // oder Aktion versehentlich den Zustand des alten Projekts verwenden.
+        gitStatus = nil
+        gitRepositorySnapshot = nil
+        gitBranches = []
+        gitLog = []
+        gitFeedback = nil
+        gitOperationState = nil
+        gitIdentity = nil
+        gitConflictInspections = [:]
+        gitConflictMarkerSizes = [:]
+        gitConflictInspectionRequestIDs = [:]
+        activeConflictIndex = 0
+        showsConflictBase = false
         projectURL = url
+        let generation = projectGeneration
+        gitRepositoryObservation = gitRepositoryStore.observe(repository: url) {
+            [weak self] snapshot in
+            guard let self, self.projectGeneration == generation,
+                  self.projectURL.map(GitOperationRequest.canonicalRepositoryPath)
+                    == snapshot.repositoryPath else { return }
+            self.applyGitSnapshot(snapshot)
+        }
         projectSearchConfiguration = ProjectSearchStore.load(
             for: url, defaults: defaultsStore
         )
@@ -1232,9 +1410,25 @@ final class Workspace: ObservableObject {
         // umwandeln → Editor + Projekt-Seitenleiste statt Willkommensseite.
         dismissWelcomeTab()
         noteRecentProject(url)
-        refreshGitStatus()
-        refreshGitLog()
-        refreshGitBranches()
+        let beginGitObservation = { [weak self] in
+            guard let self, self.projectGeneration == generation,
+                  self.projectURL == url else { return }
+            self.gitAutoFetchObservation = self.gitAutoFetchController?.observe(
+                repository: url
+            ) { completion in
+                Self.promptForAutomaticFetch(completion: completion)
+            }
+            self.gitRepositoryStore.refresh(repository: url, scope: .full)
+        }
+        if let resolver = gitRepositoryIdentityResolver {
+            gitIdentityResolution = resolver.resolve(url) { [weak self] identity in
+                guard let self else { return }
+                self.gitOperationsCoordinator.register(identity)
+                DispatchQueue.main.async(execute: beginGitObservation)
+            }
+        } else {
+            beginGitObservation()
+        }
     }
 
     /// Beim Projektwechsel bleiben ungesicherte Inhalte immer erhalten.
@@ -1254,11 +1448,33 @@ final class Workspace: ObservableObject {
     /// Blendet den Projekt-Dateibaum wieder aus (Seitenleiste zeigt dann
     /// wie bisher nur die geöffneten Tabs). Offene Tabs bleiben unberührt.
     func closeProject() {
+        projectGeneration &+= 1
+        cancelAllGitDiffLoads()
+        gitIdentityResolution?.cancel()
+        gitIdentityResolution = nil
+        gitOperationStateInspection?.cancel()
+        gitOperationStateInspection = nil
+        gitIdentityInspection?.cancel()
+        gitIdentityInspection = nil
+        gitConflictInspectionLease?.cancel()
+        gitConflictInspectionLease = nil
+        gitAutoFetchObservation?.cancel()
+        gitAutoFetchObservation = nil
+        gitRepositoryObservation?.cancel()
+        gitRepositoryObservation = nil
         projectURL = nil
         gitStatus = nil
+        gitRepositorySnapshot = nil
         gitLog = []
         gitBranches = []
         gitFeedback = nil
+        gitOperationState = nil
+        gitIdentity = nil
+        gitConflictInspections = [:]
+        gitConflictMarkerSizes = [:]
+        gitConflictInspectionRequestIDs = [:]
+        activeConflictIndex = 0
+        showsConflictBase = false
     }
 
     /// Zieht offene Tabs nach einer Datei- oder Ordner-Umbenennung mit. Ohne
@@ -1306,55 +1522,71 @@ final class Workspace: ObservableObject {
 
     // MARK: - Git-Status (Projekt- & Git-Ausbau, Etappe 2)
 
-    /// Aktualisiert `gitStatus` für das aktuelle Projekt asynchron über das
-    /// git-CLI. Kein Projekt oder git fehlt → `gitStatus = nil` (die Git-UI
-    /// blendet sich dann still aus). Blockiert nie den Main-Thread.
+    /// Aktualisiert nur den Status; Branches und Graph bleiben aus dem letzten
+    /// vollständigen, gemeinsam revidierten Snapshot erhalten.
     func refreshGitStatus() {
         guard let root = projectURL, GitRunner.isAvailable else {
             gitStatus = nil
+            gitRepositorySnapshot = nil
+            gitBranches = []
+            gitLog = []
             return
         }
-        GitRunner.run(GitStatusParser.arguments, in: root) { [weak self] result in
-            guard let self, self.projectURL == root else { return }
-            // Kein Repo (Ordner ohne .git) oder Fehler → keine Git-Anzeige.
-            guard let result, result.ok else {
-                self.gitStatus = nil
-                return
-            }
-            self.gitStatus = GitStatusParser.parse(result.stdout)
-        }
+        invalidateAndRefreshActiveConflictInspection()
+        gitRepositoryStore.refresh(repository: root, scope: .status)
+        // Auch wenn eine bereits als „M“ markierte Datei erneut gespeichert
+        // wurde, hat sich ihr Patch geändert, obwohl die Status-Flags gleich
+        // bleiben. Deshalb nicht allein auf Status-Equality vertrauen.
+        refreshOpenGitDiffTabs()
     }
 
     /// Lädt die Commit-Historie für den Graph-Tab asynchron (`git log --all`).
     /// Kein Projekt/kein git → leere Liste. Wird beim Projekt-Öffnen und beim
     /// Anzeigen des Graph-Tabs sowie nach einem Commit angestoßen.
     func refreshGitLog() {
-        guard let root = projectURL, GitRunner.isAvailable else {
-            gitLog = []
-            return
-        }
-        GitRunner.run(GitGraph.arguments, in: root) { [weak self] result in
-            guard let self, self.projectURL == root else { return }
-            guard let result, result.ok else {
-                self.gitLog = []
-                return
-            }
-            self.gitLog = GitGraph.parse(result.stdout)
-        }
+        refreshGitRepositoryFully()
     }
 
     /// Lädt die lokalen Branches asynchron. Remote-Branches bleiben bewusst
     /// außen vor: Ein Klick soll keinen impliziten Tracking-Branch erzeugen.
     func refreshGitBranches() {
-        guard let root = projectURL, GitRunner.isAvailable else {
-            gitBranches = []
-            return
+        refreshGitRepositoryFully()
+    }
+
+    func refreshGitRepositoryFully() {
+        guard let root = projectURL, GitRunner.isAvailable else { return }
+        gitRepositoryStore.refresh(repository: root, scope: .full)
+    }
+
+    private func applyGitSnapshot(_ snapshot: GitRepositorySnapshot) {
+        let graphChanged = gitRepositorySnapshot?.graph != snapshot.graph
+        let statusChanged = gitStatus != snapshot.status
+        gitRepositorySnapshot = snapshot
+        gitStatus = snapshot.status
+        gitBranches = snapshot.branches
+        gitLog = snapshot.graph
+        gitOperationState = snapshot.operation
+        // Fetch ändert keine Arbeitsdateien, kann aber Remote-Tracking-Commits
+        // im bereits offenen Verlauf sichtbar machen.
+        if graphChanged {
+            refreshOpenGitLogView()
         }
-        GitRunner.run(GitBranchList.arguments, in: root) { [weak self] result in
-            guard let self, self.projectURL == root else { return }
-            self.gitBranches = result?.ok == true
-                ? GitBranchList.parse(result?.stdout ?? "")
-                : []
+        if graphChanged { refreshOpenGitDiffTabs() }
+        if statusChanged { invalidateAndRefreshActiveConflictInspection() }
+    }
+
+    var gitOperationsAreBusy: Bool {
+        guard let root = projectURL else { return false }
+        return gitRepositorySnapshot?.operations.isBusy == true
+            || gitOperationsCoordinator.state(for: root).isBusy
+    }
+
+    var gitPullStrategyName: String {
+        switch gitPreferencesStore.load().pullStrategy {
+        case .rebase: return L10n.string("Rebase")
+        case .merge: return L10n.string("Merge")
+        case .ffOnly: return L10n.string("Nur Fast-Forward")
+        case .unselected: return L10n.string("gewählter Strategie")
         }
     }
 
@@ -1392,31 +1624,36 @@ final class Workspace: ObservableObject {
 
     /// Öffnet den Arbeitsverzeichnis-Diff (`git diff HEAD`) als read-only-Tab.
     func openGitDiff() {
-        loadGitTab(kind: .diff, title: L10n.string("Git-Diff"), args: GitDiff.arguments,
-                   emptyText: L10n.string("Keine Änderungen gegenüber HEAD."))
+        guard let context = currentGitActionContext else { return }
+        let request = GitDiffRequest(
+            repositoryPath: GitOperationRequest.canonicalRepositoryPath(context.root),
+            source: .workingTree(path: nil)
+        )
+        loadGitDiffTab(request: request, title: L10n.string("Git-Diff"),
+                       emptyText: L10n.string("Keine Änderungen gegenüber HEAD."))
     }
 
     /// Öffnet aus der Git-Änderungen-Ansicht genau den Diff der gewählten
     /// Datei. Index und Working-Tree bleiben getrennt; dadurch zeigt eine Datei,
     /// die in beiden Abschnitten vorkommt, jeweils den dort gemeinten Stand.
     func openGitChangeDiff(change: GitChange, staged: Bool) {
+        guard let actionPath = change.actionPath else { return }
         let state = staged ? change.staged : change.unstaged
-        let args: [String]
-        let acceptedExitCodes: Set<Int32>
+        let source: GitDiffRequest.Source
         if state == .untracked {
-            args = GitDiff.untrackedFileArguments(path: change.path)
-            // `git diff --no-index` meldet gefundene Unterschiede mit Code 1.
-            acceptedExitCodes = [0, 1]
+            source = .untracked(path: actionPath)
         } else if staged {
-            args = GitDiff.stagedFileArguments(path: change.path)
-            acceptedExitCodes = [0]
+            source = .staged(path: actionPath)
         } else {
-            args = GitDiff.unstagedFileArguments(path: change.path)
-            acceptedExitCodes = [0]
+            source = .unstaged(path: actionPath)
         }
-        loadGitTab(kind: .diff, title: L10n.format("Git-Diff: %@", change.path),
-                   args: args, emptyText: L10n.string("Kein Inhalt."),
-                   acceptedExitCodes: acceptedExitCodes)
+        guard let context = currentGitActionContext else { return }
+        let request = GitDiffRequest(
+            repositoryPath: GitOperationRequest.canonicalRepositoryPath(context.root),
+            source: source
+        )
+        loadGitDiffTab(request: request, title: L10n.format("Git-Diff: %@", change.path),
+                       emptyText: L10n.string("Kein Inhalt."))
     }
 
     /// Öffnet einen einzelnen Commit (`git show <hash>`) als read-only-Tab —
@@ -1428,13 +1665,86 @@ final class Workspace: ObservableObject {
     }
 
     /// Öffnet aus einem aufgeklappten Graph-Commit genau den Patch der
-    /// doppelgeklickten Datei im Hauptbereich. Der vollständige Repo-Pfad im
+    /// angeklickten Datei im Hauptbereich. Der vollständige Repo-Pfad im
     /// Titel verhindert Kollisionen bei gleichnamigen Dateien in Unterordnern.
-    func openGitCommitFile(hash: String, path: String) {
-        let title = L10n.format("%@ in %@", path, String(hash.prefix(7)))
-        loadGitTab(kind: .commit, title: title,
-                   args: GitDiff.showFileArguments(hash: hash, path: path),
-                   emptyText: L10n.string("Kein Inhalt."))
+    func openGitCommitFile(hash: String, file: GitCommitFile) {
+        guard let path = file.actionPath else { return }
+        guard let context = currentGitActionContext else { return }
+        let title = L10n.format("%@ in %@", file.path, String(hash.prefix(7)))
+        guard let graphCommit = gitLog.first(where: { $0.hash == hash }) else {
+            // Wenn der Graph zwischen Klick und Ausführung aktualisiert wurde,
+            // ist die Elternsemantik nicht mehr sicher verfügbar. Der bewährte
+            // Unified-`git show`-Fallback ist dann ehrlicher als ein erfundener
+            // Root-Vergleich.
+            loadGitTab(kind: .commit, title: title,
+                       args: GitDiff.showFileArguments(hash: hash, path: path),
+                       emptyText: L10n.string("Kein Inhalt."))
+            return
+        }
+        let parents = graphCommit.parents
+        let parent: GitDiffParent = parents.first.map {
+            .commit(hash: $0, number: 1, total: parents.count)
+        } ?? .emptyTree
+        let request = GitDiffRequest(
+            repositoryPath: GitOperationRequest.canonicalRepositoryPath(context.root),
+            source: .commit(hash: hash, parent: parent, path: path)
+        )
+        loadGitDiffTab(request: request, title: title,
+                       emptyText: L10n.string("Kein Inhalt."))
+    }
+
+    /// Lädt den strukturierten Diff mit harter Ausgabegrenze. Der Tab wird vor
+    /// dem Prozess angelegt, damit ein erneuter Klick dieselbe stabile Request-
+    /// Identität aktualisiert. Completion und Projektgeneration schützen gegen
+    /// verspätete Antworten nach einem Projektwechsel.
+    private func loadGitDiffTab(request: GitDiffRequest, title: String,
+                                emptyText: String,
+                                activate: Bool = true,
+                                existingTabID: UUID? = nil) {
+        guard let context = currentGitActionContext, GitRunner.isAvailable,
+              request.repositoryPath
+                == GitOperationRequest.canonicalRepositoryPath(context.root) else { return }
+        guard let load = prepareGitDiffTab(request: request, title: title,
+                                           activate: activate,
+                                           existingTabID: existingTabID) else { return }
+        let operation = GitOperationRequest(repository: context.root, kind: .diffRead,
+                                            arguments: request.arguments,
+                                            outputLimit: GitDiffRequest.outputLimit)
+        let lease = gitOperationsCoordinator.perform(operation) { [weak self] outcome in
+            DispatchQueue.main.async {
+                guard let self, context.isCurrent(in: self) else { return }
+                guard let index = self.tabs.firstIndex(where: { $0.id == load.tabID }),
+                      self.tabs[index].gitDiffRequest == request,
+                      self.tabs[index].gitDiffLoadGeneration == load.generation else { return }
+                defer { self.clearGitDiffLoad(tabID: load.tabID,
+                                              generation: load.generation) }
+                guard case .completed(let result) = outcome else {
+                    let message = Self.gitExecutionFailureText(outcome)
+                        ?? L10n.string("git-Aufruf fehlgeschlagen.")
+                    self.updateGitDiffTab(index: index, title: title, content: message,
+                                          document: GitDiffDocument(
+                                            files: [], limitation: .malformed(message)))
+                    return
+                }
+                guard request.acceptedExitCodes.contains(result.exitCode) else {
+                    let error = result.stderrForDisplay
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    let message = error.isEmpty ? L10n.string("git-Aufruf fehlgeschlagen.") : error
+                    self.updateGitDiffTab(index: index, title: title, content: message,
+                                          document: GitDiffDocument(
+                                            files: [], limitation: .malformed(message)))
+                    return
+                }
+                let document = GitDiffParser.parse(
+                    result.stdoutData, wasTruncated: result.stdoutWasTruncated
+                )
+                let content = result.stdoutData.isEmpty ? emptyText : result.stdoutForDisplay
+                self.updateGitDiffTab(index: index, title: title, content: content,
+                                      document: document)
+            }
+        }
+        gitDiffLoadLeases[load.tabID] = GitDiffLoadLease(generation: load.generation,
+                                                         lease: lease)
     }
 
     /// Kern für alle Git-Text-Tabs: git asynchron ausführen und das Ergebnis in
@@ -1444,18 +1754,30 @@ final class Workspace: ObservableObject {
     /// den Pickaxe-Verlauf öffnen können.
     func loadGitTab(kind: GitTabKind, title: String, args: [String], emptyText: String,
                     acceptedExitCodes: Set<Int32> = [0]) {
-        guard let root = projectURL, GitRunner.isAvailable else { return }
-        GitRunner.run(args, in: root) { [weak self] result in
+        guard let context = currentGitActionContext, GitRunner.isAvailable else { return }
+        let request = GitOperationRequest(repository: context.root, kind: .refresh,
+                                          arguments: args)
+        gitOperationsCoordinator.perform(request) { [weak self] outcome in
             guard let self else { return }
-            guard let result, acceptedExitCodes.contains(result.exitCode) else {
-                // Fehler ehrlich zeigen (UX-Regel: echte git-Ausgabe), statt zu
-                // schlucken. stderr in den Tab, damit der Nutzer den Grund sieht.
-                let msg = result?.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-                self.setGitTab(kind: kind, title: title,
-                               content: (msg?.isEmpty == false ? msg! : "git-Aufruf fehlgeschlagen."))
+            guard context.isCurrent(in: self) else { return }
+            guard case .completed(let result) = outcome else {
+                let text = Self.gitExecutionFailureText(outcome)
+                    ?? L10n.string("git-Aufruf fehlgeschlagen.")
+                self.setGitTab(kind: kind, title: title, content: text)
                 return
             }
-            let text = result.stdout.isEmpty ? emptyText : result.stdout
+            guard acceptedExitCodes.contains(result.exitCode) else {
+                // Fehler ehrlich zeigen (UX-Regel: echte git-Ausgabe), statt zu
+                // schlucken. stderr in den Tab, damit der Nutzer den Grund sieht.
+                let msg = result.stderrForDisplay
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                self.setGitTab(kind: kind, title: title,
+                               content: msg.isEmpty
+                                   ? L10n.string("git-Aufruf fehlgeschlagen.") : msg)
+                return
+            }
+            let output = result.stdoutForDisplay
+            let text = output.isEmpty ? emptyText : output
             self.setGitTab(kind: kind, title: title, content: text)
         }
     }
@@ -1474,6 +1796,74 @@ final class Workspace: ObservableObject {
         // Der Git-Tab ist aktiv und nicht `isWelcome` → zeigt den Editor.
         // (Git-Aktionen setzen ohnehin ein geladenes Projekt voraus, dessen
         // Öffnen den Willkommen-Tab bereits umgewandelt hat.)
+    }
+
+    private func prepareGitDiffTab(request: GitDiffRequest, title: String,
+                                   activate: Bool, existingTabID: UUID?)
+        -> (tabID: UUID, generation: UInt64)? {
+        let index: Int
+        if let existingTabID {
+            guard let found = tabs.firstIndex(where: {
+                $0.id == existingTabID && $0.gitDiffRequest == request
+            }) else { return nil }
+            index = found
+        } else if let found = tabs.firstIndex(where: { $0.gitDiffRequest == request }) {
+            index = found
+        } else {
+            let tab = EditorTab(title: title, path: "Git", gitKind: .diff,
+                                gitDiffRequest: request, gitDiffDocument: nil)
+            tabs.append(tab)
+            index = tabs.count - 1
+        }
+        tabs[index].gitDiffLoadGeneration &+= 1
+        tabs[index].title = title
+        if existingTabID == nil { tabs[index].gitDiffDocument = nil }
+        let tabID = tabs[index].id
+        let generation = tabs[index].gitDiffLoadGeneration
+        cancelGitDiffLoad(tabID: tabID)
+        if activate { activeTabID = tabID }
+        return (tabID, generation)
+    }
+
+    private func updateGitDiffTab(index: Int, title: String, content: String,
+                                  document: GitDiffDocument) {
+        tabs[index].title = title
+        tabs[index].content = content
+        tabs[index].gitDiffDocument = document
+    }
+
+    private func clearGitDiffLoad(tabID: UUID, generation: UInt64) {
+        guard gitDiffLoadLeases[tabID]?.generation == generation else { return }
+        gitDiffLoadLeases.removeValue(forKey: tabID)
+    }
+
+    private func cancelGitDiffLoad(tabID: UUID) {
+        gitDiffLoadLeases.removeValue(forKey: tabID)?.lease.cancel()
+    }
+
+    private func cancelAllGitDiffLoads() {
+        let leases = gitDiffLoadLeases.values.map(\.lease)
+        gitDiffLoadLeases.removeAll()
+        leases.forEach { $0.cancel() }
+    }
+
+    /// Aktualisiert alle offenen Arbeitsbaum-/Index-Diffs dieses Projekts, ohne
+    /// dem Nutzer dabei den aktiven Tab wegzunehmen. Historische Commit-Diffs
+    /// sind unveränderlich und brauchen keinen Netzwerk-/Mutationsrefresh.
+    func refreshOpenGitDiffTabs() {
+        guard let root = projectURL else { return }
+        let repositoryPath = GitOperationRequest.canonicalRepositoryPath(root)
+        let open = tabs.compactMap { tab -> (UUID, GitDiffRequest, String)? in
+            guard let request = tab.gitDiffRequest,
+                  request.repositoryPath == repositoryPath else { return nil }
+            if case .commit = request.source { return nil }
+            return (tab.id, request, tab.title)
+        }
+        for (tabID, request, title) in open {
+            loadGitDiffTab(request: request, title: title,
+                           emptyText: L10n.string("Keine Änderungen."), activate: false,
+                           existingTabID: tabID)
+        }
     }
 
     /// „Ordner öffnen…" (⇧⌘O): Ordner wählen und als Projekt laden.
@@ -1850,6 +2240,7 @@ final class Workspace: ObservableObject {
                     if case .success(let loaded) = loadResult {
                         self.tabs[idx].content    = loaded.content
                         self.tabs[idx].encoding   = loaded.encoding
+                        self.tabs[idx].bom        = loaded.bom
                         self.tabs[idx].lineEnding = loaded.lineEnding
                         self.tabs[idx].displayMode = loaded.displayMode
                         self.tabs[idx].fileSize = loaded.fileSize

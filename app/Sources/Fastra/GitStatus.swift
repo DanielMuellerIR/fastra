@@ -41,14 +41,44 @@ enum GitFileState: Equatable {
 /// Datei kann gleichzeitig gestaged UND ungestaged geändert sein (z.B. Porcelain
 /// „MM"): dann ist sie in beiden Abschnitten sichtbar.
 struct GitChange: Equatable, Identifiable {
-    /// Repo-relativer Pfad (wie git ihn liefert).
+    /// Repo-relativer Anzeigepfad. Bei ungültigem UTF-8 enthält er sichtbare
+    /// Ersatzzeichen; `rawPath` bleibt die kollisionsfreie Quelle der Wahrheit.
     let path: String
+    let rawPath: Data
+    /// Vorheriger Pfad bei Rename/Copy. Porcelain v2 liefert ihn als eigenen
+    /// NUL-Datensatz, damit auch Tabs und Zeilenumbrüche eindeutig bleiben.
+    let originalPath: String?
+    let rawOriginalPath: Data?
     /// Zustand im Index (Porcelain-Spalte X) — `nil`, wenn nichts bereitgestellt.
     let staged: GitFileState?
     /// Zustand im Working-Tree (Porcelain-Spalte Y) — `nil`, wenn dort nichts offen.
     let unstaged: GitFileState?
 
-    var id: String { path }
+    init(path: String, originalPath: String? = nil,
+         staged: GitFileState?, unstaged: GitFileState?) {
+        self.path = path
+        self.rawPath = Data(path.utf8)
+        self.originalPath = originalPath
+        self.rawOriginalPath = originalPath.map { Data($0.utf8) }
+        self.staged = staged
+        self.unstaged = unstaged
+    }
+
+    init(rawPath: Data, rawOriginalPath: Data? = nil,
+         staged: GitFileState?, unstaged: GitFileState?) {
+        self.rawPath = rawPath
+        self.path = String(decoding: rawPath, as: UTF8.self)
+        self.rawOriginalPath = rawOriginalPath
+        self.originalPath = rawOriginalPath.map { String(decoding: $0, as: UTF8.self) }
+        self.staged = staged
+        self.unstaged = unstaged
+    }
+
+    var id: Data { rawPath }
+    /// Foundation `Process.arguments` kann keine rohen Nicht-UTF8-Bytes
+    /// übergeben. Solche Pfade bleiben sichtbar, Git-Aktionen sind aber gesperrt.
+    var actionPath: String? { String(data: rawPath, encoding: .utf8) }
+    var isPathActionable: Bool { actionPath != nil }
 
     /// Nur der Dateiname (letzte Pfadkomponente) für die kompakte Anzeige.
     var name: String { (path as NSString).lastPathComponent }
@@ -60,6 +90,12 @@ struct GitChange: Equatable, Identifiable {
 /// und der Zustand je Datei (Pfad RELATIV zum Repo-Root, wie git ihn liefert).
 struct GitStatusSummary: Equatable {
     var branch: String?
+    /// `true`, wenn HEAD direkt auf einen Commit statt auf einen Branch zeigt.
+    var isDetached: Bool
+    /// Exakte Objekt-ID aus Porcelain v2. Bei einem Repository ohne Commit nil.
+    var headOID: String?
+    /// Vollständiger Upstream-Name, z.B. `origin/main`.
+    var upstream: String?
     var ahead: Int
     var behind: Int
     /// Repo-relativer Pfad → kombinierter Zustand. Für die Einfärbung im
@@ -69,7 +105,9 @@ struct GitStatusSummary: Equatable {
     /// in git-Reihenfolge.
     var changes: [GitChange]
 
-    static let empty = GitStatusSummary(branch: nil, ahead: 0, behind: 0,
+    static let empty = GitStatusSummary(branch: nil, isDetached: false,
+                                        headOID: nil, upstream: nil,
+                                        ahead: 0, behind: 0,
                                         entries: [:], changes: [])
 
     /// Bereitgestellte Änderungen (Index) — für den „Bereitgestellt"-Abschnitt.
@@ -78,86 +116,136 @@ struct GitStatusSummary: Equatable {
     var unstagedChanges: [GitChange] { changes.filter { $0.unstaged != nil } }
 }
 
-/// Parst die Ausgabe von `git status --porcelain=v1 -b -z` bzw. mit `\n`.
+/// Parst die NUL-getrennte Ausgabe von `git status --porcelain=v2 --branch -z`.
 /// Rein funktional → ohne echtes Repo testbar.
 enum GitStatusParser {
     /// Argumente, mit denen `GitStatusSummary` gefüllt werden kann. `-b` bringt
-    /// die Branch-Kopfzeile, `--porcelain=v1` das stabile Maschinen-Format.
+    /// die Branch-Kopfzeilen, v2 trennt Rename-Quelle und -Ziel eindeutig.
     // `git status` darf seinen Stat-Cache normalerweise im Index auffrischen
     // und nimmt dafür kurz `index.lock`. Da Fastra Status parallel zu echten
     // Aktionen lädt, verbieten wir diesen rein optionalen Schreibzugriff.
-    static let arguments = ["--no-optional-locks", "status", "--porcelain=v1", "-b"]
+    static let arguments = ["--no-optional-locks", "status", "--porcelain=v2",
+                            "--branch", "-z"]
 
-    /// Parst den kompletten Porcelain-Text. Unbekannte/leere Zeilen werden
-    /// übersprungen.
-    static func parse(_ output: String) -> GitStatusSummary {
+    /// Data ist hier wichtig: Ein Dateiname darf jedes Byte außer NUL enthalten.
+    /// Erst nachdem NUL die Datensätze sicher getrennt hat, dekodieren wir die
+    /// einzelnen Felder für SwiftUI. Ungültiges UTF-8 wird sichtbar ersetzt,
+    /// statt den gesamten Statuslauf zu verwerfen.
+    static func parse(_ output: Data) -> GitStatusSummary {
         var summary = GitStatusSummary.empty
-        for rawLine in output.split(separator: "\n", omittingEmptySubsequences: false) {
-            let line = String(rawLine)
-            if line.hasPrefix("## ") {
-                applyBranchLine(String(line.dropFirst(3)), to: &summary)
-            } else if !line.isEmpty {
-                applyFileLine(line, to: &summary)
+        let records = output.split(separator: 0, omittingEmptySubsequences: true)
+        var index = 0
+        while index < records.count {
+            let record = Data(records[index])
+            guard let marker = record.first else { index += 1; continue }
+            switch marker {
+            case 35: // #
+                applyHeader(String(decoding: record, as: UTF8.self), to: &summary)
+            case 49: // 1
+                applyOrdinary(record, to: &summary)
+            case 50: // 2
+                let original = index + 1 < records.count
+                    ? Data(records[index + 1]) : nil
+                applyRenamed(record, originalPath: original, to: &summary)
+                if original != nil { index += 1 }
+            case 117: // u
+                applyUnmerged(record, to: &summary)
+            case 63: // ?
+                applyUntracked(record, to: &summary)
+            default:
+                break
             }
+            index += 1
         }
         return summary
     }
 
-    /// Branch-Kopfzeile, z.B. `main...origin/main [ahead 1, behind 2]`
-    /// oder `main` (kein Upstream) oder `No commits yet on main`.
-    private static func applyBranchLine(_ text: String, to summary: inout GitStatusSummary) {
-        // Ahead/Behind aus dem `[…]`-Teil ziehen, bevor er abgeschnitten wird.
-        if let bracket = text.range(of: " [") {
-            let inside = text[bracket.upperBound...].prefix(while: { $0 != "]" })
-            summary.ahead = number(after: "ahead ", in: String(inside))
-            summary.behind = number(after: "behind ", in: String(inside))
+    private static func applyHeader(_ line: String, to summary: inout GitStatusSummary) {
+        if line.hasPrefix("# branch.oid ") {
+            let value = String(line.dropFirst("# branch.oid ".count))
+            summary.headOID = value == "(initial)" ? nil : value
+        } else if line.hasPrefix("# branch.head ") {
+            let value = String(line.dropFirst("# branch.head ".count))
+            summary.isDetached = value == "(detached)"
+            summary.branch = summary.isDetached || value == "(unknown)" ? nil : value
+        } else if line.hasPrefix("# branch.upstream ") {
+            summary.upstream = String(line.dropFirst("# branch.upstream ".count))
+        } else if line.hasPrefix("# branch.ab ") {
+            let parts = line.split(separator: " ")
+            for part in parts.dropFirst(2) {
+                if part.hasPrefix("+") { summary.ahead = Int(part.dropFirst()) ?? 0 }
+                if part.hasPrefix("-") { summary.behind = Int(part.dropFirst()) ?? 0 }
+            }
         }
-        // Branch-Name = alles vor `...` (Upstream-Trenner) bzw. vor ` [`.
-        var name = text
-        if let sep = name.range(of: "...") {
-            name = String(name[..<sep.lowerBound])
-        } else if let sp = name.range(of: " [") {
-            name = String(name[..<sp.lowerBound])
-        }
-        name = name.trimmingCharacters(in: .whitespaces)
-        // Frisches Repo ohne Commits: „No commits yet on <branch>".
-        if let marker = name.range(of: "No commits yet on ") {
-            name = String(name[marker.upperBound...]).trimmingCharacters(in: .whitespaces)
-        }
-        // Detached HEAD: git schreibt „HEAD (no branch)" — als nil behandeln.
-        summary.branch = (name.isEmpty || name.hasPrefix("HEAD")) ? nil : name
     }
 
-    /// Eine Datei-Zeile: zwei Statuszeichen `XY`, ein Leerzeichen, dann der Pfad.
-    /// Bei Umbenennungen steht `alt -> neu`; wir nehmen den neuen Pfad.
-    private static func applyFileLine(_ line: String, to summary: inout GitStatusSummary) {
-        guard line.count >= 4 else { return }
-        let chars = Array(line)
-        let x = chars[0]   // Index (gestaged)
-        let y = chars[1]   // Working-Tree
-        // chars[2] ist das Trenn-Leerzeichen.
-        var path = String(chars[3...])
-        if let arrow = path.range(of: " -> ") {
-            path = String(path[arrow.upperBound...])
+    private static func applyOrdinary(_ record: Data, to summary: inout GitStatusSummary) {
+        let fields = record.split(separator: 32, maxSplits: 8,
+                                  omittingEmptySubsequences: false)
+        guard fields.count == 9 else { return }
+        append(xy: String(decoding: fields[1], as: UTF8.self),
+               rawPath: Data(fields[8]), rawOriginalPath: nil, to: &summary)
+    }
+
+    private static func applyRenamed(_ record: Data, originalPath: Data?,
+                                     to summary: inout GitStatusSummary) {
+        let fields = record.split(separator: 32, maxSplits: 9,
+                                  omittingEmptySubsequences: false)
+        guard fields.count == 10 else { return }
+        append(xy: String(decoding: fields[1], as: UTF8.self),
+               rawPath: Data(fields[9]), rawOriginalPath: originalPath, to: &summary)
+    }
+
+    private static func applyUnmerged(_ record: Data, to summary: inout GitStatusSummary) {
+        let fields = record.split(separator: 32, maxSplits: 10,
+                                  omittingEmptySubsequences: false)
+        guard fields.count == 11 else { return }
+        append(xy: String(decoding: fields[1], as: UTF8.self),
+               rawPath: Data(fields[10]), rawOriginalPath: nil, to: &summary)
+    }
+
+    private static func applyUntracked(_ record: Data, to summary: inout GitStatusSummary) {
+        let fields = record.split(separator: 32, maxSplits: 1,
+                                  omittingEmptySubsequences: false)
+        guard fields.count == 2 else { return }
+        let rawPath = Data(fields[1])
+        guard !rawPath.isEmpty else { return }
+        if let path = String(data: rawPath, encoding: .utf8) {
+            summary.entries[path] = .untracked
         }
-        path = unquote(path)
-        guard !path.isEmpty else { return }
-        summary.entries[path] = state(x: x, y: y)
-        summary.changes.append(change(x: x, y: y, path: path))
+        summary.changes.append(GitChange(rawPath: rawPath, staged: nil,
+                                        unstaged: .untracked))
+    }
+
+    private static func append(xy: String, rawPath: Data, rawOriginalPath: Data?,
+                               to summary: inout GitStatusSummary) {
+        let characters = Array(xy)
+        guard characters.count == 2, !rawPath.isEmpty else { return }
+        let x = characters[0]
+        let y = characters[1]
+        if let path = String(data: rawPath, encoding: .utf8) {
+            summary.entries[path] = state(x: x, y: y)
+        }
+        summary.changes.append(change(x: x, y: y, rawPath: rawPath,
+                                     rawOriginalPath: rawOriginalPath))
     }
 
     /// Zerlegt die zwei Porcelain-Zeichen in getrennten Index-/Working-Tree-
     /// Zustand für die Änderungen-Ansicht (staged = X, unstaged = Y).
-    private static func change(x: Character, y: Character, path: String) -> GitChange {
+    private static func change(x: Character, y: Character, rawPath: Data,
+                               rawOriginalPath: Data?) -> GitChange {
         // Untracked: nur im Working-Tree, nichts gestaged.
         if x == "?" && y == "?" {
-            return GitChange(path: path, staged: nil, unstaged: .untracked)
+            return GitChange(rawPath: rawPath, rawOriginalPath: rawOriginalPath,
+                             staged: nil, unstaged: .untracked)
         }
         // Unmerged/Konflikt: als ungestagete Konflikt-Änderung zeigen.
         if x == "U" || y == "U" || (x == "D" && y == "D") || (x == "A" && y == "A") {
-            return GitChange(path: path, staged: nil, unstaged: .conflicted)
+            return GitChange(rawPath: rawPath, rawOriginalPath: rawOriginalPath,
+                             staged: nil, unstaged: .conflicted)
         }
-        return GitChange(path: path, staged: sideState(x), unstaged: sideState(y))
+        return GitChange(rawPath: rawPath, rawOriginalPath: rawOriginalPath,
+                         staged: sideState(x), unstaged: sideState(y))
     }
 
     /// Bildet EIN Porcelain-Zeichen (einer Spalte) auf unseren Zustand ab.
@@ -170,7 +258,7 @@ enum GitStatusParser {
         case "R":       return .renamed
         case "C":       return .modified   // kopiert → als Änderung behandeln
         case "?":       return .untracked
-        default:        return nil          // " " (nichts) und Unbekanntes
+        default:        return nil          // "." (nichts) und Unbekanntes
         }
     }
 
@@ -187,18 +275,4 @@ enum GitStatusParser {
         return .modified
     }
 
-    /// Liest die Zahl nach einem Präfix (`ahead `, `behind `) aus dem `[…]`-Text.
-    private static func number(after prefix: String, in text: String) -> Int {
-        guard let range = text.range(of: prefix) else { return 0 }
-        let digits = text[range.upperBound...].prefix(while: { $0.isNumber })
-        return Int(digits) ?? 0
-    }
-
-    /// Porcelain zitiert Pfade mit „Sonderzeichen" in doppelten Anführungszeichen.
-    /// Für die reine Einfärbung reicht es, die Klammern zu entfernen; komplexe
-    /// Oktal-Escapes sind extrem selten und stören das Matching nicht kritisch.
-    private static func unquote(_ path: String) -> String {
-        guard path.hasPrefix("\""), path.hasSuffix("\""), path.count >= 2 else { return path }
-        return String(path.dropFirst().dropLast())
-    }
 }

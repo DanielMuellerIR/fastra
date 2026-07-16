@@ -262,6 +262,24 @@ final class EditorContextMenu: NSObject {
         format(on: textView)
     }
 
+    /// Führt eine Konfliktübernahme im sichtbaren nativen Editor aus. Der
+    /// Workspace und die Tab-ID adressieren das konkrete Dokumentfenster;
+    /// dadurch kann ein appweiter Notification-Pfad nie den falschen Editor
+    /// eines zweiten Fensters verändern.
+    func replaceConflictText(_ request: ConflictEditorReplacementRequest) {
+        guard let workspace = request.workspace,
+              workspace.activeTabID == request.tabID,
+              let textView = activeEditorTextView(for: workspace) else {
+            NSSound.beep()
+            return
+        }
+        guard ConflictNativeTextMutation.apply(request, to: textView) else {
+            NSSound.beep()
+            return
+        }
+        textView.window?.makeFirstResponder(textView)
+    }
+
     /// Wendet eine Text-Operation auf den AKTIVEN Editor an (Aufruf aus der
     /// Menüleiste über `.fastraTextOp`). Sucht die Editor-TextView im
     /// vorderen Hauptfenster (NICHT dem Such-Panel).
@@ -388,6 +406,19 @@ final class EditorContextMenu: NSObject {
             if let content = window.contentView, let tv = descendantTextView(in: content) {
                 return tv
             }
+        }
+        return nil
+    }
+
+    private func activeEditorTextView(for workspace: Workspace) -> TextView? {
+        let prioritized = NSApp.windows.sorted { lhs, rhs in
+            (lhs.isKeyWindow ? 1 : 0) > (rhs.isKeyWindow ? 1 : 0)
+        }
+        for window in prioritized where window.isVisible {
+            guard !SearchWindow.isSearchWindow(window),
+                  WorkspaceWindowRegistry.workspace(for: window) === workspace,
+                  let content = window.contentView else { continue }
+            if let textView = descendantTextView(in: content) { return textView }
         }
         return nil
     }

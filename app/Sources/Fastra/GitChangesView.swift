@@ -28,6 +28,10 @@ struct GitChangesView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if workspace.gitOperationState != nil {
+                operationBanner
+                Divider().opacity(0.3)
+            }
             commitBox
 
             Divider().opacity(0.3)
@@ -65,6 +69,33 @@ struct GitChangesView: View {
                 }
             }
         }
+        .onAppear { workspace.refreshGitOperationState() }
+    }
+
+    private var operationBanner: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .foregroundColor(Theme.gitModified)
+            Text(L10n.format("Laufender Git-Vorgang: %@",
+                             workspace.gitOperationState?.localizedName ?? "Git"))
+                .fastraFont(.small)
+                .fontWeight(.semibold)
+            Spacer(minLength: 2)
+            Button("Fortsetzen") { workspace.gitContinueOperation() }
+                .disabled(workspace.gitOperationsAreBusy || !workspace.conflictedGitChanges.isEmpty)
+            Button("Abbrechen…") { workspace.gitAbortOperation() }
+                .disabled(workspace.gitOperationsAreBusy)
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Theme.surfaceSand.opacity(0.55))
+        .help(workspace.conflictedGitChanges.isEmpty
+              ? L10n.string("Der Vorgang kann fortgesetzt oder bewusst abgebrochen werden.")
+              : L10n.format("Noch %ld Konfliktdateien lösen und als gelöst markieren.",
+                            workspace.conflictedGitChanges.count))
+        .accessibilityElement(children: .contain)
     }
 
     /// Commit-Feld + Knopf (VS-Code: nur auf dem Änderungen-Tab).
@@ -97,6 +128,7 @@ struct GitChangesView: View {
             )
             .keyboardShortcut(.return, modifiers: .command)
             .help("Bereitgestellte Änderungen committen (nichts bereitgestellt → alles)")
+            .disabled(workspace.gitOperationsAreBusy)
         }
         .padding(10)
     }
@@ -203,6 +235,7 @@ private struct GitChangeRow: View {
             TapGesture(count: 2)
                 .exclusively(before: TapGesture(count: 1))
                 .onEnded { value in
+                    guard change.isPathActionable else { return }
                     switch value {
                     case .first: openDiff()
                     case .second: openFile()
@@ -210,7 +243,9 @@ private struct GitChangeRow: View {
                 }
         )
         .contextMenu { contextItems }
-        .help(L10n.format("Doppelklick: Diff für %@ öffnen", change.path))
+        .help(change.isPathActionable
+              ? L10n.format("Doppelklick: Diff für %@ öffnen", change.path)
+              : L10n.string("Dieser Dateipfad ist kein gültiges UTF-8. Fastra zeigt ihn nur an und führt keine Dateiaktion aus."))
     }
 
     /// Hover-Aktionen: Verwerfen/Bereitstellen (unstaged) bzw. Unstage (staged).
@@ -221,11 +256,11 @@ private struct GitChangeRow: View {
                 workspace.gitDiscard(change: change)
             }
             iconButton("plus", help: "Änderungen bereitstellen") {
-                workspace.gitStage(path: change.path)
+                if let path = change.actionPath { workspace.gitStage(path: path) }
             }
         case .staged:
             iconButton("minus", help: "Aus Bereitstellung nehmen") {
-                workspace.gitUnstage(path: change.path)
+                if let path = change.actionPath { workspace.gitUnstage(path: path) }
             }
         }
     }
@@ -233,14 +268,21 @@ private struct GitChangeRow: View {
     /// Kontextmenü mit denselben Aktionen sowie Diff und „Datei öffnen“.
     @ViewBuilder private var contextItems: some View {
         Button("Änderungen anzeigen (Diff)") { openDiff() }
+            .disabled(!change.isPathActionable)
         Button("Datei öffnen") { openFile() }
+            .disabled(!change.isPathActionable)
         Divider()
         switch section {
         case .unstaged:
-            Button("Änderungen bereitstellen") { workspace.gitStage(path: change.path) }
+            Button("Änderungen bereitstellen") {
+                if let path = change.actionPath { workspace.gitStage(path: path) }
+            }.disabled(!change.isPathActionable)
             Button("Änderungen verwerfen") { workspace.gitDiscard(change: change) }
+                .disabled(!change.isPathActionable)
         case .staged:
-            Button("Aus Bereitstellung nehmen") { workspace.gitUnstage(path: change.path) }
+            Button("Aus Bereitstellung nehmen") {
+                if let path = change.actionPath { workspace.gitUnstage(path: path) }
+            }.disabled(!change.isPathActionable)
         }
     }
 
@@ -253,14 +295,15 @@ private struct GitChangeRow: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!change.isPathActionable)
         .help(help)
     }
 
     /// Öffnet die geänderte Datei in einem Tab (untracked/gelöscht → Beep-frei
     /// über loadFile, das Fehlende meldet). Repo-relativen Pfad auflösen.
     private func openFile() {
-        guard let root = workspace.projectURL else { return }
-        workspace.loadFile(at: root.appendingPathComponent(change.path))
+        guard let root = workspace.projectURL, let path = change.actionPath else { return }
+        workspace.loadFile(at: root.appendingPathComponent(path))
     }
 
     /// Zeigt genau den Diff des Abschnitts, in dem diese Zeile steht.

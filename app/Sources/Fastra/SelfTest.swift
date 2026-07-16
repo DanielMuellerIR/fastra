@@ -14,6 +14,7 @@
 // gepostet, nicht über die Systemsteuerung simuliert.
 
 import AppKit
+import Darwin
 import WebKit
 // Echte Editor-Klasse von CodeEditSourceEditor (Modul CodeEditTextView).
 // Wird gebraucht, um im Sprung-Selbsttest die TATSÄCHLICHE Selektion des
@@ -70,6 +71,24 @@ enum SelfTest {
     /// (siehe `workspaceDefaults()`).
     static var isSelfTestRun: Bool {
         requestedTest != nil
+    }
+
+    /// Setzt Shot-spezifische UI-Fixtures noch vor dem Aufbau der ersten
+    /// `EditorView`. Die Variable gilt nur für diesen Selbsttest-Prozess und
+    /// hinterlässt nach dessen automatischem Exit keinen persistenten Zustand.
+    static func prepareLaunchEnvironment(
+        requestedTest name: String? = requestedTest,
+        setEnvironment: (_ key: String, _ value: String) -> Void = { key, value in
+            _ = setenv(key, value, 1)
+        }
+    ) {
+        let sidebar: String?
+        switch name {
+        case "gitshot": sidebar = "changes"
+        case "graphshot": sidebar = "graph"
+        default: sidebar = nil
+        }
+        if let sidebar { setEnvironment("FASTRA_SIDEBAR", sidebar) }
     }
 
     /// UserDefaults für den Workspace des laufenden Prozesses.
@@ -244,6 +263,37 @@ enum SelfTest {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             waitForMainWindow(tick: tick + 1, then: body)
+        }
+    }
+
+    /// Einige Editor-Selbsttests brauchen bewusst ein echtes leeres Dokument.
+    /// Seit der neue Startzustand den Willkommen-Tab zeigt, ist das Fenster
+    /// bereits sichtbar, während CodeEditSourceEditor noch gar nicht montiert
+    /// ist. Diese Tests wandeln deshalb nur ihren eigenen Willkommen-Tab um und
+    /// warten anschließend auf die echte TextView statt eine feste Pause zu
+    /// raten. Screenshot- und Willkommen-Tests verwenden diesen Helfer nicht.
+    private static func waitForEditor(
+        workspace: Workspace,
+        window: NSWindow,
+        tick: Int = 0,
+        then body: @escaping (NSView, TextView) -> Void
+    ) {
+        guard let root = window.contentView else {
+            finish(false, "Hauptfenster ohne contentView")
+        }
+        if workspace.isWelcomeScreen {
+            workspace.dismissWelcomeTab()
+        }
+        if let editor = editorTextView(in: root) as? TextView {
+            body(root, editor)
+            return
+        }
+        if tick >= 100 {
+            finish(false, "Editor nach Schließen des Willkommen-Tabs nicht binnen 5 s montiert")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            waitForEditor(workspace: workspace, window: window,
+                          tick: tick + 1, then: body)
         }
     }
 
@@ -620,6 +670,22 @@ enum SelfTest {
             finish(false, "kein zweites Dokumentfenster mit Workspace-Zuordnung")
         }
 
+        waitForEditor(workspace: firstWorkspace, window: firstWindow) { _, _ in
+            prepareMultiWindowSearchJumpTest(
+                firstWorkspace: firstWorkspace,
+                firstWindow: firstWindow,
+                secondWorkspace: secondWorkspace,
+                secondWindow: secondWindow
+            )
+        }
+    }
+
+    private static func prepareMultiWindowSearchJumpTest(
+        firstWorkspace: Workspace,
+        firstWindow: NSWindow,
+        secondWorkspace: Workspace,
+        secondWindow: NSWindow
+    ) {
         let firstLines = (1...140).map { "Erstes Fenster, Zeile \($0): goal" }
         var secondLines = (1...140).map { "Zweites Fenster, Zeile \($0): leer" }
         secondLines[109] = "Zweites Fenster, Zeile 110: subagent"
@@ -908,18 +974,26 @@ enum SelfTest {
     }
 
     private static func runFindBarTest() {
+        testLabel = "findbar"
         // Hauptfenster = sichtbares Fenster, das NICHT die Suchmaske ist.
-        guard let mainWindow = NSApp.windows.first(where: {
+        guard let workspace = Workspace.shared,
+              let mainWindow = NSApp.windows.first(where: {
             $0.frameAutosaveName != SearchWindow.frameAutosaveName
                 && $0.contentView != nil && $0.isVisible
-        }), let root = mainWindow.contentView else {
+        }) else {
             finish(false, "kein Hauptfenster gefunden")
         }
 
-        guard let textView = editorTextView(in: root) else {
-            finish(false, "keine Editor-TextView im Hauptfenster")
+        waitForEditor(workspace: workspace, window: mainWindow) { root, textView in
+            prepareFindBarTest(mainWindow: mainWindow, root: root, textView: textView)
         }
+    }
 
+    private static func prepareFindBarTest(
+        mainWindow: NSWindow,
+        root: NSView,
+        textView: TextView
+    ) {
         // Voraussetzung, damit der Editor-eigene CMD+F-Monitor überhaupt
         // triggern WÜRDE: Hauptfenster Key + Editor ist First Responder.
         // (Genau die Situation, in der der Zombie früher auftrat.)
@@ -1057,12 +1131,16 @@ enum SelfTest {
         guard let mainWindow = NSApp.windows.first(where: {
             $0.frameAutosaveName != SearchWindow.frameAutosaveName
                 && $0.contentView != nil && $0.isVisible
-        }), let root = mainWindow.contentView else {
+        }) else {
             finish(false, "kein Hauptfenster gefunden")
         }
-        guard let tv1 = editorTextView(in: root) else {
-            finish(false, "keine Editor-TextView vor dem Tab-Wechsel")
+
+        waitForEditor(workspace: ws, window: mainWindow) { root, tv1 in
+            prepareTabSwitchTest(ws: ws, root: root, tv1: tv1)
         }
+    }
+
+    private static func prepareTabSwitchTest(ws: Workspace, root: NSView, tv1: TextView) {
         let id1 = ObjectIdentifier(tv1)
 
         // Temp-Datei mit eindeutigem Markerinhalt anlegen und laden →
@@ -2213,12 +2291,20 @@ enum SelfTest {
 
     private static func runGutterDimmingTest() {
         testLabel = "gutterdim"
-        guard let mainWindow = NSApp.windows.first(where: {
+        guard let workspace = Workspace.shared,
+              let mainWindow = NSApp.windows.first(where: {
             $0.frameAutosaveName != SearchWindow.frameAutosaveName
                 && $0.contentView != nil && $0.isVisible
-        }), let root = mainWindow.contentView else {
+        }) else {
             finish(false, "kein Hauptfenster gefunden")
         }
+
+        waitForEditor(workspace: workspace, window: mainWindow) { root, _ in
+            checkGutterDimming(in: root)
+        }
+    }
+
+    private static func checkGutterDimming(in root: NSView) {
         guard let gutter = findView(named: "GutterView", in: root) else {
             finish(false, "echter CodeEditSourceEditor-Gutter nicht gefunden")
         }
@@ -2244,10 +2330,15 @@ enum SelfTest {
         do {
             try fm.createDirectory(at: base, withIntermediateDirectories: true)
             try Data([0x46, 0x41, 0x53, 0x54, 0, 0x52, 0x41]).write(to: binary)
-            try Data(repeating: 0x41, count: FileLoader.binaryProbeSize).write(to: large)
+            _ = FileManager.default.createFile(atPath: large.path, contents: nil)
             let handle = try FileHandle(forWritingTo: large)
-            try handle.seek(toOffset: FileLoader.largeFileThreshold + 100)
-            try handle.write(contentsOf: Data([0x41]))
+            let chunk = Data(repeating: 0x41, count: 1024 * 1024)
+            var remaining = FileLoader.largeFileThreshold + 101
+            while remaining > 0 {
+                let count = min(UInt64(chunk.count), remaining)
+                try handle.write(contentsOf: chunk.prefix(Int(count)))
+                remaining -= count
+            }
             try handle.close()
         } catch {
             try? fm.removeItem(at: base)
@@ -3496,6 +3587,9 @@ enum SelfTest {
     /// Zeigt die Branch-Zeile + eingefärbte Dateien in der Seitenleiste.
     private static func runGitShot() {
         testLabel = "gitshot"
+        guard ProcessInfo.processInfo.environment["FASTRA_SIDEBAR"] == "changes" else {
+            finish(false, "Launch-Fixture FASTRA_SIDEBAR=changes fehlt")
+        }
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
         guard GitRunner.isAvailable else { finish(false, "git nicht verfügbar") }
         let fm = FileManager.default
@@ -3506,8 +3600,10 @@ enum SelfTest {
                                    withIntermediateDirectories: true)
             try "<!doctype html>\n<h1>Hallo</h1>\n"
                 .write(to: repo.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
-            try "# Webseite\n".write(to: repo.appendingPathComponent("README.md"),
-                                     atomically: true, encoding: .utf8)
+            let readme = (1...180).map { "Dokumentationszeile \($0)" }
+                .joined(separator: "\n") + "\n"
+            try readme.write(to: repo.appendingPathComponent("README.md"),
+                             atomically: true, encoding: .utf8)
             try "body{margin:0}\n".write(to: repo.appendingPathComponent("styles/main.css"),
                                          atomically: true, encoding: .utf8)
         } catch { finish(false, "(setup) \(error)") }
@@ -3518,33 +3614,92 @@ enum SelfTest {
             GitRunner.run(id + ["add", "."], in: repo) { _ in
                 GitRunner.run(id + ["commit", "-m", "init"], in: repo) { _ in
                     // Änderungen für sichtbare Einfärbung: README ändern (M),
-                    // styles/main.css ändern (Ordner-Rollup), neue Datei (U).
-                    try? "# Webseite\n\nNeu.\n".write(to: repo.appendingPathComponent("README.md"),
-                                                      atomically: true, encoding: .utf8)
+                    // styles/main.css ändern (Ordner-Rollup), app.js stagen
+                    // und notes.txt unversioniert lassen. Zwei weit getrennte
+                    // README-Hunks machen Faltung und Hunk-Navigation sichtbar.
+                    var changedReadme = (1...180).map { "Dokumentationszeile \($0)" }
+                    changedReadme[2] = "Dokumentationszeile 3 — früher Hunk geändert"
+                    changedReadme[149] = "Dokumentationszeile 150 — später Hunk geändert"
+                    try? (changedReadme.joined(separator: "\n") + "\n")
+                        .write(to: repo.appendingPathComponent("README.md"),
+                               atomically: true, encoding: .utf8)
                     try? "body{margin:0;padding:0}\n".write(to: repo.appendingPathComponent("styles/main.css"),
                                                             atomically: true, encoding: .utf8)
                     try? "console.log(1)\n".write(to: repo.appendingPathComponent("app.js"),
                                                   atomically: true, encoding: .utf8)
-                    ws.openProject(at: repo)
-                    // Über FASTRA_GITSHOT wählbar, was im Editor-Bereich steht:
-                    // "diff" / "log" öffnen den jeweiligen read-only-Tab, sonst
-                    // eine geladene Datei (Seitenleisten-Einfärbung).
-                    let variant = ProcessInfo.processInfo.environment["FASTRA_GITSHOT"] ?? "sidebar"
-                    let afterStatus = {
-                        switch variant {
-                        case "diff": ws.openGitDiff()
-                        case "log":  ws.openGitLog()
-                        default:     break
+                    try? "Noch nicht versioniert\n".write(
+                        to: repo.appendingPathComponent("notes.txt"),
+                        atomically: true, encoding: .utf8)
+                    // app.js bewusst stagen: Der Shot soll gleichzeitig die
+                    // Bereiche „Bereitgestellt“ und „Änderungen“ zeigen.
+                    GitRunner.run(id + ["add", "--", "app.js"], in: repo) { staged in
+                        guard let staged, staged.ok else {
+                            finish(false, "(stage fixture) \(staged?.stderr ?? "")")
                         }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                            dumpMainWindowThenExit(prefix: "GITSHOT-WINDOW")
+                        validateGitShotFixture(repository: repo, identity: id) {
+                            ws.openProject(at: repo)
+                            // Über FASTRA_GITSHOT wählbar, was im Editor-Bereich steht:
+                            // "diff" / "log" öffnen den jeweiligen read-only-Tab, sonst
+                            // eine geladene Datei (Seitenleisten-Einfärbung).
+                            let variant = ProcessInfo.processInfo.environment["FASTRA_GITSHOT"] ?? "sidebar"
+                            let afterStatus = {
+                                switch variant {
+                                case "diff": ws.openGitDiff()
+                                case "log":  ws.openGitLog()
+                                default:     break
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                                    dumpMainWindowThenExit(prefix: "GITSHOT-WINDOW")
+                                }
+                            }
+                            ws.loadFile(at: repo.appendingPathComponent("README.md")) { _ in
+                                // Kurz warten, bis refreshGitStatus (async) durch ist.
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6,
+                                                              execute: afterStatus)
+                            }
                         }
-                    }
-                    ws.loadFile(at: repo.appendingPathComponent("README.md")) { _ in
-                        // Kurz warten, bis refreshGitStatus (async) durch ist.
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: afterStatus)
                     }
                 }
+            }
+        }
+    }
+
+    /// Der Diagnose-Shot soll nicht nur behaupten, gemischte Zustände und
+    /// Faltungen zu zeigen. Vor dem Öffnen prüfen wir die echte Porcelain-v2-
+    /// Ausgabe sowie zwei weit getrennte Unified-Hunks; driftet die Fixture,
+    /// endet der Helfer sichtbar mit FAIL statt einen irreführenden Shot zu
+    /// liefern.
+    private static func validateGitShotFixture(repository: URL, identity: [String],
+                                               completion: @escaping () -> Void) {
+        GitRunner.run(identity + GitStatusParser.arguments, in: repository) { statusResult in
+            guard let statusResult, statusResult.ok else {
+                finish(false, "(fixture status) \(statusResult?.stderr ?? "")")
+            }
+            let status = GitStatusParser.parse(statusResult.stdoutData)
+            let app = status.changes.first { $0.path == "app.js" }
+            let readme = status.changes.first { $0.path == "README.md" }
+            let css = status.changes.first { $0.path == "styles/main.css" }
+            let notes = status.changes.first { $0.path == "notes.txt" }
+            guard app?.staged == .added, app?.unstaged == nil,
+                  readme?.staged == nil, readme?.unstaged == .modified,
+                  css?.staged == nil, css?.unstaged == .modified,
+                  notes?.staged == nil, notes?.unstaged == .untracked else {
+                finish(false, "(fixture states) staged=\(status.stagedChanges.map(\.path)), "
+                    + "changes=\(status.unstagedChanges.map(\.path))")
+            }
+            GitRunner.run(identity + ["diff", "--no-ext-diff", "--no-textconv",
+                                      "--", "README.md"], in: repository) { diffResult in
+                guard let diffResult, diffResult.ok else {
+                    finish(false, "(fixture diff) \(diffResult?.stderr ?? "")")
+                }
+                let diff = String(decoding: diffResult.stdoutData, as: UTF8.self)
+                let hunks = diff.split(separator: "\n").filter { $0.hasPrefix("@@ ") }
+                guard hunks.count == 2,
+                      diff.contains("früher Hunk geändert"),
+                      diff.contains("später Hunk geändert") else {
+                    finish(false, "(fixture hunks) \(hunks.count) statt 2")
+                }
+                completion()
             }
         }
     }

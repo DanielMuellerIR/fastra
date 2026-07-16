@@ -42,6 +42,8 @@ struct FileTreeSidebar: View {
                 }
                 .buttonStyle(.plain)
                 .help("Projekt schließen (Dateibaum ausblenden)")
+                .accessibilityLabel("Projekt schließen")
+                .accessibilityHint("Blendet den Dateibaum dieses Projekts aus.")
             }
             .padding(.horizontal, 14)
             .padding(.top, 14)
@@ -55,7 +57,7 @@ struct FileTreeSidebar: View {
             // Branch-Zeile (Etappe 2): nur sichtbar, wenn das Projekt ein
             // Git-Repo ist und git verfügbar (sonst still weg). Zeigt Branch,
             // Ahead/Behind und einen dezenten Auffrisch-Knopf.
-            if let status = workspace.gitStatus, let branch = status.branch {
+            if let status = workspace.gitStatus {
                 HStack(spacing: 5) {
                     Image(systemName: "arrow.triangle.branch")
                         .fastraFont(size: 10)
@@ -77,27 +79,41 @@ struct FileTreeSidebar: View {
                             Button("Keine lokalen Branches") { }.disabled(true)
                         }
                     } label: {
-                        Text(branch)
-                            .fastraFont(.small)
-                            .foregroundColor(Theme.textPrimary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(status.branch ?? L10n.string("Detached HEAD"))
+                                .fastraFont(.small)
+                                .foregroundColor(Theme.textPrimary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Text(status.upstream ?? L10n.string("Kein Upstream"))
+                                .fastraFont(size: 9)
+                                .foregroundColor(Theme.textSecondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
                     }
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.visible)
                     .fixedSize(horizontal: false, vertical: true)
                     .help("Lokalen Branch auswählen")
-                    if status.ahead > 0 {
-                        Label("\(status.ahead)", systemImage: "arrow.up")
-                            .labelStyle(.titleAndIcon)
-                            .fastraFont(size: 9)
-                            .foregroundColor(Theme.textSecondary)
-                    }
-                    if status.behind > 0 {
-                        Label("\(status.behind)", systemImage: "arrow.down")
-                            .labelStyle(.titleAndIcon)
-                            .fastraFont(size: 9)
-                            .foregroundColor(Theme.textSecondary)
+                    .disabled(workspace.gitOperationsAreBusy)
+                    if status.ahead > 0 || status.behind > 0 {
+                        TimelineView(.periodic(from: .now, by: 60)) { context in
+                            Text(Self.aheadBehindText(status))
+                                .fastraFont(size: 9)
+                                .foregroundColor(Theme.textSecondary)
+                                .lineLimit(2)
+                                .help(Self.comparisonDescription(
+                                    status, fetch: workspace.gitRepositorySnapshot?.fetch,
+                                    now: context.date
+                                ))
+                                .accessibilityLabel(L10n.format(
+                                    "Vergleich mit %@: %@",
+                                    status.upstream ?? L10n.string("Kein Upstream"),
+                                    Self.aheadBehindText(status)
+                                ))
+                                .accessibilityHint("Der Vergleich nutzt den zuletzt abgerufenen Remote-Tracking-Stand. Der Server kann bereits neuer sein.")
+                        }
                     }
                     Spacer(minLength: 0)
                     // Verlauf öffnen (git log --graph als read-only-Tab).
@@ -110,6 +126,8 @@ struct FileTreeSidebar: View {
                     }
                     .buttonStyle(.plain)
                     .help("Verlauf anzeigen (git log)")
+                    .accessibilityLabel("Git-Verlauf anzeigen")
+                    .accessibilityHint("Öffnet den Commit-Verlauf als schreibgeschützten Tab.")
                     // Diff öffnen (git diff HEAD als read-only-Tab). Nur sinnvoll,
                     // wenn es überhaupt Änderungen gibt — sonst gedimmt lassen,
                     // aber klickbar (zeigt dann „keine Änderungen").
@@ -122,6 +140,8 @@ struct FileTreeSidebar: View {
                     }
                     .buttonStyle(.plain)
                     .help("Änderungen anzeigen (git diff)")
+                    .accessibilityLabel("Git-Änderungen anzeigen")
+                    .accessibilityHint("Öffnet den aktuellen Git-Diff als schreibgeschützten Tab.")
                     // Aktions-Menü (Commit/Push/Pull + pfiffige Varianten).
                     // Die dezenten Hilfe-Texte hängen als Tooltip an jedem Punkt.
                     Menu {
@@ -135,6 +155,26 @@ struct FileTreeSidebar: View {
                     .menuIndicator(.hidden)
                     .fixedSize()
                     .help("Git-Aktionen")
+                    .accessibilityLabel("Git-Aktionen")
+                    .accessibilityHint("Öffnet weitere sichere Git-Befehle.")
+
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        fetchControl(now: context.date)
+                    }
+
+                    Button {
+                        workspace.gitPull()
+                    } label: {
+                        Image(systemName: "arrow.down.to.line")
+                            .fastraFont(size: 10)
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(workspace.gitOperationsAreBusy)
+                    .help(L10n.format("Entfernte Commits mit %@ einbinden",
+                                      workspace.gitPullStrategyName))
+                    .accessibilityLabel("Pull")
+                    .accessibilityHint("Prüft Upstream, lokale Änderungen und laufende Git-Vorgänge vor dem Pull.")
 
                     Button {
                         workspace.refreshGitStatus()
@@ -145,6 +185,8 @@ struct FileTreeSidebar: View {
                     }
                     .buttonStyle(.plain)
                     .help("Git-Status neu einlesen")
+                    .accessibilityLabel("Git-Status neu einlesen")
+                    .accessibilityHint("Liest Branch, Änderungen und Vorgangsstatus erneut aus Git.")
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 6)
@@ -175,11 +217,102 @@ struct FileTreeSidebar: View {
         .onChange(of: expanded) {
             FileTreeExpansionStore.save(expanded, for: rootURL)
         }
+        .onAppear {
+            // Der Befehle-Button muss laufende Vorgänge und die Herkunft der
+            // Identität auch erkennen, wenn der Nutzer nie in den Changes-Tab
+            // wechselt. Beide Reads bleiben asynchron und repositorykoordiniert.
+            workspace.refreshGitOperationState()
+            workspace.refreshGitIdentity()
+        }
     }
 
     private func handleTreeMutation() {
         watcher.refresh()
         workspace.refreshGitStatus()
+    }
+
+    static func aheadBehindText(_ status: GitStatusSummary) -> String {
+        var parts: [String] = []
+        if status.ahead == 1 {
+            parts.append(L10n.string("1 lokaler Commit voraus"))
+        } else if status.ahead > 1 {
+            parts.append(L10n.format("%ld lokale Commits voraus", status.ahead))
+        }
+        if status.behind == 1 {
+            parts.append(L10n.string("1 entfernter Commit fehlt"))
+        } else if status.behind > 1 {
+            parts.append(L10n.format("%ld entfernte Commits fehlen", status.behind))
+        }
+        return parts.joined(separator: L10n.string(", "))
+    }
+
+    @ViewBuilder private func fetchControl(now: Date) -> some View {
+        if workspace.gitRepositorySnapshot?.fetch.isBusy == true {
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel("Remote-Änderungen werden abgerufen")
+        } else {
+            Button { workspace.gitFetch() } label: {
+                Image(systemName: workspace.gitRepositorySnapshot?.fetch.error == nil
+                      ? "arrow.down.circle" : "exclamationmark.arrow.circlepath")
+                    .fastraFont(size: 10)
+                    .foregroundColor(workspace.gitRepositorySnapshot?.fetch.error == nil
+                                     ? Theme.textSecondary : Theme.diffRemovedFG)
+            }
+            .buttonStyle(.plain)
+            .disabled(workspace.gitOperationsAreBusy)
+            .help(Self.fetchDescription(workspace.gitRepositorySnapshot?.fetch, now: now))
+            .accessibilityLabel(workspace.gitRepositorySnapshot?.fetch.error == nil
+                                ? "Remote-Änderungen abrufen" : "Fetch erneut versuchen")
+            .accessibilityValue(Self.fetchDescription(
+                workspace.gitRepositorySnapshot?.fetch, now: now
+            ))
+            .accessibilityHint("Führt git fetch aus und ändert keine lokalen Dateien.")
+        }
+    }
+
+    static func comparisonDescription(_ status: GitStatusSummary,
+                                      fetch: GitFetchSnapshot?, now: Date) -> String {
+        let upstream = status.upstream ?? L10n.string("Kein Upstream")
+        return L10n.format("Vergleich mit %@: %@. %@ Der Vergleich nutzt den zuletzt abgerufenen Remote-Tracking-Stand; der Server kann bereits neuer sein.",
+                           upstream, aheadBehindText(status),
+                           fetchDescription(fetch, now: now))
+    }
+
+    static func fetchDescription(_ snapshot: GitFetchSnapshot?, now: Date = Date()) -> String {
+        guard let snapshot else { return L10n.string("Noch nie abgerufen") }
+        if let error = snapshot.error {
+            let success = snapshot.lastSuccess.map { ageDescription(since: $0, now: now) }
+                ?? L10n.string("noch nie erfolgreich")
+            return L10n.format("Letzter Fetch fehlgeschlagen: %@ · Letzter Erfolg: %@",
+                               error, success)
+        }
+        guard let date = snapshot.lastSuccess else {
+            return L10n.string("Noch nie erfolgreich abgerufen")
+        }
+        return L10n.format("Zuletzt %@ abgerufen", ageDescription(since: date, now: now))
+    }
+
+    static func ageDescription(since date: Date, now: Date) -> String {
+        let seconds = max(0, Int(now.timeIntervalSince(date)))
+        if seconds < 60 { return L10n.string("vor weniger als einer Minute") }
+        let minutes = seconds / 60
+        if minutes < 60 {
+            return minutes == 1 ? L10n.string("vor 1 Minute")
+                : L10n.format("vor %ld Minuten", minutes)
+        }
+        let hours = minutes / 60
+        if hours < 48 {
+            return hours == 1 ? L10n.string("vor 1 Stunde")
+                : L10n.format("vor %ld Stunden", hours)
+        }
+        let days = hours / 24
+        if days < 7 {
+            return days == 1 ? L10n.string("vor 1 Tag")
+                : L10n.format("vor %ld Tagen", days)
+        }
+        return DateFormatter.localizedString(from: date, dateStyle: .medium,
+                                             timeStyle: .short)
     }
 
     /// Die Git-Aktions-Einträge — geteilt zwischen Seitenleisten-Popup und dem
@@ -199,19 +332,25 @@ struct GitActionMenu: View {
     var body: some View {
         Button("Alles committen…") { workspace.gitCommitAll() }
             .help("Alle Änderungen stagen und committen (git add -A + commit).")
+            .disabled(workspace.gitOperationsAreBusy)
         Button("Letzten Commit ergänzen") { workspace.gitAmendNoEdit() }
             .help("Aktuelle Änderungen in den letzten Commit aufnehmen, Botschaft bleibt (git commit --amend --no-edit).")
+            .disabled(workspace.gitOperationsAreBusy)
 
         Divider()
 
         Button("Push") { workspace.gitPush() }
             .help("Lokale Commits zum entfernten Repository hochladen (git push).")
+            .disabled(workspace.gitOperationsAreBusy)
         Button("Pull (Fast-Forward)") { workspace.gitPullFastForward() }
             .help("Entfernte Commits nur übernehmen, wenn nichts kollidiert — kein Merge-Commit (git pull --ff-only).")
-        Button("Pull (mit Merge)") { workspace.gitPull() }
-            .help("Entfernte Commits holen und einbinden, notfalls mit Merge-Commit (git pull).")
+            .disabled(workspace.gitOperationsAreBusy)
+        Button("Pull") { workspace.gitPull() }
+            .help("Entfernte Commits mit der in Fastra gewählten expliziten Strategie einbinden.")
+            .disabled(workspace.gitOperationsAreBusy)
         Button("Fetch") { workspace.gitFetch() }
             .help("Entfernten Stand holen, ohne lokal etwas zu ändern (git fetch).")
+            .disabled(workspace.gitOperationsAreBusy)
 
         Divider()
 
@@ -219,6 +358,63 @@ struct GitActionMenu: View {
             .help("Finde den Commit, der eine Textstelle eingeführt oder entfernt hat (git log -S).")
         Button("Zum vorherigen Branch") { workspace.gitSwitchPrevious() }
             .help("Zum zuletzt ausgecheckten Branch zurückspringen (git switch -).")
+            .disabled(workspace.gitOperationsAreBusy)
+
+        Button("Neuen Branch erstellen…") { workspace.gitCreateBranch() }
+            .help("Erstellt nach Git-Prüfung einen neuen Branch am aktuellen Commit.")
+            .disabled(workspace.gitOperationsAreBusy)
+        Button("Getrackte Änderungen stashen…") { workspace.gitStash(includeUntracked: false) }
+            .help("Legt einen Stash nur für getrackte Änderungen an; nichts wird automatisch gepusht.")
+            .disabled(workspace.gitOperationsAreBusy)
+        Button("Änderungen inkl. unversionierter Dateien stashen…") {
+            workspace.gitStash(includeUntracked: true)
+        }
+        .help("Legt einen Stash einschließlich unversionierter Dateien an.")
+        .disabled(workspace.gitOperationsAreBusy)
+        Button("Letzten Stash anwenden…") { workspace.gitStashPop() }
+            .help("Nur bei sauberem Arbeitsbaum; kann Konflikte erzeugen.")
+            .disabled(workspace.gitOperationsAreBusy)
+
+        if workspace.gitOperationState == .rebase {
+            Button("Aktuellen Rebase-Commit überspringen…") { workspace.gitSkipRebase() }
+                .help("Warnung: Lässt den aktuellen Commit aus dem neu aufgebauten Verlauf aus.")
+                .disabled(workspace.gitOperationsAreBusy)
+        }
+        if workspace.gitOperationState != nil {
+            Button("Git-Vorgang fortsetzen") { workspace.gitContinueOperation() }
+                .disabled(!GitOperationControlAvailability.continueEnabled(
+                    isBusy: workspace.gitOperationsAreBusy,
+                    hasConflicts: !workspace.conflictedGitChanges.isEmpty
+                ))
+                .help(GitOperationControlText.continueHelp(
+                    hasConflicts: !workspace.conflictedGitChanges.isEmpty,
+                    isBusy: workspace.gitOperationsAreBusy
+                ))
+            Button("Git-Vorgang abbrechen…") { workspace.gitAbortOperation() }
+                .disabled(!GitOperationControlAvailability.abortEnabled(
+                    isBusy: workspace.gitOperationsAreBusy
+                ))
+                .help(GitOperationControlText.abortHelp(
+                    isBusy: workspace.gitOperationsAreBusy
+                ))
+        }
+
+        Button("Force Push with Lease…") { workspace.gitForcePushWithLease() }
+            .help("Erzwingt nur mit --force-with-lease und eigener Bestätigung; niemals blindes --force.")
+            .disabled(workspace.gitOperationsAreBusy)
+
+        Divider()
+        Button("Git-Identität konfigurieren…") { workspace.gitConfigureIdentity() }
+            .help(workspace.gitIdentity?.sourceDescription
+                  ?? L10n.string("Repository-lokale und globale Git-Identität prüfen oder konfigurieren."))
+            .disabled(workspace.gitOperationsAreBusy)
+
+        Divider()
+        Button("Terminal im aktuellen Ordner …") { workspace.openTerminal() }
+            .disabled(workspace.terminalDirectory == nil)
+            .help(workspace.terminalDirectory == nil
+                  ? workspace.terminalUnavailableReason
+                  : L10n.string("Öffnet Terminal.app nativ im Projektordner."))
     }
 }
 
@@ -354,6 +550,8 @@ private struct FileTreeContextMenu: View {
 
         Divider()
         Button("Im Finder zeigen…") { revealInFinder() }
+        Button("Terminal hier öffnen …") { workspace.openTerminal(at: directory) }
+            .help("Öffnet Terminal.app nativ in diesem Ordner.")
 
         if let node {
             Divider()

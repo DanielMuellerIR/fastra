@@ -117,6 +117,13 @@ struct EditorView: View {
             sidebarWidth = min(max(sidebarWidth, Double(sidebarMinWidth)),
                                Double(sidebarMaxWidth))
         }
+        // Dieser Beobachter lebt absichtlich am stabilen Editor-Root. Die
+        // Konfliktleiste selbst verschwindet bei einem normalen Zwischentab;
+        // ein Wechsel Konflikt A → normal → Konflikt C muss C dennoch bei Block 1
+        // beginnen und dessen Markerbreite neu prüfen.
+        .onChange(of: workspace.activeTabID) {
+            workspace.activeGitConflictFileDidChange()
+        }
     }
 
     private var showsIntegratedMarkdownPreview: Bool {
@@ -143,7 +150,13 @@ struct EditorView: View {
     /// greift nicht.
     private var sourceEditor: some View {
         Group {
-            if let kind = workspace.activeTab?.gitKind {
+            if let tab = workspace.activeTab,
+               let request = tab.gitDiffRequest {
+                GitSideBySideDiffView(request: request,
+                                      document: tab.gitDiffDocument,
+                                      fallbackText: tab.content)
+                    .id(tab.id)
+            } else if let kind = workspace.activeTab?.gitKind {
                 // Git-Text-Tab (Etappe 2): read-only Verlauf/Diff statt CESE.
                 GitTextView(kind: kind, content: workspace.activeTab?.content ?? "")
                     .id(workspace.activeTab?.id)
@@ -163,16 +176,23 @@ struct EditorView: View {
                 // sich die Tab-ID NICHT, aber die `Group`-Verzweigung wechselt.
                 // Das `.id` hier ist nur Sicherheitsnetz für den Editor unten.
                 .id(workspace.activeTab?.id)
-            } else if let tab = workspace.activeTab, tab.displayMode == .hex,
-                      let url = tab.url {
-                HexFileView(url: url, fileSize: tab.fileSize)
-                    .id(tab.id)
-            } else if let tab = workspace.activeTab, tab.displayMode == .chunkedText,
-                      let url = tab.url {
-                ChunkedTextFileView(url: url, fileSize: tab.fileSize)
-                    .id(tab.id)
             } else {
-                actualEditor
+                VStack(spacing: 0) {
+                    if workspace.activeConflictSupport != .none {
+                        GitConflictBar()
+                    }
+                    if let tab = workspace.activeTab, tab.displayMode == .hex,
+                       let url = tab.url {
+                        HexFileView(url: url, fileSize: tab.fileSize).id(tab.id)
+                    } else if let tab = workspace.activeTab,
+                              tab.displayMode == .chunkedText, let url = tab.url {
+                        ChunkedTextFileView(url: url, fileSize: tab.fileSize,
+                                            encoding: tab.encoding, bom: tab.bom)
+                            .id(tab.id)
+                    } else {
+                        actualEditor
+                    }
+                }
             }
         }
     }

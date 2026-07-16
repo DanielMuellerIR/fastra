@@ -187,12 +187,12 @@ func markdownFromClipboard_inheritedStderrDoesNotBlock() throws {
     // Auf EOF zu lesen würde bis zum Ende des `sleep` blockieren.
     let stub = try makeMdClipStub(
         name: "inherited-stderr",
-        body: "(sleep 2) &\nprintf 'Pandoc-Testfehler\\n' >&2\nexit 2"
+        body: "(sleep 5) &\nprintf 'Pandoc-Testfehler\\n' >&2\nexit 2"
     )
     defer { try? FileManager.default.removeItem(at: stub) }
 
     let started = Date()
-    let result = SmartPaste.markdownFromClipboard(mdClipURL: stub, timeout: 2)
+    let result = SmartPaste.markdownFromClipboard(mdClipURL: stub, timeout: 5)
     let elapsed = Date().timeIntervalSince(started)
 
     guard case .failure(.conversionFailed(let detail)) = result else {
@@ -200,7 +200,12 @@ func markdownFromClipboard_inheritedStderrDoesNotBlock() throws {
         return
     }
     #expect(detail.contains("Pandoc-Testfehler"))
-    #expect(elapsed < 1.0, "Fehlerpfad wartete \(elapsed) Sekunden auf Pipe-EOF")
+    // Beide Captures warten beim Aufräumen höchstens je eine Sekunde auf ihren
+    // Dispatch-Cancel-Handler. Unter voller paralleler Suite kommt Scheduling-
+    // Puffer hinzu. Drei Sekunden bleiben trotzdem klar unter den fünf
+    // Sekunden des geerbten Descriptors: Ein Rückfall auf EOF-Warten wird
+    // weiter sicher rot, normale Scheduler-Latenz nicht.
+    #expect(elapsed < 3.0, "Fehlerpfad wartete \(elapsed) Sekunden auf Pipe-EOF")
 }
 
 @Test("markdownFromClipboard: Timeout beendet auch SIGTERM-resistenten Prozess")

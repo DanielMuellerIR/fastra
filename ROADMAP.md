@@ -13,6 +13,24 @@ Keine offenen Ausbauarbeiten.
 
 ## Erledigt
 
+### Sicherer Git-Ausbau v1.18.0
+
+- Robustes bytebasiertes Status-, Graph- und Diff-Fundament mit koordinierten
+  Repository-Vorgängen über mehrere Fastra-Fenster und Worktrees hinweg. ✓
+- Manuell oder zeitgesteuert ausgeführter Fetch mit sichtbarem Alter/Fehler und
+  Pull mit expliziter Strategie, Vorprüfung und unmittelbarer Revalidierung. ✓
+- Exakte HEAD-Markierung und begrenzter schreibgeschützter Side-by-side-Git-Diff
+  mit Hunk-Navigation, Faltungen und ehrlichen Binär-/Combined-Grenzen. ✓
+- Undo-fähige Konflikthilfe im normalen Editor, exaktes Markieren gespeicherter
+  Bytes als gelöst sowie kontrolliertes Fortsetzen/Abbrechen von Merge, Rebase,
+  Cherry-pick und Revert. ✓
+- Kuratierte Aktionen für Branch, Stash/Pop, Cherry-pick, Revert und
+  Force-with-Lease; repository-lokale beziehungsweise ausdrücklich bestätigte
+  globale Git-Identität und nativer Terminal.app-Aufruf. ✓
+- Architektur, Sicherheitsgrenzen, reproduzierbare Tests und die protokollierte
+  visuelle Abnahme stehen im
+  [Git-Ausbauplan](docs/GIT-EXPANSION-PLAN.md).
+
 ### Funktionsumfang v1.0
 
 Was die App können muss, um v1.0 zu sein. Die Reihenfolge folgt der Roadmap, nicht der Wichtigkeit.

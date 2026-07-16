@@ -10,24 +10,34 @@ import Testing
 @Test("Commit-Diff zeigt Dateiliste und Patch")
 func gitDiff_commitArguments() {
     #expect(GitDiff.showArguments(hash: "abc123")
-            == ["show", "--stat", "--patch", "abc123"])
+            == ["show", "--no-color", "--no-ext-diff", "--no-textconv",
+                "--stat", "--patch", "abc123"])
 }
 
 @Test("Datei-Diff trennt Pfad sicher von git-Optionen")
 func gitDiff_fileArguments() {
     #expect(GitDiff.showFileArguments(hash: "abc123", path: "Sources/-test.swift")
-            == ["show", "--format=", "abc123", "--", "Sources/-test.swift"])
+            == ["-c", "core.quotePath=false", "--literal-pathspecs", "show",
+                "--no-color", "--no-ext-diff", "--no-textconv",
+                "--format=", "abc123", "--", "Sources/-test.swift"])
 }
 
 @Test("Datei-Diffs trennen Index, Working-Tree und unversionierte Dateien")
 func gitDiff_changeFileArguments() {
     let path = "Sources/-test.swift"
-    #expect(GitDiff.stagedFileArguments(path: path)
-            == ["diff", "--cached", "--", path])
-    #expect(GitDiff.unstagedFileArguments(path: path)
-            == ["diff", "--", path])
-    #expect(GitDiff.untrackedFileArguments(path: path)
-            == ["diff", "--no-index", "--", "/dev/null", path])
+    for arguments in [GitDiff.stagedFileArguments(path: path),
+                      GitDiff.unstagedFileArguments(path: path),
+                      GitDiff.untrackedFileArguments(path: path)] {
+        #expect(arguments.contains("--literal-pathspecs"))
+        #expect(arguments.contains("core.quotePath=false"))
+        #expect(arguments.contains("--no-color"))
+        #expect(arguments.contains("--no-ext-diff"))
+        #expect(arguments.contains("--no-textconv"))
+        #expect(arguments.contains("--"))
+        #expect(arguments.last == path)
+    }
+    #expect(GitDiff.stagedFileArguments(path: path).contains("--cached"))
+    #expect(GitDiff.untrackedFileArguments(path: path).contains("--no-index"))
 }
 
 // MARK: - git log

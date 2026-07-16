@@ -54,6 +54,188 @@ final class FilePageModel: ObservableObject {
     }
 }
 
+/// Ein streng dekodierter Abschnitt einer großen Textdatei. `fileRange` zeigt
+/// die tatsächlich gelesenen Bytes inklusive BOM-Offset; benachbarte Seiten
+/// schließen lückenlos aneinander an, können wegen Unicode-Grenzen aber wenige
+/// Bytes von der nominalen 256-KiB-Grenze abweichen.
+struct DecodedTextFilePage: Equatable {
+    let text: String
+    let fileRange: Range<UInt64>
+}
+
+/// Begrenzter Reader für große Textdateien. Er liest höchstens eine Seite plus
+/// einzelne Grenz-Codeunits und niemals die vollständige Datei.
+enum TextFilePageReader {
+    static func pageCount(totalBytes: UInt64, bomCount: Int, pageSize: Int) -> Int {
+        guard pageSize > 0 else { return 1 }
+        let prefix = min(totalBytes, UInt64(max(0, bomCount)))
+        let payloadBytes = totalBytes - prefix
+        return max(1, Int((payloadBytes + UInt64(pageSize) - 1) / UInt64(pageSize)))
+    }
+
+    static func read(url: URL, totalBytes: UInt64, pageSize: Int,
+                     pageIndex: Int, encoding: String.Encoding,
+                     bom: Data) throws -> DecodedTextFilePage {
+        guard pageSize > 0 else { throw CocoaError(.fileReadCorruptFile) }
+        let bomCount = min(totalBytes, UInt64(bom.count))
+        let payloadBytes = totalBytes - bomCount
+        let count = pageCount(totalBytes: totalBytes, bomCount: bom.count,
+                              pageSize: pageSize)
+        let page = min(max(pageIndex, 0), count - 1)
+        let nominalStart = min(payloadBytes, UInt64(page) * UInt64(pageSize))
+        let nominalEnd = min(payloadBytes, UInt64(page + 1) * UInt64(pageSize))
+
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let start = try alignedBoundary(nominalStart, payloadBytes: payloadBytes,
+                                        bomCount: bomCount, encoding: encoding,
+                                        handle: handle)
+        let end = try alignedBoundary(nominalEnd, payloadBytes: payloadBytes,
+                                      bomCount: bomCount, encoding: encoding,
+                                      handle: handle)
+        guard start <= end, end - start <= UInt64(pageSize + 4) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let data = try readExactly(handle: handle, offset: bomCount + start,
+                                   count: Int(end - start))
+        guard let text = String(data: data, encoding: encoding) else {
+            // Kein Lossy-Fallback: Ein beschädigter oder falsch gewählter
+            // Abschnitt muss sichtbar fehlschlagen, nicht U+FFFD erfinden.
+            throw CocoaError(.fileReadInapplicableStringEncoding)
+        }
+        return DecodedTextFilePage(text: text,
+                                   fileRange: (bomCount + start)..<(bomCount + end))
+    }
+
+    /// Verschiebt eine nominelle Grenze rückwärts auf den Anfang des dort
+    /// getroffenen Unicode-Skalars. Dadurch gehört ein Grenzzeichen vollständig
+    /// zur Folgeseite und alle Seiten lassen sich ohne Verlust rekonstruieren.
+    private static func alignedBoundary(_ nominal: UInt64, payloadBytes: UInt64,
+                                        bomCount: UInt64, encoding: String.Encoding,
+                                        handle: FileHandle) throws -> UInt64 {
+        guard nominal > 0, nominal < payloadBytes else { return nominal }
+        if encoding == .utf8 {
+            var boundary = nominal
+            // UTF-8 hat höchstens drei Fortsetzungsbytes. Mehr würden auf
+            // beschädigte Daten deuten und dürfen keine unbeschränkte
+            // rückwärts laufende Seek-Schleife auslösen.
+            for _ in 0..<3 where boundary > 0 {
+                let byte = try readExactly(handle: handle,
+                                           offset: bomCount + boundary, count: 1)[0]
+                guard byte & 0b1100_0000 == 0b1000_0000 else { return boundary }
+                boundary -= 1
+            }
+            let first = try readExactly(handle: handle,
+                                        offset: bomCount + boundary, count: 1)[0]
+            guard first & 0b1100_0000 != 0b1000_0000 else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            return boundary
+        }
+        if encoding == .utf16LittleEndian || encoding == .utf16BigEndian
+            || encoding == .utf16 {
+            var boundary = nominal - nominal % 2
+            guard boundary >= 2, boundary + 2 <= payloadBytes else { return boundary }
+            let previous = try codeUnit(handle: handle, payloadOffset: boundary - 2,
+                                        bomCount: bomCount, encoding: encoding)
+            let next = try codeUnit(handle: handle, payloadOffset: boundary,
+                                    bomCount: bomCount, encoding: encoding)
+            if (0xD800...0xDBFF).contains(previous),
+               (0xDC00...0xDFFF).contains(next) {
+                boundary -= 2
+            }
+            return boundary
+        }
+        // Die übrigen angebotenen Reopen-Encodings sind Single-Byte-Encodings.
+        return nominal
+    }
+
+    private static func codeUnit(handle: FileHandle, payloadOffset: UInt64,
+                                 bomCount: UInt64, encoding: String.Encoding) throws -> UInt16 {
+        let bytes = try readExactly(handle: handle,
+                                    offset: bomCount + payloadOffset, count: 2)
+        if encoding == .utf16BigEndian {
+            return UInt16(bytes[0]) << 8 | UInt16(bytes[1])
+        }
+        return UInt16(bytes[0]) | UInt16(bytes[1]) << 8
+    }
+
+    private static func readExactly(handle: FileHandle, offset: UInt64,
+                                    count: Int) throws -> Data {
+        try handle.seek(toOffset: offset)
+        var result = Data()
+        result.reserveCapacity(count)
+        while result.count < count {
+            let remaining = count - result.count
+            guard let chunk = try handle.read(upToCount: remaining), !chunk.isEmpty else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            result.append(chunk)
+        }
+        return result
+    }
+}
+
+/// Asynchrones UI-Modell über dem begrenzten, encoding-sicheren Reader.
+final class TextFilePageModel: ObservableObject {
+    @Published private(set) var pageIndex = 0
+    @Published private(set) var text = ""
+    @Published private(set) var errorMessage: String?
+    @Published private(set) var isLoading = false
+
+    let url: URL
+    let totalBytes: UInt64
+    let pageSize: Int
+    let encoding: String.Encoding
+    let bom: Data
+
+    var pageCount: Int {
+        TextFilePageReader.pageCount(totalBytes: totalBytes, bomCount: bom.count,
+                                     pageSize: pageSize)
+    }
+
+    init(url: URL, totalBytes: UInt64, pageSize: Int,
+         encoding: String.Encoding, bom: Data) {
+        self.url = url
+        self.totalBytes = totalBytes
+        self.pageSize = pageSize
+        self.encoding = encoding
+        self.bom = bom
+        load(page: 0)
+    }
+
+    func load(page requestedPage: Int) {
+        let page = min(max(requestedPage, 0), pageCount - 1)
+        pageIndex = page
+        isLoading = true
+        errorMessage = nil
+        let url = self.url
+        let totalBytes = self.totalBytes
+        let pageSize = self.pageSize
+        let encoding = self.encoding
+        let bom = self.bom
+
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let result = Result {
+                try TextFilePageReader.read(
+                    url: url, totalBytes: totalBytes, pageSize: pageSize,
+                    pageIndex: page, encoding: encoding, bom: bom
+                )
+            }
+            await MainActor.run { [weak self] in
+                guard let self, self.pageIndex == page else { return }
+                self.isLoading = false
+                switch result {
+                case .success(let page): self.text = page.text
+                case .failure(let error):
+                    self.text = ""
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+}
+
 private struct FilePageNavigation: View {
     @ObservedObject var model: FilePageModel
 
@@ -97,11 +279,12 @@ private struct FilePageNavigation: View {
 /// Read-only Textansicht für große Dateien. Es befindet sich stets höchstens
 /// ein 256-KiB-Abschnitt im SwiftUI-Textbaum.
 struct ChunkedTextFileView: View {
-    @StateObject private var model: FilePageModel
+    @StateObject private var model: TextFilePageModel
 
-    init(url: URL, fileSize: UInt64) {
-        _model = StateObject(wrappedValue: FilePageModel(
-            url: url, totalBytes: fileSize, pageSize: 256 * 1024
+    init(url: URL, fileSize: UInt64, encoding: String.Encoding, bom: Data) {
+        _model = StateObject(wrappedValue: TextFilePageModel(
+            url: url, totalBytes: fileSize, pageSize: 256 * 1024,
+            encoding: encoding, bom: bom
         ))
     }
 
@@ -115,20 +298,20 @@ struct ChunkedTextFileView: View {
             Divider()
             content
             Divider()
-            FilePageNavigation(model: model)
+            TextFilePageNavigation(model: model)
         }
         .background(Theme.surfaceRaised)
     }
 
     @ViewBuilder private var content: some View {
-        if model.isLoading && model.data.isEmpty {
+        if model.isLoading && model.text.isEmpty {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let error = model.errorMessage {
             Text(error).foregroundColor(Theme.diffRemovedFG)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollView([.vertical, .horizontal]) {
-                Text(String(decoding: model.data, as: UTF8.self))
+                Text(model.text)
                     .fastraFont(.mono)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: true, vertical: true)
@@ -136,6 +319,46 @@ struct ChunkedTextFileView: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
+    }
+}
+
+private struct TextFilePageNavigation: View {
+    @ObservedObject var model: TextFilePageModel
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button { model.load(page: 0) } label: {
+                Image(systemName: "backward.end.fill")
+            }
+            .disabled(model.pageIndex == 0)
+            Button { model.load(page: model.pageIndex - 1) } label: {
+                Image(systemName: "chevron.left")
+            }
+            .disabled(model.pageIndex == 0)
+
+            Slider(value: Binding(
+                get: { Double(model.pageIndex) },
+                set: { model.load(page: Int($0.rounded())) }
+            ), in: 0...Double(max(1, model.pageCount - 1)), step: 1)
+
+            Button { model.load(page: model.pageIndex + 1) } label: {
+                Image(systemName: "chevron.right")
+            }
+            .disabled(model.pageIndex >= model.pageCount - 1)
+            Button { model.load(page: model.pageCount - 1) } label: {
+                Image(systemName: "forward.end.fill")
+            }
+            .disabled(model.pageIndex >= model.pageCount - 1)
+
+            Text(verbatim: L10n.format("Abschnitt %ld / %ld",
+                                       model.pageIndex + 1, model.pageCount))
+                .fastraFont(.small)
+                .foregroundColor(Theme.textSecondary)
+                .fixedSize()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Theme.surfaceSand.opacity(0.45))
     }
 }
 

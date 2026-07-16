@@ -9,6 +9,105 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.18.0] — 2026-07-16
+
+### Hinzugefügt
+
+- **Koordinierter Git-Status und Auto-Fetch:** Status, Branches und Graph werden
+  als zusammengehöriger Repository-Snapshot geladen. Fastra koordiniert
+  kollidierende Befehle über Fenster und verknüpfte Worktrees hinweg. Fetch kann
+  manuell oder bei aktiver App zeitgesteuert laufen; letzter Erfolg und Fehler
+  bleiben in der Seitenleiste sichtbar.
+- **Sicherer Pull:** Rebase, Merge und nur Fast-Forward sind ausdrückliche
+  Strategien. Vor dem Pull prüft Fastra Upstream, Arbeitsbaum, Konflikte und
+  laufende Merge-/Rebase-/Cherry-pick-/Revert-Vorgänge, fragt bei lokalen
+  Änderungen nach und validiert den Zustand unmittelbar vor dem Befehl erneut.
+- **Reduzierter Side-by-side-Git-Diff:** Text-Patches erscheinen auf Wunsch in
+  einer gemeinsamen, synchron ausgerichteten Zeilenliste mit Intra-Zeilen-
+  Hervorhebung, Faltungen, Hunk-Navigation über ⌥⌘[ und ⌥⌘] sowie einer
+  Übersichtsleiste. Root-, Index-, Arbeitsbaum-, Commit- und Datei-Diffs nutzen
+  jeweils eine typisierte Vergleichsbasis.
+- **Konflikthilfe im normalen Editor:** Normale und diff3-Marker lassen sich
+  blockweise ansteuern; oberer, unterer oder beide Blöcke werden über die native
+  Editor-Mutation übernommen und bleiben mit Befehl-Z rückgängig. Binäre, nicht
+  sicher dekodierbare und nur abschnittsweise geladene Dateien zeigen stattdessen
+  eine klare Grenze. Merge, Rebase, Cherry-pick und Revert lassen sich nach
+  erneuter Prüfung fortsetzen oder abbrechen; Rebase unterstützt zusätzlich Skip.
+- **Kuratierte Git-Aktionen:** Neuer Branch, Stash mit oder ohne unversionierte
+  Dateien, Stash Pop, Cherry-pick und Revert ergänzen die vorhandenen Aktionen.
+  Force Push ist ausschließlich mit einem exakten `--force-with-lease`-Ziel und
+  eigener Bestätigung verfügbar. Git-Identität kann repository-lokal oder nach
+  einer zweiten Bestätigung global als zusammengehöriges Name/E-Mail-Paar
+  konfiguriert werden.
+- **Nativer Terminalaufruf:** „Terminal im aktuellen Ordner …“ übergibt die
+  Projekt- beziehungsweise Dateiverzeichnis-URL direkt an Terminal.app, ohne
+  Shell- oder AppleScript-Konstruktion.
+
+### Geändert
+
+- Git-Status verwendet `git status --porcelain=v2 --branch -z`; Status-, Graph-
+  und Diff-Protokolle behandeln NUL-getrennte rohe Pfade verlustfrei. Nicht als
+  UTF-8 adressierbare Pfade bleiben sichtbar, sperren aber gezielt nur die nicht
+  verlustfrei mögliche Einzeldateiaktion.
+- HEAD im Graphen folgt ausschließlich der exakten Status-OID und bleibt auch
+  bei Detached HEAD und Merge-Commits eindeutig. Graph-Dateien und Metadaten
+  werden bytebasiert aus einem begrenzten `git log -z`-Protokoll gelesen.
+- Ahead/Behind erklärt, mit welchem Remote-Tracking-Stand verglichen wird. Die
+  Git-Einstellungen steuern Fetch-Intervall, Aktivierungs-Fetch, Remote-Auswahl,
+  Prune und Pull-Strategie, ohne Git-Konfiguration still zu verändern.
+- Git-Aktionen teilen einen app-weiten Busy-Zustand; Menüs, Konfliktleiste und
+  Graph-Kontextaktionen besitzen lokalisierte Hilfetexte und passende
+  Accessibility-Beschriftungen beziehungsweise -Hinweise.
+
+### Sicherheit
+
+- Große Textdateien behalten ihr erkanntes Encoding und ihre ursprüngliche BOM
+  bis in die abschnittsweise Ansicht. UTF-8-Skalare sowie UTF-16-Codeunits und
+  Surrogatpaare werden an 256-KiB-Grenzen nicht mehr getrennt; jede Seite wird
+  streng und ohne erfundene Ersatzzeichen dekodiert. Auch eine ausdrückliche
+  Encoding-Wahl umgeht die read-only-Grenze für Dateien über 32 MiB nicht.
+- BOM-loses UTF-16 wird nicht mehr aus Nullbyte-Parität erraten, weil dieselben
+  Bytes ebenso 16-Bit-PCM-/UInt16-Binärdaten sein können. Solche Dateien öffnen
+  automatisch fail-closed als Hex; bekanntes BOM-loses UTF-16 bleibt über die
+  ausdrückliche Aktion „Neu öffnen mit Encoding“ verfügbar.
+- Git-Prozesse laufen ohne Shell, ohne interaktive Credential-/Askpass-Abfrage,
+  mit begrenzter Ausgabe und Zeitlimit. Bei Abbruch oder Timeout werden auch
+  von Git gestartete Hooks und Helper derselben Prozessgruppe beendet. Eine
+  eigene priorisierte Deadline-Queue hält diese Fristen auch unter hoher
+  paralleler Last zuverlässig ein.
+- „Als gelöst markieren“ schreibt nicht über `git add` aus einem möglicherweise
+  veralteten Arbeitsbaum. Fastra prüft gespeicherte Bytes, Attribute,
+  Konvertierungskonfiguration, Indexstufen und HEAD mehrfach, erzeugt den Blob
+  mit den für den Pfad gültigen Git-Filtern und setzt genau einen Stage-0-Eintrag,
+  während Git selbst Index- und Ref-Locks hält. Die Aktion commitet oder pusht
+  nicht.
+- Vor jeder Textauflösung fragt Fastra die pfadspezifischen Attribute mit
+  `git check-attr -z` ab. Von Git durch `binary`, `-text`, `-diff` oder den
+  binären Merge-Treiber klassifizierte Konflikte bleiben auch bei reinem
+  UTF-8-Arbeitsbauminhalt im Terminalpfad; dieselbe Prüfung sperrt den finalen
+  Stage-0-Pfad erneut.
+- Identitätsabhängige Commits und Identitätsschreibvorgänge teilen eine
+  app-weite Schranke. Include- und `includeIf`-Werte werden bei Reads beachtet;
+  Teilfehler beim paarweisen Schreiben rollen auf den vorherigen Stand zurück.
+- Push mit Lease bindet Quell-OID, Remote, Ziel-Ref und erwartete entfernte OID
+  vor der Bestätigung fest. Ein nacktes `--force` wird nicht angeboten.
+
+### Qualitätssicherung
+
+- Neue Pure-, Prozess- und Repository-Integrationstests decken bytebasierte
+  Pfade, Status/Graph/Diff, Koordination, Fetch/Pull, Konfliktmarker, Undo,
+  Git-Locks, Filter und Encodings, laufende Operationen, Zusatzaktionen,
+  Force-with-Lease, Identity-Includes und Abbruch-/Timeout-Races ab. Reale Git-
+  Tests verwenden ausschließlich temporäre Repositories und lokale Bare-Remotes.
+- Lokalisierungs-Audit und Tests erfassen zusätzlich dynamische Git-Aktions-
+  und Erfolgstexte. Die getrennte visuelle Abnahme in Deutsch und Englisch,
+  Light, Dark und erhöhtem Systemkontrast prüfte Tastatur, Tooltips, den von
+  VoiceOver genutzten Accessibility-Baum und den echten Editor-Delegate.
+- Verifizierter Abschlusslauf: 969 Swift-Tests in 28 Suiten, Lokalisierungs-
+  Audit, Debug-Build, portable App samt gepacktem Lokalisierungs-Selbsttest und
+  26 In-App-Selbsttests bestanden jeweils mit Exit 0. Release-Build, Signatur,
+  Notarisierung und Veröffentlichung waren nicht Teil dieses Laufs.
+
 ## [v1.17.3] — 2026-07-15
 
 ### Behoben

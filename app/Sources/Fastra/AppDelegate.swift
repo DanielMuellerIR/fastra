@@ -114,6 +114,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             self?.editorContextMenu.formatActiveDocument()
         }
+        NotificationCenter.default.addObserver(
+            forName: .fastraReplaceConflictText,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let request = note.object as? ConflictEditorReplacementRequest else { return }
+            self?.editorContextMenu.replaceConflictText(request)
+        }
 
         // WICHTIG (Zombie-Find-Bar): CodeEditSourceEditor installiert beim
         // Laden seines Editors einen EIGENEN lokalen keyDown-Monitor, der
@@ -152,6 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { [weak self] _ in
             self?.installKeyMonitor()
+            GitAutoFetchController.shared.setActive(true)
             // Extern-Änderungs-Erkennung (BBEdit „Automatically refresh
             // documents", Kap. 3 S. 59): beim Zurückwechseln in die App alle
             // offenen Tabs gegen die Platte prüfen — sauber → still neu
@@ -164,6 +173,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // sich außerhalb geändert haben (Terminal-Commit, Branch-Wechsel).
             // Beim Zurückwechseln still auffrischen.
             Workspace.allLive.forEach { $0.refreshGitStatus() }
+            Workspace.allLive.forEach { $0.refreshGitIdentity(force: true) }
+        }
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            GitAutoFetchController.shared.setActive(false)
+        }
+        NotificationCenter.default.addObserver(
+            forName: .fastraGitPreferencesChanged,
+            object: nil,
+            queue: .main
+        ) { _ in
+            GitAutoFetchController.shared.preferencesDidChange()
         }
 
         // Hinweis zum Zombie-Find-Bar: Der Editor (CodeEditSourceEditor) hat

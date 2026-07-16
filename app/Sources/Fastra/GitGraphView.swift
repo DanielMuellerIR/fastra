@@ -1,12 +1,16 @@
 import SwiftUI
 
+enum GitGraphActionAvailability {
+    static func mutationEnabled(isBusy: Bool) -> Bool { !isBusy }
+}
+
 // GitGraphView.swift
 //
 // Kompakter Git-Graph nach dem VS-Code/Codium-Modell: Die Graphbreite richtet
 // sich pro Zeile nach den tatsächlich sichtbaren Lanes, der Autor hängt direkt
 // am Betreff und Detaildaten wandern in den Tooltip. Commits lassen sich inline
-// aufklappen; ein Doppelklick auf einen Commit oder eine seiner Dateien öffnet
-// den jeweiligen Diff im Editor.
+// aufklappen; ein Doppelklick auf einen Commit beziehungsweise ein Klick auf
+// eine seiner Dateien öffnet den jeweiligen Diff im Editor.
 
 struct GitGraphView: View {
     @EnvironmentObject var workspace: Workspace
@@ -53,10 +57,12 @@ struct GitGraphView: View {
             workspace.refreshGitLog()
         }
         .onChange(of: workspace.gitLog) { recompute() }
+        .onChange(of: workspace.gitRepositorySnapshot?.headOID) { recompute() }
     }
 
     private func recompute() {
-        layout = GitGraph.layout(workspace.gitLog)
+        layout = GitGraph.layout(workspace.gitLog,
+                                 headOID: workspace.gitRepositorySnapshot?.headOID)
         expandedCommits.formIntersection(Set(workspace.gitLog.map(\.hash)))
     }
 
@@ -131,7 +137,9 @@ private struct GraphRowView: View {
         .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight,
                alignment: .leading)
         .clipped()
-        .background(hovering ? Theme.surfaceRaised : Color.clear)
+        .background(row.isHEAD
+                    ? Theme.accentReadable.opacity(hovering ? 0.17 : 0.10)
+                    : (hovering ? Theme.surfaceRaised : Color.clear))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         // Einzel- und Doppelklick werden exklusiv ausgewertet. Sonst würde ein
@@ -154,6 +162,49 @@ private struct GraphRowView: View {
                 }
         )
         .help(tooltip)
+        .contextMenu {
+            Button("Neuen Branch ab diesem Commit…") {
+                workspace.gitCreateBranch(at: row.commit.hash)
+            }
+            .disabled(!GitGraphActionAvailability.mutationEnabled(
+                isBusy: workspace.gitOperationsAreBusy
+            ))
+            Button("Cherry-pick dieses Commits…") {
+                workspace.gitCherryPick(commitHash: row.commit.hash)
+            }
+            .disabled(!GitGraphActionAvailability.mutationEnabled(
+                isBusy: workspace.gitOperationsAreBusy
+            ))
+            Button("Diesen Commit reverten…") {
+                workspace.gitRevert(commitHash: row.commit.hash)
+            }
+            .disabled(!GitGraphActionAvailability.mutationEnabled(
+                isBusy: workspace.gitOperationsAreBusy
+            ))
+            Divider()
+            Button("Commit-Hash kopieren") {
+                workspace.copyGitCommitHash(row.commit.hash)
+            }
+            Button("Commitdetails kopieren") {
+                workspace.copyGitCommitDetails(row.commit.hash)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(row.commit.files.isEmpty ? "" : (isExpanded
+                            ? L10n.string("ausgeklappt") : L10n.string("eingeklappt")))
+        .accessibilityHint(GitGraphAccessibility.commitHint(
+            isHEAD: row.isHEAD, hasFiles: !row.commit.files.isEmpty,
+            isExpanded: isExpanded
+        ))
+        .accessibilityAction(named: Text("Commit-Diff öffnen")) {
+            workspace.openGitCommit(hash: row.commit.hash)
+        }
+        .accessibilityAction(named: Text(isExpanded
+                                         ? "Dateien einklappen" : "Dateien ausklappen")) {
+            if !row.commit.files.isEmpty { toggleExpanded() }
+        }
     }
 
     private var graphCell: some View {
@@ -200,6 +251,17 @@ private struct GraphRowView: View {
             let center = CGPoint(x: x(row.column), y: midY)
             let rect = CGRect(x: center.x - nodeRadius, y: center.y - nodeRadius,
                               width: nodeRadius * 2, height: nodeRadius * 2)
+            if row.isHEAD {
+                // Äußerer Halo ist immer die HEAD-Markierung. Der innere
+                // Merge-Ring bleibt dadurch als eigener Formcode erkennbar.
+                let haloRadius = nodeRadius + 4
+                let halo = CGRect(x: center.x - haloRadius, y: center.y - haloRadius,
+                                  width: haloRadius * 2, height: haloRadius * 2)
+                context.fill(Path(ellipseIn: halo),
+                             with: .color(Theme.accentReadable.opacity(0.18)))
+                context.stroke(Path(ellipseIn: halo),
+                               with: .color(Theme.accentReadable), lineWidth: 1.8)
+            }
             if row.commit.parents.count > 1 {
                 // Merge-Knoten als Ring: Die Abzweigung ist dadurch schon vor
                 // dem Lesen des Betreffs erkennbar (VS-Code-Konvention).
@@ -229,7 +291,12 @@ private struct GraphRowView: View {
 
     private var info: some View {
         HStack(spacing: 5) {
-            ForEach(row.commit.refs, id: \.self) { ref in refPill(ref) }
+            if row.isHEAD { headPill }
+            ForEach(row.commit.refs.filter {
+                $0 != "HEAD" && !$0.hasPrefix("HEAD -> ")
+            }, id: \.self) { ref in
+                refPill(ref)
+            }
             (Text(row.commit.subject).foregroundColor(Theme.textPrimary)
              + Text("  \(row.commit.author)").foregroundColor(Theme.textSecondary))
                 .fastraFont(.small)
@@ -242,6 +309,29 @@ private struct GraphRowView: View {
                     .foregroundColor(Theme.textSecondary)
             }
         }
+    }
+
+    private var headPill: some View {
+        Text(headLabel)
+            .fastraFont(size: 9, weight: .bold, design: .monospaced)
+            .lineLimit(1)
+            .foregroundColor(Theme.surfaceBase)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Theme.accentReadable))
+            .fixedSize()
+            .help(headTooltip)
+            .accessibilityLabel(headLabel)
+            .accessibilityHint(headTooltip)
+    }
+
+    private var headLabel: String {
+        GitHeadPresentation.make(row: row, branch: workspace.gitStatus?.branch)?.label ?? "HEAD"
+    }
+
+    private var headTooltip: String {
+        GitHeadPresentation.make(row: row, branch: workspace.gitStatus?.branch)?.tooltip
+            ?? L10n.string("HEAD bezeichnet den aktuell ausgecheckten Commit.")
     }
 
     private func refPill(_ ref: String) -> some View {
@@ -291,12 +381,22 @@ private struct GraphRowView: View {
             exactDate = row.commit.date
             relativeDate = row.commit.date
         }
-        return "\(row.commit.author) · \(relativeDate) (\(exactDate))\n"
+        let head = row.isHEAD ? headTooltip + "\n\n" : ""
+        return head + "\(row.commit.author) · \(relativeDate) (\(exactDate))\n"
             + "\(row.commit.subject)\n\n"
             + L10n.format("%lld Dateien geändert, %lld Einfügungen(+), %lld Löschungen(-)",
                           Int64(row.commit.files.count), Int64(row.commit.additions),
                           Int64(row.commit.deletions))
             + "\n\(row.commit.shortHash)"
+    }
+
+    private var accessibilityLabel: String {
+        let kind = row.commit.parents.count > 1
+            ? L10n.string("Merge-Commit") : L10n.string("Commit")
+        let head = row.isHEAD ? headLabel + ", " : ""
+        return head + L10n.format("%@ %@: %@, von %@", kind,
+                                  row.commit.shortHash, row.commit.subject,
+                                  row.commit.author)
     }
 }
 
@@ -342,10 +442,24 @@ private struct GraphCommitFileRow: View {
         .background(hovering ? Theme.surfaceRaised : Color.clear)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onTapGesture(count: 2) {
-            workspace.openGitCommitFile(hash: hash, path: file.path)
+        .opacity(file.isPathActionable ? 1 : 0.55)
+        .onTapGesture {
+            if file.isPathActionable {
+                workspace.openGitCommitFile(hash: hash, file: file)
+            }
         }
-        .help(L10n.format("Doppelklick: Diff für %@ öffnen", file.path))
+        .disabled(!file.isPathActionable)
+        .help(file.isPathActionable
+              ? L10n.format("Klick: Diff für %@ öffnen", file.path)
+              : GitGraphAccessibility.fileHint(actionable: false))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel(L10n.format("%@, Status %@", file.path, file.status))
+        .accessibilityHint(GitGraphAccessibility.fileHint(actionable: file.isPathActionable))
+        .accessibilityAction(named: Text("Datei-Diff öffnen")) {
+            if file.isPathActionable {
+                workspace.openGitCommitFile(hash: hash, file: file)
+            }
+        }
     }
 
     private var continuationGraph: some View {

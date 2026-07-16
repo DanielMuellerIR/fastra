@@ -10,10 +10,13 @@ import Testing
 
 // Kurzschreibweise: baut die rohe git-log-Ausgabe im erwarteten Format nach
 // (RS = \u{1e} vor jedem Commit, US = \u{1f} zwischen den Feldern).
-private func rawLog(_ commits: [(h: String, p: String, an: String, d: String, ts: String, refs: String, s: String)]) -> String {
-    commits.map { c in
-        "\u{1e}\(c.h)\u{1f}\(c.p)\u{1f}\(c.an)\u{1f}\(c.d)\u{1f}\(c.ts)\u{1f}\(c.refs)\u{1f}\(c.s)"
-    }.joined()
+private func rawLog(_ commits: [(h: String, p: String, an: String, d: String, ts: String, refs: String, s: String)]) -> Data {
+    var data = Data()
+    for c in commits {
+        data.append(Data("\u{1e}\(c.h)\u{1f}\(c.p)\u{1f}\(c.an)\u{1f}\(c.d)\u{1f}\(c.ts)\u{1f}\(c.refs)\u{1f}\(c.s)".utf8))
+        data.append(0)
+    }
+    return data
 }
 
 // MARK: - Parser
@@ -22,6 +25,7 @@ private func rawLog(_ commits: [(h: String, p: String, an: String, d: String, ts
 func arguments_includeMergeDetails() {
     #expect(GitGraph.arguments.contains("--raw"))
     #expect(GitGraph.arguments.contains("--numstat"))
+    #expect(GitGraph.arguments.contains("-z"))
     #expect(GitGraph.arguments.contains("--diff-merges=first-parent"))
 }
 
@@ -61,13 +65,12 @@ func parse_subjectWithSpecials() {
 
 @Test("Parser: Dateistatus und Änderungszahlen bleiben am Commit")
 func parse_fileDetails() {
-    let raw = rawLog([(
-        "h", "", "Dana", "2026-07-12", "1783872000", "", "Dateien\n"
-        + ":100644 100644 aaaaaaa bbbbbbb M\tSources/App.swift\n"
-        + ":000000 100644 0000000 ccccccc A\tREADME.md\n"
-        + "12\t3\tSources/App.swift\n"
-        + "8\t0\tREADME.md"
-    )])
+    var raw = rawLog([("h", "", "Dana", "2026-07-12", "1783872000", "", "Dateien")])
+    for field in ["\n:100644 100644 aaaaaaa bbbbbbb M", "Sources/App.swift",
+                  ":000000 100644 0000000 ccccccc A", "README.md",
+                  "12\t3\tSources/App.swift", "8\t0\tREADME.md"] {
+        raw.append(Data(field.utf8)); raw.append(0)
+    }
     let commit = GitGraph.parse(raw)[0]
     #expect(commit.files == [
         GitCommitFile(path: "Sources/App.swift", status: "M", additions: 12, deletions: 3),
@@ -80,8 +83,43 @@ func parse_fileDetails() {
 @Test("Parser: leere/kaputte Datensätze werden übersprungen")
 func parse_skipsGarbage() {
     // Führendes RS erzeugt ein leeres erstes Segment; ein zu kurzer Datensatz.
-    let raw = "\u{1e}\u{1e}nur-hash-ohne-felder"
+    let raw = Data("\u{1e}\u{1e}nur-hash-ohne-felder".utf8)
     #expect(GitGraph.parse(raw).isEmpty)
+}
+
+@Test("NUL-Parser erhält Tabs, Zeilenumbrüche, Rename-Quelle und ungültiges UTF-8")
+func parseNULPathsLosslessly() {
+    let target = Data("neu\tmit\nZeile.txt".utf8)
+    let original = Data("alt ü.txt".utf8)
+    var raw = rawLog([("h", "p", "Dana", "2026-07-12", "1", "", "Rename")])
+    raw.append(Data("\n:100644 100644 aaaaaaa bbbbbbb R100".utf8)); raw.append(0)
+    raw.append(original); raw.append(0); raw.append(target); raw.append(0)
+    raw.append(Data("0\t0\t".utf8)); raw.append(0)
+    raw.append(original); raw.append(0); raw.append(target); raw.append(0)
+    raw.append(Data("\u{1e}bad\u{1f}\u{1f}Dana\u{1f}2026-07-12\u{1f}1\u{1f}\u{1f}Bytes".utf8)); raw.append(0)
+    raw.append(Data("\n:000000 100644 0000000 ccccccc A".utf8)); raw.append(0)
+    raw.append(Data([0xff, 0xfe])); raw.append(0)
+
+    let commits = GitGraph.parse(raw)
+    #expect(commits[0].files[0].rawPath == target)
+    #expect(commits[0].files[0].rawOriginalPath == original)
+    #expect(commits[0].files[0].actionPath == "neu\tmit\nZeile.txt")
+    #expect(commits[1].files[0].actionPath == nil)
+    #expect(!commits[1].files[0].path.isEmpty)
+}
+
+@Test("Graph-Bedienhinweis erhält HEAD und getrennte Aktionen")
+func graphAccessibilityHints() {
+    let hint = GitGraphAccessibility.commitHint(isHEAD: true, hasFiles: true,
+                                                isExpanded: false)
+    #expect(hint.contains("HEAD"))
+    #expect(hint.contains(L10n.string(
+        "Die Aktion „Commit-Diff öffnen“ zeigt den vollständigen Commit-Diff."
+    )))
+    #expect(hint.contains(L10n.string(
+        "Die Dateiliste ist eingeklappt und kann ausgeklappt werden."
+    )))
+    #expect(GitGraphAccessibility.fileHint(actionable: false).contains("UTF-8"))
 }
 
 // MARK: - Layout: triviale Fälle
@@ -132,7 +170,7 @@ func layout_primaryBranchKeepsBlue() {
         GitCommit(hash: "base", parents: [], author: "", date: "",
                   refs: [], subject: ""),
     ]
-    let layout = GitGraph.layout(commits)
+    let layout = GitGraph.layout(commits, headOID: "head")
 
     #expect(layout.rows[0].colorIndex != 0)
     #expect(layout.rows[1].colorIndex == 0)
@@ -245,4 +283,112 @@ func layout_primaryLaneWinsAtCommonAncestor() {
     #expect(base.colorIndex == 0)
     #expect(root.column == 0)
     #expect(root.colorIndex == 0)
+}
+
+@Test("Exakte HEAD-OID schlägt Branch- und Remote-Decorations")
+func layout_exactHeadOID() {
+    let decorated = GitCommit(hash: "other", parents: ["head"], author: "", date: "",
+                              refs: ["HEAD -> falsch", "origin/main"], subject: "Other")
+    let actual = GitCommit(hash: "head", parents: [], author: "", date: "",
+                           refs: ["main", "origin/main", "tag: v1"], subject: "Actual")
+    let layout = GitGraph.layout([decorated, actual], headOID: "head")
+    #expect(!layout.rows[0].isHEAD)
+    #expect(layout.rows[1].isHEAD)
+    #expect(layout.rows.filter(\.isHEAD).count == 1)
+}
+
+@Test("HEAD-Präsentation benennt Branch und Detached-Zustand sichtbar")
+func headPresentationBranchAndDetached() {
+    let commit = GitCommit(hash: "abcdef123456", parents: [], author: "Dana", date: "",
+                           refs: ["origin/main"], subject: "Test")
+    let row = GitGraph.layout([commit], headOID: commit.hash).rows[0]
+    let branch = GitHeadPresentation.make(row: row, branch: "feature/ü")
+    #expect(branch?.label == L10n.format("HEAD · %@", "feature/ü"))
+    #expect(branch?.isDetached == false)
+    #expect(branch?.tooltip.contains("feature/ü") == true)
+
+    let detached = GitHeadPresentation.make(row: row, branch: nil)
+    #expect(detached?.label.contains("abcdef1") == true)
+    #expect(detached?.isDetached == true)
+    #expect(detached?.tooltip.contains("abcdef1") == true)
+}
+
+@Test("Merge-Rolle und HEAD-Rolle bleiben unabhängig")
+func layoutMergeAndHeadIndependent() {
+    let headMerge = GitCommit(hash: "M", parents: ["A", "B"], author: "", date: "",
+                              refs: [], subject: "Merge")
+    let oldMerge = GitCommit(hash: "A", parents: ["C", "D"], author: "", date: "",
+                             refs: [], subject: "Old merge")
+    let side = GitCommit(hash: "B", parents: [], author: "", date: "", refs: [], subject: "")
+    let c = GitCommit(hash: "C", parents: [], author: "", date: "", refs: [], subject: "")
+    let d = GitCommit(hash: "D", parents: [], author: "", date: "", refs: [], subject: "")
+    let layout = GitGraph.layout([headMerge, oldMerge, side, c, d], headOID: "M")
+    #expect(layout.rows[0].isHEAD)
+    #expect(layout.rows[0].commit.parents.count == 2)
+    #expect(!layout.rows[1].isHEAD)
+    #expect(layout.rows[1].commit.parents.count == 2)
+}
+
+@Test("Neuer Snapshot verschiebt HEAD ohne Decoration-Heuristik")
+func layoutHeadRefresh() {
+    let a = GitCommit(hash: "A", parents: ["B"], author: "", date: "",
+                      refs: ["origin/main"], subject: "A")
+    let b = GitCommit(hash: "B", parents: [], author: "", date: "",
+                      refs: ["main"], subject: "B")
+    #expect(GitGraph.layout([a, b], headOID: "A").rows.map(\.isHEAD) == [true, false])
+    #expect(GitGraph.layout([a, b], headOID: "B").rows.map(\.isHEAD) == [false, true])
+}
+
+@Test("Reales Graph-Protokoll öffnet Rename mit Leerraum, Unicode, Tab und Zeilenumbruch")
+func graphRealRepositorySpecialRenameAndCommitDiff() async throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-graph-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    _ = try await graphGit(["init", "-q"], in: root)
+    _ = try await graphGit(["config", "user.name", "Fastra Test"], in: root)
+    _ = try await graphGit(["config", "user.email", "test@example.invalid"], in: root)
+
+    let original = "alt Grüße mit space.txt"
+    let target = "neu\tGrüße\nmit Zeile.txt"
+    try Data("inhalt\n".utf8).write(to: root.appendingPathComponent(original))
+    _ = try await graphGit(["--literal-pathspecs", "add", "--", original], in: root)
+    _ = try await graphGit(["commit", "-q", "-m", "root"], in: root)
+    _ = try await graphGit(["mv", "--", original, target], in: root)
+    _ = try await graphGit(["commit", "-q", "-m", "rename"], in: root)
+
+    let result = try await graphGit(GitGraph.arguments, in: root)
+    let commits = GitGraph.parse(result.stdoutData)
+    guard let head = commits.first, let file = head.files.first(where: { $0.status == "R" }) else {
+        Issue.record("Realer Rename fehlt im Graph")
+        return
+    }
+    #expect(file.actionPath == target)
+    #expect(file.originalPath == original)
+    #expect(file.additions == 0)
+    #expect(file.deletions == 0)
+
+    let request = GitDiffRequest(repositoryPath: root.path, source: .commit(
+        hash: head.hash,
+        parent: .commit(hash: head.parents[0], number: 1, total: head.parents.count),
+        path: try #require(file.actionPath)
+    ))
+    let diff = try await graphGit(request.arguments, in: root)
+    #expect(GitDiffParser.parse(diff.stdoutData).limitation == nil)
+}
+
+private enum GraphTestFailure: Error {
+    case outcome(GitExecutionOutcome)
+    case exit(Int32, String)
+}
+
+private func graphGit(_ arguments: [String], in root: URL) async throws -> GitResult {
+    let outcome = await withCheckedContinuation { continuation in
+        GitRunner.runDetailed(arguments, in: root) { continuation.resume(returning: $0) }
+    }
+    guard case .completed(let result) = outcome else { throw GraphTestFailure.outcome(outcome) }
+    guard result.exitCode == 0 else {
+        throw GraphTestFailure.exit(result.exitCode, result.stderrForDisplay)
+    }
+    return result
 }

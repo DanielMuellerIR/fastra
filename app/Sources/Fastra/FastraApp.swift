@@ -1,5 +1,30 @@
 import SwiftUI
 import AppKit
+import Darwin
+
+enum FastraProcessGroupLauncher {
+    static let flag = "--fastra-process-group-launcher"
+
+    /// Derselbe signierte Fastra-Binary dient als winziger nativer Launcher.
+    /// Er gründet die Prozessgruppe vor `exec`, also ohne das unvermeidbare
+    /// post-spawn/EACCES-Fenster von `Process` + `setpgid` im Elternprozess.
+    static func runIfRequested() {
+        let arguments = CommandLine.arguments
+        guard arguments.count >= 3, arguments[1] == flag else { return }
+        guard Darwin.setpgid(0, 0) == 0 else { _exit(126) }
+        let executable = arguments[2]
+        let forwarded = [executable] + Array(arguments.dropFirst(3))
+        var pointers = forwarded.map { strdup($0) }
+        pointers.append(nil)
+        _ = executable.withCString { path in
+            pointers.withUnsafeMutableBufferPointer { buffer in
+                execv(path, buffer.baseAddress!)
+            }
+        }
+        pointers.compactMap { $0 }.forEach { free($0) }
+        _exit(127)
+    }
+}
 
 @main
 struct FastraApp: App {
@@ -7,7 +32,7 @@ struct FastraApp: App {
     // Selbsttest-Läufe bekommen eine isolierte, frisch geleerte
     // UserDefaults-Suite (immer „erster Start" → Demo-Tab vorhanden,
     // echtes Erststart-Flag bleibt unangetastet). Normalbetrieb: .standard.
-    @StateObject private var workspace = Workspace(defaults: SelfTest.workspaceDefaults())
+    @StateObject private var workspace: Workspace
     // Zeilenumbruch am Fensterrand — app-weite, persistente Einstellung,
     // geteilt mit EditorView über denselben AppStorage-Schlüssel. Default AN.
     @AppStorage("editor.wrapLines") private var wrapLines = true
@@ -20,6 +45,16 @@ struct FastraApp: App {
     @AppStorage(DocumentZoom.defaultsKey) private var documentZoomLevel = 0
     @AppStorage("markdown.integratedPreview") private var showMarkdownPreview = true
     @AppStorage("editor.sidebarVisible") private var showSidebar = true
+
+    init() {
+        FastraProcessGroupLauncher.runIfRequested()
+        // Shot-Fixtures müssen vor der ersten EditorView stehen; ein Setzen
+        // erst in `runIfRequested` käme nach dem SwiftUI-Fensteraufbau zu spät.
+        SelfTest.prepareLaunchEnvironment()
+        _workspace = StateObject(wrappedValue: Workspace(
+            defaults: SelfTest.workspaceDefaults()
+        ))
+    }
 
     var body: some Scene {
         // Das Startfenster bleibt eine einzelne `Window`-Scene. So kann SwiftUI
@@ -127,6 +162,13 @@ struct FastraApp: App {
                     DocumentWindowController.workspaceForOpening().openFolderAsProject()
                 }
                     .keyboardShortcut("o", modifiers: [.command, .shift])
+                Button("Terminal im aktuellen Ordner …") {
+                    commandWorkspace.openTerminal()
+                }
+                .disabled(commandWorkspace.terminalDirectory == nil)
+                .help(commandWorkspace.terminalDirectory == nil
+                      ? commandWorkspace.terminalUnavailableReason
+                      : L10n.string("Öffnet Terminal.app nativ im aktuellen Projektordner; ohne Projekt im Ordner der aktiven Datei."))
                 // Zuletzt benutzte Dateien (K2). Eigene View mit
                 // @ObservedObject, damit das Untermenü auf Änderungen der
                 // recentFiles-Liste reagiert.

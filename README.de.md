@@ -80,19 +80,40 @@ nicht der Ersatz für einen vollwertigen Git-Client.
 - Die Ansicht **Änderungen** trennt bereitgestellte von noch offenen Dateien.
   Einzelne Dateien lassen sich bereitstellen, aus der Bereitstellung nehmen oder
   nach Rückfrage verwerfen; ihr Diff öffnet sich im Editor. Darüber stehen
-  Commit-Nachricht und Commit-Schaltfläche.
+  Commit-Nachricht und Commit-Schaltfläche. Bei Konflikten aus Merge, Rebase,
+  Cherry-pick oder Revert navigiert eine kompakte Leiste im normalen Editor
+  durch die Konfliktblöcke, übernimmt obere, untere oder beide Seiten mit
+  nativem Undo und markiert nur den verifizierten, gespeicherten Dateistand als
+  gelöst. Binäre, von Git per Dateiattribut als binär klassifizierte oder nur
+  abschnittsweise geladene Dateien erhalten eine ehrliche Grenze statt einer
+  ungeeigneten Textauflösung.
 - Die Ansicht **Graph** zeichnet Branches und Merges als nativen mehrspurigen
   Verlauf mit Branch- und Tag-Markierungen. Commits lassen sich aufklappen;
   ein Doppelklick auf Commit oder Datei öffnet den passenden Diff-Tab.
+  Text-Patches können als schreibgeschützter Side-by-side-Diff mit ausgerichteten
+  Zeilen, Intra-Zeilen-Hervorhebung, Faltungen, Übersichtsleiste und
+  Tastaturnavigation zwischen Änderungsblöcken erscheinen. Binäre und kombinierte
+  Patches bleiben über klare Metadaten beziehungsweise den auswählbaren
+  Unified-Fallback zugänglich.
 - In der Projekt-Seitenleiste stehen aktueller Branch, Ahead/Behind-Stand und
-  Dateistatus. Lokale Branches wechseln, den letzten Commit ergänzen, Fetch,
-  Pull (auch nur Fast-Forward), Push und die Suche nach Commits, die Text
-  eingeführt oder entfernt haben, bleiben direkt erreichbar.
+  Dateistatus. Fetch kann manuell oder bei aktiver App zeitgesteuert laufen;
+  Alter und Fehler bleiben sichtbar. Pull verwendet immer eine gewählte Strategie
+  (Rebase, Merge oder nur Fast-Forward), prüft das Repository unmittelbar vor
+  dem Start erneut und versteckt weder automatischen Stash noch Push.
+- Kuratierte Aktionen decken neuen Branch, Stash/Pop, Cherry-pick, Revert sowie
+  Fortsetzen und Abbrechen eines laufenden Git-Vorgangs ab. Destruktive oder
+  verlaufsändernde Wege besitzen eine frische Vorprüfung und Bestätigung. Force
+  Push ist ausschließlich als exakte **Force-with-Lease**-Aktion verfügbar.
+  Die Git-Identität lässt sich repository-lokal oder nach gesonderter Bestätigung
+  global konfigurieren.
+- **Im Terminal öffnen** übergibt den Projektordner an Terminal.app, ohne in
+  Fastra einen Shell-Befehl zu konstruieren oder auszuführen.
 
 Die Git-Funktionen sind eine schlanke, asynchrone Oberfläche für das installierte
 `git`-Kommando. Fehlt Git, bleiben die zugehörigen Bedienelemente unsichtbar;
 bei Fehlern zeigt Fastra die tatsächliche Git-Meldung statt einer unklaren
-Ersatzmeldung.
+Ersatzmeldung. Repository-Vorgänge werden über Fastra-Fenster hinweg koordiniert,
+damit kollidierende Befehle nicht übereinanderlaufen.
 
 ## Markdown bleibt lokal
 

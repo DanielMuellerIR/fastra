@@ -77,18 +77,37 @@ replacement for a full Git client.
 
 - The **Changes** view separates staged and unstaged files. Stage, unstage or
   discard individual files, inspect their diff, write a commit message and
-  commit from the sidebar.
+  commit from the sidebar. During merge, rebase, cherry-pick and revert
+  conflicts, a compact bar in the normal editor navigates conflict blocks,
+  accepts either or both sides with native Undo, and marks only the verified,
+  saved file version as resolved. Binary files, including text-decodable files
+  that Git classifies as binary through attributes, and partially loaded files
+  get an honest limitation instead of a text-only resolver.
 - The **Graph** view renders branches and merges as a native multi-lane history,
   with branch and tag labels. Expand a commit to see its files; double-click a
-  commit or file to open its diff in an editor tab.
+  commit or file to open its diff in an editor tab. Text patches can use a
+  read-only side-by-side view with aligned lines, intraline emphasis, folds,
+  an overview ruler and keyboard navigation between hunks; binary and combined
+  patches remain available through explicit metadata or the selectable unified
+  fallback.
 - The current branch, ahead/behind state and file status are visible in the
-  project sidebar. Choose a local branch, amend the last commit, fetch, pull
-  (including fast-forward-only), push, or search history for the commit that
-  introduced or removed text.
+  project sidebar. Fetch can be manual or scheduled while Fastra is active;
+  its age and errors stay visible. Pull always uses a selected strategy
+  (rebase, merge or fast-forward-only), checks the repository again immediately
+  before running, and never hides an automatic stash or push.
+- Curated actions cover creating a branch, stash/pop, cherry-pick, revert and
+  continuing or aborting an active Git operation. Destructive or history-
+  changing paths use a fresh preflight and confirmation. Force push is exposed
+  only as an exact **force-with-lease** operation. Git identity can be configured
+  locally for the repository or, after a separate confirmation, globally.
+- **Open in Terminal** hands the project directory to Terminal.app without
+  constructing or running a shell command inside Fastra.
 
 Git support is a thin, asynchronous front end to the installed `git` command.
 If Git is unavailable, these controls stay out of the way; when Git reports an
-error, Fastra shows its actual message rather than hiding it.
+error, Fastra shows its actual message rather than hiding it. Repository
+operations are coordinated across Fastra windows so conflicting commands do
+not run over one another.
 
 ## Markdown that stays local
 

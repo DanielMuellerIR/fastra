@@ -7,17 +7,29 @@ import Foundation
 import Testing
 @testable import Fastra
 
+private func changesPorcelain(_ records: String...) -> Data {
+    var result = Data()
+    for record in records {
+        result.append(Data(record.utf8))
+        result.append(0)
+    }
+    return result
+}
+
+private func tracked(_ xy: String, _ path: String) -> String {
+    "1 \(xy) N... 100644 100644 100644 aaaaaaa bbbbbbb \(path)"
+}
+
 @Test("Porcelain XY: staged/unstaged korrekt getrennt")
 func gitChanges_splitsStagedUnstaged() {
-    // ## Kopf + je eine Datei pro Kombination.
-    let out = """
-    ## main...origin/main
-     M nur_working.txt
-    M  nur_index.txt
-    MM beides.txt
-    A  neu_staged.txt
-    ?? untracked.txt
-    """
+    let out = changesPorcelain(
+        "# branch.head main",
+        tracked(".M", "nur_working.txt"),
+        tracked("M.", "nur_index.txt"),
+        tracked("MM", "beides.txt"),
+        tracked("A.", "neu_staged.txt"),
+        "? untracked.txt"
+    )
     let s = GitStatusParser.parse(out)
 
     func change(_ path: String) -> GitChange? { s.changes.first { $0.path == path } }
@@ -40,13 +52,10 @@ func gitChanges_splitsStagedUnstaged() {
 
 @Test("stagedChanges/unstagedChanges-Filter")
 func gitChanges_sectionFilters() {
-    let out = """
-    ## main
-    M  a.txt
-     M b.txt
-    MM c.txt
-    ?? d.txt
-    """
+    let out = changesPorcelain(tracked("M.", "a.txt"),
+                               tracked(".M", "b.txt"),
+                               tracked("MM", "c.txt"),
+                               "? d.txt")
     let s = GitStatusParser.parse(out)
     // Staged: a (M ) und c (MM).
     #expect(Set(s.stagedChanges.map(\.path)) == ["a.txt", "c.txt"])
@@ -56,7 +65,9 @@ func gitChanges_sectionFilters() {
 
 @Test("Merge-Konflikt (UU) erscheint als ungestagete Konflikt-Änderung")
 func gitChanges_conflict() {
-    let s = GitStatusParser.parse("## main\nUU konflikt.txt")
+    let s = GitStatusParser.parse(changesPorcelain(
+        "u UU N... 100644 100644 100644 100644 aaaaaaa bbbbbbb ccccccc konflikt.txt"
+    ))
     let c = s.changes.first { $0.path == "konflikt.txt" }
     #expect(c?.unstaged == .conflicted)
     #expect(c?.staged == nil)
@@ -64,7 +75,9 @@ func gitChanges_conflict() {
 
 @Test("name/directory einer verschachtelten Änderung")
 func gitChanges_nameAndDirectory() {
-    let s = GitStatusParser.parse("## main\n M app/Sources/Foo.swift")
+    let s = GitStatusParser.parse(changesPorcelain(
+        tracked(".M", "app/Sources/Foo.swift")
+    ))
     let c = s.changes.first
     #expect(c?.name == "Foo.swift")
     #expect(c?.directory == "app/Sources")

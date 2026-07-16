@@ -27,6 +27,48 @@ struct SettingsView: View {
     @AppStorage(EditorFonts.defaultsKey) private var editorFontName = EditorFonts.systemMonospacedName
     @AppStorage("markdown.integratedPreview") private var showMarkdownPreview = true
     @AppStorage(PreviewFonts.defaultsKey) private var previewFontName = PreviewFonts.systemName
+    @AppStorage(GitPreferencesStore.Keys.decision)
+    private var gitFetchDecision = GitAutomaticFetchDecision.ask.rawValue
+    @AppStorage(GitPreferencesStore.Keys.interval)
+    private var gitFetchInterval = GitPreferences.defaultFetchInterval
+    @AppStorage(GitPreferencesStore.Keys.fetchOnActivation)
+    private var gitFetchOnActivation = true
+    @AppStorage(GitPreferencesStore.Keys.remoteScope)
+    private var gitRemoteScope = GitRemoteScope.relevant.rawValue
+    @AppStorage(GitPreferencesStore.Keys.prune) private var gitFetchPrune = false
+    @AppStorage(GitPreferencesStore.Keys.pullStrategy)
+    private var gitPullStrategy = GitPullStrategy.unselected.rawValue
+
+    init() {
+        // AppStorage kennt die typisierte Migration/Intervallbegrenzung nicht.
+        // Die geladenen Werte dienen deshalb als Initialwerte, solange der
+        // jeweilige neue Schlüssel noch nicht existiert.
+        let preferences = GitPreferencesStore().load()
+        _gitFetchDecision = AppStorage(
+            wrappedValue: preferences.automaticFetchDecision.rawValue,
+            GitPreferencesStore.Keys.decision
+        )
+        _gitFetchInterval = AppStorage(
+            wrappedValue: preferences.fetchIntervalSeconds,
+            GitPreferencesStore.Keys.interval
+        )
+        _gitFetchOnActivation = AppStorage(
+            wrappedValue: preferences.fetchOnActivation,
+            GitPreferencesStore.Keys.fetchOnActivation
+        )
+        _gitRemoteScope = AppStorage(
+            wrappedValue: preferences.remoteScope.rawValue,
+            GitPreferencesStore.Keys.remoteScope
+        )
+        _gitFetchPrune = AppStorage(
+            wrappedValue: preferences.prune,
+            GitPreferencesStore.Keys.prune
+        )
+        _gitPullStrategy = AppStorage(
+            wrappedValue: preferences.pullStrategy.rawValue,
+            GitPreferencesStore.Keys.pullStrategy
+        )
+    }
 
     var body: some View {
         Form {
@@ -77,6 +119,45 @@ struct SettingsView: View {
                 Text("Die Vorschau übernimmt die Dokument-Schriftgröße. Markierter Text wird als Klartext und formatiertes HTML kopiert.")
                     .fastraFont(.small).foregroundColor(.secondary)
             }
+
+            Section("Git") {
+                Picker("Automatischer Fetch", selection: $gitFetchDecision) {
+                    Text("Nachfragen").tag(GitAutomaticFetchDecision.ask.rawValue)
+                    Text("Automatisch").tag(GitAutomaticFetchDecision.automatic.rawValue)
+                    Text("Deaktiviert").tag(GitAutomaticFetchDecision.disabled.rawValue)
+                }
+                .accessibilityHint("Legt fest, ob Fastra Remote-Änderungen im Hintergrund abruft.")
+                Stepper(
+                    L10n.format("Fetch-Intervall: %ld Sekunden", gitFetchInterval),
+                    value: $gitFetchInterval,
+                    in: GitPreferences.fetchIntervalRange,
+                    step: 60
+                )
+                .disabled(gitFetchDecision != GitAutomaticFetchDecision.automatic.rawValue)
+                Toggle("Bei App-Aktivierung abrufen", isOn: $gitFetchOnActivation)
+                    .disabled(gitFetchDecision != GitAutomaticFetchDecision.automatic.rawValue)
+                Picker("Remotes abrufen", selection: $gitRemoteScope) {
+                    Text("Nur relevanten Remote").tag(GitRemoteScope.relevant.rawValue)
+                    Text("Alle Remotes").tag(GitRemoteScope.all.rawValue)
+                }
+                Toggle("Gelöschte Remote-Branches bereinigen (--prune)",
+                       isOn: $gitFetchPrune)
+                Picker("Pull-Strategie", selection: $gitPullStrategy) {
+                    Text("Beim ersten Pull fragen").tag(GitPullStrategy.unselected.rawValue)
+                    Text("Rebase (empfohlen)").tag(GitPullStrategy.rebase.rawValue)
+                    Text("Merge").tag(GitPullStrategy.merge.rawValue)
+                    Text("Nur Fast-Forward").tag(GitPullStrategy.ffOnly.rawValue)
+                }
+                Button("Erstfrage zu automatischem Fetch zurücksetzen") {
+                    gitFetchDecision = GitAutomaticFetchDecision.ask.rawValue
+                    GitPreferencesStore().clearAutomaticFetchPromptDeferral()
+                    gitPreferencesChanged()
+                }
+                Text("Diese Einstellungen steuern nur Fastra. Sie ändern weder .git/config noch deine globale Git-Konfiguration.")
+                    .fastraFont(.small)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .formStyle(.grouped)
         .background(SettingsWindowConfiguration(
@@ -89,5 +170,19 @@ struct SettingsView: View {
         .onChange(of: appearanceRaw) {
             AppearanceSetting.current().apply()
         }
+        .onChange(of: gitFetchDecision) { gitPreferencesChanged() }
+        .onChange(of: gitFetchInterval) {
+            gitFetchInterval = GitPreferences.clampedFetchInterval(gitFetchInterval)
+            gitPreferencesChanged()
+        }
+        .onChange(of: gitFetchOnActivation) { gitPreferencesChanged() }
+        .onChange(of: gitRemoteScope) { gitPreferencesChanged() }
+        .onChange(of: gitFetchPrune) { gitPreferencesChanged() }
+        .onChange(of: gitPullStrategy) { gitPreferencesChanged() }
+    }
+
+    private func gitPreferencesChanged() {
+        NotificationCenter.default.post(name: .fastraGitPreferencesChanged,
+                                        object: nil)
     }
 }
