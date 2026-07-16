@@ -52,8 +52,8 @@ private final class AdvancedFlag: @unchecked Sendable {
 }
 
 /// Reale Git-Prozesse mit einem ausschließlich testlokalen HOME. So kann der
-/// globale Identity-Pfad geprüft werden, ohne Daniels echte Git-Konfiguration
-/// zu lesen oder zu verändern.
+/// globale Identity-Pfad geprüft werden, ohne die echte Git-Konfiguration des
+/// Nutzers zu lesen oder zu verändern.
 private final class IsolatedHomeGitExecutor: GitCommandExecuting {
     let home: URL
 
