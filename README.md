@@ -182,3 +182,8 @@ Details: [app/README.md](app/README.md) · [CLAUDE.md](CLAUDE.md) (build, tests,
 ## License
 
 [MIT](LICENSE), © 2026 Daniel Müller
+
+Fastra bundles and links third-party software (ripgrep, PCRE2, the CodeEdit and
+tree-sitter components, cmark-gfm, and the Markdown-preview assets). Their
+licenses and copyright notices are collected in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

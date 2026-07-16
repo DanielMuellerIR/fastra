@@ -191,3 +191,8 @@ Details: [app/README.md](app/README.md) · [CLAUDE.md](CLAUDE.md) (Build, Tests,
 ## Lizenz
 
 [MIT](LICENSE), © 2026 Daniel Müller
+
+Fastra bündelt und linkt Drittsoftware (ripgrep, PCRE2, die CodeEdit- und
+tree-sitter-Komponenten, cmark-gfm sowie die Markdown-Vorschau-Assets). Deren
+Lizenzen und Copyright-Vermerke sind in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) gesammelt.
