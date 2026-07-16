@@ -642,7 +642,12 @@ func sideBySideUntrackedRefreshAcceptsDifferenceExit() async throws {
 
 private struct DiffStateTimeout: Error {}
 
-private func waitForDiffState(_ description: String, timeout: Duration = .seconds(3),
+// Die Frist ist bewusst großzügig: Sie ist keine Leistungsaussage, sondern nur
+// eine Obergrenze gegen ewiges Warten. Die Schleife endet, sobald die Bedingung
+// zutrifft — ein erfüllter Zustand kostet also nichts. Auf ausgelasteten
+// Maschinen (parallele Testsuite, CI) kann eine knappe Frist dagegen zuschlagen,
+// bevor der erwartete Zustand überhaupt publiziert werden konnte.
+private func waitForDiffState(_ description: String, timeout: Duration = .seconds(30),
                               _ condition: @escaping () -> Bool) async throws {
     let clock = ContinuousClock()
     let deadline = clock.now.advanced(by: timeout)

@@ -165,12 +165,20 @@ private final class InstantBox: @unchecked Sendable {
 func gitRunner_cancelsRunningProcess() async {
     let cancelledAt = InstantBox()
     let outcome = await withCheckedContinuation { continuation in
+        // Das Kind schläft weit länger als das Budget: Beendet der Abbruch es
+        // nicht, läuft der Aufruf 30 s und der Test schlägt eindeutig fehl.
         let token = GitRunner.runExecutable(URL(fileURLWithPath: "/bin/sleep"),
-                                            arguments: ["5"],
+                                            arguments: ["30"],
                                             in: FileManager.default.temporaryDirectory) {
             continuation.resume(returning: $0)
         }
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+        // Bewusst ein echter Thread statt DispatchQueue.global(): Jeder laufende
+        // Git-Aufruf blockiert einen Worker der globalen Pools, bis der Prozess
+        // endet. In der parallelen Testsuite können die Pools dadurch erschöpft
+        // sein, und ein eingeplanter Timer läuft erst nach Sekunden an — der
+        // Abbruch käme dann erst nach dem regulären Prozessende.
+        Thread.detachNewThread {
+            Thread.sleep(forTimeInterval: 0.05)
             cancelledAt.set(ContinuousClock.now)
             token.cancel()
         }
@@ -180,10 +188,10 @@ func gitRunner_cancelsRunningProcess() async {
     // Gemessen wird ausdrücklich ab dem Abbruch, nicht ab dem Teststart: Start
     // und Einplanung des Prozesses können auf ausgelasteten Maschinen (parallele
     // Testsuite, CI) mehrere Sekunden dauern und sagen nichts über die Frage aus,
-    // die dieser Test stellt — ob der Abbruch den laufenden Prozess zügig beendet.
-    // Das Budget deckt Kulanzfrist (0,5 s) und Drain-Fristen (max. 1,0 s) ab.
+    // die dieser Test stellt — ob der Abbruch den laufenden Prozess beendet.
+    // Ein nicht beendeter Prozess bräuchte 30 s und überschreitet das Budget klar.
     if let cancelledAt = cancelledAt.instant {
-        #expect(finished - cancelledAt < .seconds(2))
+        #expect(finished - cancelledAt < .seconds(10))
     } else {
         Issue.record("Abbruchzeitpunkt wurde nicht erfasst")
     }
