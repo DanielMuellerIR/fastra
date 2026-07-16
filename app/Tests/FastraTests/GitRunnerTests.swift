@@ -151,9 +151,19 @@ func gitRunner_reportsLaunchFailure() async {
     #expect(!message.isEmpty)
 }
 
+/// Thread-sicherer Behälter für den Zeitpunkt des Abbruchs. Der Abbruch läuft
+/// auf einer anderen Queue als die Auswertung, deshalb reicht eine einfache
+/// Variable hier nicht.
+private final class InstantBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: ContinuousClock.Instant?
+    func set(_ instant: ContinuousClock.Instant) { lock.lock(); stored = instant; lock.unlock() }
+    var instant: ContinuousClock.Instant? { lock.lock(); defer { lock.unlock() }; return stored }
+}
+
 @Test("Abbruch-Handle beendet einen laufenden Prozess")
 func gitRunner_cancelsRunningProcess() async {
-    let started = ContinuousClock.now
+    let cancelledAt = InstantBox()
     let outcome = await withCheckedContinuation { continuation in
         let token = GitRunner.runExecutable(URL(fileURLWithPath: "/bin/sleep"),
                                             arguments: ["5"],
@@ -161,11 +171,22 @@ func gitRunner_cancelsRunningProcess() async {
             continuation.resume(returning: $0)
         }
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+            cancelledAt.set(ContinuousClock.now)
             token.cancel()
         }
     }
+    let finished = ContinuousClock.now
     #expect(outcome == .cancelled)
-    #expect(ContinuousClock.now - started < .seconds(2))
+    // Gemessen wird ausdrücklich ab dem Abbruch, nicht ab dem Teststart: Start
+    // und Einplanung des Prozesses können auf ausgelasteten Maschinen (parallele
+    // Testsuite, CI) mehrere Sekunden dauern und sagen nichts über die Frage aus,
+    // die dieser Test stellt — ob der Abbruch den laufenden Prozess zügig beendet.
+    // Das Budget deckt Kulanzfrist (0,5 s) und Drain-Fristen (max. 1,0 s) ab.
+    if let cancelledAt = cancelledAt.instant {
+        #expect(finished - cancelledAt < .seconds(2))
+    } else {
+        Issue.record("Abbruchzeitpunkt wurde nicht erfasst")
+    }
 }
 
 @Test("Abbruch unmittelbar vor dem Prozessstart bleibt ein Abbruch")
