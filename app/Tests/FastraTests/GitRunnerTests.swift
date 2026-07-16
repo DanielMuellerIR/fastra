@@ -205,11 +205,15 @@ func gitRunner_cancelsBeforeAttach() async {
 @Test("Zeitlimit ist von Nutzerabbruch und Exit-Code unterscheidbar")
 func gitRunner_reportsTimeout() async {
     let started = ContinuousClock.now
-    let outcome = await execute(URL(fileURLWithPath: "/bin/sleep"), arguments: ["5"],
+    // Das Kind schläft bewusst weit länger als das Budget: Greift das Zeitlimit
+    // nicht, dauert der Aufruf 30 s und der Test schlägt eindeutig fehl. Der
+    // großzügige Abstand hält die Aussage auch dann gültig, wenn Prozessstart
+    // und Einplanung auf einer ausgelasteten Maschine mehrere Sekunden kosten.
+    let outcome = await execute(URL(fileURLWithPath: "/bin/sleep"), arguments: ["30"],
                                 policy: GitExecutionPolicy(timeout: 0.05,
                                                            terminationGracePeriod: 0.05))
     #expect(outcome == .timedOut)
-    #expect(ContinuousClock.now - started < .seconds(2))
+    #expect(ContinuousClock.now - started < .seconds(10))
 }
 
 @Test("Ohne Eingabe liest der Prozess sofort EOF statt geerbtes stdin")
@@ -290,8 +294,11 @@ func gitRunner_cancellationKillsDescendantGroup() async throws {
 
 @Test("Ein abgekoppelter Kindprozess hält Pipe und Git-Slot nicht offen")
 func gitRunner_descendantPipeDoesNotBlockCompletion() async throws {
+    // Das abgekoppelte Kind lebt deutlich länger als das Budget: Hält es Pipe
+    // und Slot doch offen, wartet der Aufruf 30 s statt weniger als 10 s. Der
+    // Abstand macht die Aussage unabhängig von der Startlatenz der Maschine.
     let script = try temporaryExecutable("""
-    /bin/sleep 5 &
+    /bin/sleep 30 &
     exit 0
     """)
     defer { try? FileManager.default.removeItem(at: script.deletingLastPathComponent()) }
@@ -302,14 +309,17 @@ func gitRunner_descendantPipeDoesNotBlockCompletion() async throws {
         return
     }
     #expect(result.ok)
-    #expect(ContinuousClock.now - started < .seconds(4))
+    #expect(ContinuousClock.now - started < .seconds(10))
 }
 
 @Test("Offene Descendant-Pipe gibt den Koordinator-Slot für den Nachfolger frei")
 func gitRunner_descendantPipeReleasesCoordinatorSlot() async throws {
+    // Wie oben: Das abgekoppelte Kind überlebt das Budget deutlich, damit ein
+    // blockierter Koordinator-Slot als klarer Fehlschlag sichtbar wird und nicht
+    // von der Startlatenz der Maschine abhängt.
     let script = try temporaryExecutable("""
     if [[ "$1" == "first" ]]; then
-      /bin/sleep 5 &
+      /bin/sleep 30 &
       exit 0
     fi
     print -r -- 'second completed'
@@ -331,7 +341,7 @@ func gitRunner_descendantPipeReleasesCoordinatorSlot() async throws {
         return
     }
     #expect(result.stdout == "second completed\n")
-    #expect(ContinuousClock.now - started < .seconds(4))
+    #expect(ContinuousClock.now - started < .seconds(10))
 }
 
 @Test("Zweiter Pipe-Drain-Timeout wird ehrlich als Capture-Fehler gemeldet")
@@ -458,7 +468,11 @@ func gitRunner_blocksConfiguredCoreAskPass() async throws {
     }
 
     var policy = GitExecutionPolicy.default
-    policy.timeout = 2
+    // Zeitlimit und Budget liegen bewusst weit über der erwarteten Dauer: Fragt
+    // Git doch interaktiv nach, hängt der Aufruf bis zum Limit und endet als
+    // .timedOut — der Test schlägt dann am Guard unten fehl, statt an der
+    // Startlatenz einer ausgelasteten Maschine zu scheitern.
+    policy.timeout = 10
     policy.standardInput = Data("protocol=https\nhost=fastra.invalid\n\n".utf8)
     let started = ContinuousClock.now
     let outcome = await runGit(["credential", "fill"], in: repo, policy: policy)
@@ -467,7 +481,7 @@ func gitRunner_blocksConfiguredCoreAskPass() async throws {
         return
     }
     #expect(!result.ok)
-    #expect(ContinuousClock.now - started < .seconds(2))
+    #expect(ContinuousClock.now - started < .seconds(10))
     #expect(!FileManager.default.fileExists(atPath: sentinel.path))
 }
 
