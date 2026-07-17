@@ -20,6 +20,14 @@ Erledigte Arbeit und historische Entscheidungen stehen in
     nicht; `errors`/`plug_ins`/`member` aus den Farbvorgaben entfallen
     mangels Analyse bzw. Unterscheidbarkeit (siehe Slot-Mapping in
     `EditorView.swift`).
+  - **Fenster-Selbsttest-Nachholung (Stand 2026-07-17):** Die neuen
+    Selbsttests `highlight4d` und `xpath` sowie die fokusabhängigen Tests
+    (`cmdw`, `newwindow`, `multisearch`, `navmatch`) konnten am Abend nicht
+    mehr laufen (Bildschirm gesperrt bzw. aktiver Desktop entzog den
+    Fokus — bekannte Umgebungs-Falle, siehe docs/BUILD-AND-TEST.md). Auf
+    einer entsperrten, ruhigen UI-Sitzung `./selftest.sh` vollständig
+    ausführen; die fensterlosen Tests und alle Unit-Tests (1072) liefen
+    zum v1.25.0-Stand grün. Eintrag nach grünem Lauf entfernen.
 
 ## Offene Produktentscheidungen
 
