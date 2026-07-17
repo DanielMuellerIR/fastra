@@ -73,7 +73,8 @@ fi
 # patchen wir den Handler so, dass CMD+F durchgereicht wird (return event)
 # statt das Panel zu zeigen. Damit fängt CMD+F ausschließlich unser App-Monitor
 # ab und öffnet unsere eigene Suchmaske — deterministisch, unabhängig von der
-# Monitor-Reihenfolge. Siehe CLAUDE.md → QA-Strategie (Zombie-Find-Bar).
+# Monitor-Reihenfolge. Siehe ../docs/BUILD-AND-TEST.md → QA-Strategie
+# (Zombie-Find-Bar).
 CESE_LC="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/Controller/TextViewController+Lifecycle.swift"
 if grep -q 'self.findViewController?.showFindPanel()' "$CESE_LC" 2>/dev/null; then
   echo "→ Patche CodeEditSourceEditor (CMD+F → eigene Suchmaske, Zombie-Kill)"

@@ -181,8 +181,9 @@ cd app
 ./selftest.sh        # unit tests + in-app self-tests
 ```
 
-Details: [app/README.md](app/README.md) · [CLAUDE.md](CLAUDE.md) (build, tests, QA)
-· [AGENTS.md](AGENTS.md) (architecture & product principles) ·
+Details: [Build and test](docs/BUILD-AND-TEST.md) ·
+[dependency lessons](app/LESSONS-LEARNED.md) ·
+[AGENTS.md](AGENTS.md) (architecture & product principles) ·
 [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md)
 
 ## License

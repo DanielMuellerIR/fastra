@@ -1,8 +1,9 @@
-# Fastra — App-Package (SwiftPM)
+# Fastra — SwiftPM-Package
 
-Dies ist das SwiftPM-Package der App. Produktüberblick und Screenshots →
-[README im Repo-Root](../README.md). Build-, Test- und QA-Details →
-[CLAUDE.md](../CLAUDE.md). Build-Gotchas und Pattern-Bewertungen →
+Produktüberblick und Screenshots stehen im
+[README des Repositories](../README.md). Der vollständige Build-, Paketierungs-
+und Testweg steht in [docs/BUILD-AND-TEST.md](../docs/BUILD-AND-TEST.md);
+bekannte Fallen der Editor-Abhängigkeiten dokumentiert
 [LESSONS-LEARNED.md](LESSONS-LEARNED.md).
 
 ## Bauen und Starten
@@ -12,16 +13,18 @@ CommandLineTools-Umgebung nicht durch `swift build` — deshalb das Wrapper-Skri
 
 ```bash
 cd app
-./build.sh                       # debug-build
-./build.sh release               # release-build (Bundle in dist/)
-./selftest.sh                    # In-App-Selbsttests (holt die App kurz nach vorn)
+swift test
+./localization-audit.sh
+./build.sh
+./selftest.sh
 ```
 
-`build.sh` löst Dependencies über die **Xcode-Toolchain** auf und wendet eine
-Reihe lokaler, nicht-invasiver Patches auf `.build/checkouts/` an (Details:
-[CLAUDE.md](../CLAUDE.md) und LESSONS-LEARNED Sektion F). Die Patches werden bei
-jedem `swift package update` zurückgesetzt — dann einfach `./build.sh` erneut
-laufen lassen.
+`./build.sh release` erzeugt zusätzlich den Release-Build. `build.sh` löst die
+Abhängigkeiten über die Xcode-Toolchain auf, wendet die dokumentierten lokalen
+Patches auf `.build/checkouts/` an und verifiziert sie. Nach
+`swift package update` muss `build.sh` deshalb erneut laufen.
 
-> **In Xcode öffnen:** `open -a Xcode Package.swift`. Xcode bringt seine eigene
-> SourceKit-Toolchain mit, da werden die Patches nicht gebraucht.
+Zum Lesen und Navigieren lässt sich das Package mit
+`open -a Xcode Package.swift` in Xcode öffnen. Der unterstützte,
+reproduzierbare Buildweg bleibt `build.sh`, weil nur er die benötigten
+Checkout-Patches anwendet und prüft.

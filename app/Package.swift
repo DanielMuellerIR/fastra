@@ -12,7 +12,7 @@ let package = Package(
         .package(url: "https://github.com/CodeEditApp/CodeEditSourceEditor", from: "0.15.0"),
         .package(url: "https://github.com/CodeEditApp/CodeEditLanguages",   from: "0.1.20"),
         // Transitive Abhängigkeit von CodeEditSourceEditor — hier explizit
-        // deklariert, damit der Selbsttest `--selftest-jump` die echte
+        // deklariert, damit der Selbsttest `./selftest.sh jump` die echte
         // Editor-Selektion (`TextView.selectedRange()`) typsicher zurücklesen
         // kann. Version an den bereits resolveten Stand gepinnt (0.12.1), die
         // Auflösung bleibt dadurch ein No-op.

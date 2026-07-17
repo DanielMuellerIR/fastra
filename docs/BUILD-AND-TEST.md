@@ -1,7 +1,8 @@
-# CLAUDE.md — Fastra (Build · Test)
+# Fastra bauen und testen
 
-> Claude-/Build-spezifisch (wie baue, teste, betreibe ich dieses Projekt).
-> Projektfakten, Vision, Konventionen → [AGENTS.md](AGENTS.md).
+Diese Datei beschreibt den reproduzierbaren Build-, Paketierungs- und Testweg.
+Projektfakten, Produktinvarianten und Konventionen stehen in
+[AGENTS.md](../AGENTS.md).
 
 ## Build-Anleitung
 
@@ -143,7 +144,6 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   eine TeX-Formel, einen Swift-Code-Block und ein Mermaid-Diagramm. Der Test liest
   unabhängig das fertige WebKit-DOM: Bildbreite, MathML, SVG und Highlight-Spans
   müssen tatsächlich vorhanden sein.
-- **Test-Pflicht pro Phase:** Phase 1 keine (reines UI-Gerüst), Phase 2 Encoding+Line-Endings+Stats, Phase 3 Tokenizer+Capture-Groups+Find/Replace (Kernlogik), Phase 4 File-Search+Threshold-Logik, Phase 5 keine (reine Bridges zu getesteten OSS-Komponenten).
 - **Nicht getestet:** visuelles Rendering von Diff/Tokens/Pillen und
   OSS-Framework-Interna von CodeEditSourceEditor. Kritische
   App-weite Bridges werden dagegen über In-App-Selbsttests abgesichert.

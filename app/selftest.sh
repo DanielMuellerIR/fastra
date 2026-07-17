@@ -10,7 +10,7 @@
 #      ein positionales `--selftest-…`-Argument. AppKit interpretiert
 #      unbekannte positionale Argumente als „zu öffnende Datei", und
 #      SwiftUI erzeugt dann NIE das Hauptfenster (Root Cause des
-#      „kein Hauptfenster"-Bugs, siehe CLAUDE.md).
+#      „kein Hauptfenster"-Bugs, siehe ../docs/BUILD-AND-TEST.md).
 #   2. `-ApplePersistenceIgnoreState YES` verhindert den modalen
 #      „Fenster wiederherstellen?"-Dialog nach einem abgebrochenen Lauf.
 #   3. Bei gesperrtem Bildschirm sind Fenster-Tests nicht aussagekräftig —
@@ -56,7 +56,7 @@ if [[ ! -x "$APP_BIN" ]]; then
 fi
 
 # Gesperrter Bildschirm? Dann sind alle fensterbasierten Tests Umgebungs-
-# rauschen (siehe CLAUDE.md, Umgebungs-Falle 2). Nur `search` ist dann
+# rauschen (siehe ../docs/BUILD-AND-TEST.md, Umgebungs-Falle 2). Nur `search` ist dann
 # aussagekräftig (fensterlos).
 console_locked() {
     ioreg -n Root -d1 2>/dev/null | grep -q '"IOConsoleLocked" = Yes'

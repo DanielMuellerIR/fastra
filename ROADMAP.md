@@ -1,185 +1,21 @@
 # Fastra — Roadmap
 
-> Schichtenmodell: Roadmap lebt hier, nicht in [AGENTS.md](AGENTS.md).
+Hier stehen nur offene Produktarbeit und bewusst zurückgestellte Grenzen.
+Erledigte Arbeit und historische Entscheidungen stehen in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Jetzt
 
-Keine offenen Ausbauarbeiten.
+Keine offene Umsetzungsarbeit.
+
+## Offene Produktentscheidungen
+
+- **Monetarisierung:** Ältere Anforderungen nennen eine kostenlose
+  Testmöglichkeit als wichtig. Das aktuelle Modell beschreibt Fastra dagegen als
+  Donationware ohne Lizenz- oder Trial-Wall. Vor einer Monetarisierungsfunktion
+  muss dieser Widerspruch ausdrücklich entschieden werden.
 
 ## Später – nur auf ausdrückliche Anfrage
 
-- Cross-Platform-Portabilität (Windows/Linux). Weder Machbarkeit noch
+- **Cross-Platform-Portabilität (Windows/Linux):** Weder Machbarkeit noch
   Implementierung werden ohne ausdrücklichen Auftrag untersucht.
-
-## Erledigt
-
-### Sicherer Git-Ausbau v1.18.0
-
-- Robustes bytebasiertes Status-, Graph- und Diff-Fundament mit koordinierten
-  Repository-Vorgängen über mehrere Fastra-Fenster und Worktrees hinweg. ✓
-- Manuell oder zeitgesteuert ausgeführter Fetch mit sichtbarem Alter/Fehler und
-  Pull mit expliziter Strategie, Vorprüfung und unmittelbarer Revalidierung. ✓
-- Exakte HEAD-Markierung und begrenzter schreibgeschützter Side-by-side-Git-Diff
-  mit Hunk-Navigation, Faltungen und ehrlichen Binär-/Combined-Grenzen. ✓
-- Undo-fähige Konflikthilfe im normalen Editor, exaktes Markieren gespeicherter
-  Bytes als gelöst sowie kontrolliertes Fortsetzen/Abbrechen von Merge, Rebase,
-  Cherry-pick und Revert. ✓
-- Kuratierte Aktionen für Branch, Stash/Pop, Cherry-pick, Revert und
-  Force-with-Lease; repository-lokale beziehungsweise ausdrücklich bestätigte
-  globale Git-Identität und nativer Terminal.app-Aufruf. ✓
-- Architektur, Sicherheitsgrenzen, reproduzierbare Tests und die protokollierte
-  visuelle Abnahme stehen im
-  [Git-Ausbauplan](docs/GIT-EXPANSION-PLAN.md).
-
-### Funktionsumfang v1.0
-
-Was die App können muss, um v1.0 zu sein. Die Reihenfolge folgt der Roadmap, nicht der Wichtigkeit.
-
-- **A. Floating Search Dialog** — schwebender Such/Ersetzen-Dialog statt starrer Sidebar. Scope-Tabs (Datei / Geöffnet / Ordner / Projekt) als Segmented Control. Find- und Replace-Felder voll breit, Monospace, kein Wrap. Trefferbaum mit Zählern direkt im Dialog. **Such-Optionen** als schmale Toggle-Zeile unter dem Find-Feld: `RegEx` (Default aus — siehe Konzept B.5), `Groß-/Kleinschreibung`, `Ganzes Wort`, `Wrap-around`. Jeder Toggle mit Tooltip-Erklärung. Wenn `RegEx` aus ist, sind Token-Highlighting, Element-Picker und Vorlagen-Dropdown deaktiviert (nicht versteckt).
-- **B. Drag & Drop von Capture Groups** — Kernmechanik: Gruppen aus dem Find-Feld lassen sich per Drag & Drop ins Replace-Feld ziehen, dort als `$1`, `$2` … eingefügt. Auto-Erkennung von `(...)`; die Hybrid-Darstellung führt die Gruppen sichtbar. ✓
-- **C. Token-Highlighting im Find-Feld** — RegEx-Bestandteile werden als farbige Inline-Tokens dargestellt: Anker rötlich, Zeichenklassen bläulich, Quantifier ocker, Literale Standard. Parsing via `tree-sitter-regex`. ✓
-- **D. Diff & Preview** — seit v1.11.0 vollständiger Dokument-Diff in zwei
-  synchron ausgerichteten Panels (Vorher/Nachher, rot/grün, Zeilennummern),
-  einschließlich mehrzeiliger Ersetzungen und begrenzter Darstellung sehr
-  großer Diffs sowie kompakter Live-Zeilen am jeweiligen Treffer. ✓
-- **E. Performance & große Dateien** — Asynchrones Laden ohne UI-Block; seit
-  v1.10.0 öffnen Textdateien über 32 MiB in einer speicherbegrenzten,
-  schreibgeschützten 256-KiB-Abschnittsansicht. Folder-Suche läuft in
-  `Task.detached`; große Replace-Operationen behalten ihr Sicherheits-Gate.
-- **F. Footer (BBEdit-Style)** — Encoding · Line-Endings · Chars/Words/Lines. Statistiken asynchron berechnet, blockieren nie die UI; Placeholder `— / — / —` während Berechnung. Encoding-Erkennung via `NSString.stringEncoding(for:)`.
-- **G. Syntax-Highlighting** — via `CodeEditLanguages` (~40 Sprachen out-of-the-box, tree-sitter). Auswahl per Dateiendung, Plain-Text-Fallback.
-- **H. Markdown-Vorschau** — **hohe Produktpriorität**. Separates Fenster, read-only, GFM (Tabellen, Task-Listen, Code-Blöcke). Implementierung via `MarkdownUI`. Zusätzlich Integration von [`md-clip`](https://github.com/DanielMuellerIR/md-clip) (eigenes Tool): zwei Paste-Modi — *Plain Text* und *Formatiert → Markdown konvertiert*. md-clip ist bereits gelöst, übernehmen wir in Teilen.
-- **I. Hex-View für Binärdateien** — seit v1.10.0 native, read-only Hex+ASCII-
-  Ansicht mit Null-Byte-Erkennung und 4-KiB-Seiten; keine externe Runtime-
-  Abhängigkeit. ✓
-- **J. Platzhalter-Suche (`*`) ohne RegEx-Kenntnisse** — **In v1.0 gezogen (Produktentscheidung, 2026-06-14).** Der Kernanspruch des Produkts auf den Punkt: alltägliche Umstell-Aufgaben müssen **ohne jede RegEx-Kenntnis und ohne Nachlesen** lösbar sein. Auslösender Fall: nachgestellter Artikel in Titel-Listen — `ring, The` → `The ring`, gelöst durch `*, the` (suchen) / `the *` (ersetzen). Die kuratierte Vorlagen-Liste reicht dafür nicht — eine Vorlage setzt das Verständnis der Mechanik voraus.
-  - **Kein eigener Modus.** `*` wirkt **im bestehenden Zustand „RegEx aus"** (= Default). Bewusste Entscheidung gegen einen dritten Modus: ein Modus, den der Nutzer erst finden und umschalten muss, ist genau die Hürde, die das Feature beseitigen soll.
-  - **Ein-Sternchen-Fall** (`*, the` → `the *`) funktioniert wortlos — der 80-%-Fall.
-  - **Mehrere `*` → automatisch nummerierte Capture Groups.** Beim Verlassen des Suchfelds wird jedes `*` zur farbigen, nummerierten **Pille** (①②③) — dieselbe Token-Pillen-Sprache wie im RegEx-Modus. Im Ersetzen-Feld erscheinen genau diese Pillen als anklick- **und** ziehbare Bausteine (DnD + Klick). Pillen statt getipptem `*1`/`*2`: eine getippte Referenz wäre mehrdeutig (Referenz vs. literales `*2`), eine Pille nie. Bei einem `*` genügt eine namenlose Pille.
-  - **Live-Vorschau ist der eigentliche Lehrer:** erste Zeilen als Vorher→Nachher direkt unter den Feldern, während getippt wird. Greift in die Preview-Garantie (Produktprinzip 1).
-  - **Einzige echte Kollision — literales `*`:** „RegEx aus" war bisher rein wörtlich; `*` ist ein häufiges Zeichen (Markdown-Bullets, Multiplikation, `/* */`). Auflösung ohne neuen Modus/Syntax: die sichtbare Pille signalisiert „besonders", und ein **kontextueller Mini-Schalter „`*` wörtlich nehmen" erscheint nur, wenn das Muster ein `*` enthält**. Normalfall kostenlos, seltener Fall mit offensichtlichem Ausweg.
-  - **Verhaltens-Semantik (verbindlich geklärt, 2026-06-14):** (1) **`*` greift nur innerhalb einer Zeile** — jedes `*` → `(.+)`; die Option `dotMatchesLineSeparators` wird NICHT gesetzt, also matcht `.` kein `\n` (Default). Sonst würde `*` über Zeilen hinweg viel zu viel verschlucken. Per Test absichern (mehrzeiliger Puffer → kein Sprung über `\n`). (2) **Gierig** als Default (`.+`, nicht `.+?`): nimmt das *letzte* Vorkommen des nachgestellten Literal-Ankers — genau das will der Artikel-am-Ende-Fall (`Hello, There, The` → `*` = „Hello, There", nicht „Hello"). (3) **Der Literal-Teil nach dem `*` wird nie vom `*` gefangen** — er ist der Anker, `*` stoppt davor. (4) **Literal-Teil case-insensitiv** finden; gewünschte Schreibweise schreibt der Nutzer im Ersetzen-Feld selbst (`the *` vs. `The *`), er sieht sie in der Vorschau. (5) Mehrere `*` → mehrere gierige Gruppen, durch dazwischenliegende Literale getrennt; die Aufteilung ist inhärent mehrdeutig → die Live-Vorschau ist das Sicherheitsnetz.
-  - **Implementierungs-Reibung:** ändert den dokumentierten Plain-Text-Vertrag von `BufferSearch`/`ApplyEngine` (seit v0.5 wird `*` wörtlich via `escapedTemplate` escapt) inkl. Tests. „RegEx aus" wird vom rein-wörtlichen zum Platzhalter-Modus; rein-wörtlich rückt hinter den Mini-Schalter.
-  - **Wettbewerbs-Befund (BBEdit live geprüft, 2026-06-14):** BBEdit hat **keinen** Glob-/Platzhalter-Modus zwischen wörtlich und Grep — nur die `Use Grep`-Checkbox; deren Nicht-Grep ist voll wörtlich. Einstiegshilfen sind die [Pattern Playground](https://www.barebones.com/support/technotes/PatternPlaygrounds.html) (Live-Fenster, listet je Capture Group den tatsächlich gematchten Text) und ein Grep-Cheat-Sheet — beides setzt weiter Grep-Verständnis voraus, kein DnD, keine `*`-Auto-Nummerierung. Damit liegt das Platzhalter-Verhalten **oberhalb** von BBEdit und kollidiert mit keiner etablierten Erwartung; es verstärkt die in [AGENTS.md](AGENTS.md) dokumentierten Alleinstellungen. BBEdits Playground bestätigt die Live-Vorschau-Empfehlung.
-
----
-
-### Projekt- & Git-Ausbau (beschlossen 2026-07-11, nächste große Etappe)
-
-Fastra bekommt Projekt-Bewusstsein und Git-Sichtbarkeit — ohne zum VS-Code-Klon zu
-werden. Leitfrage für jedes Teilfeature: „Braucht man das täglich, und können wir es
-dauerhaft in guter Qualität warten?" — nicht „Hat VS Code das auch?".
-
-**Philosophie: Git liefert Logik und Daten, Fastra liefert Sichtbarkeit und Knöpfe.**
-Alle Git-Funktionen sind dünne Frontends über das installierte `git`-CLI (kein libgit2,
-kein Eigenbau). Der CLI-Weg erbt automatisch die Auth-Konfiguration des Nutzers
-(SSH-Keys, Keychain-Helper). Schwerpunkt **lesend + wenige Shortcuts für die häufigsten
-Aktionen**, keine breite Git-Unterstützung.
-
-**Etappe 1 — Projekte & Seitenleiste (umgesetzt in v1.4.0, 2026-07-12):**
-- **Willkommensbildschirm** beim Start / neuen Fenster ohne geöffnete Datei: Liste der
-  zuletzt benutzten Projekte, ein Klick lädt das Projekt. ✓
-- **Projekt = geöffneter Ordner mit `.git`** — wird automatisch gemerkt (damit bekommt
-  das offene „Projekt-Konzept" des Scope-Tabs seine Definition). Zusätzlich „Ordner
-  öffnen…" (⇧⌘O) für Ordner ohne Git. ✓
-- **Hierarchische Datei-Seitenleiste** (SwiftUI + `FileManager`, lazy pro Ebene) — die
-  einzige echte Eigenentwicklung dieser Etappe. ✓
-- **Feinarbeit in v1.9.0:** rekursive Live-Aktualisierung über FSEvents,
-  Kontextmenü für Umbenennen/Papierkorb/Neu und projektweise persistenter
-  Aufklapp-Zustand. ✓
-
-**Etappe 2 — Git-Sichtbarkeit + kuratierte Aktionen (umgesetzt in v1.5.0, 2026-07-12):**
-- **Status in der Seitenleiste:** geänderte/neue Dateien eingefärbt + Kürzel-Badge,
-  Branch mit Ahead/Behind (`git status --porcelain=v1 -b`), Ordner-Rollup-Punkt. ✓
-- **History als read-only-Tab:** `git log --graph --oneline --decorate`, Klick auf
-  Commit → `git show <hash>` in weiterem Tab. ✓
-- **Diff als read-only-Tab:** `git diff HEAD` gefärbt (added/removed/Hunk/Header). Die
-  Side-by-side-Ansicht des aktiven Dokuments ist seit v1.11.0 umgesetzt. ✓
-- **Kuratierte Aktionen** (Popup in der Branch-Zeile + „Git"-Menü in der Menüleiste):
-  Alles committen, Amend (--no-edit), Push, Pull (Fast-Forward / mit Merge), Fetch,
-  Pickaxe (`log -S`), Zum vorherigen Branch (`switch -`). ✓
-- **Dezente Hilfe-Texte** als Tooltip an jedem Menüpunkt. ✓
-- Erster Push mit automatischem `-u` erledigt (v1.5.1): fehlt der Upstream, macht
-  „Push" selbstständig `push -u origin HEAD`. ✓
-- **Feinarbeit abgeschlossen:** Stage/Unstage einzelner Dateien über die
-  „Änderungen"-Ansicht, lokale Branch-Auswahl aus einer Liste und nicht-modales
-  Erfolgs-Feedback für Netzwerk-Aktionen. ✓
-
-**UX-Regeln (verbindlich):**
-- **Discovery-Prinzip:** Wichtiges easy, schnell und schick; Fortgeschrittenes
-  angedeutet und mit wenig Erkundung gefunden — keine Feature-Friedhöfe, kein Geklicke.
-- **Git fehlt → Funktionen bleiben still weg.** Keine Dialoge, keine Installations-
-  Aufforderung, kein Gefrage. Wer git nicht installiert hat, braucht die Funktionen nicht.
-- **Nie den Main-Thread blockieren** (Push/Pull über langsames Netz) — async wie die
-  Folder-Suche.
-- **Fehler = echte git-Ausgabe als Text zeigen**, nicht wegabstrahieren. Ehrlich und billig.
-
-**Bewusst verworfen (statt dessen):**
-Merge-GUI (→ Konflikt-Marker sind editierbarer Text; Button „In FileMerge öffnen" via
-`opendiff` aus den Xcode-CLT), eingebettetes Terminal/SwiftTerm (→ Button „Im Terminal
-öffnen"), Minify HTML/JS/CSS (keine brauchbare native Lösung, niedrige Priorität).
-
-**Nachträglich umgesetzt (Produktentscheidung, 2026-07-12):** der zunächst verworfene History-Graph
-kam als nativer Seitenleisten-Modus „Graph" mit echten Multi-Lane-Verzweigungslinien
-(VS-Code-Stil) doch hinzu — der ASCII-`git log`-Tab bleibt zusätzlich bestehen (v1.7.0).
-Seit v1.13.0 hängen Autor und Betreff platzsparend zusammen; Commit-Details liegen
-im Tooltip, Commits sind aufklappbar und Datei-Doppelklicks öffnen ihren Diff.
-
-**Release-Gate:** Diese Etappen sind eine größere Änderung — **keine GitHub-Pushes,
-bis alles ordentlich getestet ist** (Produktentscheidung, 2026-07-11). Commits + internes Backup
-laufen normal weiter. (Der frühere technische ghosttext-Blocker ist seit v1.6.1,
-Commit `8656f56`, behoben + per Selbsttest `ghosttext` abgesichert; kein Bug mehr.)
-
----
-
-### Globale UI-Skalierung (umgesetzt in v1.8.0, 2026-07-12)
-
-- **Globale UI-Skalierung ⌘ +/− / ⌘0:** Schrift, native Controls und die
-  zentralen Leisten-/Feldhöhen skalieren über eine persistente Zoomstufe.
-  `Theme.swift` stellt semantische, per Environment skalierbare Schriftrollen
-  bereit; auch SourceEditor und AppKit-Such-/Trefferfelder ziehen live mit. ✓
-
----
-
-### Editor-Ausbau (umgesetzt in v1.10.0, 2026-07-12)
-
-- Native Hex+ASCII-Ansicht mit automatischer Binärerkennung. ✓
-- Rectangle Selection per ALT-Spalten-Drag; CodeEditTextView stellt inzwischen
-  `selectColumns` bereit, Fastra sichert die Mehrfachselektion per Selbsttest. ✓
-- Gutter-Dimmen über den Key-Window-Status, ohne Zugriff auf die interne
-  `backgroundColor` des Frameworks. ✓
-- Speicherbegrenztes, abschnittsweises Lesen großer Textdateien. ✓
-
-### Suche, Vorschau & Projekt-Scope (umgesetzt in v1.11.0, 2026-07-12)
-
-- Vollständiger Side-by-side-Dokument-Diff mit ausgerichteten Einfügungen,
-  Löschungen und unveränderten Kontextzeilen. ✓
-- Extrahieren-Dialog mit Trennzeichen, Ziel, Quoting, Dedup und optionaler
-  Anwendung des Ersetzungsmusters. ✓
-- Projekt-Scope mit pro Projekt persistenten Datei-Sets, Dateitypfilter und
-  projekt-relativen Glob-Ausschlüssen. Überlappende Wurzeln werden dedupliziert. ✓
-
-### Englische Lokalisierung (umgesetzt in v1.12.0, 2026-07-12)
-
-- Vollständige englische Oberfläche zusätzlich zum deutschen Quelltext:
-  SwiftUI, AppKit-Dialoge, Menüs, Tooltips, Statusmeldungen, Vorlagen,
-  Regex-Lernhilfen, Erststart-Demo und Finder-Metadaten folgen automatisch der
-  macOS-Sprachreihenfolge. ✓
-- Ein Quellstring-Audit, Unit-Tests und der gepackte In-App-Selbsttest
-  `localization` verhindern fehlende Schlüssel und Bundle-Drift. ✓
-
-### Ausbau v1.15 (erledigt 2026-07-13)
-
-- Vorlagen-Editor: eigene Patterns speichern, importieren und exportieren. ✓
-- Transformation per Beispiel leitet ein Platzhalter-Muster aus Vorher/Nachher ab. ✓
-- Live-Vorschau und kompakter Inline-Diff aktualisieren beim Tippen. ✓
-- Eigene dynamische Token-Farben für helles und dunkles Erscheinungsbild. ✓
-- Gebündeltes ripgrep für die Folder-Dateiermittlung, mit Semantik-Fallback;
-  reproduzierbare Messung unter [`docs/ripgrep-benchmark.md`](docs/ripgrep-benchmark.md). ✓
-- Hex-Ansicht standardmäßig schreibgeschützt, mit sichtbarer Byte-Vorschau,
-  doppelter Bestätigung und atomarem Edit-Modus. ✓
-- Getrennte persistente UI- und Dokument-Skalierung, Monospace-Editorfont und
-  proportionaler Markdown-Vorschau-Font. ✓
-- Integrierte Markdown-Vorschau rechts mit persistentem Splitter. ✓
-- XML-Erkennung für Finder-Dateien, Footer und Syntax-Fallback. ✓
-- JSON- und XML-Formatierung mit Auswahl, No-op, Fehlerpfad und Undo. ✓

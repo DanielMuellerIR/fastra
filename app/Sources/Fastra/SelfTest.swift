@@ -4,7 +4,9 @@
 // App-weites Event-Routing und die LIFO-Reihenfolge der CMD+F-Monitore
 // (Zombie-Find-Bar). Läuft im ECHTEN App-Prozess mit den ECHTEN Monitoren.
 //
-// Aufruf: `Fastra --selftest-findbar`. Der Test postet ein echtes CMD+F in
+// Aufruf: bevorzugt `./selftest.sh findbar`, direkt
+// `Fastra -selftest findbar -ApplePersistenceIgnoreState YES`. Der Test postet
+// ein echtes CMD+F in
 // die Event-Queue (läuft dadurch durch alle lokalen Monitore, genau wie ein
 // Tastendruck), und prüft danach, ob CodeEditSourceEditors eigenes
 // Find-Panel aufgetaucht ist. Gibt `SELFTEST findbar: PASS/FAIL` aus und
@@ -2476,7 +2478,7 @@ enum SelfTest {
         return view.subviews.contains { findPanelVisible(in: $0) }
     }
 
-    // MARK: - --selftest-search
+    // MARK: - Selbsttest search
 
     /// Treibt Workspace + SearchRunner END-TO-END in drei Teilprüfungen:
     ///
@@ -4081,7 +4083,7 @@ enum SelfTest {
         }
     }
 
-    // MARK: - --selftest-contrast
+    // MARK: - Selbsttest contrast
 
     /// Wächter gegen weiß-auf-weiß (und analoge unsichtbare Farb-Kombos):
     ///

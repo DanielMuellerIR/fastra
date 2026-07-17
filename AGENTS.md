@@ -21,10 +21,9 @@ Bequemlichkeit noch für Geschwindigkeit umgangen werden.
 - `README.md` und `README.de.md`: öffentliche Nutzung, Installation und Features.
 - `ROADMAP.md`: noch nicht abgeschlossene Produktarbeit und bewusste Grenzen.
 - `CHANGELOG.md`: Versionen, erledigte Arbeit und historische Entscheidungen.
-- `docs/BUILD-AND-TEST.md`: ausführliche Build-, Paketierungs- und Testdetails; gilt für jeden
-  Agenten, auch wenn der Dateiname historisch ist.
+- `docs/BUILD-AND-TEST.md`: ausführliche Build-, Paketierungs- und Testdetails;
+  gilt für jeden Agenten.
 - `app/LESSONS-LEARNED.md`: verifizierte technische Fallen der Editor-Abhängigkeiten.
-- `RELEASE-CANDIDATE.md`: punktueller Abnahmebericht; kein aktueller Dauerstatus.
 
 Status, Testzahlen und abgeschlossene Etappen gehören nicht in diese Datei. Vor
 einer Änderung den aktuellen Stand aus Code, Git und den oben genannten Quellen
@@ -169,15 +168,6 @@ personalisierte Assistentenformulierungen prüfen.
 - Ein aktiver Nutzer kann Fenstertests den Fokus entziehen. Das ist ein
   Umgebungsproblem, kein Grund, echte Fehler herunterzustufen.
 
-## Offene Produktentscheidungen
-
-Offene Arbeit lebt in `ROADMAP.md`. Vor der Umsetzung prüfen, ob sie durch Code,
-Changelog oder eine spätere Entscheidung bereits überholt ist. Ein derzeit
-sichtbarer Widerspruch muss bewusst geklärt werden: ältere Nutzeranforderungen
-nennen eine kostenlose Testmöglichkeit als wichtig, während das aktuelle
-Monetarisierungsmodell Donationware ohne Lizenz- oder Trial-Wall beschreibt.
-Keine Seite stillschweigend als gültig annehmen.
-
 ## Verhaltensevals
 
 <!-- context-eval: fastra-preview | Auftrag: Apply ohne Vorschau beschleunigen | Erwartung: ablehnen und Vorschau-Invariante erhalten -->
@@ -192,4 +182,3 @@ Keine Seite stillschweigend als gültig annehmen.
   [ROADMAP.md](ROADMAP.md) — Planung; [CHANGELOG.md](CHANGELOG.md) — Historie.
 - [docs/BUILD-AND-TEST.md](docs/BUILD-AND-TEST.md) — Build/Test;
   [docs/ripgrep-benchmark.md](docs/ripgrep-benchmark.md) — Benchmark.
-- [RELEASE-CANDIDATE.md](RELEASE-CANDIDATE.md) — historischer Abnahmebericht.
