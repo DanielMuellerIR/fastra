@@ -62,6 +62,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updaterDelegate: nil,
         userDriverDelegate: nil
     )
+    /// SwiftUI baut das App-Menü nach `applicationDidFinishLaunching` noch
+    /// einmal neu. Mehrere Menü-Notifications werden in einen Main-Runloop-
+    /// Durchlauf zusammengefasst, damit der Sparkle-Eintrag danach erhalten bleibt.
+    private var updateMenuInstallScheduled = false
 
     /// Hält den Local-Event-Monitor am Leben — sonst wird er deinitialisiert.
     private var keyMonitor: Any?
@@ -89,11 +93,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installFlagsMonitor()
         editorContextMenu.install()
         // SwiftUI hat die App-Menüleiste erst nach dem Scene-Aufbau vollständig
-        // erzeugt. Im nächsten Main-Runloop hängen wir den nativen Sparkle-
-        // Eintrag idempotent direkt hinter „Über Fastra“ ein.
-        DispatchQueue.main.async { [weak self] in
-            self?.installUpdateMenuItem()
-        }
+        // erzeugt. Die Synchronisierung läuft deshalb im nächsten Main-Runloop
+        // und erneut, wenn SwiftUI später Menüpunkte ergänzt oder ersetzt.
+        scheduleUpdateMenuInstallation()
         // Donation-Logik: App-Starts zählen (nur echte Starts — Selbsttest-
         // Läufe nutzen die isolierte Defaults-Suite und verfälschen den
         // Zähler des Nutzers nicht).
@@ -229,9 +231,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forName: NSMenu.didAddItemNotification,
             object: nil,
             queue: .main
-        ) { _ in
+        ) { [weak self] _ in
             Self.purgeFindMenuItems()
+            self?.scheduleUpdateMenuInstallation()
         }
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        // Beim ersten Aktivieren ist der SwiftUI-Menüaufbau sicher abgeschlossen.
+        // Spätere Aktivierungen reparieren einen von macOS neu aufgebauten Block.
+        scheduleUpdateMenuInstallation()
     }
 
     /// Baut den nativen Update-Menüpunkt. Sparkle selbst bleibt das Target,
@@ -247,22 +256,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
-    private func installUpdateMenuItem() {
-        guard let appMenu = NSApp.mainMenu?.items.first?.submenu else { return }
+    /// Fügt den Eintrag idempotent in ein fertiges App-Menü ein. Diese getrennte
+    /// Funktion macht auch den Wiederaufbau durch SwiftUI direkt testbar.
+    @discardableResult
+    static func synchronizeUpdateMenuItem(
+        in appMenu: NSMenu,
+        target: AnyObject
+    ) -> NSMenuItem {
         let identifier = NSUserInterfaceItemIdentifier("Fastra.CheckForUpdates")
         if let existing = appMenu.items.first(where: { $0.identifier == identifier }) {
-            existing.target = updaterController
+            existing.target = target
             existing.action = #selector(SPUStandardUpdaterController.checkForUpdates(_:))
-            return
+            return existing
         }
 
-        let item = Self.makeUpdateMenuItem(target: updaterController)
+        let item = Self.makeUpdateMenuItem(target: target)
         // Das erste Trennzeichen folgt im Standard-App-Menü direkt auf den
         // Info-Block. Ohne Trennzeichen bleibt ein sicherer append-Fallback.
         if let separatorIndex = appMenu.items.firstIndex(where: \.isSeparatorItem) {
             appMenu.insertItem(item, at: separatorIndex)
         } else {
             appMenu.addItem(item)
+        }
+        return item
+    }
+
+    private func scheduleUpdateMenuInstallation() {
+        guard !updateMenuInstallScheduled else { return }
+        updateMenuInstallScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.updateMenuInstallScheduled = false
+            guard let appMenu = NSApp.mainMenu?.items.first?.submenu else { return }
+            Self.synchronizeUpdateMenuItem(in: appMenu, target: self.updaterController)
         }
     }
 

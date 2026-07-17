@@ -9,14 +9,25 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.19.1] — 2026-07-17
+
+### Behoben
+
+- SwiftUI baute das App-Menü kurz nach dem Start erneut auf und entfernte dabei
+  den bereits eingefügten Sparkle-Eintrag. Fastra synchronisiert „Nach Updates
+  suchen …“ jetzt nach dem Menüaufbau, bei Menüänderungen und beim Aktivieren der
+  App idempotent neu. Der gepackte Selbsttest wartet gezielt bis nach diesem
+  späten Wiederaufbau; ein Unit-Test schützt zusätzlich vor doppelten Einträgen.
+
 ## [v1.19.0] — 2026-07-17
 
 ### Hinzugefügt
 
 - **Signierte Updates direkt in Fastra:** Der neue Menüpunkt „Nach Updates
   suchen …“ prüft einen signierten Appcast, lädt das notarisiert veröffentlichte
-  DMG und installiert erst nach ausdrücklicher Zustimmung. Version 1.19.0 ist
-  der einmalig manuell zu installierende Bootstrap für künftige Updates.
+  DMG und installiert erst nach ausdrücklicher Zustimmung. Version 1.19.1
+  ersetzt 1.19.0 als einmalig manuell zu installierenden Bootstrap, weil dort
+  der sichtbare Menüpunkt den späten SwiftUI-Menüaufbau noch nicht überstand.
 
 ### Datenschutz und Sicherheit
 

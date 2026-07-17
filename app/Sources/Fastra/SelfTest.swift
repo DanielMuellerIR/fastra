@@ -169,9 +169,9 @@ enum SelfTest {
             // Haupt-App-Bundle. Genau dort sucht SwiftUI statische Schlüssel.
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runLocalizationTest() }
         case "updates":
-            // Fensterlos — prüft die echte App-Menüleiste und die Sparkle-
-            // Sicherheitskonfiguration aus dem gepackten Haupt-Bundle.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runUpdatesTest() }
+            // Fensterlos — prüft die echte App-Menüleiste erst nach SwiftUIs
+            // spätem Menü-Wiederaufbau sowie Sparkles Bundle-Konfiguration.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { runUpdatesTest() }
         case "git":
             // Fensterlos — Git-Status end-to-end (Etappe 2): echtes Temp-Repo,
             // Datei-Zustände, Branch, Ordner-Rollup, dialogfreie git-Auflösung.

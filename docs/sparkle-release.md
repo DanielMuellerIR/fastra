@@ -5,10 +5,10 @@ Feed unter `https://danielmuellerir.github.io/fastra/appcast.xml`, lädt das DMG
 aus dem zugehörigen GitHub Release und installiert ausschließlich nach Zustimmung.
 Anonyme Hardware- und Systemprofildaten sind deaktiviert.
 
-Version 1.19.0 ist der einmalige Bootstrap: 1.18.x enthält noch keinen Updater
-und kann 1.19.0 deshalb nicht selbst finden. Bestehende Installationen müssen
-1.19.0 einmal manuell per DMG installieren; erst danach funktionieren Updates
-aus der App.
+Version 1.19.1 ist der einmalige Bootstrap: 1.18.x enthält noch keinen Updater,
+und 1.19.0 verlor den sichtbaren Menüpunkt beim späten SwiftUI-Menüaufbau.
+Bestehende Installationen müssen 1.19.1 einmal manuell per DMG installieren;
+erst danach funktionieren Updates aus der App.
 
 Zwei unabhängige Prüfungen bleiben Pflicht:
 
@@ -21,7 +21,9 @@ Nur sein öffentlicher Gegenpart steht als `SUPublicEDKey` im App-Bundle.
 ## Einmalige GitHub-Einrichtung
 
 1. In den Repository-Einstellungen unter **Pages** als Quelle **GitHub Actions**
-   wählen.
+   wählen. Das Environment `github-pages` muss neben dem Branch `main` auch
+   Tags vom Typ `v*` zulassen, weil der automatische Lauf auf dem veröffentlichten
+   Release-Tag startet.
 2. Den privaten Schlüssel als Actions-Secret `SPARKLE_PRIVATE_KEY` hinterlegen.
    Sparkles `generate_keys -x` exportiert ihn vorübergehend in eine lokale Datei;
    `gh secret set SPARKLE_PRIVATE_KEY < datei` liest sie über stdin. Die Datei

@@ -22,7 +22,7 @@ Ready-made builds are available as DMGs on the
 [releases page](https://github.com/DanielMuellerIR/fastra/releases):
 download the DMG, open it, and drag Fastra into your Applications folder.
 The DMG is signed with a Developer ID and notarized by Apple, so Gatekeeper
-opens it without warnings. Version 1.19.0 must be installed once from the DMG;
+opens it without warnings. Version 1.19.1 must be installed once from the DMG;
 after that, **Fastra → Check for Updates…** finds signed releases from inside
 the app. Requires macOS 14+ (Apple Silicon).
 
@@ -170,7 +170,7 @@ TOML, TypeScript/TSX and YAML. Everything else opens as plain text.
 - macOS 14+ (Apple Silicon)
 - Download the DMG from [Releases](../../releases), drag Fastra into
   `/Applications`, done.
-- Starting with 1.19.0, future signed releases are available through
+- Starting with 1.19.1, future signed releases are available through
   **Fastra → Check for Updates…** and are installed only after confirmation.
 
 ### Build from source

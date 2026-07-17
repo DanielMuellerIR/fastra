@@ -22,7 +22,7 @@ Fertige Builds gibt es als DMG auf der
 [Releases-Seite](https://github.com/DanielMuellerIR/fastra/releases):
 DMG laden, öffnen und Fastra in den Programme-Ordner ziehen. Das DMG ist
 mit einer Developer-ID signiert und von Apple notariell beglaubigt,
-Gatekeeper öffnet es deshalb ohne Warnung. Version 1.19.0 muss einmal per DMG
+Gatekeeper öffnet es deshalb ohne Warnung. Version 1.19.1 muss einmal per DMG
 installiert werden; danach findet **Fastra → Nach Updates suchen …** signierte
 Releases direkt in der App. Voraussetzung: macOS 14+ (Apple Silicon).
 
@@ -179,7 +179,7 @@ Swift, TOML, TypeScript/TSX und YAML. Alles andere öffnet als reiner Text.
 - macOS 14+ (Apple Silicon)
 - DMG aus den [Releases](../../releases) laden, Fastra nach `/Programme`
   ziehen, fertig.
-- Ab Version 1.19.0 stehen künftige signierte Releases unter
+- Ab Version 1.19.1 stehen künftige signierte Releases unter
   **Fastra → Nach Updates suchen …** bereit und werden erst nach Zustimmung installiert.
 
 ### Aus dem Quellcode bauen
