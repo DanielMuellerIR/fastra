@@ -927,6 +927,15 @@
 "XPath — z. B. //buch[@id='42']/titel" = "XPath — e.g. //book[@id='42']/title";
 "XPath-Leiste schließen (Esc)" = "Close the XPath bar (Esc)";
 "↩ weiter · ⇧↩ zurück" = "↩ next · ⇧↩ previous";
+"Dokument prüfen" = "Validate Document";
+"Dokument minifizieren" = "Minify Document";
+"Minifizieren fehlgeschlagen" = "Minify failed";
+"Ungültiges JSON — Struktur, Kommas und Anführungszeichen prüfen." = "Invalid JSON — check structure, commas and quotation marks.";
+"Ungültiges XML — Tags und Verschachtelung prüfen." = "Invalid XML — check tags and nesting.";
+"Geprüft werden JSON- und XML-Dokumente (inkl. plist, xsd, xsl, svg und 4D-Containerdateien)." = "Validation covers JSON and XML documents (including plist, xsd, xsl, svg and 4D container files).";
+"Gültiges %@ — keine Fehler gefunden." = "Valid %@ — no errors found.";
+"Zeile %ld, Spalte %ld: %@" = "Line %1$ld, column %2$ld: %3$@";
+"Zur Fehlerstelle springen" = "Jump to Error";
 "Markdown-Vorschau ausblenden" = "Hide Markdown Preview";
 "Markdown-Vorschau einblenden" = "Show Markdown Preview";
 "Projekt schließen" = "Close Project";

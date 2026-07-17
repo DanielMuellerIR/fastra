@@ -35,6 +35,10 @@ extension Notification.Name {
     /// Menüleisten-Formatierung. Der Editor-Kontext führt sie über seine
     /// native TextView aus, damit sie mit ⌘Z rückgängig gemacht werden kann.
     static let fastraFormatDocument   = Notification.Name("fastra.format.document")
+    /// „Text → Dokument prüfen" (Etappe 6): JSON/XML validieren.
+    static let fastraLintDocument     = Notification.Name("fastra.lint.document")
+    /// „Text → Dokument minifizieren" (Etappe 6): JSON kompakt, XML konservativ.
+    static let fastraMinifyDocument   = Notification.Name("fastra.minify.document")
 }
 
 /// Autosave-Name unseres Suchfensters. Konstant gehalten an einer
@@ -130,6 +134,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { [weak self] _ in
             self?.editorContextMenu.formatActiveDocument()
+        }
+        NotificationCenter.default.addObserver(
+            forName: .fastraLintDocument,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.editorContextMenu.lintActiveDocument()
+        }
+        NotificationCenter.default.addObserver(
+            forName: .fastraMinifyDocument,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.editorContextMenu.minifyActiveDocument()
         }
         NotificationCenter.default.addObserver(
             forName: .fastraReplaceConflictText,

@@ -262,6 +262,74 @@ final class EditorContextMenu: NSObject {
         format(on: textView)
     }
 
+    /// „Text → Dokument minifizieren“ (Etappe 6): JSON kompakt (Schlüssel
+    /// sortiert wie beim Formatieren), XML konservativ (nur Einrückungs-
+    /// Whitespace zwischen Tags). Gleicher Apply-Pfad wie das Formatieren.
+    func minifyActiveDocument() {
+        guard let textView = activeEditorTextView() else { NSSound.beep(); return }
+        guard let tab = Workspace.shared?.activeTab else { NSSound.beep(); return }
+        let fileExtension = tab.url?.pathExtension
+            ?? (tab.title as NSString).pathExtension
+        do {
+            guard let result = try DocumentFormatter.minify(
+                in: textView.string,
+                selection: textView.selectedRange(),
+                fileExtension: fileExtension
+            ) else {
+                NSSound.beep()   // bereits minimal → No-op
+                return
+            }
+            textView.replaceCharacters(in: result.affectedRange,
+                                       with: result.replacement)
+        } catch {
+            NSAlert.runWarning(title: L10n.string("Minifizieren fehlgeschlagen"),
+                               text: error.localizedDescription)
+        }
+    }
+
+    /// „Text → Dokument prüfen“ (Etappe 6): validiert JSON/XML nativ und
+    /// nennt bei Fehlern Zeile/Spalte; ein Klick springt zur Fehlerstelle.
+    func lintActiveDocument() {
+        guard let workspace = Workspace.shared,
+              let tab = workspace.activeTab,
+              let textView = activeEditorTextView() else {
+            NSSound.beep()
+            return
+        }
+        let fileExtension = tab.url?.pathExtension
+            ?? (tab.title as NSString).pathExtension
+        let text = textView.string
+        switch DocumentLinter.lint(text, fileExtension: fileExtension) {
+        case .unsupported:
+            NSAlert.runWarning(
+                title: L10n.string("Dokument prüfen"),
+                text: L10n.string("Geprüft werden JSON- und XML-Dokumente (inkl. plist, xsd, xsl, svg und 4D-Containerdateien).")
+            )
+        case .valid(let label):
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = L10n.string("Dokument prüfen")
+            alert.informativeText = L10n.format("Gültiges %@ — keine Fehler gefunden.", label)
+            alert.addButton(withTitle: L10n.string("OK"))
+            alert.runModal()
+        case .issue(let issue):
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = L10n.string("Dokument prüfen")
+            alert.informativeText = L10n.format("Zeile %ld, Spalte %ld: %@",
+                                                issue.line, issue.column, issue.message)
+            alert.addButton(withTitle: L10n.string("Zur Fehlerstelle springen"))
+            alert.addButton(withTitle: L10n.string("Schließen"))
+            if alert.runModal() == .alertFirstButtonReturn {
+                let range = BufferSearch.nsRange(forLine: issue.line,
+                                                 column: issue.column, in: text)
+                NotificationCenter.default.post(name: .fastraJumpToRange,
+                                                object: workspace,
+                                                userInfo: ["range": NSValue(range: range)])
+            }
+        }
+    }
+
     /// Führt eine Konfliktübernahme im sichtbaren nativen Editor aus. Der
     /// Workspace und die Tab-ID adressieren das konkrete Dokumentfenster;
     /// dadurch kann ein appweiter Notification-Pfad nie den falschen Editor

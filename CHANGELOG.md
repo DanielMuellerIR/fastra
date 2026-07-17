@@ -9,6 +9,28 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.25.0] — 2026-07-17
+
+### Hinzugefügt (Wunschpaket Juli 2026, Etappe 6 — Lint, Minify, tool4d)
+
+- **„Text → Dokument prüfen“:** native Validierung für JSON und XML
+  (inkl. plist, xsd, xsl, svg und 4D-Containerdateien) mit Fehlerposition
+  (Zeile/Spalte, multibyte-sicher übersetzt) und Meldung in Nutzersprache;
+  ein Klick springt zur Fehlerstelle. Bewusst keine gebündelten Linter für
+  JavaScript, CSS oder HTML (Größe/Lizenz/Wartung außer Verhältnis).
+- **„Text → Dokument minifizieren“:** JSON kompakt über die vorhandene
+  Formatter-Infrastruktur (Schlüssel werden — konsistent zum Formatieren —
+  sortiert); XML bewusst konservativ: nur Einrückungs-Whitespace (mit
+  Zeilenumbruch) zwischen Tags entfällt, einzelne Leerzeichen zwischen
+  Inline-Elementen sowie CDATA und Kommentare bleiben unangetastet.
+  Roundtrip-Tests (minify → format) sichern die Semantik.
+- **tool4d-Anleitung statt Integration:** `docs/tool4d.de.md` und
+  `docs/tool4d.md` beschreiben Bezug (product-download.4d.com bzw.
+  4D-Analyzer-Extension) und headless-Syntaxprüfung. Die direkte Anbindung
+  ist dokumentiert zurückgestellt (projektbasiertes tool4d, LSP-Aufwand,
+  Nutzungsbedingungen ungeklärt — siehe ROADMAP.md); tool4d wird niemals
+  gebündelt.
+
 ## [v1.24.0] — 2026-07-17
 
 ### Hinzugefügt (Wunschpaket Juli 2026, Etappe 5 — XPath-Navigation)

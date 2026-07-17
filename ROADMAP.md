@@ -6,18 +6,20 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Jetzt
 
-- **Wunschpaket Juli 2026** (beschlossen 2026-07-17): sechs Etappen in dieser
-  Reihenfolge — 1. kleine UX-Verbesserungen (CMD+N im Willkommenszustand,
-  Elternordner beim Einzeldatei-Öffnen, Standard-Speicherort, leere Ordner
-  ohne Aufklapp-Chevron, sichtbarer statt stiller Ordnerwechsel),
-  2. Ansichts-Umschalter mit Bild-/PDF-Vorschau und manuellem Hex-Zugang,
-  3. inhaltsbasierte Spracherkennung für ungespeicherte Dokumente,
-  4. 4D-Unterstützung (eigener Highlight-Provider, keine neue
-  tree-sitter-Grammatik), 5. XPath-Navigation für XML, 6. natives
-  JSON/XML-Lint und -Minify plus optionale tool4d-Anbindung. Der
-  vollständige Goal-Prompt mit Kontextfakten und Leitplanken liegt lokal in
-  `~/Desktop/fastra/goal-vorschlag.md` (samt 4D-Farbvorgaben `dark.json`/
-  `light.json`; zu Beginn der Umsetzung ins Repo übernehmen).
+- **Wunschpaket Juli 2026** (beschlossen 2026-07-17): Die sechs Etappen sind
+  mit v1.20.0–v1.25.0 umgesetzt (Spezifikation samt 4D-Farbvorgaben liegt in
+  `docs/wunschpaket-2026-07/`). Bewusst offen geblieben:
+  - **tool4d-Anbindung (4D-Lint) zurückgestellt:** tool4d arbeitet
+    projektbasiert; Einzeldatei-Diagnosen erfordern den LSP-Modus
+    (dauerhafter Serverprozess, JSON-RPC) und die Nutzungsbedingungen für
+    den Aufruf durch Dritt-Tools sind nicht abschließend geklärt. Statt der
+    Integration liefert Fastra eine Anleitung in `docs/tool4d.de.md` und
+    `docs/tool4d.md`. Wiedervorlage nur mit geklärten Bedingungen und
+    tragfähigem Einzeldatei-Konzept.
+  - **4D-Farbdetails:** Underline (Konstanten) kennt das CESE-Attributmodell
+    nicht; `errors`/`plug_ins`/`member` aus den Farbvorgaben entfallen
+    mangels Analyse bzw. Unterscheidbarkeit (siehe Slot-Mapping in
+    `EditorView.swift`).
 
 ## Offene Produktentscheidungen
 

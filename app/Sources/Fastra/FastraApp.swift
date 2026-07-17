@@ -271,6 +271,21 @@ struct FastraApp: App {
                 Button("Dokument formatieren") { postDocumentFormatting() }
                     .disabled(!DocumentFormatter.supports(fileExtension: commandWorkspace.activeTab?.url?.pathExtension
                         ?? (commandWorkspace.activeTab?.title as NSString?)?.pathExtension))
+                // Etappe 6 (Wunschpaket 2026-07): native JSON-/XML-Prüfung
+                // mit Fehlerposition und konservatives Minify — bewusst keine
+                // gebündelten Fremd-Linter (JS/CSS/HTML bleiben außen vor).
+                Button("Dokument prüfen") {
+                    NotificationCenter.default.post(name: .fastraLintDocument,
+                                                    object: nil)
+                }
+                .disabled(!DocumentLinter.supports(fileExtension: commandWorkspace.activeTab?.url?.pathExtension
+                    ?? (commandWorkspace.activeTab?.title as NSString?)?.pathExtension))
+                Button("Dokument minifizieren") {
+                    NotificationCenter.default.post(name: .fastraMinifyDocument,
+                                                    object: nil)
+                }
+                .disabled(!DocumentFormatter.supports(fileExtension: commandWorkspace.activeTab?.url?.pathExtension
+                    ?? (commandWorkspace.activeTab?.title as NSString?)?.pathExtension))
                 Divider()
                 Button(TextOpKind.uppercase.title)  { postTextOp(.uppercase) }
                 Button(TextOpKind.lowercase.title)  { postTextOp(.lowercase) }

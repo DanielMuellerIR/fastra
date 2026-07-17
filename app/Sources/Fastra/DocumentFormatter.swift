@@ -86,6 +86,137 @@ enum DocumentFormatter {
         return restoringLineEnding(from: text, in: formatted)
     }
 
+    // MARK: - Minify (Etappe 6 Wunschpaket 2026-07)
+
+    /// Minifiziert die Auswahl bzw. das ganze Dokument. Gleiche Infrastruktur
+    /// und Rückgabe-Semantik wie `format` (nil = No-op).
+    static func minify(in text: String, selection: NSRange,
+                       fileExtension: String) throws -> DocumentFormatResult? {
+        guard supports(fileExtension: fileExtension) else {
+            throw DocumentFormatterError.unsupportedFormat
+        }
+        let range = selection.length > 0
+            ? selection : NSRange(location: 0, length: (text as NSString).length)
+        guard let swiftRange = Range(range, in: text) else { return nil }
+        let original = String(text[swiftRange])
+        let minified = try minify(original, fileExtension: fileExtension)
+        guard minified != original else { return nil }
+        return DocumentFormatResult(affectedRange: range, replacement: minified)
+    }
+
+    static func minify(_ text: String, fileExtension: String) throws -> String {
+        switch fileExtension.lowercased() {
+        case "json":
+            return try minifyJSON(text)
+        case "xml", "xsd", "xsl", "xslt", "plist":
+            return try minifyXML(text)
+        default:
+            throw DocumentFormatterError.unsupportedFormat
+        }
+    }
+
+    /// Kompakte JSON-Serialisierung. Schlüssel werden — konsistent zum
+    /// Formatieren — sortiert (dokumentiertes Verhalten: beide Wege nutzen
+    /// dieselbe Serialisierung, nur mit/ohne Einrückung).
+    private static func minifyJSON(_ text: String) throws -> String {
+        guard let source = text.data(using: .utf8) else {
+            throw DocumentFormatterError.invalidJSON
+        }
+        let object: Any
+        do {
+            object = try JSONSerialization.jsonObject(with: source,
+                                                      options: [.fragmentsAllowed])
+        } catch {
+            throw DocumentFormatterError.invalidJSON
+        }
+        let data: Data
+        do {
+            data = try JSONSerialization.data(withJSONObject: object,
+                                              options: [.sortedKeys, .fragmentsAllowed])
+        } catch {
+            throw DocumentFormatterError.invalidJSON
+        }
+        guard let minified = String(data: data, encoding: .utf8) else {
+            throw DocumentFormatterError.invalidJSON
+        }
+        return minified
+    }
+
+    /// BEWUSST konservatives XML-Minify: entfernt ausschließlich
+    /// Whitespace-Läufe MIT Zeilenumbruch zwischen zwei Tags (typische
+    /// Einrückung). Einzelne Leerzeichen zwischen Inline-Elementen bleiben
+    /// stehen (können bedeutungstragend sein), ebenso alles innerhalb von
+    /// CDATA und Kommentaren. Ungültiges XML wird nicht angefasst.
+    private static func minifyXML(_ text: String) throws -> String {
+        // Erst validieren — Minify darf nie ein kaputtes Dokument „reparieren".
+        let parser = XMLParser(data: Data(text.utf8))
+        parser.externalEntityResolvingPolicy = .never
+        guard parser.parse() else { throw DocumentFormatterError.invalidXML }
+
+        var result = String()
+        result.reserveCapacity(text.count)
+        var pendingWhitespace = ""
+        var pendingHasNewline = false
+        var index = text.startIndex
+        var lastNonWhitespace: Character = " "
+
+        func flushPending() {
+            if !pendingWhitespace.isEmpty {
+                result.append(pendingWhitespace)
+                pendingWhitespace = ""
+                pendingHasNewline = false
+            }
+        }
+
+        while index < text.endIndex {
+            let character = text[index]
+            // CDATA und Kommentare unverändert übernehmen. Einrückungs-
+            // Whitespace davor fällt wie vor jedem anderen Tag weg.
+            if character == "<" {
+                if pendingHasNewline && lastNonWhitespace == ">" {
+                    pendingWhitespace = ""
+                    pendingHasNewline = false
+                }
+                let rest = text[index...]
+                for (opener, closer) in [("<![CDATA[", "]]>"), ("<!--", "-->")] {
+                    if rest.hasPrefix(opener) {
+                        flushPending()
+                        if let end = text.range(of: closer, range: index..<text.endIndex) {
+                            result.append(contentsOf: text[index..<end.upperBound])
+                            index = end.upperBound
+                        } else {
+                            result.append(contentsOf: rest)
+                            index = text.endIndex
+                        }
+                        lastNonWhitespace = ">"
+                        break
+                    }
+                }
+                if index < text.endIndex, text[index] == "<", !text[index...].hasPrefix("<![CDATA["),
+                   !text[index...].hasPrefix("<!--") {
+                    flushPending()
+                    result.append(character)
+                    lastNonWhitespace = character
+                    index = text.index(after: index)
+                }
+                continue
+            }
+            if character.isWhitespace {
+                pendingWhitespace.append(character)
+                if character == "\n" || character == "\r" { pendingHasNewline = true }
+                index = text.index(after: index)
+                continue
+            }
+            flushPending()
+            result.append(character)
+            lastNonWhitespace = character
+            index = text.index(after: index)
+        }
+        // Whitespace am Dokumentende mit Zeilenumbruch entfällt ebenfalls.
+        if !pendingHasNewline { flushPending() }
+        return result
+    }
+
     /// Formatter geben LF aus. Die Datei behält dennoch ihre bisherige
     /// Zeilenende-Konvention und einen bereits vorhandenen Endzeilenumbruch.
     private static func restoringLineEnding(from original: String, in formatted: String) -> String {
