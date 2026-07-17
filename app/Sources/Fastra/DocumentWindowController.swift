@@ -16,6 +16,10 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
 
     let workspace: Workspace
     private let window: NSWindow
+    // SwiftUI kann den Rahmen beim ersten Layout noch einmal auf seine fitting
+    // size setzen. Dieser gemerkte Rahmen wird deshalb genau einmal danach
+    // wiederhergestellt; spätere Nutzer-Resizes bleiben davon unberührt.
+    private var frameToRestoreAfterFirstLayout: NSRect?
 
     private init(defaults: UserDefaults, showWelcome: Bool) {
         workspace = Workspace(defaults: defaults)
@@ -54,7 +58,7 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
 
         // Dieselbe Root-View wie im Startfenster verwenden. Die eigene
         // EnvironmentObject-Instanz ist die Trennlinie zwischen den Dokumenten.
-        window.contentViewController = NSHostingController(
+        let contentController = NSHostingController(
             rootView: ContentView()
                 .environmentObject(workspace)
                 .fastraScalingRoot()
@@ -62,11 +66,22 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
                        minHeight: MainWindowSizing.minimumHeight)
                 .background(Theme.surfaceBase.ignoresSafeArea())
         )
+        // SwiftUI meldet sonst nach dem ersten Layout seine fitting size an
+        // AppKit zurück. Das würde den zuvor vom Vorderfenster übernommenen
+        // Rahmen auf die technische Mindestgröße zurücksetzen. Die echte
+        // Untergrenze bleibt ausdrücklich `contentMinSize`, damit kleine
+        // Fenster weiter möglich sind und ⌘N trotzdem die zuletzt benutzte
+        // Größe behält.
+        contentController.sizingOptions = []
+        window.contentViewController = contentController
 
-        // Neue Fenster leicht versetzt zum bisherigen Vorderfenster öffnen,
-        // damit sofort sichtbar ist, dass tatsächlich ein zweites entstand.
-        if let front = NSApp.keyWindow {
-            window.setFrame(MainWindowSizing.cascadedFrame(from: front.frame),
+        // Neue Fenster leicht versetzt zum zuletzt sichtbaren Dokumentfenster
+        // öffnen. Ein gerade aktiver Suchdialog ist kein Dokumentfenster und
+        // darf deshalb nicht versehentlich dessen Größe vorgeben.
+        if let front = Self.frontmostVisibleDocumentWindow() {
+            let frame = MainWindowSizing.cascadedFrame(from: front.frame)
+            frameToRestoreAfterFirstLayout = frame
+            window.setFrame(frame,
                             display: false)
         } else {
             window.center()
@@ -85,16 +100,30 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         }
     }
 
+    /// Liefert das vorderste sichtbare Fenster mit eigenem Dokument-Workspace.
+    /// `NSApp.keyWindow` kann auch ein Suchdialog sein und ist daher für ⌘N
+    /// nicht zuverlässig die zuletzt benutzte Dokumentgröße.
+    private static func frontmostVisibleDocumentWindow() -> NSWindow? {
+        NSApp.orderedWindows.first { window in
+            guard window.isVisible else { return false }
+            // Such- und Markdown-Vorschaufenster besitzen für ihr Routing
+            // ebenfalls einen Workspace. Sie sind trotzdem keine Quelle für
+            // die Größe eines neuen Dokumentfensters.
+            guard !SearchWindow.isSearchWindow(window),
+                  window.frameAutosaveName != MarkdownPreviewWindow.frameAutosaveName else {
+                return false
+            }
+            if window.identifier?.rawValue == "Fastra.DocumentWindow" { return true }
+            return WorkspaceWindowRegistry.workspace(for: window) != nil
+        }
+    }
+
     /// Liefert den Workspace des vordersten sichtbaren Dokumentfensters.
     /// Ein geschlossenes Fenster darf nicht über `Workspace.shared` weiter
     /// Ziel eines Öffnen-Befehls bleiben.
     static func frontmostVisibleWorkspace() -> Workspace? {
-        for window in NSApp.orderedWindows where window.isVisible {
-            if let workspace = WorkspaceWindowRegistry.workspace(for: window) {
-                return workspace
-            }
-        }
-        return nil
+        guard let window = frontmostVisibleDocumentWindow() else { return nil }
+        return WorkspaceWindowRegistry.workspace(for: window)
     }
 
     /// Ziel für Datei-/Ordner-Öffnen: vorhandenes Vorderfenster oder ein neu
@@ -129,6 +158,18 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
 
     func windowDidBecomeKey(_ notification: Notification) {
         Workspace.shared = workspace
+        restoreFrameAfterFirstSwiftUILayout()
+    }
+
+    private func restoreFrameAfterFirstSwiftUILayout() {
+        guard let frame = frameToRestoreAfterFirstLayout else { return }
+        frameToRestoreAfterFirstLayout = nil
+        // Der nächste Main-Loop-Durchlauf liegt hinter SwiftUIs erstem
+        // Größen-Update. Danach darf dieser Controller nie wieder den Rahmen
+        // setzen, damit jede spätere Größenänderung allein dem Nutzer gehört.
+        DispatchQueue.main.async { [weak self] in
+            self?.window.setFrame(frame, display: true)
+        }
     }
 
     /// Anders als das bisher offene Rotknopf-Todo darf ein zusätzliches

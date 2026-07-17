@@ -425,14 +425,33 @@ enum SelfTest {
             finish(false, "kein Ausgangsfenster für ⌘N gefunden")
         }
         mainWindow.makeKeyAndOrderFront(nil)
+
+        // Eine absichtlich kleinere, aber weiterhin unterstützte Größe macht
+        // den Fehler sichtbar: Der Test liest später den echten NSWindow-
+        // Rahmen des neuen Fensters, nicht die gemeinsame Berechnungsfunktion.
+        let requestedSize = NSSize(
+            width: MainWindowSizing.minimumWidth + 153,
+            height: MainWindowSizing.minimumHeight + 157
+        )
+        mainWindow.setFrame(
+            NSRect(origin: mainWindow.frame.origin, size: requestedSize),
+            display: true
+        )
+        let expectedSize = mainWindow.frame.size
         postCmd("n", keyCode: 45, windowNumber: mainWindow.windowNumber)
-        pollForNewWindow(original: original, originalWindow: mainWindow, marker: marker)
+        pollForNewWindow(
+            original: original,
+            originalWindow: mainWindow,
+            marker: marker,
+            expectedSize: expectedSize
+        )
     }
 
     private static func pollForNewWindow(
         original: Workspace,
         originalWindow: NSWindow,
         marker: String,
+        expectedSize: NSSize,
         tick: Int = 0
     ) {
         let newWorkspace = Workspace.allLive.first { $0 !== original }
@@ -453,6 +472,31 @@ enum SelfTest {
             // Willkommens-Fenster stapeln.
             guard !newWorkspace.isWelcomeScreen else {
                 finish(false, "⌘N-Fenster zeigt erneut den Willkommensbildschirm")
+            }
+
+            // Das ist die sichtbare Produktwirkung: Das neue AppKit-Fenster
+            // muss denselben tatsächlichen Rahmen wie das zuvor benutzte
+            // Fenster haben. SwiftUI darf seine fitting size im ersten Layout
+            // noch kurz melden; wir warten deshalb auf den stabilen Rahmen,
+            // statt genau in diesem Übergang voreilig fehlzuschlagen.
+            let hasExpectedSize = abs(newWindow.frame.width - expectedSize.width) < 0.5
+                && abs(newWindow.frame.height - expectedSize.height) < 0.5
+            if !hasExpectedSize {
+                if tick >= 100 {
+                    finish(false, "⌘N-Fenster übernimmt Größe nicht "
+                        + "(erwartet \(expectedSize.width)×\(expectedSize.height), "
+                        + "erhalten \(newWindow.frame.width)×\(newWindow.frame.height))")
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    pollForNewWindow(
+                        original: original,
+                        originalWindow: originalWindow,
+                        marker: marker,
+                        expectedSize: expectedSize,
+                        tick: tick + 1
+                    )
+                }
+                return
             }
 
             // Nicht bloß den Modellzustand prüfen: Direkt nach dem echten ⌘N
@@ -477,6 +521,7 @@ enum SelfTest {
                 original: original,
                 originalWindow: originalWindow,
                 marker: marker,
+                expectedSize: expectedSize,
                 tick: tick + 1
             )
         }

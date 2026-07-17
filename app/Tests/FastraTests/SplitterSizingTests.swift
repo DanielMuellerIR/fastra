@@ -4,13 +4,12 @@ import Testing
 
 @Suite("Stabile Splitter")
 struct SplitterSizingTests {
-    @Test("Dokumentfenster starten mindestens in der normalen Startgröße")
-    func documentWindowClampsSmallFrontWindow() {
+    @Test("Dokumentfenster übernehmen auch eine verkleinerte Vorderfenstergröße")
+    func documentWindowKeepsSmallFrontWindow() {
         let front = CGRect(x: 100, y: 200, width: 320, height: 200)
         let result = MainWindowSizing.cascadedFrame(from: front)
 
-        #expect(result.width == MainWindowSizing.defaultWidth)
-        #expect(result.height == MainWindowSizing.defaultHeight)
+        #expect(result.size == front.size)
         #expect(result.origin.x == 124)
         #expect(result.origin.y == 176)
     }

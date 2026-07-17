@@ -9,6 +9,20 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.19.2] — 2026-07-17
+
+### Behoben
+
+- Neue Dokumentfenster über ⌘N übernehmen jetzt zuverlässig die Größe des
+  zuletzt benutzten Dokumentfensters. SwiftUI setzte den zuvor übernommenen
+  AppKit-Rahmen beim ersten Layout noch auf seine knappe Inhaltsgröße zurück;
+  Fastra stellt den gewünschten Rahmen nach diesem einmaligen Layout-Schritt
+  wieder her. Die technische Mindestgröße bleibt unverändert, damit Fenster
+  weiterhin bewusst sehr klein gezogen werden können. Suchdialoge und
+  Markdown-Vorschaufenster dienen nicht versehentlich als Größenvorlage.
+- Der echte `newwindow`-Selbsttest setzt das Ausgangsfenster auf eine markante
+  Größe und vergleicht nach ⌘N den tatsächlich sichtbaren `NSWindow`-Rahmen.
+
 ## [v1.19.1] — 2026-07-17
 
 ### Behoben
