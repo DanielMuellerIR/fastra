@@ -693,7 +693,11 @@ struct EditorView: View {
     }
 
     private var detectedLanguage: CodeLanguage {
-        if let url = workspace.activeTab?.url {
+        guard let tab = workspace.activeTab else { return .default }
+        // Manuelle Sprachwahl (Footer-Menü, Etappe 3) gewinnt IMMER —
+        // sie ist das Sicherheitsventil gegen jede Fehlerkennung.
+        if let manual = tab.languageOverride { return manual }
+        if let url = tab.url {
             if ["xml", "xsd", "xsl", "xslt", "plist"].contains(url.pathExtension.lowercased()) {
                 // CodeEditLanguages bündelt keine separate XML-Grammatik.
                 // Die HTML-Grammatik zeichnet Tags, Attribute und Strings
@@ -701,14 +705,22 @@ struct EditorView: View {
                 // robuste Syntax-Fallback für Finder-geöffnete XML-Dateien.
                 return .html
             }
-            return CodeLanguage.detectLanguageFrom(url: url)
+            // prefixBuffer aktiviert die Upstream-Shebang-/Modeline-Erkennung
+            // für gespeicherte Dateien OHNE Endung (z. B. `deploy`-Skripte).
+            return CodeLanguage.detectLanguageFrom(
+                url: url,
+                prefixBuffer: String(tab.content.prefix(512)),
+                suffixBuffer: nil
+            )
         }
-        // Ohne URL: Sprache aus der angezeigten Dateiendung des Tabs raten.
-        if let title = workspace.activeTab?.title {
-            if DocumentKind.isXML(filename: title) { return .html }
-            let fakeURL = URL(fileURLWithPath: title)
-            return CodeLanguage.detectLanguageFrom(url: fakeURL)
+        // Ohne URL: erst die angezeigte Dateiendung des Tabs, dann die
+        // inhaltsbasierte Erkennung (Etappe 3, nur endungslose Tabs).
+        let titleExtension = (tab.title as NSString).pathExtension
+        if !titleExtension.isEmpty {
+            if DocumentKind.isXML(filename: tab.title) { return .html }
+            return CodeLanguage.detectLanguageFrom(url: URL(fileURLWithPath: tab.title))
         }
+        if let detected = tab.contentDetectedLanguage { return detected }
         return .default
     }
 

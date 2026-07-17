@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import Combine
+import CodeEditLanguages
 
 enum LineEnding: String, Equatable, CaseIterable, Identifiable {
     case lf = "LF"
@@ -116,6 +117,19 @@ struct EditorTab: Identifiable, Hashable {
     /// 2026-07). `nil` = automatischer Standard nach Dateityp
     /// (`ViewModeRouting.defaultMode`). Nicht persistiert.
     var viewMode: EditorViewMode?
+    /// Manuell gewählte Editor-Sprache (Etappe 3 Wunschpaket 2026-07) —
+    /// das Sicherheitsventil gegen Fehlerkennung. Gewinnt IMMER (vor Endung
+    /// und Inhalts-Erkennung) und beendet die Automatik für diesen Tab.
+    /// `nil` = automatisch.
+    var languageOverride: CodeLanguage?
+    /// Ergebnis der inhaltsbasierten Erkennung für ungespeicherte,
+    /// endungslose Tabs. Wird nur wirksam, solange weder URL-Endung noch
+    /// manuelle Wahl greifen; Hysterese liegt im Erkennungspfad.
+    var contentDetectedLanguage: CodeLanguage?
+    /// Anzeigename des inhaltlich erkannten Formats (Footer-Chip) — die
+    /// Grammatik allein reicht nicht: erkanntes XML nutzt z. B. die
+    /// HTML-Grammatik, soll im Footer aber „XML" heißen.
+    var contentDetectedFormatLabel: String?
 
     init(
         id: UUID = UUID(),
@@ -715,10 +729,17 @@ final class Workspace: ObservableObject {
             set: { newValue in
                 guard let idx = self.activeTabIndex else { return }
                 if self.tabs[idx].content != newValue {
+                    let oldLength = self.tabs[idx].content.count
                     self.tabs[idx].content = newValue
                     if !self.tabs[idx].isDirty {
                         self.tabs[idx].isDirty = true
                     }
+                    // Inhaltsbasierte Spracherkennung (Etappe 3): reagiert
+                    // nur bei geeigneten Tabs; Block-Einfügungen sofort,
+                    // Tippen debounced. Kostet hier nur den Längenvergleich.
+                    self.scheduleLanguageDetection(tabID: self.tabs[idx].id,
+                                                   oldLength: oldLength,
+                                                   newLength: newValue.count)
                 }
             }
         )
@@ -1395,6 +1416,128 @@ final class Workspace: ObservableObject {
         guard projectURL == nil else { return }
         guard let parent = usableDirectory(url.deletingLastPathComponent()) else { return }
         openProject(at: parent, keepingUnrelatedTabs: true)
+    }
+
+    // MARK: - Inhaltsbasierte Spracherkennung (Etappe 3 Wunschpaket 2026-07)
+
+    /// Laufende Debounce-Arbeit je Tab — ein neuer Tastendruck ersetzt die
+    /// noch wartende Analyse (klassischer Debounce).
+    private var languageDetectionWork: [UUID: DispatchWorkItem] = [:]
+    /// Inhaltslänge zur Zeit der letzten Analyse je Tab (Drossel-Basis).
+    private var languageDetectionAnalyzedLength: [UUID: Int] = [:]
+
+    /// Nur ungespeicherte Tabs ohne Dateiendung, ohne manuelle Sprachwahl
+    /// und ohne Sonderrolle (Git/Willkommen) nehmen an der Automatik teil.
+    /// Nach dem Speichern gewinnt die Endung; manuelle Wahl gewinnt immer.
+    static func isEligibleForContentDetection(_ tab: EditorTab) -> Bool {
+        tab.url == nil && !tab.isWelcome && tab.gitKind == nil
+            && tab.languageOverride == nil
+            && (tab.title as NSString).pathExtension.isEmpty
+    }
+
+    /// Entscheidet über sofortige/verzögerte Analyse (pure Logik in
+    /// `ContentLanguageDetection.trigger`) und plant sie entsprechend ein.
+    func scheduleLanguageDetection(tabID: UUID, oldLength: Int, newLength: Int) {
+        guard let idx = tabs.firstIndex(where: { $0.id == tabID }),
+              Self.isEligibleForContentDetection(tabs[idx]) else { return }
+        switch ContentLanguageDetection.trigger(
+            oldLength: oldLength, newLength: newLength,
+            lastAnalyzedLength: languageDetectionAnalyzedLength[tabID]
+        ) {
+        case .none:
+            return
+        case .immediate:
+            languageDetectionWork[tabID]?.cancel()
+            performLanguageDetection(tabID: tabID)
+        case .debounced:
+            languageDetectionWork[tabID]?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                self?.performLanguageDetection(tabID: tabID)
+            }
+            languageDetectionWork[tabID] = work
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + ContentLanguageDetection.debounceInterval,
+                execute: work
+            )
+        }
+    }
+
+    /// Analysiert die ersten ~64 KB auf einem Hintergrund-Thread und wendet
+    /// das Ergebnis mit Hysterese an. Bei normalem Tippen entsteht praktisch
+    /// keine Last: Der Aufruf kommt nur nach Debounce + Drossel hierher.
+    private func performLanguageDetection(tabID: UUID) {
+        guard let idx = tabs.firstIndex(where: { $0.id == tabID }),
+              Self.isEligibleForContentDetection(tabs[idx]) else { return }
+        let sample = String(tabs[idx].content
+            .prefix(ContentLanguageDetection.analysisCharacterLimit))
+        let totalLength = tabs[idx].content.count
+        languageDetectionAnalyzedLength[tabID] = totalLength
+
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let format = ContentLanguageDetection.detect(in: sample)
+            // Kein Format erkannt → Shebang-/Modeline-Erkennung des Editors
+            // (bislang ungenutzter Upstream-Pfad; erkennt z. B. „#!/bin/bash").
+            var language: CodeLanguage?
+            var label: String?
+            if let format {
+                language = Self.grammarForDetectedFormat(format)
+                label = format.label
+            } else {
+                let fallback = CodeLanguage.detectLanguageFrom(
+                    // Bewusst ohne Endung: Es zählt allein der Inhalt.
+                    url: URL(fileURLWithPath: "unbenannt"),
+                    prefixBuffer: String(sample.prefix(512)),
+                    suffixBuffer: nil
+                )
+                if fallback.id != .plainText {
+                    language = fallback
+                    label = fallback.tsName.capitalized
+                }
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      let i = self.tabs.firstIndex(where: { $0.id == tabID }),
+                      Self.isEligibleForContentDetection(self.tabs[i]) else { return }
+                // Hysterese über den Grammatik-Vergleich: `nil` (nichts
+                // erkannt) lässt eine bestehende Erkennung stehen.
+                let current = self.tabs[i].contentDetectedLanguage
+                guard let language, language != current else { return }
+                self.tabs[i].contentDetectedLanguage = language
+                self.tabs[i].contentDetectedFormatLabel = label
+            }
+        }
+    }
+
+    /// Grammatik-Zuordnung der erkannten Formate. XML nutzt bewusst die
+    /// HTML-Grammatik — CodeEditLanguages bündelt keine eigene XML-Grammatik
+    /// (gleiche Entscheidung wie beim Endungs-Mapping in `EditorView`).
+    static func grammarForDetectedFormat(
+        _ format: ContentLanguageDetection.Format
+    ) -> CodeLanguage {
+        switch format {
+        case .json: return .json
+        case .xml, .html: return .html
+        case .markdown: return .markdown
+        case .css: return .css
+        case .javascript: return .javascript
+        }
+    }
+
+    /// Manuelle Sprachwahl (Footer-Menü). `nil` = zurück auf Automatik —
+    /// die Erkennung darf danach wieder laufen.
+    func setLanguageOverride(_ language: CodeLanguage?) {
+        guard let idx = activeTabIndex else { return }
+        tabs[idx].languageOverride = language
+        if language != nil {
+            // Manuelle Wahl beendet die Automatik: wartende Analyse abräumen.
+            languageDetectionWork[tabs[idx].id]?.cancel()
+            languageDetectionWork.removeValue(forKey: tabs[idx].id)
+        } else {
+            // Zurück auf Automatik → direkt neu analysieren.
+            scheduleLanguageDetection(tabID: tabs[idx].id,
+                                      oldLength: 0,
+                                      newLength: tabs[idx].content.count)
+        }
     }
 
     // MARK: - Ansichts-Umschalter (Etappe 2 Wunschpaket 2026-07)

@@ -9,6 +9,26 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.22.0] — 2026-07-17
+
+### Hinzugefügt (Wunschpaket Juli 2026, Etappe 3 — Spracherkennung)
+
+- **Inhaltsbasierte Spracherkennung für ungespeicherte Tabs:** Tabs ohne
+  Dateiendung erhalten ihr Syntax-Highlighting jetzt aus dem Inhalt —
+  konservativ und nur bei hoher Konfidenz (JSON, XML, HTML, Markdown, CSS,
+  JavaScript), zusätzlich Shebang-/Modeline-Skripte über die bislang
+  ungenutzte Editor-Erkennung. Nach einer Block-Einfügung (Paste) wird
+  sofort analysiert, beim Tippen erst nach 0,8 s Ruhe und nur bei
+  substanzieller Änderung; analysiert werden höchstens die ersten ~64 KB,
+  immer im Hintergrund. Eine einmal gesetzte Erkennung flackert nicht
+  (Wechsel nur bei starker Gegenevidenz). Nach dem Speichern gewinnt wie
+  bisher die Dateiendung.
+- **Manueller Sprachumschalter im Footer:** Der Format-Chip ist jetzt ein
+  Menü. Die manuelle Wahl gewinnt immer (vor Endung und Erkennung) und
+  beendet die Automatik für den Tab; „Automatisch“ schaltet sie wieder ein.
+- Gespeicherte Dateien ohne Endung (z. B. Skripte) erkennen ihre Sprache
+  jetzt ebenfalls per Shebang/Modeline.
+
 ## [v1.21.0] — 2026-07-17
 
 ### Hinzugefügt (Wunschpaket Juli 2026, Etappe 2 — Ansichten & Vorschau)

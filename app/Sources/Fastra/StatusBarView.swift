@@ -18,7 +18,7 @@ struct StatusBarView: View {
         HStack(spacing: 14) {
             HStack(spacing: 14) {
                 encodingMenu
-                FooterChip(label: fileType)
+                languageMenu
                 Text(cursorPosition)
                     .fastraFont(.small)
                     .foregroundColor(Theme.textSecondary)
@@ -160,8 +160,54 @@ struct StatusBarView: View {
         )
     }
 
+    /// Beschriftung des Sprach-Chips: manuelle Wahl > inhaltlich erkanntes
+    /// Format (nur ungespeicherte, endungslose Tabs) > Endungs-Label.
     private var fileType: String {
-        DocumentKind.footerLabel(filename: workspace.activeTab?.title ?? "")
+        guard let tab = workspace.activeTab else { return "Plain" }
+        if let manual = tab.languageOverride {
+            return LanguageMenuSupport.displayName(for: manual)
+        }
+        if tab.url == nil, (tab.title as NSString).pathExtension.isEmpty,
+           let detected = tab.contentDetectedFormatLabel {
+            return detected
+        }
+        return DocumentKind.footerLabel(filename: tab.title)
+    }
+
+    /// Sprach-Chip als Menü (Etappe 3): manueller Sprachumschalter. Die Wahl
+    /// gewinnt immer vor Endung und Inhalts-Erkennung; „Automatisch" kehrt
+    /// zur Automatik zurück.
+    private var languageMenu: some View {
+        Menu {
+            Button {
+                workspace.setLanguageOverride(nil)
+            } label: {
+                if workspace.activeTab?.languageOverride == nil {
+                    Label("Automatisch", systemImage: "checkmark")
+                } else {
+                    Text("Automatisch")
+                }
+            }
+            Divider()
+            ForEach(LanguageMenuSupport.selectableLanguages, id: \.id) { language in
+                Button {
+                    workspace.setLanguageOverride(language)
+                } label: {
+                    if workspace.activeTab?.languageOverride == language {
+                        Label(LanguageMenuSupport.displayName(for: language),
+                              systemImage: "checkmark")
+                    } else {
+                        Text(verbatim: LanguageMenuSupport.displayName(for: language))
+                    }
+                }
+            }
+        } label: {
+            FooterChip(label: fileType)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Sprache/Format — manuelle Wahl gewinnt vor der Automatik")
     }
 }
 
