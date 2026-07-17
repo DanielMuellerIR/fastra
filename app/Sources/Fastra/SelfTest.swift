@@ -145,6 +145,7 @@ enum SelfTest {
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
         case "highlight": waitForMainWindow { runHighlightTest() }
         case "highlight4d": waitForMainWindow { runFourDHighlightTest() }
+        case "xpath": waitForMainWindow { runXPathTest() }
         case "previewrender": waitForMainWindow { runPreviewRenderTest() }
         case "markdown":  waitForMainWindow { runMarkdownRenderTest() }
         case "jump":      waitForMainWindow { runJumpTest() }
@@ -249,7 +250,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, previewrender, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, contrast, windows)")
         }
     }
 
@@ -1507,6 +1508,105 @@ enum SelfTest {
                                srgb.redComponent, srgb.greenComponent, srgb.blueComponent))
         }
         return seen.count
+    }
+
+    // MARK: - XPath-Leiste (Etappe 5 Wunschpaket 2026-07)
+
+    /// Öffnet die echte XPath-Leiste über die Menü-Notification und prüft,
+    /// dass eine getippte Query den Editor WIRKLICH zur Fundstelle springen
+    /// lässt (tatsächliche Selektion in der CodeEdit-TextView, nicht nur
+    /// Modellzustand) — Panel-Öffnen + Springen End-to-End.
+    private static func runXPathTest() {
+        testLabel = "xpath"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard let mainWindow = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        }), let root = mainWindow.contentView else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+
+        // Selbst geschriebene Fixture mit Multibyte-Inhalt VOR dem Ziel.
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <lager ort="Köln 🙂">
+            <regal id="1"><fach>Grüße</fach></regal>
+            <regal id="42"><fach>Zielfach</fach></regal>
+        </lager>
+        """
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-xpath-\(UUID().uuidString).xml")
+        do { try xml.write(to: tmp, atomically: true, encoding: .utf8) }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+
+        ws.loadFile(at: tmp) { ok in
+            guard ok else {
+                try? FileManager.default.removeItem(at: tmp)
+                finish(false, "loadFile (.xml) schlug fehl")
+            }
+            guard ws.activeTabSupportsXPath else {
+                try? FileManager.default.removeItem(at: tmp)
+                finish(false, "XPath für .xml nicht verfügbar (activeTabSupportsXPath=false)")
+            }
+            // Panel über den ECHTEN Menü-Pfad öffnen.
+            NotificationCenter.default.post(name: .fastraShowXPathBar, object: nil)
+            pollXPathPanel(ws: ws, root: root, xml: xml, tmp: tmp, tick: 0)
+        }
+    }
+
+    private static func pollXPathPanel(ws: Workspace, root: NSView, xml: String,
+                                       tmp: URL, tick: Int) {
+        // Panel-Sichtbarkeit + Modell-Zugriff sind MainActor-isoliert; die
+        // Selbsttests laufen auf dem Main-Thread → Isolierung übernehmen.
+        let model: XPathBarModel? = MainActor.assumeIsolated {
+            let visible = NSApp.windows.contains {
+                $0.identifier == XPathPanelController.panelIdentifier && $0.isVisible
+            }
+            return visible ? XPathPanelController.lastShown?.model : nil
+        }
+        if let model {
+            // Query in das echte Modell tippen (Live-Springen).
+            MainActor.assumeIsolated { model.query = "//regal[@id='42']/fach" }
+            // Erwartete Fundstelle unabhängig berechnen: Name des zweiten
+            // <fach>-Elements im Quelltext.
+            let ns = xml as NSString
+            let second = ns.range(of: "fach>Zielfach")
+            let expected = NSRange(location: second.location, length: 4)
+            pollXPathSelection(root: root, expected: expected, tmp: tmp, tick: 0)
+            return
+        }
+        if tick >= 40 {
+            try? FileManager.default.removeItem(at: tmp)
+            finish(false, "XPath-Panel erschien nicht binnen 10 s")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollXPathPanel(ws: ws, root: root, xml: xml, tmp: tmp, tick: tick + 1)
+        }
+    }
+
+    private static func pollXPathSelection(root: NSView, expected: NSRange,
+                                           tmp: URL, tick: Int) {
+        if let tv = editorTextView(in: root) as? TextView,
+           let selection = tv.selectionManager.textSelections.first?.range,
+           selection.location == expected.location {
+            // Panel wieder schließen (Aufräumen), Datei löschen.
+            MainActor.assumeIsolated { XPathPanelController.lastShown?.close() }
+            try? FileManager.default.removeItem(at: tmp)
+            finish(true, "XPath-Panel öffnet und springt zur echten Fundstelle "
+                + "(Selektion @\(selection.location))")
+        }
+        if tick >= 40 {
+            let actual = (editorTextView(in: root) as? TextView)?
+                .selectionManager.textSelections.first?.range
+            try? FileManager.default.removeItem(at: tmp)
+            finish(false, "kein Sprung zur Fundstelle binnen 10 s "
+                + "(erwartet \(expected), Selektion \(String(describing: actual)))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollXPathSelection(root: root, expected: expected, tmp: tmp, tick: tick + 1)
+        }
     }
 
     // MARK: - Ansichts-Umschalter + Vorschau (Etappe 2 Wunschpaket 2026-07)

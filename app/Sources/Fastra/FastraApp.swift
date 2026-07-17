@@ -249,6 +249,18 @@ struct FastraApp: App {
                     commandWorkspace.showSearchDialog = false
                 }
                     .keyboardShortcut(.escape, modifiers: [])
+
+                Divider()
+
+                // XPath-Navigation (Etappe 5 Wunschpaket 2026-07): schwebende
+                // Leiste für XML-artige Dokumente. Teilset: /, //, *, [n],
+                // [@attr], [@attr='wert'], @attr, text().
+                Button("XPath-Navigation…") {
+                    NotificationCenter.default.post(name: .fastraShowXPathBar,
+                                                    object: nil)
+                }
+                .keyboardShortcut("x", modifiers: [.command, .shift])
+                .disabled(!commandWorkspace.activeTabSupportsXPath)
             }
 
             // „Text"-Menü (BBEdit-Basics, TextOperations). Die Buttons posten

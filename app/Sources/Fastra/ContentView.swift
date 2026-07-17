@@ -12,6 +12,8 @@ struct ContentView: View {
     /// `@State` reicht — der Controller selbst ist keine ObservableObject,
     /// nur ein Halter für das NSPanel.
     @State private var searchPanel: SearchPanelController?
+    /// Schwebende XPath-Leiste (Etappe 5) — gleiche Lebenszeit-Logik.
+    @State private var xpathPanel: XPathPanelController?
 
     /// Sichtbarkeit des dezenten Donation-Banners (Donationware-Modell).
     /// Entscheidung beim Erscheinen über die pure DonationPrompt-Logik
@@ -160,6 +162,20 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .fastraShowGotoLine)) { _ in
             guard Workspace.shared === workspace else { return }
             showGotoLineDialog()
+        }
+        // ⇧⌘X — XPath-Leiste über dem Editor öffnen (Etappe 5). Nur für
+        // XML-artige Dokumente; das Menü ist sonst bereits deaktiviert.
+        .onReceive(NotificationCenter.default.publisher(for: .fastraShowXPathBar)) { _ in
+            guard Workspace.shared === workspace,
+                  workspace.activeTabSupportsXPath else { return }
+            if xpathPanel == nil {
+                xpathPanel = XPathPanelController(workspace: workspace)
+            }
+            let host = NSApp.windows.first {
+                $0.isVisible && WorkspaceWindowRegistry.workspace(for: $0) === workspace
+                    && !SearchWindow.isSearchWindow($0)
+            }
+            xpathPanel?.show(over: host)
         }
     }
 

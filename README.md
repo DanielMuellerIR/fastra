@@ -158,12 +158,48 @@ Fastra deliberately stays approachable: There are editors with even more
 machinery, and a matching learning curve to go with it. Fastra covers the
 everyday cases without a manual.
 
+### XPath navigation for XML
+
+`⇧⌘X` opens a floating XPath bar for XML-like documents (`.xml`, `.xsd`,
+`.xsl`, `.xslt`, `.plist`, `.svg` source, `.4DCatalog`, `.4DSettings`):
+typing jumps live to the first match, Enter/arrows step through further
+matches, and child elements and attributes are suggested from the document.
+A deliberately compact subset is supported:
+
+- absolute (`/root/child`) and relative paths (treated like `//…`),
+- `//` (any depth) and `*` (any element name),
+- predicates `[n]`, `[@attr]`, `[@attr='value']`,
+- targets `@attr` and `text()`.
+
+Anything else (axes, functions, `..`) is reported clearly as unsupported.
+With broken XML the last valid index stays active; the error appears
+unobtrusively in the bar.
+
+### Views, previews and language detection
+
+- The view switcher above the editor (also in the View menu, `⌃⌘1–3`)
+  toggles each file between Text, Preview and Hex — making the hex view
+  reachable for every saved file.
+- Images (PNG, JPEG, GIF, HEIC, TIFF, WebP) and PDFs open in a read-only
+  preview (large images are downsampled to stay memory-safe); SVG renders
+  by default and can be edited as XML source.
+- Unsaved tabs without a file extension detect their language conservatively
+  from content (JSON, XML, HTML, Markdown, CSS, JavaScript, shebang
+  scripts); the format chip in the footer doubles as a manual language
+  switcher whose choice always wins.
+
 ### Syntax highlighting
 
 Tree-sitter-based highlighting for 26 languages and file formats: Bash, C, C++,
 C#, CSS, Dart, Dockerfile, Go (incl. go.mod), HTML, Java, JavaScript/JSX, JSON,
 Kotlin, Lua, Markdown, Objective-C, Perl, PHP, Python, Ruby, Rust, SQL, Swift,
 TOML, TypeScript/TSX and YAML. Everything else opens as plain text.
+
+In addition, Fastra highlights 4D methods (`.4dm`) through its own
+lightweight tokenizer using the familiar 4D colors (light and dark) —
+including multi-word commands and constants, `$local`/`<>interprocess`
+variables, `[tables]` and fields. `.4DProject`/`.4DForm` open as JSON,
+`.4DCatalog`/`.4DSettings` as XML.
 
 ## Requirements & installation
 

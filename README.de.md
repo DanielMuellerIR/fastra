@@ -167,12 +167,49 @@ Fastra bleibt dabei bewusst zugänglich: Es gibt Editoren mit noch mehr
 Maschinerie, und mit entsprechender Lernkurve. Fastra deckt die Alltagsfälle
 ab, ohne dass man ein Handbuch braucht.
 
+### XPath-Navigation für XML
+
+`⇧⌘X` öffnet für XML-artige Dokumente (`.xml`, `.xsd`, `.xsl`, `.xslt`,
+`.plist`, `.svg`-Quelltext, `.4DCatalog`, `.4DSettings`) eine schwebende
+XPath-Leiste: Beim Tippen springt der Editor live zur ersten Fundstelle,
+Enter/Pfeile gehen weiter, Kind-Elemente und Attribute werden aus dem
+Dokument vorgeschlagen. Unterstützt wird bewusst ein kompaktes Teilset:
+
+- absolute (`/wurzel/kind`) und relative Pfade (wirken wie `//…`),
+- `//` (beliebige Tiefe) und `*` (beliebiger Elementname),
+- Prädikate `[n]`, `[@attr]`, `[@attr='wert']`,
+- Ziele `@attr` und `text()`.
+
+Alles andere (Achsen, Funktionen, `..`) meldet die Leiste verständlich als
+nicht unterstützt. Bei fehlerhaftem XML bleibt der letzte gültige Index
+aktiv; der Fehler erscheint dezent in der Leiste.
+
+### Ansichten, Vorschau und Spracherkennung
+
+- Der Ansichts-Umschalter über dem Editor (auch im Menü „Darstellung“,
+  `⌃⌘1–3`) wechselt je Datei zwischen Text, Vorschau und Hex — damit ist
+  die Hex-Ansicht für jede gespeicherte Datei erreichbar.
+- Bilder (PNG, JPEG, GIF, HEIC, TIFF, WebP) und PDFs öffnen in einer
+  schreibgeschützten Vorschau (große Bilder werden speicherschonend
+  herunterskaliert); SVG rendert standardmäßig und lässt sich als
+  XML-Quelltext bearbeiten.
+- Ungespeicherte Tabs ohne Endung erkennen ihre Sprache konservativ aus dem
+  Inhalt (JSON, XML, HTML, Markdown, CSS, JavaScript, Shebang-Skripte); der
+  Format-Chip im Footer ist zugleich ein manueller Sprachumschalter, dessen
+  Wahl immer gewinnt.
+
 ### Syntax-Highlighting
 
 Tree-sitter-basiertes Highlighting für 26 Sprachen und Dateiformate: Bash, C,
 C++, C#, CSS, Dart, Dockerfile, Go (inkl. go.mod), HTML, Java, JavaScript/JSX,
 JSON, Kotlin, Lua, Markdown, Objective-C, Perl, PHP, Python, Ruby, Rust, SQL,
 Swift, TOML, TypeScript/TSX und YAML. Alles andere öffnet als reiner Text.
+
+Zusätzlich färbt Fastra 4D-Methoden (`.4dm`) über einen eigenen leichten
+Tokenizer mit den vertrauten 4D-Farben (hell und dunkel) — inklusive
+mehrwortiger Befehle und Konstanten, `$lokaler`/`<>interprozess`-Variablen,
+`[Tabellen]` und Feldern. `.4DProject`/`.4DForm` öffnen als JSON,
+`.4DCatalog`/`.4DSettings` als XML.
 
 ## Voraussetzungen & Installation
 

@@ -9,6 +9,26 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.24.0] — 2026-07-17
+
+### Hinzugefügt (Wunschpaket Juli 2026, Etappe 5 — XPath-Navigation)
+
+- **Schwebende XPath-Leiste** (⇧⌘X bzw. „Suchen → XPath-Navigation…“) für
+  XML-artige Dokumente (.xml, .xsd, .xsl, .xslt, .plist, .svg-Quelltext,
+  .4DCatalog, .4DSettings): Beim Tippen springt der Editor live zur ersten
+  Fundstelle, Enter/Pfeile navigieren weiter; Kind-Element- und
+  Attributnamen werden aus dem Dokument vorgeschlagen.
+- **Dokumentiertes XPath-Teilset:** absolute/relative Pfade, `//`, `*`,
+  `[n]`, `[@attr]`, `[@attr='wert']`, `@attr`, `text()` — alles andere
+  meldet die Leiste verständlich als nicht unterstützt (README).
+- **Eigener Index mit Quell-Offsets:** ein SAX-artiger Ein-Pass-Scanner
+  arbeitet direkt auf UTF-16-Code-Units (Foundations XPath liefert keine
+  Textpositionen; byteorientierte Zeilen-/Spaltenangaben wären bei
+  Umlauten/Emoji falsch). Der Index entsteht asynchron im Hintergrund und
+  wird bei Dokumentänderungen debounced erneuert; bei kaputtem XML bleibt
+  der letzte gültige Index aktiv und der Fehler erscheint dezent in der
+  Leiste. Neuer Selbsttest `xpath` (Panel-Öffnen + echter Editor-Sprung).
+
 ## [v1.23.0] — 2026-07-17
 
 ### Hinzugefügt (Wunschpaket Juli 2026, Etappe 4 — 4D-Unterstützung)

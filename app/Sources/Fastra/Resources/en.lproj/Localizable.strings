@@ -915,6 +915,18 @@
 "Hex zeigt den gespeicherten Stand auf der Platte — ungespeicherte Änderungen dieses Tabs sind hier nicht sichtbar." = "Hex shows the saved state on disk — this tab’s unsaved changes are not visible here.";
 "Reiner Text" = "Plain Text";
 "Sprache/Format — manuelle Wahl gewinnt vor der Automatik" = "Language/format — a manual choice always wins over automatic detection";
+"XML unvollständig: „</%@>“ erwartet, „</%@>“ gefunden." = "Incomplete XML: expected “</%1$@>”, found “</%2$@>”.";
+"XML unvollständig: „<%@>“ wird nicht geschlossen." = "Incomplete XML: “<%@>” is never closed.";
+"XML an dieser Stelle nicht lesbar — der letzte gültige Index bleibt aktiv." = "XML is not readable at this position — the last valid index stays active.";
+"XPath eingeben — z. B. //buch[@id='42']/titel" = "Enter an XPath — e.g. //book[@id='42']/title";
+"„%@“ gehört nicht zum unterstützten XPath-Teilset (/, //, *, [n], [@attr], [@attr='wert'], @attr, text())." = "“%@” is not part of the supported XPath subset (/, //, *, [n], [@attr], [@attr='value'], @attr, text()).";
+"XPath unvollständig oder ungültig bei „%@“." = "XPath is incomplete or invalid at “%@”.";
+"Keine Fundstelle" = "No match";
+"%ld von %ld" = "%ld of %ld";
+"XPath-Navigation…" = "XPath Navigation…";
+"XPath — z. B. //buch[@id='42']/titel" = "XPath — e.g. //book[@id='42']/title";
+"XPath-Leiste schließen (Esc)" = "Close the XPath bar (Esc)";
+"↩ weiter · ⇧↩ zurück" = "↩ next · ⇧↩ previous";
 "Markdown-Vorschau ausblenden" = "Hide Markdown Preview";
 "Markdown-Vorschau einblenden" = "Show Markdown Preview";
 "Projekt schließen" = "Close Project";

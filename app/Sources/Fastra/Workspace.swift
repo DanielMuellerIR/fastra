@@ -1540,6 +1540,27 @@ final class Workspace: ObservableObject {
         }
     }
 
+    // MARK: - XPath-Navigation (Etappe 5 Wunschpaket 2026-07)
+
+    /// Dateitypen mit XPath-Leiste (XML-artige Quelltexte).
+    static let xpathExtensions: Set<String> = [
+        "xml", "xsd", "xsl", "xslt", "plist", "svg", "4dcatalog", "4dsettings",
+    ]
+
+    /// XPath ist für den aktiven Tab verfügbar, wenn der Dateityp XML-artig
+    /// ist UND gerade der Quelltext sichtbar ist (SVG-Vorschau z. B. nicht —
+    /// gesprungen wird im Text).
+    var activeTabSupportsXPath: Bool {
+        guard let tab = activeTab, tab.gitKind == nil, !tab.isWelcome else {
+            return false
+        }
+        let name = tab.url?.lastPathComponent ?? tab.title
+        guard Self.xpathExtensions.contains(
+            (name as NSString).pathExtension.lowercased()
+        ) else { return false }
+        return activeViewMode == .text
+    }
+
     // MARK: - Ansichts-Umschalter (Etappe 2 Wunschpaket 2026-07)
 
     /// Verfügbare Ansichten des aktiven Tabs (Umschalter + Menüpunkte).
