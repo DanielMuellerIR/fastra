@@ -146,6 +146,7 @@ enum SelfTest {
         case "highlight": waitForMainWindow { runHighlightTest() }
         case "highlight4d": waitForMainWindow { runFourDHighlightTest() }
         case "xpath": waitForMainWindow { runXPathTest() }
+        case "leakscenario": waitForMainWindow { runLeakScenario() }
         case "previewrender": waitForMainWindow { runPreviewRenderTest() }
         case "markdown":  waitForMainWindow { runMarkdownRenderTest() }
         case "jump":      waitForMainWindow { runJumpTest() }
@@ -1508,6 +1509,76 @@ enum SelfTest {
                                srgb.redComponent, srgb.greenComponent, srgb.blueComponent))
         }
         return seen.count
+    }
+
+    // MARK: - Leaks-Szenario (Wunschpaket 2026-07, Abschlussprüfung)
+
+    /// Diagnose-Szenario für den `leaks`-Durchlauf: übt Bildvorschau, PDF-
+    /// Vorschau, Hex-Ansicht und XPath-Leiste je einmal aus, schließt die
+    /// Tabs wieder und meldet dann `LEAKSCENARIO READY <pid>` auf stderr.
+    /// Danach bleibt der Prozess ~60 s am Leben, damit ein äußeres Skript
+    /// `leaks <pid>` gegen die laufende App ausführen kann.
+    private static func runLeakScenario() {
+        testLabel = "leakscenario"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil")
+        }
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-leaks-\(UUID().uuidString)")
+        let png = base.appendingPathComponent("bild.png")
+        let pdf = base.appendingPathComponent("doku.pdf")
+        let xml = base.appendingPathComponent("daten.xml")
+        let txt = base.appendingPathComponent("hex.txt")
+        do {
+            try fm.createDirectory(at: base, withIntermediateDirectories: true)
+            try writeSolidPNG(to: png, width: 640, height: 320)
+            try writeSinglePagePDF(to: pdf)
+            try "<lager><regal id=\"1\"><fach>Grüße</fach></regal></lager>"
+                .write(to: xml, atomically: true, encoding: .utf8)
+            try "Hexbeispiel 0123456789".write(to: txt, atomically: true,
+                                               encoding: .utf8)
+        } catch {
+            finish(false, "Fixtures nicht schreibbar: \(error.localizedDescription)")
+        }
+
+        // Sequenz: PNG → PDF → TXT(Hex) → XML(XPath) → aufräumen → READY.
+        ws.loadFile(at: png) { _ in
+            ws.loadFile(at: pdf) { _ in
+                ws.loadFile(at: txt) { _ in
+                    ws.setViewMode(.hex)
+                    ws.loadFile(at: xml) { _ in
+                        NotificationCenter.default.post(name: .fastraShowXPathBar,
+                                                        object: nil)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            MainActor.assumeIsolated {
+                                XPathPanelController.lastShown?.model?.query = "//fach"
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                finishLeakScenario(ws: ws, base: base)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static func finishLeakScenario(ws: Workspace, base: URL) {
+        // Panel und Tabs schließen — Restbestände wären Leak-Kandidaten,
+        // genau das soll `leaks` sehen können.
+        MainActor.assumeIsolated { XPathPanelController.lastShown?.close() }
+        if let keep = ws.tabs.first(where: { $0.url == nil })?.id ?? ws.tabs.first?.id {
+            ws.closeOtherTabs(keeping: keep)
+        }
+        try? FileManager.default.removeItem(at: base)
+        FileHandle.standardError.write(Data(
+            "LEAKSCENARIO READY \(ProcessInfo.processInfo.processIdentifier)\n".utf8))
+        // KEIN finish(): Der Prozess bleibt für den leaks-Angriff am Leben
+        // und beendet sich nach 60 s selbst (SELFTEST-Zeile für den Runner).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60) {
+            finish(true, "Leak-Szenario ausgeübt (Bild/PDF/Hex/XPath)")
+        }
     }
 
     // MARK: - XPath-Leiste (Etappe 5 Wunschpaket 2026-07)

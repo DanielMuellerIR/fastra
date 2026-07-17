@@ -185,6 +185,28 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
 - **ABER: Pure Unit-Tests fangen die gefährlichste Bug-Klasse NICHT** — App-weite Event-/Lifecycle-/Monitor-Ordering-Fehler. Die `KeyRouting`-Tests waren grün, während die App komplett unbenutzbar war. Lehre: Logik-Tests sind nötig, aber NICHT hinreichend. Jede Änderung an App-Lifecycle/Fenster/Monitoren MUSS zusätzlich real verifiziert werden (manuell oder per UI-Automation).
 - **Single Source of Truth.** CMD+F/ESC-Routing existiert genau einmal (`KeyRouting.route`).
 
+## Speicher-Diagnose: `leakscenario` + `leaks`
+
+Das Diagnose-Szenario `-selftest leakscenario` übt Bildvorschau, PDF-Vorschau,
+Hex-Ansicht und XPath-Leiste je einmal aus, schließt alles wieder, meldet
+`LEAKSCENARIO READY <pid>` auf stderr und bleibt dann ~60 s am Leben — genau
+für einen `leaks <pid>`-Durchlauf gegen die laufende App:
+
+```bash
+APP=".build/debug/Fastra.app/Contents/MacOS/Fastra"
+ERR=$(mktemp); "$APP" -selftest leakscenario -ApplePersistenceIgnoreState YES 2>"$ERR" &
+until grep -q READY "$ERR"; do sleep 1; done
+leaks "$(awk '/READY/{print $3}' "$ERR")"
+```
+
+**Ergebnis 2026-07-17 (v1.25.0, Wunschpaket-Abschluss):** 288 Leaks /
+14,4 KB — ausnahmslos bekannte Apple-XPC-Zyklen (`NSXPCConnection`/
+`LNDaemonApplicationInterface`, AppIntents-Daemon-Anbindung); keine einzige
+Fastra-Klasse in den Leak-Bäumen. Bundle-Wachstum des Wunschpakets
+(Leitplanke ≤ ~1 MB): Debug-Binary v1.22.0 → v1.25.0 gemessen +536 KB
+(überwiegend die generierten 4D-Symbollisten); Etappen 1–3 waren reiner
+Code ohne neue Ressourcen. Gesamt klar unter der Leitplanke.
+
 **Pflicht-Smoke-Test nach JEDER Änderung an App-Lifecycle, Fenster-Setup, Menüleiste oder Event-Monitoren — die Klasse von Bugs, die Unit-Tests nicht fangen:**
 0. **Maus funktioniert überhaupt:** Klick in Editor setzt Cursor, Buttons reagieren, roter Schließen-Knopf schließt, CMD+Tab holt App nach vorn. (Diese Stufe zuerst — ist sie rot, ist alles andere irrelevant.)
 1. CMD+F (Editor fokussiert) → Suchmaske öffnet, **kein** Editor-Find-Panel.
