@@ -132,6 +132,17 @@ struct FastraApp: App {
                 Button("Dokumentschrift: Originalgröße") { documentZoomLevel = 0 }
                     .keyboardShortcut("0", modifiers: [.command, .shift])
                 Divider()
+                // Ansichts-Umschalter (Etappe 2 Wunschpaket 2026-07): dieselben
+                // drei Ansichten wie der Umschalter im Editorbereich, hier mit
+                // Shortcuts. ⌃⌘1–3 kollidiert weder mit ⌘1-Tabwechseln noch mit
+                // den CodeEdit-Tastatur-Monitoren (die fangen nur ⌘]/⌘[/⌘F ab).
+                Button("Ansicht: Text") { commandWorkspace.setViewMode(.text) }
+                    .keyboardShortcut("1", modifiers: [.command, .control])
+                Button("Ansicht: Vorschau") { commandWorkspace.setViewMode(.preview) }
+                    .keyboardShortcut("2", modifiers: [.command, .control])
+                Button("Ansicht: Hex") { commandWorkspace.setViewMode(.hex) }
+                    .keyboardShortcut("3", modifiers: [.command, .control])
+                Divider()
                 // Zeilenumbruch am Fensterrand (BBEdit „Soft Wrap Text").
                 // Toggle in den Commands → checkbarer Menüpunkt im „Darstellung".
                 Toggle("Zeilen umbrechen", isOn: $wrapLines)

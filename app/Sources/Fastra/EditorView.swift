@@ -244,20 +244,87 @@ struct EditorView: View {
                     if workspace.activeConflictSupport != .none {
                         GitConflictBar()
                     }
-                    if let tab = workspace.activeTab, tab.displayMode == .hex,
-                       let url = tab.url {
-                        HexFileView(url: url, fileSize: tab.fileSize).id(tab.id)
-                    } else if let tab = workspace.activeTab,
-                              tab.displayMode == .chunkedText, let url = tab.url {
-                        ChunkedTextFileView(url: url, fileSize: tab.fileSize,
-                                            encoding: tab.encoding, bom: tab.bom)
+                    // Ansichts-Umschalter (Etappe 2 Wunschpaket 2026-07):
+                    // sichtbar, sobald die Datei mehr als eine Ansicht bietet.
+                    if workspace.availableViewModes.count > 1 {
+                        viewModeBar
+                        Divider().opacity(0.3)
+                    }
+                    switch workspace.activeViewMode {
+                    case .preview:
+                        if let tab = workspace.activeTab, let url = tab.url {
+                            if ViewModeRouting.pdfExtensions.contains(
+                                ViewModeRouting.normalizedExtension(url.pathExtension)
+                            ) {
+                                PDFPreviewView(url: url).id(tab.id)
+                            } else {
+                                ImagePreviewView(url: url, fileSize: tab.fileSize)
+                                    .id(tab.id)
+                            }
+                        } else {
+                            actualEditor
+                        }
+                    case .hex:
+                        if let tab = workspace.activeTab, let url = tab.url {
+                            // Der Hex-Modus liest direkt von der Platte. Hat der
+                            // Text-Tab ungespeicherte Änderungen, muss das sichtbar
+                            // sein — sonst wirkte die Ansicht still „falsch".
+                            if tab.displayMode == .text && tab.isDirty {
+                                Label("Hex zeigt den gespeicherten Stand auf der Platte — ungespeicherte Änderungen dieses Tabs sind hier nicht sichtbar.",
+                                      systemImage: "exclamationmark.triangle")
+                                    .fastraFont(.small)
+                                    .foregroundColor(Theme.textSecondary)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 4)
+                            }
+                            HexFileView(url: url, fileSize: tab.fileSize) {
+                                // Hex-Schreibvorgang → offene Text-Tabs derselben
+                                // Datei über den Extern-Änderungs-Pfad abgleichen.
+                                workspace.checkExternalChanges()
+                            }
                             .id(tab.id)
-                    } else {
-                        actualEditor
+                        } else {
+                            actualEditor
+                        }
+                    case .text:
+                        if let tab = workspace.activeTab,
+                           tab.displayMode == .chunkedText, let url = tab.url {
+                            ChunkedTextFileView(url: url, fileSize: tab.fileSize,
+                                                encoding: tab.encoding, bom: tab.bom)
+                                .id(tab.id)
+                        } else {
+                            actualEditor
+                        }
                     }
                 }
             }
         }
+    }
+
+    /// Schmale Leiste mit dem Ansichts-Umschalter (Text/Vorschau/Hex),
+    /// rechtsbündig über dem Inhalt. Schreibt die Wahl in den aktiven Tab —
+    /// die manuelle Wahl bleibt für die Lebensdauer des Tabs erhalten.
+    private var viewModeBar: some View {
+        HStack {
+            Spacer()
+            Picker("Ansicht", selection: Binding(
+                get: { workspace.activeViewMode },
+                set: { workspace.setViewMode($0) }
+            )) {
+                ForEach(workspace.availableViewModes, id: \.self) { mode in
+                    Text(verbatim: mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .controlSize(.small)
+            .help("Ansicht dieser Datei umschalten (Text / Vorschau / Hex)")
+            .accessibilityIdentifier("viewModePicker")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(Theme.surfaceRaised)
     }
 
     /// Der eigentliche CodeEditSourceEditor — nur gezeigt, wenn isLoading = false.

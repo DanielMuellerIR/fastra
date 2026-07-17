@@ -363,7 +363,11 @@ private struct TextFilePageNavigation: View {
 }
 
 /// Native, virtualisierte Hex+ASCII-Ansicht. Binärdateien werden automatisch
-/// durch Null-Byte-Probe hierher geroutet; Bearbeitung ist bewusst deaktiviert.
+/// durch Null-Byte-Probe hierher geroutet; über den Ansichts-Umschalter ist
+/// sie für jede Datei manuell erreichbar (Etappe 2 Wunschpaket 2026-07).
+/// Bearbeitung ist Opt-in: erst nach ausdrücklicher Bestätigung, geschrieben
+/// wird erst nach sichtbarer Änderungsvorschau und zweiter Bestätigung.
+/// Wer nichts ändert, bekommt auch keinen Speicher-Zwang.
 struct HexFileView: View {
     @StateObject private var model: FilePageModel
     @StateObject private var edits = HexEditSession()
@@ -372,11 +376,16 @@ struct HexFileView: View {
     @State private var showsChangesPreview = false
     @State private var requestSaveConfirmation = false
     @State private var saveError: String?
+    /// Wird nach einem erfolgreichen Hex-Schreibvorgang aufgerufen — z. B.
+    /// damit offene Text-Tabs derselben Datei den neuen Plattenstand über
+    /// die Extern-Änderungs-Erkennung abgleichen können.
+    private let onDidWrite: (() -> Void)?
 
-    init(url: URL, fileSize: UInt64) {
+    init(url: URL, fileSize: UInt64, onDidWrite: (() -> Void)? = nil) {
         _model = StateObject(wrappedValue: FilePageModel(
             url: url, totalBytes: fileSize, pageSize: 16 * 256
         ))
+        self.onDidWrite = onDidWrite
     }
 
     var body: some View {
@@ -499,6 +508,7 @@ struct HexFileView: View {
         do {
             try edits.save(to: model.url)
             model.load(page: model.pageIndex)
+            onDidWrite?()
         } catch {
             saveError = error.localizedDescription
         }

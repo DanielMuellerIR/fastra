@@ -17,6 +17,7 @@
 
 import AppKit
 import Darwin
+import PDFKit
 import WebKit
 // Echte Editor-Klasse von CodeEditSourceEditor (Modul CodeEditTextView).
 // Wird gebraucht, um im Sprung-Selbsttest die TATSÄCHLICHE Selektion des
@@ -143,6 +144,7 @@ enum SelfTest {
         case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
         case "highlight": waitForMainWindow { runHighlightTest() }
+        case "previewrender": waitForMainWindow { runPreviewRenderTest() }
         case "markdown":  waitForMainWindow { runMarkdownRenderTest() }
         case "jump":      waitForMainWindow { runJumpTest() }
         case "ghosttext": waitForMainWindow { runGhostTextTest() }
@@ -246,7 +248,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, previewrender, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, contrast, windows)")
         }
     }
 
@@ -1403,6 +1405,188 @@ enum SelfTest {
                                srgb.redComponent, srgb.greenComponent, srgb.blueComponent))
         }
         return seen.count
+    }
+
+    // MARK: - Ansichts-Umschalter + Vorschau (Etappe 2 Wunschpaket 2026-07)
+
+    /// Prüft die Read-only-Vorschau mit ECHTER Beobachtung (Muster
+    /// `highlight`): Ein rotes PNG muss als tatsächlich dekodiertes Bild in
+    /// der View-Hierarchie ankommen (Pixelfarbe wird gesampelt, nicht nur
+    /// Modellzustand), der Umschalter muss die Ansicht real wechseln, und
+    /// ein generiertes PDF muss als PDFKit-Dokument mit einer Seite gerendert
+    /// werden.
+    private static func runPreviewRenderTest() {
+        testLabel = "previewrender"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard let mainWindow = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        }), let root = mainWindow.contentView else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+
+        // Rotes 64×32-PNG erzeugen (Rot ist als Sample-Farbe eindeutig).
+        let png = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-previewrender-\(UUID().uuidString).png")
+        do { try writeSolidPNG(to: png, width: 64, height: 32) }
+        catch { finish(false, "PNG nicht schreibbar: \(error.localizedDescription)") }
+
+        ws.loadFile(at: png) { ok in
+            guard ok else {
+                try? FileManager.default.removeItem(at: png)
+                finish(false, "loadFile (PNG) schlug fehl")
+            }
+            guard ws.activeViewMode == .preview else {
+                try? FileManager.default.removeItem(at: png)
+                finish(false, "PNG öffnet nicht in der Vorschau (Modus: \(ws.activeViewMode))")
+            }
+            pollImagePreview(root: root, ws: ws, png: png, tick: 0)
+        }
+    }
+
+    /// Wartet, bis das dekodierte Bild wirklich in der View-Hierarchie hängt,
+    /// und sampelt dann die Mittelpixel-Farbe.
+    private static func pollImagePreview(root: NSView, ws: Workspace,
+                                         png: URL, tick: Int) {
+        if let imageView = previewImageView(in: root), let image = imageView.image {
+            guard let color = centerColor(of: image) else {
+                try? FileManager.default.removeItem(at: png)
+                finish(false, "Vorschaubild nicht sampelbar")
+            }
+            guard color.redComponent > 0.8, color.greenComponent < 0.2,
+                  color.blueComponent < 0.2 else {
+                try? FileManager.default.removeItem(at: png)
+                finish(false, "Vorschaubild hat falsche Farbe: \(color)")
+            }
+            // Umschalter real prüfen: Hex → Bildfläche verschwindet.
+            ws.setViewMode(.hex)
+            pollPreviewGone(root: root, ws: ws, png: png, tick: 0)
+            return
+        }
+        if tick >= 40 {
+            try? FileManager.default.removeItem(at: png)
+            finish(false, "kein gerendertes Vorschaubild binnen 10 s")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollImagePreview(root: root, ws: ws, png: png, tick: tick + 1)
+        }
+    }
+
+    /// Nach dem Umschalten auf Hex darf keine Bildfläche mehr da sein.
+    private static func pollPreviewGone(root: NSView, ws: Workspace,
+                                        png: URL, tick: Int) {
+        if previewImageView(in: root) == nil {
+            try? FileManager.default.removeItem(at: png)
+            runPDFPreviewPart(root: root, ws: ws)
+            return
+        }
+        if tick >= 40 {
+            try? FileManager.default.removeItem(at: png)
+            finish(false, "Umschalter auf Hex entfernt die Bildvorschau nicht")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollPreviewGone(root: root, ws: ws, png: png, tick: tick + 1)
+        }
+    }
+
+    /// PDF-Teil: einseitiges PDF erzeugen, laden, echtes PDFKit-Dokument
+    /// in der Hierarchie beobachten.
+    private static func runPDFPreviewPart(root: NSView, ws: Workspace) {
+        let pdf = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-previewrender-\(UUID().uuidString).pdf")
+        do { try writeSinglePagePDF(to: pdf) }
+        catch { finish(false, "PDF nicht schreibbar: \(error.localizedDescription)") }
+
+        ws.loadFile(at: pdf) { ok in
+            guard ok else {
+                try? FileManager.default.removeItem(at: pdf)
+                finish(false, "loadFile (PDF) schlug fehl")
+            }
+            guard ws.activeViewMode == .preview else {
+                try? FileManager.default.removeItem(at: pdf)
+                finish(false, "PDF öffnet nicht in der Vorschau (Modus: \(ws.activeViewMode))")
+            }
+            pollPDFPreview(root: root, pdf: pdf, tick: 0)
+        }
+    }
+
+    private static func pollPDFPreview(root: NSView, pdf: URL, tick: Int) {
+        if let pdfView = firstPDFView(in: root),
+           let document = pdfView.document, document.pageCount == 1 {
+            try? FileManager.default.removeItem(at: pdf)
+            finish(true, "Bildvorschau rendert rot + Umschalter wirkt + PDF zeigt 1 Seite")
+        }
+        if tick >= 40 {
+            try? FileManager.default.removeItem(at: pdf)
+            finish(false, "kein gerendertes PDF binnen 10 s")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollPDFPreview(root: root, pdf: pdf, tick: tick + 1)
+        }
+    }
+
+    /// Sucht die Bildvorschau-Fläche über ihren Accessibility-Identifier.
+    private static func previewImageView(in view: NSView) -> NSImageView? {
+        if let imageView = view as? NSImageView,
+           imageView.accessibilityIdentifier() == "imagePreviewSurface" {
+            return imageView
+        }
+        for sub in view.subviews {
+            if let found = previewImageView(in: sub) { return found }
+        }
+        return nil
+    }
+
+    private static func firstPDFView(in view: NSView) -> PDFView? {
+        if let pdfView = view as? PDFView { return pdfView }
+        for sub in view.subviews {
+            if let found = firstPDFView(in: sub) { return found }
+        }
+        return nil
+    }
+
+    /// Mittelpixel-Farbe eines NSImage (sRGB) — echte Dekodier-Beobachtung.
+    private static func centerColor(of image: NSImage) -> NSColor? {
+        var rect = NSRect(origin: .zero, size: image.size)
+        guard let cg = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else {
+            return nil
+        }
+        let bitmap = NSBitmapImageRep(cgImage: cg)
+        return bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?
+            .usingColorSpace(.sRGB)
+    }
+
+    /// Einfarbig rotes PNG über CoreGraphics schreiben.
+    private static func writeSolidPNG(to url: URL, width: Int, height: Int) throws {
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ) else { throw CocoaError(.fileWriteUnknown) }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1).setFill()
+        NSRect(x: 0, y: 0, width: width, height: height).fill()
+        NSGraphicsContext.restoreGraphicsState()
+        guard let data = rep.representation(using: .png, properties: [:]) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        try data.write(to: url)
+    }
+
+    /// Einseitiges PDF über CGContext schreiben.
+    private static func writeSinglePagePDF(to url: URL) throws {
+        var mediaBox = CGRect(x: 0, y: 0, width: 200, height: 100)
+        guard let context = CGContext(url as CFURL, mediaBox: &mediaBox, nil) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        context.beginPDFPage(nil)
+        context.setFillColor(CGColor(srgbRed: 0, green: 0, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 20, y: 20, width: 160, height: 60))
+        context.endPDFPage()
+        context.closePDF()
     }
 
     /// Belegt den Offset-Fix beim Treffer-Sprung END-TO-END: ein Sprung zu

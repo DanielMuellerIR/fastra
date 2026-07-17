@@ -9,6 +9,33 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.21.0] — 2026-07-17
+
+### Hinzugefügt (Wunschpaket Juli 2026, Etappe 2 — Ansichten & Vorschau)
+
+- **Ansichts-Umschalter Text/Vorschau/Hex:** Bietet eine Datei mehrere
+  Ansichten, erscheint über dem Editorbereich ein Umschalter; zusätzlich
+  gibt es Menüpunkte im „Darstellung“-Menü (⌃⌘1/2/3). Damit ist der
+  vorhandene Hex-Modus für jede gespeicherte Datei manuell erreichbar.
+  Die manuelle Wahl gilt pro Tab.
+- **Read-only-Bildvorschau** für PNG, JPEG, GIF, HEIC, TIFF und WebP über
+  ImageIO — große Bilder werden direkt auf Vorschaugröße dekodiert
+  (Downsampling, nie das Vollbild im Speicher); die Kopfzeile zeigt echte
+  Pixelmaße und Dateigröße. Bild- und PDF-Dateien öffnen standardmäßig in
+  der Vorschau statt im Hex-Modus.
+- **Read-only-PDF-Vorschau** über PDFKit mit Blättern und Zoom.
+- **SVG** öffnet standardmäßig als gerenderte Vorschau; „Text“ zeigt den
+  Quelltext im normalen Editor mit XML-Highlighting, Hex bleibt wählbar.
+- Öffnet man einen Text-Tab mit ungespeicherten Änderungen im Hex-Modus,
+  weist eine Hinweiszeile darauf hin, dass Hex den Plattenstand zeigt.
+  Nach einem Hex-Schreibvorgang gleicht Fastra offene Text-Tabs derselben
+  Datei über die vorhandene Extern-Änderungs-Erkennung ab.
+- Hex-Bearbeitung bleibt unverändert Opt-in (Bestätigung, Änderungsvorschau,
+  zweite Bestätigung); der veraltete Kommentar „Bearbeitung ist bewusst
+  deaktiviert“ wurde korrigiert. Neuer Selbsttest `previewrender` beobachtet
+  das echte Rendering (Pixelfarbe der Bildvorschau, Umschalter-Wirkung,
+  PDF-Seite im PDFKit-Dokument).
+
 ## [v1.20.0] — 2026-07-17
 
 ### Hinzugefügt (Wunschpaket Juli 2026, Etappe 1 — UX-Verbesserungen)

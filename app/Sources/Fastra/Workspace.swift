@@ -112,6 +112,10 @@ struct EditorTab: Identifiable, Hashable {
     /// Wunsch 2026-07-12). Beim Öffnen einer Datei/eines Projekts wird er
     /// abgeräumt bzw. in ein normales leeres Dokument umgewandelt.
     var isWelcome: Bool
+    /// Vom Nutzer gewählte Ansicht (Text/Vorschau/Hex, Etappe 2 Wunschpaket
+    /// 2026-07). `nil` = automatischer Standard nach Dateityp
+    /// (`ViewModeRouting.defaultMode`). Nicht persistiert.
+    var viewMode: EditorViewMode?
 
     init(
         id: UUID = UUID(),
@@ -132,7 +136,8 @@ struct EditorTab: Identifiable, Hashable {
         gitDiffRequest: GitDiffRequest? = nil,
         gitDiffDocument: GitDiffDocument? = nil,
         gitDiffLoadGeneration: UInt64 = 0,
-        isWelcome: Bool = false
+        isWelcome: Bool = false,
+        viewMode: EditorViewMode? = nil
     ) {
         self.id = id
         self.title = title
@@ -153,6 +158,7 @@ struct EditorTab: Identifiable, Hashable {
         self.gitDiffDocument = gitDiffDocument
         self.gitDiffLoadGeneration = gitDiffLoadGeneration
         self.isWelcome = isWelcome
+        self.viewMode = viewMode
     }
 }
 
@@ -1389,6 +1395,40 @@ final class Workspace: ObservableObject {
         guard projectURL == nil else { return }
         guard let parent = usableDirectory(url.deletingLastPathComponent()) else { return }
         openProject(at: parent, keepingUnrelatedTabs: true)
+    }
+
+    // MARK: - Ansichts-Umschalter (Etappe 2 Wunschpaket 2026-07)
+
+    /// Verfügbare Ansichten des aktiven Tabs (Umschalter + Menüpunkte).
+    /// Git-Ansichten und der Willkommen-Tab haben keinen Umschalter.
+    var availableViewModes: [EditorViewMode] {
+        guard let tab = activeTab, tab.gitKind == nil, !tab.isWelcome else { return [] }
+        return ViewModeRouting.availableModes(
+            fileExtension: tab.url?.pathExtension,
+            loadedDisplayMode: tab.displayMode,
+            hasURL: tab.url != nil
+        )
+    }
+
+    /// Effektive Ansicht des aktiven Tabs (manuelle Wahl vor Standard).
+    var activeViewMode: EditorViewMode {
+        guard let tab = activeTab else { return .text }
+        return ViewModeRouting.effectiveMode(
+            chosen: tab.viewMode,
+            fileExtension: tab.url?.pathExtension,
+            loadedDisplayMode: tab.displayMode,
+            hasURL: tab.url != nil
+        )
+    }
+
+    /// Setzt die Ansicht des aktiven Tabs — nur wenn sie für die Datei
+    /// verfügbar ist (Menüpunkte können auf nicht passende Tabs treffen).
+    func setViewMode(_ mode: EditorViewMode) {
+        guard let idx = activeTabIndex, availableViewModes.contains(mode) else {
+            NSSound.beep()
+            return
+        }
+        tabs[idx].viewMode = mode
     }
 
     /// Vorschlagsordner für den Save-Dialog: der in der Seitenleiste
