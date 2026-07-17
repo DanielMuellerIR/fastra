@@ -5,8 +5,10 @@
 Fastra ist ein nativer macOS-Editor für sichere, visuell überprüfbare Suche und
 Ersetzung über Dateien und Ordner. Die App läuft auf macOS 14+ und Apple Silicon.
 Sie nutzt Swift, SwiftUI, `NSRegularExpression`, tree-sitter-regex und den
-CodeEditSourceEditor. Das Produkt bleibt lokal: keine Cloud, keine Konten, keine
-Telemetrie und keine versteckten Uploads.
+CodeEditSourceEditor. Das Produkt bleibt lokal: keine Cloud-Verarbeitung, keine
+Konten, keine Telemetrie und keine versteckten Uploads. Die dokumentierte
+Sparkle-Updateprüfung lädt ausschließlich den signierten Appcast von GitHub Pages;
+Hardware- und Systemprofilübermittlung ist deaktiviert.
 
 Der Produktkern ist nicht „Regex mit einer GUI“, sondern die Vorschau vor jeder
 Änderung. Der Nutzer sieht Treffer und Auswirkungen, bevor Fastra Dateien

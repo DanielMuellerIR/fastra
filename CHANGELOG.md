@@ -9,6 +9,33 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.19.0] — 2026-07-17
+
+### Hinzugefügt
+
+- **Signierte Updates direkt in Fastra:** Der neue Menüpunkt „Nach Updates
+  suchen …“ prüft einen signierten Appcast, lädt das notarisiert veröffentlichte
+  DMG und installiert erst nach ausdrücklicher Zustimmung. Version 1.19.0 ist
+  der einmalig manuell zu installierende Bootstrap für künftige Updates.
+
+### Datenschutz und Sicherheit
+
+- Sparkle 2.9.4 ist exakt gepinnt. App, DMG und Sparkles innere Helfer werden
+  mit Developer ID signiert und von Apple notarisiert; Update-Archiv und Feed
+  erhalten zusätzlich eine eigene Ed25519-Signatur. Signierte Feeds und die
+  Prüfung vor dem Entpacken sind verpflichtend, Delta-Updates deaktiviert.
+- Automatische Prüfungen senden kein Hardware- oder Systemprofil. Fastra
+  kontaktiert nur den dokumentierten GitHub-Pages-Feed; die Installation bleibt
+  immer zustimmungspflichtig.
+
+### Qualitätssicherung
+
+- Build, lokaler Installationspfad und Release verwenden eine gemeinsame,
+  explizite Signierreihenfolge von eingebetteten Mach-O-Dateien über Sparkles
+  Autoupdate und Updater bis zum äußeren App-Bundle. Der neue Selbsttest
+  `updates` prüft den echten Menüpunkt und alle sicherheitsrelevanten Plist-Werte
+  im gepackten Bundle.
+
 ## [v1.18.1] — 2026-07-16
 
 ### Behoben

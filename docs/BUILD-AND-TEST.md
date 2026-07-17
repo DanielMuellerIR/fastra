@@ -75,6 +75,14 @@ App eine veraltete Version.
 toter cursorPositions-Reconcile, Gutter-Drag-Clamp, horizontaler Scrollbalken,
 Zeilenbreiten-Messung, exotische Sprachen ausschneiden, Highlight-Query-Pfad
 layout-robust und Text-Geist-Fix).
+
+Seit v1.19.0 verpackt `build.sh` zusätzlich das exakt gepinnte
+`Sparkle.framework` unter `Contents/Frameworks`, entfernt die für die nicht
+sandboxed App unnötigen XPC-Dienste und signiert Ressourcen, Autoupdate,
+Updater-App, Framework und Fastra strikt von innen nach außen. `--deep` dient
+nur noch der abschließenden Prüfung, nie der Signierung. Der Selbsttest
+`updates` prüft im gepackten Bundle Menüpunkt, Feed, Signaturpflicht,
+zustimmungspflichtige Installation und deaktiviertes Systemprofiling.
 Details in `app/LESSONS-LEARNED.md` Sektion F (F.9 = CMD+F, F.10 = Reconcile).
 Patch 4h (Highlight-Query-Pfad, 2026-07-10): `CodeLanguage.queryURL` baute
 `resourceURL + "Resources/…"`, aber `Bundle.module.resourceURL` zeigt bei

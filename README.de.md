@@ -22,7 +22,9 @@ Fertige Builds gibt es als DMG auf der
 [Releases-Seite](https://github.com/DanielMuellerIR/fastra/releases):
 DMG laden, öffnen und Fastra in den Programme-Ordner ziehen. Das DMG ist
 mit einer Developer-ID signiert und von Apple notariell beglaubigt,
-Gatekeeper öffnet es deshalb ohne Warnung. Voraussetzung: macOS 14+ (Apple Silicon).
+Gatekeeper öffnet es deshalb ohne Warnung. Version 1.19.0 muss einmal per DMG
+installiert werden; danach findet **Fastra → Nach Updates suchen …** signierte
+Releases direkt in der App. Voraussetzung: macOS 14+ (Apple Silicon).
 
 ## Das `*`-Sternchen: Mächtigkeit ohne Syntax
 
@@ -66,7 +68,9 @@ Capture Groups.
 - **Projekte, Git und Markdown** ergänzen den normalen Texteditor; die Details
   stehen unten.
 - **Light- & Dark-Mode**, natives SwiftUI/AppKit, kein Electron.
-- **Lokal & privat**: Kein Cloud-Kontakt, keine Telemetrie, kein Abo.
+- **Lokal & privat**: Keine Konten, Telemetrie, Dokument-Uploads oder Abos. Die
+  Updateprüfung kontaktiert nur Fastras signierten GitHub-Pages-Feed und sendet
+  kein Hardware- oder Systemprofil.
 
 ![Fastra im Dark-Mode](screenshots/editor-dark.png)
 
@@ -175,6 +179,8 @@ Swift, TOML, TypeScript/TSX und YAML. Alles andere öffnet als reiner Text.
 - macOS 14+ (Apple Silicon)
 - DMG aus den [Releases](../../releases) laden, Fastra nach `/Programme`
   ziehen, fertig.
+- Ab Version 1.19.0 stehen künftige signierte Releases unter
+  **Fastra → Nach Updates suchen …** bereit und werden erst nach Zustimmung installiert.
 
 ### Aus dem Quellcode bauen
 
@@ -192,7 +198,7 @@ Details: [app/README.md](app/README.md) · [CLAUDE.md](CLAUDE.md) (Build, Tests,
 
 [MIT](LICENSE), © 2026 Daniel Müller
 
-Fastra bündelt und linkt Drittsoftware (ripgrep, PCRE2, die CodeEdit- und
+Fastra bündelt und linkt Drittsoftware (Sparkle, ripgrep, PCRE2, die CodeEdit- und
 tree-sitter-Komponenten, cmark-gfm sowie die Markdown-Vorschau-Assets). Deren
 Lizenzen und Copyright-Vermerke sind in
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) gesammelt.

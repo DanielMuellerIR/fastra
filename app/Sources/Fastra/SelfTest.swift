@@ -23,6 +23,7 @@ import CodeEditTextView
 // Sprach-Registry — für die FAIL-Diagnose des Highlight-Selbsttests
 // (erkannte Sprache, tree-sitter-Grammatik, Query-Pfad).
 import CodeEditLanguages
+import Sparkle
 
 enum SelfTest {
     /// Pro Selbsttest-Prozess genau eine isolierte Defaults-Suite. Mehrere
@@ -167,6 +168,10 @@ enum SelfTest {
             // Fensterlos — prüft zusätzlich zum Unit-Test das fertig gepackte
             // Haupt-App-Bundle. Genau dort sucht SwiftUI statische Schlüssel.
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runLocalizationTest() }
+        case "updates":
+            // Fensterlos — prüft die echte App-Menüleiste und die Sparkle-
+            // Sicherheitskonfiguration aus dem gepackten Haupt-Bundle.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runUpdatesTest() }
         case "git":
             // Fensterlos — Git-Status end-to-end (Etappe 2): echtes Temp-Repo,
             // Datei-Zustände, Branch, Ordner-Rollup, dialogfreie git-Auflösung.
@@ -238,8 +243,36 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, cmdw, fields, tabswitch, highlight, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, contrast, windows)")
+                + "(bekannt: findbar, newwindow, cmdw, fields, tabswitch, highlight, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, contrast, windows)")
         }
+    }
+
+    private static func runUpdatesTest() {
+        testLabel = "updates"
+        guard let appMenu = NSApp.mainMenu?.items.first?.submenu,
+              let item = appMenu.items.first(where: {
+                  $0.identifier == NSUserInterfaceItemIdentifier("Fastra.CheckForUpdates")
+              }) else {
+            finish(false, "Sparkle-Menüpunkt fehlt im echten App-Menü")
+        }
+        guard item.action == #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+              item.target is SPUStandardUpdaterController else {
+            finish(false, "Update-Menüpunkt zielt nicht direkt auf Sparkle")
+        }
+
+        let info = Bundle.main.infoDictionary ?? [:]
+        guard info["SUFeedURL"] as? String
+                == "https://danielmuellerir.github.io/fastra/appcast.xml",
+              (info["SUPublicEDKey"] as? String)?.isEmpty == false,
+              info["SUEnableAutomaticChecks"] as? Bool == true,
+              info["SUAutomaticallyUpdate"] as? Bool == false,
+              info["SUAllowsAutomaticUpdates"] as? Bool == false,
+              info["SUEnableSystemProfiling"] as? Bool == false,
+              info["SUVerifyUpdateBeforeExtraction"] as? Bool == true,
+              info["SURequireSignedFeed"] as? Bool == true else {
+            finish(false, "Sparkle-Sicherheitskonfiguration im App-Bundle unvollständig")
+        }
+        finish(true, "Menüpunkt zielt auf Sparkle; Feed, Signatur und Datenschutz sind konfiguriert")
     }
 
     // MARK: - Fenster-Polling (statt fixem Start-Guard)

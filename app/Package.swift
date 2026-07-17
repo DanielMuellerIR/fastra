@@ -32,6 +32,9 @@ let package = Package(
         // Durchstreichungen und Code-Blöcke. Die direkte Einbindung ist nötig,
         // damit dieselbe Extension-Liste vom Parser bis zum HTML-Renderer reicht.
         .package(url: "https://github.com/swiftlang/swift-cmark", from: "0.4.0"),
+        // Der Updater tauscht die installierte App aus und wird deshalb exakt
+        // gepinnt. Versionssprünge werden bewusst geprüft statt still aufgelöst.
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.4"),
     ],
     targets: [
         .executableTarget(
@@ -44,6 +47,7 @@ let package = Package(
                 .product(name: "SwiftTreeSitter",      package: "SwiftTreeSitter"),
                 .product(name: "cmark-gfm",            package: "swift-cmark"),
                 .product(name: "cmark-gfm-extensions", package: "swift-cmark"),
+                .product(name: "Sparkle",              package: "Sparkle"),
             ],
             resources: [
                 .process("Resources")
@@ -53,7 +57,12 @@ let package = Package(
                     "-Xlinker", "-sectcreate",
                     "-Xlinker", "__TEXT",
                     "-Xlinker", "__info_plist",
-                    "-Xlinker", "Info.plist"
+                    "-Xlinker", "Info.plist",
+                    // SwiftPM setzt für Binär-Targets nur @loader_path.
+                    // Das fertige Bundle legt Sparkle standardkonform unter
+                    // Contents/Frameworks ab, daher braucht Fastra diesen rpath.
+                    "-Xlinker", "-rpath",
+                    "-Xlinker", "@loader_path/../Frameworks"
                 ])
             ]
         ),

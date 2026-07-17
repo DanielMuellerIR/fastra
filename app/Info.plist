@@ -45,16 +45,34 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.18.1</string>
+	<string>1.19.0</string>
 	<key>CFBundleVersion</key>
-	<string>66</string>
+	<string>67</string>
 	<key>FastraVersionDate</key>
-	<string>2026-07-16</string>
+	<string>2026-07-17</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.developer-tools</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
+	<true/>
+	<!-- Updateprüfung ja, Installation nur nach Zustimmung. Der signierte Feed
+	     erhält keine anonymen Hardware- oder Systemprofildaten. -->
+	<key>SUFeedURL</key>
+	<string>https://danielmuellerir.github.io/fastra/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>Yo814iJMK/ZhDswOUNHuY+fW7ZxD3fRz9jFJRxnPeYY=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUAllowsAutomaticUpdates</key>
+	<false/>
+	<key>SUEnableSystemProfiling</key>
+	<false/>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
+	<key>SURequireSignedFeed</key>
 	<true/>
 </dict>
 </plist>

@@ -171,6 +171,7 @@
 "Änderungen bereitstellen" = "Stage Changes";
 "Änderungen verwerfen" = "Discard Changes";
 "Über Fastra" = "About Fastra";
+"Nach Updates suchen …" = "Check for Updates…";
 "— Keine —" = "— None —";
 "— Vorlage auswählen —" = "— Choose Template —";
 "„Bekannte Textformate\" ignoriert Binärdateien automatisch. „Alle Dateien\" sucht überall — Binärdateien werden trotzdem übersprungen, kein Crash." = "‘Known Text Formats’ automatically ignores binary files. ‘All Files’ searches everywhere—binary files are still skipped safely.";

@@ -436,6 +436,7 @@ echo "→ Bundle bauen ($APP)"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 mkdir -p "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/Frameworks"
 cp ".build/$CONFIG/Fastra" "$APP/Contents/MacOS/Fastra"
 cp Info.plist "$APP/Contents/Info.plist"
 
@@ -454,6 +455,28 @@ for bundle in ".build/$CONFIG/"*.bundle; do
     cp -R "$bundle" "$APP/Contents/Resources/"
   fi
 done
+
+# SwiftPM linkt Sparkles Binär-Target, verpackt das dynamische Framework aber
+# nicht in unser manuell gebautes App-Bundle. `ditto` erhält die für Frameworks
+# wichtigen Symlinks und Rechte. Fastra ist nicht sandboxed; Sparkles XPC-Dienste
+# sind daher weder aktiviert noch nötig und werden bewusst nicht ausgeliefert.
+SPARKLE_SOURCE="$(find .build/artifacts/sparkle -type d -name Sparkle.framework -print -quit 2>/dev/null || true)"
+if [ -z "$SPARKLE_SOURCE" ]; then
+  echo "✗ FEHLER: Sparkle.framework fehlt nach dem SwiftPM-Build." >&2
+  exit 1
+fi
+SPARKLE_FRAMEWORK="$APP/Contents/Frameworks/Sparkle.framework"
+ditto "$SPARKLE_SOURCE" "$SPARKLE_FRAMEWORK"
+rm -rf "$SPARKLE_FRAMEWORK/Versions/B/XPCServices" "$SPARKLE_FRAMEWORK/XPCServices"
+
+# Lizenzhinweise gehören in die verteilte App, nicht nur ins Quell-Repository.
+cp ../THIRD-PARTY-NOTICES.md "$APP/Contents/Resources/Third-Party-Notices.md"
+SPARKLE_LICENSE="$(find .build/artifacts/sparkle -type f -name LICENSE -print -quit 2>/dev/null || true)"
+if [ -z "$SPARKLE_LICENSE" ]; then
+  echo "✗ FEHLER: Sparkles vollständige Lizenzdatei fehlt." >&2
+  exit 1
+fi
+cp "$SPARKLE_LICENSE" "$APP/Contents/Resources/Sparkle-LICENSE.txt"
 
 # Finder-/LaunchServices-Texte gehören ins Haupt-App-Bundle, nicht nur in das
 # SwiftPM-Ressourcenbundle. So erscheint z. B. der Dokumenttyp auf englischen
@@ -486,10 +509,14 @@ fi
 # killt Gatekeeper den Start ("code signature invalid"). Nur im Release-Build;
 # Debug behält seine Symbole für die Crash-/lldb-Diagnose.
 if [ "$CONFIG" = "release" ]; then
-  echo "→ Release: Binary strippen + ad-hoc neu signieren"
+  echo "→ Release: Binary strippen"
   strip -x "$APP/Contents/MacOS/Fastra"
-  codesign --force --sign - "$APP/Contents/MacOS/Fastra"
 fi
+
+# Auch lokale Builds brauchen nach dem Einbetten von Sparkle eine konsistente
+# innere Signatur. Der Release-/Installationspfad signiert dasselbe Bundle
+# später noch einmal mit Developer ID, Hardened Runtime und Zeitstempel.
+./sign-bundle.sh "$APP" -
 
 # Pflicht-Gate für verteilbare Bundles: Blendet die absoluten SwiftPM-
 # Build-Fallbacks kurz aus und startet den fensterlosen Lokalisierungstest.

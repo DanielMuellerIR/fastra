@@ -75,9 +75,7 @@ APP=".build/release/Fastra.app"
 #    Notarisierung; --timestamp bettet Apples Zeitstempel ein.
 # ─────────────────────────────────────────────────────────────────
 echo "→ Signiere Bundle mit Developer ID + Hardened Runtime…"
-codesign --deep --force --options runtime --timestamp \
-  --sign "$SIGN_IDENTITY" "$APP"
-codesign --verify --deep --strict --verbose=2 "$APP"
+./sign-bundle.sh "$APP" "$SIGN_IDENTITY"
 
 # ─────────────────────────────────────────────────────────────────
 # 3. Notarisieren (optional). Das Bundle wird als ZIP hochgeladen; --wait

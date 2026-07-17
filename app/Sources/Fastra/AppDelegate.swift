@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import CodeEditTextView
+import Sparkle
 
 /// Notifications, die AppDelegate beim Drücken globaler Shortcuts postet.
 /// Die SwiftUI-Schicht (`ContentView`) abonniert sie und aktualisiert den
@@ -54,6 +55,14 @@ enum SearchWindow {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
+    /// Sparkle verwaltet Suche, Download, Signaturprüfung, Austausch der App
+    /// und Neustart. Der Controller lebt exakt einmal für die App-Laufzeit.
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
+
     /// Hält den Local-Event-Monitor am Leben — sonst wird er deinitialisiert.
     private var keyMonitor: Any?
     /// Monitor auf Modifier-Änderungen — siehe installFlagsMonitor.
@@ -79,6 +88,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installKeyMonitor()
         installFlagsMonitor()
         editorContextMenu.install()
+        // SwiftUI hat die App-Menüleiste erst nach dem Scene-Aufbau vollständig
+        // erzeugt. Im nächsten Main-Runloop hängen wir den nativen Sparkle-
+        // Eintrag idempotent direkt hinter „Über Fastra“ ein.
+        DispatchQueue.main.async { [weak self] in
+            self?.installUpdateMenuItem()
+        }
         // Donation-Logik: App-Starts zählen (nur echte Starts — Selbsttest-
         // Läufe nutzen die isolierte Defaults-Suite und verfälschen den
         // Zähler des Nutzers nicht).
@@ -216,6 +231,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { _ in
             Self.purgeFindMenuItems()
+        }
+    }
+
+    /// Baut den nativen Update-Menüpunkt. Sparkle selbst bleibt das Target,
+    /// damit es den Eintrag während Suche und Installation korrekt validiert.
+    static func makeUpdateMenuItem(target: AnyObject) -> NSMenuItem {
+        let item = NSMenuItem(
+            title: L10n.string("Nach Updates suchen …"),
+            action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+            keyEquivalent: ""
+        )
+        item.identifier = NSUserInterfaceItemIdentifier("Fastra.CheckForUpdates")
+        item.target = target
+        return item
+    }
+
+    private func installUpdateMenuItem() {
+        guard let appMenu = NSApp.mainMenu?.items.first?.submenu else { return }
+        let identifier = NSUserInterfaceItemIdentifier("Fastra.CheckForUpdates")
+        if let existing = appMenu.items.first(where: { $0.identifier == identifier }) {
+            existing.target = updaterController
+            existing.action = #selector(SPUStandardUpdaterController.checkForUpdates(_:))
+            return
+        }
+
+        let item = Self.makeUpdateMenuItem(target: updaterController)
+        // Das erste Trennzeichen folgt im Standard-App-Menü direkt auf den
+        // Info-Block. Ohne Trennzeichen bleibt ein sicherer append-Fallback.
+        if let separatorIndex = appMenu.items.firstIndex(where: \.isSeparatorItem) {
+            appMenu.insertItem(item, at: separatorIndex)
+        } else {
+            appMenu.addItem(item)
         }
     }
 

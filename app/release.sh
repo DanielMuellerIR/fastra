@@ -115,37 +115,10 @@ else
   SIGN_IDENTITY="-"
 fi
 
-# SwiftPM legt ausführbare Ressourcen nicht in den üblichen Bundle-Verzeichnissen
-# `Frameworks` oder `Helpers` ab. `codesign --deep` erkennt solche Mach-O-Dateien
-# deshalb nicht zuverlässig. Wir signieren sie vor dem äußeren App-Bundle einzeln;
-# sonst lehnt Apples Notarisierung beispielsweise das gebündelte `rg` und seine
-# PCRE2-Dylib trotz lokal erfolgreicher `codesign --verify`-Prüfung ab.
-echo "   Eingebettete Mach-O-Dateien signieren"
-while IFS= read -r -d '' embedded_file; do
-  if file -b "$embedded_file" | grep -q 'Mach-O'; then
-    codesign \
-      --force \
-      --options runtime \
-      --timestamp \
-      --sign "$SIGN_IDENTITY" \
-      "$embedded_file"
-  fi
-done < <(find "$APP/Contents/Resources" -type f -print0)
-
-# --deep: signiert alle Frameworks und Hilfsprogramme im Bundle rekursiv.
-# --force: überschreibt eine vorhandene Signatur (z.B. nach erneutem build.sh).
-# --options runtime: Hardened Runtime aktivieren — Pflicht für Notarization.
-# --timestamp: Zeitstempel-Service von Apple einbetten (erfordert Internetzugang
-#   bei echter Signierung; bei Ad-hoc mit - wird --timestamp ignoriert).
-codesign \
-  --deep \
-  --force \
-  --verify \
-  --verbose=2 \
-  --options runtime \
-  --timestamp \
-  --sign "$SIGN_IDENTITY" \
-  "$APP"
+# Der gemeinsame Helfer signiert Ressourcen, Sparkles Autoupdate/Updater und
+# das Framework ausdrücklich von innen nach außen; die App kommt zuletzt.
+# Damit verwenden Release und lokale Installation garantiert dieselbe Reihenfolge.
+./sign-bundle.sh "$APP" "$SIGN_IDENTITY"
 
 echo "   ✔ Bundle signiert: $APP"
 echo
