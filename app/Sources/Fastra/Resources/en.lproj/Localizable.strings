@@ -899,6 +899,7 @@
 "Nächster Konflikt" = "Next Conflict";
 "Seitenleiste ausblenden" = "Hide Sidebar";
 "Seitenleiste einblenden" = "Show Sidebar";
+"Seitenleiste zeigt jetzt „%@“" = "Sidebar now shows “%@”";
 "Markdown-Vorschau ausblenden" = "Hide Markdown Preview";
 "Markdown-Vorschau einblenden" = "Show Markdown Preview";
 "Projekt schließen" = "Close Project";

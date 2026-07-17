@@ -146,7 +146,20 @@ struct FastraApp: App {
 
             CommandGroup(replacing: .newItem) {
                 Button("Neues Dokumentfenster") {
-                    DocumentWindowController.openNewDocument()
+                    // Reiner Willkommenszustand (ein Fenster, nur der
+                    // Willkommen-Tab): ⌘N legt wie ⌘T einen Tab im selben
+                    // Fenster an, statt ein zweites Fenster zu stapeln
+                    // (Wunschpaket 2026-07, Etappe 1). Sonst wie gehabt.
+                    let target = commandWorkspace
+                    if WelcomeLogic.newWindowCommandOpensTab(
+                        tabs: target.tabs,
+                        visibleDocumentWindows:
+                            DocumentWindowController.visibleDocumentWindowCount()
+                    ) {
+                        target.openNewTab()
+                    } else {
+                        DocumentWindowController.openNewDocument()
+                    }
                 }
                 .keyboardShortcut("n", modifiers: .command)
                 Button("Neuer Tab") { commandWorkspace.openNewTab() }

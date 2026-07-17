@@ -12,6 +12,17 @@ enum WelcomeLogic {
     static func shouldShow(activeTab: EditorTab?) -> Bool {
         activeTab?.isWelcome == true
     }
+
+    /// ⌘N-Sonderfall (Wunschpaket 2026-07, Etappe 1): Zeigt das aktive UND
+    /// einzige Dokumentfenster nur den Willkommen-Tab, öffnet ⌘N wie ⌘T einen
+    /// neuen Tab im selben Fenster — ein zweites, fast identisches Fenster
+    /// neben dem unbenutzten Willkommensfenster wäre nur verwirrend. Sobald
+    /// mehr offen ist (weiterer Tab oder weiteres Fenster), bleibt ⌘N das
+    /// gewohnte Fenster-Kommando.
+    static func newWindowCommandOpensTab(tabs: [EditorTab],
+                                         visibleDocumentWindows: Int) -> Bool {
+        visibleDocumentWindows <= 1 && tabs.count == 1 && tabs[0].isWelcome
+    }
 }
 
 /// Höhenbudget der Willkommen-Seite. Die Liste zeigt nur vollständige Zeilen;

@@ -21,9 +21,9 @@ func openFileOrFolder_directoryOpensProject() throws {
     #expect(ws.projectURL == dir.canonicalFileURL)
 }
 
-@Test("Datei-URL → in einen Tab geladen (kein Projekt)")
+@Test("Datei-URL → Tab geladen, Elternordner erscheint als Projekt (Etappe 1)")
 @MainActor
-func openFileOrFolder_fileOpensTab() throws {
+func openFileOrFolder_fileOpensTab() async throws {
     let fm = FileManager.default
     let file = fm.temporaryDirectory.appendingPathComponent("ff-\(UUID().uuidString).txt")
     try "hallo".write(to: file, atomically: true, encoding: .utf8)
@@ -33,8 +33,13 @@ func openFileOrFolder_fileOpensTab() throws {
     ws.openFileOrFolder(at: file)
 
     // loadFile legt den (Platzhalter-)Tab mit gesetzter URL sofort synchron an.
-    #expect(ws.projectURL == nil)
     #expect(ws.tabs.contains { $0.url == file.canonicalFileURL })
+
+    // Nach dem asynchronen Laden öffnet der Einzeldatei-Pfad den
+    // unmittelbaren Elternordner als Projekt (Wunschpaket 2026-07, Etappe 1).
+    let deadline = Date().addingTimeInterval(5)
+    while ws.projectURL == nil, Date() < deadline { await Task.yield() }
+    #expect(ws.projectURL == file.canonicalFileURL.deletingLastPathComponent())
 }
 
 @Test("Projektwechsel schließt nur saubere Dateien außerhalb des neuen Ordners")

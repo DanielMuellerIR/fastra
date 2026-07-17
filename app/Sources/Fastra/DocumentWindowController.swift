@@ -104,18 +104,27 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     /// `NSApp.keyWindow` kann auch ein Suchdialog sein und ist daher für ⌘N
     /// nicht zuverlässig die zuletzt benutzte Dokumentgröße.
     private static func frontmostVisibleDocumentWindow() -> NSWindow? {
-        NSApp.orderedWindows.first { window in
-            guard window.isVisible else { return false }
-            // Such- und Markdown-Vorschaufenster besitzen für ihr Routing
-            // ebenfalls einen Workspace. Sie sind trotzdem keine Quelle für
-            // die Größe eines neuen Dokumentfensters.
-            guard !SearchWindow.isSearchWindow(window),
-                  window.frameAutosaveName != MarkdownPreviewWindow.frameAutosaveName else {
-                return false
-            }
-            if window.identifier?.rawValue == "Fastra.DocumentWindow" { return true }
-            return WorkspaceWindowRegistry.workspace(for: window) != nil
+        NSApp.orderedWindows.first(where: isVisibleDocumentWindow)
+    }
+
+    /// Echte sichtbare Dokumentfenster (Startfenster + ⌘N-Fenster).
+    /// Such- und Markdown-Vorschaufenster besitzen für ihr Routing ebenfalls
+    /// einen Workspace, sind aber keine Dokumentfenster.
+    private static func isVisibleDocumentWindow(_ window: NSWindow) -> Bool {
+        guard window.isVisible else { return false }
+        guard !SearchWindow.isSearchWindow(window),
+              window.frameAutosaveName != MarkdownPreviewWindow.frameAutosaveName else {
+            return false
         }
+        if window.identifier?.rawValue == "Fastra.DocumentWindow" { return true }
+        return WorkspaceWindowRegistry.workspace(for: window) != nil
+    }
+
+    /// Anzahl der sichtbaren Dokumentfenster. Für den ⌘N-Sonderfall der
+    /// Willkommensseite (Etappe 1 Wunschpaket 2026-07): nur wenn genau EIN
+    /// Fenster offen ist und dieses nur Willkommen zeigt, wirkt ⌘N wie ⌘T.
+    static func visibleDocumentWindowCount() -> Int {
+        NSApp.windows.filter(isVisibleDocumentWindow).count
     }
 
     /// Liefert den Workspace des vordersten sichtbaren Dokumentfensters.

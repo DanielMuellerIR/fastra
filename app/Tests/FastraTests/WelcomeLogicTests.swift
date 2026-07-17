@@ -41,6 +41,44 @@ func welcome_hiddenWithoutActiveTab() {
     #expect(!WelcomeLogic.shouldShow(activeTab: nil))
 }
 
+// MARK: - ⌘N im reinen Willkommenszustand (Wunschpaket 2026-07, Etappe 1)
+
+@Test("⌘N: einziges Fenster zeigt nur Willkommen → wirkt wie ⌘T")
+func newWindowCommand_opensTabInPureWelcomeState() {
+    let welcome = EditorTab(title: "Ohne Titel", path: "noch nicht gespeichert",
+                            isWelcome: true)
+    #expect(WelcomeLogic.newWindowCommandOpensTab(
+        tabs: [welcome], visibleDocumentWindows: 1
+    ))
+}
+
+@Test("⌘N: zweites Dokumentfenster offen → normales Fenster-Kommando")
+func newWindowCommand_opensWindowWithSecondWindow() {
+    let welcome = EditorTab(title: "Ohne Titel", path: "noch nicht gespeichert",
+                            isWelcome: true)
+    #expect(!WelcomeLogic.newWindowCommandOpensTab(
+        tabs: [welcome], visibleDocumentWindows: 2
+    ))
+}
+
+@Test("⌘N: neben Willkommen existiert ein weiterer Tab → Fenster-Kommando")
+func newWindowCommand_opensWindowWithExtraTab() {
+    let welcome = EditorTab(title: "Ohne Titel", path: "noch nicht gespeichert",
+                            isWelcome: true)
+    let editor = EditorTab(title: "Ohne Titel 2", path: "—")
+    #expect(!WelcomeLogic.newWindowCommandOpensTab(
+        tabs: [welcome, editor], visibleDocumentWindows: 1
+    ))
+}
+
+@Test("⌘N: einzelner normaler Tab (kein Willkommen) → Fenster-Kommando")
+func newWindowCommand_opensWindowForPlainTab() {
+    let editor = EditorTab(title: "a.txt", path: "/x")
+    #expect(!WelcomeLogic.newWindowCommandOpensTab(
+        tabs: [editor], visibleDocumentWindows: 1
+    ))
+}
+
 @Test("Projektliste zeigt nur vollständig passende Zeilen")
 func welcome_recentProjectsFitAvailableHeight() {
     #expect(WelcomeLayout.visibleRecentProjectCount(

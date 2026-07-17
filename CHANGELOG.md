@@ -9,6 +9,48 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.20.0] — 2026-07-17
+
+### Hinzugefügt (Wunschpaket Juli 2026, Etappe 1 — UX-Verbesserungen)
+
+- **⌘N im Willkommenszustand:** Zeigt das aktive (und einzige) Fenster nur den
+  Willkommen-Tab, legt ⌘N jetzt wie ⌘T einen neuen Tab im selben Fenster an,
+  statt ein zweites, fast identisches Fenster zu stapeln. In allen anderen
+  Zuständen bleibt ⌘N unverändert das Fenster-Kommando. Neuer Selbsttest
+  `welcomenew`; der `newwindow`-Selbsttest startet dafür aus einem normalen
+  Editor-Zustand.
+- **Elternordner beim Einzeldatei-Öffnen:** Öffnet man eine einzelne Datei
+  (Menü, Doppelklick, Drag) und im Fenster ist kein Ordner geladen, erscheint
+  der unmittelbare Elternordner der Datei als Projekt in der Seitenleiste.
+  Der Editor-Fokus bleibt auf der Datei; bereits offene fremde Tabs bleiben
+  bestehen. Ist schon ein Ordner offen, ändert sich nichts.
+- **Standard-Speicherort:** Der „Sichern unter…“-Dialog schlägt als Zielordner
+  den in der Seitenleiste markierten Ordner vor, sonst den Projektordner,
+  sonst gilt das Systemverhalten. Ordner lassen sich dafür jetzt in der
+  Seitenleiste per Klick markieren (Klick auf eine Datei hebt die Markierung
+  auf).
+- **Leere Ordner ohne Aufklapp-Chevron:** Ordner ohne sichtbaren Inhalt
+  (gleiche Filterregeln wie beim Aufklappen) zeigen nur das Ordnersymbol und
+  bleiben selektierbar. Die Leer-Prüfung läuft asynchron im Hintergrund und
+  blockiert auch auf langsamen Volumes nichts.
+- **Sichtbarer Ordnerwechsel nach Schließen:** Werden alle zum geöffneten
+  Ordner gehörenden Tabs geschlossen und alle verbliebenen Dateien liegen
+  unter einem anderen Ordner, wechselt die Seitenleiste auf diesen Ordner —
+  nur ohne aktive Such-/Ersetzungsvorschau, nie wenn dabei ein Tab schließen
+  müsste, und immer mit kurzem, nicht-modalem Hinweis in der Seitenleiste.
+
+### Behoben
+
+- Erscheint die Projekt-Seitenleiste programmatisch (neu: Elternordner-Öffnen),
+  liefen ihre Git-Statusabfragen bisher mitten im SwiftUI-Layout-Pass. Der
+  allererste Git-Verfügbarkeitscheck spinnt dabei den RunLoop (`xcode-select`
+  mit `waitUntilExit`) — unter Last stürzte die App mit SIGSEGV ab. Die
+  Abfragen starten jetzt erst im nächsten Main-Loop-Durchlauf.
+- Der `gitactions`-Selbsttest löste Aktionen teils in dem kurzen Fenster aus,
+  in dem der exklusive Git-Koordinator-Slot der Vorgänger-Aktion noch belegt
+  war — die Aktion verpuffte still (in der echten UI ist der Menüpunkt dann
+  deaktiviert). Der Test wartet jetzt wie ein Nutzer auf das aktive Menü.
+
 ## [v1.19.2] — 2026-07-17
 
 ### Behoben

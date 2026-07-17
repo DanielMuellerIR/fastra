@@ -137,6 +137,7 @@ enum SelfTest {
         switch name {
         case "findbar":   waitForMainWindow { runFindBarTest() }
         case "newwindow": waitForMainWindow { runNewWindowTest() }
+        case "welcomenew": waitForMainWindow { runWelcomeNewTabTest() }
         case "multisearch": waitForMainWindow { runMultiWindowSearchJumpTest() }
         case "cmdw":      waitForMainWindow { openSearchThen { runCmdWTest() } }
         case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
@@ -245,7 +246,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, cmdw, fields, tabswitch, highlight, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, contrast, windows)")
         }
     }
 
@@ -408,8 +409,15 @@ enum SelfTest {
     /// ein reiner Unit-Test nicht sehen kann: Es erscheint ein zweites Fenster,
     /// und dessen neuer Workspace teilt seinen Inhalt nicht mit dem ersten.
     private static func runNewWindowTest() {
-        guard let original = Workspace.shared,
-              let originalID = original.activeTabID,
+        guard let original = Workspace.shared else {
+            finish(false, "kein aktiver Ausgangs-Workspace")
+        }
+        // Im reinen Willkommenszustand wirkt ⌘N inzwischen bewusst wie ⌘T
+        // (Wunschpaket 2026-07 Etappe 1, eigener Selbsttest `welcomenew`).
+        // Für den Fenster-Test daher zuerst einen normalen Editor-Tab
+        // öffnen — danach ist ⌘N wieder das Fenster-Kommando.
+        if original.isWelcomeScreen { original.openNewTab() }
+        guard let originalID = original.activeTabID,
               let originalIndex = original.tabs.firstIndex(where: { $0.id == originalID }) else {
             finish(false, "kein aktiver Ausgangs-Workspace")
         }
@@ -447,6 +455,61 @@ enum SelfTest {
             marker: marker,
             expectedSize: expectedSize
         )
+    }
+
+    /// ⌘N im reinen Willkommenszustand (Wunschpaket 2026-07, Etappe 1): Es
+    /// darf KEIN zweites Fenster entstehen; dasselbe Fenster bekommt wie bei
+    /// ⌘T einen normalen Editor-Tab NEBEN dem erhaltenen Willkommen-Tab.
+    private static func runWelcomeNewTabTest() {
+        guard let ws = Workspace.shared else {
+            finish(false, "kein aktiver Workspace")
+        }
+        guard ws.isWelcomeScreen, ws.tabs.count == 1 else {
+            finish(false, "Ausgangszustand ist nicht der reine Willkommenszustand")
+        }
+        guard let mainMenu = NSApp.mainMenu,
+              menuItem(forKeyEquivalent: "n", in: mainMenu) != nil else {
+            finish(false, "kein Menüpunkt mit ⌘N gefunden")
+        }
+        guard let mainWindow = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName && $0.isVisible
+        }) else {
+            finish(false, "kein Ausgangsfenster für ⌘N gefunden")
+        }
+        mainWindow.makeKeyAndOrderFront(nil)
+        // Selbsttests laufen auf dem Main-Thread; die Fensterzählung ist
+        // MainActor-isoliert → Isolierung explizit übernehmen.
+        let windowsBefore = MainActor.assumeIsolated {
+            DocumentWindowController.visibleDocumentWindowCount()
+        }
+        postCmd("n", keyCode: 45, windowNumber: mainWindow.windowNumber)
+        pollForWelcomeNewTab(ws: ws, windowsBefore: windowsBefore)
+    }
+
+    private static func pollForWelcomeNewTab(ws: Workspace, windowsBefore: Int,
+                                             tick: Int = 0) {
+        if ws.tabs.count == 2 {
+            let windowsNow = MainActor.assumeIsolated {
+                DocumentWindowController.visibleDocumentWindowCount()
+            }
+            guard windowsNow == windowsBefore else {
+                finish(false, "⌘N im Willkommenszustand öffnete trotzdem ein zweites Fenster")
+            }
+            guard let active = ws.activeTab, !active.isWelcome,
+                  active.content.isEmpty else {
+                finish(false, "⌘N aktivierte keinen neuen leeren Editor-Tab")
+            }
+            guard ws.tabs.contains(where: { $0.isWelcome }) else {
+                finish(false, "der Willkommen-Tab muss daneben erhalten bleiben")
+            }
+            finish(true, "⌘N wirkt im reinen Willkommenszustand wie ⌘T")
+        }
+        if tick >= 100 {
+            finish(false, "⌘N legte binnen 5 s keinen zweiten Tab an — \(windowsSummary())")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollForWelcomeNewTab(ws: ws, windowsBefore: windowsBefore, tick: tick + 1)
+        }
     }
 
     private static func pollForNewWindow(
@@ -2967,7 +3030,9 @@ enum SelfTest {
             ]
             runGitSequence(push2, in: clone) { ok2, e2 in
                 guard ok2 else { try? fm.removeItem(at: base); finish(false, "(push2) \(e2)") }
-                ws.gitPullFastForward()
+                gitActionsWhenIdle(ws, base: base, fm: fm, label: "pull-idle") {
+                    ws.gitPullFastForward()
+                }
                 pollUntil(maxTicks: 150, base: base, fm: fm, label: "pull",
                           cond: { fm.fileExists(atPath: repo.appendingPathComponent("remote.txt").path) },
                           next: { gitActionsAmend(ws, repo: repo, bare: bare, base: base, fm: fm) })
@@ -2983,7 +3048,9 @@ enum SelfTest {
             let countBefore = Int(before?.stdout.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") ?? -1
             try? "v2\n".write(to: repo.appendingPathComponent("app.txt"),
                               atomically: true, encoding: .utf8)
-            ws.gitAmendNoEdit()
+            gitActionsWhenIdle(ws, base: base, fm: fm, label: "amend-idle") {
+                ws.gitAmendNoEdit()
+            }
             pollAsync(maxTicks: 150, base: base, fm: fm, label: "amend",
                       check: { done in
                           GitRunner.run(["show", "HEAD:app.txt"], in: repo) { r in
@@ -3015,7 +3082,9 @@ enum SelfTest {
                               && ws.gitBranches.contains(where: { $0.name == "feature" && $0.isCurrent })
                       },
                       next: {
-                          ws.gitSwitchBranch("main")
+                          gitActionsWhenIdle(ws, base: base, fm: fm, label: "switch-idle") {
+                              ws.gitSwitchBranch("main")
+                          }
                           pollAsync(maxTicks: 150, base: base, fm: fm, label: "switch",
                                     check: { done in
                                         GitRunner.run(["branch", "--show-current"], in: repo) { r in
@@ -3045,7 +3114,9 @@ enum SelfTest {
     private static func gitActionsAutoUpstream(_ ws: Workspace, repo: URL, bare: URL, base: URL, fm: FileManager) {
         runGitSequence([["switch", "-c", "ohne-upstream"]], in: repo) { ok, e in
             guard ok else { try? fm.removeItem(at: base); finish(false, "(auto-u setup) \(e)") }
-            ws.gitPush()
+            gitActionsWhenIdle(ws, base: base, fm: fm, label: "auto-upstream-idle") {
+                ws.gitPush()
+            }
             pollAsync(maxTicks: 150, base: base, fm: fm, label: "auto-upstream",
                       check: { done in
                           // Der Branch muss jetzt im bare-Remote als Ref existieren.
@@ -3059,6 +3130,27 @@ enum SelfTest {
                               + "Amend (Datei in Commit, Zahl gleich), Branch-Liste + Auswahl, "
                               + "Pickaxe, Auto-Upstream-Push ok")
                       })
+        }
+    }
+
+    /// Wartet, bis der Git-Koordinator frei ist, bevor die nächste Workspace-
+    /// Aktion ausgelöst wird. Die echte UI deaktiviert die Aktions-Menüpunkte
+    /// während `gitOperationsAreBusy`; ein Test-Aufruf im Freigabe-Fenster der
+    /// Vorgänger-Aktion verpufft dagegen still (Befund 2026-07-17: „(amend)
+    /// Timeout" — busy=true im Aufrufmoment, die Ground-Truth-Datei des Pulls
+    /// war schon auf der Platte, der exklusive Slot aber noch nicht wieder
+    /// freigegeben). Der Test wartet deshalb wie ein Nutzer auf das aktive Menü.
+    private static func gitActionsWhenIdle(_ ws: Workspace, base: URL, fm: FileManager,
+                                           label: String, tick: Int = 0,
+                                           then action: @escaping () -> Void) {
+        if !ws.gitOperationsAreBusy { action(); return }
+        if tick >= 150 {
+            try? fm.removeItem(at: base)
+            finish(false, "(\(label)) Git-Koordinator wird nicht frei")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            gitActionsWhenIdle(ws, base: base, fm: fm, label: label,
+                               tick: tick + 1, then: action)
         }
     }
 

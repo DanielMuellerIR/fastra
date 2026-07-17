@@ -17,6 +17,10 @@ struct FileTreeSidebar: View {
     /// Zustand ein Neuladen der Ebenen überlebt.
     @State private var expanded: Set<String>
 
+    /// Asynchron festgestellte leere Ordner → deren Zeilen verlieren das
+    /// Aufklapp-Chevron (Etappe 1 Wunschpaket 2026-07).
+    @StateObject private var emptiness = FolderEmptinessCache()
+
     init(rootURL: URL) {
         self.rootURL = rootURL
         _watcher = StateObject(wrappedValue: ProjectFileWatcher(rootURL: rootURL))
@@ -203,9 +207,24 @@ struct FileTreeSidebar: View {
                     .accessibilityIdentifier("gitSuccessFeedback")
             }
 
+            // Dezenter, nicht-modaler Hinweis — z. B. „Seitenleiste zeigt
+            // jetzt …“ nach dem automatischen Ordnerwechsel (Etappe 1). Er
+            // blendet sich nach wenigen Sekunden von selbst wieder aus.
+            if let notice = workspace.sidebarNotice {
+                Label(notice, systemImage: "arrow.triangle.2.circlepath")
+                    .fastraFont(.small)
+                    .foregroundColor(Theme.textSecondary)
+                    .lineLimit(2)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 6)
+                    .transition(.opacity)
+                    .accessibilityIdentifier("sidebarNotice")
+            }
+
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     FileTreeLevel(url: rootURL, depth: 0, expanded: $expanded,
+                                  emptiness: emptiness,
                                   onMutation: handleTreeMutation)
                 }
                 .padding(.bottom, 6)
@@ -221,8 +240,18 @@ struct FileTreeSidebar: View {
             // Der Befehle-Button muss laufende Vorgänge und die Herkunft der
             // Identität auch erkennen, wenn der Nutzer nie in den Changes-Tab
             // wechselt. Beide Reads bleiben asynchron und repositorykoordiniert.
-            workspace.refreshGitOperationState()
-            workspace.refreshGitIdentity()
+            //
+            // WICHTIG: erst im nächsten Main-Loop-Durchlauf. Seit die
+            // Seitenleiste auch programmatisch erscheinen kann (Elternordner-
+            // Öffnen nach Einzeldatei, Etappe 1), läuft dieses onAppear sonst
+            // MITTEN im SwiftUI-Layout-Pass — und `GitRunner.isAvailable`
+            // spinnt beim allerersten Aufruf über `xcode-select` den RunLoop
+            // (`waitUntilExit`). Ein UpdateCycle-Observer feuert dann reentrant
+            // im Layout und stürzt ab (SIGSEGV, Befund Selbsttest 2026-07-17).
+            DispatchQueue.main.async {
+                workspace.refreshGitOperationState()
+                workspace.refreshGitIdentity()
+            }
         }
     }
 
@@ -429,6 +458,7 @@ private struct FileTreeLevel: View {
     let url: URL
     let depth: Int
     @Binding var expanded: Set<String>
+    @ObservedObject var emptiness: FolderEmptinessCache
     @EnvironmentObject var workspace: Workspace
     let onMutation: () -> Void
 
@@ -438,23 +468,40 @@ private struct FileTreeLevel: View {
                         depth: depth,
                         isExpanded: expanded.contains(node.id),
                         isActive: workspace.activeTab?.url == node.url,
+                        isSelected: node.isDirectory
+                            && workspace.selectedFileTreeFolder == node.url,
+                        // Erst Chevron zeigen, dann ggf. entfernen: bis die
+                        // Hintergrund-Prüfung fertig ist, gilt der Ordner als
+                        // aufklappbar (kein Blockieren auf langsamen Volumes).
+                        showsChevron: !emptiness.isKnownEmpty(node.url),
                         gitState: workspace.gitState(for: node.url),
                         gitFolderChanged: node.isDirectory
                             && workspace.gitFolderHasChanges(node.url),
                         onMutation: onMutation) {
                 if node.isDirectory {
+                    // Ordner-Klick markiert den Ordner (Save-Dialog-Vorschlag,
+                    // Etappe 1); leere Ordner bleiben selektierbar, klappen
+                    // aber nichts auf.
+                    workspace.selectedFileTreeFolder = node.url
+                    if emptiness.isKnownEmpty(node.url) { return }
                     if expanded.contains(node.id) {
                         expanded.remove(node.id)
                     } else {
                         expanded.insert(node.id)
                     }
                 } else {
+                    // Datei-Klick hebt die Ordner-Markierung wieder auf.
+                    workspace.selectedFileTreeFolder = nil
                     workspace.loadFile(at: node.url)
                 }
             }
+            .onAppear {
+                if node.isDirectory { emptiness.probe(node.url) }
+            }
             if node.isDirectory && expanded.contains(node.id) {
                 FileTreeLevel(url: node.url, depth: depth + 1,
-                              expanded: $expanded, onMutation: onMutation)
+                              expanded: $expanded, emptiness: emptiness,
+                              onMutation: onMutation)
             }
         }
     }
@@ -468,6 +515,11 @@ private struct FileTreeRow: View {
     let depth: Int
     let isExpanded: Bool
     let isActive: Bool
+    /// Ordner in der Seitenleiste markiert (Save-Dialog-Vorschlag, Etappe 1).
+    let isSelected: Bool
+    /// `false`, sobald die Hintergrund-Prüfung den Ordner als leer erkannt
+    /// hat — dann Ordnersymbol ohne Aufklapp-Chevron, weiter selektierbar.
+    let showsChevron: Bool
     /// Git-Zustand dieser Datei (nil = unverändert / kein Repo).
     let gitState: GitFileState?
     /// Enthält dieser Ordner geänderte Dateien? (Rollup-Punkt an Ordnern.)
@@ -480,17 +532,23 @@ private struct FileTreeRow: View {
     /// die Aktiv-Hervorhebung reicht über den Hintergrund.
     private var nameColor: Color {
         if let gitState { return Theme.gitColor(for: gitState) }
-        return isActive ? Theme.textPrimary : Theme.textSecondary
+        return isActive || isSelected ? Theme.textPrimary : Theme.textSecondary
     }
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 5) {
                 if node.isDirectory {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .fastraFont(size: 8, weight: .semibold)
-                        .foregroundColor(Theme.textSecondary)
-                        .frame(width: 10)
+                    if showsChevron {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .fastraFont(size: 8, weight: .semibold)
+                            .foregroundColor(Theme.textSecondary)
+                            .frame(width: 10)
+                    } else {
+                        // Leerer Ordner: Platz bleibt reserviert, damit die
+                        // Einrückung aller Zeilen bündig bleibt.
+                        Spacer().frame(width: 10)
+                    }
                     Image(systemName: isExpanded ? "folder.fill" : "folder")
                         .fastraFont(size: 11)
                         .foregroundColor(Theme.textSecondary)
@@ -522,7 +580,7 @@ private struct FileTreeRow: View {
             .padding(.leading, 14 + CGFloat(depth) * 12)
             .padding(.trailing, 8)
             .padding(.vertical, 3)
-            .background(isActive ? Theme.surfaceRaised : Color.clear)
+            .background(isActive || isSelected ? Theme.surfaceRaised : Color.clear)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -626,5 +684,56 @@ private struct FileTreeContextMenu: View {
 
     private func showError(title: String, error: Error) {
         NSAlert.runWarning(title: title, text: error.localizedDescription)
+    }
+}
+
+/// Merkt sich asynchron festgestellte leere Ordner (Etappe 1 Wunschpaket
+/// 2026-07: Ordner ohne sichtbaren Inhalt zeigen kein Aufklapp-Chevron).
+///
+/// Grundsätze:
+/// - Erst Chevron zeigen, dann ggf. entfernen: bis das Ergebnis da ist, gilt
+///   der Ordner als aufklappbar. Die Prüfung läuft auf einer Hintergrund-
+///   Queue und blockiert auf langsamen Volumes niemals den Main-Thread.
+/// - Gleiche Filterregeln wie beim Aufklappen: `FileTree.children` (versteckte
+///   Einträge zählen nicht als Inhalt).
+/// - Idempotent gegenüber gebündelten FSEvents: Ergebnisse landen als
+///   Set-Insert/-Remove; doppelte Proben desselben Pfads werden gebündelt.
+@MainActor
+final class FolderEmptinessCache: ObservableObject {
+    @Published private(set) var emptyFolders: Set<String> = []
+    private var inFlight: Set<String> = []
+    /// Verzeichnis-Listing, für Tests injizierbar; Default sind die echten
+    /// Filterregeln des Dateibaums.
+    private let listChildren: @Sendable (URL) -> [FileTreeNode]
+
+    init(listChildren: @escaping @Sendable (URL) -> [FileTreeNode]
+            = { FileTree.children(of: $0) }) {
+        self.listChildren = listChildren
+    }
+
+    func isKnownEmpty(_ url: URL) -> Bool {
+        emptyFolders.contains(url.path)
+    }
+
+    /// Stößt die Hintergrund-Prüfung für einen Ordner an. Läuft für denselben
+    /// Pfad bereits eine Probe, passiert nichts (die laufende liefert das
+    /// Ergebnis); nach ihrem Abschluss darf erneut geprüft werden.
+    func probe(_ url: URL) {
+        let path = url.path
+        guard !inFlight.contains(path) else { return }
+        inFlight.insert(path)
+        let list = listChildren
+        DispatchQueue.global(qos: .utility).async {
+            let isEmpty = list(url).isEmpty
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.inFlight.remove(path)
+                if isEmpty {
+                    self.emptyFolders.insert(path)
+                } else {
+                    self.emptyFolders.remove(path)
+                }
+            }
+        }
     }
 }

@@ -204,6 +204,18 @@ final class Workspace: ObservableObject {
     /// „GEÖFFNET"-Seitenleiste wie bisher). Bewusst NICHT persistiert:
     /// Der nächste Start beginnt mit dem Willkommensbildschirm.
     @Published var projectURL: URL?
+    /// In der Projekt-Seitenleiste zuletzt angeklickter Ordner (Etappe 1
+    /// Wunschpaket 2026-07). Dient dem Save-Dialog als Vorschlagsordner;
+    /// ein Klick auf eine Datei hebt die Ordner-Markierung wieder auf.
+    /// Nicht persistiert; Projektwechsel setzt zurück.
+    @Published var selectedFileTreeFolder: URL?
+    /// Kurzlebiger, nicht-modaler Hinweis in der Projekt-Seitenleiste —
+    /// z. B. „Seitenleiste zeigt jetzt …“ nach dem automatischen
+    /// Ordnerwechsel. Blendet sich nach wenigen Sekunden selbst aus.
+    @Published var sidebarNotice: String?
+    /// Merkt sich den jeweils letzten Hinweis, damit ein verzögertes
+    /// Ausblenden niemals einen NEUEREN Hinweis wegräumt.
+    private var sidebarNoticeToken = UUID()
     /// Zuletzt benutzte Projekte für den Willkommensbildschirm. Wird
     /// automatisch gepflegt: explizit geöffnete Ordner und erkannte
     /// Git-Repositories geöffneter Dateien (Persistenz via Combine-Sink
@@ -813,6 +825,10 @@ final class Workspace: ObservableObject {
         } else {
             activeTabID = tabs.first?.id
         }
+        // Etappe 1 (Wunschpaket 2026-07): Gehören die verbliebenen Dateien
+        // alle zu einem anderen Ordner, folgt die Seitenleiste — sichtbar,
+        // nie während einer aktiven Such-/Ersetzungsvorschau.
+        switchProjectAfterTabCloseIfNeeded()
     }
 
     func closeActiveTab() {
@@ -855,6 +871,8 @@ final class Workspace: ObservableObject {
         }
         tabs.removeAll { $0.id != id }
         activeTabID = id
+        // Gleiche Seitenleisten-Folge wie beim einzelnen Schließen (Etappe 1).
+        switchProjectAfterTabCloseIfNeeded()
     }
 
     /// Vor dem App-Beenden (⌘Q): über JEDEN Tab mit ungespeicherten Änderungen die
@@ -1174,6 +1192,7 @@ final class Workspace: ObservableObject {
         if let existingIdx = tabs.firstIndex(where: { $0.url == url }) {
             activeTabID = tabs[existingIdx].id
             noteRecentFile(url)
+            openParentFolderIfProjectMissing(for: url)
             completion?(true)
             return
         }
@@ -1260,6 +1279,7 @@ final class Workspace: ObservableObject {
                     // (der gerade geladene Tab bleibt erhalten).
                     self.tabs = Workspace.tabsRemovingEmptyScratch(self.tabs, keeping: tabID)
                     self.noteRecentFile(url)
+                    self.openParentFolderIfProjectMissing(for: url)
                     completion?(true)
 
                 case .failure:
@@ -1297,6 +1317,15 @@ final class Workspace: ObservableObject {
         panel.canCreateDirectories = true
         panel.nameFieldStringValue = tabs[idx].title
         panel.message = L10n.string("Datei speichern unter…")
+        // Vorschlagsordner (Etappe 1 Wunschpaket 2026-07): markierter
+        // Seitenleisten-Ordner vor Projektordner; existiert keiner (mehr),
+        // bleibt das Systemverhalten des Panels unangetastet.
+        if let directory = Self.suggestedSaveDirectory(
+            selectedFolder: usableDirectory(selectedFileTreeFolder),
+            projectURL: usableDirectory(projectURL)
+        ) {
+            panel.directoryURL = directory
+        }
         guard panel.runModal() == .OK, let url = panel.url else { return }
         write(tab: tabs[idx], to: url)
         tabs[idx].url = url
@@ -1349,20 +1378,116 @@ final class Workspace: ObservableObject {
         recentProjects = ProjectStore.prepending(url.path, to: recentProjects)
     }
 
+    // MARK: - Etappe-1-UX (Wunschpaket 2026-07)
+
+    /// Einzeldatei geöffnet, aber kein Ordner in der Seitenleiste? Dann den
+    /// unmittelbaren Elternordner der Datei als Projekt zeigen, damit die
+    /// Seitenleiste nie grundlos leer bleibt. Der Editor-Fokus bleibt auf der
+    /// Datei (`openProject` erhält den aktiven Tab), fremde offene Tabs
+    /// bleiben ausdrücklich bestehen. Mit bereits offenem Ordner: no-op.
+    private func openParentFolderIfProjectMissing(for url: URL) {
+        guard projectURL == nil else { return }
+        guard let parent = usableDirectory(url.deletingLastPathComponent()) else { return }
+        openProject(at: parent, keepingUnrelatedTabs: true)
+    }
+
+    /// Vorschlagsordner für den Save-Dialog: der in der Seitenleiste
+    /// markierte Ordner gewinnt vor dem Projektordner; ohne beides `nil`
+    /// (= Systemverhalten). Pure Funktion → unit-testbar.
+    static func suggestedSaveDirectory(selectedFolder: URL?,
+                                       projectURL: URL?) -> URL? {
+        selectedFolder ?? projectURL
+    }
+
+    /// Nur ein noch existierender Ordner taugt als Panel-Vorschlag —
+    /// gelöschte oder zu Dateien gewordene Pfade fallen still heraus.
+    private func usableDirectory(_ url: URL?) -> URL? {
+        guard let url else { return nil }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path,
+                                             isDirectory: &isDirectory),
+              isDirectory.boolValue else { return nil }
+        return url
+    }
+
+    /// Zeigt einen kurzlebigen, nicht-modalen Hinweis in der Seitenleiste.
+    /// Ein Token verhindert, dass das verzögerte Ausblenden einen später
+    /// gesetzten, neueren Hinweis mit wegräumt.
+    func showSidebarNotice(_ message: String) {
+        sidebarNotice = message
+        let token = UUID()
+        sidebarNoticeToken = token
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            guard let self, self.sidebarNoticeToken == token else { return }
+            self.sidebarNotice = nil
+        }
+    }
+
+    /// Entschärfter Ordnerwechsel nach Tab-Schließen (Etappe 1): Gehört kein
+    /// verbliebener Datei-Tab mehr zum offenen Projekt und liegen ALLE
+    /// verbliebenen Datei-Tabs unter dem Ordner der ersten Datei, ist dieser
+    /// Ordner das neue Seitenleisten-Ziel. Konservative Bedingungen:
+    /// - Suche/Ersetzungsvorschau offen → nie wechseln (der Suchbereich darf
+    ///   sich niemals still ändern, Produktinvariante).
+    /// - Git-Ansichten gehören zum Projekt → kein Wechsel.
+    /// - Läge auch nur ein Datei-Tab außerhalb des Zielordners, würde der
+    ///   Wechsel ihn schließen → kein Wechsel (nichts geht still verloren).
+    /// Pure Funktion → unit-testbar.
+    static func projectSwitchTarget(tabs: [EditorTab], projectURL: URL?,
+                                    searchUIActive: Bool) -> URL? {
+        guard let root = projectURL?.canonicalFileURL, !searchUIActive else { return nil }
+        guard !tabs.contains(where: { $0.gitKind != nil }) else { return nil }
+        let files = tabs.compactMap { $0.url?.canonicalFileURL }
+        guard let first = files.first else { return nil }
+        let rootPrefix = root.path.hasSuffix("/") ? root.path : root.path + "/"
+        guard !files.contains(where: { $0.path.hasPrefix(rootPrefix) }) else { return nil }
+        let target = first.deletingLastPathComponent()
+        guard target.path != root.path else { return nil }
+        let targetPrefix = target.path.hasSuffix("/") ? target.path : target.path + "/"
+        guard files.allSatisfy({ $0.path.hasPrefix(targetPrefix) }) else { return nil }
+        return target
+    }
+
+    /// Wendet `projectSwitchTarget` nach einem Tab-Schließen an — mit dem
+    /// sichtbaren Hinweis, damit der Wechsel nie unbemerkt passiert.
+    private func switchProjectAfterTabCloseIfNeeded() {
+        guard let target = Self.projectSwitchTarget(
+            tabs: tabs, projectURL: projectURL,
+            searchUIActive: showSearchDialog || livePreview
+        ) else { return }
+        openProject(at: target)
+        // Nach openProject setzen — der Projektwechsel räumt alte Hinweise ab.
+        // codereview-ok: „…“ ist das korrekte deutsche Anführungszeichen-Paar
+        showSidebarNotice(L10n.format("Seitenleiste zeigt jetzt „%@“",
+                                      target.lastPathComponent))
+    }
+
     /// Lädt einen Ordner als Projekt: Dateibaum-Seitenleiste zeigt ihn,
     /// der Ordner wandert in die Zuletzt-benutzt-Liste, der Willkommens-
     /// bildschirm verschwindet. URL wird kanonisiert — gleiche Begründung
     /// wie in `loadFile` (Dedup über URL-Formen hinweg).
-    func openProject(at url: URL) {
+    ///
+    /// `keepingUnrelatedTabs`: Beim IMPLIZITEN Öffnen (Einzeldatei ohne
+    /// Projekt → Elternordner erscheint in der Seitenleiste, Etappe 1
+    /// Wunschpaket 2026-07) dürfen fremde offene Tabs NICHT geschlossen
+    /// werden — der Nutzer hat keinen Projektwechsel verlangt. Nur der
+    /// ausdrückliche Wechsel (Willkommensseite, ⌘⇧O) räumt wie bisher auf.
+    func openProject(at url: URL, keepingUnrelatedTabs: Bool = false) {
         let url = url.canonicalFileURL
         cancelAllGitDiffLoads()
         let previousActive = activeTabID
-        tabs = Self.tabsAfterOpeningProject(tabs, root: url)
+        if !keepingUnrelatedTabs {
+            tabs = Self.tabsAfterOpeningProject(tabs, root: url)
+        }
         if let previousActive, tabs.contains(where: { $0.id == previousActive }) {
             activeTabID = previousActive
         } else {
             activeTabID = tabs.first?.id
         }
+        // Markierter Seitenleisten-Ordner und Hinweis gehören zum ALTEN
+        // Projektbaum → beim Wechsel zurücksetzen.
+        selectedFileTreeFolder = nil
+        sidebarNotice = nil
         // Wurden ausschließlich saubere Dateien eines anderen Projekts
         // geschlossen, braucht das neue Projekt wieder einen Editor-Tab.
         if tabs.isEmpty {
@@ -1448,6 +1573,8 @@ final class Workspace: ObservableObject {
     /// Blendet den Projekt-Dateibaum wieder aus (Seitenleiste zeigt dann
     /// wie bisher nur die geöffneten Tabs). Offene Tabs bleiben unberührt.
     func closeProject() {
+        selectedFileTreeFolder = nil
+        sidebarNotice = nil
         projectGeneration &+= 1
         cancelAllGitDiffLoads()
         gitIdentityResolution?.cancel()
