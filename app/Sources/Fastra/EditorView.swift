@@ -15,6 +15,10 @@ struct EditorView: View {
     @Environment(\.uiScale) private var uiScale
     @State private var editorState = SourceEditorState(cursorPositions: [], findPanelVisible: false)
     @StateObject private var minimapLayoutCoordinator = MinimapLayoutCoordinator()
+    /// Eigener 4D-Highlighter (Etappe 4): ersetzt für .4dm-Dokumente die
+    /// tree-sitter-Pipeline. Eine stabile Instanz pro Fenster — CESE ruft
+    /// `setUp` bei jeder Editor-Neuerzeugung selbst auf.
+    @StateObject private var fourDHighlighter = FourDHighlightProvider()
 
     /// Anker-Offset der laufenden Selektion (Zeichen-Index der *fixen*
     /// Kante). Brauchen wir, weil `CursorPosition` nur den Bereich kennt
@@ -334,6 +338,8 @@ struct EditorView: View {
             language: detectedLanguage,
             configuration: editorConfiguration,
             state: $editorState,
+            // .4dm: eigener leichter Tokenizer statt tree-sitter (Etappe 4).
+            highlightProviders: showsFourDDocument ? [fourDHighlighter] : nil,
             coordinators: [minimapLayoutCoordinator]
         )
         .background(GutterDimmingBridge().frame(width: 0, height: 0))
@@ -674,10 +680,21 @@ struct EditorView: View {
     /// Reload aus (kein Layout-Reentry/QuartzCore-Crash). Nur eine echte
     /// `wrapLines`-Änderung erzeugt eine ungleiche Config → CESE-Reconcile
     /// setzt Umbruch + `hasHorizontalScroller` live.
+    /// Zeigt der aktive Tab eine 4D-Methode (.4dm)? Steuert Theme und
+    /// Highlight-Provider (Etappe 4). Titel zählt mit, damit auch „Speichern
+    /// unter…“-Kandidaten ohne URL richtig eingefärbt werden.
+    private var showsFourDDocument: Bool {
+        let name = workspace.activeTab?.url?.lastPathComponent
+            ?? workspace.activeTab?.title ?? ""
+        return (name as NSString).pathExtension.lowercased() == "4dm"
+    }
+
     private var editorConfiguration: SourceEditorConfiguration {
         .init(
             appearance: .init(
-                theme: colorScheme == .dark ? Self.fastraThemeDark : Self.fastraTheme,
+                theme: showsFourDDocument
+                    ? (colorScheme == .dark ? Self.fourDThemeDark : Self.fourDTheme)
+                    : (colorScheme == .dark ? Self.fastraThemeDark : Self.fastraTheme),
                 font: .fastraEditorFont(name: editorFontName, size: 13,
                                         scale: DocumentZoom.scale(for: documentZoomLevel)),
                 wrapLines: wrapLines,
@@ -698,12 +715,8 @@ struct EditorView: View {
         // sie ist das Sicherheitsventil gegen jede Fehlerkennung.
         if let manual = tab.languageOverride { return manual }
         if let url = tab.url {
-            if ["xml", "xsd", "xsl", "xslt", "plist"].contains(url.pathExtension.lowercased()) {
-                // CodeEditLanguages bündelt keine separate XML-Grammatik.
-                // Die HTML-Grammatik zeichnet Tags, Attribute und Strings
-                // jedoch verlustfrei auch für XML und ist der passende
-                // robuste Syntax-Fallback für Finder-geöffnete XML-Dateien.
-                return .html
+            if let mapped = Self.grammarForSpecialExtension(url.pathExtension) {
+                return mapped
             }
             // prefixBuffer aktiviert die Upstream-Shebang-/Modeline-Erkennung
             // für gespeicherte Dateien OHNE Endung (z. B. `deploy`-Skripte).
@@ -717,11 +730,33 @@ struct EditorView: View {
         // inhaltsbasierte Erkennung (Etappe 3, nur endungslose Tabs).
         let titleExtension = (tab.title as NSString).pathExtension
         if !titleExtension.isEmpty {
-            if DocumentKind.isXML(filename: tab.title) { return .html }
+            if let mapped = Self.grammarForSpecialExtension(titleExtension) {
+                return mapped
+            }
             return CodeLanguage.detectLanguageFrom(url: URL(fileURLWithPath: tab.title))
         }
         if let detected = tab.contentDetectedLanguage { return detected }
         return .default
+    }
+
+    /// Endungs-Sonderfälle, die keine eigene Grammatik besitzen:
+    /// - XML-artige → HTML-Grammatik (CodeEditLanguages bündelt kein XML;
+    ///   HTML zeichnet Tags/Attribute/Strings verlustfrei auch für XML).
+    /// - 4D-Projektdateien (Etappe 4): .4DProject/.4DForm sind JSON,
+    ///   .4DCatalog/.4DSettings sind XML.
+    /// - .4dm → Plaintext-Grammatik; die Farben liefert der eigene
+    ///   4D-Highlight-Provider, nicht tree-sitter.
+    static func grammarForSpecialExtension(_ fileExtension: String) -> CodeLanguage? {
+        switch fileExtension.lowercased() {
+        case "xml", "xsd", "xsl", "xslt", "plist", "4dcatalog", "4dsettings":
+            return .html
+        case "4dproject", "4dform":
+            return .json
+        case "4dm":
+            return .default
+        default:
+            return nil
+        }
     }
 
     // MARK: Sidebar (Projekt-Dateibaum + geöffnete Dateien)
@@ -918,14 +953,20 @@ extension EditorView {
         lineHighlight:  rgb(0xEC, 0xEC, 0xEC, 0.55),
         selection:      rgb(0x78, 0xA7, 0xE8, 0.42),
         keywords:   .init(color: rgb(0xA3, 0x39, 0x2A), bold: true),
-        commands:   .init(color: rgb(0x2A, 0x66, 0xB5)),
+        // commands/values/characters: Seit dem EditorTheme-Patch (build.sh,
+        // Etappe 4) bedienen diese Slots .function/.method, .variableBuiltin
+        // und .property. Damit alle BESTEHENDEN Sprachen exakt gleich
+        // aussehen wie vor dem Patch, tragen die Slots hier genau die Farben
+        // ihrer früheren Sammel-Slots (variables bzw. keywords). Eigene
+        // Farben nutzt nur das 4D-Theme unten.
+        commands:   .init(color: rgb(0x36, 0x36, 0x36)),
         types:      .init(color: rgb(0x2A, 0x66, 0xB5), bold: true),
         attributes: .init(color: rgb(0xB5, 0x6C, 0x1A)),
         variables:  .init(color: rgb(0x36, 0x36, 0x36)),
-        values:     .init(color: rgb(0xB5, 0x6C, 0x1A)),
+        values:     .init(color: rgb(0xA3, 0x39, 0x2A), bold: true),
         numbers:    .init(color: rgb(0xB5, 0x6C, 0x1A)),
         strings:    .init(color: rgb(0x2F, 0x5D, 0x3A)),
-        characters: .init(color: rgb(0x2F, 0x5D, 0x3A)),
+        characters: .init(color: rgb(0x36, 0x36, 0x36)),
         comments:   .init(color: rgb(0x78, 0x78, 0x78), italic: true)
     )
 
@@ -945,15 +986,76 @@ extension EditorView {
         lineHighlight:  rgb(0x33, 0x33, 0x33, 0.62),
         selection:      rgb(0x5E, 0x8E, 0xCC, 0.48),
         keywords:   .init(color: rgb(0xE8, 0x8D, 0x7C), bold: true),
-        commands:   .init(color: rgb(0x7F, 0xB0, 0xEE)),
+        // Gleiche Patch-Neutralität wie im hellen Theme (siehe Kommentar dort).
+        commands:   .init(color: rgb(0xF2, 0xF2, 0xF2)),
         types:      .init(color: rgb(0x7F, 0xB0, 0xEE), bold: true),
         attributes: .init(color: rgb(0xDF, 0xA2, 0x5A)),
         variables:  .init(color: rgb(0xF2, 0xF2, 0xF2)),
-        values:     .init(color: rgb(0xDF, 0xA2, 0x5A)),
+        values:     .init(color: rgb(0xE8, 0x8D, 0x7C), bold: true),
         numbers:    .init(color: rgb(0xDF, 0xA2, 0x5A)),
         strings:    .init(color: rgb(0x94, 0xCE, 0x9F)),
-        characters: .init(color: rgb(0x94, 0xCE, 0x9F)),
+        characters: .init(color: rgb(0xF2, 0xF2, 0xF2)),
         comments:   .init(color: rgb(0x9A, 0x9A, 0x9A), italic: true)
+    )
+
+    // MARK: - 4D-Themes (Etappe 4 Wunschpaket 2026-07)
+    //
+    // Statische Themes für .4dm-Dokumente. Token-Farben und Bold/Italic
+    // stammen aus docs/wunschpaket-2026-07/light.json bzw. dark.json (nur
+    // Vordergrundfarben; Hintergrund-/Auswahlfarben und Fonts kommen
+    // bewusst aus den Fastra-Standardthemes). Underline (4D-Konstanten)
+    // kennt CESEs Attribut-Modell nicht — Konstanten erhalten nur die Farbe.
+    //
+    // Slot-Belegung (nach dem EditorTheme-Patch in build.sh):
+    //   text       ← plain_text          keywords ← keywords (bold)
+    //   commands   ← commands (bold; Projektmethoden teilen den Slot)
+    //   values     ← constants           variables ← local_variables (+$1…)
+    //   characters ← process_variables (auch <>interprozess — dark.json
+    //                kennt ohnehin keine eigene Interprozess-Farbe)
+    //   types      ← tables              attributes ← fields
+    //   numbers    ← plain_text (4D färbt Zahlen nicht ein)
+    //   strings    ← Fastra-Fallback (die 4D-Themes definieren keine
+    //                String-Farbe)      comments ← comments
+    //   member `.x` bleibt plain; `.f()` nutzt den commands-Slot.
+    //   errors/plug_ins aus den JSONs entfallen (kein Fehler-Parsing,
+    //   Plugin-Befehle nicht unterscheidbar) — dokumentierter Verzicht.
+
+    static let fourDTheme: EditorTheme = EditorTheme(
+        text:           .init(color: rgb(0x00, 0x00, 0x00)),
+        insertionPoint: rgb(0x00, 0x00, 0x00),
+        invisibles:     .init(color: rgb(0x00, 0x00, 0x00, 0.18)),
+        background:     rgb(0xFF, 0xFF, 0xFF),
+        lineHighlight:  rgb(0xEC, 0xEC, 0xEC, 0.55),
+        selection:      rgb(0x78, 0xA7, 0xE8, 0.42),
+        keywords:   .init(color: rgb(0x03, 0x4D, 0x00), bold: true),
+        commands:   .init(color: rgb(0x06, 0x8C, 0x00), bold: true),
+        types:      .init(color: rgb(0x43, 0x99, 0xD0)),
+        attributes: .init(color: rgb(0x39, 0x80, 0xB2)),
+        variables:  .init(color: rgb(0x00, 0x70, 0xF5)),
+        values:     .init(color: rgb(0xBF, 0x30, 0xB5)),
+        numbers:    .init(color: rgb(0x00, 0x00, 0x00)),
+        strings:    .init(color: rgb(0x2F, 0x5D, 0x3A)),
+        characters: .init(color: rgb(0x9E, 0x60, 0x00), italic: true),
+        comments:   .init(color: rgb(0x7F, 0x7E, 0x80))
+    )
+
+    static let fourDThemeDark: EditorTheme = EditorTheme(
+        text:           .init(color: rgb(0xAE, 0xAE, 0xAE)),
+        insertionPoint: rgb(0xAE, 0xAE, 0xAE),
+        invisibles:     .init(color: rgb(0xAE, 0xAE, 0xAE, 0.22)),
+        background:     rgb(0x17, 0x17, 0x17),
+        lineHighlight:  rgb(0x33, 0x33, 0x33, 0.62),
+        selection:      rgb(0x5E, 0x8E, 0xCC, 0.48),
+        keywords:   .init(color: rgb(0xE1, 0xDC, 0x32), bold: true),
+        commands:   .init(color: rgb(0xB5, 0xD6, 0xDD), bold: true),
+        types:      .init(color: rgb(0xB7, 0x4D, 0x00)),
+        attributes: .init(color: rgb(0xBA, 0xD8, 0x0A)),
+        variables:  .init(color: rgb(0x00, 0xF9, 0xCC)),
+        values:     .init(color: rgb(0xB7, 0x00, 0xB8)),
+        numbers:    .init(color: rgb(0xAE, 0xAE, 0xAE)),
+        strings:    .init(color: rgb(0x94, 0xCE, 0x9F)),
+        characters: .init(color: rgb(0xD7, 0xF6, 0x92)),
+        comments:   .init(color: rgb(0x74, 0xC5, 0xEA))
     )
 
     private static func rgb(_ r: Int, _ g: Int, _ b: Int, _ a: CGFloat = 1) -> NSColor {

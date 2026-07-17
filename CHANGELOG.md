@@ -9,6 +9,35 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.23.0] — 2026-07-17
+
+### Hinzugefügt (Wunschpaket Juli 2026, Etappe 4 — 4D-Unterstützung)
+
+- **4D-Methoden (.4dm) mit Syntax-Highlighting:** ein eigener, leichter
+  Tokenizer über CodeEditSourceEditors `HighlightProviding`-Protokoll —
+  bewusst KEINE neue tree-sitter-Grammatik (Bundle wächst nur um ~24 KB).
+  Erkannt werden Kommentare (`//`, `/* */`), Strings, Zahlen,
+  Schlüsselwörter, mehrwortige englische Befehle und Konstanten
+  (case-tolerant, Longest-Prefix, inkl. `:C…`/`:K…`-Suffixe), `$lokale`
+  Variablen und `$1`-Parameter, `<>interprozess`, Prozessvariablen,
+  `[Tabellen]` samt Feldern, Methodenaufrufe und Klassensyntax.
+- **Befehls-/Konstantenlisten** (1270 Befehle, 2306 Konstanten) werden als
+  eigene, generierte Datenstruktur aus der lokalen 4D-Dokumentation
+  abgeleitet (`tools/generate-4d-symbols.py`) — reine Namenslisten, keine
+  Doku-Inhalte.
+- **4D-Farbthemes hell/dunkel** pro Dokument: Zeigt der Editor eine
+  .4dm-Datei, gelten eigene statische Themes nach den Vorgaben in
+  `docs/wunschpaket-2026-07/light.json`/`dark.json` (nur Vordergrundfarben
+  und Bold/Italic; Underline kennt das CESE-Attributmodell nicht —
+  dokumentierter Verzicht, ebenso errors/plug_ins). Ein kleiner
+  `EditorTheme`-Patch in `build.sh` entkoppelt dafür drei ungenutzte
+  Farb-Slots; alle bestehenden Sprachen sehen exakt unverändert aus
+  (Standard-Themes belegen die Slots mit den bisherigen Sammelfarben).
+- **Endungs-Mapping:** `.4DProject`/`.4DForm` → JSON-Grammatik,
+  `.4DCatalog`/`.4DSettings` → XML-Pfad (HTML-Grammatik); Footer zeigt
+  passende Format-Labels. Neuer Selbsttest `highlight4d` beobachtet die
+  echten 4D-Vordergrundfarben im gepackten Bundle — hell UND dunkel.
+
 ## [v1.22.0] — 2026-07-17
 
 ### Hinzugefügt (Wunschpaket Juli 2026, Etappe 3 — Spracherkennung)

@@ -144,6 +144,7 @@ enum SelfTest {
         case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
         case "highlight": waitForMainWindow { runHighlightTest() }
+        case "highlight4d": waitForMainWindow { runFourDHighlightTest() }
         case "previewrender": waitForMainWindow { runPreviewRenderTest() }
         case "markdown":  waitForMainWindow { runMarkdownRenderTest() }
         case "jump":      waitForMainWindow { runJumpTest() }
@@ -248,7 +249,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, previewrender, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, previewrender, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, contrast, windows)")
         }
     }
 
@@ -1388,6 +1389,107 @@ enum SelfTest {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             pollHighlightColors(root: root, url: url, tick: tick + 1)
         }
+    }
+
+    // MARK: - 4D-Highlighting (Etappe 4 Wunschpaket 2026-07)
+
+    /// Beobachtet die ECHTEN 4D-Vordergrundfarben im gepackten Bundle —
+    /// erst im hellen, dann im dunklen Erscheinungsbild (die 4D-Themes sind
+    /// pro Dokument aktiv und stammen aus light.json/dark.json). Prüft je
+    /// Modus Befehl, Schlüsselwort, lokale Variable und Kommentar.
+    private static func runFourDHighlightTest() {
+        testLabel = "highlight4d"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard let mainWindow = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        }), let root = mainWindow.contentView else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+
+        // Selbst geschriebene .4dm-Fixture (nichts aus der 4D-Doku).
+        let code = """
+        // Prüfsumme neu berechnen
+        If (True)
+        \t$summe:=$summe+1
+        \tALERT("fertig")
+        End if
+        """
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-highlight4d-\(UUID().uuidString).4dm")
+        do { try code.write(to: tmp, atomically: true, encoding: .utf8) }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+
+        // Erst hell erzwingen — der Test darf nicht vom System-Modus abhängen.
+        NSApp.appearance = NSAppearance(named: .aqua)
+        ws.loadFile(at: tmp) { ok in
+            guard ok else {
+                try? FileManager.default.removeItem(at: tmp)
+                finish(false, "loadFile (.4dm) schlug fehl")
+            }
+            pollFourDColors(root: root, url: tmp, dark: false, tick: 0) {
+                // Hell bestanden → dunkel umschalten und erneut beobachten.
+                NSApp.appearance = NSAppearance(named: .darkAqua)
+                pollFourDColors(root: root, url: tmp, dark: true, tick: 0) {
+                    NSApp.appearance = nil   // zurück zum Systemmodus
+                    try? FileManager.default.removeItem(at: tmp)
+                    finish(true, "4D-Farben hell + dunkel beobachtet "
+                        + "(Befehl, Keyword, $lokal, Kommentar aus light/dark.json)")
+                }
+            }
+        }
+    }
+
+    /// Erwartete 4D-Vordergrundfarben (aus docs/wunschpaket-2026-07/*.json).
+    private static func fourDExpectedColors(dark: Bool) -> [(String, Int, Int, Int)] {
+        dark
+            ? [("Befehl", 0xB5, 0xD6, 0xDD), ("Keyword", 0xE1, 0xDC, 0x32),
+               ("$lokal", 0x00, 0xF9, 0xCC), ("Kommentar", 0x74, 0xC5, 0xEA)]
+            : [("Befehl", 0x06, 0x8C, 0x00), ("Keyword", 0x03, 0x4D, 0x00),
+               ("$lokal", 0x00, 0x70, 0xF5), ("Kommentar", 0x7F, 0x7E, 0x80)]
+    }
+
+    private static func pollFourDColors(root: NSView, url: URL, dark: Bool,
+                                        tick: Int, then next: @escaping () -> Void) {
+        let expected = fourDExpectedColors(dark: dark)
+        let missing = expected.filter { !storageContainsColor(in: root, r: $0.1, g: $0.2, b: $0.3) }
+        if missing.isEmpty {
+            next()
+            return
+        }
+        if tick >= 40 {
+            try? FileManager.default.removeItem(at: url)
+            NSApp.appearance = nil
+            finish(false, "\(dark ? "dunkel" : "hell"): Farben fehlen nach 10 s: "
+                + missing.map(\.0).joined(separator: ", "))
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollFourDColors(root: root, url: url, dark: dark,
+                            tick: tick + 1, then: next)
+        }
+    }
+
+    /// Sucht eine konkrete sRGB-Farbe unter den `.foregroundColor`-Attributen
+    /// des echten Editor-TextStorage (Toleranz ~1,5/255 je Kanal).
+    private static func storageContainsColor(in root: NSView,
+                                             r: Int, g: Int, b: Int) -> Bool {
+        guard let tv = editorTextView(in: root) as? TextView,
+              let storage = tv.textStorage, storage.length > 0 else { return false }
+        var found = false
+        storage.enumerateAttribute(.foregroundColor,
+                                   in: NSRange(location: 0, length: storage.length)) { value, _, stop in
+            guard let color = (value as? NSColor)?.usingColorSpace(.sRGB) else { return }
+            let tolerance = 1.5 / 255.0
+            if abs(color.redComponent - Double(r) / 255) < tolerance,
+               abs(color.greenComponent - Double(g) / 255) < tolerance,
+               abs(color.blueComponent - Double(b) / 255) < tolerance {
+                found = true
+                stop.pointee = true
+            }
+        }
+        return found
     }
 
     /// Zählt die verschiedenen `.foregroundColor`-Attribute im echten

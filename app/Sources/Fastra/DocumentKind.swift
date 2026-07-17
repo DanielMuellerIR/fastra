@@ -13,8 +13,12 @@ enum DocumentKind {
         switch (filename as NSString).pathExtension.lowercased() {
         case "md", "markdown": return "Markdown"
         case "csv": return "CSV"
-        case "json": return "JSON"
-        case "xml", "xsd", "xsl", "xslt", "plist": return "XML"
+        // 4D-Projektdateien (Etappe 4): Container-Formate zeigen ihr
+        // tatsächliches Datenformat, Methoden zeigen „4D".
+        case "json", "4dproject", "4dform": return "JSON"
+        case "xml", "xsd", "xsl", "xslt", "plist", "4dcatalog", "4dsettings":
+            return "XML"
+        case "4dm": return "4D"
         case "html", "htm": return "HTML"
         case "swift": return "Swift"
         case "py": return "Python"

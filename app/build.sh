@@ -418,6 +418,58 @@ PYEOF
         .build/*/release/Modules/CodeEditLanguages.swiftmodule
 fi
 
+# 4l. Patch CodeEditSourceEditor — Theme-Slots für 4D entkoppeln (Etappe 4
+# Wunschpaket 2026-07).
+#
+# EditorTheme.mapCapture wirft upstream viele Capture-Klassen in dieselben
+# Farb-Slots (function/method/property → variables, variableBuiltin →
+# keywords); die Theme-Felder `commands`, `values` und `characters` sind
+# dagegen KOMPLETT ungenutzt. Für die 4D-Farbkategorien (Befehle, Konstanten,
+# Prozessvariablen) leiten wir drei Capture-Klassen auf diese freien Slots
+# um. Die Fastra-Standardthemes setzen die drei Slots exakt auf die Farben
+# ihrer bisherigen Sammel-Slots → alle bestehenden Sprachen sehen unverändert
+# aus; nur die 4D-Themes nutzen die neuen Slots mit eigenen Farben.
+CESE_THEME="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/Theme/EditorTheme.swift"
+if ! grep -q 'Fastra-Patch: eigene Slots fuer 4D-Kategorien' "$CESE_THEME" 2>/dev/null; then
+  echo "→ Patche CodeEditSourceEditor (Theme-Slots für 4D entkoppeln)"
+  chmod u+w "$CESE_THEME"
+  /usr/bin/python3 - "$CESE_THEME" <<'PYEOF'
+import sys
+path = sys.argv[1]
+src = open(path).read()
+old = '''        case .include, .constructor, .keyword, .boolean, .variableBuiltin,
+                .keywordReturn, .keywordFunction, .repeat, .conditional, .tag:
+            return keywords
+        case .comment: return comments
+        case .variable, .property: return variables
+        case .function, .method: return variables'''
+new = '''        // Fastra-Patch: eigene Slots fuer 4D-Kategorien (Etappe 4).
+        // commands/values/characters waren upstream ungenutzt; die
+        // Standard-Themes belegen sie mit den bisherigen Sammelfarben,
+        // bestehende Sprachen aendern sich dadurch NICHT.
+        case .include, .constructor, .keyword, .boolean,
+                .keywordReturn, .keywordFunction, .repeat, .conditional, .tag:
+            return keywords
+        case .variableBuiltin: return values
+        case .comment: return comments
+        case .variable: return variables
+        case .property: return characters
+        case .function, .method: return commands'''
+if old not in src:
+    sys.exit("EditorTheme.mapCapture hat sich geaendert — Patch 4l pruefen")
+open(path, 'w').write(src.replace(old, new, 1))
+PYEOF
+  # Verifizieren + CESE-Build-Produkte verwerfen (SPM trackt Checkout-
+  # Änderungen nicht — gleiche Begründung wie bei 4b).
+  if ! grep -q 'Fastra-Patch: eigene Slots fuer 4D-Kategorien' "$CESE_THEME" 2>/dev/null; then
+    echo "✗ FEHLER: Theme-Slot-Patch hat NICHT gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
+    exit 1
+  fi
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 
