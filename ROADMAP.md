@@ -6,6 +6,12 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Jetzt
 
+- **Wunschpaket 3** (vorgeschlagen 2026-07-18, noch nicht beschlossen):
+  Spezifikationsentwurf in `docs/wunschpaket-2026-07c/goal-vorschlag.md` —
+  vier Etappen: Datei-Diff dual-pane nach BBEdit-Vorbild (eigener Diff-Kern
+  ohne Git), Git-Diffs auf denselben Renderer vereinheitlicht,
+  Dateinamens-Filter in der Projektansicht, tool4d-Ersteinrichtungshilfe
+  beim ersten 4D-Kontakt. Umsetzung erst nach Prüfung des Entwurfs.
 - **Wunschpaket 2** (beschlossen 2026-07-18): Alle fünf Etappen sind mit
   v1.27.0–v1.31.0 umgesetzt (Navigation & Chrome, Suchdialog, Sprachmenü
   mit wählbarem 4D, Hilfe samt `help-audit`-Mechanik, assistiertes
@@ -24,7 +30,13 @@ Erledigte Arbeit und historische Entscheidungen stehen in
     den Aufruf durch Dritt-Tools sind nicht abschließend geklärt. Statt der
     Integration liefert Fastra eine Anleitung in `docs/tool4d.de.md` und
     `docs/tool4d.md`. Wiedervorlage nur mit geklärten Bedingungen und
-    tragfähigem Einzeldatei-Konzept.
+    tragfähigem Einzeldatei-Konzept. Recherche-Stand 2026-07-18: Die
+    offizielle VS-Code-Extension „4D-Analyzer“ nutzt genau diesen LSP-Weg
+    (`tool4d --lsp=<port>`, JSON-RPC über localhost-TCP) und verspricht
+    Einzeldatei-Support — das Einzeldatei-Konzept ist damit greifbar; die
+    formalen Nutzungsbedingungen von tool4d bleiben der offene Punkt
+    (Indizien: frei, auch für CI/Dritt-Tools beworben). Details im
+    Wunschpaket-3-Entwurf.
   - **4D-Farbdetails:** Underline (Konstanten) kennt das CESE-Attributmodell
     nicht; `errors`/`plug_ins`/`member` aus den Farbvorgaben entfallen
     mangels Analyse bzw. Unterscheidbarkeit (siehe Slot-Mapping in
