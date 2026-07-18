@@ -6,6 +6,18 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Jetzt
 
+- **Wunschpaket 2** (beschlossen 2026-07-18, offen): Fünf Etappen —
+  Navigation & Chrome (Git-Root beim Datei-Öffnen, Seitenleisten-Kopf auf
+  allen Tabs, Ansichts-Umschalter in die Fußzeile, Tab-Pfadmenü per
+  Cmd-Klick, Fenstertitel-Recherche), Suchdialog (Button-Prominenz,
+  mitscrollende Trefferliste, Live-Markierung aller Treffer), Sprachmenü
+  mit wählbarem 4D samt Anti-Drift-Test, Hilfedokument samt
+  `help-audit`-Mechanik, assistiertes Markdown-Schreiben mit
+  Bild-Paste/-Drop. Spezifikation:
+  `docs/wunschpaket-2026-07b/goal-vorschlag.md`. Echtes WYSIWYG
+  („Schreibmodus“) ist bewusst ausgeklammert; Entscheidungsvorlage in
+  `docs/wunschpaket-2026-07b/goal-stufe-b-wysiwyg.md`, nur auf
+  ausdrücklichen Auftrag.
 - **Wunschpaket Juli 2026** (beschlossen 2026-07-17): Die sechs Etappen sind
   mit v1.20.0–v1.25.0 umgesetzt (Spezifikation samt 4D-Farbvorgaben liegt in
   `docs/wunschpaket-2026-07/`). Bewusst offen geblieben:
