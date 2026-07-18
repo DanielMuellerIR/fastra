@@ -8,10 +8,14 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 - **Wunschpaket 3** (vorgeschlagen 2026-07-18, noch nicht beschlossen):
   Spezifikationsentwurf in `docs/wunschpaket-2026-07c/goal-vorschlag.md` —
-  vier Etappen: Datei-Diff dual-pane nach BBEdit-Vorbild (eigener Diff-Kern
+  acht Etappen: Datei-Diff dual-pane nach BBEdit-Vorbild (eigener Diff-Kern
   ohne Git), Git-Diffs auf denselben Renderer vereinheitlicht,
-  Dateinamens-Filter in der Projektansicht, tool4d-Ersteinrichtungshilfe
-  beim ersten 4D-Kontakt. Umsetzung erst nach Prüfung des Entwurfs.
+  Dateinamens-Filter in der Projektansicht, tool4d-Ersteinrichtungshilfe,
+  4D-Struktur-Hinweise, 4D-Vervollständigung/`.4DForm`-Schema/Export-
+  Transformation, Alt-Doppelklick „Gehe zum Ziel“ (4D-Methoden +
+  Markdown-Links, erweiterbar), 4D-Syntax-Check via tool4d-LSP (Gate:
+  rechtliche Freigabe durch den Maintainer). Umsetzung erst nach Prüfung
+  des Entwurfs.
 - **Wunschpaket 2** (beschlossen 2026-07-18): Alle fünf Etappen sind mit
   v1.27.0–v1.31.0 umgesetzt (Navigation & Chrome, Suchdialog, Sprachmenü
   mit wählbarem 4D, Hilfe samt `help-audit`-Mechanik, assistiertes
