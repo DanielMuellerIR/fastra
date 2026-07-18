@@ -9,6 +9,38 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.33.0] — 2026-07-18
+
+Etappe 2 des Wunschpakets 2026-07c: Git-Diffs rendern über denselben
+Dual-Pane-Renderer wie „Dateien vergleichen“ — eine Optik, eine
+Tastatur-Navigation, eine Differenzen-Liste. Der Git-spezifische Unterbau
+(`GitDiffRequest`/`GitDiffParser`, Hunk-Folding, Mehr-Datei-Diffs,
+Commit-Metadaten, Unified-Fallback für Merge-Diffs) bleibt unverändert;
+ein Abbildungs-Test belegt: gleiche Eingabe → gleiche Zeilen-Ausrichtung
+wie beim früheren Renderer.
+
+### Geändert
+
+- **Git-Diff-Tabs haben jetzt die Differenzen-Liste unten** (wie „Dateien
+  vergleichen“): ein Eintrag je zusammenhängendem Unterschied mit
+  Zeilenangaben, bei Mehr-Datei-Diffs mit Dateinamen davor; Klick springt
+  dorthin.
+- **Navigation vereinheitlicht:** ⌥↑/⌥↓ springen auch im Git-Diff zum
+  vorigen/nächsten Unterschied; die bisherigen ⌥⌘[/⌥⌘]-Shortcuts bleiben
+  als Zweitbelegung erhalten. Der Zähler heißt jetzt in beiden Ansichten
+  „Unterschied X von Y“ und zählt zusammenhängende Unterschiede statt
+  Git-Hunks; die Übersichts-Leiste rechts markiert entsprechend
+  Unterschiede (der Datei-Diff bekommt sie damit ebenfalls).
+- Ausgeklappte Falt-Bereiche im Datei-Diff behalten ihren
+  Einklapp-Knopf (Verhalten wie im Git-Diff).
+
+### Intern
+
+- Neuer gemeinsamer Renderer `DualPaneDiffView` plus pure Abbildung
+  `GitDiffDisplay` (Git-Modell → gemeinsames Anzeige-Modell) mit
+  Verhaltensgleichheits-Tests; der bisherige `GitSideBySideDiffView`
+  entfällt.
+
 ## [v1.32.0] — 2026-07-18
 
 Etappe 1 des Wunschpakets 2026-07c: Diff-Kern & Datei-Diff dual-pane

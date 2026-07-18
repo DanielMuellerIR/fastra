@@ -374,9 +374,11 @@ struct EditorView: View {
                     .id(tab.id)
             } else if let tab = workspace.activeTab,
                let request = tab.gitDiffRequest {
-                GitSideBySideDiffView(request: request,
-                                      document: tab.gitDiffDocument,
-                                      fallbackText: tab.content)
+                // Git-Diff auf dem GEMEINSAMEN Dual-Pane-Renderer
+                // (Etappe 2 Wunschpaket 2026-07c).
+                GitDualPaneDiffView(request: request,
+                                    document: tab.gitDiffDocument,
+                                    fallbackText: tab.content)
                     .id(tab.id)
             } else if let kind = workspace.activeTab?.gitKind {
                 // Git-Text-Tab (Etappe 2): read-only Verlauf/Diff statt CESE.

@@ -177,6 +177,9 @@ additionally shows the **Changes** and **Graph** tabs:
 - **Graph:** the commit graph with branches and merges.
 - History (`git log`) and diffs open as read-only tabs; clicking a
   commit hash shows its details.
+- Git diffs use the same two-column view as **Compare Files** —
+  including the differences list at the bottom and ⌥↑/⌥↓ navigation
+  (⌥⌘[/⌥⌘] still work).
 - Merge conflicts get a dedicated bar with safe resolution steps.
 
 Fastra remains a thin frontend over the installed `git` — destructive

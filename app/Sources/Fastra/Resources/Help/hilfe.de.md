@@ -185,6 +185,9 @@ Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**:
 - **Graph:** der Commit-Graph mit Verzweigungen und Merges.
 - Verlauf (`git log`) und Diffs öffnen als schreibgeschützte Tabs; ein
   Klick auf einen Commit-Hash zeigt dessen Details.
+- Git-Diffs nutzen dieselbe zweispaltige Ansicht wie **Dateien
+  vergleichen** — inklusive Differenzen-Liste unten und
+  ⌥↑/⌥↓-Navigation (⌥⌘[/⌥⌘] funktionieren weiterhin).
 - Merge-Konflikte bekommen eine eigene Leiste mit sicheren
   Auflösungsschritten.
 

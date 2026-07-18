@@ -3739,9 +3739,10 @@ enum SelfTest {
     private static func pollFileDiffRendered(_ ws: Workspace, base: URL, tick: Int) {
         let maxTicks = 40            // 10 s
         let content = mainWindowForAXChecks()?.contentView
-        // Marker trägt Blockzahl + Auswahl: 3 Blöcke, noch keiner gewählt.
+        // Marker trägt Blockzahl + Auswahl: 3 Blöcke, Start beim ersten
+        // Unterschied (wie der Git-Diff: „Unterschied 1 von 3").
         let rendered = content.map {
-            markerViewExists(id: "fileDiffState-b3-c-1", in: $0)
+            markerViewExists(id: "diffState-b3-c0", in: $0)
         } ?? false
         if rendered {
             // Modell-Gegenprobe: der Tab hält wirklich 3 Differenz-Blöcke.
@@ -3757,7 +3758,7 @@ enum SelfTest {
         if tick >= maxTicks {
             try? FileManager.default.removeItem(at: base)
             finish(false, "Diff-Tab rendert binnen 10 s keine 3 Unterschiede "
-                + "(Marker fileDiffState-b3-c-1 fehlt)")
+                + "(Marker diffState-b3-c0 fehlt)")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             pollFileDiffRendered(ws, base: base, tick: tick + 1)
@@ -3783,7 +3784,7 @@ enum SelfTest {
     private static func clickLastFileDiffListRow(_ ws: Workspace, base: URL) {
         guard let window = mainWindowForAXChecks(),
               let content = window.contentView,
-              let marker = markerView(id: "fileDiffListRow-2", in: content) else {
+              let marker = markerView(id: "diffListRow-2", in: content) else {
             try? FileManager.default.removeItem(at: base)
             finish(false, "Listeneintrag „Block 2“ nicht im Fensterbaum gefunden")
         }
@@ -3812,7 +3813,7 @@ enum SelfTest {
         let maxTicks = 20            // 5 s (Scroll-Animation: 0,16 s)
         let content = mainWindowForAXChecks()?.contentView
         let selected = content.map {
-            markerViewExists(id: "fileDiffState-b3-c2", in: $0)
+            markerViewExists(id: "diffState-b3-c2", in: $0)
         } ?? false
         let scrollNow = content.flatMap { largestScrollView(in: $0) }?
             .contentView.documentVisibleRect.origin.y ?? scrollBefore

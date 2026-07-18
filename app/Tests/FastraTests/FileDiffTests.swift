@@ -273,9 +273,10 @@ func foldingInterior() {
     #expect(folds[0].count == 14)
     // Sichtbar: 2 Änderungen + 6 Kontext + 1 Falt-Knopf.
     #expect(items.count == 9)
-    // Ausklappen zeigt alle Zeilen.
+    // Ausklappen zeigt alle Zeilen; der Falt-Knopf bleibt zum
+    // Wieder-Einklappen stehen (Verhalten wie im Git-Diff).
     let expanded = FileDiff.visibleItems(rows: r.rows, expandedFolds: [folds[0].id])
-    #expect(expanded.count == r.rows.count)
+    #expect(expanded.count == r.rows.count + 1)
 }
 
 @Test("Falten: Lauf am Dateianfang behält nur Kontext zur Änderung hin")

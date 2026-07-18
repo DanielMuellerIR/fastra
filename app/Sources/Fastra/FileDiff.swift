@@ -548,10 +548,12 @@ enum FileDiff {
                 let fold = Fold(id: "fold-\(rows[foldStart].id)",
                                 count: foldEnd - foldStart,
                                 rowIDs: rows[foldStart].id..<(rows[foldEnd - 1].id + 1))
+                // Ausgeklappt bleibt der Knopf VOR den Zeilen stehen
+                // (zum Wieder-Einklappen) — gleiches Verhalten wie der
+                // Git-Diff (`GitDiffViewModel.fold`).
+                result.append(.fold(fold))
                 if expandedFolds.contains(fold.id) {
                     for k in foldStart..<foldEnd { result.append(.row(rows[k])) }
-                } else {
-                    result.append(.fold(fold))
                 }
                 for k in foldEnd..<runEnd { result.append(.row(rows[k])) }
             } else {

@@ -1061,3 +1061,8 @@
 "Datei nicht gefunden." = "File not found.";
 "Ordner lassen sich (noch) nicht vergleichen." = "Folders cannot be compared (yet).";
 "Binärdatei — ein Zeilenvergleich ist nicht möglich." = "Binary file — a line comparison is not possible.";
+
+/* Gemeinsamer Dual-Pane-Renderer (Etappe 2 Wunschpaket 2026-07c) */
+"Zu Unterschied %ld springen" = "Jump to difference %ld";
+"Übersicht der Unterschiede" = "Overview of the differences";
+"Übersicht der Unterschiede; die hervorgehobene Markierung ist der aktuelle." = "Overview of the differences; the highlighted marker is the current one.";

@@ -1,10 +1,10 @@
 // FileDiffView.swift
 //
-// Dual-Pane-Differenzansicht für den git-losen Datei-Vergleich (Etappe 1
-// Wunschpaket 2026-07c). Muster wie `GitSideBySideDiffView`: beide Spalten
-// leben in EINER LazyVStack und damit in exakt derselben Scrollposition.
-// Unten sitzt — nach BBEdit-Vorbild („Differences" -Liste) — die Liste aller
-// Unterschiede; ein Klick springt im Diff dorthin, ⌥↑/⌥↓ navigieren.
+// Datei-Vergleichs-Tab (Etappe 1 Wunschpaket 2026-07c) auf dem gemeinsamen
+// Dual-Pane-Renderer (`DualPaneDiffView`, Etappe 2): Diese View besitzt nur
+// noch die Zustände des Datei-Vergleichs (Laden, Grenzen, „identisch",
+// Kopfzeile mit Dateinamen + Optionen) und übersetzt das `FileDiff`-Modell
+// in das gemeinsame Anzeige-Modell.
 
 import SwiftUI
 
@@ -35,7 +35,14 @@ struct FileDiffView: View {
             } else if let result, result.isIdentical {
                 identicalView(result)
             } else {
-                diffBody
+                DualPaneDiffView(
+                    items: displayItems,
+                    entries: listEntries,
+                    expandedFolds: $expandedFolds,
+                    currentEntry: $currentBlock
+                ) {
+                    toolbarLeading
+                }
             }
         }
         .background(Theme.surfaceRaised)
@@ -45,191 +52,80 @@ struct FileDiffView: View {
         }
     }
 
-    // MARK: - Diff-Ansicht
+    // MARK: - Abbildung auf das gemeinsame Anzeige-Modell
 
-    private var diffBody: some View {
-        ScrollViewReader { proxy in
-            VStack(spacing: 0) {
-                toolbar(proxy: proxy)
-                Divider().opacity(0.6)
-                GeometryReader { geometry in
-                    ScrollView([.vertical, .horizontal]) {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(FileDiff.visibleItems(
-                                rows: result?.rows ?? [],
-                                expandedFolds: expandedFolds
-                            )) { item in
-                                itemView(item)
-                                    .id(item.id)
-                            }
-                        }
-                        .frame(minWidth: max(geometry.size.width, 920),
-                               minHeight: geometry.size.height,
-                               alignment: .topLeading)
-                    }
-                }
-                .accessibilityLabel("Vergleich beider Dateien")
-                Divider().opacity(0.6)
-                differencesList(proxy: proxy)
+    /// `FileDiff.Row` → gemeinsame Anzeigezeile. Die `id`s („row-N") sind
+    /// die Scroll-Ziele; das Ordinal ist die Zeilenposition selbst.
+    private static func displayRow(_ row: FileDiff.Row) -> DiffDisplayRow {
+        DiffDisplayRow(
+            id: "row-\(row.id)", ordinal: row.id, kind: row.kind,
+            beforeNumber: row.beforeLine, afterNumber: row.afterLine,
+            before: row.before, after: row.after,
+            beforeHighlight: row.beforeHighlight,
+            afterHighlight: row.afterHighlight,
+            beforeMissingFinalNewline: false,
+            afterMissingFinalNewline: false,
+            intralineWasLimited: row.intralineWasLimited
+        )
+    }
+
+    private var displayItems: [DiffDisplayItem] {
+        FileDiff.visibleItems(rows: result?.rows ?? [],
+                              expandedFolds: expandedFolds).map { item in
+            switch item {
+            case .row(let row):
+                return .row(Self.displayRow(row))
+            case .fold(let fold):
+                return .fold(id: fold.id, count: fold.count,
+                             expanded: expandedFolds.contains(fold.id))
             }
         }
     }
 
-    private func toolbar(proxy: ScrollViewProxy) -> some View {
-        HStack(spacing: 8) {
-            Text(request.left.name)
-                .fastraFont(.small)
-                .foregroundColor(Theme.diffRemovedFG)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .help(request.left.path ?? request.left.name)
-            Image(systemName: "arrow.left.arrow.right")
-                .fastraFont(size: 9)
-                .foregroundColor(Theme.textSecondary)
-            Text(request.right.name)
-                .fastraFont(.small)
-                .foregroundColor(Theme.diffAddedFG)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .help(request.right.path ?? request.right.name)
-            if !request.options.isDefault {
-                Text(L10n.format("Ignoriert: %@", Self.optionsSummary(request.options)))
-                    .fastraFont(size: 10)
-                    .foregroundColor(Theme.textSecondary)
-                    .lineLimit(1)
-                    .help("Diese Vergleichsoptionen waren beim Erstellen des Diffs aktiv.")
-            }
-            Spacer()
-            Text(L10n.format("Unterschied %ld von %ld",
-                             (currentBlock ?? 0) + 1, blocks.count))
+    private var listEntries: [DiffListEntry] {
+        blocks.map { block in
+            DiffListEntry(
+                id: block.id,
+                label: Self.blockDescription(block),
+                kind: block.kind,
+                scrollTargetID: "row-\(block.firstRowID)",
+                firstOrdinal: block.firstRowID,
+                lastOrdinal: block.lastRowID
+            )
+        }
+    }
+
+    // MARK: - Kopfzeile
+
+    @ViewBuilder
+    private var toolbarLeading: some View {
+        Text(request.left.name)
+            .fastraFont(.small)
+            .foregroundColor(Theme.diffRemovedFG)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .help(request.left.path ?? request.left.name)
+        Image(systemName: "arrow.left.arrow.right")
+            .fastraFont(size: 9)
+            .foregroundColor(Theme.textSecondary)
+        Text(request.right.name)
+            .fastraFont(.small)
+            .foregroundColor(Theme.diffAddedFG)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .help(request.right.path ?? request.right.name)
+        if !request.options.isDefault {
+            Text(L10n.format("Ignoriert: %@", Self.optionsSummary(request.options)))
                 .fastraFont(size: 10)
                 .foregroundColor(Theme.textSecondary)
-            Button { navigate(-1, proxy: proxy) } label: {
-                Image(systemName: "chevron.up")
-            }
-            .buttonStyle(.borderless)
-            .keyboardShortcut(.upArrow, modifiers: .option)
-            .disabled(blocks.isEmpty || currentBlock == 0)
-            .help("Voriger Unterschied (⌥↑)")
-            .accessibilityLabel("Voriger Unterschied")
-            Button { navigate(1, proxy: proxy) } label: {
-                Image(systemName: "chevron.down")
-            }
-            .buttonStyle(.borderless)
-            .keyboardShortcut(.downArrow, modifiers: .option)
-            .disabled(blocks.isEmpty || currentBlock == blocks.count - 1)
-            .help("Nächster Unterschied (⌥↓)")
-            .accessibilityLabel("Nächster Unterschied")
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 34)
-        // Fenster-Selbsttest `filediff`: Der Marker trägt Blockzahl und
-        // gewählten Unterschied — so beobachtet der Test ECHT gerenderten
-        // Zustand statt nur das Modell (Muster `sidebarheader`).
-        .background(SelfTestMarker(
-            id: "fileDiffState-b\(blocks.count)-c\(currentBlock ?? -1)"
-        ).frame(width: 0, height: 0))
-    }
-
-    /// Springt relativ zum aktuellen Unterschied (⌥↑/⌥↓ und Pfeil-Buttons).
-    private func navigate(_ direction: Int, proxy: ScrollViewProxy) {
-        guard !blocks.isEmpty else { return }
-        let next = max(0, min(blocks.count - 1, (currentBlock ?? -1) + direction))
-        select(blockIndex: next, proxy: proxy)
-    }
-
-    /// Wählt einen Unterschied und scrollt beide Spalten dorthin (eine
-    /// LazyVStack → ein Scroll genügt für beide Seiten).
-    private func select(blockIndex: Int, proxy: ScrollViewProxy) {
-        guard blocks.indices.contains(blockIndex) else { return }
-        currentBlock = blockIndex
-        withAnimation(.easeOut(duration: 0.16)) {
-            proxy.scrollTo("row-\(blocks[blockIndex].firstRowID)", anchor: .center)
-        }
-    }
-
-    // MARK: - Differenzen-Liste (unten, BBEdit-Vorbild)
-
-    private func differencesList(proxy: ScrollViewProxy) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(L10n.format("%ld Unterschiede", blocks.count))
-                    .fastraFont(size: 10)
-                    .foregroundColor(Theme.textSecondary)
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .frame(height: 22)
-            .background(Theme.surfaceBase)
-            Divider().opacity(0.4)
-            ScrollViewReader { listProxy in
-                ScrollView(.vertical) {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(blocks) { block in
-                            blockRow(block, proxy: proxy)
-                                .id("block-\(block.id)")
-                        }
-                    }
-                }
-                .onChange(of: currentBlock) { _, newValue in
-                    // Tastatur-Navigation hält den gewählten Eintrag sichtbar.
-                    if let newValue {
-                        listProxy.scrollTo("block-\(newValue)", anchor: nil)
-                    }
-                }
-            }
-            .frame(height: 132)
-        }
-        .accessibilityLabel("Liste der Unterschiede")
-    }
-
-    private func blockRow(_ block: FileDiff.Block, proxy: ScrollViewProxy) -> some View {
-        let selected = currentBlock == block.id
-        return Button {
-            select(blockIndex: block.id, proxy: proxy)
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: blockIcon(block.kind))
-                    .fastraFont(size: 10)
-                    .foregroundColor(blockColor(block.kind))
-                    .frame(width: 14)
-                Text(Self.blockDescription(block))
-                    .fastraFont(.small)
-                    .foregroundColor(selected ? Theme.textPrimary : Theme.textSecondary)
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .frame(height: 24)
-            .background(selected ? Theme.accent.opacity(0.18) : .clear)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Self.blockDescription(block))
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        // Selbsttest-Anker: liefert die reale Fensterposition der Zeile für
-        // einen synthetischen Klick (der 0×0-Marker sitzt in der Zeilenmitte).
-        .background(SelfTestMarker(id: "fileDiffListRow-\(block.id)")
-            .frame(width: 0, height: 0))
-    }
-
-    private func blockIcon(_ kind: FileDiff.BlockKind) -> String {
-        switch kind {
-        case .changed: return "pencil"
-        case .onlyLeft: return "minus.circle"
-        case .onlyRight: return "plus.circle"
-        }
-    }
-
-    private func blockColor(_ kind: FileDiff.BlockKind) -> Color {
-        switch kind {
-        case .changed: return Theme.gitModified
-        case .onlyLeft: return Theme.diffRemovedFG
-        case .onlyRight: return Theme.diffAddedFG
+                .lineLimit(1)
+                .help("Diese Vergleichsoptionen waren beim Erstellen des Diffs aktiv.")
         }
     }
 
     /// Menschlich lesbare Beschreibung eines Unterschieds („Zeilen 12–14
-    /// geändert", „Zeile 30 nur links"). Statisch → unit-testbar.
+    /// geändert", „Zeile 30 nur links"). Statisch → unit-testbar; auch der
+    /// Git-Diff nutzt sie für seine Differenzen-Liste.
     static func blockDescription(_ block: FileDiff.Block) -> String {
         func text(_ range: ClosedRange<Int>) -> String {
             range.lowerBound == range.upperBound
@@ -262,141 +158,6 @@ struct FileDiffView: View {
             return isSingle(lines)
                 ? L10n.format("Zeile %@ geändert", text(lines))
                 : L10n.format("Zeilen %@ geändert", text(lines))
-        }
-    }
-
-    // MARK: - Zeilen
-
-    @ViewBuilder
-    private func itemView(_ item: FileDiff.VisibleItem) -> some View {
-        switch item {
-        case .row(let row):
-            alignedRow(row)
-        case .fold(let fold):
-            let expanded = expandedFolds.contains(fold.id)
-            Button {
-                if expanded { expandedFolds.remove(fold.id) }
-                else { expandedFolds.insert(fold.id) }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: expanded ? "chevron.up" : "ellipsis")
-                    Text(expanded
-                         ? L10n.format("%ld unveränderte Zeilen wieder einklappen", fold.count)
-                         : L10n.format("%ld unveränderte Zeilen einblenden", fold.count))
-                    Spacer()
-                }
-                .fastraFont(size: 10)
-                .foregroundColor(Theme.textSecondary)
-                .padding(.horizontal, 10)
-                .frame(minWidth: 920, minHeight: 23, alignment: .leading)
-                .background(Theme.surfaceSand.opacity(0.22))
-            }
-            .buttonStyle(.plain)
-            .accessibilityValue(expanded ? L10n.string("ausgeklappt") : L10n.string("eingeklappt"))
-        }
-    }
-
-    /// Gehört die Zeile zum gewählten Unterschied? (Hervorhebung)
-    private func isInCurrentBlock(_ row: FileDiff.Row) -> Bool {
-        guard let currentBlock, blocks.indices.contains(currentBlock) else { return false }
-        let block = blocks[currentBlock]
-        return row.id >= block.firstRowID && row.id <= block.lastRowID
-    }
-
-    private func alignedRow(_ row: FileDiff.Row) -> some View {
-        HStack(spacing: 0) {
-            cell(number: row.beforeLine, text: row.before,
-                 highlight: row.beforeHighlight, before: true, kind: row.kind)
-            Divider().opacity(0.5)
-            cell(number: row.afterLine, text: row.after,
-                 highlight: row.afterHighlight, before: false, kind: row.kind)
-        }
-        .frame(minWidth: 920,
-               minHeight: row.intralineWasLimited ? 38 : 22,
-               alignment: .leading)
-        .overlay(alignment: .bottom) {
-            if row.intralineWasLimited {
-                Text("Intra-Zeilen-Markierung wegen Zeilenlänge ausgelassen.")
-                    .fastraFont(size: 9)
-                    .foregroundColor(Theme.textSecondary)
-            }
-        }
-        .overlay(alignment: .leading) {
-            if isInCurrentBlock(row) {
-                // Dezente Markierung des gewählten Unterschieds.
-                Rectangle()
-                    .fill(Theme.accentReadable)
-                    .frame(width: 2)
-            }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            // Klick auf eine veränderte Zeile wählt ihren Unterschied.
-            if let index = blocks.firstIndex(where: {
-                row.id >= $0.firstRowID && row.id <= $0.lastRowID
-            }) {
-                currentBlock = index
-            }
-        }
-        .accessibilityElement(children: .contain)
-    }
-
-    private func cell(number: Int?, text: String?, highlight: Range<Int>?,
-                      before: Bool, kind: FileDiff.RowKind) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            Text(number.map(String.init) ?? "")
-                .fastraFont(size: 9, design: .monospaced)
-                .foregroundColor(Theme.textSecondary)
-                .frame(width: 44, alignment: .trailing)
-                .accessibilityHidden(true)
-            highlightedText(text ?? " ", range: highlight,
-                            color: before ? Theme.diffRemovedFG : Theme.diffAddedFG)
-                .fastraFont(.monoSmall)
-                .foregroundColor(textColor(before: before, kind: kind,
-                                           sideEmpty: text == nil))
-                .fixedSize(horizontal: true, vertical: false)
-                .textSelection(.enabled)
-            Spacer(minLength: 8)
-        }
-        .padding(.horizontal, 5)
-        .frame(minWidth: 459, maxWidth: .infinity, minHeight: 22, alignment: .topLeading)
-        .background(cellBackground(before: before, kind: kind, sideEmpty: text == nil))
-        .accessibilityLabel(L10n.format("%@ Zeile %@: %@",
-                                       before ? L10n.string("Vorher") : L10n.string("Nachher"),
-                                       number.map(String.init) ?? L10n.string("leer"), text ?? ""))
-    }
-
-    private func highlightedText(_ value: String, range: Range<Int>?, color: Color) -> Text {
-        guard let range else { return Text(value) }
-        let chars = Array(value)
-        let lower = min(max(0, range.lowerBound), chars.count)
-        let upper = min(max(lower, range.upperBound), chars.count)
-        return Text(String(chars[..<lower]))
-            + Text(String(chars[lower..<upper])).foregroundColor(color).bold()
-            + Text(String(chars[upper...]))
-    }
-
-    private func textColor(before: Bool, kind: FileDiff.RowKind,
-                           sideEmpty: Bool) -> Color {
-        guard !sideEmpty else { return Theme.textSecondary }
-        switch kind {
-        case .unchanged: return Theme.textSecondary
-        case .added: return before ? Theme.textSecondary : Theme.diffAddedFG
-        case .removed: return before ? Theme.diffRemovedFG : Theme.textSecondary
-        case .changed: return before ? Theme.diffRemovedFG : Theme.diffAddedFG
-        }
-    }
-
-    private func cellBackground(before: Bool, kind: FileDiff.RowKind,
-                                sideEmpty: Bool) -> Color {
-        switch kind {
-        case .unchanged: return .clear
-        case .added:
-            return before ? Theme.surfaceSand.opacity(0.15) : Theme.diffAddedBG.opacity(0.7)
-        case .removed:
-            return before ? Theme.diffRemovedBG.opacity(0.7) : Theme.surfaceSand.opacity(0.15)
-        case .changed:
-            return before ? Theme.diffRemovedBG.opacity(0.7) : Theme.diffAddedBG.opacity(0.7)
         }
     }
 
