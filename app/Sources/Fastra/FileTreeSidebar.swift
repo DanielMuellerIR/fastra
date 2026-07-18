@@ -29,31 +29,14 @@ struct FileTreeSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            // Kopfzeile: Projektname + dezenter Schließen-Knopf.
-            HStack(spacing: 6) {
-                Text(rootURL.lastPathComponent.uppercased())
-                    .fastraFont(size: 10, weight: .semibold)
-                    .tracking(0.6)
-                    .foregroundColor(Theme.textSecondary)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                Button {
-                    workspace.closeProject()
-                } label: {
-                    Image(systemName: "xmark")
-                        .fastraFont(size: 9, weight: .semibold)
-                        .foregroundColor(Theme.textSecondary)
-                }
-                .buttonStyle(.plain)
-                .help("Projekt schließen (Dateibaum ausblenden)")
-                .accessibilityLabel("Projekt schließen")
-                .accessibilityHint("Blendet den Dateibaum dieses Projekts aus.")
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 14)
-            .padding(.bottom, 6)
-            .contextMenu {
+            // Kopfzeile: gemeinsame Komponente (alle Seitenleisten-Tabs);
+            // der Dateien-Tab hängt sein Vollmenü unter die Standardpunkte.
+            // „Im Finder zeigen“ liefert schon der gemeinsame Kopf — deshalb
+            // blendet das Vollmenü seinen eigenen Finder-Punkt hier aus.
+            SidebarProjectHeader(rootURL: rootURL) {
+                Divider()
                 FileTreeContextMenu(directory: rootURL, node: nil,
+                                    includeFinderReveal: false,
                                     onMutation: handleTreeMutation)
                     .environmentObject(workspace)
             }
@@ -599,6 +582,9 @@ private struct FileTreeRow: View {
 private struct FileTreeContextMenu: View {
     let directory: URL
     let node: FileTreeNode?
+    /// `false` nur am gemeinsamen Seitenleisten-Kopf: Dort zeigt bereits der
+    /// Kopf selbst „Im Finder zeigen…“ — der Punkt wäre sonst doppelt.
+    var includeFinderReveal: Bool = true
     let onMutation: () -> Void
     @EnvironmentObject var workspace: Workspace
 
@@ -607,7 +593,9 @@ private struct FileTreeContextMenu: View {
         Button("Neuer Ordner…") { create(isDirectory: true) }
 
         Divider()
-        Button("Im Finder zeigen…") { revealInFinder() }
+        if includeFinderReveal {
+            Button("Im Finder zeigen…") { revealInFinder() }
+        }
         Button("Terminal hier öffnen …") { workspace.openTerminal(at: directory) }
             .help("Öffnet Terminal.app nativ in diesem Ordner.")
 

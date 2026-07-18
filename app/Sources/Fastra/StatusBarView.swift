@@ -42,6 +42,13 @@ struct StatusBarView: View {
             }
             Spacer()
             HStack(spacing: 12) {
+                // Ansichts-Umschalter (Text/Vorschau/Hex) — seit Etappe 1
+                // Wunschpaket 2026-07b hier statt in einer eigenen Zeile über
+                // dem Editor. Weiterhin nur sichtbar, wenn die Datei mehr als
+                // eine Ansicht bietet; Menüpunkte und Shortcuts unverändert.
+                if workspace.availableViewModes.count > 1 {
+                    viewModePicker
+                }
                 if FooterLogic.shouldShowSearchSummary(isWelcomeScreen: workspace.isWelcomeScreen,
                                                        findPattern: workspace.findPattern) {
                     HStack(spacing: 4) {
@@ -71,6 +78,29 @@ struct StatusBarView: View {
         .background(Theme.surfaceSand.opacity(0.5))
         // Gesamten Footer-Text dimmen, wenn das Hauptfenster nicht vorn ist.
         .opacity(isFrontmost ? 1.0 : 0.45)
+    }
+
+    /// Kompakter Ansichts-Umschalter in der Fußzeile. Schreibt die Wahl in
+    /// den aktiven Tab — die manuelle Wahl bleibt für dessen Lebensdauer
+    /// erhalten (Logik unverändert aus der früheren `viewModeBar`).
+    private var viewModePicker: some View {
+        Picker("Ansicht", selection: Binding(
+            get: { workspace.activeViewMode },
+            set: { workspace.setViewMode($0) }
+        )) {
+            ForEach(workspace.availableViewModes, id: \.self) { mode in
+                Text(verbatim: mode.title).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        .controlSize(.small)
+        .help("Ansicht dieser Datei umschalten (Text / Vorschau / Hex)")
+        .accessibilityIdentifier("viewModePicker")
+        // Marker für den Fenster-Selbsttest `sidebarheader`: existiert nur,
+        // solange der Umschalter wirklich in der Fußzeile layoutet wird.
+        .background(SelfTestMarker(id: "viewModePickerMarker").frame(width: 0, height: 0))
     }
 
     /// Zeile/Spalte des primären Cursors, kompakt beschriftet („Z"/„Sp").

@@ -248,12 +248,9 @@ struct EditorView: View {
                     if workspace.activeConflictSupport != .none {
                         GitConflictBar()
                     }
-                    // Ansichts-Umschalter (Etappe 2 Wunschpaket 2026-07):
-                    // sichtbar, sobald die Datei mehr als eine Ansicht bietet.
-                    if workspace.availableViewModes.count > 1 {
-                        viewModeBar
-                        Divider().opacity(0.3)
-                    }
+                    // Der Ansichts-Umschalter (Text/Vorschau/Hex) sitzt seit
+                    // Etappe 1 Wunschpaket 2026-07b in der Fußzeile
+                    // (`StatusBarView`) — hier kostete er eine eigene Zeile.
                     switch workspace.activeViewMode {
                     case .preview:
                         if let tab = workspace.activeTab, let url = tab.url {
@@ -303,32 +300,6 @@ struct EditorView: View {
                 }
             }
         }
-    }
-
-    /// Schmale Leiste mit dem Ansichts-Umschalter (Text/Vorschau/Hex),
-    /// rechtsbündig über dem Inhalt. Schreibt die Wahl in den aktiven Tab —
-    /// die manuelle Wahl bleibt für die Lebensdauer des Tabs erhalten.
-    private var viewModeBar: some View {
-        HStack {
-            Spacer()
-            Picker("Ansicht", selection: Binding(
-                get: { workspace.activeViewMode },
-                set: { workspace.setViewMode($0) }
-            )) {
-                ForEach(workspace.availableViewModes, id: \.self) { mode in
-                    Text(verbatim: mode.title).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .controlSize(.small)
-            .help("Ansicht dieser Datei umschalten (Text / Vorschau / Hex)")
-            .accessibilityIdentifier("viewModePicker")
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(Theme.surfaceRaised)
     }
 
     /// Der eigentliche CodeEditSourceEditor — nur gezeigt, wenn isLoading = false.
@@ -797,9 +768,21 @@ struct EditorView: View {
             }
 
             switch effectiveMode {
-            case .files:   filesSidebar
-            case .changes: GitChangesView()
-            case .graph:   GitGraphView()
+            case .files:
+                filesSidebar
+            case .changes:
+                // Gemeinsamer Projekt-Kopf auch auf den Git-Tabs (Etappe 1
+                // Wunschpaket 2026-07b) — vorher wusste man dort nicht,
+                // welches Projekt gerade offen ist.
+                if let projectURL = workspace.projectURL {
+                    SidebarProjectHeader(rootURL: projectURL)
+                }
+                GitChangesView()
+            case .graph:
+                if let projectURL = workspace.projectURL {
+                    SidebarProjectHeader(rootURL: projectURL)
+                }
+                GitGraphView()
             }
         }
         // Test-Hook (nur Selbsttests): Seitenleisten-Modus vorwählen, damit ein

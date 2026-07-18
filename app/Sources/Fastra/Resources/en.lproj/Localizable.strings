@@ -953,3 +953,10 @@
 "Eine include- oder includeIf-Konfiguration würde die direkte Git-Identität weiterhin überschreiben. Fastra hat nichts geschrieben." = "An include or includeIf configuration would continue to override the direct Git identity. Fastra did not write anything.";
 "Die Herkunft der direkten Git-Identität ist nicht eindeutig. Fastra hat nichts geschrieben." = "The origin of the direct Git identity is ambiguous. Fastra did not write anything.";
 "Git lieferte keine eindeutige Herkunft der Identitätswerte." = "Git did not report an unambiguous origin for the identity values.";
+
+// Gemeinsamer Seitenleisten-Kopf + Pfadmenüs (Etappe 1 Wunschpaket 2026-07b)
+"Projektansicht schließen" = "Close Project View";
+"Blendet die Projekt-Seitenleiste aus. Offene Tabs bleiben erhalten." = "Hides the project sidebar. Open tabs are kept.";
+"Ordner „%@“ lässt sich nicht lesen: %@" = "Folder “%1$@” can’t be read: %2$@";
+"Projektordner %@" = "Project folder %@";
+"⌘-Klick zeigt die Nachbarordner zum Projektwechsel." = "⌘-click shows the neighboring folders to switch projects.";

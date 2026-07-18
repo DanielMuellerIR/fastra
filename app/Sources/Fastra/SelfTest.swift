@@ -162,6 +162,7 @@ enum SelfTest {
         case "textop":    waitForMainWindow { runTextOpTest() }
         case "colsel":    waitForMainWindow { runColumnSelectionTest() }
         case "gutterdim": waitForMainWindow { runGutterDimmingTest() }
+        case "sidebarheader": waitForMainWindow { runSidebarHeaderTest() }
         case "filemodes":
             // Fensterlos — echte Dateien durch den Workspace-Ladepfad routen:
             // Null-Bytes → Hex, große Textdatei → abschnittsweise.
@@ -253,7 +254,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, sidebarheader, contrast, windows)")
         }
     }
 
@@ -3106,6 +3107,100 @@ enum SelfTest {
     /// Workspace: Willkommens-Bedingung, Projekt öffnen (Dateibaum-Wurzel,
     /// Zuletzt-benutzt-Liste), Datei aus dem Baum laden, automatische
     /// Repo-Erkennung ohne Duplikat und Projekt-Datei-Set samt Ausschluss.
+    // MARK: - Selbsttest sidebarheader (Etappe 1 Wunschpaket 2026-07b)
+
+    /// Sucht eine `SelfTestMarker`-NSView (per Accessibility-Identifier) im
+    /// NSView-Baum des Fensters. SwiftUI erzeugt die Marker-View nur, wenn
+    /// der zugehörige View wirklich layoutet wird — Existenz der Marker-View
+    /// belegt also die echte Sichtbarkeitsbedingung.
+    private static func markerViewExists(id: String, in view: NSView) -> Bool {
+        if view.accessibilityIdentifier() == id { return true }
+        return view.subviews.contains { markerViewExists(id: id, in: $0) }
+    }
+
+    /// Sichtbares Hauptfenster (nicht der Suchdialog) für AX-Prüfungen.
+    private static func mainWindowForAXChecks() -> NSWindow? {
+        NSApp.windows.first {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.isVisible && $0.contentView != nil
+        }
+    }
+
+    /// Prüft im ECHTEN Fenster (Etappe 1 Wunschpaket 2026-07b):
+    /// (a) Nach dem Projekt-Öffnen erscheint der gemeinsame Seitenleisten-
+    ///     Kopf (`sidebarProjectHeader`) im Accessibility-Baum.
+    /// (b) Der Ansichts-Umschalter (`viewModePicker`) liegt in der Fußzeile,
+    ///     sobald die geladene Datei mehr als eine Ansicht bietet.
+    /// (c) Für einen ungespeicherten Tab (nur Text-Ansicht) verschwindet der
+    ///     Umschalter wieder.
+    private static func runSidebarHeaderTest() {
+        testLabel = "sidebarheader"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-sidebarheader-\(UUID().uuidString)")
+        let project = base.appendingPathComponent("projekt")
+        do {
+            try fm.createDirectory(at: project, withIntermediateDirectories: true)
+            try fm.createDirectory(at: base.appendingPathComponent("nachbar"),
+                                   withIntermediateDirectories: true)
+            try "KOPFTEST".write(to: project.appendingPathComponent("notiz.txt"),
+                                 atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "(setup) Testprojekt nicht anlegbar: \(error.localizedDescription)")
+        }
+        ws.openProject(at: project)
+        ws.loadFile(at: project.appendingPathComponent("notiz.txt")) { ok in
+            guard ok else {
+                try? fm.removeItem(at: base)
+                finish(false, "(setup) notiz.txt lädt nicht")
+            }
+            pollSidebarHeader(ws, base: base, tick: 0)
+        }
+    }
+
+    private static func pollSidebarHeader(_ ws: Workspace, base: URL, tick: Int) {
+        let maxTicks = 40            // 40 × 0,25 s = 10 s Beobachtungsfenster
+        let content = mainWindowForAXChecks()?.contentView
+        let headerFound = content.map { markerViewExists(id: "sidebarProjectHeader", in: $0) } ?? false
+        let pickerFound = content.map { markerViewExists(id: "viewModePickerMarker", in: $0) } ?? false
+        if headerFound, pickerFound {
+            // (c) Ungespeicherter Tab bietet nur die Text-Ansicht — der
+            // Umschalter muss aus der Fußzeile verschwinden.
+            ws.openNewTab()
+            pollViewModePickerGone(base: base, tick: 0)
+            return
+        }
+        if tick >= maxTicks {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "nach 10 s: Seitenleisten-Kopf=\(headerFound), "
+                + "Fußzeilen-Umschalter=\(pickerFound)")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollSidebarHeader(ws, base: base, tick: tick + 1)
+        }
+    }
+
+    private static func pollViewModePickerGone(base: URL, tick: Int) {
+        let maxTicks = 20            // 20 × 0,25 s = 5 s
+        let content = mainWindowForAXChecks()?.contentView
+        let pickerFound = content.map { markerViewExists(id: "viewModePickerMarker", in: $0) } ?? true
+        if !pickerFound {
+            try? FileManager.default.removeItem(at: base)
+            finish(true, "Kopf + Fußzeilen-Umschalter real im Fenster layoutet; "
+                + "Umschalter verschwindet für ungespeicherte Tabs")
+        }
+        if tick >= maxTicks {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Umschalter bleibt trotz ungespeicherten Tabs sichtbar")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollViewModePickerGone(base: base, tick: tick + 1)
+        }
+    }
+
     private static func runProjectTest() {
         testLabel = "project"
         guard let ws = Workspace.shared else {

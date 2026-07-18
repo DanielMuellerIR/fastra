@@ -9,6 +9,55 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.27.0] — 2026-07-18
+
+Etappe 1 des Wunschpakets 2026-07b: Navigation & Chrome
+(`docs/wunschpaket-2026-07b/goal-vorschlag.md`).
+
+### Hinzugefügt
+
+- **Gemeinsamer Seitenleisten-Kopf auf allen drei Tabs:** Der Kopf
+  (Projektname + Schließen-X) erscheint jetzt auch auf „Änderungen“ und
+  „Graph“, nicht mehr nur im Dateien-Tab. Neu für alle Tabs: Tooltip mit dem
+  vollen Pfad auf dem Namen sowie ein Rechtsklickmenü mit „Im Finder
+  zeigen…“ und „Projektansicht schließen“. Der Dateien-Tab behält
+  zusätzlich sein Vollmenü (Neue Datei/Ordner, Terminal).
+- **Cmd-Klick auf den Projektnamen wechselt zum Nachbarprojekt:** Ein Menü
+  zeigt alle Ordner im selben Elternordner (nur Ordner, versteckte
+  ausgeblendet, alphabetisch, aktueller mit Häkchen); die Auswahl wechselt
+  das Projekt wie „Ordner öffnen“. Das Listing läuft asynchron; ein nicht
+  lesbarer Elternordner zeigt eine verständliche Meldung statt eines leeren
+  Menüs.
+- **Cmd-Klick auf einen Dokument-Tab zeigt das macOS-Pfadmenü:** Datei
+  zuoberst (zeigt sie im Finder), darunter jeder Elternordner (öffnet ihn im
+  Finder) — Ersatz für das Cmd-Klick-Menü der ausgeblendeten Titelzeile.
+  Ungespeicherte Tabs haben kein Menü.
+- Neuer Fenster-Selbsttest `sidebarheader` (Kopf sichtbar, Umschalter in der
+  Fußzeile, Umschalter verschwindet ohne Datei).
+
+### Geändert
+
+- **Git-Root beim automatischen Ordner-Öffnen:** Öffnet man eine Einzeldatei
+  ohne offenes Projekt, zeigt die Seitenleiste jetzt den Wurzelordner des
+  Git-Repositorys (auch Worktrees) statt stur den Elternordner; ohne Repo
+  bleibt es beim Elternordner. Wer einen Unterordner ausdrücklich als
+  Projekt öffnet, behält ihn unverändert.
+- **Ansichts-Umschalter (Text/Vorschau/Hex) in der Fußzeile:** Der
+  Umschalter sitzt jetzt kompakt rechts in der Statusleiste statt in einer
+  eigenen Zeile über dem Editor — eine Zeile mehr Platz für den Inhalt.
+  Sichtbarkeit (nur bei mehreren Ansichten), Menüpunkte und Shortcuts
+  unverändert.
+
+### Dokumentiert
+
+- **Befund Fenstertitel-Wegfall:** Die Titel-Pipeline
+  (`MainWindowTitle.swift`) ist nicht tot — `window.title` speist weiterhin
+  Mission Control, Dock, Fenster-Menü und VoiceOver. Entfallen sind nur die
+  Proxy-Icon-Funktionen der versteckten Titelzeile: das Cmd-Klick-Pfadmenü
+  (ersetzt durch das Tab-Pfadmenü) und der Datei-Drag aus der Titelzeile
+  (bewusst ersatzlos, Idee in `ROADMAP.md`). Details:
+  `docs/wunschpaket-2026-07b/fenstertitel-befund.md`.
+
 ## [v1.26.0] — 2026-07-18
 
 ### Hinzugefügt

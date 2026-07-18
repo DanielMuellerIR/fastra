@@ -250,6 +250,19 @@ private struct TabPill: View {
             )
         }
         .buttonStyle(.plain)
+        // Cmd-Klick zeigt das Pfadmenü der Tab-Datei (Etappe 1 Wunschpaket
+        // 2026-07b). `highPriorityGesture`, damit der Cmd-Klick NICHT
+        // zusätzlich als normaler Tab-Klick durchschlägt. Ungespeicherte
+        // Tabs haben keinen Pfad → dort wählt der Cmd-Klick nur den Tab.
+        .highPriorityGesture(
+            TapGesture().modifiers(.command).onEnded {
+                if let url = tab.url {
+                    TabPathMenuPresenter.shared.present(for: url)
+                } else {
+                    onSelect()
+                }
+            }
+        )
         .onHover { hovering = $0 }
         .contextMenu {
             Button("Andere Tabs schließen", action: onCloseOthers)

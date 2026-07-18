@@ -138,6 +138,70 @@ func loadFile_parentFolderKeepsUnrelatedTabs() async throws {
             "Fremder sauberer Tab darf nicht stillschweigend schließen")
 }
 
+// MARK: - Git-Root beim automatischen Ordner-Öffnen (Wunschpaket 2026-07b)
+
+@Test("autoProjectFolder: Datei tief im Repo → Git-Wurzelordner statt Elternordner")
+func autoProject_prefersRepositoryRoot() throws {
+    let repo = try makeTmpDirectory("repo")
+    defer { try? FileManager.default.removeItem(at: repo) }
+    let nested = repo.appendingPathComponent("src/deep")
+    try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: repo.appendingPathComponent(".git"),
+                                            withIntermediateDirectories: true)
+    let file = nested.appendingPathComponent("main.swift")
+    try "x".write(to: file, atomically: true, encoding: .utf8)
+
+    #expect(Workspace.autoProjectFolder(for: file)?.path == repo.path)
+}
+
+@Test("autoProjectFolder: .git als DATEI (worktree) → ebenfalls Wurzelordner")
+func autoProject_acceptsWorktreeGitFile() throws {
+    let repo = try makeTmpDirectory("worktree")
+    defer { try? FileManager.default.removeItem(at: repo) }
+    let nested = repo.appendingPathComponent("sub")
+    try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+    try "gitdir: /woanders/.git/worktrees/wt"
+        .write(to: repo.appendingPathComponent(".git"), atomically: true, encoding: .utf8)
+    let file = nested.appendingPathComponent("notiz.txt")
+    try "x".write(to: file, atomically: true, encoding: .utf8)
+
+    #expect(Workspace.autoProjectFolder(for: file)?.path == repo.path)
+}
+
+@Test("autoProjectFolder: ohne Repo bleibt es beim unmittelbaren Elternordner")
+func autoProject_fallsBackToParent() throws {
+    let dir = try makeTmpDirectory("kein-repo")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let file = dir.appendingPathComponent("solo.txt")
+    try "x".write(to: file, atomically: true, encoding: .utf8)
+
+    #expect(Workspace.autoProjectFolder(for: file)?.path == dir.path)
+}
+
+@Test("Einzeldatei im Repo-Unterordner → Seitenleiste zeigt den Repo-Root")
+@MainActor
+func loadFile_opensRepositoryRootWithoutProject() async throws {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let repo = try makeTmpDirectory("repo-root")
+    defer { try? FileManager.default.removeItem(at: repo) }
+    let nested = repo.appendingPathComponent("docs")
+    try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: repo.appendingPathComponent(".git"),
+                                            withIntermediateDirectories: true)
+    let file = nested.appendingPathComponent("lies-mich.md")
+    try "Inhalt".write(to: file, atomically: true, encoding: .utf8)
+
+    let ws = Workspace(defaults: defaults)
+    var done: Bool? = nil
+    ws.loadFile(at: file) { ok in done = ok }
+    let deadline = Date().addingTimeInterval(5)
+    while done == nil, Date() < deadline { await Task.yield() }
+
+    #expect(done == true)
+    #expect(ws.projectURL == repo, "Der Git-Root muss als Projekt geöffnet sein, nicht docs/")
+}
+
 // MARK: - Entschärfter Ordnerwechsel nach Tab-Schließen
 
 private func fileTab(_ path: String) -> EditorTab {

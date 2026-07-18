@@ -6,10 +6,9 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Jetzt
 
-- **Wunschpaket 2** (beschlossen 2026-07-18, offen): Fünf Etappen —
-  Navigation & Chrome (Git-Root beim Datei-Öffnen, Seitenleisten-Kopf auf
-  allen Tabs, Ansichts-Umschalter in die Fußzeile, Tab-Pfadmenü per
-  Cmd-Klick, Fenstertitel-Recherche), Suchdialog (Button-Prominenz,
+- **Wunschpaket 2** (beschlossen 2026-07-18): Fünf Etappen; Etappe 1
+  (Navigation & Chrome) ist mit v1.27.0 umgesetzt. Offen sind die
+  Etappen 2–5: Suchdialog (Button-Prominenz,
   mitscrollende Trefferliste, Live-Markierung aller Treffer), Sprachmenü
   mit wählbarem 4D samt Anti-Drift-Test, Hilfedokument samt
   `help-audit`-Mechanik, assistiertes Markdown-Schreiben mit
@@ -32,6 +31,13 @@ Erledigte Arbeit und historische Entscheidungen stehen in
     nicht; `errors`/`plug_ins`/`member` aus den Farbvorgaben entfallen
     mangels Analyse bzw. Unterscheidbarkeit (siehe Slot-Mapping in
     `EditorView.swift`).
+
+## Kleine offene Ideen
+
+- **Datei-Drag vom Dokument-Tab:** Mit dem titellosen Fensterchrome entfiel
+  das Ziehen der Datei aus der Titelzeile (Proxy-Icon) ersatzlos; Befund in
+  `docs/wunschpaket-2026-07b/fenstertitel-befund.md`. Möglicher Ersatz wäre
+  ein `.onDrag` der Datei-URL direkt am Tab — nur bei echtem Bedarf.
 
 ## Offene Produktentscheidungen
 

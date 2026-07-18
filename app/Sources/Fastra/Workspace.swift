@@ -1407,15 +1407,30 @@ final class Workspace: ObservableObject {
 
     // MARK: - Etappe-1-UX (Wunschpaket 2026-07)
 
-    /// Einzeldatei geöffnet, aber kein Ordner in der Seitenleiste? Dann den
-    /// unmittelbaren Elternordner der Datei als Projekt zeigen, damit die
-    /// Seitenleiste nie grundlos leer bleibt. Der Editor-Fokus bleibt auf der
-    /// Datei (`openProject` erhält den aktiven Tab), fremde offene Tabs
-    /// bleiben ausdrücklich bestehen. Mit bereits offenem Ordner: no-op.
+    /// Einzeldatei geöffnet, aber kein Ordner in der Seitenleiste? Dann einen
+    /// passenden Ordner als Projekt zeigen, damit die Seitenleiste nie
+    /// grundlos leer bleibt. Der Editor-Fokus bleibt auf der Datei
+    /// (`openProject` erhält den aktiven Tab), fremde offene Tabs bleiben
+    /// ausdrücklich bestehen. Mit bereits offenem Ordner: no-op.
     private func openParentFolderIfProjectMissing(for url: URL) {
         guard projectURL == nil else { return }
-        guard let parent = usableDirectory(url.deletingLastPathComponent()) else { return }
-        openProject(at: parent, keepingUnrelatedTabs: true)
+        guard let folder = usableDirectory(Self.autoProjectFolder(for: url)) else { return }
+        openProject(at: folder, keepingUnrelatedTabs: true)
+    }
+
+    /// Wählt den Ordner für das AUTOMATISCHE Projekt-Öffnen (Etappe 1
+    /// Wunschpaket 2026-07b): Liegt die Datei in einem Git-Repository, ist
+    /// dessen Wurzelordner das Ziel — so passen Seitenleisten-Anzeige und
+    /// Git-Funktionen (die den Root ohnehin selbst finden) zusammen. Ohne
+    /// Repo bleibt es beim unmittelbaren Elternordner. Gilt bewusst NUR für
+    /// diesen Auto-Pfad: Wer explizit einen Unterordner als Projekt öffnet,
+    /// behält ihn. Pure Funktion → unit-testbar.
+    static func autoProjectFolder(for url: URL,
+                                  fileManager: FileManager = .default) -> URL? {
+        if let root = ProjectStore.repositoryRoot(for: url, fileManager: fileManager) {
+            return root
+        }
+        return url.deletingLastPathComponent()
     }
 
     // MARK: - Inhaltsbasierte Spracherkennung (Etappe 3 Wunschpaket 2026-07)
