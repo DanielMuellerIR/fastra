@@ -3,6 +3,7 @@ import AppKit
 import CodeEditSourceEditor
 import CodeEditLanguages
 import CodeEditTextView
+import UniformTypeIdentifiers
 
 // Trick aus Phase 2: SourceEditor.MinimapView.setTheme(...) ruft `brightnessComponent`
 // auf jeder Theme-Farbe auf. Das ist nur im RGB-Colorspace definiert und wirft auf
@@ -33,6 +34,12 @@ struct EditorView: View {
     /// Aktueller Seitenleisten-Modus (Dateien / Änderungen / Graph). Nur bei
     /// Git-Repo umschaltbar; ohne Repo immer „Dateien".
     @State private var sidebarMode: SidebarMode = .files
+
+    /// Erst-Nutzungs-Hinweis des Markdown-Assistenten (Etappe 5 Wunschpaket
+    /// 2026-07b): einmal bestätigt → dauerhaft aus (AppStorage-Flag).
+    @AppStorage(MarkdownAssist.firstUseDefaultsKey)
+    private var markdownAssistHintShown = false
+    @State private var showMarkdownAssistHint = false
 
     /// Zeilenumbruch am Fensterrand (BBEdit „Soft Wrap Text"). App-weite,
     /// persistente Einstellung — gesetzt über den Menüpunkt „Zeilen umbrechen"
@@ -108,18 +115,18 @@ struct EditorView: View {
                 sidebarSplitter
             }
 
-            sourceEditor
-                .frame(minWidth: 0, maxWidth: .infinity)
-                .layoutPriority(1)
-                .background(Theme.surfaceRaised)
-                // Gutter-Durchschuss-Fix (Daniel-Befund 2026-06-22): CESEs
-                // Gutter ist ein FLOATING-Subview des ScrollViews und zeichnet
-                // über den oberen Rand des Editor-Bereichs hinaus ins Tab-/
-                // Header-Band (nicht vom Titelleisten-Inset verursacht — das
-                // Setzen von contentInsets=0 änderte den Überstand nicht).
-                // `.clipped()` begrenzt die Editor-Darstellung hart auf ihren
-                // eigenen Rahmen, der bereits unter der Tab-Leiste liegt.
-                .clipped()
+            // Markdown-Tabs bekommen einen eigenen Drop-Bereich (Etappe 5
+            // Wunschpaket 2026-07b): Bilddateien werden EINGEFÜGT, alles
+            // andere weiterhin geöffnet. Außerhalb des Markdown-Editors
+            // bleibt der Fenster-Drop in ContentView („öffnen“) unberührt.
+            if activeTabIsMarkdown {
+                sourceEditorColumn
+                    .onDrop(of: [.fileURL, .image], isTargeted: nil) { providers in
+                        handleMarkdownDrop(providers)
+                    }
+            } else {
+                sourceEditorColumn
+            }
             if showsIntegratedMarkdownPreview {
                 markdownSplitter
                 MarkdownPreviewView(workspace: workspace)
@@ -151,6 +158,146 @@ struct EditorView: View {
         .onChange(of: workspace.activeTabID) {
             workspace.activeGitConflictFileDidChange()
         }
+        // Erste Nutzung von Markdown-Toolbar/Bild-Einfügen → dezenten,
+        // nicht-modalen Hinweis mit Hilfe-Sprung zeigen (einmalig).
+        .onReceive(NotificationCenter.default.publisher(
+            for: .fastraMarkdownAssistUsed)) { _ in
+            if !markdownAssistHintShown { showMarkdownAssistHint = true }
+        }
+    }
+
+    /// Kompakte Markdown-Toolbar: dieselben Befehle wie Menüleiste und
+    /// Rechtsklickmenü, die häufigsten direkt klickbar (Etappe 5).
+    private var markdownToolbar: some View {
+        // Horizontal scrollbar: In einem schmalen Editor (Markdown-Split!)
+        // würde ein überlaufender HStack von SwiftUI ZENTRIERT und vom
+        // `.clipped()` der Spalte BEIDSEITIG beschnitten — ausgerechnet
+        // Fett/Kursiv (vorn) und Link/Tabelle (hinten) verschwänden.
+        // Im ScrollView bleiben alle Befehle erreichbar.
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 2) {
+                ForEach(MarkdownFormatCommand.allCases, id: \.rawValue) { command in
+                    Button {
+                        NotificationCenter.default.post(name: .fastraMarkdownFormat,
+                                                        object: command.rawValue)
+                    } label: {
+                        Image(systemName: command.systemImage)
+                            .fastraFont(size: 12)
+                            .foregroundColor(Theme.textSecondary)
+                            .frame(width: 26, height: 22)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(Text(verbatim: command.menuTitle))
+                    .accessibilityLabel(Text(verbatim: command.menuTitle))
+                    if command == .code || command == .plainParagraph || command == .quote {
+                        Divider().frame(height: 14).opacity(0.5)
+                    }
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surfaceRaised)
+        // Marker für den Fenster-Selbsttest `mdassist`.
+        .background(SelfTestMarker(id: "markdownToolbar").frame(width: 0, height: 0))
+    }
+
+    /// Dezenter, NICHT-modaler Erst-Nutzungs-Hinweis (Etappe 5 Punkt 6):
+    /// erscheint einmalig beim ersten Formatbefehl bzw. Bild-Einfügen und
+    /// springt über die Anker-API der Hilfe in den Markdown-Abschnitt.
+    private var markdownAssistHintBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lightbulb")
+                .fastraFont(size: 11)
+                .foregroundColor(Theme.accentReadable)
+            Text("Fastra legt eingefügte Bilder neben dem Dokument ab und verlinkt sie relativ — Details in der Hilfe.")
+                .fastraFont(.small)
+                .foregroundColor(Theme.textSecondary)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+            Button("Hilfe öffnen") {
+                markdownAssistHintShown = true
+                showMarkdownAssistHint = false
+                HelpWindow.show(anchor: HelpSection.markdownWriting.anchor())
+            }
+            .buttonStyle(.plain)
+            .fastraFont(size: 11, weight: .semibold)
+            .foregroundColor(Theme.accentReadable)
+            Button {
+                markdownAssistHintShown = true
+                showMarkdownAssistHint = false
+            } label: {
+                Image(systemName: "xmark")
+                    .fastraFont(size: 9, weight: .semibold)
+                    .foregroundColor(Theme.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .help("Hinweis ausblenden")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(Theme.surfaceSand.opacity(0.6))
+    }
+
+    /// Editor-Spalte mit ihren Layout-Modifikatoren (herausgezogen, damit
+    /// der Markdown-Drop-Bereich sie bedingt umhüllen kann).
+    /// Zum `.clipped()`: Gutter-Durchschuss-Fix (Daniel-Befund 2026-06-22) —
+    /// CESEs Gutter ist ein FLOATING-Subview des ScrollViews und zeichnet
+    /// sonst über den oberen Rand des Editor-Bereichs hinaus ins Tab-/
+    /// Header-Band; `.clipped()` begrenzt die Darstellung hart auf den
+    /// eigenen Rahmen, der bereits unter der Tab-Leiste liegt.
+    private var sourceEditorColumn: some View {
+        sourceEditor
+            .frame(minWidth: 0, maxWidth: .infinity)
+            .layoutPriority(1)
+            .background(Theme.surfaceRaised)
+            .clipped()
+    }
+
+    /// Aktiver Tab ist ein Markdown-Dokument (Etappe 5 Wunschpaket 2026-07b)?
+    private var activeTabIsMarkdown: Bool {
+        MarkdownAssist.isMarkdownTabActive(in: workspace)
+    }
+
+    /// Drop im Markdown-Editorbereich: Datei-URLs einsammeln (asynchron,
+    /// Ergebnis auf dem Main-Thread bündeln) und an `MarkdownAssist`
+    /// übergeben; ohne Datei-URLs zählt ein reiner Bilddaten-Drag
+    /// (z. B. aus dem Browser) und verhält sich wie Paste.
+    private func handleMarkdownDrop(_ providers: [NSItemProvider]) -> Bool {
+        let target = workspace
+        let fileProviders = providers.filter {
+            $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+        }
+        if !fileProviders.isEmpty {
+            let collector = DroppedURLCollector(expected: fileProviders.count) { urls in
+                MarkdownAssist.handleDroppedFileURLs(urls, workspace: target)
+            }
+            for provider in fileProviders {
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    DispatchQueue.main.async { collector.add(url) }
+                }
+            }
+            return true
+        }
+        if let provider = providers.first(where: {
+            $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
+        }) {
+            let typeIdentifier = provider.registeredTypeIdentifiers.first {
+                UTType($0)?.conforms(to: .image) == true
+            } ?? UTType.png.identifier
+            provider.loadDataRepresentation(forTypeIdentifier: typeIdentifier) { data, _ in
+                guard let data else { return }
+                DispatchQueue.main.async {
+                    MarkdownAssist.handleDroppedImageData(
+                        data, typeIdentifier: typeIdentifier, workspace: target
+                    )
+                }
+            }
+            return true
+        }
+        return false
     }
 
     /// Aktuell wirksame Breite der Seitenleiste inklusive ihres Splitters.
@@ -249,6 +396,17 @@ struct EditorView: View {
                 VStack(spacing: 0) {
                     if workspace.activeConflictSupport != .none {
                         GitConflictBar()
+                    }
+                    // Markdown-Toolbar (Etappe 5 Wunschpaket 2026-07b):
+                    // Formatierungsbefehle auf den Quelltext, nur für
+                    // Markdown-Tabs in der Text-Ansicht.
+                    if activeTabIsMarkdown, workspace.activeViewMode == .text {
+                        markdownToolbar
+                        Divider().opacity(0.3)
+                        if showMarkdownAssistHint {
+                            markdownAssistHintBar
+                            Divider().opacity(0.3)
+                        }
                     }
                     // Der Ansichts-Umschalter (Text/Vorschau/Hex) sitzt seit
                     // Etappe 1 Wunschpaket 2026-07b in der Fußzeile

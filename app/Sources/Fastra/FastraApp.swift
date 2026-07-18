@@ -86,17 +86,21 @@ struct FastraApp: App {
             // verwalten, also leeren wir die textEditing-Gruppe.
             CommandGroup(replacing: .textEditing) { }
 
-            // Eigener „Über Fastra"-Dialog statt des Standard-About-Panels.
-            CommandGroup(replacing: .appInfo) {
-                Button("Über Fastra") { AboutWindow.show() }
-            }
+            // Gruppierung: Der Commands-Builder erlaubt höchstens zehn
+            // Einträge — thematisch verwandte Gruppen deshalb bündeln.
+            Group {
+                // Eigener „Über Fastra"-Dialog statt des Standard-About-Panels.
+                CommandGroup(replacing: .appInfo) {
+                    Button("Über Fastra") { AboutWindow.show() }
+                }
 
-            // Hilfe-Menü (Etappe 4 Wunschpaket 2026-07b): ersetzt den
-            // Standard-Eintrag durch die mitgelieferte Markdown-Hilfe im
-            // eigenen Fenster. ⌘? ist der macOS-Standard-Shortcut.
-            CommandGroup(replacing: .help) {
-                Button("Fastra-Hilfe") { HelpWindow.show() }
-                    .keyboardShortcut("?", modifiers: .command)
+                // Hilfe-Menü (Etappe 4 Wunschpaket 2026-07b): ersetzt den
+                // Standard-Eintrag durch die mitgelieferte Markdown-Hilfe im
+                // eigenen Fenster. ⌘? ist der macOS-Standard-Shortcut.
+                CommandGroup(replacing: .help) {
+                    Button("Fastra-Hilfe") { HelpWindow.show() }
+                        .keyboardShortcut("?", modifiers: .command)
+                }
             }
 
             // Smart-Paste (Alleinstellung, ROADMAP H): formatierter
@@ -356,6 +360,45 @@ struct FastraApp: App {
                 Button(TextOpKind.decomposeUnicode.title)  { postTextOp(.decomposeUnicode) }
             }
 
+            // „Markdown"-Menü (Etappe 5 Wunschpaket 2026-07b):
+            // Formatierungsbefehle auf den QUELLTEXT, nur für Markdown-Tabs
+            // aktiv. Dieselben Befehle liegen in der Editor-Toolbar und im
+            // Rechtsklickmenü; hier tragen sie die Tastenkürzel.
+            CommandMenu("Markdown") {
+                Group {
+                    Button(MarkdownFormatCommand.bold.menuTitle) { postMarkdownFormat(.bold) }
+                        .keyboardShortcut("b", modifiers: .command)
+                    Button(MarkdownFormatCommand.italic.menuTitle) { postMarkdownFormat(.italic) }
+                        .keyboardShortcut("i", modifiers: .command)
+                    Button(MarkdownFormatCommand.code.menuTitle) { postMarkdownFormat(.code) }
+                        .keyboardShortcut("k", modifiers: [.command, .shift])
+                    Divider()
+                    Button(MarkdownFormatCommand.heading1.menuTitle) { postMarkdownFormat(.heading1) }
+                        .keyboardShortcut("1", modifiers: [.command, .option])
+                    Button(MarkdownFormatCommand.heading2.menuTitle) { postMarkdownFormat(.heading2) }
+                        .keyboardShortcut("2", modifiers: [.command, .option])
+                    Button(MarkdownFormatCommand.heading3.menuTitle) { postMarkdownFormat(.heading3) }
+                        .keyboardShortcut("3", modifiers: [.command, .option])
+                    Button(MarkdownFormatCommand.plainParagraph.menuTitle) { postMarkdownFormat(.plainParagraph) }
+                        .keyboardShortcut("0", modifiers: [.command, .option])
+                }
+                .disabled(!activeTabIsMarkdown)
+                Group {
+                    Divider()
+                    Button(MarkdownFormatCommand.bulletList.menuTitle) { postMarkdownFormat(.bulletList) }
+                        .keyboardShortcut("8", modifiers: [.command, .shift])
+                    Button(MarkdownFormatCommand.orderedList.menuTitle) { postMarkdownFormat(.orderedList) }
+                        .keyboardShortcut("7", modifiers: [.command, .shift])
+                    Button(MarkdownFormatCommand.quote.menuTitle) { postMarkdownFormat(.quote) }
+                        .keyboardShortcut("9", modifiers: [.command, .shift])
+                    Divider()
+                    Button(MarkdownFormatCommand.link.menuTitle) { postMarkdownFormat(.link) }
+                        .keyboardShortcut("k", modifiers: .command)
+                    Button(MarkdownFormatCommand.insertTable.menuTitle) { postMarkdownFormat(.insertTable) }
+                }
+                .disabled(!activeTabIsMarkdown)
+            }
+
             // „Git"-Menü (Projekt- & Git-Ausbau, Etappe 2). Dieselben kuratierten
             // Aktionen wie das Popup in der Branch-Zeile (GitActionMenu), plus
             // Verlauf/Diff öffnen. Nur aktiv, wenn ein Git-Projekt offen ist —
@@ -388,6 +431,19 @@ struct FastraApp: App {
     /// Notification kommt (siehe `.fastraTextOp`).
     private func postTextOp(_ kind: TextOpKind) {
         NotificationCenter.default.post(name: .fastraTextOp, object: kind.rawValue)
+    }
+
+    /// Markdown-Formatbefehl an den AppDelegate (Etappe 5 Wunschpaket 2026-07b).
+    private func postMarkdownFormat(_ command: MarkdownFormatCommand) {
+        NotificationCenter.default.post(name: .fastraMarkdownFormat,
+                                        object: command.rawValue)
+    }
+
+    /// Aktiver Tab ist ein Markdown-Dokument? Steuert das „Markdown“-Menü.
+    private var activeTabIsMarkdown: Bool {
+        let name = commandWorkspace.activeTab?.url?.lastPathComponent
+            ?? commandWorkspace.activeTab?.title ?? ""
+        return MarkdownFormat.isMarkdownFilename(name)
     }
 
     private func postDocumentFormatting() {

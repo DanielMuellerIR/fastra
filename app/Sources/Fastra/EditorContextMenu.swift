@@ -207,6 +207,27 @@ final class EditorContextMenu: NSObject {
             .separator(),
             textItem,
         ]
+
+        // Markdown-Submenü (Etappe 5 Wunschpaket 2026-07b) — nur sichtbar,
+        // wenn der aktive Tab ein Markdown-Dokument ist. (Der Monitor läuft
+        // auf dem Main-Thread; die Klasse ist nur nicht annotiert.)
+        if MainActor.assumeIsolated({ MarkdownAssist.isMarkdownTabActive(in: Workspace.shared) }) {
+            let markdownItem = NSMenuItem(title: "Markdown", action: nil, keyEquivalent: "")
+            let markdownSub = NSMenu()
+            let breaksAfter: Set<MarkdownFormatCommand> = [.code, .plainParagraph, .quote, .link]
+            for command in MarkdownFormatCommand.allCases {
+                let item = NSMenuItem(title: command.menuTitle,
+                                      action: #selector(runMarkdownFormat(_:)),
+                                      keyEquivalent: "")
+                item.target = self
+                item.tag = command.rawValue
+                markdownSub.addItem(item)
+                if breaksAfter.contains(command) { markdownSub.addItem(.separator()) }
+            }
+            markdownItem.submenu = markdownSub
+            menu.addItem(markdownItem)
+        }
+
         // Wir steuern isEnabled selbst (statt Responder-Chain-Validierung).
         menu.autoenablesItems = false
         return menu
@@ -354,6 +375,26 @@ final class EditorContextMenu: NSObject {
     func applyToActiveEditor(_ kind: TextOpKind) {
         guard let textView = activeEditorTextView() else { NSSound.beep(); return }
         apply(kind, on: textView)
+    }
+
+    /// Menüleisten-/Toolbar-Pfad der Markdown-Formatbefehle (Etappe 5
+    /// Wunschpaket 2026-07b). Nur für Markdown-Tabs sinnvoll — die Menüs
+    /// sind sonst deaktiviert, defensiv wird trotzdem geprüft.
+    func applyMarkdownFormatToActiveEditor(_ command: MarkdownFormatCommand) {
+        MainActor.assumeIsolated {
+            guard MarkdownAssist.isMarkdownTabActive(in: Workspace.shared),
+                  let textView = activeEditorTextView() else { NSSound.beep(); return }
+            MarkdownAssist.applyFormat(command, on: textView)
+        }
+    }
+
+    /// Rechtsklick-Handler des Markdown-Submenüs (Tag = Command-Rohwert).
+    @objc private func runMarkdownFormat(_ sender: NSMenuItem) {
+        guard let command = MarkdownFormatCommand(rawValue: sender.tag),
+              let textView = targetTextView else { NSSound.beep(); return }
+        MainActor.assumeIsolated {
+            MarkdownAssist.applyFormat(command, on: textView)
+        }
     }
 
     /// Führt `kind` auf `textView` aus. Die Eingabe-Operationen (Präfix/Suffix,

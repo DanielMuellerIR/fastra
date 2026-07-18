@@ -9,6 +9,50 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.31.0] — 2026-07-18
+
+Etappe 5 des Wunschpakets 2026-07b: Assistiertes Markdown-Schreiben
+(`docs/wunschpaket-2026-07b/goal-vorschlag.md`). Fastra ersetzt damit
+TextEdit für „Text + Bilder, weiter bearbeitbar“ — ohne WYSIWYG-Umbau.
+
+### Hinzugefügt
+
+- **Formatierungsbefehle auf den Quelltext** (nur bei Markdown-Tabs):
+  Format-Toolbar über dem Editor (bei schmaler Spalte horizontal
+  scrollbar), „Markdown“-Menü mit Shortcuts und Rechtsklick-Submenü —
+  Fett (⌘B), Kursiv (⌘I), Code (⇧⌘K), Überschrift 1–3 (⌘⌥1–3), zurück zu
+  Text (⌘⌥0), Aufzählung (⇧⌘8), nummerierte Liste (⇧⌘7), Zitat (⇧⌘9),
+  Link (⌘K), „Tabelle einfügen…“ (Dialog: Spalten, Kopfzeile). Alles
+  normale, mit ⌘Z widerrufbare Textedits auf Auswahl bzw. Cursor-Zeile;
+  Listen-/Zitat-/Überschrift-Befehle ersetzen einander statt zu stapeln.
+- **Bild einfügen per Paste (⌘V):** Bilddaten aus der Zwischenablage
+  landen als Datei neben dem Dokument
+  (`dokumentname-JJJJ-MM-TT-hhmmss.png`; PNG/JPEG/GIF behalten ihr
+  Format, alles andere wird verlustfrei PNG) und werden relativ an der
+  Cursorposition verlinkt. Definierte Reihenfolge: Bilddateien vom
+  Pasteboard vor rohen Bilddaten vor normalem Text-Einfügen; ⌘⇧V bleibt
+  die explizite Rich-Text-Konvertierung (SmartPaste).
+- **Bild einfügen per Drag-and-drop:** Eine Bilddatei wird unverändert in
+  den Dokumentordner kopiert (Kollision → Suffix; byte-identische Datei
+  wird wiederverwendet statt doppelt abgelegt; Dateien im Dokumentbaum
+  werden nur verlinkt) und relativ verlinkt. Browser-Drags ohne lokale
+  Datei (rohe Bilddaten) verhalten sich wie Paste. Klare Abgrenzung: Im
+  Markdown-Editorbereich gewinnt „einfügen“ für Bilder, andere Dateien
+  und der Rest des Fensters behalten „öffnen“.
+- **Ohne Speicherort keine stille Ablage:** Ungespeicherte Dokumente
+  zeigen die verständliche Meldung „Erst speichern“ (⌘S).
+- **Vorschau folgt dem Einfügen:** Nach jedem Bild-Einfügen scrollt die
+  integrierte Vorschau zur Einfügestelle (`data-srcline` rückwärts
+  genutzt); lokale relative Bilder rendert sie bereits über den
+  vorhandenen Asset-Pfad.
+- **Erst-Nutzungs-Hinweis:** Beim ersten Formatbefehl oder Bild-Einfügen
+  erscheint ein dezenter, nicht-modaler Hinweis mit Sprung in den neuen
+  Hilfe-Abschnitt „Markdown schreiben“ (Anker-API aus Etappe 4).
+- Selbsttest `mdassist` (Toolbar layoutet, Bild-Paste end-to-end mit
+  Datei/Link/Vorschau-Scroll, Drop-Abgrenzung einfügen vs. öffnen) sowie
+  Unit-Tests für Formatbefehle, Namensvergabe, Kollisions-/Dedup-Logik
+  und Relativpfade.
+
 ## [v1.30.0] — 2026-07-18
 
 Etappe 4 des Wunschpakets 2026-07b: Hilfe

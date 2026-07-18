@@ -967,3 +967,30 @@
 // Hilfe (Etappe 4 Wunschpaket 2026-07b)
 "Fastra-Hilfe" = "Fastra Help";
 "Die Hilfe-Datei fehlt im App-Paket. Bitte Fastra neu installieren." = "The help file is missing from the app package. Please reinstall Fastra.";
+
+// Assistiertes Markdown-Schreiben (Etappe 5 Wunschpaket 2026-07b)
+"Fett" = "Bold";
+"Kursiv" = "Italic";
+"Code" = "Code";
+"Überschrift 1" = "Heading 1";
+"Überschrift 2" = "Heading 2";
+"Überschrift 3" = "Heading 3";
+"Normaler Text" = "Plain Text";
+"Aufzählung" = "Bulleted List";
+"Nummerierte Liste" = "Numbered List";
+"Zitat" = "Quote";
+"Link" = "Link";
+"Tabelle einfügen…" = "Insert Table…";
+"Tabelle einfügen" = "Insert Table";
+"Anzahl der Spalten:" = "Number of columns:";
+"Mit Kopfzeile" = "With header row";
+"Einfügen" = "Insert";
+"Spalte %ld" = "Column %ld";
+"Bild konnte nicht übernommen werden" = "The image could not be added";
+"Erst speichern" = "Save First";
+"Das Dokument hat noch keinen Speicherort. Bitte erst speichern (⌘S) — dann kann Fastra Bilder daneben ablegen." = "The document has no location on disk yet. Please save it first (⌘S) — then Fastra can store images next to it.";
+"Die Bilddaten konnten nicht gelesen werden." = "The image data could not be read.";
+"Fastra legt eingefügte Bilder neben dem Dokument ab und verlinkt sie relativ — Details in der Hilfe." = "Fastra stores inserted images next to the document and links them relatively — see Help for details.";
+"Hilfe öffnen" = "Open Help";
+"Hinweis ausblenden" = "Dismiss hint";
+"Markdown" = "Markdown";

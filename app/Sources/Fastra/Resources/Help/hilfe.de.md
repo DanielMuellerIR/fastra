@@ -97,6 +97,27 @@ die Vorschau** springt im Editor zur passenden Quellzeile. Kopieren aus
 der Vorschau liefert echten Rich-Text (Überschriften, Listen, Fettung
 bleiben erhalten).
 
+## Markdown schreiben
+
+Bei Markdown-Tabs erscheint über dem Editor eine **Format-Toolbar**; die
+gleichen Befehle liegen im Menü „Markdown“ und im Rechtsklickmenü. Sie
+wirken als normale, mit ⌘Z widerrufbare Textänderungen auf die Auswahl
+bzw. die Cursor-Zeile: Fett (⌘B), Kursiv (⌘I), Code (⇧⌘K),
+Überschrift 1–3 (⌘⌥1–3), zurück zu normalem Text (⌘⌥0), Aufzählung
+(⇧⌘8), nummerierte Liste (⇧⌘7), Zitat (⇧⌘9), Link (⌘K) und
+„Tabelle einfügen…“ (kleiner Dialog: Spalten, Kopfzeile ja/nein).
+
+**Bilder einfügen:** Ein Bild aus der Zwischenablage (⌘V) legt Fastra
+als Datei **neben dem Dokument** ab (`dokumentname-JJJJ-MM-TT-hhmmss.png`;
+PNG/JPEG/GIF behalten ihr Format, alles andere wird PNG) und verlinkt es
+relativ an der Cursorposition. Eine **Bilddatei per Drag-and-drop** in
+den Markdown-Editor wird unverändert in den Dokumentordner kopiert
+(Namenskollision → Suffix; byte-identische Datei wird nicht doppelt
+abgelegt) und ebenfalls relativ verlinkt — andere Dateien öffnen wie
+gewohnt in einem Tab. Nach dem Einfügen scrollt die Vorschau zur
+Einfügestelle. Ungespeicherte Dokumente haben noch keinen Ordner —
+deshalb zuerst speichern (⌘S).
+
 ## Sprachen und Syntaxfarben
 
 Fastra erkennt die Sprache an der Dateiendung, bei endungslosen Dateien

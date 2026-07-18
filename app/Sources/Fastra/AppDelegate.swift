@@ -135,6 +135,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             self?.editorContextMenu.formatActiveDocument()
         }
+        // Markdown-Formatbefehle (Etappe 5 Wunschpaket 2026-07b) aus
+        // Menüleiste und Toolbar auf den aktiven Editor anwenden.
+        NotificationCenter.default.addObserver(
+            forName: .fastraMarkdownFormat,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let raw = note.object as? Int,
+                  let command = MarkdownFormatCommand(rawValue: raw) else { return }
+            self?.editorContextMenu.applyMarkdownFormatToActiveEditor(command)
+        }
         NotificationCenter.default.addObserver(
             forName: .fastraLintDocument,
             object: nil,
@@ -519,6 +530,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             default:
                 break
+            }
+
+            // ⌘V mit Bildinhalt in einem Markdown-Editor (Etappe 5
+            // Wunschpaket 2026-07b): Bild als Datei ablegen + verlinken.
+            // Bilddaten haben definierten VORRANG vor dem normalen
+            // Text-Einfügen; ⌘⇧V bleibt die explizite Rich-Text-
+            // Konvertierung (SmartPaste).
+            if event.modifierFlags.intersection([.command, .shift, .option, .control]) == .command,
+               event.charactersIgnoringModifiers?.lowercased() == "v",
+               MainActor.assumeIsolated({ MarkdownAssist.handlePasteCommand() }) {
+                return nil     // Event verbraucht — Bild wurde eingefügt
             }
 
             guard let name = KeyRouting.notificationName(for: route) else {

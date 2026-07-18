@@ -100,6 +100,7 @@ enum HelpSection: CaseIterable {
     case textTransformations
     case views
     case markdown
+    case markdownWriting
     case languages
     case fourD
     case xpath
@@ -118,6 +119,8 @@ enum HelpSection: CaseIterable {
         case (.views, "en"):               return "Views: Text, Preview, Hex"
         case (.views, _):                  return "Ansichten: Text, Vorschau, Hex"
         case (.markdown, _):               return "Markdown"
+        case (.markdownWriting, "en"):     return "Writing Markdown"
+        case (.markdownWriting, _):        return "Markdown schreiben"
         case (.languages, "en"):           return "Languages and Syntax Colors"
         case (.languages, _):              return "Sprachen und Syntaxfarben"
         case (.fourD, "en"):               return "4D Support"

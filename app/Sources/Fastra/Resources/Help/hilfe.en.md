@@ -92,6 +92,26 @@ diagrams — fully local, no network access. **Clicking in the preview**
 jumps the editor to the matching source line. Copying from the preview
 yields real rich text (headings, lists, and bold survive).
 
+## Writing Markdown
+
+For Markdown tabs, a **format toolbar** appears above the editor; the
+same commands live in the “Markdown” menu and the right-click menu. They
+act as normal, ⌘Z-undoable text edits on the selection or the cursor
+line: bold (⌘B), italic (⌘I), code (⇧⌘K), heading 1–3 (⌘⌥1–3), back to
+plain text (⌘⌥0), bulleted list (⇧⌘8), numbered list (⇧⌘7), quote
+(⇧⌘9), link (⌘K), and “Insert table…” (a small dialog: columns, header
+yes/no).
+
+**Inserting images:** Pasting an image from the clipboard (⌘V) stores it
+as a file **next to the document** (`documentname-YYYY-MM-DD-hhmmss.png`;
+PNG/JPEG/GIF keep their format, everything else becomes PNG) and links
+it relatively at the cursor position. **Dragging an image file** into
+the Markdown editor copies it unchanged into the document folder (name
+collision → suffix; a byte-identical file is not duplicated) and links
+it relatively as well — other files open in a tab as usual. After
+inserting, the preview scrolls to the insertion point. Unsaved documents
+have no folder yet — save first (⌘S).
+
 ## Languages and Syntax Colors
 
 Fastra detects the language from the file extension, and for files

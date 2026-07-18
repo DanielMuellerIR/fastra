@@ -494,6 +494,9 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         )
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
+        // Editor→Vorschau-Sprung (Etappe 5): Reveal-Ziel registrieren.
+        context.coordinator.revealWebView = webView
+        context.coordinator.observeReveal()
         update(webView: webView, coordinator: context.coordinator)
         return webView
     }
@@ -560,6 +563,65 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         let assetHandler = MarkdownPreviewSchemeHandler()
         // Schwach: Der Workspace gehört der Dokumentszene, nicht der Vorschau.
         weak var workspace: Workspace?
+
+        // Editor→Vorschau-Sprung (Etappe 5 Wunschpaket 2026-07b): Nach einem
+        // Bild-/Tabellen-Einfügen scrollt die Vorschau zur Einfügestelle —
+        // die `data-srcline`-Mechanik rückwärts genutzt.
+        weak var revealWebView: WKWebView?
+        private var revealObserver: NSObjectProtocol?
+
+        deinit {
+            if let revealObserver {
+                NotificationCenter.default.removeObserver(revealObserver)
+            }
+        }
+
+        /// Beobachtet die Reveal-Notification. Nur die Vorschau DESSELBEN
+        /// Workspace reagiert (Mehrfenster-Betrieb).
+        func observeReveal() {
+            guard revealObserver == nil else { return }
+            revealObserver = NotificationCenter.default.addObserver(
+                forName: .fastraMarkdownRevealSourceLine,
+                object: nil,
+                queue: .main
+            ) { [weak self] note in
+                guard let self,
+                      (note.object as? Workspace) === self.workspace,
+                      let line = note.userInfo?["line"] as? Int,
+                      let webView = self.revealWebView else { return }
+                self.scrollPreview(toSourceLine: line, in: webView, attempt: 0)
+            }
+        }
+
+        /// Scrollt zum Block mit der größten `data-srcline` ≤ Zielzeile.
+        /// Mehrere idempotente Versuche, weil der frische Inhalt asynchron
+        /// durch `replaceBody` + `enhanceMarkdown` läuft.
+        private func scrollPreview(toSourceLine line: Int, in webView: WKWebView,
+                                   attempt: Int) {
+            let delays: [Double] = [0.25, 0.7, 1.5]
+            guard attempt < delays.count else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delays[attempt]) {
+                [weak self, weak webView] in
+                guard let webView else { return }
+                let script = """
+                (function(target){
+                  let best = null, bestLine = -1;
+                  document.querySelectorAll('[data-srcline]').forEach(el => {
+                    const l = parseInt(el.getAttribute('data-srcline'));
+                    if (!isNaN(l) && l <= target && l > bestLine) { bestLine = l; best = el; }
+                  });
+                  if (best) { best.scrollIntoView({block: 'center'}); return true; }
+                  return false;
+                })(\(line))
+                """
+                webView.evaluateJavaScript(script) { value, _ in
+                    if (value as? Bool) != true {
+                        self?.scrollPreview(toSourceLine: line, in: webView,
+                                            attempt: attempt + 1)
+                    }
+                }
+            }
+        }
 
         func userContentController(_ userContentController: WKUserContentController,
                                    didReceive message: WKScriptMessage) {

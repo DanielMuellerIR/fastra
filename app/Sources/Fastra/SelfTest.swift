@@ -165,6 +165,7 @@ enum SelfTest {
         case "sidebarheader": waitForMainWindow { runSidebarHeaderTest() }
         case "searchmark": waitForMainWindow { openSearchThen { runSearchMarkTest() } }
         case "help": waitForMainWindow { runHelpTest() }
+        case "mdassist": waitForMainWindow { runMarkdownAssistTest() }
         case "filemodes":
             // Fensterlos — echte Dateien durch den Workspace-Ladepfad routen:
             // Null-Bytes → Hex, große Textdatei → abschnittsweise.
@@ -256,7 +257,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, sidebarheader, searchmark, help, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, sidebarheader, searchmark, help, mdassist, contrast, windows)")
         }
     }
 
@@ -3161,6 +3162,195 @@ enum SelfTest {
     /// Workspace: Willkommens-Bedingung, Projekt öffnen (Dateibaum-Wurzel,
     /// Zuletzt-benutzt-Liste), Datei aus dem Baum laden, automatische
     /// Repo-Erkennung ohne Duplikat und Projekt-Datei-Set samt Ausschluss.
+    // MARK: - Selbsttest mdassist (Etappe 5 Wunschpaket 2026-07b)
+
+    /// End-to-End-Prüfung des assistierten Markdown-Schreibens:
+    /// (a) Markdown-Toolbar ist für den Markdown-Tab real layoutet.
+    /// (b) ⌘V-Pfad mit programmatisch befülltem Pasteboard (PNG): Datei
+    ///     entsteht neben dem Dokument, relativer Link steht im Editor,
+    ///     die Vorschau rendert das Bild UND scrollt zur Einfügestelle.
+    /// (c) Drop-Abgrenzung: Bilddatei wird eingefügt, Textdatei geöffnet.
+    private static func runMarkdownAssistTest() {
+        testLabel = "mdassist"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard let mainWindow = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        }), let root = mainWindow.contentView else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-mdassist-\(UUID().uuidString)")
+        let doc = base.appendingPathComponent("Notizen.md")
+        // WIRKLICH außerhalb des Dokumentordners — sonst greift die
+        // „schon im Dokumentbaum → nur verlinken“-Regel statt der Kopie.
+        let outside = fm.temporaryDirectory
+            .appendingPathComponent("fastra-mdassist-src-\(UUID().uuidString)")
+        do {
+            try fm.createDirectory(at: base, withIntermediateDirectories: true)
+            try fm.createDirectory(at: outside, withIntermediateDirectories: true)
+            // Langes Dokument: Die Einfügestelle liegt am Ende, damit der
+            // Vorschau-Scroll real beobachtbar ist (scrollY > 0).
+            let filler = (1...60).map { "Absatz \($0) mit etwas Text." }
+                .joined(separator: "\n\n")
+            try ("# Notizen\n\n" + filler + "\n\n")
+                .write(to: doc, atomically: true, encoding: .utf8)
+            try writeSolidPNG(to: outside.appendingPathComponent("quelle.png"),
+                              width: 8, height: 8)
+            try "Begleittext".write(to: outside.appendingPathComponent("begleit.txt"),
+                                    atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "(setup) Fixtures nicht schreibbar: \(error.localizedDescription)")
+        }
+
+        ws.loadFile(at: doc) { ok in
+            guard ok else { finish(false, "(setup) Notizen.md lädt nicht") }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                guard let tvView = editorTextView(in: root), let tv = tvView as? TextView else {
+                    finish(false, "Editor-TextView nicht erreichbar")
+                }
+                // (a) Toolbar real im Layout?
+                guard markerViewExists(id: "markdownToolbar", in: root) else {
+                    finish(false, "(a) Markdown-Toolbar fehlt für den Markdown-Tab")
+                }
+                // (b) Paste-Pfad: Fenster + Editor fokussieren, PNG ins
+                // Pasteboard, dann der ECHTE ⌘V-Interceptions-Pfad. Der
+                // Key-Status kommt asynchron — deshalb mit Wiederholungen.
+                tv.selectionManager.setSelectedRange(
+                    NSRange(location: (tv.string as NSString).length, length: 0))
+                let png = (try? Data(contentsOf: outside.appendingPathComponent("quelle.png"))) ?? Data()
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                pasteboard.setData(png, forType: NSPasteboard.PasteboardType("public.png"))
+                attemptMarkdownPaste(ws, tv: tv, root: root, base: base,
+                                     outside: outside, window: mainWindow, tick: 0)
+            }
+        }
+    }
+
+    /// Fokus + ⌘V-Pfad mit Wiederholungen: `NSApp.activate` und der
+    /// Key-Status greifen erst nach ein paar Runloop-Ticks zuverlässig —
+    /// besonders wenn der Desktop gerade aktiv benutzt wird.
+    private static func attemptMarkdownPaste(_ ws: Workspace, tv: TextView,
+                                             root: NSView, base: URL, outside: URL,
+                                             window: NSWindow, tick: Int) {
+        let maxTicks = 40    // 10 s
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(tv)
+        if MainActor.assumeIsolated({ MarkdownAssist.handlePasteCommand() }) {
+            pollMarkdownPaste(ws, tv: tv, root: root, base: base,
+                              outside: outside, tick: 0)
+            return
+        }
+        if tick >= maxTicks {
+            let responder = String(describing: type(of: window.firstResponder as Any))
+            finish(false, "(b) handlePasteCommand übernimmt nicht "
+                + "(keyWindow=\(NSApp.keyWindow != nil), isKey=\(window.isKeyWindow), "
+                + "responder=\(responder))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            attemptMarkdownPaste(ws, tv: tv, root: root, base: base,
+                                 outside: outside, window: window, tick: tick + 1)
+        }
+    }
+
+    private static func pollMarkdownPaste(_ ws: Workspace, tv: TextView, root: NSView,
+                                          base: URL, outside: URL, tick: Int) {
+        let maxTicks = 40    // 10 s
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: base.path)) ?? []
+        let imageFile = files.first { $0.hasPrefix("Notizen-") && $0.hasSuffix(".png") }
+        let linkInEditor = tv.string.contains("![Notizen-")
+        if let imageFile, linkInEditor {
+            // Vorschau: Bild gerendert + zur Einfügestelle gescrollt.
+            guard let webView = firstWebView(in: root) else {
+                finish(false, "(b) keine Markdown-Vorschau-WebView gefunden")
+            }
+            webView.evaluateJavaScript(
+                "[document.images.length, window.scrollY]"
+            ) { value, _ in
+                let pair = value as? [Any]
+                let images = pair?.first as? Int ?? 0
+                let scrollY = (pair?.last as? Double) ?? Double(pair?.last as? Int ?? 0)
+                if images >= 1, scrollY > 50 {
+                    runMarkdownDropPhase(ws, tv: tv, base: base, outside: outside,
+                                         storedImage: imageFile)
+                    return
+                }
+                if tick >= maxTicks {
+                    finish(false, "(b) Vorschau: images=\(images), scrollY=\(scrollY) nach 10 s")
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    pollMarkdownPaste(ws, tv: tv, root: root, base: base,
+                                      outside: outside, tick: tick + 1)
+                }
+            }
+            return
+        }
+        if tick >= maxTicks {
+            finish(false, "(b) nach 10 s: Datei=\(String(describing: imageFile)), "
+                + "Link=\(linkInEditor)")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollMarkdownPaste(ws, tv: tv, root: root, base: base,
+                              outside: outside, tick: tick + 1)
+        }
+    }
+
+    /// (c) Drop-Abgrenzung: eine Bilddatei + eine Textdatei „fallen" auf den
+    /// Markdown-Editor — das Bild wird kopiert + verlinkt, der Text geöffnet.
+    private static func runMarkdownDropPhase(_ ws: Workspace, tv: TextView,
+                                             base: URL, outside: URL,
+                                             storedImage: String) {
+        let tabsBefore = ws.tabs.count
+        MainActor.assumeIsolated {
+            MarkdownAssist.handleDroppedFileURLs([
+                outside.appendingPathComponent("quelle.png"),
+                outside.appendingPathComponent("begleit.txt"),
+            ], workspace: ws)
+        }
+        pollMarkdownDrop(ws, tv: tv, base: base, outside: outside,
+                         tabsBefore: tabsBefore, tick: 0)
+    }
+
+    private static func pollMarkdownDrop(_ ws: Workspace, tv: TextView, base: URL,
+                                         outside: URL, tabsBefore: Int, tick: Int) {
+        let maxTicks = 40
+        let copied = FileManager.default.fileExists(
+            atPath: base.appendingPathComponent("quelle.png").path)
+        let linked = tv.string.contains("![quelle](quelle.png)")
+        let opened = ws.tabs.contains { $0.title == "begleit.txt" }
+        func cleanup() {
+            try? FileManager.default.removeItem(at: base)
+            try? FileManager.default.removeItem(at: outside)
+        }
+        if copied, linked, opened {
+            cleanup()
+            finish(true, "Toolbar layoutet, Bild-Paste legt Datei + relativen Link an, "
+                + "Vorschau rendert + scrollt, Drop trennt einfügen/öffnen")
+        }
+        if tick >= maxTicks {
+            cleanup()
+            finish(false, "(c) nach 10 s: kopiert=\(copied), verlinkt=\(linked), "
+                + "geöffnet=\(opened)")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollMarkdownDrop(ws, tv: tv, base: base, outside: outside,
+                             tabsBefore: tabsBefore, tick: tick + 1)
+        }
+    }
+
+    private static func firstWebView(in view: NSView) -> WKWebView? {
+        if let webView = view as? WKWebView { return webView }
+        for sub in view.subviews {
+            if let found = firstWebView(in: sub) { return found }
+        }
+        return nil
+    }
+
     // MARK: - Selbsttest help (Etappe 4 Wunschpaket 2026-07b)
 
     /// End-to-End-Prüfung der Hilfe:
