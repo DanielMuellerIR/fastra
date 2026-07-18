@@ -150,6 +150,13 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   abbilden: Der Block kennt nur seine erste Zeile, die restlichen löst erst das
   Vorschau-JS über die Zeilenumbrüche vor der Klickstelle auf. Steht der Cursor
   am Absatzanfang statt in der geklickten Zeile, ist diese Auflösung defekt.
+- **XPath-Sprung:** `./selftest.sh xpath` tippt die Query bewusst SOFORT nach
+  dem Öffnen der Leiste, also bevor der asynchrone Index fertig ist — genau der
+  Fall, in dem der Sprung verloren ging. Die Fixture ist deshalb absichtlich
+  groß (rund 4000 Elemente): Bei einer winzigen Datei ist der Index manchmal
+  schon fertig, und der Test wäre je nach Systemlast mal grün, mal rot. Die
+  Erfolgsmeldung weist aus, welcher Fall geprüft wurde; steht dort „Index war
+  bereits fertig", lief der Lauf am eigentlichen Risiko vorbei.
 - **Hell-/Dunkel-Wechsel der Vorschau:** `./selftest.sh markdownappearance`
   startet bewusst dunkel und schaltet erst im laufenden Betrieb auf hell. Nur
   dieser Ablauf deckt den Fall auf, dass `underPageBackgroundColor` einmalig

@@ -27,6 +27,12 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ### Behoben
 
+- **XPath-Leiste sprang nicht, wenn man sofort nach dem Öffnen tippte:** Der
+  Index entsteht asynchron. Wer schneller war, verlor den Sprung ganz — die
+  Leiste zeigte die Treffer an, der Editor blieb aber stehen. Der verpasste
+  Sprung wird jetzt nachgeholt, sobald der Index steht. Ein späterer
+  Index-Neubau nach einer Dokumentänderung springt weiterhin nicht von selbst.
+  Betraf vor allem große Dateien, bei denen der Indexbau länger dauert.
 - **Dunkler Balken am rechten Rand der Vorschau nach einem Hell-/Dunkel-Wechsel
   im laufenden Betrieb:** Die Farbe für den Bereich außerhalb der Seite wurde
   nur beim Erzeugen der WebView gesetzt und fror damit WebKits eigene Ableitung

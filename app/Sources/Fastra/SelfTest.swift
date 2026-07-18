@@ -1602,11 +1602,22 @@ enum SelfTest {
         }
 
         // Selbst geschriebene Fixture mit Multibyte-Inhalt VOR dem Ziel.
+        //
+        // Bewusst groß: Der XPath-Index entsteht asynchron. Bei einer winzigen
+        // Datei ist er manchmal schon fertig, bevor der Test tippt — dann liefe
+        // der Test am eigentlichen Risiko vorbei (Tippen VOR fertigem Index)
+        // und wäre je nach Systemlast mal grün, mal rot. Die Füllelemente
+        // machen den Bau lang genug, dass der Fall zuverlässig eintritt.
+        var filler = ""
+        for identifier in 100..<4100 {
+            filler += "    <regal id=\"\(identifier)\">"
+                + "<fach>Füllfach \(identifier)</fach></regal>\n"
+        }
         let xml = """
         <?xml version="1.0" encoding="UTF-8"?>
         <lager ort="Köln 🙂">
             <regal id="1"><fach>Grüße</fach></regal>
-            <regal id="42"><fach>Zielfach</fach></regal>
+        \(filler)    <regal id="42"><fach>Zielfach</fach></regal>
         </lager>
         """
         let tmp = FileManager.default.temporaryDirectory
@@ -1640,14 +1651,18 @@ enum SelfTest {
             return visible ? XPathPanelController.lastShown?.model : nil
         }
         if let model {
+            // Festhalten, ob der Index beim Tippen schon stand. Nur wenn NICHT,
+            // prüft der Lauf den eigentlich riskanten Fall.
+            let indexWasReady = MainActor.assumeIsolated { model.index != nil }
             // Query in das echte Modell tippen (Live-Springen).
             MainActor.assumeIsolated { model.query = "//regal[@id='42']/fach" }
-            // Erwartete Fundstelle unabhängig berechnen: Name des zweiten
-            // <fach>-Elements im Quelltext.
+            // Erwartete Fundstelle unabhängig berechnen: Name des
+            // <fach>-Elements im Zielregal.
             let ns = xml as NSString
-            let second = ns.range(of: "fach>Zielfach")
-            let expected = NSRange(location: second.location, length: 4)
-            pollXPathSelection(root: root, expected: expected, tmp: tmp, tick: 0)
+            let target = ns.range(of: "fach>Zielfach")
+            let expected = NSRange(location: target.location, length: 4)
+            pollXPathSelection(root: root, expected: expected, tmp: tmp,
+                               tick: 0, indexWasReady: indexWasReady)
             return
         }
         if tick >= 40 {
@@ -1660,25 +1675,33 @@ enum SelfTest {
     }
 
     private static func pollXPathSelection(root: NSView, expected: NSRange,
-                                           tmp: URL, tick: Int) {
+                                           tmp: URL, tick: Int,
+                                           indexWasReady: Bool) {
         if let tv = editorTextView(in: root) as? TextView,
            let selection = tv.selectionManager.textSelections.first?.range,
            selection.location == expected.location {
             // Panel wieder schließen (Aufräumen), Datei löschen.
             MainActor.assumeIsolated { XPathPanelController.lastShown?.close() }
             try? FileManager.default.removeItem(at: tmp)
+            // Ehrlich ausweisen, welcher Fall geprüft wurde: Stand der Index
+            // schon, lief der Test am eigentlichen Risiko vorbei.
+            let scope = indexWasReady
+                ? "Index war bereits fertig — verpasster Sprung NICHT geprüft"
+                : "getippt vor fertigem Index (nachgeholter Sprung)"
             finish(true, "XPath-Panel öffnet und springt zur echten Fundstelle "
-                + "(Selektion @\(selection.location))")
+                + "(Selektion @\(selection.location); \(scope))")
         }
         if tick >= 40 {
             let actual = (editorTextView(in: root) as? TextView)?
                 .selectionManager.textSelections.first?.range
             try? FileManager.default.removeItem(at: tmp)
             finish(false, "kein Sprung zur Fundstelle binnen 10 s "
-                + "(erwartet \(expected), Selektion \(String(describing: actual)))")
+                + "(erwartet \(expected), Selektion \(String(describing: actual)), "
+                + "Index beim Tippen fertig: \(indexWasReady))")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollXPathSelection(root: root, expected: expected, tmp: tmp, tick: tick + 1)
+            pollXPathSelection(root: root, expected: expected, tmp: tmp,
+                               tick: tick + 1, indexWasReady: indexWasReady)
         }
     }
 

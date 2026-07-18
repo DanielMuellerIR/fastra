@@ -39,6 +39,9 @@ final class XPathBarModel: ObservableObject {
     private var rebuildWork: DispatchWorkItem?
     private var contentObserver: AnyCancellable?
     private var buildGeneration = 0
+    /// Eine Eingabe, die mangels fertigem Index noch nicht springen konnte.
+    /// Siehe `evaluate(jump:)`.
+    private var pendingJump = false
 
     init(workspace: Workspace) {
         self.workspace = workspace
@@ -107,6 +110,12 @@ final class XPathBarModel: ObservableObject {
         guard let index else {
             matches = []
             statusText = ""
+            // Der Index entsteht asynchron im Hintergrund. Wer die Leiste
+            // öffnet und sofort tippt, ist schneller — der Sprung darf dabei
+            // nicht verloren gehen. Ohne dieses Vormerken zeigte die Leiste
+            // nach dem Indexbau zwar die Treffer an, der Editor blieb aber
+            // stehen (der Bau selbst wertet bewusst ohne Sprung aus).
+            if jump { pendingJump = true }
             return
         }
         let trimmed = query.trimmingCharacters(in: .whitespaces)
@@ -114,19 +123,27 @@ final class XPathBarModel: ObservableObject {
             matches = []
             statusText = L10n.string("XPath eingeben — z. B. //buch[@id='42']/titel")
             if errorText == nil { }
+            pendingJump = false
             return
         }
         switch XPathQuery.parse(trimmed) {
         case .failure(let error):
             matches = []
             statusText = error.userMessage
+            pendingJump = false
         case .success(let parsed):
             matches = XPathEvaluator.evaluate(parsed, in: index)
             matchCursor = 0
             statusText = matches.isEmpty
                 ? L10n.string("Keine Fundstelle")
                 : L10n.format("%ld von %ld", 1, matches.count)
-            if jump { jumpToCurrentMatch() }
+            // `pendingJump` holt genau einen verpassten Sprung nach. Ein
+            // späterer Index-Neubau (Dokument geändert) springt weiterhin
+            // nicht von selbst — das wäre für den Nutzer überraschend.
+            if jump || pendingJump {
+                pendingJump = false
+                jumpToCurrentMatch()
+            }
         }
     }
 
