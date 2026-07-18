@@ -166,6 +166,11 @@ enum MarkdownRichText {
         h1, h2, h3, h4, h5, h6 { color: \(bodyColor); margin: 1.1em 0 0.45em; }
         h1 { font-size: 2em; } h2 { font-size: 1.55em; } h3 { font-size: 1.25em; }
         p, ul, ol, pre, blockquote, table { margin: 0.65em 0; }
+        /* Der obere Abstand trennt zwei Blöcke — vor dem ersten gibt es nichts
+           zu trennen. Ohne diese Regel begänne die Vorschau sichtbar tiefer als
+           die erste Editorzeile daneben, besonders bei einer H1 (1.1em einer
+           doppelt so großen Schrift). */
+        body > *:first-child { margin-top: 0; }
         code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
                background: \(control); border-radius: 4px; padding: 0.12em 0.3em; }
         pre { background: \(control); border-radius: 8px; padding: 0.85em; }
@@ -489,9 +494,6 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         )
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
-        webView.underPageBackgroundColor = darkMode
-            ? NSColor(srgbRed: 0x17 / 255, green: 0x17 / 255, blue: 0x17 / 255, alpha: 1)
-            : NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
         update(webView: webView, coordinator: context.coordinator)
         return webView
     }
@@ -502,6 +504,19 @@ private struct MarkdownRichTextView: NSViewRepresentable {
 
     private func update(webView: WKWebView, coordinator: Coordinator) {
         coordinator.workspace = workspace
+        // Bei JEDEM Update setzen, nicht nur beim Erzeugen: Diese Farbe füllt
+        // den Bereich außerhalb der Seite (Overscroll und der Streifen unter
+        // der Scrollleiste). Wird sie nur einmal gesetzt, friert sie WebKits
+        // eigene Ableitung aus dem Dokument ein — nach einem Hell-/Dunkel-
+        // Wechsel im laufenden Betrieb blieb dann ein dunkler Balken am rechten
+        // Rand stehen, obwohl das Dokument längst hell gerendert war.
+        // Ganz weglassen wäre die Alternative (WebKit leitet die Farbe selbst
+        // aus der Seite ab), kostet aber den Schutz gegen ein Aufblitzen,
+        // solange noch kein Dokument geladen ist.
+        webView.underPageBackgroundColor = darkMode
+            ? NSColor(srgbRed: 0x17 / 255, green: 0x17 / 255, blue: 0x17 / 255, alpha: 1)
+            : NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+
         let styleIdentity = "\(darkMode)|\(fontName)|\(fontSize)|\(documentURL?.path ?? "")"
         if coordinator.styleIdentity != styleIdentity {
             coordinator.styleIdentity = styleIdentity

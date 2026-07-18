@@ -190,6 +190,20 @@ struct MarkdownSourceLineTests {
         ))
     }
 
+    /// Der obere Abstand des ersten Blocks trennt nichts und ließ die Vorschau
+    /// sichtbar tiefer beginnen als die erste Editorzeile daneben.
+    @Test("Erster Block startet ohne oberen Abstand")
+    func firstBlockHasNoTopMargin() {
+        let document = MarkdownRichText.htmlDocument(
+            markdown: "# Titel",
+            fontName: PreviewFonts.systemName,
+            fontSize: 14,
+            darkMode: false
+        )
+
+        #expect(document.contains("body > *:first-child { margin-top: 0; }"))
+    }
+
     /// Der Klick-Handler muss dem nativen Teil Zeile und Spalte melden.
     @Test("Klick-Handler meldet die Position an die App")
     func clickHandlerReportsPosition() {

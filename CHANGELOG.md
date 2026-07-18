@@ -25,6 +25,17 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 - Links in der Vorschau öffnen weiterhin den Standardbrowser, und eine gezogene
   Textauswahl löst keinen Sprung aus.
 
+### Behoben
+
+- **Dunkler Balken am rechten Rand der Vorschau nach einem Hell-/Dunkel-Wechsel
+  im laufenden Betrieb:** Die Farbe für den Bereich außerhalb der Seite wurde
+  nur beim Erzeugen der WebView gesetzt und fror damit WebKits eigene Ableitung
+  aus dem Dokument ein. Sie folgt jetzt jedem Wechsel.
+- **Vorschau begann sichtbar tiefer als die erste Editorzeile:** Der obere
+  Abstand des ersten Blocks trennte nichts und entfällt nun — besonders
+  auffällig bei einer H1, deren Abstand sich auf die doppelte Schriftgröße
+  bezieht.
+
 ### Geändert
 
 - Blockelemente der Vorschau tragen jetzt ein `data-srcline`-Attribut. Beim

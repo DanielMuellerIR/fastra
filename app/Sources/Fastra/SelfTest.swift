@@ -150,6 +150,7 @@ enum SelfTest {
         case "previewrender": waitForMainWindow { runPreviewRenderTest() }
         case "markdown":  waitForMainWindow { runMarkdownRenderTest() }
         case "markdownjump": waitForMainWindow { runMarkdownJumpTest() }
+        case "markdownappearance": waitForMainWindow { runMarkdownAppearanceTest() }
         case "jump":      waitForMainWindow { runJumpTest() }
         case "ghosttext": waitForMainWindow { runGhostTextTest() }
         case "replaceall": waitForMainWindow { runReplaceAllTest() }
@@ -4279,6 +4280,80 @@ enum SelfTest {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             pollMarkdownJumpResult(workspace: workspace, directory: directory, tick: tick + 1)
+        }
+    }
+
+    /// Prüft, dass die Vorschau einem Hell-/Dunkel-Wechsel IM LAUFENDEN BETRIEB
+    /// vollständig folgt.
+    ///
+    /// Hintergrund: `underPageBackgroundColor` färbt den Bereich außerhalb der
+    /// Seite — Overscroll und den Streifen unter der Scrollleiste. Wurde sie nur
+    /// beim Erzeugen der WebView gesetzt, blieb nach einem Wechsel ein dunkler
+    /// Balken am rechten Rand stehen, obwohl das Dokument bereits hell war.
+    /// Ein reiner Start im Zielmodus hätte den Fehler nie gezeigt.
+    private static func runMarkdownAppearanceTest() {
+        testLabel = "markdownappearance"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Fastra-Appearance-Selbsttest-\(UUID().uuidString)")
+        let file = directory.appendingPathComponent("Aussehen.md")
+        do {
+            try FileManager.default.createDirectory(at: directory,
+                                                    withIntermediateDirectories: true)
+            try "# Aussehen\n\nEin Absatz.\n".write(to: file, atomically: true,
+                                                    encoding: .utf8)
+        } catch {
+            finish(false, "Testdatei nicht schreibbar: \(error.localizedDescription)")
+        }
+
+        let original = NSApp.appearance
+        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        // Bewusst dunkel STARTEN und später wechseln — nur so entsteht der
+        // Zustand, in dem die Farbe veraltet zurückbleiben konnte.
+        NSApp.appearance = NSAppearance(named: .darkAqua)
+        ws.loadFile(at: file) { ok in
+            guard ok else { finish(false, "Markdown-Datei konnte nicht geladen werden") }
+            pollAppearance(expectDark: true, directory: directory, original: original, tick: 0) {
+                NSApp.appearance = NSAppearance(named: .aqua)
+                pollAppearance(expectDark: false, directory: directory,
+                               original: original, tick: 0) {
+                    NSApp.appearance = original
+                    try? FileManager.default.removeItem(at: directory)
+                    finish(true, "Vorschau folgt dem Hell-/Dunkel-Wechsel im laufenden Betrieb")
+                }
+            }
+        }
+    }
+
+    private static func pollAppearance(expectDark: Bool,
+                                       directory: URL,
+                                       original: NSAppearance?,
+                                       tick: Int,
+                                       then next: @escaping () -> Void) {
+        let webView = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        })?.contentView.flatMap { markdownWebView(in: $0) }
+
+        // In sRGB umrechnen: Ein direkter NSColor-Vergleich scheitert schon an
+        // unterschiedlichen Farbräumen.
+        if let color = webView?.underPageBackgroundColor,
+           let srgb = color.usingColorSpace(.sRGB) {
+            let isDark = srgb.redComponent < 0.5
+            if isDark == expectDark {
+                next()
+                return
+            }
+        }
+        guard tick < 60 else {
+            NSApp.appearance = original
+            try? FileManager.default.removeItem(at: directory)
+            let mode = expectDark ? "dunkel" : "hell"
+            finish(false, "Hintergrund außerhalb der Seite wurde nach dem Wechsel nicht \(mode)")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollAppearance(expectDark: expectDark, directory: directory,
+                           original: original, tick: tick + 1, then: next)
         }
     }
 

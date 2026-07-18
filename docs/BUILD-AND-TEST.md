@@ -150,6 +150,12 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   abbilden: Der Block kennt nur seine erste Zeile, die restlichen löst erst das
   Vorschau-JS über die Zeilenumbrüche vor der Klickstelle auf. Steht der Cursor
   am Absatzanfang statt in der geklickten Zeile, ist diese Auflösung defekt.
+- **Hell-/Dunkel-Wechsel der Vorschau:** `./selftest.sh markdownappearance`
+  startet bewusst dunkel und schaltet erst im laufenden Betrieb auf hell. Nur
+  dieser Ablauf deckt den Fall auf, dass `underPageBackgroundColor` einmalig
+  gesetzt wurde und WebKits eigene Ableitung einfriert — ein Start direkt im
+  Zielmodus bliebe grün. Gegengeprüft: Mit der Farbe nur in `makeNSView`
+  schlägt der Test fehl, mit dem Setzen bei jedem Update besteht er.
 - **Nicht getestet:** visuelles Rendering von Diff/Tokens/Pillen und
   OSS-Framework-Interna von CodeEditSourceEditor. Kritische
   App-weite Bridges werden dagegen über In-App-Selbsttests abgesichert.
