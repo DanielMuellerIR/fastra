@@ -9,6 +9,40 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.38.0] — 2026-07-18
+
+Etappe 7 des Wunschpakets 2026-07c: Alt-Doppelklick „Gehe zum Ziel“
+(`docs/wunschpaket-2026-07c/goal-vorschlag.md`; Vorbild:
+4D-Methodeneditor).
+
+### Hinzugefügt
+
+- **Alt-Doppelklick springt zur Definition.** Gesten-Entscheidung: Es
+  bleibt beim Alt-Doppelklick des Vorbilds — die Alt-Drag-Spaltenauswahl
+  beginnt mit einem Einzelklick und kollidiert nicht (`colsel`-Selbsttest
+  bleibt grün); CESEs ⌘-Hover-Springen braucht tree-sitter-Identifier und
+  funktioniert für 4D/Markdown nicht.
+- **4D (`.4dm`):** Methodenname → Projektmethode
+  (`Project/Sources/Methods/<Name>.4dm`, auch mehrwortige Namen),
+  Klassenname → `Project/Sources/Classes/<Name>.4dm`,
+  `Function`-Definitionen in der aktuellen Datei springen lokal.
+  Projektwurzeln werden über die Vorfahren der aktiven Datei UND die
+  Seitenleisten-Projektwurzel gefunden. Fallback: Projektsuche mit dem
+  Namen (Suchdialog, Ordner-Bereich) — nie ein stiller No-Op.
+- **Markdown:** relative Dateipfade in Links/Bildern öffnen im Editor,
+  `http(s)`/`mailto` im Browser, `#anker` springen zur Überschrift
+  (gleiche Slug-Regeln wie die Hilfe); auch Autolinks und nackte URLs.
+- **Generische Provider-Schnittstelle** (`GoToTargetProvider`) mit genau
+  diesen zwei Providern — weitere Sprachen sind bewusst späterer Ausbau.
+  Nicht auflösbare Ziele melden sich dezent: Beep, kurzes Aufblitzen am
+  Wort, Hinweis in der Seitenleiste.
+
+### Intern
+
+- Pure Ziel-Auflösung mit Fixture-Tests (Methoden-/Klassen-/Function-
+  Ziele, Linkarten, Anker, Registry); Fenster-Selbsttest `gototarget`
+  mit ECHTEN synthetischen Alt-Doppelklicks über die Event-Queue.
+
 ## [v1.37.0] — 2026-07-18
 
 Etappe 6 des Wunschpakets 2026-07c: 4D-Werkzeuge aus den Katalogen

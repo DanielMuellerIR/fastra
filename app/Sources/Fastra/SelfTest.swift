@@ -166,6 +166,7 @@ enum SelfTest {
         case "sidebarfilter": waitForMainWindow { runSidebarFilterTest() }
         case "filediff": waitForMainWindow { runFileDiffTest() }
         case "tool4dhint": waitForMainWindow { runTool4DHintTest() }
+        case "gototarget": waitForMainWindow { runGoToTargetTest() }
         case "searchmark": waitForMainWindow { openSearchThen { runSearchMarkTest() } }
         case "help": waitForMainWindow { runHelpTest() }
         case "mdassist": waitForMainWindow { runMarkdownAssistTest() }
@@ -3893,6 +3894,132 @@ enum SelfTest {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             pollTool4DHelpOpened(ws, base: base, second: second, tick: tick + 1)
+        }
+    }
+
+    // MARK: - Selbsttest gototarget (Etappe 7 Wunschpaket 2026-07c)
+
+    /// Prüft Alt-Doppelklick „Gehe zum Ziel" mit ECHTEN synthetischen
+    /// Mausereignissen (über die App-Event-Queue, damit der lokale Monitor
+    /// sie sieht):
+    /// (a) 4D: Klick auf einen Methodennamen öffnet die Projektmethode.
+    /// (b) Markdown: Klick auf einen relativen Link öffnet die Zieldatei.
+    private static func runGoToTargetTest() {
+        testLabel = "gototarget"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-gototarget-\(UUID().uuidString)")
+        let methods = base.appendingPathComponent("Project/Sources/Methods")
+        let caller = methods.appendingPathComponent("Aufrufer.4dm")
+        let target = methods.appendingPathComponent("ZielMethode.4dm")
+        let markdown = base.appendingPathComponent("start.md")
+        let markdownTarget = base.appendingPathComponent("ziel-datei.md")
+        do {
+            try fm.createDirectory(at: methods, withIntermediateDirectories: true)
+            try "ZielMethode($x)\n".write(to: caller, atomically: true,
+                                          encoding: .utf8)
+            try "$y:=1\n".write(to: target, atomically: true, encoding: .utf8)
+            try "Siehe [Ziel](ziel-datei.md) hier.\n".write(
+                to: markdown, atomically: true, encoding: .utf8)
+            try "# Ziel\n".write(to: markdownTarget, atomically: true,
+                                 encoding: .utf8)
+        } catch {
+            finish(false, "(setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
+        }
+        ws.loadFile(at: caller) { ok in
+            guard ok else {
+                try? fm.removeItem(at: base)
+                finish(false, "(setup) Aufrufer.4dm lädt nicht")
+            }
+            goToTargetClick(ws, base: base, needle: "ZielMethode",
+                            expectedFile: "ZielMethode.4dm", tick: 0) {
+                // (b) Markdown-Teil im Anschluss.
+                ws.loadFile(at: markdown) { ok in
+                    guard ok else {
+                        try? fm.removeItem(at: base)
+                        finish(false, "(setup) start.md lädt nicht")
+                    }
+                    goToTargetClick(ws, base: base, needle: "Ziel]",
+                                    expectedFile: "ziel-datei.md", tick: 0) {
+                        try? fm.removeItem(at: base)
+                        finish(true, "Alt-Doppelklick öffnete real die 4D-Methode "
+                            + "und das Markdown-Linkziel (echte Events über die Queue)")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Wartet auf den Editor mit `needle` im Text, synthetisiert einen
+    /// Alt-Doppelklick auf dessen erster Fundstelle und pollt, bis der
+    /// aktive Tab `expectedFile` zeigt — dann `completion`.
+    private static func goToTargetClick(_ ws: Workspace, base: URL,
+                                        needle: String, expectedFile: String,
+                                        tick: Int, completion: @escaping () -> Void) {
+        let maxTicks = 40            // 10 s
+        guard tick < maxTicks else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Editor mit „\(needle)“ erscheint nicht binnen 10 s")
+        }
+        guard let window = mainWindowForAXChecks(),
+              let content = window.contentView,
+              let textView = editorTextView(in: content) as? TextView,
+              textView.string.contains(needle) else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                goToTargetClick(ws, base: base, needle: needle,
+                                expectedFile: expectedFile, tick: tick + 1,
+                                completion: completion)
+            }
+            return
+        }
+        let range = (textView.string as NSString).range(of: needle)
+        guard let rect = textView.layoutManager.rectsFor(range:
+            NSRange(location: range.location, length: 1)).first else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Keine Layout-Position für „\(needle)“")
+        }
+        // Punkt in Fenster-Koordinaten; Events über die App-Queue posten,
+        // damit der lokale Monitor (GoToTargetGesture) sie WIRKLICH sieht.
+        let windowPoint = textView.convert(NSPoint(x: rect.midX, y: rect.midY),
+                                           to: nil)
+        let time = ProcessInfo.processInfo.systemUptime
+        for (clickCount, type) in [(1, NSEvent.EventType.leftMouseDown),
+                                   (1, .leftMouseUp),
+                                   (2, .leftMouseDown),
+                                   (2, .leftMouseUp)] {
+            guard let event = NSEvent.mouseEvent(
+                with: type, location: windowPoint, modifierFlags: [.option],
+                timestamp: time, windowNumber: window.windowNumber, context: nil,
+                eventNumber: 0, clickCount: clickCount, pressure: 1
+            ) else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Maus-Events nicht baubar")
+            }
+            NSApp.postEvent(event, atStart: false)
+        }
+        pollGoToTargetResult(ws, base: base, expectedFile: expectedFile,
+                             tick: 0, completion: completion)
+    }
+
+    private static func pollGoToTargetResult(_ ws: Workspace, base: URL,
+                                             expectedFile: String, tick: Int,
+                                             completion: @escaping () -> Void) {
+        let maxTicks = 40            // 10 s
+        if ws.activeTab?.url?.lastPathComponent == expectedFile {
+            completion()
+            return
+        }
+        if tick >= maxTicks {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Sprung nach „\(expectedFile)“ blieb aus "
+                + "(aktiver Tab: \(ws.activeTab?.title ?? "?"))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollGoToTargetResult(ws, base: base, expectedFile: expectedFile,
+                                 tick: tick + 1, completion: completion)
         }
     }
 

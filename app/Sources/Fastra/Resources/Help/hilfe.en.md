@@ -96,6 +96,24 @@ Also in the Text menu: **Format document** (pretty-print JSON/XML),
 **Check document** (syntax check with error position), and **Minify
 document** — for supported formats such as JSON and XML.
 
+## Go to Target
+
+**Option-double-click** a name to jump to its definition — modeled on
+the 4D method editor:
+
+- **4D (`.4dm`):** A method name opens the project method
+  (`Project/Sources/Methods/…`), a class name opens the class file;
+  `Function` definitions in the current class file jump locally. If
+  none of that can be found, Fastra opens the project search with the
+  name — never a silent failure.
+- **Markdown:** Relative file paths in links/images open in the editor,
+  `http(s)`/`mailto` addresses open in the browser, `#anchors` jump to
+  the heading in the file.
+
+Option-drag column selection is unaffected (it starts with a single
+click). Unresolvable targets respond with a brief flash and a note in
+the sidebar.
+
 ## Views: Text, Preview, Hex
 
 The switcher on the right side of the footer appears whenever a file

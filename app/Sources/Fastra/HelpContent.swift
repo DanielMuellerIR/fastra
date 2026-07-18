@@ -99,6 +99,7 @@ enum HelpSection: CaseIterable {
     case searchAndReplace
     case compareFiles
     case textTransformations
+    case goToTarget
     case views
     case markdown
     case markdownWriting
@@ -120,6 +121,8 @@ enum HelpSection: CaseIterable {
         case (.compareFiles, _):           return "Dateien vergleichen"
         case (.textTransformations, "en"): return "Text Transformations"
         case (.textTransformations, _):    return "Text-Transformationen"
+        case (.goToTarget, "en"):          return "Go to Target"
+        case (.goToTarget, _):             return "Gehe zum Ziel"
         case (.views, "en"):               return "Views: Text, Preview, Hex"
         case (.views, _):                  return "Ansichten: Text, Vorschau, Hex"
         case (.markdown, _):               return "Markdown"

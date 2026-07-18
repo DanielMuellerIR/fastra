@@ -14,10 +14,10 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   v1.34.0), Etappe 4 (tool4d-Ersteinrichtungshilfe, v1.35.0),
   Etappe 5 (4D-Struktur-Hinweise, v1.36.0), Etappe 6
   (4D-Vervollständigung/`.4DForm`-Schema/Export-Transformation,
-  v1.37.0).**
-  Offen: Alt-Doppelklick „Gehe zum Ziel“ (Etappe 7: 4D-Methoden +
-  Markdown-Links, erweiterbar), 4D-Syntax-Check via tool4d-LSP
-  (Etappe 8, Gate: rechtliche Freigabe durch den Maintainer).
+  v1.37.0), Etappe 7 (Alt-Doppelklick „Gehe zum Ziel“, v1.38.0).**
+  Offen: NUR noch der 4D-Syntax-Check via tool4d-LSP (Etappe 8) —
+  dessen Gate (rechtliche Freigabe durch den Maintainer) besteht
+  formal weiter; Umsetzung erst nach der Bestätigung.
   - **Bewusst NICHT in Etappe 1** (Kandidaten für eigene Aufträge):
     Ordner-Vergleich, „Apply to Left/Right“-Übernahme einzelner
     Unterschiede ins Dokument, Export der Differenzen-Liste.

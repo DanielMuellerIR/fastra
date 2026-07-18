@@ -78,6 +78,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Rechtsklick-Menü des Editors (Zeilen sortieren, Duplikate,
     /// Smart-Paste) — eigener Monitor, siehe EditorContextMenu.swift.
     private let editorContextMenu = EditorContextMenu()
+    /// Alt-Doppelklick „Gehe zum Ziel" (Etappe 7 Wunschpaket 2026-07c).
+    private let goToTargetGesture = GoToTargetGesture()
 
     /// Eingangskorb für Dateien, die per Finder-Doppelklick / `open -a`
     /// hereinkommen (K1). Puffert beim Kaltstart, bis der Workspace bereit
@@ -96,6 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installKeyMonitor()
         installFlagsMonitor()
         editorContextMenu.install()
+        goToTargetGesture.install()
         // SwiftUI hat die App-Menüleiste erst nach dem Scene-Aufbau vollständig
         // erzeugt. Die Synchronisierung läuft deshalb im nächsten Main-Runloop
         // und erneut, wenn SwiftUI später Menüpunkte ergänzt oder ersetzt.

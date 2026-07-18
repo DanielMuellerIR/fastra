@@ -1136,3 +1136,10 @@
 "einen Wahrheitswert" = "a boolean";
 "4D: Token-Suffixe entfernen (:Cnnn/:Knnn)" = "4D: Remove token suffixes (:Cnnn/:Knnn)";
 "4D: Befehls-Token ergänzen (:Cnnn)" = "4D: Add command tokens (:Cnnn)";
+
+/* Gehe zum Ziel (Etappe 7 Wunschpaket 2026-07c) */
+"Kein Ziel für „%@“ gefunden." = "No target found for “%@”.";
+"Datei „%@“ nicht gefunden." = "File “%@” not found.";
+"Keine Überschrift zu „%@“ gefunden." = "No heading found for “%@”.";
+"Relative Ziele brauchen eine gespeicherte Datei als Ausgangspunkt." = "Relative targets need a saved file as their starting point.";
+"„%@“ ist keine gültige Adresse." = "“%@” is not a valid address.";

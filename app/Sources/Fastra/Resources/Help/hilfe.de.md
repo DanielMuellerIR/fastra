@@ -100,6 +100,24 @@ Zusätzlich im Text-Menü: **Dokument formatieren** (JSON/XML hübsch
 einrücken), **Dokument prüfen** (Syntaxprüfung mit Fehlerposition) und
 **Dokument minifizieren** — für unterstützte Formate wie JSON und XML.
 
+## Gehe zum Ziel
+
+**Alt-Doppelklick** auf einen Namen springt zur Definition — nach dem
+Vorbild des 4D-Methodeneditors:
+
+- **4D (`.4dm`):** Ein Methodenname öffnet die Projektmethode
+  (`Project/Sources/Methods/…`), ein Klassenname die Klassendatei;
+  `Function`-Definitionen in der aktuellen Klassendatei springen lokal.
+  Ist nichts davon auffindbar, öffnet Fastra die Projektsuche mit dem
+  Namen — nie ein stiller Fehlschlag.
+- **Markdown:** Relative Dateipfade in Links/Bildern öffnen im Editor,
+  `http(s)`-/`mailto`-Adressen im Browser, `#anker` springen zur
+  Überschrift in der Datei.
+
+Die Alt-Drag-Spaltenauswahl bleibt unberührt (sie beginnt mit einem
+Einzelklick). Nicht auflösbare Ziele melden sich mit einem kurzen
+Aufblitzen und einem Hinweis in der Seitenleiste.
+
 ## Ansichten: Text, Vorschau, Hex
 
 Der Umschalter rechts in der Fußzeile erscheint, sobald eine Datei mehr
