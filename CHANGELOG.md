@@ -9,6 +9,42 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.28.0] — 2026-07-18
+
+Etappe 2 des Wunschpakets 2026-07b: Suchdialog
+(`docs/wunschpaket-2026-07b/goal-vorschlag.md`).
+
+### Hinzugefügt
+
+- **Live-Markierung aller Treffer im Editor (BBEdit „Show matches“):**
+  Solange die Suchmaske offen ist, markiert der Editor im Datei-Scope alle
+  Treffer der Live-Suche als flache, helle Hervorhebungen (über den
+  vorhandenen EmphasisManager des gepinnten Editors, eigene Gruppe
+  `fastra.search` — kein CESE-Patch). Die Anzeige folgt der debounced
+  Live-Suche und dem Scrollen (neu ausgelegte Zeilen werden gedrosselt
+  nachgezeichnet) und räumt sich bei Musterwechsel, Scope-Wechsel,
+  Tab-Wechsel und Dialogschluss. Reine Anzeige: kein Einfluss auf Undo,
+  Dirty-Zustand, Ersetzen oder die Trefferbasis der Vorschau. Obergrenze
+  sind die materialisierten Treffer (2 000); beim Kappen sagt der bestehende
+  Hinweis in der Maske jetzt zusätzlich, dass nur die ersten N markiert
+  sind. Ordner-/Projekt-/Geöffnet-Scope markieren weiterhin nur über die
+  Trefferliste.
+- Neuer Fenster-Selbsttest `searchmark`: beobachtet die echten
+  Emphasis-Layer (auch nach einem Sprung ans Dokumentende), das
+  Mitscrollen der Trefferliste und das Aufräumen nach Dialogschluss.
+
+### Geändert
+
+- **Trefferliste scrollt zum aktiven Treffer:** Bei Navigation (Return,
+  Pfeiltasten, Voriger/Nächster, Klick) zentriert die Liste den aktiven
+  Treffer. Beim bloßen Neu-Suchen (Muster getippt) springt sie bewusst
+  nicht.
+- **Nur noch ein hervorgehobener Button pro Scope:** „Alle ersetzen · N“
+  verliert seine Sonder-Hervorhebung und wird ein normaler Button —
+  Cmd+Return und Trefferzahl bleiben. Den blauen Default-Look trägt damit
+  automatisch genau der Button, der an Return hängt („Nächster“ im Datei-/
+  Geöffnet-Scope, „Suchen“ im Ordner-Scope).
+
 ## [v1.27.0] — 2026-07-18
 
 Etappe 1 des Wunschpakets 2026-07b: Navigation & Chrome

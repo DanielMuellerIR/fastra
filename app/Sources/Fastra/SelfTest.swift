@@ -163,6 +163,7 @@ enum SelfTest {
         case "colsel":    waitForMainWindow { runColumnSelectionTest() }
         case "gutterdim": waitForMainWindow { runGutterDimmingTest() }
         case "sidebarheader": waitForMainWindow { runSidebarHeaderTest() }
+        case "searchmark": waitForMainWindow { openSearchThen { runSearchMarkTest() } }
         case "filemodes":
             // Fensterlos — echte Dateien durch den Workspace-Ladepfad routen:
             // Null-Bytes → Hex, große Textdatei → abschnittsweise.
@@ -254,7 +255,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, sidebarheader, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, sidebarheader, searchmark, contrast, windows)")
         }
     }
 
@@ -3107,6 +3108,156 @@ enum SelfTest {
     /// Workspace: Willkommens-Bedingung, Projekt öffnen (Dateibaum-Wurzel,
     /// Zuletzt-benutzt-Liste), Datei aus dem Baum laden, automatische
     /// Repo-Erkennung ohne Duplikat und Projekt-Datei-Set samt Ausschluss.
+    // MARK: - Selbsttest searchmark (Etappe 2 Wunschpaket 2026-07b)
+
+    /// Zählt die Emphasis-Layer der Live-Trefferanzeige in der Editor-
+    /// TextView — ECHTE Beobachtung des gerenderten Layer-Baums (analog
+    /// `highlight`, das echte Vordergrundfarben beobachtet). Unsere Layer
+    /// sind CAShapeLayer im Outline-Stil: Border 0,5 pt UND Füllfarbe.
+    private static func searchEmphasisLayerCount(in tv: TextView) -> Int {
+        (tv.layer?.sublayers ?? []).filter { layer in
+            guard let shape = layer as? CAShapeLayer else { return false }
+            return shape.fillColor != nil && abs(shape.borderWidth - 0.5) < 0.01
+        }.count
+    }
+
+    /// Liegt mindestens ein Emphasis-Layer im sichtbaren Ausschnitt der
+    /// TextView? Nach einem Sprung ans Dokumentende beweist das, dass der
+    /// Scroll-Relay die Anzeige für neu ausgelegte Zeilen nachzeichnet.
+    private static func searchEmphasisVisible(in tv: TextView) -> Bool {
+        let visible = tv.visibleRect
+        return (tv.layer?.sublayers ?? []).contains { layer in
+            guard let shape = layer as? CAShapeLayer,
+                  shape.fillColor != nil,
+                  abs(shape.borderWidth - 0.5) < 0.01 else { return false }
+            return visible.intersects(shape.frame)
+        }
+    }
+
+    /// End-to-End-Prüfung der Live-Trefferanzeige (Etappe 2):
+    /// (a) 120 Treffer im Datei-Scope → Emphasis-Layer real in der TextView
+    ///     (nur der AUSGELEGTE Bereich bekommt Layer, daher > 0 und ≤ 120),
+    ///     Tab bleibt sauber (reine Anzeige, kein Dirty).
+    /// (b) Navigation ans Listenende → die NSTableView der Trefferliste
+    ///     scrollt real mit UND der Editor zeigt am Sprungziel markierte
+    ///     Treffer (Scroll-Relay zeichnet neu ausgelegte Zeilen nach).
+    /// (c) Dialog schließen → alle Emphasis-Layer sind geräumt.
+    private static func runSearchMarkTest() {
+        testLabel = "searchmark"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard let mainWindow = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        }), let root = mainWindow.contentView else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+        // 120 Zeilen mit je einem Treffer — genug, damit die Trefferliste
+        // scrollen MUSS und die Layer-Zahl aussagekräftig ist.
+        let content = (1...120).map { "zeile \($0) MARKTREFFER ende" }
+            .joined(separator: "\n")
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-searchmark-\(UUID().uuidString).txt")
+        do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+
+        ws.loadFile(at: tmp) { ok in
+            try? FileManager.default.removeItem(at: tmp)
+            guard ok else { finish(false, "loadFile schlug fehl (completion false)") }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                guard let tvView = editorTextView(in: root), let tv = tvView as? TextView else {
+                    finish(false, "Editor-TextView nicht erreichbar")
+                }
+                ws.scope = .file
+                ws.useRegex = false
+                ws.caseSensitive = true
+                ws.findPattern = "MARKTREFFER"
+                pollSearchMarkDrawn(ws, tv: tv, tick: 0)
+            }
+        }
+    }
+
+    private static func pollSearchMarkDrawn(_ ws: Workspace, tv: TextView, tick: Int) {
+        let maxTicks = 100   // 100 × 50 ms = 5 s (Debounce + async-Zeichnung)
+        let layers = searchEmphasisLayerCount(in: tv)
+        if !ws.bufferSearching, ws.bufferMatches.count == 120,
+           layers > 0, layers <= 120, searchEmphasisVisible(in: tv) {
+            guard ws.activeTab?.isDirty == false else {
+                finish(false, "(a) Live-Markierung machte den Tab dirty — sie muss reine Anzeige sein")
+            }
+            // (b) Navigation ans Ende: erst „erster Treffer", dann 110× weiter.
+            NotificationCenter.default.post(name: .fastraGotoFirstMatch, object: nil)
+            for _ in 0..<110 {
+                NotificationCenter.default.post(name: .fastraGotoNextMatch, object: nil)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                pollSearchMarkListScrolled(ws, tv: tv, tick: 0)
+            }
+            return
+        }
+        if tick >= maxTicks {
+            finish(false, "(a) erwartet 120 Treffer + sichtbare Layer, "
+                + "ist: matches=\(ws.bufferMatches.count), layer=\(layers), "
+                + "sichtbar=\(searchEmphasisVisible(in: tv)), "
+                + "searching=\(ws.bufferSearching)")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollSearchMarkDrawn(ws, tv: tv, tick: tick + 1)
+        }
+    }
+
+    private static func pollSearchMarkListScrolled(_ ws: Workspace, tv: TextView, tick: Int) {
+        let maxTicks = 40    // 40 × 50 ms = 2 s
+        guard let searchWin = NSApp.windows.first(where: {
+            $0.frameAutosaveName == SearchWindow.frameAutosaveName && $0.isVisible
+        }), let searchRoot = searchWin.contentView else {
+            finish(false, "(b) keine sichtbare Suchmaske")
+        }
+        // Die SwiftUI-`List` ist NSTableView-backed — die erste sichtbare
+        // Zeile verrät die echte Scroll-Position der Trefferliste.
+        let table = firstTableView(in: searchRoot)
+        let firstVisible = table.map { $0.rows(in: $0.visibleRect).location } ?? -1
+        if ws.activeMatchIndex == 110, firstVisible > 40, searchEmphasisVisible(in: tv) {
+            // (c) Dialog schließen → Markierung muss vollständig verschwinden.
+            ws.showSearchDialog = false
+            pollSearchMarkCleared(tv: tv, tick: 0)
+            return
+        }
+        if tick >= maxTicks {
+            finish(false, "(b) Trefferliste/Editor folgen nicht: "
+                + "activeIndex=\(ws.activeMatchIndex), ersteSichtbareZeile=\(firstVisible), "
+                + "editorMarkierungSichtbar=\(searchEmphasisVisible(in: tv))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollSearchMarkListScrolled(ws, tv: tv, tick: tick + 1)
+        }
+    }
+
+    private static func pollSearchMarkCleared(tv: TextView, tick: Int) {
+        let maxTicks = 40    // 2 s
+        let layers = searchEmphasisLayerCount(in: tv)
+        if layers == 0 {
+            finish(true, "Treffer live markiert (Layer real beobachtet, auch nach "
+                + "Sprung ans Ende), Liste scrollt zum aktiven Treffer, "
+                + "Dialogschluss räumt alles")
+        }
+        if tick >= maxTicks {
+            finish(false, "(c) nach Dialogschluss bleiben \(layers) Emphasis-Layer übrig")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollSearchMarkCleared(tv: tv, tick: tick + 1)
+        }
+    }
+
+    private static func firstTableView(in view: NSView) -> NSTableView? {
+        if let table = view as? NSTableView { return table }
+        for sub in view.subviews {
+            if let found = firstTableView(in: sub) { return found }
+        }
+        return nil
+    }
+
     // MARK: - Selbsttest sidebarheader (Etappe 1 Wunschpaket 2026-07b)
 
     /// Sucht eine `SelfTestMarker`-NSView (per Accessibility-Identifier) im

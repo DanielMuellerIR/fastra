@@ -960,3 +960,6 @@
 "Ordner „%@“ lässt sich nicht lesen: %@" = "Folder “%1$@” can’t be read: %2$@";
 "Projektordner %@" = "Project folder %@";
 "⌘-Klick zeigt die Nachbarordner zum Projektwechsel." = "⌘-click shows the neighboring folders to switch projects.";
+
+// Live-Trefferanzeige im Editor (Etappe 2 Wunschpaket 2026-07b)
+"Im Editor sind nur diese ersten %ld Treffer markiert." = "Only these first %ld matches are highlighted in the editor.";

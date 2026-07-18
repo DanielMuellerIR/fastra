@@ -318,6 +318,21 @@ struct EditorView: View {
         // Datei, programmatischer Reload) soll sofort den Tastaturfokus bekommen —
         // sonst verpuffte nach ⌘T ein direktes ⌘V (Daniel-Befund 2026-06-25).
         .onAppear { Self.focusActiveEditor(in: workspace) }
+        // Live-Trefferanzeige (Etappe 2 Wunschpaket 2026-07b): Markierungen
+        // leben auf der TextView-Instanz und verschwinden bei jedem Remount
+        // (Tab-Wechsel, Reload) von selbst — onAppear zeichnet sie für den
+        // neuen Editor nach. Die übrigen Auslöser: neue Suchtreffer aus dem
+        // Debounce, Scope-Wechsel, Öffnen/Schließen der Suchmaske.
+        .onAppear { EditorView.updateSearchEmphasis(in: workspace) }
+        .onReceive(workspace.$bufferMatches) { _ in
+            EditorView.updateSearchEmphasis(in: workspace)
+        }
+        .onChange(of: workspace.scope) {
+            EditorView.updateSearchEmphasis(in: workspace)
+        }
+        .onChange(of: workspace.showSearchDialog) {
+            EditorView.updateSearchEmphasis(in: workspace)
+        }
         // Cursor-Position aus dem Editor-State in den Workspace spiegeln,
         // damit der Footer (StatusBarView) Zeile/Spalte zeigen kann.
         .onChange(of: editorState.cursorPositions) { _, positions in
@@ -537,6 +552,103 @@ struct EditorView: View {
             // Höhen), wodurch die Ziel-Schätzung nach unten wandert; iteratives
             // Nachscrollen konvergiert so auf die echte Position.
             convergeScroll(textView, targetLine: targetLine, fallback: target)
+        }
+    }
+
+    /// Beobachtet das Scrollen der Editor-TextView und zeichnet die Live-
+    /// Trefferanzeige gedrosselt nach. Nötig, weil der EmphasisManager nur
+    /// für bereits AUSGELEGTE Zeilen einen Pfad bekommt — Treffer außerhalb
+    /// des gelayouteten Bereichs hätten sonst dauerhaft keine Markierung.
+    /// Der Relay hängt als Associated Object an der TextView und stirbt mit
+    /// ihr (deinit meldet den Observer ab).
+    private final class SearchEmphasisScrollRelay {
+        private var token: NSObjectProtocol?
+        private var pending: DispatchWorkItem?
+
+        init(clipView: NSClipView, workspace: Workspace) {
+            clipView.postsBoundsChangedNotifications = true
+            token = NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification,
+                object: clipView, queue: .main
+            ) { [weak self, weak workspace] _ in
+                guard let self, let workspace else { return }
+                // Billiger Vorab-Check: ohne aktive Anzeige kein Nachzeichnen.
+                guard SearchEmphasis.shouldShow(scope: workspace.scope,
+                                                dialogOpen: workspace.showSearchDialog,
+                                                viewMode: workspace.activeViewMode) else { return }
+                // Trailing-Debounce (100 ms): beim Durchscrollen nur einmal
+                // am Ende zeichnen statt bei jedem Bounds-Tick.
+                self.pending?.cancel()
+                let work = DispatchWorkItem { [weak workspace] in
+                    guard let workspace else { return }
+                    EditorView.updateSearchEmphasis(in: workspace)
+                }
+                self.pending = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: work)
+            }
+        }
+
+        deinit {
+            pending?.cancel()
+            if let token { NotificationCenter.default.removeObserver(token) }
+        }
+    }
+
+    private static var emphasisScrollRelayKey: UInt8 = 0
+
+    /// Hängt (einmal pro TextView-Instanz) den Scroll-Relay an.
+    private static func installEmphasisScrollRelay(on textView: CodeEditTextView.TextView,
+                                                   workspace: Workspace) {
+        guard objc_getAssociatedObject(textView, &emphasisScrollRelayKey) == nil,
+              let clipView = textView.enclosingScrollView?.contentView else { return }
+        let relay = SearchEmphasisScrollRelay(clipView: clipView, workspace: workspace)
+        objc_setAssociatedObject(textView, &emphasisScrollRelayKey, relay,
+                                 .OBJC_ASSOCIATION_RETAIN)
+    }
+
+    /// Zeichnet die Live-Trefferanzeige neu (Etappe 2 Wunschpaket 2026-07b):
+    /// erst die eigene Emphasis-Gruppe räumen, dann — falls die pure
+    /// Sichtbarkeitsbedingung (`SearchEmphasis.shouldShow`) gilt — die
+    /// aktuellen Buffer-Treffer als flache Markierungen setzen.
+    ///
+    /// Läuft bewusst einen Tick später (`async`): Der `$bufferMatches`-
+    /// Publisher feuert zum willSet-Zeitpunkt (Property noch alt), und nach
+    /// einem Tab-Wechsel muss die frisch montierte TextView erst in der
+    /// Hierarchie hängen. Reine Anzeige: kein Undo, kein Dirty, kein Einfluss
+    /// auf Ersetzen oder die Vorschau-Trefferbasis.
+    static func updateSearchEmphasis(in workspace: Workspace) {
+        DispatchQueue.main.async {
+            guard let mainWindow = NSApp.windows.first(where: {
+                !SearchWindow.isSearchWindow($0)
+                    && WorkspaceWindowRegistry.workspace(for: $0) === workspace
+                    && $0.contentView != nil && $0.isVisible
+            }), let root = mainWindow.contentView,
+                  let textView = firstEditorTextView(in: root) as? CodeEditTextView.TextView,
+                  let manager = textView.emphasisManager else { return }
+            // Immer zuerst räumen (Musterwechsel vor Neuanzeige) — die
+            // Markierungen dürfen sich niemals stapeln.
+            manager.removeEmphases(for: SearchEmphasis.groupID)
+            guard SearchEmphasis.shouldShow(scope: workspace.scope,
+                                            dialogOpen: workspace.showSearchDialog,
+                                            viewMode: workspace.activeViewMode) else { return }
+            let plan = SearchEmphasis.plan(
+                matchRanges: workspace.bufferMatches.map(\.range),
+                totalMatches: workspace.bufferTotalMatches
+            )
+            // Treffer-Ranges stammen aus dem (debounce-alten) Suchlauf; nach
+            // schnellem Weitertippen könnten sie hinter dem aktuellen Text
+            // liegen. Out-of-Bounds-Ranges würden im EmphasisManager eine
+            // NSRange-Exception auslösen — deshalb hart filtern.
+            let documentLength = textView.textStorage?.length ?? 0
+            let safeRanges = plan.ranges.filter { NSMaxRange($0) <= documentLength }
+            guard !safeRanges.isEmpty else { return }
+            // Der EmphasisManager kann nur AUSGELEGTE Zeilen zeichnen —
+            // beim Scrollen legt CESE weitere Zeilen aus, der Relay zeichnet
+            // dann gedrosselt nach (sonst blieben Treffer unter dem sichtbaren
+            // Bereich dauerhaft unmarkiert).
+            installEmphasisScrollRelay(on: textView, workspace: workspace)
+            manager.addEmphases(SearchEmphasis.makeEmphases(for: safeRanges),
+                                for: SearchEmphasis.groupID)
         }
     }
 

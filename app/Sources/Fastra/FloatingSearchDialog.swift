@@ -49,6 +49,10 @@ struct FloatingSearchDialog: View {
     /// Tastaturfokus der Trefferliste. Solange er aktiv ist, bleiben Return
     /// und Pfeiltasten im Suchfenster und können das Dokument nicht ändern.
     @FocusState private var hitListFocused: Bool
+    /// Zähler statt Bool: Jeder Klick auf eine Treffer-Zeile zählt hoch und
+    /// löst über `.onChange` das Zentrieren der Liste aus — auch wenn derselbe
+    /// Treffer erneut angeklickt wird (Etappe 2 Wunschpaket 2026-07b).
+    @State private var matchTapScrollToken = 0
 
     var body: some View {
         // Maske ist seit v0.5 in einem eigenen NSWindow — kein eigener
@@ -967,10 +971,7 @@ struct FloatingSearchDialog: View {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
-                    Text(verbatim: L10n.format(
-                        "Erste %ld von %ld Treffern gelistet — Suchbegriff verfeinern. „Alle ersetzen“ erfasst dennoch alle.",
-                        workspace.bufferMatches.count, workspace.bufferTotalMatches
-                    ))
+                    Text(verbatim: bufferCapHint)
                         .fastraFont(size: 11)
                         .foregroundColor(.orange)
                         .lineLimit(3)
@@ -1007,32 +1008,58 @@ struct FloatingSearchDialog: View {
                         .padding(.top, 8)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 } else {
-                    List {
-                        ForEach(groupedHits) { group in
-                            Section {
-                                ForEach(group.matches) { match in
-                                    HitRow(match: match,
-                                           isActive: activeMatch?.id == match.id) {
-                                        handleMatchTap(match: match, fileURL: group.url,
-                                                       tabID: group.tabID)
+                    ScrollViewReader { proxy in
+                        List {
+                            ForEach(groupedHits) { group in
+                                Section {
+                                    ForEach(group.matches) { match in
+                                        HitRow(match: match,
+                                               isActive: activeMatch?.id == match.id) {
+                                            handleMatchTap(match: match, fileURL: group.url,
+                                                           tabID: group.tabID)
+                                        }
+                                        .listRowInsets(EdgeInsets(top: 1, leading: 4, bottom: 1, trailing: 4))
+                                        .listRowSeparator(.hidden)
+                                        .listRowBackground(Color.clear)
+                                        // Ziel-Anker für scrollTo (Etappe 2
+                                        // Wunschpaket 2026-07b).
+                                        .id(match.id)
                                     }
-                                    .listRowInsets(EdgeInsets(top: 1, leading: 4, bottom: 1, trailing: 4))
-                                    .listRowSeparator(.hidden)
-                                    .listRowBackground(Color.clear)
+                                } header: {
+                                    Text(verbatim: L10n.format("%@ (%ld)", group.label,
+                                                              group.matches.count))
+                                        .fastraFont(size: 11, weight: .semibold)
+                                        .foregroundColor(Theme.textSecondary)
                                 }
-                            } header: {
-                                Text(verbatim: L10n.format("%@ (%ld)", group.label,
-                                                          group.matches.count))
-                                    .fastraFont(size: 11, weight: .semibold)
-                                    .foregroundColor(Theme.textSecondary)
                             }
                         }
+                        .listStyle(.plain)
+                        // List-Eigenhintergrund ausblenden, damit die Sand-Box
+                        // darunter sichtbar bleibt (macOS 13+).
+                        .scrollContentBackground(.hidden)
+                        .environment(\.defaultMinListRowHeight, 20)
+                        // Die Liste folgt dem aktiven Treffer bei NAVIGATION
+                        // (Return, Pfeile, Voriger/Nächster, Klick). Beim
+                        // bloßen Neu-Suchen (Muster getippt) springt sie
+                        // bewusst nicht (Etappe 2 Wunschpaket 2026-07b).
+                        .onReceive(NotificationCenter.default.publisher(
+                            for: .fastraGotoFirstMatch)) { _ in
+                            scrollToActiveMatch(proxy)
+                        }
+                        .onReceive(NotificationCenter.default.publisher(
+                            for: .fastraGotoNextMatch)) { _ in
+                            scrollToActiveMatch(proxy)
+                        }
+                        .onReceive(NotificationCenter.default.publisher(
+                            for: .fastraGotoPreviousMatch)) { _ in
+                            scrollToActiveMatch(proxy)
+                        }
+                        // Klick auf eine Zeile (handleMatchTap zählt den Token
+                        // hoch): auch dann zentriert die Liste den Treffer.
+                        .onChange(of: matchTapScrollToken) {
+                            scrollToActiveMatch(proxy)
+                        }
                     }
-                    .listStyle(.plain)
-                    // List-Eigenhintergrund ausblenden, damit die Sand-Box
-                    // darunter sichtbar bleibt (macOS 13+).
-                    .scrollContentBackground(.hidden)
-                    .environment(\.defaultMinListRowHeight, 20)
                 }
             }
             // Flexibel — wächst mit dem Fenster. `maxWidth: .infinity`: die Box
@@ -1134,6 +1161,25 @@ struct FloatingSearchDialog: View {
         }
     }
 
+    /// Cap-Hinweis im Buffer-Scope. Im Datei-Scope hängt zusätzlich der
+    /// Emphasis-Hinweis an (Etappe 2 Wunschpaket 2026-07b): Die Live-
+    /// Markierung im Editor zeichnet höchstens die materialisierten Treffer —
+    /// kein stilles Abschneiden (Leitplanke), der Nutzer liest hier, dass nur
+    /// die ersten N markiert sind.
+    private var bufferCapHint: String {
+        var text = L10n.format(
+            "Erste %ld von %ld Treffern gelistet — Suchbegriff verfeinern. „Alle ersetzen“ erfasst dennoch alle.",
+            workspace.bufferMatches.count, workspace.bufferTotalMatches
+        )
+        if workspace.scope == .file {
+            text += " " + L10n.format(
+                "Im Editor sind nur diese ersten %ld Treffer markiert.",
+                workspace.bufferMatches.count
+            )
+        }
+        return text
+    }
+
     /// Hinweistext bei leerer Trefferliste, scope-spezifisch formuliert.
     private var emptyHint: String {
         if workspace.findPattern.isEmpty { return L10n.string("Suchausdruck eingeben…") }
@@ -1176,6 +1222,8 @@ struct FloatingSearchDialog: View {
         // Nach einem Klick gehören weitere Pfeil-/Return-Eingaben ebenfalls
         // der Trefferliste, nicht dem Dokumenteditor.
         hitListFocused = true
+        // Liste zum (gleich gesetzten) aktiven Treffer zentrieren.
+        matchTapScrollToken &+= 1
         if workspace.scope.isFolderLike, let url = fileURL {
             // activeMatchIndex auf den flachen Treffer-Index setzen, damit
             // CMD+G beim nächsten Treffer ansetzt — schon VOR dem loadFile,
@@ -1213,6 +1261,16 @@ struct FloatingSearchDialog: View {
         if let idx = workspace.bufferMatches.firstIndex(where: { $0.id == match.id }) {
             workspace.activeMatchIndex = idx
             NotificationCenter.default.postMatchJump(match, for: workspace)
+        }
+    }
+
+    /// Zentriert die Trefferliste auf den aktiven Treffer — einen Tick
+    /// später, denn die Navigations-Notification wird auch von ContentView
+    /// verarbeitet (dort wird `activeMatchIndex` erst weitergeschaltet).
+    private func scrollToActiveMatch(_ proxy: ScrollViewProxy) {
+        DispatchQueue.main.async {
+            guard let id = activeMatch?.id else { return }
+            withAnimation { proxy.scrollTo(id, anchor: .center) }
         }
     }
 
@@ -1542,8 +1600,11 @@ struct FloatingSearchDialog: View {
                     }
                 }
                     .keyboardShortcut(.return, modifiers: .command)
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.accent)
+                    // Bewusst KEIN .borderedProminent mehr (Etappe 2 Wunschpaket
+                    // 2026-07b): Der Return-Button („Nächster" bzw. „Suchen")
+                    // trägt bereits den blauen Default-Look — zwei
+                    // hervorgehobene Buttons wirkten wie zwei Standardaktionen.
+                    .buttonStyle(.bordered)
                     .disabled(scopeTotalMatches == 0 || workspace.searchError != nil)
                     .help({
                         switch workspace.scope {
