@@ -18,10 +18,15 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   Offen: NUR noch der 4D-Syntax-Check via tool4d-LSP (Etappe 8) —
   dessen Gate (rechtliche Freigabe durch den Maintainer) besteht
   formal weiter; Umsetzung erst nach der Bestätigung.
-  - **Kleiner Rest aus Etappe 6:** gezielte Sichtprüfung des
-    Vervollständigungs-Popups (Optik/Timing beim Tippen in einer
-    `.4dm`-Datei). Logik ist unit-getestet; die visuelle Abnahme war
-    ohne GUI-Fokus-Zustimmung bewusst offen gelassen.
+  - **Etappe 6 — Vervollständigung ist DEFEKT, nicht nur ungeprüft:** Die
+    ausstehende Sichtprüfung fand am 2026-07-18 an v1.38.1 statt und war
+    negativ. Das automatische Popup beim Tippen erscheint nicht, und das
+    mit ⌃Leertaste geöffnete Fenster nimmt weder Pfeiltasten noch Klicks
+    an. Die Logik ist unit-getestet und in Ordnung — der Defekt sitzt in
+    der Anbindung an CodeEditSourceEditor. Befund mit Codepfaden,
+    geprüften Sackgassen und empfohlenem Vorgehen:
+    `docs/wunschpaket-2026-07c/vervollstaendigung-befund.md`. Vor einem
+    Fix zuerst einen real fehlschlagenden Selbsttest bauen.
   - **Bewusst NICHT in Etappe 1** (Kandidaten für eigene Aufträge):
     Ordner-Vergleich, „Apply to Left/Right“-Übernahme einzelner
     Unterschiede ins Dokument, Export der Differenzen-Liste.
