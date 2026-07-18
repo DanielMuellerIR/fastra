@@ -47,10 +47,25 @@ Für Live-Diagnosen je Datei bietet tool4d einen Language-Server-Modus
 VS Code. Wer Einzeldatei-Diagnosen möchte, ist mit dieser Extension derzeit
 am besten bedient.
 
+## Lizenz und Nutzungsbedingungen (Stand 2026-07-18)
+
+tool4d ist laut offiziellen 4D-Quellen frei und benötigt keine Lizenz:
+
+- 4D-Dokumentation: „tool4d is a free, lightweight, stand-alone
+  application“ — <https://developer.4d.com/docs/Admin/cli>
+- 4D-Blog: „tool4d does not need any license to run“; der Download ist
+  bewusst ohne Authentifizierung möglich und für CI/CD-Nutzung gedacht —
+  <https://blog.4d.com/a-tool-for-4d-code-execution-in-cli/>
+
+Die dokumentierten Einschränkungen sind rein technisch (Application-,
+Web- und SQL-Server, Backup-Scheduler u. a. sind deaktiviert); eine
+Beschränkung, wer tool4d aufrufen darf, nennt keine der Quellen.
+
 ## Hinweis zur Integration in Fastra
 
-Eine direkte tool4d-Anbindung in Fastra (Menüpunkt „4D-Methode prüfen“) ist
-bewusst zurückgestellt: tool4d arbeitet projektbasiert, Einzeldatei-
-Diagnosen erfordern den LSP-Modus (dauerhafter Serverprozess, JSON-RPC),
-und die Nutzungsbedingungen für den Aufruf durch Dritt-Tools sind nicht
-abschließend geklärt. Details siehe `ROADMAP.md`.
+Eine direkte tool4d-Anbindung (Syntax-Check über den LSP-Modus,
+`--lsp=<port>`) ist als Etappe des Wunschpakets 3 spezifiziert
+(`docs/wunschpaket-2026-07c/goal-vorschlag.md`). Die frühere Unklarheit
+über die Nutzungsbedingungen ist durch die oben zitierten Quellen
+ausgeräumt; die abschließende Bestätigung liegt beim Maintainer.
+Details siehe `ROADMAP.md`.

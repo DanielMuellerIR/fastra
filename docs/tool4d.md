@@ -46,10 +46,24 @@ For live per-file diagnostics tool4d offers a language-server mode
 VS Code. If you want per-file diagnostics, that extension is currently the
 best option.
 
+## License and terms of use (as of 2026-07-18)
+
+According to official 4D sources, tool4d is free and requires no license:
+
+- 4D documentation: “tool4d is a free, lightweight, stand-alone
+  application” — <https://developer.4d.com/docs/Admin/cli>
+- 4D blog: “tool4d does not need any license to run”; the download is
+  deliberately available without authentication and intended for CI/CD
+  use — <https://blog.4d.com/a-tool-for-4d-code-execution-in-cli/>
+
+The documented restrictions are purely technical (application, web and
+SQL server, backup scheduler and others are disabled); none of the
+sources restricts who may invoke tool4d.
+
 ## Note on Fastra integration
 
-A direct tool4d integration in Fastra (a “Check 4D method” menu item) is
-deliberately deferred: tool4d is project-based, per-file diagnostics require
-the LSP mode (a long-running server process, JSON-RPC), and the terms of use
-for invocation by third-party tools have not been conclusively clarified.
-See `ROADMAP.md` for details.
+A direct tool4d integration (syntax checking via the LSP mode,
+`--lsp=<port>`) is specified as a stage of feature package 3
+(`docs/wunschpaket-2026-07c/goal-vorschlag.md`). The earlier uncertainty
+about the terms of use is resolved by the sources quoted above; final
+confirmation rests with the maintainer. See `ROADMAP.md` for details.
