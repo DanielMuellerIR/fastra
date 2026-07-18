@@ -18,6 +18,10 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   Offen: NUR noch der 4D-Syntax-Check via tool4d-LSP (Etappe 8) —
   dessen Gate (rechtliche Freigabe durch den Maintainer) besteht
   formal weiter; Umsetzung erst nach der Bestätigung.
+  - **Kleiner Rest aus Etappe 6:** gezielte Sichtprüfung des
+    Vervollständigungs-Popups (Optik/Timing beim Tippen in einer
+    `.4dm`-Datei). Logik ist unit-getestet; die visuelle Abnahme war
+    ohne GUI-Fokus-Zustimmung bewusst offen gelassen.
   - **Bewusst NICHT in Etappe 1** (Kandidaten für eigene Aufträge):
     Ordner-Vergleich, „Apply to Left/Right“-Übernahme einzelner
     Unterschiede ins Dokument, Export der Differenzen-Liste.
