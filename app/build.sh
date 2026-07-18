@@ -117,8 +117,36 @@ if grep -q 'cursorPositions != state.cursorPositions' "$CESE_SE" 2>/dev/null; th
     echo "✗ FEHLER: cursorPositions-Reconcile-Patch hat NICHT gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
     exit 1
   fi
-  # Wie bei 4b: SPM trackt Quell-Änderungen in .build/checkouts NICHT →
-  # CESE-Build-Produkte verwerfen, damit der Patch neu übersetzt wird.
+# Wie bei 4b: SPM trackt Quell-Änderungen in .build/checkouts NICHT →
+# CESE-Build-Produkte verwerfen, damit der Patch neu übersetzt wird.
+rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+      .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4c1. Patch CodeEditSourceEditor — verworfene Auto-Vervollständigung sauber
+#       zurücksetzen.
+#
+# CESE fragt nach JEDEM Buchstaben an. Fastra zeigt 4D-Vorschläge beim Tippen
+# aber bewusst erst ab zwei Zeichen. Beim ersten Zeichen liefert der Delegate
+# daher `nil`. Upstream lässt in diesem Fall `activeTextView` dennoch gesetzt;
+# der zweite Buchstabe aktualisiert dann nur eine unsichtbare Liste, statt sie
+# über `presentIfNot` zu öffnen. `willClose()` räumt den abgebrochenen Versuch
+# auf, damit das zweite Zeichen einen neuen, sichtbaren Vorschlagsversuch
+# startet. Der In-App-Test `completion4d` reproduziert genau diese Reihenfolge.
+CESE_SUGGESTIONS="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/CodeSuggestion/Model/SuggestionViewModel.swift"
+if grep -q 'guard let completionItems = await delegate.completionSuggestionsRequested' "$CESE_SUGGESTIONS" 2>/dev/null; then
+  echo "→ Patche CodeEditSourceEditor (verworfenes Auto-Completion zurücksetzen)"
+  /usr/bin/perl -i -0pe 's|guard let completionItems = await delegate\.completionSuggestionsRequested\(\s*textView: textView,\s*cursorPosition: cursorPosition\s*\) else \{\s*return\s*\}|guard let completionItems = await delegate.completionSuggestionsRequested(\n                    textView: textView,\n                    cursorPosition: cursorPosition\n                ) else {\n                    self.willClose()  // Fastra-Patch: abgebrochene Ein-Zeichen-Anfrage darf den zweiten Buchstaben nicht unsichtbar aktualisieren\n                    return\n                }|g' "$CESE_SUGGESTIONS"
+  # Der Kommentar ist zugleich der stabile Anker: Ändert Upstream den
+  # Anfragepfad, darf der Build nicht still mit einem verlorenen Fix weiterlaufen.
+  if ! grep -q 'Fastra-Patch: abgebrochene Ein-Zeichen-Anfrage' "$CESE_SUGGESTIONS" 2>/dev/null; then
+    echo "✗ FEHLER: Auto-Completion-Patch hat NICHT gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
+    exit 1
+  fi
+  # SPM behandelt Checkout-Sources als unveränderlich. Deshalb wie bei den
+  # anderen CESE-Patches das Modul löschen, damit der Produktbuild den Fix
+  # wirklich enthält statt eine alte Binärdatei zu verwenden.
   rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
   rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule

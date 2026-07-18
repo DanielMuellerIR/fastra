@@ -71,11 +71,12 @@ signierte, aber nicht notarisierten Variante dient weiter `install.sh --no-notar
 Beim Version-Bump `app/Info.plist` mitziehen (siehe AGENTS.md), sonst zeigt die
 App eine veraltete Version.
 
-`build.sh` kapselt Xcode-Toolchain-Switch + elf Checkout-Patches
+`build.sh` kapselt Xcode-Toolchain-Switch + fünfzehn Checkout-Patches
 (SwiftLint-Plugins aus, CodeEditSymbols Resources, CMD+F-Zombie-Kill,
-toter cursorPositions-Reconcile, Gutter-Drag-Clamp, horizontaler Scrollbalken,
-Zeilenbreiten-Messung, exotische Sprachen ausschneiden, Highlight-Query-Pfad
-layout-robust und Text-Geist-Fix).
+toter cursorPositions-Reconcile, verworfene Auto-Vervollständigung schließen,
+Gutter-Drag-Clamp, horizontaler Scrollbalken, Zeilenbreiten-Messung,
+exotische Sprachen ausschneiden, Highlight-Query-Pfad layout-robust,
+Text-Geist-Fix, zwei portable Ressourcenpfade und getrennte 4D-Theme-Slots).
 
 Seit v1.19.0 verpackt `build.sh` zusätzlich das exakt gepinnte
 `Sparkle.framework` unter `Contents/Frameworks`, entfernt die für die nicht
@@ -103,6 +104,15 @@ auf `max(0, …)` → über der Gutter-Spalte liefert `textOffsetAtPoint` nil un
 Selektion friert ein; Patch clampt auf `max(layoutManager.edgeInsets.left, …)`.
 Der zugehörige Gutter-Durchschuss-ins-Header-Fix ist App-seitig (`.clipped()` am
 Editor in `EditorView`), KEIN Checkout-Patch.
+Patch 4c1 (4D-Auto-Vervollständigung, 2026-07-19): CESE setzt vor einer
+asynchronen Vorschlagsanfrage `activeTextView`. Liefert der 4D-Delegate für das
+erste Zeichen absichtlich noch `nil`, blieb dieser Zustand ohne sichtbares
+Fenster stehen; die Anfrage für das zweite Zeichen aktualisierte nur die
+unsichtbare Liste. Der Patch ruft in diesem `nil`-Pfad `willClose()` auf. Der
+Regressions-Wächter `./selftest.sh completion4d` lädt eine echte `.4dm`-Datei
+und prüft Auto-Popup, ⌃Leertaste, ↓ sowie Klick/Doppelklick in der sichtbaren
+CESE-Tabelle. Weil die letzten drei Schritte echten Fensterfokus brauchen,
+startet der Runner die App über LaunchServices und beendet sie danach wieder.
 
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 

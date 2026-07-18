@@ -180,8 +180,9 @@ Sprachmenü lässt sich 4D auch für andere Dateien manuell aktivieren.
 `.4DProject`/`.4DForm` sind echte JSON-Dateien, `.4DCatalog`/
 `.4DSettings` echtes XML — sie öffnen mit JSON- bzw. XML-Darstellung.
 
-**Vervollständigung:** In `.4dm`-Methoden schlägt Fastra beim Tippen
-Befehle (mit Syntax-Signatur) und Konstanten vor — Esc oder ⌃Leertaste
+**Vervollständigung:** In `.4dm`-Methoden schlägt Fastra ab zwei
+eingegebenen Zeichen Befehle (mit Syntax-Signatur) und Konstanten vor — Esc
+oder ⌃Leertaste
 öffnen die Liste auch manuell, ↑/↓ wählen, Return/Tab übernimmt, Esc
 schließt. Die Namen, Signaturen und Befehlsnummern stammen aus der
 offiziellen 4D-Dokumentation (CC BY 4.0, © 4D SAS — Details in den

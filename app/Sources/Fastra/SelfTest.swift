@@ -145,6 +145,7 @@ enum SelfTest {
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
         case "highlight": waitForMainWindow { runHighlightTest() }
         case "highlight4d": waitForMainWindow { runFourDHighlightTest() }
+        case "completion4d": waitForMainWindow { runFourDCompletionTest() }
         case "xpath": waitForMainWindow { runXPathTest() }
         case "leakscenario": waitForMainWindow { runLeakScenario() }
         case "previewrender": waitForMainWindow { runPreviewRenderTest() }
@@ -261,7 +262,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, sidebarheader, searchmark, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, sidebarheader, searchmark, help, mdassist, contrast, windows)")
         }
     }
 
@@ -1401,6 +1402,510 @@ enum SelfTest {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             pollHighlightColors(root: root, url: url, tick: tick + 1)
         }
+    }
+
+    // MARK: - 4D-Vervollständigung (Etappe 6 Wunschpaket 2026-07c)
+
+    /// Zustand für den mehrstufigen Completion-Selbsttest. Die Prüfschritte
+    /// sammeln ihre Befunde, damit ein defektes Auto-Popup die unabhängige
+    /// Prüfung von ⌃Leertaste, Pfeil und Maus nicht überspringt.
+    private final class FourDCompletionTestState {
+        let fileURL: URL
+        let initialText: String
+        var failures: [String] = []
+
+        init(fileURL: URL, initialText: String) {
+            self.fileURL = fileURL
+            self.initialText = initialText
+        }
+    }
+
+    /// Reproduziert die 4D-Vervollständigung am LAUFENDEN
+    /// CodeEditSourceEditor: Eine echte `.4dm` wird geladen, `A` und `L`
+    /// gehen über die öffentliche TextView-Eingabe hinein, anschließend öffnet
+    /// ⌃Leertaste die gleiche Liste. Gemessen wird nicht die Delegate-Logik, sondern das
+    /// sichtbare CESE-Fenster mit seiner echten `NSTableView`.
+    ///
+    /// Danach muss ↓ die Auswahl bewegen, ein gezielter Mausklick die Auswahl
+    /// ändern und ein Doppelklick die erste 4D-Vervollständigung übernehmen.
+    /// Damit schützt der Test genau die Anbindung, die reine Unit-Tests nicht
+    /// sehen: Text-Delegate, Event-Monitore, Fenster und Hit-Testing.
+    private static func runFourDCompletionTest() {
+        testLabel = "completion4d"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard let mainWindow = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        }), let root = mainWindow.contentView else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+
+        // Leeres Dokument: Nur die nachfolgende Test-Eingabe darf die Präfixe
+        // erzeugen. Die Endung schaltet den produktiven 4D-Delegate an.
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-completion4d-\(UUID().uuidString).4dm")
+        // `Workspace.loadFile` kanonisiert `/var` zu `/private/var`. Der Test
+        // muss dieselbe URL-Form speichern, sonst würde er einen korrekt
+        // geladenen 4D-Tab fälschlich nie als aktiv erkennen.
+        let fixtureText = "// Completion-Selbsttest\n"
+        let state = FourDCompletionTestState(fileURL: url.canonicalFileURL,
+                                             initialText: fixtureText)
+        do {
+            try fixtureText.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "Completion-Fixture nicht schreibbar: \(error.localizedDescription)")
+        }
+
+        ws.loadFile(at: state.fileURL) { ok in
+            guard ok else {
+                finishFourDCompletionTest(state, ok: false,
+                                          message: "loadFile (.4dm) schlug fehl")
+            }
+            pollForFourDCompletionEditor(ws: ws, mainWindow: mainWindow,
+                                         root: root, state: state)
+        }
+    }
+
+    /// Wartet auf die neu gemountete TextView der `.4dm`-Datei. Ein
+    /// gewöhnlicher Delay wäre hier unscharf: Der Tab-Wechsel erzeugt den
+    /// SourceEditor neu, und erst diese Instanz trägt den 4D-Delegate.
+    private static func pollForFourDCompletionEditor(
+        ws: Workspace,
+        mainWindow: NSWindow,
+        root: NSView,
+        state: FourDCompletionTestState,
+        tick: Int = 0
+    ) {
+        // Die vom Workspace kanonisierte URL kann auf macOS einen anderen
+        // Pfad-Alias tragen. Für diese Test-Fixture ist die aktive, geladene
+        // `.4dm`-Endung die robuste und zugleich produktrelevante Bedingung.
+        let isFourDTab = ws.activeTab?.isLoading == false
+            && ws.activeTab?.url?.pathExtension.lowercased() == "4dm"
+        if isFourDTab,
+           let textView = completionEditorTextView(in: root, window: mainWindow,
+                                                   expectedText: state.initialText) {
+            // Der CESE-Monitor reagiert nur im Key-Window. Der Runner holt
+            // die Test-App dafür nach vorn; verliert der Nutzer oder macOS
+            // diesen Fokus, wäre ein fehlendes Popup kein Produktbefund.
+            guard mainWindow.isKeyWindow else {
+                if tick >= 120 {
+                    finishFourDCompletionTest(state, ok: false,
+                                              message: "Umgebungsproblem: 4D-Editor wurde nicht Key-Window")
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    pollForFourDCompletionEditor(ws: ws, mainWindow: mainWindow,
+                                                 root: root, state: state, tick: tick + 1)
+                }
+                return
+            }
+            guard mainWindow.makeFirstResponder(textView) else {
+                finishFourDCompletionTest(state, ok: false,
+                                          message: "4D-Editor wurde nicht First Responder")
+            }
+            // Zwei Einfügungen am laufenden TextView. Diese öffentliche
+            // AppKit-Eingabemethode läuft durch dieselbe CESE-Textmutation und
+            // deren Delegate wie eine getippte Taste; ein Queue-`keyDown` kann
+            // in der bewusst nicht aktivierten Selbsttest-App dagegen schon im
+            // System-Input-Context enden, bevor die TextView ihn sieht.
+            textView.selectionManager.setSelectedRange(
+                NSRange(location: (textView.string as NSString).length, length: 0)
+            )
+            guard insertCompletionCharacter("A", into: textView) else {
+                finishFourDCompletionTest(state, ok: false,
+                                          message: "konnte A für 4D-Editor nicht einfügen")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                guard insertCompletionCharacter("L", into: textView) else {
+                    finishFourDCompletionTest(state, ok: false,
+                                              message: "konnte L für 4D-Editor nicht einfügen")
+                }
+                pollForAutomaticFourDCompletion(mainWindow: mainWindow,
+                                                textView: textView, state: state)
+            }
+            return
+        }
+        if tick >= 120 {
+            finishFourDCompletionTest(state, ok: false,
+                                      message: "`.4dm`-Editor nicht binnen 6 s aktiv/montiert")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollForFourDCompletionEditor(ws: ws, mainWindow: mainWindow,
+                                         root: root, state: state, tick: tick + 1)
+        }
+    }
+
+    /// Beobachtet das automatisch geöffnete CESE-Fenster nach der produktiven
+    /// TextView-Eingabe. Die Textprüfung verhindert, dass ein fehlendes Routing
+    /// fälschlich als Completion-Fehler gezählt wird.
+    private static func pollForAutomaticFourDCompletion(
+        mainWindow: NSWindow,
+        textView: TextView,
+        state: FourDCompletionTestState,
+        tick: Int = 0
+    ) {
+        if let popup = fourDCompletionWindow(attachedTo: mainWindow) {
+            guard let table = completionTable(in: popup), table.numberOfRows > 1 else {
+                state.failures.append("automatisches Popup hat keine auswertbare Vorschlagsliste")
+                closeAutomaticCompletionThenStartManual(mainWindow: mainWindow,
+                                                         textView: textView, state: state)
+                return
+            }
+            closeAutomaticCompletionThenStartManual(mainWindow: mainWindow,
+                                                     textView: textView, state: state)
+            return
+        }
+        if tick >= 80 {              // 80 × 50 ms = 4 s für CESE-Task + Layout
+            let expectedText = state.initialText + "AL"
+            if textView.string != expectedText {
+                let selections = textView.selectionManager.textSelections.map(\.range)
+                finishFourDCompletionTest(state, ok: false,
+                                          message: "Testeingabe kam nicht im Editor an "
+                                            + "(Text=\"\(textView.string)\", editable=\(textView.isEditable), "
+                                            + "delegate=\(String(describing: textView.delegate)), "
+                                            + "Selektionen=\(selections))")
+            }
+            state.failures.append("automatisches Popup blieb nach der Eingabe von „AL“ aus")
+            startManualFourDCompletion(mainWindow: mainWindow, textView: textView, state: state)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollForAutomaticFourDCompletion(mainWindow: mainWindow,
+                                            textView: textView, state: state, tick: tick + 1)
+        }
+    }
+
+    /// Schließt ein vorhandenes Auto-Popup mit einem echten Escape-Event.
+    /// Der Fallback räumt nur für den folgenden, unabhängigen ⌃Leertaste-Test
+    /// auf; der Fehler bleibt vorher im Befund erhalten.
+    private static func closeAutomaticCompletionThenStartManual(
+        mainWindow: NSWindow,
+        textView: TextView,
+        state: FourDCompletionTestState,
+        tick: Int = 0
+    ) {
+        if tick == 0 {
+            postKey("\u{1b}", keyCode: 53, windowNumber: mainWindow.windowNumber)
+        }
+        if fourDCompletionWindow(attachedTo: mainWindow) == nil {
+            startManualFourDCompletion(mainWindow: mainWindow, textView: textView, state: state)
+            return
+        }
+        if tick >= 30 {
+            state.failures.append("automatisches Popup ließ sich nicht mit Escape schließen")
+            fourDCompletionWindow(attachedTo: mainWindow)?.close()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                startManualFourDCompletion(mainWindow: mainWindow, textView: textView, state: state)
+            }
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            closeAutomaticCompletionThenStartManual(mainWindow: mainWindow,
+                                                     textView: textView, state: state, tick: tick + 1)
+        }
+    }
+
+    /// Öffnet die Liste ausschließlich über den produktiven CESE-Shortcut
+    /// ⌃Leertaste. Der Test ruft bewusst NICHT den Delegate oder Controller
+    /// direkt auf, damit ein kaputtes Event-Routing sichtbar bleibt.
+    private static func startManualFourDCompletion(
+        mainWindow: NSWindow,
+        textView: TextView,
+        state: FourDCompletionTestState
+    ) {
+        guard mainWindow.isKeyWindow else {
+            finishFourDCompletionTest(state, ok: false,
+                                      message: "Umgebungsproblem: Fokus vor ⌃Leertaste verloren")
+        }
+        guard mainWindow.makeFirstResponder(textView) else {
+            finishFourDCompletionTest(state, ok: false,
+                                      message: "4D-Editor verlor vor ⌃Leertaste den First Responder")
+        }
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: .control,
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: mainWindow.windowNumber, context: nil,
+            characters: " ", charactersIgnoringModifiers: " ",
+            isARepeat: false, keyCode: 49
+        ) else {
+            finishFourDCompletionTest(state, ok: false,
+                                      message: "konnte ⌃Leertaste-Event nicht bauen")
+        }
+        NSApp.postEvent(event, atStart: false)
+        pollForManualFourDCompletion(mainWindow: mainWindow, textView: textView, state: state)
+    }
+
+    /// Wartet auf die über ⌃Leertaste geöffnete Liste und beginnt erst dann
+    /// die Eingabeprüfung. Das trennt „Popup erscheint nicht“ sauber von
+    /// „sichtbares Popup ist nicht bedienbar“.
+    private static func pollForManualFourDCompletion(
+        mainWindow: NSWindow,
+        textView: TextView,
+        state: FourDCompletionTestState,
+        tick: Int = 0
+    ) {
+        guard mainWindow.isKeyWindow else {
+            finishFourDCompletionTest(state, ok: false,
+                                      message: "Umgebungsproblem: Fokus während ⌃Leertaste verloren")
+        }
+        if let popup = fourDCompletionWindow(attachedTo: mainWindow),
+           let table = completionTable(in: popup), table.numberOfRows > 1 {
+            // `items` wird in CESE über einen asynchronen Publisher in die
+            // Tabelle geschrieben. Erst nach dessen letztem Reload ist die
+            // Auswahl stabil; ein sofort geposteter Pfeil könnte sonst korrekt
+            // wirken und gleich wieder auf Zeile 0 zurückgesetzt werden.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                testFourDCompletionArrow(mainWindow: mainWindow, popup: popup,
+                                         textView: textView, table: table, state: state)
+            }
+            return
+        }
+        if tick >= 80 {
+            state.failures.append("mit ⌃Leertaste geöffnetes Popup erschien nicht")
+            finishFourDCompletionTest(state, ok: false,
+                                      message: state.failures.joined(separator: "; "))
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollForManualFourDCompletion(mainWindow: mainWindow, textView: textView,
+                                         state: state, tick: tick + 1)
+        }
+    }
+
+    /// Ein Pfeil-Event muss die SELEKTION der echten Vorschlagstabelle von
+    /// Zeile 0 auf Zeile 1 verschieben. Das ist unabhängig davon beobachtbar,
+    /// ob ein Fenster zufällig bloß gezeichnet wird.
+    private static func testFourDCompletionArrow(
+        mainWindow: NSWindow,
+        popup: NSWindow,
+        textView: TextView,
+        table: NSTableView,
+        state: FourDCompletionTestState
+    ) {
+        guard mainWindow.isKeyWindow else {
+            finishFourDCompletionTest(state, ok: false,
+                                      message: "Umgebungsproblem: Fokus vor Pfeiltaste verloren")
+        }
+        guard table.selectedRow == 0 else {
+            state.failures.append("Vorschlagsliste startet nicht mit Zeile 0 (Ist: \(table.selectedRow))")
+            testFourDCompletionClick(mainWindow: mainWindow, popup: popup,
+                                     textView: textView, table: table, state: state)
+            return
+        }
+        // NSDownArrowFunctionKey beschreibt das Event vollständig; CESE selbst
+        // entscheidet aber bewusst über den Hardware-Keycode 125.
+        postKey("\u{F701}", keyCode: 125, windowNumber: mainWindow.windowNumber)
+        pollForFourDCompletionArrow(mainWindow: mainWindow, popup: popup,
+                                    textView: textView, table: table, state: state)
+    }
+
+    private static func pollForFourDCompletionArrow(
+        mainWindow: NSWindow,
+        popup: NSWindow,
+        textView: TextView,
+        table: NSTableView,
+        state: FourDCompletionTestState,
+        tick: Int = 0
+    ) {
+        if table.selectedRow == 1 {
+            testFourDCompletionClick(mainWindow: mainWindow, popup: popup,
+                                     textView: textView, table: table, state: state)
+            return
+        }
+        if tick >= 40 {
+            state.failures.append("↓ bewegte die Vorschlagsauswahl nicht (Zeile blieb \(table.selectedRow))")
+            testFourDCompletionClick(mainWindow: mainWindow, popup: popup,
+                                     textView: textView, table: table, state: state)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            pollForFourDCompletionArrow(mainWindow: mainWindow, popup: popup,
+                                        textView: textView, table: table,
+                                        state: state, tick: tick + 1)
+        }
+    }
+
+    /// Klickt gezielt in die jeweils ANDERE sichtbare Tabellenzeile. Damit
+    /// kann der Test eine echte Mausreaktion auch dann beobachten, wenn die
+    /// Pfeiltaste zuvor schon ausgefallen ist.
+    private static func testFourDCompletionClick(
+        mainWindow: NSWindow,
+        popup: NSWindow,
+        textView: TextView,
+        table: NSTableView,
+        state: FourDCompletionTestState
+    ) {
+        guard mainWindow.isKeyWindow else {
+            finishFourDCompletionTest(state, ok: false,
+                                      message: "Umgebungsproblem: Fokus vor Mausklick verloren")
+        }
+        let targetRow = table.selectedRow == 0 ? 1 : 0
+        guard postCompletionMouseClick(in: table, row: targetRow, window: popup, clickCount: 1) else {
+            finishFourDCompletionTest(state, ok: false,
+                                      message: "konnte gezielten Klick in Vorschlagsliste nicht bauen")
+        }
+        pollForFourDCompletionClick(mainWindow: mainWindow, popup: popup,
+                                    textView: textView, table: table, targetRow: targetRow,
+                                    state: state)
+    }
+
+    private static func pollForFourDCompletionClick(
+        mainWindow: NSWindow,
+        popup: NSWindow,
+        textView: TextView,
+        table: NSTableView,
+        targetRow: Int,
+        state: FourDCompletionTestState,
+        tick: Int = 0
+    ) {
+        if table.selectedRow == targetRow {
+            // Der erste Treffer für „AL“ ist die generierte 4D-Anweisung
+            // `ALERT`. Ein Doppelklick muss sie über den normalen CESE-Pfad
+            // übernehmen — das beweist neben Hit-Testing auch die Aktivierung.
+            guard postCompletionMouseClick(in: table, row: 0, window: popup, clickCount: 2) else {
+                finishFourDCompletionTest(state, ok: false,
+                                          message: "konnte Doppelklick in Vorschlagsliste nicht bauen")
+            }
+            pollForFourDCompletionApply(mainWindow: mainWindow, textView: textView, state: state)
+            return
+        }
+        if tick >= 40 {
+            state.failures.append("gezielter Klick änderte die Vorschlagsauswahl nicht (Zeile blieb \(table.selectedRow))")
+            finishFourDCompletionTest(state, ok: false,
+                                      message: state.failures.joined(separator: "; "))
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            pollForFourDCompletionClick(mainWindow: mainWindow, popup: popup,
+                                        textView: textView, table: table, targetRow: targetRow,
+                                        state: state, tick: tick + 1)
+        }
+    }
+
+    private static func pollForFourDCompletionApply(
+        mainWindow: NSWindow,
+        textView: TextView,
+        state: FourDCompletionTestState,
+        tick: Int = 0
+    ) {
+        if textView.string == state.initialText + "ALERT" {
+            finishFourDCompletionTest(state, ok: state.failures.isEmpty,
+                                      message: state.failures.isEmpty
+                                        ? "Auto-Popup, ⌃Leertaste, ↓ und gezielter Doppelklick funktionieren"
+                                        : state.failures.joined(separator: "; "))
+        }
+        if tick >= 40 {
+            state.failures.append("Doppelklick übernahm den ersten Vorschlag nicht (Text=\"\(textView.string)\")")
+            finishFourDCompletionTest(state, ok: false,
+                                      message: state.failures.joined(separator: "; "))
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            pollForFourDCompletionApply(mainWindow: mainWindow, textView: textView,
+                                        state: state, tick: tick + 1)
+        }
+    }
+
+    /// Das CESE-Fenster ist intern; der Test beobachtet es deshalb über die
+    /// öffentliche AppKit-Form: sichtbares Child-Window mit `NSTableView`.
+    /// So bleibt der Wächter beim echten Fenster-/Hit-Test-Pfad statt an einer
+    /// nur für Tests geöffneten Upstream-API hängen.
+    private static func fourDCompletionWindow(attachedTo mainWindow: NSWindow) -> NSWindow? {
+        (mainWindow.childWindows ?? []).first { candidate in
+            candidate.isVisible && completionTable(in: candidate) != nil
+        }
+    }
+
+    private static func completionTable(in window: NSWindow) -> NSTableView? {
+        guard let root = window.contentView else { return nil }
+        return completionTable(in: root)
+    }
+
+    private static func completionTable(in view: NSView) -> NSTableView? {
+        if let table = view as? NSTableView { return table }
+        for child in view.subviews {
+            if let table = completionTable(in: child) { return table }
+        }
+        return nil
+    }
+
+    /// Der SwiftUI-Remount kann auslaufende Editor-Views kurz im View-Baum
+    /// lassen. Für einen Eingabetest zählt deshalb nur die editierbare View
+    /// des aktuellen Hauptfensters mit dem geladenen Fixture-Text.
+    private static func completionEditorTextView(
+        in view: NSView,
+        window: NSWindow,
+        expectedText: String
+    ) -> TextView? {
+        if let textView = view as? TextView,
+           textView.window === window,
+           textView.isEditable,
+           textView.string == expectedText,
+           textView.frame.height > 50 {
+            return textView
+        }
+        for child in view.subviews {
+            if let found = completionEditorTextView(in: child, window: window,
+                                                     expectedText: expectedText) {
+                return found
+            }
+        }
+        return nil
+    }
+
+    /// Erzeugt Down und Up mit derselben Fenster-Koordinate. Die Ereignisse
+    /// gehen durch AppKit-Hit-Testing; ein direkter `tableView`-Methodenaufruf
+    /// wäre hier wertlos, weil er den gemeldeten Fensterfehler umgehen würde.
+    private static func postCompletionMouseClick(
+        in table: NSTableView,
+        row: Int,
+        window: NSWindow,
+        clickCount: Int
+    ) -> Bool {
+        guard row >= 0, row < table.numberOfRows else { return false }
+        table.layoutSubtreeIfNeeded()
+        let rowRect = table.rect(ofRow: row)
+        guard !rowRect.isEmpty else { return false }
+        let pointInTable = NSPoint(x: rowRect.midX, y: rowRect.midY)
+        let pointInWindow = table.convert(pointInTable, to: nil)
+        let timestamp = ProcessInfo.processInfo.systemUptime
+        guard let down = NSEvent.mouseEvent(
+            with: .leftMouseDown, location: pointInWindow, modifierFlags: [],
+            timestamp: timestamp, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 1, clickCount: clickCount, pressure: 1
+        ), let up = NSEvent.mouseEvent(
+            with: .leftMouseUp, location: pointInWindow, modifierFlags: [],
+            timestamp: timestamp + 0.01, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 1, clickCount: clickCount, pressure: 0
+        ) else {
+            return false
+        }
+        NSApp.postEvent(down, atStart: false)
+        NSApp.postEvent(up, atStart: false)
+        return true
+    }
+
+    /// Fügt einen Buchstaben über die öffentliche Benutzer-Eingabe der
+    /// produktiven TextView ein. Ein nicht aktiver Selbsttest-Prozess besitzt
+    /// keinen System-Input-Context für `keyDown`; der explizite Range hält den
+    /// gleichen CESE-Mutations-/Delegate-Pfad aber ohne dessen leere Cursor-
+    /// Liste zuverlässig fest.
+    private static func insertCompletionCharacter(
+        _ character: String,
+        into textView: TextView
+    ) -> Bool {
+        guard !character.isEmpty else { return false }
+        let insertionPoint = (textView.string as NSString).length
+        textView.insertText(character as NSString,
+                            replacementRange: NSRange(location: insertionPoint, length: 0))
+        return true
+    }
+
+    private static func finishFourDCompletionTest(
+        _ state: FourDCompletionTestState,
+        ok: Bool,
+        message: String
+    ) -> Never {
+        try? FileManager.default.removeItem(at: state.fileURL)
+        finish(ok, message)
     }
 
     // MARK: - 4D-Highlighting (Etappe 4 Wunschpaket 2026-07)

@@ -173,7 +173,7 @@ menu, 4D can also be enabled manually for other files.
 real XML — they open with JSON or XML rendering.
 
 **Completion:** In `.4dm` methods, Fastra suggests commands (with their
-syntax signature) and constants as you type — Esc or ⌃Space also opens
+syntax signature) and constants after two typed characters — Esc or ⌃Space also opens
 the list manually, ↑/↓ select, Return/Tab accepts, Esc closes. The
 names, signatures, and command numbers come from the official 4D
 documentation (CC BY 4.0, © 4D SAS — see the third-party notices).

@@ -225,3 +225,27 @@ unterschiedlich langen Vorzeilen einschließlich Emoji-Surrogatpaar, postet
 einen Sprung exakt wie die GUI und liest `TextView.selectedRange()` zurück.
 Der selektierte Text muss exakt der Treffer sein; damit ist auch der Offset-Fix
 (Zeile/Spalte statt absoluter Range) Ende-zu-Ende belegt.
+
+### F.11 Abgebrochene Vervollständigung darf keinen unsichtbaren Zustand behalten (2026-07-19)
+
+`CodeEditSourceEditor` setzt in `SuggestionViewModel.showCompletions` vor der
+asynchronen Delegate-Anfrage `activeTextView`. Fastras 4D-Delegate antwortet
+beim ersten Buchstaben absichtlich mit `nil`, weil die automatische
+Vervollständigung erst ab zwei Zeichen erscheinen soll. Upstream kehrte dann
+sofort zurück, ohne den bereits gesetzten Zustand zu schließen. Die zweite
+Anfrage hielt `activeTextView` deshalb für aktiv und aktualisierte lediglich
+eine nicht sichtbare Liste.
+
+**Workaround (Patch 4c1 in `build.sh`):** Im `nil`-Zweig
+`self.willClose()` aufrufen und erst dann zurückkehren. Das ist enger als ein
+neuer Trigger oder ein eigener Popup-Controller: Es räumt nur die unvollständige
+Upstream-Anfrage auf und lässt die bestehende CESE-Bedienung unverändert.
+
+**Regressionstest:** `./selftest.sh completion4d` erzeugt eine echte
+`.4dm`-Fixture, lädt sie in den laufenden Editor und fügt `AL` über die
+öffentliche TextView-Eingabe ein. Er beobachtet danach das echte Child-Window
+mit seiner `NSTableView`. Anschließend öffnet er die Liste über ⌃Leertaste und
+prüft ↓, gezielten Klick sowie Doppelklick bis zur Einfügung von `ALERT`.
+Der kurze Wait vor ↓ ist kein Produkt-Delay: CESE befüllt die Tabelle über
+einen asynchronen Publisher; ohne abgeschlossenen Reload konnte eine korrekte
+Auswahl direkt wieder auf die Startzeile zurückspringen.

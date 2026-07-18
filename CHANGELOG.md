@@ -9,6 +9,22 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.38.2] — 2026-07-19
+
+### Behoben
+
+- **4D-Vervollständigung beim Tippen.** Nach dem ersten Zeichen konnte der
+  Editor eine absichtlich noch leere 4D-Anfrage intern als aktiv behalten.
+  Der zweite Buchstabe aktualisierte dadurch nur eine unsichtbare Liste.
+  Eine verworfene Anfrage wird jetzt sauber geschlossen; ab zwei Zeichen
+  erscheint die Vorschlagsliste wieder wie dokumentiert.
+
+### Intern
+
+- Neuer Fenster-Selbsttest `completion4d`: Lädt eine echte `.4dm`-Datei,
+  prüft das Auto-Popup nach `AL` sowie ⌃Leertaste, ↓, gezielten Klick und
+  Doppelklick in der echten CESE-Vorschlagstabelle.
+
 ## [v1.38.1] — 2026-07-18
 
 ### Behoben
