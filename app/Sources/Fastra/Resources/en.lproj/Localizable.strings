@@ -963,3 +963,7 @@
 
 // Live-Trefferanzeige im Editor (Etappe 2 Wunschpaket 2026-07b)
 "Im Editor sind nur diese ersten %ld Treffer markiert." = "Only these first %ld matches are highlighted in the editor.";
+
+// Hilfe (Etappe 4 Wunschpaket 2026-07b)
+"Fastra-Hilfe" = "Fastra Help";
+"Die Hilfe-Datei fehlt im App-Paket. Bitte Fastra neu installieren." = "The help file is missing from the app package. Please reinstall Fastra.";

@@ -164,6 +164,7 @@ enum SelfTest {
         case "gutterdim": waitForMainWindow { runGutterDimmingTest() }
         case "sidebarheader": waitForMainWindow { runSidebarHeaderTest() }
         case "searchmark": waitForMainWindow { openSearchThen { runSearchMarkTest() } }
+        case "help": waitForMainWindow { runHelpTest() }
         case "filemodes":
             // Fensterlos — echte Dateien durch den Workspace-Ladepfad routen:
             // Null-Bytes → Hex, große Textdatei → abschnittsweise.
@@ -255,7 +256,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, sidebarheader, searchmark, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, sidebarheader, searchmark, help, contrast, windows)")
         }
     }
 
@@ -3160,6 +3161,68 @@ enum SelfTest {
     /// Workspace: Willkommens-Bedingung, Projekt öffnen (Dateibaum-Wurzel,
     /// Zuletzt-benutzt-Liste), Datei aus dem Baum laden, automatische
     /// Repo-Erkennung ohne Duplikat und Projekt-Datei-Set samt Ausschluss.
+    // MARK: - Selbsttest help (Etappe 4 Wunschpaket 2026-07b)
+
+    /// End-to-End-Prüfung der Hilfe:
+    /// (a) Beide Sprachdateien laden aus dem GEPACKTEN Bundle.
+    /// (b) Das Hilfe-Fenster rendert echte Überschriften (DOM-Beobachtung
+    ///     in der WKWebView, analog zum `markdown`-Selbsttest).
+    /// (c) „Hilfe öffnen bei Anker X“ scrollt real zum Abschnitt.
+    private static func runHelpTest() {
+        testLabel = "help"
+        guard HelpContent.markdown(languageCode: "de") != nil,
+              HelpContent.markdown(languageCode: "en") != nil else {
+            finish(false, "(a) Hilfe-Markdown (de/en) fehlt im gepackten Bundle")
+        }
+        MainActor.assumeIsolated { HelpWindow.show() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            pollHelpRendered(tick: 0)
+        }
+    }
+
+    private static func pollHelpRendered(tick: Int) {
+        guard let webView = MainActor.assumeIsolated({ HelpWindow.currentWebView }) else {
+            finish(false, "(b) Hilfe-Fenster ohne WebView")
+        }
+        webView.evaluateJavaScript("document.querySelectorAll('h2').length") { value, _ in
+            let count = value as? Int ?? 0
+            if count >= HelpSection.allCases.count {
+                // (c) Anker-Sprung: Abschnitt weiter unten ansteuern.
+                MainActor.assumeIsolated {
+                    HelpWindow.show(anchor: HelpSection.encodings.anchor())
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    pollHelpAnchorScrolled(webView: webView, tick: 0)
+                }
+                return
+            }
+            if tick >= 40 {
+                finish(false, "(b) nur \(count) gerenderte h2-Überschriften nach 10 s "
+                    + "(erwartet ≥ \(HelpSection.allCases.count))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                pollHelpRendered(tick: tick + 1)
+            }
+        }
+    }
+
+    private static func pollHelpAnchorScrolled(webView: WKWebView, tick: Int) {
+        webView.evaluateJavaScript("window.scrollY") { value, _ in
+            let y = (value as? Double) ?? Double(value as? Int ?? 0)
+            if y > 50 {
+                finish(true, "Hilfe aus dem Bundle gerendert "
+                    + "(\(HelpSection.allCases.count)+ Abschnitte), "
+                    + "Anker-Sprung scrollt real (y=\(Int(y)))")
+            }
+            if tick >= 20 {
+                finish(false, "(c) Anker-Sprung scrollt nicht (scrollY=\(y))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                pollHelpAnchorScrolled(webView: webView, tick: tick + 1)
+            }
+        }
+    }
+
     // MARK: - Selbsttest searchmark (Etappe 2 Wunschpaket 2026-07b)
 
     /// Zählt die Emphasis-Layer der Live-Trefferanzeige in der Editor-

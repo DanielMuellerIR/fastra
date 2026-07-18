@@ -95,6 +95,14 @@ direkt ändern und keine generierten Checkout-Diffs committen.
   Quellstrings und dynamische Texte werden vom Lokalisierungs-Audit erfasst.
 - Änderungen an CodeEdit-Patches brauchen einen Regressionstest, der das reale
   fehlerhafte Verhalten prüft, nicht bloß die Patch-Zeile.
+- Hilfe-Pflege: Bei nutzersichtbaren Änderungen die mitgelieferte Hilfe
+  (`app/Sources/Fastra/Resources/Help/hilfe.de.md` + `hilfe.en.md`, beide
+  Sprachen!) prüfen und bei Bedarf aktualisieren, danach den Marker
+  `app/help-reviewed-commit` auf den geprüften Commit fortschreiben.
+  `app/help-audit.sh` listet offene produktrelevante Commits; die Bewertung,
+  was davon in die Hilfe gehört, ist bewusst Aufgabe des Agenten. Im
+  Release-/Bump-Lauf (`./help-audit.sh --release`) ist ein veralteter Marker
+  ein harter Fehler.
 
 ## Bauen und testen
 

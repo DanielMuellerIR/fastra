@@ -9,6 +9,39 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.30.0] — 2026-07-18
+
+Etappe 4 des Wunschpakets 2026-07b: Hilfe
+(`docs/wunschpaket-2026-07b/goal-vorschlag.md`).
+
+### Hinzugefügt
+
+- **Fastra-Hilfe (⌘?):** Neues Hilfe-Menü mit mitgelieferter Hilfe in
+  Deutsch und Englisch (Wahl nach App-Sprache). Die Hilfe erklärt kompakt
+  alles Nicht-Selbsterklärende: Suchen & Ersetzen (Wildcards `*`/`**`,
+  RegEx, Capture-Pillen, Suchbereiche, Vorschau→Apply), alle 31
+  Text-Transformationen plus Formatieren/Prüfen/Minifizieren, die
+  Ansichten Text/Vorschau/Hex, Markdown-Vorschau, Sprachwahl,
+  4D-Unterstützung, XPath-Leiste, Projekt-Seitenleiste, Git sowie
+  Encoding/Zeilenenden. Bewusst ohne Bilder (Ausbau-Idee in `ROADMAP.md`),
+  kein Apple-Help-Buch (Indexer-/Caching-Ärger) — gerendert read-only über
+  den vorhandenen lokalen Markdown-Renderer.
+- **Eigenes Hilfe-Fenster statt Tab:** Die Hilfe bleibt neben dem Dokument
+  lesbar, nimmt nicht an der Tab-/Projektverwaltung teil und ist über eine
+  Anker-API (`HelpWindow.show(anchor:)`) abschnittsgenau ansteuerbar —
+  vorbereitet für die Erst-Nutzungs-Hinweise aus Etappe 5.
+- **Pflege-Mechanismus `app/help-audit.sh`:** Commit-basierter Wächter nach
+  dem Muster des Lokalisierungs-Audits. Eine Markerdatei
+  (`app/help-reviewed-commit`) hält den zuletzt hilfegeprüften Commit; das
+  Skript listet produktrelevante Commits seither. Im Normallauf ein
+  Hinweis, im Release-Lauf (`--release`, in `release.sh` verdrahtet) ein
+  harter Fehler. Die inhaltliche Bewertung bleibt bewusst Agenten-Arbeit
+  (Regel in `AGENTS.md` ergänzt).
+- Selbsttest `help`: Hilfe lädt aus dem gepackten Bundle (beide Sprachen),
+  rendert echte Überschriften (DOM-Beobachtung) und der Anker-Sprung
+  scrollt real. Unit-Tests für Anker-Slugs, Abschnitts-Anti-Drift und
+  `help-audit.sh` gegen temporäre Repo-Fixtures.
+
 ## [v1.29.0] — 2026-07-18
 
 Etappe 3 des Wunschpakets 2026-07b: Sprachmenü & 4D wählbar

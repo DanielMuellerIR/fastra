@@ -34,6 +34,11 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Kleine offene Ideen
 
+- **Hilfe später hübscher:** Die mitgelieferte Hilfe (Etappe 4 Wunschpaket
+  2026-07b) ist bewusst reiner Text ohne Bilder. Screenshots/Illustrationen
+  der zentralen Abläufe (Suchmaske, Vorschau→Apply, Git-Seitenleiste) wären
+  ein sinnvoller späterer Ausbau.
+
 - **Datei-Drag vom Dokument-Tab:** Mit dem titellosen Fensterchrome entfiel
   das Ziehen der Datei aus der Titelzeile (Proxy-Icon) ersatzlos; Befund in
   `docs/wunschpaket-2026-07b/fenstertitel-befund.md`. Möglicher Ersatz wäre

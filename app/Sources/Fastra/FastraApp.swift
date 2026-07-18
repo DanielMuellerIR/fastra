@@ -91,6 +91,14 @@ struct FastraApp: App {
                 Button("Über Fastra") { AboutWindow.show() }
             }
 
+            // Hilfe-Menü (Etappe 4 Wunschpaket 2026-07b): ersetzt den
+            // Standard-Eintrag durch die mitgelieferte Markdown-Hilfe im
+            // eigenen Fenster. ⌘? ist der macOS-Standard-Shortcut.
+            CommandGroup(replacing: .help) {
+                Button("Fastra-Hilfe") { HelpWindow.show() }
+                    .keyboardShortcut("?", modifiers: .command)
+            }
+
             // Smart-Paste (Alleinstellung, ROADMAP H): formatierter
             // Clipboard-Inhalt wird via md-clip als Markdown eingefügt.
             // Synchron-blockierende Konvertierung → Hintergrund-Queue;

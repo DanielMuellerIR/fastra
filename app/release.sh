@@ -60,6 +60,11 @@ for arg in "$@"; do
   esac
 done
 
+# Hilfe-Pflege-Gate (Etappe 4 Wunschpaket 2026-07b): Ein Release mit
+# ungeprüften produktrelevanten Commits seit dem letzten Hilfe-Check ist ein
+# harter Fehler — erst Hilfe prüfen/aktualisieren, Marker fortschreiben.
+./help-audit.sh --release
+
 # Bei echter Developer-ID-Signierung vor dem langen Build sicherstellen, dass
 # das lokale Keychain-Profil auf genau diesem Mac verwendbar ist.
 if [ -n "${FASTRA_SIGN_IDENTITY:-}" ]; then
