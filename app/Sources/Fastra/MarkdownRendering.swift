@@ -13,21 +13,47 @@ struct MarkdownRenderedFragment {
 enum MarkdownMath {
     struct Extraction {
         let markdown: String
+
+        /// Bildet die Zeilen von `markdown` auf Zeilen des Originaltextes ab:
+        /// Index = 0-basierte Zeile in `markdown`, Wert = 1-basierte Zeile im
+        /// Original. Ein leeres Array bedeutet „nichts hat sich verschoben",
+        /// dann gilt die Identität.
+        ///
+        /// Nötig, weil ein mehrzeiliger `$$`-Block hier zu einem einzeiligen
+        /// Token zusammenschrumpft. Ohne Umrechnung würde ein Klick in der
+        /// Vorschau unterhalb eines solchen Blocks im Editor zu weit oben
+        /// landen. Code-Fences schrumpfen zwar zwischenzeitlich ebenfalls,
+        /// werden am Ende von `extract` aber wieder eingesetzt und sind für
+        /// die Zeilenzählung deshalb unauffällig.
+        let sourceLines: [Int]
+
         private let replacements: [(token: String, html: String, block: Bool)]
 
         init(markdown: String,
-             replacements: [(token: String, html: String, block: Bool)]) {
+             replacements: [(token: String, html: String, block: Bool)],
+             sourceLines: [Int] = []) {
             self.markdown = markdown
             self.replacements = replacements
+            self.sourceLines = sourceLines
+        }
+
+        /// Rechnet eine 1-basierte Zeile aus dem vorverarbeiteten Text auf die
+        /// zugehörige 1-basierte Zeile im Originaldokument um.
+        func originalLine(for line: Int) -> Int {
+            guard line >= 1 else { return 1 }
+            guard !sourceLines.isEmpty else { return line }
+            guard line <= sourceLines.count else { return sourceLines.last ?? line }
+            return sourceLines[line - 1]
         }
 
         func insertingHTML(into renderedHTML: String) -> String {
             replacements.reduce(renderedHTML) { html, replacement in
                 var result = html
                 if replacement.block {
-                    result = result.replacingOccurrences(
-                        of: "<p>\(replacement.token)</p>",
-                        with: replacement.html
+                    result = Extraction.replacingLoneParagraph(
+                        token: replacement.token,
+                        with: replacement.html,
+                        in: result
                     )
                 }
                 return result.replacingOccurrences(
@@ -35,6 +61,29 @@ enum MarkdownMath {
                     with: replacement.html
                 )
             }
+        }
+
+        /// Ersetzt einen Absatz, der NUR aus dem Token besteht, komplett durch
+        /// das Block-HTML — eine Formel als eigener Block soll nicht in einem
+        /// überflüssigen `<p>` stecken.
+        ///
+        /// Der Öffnungs-Tag wird mit beliebigen Attributen gematcht, weil der
+        /// Renderer inzwischen die Quellzeile daran hängt
+        /// (`<p data-srcline="12">`). Ein wörtliches `<p>` würde seit dieser
+        /// Ergänzung nie mehr greifen und Block-Formeln still auf den
+        /// Inline-Pfad fallen lassen.
+        private static func replacingLoneParagraph(token: String,
+                                                   with html: String,
+                                                   in source: String) -> String {
+            let pattern = "<p[^>]*>\(NSRegularExpression.escapedPattern(for: token))</p>"
+            guard let regex = try? NSRegularExpression(pattern: pattern) else {
+                return source
+            }
+            return regex.stringByReplacingMatches(
+                in: source,
+                range: NSRange(source.startIndex..., in: source),
+                withTemplate: NSRegularExpression.escapedTemplate(for: html)
+            )
         }
     }
 
@@ -70,29 +119,83 @@ enum MarkdownMath {
         )
 
         var replacements: [(token: String, html: String, block: Bool)] = []
+        // Rohtext je Math-Token, um später zählen zu können, wie viele Zeilen
+        // die Ersetzung im Original belegt hat.
+        var consumed: [(token: String, rawSource: String)] = []
         working = replaceMath(
             using: blockMath,
             in: working,
             block: true,
-            storage: &replacements
+            storage: &replacements,
+            consumed: &consumed
         )
         working = replaceMath(
             using: inlineDoubleMath,
             in: working,
             block: false,
-            storage: &replacements
+            storage: &replacements,
+            consumed: &consumed
         )
         working = replaceMath(
             using: inlineMath,
             in: working,
             block: false,
-            storage: &replacements
+            storage: &replacements,
+            consumed: &consumed
         )
 
         for item in protected {
             working = working.replacingOccurrences(of: item.token, with: item.source)
         }
-        return Extraction(markdown: working, replacements: replacements)
+        return Extraction(
+            markdown: working,
+            replacements: replacements,
+            sourceLines: sourceLineMap(for: working,
+                                       consumed: consumed,
+                                       protected: protected)
+        )
+    }
+
+    /// Baut die Zeilen-Umrechnungstabelle für `Extraction.sourceLines`.
+    ///
+    /// Grundgedanke: Der vorbereitete Text ist bis auf die Math-Token
+    /// zeilengleich mit dem Original. Steht in einer Zeile ein Token, das im
+    /// Original mehrere Zeilen belegte, verschieben sich alle folgenden Zeilen
+    /// um genau diese Differenz.
+    private static func sourceLineMap(
+        for working: String,
+        consumed: [(token: String, rawSource: String)],
+        protected: [(token: String, source: String)]
+    ) -> [Int] {
+        // Zusätzliche Zeilen je Token; einzeilige Ersetzungen sind uninteressant.
+        var extraLines: [String: Int] = [:]
+        for item in consumed {
+            var raw = item.rawSource
+            // Ein `$$`-Block kann geschützte Code-Token enthalten. Für die
+            // Zeilenzählung muss dort der echte Quelltext stehen.
+            if raw.contains("FASTRACODE") {
+                for entry in protected {
+                    raw = raw.replacingOccurrences(of: entry.token, with: entry.source)
+                }
+            }
+            let additional = raw.components(separatedBy: "\n").count - 1
+            if additional > 0 { extraLines[item.token] = additional }
+        }
+        // Ohne mehrzeilige Ersetzung ist die Abbildung die Identität. Das
+        // leere Array spart in diesem Normalfall Speicher und Rechenzeit.
+        guard !extraLines.isEmpty else { return [] }
+
+        var map: [Int] = []
+        var offset = 0
+        for line in working.components(separatedBy: "\n") {
+            map.append(map.count + 1 + offset)
+            // Schnellprüfung: nur Zeilen mit Math-Token können etwas verschieben.
+            guard line.contains("FASTRAMATH") else { continue }
+            for (token, additional) in extraLines where line.contains(token) {
+                offset += additional
+            }
+        }
+        return map
     }
 
     private static func stashMatches(of regex: NSRegularExpression,
@@ -117,7 +220,8 @@ enum MarkdownMath {
         using regex: NSRegularExpression,
         in source: String,
         block: Bool,
-        storage: inout [(token: String, html: String, block: Bool)]
+        storage: inout [(token: String, html: String, block: Bool)],
+        consumed: inout [(token: String, rawSource: String)]
     ) -> String {
         let mutable = NSMutableString(string: source)
         let matches = regex.matches(
@@ -133,6 +237,9 @@ enum MarkdownMath {
             let cssClass = block ? "math-block" : "math-inline"
             let html = "<\(kind) class=\"\(cssClass)\" data-tex=\"\(htmlAttributeEscaped(tex))\"></\(kind)>"
             storage.append((token, html, block))
+            // Ganzen ersetzten Bereich merken (nicht nur die TeX-Gruppe): nur
+            // daraus lässt sich die im Original belegte Zeilenzahl bestimmen.
+            consumed.append((token, (source as NSString).substring(with: match.range)))
             mutable.replaceCharacters(in: match.range, with: token)
         }
         return mutable as String

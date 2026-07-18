@@ -129,6 +129,12 @@ lokale Bilder, TeX-Formeln in `$…$` oder `$$…$$` und Diagramme aus
 `mermaid`-Code-Blöcken. Markierter Vorschau-Text lässt sich als Klartext, HTML
 oder Rich Text kopieren, sofern das Zielprogramm es unterstützt.
 
+Ein Klick in den Vorschautext scrollt den Editor an die zugehörige Quellzeile
+und setzt den Cursor dorthin — auch innerhalb eines langen Absatzes, wo die
+Zeile aus den Umbrüchen vor der Klickstelle bestimmt wird. Die Spalte ist eine
+Näherung, weil im gerenderten Text die Markdown-Syntax fehlt. Links öffnen
+weiterhin den Browser, und eine gezogene Textauswahl löst keinen Sprung aus.
+
 Die Vorschau und ihre Render-Bibliotheken arbeiten ausschließlich lokal.
 Bildpfade werden relativ zur Markdown-Datei aufgelöst; externe Bilder werden
 bewusst nicht nachgeladen. Schon das Öffnen einer Datei erzeugt also keinen

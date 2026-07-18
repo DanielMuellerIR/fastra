@@ -123,6 +123,13 @@ or `$$…$$`, and diagrams from fenced `mermaid` blocks. Selecting and copying
 from the preview preserves plain text, HTML and rich text where the receiving
 app supports it.
 
+Clicking a passage in the preview scrolls the editor to the matching source
+line and places the cursor there — including inside a long paragraph, where the
+line is resolved from the line breaks before the click. The column is an
+approximation, because the rendered text no longer contains the Markdown
+syntax. Links still open in your browser, and dragging out a selection does not
+jump.
+
 The preview and all of its rendering libraries stay local. Image paths are
 resolved relative to the Markdown file; remote images are deliberately not
 loaded, so opening a file does not quietly contact the network. A link opens

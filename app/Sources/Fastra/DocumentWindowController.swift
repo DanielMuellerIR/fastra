@@ -108,12 +108,11 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     }
 
     /// Echte sichtbare Dokumentfenster (Startfenster + ⌘N-Fenster).
-    /// Such- und Markdown-Vorschaufenster besitzen für ihr Routing ebenfalls
-    /// einen Workspace, sind aber keine Dokumentfenster.
+    /// Das Suchfenster besitzt für sein Routing ebenfalls einen Workspace,
+    /// ist aber kein Dokumentfenster.
     private static func isVisibleDocumentWindow(_ window: NSWindow) -> Bool {
         guard window.isVisible else { return false }
-        guard !SearchWindow.isSearchWindow(window),
-              window.frameAutosaveName != MarkdownPreviewWindow.frameAutosaveName else {
+        guard !SearchWindow.isSearchWindow(window) else {
             return false
         }
         if window.identifier?.rawValue == "Fastra.DocumentWindow" { return true }

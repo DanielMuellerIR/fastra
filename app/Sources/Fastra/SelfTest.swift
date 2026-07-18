@@ -149,6 +149,7 @@ enum SelfTest {
         case "leakscenario": waitForMainWindow { runLeakScenario() }
         case "previewrender": waitForMainWindow { runPreviewRenderTest() }
         case "markdown":  waitForMainWindow { runMarkdownRenderTest() }
+        case "markdownjump": waitForMainWindow { runMarkdownJumpTest() }
         case "jump":      waitForMainWindow { runJumpTest() }
         case "ghosttext": waitForMainWindow { runGhostTextTest() }
         case "replaceall": waitForMainWindow { runReplaceAllTest() }
@@ -4160,6 +4161,124 @@ enum SelfTest {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 pollMarkdownDOM(directory: directory, tick: tick + 1)
             }
+        }
+    }
+
+    /// Prüft den Klick-Sprung von der Vorschau in den Editor am echten DOM.
+    ///
+    /// Der interessante Fall ist ein Klick MITTEN in einen Absatz: Der Block
+    /// kennt nur seine erste Zeile, die restlichen löst das Vorschau-JS über
+    /// die Zeilenumbrüche im gerenderten Text auf. Ein String-Test kann das
+    /// nicht abdecken — dafür muss echtes WebKit den Klick verarbeiten.
+    private static func runMarkdownJumpTest() {
+        testLabel = "markdownjump"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Fastra-Sprung-Selbsttest-\(UUID().uuidString)")
+        let file = directory.appendingPathComponent("Sprung.md")
+        // Zeile 3/4/5 bilden EINEN Absatz — genau das, was Blockpositionen
+        // allein nicht auflösen können.
+        let demo = """
+        # Sprungtest
+
+        Zeile A
+        Zeile B
+        Zeile C
+
+        Schlusswort.
+        """
+        do {
+            try FileManager.default.createDirectory(at: directory,
+                                                    withIntermediateDirectories: true)
+            try demo.write(to: file, atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "Testdatei nicht schreibbar: \(error.localizedDescription)")
+        }
+
+        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        ws.loadFile(at: file) { ok in
+            guard ok else { finish(false, "Markdown-Datei konnte nicht geladen werden") }
+            pollMarkdownJump(workspace: ws, directory: directory, tick: 0)
+        }
+    }
+
+    private static func pollMarkdownJump(workspace: Workspace,
+                                         directory: URL,
+                                         tick: Int) {
+        guard tick < 120 else {
+            try? FileManager.default.removeItem(at: directory)
+            finish(false, "Vorschau nach 12 s nicht bereit")
+        }
+        guard let root = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        })?.contentView,
+              let webView = markdownWebView(in: root) else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                pollMarkdownJump(workspace: workspace, directory: directory, tick: tick + 1)
+            }
+            return
+        }
+
+        // Klick auf das Wort „C" in der dritten Absatzzeile. Der Zielpunkt wird
+        // über die Zeichen-Geometrie bestimmt statt geschätzt: Der Absatz darf
+        // beliebig umbrechen, ohne den Test unzuverlässig zu machen.
+        let script = """
+        (() => {
+          const paragraph = Array.from(document.querySelectorAll('p'))
+            .find(node => node.textContent.includes('Zeile C'));
+          if (!paragraph) return { error: 'Absatz nicht gefunden' };
+          const text = paragraph.firstChild;
+          const offset = paragraph.textContent.indexOf('Zeile C') + 6;
+          const range = document.createRange();
+          range.setStart(text, offset);
+          range.setEnd(text, offset + 1);
+          const rect = range.getBoundingClientRect();
+          paragraph.dispatchEvent(new MouseEvent('click', {
+            bubbles: true,
+            clientX: rect.left + rect.width / 2,
+            clientY: rect.top + rect.height / 2
+          }));
+          return { dispatched: true };
+        })()
+        """
+        webView.evaluateJavaScript(script) { result, error in
+            if let error {
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "JavaScript-Fehler: \(error.localizedDescription)")
+            }
+            if let info = result as? [String: Any], info["dispatched"] as? Bool == true {
+                // Der Sprung läuft über Notification und Editor-Reconcile,
+                // beides asynchron — deshalb den Cursor nachlaufend prüfen.
+                pollMarkdownJumpResult(workspace: workspace, directory: directory, tick: 0)
+                return
+            }
+            if tick == 119 {
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "Klick nicht auslösbar: \(String(describing: result))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                pollMarkdownJump(workspace: workspace, directory: directory, tick: tick + 1)
+            }
+        }
+    }
+
+    private static func pollMarkdownJumpResult(workspace: Workspace,
+                                               directory: URL,
+                                               tick: Int) {
+        // „Zeile C" ist die fünfte Zeile der Datei; der Absatz beginnt bei 3.
+        // Bliebe die Auflösung innerhalb des Blocks aus, stünde hier 3.
+        let expected = 5
+        if workspace.cursorLine == expected {
+            try? FileManager.default.removeItem(at: directory)
+            finish(true, "Klick in Absatzzeile 3 setzt den Cursor auf Dateizeile \(expected)")
+        }
+        guard tick < 50 else {
+            try? FileManager.default.removeItem(at: directory)
+            finish(false, "Cursor steht auf Zeile \(workspace.cursorLine), erwartet \(expected)")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollMarkdownJumpResult(workspace: workspace, directory: directory, tick: tick + 1)
         }
     }
 

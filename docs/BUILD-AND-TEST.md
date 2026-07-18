@@ -144,6 +144,12 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   eine TeX-Formel, einen Swift-Code-Block und ein Mermaid-Diagramm. Der Test liest
   unabhängig das fertige WebKit-DOM: Bildbreite, MathML, SVG und Highlight-Spans
   müssen tatsächlich vorhanden sein.
+- **Klick-Sprung aus der Vorschau:** `./selftest.sh markdownjump` klickt im echten
+  WebKit-DOM mitten in einen dreizeiligen Absatz und erwartet den Cursor auf der
+  passenden Dateizeile. Genau dieser Fall lässt sich nicht als String-Test
+  abbilden: Der Block kennt nur seine erste Zeile, die restlichen löst erst das
+  Vorschau-JS über die Zeilenumbrüche vor der Klickstelle auf. Steht der Cursor
+  am Absatzanfang statt in der geklickten Zeile, ist diese Auflösung defekt.
 - **Nicht getestet:** visuelles Rendering von Diff/Tokens/Pillen und
   OSS-Framework-Interna von CodeEditSourceEditor. Kritische
   App-weite Bridges werden dagegen über In-App-Selbsttests abgesichert.

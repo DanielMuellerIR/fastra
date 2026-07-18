@@ -28,10 +28,12 @@ struct MarkdownRichTextTests {
             darkMode: true
         )
 
-        #expect(light.contains("<h1>Titel</h1>"))
+        // Blocktags tragen inzwischen die Quellzeile (`data-srcline`), deshalb
+        // wird der Öffnungs-Tag ohne Attributliste geprüft.
+        #expect(light.contains(">Titel</h1>"))
         #expect(light.contains("<strong>Fettung</strong>"))
         #expect(light.contains("<del>Streichung</del>"))
-        #expect(light.contains("<table>"))
+        #expect(light.contains("<table"))
         #expect(light.contains("#FFFFFF"))
         #expect(dark.contains("#171717"))
     }

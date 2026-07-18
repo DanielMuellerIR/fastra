@@ -1,261 +1,33 @@
 // MarkdownPreview.swift
 //
-// Read-only Markdown-Vorschau in einem eigenen Fenster (Roadmap H, v0.8).
-//
-// Zwei Typen in dieser Datei:
-//   • MarkdownPreviewController  — hält das NSWindow am Leben, zeigt/versteckt es,
-//                                  hält den Fenstertitel aktuell.
-//   • MarkdownPreviewView        — die SwiftUI-Inhaltsansicht darin.
+// Read-only Markdown-Vorschau, eingebettet rechts neben dem Editor
+// (siehe `showsIntegratedMarkdownPreview` in EditorView.swift).
 //
 // Design-Entscheidungen:
-//   • Normales NSWindow (kein NSPanel). Begründung identisch zu
-//     SearchPanelController: ein schwebendes Panel bleibt beim App-Wechsel
-//     stets vorn — das nervt. Ein normales Fenster verschwindet sauber.
-//   • Schließen = ausblenden (WindowDelegate gibt `false` zurück).
-//     Das Fenster bleibt im Speicher und öffnet beim nächsten Aufruf sofort,
-//     ohne SwiftUI-View-Tree neu aufzubauen.
-//   • Frame-Autosave unter „fastraMarkdownPreviewFrame" — merkt Position
-//     und Größe über App-Neustarts hinweg.
 //   • Live-Aktualisierung über @ObservedObject Workspace: der Inhalt des
 //     aktiven Tabs ist @Published, jede Änderung aktualisiert die Vorschau
 //     automatisch ohne eigene Subscription in der View.
-//   • Fenstertitel: der Controller beobachtet den Workspace über Combine
-//     und schreibt bei Tab-Wechsel/Umbenennungen `window.title` direkt.
-//     (`.navigationTitle` würde nur innerhalb eines NavigationStack wirken;
-//     hier haben wir ein nacktes NSHostingController ohne NavigationStack.)
+//   • Ein einzelnes lokales WebKit-Dokument statt vieler SwiftUI-Textblöcke,
+//     damit Auswahl über Absätze hinweg funktioniert und ⌘C echtes
+//     Rich-Text liefert.
+//   • Klick in den Text springt im Editor an die zugehörige Quellzeile.
+//     Die dafür nötigen Zeilenmarken entstehen beim Rendern
+//     (siehe `MarkdownSourceMarkers`).
+//
+// Historie: Bis v1.25 gab es zusätzlich ein separates Vorschau-FENSTER.
+// Es war zuletzt ohne Aufrufer (kein Menüeintrag, kein Shortcut) und wurde
+// von der integrierten Vorschau vollständig abgelöst.
 
 import AppKit
-import Combine
 import Darwin
 import SwiftUI
 import WebKit
 import cmark_gfm
 import cmark_gfm_extensions
 
-// MARK: - Konstante für den Autosave-Namen
-
-/// Bezeichner für NSWindow.setFrameAutosaveName — muss in der App eindeutig sein.
-/// Analogon zu `SearchWindow.frameAutosaveName` in AppDelegate.swift.
-enum MarkdownPreviewWindow {
-    static let frameAutosaveName = "fastraMarkdownPreviewFrame"
-}
-
-// MARK: - Controller
-
-/// Verwaltet das Markdown-Vorschau-Fenster.
-///
-/// Einstiegspunkte für AppDelegate / Menü-Handler:
-/// ```swift
-/// markdownPreviewController.show(for: workspace)
-/// markdownPreviewController.hide()
-/// markdownPreviewController.toggle(for: workspace)
-/// ```
-///
-/// Hält das Fenster als starke Referenz (`window`), so dass es nach dem
-/// ersten Erzeugen nicht freigegeben wird. Der Workspace wird schwach
-/// gehalten, damit der Controller keinen Retain-Cycle erzeugt.
-@MainActor
-final class MarkdownPreviewController {
-
-    // Schwache Referenz: der Workspace gehört der App-Szene, nicht uns.
-    private weak var workspace: Workspace?
-
-    // Das Fenster selbst — nil bis zum ersten `show`-Aufruf.
-    private var window: NSWindow?
-
-    // Delegate muss stark gehalten werden — NSWindow.delegate ist `weak`.
-    private var windowDelegate: MarkdownPreviewWindowDelegate?
-
-    // Combine-Subscription für den Fenstertitel.
-    // AnyCancellable hält die Subscription am Leben; wird in deinit
-    // automatisch freigegeben.
-    private var titleSubscription: AnyCancellable?
-
-    // Mindest- und Standardgrößen.
-    private let defaultWidth:  CGFloat = 640
-    private let defaultHeight: CGFloat = 560
-    private let minWidth:      CGFloat = 400
-    private let minHeight:     CGFloat = 300
-
-    // MARK: Öffentliche API
-
-    /// Fenster anzeigen (beim ersten Aufruf erzeugen).
-    /// Hat ein Workspace-Wechsel stattgefunden, wird der neue Workspace
-    /// als Kontext verwendet — das Fenster aktualisiert sich automatisch,
-    /// da `MarkdownPreviewView` den Workspace via @ObservedObject beobachtet.
-    func show(for workspace: Workspace) {
-        let workspaceChanged = self.workspace !== workspace
-        self.workspace = workspace
-        if window == nil {
-            createWindow(workspace: workspace)
-        } else if workspaceChanged {
-            installContent(for: workspace)
-        }
-        guard let win = window else { return }
-        ensureOnScreen(win)
-        win.makeKeyAndOrderFront(nil)
-        // `ignoringOtherApps: false` ist höflicher: kein Vordrängen,
-        // wenn der Nutzer gerade in einer anderen App arbeitet.
-        NSApp.activate(ignoringOtherApps: false)
-    }
-
-    /// Fenster ausblenden (nicht schließen — Inhalt bleibt im Speicher).
-    func hide() {
-        window?.orderOut(nil)
-    }
-
-    /// Sichtbarkeit umschalten (zeigen wenn versteckt, verstecken wenn sichtbar).
-    func toggle(for workspace: Workspace) {
-        // Ist die Vorschau für ein ANDERES Dokumentfenster sichtbar, beim
-        // Shortcut nicht bloß ausblenden: zuerst auf den neuen Workspace
-        // umschalten und sichtbar lassen.
-        if let win = window, win.isVisible, self.workspace === workspace {
-            hide()
-        } else {
-            show(for: workspace)
-        }
-    }
-
-    // MARK: Fenster-Erzeugung (privat)
-
-    private func createWindow(workspace: Workspace) {
-        let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0,
-                                width: defaultWidth, height: defaultHeight),
-            // titled       → Titelleiste sichtbar (Dateiname steht darin)
-            // closable     → roter Schließen-Knopf (blendet nur aus, s. Delegate)
-            // miniaturizable → gelber Minimieren-Knopf
-            // resizable    → Nutzer kann das Fenster nach Belieben ziehen
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-
-        // Basis-Titel; wird sofort via Combine-Subscription überschrieben.
-        w.title = "Markdown-Vorschau"
-        w.titlebarAppearsTransparent = false
-        w.isMovableByWindowBackground = false
-        // Fenster bleibt im Speicher wenn geschlossen (wir blenden nur aus).
-        w.isReleasedWhenClosed = false
-
-        // Frame-Autosave: Größe und Position werden zwischen Starts gespeichert.
-        w.setFrameAutosaveName(MarkdownPreviewWindow.frameAutosaveName)
-
-        // SwiftUI-Inhalt einhängen via NSHostingController.
-        // NSHostingController statt NSHostingView, damit AppKit-Sizing und
-        // Accessibility korrekt funktionieren (analog SearchPanelController).
-        w.contentMinSize = NSSize(width: minWidth, height: minHeight)
-        // Kein contentMaxSize — Fenster darf beliebig groß gezogen werden.
-
-        // Schließen über roten Knopf: nur ausblenden, nicht wirklich schließen.
-        let delegate = MarkdownPreviewWindowDelegate { [weak self] in
-            if let workspace = self?.workspace {
-                Workspace.shared = workspace
-            }
-        }
-        self.windowDelegate = delegate
-        w.delegate = delegate
-
-        // Initiale Position: rechts neben dem Hauptfenster, wenn möglich.
-        // Danach übernimmt der Autosave die Positionierung.
-        if w.frame.origin == .zero {
-            if let main = NSApp.mainWindow {
-                let mf = main.frame
-                // Direkt rechts vom Hauptfenster, bündig mit dessen Oberkante.
-                w.setFrameTopLeftPoint(NSPoint(x: mf.maxX + 8, y: mf.maxY))
-            } else {
-                w.center()
-            }
-        }
-
-        self.window = w
-
-        installContent(for: workspace)
-
-    }
-
-    /// Tauscht Inhalt und Titelbeobachtung aus, wenn der Nutzer die globale
-    /// Markdown-Vorschau aus einem anderen Dokumentfenster aufruft.
-    private func installContent(for workspace: Workspace) {
-        guard let window else { return }
-        WorkspaceWindowRegistry.register(workspace, for: window)
-        window.contentViewController = NSHostingController(
-            rootView: MarkdownPreviewView(workspace: workspace)
-                .fastraScalingRoot()
-        )
-
-        // Fenstertitel via Combine aktuell halten.
-        // Wir beobachten sowohl `tabs` (Inhalt/Umbenennung) als auch
-        // `activeTabID` (Tab-Wechsel) — jede der beiden @Published-Properties
-        // löst einen neuen Titelstring aus.
-        // `combineLatest` liefert ein Paar; wir brauchen nur einen der Werte,
-        // deshalb mappen wir auf den berechneten Titel.
-        titleSubscription = workspace.$tabs
-            .combineLatest(workspace.$activeTabID)
-            .map { [weak workspace] _, _ -> String in
-                // Workspace schwach halten, um Retain-Cycle zu vermeiden.
-                guard let ws = workspace,
-                      let tab = ws.activeTab else {
-                    return L10n.string("Markdown-Vorschau")
-                }
-                let lower = tab.title.lowercased()
-                guard lower.hasSuffix(".md") || lower.hasSuffix(".markdown") else {
-                    return L10n.string("Markdown-Vorschau")
-                }
-                return L10n.format("Markdown-Vorschau — %@", tab.title)
-            }
-            // Auf den MainActor wechseln, bevor wir window.title schreiben.
-            .receive(on: DispatchQueue.main)
-            .sink { [weak window] title in
-                window?.title = title
-            }
-    }
-
-    /// Stellt sicher, dass das Fenster auf einem sichtbaren Bildschirm liegt
-    /// und keine degenerierte Größe hat (passiert z.B. nach einem Monitor-
-    /// Wechsel, wenn die gespeicherte Position außerhalb aller Displays liegt).
-    private func ensureOnScreen(_ w: NSWindow) {
-        let visibleFrames = NSScreen.screens.map(\.visibleFrame)
-        let isOnScreen = visibleFrames.contains { $0.intersects(w.frame) }
-        let isDegenerate = w.frame.width < 200 || w.frame.height < 200
-
-        if !isOnScreen || isDegenerate {
-            // Mindestgröße sicherstellen und Fenster auf Hauptbildschirm zentrieren.
-            var f = w.frame
-            f.size.width  = max(minWidth,  f.size.width)
-            f.size.height = max(minHeight, f.size.height)
-            w.setFrame(f, display: false)
-            w.center()
-        }
-    }
-}
-
-// MARK: - Window-Delegate (privat)
-
-/// Abfangen des Schließens: wir blenden das Fenster nur aus (orderOut),
-/// schließen es nicht wirklich. Damit bleibt der SwiftUI-View-Tree im
-/// Speicher und öffnet sich beim nächsten CMD+SHIFT+M sofort ohne
-/// Neuaufbau-Flackern.
-private final class MarkdownPreviewWindowDelegate: NSObject, NSWindowDelegate {
-    private let onBecomeKey: () -> Void
-
-    init(onBecomeKey: @escaping () -> Void) {
-        self.onBecomeKey = onBecomeKey
-    }
-
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        sender.orderOut(nil)
-        return false   // false = AppKit schließt das Fenster NICHT
-    }
-
-    func windowDidBecomeKey(_ notification: Notification) {
-        onBecomeKey()
-    }
-}
-
 // MARK: - SwiftUI-Ansicht
 
-/// Inhaltsansicht des Markdown-Vorschau-Fensters.
+/// Inhaltsansicht der Markdown-Vorschau neben dem Editor.
 ///
 /// Beobachtet den `Workspace` als ObservedObject — jede Änderung an
 /// `workspace.tabs` oder `workspace.activeTabID` löst ein automatisches
@@ -267,7 +39,7 @@ private final class MarkdownPreviewWindowDelegate: NSObject, NSWindowDelegate {
 struct MarkdownPreviewView: View {
 
     /// Workspace wird NICHT als @EnvironmentObject erwartet, sondern direkt
-    /// übergeben — der Controller erzeugt die View mit dem konkreten Workspace,
+    /// übergeben — `EditorView` reicht den konkreten Workspace herein,
     /// unabhängig davon ob er im SwiftUI-Environment registriert ist.
     @ObservedObject var workspace: Workspace
     @AppStorage(DocumentZoom.defaultsKey) private var documentZoomLevel = 0
@@ -320,7 +92,8 @@ struct MarkdownPreviewView: View {
                 documentURL: tab.url,
                 fontName: previewFontName,
                 fontSize: previewFontSize,
-                darkMode: colorScheme == .dark
+                darkMode: colorScheme == .dark,
+                workspace: workspace
             )
             .background(Theme.surfaceRaised)
         }
@@ -484,6 +257,11 @@ enum MarkdownRichText {
           for (let index = 0; index < selection.rangeCount; index++) {
             rich.appendChild(selection.getRangeAt(index).cloneContents());
           }
+          // Die Quellzeilen sind Fastra-Interna und haben in fremden
+          // Dokumenten nichts verloren.
+          rich.querySelectorAll('[\(MarkdownSourceMarkers.attribute)]').forEach(
+            element => element.removeAttribute('\(MarkdownSourceMarkers.attribute)')
+          );
           const plain = selection.toString();
           const html = rich.innerHTML;
           event.clipboardData.setData('text/plain', plain);
@@ -495,6 +273,70 @@ enum MarkdownRichText {
             window.webkit.messageHandlers.markdownCopy.postMessage({ plain, html });
           }
           event.preventDefault();
+        });
+
+        // Klick in den Text: zugehörige Stelle im Editor anspringen.
+        //
+        // Der angeklickte Block kennt seine erste Quellzeile. Innerhalb des
+        // Blocks kommt die Feinauflösung daher, dass jeder Zeilenumbruch des
+        // Quelltextes im gerenderten Text als echtes Newline steht — sie
+        // müssen zwischen Blockanfang und Klickstelle nur gezählt werden.
+        function caretFromPoint(x, y) {
+          // WebKit kennt caretRangeFromPoint; die Standardvariante steht als
+          // Rückfallebene daneben.
+          if (document.caretRangeFromPoint) {
+            const range = document.caretRangeFromPoint(x, y);
+            if (range) return { node: range.endContainer, offset: range.endOffset };
+          }
+          if (document.caretPositionFromPoint) {
+            const position = document.caretPositionFromPoint(x, y);
+            if (position) return { node: position.offsetNode, offset: position.offset };
+          }
+          return null;
+        }
+
+        function sourcePositionForEvent(event) {
+          const target = event.target;
+          if (!target || !target.closest) return null;
+          const block = target.closest('[\(MarkdownSourceMarkers.attribute)]');
+          if (!block) return null;
+          const base = parseInt(
+            block.getAttribute('\(MarkdownSourceMarkers.attribute)'), 10
+          );
+          if (!Number.isFinite(base)) return null;
+
+          const caret = caretFromPoint(event.clientX, event.clientY);
+          if (!caret || !block.contains(caret.node)) return { line: base, column: 1 };
+
+          const range = document.createRange();
+          range.selectNodeContents(block);
+          try {
+            range.setEnd(caret.node, caret.offset);
+          } catch (_) {
+            return { line: base, column: 1 };
+          }
+          const before = range.toString();
+          const lastBreak = before.lastIndexOf('\\n');
+          const newlines = (before.match(/\\n/g) || []).length;
+          // Die Spalte ist eine NÄHERUNG: Im gerenderten Text fehlen Markup-
+          // Zeichen (**, [] usw.), er ist also kürzer als der Quelltext. Für
+          // Fließtext trifft sie gut, sonst landet der Cursor etwas zu früh in
+          // der richtigen Zeile. Der Editor klemmt zu große Werte selbst ab.
+          const column = before.length - lastBreak;
+          return { line: base + newlines, column: Math.max(1, column) };
+        }
+
+        document.addEventListener('click', function(event) {
+          // Nur ein echter Klick, nicht das Ende einer Textauswahl.
+          const selection = window.getSelection();
+          if (selection && !selection.isCollapsed) return;
+          // Links behalten ihr eigenes Verhalten (Öffnen im Standardbrowser).
+          if (event.target && event.target.closest && event.target.closest('a')) return;
+          const position = sourcePositionForEvent(event);
+          if (!position) return;
+          if (window.webkit?.messageHandlers?.markdownJump) {
+            window.webkit.messageHandlers.markdownJump.postMessage(position);
+          }
         });
         window.addEventListener('DOMContentLoaded', () => enhanceMarkdown(document.body));
         </script></head><body>\(fragment.html)</body></html>
@@ -533,13 +375,25 @@ enum MarkdownRichText {
         }
         defer { cmark_node_free(document) }
 
+        // Codeblock-Inhaltszeilen aus dem Baum lesen, solange er noch steht.
+        // CMARK_OPT_SOURCEPOS liefert danach die Blockpositionen im HTML.
+        let codeBlockLines = MarkdownSourceMarkers.codeBlockContentLines(
+            document: document,
+            extraction: math
+        )
+
         let extensions = cmark_parser_get_syntax_extensions(parser)
-        guard let rendered = cmark_render_html(document, CMARK_OPT_DEFAULT, extensions) else {
+        guard let rendered = cmark_render_html(document, CMARK_OPT_SOURCEPOS, extensions) else {
             return MarkdownRenderedFragment(html: escapedPlainText(markdown), imageURLs: [:])
         }
         defer { free(rendered) }
 
-        let withMath = math.insertingHTML(into: String(cString: rendered))
+        let positioned = MarkdownSourceMarkers.rewriteBlockPositions(
+            in: String(cString: rendered),
+            extraction: math,
+            codeBlockLines: codeBlockLines
+        )
+        let withMath = math.insertingHTML(into: positioned)
         return MarkdownImages.resolve(in: withMath, relativeTo: documentURL)
     }
 
@@ -616,6 +470,9 @@ private struct MarkdownRichTextView: NSViewRepresentable {
     let fontName: String
     let fontSize: CGFloat
     let darkMode: Bool
+    /// Ziel für den Klick-Sprung. Der Coordinator lebt länger als diese
+    /// Struktur, deshalb wird der Workspace bei jedem Update neu gesetzt.
+    let workspace: Workspace
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -625,6 +482,7 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         // die Vorschau bleibt ein lokaler Dokument-Renderer.
         configuration.websiteDataStore = .nonPersistent()
         configuration.userContentController.add(context.coordinator, name: "markdownCopy")
+        configuration.userContentController.add(context.coordinator, name: "markdownJump")
         configuration.setURLSchemeHandler(
             context.coordinator.assetHandler,
             forURLScheme: MarkdownPreviewAssets.scheme
@@ -643,6 +501,7 @@ private struct MarkdownRichTextView: NSViewRepresentable {
     }
 
     private func update(webView: WKWebView, coordinator: Coordinator) {
+        coordinator.workspace = workspace
         let styleIdentity = "\(darkMode)|\(fontName)|\(fontSize)|\(documentURL?.path ?? "")"
         if coordinator.styleIdentity != styleIdentity {
             coordinator.styleIdentity = styleIdentity
@@ -684,14 +543,46 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         var isReady = false
         var pendingFragment: MarkdownRenderedFragment?
         let assetHandler = MarkdownPreviewSchemeHandler()
+        // Schwach: Der Workspace gehört der Dokumentszene, nicht der Vorschau.
+        weak var workspace: Workspace?
 
         func userContentController(_ userContentController: WKUserContentController,
                                    didReceive message: WKScriptMessage) {
-            guard message.name == "markdownCopy",
-                  let payload = message.body as? [String: Any],
-                  let plain = payload["plain"] as? String,
-                  let html = payload["html"] as? String else { return }
-            MarkdownPasteboard.write(plain: plain, htmlFragment: html)
+            guard let payload = message.body as? [String: Any] else { return }
+            switch message.name {
+            case "markdownCopy":
+                guard let plain = payload["plain"] as? String,
+                      let html = payload["html"] as? String else { return }
+                MarkdownPasteboard.write(plain: plain, htmlFragment: html)
+            case "markdownJump":
+                guard let line = payload["line"] as? Int else { return }
+                jump(toLine: line, column: payload["column"] as? Int ?? 1)
+            default:
+                return
+            }
+        }
+
+        /// Setzt Cursor und Sichtbereich des Editors auf die angeklickte Stelle.
+        ///
+        /// Adressiert wird über Zeile/Spalte statt über einen absoluten Offset.
+        /// Begründung siehe `NotificationCenter.postMatchJump`: Absolute Ranges
+        /// driften zwischen Vorschau-Inhalt und Editor-Speicher, sobald Encoding
+        /// oder Zeilenenden normalisiert werden. Zu große Spalten klemmt der
+        /// Empfänger selbst ab — die aus dem HTML geschätzte Spalte darf also
+        /// ruhig etwas danebenliegen.
+        private func jump(toLine line: Int, column: Int) {
+            guard let workspace else { return }
+            NotificationCenter.default.post(
+                name: .fastraJumpToRange,
+                object: workspace,
+                userInfo: [
+                    "startLine": line, "startColumn": column,
+                    "endLine": line, "endColumn": column
+                ]
+            )
+            // Ohne Fokuswechsel bliebe die Tastatur in der Vorschau, und der
+            // Nutzer müsste nach dem Klick noch einmal in den Editor klicken.
+            EditorView.focusActiveEditor(in: workspace)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

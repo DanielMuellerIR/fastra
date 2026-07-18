@@ -9,6 +9,33 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.26.0] — 2026-07-18
+
+### Hinzugefügt
+
+- **Klick in der Markdown-Vorschau springt in den Editor:** Ein Klick auf eine
+  Textstelle der Vorschau scrollt den Editor an die zugehörige Quellzeile und
+  setzt den Cursor dorthin. Blöcke tragen dafür ihre Quellzeile im gerenderten
+  HTML; innerhalb eines Absatzes wird die Zeile über die Zeilenumbrüche vor der
+  Klickstelle aufgelöst, sodass auch ein langer Absatz zeilengenau bleibt.
+  Codeblöcke zeigen auf ihre erste Codezeile statt auf die Fence-Zeile.
+  Die Spalte ist eine Näherung: Der gerenderte Text enthält kein Markup, ist
+  also kürzer als die Quelle — bei Fließtext trifft sie gut, sonst landet der
+  Cursor etwas zu früh in der richtigen Zeile.
+- Links in der Vorschau öffnen weiterhin den Standardbrowser, und eine gezogene
+  Textauswahl löst keinen Sprung aus.
+
+### Geändert
+
+- Blockelemente der Vorschau tragen jetzt ein `data-srcline`-Attribut. Beim
+  Kopieren wird es entfernt, damit in Pages oder Mail nichts davon ankommt.
+
+### Entfernt
+
+- **Separates Markdown-Vorschaufenster:** Der Controller war zuletzt ohne
+  Aufrufer — kein Menüeintrag, kein Shortcut — und von der integrierten
+  Vorschau neben dem Editor vollständig abgelöst.
+
 ## [v1.25.0] — 2026-07-17
 
 ### Hinzugefügt (Wunschpaket Juli 2026, Etappe 6 — Lint, Minify, tool4d)
