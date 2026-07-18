@@ -6,15 +6,13 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Jetzt
 
-- **Wunschpaket 2** (beschlossen 2026-07-18): Fünf Etappen; Etappe 1
-  (Navigation & Chrome) ist mit v1.27.0 umgesetzt. Offen sind die
-  Etappen 2–5: Suchdialog (Button-Prominenz,
-  mitscrollende Trefferliste, Live-Markierung aller Treffer), Sprachmenü
-  mit wählbarem 4D samt Anti-Drift-Test, Hilfedokument samt
-  `help-audit`-Mechanik, assistiertes Markdown-Schreiben mit
-  Bild-Paste/-Drop. Spezifikation:
-  `docs/wunschpaket-2026-07b/goal-vorschlag.md`. Echtes WYSIWYG
-  („Schreibmodus“) ist bewusst ausgeklammert; Entscheidungsvorlage in
+- **Wunschpaket 2** (beschlossen 2026-07-18): Alle fünf Etappen sind mit
+  v1.27.0–v1.31.0 umgesetzt (Navigation & Chrome, Suchdialog, Sprachmenü
+  mit wählbarem 4D, Hilfe samt `help-audit`-Mechanik, assistiertes
+  Markdown-Schreiben mit Bild-Paste/-Drop). Spezifikation:
+  `docs/wunschpaket-2026-07b/goal-vorschlag.md`. Bewusst offen: Echtes
+  WYSIWYG („Schreibmodus“) ist ausgeklammert — Daniel entscheidet nach
+  gelebter Erfahrung mit Etappe 5 separat; Entscheidungsvorlage in
   `docs/wunschpaket-2026-07b/goal-stufe-b-wysiwyg.md`, nur auf
   ausdrücklichen Auftrag.
 - **Wunschpaket Juli 2026** (beschlossen 2026-07-17): Die sechs Etappen sind
