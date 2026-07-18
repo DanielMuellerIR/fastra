@@ -9,6 +9,55 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.32.0] — 2026-07-18
+
+Etappe 1 des Wunschpakets 2026-07c: Diff-Kern & Datei-Diff dual-pane
+(`docs/wunschpaket-2026-07c/goal-vorschlag.md`; BBEdit-Vorbild
+„Find Differences“/„Compare Against Disk File“, User Manual 16.0.1
+S. 130–134).
+
+### Hinzugefügt
+
+- **„Dateien vergleichen…“ (Suchen-Menü, ⌃⌘D):** Dialog mit Links/Rechts-
+  Auswahl (Dateiauswahl-Button, Drag-and-drop-Feld, Popup mit offenen Tabs
+  und zuletzt geöffneten Dateien; aktiver Tab links vorbelegt) und den
+  Vergleichsoptionen „Leerraum am Zeilenende“, „alle Leerraum-
+  Unterschiede“, „Leerzeilen“ und „Groß-/Kleinschreibung“ (Voreinstellung:
+  nichts ignorieren; Wahl bleibt gemerkt). Fehlende, binäre oder als
+  Ordner gewählte Pfade melden sich verständlich direkt am Feld.
+- **Dual-Pane-Differenzansicht ohne Git:** eigener, UI-freier Diff-Kern
+  (`FileDiff`, Myers-Diff über Foundations `CollectionDifference` mit
+  Intraline-Hervorhebung) — funktioniert komplett ohne installiertes Git.
+  Beide Spalten scrollen synchron (eine Liste, Muster Git-Diff), lange
+  unveränderte Abschnitte sind mit Kontext eingeklappt und pro Abschnitt
+  einblendbar. Kopfzeile mit beiden Dateinamen (Tooltip: voller Pfad) und
+  den aktiven Optionen.
+- **Differenzen-Liste unten (BBEdit-Vorbild):** ein Eintrag je Unterschied
+  („Zeilen 12–14 geändert“, „Zeile 30 nur links“, „Zeile 7 nur rechts“);
+  Klick wählt den Unterschied und scrollt beide Spalten dorthin, ⌥↑/⌥↓
+  springen zum vorigen/nächsten Unterschied.
+- **„Mit gespeicherter Fassung vergleichen“ (Suchen-Menü):** vergleicht
+  den ungespeicherten Editor-Inhalt des aktiven Tabs direkt mit dem
+  Plattenstand derselben Datei — nur aktiv bei ungespeicherten Änderungen.
+- **Ehrliche Grenzen statt stiller Verfälschung:** identische Dateien
+  werden ausdrücklich gemeldet („Keine Unterschiede — N Zeilen identisch“
+  samt aktiver Optionen); Binärdateien, nicht lesbare Dateien, Dateien
+  über 32 MiB, über 200.000 Zeilen oder mit mehr als 30.000 Zeilen
+  Unterschiedsbereich zeigen eine verständliche Erklärung statt eines
+  Diffs. Ignorierte Leerzeilen bleiben sichtbar, zählen aber nicht als
+  Unterschied.
+- **Hilfe-Abschnitt „Dateien vergleichen“** (Deutsch + Englisch) und
+  Fenster-Selbsttest `filediff` (echtes Sheet, echte gerenderte
+  Unterschiede, echter Klick auf die Differenzen-Liste mit beobachtetem
+  Scroll-Sprung).
+
+### Intern
+
+- Neuer Diff-Kern `FileDiff` mit 35 Unit-Tests (Ausrichtung, alle
+  Optionen, Leerzeilen-/Unicode-Fälle, Falten, Grenzen, Ladepfad);
+  Vergleichs-Tabs verhalten sich wie Git-Tabs (read-only, kein Speichern,
+  kein Ansichts-Umschalter) und recyceln sich bei gleichem Vergleich.
+
 ## [v1.31.0] — 2026-07-18
 
 Etappe 5 des Wunschpakets 2026-07b: Assistiertes Markdown-Schreiben

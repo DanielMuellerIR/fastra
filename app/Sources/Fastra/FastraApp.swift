@@ -273,6 +273,27 @@ struct FastraApp: App {
                 }
                 .keyboardShortcut("x", modifiers: [.command, .shift])
                 .disabled(!commandWorkspace.activeTabSupportsXPath)
+
+                Divider()
+
+                // Datei-Vergleich ohne Git (Etappe 1 Wunschpaket 2026-07c;
+                // BBEdit „Find Differences"). ⌃⌘D ist frei — ⌘D wäre mit
+                // macOS-Konventionen (Lesezeichen/Duplizieren) belegt.
+                Button("Dateien vergleichen…") {
+                    commandWorkspace.showCompareFilesDialog = true
+                }
+                .keyboardShortcut("d", modifiers: [.command, .control])
+
+                // BBEdit „Compare Against Disk File": ungespeicherten
+                // Editor-Inhalt gegen den Plattenstand derselben Datei —
+                // ohne Dialog, direkt ins Differenzfenster.
+                Button("Mit gespeicherter Fassung vergleichen") {
+                    commandWorkspace.compareActiveTabAgainstDisk()
+                }
+                .disabled(!commandWorkspace.canCompareActiveTabAgainstDisk)
+                .help(commandWorkspace.canCompareActiveTabAgainstDisk
+                      ? L10n.string("Vergleicht den ungespeicherten Editor-Inhalt mit dem gespeicherten Stand der Datei.")
+                      : L10n.string("Nur aktiv, wenn der aktive Tab ungespeicherte Änderungen an einer Datei hat."))
             }
 
             // „Text"-Menü (BBEdit-Basics, TextOperations). Die Buttons posten

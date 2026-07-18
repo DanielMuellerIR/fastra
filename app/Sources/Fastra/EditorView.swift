@@ -367,6 +367,12 @@ struct EditorView: View {
     private var sourceEditor: some View {
         Group {
             if let tab = workspace.activeTab,
+               let request = tab.fileDiffRequest {
+                // Datei-Vergleichs-Tab (Etappe 1 Wunschpaket 2026-07c):
+                // read-only Dual-Pane-Diff ohne Git.
+                FileDiffView(request: request, document: tab.fileDiffDocument)
+                    .id(tab.id)
+            } else if let tab = workspace.activeTab,
                let request = tab.gitDiffRequest {
                 GitSideBySideDiffView(request: request,
                                       document: tab.gitDiffDocument,

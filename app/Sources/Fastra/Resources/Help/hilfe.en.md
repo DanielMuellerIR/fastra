@@ -50,6 +50,29 @@ in `NSRegularExpression`). Capture groups appear as pills as well.
 previous one; the arrow keys walk the results list, which scrolls to the
 active match. Escape hides the panel.
 
+## Comparing Files
+
+**Search → Compare Files…** (⌃⌘D) shows two files side by side — no Git
+required. Fill the left and right side via the file chooser, drag and
+drop, or from open tabs and recently opened files; the active tab
+pre-fills the left side.
+
+- **Options:** trailing whitespace, all whitespace differences, blank
+  lines, and letter case can be ignored while comparing. Active options
+  are shown in the header of the view.
+- **Differences list:** Below the diff, Fastra lists every difference
+  (“Lines 12–14 changed”, “Line 30 only on the left”). Clicking jumps
+  there; ⌥↑/⌥↓ move to the previous/next difference.
+- **Long identical sections** are folded and can be expanded per section.
+- **Compare Against Saved Version** compares the unsaved editor content
+  of the active tab directly with the state on disk — handy before
+  saving.
+- Identical files are reported explicitly; binary, missing, or extremely
+  large files explain themselves with a clear message instead of a
+  misleading diff.
+
+The comparison only displays — it never changes files.
+
 ## Text Transformations
 
 All transformations act on the selection — without a selection, on the

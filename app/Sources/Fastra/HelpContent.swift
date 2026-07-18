@@ -97,6 +97,7 @@ enum HelpContent {
 /// (Anti-Drift zwischen Enum und Hilfetext).
 enum HelpSection: CaseIterable {
     case searchAndReplace
+    case compareFiles
     case textTransformations
     case views
     case markdown
@@ -114,6 +115,8 @@ enum HelpSection: CaseIterable {
         switch (self, languageCode) {
         case (.searchAndReplace, "en"):    return "Search and Replace"
         case (.searchAndReplace, _):       return "Suchen und Ersetzen"
+        case (.compareFiles, "en"):        return "Comparing Files"
+        case (.compareFiles, _):           return "Dateien vergleichen"
         case (.textTransformations, "en"): return "Text Transformations"
         case (.textTransformations, _):    return "Text-Transformationen"
         case (.views, "en"):               return "Views: Text, Preview, Hex"

@@ -106,6 +106,17 @@ struct EditorTab: Identifiable, Hashable {
     /// Jede neue Ladung desselben Diff-Tabs erhöht diesen Wert. Nur die
     /// Completion derselben Generation darf den Tab noch verändern.
     var gitDiffLoadGeneration: UInt64
+    /// Auftrag eines Datei-Vergleichs-Tabs (Etappe 1 Wunschpaket 2026-07c).
+    /// `nil` = normaler Tab. Vergleichs-Tabs sind wie Git-Tabs read-only,
+    /// haben `url == nil` und werden nicht gespeichert.
+    var fileDiffRequest: FileDiffRequest?
+    /// Fertig berechneter Vergleich (Ergebnis ODER erklärte Grenze).
+    /// `nil` = Berechnung läuft noch (Ansicht zeigt einen Spinner).
+    var fileDiffDocument: FileDiffDocument?
+    /// Jede Neuberechnung desselben Vergleichs-Tabs erhöht diesen Wert.
+    /// Nur die Completion derselben Generation darf den Tab noch verändern
+    /// (gleiches Muster wie `gitDiffLoadGeneration`).
+    var fileDiffLoadGeneration: UInt64
     /// `true`, wenn dieser Tab der Willkommen-Tab ist (zeigt statt des Editors
     /// die Willkommensseite und trägt in der Leiste „Willkommen"). Bleibt ein
     /// eigener Tab bestehen, bis er geschlossen wird — ⌘T/„Neue Datei" legen
@@ -155,6 +166,9 @@ struct EditorTab: Identifiable, Hashable {
         gitDiffRequest: GitDiffRequest? = nil,
         gitDiffDocument: GitDiffDocument? = nil,
         gitDiffLoadGeneration: UInt64 = 0,
+        fileDiffRequest: FileDiffRequest? = nil,
+        fileDiffDocument: FileDiffDocument? = nil,
+        fileDiffLoadGeneration: UInt64 = 0,
         isWelcome: Bool = false,
         viewMode: EditorViewMode? = nil
     ) {
@@ -176,6 +190,9 @@ struct EditorTab: Identifiable, Hashable {
         self.gitDiffRequest = gitDiffRequest
         self.gitDiffDocument = gitDiffDocument
         self.gitDiffLoadGeneration = gitDiffLoadGeneration
+        self.fileDiffRequest = fileDiffRequest
+        self.fileDiffDocument = fileDiffDocument
+        self.fileDiffLoadGeneration = fileDiffLoadGeneration
         self.isWelcome = isWelcome
         self.viewMode = viewMode
     }
@@ -282,6 +299,9 @@ final class Workspace: ObservableObject {
     // fenster-abhängigen Selbsttests (cmdw/fields) öffnen sie jetzt selbst,
     // siehe SelfTest.openSearchThen.
     @Published var showSearchDialog: Bool = false
+    /// Öffnet den Dialog „Dateien vergleichen…" (Etappe 1 Wunschpaket
+    /// 2026-07c) als Sheet auf dem Hauptfenster.
+    @Published var showCompareFilesDialog: Bool = false
     @Published var findPattern: String = "([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9.-]+)\\.([a-zA-Z]{2,})"
     @Published var replacePattern: String = "[$1](mailto:$1@$2.$3)"
     @Published var livePreview: Bool = false
@@ -1328,8 +1348,9 @@ final class Workspace: ObservableObject {
 
     func saveActiveTab() {
         guard let idx = activeTabIndex else { return }
-        // Git-Text-Tabs (Verlauf/Diff) sind read-only — ⌘S tut nichts.
-        if tabs[idx].gitKind != nil { return }
+        // Git-Text-Tabs (Verlauf/Diff) und Datei-Vergleichs-Tabs sind
+        // read-only — ⌘S tut nichts.
+        if tabs[idx].gitKind != nil || tabs[idx].fileDiffRequest != nil { return }
         // Abschnitts- und Hex-Views halten absichtlich keinen vollständigen
         // editierbaren Buffer; Speichern wäre daher eine Trunkierungsgefahr.
         guard tabs[idx].displayMode == .text else { NSSound.beep(); return }
@@ -1342,8 +1363,8 @@ final class Workspace: ObservableObject {
 
     func saveActiveTabAs() {
         guard let idx = activeTabIndex else { return }
-        // Read-only Git-Tabs lassen sich nicht „speichern unter".
-        if tabs[idx].gitKind != nil { return }
+        // Read-only Git- und Vergleichs-Tabs lassen sich nicht „speichern unter".
+        if tabs[idx].gitKind != nil || tabs[idx].fileDiffRequest != nil { return }
         guard tabs[idx].displayMode == .text else { NSSound.beep(); return }
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
@@ -1451,6 +1472,7 @@ final class Workspace: ObservableObject {
     /// Nach dem Speichern gewinnt die Endung; manuelle Wahl gewinnt immer.
     static func isEligibleForContentDetection(_ tab: EditorTab) -> Bool {
         tab.url == nil && !tab.isWelcome && tab.gitKind == nil
+            && tab.fileDiffRequest == nil
             && tab.languageOverride == nil
             && tab.customLanguageOverrideID == nil
             && (tab.title as NSString).pathExtension.isEmpty
@@ -1595,7 +1617,8 @@ final class Workspace: ObservableObject {
     /// ist UND gerade der Quelltext sichtbar ist (SVG-Vorschau z. B. nicht —
     /// gesprungen wird im Text).
     var activeTabSupportsXPath: Bool {
-        guard let tab = activeTab, tab.gitKind == nil, !tab.isWelcome else {
+        guard let tab = activeTab, tab.gitKind == nil, tab.fileDiffRequest == nil,
+              !tab.isWelcome else {
             return false
         }
         let name = tab.url?.lastPathComponent ?? tab.title
@@ -1608,9 +1631,11 @@ final class Workspace: ObservableObject {
     // MARK: - Ansichts-Umschalter (Etappe 2 Wunschpaket 2026-07)
 
     /// Verfügbare Ansichten des aktiven Tabs (Umschalter + Menüpunkte).
-    /// Git-Ansichten und der Willkommen-Tab haben keinen Umschalter.
+    /// Git-Ansichten, Datei-Vergleiche und der Willkommen-Tab haben keinen
+    /// Umschalter.
     var availableViewModes: [EditorViewMode] {
-        guard let tab = activeTab, tab.gitKind == nil, !tab.isWelcome else { return [] }
+        guard let tab = activeTab, tab.gitKind == nil, tab.fileDiffRequest == nil,
+              !tab.isWelcome else { return [] }
         return ViewModeRouting.availableModes(
             fileExtension: tab.url?.pathExtension,
             loadedDisplayMode: tab.displayMode,
@@ -2210,6 +2235,122 @@ final class Workspace: ObservableObject {
     private func clearGitDiffLoad(tabID: UUID, generation: UInt64) {
         guard gitDiffLoadLeases[tabID]?.generation == generation else { return }
         gitDiffLoadLeases.removeValue(forKey: tabID)
+    }
+
+    // MARK: - Datei-Vergleich (Etappe 1 Wunschpaket 2026-07c)
+
+    /// Öffnet einen Datei-Vergleichs-Tab und startet die Berechnung im
+    /// Hintergrund. Ein inhaltlich gleicher Vergleich (Seiten + Optionen)
+    /// verwendet seinen bestehenden Tab wieder und rechnet frisch — der
+    /// Plattenstand kann sich geändert haben, und Tabs sollen nicht stapeln.
+    func openFileDiffTab(request: FileDiffRequest) {
+        let title = L10n.format("Diff: %@ ↔ %@", request.left.name, request.right.name)
+        let tabID: UUID
+        if let idx = tabs.firstIndex(where: {
+            $0.fileDiffRequest?.matches(request) == true
+        }) {
+            tabs[idx].fileDiffRequest = request
+            tabs[idx].fileDiffDocument = nil
+            tabs[idx].fileDiffLoadGeneration &+= 1
+            tabID = tabs[idx].id
+        } else {
+            let tab = EditorTab(title: title, path: L10n.string("Vergleich"),
+                                fileDiffRequest: request)
+            tabs.append(tab)
+            tabID = tab.id
+        }
+        activeTabID = tabID
+        guard let idx = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        let generation = tabs[idx].fileDiffLoadGeneration
+
+        // Laden + Diffen im Hintergrund — blockiert nie den Main-Thread.
+        // [weak self]: Fenster darf während der Rechnung schließen.
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let document = Workspace.computeFileDiffDocument(request: request)
+            await MainActor.run { [weak self] in
+                guard let self,
+                      let idx = self.tabs.firstIndex(where: { $0.id == tabID }),
+                      self.tabs[idx].fileDiffLoadGeneration == generation,
+                      self.tabs[idx].fileDiffRequest?.id == request.id else {
+                    // Tab geschlossen oder inzwischen neu berechnet — dieses
+                    // Ergebnis verwerfen (kein Fehler).
+                    return
+                }
+                self.tabs[idx].fileDiffDocument = document
+            }
+        }
+    }
+
+    /// Lädt beide Seiten und berechnet den Diff. Läuft auf einem
+    /// Hintergrund-Task; nutzt dieselben Grenzen wie das normale Datei-
+    /// Öffnen (Binär-Erkennung, 32-MiB-Schwelle) und meldet sie verständlich
+    /// statt still zu verfälschen.
+    nonisolated static func computeFileDiffDocument(request: FileDiffRequest)
+        -> FileDiffDocument {
+        func loadSide(_ side: FileDiffSide, role: FileDiffSideRole)
+            -> Swift.Result<String, FileDiffLimitation> {
+            // Ungespeicherter Editor-Inhalt liegt schon vor — nichts laden.
+            if let text = side.text { return .success(text) }
+            guard let url = side.url else { return .failure(.unreadable(side: role)) }
+            do {
+                let loaded = try FileLoader.load(url: url)
+                switch loaded.displayMode {
+                case .hex:
+                    return .failure(.binary(side: role))
+                case .chunkedText:
+                    // Über der Volllade-Schwelle liefert der Loader keinen
+                    // Inhalt — ein Diff wäre eine stille Verfälschung.
+                    return .failure(.tooLarge(side: role))
+                case .text:
+                    return .success(loaded.content)
+                }
+            } catch {
+                return .failure(.unreadable(side: role))
+            }
+        }
+        switch (loadSide(request.left, role: .left), loadSide(request.right, role: .right)) {
+        case (.failure(let limitation), _):
+            return .failure(limitation)
+        case (_, .failure(let limitation)):
+            return .failure(limitation)
+        case (.success(let left), .success(let right)):
+            switch FileDiff.compare(left: left, right: right,
+                                    options: request.options) {
+            case .result(let result): return .success(result)
+            case .limitation(let limitation): return .failure(limitation)
+            }
+        }
+    }
+
+    /// „Mit gespeicherter Fassung vergleichen" (BBEdit „Compare Against Disk
+    /// File") ist nur sinnvoll, wenn der aktive Tab eine Datei MIT
+    /// ungespeicherten Änderungen zeigt.
+    var canCompareActiveTabAgainstDisk: Bool {
+        guard let tab = activeTab, tab.gitKind == nil, tab.fileDiffRequest == nil,
+              !tab.isWelcome, tab.isDirty, tab.url != nil,
+              tab.displayMode == .text else { return false }
+        return true
+    }
+
+    /// Vergleicht den ungespeicherten Editor-Inhalt des aktiven Tabs mit dem
+    /// Stand derselben Datei auf der Platte — ohne Dialog, direkt ins
+    /// Differenzfenster. Links die gespeicherte Fassung (Vorher), rechts der
+    /// Editor-Inhalt (Nachher) — gleiche Leserichtung wie die Ersetzungs-
+    /// Vorschau und der Git-Diff.
+    func compareActiveTabAgainstDisk() {
+        guard canCompareActiveTabAgainstDisk,
+              let tab = activeTab, let url = tab.url else {
+            NSSound.beep()
+            return
+        }
+        let request = FileDiffRequest(
+            left: FileDiffSide(name: L10n.format("%@ (gespeichert)", tab.title),
+                               path: url.path, url: url, text: nil),
+            right: FileDiffSide(name: L10n.format("%@ (ungespeichert)", tab.title),
+                                path: url.path, url: nil, text: tab.content),
+            options: FileDiffOptions()
+        )
+        openFileDiffTab(request: request)
     }
 
     private func cancelGitDiffLoad(tabID: UUID) {

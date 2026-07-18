@@ -163,6 +163,7 @@ enum SelfTest {
         case "colsel":    waitForMainWindow { runColumnSelectionTest() }
         case "gutterdim": waitForMainWindow { runGutterDimmingTest() }
         case "sidebarheader": waitForMainWindow { runSidebarHeaderTest() }
+        case "filediff": waitForMainWindow { runFileDiffTest() }
         case "searchmark": waitForMainWindow { openSearchThen { runSearchMarkTest() } }
         case "help": waitForMainWindow { runHelpTest() }
         case "mdassist": waitForMainWindow { runMarkdownAssistTest() }
@@ -3654,6 +3655,180 @@ enum SelfTest {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             pollViewModePickerGone(base: base, tick: tick + 1)
+        }
+    }
+
+    // MARK: - Selbsttest filediff (Etappe 1 Wunschpaket 2026-07c)
+
+    /// Liefert die Marker-NSView selbst (nicht nur ihre Existenz) — für
+    /// Positionsermittlung beim synthetischen Klick.
+    private static func markerView(id: String, in view: NSView) -> NSView? {
+        if view.accessibilityIdentifier() == id { return view }
+        for sub in view.subviews {
+            if let found = markerView(id: id, in: sub) { return found }
+        }
+        return nil
+    }
+
+    /// Prüft den git-losen Datei-Vergleich im ECHTEN Fenster:
+    /// (a) „Dateien vergleichen…" öffnet wirklich ein Sheet.
+    /// (b) Zwei Fixture-Dateien mit drei bekannten Unterschieden rendern
+    ///     einen Diff-Tab mit drei Blöcken (Marker `fileDiffState-b3-c-1`).
+    /// (c) Ein ECHTER Mausklick auf den letzten Eintrag der Differenzen-
+    ///     Liste wählt ihn aus (Marker `…-c2`) und scrollt den Diff dorthin
+    ///     (Scrollposition ändert sich beobachtbar).
+    private static func runFileDiffTest() {
+        testLabel = "filediff"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        // ── Fixtures: identische Basis, drei gezielte Unterschiede ────────
+        // Änderung nahe Zeile 2, Nur-links bei ~80, Änderung bei ~155 —
+        // weit genug auseinander, dass der Sprung ans Ende scrollen MUSS.
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-filediff-\(UUID().uuidString)")
+        var leftLines = (1...155).map { "zeile \($0)" }
+        var rightLines = leftLines
+        leftLines[1] = "alpha ALT"
+        rightLines[1] = "alpha NEU"
+        leftLines.insert("nur-links", at: 80)
+        leftLines[leftLines.count - 1] = "omega ALT"
+        rightLines[rightLines.count - 1] = "omega NEU"
+        let leftURL = base.appendingPathComponent("links.txt")
+        let rightURL = base.appendingPathComponent("rechts.txt")
+        do {
+            try fm.createDirectory(at: base, withIntermediateDirectories: true)
+            try leftLines.joined(separator: "\n")
+                .write(to: leftURL, atomically: true, encoding: .utf8)
+            try rightLines.joined(separator: "\n")
+                .write(to: rightURL, atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "(setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
+        }
+        // ── (a) Dialog öffnen — erscheint ein echtes Sheet? ────────────────
+        ws.showCompareFilesDialog = true
+        pollFileDiffSheet(ws, base: base, left: leftURL, right: rightURL, tick: 0)
+    }
+
+    private static func pollFileDiffSheet(_ ws: Workspace, base: URL,
+                                          left: URL, right: URL, tick: Int) {
+        let maxTicks = 40            // 10 s
+        if mainWindowForAXChecks()?.attachedSheet != nil {
+            // Dialog ist real da — wieder schließen und den Vergleich über
+            // denselben Pfad starten, den der „Vergleichen"-Button nimmt.
+            ws.showCompareFilesDialog = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                ws.openFileDiffTab(request: FileDiffRequest(
+                    left: .file(left), right: .file(right),
+                    options: FileDiffOptions()
+                ))
+                pollFileDiffRendered(ws, base: base, tick: 0)
+            }
+            return
+        }
+        if tick >= maxTicks {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "„Dateien vergleichen…“-Sheet erscheint nicht binnen 10 s")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollFileDiffSheet(ws, base: base, left: left, right: right, tick: tick + 1)
+        }
+    }
+
+    private static func pollFileDiffRendered(_ ws: Workspace, base: URL, tick: Int) {
+        let maxTicks = 40            // 10 s
+        let content = mainWindowForAXChecks()?.contentView
+        // Marker trägt Blockzahl + Auswahl: 3 Blöcke, noch keiner gewählt.
+        let rendered = content.map {
+            markerViewExists(id: "fileDiffState-b3-c-1", in: $0)
+        } ?? false
+        if rendered {
+            // Modell-Gegenprobe: der Tab hält wirklich 3 Differenz-Blöcke.
+            guard let tab = ws.tabs.first(where: { $0.fileDiffRequest != nil }),
+                  let result = tab.fileDiffDocument?.result,
+                  result.blocks.count == 3 else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Marker gerendert, aber Modell hat nicht 3 Blöcke")
+            }
+            clickLastFileDiffListRow(ws, base: base)
+            return
+        }
+        if tick >= maxTicks {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Diff-Tab rendert binnen 10 s keine 3 Unterschiede "
+                + "(Marker fileDiffState-b3-c-1 fehlt)")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollFileDiffRendered(ws, base: base, tick: tick + 1)
+        }
+    }
+
+    /// Größte Scroll-View im Fenster = der Diff-Bereich (die Differenzen-
+    /// Liste ist auf 132 pt Höhe fixiert, das Sheet ist zu).
+    private static func largestScrollView(in view: NSView) -> NSScrollView? {
+        var best: NSScrollView? = nil
+        func walk(_ v: NSView) {
+            if let scroll = v as? NSScrollView {
+                if scroll.frame.height > (best?.frame.height ?? 0) { best = scroll }
+            }
+            v.subviews.forEach(walk)
+        }
+        walk(view)
+        return best
+    }
+
+    /// Echter Mausklick (Down+Up durch die Event-Pipeline) auf den letzten
+    /// Eintrag der Differenzen-Liste — der 0×0-Marker sitzt in Zeilenmitte.
+    private static func clickLastFileDiffListRow(_ ws: Workspace, base: URL) {
+        guard let window = mainWindowForAXChecks(),
+              let content = window.contentView,
+              let marker = markerView(id: "fileDiffListRow-2", in: content) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Listeneintrag „Block 2“ nicht im Fensterbaum gefunden")
+        }
+        let scrollBefore = largestScrollView(in: content)?
+            .contentView.documentVisibleRect.origin.y ?? -1
+        let point = marker.convert(NSPoint.zero, to: nil)
+        let time = ProcessInfo.processInfo.systemUptime
+        guard let down = NSEvent.mouseEvent(
+            with: .leftMouseDown, location: point, modifierFlags: [],
+            timestamp: time, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 0, clickCount: 1, pressure: 1
+        ), let up = NSEvent.mouseEvent(
+            with: .leftMouseUp, location: point, modifierFlags: [],
+            timestamp: time + 0.05, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 1, clickCount: 1, pressure: 0
+        ) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Maus-Events nicht baubar")
+        }
+        window.sendEvent(down)
+        window.sendEvent(up)
+        pollFileDiffJumped(base: base, scrollBefore: scrollBefore, tick: 0)
+    }
+
+    private static func pollFileDiffJumped(base: URL, scrollBefore: CGFloat, tick: Int) {
+        let maxTicks = 20            // 5 s (Scroll-Animation: 0,16 s)
+        let content = mainWindowForAXChecks()?.contentView
+        let selected = content.map {
+            markerViewExists(id: "fileDiffState-b3-c2", in: $0)
+        } ?? false
+        let scrollNow = content.flatMap { largestScrollView(in: $0) }?
+            .contentView.documentVisibleRect.origin.y ?? scrollBefore
+        if selected, scrollNow != scrollBefore {
+            try? FileManager.default.removeItem(at: base)
+            finish(true, "Sheet real geöffnet; 3 Unterschiede gerendert; Klick "
+                + "auf Differenzen-Liste wählt Block 3 und scrollt den Diff "
+                + "(\(Int(scrollBefore)) → \(Int(scrollNow)))")
+        }
+        if tick >= maxTicks {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Klick auf Differenzen-Liste: Auswahl=\(selected), "
+                + "Scroll \(Int(scrollBefore)) → \(Int(scrollNow)) — Sprung fehlt")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollFileDiffJumped(base: base, scrollBefore: scrollBefore, tick: tick + 1)
         }
     }
 

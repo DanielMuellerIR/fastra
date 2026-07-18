@@ -6,16 +6,26 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Jetzt
 
-- **Wunschpaket 3** (beschlossen 2026-07-18, Umsetzung steht aus):
+- **Wunschpaket 3** (beschlossen 2026-07-18, in Umsetzung):
   Spezifikation in `docs/wunschpaket-2026-07c/goal-vorschlag.md` —
-  acht Etappen: Datei-Diff dual-pane nach BBEdit-Vorbild (eigener Diff-Kern
-  ohne Git), Git-Diffs auf denselben Renderer vereinheitlicht,
-  Dateinamens-Filter in der Projektansicht, tool4d-Ersteinrichtungshilfe,
-  4D-Struktur-Hinweise, 4D-Vervollständigung/`.4DForm`-Schema/Export-
-  Transformation, Alt-Doppelklick „Gehe zum Ziel“ (4D-Methoden +
-  Markdown-Links, erweiterbar), 4D-Syntax-Check via tool4d-LSP (Gate:
-  rechtliche Freigabe durch den Maintainer). Umsetzung folgt etappenweise
-  in einer eigenen Arbeitssitzung.
+  acht Etappen. **Etappe 1 (Diff-Kern & Datei-Diff dual-pane) ist mit
+  v1.32.0 umgesetzt.** Offen: Git-Diffs auf denselben Renderer
+  vereinheitlicht (Etappe 2), Dateinamens-Filter in der Projektansicht,
+  tool4d-Ersteinrichtungshilfe, 4D-Struktur-Hinweise,
+  4D-Vervollständigung/`.4DForm`-Schema/Export-Transformation,
+  Alt-Doppelklick „Gehe zum Ziel“ (4D-Methoden + Markdown-Links,
+  erweiterbar), 4D-Syntax-Check via tool4d-LSP (Gate: rechtliche
+  Freigabe durch den Maintainer).
+  - **Bewusst NICHT in Etappe 1** (Kandidaten für eigene Aufträge):
+    Ordner-Vergleich, „Apply to Left/Right“-Übernahme einzelner
+    Unterschiede ins Dokument, Export der Differenzen-Liste.
+  - **Bekannte Grenze des Datei-Diffs:** Nach Abzug gemeinsamer
+    Anfangs-/Endzeilen verarbeitet der Vergleich bis zu 30.000 Zeilen
+    Unterschiedsbereich (Myers-Diff ist im schlechtesten Fall
+    quadratisch). Sehr große Dateien mit über die GANZE Länge
+    verstreuten Änderungen lehnt er deshalb ehrlich ab; ein
+    Anker-basierter Diff (Patience-Stil) für solche Fälle wäre ein
+    möglicher späterer Ausbau.
 - **Wunschpaket 2** (beschlossen 2026-07-18): Alle fünf Etappen sind mit
   v1.27.0–v1.31.0 umgesetzt (Navigation & Chrome, Suchdialog, Sprachmenü
   mit wählbarem 4D, Hilfe samt `help-audit`-Mechanik, assistiertes

@@ -52,6 +52,30 @@ Vorher/Nachher-Beispiel ab.
 Treffer; die Pfeiltasten wandern durch die Trefferliste, die dabei zum
 aktiven Treffer scrollt. Escape blendet die Maske aus.
 
+## Dateien vergleichen
+
+**Suchen → Dateien vergleichen…** (⌃⌘D) stellt zwei Dateien nebeneinander —
+ganz ohne Git. Links und rechts lassen sich per Auswahl-Dialog, per
+Drag-and-drop oder aus offenen Tabs und zuletzt geöffneten Dateien belegen;
+der aktive Tab ist links vorbelegt.
+
+- **Optionen:** Leerraum am Zeilenende, alle Leerraum-Unterschiede,
+  Leerzeilen sowie Groß-/Kleinschreibung lassen sich beim Vergleich
+  ignorieren. Aktive Optionen stehen sichtbar im Kopf der Ansicht.
+- **Differenzen-Liste:** Unter dem Diff listet Fastra jeden Unterschied
+  („Zeilen 12–14 geändert“, „Zeile 30 nur links“). Ein Klick springt
+  dorthin; ⌥↑/⌥↓ wandern zum vorigen/nächsten Unterschied.
+- **Lange gleiche Abschnitte** sind eingeklappt und lassen sich pro
+  Abschnitt einblenden.
+- **Mit gespeicherter Fassung vergleichen** vergleicht den ungespeicherten
+  Editor-Inhalt des aktiven Tabs direkt mit dem Stand auf der Platte —
+  praktisch vor dem Speichern.
+- Identische Dateien meldet Fastra ausdrücklich; binäre, fehlende oder
+  extrem große Dateien erklären sich mit einer verständlichen Meldung
+  statt eines irreführenden Diffs.
+
+Der Vergleich zeigt nur an — er ändert nie Dateien.
+
 ## Text-Transformationen
 
 Alle Transformationen wirken auf die Selektion — ohne Selektion auf das

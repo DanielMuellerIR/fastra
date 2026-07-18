@@ -99,6 +99,12 @@ struct ContentView: View {
             ReplacePreviewView()
                 .environmentObject(workspace)
         }
+        // „Dateien vergleichen…" (Etappe 1 Wunschpaket 2026-07c): Sheet mit
+        // Links/Rechts-Auswahl und Vergleichsoptionen; das Ergebnis öffnet
+        // als eigener Diff-Tab.
+        .sheet(isPresented: $workspace.showCompareFilesDialog) {
+            CompareFilesDialog(workspace: workspace)
+        }
         .onAppear {
             // Beim ersten Erscheinen Controller anlegen und — falls per
             // Default sichtbar — gleich öffnen.
