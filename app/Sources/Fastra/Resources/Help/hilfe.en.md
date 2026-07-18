@@ -92,9 +92,13 @@ right-click menu.
 - **Unicode:** normalize spaces, strip diacritics, compose Unicode
   (NFC), decompose Unicode (NFD).
 
-Also in the Text menu: **Format document** (pretty-print JSON/XML),
-**Check document** (syntax check with error position), and **Minify
-document** — for supported formats such as JSON and XML.
+Also in the **Text** menu and the right-click menu: **Format Document**
+(pretty-print JSON/XML), **Validate Document** (syntax check with error
+position), and **Minify Document**. The three entries are only active when
+the tab's file extension matches — `json`, `xml`, `xsd`, `xsl`, `xslt` and
+`plist` can be formatted and minified, validation also covers `svg` and the
+4D container files. A new, unsaved tab has no extension; name it something
+like `data.json` when saving and the entries become available.
 
 ## Go to Target
 

@@ -96,9 +96,14 @@ Rechtsklickmenü im Editor.
 - **Unicode:** Leerzeichen vereinheitlichen, Diakritische Zeichen
   entfernen, Unicode zusammensetzen (NFC), Unicode zerlegen (NFD).
 
-Zusätzlich im Text-Menü: **Dokument formatieren** (JSON/XML hübsch
-einrücken), **Dokument prüfen** (Syntaxprüfung mit Fehlerposition) und
-**Dokument minifizieren** — für unterstützte Formate wie JSON und XML.
+Zusätzlich im Menü **Text** und im Rechtsklickmenü: **Dokument
+formatieren** (JSON/XML hübsch einrücken), **Dokument prüfen**
+(Syntaxprüfung mit Fehlerposition) und **Dokument minifizieren**. Die drei
+Einträge sind nur aktiv, wenn die Dateiendung des Tabs passt — formatiert
+und minifiziert werden `json`, `xml`, `xsd`, `xsl`, `xslt` und `plist`,
+geprüft zusätzlich `svg` und die 4D-Containerdateien. Ein neuer,
+ungespeicherter Tab hat keine Endung; benenne ihn beim Sichern etwa
+`daten.json`, dann sind die Einträge wählbar.
 
 ## Gehe zum Ziel
 

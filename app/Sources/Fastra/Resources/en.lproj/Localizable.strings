@@ -929,6 +929,8 @@
 "↩ weiter · ⇧↩ zurück" = "↩ next · ⇧↩ previous";
 "Dokument prüfen" = "Validate Document";
 "Dokument minifizieren" = "Minify Document";
+"Prüft JSON oder XML auf Syntaxfehler und nennt Zeile und Spalte." = "Checks JSON or XML for syntax errors and reports line and column.";
+"Schreibt JSON oder XML kompakt ohne überflüssigen Leerraum. Eine Auswahl wird einzeln minifiziert." = "Writes JSON or XML compactly without superfluous whitespace. A selection is minified separately.";
 "Minifizieren fehlgeschlagen" = "Minify failed";
 "Ungültiges JSON — Struktur, Kommas und Anführungszeichen prüfen." = "Invalid JSON — check structure, commas and quotation marks.";
 "Ungültiges XML — Tags und Verschachtelung prüfen." = "Invalid XML — check tags and nesting.";

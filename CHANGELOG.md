@@ -9,6 +9,22 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.38.1] — 2026-07-18
+
+### Behoben
+
+- **„Dokument prüfen“ und „Dokument minifizieren“ im Rechtsklickmenü.**
+  Beide lagen bisher nur im Menü **Text**, obwohl „Dokument formatieren“
+  im Kontextmenü stand — wer sie dort suchte, fand sie nicht. Rechtsklick
+  und Menüleiste teilen sich jetzt denselben Apply-Pfad; im Kontextmenü
+  wirken sie auf die angeklickte TextView. Die Einträge bleiben wie bisher
+  ausgegraut, wenn die Dateiendung des Tabs nicht unterstützt wird.
+- **Hilfe:** Der Abschnitt „Text-Transformationen“ nennt jetzt das
+  Rechtsklickmenü, die unterstützten Dateiendungen und den häufigsten
+  Grund für ausgegraute Einträge (neuer Tab ohne Endung). Die englische
+  Hilfe nannte „Check document“ statt des echten Menütitels
+  „Validate Document“.
+
 ## [v1.38.0] — 2026-07-18
 
 Etappe 7 des Wunschpakets 2026-07c: Alt-Doppelklick „Gehe zum Ziel“

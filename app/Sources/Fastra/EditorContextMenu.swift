@@ -187,6 +187,23 @@ final class EditorContextMenu: NSObject {
             ?? (Workspace.shared?.activeTab?.title as NSString?)?.pathExtension
         format.isEnabled = DocumentFormatter.supports(fileExtension: filename)
 
+        // Prüfen und Minifizieren spiegeln „Text → Dokument prüfen/
+        // minifizieren“ aus der Menüleiste. Der Linter deckt mehr Endungen ab
+        // als der Formatter (4D-Container, svg), deshalb je eigene Prüfung.
+        let lint = NSMenuItem(title: L10n.string("Dokument prüfen"),
+                              action: #selector(lintDocument(_:)),
+                              keyEquivalent: "")
+        lint.target = self
+        lint.toolTip = L10n.string("Prüft JSON oder XML auf Syntaxfehler und nennt Zeile und Spalte.")
+        lint.isEnabled = DocumentLinter.supports(fileExtension: filename)
+
+        let minify = NSMenuItem(title: L10n.string("Dokument minifizieren"),
+                                action: #selector(minifyDocument(_:)),
+                                keyEquivalent: "")
+        minify.target = self
+        minify.toolTip = L10n.string("Schreibt JSON oder XML kompakt ohne überflüssigen Leerraum. Eine Auswahl wird einzeln minifiziert.")
+        minify.isEnabled = DocumentFormatter.supports(fileExtension: filename)
+
         // „Text"-Submenü mit den BBEdit-Basics (TextOperations). Tag trägt die
         // TextOpKind; ein gemeinsamer Handler liest ihn. Gruppen durch Trenner.
         let textItem = NSMenuItem(title: L10n.string("Text"), action: nil, keyEquivalent: "")
@@ -208,7 +225,7 @@ final class EditorContextMenu: NSObject {
             .separator(),
             smartPaste,
             .separator(),
-            sort, dedupe, format,
+            sort, dedupe, format, lint, minify,
             .separator(),
             textItem,
         ]
@@ -265,6 +282,19 @@ final class EditorContextMenu: NSObject {
         format(on: textView)
     }
 
+    /// Rechtsklick-Pfad für „Dokument prüfen“ — arbeitet bewusst auf der
+    /// angeklickten TextView, nicht auf der zuletzt aktiven.
+    @objc private func lintDocument(_ sender: Any?) {
+        guard let textView = targetTextView else { NSSound.beep(); return }
+        lint(on: textView)
+    }
+
+    /// Rechtsklick-Pfad für „Dokument minifizieren“ — siehe `lintDocument`.
+    @objc private func minifyDocument(_ sender: Any?) {
+        guard let textView = targetTextView else { NSSound.beep(); return }
+        minify(on: textView)
+    }
+
     private func format(on textView: TextView) {
         guard let tab = Workspace.shared?.activeTab else { NSSound.beep(); return }
         let fileExtension = tab.url?.pathExtension ?? (tab.title as NSString).pathExtension
@@ -293,6 +323,10 @@ final class EditorContextMenu: NSObject {
     /// Whitespace zwischen Tags). Gleicher Apply-Pfad wie das Formatieren.
     func minifyActiveDocument() {
         guard let textView = activeEditorTextView() else { NSSound.beep(); return }
+        minify(on: textView)
+    }
+
+    private func minify(on textView: TextView) {
         guard let tab = Workspace.shared?.activeTab else { NSSound.beep(); return }
         let fileExtension = tab.url?.pathExtension
             ?? (tab.title as NSString).pathExtension
@@ -316,9 +350,13 @@ final class EditorContextMenu: NSObject {
     /// „Text → Dokument prüfen“ (Etappe 6): validiert JSON/XML nativ und
     /// nennt bei Fehlern Zeile/Spalte; ein Klick springt zur Fehlerstelle.
     func lintActiveDocument() {
+        guard let textView = activeEditorTextView() else { NSSound.beep(); return }
+        lint(on: textView)
+    }
+
+    private func lint(on textView: TextView) {
         guard let workspace = Workspace.shared,
-              let tab = workspace.activeTab,
-              let textView = activeEditorTextView() else {
+              let tab = workspace.activeTab else {
             NSSound.beep()
             return
         }
