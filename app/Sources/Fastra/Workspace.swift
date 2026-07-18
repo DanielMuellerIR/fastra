@@ -122,6 +122,11 @@ struct EditorTab: Identifiable, Hashable {
     /// und Inhalts-Erkennung) und beendet die Automatik für diesen Tab.
     /// `nil` = automatisch.
     var languageOverride: CodeLanguage?
+    /// Manuell gewählte EIGEN-Sprache (Registry-ID, derzeit nur 4D; Etappe 3
+    /// Wunschpaket 2026-07b) — aktiviert Provider + Theme unabhängig von der
+    /// Dateiendung. Höchstens eines von `languageOverride`/dieser ID ist
+    /// gesetzt (die Setter halten die Invariante). `nil` = automatisch.
+    var customLanguageOverrideID: String?
     /// Ergebnis der inhaltsbasierten Erkennung für ungespeicherte,
     /// endungslose Tabs. Wird nur wirksam, solange weder URL-Endung noch
     /// manuelle Wahl greifen; Hysterese liegt im Erkennungspfad.
@@ -1447,6 +1452,7 @@ final class Workspace: ObservableObject {
     static func isEligibleForContentDetection(_ tab: EditorTab) -> Bool {
         tab.url == nil && !tab.isWelcome && tab.gitKind == nil
             && tab.languageOverride == nil
+            && tab.customLanguageOverrideID == nil
             && (tab.title as NSString).pathExtension.isEmpty
     }
 
@@ -1542,6 +1548,13 @@ final class Workspace: ObservableObject {
     /// die Erkennung darf danach wieder laufen.
     func setLanguageOverride(_ language: CodeLanguage?) {
         guard let idx = activeTabIndex else { return }
+        // Eine Grammatik-Wahl (oder „Automatisch“) verlässt eine zuvor
+        // manuell gewählte Eigen-Sprache. Deren Provider hängt an der
+        // Editor-Instanz → Remount über den bestehenden Reload-Mechanismus.
+        if tabs[idx].customLanguageOverrideID != nil {
+            tabs[idx].customLanguageOverrideID = nil
+            editorReloadNonce += 1
+        }
         tabs[idx].languageOverride = language
         if language != nil {
             // Manuelle Wahl beendet die Automatik: wartende Analyse abräumen.
@@ -1553,6 +1566,22 @@ final class Workspace: ObservableObject {
                                       oldLength: 0,
                                       newLength: tabs[idx].content.count)
         }
+    }
+
+    /// Manuelle Wahl einer EIGEN-Sprache aus der Registry (derzeit 4D):
+    /// aktiviert Provider + Theme unabhängig von der Dateiendung. Die
+    /// Endungs-Automatik bleibt unangetastet; „Automatisch“ oder eine
+    /// Grammatik-Wahl (`setLanguageOverride`) verlassen die Eigen-Sprache
+    /// wieder. Der Provider wird beim Editor-Aufbau verdrahtet — deshalb
+    /// derselbe Remount-Weg wie beim programmatischen Buffer-Replace.
+    func setCustomLanguageOverride(_ language: CustomLanguage) {
+        guard let idx = activeTabIndex else { return }
+        guard tabs[idx].customLanguageOverrideID != language.id else { return }
+        tabs[idx].customLanguageOverrideID = language.id
+        tabs[idx].languageOverride = nil
+        languageDetectionWork[tabs[idx].id]?.cancel()
+        languageDetectionWork.removeValue(forKey: tabs[idx].id)
+        editorReloadNonce += 1
     }
 
     // MARK: - XPath-Navigation (Etappe 5 Wunschpaket 2026-07)

@@ -18,7 +18,9 @@ struct EditorView: View {
     /// Eigener 4D-Highlighter (Etappe 4): ersetzt für .4dm-Dokumente die
     /// tree-sitter-Pipeline. Eine stabile Instanz pro Fenster — CESE ruft
     /// `setUp` bei jeder Editor-Neuerzeugung selbst auf.
-    @StateObject private var fourDHighlighter = FourDHighlightProvider()
+    /// Highlight-Provider der Eigen-Sprachen (Registry, Etappe 3 Wunschpaket
+    /// 2026-07b) — ein Provider je Sprache, überlebt Tab-Wechsel/Remounts.
+    @StateObject private var customProviders = CustomLanguageProviders()
 
     /// Anker-Offset der laufenden Selektion (Zeichen-Index der *fixen*
     /// Kante). Brauchen wir, weil `CursorPosition` nur den Bereich kennt
@@ -309,8 +311,9 @@ struct EditorView: View {
             language: detectedLanguage,
             configuration: editorConfiguration,
             state: $editorState,
-            // .4dm: eigener leichter Tokenizer statt tree-sitter (Etappe 4).
-            highlightProviders: showsFourDDocument ? [fourDHighlighter] : nil,
+            // Eigen-Sprache aktiv (z. B. 4D): eigener leichter Tokenizer
+            // statt tree-sitter — Provider kommt aus der Registry.
+            highlightProviders: activeCustomLanguage.map { [customProviders.provider(for: $0)] },
             coordinators: [minimapLayoutCoordinator]
         )
         .background(GutterDimmingBridge().frame(width: 0, height: 0))
@@ -763,21 +766,36 @@ struct EditorView: View {
     /// Reload aus (kein Layout-Reentry/QuartzCore-Crash). Nur eine echte
     /// `wrapLines`-Änderung erzeugt eine ungleiche Config → CESE-Reconcile
     /// setzt Umbruch + `hasHorizontalScroller` live.
-    /// Zeigt der aktive Tab eine 4D-Methode (.4dm)? Steuert Theme und
-    /// Highlight-Provider (Etappe 4). Titel zählt mit, damit auch „Speichern
-    /// unter…“-Kandidaten ohne URL richtig eingefärbt werden.
-    private var showsFourDDocument: Bool {
-        let name = workspace.activeTab?.url?.lastPathComponent
-            ?? workspace.activeTab?.title ?? ""
-        return (name as NSString).pathExtension.lowercased() == "4dm"
+    /// Aktive Eigen-Sprache des Tabs (Registry, Etappe 3 Wunschpaket
+    /// 2026-07b) — steuert Theme und Highlight-Provider. Rangfolge:
+    /// 1. Manuelle Eigen-Sprachen-Wahl (Footer-Menü) gewinnt immer.
+    /// 2. Eine manuelle GRAMMATIK-Wahl schaltet die Eigen-Sprache ab
+    ///    (der Nutzer hat sich ausdrücklich anders entschieden).
+    /// 3. Sonst Endungs-Automatik (Titel zählt mit, damit auch „Speichern
+    ///    unter…“-Kandidaten ohne URL richtig eingefärbt werden).
+    /// Pure Funktion → unit-testbar.
+    static func customLanguage(for tab: EditorTab?) -> CustomLanguage? {
+        guard let tab else { return nil }
+        if let overrideID = tab.customLanguageOverrideID {
+            return CustomLanguageRegistry.language(withID: overrideID)
+        }
+        if tab.languageOverride != nil { return nil }
+        let name = tab.url?.lastPathComponent ?? tab.title
+        return CustomLanguageRegistry.language(
+            forExtension: (name as NSString).pathExtension
+        )
+    }
+
+    private var activeCustomLanguage: CustomLanguage? {
+        Self.customLanguage(for: workspace.activeTab)
     }
 
     private var editorConfiguration: SourceEditorConfiguration {
         .init(
             appearance: .init(
-                theme: showsFourDDocument
-                    ? (colorScheme == .dark ? Self.fourDThemeDark : Self.fourDTheme)
-                    : (colorScheme == .dark ? Self.fastraThemeDark : Self.fastraTheme),
+                theme: activeCustomLanguage.map {
+                    colorScheme == .dark ? $0.darkTheme : $0.lightTheme
+                } ?? (colorScheme == .dark ? Self.fastraThemeDark : Self.fastraTheme),
                 font: .fastraEditorFont(name: editorFontName, size: 13,
                                         scale: DocumentZoom.scale(for: documentZoomLevel)),
                 wrapLines: wrapLines,
@@ -794,6 +812,9 @@ struct EditorView: View {
 
     private var detectedLanguage: CodeLanguage {
         guard let tab = workspace.activeTab else { return .default }
+        // Aktive Eigen-Sprache (Registry) → deren Grammatik-Unterbau
+        // (für 4D Plaintext; die Farben liefert der Provider).
+        if let custom = Self.customLanguage(for: tab) { return custom.baseGrammar }
         // Manuelle Sprachwahl (Footer-Menü, Etappe 3) gewinnt IMMER —
         // sie ist das Sicherheitsventil gegen jede Fehlerkennung.
         if let manual = tab.languageOverride { return manual }
@@ -826,17 +847,15 @@ struct EditorView: View {
     /// - XML-artige → HTML-Grammatik (CodeEditLanguages bündelt kein XML;
     ///   HTML zeichnet Tags/Attribute/Strings verlustfrei auch für XML).
     /// - 4D-Projektdateien (Etappe 4): .4DProject/.4DForm sind JSON,
-    ///   .4DCatalog/.4DSettings sind XML.
-    /// - .4dm → Plaintext-Grammatik; die Farben liefert der eigene
-    ///   4D-Highlight-Provider, nicht tree-sitter.
+    ///   .4DCatalog/.4DSettings sind XML (echte JSON-/XML-Dateien — bewusst
+    ///   KEINE Eigen-Sprache; .4dm läuft seit Etappe 3 Wunschpaket 2026-07b
+    ///   über die `CustomLanguageRegistry`).
     static func grammarForSpecialExtension(_ fileExtension: String) -> CodeLanguage? {
         switch fileExtension.lowercased() {
         case "xml", "xsd", "xsl", "xslt", "plist", "4dcatalog", "4dsettings":
             return .html
         case "4dproject", "4dform":
             return .json
-        case "4dm":
-            return .default
         default:
             return nil
         }

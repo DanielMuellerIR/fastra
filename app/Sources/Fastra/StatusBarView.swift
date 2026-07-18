@@ -190,10 +190,15 @@ struct StatusBarView: View {
         )
     }
 
-    /// Beschriftung des Sprach-Chips: manuelle Wahl > inhaltlich erkanntes
-    /// Format (nur ungespeicherte, endungslose Tabs) > Endungs-Label.
+    /// Beschriftung des Sprach-Chips: manuelle Wahl (Eigen-Sprache oder
+    /// Grammatik) > inhaltlich erkanntes Format (nur ungespeicherte,
+    /// endungslose Tabs) > Endungs-Label.
     private var fileType: String {
         guard let tab = workspace.activeTab else { return "Plain" }
+        if let customID = tab.customLanguageOverrideID,
+           let custom = CustomLanguageRegistry.language(withID: customID) {
+            return custom.displayName
+        }
         if let manual = tab.languageOverride {
             return LanguageMenuSupport.displayName(for: manual)
         }
@@ -204,30 +209,47 @@ struct StatusBarView: View {
         return DocumentKind.footerLabel(filename: tab.title)
     }
 
+    /// Ist dieser Menü-Eintrag die aktuelle manuelle Wahl des aktiven Tabs?
+    private func isSelectedEntry(_ entry: LanguageMenuSupport.Entry) -> Bool {
+        guard let tab = workspace.activeTab else { return false }
+        switch entry {
+        case .grammar(let language):
+            return tab.languageOverride == language && tab.customLanguageOverrideID == nil
+        case .custom(let language):
+            return tab.customLanguageOverrideID == language.id
+        }
+    }
+
     /// Sprach-Chip als Menü (Etappe 3): manueller Sprachumschalter. Die Wahl
     /// gewinnt immer vor Endung und Inhalts-Erkennung; „Automatisch" kehrt
-    /// zur Automatik zurück.
+    /// zur Automatik zurück. Enthält seit Etappe 3 Wunschpaket 2026-07b auch
+    /// die Eigen-Sprachen der Registry (derzeit 4D).
     private var languageMenu: some View {
         Menu {
             Button {
                 workspace.setLanguageOverride(nil)
             } label: {
-                if workspace.activeTab?.languageOverride == nil {
+                if workspace.activeTab?.languageOverride == nil
+                    && workspace.activeTab?.customLanguageOverrideID == nil {
                     Label("Automatisch", systemImage: "checkmark")
                 } else {
                     Text("Automatisch")
                 }
             }
             Divider()
-            ForEach(LanguageMenuSupport.selectableLanguages, id: \.id) { language in
+            ForEach(LanguageMenuSupport.selectableEntries) { entry in
                 Button {
-                    workspace.setLanguageOverride(language)
+                    switch entry {
+                    case .grammar(let language):
+                        workspace.setLanguageOverride(language)
+                    case .custom(let language):
+                        workspace.setCustomLanguageOverride(language)
+                    }
                 } label: {
-                    if workspace.activeTab?.languageOverride == language {
-                        Label(LanguageMenuSupport.displayName(for: language),
-                              systemImage: "checkmark")
+                    if isSelectedEntry(entry) {
+                        Label(entry.displayName, systemImage: "checkmark")
                     } else {
-                        Text(verbatim: LanguageMenuSupport.displayName(for: language))
+                        Text(verbatim: entry.displayName)
                     }
                 }
             }

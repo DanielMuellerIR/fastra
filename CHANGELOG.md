@@ -9,6 +9,30 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.29.0] — 2026-07-18
+
+Etappe 3 des Wunschpakets 2026-07b: Sprachmenü & 4D wählbar
+(`docs/wunschpaket-2026-07b/goal-vorschlag.md`).
+
+### Hinzugefügt
+
+- **4D manuell wählbar:** Das Sprachmenü in der Fußzeile bietet jetzt auch
+  „4D“ an. Die Wahl aktiviert den 4D-Highlight-Provider samt 4D-Theme
+  unabhängig von der Dateiendung — und lässt sich über „Automatisch“ oder
+  eine andere Sprache wieder verlassen. Die Endungs-Automatik (.4dm) bleibt
+  unverändert; manuelle Wahl gewinnt wie bisher.
+- **Eigen-Sprachen-Registry:** Eine zentrale Beschreibung aller Sprachen
+  außerhalb von CodeEditLanguages (derzeit nur 4D: Anzeigename, Endungen,
+  Grammatik-Unterbau, Themes, Highlight-Provider). Sprachmenü und
+  Editor-Routing speisen sich aus dieser einen Quelle; ein
+  Anti-Drift-Unit-Test stellt sicher, dass jede unterstützte Sprache
+  (gebündelte Grammatiken + Registry) im Menü wählbar ist und die bewusst
+  versteckten Hilfs-Grammatiken dokumentiert bleiben.
+- `.4DProject`/`.4DForm` (JSON) und `.4DCatalog`/`.4DSettings` (XML)
+  behalten ihr bisheriges Routing — das sind echte JSON-/XML-Dateien.
+- Selbsttest `highlight4d` prüft zusätzlich den manuellen Override an einer
+  Nicht-.4dm-Datei (Farben erscheinen und verschwinden real im Editor).
+
 ## [v1.28.0] — 2026-07-18
 
 Etappe 2 des Wunschpakets 2026-07b: Suchdialog

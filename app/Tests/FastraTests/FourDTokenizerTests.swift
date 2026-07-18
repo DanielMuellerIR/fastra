@@ -261,7 +261,10 @@ func fourD_extensionMapping() {
     #expect(EditorView.grammarForSpecialExtension("4DForm") == .json)
     #expect(EditorView.grammarForSpecialExtension("4DCatalog") == .html)
     #expect(EditorView.grammarForSpecialExtension("4DSettings") == .html)
-    #expect(EditorView.grammarForSpecialExtension("4dm") == .default)
+    // .4dm läuft seit Etappe 3 Wunschpaket 2026-07b über die Registry
+    // (CustomLanguageRegistry) — nicht mehr über das Grammatik-Mapping.
+    #expect(EditorView.grammarForSpecialExtension("4dm") == nil)
+    #expect(CustomLanguageRegistry.language(forExtension: "4dm") == CustomLanguageRegistry.fourD)
     #expect(EditorView.grammarForSpecialExtension("swift") == nil)
     #expect(DocumentKind.footerLabel(filename: "methode.4dm") == "4D")
     #expect(DocumentKind.footerLabel(filename: "Projekt.4DProject") == "JSON")

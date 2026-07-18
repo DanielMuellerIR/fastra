@@ -1439,12 +1439,64 @@ enum SelfTest {
                 // Hell bestanden → dunkel umschalten und erneut beobachten.
                 NSApp.appearance = NSAppearance(named: .darkAqua)
                 pollFourDColors(root: root, url: tmp, dark: true, tick: 0) {
-                    NSApp.appearance = nil   // zurück zum Systemmodus
+                    NSApp.appearance = NSAppearance(named: .aqua)
                     try? FileManager.default.removeItem(at: tmp)
-                    finish(true, "4D-Farben hell + dunkel beobachtet "
-                        + "(Befehl, Keyword, $lokal, Kommentar aus light/dark.json)")
+                    // Etappe 3 Wunschpaket 2026-07b: 4D ist auch MANUELL
+                    // wählbar — an einer Nicht-.4dm-Datei prüfen.
+                    runFourDManualOverridePhase(ws: ws, root: root, code: code)
                 }
             }
+        }
+    }
+
+    /// Manueller 4D-Override end-to-end: eine .txt-Datei mit 4D-Inhalt zeigt
+    /// zunächst KEINE 4D-Farben; nach `setCustomLanguageOverride(.fourD)`
+    /// erscheinen sie; „Automatisch“ entfernt sie wieder. Beobachtet wird
+    /// jeweils der echte Editor-TextStorage (wie in den Phasen davor).
+    private static func runFourDManualOverridePhase(ws: Workspace, root: NSView,
+                                                    code: String) {
+        let txt = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-highlight4d-\(UUID().uuidString).txt")
+        do { try code.write(to: txt, atomically: true, encoding: .utf8) }
+        catch { finish(false, "(override) Temp-Datei nicht schreibbar") }
+        ws.loadFile(at: txt) { ok in
+            guard ok else {
+                try? FileManager.default.removeItem(at: txt)
+                finish(false, "(override) loadFile (.txt) schlug fehl")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                // Vorbedingung: als Plaintext KEINE 4D-Befehlsfarbe.
+                let cmd = fourDExpectedColors(dark: false)[0]
+                guard !storageContainsColor(in: root, r: cmd.1, g: cmd.2, b: cmd.3) else {
+                    try? FileManager.default.removeItem(at: txt)
+                    finish(false, "(override) .txt zeigt 4D-Farben schon OHNE Override")
+                }
+                ws.setCustomLanguageOverride(CustomLanguageRegistry.fourD)
+                pollFourDColors(root: root, url: txt, dark: false, tick: 0) {
+                    // Zurück auf Automatik → Farben müssen verschwinden.
+                    ws.setLanguageOverride(nil)
+                    pollFourDColorsGone(ws: ws, root: root, url: txt, tick: 0)
+                }
+            }
+        }
+    }
+
+    private static func pollFourDColorsGone(ws: Workspace, root: NSView,
+                                            url: URL, tick: Int) {
+        let cmd = fourDExpectedColors(dark: false)[0]
+        if !storageContainsColor(in: root, r: cmd.1, g: cmd.2, b: cmd.3) {
+            NSApp.appearance = nil   // zurück zum Systemmodus
+            try? FileManager.default.removeItem(at: url)
+            finish(true, "4D-Farben hell + dunkel beobachtet; manueller Override "
+                + "färbt .txt und „Automatisch“ räumt wieder")
+        }
+        if tick >= 40 {
+            NSApp.appearance = nil
+            try? FileManager.default.removeItem(at: url)
+            finish(false, "(override) 4D-Farben bleiben nach Rückkehr zur Automatik")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollFourDColorsGone(ws: ws, root: root, url: url, tick: tick + 1)
         }
     }
 
