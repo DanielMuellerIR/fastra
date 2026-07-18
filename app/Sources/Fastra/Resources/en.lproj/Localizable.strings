@@ -1093,3 +1093,21 @@
 "4D erkannt — Fastra kann mit tool4d beim Prüfen der Syntax helfen." = "4D detected — Fastra can help check syntax with tool4d.";
 "Einrichtung anzeigen" = "Show Setup";
 "Nicht mehr zeigen" = "Don’t show again";
+
+/* 4D-Struktur-Hinweise (Etappe 5 Wunschpaket 2026-07c) */
+"Struktur-Hinweise" = "Structure Hints";
+"Struktur-Hinweis" = "Structure Hint";
+"Keine Auffälligkeiten gefunden (Block-, Klammer-, String- und Kommentar-Balance). Das ist eine Heuristik, kein Compiler-Ersatz — verbindlich prüft tool4d, siehe Hilfe „4D und tool4d“." = "No anomalies found (block, bracket, string, and comment balance). This is a heuristic, not a compiler replacement — tool4d checks authoritatively, see Help “4D and tool4d”.";
+"Zeile %ld, Spalte %ld: %@\n\nHeuristische Prüfung — kein Compiler-Ersatz." = "Line %ld, column %ld: %@\n\nHeuristic check — not a compiler replacement.";
+"Zur Stelle springen" = "Jump to Location";
+"String ohne schließendes Anführungszeichen — 4D-Strings enden auf derselben Zeile." = "String without a closing quote — 4D strings end on the same line.";
+"Blockkommentar „/*“ ohne schließendes „*/“." = "Block comment “/*” without a closing “*/”.";
+"„%@“ ohne passende öffnende Klammer." = "“%@” without a matching opening bracket.";
+"„%@“ ohne schließende „%@“." = "“%@” without a closing “%@”.";
+"„%@“ ohne schließendes „%@“." = "“%@” without a closing “%@”.";
+"„%@“ ohne schließendes „%@“ (vor %@)." = "“%@” without a closing “%@” (before %@).";
+"„%@“ ohne vorheriges „%@“." = "“%@” without a preceding “%@”.";
+"„%@“ passt nicht zum offenen „%@“ aus Zeile %ld." = "“%@” does not match the open “%@” from line %ld.";
+"„%@“ passt nicht zur offenen „%@“ aus Zeile %ld." = "“%@” does not match the open “%@” from line %ld.";
+"„Else“ außerhalb von „If“/„Case of“." = "“Else” outside of “If”/“Case of”.";
+"„Function“ in Zeile %ld" = "“Function” in line %ld";

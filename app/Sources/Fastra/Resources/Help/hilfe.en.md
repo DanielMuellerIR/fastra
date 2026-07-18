@@ -150,6 +150,13 @@ menu, 4D can also be enabled manually for other files.
 `.4DProject`/`.4DForm` are real JSON files, `.4DCatalog`/`.4DSettings`
 real XML — they open with JSON or XML rendering.
 
+**Structure hints:** “Text → Check Document” inspects `.4dm` methods
+heuristically for block balance (`If/End if`, `For each/End for each`,
+`Case of/End case`, `Repeat/Until`, `While/End while`, `Function`
+blocks) plus bracket, string, and comment balance, and jumps to the
+spot. Honestly put: a heuristic, not a compiler replacement — tool4d
+checks authoritatively (next section).
+
 ## 4D and tool4d
 
 Fastra highlights 4D code but does not check it for syntax or compiler

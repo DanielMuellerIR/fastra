@@ -333,6 +333,30 @@ final class EditorContextMenu: NSObject {
             alert.informativeText = L10n.format("Gültiges %@ — keine Fehler gefunden.", label)
             alert.addButton(withTitle: L10n.string("OK"))
             alert.runModal()
+        case .hintFree:
+            // 4D-Struktur-Hinweise (Etappe 5 Wunschpaket 2026-07c):
+            // ehrlich als Heuristik benannt — nie als „gültig" verkauft.
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = L10n.string("Struktur-Hinweise")
+            alert.informativeText = L10n.string("Keine Auffälligkeiten gefunden (Block-, Klammer-, String- und Kommentar-Balance). Das ist eine Heuristik, kein Compiler-Ersatz — verbindlich prüft tool4d, siehe Hilfe „4D und tool4d“.")
+            alert.addButton(withTitle: L10n.string("OK"))
+            alert.runModal()
+        case .hint(let issue):
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = L10n.string("Struktur-Hinweis")
+            alert.informativeText = L10n.format("Zeile %ld, Spalte %ld: %@\n\nHeuristische Prüfung — kein Compiler-Ersatz.",
+                                                issue.line, issue.column, issue.message)
+            alert.addButton(withTitle: L10n.string("Zur Stelle springen"))
+            alert.addButton(withTitle: L10n.string("Schließen"))
+            if alert.runModal() == .alertFirstButtonReturn {
+                let range = BufferSearch.nsRange(forLine: issue.line,
+                                                 column: issue.column, in: text)
+                NotificationCenter.default.post(name: .fastraJumpToRange,
+                                                object: workspace,
+                                                userInfo: ["range": NSValue(range: range)])
+            }
         case .issue(let issue):
             let alert = NSAlert()
             alert.alertStyle = .warning

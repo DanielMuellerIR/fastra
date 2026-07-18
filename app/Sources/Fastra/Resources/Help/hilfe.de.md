@@ -157,6 +157,13 @@ Sprachmenü lässt sich 4D auch für andere Dateien manuell aktivieren.
 `.4DProject`/`.4DForm` sind echte JSON-Dateien, `.4DCatalog`/
 `.4DSettings` echtes XML — sie öffnen mit JSON- bzw. XML-Darstellung.
 
+**Struktur-Hinweise:** „Text → Dokument prüfen“ untersucht `.4dm`-Methoden
+heuristisch auf Block-Balance (`If/End if`, `For each/End for each`,
+`Case of/End case`, `Repeat/Until`, `While/End while`, `Function`-Blöcke)
+sowie Klammer-, String- und Kommentar-Balance und springt zur Stelle.
+Ehrlich gesagt: eine Heuristik, kein Compiler-Ersatz — verbindlich prüft
+tool4d (nächster Abschnitt).
+
 ## 4D und tool4d
 
 Fastra hebt 4D-Code farblich hervor, prüft ihn aber nicht auf Syntax-

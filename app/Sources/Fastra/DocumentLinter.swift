@@ -19,17 +19,29 @@ enum DocumentLinter {
         /// Dokument ist gültig; der String ist das Format-Label („JSON"/„XML").
         case valid(String)
         case issue(Issue)
+        /// Heuristische Prüfung OHNE Auffälligkeiten (4D-Struktur-Hinweise,
+        /// Etappe 5 Wunschpaket 2026-07c). Bewusst NICHT `.valid`: die
+        /// Heuristik ist kein Compiler-Ersatz und darf nie „gültig" sagen.
+        case hintFree
+        /// Ein heuristischer Struktur-HINWEIS (kein bewiesener Fehler).
+        case hint(Issue)
         case unsupported
     }
 
     /// Prüft den Text nach Dateiendung. Gleiche Format-Zuständigkeit wie
-    /// der Formatter (JSON bzw. XML-artige inkl. plist).
+    /// der Formatter (JSON bzw. XML-artige inkl. plist); `.4dm`-Methoden
+    /// bekommen die heuristischen Struktur-Hinweise.
     static func lint(_ text: String, fileExtension: String?) -> LintResult {
         switch (fileExtension ?? "").lowercased() {
         case "json", "4dproject", "4dform":
             return lintJSON(text)
         case "xml", "xsd", "xsl", "xslt", "plist", "svg", "4dcatalog", "4dsettings":
             return lintXML(text)
+        case "4dm":
+            if let issue = FourDStructureCheck.check(text) {
+                return .hint(issue)
+            }
+            return .hintFree
         default:
             return .unsupported
         }

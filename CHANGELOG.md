@@ -9,6 +9,33 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.36.0] — 2026-07-18
+
+Etappe 5 des Wunschpakets 2026-07c: 4D-Struktur-Hinweise
+(`docs/wunschpaket-2026-07c/goal-vorschlag.md`).
+
+### Hinzugefügt
+
+- **„Dokument prüfen“ für `.4dm`-Methoden:** heuristischer Check auf
+  Basis des vorhandenen 4D-Tokenizers — Block-Balance (`If/End if`,
+  `For each/End for each`, `Case of/End case`, `Repeat/Until`,
+  `While/End while`, `For/End for`, `Function`-Grenzen in Klassen,
+  `Else`-Zuordnung), Klammer-Balance (`()`, `[]`, `{}` außerhalb von
+  Strings, Kommentaren und `[Tabellen]`), String- und
+  Kommentar-Balance. Ein Klick springt zur Stelle.
+- **Ehrlich als „Struktur-Hinweise“ benannt** — kein Compiler-Ersatz,
+  auch nicht im Erfolgsfall („keine Auffälligkeiten“ statt „gültig“;
+  Verweis auf tool4d). Im Zweifel keine Meldung statt einer falschen:
+  Schlüsselwörter zählen nur am Zeilenanfang (`4D.Function` bleibt
+  Typ-Annotation), `Begin SQL`-Blöcke werden nicht gedeutet, Klammern
+  nur über das ganze Dokument bilanziert.
+
+### Intern
+
+- Neue pure Prüf-Logik `FourDStructureCheck` mit 21 Fixture-Tests
+  (valide Methoden/Klassen erzeugen KEINE Hinweise; kaputte Fälle
+  finden die richtige Zeile).
+
 ## [v1.35.0] — 2026-07-18
 
 Etappe 4 des Wunschpakets 2026-07c: tool4d-Ersteinrichtungshilfe
