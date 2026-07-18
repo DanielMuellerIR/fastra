@@ -71,6 +71,17 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   der zentralen Abläufe (Suchmaske, Vorschau→Apply, Git-Seitenleiste) wären
   ein sinnvoller späterer Ausbau.
 
+- **`jump`-Selbsttest (CR) ist flaky, nicht defekt:** Am 2026-07-18 fiel er in
+  einem Lauf mit „Editor-TextView nicht als CodeEditTextView.TextView
+  erreichbar" aus und war im direkt folgenden Lauf bei unverändertem Code
+  grün (Suite 41/41). Der CR-Teilfall prüft also nicht zuverlässig, was er
+  prüfen soll: Die Meldung beschreibt einen fehlgeschlagenen Zugriff auf die
+  TextView, nicht ein falsches Sprungergebnis — die View ist zum Prüfzeitpunkt
+  vermutlich noch nicht fertig aufgebaut. Wer den Fail untersucht, sollte
+  deshalb zuerst dort ansetzen (auf Verfügbarkeit warten statt einmalig
+  abzufragen) und ihn nicht als echten Regressionsfund im Sprung-Pfad lesen.
+  Ein Fail in EINEM Lauf ist hier kein Beweis.
+
 - **Datei-Drag vom Dokument-Tab:** Mit dem titellosen Fensterchrome entfiel
   das Ziehen der Datei aus der Titelzeile (Proxy-Icon) ersatzlos; Befund in
   `docs/wunschpaket-2026-07b/fenstertitel-befund.md`. Möglicher Ersatz wäre
