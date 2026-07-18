@@ -37,10 +37,12 @@ Erledigte Arbeit und historische Entscheidungen stehen in
     tragfähigem Einzeldatei-Konzept. Recherche-Stand 2026-07-18: Die
     offizielle VS-Code-Extension „4D-Analyzer“ nutzt genau diesen LSP-Weg
     (`tool4d --lsp=<port>`, JSON-RPC über localhost-TCP) und verspricht
-    Einzeldatei-Support — das Einzeldatei-Konzept ist damit greifbar; die
-    formalen Nutzungsbedingungen von tool4d bleiben der offene Punkt
-    (Indizien: frei, auch für CI/Dritt-Tools beworben). Details im
-    Wunschpaket-3-Entwurf.
+    Einzeldatei-Support — das Einzeldatei-Konzept ist damit greifbar.
+    Offizielle Quellen erklären tool4d ausdrücklich für frei und
+    lizenzlos („does not need any license to run“, 4D-Blog; „a free,
+    lightweight, stand-alone application“, developer.4d.com/docs/Admin/
+    cli); die abschließende Bestätigung holt der Maintainer ein. Details
+    im Wunschpaket-3-Entwurf.
   - **4D-Farbdetails:** Underline (Konstanten) kennt das CESE-Attributmodell
     nicht; `errors`/`plug_ins`/`member` aus den Farbvorgaben entfallen
     mangels Analyse bzw. Unterscheidbarkeit (siehe Slot-Mapping in
