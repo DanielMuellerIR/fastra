@@ -47,6 +47,10 @@ struct EditorView: View {
     /// `Tool4DAssist.firstContactHintShown`, Mechanik wie Markdown-Assist).
     @State private var showTool4DHint = false
 
+    /// 4D-Vervollständigung (Etappe 6 Wunschpaket 2026-07c). Stark gehalten —
+    /// der `completionDelegate` des Editors ist nur eine weak-Referenz.
+    @StateObject private var fourDCompletion = FourDCompletionDelegate()
+
     /// Zeilenumbruch am Fensterrand (BBEdit „Soft Wrap Text"). App-weite,
     /// persistente Einstellung — gesetzt über den Menüpunkt „Zeilen umbrechen"
     /// (FastraApp) bzw. später den Einstellungs-Dialog. Default AN: ohne
@@ -554,7 +558,12 @@ struct EditorView: View {
             // Eigen-Sprache aktiv (z. B. 4D): eigener leichter Tokenizer
             // statt tree-sitter — Provider kommt aus der Registry.
             highlightProviders: activeCustomLanguage.map { [customProviders.provider(for: $0)] },
-            coordinators: [minimapLayoutCoordinator]
+            coordinators: [minimapLayoutCoordinator],
+            // 4D-Vervollständigung (Etappe 6 Wunschpaket 2026-07c) — NUR
+            // bei aktiver 4D-Sprache; sonst bleibt das Vorschlagsfenster
+            // komplett aus (Delegate nil).
+            completionDelegate: activeCustomLanguage?.id == CustomLanguageRegistry.fourD.id
+                ? fourDCompletion : nil
         )
         .background(GutterDimmingBridge().frame(width: 0, height: 0))
         // Frisch erscheinender Editor (neuer Tab ⌘T, Tab-Wechsel, fertig geladene

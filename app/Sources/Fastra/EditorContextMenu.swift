@@ -42,6 +42,9 @@ enum TextOpKind: Int, CaseIterable {
     // anhängen — der Int-Rohwert wandert durch die Notification, Einschieben
     // würde bestehende Werte verschieben.
     case normalizeSpaces, stripDiacriticals, precomposeUnicode, decomposeUnicode
+    // 4D-Export-Transformation (Etappe 6 Wunschpaket 2026-07c):
+    // Token-Suffixe strippen bzw. Befehls-Token ergänzen.
+    case fourDDetokenize, fourDTokenizeCommands
 
     /// Menü-Beschriftung.
     var title: String {
@@ -77,6 +80,8 @@ enum TextOpKind: Int, CaseIterable {
         case .stripDiacriticals: "Diakritische Zeichen entfernen"
         case .precomposeUnicode: "Unicode zusammensetzen (NFC)"
         case .decomposeUnicode:  "Unicode zerlegen (NFD)"
+        case .fourDDetokenize:        "4D: Token-Suffixe entfernen (:Cnnn/:Knnn)"
+        case .fourDTokenizeCommands:  "4D: Befehls-Token ergänzen (:Cnnn)"
         }
         return L10n.string(key)
     }
@@ -186,7 +191,7 @@ final class EditorContextMenu: NSObject {
         // TextOpKind; ein gemeinsamer Handler liest ihn. Gruppen durch Trenner.
         let textItem = NSMenuItem(title: L10n.string("Text"), action: nil, keyEquivalent: "")
         let textSub = NSMenu()
-        let groupBreaksAfter: Set<TextOpKind> = [.titlecase, .entab, .convertEscapeSequences, .shiftLeft, .joinLinesTight, .removeLineNumbers, .exchangeWords, .removeAllDuplicatedLines, .hardWrap]
+        let groupBreaksAfter: Set<TextOpKind> = [.titlecase, .entab, .convertEscapeSequences, .shiftLeft, .joinLinesTight, .removeLineNumbers, .exchangeWords, .removeAllDuplicatedLines, .hardWrap, .decomposeUnicode]
         for kind in TextOpKind.allCases {
             let item = NSMenuItem(title: kind.title,
                                   action: #selector(runTextOp(_:)),
@@ -507,6 +512,10 @@ final class EditorContextMenu: NSObject {
         case .stripDiacriticals: return TextOperations.stripDiacriticals
         case .precomposeUnicode: return TextOperations.precomposeUnicode
         case .decomposeUnicode:  return TextOperations.decomposeUnicode
+        // 4D-Export-Transformation (Etappe 6): token-basiert über den
+        // FourDTokenizer — Strings/Kommentare bleiben unangetastet.
+        case .fourDDetokenize:       return FourDTokenTransform.detokenizeOperation
+        case .fourDTokenizeCommands: return FourDTokenTransform.tokenizeCommandsOperation
         // Eingabe-Operationen werden in apply() per Dialog abgefangen und erreichen
         // operation() nie — der nil-Pfad ist nur zur Vollständigkeit des switch.
         case .prefixLines, .suffixLines, .keepLinesMatching, .deleteLinesMatching, .hardWrap:

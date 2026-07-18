@@ -33,6 +33,8 @@ Stand: 2026-07-17.
 | Mermaid | Diagramme in Markdown-Vorschau (JS gebündelt) | MIT |
 | highlight.js | Syntax-Highlighting in Vorschau (JS/CSS gebündelt) | BSD-3-Clause |
 | Sora (Font) | Schrift in Markdown-Vorschau (TTF gebündelt) | SIL OFL 1.1 |
+| 4D-github-instructions (formsSchema.json) | `.4DForm`-Schema-Validierung (JSON gebündelt) | MIT |
+| 4D-Dokumentation (abgeleitete Fakten) | 4D-Befehls-/Konstantennamen, Syntax-Signaturen, Befehlsnummern (generiert in `FourDSymbols.swift`) | CC BY 4.0 |
 
 Hinweis: `CodeEditLanguages` bündelt seinerseits zahlreiche tree-sitter-Grammatiken,
 die unter ihren jeweiligen (überwiegend MIT-/Apache-2.0-)Lizenzen stehen; diese
@@ -1166,3 +1168,44 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ```
+
+## 4D-github-instructions (formsSchema.json)
+
+Fastra bündelt die Datei `formsSchema.json` (JSON-Schema für 4D-Formulare)
+aus dem Repository <https://github.com/mathieu-ferry/4D-github-instructions>
+für die „Dokument prüfen“-Validierung von `.4DForm`-Dateien.
+
+```
+MIT License
+
+Copyright (c) 2026 Mathieu Ferry
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## 4D-Dokumentation (abgeleitete Fakten)
+
+Die generierte Datei `app/Sources/Fastra/FourDSymbols.swift` enthält aus der
+offiziellen 4D-Dokumentation (<https://github.com/4d/docs>) abgeleitete
+Fakten: Befehls- und Konstantennamen, Syntax-Signaturen und Befehlsnummern.
+Keine Beschreibungstexte oder Beispiele. Die 4D-Dokumentation steht unter
+der Lizenz Creative Commons Attribution 4.0 International (CC BY 4.0,
+<https://creativecommons.org/licenses/by/4.0/>); © 4D SAS. Änderungen:
+Extraktion und Umformatierung der genannten Fakten durch das
+Generator-Skript `app/tools/generate-4d-symbols.py`.

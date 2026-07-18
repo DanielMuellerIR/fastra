@@ -150,6 +150,21 @@ menu, 4D can also be enabled manually for other files.
 `.4DProject`/`.4DForm` are real JSON files, `.4DCatalog`/`.4DSettings`
 real XML — they open with JSON or XML rendering.
 
+**Completion:** In `.4dm` methods, Fastra suggests commands (with their
+syntax signature) and constants as you type — Esc or ⌃Space also opens
+the list manually, ↑/↓ select, Return/Tab accepts, Esc closes. The
+names, signatures, and command numbers come from the official 4D
+documentation (CC BY 4.0, © 4D SAS — see the third-party notices).
+
+**Checking `.4DForm`:** “Text → Check Document” additionally validates
+form files against the bundled form schema (MIT-licensed, by Mathieu
+Ferry) and jumps to the offending spot including its JSON path.
+
+**Export transformation:** The **Text** menu strips token suffixes of
+canonical 4D exports (`ALERT:C41` → `ALERT`, also `:Knn:mm`) or re-adds
+command tokens. No public source lists constant numbers — “Add command
+tokens” therefore honestly leaves constants unchanged.
+
 **Structure hints:** “Text → Check Document” inspects `.4dm` methods
 heuristically for block balance (`If/End if`, `For each/End for each`,
 `Case of/End case`, `Repeat/Until`, `While/End while`, `Function`

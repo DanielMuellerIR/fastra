@@ -33,8 +33,14 @@ enum DocumentLinter {
     /// bekommen die heuristischen Struktur-Hinweise.
     static func lint(_ text: String, fileExtension: String?) -> LintResult {
         switch (fileExtension ?? "").lowercased() {
-        case "json", "4dproject", "4dform":
+        case "json", "4dproject":
             return lintJSON(text)
+        case "4dform":
+            // Erst die JSON-Syntax, dann das gebündelte Formular-Schema
+            // (Etappe 6 Wunschpaket 2026-07c).
+            let json = lintJSON(text)
+            guard case .valid = json else { return json }
+            return lintFormSchema(text)
         case "xml", "xsd", "xsl", "xslt", "plist", "svg", "4dcatalog", "4dsettings":
             return lintXML(text)
         case "4dm":
@@ -45,6 +51,43 @@ enum DocumentLinter {
         default:
             return .unsupported
         }
+    }
+
+    // MARK: - 4D-Formular-Schema (Etappe 6 Wunschpaket 2026-07c)
+
+    /// Das gebündelte Formular-Schema (formsSchema.json, MIT — siehe
+    /// THIRD-PARTY-NOTICES.md), einmalig geladen.
+    private static let formSchema: JSONSchemaLite.Schema? = {
+        guard let url = AppResources.bundle.url(forResource: "formsSchema",
+                                                withExtension: "json"),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return JSONSchemaLite.Schema(data: data)
+    }()
+
+    /// Prüft ein (syntaktisch gültiges) `.4DForm`-JSON gegen das Schema.
+    static func lintFormSchema(_ text: String) -> LintResult {
+        guard let schema = formSchema else {
+            // Kein stiller Fallback: fehlt das Schema im Bundle, wird das
+            // sichtbar gesagt statt „gültig" vorzutäuschen.
+            return .hint(Issue(line: 1, column: 1, message: L10n.string(
+                "Das gebündelte Formular-Schema konnte nicht geladen werden — nur die JSON-Syntax wurde geprüft."
+            )))
+        }
+        guard let value = try? JSONSerialization.jsonObject(
+            with: Data(text.utf8), options: [.fragmentsAllowed]
+        ) else {
+            return lintJSON(text)
+        }
+        if let violation = schema.validate(value) {
+            let position = JSONSchemaLite.position(of: violation.path, in: text)
+            return .issue(Issue(
+                line: position.line, column: position.column,
+                message: L10n.format("Formular-Schema: %@ (Pfad %@)",
+                                     violation.message,
+                                     violation.pathDescription)
+            ))
+        }
+        return .valid(L10n.string("4D-Formular (JSON- und Schema-Prüfung)"))
     }
 
     static func supports(fileExtension: String?) -> Bool {

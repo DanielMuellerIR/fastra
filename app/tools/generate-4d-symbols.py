@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Erzeugt Sources/Fastra/FourDSymbols.swift aus der lokalen 4D-Dokumentation.
 
-Abgeleitet werden ausschließlich NAMEN (Befehle, Konstanten) als eigene,
-generierte Datenstruktur — keine Doku-Texte, keine Beschreibungen, keine
-Beispiele (Fastra ist öffentlich; die Lizenz der 4D-Doku ist ungeklärt,
-reine Bezeichner-Listen sind Fakten).
+Abgeleitet werden NAMEN (Befehle, Konstanten) sowie — seit Etappe 6 des
+Wunschpakets 2026-07c — die maschinenlesbaren SYNTAX-Signaturen und
+Befehlsnummern der Befehlsseiten (`<!--REF …Syntax-->`-Blöcke und die
+„Command number“-Eigenschaft). Keine Beschreibungstexte, keine Beispiele.
+Die 4D-Dokumentation steht unter CC BY 4.0 (LICENSE-docs im Doku-Repo);
+die Attribution liegt in THIRD-PARTY-NOTICES.md und in der App-Hilfe.
 
 Aufruf (vom Repo-Root oder app/):
     python3 tools/generate-4d-symbols.py [PFAD-ZUR-4D-DOKU]
@@ -54,6 +56,56 @@ def collect_commands(base: Path) -> list[str]:
     return sorted(commands)
 
 
+# Syntax-Block einer Befehlsseite: <!--REF #_command_.NAME.Syntax-->…<!-- END REF-->
+SYNTAX_PATTERN = re.compile(
+    r"<!--REF #_command_\.[^.]+\.Syntax-->(.+?)<!--\s*END REF\s*-->", re.DOTALL
+)
+# Befehlsnummer aus der Properties-Tabelle: | Command number | 41 |
+NUMBER_PATTERN = re.compile(r"^\|\s*Command number\s*\|\s*(\d+)", re.MULTILINE)
+
+
+def clean_signature(raw: str) -> str:
+    """Markdown/HTML aus der Syntax-Zeile entfernen → reiner Signatur-Text."""
+    text = raw
+    text = re.sub(r"<br\s*/?>", " | ", text)           # Syntax-Varianten
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)  # [Text](Link) → Text
+    text = text.replace("**", "").replace("*", "")
+    text = re.sub(r"<[^>]+>", "", text)                 # restliche Tags
+    text = text.replace("&#8594;", "->").replace("&nbsp;", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def collect_command_details(base: Path) -> list[tuple[str, str, str]]:
+    """(Name, Nummer, Signatur) je Befehl — Nummer/Signatur ggf. leer."""
+    details: dict[str, tuple[str, str]] = {}
+    for folder in ("commands", "commands-legacy"):
+        directory = base / folder
+        if not directory.is_dir():
+            continue
+        for md_path in directory.glob("*.md"):
+            if md_path.stem.lower() in EXCLUDED_IDS:
+                continue
+            title = extract_title(md_path)
+            if not title or not NAME_PATTERN.match(title):
+                continue
+            try:
+                content = md_path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            signature = ""
+            if match := SYNTAX_PATTERN.search(content):
+                signature = clean_signature(match.group(1))
+            number = ""
+            if match := NUMBER_PATTERN.search(content):
+                number = match.group(1)
+            # Bei Dubletten (commands/ und commands-legacy/) gewinnt der
+            # Eintrag mit mehr Information.
+            existing = details.get(title, ("", ""))
+            details[title] = (number or existing[0], signature or existing[1])
+    return sorted((name, num, sig) for name, (num, sig) in details.items())
+
+
 def collect_constants(base: Path) -> list[str]:
     """Englische Spalte der Konstantenliste (Markdown-Tabelle)."""
     path = base / "commands-legacy" / "constant-list.md"
@@ -89,20 +141,44 @@ def main() -> int:
 
     commands = collect_commands(base)
     constants = collect_constants(base)
+    details = collect_command_details(base)
+    signatures = sum(1 for _, _, sig in details if sig)
+    numbers = sum(1 for _, num, _ in details if num)
     if len(commands) < 500 or len(constants) < 1000:
         print(f"FEHLER: unplausibel wenige Namen (Befehle={len(commands)}, "
               f"Konstanten={len(constants)}) — Quelle geändert?", file=sys.stderr)
         return 1
+    if signatures < 800 or numbers < 800:
+        print(f"FEHLER: unplausibel wenige Details (Signaturen={signatures}, "
+              f"Nummern={numbers}) — Seitenformat geändert?", file=sys.stderr)
+        return 1
+
+    # Detailzeilen „Name\tNummer\tSignatur" als schlichte String-Liste —
+    # riesige Dictionary-Literale würden den Swift-Typecheck ausbremsen;
+    # das Parsen übernimmt FourDSymbols zur Laufzeit (lazy). Der Tab steht
+    # als \\t-ESCAPE im Swift-Quelltext (literale Tabs in String-Literalen
+    # lehnt der Compiler als „unprintable ASCII" ab).
+    def escape(field: str) -> str:
+        return field.replace("\\", "\\\\").replace('"', '\\"')
+
+    detail_lines = [
+        f'        "{escape(name)}\\t{num}\\t{escape(sig)}",'
+        for name, num, sig in details
+    ]
+    detail_array = "\n".join(detail_lines)
 
     out = Path(__file__).resolve().parent.parent / "Sources" / "Fastra" / "FourDSymbols.swift"
     out.write_text(f"""// FourDSymbols.swift
 //
 // GENERIERT — NICHT von Hand bearbeiten.
-// Quelle: lokale 4D-Dokumentation (Befehls-/Konstantennamen als Fakten
-// abgeleitet, keine Doku-Inhalte). Neu erzeugen mit:
+// Quelle: lokale 4D-Dokumentation (Befehls-/Konstantennamen, Syntax-
+// Signaturen und Befehlsnummern als Fakten abgeleitet; keine
+// Beschreibungstexte). Die 4D-Doku steht unter CC BY 4.0 — Attribution in
+// THIRD-PARTY-NOTICES.md und in der App-Hilfe. Neu erzeugen mit:
 //     python3 tools/generate-4d-symbols.py
 //
-// Stand: {len(commands)} Befehle, {len(constants)} Konstanten.
+// Stand: {len(commands)} Befehle ({signatures} Signaturen, {numbers} Nummern),
+// {len(constants)} Konstanten.
 
 import Foundation
 
@@ -117,9 +193,41 @@ enum FourDSymbols {{
     static let constants: [String] = [
 {swift_array(constants)}
     ]
+
+    /// Befehls-Details als Tab-getrennte Zeilen „Name\\tNummer\\tSignatur"
+    /// (Nummer/Signatur können leer sein). Bewusst KEIN Dictionary-Literal:
+    /// Tausende Einträge würden den Swift-Typecheck minutenlang beschäftigen.
+    static let commandDetailLines: [String] = [
+{detail_array}
+    ]
+
+    /// Ein Befehls-Detail: Signatur und `:Cnnn`-Nummer (beides optional).
+    struct CommandDetail {{
+        let name: String
+        let number: Int?
+        let signature: String?
+    }}
+
+    /// Details je Befehl, Schlüssel kleingeschrieben (case-tolerant).
+    /// Einmalig lazy geparst.
+    static let commandDetails: [String: CommandDetail] = {{
+        var result: [String: CommandDetail] = [:]
+        result.reserveCapacity(commandDetailLines.count)
+        for line in commandDetailLines {{
+            let parts = line.components(separatedBy: "\\t")
+            guard parts.count == 3, !parts[0].isEmpty else {{ continue }}
+            result[parts[0].lowercased()] = CommandDetail(
+                name: parts[0],
+                number: Int(parts[1]),
+                signature: parts[2].isEmpty ? nil : parts[2]
+            )
+        }}
+        return result
+    }}()
 }}
 """, encoding="utf-8")
-    print(f"OK: {out} — {len(commands)} Befehle, {len(constants)} Konstanten")
+    print(f"OK: {out} — {len(commands)} Befehle, {len(constants)} Konstanten, "
+          f"{signatures} Signaturen, {numbers} Nummern")
     return 0
 
 

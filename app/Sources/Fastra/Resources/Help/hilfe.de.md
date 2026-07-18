@@ -157,6 +157,23 @@ Sprachmenü lässt sich 4D auch für andere Dateien manuell aktivieren.
 `.4DProject`/`.4DForm` sind echte JSON-Dateien, `.4DCatalog`/
 `.4DSettings` echtes XML — sie öffnen mit JSON- bzw. XML-Darstellung.
 
+**Vervollständigung:** In `.4dm`-Methoden schlägt Fastra beim Tippen
+Befehle (mit Syntax-Signatur) und Konstanten vor — Esc oder ⌃Leertaste
+öffnen die Liste auch manuell, ↑/↓ wählen, Return/Tab übernimmt, Esc
+schließt. Die Namen, Signaturen und Befehlsnummern stammen aus der
+offiziellen 4D-Dokumentation (CC BY 4.0, © 4D SAS — Details in den
+Third-Party-Notices).
+
+**`.4DForm` prüfen:** „Text → Dokument prüfen“ validiert Formulardateien
+zusätzlich gegen das mitgelieferte Formular-Schema (MIT-lizenziert, von
+Mathieu Ferry) und springt zur Fehlstelle samt JSON-Pfad.
+
+**Export-Transformation:** Das Menü **Text** strippt Token-Suffixe
+kanonischer 4D-Exporte (`ALERT:C41` → `ALERT`, auch `:Knn:mm`) bzw.
+ergänzt Befehls-Token wieder. Konstanten-Nummern kennt keine
+öffentliche Quelle — „Befehls-Token ergänzen“ lässt Konstanten deshalb
+ehrlich unverändert.
+
 **Struktur-Hinweise:** „Text → Dokument prüfen“ untersucht `.4dm`-Methoden
 heuristisch auf Block-Balance (`If/End if`, `For each/End for each`,
 `Case of/End case`, `Repeat/Until`, `While/End while`, `Function`-Blöcke)

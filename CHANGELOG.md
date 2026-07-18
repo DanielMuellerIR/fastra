@@ -9,6 +9,44 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.37.0] — 2026-07-18
+
+Etappe 6 des Wunschpakets 2026-07c: 4D-Werkzeuge aus den Katalogen
+(`docs/wunschpaket-2026-07c/goal-vorschlag.md`). Quellen-Lizenzen sind
+dokumentiert und attribuiert (THIRD-PARTY-NOTICES.md + Hilfe): 4D-Doku
+CC BY 4.0 (abgeleitete Fakten), formsSchema.json MIT.
+
+### Hinzugefügt
+
+- **4D-Vervollständigung mit Signatur-Hilfe:** In `.4dm`-Methoden (nur
+  bei aktiver 4D-Sprache) schlägt der Editor beim Tippen Befehle samt
+  Syntax-Signatur und Konstanten vor (CESE-CodeSuggestion-System:
+  Esc/⌃Leertaste öffnen manuell, ↑/↓ wählen, Return/Tab übernimmt —
+  macOS-übliches Verhalten). Unaufdringlich: automatisch erst ab zwei
+  getippten Zeichen; die Übernahme ersetzt das getippte Teilwort als
+  normaler, mit ⌘Z widerrufbarer Edit. Der Generator
+  (`app/tools/generate-4d-symbols.py`) zieht dafür zusätzlich
+  Syntax-Signaturen und Befehlsnummern aus den Befehlsseiten
+  (1247 Signaturen, 1252 Nummern).
+- **`.4DForm`-Schema-Validierung:** „Dokument prüfen“ validiert
+  Formulardateien nach der JSON-Syntax zusätzlich gegen das gebündelte
+  `formsSchema.json` (MIT, © Mathieu Ferry) — mit Fehlerposition,
+  JSON-Pfad und Sprung zur Stelle. Eigener minimaler Schema-Prüfer
+  (`JSONSchemaLite`, exakt die vom Schema genutzten Konstrukte; im
+  Zweifel keine Meldung: `oneOf` wird bewusst wie `anyOf` geprüft).
+- **Transformation „tokenisierter Export ↔ Klartext“** im Text-Menü:
+  „4D: Token-Suffixe entfernen“ strippt `:Cnnn`/`:Knn:mm` token-basiert
+  (Strings/Kommentare bleiben unangetastet); „4D: Befehls-Token
+  ergänzen“ fügt Befehlsnummern wieder an. Konstanten-Nummern kennt
+  keine öffentliche Quelle — Konstanten bleiben beim Ergänzen ehrlich
+  unverändert (steht so im Menütitel).
+
+### Intern
+
+- Neue pure Logik `FourDCompletionLogic` (Präfix-Erkennung mehrwortiger
+  Befehle, Matching), `JSONSchemaLite` (inkl. Pfad→Position-Läufer) und
+  `FourDTokenTransform` (Roundtrip-getestet); insgesamt 39 neue Tests.
+
 ## [v1.36.0] — 2026-07-18
 
 Etappe 5 des Wunschpakets 2026-07c: 4D-Struktur-Hinweise

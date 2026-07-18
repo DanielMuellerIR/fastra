@@ -383,6 +383,13 @@ struct FastraApp: App {
                 Button(TextOpKind.stripDiacriticals.title) { postTextOp(.stripDiacriticals) }
                 Button(TextOpKind.precomposeUnicode.title) { postTextOp(.precomposeUnicode) }
                 Button(TextOpKind.decomposeUnicode.title)  { postTextOp(.decomposeUnicode) }
+                Divider()
+                // 4D-Export-Transformation (Etappe 6 Wunschpaket 2026-07c):
+                // Token-Suffixe kanonischer Exporte strippen bzw. Befehls-
+                // Token ergänzen (Konstanten-Nummern kennt keine öffentliche
+                // Quelle — der Titel sagt ehrlich „Befehls-Token").
+                Button(TextOpKind.fourDDetokenize.title)       { postTextOp(.fourDDetokenize) }
+                Button(TextOpKind.fourDTokenizeCommands.title) { postTextOp(.fourDTokenizeCommands) }
             }
 
             // „Markdown"-Menü (Etappe 5 Wunschpaket 2026-07b):

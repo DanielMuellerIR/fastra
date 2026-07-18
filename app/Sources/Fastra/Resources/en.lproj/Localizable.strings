@@ -1111,3 +1111,28 @@
 "„%@“ passt nicht zur offenen „%@“ aus Zeile %ld." = "“%@” does not match the open “%@” from line %ld.";
 "„Else“ außerhalb von „If“/„Case of“." = "“Else” outside of “If”/“Case of”.";
 "„Function“ in Zeile %ld" = "“Function” in line %ld";
+
+/* 4D-Werkzeuge (Etappe 6 Wunschpaket 2026-07c) */
+" oder " = " or ";
+"Konstante" = "Constant";
+"4D-Formular (JSON- und Schema-Prüfung)" = "4D form (JSON and schema check)";
+"Das gebündelte Formular-Schema konnte nicht geladen werden — nur die JSON-Syntax wurde geprüft." = "The bundled form schema could not be loaded — only the JSON syntax was checked.";
+"Formular-Schema: %@ (Pfad %@)" = "Form schema: %@ (path %@)";
+"Erwartet %@, gefunden %@." = "Expected %@, found %@.";
+"Erwartet den festen Wert „%@“." = "Expected the fixed value “%@”.";
+"%@ liegt unter dem Minimum %@." = "%@ is below the minimum %@.";
+"Der Text entspricht nicht dem erwarteten Muster." = "The text does not match the expected pattern.";
+"Hier ist kein Wert erlaubt." = "No value is allowed here.";
+"Keine der erlaubten Varianten passt." = "None of the allowed variants matches.";
+"Pflicht-Eigenschaft „%@“ fehlt." = "Required property “%@” is missing.";
+"Unbekannte Eigenschaft „%@“." = "Unknown property “%@”.";
+"Verletzt eine Ausschluss-Regel des Formular-Schemas." = "Violates an exclusion rule of the form schema.";
+"„%@“ ist keiner der erlaubten Werte." = "“%@” is not one of the allowed values.";
+"ein Objekt" = "an object";
+"eine Liste" = "a list";
+"einen Text" = "a text";
+"eine Zahl" = "a number";
+"eine Ganzzahl" = "an integer";
+"einen Wahrheitswert" = "a boolean";
+"4D: Token-Suffixe entfernen (:Cnnn/:Knnn)" = "4D: Remove token suffixes (:Cnnn/:Knnn)";
+"4D: Befehls-Token ergänzen (:Cnnn)" = "4D: Add command tokens (:Cnnn)";
