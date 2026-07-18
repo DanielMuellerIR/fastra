@@ -255,6 +255,9 @@ final class Workspace: ObservableObject {
     /// z. B. „Seitenleiste zeigt jetzt …“ nach dem automatischen
     /// Ordnerwechsel. Blendet sich nach wenigen Sekunden selbst aus.
     @Published var sidebarNotice: String?
+    /// Dateinamens-Filter der Projekt-Seitenleiste (Etappe 3 Wunschpaket
+    /// 2026-07c). Leer = kein Filter. Projektwechsel setzt zurück.
+    @Published var fileTreeFilterQuery: String = ""
     /// Merkt sich den jeweils letzten Hinweis, damit ein verzögertes
     /// Ausblenden niemals einen NEUEREN Hinweis wegräumt.
     private var sidebarNoticeToken = UUID()
@@ -1757,10 +1760,11 @@ final class Workspace: ObservableObject {
         } else {
             activeTabID = tabs.first?.id
         }
-        // Markierter Seitenleisten-Ordner und Hinweis gehören zum ALTEN
-        // Projektbaum → beim Wechsel zurücksetzen.
+        // Markierter Seitenleisten-Ordner, Hinweis und Dateinamens-Filter
+        // gehören zum ALTEN Projektbaum → beim Wechsel zurücksetzen.
         selectedFileTreeFolder = nil
         sidebarNotice = nil
+        fileTreeFilterQuery = ""
         // Wurden ausschließlich saubere Dateien eines anderen Projekts
         // geschlossen, braucht das neue Projekt wieder einen Editor-Tab.
         if tabs.isEmpty {

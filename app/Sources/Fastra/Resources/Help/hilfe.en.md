@@ -166,6 +166,14 @@ projects quickly, and the right-click menu offers “Show in Finder” and
 more. **⌘-click a document tab** shows the file’s macOS path menu. The
 file tree can create, rename, and trash files and folders.
 
+**Filtering files:** The filter field above the file tree filters live
+by file name (substring, case-insensitive — deliberately no fuzzy
+matching). Matches appear with their parent folders expanded; everything
+else is hidden, and the counter shows “N of M files”. Escape or the X
+clears the filter and restores the previous expansion state. The filter
+only searches NAMES — for contents, use “Find in Folders…” (⇧⌘F, also
+offered as a link when the filter finds nothing).
+
 ## Git
 
 If the project is a Git repository (and `git` is installed), the sidebar

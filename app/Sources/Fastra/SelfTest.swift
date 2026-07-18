@@ -163,6 +163,7 @@ enum SelfTest {
         case "colsel":    waitForMainWindow { runColumnSelectionTest() }
         case "gutterdim": waitForMainWindow { runGutterDimmingTest() }
         case "sidebarheader": waitForMainWindow { runSidebarHeaderTest() }
+        case "sidebarfilter": waitForMainWindow { runSidebarFilterTest() }
         case "filediff": waitForMainWindow { runFileDiffTest() }
         case "searchmark": waitForMainWindow { openSearchThen { runSearchMarkTest() } }
         case "help": waitForMainWindow { runHelpTest() }
@@ -3655,6 +3656,121 @@ enum SelfTest {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             pollViewModePickerGone(base: base, tick: tick + 1)
+        }
+    }
+
+    // MARK: - Selbsttest sidebarfilter (Etappe 3 Wunschpaket 2026-07c)
+
+    /// Prüft den Dateinamens-Filter der Projekt-Seitenleiste im ECHTEN
+    /// Fenster:
+    /// (a) Ausgangslage: Datei der obersten Ebene gerendert, Datei im
+    ///     EINGEKLAPPTEN Unterordner nicht.
+    /// (b) Filter tippen (case-insensitiv) → Treffer-Datei erscheint samt
+    ///     aufgeklapptem Elternordner, Nicht-Treffer verschwinden, der
+    ///     Zähler „1 von 3 Dateien" ist real gerendert.
+    /// (c) Filter leeren → voriger Aufklappzustand kehrt zurück (Unterordner
+    ///     wieder zu, Nicht-Treffer wieder da).
+    private static func runSidebarFilterTest() {
+        testLabel = "sidebarfilter"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-sidebarfilter-\(UUID().uuidString)")
+        let project = base.appendingPathComponent("projekt")
+        do {
+            try fm.createDirectory(at: project.appendingPathComponent("sub"),
+                                   withIntermediateDirectories: true)
+            try "A".write(to: project.appendingPathComponent("eins.txt"),
+                          atomically: true, encoding: .utf8)
+            try "B".write(to: project.appendingPathComponent("zwei.md"),
+                          atomically: true, encoding: .utf8)
+            try "C".write(to: project.appendingPathComponent("sub/drei-treffer.txt"),
+                          atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "(setup) Testprojekt nicht anlegbar: \(error.localizedDescription)")
+        }
+        ws.openProject(at: project)
+        pollSidebarFilterBaseline(ws, base: base, tick: 0)
+    }
+
+    private static func pollSidebarFilterBaseline(_ ws: Workspace, base: URL, tick: Int) {
+        let maxTicks = 40            // 10 s
+        // Die Marker-IDs enden auf die Filterphase („voll"/„gefiltert") —
+        // gepoolte LazyVStack-Views alter Phasen stören die Prüfung so nie.
+        let content = mainWindowForAXChecks()?.contentView
+        let topLevelVisible = content.map {
+            markerViewExists(id: "fileTreeRow-zwei.md-voll", in: $0)
+        } ?? false
+        let nestedHidden = content.map {
+            !markerViewExists(id: "fileTreeRow-drei-treffer.txt-voll", in: $0)
+        } ?? false
+        if topLevelVisible, nestedHidden {
+            // Groß geschrieben tippen — die Datei heißt klein „…-treffer…":
+            // belegt die Case-Insensitivität am echten Baum.
+            ws.fileTreeFilterQuery = "TREFFER"
+            pollSidebarFilterFiltered(ws, base: base, tick: 0)
+            return
+        }
+        if tick >= maxTicks {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Ausgangslage nach 10 s falsch: zwei.md sichtbar=\(topLevelVisible), "
+                + "verschachtelte Datei verborgen=\(nestedHidden)")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollSidebarFilterBaseline(ws, base: base, tick: tick + 1)
+        }
+    }
+
+    private static func pollSidebarFilterFiltered(_ ws: Workspace, base: URL, tick: Int) {
+        let maxTicks = 40            // 10 s (Debounce 150 ms + Scan)
+        let content = mainWindowForAXChecks()?.contentView
+        let matchVisible = content.map {
+            markerViewExists(id: "fileTreeRow-drei-treffer.txt-gefiltert", in: $0)
+        } ?? false
+        let nonMatchHidden = content.map {
+            !markerViewExists(id: "fileTreeRow-zwei.md-gefiltert", in: $0)
+        } ?? false
+        let counterVisible = content.map {
+            markerViewExists(id: "sidebarFilterState-n1-m3", in: $0)
+        } ?? false
+        if matchVisible, nonMatchHidden, counterVisible {
+            ws.fileTreeFilterQuery = ""
+            pollSidebarFilterRestored(base: base, tick: 0)
+            return
+        }
+        if tick >= maxTicks {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Filter „TREFFER\u{201C} nach 10 s: Treffer sichtbar=\(matchVisible), "
+                + "Nicht-Treffer verborgen=\(nonMatchHidden), Zähler 1/3=\(counterVisible)")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollSidebarFilterFiltered(ws, base: base, tick: tick + 1)
+        }
+    }
+
+    private static func pollSidebarFilterRestored(base: URL, tick: Int) {
+        let maxTicks = 20            // 5 s
+        let content = mainWindowForAXChecks()?.contentView
+        let nestedHiddenAgain = content.map {
+            !markerViewExists(id: "fileTreeRow-drei-treffer.txt-voll", in: $0)
+        } ?? false
+        let topLevelBack = content.map {
+            markerViewExists(id: "fileTreeRow-zwei.md-voll", in: $0)
+        } ?? false
+        if nestedHiddenAgain, topLevelBack {
+            try? FileManager.default.removeItem(at: base)
+            finish(true, "Filter blendet real gerenderte Zeilen ein/aus (case-insensitiv), "
+                + "Zähler 1 von 3 gerendert, Aufklappzustand nach Leeren wiederhergestellt")
+        }
+        if tick >= maxTicks {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Nach Filter-Leeren: Unterordner wieder zu=\(nestedHiddenAgain), "
+                + "zwei.md wieder da=\(topLevelBack)")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollSidebarFilterRestored(base: base, tick: tick + 1)
         }
     }
 

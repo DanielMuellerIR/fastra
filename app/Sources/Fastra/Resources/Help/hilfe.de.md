@@ -174,6 +174,15 @@ Nachbarordner zum schnellen Projektwechsel, das Rechtsklickmenü bietet
 das macOS-Pfadmenü der Datei. Der Dateibaum kann Dateien und Ordner
 anlegen, umbenennen und in den Papierkorb legen.
 
+**Dateien filtern:** Das Filterfeld über dem Dateibaum filtert live nach
+Dateinamen (Teilstring, Groß-/Kleinschreibung egal — bewusst kein
+Fuzzy-Matching). Treffer erscheinen mit aufgeklappten Elternordnern,
+alles andere ist ausgeblendet; der Zähler zeigt „N von M Dateien“.
+Escape oder das X leeren den Filter und stellen den vorigen
+Aufklappzustand wieder her. Der Filter durchsucht nur NAMEN — für
+Inhalte gibt es „In Ordnern suchen…“ (⇧⌘F, auch als Link am leeren
+Filterergebnis).
+
 ## Git
 
 Ist das Projekt ein Git-Repository (und `git` installiert), zeigt die

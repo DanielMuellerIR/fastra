@@ -1066,3 +1066,14 @@
 "Zu Unterschied %ld springen" = "Jump to difference %ld";
 "Übersicht der Unterschiede" = "Overview of the differences";
 "Übersicht der Unterschiede; die hervorgehobene Markierung ist der aktuelle." = "Overview of the differences; the highlighted marker is the current one.";
+
+/* Seitenleisten-Dateifilter (Etappe 3 Wunschpaket 2026-07c) */
+"Dateien filtern" = "Filter files";
+"Filtert den Dateibaum nach Dateinamen (Teilstring, Groß-/Kleinschreibung egal). Inhalte durchsucht „In Ordnern suchen…“ (⇧⌘F)." = "Filters the file tree by file name (substring, case-insensitive). To search contents, use “Find in Folders…” (⇧⌘F).";
+"Filter leeren (Escape)" = "Clear filter (Escape)";
+"Filter leeren" = "Clear filter";
+"%ld von %ld Dateien" = "%ld of %ld files";
+"%ld von %ld Dateien — nur die ersten %ld geprüft" = "%ld of %ld files — only the first %ld checked";
+"Keine Dateinamen passen zu „%@“." = "No file names match “%@”.";
+"Im Inhalt suchen…" = "Search in contents…";
+"Öffnet den Suchdialog mit Ordner-Bereich für die Volltextsuche." = "Opens the search dialog with folder scope for full-text search.";

@@ -8,14 +8,14 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 - **Wunschpaket 3** (beschlossen 2026-07-18, in Umsetzung):
   Spezifikation in `docs/wunschpaket-2026-07c/goal-vorschlag.md` —
-  acht Etappen. **Etappe 1 (Diff-Kern & Datei-Diff dual-pane) ist mit
-  v1.32.0 umgesetzt.** Offen: Git-Diffs auf denselben Renderer
-  vereinheitlicht (Etappe 2), Dateinamens-Filter in der Projektansicht,
-  tool4d-Ersteinrichtungshilfe, 4D-Struktur-Hinweise,
-  4D-Vervollständigung/`.4DForm`-Schema/Export-Transformation,
-  Alt-Doppelklick „Gehe zum Ziel“ (4D-Methoden + Markdown-Links,
-  erweiterbar), 4D-Syntax-Check via tool4d-LSP (Gate: rechtliche
-  Freigabe durch den Maintainer).
+  acht Etappen. **Umgesetzt: Etappe 1 (Diff-Kern & Datei-Diff
+  dual-pane, v1.32.0), Etappe 2 (Git-Diff auf gemeinsamem Renderer,
+  v1.33.0), Etappe 3 (Dateinamens-Filter in der Projektansicht,
+  v1.34.0).** Offen: tool4d-Ersteinrichtungshilfe (Etappe 4),
+  4D-Struktur-Hinweise, 4D-Vervollständigung/`.4DForm`-Schema/
+  Export-Transformation, Alt-Doppelklick „Gehe zum Ziel“ (4D-Methoden +
+  Markdown-Links, erweiterbar), 4D-Syntax-Check via tool4d-LSP (Gate:
+  rechtliche Freigabe durch den Maintainer).
   - **Bewusst NICHT in Etappe 1** (Kandidaten für eigene Aufträge):
     Ordner-Vergleich, „Apply to Left/Right“-Übernahme einzelner
     Unterschiede ins Dokument, Export der Differenzen-Liste.

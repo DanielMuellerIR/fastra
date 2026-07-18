@@ -21,6 +21,14 @@ struct FileTreeSidebar: View {
     /// Aufklapp-Chevron (Etappe 1 Wunschpaket 2026-07).
     @StateObject private var emptiness = FolderEmptinessCache()
 
+    /// Ergebnis des Dateinamens-Filters (Etappe 3 Wunschpaket 2026-07c).
+    /// `nil` = kein Filter aktiv ODER Scan läuft noch. Der gespeicherte
+    /// Aufklappzustand (`expanded`) bleibt während des Filterns unberührt —
+    /// Escape/X stellt so automatisch den vorigen Zustand wieder her.
+    @State private var filterResult: FileTreeFilterResult?
+    /// Laufender Scan — ein neuer Tastendruck ersetzt ihn (Debounce+Cancel).
+    @State private var filterScanTask: Task<Void, Never>?
+
     init(rootURL: URL) {
         self.rootURL = rootURL
         _watcher = StateObject(wrappedValue: ProjectFileWatcher(rootURL: rootURL))
@@ -204,20 +212,49 @@ struct FileTreeSidebar: View {
                     .accessibilityIdentifier("sidebarNotice")
             }
 
-            ScrollView(.vertical) {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    FileTreeLevel(url: rootURL, depth: 0, expanded: $expanded,
-                                  emptiness: emptiness,
-                                  onMutation: handleTreeMutation)
+            // Dateinamens-Filter (Etappe 3 Wunschpaket 2026-07c). Bewusst ein
+            // DAUERHAFT sichtbares kompaktes Feld statt einer ausklappbaren
+            // Lupe: zentrale Funktionen müssen sichtbar und mit der Maus
+            // erreichbar sein (Produktregel) — ein verstecktes Feld würde
+            // schlicht nicht gefunden, und die Seitenleiste hat den Platz.
+            filterField
+
+            if let result = filterResult, result.matchCount == 0,
+               !workspace.fileTreeFilterQuery.isEmpty {
+                // Leerer Treffer → verständlicher Leerzustand statt leerem
+                // Baum, mit Brücke zur Volltextsuche (Ordner-Scope).
+                filterEmptyState(result)
+            } else {
+                ScrollView(.vertical) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        FileTreeLevel(url: rootURL, depth: 0, expanded: $expanded,
+                                      filter: activeFilterResult,
+                                      emptiness: emptiness,
+                                      onMutation: handleTreeMutation)
+                    }
+                    .padding(.bottom, 6)
                 }
-                .padding(.bottom, 6)
+                // Das Lesen bindet die Published-Generation an diesen View.
+                // Jede Änderung baut die sichtbaren Ebenen neu. Bewusst NUR
+                // am Baum (nicht an Kopf + Filterfeld): FSEvents dürfen dem
+                // Nutzer nicht das Filterfeld unter den Fingern zurücksetzen.
+                .id(watcher.generation)
             }
         }
-        // Das Lesen bindet die Published-Generation an diesen View. Der Wert
-        // selbst ist unwichtig; jede Änderung baut die sichtbaren Ebenen neu.
-        .id(watcher.generation)
         .onChange(of: expanded) {
             FileTreeExpansionStore.save(expanded, for: rootURL)
+        }
+        .onChange(of: workspace.fileTreeFilterQuery) { _, newValue in
+            scheduleFilterScan(query: newValue, debounced: true)
+        }
+        .onChange(of: watcher.generation) {
+            // Externe Dateiänderungen bei aktivem Filter: denselben Scan
+            // idempotent wiederholen — das Ergebnis hängt nur vom aktuellen
+            // Plattenstand ab, nie von der Anzahl der Events.
+            if !workspace.fileTreeFilterQuery.isEmpty {
+                scheduleFilterScan(query: workspace.fileTreeFilterQuery,
+                                   debounced: false)
+            }
         }
         .onAppear {
             // Der Befehle-Button muss laufende Vorgänge und die Herkunft der
@@ -241,6 +278,132 @@ struct FileTreeSidebar: View {
     private func handleTreeMutation() {
         watcher.refresh()
         workspace.refreshGitStatus()
+    }
+
+    // MARK: - Dateinamens-Filter (Etappe 3 Wunschpaket 2026-07c)
+
+    /// Nur ein fertiges Ergebnis ZUM AKTUELLEN Suchtext filtert den Baum —
+    /// veraltete Ergebnisse (Nutzer tippt schneller als der Scan) nie.
+    private var activeFilterResult: FileTreeFilterResult? {
+        guard !workspace.fileTreeFilterQuery.isEmpty,
+              let result = filterResult,
+              result.query == workspace.fileTreeFilterQuery else { return nil }
+        return result
+    }
+
+    private var filterField: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 5) {
+                Image(systemName: "magnifyingglass")
+                    .fastraFont(size: 10)
+                    .foregroundColor(Theme.textSecondary)
+                TextField(L10n.string("Dateien filtern"),
+                          text: $workspace.fileTreeFilterQuery)
+                    .textFieldStyle(.plain)
+                    .fastraFont(.small)
+                    .foregroundColor(Theme.textPrimary)
+                    // Escape leert den Filter — der Baum zeigt danach wieder
+                    // seinen alten Aufklappzustand (der blieb unangetastet).
+                    .onExitCommand { workspace.fileTreeFilterQuery = "" }
+                    .help("Filtert den Dateibaum nach Dateinamen (Teilstring, Groß-/Kleinschreibung egal). Inhalte durchsucht „In Ordnern suchen…“ (⇧⌘F).")
+                if !workspace.fileTreeFilterQuery.isEmpty {
+                    Button {
+                        workspace.fileTreeFilterQuery = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .fastraFont(size: 10)
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Filter leeren (Escape)")
+                    .accessibilityLabel("Filter leeren")
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Theme.surfaceBase)
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .overlay(RoundedRectangle(cornerRadius: 5)
+                .strokeBorder(Theme.stroke, lineWidth: 1))
+
+            // Zähler „N von M Dateien" + sichtbare Kappungs-Warnung.
+            if let result = activeFilterResult {
+                Text(result.truncated
+                     ? L10n.format("%ld von %ld Dateien — nur die ersten %ld geprüft",
+                                   result.matchCount, result.totalFileCount,
+                                   FileTreeFilter.maximumScannedFiles)
+                     : L10n.format("%ld von %ld Dateien",
+                                   result.matchCount, result.totalFileCount))
+                    .fastraFont(size: 9)
+                    .foregroundColor(Theme.textSecondary)
+                    .padding(.leading, 2)
+                    .accessibilityLabel(L10n.format("%ld von %ld Dateien",
+                                                    result.matchCount,
+                                                    result.totalFileCount))
+                    // Selbsttest `sidebarfilter` liest hier den ECHT
+                    // gerenderten Zählerstand ab.
+                    .background(SelfTestMarker(
+                        id: "sidebarFilterState-n\(result.matchCount)-m\(result.totalFileCount)"
+                    ).frame(width: 0, height: 0))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 6)
+    }
+
+    @ViewBuilder
+    private func filterEmptyState(_ result: FileTreeFilterResult) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L10n.format("Keine Dateinamen passen zu „%@“.",
+                             workspace.fileTreeFilterQuery))
+                .fastraFont(.small)
+                .foregroundColor(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            // Brücke zur Volltextsuche: Der Dateibaum filtert nur NAMEN —
+            // wer Inhalte sucht, landet hier richtig.
+            Button {
+                workspace.scope = .folder
+                workspace.showSearchDialog = true
+            } label: {
+                Label(L10n.string("Im Inhalt suchen…"), systemImage: "text.magnifyingglass")
+                    .fastraFont(.small)
+            }
+            .buttonStyle(.link)
+            .help("Öffnet den Suchdialog mit Ordner-Bereich für die Volltextsuche.")
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(SelfTestMarker(id: "sidebarFilterEmpty").frame(width: 0, height: 0))
+    }
+
+    /// Startet den asynchronen Filter-Scan. Tippen ist debounced (150 ms),
+    /// FSEvents-Wiederholungen laufen sofort; ein neuer Scan bricht den
+    /// laufenden ab. Ergebnisse veralteter Suchtexte werden verworfen.
+    private func scheduleFilterScan(query: String, debounced: Bool) {
+        filterScanTask?.cancel()
+        guard !query.isEmpty else {
+            filterScanTask = nil
+            filterResult = nil
+            return
+        }
+        let root = rootURL
+        filterScanTask = Task {
+            if debounced {
+                try? await Task.sleep(nanoseconds: 150_000_000)
+            }
+            guard !Task.isCancelled else { return }
+            let result = await Task.detached(priority: .userInitiated) {
+                FileTreeFilter.scan(rootURL: root, query: query)
+            }.value
+            guard let result, !Task.isCancelled else { return }
+            await MainActor.run {
+                // Nur übernehmen, wenn der Nutzer nicht längst weitertippte.
+                guard workspace.fileTreeFilterQuery == query else { return }
+                filterResult = result
+            }
+        }
     }
 
     static func aheadBehindText(_ status: GitStatusSummary) -> String {
@@ -441,15 +604,28 @@ private struct FileTreeLevel: View {
     let url: URL
     let depth: Int
     @Binding var expanded: Set<String>
+    /// Aktiver Dateinamens-Filter (Etappe 3): blendet Nicht-Treffer aus und
+    /// klappt Treffer-Pfade ZWANGSWEISE auf — ohne `expanded` anzufassen,
+    /// damit Escape/X den vorigen Zustand unverändert wiederherstellt.
+    let filter: FileTreeFilterResult?
     @ObservedObject var emptiness: FolderEmptinessCache
     @EnvironmentObject var workspace: Workspace
     let onMutation: () -> Void
 
+    /// Effektiver Aufklappzustand: beim Filtern erzwungen, sonst gespeichert.
+    private func isExpanded(_ node: FileTreeNode) -> Bool {
+        if let filter {
+            return filter.expandedDirectories.contains(node.url.path)
+        }
+        return expanded.contains(node.id)
+    }
+
     var body: some View {
-        ForEach(FileTree.children(of: url)) { node in
+        ForEach(visibleChildren) { node in
             FileTreeRow(node: node,
                         depth: depth,
-                        isExpanded: expanded.contains(node.id),
+                        isExpanded: isExpanded(node),
+                        filterActive: filter != nil,
                         isActive: workspace.activeTab?.url == node.url,
                         isSelected: node.isDirectory
                             && workspace.selectedFileTreeFolder == node.url,
@@ -467,6 +643,9 @@ private struct FileTreeLevel: View {
                     // aber nichts auf.
                     workspace.selectedFileTreeFolder = node.url
                     if emptiness.isKnownEmpty(node.url) { return }
+                    // Beim Filtern ist die Aufklappung erzwungen — der
+                    // gespeicherte Zustand darf sich nicht still ändern.
+                    if filter != nil { return }
                     if expanded.contains(node.id) {
                         expanded.remove(node.id)
                     } else {
@@ -481,12 +660,21 @@ private struct FileTreeLevel: View {
             .onAppear {
                 if node.isDirectory { emptiness.probe(node.url) }
             }
-            if node.isDirectory && expanded.contains(node.id) {
+            if node.isDirectory && isExpanded(node) {
                 FileTreeLevel(url: node.url, depth: depth + 1,
-                              expanded: $expanded, emptiness: emptiness,
+                              expanded: $expanded, filter: filter,
+                              emptiness: emptiness,
                               onMutation: onMutation)
             }
         }
+    }
+
+    /// Kinder dieser Ebene — unter aktivem Filter nur Treffer-Dateien und
+    /// Ordner auf dem Weg zu Treffern.
+    private var visibleChildren: [FileTreeNode] {
+        let children = FileTree.children(of: url)
+        guard let filter else { return children }
+        return children.filter { FileTreeFilter.isVisible(node: $0, result: filter) }
     }
 }
 
@@ -497,6 +685,9 @@ private struct FileTreeRow: View {
     let node: FileTreeNode
     let depth: Int
     let isExpanded: Bool
+    /// `true`, während der Dateinamens-Filter aktiv ist — Teil der
+    /// Selbsttest-Marker-ID (siehe unten).
+    let filterActive: Bool
     let isActive: Bool
     /// Ordner in der Seitenleiste markiert (Save-Dialog-Vorschlag, Etappe 1).
     let isSelected: Bool
@@ -573,6 +764,15 @@ private struct FileTreeRow: View {
                                 node: node,
                                 onMutation: onMutation)
         }
+        // Selbsttests (`sidebarfilter`) prüfen über diesen Marker, welche
+        // Zeilen WIRKLICH gerendert sind — nicht bloß den Modellzustand.
+        // Die Filterphase steckt MIT in der ID: LazyVStack hält NSViews
+        // entfernter Zeilen in einem Wiederverwendungs-Pool, eine bloße
+        // „Marker weg?"-Prüfung wäre deshalb unzuverlässig. Gepoolte
+        // Alt-Views tragen aber nie die ID der AKTUELLEN Phase.
+        .background(SelfTestMarker(
+            id: "fileTreeRow-\(node.name)-\(filterActive ? "gefiltert" : "voll")"
+        ).frame(width: 0, height: 0))
     }
 }
 

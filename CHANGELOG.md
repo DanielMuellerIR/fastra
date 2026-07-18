@@ -9,6 +9,43 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.34.0] — 2026-07-18
+
+Etappe 3 des Wunschpakets 2026-07c: Suchfunktion in der Projektansicht
+(`docs/wunschpaket-2026-07c/goal-vorschlag.md`).
+
+### Hinzugefügt
+
+- **Dateinamens-Filter in der Projekt-Seitenleiste:** dauerhaft sichtbares
+  kompaktes Filterfeld über dem Dateibaum (bewusst keine versteckte
+  Ausklapp-Lupe — zentrale Funktionen bleiben sichtbar und mit der Maus
+  erreichbar). Filtert live nach Dateinamen: case-insensitiver
+  Teilstring, bewusst kein Fuzzy-Matching; Unicode-Case-Faltung
+  inklusive („STRASSE“ findet „Straße“).
+- Treffer erscheinen mit aufgeklappten Elternordnern, Nicht-Treffer sind
+  ausgeblendet. Escape oder das X leeren den Filter und stellen den
+  vorigen Aufklappzustand unverändert wieder her (der gespeicherte
+  Zustand wird während des Filterns nie angefasst).
+- Zähler „N von M Dateien“ unter dem Feld; wird der Scan an der
+  Sicherheitsgrenze (50.000 Dateien) gekappt, steht das sichtbar dabei.
+- Leeres Ergebnis → verständlicher Leerzustand statt leerem Baum, mit
+  Link „Im Inhalt suchen…“, der den Suchdialog mit Ordner-Bereich
+  öffnet (der Filter durchsucht nur NAMEN — Volltext bleibt Sache des
+  Suchdialogs).
+- Scan läuft asynchron (debounced, abbrechbar) und wiederholt sich bei
+  externen Dateiänderungen (FSEvents) idempotent; FSEvents setzen das
+  Filterfeld nicht mehr zurück (Baum-Identität hängt jetzt nur noch am
+  Baum, nicht am Feld).
+
+### Intern
+
+- Neue pure Filterlogik `FileTreeFilter` mit Unit-Tests (Teilstring,
+  Umlaute, versteckte Dateien, Eltern-Aufklappung, Kappung,
+  Symlink-Zyklen-Schutz; Pfad-Kanonisierung wie `contentsOfDirectory` —
+  `resolvingSymlinksInPath` wäre falsch, es entfernt `/private`);
+  Fenster-Selbsttest `sidebarfilter` (echtes Ein-/Ausblenden gerenderter
+  Zeilen, Zähler, Zustands-Wiederherstellung).
+
 ## [v1.33.0] — 2026-07-18
 
 Etappe 2 des Wunschpakets 2026-07c: Git-Diffs rendern über denselben
