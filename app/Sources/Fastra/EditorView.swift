@@ -41,6 +41,12 @@ struct EditorView: View {
     private var markdownAssistHintShown = false
     @State private var showMarkdownAssistHint = false
 
+    /// Erst-Kontakt-Hinweis für 4D/tool4d (Etappe 4 Wunschpaket 2026-07c):
+    /// erscheint beim ersten Öffnen einer `.4dm`-/`.4DProject`-Datei, bis er
+    /// über einen der beiden Buttons quittiert ist (Persistenz in
+    /// `Tool4DAssist.firstContactHintShown`, Mechanik wie Markdown-Assist).
+    @State private var showTool4DHint = false
+
     /// Zeilenumbruch am Fensterrand (BBEdit „Soft Wrap Text"). App-weite,
     /// persistente Einstellung — gesetzt über den Menüpunkt „Zeilen umbrechen"
     /// (FastraApp) bzw. später den Einstellungs-Dialog. Default AN: ohne
@@ -164,6 +170,68 @@ struct EditorView: View {
             for: .fastraMarkdownAssistUsed)) { _ in
             if !markdownAssistHintShown { showMarkdownAssistHint = true }
         }
+        // Erstes Öffnen einer 4D-Datei → tool4d-Erst-Kontakt-Hinweis
+        // (Etappe 4 Wunschpaket 2026-07c).
+        .onChange(of: workspace.activeTabID) { checkTool4DFirstContact() }
+        .onAppear { checkTool4DFirstContact() }
+    }
+
+    /// Zeigt den tool4d-Hinweis, sobald der aktive Tab eine `.4dm`- oder
+    /// `.4DProject`-Datei ist — bis er quittiert wurde. Auf Nicht-4D-Tabs
+    /// verschwindet die Leiste (und kommt beim nächsten 4D-Tab wieder).
+    private func checkTool4DFirstContact() {
+        guard !Tool4DAssist.firstContactHintShown else {
+            showTool4DHint = false
+            return
+        }
+        let name = workspace.activeTab?.url?.lastPathComponent
+            ?? workspace.activeTab?.title ?? ""
+        showTool4DHint = Tool4DAssist.triggersFirstContactHint(fileName: name)
+    }
+
+    /// Beide Hinweis-Buttons quittieren dauerhaft („einmal pro Nutzer").
+    private func acknowledgeTool4DHint() {
+        Tool4DAssist.firstContactHintShown = true
+        showTool4DHint = false
+    }
+
+    /// Dezenter, NICHT-modaler 4D-Erst-Kontakt-Hinweis mit Sprung in den
+    /// Hilfe-Abschnitt „4D & tool4d" (Anker-API der Hilfe).
+    private var tool4dHintBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lightbulb")
+                .fastraFont(size: 11)
+                .foregroundColor(Theme.accentReadable)
+            Text("4D erkannt — Fastra kann mit tool4d beim Prüfen der Syntax helfen.")
+                .fastraFont(.small)
+                .foregroundColor(Theme.textSecondary)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+            Button("Einrichtung anzeigen") {
+                acknowledgeTool4DHint()
+                HelpWindow.show(anchor: HelpSection.fourDTool.anchor())
+            }
+            .buttonStyle(.plain)
+            .fastraFont(size: 11, weight: .semibold)
+            .foregroundColor(Theme.accentReadable)
+            // Klick-Anker für den Fenster-Selbsttest `tool4dhint`.
+            .background(SelfTestMarker(id: "tool4dHintHelpButton")
+                .frame(width: 0, height: 0))
+            Button {
+                acknowledgeTool4DHint()
+            } label: {
+                Image(systemName: "xmark")
+                    .fastraFont(size: 9, weight: .semibold)
+                    .foregroundColor(Theme.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .help("Nicht mehr zeigen")
+            .accessibilityLabel("Nicht mehr zeigen")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(Theme.surfaceSand.opacity(0.6))
+        .background(SelfTestMarker(id: "tool4dHintBar").frame(width: 0, height: 0))
     }
 
     /// Kompakte Markdown-Toolbar: dieselben Befehle wie Menüleiste und
@@ -404,6 +472,12 @@ struct EditorView: View {
                 VStack(spacing: 0) {
                     if workspace.activeConflictSupport != .none {
                         GitConflictBar()
+                    }
+                    // tool4d-Erst-Kontakt-Hinweis (Etappe 4 Wunschpaket
+                    // 2026-07c) — nur solange der aktive Tab 4D zeigt.
+                    if showTool4DHint {
+                        tool4dHintBar
+                        Divider().opacity(0.3)
                     }
                     // Markdown-Toolbar (Etappe 5 Wunschpaket 2026-07b):
                     // Formatierungsbefehle auf den Quelltext, nur für

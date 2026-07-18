@@ -1,5 +1,9 @@
 # Checking 4D code with tool4d (external)
 
+> Since v1.35.0 a condensed version of this guide ships in the in-app
+> help (section “4D and tool4d”), and **Help → Find tool4d…** searches
+> the known locations for an installed tool4d.
+
 Fastra highlights 4D methods (`.4dm`) but does not check them for syntax or
 compiler errors. **tool4d**, 4D's lightweight headless runtime, is the right
 tool for that. Fastra deliberately does **not** bundle tool4d (size,

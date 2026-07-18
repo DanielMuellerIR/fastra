@@ -9,6 +9,39 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.35.0] — 2026-07-18
+
+Etappe 4 des Wunschpakets 2026-07c: tool4d-Ersteinrichtungshilfe
+(`docs/wunschpaket-2026-07c/goal-vorschlag.md`). Fastra bündelt tool4d
+weiterhin nicht, lädt nichts herunter und führt nichts aus — Hilfe ja,
+versteckte Netzwerkaktionen nein.
+
+### Hinzugefügt
+
+- **4D-Erst-Kontakt-Hinweis:** Beim ersten Öffnen einer `.4dm`- oder
+  `.4DProject`-Datei erscheint der dezente, nicht-modale Hinweis
+  („4D erkannt — Fastra kann mit tool4d beim Prüfen der Syntax helfen“)
+  mit Sprung in den neuen Hilfe-Abschnitt. Einmal pro Nutzer; beide
+  Buttons („Einrichtung anzeigen“ / X) quittieren dauerhaft
+  (Mechanik des Markdown-Assist-Hinweises aus v1.31.0).
+- **Hilfe-Abschnitt „4D und tool4d“** (Deutsch + Englisch, gestrafft aus
+  `docs/tool4d.de.md`): was tool4d ist, Bezugsquellen (Download-Seite,
+  VS-Code-Extension „4D-Analyzer“), headless-Prüfbefehl, Lizenzlage.
+- **„Hilfe → tool4d finden…“:** prüft die bekannten Orte (PATH,
+  Programme-Ordner, globalStorage der 4D-Analyzer-Extension), zeigt
+  Fundort und Version (aus dem Bundle-Info.plist gelesen — nie durch
+  Ausführen ermittelt) oder erklärt die Bezugsquellen mit Button
+  „Download-Seite öffnen“. Der Fundort wird als Grundlage der späteren
+  Prüf-Integration (Etappe 8) gemerkt, aber nicht ausgeführt.
+
+### Intern
+
+- Pure, mit Fixtures getestete Pfad-Discovery `Tool4DDiscovery`
+  (PATH-Reihenfolge, höchste Extension-Version, Version ohne
+  Programmstart); Fenster-Selbsttest `tool4dhint` (Hinweis erscheint
+  genau einmal, echter Klick öffnet die Hilfe am Anker; isolierte
+  Selbsttest-Defaults verbrauchen das echte Nutzer-Flag nicht).
+
 ## [v1.34.0] — 2026-07-18
 
 Etappe 3 des Wunschpakets 2026-07c: Suchfunktion in der Projektansicht

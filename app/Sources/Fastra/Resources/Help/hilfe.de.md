@@ -157,6 +157,38 @@ Sprachmenü lässt sich 4D auch für andere Dateien manuell aktivieren.
 `.4DProject`/`.4DForm` sind echte JSON-Dateien, `.4DCatalog`/
 `.4DSettings` echtes XML — sie öffnen mit JSON- bzw. XML-Darstellung.
 
+## 4D und tool4d
+
+Fastra hebt 4D-Code farblich hervor, prüft ihn aber nicht auf Syntax-
+oder Compilerfehler. Dafür eignet sich **tool4d**, die schlanke
+headless-Runtime von 4D — laut 4D frei und ohne Lizenz nutzbar. Fastra
+bündelt tool4d bewusst nicht, lädt nichts herunter und startet keine
+Installation.
+
+**tool4d beziehen** — eine Quelle genügt:
+
+- **4D-Downloadseite:** <https://product-download.4d.com> — Paket
+  „tool4d“ passend zur eigenen 4D-Version laden und entpacken.
+- **VS-Code-Extension „4D-Analyzer“** (Herausgeber „4D“): lädt tool4d
+  automatisch nach, auf dem Mac unter
+  `~/Library/Application Support/Code/User/globalStorage/4D.4d-analyzer/tool4d/…/tool4d.app`.
+
+**Hilfe → tool4d finden…** prüft diese bekannten Orte (plus PATH und
+Programme-Ordner), zeigt Fundort und Version an und merkt sich den Pfad
+für eine spätere Prüf-Integration — ausgeführt wird nichts.
+
+**Headless-Prüfung von Hand:** tool4d arbeitet projektbasiert (immer die
+`.4DProject`-Datei, nie eine einzelne Methode). Der zuverlässigste
+Gesamtcheck läuft im kompilierten Modus:
+
+```
+…/tool4d.app/Contents/MacOS/tool4d \
+  --project "Pfad/zum/Projekt/Project/MeinProjekt.4DProject" \
+  --opening-mode=compiled --dataless --skip-onstartup
+```
+
+Fehler erscheinen auf der Konsole; Exit-Code ≠ 0 bedeutet Probleme.
+
 ## XPath-Leiste
 
 Für XML-artige Dokumente blendet ⇧⌘X die XPath-Leiste ein: XPath-Abfrage

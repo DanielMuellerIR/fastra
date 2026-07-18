@@ -150,6 +150,38 @@ menu, 4D can also be enabled manually for other files.
 `.4DProject`/`.4DForm` are real JSON files, `.4DCatalog`/`.4DSettings`
 real XML — they open with JSON or XML rendering.
 
+## 4D and tool4d
+
+Fastra highlights 4D code but does not check it for syntax or compiler
+errors. **tool4d**, 4D’s lightweight headless runtime, is the right tool
+for that — according to 4D it is free and requires no license. Fastra
+deliberately does not bundle tool4d, downloads nothing, and starts no
+installation.
+
+**Getting tool4d** — one source is enough:
+
+- **4D download page:** <https://product-download.4d.com> — download and
+  unpack the “tool4d” package matching your 4D version.
+- **VS Code extension “4D-Analyzer”** (publisher “4D”): downloads tool4d
+  automatically; on the Mac it lives under
+  `~/Library/Application Support/Code/User/globalStorage/4D.4d-analyzer/tool4d/…/tool4d.app`.
+
+**Help → Find tool4d…** checks these known locations (plus PATH and the
+Applications folders), shows the location and version, and remembers the
+path for a future check integration — nothing is executed.
+
+**Manual headless check:** tool4d works per project (always the
+`.4DProject` file, never a single method). The most reliable full check
+runs in compiled mode:
+
+```
+…/tool4d.app/Contents/MacOS/tool4d \
+  --project "Path/to/Project/Project/MyProject.4DProject" \
+  --opening-mode=compiled --dataless --skip-onstartup
+```
+
+Errors appear on the console; a non-zero exit code means problems.
+
 ## XPath Bar
 
 For XML-like documents, ⇧⌘X shows the XPath bar: type an XPath query,

@@ -11,11 +11,11 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   acht Etappen. **Umgesetzt: Etappe 1 (Diff-Kern & Datei-Diff
   dual-pane, v1.32.0), Etappe 2 (Git-Diff auf gemeinsamem Renderer,
   v1.33.0), Etappe 3 (Dateinamens-Filter in der Projektansicht,
-  v1.34.0).** Offen: tool4d-Ersteinrichtungshilfe (Etappe 4),
-  4D-Struktur-Hinweise, 4D-Vervollständigung/`.4DForm`-Schema/
-  Export-Transformation, Alt-Doppelklick „Gehe zum Ziel“ (4D-Methoden +
-  Markdown-Links, erweiterbar), 4D-Syntax-Check via tool4d-LSP (Gate:
-  rechtliche Freigabe durch den Maintainer).
+  v1.34.0), Etappe 4 (tool4d-Ersteinrichtungshilfe, v1.35.0).**
+  Offen: 4D-Struktur-Hinweise (Etappe 5), 4D-Vervollständigung/
+  `.4DForm`-Schema/Export-Transformation, Alt-Doppelklick „Gehe zum
+  Ziel“ (4D-Methoden + Markdown-Links, erweiterbar), 4D-Syntax-Check
+  via tool4d-LSP (Gate: rechtliche Freigabe durch den Maintainer).
   - **Bewusst NICHT in Etappe 1** (Kandidaten für eigene Aufträge):
     Ordner-Vergleich, „Apply to Left/Right“-Übernahme einzelner
     Unterschiede ins Dokument, Export der Differenzen-Liste.

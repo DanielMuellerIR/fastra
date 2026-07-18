@@ -165,6 +165,7 @@ enum SelfTest {
         case "sidebarheader": waitForMainWindow { runSidebarHeaderTest() }
         case "sidebarfilter": waitForMainWindow { runSidebarFilterTest() }
         case "filediff": waitForMainWindow { runFileDiffTest() }
+        case "tool4dhint": waitForMainWindow { runTool4DHintTest() }
         case "searchmark": waitForMainWindow { openSearchThen { runSearchMarkTest() } }
         case "help": waitForMainWindow { runHelpTest() }
         case "mdassist": waitForMainWindow { runMarkdownAssistTest() }
@@ -3771,6 +3772,127 @@ enum SelfTest {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             pollSidebarFilterRestored(base: base, tick: tick + 1)
+        }
+    }
+
+    // MARK: - Selbsttest tool4dhint (Etappe 4 Wunschpaket 2026-07c)
+
+    /// Prüft den 4D-Erst-Kontakt-Hinweis im ECHTEN Fenster:
+    /// (a) Erste `.4dm`-Datei → Hinweis-Leiste erscheint.
+    /// (b) Echter Klick auf „Einrichtung anzeigen" → Hilfe-Fenster öffnet
+    ///     (Anker „4D & tool4d"), Leiste verschwindet, Flag gesetzt.
+    /// (c) Zweite `.4dm`-Datei → Hinweis erscheint NICHT erneut
+    ///     („einmal pro Nutzer"). Die Defaults sind die isolierte
+    ///     Selbsttest-Suite — das echte Nutzer-Flag bleibt unberührt.
+    private static func runTool4DHintTest() {
+        testLabel = "tool4dhint"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard !Tool4DAssist.firstContactHintShown else {
+            finish(false, "(setup) Flag ist in der frischen Selbsttest-Suite schon gesetzt")
+        }
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-tool4dhint-\(UUID().uuidString)")
+        let first = base.appendingPathComponent("Methode.4dm")
+        let second = base.appendingPathComponent("Andere.4dm")
+        do {
+            try FileManager.default.createDirectory(at: base,
+                                                    withIntermediateDirectories: true)
+            try "$x:=1".write(to: first, atomically: true, encoding: .utf8)
+            try "$y:=2".write(to: second, atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "(setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
+        }
+        ws.loadFile(at: first) { ok in
+            guard ok else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "(setup) Methode.4dm lädt nicht")
+            }
+            pollTool4DHintVisible(ws, base: base, second: second, tick: 0)
+        }
+    }
+
+    private static func pollTool4DHintVisible(_ ws: Workspace, base: URL,
+                                              second: URL, tick: Int) {
+        let maxTicks = 40            // 10 s
+        guard let window = mainWindowForAXChecks(), let content = window.contentView else {
+            if tick >= maxTicks { finish(false, "kein Hauptfenster") }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                pollTool4DHintVisible(ws, base: base, second: second, tick: tick + 1)
+            }
+            return
+        }
+        if let button = markerView(id: "tool4dHintHelpButton", in: content),
+           markerViewExists(id: "tool4dHintBar", in: content) {
+            // Echter Klick auf „Einrichtung anzeigen" (Down+Up durch die
+            // Event-Pipeline; der 0×0-Marker sitzt in der Button-Mitte).
+            let point = button.convert(NSPoint.zero, to: nil)
+            let time = ProcessInfo.processInfo.systemUptime
+            guard let down = NSEvent.mouseEvent(
+                with: .leftMouseDown, location: point, modifierFlags: [],
+                timestamp: time, windowNumber: window.windowNumber, context: nil,
+                eventNumber: 0, clickCount: 1, pressure: 1
+            ), let up = NSEvent.mouseEvent(
+                with: .leftMouseUp, location: point, modifierFlags: [],
+                timestamp: time + 0.05, windowNumber: window.windowNumber,
+                context: nil, eventNumber: 1, clickCount: 1, pressure: 0
+            ) else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Maus-Events nicht baubar")
+            }
+            window.sendEvent(down)
+            window.sendEvent(up)
+            pollTool4DHelpOpened(ws, base: base, second: second, tick: 0)
+            return
+        }
+        if tick >= maxTicks {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Hinweis-Leiste erscheint binnen 10 s nicht für Methode.4dm")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollTool4DHintVisible(ws, base: base, second: second, tick: tick + 1)
+        }
+    }
+
+    private static func pollTool4DHelpOpened(_ ws: Workspace, base: URL,
+                                             second: URL, tick: Int) {
+        let maxTicks = 40            // 10 s
+        let helpOpen = NSApp.windows.contains {
+            $0.frameAutosaveName == "FastraHelpWindow" && $0.isVisible
+        }
+        let hintGone = mainWindowForAXChecks()?.contentView.map {
+            !markerViewExists(id: "tool4dHintBar", in: $0)
+        } ?? false
+        if helpOpen, hintGone, Tool4DAssist.firstContactHintShown {
+            // (c) Zweite 4D-Datei — der Hinweis darf NICHT wiederkommen.
+            ws.loadFile(at: second) { ok in
+                guard ok else {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "(setup) Andere.4dm lädt nicht")
+                }
+                // Negativ-Beweis mit fester Frist: nach 1,5 s immer noch weg.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    let stillGone = mainWindowForAXChecks()?.contentView.map {
+                        !markerViewExists(id: "tool4dHintBar", in: $0)
+                    } ?? false
+                    try? FileManager.default.removeItem(at: base)
+                    finish(stillGone,
+                           stillGone
+                           ? "Hinweis erschien genau einmal; Klick öffnete die Hilfe "
+                             + "(Anker 4D & tool4d); zweite 4D-Datei ohne erneuten Hinweis"
+                           : "Hinweis erschien nach Quittierung erneut")
+                }
+            }
+            return
+        }
+        if tick >= maxTicks {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Nach Klick: Hilfe offen=\(helpOpen), Leiste weg=\(hintGone), "
+                + "Flag=\(Tool4DAssist.firstContactHintShown)")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollTool4DHelpOpened(ws, base: base, second: second, tick: tick + 1)
         }
     }
 

@@ -104,6 +104,7 @@ enum HelpSection: CaseIterable {
     case markdownWriting
     case languages
     case fourD
+    case fourDTool
     case xpath
     case projectSidebar
     case git
@@ -128,6 +129,10 @@ enum HelpSection: CaseIterable {
         case (.languages, _):              return "Sprachen und Syntaxfarben"
         case (.fourD, "en"):               return "4D Support"
         case (.fourD, _):                  return "4D-Unterstützung"
+        // Bewusst ohne „&“ — das Ampersand wird im gerenderten HTML zu
+        // „&amp;“ escapet und ergäbe einen abweichenden Anker-Slug.
+        case (.fourDTool, "en"):           return "4D and tool4d"
+        case (.fourDTool, _):              return "4D und tool4d"
         case (.xpath, "en"):               return "XPath Bar"
         case (.xpath, _):                  return "XPath-Leiste"
         case (.projectSidebar, "en"):      return "Project and Sidebar"

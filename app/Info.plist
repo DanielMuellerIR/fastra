@@ -45,9 +45,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.34.0</string>
+	<string>1.35.0</string>
 	<key>CFBundleVersion</key>
-	<string>84</string>
+	<string>85</string>
 	<key>FastraVersionDate</key>
 	<string>2026-07-18</string>
 	<key>LSApplicationCategoryType</key>

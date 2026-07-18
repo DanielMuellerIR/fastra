@@ -1077,3 +1077,19 @@
 "Keine Dateinamen passen zu „%@“." = "No file names match “%@”.";
 "Im Inhalt suchen…" = "Search in contents…";
 "Öffnet den Suchdialog mit Ordner-Bereich für die Volltextsuche." = "Opens the search dialog with folder scope for full-text search.";
+
+/* tool4d-Ersteinrichtungshilfe (Etappe 4 Wunschpaket 2026-07c) */
+"tool4d finden…" = "Find tool4d…";
+"tool4d gefunden" = "tool4d found";
+"Kein tool4d gefunden" = "No tool4d found";
+"%@\n\nVersion: %@\nQuelle: %@\n\nFastra merkt sich diesen Fundort für eine spätere Prüf-Integration — ausgeführt wird nichts." = "%@\n\nVersion: %@\nSource: %@\n\nFastra remembers this location for a future check integration — nothing is executed.";
+"unbekannt (Version steht nur in App-Bundles)" = "unknown (the version is only stored in app bundles)";
+"Im Finder zeigen" = "Show in Finder";
+"Fastra hat an den bekannten Orten gesucht: im PATH, in den Programme-Ordnern und in der Ablage der VS-Code-Extension „4D-Analyzer“.\n\ntool4d ist laut 4D frei und ohne Lizenz nutzbar. Du kannst es von der 4D-Download-Seite laden oder die VS-Code-Extension „4D-Analyzer“ installieren, die es automatisch mitbringt — Details in der Hilfe. Fastra selbst lädt nichts herunter." = "Fastra searched the known locations: the PATH, the Applications folders, and the storage of the VS Code extension “4D-Analyzer”.\n\nAccording to 4D, tool4d is free and requires no license. You can download it from the 4D download page or install the VS Code extension “4D-Analyzer”, which brings it along automatically — see Help for details. Fastra itself downloads nothing.";
+"Download-Seite öffnen" = "Open Download Page";
+"PATH-Verzeichnis %@" = "PATH directory %@";
+"Programme-Ordner %@" = "Applications folder %@";
+"VS-Code-Extension „4D-Analyzer“" = "VS Code extension “4D-Analyzer”";
+"4D erkannt — Fastra kann mit tool4d beim Prüfen der Syntax helfen." = "4D detected — Fastra can help check syntax with tool4d.";
+"Einrichtung anzeigen" = "Show Setup";
+"Nicht mehr zeigen" = "Don’t show again";

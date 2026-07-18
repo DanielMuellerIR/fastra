@@ -1,5 +1,9 @@
 # 4D-Code prüfen mit tool4d (extern)
 
+> Seit v1.35.0 steckt diese Anleitung gestrafft auch in der App-Hilfe
+> (Abschnitt „4D und tool4d“), und **Hilfe → tool4d finden…** sucht ein
+> installiertes tool4d an den bekannten Orten.
+
 Fastra hebt 4D-Methoden (`.4dm`) farblich hervor, prüft sie aber nicht auf
 Syntax- oder Compilerfehler. Dafür eignet sich **tool4d**, die schlanke
 headless-Runtime von 4D. Fastra bündelt tool4d bewusst **nicht** (Größe,

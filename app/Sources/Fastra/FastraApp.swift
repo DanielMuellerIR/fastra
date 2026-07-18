@@ -99,6 +99,10 @@ struct FastraApp: App {
                 // eigenen Fenster. ⌘? ist der macOS-Standard-Shortcut.
                 CommandGroup(replacing: .help) {
                     Button("Fastra-Hilfe") { HelpWindow.show() }
+                    // tool4d-Einrichtungshilfe (Etappe 4 Wunschpaket
+                    // 2026-07c): sucht ein installiertes tool4d an den
+                    // bekannten Orten — lädt nichts herunter, führt nichts aus.
+                    Button("tool4d finden…") { Tool4DAssist.runFinder() }
                         .keyboardShortcut("?", modifiers: .command)
                 }
             }
