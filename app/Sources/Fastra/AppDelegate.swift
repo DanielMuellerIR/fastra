@@ -495,13 +495,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             // Reine `KeyRouting`-Logik (auch in KeyRoutingTests abgedeckt).
-            let isSearchKey = NSApp.keyWindow.map(SearchWindow.isSearchWindow) ?? false
+            let keyWindow = NSApp.keyWindow
+            let isSearchKey = keyWindow.map(SearchWindow.isSearchWindow) ?? false
+            let isHelpKey = HelpWindow.isHelpWindow(keyWindow)
             let route = KeyRouting.route(
                 isKeyDown: event.type == .keyDown,
                 modifierFlags: event.modifierFlags,
                 charactersIgnoringModifiers: event.charactersIgnoringModifiers,
                 keyCode: event.keyCode,
-                isSearchWindowKey: isSearchKey
+                isSearchWindowKey: isSearchKey,
+                isHelpWindowKey: isHelpKey
             )
 
             // FN+←/FN+→ (Home/End) sind nur im echten Code-Editor sinnvoll.
@@ -509,6 +512,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // normales Verhalten. CodeEditTextView erledigt Auswahl, Cursor-
             // Aktualisierung und Scrollen in seinen vorhandenen Aktionen selbst.
             switch route {
+            case .closeHelp:
+                MainActor.assumeIsolated { HelpWindow.close() }
+                return nil
+
             case .moveToBeginningOfDocument(let modifySelection):
                 guard let textView = NSApp.keyWindow?.firstResponder as? TextView else {
                     return event

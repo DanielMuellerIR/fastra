@@ -76,7 +76,8 @@ App eine veraltete Version.
 toter cursorPositions-Reconcile, verworfene Auto-Vervollständigung schließen,
 Gutter-Drag-Clamp, horizontaler Scrollbalken, Zeilenbreiten-Messung,
 exotische Sprachen ausschneiden, Highlight-Query-Pfad layout-robust,
-Text-Geist-Fix, zwei portable Ressourcenpfade und getrennte 4D-Theme-Slots).
+Text-Geist-Fix, zwei portable Ressourcenpfade und getrennte 4D-Theme-Slots
+einschließlich eines optionalen Methoden-Slots).
 
 Seit v1.19.0 verpackt `build.sh` zusätzlich das exakt gepinnte
 `Sparkle.framework` unter `Contents/Frameworks`, entfernt die für die nicht
@@ -113,6 +114,17 @@ Regressions-Wächter `./selftest.sh completion4d` lädt eine echte `.4dm`-Datei
 und prüft Auto-Popup, ⌃Leertaste, ↓ sowie Klick/Doppelklick in der sichtbaren
 CESE-Tabelle. Weil die letzten drei Schritte echten Fensterfokus brauchen,
 startet der Runner die App über LaunchServices und beendet sie danach wieder.
+Patch 4m (4D-Projektmethoden, 2026-07-19): Die 4D-Vorgaben unterscheiden
+Methoden farblich und typografisch von Befehlen. `EditorTheme` besitzt upstream
+keinen freien Methoden-Slot; der Checkout-Patch ergänzt daher am Ende des
+Initializers ein optionales `methods`-Attribut mit Default `commands` und mappt
+`.method` dorthin, während `.function` auf `commands` bleibt. Der Default ist
+entscheidend: Alle bestehenden Themes und Sprachen behalten ihre Darstellung.
+Der Patch prüft Marker und Mapping hart und verwirft anschließend die
+CodeEditSourceEditor-Artefakte. Regressions-Wächter: Unit-Test gegen die
+eingecheckten 4D-JSON-Farben sowie `./selftest.sh highlight4d`, der im echten
+Editor Methode (Farbe + bold/italic), Befehl, Prozessvariable und String in
+hellem und dunklem Theme beobachtet.
 
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 

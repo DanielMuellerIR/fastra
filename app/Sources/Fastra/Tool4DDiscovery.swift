@@ -183,11 +183,29 @@ enum Tool4DAssist {
         return ext == "4dm" || ext == "4dproject"
     }
 
-    /// Gemerkter Fundort (Grundlage der späteren Prüf-Integration,
-    /// Etappe 8). Fastra führt ihn in dieser Etappe NICHT aus.
+    /// Gemerkter Fundort für die sichtbare LSP-Dokumentprüfung. Der Finder
+    /// selbst startet ihn nie; ausgeführt wird tool4d erst auf den bewussten
+    /// Befehl „Dokument prüfen“ für ein passendes geöffnetes Projekt.
     static var rememberedExecutablePath: String? {
         get { SelfTest.workspaceDefaults().string(forKey: rememberedPathKey) }
         set { SelfTest.workspaceDefaults().set(newValue, forKey: rememberedPathKey) }
+    }
+
+    /// Liefert ausschließlich ein bereits vorhandenes, ausführbares tool4d.
+    /// Ein manuell gemerkter Pfad gewinnt, danach greift dieselbe Discovery
+    /// wie „Hilfe → tool4d finden…“. Damit startet die Prüfung nie eine
+    /// unbekannte oder inzwischen gelöschte Installation.
+    static func installedTool(fileManager: FileManager = .default) -> Tool4DDiscovery.Finding? {
+        if let path = rememberedExecutablePath,
+           fileManager.isExecutableFile(atPath: path) {
+            let executable = URL(fileURLWithPath: path)
+            return Tool4DDiscovery.Finding(
+                executableURL: executable,
+                version: Tool4DDiscovery.bundleVersion(forExecutable: executable),
+                source: .path(directory: executable.deletingLastPathComponent().path)
+            )
+        }
+        return Tool4DDiscovery.locate(fileManager: fileManager)
     }
 
     /// „Hilfe → tool4d finden…": sucht asynchron an den bekannten Orten und
@@ -207,7 +225,7 @@ enum Tool4DAssist {
             rememberedExecutablePath = finding.executableURL.path
             alert.messageText = L10n.string("tool4d gefunden")
             alert.informativeText = L10n.format(
-                "%@\n\nVersion: %@\nQuelle: %@\n\nFastra merkt sich diesen Fundort für eine spätere Prüf-Integration — ausgeführt wird nichts.",
+                "%@\n\nVersion: %@\nQuelle: %@\n\nFastra merkt sich diesen Fundort. tool4d startet erst bei „Dokument prüfen“ für ein passendes geöffnetes 4D-Projekt.",
                 finding.executableURL.path,
                 finding.version ?? L10n.string("unbekannt (Version steht nur in App-Bundles)"),
                 sourceDescription(finding.source)

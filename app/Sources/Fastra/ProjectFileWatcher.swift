@@ -10,6 +10,12 @@ import CoreServices
 final class ProjectFileWatcher: ObservableObject {
     @Published private(set) var generation = 0
 
+    /// Der Dateibaum nutzt die veröffentlichte Generation zum Rendern. Andere
+    /// langlebige Dienste, etwa der 4D-Methodenindex im Workspace, können
+    /// denselben FSEvents-Strom unabhängig von einer sichtbaren Sidebar
+    /// mitbekommen. Die Closure läuft immer auf der Main-Queue.
+    var onRefresh: (() -> Void)?
+
     private let rootURL: URL
     private var stream: FSEventStreamRef?
 
@@ -27,6 +33,7 @@ final class ProjectFileWatcher: ObservableObject {
     func refresh() {
         dispatchPrecondition(condition: .onQueue(.main))
         generation &+= 1
+        onRefresh?()
     }
 
     private func start() {
@@ -65,7 +72,9 @@ final class ProjectFileWatcher: ObservableObject {
         FSEventStreamStart(stream)
     }
 
-    private func stop() {
+    /// Beendet den nativen Stream auch dann sofort, wenn der Besitzer vor
+    /// dem nächsten ARC-Aufräumen zu einem anderen Projekt wechselt.
+    func stop() {
         guard let stream else { return }
         FSEventStreamStop(stream)
         FSEventStreamInvalidate(stream)

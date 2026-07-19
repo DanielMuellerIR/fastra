@@ -175,7 +175,11 @@ ihr zurück.
 ## 4D-Unterstützung
 
 `.4dm`-Methoden werden mit einem eigenen 4D-Farbschema dargestellt
-(Befehle, Keywords, Variablen, Kommentare wie im 4D-Editor). Über das
+(Befehle, Keywords, Variablen, Kommentare wie im 4D-Editor). In einem
+geöffneten Projekt erkennt Fastra zusätzlich Methoden aus
+`Project/Sources/Methods` unabhängig von Groß-/Kleinschreibung und hebt sie
+klar anders als Prozessvariablen hervor; `[Tabelle:1]` bleibt eine Tabelle.
+Über das
 Sprachmenü lässt sich 4D auch für andere Dateien manuell aktivieren.
 `.4DProject`/`.4DForm` sind echte JSON-Dateien, `.4DCatalog`/
 `.4DSettings` echtes XML — sie öffnen mit JSON- bzw. XML-Darstellung.
@@ -207,10 +211,9 @@ tool4d (nächster Abschnitt).
 
 ## 4D und tool4d
 
-Fastra hebt 4D-Code farblich hervor, prüft ihn aber nicht auf Syntax-
-oder Compilerfehler. Dafür eignet sich **tool4d**, die schlanke
-headless-Runtime von 4D — laut 4D frei und ohne Lizenz nutzbar. Fastra
-bündelt tool4d bewusst nicht, lädt nichts herunter und startet keine
+Fastra kann 4D-Code mit **tool4d**, der schlanken headless-Runtime von 4D,
+auf Syntaxdiagnosen prüfen. tool4d ist laut 4D frei und ohne Lizenz nutzbar.
+Fastra bündelt es bewusst nicht, lädt nichts herunter und startet keine
 Installation.
 
 **tool4d beziehen** — eine Quelle genügt:
@@ -222,8 +225,20 @@ Installation.
   `~/Library/Application Support/Code/User/globalStorage/4D.4d-analyzer/tool4d/…/tool4d.app`.
 
 **Hilfe → tool4d finden…** prüft diese bekannten Orte (plus PATH und
-Programme-Ordner), zeigt Fundort und Version an und merkt sich den Pfad
-für eine spätere Prüf-Integration — ausgeführt wird nichts.
+Programme-Ordner), zeigt Fundort und Version an und merkt sich den Pfad.
+
+**Dokument prüfen:** Ist eine gespeicherte `.4dm`-Methode Teil eines geöffneten
+4D-Projekts und tool4d vorhanden, startet **Text → Dokument prüfen** eine
+kurze lokale LSP-Prüfung. Fastra lauscht nur auf `127.0.0.1`, tool4d verbindet
+sich dorthin; nach dem Ergebnis werden Verbindung und Prozess wieder beendet.
+Liefert tool4d einen nicht-`null`-Diagnosebericht, erscheinen Fehler mit Zeile
+und Spalte und der erste lässt sich anspringen. Ein `null`-Bericht bedeutet
+ausdrücklich „kein verwertbares Ergebnis“, niemals „fehlerfrei“. Eine sichere
+Projektprobe mit tool4d 21.1 bestätigte einen vollständigen Diagnosebericht
+und Shutdown; ein früheres `null` war der macOS-Alias `/tmp`, daher
+kanonisiert Fastra Dokument- und Workspace-URI. Ohne tool4d oder ohne
+zugehöriges Projekt bleiben die ausdrücklich heuristischen Struktur-Hinweise
+verfügbar; sie sind kein Compiler-Ersatz.
 
 **Headless-Prüfung von Hand:** tool4d arbeitet projektbasiert (immer die
 `.4DProject`-Datei, nie eine einzelne Methode). Der zuverlässigste

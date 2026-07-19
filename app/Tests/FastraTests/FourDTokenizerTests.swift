@@ -117,7 +117,15 @@ func fourD_tablesAndFields() {
     #expect(result.contains { $0.1 == .field && $0.0 == "Name" })
 }
 
-@Test("Methodenaufrufe und Member: m(…) farbig, .prop plain, .f() Methode")
+@Test("Klassische Tabelle mit ID bleibt eine Tabelle")
+func fourD_tableWithClassicID() {
+    let source = "QUERY([Auftraege:1]; [Auftraege:1]Nummer=42)"
+    let result = kinds(source)
+    #expect(result.filter { $0.1 == .table && $0.0 == "[Auftraege:1]" }.count == 2)
+    #expect(result.contains { $0.1 == .field && $0.0 == "Nummer" })
+}
+
+@Test("Unindizierte Aufrufe und Member bleiben im bisherigen Befehls-Slot")
 func fourD_methodsAndMembers() {
     let source = """
     MeineMethode($a)
@@ -128,6 +136,20 @@ func fourD_methodsAndMembers() {
     // `.gesamtBetrag` bleibt bewusst OHNE Token (plain).
     #expect(!result.contains { $0.0 == "gesamtBetrag" })
     #expect(result.contains { $0.1 == .methodCall && $0.0 == "rechne" })
+}
+
+@Test("Indizierte Projektmethoden mit und ohne Klammern gewinnen den eigenen Slot")
+func fourD_indexedProjectMethods() {
+    let source = "Abr_init\nABR_SUCHEN\nABR_LISTE_LB_AB\nAbr_Suchen()"
+    let methods: Set<String> = ["abr_init", "abr_suchen"]
+    let result = FourDTokenizer.tokenize(source, projectMethodNames: methods).map { token in
+        let range = Range(token.range, in: source)!
+        return (String(source[range]), token.kind)
+    }
+    #expect(result.contains { $0.0 == "Abr_init" && $0.1 == .projectMethod })
+    #expect(result.contains { $0.0 == "ABR_SUCHEN" && $0.1 == .projectMethod })
+    #expect(result.contains { $0.0 == "Abr_Suchen" && $0.1 == .projectMethod })
+    #expect(result.contains { $0.0 == "ABR_LISTE_LB_AB" && $0.1 == .processVariable })
 }
 
 @Test("Zahlen inkl. Dezimalteil; Zahlen in Namen bleiben Namensteil")
@@ -179,6 +201,7 @@ func fourD_utf16Offsets() throws {
 @Test("Capture-Mapping deckt alle Token-Klassen ab (Mapping-Tabelle)")
 func fourD_captureMapping() {
     #expect(FourDHighlightProvider.capture(for: .comment) == .comment)
+    #expect(FourDHighlightProvider.capture(for: .string) == .string)
     #expect(FourDHighlightProvider.capture(for: .command) == .function)
     #expect(FourDHighlightProvider.capture(for: .constant) == .variableBuiltin)
     #expect(FourDHighlightProvider.capture(for: .localVariable) == .variable)
@@ -186,7 +209,8 @@ func fourD_captureMapping() {
     #expect(FourDHighlightProvider.capture(for: .interprocessVariable) == .property)
     #expect(FourDHighlightProvider.capture(for: .table) == .type)
     #expect(FourDHighlightProvider.capture(for: .field) == .typeAlternate)
-    #expect(FourDHighlightProvider.capture(for: .methodCall) == .method)
+    #expect(FourDHighlightProvider.capture(for: .methodCall) == .function)
+    #expect(FourDHighlightProvider.capture(for: .projectMethod) == .method)
     #expect(FourDHighlightProvider.capture(for: .keyword) == .keyword)
 }
 
@@ -227,6 +251,7 @@ func fourD_lightThemeMatchesJSON() throws {
     let json = try themeJSON("light.json")
     expectColor(EditorView.fourDTheme.keywords, matches: json["keywords"] as! [String: Any], "keywords")
     expectColor(EditorView.fourDTheme.commands, matches: json["commands"] as! [String: Any], "commands")
+    expectColor(EditorView.fourDTheme.methods, matches: json["methods"] as! [String: Any], "methods")
     expectColor(EditorView.fourDTheme.variables, matches: json["local_variables"] as! [String: Any], "local_variables")
     expectColor(EditorView.fourDTheme.characters, matches: json["process_variables"] as! [String: Any], "process_variables")
     expectColor(EditorView.fourDTheme.types, matches: json["tables"] as! [String: Any], "tables")
@@ -246,6 +271,7 @@ func fourD_darkThemeMatchesJSON() throws {
     let json = try themeJSON("dark.json")
     expectColor(EditorView.fourDThemeDark.keywords, matches: json["keywords"] as! [String: Any], "keywords")
     expectColor(EditorView.fourDThemeDark.commands, matches: json["commands"] as! [String: Any], "commands")
+    expectColor(EditorView.fourDThemeDark.methods, matches: json["methods"] as! [String: Any], "methods")
     expectColor(EditorView.fourDThemeDark.variables, matches: json["local_variables"] as! [String: Any], "local_variables")
     expectColor(EditorView.fourDThemeDark.characters, matches: json["process_variables"] as! [String: Any], "process_variables")
     expectColor(EditorView.fourDThemeDark.types, matches: json["tables"] as! [String: Any], "tables")

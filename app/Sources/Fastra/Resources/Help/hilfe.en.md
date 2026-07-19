@@ -167,8 +167,10 @@ language menu: a manual choice always beats the automatics;
 ## 4D Support
 
 `.4dm` methods are rendered with a dedicated 4D color scheme (commands,
-keywords, variables, comments like in the 4D editor). Via the language
-menu, 4D can also be enabled manually for other files.
+keywords, variables, comments like in the 4D editor). In an open project,
+Fastra also recognizes methods in `Project/Sources/Methods` case-insensitively
+and highlights them distinctly from process variables; `[Table:1]` remains a
+table. Via the language menu, 4D can also be enabled manually for other files.
 `.4DProject`/`.4DForm` are real JSON files, `.4DCatalog`/`.4DSettings`
 real XML — they open with JSON or XML rendering.
 
@@ -196,11 +198,10 @@ checks authoritatively (next section).
 
 ## 4D and tool4d
 
-Fastra highlights 4D code but does not check it for syntax or compiler
-errors. **tool4d**, 4D’s lightweight headless runtime, is the right tool
-for that — according to 4D it is free and requires no license. Fastra
-deliberately does not bundle tool4d, downloads nothing, and starts no
-installation.
+Fastra can check 4D code for syntax diagnostics with **tool4d**, 4D’s
+lightweight headless runtime. According to 4D it is free and requires no
+license. Fastra deliberately does not bundle it, downloads nothing, and
+starts no installation.
 
 **Getting tool4d** — one source is enough:
 
@@ -212,7 +213,19 @@ installation.
 
 **Help → Find tool4d…** checks these known locations (plus PATH and the
 Applications folders), shows the location and version, and remembers the
-path for a future check integration — nothing is executed.
+path.
+
+**Check Document:** When a saved `.4dm` method belongs to an open 4D project
+and tool4d is available, **Text → Check Document** starts a short local LSP
+check. Fastra listens only on `127.0.0.1`, tool4d connects to it, and both
+connection and process are closed after the result. When tool4d supplies a
+non-`null` diagnostic report, errors include line and column and you can jump
+to the first one. A `null` report is an explicit "no usable result", never a
+clean check. A safe-project probe with tool4d 21.1 verified a full diagnostic
+report and shutdown; an earlier `null` was the macOS `/tmp` alias, so Fastra
+canonicalizes document and workspace URIs. Without tool4d or a matching
+project, the explicitly heuristic structure hints remain available; they are
+not a compiler replacement.
 
 **Manual headless check:** tool4d works per project (always the
 `.4DProject` file, never a single method). The most reliable full check

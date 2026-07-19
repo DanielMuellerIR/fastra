@@ -9,6 +9,38 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.39.0] — 2026-07-19
+
+### Hinzugefügt
+
+- **Projektmethoden im 4D-Highlighting.** Fastra liest die Namen aus
+  `Project/Sources/Methods` nebenläufig und case-insensitiv ein, aktualisiert
+  den Index bei Projekt-Dateiänderungen und färbt diese Methoden mit der
+  eigenen 4D-Methodenfarbe (hell/dunkel, fett/kursiv). Prozessvariablen,
+  Tabellen einschließlich `[Tabelle:ID]` und echte Strings bleiben getrennt.
+- **tool4d-LSP-Diagnosepfad.** „Text → Dokument prüfen“ startet bei
+  gespeicherter `.4dm`-Methode in einem geöffneten 4D-Projekt ein bereits
+  vorhandenes tool4d über dessen lokalen LSP-Modus. Fastra bündelt und lädt
+  tool4d weiterhin nicht. Der JSON-RPC-Lauf ist auf `127.0.0.1` begrenzt,
+  übergibt Workspace und sichtbaren Editorstand und beendet Verbindung und
+  Kindprozess nach jedem Lauf sicher. Nicht-`null`-Diagnoseberichte zeigen
+  Zeile/Spalte; `null` bleibt bewusst ein Fehler statt ein grüner Check. Die
+  Dokument-URI wird wie der Workspace kanonisiert, damit der macOS-Alias
+  `/tmp` ↔ `/private/tmp` nicht zu einem falschen `null` führt.
+- **Hilfe-Fenster mit ⌘W.** Das Schließen der vorderen Hilfe lässt alle
+  Dokument-Tabs unverändert; der Fenster-Selbsttest belegt dies mit zwei
+  Hintergrund-Tabs und einem echten ⌘W-Ereignis.
+
+### Intern
+
+- Pull-Diagnosen (`textDocument/diagnostic`) mit `publishDiagnostics`-Fallback,
+  Mock-LSP- und echter Prozess-Abbruchtest sowie optionaler Integrations-
+  Selbsttest `tool4dlsp` für lokal installiertes tool4d mit ausdrücklich
+  übergebener sicherer Projektkopie.
+- Der CodeEdit-Theme-Patch erhält einen optionalen Methoden-Slot mit sicherem
+  Default für alle bestehenden Sprachen. `highlight4d` beobachtet zusätzlich
+  Projektmethode, Prozessvariable und String im echten Editor.
+
 ## [v1.38.2] — 2026-07-19
 
 ### Behoben

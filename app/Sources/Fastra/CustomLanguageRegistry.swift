@@ -77,8 +77,23 @@ enum CustomLanguageRegistry {
 /// Tab-Wechsel und Editor-Remounts überlebt und seinen Zustand behält.
 final class CustomLanguageProviders: ObservableObject {
     private var cache: [String: any HighlightProviding] = [:]
+    private var fourDProjectMethodNames = Set<String>()
 
-    func provider(for language: CustomLanguage) -> any HighlightProviding {
+    func provider(for language: CustomLanguage,
+                  projectMethodNames: Set<String> = []) -> any HighlightProviding {
+        if language.id == CustomLanguageRegistry.fourD.id {
+            let normalized = Set(projectMethodNames.map { $0.lowercased() })
+            // CESE vergleicht Provider über ihre Objektidentität. Eine neue
+            // Instanz nach abgeschlossenem Index-Scan invalidiert daher die
+            // sichtbaren Highlights, ohne den Editor neu zu mounten oder die
+            // Selektion anzutasten.
+            if normalized != fourDProjectMethodNames || cache[language.id] == nil {
+                fourDProjectMethodNames = normalized
+                let fresh = FourDHighlightProvider(projectMethodNames: normalized)
+                cache[language.id] = fresh
+                return fresh
+            }
+        }
         if let existing = cache[language.id] { return existing }
         let fresh = language.makeHighlightProvider()
         cache[language.id] = fresh

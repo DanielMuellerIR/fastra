@@ -144,6 +144,23 @@ func cmdW_hidesOnlyWhenSearchKey() {
     #expect(whenNotKey == .passThrough)
 }
 
+@Test("CMD+W schließt nur ein vorderes Hilfe-Fenster")
+func cmdW_closesOnlyWhenHelpIsKey() {
+    let help = KeyRouting.route(
+        isKeyDown: true, modifierFlags: [.command],
+        charactersIgnoringModifiers: "w", keyCode: 13,
+        isSearchWindowKey: false, isHelpWindowKey: true
+    )
+    #expect(help == .closeHelp)
+
+    let document = KeyRouting.route(
+        isKeyDown: true, modifierFlags: [.command],
+        charactersIgnoringModifiers: "w", keyCode: 13,
+        isSearchWindowKey: false, isHelpWindowKey: false
+    )
+    #expect(document == .passThrough)
+}
+
 @Test("CMD+SHIFT+W wird nicht als Maske-Schließen behandelt")
 func cmdShiftW_passesThrough() {
     let route = KeyRouting.route(

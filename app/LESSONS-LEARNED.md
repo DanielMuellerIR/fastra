@@ -96,10 +96,13 @@ SourceEditor(
 )
 ```
 
-`EditorTheme` hat 16 obligatorische Felder (text, insertionPoint, invisibles,
-background, lineHighlight, selection, plus 10 Token-Attribute) und nimmt jeweils
-`EditorTheme.Attribute(color:bold:italic:)`-Werte mit `NSColor`, nicht `Color`.
-Fastra definiert sein Theme in `EditorView.swift`.
+`EditorTheme` hat upstream 16 obligatorische Felder (text, insertionPoint,
+invisibles, background, lineHighlight, selection, plus 10 Token-Attribute)
+und nimmt jeweils `EditorTheme.Attribute(color:bold:italic:)`-Werte mit
+`NSColor`, nicht `Color`. Fastras Patch 4m ergänzt nur für Fastra ein
+optionales Feld `methods`, das standardmäßig `commands` übernimmt. Dadurch
+bleiben alle fremden Themes quellkompatibel; die 4D-Themes in
+`EditorView.swift` können trotzdem die eigene Methodenfarbe setzen.
 
 ### F.2 SwiftLint-Build-Plugin macht jeden CLI-Build kaputt
 

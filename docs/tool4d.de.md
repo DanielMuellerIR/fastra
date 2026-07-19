@@ -1,13 +1,13 @@
-# 4D-Code prüfen mit tool4d (extern)
+# 4D-Code prüfen mit tool4d
 
 > Seit v1.35.0 steckt diese Anleitung gestrafft auch in der App-Hilfe
 > (Abschnitt „4D und tool4d“), und **Hilfe → tool4d finden…** sucht ein
 > installiertes tool4d an den bekannten Orten.
 
-Fastra hebt 4D-Methoden (`.4dm`) farblich hervor, prüft sie aber nicht auf
-Syntax- oder Compilerfehler. Dafür eignet sich **tool4d**, die schlanke
-headless-Runtime von 4D. Fastra bündelt tool4d bewusst **nicht** (Größe,
-Lizenz); diese Anleitung zeigt, wie man es selbst bezieht und nutzt.
+Fastra hebt 4D-Methoden (`.4dm`) farblich hervor und kann sie mit **tool4d**
+auf Syntaxdiagnosen prüfen. tool4d ist die schlanke headless-Runtime von 4D.
+Fastra bündelt tool4d bewusst **nicht**, lädt es nicht herunter und startet
+keine Installation.
 
 ## tool4d beziehen
 
@@ -46,10 +46,36 @@ TOOL4D="…/tool4d.app/Contents/MacOS/tool4d"
 - `--skip-onstartup` überspringt die `On Startup`-Datenbankmethode,
 - Fehler erscheinen auf der Konsole; Exit-Code ≠ 0 bedeutet Probleme.
 
-Für Live-Diagnosen je Datei bietet tool4d einen Language-Server-Modus
-(`--lsp=<port>`, JSON-RPC) — genau so arbeitet die 4D-Analyzer-Extension in
-VS Code. Wer Einzeldatei-Diagnosen möchte, ist mit dieser Extension derzeit
-am besten bedient.
+## Diagnose aus Fastra
+
+Ist eine gespeicherte `.4dm`-Methode Teil eines geöffneten Fastra-Projekts mit
+`.4DProject`-Datei und tool4d an einem bekannten Ort vorhanden, führt
+**Text → Dokument prüfen** eine kurze LSP-Prüfung aus. Fehlermeldungen nennen
+Zeile und Spalte, sofern der Server einen nicht-`null`-Diagnosebericht liefert;
+der erste Fund lässt sich direkt anspringen. Einen `null`-Bericht zeigt Fastra
+ausdrücklich als fehlendes verwertbares Ergebnis, nie als fehlerfreie Prüfung.
+
+Der Transport folgt dem offiziellen 4D-Analyzer: Fastra öffnet einen nur an
+`127.0.0.1` gebundenen Zufallsport und startet tool4d ausschließlich mit
+`--lsp=<port>`. tool4d verbindet sich zurück; Fastra übergibt beim
+`initialize` den geöffneten Workspace (Ordner oberhalb von `Project/`) und
+die Dokument-URI. Fastra fragt Diagnosen über den LSP-Pull-Abruf
+`textDocument/diagnostic` ab; `publishDiagnostics` bleibt für Server mit
+diesem Verfahren ein Fallback. Eine lokale Probe mit tool4d 21.1 Build
+21.100543 gegen eine sichere vollständige Projektkopie bestätigte initialize,
+Capabilities, Shutdown und echte vollständige Diagnoseberichte (darunter eine
+bereits vorhandene Severity-2-Diagnose in einer unveränderten Methode). Ein
+anfängliches `null` ließ sich auf den macOS-Alias `/tmp` ↔ `/private/tmp`
+zurückführen: tool4d vergleicht Dokument- und Workspace-URI strikt. Fastra
+kanonisiert daher beide URIs vor dem Handshake und meldet ein späteres `null`
+weiterhin als „kein verwertbares Diagnoseergebnis“, niemals als fehlerfrei.
+Nach Ergebnis, Abbruch, Timeout oder Projektwechsel sendet Fastra
+`didClose`/`shutdown`/`exit` und beendet den Kindprozess notfalls nach kurzer
+Gnadenfrist.
+
+Fastra speichert und verändert dabei keine 4D-Projektdatei. Fehlt tool4d oder
+die Projektzuordnung, bleiben die ausdrücklich heuristischen Struktur-Hinweise
+verfügbar; sie sind kein Compiler-Ersatz.
 
 ## Lizenz und Nutzungsbedingungen (Stand 2026-07-18)
 
@@ -65,11 +91,5 @@ Die dokumentierten Einschränkungen sind rein technisch (Application-,
 Web- und SQL-Server, Backup-Scheduler u. a. sind deaktiviert); eine
 Beschränkung, wer tool4d aufrufen darf, nennt keine der Quellen.
 
-## Hinweis zur Integration in Fastra
-
-Eine direkte tool4d-Anbindung (Syntax-Check über den LSP-Modus,
-`--lsp=<port>`) ist als Etappe des Wunschpakets 3 spezifiziert
-(`docs/wunschpaket-2026-07c/goal-vorschlag.md`). Die frühere Unklarheit
-über die Nutzungsbedingungen ist durch die oben zitierten Quellen
-ausgeräumt; die abschließende Bestätigung liegt beim Maintainer.
-Details siehe `ROADMAP.md`.
+Die direkte LSP-Anbindung ist Etappe 8 des Wunschpakets 3
+(`docs/wunschpaket-2026-07c/goal-vorschlag.md`) und mit v1.39.0 umgesetzt.

@@ -19,6 +19,12 @@ import CodeEditLanguages
 
 final class FourDHighlightProvider: ObservableObject, HighlightProviding {
 
+    private let projectMethodNames: Set<String>
+
+    init(projectMethodNames: Set<String> = []) {
+        self.projectMethodNames = Set(projectMethodNames.map { $0.lowercased() })
+    }
+
     /// Oberhalb dieser Textlänge (UTF-16) färbt der Provider nicht mehr —
     /// ein .4dm dieser Größe ist ohnehin ein Sonderfall.
     static let highlightingCharacterLimit = 2_000_000
@@ -37,7 +43,12 @@ final class FourDHighlightProvider: ObservableObject, HighlightProviding {
         case .processVariable, .interprocessVariable: return .property
         case .table: return .type
         case .field: return .typeAlternate
-        case .methodCall: return .method
+        // Nur der Projektindex führt zum neuen methods-Slot. Normale Aufrufe
+        // und Member-Aufrufe behalten bewusst den bisherigen Befehls-Slot,
+        // damit die neue Projektmethodenfarbe keine bestehende Kategorie
+        // ungewollt umdeutet.
+        case .methodCall: return .function
+        case .projectMethod: return .method
         }
     }
 
@@ -74,7 +85,9 @@ final class FourDHighlightProvider: ObservableObject, HighlightProviding {
         if !cacheValid || cachedTextLength != length {
             // Einmal pro Änderung: kompletter Tokenizer-Lauf, dann bedienen
             // alle Chunk-Anfragen denselben Cache.
-            cachedRanges = FourDTokenizer.tokenize(text).compactMap { token in
+            cachedRanges = FourDTokenizer.tokenize(
+                text, projectMethodNames: projectMethodNames
+            ).compactMap { token in
                 Self.capture(for: token.kind).map {
                     HighlightRange(range: token.range, capture: $0)
                 }

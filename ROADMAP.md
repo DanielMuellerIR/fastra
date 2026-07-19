@@ -6,7 +6,7 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Jetzt
 
-- **Wunschpaket 3** (beschlossen 2026-07-18, in Umsetzung):
+- **Wunschpaket 3** (beschlossen 2026-07-18):
   Spezifikation in `docs/wunschpaket-2026-07c/goal-vorschlag.md` —
   acht Etappen. **Umgesetzt: Etappe 1 (Diff-Kern & Datei-Diff
   dual-pane, v1.32.0), Etappe 2 (Git-Diff auf gemeinsamem Renderer,
@@ -14,10 +14,8 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   v1.34.0), Etappe 4 (tool4d-Ersteinrichtungshilfe, v1.35.0),
   Etappe 5 (4D-Struktur-Hinweise, v1.36.0), Etappe 6
   (4D-Vervollständigung/`.4DForm`-Schema/Export-Transformation,
-  v1.37.0), Etappe 7 (Alt-Doppelklick „Gehe zum Ziel“, v1.38.0).**
-  Offen: NUR noch der 4D-Syntax-Check via tool4d-LSP (Etappe 8) —
-  dessen Gate (rechtliche Freigabe durch den Maintainer) besteht
-  formal weiter; Umsetzung erst nach der Bestätigung.
+  v1.37.0), Etappe 7 (Alt-Doppelklick „Gehe zum Ziel“, v1.38.0), Etappe 8
+  (4D-Syntaxdiagnosen via tool4d-LSP, v1.39.0).**
   - **Bewusst NICHT in Etappe 1** (Kandidaten für eigene Aufträge):
     Ordner-Vergleich, „Apply to Left/Right“-Übernahme einzelner
     Unterschiede ins Dokument, Export der Differenzen-Liste.
@@ -40,21 +38,6 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 - **Wunschpaket Juli 2026** (beschlossen 2026-07-17): Die sechs Etappen sind
   mit v1.20.0–v1.25.0 umgesetzt (Spezifikation samt 4D-Farbvorgaben liegt in
   `docs/wunschpaket-2026-07/`). Bewusst offen geblieben:
-  - **tool4d-Anbindung (4D-Lint) zurückgestellt:** tool4d arbeitet
-    projektbasiert; Einzeldatei-Diagnosen erfordern den LSP-Modus
-    (dauerhafter Serverprozess, JSON-RPC) und die Nutzungsbedingungen für
-    den Aufruf durch Dritt-Tools sind nicht abschließend geklärt. Statt der
-    Integration liefert Fastra eine Anleitung in `docs/tool4d.de.md` und
-    `docs/tool4d.md`. Wiedervorlage nur mit geklärten Bedingungen und
-    tragfähigem Einzeldatei-Konzept. Recherche-Stand 2026-07-18: Die
-    offizielle VS-Code-Extension „4D-Analyzer“ nutzt genau diesen LSP-Weg
-    (`tool4d --lsp=<port>`, JSON-RPC über localhost-TCP) und verspricht
-    Einzeldatei-Support — das Einzeldatei-Konzept ist damit greifbar.
-    Offizielle Quellen erklären tool4d ausdrücklich für frei und
-    lizenzlos („does not need any license to run“, 4D-Blog; „a free,
-    lightweight, stand-alone application“, developer.4d.com/docs/Admin/
-    cli); die abschließende Bestätigung holt der Maintainer ein. Details
-    im Wunschpaket-3-Entwurf.
   - **4D-Farbdetails:** Underline (Konstanten) kennt das CESE-Attributmodell
     nicht; `errors`/`plug_ins`/`member` aus den Farbvorgaben entfallen
     mangels Analyse bzw. Unterscheidbarkeit (siehe Slot-Mapping in

@@ -1084,7 +1084,7 @@
 "tool4d finden…" = "Find tool4d…";
 "tool4d gefunden" = "tool4d found";
 "Kein tool4d gefunden" = "No tool4d found";
-"%@\n\nVersion: %@\nQuelle: %@\n\nFastra merkt sich diesen Fundort für eine spätere Prüf-Integration — ausgeführt wird nichts." = "%@\n\nVersion: %@\nSource: %@\n\nFastra remembers this location for a future check integration — nothing is executed.";
+"%@\n\nVersion: %@\nQuelle: %@\n\nFastra merkt sich diesen Fundort. tool4d startet erst bei „Dokument prüfen“ für ein passendes geöffnetes 4D-Projekt." = "%@\n\nVersion: %@\nSource: %@\n\nFastra remembers this location. tool4d starts only when you choose “Check Document” for a matching open 4D project.";
 "unbekannt (Version steht nur in App-Bundles)" = "unknown (the version is only stored in app bundles)";
 "Im Finder zeigen" = "Show in Finder";
 "Fastra hat an den bekannten Orten gesucht: im PATH, in den Programme-Ordnern und in der Ablage der VS-Code-Extension „4D-Analyzer“.\n\ntool4d ist laut 4D frei und ohne Lizenz nutzbar. Du kannst es von der 4D-Download-Seite laden oder die VS-Code-Extension „4D-Analyzer“ installieren, die es automatisch mitbringt — Details in der Hilfe. Fastra selbst lädt nichts herunter." = "Fastra searched the known locations: the PATH, the Applications folders, and the storage of the VS Code extension “4D-Analyzer”.\n\nAccording to 4D, tool4d is free and requires no license. You can download it from the 4D download page or install the VS Code extension “4D-Analyzer”, which brings it along automatically — see Help for details. Fastra itself downloads nothing.";
@@ -1145,3 +1145,17 @@
 "Keine Überschrift zu „%@“ gefunden." = "No heading found for “%@”.";
 "Relative Ziele brauchen eine gespeicherte Datei als Ausgangspunkt." = "Relative targets need a saved file as their starting point.";
 "„%@“ ist keine gültige Adresse." = "“%@” is not a valid address.";
+
+/* tool4d-LSP-Dokumentprüfung (Etappe 8 Wunschpaket 2026-07c) */
+"Der lokale Diagnosekanal für tool4d konnte nicht geöffnet werden." = "The local diagnostic channel for tool4d could not be opened.";
+"tool4d hat sich nicht mit dem lokalen Diagnosekanal verbunden." = "tool4d did not connect to the local diagnostic channel.";
+"tool4d hat innerhalb der Wartezeit keine Diagnosen geliefert." = "tool4d did not provide diagnostics within the time limit.";
+"tool4d konnte für dieses Dokument kein Diagnoseergebnis liefern. Prüfe, ob die Methode zum geöffneten 4D-Projekt gehört." = "tool4d could not provide a diagnostic result for this document. Check whether the method belongs to the open 4D project.";
+"tool4d wurde beendet, bevor die Dokumentprüfung abgeschlossen war." = "tool4d ended before document checking was complete.";
+"tool4d sendete eine unverständliche LSP-Antwort: %@" = "tool4d sent an unreadable LSP response: %@";
+"tool4d hat eine Diagnose ohne Meldung geliefert." = "tool4d returned a diagnostic without a message.";
+"Die tool4d-Prüfung wurde abgebrochen." = "The tool4d check was cancelled.";
+"Die tool4d-Prüfung konnte nicht abgeschlossen werden: %@\n\nStruktur-Hinweise bleiben verfügbar; Details stehen in der Hilfe „4D und tool4d“." = "The tool4d check could not be completed: %@\n\nStructure hints remain available; see Help “4D and tool4d” for details.";
+"tool4d hat keine Diagnosen für dieses Dokument gemeldet." = "tool4d reported no diagnostics for this document.";
+"\n\nWeitere tool4d-Diagnosen: %ld" = "\n\nAdditional tool4d diagnostics: %ld";
+"Zeile %ld, Spalte %ld: %@%@" = "Line %ld, column %ld: %@%@";

@@ -109,13 +109,34 @@ final class EditorContextMenu: NSObject {
     private weak var targetTextView: TextView?
 
     private var monitor: Any?
+    /// Der laufende tool4d-Aufruf bleibt hier stark referenziert. Ein zweiter
+    /// Klick beendet den alten Lauf, damit dessen spätes Ergebnis nie ein
+    /// inzwischen anderes Dokument überdecken kann.
+    private var tool4DValidation: Tool4DLSPValidation?
+    private weak var tool4DWorkspace: Workspace?
+    private var tool4DProjectObserver: NSObjectProtocol?
 
     /// Lokalen Monitor installieren. Idempotent (mehrfacher Aufruf ok).
     func install() {
         guard monitor == nil else { return }
+        tool4DProjectObserver = NotificationCenter.default.addObserver(
+            forName: .fastraProjectContextWillChange, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let self, let workspace = notification.object as? Workspace,
+                  self.tool4DWorkspace === workspace else { return }
+            self.tool4DValidation?.cancel()
+            self.tool4DValidation = nil
+            self.tool4DWorkspace = nil
+        }
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown]) { [weak self] event in
             guard let self else { return event }
             return self.handle(event)
+        }
+    }
+
+    deinit {
+        if let tool4DProjectObserver {
+            NotificationCenter.default.removeObserver(tool4DProjectObserver)
         }
     }
 
@@ -363,7 +384,62 @@ final class EditorContextMenu: NSObject {
         let fileExtension = tab.url?.pathExtension
             ?? (tab.title as NSString).pathExtension
         let text = textView.string
-        switch DocumentLinter.lint(text, fileExtension: fileExtension) {
+        if fileExtension.lowercased() == "4dm", let documentURL = tab.url,
+           let projectRoot = workspace.projectURL {
+            findTool4DForLinting(
+                documentURL: documentURL, projectRoot: projectRoot, text: text,
+                workspace: workspace, tabID: tab.id, projectGeneration: workspace.projectGeneration,
+                fileExtension: fileExtension
+            )
+            return
+        }
+        presentLintResult(DocumentLinter.lint(text, fileExtension: fileExtension),
+                          text: text, workspace: workspace)
+    }
+
+    /// Die Dateisystemsuche nach tool4d und der `.4DProject`-Datei darf den
+    /// Editor nicht blockieren. Alle Kontextwerte werden vorher kopiert; vor
+    /// einer sichtbaren Meldung prüft der Main-Thread sie erneut gegen Tab
+    /// und Projektgeneration, damit ein spätes Ergebnis nie falsch landet.
+    private func findTool4DForLinting(
+        documentURL: URL, projectRoot: URL, text: String, workspace: Workspace,
+        tabID: UUID, projectGeneration: UInt64, fileExtension: String
+    ) {
+        let canonicalRoot = projectRoot.canonicalFileURL
+        let canonicalDocument = documentURL.canonicalFileURL
+        Task.detached { [weak self, weak workspace] in
+            let finding = Tool4DAssist.installedTool()
+            let projectExists = Tool4DProjectLocator.projectFile(in: canonicalRoot) != nil
+            // Der Dateisystemteil bleibt im Detached-Task. Sichtbare UI darf
+            // erst wieder auf der Main-Queue entstehen; diese etablierte
+            // Rückkehr vermeidet zugleich nicht-sendbare Actor-Captures.
+            DispatchQueue.main.async {
+                guard let self, let workspace,
+                      workspace.activeTabID == tabID,
+                      workspace.projectGeneration == projectGeneration,
+                      workspace.projectURL?.canonicalFileURL == canonicalRoot,
+                      workspace.activeTab?.url?.canonicalFileURL == canonicalDocument else {
+                    return
+                }
+                if let finding, projectExists {
+                    self.lintFourDWithTool4D(
+                        finding: finding, workspaceRoot: canonicalRoot,
+                        documentURL: canonicalDocument, text: text,
+                        workspace: workspace, tabID: tabID
+                    )
+                } else {
+                    self.presentLintResult(
+                        DocumentLinter.lint(text, fileExtension: fileExtension),
+                        text: text, workspace: workspace
+                    )
+                }
+            }
+        }
+    }
+
+    private func presentLintResult(_ result: DocumentLinter.LintResult, text: String,
+                                   workspace: Workspace) {
+        switch result {
         case .unsupported:
             NSAlert.runWarning(
                 title: L10n.string("Dokument prüfen"),
@@ -415,6 +491,69 @@ final class EditorContextMenu: NSObject {
                                                 object: workspace,
                                                 userInfo: ["range": NSValue(range: range)])
             }
+        }
+    }
+
+    /// Die echte 4D-Diagnose läuft vollständig nebenläufig. Erst die
+    /// Completion kehrt auf den Main-Thread zurück und prüft Tab-ID und
+    /// Workspace erneut; ein Projektwechsel oder Tab-Wechsel kann so keine
+    /// veraltete Warnung im falschen Dokument öffnen.
+    private func lintFourDWithTool4D(
+        finding: Tool4DDiscovery.Finding, workspaceRoot: URL, documentURL: URL,
+        text: String, workspace: Workspace, tabID: UUID
+    ) {
+        tool4DValidation?.cancel()
+        let validation = Tool4DLSPValidation()
+        tool4DValidation = validation
+        tool4DWorkspace = workspace
+        validation.start(executable: finding.executableURL, workspaceRoot: workspaceRoot,
+                         documentURL: documentURL, text: text) { [weak self, weak workspace] result in
+            guard let self, self.tool4DValidation === validation,
+                  let workspace, workspace.activeTabID == tabID else { return }
+            self.tool4DValidation = nil
+            self.tool4DWorkspace = nil
+            switch result {
+            case .success(let diagnostics):
+                self.presentTool4DDiagnostics(diagnostics, text: text, workspace: workspace)
+            case .failure(let error):
+                // Ein abgebrochener älterer Lauf ist kein Nutzerfehler und
+                // bekommt daher keinen Alarm. Alle anderen Fehler erklären
+                // klar, dass die externe tool4d-Prüfung nicht stattfand.
+                guard error != .cancelled else { return }
+                NSAlert.runWarning(
+                    title: L10n.string("Dokument prüfen"),
+                    text: L10n.format("Die tool4d-Prüfung konnte nicht abgeschlossen werden: %@\n\nStruktur-Hinweise bleiben verfügbar; Details stehen in der Hilfe „4D und tool4d“.",
+                                      error.localizedDescription)
+                )
+            }
+        }
+    }
+
+    private func presentTool4DDiagnostics(_ diagnostics: [Tool4DDiagnostic],
+                                           text: String, workspace: Workspace) {
+        guard let first = diagnostics.first else {
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = L10n.string("Dokument prüfen")
+            alert.informativeText = L10n.string("tool4d hat keine Diagnosen für dieses Dokument gemeldet.")
+            alert.addButton(withTitle: L10n.string("OK"))
+            alert.runModal()
+            return
+        }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.string("Dokument prüfen")
+        let more = diagnostics.count > 1
+            ? L10n.format("\n\nWeitere tool4d-Diagnosen: %ld", diagnostics.count - 1)
+            : ""
+        alert.informativeText = L10n.format("Zeile %ld, Spalte %ld: %@%@",
+                                            first.line, first.column, first.message, more)
+        alert.addButton(withTitle: L10n.string("Zur Fehlerstelle springen"))
+        alert.addButton(withTitle: L10n.string("Schließen"))
+        if alert.runModal() == .alertFirstButtonReturn {
+            let range = BufferSearch.nsRange(forLine: first.line, column: first.column, in: text)
+            NotificationCenter.default.post(name: .fastraJumpToRange, object: workspace,
+                                            userInfo: ["range": NSValue(range: range)])
         }
     }
 

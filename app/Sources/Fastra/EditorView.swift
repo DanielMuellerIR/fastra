@@ -16,9 +16,6 @@ struct EditorView: View {
     @Environment(\.uiScale) private var uiScale
     @State private var editorState = SourceEditorState(cursorPositions: [], findPanelVisible: false)
     @StateObject private var minimapLayoutCoordinator = MinimapLayoutCoordinator()
-    /// Eigener 4D-Highlighter (Etappe 4): ersetzt für .4dm-Dokumente die
-    /// tree-sitter-Pipeline. Eine stabile Instanz pro Fenster — CESE ruft
-    /// `setUp` bei jeder Editor-Neuerzeugung selbst auf.
     /// Highlight-Provider der Eigen-Sprachen (Registry, Etappe 3 Wunschpaket
     /// 2026-07b) — ein Provider je Sprache, überlebt Tab-Wechsel/Remounts.
     @StateObject private var customProviders = CustomLanguageProviders()
@@ -557,7 +554,13 @@ struct EditorView: View {
             state: $editorState,
             // Eigen-Sprache aktiv (z. B. 4D): eigener leichter Tokenizer
             // statt tree-sitter — Provider kommt aus der Registry.
-            highlightProviders: activeCustomLanguage.map { [customProviders.provider(for: $0)] },
+            highlightProviders: activeCustomLanguage.map { language in
+                [customProviders.provider(
+                    for: language,
+                    projectMethodNames: language.id == CustomLanguageRegistry.fourD.id
+                        ? workspace.fourDProjectMethodNames : []
+                )]
+            },
             coordinators: [minimapLayoutCoordinator],
             // 4D-Vervollständigung (Etappe 6 Wunschpaket 2026-07c) — NUR
             // bei aktiver 4D-Sprache; sonst bleibt das Vorschlagsfenster
@@ -1371,14 +1374,15 @@ extension EditorView {
     //
     // Slot-Belegung (nach dem EditorTheme-Patch in build.sh):
     //   text       ← plain_text          keywords ← keywords (bold)
-    //   commands   ← commands (bold; Projektmethoden teilen den Slot)
+    //   commands   ← commands (bold)   methods ← Projektmethoden (bold/italic)
     //   values     ← constants           variables ← local_variables (+$1…)
     //   characters ← process_variables (auch <>interprozess — dark.json
     //                kennt ohnehin keine eigene Interprozess-Farbe)
     //   types      ← tables              attributes ← fields
     //   numbers    ← plain_text (4D färbt Zahlen nicht ein)
-    //   strings    ← Fastra-Fallback (die 4D-Themes definieren keine
-    //                String-Farbe)      comments ← comments
+    //   strings    ← Fastra-Fallback für echte 4D-Strings (die Vorgabe
+    //                definiert keine String-Farbe); sie bleiben bewusst ein
+    //                eigener Slot und werden nie für Methoden umgenutzt.
     //   member `.x` bleibt plain; `.f()` nutzt den commands-Slot.
     //   errors/plug_ins aus den JSONs entfallen (kein Fehler-Parsing,
     //   Plugin-Befehle nicht unterscheidbar) — dokumentierter Verzicht.
@@ -1399,7 +1403,8 @@ extension EditorView {
         numbers:    .init(color: rgb(0x00, 0x00, 0x00)),
         strings:    .init(color: rgb(0x2F, 0x5D, 0x3A)),
         characters: .init(color: rgb(0x9E, 0x60, 0x00), italic: true),
-        comments:   .init(color: rgb(0x7F, 0x7E, 0x80))
+        comments:   .init(color: rgb(0x7F, 0x7E, 0x80)),
+        methods:    .init(color: rgb(0x00, 0x00, 0x88), bold: true, italic: true)
     )
 
     static let fourDThemeDark: EditorTheme = EditorTheme(
@@ -1418,7 +1423,8 @@ extension EditorView {
         numbers:    .init(color: rgb(0xAE, 0xAE, 0xAE)),
         strings:    .init(color: rgb(0x94, 0xCE, 0x9F)),
         characters: .init(color: rgb(0xD7, 0xF6, 0x92)),
-        comments:   .init(color: rgb(0x74, 0xC5, 0xEA))
+        comments:   .init(color: rgb(0x74, 0xC5, 0xEA)),
+        methods:    .init(color: rgb(0x0F, 0x93, 0x0A), bold: true, italic: true)
     )
 
     private static func rgb(_ r: Int, _ g: Int, _ b: Int, _ a: CGFloat = 1) -> NSColor {

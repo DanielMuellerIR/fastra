@@ -17,6 +17,7 @@ import WebKit
 
 enum HelpWindow {
 
+    static let frameAutosaveName = "FastraHelpWindow"
     private static weak var window: NSWindow?
     /// Für den Selbsttest `help`: echte DOM-Beobachtung der gerenderten
     /// Hilfe (gleiches Muster wie `XPathPanelController.lastShown`).
@@ -44,7 +45,7 @@ enum HelpWindow {
         w.title = L10n.string("Fastra-Hilfe")
         w.isReleasedWhenClosed = false
         w.contentMinSize = NSSize(width: 380, height: 400)
-        w.setFrameAutosaveName("FastraHelpWindow")
+        w.setFrameAutosaveName(frameAutosaveName)
 
         let helpCoordinator = HelpWebCoordinator()
         coordinator = helpCoordinator
@@ -74,6 +75,20 @@ enum HelpWindow {
         w.center()
         w.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: false)
+    }
+
+    /// Enger Fenster-Typ-Check für das globale ⌘W-Routing. Der feste
+    /// Autosave-Name ist zugleich die stabile Identität für Selbsttests;
+    /// andere Hilfsfenster bleiben davon ausdrücklich unberührt.
+    static func isHelpWindow(_ candidate: NSWindow?) -> Bool {
+        candidate?.frameAutosaveName == frameAutosaveName
+    }
+
+    /// Schließt nur das Hilfe-Fenster. Der Dokument-Workspace und seine Tabs
+    /// kennen dieses Fenster nicht und werden deshalb nicht verändert.
+    @MainActor
+    static func close() {
+        window?.close()
     }
 
     @MainActor

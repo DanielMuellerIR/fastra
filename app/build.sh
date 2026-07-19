@@ -454,9 +454,11 @@ fi
 # keywords); die Theme-Felder `commands`, `values` und `characters` sind
 # dagegen KOMPLETT ungenutzt. Für die 4D-Farbkategorien (Befehle, Konstanten,
 # Prozessvariablen) leiten wir drei Capture-Klassen auf diese freien Slots
-# um. Die Fastra-Standardthemes setzen die drei Slots exakt auf die Farben
+# um. Die Fastra-Standardthemes setzen die vier Slots exakt auf die Farben
 # ihrer bisherigen Sammel-Slots → alle bestehenden Sprachen sehen unverändert
-# aus; nur die 4D-Themes nutzen die neuen Slots mit eigenen Farben.
+# aus; nur die 4D-Themes nutzen die neuen Slots mit eigenen Farben. Der
+# Methoden-Slot erhält einen optionalen Default auf `commands`, damit fremde
+# Themes beim API-Zuwachs unverändert bleiben.
 CESE_THEME="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/Theme/EditorTheme.swift"
 if ! grep -q 'Fastra-Patch: eigene Slots fuer 4D-Kategorien' "$CESE_THEME" 2>/dev/null; then
   echo "→ Patche CodeEditSourceEditor (Theme-Slots für 4D entkoppeln)"
@@ -491,6 +493,71 @@ PYEOF
   # Änderungen nicht — gleiche Begründung wie bei 4b).
   if ! grep -q 'Fastra-Patch: eigene Slots fuer 4D-Kategorien' "$CESE_THEME" 2>/dev/null; then
     echo "✗ FEHLER: Theme-Slot-Patch hat NICHT gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
+    exit 1
+  fi
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4m. Patch CodeEditSourceEditor — eigener Methoden-Slot für 4D.
+#
+# Patch 4l trennt bereits Befehle, Konstanten und Prozessvariablen. 4D
+# definiert aber auch für Projektmethoden eine eigene Farbe und Schriftart.
+# Der Slot wird am Ende des Initializers optional ergänzt, damit jedes
+# bestehende Theme ohne Quelländerung weiter die Befehlsdarstellung erbt.
+if ! grep -q 'Fastra-Patch: eigener Methoden-Slot fuer 4D' "$CESE_THEME" 2>/dev/null; then
+  echo "→ Patche CodeEditSourceEditor (eigener Methoden-Slot für 4D)"
+  chmod u+w "$CESE_THEME"
+  /usr/bin/python3 - "$CESE_THEME" <<'PYEOF'
+import sys
+path = sys.argv[1]
+src = open(path).read()
+
+old_property = '''    public var commands: Attribute
+    public var types: Attribute'''
+new_property = '''    public var commands: Attribute
+    // Fastra-Patch: eigener Methoden-Slot fuer 4D. Optional im Initializer,
+    // damit bestehende Themes unveraendert den commands-Slot verwenden.
+    public var methods: Attribute
+    public var types: Attribute'''
+if old_property not in src:
+    sys.exit("EditorTheme-Properties haben sich geaendert — Patch 4m pruefen")
+src = src.replace(old_property, new_property, 1)
+
+old_init = '''        characters: Attribute,
+        comments: Attribute
+    ) {'''
+new_init = '''        characters: Attribute,
+        comments: Attribute,
+        methods: Attribute? = nil
+    ) {'''
+if old_init not in src:
+    sys.exit("EditorTheme-Initializer hat sich geaendert — Patch 4m pruefen")
+src = src.replace(old_init, new_init, 1)
+
+old_assignment = '''        self.commands = commands
+        self.types = types'''
+new_assignment = '''        self.commands = commands
+        self.methods = methods ?? commands
+        self.types = types'''
+if old_assignment not in src:
+    sys.exit("EditorTheme-Assignments haben sich geaendert — Patch 4m pruefen")
+src = src.replace(old_assignment, new_assignment, 1)
+
+old_mapping = '''        case .function, .method: return commands'''
+new_mapping = '''        case .function: return commands
+        case .method: return methods'''
+if old_mapping not in src:
+    sys.exit("EditorTheme-Methoden-Mapping hat sich geaendert — Patch 4m pruefen")
+src = src.replace(old_mapping, new_mapping, 1)
+open(path, 'w').write(src)
+PYEOF
+  # Wie bei 4l: Der immutable SPM-Checkout braucht nach einer Quelländerung
+  # zwingend neue Artefakte, sonst wäre der neue Theme-Slot nur Text.
+  if ! grep -q 'Fastra-Patch: eigener Methoden-Slot fuer 4D' "$CESE_THEME" \
+     || ! grep -q 'case .method: return methods' "$CESE_THEME"; then
+    echo "✗ FEHLER: Methoden-Slot-Patch hat NICHT gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
     exit 1
   fi
   rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build

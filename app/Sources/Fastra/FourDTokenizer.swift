@@ -21,8 +21,8 @@
 // | prozessVar / <>interprozess | .property       | process_variables       |
 // | [Tabelle]                   | .type           | tables                  |
 // | Feld (nach [Tabelle]…)      | .typeAlternate  | fields                  |
-// | Methodenaufruf name(…)      | .method         | commands (geteilt)      |
-// | Member `.name` / `.f()`     | (kein Capture)  | plain_text (bewusst)    |
+// | Projektmethode name / name()| .method         | methods (eigener Slot)  |
+// | Sonstiger Aufruf / `.f()`   | .function       | commands (wie bisher)   |
 
 import Foundation
 
@@ -41,7 +41,8 @@ enum FourDTokenizer {
         case interprocessVariable // <>name
         case table                // [Name]
         case field                // Feldname direkt hinter [Tabelle]
-        case methodCall           // bezeichner( — Projektmethode
+        case methodCall           // bezeichner( oder .member( — commands
+        case projectMethod        // nur Treffer des geöffneten Methodenindex
     }
 
     struct Token: Equatable {
@@ -93,7 +94,7 @@ enum FourDTokenizer {
 
     /// Tokenisiert den kompletten Text. Ein Durchlauf, Zeichen für Zeichen;
     /// UTF-16-Offsets, damit die Ranges direkt in CESE/TextKit passen.
-    static func tokenize(_ text: String) -> [Token] {
+    static func tokenize(_ text: String, projectMethodNames: Set<String> = []) -> [Token] {
         var tokens: [Token] = []
         let scalars = Array(text.utf16)
         let count = scalars.count
@@ -102,7 +103,8 @@ enum FourDTokenizer {
         // endete — der nächste Bezeichner ist dann ein FELD dieser Tabelle.
         var expectsField = false
         // `true` direkt nach einem `.` — der folgende Bezeichner ist ein
-        // Member (plain) bzw. eine Member-Funktion (Methodenfarbe).
+        // Member (plain); Projektmethoden werden nur ohne führenden Punkt
+        // aus dem Methodenindex erkannt.
         var afterDot = false
 
         func utf16Char(_ at: Int) -> Character? {
@@ -153,6 +155,9 @@ enum FourDTokenizer {
                     index += 1
                     if c == "\"" || c == "\n" { break }
                 }
+                // Strings bleiben eigene Tokens. Der Struktur-Check braucht
+                // sie für die Balance-Prüfung, und das Highlighting darf die
+                // bisher sichtbare String-Farbe nicht still verlieren.
                 tokens.append(Token(range: NSRange(location: start,
                                                    length: index - start),
                                     kind: .string))
@@ -205,7 +210,8 @@ enum FourDTokenizer {
                 if let token = classifyPhrase(text: text, scalars: scalars,
                                               start: start, phraseEnd: phraseEnd,
                                               expectsField: expectsField,
-                                              afterDot: afterDot) {
+                                              afterDot: afterDot,
+                                              projectMethodNames: projectMethodNames) {
                     tokens.append(token)
                     index = token.range.location + token.range.length
                 } else {
@@ -240,8 +246,8 @@ enum FourDTokenizer {
     private static func classifyPhrase(text: String, scalars: [UInt16],
                                        start: Int, phraseEnd: Int,
                                        expectsField: Bool,
-                                       afterDot: Bool) -> Token? {
-        let full = substring(text, start, phraseEnd)
+                                       afterDot: Bool,
+                                       projectMethodNames: Set<String>) -> Token? {
 
         // Wortgrenzen der Phrase für die Longest-Prefix-Versuche.
         var boundaries: [Int] = []   // Endoffsets je Wortende (relativ absolut)
@@ -266,6 +272,16 @@ enum FourDTokenizer {
             return suffixed
         }
 
+        let firstWordEnd = boundaries.first ?? phraseEnd
+
+        // Hinter einer Tabelle gehört der erste Name immer zum Feld, selbst
+        // wenn er zufällig genauso heißt wie ein 4D-Befehl oder eine Methode.
+        if expectsField {
+            return Token(range: NSRange(location: start,
+                                        length: firstWordEnd - start),
+                         kind: .field)
+        }
+
         // Longest-Prefix: erst Befehle, dann Konstanten, dann Keywords.
         for end in boundaries.reversed() {
             let phrase = substring(text, start, end)
@@ -284,7 +300,6 @@ enum FourDTokenizer {
             }
         }
 
-        let firstWordEnd = boundaries.first ?? phraseEnd
         let firstWord = substring(text, start, firstWordEnd)
 
         // Nur-Ziffern-Phrase → Zahl; ein direkt folgender Dezimalteil
@@ -305,7 +320,9 @@ enum FourDTokenizer {
                          kind: .number)
         }
 
-        // Member-Zugriff `.name` → plain (nil); `.name(` → Methodenfarbe.
+        // Member-Zugriff `.name` → plain (nil); `.name(` bleibt ein normaler
+        // Aufruf. Nur ein Name aus dem Projektindex darf den eigenen
+        // Methoden-Slot erhalten.
         var lookahead = firstWordEnd
         while lookahead < scalars.count,
               let c = Unicode.Scalar(scalars[lookahead]).map(Character.init),
@@ -319,13 +336,18 @@ enum FourDTokenizer {
                          kind: .methodCall)
         }
 
-        // Einzelner Bezeichner: Feld nach [Tabelle], Methodenaufruf vor `(`,
-        // sonst Prozessvariable.
-        if expectsField {
-            return Token(range: NSRange(location: start,
-                                        length: firstWordEnd - start),
-                         kind: .field)
+        // Projektmethoden kommen aus den beiden bekannten Methodenordnern.
+        // Die längste passende Phrase gewinnt, damit auch Namen mit Leerraum
+        // funktionieren. Die Menge ist bereits kleingeschrieben aufgebaut.
+        for end in boundaries.reversed() {
+            let candidate = substring(text, start, end)
+            if projectMethodNames.contains(candidate.lowercased()) {
+                return Token(range: NSRange(location: start, length: end - start),
+                             kind: .projectMethod)
+            }
         }
+
+        // Einzelner Bezeichner: Methodenaufruf vor `(`, sonst Prozessvariable.
         if followedByParen {
             return Token(range: NSRange(location: start,
                                         length: firstWordEnd - start),
@@ -408,7 +430,7 @@ enum FourDTokenizer {
             guard let c = Unicode.Scalar(scalars[i]).map(Character.init) else { return nil }
             if c == "]" { return sawWordChar ? i : nil }
             if c == "\n" { return nil }
-            if isWordChar(c) || c == " " || c == "$" || c == "<" || c == ">" {
+            if isWordChar(c) || c == " " || c == ":" || c == "$" || c == "<" || c == ">" {
                 if isWordChar(c) { sawWordChar = true }
                 i += 1
                 continue

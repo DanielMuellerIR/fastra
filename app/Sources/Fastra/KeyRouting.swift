@@ -24,6 +24,8 @@ enum KeyRoute: Equatable {
     case showSearchFolder
     /// ESC bei aktiver Suchmaske — ausblenden.
     case hideSearch
+    /// CMD+W bei vorderem Hilfe-Fenster — nur die Hilfe schließen.
+    case closeHelp
     /// CMD+G — zum nächsten Treffer springen.
     case gotoNextMatch
     /// CMD+SHIFT+G — zum vorigen Treffer springen.
@@ -56,12 +58,14 @@ enum KeyRouting {
     ///   - charactersIgnoringModifiers: Zeichen ohne Modifier-Einfluss.
     ///   - keyCode: Hardware-Keycode (für ESC).
     ///   - isSearchWindowKey: Ob die Suchmaske gerade Key-Window ist.
+    ///   - isHelpWindowKey: Ob das Hilfe-Fenster gerade Key-Window ist.
     static func route(
         isKeyDown: Bool,
         modifierFlags: NSEvent.ModifierFlags,
         charactersIgnoringModifiers: String?,
         keyCode: UInt16,
-        isSearchWindowKey: Bool
+        isSearchWindowKey: Bool,
+        isHelpWindowKey: Bool = false
     ) -> KeyRoute {
         guard isKeyDown else { return .passThrough }
 
@@ -87,13 +91,15 @@ enum KeyRouting {
             return isSearchWindowKey ? .hideSearch : .passThrough
         }
 
-        // CMD+W bei vorderer Suchmaske → ausblenden (wie roter Knopf/ESC).
-        // Sonst durchreichen, damit CMD+W im Hauptfenster den aktiven Tab
-        // schließt (Menü-Eintrag „Schließen").
+        // CMD+W bei vorderer Suchmaske → ausblenden (wie roter Knopf/ESC),
+        // bei der Hilfe → nur deren eigenes Fenster schließen. Sonst
+        // durchreichen, damit CMD+W im Hauptfenster den aktiven Tab schließt.
         if modifierFlags.contains(.command),
            charactersIgnoringModifiers?.lowercased() == "w" {
             let extra = modifierFlags.intersection([.option, .control, .shift])
-            return (extra.isEmpty && isSearchWindowKey) ? .hideSearch : .passThrough
+            guard extra.isEmpty else { return .passThrough }
+            if isHelpWindowKey { return .closeHelp }
+            return isSearchWindowKey ? .hideSearch : .passThrough
         }
 
         // CMD+G / CMD+SHIFT+G — Treffer-Navigation.
@@ -136,7 +142,7 @@ enum KeyRouting {
         case .gotoNextMatch:      return .fastraGotoNextMatch
         case .gotoPreviousMatch:  return .fastraGotoPreviousMatch
         case .showGotoLine:       return .fastraShowGotoLine
-        case .moveToBeginningOfDocument, .moveToEndOfDocument:
+        case .closeHelp, .moveToBeginningOfDocument, .moveToEndOfDocument:
             // Diese Aktionen gehen direkt an die fokussierte Editor-TextView;
             // eine globale Notification würde Suchfelder versehentlich erfassen.
             return nil

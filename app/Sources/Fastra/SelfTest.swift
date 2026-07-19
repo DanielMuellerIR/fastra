@@ -37,6 +37,10 @@ enum SelfTest {
     /// Hält die beiden produktiven Suchfenster des `multisearch`-Tests bis
     /// zum Prozessende stark am Leben, analog zu `ContentView.searchPanel`.
     private static var retainedSearchPanels: [SearchPanelController] = []
+    /// Hält den asynchronen echten tool4d-Lauf bis zu seiner Completion am
+    /// Leben. Ohne diese Referenz könnte ARC den Testlauf vor der TCP-Antwort
+    /// freigeben und einen scheinbaren Netzwerkfehler erzeugen.
+    private static var retainedTool4DValidation: Tool4DLSPValidation?
 
     /// Name des angeforderten Selbsttests („findbar", „cmdw", …) oder `nil`.
     ///
@@ -167,6 +171,9 @@ enum SelfTest {
         case "sidebarfilter": waitForMainWindow { runSidebarFilterTest() }
         case "filediff": waitForMainWindow { runFileDiffTest() }
         case "tool4dhint": waitForMainWindow { runTool4DHintTest() }
+        case "tool4dlsp": DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            runTool4DLSPIntegrationTest()
+        }
         case "gototarget": waitForMainWindow { runGoToTargetTest() }
         case "searchmark": waitForMainWindow { openSearchThen { runSearchMarkTest() } }
         case "help": waitForMainWindow { runHelpTest() }
@@ -262,7 +269,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, sidebarheader, searchmark, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -1913,7 +1920,8 @@ enum SelfTest {
     /// Beobachtet die ECHTEN 4D-Vordergrundfarben im gepackten Bundle —
     /// erst im hellen, dann im dunklen Erscheinungsbild (die 4D-Themes sind
     /// pro Dokument aktiv und stammen aus light.json/dark.json). Prüft je
-    /// Modus Befehl, Schlüsselwort, lokale Variable und Kommentar.
+    /// Modus Befehl, Schlüsselwort, lokale und Prozessvariable, Tabelle,
+    /// Feld, Kommentar sowie eine indizierte Projektmethode.
     private static func runFourDHighlightTest() {
         testLabel = "highlight4d"
         guard let ws = Workspace.shared else {
@@ -1926,37 +1934,159 @@ enum SelfTest {
             finish(false, "kein Hauptfenster gefunden")
         }
 
-        // Selbst geschriebene .4dm-Fixture (nichts aus der 4D-Doku).
+        // Selbst geschriebene exportierte 4D-Fixture (nichts aus der
+        // 4D-Doku). Der zweite Methodenname muss nur im Projektindex stehen,
+        // damit der Test die Unterscheidung von Prozessvariablen beobachtet.
         let code = """
         // Prüfsumme neu berechnen
         If (True)
         \t$summe:=$summe+1
+        \tAbr_init
+        \tABR_LISTE_LB_AB:=1
+        \tNachtrag
+        \tQUERY([Auftraege:1]; [Auftraege:1]Nummer=42)
         \tALERT("fertig")
         End if
         """
-        let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("fastra-highlight4d-\(UUID().uuidString).4dm")
-        do { try code.write(to: tmp, atomically: true, encoding: .utf8) }
-        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+        let projectRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-highlight4d-\(UUID().uuidString)")
+        let methods = projectRoot.appendingPathComponent("Project/Sources/Methods",
+                                                          isDirectory: true)
+        let tmp = methods.appendingPathComponent("Highlight.4dm")
+        do {
+            try FileManager.default.createDirectory(at: methods, withIntermediateDirectories: true)
+            try code.write(to: tmp, atomically: true, encoding: .utf8)
+            try "// Projektindex-Fixture\n".write(
+                to: methods.appendingPathComponent("Abr_init.4dm"), atomically: true,
+                encoding: .utf8
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: projectRoot)
+            finish(false, "4D-Projekt-Fixture nicht schreibbar: \(error.localizedDescription)")
+        }
 
         // Erst hell erzwingen — der Test darf nicht vom System-Modus abhängen.
         NSApp.appearance = NSAppearance(named: .aqua)
-        ws.loadFile(at: tmp) { ok in
+        ws.openProject(at: projectRoot)
+        pollFourDProjectMethodIndex(ws: ws, root: root, projectRoot: projectRoot,
+                                    file: tmp, code: code, tick: 0)
+    }
+
+    private static func pollFourDProjectMethodIndex(ws: Workspace, root: NSView,
+                                                    projectRoot: URL, file: URL,
+                                                    code: String, tick: Int) {
+        guard ws.fourDProjectMethodNames.contains("abr_init") else {
+            if tick >= 40 {
+                ws.closeProject()
+                try? FileManager.default.removeItem(at: projectRoot)
+                finish(false, "4D-Projektmethodenindex enthält Abr_init nach 10 s nicht")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                pollFourDProjectMethodIndex(ws: ws, root: root, projectRoot: projectRoot,
+                                            file: file, code: code, tick: tick + 1)
+            }
+            return
+        }
+        ws.loadFile(at: file) { ok in
             guard ok else {
-                try? FileManager.default.removeItem(at: tmp)
+                ws.closeProject()
+                try? FileManager.default.removeItem(at: projectRoot)
                 finish(false, "loadFile (.4dm) schlug fehl")
             }
-            pollFourDColors(root: root, url: tmp, dark: false, tick: 0) {
+            pollFourDColors(root: root, url: file, dark: false, indexedMethod: "Abr_init", tick: 0) {
                 // Hell bestanden → dunkel umschalten und erneut beobachten.
                 NSApp.appearance = NSAppearance(named: .darkAqua)
-                pollFourDColors(root: root, url: tmp, dark: true, tick: 0) {
-                    NSApp.appearance = NSAppearance(named: .aqua)
-                    try? FileManager.default.removeItem(at: tmp)
-                    // Etappe 3 Wunschpaket 2026-07b: 4D ist auch MANUELL
-                    // wählbar — an einer Nicht-.4dm-Datei prüfen.
-                    runFourDManualOverridePhase(ws: ws, root: root, code: code)
+                pollFourDColors(root: root, url: file, dark: true, indexedMethod: "Abr_init", tick: 0) {
+                    runFourDDynamicProjectMethodIndexTest(
+                        ws: ws, root: root, projectRoot: projectRoot, file: file, code: code
+                    )
                 }
             }
+        }
+    }
+
+    /// Ergänzt nach dem tatsächlichen Öffnen nur die Indexdatei einer Methode.
+    /// `Nachtrag` steht schon im sichtbaren Text: Er muss zuerst die Farbe
+    /// einer Prozessvariablen haben und wechselt dann ohne Textmutation zur
+    /// Projektmethodenfarbe. So prüft der Test ausschließlich den Index-
+    /// Refresh und nicht eine nebenbei ausgelöste Editor-Neuerstellung.
+    private static func runFourDDynamicProjectMethodIndexTest(
+        ws: Workspace, root: NSView, projectRoot: URL, file: URL, code: String
+    ) {
+        pollFourDProcessVariableColor(root: root, url: file, dark: true,
+                                      name: "Nachtrag", tick: 0) {
+            beginFourDProjectMethodIndexRefresh(
+                ws: ws, root: root, projectRoot: projectRoot, file: file, code: code
+            )
+        }
+    }
+
+    private static func beginFourDProjectMethodIndexRefresh(
+        ws: Workspace, root: NSView, projectRoot: URL, file: URL, code: String
+    ) {
+        guard let textView = editorTextView(in: root) as? TextView else {
+            ws.closeProject()
+            try? FileManager.default.removeItem(at: projectRoot)
+            finish(false, "4D-Index-Refresh ohne sichtbare TextView")
+        }
+        let identity = ObjectIdentifier(textView)
+        let selection = textView.selectedRange()
+        let visibleOrigin = textView.visibleRect.origin
+        let addedMethod = projectRoot.appendingPathComponent("Project/Sources/Methods/Nachtrag.4dm")
+        do {
+            try "// nachträglich angelegte Projektmethode\n".write(
+                to: addedMethod, atomically: true, encoding: .utf8
+            )
+        } catch {
+            ws.closeProject()
+            try? FileManager.default.removeItem(at: projectRoot)
+            finish(false, "4D-Index-Fixture nicht ergänzbar: \(error.localizedDescription)")
+        }
+        pollFourDAddedMethod(
+            ws: ws, root: root, projectRoot: projectRoot, file: file, code: code,
+            textViewIdentity: identity, selection: selection, visibleOrigin: visibleOrigin, tick: 0
+        )
+    }
+
+    private static func pollFourDAddedMethod(
+        ws: Workspace, root: NSView, projectRoot: URL, file: URL, code: String,
+        textViewIdentity: ObjectIdentifier, selection: NSRange, visibleOrigin: NSPoint, tick: Int
+    ) {
+        guard ws.fourDProjectMethodNames.contains("nachtrag") else {
+            if tick >= 40 {
+                ws.closeProject()
+                try? FileManager.default.removeItem(at: projectRoot)
+                finish(false, "4D-Index aktualisiert die nachträglich angelegte Methode nicht")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                pollFourDAddedMethod(
+                    ws: ws, root: root, projectRoot: projectRoot, file: file, code: code,
+                    textViewIdentity: textViewIdentity, selection: selection,
+                    visibleOrigin: visibleOrigin, tick: tick + 1
+                )
+            }
+            return
+        }
+        pollFourDColors(root: root, url: file, dark: true, indexedMethod: "Nachtrag", tick: 0) {
+            guard let textView = editorTextView(in: root) as? TextView,
+                  ObjectIdentifier(textView) == textViewIdentity,
+                  textView.selectedRange() == selection,
+                  abs(textView.visibleRect.origin.x - visibleOrigin.x) < 1,
+                  abs(textView.visibleRect.origin.y - visibleOrigin.y) < 1 else {
+                ws.closeProject()
+                try? FileManager.default.removeItem(at: projectRoot)
+                finish(false, "4D-Index-Refresh veränderte TextView, Selektion oder Scrollposition")
+            }
+            ws.closeProject()
+            guard ws.projectURL == nil, ws.fourDProjectMethodNames.isEmpty else {
+                try? FileManager.default.removeItem(at: projectRoot)
+                finish(false, "4D-Methodenindex blieb nach Projekt-Schließen aktiv")
+            }
+            NSApp.appearance = NSAppearance(named: .aqua)
+            try? FileManager.default.removeItem(at: projectRoot)
+            // Etappe 3 Wunschpaket 2026-07b: 4D ist auch MANUELL
+            // wählbar — an einer Nicht-.4dm-Datei prüfen.
+            runFourDManualOverridePhase(ws: ws, root: root, code: code)
         }
     }
 
@@ -2015,15 +2145,51 @@ enum SelfTest {
     private static func fourDExpectedColors(dark: Bool) -> [(String, Int, Int, Int)] {
         dark
             ? [("Befehl", 0xB5, 0xD6, 0xDD), ("Keyword", 0xE1, 0xDC, 0x32),
-               ("$lokal", 0x00, 0xF9, 0xCC), ("Kommentar", 0x74, 0xC5, 0xEA)]
+               ("$lokal", 0x00, 0xF9, 0xCC), ("Prozessvariable", 0xD7, 0xF6, 0x92),
+               ("Tabelle", 0xB7, 0x4D, 0x00), ("Feld", 0xBA, 0xD8, 0x0A),
+               ("String", 0x94, 0xCE, 0x9F),
+               ("Kommentar", 0x74, 0xC5, 0xEA)]
             : [("Befehl", 0x06, 0x8C, 0x00), ("Keyword", 0x03, 0x4D, 0x00),
-               ("$lokal", 0x00, 0x70, 0xF5), ("Kommentar", 0x7F, 0x7E, 0x80)]
+               ("$lokal", 0x00, 0x70, 0xF5), ("Prozessvariable", 0x9E, 0x60, 0x00),
+               ("Tabelle", 0x43, 0x99, 0xD0), ("Feld", 0x39, 0x80, 0xB2),
+               ("String", 0x2F, 0x5D, 0x3A),
+               ("Kommentar", 0x7F, 0x7E, 0x80)]
+    }
+
+    private static func fourDMethodExpectedColor(dark: Bool) -> (Int, Int, Int) {
+        dark ? (0x0F, 0x93, 0x0A) : (0x00, 0x00, 0x88)
     }
 
     private static func pollFourDColors(root: NSView, url: URL, dark: Bool,
-                                        tick: Int, then next: @escaping () -> Void) {
+                                        indexedMethod: String? = nil, tick: Int,
+                                        then next: @escaping () -> Void) {
         let expected = fourDExpectedColors(dark: dark)
-        let missing = expected.filter { !storageContainsColor(in: root, r: $0.1, g: $0.2, b: $0.3) }
+        // Jede Kategorie wird an ihrem eigenen 4D-Substring geprüft. Das ist
+        // strenger als „irgendein Pixel hat diese Farbe“ und verhindert etwa,
+        // dass eine Zeichenkette versehentlich durch eine andere Kategorie
+        // als vorhanden gilt.
+        let expectedSubstrings = [
+            (expected[0], "QUERY"),
+            (expected[1], "If"),
+            (expected[2], "$summe"),
+            (expected[3], "ABR_LISTE_LB_AB"),
+            (expected[4], "[Auftraege:1]"),
+            (expected[5], "Nummer"),
+            (expected[6], "\"fertig\""),
+            (expected[7], "// Prüfsumme neu berechnen"),
+        ]
+        var missing = expectedSubstrings.compactMap { expected, substring in
+            storageSubstringHasColor(substring, in: root,
+                                     r: expected.1, g: expected.2, b: expected.3)
+                ? nil : expected
+        }
+        let methodColor = fourDMethodExpectedColor(dark: dark)
+        if let indexedMethod, (!storageSubstringHasColor(
+            indexedMethod, in: root, r: methodColor.0, g: methodColor.1, b: methodColor.2
+        ) || !storageSubstringHasStyle(indexedMethod, in: root, bold: true, italic: true)) {
+            missing.append(("Projektmethode \(indexedMethod)", methodColor.0,
+                            methodColor.1, methodColor.2))
+        }
         if missing.isEmpty {
             next()
             return
@@ -2036,8 +2202,66 @@ enum SelfTest {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             pollFourDColors(root: root, url: url, dark: dark,
-                            tick: tick + 1, then: next)
+                            indexedMethod: indexedMethod, tick: tick + 1, then: next)
         }
+    }
+
+    /// Wartet, bis der bereits sichtbare Name die Prozessvariablenfarbe hat.
+    /// Erst danach wird die neue `.4dm`-Datei angelegt, damit der spätere
+    /// Vergleich wirklich dieselbe Textstelle vor und nach dem Indexwechsel
+    /// betrachtet.
+    private static func pollFourDProcessVariableColor(
+        root: NSView, url: URL, dark: Bool, name: String, tick: Int,
+        then next: @escaping () -> Void
+    ) {
+        let expected = fourDExpectedColors(dark: dark)[3]
+        if storageSubstringHasColor(name, in: root,
+                                    r: expected.1, g: expected.2, b: expected.3) {
+            next()
+            return
+        }
+        if tick >= 40 {
+            try? FileManager.default.removeItem(at: url)
+            NSApp.appearance = nil
+            finish(false, "Prozessvariable \(name) hat nach 10 s nicht die erwartete Farbe")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollFourDProcessVariableColor(root: root, url: url, dark: dark,
+                                          name: name, tick: tick + 1, then: next)
+        }
+    }
+
+    /// Prüft die Farbe genau am Namen der indizierten Projektmethode. Ein
+    /// bloßes Vorkommen der Befehlsfarbe würde nicht beweisen, dass der
+    /// Methodenindex die sonst gleichfarbige `ALERT`-Zeile verlassen hat.
+    private static func storageSubstringHasColor(_ substring: String, in root: NSView,
+                                                  r: Int, g: Int, b: Int) -> Bool {
+        guard let textView = editorTextView(in: root) as? TextView,
+              let storage = textView.textStorage,
+              let range = textView.string.range(of: substring) else { return false }
+        let nsRange = NSRange(range, in: textView.string)
+        guard
+              nsRange.location != NSNotFound,
+              let color = storage.attribute(.foregroundColor, at: nsRange.location,
+                                            effectiveRange: nil) as? NSColor,
+              let srgb = color.usingColorSpace(.sRGB) else { return false }
+        let tolerance = 1.5 / 255.0
+        return abs(srgb.redComponent - Double(r) / 255) < tolerance
+            && abs(srgb.greenComponent - Double(g) / 255) < tolerance
+            && abs(srgb.blueComponent - Double(b) / 255) < tolerance
+    }
+
+    private static func storageSubstringHasStyle(_ substring: String, in root: NSView,
+                                                 bold: Bool, italic: Bool) -> Bool {
+        guard let textView = editorTextView(in: root) as? TextView,
+              let storage = textView.textStorage,
+              let range = textView.string.range(of: substring) else { return false }
+        let nsRange = NSRange(range, in: textView.string)
+        guard nsRange.location != NSNotFound,
+              let font = storage.attribute(.font, at: nsRange.location,
+                                           effectiveRange: nil) as? NSFont else { return false }
+        let traits = NSFontManager.shared.traits(of: font)
+        return traits.contains(.boldFontMask) == bold && traits.contains(.italicFontMask) == italic
     }
 
     /// Sucht eine konkrete sRGB-Farbe unter den `.foregroundColor`-Attributen
@@ -3867,19 +4091,24 @@ enum SelfTest {
     /// (b) Das Hilfe-Fenster rendert echte Überschriften (DOM-Beobachtung
     ///     in der WKWebView, analog zum `markdown`-Selbsttest).
     /// (c) „Hilfe öffnen bei Anker X“ scrollt real zum Abschnitt.
+    /// (d) ⌘W bei vorderer Hilfe schließt nur dieses Fenster; mindestens
+    ///     zwei Hintergrund-Dokument-Tabs bleiben exakt unverändert.
     private static func runHelpTest() {
         testLabel = "help"
         guard HelpContent.markdown(languageCode: "de") != nil,
-              HelpContent.markdown(languageCode: "en") != nil else {
+              HelpContent.markdown(languageCode: "en") != nil,
+              let workspace = Workspace.shared else {
             finish(false, "(a) Hilfe-Markdown (de/en) fehlt im gepackten Bundle")
         }
+        while workspace.tabs.count < 2 { workspace.openNewTab() }
+        let tabSnapshot = workspace.tabs.map { "\($0.id.uuidString)|\($0.content)" }
         MainActor.assumeIsolated { HelpWindow.show() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            pollHelpRendered(tick: 0)
+            pollHelpRendered(workspace: workspace, tabSnapshot: tabSnapshot, tick: 0)
         }
     }
 
-    private static func pollHelpRendered(tick: Int) {
+    private static func pollHelpRendered(workspace: Workspace, tabSnapshot: [String], tick: Int) {
         guard let webView = MainActor.assumeIsolated({ HelpWindow.currentWebView }) else {
             finish(false, "(b) Hilfe-Fenster ohne WebView")
         }
@@ -3891,7 +4120,8 @@ enum SelfTest {
                     HelpWindow.show(anchor: HelpSection.encodings.anchor())
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    pollHelpAnchorScrolled(webView: webView, tick: 0)
+                    pollHelpAnchorScrolled(webView: webView, workspace: workspace,
+                                           tabSnapshot: tabSnapshot, tick: 0)
                 }
                 return
             }
@@ -3900,25 +4130,70 @@ enum SelfTest {
                     + "(erwartet ≥ \(HelpSection.allCases.count))")
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                pollHelpRendered(tick: tick + 1)
+                pollHelpRendered(workspace: workspace, tabSnapshot: tabSnapshot, tick: tick + 1)
             }
         }
     }
 
-    private static func pollHelpAnchorScrolled(webView: WKWebView, tick: Int) {
+    private static func pollHelpAnchorScrolled(webView: WKWebView, workspace: Workspace,
+                                               tabSnapshot: [String], tick: Int) {
         webView.evaluateJavaScript("window.scrollY") { value, _ in
             let y = (value as? Double) ?? Double(value as? Int ?? 0)
             if y > 50 {
-                finish(true, "Hilfe aus dem Bundle gerendert "
-                    + "(\(HelpSection.allCases.count)+ Abschnitte), "
-                    + "Anker-Sprung scrollt real (y=\(Int(y)))")
+                guard let helpWindow = NSApp.windows.first(where: HelpWindow.isHelpWindow) else {
+                    finish(false, "(d) Hilfe-Fenster für ⌘W nicht auffindbar")
+                }
+                helpWindow.makeKeyAndOrderFront(nil)
+                pollHelpKeyThenClose(helpWindow, workspace: workspace,
+                                     tabSnapshot: tabSnapshot, anchorY: y)
+                return
             }
             if tick >= 20 {
                 finish(false, "(c) Anker-Sprung scrollt nicht (scrollY=\(y))")
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                pollHelpAnchorScrolled(webView: webView, tick: tick + 1)
+                pollHelpAnchorScrolled(webView: webView, workspace: workspace,
+                                       tabSnapshot: tabSnapshot, tick: tick + 1)
             }
+        }
+    }
+
+    private static func pollHelpKeyThenClose(_ helpWindow: NSWindow, workspace: Workspace,
+                                             tabSnapshot: [String], anchorY: Double,
+                                             tick: Int = 0) {
+        if helpWindow.isKeyWindow {
+            postCmd("w", keyCode: 13, windowNumber: helpWindow.windowNumber)
+            pollHelpClosed(helpWindow, workspace: workspace, tabSnapshot: tabSnapshot,
+                            anchorY: anchorY)
+            return
+        }
+        if tick >= 100 {
+            finish(false, "(d) Hilfe-Fenster wurde nicht Key-Window für ⌘W")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            pollHelpKeyThenClose(helpWindow, workspace: workspace, tabSnapshot: tabSnapshot,
+                                 anchorY: anchorY, tick: tick + 1)
+        }
+    }
+
+    private static func pollHelpClosed(_ helpWindow: NSWindow, workspace: Workspace,
+                                       tabSnapshot: [String], anchorY: Double,
+                                       tick: Int = 0) {
+        let currentTabs = workspace.tabs.map { "\($0.id.uuidString)|\($0.content)" }
+        if !helpWindow.isVisible {
+            guard currentTabs == tabSnapshot, workspace.tabs.count >= 2 else {
+                finish(false, "(d) ⌘W an der Hilfe veränderte einen Hintergrund-Tab")
+            }
+            finish(true, "Hilfe aus dem Bundle gerendert "
+                + "(\(HelpSection.allCases.count)+ Abschnitte), Anker-Sprung (y=\(Int(anchorY))); "
+                + "⌘W schließt nur die Hilfe, zwei Dokument-Tabs bleiben erhalten")
+        }
+        if tick >= 100 {
+            finish(false, "(d) ⌘W ließ das vordere Hilfe-Fenster offen")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            pollHelpClosed(helpWindow, workspace: workspace, tabSnapshot: tabSnapshot,
+                            anchorY: anchorY, tick: tick + 1)
         }
     }
 
@@ -4278,6 +4553,71 @@ enum SelfTest {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             pollSidebarFilterRestored(base: base, tick: tick + 1)
+        }
+    }
+
+    // MARK: - Selbsttests tool4d (Wunschpaket 2026-07c)
+
+    /// Prüft den echten localhost-TCP-/LSP-Start gegen ein bereits lokal
+    /// installiertes tool4d und eine ausdrücklich übergebene sichere
+    /// Projektkopie. Ein `null`-Ergebnis reicht nicht: Der Test besteht nur
+    /// bei einem echten LSP-Report. Fehlt tool4d oder die sichere Testkopie,
+    /// meldet der Runner bewusst ein Umgebungsproblem statt einen grünen Skip.
+    private static func runTool4DLSPIntegrationTest() {
+        testLabel = "tool4dlsp"
+        guard let tool = Tool4DAssist.installedTool() else {
+            finish(false, "Umgebungsproblem: tool4d ist nicht installiert — Integrations-Selbsttest übersprungen")
+        }
+        let environment = ProcessInfo.processInfo.environment
+        guard let rawRoot = environment["FASTRA_TOOL4D_TEST_PROJECT"],
+              !rawRoot.isEmpty else {
+            finish(false, "Umgebungsproblem: tool4d ist vorhanden, aber FASTRA_TOOL4D_TEST_PROJECT verweist auf keine sichere Projektkopie")
+        }
+        let root = URL(fileURLWithPath: rawRoot).canonicalFileURL
+        guard Tool4DProjectLocator.projectFile(in: root) != nil else {
+            finish(false, "Umgebungsproblem: FASTRA_TOOL4D_TEST_PROJECT enthält keine .4DProject-Datei")
+        }
+        let document: URL?
+        if let rawDocument = environment["FASTRA_TOOL4D_TEST_DOCUMENT"], !rawDocument.isEmpty {
+            let candidate = URL(fileURLWithPath: rawDocument).canonicalFileURL
+            let rootPrefix = root.path.hasSuffix("/") ? root.path : root.path + "/"
+            document = candidate.path.hasPrefix(rootPrefix) ? candidate : nil
+        } else {
+            let methods = root.appendingPathComponent("Project/Sources/Methods", isDirectory: true)
+            let files = try? FileManager.default.contentsOfDirectory(
+                at: methods, includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            )
+            // Die Auswahl bleibt für eine sichere Projektkopie reproduzierbar;
+            // bei mehreren Methoden entscheidet nicht die zufällige Reihenfolge
+            // des Dateisystems über den Integrations-Selbsttest.
+            document = files?
+                .filter { $0.pathExtension.lowercased() == "4dm" }
+                .sorted {
+                    $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent)
+                        == .orderedAscending
+                }
+                .first
+        }
+        guard let document,
+              let text = try? String(contentsOf: document, encoding: .utf8) else {
+            finish(false, "Umgebungsproblem: sichere 4D-Testmethode fehlt oder ist nicht UTF-8 lesbar")
+        }
+
+        let validation = Tool4DLSPValidation()
+        retainedTool4DValidation = validation
+        validation.start(executable: tool.executableURL, workspaceRoot: root, documentURL: document,
+                         text: text,
+                         timeout: 6) { result in
+            retainedTool4DValidation = nil
+            switch result {
+            case .success(let diagnostics):
+                finish(true, "tool4d-LSP verbunden; Pull-Diagnosen empfangen (\(diagnostics.count))")
+            case .failure(.noDiagnosticResult):
+                finish(false, "tool4d-LSP lieferte nur null statt eines echten Diagnose-Reports")
+            case .failure(let error):
+                finish(false, "tool4d-LSP-Integration fehlgeschlagen: \(error.localizedDescription)")
+            }
         }
     }
 

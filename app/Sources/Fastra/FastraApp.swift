@@ -219,7 +219,16 @@ struct FastraApp: App {
                 // dieselbe Rückfrage wie die automatische Erkennung.
                 Button("Von Festplatte neu laden") { commandWorkspace.reloadActiveTabFromDisk() }
                 Divider()
-                Button("Schließen") { commandWorkspace.closeActiveTab() }
+                Button("Schließen") {
+                    // Das Menü bleibt global sichtbar. Ist die Hilfe vorn,
+                    // gehört ⌘W aber ihr und darf keinen Hintergrund-Tab
+                    // schließen (gleiches Verhalten wie der Event-Monitor).
+                    if HelpWindow.isHelpWindow(NSApp.keyWindow) {
+                        HelpWindow.close()
+                    } else {
+                        commandWorkspace.closeActiveTab()
+                    }
+                }
                     .keyboardShortcut("w", modifiers: .command)
             }
             CommandGroup(replacing: .saveItem) {

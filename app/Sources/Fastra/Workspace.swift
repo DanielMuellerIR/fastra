@@ -3,6 +3,13 @@ import AppKit
 import Combine
 import CodeEditLanguages
 
+extension Notification.Name {
+    /// Ein Projektwechsel darf keine Diagnose des alten Projektkontexts mehr
+    /// im Hintergrund behalten. Tool4d hört darauf und beendet seinen kurzen
+    /// LSP-Lauf, bevor neue Projekt-URLs sichtbar werden.
+    static let fastraProjectContextWillChange = Notification.Name("fastraProjectContextWillChange")
+}
+
 enum LineEnding: String, Equatable, CaseIterable, Identifiable {
     case lf = "LF"
     case crlf = "CRLF"
@@ -258,6 +265,10 @@ final class Workspace: ObservableObject {
     /// Dateinamens-Filter der Projekt-Seitenleiste (Etappe 3 Wunschpaket
     /// 2026-07c). Leer = kein Filter. Projektwechsel setzt zurück.
     @Published var fileTreeFilterQuery: String = ""
+    /// Bekannte 4D-Projektmethoden für den sichtbaren `.4dm`-Editor. Der
+    /// Index wird beim Projektwechsel nebenläufig aufgebaut; bis dahin bleibt
+    /// die Menge leer und unbekannte Namen sind weiterhin Prozessvariablen.
+    @Published private(set) var fourDProjectMethodNames = Set<String>()
     /// Merkt sich den jeweils letzten Hinweis, damit ein verzögertes
     /// Ausblenden niemals einen NEUEREN Hinweis wegräumt.
     private var sidebarNoticeToken = UUID()
@@ -515,6 +526,17 @@ final class Workspace: ObservableObject {
     var gitConflictInspectionLease: GitCancelling?
     var gitConflictInspectionRequestIDs: [Data: UUID] = [:]
     private var gitAutoFetchObservation: GitRepositoryObservation?
+    /// Laufender, kleiner Verzeichnis-Scan für 4D-Projektmethoden. Ein neuer
+    /// Projektwechsel ersetzt ihn; zusätzlich schützt `projectGeneration`
+    /// gegen ein Ergebnis, das erst nach dem Wechsel zurückkehrt.
+    private var fourDProjectMethodIndexTask: Task<Void, Never>?
+    /// FSEvents können beim Speichern mehrere Einträge liefern. Dieses kurze
+    /// Debounce bündelt sie zu genau einem neuen Methodenindex-Scan.
+    private var fourDProjectMethodIndexRefreshTask: Task<Void, Never>?
+    /// Der Watcher gehört zum Workspace, nicht zu einem sichtbaren
+    /// Sidebar-Tab. Sonst blieben Projektmethoden beim Wechsel zu Changes
+    /// oder Graph veraltet, obwohl der Editor weiterhin 4D-Dateien zeigt.
+    private var fourDProjectMethodWatcher: ProjectFileWatcher?
     /// Erhöht sich bei jedem Projektwechsel. Asynchrone Aktionsketten binden
     /// sich an diesen Wert und können nie in ein später geöffnetes Repo laufen.
     private(set) var projectGeneration: UInt64 = 0
@@ -1750,6 +1772,8 @@ final class Workspace: ObservableObject {
     /// ausdrückliche Wechsel (Willkommensseite, ⌘⇧O) räumt wie bisher auf.
     func openProject(at url: URL, keepingUnrelatedTabs: Bool = false) {
         let url = url.canonicalFileURL
+        NotificationCenter.default.post(name: .fastraProjectContextWillChange, object: self)
+        stopFourDProjectMethodWatcher()
         cancelAllGitDiffLoads()
         let previousActive = activeTabID
         if !keepingUnrelatedTabs {
@@ -1798,6 +1822,8 @@ final class Workspace: ObservableObject {
         showsConflictBase = false
         projectURL = url
         let generation = projectGeneration
+        startFourDProjectMethodIndex(for: url, generation: generation)
+        startFourDProjectMethodWatcher(for: url, generation: generation)
         gitRepositoryObservation = gitRepositoryStore.observe(repository: url) {
             [weak self] snapshot in
             guard let self, self.projectGeneration == generation,
@@ -1833,6 +1859,80 @@ final class Workspace: ObservableObject {
         }
     }
 
+    /// Liest ausschließlich die beiden 4D-Methodenordner außerhalb des
+    /// Main-Threads. Die Generation verhindert, dass ein langsamer alter
+    /// Scan den Highlight-Index eines inzwischen geöffneten Projekts ersetzt.
+    private func startFourDProjectMethodIndex(for root: URL, generation: UInt64) {
+        fourDProjectMethodIndexTask?.cancel()
+        fourDProjectMethodNames = []
+        fourDProjectMethodIndexTask = Task { @MainActor [weak self] in
+            let names = await Task.detached(priority: .utility) {
+                FourDProjectMethodIndex.methodNames(in: root)
+            }.value
+            guard !Task.isCancelled,
+                  let self,
+                  FourDProjectMethodIndex.shouldApply(
+                    resultFor: root,
+                    generation: generation,
+                    currentRoot: self.projectURL,
+                    currentGeneration: self.projectGeneration
+                  ) else { return }
+
+            // Der Scan oben darf nebenläufig arbeiten. Die veröffentlichte
+            // Menge muss dagegen auf dem Main-Actor wechseln: Combine und
+            // SwiftUI können sonst beim gleichzeitigen Editor-Update
+            // gegenseitig auf ihre internen Locks warten.
+            self.fourDProjectMethodNames = names
+        }
+    }
+
+    /// Hält die Aktualisierung des 4D-Methodenindex am Projekt selbst. Der
+    /// Dateibaum besitzt zwar einen eigenen Watcher für sein Rendering, kann
+    /// aber unsichtbar sein; dieser zweite Besitzer bleibt deshalb für die
+    /// gesamte Dauer eines geöffneten Projekts aktiv.
+    private func startFourDProjectMethodWatcher(for root: URL, generation: UInt64) {
+        let watcher = ProjectFileWatcher(rootURL: root)
+        watcher.onRefresh = { [weak self, weak watcher] in
+            guard let self,
+                  self.fourDProjectMethodWatcher === watcher,
+                  self.projectGeneration == generation else { return }
+            self.projectFilesDidChange(for: root)
+        }
+        fourDProjectMethodWatcher = watcher
+    }
+
+    /// Stoppt den Stream ausdrücklich vor Wechsel oder Schließen. Das macht
+    /// alte FSEvents wirkungslos und gibt den nativen Beobachter sofort frei.
+    private func stopFourDProjectMethodWatcher() {
+        fourDProjectMethodWatcher?.stop()
+        fourDProjectMethodWatcher = nil
+    }
+
+    /// Der Workspace-eigene Projekt-Watcher meldet externe Änderungen hierher.
+    /// Nur das aktuelle Projekt darf einen neuen Index auslösen; ein alter
+    /// Callback kann dadurch keinen neuen Projektstand überschreiben.
+    func projectFilesDidChange(for observedRoot: URL) {
+        guard let currentRoot = projectURL,
+              currentRoot.canonicalFileURL == observedRoot.canonicalFileURL else {
+            return
+        }
+        let generation = projectGeneration
+        fourDProjectMethodIndexRefreshTask?.cancel()
+        fourDProjectMethodIndexRefreshTask = Task { @MainActor [weak self] in
+            // Atomare Speicheroperationen liefern oft mehrere FSEvents.
+            // Eine kleine Pause verhindert unnötige komplette Scans, ohne
+            // die UI oder den Main-Actor zu blockieren.
+            try? await Task.sleep(for: .milliseconds(180))
+            guard !Task.isCancelled,
+                  let self,
+                  self.projectGeneration == generation,
+                  self.projectURL?.canonicalFileURL == observedRoot.canonicalFileURL else {
+                return
+            }
+            self.startFourDProjectMethodIndex(for: observedRoot, generation: generation)
+        }
+    }
+
     /// Beim Projektwechsel bleiben ungesicherte Inhalte immer erhalten.
     /// Saubere Dateien außerhalb des neuen Projektbaums und alte Git-Ansichten
     /// werden geschlossen; saubere unbenannte Notizzettel bleiben bestehen.
@@ -1850,9 +1950,16 @@ final class Workspace: ObservableObject {
     /// Blendet den Projekt-Dateibaum wieder aus (Seitenleiste zeigt dann
     /// wie bisher nur die geöffneten Tabs). Offene Tabs bleiben unberührt.
     func closeProject() {
+        NotificationCenter.default.post(name: .fastraProjectContextWillChange, object: self)
+        stopFourDProjectMethodWatcher()
         selectedFileTreeFolder = nil
         sidebarNotice = nil
         projectGeneration &+= 1
+        fourDProjectMethodIndexTask?.cancel()
+        fourDProjectMethodIndexTask = nil
+        fourDProjectMethodIndexRefreshTask?.cancel()
+        fourDProjectMethodIndexRefreshTask = nil
+        fourDProjectMethodNames = []
         cancelAllGitDiffLoads()
         gitIdentityResolution?.cancel()
         gitIdentityResolution = nil
