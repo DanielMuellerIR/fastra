@@ -131,4 +131,107 @@ struct SoftWrapProfileStoreTests {
             forKey: SoftWrapProfileStore.Keys.profiles
         ) == nil)
     }
+
+    @Test("Version 1 migriert ohne Verlust auf Fensterziel und Spalte 80")
+    func versionOneMigration() throws {
+        let fixture = SoftWrapDefaultsFixture()
+        defer { fixture.cleanUp() }
+        let oldJSON = """
+        {
+          "version": 1,
+          "formats": {
+            "4d": { "softWrapEnabled": true }
+          }
+        }
+        """
+        fixture.defaults.set(Data(oldJSON.utf8),
+                             forKey: SoftWrapProfileStore.Keys.profiles)
+
+        let store = SoftWrapProfileStore(defaults: fixture.defaults)
+        #expect(store.isEnabled(for: .fourD))
+        #expect(store.target(for: .fourD) == .window)
+        #expect(store.fixedColumn(for: .fourD) == 80)
+        #expect(store.pageGuideColumn == 80)
+        #expect(!store.showPageGuide)
+
+        let data = try #require(
+            fixture.defaults.data(forKey: SoftWrapProfileStore.Keys.profiles)
+        )
+        let migrated = try JSONDecoder().decode(
+            SoftWrapProfileStore.Payload.self, from: data
+        )
+        #expect(migrated.version == SoftWrapProfileStore.currentVersion)
+    }
+
+    @Test("Ziel und feste Breite gelten pro Format und schalten Umbruch ein")
+    func targetAndColumnAreFormatSpecific() {
+        let fixture = SoftWrapDefaultsFixture()
+        defer { fixture.cleanUp() }
+        let store = SoftWrapProfileStore(defaults: fixture.defaults)
+
+        store.setFixedColumn(100, for: .fourD)
+        #expect(store.isEnabled(for: .fourD))
+        #expect(store.target(for: .fourD) == .fixedColumn)
+        #expect(store.fixedColumn(for: .fourD) == 100)
+        #expect(store.target(for: .grammar(.markdown)) == .window)
+        #expect(store.fixedColumn(for: .grammar(.markdown)) == 80)
+
+        store.selectTarget(.pageGuide, for: .grammar(.markdown))
+        #expect(store.target(for: .grammar(.markdown)) == .pageGuide)
+        #expect(store.target(for: .fourD) == .fixedColumn)
+    }
+
+    @Test("Seitenlinie ist appweit; ungültige Altwerte fallen sicher auf 80 zurück")
+    func pageGuideIsGlobalAndValidated() throws {
+        let fixture = SoftWrapDefaultsFixture()
+        defer { fixture.cleanUp() }
+        let first = SoftWrapProfileStore(defaults: fixture.defaults)
+        let second = SoftWrapProfileStore(defaults: fixture.defaults)
+
+        first.setPageGuideColumn(120)
+        first.setShowPageGuide(true)
+        #expect(second.pageGuideColumn == 120)
+        #expect(second.showPageGuide)
+
+        let bad = SoftWrapProfileStore.Payload(
+            version: SoftWrapProfileStore.currentVersion,
+            formats: [
+                DocumentFormatID.fourD.rawValue:
+                    .init(target: .fixedColumn, fixedColumn: 999)
+            ],
+            pageGuideColumn: 3,
+            showPageGuide: true
+        )
+        fixture.defaults.set(try JSONEncoder().encode(bad),
+                             forKey: SoftWrapProfileStore.Keys.profiles)
+        let repaired = SoftWrapProfileStore(defaults: fixture.defaults)
+        #expect(repaired.pageGuideColumn == 80)
+        #expect(repaired.fixedColumn(for: .fourD) == 80)
+    }
+
+    @Test("Format-Reset entfernt Ziel und Breite, aber nicht die globale Seitenlinie")
+    func resetKeepsGlobalGuide() {
+        let fixture = SoftWrapDefaultsFixture()
+        defer { fixture.cleanUp() }
+        let store = SoftWrapProfileStore(defaults: fixture.defaults)
+        store.setFixedColumn(120, for: .fourD)
+        store.setPageGuideColumn(100)
+        store.setShowPageGuide(true)
+
+        store.resetToFactoryDefault(for: .fourD)
+        #expect(store.target(for: .fourD) == .window)
+        #expect(store.fixedColumn(for: .fourD) == 80)
+        #expect(store.pageGuideColumn == 100)
+        #expect(store.showPageGuide)
+    }
+
+    @Test("Zahleneingabe akzeptiert nur ganze Spalten im gültigen Bereich")
+    func numericInputValidation() {
+        #expect(SoftWrapColumnInput.parse("20") == 20)
+        #expect(SoftWrapColumnInput.parse(" 500 ") == 500)
+        #expect(SoftWrapColumnInput.parse("19") == nil)
+        #expect(SoftWrapColumnInput.parse("501") == nil)
+        #expect(SoftWrapColumnInput.parse("80.5") == nil)
+        #expect(SoftWrapColumnInput.parse("abc") == nil)
+    }
 }

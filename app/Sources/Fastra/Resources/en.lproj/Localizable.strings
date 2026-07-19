@@ -1167,3 +1167,19 @@
 "tool4d hat keine Diagnosen für dieses Dokument gemeldet." = "tool4d reported no diagnostics for this document.";
 "\n\nWeitere tool4d-Diagnosen: %ld" = "\n\nAdditional tool4d diagnostics: %ld";
 "Zeile %ld, Spalte %ld: %@%@" = "Line %ld, column %ld: %@%@";
+
+/* Soft-Wrap-Ziele und Seitenlinie (v1.41.0) */
+"Andere …" = "Other…";
+"Die Seitenlinie ist eine appweite Orientierung. Soft Wrap kann pro Format unabhängig an Fensterbreite, Seitenlinie oder einer festen Spalte umbrechen." = "The page guide is an app-wide reference. For each format, Soft Wrap can independently wrap at the window width, the page guide, or a fixed column.";
+"Die Spalte muss als ganze Zahl zwischen %ld und %ld angegeben werden." = "The column must be a whole number between %ld and %ld.";
+"Fensterbreite" = "Window Width";
+"Feste Breite" = "Fixed Width";
+"Feste Breite: Spalte %ld" = "Fixed Width: Column %ld";
+"Feste Umbruchbreite" = "Fixed Wrap Width";
+"Gib eine Spalte zwischen %ld und %ld ein." = "Enter a column between %ld and %ld.";
+"Page Guide" = "Page Guide";
+"Seitenlinie anzeigen" = "Show Page Guide";
+"Seitenlinie: Spalte %ld" = "Page Guide: Column %ld";
+"Spalte der Seitenlinie" = "Page Guide Column";
+"Textspalte" = "Text Column";
+"Ungültige Spalte" = "Invalid Column";

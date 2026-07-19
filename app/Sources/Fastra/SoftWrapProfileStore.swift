@@ -12,16 +12,48 @@ extension Notification.Name {
 /// Testbarer, versionierter Store für Formatprofile.
 ///
 /// Das JSON enthält pro Format ein Objekt statt eines nackten Bool-Werts.
-/// Spätere Etappen können dort Zielbreite und Folgezeilen-Einrückung ergänzen,
-/// ohne die stabile Formatidentität oder vorhandene Abweichungen umzubauen.
+/// Zielart und feste Spalte gelten pro Format. Spalte und Sichtbarkeit der
+/// Seitenlinie sind dagegen appweite Editor-Einstellungen im selben Payload.
+enum SoftWrapTarget: String, Codable, CaseIterable, Equatable {
+    case window
+    case pageGuide
+    case fixedColumn
+}
+
 final class SoftWrapProfileStore: ObservableObject {
     struct StoredProfile: Codable, Equatable {
         var softWrapEnabled: Bool?
+        var target: SoftWrapTarget?
+        var fixedColumn: Int?
+
+        init(softWrapEnabled: Bool? = nil,
+             target: SoftWrapTarget? = nil,
+             fixedColumn: Int? = nil) {
+            self.softWrapEnabled = softWrapEnabled
+            self.target = target
+            self.fixedColumn = fixedColumn
+        }
+
+        var isEmpty: Bool {
+            softWrapEnabled == nil && target == nil && fixedColumn == nil
+        }
     }
 
     struct Payload: Codable, Equatable {
         var version: Int
         var formats: [String: StoredProfile]
+        var pageGuideColumn: Int?
+        var showPageGuide: Bool?
+
+        init(version: Int,
+             formats: [String: StoredProfile],
+             pageGuideColumn: Int? = nil,
+             showPageGuide: Bool? = nil) {
+            self.version = version
+            self.formats = formats
+            self.pageGuideColumn = pageGuideColumn
+            self.showPageGuide = showPageGuide
+        }
     }
 
     enum Keys {
@@ -29,7 +61,9 @@ final class SoftWrapProfileStore: ObservableObject {
         static let legacyGlobalWrap = "editor.wrapLines"
     }
 
-    static let currentVersion = 1
+    static let currentVersion = 2
+    static let factoryColumn = 80
+    static let validColumnRange = 20...500
 
     @Published private(set) var revision: UInt64 = 0
 
@@ -43,8 +77,13 @@ final class SoftWrapProfileStore: ObservableObject {
         self.defaults = defaults
         self.notificationCenter = notificationCenter
 
-        if let loaded = Self.loadPayload(from: defaults) {
+        if var loaded = Self.loadPayload(from: defaults) {
+            let needsMigration = loaded.version < Self.currentVersion
+            loaded = Self.normalized(loaded)
             payload = loaded
+            if needsMigration {
+                Self.persist(loaded, to: defaults)
+            }
         } else if let legacy = Self.explicitLegacyValue(in: defaults) {
             var migrated = Payload(version: Self.currentVersion, formats: [:])
             if legacy != SoftWrapFactoryDefaults.isEnabled(for: .plainText) {
@@ -74,22 +113,67 @@ final class SoftWrapProfileStore: ObservableObject {
     }
 
     func hasOverride(for formatID: DocumentFormatID) -> Bool {
-        payload.formats[formatID.rawValue]?.softWrapEnabled != nil
+        payload.formats[formatID.rawValue]?.isEmpty == false
+    }
+
+    func target(for formatID: DocumentFormatID) -> SoftWrapTarget {
+        payload.formats[formatID.rawValue]?.target ?? .window
+    }
+
+    func fixedColumn(for formatID: DocumentFormatID) -> Int {
+        Self.validatedColumn(payload.formats[formatID.rawValue]?.fixedColumn)
+    }
+
+    var pageGuideColumn: Int {
+        Self.validatedColumn(payload.pageGuideColumn)
+    }
+
+    var showPageGuide: Bool {
+        payload.showPageGuide ?? false
     }
 
     func setEnabled(_ enabled: Bool, for formatID: DocumentFormatID) {
         let factoryValue = SoftWrapFactoryDefaults.isEnabled(for: formatID)
-        if enabled == factoryValue {
-            payload.formats.removeValue(forKey: formatID.rawValue)
-        } else {
-            payload.formats[formatID.rawValue] =
-                StoredProfile(softWrapEnabled: enabled)
+        updateProfile(for: formatID) {
+            $0.softWrapEnabled = enabled == factoryValue ? nil : enabled
         }
         persistAndNotify()
     }
 
     func toggle(for formatID: DocumentFormatID) {
         setEnabled(!isEnabled(for: formatID), for: formatID)
+    }
+
+    func selectTarget(_ target: SoftWrapTarget, for formatID: DocumentFormatID) {
+        updateProfile(for: formatID) {
+            $0.target = target == .window ? nil : target
+            let factoryEnabled = SoftWrapFactoryDefaults.isEnabled(for: formatID)
+            $0.softWrapEnabled = factoryEnabled ? nil : true
+        }
+        persistAndNotify()
+    }
+
+    func setFixedColumn(_ column: Int, for formatID: DocumentFormatID) {
+        let validated = Self.validatedColumn(column)
+        updateProfile(for: formatID) {
+            $0.fixedColumn = validated == Self.factoryColumn ? nil : validated
+            $0.target = .fixedColumn
+            let factoryEnabled = SoftWrapFactoryDefaults.isEnabled(for: formatID)
+            $0.softWrapEnabled = factoryEnabled ? nil : true
+        }
+        persistAndNotify()
+    }
+
+    func setPageGuideColumn(_ column: Int) {
+        let validated = Self.validatedColumn(column)
+        payload.pageGuideColumn =
+            validated == Self.factoryColumn ? nil : validated
+        persistAndNotify()
+    }
+
+    func setShowPageGuide(_ show: Bool) {
+        payload.showPageGuide = show ? true : nil
+        persistAndNotify()
     }
 
     func resetToFactoryDefault(for formatID: DocumentFormatID) {
@@ -100,7 +184,7 @@ final class SoftWrapProfileStore: ObservableObject {
     }
 
     private func persistAndNotify() {
-        payload.version = Self.currentVersion
+        payload = Self.normalized(payload)
         Self.persist(payload, to: defaults)
         revision &+= 1
         notificationCenter.post(name: .fastraSoftWrapProfilesChanged, object: self)
@@ -130,6 +214,50 @@ final class SoftWrapProfileStore: ObservableObject {
             return nil
         }
         return decoded
+    }
+
+    static func validatedColumn(_ column: Int?) -> Int {
+        guard let column, validColumnRange.contains(column) else {
+            return factoryColumn
+        }
+        return column
+    }
+
+    private func updateProfile(
+        for formatID: DocumentFormatID,
+        _ update: (inout StoredProfile) -> Void
+    ) {
+        let key = formatID.rawValue
+        var profile = payload.formats[key] ?? StoredProfile()
+        update(&profile)
+        if profile.isEmpty {
+            payload.formats.removeValue(forKey: key)
+        } else {
+            payload.formats[key] = profile
+        }
+    }
+
+    private static func normalized(_ source: Payload) -> Payload {
+        var result = source
+        result.version = currentVersion
+        result.pageGuideColumn = {
+            guard let value = source.pageGuideColumn else { return nil }
+            let validated = validatedColumn(value)
+            return validated == factoryColumn ? nil : validated
+        }()
+        result.formats = source.formats.compactMapValues { stored in
+            var profile = stored
+            if let column = profile.fixedColumn {
+                let validated = validatedColumn(column)
+                profile.fixedColumn =
+                    validated == factoryColumn ? nil : validated
+            }
+            if profile.target == .window {
+                profile.target = nil
+            }
+            return profile.isEmpty ? nil : profile
+        }
+        return result
     }
 
     private static func persist(_ payload: Payload, to defaults: UserDefaults) {

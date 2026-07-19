@@ -88,5 +88,4 @@ The documented restrictions are purely technical (application, web and
 SQL server, backup scheduler and others are disabled); none of the
 sources restricts who may invoke tool4d.
 
-The direct LSP integration is stage 8 of feature package 3
-(`docs/wunschpaket-2026-07c/goal-vorschlag.md`) and is implemented in v1.39.0.
+The direct LSP integration has been available since v1.39.0.

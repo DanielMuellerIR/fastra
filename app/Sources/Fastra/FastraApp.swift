@@ -167,6 +167,10 @@ struct FastraApp: App {
                 }
                     .keyboardShortcut("l", modifiers: [.command, .shift])
                     .disabled(activeDocumentContext.workspace?.activeTab == nil)
+                Toggle("Seitenlinie anzeigen", isOn: Binding(
+                    get: { commandWorkspace.showPageGuide },
+                    set: { commandWorkspace.setShowPageGuide($0) }
+                ))
                 // Rechter Vorschau-Streifen (Minimap). Default AUS — verdeckte
                 // rechts Text und stand im Freeze-Verdacht (Daniel 2026-07-12).
                 Toggle("Minimap anzeigen", isOn: $showMinimap)

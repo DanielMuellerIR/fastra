@@ -1038,12 +1038,19 @@ struct EditorView: View {
                 wrapLines: workspace.softWrapEnabled,
                 tabWidth: 4
             ),
+            behavior: .init(
+                reformatAtColumn: workspace.pageGuideColumn,
+                wrapAtColumn: workspace.effectiveSoftWrapColumn
+            ),
             layout: .init(contentInsets: NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)),
             // Rechter Vorschau-Streifen (Minimap) reaktiv aus `showMinimap`.
             // Eine echte Änderung erzeugt eine ungleiche Config → CESE
             // reconciled `minimapView.isHidden` + Text-Insets live (gleicher
             // Mechanismus wie beim Soft-Wrap-Profil).
-            peripherals: .init(showMinimap: showMinimap)
+            peripherals: .init(
+                showMinimap: showMinimap,
+                showReformattingGuide: workspace.showPageGuide
+            )
         )
     }
 
@@ -1319,10 +1326,10 @@ extension EditorView {
 
     // MARK: - 4D-Themes (Etappe 4 Wunschpaket 2026-07)
     //
-    // Statische Themes für .4dm-Dokumente. Token-Farben und Bold/Italic
-    // stammen aus docs/wunschpaket-2026-07/light.json bzw. dark.json (nur
-    // Vordergrundfarben; Hintergrund-/Auswahlfarben und Fonts kommen
-    // bewusst aus den Fastra-Standardthemes). Underline (4D-Konstanten)
+    // Statische Themes für .4dm-Dokumente. Die Referenzwerte liegen als
+    // öffentliche Test-Fixtures unter Tests/FastraTests/Support/Fixtures/
+    // FourDTheme (nur Vordergrundfarben; Hintergrund-/Auswahlfarben und
+    // Fonts kommen bewusst aus den Fastra-Standardthemes). Underline (4D-Konstanten)
     // kennt CESEs Attribut-Modell nicht — Konstanten erhalten nur die Farbe.
     //
     // Slot-Belegung (nach dem EditorTheme-Patch in build.sh):

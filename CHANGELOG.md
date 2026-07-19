@@ -9,10 +9,45 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.41.0] — 2026-07-19
+
+Etappe 2 des Soft-Wrap-Pakets: Umbruchziele und Seitenlinie.
+
+### Hinzugefügt
+
+- **Drei Umbruchziele pro Format:** Fensterbreite, appweite Seitenlinie oder
+  feste Spalte. Für feste Breiten stehen 72, 80, 100 und 120 sowie eine
+  freie Eingabe von 20 bis 500 bereit. Die Zielwahl schaltet Soft Wrap ein;
+  ein schmaleres Fenster bleibt immer die harte Obergrenze.
+- **Unabhängige Seitenlinie:** Sichtbarkeit und Spalte sind appweit über
+  Soft-Wrap-Optionen, Darstellung-Menü und Einstellungen erreichbar. Linie
+  und Umbruch verwenden dieselbe Schrift-, Zoom- und Inset-Geometrie.
+
+### Geändert
+
+- Der Umbruch bevorzugt Wortgrenzen und fällt bei langen Einzelwörtern auf
+  vollständige Zeichen zurück. Auch extrem schmale Breiten erzeugen
+  mindestens ein vollständiges Unicode-Graphem pro Fragment.
+- Ziel-, Breiten-, Fenster- und Zoomwechsel verändern weder Text, Auswahl,
+  Dirty-Zustand noch Undo-Verlauf. Profilformat v1 wird verlustfrei auf v2
+  migriert.
+
+### Behoben
+
+- Die vorhandene Seitenlinie lag durch halbierte Zeichen-/Inset-Werte an der
+  falschen Spalte und zeichnete zudem außerhalb ihrer lokalen View-Bounds.
+- Die 4D-Theme-Regressionstests laden ihre Referenzwerte wieder aus
+  gebündelten öffentlichen Test-Fixtures statt aus entfernten Planungsdateien.
+
+### Intern
+
+- Reproduzierbarer CodeEdit-Patch für feste Layoutbreiten, exakte
+  Seitenliniengeometrie und Unicode-Fortschritt; reale Layout-/Render-Tests
+  sowie In-App-Selbsttest `softwrapmodes` für Zielwechsel, Resize und Zoom.
+
 ## [v1.40.0] — 2026-07-19
 
-Etappe 1 des Soft-Wrap-Pakets: Formatprofile und Bedienung
-(`docs/soft-wrap-2026-07/`).
+Etappe 1 des Soft-Wrap-Pakets: Formatprofile und Bedienung.
 
 ### Hinzugefügt
 
@@ -115,8 +150,7 @@ Etappe 1 des Soft-Wrap-Pakets: Formatprofile und Bedienung
 ## [v1.38.0] — 2026-07-18
 
 Etappe 7 des Wunschpakets 2026-07c: Alt-Doppelklick „Gehe zum Ziel“
-(`docs/wunschpaket-2026-07c/goal-vorschlag.md`; Vorbild:
-4D-Methodeneditor).
+nach dem Vorbild des 4D-Methodeneditors.
 
 ### Hinzugefügt
 
@@ -148,9 +182,9 @@ Etappe 7 des Wunschpakets 2026-07c: Alt-Doppelklick „Gehe zum Ziel“
 
 ## [v1.37.0] — 2026-07-18
 
-Etappe 6 des Wunschpakets 2026-07c: 4D-Werkzeuge aus den Katalogen
-(`docs/wunschpaket-2026-07c/goal-vorschlag.md`). Quellen-Lizenzen sind
-dokumentiert und attribuiert (THIRD-PARTY-NOTICES.md + Hilfe): 4D-Doku
+Etappe 6 des Wunschpakets 2026-07c: 4D-Werkzeuge aus den Katalogen.
+Quellen-Lizenzen sind dokumentiert und attribuiert
+(THIRD-PARTY-NOTICES.md + Hilfe): 4D-Doku
 CC BY 4.0 (abgeleitete Fakten), formsSchema.json MIT.
 
 ### Hinzugefügt
@@ -186,8 +220,7 @@ CC BY 4.0 (abgeleitete Fakten), formsSchema.json MIT.
 
 ## [v1.36.0] — 2026-07-18
 
-Etappe 5 des Wunschpakets 2026-07c: 4D-Struktur-Hinweise
-(`docs/wunschpaket-2026-07c/goal-vorschlag.md`).
+Etappe 5 des Wunschpakets 2026-07c: 4D-Struktur-Hinweise.
 
 ### Hinzugefügt
 
@@ -213,10 +246,9 @@ Etappe 5 des Wunschpakets 2026-07c: 4D-Struktur-Hinweise
 
 ## [v1.35.0] — 2026-07-18
 
-Etappe 4 des Wunschpakets 2026-07c: tool4d-Ersteinrichtungshilfe
-(`docs/wunschpaket-2026-07c/goal-vorschlag.md`). Fastra bündelt tool4d
-weiterhin nicht, lädt nichts herunter und führt nichts aus — Hilfe ja,
-versteckte Netzwerkaktionen nein.
+Etappe 4 des Wunschpakets 2026-07c: tool4d-Ersteinrichtungshilfe.
+Fastra bündelt tool4d weiterhin nicht, lädt nichts herunter und führt
+nichts aus — Hilfe ja, versteckte Netzwerkaktionen nein.
 
 ### Hinzugefügt
 
@@ -246,8 +278,7 @@ versteckte Netzwerkaktionen nein.
 
 ## [v1.34.0] — 2026-07-18
 
-Etappe 3 des Wunschpakets 2026-07c: Suchfunktion in der Projektansicht
-(`docs/wunschpaket-2026-07c/goal-vorschlag.md`).
+Etappe 3 des Wunschpakets 2026-07c: Suchfunktion in der Projektansicht.
 
 ### Hinzugefügt
 
@@ -316,9 +347,8 @@ wie beim früheren Renderer.
 ## [v1.32.0] — 2026-07-18
 
 Etappe 1 des Wunschpakets 2026-07c: Diff-Kern & Datei-Diff dual-pane
-(`docs/wunschpaket-2026-07c/goal-vorschlag.md`; BBEdit-Vorbild
-„Find Differences“/„Compare Against Disk File“, User Manual 16.0.1
-S. 130–134).
+nach dem BBEdit-Vorbild „Find Differences“/„Compare Against Disk File“
+(User Manual 16.0.1, S. 130–134).
 
 ### Hinzugefügt
 
@@ -364,9 +394,9 @@ S. 130–134).
 
 ## [v1.31.0] — 2026-07-18
 
-Etappe 5 des Wunschpakets 2026-07b: Assistiertes Markdown-Schreiben
-(`docs/wunschpaket-2026-07b/goal-vorschlag.md`). Fastra ersetzt damit
-TextEdit für „Text + Bilder, weiter bearbeitbar“ — ohne WYSIWYG-Umbau.
+Etappe 5 des Wunschpakets 2026-07b: Assistiertes Markdown-Schreiben.
+Fastra ersetzt damit TextEdit für „Text + Bilder, weiter bearbeitbar“ —
+ohne WYSIWYG-Umbau.
 
 ### Hinzugefügt
 
@@ -408,8 +438,7 @@ TextEdit für „Text + Bilder, weiter bearbeitbar“ — ohne WYSIWYG-Umbau.
 
 ## [v1.30.0] — 2026-07-18
 
-Etappe 4 des Wunschpakets 2026-07b: Hilfe
-(`docs/wunschpaket-2026-07b/goal-vorschlag.md`).
+Etappe 4 des Wunschpakets 2026-07b: Hilfe.
 
 ### Hinzugefügt
 
@@ -441,8 +470,7 @@ Etappe 4 des Wunschpakets 2026-07b: Hilfe
 
 ## [v1.29.0] — 2026-07-18
 
-Etappe 3 des Wunschpakets 2026-07b: Sprachmenü & 4D wählbar
-(`docs/wunschpaket-2026-07b/goal-vorschlag.md`).
+Etappe 3 des Wunschpakets 2026-07b: Sprachmenü & 4D wählbar.
 
 ### Hinzugefügt
 
@@ -465,8 +493,7 @@ Etappe 3 des Wunschpakets 2026-07b: Sprachmenü & 4D wählbar
 
 ## [v1.28.0] — 2026-07-18
 
-Etappe 2 des Wunschpakets 2026-07b: Suchdialog
-(`docs/wunschpaket-2026-07b/goal-vorschlag.md`).
+Etappe 2 des Wunschpakets 2026-07b: Suchdialog.
 
 ### Hinzugefügt
 
@@ -501,8 +528,7 @@ Etappe 2 des Wunschpakets 2026-07b: Suchdialog
 
 ## [v1.27.0] — 2026-07-18
 
-Etappe 1 des Wunschpakets 2026-07b: Navigation & Chrome
-(`docs/wunschpaket-2026-07b/goal-vorschlag.md`).
+Etappe 1 des Wunschpakets 2026-07b: Navigation & Chrome.
 
 ### Hinzugefügt
 
@@ -545,8 +571,7 @@ Etappe 1 des Wunschpakets 2026-07b: Navigation & Chrome
   Mission Control, Dock, Fenster-Menü und VoiceOver. Entfallen sind nur die
   Proxy-Icon-Funktionen der versteckten Titelzeile: das Cmd-Klick-Pfadmenü
   (ersetzt durch das Tab-Pfadmenü) und der Datei-Drag aus der Titelzeile
-  (bewusst ersatzlos, Idee in `ROADMAP.md`). Details:
-  `docs/wunschpaket-2026-07b/fenstertitel-befund.md`.
+  (bewusst ersatzlos, mögliche Alternative in `ROADMAP.md`).
 
 ## [v1.26.0] — 2026-07-18
 
@@ -651,9 +676,9 @@ Etappe 1 des Wunschpakets 2026-07b: Navigation & Chrome
   abgeleitet (`tools/generate-4d-symbols.py`) — reine Namenslisten, keine
   Doku-Inhalte.
 - **4D-Farbthemes hell/dunkel** pro Dokument: Zeigt der Editor eine
-  .4dm-Datei, gelten eigene statische Themes nach den Vorgaben in
-  `docs/wunschpaket-2026-07/light.json`/`dark.json` (nur Vordergrundfarben
-  und Bold/Italic; Underline kennt das CESE-Attributmodell nicht —
+  .4dm-Datei, gelten eigene statische Themes nach öffentlich gebündelten
+  Referenzwerten (nur Vordergrundfarben und Bold/Italic; Underline kennt
+  das CESE-Attributmodell nicht —
   dokumentierter Verzicht, ebenso errors/plug_ins). Ein kleiner
   `EditorTheme`-Patch in `build.sh` entkoppelt dafür drei ungenutzte
   Farb-Slots; alle bestehenden Sprachen sehen exakt unverändert aus

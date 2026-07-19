@@ -739,12 +739,57 @@ final class Workspace: ObservableObject {
         softWrapProfiles.hasOverride(for: activeDocumentFormat.id)
     }
 
+    var softWrapTarget: SoftWrapTarget {
+        softWrapProfiles.target(for: activeDocumentFormat.id)
+    }
+
+    var softWrapFixedColumn: Int {
+        softWrapProfiles.fixedColumn(for: activeDocumentFormat.id)
+    }
+
+    var pageGuideColumn: Int {
+        softWrapProfiles.pageGuideColumn
+    }
+
+    var showPageGuide: Bool {
+        softWrapProfiles.showPageGuide
+    }
+
+    /// `nil` bedeutet das bisherige Umbruchziel Fensterbreite.
+    var effectiveSoftWrapColumn: Int? {
+        switch softWrapTarget {
+        case .window: nil
+        case .pageGuide: pageGuideColumn
+        case .fixedColumn: softWrapFixedColumn
+        }
+    }
+
     func setSoftWrapEnabled(_ enabled: Bool) {
         softWrapProfiles.setEnabled(enabled, for: activeDocumentFormat.id)
     }
 
     func toggleSoftWrap() {
         softWrapProfiles.toggle(for: activeDocumentFormat.id)
+    }
+
+    func selectSoftWrapTarget(_ target: SoftWrapTarget) {
+        softWrapProfiles.selectTarget(target, for: activeDocumentFormat.id)
+    }
+
+    func setSoftWrapFixedColumn(_ column: Int) {
+        softWrapProfiles.setFixedColumn(column, for: activeDocumentFormat.id)
+    }
+
+    func setPageGuideColumn(_ column: Int) {
+        softWrapProfiles.setPageGuideColumn(column)
+    }
+
+    func setShowPageGuide(_ show: Bool) {
+        softWrapProfiles.setShowPageGuide(show)
+    }
+
+    func togglePageGuide() {
+        setShowPageGuide(!showPageGuide)
     }
 
     func resetSoftWrapToFactoryDefault() {

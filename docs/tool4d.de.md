@@ -91,5 +91,4 @@ Die dokumentierten Einschränkungen sind rein technisch (Application-,
 Web- und SQL-Server, Backup-Scheduler u. a. sind deaktiviert); eine
 Beschränkung, wer tool4d aufrufen darf, nennt keine der Quellen.
 
-Die direkte LSP-Anbindung ist Etappe 8 des Wunschpakets 3
-(`docs/wunschpaket-2026-07c/goal-vorschlag.md`) und mit v1.39.0 umgesetzt.
+Die direkte LSP-Anbindung ist seit v1.39.0 verfügbar.

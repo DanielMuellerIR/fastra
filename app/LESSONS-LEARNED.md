@@ -136,7 +136,7 @@ xcrun --toolchain XcodeDefault swift build
 
 ### F.5 Konsequenz: build.sh
 
-`build.sh` kapselt F.2 – F.4 + F.9 + F.10 vollständig. Aufruf:
+`build.sh` kapselt die hier beschriebenen Checkout-Patches vollständig. Aufruf:
 
 ```bash
 ./build.sh           # debug
@@ -252,3 +252,34 @@ prüft ↓, gezielten Klick sowie Doppelklick bis zur Einfügung von `ALERT`.
 Der kurze Wait vor ↓ ist kein Produkt-Delay: CESE befüllt die Tabelle über
 einen asynchronen Publisher; ohne abgeschlossenen Reload konnte eine korrekte
 Auswahl direkt wieder auf die Startzeile zurückspringen.
+
+### F.12 Feste Soft-Wrap-Spalten brauchen eine gemeinsame Layoutgeometrie (2026-07-19)
+
+CodeEditTextView begrenzt Soft Wrap upstream ausschließlich auf die
+Viewportbreite. CodeEditSourceEditors vorhandene Reformatting-Linie berechnete
+ihre Position zugleich mit `font.charWidth / 2` und
+`textViewInsets.left / 2`. Damit lag sie weder an der konfigurierten Textspalte
+noch an einer reproduzierbaren Umbruchgrenze. Zusätzlich zeichnete die bereits
+nach rechts versetzte Guide-View mit ihrem `frame`; dieser liegt im
+Koordinatensystem des Eltern-Views und verschob Linie und Schattierung beim
+Zeichnen ein zweites Mal.
+
+**Workaround (Patch 4n in `build.sh`):**
+
+- `TextLayoutManager.maximumWrapWidth` begrenzt die vorhandene
+  Viewport-Layoutbreite optional; der Viewport bleibt immer die harte
+  Obergrenze.
+- `SourceEditorConfiguration.Behavior.wrapAtColumn` transportiert das
+  Spaltenziel. Controller und Guide berechnen beide
+  `Spalte × (reale Schriftbreite + Kern)` ab dem tatsächlichen linken
+  Layout-Inset und reagieren auf Font-/Kernwechsel.
+- `ReformattingGuideView` zeichnet in lokalen `bounds`.
+- Liefert CoreText bei extrem schmaler Breite keinen Fortschritt, fällt der
+  Typesetter auf genau ein vollständiges zusammengesetztes Zeichen zurück.
+
+**Regressionen:** `SoftWrapLayoutTests` verwenden den realen
+`TextViewController`, beobachten dessen maximale Layoutbreite, Viewport-Minimum,
+Guide-Geometrie samt Gutter und Fontwechsel, rendern die versetzte Guide-View in
+ein Bitmap und prüfen Unicode-Fortschritt. `./selftest.sh softwrapmodes` prüft
+zusätzlich im echten Fenster Fensterbreite, Page Guide und feste Spalte sowie
+Resize, Zoom, Auswahl, Text, Dirty-Zustand und Undo-Stack.

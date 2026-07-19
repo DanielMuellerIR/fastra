@@ -71,7 +71,7 @@ signierte, aber nicht notarisierten Variante dient weiter `install.sh --no-notar
 Beim Version-Bump `app/Info.plist` mitziehen (siehe AGENTS.md), sonst zeigt die
 App eine veraltete Version.
 
-`build.sh` kapselt Xcode-Toolchain-Switch + fünfzehn Checkout-Patches
+`build.sh` kapselt Xcode-Toolchain-Switch + sechzehn Checkout-Patches
 (SwiftLint-Plugins aus, CodeEditSymbols Resources, CMD+F-Zombie-Kill,
 toter cursorPositions-Reconcile, verworfene Auto-Vervollständigung schließen,
 Gutter-Drag-Clamp, horizontaler Scrollbalken, Zeilenbreiten-Messung,
@@ -125,6 +125,19 @@ CodeEditSourceEditor-Artefakte. Regressions-Wächter: Unit-Test gegen die
 eingecheckten 4D-JSON-Farben sowie `./selftest.sh highlight4d`, der im echten
 Editor Methode (Farbe + bold/italic), Befehl, Prozessvariable und String in
 hellem und dunklem Theme beobachtet.
+Patch 4n (Soft-Wrap-Spalten und Seitenlinie, 2026-07-19): CodeEdit kann
+upstream nur an der Viewportbreite umbrechen. Fastra ergänzt eine optionale
+maximale Layoutbreite und `wrapAtColumn`; die effektive Breite bleibt das
+Minimum aus Spaltenziel und nutzbarem Viewport. Umbruch und vorhandene
+Reformatting-Linie verwenden dieselbe reale Schrift-, Kern- und Inset-Geometrie.
+Der Patch korrigiert außerdem die bisher halbierte Guide-Koordinate und zeichnet
+die versetzte Guide-View in lokalen Bounds. Bei extrem schmaler Breite erzwingt
+der Typesetter mindestens ein vollständiges Graphem pro Fragment.
+Regressions-Wächter: `SoftWrapLayoutTests` treiben echte CodeEdit-Controller,
+Layoutfragmente und Bitmap-Rendering; `./selftest.sh softwrapmodes` prüft im
+laufenden Fenster alle drei Ziele, Guide-Koordinate, Resize, Zoom und
+zustandsneutrales Reconcile. `ghosttext`, `hscroll`, `colsel` und `gutterdim`
+bleiben ergänzende Regressionen.
 
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 

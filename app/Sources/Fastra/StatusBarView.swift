@@ -323,6 +323,85 @@ struct StatusBarView: View {
         }
         Divider()
         Button {
+            workspace.selectSoftWrapTarget(.window)
+        } label: {
+            if workspace.softWrapTarget == .window {
+                Label("Fensterbreite", systemImage: "checkmark")
+            } else {
+                Text("Fensterbreite")
+            }
+        }
+        Button {
+            workspace.selectSoftWrapTarget(.pageGuide)
+        } label: {
+            if workspace.softWrapTarget == .pageGuide {
+                Label("Page Guide", systemImage: "checkmark")
+            } else {
+                Text("Page Guide")
+            }
+        }
+        Menu {
+            ForEach([72, 80, 100, 120], id: \.self) { column in
+                Button {
+                    workspace.setSoftWrapFixedColumn(column)
+                } label: {
+                    if workspace.softWrapTarget == .fixedColumn,
+                       workspace.softWrapFixedColumn == column {
+                        Label(L10n.format("Spalte %ld", column),
+                              systemImage: "checkmark")
+                    } else {
+                        Text(verbatim: L10n.format("Spalte %ld", column))
+                    }
+                }
+            }
+            Button("Andere …") {
+                if let column = SoftWrapColumnInput.prompt(
+                    title: L10n.string("Feste Umbruchbreite"),
+                    currentValue: workspace.softWrapFixedColumn
+                ) {
+                    workspace.setSoftWrapFixedColumn(column)
+                }
+            }
+        } label: {
+            if workspace.softWrapTarget == .fixedColumn {
+                Label(
+                    L10n.format("Feste Breite: Spalte %ld",
+                                workspace.softWrapFixedColumn),
+                    systemImage: "checkmark"
+                )
+            } else {
+                Text("Feste Breite")
+            }
+        }
+        Divider()
+        Toggle("Seitenlinie anzeigen", isOn: Binding(
+            get: { workspace.showPageGuide },
+            set: { workspace.setShowPageGuide($0) }
+        ))
+        Menu("Spalte der Seitenlinie") {
+            ForEach([72, 80, 100, 120], id: \.self) { column in
+                Button {
+                    workspace.setPageGuideColumn(column)
+                } label: {
+                    if workspace.pageGuideColumn == column {
+                        Label(L10n.format("Spalte %ld", column),
+                              systemImage: "checkmark")
+                    } else {
+                        Text(verbatim: L10n.format("Spalte %ld", column))
+                    }
+                }
+            }
+            Button("Andere …") {
+                if let column = SoftWrapColumnInput.prompt(
+                    title: L10n.string("Spalte der Seitenlinie"),
+                    currentValue: workspace.pageGuideColumn
+                ) {
+                    workspace.setPageGuideColumn(column)
+                }
+            }
+        }
+        Divider()
+        Button {
             workspace.resetSoftWrapToFactoryDefault()
         } label: {
             Text(verbatim: L10n.format(

@@ -185,6 +185,19 @@ Eine manuelle Sprachwahl bestimmt deshalb auch, welches Formatprofil gilt.
 Im Optionsmenü entfernt „Für … auf Werkseinstellung zurücksetzen“ nur die
 eigene Abweichung des aktuellen Formats.
 
+Als **Umbruchziel** stehen Fensterbreite, die Seitenlinie (Page Guide) und
+eine feste Spalte zur Wahl. Für feste Breiten gibt es die Vorgaben 72, 80,
+100 und 120 sowie eine freie Eingabe von Spalte 20 bis 500. Die Zielwahl
+schaltet Soft Wrap zugleich ein. Ist das Fenster schmaler als das gewählte
+Ziel, wird am Fensterrand umbrochen.
+
+Die **Seitenlinie** ist davon unabhängig einblendbar: im Soft-Wrap-
+Optionsmenü, unter **Darstellung → Seitenlinie anzeigen** oder in den
+Einstellungen unter **Editor**. Ihre appweite Spalte lässt sich dort
+ebenfalls wählen; Vorgabe ist 80. Beim Umbruch bevorzugt Fastra
+Wortgrenzen. Ein einzelnes langes Wort wird zeichenweise umbrochen, ohne
+ein Unicode-Zeichen zu zerlegen.
+
 Werkseitig ist Soft Wrap für **Reinen Text, Markdown, HTML und XML ein**.
 Für **4D, JSON, CSV und andere Code-/Konfigurationsformate ist es aus**.
 Ohne Soft Wrap bleiben lange Zeilen über den horizontalen Scrollbalken

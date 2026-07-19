@@ -68,7 +68,10 @@ let package = Package(
         ),
         .testTarget(
             name: "FastraTests",
-            dependencies: ["Fastra"]
+            dependencies: ["Fastra"],
+            resources: [
+                .copy("Support/Fixtures/FourDTheme")
+            ]
         ),
     ]
 )

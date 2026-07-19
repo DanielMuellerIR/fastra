@@ -1,0 +1,44 @@
+{
+  "4D": {
+    "commands": {
+      "color": "#B5D6DD",
+      "style": { "bold": true, "italic": false }
+    },
+    "comments": {
+      "color": "#74C5EA",
+      "style": { "bold": false, "italic": false }
+    },
+    "constants": {
+      "color": "#B700B8",
+      "style": { "bold": false, "italic": false }
+    },
+    "fields": {
+      "color": "#BAD80A",
+      "style": { "bold": false, "italic": false }
+    },
+    "keywords": {
+      "color": "#E1DC32",
+      "style": { "bold": true, "italic": false }
+    },
+    "local_variables": {
+      "color": "#00F9CC",
+      "style": { "bold": false, "italic": false }
+    },
+    "methods": {
+      "color": "#0F930A",
+      "style": { "bold": true, "italic": true }
+    },
+    "plain_text": {
+      "color": "#AEAEAE",
+      "style": { "bold": false, "italic": false }
+    },
+    "process_variables": {
+      "color": "#D7F692",
+      "style": { "bold": false, "italic": false }
+    },
+    "tables": {
+      "color": "#B74D00",
+      "style": { "bold": false, "italic": false }
+    }
+  }
+}

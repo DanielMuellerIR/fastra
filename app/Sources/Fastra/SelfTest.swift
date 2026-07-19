@@ -19,6 +19,7 @@ import AppKit
 import Darwin
 import PDFKit
 import WebKit
+import CodeEditSourceEditor
 // Echte Editor-Klasse von CodeEditSourceEditor (Modul CodeEditTextView).
 // Wird gebraucht, um im Sprung-Selbsttest die TATSÄCHLICHE Selektion des
 // Editors (`TextView.selectedRange()` + `.string`) zurückzulesen.
@@ -148,6 +149,7 @@ enum SelfTest {
         case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
         case "softwrapprofiles": waitForMainWindow { runSoftWrapProfilesTest() }
+        case "softwrapmodes": waitForMainWindow { runSoftWrapModesTest() }
         case "highlight": waitForMainWindow { runHighlightTest() }
         case "highlight4d": waitForMainWindow { runFourDHighlightTest() }
         case "completion4d": waitForMainWindow { runFourDCompletionTest() }
@@ -1563,6 +1565,303 @@ enum SelfTest {
         return nil
     }
 
+    // MARK: - -selftest softwrapmodes
+
+    /// Prüft die drei Umbruchziele am laufenden Editor. Der Test misst die
+    /// echte CodeEdit-Layoutbreite, die Seitenlinienposition und die
+    /// Fortschrittsgarantie der erzeugten Fragmente. Zielwechsel, Resize und
+    /// Font-Zoom dürfen dabei weder Text noch Auswahl, Dirty- oder Undo-Zustand
+    /// verändern.
+    private static func runSoftWrapModesTest() {
+        testLabel = "softwrapmodes"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard let mainWindow = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        }) else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+
+        waitForEditor(workspace: ws, window: mainWindow) { root, _ in
+            let tmp = FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "fastra-softwrapmodes-\(UUID().uuidString).md"
+                )
+            let content = "Start\t"
+                + String(repeating: "Wort ", count: 90)
+                + String(repeating: "Langtoken", count: 80)
+                + " 👨‍👩‍👧‍👦 Ende\n"
+            do {
+                try content.write(to: tmp, atomically: true, encoding: .utf8)
+            } catch {
+                finish(false, "Fixture nicht schreibbar: \(error.localizedDescription)")
+            }
+
+            ws.loadFile(at: tmp) { ok in
+                try? FileManager.default.removeItem(at: tmp)
+                guard ok else { finish(false, "Markdown-Fixture nicht ladbar") }
+                pollForSoftWrapEditor(root: root, tick: 0) { textView, _ in
+                    let selection = NSRange(location: 2, length: 7)
+                    textView.selectionManager.setSelectedRange(selection)
+                    let identity = ObjectIdentifier(textView)
+                    let textBefore = textView.string
+                    let dirtyBefore = ws.activeTab?.isDirty
+                    let canUndoBefore = textView.undoManager?.canUndo
+
+                    ws.setShowPageGuide(true)
+                    ws.setPageGuideColumn(40)
+                    ws.selectSoftWrapTarget(.window)
+                    pollSoftWrapWindowGeometry(
+                        ws: ws, root: root, guideColumn: 40, tick: 0
+                    ) {
+                        ws.setSoftWrapFixedColumn(40)
+                        pollSoftWrapGeometry(
+                            ws: ws, root: root, expectedTarget: .fixedColumn,
+                            wrapColumn: 40, guideColumn: 40,
+                            label: "feste Spalte", tick: 0
+                        ) { _ in
+                            ws.setPageGuideColumn(55)
+                            ws.selectSoftWrapTarget(.pageGuide)
+                            pollSoftWrapGeometry(
+                                ws: ws, root: root, expectedTarget: .pageGuide,
+                                wrapColumn: 55, guideColumn: 55,
+                                label: "Seitenlinie", tick: 0
+                            ) { pageGuideWidth in
+                                var narrowFrame = mainWindow.frame
+                                narrowFrame.size.width = 430
+                                ws.setSoftWrapFixedColumn(120)
+                                mainWindow.setFrame(narrowFrame, display: true)
+                                pollSoftWrapGeometry(
+                                    ws: ws, root: root,
+                                    expectedTarget: .fixedColumn,
+                                    wrapColumn: 120, guideColumn: 55,
+                                    requireViewportClamp: true,
+                                    label: "Viewport-Obergrenze", tick: 0
+                                ) { _ in
+                                    ws.setPageGuideColumn(55)
+                                    ws.selectSoftWrapTarget(.pageGuide)
+                                    mainWindow.setContentSize(
+                                        NSSize(width: 900, height: 600)
+                                    )
+                                    // Das Resize erst vollständig durch SwiftUI
+                                    // reconciliieren lassen. Würden wir die
+                                    // Controller-Schrift vorher ändern, spielt das
+                                    // anschließende View-Update absichtlich die
+                                    // aktuelle App-Zoom-Konfiguration wieder ein.
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                                        guard let zoomController =
+                                            sourceEditorController(for: textView) else {
+                                            finish(false, "Controller vor Font-Zoom verloren")
+                                        }
+                                        var zoomed = zoomController.configuration
+                                        zoomed.appearance.font =
+                                            .monospacedSystemFont(
+                                                ofSize: 20, weight: .regular
+                                            )
+                                        zoomController.configuration = zoomed
+                                        pollSoftWrapGeometry(
+                                            ws: ws, root: root,
+                                            expectedTarget: .pageGuide,
+                                            wrapColumn: 55, guideColumn: 55,
+                                            minimumConfiguredWidth: pageGuideWidth,
+                                            label: "Font-Zoom", tick: 0
+                                        ) { _ in
+                                            guard let current =
+                                                    editorTextView(in: root) as? TextView,
+                                                  ObjectIdentifier(current) == identity,
+                                                  current.string == textBefore,
+                                                  current.selectedRange() == selection,
+                                                  ws.activeTab?.content == textBefore,
+                                                  ws.activeTab?.isDirty == dirtyBefore,
+                                                  current.undoManager?.canUndo == canUndoBefore else {
+                                                finish(
+                                                    false,
+                                                    "Zielwechsel/Resize/Zoom veränderten "
+                                                        + "Editoridentität, Text, Auswahl, "
+                                                        + "Dirty- oder Undo-Zustand"
+                                                )
+                                            }
+                                            let fragments = Array(
+                                                current.layoutManager.lineStorage
+                                            ).flatMap {
+                                                Array($0.data.lineFragments)
+                                            }
+                                            guard fragments.count > 1,
+                                                  fragments.allSatisfy({
+                                                      $0.range.length > 0
+                                                  }) else {
+                                                finish(
+                                                    false,
+                                                    "Wort-/Langtoken-/Unicode-Umbruch "
+                                                        + "erzeugte leere Fragmente"
+                                                )
+                                            }
+                                            finish(
+                                                true,
+                                                "Fenster, Seitenlinie und feste Spalte "
+                                                    + "reagieren auf Resize/Zoom; Textzustand "
+                                                    + "und Unicode-Fragmente bleiben intakt"
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Wartet nach einem Dateiwechel, bis TextView und der zugehörige
+    /// CodeEdit-Controller gemeinsam in der Responderkette angekommen sind.
+    private static func pollForSoftWrapEditor(
+        root: NSView, tick: Int,
+        completion: @escaping (TextView, TextViewController) -> Void
+    ) {
+        if let textView = editorTextView(in: root) as? TextView,
+           let controller = sourceEditorController(for: textView) {
+            completion(textView, controller)
+            return
+        }
+        if tick >= 80 {
+            finish(false, "TextViewController nicht binnen 8 s erreichbar")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollForSoftWrapEditor(
+                root: root, tick: tick + 1, completion: completion
+            )
+        }
+    }
+
+    private static func pollSoftWrapWindowGeometry(
+        ws: Workspace, root: NSView, guideColumn: Int, tick: Int,
+        completion: @escaping () -> Void
+    ) {
+        if let textView = editorTextView(in: root) as? TextView,
+           let controller = sourceEditorController(for: textView),
+           let guide = findView(named: "ReformattingGuideView", in: root) {
+            textView.layoutManager.layoutLines()
+            let fontWidth = (" " as NSString).size(
+                withAttributes: [.font: controller.font]
+            ).width
+            let characterWidth = max(fontWidth + textView.kern, 1)
+            let expectedGuideWidth = CGFloat(guideColumn) * characterWidth
+            let guideOffset = guide.frame.minX
+                - textView.layoutManager.edgeInsets.left
+            let fragments = Array(textView.layoutManager.lineStorage).flatMap {
+                Array($0.data.lineFragments)
+            }
+            if ws.softWrapEnabled,
+               ws.softWrapTarget == .window,
+               ws.effectiveSoftWrapColumn == nil,
+               ws.pageGuideColumn == guideColumn,
+               ws.showPageGuide,
+               textView.wrapLines,
+               textView.layoutManager.maximumWrapWidth == nil,
+               !guide.isHidden,
+               abs(guideOffset - expectedGuideWidth) < 1.1,
+               fragments.count > 1 {
+                completion()
+                return
+            }
+        }
+        if tick >= 80 {
+            finish(
+                false,
+                "Fensterbreite nicht binnen 8 s korrekt: "
+                    + "target=\(ws.softWrapTarget.rawValue), "
+                    + "column=\(String(describing: ws.effectiveSoftWrapColumn))"
+            )
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollSoftWrapWindowGeometry(
+                ws: ws, root: root, guideColumn: guideColumn,
+                tick: tick + 1, completion: completion
+            )
+        }
+    }
+
+    private static func pollSoftWrapGeometry(
+        ws: Workspace, root: NSView,
+        expectedTarget: SoftWrapTarget,
+        wrapColumn: Int, guideColumn: Int,
+        requireViewportClamp: Bool = false,
+        minimumConfiguredWidth: CGFloat? = nil,
+        label: String, tick: Int,
+        completion: @escaping (CGFloat) -> Void
+    ) {
+        if let textView = editorTextView(in: root) as? TextView,
+           let controller = sourceEditorController(for: textView),
+           let configuredWidth = textView.layoutManager.maximumWrapWidth,
+           let guide = findView(named: "ReformattingGuideView", in: root) {
+            textView.layoutManager.layoutLines()
+            let fontWidth = (" " as NSString).size(
+                withAttributes: [.font: controller.font]
+            ).width
+            let characterWidth = max(fontWidth + textView.kern, 1)
+            let expectedWrapWidth = CGFloat(wrapColumn) * characterWidth
+            let expectedGuideWidth = CGFloat(guideColumn) * characterWidth
+            let guideOffset = guide.frame.minX
+                - textView.layoutManager.edgeInsets.left
+            let widthMatches = abs(configuredWidth - expectedWrapWidth) < 1
+            let guideMatches = abs(guideOffset - expectedGuideWidth) < 1.1
+            let clampMatches = !requireViewportClamp
+                || textView.layoutManager.maxLineLayoutWidth < configuredWidth
+            let zoomMatches = minimumConfiguredWidth.map {
+                configuredWidth > $0
+            } ?? true
+            if ws.softWrapEnabled,
+               ws.softWrapTarget == expectedTarget,
+               ws.effectiveSoftWrapColumn == wrapColumn,
+               ws.pageGuideColumn == guideColumn,
+               ws.showPageGuide,
+               textView.wrapLines,
+               !guide.isHidden,
+               widthMatches, guideMatches, clampMatches, zoomMatches {
+                completion(configuredWidth)
+                return
+            }
+        }
+        if tick >= 80 {
+            let textView = editorTextView(in: root) as? TextView
+            finish(
+                false,
+                "\(label) nicht binnen 8 s korrekt: "
+                    + "target=\(ws.softWrapTarget.rawValue), "
+                    + "column=\(String(describing: ws.effectiveSoftWrapColumn)), "
+                    + "configured=\(String(describing: textView?.layoutManager.maximumWrapWidth)), "
+                    + "layout=\(String(describing: textView?.layoutManager.maxLineLayoutWidth))"
+            )
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollSoftWrapGeometry(
+                ws: ws, root: root, expectedTarget: expectedTarget,
+                wrapColumn: wrapColumn, guideColumn: guideColumn,
+                requireViewportClamp: requireViewportClamp,
+                minimumConfiguredWidth: minimumConfiguredWidth,
+                label: label, tick: tick + 1, completion: completion
+            )
+        }
+    }
+
+    private static func sourceEditorController(
+        for textView: TextView
+    ) -> TextViewController? {
+        var responder: NSResponder? = textView
+        var remaining = 50
+        while let current = responder, remaining > 0 {
+            if let controller = current as? TextViewController {
+                return controller
+            }
+            responder = current.nextResponder
+            remaining -= 1
+        }
+        return nil
+    }
+
     /// Belegt END-TO-END, dass der Editor Syntax-Highlighting wirklich FÄRBT:
     /// eine Python-Datei mit Keyword/String/Kommentar wird in einen Tab
     /// geladen; danach müssen im ECHTEN Editor-TextStorage mehrere
@@ -2359,7 +2658,7 @@ enum SelfTest {
         }
     }
 
-    /// Erwartete 4D-Vordergrundfarben (aus docs/wunschpaket-2026-07/*.json).
+    /// Erwartete 4D-Vordergrundfarben aus den öffentlichen Test-Fixtures.
     private static func fourDExpectedColors(dark: Bool) -> [(String, Int, Int, Int)] {
         dark
             ? [("Befehl", 0xB5, 0xD6, 0xDD), ("Keyword", 0xE1, 0xDC, 0x32),

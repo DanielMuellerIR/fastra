@@ -206,7 +206,9 @@ aktiv; der Fehler erscheint dezent in der Leiste.
 - Der sichtbare Soft-Wrap-Schalter daneben speichert Ein/Aus pro effektivem
   Format und synchronisiert alle offenen Dokumente dieses Formats. Reiner
   Text, Markdown, HTML und XML starten umbrochen; Code- und
-  Konfigurationsformate ohne Umbruch und mit horizontalem Scrollen.
+  Konfigurationsformate ohne Umbruch und mit horizontalem Scrollen. Als
+  Umbruchziel sind Fensterbreite, eine appweite Seitenlinie oder eine feste
+  Spalte wählbar; die Seitenlinie lässt sich unabhängig einblenden.
 
 ### Syntax-Highlighting
 

@@ -214,16 +214,16 @@ func fourD_captureMapping() {
     #expect(FourDHighlightProvider.capture(for: .keyword) == .keyword)
 }
 
-/// Liest eine Farbkategorie aus den eingecheckten 4D-Farbvorgaben
-/// (docs/wunschpaket-2026-07/…json) — die Themes müssen exakt daraus
-/// abgeleitet sein (nur Vordergrundfarben und Bold/Italic).
+/// Liest eine Farbkategorie aus den eingecheckten 4D-Theme-Fixtures.
+/// Die Themes müssen exakt daraus abgeleitet sein (nur Vordergrundfarben
+/// und Bold/Italic).
 private func themeJSON(_ name: String) throws -> [String: Any] {
-    let url = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()   // → FastraTests/
-        .deletingLastPathComponent()   // → Tests/
-        .deletingLastPathComponent()   // → app/
-        .deletingLastPathComponent()   // → Repo-Root
-        .appendingPathComponent("docs/wunschpaket-2026-07/\(name)")
+    let parts = name.split(separator: ".", maxSplits: 1).map(String.init)
+    let url = try #require(Bundle.module.url(
+        forResource: parts[0],
+        withExtension: parts.count == 2 ? parts[1] : nil,
+        subdirectory: "FourDTheme"
+    ))
     let data = try Data(contentsOf: url)
     let root = try JSONSerialization.jsonObject(with: data) as! [String: Any]
     return root["4D"] as! [String: Any]

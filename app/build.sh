@@ -565,6 +565,302 @@ PYEOF
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4n. CodeEditTextView + CodeEditSourceEditor — feste Soft-Wrap-Spalten und
+# exakte Page-Guide-Geometrie.
+#
+# Upstream kennt nur Umbruch an der Viewportbreite. Die vorhandene Guide-Linie
+# halbiert ausserdem Zeichenbreite und Text-Inset und liegt dadurch nicht an der
+# konfigurierten Textspalte. Fastra ergänzt eine optionale maximale
+# Umbruchbreite in Punkten, eine öffentliche `wrapAtColumn`-Konfiguration und
+# eine gemeinsame Spaltengeometrie aus echter Editor-Schrift + Kern. Der
+# Viewport bleibt die harte Obergrenze. Zusätzlich garantiert der
+# Typesetter-Patch bei extrem schmalen Breiten mindestens ein vollständiges
+# Graphem pro Fragment, damit CoreTexts 0-Ergebnis keine Endlosschleife erzeugt.
+CETV_MANAGER="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextLayoutManager/TextLayoutManager.swift"
+CETV_BREAK="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/Extensions/CTTypesetter+SuggestLineBreak.swift"
+CESE_BEHAVIOR="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/SourceEditorConfiguration/SourceEditorConfiguration+Behavior.swift"
+CESE_APPEARANCE="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/SourceEditorConfiguration/SourceEditorConfiguration+Appearance.swift"
+CESE_CONTROLLER="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/Controller/TextViewController.swift"
+CESE_GUIDE="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/ReformattingGuide/ReformattingGuideView.swift"
+if ! grep -q 'Fastra-Patch: optionale feste Umbruchbreite' "$CETV_MANAGER" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: In extrem schmalen Viewports' "$CETV_BREAK" 2>/dev/null \
+   || ! grep -q 'wrapAtColumn' "$CESE_BEHAVIOR" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: dieselbe echte Spaltengeometrie' "$CESE_GUIDE" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: In lokalen View-Koordinaten' "$CESE_GUIDE" 2>/dev/null; then
+  echo "→ Patche CodeEdit (feste Soft-Wrap-Spalten + exakte Seitenlinie)"
+  chmod u+w "$CETV_MANAGER" "$CETV_BREAK" "$CESE_BEHAVIOR" \
+    "$CESE_APPEARANCE" "$CESE_CONTROLLER" "$CESE_GUIDE"
+  /usr/bin/python3 - "$CETV_MANAGER" "$CETV_BREAK" "$CESE_BEHAVIOR" \
+    "$CESE_APPEARANCE" "$CESE_CONTROLLER" "$CESE_GUIDE" <<'PYEOF'
+import sys
+
+manager, line_break, behavior, appearance, controller, guide = sys.argv[1:]
+
+def replace_once(path, marker, old, new):
+    src = open(path).read()
+    if marker in src:
+        return
+    if old not in src:
+        raise SystemExit(f"{path}: Quelltext hat sich geaendert — Patch 4n pruefen")
+    open(path, "w").write(src.replace(old, new, 1))
+
+replace_once(
+    manager,
+    "Fastra-Patch: optionale feste Umbruchbreite",
+    '''    public var wrapLines: Bool {
+        didSet {
+            setNeedsLayout()
+        }
+    }''',
+    '''    public var wrapLines: Bool {
+        didSet {
+            setNeedsLayout()
+        }
+    }
+    // Fastra-Patch: optionale feste Umbruchbreite in Punkten. `nil` behaelt
+    // das Upstream-Verhalten an der Viewportbreite.
+    public var maximumWrapWidth: CGFloat? {
+        didSet {
+            setNeedsLayout()
+        }
+    }'''
+)
+replace_once(
+    manager,
+    "guard let maximumWrapWidth",
+    '''    public var wrapLinesWidth: CGFloat {
+        (delegate?.textViewportSize().width ?? .greatestFiniteMagnitude) - edgeInsets.horizontal
+    }''',
+    '''    public var wrapLinesWidth: CGFloat {
+        let viewportWidth =
+            (delegate?.textViewportSize().width ?? .greatestFiniteMagnitude)
+            - edgeInsets.horizontal
+        guard let maximumWrapWidth, maximumWrapWidth > 0 else {
+            return viewportWidth
+        }
+        return min(viewportWidth, maximumWrapWidth)
+    }'''
+)
+
+replace_once(
+    line_break,
+    "Fastra-Patch: In extrem schmalen Viewports",
+    '''        switch strategy {
+        case .character:
+            return suggestLineBreakForCharacter(
+                string: string,
+                startingOffset: subrange.location,
+                constrainingWidth: constrainingWidth
+            )
+        case .word:
+            return suggestLineBreakForWord(
+                string: string,
+                subrange: subrange,
+                constrainingWidth: constrainingWidth
+            )
+        }''',
+    '''        let proposedBreak = switch strategy {
+        case .character:
+            suggestLineBreakForCharacter(
+                string: string,
+                startingOffset: subrange.location,
+                constrainingWidth: constrainingWidth
+            )
+        case .word:
+            suggestLineBreakForWord(
+                string: string,
+                subrange: subrange,
+                constrainingWidth: constrainingWidth
+            )
+        }
+        guard proposedBreak <= subrange.location,
+              !subrange.isEmpty,
+              subrange.location < string.length else {
+            return proposedBreak
+        }
+        // Fastra-Patch: In extrem schmalen Viewports muss mindestens ein
+        // vollstaendiges Graphem vorankommen. Sonst liefert CoreText 0 und
+        // die Fragment-Schleife kann endlos auf derselben Position bleiben.
+        let cluster = (string.string as NSString)
+            .rangeOfComposedCharacterSequence(at: subrange.location)
+        return min(cluster.max, subrange.max)'''
+)
+
+replace_once(
+    behavior,
+    "public var wrapAtColumn",
+    '''        /// The column to reformat at.
+        public var reformatAtColumn: Int = 80''',
+    '''        /// The column to reformat at.
+        public var reformatAtColumn: Int = 80
+
+        /// Optional column at which soft wrapping should occur. `nil` wraps
+        /// at the visible editor width.
+        public var wrapAtColumn: Int?'''
+)
+replace_once(
+    behavior,
+    "wrapAtColumn: Int? = nil",
+    '''            indentOption: IndentOption = .spaces(count: 4),
+            reformatAtColumn: Int = 80''',
+    '''            indentOption: IndentOption = .spaces(count: 4),
+            reformatAtColumn: Int = 80,
+            wrapAtColumn: Int? = nil'''
+)
+replace_once(
+    behavior,
+    "self.wrapAtColumn = wrapAtColumn",
+    '''            self.indentOption = indentOption
+            self.reformatAtColumn = reformatAtColumn''',
+    '''            self.indentOption = indentOption
+            self.reformatAtColumn = reformatAtColumn
+            self.wrapAtColumn = wrapAtColumn'''
+)
+replace_once(
+    behavior,
+    "oldConfig?.wrapAtColumn",
+    '''            if oldConfig?.reformatAtColumn != reformatAtColumn {
+                controller.reformattingGuideView.column = reformatAtColumn
+                controller.reformattingGuideView.updatePosition(in: controller)
+                controller.view.updateConstraintsForSubtreeIfNeeded()
+            }''',
+    '''            if oldConfig?.reformatAtColumn != reformatAtColumn {
+                controller.reformattingGuideView.column = reformatAtColumn
+                controller.reformattingGuideView.updatePosition(in: controller)
+                controller.view.updateConstraintsForSubtreeIfNeeded()
+            }
+
+            if oldConfig?.wrapAtColumn != wrapAtColumn {
+                controller.updateFastraColumnGeometry()
+            }'''
+)
+
+replace_once(
+    controller,
+    "public var wrapAtColumn",
+    '''    /// The column at which to show the reformatting guide
+    public var reformatAtColumn: Int { configuration.behavior.reformatAtColumn }''',
+    '''    /// The column at which to show the reformatting guide
+    public var reformatAtColumn: Int { configuration.behavior.reformatAtColumn }
+
+    /// Optional fixed soft-wrap column; `nil` uses the viewport width.
+    public var wrapAtColumn: Int? { configuration.behavior.wrapAtColumn }'''
+)
+
+replace_once(
+    appearance,
+    "controller.updateFastraColumnGeometry()",
+    '''            if needsHighlighterInvalidation {
+                controller.highlighter?.invalidate()
+            }''',
+    '''            if oldConfig?.font != font || oldConfig?.letterSpacing != letterSpacing {
+                controller.updateFastraColumnGeometry()
+            }
+
+            if needsHighlighterInvalidation {
+                controller.highlighter?.invalidate()
+            }'''
+)
+
+replace_once(
+    guide,
+    "Fastra-Patch: dieselbe echte Spaltengeometrie",
+    '''        // Calculate the x position based on the font's character width and column number
+        let xPosition = (
+            CGFloat(column) * (controller.font.charWidth / 2) // Divide by 2 to account for coordinate system
+            + (controller.textViewInsets.left / 2)
+        )''',
+    '''        // Fastra-Patch: dieselbe echte Spaltengeometrie wie der Soft Wrap.
+        // Die fruehere Halbierung von Zeichenbreite und Inset lag sichtbar
+        // links von der konfigurierten Textspalte.
+        let xPosition = controller.textView.layoutManager.edgeInsets.left
+            + controller.fastraWidth(forColumn: column)'''
+)
+replace_once(
+    guide,
+    "let documentWidth = max(controller.textView.frame.width",
+    '''        let maxWidth = max(0, contentSize.width - xPosition)''',
+    '''        let documentWidth = max(controller.textView.frame.width, contentSize.width)
+        let maxWidth = max(0, documentWidth - xPosition)'''
+)
+replace_once(
+    guide,
+    "Fastra-Patch: In lokalen View-Koordinaten zeichnen",
+    '''        // Draw the vertical line (accounting for inverted Y coordinate system)
+        lineColor.setStroke()
+        let linePath = NSBezierPath()
+        linePath.move(to: NSPoint(x: frame.minX, y: frame.maxY))  // Start at top
+        linePath.line(to: NSPoint(x: frame.minX, y: frame.minY))  // Draw down to bottom
+        linePath.lineWidth = 1.0
+        linePath.stroke()
+
+        // Draw the shaded area to the right of the line
+        shadedColor.setFill()
+        let shadedRect = NSRect(
+            x: frame.minX,
+            y: frame.minY,
+            width: frame.width,
+            height: frame.height
+        )''',
+    '''        // Fastra-Patch: In lokalen View-Koordinaten zeichnen. `frame` liegt
+        // im Koordinatensystem des Eltern-Views und verschob Linie sowie
+        // Schattierung ein zweites Mal nach rechts aus dem sichtbaren Bereich.
+        lineColor.setStroke()
+        let linePath = NSBezierPath()
+        linePath.move(to: NSPoint(x: bounds.minX, y: bounds.maxY))
+        linePath.line(to: NSPoint(x: bounds.minX, y: bounds.minY))
+        linePath.lineWidth = 1.0
+        linePath.stroke()
+
+        // Draw the shaded area to the right of the line
+        shadedColor.setFill()
+        let shadedRect = NSRect(
+            x: bounds.minX,
+            y: bounds.minY,
+            width: bounds.width,
+            height: bounds.height
+        )'''
+)
+src = open(guide).read()
+if "func updateFastraColumnGeometry()" not in src:
+    src += '''
+
+extension TextViewController {
+    /// Breite einer Textspalte mit der tatsaechlichen Editor-Schrift und
+    /// Zeichenweite. Zoom und Fontwechsel laufen beide ueber diese Quelle.
+    func fastraWidth(forColumn column: Int) -> CGFloat {
+        let characterWidth = max(font.charWidth + textView.kern, 1)
+        return CGFloat(max(column, 1)) * characterWidth
+    }
+
+    /// Haelt feste Umbruchbreite und Guide nach Konfigurationsaenderungen
+    /// synchron. Der Viewport bleibt weiterhin die harte Obergrenze.
+    func updateFastraColumnGeometry() {
+        textView.layoutManager.maximumWrapWidth =
+            wrapAtColumn.map { fastraWidth(forColumn: $0) }
+        reformattingGuideView?.updatePosition(in: self)
+        textView.updateFrameIfNeeded()
+    }
+}
+'''
+    open(guide, "w").write(src)
+PYEOF
+  if ! grep -q 'Fastra-Patch: optionale feste Umbruchbreite' "$CETV_MANAGER" \
+     || ! grep -q 'Fastra-Patch: In extrem schmalen Viewports' "$CETV_BREAK" \
+     || ! grep -q 'wrapAtColumn' "$CESE_BEHAVIOR" \
+     || ! grep -q 'Fastra-Patch: dieselbe echte Spaltengeometrie' "$CESE_GUIDE" \
+     || ! grep -q 'Fastra-Patch: In lokalen View-Koordinaten' "$CESE_GUIDE"; then
+    echo "✗ FEHLER: Soft-Wrap-Spalten-Patch hat NICHT vollständig gegriffen." >&2
+    exit 1
+  fi
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 

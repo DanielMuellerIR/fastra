@@ -177,6 +177,18 @@ A manual language choice therefore also selects the format profile. In the
 options menu, “Reset … to Factory Default” removes only the custom override
 for the current format.
 
+The available **wrap targets** are the window width, the page guide, and a
+fixed column. Fixed-width presets are 72, 80, 100, and 120; a custom value
+can be entered from column 20 through 500. Choosing a target also turns
+Soft Wrap on. If the window is narrower than the chosen target, wrapping
+falls back to the window edge.
+
+The **page guide** can be shown independently through the Soft Wrap options,
+**View → Show Page Guide**, or **Settings → Editor**. Its app-wide column
+is configured there as well and defaults to 80. Fastra prefers word
+boundaries when wrapping. A single long word falls back to character
+boundaries without splitting a Unicode character.
+
 The factory default is on for **Plain Text, Markdown, HTML, and XML**. It is
 off for **4D, JSON, CSV, and other code/configuration formats**. With Soft
 Wrap off, long lines remain reachable through the horizontal scroll bar.

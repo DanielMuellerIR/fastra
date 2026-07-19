@@ -8,15 +8,12 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 - **Soft Wrap, Rechteckauswahl und Einrückung** (beschlossen 2026-07-19):
   Umsetzung in vier getrennten Etappen mit eigener Verifikation und Version.
-  **Umgesetzt: Etappe 1 (Formatprofile und Fußzeilen-Bedienung, v1.40.0).**
-  Offen bleiben Etappe 2 (Umbruchziele/Page Guide), Etappe 3
-  (Rechteckauswahl unter Soft Wrap) und Etappe 4
+  **Umgesetzt: Etappe 1 (Formatprofile und Fußzeilen-Bedienung, v1.40.0)
+  und Etappe 2 (Umbruchziele und Seitenlinie, v1.41.0).**
+  Offen bleiben Etappe 3 (Rechteckauswahl unter Soft Wrap) und Etappe 4
   (Einrückungsprofile/intelligentes Einfügen/Folgezeilen-Einrückung).
-  Die eigenständigen `/goal`-Prompts und gemeinsamen Entscheidungen stehen
-  in `docs/soft-wrap-2026-07/`.
 - **Wunschpaket 3** (beschlossen 2026-07-18):
-  Spezifikation in `docs/wunschpaket-2026-07c/goal-vorschlag.md` —
-  acht Etappen. **Umgesetzt: Etappe 1 (Diff-Kern & Datei-Diff
+  **Alle acht Etappen umgesetzt:** Etappe 1 (Diff-Kern & Datei-Diff
   dual-pane, v1.32.0), Etappe 2 (Git-Diff auf gemeinsamem Renderer,
   v1.33.0), Etappe 3 (Dateinamens-Filter in der Projektansicht,
   v1.34.0), Etappe 4 (tool4d-Ersteinrichtungshilfe, v1.35.0),
@@ -37,15 +34,11 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 - **Wunschpaket 2** (beschlossen 2026-07-18): Alle fünf Etappen sind mit
   v1.27.0–v1.31.0 umgesetzt (Navigation & Chrome, Suchdialog, Sprachmenü
   mit wählbarem 4D, Hilfe samt `help-audit`-Mechanik, assistiertes
-  Markdown-Schreiben mit Bild-Paste/-Drop). Spezifikation:
-  `docs/wunschpaket-2026-07b/goal-vorschlag.md`. Bewusst offen: Echtes
+  Markdown-Schreiben mit Bild-Paste/-Drop). Bewusst offen: Echtes
   WYSIWYG („Schreibmodus“) ist ausgeklammert — Daniel entscheidet nach
-  gelebter Erfahrung mit Etappe 5 separat; Entscheidungsvorlage in
-  `docs/wunschpaket-2026-07b/goal-stufe-b-wysiwyg.md`, nur auf
-  ausdrücklichen Auftrag.
+  gelebter Erfahrung mit Etappe 5 separat und nur auf ausdrücklichen Auftrag.
 - **Wunschpaket Juli 2026** (beschlossen 2026-07-17): Die sechs Etappen sind
-  mit v1.20.0–v1.25.0 umgesetzt (Spezifikation samt 4D-Farbvorgaben liegt in
-  `docs/wunschpaket-2026-07/`). Bewusst offen geblieben:
+  mit v1.20.0–v1.25.0 umgesetzt. Bewusst offen geblieben:
   - **4D-Farbdetails:** Underline (Konstanten) kennt das CESE-Attributmodell
     nicht; `errors`/`plug_ins`/`member` aus den Farbvorgaben entfallen
     mangels Analyse bzw. Unterscheidbarkeit (siehe Slot-Mapping in
@@ -70,9 +63,8 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   Ein Fail in EINEM Lauf ist hier kein Beweis.
 
 - **Datei-Drag vom Dokument-Tab:** Mit dem titellosen Fensterchrome entfiel
-  das Ziehen der Datei aus der Titelzeile (Proxy-Icon) ersatzlos; Befund in
-  `docs/wunschpaket-2026-07b/fenstertitel-befund.md`. Möglicher Ersatz wäre
-  ein `.onDrag` der Datei-URL direkt am Tab — nur bei echtem Bedarf.
+  das Ziehen der Datei aus der Titelzeile (Proxy-Icon) ersatzlos. Möglicher
+  Ersatz wäre ein `.onDrag` der Datei-URL direkt am Tab — nur bei echtem Bedarf.
 
 ## Später – nur auf ausdrückliche Anfrage
 

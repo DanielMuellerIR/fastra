@@ -32,6 +32,7 @@ struct SettingsView: View {
     @AppStorage(GitPreferencesStore.Keys.prune) private var gitFetchPrune = false
     @AppStorage(GitPreferencesStore.Keys.pullStrategy)
     private var gitPullStrategy = GitPullStrategy.unselected.rawValue
+    @StateObject private var editorProfiles = SoftWrapProfileStore()
 
     init() {
         // AppStorage kennt die typisierte Migration/Intervallbegrenzung nicht.
@@ -91,6 +92,26 @@ struct SettingsView: View {
                 Stepper("Dokumentschrift: \(documentZoomLevel > 0 ? "+" : "")\(documentZoomLevel)", value: $documentZoomLevel, in: DocumentZoom.minimumLevel...DocumentZoom.maximumLevel)
                 Text("⌘−/⌘+/⌘0 skaliert die Oberfläche. ⇧⌘−/⇧⌘+/⇧⌘0 ändert nur die Dokument-Schrift.")
                     .fastraFont(.small).foregroundColor(.secondary)
+            }
+
+            Section("Editor") {
+                Toggle("Seitenlinie anzeigen", isOn: Binding(
+                    get: { editorProfiles.showPageGuide },
+                    set: { editorProfiles.setShowPageGuide($0) }
+                ))
+                Stepper(
+                    L10n.format("Seitenlinie: Spalte %ld",
+                                editorProfiles.pageGuideColumn),
+                    value: Binding(
+                        get: { editorProfiles.pageGuideColumn },
+                        set: { editorProfiles.setPageGuideColumn($0) }
+                    ),
+                    in: SoftWrapProfileStore.validColumnRange
+                )
+                Text("Die Seitenlinie ist eine appweite Orientierung. Soft Wrap kann pro Format unabhängig an Fensterbreite, Seitenlinie oder einer festen Spalte umbrechen.")
+                    .fastraFont(.small)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Section("Markdown-Vorschau") {
