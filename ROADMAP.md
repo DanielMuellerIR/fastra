@@ -6,6 +6,12 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Jetzt
 
+- **Soft Wrap, Rechteckauswahl und Einrückung** (beschlossen 2026-07-19):
+  Umsetzung in vier getrennten Etappen mit eigener Verifikation und Version:
+  Formatprofile/Fußzeilen-Bedienung, Umbruchziele/Page Guide,
+  Rechteckauswahl unter Soft Wrap sowie Einrückungsprofile/intelligentes
+  Einfügen/Folgezeilen-Einrückung. Die eigenständigen `/goal`-Prompts und
+  gemeinsamen Entscheidungen stehen in `docs/soft-wrap-2026-07/`.
 - **Wunschpaket 3** (beschlossen 2026-07-18):
   Spezifikation in `docs/wunschpaket-2026-07c/goal-vorschlag.md` —
   acht Etappen. **Umgesetzt: Etappe 1 (Diff-Kern & Datei-Diff
