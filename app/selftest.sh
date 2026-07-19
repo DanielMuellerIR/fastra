@@ -15,7 +15,7 @@
 #      „Fenster wiederherstellen?"-Dialog nach einem abgebrochenen Lauf.
 #   3. Bei gesperrtem Bildschirm sind Fenster-Tests nicht aussagekräftig —
 #      der Runner prüft das vorab und lässt dann nur `search` zu.
-#   4. Die Tests `cmdw`, `newwindow` und `completion4d` brauchen ECHTEN Fenster-Fokus. macOS 26 verweigert
+#   4. Die Tests `cmdw`, `newwindow`, `completion4d` und `help` brauchen ECHTEN Fenster-Fokus. macOS 26 verweigert
 #      einem im Hintergrund gestarteten Prozess die Selbst-Aktivierung
 #      (kooperative Aktivierung) — der Runner holt die App deshalb von
 #      außen per System Events nach vorn. Arbeitet gleichzeitig jemand
@@ -41,7 +41,7 @@ cd "$(dirname "$0")"
 
 APP_BIN=".build/debug/Fastra.app/Contents/MacOS/Fastra"
 APP_BUNDLE=".build/debug/Fastra.app"
-ALL_TESTS=(windows newwindow welcomenew multisearch findbar fields tabswitch highlight highlight4d completion4d previewrender xpath markdown markdownjump markdownappearance jump ghosttext replaceall pilldrop navmatch colsel gutterdim sidebarheader sidebarfilter filediff tool4dhint tool4dlsp gototarget searchmark help mdassist search project localization updates git gitactions filemodes selsearch wildcard openscope contrast cmdw)
+ALL_TESTS=(windows newwindow welcomenew multisearch findbar fields tabswitch softwrapprofiles highlight highlight4d completion4d previewrender xpath markdown markdownjump markdownappearance jump ghosttext hscroll replaceall pilldrop navmatch colsel gutterdim sidebarheader sidebarfilter filediff tool4dhint tool4dlsp gototarget searchmark help mdassist search project localization updates git gitactions filemodes selsearch wildcard openscope contrast cmdw)
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
 WINDOWLESS_TESTS=(search project localization updates git gitactions filemodes selsearch wildcard openscope tool4dlsp)
 # Pro Test max. Wartezeit in Sekunden, bis die SELFTEST-Zeile da sein muss.
@@ -133,7 +133,7 @@ for t in "${TESTS[@]}"; do
     kill_leftovers
     errfile="$(mktemp /tmp/fastra-selftest-${t}.XXXXXX)"
 
-    if [[ "$t" == "cmdw" || "$t" == "newwindow" || "$t" == "welcomenew" || "$t" == "completion4d" ]]; then
+    if [[ "$t" == "cmdw" || "$t" == "newwindow" || "$t" == "welcomenew" || "$t" == "completion4d" || "$t" == "help" ]]; then
         # Diese Tests prüfen echte Tastatur- oder Mausbedienung (bei
         # `completion4d` ⌃Leertaste, Pfeil und Klick) und brauchen daher
         # Fokus → via `open` starten und von außen aktivieren. Der

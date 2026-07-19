@@ -46,7 +46,7 @@ enum CustomLanguageRegistry {
     /// 4D-Methoden (.4dm). Die Projekt-Begleitdateien `.4DProject`/`.4DForm`
     /// (JSON) und `.4DCatalog`/`.4DSettings` (XML) gehören bewusst NICHT
     /// hierher — das sind echte JSON-/XML-Dateien und behalten ihr Routing
-    /// in `EditorView.grammarForSpecialExtension`.
+    /// in `DocumentFormatResolver`.
     static let fourD = CustomLanguage(
         id: "fastra.lang.4d",
         displayName: "4D",

@@ -172,6 +172,25 @@ am Inhalt. Der Sprach-Chip in der Fußzeile öffnet das Sprachmenü: Die
 manuelle Wahl gewinnt immer vor der Automatik, „Automatisch“ kehrt zu
 ihr zurück.
 
+## Soft Wrap
+
+Der kompakte **Soft-Wrap-Schalter** steht in der Fußzeile direkt neben
+dem Sprach-Chip. Er zeigt **Ein** oder **Aus** sichtbar an; ein Hauptklick
+schaltet sofort um. Der separate Pfeil und ein Rechtsklick öffnen dieselben
+Optionen. **Darstellung → Soft Wrap** (⇧⌘L) schaltet denselben Wert.
+
+Soft Wrap wird **pro effektivem Dokumentformat** gespeichert und gilt
+appweit für alle offenen und später geöffneten Dokumente dieses Formats.
+Eine manuelle Sprachwahl bestimmt deshalb auch, welches Formatprofil gilt.
+Im Optionsmenü entfernt „Für … auf Werkseinstellung zurücksetzen“ nur die
+eigene Abweichung des aktuellen Formats.
+
+Werkseitig ist Soft Wrap für **Reinen Text, Markdown, HTML und XML ein**.
+Für **4D, JSON, CSV und andere Code-/Konfigurationsformate ist es aus**.
+Ohne Soft Wrap bleiben lange Zeilen über den horizontalen Scrollbalken
+erreichbar. Das Umschalten ändert weder Text noch Auswahl, Rückgängig-
+Verlauf oder gespeicherte Datei.
+
 ## 4D-Unterstützung
 
 `.4dm`-Methoden werden mit einem eigenen 4D-Farbschema dargestellt

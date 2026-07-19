@@ -70,6 +70,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// einmal neu. Mehrere Menü-Notifications werden in einen Main-Runloop-
     /// Durchlauf zusammengefasst, damit der Sparkle-Eintrag danach erhalten bleibt.
     private var updateMenuInstallScheduled = false
+    /// Gleiches Coalescing für den checkbaren Soft-Wrap-Menüpunkt.
+    private var softWrapMenuSyncScheduled = false
 
     /// Hält den Local-Event-Monitor am Leben — sonst wird er deinitialisiert.
     private var keyMonitor: Any?
@@ -202,6 +204,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+        // Schließt der Nutzer das vorderste oder letzte Dokumentfenster,
+        // darf der globale Soft-Wrap-Menüpunkt keinen alten Tab behalten.
+        // Nach AppKits Schließdurchlauf wählen wir das nächste sichtbare
+        // Dokument oder einen stabilen „kein Dokument"-Zustand.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: nil,
+            queue: .main
+        ) { note in
+            guard let window = note.object as? NSWindow,
+                  !SearchWindow.isSearchWindow(window),
+                  let closingWorkspace = WorkspaceWindowRegistry.workspace(for: window),
+                  Workspace.shared === closingWorkspace else { return }
+            DispatchQueue.main.async {
+                Workspace.shared = DocumentWindowController.frontmostVisibleWorkspace()
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: .fastraActiveDocumentContextChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.scheduleSoftWrapMenuSynchronization()
+        }
         // Auch bei App-Aktivierung neu installieren (App-Wechsel zurück).
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
@@ -266,6 +292,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             Self.purgeFindMenuItems()
             self?.scheduleUpdateMenuInstallation()
+            self?.scheduleSoftWrapMenuSynchronization()
         }
     }
 
@@ -273,6 +300,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Beim ersten Aktivieren ist der SwiftUI-Menüaufbau sicher abgeschlossen.
         // Spätere Aktivierungen reparieren einen von macOS neu aufgebauten Block.
         scheduleUpdateMenuInstallation()
+        scheduleSoftWrapMenuSynchronization()
     }
 
     /// Baut den nativen Update-Menüpunkt. Sparkle selbst bleibt das Target,
@@ -322,6 +350,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let appMenu = NSApp.mainMenu?.items.first?.submenu else { return }
             Self.synchronizeUpdateMenuItem(in: appMenu, target: self.updaterController)
         }
+    }
+
+    private func scheduleSoftWrapMenuSynchronization() {
+        guard !softWrapMenuSyncScheduled else { return }
+        softWrapMenuSyncScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.softWrapMenuSyncScheduled = false
+            guard let mainMenu = NSApp.mainMenu else { return }
+            _ = Self.synchronizeSoftWrapMenuState(
+                in: mainMenu,
+                isOn: ActiveDocumentContext.shared.workspace?.softWrapEnabled ?? false,
+                hasDocument: ActiveDocumentContext.shared.workspace?.activeTab != nil
+            )
+        }
+    }
+
+    /// SwiftUI-`Toggle`-Commands behalten bei einem Formatwechsel den alten
+    /// Haken, bis SwiftUI die Commands-Struktur neu baut. Ein normaler Button
+    /// mit nativ gesetztem `state` ist deterministisch und behält zugleich
+    /// SwiftUIs Action/Shortcut. Rekursiv, weil „Darstellung" ein Submenü ist.
+    @discardableResult
+    static func synchronizeSoftWrapMenuState(
+        in menu: NSMenu,
+        isOn: Bool,
+        hasDocument: Bool
+    ) -> NSMenuItem? {
+        for item in menu.items {
+            if item.title == L10n.string("Soft Wrap") {
+                item.state = isOn ? .on : .off
+                item.isEnabled = hasDocument
+                return item
+            }
+            if let submenu = item.submenu,
+               let found = synchronizeSoftWrapMenuState(
+                   in: submenu, isOn: isOn, hasDocument: hasDocument
+               ) {
+                return found
+            }
+        }
+        return nil
     }
 
     /// Entfernt alle find-bezogenen Menüpunkte (Selektoren

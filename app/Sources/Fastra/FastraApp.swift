@@ -33,9 +33,9 @@ struct FastraApp: App {
     // UserDefaults-Suite (immer „erster Start" → Demo-Tab vorhanden,
     // echtes Erststart-Flag bleibt unangetastet). Normalbetrieb: .standard.
     @StateObject private var workspace: Workspace
-    // Zeilenumbruch am Fensterrand — app-weite, persistente Einstellung,
-    // geteilt mit EditorView über denselben AppStorage-Schlüssel. Default AN.
-    @AppStorage("editor.wrapLines") private var wrapLines = true
+    /// Beobachtbarer Fokuskontext für den formatspezifischen Soft-Wrap-
+    /// Menüpunkt, auch bei zusätzlichen Dokumentfenstern.
+    @StateObject private var activeDocumentContext = ActiveDocumentContext.shared
     // Rechter Vorschau-Streifen (Minimap) an/aus — geteilt mit EditorView über
     // denselben AppStorage-Schlüssel. Default AUS (siehe EditorView-Kommentar).
     @AppStorage("editor.showMinimap") private var showMinimap = false
@@ -159,10 +159,14 @@ struct FastraApp: App {
                 Button("Ansicht: Hex") { commandWorkspace.setViewMode(.hex) }
                     .keyboardShortcut("3", modifiers: [.command, .control])
                 Divider()
-                // Zeilenumbruch am Fensterrand (BBEdit „Soft Wrap Text").
-                // Toggle in den Commands → checkbarer Menüpunkt im „Darstellung".
-                Toggle("Zeilen umbrechen", isOn: $wrapLines)
+                // Hauptmenü und Fußzeile schalten denselben Wert des aktuell
+                // effektiven Formats. Ohne Dokument bleibt der Zustand stabil
+                // und der Eintrag ist nicht bedienbar.
+                Button("Soft Wrap") {
+                    activeDocumentContext.workspace?.toggleSoftWrap()
+                }
                     .keyboardShortcut("l", modifiers: [.command, .shift])
+                    .disabled(activeDocumentContext.workspace?.activeTab == nil)
                 // Rechter Vorschau-Streifen (Minimap). Default AUS — verdeckte
                 // rechts Text und stand im Freeze-Verdacht (Daniel 2026-07-12).
                 Toggle("Minimap anzeigen", isOn: $showMinimap)

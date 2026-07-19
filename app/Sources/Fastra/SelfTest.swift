@@ -147,6 +147,7 @@ enum SelfTest {
         case "cmdw":      waitForMainWindow { openSearchThen { runCmdWTest() } }
         case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
+        case "softwrapprofiles": waitForMainWindow { runSoftWrapProfilesTest() }
         case "highlight": waitForMainWindow { runHighlightTest() }
         case "highlight4d": waitForMainWindow { runFourDHighlightTest() }
         case "completion4d": waitForMainWindow { runFourDCompletionTest() }
@@ -1343,6 +1344,223 @@ enum SelfTest {
                 }
             }
         }
+    }
+
+    // MARK: - -selftest softwrapprofiles
+
+    /// Prüft die komplette Formatprofil-Kette im echten Editor:
+    /// Markdown-Default an, 4D-Default aus, sofortiger CESE-Reconcile ohne
+    /// Inhalts-/Selektions-/Dirty-/Undo-Änderung, Vererbung an einen neuen
+    /// 4D-Tab und appweite Rückschaltung beider offenen 4D-Tabs. Zusätzlich
+    /// muss der checkbare Hauptmenüpunkt jeden Zustand spiegeln.
+    private static func runSoftWrapProfilesTest() {
+        testLabel = "softwrapprofiles"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard let mainWindow = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        }) else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+
+        waitForEditor(workspace: ws, window: mainWindow) { root, _ in
+            let base = FileManager.default.temporaryDirectory
+                .appendingPathComponent("fastra-softwrap-\(UUID().uuidString)")
+            let markdownURL = base.appendingPathComponent("notizen.md")
+            let firstFourDURL = base.appendingPathComponent("erste.4dm")
+            let secondFourDURL = base.appendingPathComponent("zweite.4dm")
+            let longLine = String(repeating: "Soft-Wrap-Prüfung ", count: 40)
+            do {
+                try FileManager.default.createDirectory(
+                    at: base, withIntermediateDirectories: true
+                )
+                try ("# Notizen\n\n\(longLine)\n")
+                    .write(to: markdownURL, atomically: true, encoding: .utf8)
+                try ("// Erste 4D-Methode\n\(longLine)\n")
+                    .write(to: firstFourDURL, atomically: true, encoding: .utf8)
+                try ("// Zweite 4D-Methode\n\(longLine)\n")
+                    .write(to: secondFourDURL, atomically: true, encoding: .utf8)
+            } catch {
+                finish(false, "Fixtures nicht anlegbar: \(error.localizedDescription)")
+            }
+
+            ws.loadFile(at: markdownURL) { ok in
+                guard ok else {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Markdown-Fixture nicht ladbar")
+                }
+                pollSoftWrapState(
+                    ws: ws, root: root, expectedFormat: .grammar(.markdown),
+                    expectedWrap: true, label: "Markdown-Werkseinstellung",
+                    tick: 0
+                ) {
+                    loadFirstFourDForSoftWrapTest(
+                        ws: ws, root: root, base: base,
+                        firstURL: firstFourDURL, secondURL: secondFourDURL
+                    )
+                }
+            }
+        }
+    }
+
+    private static func loadFirstFourDForSoftWrapTest(
+        ws: Workspace, root: NSView, base: URL, firstURL: URL, secondURL: URL
+    ) {
+        ws.loadFile(at: firstURL) { ok in
+            guard ok else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "erste 4D-Fixture nicht ladbar")
+            }
+            pollSoftWrapState(
+                ws: ws, root: root, expectedFormat: .fourD,
+                expectedWrap: false, label: "4D-Werkseinstellung",
+                tick: 0
+            ) {
+                guard let firstTabID = ws.activeTabID,
+                      let textView = editorTextView(in: root) as? TextView else {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "erste 4D-TextView nicht erreichbar")
+                }
+                let viewID = ObjectIdentifier(textView)
+                let selection = NSRange(location: 3, length: 5)
+                textView.selectionManager.setSelectedRange(selection)
+                let content = textView.string
+                let dirty = ws.activeTab?.isDirty
+                let canUndo = textView.undoManager?.canUndo
+
+                guard let mainMenu = NSApp.mainMenu,
+                      let menuItem = findMenuItem(titled: "Soft Wrap", in: mainMenu),
+                      menuItem.isEnabled, menuItem.action != nil else {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Hauptmenüpunkt „Soft Wrap“ nicht bedienbar")
+                }
+                // Nicht den Store direkt aufrufen: Dieser Klick belegt, dass
+                // das bestehende Hauptmenü wirklich dieselbe Action schaltet.
+                guard NSApp.sendAction(
+                    menuItem.action!,
+                    to: menuItem.target,
+                    from: menuItem
+                ) else {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Hauptmenü-Action „Soft Wrap“ nicht ausführbar")
+                }
+                pollSoftWrapState(
+                    ws: ws, root: root, expectedFormat: .fourD,
+                    expectedWrap: true, label: "4D live eingeschaltet",
+                    tick: 0
+                ) {
+                    guard let reconciled = editorTextView(in: root) as? TextView,
+                          ObjectIdentifier(reconciled) == viewID,
+                          reconciled.string == content,
+                          reconciled.selectedRange() == selection,
+                          ws.activeTab?.isDirty == dirty,
+                          reconciled.undoManager?.canUndo == canUndo else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Soft-Wrap-Umschalten veränderte "
+                            + "TextView-Identität, Inhalt, Auswahl, Dirty- oder Undo-Zustand")
+                    }
+
+                    ws.loadFile(at: secondURL) { ok in
+                        guard ok else {
+                            try? FileManager.default.removeItem(at: base)
+                            finish(false, "zweite 4D-Fixture nicht ladbar")
+                        }
+                        pollSoftWrapState(
+                            ws: ws, root: root, expectedFormat: .fourD,
+                            expectedWrap: true, label: "neuer 4D-Tab übernimmt Profil",
+                            tick: 0
+                        ) {
+                            guard let secondTabID = ws.activeTabID,
+                                  secondTabID != firstTabID else {
+                                try? FileManager.default.removeItem(at: base)
+                                finish(false, "zweite 4D-Datei erzeugte keinen eigenen Tab")
+                            }
+                            ws.toggleSoftWrap()
+                            pollSoftWrapState(
+                                ws: ws, root: root, expectedFormat: .fourD,
+                                expectedWrap: false, label: "zweiter 4D-Tab schaltet aus",
+                                tick: 0
+                            ) {
+                                verifyBothFourDTabsAreUnwrapped(
+                                    ws: ws, root: root, base: base,
+                                    firstTabID: firstTabID,
+                                    secondTabID: secondTabID
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static func verifyBothFourDTabsAreUnwrapped(
+        ws: Workspace, root: NSView, base: URL,
+        firstTabID: UUID, secondTabID: UUID
+    ) {
+        ws.activeTabID = firstTabID
+        pollSoftWrapState(
+            ws: ws, root: root, expectedFormat: .fourD,
+            expectedWrap: false, label: "erster offener 4D-Tab folgt global",
+            tick: 0
+        ) {
+            ws.activeTabID = secondTabID
+            pollSoftWrapState(
+                ws: ws, root: root, expectedFormat: .fourD,
+                expectedWrap: false, label: "zweiter offener 4D-Tab bleibt synchron",
+                tick: 0
+            ) {
+                try? FileManager.default.removeItem(at: base)
+                finish(true, "Markdown an; 4D aus; Live-Reconcile zustandstreu; "
+                    + "neuer und beide offene 4D-Tabs samt Hauptmenü synchron")
+            }
+        }
+    }
+
+    private static func pollSoftWrapState(
+        ws: Workspace, root: NSView,
+        expectedFormat: DocumentFormatID, expectedWrap: Bool,
+        label: String, tick: Int, completion: @escaping () -> Void
+    ) {
+        let textView = editorTextView(in: root) as? TextView
+        // Entspricht dem Öffnen eines nativen Hauptmenüs: AppKit fragt die
+        // SwiftUI-Command-Validierung ab, bevor der Haken sichtbar wird.
+        NSApp.mainMenu?.update()
+        let menuItem = findMenuItem(titled: "Soft Wrap", in: NSApp.mainMenu)
+        let menuMatches = menuItem?.state == (expectedWrap ? .on : .off)
+        if ws.activeDocumentFormat.id == expectedFormat,
+           ws.softWrapEnabled == expectedWrap,
+           textView?.wrapLines == expectedWrap,
+           menuMatches {
+            completion()
+            return
+        }
+        if tick >= 80 {
+            finish(false, "\(label) nicht binnen 8 s sichtbar: "
+                + "format=\(ws.activeDocumentFormat.id.rawValue), "
+                + "store=\(ws.softWrapEnabled), textView=\(String(describing: textView?.wrapLines)), "
+                + "menu=\(String(describing: menuItem?.state.rawValue))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollSoftWrapState(
+                ws: ws, root: root, expectedFormat: expectedFormat,
+                expectedWrap: expectedWrap, label: label, tick: tick + 1,
+                completion: completion
+            )
+        }
+    }
+
+    private static func findMenuItem(titled title: String, in menu: NSMenu?) -> NSMenuItem? {
+        guard let menu else { return nil }
+        for item in menu.items {
+            if item.title == title { return item }
+            if let found = findMenuItem(titled: title, in: item.submenu) {
+                return found
+            }
+        }
+        return nil
     }
 
     /// Belegt END-TO-END, dass der Editor Syntax-Highlighting wirklich FÄRBT:
@@ -3453,8 +3671,8 @@ enum SelfTest {
     /// laufenden Editor: ist `documentView` breiter als der sichtbare Bereich
     /// UND `hasHorizontalScroller` gesetzt → horizontal scrollbar. Dumpt die
     /// Werte IMMER (auch bei PASS), damit die Ursache sichtbar ist. Nur bei
-    /// „Umbruch aus" aussagekräftig → App dazu mit
-    /// `defaults write de.dm0.fastra editor.wrapLines NO` starten.
+    /// Der Test schaltet das Plain-Text-Profil selbst aus, damit er unabhängig
+    /// von echten Nutzer-Defaults und dem migrierten Altschlüssel bleibt.
     private static func runHScrollTest() {
         testLabel = "hscroll"
         guard let ws = Workspace.shared else {
@@ -3468,6 +3686,7 @@ enum SelfTest {
         }
         NSApp.activate(ignoringOtherApps: true)
         mainWindow.makeKeyAndOrderFront(nil)
+        ws.setSoftWrapEnabled(false)
 
         // 40 sehr lange Zeilen (~430 Zeichen) → weit breiter als jedes Fenster.
         let longTail = String(repeating: "lang_", count: 80)
@@ -4168,7 +4387,8 @@ enum SelfTest {
             return
         }
         if tick >= 100 {
-            finish(false, "(d) Hilfe-Fenster wurde nicht Key-Window für ⌘W")
+            finish(false, "Umgebungsproblem: Hilfe-Fenster wurde nicht "
+                + "Key-Window für ⌘W")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
             pollHelpKeyThenClose(helpWindow, workspace: workspace, tabSnapshot: tabSnapshot,

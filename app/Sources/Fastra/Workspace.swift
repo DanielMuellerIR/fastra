@@ -149,10 +149,10 @@ struct EditorTab: Identifiable, Hashable {
     /// endungslose Tabs. Wird nur wirksam, solange weder URL-Endung noch
     /// manuelle Wahl greifen; Hysterese liegt im Erkennungspfad.
     var contentDetectedLanguage: CodeLanguage?
-    /// Anzeigename des inhaltlich erkannten Formats (Footer-Chip) — die
+    /// UI-unabhängige Identität des inhaltlich erkannten Formats. Die
     /// Grammatik allein reicht nicht: erkanntes XML nutzt z. B. die
-    /// HTML-Grammatik, soll im Footer aber „XML" heißen.
-    var contentDetectedFormatLabel: String?
+    /// HTML-Grammatik, muss aber das XML-Profil und den XML-Namen behalten.
+    var contentDetectedFormat: ContentLanguageDetection.Format?
 
     init(
         id: UUID = UUID(),
@@ -511,6 +511,9 @@ final class Workspace: ObservableObject {
     /// eine isolierte, Normalbetrieb `.standard`. ALLE Persistenz-Pfade
     /// des Workspace müssen über diese Suite laufen (siehe init-Kommentar).
     private let defaultsStore: UserDefaults
+    /// Gemeinsame Quelle für formatspezifischen Soft Wrap. Der Store ist
+    /// injizierbar und bleibt dadurch mit isolierten Defaults unit-testbar.
+    let softWrapProfiles: SoftWrapProfileStore
     let gitPreferencesStore: GitPreferencesStore
     let gitOperationsCoordinator: GitOperationsCoordinator
     let gitRepositoryStore: GitRepositoryStore
@@ -554,7 +557,11 @@ final class Workspace: ObservableObject {
     /// Dokumentfenster möglich sind, setzen die Fenster-Brücken diesen Wert bei
     /// jedem Fokuswechsel neu; globale Menübefehle landen dadurch nicht im
     /// falschen Dokument.
-    static weak var shared: Workspace?
+    static weak var shared: Workspace? {
+        didSet {
+            ActiveDocumentContext.shared.activate(shared)
+        }
+    }
 
     /// Alle noch lebenden Workspaces, ohne ihre Lebenszeit zu verlängern.
     /// AppDelegate braucht die Liste für ⌘Q und die Prüfung externer Änderungen:
@@ -577,6 +584,7 @@ final class Workspace: ObservableObject {
     }
 
     init(defaults: UserDefaults = .standard,
+         softWrapProfiles: SoftWrapProfileStore? = nil,
          gitOperationsCoordinator: GitOperationsCoordinator = .shared,
          gitRepositoryStore: GitRepositoryStore? = nil,
          gitRepositoryIdentityResolver: GitRepositoryIdentityResolving? = nil,
@@ -589,6 +597,8 @@ final class Workspace: ObservableObject {
         // (isolierte Suite!) haben so ihre Temp-Ordner in die ECHTEN
         // Nutzer-Defaults gemüllt (Befund 2026-06-11, 16 Leichen).
         self.defaultsStore = defaults
+        self.softWrapProfiles = softWrapProfiles
+            ?? SoftWrapProfileStore(defaults: defaults)
         self.gitPreferencesStore = GitPreferencesStore(defaults: defaults)
         self.gitOperationsCoordinator = gitOperationsCoordinator
         self.terminalOpener = terminalOpener
@@ -632,6 +642,13 @@ final class Workspace: ObservableObject {
         self.searchRunner = SearchRunner(workspace: self)
         Workspace.registerLive(self)
         Workspace.shared = self
+
+        // Store-Änderungen müssen alle Views dieses Workspace neu zeichnen:
+        // Der Editor reconciled dadurch `wrapLines`, Footer und Menüstatus
+        // lesen gleichzeitig denselben neuen Wert.
+        self.softWrapProfiles.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &persistenceBag)
 
         // Recent-Folders aus DERSELBEN Suite laden, in die auch gespeichert
         // wird. Der Property-Default (`.standard` im Initializer) wird hier
@@ -707,6 +724,31 @@ final class Workspace: ObservableObject {
 
     var activeTab: EditorTab? {
         tabs.first(where: { $0.id == activeTabID }) ?? tabs.first
+    }
+
+    /// Eine einzige Formatauflösung für Footer, Editor und Formatprofil.
+    var activeDocumentFormat: DocumentFormat {
+        DocumentFormatResolver.resolve(tab: activeTab)
+    }
+
+    var softWrapEnabled: Bool {
+        softWrapProfiles.isEnabled(for: activeDocumentFormat.id)
+    }
+
+    var softWrapHasOverride: Bool {
+        softWrapProfiles.hasOverride(for: activeDocumentFormat.id)
+    }
+
+    func setSoftWrapEnabled(_ enabled: Bool) {
+        softWrapProfiles.setEnabled(enabled, for: activeDocumentFormat.id)
+    }
+
+    func toggleSoftWrap() {
+        softWrapProfiles.toggle(for: activeDocumentFormat.id)
+    }
+
+    func resetSoftWrapToFactoryDefault() {
+        softWrapProfiles.resetToFactoryDefault(for: activeDocumentFormat.id)
     }
 
     /// Ziel des globalen Menübefehls. Ein Projekt hat Vorrang; ohne Projekt
@@ -1546,10 +1588,8 @@ final class Workspace: ObservableObject {
             // Kein Format erkannt → Shebang-/Modeline-Erkennung des Editors
             // (bislang ungenutzter Upstream-Pfad; erkennt z. B. „#!/bin/bash").
             var language: CodeLanguage?
-            var label: String?
             if let format {
                 language = Self.grammarForDetectedFormat(format)
-                label = format.label
             } else {
                 let fallback = CodeLanguage.detectLanguageFrom(
                     // Bewusst ohne Endung: Es zählt allein der Inhalt.
@@ -1559,7 +1599,6 @@ final class Workspace: ObservableObject {
                 )
                 if fallback.id != .plainText {
                     language = fallback
-                    label = fallback.tsName.capitalized
                 }
             }
             DispatchQueue.main.async { [weak self] in
@@ -1569,9 +1608,11 @@ final class Workspace: ObservableObject {
                 // Hysterese über den Grammatik-Vergleich: `nil` (nichts
                 // erkannt) lässt eine bestehende Erkennung stehen.
                 let current = self.tabs[i].contentDetectedLanguage
-                guard let language, language != current else { return }
+                let currentFormat = self.tabs[i].contentDetectedFormat
+                guard let language,
+                      language != current || format != currentFormat else { return }
                 self.tabs[i].contentDetectedLanguage = language
-                self.tabs[i].contentDetectedFormatLabel = label
+                self.tabs[i].contentDetectedFormat = format
             }
         }
     }
@@ -1582,13 +1623,7 @@ final class Workspace: ObservableObject {
     static func grammarForDetectedFormat(
         _ format: ContentLanguageDetection.Format
     ) -> CodeLanguage {
-        switch format {
-        case .json: return .json
-        case .xml, .html: return .html
-        case .markdown: return .markdown
-        case .css: return .css
-        case .javascript: return .javascript
-        }
+        DocumentFormatResolver.format(for: format).grammar
     }
 
     /// Manuelle Sprachwahl (Footer-Menü). `nil` = zurück auf Automatik —

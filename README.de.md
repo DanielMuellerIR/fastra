@@ -203,6 +203,10 @@ aktiv; der Fehler erscheint dezent in der Leiste.
   Inhalt (JSON, XML, HTML, Markdown, CSS, JavaScript, Shebang-Skripte); der
   Format-Chip im Footer ist zugleich ein manueller Sprachumschalter, dessen
   Wahl immer gewinnt.
+- Der sichtbare Soft-Wrap-Schalter daneben speichert Ein/Aus pro effektivem
+  Format und synchronisiert alle offenen Dokumente dieses Formats. Reiner
+  Text, Markdown, HTML und XML starten umbrochen; Code- und
+  Konfigurationsformate ohne Umbruch und mit horizontalem Scrollen.
 
 ### Syntax-Highlighting
 

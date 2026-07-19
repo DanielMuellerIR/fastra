@@ -31,18 +31,6 @@ enum ContentLanguageDetection {
     /// hoher Konfidenz möglich ist.
     enum Format: String, CaseIterable, Equatable {
         case json, xml, html, markdown, css, javascript
-
-        /// Anzeigename für Footer-Chip und Menü.
-        var label: String {
-            switch self {
-            case .json: return "JSON"
-            case .xml: return "XML"
-            case .html: return "HTML"
-            case .markdown: return "Markdown"
-            case .css: return "CSS"
-            case .javascript: return "JavaScript"
-            }
-        }
     }
 
     // MARK: - Auslöser/Drossel (pure)

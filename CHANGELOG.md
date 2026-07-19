@@ -9,6 +9,45 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.40.0] — 2026-07-19
+
+Etappe 1 des Soft-Wrap-Pakets: Formatprofile und Bedienung
+(`docs/soft-wrap-2026-07/`).
+
+### Hinzugefügt
+
+- **Schneller Soft-Wrap-Schalter in der Fußzeile.** Der sichtbare Ein/Aus-
+  Zustand steht direkt neben dem Format-Chip. Hauptklick schaltet sofort;
+  separater Pfeil und Rechtsklick öffnen dieselben nativen Optionen mit
+  formatspezifischem Zurücksetzen auf die Werkseinstellung. Der vorhandene
+  Menüpunkt unter „Darstellung“ schaltet und spiegelt denselben Wert.
+- **Persistente Profile pro effektivem Dokumentformat.** Reiner Text,
+  Markdown, HTML und XML starten mit Soft Wrap; 4D, JSON, CSV und andere
+  Code-/Konfigurationsformate ohne. Abweichungen gelten appweit für offene
+  und später geöffnete Dokumente desselben Formats. Ein ausdrücklich
+  vorhandener früherer globaler Wert wird einmalig nur für Reinen Text
+  übernommen.
+
+### Geändert
+
+- **Eine zentrale Formatidentität** steuert nun Format-Chip, Editor-Grammatik,
+  Soft-Wrap-Profil und Hauptmenüstatus. Manuelle Sprachwahl gewinnt vor
+  Datei-/Inhaltserkennung; die 4D-Containerformate werden als 4D, JSON oder
+  XML nach ihrem tatsächlichen Inhalt behandelt.
+- Die frühere globale Soft-Wrap-Einstellung wurde entfernt. Umschalten
+  reconciliert die reale Editor-TextView sofort, ohne Text, Auswahl,
+  Dirty-Zustand, Undo-Verlauf oder Datei zu verändern. Ohne Soft Wrap bleibt
+  horizontales Scrollen erhalten.
+
+### Intern
+
+- Versionierter, mit isolierten `UserDefaults` testbarer Profil-Store samt
+  Migration und fensterübergreifender Benachrichtigung; Vollständigkeitstest
+  erzwingt für jede auswählbare Sprache eine bewusste Default-Klasse.
+- Neuer Fenster-Selbsttest `softwrapprofiles` prüft Markdown-/4D-Defaults,
+  Live-Reconcile, neue und bestehende 4D-Tabs sowie den echten
+  Hauptmenüpfad. `hscroll` läuft wieder verbindlich in der Gesamtsuite.
+
 ## [v1.39.0] — 2026-07-19
 
 ### Hinzugefügt

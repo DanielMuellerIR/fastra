@@ -194,6 +194,10 @@ unobtrusively in the bar.
   from content (JSON, XML, HTML, Markdown, CSS, JavaScript, shebang
   scripts); the format chip in the footer doubles as a manual language
   switcher whose choice always wins.
+- The visible Soft Wrap control next to it stores its on/off state per effective
+  format and synchronizes every open document of that format. Plain text,
+  Markdown, HTML, and XML start wrapped; code and configuration formats start
+  unwrapped with horizontal scrolling.
 
 ### Syntax highlighting
 

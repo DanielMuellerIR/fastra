@@ -122,6 +122,14 @@
 "Spenden…" = "Donate…";
 "Spielt die letzte Ordner-Apply-Session bit-exakt aus dem Backup-Ordner zurück." = "Restore the last multi-file replacement exactly from its backup folder.";
 "Später" = "Later";
+"Soft Wrap" = "Soft Wrap";
+"Soft Wrap: %@" = "Soft Wrap: %@";
+"Soft Wrap für %@: %@. Hauptklick schaltet um; Pfeil oder Rechtsklick öffnet Optionen." = "Soft Wrap for %@: %@. Click the main control to toggle; use the arrow or right-click for options.";
+"Soft-Wrap-Optionen" = "Soft Wrap Options";
+"Schaltet Soft Wrap für das Format %@ um." = "Toggles Soft Wrap for the %@ format.";
+"Für %@ auf Werkseinstellung zurücksetzen" = "Reset %@ to Factory Default";
+"Ein" = "On";
+"Aus" = "Off";
 "Statistik bezieht sich auf die Selektion" = "Statistics refer to the selection";
 "Suchausdruck als regulären Ausdruck behandeln. Aus = wörtliche Suche; Sonderzeichen wie . oder ? werden buchstäblich gesucht." = "Treat the search expression as a regular expression. Off = literal search; special characters such as . or ? are matched literally.";
 "Suchbereich" = "Search Scope";

@@ -1,22 +1,16 @@
 import SwiftUI
 import AppKit
 
-/// Einstellungs-Dialog (⌘,) — Stage B des Umbruch-Features.
+/// Einstellungs-Dialog (⌘,).
 ///
 /// SwiftUIs `Settings`-Scene (in `FastraApp`) bindet diesen View automatisch an
 /// das Standard-macOS-Tastenkürzel ⌘, und legt den Menüpunkt „Einstellungen…"
-/// unter dem App-Menü an. Der Dialog ist die AUFFINDBARE Heimat für persistente
-/// App-Voreinstellungen — bisher war der Umbruch-Default nur über den
-/// versteckten Menüpunkt „Zeilen umbrechen" (⌘⇧L) erreichbar.
+/// unter dem App-Menü an.
 ///
 /// Zusätzlich liegen hier Schriftwahl, die zwei getrennten Skalierungen und
 /// die integrierte Markdown-Vorschau. Alle Werte sind app-weit persistent.
 struct SettingsView: View {
     @Environment(\.uiScale) private var uiScale
-    /// App-weiter Umbruch-Default. Gleicher Schlüssel wie EditorView/FastraApp
-    /// → die drei Stellen teilen exakt einen Wert.
-    @AppStorage("editor.wrapLines") private var wrapLines = true
-
     /// Erscheinungsbild (automatisch/hell/dunkel). Als String gespeichert
     /// (`AppearanceSetting.rawValue`) — gleicher Schlüssel wie
     /// `AppearanceSetting.current()`, das der AppDelegate beim Start liest.
@@ -85,16 +79,6 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             } header: {
                 Text("Erscheinungsbild")
-            }
-
-            Section {
-                Toggle("Lange Zeilen am Fensterrand umbrechen", isOn: $wrapLines)
-                Text(verbatim: L10n.string("Wirkt sofort in allen geöffneten Tabs. Ohne Umbruch lässt sich langer Text horizontal scrollen. Auch über „Darstellung → Zeilen umbrechen“ (⌘⇧L) umschaltbar."))
-                    .fastraFont(.small)
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } header: {
-                Text("Editor")
             }
 
             Section("Schrift und Größe") {

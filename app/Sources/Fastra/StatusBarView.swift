@@ -19,6 +19,7 @@ struct StatusBarView: View {
             HStack(spacing: 14) {
                 encodingMenu
                 languageMenu
+                softWrapControl
                 Text(cursorPosition)
                     .fastraFont(.small)
                     .foregroundColor(Theme.textSecondary)
@@ -190,23 +191,10 @@ struct StatusBarView: View {
         )
     }
 
-    /// Beschriftung des Sprach-Chips: manuelle Wahl (Eigen-Sprache oder
-    /// Grammatik) > inhaltlich erkanntes Format (nur ungespeicherte,
-    /// endungslose Tabs) > Endungs-Label.
+    /// Beschriftung des Sprach-Chips aus derselben effektiven Formatidentität,
+    /// die auch Grammatik und Soft-Wrap-Profil steuert.
     private var fileType: String {
-        guard let tab = workspace.activeTab else { return "Plain" }
-        if let customID = tab.customLanguageOverrideID,
-           let custom = CustomLanguageRegistry.language(withID: customID) {
-            return custom.displayName
-        }
-        if let manual = tab.languageOverride {
-            return LanguageMenuSupport.displayName(for: manual)
-        }
-        if tab.url == nil, (tab.title as NSString).pathExtension.isEmpty,
-           let detected = tab.contentDetectedFormatLabel {
-            return detected
-        }
-        return DocumentKind.footerLabel(filename: tab.title)
+        workspace.activeDocumentFormat.displayName
     }
 
     /// Ist dieser Menü-Eintrag die aktuelle manuelle Wahl des aktiven Tabs?
@@ -260,6 +248,89 @@ struct StatusBarView: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .help("Sprache/Format — manuelle Wahl gewinnt vor der Automatik")
+    }
+
+    /// Schneller Hauptschalter plus separater Menüpfeil. Ein Rechtsklick auf
+    /// den gesamten Control öffnet denselben echten Optionsinhalt.
+    private var softWrapControl: some View {
+        HStack(spacing: 0) {
+            Button {
+                workspace.toggleSoftWrap()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.turn.down.left")
+                    Text(verbatim: softWrapStatusText)
+                }
+                .fastraFont(size: 11, weight: .medium)
+                .foregroundColor(workspace.softWrapEnabled
+                                 ? Theme.accentReadable : Theme.textSecondary)
+                .padding(.leading, 5)
+                .padding(.trailing, 3)
+                .padding(.vertical, 2)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(softWrapStatusText)
+            .accessibilityHint(L10n.format(
+                "Schaltet Soft Wrap für das Format %@ um.",
+                workspace.activeDocumentFormat.displayName
+            ))
+
+            Menu {
+                softWrapOptions
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(Theme.textSecondary)
+                    .padding(.leading, 2)
+                    .padding(.trailing, 5)
+                    .padding(.vertical, 4)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel(L10n.string("Soft-Wrap-Optionen"))
+        }
+        .background(Theme.surfaceSand.opacity(0.8))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .fixedSize()
+        .help(L10n.format(
+            "Soft Wrap für %@: %@. Hauptklick schaltet um; Pfeil oder Rechtsklick öffnet Optionen.",
+            workspace.activeDocumentFormat.displayName,
+            workspace.softWrapEnabled ? L10n.string("Ein") : L10n.string("Aus")
+        ))
+        .contextMenu {
+            softWrapOptions
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("softWrapControl")
+    }
+
+    private var softWrapStatusText: String {
+        L10n.format("Soft Wrap: %@",
+                    workspace.softWrapEnabled ? L10n.string("Ein") : L10n.string("Aus"))
+    }
+
+    @ViewBuilder
+    private var softWrapOptions: some View {
+        Button {
+            workspace.toggleSoftWrap()
+        } label: {
+            if workspace.softWrapEnabled {
+                Label(softWrapStatusText, systemImage: "checkmark")
+            } else {
+                Text(verbatim: softWrapStatusText)
+            }
+        }
+        Divider()
+        Button {
+            workspace.resetSoftWrapToFactoryDefault()
+        } label: {
+            Text(verbatim: L10n.format(
+                "Für %@ auf Werkseinstellung zurücksetzen",
+                workspace.activeDocumentFormat.displayName
+            ))
+        }
+        .disabled(!workspace.softWrapHasOverride)
     }
 }
 

@@ -221,7 +221,8 @@ func workspace_detectsAfterBulkInsert() async throws {
         await Task.yield()
     }
     #expect(ws.tabs[0].contentDetectedLanguage == .json)
-    #expect(ws.tabs[0].contentDetectedFormatLabel == "JSON")
+    #expect(ws.tabs[0].contentDetectedFormat == .json)
+    #expect(ws.activeDocumentFormat.id == .grammar(.json))
 }
 
 @Test("Shebang-Inhalt nutzt die Upstream-Erkennung (bash)")

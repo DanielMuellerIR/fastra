@@ -42,4 +42,30 @@ struct UpdateMenuTests {
         #expect(menu.index(of: first) == 1)
         #expect(first.target === target)
     }
+
+    @Test("Soft-Wrap-Menüstatus wird rekursiv und dokumentabhängig synchronisiert")
+    func softWrapMenuSynchronization() throws {
+        let root = NSMenu()
+        let viewItem = NSMenuItem(title: "Darstellung", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        let wrapItem = NSMenuItem(
+            title: L10n.string("Soft Wrap"), action: nil, keyEquivalent: ""
+        )
+        submenu.addItem(wrapItem)
+        root.setSubmenu(submenu, for: viewItem)
+        root.addItem(viewItem)
+
+        let found = try #require(AppDelegate.synchronizeSoftWrapMenuState(
+            in: root, isOn: true, hasDocument: true
+        ))
+        #expect(found === wrapItem)
+        #expect(found.state == .on)
+        #expect(found.isEnabled)
+
+        AppDelegate.synchronizeSoftWrapMenuState(
+            in: root, isOn: false, hasDocument: false
+        )
+        #expect(wrapItem.state == .off)
+        #expect(!wrapItem.isEnabled)
+    }
 }

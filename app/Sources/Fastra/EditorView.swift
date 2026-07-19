@@ -48,19 +48,12 @@ struct EditorView: View {
     /// der `completionDelegate` des Editors ist nur eine weak-Referenz.
     @StateObject private var fourDCompletion = FourDCompletionDelegate()
 
-    /// Zeilenumbruch am Fensterrand (BBEdit „Soft Wrap Text"). App-weite,
-    /// persistente Einstellung — gesetzt über den Menüpunkt „Zeilen umbrechen"
-    /// (FastraApp) bzw. später den Einstellungs-Dialog. Default AN: ohne
-    /// Umbruch ist langer Text bei fehlendem Start-Scrollbalken sonst gar
-    /// nicht erreichbar (siehe `syncHorizontalScroller`).
-    @AppStorage("editor.wrapLines") private var wrapLines = true
-
     /// Rechter Vorschau-Streifen (CESE-Minimap) an/aus. App-weit und persistent,
     /// umschaltbar über „Darstellung → Minimap anzeigen". Default AUS
     /// (Daniel-Befund 2026-07-12): Die Minimap verdeckte rechts Text, bis ein
     /// Relayout griff, und stand im Verdacht, über eine Exception im
     /// Minimap-Layout-Pfad die Editor-Darstellung einfrieren zu lassen. Wie
-    /// `wrapLines` reconciled CESE die Änderung live (`peripherals.showMinimap`).
+    /// das Soft-Wrap-Profil reconciled CESE die Änderung live.
     @AppStorage("editor.showMinimap") private var showMinimap = false
     @AppStorage(DocumentZoom.defaultsKey) private var documentZoomLevel = 0
     @AppStorage(EditorFonts.defaultsKey) private var editorFontName = EditorFonts.systemMonospacedName
@@ -94,7 +87,7 @@ struct EditorView: View {
     /// CESE-Editor-Theme. Ändert sich die Appearance (System-Wechsel oder
     /// Einstellungs-Dialog), rendert SwiftUI neu → `editorConfiguration`
     /// wird ungleich → CESE reconcilet das Theme live (gleicher Mechanismus
-    /// wie bei `wrapLines`).
+    /// wie beim Soft-Wrap-Profil).
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -1012,11 +1005,11 @@ struct EditorView: View {
     /// sinnvolle Konfig für den versteckten Titelleisten-Modus.
     /// `additionalTextInsets` bleibt beim CESE-Default (1 pt oben/unten).
     /// Instanz-Property (nicht mehr `static`), damit der Zeilenumbruch
-    /// reaktiv aus `wrapLines` kommt. Stabilität bleibt gewahrt: CESEs
+    /// reaktiv aus dem Formatprofil kommt. Stabilität bleibt gewahrt: CESEs
     /// `paramsAreEqual` vergleicht die `configuration` per `==`
     /// (Equatable) — ein wertgleicher Neuaufbau pro Render löst KEINEN
     /// Reload aus (kein Layout-Reentry/QuartzCore-Crash). Nur eine echte
-    /// `wrapLines`-Änderung erzeugt eine ungleiche Config → CESE-Reconcile
+    /// Soft-Wrap-Änderung erzeugt eine ungleiche Config → CESE-Reconcile
     /// setzt Umbruch + `hasHorizontalScroller` live.
     /// Aktive Eigen-Sprache des Tabs (Registry, Etappe 3 Wunschpaket
     /// 2026-07b) — steuert Theme und Highlight-Provider. Rangfolge:
@@ -1027,15 +1020,7 @@ struct EditorView: View {
     ///    unter…“-Kandidaten ohne URL richtig eingefärbt werden).
     /// Pure Funktion → unit-testbar.
     static func customLanguage(for tab: EditorTab?) -> CustomLanguage? {
-        guard let tab else { return nil }
-        if let overrideID = tab.customLanguageOverrideID {
-            return CustomLanguageRegistry.language(withID: overrideID)
-        }
-        if tab.languageOverride != nil { return nil }
-        let name = tab.url?.lastPathComponent ?? tab.title
-        return CustomLanguageRegistry.language(
-            forExtension: (name as NSString).pathExtension
-        )
+        DocumentFormatResolver.resolve(tab: tab).customLanguage
     }
 
     private var activeCustomLanguage: CustomLanguage? {
@@ -1050,49 +1035,20 @@ struct EditorView: View {
                 } ?? (colorScheme == .dark ? Self.fastraThemeDark : Self.fastraTheme),
                 font: .fastraEditorFont(name: editorFontName, size: 13,
                                         scale: DocumentZoom.scale(for: documentZoomLevel)),
-                wrapLines: wrapLines,
+                wrapLines: workspace.softWrapEnabled,
                 tabWidth: 4
             ),
             layout: .init(contentInsets: NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)),
             // Rechter Vorschau-Streifen (Minimap) reaktiv aus `showMinimap`.
             // Eine echte Änderung erzeugt eine ungleiche Config → CESE
             // reconciled `minimapView.isHidden` + Text-Insets live (gleicher
-            // Mechanismus wie bei `wrapLines`).
+            // Mechanismus wie beim Soft-Wrap-Profil).
             peripherals: .init(showMinimap: showMinimap)
         )
     }
 
     private var detectedLanguage: CodeLanguage {
-        guard let tab = workspace.activeTab else { return .default }
-        // Aktive Eigen-Sprache (Registry) → deren Grammatik-Unterbau
-        // (für 4D Plaintext; die Farben liefert der Provider).
-        if let custom = Self.customLanguage(for: tab) { return custom.baseGrammar }
-        // Manuelle Sprachwahl (Footer-Menü, Etappe 3) gewinnt IMMER —
-        // sie ist das Sicherheitsventil gegen jede Fehlerkennung.
-        if let manual = tab.languageOverride { return manual }
-        if let url = tab.url {
-            if let mapped = Self.grammarForSpecialExtension(url.pathExtension) {
-                return mapped
-            }
-            // prefixBuffer aktiviert die Upstream-Shebang-/Modeline-Erkennung
-            // für gespeicherte Dateien OHNE Endung (z. B. `deploy`-Skripte).
-            return CodeLanguage.detectLanguageFrom(
-                url: url,
-                prefixBuffer: String(tab.content.prefix(512)),
-                suffixBuffer: nil
-            )
-        }
-        // Ohne URL: erst die angezeigte Dateiendung des Tabs, dann die
-        // inhaltsbasierte Erkennung (Etappe 3, nur endungslose Tabs).
-        let titleExtension = (tab.title as NSString).pathExtension
-        if !titleExtension.isEmpty {
-            if let mapped = Self.grammarForSpecialExtension(titleExtension) {
-                return mapped
-            }
-            return CodeLanguage.detectLanguageFrom(url: URL(fileURLWithPath: tab.title))
-        }
-        if let detected = tab.contentDetectedLanguage { return detected }
-        return .default
+        workspace.activeDocumentFormat.grammar
     }
 
     /// Endungs-Sonderfälle, die keine eigene Grammatik besitzen:
@@ -1103,14 +1059,11 @@ struct EditorView: View {
     ///   KEINE Eigen-Sprache; .4dm läuft seit Etappe 3 Wunschpaket 2026-07b
     ///   über die `CustomLanguageRegistry`).
     static func grammarForSpecialExtension(_ fileExtension: String) -> CodeLanguage? {
-        switch fileExtension.lowercased() {
-        case "xml", "xsd", "xsl", "xslt", "plist", "4dcatalog", "4dsettings":
-            return .html
-        case "4dproject", "4dform":
-            return .json
-        default:
+        guard let format = DocumentFormatResolver.formatForSpecialExtension(fileExtension),
+              format.customLanguage == nil else {
             return nil
         }
+        return format.grammar
     }
 
     // MARK: Sidebar (Projekt-Dateibaum + geöffnete Dateien)

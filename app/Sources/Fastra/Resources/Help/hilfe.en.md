@@ -164,6 +164,25 @@ without one, from the content. The language chip in the footer opens the
 language menu: a manual choice always beats the automatics;
 “Automatic” returns to them.
 
+## Soft Wrap
+
+The compact **Soft Wrap control** sits in the footer next to the language
+chip. It visibly shows **On** or **Off**; clicking the main control toggles
+it immediately. The separate arrow and a right-click open the same options.
+**View → Soft Wrap** (⇧⌘L) toggles the same value.
+
+Soft Wrap is stored **per effective document format** and applies
+application-wide to every open and later-opened document of that format.
+A manual language choice therefore also selects the format profile. In the
+options menu, “Reset … to Factory Default” removes only the custom override
+for the current format.
+
+The factory default is on for **Plain Text, Markdown, HTML, and XML**. It is
+off for **4D, JSON, CSV, and other code/configuration formats**. With Soft
+Wrap off, long lines remain reachable through the horizontal scroll bar.
+Toggling it changes neither text nor selection, undo history, or the saved
+file.
+
 ## 4D Support
 
 `.4dm` methods are rendered with a dedicated 4D color scheme (commands,
