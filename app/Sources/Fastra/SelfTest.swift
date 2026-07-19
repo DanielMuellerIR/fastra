@@ -150,6 +150,7 @@ enum SelfTest {
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
         case "softwrapprofiles": waitForMainWindow { runSoftWrapProfilesTest() }
         case "softwrapmodes": waitForMainWindow { runSoftWrapModesTest() }
+        case "softwrapanchor": waitForMainWindow { runSoftWrapAnchorTest() }
         case "highlight": waitForMainWindow { runHighlightTest() }
         case "highlight4d": waitForMainWindow { runFourDHighlightTest() }
         case "completion4d": waitForMainWindow { runFourDCompletionTest() }
@@ -1712,6 +1713,176 @@ enum SelfTest {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - -selftest softwrapanchor
+
+    /// Reproduziert den sichtbaren Sprung beim Ein-/Ausschalten von Soft Wrap.
+    /// Entscheidend ist nicht der absolute Scrollwert: Bei langen Zeilen ändert
+    /// sich die Dokumenthöhe stark. Unabhängig beobachtet wird deshalb die
+    /// tatsächlich oberste logische Textzeile über `textLineForPosition`.
+    private static func runSoftWrapAnchorTest() {
+        testLabel = "softwrapanchor"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard let mainWindow = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        }), let root = mainWindow.contentView else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+
+        let longTail = String(repeating: "Wortgruppe ", count: 32)
+        let content = (1...360).map {
+            "Ankerzeile \($0)\t\(longTail)Ende \($0)"
+        }.joined(separator: "\n")
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "fastra-softwrapanchor-\(UUID().uuidString).txt"
+            )
+        do {
+            try content.write(to: tmp, atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "Fixture nicht schreibbar: \(error.localizedDescription)")
+        }
+
+        ws.loadFile(at: tmp) { ok in
+            try? FileManager.default.removeItem(at: tmp)
+            guard ok else { finish(false, "Text-Fixture nicht ladbar") }
+            pollForSoftWrapEditor(root: root, tick: 0) { textView, _ in
+                ws.setSoftWrapFixedColumn(40)
+                pollSoftWrapState(
+                    ws: ws, root: root, expectedFormat: .plainText,
+                    expectedWrap: true, label: "Anker-Fixture umbrochen",
+                    tick: 0
+                ) {
+                    let textBefore = textView.string
+                    let selectionBefore = textView.selectedRange()
+                    let dirtyBefore = ws.activeTab?.isDirty
+                    let canUndoBefore = textView.undoManager?.canUndo
+                    let targetTopLine = 219
+                    convergeSoftWrapAnchor(
+                        textView: textView, targetLine: targetTopLine,
+                        tick: 0
+                    ) { expectedTopLine in
+                        ws.toggleSoftWrap()
+                        pollSoftWrapAnchor(
+                            ws: ws, textView: textView,
+                            expectedWrap: false,
+                            expectedTopLine: expectedTopLine,
+                            tick: 0
+                        ) {
+                            ws.toggleSoftWrap()
+                            pollSoftWrapAnchor(
+                                ws: ws, textView: textView,
+                                expectedWrap: true,
+                                expectedTopLine: expectedTopLine,
+                                tick: 0
+                            ) {
+                                guard textView.string == textBefore,
+                                      textView.selectedRange() == selectionBefore,
+                                      ws.activeTab?.content == textBefore,
+                                      ws.activeTab?.isDirty == dirtyBefore,
+                                      textView.undoManager?.canUndo == canUndoBefore else {
+                                    finish(
+                                        false,
+                                        "Umschalten veränderte Text, Auswahl, "
+                                            + "Dirty- oder Undo-Zustand"
+                                    )
+                                }
+                                finish(
+                                    true,
+                                    "oberste Textzeile \(expectedTopLine + 1) "
+                                        + "blieb bei Aus und Ein identisch"
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Scrollt iterativ, bis die Zielzeile wirklich oben liegt. Ein einmalig
+    /// aus `rectForOffset` berechneter Wert wäre bei noch nicht ausgelegten
+    /// langen Umbruchzeilen nur eine Schätzung und kein unabhängiger Repro.
+    private static func convergeSoftWrapAnchor(
+        textView: TextView, targetLine: Int, tick: Int,
+        completion: @escaping (Int) -> Void
+    ) {
+        guard let scrollView = textView.enclosingScrollView,
+              let line = textView.layoutManager.textLineForIndex(targetLine),
+              let rect = textView.layoutManager.rectForOffset(
+                line.range.location
+              ) else {
+            finish(false, "Ankerzeile nicht layoutbar")
+        }
+        let targetY = max(
+            rect.minY - scrollView.contentInsets.top,
+            0
+        )
+        scrollView.contentView.scroll(
+            to: NSPoint(
+                x: scrollView.contentView.bounds.origin.x,
+                y: targetY
+            )
+        )
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        textView.layoutManager.layoutLines()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            let shown = textView.layoutManager.textLineForPosition(
+                textView.visibleRect.minY
+            )?.index
+            if let shown, abs(shown - targetLine) <= 1 {
+                completion(shown)
+            } else if tick >= 30 {
+                finish(
+                    false,
+                    "Ankerzeile \(targetLine + 1) nicht oben erreichbar; "
+                        + "sichtbar=\(shown.map { String($0 + 1) } ?? "nil")"
+                )
+            } else {
+                convergeSoftWrapAnchor(
+                    textView: textView, targetLine: targetLine,
+                    tick: tick + 1, completion: completion
+                )
+            }
+        }
+    }
+
+    private static func pollSoftWrapAnchor(
+        ws: Workspace, textView: TextView,
+        expectedWrap: Bool, expectedTopLine: Int,
+        tick: Int, completion: @escaping () -> Void
+    ) {
+        let shown = textView.layoutManager.textLineForPosition(
+            textView.visibleRect.minY
+        )?.index
+        if ws.softWrapEnabled == expectedWrap,
+           textView.wrapLines == expectedWrap,
+           shown == expectedTopLine {
+            completion()
+            return
+        }
+        if tick >= 40 {
+            finish(
+                false,
+                "Soft Wrap \(expectedWrap ? "Ein" : "Aus") versprang: "
+                    + "erwartet Zeile \(expectedTopLine + 1), "
+                    + "sichtbar=\(shown.map { String($0 + 1) } ?? "nil"), "
+                    + "y=\(Int(textView.visibleRect.minY))"
+            )
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollSoftWrapAnchor(
+                ws: ws, textView: textView,
+                expectedWrap: expectedWrap,
+                expectedTopLine: expectedTopLine,
+                tick: tick + 1, completion: completion
+            )
         }
     }
 

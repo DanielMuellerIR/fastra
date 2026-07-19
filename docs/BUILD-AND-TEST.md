@@ -132,12 +132,18 @@ Minimum aus Spaltenziel und nutzbarem Viewport. Umbruch und vorhandene
 Reformatting-Linie verwenden dieselbe reale Schrift-, Kern- und Inset-Geometrie.
 Der Patch korrigiert außerdem die bisher halbierte Guide-Koordinate und zeichnet
 die versetzte Guide-View in lokalen Bounds. Bei extrem schmaler Breite erzwingt
-der Typesetter mindestens ein vollständiges Graphem pro Fragment.
+der Typesetter mindestens ein vollständiges Graphem pro Fragment. Beim
+Umschalten von Soft Wrap sichert der Patch die tatsächliche oberste logische
+Textzeile statt des absoluten Y-Werts. Begrenzte asynchrone Nachläufe gleichen
+das verzögerte Layout langer Dokumente aus, ohne alle vorangehenden Zeilen
+synchron auszulegen.
 Regressions-Wächter: `SoftWrapLayoutTests` treiben echte CodeEdit-Controller,
 Layoutfragmente und Bitmap-Rendering; `./selftest.sh softwrapmodes` prüft im
 laufenden Fenster alle drei Ziele, Guide-Koordinate, Resize, Zoom und
-zustandsneutrales Reconcile. `ghosttext`, `hscroll`, `colsel` und `gutterdim`
-bleiben ergänzende Regressionen.
+zustandsneutrales Reconcile. `./selftest.sh softwrapanchor` verankert in einem
+langen realen Dokument die unabhängig beobachtete oberste Zeile beim Aus- und
+Einschalten. `ghosttext`, `hscroll`, `colsel` und `gutterdim` bleiben ergänzende
+Regressionen.
 
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 

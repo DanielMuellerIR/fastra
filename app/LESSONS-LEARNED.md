@@ -276,6 +276,11 @@ Zeichnen ein zweites Mal.
 - `ReformattingGuideView` zeichnet in lokalen `bounds`.
 - Liefert CoreText bei extrem schmaler Breite keinen Fortschritt, fällt der
   Typesetter auf genau ein vollständiges zusammengesetztes Zeichen zurück.
+- Beim Wechsel von Soft Wrap darf nicht der absolute Y-Scrollwert erhalten
+  bleiben: Durch die neue Zahl der Umbruchfragmente zeigt er auf eine andere
+  logische Zeile. Der Patch merkt die tatsächlich oberste Textzeile und nähert
+  sich ihrer neuen Position in begrenzten asynchronen Schritten. So bleibt der
+  Ausschnitt stabil, ohne alle vorherigen Zeilen auf dem Main-Thread auszulegen.
 
 **Regressionen:** `SoftWrapLayoutTests` verwenden den realen
 `TextViewController`, beobachten dessen maximale Layoutbreite, Viewport-Minimum,
@@ -283,3 +288,6 @@ Guide-Geometrie samt Gutter und Fontwechsel, rendern die versetzte Guide-View in
 ein Bitmap und prüfen Unicode-Fortschritt. `./selftest.sh softwrapmodes` prüft
 zusätzlich im echten Fenster Fensterbreite, Page Guide und feste Spalte sowie
 Resize, Zoom, Auswahl, Text, Dirty-Zustand und Undo-Stack.
+`./selftest.sh softwrapanchor` scrollt in einem langen Dokument tief nach unten
+und beobachtet unabhängig, dass beim Aus- und Einschalten dieselbe logische
+Textzeile oben bleibt.

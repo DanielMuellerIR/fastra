@@ -193,7 +193,7 @@ The factory default is on for **Plain Text, Markdown, HTML, and XML**. It is
 off for **4D, JSON, CSV, and other code/configuration formats**. With Soft
 Wrap off, long lines remain reachable through the horizontal scroll bar.
 Toggling it changes neither text nor selection, undo history, or the saved
-file.
+file. The topmost displayed text line remains anchored in place.
 
 ## 4D Support
 

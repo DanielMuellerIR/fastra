@@ -565,8 +565,8 @@ PYEOF
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
-# 4n. CodeEditTextView + CodeEditSourceEditor — feste Soft-Wrap-Spalten und
-# exakte Page-Guide-Geometrie.
+# 4n. CodeEditTextView + CodeEditSourceEditor — feste Soft-Wrap-Spalten,
+# exakte Page-Guide-Geometrie und stabiler oberer Zeilenanker.
 #
 # Upstream kennt nur Umbruch an der Viewportbreite. Die vorhandene Guide-Linie
 # halbiert ausserdem Zeichenbreite und Text-Inset und liegt dadurch nicht an der
@@ -576,6 +576,8 @@ fi
 # Viewport bleibt die harte Obergrenze. Zusätzlich garantiert der
 # Typesetter-Patch bei extrem schmalen Breiten mindestens ein vollständiges
 # Graphem pro Fragment, damit CoreTexts 0-Ergebnis keine Endlosschleife erzeugt.
+# Beim Umschalten bleibt die tatsächlich oberste logische Textzeile verankert;
+# begrenzte Nachläufe berücksichtigen dabei CodeEdits verzögertes Layout.
 CETV_MANAGER="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextLayoutManager/TextLayoutManager.swift"
 CETV_BREAK="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/Extensions/CTTypesetter+SuggestLineBreak.swift"
 CESE_BEHAVIOR="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/SourceEditorConfiguration/SourceEditorConfiguration+Behavior.swift"
@@ -585,6 +587,7 @@ CESE_GUIDE="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/Reforma
 if ! grep -q 'Fastra-Patch: optionale feste Umbruchbreite' "$CETV_MANAGER" 2>/dev/null \
    || ! grep -q 'Fastra-Patch: In extrem schmalen Viewports' "$CETV_BREAK" 2>/dev/null \
    || ! grep -q 'wrapAtColumn' "$CESE_BEHAVIOR" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: oberste sichtbare Textzeile' "$CESE_APPEARANCE" 2>/dev/null \
    || ! grep -q 'Fastra-Patch: dieselbe echte Spaltengeometrie' "$CESE_GUIDE" 2>/dev/null \
    || ! grep -q 'Fastra-Patch: In lokalen View-Koordinaten' "$CESE_GUIDE" 2>/dev/null; then
   echo "→ Patche CodeEdit (feste Soft-Wrap-Spalten + exakte Seitenlinie)"
@@ -749,6 +752,31 @@ replace_once(
 
 replace_once(
     appearance,
+    "Fastra-Patch: oberste sichtbare Textzeile",
+    '''            if oldConfig?.wrapLines != wrapLines {
+                controller.textView.layoutManager.wrapLines = wrapLines
+                controller.minimapView.layoutManager?.wrapLines = wrapLines
+                controller.scrollView.hasHorizontalScroller = !wrapLines
+                controller.updateTextInsets()
+            }''',
+    '''            if oldConfig?.wrapLines != wrapLines {
+                // Fastra-Patch: oberste sichtbare Textzeile vor der
+                // Hoehenaenderung merken. Derselbe absolute Y-Wert zeigt nach
+                // neuem Umbruch sonst eine andere logische Zeile.
+                let topVisibleLine = controller.fastraTopVisibleLineIndex()
+                controller.textView.layoutManager.wrapLines = wrapLines
+                controller.minimapView.layoutManager?.wrapLines = wrapLines
+                controller.scrollView.hasHorizontalScroller = !wrapLines
+                controller.updateTextInsets()
+                controller.restoreFastraTopVisibleLine(
+                    topVisibleLine,
+                    expectedWrapLines: wrapLines
+                )
+            }'''
+)
+
+replace_once(
+    appearance,
     "controller.updateFastraColumnGeometry()",
     '''            if needsHighlighterInvalidation {
                 controller.highlighter?.invalidate()
@@ -841,13 +869,138 @@ extension TextViewController {
         reformattingGuideView?.updatePosition(in: self)
         textView.updateFrameIfNeeded()
     }
+
+    /// Fastra-Patch: Top-Zeilen-Anker statt absoluten Y-Wert sichern.
+    func fastraTopVisibleLineIndex() -> Int? {
+        textView.layoutManager.textLineForPosition(
+            textView.visibleRect.minY
+        )?.index
+    }
+
+    /// Nach einer Umbruchaenderung konvergiert CodeEdits Lazy-Layout erst
+    /// schrittweise auf die echten Hoehen aller langen Zeilen vor dem Anker.
+    /// Kleine, begrenzte Nachlaeufe erhalten die logische oberste Zeile, ohne
+    /// das gesamte Dokument synchron auf dem Main-Thread auszulegen.
+    func restoreFastraTopVisibleLine(
+        _ lineIndex: Int?,
+        expectedWrapLines: Bool,
+        attempt: Int = 0
+    ) {
+        guard wrapLines == expectedWrapLines,
+              let lineIndex,
+              let scrollView,
+              let line = textView.layoutManager.textLineForIndex(lineIndex),
+              let rect = textView.layoutManager.rectForOffset(
+                  line.range.location
+              ) else {
+            return
+        }
+        let targetY = max(
+            rect.minY - scrollView.contentInsets.top + 1,
+            0
+        )
+        scrollView.contentView.scroll(
+            to: NSPoint(
+                x: scrollView.contentView.bounds.origin.x,
+                y: targetY
+            )
+        )
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        textView.layoutManager.layoutLines()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) { [weak self] in
+            guard let self,
+                  self.wrapLines == expectedWrapLines,
+                  attempt < 24,
+                  self.fastraTopVisibleLineIndex() != lineIndex else {
+                return
+            }
+            self.restoreFastraTopVisibleLine(
+                lineIndex,
+                expectedWrapLines: expectedWrapLines,
+                attempt: attempt + 1
+            )
+        }
+    }
 }
 '''
     open(guide, "w").write(src)
+elif "Fastra-Patch: Top-Zeilen-Anker" not in src:
+    old = '''    func updateFastraColumnGeometry() {
+        textView.layoutManager.maximumWrapWidth =
+            wrapAtColumn.map { fastraWidth(forColumn: $0) }
+        reformattingGuideView?.updatePosition(in: self)
+        textView.updateFrameIfNeeded()
+    }
+}'''
+    new = '''    func updateFastraColumnGeometry() {
+        textView.layoutManager.maximumWrapWidth =
+            wrapAtColumn.map { fastraWidth(forColumn: $0) }
+        reformattingGuideView?.updatePosition(in: self)
+        textView.updateFrameIfNeeded()
+    }
+
+    /// Fastra-Patch: Top-Zeilen-Anker statt absoluten Y-Wert sichern.
+    func fastraTopVisibleLineIndex() -> Int? {
+        textView.layoutManager.textLineForPosition(
+            textView.visibleRect.minY
+        )?.index
+    }
+
+    /// Nach einer Umbruchaenderung konvergiert CodeEdits Lazy-Layout erst
+    /// schrittweise auf die echten Hoehen aller langen Zeilen vor dem Anker.
+    /// Kleine, begrenzte Nachlaeufe erhalten die logische oberste Zeile, ohne
+    /// das gesamte Dokument synchron auf dem Main-Thread auszulegen.
+    func restoreFastraTopVisibleLine(
+        _ lineIndex: Int?,
+        expectedWrapLines: Bool,
+        attempt: Int = 0
+    ) {
+        guard wrapLines == expectedWrapLines,
+              let lineIndex,
+              let scrollView,
+              let line = textView.layoutManager.textLineForIndex(lineIndex),
+              let rect = textView.layoutManager.rectForOffset(
+                  line.range.location
+              ) else {
+            return
+        }
+        let targetY = max(
+            rect.minY - scrollView.contentInsets.top + 1,
+            0
+        )
+        scrollView.contentView.scroll(
+            to: NSPoint(
+                x: scrollView.contentView.bounds.origin.x,
+                y: targetY
+            )
+        )
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        textView.layoutManager.layoutLines()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) { [weak self] in
+            guard let self,
+                  self.wrapLines == expectedWrapLines,
+                  attempt < 24,
+                  self.fastraTopVisibleLineIndex() != lineIndex else {
+                return
+            }
+            self.restoreFastraTopVisibleLine(
+                lineIndex,
+                expectedWrapLines: expectedWrapLines,
+                attempt: attempt + 1
+            )
+        }
+    }
+}'''
+    if old not in src:
+        raise SystemExit(f"{guide}: Quelltext hat sich geaendert — Top-Zeilen-Patch pruefen")
+    open(guide, "w").write(src.replace(old, new, 1))
 PYEOF
   if ! grep -q 'Fastra-Patch: optionale feste Umbruchbreite' "$CETV_MANAGER" \
      || ! grep -q 'Fastra-Patch: In extrem schmalen Viewports' "$CETV_BREAK" \
      || ! grep -q 'wrapAtColumn' "$CESE_BEHAVIOR" \
+     || ! grep -q 'Fastra-Patch: oberste sichtbare Textzeile' "$CESE_APPEARANCE" \
      || ! grep -q 'Fastra-Patch: dieselbe echte Spaltengeometrie' "$CESE_GUIDE" \
      || ! grep -q 'Fastra-Patch: In lokalen View-Koordinaten' "$CESE_GUIDE"; then
     echo "✗ FEHLER: Soft-Wrap-Spalten-Patch hat NICHT vollständig gegriffen." >&2

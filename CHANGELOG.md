@@ -9,6 +9,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.41.1] — 2026-07-19
+
+### Behoben
+
+- Beim Ein- und Ausschalten von Soft Wrap bleibt die oberste sichtbare
+  logische Textzeile identisch. Auch in langen Dokumenten springt der
+  Fensterausschnitt nicht mehr durch die geänderte Höhe der Umbruchfragmente.
+
+### Intern
+
+- Der CodeEdit-Patch verankert die tatsächliche oberste Textzeile und führt
+  das asynchrone Layout begrenzt auf sie zurück, ohne das gesamte Dokument
+  synchron auszulegen. Der Fenster-Selbsttest `softwrapanchor` prüft beide
+  Umschaltrichtungen sowie Text, Auswahl, Dirty- und Undo-Zustand.
+
 ## [v1.41.0] — 2026-07-19
 
 Etappe 2 des Soft-Wrap-Pakets: Umbruchziele und Seitenlinie.

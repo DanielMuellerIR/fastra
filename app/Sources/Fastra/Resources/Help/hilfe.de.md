@@ -202,7 +202,8 @@ Werkseitig ist Soft Wrap für **Reinen Text, Markdown, HTML und XML ein**.
 Für **4D, JSON, CSV und andere Code-/Konfigurationsformate ist es aus**.
 Ohne Soft Wrap bleiben lange Zeilen über den horizontalen Scrollbalken
 erreichbar. Das Umschalten ändert weder Text noch Auswahl, Rückgängig-
-Verlauf oder gespeicherte Datei.
+Verlauf oder gespeicherte Datei. Die oberste angezeigte Textzeile bleibt dabei
+an derselben Stelle.
 
 ## 4D-Unterstützung
 
