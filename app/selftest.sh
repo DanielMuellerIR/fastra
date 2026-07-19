@@ -41,7 +41,7 @@ cd "$(dirname "$0")"
 
 APP_BIN=".build/debug/Fastra.app/Contents/MacOS/Fastra"
 APP_BUNDLE=".build/debug/Fastra.app"
-ALL_TESTS=(windows newwindow welcomenew multisearch findbar fields tabswitch softwrapprofiles softwrapmodes softwrapanchor highlight highlight4d completion4d previewrender xpath markdown markdownjump markdownappearance jump ghosttext hscroll replaceall pilldrop navmatch colsel gutterdim sidebarheader sidebarfilter filediff tool4dhint tool4dlsp gototarget searchmark help mdassist search project localization updates git gitactions filemodes selsearch wildcard openscope contrast cmdw)
+ALL_TESTS=(windows newwindow welcomenew multisearch findbar fields tabswitch softwrapprofiles softwrapmodes softwrapanchor highlight highlight4d completion4d previewrender xpath markdown markdownjump markdownappearance jump ghosttext hscroll replaceall pilldrop navmatch colsel colselwrap colpaste gutterdim sidebarheader sidebarfilter filediff tool4dhint tool4dlsp gototarget searchmark help mdassist search project localization updates git gitactions filemodes selsearch wildcard openscope contrast cmdw)
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
 WINDOWLESS_TESTS=(search project localization updates git gitactions filemodes selsearch wildcard openscope tool4dlsp)
 # Pro Test max. Wartezeit in Sekunden, bis die SELFTEST-Zeile da sein muss.

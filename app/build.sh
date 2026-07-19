@@ -1131,6 +1131,171 @@ PYEOF
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4o. CodeEditTextView — Rechteckauswahl auf logischen Zeilen.
+#
+# Upstreams Implementierung behandelt jedes sichtbare Soft-Wrap-Fragment wie
+# eine eigene Rechteckzeile. Fastra ersetzt diese Datei deshalb durch einen
+# versionierten Patch und verdrahtet Copy/Paste, Undo sowie die aktive Tab- und
+# Einrückungsgeometrie. Jede Patchstelle besitzt einen Marker; ein veränderter
+# Upstream bricht den Build verständlich ab, statt still anderes Verhalten zu
+# liefern.
+CETV_COLUMN="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+ColumnSelection.swift"
+CETV_COPY_PASTE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+CopyPaste.swift"
+CETV_DELETE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+Delete.swift"
+CETV_REPLACE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+ReplaceCharacters.swift"
+COLUMN_PATCH_SOURCE="Patches/CodeEditTextView/TextView+ColumnSelection.swift"
+if [ ! -f "$COLUMN_PATCH_SOURCE" ]; then
+  echo "✗ FEHLER: Versionierter Rechteckauswahl-Patch fehlt." >&2
+  exit 1
+fi
+
+COLUMN_PATCH_CHANGED=0
+if ! cmp -s "$COLUMN_PATCH_SOURCE" "$CETV_COLUMN"; then
+  echo "→ Patche CodeEditTextView (Rechteckauswahl auf logischen Zeilen)"
+  chmod u+w "$CETV_COLUMN"
+  cp "$COLUMN_PATCH_SOURCE" "$CETV_COLUMN"
+  COLUMN_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: Rechteck-Copy' "$CETV_COPY_PASTE" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: Rechteck-Paste' "$CETV_COPY_PASTE" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: Rechteck-Delete' "$CETV_DELETE" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: eine Undo-Gruppe fuer Mehrfachbereiche' "$CETV_REPLACE" 2>/dev/null \
+   || ! grep -q 'fastraColumnSelectionTabWidth = tabWidth' "$CESE_APPEARANCE" 2>/dev/null \
+   || ! grep -q 'fastraColumnIndentationUnit' "$CESE_BEHAVIOR" 2>/dev/null; then
+  echo "→ Verdrahte Rechteckauswahl mit Copy/Paste, Undo und Editorprofil"
+  chmod u+w "$CETV_COPY_PASTE" "$CETV_DELETE" "$CETV_REPLACE" \
+    "$CESE_APPEARANCE" "$CESE_BEHAVIOR"
+  /usr/bin/python3 - "$CETV_COPY_PASTE" "$CETV_DELETE" "$CETV_REPLACE" \
+    "$CESE_APPEARANCE" "$CESE_BEHAVIOR" <<'PYEOF'
+import sys
+
+copy_paste, delete, replace_characters, appearance, behavior = sys.argv[1:]
+
+def replace_once(path, marker, old, new):
+    src = open(path).read()
+    if marker in src:
+        return
+    if old not in src:
+        raise SystemExit(
+            f"{path}: Quelltext hat sich geaendert — Patch 4o pruefen"
+        )
+    open(path, "w").write(src.replace(old, new, 1))
+
+replace_once(
+    copy_paste,
+    "Fastra-Patch: Rechteck-Copy",
+    '''    @objc open func copy(_ sender: AnyObject) {
+        guard let textSelections = selectionManager?''',
+    '''    @objc open func copy(_ sender: AnyObject) {
+        // Fastra-Patch: Rechteck-Copy schreibt einen zeilenweisen Textwert.
+        if fastraCopyColumnSelection() {
+            return
+        }
+        guard let textSelections = selectionManager?'''
+)
+replace_once(
+    copy_paste,
+    "Fastra-Patch: Rechteck-Paste",
+    '''    @objc open func paste(_ sender: AnyObject) {
+        guard let stringContents = NSPasteboard.general.string(forType: .string) else { return }
+        insertText(stringContents, replacementRange: NSRange(location: NSNotFound, length: 0))
+    }''',
+    '''    @objc open func paste(_ sender: AnyObject) {
+        guard let stringContents = NSPasteboard.general.string(forType: .string) else { return }
+        // Fastra-Patch: Rechteck-Paste verteilt Zeilen auf logische Zeilen.
+        if fastraPasteIntoColumnSelection(stringContents) {
+            return
+        }
+        insertText(stringContents, replacementRange: NSRange(location: NSNotFound, length: 0))
+    }'''
+)
+replace_once(
+    delete,
+    "Fastra-Patch: Rechteck-Delete",
+    '''    private func delete(
+        direction: TextSelectionManager.Direction,
+        destination: TextSelectionManager.Destination,
+        decomposeCharacters: Bool = false
+    ) {
+        /// Extend each selection''',
+    '''    private func delete(
+        direction: TextSelectionManager.Direction,
+        destination: TextSelectionManager.Destination,
+        decomposeCharacters: Bool = false
+    ) {
+        // Fastra-Patch: Rechteck-Delete darf leere Bereiche kurzer Zeilen
+        // nicht auf das benachbarte Zeichen ausweiten.
+        if fastraDeleteColumnSelection() {
+            return
+        }
+        /// Extend each selection'''
+)
+replace_once(
+    replace_characters,
+    "Fastra-Patch: eine Undo-Gruppe fuer Mehrfachbereiche",
+    '''    ) {
+        guard isEditable else { return }
+        NotificationCenter.default.post(name: Self.textWillChangeNotification, object: self)''',
+    '''    ) {
+        guard isEditable else { return }
+        // Fastra-Patch: eine Undo-Gruppe fuer Mehrfachbereiche. Das betrifft
+        // insbesondere Tippen, Delete und Cut auf einer Rechteckauswahl.
+        let startsFastraUndoGrouping =
+            ranges.count > 1 && !(_undoManager?.isGrouping ?? false)
+        if startsFastraUndoGrouping {
+            _undoManager?.beginUndoGrouping()
+        }
+        defer {
+            if startsFastraUndoGrouping {
+                _undoManager?.endUndoGrouping()
+            }
+        }
+        NotificationCenter.default.post(name: Self.textWillChangeNotification, object: self)'''
+)
+replace_once(
+    appearance,
+    "fastraColumnSelectionTabWidth = tabWidth",
+    '''            if oldConfig?.tabWidth != tabWidth {
+                controller.paragraphStyle = controller.generateParagraphStyle()''',
+    '''            if oldConfig?.tabWidth != tabWidth {
+                controller.textView.fastraColumnSelectionTabWidth = tabWidth
+                controller.paragraphStyle = controller.generateParagraphStyle()'''
+)
+replace_once(
+    behavior,
+    "fastraColumnIndentationUnit",
+    '''            if oldConfig?.indentOption != indentOption {
+                controller.setUpTextFormation()''',
+    '''            if oldConfig?.indentOption != indentOption {
+                controller.textView.fastraColumnIndentationUnit =
+                    indentOption.stringValue
+                controller.setUpTextFormation()'''
+)
+PYEOF
+  COLUMN_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'FastraColumnSelectionSnapshot' "$CETV_COLUMN" \
+   || ! grep -q 'Fastra-Patch: Rechteck-Copy' "$CETV_COPY_PASTE" \
+   || ! grep -q 'Fastra-Patch: Rechteck-Paste' "$CETV_COPY_PASTE" \
+   || ! grep -q 'Fastra-Patch: Rechteck-Delete' "$CETV_DELETE" \
+   || ! grep -q 'Fastra-Patch: eine Undo-Gruppe fuer Mehrfachbereiche' "$CETV_REPLACE" \
+   || ! grep -q 'fastraColumnSelectionTabWidth = tabWidth' "$CESE_APPEARANCE" \
+   || ! grep -q 'fastraColumnIndentationUnit' "$CESE_BEHAVIOR"; then
+  echo "✗ FEHLER: Rechteckauswahl-Patch hat NICHT vollständig gegriffen." >&2
+  exit 1
+fi
+
+if [ "$COLUMN_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 

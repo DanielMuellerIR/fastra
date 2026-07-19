@@ -71,13 +71,14 @@ signierte, aber nicht notarisierten Variante dient weiter `install.sh --no-notar
 Beim Version-Bump `app/Info.plist` mitziehen (siehe AGENTS.md), sonst zeigt die
 App eine veraltete Version.
 
-`build.sh` kapselt Xcode-Toolchain-Switch + sechzehn Checkout-Patches
+`build.sh` kapselt Xcode-Toolchain-Switch + siebzehn Checkout-Patches
 (SwiftLint-Plugins aus, CodeEditSymbols Resources, CMD+F-Zombie-Kill,
 toter cursorPositions-Reconcile, verworfene Auto-Vervollständigung schließen,
 Gutter-Drag-Clamp, horizontaler Scrollbalken, Zeilenbreiten-Messung,
 exotische Sprachen ausschneiden, Highlight-Query-Pfad layout-robust,
-Text-Geist-Fix, zwei portable Ressourcenpfade und getrennte 4D-Theme-Slots
-einschließlich eines optionalen Methoden-Slots).
+Text-Geist-Fix, zwei portable Ressourcenpfade, getrennte 4D-Theme-Slots
+einschließlich eines optionalen Methoden-Slots, feste Soft-Wrap-Spalten und
+Rechteckauswahl auf logischen Zeilen).
 
 Seit v1.19.0 verpackt `build.sh` zusätzlich das exakt gepinnte
 `Sparkle.framework` unter `Contents/Frameworks`, entfernt die für die nicht
@@ -146,6 +147,21 @@ realen Dokument mit 2.400 langen Zeilen die unabhängig beobachtete oberste
 Zeile beim Aus- und Einschalten. Der Test tastet den sichtbaren Zustand alle
 20 ms ab und akzeptiert keine abweichende Zwischenposition. `ghosttext`,
 `hscroll`, `colsel` und `gutterdim` bleiben ergänzende Regressionen.
+
+Patch 4o (Rechteckauswahl, 2026-07-19): Upstream baut die Spaltenauswahl aus
+jedem sichtbaren `lineFragment` und macht umbrochene Fortsetzungen dadurch zu
+zusätzlichen Rechteckzeilen. Fastra ersetzt
+`TextView+ColumnSelection.swift` reproduzierbar aus
+`app/Patches/CodeEditTextView/` und verdrahtet Copy/Paste, Delete sowie
+Mehrfachbereich-Undo. Zeilen und Spalten werden aus logischen NSString-Zeilen,
+vollständigen `Character`-Graphemen und tabstopp-bewussten visuellen Spalten
+berechnet. CodeEditSourceEditor reicht die aktive Tabbreite und
+Einrückungseinheit weiter. Alle Integrationsstellen besitzen harte Marker;
+eine abweichende Upstream-Quelle bricht den Build ab. Regressions-Wächter:
+`./selftest.sh colsel colselwrap colpaste` prüft Punkt-Drag, echte
+Soft-Wrap-Fragmente, Vorwärts/Rückwärts, kurze und leere Zeilen, Tabs, CRLF,
+Unicode, Copy/Paste/Cut/Delete/Tippen/Paste Column, Transformationen und genau
+eine Undo-Gruppe pro Schreibaktion.
 
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 

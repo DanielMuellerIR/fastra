@@ -294,3 +294,30 @@ Resize, Zoom, Auswahl, Text, Dirty-Zustand und Undo-Stack.
 `./selftest.sh softwrapanchor` scrollt in einem Dokument mit 2.400 langen Zeilen
 tief nach unten und beobachtet alle 20 ms unabhängig, dass beim Aus- und
 Einschalten dieselbe logische Textzeile ohne Zwischenabweichung oben bleibt.
+
+### F.13 Rechteckzeilen dürfen keine Umbruchfragmente sein (2026-07-19)
+
+CodeEditTextView erzeugt upstream die Spaltenauswahl aus allen sichtbaren
+`lineFragments`. Unter Soft Wrap wird eine lange logische Zeile deshalb
+mehrfach ausgewählt. Eine bloße Filterung der Fragmente reicht nicht: Tabs,
+kurze Zeilen und zusammengesetzte Unicode-Zeichen brauchen weiterhin eine
+eindeutige Spalten- und UTF-16-Abbildung.
+
+**Workaround (Patch 4o in `build.sh`):** Die versionierte Ersatzdatei unter
+`Patches/CodeEditTextView/` bildet jeden Drag-Punkt zuerst auf logische
+NSString-Zeile und visuelle Spalte ab. Sie iteriert Swift-`Character`, zählt
+Tabs bis zum nächsten Tabstopp und setzt pro logischer Zeile genau einen
+graphem-sicheren UTF-16-Bereich. Copy/Paste, Paste Column und Zeichen-
+Transformationen teilen diesen Zustand. Mehrfachänderungen werden im
+`CEUndoManager` ausdrücklich gruppiert.
+
+Zwei Randfälle brauchen eigene Wächter:
+
+- Ein Nullbereich auf einer kurzen Zeile darf bei Backspace/Delete nicht in
+  Upstreams „Zeichen am Cursor löschen“-Pfad fallen; er bleibt unverändert.
+- Eine Zeichen-Transformation darf einen Nullbereich nicht als „keine Auswahl
+  = ganzes Dokument“ interpretieren.
+
+`./selftest.sh colsel colselwrap colpaste` prüft diese Fälle zusammen mit
+echtem Soft Wrap, Vorwärts/Rückwärts, Tabs, CRLF, Unicode, Clipboard-
+Mismatch-Regel und exakt einer Undo-Gruppe.

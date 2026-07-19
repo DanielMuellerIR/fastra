@@ -195,6 +195,33 @@ Wrap off, long lines remain reachable through the horizontal scroll bar.
 Toggling it changes neither text nor selection, undo history, or the saved
 file. The topmost displayed text line remains steadily anchored in place.
 
+## Column Selection
+
+**Option-drag** selects the same column range across multiple **logical text
+lines**. This also works with Soft Wrap: a long line remains exactly one
+rectangle row even when it is displayed as several wrapped fragments. Short
+and empty lines, tabs, CRLF, and composed Unicode characters are not split
+artificially.
+
+**Copy, cut, delete, typing, and normal paste** operate on every part. One
+clipboard line fills every rectangle row; multiple clipboard lines are
+distributed in order. If the clipboard has fewer lines, the remaining
+rectangle parts are cleared. Extra lines continue below the rectangle. Each
+multi-part edit is fully undone with one ⌘Z.
+
+**Edit → Paste Column** (`⌃⌘V`) is also available in the right-click menu.
+It pastes clipboard lines vertically at the rectangle's left edge or, without
+a rectangle, at the cursor. Short target lines are padded to the target
+column; whole tab stops use tabs when the active indentation profile uses
+tabs, with any remainder kept as spaces.
+
+**Select Column Up/Down** (`⌃⇧↑/↓`) grows or shrinks a rectangle by one
+logical line. Character operations such as case, quote, and Unicode
+transformations process every rectangle part independently. Commands that
+operate on whole lines or may create line breaks are disabled during a
+column selection and explain why, so nothing outside the visible rectangle
+is changed.
+
 ## 4D Support
 
 `.4dm` methods are rendered with a dedicated 4D color scheme (commands,

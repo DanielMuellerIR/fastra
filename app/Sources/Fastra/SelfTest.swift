@@ -170,6 +170,8 @@ enum SelfTest {
         case "crjump":    waitForMainWindow { runCRJumpTest() }
         case "textop":    waitForMainWindow { runTextOpTest() }
         case "colsel":    waitForMainWindow { runColumnSelectionTest() }
+        case "colselwrap": waitForMainWindow { runWrappedColumnSelectionTest() }
+        case "colpaste":  waitForMainWindow { runColumnPasteTest() }
         case "gutterdim": waitForMainWindow { runGutterDimmingTest() }
         case "sidebarheader": waitForMainWindow { runSidebarHeaderTest() }
         case "sidebarfilter": waitForMainWindow { runSidebarFilterTest() }
@@ -273,7 +275,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -4397,13 +4399,9 @@ enum SelfTest {
 
     // MARK: - -selftest colsel
 
-    /// Verifiziert die RECHTECKIGE (Spalten-)Selektion. CodeEditTextView bringt
-    /// sie seit einem neueren Release mit (`TextView.selectColumns`, ALT-Drag-
-    /// Delegation in `mouseDragged`) — die alte `decisions.md`-Notiz „kein
-    /// ALT-Spalten-Drag" ist überholt. Da computer-use keinen modifizierten
-    /// Drag (ALT gehalten) zuverlässig kann, treiben wir hier dieselbe
-    /// öffentliche API, die der ALT-Drag aufruft: zwei Punkte über mehrere
-    /// Zeilen → es müssen MEHRERE Selektionsbereiche entstehen.
+    /// Verifiziert den öffentlichen Option-Drag-Pfad ohne Soft Wrap. Die
+    /// Punkt-API ist exakt dieselbe, die `mouseDragged` verwendet; geprüft
+    /// werden nicht nur mehrere Cursor, sondern die exakten Teilbereiche.
     private static func runColumnSelectionTest() {
         testLabel = "colsel"
         guard let ws = Workspace.shared else {
@@ -4432,6 +4430,7 @@ enum SelfTest {
                 guard let tv = editorTextView(in: root) as? TextView else {
                     finish(false, "Editor-TextView nicht erreichbar")
                 }
+                tv.layoutManager.wrapLines = false
                 tv.layoutSubtreeIfNeeded()
                 // Offset 2 = Zeile 0, Spalte 2. Offset 32 = Zeile 3, Spalte 5
                 // (je Zeile 8 Zeichen + \n = 9; 3*9 + 5 = 32).
@@ -4442,10 +4441,360 @@ enum SelfTest {
                 let pA = CGPoint(x: rA.minX, y: rA.midY)
                 let pB = CGPoint(x: rB.minX, y: rB.midY)
                 tv.selectColumns(betweenPointA: pA, pointB: pB)
-                let n = tv.selectionManager.textSelections.count
-                finish(n >= 2,
-                       "Spalten-Selektion ergab \(n) Bereiche (erwartet ≥2) — "
-                       + "ALT-Drag nutzt dieselbe selectColumns-API")
+                let snapshot = tv.fastraColumnSelectionSnapshot
+                let values = snapshot?.ranges.map {
+                    (tv.string as NSString).substring(with: $0)
+                }
+                let ok = snapshot?.lineIndices == [0, 1, 2, 3]
+                    && snapshot?.lowerColumn == 2
+                    && snapshot?.upperColumn == 5
+                    && values == ["CDE", "CDE", "CDE", "CDE"]
+                finish(ok,
+                       "Option-Drag: Zeilen=\(snapshot?.lineIndices ?? []), "
+                       + "Spalten=\(snapshot?.lowerColumn ?? -1)…"
+                       + "\(snapshot?.upperColumn ?? -1), Werte=\(values ?? [])")
+            }
+        }
+    }
+
+    // MARK: - -selftest colselwrap
+
+    /// Soft Wrap darf keine zusätzliche Rechteckzeile erzeugen. Der Test
+    /// umfasst kurze/leere Zeilen, Tabs, CRLF und zusammengesetzte Grapheme;
+    /// Vorwärts- und Rückwärtsauswahl müssen dieselben logischen Zeilen treffen.
+    private static func runWrappedColumnSelectionTest() {
+        testLabel = "colselwrap"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard let mainWindow = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        }), let root = mainWindow.contentView else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+
+        let lines = [
+            "abCDE" + String(repeating: " langeZeile", count: 12),
+            "xy",
+            "",
+            "\tABCD",
+            "ab👩‍💻e\u{301}Z",
+        ]
+        let content = lines.joined(separator: "\r\n")
+        var starts: [Int] = []
+        var offset = 0
+        for (index, line) in lines.enumerated() {
+            starts.append(offset)
+            offset += (line as NSString).length
+            if index < lines.count - 1 { offset += 2 }
+        }
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-colselwrap-\(UUID().uuidString).txt")
+        do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+
+        ws.loadFile(at: tmp) { ok in
+            try? FileManager.default.removeItem(at: tmp)
+            guard ok else { finish(false, "loadFile schlug fehl (completion false)") }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                guard let tv = editorTextView(in: root) as? TextView else {
+                    finish(false, "Editor-TextView nicht erreichbar")
+                }
+                let charWidth = max(
+                    (" " as NSString).size(withAttributes: [
+                        .font: tv.font,
+                        .kern: tv.kern,
+                    ]).width,
+                    1
+                )
+                tv.layoutManager.wrapLines = true
+                tv.layoutManager.maximumWrapWidth = charWidth * 9
+                tv.layoutManager.layoutLines()
+
+                let firstFragments = Array(tv.layoutManager.lineStorage)
+                    .first.map { Array($0.data.lineFragments).count } ?? 0
+                tv.selectionManager.setSelectedRange(
+                    NSRange(location: starts[0] + 2, length: 3)
+                )
+                for _ in 1..<lines.count {
+                    guard tv.fastraSelectColumn(upwards: false) else {
+                        finish(false, "Select Down endete vor der letzten logischen Zeile")
+                    }
+                }
+                guard let forward = tv.fastraColumnSelectionSnapshot else {
+                    finish(false, "Vorwärtsauswahl lieferte keinen Rechteckzustand")
+                }
+                let values = forward.ranges.map {
+                    (tv.string as NSString).substring(with: $0)
+                }
+                let expectedValues = ["CDE", "", "", "\tA", "👩‍💻e\u{301}Z"]
+                let textBefore = tv.string
+                let rangesBefore = forward.ranges
+
+                // Dieselbe Geometrie rückwärts aufbauen. Der letzte echte
+                // Teilbereich ist graphem-sicher und bestimmt wieder Spalte 2…5.
+                tv.selectionManager.setSelectedRange(forward.ranges[4])
+                for _ in 1..<lines.count {
+                    guard tv.fastraSelectColumn(upwards: true) else {
+                        finish(false, "Select Up endete vor der ersten logischen Zeile")
+                    }
+                }
+                guard let reverse = tv.fastraColumnSelectionSnapshot else {
+                    finish(false, "Rückwärtsauswahl lieferte keinen Rechteckzustand")
+                }
+
+                // Wrap-Ziel ändern und Wrap kurz aus-/einschalten: weder Text
+                // noch echte UTF-16-Bereiche dürfen sich dadurch verändern.
+                tv.layoutManager.maximumWrapWidth = charWidth * 14
+                tv.layoutManager.wrapLines = false
+                tv.layoutManager.layoutLines()
+                tv.layoutManager.wrapLines = true
+                tv.layoutManager.layoutLines()
+                let afterToggle = tv.fastraColumnSelectionSnapshot
+
+                let ok = firstFragments > 1
+                    && forward.lineIndices == [0, 1, 2, 3, 4]
+                    && forward.lowerColumn == 2
+                    && forward.upperColumn == 5
+                    && values == expectedValues
+                    && reverse.lineIndices == forward.lineIndices
+                    && reverse.ranges == rangesBefore
+                    && afterToggle?.ranges == rangesBefore
+                    && tv.string == textBefore
+                finish(
+                    ok,
+                    "Fragmente Zeile 1=\(firstFragments), logische Zeilen="
+                        + "\(forward.lineIndices), Werte=\(values), "
+                        + "rückwärts=\(reverse.ranges == rangesBefore), "
+                        + "Wrap-Umschaltung=\(afterToggle?.ranges == rangesBefore)"
+                )
+            }
+        }
+    }
+
+    // MARK: - -selftest colpaste
+
+    /// Copy/Paste, Tippen, Löschen, Cut, Paste Column und eine Zeichen-
+    /// Transformation müssen alle Rechteckteile bearbeiten und je genau eine
+    /// Undo-Gruppe erzeugen.
+    private static func runColumnPasteTest() {
+        testLabel = "colpaste"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard let mainWindow = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        }), let root = mainWindow.contentView else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-colpaste-\(UUID().uuidString).txt")
+        do {
+            try "abCDef\nabXYef\nab12ef".write(
+                to: tmp, atomically: true, encoding: .utf8
+            )
+        } catch {
+            finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)")
+        }
+
+        ws.loadFile(at: tmp) { ok in
+            try? FileManager.default.removeItem(at: tmp)
+            guard ok else { finish(false, "loadFile schlug fehl (completion false)") }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                guard let tv = editorTextView(in: root) as? TextView else {
+                    finish(false, "Editor-TextView nicht erreichbar")
+                }
+                var failures: [String] = []
+                func check(_ condition: @autoclosure () -> Bool, _ label: String) {
+                    if !condition() { failures.append(label) }
+                }
+                func selectThree(
+                    _ text: String,
+                    start: Int = 2,
+                    length: Int = 2
+                ) -> Int {
+                    tv.setText(text)
+                    tv._undoManager?.clearStack()
+                    tv.selectionManager.setSelectedRange(
+                        NSRange(location: start, length: length)
+                    )
+                    check(tv.fastraSelectColumn(upwards: false), "Select Down 1")
+                    check(tv.fastraSelectColumn(upwards: false), "Select Down 2")
+                    return tv._undoManager?.undoCount ?? -1
+                }
+                func checkOneUndo(_ before: Int, _ label: String) {
+                    check(
+                        tv._undoManager?.undoCount == before + 1,
+                        "\(label): nicht genau eine Undo-Gruppe"
+                    )
+                }
+
+                NSApp.mainMenu?.update()
+                let pasteColumnItem = findMenuItem(
+                    titled: L10n.string("Spalte einfügen"),
+                    in: NSApp.mainMenu
+                )
+                let selectUpItem = findMenuItem(
+                    titled: L10n.string("Rechteckauswahl nach oben"),
+                    in: NSApp.mainMenu
+                )
+                let selectDownItem = findMenuItem(
+                    titled: L10n.string("Rechteckauswahl nach unten"),
+                    in: NSApp.mainMenu
+                )
+                let upArrow = String(UnicodeScalar(NSUpArrowFunctionKey)!)
+                let downArrow = String(UnicodeScalar(NSDownArrowFunctionKey)!)
+                check(
+                    pasteColumnItem?.keyEquivalent.lowercased() == "v"
+                        && pasteColumnItem?.keyEquivalentModifierMask
+                            == [.command, .control],
+                    "Menü/Kürzel für Paste Column fehlt"
+                )
+                check(
+                    selectUpItem?.keyEquivalent == upArrow
+                        && selectUpItem?.keyEquivalentModifierMask
+                            == [.control, .shift],
+                    "Menü/Kürzel für Select Up fehlt"
+                )
+                check(
+                    selectDownItem?.keyEquivalent == downArrow
+                        && selectDownItem?.keyEquivalentModifierMask
+                            == [.control, .shift],
+                    "Menü/Kürzel für Select Down fehlt"
+                )
+
+                let base = "abCDef\nabXYef\nab12ef"
+
+                _ = selectThree(base)
+                tv.copy(tv)
+                check(
+                    NSPasteboard.general.string(forType: .string)
+                        == "CD\nXY\n12\n",
+                    "Rechteck-Copy falsch"
+                )
+
+                var undoBefore = selectThree(base)
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString("Q", forType: .string)
+                tv.paste(tv)
+                check(tv.string == "abQef\nabQef\nabQef", "Fill-down Paste falsch")
+                checkOneUndo(undoBefore, "Fill-down Paste")
+                tv._undoManager?.undo()
+                check(tv.string == base, "Fill-down Undo falsch")
+                tv._undoManager?.redo()
+                check(tv.string == "abQef\nabQef\nabQef", "Fill-down Redo falsch")
+
+                undoBefore = selectThree(base)
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString("1\n22", forType: .string)
+                tv.paste(tv)
+                check(
+                    tv.string == "ab1ef\nab22ef\nabef",
+                    "Mismatch-Regel (fehlende Clipboard-Zeile leert Rest) falsch"
+                )
+                checkOneUndo(undoBefore, "Mehrzeiliges Paste")
+
+                undoBefore = selectThree(base)
+                tv.insertText(
+                    "T" as NSString,
+                    replacementRange: NSRange(location: NSNotFound, length: 0)
+                )
+                check(tv.string == "abTef\nabTef\nabTef", "Tippen auf Rechteck falsch")
+                checkOneUndo(undoBefore, "Tippen")
+
+                undoBefore = selectThree(base)
+                tv.deleteBackward(nil)
+                check(tv.string == "abef\nabef\nabef", "Backspace auf Rechteck falsch")
+                checkOneUndo(undoBefore, "Backspace")
+
+                let shortRows = "abcdef\nab\nabc"
+                undoBefore = selectThree(shortRows, start: 4, length: 1)
+                tv.deleteBackward(nil)
+                check(
+                    tv.string == "abcdf\nab\nabc",
+                    "Backspace löschte außerhalb kurzer Rechteckzeilen"
+                )
+                checkOneUndo(undoBefore, "Backspace mit kurzen Zeilen")
+
+                undoBefore = selectThree(shortRows, start: 4, length: 1)
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString("Q", forType: .string)
+                tv.paste(tv)
+                check(
+                    tv.string == "abcdQf\nabQ\nabcQ",
+                    "Normales Paste polsterte kurze Zeilen unerwartet"
+                )
+                checkOneUndo(undoBefore, "Paste mit kurzen Zeilen")
+
+                undoBefore = selectThree(base)
+                tv.cut(tv)
+                check(tv.string == "abef\nabef\nabef", "Cut auf Rechteck falsch")
+                check(
+                    NSPasteboard.general.string(forType: .string)
+                        == "CD\nXY\n12\n",
+                    "Cut-Clipboard falsch"
+                )
+                checkOneUndo(undoBefore, "Cut")
+
+                // Paste Column an Spalte 4: kurze Zeilen werden mit Tabs
+                // aufgefüllt, weil das aktive Einrückungsprofil Tabs nutzt.
+                let padded = "abcdef\nab\nabc"
+                undoBefore = selectThree(padded, start: 4, length: 1)
+                tv.fastraColumnIndentationUnit = "\t"
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString("X\nY\nZ", forType: .string)
+                NotificationCenter.default.post(
+                    name: .fastraPasteColumn,
+                    object: nil
+                )
+                check(
+                    tv.string == "abcdXf\nab\tY\nabc\tZ",
+                    "Paste Column/Tab-Padding falsch: \(tv.string.debugDescription)"
+                )
+                checkOneUndo(undoBefore, "Paste Column")
+                tv.fastraColumnIndentationUnit = "    "
+
+                // Unterschiedliche Ergebnislängen (ß → SS) prüfen zugleich
+                // Transformationsrouting und Range-Neuberechnung.
+                let transformBase = "abßz\nabxy\nabéz"
+                undoBefore = selectThree(transformBase, start: 2, length: 1)
+                NotificationCenter.default.post(
+                    name: .fastraTextOp,
+                    object: TextOpKind.uppercase.rawValue
+                )
+                check(
+                    tv.string == "abSSz\nabXy\nabÉz",
+                    "Rechteck-Transformation falsch: \(tv.string.debugDescription)"
+                )
+                checkOneUndo(undoBefore, "Rechteck-Transformation")
+                tv._undoManager?.undo()
+                check(tv.string == transformBase, "Transformations-Undo falsch")
+
+                // Nullbereiche kurzer Zeilen dürfen keinesfalls als
+                // „keine Auswahl = ganzes Dokument" transformiert werden.
+                let shortTransform = "abcdez\nab\nabc"
+                undoBefore = selectThree(shortTransform, start: 4, length: 1)
+                NotificationCenter.default.post(
+                    name: .fastraTextOp,
+                    object: TextOpKind.uppercase.rawValue
+                )
+                check(
+                    tv.string == "abcdEz\nab\nabc",
+                    "Transformation verließ kurze Rechteckzeilen"
+                )
+                checkOneUndo(undoBefore, "Transformation mit kurzen Zeilen")
+
+                finish(
+                    failures.isEmpty,
+                    failures.isEmpty
+                        ? "Copy/Paste/Tippen/Backspace/Cut/Paste Column/"
+                            + "Transformation jeweils über drei logische Zeilen "
+                            + "und eine Undo-Gruppe"
+                        : failures.joined(separator: "; ")
+                )
             }
         }
     }

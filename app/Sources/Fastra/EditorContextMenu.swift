@@ -97,6 +97,22 @@ enum TextOpKind: Int, CaseIterable {
             return false
         }
     }
+
+    /// Nur Operationen mit echtem Zeichen-Scope dürfen jeden Teilbereich
+    /// eines Rechtecks unabhängig verändern. Zeilen-Scope, Cursor-Nachbarn
+    /// und mögliche neue Zeilen würden die sichtbare Trefferbasis verlassen.
+    var supportsColumnSelection: Bool {
+        switch self {
+        case .uppercase, .lowercase, .titlecase,
+             .zapGremlins, .straightenQuotes, .educateQuotes,
+             .normalizeSpaces, .stripDiacriticals,
+             .precomposeUnicode, .decomposeUnicode,
+             .fourDDetokenize, .fourDTokenizeCommands:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 /// Installiert den Rechtsklick-Monitor und führt die Menü-Aktionen aus.
@@ -170,7 +186,11 @@ final class EditorContextMenu: NSObject {
     /// (Responder-Selektoren), unsere Items auf self.
     private func buildMenu(for textView: TextView) -> NSMenu {
         let menu = NSMenu()
-        let hasSelection = textView.selectedRange().length > 0
+        let hasColumnSelection = textView.fastraColumnSelectionSnapshot != nil
+        let hasSelection = hasColumnSelection
+            || textView.selectionManager.textSelections.contains {
+                $0.range.length > 0
+            }
 
         let cut = NSMenuItem(title: L10n.string("Ausschneiden"), action: #selector(NSText.cut(_:)), keyEquivalent: "")
         cut.target = textView
@@ -181,23 +201,36 @@ final class EditorContextMenu: NSObject {
         let paste = NSMenuItem(title: L10n.string("Einfügen"), action: #selector(NSText.paste(_:)), keyEquivalent: "")
         paste.target = textView
 
+        let pasteColumn = NSMenuItem(
+            title: L10n.string("Spalte einfügen"),
+            action: #selector(performPasteColumn(_:)),
+            keyEquivalent: ""
+        )
+        pasteColumn.target = self
+        pasteColumn.toolTip = L10n.string(
+            "Fügt Zwischenablage-Zeilen untereinander an der linken Rechteckkante oder am Cursor ein."
+        )
+
         let smartPaste = NSMenuItem(title: L10n.string("Formatiert als Markdown einfügen"),
                                     action: #selector(performSmartPaste(_:)),
                                     keyEquivalent: "")
         smartPaste.target = self
         smartPaste.toolTip = L10n.string("Formatierten Inhalt aus der Zwischenablage (z.B. aus dem Browser) als sauberes Markdown einfügen.")
+        smartPaste.isEnabled = !hasColumnSelection
 
         let sort = NSMenuItem(title: L10n.string("Zeilen sortieren"),
                               action: #selector(sortLines(_:)),
                               keyEquivalent: "")
         sort.target = self
         sort.toolTip = L10n.string("Sortiert die selektierten Zeilen alphabetisch — sind sie schon sortiert, wird die Reihenfolge umgedreht. Ohne Auswahl: die ganze Datei.")
+        sort.isEnabled = !hasColumnSelection
 
         let dedupe = NSMenuItem(title: L10n.string("Duplikate entfernen"),
                                 action: #selector(removeDuplicates(_:)),
                                 keyEquivalent: "")
         dedupe.target = self
         dedupe.toolTip = L10n.string("Entfernt doppelte Zeilen — das erste Vorkommen bleibt stehen. Ohne Auswahl: die ganze Datei.")
+        dedupe.isEnabled = !hasColumnSelection
 
         let format = NSMenuItem(title: L10n.string("Dokument formatieren"),
                                 action: #selector(formatDocument(_:)),
@@ -206,7 +239,8 @@ final class EditorContextMenu: NSObject {
         format.toolTip = L10n.string("Formatiert JSON oder XML. Eine Auswahl wird einzeln formatiert.")
         let filename = Workspace.shared?.activeTab?.url?.pathExtension
             ?? (Workspace.shared?.activeTab?.title as NSString?)?.pathExtension
-        format.isEnabled = DocumentFormatter.supports(fileExtension: filename)
+        format.isEnabled = !hasColumnSelection
+            && DocumentFormatter.supports(fileExtension: filename)
 
         // Prüfen und Minifizieren spiegeln „Text → Dokument prüfen/
         // minifizieren“ aus der Menüleiste. Der Linter deckt mehr Endungen ab
@@ -223,7 +257,8 @@ final class EditorContextMenu: NSObject {
                                 keyEquivalent: "")
         minify.target = self
         minify.toolTip = L10n.string("Schreibt JSON oder XML kompakt ohne überflüssigen Leerraum. Eine Auswahl wird einzeln minifiziert.")
-        minify.isEnabled = DocumentFormatter.supports(fileExtension: filename)
+        minify.isEnabled = !hasColumnSelection
+            && DocumentFormatter.supports(fileExtension: filename)
 
         // „Text"-Submenü mit den BBEdit-Basics (TextOperations). Tag trägt die
         // TextOpKind; ein gemeinsamer Handler liest ihn. Gruppen durch Trenner.
@@ -236,13 +271,17 @@ final class EditorContextMenu: NSObject {
                                   keyEquivalent: "")
             item.target = self
             item.tag = kind.rawValue
+            item.isEnabled = !hasColumnSelection || kind.supportsColumnSelection
+            if hasColumnSelection && !kind.supportsColumnSelection {
+                item.toolTip = columnSelectionUnsupportedText
+            }
             textSub.addItem(item)
             if groupBreaksAfter.contains(kind) { textSub.addItem(.separator()) }
         }
         textItem.submenu = textSub
 
         menu.items = [
-            cut, copy, paste,
+            cut, copy, paste, pasteColumn,
             .separator(),
             smartPaste,
             .separator(),
@@ -264,6 +303,10 @@ final class EditorContextMenu: NSObject {
                                       keyEquivalent: "")
                 item.target = self
                 item.tag = command.rawValue
+                item.isEnabled = !hasColumnSelection
+                if hasColumnSelection {
+                    item.toolTip = columnSelectionUnsupportedText
+                }
                 markdownSub.addItem(item)
                 if breaksAfter.contains(command) { markdownSub.addItem(.separator()) }
             }
@@ -277,6 +320,24 @@ final class EditorContextMenu: NSObject {
     }
 
     // MARK: - Aktionen
+
+    private var columnSelectionUnsupportedText: String {
+        L10n.string(
+            "Dieser Befehl verändert ganze Zeilen oder kann Zeilenumbrüche erzeugen. Für eine Rechteckauswahl sind nur unabhängige Zeichen-Transformationen verfügbar."
+        )
+    }
+
+    private func warnColumnSelectionUnsupported() {
+        NSAlert.runWarning(
+            title: L10n.string("Für Rechteckauswahl nicht verfügbar"),
+            text: columnSelectionUnsupportedText
+        )
+    }
+
+    @objc private func performPasteColumn(_ sender: Any?) {
+        guard let textView = targetTextView else { NSSound.beep(); return }
+        textView.fastraPasteColumn(sender)
+    }
 
     @objc private func performSmartPaste(_ sender: Any?) {
         guard let workspace = Workspace.shared else { NSSound.beep(); return }
@@ -317,6 +378,10 @@ final class EditorContextMenu: NSObject {
     }
 
     private func format(on textView: TextView) {
+        guard textView.fastraColumnSelectionSnapshot == nil else {
+            warnColumnSelectionUnsupported()
+            return
+        }
         guard let tab = Workspace.shared?.activeTab else { NSSound.beep(); return }
         let fileExtension = tab.url?.pathExtension ?? (tab.title as NSString).pathExtension
         do {
@@ -348,6 +413,10 @@ final class EditorContextMenu: NSObject {
     }
 
     private func minify(on textView: TextView) {
+        guard textView.fastraColumnSelectionSnapshot == nil else {
+            warnColumnSelectionUnsupported()
+            return
+        }
         guard let tab = Workspace.shared?.activeTab else { NSSound.beep(); return }
         let fileExtension = tab.url?.pathExtension
             ?? (tab.title as NSString).pathExtension
@@ -583,6 +652,22 @@ final class EditorContextMenu: NSObject {
         apply(kind, on: textView)
     }
 
+    /// Sichtbarer Paste-Column-Befehl. Der Editor selbst entscheidet, ob die
+    /// linke Rechteckkante oder der primäre Cursor die Zielspalte festlegt.
+    func pasteColumnInActiveEditor() {
+        guard let textView = activeEditorTextView() else { NSSound.beep(); return }
+        textView.fastraPasteColumn(nil)
+    }
+
+    /// Erweitert oder verkleinert ein Rechteck um genau eine logische Zeile.
+    func selectColumnInActiveEditor(upwards: Bool) {
+        guard let textView = activeEditorTextView(),
+              textView.fastraSelectColumn(upwards: upwards) else {
+            NSSound.beep()
+            return
+        }
+    }
+
     /// Menüleisten-/Toolbar-Pfad der Markdown-Formatbefehle (Etappe 5
     /// Wunschpaket 2026-07b). Nur für Markdown-Tabs sinnvoll — die Menüs
     /// sind sonst deaktiviert, defensiv wird trotzdem geprüft.
@@ -590,6 +675,10 @@ final class EditorContextMenu: NSObject {
         MainActor.assumeIsolated {
             guard MarkdownAssist.isMarkdownTabActive(in: Workspace.shared),
                   let textView = activeEditorTextView() else { NSSound.beep(); return }
+            guard textView.fastraColumnSelectionSnapshot == nil else {
+                warnColumnSelectionUnsupported()
+                return
+            }
             MarkdownAssist.applyFormat(command, on: textView)
         }
     }
@@ -599,6 +688,10 @@ final class EditorContextMenu: NSObject {
         guard let command = MarkdownFormatCommand(rawValue: sender.tag),
               let textView = targetTextView else { NSSound.beep(); return }
         MainActor.assumeIsolated {
+            guard textView.fastraColumnSelectionSnapshot == nil else {
+                warnColumnSelectionUnsupported()
+                return
+            }
             MarkdownAssist.applyFormat(command, on: textView)
         }
     }
@@ -607,6 +700,15 @@ final class EditorContextMenu: NSObject {
     /// Process Lines Containing, Hard Wrap) holen vorher ihren Parameter über einen
     /// modalen Dialog; alle übrigen laufen direkt über `operation(for:)`.
     private func apply(_ kind: TextOpKind, on textView: TextView) {
+        if textView.fastraColumnSelectionSnapshot != nil {
+            guard kind.supportsColumnSelection else {
+                warnColumnSelectionUnsupported()
+                return
+            }
+            applyColumnOperation(kind, on: textView)
+            return
+        }
+
         switch kind {
         case .prefixLines, .suffixLines:
             let isPrefix = (kind == .prefixLines)
@@ -700,6 +802,54 @@ final class EditorContextMenu: NSObject {
         }
     }
 
+    /// Rechnet jede logische Rechteckzeile gegen denselben unveränderten
+    /// Ausgangstext und ersetzt anschließend alle Teilbereiche gemeinsam.
+    /// So bleiben unterschiedliche Ergebnislängen und ein einziges Undo
+    /// möglich, ohne dass frühere Zeilen die Ranges späterer verschieben.
+    private func applyColumnOperation(_ kind: TextOpKind, on textView: TextView) {
+        guard kind.supportsColumnSelection,
+              let snapshot = textView.fastraColumnSelectionSnapshot else {
+            warnColumnSelectionUnsupported()
+            return
+        }
+        let text = textView.string
+        let nsText = text as NSString
+        let transform = operation(for: kind)
+        var replacements: [String] = []
+        replacements.reserveCapacity(snapshot.ranges.count)
+
+        for range in snapshot.ranges {
+            // Ein Nullbereich bezeichnet eine zu kurze oder leere logische
+            // Zeile. Die normalen Zeichen-Operationen würden Länge 0 als
+            // „keine Auswahl = ganzes Dokument" verstehen.
+            if range.length == 0 {
+                replacements.append("")
+                continue
+            }
+            guard let result = transform(text, range) else {
+                replacements.append(nsText.substring(with: range))
+                continue
+            }
+            guard result.affectedRange == range,
+                  let replacement = replacementBlock(
+                    from: result,
+                    replacing: range,
+                    inOriginalLength: nsText.length
+                  ),
+                  !replacement.contains("\n"),
+                  !replacement.contains("\r") else {
+                warnColumnSelectionUnsupported()
+                return
+            }
+            replacements.append(replacement)
+        }
+
+        guard textView.fastraReplaceColumnSelections(with: replacements) else {
+            NSSound.beep()
+            return
+        }
+    }
+
     /// Modaler Eingabe-Dialog mit einem Textfeld. Liefert den eingegebenen Text
     /// oder `nil`, wenn der Nutzer abbricht. `defaultValue` füllt das Feld vor
     /// (z.B. „72" für Hard Wrap). Genutzt von Präfix/Suffix, Process Lines
@@ -776,6 +926,10 @@ final class EditorContextMenu: NSObject {
     /// Wie oben, aber auf eine explizit übergebene TextView (Menüleisten-Pfad).
     private func applyLineOperation(on textView: TextView,
                                     _ operation: (String, NSRange) -> LineOperations.Result?) {
+        guard textView.fastraColumnSelectionSnapshot == nil else {
+            warnColumnSelectionUnsupported()
+            return
+        }
         let text = textView.string
         let selection = textView.selectedRange()
         guard let result = operation(text, selection) else {
@@ -788,12 +942,33 @@ final class EditorContextMenu: NSObject {
         // Bereich (im alten Text). Für replaceCharacters brauchen wir nur
         // den neuen Block: Länge = neuer Gesamttext − (alter Gesamttext −
         // alter Block).
-        let oldLength = (text as NSString).length
-        let newNS = result.newText as NSString
-        // codereview-ok: Formel ist per Konstruktionsinvariante korrekt — LineOperations baut newText immer via replacingCharacters(in: affectedRange, …), affectedRange ist also exakt der ersetzte Bereich (2026-07-06)
-        let newBlockLength = newNS.length - (oldLength - result.affectedRange.length)
-        let newBlock = newNS.substring(with: NSRange(location: result.affectedRange.location,
-                                                     length: max(0, newBlockLength)))
+        // codereview-ok: Formel ist per Konstruktionsinvariante korrekt —
+        // LineOperations baut newText immer via replacingCharacters.
+        guard let newBlock = replacementBlock(
+            from: result,
+            replacing: result.affectedRange,
+            inOriginalLength: (text as NSString).length
+        ) else {
+            NSSound.beep()
+            return
+        }
         textView.replaceCharacters(in: result.affectedRange, with: newBlock)
+    }
+
+    private func replacementBlock(
+        from result: LineOperations.Result,
+        replacing range: NSRange,
+        inOriginalLength oldLength: Int
+    ) -> String? {
+        let newNS = result.newText as NSString
+        let blockLength = newNS.length - (oldLength - range.length)
+        guard blockLength >= 0,
+              range.location <= newNS.length,
+              range.location + blockLength <= newNS.length else {
+            return nil
+        }
+        return newNS.substring(
+            with: NSRange(location: range.location, length: blockLength)
+        )
     }
 }

@@ -65,6 +65,9 @@ token highlighting, curated patterns, and guided capture groups.
   the current project.
 - **Projects, Git and Markdown** live alongside ordinary text editing; each is
   explained below.
+- **Column selection under Soft Wrap** stays on logical text lines; column
+  copy/paste, typing, deletion, transformations, and Paste Column are each
+  undoable as one action.
 - **Light & dark mode**, native SwiftUI/AppKit, no Electron.
 - **Local & private**: No accounts, telemetry, document uploads, or subscription.
   The update check contacts only Fastra's signed GitHub Pages feed and sends no
@@ -200,6 +203,9 @@ unobtrusively in the bar.
   unwrapped with horizontal scrolling. Wrap targets can be the window width,
   an app-wide page guide, or a fixed column; the guide can be shown
   independently.
+- Option-drag selects a rectangle across logical text lines even while they
+  wrap visually. **Edit → Paste Column** (`⌃⌘V`) pastes clipboard lines
+  vertically and pads short target lines to the chosen column.
 
 ### Syntax highlighting
 

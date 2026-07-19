@@ -119,6 +119,29 @@ struct FastraApp: App {
                     }
                 }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
+
+                Divider()
+                Button("Spalte einfügen") {
+                    NotificationCenter.default.post(
+                        name: .fastraPasteColumn,
+                        object: nil
+                    )
+                }
+                .keyboardShortcut("v", modifiers: [.command, .control])
+                Button("Rechteckauswahl nach oben") {
+                    NotificationCenter.default.post(
+                        name: .fastraSelectColumnUp,
+                        object: nil
+                    )
+                }
+                .keyboardShortcut(.upArrow, modifiers: [.control, .shift])
+                Button("Rechteckauswahl nach unten") {
+                    NotificationCenter.default.post(
+                        name: .fastraSelectColumnDown,
+                        object: nil
+                    )
+                }
+                .keyboardShortcut(.downArrow, modifiers: [.control, .shift])
             }
 
             // Darstellungskommandos in das BESTEHENDE System-

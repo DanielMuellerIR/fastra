@@ -39,6 +39,10 @@ extension Notification.Name {
     static let fastraLintDocument     = Notification.Name("fastra.lint.document")
     /// „Text → Dokument minifizieren" (Etappe 6): JSON kompakt, XML konservativ.
     static let fastraMinifyDocument   = Notification.Name("fastra.minify.document")
+    /// Sichtbare Rechteck-Befehle aus Menüleiste und Selbsttests.
+    static let fastraPasteColumn      = Notification.Name("fastra.column.paste")
+    static let fastraSelectColumnUp   = Notification.Name("fastra.column.select.up")
+    static let fastraSelectColumnDown = Notification.Name("fastra.column.select.down")
 }
 
 /// Autosave-Name unseres Suchfensters. Konstant gehalten an einer
@@ -164,6 +168,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { [weak self] _ in
             self?.editorContextMenu.minifyActiveDocument()
+        }
+        NotificationCenter.default.addObserver(
+            forName: .fastraPasteColumn,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.editorContextMenu.pasteColumnInActiveEditor()
+        }
+        NotificationCenter.default.addObserver(
+            forName: .fastraSelectColumnUp,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.editorContextMenu.selectColumnInActiveEditor(upwards: true)
+        }
+        NotificationCenter.default.addObserver(
+            forName: .fastraSelectColumnDown,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.editorContextMenu.selectColumnInActiveEditor(upwards: false)
         }
         NotificationCenter.default.addObserver(
             forName: .fastraReplaceConflictText,

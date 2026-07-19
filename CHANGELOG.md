@@ -9,6 +9,40 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.42.0] — 2026-07-19
+
+Etappe 3 des Soft-Wrap-Pakets: Rechteckauswahl auf logischen Zeilen.
+
+### Hinzugefügt
+
+- **Rechteckauswahl unter Soft Wrap:** Option-Drag behandelt jede logische
+  Textzeile genau einmal; sichtbare Umbruchfragmente werden nicht zu
+  zusätzlichen Rechteckzeilen. Kurze und leere Zeilen, Tabs, CRLF sowie
+  zusammengesetzte Unicode-Zeichen bleiben sicher.
+- **Sichtbare Spaltenbefehle:** „Spalte einfügen“ (⌃⌘V) setzt
+  Zwischenablage-Zeilen untereinander an der linken Rechteckkante oder am
+  Cursor ein und füllt kurze Zielzeilen tabstopp-bewusst auf.
+  „Rechteckauswahl nach oben/unten“ (⌃⇧↑/↓) erweitert oder verkleinert die
+  Auswahl auf logischen Zeilen.
+
+### Geändert
+
+- Copy, normales Paste, Tippen, Backspace/Delete und Cut bearbeiten alle
+  Teilbereiche als eine Undo-Aktion. Eine Clipboard-Zeile füllt das ganze
+  Rechteck; mehrere Zeilen werden zeilenweise verteilt. Fehlen Clipboard-
+  Zeilen, werden verbleibende Rechteckteile geleert; ein Überschuss läuft
+  unter dem Rechteck weiter.
+- Zeichenbezogene Transformationen arbeiten unabhängig auf jedem
+  Rechteckteil. Befehle für ganze Zeilen oder mögliche Zeilenumbrüche sind
+  während einer Rechteckauswahl gesperrt und erklären den Grund.
+
+### Intern
+
+- Versionierter CodeEditTextView-Patch mit harten Upstream-Markern sowie
+  Selbsttests `colsel`, `colselwrap` und `colpaste` für Punktauswahl,
+  Soft-Wrap-Logik, Unicode/Tab/CRLF, kurze Zeilen, Zwischenablage und
+  exakt eine Undo-Gruppe pro Aktion.
+
 ## [v1.41.2] — 2026-07-19
 
 ### Behoben

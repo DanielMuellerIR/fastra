@@ -8,10 +8,10 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 - **Soft Wrap, Rechteckauswahl und Einrückung** (beschlossen 2026-07-19):
   Umsetzung in vier getrennten Etappen mit eigener Verifikation und Version.
-  **Umgesetzt: Etappe 1 (Formatprofile und Fußzeilen-Bedienung, v1.40.0)
-  und Etappe 2 (Umbruchziele und Seitenlinie, v1.41.0).**
-  Offen bleiben Etappe 3 (Rechteckauswahl unter Soft Wrap) und Etappe 4
-  (Einrückungsprofile/intelligentes Einfügen/Folgezeilen-Einrückung).
+  **Umgesetzt: Etappe 1 (Formatprofile und Fußzeilen-Bedienung, v1.40.0),
+  Etappe 2 (Umbruchziele und Seitenlinie, v1.41.0) und Etappe 3
+  (Rechteckauswahl unter Soft Wrap, v1.42.0).** Offen bleibt Etappe 4
+  (Einrückungsprofile, intelligentes Einfügen und Folgezeilen-Einrückung).
 - **Wunschpaket 3** (beschlossen 2026-07-18):
   **Alle acht Etappen umgesetzt:** Etappe 1 (Diff-Kern & Datei-Diff
   dual-pane, v1.32.0), Etappe 2 (Git-Diff auf gemeinsamem Renderer,
@@ -50,17 +50,6 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   2026-07b) ist bewusst reiner Text ohne Bilder. Screenshots/Illustrationen
   der zentralen Abläufe (Suchmaske, Vorschau→Apply, Git-Seitenleiste) wären
   ein sinnvoller späterer Ausbau.
-
-- **`jump`-Selbsttest (CR) ist flaky, nicht defekt:** Am 2026-07-18 fiel er in
-  einem Lauf mit „Editor-TextView nicht als CodeEditTextView.TextView
-  erreichbar" aus und war im direkt folgenden Lauf bei unverändertem Code
-  grün (Suite 41/41). Der CR-Teilfall prüft also nicht zuverlässig, was er
-  prüfen soll: Die Meldung beschreibt einen fehlgeschlagenen Zugriff auf die
-  TextView, nicht ein falsches Sprungergebnis — die View ist zum Prüfzeitpunkt
-  vermutlich noch nicht fertig aufgebaut. Wer den Fail untersucht, sollte
-  deshalb zuerst dort ansetzen (auf Verfügbarkeit warten statt einmalig
-  abzufragen) und ihn nicht als echten Regressionsfund im Sprung-Pfad lesen.
-  Ein Fail in EINEM Lauf ist hier kein Beweis.
 
 - **Datei-Drag vom Dokument-Tab:** Mit dem titellosen Fensterchrome entfiel
   das Ziehen der Datei aus der Titelzeile (Proxy-Icon) ersatzlos. Möglicher

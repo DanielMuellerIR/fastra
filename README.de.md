@@ -67,6 +67,9 @@ Capture Groups.
   Dateimenge im aktuellen Projekt.
 - **Projekte, Git und Markdown** ergänzen den normalen Texteditor; die Details
   stehen unten.
+- **Rechteckauswahl unter Soft Wrap** bleibt auf logischen Textzeilen;
+  Spalten-Copy/Paste, Tippen, Löschen, Transformationen und „Spalte einfügen“
+  sind jeweils eine widerrufbare Aktion.
 - **Light- & Dark-Mode**, natives SwiftUI/AppKit, kein Electron.
 - **Lokal & privat**: Keine Konten, Telemetrie, Dokument-Uploads oder Abos. Die
   Updateprüfung kontaktiert nur Fastras signierten GitHub-Pages-Feed und sendet
@@ -209,6 +212,9 @@ aktiv; der Fehler erscheint dezent in der Leiste.
   Konfigurationsformate ohne Umbruch und mit horizontalem Scrollen. Als
   Umbruchziel sind Fensterbreite, eine appweite Seitenlinie oder eine feste
   Spalte wählbar; die Seitenlinie lässt sich unabhängig einblenden.
+- Alt-Drag markiert auch bei sichtbarem Umbruch ein Rechteck über logische
+  Textzeilen. **Bearbeiten → Spalte einfügen** (`⌃⌘V`) setzt Clipboard-Zeilen
+  untereinander ein und füllt kurze Zielzeilen bis zur gewählten Spalte auf.
 
 ### Syntax-Highlighting
 

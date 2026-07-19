@@ -1183,3 +1183,11 @@
 "Spalte der Seitenlinie" = "Page Guide Column";
 "Textspalte" = "Text Column";
 "Ungültige Spalte" = "Invalid Column";
+
+/* Rechteckauswahl (v1.42.0) */
+"Spalte einfügen" = "Paste Column";
+"Rechteckauswahl nach oben" = "Select Column Up";
+"Rechteckauswahl nach unten" = "Select Column Down";
+"Fügt Zwischenablage-Zeilen untereinander an der linken Rechteckkante oder am Cursor ein." = "Pastes clipboard lines vertically at the rectangle's left edge or at the cursor.";
+"Für Rechteckauswahl nicht verfügbar" = "Unavailable for Column Selection";
+"Dieser Befehl verändert ganze Zeilen oder kann Zeilenumbrüche erzeugen. Für eine Rechteckauswahl sind nur unabhängige Zeichen-Transformationen verfügbar." = "This command changes whole lines or may create line breaks. A column selection only supports independent character transformations.";

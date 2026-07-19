@@ -205,6 +205,34 @@ erreichbar. Das Umschalten ändert weder Text noch Auswahl, Rückgängig-
 Verlauf oder gespeicherte Datei. Die oberste angezeigte Textzeile bleibt dabei
 ruhig an derselben Stelle.
 
+## Rechteckauswahl
+
+Mit **Alt-Drag** markiert Fastra denselben Spaltenbereich über mehrere
+**logische Textzeilen**. Das funktioniert auch bei Soft Wrap: Eine lange
+Zeile bleibt genau eine Rechteckzeile, selbst wenn sie sichtbar über mehrere
+Umbruchfragmente läuft. Kurze und leere Zeilen, Tabs, CRLF und
+zusammengesetzte Unicode-Zeichen werden nicht künstlich zerlegt.
+
+**Kopieren, Ausschneiden, Löschen, Tippen und normales Einfügen** wirken auf
+alle Teilbereiche. Eine einzelne Clipboard-Zeile füllt jede Rechteckzeile;
+mehrere Clipboard-Zeilen werden der Reihe nach verteilt. Hat das Clipboard
+weniger Zeilen, werden die übrigen Rechteckteile geleert. Ein Überschuss wird
+unter dem Rechteck fortgesetzt. Jede solche Mehrfachänderung ist mit einmal
+⌘Z vollständig widerrufbar.
+
+Unter **Bearbeiten** und im Rechtsklickmenü steht **Spalte einfügen**
+(⌃⌘V). Der Befehl setzt Clipboard-Zeilen untereinander an der linken
+Rechteckkante oder — ohne Rechteck — am Cursor ein. Zu kurze Zielzeilen
+werden bis zur Zielspalte aufgefüllt; ganze Tabstopps verwenden Tabs, wenn
+das aktive Einrückungsprofil Tabs verwendet, ein Rest bleibt als Leerzeichen.
+
+**Rechteckauswahl nach oben/unten** (⌃⇧↑/↓) erweitert oder verkleinert ein
+Rechteck um eine logische Zeile. Zeichenbezogene Befehle wie Groß-/Klein-
+schreibung, Anführungszeichen- und Unicode-Transformationen arbeiten auf
+jedem Rechteckteil getrennt. Befehle für ganze Zeilen oder mögliche neue
+Zeilenumbrüche sind während einer Rechteckauswahl gesperrt und erklären den
+Grund, damit nichts außerhalb des sichtbaren Rechtecks geändert wird.
+
 ## 4D-Unterstützung
 
 `.4dm`-Methoden werden mit einem eigenen 4D-Farbschema dargestellt
