@@ -1735,7 +1735,7 @@ enum SelfTest {
         }
 
         let longTail = String(repeating: "Wortgruppe ", count: 32)
-        let content = (1...360).map {
+        let content = (1...2_400).map {
             "Ankerzeile \($0)\t\(longTail)Ende \($0)"
         }.joined(separator: "\n")
         let tmp = FileManager.default.temporaryDirectory
@@ -1762,24 +1762,26 @@ enum SelfTest {
                     let selectionBefore = textView.selectedRange()
                     let dirtyBefore = ws.activeTab?.isDirty
                     let canUndoBefore = textView.undoManager?.canUndo
-                    let targetTopLine = 219
+                    let targetTopLine = 1_799
                     convergeSoftWrapAnchor(
                         textView: textView, targetLine: targetTopLine,
                         tick: 0
                     ) { expectedTopLine in
                         ws.toggleSoftWrap()
-                        pollSoftWrapAnchor(
+                        observeSoftWrapAnchor(
                             ws: ws, textView: textView,
                             expectedWrap: false,
                             expectedTopLine: expectedTopLine,
-                            tick: 0
+                            tick: 0, observedLines: [],
+                            maximumDrift: 0
                         ) {
                             ws.toggleSoftWrap()
-                            pollSoftWrapAnchor(
+                            observeSoftWrapAnchor(
                                 ws: ws, textView: textView,
                                 expectedWrap: true,
                                 expectedTopLine: expectedTopLine,
-                                tick: 0
+                                tick: 0, observedLines: [],
+                                maximumDrift: 0
                             ) {
                                 guard textView.string == textBefore,
                                       textView.selectedRange() == selectionBefore,
@@ -1795,7 +1797,8 @@ enum SelfTest {
                                 finish(
                                     true,
                                     "oberste Textzeile \(expectedTopLine + 1) "
-                                        + "blieb bei Aus und Ein identisch"
+                                        + "blieb bei Aus und Ein ohne "
+                                        + "Zwischenabweichung identisch"
                                 )
                             }
                         }
@@ -1853,35 +1856,67 @@ enum SelfTest {
         }
     }
 
-    private static func pollSoftWrapAnchor(
+    /// Beobachtet nicht nur den Endzustand: Jede sichtbare Zwischenposition
+    /// zählt. So schützt der Test auch vor den früheren asynchronen
+    /// Nachkorrekturen, die den Text fast eine Sekunde auf- und abbewegten.
+    private static func observeSoftWrapAnchor(
         ws: Workspace, textView: TextView,
         expectedWrap: Bool, expectedTopLine: Int,
-        tick: Int, completion: @escaping () -> Void
+        tick: Int, observedLines: [Int],
+        maximumDrift: CGFloat,
+        completion: @escaping () -> Void
     ) {
+        let wrapApplied = ws.softWrapEnabled == expectedWrap
+            && textView.wrapLines == expectedWrap
         let shown = textView.layoutManager.textLineForPosition(
             textView.visibleRect.minY
         )?.index
-        if ws.softWrapEnabled == expectedWrap,
-           textView.wrapLines == expectedWrap,
-           shown == expectedTopLine {
+
+        var nextObservedLines = observedLines
+        var nextMaximumDrift = maximumDrift
+        if wrapApplied, let shown {
+            if nextObservedLines.last != shown {
+                nextObservedLines.append(shown)
+            }
+            if let anchor = textView.layoutManager.textLineForIndex(
+                expectedTopLine
+            ), let rect = textView.layoutManager.rectForOffset(
+                anchor.range.location
+            ) {
+                nextMaximumDrift = max(
+                    nextMaximumDrift,
+                    abs(rect.minY - textView.visibleRect.minY)
+                )
+            }
+        }
+
+        if tick >= 60 {
+            guard wrapApplied,
+                  shown == expectedTopLine,
+                  !nextObservedLines.isEmpty,
+                  nextObservedLines.allSatisfy({ $0 == expectedTopLine }),
+                  nextMaximumDrift <= 2 else {
+                finish(
+                    false,
+                    "Soft Wrap \(expectedWrap ? "Ein" : "Aus") zappelte: "
+                        + "erwartet Zeile \(expectedTopLine + 1), "
+                        + "Folge=\(nextObservedLines.map { $0 + 1 }), "
+                        + "maximale Drift=\(Int(nextMaximumDrift)) pt"
+                )
+            }
             completion()
             return
         }
-        if tick >= 40 {
-            finish(
-                false,
-                "Soft Wrap \(expectedWrap ? "Ein" : "Aus") versprang: "
-                    + "erwartet Zeile \(expectedTopLine + 1), "
-                    + "sichtbar=\(shown.map { String($0 + 1) } ?? "nil"), "
-                    + "y=\(Int(textView.visibleRect.minY))"
-            )
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollSoftWrapAnchor(
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+            observeSoftWrapAnchor(
                 ws: ws, textView: textView,
                 expectedWrap: expectedWrap,
                 expectedTopLine: expectedTopLine,
-                tick: tick + 1, completion: completion
+                tick: tick + 1,
+                observedLines: nextObservedLines,
+                maximumDrift: nextMaximumDrift,
+                completion: completion
             )
         }
     }
@@ -3439,11 +3474,11 @@ enum SelfTest {
         ws.loadFile(at: tmp) { ok in
             try? FileManager.default.removeItem(at: tmp)
             guard ok else { finish(false, "(\(label)) loadFile schlug fehl (completion false)") }
-            // SwiftUI/CESE Zeit geben, den Editor neu zu erzeugen + Inhalt zu laden.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                guard let tvView = editorTextView(in: root), let tv = tvView as? TextView else {
-                    finish(false, "(\(label)) Editor-TextView nicht als CodeEditTextView.TextView erreichbar")
-                }
+            // Der Editor wird nach dem Dateiwechel neu eingehängt. Seine
+            // Bereitschaft beobachten statt eine feste Renderdauer zu raten.
+            pollForJumpEditor(
+                root: root, expectedContent: content, label: label, tick: 0
+            ) { tv in
                 // Editor zum First Responder machen — sonst landet die Selektion
                 // u.U. nicht im selectionManager (wie im Findbar-Test).
                 _ = mainWindow.makeFirstResponder(tv)
@@ -3464,6 +3499,29 @@ enum SelfTest {
                                      column: match.column, label: label, onPass: onPass)
                 }
             }
+        }
+    }
+
+    private static func pollForJumpEditor(
+        root: NSView, expectedContent: String, label: String, tick: Int,
+        completion: @escaping (TextView) -> Void
+    ) {
+        if let textView = editorTextView(in: root) as? TextView,
+           textView.string == expectedContent {
+            completion(textView)
+            return
+        }
+        if tick >= 40 {
+            finish(
+                false,
+                "(\(label)) Editor-TextView mit geladenem Inhalt nicht binnen 4 s erreichbar"
+            )
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollForJumpEditor(
+                root: root, expectedContent: expectedContent,
+                label: label, tick: tick + 1, completion: completion
+            )
         }
     }
 

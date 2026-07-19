@@ -9,6 +9,22 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.41.2] — 2026-07-19
+
+### Behoben
+
+- Beim Einschalten von Soft Wrap bleibt der Dokumentausschnitt jetzt ruhig.
+  Die oberste sichtbare Textzeile bleibt erhalten, ohne während des
+  Layoutaufbaus wiederholt auf- und abzuspringen.
+
+### Intern
+
+- Der CodeEdit-Patch ersetzt zeitversetzte Scrollkorrekturen durch höchstens
+  24 Layoutschritte im selben Runloop und setzt nur die stabile Endposition
+  sichtbar. `softwrapanchor` beobachtet nun alle 20 ms beide
+  Umschaltrichtungen in einem Dokument mit 2.400 langen Zeilen und schlägt
+  bereits bei einer sichtbaren Zwischenabweichung fehl.
+
 ## [v1.41.1] — 2026-07-19
 
 ### Behoben
