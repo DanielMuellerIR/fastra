@@ -384,8 +384,9 @@ bei ungespeicherten Änderungen fragt Fastra nach. ⌘J springt zu einer
 Zeilennummer.
 
 Öffnest du eine Datei aus dem Finder, landet sie im Fenster, dessen Projekt
-oder Repository sie enthält, und dieses kommt nach vorn. Passt kein offenes
-Fenster, öffnet Fastra sie in einem neuen.
+oder Repository sie enthält, und dieses kommt nach vorn. Passt kein Fenster,
+nutzt Fastra ein leeres Fenster (etwa den Willkommensbildschirm); gibt es auch
+das nicht, öffnet sie in einem neuen.
 
 Beim nächsten Start stellt Fastra standardmäßig die zuletzt geöffneten
 Projektfenster, gespeicherten Dokumente, aktiven Tabs und Fensterpositionen

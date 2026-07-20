@@ -9,6 +9,12 @@ struct OpenWindowSnapshot: Equatable {
     let projectURL: URL?
     /// URLs der aktuell in dem Fenster offenen Datei-Tabs.
     let openFileURLs: [URL]
+    /// `true`, wenn das Fenster leer und aufnahmebereit ist: Willkommensseite
+    /// oder ausschließlich leere „Ohne Titel"-Tabs, ohne Projekt und ohne
+    /// ungesicherte Arbeit. Ein solches Fenster nimmt eine geöffnete Datei auf,
+    /// statt dafür ein zweites Fenster zu erzeugen (wie ein leeres BBEdit-
+    /// Fenster). Default `false`, damit bestehende Aufrufe unverändert bleiben.
+    var isEmptyWelcome: Bool = false
 }
 
 /// Reine Auswahl des Zielfensters für eine aus dem Finder/Dock geöffnete Datei.
@@ -17,7 +23,9 @@ struct OpenWindowSnapshot: Equatable {
 /// 1. Ist die Datei bereits irgendwo als Tab offen, gewinnt dieses Fenster
 ///    (Dedup, vorderstes zuerst) — so entsteht kein zweiter Tab derselben Datei.
 /// 2. Sonst das erste Fenster, dessen Projekt-/Repo-Ordner die Datei enthält.
-/// 3. Passt keines, liefert die Funktion `nil` → ein neues Fenster ist nötig.
+/// 3. Sonst das erste leere/Willkommens-Fenster — ein solches nimmt die Datei
+///    auf, statt ein zweites Fenster zu erzeugen (Daniel-Befund 2026-07-20).
+/// 4. Passt keines, liefert die Funktion `nil` → ein neues Fenster ist nötig.
 enum FinderOpenRouter {
     /// - Parameter windows: Kandidaten in Vordergrund-Reihenfolge (vorderstes
     ///   zuerst). Der Rückgabe-Index bezieht sich auf genau diese Reihenfolge.
@@ -34,11 +42,17 @@ enum FinderOpenRouter {
         // (2) Projekt/Repo enthält die Datei. Grenzsicherer Prefix-Vergleich:
         // „/tmp/projekt-alt/x“ darf NICHT als in „/tmp/projekt“ liegend gelten
         // (gleiche Regel wie `Workspace.projectSwitchTarget`).
-        return windows.firstIndex { snapshot in
+        if let project = windows.firstIndex(where: { snapshot in
             guard let root = snapshot.projectURL?.canonicalFileURL.path else { return false }
             let prefix = root.hasSuffix("/") ? root : root + "/"
             return filePath.hasPrefix(prefix)
+        }) {
+            return project
         }
+
+        // (3) Ein leeres/Willkommens-Fenster nimmt die Datei auf, bevor ein
+        // neues entsteht (vorderstes zuerst).
+        return windows.firstIndex { $0.isEmptyWelcome }
     }
 }
 
@@ -270,13 +284,27 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
             let workspace = WorkspaceWindowRegistry.workspace(for: window)
             return OpenWindowSnapshot(
                 projectURL: workspace?.projectURL,
-                openFileURLs: workspace?.tabs.compactMap { $0.url } ?? []
+                openFileURLs: workspace?.tabs.compactMap { $0.url } ?? [],
+                isEmptyWelcome: workspace.map(windowIsEmptyWelcome) ?? false
             )
         }
         guard let index = FinderOpenRouter.targetIndex(for: url, in: snapshots) else {
             return nil
         }
         return WorkspaceWindowRegistry.workspace(for: windows[index])
+    }
+
+    /// `true`, wenn das Fenster leer und aufnahmebereit ist: kein Projekt und
+    /// nur leere „Ohne Titel"-/Willkommen-Tabs ohne ungesicherte Arbeit. Nur
+    /// dann darf eine aus dem Finder geöffnete Datei dieses Fenster übernehmen,
+    /// statt ein neues zu erzeugen. Ein Fenster mit ungesichertem Tippinhalt
+    /// (dirty) oder einer Git-/Vergleichsansicht zählt bewusst NICHT als leer.
+    private static func windowIsEmptyWelcome(_ workspace: Workspace) -> Bool {
+        guard workspace.projectURL == nil else { return false }
+        return workspace.tabs.allSatisfy { tab in
+            tab.gitKind == nil && tab.fileDiffRequest == nil
+                && tab.url == nil && tab.content.isEmpty && !tab.isDirty
+        }
     }
 
     /// Holt das Fenster des angegebenen Workspace nach vorn und macht es zum

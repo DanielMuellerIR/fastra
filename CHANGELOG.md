@@ -9,6 +9,16 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.44.5] — 2026-07-20
+
+### Behoben
+
+- Öffnet man aus dem Finder eine Datei, während nur der Willkommensbildschirm
+  offen ist, erscheint sie jetzt in genau diesem Fenster statt in einem
+  zweiten. Allgemein nimmt ein leeres Fenster (Willkommensbildschirm oder nur
+  leere „Ohne Titel"-Tabs, ohne ungesicherte Arbeit) eine geöffnete Datei auf,
+  bevor ein neues Fenster entsteht.
+
 ## [v1.44.4] — 2026-07-20
 
 ### Behoben
