@@ -9,6 +9,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.44.3] — 2026-07-20
+
+### Behoben
+
+- Beim Wiederherstellen der letzten Sitzung blitzt kein leerer „Ohne Titel"-
+  Tab mehr auf, bevor die gespeicherten Dateien erscheinen.
+- Das „Fenster"-Menü listet jetzt auch das Startfenster, nicht nur zusätzlich
+  geöffnete Fenster.
+- Eine aus dem Finder geöffnete Datei landet im Fenster, dessen Projekt oder
+  Repository sie enthält (auch wenn dieses hinten liegt), und holt es nach
+  vorn. Passt kein offenes Fenster, entsteht ein neues. Zuvor ging jede
+  Öffnung ins vorderste Fenster, unabhängig vom angezeigten Projekt.
+- Öffnet eine Datei in einem passenden Fenster, kommt genau dieses Fenster
+  nach vorn — nicht mehr versehentlich ein anderes.
+
 ## [v1.44.2] — 2026-07-20
 
 ### Behoben

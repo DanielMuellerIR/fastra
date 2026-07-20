@@ -118,6 +118,40 @@ func sessionWorkspaceRestore() async throws {
     #expect(!workspace.tabs.contains(where: { $0.url == nil }))
 }
 
+@Test("Restore lässt keinen leeren „Ohne Titel“-/Willkommen-Tab aufblitzen")
+@MainActor
+func sessionRestoreHasNoTransientScratchTab() throws {
+    let (defaults, suite) = sessionDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let first = try sessionFile("a.txt", content: "A")
+    let directory = first.deletingLastPathComponent()
+    let second = directory.appendingPathComponent("b.txt")
+    try "B".write(to: second, atomically: true, encoding: .utf8)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let workspace = Workspace(defaults: defaults)
+    // Ausgangslage wie beim echten Folgestart: ein Willkommen-Tab ist offen.
+    #expect(workspace.tabs.contains { $0.isWelcome })
+
+    let state = RestorableWindowState(
+        projectPath: directory.path,
+        documentPaths: [first.path, second.path],
+        activeDocumentPath: first.path,
+        frame: nil
+    )
+    // Bewusst OHNE await: Die Lade-Platzhalter werden synchron angehängt, die
+    // asynchronen Ladeabschlüsse können den Main-Actor bis zum ersten `await`
+    // nicht betreten. So prüft der Test genau den Zustand, den SwiftUI im
+    // ersten Frame zeichnen würde (Daniel-Befund 2026-07-20).
+    workspace.restore(state)
+
+    #expect(!workspace.tabs.contains { $0.isWelcome },
+            "Willkommen-Tab darf beim Restore nicht kurz aufblitzen")
+    #expect(!workspace.tabs.contains { $0.url == nil },
+            "Kein leerer „Ohne Titel“-Tab neben den geladenen Dateien")
+    #expect(workspace.tabs.count == 2)
+}
+
 @Test("Gespeicherter Fensterrahmen wird auf einen vorhandenen Monitor begrenzt")
 func sessionFrameIsKeptVisible() {
     let screen = NSRect(x: 0, y: 0, width: 1440, height: 900)

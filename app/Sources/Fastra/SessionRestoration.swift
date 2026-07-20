@@ -236,6 +236,16 @@ extension Workspace {
                 completion?()
             }
         }
+
+        // Die Lade-Platzhalter der Dateien stehen jetzt (synchron angehängt).
+        // Den beim Projekt-Öffnen entstandenen leeren „Ohne Titel"-Tab bzw.
+        // den Willkommen-Tab deshalb SOFORT entfernen, noch in diesem Runloop-
+        // Tick. Sonst blitzt er auf, bis der erste asynchrone Ladevorgang ihn
+        // wegräumt (Daniel-Befund 2026-07-20). Die Platzhalter (isLoading =
+        // true, mit URL) sind kein leerer Scratch und bleiben erhalten.
+        if let active = activeTabID {
+            tabs = Workspace.tabsRemovingEmptyScratch(tabs, keeping: active)
+        }
     }
 }
 

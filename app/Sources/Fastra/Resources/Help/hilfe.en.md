@@ -363,6 +363,10 @@ The footer shows the encoding and line ending of the active tab:
 tabs, its own search). ⌘S saves, ⌘W closes the tab — Fastra asks first
 if there are unsaved changes. ⌘J jumps to a line number.
 
+When you open a file from the Finder, it lands in the window whose project
+or repository contains it, and that window comes to the front. If no open
+window fits, Fastra opens it in a new one.
+
 By default, Fastra restores the last project windows, saved documents, active
 tabs, and window positions on the next launch. You can turn this off under
 **Settings → Startup**. Contents of unsaved or untitled documents are never

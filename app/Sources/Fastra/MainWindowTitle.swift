@@ -224,6 +224,16 @@ struct MainWindowTitleBridge: NSViewRepresentable {
             window.representedURL = metadata.representedURL
             window.title = metadata.title
             window.isDocumentEdited = metadata.isDocumentEdited
+            // Dieses per NSHostingController gehostete Fenster verlässlich ins
+            // „Fenster"-Menü aufnehmen. Für das SwiftUI-Startfenster fehlte der
+            // Eintrag bisher ganz — das Menü blieb leer, obwohl das Fenster mit
+            // seinen Tabs offen war (Daniel-Befund 2026-07-20). `changeWindowsItem`
+            // fügt HINZU oder aktualisiert nur; die bereits per `addWindowsItem`
+            // eingetragenen ⌘N-/wiederhergestellten Fenster bekommen dadurch
+            // keinen Doppel-Eintrag, sondern nur ihren Titel nachgeführt.
+            if !SearchWindow.isSearchWindow(window) {
+                NSApp.changeWindowsItem(window, title: metadata.title, filename: false)
+            }
             // Codex-artiger Fensteraufbau: SwiftUI zeichnet den Chrome bis
             // hinter die native Titelleiste. Die Ampelknöpfe bleiben echte
             // AppKit-Controls; nur Dateititel und Hintergrund werden ersetzt.

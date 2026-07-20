@@ -1,6 +1,47 @@
 import AppKit
 import SwiftUI
 
+/// Momentaufnahme eines offenen Dokumentfensters für die Routing-Entscheidung
+/// beim Öffnen aus dem Finder. Bewusst ohne AppKit-Typen, damit die Auswahl
+/// rein und ohne echtes Fenster unit-testbar bleibt.
+struct OpenWindowSnapshot: Equatable {
+    /// Projekt-/Repo-Ordner, den das Fenster gerade zeigt (falls vorhanden).
+    let projectURL: URL?
+    /// URLs der aktuell in dem Fenster offenen Datei-Tabs.
+    let openFileURLs: [URL]
+}
+
+/// Reine Auswahl des Zielfensters für eine aus dem Finder/Dock geöffnete Datei.
+///
+/// Entscheidung (Nutzerwunsch 2026-07-20 „alle Fenster durchsuchen"):
+/// 1. Ist die Datei bereits irgendwo als Tab offen, gewinnt dieses Fenster
+///    (Dedup, vorderstes zuerst) — so entsteht kein zweiter Tab derselben Datei.
+/// 2. Sonst das erste Fenster, dessen Projekt-/Repo-Ordner die Datei enthält.
+/// 3. Passt keines, liefert die Funktion `nil` → ein neues Fenster ist nötig.
+enum FinderOpenRouter {
+    /// - Parameter windows: Kandidaten in Vordergrund-Reihenfolge (vorderstes
+    ///   zuerst). Der Rückgabe-Index bezieht sich auf genau diese Reihenfolge.
+    static func targetIndex(for fileURL: URL, in windows: [OpenWindowSnapshot]) -> Int? {
+        let filePath = fileURL.canonicalFileURL.path
+
+        // (1) Datei schon offen → dieses Fenster (vorderstes zuerst).
+        if let dedup = windows.firstIndex(where: { snapshot in
+            snapshot.openFileURLs.contains { $0.canonicalFileURL.path == filePath }
+        }) {
+            return dedup
+        }
+
+        // (2) Projekt/Repo enthält die Datei. Grenzsicherer Prefix-Vergleich:
+        // „/tmp/projekt-alt/x“ darf NICHT als in „/tmp/projekt“ liegend gelten
+        // (gleiche Regel wie `Workspace.projectSwitchTarget`).
+        return windows.firstIndex { snapshot in
+            guard let root = snapshot.projectURL?.canonicalFileURL.path else { return false }
+            let prefix = root.hasSuffix("/") ? root : root + "/"
+            return filePath.hasPrefix(prefix)
+        }
+    }
+}
+
 /// Erzeugt zusätzliche Dokumentfenster für ⌘N.
 ///
 /// Das Startfenster bleibt eine SwiftUI-`Window`-Scene. Weitere sowie
@@ -174,6 +215,81 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         defaults: UserDefaults = SelfTest.workspaceDefaults()
     ) -> Workspace {
         frontmostVisibleWorkspace() ?? openNewDocument(defaults: defaults)
+    }
+
+    /// Öffnet eine Liste aus dem Finder/Dock stammender URLs im jeweils am
+    /// besten passenden Fenster und holt dieses nach vorn (Nutzerwunsch
+    /// 2026-07-20). Ordner werden wie bisher als Projekt geladen; für Dateien
+    /// entscheidet `FinderOpenRouter`. Findet sich kein Fenster, entsteht ein
+    /// neues — mehrere gemeinsam geöffnete Dateien desselben (neuen) Auto-
+    /// Projektordners teilen dabei genau ein Fenster.
+    static func openFinderItems(
+        _ urls: [URL],
+        defaults: UserDefaults = SelfTest.workspaceDefaults()
+    ) {
+        var newWindowByFolder: [String: Workspace] = [:]
+        for url in urls {
+            var isDirectory: ObjCBool = false
+            let exists = FileManager.default.fileExists(atPath: url.path,
+                                                        isDirectory: &isDirectory)
+
+            // Ordner → Projekt. Für das Laden eines ganzen Projekts bleibt es
+            // beim bisherigen Verhalten (Vorderfenster oder neu).
+            if exists && isDirectory.boolValue {
+                let workspace = workspaceForOpening(defaults: defaults)
+                workspace.openFileOrFolder(at: url)
+                raiseWindow(for: workspace)
+                continue
+            }
+
+            // Datei → passendes offenes Fenster suchen.
+            if let workspace = existingWorkspace(forOpeningFile: url) {
+                workspace.openFileOrFolder(at: url)
+                raiseWindow(for: workspace)
+                continue
+            }
+
+            // Kein passendes Fenster: pro Auto-Projektordner genau ein neues
+            // Fenster. So bleiben mehrere zusammen geöffnete Dateien desselben
+            // Ordners im selben Fenster, obwohl das frische Fenster seinen
+            // projectURL erst asynchron setzt.
+            let folderKey = Workspace.autoProjectFolder(for: url)?
+                .canonicalFileURL.path ?? url.deletingLastPathComponent().canonicalFileURL.path
+            let workspace = newWindowByFolder[folderKey] ?? openNewDocument(defaults: defaults)
+            newWindowByFolder[folderKey] = workspace
+            workspace.openFileOrFolder(at: url)
+            raiseWindow(for: workspace)
+        }
+    }
+
+    /// Sucht unter allen sichtbaren Dokumentfenstern das für diese Datei
+    /// passende (bereits offen oder Projekt/Repo enthält sie). `nil` = keines.
+    private static func existingWorkspace(forOpeningFile url: URL) -> Workspace? {
+        let windows = visibleDocumentWindows()
+        let snapshots = windows.map { window in
+            let workspace = WorkspaceWindowRegistry.workspace(for: window)
+            return OpenWindowSnapshot(
+                projectURL: workspace?.projectURL,
+                openFileURLs: workspace?.tabs.compactMap { $0.url } ?? []
+            )
+        }
+        guard let index = FinderOpenRouter.targetIndex(for: url, in: snapshots) else {
+            return nil
+        }
+        return WorkspaceWindowRegistry.workspace(for: windows[index])
+    }
+
+    /// Holt das Fenster des angegebenen Workspace nach vorn und macht es zum
+    /// aktiven Dokument. Behebt, dass beim Öffnen aus dem Finder zwar der
+    /// richtige Tab entstand, aber ein anderes Fenster nach vorn kam
+    /// (Daniel-Befund 2026-07-20).
+    private static func raiseWindow(for workspace: Workspace) {
+        let window = (NSApp.orderedWindows + WorkspaceWindowRegistry.registeredWindows())
+            .first { WorkspaceWindowRegistry.workspace(for: $0) === workspace }
+        guard let window else { return }
+        NSApp.activate()
+        window.makeKeyAndOrderFront(nil)
+        Workspace.shared = workspace
     }
 
     /// Öffnet ein leeres, unabhängiges Dokumentfenster und gibt dessen

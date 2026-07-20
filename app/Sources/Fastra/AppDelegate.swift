@@ -588,10 +588,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             let urls = self.openFilesInbox.drain()
             guard !urls.isEmpty else { return }
-            let workspace = DocumentWindowController.workspaceForOpening()
-            for url in urls {
-                workspace.openFileOrFolder(at: url)
-            }
+            // Jede Datei landet im am besten passenden Fenster (dasselbe
+            // Projekt/Repo) und dieses kommt nach vorn; sonst neues Fenster
+            // (Nutzerwunsch 2026-07-20). Früher gingen alle Öffnungen ins
+            // vorderste Fenster, egal welches Projekt es zeigte.
+            DocumentWindowController.openFinderItems(urls)
         }
     }
 

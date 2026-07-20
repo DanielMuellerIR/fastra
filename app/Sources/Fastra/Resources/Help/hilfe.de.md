@@ -383,6 +383,10 @@ Fenster (eigene Tabs, eigene Suche). ⌘S speichert, ⌘W schließt den Tab —
 bei ungespeicherten Änderungen fragt Fastra nach. ⌘J springt zu einer
 Zeilennummer.
 
+Öffnest du eine Datei aus dem Finder, landet sie im Fenster, dessen Projekt
+oder Repository sie enthält, und dieses kommt nach vorn. Passt kein offenes
+Fenster, öffnet Fastra sie in einem neuen.
+
 Beim nächsten Start stellt Fastra standardmäßig die zuletzt geöffneten
 Projektfenster, gespeicherten Dokumente, aktiven Tabs und Fensterpositionen
 wieder her. Unter **Einstellungen → Start** lässt sich das abschalten.
