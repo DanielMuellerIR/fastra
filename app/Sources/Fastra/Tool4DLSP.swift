@@ -113,8 +113,25 @@ protocol Tool4DLSPProcess: AnyObject {
 }
 
 final class Tool4DNativeProcess: Tool4DLSPProcess {
+    typealias ForceStopScheduler = (DispatchWorkItem) -> Void
+
     private var process: Process?
     private var forceStopWorkItem: DispatchWorkItem?
+    private let scheduleForceStop: ForceStopScheduler
+
+    init(scheduleForceStop: @escaping ForceStopScheduler = {
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.5,
+                                                        execute: $0)
+    }) {
+        self.scheduleForceStop = scheduleForceStop
+    }
+
+    /// Der Test stoppt den realen Kindprozess gezielt, bevor `stop()` den
+    /// SIGKILL-Fallback auslöst. Produktcode braucht diese Diagnose nicht.
+    var processIdentifier: pid_t? {
+        guard let process, process.isRunning else { return nil }
+        return process.processIdentifier
+    }
 
     /// tool4d startet den LSP ausschließlich über den lokalen Port. Die
     /// Projektbindung geschieht erst im LSP-`initialize` durch Workspace- und
@@ -160,8 +177,7 @@ final class Tool4DNativeProcess: Tool4DLSPProcess {
             kill(processID, SIGKILL)
         }
         forceStopWorkItem = forceStop
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.5,
-                                                        execute: forceStop)
+        scheduleForceStop(forceStop)
     }
 }
 

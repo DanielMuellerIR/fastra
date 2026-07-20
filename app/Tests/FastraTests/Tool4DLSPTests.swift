@@ -53,54 +53,34 @@ func tool4dLSP_canonicalizesTemporaryDirectoryAlias() throws {
 }
 
 @Test("Beenden erzwingt nach der Gnadenfrist das Reapen eines hängenden Prozesses")
-func tool4dNativeProcess_forceStopsHungChild() throws {
+func tool4dNativeProcess_forceStopsHungChild() async throws {
     let script = FileManager.default.temporaryDirectory
         .appendingPathComponent("fastra-tool4d-stop-\(UUID().uuidString).sh")
-    let ready = FileManager.default.temporaryDirectory
-        .appendingPathComponent("fastra-tool4d-stop-ready-\(UUID().uuidString)")
-    defer {
-        try? FileManager.default.removeItem(at: script)
-        try? FileManager.default.removeItem(at: ready)
-    }
-    // Die kleine Python-Fixture ignoriert TERM absichtlich. Anders als ein
-    // Shell-`trap` ist das auch bei einem parallel ausgelasteten Testlauf
-    // sofort nach dem Start wirksam. So muss der produktive SIGKILL-Fallback
-    // greifen, ohne ein echtes tool4d zu starten.
-    let pythonPath = ready.path.replacingOccurrences(of: "\\", with: "\\\\")
-        .replacingOccurrences(of: "\"", with: "\\\"")
+    defer { try? FileManager.default.removeItem(at: script) }
+    // Der reale Kindprozess sperrt TERM und stoppt sich erst danach selbst.
+    // `waitpid(..., WUNTRACED)` bestätigt unten diesen Zustand ohne Zeitfrist;
+    // der injizierte Sofort-Scheduler muss dann exakt den SIGKILL-Pfad nehmen.
     let fixture = """
-    #!/usr/bin/python3
-    import pathlib
-    import signal
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)
-    pathlib.Path(\"\(pythonPath)\").touch()
-    while True:
-        pass
+    #!/bin/sh
+    trap '' TERM
+    kill -STOP $$
+    exec /bin/sleep 30
     """
     try Data(fixture.utf8).write(to: script)
     try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
 
-    let process = Tool4DNativeProcess()
+    let process = Tool4DNativeProcess(scheduleForceStop: { $0.perform() })
     let termination = Tool4DTerminationRecorder()
     try process.launch(executable: script, port: 1) { status in termination.record(status) }
-    // Der Marker entsteht erst NACH dem TERM-Handler. So prüft der Test
-    // zuverlässig den SIGKILL-Fallback statt eines Start-Rennens.
-    // Beim ersten Paralleltest kann macOS den Interpreter merklich später
-    // starten. Die Frist ist deshalb bewusst großzügiger als die produktive
-    // Gnadenfrist; sie prüft nur die Fixture-Bereitschaft.
-    let deadline = Date().addingTimeInterval(4)
-    while !FileManager.default.fileExists(atPath: ready.path), Date() < deadline {
-        Thread.sleep(forTimeInterval: 0.01)
-    }
-    guard FileManager.default.fileExists(atPath: ready.path) else {
-        process.stop()
-        _ = termination.wait(timeout: 2)
-        Issue.record("Die Fixture meldete ihre TERM-Sperre nicht rechtzeitig.")
-        return
-    }
+    let processID = try #require(process.processIdentifier)
+    var stoppedStatus: Int32 = 0
+    #expect(waitpid(processID, &stoppedStatus, WUNTRACED) == processID)
+    // Darwin exportiert WIFSTOPPED nicht nach Swift. 0x7f in den unteren
+    // Statusbits ist dessen POSIX-Bedingung für einen bestätigten Stop.
+    #expect(stoppedStatus & 0x7f == 0x7f)
     process.stop()
-    #expect(termination.wait(timeout: 2))
-    #expect(termination.status == 9)
+    let terminationStatus = await termination.wait()
+    #expect(terminationStatus == 9)
 }
 
 @Test("tool4d-LSP: initialize, Dokument-Lebenszyklus und Diagnostics")
@@ -243,18 +223,29 @@ private func runValidation(_ validation: Tool4DLSPValidation,
 /// Thread. Das kleine Schloss hält den Test ohne Datenrennen deterministisch.
 private final class Tool4DTerminationRecorder: @unchecked Sendable {
     private let lock = NSLock()
-    private let signal = DispatchSemaphore(value: 0)
-    private var storedStatus: Int32 = -1
-
-    var status: Int32 { lock.withLock { storedStatus } }
+    private var storedStatus: Int32?
+    private var continuation: CheckedContinuation<Int32, Never>?
 
     func record(_ status: Int32) {
-        lock.withLock { storedStatus = status }
-        signal.signal()
+        let waiter = lock.withLock { () -> CheckedContinuation<Int32, Never>? in
+            storedStatus = status
+            defer { continuation = nil }
+            return continuation
+        }
+        waiter?.resume(returning: status)
     }
 
-    func wait(timeout: TimeInterval) -> Bool {
-        signal.wait(timeout: .now() + timeout) == .success
+    func wait() async -> Int32 {
+        await withCheckedContinuation { waiter in
+            let ready = lock.withLock { () -> Int32? in
+                if let storedStatus { return storedStatus }
+                continuation = waiter
+                return nil
+            }
+            if let ready {
+                waiter.resume(returning: ready)
+            }
+        }
     }
 }
 

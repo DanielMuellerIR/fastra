@@ -5,6 +5,7 @@ import Testing
 private struct SoftWrapDefaultsFixture {
     let suiteName = "fastra-softwrap-\(UUID().uuidString)"
     let defaults: UserDefaults
+    let notificationCenter = NotificationCenter()
 
     init() {
         defaults = UserDefaults(suiteName: suiteName)!
@@ -14,6 +15,10 @@ private struct SoftWrapDefaultsFixture {
     func cleanUp() {
         defaults.removePersistentDomain(forName: suiteName)
     }
+
+    func makeStore() -> SoftWrapProfileStore {
+        SoftWrapProfileStore(defaults: defaults, notificationCenter: notificationCenter)
+    }
 }
 
 @Suite("Soft-Wrap-Formatprofile")
@@ -22,14 +27,14 @@ struct SoftWrapProfileStoreTests {
     func persistenceAndMinimalOverrides() throws {
         let fixture = SoftWrapDefaultsFixture()
         defer { fixture.cleanUp() }
-        let store = SoftWrapProfileStore(defaults: fixture.defaults)
+        let store = fixture.makeStore()
 
         #expect(store.isEnabled(for: .plainText))
         #expect(!store.isEnabled(for: .fourD))
         store.setEnabled(true, for: .fourD)
         store.setEnabled(false, for: .plainText)
 
-        let reloaded = SoftWrapProfileStore(defaults: fixture.defaults)
+        let reloaded = fixture.makeStore()
         #expect(reloaded.isEnabled(for: .fourD))
         #expect(!reloaded.isEnabled(for: .plainText))
         #expect(reloaded.hasOverride(for: .fourD))
@@ -53,7 +58,7 @@ struct SoftWrapProfileStoreTests {
     func resetOnlyCurrentFormat() {
         let fixture = SoftWrapDefaultsFixture()
         defer { fixture.cleanUp() }
-        let store = SoftWrapProfileStore(defaults: fixture.defaults)
+        let store = fixture.makeStore()
         store.setEnabled(true, for: .fourD)
         store.setEnabled(false, for: .grammar(.markdown))
 
@@ -71,7 +76,7 @@ struct SoftWrapProfileStoreTests {
         fixture.defaults.set(false,
                              forKey: SoftWrapProfileStore.Keys.legacyGlobalWrap)
 
-        let migrated = SoftWrapProfileStore(defaults: fixture.defaults)
+        let migrated = fixture.makeStore()
         #expect(!migrated.isEnabled(for: .plainText))
         #expect(migrated.hasOverride(for: .plainText))
         #expect(!migrated.isEnabled(for: .grammar(.json)))
@@ -85,7 +90,7 @@ struct SoftWrapProfileStoreTests {
         migrated.resetToFactoryDefault(for: .plainText)
         fixture.defaults.set(false,
                              forKey: SoftWrapProfileStore.Keys.legacyGlobalWrap)
-        let secondLaunch = SoftWrapProfileStore(defaults: fixture.defaults)
+        let secondLaunch = fixture.makeStore()
         #expect(secondLaunch.isEnabled(for: .plainText))
         #expect(!secondLaunch.hasOverride(for: .plainText))
     }
@@ -94,7 +99,7 @@ struct SoftWrapProfileStoreTests {
     func noLegacyValueMeansNoMigration() {
         let fixture = SoftWrapDefaultsFixture()
         defer { fixture.cleanUp() }
-        _ = SoftWrapProfileStore(defaults: fixture.defaults)
+        _ = fixture.makeStore()
         #expect(fixture.defaults.data(
             forKey: SoftWrapProfileStore.Keys.profiles
         ) == nil)
@@ -104,8 +109,8 @@ struct SoftWrapProfileStoreTests {
     func globalNotification() {
         let fixture = SoftWrapDefaultsFixture()
         defer { fixture.cleanUp() }
-        let first = SoftWrapProfileStore(defaults: fixture.defaults)
-        let second = SoftWrapProfileStore(defaults: fixture.defaults)
+        let first = fixture.makeStore()
+        let second = fixture.makeStore()
         let previousRevision = second.revision
 
         first.setEnabled(true, for: .fourD)
@@ -121,8 +126,8 @@ struct SoftWrapProfileStoreTests {
             firstFixture.cleanUp()
             secondFixture.cleanUp()
         }
-        let first = SoftWrapProfileStore(defaults: firstFixture.defaults)
-        let second = SoftWrapProfileStore(defaults: secondFixture.defaults)
+        let first = firstFixture.makeStore()
+        let second = secondFixture.makeStore()
 
         first.setEnabled(true, for: .fourD)
         #expect(first.isEnabled(for: .fourD))
@@ -147,7 +152,7 @@ struct SoftWrapProfileStoreTests {
         fixture.defaults.set(Data(oldJSON.utf8),
                              forKey: SoftWrapProfileStore.Keys.profiles)
 
-        let store = SoftWrapProfileStore(defaults: fixture.defaults)
+        let store = fixture.makeStore()
         #expect(store.isEnabled(for: .fourD))
         #expect(store.target(for: .fourD) == .window)
         #expect(store.fixedColumn(for: .fourD) == 80)
@@ -167,7 +172,7 @@ struct SoftWrapProfileStoreTests {
     func targetAndColumnAreFormatSpecific() {
         let fixture = SoftWrapDefaultsFixture()
         defer { fixture.cleanUp() }
-        let store = SoftWrapProfileStore(defaults: fixture.defaults)
+        let store = fixture.makeStore()
 
         store.setFixedColumn(100, for: .fourD)
         #expect(store.isEnabled(for: .fourD))
@@ -185,8 +190,8 @@ struct SoftWrapProfileStoreTests {
     func pageGuideIsGlobalAndValidated() throws {
         let fixture = SoftWrapDefaultsFixture()
         defer { fixture.cleanUp() }
-        let first = SoftWrapProfileStore(defaults: fixture.defaults)
-        let second = SoftWrapProfileStore(defaults: fixture.defaults)
+        let first = fixture.makeStore()
+        let second = fixture.makeStore()
 
         first.setPageGuideColumn(120)
         first.setShowPageGuide(true)
@@ -204,7 +209,7 @@ struct SoftWrapProfileStoreTests {
         )
         fixture.defaults.set(try JSONEncoder().encode(bad),
                              forKey: SoftWrapProfileStore.Keys.profiles)
-        let repaired = SoftWrapProfileStore(defaults: fixture.defaults)
+        let repaired = fixture.makeStore()
         #expect(repaired.pageGuideColumn == 80)
         #expect(repaired.fixedColumn(for: .fourD) == 80)
     }
@@ -213,7 +218,7 @@ struct SoftWrapProfileStoreTests {
     func resetKeepsGlobalGuide() {
         let fixture = SoftWrapDefaultsFixture()
         defer { fixture.cleanUp() }
-        let store = SoftWrapProfileStore(defaults: fixture.defaults)
+        let store = fixture.makeStore()
         store.setFixedColumn(120, for: .fourD)
         store.setPageGuideColumn(100)
         store.setShowPageGuide(true)

@@ -308,7 +308,7 @@ func fileTree_hiddenOnlyFolderIsEmpty() throws {
 
 @Test("FolderEmptinessCache: leerer Ordner wird asynchron erkannt")
 @MainActor
-func emptinessCache_detectsEmptyFolder() async throws {
+func emptinessCache_detectsEmptyFolder() throws {
     let empty = try makeTmpDirectory("leer")
     let filled = try makeTmpDirectory("voll")
     defer {
@@ -318,14 +318,14 @@ func emptinessCache_detectsEmptyFolder() async throws {
     try "x".write(to: filled.appendingPathComponent("datei.txt"),
                   atomically: true, encoding: .utf8)
 
-    let cache = FolderEmptinessCache()
+    let cache = FolderEmptinessCache(
+        scheduleProbe: { $0() },
+        deliverProbeResult: { work in MainActor.assumeIsolated { work() } }
+    )
     // Erst Chevron, dann ggf. entfernen: vor der Probe gilt NICHTS als leer.
     #expect(!cache.isKnownEmpty(empty))
     cache.probe(empty)
     cache.probe(filled)
-
-    let deadline = Date().addingTimeInterval(5)
-    while !cache.isKnownEmpty(empty), Date() < deadline { await Task.yield() }
 
     #expect(cache.isKnownEmpty(empty))
     #expect(!cache.isKnownEmpty(filled))
@@ -333,14 +333,15 @@ func emptinessCache_detectsEmptyFolder() async throws {
 
 @Test("FolderEmptinessCache: gefüllter Ordner verliert den Leer-Status wieder")
 @MainActor
-func emptinessCache_isIdempotentAcrossRefreshes() async throws {
+func emptinessCache_isIdempotentAcrossRefreshes() throws {
     let dir = try makeTmpDirectory("wechselnd")
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    let cache = FolderEmptinessCache()
+    let cache = FolderEmptinessCache(
+        scheduleProbe: { $0() },
+        deliverProbeResult: { work in MainActor.assumeIsolated { work() } }
+    )
     cache.probe(dir)
-    var deadline = Date().addingTimeInterval(5)
-    while !cache.isKnownEmpty(dir), Date() < deadline { await Task.yield() }
     #expect(cache.isKnownEmpty(dir))
 
     // Ordner bekommt Inhalt (wie ein FSEvents-Nachzügler) → erneute Probe
@@ -348,7 +349,5 @@ func emptinessCache_isIdempotentAcrossRefreshes() async throws {
     try "x".write(to: dir.appendingPathComponent("neu.txt"),
                   atomically: true, encoding: .utf8)
     cache.probe(dir)
-    deadline = Date().addingTimeInterval(5)
-    while cache.isKnownEmpty(dir), Date() < deadline { await Task.yield() }
     #expect(!cache.isKnownEmpty(dir))
 }

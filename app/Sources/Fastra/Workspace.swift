@@ -253,6 +253,8 @@ private struct GitDiffLoadLease {
 }
 
 final class Workspace: ObservableObject {
+    typealias LanguageDetectionScheduler = (@escaping @Sendable () -> Void) -> Void
+
     @Published var tabs: [EditorTab]
     /// Zweiter, schwächer markierter Tab einer Vergleichsauswahl. Der aktive
     /// Tab bleibt dabei unverändert die eindeutige Quelle für Editor und Menüs.
@@ -613,7 +615,13 @@ final class Workspace: ObservableObject {
          gitRepositoryIdentityResolver: GitRepositoryIdentityResolving? = nil,
          gitAutoFetchController: GitAutoFetchController? = nil,
          terminalOpener: TerminalOpening = ExternalTerminalLauncher(),
-         terminalDirectoryResolver: TerminalDirectoryResolving = DefaultTerminalDirectoryResolver()) {
+         terminalDirectoryResolver: TerminalDirectoryResolving = DefaultTerminalDirectoryResolver(),
+         scheduleLanguageDetectionWork: @escaping LanguageDetectionScheduler = {
+             DispatchQueue.global(qos: .utility).async(execute: $0)
+         },
+         deliverLanguageDetectionResult: @escaping LanguageDetectionScheduler = {
+             DispatchQueue.main.async(execute: $0)
+         }) {
         // Die injizierten Defaults merken — ALLE Persistenz-Pfade des
         // Workspace müssen dieselbe Suite nutzen. Vorher schrieb der
         // recentSearchFolders-Sink hart in `.standard`: Selbsttest-Läufe
@@ -626,6 +634,8 @@ final class Workspace: ObservableObject {
         self.gitOperationsCoordinator = gitOperationsCoordinator
         self.terminalOpener = terminalOpener
         self.terminalDirectoryResolver = terminalDirectoryResolver
+        self.scheduleLanguageDetectionWork = scheduleLanguageDetectionWork
+        self.deliverLanguageDetectionResult = deliverLanguageDetectionResult
         if let gitRepositoryStore {
             self.gitRepositoryStore = gitRepositoryStore
         } else if gitOperationsCoordinator === GitOperationsCoordinator.shared {
@@ -1671,6 +1681,11 @@ final class Workspace: ObservableObject {
     private var languageDetectionWork: [UUID: DispatchWorkItem] = [:]
     /// Inhaltslänge zur Zeit der letzten Analyse je Tab (Drossel-Basis).
     private var languageDetectionAnalyzedLength: [UUID: Int] = [:]
+    /// Produktion analysiert im Hintergrund und übernimmt auf dem Main-Thread.
+    /// Tests injizieren synchrone Scheduler und brauchen dadurch keine
+    /// zeitabhängigen Polling-Schleifen für denselben Zustandsübergang.
+    private let scheduleLanguageDetectionWork: LanguageDetectionScheduler
+    private let deliverLanguageDetectionResult: LanguageDetectionScheduler
 
     /// Nur ungespeicherte Tabs ohne Dateiendung, ohne manuelle Sprachwahl
     /// und ohne Sonderrolle (Git/Willkommen) nehmen an der Automatik teil.
@@ -1721,7 +1736,8 @@ final class Workspace: ObservableObject {
         let totalLength = tabs[idx].content.count
         languageDetectionAnalyzedLength[tabID] = totalLength
 
-        DispatchQueue.global(qos: .utility).async { [weak self] in
+        let deliver = deliverLanguageDetectionResult
+        scheduleLanguageDetectionWork { [weak self] in
             let format = ContentLanguageDetection.detect(in: sample)
             // Kein Format erkannt → Shebang-/Modeline-Erkennung des Editors
             // (bislang ungenutzter Upstream-Pfad; erkennt z. B. „#!/bin/bash").
@@ -1739,7 +1755,8 @@ final class Workspace: ObservableObject {
                     language = fallback
                 }
             }
-            DispatchQueue.main.async { [weak self] in
+            let detectedLanguage = language
+            deliver { [weak self] in
                 guard let self,
                       let i = self.tabs.firstIndex(where: { $0.id == tabID }),
                       Self.isEligibleForContentDetection(self.tabs[i]) else { return }
@@ -1747,9 +1764,9 @@ final class Workspace: ObservableObject {
                 // erkannt) lässt eine bestehende Erkennung stehen.
                 let current = self.tabs[i].contentDetectedLanguage
                 let currentFormat = self.tabs[i].contentDetectedFormat
-                guard let language,
-                      language != current || format != currentFormat else { return }
-                self.tabs[i].contentDetectedLanguage = language
+                guard let detectedLanguage,
+                      detectedLanguage != current || format != currentFormat else { return }
+                self.tabs[i].contentDetectedLanguage = detectedLanguage
                 self.tabs[i].contentDetectedFormat = format
             }
         }

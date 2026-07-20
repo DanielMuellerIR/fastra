@@ -9,6 +9,19 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.43.1] — 2026-07-20
+
+### Intern
+
+- GitHub Actions führt die Swift-Tests seriell aus, damit reale Prozesse und
+  asynchrone Main-Queue-Übergaben auf Hosted Runnern nicht um gemeinsame
+  Worker-Pools konkurrieren und dadurch fälschlich ihre Testfristen reißen.
+- Ordner-Leerstand und inhaltsbasierte Spracherkennung besitzen injizierbare
+  Arbeits-/Rückgabe-Scheduler; ihre Tests prüfen dieselben Zustandsübergänge
+  ohne zeitabhängiges Polling. Der tool4d-SIGKILL-Test wartet auf echte
+  Kernel-/Prozesssignale, und Soft-Wrap-Store-Tests verwenden vollständig
+  getrennte Benachrichtigungszentren.
+
 ## [v1.43.0] — 2026-07-20
 
 ### Hinzugefügt

@@ -202,12 +202,16 @@ func eligibility_rules() {
 
 @Test("Sofortige Erkennung nach Block-Einfügung setzt die Tab-Sprache")
 @MainActor
-func workspace_detectsAfterBulkInsert() async throws {
+func workspace_detectsAfterBulkInsert() throws {
     let suite = "fastra-langdetect-\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
 
-    let ws = Workspace(defaults: defaults)
+    let ws = Workspace(
+        defaults: defaults,
+        scheduleLanguageDetectionWork: { $0() },
+        deliverLanguageDetectionResult: { $0() }
+    )
     let tab = EditorTab(title: Workspace.untitledBaseName, path: "—")
     ws.tabs = [tab]
     ws.activeTabID = tab.id
@@ -216,10 +220,6 @@ func workspace_detectsAfterBulkInsert() async throws {
     ws.activeTabContent.wrappedValue =
         #"{"name": "Fastra", "version": 21, "aktiv": true}"#
 
-    let deadline = Date().addingTimeInterval(5)
-    while ws.tabs[0].contentDetectedLanguage == nil, Date() < deadline {
-        await Task.yield()
-    }
     #expect(ws.tabs[0].contentDetectedLanguage == .json)
     #expect(ws.tabs[0].contentDetectedFormat == .json)
     #expect(ws.activeDocumentFormat.id == .grammar(.json))
@@ -227,12 +227,16 @@ func workspace_detectsAfterBulkInsert() async throws {
 
 @Test("Shebang-Inhalt nutzt die Upstream-Erkennung (bash)")
 @MainActor
-func workspace_detectsShebang() async throws {
+func workspace_detectsShebang() throws {
     let suite = "fastra-langdetect-\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
 
-    let ws = Workspace(defaults: defaults)
+    let ws = Workspace(
+        defaults: defaults,
+        scheduleLanguageDetectionWork: { $0() },
+        deliverLanguageDetectionResult: { $0() }
+    )
     let tab = EditorTab(title: Workspace.untitledBaseName, path: "—")
     ws.tabs = [tab]
     ws.activeTabID = tab.id
@@ -243,10 +247,6 @@ func workspace_detectsShebang() async throws {
     echo "Sicherung läuft"
     """
 
-    let deadline = Date().addingTimeInterval(5)
-    while ws.tabs[0].contentDetectedLanguage == nil, Date() < deadline {
-        await Task.yield()
-    }
     #expect(ws.tabs[0].contentDetectedLanguage?.id == .bash)
 }
 

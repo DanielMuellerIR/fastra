@@ -888,15 +888,31 @@ private struct FileTreeContextMenu: View {
 ///   Set-Insert/-Remove; doppelte Proben desselben Pfads werden gebündelt.
 @MainActor
 final class FolderEmptinessCache: ObservableObject {
+    typealias ProbeScheduler = (@escaping @Sendable () -> Void) -> Void
+    typealias ResultScheduler = (@escaping @MainActor @Sendable () -> Void) -> Void
+
     @Published private(set) var emptyFolders: Set<String> = []
     private var inFlight: Set<String> = []
     /// Verzeichnis-Listing, für Tests injizierbar; Default sind die echten
     /// Filterregeln des Dateibaums.
     private let listChildren: @Sendable (URL) -> [FileTreeNode]
+    /// Getrennte Scheduler halten die produktive Hintergrund-/Main-Thread-
+    /// Grenze sichtbar und erlauben Tests ohne Wartefristen. Die Tests führen
+    /// beide Schritte synchron aus, prüfen aber exakt dieselbe Zustandslogik.
+    private let scheduleProbe: ProbeScheduler
+    private let deliverProbeResult: ResultScheduler
 
     init(listChildren: @escaping @Sendable (URL) -> [FileTreeNode]
-            = { FileTree.children(of: $0) }) {
+            = { FileTree.children(of: $0) },
+         scheduleProbe: @escaping ProbeScheduler = {
+             DispatchQueue.global(qos: .utility).async(execute: $0)
+         },
+         deliverProbeResult: @escaping ResultScheduler = { work in
+             DispatchQueue.main.async { work() }
+         }) {
         self.listChildren = listChildren
+        self.scheduleProbe = scheduleProbe
+        self.deliverProbeResult = deliverProbeResult
     }
 
     func isKnownEmpty(_ url: URL) -> Bool {
@@ -911,9 +927,10 @@ final class FolderEmptinessCache: ObservableObject {
         guard !inFlight.contains(path) else { return }
         inFlight.insert(path)
         let list = listChildren
-        DispatchQueue.global(qos: .utility).async {
+        let deliver = deliverProbeResult
+        scheduleProbe {
             let isEmpty = list(url).isEmpty
-            DispatchQueue.main.async { [weak self] in
+            deliver { [weak self] in
                 guard let self else { return }
                 self.inFlight.remove(path)
                 if isEmpty {

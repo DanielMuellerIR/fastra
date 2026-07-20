@@ -33,7 +33,11 @@ jobs:
 
       - name: Swift-Tests ausführen
         working-directory: app
-        run: swift test
+        # Mehrere Tests prüfen reale Prozesse und asynchrone Main-Queue-
+        # Übergaben. Swift Testing startet sie sonst gleichzeitig und kann auf
+        # dem Hosted Runner die gemeinsamen Worker-Pools so stark auslasten,
+        # dass korrekte Abschluss-Callbacks erst nach den Testfristen ankommen.
+        run: swift test --no-parallel
 
       - name: Lokalisierung prüfen
         working-directory: app
