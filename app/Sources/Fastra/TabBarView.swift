@@ -152,8 +152,22 @@ private extension TabBarView {
                             tab: tab,
                             displayTitle: tab.isWelcome ? L10n.string("Willkommen") : tab.title,
                             isActive: tab.id == workspace.activeTabID,
+                            isComparisonSelected: tab.id == workspace.comparisonTabID,
                             canCloseOthers: workspace.tabs.count > 1,
-                            onSelect: { workspace.activeTabID = tab.id },
+                            canCompareSelection: workspace.selectedComparisonTabIDs?
+                                .contains(tab.id) == true,
+                            onSelect: { workspace.selectTab(id: tab.id) },
+                            onExtendSelection: {
+                                workspace.selectTab(
+                                    id: tab.id,
+                                    extendingComparison: true
+                                )
+                            },
+                            onCompareSelection: {
+                                _ = workspace.presentComparisonForSelectedTabs(
+                                    contextTabID: tab.id
+                                )
+                            },
                             onClose: { workspace.closeTab(id: tab.id) },
                             onCloseOthers: { workspace.closeOtherTabs(keeping: tab.id) }
                         )
@@ -190,8 +204,12 @@ private struct TabPill: View {
     let tab: EditorTab
     let displayTitle: String
     let isActive: Bool
+    let isComparisonSelected: Bool
     let canCloseOthers: Bool
+    let canCompareSelection: Bool
     let onSelect: () -> Void
+    let onExtendSelection: () -> Void
+    let onCompareSelection: () -> Void
     let onClose: () -> Void
     let onCloseOthers: () -> Void
 
@@ -214,7 +232,17 @@ private struct TabPill: View {
                 Text(displayTitle)
                     .fastraFont(.small)
                     .lineLimit(1)
-                    .foregroundColor(isActive ? Theme.textPrimary : Theme.textSecondary)
+                    // Die horizontale Tab-Leiste bietet sonst unbegrenzten
+                    // Idealplatz: Sehr lange Dateinamen würden einen einzelnen
+                    // Tab über fast das ganze Fenster ziehen. Mitte kürzen
+                    // erhält Anfang und Dateiendung.
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 180 * uiScale, alignment: .leading)
+                    .foregroundColor(
+                        isActive || isComparisonSelected
+                            ? Theme.textPrimary : Theme.textSecondary
+                    )
+                    .help(displayTitle)
 
                 if !tab.isLoading, tab.hits > 0 {
                     Text("\(tab.hits)")
@@ -242,14 +270,32 @@ private struct TabPill: View {
             .padding(.vertical, 7 * uiScale)
             .background(
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(isActive ? Theme.surfaceSand : Color.clear)
+                    .fill(tabBackground)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .stroke(isActive ? Theme.strokeStrong : Color.clear, lineWidth: 1)
+                    .stroke(tabStroke, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier(
+            "documentTab-\(selectionMarker)-\(tab.id.uuidString)"
+        )
+        .accessibilityValue(accessibilitySelectionValue)
+        // NSView-Anker für echte Fenster-Selbsttests. Anders als der SwiftUI-
+        // Accessibility-Identifier ist dieser Marker im AppKit-Viewbaum
+        // positionsstabil und liegt durch die Background-Ausrichtung mittig.
+        .background(
+            SelfTestMarker(
+                id: "documentTab-\(selectionMarker)-\(tab.id.uuidString)"
+            ).frame(width: 0, height: 0)
+        )
+        // Shift-Klick markiert genau einen zweiten Dokument-Tab. Der normale
+        // Button-Klick wird durch die höher priorisierte Geste nicht zusätzlich
+        // ausgelöst; der aktive Editor bleibt deshalb eindeutig erhalten.
+        .highPriorityGesture(
+            TapGesture().modifiers(.shift).onEnded(onExtendSelection)
+        )
         // Cmd-Klick zeigt das Pfadmenü der Tab-Datei (Etappe 1 Wunschpaket
         // 2026-07b). `highPriorityGesture`, damit der Cmd-Klick NICHT
         // zusätzlich als normaler Tab-Klick durchschlägt. Ungespeicherte
@@ -265,8 +311,38 @@ private struct TabPill: View {
         )
         .onHover { hovering = $0 }
         .contextMenu {
+            if canCompareSelection {
+                Button("Dateien vergleichen…", action: onCompareSelection)
+                Divider()
+            }
             Button("Andere Tabs schließen", action: onCloseOthers)
                 .disabled(!canCloseOthers)
         }
+    }
+
+    private var tabBackground: Color {
+        if isActive { return Theme.surfaceSand }
+        if isComparisonSelected { return Theme.surfaceBase }
+        return .clear
+    }
+
+    private var tabStroke: Color {
+        if isActive { return Theme.strokeStrong }
+        if isComparisonSelected { return Theme.stroke }
+        return .clear
+    }
+
+    private var selectionMarker: String {
+        if isActive { return "current" }
+        if isComparisonSelected { return "comparison" }
+        return "idle"
+    }
+
+    private var accessibilitySelectionValue: String {
+        if isActive { return L10n.string("Aktueller Tab") }
+        if isComparisonSelected {
+            return L10n.string("Für Dateivergleich ausgewählt")
+        }
+        return ""
     }
 }

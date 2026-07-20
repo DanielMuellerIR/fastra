@@ -1191,3 +1191,7 @@
 "Fügt Zwischenablage-Zeilen untereinander an der linken Rechteckkante oder am Cursor ein." = "Pastes clipboard lines vertically at the rectangle's left edge or at the cursor.";
 "Für Rechteckauswahl nicht verfügbar" = "Unavailable for Column Selection";
 "Dieser Befehl verändert ganze Zeilen oder kann Zeilenumbrüche erzeugen. Für eine Rechteckauswahl sind nur unabhängige Zeichen-Transformationen verfügbar." = "This command changes whole lines or may create line breaks. A column selection only supports independent character transformations.";
+
+/* Tab-Paar für Dateivergleich (v1.43.0) */
+"Aktueller Tab" = "Current Tab";
+"Für Dateivergleich ausgewählt" = "Selected for File Comparison";

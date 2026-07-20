@@ -203,6 +203,14 @@ struct EditorTab: Identifiable, Hashable {
         self.isWelcome = isWelcome
         self.viewMode = viewMode
     }
+
+    /// Nur normale, vollständig geladene Textdokumente können als Paar für
+    /// „Dateien vergleichen…“ markiert werden. Willkommen-, Git-, Diff-,
+    /// Hex- und Abschnitts-Tabs bleiben gewöhnliche einzelne Tabs.
+    var isEligibleForFileComparison: Bool {
+        gitKind == nil && fileDiffRequest == nil && !isWelcome
+            && !isLoading && displayMode == .text
+    }
 }
 
 /// Pure Entscheidungs-Logik der Extern-Änderungs-Erkennung (BBEdit
@@ -246,7 +254,19 @@ private struct GitDiffLoadLease {
 
 final class Workspace: ObservableObject {
     @Published var tabs: [EditorTab]
-    @Published var activeTabID: UUID?
+    /// Zweiter, schwächer markierter Tab einer Vergleichsauswahl. Der aktive
+    /// Tab bleibt dabei unverändert die eindeutige Quelle für Editor und Menüs.
+    @Published private(set) var comparisonTabID: UUID? = nil
+    @Published var activeTabID: UUID? {
+        didSet {
+            // Jeder echte Tabwechsel ist eine normale Einzelauswahl. Nur der
+            // ausdrückliche Shift-Pfad lässt den aktiven Tab stehen und setzt
+            // stattdessen `comparisonTabID`.
+            if oldValue != activeTabID {
+                comparisonTabID = nil
+            }
+        }
+    }
     // MARK: - Projekt-Zustand (Projekt- & Git-Ausbau, Etappe 1)
     /// Wurzelordner des aktuell geladenen Projekts — steuert die
     /// Dateibaum-Seitenleiste. `nil` = kein Projekt geladen (flache
@@ -316,6 +336,9 @@ final class Workspace: ObservableObject {
     /// Öffnet den Dialog „Dateien vergleichen…" (Etappe 1 Wunschpaket
     /// 2026-07c) als Sheet auf dem Hauptfenster.
     @Published var showCompareFilesDialog: Bool = false
+    /// Geordnete Vorbelegung für den nächsten Vergleichsdialog. Die Reihenfolge
+    /// folgt der sichtbaren Tab-Leiste, nicht der Klickreihenfolge.
+    @Published private(set) var compareDialogPrefillTabIDs: [UUID] = []
     @Published var findPattern: String = "([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9.-]+)\\.([a-zA-Z]{2,})"
     @Published var replacePattern: String = "[$1](mailto:$1@$2.$3)"
     @Published var livePreview: Bool = false
@@ -726,6 +749,22 @@ final class Workspace: ObservableObject {
         tabs.first(where: { $0.id == activeTabID }) ?? tabs.first
     }
 
+    /// Genau zwei gültige Dokument-Tabs in ihrer sichtbaren Links-nach-rechts-
+    /// Reihenfolge. Ein veralteter Zustand nach externen Modelländerungen wird
+    /// hier nie als gültiges Paar ausgegeben.
+    var selectedComparisonTabIDs: [UUID]? {
+        guard let activeTabID,
+              let comparisonTabID,
+              activeTabID != comparisonTabID else {
+            return nil
+        }
+        let selected = Set([activeTabID, comparisonTabID])
+        let ordered = tabs.filter {
+            selected.contains($0.id) && $0.isEligibleForFileComparison
+        }.map(\.id)
+        return ordered.count == 2 ? ordered : nil
+    }
+
     /// Eine einzige Formatauflösung für Footer, Editor und Formatprofil.
     var activeDocumentFormat: DocumentFormat {
         DocumentFormatResolver.resolve(tab: activeTab)
@@ -884,6 +923,56 @@ final class Workspace: ObservableObject {
 
     // MARK: Tab-Verwaltung
 
+    /// Gemeinsamer Klickpfad der Tab-Leiste. Normaler Klick aktiviert genau
+    /// einen Tab. Shift-Klick setzt oder ersetzt den zweiten Vergleichstab,
+    /// ohne den aktuellen Editor umzuschalten; erneuter Shift-Klick auf einen
+    /// der beiden Tabs hebt nur die Paarwahl auf.
+    func selectTab(id: UUID, extendingComparison: Bool = false) {
+        guard let candidate = tabs.first(where: { $0.id == id }) else { return }
+
+        if extendingComparison,
+           let activeTabID,
+           let active = tabs.first(where: { $0.id == activeTabID }),
+           active.isEligibleForFileComparison,
+           candidate.isEligibleForFileComparison {
+            if id == activeTabID || id == comparisonTabID {
+                comparisonTabID = nil
+            } else {
+                comparisonTabID = id
+            }
+            return
+        }
+
+        comparisonTabID = nil
+        activeTabID = id
+    }
+
+    /// Öffnet den Vergleichsdialog mit optionaler, bereits validierter
+    /// Tab-Vorbelegung. Der globale Menübefehl übergibt keine IDs.
+    func presentCompareFilesDialog(prefillingTabIDs: [UUID] = []) {
+        let eligible = Set(tabs.filter(\.isEligibleForFileComparison).map(\.id))
+        let unique = prefillingTabIDs.reduce(into: [UUID]()) { result, id in
+            if eligible.contains(id), !result.contains(id) {
+                result.append(id)
+            }
+        }
+        compareDialogPrefillTabIDs = Array(unique.prefix(2))
+        showCompareFilesDialog = true
+    }
+
+    /// Kontextmenü-Aktion eines markierten Tabs. Der angeklickte Tab muss zu
+    /// demselben gültigen Paar gehören; so kann ein Rechtsklick auf einen
+    /// unmarkierten Nachbartab keine unerwarteten Quellen übernehmen.
+    @discardableResult
+    func presentComparisonForSelectedTabs(contextTabID: UUID) -> Bool {
+        guard let pair = selectedComparisonTabIDs,
+              pair.contains(contextTabID) else {
+            return false
+        }
+        presentCompareFilesDialog(prefillingTabIDs: pair)
+        return true
+    }
+
     func openNewTab() {
         let new = EditorTab(
             title: Workspace.untitledName(position: tabs.count + 1),
@@ -981,6 +1070,9 @@ final class Workspace: ObservableObject {
         guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
         cancelGitDiffLoad(tabID: id)
         tabs.remove(at: idx)
+        if comparisonTabID == id {
+            comparisonTabID = nil
+        }
         // Aktiven Tab konsistent halten: war ein ANDERER Tab aktiv und existiert
         // noch, bleibt er aktiv (mayCloseTab kann activeTabID fürs Sichern kurz
         // umgesetzt haben); sonst den ersten verbleibenden aktivieren.
@@ -1034,6 +1126,7 @@ final class Workspace: ObservableObject {
             cancelGitDiffLoad(tabID: removedID)
         }
         tabs.removeAll { $0.id != id }
+        comparisonTabID = nil
         activeTabID = id
         // Gleiche Seitenleisten-Folge wie beim einzelnen Schließen (Etappe 1).
         switchProjectAfterTabCloseIfNeeded()

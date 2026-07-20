@@ -225,6 +225,12 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
 - **Nicht getestet:** visuelles Rendering von Diff/Tokens/Pillen und
   OSS-Framework-Interna von CodeEditSourceEditor. Kritische
   App-weite Bridges werden dagegen über In-App-Selbsttests abgesichert.
+- **Zwei-Tab-Vergleich:** `./selftest.sh tabcompare` lädt zwei echte
+  Dokumente, sendet einen Shift-Klick durch die Fenster-Eventpipeline und
+  beobachtet unabhängig die stärkere Primär- und schwächere
+  Vergleichsmarkierung. Anschließend müssen beide Tab-IDs als linkes/rechtes
+  Feld im echten Vergleichs-Sheet erscheinen; ein normaler Klick muss die
+  Paar-Auswahl wieder aufheben.
 
 ### Regressions-Schutz — Lehre aus dem „Zombie-Find-Bar" (2026-05-27)
 

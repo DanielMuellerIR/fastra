@@ -67,6 +67,9 @@ Capture Groups.
   Dateimenge im aktuellen Projekt.
 - **Projekte, Git und Markdown** ergänzen den normalen Texteditor; die Details
   stehen unten.
+- **Zwei Tabs direkt vergleichen**: Shift-Klick markiert neben dem klar
+  erkennbaren aktuellen Tab einen zweiten; das Rechtsklickmenü öffnet den
+  Vergleichsdialog mit beiden Dokumenten bereits ausgewählt.
 - **Rechteckauswahl unter Soft Wrap** bleibt auf logischen Textzeilen;
   Spalten-Copy/Paste, Tippen, Löschen, Transformationen und „Spalte einfügen“
   sind jeweils eine widerrufbare Aktion.

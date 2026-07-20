@@ -148,6 +148,7 @@ enum SelfTest {
         case "cmdw":      waitForMainWindow { openSearchThen { runCmdWTest() } }
         case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
+        case "tabcompare": waitForMainWindow { runTabComparisonTest() }
         case "softwrapprofiles": waitForMainWindow { runSoftWrapProfilesTest() }
         case "softwrapmodes": waitForMainWindow { runSoftWrapModesTest() }
         case "softwrapanchor": waitForMainWindow { runSoftWrapAnchorTest() }
@@ -275,7 +276,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -1348,6 +1349,264 @@ enum SelfTest {
                     finish(true, "Editor bei Tab-Wechsel neu erzeugt + aktiver Tab hat neuen Datei-Inhalt")
                 }
             }
+        }
+    }
+
+    // MARK: - -selftest tabcompare
+
+    /// Prüft den echten Shift-Klick auf einen zweiten Tab, die zwei sichtbar
+    /// unterscheidbaren Auswahlrollen sowie den vorausgefüllten Vergleichs-
+    /// dialog. Die Modelltests allein würden eine tote Modifier-Geste oder
+    /// fehlende SwiftUI-Vorbelegung nicht erkennen.
+    private static func runTabComparisonTest() {
+        testLabel = "tabcompare"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks(),
+              let content = window.contentView else {
+            finish(false, "Workspace oder Hauptfenster nicht erreichbar")
+        }
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-tabcompare-\(UUID().uuidString)")
+        // Der lange Name schützt zugleich den realen Klickpfad eines in der
+        // Mitte gekürzten Tabs vor Rückfällen zu fensterbreiten Tabs.
+        let longName = String(repeating: "sehr-langer-dateiname-", count: 8)
+            + "links.txt"
+        let leftURL = directory.appendingPathComponent(longName)
+        let rightURL = directory.appendingPathComponent("rechts.txt")
+        do {
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true
+            )
+            try "links\n".write(
+                to: leftURL,
+                atomically: true,
+                encoding: .utf8
+            )
+            try "rechts\n".write(
+                to: rightURL,
+                atomically: true,
+                encoding: .utf8
+            )
+        } catch {
+            finish(
+                false,
+                "Tabvergleich-Fixtures nicht anlegbar: \(error.localizedDescription)"
+            )
+        }
+
+        ws.loadFile(at: leftURL) { leftOK in
+            guard leftOK else {
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "linke Fixture nicht ladbar")
+            }
+            ws.loadFile(at: rightURL) { rightOK in
+                guard rightOK else {
+                    try? FileManager.default.removeItem(at: directory)
+                    finish(false, "rechte Fixture nicht ladbar")
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                    guard let leftTab = ws.tabs.first(where: {
+                        $0.url?.standardizedFileURL == leftURL.standardizedFileURL
+                    }), let rightTab = ws.tabs.first(where: {
+                        $0.url?.standardizedFileURL == rightURL.standardizedFileURL
+                    }), ws.activeTabID == rightTab.id else {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "Fixture-Tabs oder eindeutiger aktueller Tab fehlen")
+                    }
+
+                    let idleID = "documentTab-idle-\(leftTab.id.uuidString)"
+                    guard let idleTab = markerView(id: idleID, in: content) else {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "AppKit-Marker des zweiten Tabs fehlt")
+                    }
+                    guard sendTabClick(
+                            on: idleTab,
+                            in: window,
+                            modifiers: .shift
+                          ) else {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "Shift-Mausereignis nicht erzeugbar")
+                    }
+                    pollShiftSelectedTabs(
+                        ws,
+                        window: window,
+                        directory: directory,
+                        leftID: leftTab.id,
+                        rightID: rightTab.id,
+                        tick: 0
+                    )
+                }
+            }
+        }
+    }
+
+    private static func sendTabClick(
+        on view: NSView,
+        in window: NSWindow,
+        modifiers: NSEvent.ModifierFlags
+    ) -> Bool {
+        let local = NSPoint(x: view.bounds.midX, y: view.bounds.midY)
+        let point = view.convert(local, to: nil)
+        let time = ProcessInfo.processInfo.systemUptime
+        guard let down = NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: point,
+            modifierFlags: modifiers,
+            timestamp: time,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 1
+        ), let up = NSEvent.mouseEvent(
+            with: .leftMouseUp,
+            location: point,
+            modifierFlags: modifiers,
+            timestamp: time + 0.04,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 1,
+            clickCount: 1,
+            pressure: 0
+        ) else {
+            return false
+        }
+        window.sendEvent(down)
+        window.sendEvent(up)
+        return true
+    }
+
+    private static func pollShiftSelectedTabs(
+        _ ws: Workspace,
+        window: NSWindow,
+        directory: URL,
+        leftID: UUID,
+        rightID: UUID,
+        tick: Int
+    ) {
+        let content = window.contentView
+        let currentMarker = content.flatMap {
+            markerView(
+                id: "documentTab-current-\(rightID.uuidString)",
+                in: $0
+            )
+        }
+        let comparisonMarker = content.flatMap {
+            markerView(
+                id: "documentTab-comparison-\(leftID.uuidString)",
+                in: $0
+            )
+        }
+        if ws.activeTabID == rightID,
+           ws.comparisonTabID == leftID,
+           ws.selectedComparisonTabIDs == [leftID, rightID],
+           currentMarker != nil,
+           comparisonMarker != nil {
+            guard ws.presentComparisonForSelectedTabs(contextTabID: leftID) else {
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "Kontextaktion akzeptiert den markierten Tab nicht")
+            }
+            pollPrefilledComparisonSheet(
+                ws,
+                window: window,
+                directory: directory,
+                leftID: leftID,
+                rightID: rightID,
+                tick: 0
+            )
+            return
+        }
+        guard tick < 30 else {
+            try? FileManager.default.removeItem(at: directory)
+            finish(
+                false,
+                "Shift-Klick: aktiv=\(ws.activeTabID?.uuidString ?? "nil"), "
+                    + "Vergleich=\(ws.comparisonTabID?.uuidString ?? "nil"), "
+                    + "Marker aktuell=\(currentMarker != nil), "
+                    + "zweiter=\(comparisonMarker != nil)"
+            )
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollShiftSelectedTabs(
+                ws,
+                window: window,
+                directory: directory,
+                leftID: leftID,
+                rightID: rightID,
+                tick: tick + 1
+            )
+        }
+    }
+
+    private static func pollPrefilledComparisonSheet(
+        _ ws: Workspace,
+        window: NSWindow,
+        directory: URL,
+        leftID: UUID,
+        rightID: UUID,
+        tick: Int
+    ) {
+        if let sheet = window.attachedSheet,
+           let content = sheet.contentView {
+            let leftReady = markerView(
+                id: "compare-left-tab-\(leftID.uuidString)",
+                in: content
+            ) != nil
+            let rightReady = markerView(
+                id: "compare-right-tab-\(rightID.uuidString)",
+                in: content
+            ) != nil
+            if leftReady, rightReady {
+                ws.showCompareFilesDialog = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    guard let root = window.contentView,
+                          let comparisonTab = markerView(
+                            id: "documentTab-comparison-\(leftID.uuidString)",
+                            in: root
+                          ),
+                          sendTabClick(
+                            on: comparisonTab,
+                            in: window,
+                            modifiers: []
+                          ) else {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "normaler Folgeklick nicht ausführbar")
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        let cleared = ws.activeTabID == leftID
+                            && ws.comparisonTabID == nil
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(
+                            cleared,
+                            cleared
+                                ? "Shift-Klick behält Primärtab; zwei Markierungsrollen; "
+                                    + "Dialog links/rechts vorgefüllt; Normalklick räumt auf"
+                                : "Normalklick räumte die Zwei-Tab-Auswahl nicht auf"
+                        )
+                    }
+                }
+                return
+            }
+        }
+        guard tick < 40 else {
+            ws.showCompareFilesDialog = false
+            try? FileManager.default.removeItem(at: directory)
+            finish(
+                false,
+                "Vergleichs-Sheet nicht mit beiden markierten Tabs vorgefüllt"
+            )
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollPrefilledComparisonSheet(
+                ws,
+                window: window,
+                directory: directory,
+                leftID: leftID,
+                rightID: rightID,
+                tick: tick + 1
+            )
         }
     }
 
@@ -5990,18 +6249,27 @@ enum SelfTest {
             finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
         }
         // ── Fixtures: identische Basis, drei gezielte Unterschiede ────────
-        // Änderung nahe Zeile 2, Nur-links bei ~80, Änderung bei ~155 —
-        // weit genug auseinander, dass der Sprung ans Ende scrollen MUSS.
+        // Drei längere Blöcke statt bloß weit auseinanderliegender Einzelzeilen:
+        // unveränderte Zwischenräume werden im Renderer eingeklappt und würden
+        // allein deshalb keine Scrollstrecke garantieren. Die sichtbaren
+        // Änderungszeilen selbst müssen höher als der Viewport sein.
         let fm = FileManager.default
         let base = fm.temporaryDirectory
             .appendingPathComponent("fastra-filediff-\(UUID().uuidString)")
         var leftLines = (1...155).map { "zeile \($0)" }
         var rightLines = leftLines
-        leftLines[1] = "alpha ALT"
-        rightLines[1] = "alpha NEU"
-        leftLines.insert("nur-links", at: 80)
-        leftLines[leftLines.count - 1] = "omega ALT"
-        rightLines[rightLines.count - 1] = "omega NEU"
+        for index in 1..<31 {
+            leftLines[index] = "alpha \(index) ALT"
+            rightLines[index] = "alpha \(index) NEU"
+        }
+        leftLines.insert(
+            contentsOf: (1...30).map { "nur-links \($0)" },
+            at: 80
+        )
+        for offset in 0..<30 {
+            leftLines[leftLines.count - 1 - offset] = "omega \(offset) ALT"
+            rightLines[rightLines.count - 1 - offset] = "omega \(offset) NEU"
+        }
         let leftURL = base.appendingPathComponent("links.txt")
         let rightURL = base.appendingPathComponent("rechts.txt")
         do {

@@ -58,6 +58,36 @@ enum CompareDialogLogic {
         }
         return data.contains(0)
     }
+
+    /// Ermittelt die beiden Startfelder des Dialogs. Ein gültiges, explizites
+    /// Tabpaar gewinnt; sonst bleibt die bisherige Vorbelegung des aktiven
+    /// Dokuments links erhalten.
+    static func prefill(
+        tabIDs: [UUID],
+        activeTabID: UUID?,
+        tabs: [EditorTab]
+    ) -> CompareDialogPrefill {
+        let eligible = tabs.filter(\.isEligibleForFileComparison)
+        let eligibleIDs = Set(eligible.map(\.id))
+        let explicit = tabIDs.reduce(into: [UUID]()) { result, id in
+            if eligibleIDs.contains(id), !result.contains(id) {
+                result.append(id)
+            }
+        }
+        if explicit.count == 2 {
+            return CompareDialogPrefill(
+                left: .tab(explicit[0]),
+                right: .tab(explicit[1])
+            )
+        }
+        if let activeTabID, eligibleIDs.contains(activeTabID) {
+            return CompareDialogPrefill(
+                left: .tab(activeTabID),
+                right: .none
+            )
+        }
+        return CompareDialogPrefill(left: .none, right: .none)
+    }
 }
 
 /// Auswahlzustand einer Dialogseite: nichts, eine Datei oder ein offener Tab.
@@ -67,8 +97,14 @@ enum CompareSelection: Equatable {
     case tab(UUID)
 }
 
+struct CompareDialogPrefill: Equatable {
+    let left: CompareSelection
+    let right: CompareSelection
+}
+
 struct CompareFilesDialog: View {
     @ObservedObject var workspace: Workspace
+    let preselectedTabIDs: [UUID]
 
     @State private var left: CompareSelection = .none
     @State private var right: CompareSelection = .none
@@ -113,28 +149,26 @@ struct CompareFilesDialog: View {
         .padding(20)
         .frame(width: 640)
         .fastraScalingRoot()
-        .onAppear(perform: prefillFromActiveTab)
+        .onAppear(perform: prefillSelections)
     }
 
     // MARK: - Seiten
 
-    /// Vorbelegung: aktiver Tab links (Spez), sofern er vergleichbar ist.
-    private func prefillFromActiveTab() {
-        guard case .none = left else { return }
-        if let tab = workspace.activeTab, isEligibleTab(tab) {
-            left = .tab(tab.id)
-        }
-    }
-
-    /// Nur normale Text-Tabs taugen als Vergleichsseite (keine Git-/
-    /// Vergleichs-/Willkommen-Tabs, keine Hex-/Abschnitts-Ansichten).
-    private func isEligibleTab(_ tab: EditorTab) -> Bool {
-        tab.gitKind == nil && tab.fileDiffRequest == nil && !tab.isWelcome
-            && !tab.isLoading && tab.displayMode == .text
+    /// Ein über die Tab-Leiste gewähltes Paar füllt beide Seiten. Der normale
+    /// Menübefehl übergibt keine IDs und behält „aktiver Tab links“ bei.
+    private func prefillSelections() {
+        guard case .none = left, case .none = right else { return }
+        let prefill = CompareDialogLogic.prefill(
+            tabIDs: preselectedTabIDs,
+            activeTabID: workspace.activeTabID,
+            tabs: workspace.tabs
+        )
+        left = prefill.left
+        right = prefill.right
     }
 
     private var eligibleTabs: [EditorTab] {
-        workspace.tabs.filter(isEligibleTab)
+        workspace.tabs.filter(\.isEligibleForFileComparison)
     }
 
     /// Zuletzt geöffnete Dateien aus dem bestehenden Store (K2).
@@ -151,7 +185,7 @@ struct CompareFilesDialog: View {
             Text(role == .left ? L10n.string("Links") : L10n.string("Rechts"))
                 .fastraFont(size: 10)
                 .foregroundColor(Theme.textSecondary)
-            selectionBox(selection: selection, targeted: targeted)
+            selectionBox(role: role, selection: selection, targeted: targeted)
             HStack(spacing: 6) {
                 Button("Auswählen…") { chooseFile(into: selection) }
                 sourceMenu(selection: selection)
@@ -167,7 +201,8 @@ struct CompareFilesDialog: View {
     }
 
     /// Das Drag-and-drop-Feld mit der aktuellen Auswahl.
-    private func selectionBox(selection: Binding<CompareSelection>,
+    private func selectionBox(role: FileDiffSideRole,
+                              selection: Binding<CompareSelection>,
                               targeted: Binding<Bool>) -> some View {
         VStack(spacing: 4) {
             switch selection.wrappedValue {
@@ -224,8 +259,34 @@ struct CompareFilesDialog: View {
                                                  dash: [5, 3]))
         )
         .clipShape(RoundedRectangle(cornerRadius: 6))
+        .accessibilityIdentifier(
+            selectionIdentifier(role: role, selection: selection.wrappedValue)
+        )
+        .background(
+            SelfTestMarker(
+                id: selectionIdentifier(
+                    role: role,
+                    selection: selection.wrappedValue
+                )
+            ).frame(width: 0, height: 0)
+        )
         .onDrop(of: [.fileURL], isTargeted: targeted) { providers in
             acceptDrop(providers: providers, into: selection)
+        }
+    }
+
+    private func selectionIdentifier(
+        role: FileDiffSideRole,
+        selection: CompareSelection
+    ) -> String {
+        let side = role == .left ? "left" : "right"
+        switch selection {
+        case .none:
+            return "compare-\(side)-none"
+        case .file(let url):
+            return "compare-\(side)-file-\(url.lastPathComponent)"
+        case .tab(let id):
+            return "compare-\(side)-tab-\(id.uuidString)"
         }
     }
 

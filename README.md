@@ -65,6 +65,9 @@ token highlighting, curated patterns, and guided capture groups.
   the current project.
 - **Projects, Git and Markdown** live alongside ordinary text editing; each is
   explained below.
+- **Compare two tabs directly**: Shift-click marks one companion while the
+  current tab stays unmistakable; the context menu opens Compare Files with
+  both documents already selected.
 - **Column selection under Soft Wrap** stays on logical text lines; column
   copy/paste, typing, deletion, transformations, and Paste Column are each
   undoable as one action.

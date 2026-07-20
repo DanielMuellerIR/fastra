@@ -324,7 +324,7 @@ struct FastraApp: App {
                 // BBEdit „Find Differences"). ⌃⌘D ist frei — ⌘D wäre mit
                 // macOS-Konventionen (Lesezeichen/Duplizieren) belegt.
                 Button("Dateien vergleichen…") {
-                    commandWorkspace.showCompareFilesDialog = true
+                    commandWorkspace.presentCompareFilesDialog()
                 }
                 .keyboardShortcut("d", modifiers: [.command, .control])
 

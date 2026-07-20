@@ -103,7 +103,10 @@ struct ContentView: View {
         // Links/Rechts-Auswahl und Vergleichsoptionen; das Ergebnis öffnet
         // als eigener Diff-Tab.
         .sheet(isPresented: $workspace.showCompareFilesDialog) {
-            CompareFilesDialog(workspace: workspace)
+            CompareFilesDialog(
+                workspace: workspace,
+                preselectedTabIDs: workspace.compareDialogPrefillTabIDs
+            )
         }
         .onAppear {
             // Beim ersten Erscheinen Controller anlegen und — falls per

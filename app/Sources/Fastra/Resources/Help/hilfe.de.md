@@ -59,6 +59,14 @@ ganz ohne Git. Links und rechts lassen sich per Auswahl-Dialog, per
 Drag-and-drop oder aus offenen Tabs und zuletzt geöffneten Dateien belegen;
 der aktive Tab ist links vorbelegt.
 
+- **Zwei offene Tabs vorwählen:** Erst den aktuellen Dokument-Tab festlegen,
+  dann mit gedrückter Shift-Taste einen zweiten normalen Text-Tab anklicken.
+  Der aktuelle Tab bleibt mit der stärkeren grauen Fläche eindeutig aktiv;
+  der Vergleichspartner erscheint schwächer grau. Im Rechtsklickmenü eines
+  der beiden Tabs öffnet „Dateien vergleichen…“ den Dialog mit beiden
+  Dokumenten bereits links und rechts ausgewählt. Ein weiterer Shift-Klick
+  ersetzt bzw. entfernt den Partner, ein normaler Tab-Klick hebt die
+  Paar-Auswahl auf.
 - **Optionen:** Leerraum am Zeilenende, alle Leerraum-Unterschiede,
   Leerzeilen sowie Groß-/Kleinschreibung lassen sich beim Vergleich
   ignorieren. Aktive Optionen stehen sichtbar im Kopf der Ansicht.
@@ -374,3 +382,8 @@ Die Fußzeile zeigt Encoding und Zeilenende des aktiven Tabs:
 Fenster (eigene Tabs, eigene Suche). ⌘S speichert, ⌘W schließt den Tab —
 bei ungespeicherten Änderungen fragt Fastra nach. ⌘J springt zu einer
 Zeilennummer.
+
+Ein Shift-Klick auf einen zweiten normalen Text-Tab markiert beide für den
+Dateivergleich, ohne den aktuellen Tab umzuschalten. Der aktuelle Tab bleibt
+stärker, der zweite schwächer hervorgehoben; ein normaler Klick beendet die
+Paar-Auswahl.

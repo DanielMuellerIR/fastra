@@ -57,6 +57,13 @@ required. Fill the left and right side via the file chooser, drag and
 drop, or from open tabs and recently opened files; the active tab
 pre-fills the left side.
 
+- **Preselect two open tabs:** First choose the current document tab, then
+  Shift-click a second normal text tab. The current tab stays unmistakably
+  active with the stronger gray fill; its comparison companion uses a
+  softer gray. “Compare Files…” in either selected tab's context menu opens
+  the dialog with both documents already selected on the left and right.
+  Another Shift-click replaces or removes the companion; a normal tab click
+  clears the pair.
 - **Options:** trailing whitespace, all whitespace differences, blank
   lines, and letter case can be ignored while comparing. Active options
   are shown in the header of the view.
@@ -354,3 +361,8 @@ The footer shows the encoding and line ending of the active tab:
 ⌘T opens a new tab, ⌘N a second, fully independent window (its own
 tabs, its own search). ⌘S saves, ⌘W closes the tab — Fastra asks first
 if there are unsaved changes. ⌘J jumps to a line number.
+
+Shift-clicking a second normal text tab marks both for file comparison
+without switching the current tab. The current tab keeps the stronger
+highlight and the companion uses a softer one; a normal click clears the
+pair.

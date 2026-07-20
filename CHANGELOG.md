@@ -9,6 +9,29 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.43.0] — 2026-07-20
+
+### Hinzugefügt
+
+- **Zwei Dokument-Tabs für einen Vergleich auswählen:** Ein Shift-Klick auf
+  einen zweiten normalen Text-Tab lässt den aktuellen Tab eindeutig aktiv und
+  markiert genau einen Vergleichspartner schwächer. Ein weiterer Shift-Klick
+  ersetzt oder entfernt diesen Partner; ein normaler Tab-Klick kehrt zur
+  Einzelauswahl zurück. Sehr lange Dateinamen werden in der Mitte gekürzt,
+  statt einen überbreiten Tab zu erzeugen.
+- **Vergleich direkt aus der Tab-Leiste:** Das Rechtsklickmenü beider
+  markierter Tabs bietet „Dateien vergleichen…“. Der bestehende Dialog öffnet
+  sich mit beiden Dokumenten in sichtbarer Tab-Reihenfolge bereits links und
+  rechts ausgewählt; Leerraum-, Leerzeilen- und Groß-/Kleinschreibungsoptionen
+  bleiben vor dem Start frei wählbar.
+
+### Intern
+
+- Modelltests schützen Primärtab, Höchstzahl, ungeeignete Tabarten,
+  Aufräumen und Dialog-Vorbelegung. Der Fenster-Selbsttest `tabcompare`
+  führt einen echten Shift-Klick aus, beobachtet beide Markierungsrollen,
+  prüft die zwei Dialogfelder und räumt per normalem Klick wieder auf.
+
 ## [v1.42.0] — 2026-07-19
 
 Etappe 3 des Soft-Wrap-Pakets: Rechteckauswahl auf logischen Zeilen.
