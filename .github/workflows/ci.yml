@@ -15,10 +15,13 @@ concurrency:
 jobs:
   swift-tests:
     name: Swift-Tests
-    # Fastras aufgelöste Abhängigkeiten benötigen Swift 6.2. Der offizielle
-    # macOS-26-Runner stellt Xcode 26 auf Apple Silicon bereit.
+    # Fastras aufgelöste Abhängigkeiten benötigen Swift 6.2. Xcode 26.6 ist
+    # bewusst fest gewählt: Der noch aktive Runner-Default 26.5 kann den
+    # SwiftPM-Testhelfer bei der seriellen Suite mit SIGSEGV beenden.
     runs-on: macos-26
     timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
 
     steps:
       - name: Repository auschecken
