@@ -31,6 +31,8 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 - Der Editor-Selbsttest bildet nun den gemeldeten Fall mit 61 CSS-Zeilen,
   echter Vollauswahl und ausgeschaltetem Soft Wrap ab.
 - Regressionstests schützen die Installationsgrenze vor künftigem Rückfall.
+- Der Installationslauf protokolliert weder Zertifikatsbezeichnung noch den
+  lokalen Notary-Profilnamen.
 
 ## [v1.43.3] — 2026-07-20
 

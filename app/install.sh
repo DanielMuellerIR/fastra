@@ -60,7 +60,7 @@ if [ -z "$SIGN_IDENTITY" ]; then
   echo "  Ohne Developer ID kann nicht signiert/notarisiert werden." >&2
   exit 1
 fi
-echo "→ Signatur-Identität: $SIGN_IDENTITY"
+echo "→ Developer-ID-Signatur verfügbar"
 
 # ─────────────────────────────────────────────────────────────────
 # 1. Release-Build (baut + strippt; signiert zunächst nur ad-hoc)
@@ -84,7 +84,7 @@ echo "→ Signiere Bundle mit Developer ID + Hardened Runtime…"
 if [ "$NOTARIZE" -eq 1 ]; then
   TMP="$(mktemp -d)"
   ZIP="$TMP/Fastra.zip"
-  echo "→ Notarisiere via Profil '$NOTARY_PROFILE' (wartet auf Apple)…"
+  echo "→ Notarisiere mit lokalem Keychain-Profil (wartet auf Apple)…"
   ditto -c -k --keepParent "$APP" "$ZIP"
   xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
   rm -rf "$TMP"

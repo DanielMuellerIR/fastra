@@ -40,6 +40,17 @@ struct BuildInstallationPolicyTests {
         #expect(!branch.contains("/Applications/Fastra.app"))
     }
 
+    @Test("Installer gibt weder Signaturidentität noch Profilnamen aus")
+    func installerKeepsSigningDetailsOutOfOutput() throws {
+        let script = try String(
+            contentsOf: appDirectory.appendingPathComponent("install.sh"),
+            encoding: .utf8
+        )
+
+        #expect(!script.contains("echo \"→ Signatur-Identität: $SIGN_IDENTITY\""))
+        #expect(!script.contains("echo \"→ Notarisiere via Profil '$NOTARY_PROFILE'"))
+    }
+
     @Test("Notary-, Gatekeeper- und Signaturprüfung liegen vor der Installation")
     func notarizationChecksPrecedeInstallation() throws {
         let script = try String(
