@@ -213,83 +213,104 @@ private struct TabPill: View {
     let onClose: () -> Void
     let onCloseOthers: () -> Void
 
-    @State private var hovering = false
+    @State private var tabHovering = false
+    @State private var closeHovering = false
     @Environment(\.uiScale) private var uiScale
 
     var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 7) {
-                if tab.isLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(width: 11 * uiScale, height: 11 * uiScale)
-                } else {
-                    Image(systemName: tab.isWelcome ? "sparkles" : "doc.text")
-                        .fastraFont(size: 11)
-                        .foregroundColor(Theme.textSecondary)
-                }
+        ZStack(alignment: .trailing) {
+            Button(action: onSelect) {
+                HStack(spacing: 7) {
+                    if tab.isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 11 * uiScale, height: 11 * uiScale)
+                    } else {
+                        Image(systemName: tab.isWelcome ? "sparkles" : "doc.text")
+                            .fastraFont(size: 11)
+                            .foregroundColor(Theme.textSecondary)
+                    }
 
-                Text(displayTitle)
-                    .fastraFont(.small)
-                    .lineLimit(1)
-                    // Die horizontale Tab-Leiste bietet sonst unbegrenzten
-                    // Idealplatz: Sehr lange Dateinamen würden einen einzelnen
-                    // Tab über fast das ganze Fenster ziehen. Mitte kürzen
-                    // erhält Anfang und Dateiendung.
-                    .truncationMode(.middle)
-                    .frame(maxWidth: 180 * uiScale, alignment: .leading)
-                    .foregroundColor(
-                        isActive || isComparisonSelected
-                            ? Theme.textPrimary : Theme.textSecondary
-                    )
-                    .help(displayTitle)
+                    Text(displayTitle)
+                        .fastraFont(.small)
+                        .lineLimit(1)
+                        // Die horizontale Tab-Leiste bietet sonst unbegrenzten
+                        // Idealplatz: Sehr lange Dateinamen würden einen einzelnen
+                        // Tab über fast das ganze Fenster ziehen. Mitte kürzen
+                        // erhält Anfang und Dateiendung.
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 180 * uiScale, alignment: .leading)
+                        .foregroundColor(
+                            isActive || isComparisonSelected
+                                ? Theme.textPrimary : Theme.textSecondary
+                        )
+                        .help(displayTitle)
 
-                if !tab.isLoading, tab.hits > 0 {
-                    Text("\(tab.hits)")
-                        .fastraFont(size: 10, weight: .semibold, design: .monospaced)
-                        .foregroundColor(Theme.textSecondary)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(Theme.surfaceRaised))
-                }
+                    if !tab.isLoading, tab.hits > 0 {
+                        Text("\(tab.hits)")
+                            .fastraFont(size: 10, weight: .semibold, design: .monospaced)
+                            .foregroundColor(Theme.textSecondary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Theme.surfaceRaised))
+                    }
 
-                Button(action: onClose) {
-                    Image(systemName: (tab.isDirty && !hovering) ? "circle.fill" : "xmark")
-                        .fastraFont(size: (tab.isDirty && !hovering) ? 7 : 8, weight: .bold)
-                        .frame(width: 14 * uiScale, height: 14 * uiScale)
-                        .foregroundColor(hovering ? Theme.textPrimary
-                                         : (tab.isDirty ? Theme.accentReadable
-                                            : Theme.textSecondary.opacity(0.55)))
+                    // Der Auswahl-Button reserviert nur die Breite der
+                    // Schließen-Fläche. Der echte Schließen-Button liegt als
+                    // Geschwister darüber, damit SwiftUI keine verschachtelten
+                    // Button-Hitbereiche gegeneinander auflösen muss.
+                    Color.clear
+                        .frame(width: closeHitSide, height: 14 * uiScale)
                 }
-                .buttonStyle(.plain)
-                .help(tab.isDirty
-                      ? "Ungespeicherte Änderungen — klicken zum Schließen"
-                      : "Tab schließen")
+                .padding(.leading, 12)
+                .padding(.trailing, 7)
+                .padding(.vertical, 7 * uiScale)
+                .background(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(tabBackground)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .stroke(tabStroke, lineWidth: 1)
+                )
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7 * uiScale)
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(
+                "documentTab-\(selectionMarker)-\(tab.id.uuidString)"
+            )
+            .accessibilityValue(accessibilitySelectionValue)
+            // NSView-Anker für echte Fenster-Selbsttests. Anders als der
+            // SwiftUI-Accessibility-Identifier ist dieser Marker im AppKit-
+            // Viewbaum positionsstabil und liegt mittig im Auswahl-Button.
             .background(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(tabBackground)
+                SelfTestMarker(
+                    id: "documentTab-\(selectionMarker)-\(tab.id.uuidString)"
+                ).frame(width: 0, height: 0)
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .stroke(tabStroke, lineWidth: 1)
+
+            Button(action: onClose) {
+                Image(systemName: closeSymbolName)
+                    .fastraFont(
+                        size: showsDirtyIndicator ? 7 : 8,
+                        weight: .bold
+                    )
+                    .frame(width: 14 * uiScale, height: 14 * uiScale)
+                    // Das Symbol bleibt klein; nur die unsichtbare Mausfläche
+                    // wächst. 22 pt bleiben auch bei minimalem UI-Zoom erhalten.
+                    .frame(width: closeHitSide, height: closeHitSide)
+                    .contentShape(Rectangle())
+                    .foregroundColor(closeForegroundColor)
+            }
+            .buttonStyle(.plain)
+            .background(
+                SelfTestMarker(id: "tabClose-\(tab.id.uuidString)")
             )
+            .help(tab.isDirty
+                  ? "Ungespeicherte Änderungen — klicken zum Schließen"
+                  : "Tab schließen")
+            .padding(.trailing, 7)
+            .onHover { closeHovering = $0 }
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(
-            "documentTab-\(selectionMarker)-\(tab.id.uuidString)"
-        )
-        .accessibilityValue(accessibilitySelectionValue)
-        // NSView-Anker für echte Fenster-Selbsttests. Anders als der SwiftUI-
-        // Accessibility-Identifier ist dieser Marker im AppKit-Viewbaum
-        // positionsstabil und liegt durch die Background-Ausrichtung mittig.
-        .background(
-            SelfTestMarker(
-                id: "documentTab-\(selectionMarker)-\(tab.id.uuidString)"
-            ).frame(width: 0, height: 0)
-        )
         // Shift-Klick markiert genau einen zweiten Dokument-Tab. Der normale
         // Button-Klick wird durch die höher priorisierte Geste nicht zusätzlich
         // ausgelöst; der aktive Editor bleibt deshalb eindeutig erhalten.
@@ -309,7 +330,7 @@ private struct TabPill: View {
                 }
             }
         )
-        .onHover { hovering = $0 }
+        .onHover { tabHovering = $0 }
         .contextMenu {
             if canCompareSelection {
                 Button("Dateien vergleichen…", action: onCompareSelection)
@@ -318,6 +339,24 @@ private struct TabPill: View {
             Button("Andere Tabs schließen", action: onCloseOthers)
                 .disabled(!canCloseOthers)
         }
+    }
+
+    private var closeHitSide: CGFloat {
+        max(22, 24 * uiScale)
+    }
+
+    private var showsDirtyIndicator: Bool {
+        tab.isDirty && !tabHovering && !closeHovering
+    }
+
+    private var closeSymbolName: String {
+        showsDirtyIndicator ? "circle.fill" : "xmark"
+    }
+
+    private var closeForegroundColor: Color {
+        if tabHovering || closeHovering { return Theme.textPrimary }
+        if tab.isDirty { return Theme.accentReadable }
+        return Theme.textSecondary.opacity(0.55)
     }
 
     private var tabBackground: Color {

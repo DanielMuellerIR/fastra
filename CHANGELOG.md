@@ -9,6 +9,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.44.1] — 2026-07-20
+
+### Behoben
+
+- Das kleine X zum Schließen eines Dokument-Tabs besitzt nun eine deutlich
+  größere, zuverlässige Mausfläche. Steht der Zeiger auf dem X, wird es
+  hervorgehoben und ein Klick schließt den gemeinten Tab, statt nur den Tab
+  auszuwählen oder folgenlos zu bleiben.
+
+### Intern
+
+- Auswahl und Schließen eines Tabs sind nicht mehr als verschachtelte SwiftUI-
+  Buttons aufgebaut. Ein In-App-Selbsttest prüft mindestens 22 × 22 Punkte
+  Klickfläche und einen echten Randklick auf einen inaktiven Tab.
+
 ## [v1.44.0] — 2026-07-20
 
 ### Hinzugefügt

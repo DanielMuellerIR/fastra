@@ -202,6 +202,7 @@ enum SelfTest {
         case "cmdw":      waitForMainWindow { openSearchThen { runCmdWTest() } }
         case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
+        case "tabclosehit": waitForMainWindow { runTabCloseHitTest() }
         case "tabcompare": waitForMainWindow { runTabComparisonTest() }
         case "softwrapprofiles": waitForMainWindow { runSoftWrapProfilesTest() }
         case "softwrapmodes": waitForMainWindow { runSoftWrapModesTest() }
@@ -331,7 +332,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, cmdw, fields, tabswitch, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, cmdw, fields, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -1477,7 +1478,95 @@ enum SelfTest {
         }
     }
 
-    // MARK: - -selftest tabcompare
+    // MARK: - -selftest tabclosehit / tabcompare
+
+    /// Prüft die echte Klickfläche des kleinen Tab-X. Der Ziel-Tab ist
+    /// absichtlich inaktiv: Trifft der synthetische Randklick fälschlich den
+    /// Tab statt des Schließen-Buttons, wird er nur ausgewählt und der Test
+    /// erkennt den Unterschied unabhängig am Workspace-Zustand.
+    private static func runTabCloseHitTest() {
+        testLabel = "tabclosehit"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks() else {
+            finish(false, "Workspace oder Hauptfenster nicht erreichbar")
+        }
+
+        ws.openNewTab()
+        guard let targetID = ws.activeTabID else {
+            finish(false, "Ziel-Tab nicht erzeugbar")
+        }
+        ws.openNewTab()
+        guard let keeperID = ws.activeTabID, keeperID != targetID else {
+            finish(false, "aktiver Kontroll-Tab nicht erzeugbar")
+        }
+
+        pollTabCloseTarget(
+            ws,
+            window: window,
+            targetID: targetID,
+            keeperID: keeperID,
+            tick: 0
+        )
+    }
+
+    private static func pollTabCloseTarget(
+        _ ws: Workspace,
+        window: NSWindow,
+        targetID: UUID,
+        keeperID: UUID,
+        tick: Int
+    ) {
+        guard let content = window.contentView,
+              let marker = markerView(
+                id: "tabClose-\(targetID.uuidString)",
+                in: content
+              ) else {
+            guard tick < 40 else {
+                finish(false, "AppKit-Marker des Tab-X fehlt")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollTabCloseTarget(
+                    ws,
+                    window: window,
+                    targetID: targetID,
+                    keeperID: keeperID,
+                    tick: tick + 1
+                )
+            }
+            return
+        }
+
+        let minimumSide: CGFloat = 22
+        guard marker.bounds.width >= minimumSide,
+              marker.bounds.height >= minimumSide else {
+            finish(
+                false,
+                "Tab-X-Hitbereich ist nur "
+                    + "\(Int(marker.bounds.width))×\(Int(marker.bounds.height)) pt"
+            )
+        }
+
+        // Einen Punkt innerhalb der rechten Kante klicken, nicht bloß das
+        // Symbolzentrum. Genau dort fiel der kleine verschachtelte Button
+        // bisher auf den umgebenden Tab zurück.
+        let edge = NSPoint(x: marker.bounds.maxX - 1, y: marker.bounds.midY)
+        let point = marker.convert(edge, to: nil)
+        guard sendMouseClick(at: point, in: window, modifiers: []) else {
+            finish(false, "Randklick auf das Tab-X nicht erzeugbar")
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            let closed = !ws.tabs.contains(where: { $0.id == targetID })
+            let keeperStayedActive = ws.activeTabID == keeperID
+            finish(
+                closed && keeperStayedActive,
+                closed && keeperStayedActive
+                    ? "mindestens 22×22 pt; Randklick schließt nur den Ziel-Tab"
+                    : "Randklick schloss den Ziel-Tab nicht eindeutig "
+                        + "(geschlossen=\(closed), Kontroll-Tab aktiv=\(keeperStayedActive))"
+            )
+        }
+    }
 
     /// Prüft den echten Shift-Klick auf einen zweiten Tab, die zwei sichtbar
     /// unterscheidbaren Auswahlrollen sowie den vorausgefüllten Vergleichs-
@@ -1574,6 +1663,14 @@ enum SelfTest {
     ) -> Bool {
         let local = NSPoint(x: view.bounds.midX, y: view.bounds.midY)
         let point = view.convert(local, to: nil)
+        return sendMouseClick(at: point, in: window, modifiers: modifiers)
+    }
+
+    private static func sendMouseClick(
+        at point: NSPoint,
+        in window: NSWindow,
+        modifiers: NSEvent.ModifierFlags
+    ) -> Bool {
         let time = ProcessInfo.processInfo.systemUptime
         guard let down = NSEvent.mouseEvent(
             with: .leftMouseDown,
