@@ -59,7 +59,7 @@ struct FastraApp: App {
     var body: some Scene {
         // Das Startfenster bleibt eine einzelne `Window`-Scene. So kann SwiftUI
         // nicht unkontrolliert zwei Fenster mit DEMSELBEN Workspace erzeugen
-        // (Daniel-Befund 2026-06-23). Gewollte zusätzliche oder aus der
+        // (Fehlerbefund 2026-06-23). Gewollte zusätzliche oder aus der
         // sicheren Fastra-Sitzung restaurierte Fenster entstehen kontrolliert
         // über `DocumentWindowController`; jedes erhält einen EIGENEN Workspace.
         Window("Fastra", id: "main") {
