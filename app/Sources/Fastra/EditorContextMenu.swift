@@ -26,16 +26,25 @@ extension TextView {
     /// CodeEditTextView setzt die Auswahl bei einer großen Ersetzung sonst ans
     /// Ende des Ersatztexts. Bei „Zeilen verbinden“ ist das eine einzige,
     /// tausende Zeichen lange Soft-Wrap-Zeile; Layout und Scroll-Anker können
-    /// dadurch auseinanderlaufen. Undo würde anschließend die komplette alte
-    /// Mutationsrange markieren. Die expliziten Auswahl-Snapshots verhindern
-    /// beide Zustände, ohne normales Tippen oder Einfügen zu verändern.
+    /// dadurch auseinanderlaufen. Eine per Cmd+A gewählte Ganzdokument-Range
+    /// darf ebenfalls nicht als riesige Einzeilen-Auswahl bestehen bleiben:
+    /// Genau dieser Zustand lässt CodeEdit ohne Soft Wrap leer erscheinen.
+    /// Die expliziten Auswahl-Snapshots verhindern beide Zustände, ohne
+    /// normales Tippen oder Einfügen zu verändern.
     func fastraApplyTextOperation(replacing range: NSRange, with replacement: String) {
         let selectionBefore = selectedRange()
+        let selectedWholeDocument = range.location == 0
+            && range.length == textStorage.length
+            && selectionBefore == range
+        let stableSelectionBefore = selectedWholeDocument
+            ? NSRange(location: 0, length: 0)
+            : selectionBefore
         let replacementLength = (replacement as NSString).length
         let selectionAfter = fastraSelection(
             afterReplacing: range,
             replacementLength: replacementLength,
-            selectionBefore: selectionBefore
+            selectionBefore: selectionBefore,
+            selectedWholeDocument: selectedWholeDocument
         )
         let undoManager = _undoManager
         let startsUndoGroup = !(undoManager?.isGrouping ?? false)
@@ -46,7 +55,7 @@ extension TextView {
         replaceCharacters(in: range, with: replacement)
         selectionManager.setSelectedRange(selectionAfter)
         undoManager?.fastraSetSelectionSnapshotsForLatestUndo(
-            before: [selectionBefore],
+            before: [stableSelectionBefore],
             after: [selectionAfter]
         )
         if startsUndoGroup {
@@ -64,8 +73,15 @@ extension TextView {
     private func fastraSelection(
         afterReplacing range: NSRange,
         replacementLength: Int,
-        selectionBefore: NSRange
+        selectionBefore: NSRange,
+        selectedWholeDocument: Bool
     ) -> NSRange {
+        // Cmd+A dient hier als Scope-Angabe für die Textoperation, nicht als
+        // sinnvoller dauerhafter Layoutanker. Auch Undo kehrt deshalb stabil
+        // an den Dokumentanfang zurück, statt die alte Vollauswahl aufzubauen.
+        if selectedWholeDocument {
+            return NSRange(location: 0, length: 0)
+        }
         if selectionBefore.length > 0 {
             return NSRange(location: range.location, length: replacementLength)
         }

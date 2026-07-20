@@ -37,8 +37,9 @@ Developer ID + Hardened Runtime, notarisiert bei Apple (`--wait`), stapelt das
 Ticket und kopiert nach `/Applications`. Die Signatur-Identität wird zur Laufzeit
 aus dem Schlüsselbund ermittelt (nichts Privates im Skript — public Repo). Der
 Notary-Keychain-Profilname steht bewusst NICHT im Skript; er wird per
-`NOTARY_PROFILE`, lokaler Git-Konfiguration oder Erstdialog ermittelt. `./install.sh --no-notarize` = nur
-signiert (schnell, läuft auf diesem Mac sofort).
+`NOTARY_PROFILE`, lokaler Git-Konfiguration oder Erstdialog ermittelt.
+`./install.sh --no-notarize` signiert nur und legt das Test-Bundle im
+Projekt-Root ab; es installiert ausdrücklich nichts nach `/Applications`.
 
 Der Root-Wrapper `./install.sh` reicht Optionen und Umgebungsvariablen
 unverändert an `app/install.sh` weiter; dadurch funktioniert der komplette Lauf
@@ -57,19 +58,23 @@ fensterlose Selbsttest `localization` aus der gepackten App starten.
 installierten App. Signatur-, Stapler- und Gatekeeper-Prüfungen ersetzen
 diesen echten Zielstart nicht.
 
-**Agent-bindend (2026-07-13):** `build.sh` kopiert **jeden erfolgreichen
-Build** nach `/Applications/Fastra.app` — auch Debug-Builds.
-Nicht jeder Build wird jedoch notarisiert: Der notarisierten Release-Workflow
-via `install.sh` bleibt für:
+**Agent-bindend (2026-07-20):** `/Applications` ist ausschließlich
+notarisierten Bundles vorbehalten. `build.sh` legt Debug- und Release-Builds als
+`Fastra.app` im Projekt-Root ab. Auch `install.sh --no-notarize` bleibt dort;
+weder Ad-hoc- noch nur Developer-ID-signierte Builds dürfen nach
+`/Applications` kopiert werden. Der notarisierte Workflow via `install.sh`
+bleibt für:
 - einer **abgeschlossenen, verifizierten größeren Etappe** (Release-reifer Stand
   für den produktiven Einsatz), oder
 - **auf Ansage** („leg mir einen frischen Build hin").
 
 Für normale Zwischen-Iterationen genügt `build.sh`; die frisch gebaute
-Debug-App liegt danach ebenfalls unter `/Applications/Fastra.app`. Für eine
-signierte, aber nicht notarisierten Variante dient weiter `install.sh --no-notarize`.
-Beim Version-Bump `app/Info.plist` mitziehen (siehe AGENTS.md), sonst zeigt die
-App eine veraltete Version.
+Debug-App liegt danach im Projekt-Root. Für eine signierte, aber nicht
+notarisierte Variante dient `install.sh --no-notarize`, ebenfalls ausschließlich
+im Projekt-Root. Vor jeder Installation prüft `install.sh` Notary-Ticket,
+Gatekeeper-Akzeptanz und Codesignatur des Quell-Bundles. Beim Version-Bump
+`app/Info.plist` mitziehen (siehe AGENTS.md), sonst zeigt die App eine veraltete
+Version.
 
 `build.sh` kapselt Xcode-Toolchain-Switch + neunzehn Checkout-Patches
 (SwiftLint-Plugins aus, CodeEditSymbols Resources, CMD+F-Zombie-Kill,

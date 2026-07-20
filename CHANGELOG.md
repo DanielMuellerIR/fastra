@@ -9,6 +9,29 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.43.4] — 2026-07-20
+
+### Behoben
+
+- „Zeilen verbinden“ lässt auch eine per ⌘A vollständig ausgewählte CSS- oder
+  Textdatei bei ausgeschaltetem Soft Wrap sichtbar. Nach Verbinden,
+  Rückgängig und Wiederholen liegt der stabile Cursor am Dokumentanfang, statt
+  eine einzige sehr lange Vollauswahl als fehlerhaften Layoutanker zu behalten.
+
+### Geändert
+
+- Lokale Debug-, Ad-hoc- und nur Developer-ID-signierte Test-Builds bleiben im
+  Projekt-Root. Ausschließlich ein erfolgreich notarisiertes, gestapeltes und
+  von Gatekeeper akzeptiertes Bundle darf nach `/Applications` installiert
+  werden. Dadurch bleibt die macOS-Code-Identität produktiver Installationen
+  stabil und Ordnerfreigaben werden nicht bei jedem Test-Build erneut abgefragt.
+
+### Intern
+
+- Der Editor-Selbsttest bildet nun den gemeldeten Fall mit 61 CSS-Zeilen,
+  echter Vollauswahl und ausgeschaltetem Soft Wrap ab.
+- Regressionstests schützen die Installationsgrenze vor künftigem Rückfall.
+
 ## [v1.43.3] — 2026-07-20
 
 ### Behoben

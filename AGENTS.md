@@ -61,9 +61,10 @@ Erklärungen in `docs/BUILD-AND-TEST.md`, `app/build.sh` und
 danach den vollständigen Build- und Selbsttestpfad ausführen.
 
 `app/build.sh` erzeugt das `.app`-Bundle, patcht bekannte Upstream-Probleme,
-reduziert das Sprachbundle und kopiert jeden erfolgreichen Build nach
-`/Applications/Fastra.app`. Ein Debug-Build ist damit bereits eine lokale
-Installation, aber weder notarisiert noch automatisch veröffentlichungsreif.
+reduziert das Sprachbundle und legt jeden erfolgreichen Build als `Fastra.app`
+im Projekt-Root ab. `/Applications` ist ausschließlich notarisierten Bundles
+vorbehalten; Debug-, Ad-hoc- und nur Developer-ID-signierte Test-Builds dürfen
+dorthin weder kopiert noch installiert werden.
 
 Ressourcen müssen aus dem gepackten App-Bundle funktionieren. Ein Erfolg im
 SwiftPM-Buildverzeichnis reicht nicht: absolute `.build`-Fallbacks können lokal
@@ -116,10 +117,12 @@ swift test
 ./selftest.sh
 ```
 
-`./build.sh release` erzeugt einen Release-Build. `./install.sh --no-notarize`
-signiert lokal ohne Notarisierung. Der vollständige notarierte Installationsweg
-verwendet ein zur Laufzeit übergebenes `NOTARY_PROFILE`; Profile, Schlüssel und
-Zertifikatsdetails gehören nie in Code, Doku oder Terminalausgabe.
+`./build.sh release` erzeugt einen Release-Build im Projekt-Root.
+`./install.sh --no-notarize` signiert lokal ohne Notarisierung und belässt das
+Ergebnis ebenfalls dort. Ausschließlich der vollständige notarierte
+Installationsweg darf nach `/Applications` schreiben; er verwendet ein zur
+Laufzeit übergebenes `NOTARY_PROFILE`. Profile, Schlüssel und Zertifikatsdetails
+gehören nie in Code, Doku oder Terminalausgabe.
 
 Die Selbsttests sind maschinenlesbar:
 

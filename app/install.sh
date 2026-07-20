@@ -21,8 +21,8 @@
 #   ./install.sh                          # lokales Profil prüfen/verwenden
 #   NOTARY_PROFILE=<profil> ./install.sh  # anderes Keychain-Profil
 #
-# Schneller Test-Modus ohne Notarisierung (nur Developer-ID-signiert — läuft
-# auf DIESEM Mac sofort, aber nicht garantiert gatekeeper-frei auf anderen):
+# Schneller Test-Modus ohne Notarisierung (nur Developer-ID-signiert — bleibt
+# als Test-Bundle im Projekt-Root und wird nie nach /Applications kopiert):
 #   ./install.sh --no-notarize
 
 set -euo pipefail
@@ -97,10 +97,33 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────
-# 4. Nach /Applications installieren (vorhandene Version ersetzen).
-#    Laufende Instanz vorher beenden, damit das Kopieren kein offenes
-#    Binary trifft.
+# 4. Das fertig signierte Bundle auch im Projekt-Root bereitstellen.
+#    Dieser Ort ist ausdrücklich für lokale Test-Builds vorgesehen.
 # ─────────────────────────────────────────────────────────────────
+ROOT_APP="../Fastra.app"
+rm -rf "$ROOT_APP"
+ditto "$APP" "$ROOT_APP"
+./verify-portable-app.sh "$ROOT_APP" ".build/release"
+
+if [ "$NOTARIZE" -eq 0 ]; then
+  VERSION="$(defaults read "$ROOT_APP/Contents/Info" CFBundleShortVersionString 2>/dev/null || echo "?")"
+  echo
+  echo "BUILD OK: $(cd .. && pwd)/Fastra.app ($VERSION, Developer ID, nicht notarisiert)"
+  exit 0
+fi
+
+# ─────────────────────────────────────────────────────────────────
+# 5. Nur das nachweislich notarisierte Bundle nach /Applications
+#    installieren (vorhandene Version ersetzen). Die Prüfungen laufen vor
+#    jeder Änderung am Ziel; ein bloß signiertes Test-Bundle kann diesen
+#    Pfad dadurch nicht erreichen.
+# ─────────────────────────────────────────────────────────────────
+xcrun stapler validate "$APP"
+spctl --assess --type execute --verbose=2 "$APP"
+codesign --verify --deep --strict --verbose=2 "$APP"
+
+# Laufende Instanz vorher beenden, damit das Kopieren kein offenes Binary
+# trifft.
 if pgrep -x Fastra >/dev/null 2>&1; then
   echo "→ Laufende Fastra-Instanz beenden"
   pkill -x Fastra || true
@@ -108,12 +131,15 @@ if pgrep -x Fastra >/dev/null 2>&1; then
 fi
 DEST="/Applications/Fastra.app"
 rm -rf "$DEST"
-cp -R "$APP" "$DEST"
+ditto "$APP" "$DEST"
 
 # Nicht nur Signatur und Gatekeeper prüfen: Die tatsächlich installierte App
 # muss ohne die absoluten SwiftPM-Build-Fallbacks starten. Genau dieses Gate
 # verhindert, dass ein auf dem Build-Mac scheinbar funktionierendes Bundle auf
 # einem anderen Mac bei `Bundle.module` sofort abstürzt.
+xcrun stapler validate "$DEST"
+spctl --assess --type execute --verbose=2 "$DEST"
+codesign --verify --deep --strict --verbose=2 "$DEST"
 ./verify-portable-app.sh "$DEST" ".build/release"
 
 VERSION="$(defaults read "$DEST/Contents/Info" CFBundleShortVersionString 2>/dev/null || echo "?")"

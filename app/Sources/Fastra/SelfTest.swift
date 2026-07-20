@@ -4659,11 +4659,12 @@ enum SelfTest {
 
     // MARK: - -selftest joinundo
 
-    /// Regression für eine Ganzdokument-Transformation mit stark verändertem
-    /// Zeilenlayout: „Zeilen verbinden" darf den echten Editor bei Soft Wrap
-    /// weder leerräumen noch nach Undo einen leeren Bildschirm oberhalb von
-    /// Zeile 1 hinterlassen. Der Modelltext allein reicht als Prüfung nicht,
-    /// weil er beim ursprünglichen Fehler jederzeit vollständig war.
+    /// Regression für den konkret gemeldeten Fall: Eine per Cmd+A vollständig
+    /// ausgewählte CSS-Datei wird ohne Soft Wrap verbunden. Die Vollauswahl
+    /// darf danach weder den Editor leerräumen noch nach Undo einen leeren
+    /// Bildschirm oberhalb von Zeile 1 hinterlassen. Der Modelltext allein
+    /// reicht als Prüfung nicht, weil er beim ursprünglichen Fehler jederzeit
+    /// vollständig war.
     private static func runJoinUndoTest() {
         testLabel = "joinundo"
         guard let ws = Workspace.shared else {
@@ -4676,22 +4677,30 @@ enum SelfTest {
             finish(false, "kein Hauptfenster gefunden")
         }
 
-        let content = (1...94).map { index in
-            if index == 1 { return "# AGENTS.md — Testdokument" }
-            if index == 5 { return "## Abschnitt" }
-            return index.isMultiple(of: 7)
-                ? ""
-                : "Zeile \(index): " + String(repeating: "Inhalt ", count: 8)
-        }.joined(separator: "\n") + "\n"
+        var lines = (1...12).flatMap { index in
+            [
+                ".c\(index) {",
+                "  color: #123456;",
+                "  margin: \(index)px;",
+                "}",
+                ""
+            ]
+        }
+        lines.append("/* Ende */")
+        let content = lines.joined(separator: "\n")
+        let fullSelection = NSRange(
+            location: 0,
+            length: (content as NSString).length
+        )
         let joined = TextOperations.joinLines(
             in: content,
-            selection: NSRange(location: 0, length: 0)
+            selection: fullSelection
         )?.newText
         guard let joined else {
             finish(false, "Join-Lines-Fixture lieferte kein Ergebnis")
         }
         let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("fastra-joinundo-\(UUID().uuidString).md")
+            .appendingPathComponent("fastra-joinundo-\(UUID().uuidString).css")
         do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
 
@@ -4702,10 +4711,8 @@ enum SelfTest {
                 guard let tv = editorTextView(in: root) as? TextView else {
                     finish(false, "Editor-TextView nicht erreichbar")
                 }
-                tv.layoutManager.wrapLines = true
-                tv.selectionManager.setSelectedRange(
-                    NSRange(location: 0, length: 0)
-                )
+                tv.layoutManager.wrapLines = false
+                tv.selectAll(nil)
                 tv.layoutManager.layoutLines()
                 NotificationCenter.default.post(
                     name: .fastraTextOp,

@@ -22,7 +22,9 @@ swift test
 `./build.sh release` erzeugt zusätzlich den Release-Build. `build.sh` löst die
 Abhängigkeiten über die Xcode-Toolchain auf, wendet die dokumentierten lokalen
 Patches auf `.build/checkouts/` an und verifiziert sie. Nach
-`swift package update` muss `build.sh` deshalb erneut laufen.
+`swift package update` muss `build.sh` deshalb erneut laufen. Das Test-Bundle
+liegt im Projekt-Root; `/Applications` wird ausschließlich vom vollständig
+notarisierten `install.sh`-Pfad beschrieben.
 
 Zum Lesen und Navigieren lässt sich das Package mit
 `open -a Xcode Package.swift` in Xcode öffnen. Der unterstützte,

@@ -359,16 +359,36 @@ leerer Bildschirm oberhalb von Zeile 1 erscheint.
 
 **Workaround (Patch 4q in `build.sh`):** Fastras Textoperationspfad bildet die
 alte Auswahl bewusst auf den Ersatzbereich ab. Bei einer Ganzdokument-Operation
-ohne Auswahl bleibt der Cursor am stabilen Blockanfang. Eine opt-in-Erweiterung
-des `CEUndoManager` speichert nur für solche Operationen die Auswahl vor und
-nach der Mutation. Undo und Redo stellen den passenden Zustand wieder her,
-bauen das Layout synchron an diesem Anker auf und scrollen ihn sichtbar.
-Gewöhnliches Tippen, Einfügen und CodeEdits übrige Undo-Semantik bleiben
-unverändert.
+ohne Auswahl bleibt der Cursor am stabilen Blockanfang. Dasselbe gilt, wenn
+Cmd+A das gesamte Dokument als Operationsbereich ausgewählt hat: Die riesige
+Auswahl wird nach Verbinden sowie für Undo/Redo zu einem Cursor am Anfang
+reduziert, weil sie sonst selbst zum fehlerhaften Layoutanker wird. Eine
+opt-in-Erweiterung des `CEUndoManager` speichert nur für solche Operationen die
+stabilen Zustände vor und nach der Mutation. Undo und Redo bauen das Layout
+synchron an diesem Anker auf und scrollen ihn sichtbar. Gewöhnliches Tippen,
+Einfügen und CodeEdits übrige Undo-Semantik bleiben unverändert.
 
 **Regressionen:** `SoftWrapLayoutTests.joinLinesAndUndoKeepTextVisible` nutzt
-einen echten `TextViewController` mit langem Markdown und verlangt nach
-Verbinden, Undo und Redo jeweils korrekten Text, Cursor am Dokumentanfang und
-sichtbare Layoutfragmente. `./selftest.sh joinundo` führt denselben Menüpfad im
-gepackten Editor aus und zählt reale sichtbare `LineFragmentView`s; ein bloßer
-Vergleich des Modelltexts hätte den ursprünglichen Fehler nicht erkannt.
+einen echten `TextViewController` mit einer 61-zeiligen CSS-Datei, Soft Wrap
+aus und echter Vollauswahl. Es verlangt nach Verbinden, Undo und Redo jeweils
+korrekten Text, Cursor am Dokumentanfang und sichtbare Layoutfragmente.
+`./selftest.sh joinundo` führt denselben Cmd+A-Menüpfad im gepackten Editor aus
+und zählt reale sichtbare `LineFragmentView`s; ein bloßer Vergleich des
+Modelltexts hätte den ursprünglichen Fehler nicht erkannt.
+
+### F.16 Ad-hoc-Builds verändern die TCC-Code-Identität (2026-07-20)
+
+macOS bindet Ordnerfreigaben wie Desktop und Dokumente nicht nur an die
+Bundle-ID, sondern auch an die Code-Anforderung der App. Wiederholt nach
+`/Applications` kopierte Ad-hoc-Builds besitzen keine stabile Developer-Team-
+Identität. Im TCC-Log erscheint dann trotz unveränderter Bundle-ID
+`Failed to match existing code requirement`; macOS fragt die Ordnerfreigabe
+erneut ab. Der Dialog beweist dabei nicht, dass das geöffnete Projekt in diesem
+Ordner liegt: Auch ein Systemdialog oder eine frühere URL kann den geschützten
+Dienst ansprechen.
+
+**Konsequenz:** `build.sh` und `install.sh --no-notarize` legen Test-Bundles
+ausschließlich im Projekt-Root ab. Nur `install.sh` nach erfolgreicher
+Notarisierung, Stapler-Prüfung, Gatekeeper-Abnahme und Codesignaturprüfung darf
+`/Applications/Fastra.app` ersetzen. So bleibt die Code-Identität produktiver
+Installationen über Versionswechsel stabil.

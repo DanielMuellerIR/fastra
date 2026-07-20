@@ -1658,18 +1658,8 @@ ROOT_APP="../Fastra.app"
 rm -rf "$ROOT_APP"
 ditto "$APP" "$ROOT_APP"
 
-# Jeder erfolgreiche Build soll sofort als produktive App vorliegen haben.
-# Das Kopieren geschieht NACH dem Portabilitäts-Gate: Ein
-# unvollständiges oder lokal-abhängiges Bundle kann /Applications damit nie
-# überschreiben. Die laufende App wurde oben bereits beendet, damit macOS
-# keine offene Binärdatei nur teilweise ersetzt.
-APPLICATIONS_APP="/Applications/Fastra.app"
-echo "→ App nach /Applications kopieren"
-rm -rf "$APPLICATIONS_APP"
-ditto "$APP" "$APPLICATIONS_APP"
-
 echo
 echo "✔ Fertig. App-Bundle: $APP"
 echo "  Kopie zum Doppelklicken: $(cd .. && pwd)/Fastra.app ($CONFIG)"
-echo "  Installiert: $APPLICATIONS_APP ($CONFIG)"
-echo "  Start mit: open $APPLICATIONS_APP"
+echo "  Nicht installiert: /Applications ist notarisierten Builds vorbehalten."
+echo "  Start mit: open $(cd .. && pwd)/Fastra.app"

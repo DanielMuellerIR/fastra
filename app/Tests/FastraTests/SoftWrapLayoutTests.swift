@@ -13,13 +13,14 @@ struct SoftWrapLayoutTests {
         column: Int? = 40,
         guideColumn: Int = 40,
         fontSize: CGFloat = 13,
-        width: CGFloat = 900
+        width: CGFloat = 900,
+        wrapLines: Bool = true
     ) -> TextViewController {
         let configuration = SourceEditorConfiguration(
             appearance: .init(
                 theme: EditorView.fastraTheme,
                 font: .monospacedSystemFont(ofSize: fontSize, weight: .regular),
-                wrapLines: true,
+                wrapLines: wrapLines,
                 tabWidth: 4
             ),
             behavior: .init(
@@ -228,32 +229,36 @@ struct SoftWrapLayoutTests {
         #expect(finalRect.width < fullLineWidth - 1)
     }
 
-    @Test("Zeilen verbinden und Undo halten Text und Layout sichtbar")
+    @Test("CSS-Vollauswahl verbinden und Undo halten Text und Layout sichtbar")
     @MainActor
     func joinLinesAndUndoKeepTextVisible() throws {
-        let original = (1...94).map { index in
-            if index == 1 { return "# AGENTS.md — Testdokument" }
-            if index == 5 { return "## Abschnitt" }
-            return index.isMultiple(of: 7)
-                ? ""
-                : "Zeile \(index): " + String(repeating: "Inhalt ", count: 8)
-        }.joined(separator: "\n") + "\n"
+        var lines = (1...12).flatMap { index in
+            [
+                ".c\(index) {",
+                "  color: #123456;",
+                "  margin: \(index)px;",
+                "}",
+                ""
+            ]
+        }
+        lines.append("/* Ende */")
+        let original = lines.joined(separator: "\n")
         let editor = controller(
             text: original,
             column: 40,
-            width: 900
+            width: 900,
+            wrapLines: false
         )
-        let originalCursor = NSRange(
-            location: (original as NSString).length,
-            length: 0
+        let fullSelection = NSRange(
+            location: 0,
+            length: (original as NSString).length
         )
-        editor.textView.selectionManager.setSelectedRange(
-            originalCursor
-        )
+        editor.textView.selectAll(nil)
+        #expect(editor.textView.selectedRange() == fullSelection)
         let result = try #require(
             TextOperations.joinLines(
                 in: original,
-                selection: originalCursor
+                selection: fullSelection
             )
         )
 
@@ -274,7 +279,7 @@ struct SoftWrapLayoutTests {
 
         #expect(editor.textView.string == original)
         #expect(hasVisibleTextFragment(editor))
-        #expect(editor.textView.selectedRange() == originalCursor)
+        #expect(editor.textView.selectedRange() == NSRange(location: 0, length: 0))
 
         editor.textView.undoManager?.redo()
         editor.view.layoutSubtreeIfNeeded()
