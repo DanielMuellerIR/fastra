@@ -71,7 +71,7 @@ signierte, aber nicht notarisierten Variante dient weiter `install.sh --no-notar
 Beim Version-Bump `app/Info.plist` mitziehen (siehe AGENTS.md), sonst zeigt die
 App eine veraltete Version.
 
-`build.sh` kapselt Xcode-Toolchain-Switch + siebzehn Checkout-Patches
+`build.sh` kapselt Xcode-Toolchain-Switch + achtzehn Checkout-Patches
 (SwiftLint-Plugins aus, CodeEditSymbols Resources, CMD+F-Zombie-Kill,
 toter cursorPositions-Reconcile, verworfene Auto-Vervollständigung schließen,
 Gutter-Drag-Clamp, horizontaler Scrollbalken, Zeilenbreiten-Messung,
@@ -162,6 +162,15 @@ eine abweichende Upstream-Quelle bricht den Build ab. Regressions-Wächter:
 Soft-Wrap-Fragmente, Vorwärts/Rückwärts, kurze und leere Zeilen, Tabs, CRLF,
 Unicode, Copy/Paste/Cut/Delete/Tippen/Paste Column, Transformationen und genau
 eine Undo-Gruppe pro Schreibaktion.
+
+Patch 4p (Auswahl am Dateiende, 2026-07-20): Endet eine Datei mit LF, CRLF
+oder CR, liegt der Dokumentend-Cursor bereits links in der nachfolgenden leeren
+Zeile. CodeEditTextView verwendete diese X-Position als rechte Kante der
+vorherigen ausgewählten Textzeile und erzeugte dort ein Rechteck mit Breite
+null. Der Patch zeichnet eine ausgewählte abschließende Zeilenendung bis zum
+rechten Textrand; Dateien ohne abschließenden Zeilenumbruch markieren weiterhin
+nur bis zum letzten Zeichen. `SoftWrapLayoutTests` prüft die echte
+CodeEdit-Auswahlrange und deren erzeugte Rechtecke für alle drei Zeilenenden.
 
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 

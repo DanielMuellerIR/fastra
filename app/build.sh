@@ -1296,6 +1296,66 @@ if [ "$COLUMN_PATCH_CHANGED" -eq 1 ]; then
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4p. CodeEditTextView — Auswahl bis zum finalen Zeilenumbruch zeichnen.
+#
+# Endet eine Datei mit LF, CRLF oder CR, liefert `rectForOffset` für das
+# Dokumentende bereits den Cursor in der leeren Dateiende-Zeile. Upstream
+# verwendete dessen linke X-Position als rechte Kante der vorherigen
+# Textzeile: Das Auswahlrechteck bekam Breite 0 und die letzte Zeile wirkte
+# trotz korrekter ⌘A-Range unmarkiert.
+CETV_SELECTION_FILL="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextSelectionManager/TextSelectionManager+FillRects.swift"
+SELECTION_EOL_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: finalen Zeilenumbruch bis zum rechten Rand markieren' \
+    "$CETV_SELECTION_FILL" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (Auswahl am Dateiende)"
+  chmod u+w "$CETV_SELECTION_FILL"
+  /usr/bin/python3 - "$CETV_SELECTION_FILL" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+old = '''            let endOfDocument = intersectionRange.max == layoutManager.lineStorage.length
+            let emptyLine = linePosition.range.isEmpty
+
+            // If the selection is at the end of the line, or contains the end of the fragment, and is not the end
+            // of the document, we select the entire line to the right of the selection point.
+            // true, !true = false, false
+            // true, !true = false, true
+            if endOfLine && !(endOfDocument && !emptyLine) {'''
+new = '''            let endOfDocument = intersectionRange.max == layoutManager.lineStorage.length
+            let emptyLine = linePosition.range.isEmpty
+            let lineEndsWithLineEnding = textStorage
+                .flatMap { $0.substring(from: linePosition.range) }
+                .flatMap(LineEnding.init(line:)) != nil
+
+            // Fastra-Patch: finalen Zeilenumbruch bis zum rechten Rand markieren.
+            // `rectForOffset(documentEnd)` liegt dann schon links in der leeren
+            // EOF-Zeile und würde für die letzte Textzeile Breite 0 ergeben.
+            if endOfLine && (!endOfDocument || emptyLine || lineEndsWithLineEnding) {'''
+if old not in src:
+    raise SystemExit(
+        f"{path}: Quelltext hat sich geaendert — Patch 4p pruefen"
+    )
+open(path, "w").write(src.replace(old, new, 1))
+PYEOF
+  SELECTION_EOL_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: finalen Zeilenumbruch bis zum rechten Rand markieren' \
+    "$CETV_SELECTION_FILL"; then
+  echo "✗ FEHLER: Dateiende-Auswahl-Patch hat NICHT gegriffen." >&2
+  exit 1
+fi
+
+if [ "$SELECTION_EOL_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 

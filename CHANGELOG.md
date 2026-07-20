@@ -9,6 +9,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.43.2] — 2026-07-20
+
+### Behoben
+
+- „Alles auswählen“ (⌘A) markiert nun auch optisch die letzte Textzeile
+  vollständig, wenn eine Datei mit einem Zeilenumbruch endet. Das gilt ebenso
+  bei Soft Wrap und für LF-, CRLF- sowie CR-Zeilenenden.
+
+### Intern
+
+- Ein enger CodeEditTextView-Patch unterscheidet die rechte Auswahlkante der
+  letzten Textzeile von der Cursorposition in der nachfolgenden leeren
+  Dateiende-Zeile. Ein echter Auswahlgeometrie-Test schützt alle drei
+  Zeilenendvarianten.
+
 ## [v1.43.1] — 2026-07-20
 
 ### Intern

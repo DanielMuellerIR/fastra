@@ -1,7 +1,7 @@
 import AppKit
 import CodeEditLanguages
 import CodeEditSourceEditor
-import CodeEditTextView
+@testable import CodeEditTextView
 import Testing
 @testable import Fastra
 
@@ -147,6 +147,85 @@ struct SoftWrapLayoutTests {
         #expect(fragments.count > 1)
         #expect(fragments.allSatisfy { $0.range.length > 0 })
         #expect(fragments.reduce(0) { $0 + $1.range.length } == storage.length)
+    }
+
+    @Test("Alles auswählen umfasst bei Soft Wrap auch die letzte sichtbare Textzeile")
+    @MainActor
+    func selectAllIncludesLastVisibleLine() throws {
+        let lines = (1...22).map { index in
+            index == 22
+                ? "Letzte sichtbare Textzeile"
+                : "Zeile \(index): " + String(repeating: "Wort ", count: 12)
+        }
+        for lineEnding in ["\n", "\r\n", "\r"] {
+            let editor = controller(
+                // Der abschließende Zeilenumbruch erzeugt hinter der letzten
+                // Textzeile die übliche leere Dateiende-Zeile.
+                text: lines.joined(separator: lineEnding) + lineEnding,
+                column: 40,
+                width: 900
+            )
+            editor.view.frame.size.height = 900
+            editor.view.layoutSubtreeIfNeeded()
+            editor.textView.layoutManager.layoutLines()
+
+            editor.textView.selectAll(nil)
+
+            let documentRange = editor.textView.documentRange
+            let lastLine = try #require(
+                editor.textView.layoutManager.textLineForOffset(
+                    documentRange.length - 1
+                )
+            )
+            let selection = try #require(
+                editor.textView.selectionManager.textSelections.first
+            )
+            let fillRects = editor.textView.selectionManager.getFillRects(
+                in: editor.textView.bounds,
+                for: selection
+            )
+            #expect(editor.textView.selectedRange() == documentRange)
+            #expect(fillRects.contains {
+                $0.width > 1
+                    && $0.maxY > lastLine.yPos
+                    && $0.minY < lastLine.yPos + lastLine.height
+            }, "Zeilenende \(lineEnding.debugDescription)")
+        }
+    }
+
+    @Test("Alles auswählen endet ohne finalen Umbruch am letzten Zeichen")
+    @MainActor
+    func selectAllWithoutFinalLineEndingStaysCharacterExact() throws {
+        let editor = controller(
+            text: "Erste Zeile\nKurzes Ende",
+            column: 40,
+            width: 900
+        )
+        editor.view.frame.size.height = 300
+        editor.view.layoutSubtreeIfNeeded()
+        editor.textView.layoutManager.layoutLines()
+        editor.textView.selectAll(nil)
+
+        let lastLine = try #require(
+            editor.textView.layoutManager.textLineForOffset(
+                editor.textView.documentRange.length
+            )
+        )
+        let selection = try #require(
+            editor.textView.selectionManager.textSelections.first
+        )
+        let finalRect = try #require(
+            editor.textView.selectionManager.getFillRects(
+                in: editor.textView.bounds,
+                for: selection
+            ).last(where: {
+                $0.maxY > lastLine.yPos
+                    && $0.minY < lastLine.yPos + lastLine.height
+            })
+        )
+        let fullLineWidth = editor.textView.layoutManager.wrapLinesWidth
+        #expect(finalRect.width > 1)
+        #expect(finalRect.width < fullLineWidth - 1)
     }
 
     @MainActor

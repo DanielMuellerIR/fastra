@@ -321,3 +321,23 @@ Zwei Randfälle brauchen eigene Wächter:
 `./selftest.sh colsel colselwrap colpaste` prüft diese Fälle zusammen mit
 echtem Soft Wrap, Vorwärts/Rückwärts, Tabs, CRLF, Unicode, Clipboard-
 Mismatch-Regel und exakt einer Undo-Gruppe.
+
+### F.14 Der Dokumentend-Cursor ist nicht die rechte Kante der letzten Textzeile (2026-07-20)
+
+Endet ein Dokument mit einem Zeilenumbruch, liegt `rectForOffset(documentEnd)`
+bereits am linken Rand der nachfolgenden leeren Dateiende-Zeile.
+`TextSelectionManager.getFillRects` verwendete diese X-Position trotzdem als
+rechte Kante der vorherigen Textzeile. Bei „Alles auswählen“ entstand dort
+deshalb ein Auswahlrechteck mit Breite null: Die Range war korrekt, die letzte
+Textzeile wirkte aber unmarkiert. Soft Wrap machte den Effekt durch die
+Fragmentgeometrie auffälliger, war jedoch nicht die Ursache.
+
+**Workaround (Patch 4p in `build.sh`):** Enthält das letzte ausgewählte
+Zeilenfragment eine LF-, CRLF- oder CR-Zeilenendung, reicht seine Markierung
+bis zum rechten Textrand. Ohne abschließenden Zeilenumbruch bleibt die bisherige
+zeichenexakte rechte Kante erhalten.
+
+**Regression:** `SoftWrapLayoutTests.selectAllIncludesLastVisibleLine` setzt
+die echte CodeEdit-Auswahl per `selectAll`, prüft die vollständige
+Dokumentrange und verlangt für die letzte Textzeile ein sichtbares
+Auswahlrechteck. Der Fall läuft getrennt mit LF, CRLF und CR.
