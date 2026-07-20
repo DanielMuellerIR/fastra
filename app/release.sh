@@ -212,10 +212,35 @@ cp "$DMG_STAGING/DmgBackground.tiff" "$MOUNT_DIR/.background/DmgBackground.tiff"
 #    überspringbar (z.B. headless), das DMG bleibt voll funktionsfähig.
 if [ "$FINDER_LAYOUT" = "1" ]; then
   echo "   Finder-Layout einstellen (Fenster, Icon-Positionen, Hintergrund)"
-  osascript <<EOF
+  # Das dekorative Layout ist BEST-EFFORT. In automatisierten oder headless
+  # Läufen (kein GUI-Fokus, gesperrter Bildschirm) liefert der Finder
+  # reproduzierbar den AppleScript-Fehler -1728 — er kann das container window
+  # nicht öffnen. Ein solcher Fehler darf den Release NIE abbrechen (`set -e`):
+  # Das DMG ist auch ohne dekoratives Layout voll funktionsfähig, nur schlichter.
+  # Deshalb bis zu zwei Versuche; bleibt es fehlerhaft, wird gewarnt und ohne
+  # Layout weitergebaut. Das `if osascript …` fängt den Exit-Code selbst ab,
+  # ohne dass `set -e` greift.
+  layout_applied=0
+  for attempt in 1 2; do
+    if osascript <<EOF
 tell application "Finder"
     tell disk "$VOL_NAME"
         open
+        -- Direkt nach "open" ist das container window oft noch nicht
+        -- zugänglich → Fehler -1728. Erst warten, bis es existiert; klappt es
+        -- binnen ~10 s nicht (kein GUI-Fokus), sauber mit -1728 abbrechen,
+        -- damit die Shell auf den schlichten DMG-Bau zurückfällt.
+        set windowReady to false
+        repeat with w from 1 to 20
+            try
+                if (exists container window) then
+                    set windowReady to true
+                    exit repeat
+                end if
+            end try
+            delay 0.5
+        end repeat
+        if not windowReady then error "Finder-Fenster nicht verfuegbar" number -1728
         set current view of container window to icon view
         set toolbar visible of container window to false
         set statusbar visible of container window to false
@@ -244,6 +269,19 @@ tell application "Finder"
     end tell
 end tell
 EOF
+    then
+      layout_applied=1
+      break
+    fi
+    echo "   … Finder-Layout Versuch $attempt fehlgeschlagen"
+    sleep 1
+  done
+  if [ "$layout_applied" = "1" ]; then
+    echo "   ✔ Finder-Layout gesetzt"
+  else
+    echo "   ⚠ Finder-Layout nicht möglich (z.B. AppleScript-Fehler -1728, kein GUI-Fokus)."
+    echo "     DMG wird ohne dekoratives Layout gebaut und ist voll funktionsfähig."
+  fi
 else
   echo "   ⚠ --no-finder-layout gesetzt → Finder-Layout übersprungen"
 fi
