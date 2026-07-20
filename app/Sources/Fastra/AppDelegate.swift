@@ -571,6 +571,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Ordner werden später über denselben Router als Projekt geladen.
         let openableURLs = DropHandling.openableItems(from: urls)
         guard !openableURLs.isEmpty else { return }
+        // Läuft die App bereits (Workspace bereit), direkt öffnen — ohne den
+        // zusätzlichen Runloop-Umweg von `deliverPendingOpenFiles`. Sonst wurde
+        // zuerst das bisherige Vorderfenster gezeigt und erst einen Tick später
+        // auf das passende Fenster umgeschaltet; das sah unruhig aus
+        // (Daniel-Befund 2026-07-20). Nur beim KALTEN Start puffern, bis
+        // `Workspace.shared` steht (der Aufruf kann dann vor der Fenstererzeugung
+        // kommen).
+        if Workspace.shared != nil {
+            DocumentWindowController.openFinderItems(openableURLs)
+            return
+        }
         openFilesInbox.enqueue(openableURLs)
         deliverPendingOpenFiles()
     }

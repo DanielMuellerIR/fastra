@@ -154,6 +154,9 @@ struct MainWindowTitleBridge: NSViewRepresentable {
         }
         private weak var observedWindow: NSWindow?
         private var keyObserver: NSObjectProtocol?
+        /// Zuletzt in das „Fenster"-Menü geschriebener Titel — verhindert
+        /// wiederholtes Neusetzen desselben Eintrags (siehe `applyMetadataToWindow`).
+        private var lastWindowsMenuTitle: String?
 
         init(metadata: MainWindowTitleMetadata, workspace: Workspace,
              chromeHeight: CGFloat) {
@@ -231,7 +234,13 @@ struct MainWindowTitleBridge: NSViewRepresentable {
             // fügt HINZU oder aktualisiert nur; die bereits per `addWindowsItem`
             // eingetragenen ⌘N-/wiederhergestellten Fenster bekommen dadurch
             // keinen Doppel-Eintrag, sondern nur ihren Titel nachgeführt.
-            if !SearchWindow.isSearchWindow(window) {
+            // Nur bei ECHTER Titeländerung ins Menü schreiben. Häufiges,
+            // unnötiges Neusetzen während des Starts kann verhindern, dass AppKit
+            // seine Standard-Fensterbefehle (Füllen, Zentriert, …) rechtzeitig
+            // ergänzt — das Menü war beim ersten Öffnen unvollständig und erst
+            // beim zweiten korrekt (Daniel-Befund 2026-07-20).
+            if !SearchWindow.isSearchWindow(window), lastWindowsMenuTitle != metadata.title {
+                lastWindowsMenuTitle = metadata.title
                 NSApp.changeWindowsItem(window, title: metadata.title, filename: false)
             }
             // Codex-artiger Fensteraufbau: SwiftUI zeichnet den Chrome bis

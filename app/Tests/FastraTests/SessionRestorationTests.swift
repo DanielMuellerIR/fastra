@@ -51,6 +51,37 @@ func sessionStoreRoundTrip() {
     #expect(SessionStateStore.load(from: defaults) == nil)
 }
 
+@Test("Nur-Projekt-Fenster ohne offene Dateien ist nicht wiederherstellenswert")
+func sessionProjectOnlyWindowIsNotRestorable() {
+    let projectOnly = RestorableWindowState(
+        projectPath: "/tmp/repo", documentPaths: [],
+        activeDocumentPath: nil, frame: nil
+    )
+    #expect(!projectOnly.hasRestorableContent,
+            "Ordner ohne offene Dateien darf den Willkommensbildschirm nicht ersetzen")
+
+    let withDocument = RestorableWindowState(
+        projectPath: "/tmp/repo", documentPaths: ["/tmp/repo/a.txt"],
+        activeDocumentPath: nil, frame: nil
+    )
+    #expect(withDocument.hasRestorableContent)
+}
+
+@Test("Snapshot eines Projekt-Fensters ohne Dateien bleibt leer (→ Willkommen)")
+@MainActor
+func sessionSnapshotOfProjectWithoutFilesIsEmpty() {
+    let (defaults, suite) = sessionDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let workspace = Workspace(defaults: defaults)
+    workspace.projectURL = URL(fileURLWithPath: "/tmp/repo")
+    // Wie nach „alle Tabs schließen": nur ein leerer Scratch-Tab bleibt übrig.
+    let scratch = EditorTab(title: "Ohne Titel", path: "—")
+    workspace.tabs = [scratch]
+    workspace.activeTabID = scratch.id
+
+    #expect(workspace.restorableWindowState(frame: nil) == nil)
+}
+
 @Test("Snapshot enthält nur Dateipfade, nie ungesicherten Inhalt")
 @MainActor
 func sessionSnapshotExcludesUnsavedContent() throws {

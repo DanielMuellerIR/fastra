@@ -368,7 +368,9 @@ or repository contains it, and that window comes to the front. If no open
 window fits, Fastra opens it in a new one.
 
 By default, Fastra restores the last project windows, saved documents, active
-tabs, and window positions on the next launch. You can turn this off under
+tabs, and window positions on the next launch. Windows without open files are
+not restored: once you have closed every tab, the next launch greets you with
+the welcome screen again. You can turn this off under
 **Settings → Startup**. Contents of unsaved or untitled documents are never
 stored or restored.
 

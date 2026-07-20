@@ -81,8 +81,15 @@ struct RestorableWindowState: Codable, Equatable {
     let activeDocumentPath: String?
     let frame: RestorableWindowFrame?
 
+    /// Ein Fenster ist nur wiederherstellenswert, wenn es mindestens eine
+    /// gespeicherte Datei zeigt. Ein reines Projekt-/Repo-Fenster OHNE offene
+    /// Dateien wird bewusst NICHT gespeichert (Daniel-Befund 2026-07-20): Sonst
+    /// käme beim nächsten Start statt des Willkommensbildschirms der zuletzt
+    /// geöffnete Ordner mit einem leeren „Ohne Titel"-Tab zurück — und der
+    /// Willkommensbildschirm wäre, einmal einen Ordner geöffnet, nie wieder
+    /// erreichbar.
     var hasRestorableContent: Bool {
-        projectPath != nil || !documentPaths.isEmpty
+        !documentPaths.isEmpty
     }
 
     /// Entfernt beim Start inzwischen gelöschte oder zu Ordnern gewordene

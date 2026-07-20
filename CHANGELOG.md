@@ -9,6 +9,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.44.4] — 2026-07-20
+
+### Behoben
+
+- Nach dem Schließen aller Tabs und Neustart erscheint wieder der
+  Willkommensbildschirm. Zuvor kam der zuletzt geöffnete Ordner mit einem
+  leeren „Ohne Titel"-Tab zurück; ein Fenster ohne offene Dateien wird jetzt
+  nicht mehr wiederhergestellt.
+
+### Geändert
+
+- Öffnet man aus dem Finder eine Datei, die zu einem weiter hinten liegenden
+  Fenster gehört, kommt direkt das passende Fenster nach vorn — nicht mehr
+  zuerst das bisherige Vorderfenster und dann das passende (weniger Unruhe).
+
 ## [v1.44.3] — 2026-07-20
 
 ### Behoben

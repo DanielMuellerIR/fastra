@@ -391,7 +391,9 @@ Beim nächsten Start stellt Fastra standardmäßig die zuletzt geöffneten
 Projektfenster, gespeicherten Dokumente, aktiven Tabs und Fensterpositionen
 wieder her. Unter **Einstellungen → Start** lässt sich das abschalten.
 Inhalte ungesicherter oder unbenannter Dokumente werden nie gespeichert oder
-wiederhergestellt.
+wiederhergestellt. Fenster ohne offene Dateien werden nicht wiederhergestellt:
+Hast du alle Tabs geschlossen, begrüßt dich beim nächsten Start wieder der
+Willkommensbildschirm.
 
 Ein Shift-Klick auf einen zweiten normalen Text-Tab markiert beide für den
 Dateivergleich, ohne den aktuellen Tab umzuschalten. Der aktuelle Tab bleibt

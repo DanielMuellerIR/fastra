@@ -287,7 +287,12 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         let window = (NSApp.orderedWindows + WorkspaceWindowRegistry.registeredWindows())
             .first { WorkspaceWindowRegistry.workspace(for: $0) === workspace }
         guard let window else { return }
-        NSApp.activate()
+        // Bewusst KEIN zusätzliches NSApp.activate(): Der Finder-Öffnen-Vorgang
+        // aktiviert die App bereits. Ein zweites Aktivieren holte zuerst das
+        // bisherige Vorderfenster nach vorn und schaltete erst danach auf das
+        // Zielfenster um (sichtbares Gezappel, Daniel-Befund 2026-07-20).
+        // `makeKeyAndOrderFront` holt das Zielfenster direkt nach vorn und
+        // aktiviert die App dabei bei Bedarf selbst.
         window.makeKeyAndOrderFront(nil)
         Workspace.shared = workspace
     }
