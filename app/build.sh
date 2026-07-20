@@ -1356,6 +1356,192 @@ if [ "$SELECTION_EOL_PATCH_CHANGED" -eq 1 ]; then
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4q. CodeEditTextView — Auswahlzustand für große Textoperationen sichern.
+#
+# CodeEditTextViews Undo-Manager leitet die Auswahl nach einer Ersetzung allein
+# aus der Mutationsrange ab. Ersetzt eine Fastra-Textoperation einen großen
+# Bereich, markiert Undo deshalb den gesamten alten Text. Außerdem springt die
+# Auswahl nach der Operation zunächst ans Ende einer möglicherweise extrem
+# langen Soft-Wrap-Zeile. Eine kleine Opt-in-API erlaubt Fastra, für genau diese
+# Operationen die sinnvollen Auswahlzustände vor/nach der Mutation zu hinterlegen.
+CETV_UNDO="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/Utils/CEUndoManager.swift"
+TEXT_OPERATION_UNDO_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: Auswahlzustand grosser Textoperationen' \
+    "$CETV_UNDO" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (Auswahl bei Textoperation/Undo)"
+  chmod u+w "$CETV_UNDO"
+  /usr/bin/python3 - "$CETV_UNDO" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+
+old_group = '''    private struct UndoGroup {
+        var mutations: [Mutation]
+    }'''
+new_group = '''    private struct UndoGroup {
+        var mutations: [Mutation]
+        // Fastra-Patch: Auswahlzustand grosser Textoperationen. Optional,
+        // damit CodeEdits Standardverhalten fuer alle anderen Edits bleibt.
+        var fastraSelectionsBefore: [NSRange]?
+        var fastraSelectionsAfter: [NSRange]?
+    }'''
+if old_group not in src:
+    raise SystemExit(
+        f"{path}: UndoGroup hat sich geaendert — Patch 4q pruefen"
+    )
+src = src.replace(old_group, new_group, 1)
+
+old_undo = '''        updateSelectionsForMutations(mutations: item.mutations.map { $0.mutation })
+        textView.scrollSelectionToVisible()'''
+new_undo = '''        if let selections = item.fastraSelectionsBefore {
+            textView.selectionManager.setSelectedRanges(selections)
+            // Fastra-Patch: Layout nach grosser Textoperation synchron am
+            // wiederhergestellten Auswahlanker aufbauen.
+            textView.layoutManager.setNeedsLayout()
+            textView.layoutManager.layoutLines()
+            textView.needsDisplay = true
+        } else {
+            updateSelectionsForMutations(mutations: item.mutations.map { $0.mutation })
+        }
+        textView.scrollSelectionToVisible()'''
+if old_undo not in src:
+    raise SystemExit(
+        f"{path}: Undo-Auswahlpfad hat sich geaendert — Patch 4q pruefen"
+    )
+src = src.replace(old_undo, new_undo, 1)
+
+old_redo = '''        updateSelectionsForMutations(mutations: item.mutations.map { $0.inverse })
+        textView.scrollSelectionToVisible()'''
+new_redo = '''        if let selections = item.fastraSelectionsAfter {
+            textView.selectionManager.setSelectedRanges(selections)
+            // Fastra-Patch: Layout nach grosser Textoperation synchron am
+            // wiederhergestellten Auswahlanker aufbauen.
+            textView.layoutManager.setNeedsLayout()
+            textView.layoutManager.layoutLines()
+            textView.needsDisplay = true
+        } else {
+            updateSelectionsForMutations(mutations: item.mutations.map { $0.inverse })
+        }
+        textView.scrollSelectionToVisible()'''
+if old_redo not in src:
+    raise SystemExit(
+        f"{path}: Redo-Auswahlpfad hat sich geaendert — Patch 4q pruefen"
+    )
+src = src.replace(old_redo, new_redo, 1)
+
+old_group_init = '''            undoStack.append(UndoGroup(mutations: [newMutation]))
+            shouldBreakNextGroup = false'''
+new_group_init = '''            undoStack.append(UndoGroup(
+                mutations: [newMutation],
+                fastraSelectionsBefore: nil,
+                fastraSelectionsAfter: nil
+            ))
+            shouldBreakNextGroup = false'''
+if old_group_init not in src:
+    raise SystemExit(
+        f"{path}: UndoGroup-Initialisierung hat sich geaendert — Patch 4q pruefen"
+    )
+src = src.replace(old_group_init, new_group_init, 1)
+
+anchor = '''    /// Clears the undo/redo stacks.
+    public func clearStack() {'''
+method = '''    /// Fastra-Patch: Auswahlzustand grosser Textoperationen opt-in
+    /// hinterlegen. So stellt Undo den Cursor vor der Transformation und Redo
+    /// die Auswahl danach wieder her, statt die komplette Mutationsrange zu
+    /// markieren.
+    public func fastraSetSelectionSnapshotsForLatestUndo(
+        before: [NSRange],
+        after: [NSRange]
+    ) {
+        guard !isUndoing, !isRedoing, !undoStack.isEmpty else { return }
+        undoStack[undoStack.count - 1].fastraSelectionsBefore = before
+        undoStack[undoStack.count - 1].fastraSelectionsAfter = after
+    }
+
+    /// Clears the undo/redo stacks.
+    public func clearStack() {'''
+if anchor not in src:
+    raise SystemExit(
+        f"{path}: clearStack-Anker hat sich geaendert — Patch 4q pruefen"
+    )
+src = src.replace(anchor, method, 1)
+
+open(path, "w").write(src)
+PYEOF
+  TEXT_OPERATION_UNDO_PATCH_CHANGED=1
+fi
+
+# Bestehende Checkouts können bereits die erste 4q-Fassung ohne das
+# abschließende Layout-Rebuild enthalten. Frische Checkouts erhalten beide
+# Teile oben in einem Schritt; dieser Zweig migriert nur den lokalen Zwischenstand.
+if ! grep -q 'Fastra-Patch: Layout nach grosser Textoperation' \
+    "$CETV_UNDO" 2>/dev/null; then
+  echo "→ Ergänze CodeEditTextView-Patch (Layout nach Textoperation/Undo)"
+  chmod u+w "$CETV_UNDO"
+  /usr/bin/python3 - "$CETV_UNDO" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+old_undo = '''        if let selections = item.fastraSelectionsBefore {
+            textView.selectionManager.setSelectedRanges(selections)
+        } else {
+            updateSelectionsForMutations(mutations: item.mutations.map { $0.mutation })
+        }'''
+new_undo = '''        if let selections = item.fastraSelectionsBefore {
+            textView.selectionManager.setSelectedRanges(selections)
+            // Fastra-Patch: Layout nach grosser Textoperation synchron am
+            // wiederhergestellten Auswahlanker aufbauen.
+            textView.layoutManager.setNeedsLayout()
+            textView.layoutManager.layoutLines()
+            textView.needsDisplay = true
+        } else {
+            updateSelectionsForMutations(mutations: item.mutations.map { $0.mutation })
+        }'''
+old_redo = '''        if let selections = item.fastraSelectionsAfter {
+            textView.selectionManager.setSelectedRanges(selections)
+        } else {
+            updateSelectionsForMutations(mutations: item.mutations.map { $0.inverse })
+        }'''
+new_redo = '''        if let selections = item.fastraSelectionsAfter {
+            textView.selectionManager.setSelectedRanges(selections)
+            // Fastra-Patch: Layout nach grosser Textoperation synchron am
+            // wiederhergestellten Auswahlanker aufbauen.
+            textView.layoutManager.setNeedsLayout()
+            textView.layoutManager.layoutLines()
+            textView.needsDisplay = true
+        } else {
+            updateSelectionsForMutations(mutations: item.mutations.map { $0.inverse })
+        }'''
+if old_undo not in src or old_redo not in src:
+    raise SystemExit(
+        f"{path}: bestehender 4q-Auswahlpfad hat sich geaendert"
+    )
+src = src.replace(old_undo, new_undo, 1)
+src = src.replace(old_redo, new_redo, 1)
+open(path, "w").write(src)
+PYEOF
+  TEXT_OPERATION_UNDO_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: Auswahlzustand grosser Textoperationen' \
+    "$CETV_UNDO" \
+   || ! grep -q 'Fastra-Patch: Layout nach grosser Textoperation' \
+    "$CETV_UNDO"; then
+  echo "✗ FEHLER: Textoperations-Undo-Patch hat NICHT gegriffen." >&2
+  exit 1
+fi
+
+if [ "$TEXT_OPERATION_UNDO_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 

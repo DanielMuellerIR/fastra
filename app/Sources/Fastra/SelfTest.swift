@@ -170,6 +170,7 @@ enum SelfTest {
         case "hscroll":   waitForMainWindow { runHScrollTest() }
         case "crjump":    waitForMainWindow { runCRJumpTest() }
         case "textop":    waitForMainWindow { runTextOpTest() }
+        case "joinundo":  waitForMainWindow { runJoinUndoTest() }
         case "colsel":    waitForMainWindow { runColumnSelectionTest() }
         case "colselwrap": waitForMainWindow { runWrappedColumnSelectionTest() }
         case "colpaste":  waitForMainWindow { runColumnPasteTest() }
@@ -276,7 +277,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -4654,6 +4655,125 @@ enum SelfTest {
                 }
             }
         }
+    }
+
+    // MARK: - -selftest joinundo
+
+    /// Regression für eine Ganzdokument-Transformation mit stark verändertem
+    /// Zeilenlayout: „Zeilen verbinden" darf den echten Editor bei Soft Wrap
+    /// weder leerräumen noch nach Undo einen leeren Bildschirm oberhalb von
+    /// Zeile 1 hinterlassen. Der Modelltext allein reicht als Prüfung nicht,
+    /// weil er beim ursprünglichen Fehler jederzeit vollständig war.
+    private static func runJoinUndoTest() {
+        testLabel = "joinundo"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard let mainWindow = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        }), let root = mainWindow.contentView else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+
+        let content = (1...94).map { index in
+            if index == 1 { return "# AGENTS.md — Testdokument" }
+            if index == 5 { return "## Abschnitt" }
+            return index.isMultiple(of: 7)
+                ? ""
+                : "Zeile \(index): " + String(repeating: "Inhalt ", count: 8)
+        }.joined(separator: "\n") + "\n"
+        let joined = TextOperations.joinLines(
+            in: content,
+            selection: NSRange(location: 0, length: 0)
+        )?.newText
+        guard let joined else {
+            finish(false, "Join-Lines-Fixture lieferte kein Ergebnis")
+        }
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-joinundo-\(UUID().uuidString).md")
+        do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+
+        ws.loadFile(at: tmp) { ok in
+            try? FileManager.default.removeItem(at: tmp)
+            guard ok else { finish(false, "loadFile schlug fehl (completion false)") }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                guard let tv = editorTextView(in: root) as? TextView else {
+                    finish(false, "Editor-TextView nicht erreichbar")
+                }
+                tv.layoutManager.wrapLines = true
+                tv.selectionManager.setSelectedRange(
+                    NSRange(location: 0, length: 0)
+                )
+                tv.layoutManager.layoutLines()
+                NotificationCenter.default.post(
+                    name: .fastraTextOp,
+                    object: TextOpKind.joinLines.rawValue
+                )
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    let joinedVisible = visibleTextFragmentCount(in: tv)
+                    let joinedSelection = tv.selectedRange()
+                    let joinedTextCorrect = tv.string == joined
+
+                    tv.undoManager?.undo()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        let undoVisible = visibleTextFragmentCount(in: tv)
+                        let undoSelection = tv.selectedRange()
+                        let undoTextCorrect = tv.string == content
+                        tv.undoManager?.redo()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                            let redoVisible = visibleTextFragmentCount(in: tv)
+                            let redoSelection = tv.selectedRange()
+                            let redoTextCorrect = tv.string == joined
+                            let ok = joinedTextCorrect
+                                && joinedVisible > 0
+                                && joinedSelection == NSRange(location: 0, length: 0)
+                                && undoTextCorrect
+                                && undoVisible > 0
+                                && undoSelection == NSRange(location: 0, length: 0)
+                                && redoTextCorrect
+                                && redoVisible > 0
+                                && redoSelection == NSRange(location: 0, length: 0)
+                            finish(
+                                ok,
+                                "Join: Text=\(joinedTextCorrect), sichtbare Fragmente="
+                                    + "\(joinedVisible), Auswahl=\(joinedSelection), Zeichen="
+                                    + "\((content as NSString).length); "
+                                    + "Undo: Text=\(undoTextCorrect), sichtbare Fragmente="
+                                    + "\(undoVisible), Auswahl=\(undoSelection); "
+                                    + "Redo: Text=\(redoTextCorrect), sichtbare Fragmente="
+                                    + "\(redoVisible), Auswahl=\(redoSelection)"
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Zählt echte, nicht geparkte Text-Views im sichtbaren Editorbereich.
+    /// Das ist unabhängig von `rectForOffset`: genau die war bei früheren
+    /// Layoutfehlern trotz leerer Darstellung scheinbar plausibel.
+    private static func visibleTextFragmentCount(in textView: TextView) -> Int {
+        var fragments: [LineFragmentView] = []
+        func collect(_ view: NSView) {
+            if let fragment = view as? LineFragmentView {
+                fragments.append(fragment)
+            }
+            view.subviews.forEach(collect)
+        }
+        collect(textView)
+        return fragments.filter {
+            !$0.isHidden
+                && $0.frame != .zero
+                && ($0.lineFragment?.documentRange.length ?? 0) > 0
+                && ($0.lineFragment?.contents.reduce(0) {
+                    $0 + $1.length
+                } ?? 0) > 0
+                && $0.frame.intersects(textView.visibleRect)
+        }.count
     }
 
     // MARK: - -selftest colsel

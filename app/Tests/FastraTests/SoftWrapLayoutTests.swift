@@ -228,6 +228,80 @@ struct SoftWrapLayoutTests {
         #expect(finalRect.width < fullLineWidth - 1)
     }
 
+    @Test("Zeilen verbinden und Undo halten Text und Layout sichtbar")
+    @MainActor
+    func joinLinesAndUndoKeepTextVisible() throws {
+        let original = (1...94).map { index in
+            if index == 1 { return "# AGENTS.md — Testdokument" }
+            if index == 5 { return "## Abschnitt" }
+            return index.isMultiple(of: 7)
+                ? ""
+                : "Zeile \(index): " + String(repeating: "Inhalt ", count: 8)
+        }.joined(separator: "\n") + "\n"
+        let editor = controller(
+            text: original,
+            column: 40,
+            width: 900
+        )
+        let originalCursor = NSRange(
+            location: (original as NSString).length,
+            length: 0
+        )
+        editor.textView.selectionManager.setSelectedRange(
+            originalCursor
+        )
+        let result = try #require(
+            TextOperations.joinLines(
+                in: original,
+                selection: originalCursor
+            )
+        )
+
+        editor.textView.fastraApplyTextOperation(
+            replacing: result.affectedRange,
+            with: result.newText
+        )
+        editor.view.layoutSubtreeIfNeeded()
+        editor.textView.layoutManager.layoutLines()
+
+        #expect(editor.textView.string == result.newText)
+        #expect(hasVisibleTextFragment(editor))
+        #expect(editor.textView.selectedRange() == NSRange(location: 0, length: 0))
+
+        editor.textView.undoManager?.undo()
+        editor.view.layoutSubtreeIfNeeded()
+        editor.textView.layoutManager.layoutLines()
+
+        #expect(editor.textView.string == original)
+        #expect(hasVisibleTextFragment(editor))
+        #expect(editor.textView.selectedRange() == originalCursor)
+
+        editor.textView.undoManager?.redo()
+        editor.view.layoutSubtreeIfNeeded()
+        editor.textView.layoutManager.layoutLines()
+
+        #expect(editor.textView.string == result.newText)
+        #expect(hasVisibleTextFragment(editor))
+        #expect(editor.textView.selectedRange() == NSRange(location: 0, length: 0))
+    }
+
+    @MainActor
+    private func hasVisibleTextFragment(_ editor: TextViewController) -> Bool {
+        let visible = editor.textView.visibleRect
+        return editor.textView.layoutManager.lineStorage.contains { line in
+            line.data.lineFragments.contains { fragment in
+                let globalY = line.yPos + fragment.yPos
+                let rect = NSRect(
+                    x: 0,
+                    y: globalY,
+                    width: 1,
+                    height: fragment.height
+                )
+                return !fragment.range.isEmpty && rect.intersects(visible)
+            }
+        }
+    }
+
     @MainActor
     private func findGuide(in root: NSView) -> NSView? {
         if String(describing: type(of: root)).contains("ReformattingGuideView") {

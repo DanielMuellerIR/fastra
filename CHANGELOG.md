@@ -9,6 +9,22 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.43.3] — 2026-07-20
+
+### Behoben
+
+- „Zeilen verbinden“ hält auch bei langen Markdown-Dokumenten Text, Gutter und
+  Cursor sichtbar, statt nach der Ganzdokument-Transformation leer zu wirken.
+- Rückgängig und Wiederholen stellen bei diesen Textoperationen die passende
+  Cursor-/Auswahlposition wieder her. Dadurch entsteht nach ⌘Z kein leerer
+  Bildschirm oberhalb von Zeile 1 und nicht mehr das ganze alte Dokument als
+  unerwartete Auswahl.
+
+### Intern
+
+- Ein echter Editor-Selbsttest prüft Verbinden, Undo und Redo nicht nur am
+  Modelltext, sondern auch an den tatsächlich sichtbaren Soft-Wrap-Fragmenten.
+
 ## [v1.43.2] — 2026-07-20
 
 ### Behoben

@@ -341,3 +341,34 @@ zeichenexakte rechte Kante erhalten.
 die echte CodeEdit-Auswahl per `selectAll`, prüft die vollständige
 Dokumentrange und verlangt für die letzte Textzeile ein sichtbares
 Auswahlrechteck. Der Fall läuft getrennt mit LF, CRLF und CR.
+
+### F.15 Große Ersetzungen brauchen einen expliziten Auswahl- und Layoutanker (2026-07-20)
+
+„Zeilen verbinden“ ersetzt den bearbeiteten Bereich bewusst in einer einzigen
+Undo-fähigen Mutation. CodeEditTextView setzt die Auswahl danach standardmäßig
+ans Ende des Ersatztexts. Bei einem ganzen Markdown-Dokument ist das eine
+einzige, tausende Zeichen lange Soft-Wrap-Zeile. Der Cursor am Zeilenende und
+der noch am Dokumentanfang liegende Viewport können dadurch während der
+asynchronen Highlight-Aktualisierung verschiedene Layoutstände beobachten:
+Der Modelltext bleibt vollständig, aber Text und Gutter werden leer gerendert.
+
+Beim Undo entsteht ein zweiter Fehler: `CEUndoManager` rekonstruiert die Auswahl
+aus der Mutationsrange und markiert deshalb das gesamte alte Dokument. Sein
+Scrollanker kann dann vor der neu aufgebauten ersten Zeile liegen, sodass ein
+leerer Bildschirm oberhalb von Zeile 1 erscheint.
+
+**Workaround (Patch 4q in `build.sh`):** Fastras Textoperationspfad bildet die
+alte Auswahl bewusst auf den Ersatzbereich ab. Bei einer Ganzdokument-Operation
+ohne Auswahl bleibt der Cursor am stabilen Blockanfang. Eine opt-in-Erweiterung
+des `CEUndoManager` speichert nur für solche Operationen die Auswahl vor und
+nach der Mutation. Undo und Redo stellen den passenden Zustand wieder her,
+bauen das Layout synchron an diesem Anker auf und scrollen ihn sichtbar.
+Gewöhnliches Tippen, Einfügen und CodeEdits übrige Undo-Semantik bleiben
+unverändert.
+
+**Regressionen:** `SoftWrapLayoutTests.joinLinesAndUndoKeepTextVisible` nutzt
+einen echten `TextViewController` mit langem Markdown und verlangt nach
+Verbinden, Undo und Redo jeweils korrekten Text, Cursor am Dokumentanfang und
+sichtbare Layoutfragmente. `./selftest.sh joinundo` führt denselben Menüpfad im
+gepackten Editor aus und zählt reale sichtbare `LineFragmentView`s; ein bloßer
+Vergleich des Modelltexts hätte den ursprünglichen Fehler nicht erkannt.

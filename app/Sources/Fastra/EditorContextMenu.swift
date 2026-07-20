@@ -19,6 +19,76 @@
 import AppKit
 import CodeEditTextView
 
+extension TextView {
+    /// Wendet eine Fastra-Textoperation als eigene Undo-Gruppe an und hält die
+    /// Auswahl an einer stabilen, zum Ergebnis passenden Position.
+    ///
+    /// CodeEditTextView setzt die Auswahl bei einer großen Ersetzung sonst ans
+    /// Ende des Ersatztexts. Bei „Zeilen verbinden“ ist das eine einzige,
+    /// tausende Zeichen lange Soft-Wrap-Zeile; Layout und Scroll-Anker können
+    /// dadurch auseinanderlaufen. Undo würde anschließend die komplette alte
+    /// Mutationsrange markieren. Die expliziten Auswahl-Snapshots verhindern
+    /// beide Zustände, ohne normales Tippen oder Einfügen zu verändern.
+    func fastraApplyTextOperation(replacing range: NSRange, with replacement: String) {
+        let selectionBefore = selectedRange()
+        let replacementLength = (replacement as NSString).length
+        let selectionAfter = fastraSelection(
+            afterReplacing: range,
+            replacementLength: replacementLength,
+            selectionBefore: selectionBefore
+        )
+        let undoManager = _undoManager
+        let startsUndoGroup = !(undoManager?.isGrouping ?? false)
+
+        if startsUndoGroup {
+            undoManager?.beginUndoGrouping()
+        }
+        replaceCharacters(in: range, with: replacement)
+        selectionManager.setSelectedRange(selectionAfter)
+        undoManager?.fastraSetSelectionSnapshotsForLatestUndo(
+            before: [selectionBefore],
+            after: [selectionAfter]
+        )
+        if startsUndoGroup {
+            undoManager?.endUndoGrouping()
+        }
+
+        // Die neue Auswahl ist der Layout-Anker. Das synchrone Neulayout ist
+        // für große Zeilenstruktur-Änderungen nötig, bevor asynchrones
+        // Markdown-Highlighting erneut Attribute invalidiert.
+        layoutManager.setNeedsLayout()
+        layoutManager.layoutLines()
+        scrollSelectionToVisible()
+    }
+
+    private func fastraSelection(
+        afterReplacing range: NSRange,
+        replacementLength: Int,
+        selectionBefore: NSRange
+    ) -> NSRange {
+        if selectionBefore.length > 0 {
+            return NSRange(location: range.location, length: replacementLength)
+        }
+
+        let newDocumentLength = textStorage.length - range.length + replacementLength
+        let location: Int
+        if selectionBefore.location < range.location {
+            location = selectionBefore.location
+        } else if selectionBefore.location > range.max {
+            location = selectionBefore.location - range.length + replacementLength
+        } else {
+            // Eine Transformation des ganzen Dokuments hat keine eindeutige
+            // Zeichenabbildung. Der Anfang des bearbeiteten Blocks ist stabil
+            // und verhindert den Sprung ans Ende einer riesigen Soft-Wrap-Zeile.
+            location = range.location
+        }
+        return NSRange(
+            location: min(max(0, location), max(0, newDocumentLength)),
+            length: 0
+        )
+    }
+}
+
 /// Identifiziert eine Text-Transformation (BBEdit-„Text"-Menü-Basics).
 /// `Int`-rohwertig, damit die SwiftUI-Menüleiste die Aktion verlustfrei per
 /// Notification (`.fastraTextOp`, `object` = `rawValue`) an den AppDelegate
@@ -952,7 +1022,10 @@ final class EditorContextMenu: NSObject {
             NSSound.beep()
             return
         }
-        textView.replaceCharacters(in: result.affectedRange, with: newBlock)
+        textView.fastraApplyTextOperation(
+            replacing: result.affectedRange,
+            with: newBlock
+        )
     }
 
     private func replacementBlock(

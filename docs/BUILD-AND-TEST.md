@@ -71,14 +71,15 @@ signierte, aber nicht notarisierten Variante dient weiter `install.sh --no-notar
 Beim Version-Bump `app/Info.plist` mitziehen (siehe AGENTS.md), sonst zeigt die
 App eine veraltete Version.
 
-`build.sh` kapselt Xcode-Toolchain-Switch + achtzehn Checkout-Patches
+`build.sh` kapselt Xcode-Toolchain-Switch + neunzehn Checkout-Patches
 (SwiftLint-Plugins aus, CodeEditSymbols Resources, CMD+F-Zombie-Kill,
 toter cursorPositions-Reconcile, verworfene Auto-Vervollständigung schließen,
 Gutter-Drag-Clamp, horizontaler Scrollbalken, Zeilenbreiten-Messung,
 exotische Sprachen ausschneiden, Highlight-Query-Pfad layout-robust,
 Text-Geist-Fix, zwei portable Ressourcenpfade, getrennte 4D-Theme-Slots
 einschließlich eines optionalen Methoden-Slots, feste Soft-Wrap-Spalten und
-Rechteckauswahl auf logischen Zeilen).
+Rechteckauswahl auf logischen Zeilen, vollständige Dateiende-Auswahl sowie
+stabile Auswahl- und Layoutzustände großer Textoperationen).
 
 Seit v1.19.0 verpackt `build.sh` zusätzlich das exakt gepinnte
 `Sparkle.framework` unter `Contents/Frameworks`, entfernt die für die nicht
@@ -171,6 +172,20 @@ null. Der Patch zeichnet eine ausgewählte abschließende Zeilenendung bis zum
 rechten Textrand; Dateien ohne abschließenden Zeilenumbruch markieren weiterhin
 nur bis zum letzten Zeichen. `SoftWrapLayoutTests` prüft die echte
 CodeEdit-Auswahlrange und deren erzeugte Rechtecke für alle drei Zeilenenden.
+
+Patch 4q (große Textoperationen mit Undo, 2026-07-20): CodeEditTextView setzt
+nach einer großen Bereichsersetzung den Cursor ans Ende des Ersatztexts und
+leitet die Undo-Auswahl allein aus der alten Mutationsrange ab. Bei „Zeilen
+verbinden“ entstand dadurch eine extrem lange Soft-Wrap-Zeile mit instabilem
+Scroll-/Layoutanker; Undo markierte anschließend das ganze alte Dokument und
+konnte einen leeren Bildschirm oberhalb von Zeile 1 zeigen. Fastras
+Textoperationspfad bildet Cursor oder Selektion nun bewusst auf das Ergebnis ab
+und hinterlegt dafür opt-in Auswahlzustände im Undo-Element. Undo und Redo bauen
+das Layout synchron am wiederhergestellten Anker auf. Normales Tippen und
+Einfügen behalten CodeEdits Standardverhalten. `SoftWrapLayoutTests` prüft den
+echten Controller einschließlich Text, sichtbarer Fragmente, Auswahl,
+Undo und Redo. `./selftest.sh joinundo` treibt denselben Menüpfad im gepackten
+Markdown-Editor und zählt echte sichtbare `LineFragmentView`s.
 
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 
