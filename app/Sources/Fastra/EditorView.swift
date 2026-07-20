@@ -87,15 +87,15 @@ struct EditorView: View {
     @AppStorage(DocumentZoom.defaultsKey) private var documentZoomLevel = 0
     @AppStorage(EditorFonts.defaultsKey) private var editorFontName = EditorFonts.systemMonospacedName
     @AppStorage("markdown.integratedPreview") private var showMarkdownPreview = true
-    @AppStorage("markdown.previewWidth") private var markdownPreviewWidth = 420.0
     /// Direkter Seitenleisten-Schalter im Fenster-Chrome, wie in Codex.
     /// AppStorage hält alle Dokumentfenster und den Menüpunkt synchron.
     @AppStorage("editor.sidebarVisible") private var showSidebar = true
 
-    /// Breite der linken Seitenleiste (Dateibaum/„GEÖFFNET"). App-weit und
-    /// persistent; über den Splitter zwischen Seitenleiste und Editor ziehbar
-    /// (Daniel-Wunsch 2026-07-12). Geklemmt auf einen sinnvollen Bereich.
-    @AppStorage("editor.sidebarWidth") private var sidebarWidth = 200.0
+    // Die Breite der linken Seitenleiste und der rechten Markdown-Vorschau
+    // liegen jetzt PRO FENSTER auf dem `workspace` (siehe
+    // `Workspace.sidebarWidth`/`markdownPreviewWidth`). Vorher teilte ein
+    // prozessweiter `@AppStorage`-Wert den Splitter über alle Fenster
+    // (Daniel-Befund 2026-07-20). Geklemmt wird weiterhin hier in der Ansicht.
 
     /// Grenzen der Seitenleisten-Breite beim Ziehen des Splitters.
     private let sidebarMinWidth: CGFloat = 180
@@ -134,7 +134,7 @@ struct EditorView: View {
                 // Breite kommt aus der persistenten Einstellung; per Splitter
                 // ziehbar (siehe `sidebarSplitter`). Klemmen schützt vor einer
                 // gespeicherten Un-Breite (z.B. 0) aus einer früheren Version.
-                .frame(width: min(max(CGFloat(sidebarWidth), sidebarMinWidth), sidebarMaxWidth))
+                .frame(width: min(max(CGFloat(workspace.sidebarWidth), sidebarMinWidth), sidebarMaxWidth))
                 .frame(maxHeight: .infinity)
                 .background(Theme.surfaceBase)
                 // AppKit-Editor und Vorschau besitzen kräftige Idealgrößen.
@@ -177,8 +177,8 @@ struct EditorView: View {
             // Alte gespeicherte Werte konnten bis 140 pt reichen. Den Wert
             // selbst anheben, damit der erste Splitter-Drag nicht von einer
             // unsichtbaren 140-pt-Ausgangslage auf 180 pt springt.
-            sidebarWidth = min(max(sidebarWidth, Double(sidebarMinWidth)),
-                               Double(sidebarMaxWidth))
+            workspace.sidebarWidth = min(max(workspace.sidebarWidth, Double(sidebarMinWidth)),
+                                         Double(sidebarMaxWidth))
             cursorMemoryTabID = workspace.activeTabID
         }
         // Dieser Beobachter lebt absichtlich am stabilen Editor-Root. Die
@@ -413,7 +413,7 @@ struct EditorView: View {
     /// Aktuell wirksame Breite der Seitenleiste inklusive ihres Splitters.
     private var sidebarOccupiedWidth: CGFloat {
         guard showSidebar else { return 0 }
-        return min(max(CGFloat(sidebarWidth), sidebarMinWidth), sidebarMaxWidth)
+        return min(max(CGFloat(workspace.sidebarWidth), sidebarMinWidth), sidebarMaxWidth)
             + ResizableDivider.thickness
     }
 
@@ -441,7 +441,7 @@ struct EditorView: View {
     /// ist. Der gespeicherte Wert selbst bleibt unangetastet: Wird das Fenster
     /// wieder breiter, kehrt die Vorschau zu ihrer Wunschbreite zurück.
     private var effectiveMarkdownPreviewWidth: CGFloat {
-        min(max(CGFloat(markdownPreviewWidth), markdownPreviewMinWidth), markdownPreviewMaxWidth)
+        min(max(CGFloat(workspace.markdownPreviewWidth), markdownPreviewMinWidth), markdownPreviewMaxWidth)
     }
 
     private var showsIntegratedMarkdownPreview: Bool {
@@ -457,7 +457,7 @@ struct EditorView: View {
         // springen.
         let width = Binding<Double>(
             get: { Double(effectiveMarkdownPreviewWidth) },
-            set: { markdownPreviewWidth = $0 }
+            set: { workspace.markdownPreviewWidth = $0 }
         )
         return ResizableDivider(value: width,
                                 range: Double(markdownPreviewMinWidth)...Double(markdownPreviewMaxWidth),
@@ -1129,7 +1129,7 @@ struct EditorView: View {
     /// Komponente besitzt eine breite Trefferfläche, einen stabilen Cursor und
     /// misst im globalen Koordinatenraum gegen das frühere Zappeln.
     private var sidebarSplitter: some View {
-        ResizableDivider(value: $sidebarWidth,
+        ResizableDivider(value: $workspace.sidebarWidth,
                          range: Double(sidebarMinWidth)...Double(sidebarMaxWidth),
                          surface: Theme.surfaceBase,
                          trailingSurface: Theme.surfaceRaised,

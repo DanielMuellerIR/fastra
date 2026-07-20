@@ -9,6 +9,16 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.44.2] — 2026-07-20
+
+### Behoben
+
+- Der Splitter der linken Seitenleiste (und der rechten Markdown-Vorschau)
+  verschiebt sich beim Ziehen nur noch im eigenen Fenster. Zuvor bewegte er
+  sich in allen offenen Fenstern gleichzeitig, weil die Breite prozessweit
+  geteilt war. Jede gezogene Breite gilt jetzt pro Fenster; der zuletzt
+  eingestellte Wert dient weiterhin als Startbreite neu geöffneter Fenster.
+
 ## [v1.44.1] — 2026-07-20
 
 ### Behoben

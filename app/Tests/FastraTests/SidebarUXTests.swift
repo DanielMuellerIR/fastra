@@ -351,3 +351,39 @@ func emptinessCache_isIdempotentAcrossRefreshes() throws {
     cache.probe(dir)
     #expect(!cache.isKnownEmpty(dir))
 }
+
+// MARK: - Splitter-Breiten sind pro Fenster (Daniel-Befund 2026-07-20)
+
+@Test("Splitter-Breiten: Ziehen in einem Fenster verschiebt kein anderes, seedet aber neue")
+@MainActor
+func splitterWidths_arePerWindowButSeedNewWindows() {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    // Erstes Fenster bei leerer Suite → die Standardbreiten.
+    let first = Workspace(defaults: defaults)
+    #expect(first.sidebarWidth == SidebarLayout.defaultSidebarWidth)
+    #expect(first.markdownPreviewWidth == SidebarLayout.defaultPreviewWidth)
+
+    // Splitter im ersten Fenster ziehen (der persistente Wert wird gemerkt).
+    first.sidebarWidth = 300
+    first.markdownPreviewWidth = 500
+
+    // Ein danach geöffnetes zweites Fenster erbt diese Breite als Startwert.
+    let second = Workspace(defaults: defaults)
+    #expect(second.sidebarWidth == 300)
+    #expect(second.markdownPreviewWidth == 500)
+
+    // Kernregel: Weiteres Ziehen im ersten Fenster darf das zweite NICHT
+    // mitbewegen — genau das war der gemeldete Fehler.
+    first.sidebarWidth = 250
+    first.markdownPreviewWidth = 460
+    #expect(second.sidebarWidth == 300,
+            "Der Seitenleisten-Splitter darf nur sein eigenes Fenster verändern")
+    #expect(second.markdownPreviewWidth == 500,
+            "Der Vorschau-Splitter darf nur sein eigenes Fenster verändern")
+
+    // Und umgekehrt: Ziehen im zweiten Fenster lässt das erste unberührt.
+    second.sidebarWidth = 400
+    #expect(first.sidebarWidth == 250, "Kein Fenster darf ein anderes mitziehen")
+}

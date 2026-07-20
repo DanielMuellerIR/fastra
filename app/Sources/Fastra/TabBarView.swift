@@ -11,15 +11,17 @@ struct TabBarView: View {
     @Environment(\.uiScale) private var uiScale
 
     @AppStorage("editor.sidebarVisible") private var showSidebar = true
-    @AppStorage("editor.sidebarWidth") private var sidebarWidth = 200.0
     @AppStorage("markdown.integratedPreview") private var showPreview = true
 
     private let sidebarMinWidth = 180.0
     private let sidebarMaxWidth = 480.0
     private let dividerWidth: CGFloat = 11
 
+    // Die Seitenleisten-Breite liegt pro Fenster auf dem `workspace`, damit der
+    // Titelleisten-Vorlauf exakt mit der Seitenleiste darunter fluchtet und der
+    // Splitter nur dieses Fenster verändert (Daniel-Befund 2026-07-20).
     private var effectiveSidebarWidth: CGFloat {
-        CGFloat(min(max(sidebarWidth, sidebarMinWidth), sidebarMaxWidth))
+        CGFloat(min(max(workspace.sidebarWidth, sidebarMinWidth), sidebarMaxWidth))
     }
 
     var body: some View {

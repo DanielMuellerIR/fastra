@@ -252,6 +252,18 @@ private struct GitDiffLoadLease {
     let lease: GitCancelling
 }
 
+/// Startwerte und UserDefaults-Schlüssel der ziehbaren Fensterbreiten. Die
+/// Werte sind PRO FENSTER veränderlich (siehe `Workspace.sidebarWidth`); der
+/// gespeicherte Wert dient nur als Startbreite neuer Fenster. Die Schlüssel
+/// bleiben identisch zur früheren `@AppStorage`-Fassung, damit bereits
+/// gespeicherte Nutzerbreiten weiter gelten.
+enum SidebarLayout {
+    static let defaultSidebarWidth: Double = 200
+    static let defaultPreviewWidth: Double = 420
+    static let sidebarWidthKey = "editor.sidebarWidth"
+    static let previewWidthKey = "markdown.previewWidth"
+}
+
 final class Workspace: ObservableObject {
     typealias LanguageDetectionScheduler = (@escaping @Sendable () -> Void) -> Void
 
@@ -285,6 +297,18 @@ final class Workspace: ObservableObject {
     /// z. B. „Seitenleiste zeigt jetzt …“ nach dem automatischen
     /// Ordnerwechsel. Blendet sich nach wenigen Sekunden selbst aus.
     @Published var sidebarNotice: String?
+    /// Breite der linken Seitenleiste in Punkten. Bewusst PRO FENSTER (nicht
+    /// prozessweit über `@AppStorage`): Der Splitter darf nur das eigene
+    /// Fenster verändern, nicht alle offenen gleichzeitig verschieben
+    /// (Daniel-Befund 2026-07-20). Der zuletzt gezogene Wert wird dennoch in
+    /// UserDefaults gemerkt und dient als Startbreite NEUER Fenster. Das
+    /// Klemmen auf einen sinnvollen Bereich erledigt die Editor-Ansicht.
+    @Published var sidebarWidth: Double = SidebarLayout.defaultSidebarWidth
+    /// Breite der rechten Markdown-Vorschau in Punkten. Gleiche Begründung wie
+    /// `sidebarWidth`: pro Fenster ziehbar, aber der letzte Wert seedet neue
+    /// Fenster. Vorher teilte auch dieser Splitter alle Fenster (identischer
+    /// Befund wie die Seitenleiste).
+    @Published var markdownPreviewWidth: Double = SidebarLayout.defaultPreviewWidth
     /// Dateinamens-Filter der Projekt-Seitenleiste (Etappe 3 Wunschpaket
     /// 2026-07c). Leer = kein Filter. Projektwechsel setzt zurück.
     @Published var fileTreeFilterQuery: String = ""
@@ -699,6 +723,28 @@ final class Workspace: ObservableObject {
         $recentSearchFolders
             .dropFirst()
             .sink { entries in RecentSearchFoldersStore.save(entries, to: defaults) }
+            .store(in: &persistenceBag)
+
+        // Seitenleisten-/Vorschau-Breite pro Fenster (Daniel-Befund 2026-07-20):
+        // aus DERSELBEN Suite laden, in die auch gespeichert wird. Der
+        // gespeicherte Wert ist nur die Startbreite dieses frisch geöffneten
+        // Fensters; das Ziehen wirkt danach lokal und verschiebt keine anderen
+        // Fenster mehr. `object(forKey:)` unterscheidet „nie gesetzt" (→
+        // Standardbreite) von einem echten gespeicherten Wert.
+        self.sidebarWidth = (defaults.object(forKey: SidebarLayout.sidebarWidthKey)
+            as? Double) ?? SidebarLayout.defaultSidebarWidth
+        self.markdownPreviewWidth = (defaults.object(forKey: SidebarLayout.previewWidthKey)
+            as? Double) ?? SidebarLayout.defaultPreviewWidth
+        // `dropFirst()` überspringt den gerade gesetzten Startwert, sonst
+        // schriebe der Sink direkt nach dem Init überflüssig zurück. `defaults`
+        // capturen hält Selbsttests in ihrer isolierten Suite.
+        $sidebarWidth
+            .dropFirst()
+            .sink { width in defaults.set(width, forKey: SidebarLayout.sidebarWidthKey) }
+            .store(in: &persistenceBag)
+        $markdownPreviewWidth
+            .dropFirst()
+            .sink { width in defaults.set(width, forKey: SidebarLayout.previewWidthKey) }
             .store(in: &persistenceBag)
 
         // Recent-Files (K2) und Such-Verlauf (K4) aus DERSELBEN Suite laden
