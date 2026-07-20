@@ -93,11 +93,11 @@ Rechtsklickmenü im Editor.
 - **Buchstaben:** GROSSBUCHSTABEN, kleinbuchstaben, Wörter Groß.
 - **Whitespace:** Leerzeichen am Zeilenende entfernen, Tabs → Leerzeichen,
   Leerzeichen → Tabs, Einrücken, Ausrücken, Zeilen hart umbrechen…
-- **Zeilen:** Zeilen umkehren, Leerzeilen entfernen, Zeilen verbinden
-  (mit/ohne Leerzeichen), Präfix/Suffix an Zeilen…, Zeilennummern
-  hinzufügen/entfernen, Nur Zeilen mit Treffer behalten…, Zeilen mit
-  Treffer löschen…, Nur doppelte Zeilen behalten, Mehrfach vorkommende
-  Zeilen entfernen.
+- **Zeilen:** alphabetisch auf-/absteigend sortieren, Zeilen umkehren,
+  Leerzeilen entfernen, Zeilen verbinden (mit/ohne Leerzeichen),
+  Präfix/Suffix an Zeilen…, Zeilennummern hinzufügen/entfernen, Nur Zeilen
+  mit Treffer behalten…, Zeilen mit Treffer löschen…, Nur doppelte Zeilen
+  behalten, Mehrfach vorkommende Zeilen entfernen.
 - **Zeichen:** Steuerzeichen entfernen, Anführungszeichen gerade richten,
   Anführungszeichen schwungvoll (englisch), Escape-Sequenzen auflösen,
   Zeichen tauschen, Wörter tauschen.
@@ -382,6 +382,12 @@ Die Fußzeile zeigt Encoding und Zeilenende des aktiven Tabs:
 Fenster (eigene Tabs, eigene Suche). ⌘S speichert, ⌘W schließt den Tab —
 bei ungespeicherten Änderungen fragt Fastra nach. ⌘J springt zu einer
 Zeilennummer.
+
+Beim nächsten Start stellt Fastra standardmäßig die zuletzt geöffneten
+Projektfenster, gespeicherten Dokumente, aktiven Tabs und Fensterpositionen
+wieder her. Unter **Einstellungen → Start** lässt sich das abschalten.
+Inhalte ungesicherter oder unbenannter Dokumente werden nie gespeichert oder
+wiederhergestellt.
 
 Ein Shift-Klick auf einen zweiten normalen Text-Tab markiert beide für den
 Dateivergleich, ohne den aktuellen Tab umzuschalten. Der aktuelle Tab bleibt

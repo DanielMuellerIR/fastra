@@ -225,7 +225,9 @@
 "Kopieren" = "Copy";
 "Einfügen" = "Paste";
 "Zeilen sortieren" = "Sort Lines";
-"Sortiert die selektierten Zeilen alphabetisch — sind sie schon sortiert, wird die Reihenfolge umgedreht. Ohne Auswahl: die ganze Datei." = "Sort the selected lines alphabetically; if already sorted, reverse their order. With no selection, process the entire file.";
+"Zeilen aufsteigend sortieren" = "Sort Lines Ascending";
+"Zeilen absteigend sortieren" = "Sort Lines Descending";
+"Sortiert die selektierten Zeilen alphabetisch in der gewählten Richtung. Ohne Auswahl: die ganze Datei." = "Sort the selected lines alphabetically in the selected direction. With no selection, process the entire file.";
 "Entfernt doppelte Zeilen — das erste Vorkommen bleibt stehen. Ohne Auswahl: die ganze Datei." = "Remove duplicate lines while keeping the first occurrence. With no selection, process the entire file.";
 "Formatierten Inhalt aus der Zwischenablage (z.B. aus dem Browser) als sauberes Markdown einfügen." = "Paste formatted clipboard content, such as from a browser, as clean Markdown.";
 "Anwenden" = "Apply";
@@ -242,6 +244,9 @@
 "Automatisch" = "Automatic";
 "Hell" = "Light";
 "Dunkel" = "Dark";
+"Start" = "Startup";
+"Zuletzt geöffnete Fenster und Dokumente wiederherstellen" = "Restore Previously Open Windows and Documents";
+"Fastra öffnet beim nächsten Start dieselben Projektfenster und gespeicherten Dokumente. Ungesicherte oder unbenannte Dokumentinhalte werden nie wiederhergestellt." = "On the next launch, Fastra reopens the same project windows and saved documents. Unsaved or untitled document contents are never restored.";
 "LF (Unix / macOS)" = "LF (Unix / macOS)";
 "CRLF (Windows)" = "CRLF (Windows)";
 "CR (klassisches Mac OS)" = "CR (classic Mac OS)";

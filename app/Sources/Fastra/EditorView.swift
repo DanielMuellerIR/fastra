@@ -10,11 +10,40 @@ import UniformTypeIdentifiers
 // `NSColor.white` / `NSColor(white:alpha:)` (= Gray-Colorspace) eine NSInvalidArgumentException.
 // Alle Theme-Farben unten via `rgb(...)`-Helper im sRGB-Space.
 
+/// Merkt Einfügemarken und Selektionen pro Tab. `SourceEditorState` lebt im
+/// stabilen `EditorView` und überlebt den per `.id` neu erzeugten eigentlichen
+/// Editor. Ohne diese Trennung wurde deshalb die Auswahl aus Datei A
+/// unverändert auf Datei B angewandt.
+struct EditorCursorMemory {
+    private var rangesByTab: [UUID: [NSRange]] = [:]
+
+    mutating func remember(_ ranges: [NSRange], for tabID: UUID?) {
+        guard let tabID else { return }
+        rangesByTab[tabID] = ranges
+    }
+
+    mutating func switchTab(
+        from previousTabID: UUID?,
+        currentRanges: [NSRange],
+        to nextTabID: UUID?
+    ) -> [NSRange] {
+        remember(currentRanges, for: previousTabID)
+        guard let nextTabID else { return [] }
+        return rangesByTab[nextTabID] ?? []
+    }
+}
+
 /// Phase-2-Editor: echter Text-Editor mit Sprach-Highlighting via CodeEditSourceEditor.
 struct EditorView: View {
     @EnvironmentObject var workspace: Workspace
     @Environment(\.uiScale) private var uiScale
     @State private var editorState = SourceEditorState(cursorPositions: [], findPanelVisible: false)
+    @State private var cursorMemory = EditorCursorMemory()
+    /// Der Tab, zu dem `editorState.cursorPositions` momentan gehört. Beim
+    /// Wechsel ist `workspace.activeTabID` bereits neu; diese separate ID
+    /// verhindert, dass die alte Auswahl versehentlich unter dem neuen Tab
+    /// abgelegt wird.
+    @State private var cursorMemoryTabID: UUID?
     @StateObject private var minimapLayoutCoordinator = MinimapLayoutCoordinator()
     /// Highlight-Provider der Eigen-Sprachen (Registry, Etappe 3 Wunschpaket
     /// 2026-07b) — ein Provider je Sprache, überlebt Tab-Wechsel/Remounts.
@@ -150,6 +179,7 @@ struct EditorView: View {
             // unsichtbaren 140-pt-Ausgangslage auf 180 pt springt.
             sidebarWidth = min(max(sidebarWidth, Double(sidebarMinWidth)),
                                Double(sidebarMaxWidth))
+            cursorMemoryTabID = workspace.activeTabID
         }
         // Dieser Beobachter lebt absichtlich am stabilen Editor-Root. Die
         // Konfliktleiste selbst verschwindet bei einem normalen Zwischentab;
@@ -157,6 +187,24 @@ struct EditorView: View {
         // beginnen und dessen Markerbreite neu prüfen.
         .onChange(of: workspace.activeTabID) {
             workspace.activeGitConflictFileDidChange()
+        }
+        .onChange(of: workspace.activeTabID) { _, newTabID in
+            let currentRanges = (editorState.cursorPositions ?? []).map(\.range)
+            let restoredRanges = cursorMemory.switchTab(
+                from: cursorMemoryTabID,
+                currentRanges: currentRanges,
+                to: newTabID
+            )
+            cursorMemoryTabID = newTabID
+            selectionAnchor = nil
+            editorState.cursorPositions = restoredRanges.map {
+                CursorPosition(range: $0)
+            }
+            // Der State-Wechsel wird normalerweise über den Beobachter am
+            // Editor gespiegelt. Diese direkte Aktualisierung schließt auch
+            // den kurzen Remount-Moment ohne montierten SourceEditor ab.
+            updateFooterCursor(from: editorState.cursorPositions ?? [])
+            scheduleStats(for: editorState.cursorPositions ?? [])
         }
         // Erste Nutzung von Markdown-Toolbar/Bild-Einfügen → dezenten,
         // nicht-modalen Hinweis mit Hilfe-Sprung zeigen (einmalig).
@@ -585,6 +633,8 @@ struct EditorView: View {
         // damit der Footer (StatusBarView) Zeile/Spalte zeigen kann.
         .onChange(of: editorState.cursorPositions) { _, positions in
             let list = positions ?? []
+            cursorMemory.remember(list.map(\.range),
+                                  for: cursorMemoryTabID ?? workspace.activeTabID)
             updateFooterCursor(from: list)
             scheduleStats(for: list)
         }

@@ -33,13 +33,43 @@ enum AppInfo {
 /// unsichtbare Metadaten-Brücke zwischenzeitlich neu erzeugt.
 enum WorkspaceWindowRegistry {
     private static let workspaces = NSMapTable<NSWindow, Workspace>.weakToWeakObjects()
+    private static var closeObservers: [ObjectIdentifier: NSObjectProtocol] = [:]
 
     static func register(_ workspace: Workspace, for window: NSWindow) {
         workspaces.setObject(workspace, forKey: window)
+        let identifier = ObjectIdentifier(window)
+        guard closeObservers[identifier] == nil else { return }
+        closeObservers[identifier] = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak window] _ in
+            guard let window else { return }
+            unregister(window)
+        }
     }
 
     static func workspace(for window: NSWindow) -> Workspace? {
         workspaces.object(forKey: window)
+    }
+
+    /// Entfernt wirklich geschlossene Fenster aus der Registry. Das ist für
+    /// die Sitzungswiederherstellung wichtig: Beim Beenden kann AppKit offene
+    /// Fenster bereits unsichtbar geschaltet haben, ein zuvor vom Nutzer
+    /// geschlossenes Fenster darf dagegen niemals wieder auftauchen.
+    static func unregister(_ window: NSWindow) {
+        workspaces.removeObject(forKey: window)
+        let identifier = ObjectIdentifier(window)
+        if let observer = closeObservers.removeValue(forKey: identifier) {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    /// Alle noch registrierten Fenster. Anders als `NSApp.orderedWindows`
+    /// enthält die Liste auch offene Dokumentfenster, die AppKit während
+    /// eines laufenden Beenden-Vorgangs bereits ausgeblendet hat.
+    static func registeredWindows() -> [NSWindow] {
+        workspaces.keyEnumerator().allObjects.compactMap { $0 as? NSWindow }
     }
 }
 

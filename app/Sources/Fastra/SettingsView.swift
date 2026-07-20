@@ -19,6 +19,8 @@ struct SettingsView: View {
     @AppStorage(UIZoom.defaultsKey) private var uiZoomLevel = 0
     @AppStorage(DocumentZoom.defaultsKey) private var documentZoomLevel = 0
     @AppStorage(EditorFonts.defaultsKey) private var editorFontName = EditorFonts.systemMonospacedName
+    @AppStorage(SessionRestorationPreferences.enabledKey)
+    private var restoreLastSession = true
     @AppStorage("markdown.integratedPreview") private var showMarkdownPreview = true
     @AppStorage(PreviewFonts.defaultsKey) private var previewFontName = PreviewFonts.systemName
     @AppStorage(GitPreferencesStore.Keys.decision)
@@ -114,6 +116,15 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            Section("Start") {
+                Toggle("Zuletzt geöffnete Fenster und Dokumente wiederherstellen",
+                       isOn: $restoreLastSession)
+                Text("Fastra öffnet beim nächsten Start dieselben Projektfenster und gespeicherten Dokumente. Ungesicherte oder unbenannte Dokumentinhalte werden nie wiederhergestellt.")
+                    .fastraFont(.small)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section("Markdown-Vorschau") {
                 Toggle("Bei Markdown rechts anzeigen", isOn: $showMarkdownPreview)
                 Picker("Vorschau-Schrift", selection: $previewFontName) {
@@ -174,6 +185,11 @@ struct SettingsView: View {
         // und das Editor-Theme ziehen automatisch mit.
         .onChange(of: appearanceRaw) {
             AppearanceSetting.current().apply()
+        }
+        .onChange(of: restoreLastSession) {
+            if !restoreLastSession {
+                SessionStateStore.clear()
+            }
         }
         .onChange(of: gitFetchDecision) { gitPreferencesChanged() }
         .onChange(of: gitFetchInterval) {

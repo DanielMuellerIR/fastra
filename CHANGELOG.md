@@ -9,6 +9,47 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.44.0] — 2026-07-20
+
+### Hinzugefügt
+
+- Zeilen lassen sich über das Text- und das Rechtsklickmenü ausdrücklich
+  alphabetisch auf- oder absteigend sortieren. Die Sortierung wirkt auf die
+  Auswahl oder das ganze Dokument, bleibt bei gleichen Zeilen stabil und
+  erhält einen abschließenden Zeilenumbruch.
+- Fastra stellt beim nächsten Start standardmäßig die zuletzt geöffneten
+  Projektfenster, gespeicherten Dokumente, aktiven Tabs und Fensterpositionen
+  wieder her. Unter **Einstellungen → Start** lässt sich das abschalten.
+  Inhalte ungesicherter oder unbenannter Dokumente werden bewusst nie
+  gespeichert oder wiederhergestellt.
+
+### Behoben
+
+- Eine Auswahl oder Einfügemarke gehört jetzt zum jeweiligen Dokument-Tab.
+  Beim Öffnen oder Wechseln auf eine andere Datei wird sie nicht mehr auf
+  deren gleichlautenden Zeichenbereich übertragen. Dadurch formatieren,
+  prüfen und transformieren Dokumentbefehle nicht versehentlich nur einen
+  aus dem vorherigen Tab geerbten Teilbereich.
+- Beim Beenden einer Sitzung mit mehreren Dokumentfenstern bleiben alle noch
+  offenen Fenster im Wiederherstellungs-Snapshot, auch wenn AppKit ein hinteres
+  Fenster während des Beenden-Vorgangs bereits unsichtbar geschaltet hat.
+  Wirklich geschlossene Fenster bleiben weiterhin ausgeschlossen.
+
+### Intern
+
+- Die Sitzungsdatei enthält ausschließlich Pfade und Fensterzustand; AppKits
+  undurchsichtige eigene Fensterwiederherstellung ist zugunsten dieses
+  kontrollierten Formats deaktiviert.
+- Unit-Tests prüfen Sortierrichtungen, abschließende Zeilenumbrüche,
+  verschwundene Dateien, tab-eigene Selektionen, Mehrfenster-Snapshots und den
+  Ausschluss ungesicherter Inhalte. Ein
+  Cold-Start-Selbsttest stellt zwei echte Fenster mit drei gespeicherten Tabs
+  wieder her; ein Editor-Selbsttest bedient beide Sortierrichtungen über den
+  echten Menübefehlspfad und prüft beim Dateiwechsel die echte Einfügemarke.
+- Ein gelegentlicher Computer-Use-Menüvolltest besitzt nun eine dokumentierte
+  Prüffolge sowie eine wegwerfbare Test-App mit eigener Bundle-ID, Testdateien
+  und ausschließlich lokalem Git-Remote.
+
 ## [v1.43.4] — 2026-07-20
 
 ### Behoben

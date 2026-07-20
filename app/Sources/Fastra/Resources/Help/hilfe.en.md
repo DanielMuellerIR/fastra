@@ -89,10 +89,11 @@ right-click menu.
 - **Letters:** UPPERCASE, lowercase, Title Case.
 - **Whitespace:** remove trailing spaces, tabs → spaces,
   spaces → tabs, indent, outdent, hard-wrap lines…
-- **Lines:** reverse lines, remove blank lines, join lines
-  (with/without separator), add prefix/suffix to lines…, add/remove
-  line numbers, keep only matching lines…, delete matching lines…,
-  keep only duplicate lines, remove duplicated lines.
+- **Lines:** sort alphabetically in ascending/descending order, reverse
+  lines, remove blank lines, join lines (with/without separator), add
+  prefix/suffix to lines…, add/remove line numbers, keep only matching
+  lines…, delete matching lines…, keep only duplicate lines, remove
+  duplicated lines.
 - **Characters:** zap control characters, straighten quotes, educate
   quotes (English), resolve escape sequences, exchange characters,
   exchange words.
@@ -361,6 +362,11 @@ The footer shows the encoding and line ending of the active tab:
 ⌘T opens a new tab, ⌘N a second, fully independent window (its own
 tabs, its own search). ⌘S saves, ⌘W closes the tab — Fastra asks first
 if there are unsaved changes. ⌘J jumps to a line number.
+
+By default, Fastra restores the last project windows, saved documents, active
+tabs, and window positions on the next launch. You can turn this off under
+**Settings → Startup**. Contents of unsaved or untitled documents are never
+stored or restored.
 
 Shift-clicking a second normal text tab marks both for file comparison
 without switching the current tab. The current tab keeps the stronger

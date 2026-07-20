@@ -32,6 +32,9 @@ extension Notification.Name {
     /// Menüleisten-„Text"-Operation: `object` = `TextOpKind.rawValue` (Int).
     /// Der AppDelegate wendet sie auf den aktiven Editor an (EditorContextMenu).
     static let fastraTextOp           = Notification.Name("fastra.text.op")
+    /// Eindeutige Zeilensortierung: `object` =
+    /// `LineOperations.SortDirection.rawValue` (Int).
+    static let fastraSortLines        = Notification.Name("fastra.sort.lines")
     /// Menüleisten-Formatierung. Der Editor-Kontext führt sie über seine
     /// native TextView aus, damit sie mit ⌘Z rückgängig gemacht werden kann.
     static let fastraFormatDocument   = Notification.Name("fastra.format.document")
@@ -136,6 +139,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let raw = note.object as? Int,
                   let kind = TextOpKind(rawValue: raw) else { return }
             self?.editorContextMenu.applyToActiveEditor(kind)
+        }
+        NotificationCenter.default.addObserver(
+            forName: .fastraSortLines,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let raw = note.object as? Int,
+                  let direction = LineOperations.SortDirection(rawValue: raw) else {
+                return
+            }
+            self?.editorContextMenu.sortActiveDocument(direction)
         }
         NotificationCenter.default.addObserver(
             forName: .fastraFormatDocument,
@@ -319,6 +333,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.scheduleUpdateMenuInstallation()
             self?.scheduleSoftWrapMenuSynchronization()
         }
+
+        // Eigene, inhaltlich begrenzte Wiederherstellung statt AppKits
+        // undurchsichtiger Fensterarchive: nur gespeicherte Dateipfade,
+        // Projektordner und Fensterrahmen.
+        if let primaryWorkspace = Workspace.shared {
+            SessionRestorationCoordinator.restoreLastSession(
+                into: primaryWorkspace,
+                defaults: SelfTest.workspaceDefaults()
+            )
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -492,6 +516,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.bool(forKey: "app.quitOnLastWindowClose")
     }
 
+    /// AppKits allgemeines Saved-State-Archiv bleibt aus. Es könnte
+    /// SwiftUI-/AppKit-Fenster unabhängig von Fastras Dokumentmodell
+    /// duplizieren. Die kontrollierte Wiederherstellung übernimmt
+    /// `SessionRestorationCoordinator`.
+    func applicationShouldSaveSecureApplicationState(
+        _ app: NSApplication
+    ) -> Bool {
+        false
+    }
+
+    func applicationShouldRestoreSecureApplicationState(
+        _ app: NSApplication
+    ) -> Bool {
+        false
+    }
+
     /// Klick aufs Dock-Icon (oder Reopen), wenn kein Fenster offen ist: ein
     /// neues, leeres Dokumentfenster öffnen — sonst wäre die aktive App ohne
     /// Fenster nicht mehr bedienbar (Gegenstück zum „nicht beenden"-Default).
@@ -513,6 +553,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for workspace in Workspace.allLive {
             guard workspace.confirmCloseAllDirtyForQuit() else { return .terminateCancel }
         }
+        SessionRestorationCoordinator.captureCurrentSession(
+            defaults: SelfTest.workspaceDefaults()
+        )
         return .terminateNow
     }
 

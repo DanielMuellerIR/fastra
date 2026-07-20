@@ -27,5 +27,8 @@ app/dist/
 # Doppelklick-Kopie des zuletzt gebauten App-Bundles (build.sh)
 /Fastra.app/
 
+# Wegwerfbare App/Projekt-Fixture des gelegentlichen Computer-Use-Menütests
+/.fastra-menu-test.*/
+
 # Lokaler Schutz gegen parallele Commit-Blöcke
 .commit-lock

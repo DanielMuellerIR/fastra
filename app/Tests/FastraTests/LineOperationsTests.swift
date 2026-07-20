@@ -40,16 +40,18 @@ func expand_emptySelection() {
 func sort_ascending() {
     let text = "gamma\nalpha\nbeta"
     let result = LineOperations.sortLines(in: text,
-                                          selection: NSRange(location: 0, length: 0))
+                                          selection: NSRange(location: 0, length: 0),
+                                          direction: .ascending)
     #expect(result?.newText == "alpha\nbeta\ngamma")
     #expect(result?.lineCount == 3)
 }
 
-@Test("sortLines auf bereits sortierten Zeilen dreht die Reihenfolge um (Toggle)")
-func sort_toggleDescending() {
+@Test("sortLines sortiert ausdrücklich absteigend")
+func sort_descending() {
     let text = "alpha\nbeta\ngamma"
     let result = LineOperations.sortLines(in: text,
-                                          selection: NSRange(location: 0, length: 0))
+                                          selection: NSRange(location: 0, length: 0),
+                                          direction: .descending)
     #expect(result?.newText == "gamma\nbeta\nalpha")
 }
 
@@ -58,7 +60,8 @@ func sort_selectionOnly() {
     let text = "kopf\nzz\naa\nfuss"
     // Selektion über „zz\naa" (Position 5..<10).
     let result = LineOperations.sortLines(in: text,
-                                          selection: NSRange(location: 5, length: 5))
+                                          selection: NSRange(location: 5, length: 5),
+                                          direction: .ascending)
     #expect(result?.newText == "kopf\naa\nzz\nfuss")
 }
 
@@ -66,14 +69,16 @@ func sort_selectionOnly() {
 func sort_naturalOrder() {
     let text = "a10\na2\na1"
     let result = LineOperations.sortLines(in: text,
-                                          selection: NSRange(location: 0, length: 0))
+                                          selection: NSRange(location: 0, length: 0),
+                                          direction: .ascending)
     #expect(result?.newText == "a1\na2\na10")
 }
 
 @Test("sortLines mit weniger als 2 Zeilen liefert nil")
 func sort_singleLine() {
     let result = LineOperations.sortLines(in: "einzeiler",
-                                          selection: NSRange(location: 0, length: 0))
+                                          selection: NSRange(location: 0, length: 0),
+                                          direction: .ascending)
     #expect(result == nil)
 }
 
@@ -81,7 +86,8 @@ func sort_singleLine() {
 func sort_noTrailingNewline() {
     let text = "b\na"
     let result = LineOperations.sortLines(in: text,
-                                          selection: NSRange(location: 0, length: 0))
+                                          selection: NSRange(location: 0, length: 0),
+                                          direction: .ascending)
     #expect(result?.newText == "a\nb")
     // Kein \n am Ende dazuerfunden.
     #expect(result?.newText.hasSuffix("\n") == false)
@@ -130,6 +136,22 @@ func dedupe_exactComparison() {
 func sort_crlf() {
     let text = "b\r\na\r\nc"
     let result = LineOperations.sortLines(in: text,
-                                          selection: NSRange(location: 0, length: 0))
+                                          selection: NSRange(location: 0, length: 0),
+                                          direction: .ascending)
     #expect(result?.newText == "a\r\nb\r\nc")
+}
+
+@Test("sortLines erhält ein abschließendes Newline am Dokumentende")
+func sort_trailingNewlineStaysAtEnd() {
+    let text = "b\nc\na\n"
+    let ascending = LineOperations.sortLines(
+        in: text, selection: NSRange(location: 0, length: 0),
+        direction: .ascending
+    )
+    let descending = LineOperations.sortLines(
+        in: text, selection: NSRange(location: 0, length: 0),
+        direction: .descending
+    )
+    #expect(ascending?.newText == "a\nb\nc\n")
+    #expect(descending?.newText == "c\nb\na\n")
 }

@@ -3,11 +3,11 @@ import SwiftUI
 
 /// Erzeugt zusätzliche Dokumentfenster für ⌘N.
 ///
-/// Das Startfenster bleibt eine SwiftUI-`Window`-Scene, damit die bewährte
-/// Einfenster-Restauration erhalten bleibt. Weitere Fenster werden bewusst
-/// kontrolliert über AppKit angelegt. Entscheidend ist: Jedes Fenster besitzt
-/// einen eigenen `Workspace`; Tabs, Suchzustand und ungesicherter Inhalt werden
-/// daher niemals zwischen zwei Fenstern geteilt.
+/// Das Startfenster bleibt eine SwiftUI-`Window`-Scene. Weitere sowie
+/// wiederhergestellte Fenster werden bewusst kontrolliert über AppKit
+/// angelegt. Entscheidend ist: Jedes Fenster besitzt einen eigenen
+/// `Workspace`; Tabs, Suchzustand und ungesicherter Inhalt werden daher
+/// niemals zwischen zwei Fenstern geteilt.
 @MainActor
 final class DocumentWindowController: NSObject, NSWindowDelegate {
     /// NSWindow hält seinen Delegate nur schwach. Diese Tabelle hält deshalb
@@ -21,7 +21,8 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     // wiederhergestellt; spätere Nutzer-Resizes bleiben davon unberührt.
     private var frameToRestoreAfterFirstLayout: NSRect?
 
-    private init(defaults: UserDefaults, showWelcome: Bool) {
+    private init(defaults: UserDefaults, showWelcome: Bool,
+                 restoredFrame: NSRect? = nil) {
         workspace = Workspace(defaults: defaults)
         // Willkommen nur, wenn dies das ERSTE/einzige Dokumentfenster ist
         // (Daniel-Wunsch 2026-07-12): Beim Start ohne offenes Fenster — auch
@@ -75,10 +76,17 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         contentController.sizingOptions = []
         window.contentViewController = contentController
 
-        // Neue Fenster leicht versetzt zum zuletzt sichtbaren Dokumentfenster
-        // öffnen. Ein gerade aktiver Suchdialog ist kein Dokumentfenster und
-        // darf deshalb nicht versehentlich dessen Größe vorgeben.
-        if let front = Self.frontmostVisibleDocumentWindow() {
+        // Eine wiederhergestellte Sitzung gewinnt vor dem normalen Kaskadieren.
+        // SwiftUI kann den Rahmen beim ersten Layout noch überschreiben; der
+        // gespeicherte Wert wird deshalb über denselben Einmal-Mechanismus
+        // nachgezogen wie ein neu kaskadiertes Fenster.
+        if let restoredFrame {
+            frameToRestoreAfterFirstLayout = restoredFrame
+            window.setFrame(restoredFrame, display: false)
+        } else if let front = Self.frontmostVisibleDocumentWindow() {
+            // Neue Fenster leicht versetzt zum zuletzt sichtbaren
+            // Dokumentfenster öffnen. Ein Suchdialog darf dessen Größe nicht
+            // versehentlich vorgeben.
             let frame = MainWindowSizing.cascadedFrame(from: front.frame)
             frameToRestoreAfterFirstLayout = frame
             window.setFrame(frame,
@@ -104,7 +112,7 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     /// `NSApp.keyWindow` kann auch ein Suchdialog sein und ist daher für ⌘N
     /// nicht zuverlässig die zuletzt benutzte Dokumentgröße.
     private static func frontmostVisibleDocumentWindow() -> NSWindow? {
-        NSApp.orderedWindows.first(where: isVisibleDocumentWindow)
+        visibleDocumentWindows().first
     }
 
     /// Echte sichtbare Dokumentfenster (Startfenster + ⌘N-Fenster).
@@ -123,7 +131,33 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     /// Willkommensseite (Etappe 1 Wunschpaket 2026-07): nur wenn genau EIN
     /// Fenster offen ist und dieses nur Willkommen zeigt, wirkt ⌘N wie ⌘T.
     static func visibleDocumentWindowCount() -> Int {
-        NSApp.windows.filter(isVisibleDocumentWindow).count
+        visibleDocumentWindows().count
+    }
+
+    /// Sichtbare Dokumentfenster in AppKits Vordergrund-Reihenfolge. Die
+    /// Sitzungswiederherstellung verwendet exakt dieselbe Klassifikation wie
+    /// Fokus-Routing und ⌘N.
+    static func visibleDocumentWindows() -> [NSWindow] {
+        NSApp.orderedWindows.filter(isVisibleDocumentWindow)
+    }
+
+    /// Dokumentfenster für einen sicheren Sitzungssnapshot. Beim Beginn von
+    /// ⌘Q kann AppKit weiter hinten liegende Fenster bereits `orderOut`
+    /// gesetzt haben; `isVisible` würde dann nur das Vorderfenster speichern.
+    /// Die Registry enthält ausschließlich noch nicht geschlossene Fenster
+    /// und ist deshalb hier die verlässlichere Quelle.
+    static func restorableDocumentWindows() -> [NSWindow] {
+        var seen = Set<ObjectIdentifier>()
+        return (NSApp.orderedWindows + WorkspaceWindowRegistry.registeredWindows())
+            .filter { window in
+                let identifier = ObjectIdentifier(window)
+                guard seen.insert(identifier).inserted,
+                      !SearchWindow.isSearchWindow(window),
+                      WorkspaceWindowRegistry.workspace(for: window) != nil else {
+                    return false
+                }
+                return true
+            }
     }
 
     /// Liefert den Workspace des vordersten sichtbaren Dokumentfensters.
@@ -164,6 +198,29 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         return controller.workspace
     }
 
+    /// Baut ein zusätzliches Fenster aus einem sicheren Sitzungssnapshot auf.
+    /// `state` enthält nur Pfade, keinen ungesicherten Dokumentinhalt.
+    @discardableResult
+    static func openRestoredDocument(
+        _ state: RestorableWindowState,
+        defaults: UserDefaults = SelfTest.workspaceDefaults(),
+        screenFrames: [NSRect] = NSScreen.screens.map(\.visibleFrame)
+    ) -> Workspace {
+        let restoredFrame = state.frame?.visibleRect(in: screenFrames)
+        let controller = DocumentWindowController(
+            defaults: defaults, showWelcome: false,
+            restoredFrame: restoredFrame
+        )
+        openControllers[ObjectIdentifier(controller.window)] = controller
+        controller.workspace.restore(state)
+        controller.window.orderFront(nil)
+        controller.restoreFrameAfterFirstSwiftUILayout()
+        NSApp.addWindowsItem(controller.window,
+                             title: controller.window.title,
+                             filename: false)
+        return controller.workspace
+    }
+
     func windowDidBecomeKey(_ notification: Notification) {
         Workspace.shared = workspace
         restoreFrameAfterFirstSwiftUILayout()
@@ -189,6 +246,7 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         workspace.showSearchDialog = false
+        WorkspaceWindowRegistry.unregister(window)
         NSApp.removeWindowsItem(window)
         Self.openControllers.removeValue(forKey: ObjectIdentifier(window))
     }

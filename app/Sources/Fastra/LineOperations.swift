@@ -1,9 +1,8 @@
 // LineOperations.swift
 //
 // Zeilen-Werkzeuge fürs Editor-Kontextmenü (v0.8):
-//   - „Zeilen sortieren": sortiert die selektierten Zeilen alphabetisch —
-//     sind sie BEREITS alphabetisch sortiert, wird umgekehrt sortiert
-//     (Toggle-Verhalten, Daniel-Spezifikation).
+//   - „Zeilen aufsteigend/absteigend sortieren": sortiert die selektierten
+//     Zeilen alphabetisch in der ausdrücklich gewählten Richtung.
 //   - „Duplikate entfernen": entfernt doppelte Zeilen (exakter Vergleich),
 //     das jeweils ERSTE Vorkommen bleibt stehen.
 //
@@ -19,6 +18,18 @@
 import Foundation
 
 enum LineOperations {
+    enum SortDirection: Int, CaseIterable {
+        case ascending
+        case descending
+
+        var title: String {
+            switch self {
+            case .ascending:  L10n.string("Zeilen aufsteigend sortieren")
+            case .descending: L10n.string("Zeilen absteigend sortieren")
+            }
+        }
+    }
+
     /// Ergebnis einer Zeilen-Operation.
     struct Result: Equatable {
         /// Der komplette neue Text (Datei-Inhalt nach der Operation).
@@ -58,28 +69,45 @@ enum LineOperations {
         return expanded
     }
 
-    /// Sortiert die (auf ganze Zeilen ausgeweiteten) selektierten Zeilen.
-    /// Bereits aufsteigend sortiert → absteigend (Toggle). Vergleich via
+    /// Sortiert die (auf ganze Zeilen ausgeweiteten) selektierten Zeilen in
+    /// der ausdrücklich gewählten Richtung. Vergleich via
     /// `localizedStandardCompare` (wie der Finder: „a2" < „a10",
-    /// Umlaute korrekt eingeordnet).
-    /// `nil`, wenn weniger als 2 Zeilen betroffen sind (nichts zu tun).
-    static func sortLines(in text: String, selection: NSRange) -> Result? {
+    /// Umlaute korrekt eingeordnet). Gleichwertige Zeilen behalten ihre
+    /// ursprüngliche Reihenfolge.
+    ///
+    /// Eine leere Phantomzeile, die nur das abschließende Datei-Newline
+    /// repräsentiert, bleibt am Ende. Sie darf beim Aufwärtssortieren nicht
+    /// fälschlich an den Dokumentanfang wandern.
+    /// `nil`, wenn weniger als 2 Zeilen betroffen sind oder die gewählte
+    /// Reihenfolge bereits vorliegt (nichts zu tun).
+    static func sortLines(in text: String, selection: NSRange,
+                          direction: SortDirection) -> Result? {
         let range = expandToFullLines(in: text, selection: selection)
         let ns = text as NSString
         let block = ns.substring(with: range)
         let lines = splitLines(block)
-        guard lines.count >= 2 else { return nil }
+        let hasTrailingEmpty = lines.count >= 2 && lines.last == ""
+        let sortable = hasTrailingEmpty ? Array(lines.dropLast()) : lines
+        guard sortable.count >= 2 else { return nil }
 
-        let ascending = lines.sorted {
-            $0.localizedStandardCompare($1) == .orderedAscending
-        }
-        // Toggle: Ist der Block schon aufsteigend sortiert, drehen wir um.
-        let alreadySorted = (lines == ascending)
-        let sorted = alreadySorted ? ascending.reversed().map { $0 } : ascending
-
-        let newBlock = sorted.joined(separator: separator(of: text))
+        let sorted = sortable.enumerated().sorted { lhs, rhs in
+            let comparison = lhs.element.localizedStandardCompare(rhs.element)
+            if comparison == .orderedSame {
+                return lhs.offset < rhs.offset
+            }
+            switch direction {
+            case .ascending:
+                return comparison == .orderedAscending
+            case .descending:
+                return comparison == .orderedDescending
+            }
+        }.map(\.element)
+        let output = hasTrailingEmpty ? sorted + [""] : sorted
+        let newBlock = output.joined(separator: separator(of: text))
+        guard newBlock != block else { return nil }
         let newText = ns.replacingCharacters(in: range, with: newBlock)
-        return Result(newText: newText, affectedRange: range, lineCount: lines.count)
+        return Result(newText: newText, affectedRange: range,
+                      lineCount: sortable.count)
     }
 
     /// Entfernt doppelte Zeilen im (ausgeweiteten) Selektions-Bereich.

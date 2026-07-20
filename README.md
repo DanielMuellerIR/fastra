@@ -160,8 +160,9 @@ editors. The more advanced ones:
 - **Zap gremlins**: Hunt down invisible and invalid characters.
 - **Unicode normalization** (NFC/NFD), strip diacriticals, straight ⇄ typographic
   quotes, escape sequences.
-- Sort, join and deduplicate lines, hard wrap, add/remove line numbers,
-  exchange words, and format JSON or XML.
+- Sort lines explicitly in ascending or descending alphabetical order, join
+  and deduplicate them, hard wrap, add/remove line numbers, exchange words,
+  and format JSON or XML.
 - **Transform from an example** derives a wildcard pattern from before/after
   text; save, import and export reusable search patterns.
 - Large and binary files have guarded views, including a read-only hex view
@@ -170,6 +171,10 @@ editors. The more advanced ones:
 Fastra deliberately stays approachable: There are editors with even more
 machinery, and a matching learning curve to go with it. Fastra covers the
 everyday cases without a manual.
+
+By default, Fastra reopens the last project windows and saved documents on
+the next launch. You can turn this off under **Settings → Startup**. Contents
+of unsaved or untitled documents are deliberately never stored or restored.
 
 ### XPath navigation for XML
 

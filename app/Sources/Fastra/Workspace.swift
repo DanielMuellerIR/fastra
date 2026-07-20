@@ -272,8 +272,9 @@ final class Workspace: ObservableObject {
     // MARK: - Projekt-Zustand (Projekt- & Git-Ausbau, Etappe 1)
     /// Wurzelordner des aktuell geladenen Projekts — steuert die
     /// Dateibaum-Seitenleiste. `nil` = kein Projekt geladen (flache
-    /// „GEÖFFNET"-Seitenleiste wie bisher). Bewusst NICHT persistiert:
-    /// Der nächste Start beginnt mit dem Willkommensbildschirm.
+    /// „GEÖFFNET"-Seitenleiste wie bisher). Nur die optionale, sichere
+    /// Sitzungswiederherstellung persistiert den Pfad; der Workspace selbst
+    /// bleibt frei von implizitem Startzustand.
     @Published var projectURL: URL?
     /// In der Projekt-Seitenleiste zuletzt angeklickter Ordner (Etappe 1
     /// Wunschpaket 2026-07). Dient dem Save-Dialog als Vorschlagsordner;

@@ -305,10 +305,21 @@ final class EditorContextMenu: NSObject {
         smartPaste.isEnabled = !hasColumnSelection
 
         let sort = NSMenuItem(title: L10n.string("Zeilen sortieren"),
-                              action: #selector(sortLines(_:)),
-                              keyEquivalent: "")
-        sort.target = self
-        sort.toolTip = L10n.string("Sortiert die selektierten Zeilen alphabetisch — sind sie schon sortiert, wird die Reihenfolge umgedreht. Ohne Auswahl: die ganze Datei.")
+                              action: nil, keyEquivalent: "")
+        let sortSubmenu = NSMenu()
+        for direction in LineOperations.SortDirection.allCases {
+            let item = NSMenuItem(title: direction.title,
+                                  action: #selector(sortLines(_:)),
+                                  keyEquivalent: "")
+            item.target = self
+            item.tag = direction.rawValue
+            item.toolTip = L10n.string(
+                "Sortiert die selektierten Zeilen alphabetisch in der gewählten Richtung. Ohne Auswahl: die ganze Datei."
+            )
+            item.isEnabled = !hasColumnSelection
+            sortSubmenu.addItem(item)
+        }
+        sort.submenu = sortSubmenu
         sort.isEnabled = !hasColumnSelection
 
         let dedupe = NSMenuItem(title: L10n.string("Duplikate entfernen"),
@@ -754,6 +765,15 @@ final class EditorContextMenu: NSObject {
         }
     }
 
+    /// Menüleisten-Pfad für die zwei eindeutigen Sortierrichtungen.
+    func sortActiveDocument(_ direction: LineOperations.SortDirection) {
+        guard let textView = activeEditorTextView() else { NSSound.beep(); return }
+        applyLineOperation(on: textView) { text, selection in
+            LineOperations.sortLines(in: text, selection: selection,
+                                     direction: direction)
+        }
+    }
+
     /// Menüleisten-/Toolbar-Pfad der Markdown-Formatbefehle (Etappe 5
     /// Wunschpaket 2026-07b). Nur für Markdown-Tabs sinnvoll — die Menüs
     /// sind sonst deaktiviert, defensiv wird trotzdem geprüft.
@@ -986,9 +1006,14 @@ final class EditorContextMenu: NSObject {
         return nil
     }
 
-    @objc private func sortLines(_ sender: Any?) {
+    @objc private func sortLines(_ sender: NSMenuItem) {
+        guard let direction = LineOperations.SortDirection(rawValue: sender.tag) else {
+            NSSound.beep()
+            return
+        }
         applyLineOperation { text, selection in
-            LineOperations.sortLines(in: text, selection: selection)
+            LineOperations.sortLines(in: text, selection: selection,
+                                     direction: direction)
         }
     }
 

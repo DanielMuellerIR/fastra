@@ -167,8 +167,9 @@ Editoren greifen muss. Die anspruchsvolleren darunter:
 - **Zap Gremlins**: Unsichtbare und ungültige Zeichen aufspüren.
 - **Unicode-Normalisierung** (NFC/NFD), Diakritika entfernen, gerade ⇄
   typografische Anführungszeichen, Escape-Sequenzen.
-- Zeilen sortieren/verbinden/deduplizieren, harter Umbruch, Zeilennummern
-  hinzufügen/entfernen, Wörter tauschen sowie JSON oder XML formatieren.
+- Zeilen ausdrücklich alphabetisch auf- oder absteigend sortieren, verbinden
+  und deduplizieren, harter Umbruch, Zeilennummern hinzufügen/entfernen,
+  Wörter tauschen sowie JSON oder XML formatieren.
 - **Transformation per Beispiel** leitet aus Vorher/Nachher-Text ein
   Platzhalter-Muster ab; eigene Suchvorlagen lassen sich speichern,
   importieren und exportieren.
@@ -178,6 +179,11 @@ Editoren greifen muss. Die anspruchsvolleren darunter:
 Fastra bleibt dabei bewusst zugänglich: Es gibt Editoren mit noch mehr
 Maschinerie, und mit entsprechender Lernkurve. Fastra deckt die Alltagsfälle
 ab, ohne dass man ein Handbuch braucht.
+
+Beim nächsten Start öffnet Fastra standardmäßig die zuletzt verwendeten
+Projektfenster und gespeicherten Dokumente wieder. Das lässt sich unter
+**Einstellungen → Start** abschalten. Inhalte ungesicherter oder unbenannter
+Dokumente werden dabei bewusst nie gespeichert oder wiederhergestellt.
 
 ### XPath-Navigation für XML
 

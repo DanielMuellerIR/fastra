@@ -279,6 +279,12 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
    `-selftest multisearch` öffnet zwei Dokumentfenster mit je eigener
    Suchmaske und belegt, dass ein Treffer-Sprung ausschließlich Selektion,
    Fokus und Scrollziel des adressierten Workspace verändert.
+   `-selftest sessionrestore` legt vor dem ersten Workspace eine isolierte
+   gespeicherte Sitzung an und prüft den echten Kaltstart mit zwei Fenstern,
+   drei dateibasierten Tabs, Projekt, aktivem Tab und ohne unbenannten Tab.
+   `-selftest textop` bedient eine Texttransformation und beide
+   Sortierrichtungen über den echten Notification-/Editorpfad und liest den
+   tatsächlich sichtbaren Editorinhalt zurück.
    `-selftest markdown` prüft die echte WKWebView-Ausgabe eines lokalen Bildes,
    einer KaTeX-Formel, eines Mermaid-Diagramms und eines hervorgehobenen
    Code-Blocks; ein bloß vorhandenes HTML-Zielelement genügt nicht.
@@ -327,3 +333,8 @@ Code ohne neue Ressourcen. Gesamt klar unter der Leitplanke.
 3. ESC bei vorderer Suchmaske → blendet aus. ESC sonst → stört nichts.
 4. CMD+F mehrfach hintereinander → kein Zombie, kein Doppel-Öffnen.
 5. App-Wechsel raus und zurück, dann CMD+F → Suchmaske kommt wieder nach vorn.
+
+Nach größeren Funktionspaketen ergänzt der gelegentliche, reale
+[Menüvolltest](MANUAL-MENU-FULL-TEST.md) diese kurze Pflichtprüfung. Seine
+wegwerfbare Test-App besitzt eine eigene Bundle-ID und bleibt im Projekt-Root;
+er wird nur nach ausdrücklicher Freigabe des Nutzer-Desktops ausgeführt.

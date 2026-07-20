@@ -58,10 +58,10 @@ struct FastraApp: App {
 
     var body: some Scene {
         // Das Startfenster bleibt eine einzelne `Window`-Scene. So kann SwiftUI
-        // nicht unkontrolliert zwei Fenster mit DEMSELBEN Workspace restaurieren
-        // (Daniel-Befund 2026-06-23). Gewollte zusätzliche Fenster erzeugt ⌘N
-        // kontrolliert über `DocumentWindowController`; jedes erhält einen
-        // EIGENEN Workspace und damit ein unabhängiges neues Dokument.
+        // nicht unkontrolliert zwei Fenster mit DEMSELBEN Workspace erzeugen
+        // (Daniel-Befund 2026-06-23). Gewollte zusätzliche oder aus der
+        // sicheren Fastra-Sitzung restaurierte Fenster entstehen kontrolliert
+        // über `DocumentWindowController`; jedes erhält einen EIGENEN Workspace.
         Window("Fastra", id: "main") {
             ContentView()
                 .environmentObject(workspace)
@@ -391,6 +391,12 @@ struct FastraApp: App {
                 Divider()
                 Button(TextOpKind.reverseLines.title)     { postTextOp(.reverseLines) }
                 Button(TextOpKind.removeBlankLines.title) { postTextOp(.removeBlankLines) }
+                Button(LineOperations.SortDirection.ascending.title) {
+                    postLineSort(.ascending)
+                }
+                Button(LineOperations.SortDirection.descending.title) {
+                    postLineSort(.descending)
+                }
                 Button(TextOpKind.joinLines.title)        { postTextOp(.joinLines) }
                 Button(TextOpKind.joinLinesTight.title)   { postTextOp(.joinLinesTight) }
                 Button(TextOpKind.prefixLines.title)      { postTextOp(.prefixLines) }
@@ -503,6 +509,11 @@ struct FastraApp: App {
     /// Notification kommt (siehe `.fastraTextOp`).
     private func postTextOp(_ kind: TextOpKind) {
         NotificationCenter.default.post(name: .fastraTextOp, object: kind.rawValue)
+    }
+
+    private func postLineSort(_ direction: LineOperations.SortDirection) {
+        NotificationCenter.default.post(name: .fastraSortLines,
+                                        object: direction.rawValue)
     }
 
     /// Markdown-Formatbefehl an den AppDelegate (Etappe 5 Wunschpaket 2026-07b).

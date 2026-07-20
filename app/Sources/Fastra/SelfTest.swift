@@ -42,6 +42,11 @@ enum SelfTest {
     /// Leben. Ohne diese Referenz könnte ARC den Testlauf vor der TCP-Antwort
     /// freigeben und einen scheinbaren Netzwerkfehler erzeugen.
     private static var retainedTool4DValidation: Tool4DLSPValidation?
+    /// Fixture der echten Start-Sitzungswiederherstellung. Sie wird noch vor
+    /// dem ersten Workspace angelegt und unmittelbar vor dem Test-Exit
+    /// entfernt.
+    private static var sessionRestoreFixtureDirectory: URL?
+    private static var sessionRestoreSetupError: String?
 
     /// Name des angeforderten Selbsttests („findbar", „cmdw", …) oder `nil`.
     ///
@@ -98,6 +103,54 @@ enum SelfTest {
         default: sidebar = nil
         }
         if let sidebar { setEnvironment("FASTRA_SIDEBAR", sidebar) }
+        if name == "sessionrestore" {
+            prepareSessionRestoreFixture()
+        }
+    }
+
+    /// Legt den Codable-Snapshot VOR `FastraApp` seinen ersten Workspace
+    /// erzeugt in der isolierten Selbsttest-Suite ab. So prüft der spätere
+    /// Test den echten Kaltstartpfad statt nur Workspace-Methoden direkt
+    /// aufzurufen.
+    private static func prepareSessionRestoreFixture() {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "fastra-selftest-session-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+            let first = directory.appendingPathComponent("eins.txt")
+            let second = directory.appendingPathComponent("zwei.txt")
+            let third = directory.appendingPathComponent("drei.txt")
+            try Data("eins\n".utf8).write(to: first)
+            try Data("zwei\n".utf8).write(to: second)
+            try Data("drei\n".utf8).write(to: third)
+            let states = [
+                RestorableWindowState(
+                    projectPath: directory.path,
+                    documentPaths: [first.path, second.path],
+                    activeDocumentPath: first.path,
+                    frame: nil
+                ),
+                RestorableWindowState(
+                    projectPath: nil,
+                    documentPaths: [third.path],
+                    activeDocumentPath: third.path,
+                    frame: nil
+                ),
+            ]
+            SessionStateStore.save(
+                RestorableSessionState(windows: states),
+                to: workspaceDefaults()
+            )
+            sessionRestoreFixtureDirectory = directory
+        } catch {
+            sessionRestoreSetupError = error.localizedDescription
+            try? FileManager.default.removeItem(at: directory)
+        }
     }
 
     /// UserDefaults für den Workspace des laufenden Prozesses.
@@ -144,6 +197,7 @@ enum SelfTest {
         case "findbar":   waitForMainWindow { runFindBarTest() }
         case "newwindow": waitForMainWindow { runNewWindowTest() }
         case "welcomenew": waitForMainWindow { runWelcomeNewTabTest() }
+        case "sessionrestore": waitForMainWindow { runSessionRestoreTest() }
         case "multisearch": waitForMainWindow { runMultiWindowSearchJumpTest() }
         case "cmdw":      waitForMainWindow { openSearchThen { runCmdWTest() } }
         case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
@@ -277,7 +331,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, cmdw, fields, tabswitch, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, cmdw, fields, tabswitch, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -540,6 +594,60 @@ enum SelfTest {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             pollForWelcomeNewTab(ws: ws, windowsBefore: windowsBefore, tick: tick + 1)
+        }
+    }
+
+    // MARK: - Sichere Sitzungswiederherstellung
+
+    private static func runSessionRestoreTest(tick: Int = 0) {
+        testLabel = "sessionrestore"
+        if let sessionRestoreSetupError {
+            finish(false, "Fixture konnte nicht angelegt werden: \(sessionRestoreSetupError)")
+        }
+        guard let directory = sessionRestoreFixtureDirectory else {
+            finish(false, "Fixture-Verzeichnis fehlt")
+        }
+
+        let windows = MainActor.assumeIsolated {
+            DocumentWindowController.visibleDocumentWindows()
+        }
+        let workspaces = windows.compactMap {
+            WorkspaceWindowRegistry.workspace(for: $0)
+        }
+        let loading = workspaces.contains { workspace in
+            workspace.tabs.contains(where: \.isLoading)
+        }
+        if windows.count == 2, workspaces.count == 2, !loading {
+            let namesByWindow = workspaces.map {
+                $0.tabs.compactMap(\.url).map(\.lastPathComponent)
+            }
+            guard namesByWindow.contains(["eins.txt", "zwei.txt"]),
+                  namesByWindow.contains(["drei.txt"]) else {
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "falsche wiederhergestellte Tabs: \(namesByWindow)")
+            }
+            guard let projectWorkspace = workspaces.first(where: {
+                $0.projectURL?.canonicalFileURL == directory.canonicalFileURL
+            }),
+                  projectWorkspace.activeTab?.url?.lastPathComponent == "eins.txt" else {
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "Projekt oder aktiver Tab wurde nicht wiederhergestellt")
+            }
+            guard workspaces.allSatisfy({
+                $0.tabs.allSatisfy { $0.url != nil }
+            }) else {
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "ein unbenannter Tab wurde fälschlich wiederhergestellt")
+            }
+            try? FileManager.default.removeItem(at: directory)
+            finish(true, "zwei Fenster, drei gespeicherte Tabs, Projekt und aktiver Tab wiederhergestellt")
+        }
+        if tick >= 200 {
+            try? FileManager.default.removeItem(at: directory)
+            finish(false, "Sitzung nicht binnen 10 s vollständig — \(windowsSummary())")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            runSessionRestoreTest(tick: tick + 1)
         }
     }
 
@@ -1316,6 +1424,10 @@ enum SelfTest {
 
     private static func prepareTabSwitchTest(ws: Workspace, root: NSView, tv1: TextView) {
         let id1 = ObjectIdentifier(tv1)
+        // Genau der manuell gefundene Fehler: Eine kurze Auswahl aus Datei A
+        // durfte beim Öffnen von Datei B nicht auf deren erste Zeichen
+        // übertragen werden.
+        tv1.selectionManager.setSelectedRange(NSRange(location: 0, length: 5))
 
         // Temp-Datei mit eindeutigem Markerinhalt anlegen und laden →
         // neuer Tab, activeTabID wechselt. loadFile ist jetzt asynchron
@@ -1337,17 +1449,29 @@ enum SelfTest {
             }
             // SwiftUI Zeit geben, den Editor via `.id` neu zu erzeugen.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                guard let tv2 = editorTextView(in: root) else {
+                guard let tv2 = editorTextView(in: root) as? TextView else {
                     finish(false, "keine Editor-TextView nach dem Tab-Wechsel")
                 }
                 let recreated = ObjectIdentifier(tv2) != id1
                 let modelOK = ws.activeTab?.content == marker
+                let resultingSelections = tv2.selectionManager.textSelections
+                    .map(\.range)
+                // CESE kann bis zum ersten Fokus entweder noch keine
+                // TextSelection oder bereits den Einfügepunkt (0, 0)
+                // besitzen. Beides ist korrekt; entscheidend ist, dass keine
+                // nichtleere Auswahl aus dem vorigen Tab übrig bleibt.
+                let selectionOK = resultingSelections.allSatisfy {
+                    $0.length == 0
+                }
                 if !recreated {
                     finish(false, "Editor-TextView NICHT neu erzeugt — Inhalt bliebe stehen (genau der Drop-Bug)")
                 } else if !modelOK {
                     finish(false, "Editor neu erzeugt, aber aktiver Tab trägt nicht den neuen Inhalt")
+                } else if !selectionOK {
+                    finish(false, "Auswahl aus dem vorigen Tab wurde übernommen: "
+                        + "\(resultingSelections)")
                 } else {
-                    finish(true, "Editor bei Tab-Wechsel neu erzeugt + aktiver Tab hat neuen Datei-Inhalt")
+                    finish(true, "Editor neu erzeugt, neuer Inhalt und eigene Einfügemarke statt fremder Auswahl")
                 }
             }
         }
@@ -4613,11 +4737,11 @@ enum SelfTest {
     // MARK: - -selftest textop
 
     /// Verifiziert den MENÜLEISTEN-Pfad der BBEdit-„Text"-Operationen
-    /// end-to-end: Buffer laden, `.fastraTextOp` (uppercase) posten — wie es
-    /// das „Text"-Menü tut — und prüfen, dass der ECHTE Editor-Inhalt danach
-    /// großgeschrieben ist. Deckt Observer (AppDelegate) → `applyToActiveEditor`
-    /// → `activeEditorTextView` → `apply` → `replaceCharacters` ab. Genau die
-    /// Verdrahtung, die beim alten Vorschau-Button tot war (Flag ohne Wirkung).
+    /// end-to-end: Buffer laden, `.fastraTextOp` (uppercase) und danach beide
+    /// `.fastraSortLines`-Richtungen posten — exakt wie es das „Text"-Menü tut.
+    /// Geprüft wird jeweils der ECHTE Editor-Inhalt. Deckt Observer
+    /// (AppDelegate) → EditorContextMenu → native TextView → Undo-fähige
+    /// Ersetzung ab.
     private static func runTextOpTest() {
         testLabel = "textop"
         guard let ws = Workspace.shared else {
@@ -4634,7 +4758,11 @@ enum SelfTest {
 
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent("fastra-textop-\(UUID().uuidString).txt")
-        do { try "hallo welt".write(to: tmp, atomically: true, encoding: .utf8) }
+        do {
+            try "beta\nalpha\ngamma\n".write(
+                to: tmp, atomically: true, encoding: .utf8
+            )
+        }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
 
         ws.loadFile(at: tmp) { ok in
@@ -4649,9 +4777,27 @@ enum SelfTest {
                 NotificationCenter.default.post(name: .fastraTextOp,
                                                 object: TextOpKind.uppercase.rawValue)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    let s = tv.string
-                    finish(s == "HALLO WELT",
-                           "Editor-Inhalt nach Menü-Text-Op: \"\(s)\" (erwartet \"HALLO WELT\")")
+                    guard tv.string == "BETA\nALPHA\nGAMMA\n" else {
+                        finish(false, "Großschreibung erreichte den echten Editor nicht")
+                    }
+                    NotificationCenter.default.post(
+                        name: .fastraSortLines,
+                        object: LineOperations.SortDirection.ascending.rawValue
+                    )
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        guard tv.string == "ALPHA\nBETA\nGAMMA\n" else {
+                            finish(false, "aufsteigende Sortierung: \(tv.string.debugDescription)")
+                        }
+                        NotificationCenter.default.post(
+                            name: .fastraSortLines,
+                            object: LineOperations.SortDirection.descending.rawValue
+                        )
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            let expected = "GAMMA\nBETA\nALPHA\n"
+                            finish(tv.string == expected,
+                                   "Text-Op plus beide Sortierrichtungen im echten Editor")
+                        }
+                    }
                 }
             }
         }
