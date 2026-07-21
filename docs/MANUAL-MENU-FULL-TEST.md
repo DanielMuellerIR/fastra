@@ -92,7 +92,10 @@ Dokument prüfen. Nach jedem Eintrag Undo und Redo ausführen.
 
 An `README.md` jeweils Quelle und Vorschau prüfen:
 
-- Fett, kursiv, Code.
+- Fett, kursiv, Hervorheben (`==Text==`), Code.
+- Harter Zeilenumbruch: zwei Leerzeichen plus normaler Umbruch; bei bereits
+  vorhandenem Umbruch dürfen weder ein drittes Leerzeichen noch eine zusätzliche
+  Leerzeile entstehen. Tooltip kontrollieren.
 - Überschrift 1–3 und normaler Absatz.
 - Aufzählung, nummerierte Liste, Zitat.
 - Link und Tabelle einfügen.

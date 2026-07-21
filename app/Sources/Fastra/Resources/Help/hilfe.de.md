@@ -174,6 +174,13 @@ normale harte Umbrüche. In eingerückten oder mit Backticks/Tilden begrenzten
 Codeblöcken gilt die Erweiterung nicht. Beim Kopieren wird die sichtbare
 Leerzeile als normaler Zeilenumbruch übernommen.
 
+**Textmarker:** Text zwischen zwei Gleichheitszeichen-Paaren wird mit einem
+festen, zum hellen oder dunklen Erscheinungsbild passenden Hintergrund
+hervorgehoben, zum Beispiel `==wichtig==`. Andere Markdown-Auszeichnungen
+können darin verschachtelt werden; in Inline-Code und Codeblöcken bleiben die
+Gleichheitszeichen wörtlich. Diese Schreibweise ist eine Fastra-Erweiterung und
+gehört nicht zum GFM-Standard.
+
 **Formeln (KaTeX):** Formeln stehen inline zwischen einzelnen Dollarzeichen,
 zum Beispiel `$E = mc^2$`. Ein eigener Formelblock beginnt und endet mit je
 zwei Dollarzeichen:
@@ -203,10 +210,17 @@ die Vorschau benötigt dafür keinen Netzzugriff.
 Bei Markdown-Tabs erscheint über dem Editor eine **Format-Toolbar**; die
 gleichen Befehle liegen im Menü „Markdown“ und im Rechtsklickmenü. Sie
 wirken als normale, mit ⌘Z widerrufbare Textänderungen auf die Auswahl
-bzw. die Cursor-Zeile: Fett (⌘B), Kursiv (⌘I), Code (⇧⌘K),
+bzw. die Cursor-Zeile: Fett (⌘B), Kursiv (⌘I), Hervorheben (⇧⌘H),
+Code (⇧⌘K),
 Überschrift 1–3 (⌘⌥1–3), zurück zu normalem Text (⌘⌥0), Aufzählung
 (⇧⌘8), nummerierte Liste (⇧⌘7), Zitat (⇧⌘9), Link (⌘K) und
 „Tabelle einfügen…“ (kleiner Dialog: Spalten, Kopfzeile ja/nein).
+
+Der Toolbar-Befehl **Harter Zeilenumbruch** fügt am Ende der Auswahl zwei
+normale Leerzeichen und anschließend einen normalen Zeilenumbruch ein. Steht
+der Cursor bereits direkt vor einem Zeilenumbruch, ergänzt bzw. vereinheitlicht
+er nur die zwei Leerzeichen. So bleibt die zugrunde liegende Markdown-
+Schreibweise sichtbar und mit ⌘Z widerrufbar.
 
 **Bilder einfügen:** Ein Bild aus der Zwischenablage (⌘V) legt Fastra
 als Datei **neben dem Dokument** ab (`dokumentname-JJJJ-MM-TT-hhmmss.png`;

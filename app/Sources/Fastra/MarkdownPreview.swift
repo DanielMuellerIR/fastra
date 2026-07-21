@@ -22,6 +22,7 @@ import AppKit
 import Darwin
 import SwiftUI
 import WebKit
+import FastraMarkdownMark
 import cmark_gfm
 import cmark_gfm_extensions
 
@@ -150,6 +151,9 @@ enum MarkdownRichText {
         let control = darkMode ? "#333333" : "#ECECEC"
         let border = darkMode ? "#484848" : "#D7D7D7"
         let link = darkMode ? "#8BB7F2" : "#3F69A8"
+        // Autoren-Markierungen unterscheiden sich bewusst von Auswahl- und
+        // Suchfarben. Beide Kombinationen behalten klaren Textkontrast.
+        let markBackground = darkMode ? "#665200" : "#FFEE9A"
         let cssFont = fontName == PreviewFonts.systemName
             ? "-apple-system, BlinkMacSystemFont, sans-serif"
             : "'\(cssEscaped(fontName))', -apple-system, sans-serif"
@@ -179,6 +183,8 @@ enum MarkdownRichText {
                      margin-left: 0; padding-left: 0.9em; }
         table { border-collapse: collapse; } th, td { border: 1px solid \(border);
                 padding: 0.35em 0.6em; } a { color: \(link); }
+        mark { color: inherit; background: \(markBackground); border-radius: 0.18em;
+               padding: 0 0.08em; }
         img { display: block; max-width: 100%; height: auto; margin: 0.8em 0;
               border-radius: 6px; }
         .math-inline math { font-size: 1.05em; }
@@ -275,6 +281,13 @@ enum MarkdownRichText {
           rich.querySelectorAll('.\(MarkdownVisibleBlankLines.cssClass)').forEach(
             element => element.replaceWith(document.createElement('br'))
           );
+          // Das kopierte Fragment enthält das Dokument-CSS nicht. Die feste
+          // Themefarbe deshalb inline mitgeben, damit HTML- und RTF-Ziele den
+          // Textmarker statt bloß seines Klartexts erhalten.
+          rich.querySelectorAll('mark').forEach(element => {
+            element.style.backgroundColor = '\(markBackground)';
+            element.style.color = '\(bodyColor)';
+          });
           const plain = selection.toString();
           const html = rich.innerHTML;
           event.clipboardData.setData('text/plain', plain);
@@ -370,7 +383,18 @@ enum MarkdownRichText {
         guard let parser = cmark_parser_new(CMARK_OPT_DEFAULT) else {
             return MarkdownRenderedFragment(html: escapedPlainText(markdown), imageURLs: [:])
         }
-        defer { cmark_parser_free(parser) }
+        guard let markExtension = fastra_mark_extension_new() else {
+            cmark_parser_free(parser)
+            return MarkdownRenderedFragment(html: escapedPlainText(markdown), imageURLs: [:])
+        }
+        defer {
+            // Der Parser hält nur eine geliehene Referenz auf die Extension.
+            // Deshalb zuerst Parser/Dokument abbauen, danach die Extension.
+            cmark_parser_free(parser)
+            fastra_mark_extension_free(markExtension)
+        }
+
+        cmark_parser_attach_syntax_extension(parser, markExtension)
 
         for extensionName in ["autolink", "strikethrough", "tagfilter", "tasklist", "table"] {
             extensionName.withCString { name in

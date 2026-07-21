@@ -143,6 +143,14 @@ nach CommonMark. Die zwei Leerzeichen am Ende einer nichtleeren Zeile sowie
 der Backslash bleiben normale harte Umbrüche; in Codeblöcken gilt die
 Erweiterung nicht.
 
+Text zwischen zwei Gleichheitszeichen-Paaren, etwa `==wichtig==`, erscheint mit
+einem festen, ans Erscheinungsbild angepassten Textmarker-Hintergrund. Das ist
+eine Fastra-Erweiterung und kein Standard-GFM; verschachteltes Markdown wird
+weiterhin formatiert, Code bleibt wörtlich. Toolbar, Menü und Rechtsklickmenü
+können den Textmarker setzen. Ein eigener Befehl **Harter Zeilenumbruch** fügt
+genau zwei Leerzeichen am Zeilenende plus einen normalen Umbruch ein und macht
+diese leicht zu vergessende Markdown-Schreibweise sichtbar.
+
 Ein Klick in den Vorschautext scrollt den Editor an die zugehörige Quellzeile
 und setzt den Cursor dorthin — auch innerhalb eines langen Absatzes, wo die
 Zeile aus den Umbrüchen vor der Klickstelle bestimmt wird. Die Spalte ist eine

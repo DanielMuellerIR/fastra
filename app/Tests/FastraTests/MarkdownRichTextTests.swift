@@ -146,6 +146,50 @@ struct MarkdownRichTextTests {
         #expect(dark.contains("#171717"))
     }
 
+    @Test("Fastra-Textmarker rendert semantisches mark mit verschachteltem Markdown")
+    func highlightRendersSemanticMark() {
+        let fragment = MarkdownRichText.htmlFragment(
+            markdown: "Normal, ==markiert und **fett**==, normal."
+        )
+
+        #expect(fragment.contains("<mark>markiert und <strong>fett</strong></mark>"))
+        #expect(!fragment.contains("==markiert"))
+    }
+
+    @Test("Textmarker respektiert Escapes, Code und ungültige Delimiter")
+    func highlightLeavesLiteralContextsAlone() {
+        let fragment = MarkdownRichText.htmlFragment(markdown: #"""
+        \==wörtlich== und `==Code==` und == nicht markiert == und ===lang===.
+
+        ```text
+        ==Blockcode==
+        ```
+        """#)
+
+        #expect(!fragment.contains("<mark>"))
+        #expect(fragment.contains("==wörtlich=="))
+        #expect(fragment.contains("==Code=="))
+        #expect(fragment.contains("==Blockcode=="))
+    }
+
+    @Test("Textmarker darf einen Softbreak im selben Absatz enthalten")
+    func highlightMayContainSoftBreak() {
+        let fragment = MarkdownRichText.htmlFragment(markdown: "==erste\nzweite==")
+
+        #expect(fragment.contains("<mark>erste\nzweite</mark>"))
+    }
+
+    @Test("Textmarker ändert die sichere HTML-Grenze nicht")
+    func highlightDoesNotEnableRawHTML() {
+        let fragment = MarkdownRichText.htmlFragment(
+            markdown: "==sicher== <script>alert('x')</script>"
+        )
+
+        #expect(fragment.contains("<mark>sicher</mark>"))
+        #expect(!fragment.contains("<script>"))
+        #expect(fragment.contains("raw HTML omitted"))
+    }
+
     @Test("Remote-Bilder lösen beim Anzeigen keinen Netzverkehr aus")
     func remoteImagesAreNeutralized() {
         let fragment = MarkdownRichText.htmlFragment(
@@ -284,6 +328,28 @@ struct MarkdownRichTextTests {
         #expect(pasteboard.string(forType: .string) == "Titel\nFett")
         #expect(pasteboard.data(forType: .html) != nil)
         #expect(pasteboard.data(forType: .rtf) != nil)
+    }
+
+    @Test("Native RTF-Zwischenablage behält den Textmarker-Hintergrund")
+    @MainActor
+    func nativePasteboardKeepsHighlightBackground() throws {
+        let pasteboard = NSPasteboard(name: .init("fastra.test.markdown-mark-copy"))
+        let didWrite = MarkdownPasteboard.write(
+            plain: "Markiert",
+            htmlFragment: "<mark style=\"background-color:#FFEE9A;color:#363636\">Markiert</mark>",
+            to: pasteboard
+        )
+
+        let rtf = try #require(pasteboard.data(forType: .rtf))
+        let attributed = try NSAttributedString(
+            data: rtf,
+            options: [.documentType: NSAttributedString.DocumentType.rtf],
+            documentAttributes: nil
+        )
+        let background = attributed.attribute(.backgroundColor, at: 0,
+                                              effectiveRange: nil) as? NSColor
+        #expect(didWrite)
+        #expect(background != nil)
     }
 
     private func visibleBlankCount(in markdown: String) -> Int {

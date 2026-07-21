@@ -9,6 +9,28 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.46.0] — 2026-07-21
+
+### Hinzugefügt
+
+- Text zwischen `==`-Paaren lässt sich nun wie mit einem Textmarker
+  hervorheben. Die sichere Markdown-Vorschau rendert die lokale Erweiterung in
+  einer festen, für Hell und Dunkel passenden Farbe; verschachteltes Markdown
+  bleibt aktiv, Code wörtlich. Toolbar, Haupt- und Rechtsklickmenü bieten den
+  Befehl „Hervorheben“ (⇧⌘H), und Kopieren bewahrt die Hervorhebung in HTML und
+  Rich Text.
+- Der neue Markdown-Befehl „Harter Zeilenumbruch“ erinnert an die
+  Markdown-Schreibweise und fügt zwei normale Leerzeichen plus einen normalen
+  Umbruch ein. Vor einem vorhandenen Umbruch vereinheitlicht er die
+  Leerzeichen, ohne eine zusätzliche Leerzeile anzulegen; der Tooltip erklärt
+  den erzeugten Quelltext.
+
+### Intern
+
+- Eine kleine lokale cmark-Erweiterung erzeugt das semantische `mark`-Element,
+  ohne unsicheres Roh-HTML freizuschalten. Unit- und WebKit-DOM-Tests schützen
+  Parsergrenzen, Farbhintergrund, Rich-Text-Kopie und Textbearbeitung.
+
 ## [v1.45.1] — 2026-07-21
 
 ### Behoben

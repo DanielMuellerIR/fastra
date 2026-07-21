@@ -37,9 +37,21 @@ let package = Package(
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.4"),
     ],
     targets: [
+        // Kleine lokale cmark-Inline-Erweiterung für `==Textmarker==`.
+        // Sie nutzt die öffentliche Extension-API und verändert den gepinnten
+        // Dependency-Checkout nicht.
+        .target(
+            name: "FastraMarkdownMark",
+            dependencies: [
+                .product(name: "cmark-gfm", package: "swift-cmark"),
+            ],
+            path: "Sources/FastraMarkdownMark",
+            publicHeadersPath: "include"
+        ),
         .executableTarget(
             name: "Fastra",
             dependencies: [
+                "FastraMarkdownMark",
                 .product(name: "CodeEditSourceEditor", package: "CodeEditSourceEditor"),
                 .product(name: "CodeEditLanguages",    package: "CodeEditLanguages"),
                 .product(name: "CodeEditTextView",     package: "CodeEditTextView"),

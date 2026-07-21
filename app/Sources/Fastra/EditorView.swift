@@ -286,7 +286,7 @@ struct EditorView: View {
         // Im ScrollView bleiben alle Befehle erreichbar.
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
-                ForEach(MarkdownFormatCommand.allCases, id: \.rawValue) { command in
+                ForEach(MarkdownFormatCommand.displayOrder, id: \.rawValue) { command in
                     Button {
                         NotificationCenter.default.post(name: .fastraMarkdownFormat,
                                                         object: command.rawValue)
@@ -298,9 +298,9 @@ struct EditorView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help(Text(verbatim: command.menuTitle))
+                    .help(Text(verbatim: command.helpText))
                     .accessibilityLabel(Text(verbatim: command.menuTitle))
-                    if command == .code || command == .plainParagraph || command == .quote {
+                    if command == .hardBreak || command == .plainParagraph || command == .quote {
                         Divider().frame(height: 14).opacity(0.5)
                     }
                 }

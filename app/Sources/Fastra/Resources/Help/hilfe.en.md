@@ -167,6 +167,12 @@ breaks. The extension does not apply inside indented code blocks or code
 fences made from backticks or tildes. Copying carries the visible blank line
 over as a normal newline.
 
+**Text marker:** Text between pairs of two equals signs is highlighted with a
+fixed background that adapts to the light or dark appearance, for example
+`==important==`. Other Markdown formatting may be nested inside it; the equals
+signs remain literal in inline code and code blocks. This syntax is a Fastra
+extension and is not part of standard GFM.
+
 **Formulas (KaTeX):** Put an inline formula between single dollar signs, for
 example `$E = mc^2$`. A formula block starts and ends with two dollar signs:
 
@@ -195,10 +201,17 @@ preview does not need network access for either feature.
 For Markdown tabs, a **format toolbar** appears above the editor; the
 same commands live in the “Markdown” menu and the right-click menu. They
 act as normal, ⌘Z-undoable text edits on the selection or the cursor
-line: bold (⌘B), italic (⌘I), code (⇧⌘K), heading 1–3 (⌘⌥1–3), back to
+line: bold (⌘B), italic (⌘I), highlight (⇧⌘H), code (⇧⌘K), heading 1–3
+(⌘⌥1–3), back to
 plain text (⌘⌥0), bulleted list (⇧⌘8), numbered list (⇧⌘7), quote
 (⇧⌘9), link (⌘K), and “Insert table…” (a small dialog: columns, header
 yes/no).
+
+The toolbar's **Hard Line Break** command inserts two ordinary spaces at the
+end of the selection followed by an ordinary line break. If the cursor is
+already directly before a line break, it only adds or normalizes the two
+spaces. The underlying Markdown stays visible and the edit remains undoable
+with ⌘Z.
 
 **Inserting images:** Pasting an image from the clipboard (⌘V) stores it
 as a file **next to the document** (`documentname-YYYY-MM-DD-hhmmss.png`;

@@ -393,13 +393,14 @@ final class EditorContextMenu: NSObject {
         if MainActor.assumeIsolated({ MarkdownAssist.isMarkdownTabActive(in: Workspace.shared) }) {
             let markdownItem = NSMenuItem(title: "Markdown", action: nil, keyEquivalent: "")
             let markdownSub = NSMenu()
-            let breaksAfter: Set<MarkdownFormatCommand> = [.code, .plainParagraph, .quote, .link]
-            for command in MarkdownFormatCommand.allCases {
+            let breaksAfter: Set<MarkdownFormatCommand> = [.hardBreak, .plainParagraph, .quote, .link]
+            for command in MarkdownFormatCommand.displayOrder {
                 let item = NSMenuItem(title: command.menuTitle,
                                       action: #selector(runMarkdownFormat(_:)),
                                       keyEquivalent: "")
                 item.target = self
                 item.tag = command.rawValue
+                item.toolTip = command.helpText
                 item.isEnabled = !hasColumnSelection
                 if hasColumnSelection {
                     item.toolTip = columnSelectionUnsupportedText

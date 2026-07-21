@@ -986,7 +986,10 @@
 // Assistiertes Markdown-Schreiben (Etappe 5 Wunschpaket 2026-07b)
 "Fett" = "Bold";
 "Kursiv" = "Italic";
+"Hervorheben" = "Highlight";
 "Code" = "Code";
+"Harter Zeilenumbruch" = "Hard Line Break";
+"Fügt zwei Leerzeichen und einen normalen Zeilenumbruch ein." = "Inserts two spaces and an ordinary line break.";
 "Überschrift 1" = "Heading 1";
 "Überschrift 2" = "Heading 2";
 "Überschrift 3" = "Heading 3";

@@ -7787,6 +7787,8 @@ enum SelfTest {
 
         Inline $x^2 + y^2$.
 
+        ==Textmarker mit **Fettung**==
+
         Kopierstart
         \(twoSpaces)
         \(threeSpaces)
@@ -7863,6 +7865,13 @@ enum SelfTest {
             math: !!document.querySelector('.math-inline math'),
             mermaid: !!document.querySelector('.mermaid-render svg'),
             highlight: !!document.querySelector('pre code.hljs span'),
+            mark: (() => {
+              const node = document.querySelector('mark');
+              if (!node || !node.querySelector('strong')) return false;
+              const background = getComputedStyle(node).backgroundColor;
+              return background !== 'rgba(0, 0, 0, 0)'
+                && background !== 'transparent';
+            })(),
             blankLines: blanks.length === 2
               && blanks.every(node => node.textContent === ''
                 && Math.abs(node.getBoundingClientRect().height - lineHeight) < 0.75),
@@ -7876,11 +7885,12 @@ enum SelfTest {
                 && flags?["math"] == true
                 && flags?["mermaid"] == true
                 && flags?["highlight"] == true
+                && flags?["mark"] == true
                 && flags?["blankLines"] == true
                 && flags?["blankCopy"] == true
             if passed {
                 try? FileManager.default.removeItem(at: directory)
-                finish(true, "Bild + KaTeX + Mermaid + Highlighting + sichtbare Leerzeilen im DOM")
+                finish(true, "Bild + KaTeX + Mermaid + Codefarben + Textmarker + sichtbare Leerzeilen im DOM")
             }
             if tick == 119 {
                 try? FileManager.default.removeItem(at: directory)

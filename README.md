@@ -136,6 +136,13 @@ one space keeps its CommonMark meaning. Two spaces at the end of a non-empty
 line and a trailing backslash remain ordinary hard breaks; the extension does
 not apply inside code blocks.
 
+Text between pairs of two equals signs, such as `==important==`, is rendered
+with a fixed, appearance-aware marker background. This is a Fastra extension,
+not standard GFM; it composes with nested Markdown while code stays literal.
+The Markdown toolbar, menu and context menu can add the marker. A separate
+**Hard Line Break** helper inserts exactly two trailing spaces plus an ordinary
+line break, keeping this otherwise easy-to-forget Markdown notation visible.
+
 Clicking a passage in the preview scrolls the editor to the matching source
 line and places the cursor there — including inside a long paragraph, where the
 line is resolved from the line breaks before the click. The column is an

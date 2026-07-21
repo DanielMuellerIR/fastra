@@ -16,7 +16,7 @@ private func range(_ location: Int, _ length: Int) -> NSRange {
     NSRange(location: location, length: length)
 }
 
-// MARK: - Inline (Fett/Kursiv/Code)
+// MARK: - Inline (Fett/Kursiv/Hervorhebung/Code)
 
 @Test("Fett: Auswahl wird eingepackt, Selektion bleibt auf dem Wort")
 func bold_wrapsSelection() {
@@ -47,6 +47,73 @@ func italic_emptySelection() {
     let edit = MarkdownFormat.toggleInline("abc", selection: range(3, 0), marker: "*")
     #expect(applied(edit, to: "abc") == "abc**")
     #expect(edit.selection == range(4, 0))
+}
+
+@Test("Hervorheben: Auswahl wird mit doppelten Gleichheitszeichen umschlossen")
+func highlight_wrapsSelection() {
+    let text = "Das ist wichtig."
+    let edit = MarkdownFormat.edit(for: .highlight, text: text,
+                                   selection: range(8, 7))
+    #expect(edit != nil)
+    #expect(applied(edit!, to: text) == "Das ist ==wichtig==.")
+    #expect(edit!.selection == range(10, 7))
+}
+
+@Test("Hervorheben: erneuter Befehl entfernt die Marker")
+func highlight_togglesOff() {
+    let text = "Das ist ==wichtig==."
+    let edit = MarkdownFormat.edit(for: .highlight, text: text,
+                                   selection: range(10, 7))
+    #expect(edit != nil)
+    #expect(applied(edit!, to: text) == "Das ist wichtig.")
+}
+
+@Test("Harter Zeilenumbruch: zwei Leerzeichen und Newline als ein Edit")
+func hardBreak_insertsMarkdownBreak() {
+    let text = "Erste ZeileZweite Zeile"
+    let edit = MarkdownFormat.edit(for: .hardBreak, text: text,
+                                   selection: range(11, 0))
+    #expect(edit != nil)
+    #expect(applied(edit!, to: text) == "Erste Zeile  \nZweite Zeile")
+    #expect(edit!.selection == range(14, 0))
+}
+
+@Test("Harter Zeilenumbruch: Auswahl bleibt erhalten und Umbruch folgt danach")
+func hardBreak_preservesSelection() {
+    let text = "Erste ZeileZweite Zeile"
+    let edit = MarkdownFormat.edit(for: .hardBreak, text: text,
+                                   selection: range(0, 11))
+    #expect(edit != nil)
+    #expect(applied(edit!, to: text) == "Erste Zeile  \nZweite Zeile")
+    #expect(edit!.range == range(11, 0))
+}
+
+@Test("Harter Zeilenumbruch: vorhandenes Newline wird nicht verdoppelt")
+func hardBreak_reusesExistingNewline() {
+    let text = "Erste Zeile\nZweite Zeile"
+    let edit = MarkdownFormat.edit(for: .hardBreak, text: text,
+                                   selection: range(11, 0))
+    #expect(edit != nil)
+    #expect(applied(edit!, to: text) == "Erste Zeile  \nZweite Zeile")
+    #expect(edit!.replacement == "  ")
+}
+
+@Test("Harter Zeilenumbruch: vorhandene Spaces werden auf genau zwei normalisiert")
+func hardBreak_normalizesTrailingSpaces() {
+    for spaces in [" ", "   "] {
+        let text = "Zeile\(spaces)\nDanach"
+        let location = ("Zeile\(spaces)" as NSString).length
+        let edit = MarkdownFormat.edit(for: .hardBreak, text: text,
+                                       selection: range(location, 0))
+        #expect(edit != nil)
+        #expect(applied(edit!, to: text) == "Zeile  \nDanach")
+    }
+}
+
+@Test("Harter Zeilenumbruch: auf einer leeren Zeile kein irreführender Edit")
+func hardBreak_emptyLineIsNoOp() {
+    #expect(MarkdownFormat.edit(for: .hardBreak, text: "Davor\n\nDanach",
+                                selection: range(7, 0)) == nil)
 }
 
 // MARK: - Überschriften

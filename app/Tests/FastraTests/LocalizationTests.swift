@@ -30,12 +30,17 @@ struct LocalizationTests {
             + HitExtraction.Destination.allCases.map(\.rawValue)
             + SidebarMode.allCases.map(\.rawValue)
             + AppearanceSetting.allCases.map(\.label)
-        let languageNeutral = Set(["Tab", "Graph"])
+            + MarkdownFormatCommand.displayOrder.map(\.menuTitleKey)
+        let languageNeutral = Set(["Tab", "Graph", "Code", "Link"])
         for key in keys {
             #expect(languageNeutral.contains(key)
                     || L10n.string(key, language: "en") != key,
                     "Englische Übersetzung fehlt: \(key)")
         }
+        #expect(L10n.string(
+            "Fügt zwei Leerzeichen und einen normalen Zeilenumbruch ein.",
+            language: "en"
+        ) != "Fügt zwei Leerzeichen und einen normalen Zeilenumbruch ein.")
     }
 
     @Test("Alle erweiterten Git-Aktionslabels und Erfolgstexte sind katalogisiert")

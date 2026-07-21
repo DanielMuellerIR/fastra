@@ -448,8 +448,11 @@ struct FastraApp: App {
                         .keyboardShortcut("b", modifiers: .command)
                     Button(MarkdownFormatCommand.italic.menuTitle) { postMarkdownFormat(.italic) }
                         .keyboardShortcut("i", modifiers: .command)
+                    Button(MarkdownFormatCommand.highlight.menuTitle) { postMarkdownFormat(.highlight) }
+                        .keyboardShortcut("h", modifiers: [.command, .shift])
                     Button(MarkdownFormatCommand.code.menuTitle) { postMarkdownFormat(.code) }
                         .keyboardShortcut("k", modifiers: [.command, .shift])
+                    Button(MarkdownFormatCommand.hardBreak.menuTitle) { postMarkdownFormat(.hardBreak) }
                     Divider()
                     Button(MarkdownFormatCommand.heading1.menuTitle) { postMarkdownFormat(.heading1) }
                         .keyboardShortcut("1", modifiers: [.command, .option])

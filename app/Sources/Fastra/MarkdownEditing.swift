@@ -16,12 +16,25 @@ enum MarkdownFormatCommand: Int, CaseIterable {
     case bulletList, orderedList, quote
     case link
     case insertTable
+    // Rohwerte wandern durch Notifications und müssen stabil bleiben. Neue
+    // Befehle stehen deshalb hinten; `displayOrder` bestimmt separat die UI.
+    case highlight
+    case hardBreak
 }
 
 extension MarkdownFormatCommand {
-    /// Beschriftung in Menüleiste, Rechtsklickmenü und Toolbar-Tooltips.
-    var menuTitle: String {
-        let key = switch self {
+    /// Sinnvolle Reihenfolge für Toolbar und Kontextmenü, unabhängig von
+    /// den stabilen Rohwerten der Notification-Kommandos.
+    static let displayOrder: [MarkdownFormatCommand] = [
+        .bold, .italic, .highlight, .code, .hardBreak,
+        .heading1, .heading2, .heading3, .plainParagraph,
+        .bulletList, .orderedList, .quote,
+        .link, .insertTable,
+    ]
+
+    /// Stabiler Lokalisierungsschlüssel für alle sichtbaren Beschriftungen.
+    var menuTitleKey: String {
+        switch self {
         case .bold:           "Fett"
         case .italic:         "Kursiv"
         case .code:           "Code"
@@ -34,8 +47,23 @@ extension MarkdownFormatCommand {
         case .quote:          "Zitat"
         case .link:           "Link"
         case .insertTable:    "Tabelle einfügen…"
+        case .highlight:      "Hervorheben"
+        case .hardBreak:      "Harter Zeilenumbruch"
         }
-        return L10n.string(key)
+    }
+
+    /// Beschriftung in Menüleiste, Rechtsklickmenü und Toolbar-Tooltips.
+    var menuTitle: String { L10n.string(menuTitleKey) }
+
+    /// Ausführlicher Tooltip für Befehle, deren Wirkung am Symbol allein
+    /// nicht erkennbar ist. Die übrigen verwenden ihren Menü-Titel.
+    var helpText: String {
+        switch self {
+        case .hardBreak:
+            L10n.string("Fügt zwei Leerzeichen und einen normalen Zeilenumbruch ein.")
+        default:
+            menuTitle
+        }
     }
 
     /// SF-Symbol für die Markdown-Toolbar.
@@ -53,6 +81,8 @@ extension MarkdownFormatCommand {
         case .quote:          return "text.quote"
         case .link:           return "link"
         case .insertTable:    return "tablecells"
+        case .highlight:      return "highlighter"
+        case .hardBreak:      return "arrow.turn.down.left"
         }
     }
 }
@@ -75,7 +105,7 @@ enum MarkdownFormat {
         return lower.hasSuffix(".md") || lower.hasSuffix(".markdown")
     }
 
-    // MARK: Inline-Auszeichnung (Fett/Kursiv/Code)
+    // MARK: Inline-Auszeichnung (Fett/Kursiv/Textmarker/Code)
 
     /// Umschaltende Inline-Auszeichnung: Auswahl einpacken bzw. eine schon
     /// vorhandene Auszeichnung wieder entfernen. Ohne Auswahl wird ein
@@ -111,6 +141,44 @@ enum MarkdownFormat {
         return Edit(range: selection, replacement: replacement,
                     selection: NSRange(location: selection.location + markerLength,
                                        length: selection.length))
+    }
+
+    /// Fügt den dokumentierten CommonMark-Hartumbruch als zwei Leerzeichen
+    /// plus normales Newline ein. Eine Auswahl bleibt bewusst erhalten: Der
+    /// Umbruch landet dahinter, statt versehentlich markierten Text zu löschen.
+    static func insertHardBreak(in text: String, after selection: NSRange) -> Edit? {
+        let ns = text as NSString
+        let target = min(NSMaxRange(selection), ns.length)
+        let beforeTarget = NSRange(location: 0, length: target)
+        let previousNewline = ns.range(of: "\n", options: .backwards, range: beforeTarget)
+        let lineStart = previousNewline.location == NSNotFound
+            ? 0
+            : NSMaxRange(previousNewline)
+        let linePrefix = ns.substring(with: NSRange(location: lineStart,
+                                                    length: target - lineStart))
+        guard !linePrefix.trimmingCharacters(in: .whitespaces).isEmpty else {
+            return nil
+        }
+
+        // Direkt vor dem Ziel vorhandene normale Leerzeichen kanonisch auf
+        // genau zwei bringen. Tabs werden nicht umgedeutet: Sie haben in
+        // Markdown eine eigene Einrückungs-/Codeblock-Semantik.
+        var existingSpaces = 0
+        while target - existingSpaces > lineStart,
+              ns.character(at: target - existingSpaces - 1) == 0x20 {
+            existingSpaces += 1
+        }
+        let alreadyBeforeNewline = target < ns.length && ns.character(at: target) == 0x0A
+        let replacement = "  " + (alreadyBeforeNewline ? "" : "\n")
+        if existingSpaces == 2 && alreadyBeforeNewline { return nil }
+
+        let range = NSRange(location: target - existingSpaces, length: existingSpaces)
+        return Edit(
+            range: range,
+            replacement: replacement,
+            selection: NSRange(location: range.location + (replacement as NSString).length,
+                               length: 0)
+        )
     }
 
     // MARK: Zeilenbefehle (Überschriften, Listen, Zitat)
@@ -283,6 +351,8 @@ enum MarkdownFormat {
         case .quote:          return toggleQuote(text, selection: selection)
         case .link:           return makeLink(text, selection: selection)
         case .insertTable:    return nil
+        case .highlight:      return toggleInline(text, selection: selection, marker: "==")
+        case .hardBreak:      return insertHardBreak(in: text, after: selection)
         }
     }
 }
