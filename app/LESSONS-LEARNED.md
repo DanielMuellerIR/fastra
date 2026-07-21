@@ -392,3 +392,27 @@ ausschließlich im Projekt-Root ab. Nur `install.sh` nach erfolgreicher
 Notarisierung, Stapler-Prüfung, Gatekeeper-Abnahme und Codesignaturprüfung darf
 `/Applications/Fastra.app` ersetzen. So bleibt die Code-Identität produktiver
 Installationen über Versionswechsel stabil.
+
+### F.17 Auswahl-Bounding-Rects sind kein stabiler Tastatur-Scrollanker (2026-07-21)
+
+CodeEditTextView ruft nach jedem `moveDownAndModifySelection` korrekt
+`scrollSelectionToVisible()` auf. Die Funktion verwendete jedoch das
+Bounding-Rect der Auswahl. Dieses entsteht aus Fill-Rects, die auf den aktuell
+sichtbaren Textbereich begrenzt sind. Verlässt die bewegte Auswahlkante den
+Viewport, beschreibt das vermeintliche Scrollziel daher weiterhin den schon
+sichtbaren Teil; die feste Pivot-Kante bleibt im Bild, die aktive Kante läuft
+unten heraus.
+
+**Workaround (Patch 4r in `build.sh`):** CodeEdits vorhandener Helfer
+`offsetNotPivot` bestimmt die tatsächlich bewegte Kante. Nur deren kleines
+Zeichenrechteck wird sichtbar gescrollt; bei einer Bewegung zurück über den
+Pivot wechselt die aktive Seite automatisch. Eine gewöhnliche Cursorbewegung
+behält ihr bisheriges Verhalten, weil Pivot und Cursorposition dort
+zusammenfallen.
+
+**Regressionen:** `SoftWrapLayoutTests.extendingSelectionDownScrollsActiveEdgeIntoView`
+verwendet den echten `TextViewController`, führt den NSTextInputClient-Befehl
+24-mal aus und verlangt sowohl einen veränderten Viewport als auch eine
+sichtbare Nicht-Pivot-Kante. `./selftest.sh selectionscroll` wiederholt das mit
+dem Editor aus dem gepackten App-Bundle und misst unabhängig die untere
+Auswahlrange-Kante.

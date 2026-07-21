@@ -207,6 +207,7 @@ enum SelfTest {
         case "softwrapprofiles": waitForMainWindow { runSoftWrapProfilesTest() }
         case "softwrapmodes": waitForMainWindow { runSoftWrapModesTest() }
         case "softwrapanchor": waitForMainWindow { runSoftWrapAnchorTest() }
+        case "selectionscroll": waitForMainWindow { runSelectionScrollTest() }
         case "highlight": waitForMainWindow { runHighlightTest() }
         case "highlight4d": waitForMainWindow { runFourDHighlightTest() }
         case "completion4d": waitForMainWindow { runFourDCompletionTest() }
@@ -2288,6 +2289,79 @@ enum SelfTest {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // MARK: - -selftest selectionscroll
+
+    /// Prüft im gepackten Editor den NSTextInputClient-Befehl, den AppKit für
+    /// Shift+Pfeil nach unten aufruft. Die Messung verwendet bewusst die
+    /// bewegte Range-Kante selbst und nicht CodeEdits Scroll-Hilfsfunktion.
+    private static func runSelectionScrollTest() {
+        testLabel = "selectionscroll"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard let mainWindow = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        }), let root = mainWindow.contentView else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+
+        let content = (1...160).map { "Auswahlzeile \($0)" }
+            .joined(separator: "\n")
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "fastra-selectionscroll-\(UUID().uuidString).txt"
+            )
+        do {
+            try content.write(to: tmp, atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "Fixture nicht schreibbar: \(error.localizedDescription)")
+        }
+
+        ws.loadFile(at: tmp) { ok in
+            try? FileManager.default.removeItem(at: tmp)
+            guard ok else { finish(false, "Text-Fixture nicht ladbar") }
+            pollForSoftWrapEditor(root: root, tick: 0) { textView, _ in
+                guard let scrollView = textView.enclosingScrollView else {
+                    finish(false, "Editor-ScrollView fehlt")
+                }
+                textView.layoutManager.layoutLines()
+                scrollView.contentView.scroll(to: .zero)
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+                textView.selectionManager.setSelectedRange(
+                    NSRange(location: 0, length: 0)
+                )
+                let initialTop = scrollView.documentVisibleRect.minY
+
+                for _ in 0..<100 {
+                    textView.moveDownAndModifySelection(nil)
+                }
+
+                let range = textView.selectedRange()
+                guard range.length > 0,
+                      let activeRect = textView.layoutManager.rectForOffset(
+                          NSMaxRange(range)
+                      ) else {
+                    finish(false, "bewegte Auswahlkante nicht layoutbar")
+                }
+                let visibleRect = scrollView.documentVisibleRect
+                guard visibleRect.minY > initialTop,
+                      visibleRect.contains(activeRect) else {
+                    finish(
+                        false,
+                        "bewegte Kante außerhalb: Auswahl=\(range), "
+                            + "Viewport=\(visibleRect), Kante=\(activeRect)"
+                    )
+                }
+                finish(
+                    true,
+                    "Shift-Auswahl scrollte von y=\(Int(initialTop)) auf "
+                        + "y=\(Int(visibleRect.minY)); bewegte Kante sichtbar"
+                )
             }
         }
     }

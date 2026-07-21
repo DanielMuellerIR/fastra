@@ -194,6 +194,17 @@ echten Controller einschließlich Text, sichtbarer Fragmente, Auswahl,
 Undo und Redo. `./selftest.sh joinundo` treibt denselben Menüpfad im gepackten
 Markdown-Editor und zählt echte sichtbare `LineFragmentView`s.
 
+Patch 4r (Tastaturauswahl mitscrollen, 2026-07-21): CodeEditTextView versucht
+nach `moveDownAndModifySelection` zwar, die Auswahl sichtbar zu halten, nutzt
+dafür aber deren Bounding-Rect. Dessen Fill-Rects sind auf den sichtbaren
+Textbereich begrenzt; die mit Shift+Pfeil bewegte Kante kann deshalb unter den
+Viewport laufen, während das Scrollziel weiter auf den sichtbaren oberen
+Ausschnitt zeigt. Fastra verwendet CodeEdits bereits vorhandene, zuvor an
+dieser Stelle ungenutzte Nicht-Pivot-Kante als kleines eindeutiges Scrollziel.
+Der direkte `SoftWrapLayoutTests`-Regressionstest treibt den echten
+`moveDownAndModifySelection`-Befehl in einem kurzen Viewport; der gepackte
+Editor wird zusätzlich mit `./selftest.sh selectionscroll` geprüft.
+
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 
 Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:

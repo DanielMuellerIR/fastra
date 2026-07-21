@@ -229,6 +229,53 @@ struct SoftWrapLayoutTests {
         #expect(finalRect.width < fullLineWidth - 1)
     }
 
+    @Test("Shift-Pfeil nach unten hält die bewegte Auswahlkante sichtbar")
+    @MainActor
+    func extendingSelectionDownScrollsActiveEdgeIntoView() throws {
+        let text = (1...80).map { "Zeile \($0) mit Text" }
+            .joined(separator: "\n")
+        let editor = controller(
+            text: text,
+            column: nil,
+            width: 520,
+            wrapLines: false
+        )
+        editor.view.frame.size.height = 170
+        editor.view.layoutSubtreeIfNeeded()
+        editor.textView.layoutManager.layoutLines()
+
+        let scrollView = try #require(editor.scrollView)
+        scrollView.contentView.scroll(to: .zero)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        editor.textView.selectionManager.setSelectedRange(
+            NSRange(location: 0, length: 0)
+        )
+        let initialTop = scrollView.documentVisibleRect.minY
+
+        // Der echte NSTextInputClient-Befehl bildet Shift+Pfeil nach unten ab.
+        // Genug Schritte machen die Auswahl höher als den Viewport; dann darf
+        // nicht mehr ihr Anfang, sondern nur die bewegte Kante Scrollanker sein.
+        for _ in 0..<24 {
+            editor.textView.moveDownAndModifySelection(nil)
+        }
+
+        let selection = try #require(
+            editor.textView.selectionManager.textSelections.first
+        )
+        let pivot = try #require(selection.pivot)
+        let activeOffset = selection.range.location == pivot
+            ? selection.range.max
+            : selection.range.location
+        let activeRect = try #require(
+            editor.textView.layoutManager.rectForOffset(activeOffset)
+        )
+        let visibleRect = scrollView.documentVisibleRect
+
+        #expect(selection.range.length > 0)
+        #expect(visibleRect.minY > initialTop)
+        #expect(visibleRect.contains(activeRect))
+    }
+
     @Test("CSS-Vollauswahl verbinden und Undo halten Text und Layout sichtbar")
     @MainActor
     func joinLinesAndUndoKeepTextVisible() throws {

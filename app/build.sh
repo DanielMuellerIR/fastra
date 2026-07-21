@@ -1542,6 +1542,62 @@ if [ "$TEXT_OPERATION_UNDO_PATCH_CHANGED" -eq 1 ]; then
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4r. CodeEditTextView — bewegte Kante einer Tastaturauswahl sichtbar halten.
+#
+# `scrollSelectionToVisible()` scrollt upstream auf das berechnete Bounding-Rect
+# der Auswahl. Dessen Fill-Rects sind auf den sichtbaren Textbereich begrenzt;
+# sobald Shift+Pfeil die bewegte Kante aus dem Viewport schiebt, beschreibt das
+# Scrollziel daher weiter den sichtbaren oberen Ausschnitt statt der aktiven
+# Kante. CodeEdit besitzt bereits `offsetNotPivot`, nutzt den Helfer dort aber
+# nicht. Fastra scrollt auf das kleine Zeichenrechteck der aktiven, vom Pivot
+# entfernten Auswahlkante. Cursorbewegungen ohne Auswahl behalten damit
+# dasselbe Verhalten.
+CETV_SCROLL_SELECTION="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+ScrollToVisible.swift"
+SELECTION_SCROLL_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: bewegte Auswahlkante statt Gesamtauswahl' \
+    "$CETV_SCROLL_SELECTION" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (Shift-Auswahl scrollt mit)"
+  chmod u+w "$CETV_SCROLL_SELECTION"
+  /usr/bin/python3 - "$CETV_SCROLL_SELECTION" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+old = '''        var lastFrame: CGRect = .zero
+        while let boundingRect = getSelection()?.boundingRect, lastFrame != boundingRect {
+            lastFrame = boundingRect'''
+new = '''        var lastFrame: CGRect = .zero
+        while let selection = getSelection(),
+              let activeRect = layoutManager.rectForOffset(offsetNotPivot(selection)),
+              lastFrame != activeRect {
+            // Fastra-Patch: bewegte Auswahlkante statt Gesamtauswahl. Deren
+            // sichtbarer Ausschnitt verankert sonst die Oberkante und laesst
+            // Shift+Pfeil unten aus dem Viewport laufen.
+            lastFrame = activeRect'''
+if old not in src:
+    raise SystemExit(
+        f"{path}: Scroll-Auswahlpfad hat sich geaendert — Patch 4r pruefen"
+    )
+open(path, "w").write(src.replace(old, new, 1))
+PYEOF
+  SELECTION_SCROLL_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: bewegte Auswahlkante statt Gesamtauswahl' \
+    "$CETV_SCROLL_SELECTION"; then
+  echo "✗ FEHLER: Tastaturauswahl-Scroll-Patch hat NICHT gegriffen." >&2
+  exit 1
+fi
+
+if [ "$SELECTION_SCROLL_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 
