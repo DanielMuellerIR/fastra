@@ -152,13 +152,51 @@ die Vorschau** springt im Editor zur passenden Quellzeile. Kopieren aus
 der Vorschau liefert echten Rich-Text (Überschriften, Listen, Fettung
 bleiben erhalten).
 
-**Sichtbare Leerzeile:** Eine Quellzeile ausschließlich aus mindestens zwei
-normalen ASCII-Leerzeichen erscheint in Fastras Vorschau als genau eine
-vollständig leere Textzeile. Eine leere Zeile oder genau ein Leerzeichen folgt
-weiterhin CommonMark. Zwei Leerzeichen am Ende einer nichtleeren Zeile und ein
-Backslash bleiben normale harte Umbrüche; in Codeblöcken gilt die Erweiterung
-nicht. Beim Kopieren wird die sichtbare Leerzeile als normaler Zeilenumbruch
-übernommen.
+### Besondere Vorschau-Syntax
+
+Fastra verwendet GitHub-Flavoured Markdown und ergänzt es in der Vorschau um
+die folgenden lokalen Darstellungen.
+
+**Sichtbare Leerzeilen:** Eine Quellzeile ausschließlich aus mindestens zwei
+normalen ASCII-Leerzeichen (`U+0020 U+0020`) erscheint als genau eine
+vollständig leere Textzeile. Im folgenden Beispiel steht `␠` zur Erklärung für
+ein normales Leerzeichen; die Zeichen `␠` werden nicht mit eingegeben:
+
+```text
+Erster Absatz
+␠␠
+Zweiter Absatz
+```
+
+Eine leere Zeile oder genau ein Leerzeichen folgt weiterhin CommonMark. Zwei
+Leerzeichen am Ende einer **nichtleeren** Zeile und ein Backslash bleiben
+normale harte Umbrüche. In eingerückten oder mit Backticks/Tilden begrenzten
+Codeblöcken gilt die Erweiterung nicht. Beim Kopieren wird die sichtbare
+Leerzeile als normaler Zeilenumbruch übernommen.
+
+**Formeln (KaTeX):** Formeln stehen inline zwischen einzelnen Dollarzeichen,
+zum Beispiel `$E = mc^2$`. Ein eigener Formelblock beginnt und endet mit je
+zwei Dollarzeichen:
+
+```text
+$$
+\int_0^1 x^2\,dx = \frac{1}{3}
+$$
+```
+
+**Mermaid-Diagramme:** Ein Codeblock mit der Sprache `mermaid` wird als Diagramm
+gerendert. Andere Codeblöcke bleiben normaler, syntaxhervorgehobener Code:
+
+````markdown
+```mermaid
+flowchart LR
+  Start --> Prüfung
+  Prüfung --> Ergebnis
+```
+````
+
+KaTeX und Mermaid werden aus der App geladen und vollständig lokal ausgeführt;
+die Vorschau benötigt dafür keinen Netzzugriff.
 
 ## Markdown schreiben
 

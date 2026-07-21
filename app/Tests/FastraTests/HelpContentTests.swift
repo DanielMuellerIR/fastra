@@ -82,3 +82,20 @@ func help_renderedAnchorsExist() throws {
         }
     }
 }
+
+@Test("Markdown-Hilfe erklärt Leerzeilen, KaTeX und Mermaid in beiden Sprachen")
+func help_markdownSpecialSyntaxIsDocumented() throws {
+    let expectedTerms = [
+        "de": ["### Besondere Vorschau-Syntax", "U+0020 U+0020",
+               "$E = mc^2$", "```mermaid"],
+        "en": ["### Special Preview Syntax", "U+0020 U+0020",
+               "$E = mc^2$", "```mermaid"]
+    ]
+
+    for code in ["de", "en"] {
+        let markdown = try #require(HelpContent.markdown(languageCode: code))
+        for term in try #require(expectedTerms[code]) {
+            #expect(markdown.contains(term), "\(term) fehlt in hilfe.\(code).md")
+        }
+    }
+}

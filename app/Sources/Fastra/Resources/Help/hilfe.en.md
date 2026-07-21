@@ -145,12 +145,50 @@ diagrams — fully local, no network access. **Clicking in the preview**
 jumps the editor to the matching source line. Copying from the preview
 yields real rich text (headings, lists, and bold survive).
 
-**Visible blank line:** A source line containing only two or more ordinary
-ASCII spaces appears in Fastra's preview as exactly one completely empty text
-line. An empty line or exactly one space still follows CommonMark. Two spaces
-at the end of a non-empty line and a trailing backslash remain ordinary hard
-breaks; the extension does not apply inside code blocks. Copying carries the
-visible blank line over as a normal newline.
+### Special Preview Syntax
+
+Fastra uses GitHub-Flavoured Markdown and adds the following local renderings
+to its preview.
+
+**Visible blank lines:** A source line containing only two or more ordinary
+ASCII spaces (`U+0020 U+0020`) appears as exactly one completely empty text
+line. In the example below, `␠` represents an ordinary space for clarity; do
+not type the `␠` characters themselves:
+
+```text
+First paragraph
+␠␠
+Second paragraph
+```
+
+An empty line or exactly one space still follows CommonMark. Two spaces at the
+end of a **non-empty** line and a trailing backslash remain ordinary hard
+breaks. The extension does not apply inside indented code blocks or code
+fences made from backticks or tildes. Copying carries the visible blank line
+over as a normal newline.
+
+**Formulas (KaTeX):** Put an inline formula between single dollar signs, for
+example `$E = mc^2$`. A formula block starts and ends with two dollar signs:
+
+```text
+$$
+\int_0^1 x^2\,dx = \frac{1}{3}
+$$
+```
+
+**Mermaid diagrams:** A code fence whose language is `mermaid` renders as a
+diagram. Other code fences remain ordinary syntax-highlighted code:
+
+````markdown
+```mermaid
+flowchart LR
+  Start --> Check
+  Check --> Result
+```
+````
+
+KaTeX and Mermaid are loaded from the app and run entirely locally; the
+preview does not need network access for either feature.
 
 ## Writing Markdown
 
