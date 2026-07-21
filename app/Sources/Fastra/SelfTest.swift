@@ -2314,7 +2314,7 @@ enum SelfTest {
             .joined(separator: "\n")
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent(
-                "fastra-selectionscroll-\(UUID().uuidString).txt"
+                "fastra-selectionscroll-\(UUID().uuidString).md"
             )
         do {
             try content.write(to: tmp, atomically: true, encoding: .utf8)
@@ -2322,47 +2322,109 @@ enum SelfTest {
             finish(false, "Fixture nicht schreibbar: \(error.localizedDescription)")
         }
 
+        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
         ws.loadFile(at: tmp) { ok in
             try? FileManager.default.removeItem(at: tmp)
             guard ok else { finish(false, "Text-Fixture nicht ladbar") }
-            pollForSoftWrapEditor(root: root, tick: 0) { textView, _ in
-                guard let scrollView = textView.enclosingScrollView else {
-                    finish(false, "Editor-ScrollView fehlt")
-                }
-                textView.layoutManager.layoutLines()
-                scrollView.contentView.scroll(to: .zero)
-                scrollView.reflectScrolledClipView(scrollView.contentView)
-                textView.selectionManager.setSelectedRange(
-                    NSRange(location: 0, length: 0)
-                )
-                let initialTop = scrollView.documentVisibleRect.minY
+            pollForMarkdownSelectionScrollEditor(
+                ws: ws, mainWindow: mainWindow, root: root, tick: 0
+            )
+        }
+    }
 
-                for _ in 0..<100 {
-                    textView.moveDownAndModifySelection(nil)
-                }
+    /// Wartet ausdrücklich auf BEIDE Hälften des Markdown-Splits. So kann ein
+    /// TextView-only-Test nicht erneut die entscheidende Produktansicht
+    /// umgehen, in der der Nutzer den fehlenden Scroll beobachtet hat.
+    private static func pollForMarkdownSelectionScrollEditor(
+        ws: Workspace, mainWindow: NSWindow, root: NSView, tick: Int
+    ) {
+        let markdownReady = ws.activeTab?.isLoading == false
+            && ws.activeTab?.url?.pathExtension.lowercased() == "md"
+            && markdownWebView(in: root) != nil
+        if markdownReady,
+           let textView = editorTextView(in: root) as? TextView,
+           sourceEditorController(for: textView) != nil {
+            exerciseMarkdownSelectionScroll(
+                textView: textView, mainWindow: mainWindow
+            )
+            return
+        }
+        if tick >= 100 {
+            finish(false, "Markdown-Split mit linkem Editor nicht binnen 10 s bereit")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollForMarkdownSelectionScrollEditor(
+                ws: ws, mainWindow: mainWindow, root: root, tick: tick + 1
+            )
+        }
+    }
 
-                let range = textView.selectedRange()
-                guard range.length > 0,
-                      let activeRect = textView.layoutManager.rectForOffset(
-                          NSMaxRange(range)
-                      ) else {
-                    finish(false, "bewegte Auswahlkante nicht layoutbar")
-                }
-                let visibleRect = scrollView.documentVisibleRect
-                guard visibleRect.minY > initialTop,
-                      visibleRect.contains(activeRect) else {
-                    finish(
-                        false,
-                        "bewegte Kante außerhalb: Auswahl=\(range), "
-                            + "Viewport=\(visibleRect), Kante=\(activeRect)"
-                    )
-                }
+    /// Sendet echte, wiederholte Shift+↓-Events an den fokussierten linken
+    /// Editor und misst erst nach dem folgenden SwiftUI-Abgleich.
+    private static func exerciseMarkdownSelectionScroll(
+        textView: TextView, mainWindow: NSWindow
+    ) {
+        guard let scrollView = textView.enclosingScrollView else {
+            finish(false, "Editor-ScrollView fehlt")
+        }
+        textView.layoutManager.layoutLines()
+        scrollView.contentView.scroll(to: .zero)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        textView.selectionManager.setSelectedRange(
+            NSRange(location: 0, length: 0)
+        )
+        let initialTop = scrollView.documentVisibleRect.minY
+
+        guard mainWindow.makeFirstResponder(textView) else {
+            finish(false, "linker Markdown-Editor wurde nicht First Responder")
+        }
+        if let flags = NSEvent.keyEvent(
+            with: .flagsChanged, location: .zero,
+            modifierFlags: .shift,
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: mainWindow.windowNumber, context: nil,
+            characters: "", charactersIgnoringModifiers: "",
+            isARepeat: false, keyCode: 56
+        ) {
+            mainWindow.sendEvent(flags)
+        }
+        for index in 0..<100 {
+            guard let key = NSEvent.keyEvent(
+                with: .keyDown, location: .zero,
+                modifierFlags: .shift,
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: mainWindow.windowNumber, context: nil,
+                characters: "\u{F701}",
+                charactersIgnoringModifiers: "\u{F701}",
+                isARepeat: index > 0, keyCode: 125
+            ) else {
+                finish(false, "konnte Shift+Pfeil-nach-unten nicht bauen")
+            }
+            mainWindow.sendEvent(key)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            let range = textView.selectedRange()
+            guard range.length > 0,
+                  let activeRect = textView.layoutManager.rectForOffset(
+                      NSMaxRange(range)
+                  ) else {
+                finish(false, "bewegte Auswahlkante nicht layoutbar")
+            }
+            let visibleRect = scrollView.documentVisibleRect
+            guard visibleRect.minY > initialTop,
+                  visibleRect.contains(activeRect) else {
                 finish(
-                    true,
-                    "Shift-Auswahl scrollte von y=\(Int(initialTop)) auf "
-                        + "y=\(Int(visibleRect.minY)); bewegte Kante sichtbar"
+                    false,
+                    "bewegte Kante außerhalb: Auswahl=\(range), "
+                        + "Viewport=\(visibleRect), Kante=\(activeRect)"
                 )
             }
+            finish(
+                true,
+                "Shift-Auswahl scrollte von y=\(Int(initialTop)) auf "
+                    + "y=\(Int(visibleRect.minY)); bewegte Kante sichtbar"
+            )
         }
     }
 

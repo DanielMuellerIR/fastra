@@ -414,5 +414,8 @@ zusammenfallen.
 verwendet den echten `TextViewController`, führt den NSTextInputClient-Befehl
 24-mal aus und verlangt sowohl einen veränderten Viewport als auch eine
 sichtbare Nicht-Pivot-Kante. `./selftest.sh selectionscroll` wiederholt das mit
-dem Editor aus dem gepackten App-Bundle und misst unabhängig die untere
-Auswahlrange-Kante.
+dem Editor aus dem gepackten App-Bundle. Der Test wartet auf den vollständigen
+Markdown-Split, sendet echte wiederholte Shift+↓-Tastaturereignisse an den
+fokussierten linken Quelleditor und misst nach dem SwiftUI-Abgleich unabhängig
+die untere Auswahlrange-Kante. Ein unmittelbarer direkter Methodenaufruf reicht
+für diese Produktwirkung nicht als Regressionsschutz.

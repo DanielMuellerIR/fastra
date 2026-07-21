@@ -20,8 +20,9 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 ### Intern
 
 - Ein enger CodeEditTextView-Patch verwendet die aktive Auswahlkante als
-  Scrollziel. Ein Controller-Regressionstest und ein Selbsttest im gepackten
-  Editor schützen das Verhalten.
+  Scrollziel. Ein Controller-Regressionstest und ein Selbsttest mit echten
+  wiederholten Shift-Pfeiltasten im gepackten Markdown-Split-Editor schützen
+  das Verhalten.
 
 ## [v1.46.0] — 2026-07-21
 

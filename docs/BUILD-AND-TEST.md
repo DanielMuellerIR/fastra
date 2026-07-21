@@ -203,7 +203,10 @@ Ausschnitt zeigt. Fastra verwendet CodeEdits bereits vorhandene, zuvor an
 dieser Stelle ungenutzte Nicht-Pivot-Kante als kleines eindeutiges Scrollziel.
 Der direkte `SoftWrapLayoutTests`-Regressionstest treibt den echten
 `moveDownAndModifySelection`-Befehl in einem kurzen Viewport; der gepackte
-Editor wird zusätzlich mit `./selftest.sh selectionscroll` geprüft.
+Editor wird zusätzlich mit `./selftest.sh selectionscroll` geprüft. Dieser
+Selbsttest wartet ausdrücklich auf beide Hälften des Markdown-Splits, fokussiert
+den linken Quelleditor, sendet echte wiederholte Shift+↓-Events und misst die
+sichtbare aktive Kante erst nach dem folgenden SwiftUI-Abgleich.
 
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 
