@@ -4,6 +4,95 @@ import Testing
 
 @Suite("Markdown-Rich-Text")
 struct MarkdownRichTextTests {
+    @Test("Zwei ASCII-Leerzeichen als eigene Zeile erzeugen eine sichtbare Leerzeile")
+    func twoSpacesBecomeVisibleBlankLine() {
+        let fragment = MarkdownRichText.htmlFragment(markdown: "Alpha\n  \nOmega")
+
+        #expect(fragment.contains("class=\"fastra-visible-blank-line\""))
+        #expect(fragment.contains("data-srcline=\"2\""))
+    }
+
+    @Test("Nur mindestens zwei reine ASCII-Leerzeichen aktivieren den Dialekt")
+    func blankLineThresholdAndCharacterAreExact() {
+        for unchanged in ["Alpha\n\nOmega", "Alpha\n \nOmega", "Alpha\n\t\nOmega",
+                          "Alpha\n\u{00A0}\nOmega"] {
+            #expect(visibleBlankCount(in: unchanged) == 0)
+        }
+        for extended in ["Alpha\n  \nOmega", "Alpha\n   \nOmega", "Alpha\n    \nOmega"] {
+            #expect(visibleBlankCount(in: extended) == 1)
+        }
+    }
+
+    @Test("Harte CommonMark-Umbrüche mit Leerzeichen und Backslash bleiben unverändert")
+    func ordinaryHardBreaksStayUnchanged() {
+        let fragment = MarkdownRichText.htmlFragment(markdown: "Alpha  \nBeta\nGamma\\\nDelta")
+
+        #expect(occurrences(of: "<br />", in: fragment) == 2)
+        #expect(!fragment.contains(MarkdownVisibleBlankLines.cssClass))
+    }
+
+    @Test("Fenced und eingerückte Codeblöcke bleiben unangetastet")
+    func literalBlocksKeepSpaceOnlyLines() {
+        let markdown = "```text\nfenced\n  \nblock\n```\n\n"
+            + "    indented\n      \n    block"
+        let fragment = MarkdownRichText.htmlFragment(markdown: markdown)
+
+        #expect(occurrences(of: "<pre", in: fragment) == 2)
+        #expect(!fragment.contains(MarkdownVisibleBlankLines.cssClass))
+    }
+
+    @Test("Listen und Blockzitate behalten ihre GFM-Blockstruktur")
+    func listsAndQuotesDoNotSplitAroundVisibleBlankLines() {
+        let list = MarkdownRichText.htmlFragment(markdown: "- Eins\n  \n- Zwei")
+        let quote = MarkdownRichText.htmlFragment(markdown: "> Eins\n  \n> Zwei")
+
+        #expect(occurrences(of: "<ul", in: list) == 1)
+        #expect(occurrences(of: "<li", in: list) == 2)
+        #expect(occurrences(of: MarkdownVisibleBlankLines.cssClass, in: list) == 1)
+        // Schon CommonMark trennt diese beiden Zitate; die Erweiterung darf
+        // daraus weder weniger noch zusätzliche Zitatblöcke machen.
+        #expect(occurrences(of: "<blockquote", in: quote) == 2)
+        #expect(occurrences(of: MarkdownVisibleBlankLines.cssClass, in: quote) == 1)
+    }
+
+    @Test("Tabellen, Bilder und Formeln bleiben neben sichtbaren Leerzeilen intakt")
+    func gfmAndRichBlocksStayIntact() {
+        let markdown = "| A | B |\n| - | - |\n| 1 | 2 |\n  \n"
+            + "![Bild](bild.png)\n  \n$$\nx + y\n  \nz\n$$\n  \nEnde"
+        let fragment = MarkdownRichText.htmlFragment(markdown: markdown)
+
+        #expect(fragment.contains("<table"))
+        #expect(fragment.contains("<img"))
+        #expect(fragment.contains("class=\"math-block\""))
+        // Die Leerzeichenzeile innerhalb der Formel bleibt TeX-Inhalt. Nur
+        // die drei Zeilen zwischen den gerenderten Blöcken werden sichtbar.
+        #expect(occurrences(of: MarkdownVisibleBlankLines.cssClass, in: fragment) == 3)
+        #expect(fragment.contains("data-srcline=\"12\""))
+    }
+
+    @Test("Dateigrenzen und aufeinanderfolgende Leerzeichenzeilen bleiben zeilengenau")
+    func boundariesAndConsecutiveLinesRemainLineAccurate() {
+        let fragment = MarkdownRichText.htmlFragment(markdown: "  \n   \nText\n  ")
+
+        #expect(occurrences(of: MarkdownVisibleBlankLines.cssClass, in: fragment) == 3)
+        #expect(fragment.contains("data-srcline=\"1\""))
+        #expect(fragment.contains("data-srcline=\"2\""))
+        #expect(fragment.contains("data-srcline=\"4\""))
+    }
+
+    @Test("Copy-Bereinigung entfernt interne Leerzeilen-Metadaten")
+    func copyScriptSanitizesVisibleBlankLines() {
+        let document = MarkdownRichText.htmlDocument(
+            markdown: "Alpha\n  \nOmega",
+            fontName: PreviewFonts.systemName,
+            fontSize: 14,
+            darkMode: false
+        )
+
+        #expect(document.contains("element.replaceWith(document.createElement('br'))"))
+        #expect(document.contains("removeAttribute('data-srcline')"))
+    }
+
     @Test("GFM wird mit Codex-naher Hell- und Dunkelpalette gerendert")
     func htmlDocumentContainsFormattingAndPalette() {
         let markdown = """
@@ -176,5 +265,15 @@ struct MarkdownRichTextTests {
         #expect(pasteboard.string(forType: .string) == "Titel\nFett")
         #expect(pasteboard.data(forType: .html) != nil)
         #expect(pasteboard.data(forType: .rtf) != nil)
+    }
+
+    private func visibleBlankCount(in markdown: String) -> Int {
+        occurrences(of: MarkdownVisibleBlankLines.cssClass,
+                    in: MarkdownRichText.htmlFragment(markdown: markdown))
+    }
+
+    private func occurrences(of needle: String, in haystack: String) -> Int {
+        guard !needle.isEmpty else { return 0 }
+        return haystack.components(separatedBy: needle).count - 1
     }
 }

@@ -129,6 +129,13 @@ or `$$…$$`, and diagrams from fenced `mermaid` blocks. Selecting and copying
 from the preview preserves plain text, HTML and rich text where the receiving
 app supports it.
 
+Fastra's preview adds one deliberately narrow extension to GFM for visible
+blank lines: a source line containing only two or more ordinary ASCII spaces
+renders as exactly one completely empty text line. An empty line or exactly
+one space keeps its CommonMark meaning. Two spaces at the end of a non-empty
+line and a trailing backslash remain ordinary hard breaks; the extension does
+not apply inside code blocks.
+
 Clicking a passage in the preview scrolls the editor to the matching source
 line and places the cursor there — including inside a long paragraph, where the
 line is resolved from the line breaks before the click. The column is an

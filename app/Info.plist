@@ -45,11 +45,11 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.44.5</string>
+	<string>1.45.0</string>
 	<key>CFBundleVersion</key>
-	<string>107</string>
+	<string>108</string>
 	<key>FastraVersionDate</key>
-	<string>2026-07-20</string>
+	<string>2026-07-21</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.developer-tools</string>
 	<key>LSMinimumSystemVersion</key>

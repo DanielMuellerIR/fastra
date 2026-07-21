@@ -152,6 +152,14 @@ die Vorschau** springt im Editor zur passenden Quellzeile. Kopieren aus
 der Vorschau liefert echten Rich-Text (Überschriften, Listen, Fettung
 bleiben erhalten).
 
+**Sichtbare Leerzeile:** Eine Quellzeile ausschließlich aus mindestens zwei
+normalen ASCII-Leerzeichen erscheint in Fastras Vorschau als genau eine
+vollständig leere Textzeile. Eine leere Zeile oder genau ein Leerzeichen folgt
+weiterhin CommonMark. Zwei Leerzeichen am Ende einer nichtleeren Zeile und ein
+Backslash bleiben normale harte Umbrüche; in Codeblöcken gilt die Erweiterung
+nicht. Beim Kopieren wird die sichtbare Leerzeile als normaler Zeilenumbruch
+übernommen.
+
 ## Markdown schreiben
 
 Bei Markdown-Tabs erscheint über dem Editor eine **Format-Toolbar**; die

@@ -9,6 +9,23 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.45.0] — 2026-07-21
+
+### Hinzugefügt
+
+- Fastras Markdown-Vorschau kennt nun eine bewusst enge Erweiterung für
+  sichtbare Leerzeilen: Eine Quellzeile nur aus mindestens zwei normalen
+  ASCII-Leerzeichen erzeugt genau eine vollständig leere Textzeile. Leere
+  Zeilen und Zeilen mit genau einem Leerzeichen behalten die CommonMark-
+  Semantik; harte Umbrüche und wörtliche Codeblöcke bleiben unverändert.
+
+### Intern
+
+- Die Erweiterung ergänzt ausschließlich kontrollierte interne HTML-Blöcke im
+  bereits geparsten cmark-Baum. Dadurch bleiben GFM-Listen, Blockzitate,
+  Tabellen, Formeln, Bilder, Quellzeilensprünge und die sichere HTML-Grenze
+  erhalten. Unit- und WebKit-DOM-Tests schützen Rendering und Kopiertext.
+
 ## [v1.44.5] — 2026-07-20
 
 ### Behoben

@@ -145,6 +145,13 @@ diagrams — fully local, no network access. **Clicking in the preview**
 jumps the editor to the matching source line. Copying from the preview
 yields real rich text (headings, lists, and bold survive).
 
+**Visible blank line:** A source line containing only two or more ordinary
+ASCII spaces appears in Fastra's preview as exactly one completely empty text
+line. An empty line or exactly one space still follows CommonMark. Two spaces
+at the end of a non-empty line and a trailing backslash remain ordinary hard
+breaks; the extension does not apply inside code blocks. Copying carries the
+visible blank line over as a normal newline.
+
 ## Writing Markdown
 
 For Markdown tabs, a **format toolbar** appears above the editor; the

@@ -7777,12 +7777,19 @@ enum SelfTest {
             .appendingPathComponent("Fastra-Markdown-Selbsttest-\(UUID().uuidString)")
         let file = directory.appendingPathComponent("Vorschau.md")
         let image = directory.appendingPathComponent("pixel.png")
+        let twoSpaces = String(repeating: " ", count: 2)
+        let threeSpaces = String(repeating: " ", count: 3)
         let demo = """
         # Render-Test
 
         ![Lokales Pixel](pixel.png)
 
         Inline $x^2 + y^2$.
+
+        Kopierstart
+        \(twoSpaces)
+        \(threeSpaces)
+        Kopierende
 
         ```swift
         let answer = 42
@@ -7830,12 +7837,37 @@ enum SelfTest {
         }
 
         let script = """
-        (() => ({
-          image: Array.from(document.images).some(image => image.naturalWidth > 0),
-          math: !!document.querySelector('.math-inline math'),
-          mermaid: !!document.querySelector('.mermaid-render svg'),
-          highlight: !!document.querySelector('pre code.hljs span')
-        }))()
+        (() => {
+          const blanks = Array.from(
+            document.querySelectorAll('.fastra-visible-blank-line')
+          );
+          const lineHeight = parseFloat(getComputedStyle(document.body).lineHeight);
+          const start = Array.from(document.querySelectorAll('p'))
+            .find(node => node.textContent === 'Kopierstart');
+          const end = Array.from(document.querySelectorAll('p'))
+            .find(node => node.textContent === 'Kopierende');
+          let selected = '';
+          if (start && end) {
+            const range = document.createRange();
+            range.setStartBefore(start);
+            range.setEndAfter(end);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            selected = selection.toString();
+            selection.removeAllRanges();
+          }
+          return {
+            image: Array.from(document.images).some(image => image.naturalWidth > 0),
+            math: !!document.querySelector('.math-inline math'),
+            mermaid: !!document.querySelector('.mermaid-render svg'),
+            highlight: !!document.querySelector('pre code.hljs span'),
+            blankLines: blanks.length === 2
+              && blanks.every(node => node.textContent === ''
+                && Math.abs(node.getBoundingClientRect().height - lineHeight) < 0.75),
+            blankCopy: /Kopierstart\\n{3,}Kopierende/.test(selected)
+          };
+        })()
         """
         webView.evaluateJavaScript(script) { result, error in
             let flags = result as? [String: Bool]
@@ -7843,9 +7875,11 @@ enum SelfTest {
                 && flags?["math"] == true
                 && flags?["mermaid"] == true
                 && flags?["highlight"] == true
+                && flags?["blankLines"] == true
+                && flags?["blankCopy"] == true
             if passed {
                 try? FileManager.default.removeItem(at: directory)
-                finish(true, "lokales Bild + KaTeX + Mermaid + Syntax-Highlighting im echten DOM")
+                finish(true, "Bild + KaTeX + Mermaid + Highlighting + sichtbare Leerzeilen im DOM")
             }
             if tick == 119 {
                 try? FileManager.default.removeItem(at: directory)

@@ -135,6 +135,14 @@ lokale Bilder, TeX-Formeln in `$…$` oder `$$…$$` und Diagramme aus
 `mermaid`-Code-Blöcken. Markierter Vorschau-Text lässt sich als Klartext, HTML
 oder Rich Text kopieren, sofern das Zielprogramm es unterstützt.
 
+Fastras Vorschau ergänzt GFM um eine bewusst enge Schreibweise für sichtbare
+Leerzeilen: Eine Quellzeile, die ausschließlich aus mindestens zwei normalen
+ASCII-Leerzeichen besteht, erscheint als genau eine vollständig leere
+Textzeile. Eine leere Zeile oder genau ein Leerzeichen verhält sich weiterhin
+nach CommonMark. Die zwei Leerzeichen am Ende einer nichtleeren Zeile sowie
+der Backslash bleiben normale harte Umbrüche; in Codeblöcken gilt die
+Erweiterung nicht.
+
 Ein Klick in den Vorschautext scrollt den Editor an die zugehörige Quellzeile
 und setzt den Cursor dorthin — auch innerhalb eines langen Absatzes, wo die
 Zeile aus den Umbrüchen vor der Klickstelle bestimmt wird. Die Spalte ist eine

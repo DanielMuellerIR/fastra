@@ -1,10 +1,134 @@
 import Foundation
+import cmark_gfm
 
 /// Ergebnis eines Render-Schritts: HTML plus die bewusst freigegebenen lokalen
 /// Bilder. Im HTML stehen nur blickdichte Tokens, nie absolute Dateipfade.
 struct MarkdownRenderedFragment {
     let html: String
     let imageURLs: [String: URL]
+}
+
+/// Fastra-Dialekt für bewusst sichtbare Leerzeilen: Eine Quellzeile aus
+/// mindestens zwei ASCII-Leerzeichen wird als genau eine leere Textzeile in
+/// den bereits geparsten CommonMark-Baum eingesetzt.
+///
+/// Die Ergänzung geschieht absichtlich NACH dem Parsen. Ein Texttoken vor dem
+/// Parser würde zum Beispiel eine zusammenhängende Liste in zwei Listen
+/// zerlegen. Der kontrollierte Custom-Block ändert dagegen keine vorhandene
+/// GFM-Struktur und wird auch ohne `CMARK_OPT_UNSAFE` gerendert. Nutzer-HTML
+/// gelangt über diesen Weg nie in die Ausgabe.
+enum MarkdownVisibleBlankLines {
+    static let cssClass = "fastra-visible-blank-line"
+
+    static func insert(into document: UnsafeMutablePointer<cmark_node>,
+                       markdown: String,
+                       extraction: MarkdownMath.Extraction) {
+        let normalized = markdown
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        for (offset, line) in normalized.components(separatedBy: "\n").enumerated()
+            where isVisibleBlankLine(line) {
+            let preparedLine = offset + 1
+            let originalLine = extraction.originalLine(for: preparedLine)
+            _ = insert(line: preparedLine, originalLine: originalLine, into: document)
+        }
+    }
+
+    private static func isVisibleBlankLine(_ line: String) -> Bool {
+        line.count >= 2 && line.utf8.allSatisfy { $0 == 0x20 }
+    }
+
+    /// Sucht im vorhandenen Baum den Quellabstand, zu dem die Leerzeile
+    /// gehört. Innerhalb einer Liste landet sie im vorangehenden Listeneintrag;
+    /// dadurch bleibt der vom Parser bestimmte Listenblock unangetastet.
+    private static func insert(line: Int,
+                               originalLine: Int,
+                               into container: UnsafeMutablePointer<cmark_node>) -> Bool {
+        let children = originalChildren(of: container)
+
+        if let enclosing = children.first(where: {
+            Int(cmark_node_get_start_line($0)) <= line
+                && line <= Int(cmark_node_get_end_line($0))
+        }) {
+            let type = cmark_node_get_type(enclosing)
+            // Wörtliche Blöcke besitzen ihre eigene Leerraumsemantik. Eine
+            // Leerzeichenzeile darin bleibt deshalb exakt Code bzw. Rohtext.
+            if type == CMARK_NODE_CODE_BLOCK || type == CMARK_NODE_HTML_BLOCK {
+                return true
+            }
+            if cmark_node_first_child(enclosing) != nil,
+               insert(line: line, originalLine: originalLine, into: enclosing) {
+                return true
+            }
+            // Ein Blatt kann keine echte Leerzeile enthalten. Falls eine
+            // Erweiterung dennoch einen übergreifenden Bereich meldet, lassen
+            // wir ihn lieber unverändert, statt seine Semantik zu erraten.
+            return true
+        }
+
+        let next = children.first { Int(cmark_node_get_start_line($0)) > line }
+        let previous = children.last { Int(cmark_node_get_end_line($0)) < line }
+
+        if cmark_node_can_contain_type(container, CMARK_NODE_CUSTOM_BLOCK) {
+            return addBlankNode(originalLine: originalLine,
+                                to: container,
+                                before: next)
+        }
+
+        // Listen akzeptieren laut cmark ausschließlich Item-Knoten. Die leere
+        // Zeile wird deshalb ans Ende des vorherigen bzw. an den Anfang des
+        // nächsten Eintrags gehängt; die Listenstruktur selbst bleibt gleich.
+        if cmark_node_get_type(container) == CMARK_NODE_LIST {
+            if let previous {
+                return addBlankNode(originalLine: originalLine,
+                                    to: previous,
+                                    before: nil)
+            }
+            if let next {
+                return addBlankNode(originalLine: originalLine,
+                                    to: next,
+                                    before: cmark_node_first_child(next))
+            }
+        }
+        return false
+    }
+
+    private static func originalChildren(
+        of node: UnsafeMutablePointer<cmark_node>
+    ) -> [UnsafeMutablePointer<cmark_node>] {
+        var result: [UnsafeMutablePointer<cmark_node>] = []
+        var child = cmark_node_first_child(node)
+        while let current = child {
+            if cmark_node_get_type(current) != CMARK_NODE_CUSTOM_BLOCK {
+                result.append(current)
+            }
+            child = cmark_node_next(current)
+        }
+        return result
+    }
+
+    private static func addBlankNode(
+        originalLine: Int,
+        to parent: UnsafeMutablePointer<cmark_node>,
+        before next: UnsafeMutablePointer<cmark_node>?
+    ) -> Bool {
+        guard let blank = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) else { return false }
+        let html = "<div class=\"\(cssClass)\" data-srcline=\"\(originalLine)\"><br></div>"
+        let configured = html.withCString { cmark_node_set_on_enter(blank, $0) != 0 }
+        guard configured else {
+            cmark_node_free(blank)
+            return false
+        }
+
+        let inserted: Bool
+        if let next {
+            inserted = cmark_node_insert_before(next, blank) != 0
+        } else {
+            inserted = cmark_node_append_child(parent, blank) != 0
+        }
+        if !inserted { cmark_node_free(blank) }
+        return inserted
+    }
 }
 
 /// Erkennt dieselbe bewusst strenge TeX-Schreibweise wie Number One:

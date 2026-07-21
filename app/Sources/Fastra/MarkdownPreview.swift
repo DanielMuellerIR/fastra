@@ -187,6 +187,9 @@ enum MarkdownRichText {
         .mermaid-render { max-width: 100%; margin: 1em 0; overflow-x: auto;
                           text-align: center; }
         .mermaid-render svg { max-width: 100%; height: auto; }
+        /* Fastras dokumentierte Markdown-Erweiterung: Jede dieser Zeilen ist
+           exakt eine normale, aber vollständig leere Textzeile. */
+        .\(MarkdownVisibleBlankLines.cssClass) { height: 1.55em; margin: 0; padding: 0; }
         pre.mermaid-error::before { content: attr(data-error); display: block;
                                     color: \(secondary); margin-bottom: 0.55em; }
         hr { border: 0; border-top: 1px solid \(border); }
@@ -266,6 +269,11 @@ enum MarkdownRichText {
           // Dokumenten nichts verloren.
           rich.querySelectorAll('[\(MarkdownSourceMarkers.attribute)]').forEach(
             element => element.removeAttribute('\(MarkdownSourceMarkers.attribute)')
+          );
+          // Sichtbare Leerzeilen werden beim Kopieren zu gewöhnlichen
+          // Umbrüchen. Interne Klassen oder Attribute verlassen Fastra nicht.
+          rich.querySelectorAll('.\(MarkdownVisibleBlankLines.cssClass)').forEach(
+            element => element.replaceWith(document.createElement('br'))
           );
           const plain = selection.toString();
           const html = rich.innerHTML;
@@ -379,6 +387,12 @@ enum MarkdownRichText {
             return MarkdownRenderedFragment(html: escapedPlainText(markdown), imageURLs: [:])
         }
         defer { cmark_node_free(document) }
+
+        MarkdownVisibleBlankLines.insert(
+            into: document,
+            markdown: math.markdown,
+            extraction: math
+        )
 
         // Codeblock-Inhaltszeilen aus dem Baum lesen, solange er noch steht.
         // CMARK_OPT_SOURCEPOS liefert danach die Blockpositionen im HTML.
