@@ -58,17 +58,19 @@ fensterlose Selbsttest `localization` aus der gepackten App starten.
 installierten App. Signatur-, Stapler- und Gatekeeper-Prüfungen ersetzen
 diesen echten Zielstart nicht.
 
-**Agent-bindend (2026-07-20):** `/Applications` ist ausschließlich
+**Agent-bindend (2026-07-21):** `/Applications` ist ausschließlich
 notarisierten Bundles vorbehalten. `build.sh` legt Debug- und Release-Builds als
 `Fastra.app` im Projekt-Root ab. Auch `install.sh --no-notarize` bleibt dort;
 weder Ad-hoc- noch nur Developer-ID-signierte Builds dürfen nach
-`/Applications` kopiert werden. Der notarisierte Workflow via `install.sh`
-bleibt für:
-- einer **abgeschlossenen, verifizierten größeren Etappe** (Release-reifer Stand
-  für den produktiven Einsatz), oder
-- **auf Ansage** („leg mir einen frischen Build hin").
+`/Applications` kopiert werden. Der vollständige notarierte Workflow via
+`install.sh` ist der erforderliche Testpfad, sobald echtes
+Installationsverhalten, Datei-Doppelklick über LaunchServices,
+Finder-Zuordnungen oder macOS-Datei- bzw. Ordnerberechtigungen relevant sind.
+Er darf ebenso für normale verifizierte Teststände verwendet werden; eine
+abgeschlossene größere Etappe oder eine besondere Ansage sind dafür nicht
+erforderlich.
 
-Für normale Zwischen-Iterationen genügt `build.sh`; die frisch gebaute
+Für schnelle rein interne Iterationen genügt `build.sh`; die frisch gebaute
 Debug-App liegt danach im Projekt-Root. Für eine signierte, aber nicht
 notarisierte Variante dient `install.sh --no-notarize`, ebenfalls ausschließlich
 im Projekt-Root. Vor jeder Installation prüft `install.sh` Notary-Ticket,

@@ -64,7 +64,12 @@ danach den vollständigen Build- und Selbsttestpfad ausführen.
 reduziert das Sprachbundle und legt jeden erfolgreichen Build als `Fastra.app`
 im Projekt-Root ab. `/Applications` ist ausschließlich notarisierten Bundles
 vorbehalten; Debug-, Ad-hoc- und nur Developer-ID-signierte Test-Builds dürfen
-dorthin weder kopiert noch installiert werden.
+dorthin weder kopiert noch installiert werden. Sobald echtes
+Installationsverhalten, Datei-Doppelklick über LaunchServices,
+Finder-Zuordnungen oder macOS-Datei- bzw. Ordnerberechtigungen relevant sind,
+ist der vollständige notarierte `./install.sh`-Pfad nach `/Applications`
+verbindlich. Er darf auch für normale verifizierte Teststände genutzt werden;
+für schnelle rein interne Iterationen bleibt `build.sh` passend.
 
 Ressourcen müssen aus dem gepackten App-Bundle funktionieren. Ein Erfolg im
 SwiftPM-Buildverzeichnis reicht nicht: absolute `.build`-Fallbacks können lokal
@@ -121,8 +126,11 @@ swift test
 `./install.sh --no-notarize` signiert lokal ohne Notarisierung und belässt das
 Ergebnis ebenfalls dort. Ausschließlich der vollständige notarierte
 Installationsweg darf nach `/Applications` schreiben; er verwendet ein zur
-Laufzeit übergebenes `NOTARY_PROFILE`. Profile, Schlüssel und Zertifikatsdetails
-gehören nie in Code, Doku oder Terminalausgabe.
+Laufzeit übergebenes `NOTARY_PROFILE`. Dieser Installationsweg ist verbindlich,
+sobald reales Installationsverhalten, Datei-Doppelklick über LaunchServices,
+Finder-Zuordnungen oder macOS-Datei- bzw. Ordnerberechtigungen geprüft werden;
+auch normale verifizierte Teststände dürfen so installiert werden. Profile,
+Schlüssel und Zertifikatsdetails gehören nie in Code, Doku oder Terminalausgabe.
 
 Die Selbsttests sind maschinenlesbar:
 
