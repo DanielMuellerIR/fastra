@@ -22,9 +22,9 @@ Fertige Builds gibt es als DMG auf der
 [Releases-Seite](https://github.com/DanielMuellerIR/fastra/releases):
 DMG laden, öffnen und Fastra in den Programme-Ordner ziehen. Das DMG ist
 mit einer Developer-ID signiert und von Apple notariell beglaubigt,
-Gatekeeper öffnet es deshalb ohne Warnung. Version 1.19.1 muss einmal per DMG
-installiert werden; danach findet **Fastra → Nach Updates suchen …** signierte
-Releases direkt in der App. Voraussetzung: macOS 14+ (Apple Silicon).
+Gatekeeper öffnet es deshalb ohne Warnung. Fastra muss zunächst einmal per DMG
+installiert werden; ab Version 1.19.1 findet **Fastra → Nach Updates suchen …**
+signierte Releases direkt in der App. Voraussetzung: macOS 14+ (Apple Silicon).
 
 ## Das `*`-Sternchen: Mächtigkeit ohne Syntax
 
@@ -67,9 +67,10 @@ Capture Groups.
   Dateimenge im aktuellen Projekt.
 - **Projekte, Git und Markdown** ergänzen den normalen Texteditor; die Details
   stehen unten.
-- **Zwei Tabs direkt vergleichen**: Shift-Klick markiert neben dem klar
-  erkennbaren aktuellen Tab einen zweiten; das Rechtsklickmenü öffnet den
-  Vergleichsdialog mit beiden Dokumenten bereits ausgewählt.
+- **Dateien side-by-side vergleichen**: Zwei gespeicherte Dateien oder offene
+  Tabs lassen sich frei wählen, ein bearbeiteter Tab auch mit seiner Fassung
+  auf der Platte vergleichen. Shift-Klick auf einen zweiten Tab wählt beide
+  Dokumente für den Schnellweg vor.
 - **Rechteckauswahl unter Soft Wrap** bleibt auf logischen Textzeilen;
   Spalten-Copy/Paste, Tippen, Löschen, Transformationen und „Spalte einfügen“
   sind jeweils eine widerrufbare Aktion.
@@ -82,10 +83,11 @@ Capture Groups.
 
 ## Projekte und Git direkt im Editor
 
-Beim Öffnen eines Ordners zeigt Fastra einen lebenden, hierarchischen Dateibaum.
-Git-Repositories erkennt die App automatisch und merkt sie für den Startbildschirm.
-Dabei bleiben sie ganz normale lokale Ordner: Fastra ist zuerst ein Texteditor,
-nicht der Ersatz für einen vollwertigen Git-Client.
+Beim Öffnen eines Ordners zeigt Fastra einen lebenden, hierarchischen Dateibaum
+mit dauerhaft sichtbarem Dateinamensfilter. Git-Repositories erkennt die App
+automatisch und merkt sie für den Startbildschirm. Dabei bleiben sie ganz normale
+lokale Ordner: Fastra ist zuerst ein Texteditor, nicht der Ersatz für einen
+vollwertigen Git-Client.
 
 - Die Ansicht **Änderungen** trennt bereitgestellte von noch offenen Dateien.
   Einzelne Dateien lassen sich bereitstellen, aus der Bereitstellung nehmen oder
@@ -134,6 +136,12 @@ Durchstreichungen, syntaxhervorgehobene Code-Blöcke und Links. Er zeigt außerd
 lokale Bilder, TeX-Formeln in `$…$` oder `$$…$$` und Diagramme aus
 `mermaid`-Code-Blöcken. Markierter Vorschau-Text lässt sich als Klartext, HTML
 oder Rich Text kopieren, sofern das Zielprogramm es unterstützt.
+
+Eine Formatierungs-Toolbar sowie Befehle in Menü und Rechtsklickmenü decken
+Hervorhebungen, Überschriften, Listen, Zitate, Links und Tabellen als normale,
+widerrufbare Markdown-Edits ab. Eingefügte oder abgelegte Bilder speichert
+beziehungsweise kopiert Fastra neben das gespeicherte Dokument und setzt einen
+relativen Link, damit Text und Bilder gemeinsam portabel bleiben.
 
 Fastras Vorschau ergänzt GFM um eine bewusst enge Schreibweise für sichtbare
 Leerzeilen: Eine Quellzeile, die ausschließlich aus mindestens zwei normalen
@@ -220,7 +228,7 @@ aktiv; der Fehler erscheint dezent in der Leiste.
 
 ### Ansichten, Vorschau und Spracherkennung
 
-- Der Ansichts-Umschalter über dem Editor (auch im Menü „Darstellung“,
+- Der Ansichts-Umschalter im Footer (auch im Menü „Darstellung“,
   `⌃⌘1–3`) wechselt je Datei zwischen Text, Vorschau und Hex — damit ist
   die Hex-Ansicht für jede gespeicherte Datei erreichbar.
 - Bilder (PNG, JPEG, GIF, HEIC, TIFF, WebP) und PDFs öffnen in einer
@@ -254,6 +262,11 @@ mehrwortiger Befehle und Konstanten, `$lokaler`/`<>interprozess`-Variablen,
 `[Tabellen]` und Feldern. `.4DProject`/`.4DForm` öffnen als JSON,
 `.4DCatalog`/`.4DSettings` als XML.
 
+Für 4D-Projekte bietet Fastra außerdem Befehls- und Konstantenvervollständigung
+mit Signaturen, lokale Strukturprüfungen sowie Alt-Doppelklick-Navigation zu
+Methoden und Klassen. **Dokument prüfen** kann optional ein bereits installiertes
+tool4d für Diagnosen nutzen; Fastra bündelt oder lädt tool4d nicht.
+
 ## Voraussetzungen & Installation
 
 - macOS 14+ (Apple Silicon)
@@ -266,7 +279,7 @@ mehrwortiger Befehle und Konstanten, `$lokaler`/`<>interprozess`-Variablen,
 
 ```bash
 cd app
-./build.sh release   # Bundle landet in app/dist/
+./build.sh release   # Bundle landet als Fastra.app im Projekt-Root
 ./selftest.sh        # Unit-Tests + In-App-Selbsttests
 ```
 

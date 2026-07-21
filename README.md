@@ -22,9 +22,9 @@ Ready-made builds are available as DMGs on the
 [releases page](https://github.com/DanielMuellerIR/fastra/releases):
 download the DMG, open it, and drag Fastra into your Applications folder.
 The DMG is signed with a Developer ID and notarized by Apple, so Gatekeeper
-opens it without warnings. Version 1.19.1 must be installed once from the DMG;
-after that, **Fastra → Check for Updates…** finds signed releases from inside
-the app. Requires macOS 14+ (Apple Silicon).
+opens it without warnings. Fastra must first be installed from a DMG; signed
+in-app updates are available from version 1.19.1 onward under **Fastra → Check
+for Updates…**. Requires macOS 14+ (Apple Silicon).
 
 ## The `*` wildcard: Power without the syntax
 
@@ -65,9 +65,9 @@ token highlighting, curated patterns, and guided capture groups.
   the current project.
 - **Projects, Git and Markdown** live alongside ordinary text editing; each is
   explained below.
-- **Compare two tabs directly**: Shift-click marks one companion while the
-  current tab stays unmistakable; the context menu opens Compare Files with
-  both documents already selected.
+- **Compare files side by side**: Choose any two saved files or open tabs, or
+  compare an edited tab with its version on disk. Shift-clicking a companion
+  tab preselects both documents for the quick path.
 - **Column selection under Soft Wrap** stays on logical text lines; column
   copy/paste, typing, deletion, transformations, and Paste Column are each
   undoable as one action.
@@ -80,10 +80,10 @@ token highlighting, curated patterns, and guided capture groups.
 
 ## Projects and Git, in the editor
 
-Open a folder and Fastra gives it a live, hierarchical file sidebar. Git
-repositories are recognised automatically, remembered on the welcome screen,
-and remain ordinary local folders: Fastra is a text editor first, not a
-replacement for a full Git client.
+Open a folder and Fastra gives it a live, hierarchical file sidebar with an
+always-visible file-name filter. Git repositories are recognised automatically,
+remembered on the welcome screen, and remain ordinary local folders: Fastra is
+a text editor first, not a replacement for a full Git client.
 
 - The **Changes** view separates staged and unstaged files. Stage, unstage or
   discard individual files, inspect their diff, write a commit message and
@@ -128,6 +128,11 @@ blocks and links. It also displays local images, TeX formulas written as `$…$`
 or `$$…$$`, and diagrams from fenced `mermaid` blocks. Selecting and copying
 from the preview preserves plain text, HTML and rich text where the receiving
 app supports it.
+
+A source-formatting toolbar plus menu and context-menu commands cover emphasis,
+headings, lists, quotes, links and tables as normal undoable Markdown edits.
+Pasting or dropping an image saves or copies it beside the saved document and
+inserts a relative link, so text and images remain portable together.
 
 Fastra's preview adds one deliberately narrow extension to GFM for visible
 blank lines: a source line containing only two or more ordinary ASCII spaces
@@ -209,7 +214,7 @@ unobtrusively in the bar.
 
 ### Views, previews and language detection
 
-- The view switcher above the editor (also in the View menu, `⌃⌘1–3`)
+- The view switcher in the footer (also in the View menu, `⌃⌘1–3`)
   toggles each file between Text, Preview and Hex — making the hex view
   reachable for every saved file.
 - Images (PNG, JPEG, GIF, HEIC, TIFF, WebP) and PDFs open in a read-only
@@ -242,6 +247,11 @@ including multi-word commands and constants, `$local`/`<>interprocess`
 variables, `[tables]` and fields. `.4DProject`/`.4DForm` open as JSON,
 `.4DCatalog`/`.4DSettings` as XML.
 
+For 4D projects, Fastra also offers command and constant completion with
+signatures, local structure checks, and Option-double-click navigation to
+methods and classes. **Validate Document** can optionally use an already
+installed tool4d for diagnostics; Fastra neither bundles nor downloads it.
+
 ## Requirements & installation
 
 - macOS 14+ (Apple Silicon)
@@ -254,7 +264,7 @@ variables, `[tables]` and fields. `.4DProject`/`.4DForm` open as JSON,
 
 ```bash
 cd app
-./build.sh release   # bundle lands in app/dist/
+./build.sh release   # bundle lands in the project root as Fastra.app
 ./selftest.sh        # unit tests + in-app self-tests
 ```
 
