@@ -9,6 +9,20 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.45.1] — 2026-07-21
+
+### Behoben
+
+- Sichtbare Markdown-Leerzeilen nach einer Liste werden nun auch dann
+  gerendert, wenn cmark die Leerraumzeilen noch dem letzten leeren
+  Listeneintrag zurechnet. Die Leerzeilen stehen als vollständig leere
+  Dokumentzeilen zwischen Liste und folgendem Block.
+
+### Intern
+
+- Ein eigenständiger WebKit-Selbsttest misst die tatsächlichen Rechtecke von
+  sechs aufeinanderfolgenden Leerzeilen im Kontext Liste → Leerzeilen → Text.
+
 ## [v1.45.0] — 2026-07-21
 
 ### Hinzugefügt

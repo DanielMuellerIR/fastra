@@ -55,6 +55,25 @@ struct MarkdownRichTextTests {
         #expect(occurrences(of: MarkdownVisibleBlankLines.cssClass, in: quote) == 1)
     }
 
+    @Test("Nachlaufende Leerraumzeilen einer Liste bleiben sichtbare Dokumentzeilen")
+    func trailingListWhitespaceLinesStayVisible() {
+        let blanks = Array(repeating: "  ", count: 6).joined(separator: "\n")
+        let markdown = "***Getestet:***\n\n-\n-\n-\n-\n-\n-\n\(blanks)\n***Frage:***"
+        let fragment = MarkdownRichText.htmlFragment(markdown: markdown)
+
+        #expect(occurrences(of: "<ul", in: fragment) == 1)
+        #expect(occurrences(of: "<li", in: fragment) == 6)
+        #expect(occurrences(of: MarkdownVisibleBlankLines.cssClass, in: fragment) == 6)
+        for line in 9...14 {
+            #expect(fragment.contains("data-srcline=\"\(line)\""))
+        }
+        // Die Leerzeilen gehören semantisch hinter die Liste, nicht in den
+        // letzten leeren Eintrag: Dort würde WebKit einen Bullet anzeigen.
+        let listEnd = fragment.range(of: "</ul>")?.upperBound
+        let firstBlank = fragment.range(of: MarkdownVisibleBlankLines.cssClass)?.lowerBound
+        #expect(listEnd != nil && firstBlank != nil && listEnd! < firstBlank!)
+    }
+
     @Test("Tabellen, Bilder und Formeln bleiben neben sichtbaren Leerzeilen intakt")
     func gfmAndRichBlocksStayIntact() {
         let markdown = "| A | B |\n| - | - |\n| 1 | 2 |\n  \n"

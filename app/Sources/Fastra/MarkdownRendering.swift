@@ -60,6 +60,14 @@ enum MarkdownVisibleBlankLines {
                insert(line: line, originalLine: originalLine, into: enclosing) {
                 return true
             }
+            // cmark rechnet nachlaufenden Leerraum einer Liste dem letzten
+            // Listeneintrag zu. Ist dieser Eintrag leer, hat er keine Kinder,
+            // obwohl sein Quellbereich die Leerraumzeilen umfasst. Die Blöcke
+            // müssen hinter die Liste, sonst erscheint ihr erster Abstand als
+            // Aufzählungspunkt statt als vollständig leere Textzeile.
+            if addAfterTrailingListItem(originalLine: originalLine, item: enclosing) {
+                return true
+            }
             // Ein Blatt kann keine echte Leerzeile enthalten. Falls eine
             // Erweiterung dennoch einen übergreifenden Bereich meldet, lassen
             // wir ihn lieber unverändert, statt seine Semantik zu erraten.
@@ -68,6 +76,16 @@ enum MarkdownVisibleBlankLines {
 
         let next = children.first { Int(cmark_node_get_start_line($0)) > line }
         let previous = children.last { Int(cmark_node_get_end_line($0)) < line }
+
+        // Hat der letzte Eintrag einer Liste noch Text, kann cmark die
+        // folgenden Leerraumzeilen trotzdem seinem Quellbereich zuschlagen.
+        // Nach dem erfolglosen Abstieg liegt der Abstand sicher hinter seinem
+        // letzten echten Kind und wird deshalb genauso hinter die Liste gelegt.
+        if let lastChild = children.last,
+           Int(cmark_node_get_end_line(lastChild)) < line,
+           addAfterTrailingListItem(originalLine: originalLine, item: container) {
+            return true
+        }
 
         if cmark_node_can_contain_type(container, CMARK_NODE_CUSTOM_BLOCK) {
             return addBlankNode(originalLine: originalLine,
@@ -105,6 +123,29 @@ enum MarkdownVisibleBlankLines {
             child = cmark_node_next(current)
         }
         return result
+    }
+
+    /// Fügt den Abstand nach einer Liste und nicht in ihren letzten Eintrag.
+    /// Eigene Custom-Blöcke werden beim wiederholten Einfügen übersprungen,
+    /// damit mehrere Quellzeilen ihre natürliche Reihenfolge behalten.
+    private static func addAfterTrailingListItem(
+        originalLine: Int,
+        item: UnsafeMutablePointer<cmark_node>
+    ) -> Bool {
+        guard cmark_node_get_type(item) == CMARK_NODE_ITEM,
+              cmark_node_next(item) == nil,
+              let list = cmark_node_parent(item),
+              cmark_node_get_type(list) == CMARK_NODE_LIST,
+              let parent = cmark_node_parent(list),
+              cmark_node_can_contain_type(parent, CMARK_NODE_CUSTOM_BLOCK) else {
+            return false
+        }
+        var next = cmark_node_next(list)
+        while let current = next,
+              cmark_node_get_type(current) == CMARK_NODE_CUSTOM_BLOCK {
+            next = cmark_node_next(current)
+        }
+        return addBlankNode(originalLine: originalLine, to: parent, before: next)
     }
 
     private static func addBlankNode(

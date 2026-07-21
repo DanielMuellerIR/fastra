@@ -214,6 +214,7 @@ enum SelfTest {
         case "leakscenario": waitForMainWindow { runLeakScenario() }
         case "previewrender": waitForMainWindow { runPreviewRenderTest() }
         case "markdown":  waitForMainWindow { runMarkdownRenderTest() }
+        case "markdownblanklines": waitForMainWindow { runMarkdownVisibleBlankLinesTest() }
         case "markdownjump": waitForMainWindow { runMarkdownJumpTest() }
         case "markdownappearance": waitForMainWindow { runMarkdownAppearanceTest() }
         case "jump":      waitForMainWindow { runJumpTest() }
@@ -7890,6 +7891,107 @@ enum SelfTest {
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 pollMarkdownDOM(directory: directory, tick: tick + 1)
+            }
+        }
+    }
+
+    /// Prüft die dokumentierte Leerzeilen-Erweiterung im problematischen
+    /// Listen-Kontext. Entscheidend sind echte WebKit-Rechtecke: HTML-Klassen
+    /// allein würden auch dann bestehen, wenn der Browser keinen Platz zeigt.
+    private static func runMarkdownVisibleBlankLinesTest() {
+        testLabel = "markdownblanklines"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Fastra-Markdown-Leerzeilen-Selbsttest-\(UUID().uuidString)")
+        let file = directory.appendingPathComponent("Listen-Leerzeilen.md")
+        let blankLines = Array(repeating: "  ", count: 6).joined(separator: "\n")
+        // Dieser Aufbau entspricht dem gemeldeten Fall: Die Leerraumzeilen
+        // liegen direkt NACH der Liste, aber noch in deren cmark-Quellbereich.
+        let demo = """
+        ***Getestet:***
+
+        -
+        -
+        -
+        -
+        -
+        -
+        \(blankLines)
+        ***Frage:***
+
+        Text nach den sichtbaren Leerzeilen.
+        """
+        do {
+            try FileManager.default.createDirectory(at: directory,
+                                                    withIntermediateDirectories: true)
+            try demo.write(to: file, atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "Markdown-Testdatei nicht schreibbar: \(error.localizedDescription)")
+        }
+
+        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        ws.loadFile(at: file) { ok in
+            guard ok else { finish(false, "Markdown-Datei konnte nicht geladen werden") }
+            pollMarkdownVisibleBlankLinesDOM(directory: directory, tick: 0)
+        }
+    }
+
+    private static func pollMarkdownVisibleBlankLinesDOM(directory: URL, tick: Int) {
+        guard tick < 120 else {
+            try? FileManager.default.removeItem(at: directory)
+            finish(false, "WebKit-DOM nach 12 s nicht vollständig gerendert")
+        }
+        guard let root = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        })?.contentView,
+              let webView = markdownWebView(in: root) else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                pollMarkdownVisibleBlankLinesDOM(directory: directory, tick: tick + 1)
+            }
+            return
+        }
+
+        let script = """
+        (() => {
+          const blanks = Array.from(
+            document.querySelectorAll('.fastra-visible-blank-line')
+          );
+          const question = Array.from(document.querySelectorAll('p')).find(
+            node => node.textContent.trim() === 'Frage:'
+          );
+          const lineHeight = parseFloat(getComputedStyle(document.body).lineHeight);
+          const boxes = blanks.map(node => node.getBoundingClientRect());
+          const visibleLines = boxes.length === 6
+            && boxes.every(box => Math.abs(box.height - lineHeight) < 0.75);
+          const stackedWithoutCollapse = boxes.length === 6
+            && boxes.slice(1).every((box, index) =>
+              Math.abs(box.top - boxes[index].bottom) < 0.75
+            );
+          const gapBeforeQuestion = !!question && boxes.length === 6
+            && question.getBoundingClientRect().top - boxes[0].top
+              >= lineHeight * 6 - 0.75;
+          return { visibleLines, stackedWithoutCollapse, gapBeforeQuestion };
+        })()
+        """
+        webView.evaluateJavaScript(script) { result, error in
+            let flags = result as? [String: Bool]
+            let passed = flags?["visibleLines"] == true
+                && flags?["stackedWithoutCollapse"] == true
+                && flags?["gapBeforeQuestion"] == true
+            if passed {
+                try? FileManager.default.removeItem(at: directory)
+                finish(true, "sechs sichtbare Leerzeilen nach einer Liste im echten WebKit-Layout")
+            }
+            if tick == 119 {
+                try? FileManager.default.removeItem(at: directory)
+                if let error {
+                    finish(false, "JavaScript-Fehler: \(error.localizedDescription)")
+                }
+                finish(false, "Leerzeilen-Layout unvollständig: \(String(describing: flags))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                pollMarkdownVisibleBlankLinesDOM(directory: directory, tick: tick + 1)
             }
         }
     }
