@@ -408,14 +408,24 @@ unten heraus.
 Zeichenrechteck wird sichtbar gescrollt; bei einer Bewegung zurück über den
 Pivot wechselt die aktive Seite automatisch. Eine gewöhnliche Cursorbewegung
 behält ihr bisheriges Verhalten, weil Pivot und Cursorposition dort
-zusammenfallen.
+zusammenfallen. Bei einem langen Soft-Wrap-Dokument reicht dieser synchrone
+Aufruf allein nicht: Eine weit unten liegende Zeile besitzt zunächst nur eine
+geschätzte Höhe. Das Scrollen kann sie erstmals auslegen und dadurch ihre echte
+Position unter den gerade erreichten Viewport verschieben. Ein ausschließlich
+für verbleibende Auswahlen geplanter zweiter Abgleich im folgenden Main-Runloop
+verwendet die stabilisierte Position, ohne normale Cursorbewegungen doppelt zu
+bearbeiten.
 
 **Regressionen:** `SoftWrapLayoutTests.extendingSelectionDownScrollsActiveEdgeIntoView`
-verwendet den echten `TextViewController`, führt den NSTextInputClient-Befehl
-24-mal aus und verlangt sowohl einen veränderten Viewport als auch eine
-sichtbare Nicht-Pivot-Kante. `./selftest.sh selectionscroll` wiederholt das mit
-dem Editor aus dem gepackten App-Bundle. Der Test wartet auf den vollständigen
-Markdown-Split, sendet echte wiederholte Shift+↓-Tastaturereignisse an den
-fokussierten linken Quelleditor und misst nach dem SwiftUI-Abgleich unabhängig
-die untere Auswahlrange-Kante. Ein unmittelbarer direkter Methodenaufruf reicht
-für diese Produktwirkung nicht als Regressionsschutz.
+verwendet den echten `TextViewController`, beginnt in einem bereits nach unten
+versetzten kurzen Viewport, führt den NSTextInputClient-Befehl sechsmal aus und
+verlangt sowohl einen veränderten Viewport als auch eine sichtbare
+Nicht-Pivot-Kante. `./selftest.sh selectionscroll` wiederholt das mit dem Editor
+aus dem gepackten App-Bundle. Der Test stellt über den produktiven
+SessionStateStore ein Markdown-Dokument mit 2.200 stark unterschiedlich langen
+Soft-Wrap-Zeilen wieder her, wartet auf den vollständigen Markdown-Split und
+postet sechs Shift+↓-Tastaturereignisse über getrennte Runloop-Durchläufe an den
+fokussierten linken Quelleditor. Vor dem verzögerten Abgleich lag die echte
+Auswahlkante reproduzierbar unter dem unveränderten Viewport. Ein unmittelbarer
+direkter Methodenaufruf reicht für diese Produktwirkung nicht als
+Regressionsschutz.

@@ -9,6 +9,23 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.46.2] — 2026-07-21
+
+### Behoben
+
+- Die mit Shift und Pfeiltasten bewegte Auswahlkante bleibt nun auch in
+  langen, weit unten geöffneten Markdown-Dokumenten mit unterschiedlich stark
+  umbrochenen Zeilen sichtbar. Das faule Editor-Layout kann ihre endgültige
+  Position nach dem ersten Scrollen noch verschieben; Fastra gleicht sie nach
+  dem Layout erneut ab.
+
+### Intern
+
+- Der gepackte Regressionstest startet jetzt mit einer kalt
+  wiederhergestellten Markdown-Sitzung, 2.200 ungleich langen Zeilen und echten
+  Shift-Pfeiltasten über mehrere Runloop-Durchläufe. Damit schlug der zuvor
+  übersehene Fall vor der Korrektur reproduzierbar fehl.
+
 ## [v1.46.1] — 2026-07-21
 
 ### Behoben

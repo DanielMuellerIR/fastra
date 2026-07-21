@@ -201,12 +201,21 @@ Textbereich begrenzt; die mit Shift+Pfeil bewegte Kante kann deshalb unter den
 Viewport laufen, während das Scrollziel weiter auf den sichtbaren oberen
 Ausschnitt zeigt. Fastra verwendet CodeEdits bereits vorhandene, zuvor an
 dieser Stelle ungenutzte Nicht-Pivot-Kante als kleines eindeutiges Scrollziel.
+Bei langen Soft-Wrap-Dokumenten beruht ihre erste Position jedoch noch auf
+geschätzten Zeilenhöhen: Das faule Layout kann die Kante nach dem ersten
+Scrollen erneut aus dem Viewport schieben. Deshalb folgt im nächsten
+Main-Runloop ein zweiter Abgleich mit der dann ausgelegten Position; reine
+Cursorbewegungen lösen ihn nicht aus.
+
 Der direkte `SoftWrapLayoutTests`-Regressionstest treibt den echten
-`moveDownAndModifySelection`-Befehl in einem kurzen Viewport; der gepackte
-Editor wird zusätzlich mit `./selftest.sh selectionscroll` geprüft. Dieser
-Selbsttest wartet ausdrücklich auf beide Hälften des Markdown-Splits, fokussiert
-den linken Quelleditor, sendet echte wiederholte Shift+↓-Events und misst die
-sichtbare aktive Kante erst nach dem folgenden SwiftUI-Abgleich.
+`moveDownAndModifySelection`-Befehl in einem bereits versetzten kurzen
+Viewport. Der gepackte Editor wird zusätzlich mit `./selftest.sh
+selectionscroll` geprüft. Dieser Selbsttest startet über den produktiven
+SessionStateStore mit einem wiederhergestellten Markdown-Dokument aus 2.200
+ungleich langen Soft-Wrap-Zeilen, wartet auf beide Hälften des Markdown-Splits,
+fokussiert den linken Quelleditor und sendet sechs echte Shift+↓-Events über
+mehrere Runloop-Durchläufe. Erst nach dem folgenden SwiftUI- und Layout-Abgleich
+misst er die aktive Kante unabhängig vom gepatchten Scroll-Helfer.
 
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 

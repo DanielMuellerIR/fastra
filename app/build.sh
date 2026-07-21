@@ -1550,9 +1550,12 @@ fi
 # Scrollziel daher weiter den sichtbaren oberen Ausschnitt statt der aktiven
 # Kante. CodeEdit besitzt bereits `offsetNotPivot`, nutzt den Helfer dort aber
 # nicht. Fastra scrollt auf das kleine Zeichenrechteck der aktiven, vom Pivot
-# entfernten Auswahlkante. Cursorbewegungen ohne Auswahl behalten damit
-# dasselbe Verhalten.
+# entfernten Auswahlkante. In langen Soft-Wrap-Dokumenten kann dieses Rechteck
+# zunächst noch auf geschätzten Zeilenhöhen beruhen. Ein zweiter Abgleich im
+# folgenden Main-Runloop scrollt nach dem faulen Layout auf die echte Position.
+# Cursorbewegungen ohne Auswahl behalten damit dasselbe Verhalten.
 CETV_SCROLL_SELECTION="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+ScrollToVisible.swift"
+CETV_MOVE_SELECTION="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+Move.swift"
 SELECTION_SCROLL_PATCH_CHANGED=0
 if ! grep -q 'Fastra-Patch: bewegte Auswahlkante statt Gesamtauswahl' \
     "$CETV_SCROLL_SELECTION" 2>/dev/null; then
@@ -1583,8 +1586,46 @@ PYEOF
   SELECTION_SCROLL_PATCH_CHANGED=1
 fi
 
+if ! grep -q 'Fastra-Patch: verzoegerter Scroll-Abgleich fuer Auswahlen' \
+    "$CETV_MOVE_SELECTION" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (Shift-Auswahl nach Layout nachführen)"
+  chmod u+w "$CETV_MOVE_SELECTION"
+  /usr/bin/python3 - "$CETV_MOVE_SELECTION" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+old = '''    fileprivate func updateAfterMove() {
+        unmarkTextIfNeeded()
+        scrollSelectionToVisible()
+    }'''
+new = '''    fileprivate func updateAfterMove() {
+        unmarkTextIfNeeded()
+        scrollSelectionToVisible()
+        // Fastra-Patch: verzoegerter Scroll-Abgleich fuer Auswahlen. In langen
+        // Soft-Wrap-Dokumenten kann der erste Aufruf noch mit geschaetzten
+        // Zeilenhoehen arbeiten. Nach dem aktuellen Runloop ist der neue
+        // Bereich ausgelegt; dann die aktive Kante nochmals sichtbar machen.
+        guard selectionManager.textSelections.contains(where: {
+            !$0.range.isEmpty
+        }) else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.scrollSelectionToVisible()
+        }
+    }'''
+if old not in src:
+    raise SystemExit(
+        f"{path}: Bewegungs-Abgleich hat sich geaendert — Patch 4r pruefen"
+    )
+open(path, "w").write(src.replace(old, new, 1))
+PYEOF
+  SELECTION_SCROLL_PATCH_CHANGED=1
+fi
+
 if ! grep -q 'Fastra-Patch: bewegte Auswahlkante statt Gesamtauswahl' \
-    "$CETV_SCROLL_SELECTION"; then
+    "$CETV_SCROLL_SELECTION" \
+  || ! grep -q 'Fastra-Patch: verzoegerter Scroll-Abgleich fuer Auswahlen' \
+    "$CETV_MOVE_SELECTION"; then
   echo "✗ FEHLER: Tastaturauswahl-Scroll-Patch hat NICHT gegriffen." >&2
   exit 1
 fi

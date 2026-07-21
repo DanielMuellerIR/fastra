@@ -47,6 +47,11 @@ enum SelfTest {
     /// entfernt.
     private static var sessionRestoreFixtureDirectory: URL?
     private static var sessionRestoreSetupError: String?
+    /// Eigenes Kaltstart-Fixture für den Auswahl-Scrolltest. Es benutzt
+    /// denselben produktiven SessionStateStore wie ein normaler App-Start.
+    private static var selectionScrollFixtureDirectory: URL?
+    private static var selectionScrollFixtureURL: URL?
+    private static var selectionScrollSetupError: String?
 
     /// Name des angeforderten Selbsttests („findbar", „cmdw", …) oder `nil`.
     ///
@@ -105,6 +110,8 @@ enum SelfTest {
         if let sidebar { setEnvironment("FASTRA_SIDEBAR", sidebar) }
         if name == "sessionrestore" {
             prepareSessionRestoreFixture()
+        } else if name == "selectionscroll" {
+            prepareSelectionScrollFixture()
         }
     }
 
@@ -151,6 +158,53 @@ enum SelfTest {
             sessionRestoreSetupError = error.localizedDescription
             try? FileManager.default.removeItem(at: directory)
         }
+    }
+
+    private static func prepareSelectionScrollFixture() {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "fastra-selftest-selectionscroll-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+            let document = directory.appendingPathComponent("wiederhergestellt.md")
+            try Data(selectionScrollContent().utf8).write(to: document)
+            SessionStateStore.save(
+                RestorableSessionState(windows: [
+                    RestorableWindowState(
+                        projectPath: nil,
+                        documentPaths: [document.path],
+                        activeDocumentPath: document.path,
+                        frame: nil
+                    ),
+                ]),
+                to: workspaceDefaults()
+            )
+            UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+            selectionScrollFixtureDirectory = directory
+            selectionScrollFixtureURL = document
+        } catch {
+            selectionScrollSetupError = error.localizedDescription
+            try? FileManager.default.removeItem(at: directory)
+        }
+    }
+
+    private static func selectionScrollContent() -> String {
+        (1...2_200).map { line in
+            // Stark wechselnde Absatzlängen zwingen das faule Layout, seine
+            // Höhenschätzungen weit unten im Dokument laufend zu korrigieren.
+            let repeats = line.isMultiple(of: 7)
+                ? 30
+                : (line.isMultiple(of: 3) ? 8 : 2)
+            let tail = String(
+                repeating: " langer Markdown-Absatz mit mehreren Woertern",
+                count: repeats
+            )
+            return "Auswahlzeile \(line)\(tail)"
+        }.joined(separator: "\n")
     }
 
     /// UserDefaults für den Workspace des laufenden Prozesses.
@@ -2300,36 +2354,27 @@ enum SelfTest {
     /// bewegte Range-Kante selbst und nicht CodeEdits Scroll-Hilfsfunktion.
     private static func runSelectionScrollTest() {
         testLabel = "selectionscroll"
+        if let selectionScrollSetupError {
+            finishSelectionScroll(
+                false,
+                "Kaltstart-Fixture nicht anlegbar: \(selectionScrollSetupError)"
+            )
+        }
         guard let ws = Workspace.shared else {
-            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+            finishSelectionScroll(
+                false,
+                "Workspace.shared ist nil (Test-Hook fehlt)"
+            )
         }
         guard let mainWindow = NSApp.windows.first(where: {
             $0.frameAutosaveName != SearchWindow.frameAutosaveName
                 && $0.contentView != nil && $0.isVisible
         }), let root = mainWindow.contentView else {
-            finish(false, "kein Hauptfenster gefunden")
+            finishSelectionScroll(false, "kein Hauptfenster gefunden")
         }
-
-        let content = (1...160).map { "Auswahlzeile \($0)" }
-            .joined(separator: "\n")
-        let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent(
-                "fastra-selectionscroll-\(UUID().uuidString).md"
-            )
-        do {
-            try content.write(to: tmp, atomically: true, encoding: .utf8)
-        } catch {
-            finish(false, "Fixture nicht schreibbar: \(error.localizedDescription)")
-        }
-
-        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
-        ws.loadFile(at: tmp) { ok in
-            try? FileManager.default.removeItem(at: tmp)
-            guard ok else { finish(false, "Text-Fixture nicht ladbar") }
-            pollForMarkdownSelectionScrollEditor(
-                ws: ws, mainWindow: mainWindow, root: root, tick: 0
-            )
-        }
+        pollForMarkdownSelectionScrollEditor(
+            ws: ws, mainWindow: mainWindow, root: root, tick: 0
+        )
     }
 
     /// Wartet ausdrücklich auf BEIDE Hälften des Markdown-Splits. So kann ein
@@ -2339,7 +2384,8 @@ enum SelfTest {
         ws: Workspace, mainWindow: NSWindow, root: NSView, tick: Int
     ) {
         let markdownReady = ws.activeTab?.isLoading == false
-            && ws.activeTab?.url?.pathExtension.lowercased() == "md"
+            && ws.activeTab?.url?.canonicalFileURL
+                == selectionScrollFixtureURL?.canonicalFileURL
             && markdownWebView(in: root) != nil
         if markdownReady,
            let textView = editorTextView(in: root) as? TextView,
@@ -2350,7 +2396,10 @@ enum SelfTest {
             return
         }
         if tick >= 100 {
-            finish(false, "Markdown-Split mit linkem Editor nicht binnen 10 s bereit")
+            finishSelectionScroll(
+                false,
+                "Markdown-Split mit linkem Editor nicht binnen 10 s bereit"
+            )
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             pollForMarkdownSelectionScrollEditor(
@@ -2359,24 +2408,54 @@ enum SelfTest {
         }
     }
 
-    /// Sendet echte, wiederholte Shift+↓-Events an den fokussierten linken
-    /// Editor und misst erst nach dem folgenden SwiftUI-Abgleich.
+    /// Sendet echte Shift+↓-Events an den fokussierten linken Editor. Zwischen
+    /// den einzelnen Tastenläufen liegt jeweils ein Runloop-Durchlauf wie bei
+    /// mehreren echten Tastendrücken; erst danach wird der Viewport gemessen.
     private static func exerciseMarkdownSelectionScroll(
         textView: TextView, mainWindow: NSWindow
     ) {
         guard let scrollView = textView.enclosingScrollView else {
-            finish(false, "Editor-ScrollView fehlt")
+            finishSelectionScroll(false, "Editor-ScrollView fehlt")
         }
         textView.layoutManager.layoutLines()
-        scrollView.contentView.scroll(to: .zero)
-        scrollView.reflectScrolledClipView(scrollView.contentView)
-        textView.selectionManager.setSelectedRange(
-            NSRange(location: 0, length: 0)
+        let source = textView.string as NSString
+        let middleOffset = source.range(of: "Auswahlzeile 1600").location
+        guard middleOffset != NSNotFound,
+              let middleRect = textView.layoutManager.rectForOffset(
+                  middleOffset
+              ) else {
+            finishSelectionScroll(false, "mittlere Fixture-Zeile nicht layoutbar")
+        }
+        scrollView.contentView.scroll(
+            to: CGPoint(x: 0, y: middleRect.minY)
         )
-        let initialTop = scrollView.documentVisibleRect.minY
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        textView.updatedViewport(scrollView.documentVisibleRect)
+        let visibleBefore = scrollView.documentVisibleRect
+        textView.layoutManager.layoutLines(in: visibleBefore)
+        guard visibleBefore.minY > 0,
+              let firstRect = textView.layoutManager.rectForOffset(0),
+              let cursorOffset = textView.layoutManager.textOffsetAtPoint(
+                  CGPoint(
+                      x: visibleBefore.minX + 140,
+                      y: visibleBefore.maxY - firstRect.height * 2
+                  )
+              ) else {
+            finishSelectionScroll(
+                false,
+                "Startposition im mittleren Viewport nicht bestimmbar"
+            )
+        }
+        textView.selectionManager.setSelectedRange(
+            NSRange(location: cursorOffset, length: 0)
+        )
+        let initialTop = visibleBefore.minY
 
         guard mainWindow.makeFirstResponder(textView) else {
-            finish(false, "linker Markdown-Editor wurde nicht First Responder")
+            finishSelectionScroll(
+                false,
+                "linker Markdown-Editor wurde nicht First Responder"
+            )
         }
         if let flags = NSEvent.keyEvent(
             with: .flagsChanged, location: .zero,
@@ -2386,46 +2465,92 @@ enum SelfTest {
             characters: "", charactersIgnoringModifiers: "",
             isARepeat: false, keyCode: 56
         ) {
-            mainWindow.sendEvent(flags)
+            NSApp.postEvent(flags, atStart: false)
         }
-        for index in 0..<100 {
-            guard let key = NSEvent.keyEvent(
-                with: .keyDown, location: .zero,
-                modifierFlags: .shift,
-                timestamp: ProcessInfo.processInfo.systemUptime,
-                windowNumber: mainWindow.windowNumber, context: nil,
-                characters: "\u{F701}",
-                charactersIgnoringModifiers: "\u{F701}",
-                isARepeat: index > 0, keyCode: 125
-            ) else {
-                finish(false, "konnte Shift+Pfeil-nach-unten nicht bauen")
-            }
-            mainWindow.sendEvent(key)
-        }
+        sendMarkdownSelectionScrollKey(
+            textView: textView,
+            scrollView: scrollView,
+            mainWindow: mainWindow,
+            initialTop: initialTop,
+            step: 0
+        )
+    }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            let range = textView.selectedRange()
-            guard range.length > 0,
-                  let activeRect = textView.layoutManager.rectForOffset(
-                      NSMaxRange(range)
-                  ) else {
-                finish(false, "bewegte Auswahlkante nicht layoutbar")
-            }
-            let visibleRect = scrollView.documentVisibleRect
-            guard visibleRect.minY > initialTop,
-                  visibleRect.contains(activeRect) else {
-                finish(
-                    false,
-                    "bewegte Kante außerhalb: Auswahl=\(range), "
-                        + "Viewport=\(visibleRect), Kante=\(activeRect)"
-                )
-            }
-            finish(
-                true,
-                "Shift-Auswahl scrollte von y=\(Int(initialTop)) auf "
-                    + "y=\(Int(visibleRect.minY)); bewegte Kante sichtbar"
+    private static func sendMarkdownSelectionScrollKey(
+        textView: TextView,
+        scrollView: NSScrollView,
+        mainWindow: NSWindow,
+        initialTop: CGFloat,
+        step: Int
+    ) {
+        guard let key = NSEvent.keyEvent(
+            with: .keyDown, location: .zero,
+            modifierFlags: .shift,
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: mainWindow.windowNumber, context: nil,
+            characters: "\u{F701}",
+            charactersIgnoringModifiers: "\u{F701}",
+            isARepeat: false, keyCode: 125
+        ) else {
+            finishSelectionScroll(
+                false,
+                "konnte Shift+Pfeil-nach-unten nicht bauen"
             )
         }
+        // Durch die NSApplication-Queue laufen lassen, damit dieselben lokalen
+        // Event-Monitore wie bei der physischen Tastatur beteiligt sind.
+        NSApp.postEvent(key, atStart: false)
+
+        if step < 5 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                sendMarkdownSelectionScrollKey(
+                    textView: textView,
+                    scrollView: scrollView,
+                    mainWindow: mainWindow,
+                    initialTop: initialTop,
+                    step: step + 1
+                )
+            }
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                let range = textView.selectedRange()
+                guard range.length > 0,
+                      let activeRect = textView.layoutManager.rectForOffset(
+                          NSMaxRange(range)
+                      ) else {
+                    finishSelectionScroll(
+                        false,
+                        "bewegte Auswahlkante nicht layoutbar"
+                    )
+                }
+                let visibleRect = scrollView.documentVisibleRect
+                guard visibleRect.minY > initialTop,
+                      visibleRect.contains(activeRect) else {
+                    finishSelectionScroll(
+                        false,
+                        "bewegte Kante außerhalb: Auswahl=\(range), "
+                            + "Viewport=\(visibleRect), Kante=\(activeRect)"
+                    )
+                }
+                finishSelectionScroll(
+                    true,
+                    "Shift-Auswahl scrollte von y=\(Int(initialTop)) auf "
+                        + "y=\(Int(visibleRect.minY)); bewegte Kante sichtbar"
+                )
+            }
+        }
+    }
+
+    private static func finishSelectionScroll(
+        _ ok: Bool,
+        _ message: String
+    ) -> Never {
+        if let directory = selectionScrollFixtureDirectory {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        selectionScrollFixtureDirectory = nil
+        selectionScrollFixtureURL = nil
+        finish(ok, message)
     }
 
     /// Scrollt iterativ, bis die Zielzeile wirklich oben liegt. Ein einmalig

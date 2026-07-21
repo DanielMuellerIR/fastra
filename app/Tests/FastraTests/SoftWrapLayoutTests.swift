@@ -232,7 +232,7 @@ struct SoftWrapLayoutTests {
     @Test("Shift-Pfeil nach unten hält die bewegte Auswahlkante sichtbar")
     @MainActor
     func extendingSelectionDownScrollsActiveEdgeIntoView() throws {
-        let text = (1...80).map { "Zeile \($0) mit Text" }
+        let text = (1...160).map { "Zeile \($0) mit Text" }
             .joined(separator: "\n")
         let editor = controller(
             text: text,
@@ -245,17 +245,29 @@ struct SoftWrapLayoutTests {
         editor.textView.layoutManager.layoutLines()
 
         let scrollView = try #require(editor.scrollView)
-        scrollView.contentView.scroll(to: .zero)
-        scrollView.reflectScrolledClipView(scrollView.contentView)
-        editor.textView.selectionManager.setSelectedRange(
-            NSRange(location: 0, length: 0)
+        let middleOffset = (text as NSString).range(
+            of: "Zeile 80 mit Text"
+        ).location
+        let middleRect = try #require(
+            editor.textView.layoutManager.rectForOffset(middleOffset)
         )
-        let initialTop = scrollView.documentVisibleRect.minY
+        scrollView.contentView.scroll(
+            to: CGPoint(x: 0, y: middleRect.minY)
+        )
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        let visibleBefore = scrollView.documentVisibleRect
+        let cursorOffset = (text as NSString).range(
+            of: "Zeile 87 mit Text"
+        ).location
+        editor.textView.selectionManager.setSelectedRange(
+            NSRange(location: cursorOffset, length: 0)
+        )
+        let initialTop = visibleBefore.minY
 
         // Der echte NSTextInputClient-Befehl bildet Shift+Pfeil nach unten ab.
-        // Genug Schritte machen die Auswahl höher als den Viewport; dann darf
-        // nicht mehr ihr Anfang, sondern nur die bewegte Kante Scrollanker sein.
-        for _ in 0..<24 {
+        // Der Nutzer startet mitten im Dokument knapp vor der unteren Kante.
+        // Wenige Schritte reichen, um die bewegte Auswahlkante hinauszuschieben.
+        for _ in 0..<6 {
             editor.textView.moveDownAndModifySelection(nil)
         }
 
