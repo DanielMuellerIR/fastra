@@ -78,7 +78,7 @@ Gatekeeper-Akzeptanz und Codesignatur des Quell-Bundles. Beim Version-Bump
 `app/Info.plist` mitziehen (siehe AGENTS.md), sonst zeigt die App eine veraltete
 Version.
 
-`build.sh` kapselt Xcode-Toolchain-Switch + neunzehn Checkout-Patches
+`build.sh` kapselt Xcode-Toolchain-Switch + zwanzig Checkout-Patches
 (SwiftLint-Plugins aus, CodeEditSymbols Resources, CMD+F-Zombie-Kill,
 toter cursorPositions-Reconcile, verworfene Auto-Vervollständigung schließen,
 Gutter-Drag-Clamp, horizontaler Scrollbalken, Zeilenbreiten-Messung,
@@ -86,7 +86,8 @@ exotische Sprachen ausschneiden, Highlight-Query-Pfad layout-robust,
 Text-Geist-Fix, zwei portable Ressourcenpfade, getrennte 4D-Theme-Slots
 einschließlich eines optionalen Methoden-Slots, feste Soft-Wrap-Spalten und
 Rechteckauswahl auf logischen Zeilen, vollständige Dateiende-Auswahl sowie
-stabile Auswahl- und Layoutzustände großer Textoperationen).
+stabile Auswahl- und Layoutzustände großer Textoperationen und vollständige
+Trefferflächen nach Texteingaben).
 
 Seit v1.19.0 verpackt `build.sh` zusätzlich das exakt gepinnte
 `Sparkle.framework` unter `Contents/Frameworks`, entfernt die für die nicht
@@ -216,6 +217,27 @@ ungleich langen Soft-Wrap-Zeilen, wartet auf beide Hälften des Markdown-Splits,
 fokussiert den linken Quelleditor und sendet sechs echte Shift+↓-Events über
 mehrere Runloop-Durchläufe. Erst nach dem folgenden SwiftUI- und Layout-Abgleich
 misst er die aktive Kante unabhängig vom gepatchten Scroll-Helfer.
+
+Patch 4s (Trefferflächen nach Einfügungen, 2026-07-22):
+`NSTextStorageDelegate.didProcessEditing` liefert den bearbeiteten Bereich im
+neuen Text und separat die Längenänderung. CodeEditTextView leitete daraus
+korrekt den vorher ersetzten Bereich ab, verwendete diesen alten Bereich aber
+auch nach dem Umbau der Zeilenstruktur zur Layout-Invalidierung. Bei einer
+reinen Einfügung ist er leer; an einer alten Fragmentgrenze konnten deshalb
+die Umbruchfragmente des bisherigen Zeilenendes erhalten bleiben, obwohl die
+logische Zeile bereits länger war. Der neue Text wurde sichtbar gezeichnet,
+aber `rectForOffset` lieferte dahinter nur ein Nullbreiten-Fallback und der
+Fenster-Hit-Test erreichte den Editor dort nicht. Fastra verwendet den alten
+Bereich weiterhin ausschließlich zum Entfernen ersetzter Zeilen und
+invalidiert anschließend den neuen `editedRange`.
+
+Der Selbsttest `./selftest.sh wordclick` kürzt eine lange Markdown-Zeile
+zunächst auf den bereits ausgelegten Wortanfang, fügt den Rest durch den echten
+`TextView` wieder ein und sendet AppKit-Doppelklicks an Anfang und Ende des
+Worts. Beide Klicks müssen dieselbe vollständige Auswahl erzeugen. Für die
+Erstdiagnose kann `FASTRA_WORDCLICK_FIXTURE` eine lokale Realdatei laden; der
+normale Lauf bleibt mit einem datenschutzneutralen Größenabbild der 132
+Vorzeilen portabel.
 
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 

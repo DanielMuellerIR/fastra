@@ -429,3 +429,34 @@ fokussierten linken Quelleditor. Vor dem verzögerten Abgleich lag die echte
 Auswahlkante reproduzierbar unter dem unveränderten Viewport. Ein unmittelbarer
 direkter Methodenaufruf reicht für diese Produktwirkung nicht als
 Regressionsschutz.
+
+### F.18 Ein Edit besitzt einen alten und einen neuen Bereich (2026-07-22)
+
+`NSTextStorageDelegate.didProcessEditing` meldet `editedRange` im Zustand nach
+der Änderung. Zusammen mit `changeInLength` lässt sich daraus der vorher
+ersetzte Bereich berechnen. CodeEditTextView benötigte diesen alten Bereich
+zum Entfernen ersetzter Layoutzeilen, invalidierte danach aber irrtümlich
+erneut ihn statt des neuen Bereichs.
+
+Bei einer reinen Einfügung hat der alte Bereich die Länge null. In einer
+bereits ausgelegten langen Soft-Wrap-Zeile konnte deshalb das bisherige
+Zeilenende als Fragment erhalten bleiben, obwohl die logische Zeilenlänge
+schon den neuen Text enthielt. Sichtbar wirkte das Wort vollständig, aber für
+seinen angehängten Teil fehlten Zeichenrechtecke: `rectForOffset` fiel auf ein
+Nullbreiten-Rechteck zurück, `textOffsetAtPoint` lieferte `nil`, und AppKits
+Fenster-Hit-Test landete im umgebenden Scroll-View. Ein Doppelklick ließ daher
+die vorherige Auswahl unverändert.
+
+**Workaround (Patch 4s in `build.sh`):** Der abgeleitete alte Bereich heißt
+bewusst `replacedStringRange` und wird nur zum Entfernen der vorherigen
+Zeilenstruktur verwendet. Nach `insertNewLines` invalidiert CodeEditTextView
+den von NSTextStorage gelieferten neuen `editedRange`. Löschungen bleiben
+korrekt: Ihr neuer Bereich ist leer, und CodeEdits bestehender Leerbereichs-
+Pfad markiert die Zeile am Editierpunkt beziehungsweise die letzte Zeile.
+
+**Regression:** `./selftest.sh wordclick` stellt den realen Zustand her, indem
+es in einem langen Markdown-Dokument zuerst nur den Wortanfang auslegt und den
+Rest anschließend über `TextView.insertText` einfügt. Danach sendet der Test
+echte Fensterereignisse als Doppelklick an Wortanfang und Wortende. Ein reiner
+Modell- oder Frische-Layout-Test reicht nicht: Text und Zeilenlänge waren auch
+im Fehlerfall korrekt, nur die alten Trefferflächen blieben bestehen.

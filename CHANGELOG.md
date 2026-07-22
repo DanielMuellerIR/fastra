@@ -9,6 +9,14 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.46.6] — 2026-07-22
+
+### Behoben
+
+- Nach Texteingaben bleiben auch neu angehängte Teile einer langen,
+  umgebrochenen Zeile vollständig anklickbar. Ein Doppelklick am Wortende
+  markiert damit wieder dasselbe ganze Wort wie ein Doppelklick am Wortanfang.
+
 ## [v1.46.5] — 2026-07-22
 
 ### Geändert

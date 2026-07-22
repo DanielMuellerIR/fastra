@@ -150,6 +150,113 @@ struct SoftWrapLayoutTests {
         #expect(fragments.reduce(0) { $0 + $1.range.length } == storage.length)
     }
 
+    @Test("Langes Zeilenende bleibt über die ganze sichtbare Wortbreite anklickbar")
+    @MainActor
+    func longLineTailHitTestingMatchesRenderedGlyphs() throws {
+        let text = "> xxxxx xxx-xxxxxxxxxxxx `xx_xxxx` xxx xxxxx "
+            + "xxxxxxxxxx xxxxxx: xxxx xxxxxxxxxx, doppelklickbar"
+        let target = try #require(
+            (text as NSString).range(of: "doppelklickbar") as NSRange?
+        )
+
+        // Der gemeldete Fehler tritt nahe der rechten Kante eines geteilten
+        // Markdown-Editors auf. Mehrere Breiten schützen den Grenzfall, ohne
+        // die Testaussage an die gemeldete Fenstergröße zu koppeln.
+        for width in stride(from: CGFloat(520), through: 720, by: 10) {
+            let editor = controller(
+                text: text,
+                column: nil,
+                width: width,
+                wrapLines: true
+            )
+            editor.textView.layoutManager.layoutLines()
+
+            for offset in target.location..<target.max {
+                let glyphRect = try #require(
+                    editor.textView.layoutManager.rectForOffset(offset)
+                )
+                let point = CGPoint(x: glyphRect.midX, y: glyphRect.midY)
+                let mapped = editor.textView.layoutManager.textOffsetAtPoint(point)
+
+                #expect(editor.textView.bounds.contains(point),
+                        "Breite \(width), Offset \(offset): sichtbares Zeichen außerhalb des TextView-Hit-Tests")
+                // CoreText setzt die Einfügemarke ab der rechten Glyphenhälfte
+                // hinter das Zeichen. Beide Nachbarpositionen gehören deshalb
+                // zum angeklickten Zielwort; nil oder ein fremdes Wort nicht.
+                #expect(mapped.map { target.location...target.max ~= $0 } == true,
+                        "Breite \(width), Offset \(offset): sichtbares Zeichen mappt auf \(String(describing: mapped))")
+            }
+        }
+    }
+
+    @Test("Einfügen verlängert auch die anklickbaren Umbruchfragmente")
+    @MainActor
+    func insertionInvalidatesLongLineFragments() throws {
+        let filler = (1...132).map {
+            "Zeile \($0): " + String(repeating: "realistischer Inhalt ", count: $0 % 5 + 1)
+        }.joined(separator: "\n")
+        let finalLine = "> xxxxx xxx-xxxxxxxxxxxx `xx_xxxx` xxx xxxxx "
+            + "xxxxxxxxxx xxxxxx: xxxx xxxxxxxxxx, doppelklickbar"
+        let finalText = filler + "\n" + finalLine
+        let target = (finalText as NSString).range(of: "doppelklickbar")
+        let initial = NSMutableString(string: finalText)
+        initial.deleteCharacters(in: NSRange(
+            location: target.location + 2,
+            length: target.length - 2
+        ))
+        let editor = controller(
+            text: initial as String,
+            column: nil,
+            width: 279,
+            wrapLines: true
+        )
+        // Die echte Datei war bereits bis zur später verlängerten Zielzeile
+        // gescrollt. Dadurch existieren Umbruchfragmente für den alten Stand
+        // mit nur zwei Zeichen; genau diese muss die Einfügung verwerfen.
+        let initialTarget = NSRange(location: target.location, length: 2)
+        let initialLine = try #require(
+            editor.textView.layoutManager.textLineForOffset(
+                initialTarget.location
+            )
+        )
+        editor.textView.layoutManager.layoutLines(in: NSRect(
+            x: 0, y: initialLine.yPos,
+            width: editor.textView.bounds.width, height: 800
+        ))
+        let initialFragments = try #require(
+            editor.textView.layoutManager.textLineForOffset(
+                initialTarget.location
+            )?.data.lineFragments
+        )
+        #expect(initialFragments.reduce(0) { $0 + $1.range.length }
+                >= initialTarget.location + initialTarget.length
+                    - initialLine.range.location)
+        editor.textView.selectionManager.setSelectedRange(NSRange(
+            location: target.location + 2, length: 0
+        ))
+
+        editor.textView.insertText(
+            "ppelklickbar",
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+        editor.textView.layoutManager.layoutLines()
+        editor.textView.scrollToRange(target)
+        editor.textView.layoutManager.layoutLines()
+
+        let tailOffset = target.max - 2
+        let tailRect = try #require(
+            editor.textView.layoutManager.rectForOffset(tailOffset)
+        )
+        let mapped = editor.textView.layoutManager.textOffsetAtPoint(
+            CGPoint(x: tailRect.midX, y: tailRect.midY)
+        )
+        #expect(editor.textView.string == finalText)
+        #expect(tailRect.width > 0,
+                "Das sichtbare neue Wortende besitzt nur das Nullbreiten-Fallback")
+        #expect(mapped.map { target.location...target.max ~= $0 } == true,
+                "Das sichtbare neue Wortende ist nicht anklickbar")
+    }
+
     @Test("Alles auswählen umfasst bei Soft Wrap auch die letzte sichtbare Textzeile")
     @MainActor
     func selectAllIncludesLastVisibleLine() throws {

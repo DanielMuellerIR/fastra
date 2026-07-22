@@ -1639,6 +1639,73 @@ if [ "$SELECTION_SCROLL_PATCH_CHANGED" -eq 1 ]; then
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4s. CodeEditTextView — Layout nach Texteinfuegungen fuer den neuen Bereich
+# invalidieren.
+#
+# `didProcessEditing` berechnet aus `editedRange` und `delta` korrekt den
+# VORHER ersetzten Bereich. Upstream verwendet diesen Bereich aber nicht nur
+# zum Entfernen alter Zeilen, sondern auch nach dem Einfuegen zur Layout-
+# Invalidierung. Bei einer reinen Einfuegung ist er leer; an Zeilen- und
+# Fragmentgrenzen kann dadurch eine andere Zeile getroffen werden. Die
+# logische Zeilenlaenge ist dann neu, ihre alten Soft-Wrap-Fragmente bleiben
+# aber bestehen: Der angehaengte Text wird gezeichnet, besitzt jedoch keine
+# Trefferflaeche. Entfernen arbeitet weiter mit dem alten Bereich, nach dem
+# Aufbau wird dagegen der von NSTextStorage gelieferte NEUE Bereich
+# invalidiert. Bei Loeschungen bleibt `editedRange` leer; CodeEdits bestehender
+# Leerbereichspfad markiert die Zeile am Editierpunkt bzw. die letzte Zeile.
+CETV_EDITS="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextLayoutManager/TextLayoutManager+Edits.swift"
+TEXT_EDIT_LAYOUT_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: neuen Editierbereich invalidieren' \
+    "$CETV_EDITS" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (Text-Einfügung invalidiert neue Fragmente)"
+  chmod u+w "$CETV_EDITS"
+  /usr/bin/python3 - "$CETV_EDITS" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+old = '''        let insertedStringRange = NSRange(location: editedRange.location, length: editedRange.length - delta)
+        removeLayoutLinesIn(range: insertedStringRange)
+        insertNewLines(for: editedRange)
+
+        attachments.textUpdated(atOffset: editedRange.location, delta: delta)
+
+        invalidateLayoutForRange(insertedStringRange)'''
+new = '''        let replacedStringRange = NSRange(location: editedRange.location, length: editedRange.length - delta)
+        removeLayoutLinesIn(range: replacedStringRange)
+        insertNewLines(for: editedRange)
+
+        attachments.textUpdated(atOffset: editedRange.location, delta: delta)
+
+        // Fastra-Patch: neuen Editierbereich invalidieren. Der zuvor ersetzte
+        // Bereich ist bei reinen Einfuegungen leer und kann nach dem Umbau der
+        // Zeilenstruktur auf die falschen alten Fragmente zeigen.
+        invalidateLayoutForRange(editedRange)'''
+if old not in src:
+    raise SystemExit(
+        f"{path}: Editierbereichs-Invalidierung hat sich geaendert — Patch 4s pruefen"
+    )
+open(path, "w").write(src.replace(old, new, 1))
+PYEOF
+  TEXT_EDIT_LAYOUT_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'let replacedStringRange = NSRange' "$CETV_EDITS" \
+  || ! grep -q 'invalidateLayoutForRange(editedRange)' "$CETV_EDITS" \
+  || ! grep -q 'Fastra-Patch: neuen Editierbereich invalidieren' "$CETV_EDITS"; then
+  echo "✗ FEHLER: Text-Einfügungs-Layout-Patch hat NICHT gegriffen." >&2
+  exit 1
+fi
+
+if [ "$TEXT_EDIT_LAYOUT_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 

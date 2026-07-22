@@ -275,6 +275,7 @@ enum SelfTest {
         case "markdownappearance": waitForMainWindow { runMarkdownAppearanceTest() }
         case "jump":      waitForMainWindow { runJumpTest() }
         case "ghosttext": waitForMainWindow { runGhostTextTest() }
+        case "wordclick": waitForMainWindow { runWordDoubleClickTest() }
         case "replaceall": waitForMainWindow { runReplaceAllTest() }
         case "pilldrop":  waitForMainWindow { openSearchThen { runPillDropTest() } }
         case "navmatch":  waitForMainWindow { openSearchThen { runNavMatchTest() } }
@@ -389,7 +390,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -4473,6 +4474,439 @@ enum SelfTest {
             }
         }
         return nil
+    }
+
+    // MARK: - -selftest wordclick
+
+    /// Reproduziert den Doppelklick-Fehler aus einer langen Markdown-Zeile im
+    /// echten Split-Editor: Wortanfang und Wortende müssen über dieselbe
+    /// Fenster-Event-Pipeline jeweils das ganze sichtbare Wort markieren.
+    private static func runWordDoubleClickTest() {
+        testLabel = "wordclick"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks() else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        let fallbackText = wordClickFixtureContent()
+        let text: String
+        if let path = ProcessInfo.processInfo.environment["FASTRA_WORDCLICK_FIXTURE"],
+           let fixture = try? String(contentsOfFile: path, encoding: .utf8) {
+            // Lokale Realdatei für die Erstdiagnose; der normale Selbsttest
+            // bleibt mit dem neutralen Größenabbild vollständig portabel.
+            text = fixture
+        } else {
+            text = fallbackText
+        }
+        guard let target = wordClickTargetRange(in: text) else {
+            finish(false, "Zielbereich fehlt im Doppelklick-Fixture")
+        }
+        let unrelated = NSRange(
+            location: max(target.location - 12, 0), length: 10
+        )
+        let suffix = (text as NSString).substring(with: NSRange(
+            location: target.location + 2, length: target.length - 2
+        ))
+        let initial = NSMutableString(string: text)
+        initial.deleteCharacters(in: NSRange(
+            location: target.location + 2,
+            length: target.length - 2
+        ))
+        let initialText = initial as String
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-wordclick-\(UUID().uuidString).md")
+        do { try Data(initialText.utf8).write(to: tmp) }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+
+        let environment = ProcessInfo.processInfo.environment
+        let requestedWindowWidth = environment["FASTRA_WORDCLICK_WINDOW_WIDTH"]
+            .flatMap(Double.init) ?? 1100
+        let requestedSidebarWidth = environment["FASTRA_WORDCLICK_SIDEBAR_WIDTH"]
+            .flatMap(Double.init) ?? 360.08984375
+        let requestedPreviewWidth = environment["FASTRA_WORDCLICK_PREVIEW_WIDTH"]
+            .flatMap(Double.init) ?? 422.6640625
+        ws.sidebarWidth = requestedSidebarWidth
+        ws.markdownPreviewWidth = requestedPreviewWidth
+        // Diese Geometrie traf den gemeldeten Fragment-Grenzfall
+        // deterministisch. Optionale Werte bleiben für die Erstdiagnose.
+        window.setContentSize(NSSize(width: requestedWindowWidth, height: 800))
+        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        ws.loadFile(at: tmp) { ok in
+            try? FileManager.default.removeItem(at: tmp)
+            guard ok else { finish(false, "Markdown-Fixture lädt nicht") }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                guard let root = window.contentView,
+                      let textView = editorTextView(in: root) as? TextView,
+                      textView.string == initialText else {
+                    finish(false, "Markdown-TextView mit Fixture fehlt")
+                }
+                window.makeFirstResponder(textView)
+                prepareWordClickInitialLayout(
+                    textView: textView, window: window,
+                    expectedText: text, target: target,
+                    unrelated: unrelated, suffix: suffix, tick: 0
+                )
+            }
+        }
+    }
+
+    /// Erzeugt vor der Einfügung bewusst reale Fragmente für den nur zwei
+    /// Zeichen langen Wortanfang. Ein bloßer Reload des fertigen Worts würde
+    /// den gemeldeten stehengebliebenen Layoutzustand nicht reproduzieren.
+    private static func prepareWordClickInitialLayout(
+        textView: TextView, window: NSWindow, expectedText: String,
+        target: NSRange, unrelated: NSRange, suffix: String, tick: Int
+    ) {
+        let initialTarget = NSRange(location: target.location, length: 2)
+        textView.scrollToRange(initialTarget)
+        textView.layoutManager.layoutLines()
+        if let rect = textView.layoutManager.rectForOffset(target.location + 1),
+           rect.width > 0, textView.visibleRect.intersects(rect) {
+            textView.selectionManager.setSelectedRange(NSRange(
+                location: target.location + 2, length: 0
+            ))
+            textView.insertText(
+                suffix,
+                replacementRange: NSRange(location: NSNotFound, length: 0)
+            )
+            pollWordClickMutation(
+                textView: textView, window: window, expectedText: expectedText,
+                target: target, unrelated: unrelated, tick: 0
+            )
+            return
+        }
+        if tick >= 40 {
+            finish(false, "kurzer Wortanfang wird binnen 4 s nicht real sichtbar")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            prepareWordClickInitialLayout(
+                textView: textView, window: window,
+                expectedText: expectedText, target: target,
+                unrelated: unrelated, suffix: suffix, tick: tick + 1
+            )
+        }
+    }
+
+    /// Datenschutzneutrales Größenabbild des gemeldeten Markdown-Dokuments:
+    /// Die ersten 132 UTF-16-Zeilenlängen und die Zielzeile entsprechen dem
+    /// Repro, der Inhalt der Vorzeilen besteht ausschließlich aus Platzhaltern.
+    private static func wordClickFixtureContent() -> String {
+        let lineShapes = """
+        1,6,1,9,5,6
+        0
+        11,20,9,5,7,1,7,8,3
+        0
+        11,10,1,7,4,5,5,3
+        0
+        11,2,4,12,1,1,4,6,11,3
+        0
+        9,6,6,3,3,4,10,4,4,4
+        0
+        2,3,3,5
+        0
+        1,1,1,6,2,7,7,8,6,3,3,5,1,12
+        1,1,1,3,3,14,7,5,6,9,4,8,5,7
+        1,1,1,9,6,8,3,7,8,7
+        1,1,1,6,4,13,3,5,9,6,3,7
+        1,1,1,3,18,7,3,9,5,9,10
+        0
+        2,10,6,5
+        0
+        3,1,15,6,2,1,9
+        0
+        1,4,3,6,6,3,9,4,4,7,6,9,8
+        1,4,3,10,20,11,3,15
+        1
+        1,2,8,6,3,5,7,2,2,4,7,4,11,4
+        1,14,3,4,4,3,3,10,11,5,4,3,2
+        1,3,9,6,6,3,3,8,2,3,3,6,3,7
+        0
+        3,1,5,13,6,2,1,9
+        0
+        1,3,8,3,2,5,2,6,3,7,11,3,4,7,4
+        1,6,8,8,3,3,5,7,7,9,7,5
+        1,7,3,3,5
+        1
+        1,3,5,4,8,2,8,11,3,4,16,4
+        1,3,3,4,4,13,3,5,3,5,5,12,8
+        1,6,3,8
+        1
+        1,3,6,7,3,6,10,6,5,7,5,11
+        1,4,6,4,11,4,8,3,4,4,5,11,4
+        1,6,4,3,13,10,7,6,3,3,5,8
+        1,3,3,4,11,3,3,9,8,6,12,3,6
+        0
+        3,1,4,6,6,6,2,1,9
+        0
+        1,7,3,3,7,14,3,9,7,13,6
+        1,3,9,7,3,10,7,3,9,11
+        1
+        1,3,4,6,3,8,6,5,4,2,5,6,4,6
+        1,5,4,6,4,3,3,9,11,4,4,4,5
+        1,11,24
+        1
+        1,4,6,6,3,3,6,7,16,8,9
+        1,15,13,4,8,3,13,3,11
+        1,2,12,5,3,4,8,14,3,8,6
+        1,9,8,12,4,6,12,4,10,6
+        1,3,4,5,5,16,8,6,2,4,5,7,3,0
+        1,3,6,8,6
+        0
+        3,1,10,3,3,8,5,6,2,1,9
+        0
+        1,4,11,9,6,3,9,5,3,12,3,3
+        1,8,5,3,7,13,3,8,6,6,5,4
+        1
+        1,4,3,6,4,4,4,3,7,4,4,15,3,4
+        1,4,13,8,7,4,3,5,4,10,2,3
+        1,11,10,7,5,9,6,6,8
+        1
+        1,6,3,5,9,5,11,13,5,7
+        1,9,3,4,24,3,13,6,3,5
+        1,13,3,4,3,5,4,6,3,5,7,8
+        0
+        3,1,3,4,6,2,1,9
+        0
+        1,4,4,4,6,6,5,5,5,3,3,5,5,4,3
+        1,6,3,7,25,15
+        1
+        1,4,4,5,10,3,3,4,5,4,8,3,2,3,8
+        1,4,8,7,10,6,5,4,6,3,7,3,6
+        1,10,2,7,9,6,2,3,8,4,2,7
+        1
+        1,3,6,6,4,2,4,5,5,2,3,7,10,4,0
+        1,10,4,3,3,6,14,2,4,3,4,8
+        0
+        3,1,4,11,6,2,1,9
+        0
+        1,6,7,4,3,9,12,8,8,3,4,6
+        1,3,4,12
+        1
+        1,2,6,6,17,7,3,5,7,4,7,3
+        1,7,5,6,5,4,15,3,8,4,3,6
+        1,6,7,3,3,11,3,11,6,7,13
+        1,6,6,12,2,5,6,5,3,8,10,5
+        1,2,3,8,7,6,6
+        1
+        1,3,6,2,6,5,5,6,16,3,11
+        1,13,11,8,8,6,6,3,10,4
+        1,12,10
+        0
+        3,1,10,3,10,7,6,2,1,9
+        0
+        1,4,6,4,12,9,5,2,12,3,6,6
+        1,2,3,8,2,4,5,11,7,3,8,15
+        1,6,7,9,5
+        1
+        1,2,5,11,8,9,3,3,9,4,7,4
+        1,7,10,2,12,3,10,3,4,14,3
+        1,3,4,7,6,3,4,7,6,5,2,5,2,7,3
+        1,8,9,3,4,7,3,8,4,3,8,3,6
+        1,6,6,9,2,3,7,5,6,2,8,3,10
+        1,7,12,5,3,6,3,3,7,6,7,13
+        1
+        1,5,5,16,6,7,3,3,6,13,3
+        1,10,7,4,7,8,3,3,9,4,5,3,5
+        1,3,12,11,4,3,6,6,5,6,6,6
+        1,4,4,7,5,3,7,3,3,4,10,3,3,9
+        1,15
+        0
+        3,1,3,16,6,2,1,9
+        0
+        1,6,3,3,3,7,10,6,12
+        1
+        1,2,5,8,3,3,5,6,7,3,3,6,3,5
+        1,9,4,7,12,3,8,8,3,5,4,5
+        1,4,4,3,4,5,5,6,4,9,5
+        1
+        1,2,2,3,3,6,4,9,4,4,3,2,11,9,4
+        1,4,11,7,4,5,6,7,12,4,3
+        1,10,2,3,7,6,3,13,4,8,5,9
+        1,4,7
+        1
+        """
+        var lines = lineShapes.split(
+            separator: "\n", omittingEmptySubsequences: false
+        ).map { shape in
+            shape.split(separator: ",").map {
+                String(repeating: "x", count: Int($0) ?? 0)
+            }.joined(separator: " ")
+        }
+        lines.append(
+            "> xxxxx xxx-xxxxxxxxxxxx `xx_xxxx` xxx xxxxx xxxxxxxxxx "
+                + "xxxxxx: xxxx xxxxxxxxxx, doppelklickbar"
+        )
+        lines.append(contentsOf: (134...174).map {
+            "> Testzeile \($0): " + String(repeating: "x", count: $0 % 55 + 12)
+        })
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// Die gesicherte lokale Repro-Datei und das neutrale portable Abbild
+    /// besitzen dieselbe Zielposition: Zeile 133, UTF-16-Spalte 82, 14 Units.
+    /// So muss kein Inhalt aus dem Arbeitsdokument in den Quellcode wandern.
+    private static func wordClickTargetRange(in text: String) -> NSRange? {
+        let source = text as NSString
+        var lineStart = 0
+        for _ in 1..<133 {
+            guard lineStart < source.length else { return nil }
+            lineStart = NSMaxRange(source.lineRange(for: NSRange(
+                location: lineStart, length: 0
+            )))
+        }
+        let target = NSRange(location: lineStart + 81, length: 14)
+        return target.max <= source.length ? target : nil
+    }
+
+    private static func pollWordClickMutation(
+        textView: TextView, window: NSWindow, expectedText: String,
+        target: NSRange, unrelated: NSRange, tick: Int
+    ) {
+        if textView.string == expectedText {
+            centerWordClickTarget(textView: textView, target: target)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                pollWordClickReady(
+                    textView: textView, window: window,
+                    target: target, unrelated: unrelated, tick: 0
+                )
+            }
+            return
+        }
+        if tick >= 40 {
+            finish(false, "Eingabe stellt die lange Fixture-Zeile nicht wieder her")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollWordClickMutation(
+                textView: textView, window: window, expectedText: expectedText,
+                target: target, unrelated: unrelated, tick: tick + 1
+            )
+        }
+    }
+
+    /// `scrollToRange` laesst bereits knapp sichtbare Bereiche absichtlich
+    /// stehen. Fuer echte Fensterereignisse muss das Ziel aber auch ausserhalb
+    /// der Scrollleisten und Statusleisten liegen, nicht nur im Layout-Puffer.
+    private static func centerWordClickTarget(
+        textView: TextView, target: NSRange
+    ) {
+        guard let scrollView = textView.enclosingScrollView,
+              let rect = textView.layoutManager.rectForOffset(target.location) else {
+            textView.scrollToRange(target)
+            return
+        }
+        let viewport = scrollView.documentVisibleRect
+        scrollView.contentView.scroll(to: NSPoint(
+            x: viewport.minX,
+            y: max(rect.midY - viewport.height / 2, 0)
+        ))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        textView.layoutManager.layoutLines()
+    }
+
+    /// `scrollToRange` arbeitet bei weit unten liegenden, langen Markdown-
+    /// Dokumenten absichtlich mit faulem Layout. Erst klicken, wenn das echte
+    /// Zeichenrechteck im real sichtbaren Viewport angekommen ist.
+    private static func pollWordClickReady(
+        textView: TextView, window: NSWindow,
+        target: NSRange, unrelated: NSRange, tick: Int
+    ) {
+        textView.layoutManager.layoutLines()
+        if let rect = textView.layoutManager.rectForOffset(target.location + 1),
+           textView.visibleRect.intersects(rect) {
+            guard postWordDoubleClick(
+                in: textView, window: window,
+                offset: target.location + 1
+            ) else {
+                finish(false, "Doppelklick am Wortanfang nicht erzeugbar")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                guard textView.selectedRange() == target else {
+                    finish(false, "Wortanfang markiert \(textView.selectedRange()) statt \(target)")
+                }
+                textView.selectionManager.setSelectedRange(unrelated)
+                guard postWordDoubleClick(
+                    in: textView, window: window,
+                    offset: target.max - 2
+                ) else {
+                    finish(false, "Doppelklick am Wortende nicht erzeugbar")
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    let selected = textView.selectedRange()
+                    finish(selected == target,
+                           selected == target
+                           ? "Wortanfang und Wortende markieren dieselbe vollständige Auswahl"
+                           : "Wortende reagiert nicht korrekt: Auswahl \(selected), erwartet \(target); "
+                             + wordClickDiagnostic(
+                                textView: textView, window: window,
+                                offset: target.max - 2
+                             ))
+                }
+            }
+            return
+        }
+        if tick >= 40 {
+            finish(false, "Zielwort wird binnen 4 s nicht real sichtbar")
+        }
+        textView.scrollToRange(target)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollWordClickReady(
+                textView: textView, window: window,
+                target: target, unrelated: unrelated, tick: tick + 1
+            )
+        }
+    }
+
+    /// Sendet die echte AppKit-Folge aus erstem und zweitem Klick auf das
+    /// gezeichnete Zeichenrechteck. Der Fenster-Hit-Test bleibt damit Teil
+    /// der Prüfung; ein direkter Aufruf von `selectWord` würde den Bug meiden.
+    private static func postWordDoubleClick(
+        in textView: TextView, window: NSWindow, offset: Int
+    ) -> Bool {
+        guard let rect = textView.layoutManager.rectForOffset(offset) else {
+            return false
+        }
+        let point = textView.convert(
+            NSPoint(x: rect.midX, y: rect.midY), to: nil
+        )
+        let time = ProcessInfo.processInfo.systemUptime
+        for (clickCount, type, pressure) in [
+            (1, NSEvent.EventType.leftMouseDown, Float(1)),
+            (1, .leftMouseUp, Float(0)),
+            (2, .leftMouseDown, Float(1)),
+            (2, .leftMouseUp, Float(0)),
+        ] {
+            guard let event = NSEvent.mouseEvent(
+                with: type, location: point, modifierFlags: [],
+                timestamp: time, windowNumber: window.windowNumber,
+                context: nil, eventNumber: clickCount,
+                clickCount: clickCount, pressure: pressure
+            ) else { return false }
+            window.sendEvent(event)
+        }
+        return true
+    }
+
+    private static func wordClickDiagnostic(
+        textView: TextView, window: NSWindow, offset: Int
+    ) -> String {
+        guard let rect = textView.layoutManager.rectForOffset(offset),
+              let content = window.contentView else {
+            return "kein Zeichenrechteck/ContentView"
+        }
+        let local = NSPoint(x: rect.midX, y: rect.midY)
+        let inWindow = textView.convert(local, to: nil)
+        let inContent = content.convert(inWindow, from: nil)
+        var hierarchy: [String] = []
+        var current = content.hitTest(inContent)
+        while let view = current {
+            hierarchy.append(String(describing: type(of: view)))
+            current = view.superview
+        }
+        let mapped = textView.layoutManager.textOffsetAtPoint(local)
+        let directHit = textView.hitTest(local)
+            .map { String(describing: type(of: $0)) } ?? "nil"
+        return "rect=\(rect), local=\(local), mapped=\(String(describing: mapped)), "
+            + "textBounds=\(textView.bounds), visible=\(textView.visibleRect), "
+            + "directHit=\(directHit), windowHit=\(hierarchy.joined(separator: "→"))"
     }
 
     // MARK: - -selftest replaceall
