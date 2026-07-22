@@ -6,13 +6,15 @@
 
 **🌐 Sprache / Language:** [English](README.md) · [Deutsch](README.de.md)
 
-Fastra ist ein nativer Texteditor für macOS mit Suchen-&-Ersetzen-Fähigkeiten,
-die kein anderer Editor bietet: So einfach wie Tippen, so mächtig wie reguläre
-Ausdrücke, und man sieht immer exakt, was sich ändern wird, bevor ein einziges
-Zeichen angefasst wird.
+Fastra ist ein nativer macOS-Texteditor für sicheres, visuell überprüfbares
+Suchen & Ersetzen: einfach mit `*`, mächtig mit RegEx.
 
-*Der Name ist Programm: **f**acillime **ad astra**, „aufs Leichteste zu den
-Sternen". Das Sternchen (`*`) ist der Star.*
+Die `*`-Syntax schlägt die Brücke zwischen gewöhnlichem Suchen & Ersetzen und
+komplexen regulären Ausdrücken: Sie fängt Text ohne RegEx-Syntax ein, während
+die Vorschau jede Änderung zeigt, bevor Fastra schreibt.
+
+*Daher der Name: **f**acillime ad **astra**, „mit größter Leichtigkeit zu den
+Sternen“. Das Sternchen (`*`) ist der Star.*
 
 ![Fastra im Light-Mode mit sichtbarem Home-Button](screenshots/editor-light.png)
 
