@@ -109,6 +109,11 @@ direkt ändern und keine generierten Checkout-Diffs committen.
   was davon in die Hilfe gehört, ist bewusst Aufgabe des Agenten. Im
   Release-/Bump-Lauf (`./help-audit.sh --release`) ist ein veralteter Marker
   ein harter Fehler.
+- README-Screenshots müssen die Sprache der jeweiligen README tatsächlich in
+  der gestarteten App verwenden: `README.md` referenziert `.en.png` aus der
+  englischen Lokalisierung, `README.de.md` die deutschen Aufnahmen. Bei
+  UI-Änderungen nur die betroffenen Screenshot-Paare neu erzeugen und beide
+  Sprachfassungen visuell prüfen.
 
 ## Bauen und testen
 

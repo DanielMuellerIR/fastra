@@ -6,7 +6,9 @@
 #   1. Deutsche Light-Mode-Aufnahmen
 #   2. Englische Light-Mode-Aufnahmen mit der Endung .en.png
 #
-# Optional lässt sich nur eine Sprache erzeugen: ./screenshot-run.sh de|en
+# Optional lassen sich Sprache und Umfang begrenzen:
+#   ./screenshot-run.sh de|en [all|search]
+# `search` erneuert ausschließlich Wildcard- und RegEx-Suchmasken.
 #
 # Fenstergezielt via `screencapture -l <WindowID>` (Editor ist CodeEditTextView,
 # keine WebView — Window-Capture ist hier zuverlässig). Die App wird nach jedem
@@ -20,12 +22,21 @@ OUT="../screenshots"
 DOMAIN="de.dm0.fastra"
 PROJECT_FIXTURE="$HOME/Desktop/Fastra-Screenshot"
 LANGUAGE="${1:-all}"
+SHOT_SET="${2:-all}"
 mkdir -p "$OUT"
 
 case "$LANGUAGE" in
   all|de|en) ;;
   *)
     echo "Verwendung: $0 [all|de|en]" >&2
+    exit 1
+    ;;
+esac
+
+case "$SHOT_SET" in
+  all|search) ;;
+  *)
+    echo "Verwendung: $0 [all|de|en] [all|search]" >&2
     exit 1
     ;;
 esac
@@ -78,7 +89,9 @@ selftest_shot() {  # $1 = Sprache, $2 = Locale, $3 = Selbsttest, $4 = Marker, $5
 }
 
 generate_language() {  # $1 = Sprache, $2 = Locale, $3 = optionale Dateiendung
-  selftest_shot "$1" "$2" projectshot  PROJECTSHOT-WINDOW  "editor-light$3.png"
+  if [ "$SHOT_SET" = "all" ]; then
+    selftest_shot "$1" "$2" projectshot PROJECTSHOT-WINDOW "editor-light$3.png"
+  fi
   selftest_shot "$1" "$2" wildcardshot WILDCARDSHOT-WINDOW "search-wildcards$3.png"
   selftest_shot "$1" "$2" regexshot    REGEXSHOT-WINDOW    "search-regex$3.png"
 }
@@ -90,4 +103,4 @@ if [ "$LANGUAGE" = "all" ] || [ "$LANGUAGE" = "en" ]; then
   generate_language en en_US ".en"
 fi
 
-echo "✔ README-Screenshots ($LANGUAGE) in $OUT/"
+echo "✔ README-Screenshots ($LANGUAGE, $SHOT_SET) in $OUT/"
