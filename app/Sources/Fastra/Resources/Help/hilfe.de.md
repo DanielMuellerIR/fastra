@@ -44,9 +44,14 @@ Vorher/Nachher-Beispiel ab.
 - „Vorschau der Änderungen“ zeigt vor dem Ersetzen jede betroffene Zeile
   als Vorher/Nachher-Diff. Angewendet wird **exakt** die angezeigte
   Trefferbasis — das ist eine Sicherheitsgarantie.
-- Im Ordner-/Projekt-Bereich schreibt Fastra atomar pro Datei und legt
-  automatisch ein Backup an; „Rückgängig“ spielt die letzte
-  Ordner-Ersetzung bit-exakt zurück.
+- Im Ordner-/Projekt-Bereich prüft Fastra vor dem ersten Schreiben noch einmal
+  alle Dateien gegen die sichtbare Vorschau. Geänderte Dateien und betroffene
+  Tabs mit ungespeicherten Änderungen blockieren den gesamten Vorgang. Planung,
+  Backup und Schreiben laufen mit Fortschrittsanzeige im Hintergrund; ein
+  Abbruch vor der kurzen Schreibphase verändert keine Zieldatei.
+- Fastra schreibt atomar pro Datei und legt automatisch ein Backup an.
+  „Rückgängig“ spielt nur tatsächlich angewendete Dateien bit-exakt zurück und
+  bricht ab, wenn sich eine davon nach dem Ersetzen erneut geändert hat.
 
 **Navigation:** Return bzw. ⌘G springt zum nächsten, ⇧⌘G zum vorherigen
 Treffer; die Pfeiltasten wandern durch die Trefferliste, die dabei zum
@@ -221,6 +226,12 @@ normale Leerzeichen und anschließend einen normalen Zeilenumbruch ein. Steht
 der Cursor bereits direkt vor einem Zeilenumbruch, ergänzt bzw. vereinheitlicht
 er nur die zwei Leerzeichen. So bleibt die zugrunde liegende Markdown-
 Schreibweise sichtbar und mit ⌘Z widerrufbar.
+
+**Formatiert als Markdown einfügen** (⇧⌘V) wandelt HTML- oder RTF-Inhalt aus
+Browsern und Office-Programmen mit dem separat installierten Werkzeug
+`md-clip` um. Fastra bindet Fenster, Tab, Editor und Auswahl beim Start der
+Umwandlung. Wechselst du währenddessen das Ziel oder bearbeitest den Inhalt,
+wird kontrolliert abgebrochen und nichts in ein anderes Dokument eingefügt.
 
 **Bilder einfügen:** Ein Bild aus der Zwischenablage (⌘V) legt Fastra
 als Datei **neben dem Dokument** ab (`dokumentname-JJJJ-MM-TT-hhmmss.png`;
@@ -435,6 +446,16 @@ Die Fußzeile zeigt Encoding und Zeilenende des aktiven Tabs:
   anderen Encoding neu von der Platte.
 - **Zeilenenden-Chip:** wählt LF, CRLF oder CR — die Umstellung wirkt
   beim nächsten Speichern.
+
+UTF-32-Dateien mit BOM werden in beiden Byte-Reihenfolgen erkannt. Bei
+BOM-freien älteren Textdateien unterscheidet Fastra Windows-1252-Zeichen wie
+typografische Anführungszeichen und das Eurozeichen von Latin-1. Erkennt
+Fastra das Format nicht sicher, bleibt die Datei unverändert.
+
+Wurde eine geöffnete Datei außerhalb von Fastra geändert, fragt Fastra beim
+Speichern ausdrücklich nach. Eine weitere Änderung unmittelbar vor dem
+Schreibvorgang bricht das Speichern immer ab, statt den Plattenstand still zu
+überschreiben.
 
 ## Fenster und Tabs
 

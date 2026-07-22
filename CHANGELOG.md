@@ -9,6 +9,41 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.46.3] — 2026-07-22
+
+### Behoben
+
+- Ordner-Ersetzungen prüfen jetzt vor dem ersten Schreiben alle Dateien gegen
+  die sichtbare Vorschau. Externe Änderungen oder ungespeicherte betroffene
+  Tabs blockieren den Vorgang, statt neuere Inhalte zu überschreiben.
+- Rückgängig erfasst nur tatsächlich angewendete Dateien und überschreibt
+  keine Änderungen, die nach der Ersetzung entstanden sind. Das persistierte
+  Journal kann auch unterbrochene Apply- und Undo-Zustände sicher einordnen.
+- Speichern erkennt externe Änderungen unmittelbar vor dem atomaren Austausch.
+  Ein bestätigter Konflikt gilt nur für den gerade geprüften Plattenstand;
+  weitere Änderungen brechen den Schreibvorgang ab.
+- UTF-32 mit Little- oder Big-Endian-BOM bleibt bei Suche und Ersetzung korrekt
+  ausgerichtet. Typische Windows-1252-Zeichen werden vor dem allgemeinen
+  Latin-1-Fallback erkannt und bytegetreu zurückgeschrieben.
+- Smart-Paste bindet das ursprüngliche Fenster, den Tab, Editor und die Auswahl.
+  Wechselt das Ziel während der Konvertierung, wird nichts eingefügt.
+
+### Geändert
+
+- Planung, Backup und Schreiben einer Ordner-Ersetzung laufen dateiweise im
+  Hintergrund. Die Suchmaske zeigt den Fortschritt und erlaubt einen sicheren
+  Abbruch vor Beginn der kurzen Schreibphase.
+- Überholte Ordnersuchen reichen den Abbruch bis zur Dateiaufzählung und den
+  Match-Schleifen durch. Die ripgrep-Ausgabe wird gleichzeitig, begrenzt und
+  mit Zeitlimit gelesen; unvollständige Dateilisten werden sichtbar abgelehnt.
+
+### Intern
+
+- Ein expliziter Apply-Transaktionsvertrag bindet Suchoptionen, Vorschau-
+  Snapshots und Treffer in einem stabilen Plan-Hash. Regressionstests decken
+  Konflikte, Fehler während des Journals, Prozessabbruch, große Ausgaben und
+  verzögerte Einfügeziele ab.
+
 ## [v1.46.2] — 2026-07-21
 
 ### Behoben

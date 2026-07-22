@@ -42,9 +42,14 @@ in `NSRegularExpression`). Capture groups appear as pills as well.
 - “Preview changes” shows every affected line as a before/after diff
   prior to replacing. What gets applied is **exactly** the match set you
   saw — that is a safety guarantee.
-- In folder/project scope Fastra writes atomically per file and creates
-  an automatic backup; “Undo” restores the last folder replace
-  bit-exactly.
+- In folder/project scope Fastra rechecks every file against the visible
+  preview before the first write. Changed files and affected tabs with unsaved
+  edits block the whole operation. Planning, backup and writing run in the
+  background with progress feedback; cancelling before the short write phase
+  leaves every target file unchanged.
+- Fastra writes atomically per file and creates an automatic backup. “Undo”
+  restores only files that were actually changed and stops if any of them was
+  edited again after the replace.
 
 **Navigation:** Return or ⌘G jumps to the next match, ⇧⌘G to the
 previous one; the arrow keys walk the results list, which scrolls to the
@@ -212,6 +217,12 @@ end of the selection followed by an ordinary line break. If the cursor is
 already directly before a line break, it only adds or normalizes the two
 spaces. The underlying Markdown stays visible and the edit remains undoable
 with ⌘Z.
+
+**Paste Formatted as Markdown** (⇧⌘V) converts HTML or RTF content from
+browsers and office apps through the separately installed `md-clip` tool.
+Fastra binds the window, tab, editor and selection when conversion starts. If
+you switch targets or edit the content while it runs, Fastra stops safely and
+does not insert into another document.
 
 **Inserting images:** Pasting an image from the clipboard (⌘V) stores it
 as a file **next to the document** (`documentname-YYYY-MM-DD-hhmmss.png`;
@@ -414,6 +425,15 @@ The footer shows the encoding and line ending of the active tab:
   with a different encoding.
 - **Line-ending chip:** choose LF, CRLF, or CR — the change takes
   effect on the next save.
+
+UTF-32 files with a BOM are recognized in both byte orders. For older text
+files without a BOM, Fastra distinguishes Windows-1252 characters such as
+typographic quotes and the euro sign from Latin-1. If the format cannot be
+handled safely, the file stays unchanged.
+
+If an open file was changed outside Fastra, saving asks for explicit
+confirmation. A further change immediately before the write always cancels
+the save instead of silently overwriting the on-disk version.
 
 ## Windows and Tabs
 
