@@ -301,39 +301,53 @@ enum SessionRestorationCoordinator {
 
     static func restoreLastSession(
         into primaryWorkspace: Workspace,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        completion: @escaping () -> Void = {}
     ) {
-        guard !restoreWasScheduled else { return }
+        guard !restoreWasScheduled else {
+            completion()
+            return
+        }
         restoreWasScheduled = true
         guard SessionRestorationPreferences.isEnabled(in: defaults),
               let session = SessionStateStore.load(from: defaults),
               !session.windows.isEmpty else {
+            completion()
             return
         }
         let availableSession = RestorableSessionState(
             windows: session.windows.compactMap { $0.availableState() }
         )
-        guard !availableSession.windows.isEmpty else { return }
+        guard !availableSession.windows.isEmpty else {
+            completion()
+            return
+        }
         waitForPrimaryWindow(primaryWorkspace, session: availableSession,
-                             defaults: defaults, remainingAttempts: 40)
+                             defaults: defaults, remainingAttempts: 40,
+                             completion: completion)
     }
 
     private static func waitForPrimaryWindow(
         _ primaryWorkspace: Workspace,
         session: RestorableSessionState,
         defaults: UserDefaults,
-        remainingAttempts: Int
+        remainingAttempts: Int,
+        completion: @escaping () -> Void
     ) {
         guard let primaryWindow = DocumentWindowController
             .visibleDocumentWindows()
             .first(where: {
                 WorkspaceWindowRegistry.workspace(for: $0) === primaryWorkspace
             }) else {
-            guard remainingAttempts > 0 else { return }
+            guard remainingAttempts > 0 else {
+                completion()
+                return
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 waitForPrimaryWindow(primaryWorkspace, session: session,
                                      defaults: defaults,
-                                     remainingAttempts: remainingAttempts - 1)
+                                     remainingAttempts: remainingAttempts - 1,
+                                     completion: completion)
             }
             return
         }
@@ -346,13 +360,20 @@ enum SessionRestorationCoordinator {
                 primaryWindow.setFrame(frame, display: true)
             }
         }
-        primaryWorkspace.restore(primaryState)
+        var remainingRestores = session.windows.count
+        func restoreFinished() {
+            remainingRestores -= 1
+            guard remainingRestores == 0 else { return }
+            completion()
+        }
+        primaryWorkspace.restore(primaryState, completion: restoreFinished)
 
         // Von hinten nach vorn aufbauen. Danach kommt das ursprünglich
         // vorderste Hauptfenster wieder ganz nach vorn.
         for state in session.windows.dropFirst().reversed() {
             DocumentWindowController.openRestoredDocument(
-                state, defaults: defaults, screenFrames: screenFrames
+                state, defaults: defaults, screenFrames: screenFrames,
+                completion: restoreFinished
             )
         }
         primaryWindow.makeKeyAndOrderFront(nil)

@@ -334,25 +334,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.scheduleSoftWrapMenuSynchronization()
         }
 
-        // Eine per Finder/LaunchServices zugestellte Datei hat beim Kaltstart
-        // Vorrang vor der letzten Sitzung. `Workspace.shared` steht in SwiftUI
-        // bereits, bevor das zugehörige Fenster registriert ist; die bisherige
-        // Warmstart-Erkennung über diesen Wert ließ deshalb Finder-Routing und
-        // Restore gegeneinander laufen.
-        let coldLaunchHasOpenRequest = !openFilesInbox.pending.isEmpty
-        openFilesInbox.finishLaunching()
-
         // Eigene, inhaltlich begrenzte Wiederherstellung statt AppKits
         // undurchsichtiger Fensterarchive: nur gespeicherte Dateipfade,
-        // Projektordner und Fensterrahmen. Ein expliziter Kaltstart-Open ersetzt
-        // diesen Startzweck; spätere Open-Events lassen die Sitzung unangetastet.
-        if !coldLaunchHasOpenRequest, let primaryWorkspace = Workspace.shared {
+        // Projektordner und Fensterrahmen. Finder-Dateien sind ein ZUSÄTZLICHER
+        // Öffnungswunsch: erst den Restore vollständig abschließen, danach über
+        // dasselbe Projekt-/Fenster-Routing wie beim Warmstart ausliefern. Ist
+        // die Wiederherstellung deaktiviert, ruft der Coordinator die Completion
+        // sofort auf und nur die Finder-Datei bleibt offen.
+        if let primaryWorkspace = Workspace.shared {
             SessionRestorationCoordinator.restoreLastSession(
                 into: primaryWorkspace,
                 defaults: SelfTest.workspaceDefaults()
-            )
+            ) { [weak self] in
+                // Auch Open-Ereignisse, die AppKit erst während des asynchronen
+                // Restores zustellt, müssen bis zu dessen Ende im Puffer bleiben.
+                self?.openFilesInbox.finishLaunching()
+                self?.deliverPendingOpenFiles()
+            }
+        } else {
+            // Sollte SwiftUI seinen Workspace ausnahmsweise erst im nächsten
+            // Runloop erzeugen, übernimmt dessen Ready-Notification den Drain.
+            openFilesInbox.finishLaunching()
+            deliverPendingOpenFiles()
         }
-        deliverPendingOpenFiles()
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -583,7 +587,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !openableURLs.isEmpty else { return }
         // Erst `applicationDidFinishLaunching` trennt Kalt- und Warmstart
         // zuverlässig. Beim Warmstart kommen die URLs direkt zurück; beim
-        // Kaltstart bleiben sie gepuffert, damit der Restore sie nicht verdrängt.
+        // Kaltstart bleiben sie gepuffert, bis ein optionaler Restore fertig ist.
         let immediateURLs = openFilesInbox.receive(openableURLs)
         guard !immediateURLs.isEmpty else { return }
         DocumentWindowController.openFinderItems(immediateURLs)

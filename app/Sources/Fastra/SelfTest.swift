@@ -52,7 +52,8 @@ enum SelfTest {
     /// liegt. Genau diese Konkurrenz hat die Finder-Datei bisher verdrängt.
     private static var coldOpenFixtureDirectory: URL?
     private static var coldOpenExternalURL: URL?
-    private static var coldOpenRestoredURL: URL?
+    private static var coldOpenRestoredURLs: [URL] = []
+    private static var coldOpenRestoredProjectURLs: [URL] = []
     private static var coldOpenSetupError: String?
     /// Eigenes Kaltstart-Fixture für den Auswahl-Scrolltest. Es benutzt
     /// denselben produktiven SessionStateStore wie ein normaler App-Start.
@@ -117,8 +118,8 @@ enum SelfTest {
         if let sidebar { setEnvironment("FASTRA_SIDEBAR", sidebar) }
         if name == "sessionrestore" {
             prepareSessionRestoreFixture()
-        } else if name == "coldopen" {
-            prepareColdOpenFixture()
+        } else if name == "coldopen" || name == "coldopenoff" {
+            prepareColdOpenFixture(restoreEnabled: name == "coldopen")
         } else if name == "selectionscroll" {
             prepareSelectionScrollFixture()
         }
@@ -173,7 +174,7 @@ enum SelfTest {
     /// Pfad über eine prozesslokale Umgebungsvariable weiter. Parallel entsteht
     /// hier eine abweichende gespeicherte Sitzung in derselben isolierten
     /// Defaults-Suite, die der produktive AppDelegate beim Start liest.
-    private static func prepareColdOpenFixture() {
+    private static func prepareColdOpenFixture(restoreEnabled: Bool) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(
                 "fastra-selftest-coldopen-\(UUID().uuidString)",
@@ -200,22 +201,49 @@ enum SelfTest {
             try FileManager.default.createDirectory(
                 at: directory, withIntermediateDirectories: true
             )
-            let restoredURL = directory.appendingPathComponent("alte-sitzung.md")
-            try Data("Inhalt aus der alten Sitzung\n".utf8).write(to: restoredURL)
+            let firstProject = directory.appendingPathComponent(
+                "erstes-projekt", isDirectory: true
+            )
+            let secondProject = directory.appendingPathComponent(
+                "zweites-projekt", isDirectory: true
+            )
+            try FileManager.default.createDirectory(
+                at: firstProject, withIntermediateDirectories: true
+            )
+            try FileManager.default.createDirectory(
+                at: secondProject, withIntermediateDirectories: true
+            )
+            let firstRestored = firstProject.appendingPathComponent("alt-eins.md")
+            let secondRestored = secondProject.appendingPathComponent("alt-zwei.md")
+            try Data("Erste gespeicherte Sitzung\n".utf8).write(to: firstRestored)
+            try Data("Zweite gespeicherte Sitzung\n".utf8).write(to: secondRestored)
             SessionStateStore.save(
                 RestorableSessionState(windows: [
                     RestorableWindowState(
-                        projectPath: nil,
-                        documentPaths: [restoredURL.path],
-                        activeDocumentPath: restoredURL.path,
+                        projectPath: firstProject.path,
+                        documentPaths: [firstRestored.path],
+                        activeDocumentPath: firstRestored.path,
+                        frame: nil
+                    ),
+                    RestorableWindowState(
+                        projectPath: secondProject.path,
+                        documentPaths: [secondRestored.path],
+                        activeDocumentPath: secondRestored.path,
                         frame: nil
                     ),
                 ]),
                 to: workspaceDefaults()
             )
+            workspaceDefaults().set(
+                restoreEnabled,
+                forKey: SessionRestorationPreferences.enabledKey
+            )
             coldOpenFixtureDirectory = directory
             coldOpenExternalURL = externalURL
-            coldOpenRestoredURL = restoredURL
+            coldOpenRestoredURLs = [firstRestored, secondRestored]
+                .map(\.canonicalFileURL)
+            coldOpenRestoredProjectURLs = [firstProject, secondProject]
+                .map(\.canonicalFileURL)
         } catch {
             coldOpenSetupError = error.localizedDescription
             try? FileManager.default.removeItem(at: directory)
@@ -314,7 +342,8 @@ enum SelfTest {
         case "newwindow": waitForMainWindow { runNewWindowTest() }
         case "welcomenew": waitForMainWindow { runWelcomeNewTabTest() }
         case "sessionrestore": waitForMainWindow { runSessionRestoreTest() }
-        case "coldopen": waitForMainWindow { runColdOpenTest() }
+        case "coldopen": waitForMainWindow { runColdOpenTest(restoreEnabled: true) }
+        case "coldopenoff": waitForMainWindow { runColdOpenTest(restoreEnabled: false) }
         case "multisearch": waitForMainWindow { runMultiWindowSearchJumpTest() }
         case "cmdw":      waitForMainWindow { openSearchThen { runCmdWTest() } }
         case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
@@ -453,7 +482,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -773,18 +802,20 @@ enum SelfTest {
         }
     }
 
-    /// Prüft den echten LaunchServices-Kaltstart mit zwei konkurrierenden
-    /// Startabsichten: einer gespeicherten alten Sitzung und einer ausdrücklich
-    /// von außen geöffneten Datei. Die externe Datei muss allein im vorhandenen
-    /// Startfenster landen; weder Willkommen noch die alte Sitzung dürfen ein
-    /// zweites Fenster oder einen zusätzlichen Tab erzeugen.
-    private static func runColdOpenTest(tick: Int = 0) {
-        testLabel = "coldopen"
+    /// Prüft den echten LaunchServices-Kaltstart mit einer gespeicherten Sitzung
+    /// aus zwei Projektfenstern und einer zusätzlichen externen Datei. Bei
+    /// aktivierter Wiederherstellung müssen alle drei Startabsichten erhalten
+    /// bleiben; bei deaktivierter darf ausschließlich die Finder-Datei öffnen.
+    private static func runColdOpenTest(
+        restoreEnabled: Bool, tick: Int = 0
+    ) {
+        testLabel = restoreEnabled ? "coldopen" : "coldopenoff"
         if let coldOpenSetupError {
             finish(false, "Fixture konnte nicht angelegt werden: \(coldOpenSetupError)")
         }
         guard let externalURL = coldOpenExternalURL,
-              let restoredURL = coldOpenRestoredURL else {
+              coldOpenRestoredURLs.count == 2,
+              coldOpenRestoredProjectURLs.count == 2 else {
             finish(false, "Kaltstart-Fixture fehlt")
         }
 
@@ -797,39 +828,59 @@ enum SelfTest {
         let openedURLs = workspaces.flatMap { workspace in
             workspace.tabs.compactMap(\.url).map(\.canonicalFileURL)
         }
-        let oldSessionAppeared = openedURLs.contains(restoredURL.canonicalFileURL)
-        let extraWindowAppeared = windows.count > 1
-        if oldSessionAppeared || extraWindowAppeared {
-            cleanupColdOpenFixture()
-            finish(false, "alte Sitzung konkurrierte mit Finder-Open — \(windowsSummary())")
-        }
-
         let stillLoading = workspaces.contains { workspace in
             workspace.tabs.contains(where: \.isLoading)
         }
-        let expectedState = windows.count == 1
-            && workspaces.count == 1
+        let expectedURLs = restoreEnabled
+            ? Set(coldOpenRestoredURLs + [externalURL])
+            : Set([externalURL])
+        let externalWorkspace = workspaces.first { workspace in
+            workspace.tabs.contains {
+                $0.url?.canonicalFileURL == externalURL
+            }
+        }
+        let restoredProjectsArePresent = coldOpenRestoredProjectURLs.allSatisfy {
+            projectURL in
+            workspaces.contains {
+                $0.projectURL?.canonicalFileURL == projectURL
+            }
+        }
+        let expectedWindowCount = restoreEnabled ? 3 : 1
+        let expectedState = windows.count == expectedWindowCount
+            && workspaces.count == expectedWindowCount
             && !stillLoading
-            && openedURLs == [externalURL.canonicalFileURL]
-            && workspaces[0].activeTab?.url?.canonicalFileURL
-                == externalURL.canonicalFileURL
-            && workspaces[0].tabs.allSatisfy { !$0.isWelcome }
+            && openedURLs.count == expectedURLs.count
+            && Set(openedURLs) == expectedURLs
+            && externalWorkspace?.activeTab?.url?.canonicalFileURL == externalURL
+            && workspaces.allSatisfy { workspace in
+                workspace.tabs.allSatisfy { !$0.isWelcome }
+            }
+            && (restoreEnabled
+                ? restoredProjectsArePresent
+                : !openedURLs.contains(where: coldOpenRestoredURLs.contains))
 
-        // Einen ganzen weiteren Main-Runloop-Abschnitt beobachten, statt beim
-        // ersten korrekt geladenen Tab sofort grün zu melden: Der frühere
-        // Session-Restore konnte leicht verzögert erst danach ein Fenster bauen.
+        // Einen ganzen weiteren Main-Runloop-Abschnitt beobachten, damit weder
+        // ein verspäteter Restore noch ein verspätetes Finder-Routing nach dem
+        // ersten scheinbar korrekten Zustand unbemerkt bleibt.
         if expectedState, tick >= 20 {
             cleanupColdOpenFixture()
-            finish(true, "Finder-Datei allein im Startfenster; alte Sitzung unterdrückt")
+            finish(
+                true,
+                restoreEnabled
+                    ? "zwei Projektfenster wiederhergestellt; Finder-Datei zusätzlich geöffnet"
+                    : "Wiederherstellung aus; ausschließlich Finder-Datei geöffnet"
+            )
         }
         if tick >= 200 {
             cleanupColdOpenFixture()
             let names = openedURLs.map(\.lastPathComponent)
-            finish(false, "Finder-Datei nicht binnen 10 s allein geöffnet "
-                + "(Dateien: \(names)) — \(windowsSummary())")
+            finish(false, "Kaltstartzustand nicht binnen 10 s vollständig "
+                + "(Restore: \(restoreEnabled), Dateien: \(names)) — \(windowsSummary())")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            runColdOpenTest(tick: tick + 1)
+            runColdOpenTest(
+                restoreEnabled: restoreEnabled, tick: tick + 1
+            )
         }
     }
 

@@ -353,7 +353,8 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     static func openRestoredDocument(
         _ state: RestorableWindowState,
         defaults: UserDefaults = SelfTest.workspaceDefaults(),
-        screenFrames: [NSRect] = NSScreen.screens.map(\.visibleFrame)
+        screenFrames: [NSRect] = NSScreen.screens.map(\.visibleFrame),
+        completion: (() -> Void)? = nil
     ) -> Workspace {
         let restoredFrame = state.frame?.visibleRect(in: screenFrames)
         let controller = DocumentWindowController(
@@ -361,7 +362,7 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
             restoredFrame: restoredFrame
         )
         openControllers[ObjectIdentifier(controller.window)] = controller
-        controller.workspace.restore(state)
+        controller.workspace.restore(state, completion: completion)
         controller.window.orderFront(nil)
         controller.restoreFrameAfterFirstSwiftUILayout()
         NSApp.addWindowsItem(controller.window,

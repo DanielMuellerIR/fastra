@@ -233,11 +233,12 @@ invalidiert anschließend den neuen `editedRange`.
 
 Der Selbsttest `./selftest.sh wordclick` kürzt eine lange Markdown-Zeile
 zunächst auf den bereits ausgelegten Wortanfang, fügt den Rest durch den echten
-`TextView` wieder ein und sendet AppKit-Doppelklicks an Anfang und Ende des
-Worts. Beide Klicks müssen dieselbe vollständige Auswahl erzeugen. Für die
-Erstdiagnose kann `FASTRA_WORDCLICK_FIXTURE` eine lokale Realdatei laden; der
-normale Lauf bleibt mit einem datenschutzneutralen Größenabbild der 132
-Vorzeilen portabel.
+`TextView` wieder ein und prüft Fenster-Hit-Test sowie Koordinatenabbildung an
+Anfang und Ende des Worts. Die echte `TextView`-Doppelklickfolge am Wortanfang
+und die produktive Wortauswahl am abgebildeten Wortende müssen dieselbe
+vollständige Auswahl erzeugen. Für die Erstdiagnose kann
+`FASTRA_WORDCLICK_FIXTURE` eine lokale Realdatei laden; der normale Lauf bleibt
+mit einem datenschutzneutralen Größenabbild der 132 Vorzeilen portabel.
 
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 
@@ -331,9 +332,12 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
    drei dateibasierten Tabs, Projekt, aktivem Tab und ohne unbenannten Tab.
    `-selftest coldopen` startet das Debug-Bundle dagegen über LaunchServices
    mit einer ausdrücklich geöffneten Datei und einer abweichenden gespeicherten
-   Sitzung. Es prüft, dass ausschließlich die externe Datei in genau einem
-   Fenster erscheint und der Restore diesen Startzweck nicht verdrängt. Für den
-   vorgeschriebenen notarisierten Zieltest kann der Runner über
+   Sitzung aus zwei Projektfenstern. Es prüft, dass beide Projektfenster
+   wiederhergestellt werden und die externe Datei zusätzlich in einem dritten
+   Fenster erscheint. `-selftest coldopenoff` verwendet dasselbe Fixture bei
+   abgeschalteter Sitzungswiederherstellung und erwartet ausschließlich die
+   externe Datei in genau einem Fenster. Für den vorgeschriebenen notarisierten
+   Zieltest kann der Runner über
    `FASTRA_SELFTEST_APP_BIN` und `FASTRA_SELFTEST_APP_BUNDLE` auf das bereits
    geprüfte Bundle unter `/Applications` gerichtet werden.
    `-selftest textop` bedient eine Texttransformation und beide

@@ -9,6 +9,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.46.8] — 2026-07-22
+
+### Behoben
+
+- Startet Fastra durch einen Datei-Doppelklick im Finder, stellt es die
+  gespeicherten Projektfenster weiterhin wieder her und öffnet die angeforderte
+  Datei zusätzlich. Ist die Sitzungswiederherstellung unter **Einstellungen →
+  Start** abgeschaltet, öffnet Fastra ausschließlich die angeforderte Datei.
+
+### Intern
+
+- Die LaunchServices-Selbsttests decken beide Startvarianten mit einer
+  gespeicherten Sitzung aus zwei Projektfenstern ab und beobachten den Zustand
+  zusätzlich auf verspätete Restore- oder Datei-Open-Ereignisse.
+
 ## [v1.46.7] — 2026-07-22
 
 ### Behoben

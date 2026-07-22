@@ -456,15 +456,16 @@ for the first time automatically closes the Welcome tab.
 When you open a file from the Finder, it lands in the window whose project
 or repository contains it, and that window comes to the front. If no window
 fits, Fastra uses an empty window (such as the welcome screen); if there is
-none, it opens the file in a new one. If this action launches Fastra, the
-explicitly opened file takes precedence over the previous session.
+none, it opens the file in a new one. If this action launches Fastra, the saved
+session is restored first and the explicitly opened file is then added.
 
 By default, Fastra restores the last project windows, saved documents, active
 tabs, and window positions on the next launch. Windows without open files are
 not restored: once you have closed every tab, the next launch greets you with
 the welcome screen again. You can turn this off under
 **Settings → Startup**. Contents of unsaved or untitled documents are never
-stored or restored.
+stored or restored. With session restoration disabled, a Finder launch opens
+only the explicitly requested file.
 
 Shift-clicking a second normal text tab marks both for file comparison
 without switching the current tab. The current tab keeps the stronger

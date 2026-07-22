@@ -223,8 +223,9 @@ everyday cases without a manual.
 By default, Fastra reopens the last project windows and saved documents on
 the next launch. You can turn this off under **Settings → Startup**. Contents
 of unsaved or untitled documents are deliberately never stored or restored. If
-a Finder file-open action launches Fastra, that explicitly opened file takes
-precedence over the previous session.
+a Finder file-open action launches Fastra, the saved session is restored and
+the explicitly opened file is added. With session restoration disabled, only
+the Finder file opens.
 
 ### XPath navigation for XML
 

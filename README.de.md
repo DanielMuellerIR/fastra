@@ -240,8 +240,9 @@ Beim nächsten Start öffnet Fastra standardmäßig die zuletzt verwendeten
 Projektfenster und gespeicherten Dokumente wieder. Das lässt sich unter
 **Einstellungen → Start** abschalten. Inhalte ungesicherter oder unbenannter
 Dokumente werden dabei bewusst nie gespeichert oder wiederhergestellt. Startet
-Fastra durch einen Datei-Doppelklick im Finder, hat diese ausdrücklich geöffnete
-Datei Vorrang vor der vorherigen Sitzung.
+Fastra durch einen Datei-Doppelklick im Finder, wird die gespeicherte Sitzung
+wiederhergestellt und die ausdrücklich geöffnete Datei zusätzlich geöffnet. Bei
+abgeschalteter Sitzungswiederherstellung öffnet sich nur die Finder-Datei.
 
 ### XPath-Navigation für XML
 

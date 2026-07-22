@@ -481,7 +481,8 @@ Willkommen-Tab automatisch.
 oder Repository sie enthält, und dieses kommt nach vorn. Passt kein Fenster,
 nutzt Fastra ein leeres Fenster (etwa den Willkommensbildschirm); gibt es auch
 das nicht, öffnet sie in einem neuen. Startet Fastra durch diesen Vorgang neu,
-hat die ausdrücklich geöffnete Datei Vorrang vor der vorherigen Sitzung.
+wird zuerst die gespeicherte Sitzung wiederhergestellt und die ausdrücklich
+geöffnete Datei danach zusätzlich geöffnet.
 
 Beim nächsten Start stellt Fastra standardmäßig die zuletzt geöffneten
 Projektfenster, gespeicherten Dokumente, aktiven Tabs und Fensterpositionen
@@ -489,7 +490,8 @@ wieder her. Unter **Einstellungen → Start** lässt sich das abschalten.
 Inhalte ungesicherter oder unbenannter Dokumente werden nie gespeichert oder
 wiederhergestellt. Fenster ohne offene Dateien werden nicht wiederhergestellt:
 Hast du alle Tabs geschlossen, begrüßt dich beim nächsten Start wieder der
-Willkommensbildschirm.
+Willkommensbildschirm. Bei abgeschalteter Sitzungswiederherstellung öffnet ein
+Finder-Start nur die ausdrücklich angeforderte Datei.
 
 Ein Shift-Klick auf einen zweiten normalen Text-Tab markiert beide für den
 Dateivergleich, ohne den aktuellen Tab umzuschalten. Der aktuelle Tab bleibt

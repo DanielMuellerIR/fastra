@@ -49,7 +49,7 @@ if [[ "$APP_BUNDLE" == /* ]]; then
 else
     APP_BUNDLE_FOR_OPEN="$(pwd)/$APP_BUNDLE"
 fi
-ALL_TESTS=(windows newwindow welcomenew sessionrestore coldopen multisearch findbar fields searchoptions tabswitch tabclosehit tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll highlight highlight4d completion4d previewrender xpath markdown markdownblanklines markdownjump markdownappearance jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader sidebarfilter filediff tool4dhint tool4dlsp gototarget searchmark help mdassist search project localization updates git gitactions filemodes selsearch wildcard openscope contrast cmdw)
+ALL_TESTS=(windows newwindow welcomenew sessionrestore coldopen coldopenoff multisearch findbar fields searchoptions tabswitch tabclosehit tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll highlight highlight4d completion4d previewrender xpath markdown markdownblanklines markdownjump markdownappearance jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader sidebarfilter filediff tool4dhint tool4dlsp gototarget searchmark help mdassist search project localization updates git gitactions filemodes selsearch wildcard openscope contrast cmdw)
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
 WINDOWLESS_TESTS=(search project localization updates git gitactions filemodes selsearch wildcard openscope tool4dlsp)
 # Pro Test max. Wartezeit in Sekunden, bis die SELFTEST-Zeile da sein muss.
@@ -157,7 +157,7 @@ for t in "${TESTS[@]}"; do
     kill_leftovers
     errfile="$(mktemp /tmp/fastra-selftest-${t}.XXXXXX)"
 
-    if [[ "$t" == "coldopen" ]]; then
+    if [[ "$t" == "coldopen" || "$t" == "coldopenoff" ]]; then
         # Reale Kaltstart-Zustellung: LaunchServices öffnet eine existierende
         # Datei mit genau dem frisch gebauten Bundle. Der Testprozess legt
         # parallel vor seinem ersten Workspace eine abweichende alte Sitzung an.
@@ -166,7 +166,7 @@ for t in "${TESTS[@]}"; do
         printf 'Explizit per LaunchServices geöffnet\n' > "$coldopen_fixture_file"
         open -g -n -a "$APP_BUNDLE_FOR_OPEN" \
             --stdout /dev/null --stderr "$errfile" \
-            --env "FASTRA_SELFTEST=coldopen" \
+            --env "FASTRA_SELFTEST=$t" \
             --env "FASTRA_COLDOPEN_FILE=$coldopen_fixture_file" \
             "$coldopen_fixture_file" \
             --args -ApplePersistenceIgnoreState YES
