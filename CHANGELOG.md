@@ -9,6 +9,22 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.46.7] — 2026-07-22
+
+### Behoben
+
+- Startet Fastra durch einen Datei-Doppelklick im Finder, öffnet es jetzt genau
+  diese Datei im Startfenster. Eine gespeicherte vorige Sitzung erzeugt dabei
+  weder ein zweites Willkommensfenster noch verdrängt sie die angeforderte Datei.
+
+### Intern
+
+- Der neue Selbsttest `coldopen` kombiniert einen echten LaunchServices-
+  Kaltstart mit einer abweichenden gespeicherten Sitzung und prüft Fenster,
+  Tabs sowie die tatsächlich geöffnete Datei.
+- Der Doppelklick-Selbsttest trennt Fenster-Hit-Test und Wortauswahl, damit
+  Hintergrundläufe nicht mehr vom synthetischen Mausqueue-Timing abhängen.
+
 ## [v1.46.6] — 2026-07-22
 
 ### Behoben

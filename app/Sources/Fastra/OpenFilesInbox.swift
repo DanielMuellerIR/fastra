@@ -18,10 +18,27 @@ import Foundation
 struct OpenFilesInbox {
     /// Noch nicht ausgelieferte URLs, in Ankunfts-Reihenfolge.
     private(set) var pending: [URL] = []
+    /// `Workspace.shared` existiert im SwiftUI-Kaltstart früher als das
+    /// zugehörige Fenster. Deshalb ist erst das Ende von
+    /// `applicationDidFinishLaunching` die belastbare Grenze zwischen Kalt-
+    /// und Warmstart — nicht die bloße Existenz eines Workspace.
+    private(set) var launchDidFinish = false
 
-    /// Hängt neue URLs hinten an (Reihenfolge bleibt erhalten).
-    mutating func enqueue(_ urls: [URL]) {
+    /// Nimmt externe Open-URLs entgegen. Während des Kaltstarts bleiben sie im
+    /// Puffer; danach liefert die Funktion sie dem Aufrufer zur sofortigen
+    /// Verarbeitung zurück. So können Sitzungsrestore und Finder-Öffnen nicht
+    /// gleichzeitig um noch unfertige Fenster konkurrieren.
+    mutating func receive(_ urls: [URL]) -> [URL] {
+        guard !launchDidFinish else { return urls }
         pending.append(contentsOf: urls)
+        return []
+    }
+
+    /// Schließt die Kaltstartphase genau einmal ab. Gepufferte URLs bleiben bis
+    /// zum `drain()` erhalten, weil das SwiftUI-Fenster unter Umständen erst im
+    /// nächsten Main-Runloop in der Fenster-Registry steht.
+    mutating func finishLaunching() {
+        launchDidFinish = true
     }
 
     /// Gibt alle gepufferten URLs zurück UND leert den Puffer. Der Aufrufer

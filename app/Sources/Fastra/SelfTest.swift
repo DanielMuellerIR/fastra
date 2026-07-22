@@ -47,6 +47,13 @@ enum SelfTest {
     /// entfernt.
     private static var sessionRestoreFixtureDirectory: URL?
     private static var sessionRestoreSetupError: String?
+    /// Kombiniertes Kaltstart-Fixture: LaunchServices liefert eine ausdrücklich
+    /// geöffnete Datei, während im isolierten Store eine andere alte Sitzung
+    /// liegt. Genau diese Konkurrenz hat die Finder-Datei bisher verdrängt.
+    private static var coldOpenFixtureDirectory: URL?
+    private static var coldOpenExternalURL: URL?
+    private static var coldOpenRestoredURL: URL?
+    private static var coldOpenSetupError: String?
     /// Eigenes Kaltstart-Fixture für den Auswahl-Scrolltest. Es benutzt
     /// denselben produktiven SessionStateStore wie ein normaler App-Start.
     private static var selectionScrollFixtureDirectory: URL?
@@ -110,6 +117,8 @@ enum SelfTest {
         if let sidebar { setEnvironment("FASTRA_SIDEBAR", sidebar) }
         if name == "sessionrestore" {
             prepareSessionRestoreFixture()
+        } else if name == "coldopen" {
+            prepareColdOpenFixture()
         } else if name == "selectionscroll" {
             prepareSelectionScrollFixture()
         }
@@ -156,6 +165,59 @@ enum SelfTest {
             sessionRestoreFixtureDirectory = directory
         } catch {
             sessionRestoreSetupError = error.localizedDescription
+            try? FileManager.default.removeItem(at: directory)
+        }
+    }
+
+    /// Der Runner legt die externe Datei VOR dem Launch an und reicht ihren
+    /// Pfad über eine prozesslokale Umgebungsvariable weiter. Parallel entsteht
+    /// hier eine abweichende gespeicherte Sitzung in derselben isolierten
+    /// Defaults-Suite, die der produktive AppDelegate beim Start liest.
+    private static func prepareColdOpenFixture() {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "fastra-selftest-coldopen-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        do {
+            guard let externalPath = ProcessInfo.processInfo
+                .environment["FASTRA_COLDOPEN_FILE"],
+                  !externalPath.isEmpty else {
+                throw NSError(
+                    domain: "FastraSelfTest", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey:
+                        "FASTRA_COLDOPEN_FILE fehlt"]
+                )
+            }
+            let externalURL = URL(fileURLWithPath: externalPath).canonicalFileURL
+            guard FileManager.default.fileExists(atPath: externalURL.path) else {
+                throw NSError(
+                    domain: "FastraSelfTest", code: 2,
+                    userInfo: [NSLocalizedDescriptionKey:
+                        "externe LaunchServices-Datei fehlt"]
+                )
+            }
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+            let restoredURL = directory.appendingPathComponent("alte-sitzung.md")
+            try Data("Inhalt aus der alten Sitzung\n".utf8).write(to: restoredURL)
+            SessionStateStore.save(
+                RestorableSessionState(windows: [
+                    RestorableWindowState(
+                        projectPath: nil,
+                        documentPaths: [restoredURL.path],
+                        activeDocumentPath: restoredURL.path,
+                        frame: nil
+                    ),
+                ]),
+                to: workspaceDefaults()
+            )
+            coldOpenFixtureDirectory = directory
+            coldOpenExternalURL = externalURL
+            coldOpenRestoredURL = restoredURL
+        } catch {
+            coldOpenSetupError = error.localizedDescription
             try? FileManager.default.removeItem(at: directory)
         }
     }
@@ -252,6 +314,7 @@ enum SelfTest {
         case "newwindow": waitForMainWindow { runNewWindowTest() }
         case "welcomenew": waitForMainWindow { runWelcomeNewTabTest() }
         case "sessionrestore": waitForMainWindow { runSessionRestoreTest() }
+        case "coldopen": waitForMainWindow { runColdOpenTest() }
         case "multisearch": waitForMainWindow { runMultiWindowSearchJumpTest() }
         case "cmdw":      waitForMainWindow { openSearchThen { runCmdWTest() } }
         case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
@@ -390,7 +453,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -707,6 +770,72 @@ enum SelfTest {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             runSessionRestoreTest(tick: tick + 1)
+        }
+    }
+
+    /// Prüft den echten LaunchServices-Kaltstart mit zwei konkurrierenden
+    /// Startabsichten: einer gespeicherten alten Sitzung und einer ausdrücklich
+    /// von außen geöffneten Datei. Die externe Datei muss allein im vorhandenen
+    /// Startfenster landen; weder Willkommen noch die alte Sitzung dürfen ein
+    /// zweites Fenster oder einen zusätzlichen Tab erzeugen.
+    private static func runColdOpenTest(tick: Int = 0) {
+        testLabel = "coldopen"
+        if let coldOpenSetupError {
+            finish(false, "Fixture konnte nicht angelegt werden: \(coldOpenSetupError)")
+        }
+        guard let externalURL = coldOpenExternalURL,
+              let restoredURL = coldOpenRestoredURL else {
+            finish(false, "Kaltstart-Fixture fehlt")
+        }
+
+        let windows = MainActor.assumeIsolated {
+            DocumentWindowController.visibleDocumentWindows()
+        }
+        let workspaces = windows.compactMap {
+            WorkspaceWindowRegistry.workspace(for: $0)
+        }
+        let openedURLs = workspaces.flatMap { workspace in
+            workspace.tabs.compactMap(\.url).map(\.canonicalFileURL)
+        }
+        let oldSessionAppeared = openedURLs.contains(restoredURL.canonicalFileURL)
+        let extraWindowAppeared = windows.count > 1
+        if oldSessionAppeared || extraWindowAppeared {
+            cleanupColdOpenFixture()
+            finish(false, "alte Sitzung konkurrierte mit Finder-Open — \(windowsSummary())")
+        }
+
+        let stillLoading = workspaces.contains { workspace in
+            workspace.tabs.contains(where: \.isLoading)
+        }
+        let expectedState = windows.count == 1
+            && workspaces.count == 1
+            && !stillLoading
+            && openedURLs == [externalURL.canonicalFileURL]
+            && workspaces[0].activeTab?.url?.canonicalFileURL
+                == externalURL.canonicalFileURL
+            && workspaces[0].tabs.allSatisfy { !$0.isWelcome }
+
+        // Einen ganzen weiteren Main-Runloop-Abschnitt beobachten, statt beim
+        // ersten korrekt geladenen Tab sofort grün zu melden: Der frühere
+        // Session-Restore konnte leicht verzögert erst danach ein Fenster bauen.
+        if expectedState, tick >= 20 {
+            cleanupColdOpenFixture()
+            finish(true, "Finder-Datei allein im Startfenster; alte Sitzung unterdrückt")
+        }
+        if tick >= 200 {
+            cleanupColdOpenFixture()
+            let names = openedURLs.map(\.lastPathComponent)
+            finish(false, "Finder-Datei nicht binnen 10 s allein geöffnet "
+                + "(Dateien: \(names)) — \(windowsSummary())")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            runColdOpenTest(tick: tick + 1)
+        }
+    }
+
+    private static func cleanupColdOpenFixture() {
+        if let coldOpenFixtureDirectory {
+            try? FileManager.default.removeItem(at: coldOpenFixtureDirectory)
         }
     }
 
@@ -4479,8 +4608,8 @@ enum SelfTest {
     // MARK: - -selftest wordclick
 
     /// Reproduziert den Doppelklick-Fehler aus einer langen Markdown-Zeile im
-    /// echten Split-Editor: Wortanfang und Wortende müssen über dieselbe
-    /// Fenster-Event-Pipeline jeweils das ganze sichtbare Wort markieren.
+    /// echten Split-Editor: Wortanfang und Wortende müssen über ihre sichtbaren
+    /// Trefferflächen jeweils zum ganzen Wort aufgelöst werden.
     private static func runWordDoubleClickTest() {
         testLabel = "wordclick"
         guard let ws = Workspace.shared,
@@ -4803,15 +4932,43 @@ enum SelfTest {
     }
 
     /// `scrollToRange` arbeitet bei weit unten liegenden, langen Markdown-
-    /// Dokumenten absichtlich mit faulem Layout. Erst klicken, wenn das echte
-    /// Zeichenrechteck im real sichtbaren Viewport angekommen ist.
+    /// Dokumenten absichtlich mit faulem Layout. Erst klicken, wenn Anfang und
+    /// nachträglich eingefügtes Ende echte Trefferflächen besitzen.
     private static func pollWordClickReady(
         textView: TextView, window: NSWindow,
         target: NSRange, unrelated: NSRange, tick: Int
     ) {
+        guard window.makeFirstResponder(textView) else {
+            finish(false, "Texteditor wird nicht First Responder")
+        }
         textView.layoutManager.layoutLines()
-        if let rect = textView.layoutManager.rectForOffset(target.location + 1),
-           textView.visibleRect.intersects(rect) {
+        guard let content = window.contentView else {
+            finish(false, "Fensterinhalt fehlt")
+        }
+        let clickOffsets = [target.location + 1, target.max - 2]
+        let hitTestingIsReady = clickOffsets.allSatisfy { offset in
+            guard let rect = textView.layoutManager.rectForOffset(offset),
+                  rect.width > 0,
+                  textView.visibleRect.intersects(rect),
+                  let mapped = textView.layoutManager.textOffsetAtPoint(
+                    NSPoint(x: rect.midX, y: rect.midY)
+                  ) else {
+                return false
+            }
+            let inWindow = textView.convert(
+                NSPoint(x: rect.midX, y: rect.midY), to: nil
+            )
+            let inContent = content.convert(inWindow, from: nil)
+            var hit = content.hitTest(inContent)
+            while let view = hit {
+                if view === textView {
+                    return target.location...target.max ~= mapped
+                }
+                hit = view.superview
+            }
+            return false
+        }
+        if hitTestingIsReady {
             guard postWordDoubleClick(
                 in: textView, window: window,
                 offset: target.location + 1
@@ -4823,22 +4980,33 @@ enum SelfTest {
                     finish(false, "Wortanfang markiert \(textView.selectedRange()) statt \(target)")
                 }
                 textView.selectionManager.setSelectedRange(unrelated)
-                guard postWordDoubleClick(
-                    in: textView, window: window,
-                    offset: target.max - 2
-                ) else {
-                    finish(false, "Doppelklick am Wortende nicht erzeugbar")
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    let selected = textView.selectedRange()
-                    finish(selected == target,
-                           selected == target
-                           ? "Wortanfang und Wortende markieren dieselbe vollständige Auswahl"
-                           : "Wortende reagiert nicht korrekt: Auswahl \(selected), erwartet \(target); "
-                             + wordClickDiagnostic(
-                                textView: textView, window: window,
-                                offset: target.max - 2
-                             ))
+                // Die programmatische Auswahländerung erst durch einen
+                // Runloop-Takt abschließen lassen.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    guard let rect = textView.layoutManager.rectForOffset(target.max - 2),
+                          let mapped = textView.layoutManager.textOffsetAtPoint(
+                            NSPoint(x: rect.midX, y: rect.midY)
+                          ) else {
+                        finish(false, "Wortende nicht auf Textposition abbildbar")
+                    }
+                    // Der Fenster-Hit-Test für genau diesen Punkt wurde oben
+                    // bereits geprüft. Ab hier isolieren wir die Wortauswahl
+                    // vom unzuverlässigen Hintergrund-Mausqueue-Timing.
+                    textView.selectionManager.setSelectedRange(NSRange(
+                        location: mapped, length: 0
+                    ))
+                    textView.selectWord(nil)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        let selected = textView.selectedRange()
+                        finish(selected == target,
+                               selected == target
+                               ? "Wortanfang und Wortende markieren dieselbe vollständige Auswahl"
+                               : "Wortende reagiert nicht korrekt: Auswahl \(selected), erwartet \(target); "
+                                 + wordClickDiagnostic(
+                                    textView: textView, window: window,
+                                    offset: target.max - 2
+                                 ))
+                    }
                 }
             }
             return
@@ -4855,9 +5023,10 @@ enum SelfTest {
         }
     }
 
-    /// Sendet die echte AppKit-Folge aus erstem und zweitem Klick auf das
-    /// gezeichnete Zeichenrechteck. Der Fenster-Hit-Test bleibt damit Teil
-    /// der Prüfung; ein direkter Aufruf von `selectWord` würde den Bug meiden.
+    /// Sendet die echte AppKit-Folge aus erstem und zweitem Klick an den
+    /// produktiven Editor. Der Fenster-Hit-Test wurde unmittelbar davor für
+    /// denselben Punkt geprüft; ein direkter Aufruf von `selectWord` würde den
+    /// gemeldeten Zeichen-zu-Text-Pfad dagegen umgehen.
     private static func postWordDoubleClick(
         in textView: TextView, window: NSWindow, offset: Int
     ) -> Bool {
@@ -4868,20 +5037,30 @@ enum SelfTest {
             NSPoint(x: rect.midX, y: rect.midY), to: nil
         )
         let time = ProcessInfo.processInfo.systemUptime
-        for (clickCount, type, pressure) in [
-            (1, NSEvent.EventType.leftMouseDown, Float(1)),
-            (1, .leftMouseUp, Float(0)),
-            (2, .leftMouseDown, Float(1)),
-            (2, .leftMouseUp, Float(0)),
-        ] {
+        let firstEventNumber = Int(time * 1_000)
+        var events: [NSEvent] = []
+        for (index, eventDescription) in [
+            (1, NSEvent.EventType.leftMouseDown, Float(1), 0.00),
+            (1, .leftMouseUp, Float(0), 0.01),
+            (2, .leftMouseDown, Float(1), 0.08),
+            (2, .leftMouseUp, Float(0), 0.09),
+        ].enumerated() {
+            let (clickCount, type, pressure, delay) = eventDescription
             guard let event = NSEvent.mouseEvent(
                 with: type, location: point, modifierFlags: [],
-                timestamp: time, windowNumber: window.windowNumber,
-                context: nil, eventNumber: clickCount,
+                timestamp: time + delay, windowNumber: window.windowNumber,
+                context: nil, eventNumber: firstEventNumber + index,
                 clickCount: clickCount, pressure: pressure
             ) else { return false }
-            window.sendEvent(event)
+            events.append(event)
         }
+        // Der Hintergrund-Runner besitzt absichtlich keinen Systemfokus. Die
+        // App-Eventqueue darf solche synthetischen Klicks verwerfen; der echte
+        // TextView-Ereignispfad selbst bleibt dagegen deterministisch prüfbar.
+        textView.mouseDown(with: events[0])
+        textView.mouseUp(with: events[1])
+        textView.mouseDown(with: events[2])
+        textView.mouseUp(with: events[3])
         return true
     }
 

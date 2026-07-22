@@ -334,15 +334,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.scheduleSoftWrapMenuSynchronization()
         }
 
+        // Eine per Finder/LaunchServices zugestellte Datei hat beim Kaltstart
+        // Vorrang vor der letzten Sitzung. `Workspace.shared` steht in SwiftUI
+        // bereits, bevor das zugehörige Fenster registriert ist; die bisherige
+        // Warmstart-Erkennung über diesen Wert ließ deshalb Finder-Routing und
+        // Restore gegeneinander laufen.
+        let coldLaunchHasOpenRequest = !openFilesInbox.pending.isEmpty
+        openFilesInbox.finishLaunching()
+
         // Eigene, inhaltlich begrenzte Wiederherstellung statt AppKits
         // undurchsichtiger Fensterarchive: nur gespeicherte Dateipfade,
-        // Projektordner und Fensterrahmen.
-        if let primaryWorkspace = Workspace.shared {
+        // Projektordner und Fensterrahmen. Ein expliziter Kaltstart-Open ersetzt
+        // diesen Startzweck; spätere Open-Events lassen die Sitzung unangetastet.
+        if !coldLaunchHasOpenRequest, let primaryWorkspace = Workspace.shared {
             SessionRestorationCoordinator.restoreLastSession(
                 into: primaryWorkspace,
                 defaults: SelfTest.workspaceDefaults()
             )
         }
+        deliverPendingOpenFiles()
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -571,26 +581,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Ordner werden später über denselben Router als Projekt geladen.
         let openableURLs = DropHandling.openableItems(from: urls)
         guard !openableURLs.isEmpty else { return }
-        // Läuft die App bereits (Workspace bereit), direkt öffnen — ohne den
-        // zusätzlichen Runloop-Umweg von `deliverPendingOpenFiles`. Sonst wurde
-        // zuerst das bisherige Vorderfenster gezeigt und erst einen Tick später
-        // auf das passende Fenster umgeschaltet; das sah unruhig aus
-        // (Daniel-Befund 2026-07-20). Nur beim KALTEN Start puffern, bis
-        // `Workspace.shared` steht (der Aufruf kann dann vor der Fenstererzeugung
-        // kommen).
-        if Workspace.shared != nil {
-            DocumentWindowController.openFinderItems(openableURLs)
-            return
-        }
-        openFilesInbox.enqueue(openableURLs)
-        deliverPendingOpenFiles()
+        // Erst `applicationDidFinishLaunching` trennt Kalt- und Warmstart
+        // zuverlässig. Beim Warmstart kommen die URLs direkt zurück; beim
+        // Kaltstart bleiben sie gepuffert, damit der Restore sie nicht verdrängt.
+        let immediateURLs = openFilesInbox.receive(openableURLs)
+        guard !immediateURLs.isEmpty else { return }
+        DocumentWindowController.openFinderItems(immediateURLs)
     }
 
     /// Liefert gepufferte Open-URLs an den Workspace, sofern er schon bereit
     /// ist. Sonst bleiben sie im Puffer und werden vom nächsten Aufruf (aus
     /// `Workspace.init`) ausgeliefert. Idempotent.
     func deliverPendingOpenFiles() {
-        guard Workspace.shared != nil else { return }   // noch nicht bereit
+        guard openFilesInbox.launchDidFinish,
+              Workspace.shared != nil else { return }   // noch nicht bereit
         // SwiftUIs Startfenster und seine Registry-Brücke dürfen zunächst
         // ihren aktuellen Main-Loop abschließen. Bei einer bereits laufenden
         // App ist dadurch zugleich sicher erkennbar, ob wirklich kein Fenster

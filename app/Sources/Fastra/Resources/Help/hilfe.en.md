@@ -456,7 +456,8 @@ for the first time automatically closes the Welcome tab.
 When you open a file from the Finder, it lands in the window whose project
 or repository contains it, and that window comes to the front. If no window
 fits, Fastra uses an empty window (such as the welcome screen); if there is
-none, it opens the file in a new one.
+none, it opens the file in a new one. If this action launches Fastra, the
+explicitly opened file takes precedence over the previous session.
 
 By default, Fastra restores the last project windows, saved documents, active
 tabs, and window positions on the next launch. Windows without open files are

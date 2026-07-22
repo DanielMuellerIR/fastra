@@ -480,7 +480,8 @@ Willkommen-Tab automatisch.
 Öffnest du eine Datei aus dem Finder, landet sie im Fenster, dessen Projekt
 oder Repository sie enthält, und dieses kommt nach vorn. Passt kein Fenster,
 nutzt Fastra ein leeres Fenster (etwa den Willkommensbildschirm); gibt es auch
-das nicht, öffnet sie in einem neuen.
+das nicht, öffnet sie in einem neuen. Startet Fastra durch diesen Vorgang neu,
+hat die ausdrücklich geöffnete Datei Vorrang vor der vorherigen Sitzung.
 
 Beim nächsten Start stellt Fastra standardmäßig die zuletzt geöffneten
 Projektfenster, gespeicherten Dokumente, aktiven Tabs und Fensterpositionen

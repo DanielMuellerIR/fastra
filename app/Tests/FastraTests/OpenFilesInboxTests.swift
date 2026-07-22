@@ -13,16 +13,19 @@ private func u(_ path: String) -> URL { URL(fileURLWithPath: path) }
 func inbox_startsEmpty() {
     var inbox = OpenFilesInbox()
     #expect(inbox.pending.isEmpty)
+    #expect(!inbox.launchDidFinish)
     #expect(inbox.drain().isEmpty)
 }
 
-@Test("enqueue puffert in Reihenfolge, drain liefert alles und leert")
-func inbox_enqueueThenDrain() {
+@Test("Kaltstart puffert in Reihenfolge, bis der Launch abgeschlossen ist")
+func inbox_coldLaunchBuffersUntilFinished() {
     var inbox = OpenFilesInbox()
-    inbox.enqueue([u("/a.txt"), u("/b.txt")])
-    inbox.enqueue([u("/c.txt")])
+    #expect(inbox.receive([u("/a.txt"), u("/b.txt")]).isEmpty)
+    #expect(inbox.receive([u("/c.txt")]).isEmpty)
     #expect(inbox.pending.count == 3)
 
+    inbox.finishLaunching()
+    #expect(inbox.launchDidFinish)
     let drained = inbox.drain()
     #expect(drained.map(\.path) == ["/a.txt", "/b.txt", "/c.txt"])
     // Nach dem Drain ist der Puffer leer — ein zweiter Drain liefert nichts.
@@ -30,11 +33,14 @@ func inbox_enqueueThenDrain() {
     #expect(inbox.drain().isEmpty)
 }
 
-@Test("Nach drain können neue URLs erneut gepuffert werden")
-func inbox_reusableAfterDrain() {
+@Test("Nach Launch-Ende werden neue URLs sofort statt gepuffert ausgeliefert")
+func inbox_warmLaunchDeliversImmediately() {
     var inbox = OpenFilesInbox()
-    inbox.enqueue([u("/a.txt")])
+    #expect(inbox.receive([u("/a.txt")]).isEmpty)
+    inbox.finishLaunching()
     _ = inbox.drain()
-    inbox.enqueue([u("/b.txt")])
-    #expect(inbox.drain().map(\.path) == ["/b.txt"])
+
+    let immediate = inbox.receive([u("/b.txt"), u("/c.txt")])
+    #expect(immediate.map(\.path) == ["/b.txt", "/c.txt"])
+    #expect(inbox.pending.isEmpty)
 }

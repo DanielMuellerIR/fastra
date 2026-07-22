@@ -39,9 +39,17 @@ set -u
 
 cd "$(dirname "$0")"
 
-APP_BIN=".build/debug/Fastra.app/Contents/MacOS/Fastra"
-APP_BUNDLE=".build/debug/Fastra.app"
-ALL_TESTS=(windows newwindow welcomenew sessionrestore multisearch findbar fields searchoptions tabswitch tabclosehit tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll highlight highlight4d completion4d previewrender xpath markdown markdownblanklines markdownjump markdownappearance jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader sidebarfilter filediff tool4dhint tool4dlsp gototarget searchmark help mdassist search project localization updates git gitactions filemodes selsearch wildcard openscope contrast cmdw)
+# Standardmäßig das frische Debug-Bundle prüfen. Der notarierte Installations-
+# test kann beide Pfade ausdrücklich auf /Applications/Fastra.app setzen, ohne
+# einen zweiten, abweichenden LaunchServices-Runner zu duplizieren.
+APP_BIN="${FASTRA_SELFTEST_APP_BIN:-.build/debug/Fastra.app/Contents/MacOS/Fastra}"
+APP_BUNDLE="${FASTRA_SELFTEST_APP_BUNDLE:-.build/debug/Fastra.app}"
+if [[ "$APP_BUNDLE" == /* ]]; then
+    APP_BUNDLE_FOR_OPEN="$APP_BUNDLE"
+else
+    APP_BUNDLE_FOR_OPEN="$(pwd)/$APP_BUNDLE"
+fi
+ALL_TESTS=(windows newwindow welcomenew sessionrestore coldopen multisearch findbar fields searchoptions tabswitch tabclosehit tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll highlight highlight4d completion4d previewrender xpath markdown markdownblanklines markdownjump markdownappearance jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader sidebarfilter filediff tool4dhint tool4dlsp gototarget searchmark help mdassist search project localization updates git gitactions filemodes selsearch wildcard openscope contrast cmdw)
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
 WINDOWLESS_TESTS=(search project localization updates git gitactions filemodes selsearch wildcard openscope tool4dlsp)
 # Pro Test max. Wartezeit in Sekunden, bis die SELFTEST-Zeile da sein muss.
@@ -122,6 +130,22 @@ activate_app() {
     return 1
 }
 
+# Der echte LaunchServices-Kaltstart braucht eine schon vor dem App-Start
+# vorhandene Datei. Nur dieses exakt bekannte mktemp-Verzeichnis wird danach
+# aufgeräumt; kein breiter oder unaufgelöster Löschpfad.
+coldopen_fixture_dir=""
+coldopen_fixture_file=""
+cleanup_coldopen_fixture() {
+    if [[ -n "$coldopen_fixture_file" && -f "$coldopen_fixture_file" ]]; then
+        rm -f -- "$coldopen_fixture_file"
+    fi
+    if [[ -n "$coldopen_fixture_dir" && -d "$coldopen_fixture_dir" ]]; then
+        rmdir -- "$coldopen_fixture_dir" 2>/dev/null || true
+    fi
+    coldopen_fixture_dir=""
+    coldopen_fixture_file=""
+}
+
 # ── Testlauf ─────────────────────────────────────────────────────────────
 
 pass_count=0
@@ -133,7 +157,20 @@ for t in "${TESTS[@]}"; do
     kill_leftovers
     errfile="$(mktemp /tmp/fastra-selftest-${t}.XXXXXX)"
 
-    if [[ "$t" == "cmdw" || "$t" == "newwindow" || "$t" == "welcomenew" || "$t" == "completion4d" || "$t" == "help" ]]; then
+    if [[ "$t" == "coldopen" ]]; then
+        # Reale Kaltstart-Zustellung: LaunchServices öffnet eine existierende
+        # Datei mit genau dem frisch gebauten Bundle. Der Testprozess legt
+        # parallel vor seinem ersten Workspace eine abweichende alte Sitzung an.
+        coldopen_fixture_dir="$(mktemp -d /tmp/fastra-selftest-coldopen.XXXXXX)"
+        coldopen_fixture_file="$coldopen_fixture_dir/README.de.md"
+        printf 'Explizit per LaunchServices geöffnet\n' > "$coldopen_fixture_file"
+        open -g -n -a "$APP_BUNDLE_FOR_OPEN" \
+            --stdout /dev/null --stderr "$errfile" \
+            --env "FASTRA_SELFTEST=coldopen" \
+            --env "FASTRA_COLDOPEN_FILE=$coldopen_fixture_file" \
+            "$coldopen_fixture_file" \
+            --args -ApplePersistenceIgnoreState YES
+    elif [[ "$t" == "cmdw" || "$t" == "newwindow" || "$t" == "welcomenew" || "$t" == "completion4d" || "$t" == "help" ]]; then
         # Diese Tests prüfen echte Tastatur- oder Mausbedienung (bei
         # `completion4d` ⌃Leertaste, Pfeil und Klick) und brauchen daher
         # Fokus → via `open` starten und von außen aktivieren. Der
@@ -154,6 +191,7 @@ for t in "${TESTS[@]}"; do
         summary+="✗ $t (Timeout)\n"
         real_fail_count=$((real_fail_count + 1))
         kill_leftovers
+        cleanup_coldopen_fixture
         continue
     fi
 
@@ -173,9 +211,11 @@ for t in "${TESTS[@]}"; do
         real_fail_count=$((real_fail_count + 1))
         summary+="✗ $t\n"
     fi
+    cleanup_coldopen_fixture
 done
 
 kill_leftovers
+cleanup_coldopen_fixture
 
 # ── Zusammenfassung ──────────────────────────────────────────────────────
 

@@ -329,6 +329,13 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
    `-selftest sessionrestore` legt vor dem ersten Workspace eine isolierte
    gespeicherte Sitzung an und prüft den echten Kaltstart mit zwei Fenstern,
    drei dateibasierten Tabs, Projekt, aktivem Tab und ohne unbenannten Tab.
+   `-selftest coldopen` startet das Debug-Bundle dagegen über LaunchServices
+   mit einer ausdrücklich geöffneten Datei und einer abweichenden gespeicherten
+   Sitzung. Es prüft, dass ausschließlich die externe Datei in genau einem
+   Fenster erscheint und der Restore diesen Startzweck nicht verdrängt. Für den
+   vorgeschriebenen notarisierten Zieltest kann der Runner über
+   `FASTRA_SELFTEST_APP_BIN` und `FASTRA_SELFTEST_APP_BUNDLE` auf das bereits
+   geprüfte Bundle unter `/Applications` gerichtet werden.
    `-selftest textop` bedient eine Texttransformation und beide
    Sortierrichtungen über den echten Notification-/Editorpfad und liest den
    tatsächlich sichtbaren Editorinhalt zurück.
