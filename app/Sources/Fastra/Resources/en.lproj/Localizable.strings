@@ -978,6 +978,11 @@
 "Markdown-Vorschau einblenden" = "Show Markdown Preview";
 "Projekt schließen" = "Close Project";
 "Blendet den Dateibaum dieses Projekts aus." = "Hides this project's file tree.";
+"Zum Willkommensbildschirm" = "Go to Welcome Screen";
+"Schließt den aktuellen Arbeitsbereich sicher und zeigt Willkommen." = "Safely closes the current workspace and shows the welcome screen.";
+"Zum Willkommensbildschirm zurückkehren?" = "Return to the Welcome Screen?";
+"Dabei werden das aktuelle Projekt oder der geöffnete Ordner und alle Tabs geschlossen. Ungesicherte Dateien müssen anschließend einzeln gesichert werden." = "This closes the current project or open folder and all tabs. Unsaved files must then be saved individually.";
+"Zum Willkommensbildschirm kann erst gewechselt werden, nachdem die Datei gesichert wurde." = "You can return to the welcome screen only after the file has been saved.";
 "Git-Verlauf anzeigen" = "Show Git History";
 "Öffnet den Commit-Verlauf als schreibgeschützten Tab." = "Opens the commit history in a read-only tab.";
 "Git-Änderungen anzeigen" = "Show Git Changes";

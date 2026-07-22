@@ -464,6 +464,18 @@ Fenster (eigene Tabs, eigene Suche). ⌘S speichert, ⌘W schließt den Tab —
 bei ungespeicherten Änderungen fragt Fastra nach. ⌘J springt zu einer
 Zeilennummer.
 
+Der Haus-Schalter links oben kehrt im aktuellen Fenster zum
+Willkommensbildschirm zurück. Saubere Tabs werden dabei geschlossen. Gibt es
+ungesicherte Inhalte, bestätigt eine erste Rückfrage zunächst nur den gesamten
+Wechsel; Abbrechen lässt den Arbeitsbereich vollständig unangetastet. Erst nach
+der Bestätigung fragt Fastra jede betroffene Datei einzeln nach dem Sichern.
+Ein Abbruch dort hält Projekt und Tabs offen.
+
+Willkommen kann neben neuen, noch unbenannten Tabs stehen, aber nie neben einer
+gespeicherten Datei oder einem geöffneten Ordner. Beim Öffnen eines Ordners oder
+beim Öffnen beziehungsweise ersten Sichern einer Datei schließt Fastra den
+Willkommen-Tab automatisch.
+
 Öffnest du eine Datei aus dem Finder, landet sie im Fenster, dessen Projekt
 oder Repository sie enthält, und dieses kommt nach vorn. Passt kein Fenster,
 nutzt Fastra ein leeres Fenster (etwa den Willkommensbildschirm); gibt es auch

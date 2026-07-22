@@ -41,17 +41,16 @@ func wsLoad_placeholderIsLoadingImmediately() async throws {
     let url = try writeTmpUTF8(content)
     defer { try? FileManager.default.removeItem(at: url) }
 
-    // Zählstand VOR dem Laden merken.
-    let countBefore = ws.tabs.count
-
     // loadFile aufrufen — kehrt sofort zurück, BEVOR der Hintergrund-Task
-    // fertig ist. Der Platzhalter-Tab muss sofort da sein.
+    // fertig ist. Der Platzhalter-Tab muss sofort da sein und Willkommen
+    // atomar ersetzen, weil beide Zustände nie nebeneinander stehen dürfen.
     var completionCalled = false
     ws.loadFile(at: url) { _ in completionCalled = true }
 
     // DIREKT nach dem Aufruf (noch im selben RunLoop-Tick) prüfen:
-    #expect(ws.tabs.count == countBefore + 1,
-            "Platzhalter-Tab muss sofort angelegt werden")
+    #expect(ws.tabs.count == 1,
+            "Platzhalter muss Willkommen sofort ersetzen")
+    #expect(!ws.tabs.contains { $0.isWelcome })
     let placeholder = ws.tabs.last
     #expect(placeholder?.isLoading == true,
             "Platzhalter-Tab muss sofort isLoading = true haben")

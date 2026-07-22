@@ -51,12 +51,21 @@ struct TabBarView: View {
     }
 
     /// Links bleiben die ersten rund 120 Punkte für die echten Ampelknöpfe
-    /// frei. Der Schalter sitzt am rechten Rand dieses Bereichs wie in Codex.
+    /// frei. Home und Seitenschalter sitzen rechts in diesem Bereich wie in
+    /// Codex.
     /// Ohne Seitenleiste bleibt ein kompakter Vorlauf, damit Tabs nie unter
     /// den Ampeln liegen und der Einblende-Schalter weiterhin erreichbar ist.
     private var titlebarLeadingControls: some View {
         HStack(spacing: 0) {
             Spacer(minLength: 120)
+            Button { workspace.returnToWelcome() } label: {
+                titlebarIcon("house", active: workspace.isWelcomeScreen)
+            }
+            .buttonStyle(.plain)
+            .disabled(workspace.folderApplying)
+            .help("Zum Willkommensbildschirm")
+            .accessibilityLabel("Zum Willkommensbildschirm")
+            .accessibilityHint("Schließt den aktuellen Arbeitsbereich sicher und zeigt Willkommen.")
             Button { showSidebar.toggle() } label: {
                 titlebarIcon("sidebar.left", active: !showSidebar)
             }

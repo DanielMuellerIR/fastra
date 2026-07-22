@@ -515,6 +515,10 @@ final class Workspace: ObservableObject {
     /// Aktuellste Lade-Generation pro Tab-UUID. Pattern analog zu
     /// `statsGeneration` in `recomputeDocumentStats`.
     private var loadGeneration: [UUID: Int] = [:]
+    /// Willkommen wird schon beim Anlegen des ersten gespeicherten Lade-Tabs
+    /// aus der Leiste genommen. Scheitern alle gleichzeitig gestarteten Loads,
+    /// kann genau dieser Tab wieder eingesetzt werden.
+    private var welcomeTabSuppressedByFileLoad: EditorTab?
 
     /// Stößt eine (asynchrone) Neuberechnung der Footer-Statistik an.
     /// - Parameters:
@@ -762,11 +766,7 @@ final class Workspace: ObservableObject {
         // mit dem erklärenden Willkommen-Zustand. Ein automatisch geöffnetes
         // Musterdokument wirkt wie eine fremde Datei und untergräbt bei einem
         // lokalen Editor das Vertrauen in die Herkunft der angezeigten Daten.
-        let welcome = EditorTab(
-            title: Workspace.untitledBaseName,
-            path: L10n.string("noch nicht gespeichert"),
-            isWelcome: true
-        )
+        let welcome = Workspace.makeWelcomeTab()
         self.tabs = [welcome]
         self.activeTabID = welcome.id
         self.findPattern = ""
@@ -1006,6 +1006,17 @@ final class Workspace: ObservableObject {
         position <= 1 ? untitledBaseName : "\(untitledBaseName) \(position)"
     }
 
+    /// Erzeugt den einzigen zulässigen Unterbau des Willkommensbildschirms.
+    /// Eine gemeinsame Fabrik verhindert, dass Start, Home und Restore-Fallback
+    /// unterschiedliche Varianten dieses besonderen Tabs anlegen.
+    static func makeWelcomeTab() -> EditorTab {
+        EditorTab(
+            title: Workspace.untitledBaseName,
+            path: L10n.string("noch nicht gespeichert"),
+            isWelcome: true
+        )
+    }
+
     /// `true`, wenn dieses Fenster gerade den Willkommensbildschirm zeigt —
     /// nämlich genau dann, wenn der AKTIVE Tab der Willkommen-Tab ist. Andere
     /// Tabs (auch leere) zeigen den Editor. Tab-Beschriftung („Willkommen"),
@@ -1016,12 +1027,39 @@ final class Workspace: ObservableObject {
     }
 
     /// Wandelt einen etwaigen Willkommen-Tab in ein normales leeres Dokument um
-    /// (zeigt dann den Editor statt der Willkommensseite). Für „Ordner öffnen"
-    /// und für ⌘N-Fenster, die neben einem bereits offenen Fenster entstehen.
+    /// (zeigt dann den Editor statt der Willkommensseite). Zusätzliche ⌘N-
+    /// Fenster starten damit direkt als normale ungesicherte Datei.
     func dismissWelcomeTab() {
         for idx in tabs.indices where tabs[idx].isWelcome {
             tabs[idx].isWelcome = false
         }
+    }
+
+    /// Setzt dieses Fenster ohne Zwischenzustand auf genau einen Willkommen-
+    /// Tab zurück. Der Aufrufer muss ungesicherte Inhalte vorher geklärt haben.
+    /// Restore darf denselben sicheren Fallback verwenden, wenn sämtliche
+    /// gespeicherten Dateien während des asynchronen Ladens verschwinden.
+    func enterWelcomeState() {
+        showSearchDialog = false
+        livePreview = false
+        showCompareFilesDialog = false
+        compareDialogPrefillTabIDs = []
+        comparisonTabID = nil
+
+        // Ein Home-Wechsel darf weder alte Projektbeobachter noch später
+        // eintreffende Datei-Ladevorgänge in den neuen Zustand hineintragen.
+        closeProject()
+        loadGeneration.removeAll()
+        welcomeTabSuppressedByFileLoad = nil
+        languageDetectionWork.values.forEach { $0.cancel() }
+        languageDetectionWork.removeAll()
+
+        let welcome = Self.makeWelcomeTab()
+        tabs = [welcome]
+        activeTabID = welcome.id
+        cursorLine = nil
+        cursorColumn = nil
+        selectionRange = nil
     }
 
     private var activeTabIndex: Int? {
@@ -1130,6 +1168,16 @@ final class Workspace: ObservableObject {
     /// damit reine Workspace-Tests auch ohne NSWindow funktionieren.
     var closeWindowHandler: (() -> Void)?
 
+    /// Erste, folgenlose Sicherheitsstufe des Home-Buttons. Nur wenn wirklich
+    /// ungesicherte Inhalte vorhanden sind, bestätigt der Nutzer zunächst den
+    /// gesamten Wechsel, bevor einzelne Save-Dialoge erscheinen.
+    var confirmReturnToWelcomeHandler: () -> Bool = Workspace.defaultReturnToWelcomeConfirmation
+
+    /// Zweite Stufe des Home-Buttons: Jeder geänderte Tab muss gesichert oder
+    /// der gesamte Wechsel abgebrochen werden. Anders als beim expliziten
+    /// Tab-Schließen gibt es hier bewusst kein „Nicht sichern".
+    var confirmSaveForWelcomeHandler: (String) -> Bool = Workspace.defaultSaveForWelcomeConfirmation
+
     /// Der echte Schließen-Dialog (BBEdit-Stil). Drei Knöpfe in macOS-Anordnung
     /// (rechts → links): Sichern (Default), Abbrechen, Nicht sichern.
     static func defaultCloseConfirmation(_ title: String) -> CloseConfirmation {
@@ -1145,6 +1193,32 @@ final class Workspace: ObservableObject {
         case .alertThirdButtonReturn: return .dontSave
         default:                      return .cancel
         }
+    }
+
+    static func defaultReturnToWelcomeConfirmation() -> Bool {
+        let alert = NSAlert()
+        alert.messageText = L10n.string("Zum Willkommensbildschirm zurückkehren?")
+        alert.informativeText = L10n.string("Dabei werden das aktuelle Projekt oder der geöffnete Ordner und alle Tabs geschlossen. Ungesicherte Dateien müssen anschließend einzeln gesichert werden.")
+        alert.addButton(withTitle: L10n.string("Projekt schließen"))
+        alert.addButton(withTitle: L10n.string("Abbrechen"))
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    static func defaultSaveForWelcomeConfirmation(_ title: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = L10n.format("Möchten Sie die Änderungen an „%@“ sichern?", title)
+        alert.informativeText = L10n.string("Zum Willkommensbildschirm kann erst gewechselt werden, nachdem die Datei gesichert wurde.")
+        alert.addButton(withTitle: L10n.string("Sichern"))
+        alert.addButton(withTitle: L10n.string("Abbrechen"))
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// Entspricht der Verlustprüfung des normalen Schließen-Pfads. Ein leerer,
+    /// unbenannter Tab enthält auch dann nichts zu sichern, wenn er nach
+    /// Tippen und Löschen technisch noch als geändert markiert ist.
+    private static func requiresSaveBeforeClosing(_ tab: EditorTab) -> Bool {
+        let isEmptyUntitled = tab.url == nil && tab.content.isEmpty
+        return tab.isDirty && !isEmptyUntitled
     }
 
     /// Darf der Tab geschlossen werden? Sauberer Tab → ja, OHNE Rückfrage (so
@@ -1163,8 +1237,7 @@ final class Workspace: ObservableObject {
         // könnte — selbst wenn es durch Tippen + Löschen noch `isDirty` ist.
         // Eine gespeicherte, nun leere Datei bleibt dagegen rückfragepflichtig:
         // dort würde Schließen das Löschen des bisherigen Disk-Inhalts verwerfen.
-        let isEmptyUntitled = tab.url == nil && tab.content.isEmpty
-        guard tab.isDirty && !isEmptyUntitled else {
+        guard Self.requiresSaveBeforeClosing(tab) else {
             return true
         }
         switch confirmCloseHandler(tab.title) {
@@ -1191,8 +1264,17 @@ final class Workspace: ObservableObject {
         // zurücklassen, sondern das Fenster schließen. Der gemeinsame Pfad
         // gilt für ⌘W und Tab-X.
         if tabs.count == 1, tabs[0].id == id {
+            // Ist die Fensterbrücke ausnahmsweise noch nicht gebunden, darf
+            // der Workspace nicht als sichtbarer Null-Tab-Rahmen zurückbleiben.
+            // Nach derselben Save-Entscheidung fällt er sicher auf Willkommen
+            // zurück; mit echter Fensterbrücke bleibt das bisherige Schließen.
+            guard let closeWindow = closeWindowHandler else {
+                guard mayCloseTab(id: id) else { return }
+                enterWelcomeState()
+                return
+            }
             guard prepareToCloseWindow() else { return }
-            closeWindowHandler?()
+            closeWindow()
             return
         }
 
@@ -1294,6 +1376,52 @@ final class Workspace: ObservableObject {
             activeTabID = prev
         }
         return true
+    }
+
+    /// Home ist ein atomarer Workspace-Wechsel, kein Tab-Klick. Der erste
+    /// Dialog bestätigt nur die Absicht und ändert noch gar nichts. Erst danach
+    /// wird jeder betroffene Tab einzeln gesichert. Ein Abbruch lässt Projekt
+    /// und Tabs offen; bereits ausdrücklich gespeicherte Dateien bleiben wie
+    /// beim abgebrochenen App-Beenden gespeichert.
+    @discardableResult
+    func returnToWelcome() -> Bool {
+        guard !folderApplying else { return false }
+        if projectURL == nil, tabs.count == 1, tabs[0].isWelcome {
+            return true
+        }
+
+        let dirtyIDs = tabs.filter(Self.requiresSaveBeforeClosing).map(\.id)
+        guard dirtyIDs.isEmpty || confirmReturnToWelcomeHandler() else {
+            return false
+        }
+
+        let previousActive = activeTabID
+        for id in dirtyIDs {
+            guard let index = tabs.firstIndex(where: { $0.id == id }),
+                  Self.requiresSaveBeforeClosing(tabs[index]) else { continue }
+            guard confirmSaveForWelcomeHandler(tabs[index].title) else {
+                restoreActiveTab(afterCancelledWelcomeTransition: previousActive)
+                return false
+            }
+            activeTabID = id
+            saveActiveTab()
+            guard let savedIndex = tabs.firstIndex(where: { $0.id == id }),
+                  !tabs[savedIndex].isDirty else {
+                restoreActiveTab(afterCancelledWelcomeTransition: previousActive)
+                return false
+            }
+        }
+
+        enterWelcomeState()
+        return true
+    }
+
+    private func restoreActiveTab(afterCancelledWelcomeTransition previous: UUID?) {
+        if let previous, tabs.contains(where: { $0.id == previous }) {
+            activeTabID = previous
+        } else if !tabs.contains(where: { $0.id == activeTabID }) {
+            activeTabID = tabs.first?.id
+        }
     }
 
     // MARK: - Zeilenenden umschalten (K7)
@@ -1570,6 +1698,30 @@ final class Workspace: ObservableObject {
         }
     }
 
+    /// Ein Tab mit Datei-URL und Willkommen dürfen auch während des Ladens nie
+    /// nebeneinander sichtbar sein. Der entfernte Sonder-Tab bleibt kurz
+    /// gemerkt, damit ein vollständig fehlgeschlagener Öffnungsversuch den
+    /// vorherigen Zustand wiederherstellen kann.
+    private func suppressWelcomeForFileLoad() {
+        if welcomeTabSuppressedByFileLoad == nil,
+           let welcome = tabs.first(where: { $0.isWelcome }) {
+            welcomeTabSuppressedByFileLoad = welcome
+        }
+        tabs.removeAll { $0.isWelcome }
+    }
+
+    private func restoreWelcomeAfterFailedFileLoadsIfNeeded() {
+        guard projectURL == nil,
+              !tabs.contains(where: { $0.url != nil }),
+              !tabs.contains(where: { $0.isWelcome }),
+              let welcome = welcomeTabSuppressedByFileLoad else { return }
+        tabs.insert(welcome, at: 0)
+        welcomeTabSuppressedByFileLoad = nil
+        if activeTabID == nil || !tabs.contains(where: { $0.id == activeTabID }) {
+            activeTabID = welcome.id
+        }
+    }
+
     /// Lädt eine Datei asynchron in einen neuen Tab und kehrt sofort zurück.
     ///
     /// - Parameter url: Datei-URL; muss eine reguläre Datei sein.
@@ -1617,6 +1769,7 @@ final class Workspace: ObservableObject {
             isDirty: false,
             isLoading: true
         )
+        suppressWelcomeForFileLoad()
         tabs.append(placeholder)
         activeTabID = placeholder.id
 
@@ -1651,6 +1804,7 @@ final class Workspace: ObservableObject {
                     // bleibt der Eintrag — er gehört dem neueren Ladevorgang.)
                     if !self.tabs.contains(where: { $0.id == tabID }) {
                         self.loadGeneration.removeValue(forKey: tabID)
+                        self.restoreWelcomeAfterFailedFileLoadsIfNeeded()
                     }
                     completion?(false)
                     return
@@ -1686,6 +1840,7 @@ final class Workspace: ObservableObject {
                     // Dokument abräumen, sobald eine echte Datei geladen ist
                     // (der gerade geladene Tab bleibt erhalten).
                     self.tabs = Workspace.tabsRemovingEmptyScratch(self.tabs, keeping: tabID)
+                    self.welcomeTabSuppressedByFileLoad = nil
                     self.noteRecentFile(url)
                     self.openParentFolderIfProjectMissing(for: url)
                     completion?(true)
@@ -1696,6 +1851,7 @@ final class Workspace: ObservableObject {
                     NSSound.beep()
                     self.tabs.removeAll { $0.id == tabID }
                     self.activeTabID = previousActiveTabID
+                    self.restoreWelcomeAfterFailedFileLoadsIfNeeded()
                     completion?(false)
                 }
             }
@@ -1749,6 +1905,12 @@ final class Workspace: ObservableObject {
         tabs[savedIndex].url = url
         tabs[savedIndex].title = url.lastPathComponent
         tabs[savedIndex].path = url.deletingLastPathComponent().path
+        // Ein gespeichertes Dokument und Willkommen dürfen nie im selben
+        // Fenster koexistieren. Ungesicherte Nachbartabs bleiben erhalten;
+        // der neue Zielordner erscheint wie beim Öffnen einer Datei links.
+        tabs.removeAll { $0.isWelcome }
+        activeTabID = tabID
+        openParentFolderIfProjectMissing(for: url)
     }
 
     /// Rückfrage bei einem Save-Ziel, das nicht mehr dem geladenen Snapshot
@@ -2256,6 +2418,9 @@ final class Workspace: ObservableObject {
     /// ausdrückliche Wechsel (Willkommensseite, ⌘⇧O) räumt wie bisher auf.
     func openProject(at url: URL, keepingUnrelatedTabs: Bool = false) {
         let url = url.canonicalFileURL
+        // Ein bewusst geöffnetes Projekt macht einen für fehlgeschlagene
+        // Datei-Loads gemerkten Willkommen-Tab endgültig gegenstandslos.
+        welcomeTabSuppressedByFileLoad = nil
         NotificationCenter.default.post(name: .fastraProjectContextWillChange, object: self)
         stopFourDProjectMethodWatcher()
         cancelAllGitDiffLoads()
@@ -2263,6 +2428,10 @@ final class Workspace: ObservableObject {
         if !keepingUnrelatedTabs {
             tabs = Self.tabsAfterOpeningProject(tabs, root: url)
         }
+        // Auch der implizite Projektpfad darf Willkommen nicht neben einem
+        // sichtbaren Ordner stehen lassen. Falls danach kein Dokument bleibt,
+        // erzeugt der gemeinsame Leerfall unten einen normalen Scratch-Tab.
+        tabs.removeAll { $0.isWelcome }
         if let previousActive, tabs.contains(where: { $0.id == previousActive }) {
             activeTabID = previousActive
         } else {
@@ -2318,9 +2487,6 @@ final class Workspace: ObservableObject {
         projectSearchConfiguration = ProjectSearchStore.load(
             for: url, defaults: defaultsStore
         )
-        // Willkommen-Tab (falls aktiv) in ein normales leeres Dokument
-        // umwandeln → Editor + Projekt-Seitenleiste statt Willkommensseite.
-        dismissWelcomeTab()
         noteRecentProject(url)
         let beginGitObservation = { [weak self] in
             guard let self, self.projectGeneration == generation,
@@ -2424,7 +2590,10 @@ final class Workspace: ObservableObject {
         let root = root.canonicalFileURL
         let prefix = root.path.hasSuffix("/") ? root.path : root.path + "/"
         return tabs.filter { tab in
-            if tab.isDirty || tab.isWelcome { return true }
+            // Willkommen ist kein Dokument und gehört nie zu einem geöffneten
+            // Projekt. Ungesicherte echte Tabs bleiben dagegen erhalten.
+            if tab.isWelcome { return false }
+            if tab.isDirty { return true }
             if tab.gitKind != nil { return false }
             guard let file = tab.url?.canonicalFileURL else { return true }
             return file.path.hasPrefix(prefix)
@@ -2790,7 +2959,7 @@ final class Workspace: ObservableObject {
         }
         // Der Git-Tab ist aktiv und nicht `isWelcome` → zeigt den Editor.
         // (Git-Aktionen setzen ohnehin ein geladenes Projekt voraus, dessen
-        // Öffnen den Willkommen-Tab bereits umgewandelt hat.)
+        // Öffnen den Willkommen-Tab bereits entfernt hat.)
     }
 
     private func prepareGitDiffTab(request: GitDiffRequest, title: String,

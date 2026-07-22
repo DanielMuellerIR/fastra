@@ -441,6 +441,16 @@ the save instead of silently overwriting the on-disk version.
 tabs, its own search). ⌘S saves, ⌘W closes the tab — Fastra asks first
 if there are unsaved changes. ⌘J jumps to a line number.
 
+The Home button at the top left returns the current window to the welcome
+screen. Clean tabs are closed. If unsaved content exists, an initial prompt
+first confirms only the overall transition; cancelling leaves the workspace
+completely untouched. Only after confirmation does Fastra ask to save each
+affected file. Cancelling there keeps the project and tabs open.
+
+The welcome screen may coexist with new, still-untitled tabs, but never with a
+saved file or an open folder. Opening a folder, opening a file, or saving a file
+for the first time automatically closes the Welcome tab.
+
 When you open a file from the Finder, it lands in the window whose project
 or repository contains it, and that window comes to the front. If no window
 fits, Fastra uses an empty window (such as the welcome screen); if there is

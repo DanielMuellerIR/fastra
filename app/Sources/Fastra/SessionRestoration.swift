@@ -199,16 +199,6 @@ extension Workspace {
     /// Dokumentinhalt wird weder angenommen noch erzeugt.
     func restore(_ state: RestorableWindowState,
                  completion: (() -> Void)? = nil) {
-        if let projectPath = state.projectPath {
-            let projectURL = URL(fileURLWithPath: projectPath).canonicalFileURL
-            var isDirectory: ObjCBool = false
-            if FileManager.default.fileExists(atPath: projectURL.path,
-                                              isDirectory: &isDirectory),
-               isDirectory.boolValue {
-                openProject(at: projectURL)
-            }
-        }
-
         var seenPaths = Set<String>()
         let documentURLs = state.documentPaths.compactMap { path -> URL? in
             let url = URL(fileURLWithPath: path).canonicalFileURL
@@ -222,8 +212,26 @@ extension Workspace {
             return url
         }
         guard !documentURLs.isEmpty else {
+            // Die Dateien konnten zwischen Store-Vorprüfung und echtem Restore
+            // verschwinden. Inzwischen im Startfenster erzeugte Tabs oder ein
+            // bewusst geöffnetes Projekt haben Vorrang und dürfen niemals vom
+            // verspäteten Restore gelöscht werden. Nur der unberührte Start-
+            // zustand fällt auf ein frisches Willkommen zurück.
+            if projectURL == nil, tabs.allSatisfy({ $0.isWelcome }) {
+                enterWelcomeState()
+            }
             completion?()
             return
+        }
+
+        if let projectPath = state.projectPath {
+            let projectURL = URL(fileURLWithPath: projectPath).canonicalFileURL
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: projectURL.path,
+                                              isDirectory: &isDirectory),
+               isDirectory.boolValue {
+                openProject(at: projectURL)
+            }
         }
 
         var remaining = documentURLs.count
@@ -239,6 +247,14 @@ extension Workspace {
                     }) {
                         self.activeTabID = tab.id
                     }
+                }
+                // Ein einzelner Load-Fehler setzt activeTabID auf seinen
+                // früheren Platzhalter zurück. Nach allen parallelen Loads
+                // deshalb gegen die tatsächlich überlebenden Tabs abgleichen.
+                if self.tabs.isEmpty {
+                    self.enterWelcomeState()
+                } else if !self.tabs.contains(where: { $0.id == self.activeTabID }) {
+                    self.activeTabID = self.tabs.first?.id
                 }
                 completion?()
             }

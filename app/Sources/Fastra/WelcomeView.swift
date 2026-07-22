@@ -7,8 +7,8 @@ enum WelcomeLogic {
     /// Willkommen-Tab ist (per-Tab-Flag `isWelcome`). Er ist ein eigener Tab,
     /// der bestehen bleibt: ein zweiter (leerer) Editor-Tab daneben zeigt den
     /// Editor, nicht die Willkommensseite (Daniel-Wunsch 2026-07-12). Beim
-    /// Öffnen einer Datei wird der Willkommen-Tab als leerer Scratch abgeräumt,
-    /// beim Öffnen eines Projekts in ein normales Dokument umgewandelt.
+    /// Öffnen einer Datei oder eines Projekts wird der Willkommen-Tab
+    /// abgeräumt; neben ungesicherten Entwürfen darf er dagegen bestehen.
     static func shouldShow(activeTab: EditorTab?) -> Bool {
         activeTab?.isWelcome == true
     }

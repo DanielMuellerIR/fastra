@@ -72,6 +72,20 @@ func openProject_prunesOnlyCleanOutsideFiles() throws {
     #expect(result.map(\.id) == [cleanInside.id, changedOutside.id, scratch.id])
 }
 
+@Test("Projektwechsel entfernt Willkommen, behält ungesicherte Tabs")
+@MainActor
+func openProject_removesWelcomeButKeepsUnsavedTabs() {
+    let root = URL(fileURLWithPath: "/tmp/projekt")
+    let welcome = EditorTab(title: "Ohne Titel", path: "—", isWelcome: true)
+    let draft = EditorTab(title: "Entwurf", path: "—",
+                          content: "ungesichert", isDirty: true)
+
+    let result = Workspace.tabsAfterOpeningProject([welcome, draft], root: root)
+
+    #expect(result.map(\.id) == [draft.id])
+    #expect(!result.contains { $0.isWelcome })
+}
+
 @Test("Projektwechsel erkennt ähnlich beginnende Nachbarordner nicht als Hierarchie")
 @MainActor
 func openProject_doesNotKeepSiblingWithSamePrefix() {

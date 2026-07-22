@@ -207,6 +207,77 @@ func sessionUnavailableStateIsDiscarded() {
     #expect(state.availableState() == nil)
 }
 
+@Test("Scheitern alle Restore-Ladevorgänge, erscheint Willkommen statt Null-Tab")
+@MainActor
+func sessionAllLoadsFailReturnsToWelcome() async throws {
+    let (defaults, suite) = sessionDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let file = try sessionFile("nicht-lesbar.txt", content: "Inhalt")
+    let directory = file.deletingLastPathComponent()
+    defer {
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600],
+                                               ofItemAtPath: file.path)
+        try? FileManager.default.removeItem(at: directory)
+    }
+    try FileManager.default.setAttributes([.posixPermissions: 0],
+                                          ofItemAtPath: file.path)
+
+    let state = RestorableWindowState(
+        projectPath: directory.path,
+        documentPaths: [file.path],
+        activeDocumentPath: file.path,
+        frame: nil
+    )
+    #expect(state.availableState() != nil,
+            "Der Vorcheck sieht die Datei noch; erst das echte Laden muss scheitern")
+    let workspace = Workspace(defaults: defaults)
+    var finished = false
+    workspace.restore(state) { finished = true }
+    let deadline = Date().addingTimeInterval(5)
+    while !finished, Date() < deadline { await Task.yield() }
+
+    #expect(finished)
+    #expect(workspace.projectURL == nil)
+    #expect(workspace.tabs.count == 1)
+    #expect(workspace.tabs[0].isWelcome)
+    #expect(workspace.activeTabID == workspace.tabs[0].id)
+}
+
+@Test("Verspäteter leerer Restore verwirft keinen inzwischen erstellten Entwurf")
+@MainActor
+func sessionEmptyRestorePreservesNewDraft() throws {
+    let (defaults, suite) = sessionDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-session-race-\(UUID().uuidString)",
+                                isDirectory: true)
+    try FileManager.default.createDirectory(at: directory,
+                                            withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let missing = directory.appendingPathComponent("inzwischen-geloescht.txt")
+    let state = RestorableWindowState(
+        projectPath: directory.path,
+        documentPaths: [missing.path],
+        activeDocumentPath: missing.path,
+        frame: nil
+    )
+    let workspace = Workspace(defaults: defaults)
+    workspace.openNewTab()
+    let draftID = try #require(workspace.activeTabID)
+    let draftIndex = try #require(workspace.tabs.firstIndex { $0.id == draftID })
+    workspace.tabs[draftIndex].content = "Neu eingegeben"
+    workspace.tabs[draftIndex].isDirty = true
+    let originalTabs = workspace.tabs
+    var finished = false
+
+    workspace.restore(state) { finished = true }
+
+    #expect(finished)
+    #expect(workspace.projectURL == nil)
+    #expect(workspace.tabs == originalTabs)
+    #expect(workspace.activeTabID == draftID)
+}
+
 @Test("Sitzungssnapshot behält auch beim Beenden ausgeblendete offene Fenster")
 @MainActor
 func sessionCaptureIncludesRegisteredHiddenWindows() throws {

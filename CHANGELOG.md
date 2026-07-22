@@ -9,6 +9,25 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.46.4] — 2026-07-22
+
+### Hinzugefügt
+
+- Ein sichtbarer Haus-Schalter führt das aktuelle Fenster sicher zum
+  Willkommensbildschirm zurück. Bei ungesicherten Inhalten bestätigt eine erste
+  folgenlose Rückfrage zunächst den gesamten Wechsel; erst danach folgen die
+  einzelnen Speicherdialoge.
+
+### Behoben
+
+- Willkommen kann weiterhin neben neuen, unbenannten Entwürfen stehen, aber
+  nicht mehr neben einer gespeicherten Datei oder einem geöffneten Ordner.
+  Datei- und Projektöffnungen sowie das erste Sichern schließen Willkommen
+  automatisch.
+- Eine unvollständig wiederhergestellte Sitzung kann nicht mehr einen Editor
+  ohne Tab hinterlassen. Ein verspäteter Restore verwirft dabei keine Inhalte,
+  die seit dem App-Start neu eingegeben wurden.
+
 ## [v1.46.3] — 2026-07-22
 
 ### Behoben

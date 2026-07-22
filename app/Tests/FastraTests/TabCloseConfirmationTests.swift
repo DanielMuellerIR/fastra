@@ -62,6 +62,7 @@ func close_dirtyDontSaveCloses() {
 func close_dirtySaveWritesAndCloses() throws {
     let ws = makeWorkspace()
     ws.confirmCloseHandler = { _ in .save }
+    ws.closeWindowHandler = {}
     let url = FileManager.default.temporaryDirectory
         .appendingPathComponent("fastra-close-\(UUID().uuidString).txt")
     try "alt".write(to: url, atomically: true, encoding: .utf8)
@@ -76,6 +77,20 @@ func close_dirtySaveWritesAndCloses() throws {
     #expect(ws.tabs.isEmpty)                                 // geschlossen
     let onDisk = try String(contentsOf: url, encoding: .utf8)
     #expect(onDisk == "neu gesichert")                       // vorher gesichert
+}
+
+@Test("Letzter Tab ohne Fenster-Handler fällt auf Willkommen statt Null-Tab zurück")
+func close_lastWithoutWindowHandlerReturnsToWelcome() {
+    let ws = makeWorkspace()
+    let tab = EditorTab(title: "sauber.txt", path: "/tmp", content: "x")
+    ws.tabs = [tab]
+    ws.activeTabID = tab.id
+
+    ws.closeActiveTab()
+
+    #expect(ws.tabs.count == 1)
+    #expect(ws.tabs[0].isWelcome)
+    #expect(ws.activeTabID == ws.tabs[0].id)
 }
 
 @Test("closeActiveTab nutzt denselben Rückfrage-Pfad")
