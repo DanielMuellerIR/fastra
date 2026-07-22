@@ -36,6 +36,43 @@ func usesWildcard_literalSwitch() {
     #expect(!wc("a*b", "x", literal: true).usesWildcard)
 }
 
+// MARK: - UI-Schalter-Invariante
+
+@Test("∗ wörtlich ist nur im Plain-Modus mit Stern aktiv")
+@MainActor
+func wildcardLiteralOption_activationCondition() {
+    let suite = "fastra.tests.wildcard-option.\(UUID().uuidString)"
+    let ws = Workspace(defaults: UserDefaults(suiteName: suite)!)
+
+    ws.findPattern = "a*b"
+    ws.useRegex = true
+    #expect(!ws.wildcardLiteralOptionIsEnabled)
+
+    ws.useRegex = false
+    #expect(ws.wildcardLiteralOptionIsEnabled)
+
+    ws.findPattern = "ab"
+    #expect(!ws.wildcardLiteralOptionIsEnabled)
+}
+
+@Test("∗ wörtlich wird ohne Stern und bei RegEx abgewählt")
+@MainActor
+func wildcardLiteralOption_invalidStateResetsSelection() {
+    let suite = "fastra.tests.wildcard-reset.\(UUID().uuidString)"
+    let ws = Workspace(defaults: UserDefaults(suiteName: suite)!)
+
+    ws.useRegex = false
+    ws.findPattern = "a*b"
+    ws.treatWildcardLiterally = true
+    ws.findPattern = "ab"
+    #expect(!ws.treatWildcardLiterally)
+
+    ws.findPattern = "a*b"
+    ws.treatWildcardLiterally = true
+    ws.useRegex = true
+    #expect(!ws.treatWildcardLiterally)
+}
+
 // MARK: - End-to-End über BufferSearch
 
 @Test("Kern-Fall: ring, The → The ring via *, the / The *")

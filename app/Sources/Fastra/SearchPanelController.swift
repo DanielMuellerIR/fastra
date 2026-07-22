@@ -28,13 +28,13 @@ final class SearchPanelController {
     private var windowDelegate: WindowDelegate?
 
     /// Mindesthöhe der Maske, getrennt für kompakt (Datei/Geöffnet) und
-    /// erweitert (Ordner). Werte am echten Layout abgemessen, knapp
-    /// gehalten — der Nutzer kann das Fenster jederzeit größer ziehen,
-    /// und die Größe bleibt erhalten.
+    /// erweitert (Ordner). Werte am echten zweizeiligen Optionslayout
+    /// abgemessen. Die zusätzlichen 26 pt halten die bisherige Zahl sichtbarer
+    /// Trefferzeilen ungefähr stabil; die Breite bleibt bewusst unverändert.
     /// - kompakt: ~3 Trefferzeilen sichtbar
     /// - Ordner: ~4 Trefferzeilen sichtbar
-    private let compactMinHeight: CGFloat = 424
-    private let folderMinHeight: CGFloat = 624
+    private let compactMinHeight: CGFloat = 450
+    private let folderMinHeight: CGFloat = 650
 
     /// Mindestbreite der Maske. Bei unter ~620 px wickeln Toggles wie
     /// „Groß-/Kleinschreibung" auf mehrere Zeilen um — das Layout

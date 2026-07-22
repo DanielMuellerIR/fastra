@@ -9,6 +9,19 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.46.5] — 2026-07-22
+
+### Geändert
+
+- Die Optionen in „Suchen & Ersetzen“ stehen dauerhaft in zwei Zeilen. „Nur in
+  Auswahl“ beginnt linksbündig unter „RegEx“, „∗ wörtlich“ steht daneben und
+  bleibt auch ohne Stern sichtbar.
+- „∗ wörtlich“ ist nur bei ausgeschaltetem RegEx und mindestens einem `*` im
+  Suchausdruck aktiv. Entfällt eine Voraussetzung, wird die Option abgewählt;
+  der erweiterte Tooltip erklärt die Bedingungen.
+- Die Mindesthöhe des Suchfensters wurde für das zweizeilige Layout um 26 Punkte
+  erhöht, seine Mindestbreite bleibt unverändert.
+
 ## [v1.46.4] — 2026-07-22
 
 ### Hinzugefügt

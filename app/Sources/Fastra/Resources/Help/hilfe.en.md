@@ -26,7 +26,9 @@ line**, `**` also matches **across line breaks**. Every wildcard
 automatically becomes a capture group: the pills (`$1`, `$2` …) below
 the replace field can be **clicked or dragged** into the replace field.
 Example: search `*, the`, replace `The *` turns “ring, The” into
-“The ring”. The “∗ literal” switch treats `*` as a normal character.
+“The ring”. The always-visible “∗ literal” switch treats `*` as a normal
+character. It is enabled only while regex is off and the search expression
+contains at least one `*`.
 
 **Regex:** The regex switch enables regular expressions (ICU syntax, as
 in `NSRegularExpression`). Capture groups appear as pills as well.

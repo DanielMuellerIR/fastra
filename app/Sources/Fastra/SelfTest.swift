@@ -255,6 +255,7 @@ enum SelfTest {
         case "multisearch": waitForMainWindow { runMultiWindowSearchJumpTest() }
         case "cmdw":      waitForMainWindow { openSearchThen { runCmdWTest() } }
         case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
+        case "searchoptions": waitForMainWindow { openSearchThen { runSearchOptionsTest() } }
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
         case "tabclosehit": waitForMainWindow { runTabCloseHitTest() }
         case "tabcompare": waitForMainWindow { runTabComparisonTest() }
@@ -388,7 +389,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, cmdw, fields, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -1450,6 +1451,78 @@ enum SelfTest {
                 }
             }
             finish(true, "\(fields.count) editierbare Felder, alle nehmen Eingaben an")
+        }
+    }
+
+    /// Prüft das zweizeilige Optionslayout im ECHTEN Suchfenster. Marker an
+    /// den linken Toggle-Kanten messen die Ausrichtung unabhängig vom Modell;
+    /// der zustandskodierte Marker belegt, dass „∗ wörtlich" sichtbar bleibt
+    /// und nach Pattern-/RegEx-Wechseln im gerenderten Baum aktualisiert wird.
+    private static func runSearchOptionsTest() {
+        testLabel = "searchoptions"
+        guard let ws = Workspace.shared,
+              let searchWindow = NSApp.windows.first(where: {
+                  $0.frameAutosaveName == SearchWindow.frameAutosaveName
+              }),
+              let root = searchWindow.contentView else {
+            finish(false, "Workspace oder Suchfenster fehlt")
+        }
+
+        ws.scope = .file
+        ws.useRegex = true
+        ws.findPattern = ""
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            guard searchWindow.contentMinSize.height >= 450 else {
+                finish(false, "effektive Mindesthöhe \(searchWindow.contentMinSize.height), "
+                    + "erwartet mindestens 450")
+            }
+            guard let first = markerView(id: "searchOptionFirst", in: root),
+                  let second = markerView(id: "searchOptionSecond", in: root),
+                  markerView(id: "wildcardLiteralOption-disabled-off", in: root) != nil else {
+                finish(false, "Optionsmarker im sternlosen RegEx-Zustand unvollständig")
+            }
+            let firstPoint = first.convert(NSPoint.zero, to: root)
+            let secondPoint = second.convert(NSPoint.zero, to: root)
+            guard abs(firstPoint.x - secondPoint.x) <= 1,
+                  abs(firstPoint.y - secondPoint.y) >= 5 else {
+                finish(false, "Optionen nicht linksbündig zweizeilig: "
+                    + "erste=\(firstPoint), zweite=\(secondPoint)")
+            }
+
+            ws.useRegex = false
+            ws.findPattern = "a*b"
+            pollSearchOptionsEnabled(ws, root: root)
+        }
+    }
+
+    private static func pollSearchOptionsEnabled(_ ws: Workspace, root: NSView,
+                                                 tick: Int = 0) {
+        if markerView(id: "wildcardLiteralOption-enabled-off", in: root) != nil {
+            ws.treatWildcardLiterally = true
+            ws.findPattern = "ab"
+            pollSearchOptionsReset(ws, root: root)
+            return
+        }
+        if tick >= 40 {
+            finish(false, "∗ wörtlich wurde mit Plain-Text-Stern nicht aktiv")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollSearchOptionsEnabled(ws, root: root, tick: tick + 1)
+        }
+    }
+
+    private static func pollSearchOptionsReset(_ ws: Workspace, root: NSView,
+                                               tick: Int = 0) {
+        if markerView(id: "wildcardLiteralOption-disabled-off", in: root) != nil,
+           !ws.treatWildcardLiterally {
+            finish(true, "Mindesthöhe ≥450; Optionen zweizeilig/linksbündig; "
+                + "∗ wörtlich dauerhaft sichtbar, zustandsabhängig aktiv und abgewählt")
+        }
+        if tick >= 40 {
+            finish(false, "∗ wörtlich blieb nach Entfernen des Sterns aktiv/gewählt")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollSearchOptionsReset(ws, root: root, tick: tick + 1)
         }
     }
 

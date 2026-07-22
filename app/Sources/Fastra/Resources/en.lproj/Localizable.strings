@@ -25,7 +25,7 @@
 "Datei öffnen…" = "Open File…";
 "Datei-Set" = "File Set";
 "Dateitypen" = "File Types";
-"Den Stern ∗ als gewöhnliches Zeichen suchen statt als Platzhalter für beliebigen Text innerhalb einer Zeile (∗∗ fängt auch über Zeilenumbrüche). Standard: aus (∗ ist Platzhalter)." = "Search for the star ∗ as a regular character instead of a wildcard for arbitrary text within one line (∗∗ also captures across line breaks). Default: off (∗ is a wildcard).";
+"Den Stern ∗ als gewöhnliches Zeichen suchen statt als Platzhalter für beliebigen Text innerhalb einer Zeile (∗∗ fängt auch über Zeilenumbrüche). Der Schalter ist nur aktiv, wenn RegEx aus ist und der Suchausdruck mindestens einen Stern ∗ enthält; andernfalls ist er ausgeschaltet." = "Search for the star ∗ as a regular character instead of a wildcard for arbitrary text within one line (∗∗ also captures across line breaks). The switch is enabled only when regex is off and the search expression contains at least one star ∗; otherwise it is switched off.";
 "Der aktive Tab ist keine Markdown-Datei." = "The active tab is not a Markdown file.";
 "Die Capture Group im markierten Bereich wieder auflösen — die Klammern verschwinden, der Inhalt bleibt." = "Remove the capture group around the selected range—the parentheses disappear while the content remains.";
 "Die Vorschau zeigt Markdown-Dateien (.md)" = "Preview Markdown files (.md)";

@@ -26,8 +26,9 @@ Text **innerhalb einer Zeile**, `**` auch **über Zeilengrenzen hinweg**.
 Jeder Platzhalter wird automatisch zu einer Capture-Gruppe: Die Pillen
 (`$1`, `$2` …) unter dem Ersetzen-Feld lassen sich **anklicken oder per
 Drag-and-drop** ins Ersetzen-Feld ziehen. Beispiel: Suchen `*, the`,
-Ersetzen `The *` macht aus „ring, The“ → „The ring“. Der Schalter
-„∗ wörtlich“ behandelt `*` als normales Zeichen.
+Ersetzen `The *` macht aus „ring, The“ → „The ring“. Der immer sichtbare
+Schalter „∗ wörtlich“ behandelt `*` als normales Zeichen. Er ist nur aktiv,
+wenn RegEx aus ist und der Suchausdruck mindestens ein `*` enthält.
 
 **RegEx:** Der RegEx-Schalter aktiviert reguläre Ausdrücke
 (ICU-Syntax, wie `NSRegularExpression`). Capture-Gruppen erscheinen

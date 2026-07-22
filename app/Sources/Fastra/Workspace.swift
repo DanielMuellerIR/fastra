@@ -428,7 +428,9 @@ final class Workspace: ObservableObject {
     /// Geordnete Vorbelegung für den nächsten Vergleichsdialog. Die Reihenfolge
     /// folgt der sichtbaren Tab-Leiste, nicht der Klickreihenfolge.
     @Published private(set) var compareDialogPrefillTabIDs: [UUID] = []
-    @Published var findPattern: String = "([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9.-]+)\\.([a-zA-Z]{2,})"
+    @Published var findPattern: String = "([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9.-]+)\\.([a-zA-Z]{2,})" {
+        didSet { disableWildcardLiteralOptionIfUnavailable() }
+    }
     @Published var replacePattern: String = "[$1](mailto:$1@$2.$3)"
     @Published var livePreview: Bool = false
     @Published var scope: SearchScope = .folder
@@ -440,15 +442,32 @@ final class Workspace: ObservableObject {
     // Beim ersten Öffnen dieses Prototyps starten wir trotzdem mit
     // RegEx=an, damit die Demo-Highlights direkt sichtbar sind —
     // sobald die echte Logik kommt, wechselt der Default auf `false`.
-    @Published var useRegex: Bool = true
+    @Published var useRegex: Bool = true {
+        didSet { disableWildcardLiteralOptionIfUnavailable() }
+    }
     @Published var caseSensitive: Bool = false
     @Published var wholeWord: Bool = false
     @Published var wrapAround: Bool = true
 
-    /// Mini-Schalter „`*` wörtlich nehmen" (Feature J). Erscheint in der Maske
-    /// nur, wenn RegEx aus ist und das Muster ein `*` enthält. Aus = `*` wirkt
-    /// als Platzhalter (Default); an = `*` wird buchstäblich gesucht.
+    /// Mini-Schalter „`*` wörtlich nehmen" (Feature J). Bleibt in der Maske
+    /// sichtbar, ist aber nur aktiv, wenn RegEx aus ist und das Muster ein `*`
+    /// enthält. Aus = `*` wirkt als Platzhalter; an = `*` wird buchstäblich
+    /// gesucht. Ungültige Zustände setzen den Wert sofort auf `false` zurück.
     @Published var treatWildcardLiterally: Bool = false
+
+    /// Gemeinsame Aktivierungsbedingung für Modell, View und Selbsttests.
+    /// Der Schalter darf nur Plain-Text-Sterne in normale Zeichen umdeuten;
+    /// im RegEx-Modus oder ohne Stern hätte sein Zustand keine sichtbare
+    /// Bedeutung und wäre beim nächsten passenden Muster überraschend.
+    var wildcardLiteralOptionIsEnabled: Bool {
+        !useRegex && WildcardPattern.containsWildcard(findPattern)
+    }
+
+    private func disableWildcardLiteralOptionIfUnavailable() {
+        if !wildcardLiteralOptionIsEnabled && treatWildcardLiterally {
+            treatWildcardLiterally = false
+        }
+    }
 
     // MARK: - „Nur in Auswahl" (BBEdit „Selected Text Only", K3)
     //

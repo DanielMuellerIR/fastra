@@ -611,9 +611,9 @@ struct FloatingSearchDialog: View {
 
     // MARK: - Such-Optionen-Toggle-Zeile (BBEdit-Stil)
     //
-    // Vier deutsch beschriftete Toggles, jeder mit Tooltip-Erklärung.
-    // Reihenfolge bewusst: RegEx als Master-Schalter ganz links, dann
-    // die Modifier in der Reihenfolge, in der man sie typischerweise braucht.
+    // Zwei feste Zeilen mit deutsch beschrifteten Toggles. RegEx bleibt als
+    // Master-Schalter links oben; die kontextnäheren Optionen stehen links
+    // unten auf derselben Fluchtlinie.
 
     private var optionsRow: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -630,6 +630,10 @@ struct FloatingSearchDialog: View {
                     .fastraFont(.small)
                     .fixedSize(horizontal: true, vertical: false)
                     .help("Suchausdruck als regulären Ausdruck behandeln. Aus = wörtliche Suche; Sonderzeichen wie . oder ? werden buchstäblich gesucht.")
+                    .background(alignment: .leading) {
+                        SelfTestMarker(id: "searchOptionFirst")
+                            .frame(width: 0, height: 0)
+                    }
 
                 // „Groß = klein" ist die Kompaktform. Achtung: Semantik ist
                 // gegenüber `caseSensitive` invertiert (Toggle AN heißt:
@@ -655,9 +659,13 @@ struct FloatingSearchDialog: View {
                     .fixedSize(horizontal: true, vertical: false)
                     .help("Nach dem letzten Treffer geht die Suche oben wieder von vorn los. Aus = die Suche hält am Dateiende an.")
 
-                // „Nur in Auswahl" (K3, BBEdit „Selected Text Only") — nur in den
-                // Buffer-Scopes sinnvoll (im Ordner-Scope gibt es keine Editor-
-                // Selektion). Nur aktivierbar, wenn gerade Text selektiert ist.
+                Spacer()
+            }
+
+            HStack(spacing: 14) {
+                // „Nur in Auswahl" (K3, BBEdit „Selected Text Only") — nur im
+                // Datei-Scope sinnvoll. Die feste zweite Zeile beginnt exakt
+                // unter RegEx, damit der Dialog beim Tippen nicht springt.
                 if workspace.scope == .file {
                     Toggle("Nur in Auswahl", isOn: Binding(
                         get: { workspace.searchInSelectionOnly },
@@ -668,33 +676,29 @@ struct FloatingSearchDialog: View {
                         .fixedSize(horizontal: true, vertical: false)
                         .disabled(workspace.selectionRange == nil && !workspace.searchInSelectionOnly)
                         .help("Suchen und Ersetzen nur innerhalb des aktuell im Editor markierten Texts. Aktivierbar, sobald etwas selektiert ist; die Auswahl wird beim Einschalten eingefroren.")
+                        .background(alignment: .leading) {
+                            SelfTestMarker(id: "searchOptionSecond")
+                                .frame(width: 0, height: 0)
+                        }
                 }
+
+                Toggle("∗ wörtlich", isOn: $workspace.treatWildcardLiterally)
+                    .toggleStyle(.checkbox)
+                    .fastraFont(.small)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .disabled(!workspace.wildcardLiteralOptionIsEnabled)
+                    .help("Den Stern ∗ als gewöhnliches Zeichen suchen statt als Platzhalter für beliebigen Text innerhalb einer Zeile (∗∗ fängt auch über Zeilenumbrüche). Der Schalter ist nur aktiv, wenn RegEx aus ist und der Suchausdruck mindestens einen Stern ∗ enthält; andernfalls ist er ausgeschaltet.")
+                    .background(SelfTestMarker(
+                        id: "wildcardLiteralOption-"
+                            + (workspace.wildcardLiteralOptionIsEnabled ? "enabled" : "disabled")
+                            + (workspace.treatWildcardLiterally ? "-on" : "-off")
+                    ).frame(width: 0, height: 0))
 
                 Spacer()
             }
-
-            // Der kontextuelle Schalter passte zusammen mit „Nur in Auswahl"
-            // nicht mehr in die feste 640-Pixel-Mindestbreite der Suchmaske:
-            // SwiftUI hielt dank `fixedSize` zwar alle Labels einzeilig, schob
-            // „∗ wörtlich" dadurch aber rechts aus dem sichtbaren Fenster.
-            // Eine eigene, am Eingabefeld ausgerichtete zweite Zeile hält den
-            // seltenen Schalter vollständig sichtbar und lässt die normale
-            // Optionszeile unverändert kompakt.
-            if !workspace.useRegex && WildcardPattern.containsWildcard(workspace.findPattern) {
-                HStack {
-                    Toggle("∗ wörtlich", isOn: $workspace.treatWildcardLiterally)
-                        .toggleStyle(.checkbox)
-                        .fastraFont(.small)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .help("Den Stern ∗ als gewöhnliches Zeichen suchen statt als Platzhalter für beliebigen Text innerhalb einer Zeile (∗∗ fängt auch über Zeilenumbrüche). Standard: aus (∗ ist Platzhalter).")
-
-                    Spacer()
-                }
-                // 80 px Labelbreite + 14 px Abstand der ersten Zeile. So
-                // beginnt der Schalter exakt dort, wo auch die Suchfelder und
-                // die übrigen Optionen beginnen.
-                .padding(.leading, 94)
-            }
+            // 80 px Labelbreite + 14 px Abstand der ersten Zeile. Der
+            // skalierte Anteil folgt dem Optionen-Label auch bei UI-Zoom.
+            .padding(.leading, 80 * uiScale + 14)
         }
     }
 
