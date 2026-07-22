@@ -4,8 +4,7 @@
 //
 // Was NICHT getestet wird:
 //   - Das echte md-clip (externes CLI, nicht in der Testumgebung verfügbar)
-//   - NSAlert-Anzeige (AppKit-UI, nicht unit-testbar)
-//   - insertText-Logik (benötigt First Responder in einem echten Fenster)
+//   - Modale NSAlert-Interaktion
 //
 // Was getestet wird:
 //   - findMdClip: Pfad-Suche mit und ohne x-Bit (Temp-Dateien im /tmp)
@@ -13,10 +12,12 @@
 //     die GitHub-Release-URL
 //   - clipboardHasFormattedContent: mit privatem Test-Pasteboard, das explizit
 //     befüllt wird (HTML vs. nur-plain)
+//   - Ziel-Lease inklusive explizitem Kontextmenü-Editor
 //   - Prozess-Pipes: großer Output, geerbter stderr-Descriptor und Timeout
 
 import Testing
 import AppKit
+import CodeEditTextView
 import Foundation
 @testable import Fastra
 
@@ -109,6 +110,7 @@ func userMessage_neverEmpty() {
     let allCases: [SmartPasteError] = [
         .mdClipNotInstalled,
         .noFormattedContent,
+        .targetChanged,
         .conversionFailed("Testdetail"),
         .timeout
     ]
@@ -158,6 +160,112 @@ func clipboardHasFormattedContent_plainOnly() {
 
     #expect(SmartPaste.clipboardHasFormattedContent(pb) == false)
     pb.releaseGlobally()
+}
+
+// MARK: - Ziel-Lease
+
+private final class SmartPasteLeaseStub: SmartPasteInsertionLease {
+    var isValid: Bool
+    private(set) var inserted: [String] = []
+
+    init(isValid: Bool) { self.isValid = isValid }
+
+    func insertIfUnchanged(_ text: String) -> Bool {
+        guard isValid else { return false }
+        inserted.append(text)
+        return true
+    }
+}
+
+@Test("Smart-Paste-Ziel bindet Workspace, Tab, Inhalt, Fenster, Editor und Auswahl")
+func targetStateRejectsEveryRelevantChange() {
+    let workspaceA = NSObject()
+    let workspaceB = NSObject()
+    let windowA = NSObject()
+    let windowB = NSObject()
+    let editorA = NSObject()
+    let editorB = NSObject()
+    let responderA = NSObject()
+    let responderB = NSObject()
+    let tabA = UUID()
+    let tabB = UUID()
+    func state(workspace: NSObject = workspaceA, tab: UUID = tabA,
+               content: UInt64 = 7, selectionRevision: Int = 9,
+               window: NSObject = windowA, editor: NSObject = editorA,
+               focusedWindow: NSObject? = windowA,
+               responder: NSObject? = responderA,
+               range: NSRange = NSRange(location: 3, length: 2))
+    -> SmartPaste.TargetState {
+        SmartPaste.TargetState(
+            workspaceID: ObjectIdentifier(workspace), tabID: tab,
+            contentRevision: content, selectionRevision: selectionRevision,
+            windowID: ObjectIdentifier(window), editorID: ObjectIdentifier(editor),
+            focusedWindowID: focusedWindow.map(ObjectIdentifier.init),
+            firstResponderID: responder.map(ObjectIdentifier.init),
+            selectedRange: range)
+    }
+    let initial = state()
+    #expect(SmartPaste.targetIsUnchanged(initial, state()))
+    #expect(!SmartPaste.targetIsUnchanged(initial, state(workspace: workspaceB)))
+    #expect(!SmartPaste.targetIsUnchanged(initial, state(tab: tabB)))
+    #expect(!SmartPaste.targetIsUnchanged(initial, state(content: 8)))
+    #expect(!SmartPaste.targetIsUnchanged(initial, state(selectionRevision: 10)))
+    #expect(!SmartPaste.targetIsUnchanged(initial, state(window: windowB)))
+    #expect(!SmartPaste.targetIsUnchanged(initial, state(editor: editorB)))
+    #expect(!SmartPaste.targetIsUnchanged(
+        initial, state(focusedWindow: windowB)))
+    #expect(!SmartPaste.targetIsUnchanged(
+        initial, state(responder: responderB)))
+    #expect(!SmartPaste.targetIsUnchanged(
+        initial, state(range: NSRange(location: 4, length: 2))))
+}
+
+@MainActor
+@Test("Kontext-Smart-Paste bindet die angeklickte TextView ohne First Responder")
+func contextLeaseCapturesExplicitEditor() throws {
+    let defaults = UserDefaults(suiteName: "smart-paste-context-\(UUID().uuidString)")!
+    let workspace = Workspace(defaults: defaults)
+    let textView = CodeEditTextView.TextView(string: "Anfang Ende")
+    textView.selectionManager.setSelectedRange(NSRange(location: 7, length: 4))
+    let controller = NSViewController()
+    controller.view = textView
+    let window = NSWindow(contentViewController: controller)
+    WorkspaceWindowRegistry.register(workspace, for: window)
+    defer {
+        WorkspaceWindowRegistry.unregister(window)
+        window.close()
+    }
+
+    #expect(window.firstResponder !== textView)
+    let lease = try #require(SmartPaste.TargetLease.capture(editor: textView))
+    #expect(lease.insertIfUnchanged("Ziel"))
+    #expect(textView.string == "Anfang Ziel")
+}
+
+@Test("Smart-Paste fügt nach Zielwechsel nichts in das neue Ziel ein")
+func finishConversionAbortsChangedTarget() {
+    let lease = SmartPasteLeaseStub(isValid: false)
+    var reported: SmartPasteError?
+
+    SmartPaste.finishConversion(.success("# Markdown"), lease: lease) {
+        reported = $0
+    }
+
+    #expect(lease.inserted.isEmpty)
+    #expect(reported == .targetChanged)
+}
+
+@Test("Smart-Paste fügt bei unverändertem Lease genau in das Startziel ein")
+func finishConversionUsesCapturedTarget() {
+    let lease = SmartPasteLeaseStub(isValid: true)
+    var reported: SmartPasteError?
+
+    SmartPaste.finishConversion(.success("# Markdown"), lease: lease) {
+        reported = $0
+    }
+
+    #expect(lease.inserted == ["# Markdown"])
+    #expect(reported == nil)
 }
 
 // MARK: - markdownFromClipboard Prozess-Lebenszyklus

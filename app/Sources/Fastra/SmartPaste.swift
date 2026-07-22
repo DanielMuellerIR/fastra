@@ -18,6 +18,7 @@
 //   Starte sie aus einer `Task.detached` oder `DispatchQueue.global`.
 
 import AppKit
+import CodeEditTextView
 import Darwin
 import Foundation
 
@@ -143,6 +144,9 @@ enum SmartPasteError: Error, Equatable {
     /// md-clip lief durch, lieferte aber keinen verwertbaren Output.
     /// Der assoziierte String enthält technische Details (z.B. stderr-Text).
     case conversionFailed(String)
+    /// Fenster, Tab, Editor, Inhalt oder Auswahl haben sich während der
+    /// Konvertierung geändert. In diesem Fall wird bewusst nichts eingefügt.
+    case targetChanged
     /// md-clip hat innerhalb des Timeouts (10 s) keine Antwort geliefert.
     case timeout
 
@@ -161,10 +165,16 @@ enum SmartPasteError: Error, Equatable {
             return L10n.string("Das Clipboard enthält keinen formatierten Inhalt (HTML oder RTF). Smart-Paste benötigt kopierten Text aus einem Browser oder einer Office-Anwendung.")
         case .conversionFailed(let detail):
             return L10n.format("Die Markdown-Konvertierung ist fehlgeschlagen.\n\nDetails: %@", detail)
+        case .targetChanged:
+            return L10n.string("Das ursprüngliche Einfügeziel hat sich während der Konvertierung geändert. Es wurde nichts eingefügt.")
         case .timeout:
             return L10n.string("Die Konvertierung hat zu lange gedauert (Zeitlimit: 10 Sekunden). Bitte versuche es erneut oder verwende kleinere Inhalte.")
         }
     }
+}
+
+protocol SmartPasteInsertionLease: AnyObject {
+    func insertIfUnchanged(_ text: String) -> Bool
 }
 
 // MARK: - Hauptlogik
@@ -174,6 +184,97 @@ enum SmartPasteError: Error, Equatable {
 /// Alle Methoden sind statisch — kein Zustand, alles rein funktional und
 /// damit direkt unit-testbar.
 enum SmartPaste {
+
+    /// Vollständige Identität des Einfügeziels. Der reine Vergleich ist
+    /// separat sichtbar, damit Wechsel von Fenster, Editor, Tab, Inhalt oder
+    /// Auswahl ohne AppKit-Fenstertest reproduzierbar abgesichert werden.
+    struct TargetState: Equatable {
+        let workspaceID: ObjectIdentifier
+        let tabID: UUID
+        let contentRevision: UInt64
+        let selectionRevision: Int
+        let windowID: ObjectIdentifier
+        let editorID: ObjectIdentifier
+        let focusedWindowID: ObjectIdentifier?
+        let firstResponderID: ObjectIdentifier?
+        let selectedRange: NSRange
+    }
+
+    final class TargetLease: SmartPasteInsertionLease {
+        private weak var workspace: Workspace?
+        private weak var window: NSWindow?
+        private weak var editor: TextView?
+        let initialState: TargetState
+
+        private init(workspace: Workspace, window: NSWindow,
+                     editor: TextView, state: TargetState) {
+            self.workspace = workspace
+            self.window = window
+            self.editor = editor
+            initialState = state
+        }
+
+        static func capture(workspace: Workspace) -> TargetLease? {
+            guard let tab = workspace.activeTab,
+                  let window = NSApp.keyWindow,
+                  let editor = window.firstResponder as? TextView else { return nil }
+            return capture(workspace: workspace, tab: tab,
+                           window: window, editor: editor)
+        }
+
+        /// Der Kontextmenü-Pfad bindet die tatsächlich angeklickte TextView.
+        /// Ein Rechtsklick macht sie nicht auf allen macOS-Versionen zum First
+        /// Responder; ein globaler Lookup würde daher das falsche Ziel wählen.
+        static func capture(editor: TextView) -> TargetLease? {
+            guard let window = editor.window,
+                  let workspace = WorkspaceWindowRegistry.workspace(for: window),
+                  let tab = workspace.activeTab else { return nil }
+            return capture(workspace: workspace, tab: tab,
+                           window: window, editor: editor)
+        }
+
+        private static func capture(workspace: Workspace, tab: EditorTab,
+                                    window: NSWindow,
+                                    editor: TextView) -> TargetLease {
+            let state = TargetState(
+                workspaceID: ObjectIdentifier(workspace), tabID: tab.id,
+                contentRevision: tab.contentRevision,
+                selectionRevision: workspace.selectionRevision,
+                windowID: ObjectIdentifier(window),
+                editorID: ObjectIdentifier(editor),
+                focusedWindowID: NSApp.keyWindow.map(ObjectIdentifier.init),
+                firstResponderID: NSApp.keyWindow?.firstResponder.map(ObjectIdentifier.init),
+                selectedRange: editor.selectedRange())
+            return TargetLease(workspace: workspace, window: window,
+                               editor: editor, state: state)
+        }
+
+        func insertIfUnchanged(_ text: String) -> Bool {
+            guard let workspace, let window, let editor,
+                  editor.window === window,
+                  WorkspaceWindowRegistry.workspace(for: window) === workspace,
+                  let tab = workspace.activeTab else { return false }
+            let current = TargetState(
+                workspaceID: ObjectIdentifier(workspace), tabID: tab.id,
+                contentRevision: tab.contentRevision,
+                selectionRevision: workspace.selectionRevision,
+                windowID: ObjectIdentifier(window),
+                editorID: ObjectIdentifier(editor),
+                focusedWindowID: NSApp.keyWindow.map(ObjectIdentifier.init),
+                firstResponderID: NSApp.keyWindow?.firstResponder.map(ObjectIdentifier.init),
+                selectedRange: editor.selectedRange())
+            guard targetIsUnchanged(initialState, current) else { return false }
+            // Nicht NSNotFound/current verwenden: Die validierte ursprüngliche
+            // Auswahl ist selbst Teil des Leases und wird explizit ersetzt.
+            editor.insertText(text, replacementRange: initialState.selectedRange)
+            return true
+        }
+    }
+
+    static func targetIsUnchanged(_ initial: TargetState,
+                                  _ current: TargetState) -> Bool {
+        initial == current
+    }
 
     // MARK: md-clip suchen
 
@@ -351,22 +452,31 @@ enum SmartPaste {
     ///   3. Konvertierung via md-clip.
     ///      → Markdown an Cursor-Position einfügen.
     ///
-    /// Einfüge-Strategie (Cursor-genaues Einfügen im CESE-Editor):
-    ///   Wir versuchen zuerst `NSTextInputClient.insertText(_:replacementRange:)`
-    ///   über den First Responder des Key-Fensters — das ist das gleiche
-    ///   Protokoll, das das Betriebssystem beim normalen Tippen nutzt, und
-    ///   respektiert die aktuelle Cursor-Position.
-    ///   Fallback: `workspace.activeTabContent.wrappedValue += markdown` —
-    ///   hängt den Text ans Datei-Ende an. Das ist weniger elegant, aber
-    ///   immer verfügbar und nie fehlerhaft.
-    ///
-    /// ACHTUNG: Diese Funktion ruft `markdownFromClipboard` intern auf und
-    /// muss daher ebenfalls AUSSERHALB des Main-Threads gestartet werden.
-    /// UI-Operationen (NSAlert, Tab-Inhalt-Update) werden per
-    /// `DispatchQueue.main.async` zurück auf den Hauptthread gebracht.
+    /// Fenster, Workspace, Tab, Editor, Inhaltsrevision und Auswahl werden
+    /// synchron beim Start eingefroren. Nur die Konvertierung läuft danach im
+    /// Hintergrund. Weicht bei Abschluss ein Bestandteil ab, wird kontrolliert
+    /// abgebrochen; es gibt keinen Fallback in das dann aktive Dokument.
     ///
     /// - Parameter workspace: Der aktive `Workspace` der App.
     static func performSmartPaste(into workspace: Workspace) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { performSmartPaste(into: workspace) }
+            return
+        }
+        guard let lease = TargetLease.capture(workspace: workspace) else {
+            NSSound.beep()
+            return
+        }
+        performSmartPaste(using: lease)
+    }
+
+    /// Kontextmenüs übergeben einen bereits an die angeklickte TextView
+    /// gebundenen Lease; die weitere Pipeline ist für beide Einstiege gleich.
+    static func performSmartPaste(using lease: TargetLease) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { performSmartPaste(using: lease) }
+            return
+        }
 
         // Schritt 1: formatierten Inhalt prüfen.
         guard clipboardHasFormattedContent() else {
@@ -375,68 +485,45 @@ enum SmartPaste {
             // zurück, wenn auch kein Plain-Text vorhanden ist.
             guard let plainText = NSPasteboard.general.string(forType: .string),
                   !plainText.isEmpty else { return }
-            DispatchQueue.main.async {
-                insertText(plainText, into: workspace)
+            if !lease.insertIfUnchanged(plainText) {
+                showErrorAlert(.targetChanged)
             }
             return
         }
 
         // Schritt 2: md-clip suchen.
         guard let mdClipURL = findMdClip() else {
-            DispatchQueue.main.async {
-                showErrorAlert(SmartPasteError.mdClipNotInstalled)
-            }
+            showErrorAlert(SmartPasteError.mdClipNotInstalled)
             return
         }
 
-        // Schritt 3: Konvertierung auf Hintergrund-Thread (blockierend).
-        // Wenn performSmartPaste bereits auf einem Hintergrund-Thread läuft,
-        // können wir markdownFromClipboard direkt aufrufen. Wenn nicht
-        // (z.B. aus einem Menü-Handler auf dem Main-Thread), muss der
-        // Aufrufer eine Task.detached oder DispatchQueue.global verwenden.
-        let result = markdownFromClipboard(mdClipURL: mdClipURL)
-        DispatchQueue.main.async {
-            switch result {
-            case .success(let markdown):
-                insertText(markdown, into: workspace)
-            case .failure(let error):
-                showErrorAlert(error)
+        // Nur die blockierende Konvertierung geht in den Worker. Der Lease
+        // bleibt an das Ziel des Starts gebunden; der spätere globale First
+        // Responder wird nicht mehr als Einfügeziel verwendet.
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = markdownFromClipboard(mdClipURL: mdClipURL)
+            DispatchQueue.main.async {
+                finishConversion(result, lease: lease,
+                                 errorHandler: showErrorAlert)
             }
         }
     }
 
     // MARK: - Private Helfer
 
-    /// Fügt `text` an der aktuellen Cursor-Position des Editors ein.
-    ///
-    /// Strategie 1 (bevorzugt): `NSTextInputClient.insertText(_:replacementRange:)`.
-    ///   Der CESE-Editor implementiert `NSTextInputClient` über seine
-    ///   `NSTextView`-Unterklasse `CodeEditTextView.TextView`. Das Protokoll
-    ///   ist dasselbe, das das Betriebssystem beim Tippen nutzt — es
-    ///   respektiert Cursor-Position und bestehende Selektion.
-    ///   `NSRange(location: NSNotFound, length: 0)` bedeutet „aktuelle
-    ///   Cursor-Position, keine Ersetzung" (Standard-Konvention).
-    ///
-    /// Strategie 2 (Fallback): `workspace.activeTabContent.wrappedValue += text`.
-    ///   Hängt den Text ans Ende des aktiven Tabs an. Immer verfügbar,
-    ///   aber ignoriert die Cursor-Position.
-    ///
-    /// Muss auf dem Main-Thread aufgerufen werden.
-    private static func insertText(_ text: String, into workspace: Workspace) {
-        // Versuche First-Responder-Einfügen via NSTextInputClient.
-        if let firstResponder = NSApp.keyWindow?.firstResponder,
-           let inputClient = firstResponder as? NSTextInputClient {
-            // replacementRange: NSNotFound = aktuelle Cursor-Position.
-            // `insertText` akzeptiert `Any` (NSString oder NSAttributedString).
-            inputClient.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
-            return
+    static func finishConversion(
+        _ result: Result<String, SmartPasteError>,
+        lease: SmartPasteInsertionLease,
+        errorHandler: (SmartPasteError) -> Void
+    ) {
+        switch result {
+        case .success(let markdown):
+            if !lease.insertIfUnchanged(markdown) {
+                errorHandler(.targetChanged)
+            }
+        case .failure(let error):
+            errorHandler(error)
         }
-
-        // Fallback: ans Datei-Ende anhängen.
-        // Nachteil: ignoriert die Cursor-Position. In der Praxis tritt dieser
-        // Pfad auf, wenn kein Editor-Fenster im Vordergrund ist (unwahrscheinlich,
-        // aber defensiv abgesichert).
-        workspace.activeTabContent.wrappedValue += text
     }
 
     /// Zeigt einen modalen NSAlert mit der `userMessage` des Fehlers.

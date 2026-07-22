@@ -109,14 +109,11 @@ struct FastraApp: App {
 
             // Smart-Paste (Alleinstellung, ROADMAP H): formatierter
             // Clipboard-Inhalt wird via md-clip als Markdown eingefügt.
-            // Synchron-blockierende Konvertierung → Hintergrund-Queue;
-            // UI-Arbeit dispatcht performSmartPaste intern auf Main.
+            // Das Ziel wird auf dem Main-Thread eingefroren; nur die langsame
+            // Konvertierung dispatcht SmartPaste selbst in den Hintergrund.
             CommandGroup(after: .pasteboard) {
                 Button("Formatiert als Markdown einfügen") {
-                    let target = commandWorkspace
-                    DispatchQueue.global(qos: .userInitiated).async {
-                        SmartPaste.performSmartPaste(into: target)
-                    }
+                    SmartPaste.performSmartPaste(into: commandWorkspace)
                 }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
 

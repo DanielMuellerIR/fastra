@@ -438,13 +438,14 @@ final class EditorContextMenu: NSObject {
     }
 
     @objc private func performSmartPaste(_ sender: Any?) {
-        guard let workspace = Workspace.shared else { NSSound.beep(); return }
-        // performSmartPaste blockiert synchron (md-clip-Prozess, bis 10 s
-        // Timeout) — deshalb NICHT auf dem Main-Thread starten. UI-Arbeit
-        // (Alert, Einfügen) dispatcht die Funktion intern selbst zurück.
-        DispatchQueue.global(qos: .userInitiated).async {
-            SmartPaste.performSmartPaste(into: workspace)
+        guard let textView = targetTextView,
+              let lease = SmartPaste.TargetLease.capture(editor: textView) else {
+            NSSound.beep()
+            return
         }
+        // Das Ziel wird sofort auf dem Main-Thread gebunden. Nur die
+        // blockierende Konvertierung wechselt intern in einen Worker.
+        SmartPaste.performSmartPaste(using: lease)
     }
 
     /// Rechtsklick-Handler für alle Text-Operationen (Tag = TextOpKind).
