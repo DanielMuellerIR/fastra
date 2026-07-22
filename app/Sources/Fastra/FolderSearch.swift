@@ -27,8 +27,6 @@ enum FolderSearch {
         case undecodable
         /// Datei nicht lesbar (Rechte, kaputter Symlink etc.).
         case unreadable
-        /// Wurde durch den `FileTypeFilter` ausgeschlossen.
-        case excludedByFilter
     }
 
     /// Ein einzelnes Such-Ergebnis pro Datei. Treffer kommen direkt aus
@@ -45,12 +43,19 @@ enum FolderSearch {
         /// Für die Gesamt-Zählung verwenden, NICHT `matches.count`.
         let totalMatches: Int
         let skipped: SkipReason?
+        /// Exakte Dateibasis dieser sichtbaren Treffer. Apply akzeptiert nur
+        /// dieselbe Basis und verlangt sonst eine neue Suche/Vorschau.
+        let snapshot: FileSnapshot?
+        /// Such-/Ersetzungssemantik, unter der diese Treffer entstanden sind.
+        /// Sie schützt auch das kurze Debounce-Fenster nach einer UI-Änderung.
+        let searchOptions: SearchOptions
 
         var hasMatches: Bool { skipped == nil && !matches.isEmpty }
 
         static func == (lhs: PerFileResult, rhs: PerFileResult) -> Bool {
             lhs.url == rhs.url && lhs.matches == rhs.matches
                 && lhs.totalMatches == rhs.totalMatches && lhs.skipped == rhs.skipped
+                && lhs.snapshot == rhs.snapshot && lhs.searchOptions == rhs.searchOptions
         }
     }
 
@@ -135,8 +140,9 @@ enum FolderSearch {
                      excludedPatterns: [String] = [],
                      relativeTo projectRoot: URL? = nil,
                      maxResultsPerFile: Int = 5000,
-                     maxTotalMatches: Int = 10_000) -> Result {
-        guard !options.isEmpty else { return .empty }
+                     maxTotalMatches: Int = 10_000,
+                     shouldCancel: @escaping @Sendable () -> Bool = { false }) -> Result {
+        guard !options.isEmpty, !shouldCancel() else { return .empty }
 
         // Pattern einmal kompilieren — wenn syntaktisch ungültig, bricht
         // das Ergebnis sauber mit einer Meldung ab.
@@ -159,6 +165,7 @@ enum FolderSearch {
 
         outerLoop:
         for folder in folders {
+            if shouldCancel() { return .empty }
             let fm = FileManager.default
             var rootIsDirectory: ObjCBool = false
             guard fm.fileExists(atPath: folder.path, isDirectory: &rootIsDirectory) else {
@@ -172,7 +179,9 @@ enum FolderSearch {
                       seenFiles.insert(folder.canonicalFileURL.path).inserted else { continue }
                 let result = searchOneFile(at: folder, options: options,
                                            maxMatches: min(maxResultsPerFile,
-                                                           maxTotalMatches - totalSoFar))
+                                                           maxTotalMatches - totalSoFar),
+                                           shouldCancel: shouldCancel)
+                if shouldCancel() { return .empty }
                 if result.skipped != nil || !result.matches.isEmpty { perFile.append(result) }
                 totalSoFar += result.totalMatches
                 if totalSoFar >= maxTotalMatches { capped = true; break outerLoop }
@@ -181,12 +190,34 @@ enum FolderSearch {
             // `rg --files` ist hier der schnelle Standardpfad. Er liefert
             // nullgetrennte Dateinamen und respektiert dank `--no-ignore`
             // bewusst NICHT .gitignore — exakt wie die frühere Rekursion.
-            // Startet das gebündelte Werkzeug nicht (defekte App-Ressource,
-            // ungewohnte Sandbox), bleibt der alte FileManager-Pfad als
-            // vollständiger, sicherer Fallback erhalten.
-            let urls = (try? RipgrepFileEnumerator.files(in: folder))
-                ?? legacyFileURLs(in: folder)
+            // Nur ein echter Start-/Ressourcenfehler darf auf FileManager
+            // zurückfallen. Timeout, Abbruch oder gekürzte Ausgabe sind KEINE
+            // vollständige Dateiliste und werden deshalb sichtbar gemeldet.
+            let urls: [URL]
+            do {
+                urls = try RipgrepFileEnumerator.files(in: folder,
+                                                       shouldCancel: shouldCancel)
+            } catch RipgrepFileEnumerator.Failure.unavailable {
+                do {
+                    urls = try legacyFileURLs(in: folder,
+                                              shouldCancel: shouldCancel)
+                } catch {
+                    return .empty
+                }
+            } catch RipgrepFileEnumerator.Failure.cancelled {
+                return .empty
+            } catch let failure as RipgrepFileEnumerator.Failure {
+                return failedEnumerationResult(failure)
+            } catch {
+                return Result(
+                    perFile: [],
+                    invalidPatternMessage: L10n.format(
+                        "Die Ordnersuche konnte die Dateiliste nicht vollständig lesen: %@",
+                        error.localizedDescription),
+                    wasCapped: false)
+            }
             for url in urls {
+                if shouldCancel() { return .empty }
                 // `rg --files` kennt macOS-Pakete nicht. Ohne diesen Check
                 // würden etwa `.app`- oder `.bundle`-Inhalte anders als im
                 // bisherigen FileManager-Pfad durchsuchbar.
@@ -212,7 +243,9 @@ enum FolderSearch {
                 let remaining = maxTotalMatches - totalSoFar
                 let effectivePerFile = min(maxResultsPerFile, remaining)
                 let result = searchOneFile(at: url, options: options,
-                                           maxMatches: effectivePerFile)
+                                           maxMatches: effectivePerFile,
+                                           shouldCancel: shouldCancel)
+                if shouldCancel() { return .empty }
 
                 // Nur Dateien aufnehmen, die entweder Treffer ODER einen
                 // ernsthaften Skip-Grund (binary/undecodable/unreadable)
@@ -244,17 +277,46 @@ enum FolderSearch {
     /// Der bewusst schmale Fallback für Umgebungen, in denen der mitgelieferte
     /// ripgrep-Prozess nicht starten kann. Er bildet das frühere Verhalten
     /// nach: versteckte Dateien und Paket-Inhalte bleiben außen vor.
-    private static func legacyFileURLs(in folder: URL) -> [URL] {
+    private static func legacyFileURLs(
+        in folder: URL,
+        shouldCancel: @escaping @Sendable () -> Bool
+    ) throws -> [URL] {
         guard let enumerator = FileManager.default.enumerator(
             at: folder,
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else { return [] }
-        return enumerator.compactMap { item in
-            guard let url = item as? URL,
-                  (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { return nil }
-            return url
+        var urls: [URL] = []
+        for case let url as URL in enumerator {
+            if shouldCancel() { throw RipgrepFileEnumerator.Failure.cancelled }
+            if (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true {
+                urls.append(url)
+            }
         }
+        return urls
+    }
+
+    private static func failedEnumerationResult(
+        _ failure: RipgrepFileEnumerator.Failure
+    ) -> Result {
+        let message: String
+        switch failure {
+        case .timedOut:
+            message = L10n.string(
+                "Die Ordnersuche wurde beendet, weil ripgrep nicht rechtzeitig geantwortet hat.")
+        case .outputLimit:
+            message = L10n.string(
+                "Die Ordnersuche wurde beendet, weil die ripgrep-Dateiliste zu groß war.")
+        case .failed(let details), .captureFailed(let details):
+            let explanation = details.isEmpty
+                ? L10n.string("Unbekannter ripgrep-Fehler") : details
+            message = L10n.format(
+                "Die Ordnersuche konnte die Dateiliste nicht vollständig lesen: %@",
+                explanation)
+        case .unavailable, .cancelled:
+            return .empty
+        }
+        return Result(perFile: [], invalidPatternMessage: message, wasCapped: false)
     }
 
     private static func isInsidePackage(_ url: URL, below root: URL) -> Bool {
@@ -269,36 +331,57 @@ enum FolderSearch {
     }
 
     /// Sucht in genau einer Datei. Liest die Datei, dekodiert sie
-    /// (BOM zuerst, dann UTF-8/Latin-1/Win-1252 in dieser Reihenfolge —
-    /// identisch zu `ApplyEngine.planSingle`), und ruft `BufferSearch.find`
+    /// (BOM zuerst, dann UTF-8 beziehungsweise die gemeinsame
+    /// CP1252/Latin-1-Heuristik aus `ApplyEngine`), und ruft `BufferSearch.find`
     /// auf dem dekodierten String. Auf großen Dateien mit vielen Treffern
     /// kappt `maxMatches` die Liste, damit der UI-Speicher nicht explodiert.
     static func searchOneFile(at url: URL,
                               options: SearchOptions,
-                              maxMatches: Int = 5000) -> PerFileResult {
-        guard let data = try? Data(contentsOf: url) else {
-            return PerFileResult(url: url, matches: [], totalMatches: 0, skipped: .unreadable)
+                              maxMatches: Int = 5000,
+                              shouldCancel: () -> Bool = { false }) -> PerFileResult {
+        if shouldCancel() {
+            return PerFileResult(url: url, matches: [], totalMatches: 0,
+                                 skipped: nil, snapshot: nil,
+                                 searchOptions: options)
         }
+        guard let read = try? FileSnapshot.read(from: url) else {
+            return PerFileResult(url: url, matches: [], totalMatches: 0,
+                                 skipped: .unreadable, snapshot: nil,
+                                 searchOptions: options)
+        }
+        if shouldCancel() {
+            return PerFileResult(url: url, matches: [], totalMatches: 0,
+                                 skipped: nil, snapshot: nil,
+                                 searchOptions: options)
+        }
+        let data = read.data
         let (bom, bomEncoding) = ApplyEngine.detectBOM(in: data)
         // BOM-freie Datei mit Null-Byte → binär, übersprungen.
         if bom.isEmpty && FileScanner.isBinary(data) {
-            return PerFileResult(url: url, matches: [], totalMatches: 0, skipped: .binary)
+            return PerFileResult(url: url, matches: [], totalMatches: 0,
+                                 skipped: .binary, snapshot: read.snapshot,
+                                 searchOptions: options)
         }
         let payload = Data(data.dropFirst(bom.count))
         guard let decoded = ApplyEngine.decode(payload: payload, bomEncoding: bomEncoding) else {
-            return PerFileResult(url: url, matches: [], totalMatches: 0, skipped: .undecodable)
+            return PerFileResult(url: url, matches: [], totalMatches: 0,
+                                 skipped: .undecodable, snapshot: read.snapshot,
+                                 searchOptions: options)
         }
         // Pro-Datei-Cap direkt an find() geben — sonst griffe dort der
         // niedrigere Default-Cap und schnitte Treffer unter den vom Ordner-
         // Lauf vorgesehenen Rest-bis-Gesamtcap. `prefix` bleibt als Gürtel.
-        let search = BufferSearch.find(in: decoded.0, options: options, maxMatches: maxMatches)
+        let search = BufferSearch.find(in: decoded.0, options: options,
+                                       maxMatches: maxMatches,
+                                       shouldCancel: shouldCancel)
         let capped = Array(search.matches.prefix(maxMatches))
         // `search.totalMatches` ist die ECHTE Trefferzahl (zählt alle, auch über
         // dem Cap) — als wahren Per-Datei-Count durchreichen, damit die Gesamt-
         // Statistik bei >maxMatches-Dateien nicht untercountet. `matches`/`capped`
         // bleiben materialisiert begrenzt (UI-Speicher).
         return PerFileResult(url: url, matches: capped,
-                             totalMatches: search.totalMatches, skipped: nil)
+                             totalMatches: search.totalMatches, skipped: nil,
+                             snapshot: read.snapshot, searchOptions: options)
     }
 }
 

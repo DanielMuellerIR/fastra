@@ -86,11 +86,15 @@ enum BufferSearch {
                                 wasCapped: false, invalidPatternMessage: msg)
         }
 
+        if shouldCancel() { return .empty }
         let ns = text as NSString
         // Zeilen-Start-Offsets EINMAL einsammeln (CR/LF/CRLF-bewusst); pro
         // Treffer dann via Binärsuche die Zeilen-/Spalten-Position bestimmen.
         // So bleibt der Aufruf auch bei vielen Treffern in großen Dateien schnell.
-        let lineStarts = collectLineStarts(in: ns)
+        guard let lineStarts = collectLineStarts(in: ns,
+                                                 shouldCancel: shouldCancel) else {
+            return .empty
+        }
         // Template einmal bestimmen — im Plain-Text-Modus escapt
         // `replacementTemplate` `$`/`\`, damit sie literal eingesetzt
         // werden (gleicher Pfad wie ApplyEngine, eine Wahrheit).
@@ -108,10 +112,12 @@ enum BufferSearch {
         // `enumerateMatches` statt `matches(in:)`: erzeugt KEIN Zwischen-
         // Array über alle Treffer (das wäre bei kurzen Pattern in großen
         // Dateien selbst schon riesig) und erlaubt Abbruch via `stop`.
-        regex.enumerateMatches(in: text, options: [],
+        // `.reportProgress` sorgt auch bei riesigen Texten OHNE Treffer für
+        // regelmäßige Callbacks. Ohne diese Option könnte nur bei gefundenen
+        // Treffern abgebrochen werden und ein No-Match-Scan liefe zu Ende.
+        regex.enumerateMatches(in: text, options: [.reportProgress],
                                range: scanRange) { result, _, stop in
-            // Abbruch nur alle 16k Treffer prüfen (billig genug, selten genug).
-            if total & 0x3FFF == 0, shouldCancel() {
+            if shouldCancel() {
                 cancelled = true
                 stop.pointee = true
                 return
@@ -184,11 +190,21 @@ enum BufferSearch {
     /// liefen so tausende Editor-Zeilen in wenige „Zeilen" zusammen → falsche
     /// Zeilennummern in der Trefferliste und ein ins Leere zielender Sprung.
     static func collectLineStarts(in ns: NSString) -> [Int] {
+        collectLineStarts(in: ns, shouldCancel: { false }) ?? [0]
+    }
+
+    /// Abbrechbare Variante für die Live-Suche. Die öffentliche Hilfsfunktion
+    /// oben bleibt total, weil Cursor-/Sprungberechnungen kein Abbruchsignal
+    /// besitzen und weiterhin immer eine gültige `[0, …]`-Liste brauchen.
+    private static func collectLineStarts(in ns: NSString,
+                                          shouldCancel: () -> Bool) -> [Int]? {
         var starts: [Int] = [0]
         let length = ns.length
         starts.reserveCapacity(length / 40)  // grobe Schätzung
         var index = 0
+        var inspectedLines = 0
         while index < length {
+            if inspectedLines & 0x3FF == 0, shouldCancel() { return nil }
             var end = NSNotFound
             ns.getLineStart(nil, end: &end, contentsEnd: nil,
                             for: NSRange(location: index, length: 0))
@@ -197,6 +213,7 @@ enum BufferSearch {
             if end == NSNotFound || end <= index { break }
             if end < length { starts.append(end) }
             index = end
+            inspectedLines += 1
         }
         return starts
     }

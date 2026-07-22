@@ -1011,6 +1011,7 @@ enum GitRunner {
                                   -> DispatchTimeoutResult = { group, deadline in
                                       group.wait(timeout: deadline)
                                   },
+                              completionQueue: DispatchQueue = .main,
                               completion: @escaping (GitExecutionOutcome) -> Void)
         -> GitCancellationToken {
         let token = GitCancellationToken(
@@ -1018,7 +1019,7 @@ enum GitRunner {
         )
         DispatchQueue.global(qos: .userInitiated).async {
             guard let launcherURL = processGroupLauncherURL else {
-                DispatchQueue.main.async {
+                completionQueue.async {
                     completion(.startFailed(.launchFailed(
                         L10n.string("Der sichere Git-Prozesslauncher fehlt."))))
                 }
@@ -1045,7 +1046,7 @@ enum GitRunner {
             do {
                 try process.run()
             } catch {
-                DispatchQueue.main.async {
+                completionQueue.async {
                     completion(.startFailed(.launchFailed(error.localizedDescription)))
                 }
                 return
@@ -1063,7 +1064,7 @@ enum GitRunner {
             guard groupID != nil else {
                 process.terminate()
                 process.waitUntilExit()
-                DispatchQueue.main.async {
+                completionQueue.async {
                     completion(.startFailed(.launchFailed(
                         L10n.string("Der Git-Prozess konnte nicht sicher isoliert werden."))))
                 }
@@ -1139,7 +1140,7 @@ enum GitRunner {
                     outcome = .completed(result)
                 }
             }
-            DispatchQueue.main.async { completion(outcome) }
+            completionQueue.async { completion(outcome) }
         }
         return token
     }

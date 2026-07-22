@@ -19,11 +19,19 @@ final class SearchRunner {
     /// während des Tippens nicht zwei Suchen gleichzeitig fertig werden
     /// und die Ergebnisse durcheinanderbringen.
     private var folderTask: Task<Void, Never>?
+    /// Monotoner Lauf-Schlüssel. Er schließt das enge Race, in dem ein alter
+    /// Task direkt vor `cancel()` fertig wird und sein Main-Actor-Update erst
+    /// nach dem neuen Lauf zustellt.
+    private var folderRunID = 0
     /// Aktive Buffer-Suche (Datei-/Geöffnet-Scope). Läuft async, damit ein
     /// großer Buffer + kurzes Pattern den Main-Thread NIE blockiert; wird
     /// beim nächsten Tastendruck/Toggle abgebrochen (kein Auflaufen veralteter
     /// Läufe). Vorher lief die Buffer-Suche synchron → Beachball.
     private var bufferTask: Task<Void, Never>?
+    /// Derselbe Completion-Guard wie für Folder-Läufe. `cancel()` allein
+    /// schließt das Race zwischen letzter Abbruchprüfung und MainActor-Update
+    /// nicht; nur der aktuelle Lauf darf Treffer oder Spinner publizieren.
+    private var bufferRunID = 0
     /// Extra-Debounce-Timer NUR für die Live-Ordner-Suche. Liegt zusätzlich
     /// zum 120-ms-Pipeline-Debounce, damit die (teure) Ordner-Suche erst
     /// ~0,4 s nach dem letzten Tastendruck startet (siehe `rerun`).
@@ -80,6 +88,17 @@ final class SearchRunner {
         DispatchQueue.main.async { [weak self] in self?.rerun() }
     }
 
+    deinit {
+        folderDebounce?.cancel()
+        folderTask?.cancel()
+        bufferTask?.cancel()
+    }
+
+    static func completionBelongsToCurrentRun(_ completedRunID: Int,
+                                              currentRunID: Int) -> Bool {
+        completedRunID == currentRunID
+    }
+
     /// Entscheidet, ob ein Such-Input (Tippen, Options-Toggle) BEDINGUNGSLOS
     /// SOFORT eine Suche auslösen darf. Buffer-Scopes (Datei/Geöffnet) liegen
     /// im RAM — Live-Suche ist günstig, daher immer live. Der Ordner-Scope
@@ -126,8 +145,10 @@ final class SearchRunner {
         // Eingaben geändert haben (frischer Tastendruck → alles neu starten).
         folderTask?.cancel()
         folderTask = nil
+        folderRunID &+= 1
         bufferTask?.cancel()
         bufferTask = nil
+        bufferRunID &+= 1
         folderDebounce?.cancel()
         folderDebounce = nil
 
@@ -180,6 +201,8 @@ final class SearchRunner {
     /// riesigen Buffer (kein Beachball, kein „sucht sich tot").
     private func runBufferSearch(_ ws: Workspace) {
         bufferTask?.cancel()
+        bufferRunID &+= 1
+        let runID = bufferRunID
 
         // Folder-/Geöffnet-Reste leeren, sonst zeigt die Maske beim
         // Zurückwechseln noch alte Treffer des anderen Scopes.
@@ -212,15 +235,18 @@ final class SearchRunner {
 
         // Spinner an; eigentliche Suche im Hintergrund.
         ws.bufferSearching = true
-        bufferTask = Task.detached(priority: .userInitiated) { [weak ws] in
+        bufferTask = Task.detached(priority: .userInitiated) { [weak self, weak ws] in
             // `Task.isCancelled` deckt beides ab: der nächste Tastendruck
             // cancelt diesen Task → find() bricht mitten im Scan ab.
             let result = BufferSearch.find(in: text, options: options,
                                            searchRange: searchRange,
                                            shouldCancel: { Task.isCancelled })
             if Task.isCancelled { return }
-            await MainActor.run { [ws] in
-                guard let ws else { return }
+            await MainActor.run { [weak self, weak ws] in
+                guard let self,
+                      Self.completionBelongsToCurrentRun(
+                        runID, currentRunID: self.bufferRunID),
+                      let ws else { return }
                 ws.bufferMatches = result.matches
                 ws.bufferTotalMatches = result.totalMatches
                 ws.bufferResultsWereCapped = result.wasCapped
@@ -240,6 +266,8 @@ final class SearchRunner {
     /// die eigentliche Suche läuft detached.
     private func runOpenSearch(_ ws: Workspace) {
         bufferTask?.cancel()
+        bufferRunID &+= 1
+        let runID = bufferRunID
 
         // Reste der anderen Scopes leeren (gleiches Muster wie Buffer-Pfad).
         ws.folderResults = []
@@ -269,12 +297,15 @@ final class SearchRunner {
         }
 
         ws.bufferSearching = true
-        bufferTask = Task.detached(priority: .userInitiated) { [weak ws] in
+        bufferTask = Task.detached(priority: .userInitiated) { [weak self, weak ws] in
             let result = OpenTabsSearch.find(tabs: inputs, options: options,
                                              shouldCancel: { Task.isCancelled })
             if Task.isCancelled { return }
-            await MainActor.run { [ws] in
-                guard let ws else { return }
+            await MainActor.run { [weak self, weak ws] in
+                guard let self,
+                      Self.completionBelongsToCurrentRun(
+                        runID, currentRunID: self.bufferRunID),
+                      let ws else { return }
                 ws.openResults = result.perTab
                 ws.openTotalMatches = result.totalMatches
                 ws.openResultsWereCapped = result.wasCapped
@@ -295,6 +326,8 @@ final class SearchRunner {
         guard let ws = workspace, ws.scope.isFolderLike else { return }
         folderTask?.cancel()
         folderTask = nil
+        folderRunID &+= 1
+        let runID = folderRunID
 
         let options = ws.currentSearchOptions
         // Buffer-Zustand VOLLSTÄNDIG zurücksetzen, nicht nur die Trefferliste —
@@ -324,13 +357,14 @@ final class SearchRunner {
         let projectRoot = ws.scope == .project ? ws.projectURL : nil
         ws.folderSearching = !options.isEmpty && !urls.isEmpty
         ws.searchError = nil
-        folderTask = Task.detached(priority: .userInitiated) { [weak ws] in
+        folderTask = Task.detached(priority: .userInitiated) { [weak self, weak ws] in
             let result = FolderSearch.find(in: urls, filter: filter, options: options,
                                            excludedPatterns: exclusions,
-                                           relativeTo: projectRoot)
+                                           relativeTo: projectRoot,
+                                           shouldCancel: { Task.isCancelled })
             if Task.isCancelled { return }
-            await MainActor.run { [ws] in
-                guard let ws else { return }
+            await MainActor.run { [weak self, weak ws] in
+                guard let self, self.folderRunID == runID, let ws else { return }
                 ws.folderResults = result.perFile
                 ws.folderTotalMatches = result.totalMatches
                 // Cap-Flag durchreichen — die Maske zeigt darauf basierend

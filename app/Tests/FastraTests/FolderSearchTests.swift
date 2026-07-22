@@ -39,6 +39,37 @@ private final class FolderCorpus {
     }
 }
 
+private func makeRipgrepStub(_ body: String) throws -> URL {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-rg-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory,
+                                            withIntermediateDirectories: true)
+    let script = directory.appendingPathComponent("rg-fixture")
+    try Data(("#!/bin/sh\n" + body + "\n").utf8).write(to: script)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700],
+                                          ofItemAtPath: script.path)
+    return script
+}
+
+private final class CancellationCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var checks = 0
+    private let cancelAfter: Int
+
+    init(cancelAfter: Int) { self.cancelAfter = cancelAfter }
+
+    func shouldCancel() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        checks += 1
+        return checks >= cancelAfter
+    }
+
+    var value: Int {
+        lock.lock(); defer { lock.unlock() }
+        return checks
+    }
+}
+
 // MARK: - File-Type-Filter
 
 @Test("Filter .all lässt alles durch, auch Endungen wie .bin")
@@ -133,6 +164,108 @@ func ripgrepEnumerationDrainsLargeOutput() throws {
     #expect(files.count == 2_000)
 }
 
+@Test("ripgrep leert stdout und stderr gleichzeitig")
+func ripgrepEnumerationDrainsBothPipes() throws {
+    let c = try FolderCorpus()
+    let fixture = try makeRipgrepStub("""
+    i=0
+    while [ "$i" -lt 4000 ]; do
+      printf '%s/generated-%s.txt\\0' "$6" "$i"
+      printf 'diagnostic-%s-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\\n' "$i" >&2
+      i=$((i + 1))
+    done
+    """)
+    defer { try? FileManager.default.removeItem(at: fixture.deletingLastPathComponent()) }
+
+    let files = try RipgrepFileEnumerator.files(in: c.root,
+                                                 executableURL: fixture,
+                                                 timeout: 5)
+    #expect(files.count == 4_000)
+}
+
+@Test("ripgrep-Timeout liefert keine partielle Dateiliste")
+func ripgrepEnumerationTimesOutExplicitly() throws {
+    let c = try FolderCorpus()
+    let fixture = try makeRipgrepStub("sleep 5")
+    defer { try? FileManager.default.removeItem(at: fixture.deletingLastPathComponent()) }
+
+    do {
+        _ = try RipgrepFileEnumerator.files(in: c.root,
+                                            executableURL: fixture,
+                                            timeout: 0.05)
+        Issue.record("Timeout wurde fälschlich als vollständige Dateiliste akzeptiert")
+    } catch let failure as RipgrepFileEnumerator.Failure {
+        #expect(failure == .timedOut)
+    }
+}
+
+@Test("ripgrep-Exit 1 ohne Ausgabe bedeutet einen gültigen leeren Ordner")
+func ripgrepEnumerationAcceptsEmptyDirectory() throws {
+    let c = try FolderCorpus()
+    let fixture = try makeRipgrepStub("exit 1")
+    defer { try? FileManager.default.removeItem(at: fixture.deletingLastPathComponent()) }
+
+    let files = try RipgrepFileEnumerator.files(in: c.root,
+                                                 executableURL: fixture)
+    #expect(files.isEmpty)
+}
+
+@Test("ripgrep-Ausgabelimit liefert keine gekürzte Dateiliste")
+func ripgrepEnumerationRejectsTruncatedStdout() throws {
+    let c = try FolderCorpus()
+    let fixture = try makeRipgrepStub("""
+    i=0
+    while [ "$i" -lt 100 ]; do
+      printf '%s/a-very-long-generated-file-name-%s.txt\\0' "$6" "$i"
+      i=$((i + 1))
+    done
+    """)
+    defer { try? FileManager.default.removeItem(at: fixture.deletingLastPathComponent()) }
+
+    do {
+        _ = try RipgrepFileEnumerator.files(
+            in: c.root, executableURL: fixture,
+            outputLimit: GitOutputLimit(stdoutBytes: 64, stderrBytes: 64))
+        Issue.record("Gekürztes stdout wurde fälschlich als vollständige Dateiliste akzeptiert")
+    } catch let failure as RipgrepFileEnumerator.Failure {
+        #expect(failure == .outputLimit)
+    }
+}
+
+@Test("ripgrep-Abbruch beendet den Prozess ohne Fallback-Vollscan")
+func ripgrepEnumerationCancelsProcess() throws {
+    let c = try FolderCorpus()
+    let fixture = try makeRipgrepStub("while :; do sleep 1; done")
+    let counter = CancellationCounter(cancelAfter: 3)
+    defer { try? FileManager.default.removeItem(at: fixture.deletingLastPathComponent()) }
+
+    do {
+        _ = try RipgrepFileEnumerator.files(in: c.root,
+                                            executableURL: fixture,
+                                            timeout: 5,
+                                            shouldCancel: { counter.shouldCancel() })
+        Issue.record("Abbruch wurde fälschlich als vollständige Dateiliste akzeptiert")
+    } catch let failure as RipgrepFileEnumerator.Failure {
+        #expect(failure == .cancelled)
+        #expect(counter.value >= 3)
+    }
+}
+
+@Test("Ordnersuche reicht das Abbruchsignal bis in Enumeration und Dateiloop")
+func folderSearchPropagatesCancellation() throws {
+    let c = try FolderCorpus()
+    try c.write("a.txt", String(repeating: "kein Treffer\n", count: 20_000))
+    let counter = CancellationCounter(cancelAfter: 4)
+
+    let result = FolderSearch.find(
+        in: [c.root], filter: .knownText,
+        options: SearchOptions(find: "NADEL", replace: "", isRegex: false),
+        shouldCancel: { counter.shouldCancel() })
+
+    #expect(counter.value >= 4)
+    #expect(result == .empty)
+}
+
 // MARK: - Binär-Schutz
 
 @Test("Binärdateien werden mit Grund .binary übersprungen, NICHT durchsucht")
@@ -164,6 +297,39 @@ func find_handlesMultipleEncodings() throws {
                               options: SearchOptions(find: "Müller", replace: "X",
                                                      isRegex: false))
     #expect(r.totalMatches == 2)
+}
+
+@Test("UTF-32 LE/BE werden mit Vierbyte-BOM symmetrisch durchsucht")
+func find_handlesUtf32BothEndiannesses() throws {
+    let c = try FolderCorpus()
+    let variants: [(String.Encoding, Data, String)] = [
+        (.utf32LittleEndian, Data([0xFF, 0xFE, 0x00, 0x00]), "le.txt"),
+        (.utf32BigEndian, Data([0x00, 0x00, 0xFE, 0xFF]), "be.txt"),
+    ]
+    for (encoding, bom, name) in variants {
+        var bytes = bom
+        bytes.append(try #require("Hallo UTF-32".data(using: encoding)))
+        try c.writeRaw(name, bytes)
+    }
+    let result = FolderSearch.find(
+        in: [c.root], filter: .knownText,
+        options: SearchOptions(find: "UTF-32", replace: "Unicode",
+                               isRegex: false, caseSensitive: true))
+    #expect(result.totalMatches == 2)
+    #expect(result.filesWithMatches.count == 2)
+    #expect(result.filesWithMatches.allSatisfy { $0.skipped == nil })
+}
+
+@Test("Windows-1252-Anführungszeichen sind in der Ordnersuche erreichbar")
+func find_detectsWindows1252BeforeLatin1() throws {
+    let c = try FolderCorpus()
+    try c.write("cp1252.txt", "„Treffer“ und 10 €", encoding: .windowsCP1252)
+    let result = FolderSearch.find(
+        in: [c.root], filter: .knownText,
+        options: SearchOptions(find: "„Treffer“", replace: "gefunden",
+                               isRegex: false, caseSensitive: true))
+    #expect(result.totalMatches == 1)
+    #expect(result.filesWithMatches.first?.matches.first?.matchText == "„Treffer“")
 }
 
 // MARK: - Filter wirkt vorm Lesen

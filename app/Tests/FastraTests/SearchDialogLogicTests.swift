@@ -71,6 +71,15 @@ func hitLineLabelHasNoPrefixOrThousandsSeparator() {
     #expect(FloatingSearchDialog.hitLineLabel(12_345) == "12345")
 }
 
+@Test("Ordner-Apply-Fortschritt ist nur während des laufenden Apply sichtbar")
+func folderApplyProgressVisibilityFollowsLifecycle() {
+    #expect(FloatingSearchDialog.visibleFolderApplyProgress(
+        isApplying: true, text: "Ordner-Apply: a.txt (1/2)") ==
+        "Ordner-Apply: a.txt (1/2)")
+    #expect(FloatingSearchDialog.visibleFolderApplyProgress(
+        isApplying: false, text: "verspäteter Fortschritt") == nil)
+}
+
 @MainActor
 @Test("Treffer-Sprung ist ausschließlich an sein Dokumentfenster adressiert")
 func matchJumpTargetsOnlyItsWorkspace() {

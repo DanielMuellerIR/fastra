@@ -332,6 +332,25 @@ func cancel_returnsEmpty() {
     #expect(r.wasCapped == false)
 }
 
+@Test("Abbruch wird auch während eines großen No-Match-Scans geprüft")
+func cancel_interruptsLargeNoMatchScan() {
+    // Eine einzige lange Zeile umgeht bewusst die periodischen Checks des
+    // Zeilenindex-Aufbaus. Der dritte Check muss aus dem RegEx-Progress-
+    // Callback kommen — auch wenn kein einziger Treffer entsteht.
+    let text = String(repeating: "a", count: 8 * 1024 * 1024)
+    var checks = 0
+    let r = BufferSearch.find(
+        in: text,
+        options: SearchOptions(find: "z+$", replace: "",
+                               isRegex: true, caseSensitive: true),
+        shouldCancel: {
+            checks += 1
+            return checks >= 3
+        })
+    #expect(checks >= 3)
+    #expect(r == .empty)
+}
+
 // MARK: - replaceAll: cap-unabhängiges Voll-Replace
 
 @Test("replaceAll ersetzt ALLE Treffer, auch jenseits des Listen-Caps")

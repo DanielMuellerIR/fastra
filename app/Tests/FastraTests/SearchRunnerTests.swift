@@ -11,6 +11,12 @@ import Testing
 import Foundation
 @testable import Fastra
 
+@Test("Nur die aktuelle Buffer-Laufgeneration darf Ergebnisse publizieren")
+func bufferCompletionRequiresCurrentGeneration() {
+    #expect(SearchRunner.completionBelongsToCurrentRun(8, currentRunID: 8))
+    #expect(!SearchRunner.completionBelongsToCurrentRun(7, currentRunID: 8))
+}
+
 // MARK: - runsLive: welcher Scope sucht beim Tippen sofort?
 
 @Test("Datei-Scope sucht live")

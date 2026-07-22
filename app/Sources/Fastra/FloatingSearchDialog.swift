@@ -1426,6 +1426,14 @@ struct FloatingSearchDialog: View {
         String(line)
     }
 
+    /// Der Status darf nach Abschluss nicht durch einen verspätet zugestellten
+    /// Worker-Fortschritt wieder sichtbar werden.
+    static func visibleFolderApplyProgress(isApplying: Bool,
+                                           text: String?) -> String? {
+        guard isApplying else { return nil }
+        return text
+    }
+
     /// Beiträge der bestehenden Gruppen im aktiven Match-Text — für die
     /// farbige Hinterlegung im Detail. Re-Match des Patterns gegen den
     /// Match-Text (verankert am Anfang); pro fangender Gruppe die
@@ -1589,7 +1597,26 @@ struct FloatingSearchDialog: View {
                 // eine Rückgängig-Möglichkeit aus dem Backup-Ordner.
                 if workspace.scope.isFolderLike, workspace.lastApplySession != nil {
                     Button("Rückgängig") { workspace.undoLastFolderApply() }
+                        .disabled(workspace.folderApplying)
                         .help("Spielt die letzte Ordner-Apply-Session bit-exakt aus dem Backup-Ordner zurück.")
+                }
+
+                if workspace.scope.isFolderLike, workspace.folderApplying {
+                    ProgressView()
+                        .controlSize(.small)
+                    if let progress = Self.visibleFolderApplyProgress(
+                        isApplying: workspace.folderApplying,
+                        text: workspace.folderApplyProgressText
+                    ) {
+                        Text(verbatim: progress)
+                            .fastraFont(size: 10)
+                            .foregroundColor(Theme.textSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .accessibilityIdentifier("fastra.folderApplyProgress")
+                    }
+                    Button("Apply abbrechen") { workspace.cancelFolderApply() }
+                        .help("Bricht Planung und Preflight ab. Eine bereits begonnene atomare Schreibphase wird sicher abgeschlossen.")
                 }
 
                 Button(L10n.format("Alle ersetzen · %ld", scopeTotalMatches)) {
@@ -1605,7 +1632,8 @@ struct FloatingSearchDialog: View {
                     // trägt bereits den blauen Default-Look — zwei
                     // hervorgehobene Buttons wirkten wie zwei Standardaktionen.
                     .buttonStyle(.bordered)
-                    .disabled(scopeTotalMatches == 0 || workspace.searchError != nil)
+                    .disabled(scopeTotalMatches == 0 || workspace.searchError != nil
+                              || workspace.folderApplying)
                     .help({
                         switch workspace.scope {
                         case .folder, .project:
