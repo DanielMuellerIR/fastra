@@ -14,7 +14,7 @@ character is touched.
 *The name says it: **f**acillime **ad astra**, "by the easiest way to the
 stars". The star (`*`) is the program.*
 
-![Fastra in light mode](screenshots/editor-light.png)
+![Fastra in light mode with the visible Home button](screenshots/editor-light.png)
 
 ## Download / Releases
 
@@ -71,12 +71,12 @@ token highlighting, curated patterns, and guided capture groups.
 - **Column selection under Soft Wrap** stays on logical text lines; column
   copy/paste, typing, deletion, transformations, and Paste Column are each
   undoable as one action.
+- **A visible Home button** safely returns the current window to the welcome
+  screen. Unsaved work is confirmed first and then gets its normal save dialogs.
 - **Light & dark mode**, native SwiftUI/AppKit, no Electron.
 - **Local & private**: No accounts, telemetry, document uploads, or subscription.
   The update check contacts only Fastra's signed GitHub Pages feed and sends no
   hardware or system profile.
-
-![Fastra in dark mode](screenshots/editor-dark.png)
 
 ## Projects and Git, in the editor
 

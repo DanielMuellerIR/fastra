@@ -14,7 +14,7 @@ Zeichen angefasst wird.
 *Der Name ist Programm: **f**acillime **ad astra**, „aufs Leichteste zu den
 Sternen". Das Sternchen (`*`) ist der Star.*
 
-![Fastra im Light-Mode](screenshots/editor-light.png)
+![Fastra im Light-Mode mit sichtbarem Home-Button](screenshots/editor-light.png)
 
 ## Download / Releases
 
@@ -74,12 +74,13 @@ Capture Groups.
 - **Rechteckauswahl unter Soft Wrap** bleibt auf logischen Textzeilen;
   Spalten-Copy/Paste, Tippen, Löschen, Transformationen und „Spalte einfügen“
   sind jeweils eine widerrufbare Aktion.
+- **Ein sichtbarer Home-Button** führt das aktuelle Fenster sicher zum
+  Willkommensbildschirm zurück. Ungesicherte Arbeit wird zuerst gemeinsam
+  bestätigt und erhält anschließend die normalen Speicherdialoge.
 - **Light- & Dark-Mode**, natives SwiftUI/AppKit, kein Electron.
 - **Lokal & privat**: Keine Konten, Telemetrie, Dokument-Uploads oder Abos. Die
   Updateprüfung kontaktiert nur Fastras signierten GitHub-Pages-Feed und sendet
   kein Hardware- oder Systemprofil.
-
-![Fastra im Dark-Mode](screenshots/editor-dark.png)
 
 ## Projekte und Git direkt im Editor
 
