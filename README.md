@@ -16,7 +16,7 @@ live preview shows every change before Fastra writes anything.
 *That bridge gives Fastra its name: **f**acillime ad **astra**, "with greatest
 ease to the stars". The asterisk (`*`) is the star.*
 
-![Fastra in light mode with the visible Home button](screenshots/editor-light.png)
+![Fastra in light mode with the visible Home button](screenshots/editor-light.en.png)
 
 ## Download / Releases
 
@@ -39,7 +39,7 @@ text**, and in the replace field you simply reuse it.
 > The live preview shows every change before you apply it.
 
 <p align="center">
-  <img src="screenshots/search-wildcards.png" width="84.2%" alt="Search dialog with wildcards">
+  <img src="screenshots/search-wildcards.en.png" width="84.2%" alt="Search dialog with wildcards">
 </p>
 
 - Each `*` becomes a numbered, draggable capture pill. Reorder text by
@@ -53,7 +53,7 @@ And when a task really needs the full power, switch on RegEx mode and get
 token highlighting, curated patterns, and guided capture groups.
 
 <p align="center">
-  <img src="screenshots/search-regex.png" width="84.2%" alt="Search dialog in RegEx mode">
+  <img src="screenshots/search-regex.en.png" width="84.2%" alt="Search dialog in RegEx mode">
 </p>
 
 ## Features
@@ -65,8 +65,12 @@ token highlighting, curated patterns, and guided capture groups.
 - **Drag & drop capture groups** from the find field into the replace field.
 - **Scopes**: Current file, all open tabs, folders, or a configured file set in
   the current project.
-- **Projects, Git and Markdown** live alongside ordinary text editing; each is
-  explained below.
+- **Projects and Git**: A live file tree, separate staged and unstaged changes,
+  a native multi-lane commit graph, and rich diffs without leaving the editor.
+- **4D project support**: Familiar `.4dm` coloring, completion with signatures,
+  checks, and Option-double-click navigation to methods and classes.
+- **Markdown**: Local live preview, formatting tools, images, formulas and
+  Mermaid diagrams alongside the source.
 - **Compare files side by side**: Choose any two saved files or open tabs, or
   compare an edited tab with its version on disk. Shift-clicking a companion
   tab preselects both documents for the quick path.
@@ -120,6 +124,29 @@ If Git is unavailable, these controls stay out of the way; when Git reports an
 error, Fastra shows its actual message rather than hiding it. Repository
 operations are coordinated across Fastra windows so conflicting commands do
 not run over one another.
+
+## 4D projects as first-class source code
+
+Fastra treats 4D source as more than plain text. `.4dm` methods use a dedicated,
+familiar color scheme for commands, keywords, variables, tables and comments.
+In an open project, Fastra indexes `Project/Sources/Methods` case-insensitively
+and highlights project methods separately from process variables.
+
+Especially useful when exploring a larger codebase: **Option-double-click** a
+method name to open the corresponding project method, or a class name to open
+its class file. `Function` definitions in the current class jump locally. If no
+target can be found, Fastra opens project search with the name instead of
+failing silently.
+
+- Completion suggests commands with syntax signatures and constants after two
+  typed characters.
+- **Validate Document** provides local structure checks, validates `.4DForm`
+  files against their schema, and can optionally use an already installed
+  tool4d for authoritative syntax diagnostics. Fastra neither bundles nor
+  downloads tool4d.
+- `.4DProject` and `.4DForm` open as JSON; `.4DCatalog` and `.4DSettings` as
+  XML. Text-menu transformations can strip token suffixes from canonical 4D
+  exports or add command tokens again.
 
 ## Markdown that stays local
 
@@ -242,17 +269,6 @@ Tree-sitter-based highlighting for 26 languages and file formats: Bash, C, C++,
 C#, CSS, Dart, Dockerfile, Go (incl. go.mod), HTML, Java, JavaScript/JSX, JSON,
 Kotlin, Lua, Markdown, Objective-C, Perl, PHP, Python, Ruby, Rust, SQL, Swift,
 TOML, TypeScript/TSX and YAML. Everything else opens as plain text.
-
-In addition, Fastra highlights 4D methods (`.4dm`) through its own
-lightweight tokenizer using the familiar 4D colors (light and dark) —
-including multi-word commands and constants, `$local`/`<>interprocess`
-variables, `[tables]` and fields. `.4DProject`/`.4DForm` open as JSON,
-`.4DCatalog`/`.4DSettings` as XML.
-
-For 4D projects, Fastra also offers command and constant completion with
-signatures, local structure checks, and Option-double-click navigation to
-methods and classes. **Validate Document** can optionally use an already
-installed tool4d for diagnostics; Fastra neither bundles nor downloads it.
 
 ## Requirements & installation
 

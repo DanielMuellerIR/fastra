@@ -7860,9 +7860,11 @@ enum SelfTest {
         testLabel = "wildcardshot"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
         // Fester, lesbarer Name — der Dateiname erscheint im Trefferbaum und
-        // damit auf README-Screenshots (UUID-Namen sähen dort wüst aus).
+        // damit auf README-Screenshots (UUID-Namen sähen dort wüst aus). Der
+        // Screenshot-Runner wählt passend zur App-Sprache die Beispielsprache.
+        let fileName = screenshotIsEnglish ? "MovieList.txt" : "Filmliste.txt"
         let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Filmliste.txt")
+            .appendingPathComponent(fileName)
         // Mehrere Zeilen → die Live-Vorschau zeigt „erste 3 + … und N weitere".
         let demo = "ring, The\nhobbit, The\nempire, The\nphantom menace, The\nmatrix, The\n"
         do { try demo.write(to: tmp, atomically: true, encoding: .utf8) }
@@ -7887,8 +7889,9 @@ enum SelfTest {
         testLabel = "regexshot"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
         // Fester, lesbarer Name — erscheint im Trefferbaum (README-Screenshots).
+        let fileName = screenshotIsEnglish ? "MovieList.txt" : "Filmliste.txt"
         let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Filmliste.txt")
+            .appendingPathComponent(fileName)
         let demo = "ring, The\nhobbit, The\nempire, The\nphantom menace, The\nmatrix, The\n"
         do { try demo.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -7995,7 +7998,13 @@ enum SelfTest {
         testLabel = "projectshot"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
         let fm = FileManager.default
-        let repo = fm.temporaryDirectory.appendingPathComponent("Webseite")
+        let projectName = screenshotIsEnglish ? "Website" : "Webseite"
+        let language = screenshotIsEnglish ? "en" : "de"
+        let greeting = screenshotIsEnglish ? "Hello" : "Hallo"
+        let description = screenshotIsEnglish
+            ? "Demo project for the screenshot."
+            : "Demo-Projekt für den Screenshot."
+        let repo = fm.temporaryDirectory.appendingPathComponent(projectName)
         do {
             try? fm.removeItem(at: repo)
             try fm.createDirectory(at: repo.appendingPathComponent(".git"),
@@ -8004,16 +8013,16 @@ enum SelfTest {
                                    withIntermediateDirectories: true)
             try fm.createDirectory(at: repo.appendingPathComponent("js"),
                                    withIntermediateDirectories: true)
-            try "<!doctype html>\n<html lang=\"de\">\n<head>\n  <meta charset=\"utf-8\">\n  <title>Webseite</title>\n</head>\n<body>\n  <h1>Hallo!</h1>\n</body>\n</html>\n"
+            try "<!doctype html>\n<html lang=\"\(language)\">\n<head>\n  <meta charset=\"utf-8\">\n  <title>\(projectName)</title>\n</head>\n<body>\n  <h1>\(greeting)!</h1>\n</body>\n</html>\n"
                 .write(to: repo.appendingPathComponent("index.html"),
                        atomically: true, encoding: .utf8)
-            try "# Webseite\n\nDemo-Projekt für den Screenshot.\n"
+            try "# \(projectName)\n\n\(description)\n"
                 .write(to: repo.appendingPathComponent("README.md"),
                        atomically: true, encoding: .utf8)
             try "body { margin: 0; }\n"
                 .write(to: repo.appendingPathComponent("styles/main.css"),
                        atomically: true, encoding: .utf8)
-            try "console.log(\"Hallo\");\n"
+            try "console.log(\"\(greeting)\");\n"
                 .write(to: repo.appendingPathComponent("js/app.js"),
                        atomically: true, encoding: .utf8)
         } catch {
@@ -8027,6 +8036,12 @@ enum SelfTest {
                 dumpMainWindowThenExit(prefix: "PROJECTSHOT-WINDOW")
             }
         }
+    }
+
+    /// Nur für die README-Diagnosen: UI-Sprache und sichtbare Beispieldaten
+    /// werden vom Screenshot-Runner gemeinsam gesetzt.
+    private static var screenshotIsEnglish: Bool {
+        ProcessInfo.processInfo.environment["FASTRA_SCREENSHOT_LANGUAGE"] == "en"
     }
 
     /// Prüft die echte WebKit-Vorschau samt gebündelten Bibliotheken. Anders als

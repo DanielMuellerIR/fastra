@@ -1,11 +1,12 @@
 #!/bin/bash
 #
-# screenshot-run.sh — erzeugt die drei README-Screenshots in screenshots/.
+# screenshot-run.sh — erzeugt die deutschen und englischen README-Screenshots.
 #
 # Ablauf (ein GUI-Block, danach ist der Bildschirm sofort wieder frei):
-#   1. Editor Light  (kontrolliertes Desktop-Projekt, -selftest projectshot)
-#   2. Suchdialog Sternchen-Modus, Light  (-selftest wildcardshot)
-#   3. Suchdialog RegEx-Modus, Light       (-selftest regexshot)
+#   1. Deutsche Light-Mode-Aufnahmen
+#   2. Englische Light-Mode-Aufnahmen mit der Endung .en.png
+#
+# Optional lässt sich nur eine Sprache erzeugen: ./screenshot-run.sh de|en
 #
 # Fenstergezielt via `screencapture -l <WindowID>` (Editor ist CodeEditTextView,
 # keine WebView — Window-Capture ist hier zuverlässig). Die App wird nach jedem
@@ -18,48 +19,75 @@ BIN="$APP/Contents/MacOS/Fastra"
 OUT="../screenshots"
 DOMAIN="de.dm0.fastra"
 PROJECT_FIXTURE="$HOME/Desktop/Fastra-Screenshot"
+LANGUAGE="${1:-all}"
 mkdir -p "$OUT"
+
+case "$LANGUAGE" in
+  all|de|en) ;;
+  *)
+    echo "Verwendung: $0 [all|de|en]" >&2
+    exit 1
+    ;;
+esac
 
 # Nur unsere markierte Desktop-Fixture aufräumen. Ein gleichnamiger fremder
 # Ordner ohne Marker bleibt unberührt und lässt den Lauf scheitern.
-cleanup() {
+cleanup_fixture() {
   if [ -f "$PROJECT_FIXTURE/.fastra-screenshot-fixture" ]; then
     rm -rf -- "$PROJECT_FIXTURE"
   fi
+}
+
+cleanup() {
+  cleanup_fixture
   defaults write "$DOMAIN" app.appearance system
 }
 trap cleanup EXIT
 
-selftest_shot() {  # $1 = appearance, $2 = selftest-Name, $3 = stderr-Marker, $4 = Zieldatei
-  defaults write "$DOMAIN" app.appearance "$1"
+selftest_shot() {  # $1 = Sprache, $2 = Locale, $3 = Selbsttest, $4 = Marker, $5 = Zieldatei
+  defaults write "$DOMAIN" app.appearance light
   local log; log=$(mktemp)
-  if [ "$2" = "projectshot" ]; then
+  if [ "$3" = "projectshot" ]; then
     [ ! -e "$PROJECT_FIXTURE" ] || {
       echo "FEHLER: $PROJECT_FIXTURE existiert bereits und bleibt unberührt" >&2
       exit 1
     }
     mkdir "$PROJECT_FIXTURE"
     printf '%s\n' "README-Screenshot-Fixture" > "$PROJECT_FIXTURE/.fastra-screenshot-fixture"
-    TMPDIR="$PROJECT_FIXTURE/" \
-      "$BIN" -selftest "$2" -ApplePersistenceIgnoreState YES 2>"$log" &
+    FASTRA_SCREENSHOT_LANGUAGE="$1" TMPDIR="$PROJECT_FIXTURE/" \
+      "$BIN" -selftest "$3" -AppleLanguages "($1)" -AppleLocale "$2" \
+        -ApplePersistenceIgnoreState YES 2>"$log" &
   else
-    "$BIN" -selftest "$2" -ApplePersistenceIgnoreState YES 2>"$log" &
+    FASTRA_SCREENSHOT_LANGUAGE="$1" \
+      "$BIN" -selftest "$3" -AppleLanguages "($1)" -AppleLocale "$2" \
+        -ApplePersistenceIgnoreState YES 2>"$log" &
   fi
   local pid=$!
   local id=""
   for _ in $(seq 1 60); do
-    id=$(grep -m1 "$3" "$log" | awk '{print $2}' || true)
+    id=$(grep -m1 "$4" "$log" | awk '{print $2}' || true)
     [ -n "$id" ] && break
     sleep 0.25
   done
-  [ -n "$id" ] || { echo "FEHLER: $3 nicht gefunden"; cat "$log"; kill "$pid" 2>/dev/null; exit 1; }
+  [ -n "$id" ] || { echo "FEHLER: $4 nicht gefunden"; cat "$log"; kill "$pid" 2>/dev/null; exit 1; }
   sleep 1                      # Pillen/Vorschau fertig gerendert
-  screencapture -l"$id" -o -x "$OUT/$4"
+  screencapture -l"$id" -o -x "$OUT/$5"
   wait "$pid" || true          # Selbsttest beendet sich nach ~12 s selbst
+  rm -f -- "$log"
+  [ "$3" != "projectshot" ] || cleanup_fixture
 }
 
-selftest_shot light projectshot  PROJECTSHOT-WINDOW  editor-light.png
-selftest_shot light wildcardshot WILDCARDSHOT-WINDOW search-wildcards.png
-selftest_shot light regexshot    REGEXSHOT-WINDOW    search-regex.png
+generate_language() {  # $1 = Sprache, $2 = Locale, $3 = optionale Dateiendung
+  selftest_shot "$1" "$2" projectshot  PROJECTSHOT-WINDOW  "editor-light$3.png"
+  selftest_shot "$1" "$2" wildcardshot WILDCARDSHOT-WINDOW "search-wildcards$3.png"
+  selftest_shot "$1" "$2" regexshot    REGEXSHOT-WINDOW    "search-regex$3.png"
+}
 
-echo "✔ 3 Screenshots in $OUT/"
+if [ "$LANGUAGE" = "all" ] || [ "$LANGUAGE" = "de" ]; then
+  generate_language de de_DE ""
+fi
+if [ "$LANGUAGE" = "all" ] || [ "$LANGUAGE" = "en" ]; then
+  generate_language en en_US ".en"
+fi
+
+echo "✔ README-Screenshots ($LANGUAGE) in $OUT/"

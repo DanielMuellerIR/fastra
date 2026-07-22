@@ -67,8 +67,13 @@ Capture Groups.
 - **Capture Groups per Drag & Drop** vom Such- ins Ersetzen-Feld.
 - **Bereiche**: Aktuelle Datei, alle offenen Tabs, Ordner oder eine konfigurierte
   Dateimenge im aktuellen Projekt.
-- **Projekte, Git und Markdown** ergänzen den normalen Texteditor; die Details
-  stehen unten.
+- **Projekte und Git**: Lebender Dateibaum, getrennte bereitgestellte und offene
+  Änderungen, nativer mehrspuriger Commit-Graph und aussagekräftige Diffs direkt
+  im Editor.
+- **4D-Projektunterstützung**: Vertraute `.4dm`-Farben, Vervollständigung mit
+  Signaturen, Prüfungen und Alt-Doppelklick-Navigation zu Methoden und Klassen.
+- **Markdown**: Lokale Live-Vorschau, Formatierungswerkzeuge, Bilder, Formeln und
+  Mermaid-Diagramme direkt neben dem Quelltext.
 - **Dateien side-by-side vergleichen**: Zwei gespeicherte Dateien oder offene
   Tabs lassen sich frei wählen, ein bearbeiteter Tab auch mit seiner Fassung
   auf der Platte vergleichen. Shift-Klick auf einen zweiten Tab wählt beide
@@ -129,6 +134,30 @@ Die Git-Funktionen sind eine schlanke, asynchrone Oberfläche für das installie
 bei Fehlern zeigt Fastra die tatsächliche Git-Meldung statt einer unklaren
 Ersatzmeldung. Repository-Vorgänge werden über Fastra-Fenster hinweg koordiniert,
 damit kollidierende Befehle nicht übereinanderlaufen.
+
+## 4D-Projekte als echter Quellcode
+
+Fastra behandelt 4D-Quellcode nicht als gewöhnlichen Text. `.4dm`-Methoden
+erhalten ein eigenes, vertrautes Farbschema für Befehle, Keywords, Variablen,
+Tabellen und Kommentare. In einem geöffneten Projekt indexiert Fastra
+`Project/Sources/Methods` unabhängig von Groß-/Kleinschreibung und hebt
+Projektmethoden getrennt von Prozessvariablen hervor.
+
+Besonders nützlich beim Erkunden größerer Codebasen: **Alt-Doppelklick** auf
+einen Methodennamen öffnet direkt die zugehörige Projektmethode, auf einen
+Klassennamen die Klassendatei. `Function`-Definitionen in der aktuellen Klasse
+springen lokal. Ist kein Ziel auffindbar, öffnet Fastra die Projektsuche mit
+dem Namen, statt still nichts zu tun.
+
+- Die Vervollständigung schlägt nach zwei eingegebenen Zeichen Befehle mit
+  Syntax-Signaturen sowie Konstanten vor.
+- **Dokument prüfen** bietet lokale Strukturprüfungen, validiert `.4DForm`-
+  Dateien gegen ihr Schema und kann optional ein bereits installiertes tool4d
+  für verbindliche Syntaxdiagnosen verwenden. Fastra bündelt oder lädt tool4d
+  nicht.
+- `.4DProject` und `.4DForm` öffnen als JSON, `.4DCatalog` und `.4DSettings` als
+  XML. Transformationen im Text-Menü entfernen Token-Suffixe aus kanonischen
+  4D-Exporten oder ergänzen Befehls-Token erneut.
 
 ## Markdown bleibt lokal
 
@@ -258,17 +287,6 @@ Tree-sitter-basiertes Highlighting für 26 Sprachen und Dateiformate: Bash, C,
 C++, C#, CSS, Dart, Dockerfile, Go (inkl. go.mod), HTML, Java, JavaScript/JSX,
 JSON, Kotlin, Lua, Markdown, Objective-C, Perl, PHP, Python, Ruby, Rust, SQL,
 Swift, TOML, TypeScript/TSX und YAML. Alles andere öffnet als reiner Text.
-
-Zusätzlich färbt Fastra 4D-Methoden (`.4dm`) über einen eigenen leichten
-Tokenizer mit den vertrauten 4D-Farben (hell und dunkel) — inklusive
-mehrwortiger Befehle und Konstanten, `$lokaler`/`<>interprozess`-Variablen,
-`[Tabellen]` und Feldern. `.4DProject`/`.4DForm` öffnen als JSON,
-`.4DCatalog`/`.4DSettings` als XML.
-
-Für 4D-Projekte bietet Fastra außerdem Befehls- und Konstantenvervollständigung
-mit Signaturen, lokale Strukturprüfungen sowie Alt-Doppelklick-Navigation zu
-Methoden und Klassen. **Dokument prüfen** kann optional ein bereits installiertes
-tool4d für Diagnosen nutzen; Fastra bündelt oder lädt tool4d nicht.
 
 ## Voraussetzungen & Installation
 
