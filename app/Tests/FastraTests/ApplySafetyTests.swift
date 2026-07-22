@@ -161,6 +161,48 @@ func plan_handlesUtf16WithBom() throws {
     #expect(decoded == "Hello Welt\nasdf\n")
 }
 
+@Test("plan()/apply()/undo() behandeln UTF-32 LE und BE symmetrisch und bytegenau")
+func plan_applyUndoHandlesUtf32BothEndiannesses() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-utf32-\(UUID().uuidString)", isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let variants: [(String.Encoding, Data, String)] = [
+        (.utf32LittleEndian, Data([0xFF, 0xFE, 0x00, 0x00]), "le"),
+        (.utf32BigEndian, Data([0x00, 0x00, 0xFE, 0xFF]), "be"),
+    ]
+    for (encoding, bom, name) in variants {
+        let url = directory.appendingPathComponent("\(name).txt")
+        var original = bom
+        original.append(try #require("Hallo Welt\n".data(using: encoding)))
+        try original.write(to: url)
+        let plan = ApplyEngine.plan(
+            files: [url],
+            options: SearchOptions(find: "Hallo", replace: "Guten Tag",
+                                   isRegex: false, caseSensitive: true))
+        let file = try #require(plan.files.first)
+        #expect(file.encoding == encoding)
+        #expect(file.bom == bom)
+        #expect(file.matches.count == 1)
+        #expect(file.newBytes.starts(with: bom))
+        #expect((file.newBytes.count - bom.count).isMultiple(of: 4))
+
+        let session = try ApplyEngine.apply(plan: plan, backupRoot: backups,
+                                            cleanupOlderThan: nil)
+        let entry = try #require(session.entries.first)
+        #expect(entry.encodingRawValue == encoding.rawValue)
+        #expect(entry.bom == bom)
+        let payload = try Data(contentsOf: url).dropFirst(bom.count)
+        #expect(String(data: Data(payload), encoding: encoding) == "Guten Tag Welt\n")
+        _ = try ApplyEngine.undo(session)
+        #expect(try Data(contentsOf: url) == original)
+    }
+}
+
 // MARK: 5. Latin-1 round-trippt byte-exakt
 
 @Test("plan() erhält Latin-1-Bytes (kein UTF-8-Drift)")
@@ -180,6 +222,24 @@ func plan_preservesLatin1Bytes() throws {
     // Bytes wie 0xFC (ü), 0xDF (ß) hat — gerade die wollen wir schützen.
     let prefix = "Grüße aus München - ".data(using: .isoLatin1)!
     #expect(file.newBytes.prefix(prefix.count) == prefix)
+}
+
+@Test("Windows-1252-C1-Zeichen wählen CP1252 vor Latin-1 und roundtrippen")
+func plan_detectsWindows1252BeforeLatin1() throws {
+    let corpus = try TestCorpus()
+    defer { corpus.cleanup() }
+    let url = corpus.root.appendingPathComponent("win1252.txt")
+    let plan = ApplyEngine.plan(
+        files: [url],
+        options: SearchOptions(find: "„test“", replace: "„fertig“",
+                               isRegex: false, caseSensitive: true))
+    let file = try #require(plan.files.first)
+    #expect(file.encoding == .windowsCP1252)
+    #expect(file.matches.count == 1)
+    #expect(String(data: file.newBytes, encoding: .windowsCP1252)
+            == "Anführungszeichen „fertig“\n")
+    #expect(file.newBytes.contains(0x84))
+    #expect(file.newBytes.contains(0x93))
 }
 
 // MARK: 6. Leere Datei: kein Treffer, keine Änderung
@@ -556,4 +616,517 @@ func apply_doesNotLeakTempFilesNextToOriginal() throws {
         #expect(!name.hasPrefix("tmp-") && !name.hasSuffix(".tmp") && !name.hasSuffix(".bak"),
                 "Verdächtige Datei: \(name)")
     }
+}
+
+// MARK: W9. Plan- und Undo-Konflikte brechen vor dem ersten Write ab
+
+@Test("apply() bricht bei einem seit der Planung geänderten Ziel vollständig ab")
+func apply_staleTargetDoesNotStartTransaction() throws {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-stale-apply-\(UUID().uuidString)", isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let first = dir.appendingPathComponent("first.txt")
+    let second = dir.appendingPathComponent("second.txt")
+    try Data("foo one".utf8).write(to: first)
+    try Data("foo two".utf8).write(to: second)
+    let plan = ApplyEngine.plan(
+        files: [first, second],
+        options: SearchOptions(find: "foo", replace: "bar", isRegex: false,
+                               caseSensitive: true))
+
+    let external = Data("external second".utf8)
+    try external.write(to: second, options: .atomic)
+
+    #expect(throws: ApplyError.self) {
+        _ = try ApplyEngine.apply(plan: plan, backupRoot: backups,
+                                  cleanupOlderThan: nil)
+    }
+    #expect(try Data(contentsOf: first) == Data("foo one".utf8))
+    #expect(try Data(contentsOf: second) == external)
+    #expect((try FileManager.default.contentsOfDirectory(atPath: backups.path)).isEmpty)
+}
+
+@Test("undo() überschreibt keine Änderung nach dem Apply und startet nicht partiell")
+func undo_changedTargetAbortsBeforeFirstRestore() throws {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-stale-undo-\(UUID().uuidString)", isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let first = dir.appendingPathComponent("first.txt")
+    let second = dir.appendingPathComponent("second.txt")
+    try Data("foo one".utf8).write(to: first)
+    try Data("foo two".utf8).write(to: second)
+    let session = try ApplyEngine.apply(
+        plan: ApplyEngine.plan(
+            files: [first, second],
+            options: SearchOptions(find: "foo", replace: "bar", isRegex: false,
+                                   caseSensitive: true)),
+        backupRoot: backups, cleanupOlderThan: nil)
+    let firstApplied = try Data(contentsOf: first)
+    let external = Data("external after apply".utf8)
+    try external.write(to: second, options: .atomic)
+
+    #expect(throws: ApplyError.self) {
+        try ApplyEngine.undo(session)
+    }
+    #expect(try Data(contentsOf: first) == firstApplied,
+            "Undo darf vor dem Konflikt-Preflight keine frühere Datei restaurieren")
+    #expect(try Data(contentsOf: second) == external)
+}
+
+private enum ApplyTestFailure: Error { case injected }
+
+@Test("partielle Apply-Session enthält nur wirklich geschriebene Dateien")
+func apply_partialSessionExcludesNeverWrittenTargets() throws {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-partial-apply-\(UUID().uuidString)", isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let first = dir.appendingPathComponent("first.txt")
+    let second = dir.appendingPathComponent("second.txt")
+    try Data("foo one".utf8).write(to: first)
+    try Data("foo two".utf8).write(to: second)
+    let plan = ApplyEngine.plan(
+        files: [first, second],
+        options: SearchOptions(find: "foo", replace: "bar", isRegex: false,
+                               caseSensitive: true))
+    let laterSecond = Data("later untouched target".utf8)
+
+    var writes = 0
+    var partial: ApplySession?
+    do {
+        _ = try ApplyEngine.apply(
+            plan: plan, backupRoot: backups, cleanupOlderThan: nil,
+            atomicReplace: { data, target, temporary in
+                writes += 1
+                try data.write(to: temporary, options: .atomic)
+                _ = try FileManager.default.replaceItemAt(target, withItemAt: temporary)
+                if writes == 1 {
+                    // Der zweite Zielkonflikt entsteht sicher VOR dessen
+                    // Replace-Aufruf. Nur so ist belastbar bewiesen, dass die
+                    // Datei nie angewendet wurde und aus Partial/Undo gehört.
+                    try laterSecond.write(to: second, options: .atomic)
+                }
+            })
+        Issue.record("Der Konflikt vor dem zweiten Write hätte fehlschlagen müssen")
+    } catch ApplyError.writeFailed(let session, _) {
+        partial = session
+    }
+    let session = try #require(partial)
+    #expect(session.entries.map(\.originalPath) == [first.path])
+
+    try ApplyEngine.undo(session)
+    #expect(try Data(contentsOf: first) == Data("foo one".utf8))
+    #expect(try Data(contentsOf: second) == laterSecond,
+            "Nie angewendete Ziele dürfen nicht in Undo geraten")
+}
+
+@Test("Crash-Fenster nach Replace bleibt als pending manifestiert und rückgängig")
+func apply_manifestFailureAfterReplaceRecoversPendingEntry() throws {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-pending-apply-\(UUID().uuidString)", isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let target = dir.appendingPathComponent("target.txt")
+    let original = Data("foo".utf8)
+    try original.write(to: target)
+    let plan = ApplyEngine.plan(
+        files: [target],
+        options: SearchOptions(find: "foo", replace: "bar", isRegex: false,
+                               caseSensitive: true))
+
+    var manifestWrites = 0
+    do {
+        _ = try ApplyEngine.apply(
+            plan: plan, backupRoot: backups, cleanupOlderThan: nil,
+            manifestWriter: { session in
+                manifestWrites += 1
+                if manifestWrites == 3 { throw ApplyTestFailure.injected }
+                try ApplyEngine.writeManifest(session)
+            })
+        Issue.record("Manifest-Failpoint nach Replace hätte werfen müssen")
+    } catch ApplyError.writeFailed(let partial, _) {
+        #expect(partial.entries.count == 1)
+        #expect(partial.entries[0].state == .pending)
+    }
+    #expect(try Data(contentsOf: target) == Data("bar".utf8))
+
+    let recovered = try ApplyEngine.loadSession(
+        at: try #require(FileManager.default.contentsOfDirectory(
+            at: backups, includingPropertiesForKeys: nil).first))
+    #expect(recovered.entries[0].state == .pending)
+    _ = try ApplyEngine.undo(recovered)
+    #expect(try Data(contentsOf: target) == original)
+}
+
+@Test("Apply behält pending, wenn Replace erst schreibt und dann fehlschlägt")
+func apply_replaceFailureAfterSideEffectKeepsPendingEntry() throws {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-replace-side-effect-\(UUID().uuidString)",
+                                isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: dir,
+                                            withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let target = dir.appendingPathComponent("target.txt")
+    let original = Data("foo".utf8)
+    try original.write(to: target)
+    let plan = ApplyEngine.plan(
+        files: [target],
+        options: SearchOptions(find: "foo", replace: "bar", isRegex: false,
+                               caseSensitive: true))
+
+    var partial: ApplySession?
+    do {
+        _ = try ApplyEngine.apply(
+            plan: plan, backupRoot: backups, cleanupOlderThan: nil,
+            atomicReplace: { _, target, temporary in
+                _ = try FileManager.default.replaceItemAt(target,
+                                                           withItemAt: temporary)
+                throw ApplyTestFailure.injected
+            })
+        Issue.record("Fehler nach wirksamem Replace hätte weitergereicht werden müssen")
+    } catch ApplyError.writeFailed(let session, _) {
+        partial = session
+    }
+
+    let session = try #require(partial)
+    #expect(session.entries.map(\.state) == [.pending])
+    #expect(try Data(contentsOf: target) == Data("bar".utf8))
+    #expect(try ApplyEngine.loadSession(at: session.sessionDirectory) == session)
+    _ = try ApplyEngine.undo(session)
+    #expect(try Data(contentsOf: target) == original)
+}
+
+@Test("Partielles Undo persistiert Fortschritt und setzt beim Retry fort")
+func undo_partialFailureResumesFromPersistedState() throws {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-partial-undo-\(UUID().uuidString)", isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let first = dir.appendingPathComponent("first.txt")
+    let second = dir.appendingPathComponent("second.txt")
+    try Data("foo one".utf8).write(to: first)
+    try Data("foo two".utf8).write(to: second)
+    let session = try ApplyEngine.apply(
+        plan: ApplyEngine.plan(
+            files: [first, second],
+            options: SearchOptions(find: "foo", replace: "bar", isRegex: false,
+                                   caseSensitive: true)),
+        backupRoot: backups, cleanupOlderThan: nil)
+
+    var restores = 0
+    var partial: ApplySession?
+    do {
+        _ = try ApplyEngine.undo(session, atomicReplace: { _, target, temporary in
+            restores += 1
+            if restores == 2 { throw ApplyTestFailure.injected }
+            _ = try FileManager.default.replaceItemAt(target, withItemAt: temporary)
+        })
+        Issue.record("Zweiter Undo-Replace hätte fehlschlagen müssen")
+    } catch ApplyError.undoFailed(let progress, _) {
+        partial = progress
+    }
+    let progress = try #require(partial)
+    #expect(progress.entries.map(\.state) == [.restored, .applied])
+    #expect(try Data(contentsOf: first) == Data("foo one".utf8))
+    #expect(try Data(contentsOf: second) == Data("bar two".utf8))
+    let persisted = try ApplyEngine.loadSession(at: session.sessionDirectory)
+    #expect(persisted.entries.map(\.state) == [.restored, .applied])
+
+    _ = try ApplyEngine.undo(progress)
+    #expect(try Data(contentsOf: first) == Data("foo one".utf8))
+    #expect(try Data(contentsOf: second) == Data("foo two".utf8))
+}
+
+@Test("Legacy-Manifest ohne Applied-Snapshot wird explizit fail-closed abgelehnt")
+func undo_legacyManifestIsRejectedExplicitly() throws {
+    let backups = try makeBackupRoot()
+    defer { try? FileManager.default.removeItem(at: backups) }
+    let directory = backups.appendingPathComponent("session-legacy", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let json: [String: Any] = [
+        "timestamp": Date().timeIntervalSinceReferenceDate,
+        "sessionDirectory": directory.absoluteString,
+        "entries": [[
+            "originalPath": "/tmp/legacy.txt",
+            "backupRelativePath": "files/0.bin",
+            "originalSHA256": "deadbeef",
+        ]],
+    ]
+    let data = try JSONSerialization.data(withJSONObject: json)
+    try data.write(to: directory.appendingPathComponent("manifest.json"))
+
+    let legacy = try ApplyEngine.loadSession(at: directory)
+    #expect(legacy.schemaVersion == 1)
+    #expect(legacy.entries[0].state == .legacy)
+    #expect(throws: ApplyError.self) { try ApplyEngine.undo(legacy) }
+}
+
+// MARK: - Dateibasierte Ordner-Transaktion
+
+private final class ApplyCancellationLatch: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    func cancel() { lock.lock(); cancelled = true; lock.unlock() }
+    func isCancelled() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return cancelled
+    }
+}
+
+private final class ApplyCancellationCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var checks = 0
+    private let cancelAfter: Int
+
+    init(cancelAfter: Int) { self.cancelAfter = cancelAfter }
+
+    func shouldCancel() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        checks += 1
+        return checks >= cancelAfter
+    }
+
+    var value: Int {
+        lock.lock(); defer { lock.unlock() }
+        return checks
+    }
+}
+
+private func makeTransaction(
+    files: [URL],
+    options: SearchOptions = SearchOptions(
+        find: "foo", replace: "bar", isRegex: false, caseSensitive: true)
+) throws -> ApplyTransaction {
+    let plan = ApplyEngine.plan(files: files, options: options)
+    let inputs = try plan.changedFiles.map { file in
+        ApplyTransaction.Input(
+            url: file.url,
+            snapshot: try #require(file.originalSnapshot),
+            matches: file.matches)
+    }
+    return ApplyTransaction(inputs: inputs, options: options)
+}
+
+@Test("ApplyTransaction plant/sichert dateiweise und journalisiert den Erfolg")
+func transactionStagesSequentiallyAndApplies() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-transaction-\(UUID().uuidString)", isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: directory,
+                                            withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let first = directory.appendingPathComponent("first.txt")
+    let second = directory.appendingPathComponent("second.txt")
+    try Data("foo one".utf8).write(to: first)
+    try Data("foo two".utf8).write(to: second)
+    let transaction = try makeTransaction(files: [first, second])
+    var progress: [ApplyTransaction.Progress] = []
+
+    let session = try transaction.execute(
+        backupRoot: backups, cleanupOlderThan: nil,
+        progress: { progress.append($0) })
+
+    #expect(try Data(contentsOf: first) == Data("bar one".utf8))
+    #expect(try Data(contentsOf: second) == Data("bar two".utf8))
+    #expect(session.entries.map(\.state) == [.applied, .applied])
+    #expect(progress.map(\.phase) == [
+        .planned, .backedUp, .planned, .backedUp, .applied, .applied,
+    ])
+    #expect(!FileManager.default.fileExists(
+        atPath: session.sessionDirectory.appendingPathComponent("staged").path))
+
+    _ = try ApplyEngine.undo(session)
+    #expect(try Data(contentsOf: first) == Data("foo one".utf8))
+    #expect(try Data(contentsOf: second) == Data("foo two".utf8))
+}
+
+@Test("ApplyTransaction behält pending nach wirksamem Replace-Fehler")
+func transactionReplaceFailureAfterSideEffectKeepsPendingEntry() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-transaction-side-effect-\(UUID().uuidString)",
+                                isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: directory,
+                                            withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let target = directory.appendingPathComponent("target.txt")
+    let original = Data("foo".utf8)
+    try original.write(to: target)
+    let transaction = try makeTransaction(files: [target])
+
+    var partial: ApplySession?
+    do {
+        _ = try transaction.execute(
+            backupRoot: backups, cleanupOlderThan: nil,
+            atomicReplace: { target, temporary in
+                _ = try FileManager.default.replaceItemAt(target,
+                                                           withItemAt: temporary)
+                throw ApplyTestFailure.injected
+            })
+        Issue.record("Fehler nach wirksamem Replace hätte weitergereicht werden müssen")
+    } catch ApplyError.writeFailed(let session, _) {
+        partial = session
+    }
+
+    let session = try #require(partial)
+    #expect(session.entries.map(\.state) == [.pending])
+    #expect(try Data(contentsOf: target) == Data("bar".utf8))
+    #expect(try ApplyEngine.loadSession(at: session.sessionDirectory) == session)
+    _ = try ApplyEngine.undo(session)
+    #expect(try Data(contentsOf: target) == original)
+}
+
+@Test("ApplyTransaction-Abbruch vor Preflight ist vollständig write-frei")
+func transactionCancellationBeforePreflightWritesNothing() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-transaction-cancel-\(UUID().uuidString)", isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: directory,
+                                            withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let first = directory.appendingPathComponent("first.txt")
+    let second = directory.appendingPathComponent("second.txt")
+    try Data("foo one".utf8).write(to: first)
+    try Data("foo two".utf8).write(to: second)
+    let transaction = try makeTransaction(files: [first, second])
+    let cancellation = ApplyCancellationLatch()
+
+    do {
+        _ = try transaction.execute(
+            backupRoot: backups, cleanupOlderThan: nil,
+            shouldCancel: { cancellation.isCancelled() },
+            progress: {
+                if $0.phase == .backedUp { cancellation.cancel() }
+            })
+        Issue.record("Abgebrochene Transaktion hätte werfen müssen")
+    } catch ApplyError.cancelled {
+        // Erwarteter, expliziter Abbruchzustand.
+    }
+
+    #expect(try Data(contentsOf: first) == Data("foo one".utf8))
+    #expect(try Data(contentsOf: second) == Data("foo two".utf8))
+    #expect(try FileManager.default.contentsOfDirectory(atPath: backups.path).isEmpty)
+}
+
+@Test("ApplyTransaction bricht während der RegEx-Planung einer großen Datei ab")
+func transactionCancellationInterruptsLargeFilePlanning() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-transaction-scan-cancel-\(UUID().uuidString)",
+                                isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: directory,
+                                            withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let target = directory.appendingPathComponent("large.txt")
+    try Data((String(repeating: "x", count: 8 * 1024 * 1024) + "foo").utf8)
+        .write(to: target)
+    let transaction = try makeTransaction(files: [target])
+    let cancellation = ApplyCancellationCounter(cancelAfter: 5)
+    var progress: [ApplyTransaction.Progress] = []
+
+    do {
+        _ = try transaction.execute(
+            backupRoot: backups, cleanupOlderThan: nil,
+            shouldCancel: { cancellation.shouldCancel() },
+            progress: { progress.append($0) })
+        Issue.record("Abbruch während der Dateiplanung hätte werfen müssen")
+    } catch ApplyError.cancelled {
+        // Erwartet: `.reportProgress` reicht den Abbruch aus dem RegEx-Scan hoch.
+    }
+
+    #expect(cancellation.value >= 5)
+    #expect(progress.isEmpty)
+    #expect(try Data(contentsOf: target).suffix(3) == Data("foo".utf8))
+    #expect(try FileManager.default.contentsOfDirectory(atPath: backups.path).isEmpty)
+}
+
+@Test("ApplyTransaction prüft alle Ziele erneut vor dem ersten Write")
+func transactionGlobalPreflightRejectsLateConflict() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-transaction-preflight-\(UUID().uuidString)", isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: directory,
+                                            withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let first = directory.appendingPathComponent("first.txt")
+    let second = directory.appendingPathComponent("second.txt")
+    try Data("foo one".utf8).write(to: first)
+    try Data("foo two".utf8).write(to: second)
+    let transaction = try makeTransaction(files: [first, second])
+    let external = Data("foo external".utf8)
+
+    do {
+        _ = try transaction.execute(
+            backupRoot: backups, cleanupOlderThan: nil,
+            beforePreflight: { try external.write(to: second, options: .atomic) })
+        Issue.record("Später Konflikt hätte den globalen Preflight stoppen müssen")
+    } catch ApplyError.conflict {
+        // Erwarteter Konflikt vor dem ersten Ziel-Write.
+    }
+
+    #expect(try Data(contentsOf: first) == Data("foo one".utf8))
+    #expect(try Data(contentsOf: second) == external)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: backups.path).isEmpty)
+}
+
+@Test("ApplyTransaction-Planhash bindet Optionen, Vorschau und Ziele")
+func transactionPlanHashIsDeterministicAndSensitive() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-transaction-hash-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory,
+                                            withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let target = directory.appendingPathComponent("target.txt")
+    try Data("foo".utf8).write(to: target)
+    let first = try makeTransaction(files: [target])
+    let identical = try makeTransaction(files: [target])
+    let changed = try makeTransaction(
+        files: [target],
+        options: SearchOptions(find: "foo", replace: "BAR",
+                               isRegex: false, caseSensitive: true))
+
+    #expect(first.planSHA256 == identical.planSHA256)
+    #expect(first.planSHA256 != changed.planSHA256)
 }

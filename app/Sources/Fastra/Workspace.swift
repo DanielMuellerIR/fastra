@@ -67,6 +67,8 @@ extension String.Encoding {
         case .utf16:                return "UTF-16"
         case .utf16BigEndian:       return "UTF-16 BE"
         case .utf16LittleEndian:    return "UTF-16 LE"
+        case .utf32BigEndian:       return "UTF-32 BE"
+        case .utf32LittleEndian:    return "UTF-32 LE"
         case .utf32:                return "UTF-32"
         case .ascii:                return "ASCII"
         case .isoLatin1:            return "Latin-1"
@@ -83,7 +85,13 @@ struct EditorTab: Identifiable, Hashable {
     var title: String
     var path: String
     var url: URL?
-    var content: String
+    var content: String {
+        didSet { contentRevision &+= 1 }
+    }
+    /// Monotone Inhaltsgeneration. Property-Observer erfasst auch direkte
+    /// Test-/Hilfspfade; modale Save-Dialoge und asynchrone Reloads dürfen
+    /// nur auf exakt derselben Generation abschließen.
+    private(set) var contentRevision: UInt64 = 0
     var encoding: String.Encoding
     var bom: Data
     var lineEnding: LineEnding
@@ -102,6 +110,10 @@ struct EditorTab: Identifiable, Hashable {
     /// wurde die Datei außerhalb von Fastra geändert. `nil` bei
     /// unbenannten Tabs.
     var diskModificationDate: Date?
+    /// Exakte Byte-/Identitätsbasis des letzten Ladens oder Speicherns. Der
+    /// Save-Pfad vergleicht sie unmittelbar vor dem Write und verlässt sich
+    /// damit nicht auf die begrenzte Auflösung eines Änderungsdatums.
+    var diskSnapshot: FileSnapshot?
     /// Art eines Git-Text-Tabs (Etappe 2): `.log` / `.diff` / `.commit`.
     /// `nil` = normale, editierbare Datei. Git-Tabs sind read-only, haben
     /// `url == nil` und werden nicht gespeichert.
@@ -169,6 +181,7 @@ struct EditorTab: Identifiable, Hashable {
         isDirty: Bool = false,
         isLoading: Bool = false,
         diskModificationDate: Date? = nil,
+        diskSnapshot: FileSnapshot? = nil,
         gitKind: GitTabKind? = nil,
         gitDiffRequest: GitDiffRequest? = nil,
         gitDiffDocument: GitDiffDocument? = nil,
@@ -184,6 +197,7 @@ struct EditorTab: Identifiable, Hashable {
         self.path = path
         self.url = url
         self.content = content
+        self.contentRevision = 0
         self.encoding = encoding
         self.bom = bom
         self.lineEnding = lineEnding
@@ -193,6 +207,7 @@ struct EditorTab: Identifiable, Hashable {
         self.isDirty = isDirty
         self.isLoading = isLoading
         self.diskModificationDate = diskModificationDate
+        self.diskSnapshot = diskSnapshot
         self.gitKind = gitKind
         self.gitDiffRequest = gitDiffRequest
         self.gitDiffDocument = gitDiffDocument
@@ -239,6 +254,32 @@ enum ExternalChange {
     }
 }
 
+private enum CoordinatedSaveError: Error {
+    case targetChanged
+    case tabChanged
+    case tabChangedAfterWrite
+}
+
+enum ExpectedFileState: Equatable {
+    case absent
+    case present(FileSnapshot)
+}
+
+/// Friert den Zielzustand genau während der NSSavePanel-Validierung ein.
+/// Entsteht danach eine Datei am vorher freien Pfad, erkennt der exklusive
+/// Create-Pfad sie als Konflikt; eine nie bestätigte Datei wird nicht ersetzt.
+private final class SavePanelStateCapture: NSObject, NSOpenSavePanelDelegate {
+    private(set) var expectedState: ExpectedFileState?
+
+    func panel(_ sender: Any, validate url: URL) throws {
+        if FileManager.default.fileExists(atPath: url.path) {
+            expectedState = .present(try FileSnapshot.read(from: url).snapshot)
+        } else {
+            expectedState = .absent
+        }
+    }
+}
+
 /// Nutzer-Entscheidung beim Schließen eines Tabs mit ungespeicherten Änderungen
 /// (BBEdit-Stil). Siehe `Workspace.confirmCloseHandler` / `Workspace.closeTab`.
 enum CloseConfirmation {
@@ -266,6 +307,27 @@ enum SidebarLayout {
 
 final class Workspace: ObservableObject {
     typealias LanguageDetectionScheduler = (@escaping @Sendable () -> Void) -> Void
+
+    private final class FolderApplyProgressRelay: @unchecked Sendable {
+        private weak var workspace: Workspace?
+        private let generation: Int
+
+        init(workspace: Workspace, generation: Int) {
+            self.workspace = workspace
+            self.generation = generation
+        }
+
+        func report(_ progress: ApplyTransaction.Progress) {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let workspace = self.workspace,
+                      workspace.folderApplyGeneration == self.generation,
+                      workspace.folderApplying else { return }
+                workspace.folderApplyProgressText = L10n.format(
+                    "Ordner-Apply: %@ (%ld/%ld)", progress.fileName,
+                    progress.completedFiles, progress.totalFiles)
+            }
+        }
+    }
 
     @Published var tabs: [EditorTab]
     /// Zweiter, schwächer markierter Tab einer Vergleichsauswahl. Der aktive
@@ -424,7 +486,13 @@ final class Workspace: ObservableObject {
     // Vom `EditorView` gespiegelt (aus `SourceEditorState.cursorPositions`).
     // `nil` = kein zusammenhängend ausgewählter Bereich (nur Cursor). Dient
     // „Nur in Auswahl" (K3) und „Auswahl als Suchbegriff" (K5, ⌘E).
-    @Published var selectionRange: NSRange? = nil
+    @Published var selectionRange: NSRange? = nil {
+        // Absichtlich auch bei nil → nil erhöhen: Ein Cursorwechsel besitzt
+        // keine nichtleere `selectionRange`, ist für verzögertes Einfügen aber
+        // trotzdem ein Zielwechsel.
+        didSet { selectionRevision &+= 1 }
+    }
+    private(set) var selectionRevision: Int = 0
 
     // MARK: - Footer-Statistik (Zeichen / Wörter / Zeilen)
     //
@@ -535,6 +603,12 @@ final class Workspace: ObservableObject {
     /// Die Maske zeigt dann einen dezenten Hinweis-Streifen, damit der
     /// Nutzer NICHT still-trunkierte Ergebnisse für vollständig hält.
     @Published var folderResultsWereCapped: Bool = false
+    /// Planung/Backup/Apply einer bestätigten Ordner-Vorschau laufen im
+    /// Hintergrund. Der Suchdialog zeigt Status und eine Abbruchaktion.
+    @Published var folderApplying: Bool = false
+    @Published var folderApplyProgressText: String? = nil
+    private var folderApplyTask: Task<Void, Never>?
+    private var folderApplyGeneration = 0
 
     // MARK: Scope „Geöffnet" (BBEdit „Open text documents", Kap. 7 S. 184)
 
@@ -1241,6 +1315,7 @@ final class Workspace: ObservableObject {
     /// die in der Praxis relevanten — keine erschöpfende Liste.
     static let reopenEncodings: [String.Encoding] = [
         .utf8, .utf16LittleEndian, .utf16BigEndian,
+        .utf32LittleEndian, .utf32BigEndian,
         .isoLatin1, .windowsCP1252, .macOSRoman, .ascii,
     ]
 
@@ -1270,12 +1345,15 @@ final class Workspace: ObservableObject {
         }
 
         let tabID = tabs[idx].id
+        let originalRevision = tabs[idx].contentRevision
+        let originalDiskSnapshot = tabs[idx].diskSnapshot
         let generation = (loadGeneration[tabID] ?? 0) + 1
         loadGeneration[tabID] = generation
         tabs[idx].isLoading = true
 
+        let loader = reopenFileLoader
         Task.detached(priority: .userInitiated) { [weak self] in
-            let result = Result { try FileLoader.load(url: url, forcedEncoding: encoding) }
+            let result = Result { try loader(url, encoding) }
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 guard self.loadGeneration[tabID] == generation,
@@ -1288,6 +1366,11 @@ final class Workspace: ObservableObject {
                 self.loadGeneration.removeValue(forKey: tabID)
                 switch result {
                 case .success(let loaded):
+                    guard self.tabs[i].contentRevision == originalRevision,
+                          self.tabs[i].diskSnapshot == originalDiskSnapshot else {
+                        self.tabs[i].isLoading = false
+                        return
+                    }
                     self.tabs[i].content    = loaded.content
                     self.tabs[i].encoding   = loaded.encoding
                     self.tabs[i].bom        = loaded.bom
@@ -1297,6 +1380,7 @@ final class Workspace: ObservableObject {
                     self.tabs[i].isDirty    = false
                     self.tabs[i].isLoading  = false
                     self.tabs[i].diskModificationDate = ExternalChange.diskModificationDate(of: url)
+                    self.tabs[i].diskSnapshot = loaded.diskSnapshot
                 case .failure:
                     // Bytes passen nicht zum gewählten Encoding → Tab unverändert
                     // lassen (kein Datenverlust), Spinner aus, Hinweis zeigen.
@@ -1367,12 +1451,15 @@ final class Workspace: ObservableObject {
             return
         }
         let tabID = tabs[idx].id
+        let originalRevision = tabs[idx].contentRevision
+        let originalDiskSnapshot = tabs[idx].diskSnapshot
         let generation = (loadGeneration[tabID] ?? 0) + 1
         loadGeneration[tabID] = generation
         tabs[idx].isLoading = true
 
+        let loader = reloadFileLoader
         Task.detached(priority: .userInitiated) { [weak self] in
-            let result = Result { try FileLoader.load(url: url) }
+            let result = Result { try loader(url) }
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 guard self.loadGeneration[tabID] == generation,
@@ -1385,6 +1472,11 @@ final class Workspace: ObservableObject {
                 self.loadGeneration.removeValue(forKey: tabID)
                 switch result {
                 case .success(let loaded):
+                    guard self.tabs[i].contentRevision == originalRevision,
+                          self.tabs[i].diskSnapshot == originalDiskSnapshot else {
+                        self.tabs[i].isLoading = false
+                        return
+                    }
                     self.tabs[i].content    = loaded.content
                     self.tabs[i].encoding   = loaded.encoding
                     self.tabs[i].bom        = loaded.bom
@@ -1394,6 +1486,7 @@ final class Workspace: ObservableObject {
                     self.tabs[i].isDirty    = false
                     self.tabs[i].isLoading  = false
                     self.tabs[i].diskModificationDate = ExternalChange.diskModificationDate(of: url)
+                    self.tabs[i].diskSnapshot = loaded.diskSnapshot
                 case .failure:
                     // Datei nicht (mehr) lesbar → Tab-Inhalt behalten, kein
                     // Datenverlust; Spinner aus. Kein Alert im Auto-Pfad —
@@ -1586,6 +1679,7 @@ final class Workspace: ObservableObject {
                     self.tabs[idx].fileSize = loaded.fileSize
                     // Basis-Datum für die Extern-Änderungs-Erkennung merken.
                     self.tabs[idx].diskModificationDate = ExternalChange.diskModificationDate(of: url)
+                    self.tabs[idx].diskSnapshot = loaded.diskSnapshot
                     self.tabs[idx].isDirty    = false
                     self.tabs[idx].isLoading  = false
                     // BBEdit-Verhalten: das leere unbenannte Start-/Scratch-
@@ -1616,8 +1710,9 @@ final class Workspace: ObservableObject {
         // Abschnitts- und Hex-Views halten absichtlich keinen vollständigen
         // editierbaren Buffer; Speichern wäre daher eine Trunkierungsgefahr.
         guard tabs[idx].displayMode == .text else { NSSound.beep(); return }
+        guard !tabs[idx].isLoading else { NSSound.beep(); return }
         if let url = tabs[idx].url {
-            write(tab: tabs[idx], to: url)
+            _ = write(tab: tabs[idx], to: url)
         } else {
             saveActiveTabAs()
         }
@@ -1625,10 +1720,14 @@ final class Workspace: ObservableObject {
 
     func saveActiveTabAs() {
         guard let idx = activeTabIndex else { return }
+        let tabID = tabs[idx].id
         // Read-only Git- und Vergleichs-Tabs lassen sich nicht „speichern unter".
         if tabs[idx].gitKind != nil || tabs[idx].fileDiffRequest != nil { return }
         guard tabs[idx].displayMode == .text else { NSSound.beep(); return }
+        guard !tabs[idx].isLoading else { NSSound.beep(); return }
         let panel = NSSavePanel()
+        let stateCapture = SavePanelStateCapture()
+        panel.delegate = stateCapture
         panel.canCreateDirectories = true
         panel.nameFieldStringValue = tabs[idx].title
         panel.message = L10n.string("Datei speichern unter…")
@@ -1642,15 +1741,65 @@ final class Workspace: ObservableObject {
             panel.directoryURL = directory
         }
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        write(tab: tabs[idx], to: url)
-        tabs[idx].url = url
-        tabs[idx].title = url.lastPathComponent
-        tabs[idx].path = url.deletingLastPathComponent().path
+        guard let expectedState = stateCapture.expectedState,
+              let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
+              write(tab: tabs[currentIndex], to: url,
+                    expectedTargetState: expectedState),
+              let savedIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        tabs[savedIndex].url = url
+        tabs[savedIndex].title = url.lastPathComponent
+        tabs[savedIndex].path = url.deletingLastPathComponent().path
     }
 
-    private func write(tab: EditorTab, to url: URL) {
-        guard let idx = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+    /// Rückfrage bei einem Save-Ziel, das nicht mehr dem geladenen Snapshot
+    /// entspricht. `true` erlaubt genau den gerade beobachteten Fremdstand zu
+    /// überschreiben; eine weitere Änderung danach bricht trotzdem ab.
+    var saveConflictConfirmHandler: (String) -> Bool = Workspace.defaultSaveConflictConfirmation
+    /// Deterministischer Testpunkt nach Temp-Write, aber vor Koordination.
+    var saveBeforeCoordinateHandler: ((URL) -> Void)? = nil
+    var saveSafetyWarningHandler: (String, String) -> Void = { title, text in
+        NSAlert.runWarning(title: title, text: text)
+    }
+
+    static func defaultSaveConflictConfirmation(_ title: String) -> Bool {
+        if !Thread.isMainThread {
+            return DispatchQueue.main.sync { defaultSaveConflictConfirmation(title) }
+        }
+        let alert = NSAlert()
+        alert.messageText = L10n.format("„%@“ wurde außerhalb von Fastra geändert.", title)
+        alert.informativeText = L10n.string("Speichern würde den neueren Plattenstand überschreiben. Prüfe die Änderungen oder speichere nur nach bewusster Bestätigung.")
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.string("Abbrechen"))
+        alert.addButton(withTitle: L10n.string("Trotzdem speichern"))
+        return alert.runModal() == .alertSecondButtonReturn
+    }
+
+    @discardableResult
+    func write(tab: EditorTab, to url: URL) -> Bool {
+        write(tab: tab, to: url, expectedTargetState: nil)
+    }
+
+    @discardableResult
+    func write(tab: EditorTab, to url: URL,
+               expectedTargetState: ExpectedFileState?) -> Bool {
+        guard tabs.contains(where: { $0.id == tab.id }) else { return false }
         do {
+            guard !tab.isLoading else { throw CoordinatedSaveError.tabChanged }
+            let capturedRevision = tab.contentRevision
+            func tabStillMatches() -> Bool {
+                guard let currentIndex = tabs.firstIndex(where: { $0.id == tab.id }) else {
+                    return false
+                }
+                let current = tabs[currentIndex]
+                return !current.isLoading
+                    && current.contentRevision == capturedRevision
+                    && current.content == tab.content
+                    && current.encoding == tab.encoding
+                    && current.bom == tab.bom
+                    && current.lineEnding == tab.lineEnding
+                    && current.diskSnapshot == tab.diskSnapshot
+                    && current.url?.canonicalFileURL.path == tab.url?.canonicalFileURL.path
+            }
             // Zeilenenden auf die gewählte Konvention bringen (K7) — der Editor
             // hält intern u.U. andere Umbrüche; maßgeblich ist die im Footer
             // gewählte `lineEnding`. converting() normalisiert auch gemischte.
@@ -1658,16 +1807,114 @@ final class Workspace: ObservableObject {
                 content: tab.content, encoding: tab.encoding,
                 bom: tab.bom, lineEnding: tab.lineEnding
             ) else { throw CocoaError(.fileWriteInapplicableStringEncoding) }
-            try out.write(to: url, options: .atomic)
-            tabs[idx].isDirty = false
+            let fm = FileManager.default
+            let targetExists = fm.fileExists(atPath: url.path)
+            let observedState: ExpectedFileState
+            if targetExists {
+                observedState = .present(try FileSnapshot.read(from: url).snapshot)
+            } else {
+                observedState = .absent
+            }
+            if let expectedTargetState,
+               expectedTargetState != observedState {
+                throw CoordinatedSaveError.targetChanged
+            }
+            let sameDocument = tab.url?.canonicalFileURL.path == url.canonicalFileURL.path
+            let loadedState: ExpectedFileState = tab.diskSnapshot.map(ExpectedFileState.present)
+                ?? .absent
+            if sameDocument, observedState != loadedState {
+                guard saveConflictConfirmHandler(tab.title) else {
+                    return false
+                }
+                // Ein modaler Alert pumpt die Main-Runloop. Hat sich der Tab
+                // dabei geändert, darf die vorher kodierte Kopie nicht mehr
+                // geschrieben oder der neuere Inhalt clean gesetzt werden.
+                guard tabStillMatches() else { throw CoordinatedSaveError.tabChanged }
+            }
+
+            // Temp-Datei im Zielordner zuerst vollständig vorbereiten. Erst
+            // danach folgt die letzte Zustandsprüfung und der kurze atomare
+            // Replace/Create-Schritt.
+            let tmpURL = url.deletingLastPathComponent().appendingPathComponent(
+                ".fastra-save-\(UUID().uuidString).tmp")
+            defer { try? fm.removeItem(at: tmpURL) }
+            try out.write(to: tmpURL, options: .atomic)
+            saveBeforeCoordinateHandler?(url)
+            guard tabStillMatches() else { throw CoordinatedSaveError.tabChanged }
+
+            var coordinationError: NSError?
+            var writeError: Error?
+            var writtenSnapshot: FileSnapshot?
+            let coordinator = NSFileCoordinator(filePresenter: nil)
+            let finalExpectedState = expectedTargetState ?? observedState
+            let coordinationOptions: NSFileCoordinator.WritingOptions = targetExists
+                ? .forReplacing : []
+            coordinator.coordinate(writingItemAt: url, options: coordinationOptions,
+                                   error: &coordinationError) { coordinatedURL in
+                do {
+                    switch finalExpectedState {
+                    case .present(let expectedBeforeWrite):
+                        let immediatelyBefore = try FileSnapshot.read(from: coordinatedURL)
+                        guard immediatelyBefore.snapshot == expectedBeforeWrite else {
+                            throw CoordinatedSaveError.targetChanged
+                        }
+                        _ = try fm.replaceItemAt(coordinatedURL, withItemAt: tmpURL)
+                    case .absent:
+                        guard !fm.fileExists(atPath: coordinatedURL.path) else {
+                            throw CoordinatedSaveError.targetChanged
+                        }
+                        // moveItem ist ein exklusives Create: entsteht nach
+                        // dem Check doch noch ein Ziel, schlägt es fehl, statt
+                        // den fremden Stand zu überschreiben.
+                        try fm.moveItem(at: tmpURL, to: coordinatedURL)
+                    }
+                    writtenSnapshot = FileSnapshot(data: out, at: coordinatedURL)
+                } catch {
+                    writeError = error
+                }
+            }
+            if let coordinationError { throw coordinationError }
+            if let writeError { throw writeError }
+            guard let writtenSnapshot else { throw CoordinatedSaveError.targetChanged }
+            guard tabStillMatches() else {
+                // Der gespeicherte Snapshot ist real, aber neuere In-Memory-
+                // Änderungen bleiben ausdrücklich dirty und erhalten.
+                if let currentIndex = tabs.firstIndex(where: { $0.id == tab.id }) {
+                    tabs[currentIndex].diskSnapshot = writtenSnapshot
+                    tabs[currentIndex].diskModificationDate = ExternalChange.diskModificationDate(of: url)
+                    tabs[currentIndex].isDirty = true
+                }
+                throw CoordinatedSaveError.tabChangedAfterWrite
+            }
+            guard let finalIndex = tabs.firstIndex(where: { $0.id == tab.id }) else {
+                throw CoordinatedSaveError.tabChangedAfterWrite
+            }
+            tabs[finalIndex].isDirty = false
             // Unser eigener Write ist keine „externe" Änderung — Basis-Datum
             // nachziehen, sonst schlüge die Erkennung beim nächsten
             // App-Wechsel auf die selbst geschriebene Datei an.
-            tabs[idx].diskModificationDate = ExternalChange.diskModificationDate(of: url)
+            tabs[finalIndex].diskModificationDate = ExternalChange.diskModificationDate(of: url)
+            tabs[finalIndex].diskSnapshot = writtenSnapshot
             // Speichern kann den Git-Status geändert haben (Datei jetzt „M").
             refreshGitStatus()
+            return true
         } catch {
-            NSAlert(error: error).runModal()
+            if case CoordinatedSaveError.targetChanged = error {
+                saveSafetyWarningHandler(
+                    L10n.string("Speichern abgebrochen"),
+                    L10n.string("Die Datei wurde während des Speicherns erneut geändert. Der Plattenstand blieb erhalten."))
+            } else if case CoordinatedSaveError.tabChanged = error {
+                saveSafetyWarningHandler(
+                    L10n.string("Speichern abgebrochen"),
+                    L10n.string("Der Editorinhalt hat sich während der Rückfrage geändert. Die neueren Änderungen bleiben ungespeichert erhalten."))
+            } else if case CoordinatedSaveError.tabChangedAfterWrite = error {
+                saveSafetyWarningHandler(
+                    L10n.string("Neuere Änderungen noch ungespeichert"),
+                    L10n.string("Während des Speicherns kamen weitere Editoränderungen hinzu. Sie bleiben im Tab erhalten und müssen erneut gespeichert werden."))
+            } else {
+                NSAlert(error: error).runModal()
+            }
+            return false
         }
     }
 
@@ -2966,6 +3213,35 @@ final class Workspace: ObservableObject {
     /// basierend „Rückgängig"-Aktion an.
     @Published var lastApplySession: ApplySession? = nil
 
+    /// Nur für isolierte Tests/gezielte Laufzeitkonfiguration. `nil` nutzt den
+    /// normalen Application-Support-Ordner; Tests schreiben nie dorthin.
+    var folderApplyBackupRoot: URL? = nil
+
+    /// Testbarer, aber produktiv sichtbarer Hinweis für Dirty-/Lade-Konflikte.
+    /// Der Apply selbst bleibt immer blockiert; es gibt hier bewusst keinen
+    /// stillen „Platte gewinnt“-Pfad.
+    var folderApplyConflictHandler: ([String]) -> Void = Workspace.defaultFolderApplyConflict
+    var folderPreviewConflictHandler: (String) -> Void = Workspace.defaultFolderPreviewConflict
+
+    static func defaultFolderApplyConflict(_ titles: [String]) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.sync { defaultFolderApplyConflict(titles) }
+            return
+        }
+        let names = titles.sorted().joined(separator: "\n• ")
+        NSAlert.runWarning(
+            title: L10n.string("Ordner-Apply abgebrochen"),
+            text: L10n.format("Diese betroffenen Tabs enthalten ungespeicherte Änderungen oder werden noch geladen:\n\n• %@\n\nSpeichere oder schließe sie und prüfe danach die Vorschau erneut.", names))
+    }
+
+    static func defaultFolderPreviewConflict(_ message: String) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.sync { defaultFolderPreviewConflict(message) }
+            return
+        }
+        NSAlert.runWarning(title: L10n.string("Apply-Konflikt"), text: message)
+    }
+
     /// Schwellwert (in Bytes), ab dem der Folder-Apply einen
     /// Bestätigungsdialog zeigt. AGENTS.md: > 200 MB.
     static let folderApplyWarnBytes: Int = 200 * 1024 * 1024
@@ -2992,23 +3268,60 @@ final class Workspace: ObservableObject {
     func applyAllInFolder() -> Bool {
         guard scope.isFolderLike,
               searchError == nil,
-              !folderResults.isEmpty else { return false }
-        let urls = folderResults.filter { !$0.matches.isEmpty }.map(\.url)
-        guard !urls.isEmpty else { return false }
+              !folderResults.isEmpty,
+              !folderApplying else { return false }
+        let visibleResults = folderResults.filter { !$0.matches.isEmpty }
+        guard !visibleResults.isEmpty else { return false }
+        guard !folderResultsWereCapped,
+              visibleResults.allSatisfy({ $0.totalMatches == $0.matches.count }) else {
+            folderPreviewConflictHandler(L10n.string(
+                "Die sichtbare Vorschau ist gekürzt. Verfeinere die Suche, bis alle Treffer sichtbar sind, bevor du Änderungen anwendest."))
+            return false
+        }
+        let urls = visibleResults.map(\.url)
+        let targetPaths = Set(urls.map { $0.canonicalFileURL.path })
+        let blockedTabs = tabs.filter { tab in
+            guard let url = tab.url else { return false }
+            return targetPaths.contains(url.canonicalFileURL.path)
+                && (tab.isDirty || tab.isLoading)
+        }
+        guard blockedTabs.isEmpty else {
+            folderApplyConflictHandler(blockedTabs.map(\.title))
+            return false
+        }
         recordSearchHistory()
-        let plan = ApplyEngine.plan(files: urls, options: currentSearchOptions)
 
-        // Schwellen-Warnung. Wir summieren die ORIGINAL-Bytes (das ist,
-        // was wir effektiv anfassen) — neuer Inhalt kann ohnehin nur
-        // dann größer werden, wenn das Replace länger ist als der Find.
-        let totalBytes = plan.files.reduce(0) { $0 + $1.originalBytes.count }
+        // Nur billige, bereits mit der Vorschau gelieferte Metadaten werden
+        // hier auf dem Main-Thread geprüft. Vollständiges Lesen, Planung,
+        // Backup und Replace übernimmt danach ApplyTransaction im Worker.
+        let options = currentSearchOptions
+        guard visibleResults.allSatisfy({
+            $0.searchOptions == options && $0.snapshot != nil
+        }) else {
+            folderPreviewConflictHandler(L10n.string(
+                "Dateien oder Suchoptionen haben sich seit der sichtbaren Vorschau geändert. Starte die Suche erneut; es wurde nichts verändert."))
+            return false
+        }
+        let inputs = visibleResults.map { result in
+            ApplyTransaction.Input(
+                url: result.url,
+                snapshot: result.snapshot!,
+                matches: result.matches.map {
+                    PlannedMatch(range: $0.range, before: $0.matchText,
+                                 after: $0.replacedText)
+                })
+        }
+
+        // Die Warnung kommt VOR jedem Voll-Read. `byteCount` stammt aus dem
+        // stabilen Vorschau-Snapshot und ist damit zugleich billig und exakt.
+        let totalBytes = inputs.reduce(0) { $0 + $1.snapshot.byteCount }
         if totalBytes > Workspace.folderApplyWarnBytes {
             let alert = NSAlert()
             alert.messageText = L10n.string("Große Replace-Operation")
             alert.informativeText = L10n.format(
                 "Insgesamt %@ in %ld Dateien. Trotzdem ausführen?",
                 ByteCountFormatter.string(fromByteCount: Int64(totalBytes), countStyle: .file),
-                plan.changedFiles.count
+                inputs.count
             )
             alert.addButton(withTitle: L10n.string("Ausführen"))
             alert.addButton(withTitle: L10n.string("Abbrechen"))
@@ -3016,39 +3329,98 @@ final class Workspace: ObservableObject {
             guard alert.runModal() == .alertFirstButtonReturn else { return false }
         }
 
-        do {
-            let session = try ApplyEngine.apply(plan: plan)
+        let transaction = ApplyTransaction(inputs: inputs, options: options)
+        let backupRoot = folderApplyBackupRoot
+        folderApplyGeneration &+= 1
+        let generation = folderApplyGeneration
+        let progressRelay = FolderApplyProgressRelay(workspace: self,
+                                                     generation: generation)
+        folderApplying = true
+        folderApplyProgressText = L10n.string("Ordner-Apply wird vorbereitet…")
+        folderApplyTask = Task.detached(priority: .userInitiated) { [weak self] in
+            let result: Result<ApplySession, Error>
+            do {
+                let session = try transaction.execute(
+                    backupRoot: backupRoot,
+                    shouldCancel: { Task.isCancelled },
+                    progress: progressRelay.report)
+                result = .success(session)
+            } catch {
+                result = .failure(error)
+            }
+            await MainActor.run { [weak self] in
+                self?.finishFolderApply(result, generation: generation)
+            }
+        }
+        return true
+    }
+
+    /// Abbruch ist bis zum globalen Preflight garantiert write-frei. Hat die
+    /// kurze Apply-Phase bereits begonnen, führt die Transaktion Journal und
+    /// atomare Einzel-Replaces kontrolliert zu Ende.
+    func cancelFolderApply() {
+        guard folderApplying else { return }
+        folderApplyTask?.cancel()
+        folderApplyProgressText = L10n.string("Ordner-Apply wird abgebrochen…")
+    }
+
+    private func finishFolderApply(_ result: Result<ApplySession, Error>,
+                                   generation: Int) {
+        guard folderApplyGeneration == generation else { return }
+        folderApplyTask = nil
+        folderApplying = false
+        folderApplyProgressText = nil
+        switch result {
+        case .success(let session):
             lastApplySession = session
-            reloadOpenTabs(for: session.entries.map { URL(fileURLWithPath: $0.originalPath) })
-            return true
-        } catch ApplyError.planNotApplyable(let msg) {
-            NSAlert.runWarning(title: L10n.string("Apply abgelehnt"), text: msg)
-            return false
-        } catch ApplyError.backupFailed(let msg) {
-            NSAlert.runWarning(title: L10n.string("Backup fehlgeschlagen"),
-                               text: L10n.format("Es wurde nichts verändert.\n\n%@", msg))
-            return false
-        } catch ApplyError.writeFailed(let session, let msg) {
+            reloadOpenTabs(for: session.entries.map {
+                URL(fileURLWithPath: $0.originalPath)
+            })
+        case .failure(ApplyError.cancelled):
+            break
+        case .failure(ApplyError.planNotApplyable(let message)),
+             .failure(ApplyError.conflict(let message)):
+            folderPreviewConflictHandler(message)
+        case .failure(ApplyError.backupFailed(let message)):
+            NSAlert.runWarning(
+                title: L10n.string("Backup fehlgeschlagen"),
+                text: L10n.format("Es wurde nichts verändert.\n\n%@", message))
+        case .failure(ApplyError.writeFailed(let session, let message)):
             lastApplySession = session
-            NSAlert.runWarning(title: L10n.string("Apply teilweise fehlgeschlagen"),
-                               text: L10n.format("%@\n\nBereits geschriebene Dateien können über die Rückgängig-Aktion zurückgespielt werden.", msg))
-            reloadOpenTabs(for: session.entries.map { URL(fileURLWithPath: $0.originalPath) })
-            return false
-        } catch {
+            NSAlert.runWarning(
+                title: L10n.string("Apply teilweise fehlgeschlagen"),
+                text: L10n.format("%@\n\nBereits geschriebene Dateien können über die Rückgängig-Aktion zurückgespielt werden.", message))
+            reloadOpenTabs(for: session.entries.map {
+                URL(fileURLWithPath: $0.originalPath)
+            })
+        case .failure(let error):
             NSAlert(error: error).runModal()
-            return false
         }
     }
 
     /// Macht die letzte Folder-Apply-Session bit-exakt rückgängig.
     @discardableResult
     func undoLastFolderApply() -> Bool {
-        guard let session = lastApplySession else { return false }
+        guard !folderApplying, let session = lastApplySession else { return false }
         do {
             try ApplyEngine.undo(session)
             reloadOpenTabs(for: session.entries.map { URL(fileURLWithPath: $0.originalPath) })
             lastApplySession = nil
             return true
+        } catch ApplyError.undoConflict(let message) {
+            NSAlert.runWarning(title: L10n.string("Rückgängig-Konflikt"), text: message)
+            return false
+        } catch ApplyError.legacySession(let message) {
+            NSAlert.runWarning(title: L10n.string("Rückgängig abgelehnt"), text: message)
+            return false
+        } catch ApplyError.undoFailed(let partial, let message) {
+            lastApplySession = partial
+            NSAlert.runWarning(
+                title: L10n.string("Rückgängig teilweise fehlgeschlagen"),
+                text: L10n.format("%@\n\nDer bereits gespeicherte Fortschritt kann mit Rückgängig fortgesetzt werden.", message))
+            reloadOpenTabs(for: partial.entries.filter { $0.state == .restored }
+                .map { URL(fileURLWithPath: $0.originalPath) })
+            return false
         } catch {
             NSAlert(error: error).runModal()
             return false
@@ -3065,15 +3437,29 @@ final class Workspace: ObservableObject {
     /// Inhalt kommt nur via Neuerzeugung) gilt auch hier. `isLoading` wird
     /// kurz auf `true` gesetzt und dann auf `false`, damit `.id(activeTab.id)`
     /// eine Neuerzeugung auslöst und der frische Inhalt wirklich sichtbar wird.
-    private func reloadOpenTabs(for changedURLs: [URL]) {
-        let changed = Set(changedURLs.map(\.path))
+    var reloadFileLoader: @Sendable (URL) throws -> FileLoader.LoadedFile = {
+        try FileLoader.load(url: $0)
+    }
+    var reopenFileLoader: @Sendable (URL, String.Encoding) throws -> FileLoader.LoadedFile = {
+        try FileLoader.load(url: $0, forcedEncoding: $1)
+    }
+
+    func reloadOpenTabs(for changedURLs: [URL]) {
+        let changed = Set(changedURLs.map { $0.canonicalFileURL.path })
         // Snapshot der zu reloadenden Tab-IDs + URLs aufnehmen — die
         // Schleife muss nicht auf dem aktuellen `tabs`-Array laufen.
-        let toReload: [(id: UUID, url: URL)] = tabs.compactMap { tab in
-            guard let url = tab.url, changed.contains(url.path) else { return nil }
-            return (id: tab.id, url: url)
+        let toReload: [(id: UUID, url: URL, contentRevision: UInt64,
+                       diskSnapshot: FileSnapshot?)] = tabs.compactMap { tab in
+            guard let url = tab.url,
+                  changed.contains(url.canonicalFileURL.path) else { return nil }
+            // Ein Dirty-/Ladezustand darf weder hier noch in der Completion
+            // automatisch verworfen werden.
+            guard !tab.isDirty, !tab.isLoading else { return nil }
+            return (id: tab.id, url: url, contentRevision: tab.contentRevision,
+                    diskSnapshot: tab.diskSnapshot)
         }
-        for (tabID, url) in toReload {
+        let loader = reloadFileLoader
+        for (tabID, url, originalRevision, originalDiskSnapshot) in toReload {
             // Generation hochzählen, damit ein paralleles `loadFile` auf
             // dieselbe Datei das Ergebnis des reloadOpenTabs überschreiben kann
             // (oder umgekehrt — der spätere Guard entscheidet).
@@ -3086,7 +3472,7 @@ final class Workspace: ObservableObject {
             }
 
             Task.detached(priority: .userInitiated) { [weak self] in
-                let loadResult = Result { try FileLoader.load(url: url) }
+                let loadResult = Result { try loader(url) }
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     guard self.loadGeneration[tabID] == generation,
@@ -3102,12 +3488,20 @@ final class Workspace: ObservableObject {
                     }
                     self.loadGeneration.removeValue(forKey: tabID)
                     if case .success(let loaded) = loadResult {
+                        guard !self.tabs[idx].isDirty,
+                              self.tabs[idx].contentRevision == originalRevision,
+                              self.tabs[idx].diskSnapshot == originalDiskSnapshot else {
+                            self.tabs[idx].isLoading = false
+                            return
+                        }
                         self.tabs[idx].content    = loaded.content
                         self.tabs[idx].encoding   = loaded.encoding
                         self.tabs[idx].bom        = loaded.bom
                         self.tabs[idx].lineEnding = loaded.lineEnding
                         self.tabs[idx].displayMode = loaded.displayMode
                         self.tabs[idx].fileSize = loaded.fileSize
+                        self.tabs[idx].diskSnapshot = loaded.diskSnapshot
+                        self.tabs[idx].diskModificationDate = ExternalChange.diskModificationDate(of: url)
                         self.tabs[idx].isDirty    = false
                         self.tabs[idx].isLoading  = false
                     } else {

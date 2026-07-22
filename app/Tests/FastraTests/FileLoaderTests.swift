@@ -126,7 +126,7 @@ func fileLoader_utf16_bom() throws {
     #expect(result.bom == Data([0xFF, 0xFE]))
 }
 
-@Test("FileLoader: BOM-markiertes UTF-8 sowie UTF-16 LE/BE bleiben bytegenau")
+@Test("FileLoader: BOM-markiertes UTF-8 sowie UTF-16/32 LE/BE bleiben bytegenau")
 func fileLoader_unicodeByteRoundTrips() throws {
     let textVariants = [
         "Alpha\nBeta", "Alpha\nBeta\n",
@@ -136,7 +136,9 @@ func fileLoader_unicodeByteRoundTrips() throws {
     let encodings: [(String.Encoding, Data)] = [
         (.utf8, Data([0xEF, 0xBB, 0xBF])),
         (.utf16LittleEndian, Data([0xFF, 0xFE])),
-        (.utf16BigEndian, Data([0xFE, 0xFF]))
+        (.utf16BigEndian, Data([0xFE, 0xFF])),
+        (.utf32LittleEndian, Data([0xFF, 0xFE, 0x00, 0x00])),
+        (.utf32BigEndian, Data([0x00, 0x00, 0xFE, 0xFF]))
     ]
 
     for text in textVariants {
@@ -157,6 +159,22 @@ func fileLoader_unicodeByteRoundTrips() throws {
             #expect(saved == original)
         }
     }
+}
+
+@Test("FileLoader: Windows-1252-Anführungszeichen bleiben CP1252")
+func fileLoader_detectsWindows1252C1Characters() throws {
+    let text = "Preis 10 € – „Test“\n"
+    let original = try #require(text.data(using: .windowsCP1252))
+    let url = try writeTmp(Array(original))
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    let loaded = try FileLoader.load(url: url)
+    #expect(loaded.content == text)
+    #expect(loaded.encoding == .windowsCP1252)
+    #expect(FileLoader.encodedData(content: loaded.content,
+                                   encoding: loaded.encoding,
+                                   bom: loaded.bom,
+                                   lineEnding: loaded.lineEnding) == original)
 }
 
 @Test("FileLoader: BOM-loses UTF-16 braucht eine ausdrückliche Encoding-Wahl")

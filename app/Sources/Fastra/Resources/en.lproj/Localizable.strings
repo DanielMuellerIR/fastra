@@ -375,8 +375,31 @@
 "Alles bereitstellen" = "Stage All";
 "Bereitstellung aufheben" = "Unstage All";
 "Apply abgelehnt" = "Apply Rejected";
+"Apply-Konflikt" = "Apply Conflict";
 "Backup fehlgeschlagen" = "Backup Failed";
+"Temporäre Datei schreiben (%@): %@" = "Write temporary file (%@): %@";
 "Apply teilweise fehlgeschlagen" = "Apply Partially Failed";
+"Rückgängig-Konflikt" = "Undo Conflict";
+"Ordner-Apply abgebrochen" = "Folder Apply Canceled";
+"Diese betroffenen Tabs enthalten ungespeicherte Änderungen oder werden noch geladen:\n\n• %@\n\nSpeichere oder schließe sie und prüfe danach die Vorschau erneut." = "These affected tabs have unsaved changes or are still loading:\n\n• %@\n\nSave or close them, then review the preview again.";
+"„%@“ wurde seit der Vorschau geändert. Es wurde nichts verändert." = "‘%@’ changed after the preview. Nothing was changed.";
+"„%@“ wurde während des Apply geändert." = "‘%@’ changed while Apply was running.";
+"„%@“ wurde nach dem Apply geändert. Rückgängig wurde abgebrochen." = "‘%@’ changed after Apply. Undo was canceled.";
+"„%@“ wurde während Rückgängig geändert." = "‘%@’ changed while Undo was running.";
+"Speichern würde den neueren Plattenstand überschreiben. Prüfe die Änderungen oder speichere nur nach bewusster Bestätigung." = "Saving would overwrite the newer on-disk version. Review the changes, or save only after explicitly confirming.";
+"Trotzdem speichern" = "Save Anyway";
+"Speichern abgebrochen" = "Save Canceled";
+"Die Datei wurde während des Speicherns erneut geändert. Der Plattenstand blieb erhalten." = "The file changed again while saving. The on-disk version was preserved.";
+"Die sichtbare Vorschau ist gekürzt. Verfeinere die Suche, bis alle Treffer sichtbar sind, bevor du Änderungen anwendest." = "The visible preview is truncated. Refine the search until every match is visible before applying changes.";
+"Dateien oder Suchoptionen haben sich seit der sichtbaren Vorschau geändert. Starte die Suche erneut; es wurde nichts verändert." = "Files or search options changed after the visible preview. Run the search again; nothing was changed.";
+"Die berechnete Änderung stimmt nicht mehr mit der sichtbaren Vorschau überein. Starte die Suche erneut; es wurde nichts verändert." = "The calculated change no longer matches the visible preview. Run the search again; nothing was changed.";
+"Der Editorinhalt hat sich während der Rückfrage geändert. Die neueren Änderungen bleiben ungespeichert erhalten." = "The editor content changed while confirmation was open. The newer changes remain safely unsaved.";
+"Neuere Änderungen noch ungespeichert" = "Newer Changes Still Unsaved";
+"Während des Speicherns kamen weitere Editoränderungen hinzu. Sie bleiben im Tab erhalten und müssen erneut gespeichert werden." = "More editor changes arrived while saving. They remain in the tab and must be saved again.";
+"Diese Rückgängig-Session verwendet ein nicht kompatibles Sicherheitsformat und wird deshalb nicht automatisch angewendet." = "This undo session uses an incompatible safety format and therefore cannot be applied automatically.";
+"Rückgängig abgelehnt" = "Undo Rejected";
+"Rückgängig teilweise fehlgeschlagen" = "Undo Partially Failed";
+"%@\n\nDer bereits gespeicherte Fortschritt kann mit Rückgängig fortgesetzt werden." = "%@\n\nThe persisted progress can be continued with Undo.";
 "… und %ld weitere ausgerichtete Zeilen (Anzeige auf %ld begrenzt)." = "… and %ld more aligned lines (display limited to %ld).";
 "1 geänderte Zeile" = "1 Changed Line";
 "%ld geänderte Zeilen" = "%ld Changed Lines";
@@ -1203,3 +1226,19 @@
 /* Tab-Paar für Dateivergleich (v1.43.0) */
 "Aktueller Tab" = "Current Tab";
 "Für Dateivergleich ausgewählt" = "Selected for File Comparison";
+
+/* Ordnersuche: vollständige ripgrep-Fehler statt stiller Teilergebnisse */
+"Die Ordnersuche wurde beendet, weil ripgrep nicht rechtzeitig geantwortet hat." = "The folder search stopped because ripgrep did not respond in time.";
+"Die Ordnersuche wurde beendet, weil die ripgrep-Dateiliste zu groß war." = "The folder search stopped because the ripgrep file list was too large.";
+"Die Ordnersuche konnte die Dateiliste nicht vollständig lesen: %@" = "The folder search could not read the complete file list: %@";
+"Unbekannter ripgrep-Fehler" = "Unknown ripgrep error";
+"Der Apply-Auftrag ist leer." = "The apply operation is empty.";
+"„%@“ kann nicht auf der sichtbaren Vorschau-Basis ersetzt werden." = "“%@” cannot be replaced from the visible preview basis.";
+"Backup vorbereiten (%@): %@" = "Prepare backup (%@): %@";
+"Temporäre Datei lesen (%@): %@" = "Read temporary file (%@): %@";
+"Ordner-Apply wird vorbereitet…" = "Preparing folder apply…";
+"Ordner-Apply: %@ (%ld/%ld)" = "Folder apply: %@ (%ld/%ld)";
+"Ordner-Apply wird abgebrochen…" = "Cancelling folder apply…";
+"Apply abbrechen" = "Cancel Apply";
+"Bricht Planung und Preflight ab. Eine bereits begonnene atomare Schreibphase wird sicher abgeschlossen." = "Cancels planning and preflight. An atomic write phase that has already started will finish safely.";
+"Das ursprüngliche Einfügeziel hat sich während der Konvertierung geändert. Es wurde nichts eingefügt." = "The original insertion target changed during conversion. Nothing was inserted.";

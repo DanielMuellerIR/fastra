@@ -68,7 +68,8 @@ func close_dirtySaveWritesAndCloses() throws {
     defer { try? FileManager.default.removeItem(at: url) }
     let a = EditorTab(title: url.lastPathComponent,
                       path: url.deletingLastPathComponent().path,
-                      url: url, content: "neu gesichert", isDirty: true)
+                      url: url, content: "neu gesichert", isDirty: true,
+                      diskSnapshot: FileSnapshot(data: Data("alt".utf8), at: url))
     ws.tabs = [a]
     ws.activeTabID = a.id
     ws.closeTab(id: a.id)
@@ -230,7 +231,8 @@ func quit_dirtySaveWritesAndTerminates() throws {
     defer { try? FileManager.default.removeItem(at: url) }
     ws.tabs = [EditorTab(title: url.lastPathComponent,
                          path: url.deletingLastPathComponent().path,
-                         url: url, content: "beim Beenden gesichert", isDirty: true)]
+                         url: url, content: "beim Beenden gesichert", isDirty: true,
+                         diskSnapshot: FileSnapshot(data: Data("alt".utf8), at: url))]
     ws.activeTabID = ws.tabs.first?.id
     #expect(ws.confirmCloseAllDirtyForQuit() == true)
     #expect(try String(contentsOf: url, encoding: .utf8) == "beim Beenden gesichert")
@@ -266,7 +268,8 @@ func quit_cancelAfterSaveRestoresActive() throws {
     let active = EditorTab(title: "active.txt", path: "/tmp", isDirty: false)
     let toSave = EditorTab(title: "save.txt",
                            path: url.deletingLastPathComponent().path,
-                           url: url, content: "gesichert", isDirty: true)
+                           url: url, content: "gesichert", isDirty: true,
+                           diskSnapshot: FileSnapshot(data: Data("alt".utf8), at: url))
     let toCancel = EditorTab(title: "cancel.txt", path: "/tmp", content: "x", isDirty: true)
     ws.tabs = [active, toSave, toCancel]
     ws.activeTabID = active.id

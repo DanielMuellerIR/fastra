@@ -128,6 +128,31 @@ struct PagedFileTests {
         }
     }
 
+    @Test("UTF-32 LE/BE-Seiten bleiben an Vierbyte-Codeunits ausgerichtet")
+    func utf32BoundariesAreCodeUnitSafe() throws {
+        let text = String(repeating: "A", count: textPageSize / 4 - 1)
+            + "😀" + String(repeating: "B", count: textPageSize / 4) + " Ende"
+        let variants: [(String.Encoding, Data)] = [
+            (.utf32LittleEndian, Data([0xFF, 0xFE, 0x00, 0x00])),
+            (.utf32BigEndian, Data([0x00, 0x00, 0xFE, 0xFF])),
+        ]
+        for (encoding, bom) in variants {
+            var file = bom
+            file.append(try #require(text.data(using: encoding)))
+            let url = try temporaryPageFile(file)
+            let pages = try decodedPages(url: url, data: file,
+                                         encoding: encoding, bom: bom)
+            try? FileManager.default.removeItem(at: url)
+            #expect(pages.map(\.text).joined() == text)
+            #expect(pages.first?.fileRange.lowerBound == UInt64(bom.count))
+            #expect(pages.last?.fileRange.upperBound == UInt64(file.count))
+            for pair in zip(pages, pages.dropFirst()) {
+                #expect(pair.0.fileRange.upperBound == pair.1.fileRange.lowerBound)
+                #expect((pair.0.fileRange.upperBound - UInt64(bom.count)).isMultiple(of: 4))
+            }
+        }
+    }
+
     @Test("Echte große UTF-16-Dateien bleiben encoding-sicher abschnittsweise")
     func largeUTF16FilesRemainChunked() throws {
         let variants: [(String.Encoding, Data, Bool)] = [

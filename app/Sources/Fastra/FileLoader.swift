@@ -43,6 +43,9 @@ enum FileLoader {
         let lineEnding: LineEnding
         let displayMode: EditorDisplayMode
         let fileSize: UInt64
+        /// Exakte Byte-/Identitätsbasis dieses Ladevorgangs. Nur editierbare,
+        /// vollständig geladene Dateien besitzen einen Save-Snapshot.
+        let diskSnapshot: FileSnapshot?
     }
 
     /// Fehler, den `load(url:)` werfen kann.
@@ -104,11 +107,12 @@ enum FileLoader {
             if fileSize > largeFileThreshold {
                 return LoadedFile(content: "", encoding: bodyEncoding, bom: probeBOM,
                                   lineEnding: .lf, displayMode: .chunkedText,
-                                  fileSize: fileSize)
+                                  fileSize: fileSize, diskSnapshot: nil)
             }
-            guard let data = try? Data(contentsOf: url) else {
+            guard let read = try? FileSnapshot.read(from: url) else {
                 throw LoadError.unreadable
             }
+            let data = read.data
             let (bom, bomEncoding) = ApplyEngine.detectBOM(in: data)
             let payload = Data(data.dropFirst(bom.count))
             let exactEncoding = explicitBodyEncoding(enc, bomEncoding: bomEncoding)
@@ -117,7 +121,8 @@ enum FileLoader {
             }
             return LoadedFile(content: s, encoding: exactEncoding, bom: bom,
                               lineEnding: LineEnding.detect(in: s),
-                              displayMode: .text, fileSize: fileSize)
+                              displayMode: .text, fileSize: fileSize,
+                              diskSnapshot: read.snapshot)
         }
 
         // Ohne BOM sind UTF-16-Text und beliebige 16-Bit-Binärdaten nicht
@@ -128,7 +133,7 @@ enum FileLoader {
         // UTF-16 LE/BE ausdrücklich über „Neu öffnen mit Encoding“ wählen.
         if probe.contains(0) && !bomEncodingAllowsNUL(probeBOMEncoding) {
             return LoadedFile(content: "", encoding: .utf8, bom: Data(), lineEnding: .lf,
-                              displayMode: .hex, fileSize: fileSize)
+                              displayMode: .hex, fileSize: fileSize, diskSnapshot: nil)
         }
         if fileSize > largeFileThreshold {
             // Die 8-KiB-Probe allein reicht nicht: Binärdaten können erst weit
@@ -139,15 +144,17 @@ enum FileLoader {
                try containsNUL(url: url, startingAt: UInt64(probe.count)) {
                 return LoadedFile(content: "", encoding: .utf8, bom: Data(),
                                   lineEnding: .lf, displayMode: .hex,
-                                  fileSize: fileSize)
+                                  fileSize: fileSize, diskSnapshot: nil)
             }
             return LoadedFile(content: "",
                               encoding: probeBOMEncoding ?? .utf8,
                               bom: probeBOM, lineEnding: .lf,
-                              displayMode: .chunkedText, fileSize: fileSize)
+                              displayMode: .chunkedText, fileSize: fileSize,
+                              diskSnapshot: nil)
         }
 
-        guard let data = try? Data(contentsOf: url) else { throw LoadError.unreadable }
+        guard let read = try? FileSnapshot.read(from: url) else { throw LoadError.unreadable }
+        let data = read.data
         let (bom, bomEncoding) = ApplyEngine.detectBOM(in: data)
         // Kleine Dateien liegen hier ohnehin vollständig vor. Daher erneut
         // über alle Bytes prüfen, damit ein Nullbyte hinter der Anfangsprobe
@@ -155,7 +162,7 @@ enum FileLoader {
         if !bomEncodingAllowsNUL(bomEncoding) && data.contains(0) {
             return LoadedFile(content: "", encoding: .utf8, bom: Data(),
                               lineEnding: .lf, displayMode: .hex,
-                              fileSize: fileSize)
+                              fileSize: fileSize, diskSnapshot: nil)
         }
         let payload = Data(data.dropFirst(bom.count))
         let detected: (String, String.Encoding)?
@@ -164,16 +171,9 @@ enum FileLoader {
         } else if let value = String(data: payload, encoding: .utf8) {
             detected = (value, .utf8)
         } else {
-            // Die bisherige Foundation-Heuristik bleibt für Legacy-Encodings
-            // erhalten. Unicode-BOMs wurden vorher schon deterministisch
-            // behandelt; BOM-freies UTF-16 bleibt absichtlich Hex, bis der
-            // Nutzer ein Encoding ausdrücklich auswählt.
-            var legacyEncoding: String.Encoding = .utf8
-            if let value = try? String(contentsOf: url, usedEncoding: &legacyEncoding) {
-                detected = (value, legacyEncoding)
-            } else {
-                detected = nil
-            }
+            // Dieselbe dokumentierte CP1252/Latin-1-Heuristik wie Folder-
+            // Suche und Apply, ausschließlich auf den stabil gelesenen Bytes.
+            detected = ApplyEngine.decode(payload: payload, bomEncoding: nil)
         }
         guard let (raw, detectedEncoding) = detected else { throw LoadError.unreadable }
 
@@ -183,7 +183,8 @@ enum FileLoader {
 
         return LoadedFile(content: raw, encoding: detectedEncoding, bom: bom,
                           lineEnding: ending, displayMode: .text,
-                          fileSize: fileSize)
+                          fileSize: fileSize,
+                          diskSnapshot: read.snapshot)
     }
 
     /// Kodiert den Editorinhalt mit exakt derselben BOM-Entscheidung wie beim
@@ -211,15 +212,17 @@ enum FileLoader {
         if encoding == .utf16 {
             return bomEncoding == .utf16BigEndian ? .utf16BigEndian : .utf16LittleEndian
         }
+        if encoding == .utf32 {
+            return bomEncoding == .utf32BigEndian ? .utf32BigEndian : .utf32LittleEndian
+        }
         return encoding
     }
 
-    /// Nur automatisch erkannte UTF-16-BOMs erklären Nullbytes im Text.
+    /// Nur automatisch erkannte UTF-16-/UTF-32-BOMs erklären Nullbytes im Text.
     /// Eine UTF-8-BOM ist dagegen kein Freibrief für spätere Nullbytes.
-    /// UTF-32 wird von `ApplyEngine.detectBOM` derzeit nicht erkannt und ist
-    /// daher ausschließlich über die bewusste `forcedEncoding`-Route möglich.
     private static func bomEncodingAllowsNUL(_ encoding: String.Encoding?) -> Bool {
         encoding == .utf16LittleEndian || encoding == .utf16BigEndian
+            || encoding == .utf32LittleEndian || encoding == .utf32BigEndian
     }
 
     /// Sucht ab `offset` bis EOF nach einem Nullbyte, ohne die Datei komplett

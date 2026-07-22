@@ -146,6 +146,13 @@ enum TextFilePageReader {
             }
             return boundary
         }
+        if encoding == .utf32LittleEndian || encoding == .utf32BigEndian
+            || encoding == .utf32 {
+            // UTF-32 besitzt feste Vierbyte-Codeunits; eine Seitengrenze auf
+            // das vorherige Vielfache von vier genügt, Surrogatpaare gibt es
+            // in dieser Kodierung nicht.
+            return nominal - nominal % 4
+        }
         // Die übrigen angebotenen Reopen-Encodings sind Single-Byte-Encodings.
         return nominal
     }
