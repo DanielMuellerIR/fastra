@@ -358,7 +358,10 @@ struct SoftWrapLayoutTests {
                 let rect = NSRect(
                     x: 0,
                     y: globalY,
-                    width: 1,
+                    // Der Scroll-View darf nach einer Textmutation kurz
+                    // horizontal versetzt sein. Geprüft wird deshalb die
+                    // sichtbare Fragmentfläche, nicht nur deren linke Kante.
+                    width: max(1, fragment.data.width),
                     height: fragment.height
                 )
                 return !fragment.range.isEmpty && rect.intersects(visible)
