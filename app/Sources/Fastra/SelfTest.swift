@@ -5979,6 +5979,12 @@ enum SelfTest {
         } else {
             textView.insertNewline(nil)
         }
+        // Unmittelbar nach dem Tastendruck ein unabhängiges SwiftUI-Update
+        // erzwingen — wie es im echten Betrieb die Fußzeile (Zeile/Spalte)
+        // auslöst. Genau dieses Update ließ den CESE-State-Reconcile mit
+        // veralteter Scroll-Position den frischen Tipp-Scroll zurückdrehen
+        // (Daniel-Repro 2026-07-24, Call-Stack via Scroll-Spy).
+        Workspace.shared?.objectWillChange.send()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             if !typeScrollCaretVisible(textView) {
                 let visible = textView.visibleRect

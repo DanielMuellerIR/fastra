@@ -596,7 +596,24 @@ struct EditorView: View {
             workspace.activeTabContent,
             language: detectedLanguage,
             configuration: editorConfiguration,
-            state: $editorState,
+            // Scroll-Position bewusst aus dem State HERAUSFILTERN: CESEs
+            // SwiftUI-Reconcile scrollt sonst bei jedem fremd ausgelösten
+            // View-Update (z. B. Fußzeile nach einem Tastendruck) auf die
+            // zuletzt in den State geschriebene Position zurück — der
+            // Rückschreiber läuft erst im NÄCHSTEN Runloop, der Reconcile
+            // aber sofort. Ergebnis war: Tippen scrollte, der Reconcile
+            // drehte den Scroll zurück, der Cursor verschwand unter dem
+            // Fensterrand (Daniel-Befund 2026-07-24, Call-Stack-Beleg).
+            // Fastra steuert Scrollen ausschließlich selbst (convergeScroll);
+            // ein externes Scroll-Soll über den State gibt es nicht.
+            state: Binding(
+                get: {
+                    var state = editorState
+                    state.scrollPosition = nil
+                    return state
+                },
+                set: { editorState = $0 }
+            ),
             // Eigen-Sprache aktiv (z. B. 4D): eigener leichter Tokenizer
             // statt tree-sitter — Provider kommt aus der Registry.
             highlightProviders: activeCustomLanguage.map { language in

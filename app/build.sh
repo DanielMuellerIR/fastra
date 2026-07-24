@@ -1898,6 +1898,72 @@ if [ "$DRAG_ANCHOR_PATCH_CHANGED" -eq 1 ]; then
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4w. CodeEditTextView — rectForOffset darf bei veraltetem Zeilen-Storage
+# nicht crashen.
+#
+# Waehrend Undo/Redo schrumpft der Text, der Zeilen-Storage des Layout-
+# Managers hinkt einen Moment hinterher. Ein in dieses Fenster fallender
+# Scroll (macOS-„Concurrent Scrolling“-Synchronizer) positioniert die noch
+# nicht geclampte Cursor-Selektion neu und fragt `rectForOffset` mit einem
+# Offset HINTER dem neuen Textende. `rangeOfComposedCharacterSequence(at:)`
+# wirft dann eine NSRangeException → Abort (Daniel-Befund 2026-07-24,
+# Crash nach ⌘V + ⌘Z). Der Patch clampt ehrlich: Offsets ausserhalb des
+# echten Storage liefern ein 0-breites Rechteck statt eines Absturzes.
+# Regressionstest: TextLayoutManagerStaleOffsetTests.
+CETV_RECT="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextLayoutManager/TextLayoutManager+Public.swift"
+RECT_STALE_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: Offset gegen den ECHTEN Storage clampen' \
+    "$CETV_RECT" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (rectForOffset crash-fest bei Undo-Fenster)"
+  chmod u+w "$CETV_RECT"
+  /usr/bin/python3 - "$CETV_RECT" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+old = '''        let realRange = if textStorage?.length == 0 {
+            NSRange(location: offset, length: 0)
+        } else if let string = textStorage?.string as? NSString {
+            string.rangeOfComposedCharacterSequence(at: offset)
+        } else {
+            NSRange(location: offset, length: 0)
+        }'''
+new = '''        // Fastra-Patch: Offset gegen den ECHTEN Storage clampen. Waehrend
+        // Undo/Redo kann der Zeilen-Storage kurz laenger sein als der schon
+        // geschrumpfte Text; ein zwischengeschobener Scroll fragt dann eine
+        // veraltete Cursorposition ab und rangeOfComposedCharacterSequence
+        // wirft eine NSRangeException (Crash, Daniel-Befund 2026-07-24).
+        let realRange = if textStorage?.length == 0 {
+            NSRange(location: offset, length: 0)
+        } else if let string = textStorage?.string as? NSString,
+                  offset < string.length {
+            string.rangeOfComposedCharacterSequence(at: offset)
+        } else {
+            NSRange(location: offset, length: 0)
+        }'''
+if old not in src:
+    raise SystemExit(
+        f"{path}: rectForOffset-Struktur hat sich geaendert — Patch 4w pruefen"
+    )
+open(path, "w").write(src.replace(old, new, 1))
+PYEOF
+  RECT_STALE_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: Offset gegen den ECHTEN Storage clampen' "$CETV_RECT"; then
+  echo "✗ FEHLER: rectForOffset-Crash-Patch hat NICHT gegriffen." >&2
+  exit 1
+fi
+
+if [ "$RECT_STALE_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 

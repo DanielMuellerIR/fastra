@@ -541,3 +541,44 @@ Treffer auf `NSIntersectionRange` mit dem angefragten Bereich zu.
 Kommentarblock und verlangt anschließend Kommentarfarbe bis zum Blockende
 (beobachtet an echten Vordergrundfarben, nicht an Provider-Ausgaben);
 `FourDHighlightClippingTests` prüft die reine Zuschneide-Logik.
+
+### F.23 CESEs State-Reconcile darf die Scroll-Position nicht besitzen (2026-07-24)
+
+`SourceEditor.updateControllerWithState` scrollt bei jedem SwiftUI-Update auf
+`state.scrollPosition`, sobald sie von der echten ClipView-Position abweicht.
+Der Rückschreiber (`Coordinator.textControllerScrollDidChange`) läuft aber
+via `receive(on: RunLoop.main)` erst im NÄCHSTEN Runloop. Löst ein
+Tastendruck neben dem Tipp-Scroll noch ein weiteres SwiftUI-Update aus
+(bei Fastra: Fußzeile mit Zeile/Spalte), gewinnt der Reconcile mit der
+veralteten Position: Der frische Scroll wird zurückgedreht, der Cursor
+verschwindet unter dem Fensterrand, Tippen bleibt unsichtbar. Das Race ist
+timing-abhängig — auf demselben Mac im Selbsttest grün, in der echten
+Nutzersitzung zu 100 % rot (Beleg: Call-Stack via Bounds-Change-Spion).
+
+**Fix (Fastra-seitig, `EditorView.actualEditor`):** Das `state`-Binding
+filtert `scrollPosition` beim Lesen auf `nil` — Fastra steuert Scrollen
+ausschließlich selbst (`convergeScroll`), ein externes Scroll-Soll über den
+State existiert nicht. Cursor-Reconcile (externe Sprünge) bleibt erhalten.
+
+**Regression:** `./selftest.sh typescroll` (inkl. erzwungenem Zusatz-Update
+nach jedem Tastendruck und Zweitfenster-Stufe); das Race selbst feuert unter
+Testtiming nicht deterministisch — verlässlicher Beleg war Daniels
+100-%-Repro vor/nach dem Fix.
+
+### F.24 rectForOffset crasht im Undo-Fenster mit veraltetem Zeilen-Storage (2026-07-24)
+
+Während Undo/Redo schrumpft der Text; der Zeilen-Storage des
+`TextLayoutManager` hinkt einen Moment hinterher. Fällt in dieses Fenster
+ein Scroll (macOS-„Concurrent Scrolling“-Synchronizer → `updatedViewport`
+→ `repositionCursorSelection`), fragt CETV `rectForOffset` mit der noch
+nicht geclampten alten Cursorposition. Der Bounds-Check gegen
+`lineStorage.length` greift dann nicht, und
+`rangeOfComposedCharacterSequence(at:)` wirft eine NSRangeException →
+SIGABRT (Befund: Crash nach ⌘V + ⌘Z am Dateiende).
+
+**Workaround (Patch 4w in `build.sh`):** Offsets außerhalb des ECHTEN
+Storage liefern ein 0-breites Rechteck statt der Range-Abfrage.
+
+**Regression:** `TextLayoutManagerStaleOffsetTests` stellt das Fenster nach
+(Storage schrumpft ohne Delegate-Benachrichtigung) — ohne Patch stürzt der
+Testprozess, mit Patch kommt ein ehrliches Rechteck zurück.

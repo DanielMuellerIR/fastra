@@ -9,6 +9,24 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.50.1] — 2026-07-24
+
+### Behoben
+
+- Tippen scrollt den Cursor jetzt zuverlässig in den Sichtbereich: CESEs
+  SwiftUI-State-Reconcile drehte den frischen Tipp-Scroll mit einer
+  veralteten `scrollPosition` zurück, sobald ein weiteres SwiftUI-Update
+  (z. B. die Fußzeile) zwischen Scroll und Rückschreiber lief — der Cursor
+  verschwand nach Return unter dem Fensterrand und Getipptes blieb
+  unsichtbar. Fastra filtert die Scroll-Position jetzt aus dem State-Binding
+  (Scrollen steuert ausschließlich `convergeScroll`); Details F.23 in
+  `app/LESSONS-LEARNED.md`, Wächter `typescroll` im Standardlauf.
+- Crash nach ⌘V + ⌘Z am Dateiende behoben: Ein Scroll im Undo-Fenster
+  fragte die Geometrie einer veralteten Cursorposition hinter dem neuen
+  Textende ab; `rectForOffset` warf eine NSRangeException (SIGABRT).
+  Neuer Checkout-Patch 4w clampt Offsets ehrlich gegen den echten Storage
+  (F.24, Regressionstest `TextLayoutManagerStaleOffsetTests`).
+
 ## [v1.50.0] — 2026-07-24
 
 ### Hinzugefügt
