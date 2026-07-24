@@ -76,6 +76,10 @@ struct EditorView: View {
     /// 4D-Vervollständigung (Etappe 6 Wunschpaket 2026-07c). Stark gehalten —
     /// der `completionDelegate` des Editors ist nur eine weak-Referenz.
     @StateObject private var fourDCompletion = FourDCompletionDelegate()
+    /// Parameterhilfe für 4D-Aufrufe (Panel unter der Aufrufzeile). Lebt wie
+    /// der Completion-Delegate pro Editor-Ansicht und wirkt nur bei aktiver
+    /// 4D-Sprache.
+    @StateObject private var fourDSignatureHelp = FourDSignatureHelpController()
 
     /// Rechter Vorschau-Streifen (CESE-Minimap) an/aus. App-weit und persistent,
     /// umschaltbar über „Darstellung → Minimap anzeigen". Default AUS
@@ -637,6 +641,20 @@ struct EditorView: View {
                                   for: cursorMemoryTabID ?? workspace.activeTabID)
             updateFooterCursor(from: list)
             scheduleStats(for: list)
+            // 4D-Parameterhilfe folgt jeder Cursorbewegung; außerhalb eines
+            // Aufrufs (oder ohne 4D) blendet sie sich selbst aus.
+            fourDSignatureHelp.update(
+                workspace: workspace,
+                cursorPositions: list,
+                isFourDActive: activeCustomLanguage?.id
+                    == CustomLanguageRegistry.fourD.id
+            )
+        }
+        .onChange(of: workspace.activeTabID) {
+            fourDSignatureHelp.hide()
+        }
+        .onDisappear {
+            fourDSignatureHelp.hide()
         }
         // Zombie-Find-Bar deterministisch verhindern: Wenn der Editor sein
         // eigenes Find-Panel öffnet (CMD+F bei fokussiertem Editor), schreibt

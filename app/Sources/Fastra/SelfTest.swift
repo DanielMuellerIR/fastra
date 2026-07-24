@@ -372,6 +372,11 @@ enum SelfTest {
         case "selshort": waitForMainWindow { runShortSelectionScrollTest() }
         case "dragscroll": waitForMainWindow { runDragScrollTest() }
         case "dirtyundo": waitForMainWindow { runDirtyUndoTest() }
+        case "emojisplit": waitForMainWindow { runEmojiSplitTest() }
+        case "emojishot": waitForMainWindow { runEmojiShot() }
+        case "comment4d": waitForMainWindow { runFourDCommentEditTest() }
+        case "sighelp4d": waitForMainWindow { runFourDSignatureHelpTest() }
+        case "sighelpshot": waitForMainWindow { runFourDSignatureHelpShot() }
         case "replaceall": waitForMainWindow { runReplaceAllTest() }
         case "pilldrop":  waitForMainWindow { openSearchThen { runPillDropTest() } }
         case "navmatch":  waitForMainWindow { openSearchThen { runNavMatchTest() } }
@@ -486,7 +491,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -5798,6 +5803,610 @@ enum SelfTest {
                                        : "Punkt blieb nach manuellem Löschen "
                                          + "der Einfügung bestehen")
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - -selftest emojisplit
+
+    /// Emojis (UTF-16-Surrogatpaare) dürfen im Editor nie in zwei sichtbare
+    /// Zeichen zerfallen: weder durch Attributläufe des Highlighters noch
+    /// durch Umbruchfragmente oder die Glyphen des Typesetters.
+    private static func runEmojiSplitTest() {
+        testLabel = "emojisplit"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks() else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        ws.sidebarWidth = 216.13671875
+        ws.markdownPreviewWidth = 332.3515625
+        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        window.setContentSize(NSSize(width: 1100, height: 800))
+        let text: String
+        if let path = ProcessInfo.processInfo.environment["FASTRA_EMOJI_FIXTURE"],
+           let fixture = try? String(contentsOfFile: path, encoding: .utf8) {
+            // Reale Datei für die Erstdiagnose; der normale Lauf nutzt das
+            // neutrale Abbild mit derselben Emoji-Konstellation.
+            text = fixture
+        } else {
+            text = emojiSplitFixtureContent()
+        }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "fastra-emojisplit-\(UUID().uuidString)", isDirectory: true
+            )
+        let tmp = directory.appendingPathComponent("emoji.md")
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+            try Data(text.utf8).write(to: tmp)
+        }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+        ws.loadFile(at: tmp) { ok in
+            try? FileManager.default.removeItem(at: directory)
+            guard ok else { finish(false, "Markdown-Fixture lädt nicht") }
+            pollEmojiSplitEditorReady(window: window, expectedText: text, tick: 0)
+        }
+    }
+
+    /// Neutrales Abbild der Repro-Datei: mehrere lange Zeilen, am Ende eine
+    /// Zeile mit drei Emojis in Anführungszeichen, ohne abschließenden
+    /// Zeilenumbruch — exakt die gemeldete Konstellation.
+    private static func emojiSplitFixtureContent() -> String {
+        var lines = (1...9).map { index in
+            "- " + String(
+                repeating: "xxxx xxxxxxx xxx ",
+                count: 8 + index % 4
+            )
+        }
+        lines.append(
+            "- Xxxx: Xxxx Xxxxx Xxxxx Xxxxxxx: xxxxxxxxx Xxxx "
+            + "xxxxxxxxxxxxx: \"XXXX XXXXX: Xxxxxx Xxx xxxx xxxx "
+            + "xxxxxxxx xxxx 🎶🤮🎶\" - xx xxxxxxx? "
+        )
+        return lines.joined(separator: "\n")
+    }
+
+    private static func pollEmojiSplitEditorReady(
+        window: NSWindow, expectedText: String, tick: Int
+    ) {
+        if let root = window.contentView,
+           markdownWebView(in: root) != nil,
+           let textView = editorTextView(in: root) as? TextView,
+           textView.string == expectedText {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                analyzeEmojiClusters(textView: textView)
+            }
+            return
+        }
+        if tick >= 100 {
+            finish(false, "Markdown-Split mit Fixture nicht binnen 10 s bereit")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollEmojiSplitEditorReady(
+                window: window, expectedText: expectedText, tick: tick + 1
+            )
+        }
+    }
+
+    /// Schiebt die Umbruchgrenze durch die Emoji-Zeile: Für jede Vorschau-
+    /// Breite von 260 bis 500 Punkten in 2er-Schritten wird neu ausgelegt
+    /// und erneut auf Surrogat-Zerfall geprüft.
+    private static func sweepEmojiWidths(
+        textView: TextView, width: Double, collected: [String]
+    ) {
+        guard width <= 500 else {
+            finish(collected.isEmpty,
+                   collected.isEmpty
+                   ? "Emojis blieben über alle 121 Umbruchbreiten intakt"
+                   : "Emoji zerfällt: "
+                     + collected.prefix(8).joined(separator: " ;; ")
+                     + " (insgesamt \(collected.count) Befunde)")
+        }
+        Workspace.shared?.markdownPreviewWidth = width
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            textView.layoutManager.layoutLines()
+            let problems = emojiClusterProblems(textView: textView)
+                .map { "Breite \(Int(width)): \($0)" }
+            sweepEmojiWidths(
+                textView: textView, width: width + 2,
+                collected: collected + problems
+            )
+        }
+    }
+
+    /// Prüft jedes Emoji-Vorkommen auf drei Zerfallsarten: Attributlauf-
+    /// Grenze im Surrogatpaar, Fragmentgrenze im Surrogatpaar und Glyphen,
+    /// die auf dem Trailing-Surrogat beginnen.
+    private static func analyzeEmojiClusters(textView: TextView) {
+        // Ans Dateiende scrollen, damit die Zielzeile real ausgelegt ist —
+        // und dem asynchronen, viewport-getriebenen Highlighter danach Zeit
+        // geben, seine Attributläufe wirklich anzuwenden.
+        let ns = textView.string as NSString
+        textView.scrollToRange(NSRange(location: ns.length, length: 0))
+        textView.layoutManager.layoutLines()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            analyzeEmojiClustersAfterHighlight(textView: textView)
+        }
+    }
+
+    private static func analyzeEmojiClustersAfterHighlight(textView: TextView) {
+        textView.layoutManager.layoutLines()
+        let initialProblems = emojiClusterProblems(textView: textView)
+            .map { "Nutzergeometrie: \($0)" }
+        sweepEmojiWidths(
+            textView: textView, width: 260, collected: initialProblems
+        )
+    }
+
+    /// Liefert alle gefundenen Zerfallsarten für sämtliche Emoji-Vorkommen
+    /// im aktuellen Layoutzustand.
+    private static func emojiClusterProblems(textView: TextView) -> [String] {
+        let ns = textView.string as NSString
+        var clusters: [NSRange] = []
+        for emoji in ["🎶", "🤮"] {
+            var search = NSRange(location: 0, length: ns.length)
+            while true {
+                let found = ns.range(of: emoji, options: [], range: search)
+                guard found.location != NSNotFound else { break }
+                clusters.append(found)
+                let next = found.location + found.length
+                search = NSRange(location: next, length: ns.length - next)
+            }
+        }
+        guard clusters.count >= 3 else {
+            return ["Fixture enthält nicht die erwarteten Emojis"]
+        }
+        var problems: [String] = []
+        for cluster in clusters.sorted(by: { $0.location < $1.location }) {
+            // 1) Attributläufe des Storages dürfen das Paar nicht teilen.
+            var runRanges: [NSRange] = []
+            textView.textStorage.enumerateAttributes(
+                in: cluster, options: []
+            ) { _, range, _ in runRanges.append(range) }
+            if runRanges.count > 1 {
+                problems.append("Attributlauf-Grenze in \(cluster): \(runRanges)")
+            }
+            // 2) Umbruchfragmente dürfen das Paar nicht teilen; 3) keine
+            // Glyphe darf auf dem Trailing-Surrogat beginnen.
+            guard let linePosition = textView.layoutManager.textLineForOffset(
+                cluster.location
+            ) else {
+                problems.append("keine Layoutzeile für \(cluster)")
+                continue
+            }
+            let lineStart = linePosition.range.location
+            for fragmentPosition in linePosition.data.lineFragments {
+                let fragmentRange = NSRange(
+                    location: lineStart + fragmentPosition.range.location,
+                    length: fragmentPosition.range.length
+                )
+                for boundary in [fragmentRange.location, fragmentRange.max]
+                where boundary > cluster.location && boundary < cluster.max {
+                    problems.append("Fragmentgrenze bei \(boundary) "
+                        + "im Emoji \(cluster)")
+                }
+                guard fragmentRange.intersection(cluster)?.length ?? 0 > 0
+                else { continue }
+                for content in fragmentPosition.data.contents {
+                    guard case .text(let ctLine) = content.data else { continue }
+                    // CTLine-Indizes sind je nach Erzeugung zeilen- oder
+                    // fragmentrelativ; der Stringbereich der Linie verrät die
+                    // Basis.
+                    let ctRange = CTLineGetStringRange(ctLine)
+                    let base = ctRange.location
+                        >= fragmentPosition.range.location
+                        ? lineStart
+                        : fragmentRange.location
+                    let runs = CTLineGetGlyphRuns(ctLine)
+                        as? [CTRun] ?? []
+                    for run in runs {
+                        let glyphCount = CTRunGetGlyphCount(run)
+                        guard glyphCount > 0 else { continue }
+                        var indices = [CFIndex](repeating: 0, count: glyphCount)
+                        CTRunGetStringIndices(
+                            run, CFRange(location: 0, length: glyphCount),
+                            &indices
+                        )
+                        for index in indices {
+                            let absolute = base + index
+                            if absolute > cluster.location
+                                && absolute < cluster.max {
+                                problems.append("Glyphe beginnt mitten im "
+                                    + "Emoji \(cluster) (Offset \(absolute))")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return problems
+    }
+
+    // MARK: - -selftest emojishot
+
+    /// Diagnose: öffnet die per `FASTRA_EMOJI_FIXTURE` angegebene (oder die
+    /// neutrale) Emoji-Datei im Markdown-Split, scrollt ans Dateiende und
+    /// gibt die Fenster-Nummer fürs Capture aus.
+    private static func runEmojiShot() {
+        testLabel = "emojishot"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks() else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        ws.sidebarWidth = 216.13671875
+        ws.markdownPreviewWidth = 332.3515625
+        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        window.setContentSize(NSSize(width: 1100, height: 800))
+        let text: String
+        if let path = ProcessInfo.processInfo.environment["FASTRA_EMOJI_FIXTURE"],
+           let fixture = try? String(contentsOfFile: path, encoding: .utf8) {
+            text = fixture
+        } else {
+            text = emojiSplitFixtureContent()
+        }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "fastra-emojishot-\(UUID().uuidString)", isDirectory: true
+            )
+        let tmp = directory.appendingPathComponent("emoji.md")
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+            try Data(text.utf8).write(to: tmp)
+        }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+        ws.loadFile(at: tmp) { ok in
+            try? FileManager.default.removeItem(at: directory)
+            guard ok else { finish(false, "Fixture lädt nicht") }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                guard let root = window.contentView,
+                      let textView = editorTextView(in: root) as? TextView else {
+                    finish(false, "Editor fehlt")
+                }
+                let ns = textView.string as NSString
+                textView.scrollToRange(NSRange(location: ns.length, length: 0))
+                textView.layoutManager.layoutLines()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    dumpMainWindowThenExit(prefix: "EMOJISHOT-WINDOW")
+                }
+            }
+        }
+    }
+
+    // MARK: - -selftest comment4d
+
+    /// Ein Edit innerhalb eines langen `/* … */`-Blocks darf die
+    /// Kommentarfarbe hinter der Editposition nicht löschen. CESE färbt nach
+    /// einem Edit chunkweise ab der Editposition neu; der 4D-Provider muss
+    /// seine Token deshalb auf den angefragten Chunk zuschneiden.
+    private static func runFourDCommentEditTest() {
+        testLabel = "comment4d"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks(),
+              let root = window.contentView else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        var lines = ["// Kopfzeile", "/* Modernisierung"]
+        lines.append("- Ankerzeile für den Edit xx")
+        lines.append(contentsOf: (1...24).map {
+            "- Punkt \($0): " + String(repeating: "x", count: 40 + $0 % 7)
+        })
+        lines.append("- Schlusszeile QQZWEIQQ")
+        lines.append("*/")
+        lines.append("ALERT(\"ok\")")
+        let code = lines.joined(separator: "\n")
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "fastra-comment4d-\(UUID().uuidString)", isDirectory: true
+            )
+        let tmp = directory.appendingPathComponent("Kommentar.4dm")
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+            try Data(code.utf8).write(to: tmp)
+        }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+        // Fester Hellmodus wie im highlight4d-Test: erwartete Farben sind
+        // Fixture-Werte, kein Systemzustand.
+        NSApp.appearance = NSAppearance(named: .aqua)
+        ws.loadFile(at: tmp) { ok in
+            try? FileManager.default.removeItem(at: directory)
+            guard ok else { finish(false, "loadFile (.4dm) schlug fehl") }
+            pollFourDCommentInitialColor(root: root, code: code, tick: 0)
+        }
+    }
+
+    private static func pollFourDCommentInitialColor(
+        root: NSView, code: String, tick: Int
+    ) {
+        let comment = fourDExpectedColors(dark: false)[7]
+        if storageSubstringHasColor("QQZWEIQQ", in: root,
+                                    r: comment.1, g: comment.2, b: comment.3),
+           let textView = editorTextView(in: root) as? TextView,
+           textView.string == code {
+            // Edit am Ende der Ankerzeile mitten im Kommentarblock.
+            let ns = code as NSString
+            let anchor = ns.range(of: "- Ankerzeile für den Edit xx")
+            textView.selectionManager.setSelectedRange(
+                NSRange(location: anchor.max, length: 0)
+            )
+            textView.insertText(
+                "yy", replacementRange: NSRange(location: NSNotFound, length: 0)
+            )
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                pollFourDCommentColorAfterEdit(root: root, tick: 0)
+            }
+            return
+        }
+        if tick >= 60 {
+            NSApp.appearance = nil
+            finish(false, "Kommentarfarbe erscheint initial nicht binnen 15 s")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollFourDCommentInitialColor(root: root, code: code, tick: tick + 1)
+        }
+    }
+
+    private static func pollFourDCommentColorAfterEdit(root: NSView, tick: Int) {
+        let comment = fourDExpectedColors(dark: false)[7]
+        let commandColor = fourDExpectedColors(dark: false)[0]
+        let closingKept = storageSubstringHasColor(
+            "QQZWEIQQ", in: root, r: comment.1, g: comment.2, b: comment.3
+        )
+        let commandKept = storageSubstringHasColor(
+            "ALERT", in: root,
+            r: commandColor.1, g: commandColor.2, b: commandColor.3
+        )
+        if closingKept && commandKept {
+            NSApp.appearance = nil
+            finish(true, "Kommentarfarbe bleibt nach Edit im Block bis zum "
+                + "Blockende erhalten")
+        }
+        if tick >= 40 {
+            NSApp.appearance = nil
+            finish(false, "nach dem Edit im Kommentarblock: Schlusszeile "
+                + "kommentarfarben=\(closingKept), ALERT befehlsfarben=\(commandKept)")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollFourDCommentColorAfterEdit(root: root, tick: tick + 1)
+        }
+    }
+
+    // MARK: - -selftest sighelp4d
+
+    /// End-to-End-Prüfung der 4D-Parameterhilfe: Cursor in die Klammern eines
+    /// Projektmethoden-Aufrufs setzen → Panel mit Signatur und Kommentarkopf
+    /// erscheint; Cursor an den Zeilenanfang → Panel verschwindet.
+    private static func runFourDSignatureHelpTest() {
+        testLabel = "sighelp4d"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks(),
+              let root = window.contentView else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        let projectRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-sighelp4d-\(UUID().uuidString)")
+        let methods = projectRoot.appendingPathComponent(
+            "Project/Sources/Methods", isDirectory: true
+        )
+        let target = methods.appendingPathComponent("Begruessung.4dm")
+        let caller = methods.appendingPathComponent("Aufrufer.4dm")
+        let targetSource = """
+        //%attributes = {}
+        // Baut die Grußformel.
+        // Zweite Kopfzeile mit Details.
+        #DECLARE($name_t : Text; $anzahl_i : Integer)->$gruss_t : Text
+        $gruss_t:="Hallo "+$name_t
+        """
+        let callerSource = """
+        // Aufrufer
+        Begruessung("Welt";2)
+        """
+        do {
+            try FileManager.default.createDirectory(
+                at: methods, withIntermediateDirectories: true
+            )
+            try targetSource.write(to: target, atomically: true, encoding: .utf8)
+            try callerSource.write(to: caller, atomically: true, encoding: .utf8)
+        } catch {
+            try? FileManager.default.removeItem(at: projectRoot)
+            finish(false, "4D-Fixture nicht schreibbar: \(error.localizedDescription)")
+        }
+        ws.openProject(at: projectRoot)
+        pollFourDSignatureIndexReady(
+            ws: ws, root: root, window: window,
+            projectRoot: projectRoot, caller: caller, tick: 0
+        )
+    }
+
+    private static func pollFourDSignatureIndexReady(
+        ws: Workspace, root: NSView, window: NSWindow,
+        projectRoot: URL, caller: URL, tick: Int
+    ) {
+        guard ws.fourDProjectMethodNames.contains("begruessung") else {
+            if tick >= 40 {
+                ws.closeProject()
+                try? FileManager.default.removeItem(at: projectRoot)
+                finish(false, "Projektindex kennt Begruessung nach 10 s nicht")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                pollFourDSignatureIndexReady(
+                    ws: ws, root: root, window: window,
+                    projectRoot: projectRoot, caller: caller, tick: tick + 1
+                )
+            }
+            return
+        }
+        ws.loadFile(at: caller) { ok in
+            guard ok else {
+                ws.closeProject()
+                try? FileManager.default.removeItem(at: projectRoot)
+                finish(false, "Aufrufer.4dm lädt nicht")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                guard let textView = editorTextView(in: root) as? TextView else {
+                    ws.closeProject()
+                    try? FileManager.default.removeItem(at: projectRoot)
+                    finish(false, "Editor-TextView fehlt")
+                }
+                window.makeFirstResponder(textView)
+                // Cursor hinter das erste Argument: innerhalb der Klammern.
+                let ns = textView.string as NSString
+                let anchor = ns.range(of: "\"Welt\"")
+                guard anchor.location != NSNotFound else {
+                    ws.closeProject()
+                    try? FileManager.default.removeItem(at: projectRoot)
+                    finish(false, "Aufrufzeile fehlt im Editor")
+                }
+                textView.selectionManager.setSelectedRange(
+                    NSRange(location: anchor.max, length: 0)
+                )
+                pollFourDSignaturePanelVisible(
+                    ws: ws, window: window, textView: textView,
+                    projectRoot: projectRoot, tick: 0
+                )
+            }
+        }
+    }
+
+    private static func fourDSignaturePanelText(window: NSWindow) -> String? {
+        for child in window.childWindows ?? [] {
+            guard child.styleMask.contains(.borderless),
+                  let content = child.contentView else { continue }
+            for view in content.subviews {
+                if let label = view as? NSTextField {
+                    return label.attributedStringValue.string
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func pollFourDSignaturePanelVisible(
+        ws: Workspace, window: NSWindow, textView: TextView,
+        projectRoot: URL, tick: Int
+    ) {
+        if let text = fourDSignaturePanelText(window: window),
+           text.contains("Begruessung"),
+           text.contains("$name_t : Text"),
+           text.contains("$anzahl_i : Integer"),
+           text.contains("$gruss_t : Text"),
+           text.contains("Baut die Grußformel."),
+           text.contains("Zweite Kopfzeile mit Details.") {
+            // Cursor an den Zeilenanfang → Panel muss verschwinden.
+            textView.selectionManager.setSelectedRange(
+                NSRange(location: 0, length: 0)
+            )
+            pollFourDSignaturePanelGone(
+                ws: ws, window: window, projectRoot: projectRoot, tick: 0
+            )
+            return
+        }
+        if tick >= 40 {
+            let seen = fourDSignaturePanelText(window: window) ?? "(kein Panel)"
+            ws.closeProject()
+            try? FileManager.default.removeItem(at: projectRoot)
+            finish(false, "Parameterhilfe erscheint nicht korrekt binnen 10 s; "
+                + "gesehen: \(seen.prefix(300))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollFourDSignaturePanelVisible(
+                ws: ws, window: window, textView: textView,
+                projectRoot: projectRoot, tick: tick + 1
+            )
+        }
+    }
+
+    private static func pollFourDSignaturePanelGone(
+        ws: Workspace, window: NSWindow, projectRoot: URL, tick: Int
+    ) {
+        if fourDSignaturePanelText(window: window) == nil {
+            ws.closeProject()
+            try? FileManager.default.removeItem(at: projectRoot)
+            finish(true, "Parameterhilfe zeigt Signatur samt Kommentarkopf "
+                + "und verschwindet außerhalb der Klammern")
+        }
+        if tick >= 40 {
+            ws.closeProject()
+            try? FileManager.default.removeItem(at: projectRoot)
+            finish(false, "Parameterhilfe bleibt außerhalb der Klammern sichtbar")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollFourDSignaturePanelGone(
+                ws: ws, window: window, projectRoot: projectRoot, tick: tick + 1
+            )
+        }
+    }
+
+    // MARK: - -selftest sighelpshot
+
+    /// Diagnose: baut dieselbe Szene wie `sighelp4d` auf, lässt das Panel
+    /// stehen und gibt Fenster-Nummern von Hauptfenster und Panel fürs
+    /// Capture aus.
+    private static func runFourDSignatureHelpShot() {
+        testLabel = "sighelpshot"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks(),
+              let root = window.contentView else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        let projectRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-sighelpshot-\(UUID().uuidString)")
+        let methods = projectRoot.appendingPathComponent(
+            "Project/Sources/Methods", isDirectory: true
+        )
+        let target = methods.appendingPathComponent("Begruessung.4dm")
+        let caller = methods.appendingPathComponent("Aufrufer.4dm")
+        let targetSource = """
+        //%attributes = {}
+        // Baut die Grußformel für die Startseite.
+        // Ruft niemand nachts an, bleibt der Gruß freundlich.
+        #DECLARE($name_t : Text; $anzahl_i : Integer)->$gruss_t : Text
+        $gruss_t:="Hallo "+$name_t
+        """
+        let callerSource = """
+        // Aufrufer
+        Begruessung("Welt";2)
+        """
+        do {
+            try FileManager.default.createDirectory(
+                at: methods, withIntermediateDirectories: true
+            )
+            try targetSource.write(to: target, atomically: true, encoding: .utf8)
+            try callerSource.write(to: caller, atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "Fixture nicht schreibbar: \(error.localizedDescription)")
+        }
+        ws.openProject(at: projectRoot)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            ws.loadFile(at: caller) { ok in
+                guard ok else { finish(false, "Aufrufer lädt nicht") }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    guard let textView = editorTextView(in: root) as? TextView
+                    else { finish(false, "TextView fehlt") }
+                    window.makeFirstResponder(textView)
+                    let ns = textView.string as NSString
+                    let anchor = ns.range(of: "\"Welt\"")
+                    textView.selectionManager.setSelectedRange(
+                        NSRange(location: anchor.max, length: 0)
+                    )
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        window.orderFront(nil)
+                        let panelNumber = (window.childWindows ?? [])
+                            .first { $0.styleMask.contains(.borderless) }?
+                            .windowNumber ?? -1
+                        let line = "SIGHELPSHOT-WINDOW \(window.windowNumber) "
+                            + "PANEL \(panelNumber)\n"
+                        FileHandle.standardError.write(Data(line.utf8))
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
+                            exit(0)
                         }
                     }
                 }

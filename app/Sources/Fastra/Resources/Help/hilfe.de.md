@@ -333,6 +333,17 @@ schließt. Die Namen, Signaturen und Befehlsnummern stammen aus der
 offiziellen 4D-Dokumentation (CC BY 4.0, © 4D SAS — Details in den
 Third-Party-Notices).
 
+**Parameterhilfe:** Steht der Cursor innerhalb der runden Klammern eines
+Projektmethoden-Aufrufs, zeigt ein kleines Panel unter der Zeile die
+Signatur der Methode — der Parameter, in dem der Cursor gerade steht, ist
+hervorgehoben, darunter erscheint der Kommentarkopf der Methode. Die
+öffnende Klammer genügt; mit schließender Klammer gilt die Hilfe überall
+dazwischen. Fastra liest dafür direkt die `.4dm`-Datei der Methode: sowohl
+`#DECLARE($name : Typ; …)->$rückgabe : Typ` als auch klassische
+`C_TEXT($1;$2;…)`-Deklarationen (nur `$N` sind Parameter, `$0` ist die
+Rückgabe). Für eingebaute 4D-Befehle erscheint die Signatur aus der
+Befehlsliste.
+
 **`.4DForm` prüfen:** „Text → Dokument prüfen“ validiert Formulardateien
 zusätzlich gegen das mitgelieferte Formular-Schema (MIT-lizenziert, von
 Mathieu Ferry) und springt zur Fehlstelle samt JSON-Pfad.

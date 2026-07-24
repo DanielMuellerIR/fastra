@@ -95,9 +95,27 @@ final class FourDHighlightProvider: ObservableObject, HighlightProviding {
             cachedTextLength = length
             cacheValid = true
         }
-        let requested = cachedRanges.filter {
-            NSIntersectionRange($0.range, range).length > 0
-        }
+        let requested = Self.clippedRanges(cachedRanges, to: range)
         completion(.success(requested))
+    }
+
+    /// Schneidet Cache-Treffer auf den angefragten Chunk zu. CESEs
+    /// `StyledRangeContainer` verlangt Bereiche INNERHALB des Chunks und
+    /// verwirft alles, was davor beginnt („Skip! Overlapping“). Ein langer
+    /// `/* … */`-Kommentar verlor dadurch hinter einer Editposition seine
+    /// Farbe: Die Neufärbung ab dem Edit bekam das ungeclippte Token mit
+    /// früherem Start geliefert und ignorierte es vollständig.
+    static func clippedRanges(
+        _ ranges: [HighlightRange], to range: NSRange
+    ) -> [HighlightRange] {
+        ranges.compactMap { cached in
+            let intersection = NSIntersectionRange(cached.range, range)
+            guard intersection.length > 0 else { return nil }
+            return HighlightRange(
+                range: intersection,
+                capture: cached.capture,
+                modifiers: cached.modifiers
+            )
+        }
     }
 }

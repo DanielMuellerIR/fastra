@@ -85,9 +85,10 @@ Gutter-Drag-Clamp, horizontaler Scrollbalken, Zeilenbreiten-Messung,
 exotische Sprachen ausschneiden, Highlight-Query-Pfad layout-robust,
 Text-Geist-Fix, zwei portable Ressourcenpfade, getrennte 4D-Theme-Slots
 einschließlich eines optionalen Methoden-Slots, feste Soft-Wrap-Spalten und
-Rechteckauswahl auf logischen Zeilen, vollständige Dateiende-Auswahl sowie
-stabile Auswahl- und Layoutzustände großer Textoperationen und vollständige
-Trefferflächen nach Texteingaben).
+Rechteckauswahl auf logischen Zeilen, vollständige Dateiende-Auswahl,
+stabile Auswahl- und Layoutzustände großer Textoperationen, vollständige
+Trefferflächen nach Texteingaben, klickdurchlässige verborgene Minimap,
+zellenbasierte Doppelklick-Wortauswahl und Drag-Anker am Maus-Down).
 
 Seit v1.19.0 verpackt `build.sh` zusätzlich das exakt gepinnte
 `Sparkle.framework` unter `Contents/Frameworks`, entfernt die für die nicht
@@ -276,6 +277,13 @@ Tastatur-Scrolltest in der kleinen, stark umbrochenen Datei des
 Fehlerberichts. `./selftest.sh dirtyundo` sichert den Änderungspunkt im Tab:
 Einfügen → Punkt, exakte Rücknahme per Undo oder manuellem Löschen → Punkt
 weg, Redo → Punkt wieder da.
+`./selftest.sh emojisplit` schiebt die Umbruchgrenze über 121 Vorschau-
+Breiten durch eine Emoji-Zeile und verlangt, dass kein Surrogatpaar in
+Attributläufen, Umbruchfragmenten oder Glyphen zerfällt. `./selftest.sh
+comment4d` editiert in einem langen 4D-Kommentarblock und verlangt
+Kommentarfarbe bis zum Blockende (siehe F.22). `./selftest.sh sighelp4d`
+prüft die 4D-Parameterhilfe End-to-End: Panel mit Signatur und
+Kommentarkopf innerhalb der Klammern, ausgeblendet außerhalb.
 
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 

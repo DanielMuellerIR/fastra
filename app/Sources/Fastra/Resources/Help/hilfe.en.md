@@ -317,6 +317,17 @@ the list manually, ↑/↓ select, Return/Tab accepts, Esc closes. The
 names, signatures, and command numbers come from the official 4D
 documentation (CC BY 4.0, © 4D SAS — see the third-party notices).
 
+**Parameter help:** When the cursor is inside the parentheses of a project
+method call, a small panel below the line shows the method's signature —
+the parameter the cursor is currently in is highlighted, and the method's
+header comment appears underneath. The opening parenthesis is enough; with
+a closing parenthesis the help applies anywhere in between. Fastra reads
+the method's `.4dm` file directly: both
+`#DECLARE($name : Type; …)->$result : Type` and classic
+`C_TEXT($1;$2;…)` declarations (only `$N` are parameters, `$0` is the
+return value). For built-in 4D commands the signature comes from the
+bundled command list.
+
 **Checking `.4DForm`:** “Text → Check Document” additionally validates
 form files against the bundled form schema (MIT-licensed, by Mathieu
 Ferry) and jumps to the offending spot including its JSON path.

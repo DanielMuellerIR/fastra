@@ -521,3 +521,23 @@ zieht mit echten Events 40 Punkte unter das Fenster und verlangt beides:
 Autoscroll folgt nach unten UND die Auswahl bleibt am Klickpunkt verankert.
 `./selftest.sh selshort` sichert zusätzlich die Tastaturvariante in der
 kleinen, stark umbrochenen Nutzerdatei (11 Zeilen, längste 646 Zeichen).
+
+### F.22 Highlight-Provider müssen ihre Bereiche auf den Chunk zuschneiden (2026-07-24)
+
+CESEs `StyledRangeContainer.applyHighlightResult` dokumentiert den Vertrag
+nur im Kommentar: Gelieferte Highlight-Bereiche dürfen den angefragten
+Bereich nicht überschreiten. Ein Bereich, der VOR dem Chunk beginnt, wird
+komplett verworfen („Skip! Overlapping“) — ohne Assertion, ohne Log. Nach
+einem Edit färbt CESE ab der Editposition neu; Fastras 4D-Provider lieferte
+seine gecachten Token aber ungeclippt. Ein langer `/* … */`-Kommentarblock
+begann vor dem neu einzufärbenden Abschnitt, wurde deshalb verworfen und
+verlor hinter der Editposition sichtbar die Farbe (Befund im echten
+4D-Projekt: Block gefärbt bis zur Editzeile, dahinter schwarz).
+
+**Fix:** `FourDHighlightProvider.clippedRanges` schneidet jeden Cache-
+Treffer auf `NSIntersectionRange` mit dem angefragten Bereich zu.
+
+**Regression:** `./selftest.sh comment4d` editiert real in einem langen
+Kommentarblock und verlangt anschließend Kommentarfarbe bis zum Blockende
+(beobachtet an echten Vordergrundfarben, nicht an Provider-Ausgaben);
+`FourDHighlightClippingTests` prüft die reine Zuschneide-Logik.

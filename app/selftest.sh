@@ -49,7 +49,7 @@ if [[ "$APP_BUNDLE" == /* ]]; then
 else
     APP_BUNDLE_FOR_OPEN="$(pwd)/$APP_BUNDLE"
 fi
-ALL_TESTS=(windows newwindow welcomenew sessionrestore coldopen coldopenoff multisearch findbar fields searchoptions tabswitch tabclosehit tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll selshort dragscroll rightedge dirtyundo highlight highlight4d completion4d previewrender xpath markdown markdownblanklines markdownjump markdownappearance jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader sidebarfilter filediff tool4dhint tool4dlsp gototarget searchmark help mdassist search project localization updates git gitactions filemodes selsearch wildcard openscope contrast cmdw)
+ALL_TESTS=(windows newwindow welcomenew sessionrestore coldopen coldopenoff multisearch findbar fields searchoptions tabswitch tabclosehit tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll selshort dragscroll rightedge dirtyundo emojisplit comment4d sighelp4d highlight highlight4d completion4d previewrender xpath markdown markdownblanklines markdownjump markdownappearance jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader sidebarfilter filediff tool4dhint tool4dlsp gototarget searchmark help mdassist search project localization updates git gitactions filemodes selsearch wildcard openscope contrast cmdw)
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
 WINDOWLESS_TESTS=(search project localization updates git gitactions filemodes selsearch wildcard openscope tool4dlsp)
 # Pro Test max. Wartezeit in Sekunden, bis die SELFTEST-Zeile da sein muss.

@@ -9,6 +9,43 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.48.0] — 2026-07-24
+
+### Hinzugefügt
+
+- 4D-Parameterhilfe wie im 4D-Methodeneditor: Steht der Cursor innerhalb der
+  runden Klammern eines Projektmethoden-Aufrufs (die öffnende Klammer genügt;
+  mit schließender Klammer überall dazwischen), zeigt ein kleines Panel unter
+  der Aufrufzeile die Signatur der Methode. Der Parameter, in dem der Cursor
+  gerade steht, ist hervorgehoben; darunter erscheint der Kommentarkopf der
+  Methode (alles bis zur ersten Nicht-Kommentar-Zeile). Beide 4D-Stile werden
+  gelesen: `#DECLARE($name : Typ; …)->$rückgabe : Typ` mit benannten
+  Parametern sowie klassische `C_TEXT($1;$2;…)`-Deklarationen — dort zählen
+  nur `$N` als Parameter, `$0` ist die Rückgabe und mitdeklarierte Prozess-
+  oder Interprozessvariablen bleiben außen vor. Die Informationen stammen
+  direkt aus der `.4dm`-Datei der Methode im Projektbaum (tool4d ist dafür
+  nicht nötig); für eingebaute 4D-Befehle erscheint die Signatur aus der
+  mitgelieferten Befehlsliste. Komponenten- und Plugin-Methoden folgen später.
+
+### Behoben
+
+- Lange `/* … */`-Kommentarblöcke in 4D-Dateien verlieren nach einem Edit
+  innerhalb des Blocks nicht mehr die Farbe hinter der Editposition. Der
+  4D-Highlighter lieferte Bereiche, die über den neu einzufärbenden Abschnitt
+  hinausreichten; CodeEditSourceEditor verwirft solche Bereiche vollständig.
+  Die Treffer werden jetzt auf den angefragten Abschnitt zugeschnitten.
+
+### Intern
+
+- Neue verankerte Selbsttests: `comment4d` (Kommentarfarbe bleibt nach Edit im
+  Block erhalten; schlug vor der Korrektur reproduzierbar fehl), `sighelp4d`
+  (Parameterhilfe erscheint mit Signatur und Kommentarkopf und verschwindet
+  außerhalb der Klammern) und `emojisplit` (Emojis bleiben über alle
+  Umbruchbreiten in Attributläufen, Fragmenten und Glyphen ungeteilt — als
+  Wächter für den gemeldeten, mit v1.48.0 nicht mehr reproduzierbaren
+  Emoji-Zerfall). Der Signatur-Parser ist zusätzlich mit 15 Unit-Tests und
+  einem Probelauf über 749 reale Projektmethoden abgesichert.
+
 ## [v1.47.0] — 2026-07-24
 
 ### Hinzugefügt
