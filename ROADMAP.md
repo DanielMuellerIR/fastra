@@ -87,7 +87,26 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   Large-File-Pfad. Fix: `.type == .typeRegular` verbindlich prüfen und
   Attributfehler nicht als Größe `0` interpretieren.
 
-## Offene Beobachtungen (2026-07-24, nicht reproduziert)
+## Offene Beobachtungen (2026-07-24/25, nicht reproduziert)
+
+- **Drei Editor-Befunde in EINER Sitzung** (Daniel-Meldung 2026-07-25,
+  laufende v1.49.0, Datei `notizen_2026-07-25v2.md` — lange weich
+  umbrochene Zeilen, Emojis, kein End-Umbruch): 1) Return am Dateiende
+  scrollt nicht zur neuen Zeile; Tippen außerhalb des Sichtbereichs bleibt
+  unsichtbar (BBEdit-Soll: Tippen holt die Cursorzeile IMMER in den
+  Sichtbereich). 2) Palette-Emoji erscheint erst nach dem Einfügen des
+  zweiten. 3) Shift+← hinter den Emojis erweitert die Markierung sichtbar
+  nicht. **Frischer App-Lauf reproduziert NICHTS davon:** Der neue
+  Selbsttest `typescroll` (Standardlauf) prüft exakt diese Konstellation —
+  echte Key-Events, Daniels Fensterlayout (Seitenleiste + integrierte
+  Vorschau), sechs Returns am EOF, Tippen nach manuellem Wegscrollen,
+  Palette-Einfügepfad, Shift+←, Pixel-Vergleich der Fensterzeichnung und
+  den Zustand nach externem Reload — alles grün. Alle drei Symptome passen
+  zu veralteter Zeichnung/Invalidierung in der LAUFENDEN Sitzung (Klasse
+  F.18). Nächster Schritt: Daniel prüft mit v1.50.0 gegen; tritt es wieder
+  auf → sofort notieren, ob ein App-Neustart es behebt, und
+  `FASTRA_TYPESCROLL_FIXTURE=<Dateikopie> ./selftest.sh typescroll` auf
+  dem betroffenen Stand laufen lassen.
 
 - **Emoji „in zwei Zeichen zerplatzt“** (Daniel-Meldung, wahrscheinlich noch
   v1.46.8): Mit v1.48.0 nicht reproduzierbar — Dateibytes intakt,

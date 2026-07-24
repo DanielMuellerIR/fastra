@@ -373,6 +373,7 @@ enum SelfTest {
         case "dragscroll": waitForMainWindow { runDragScrollTest() }
         case "dirtyundo": waitForMainWindow { runDirtyUndoTest() }
         case "emojisplit": waitForMainWindow { runEmojiSplitTest() }
+        case "typescroll": waitForMainWindow { runTypeScrollTest() }
         case "emojishot": waitForMainWindow { runEmojiShot() }
         case "comment4d": waitForMainWindow { runFourDCommentEditTest() }
         case "sighelp4d": waitForMainWindow { runFourDSignatureHelpTest() }
@@ -491,7 +492,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -5808,6 +5809,337 @@ enum SelfTest {
                 }
             }
         }
+    }
+
+    // MARK: - -selftest typescroll
+
+    /// Tippen muss den Cursor IMMER in den Sichtbereich holen (Daniel-Befund
+    /// 2026-07-25, BBEdit-Referenzverhalten): 1) Return am Dateiende scrollt
+    /// zur neuen Zeile. 2) Auch wenn der Nutzer von Hand weggescrollt hat,
+    /// holt das nächste getippte Zeichen die Cursorzeile zurück. 3) Ein per
+    /// Palette eingefügtes Emoji ist sofort vollständig ausgelegt. 4) Shift+←
+    /// erweitert die Auswahl über das Emoji.
+    private static func runTypeScrollTest() {
+        testLabel = "typescroll"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks(),
+              let root = window.contentView else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        // Gleiche Konstellation wie Daniels Repro-Datei (2026-07-25): wenige,
+        // sehr lange, weich umbrochene Markdown-Zeilen ohne End-Umbruch —
+        // der umbrochene Inhalt ist höher als das Fenster. Seitenleiste und
+        // integrierte Vorschau machen den Editor schmal (wie emojisplit).
+        ws.sidebarWidth = 216.13671875
+        ws.markdownPreviewWidth = 332.3515625
+        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        window.setContentSize(NSSize(width: 1100, height: 500))
+        // FASTRA_TYPESCROLL_FIXTURE erlaubt die Diagnose mit einer realen
+        // Datei (Kopie!); der normale Lauf nutzt das neutrale Abbild.
+        let text: String
+        if let path = ProcessInfo.processInfo
+            .environment["FASTRA_TYPESCROLL_FIXTURE"],
+           let fixture = try? String(contentsOfFile: path, encoding: .utf8) {
+            text = fixture
+        } else {
+            text = emojiSplitFixtureContent()
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-typescroll-\(UUID().uuidString).md")
+        do { try text.write(to: url, atomically: true, encoding: .utf8) }
+        catch { finish(false, "Fixture nicht schreibbar: \(error.localizedDescription)") }
+        ws.loadFile(at: url.canonicalFileURL) { ok in
+            guard ok else {
+                try? FileManager.default.removeItem(at: url)
+                finish(false, "Fixture lädt nicht")
+            }
+            // Wie in Daniels realem Ablauf: Die Datei wird nach dem Öffnen
+            // EXTERN geändert (v2-Kopie, andere Agenten) — der Editor lädt
+            // still neu. Erst der Zustand NACH diesem Reload wird geprüft.
+            typeScrollStageExternalChange(window: window, root: root,
+                                          url: url, originalText: text)
+        }
+    }
+
+    /// Ändert die geöffnete Datei auf der Platte und wartet auf den stillen
+    /// Reload des sauberen Tabs. Danach laufen die Tipp-Stufen auf dem
+    /// neu geladenen Editorzustand.
+    private static func typeScrollStageExternalChange(
+        window: NSWindow, root: NSView, url: URL, originalText: String
+    ) {
+        let changed = originalText + "\nextern ergänzte Zeile ohne Umbruch danach"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            do { try changed.write(to: url, atomically: true, encoding: .utf8) }
+            catch {
+                try? FileManager.default.removeItem(at: url)
+                finish(false, "externe Änderung nicht schreibbar: \(error.localizedDescription)")
+            }
+            // Im echten Ablauf stößt die App-Aktivierung die Prüfung an; im
+            // Selbsttest bleibt die App durchgehend aktiv → direkt aufrufen.
+            Workspace.shared?.checkExternalChanges()
+            pollTypeScrollReloaded(window: window, root: root, url: url,
+                                   expectedText: changed, tick: 0)
+        }
+    }
+
+    private static func pollTypeScrollReloaded(
+        window: NSWindow, root: NSView, url: URL, expectedText: String, tick: Int
+    ) {
+        if let textView = editorTextView(in: root) as? TextView,
+           textView.string == expectedText {
+            try? FileManager.default.removeItem(at: url)
+            pollTypeScrollEditorReady(window: window, root: root,
+                                      expectedText: expectedText, tick: 0)
+            return
+        }
+        if tick >= 100 {
+            try? FileManager.default.removeItem(at: url)
+            finish(false, "stiller Reload nach externer Änderung kam nicht binnen 10 s")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollTypeScrollReloaded(window: window, root: root, url: url,
+                                   expectedText: expectedText, tick: tick + 1)
+        }
+    }
+
+    private static func pollTypeScrollEditorReady(
+        window: NSWindow, root: NSView, expectedText: String, tick: Int
+    ) {
+        if let textView = editorTextView(in: root) as? TextView,
+           textView.string == expectedText {
+            window.makeFirstResponder(textView)
+            // Ans Dateiende, Cursor hinter das letzte Zeichen.
+            let length = (textView.string as NSString).length
+            textView.selectionManager.setSelectedRange(
+                NSRange(location: length, length: 0)
+            )
+            textView.scrollSelectionToVisible()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                typeScrollStageReturn(textView: textView)
+            }
+            return
+        }
+        if tick >= 100 { finish(false, "Editor nicht binnen 10 s bereit") }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollTypeScrollEditorReady(window: window, root: root,
+                                      expectedText: expectedText, tick: tick + 1)
+        }
+    }
+
+    /// Ist der Cursor (Kollaps-Selektion) im sichtbaren Bereich der TextView?
+    private static func typeScrollCaretVisible(_ textView: TextView) -> Bool {
+        guard let selection = textView.selectionManager.textSelections.first,
+              let rect = textView.layoutManager.rectForOffset(selection.range.max)
+        else { return false }
+        return textView.visibleRect.intersects(rect)
+    }
+
+    /// Stufe 1: MEHRERE Returns am Dateiende — jede neue Zeile muss sichtbar
+    /// bleiben. Ein einzelnes Return kann noch in den Sichtbereichs-Rest
+    /// unterhalb des Cursors passen; erst die Wiederholung ist streng.
+    private static func typeScrollStageReturn(
+        textView: TextView, iteration: Int = 0, failures: [String] = []
+    ) {
+        var failures = failures
+        if iteration >= 6 {
+            // Stufe 1b: Weitertippen auf der (womöglich unsichtbaren) Zeile
+            // muss die Zeile ebenfalls sichtbar machen.
+            textView.insertText("nachgetippt")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                if !typeScrollCaretVisible(textView) {
+                    failures.append("Tippen auf unsichtbarer Zeile scrollt nicht nach")
+                }
+                typeScrollStageManualScroll(textView: textView, failures: failures)
+            }
+            return
+        }
+        // ECHTER Tastenpfad: keyDown-Event durchs Fenster (interpretKeyEvents,
+        // Input-Context, TextFormation-Filter) — nicht der Direktselektor.
+        // Fällt das Event-Bauen fehl, bleibt der Selektor das Fallback.
+        if let window = textView.window,
+           let event = NSEvent.keyEvent(
+               with: .keyDown, location: .zero, modifierFlags: [],
+               timestamp: ProcessInfo.processInfo.systemUptime,
+               windowNumber: window.windowNumber, context: nil,
+               characters: "\r", charactersIgnoringModifiers: "\r",
+               isARepeat: false, keyCode: 36
+           ) {
+            window.sendEvent(event)
+        } else {
+            textView.insertNewline(nil)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            if !typeScrollCaretVisible(textView) {
+                let visible = textView.visibleRect
+                let caret = textView.selectionManager.textSelections.first
+                    .flatMap { textView.layoutManager.rectForOffset($0.range.max) }
+                failures.append("Return \(iteration + 1) am Dateiende scrollt "
+                    + "nicht zur neuen Zeile (sichtbar bis y=\(Int(visible.maxY)), "
+                    + "Cursor bei y=\(caret.map { Int($0.minY) } ?? -1), "
+                    + "Inhaltshöhe \(Int(textView.frame.height)))")
+            }
+            typeScrollStageReturn(textView: textView, iteration: iteration + 1,
+                                  failures: failures)
+        }
+    }
+
+    /// Stufe 2: Von Hand nach oben scrollen, dann ein Zeichen tippen — die
+    /// Cursorzeile muss zurück in den Sichtbereich kommen (BBEdit-Verhalten).
+    private static func typeScrollStageManualScroll(
+        textView: TextView, failures: [String]
+    ) {
+        var failures = failures
+        textView.enclosingScrollView?.contentView.scroll(to: .zero)
+        textView.enclosingScrollView.map {
+            $0.reflectScrolledClipView($0.contentView)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            if typeScrollCaretVisible(textView) {
+                failures.append("Umgebungsproblem: manuelles Wegscrollen wirkte nicht")
+            }
+            textView.insertText("x")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                if !typeScrollCaretVisible(textView) {
+                    failures.append("Tippen nach manuellem Wegscrollen holt die "
+                        + "Cursorzeile nicht zurück")
+                }
+                typeScrollStageEmoji(textView: textView, failures: failures)
+            }
+        }
+    }
+
+    /// Stufe 3+4: Emoji wie über die macOS-Palette einfügen (insertText mit
+    /// replacementRange) — Auslegung sofort vollständig; Shift+← erweitert
+    /// die Auswahl um das komplette Emoji.
+    private static func typeScrollStageEmoji(
+        textView: TextView, failures: [String]
+    ) {
+        var failures = failures
+        let ns = textView.string as NSString
+        textView.selectionManager.setSelectedRange(
+            NSRange(location: ns.length, length: 0)
+        )
+        textView.insertText("🤢", replacementRange: NSRange(location: NSNotFound, length: 0))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            let after = textView.string as NSString
+            if !(after as String).hasSuffix("🤢") {
+                failures.append("Palette-Emoji fehlt im Text")
+            }
+            // Die Cursorzeile muss das Emoji vollständig ausgelegt haben:
+            // Fragmente der Zeile decken die gesamte Zeilenlänge ab.
+            if let line = textView.layoutManager.textLineForOffset(after.length - 1) {
+                let covered = line.data.lineFragments.map(\.range.length)
+                    .reduce(0, +)
+                if covered < line.range.length - 1 {   // -1: Umbruchzeichen
+                    failures.append("Emoji-Zeile unvollständig ausgelegt: "
+                        + "\(covered) von \(line.range.length)")
+                }
+            }
+            // Zweites Emoji wie im Repro, dann Shift+← zweimal.
+            textView.insertText("🤮", replacementRange: NSRange(location: NSNotFound, length: 0))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                textView.moveLeftAndModifySelection(nil)
+                let firstExtension = textView.selectionManager
+                    .textSelections.first?.range.length ?? 0
+                if firstExtension != 2 {
+                    failures.append("Shift+← markiert hinter Emoji "
+                        + "\(firstExtension) statt 2 UTF-16-Einheiten")
+                }
+                textView.moveLeftAndModifySelection(nil)
+                let secondExtension = textView.selectionManager
+                    .textSelections.first?.range.length ?? 0
+                if secondExtension != 4 {
+                    failures.append("Zweites Shift+← markiert "
+                        + "\(secondExtension) statt 4 UTF-16-Einheiten")
+                }
+                typeScrollStagePixels(textView: textView, failures: failures)
+            }
+        }
+    }
+
+    /// Fensterinhalt als PNG aufnehmen. Bevorzugt `screencapture` (echte
+    /// Bildschirm-Wahrheit); ohne Aufnahme-Berechtigung ersatzweise ein
+    /// Render der aktuellen Layer-Backing-Stores — auch das zeigt veraltete
+    /// Zeichnung, weil `CALayer.render(in:)` vorhandene Inhalte verwendet
+    /// statt neu durch `draw(_:)` zu gehen.
+    private static func typeScrollCapture(window: NSWindow) -> Data? {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-typescroll-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let capture = Process()
+        capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        capture.arguments = ["-l\(window.windowNumber)", "-o", "-x", url.path]
+        do {
+            try capture.run()
+            capture.waitUntilExit()
+        } catch { return typeScrollLayerSnapshot(window: window) }
+        guard capture.terminationStatus == 0,
+              let data = try? Data(contentsOf: url) else {
+            return typeScrollLayerSnapshot(window: window)
+        }
+        return data
+    }
+
+    /// Ersatz-Aufnahme aus den CALayer-Backing-Stores des Fensterinhalts.
+    private static func typeScrollLayerSnapshot(window: NSWindow) -> Data? {
+        guard let view = window.contentView, let layer = view.layer else {
+            return nil
+        }
+        let scale = window.backingScaleFactor
+        let width = Int(view.bounds.width * scale)
+        let height = Int(view.bounds.height * scale)
+        guard width > 0, height > 0,
+              let rep = NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                isPlanar: false, colorSpaceName: .deviceRGB,
+                bytesPerRow: 0, bitsPerPixel: 0
+              ),
+              let context = NSGraphicsContext(bitmapImageRep: rep) else {
+            return nil
+        }
+        context.cgContext.scaleBy(x: scale, y: scale)
+        layer.render(in: context.cgContext)
+        return rep.representation(using: .png, properties: [:])
+    }
+
+    /// Stufe 5 (Pixel-Wahrheit): Tippen muss den SICHTBAREN Fensterinhalt
+    /// ändern. Layout-Rects können stimmen, während das Zeichnen veraltet —
+    /// genau das ist die Klasse der Daniel-Befunde vom 2026-07-25.
+    private static func typeScrollStagePixels(
+        textView: TextView, failures: [String]
+    ) {
+        var failures = failures
+        guard let window = textView.window,
+              let before = typeScrollCapture(window: window) else {
+            // Ohne Aufnahme keine Pixel-Aussage; die übrigen Stufen zählen.
+            finishTypeScroll(failures: failures,
+                             note: "; Pixel-Stufe übersprungen "
+                               + "(Umgebungsproblem: keine Bildschirmaufnahme)")
+            return
+        }
+        textView.insertText("PIXELPROBE", replacementRange: NSRange(location: NSNotFound, length: 0))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            guard let after = typeScrollCapture(window: window) else {
+                finishTypeScroll(failures: failures,
+                                 note: "; Pixel-Stufe abgebrochen "
+                                   + "(Umgebungsproblem: keine Bildschirmaufnahme)")
+                return
+            }
+            if before == after {
+                failures.append("Tippen änderte den sichtbaren Fensterinhalt "
+                    + "NICHT (Pixel identisch — Zeichnung veraltet)")
+            }
+            finishTypeScroll(failures: failures, note: "")
+        }
+    }
+
+    private static func finishTypeScroll(failures: [String], note: String) {
+        finish(failures.isEmpty,
+               failures.isEmpty
+               ? "Tippen scrollt den Cursor sichtbar und zeichnet sichtbar; "
+                 + "Emoji sofort ausgelegt; Shift+← erweitert über Emojis" + note
+               : failures.joined(separator: " ;; ") + note)
     }
 
     // MARK: - -selftest emojisplit
