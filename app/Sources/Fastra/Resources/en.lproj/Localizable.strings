@@ -1162,6 +1162,7 @@
 " oder " = " or ";
 "Konstante" = "Constant";
 "keine Parameter" = "no parameters";
+"Projektmethode" = "Project method";
 "4D-Formular (JSON- und Schema-Prüfung)" = "4D form (JSON and schema check)";
 "Das gebündelte Formular-Schema konnte nicht geladen werden — nur die JSON-Syntax wurde geprüft." = "The bundled form schema could not be loaded — only the JSON syntax was checked.";
 "Formular-Schema: %@ (Pfad %@)" = "Form schema: %@ (path %@)";

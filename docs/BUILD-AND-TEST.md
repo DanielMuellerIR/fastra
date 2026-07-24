@@ -283,7 +283,9 @@ Attributläufen, Umbruchfragmenten oder Glyphen zerfällt. `./selftest.sh
 comment4d` editiert in einem langen 4D-Kommentarblock und verlangt
 Kommentarfarbe bis zum Blockende (siehe F.22). `./selftest.sh sighelp4d`
 prüft die 4D-Parameterhilfe End-to-End: Panel mit Signatur und
-Kommentarkopf innerhalb der Klammern, ausgeblendet außerhalb.
+Kommentarkopf innerhalb der Klammern, in verschachtelten Aufrufen erst die
+innere und hinter deren schließender Klammer wieder die äußere Methode,
+ausgeblendet außerhalb.
 
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 

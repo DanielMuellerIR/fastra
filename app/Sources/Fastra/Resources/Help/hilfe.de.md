@@ -326,7 +326,8 @@ Sprachmenü lässt sich 4D auch für andere Dateien manuell aktivieren.
 `.4DSettings` echtes XML — sie öffnen mit JSON- bzw. XML-Darstellung.
 
 **Vervollständigung:** In `.4dm`-Methoden schlägt Fastra ab zwei
-eingegebenen Zeichen Befehle (mit Syntax-Signatur) und Konstanten vor — Esc
+eingegebenen Zeichen Befehle (mit Syntax-Signatur), die Projektmethoden des
+geöffneten Projekts und Konstanten vor — Esc
 oder ⌃Leertaste
 öffnen die Liste auch manuell, ↑/↓ wählen, Return/Tab übernimmt, Esc
 schließt. Die Namen, Signaturen und Befehlsnummern stammen aus der
@@ -342,7 +343,9 @@ dazwischen. Fastra liest dafür direkt die `.4dm`-Datei der Methode: sowohl
 `#DECLARE($name : Typ; …)->$rückgabe : Typ` als auch klassische
 `C_TEXT($1;$2;…)`-Deklarationen (nur `$N` sind Parameter, `$0` ist die
 Rückgabe). Für eingebaute 4D-Befehle erscheint die Signatur aus der
-Befehlsliste.
+Befehlsliste. Verschachtelte Aufrufe folgen dem Cursor: Innerhalb der
+Klammern der inneren Methode gilt deren Signatur, dahinter wieder die der
+äußeren.
 
 **`.4DForm` prüfen:** „Text → Dokument prüfen“ validiert Formulardateien
 zusätzlich gegen das mitgelieferte Formular-Schema (MIT-lizenziert, von

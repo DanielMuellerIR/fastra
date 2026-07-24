@@ -60,6 +60,38 @@ func completionMatchingLimits() {
     #expect(capped.count == 10)
 }
 
+@Test("Matching: Projektmethoden erscheinen case-tolerant mit Original-Schreibweise")
+func completionMatchingProjectMethods() {
+    let methods = ["Ausgabe_Dialog", "Ausgabe_Bearbeiten", "Begruessung"]
+    let matches = FourDCompletionLogic.matches(
+        forPrefix: "ausgabe_d", projectMethods: methods
+    )
+    #expect(matches.contains(FourDCompletionLogic.Match(
+        name: "Ausgabe_Dialog", signature: nil,
+        isConstant: false, isProjectMethod: true
+    )))
+    // Kein Befehl und keine Konstante beginnt mit diesem Präfix.
+    #expect(matches.allSatisfy { $0.isProjectMethod })
+}
+
+@Test("Matching: Projektmethoden stehen zwischen Befehlen und Konstanten")
+func completionMatchingProjectMethodOrder() {
+    // "al" trifft ALERT (Befehl) und die fiktive Methode "Alte_Methode";
+    // Konstanten mit "al" (z.B. "Align …") kommen dahinter.
+    let matches = FourDCompletionLogic.matches(
+        forPrefix: "al", projectMethods: ["Alte_Methode"]
+    )
+    guard let methodIndex = matches.firstIndex(where: { $0.isProjectMethod }) else {
+        Issue.record("Projektmethode fehlt in den Treffern")
+        return
+    }
+    #expect(matches[..<methodIndex].allSatisfy { !$0.isConstant })
+    #expect(!matches[..<methodIndex].contains { $0.isProjectMethod })
+    if let constantIndex = matches.firstIndex(where: { $0.isConstant }) {
+        #expect(constantIndex > methodIndex)
+    }
+}
+
 // MARK: - Export-Transformation
 
 @Test("Detokenisieren: Befehls- und Konstanten-Suffixe verschwinden")

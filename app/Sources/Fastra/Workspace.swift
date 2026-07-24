@@ -424,6 +424,9 @@ final class Workspace: ObservableObject {
     /// Index wird beim Projektwechsel nebenläufig aufgebaut; bis dahin bleibt
     /// die Menge leer und unbekannte Namen sind weiterhin Prozessvariablen.
     @Published private(set) var fourDProjectMethodNames = Set<String>()
+    /// Original-Schreibweisen der Projektmethoden, alphabetisch — Grundlage
+    /// der Vervollständigung (eingefügt wird exakt der Dateiname).
+    @Published private(set) var fourDProjectMethodDisplayNames: [String] = []
     /// Merkt sich den jeweils letzten Hinweis, damit ein verzögertes
     /// Ausblenden niemals einen NEUEREN Hinweis wegräumt.
     private var sidebarNoticeToken = UUID()
@@ -2602,10 +2605,12 @@ final class Workspace: ObservableObject {
     private func startFourDProjectMethodIndex(for root: URL, generation: UInt64) {
         fourDProjectMethodIndexTask?.cancel()
         fourDProjectMethodNames = []
+        fourDProjectMethodDisplayNames = []
         fourDProjectMethodIndexTask = Task { @MainActor [weak self] in
-            let names = await Task.detached(priority: .utility) {
-                FourDProjectMethodIndex.methodNames(in: root)
+            let displayNames = await Task.detached(priority: .utility) {
+                FourDProjectMethodIndex.methodDisplayNames(in: root)
             }.value
+            let names = Set(displayNames.keys)
             guard !Task.isCancelled,
                   let self,
                   FourDProjectMethodIndex.shouldApply(
@@ -2620,6 +2625,8 @@ final class Workspace: ObservableObject {
             // SwiftUI können sonst beim gleichzeitigen Editor-Update
             // gegenseitig auf ihre internen Locks warten.
             self.fourDProjectMethodNames = names
+            self.fourDProjectMethodDisplayNames = displayNames.values
+                .sorted { $0.lowercased() < $1.lowercased() }
         }
     }
 
@@ -2700,6 +2707,7 @@ final class Workspace: ObservableObject {
         fourDProjectMethodIndexRefreshTask?.cancel()
         fourDProjectMethodIndexRefreshTask = nil
         fourDProjectMethodNames = []
+        fourDProjectMethodDisplayNames = []
         cancelAllGitDiffLoads()
         gitIdentityResolution?.cancel()
         gitIdentityResolution = nil

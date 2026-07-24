@@ -312,7 +312,7 @@ table. Via the language menu, 4D can also be enabled manually for other files.
 real XML — they open with JSON or XML rendering.
 
 **Completion:** In `.4dm` methods, Fastra suggests commands (with their
-syntax signature) and constants after two typed characters — Esc or ⌃Space also opens
+syntax signature), the open project's methods, and constants after two typed characters — Esc or ⌃Space also opens
 the list manually, ↑/↓ select, Return/Tab accepts, Esc closes. The
 names, signatures, and command numbers come from the official 4D
 documentation (CC BY 4.0, © 4D SAS — see the third-party notices).
@@ -326,7 +326,8 @@ the method's `.4dm` file directly: both
 `#DECLARE($name : Type; …)->$result : Type` and classic
 `C_TEXT($1;$2;…)` declarations (only `$N` are parameters, `$0` is the
 return value). For built-in 4D commands the signature comes from the
-bundled command list.
+bundled command list. Nested calls follow the cursor: inside the inner
+method's parentheses its signature applies, behind them the outer one again.
 
 **Checking `.4DForm`:** “Text → Check Document” additionally validates
 form files against the bundled form schema (MIT-licensed, by Mathieu

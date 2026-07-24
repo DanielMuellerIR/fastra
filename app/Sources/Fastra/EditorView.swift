@@ -618,6 +618,14 @@ struct EditorView: View {
         // Datei, programmatischer Reload) soll sofort den Tastaturfokus bekommen —
         // sonst verpuffte nach ⌘T ein direktes ⌘V (Daniel-Befund 2026-06-25).
         .onAppear { Self.focusActiveEditor(in: workspace) }
+        // Typeahead kennt die Projektmethoden: Der Provider liest den
+        // Workspace erst beim Aufruf, damit ein Index-Refresh (neue Methode
+        // angelegt) ohne Editor-Neuaufbau wirkt.
+        .onAppear {
+            fourDCompletion.projectMethodProvider = { [weak workspace] in
+                workspace?.fourDProjectMethodDisplayNames ?? []
+            }
+        }
         // Live-Trefferanzeige (Etappe 2 Wunschpaket 2026-07b): Markierungen
         // leben auf der TextView-Instanz und verschwinden bei jedem Remount
         // (Tab-Wechsel, Reload) von selbst — onAppear zeichnet sie für den

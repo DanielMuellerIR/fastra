@@ -9,6 +9,23 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.49.0] — 2026-07-24
+
+### Hinzugefügt
+
+- Die 4D-Vervollständigung schlägt jetzt auch die Projektmethoden des
+  geöffneten Projekts vor — in der Original-Schreibweise des Dateinamens und
+  als „Projektmethode“ gekennzeichnet, einsortiert zwischen Befehlen und
+  Konstanten. Damit funktioniert das Typeahead auch in verschachtelten
+  Aufrufen, in denen ein Argument selbst ein Methodenaufruf ist.
+
+### Intern
+
+- Der Selbsttest `sighelp4d` deckt jetzt ausdrücklich verschachtelte Aufrufe
+  ab: Innerhalb der inneren Klammern zeigt die Parameterhilfe die innere
+  Methode, hinter deren schließender Klammer wieder die äußere. Die
+  Stack-Logik dafür war bereits Teil von v1.48.0.
+
 ## [v1.48.0] — 2026-07-24
 
 ### Hinzugefügt

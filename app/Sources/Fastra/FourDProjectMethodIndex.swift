@@ -20,7 +20,15 @@ enum FourDProjectMethodIndex {
     /// unabhängig von Groß-/Kleinschreibung.
     static func methodNames(in projectURL: URL,
                             fileManager: FileManager = .default) -> Set<String> {
-        var names = Set<String>()
+        Set(methodDisplayNames(in: projectURL, fileManager: fileManager).keys)
+    }
+
+    /// Wie `methodNames`, behält aber zusätzlich die Original-Schreibweise
+    /// des Dateinamens (klein → Anzeige). Die braucht die Vervollständigung,
+    /// damit ein Vorschlag exakt so eingefügt wird, wie die Methode heißt.
+    static func methodDisplayNames(in projectURL: URL,
+                                   fileManager: FileManager = .default) -> [String: String] {
+        var names: [String: String] = [:]
         let root = projectURL.canonicalFileURL
 
         for relativePath in candidateRelativePaths {
@@ -34,7 +42,8 @@ enum FourDProjectMethodIndex {
             for file in files where file.pathExtension.lowercased() == "4dm" {
                 let values = try? file.resourceValues(forKeys: [.isRegularFileKey])
                 guard values?.isRegularFile != false else { continue }
-                names.insert(file.deletingPathExtension().lastPathComponent.lowercased())
+                let display = file.deletingPathExtension().lastPathComponent
+                names[display.lowercased()] = display
             }
         }
         return names

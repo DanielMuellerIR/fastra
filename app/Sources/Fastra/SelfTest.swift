@@ -6197,6 +6197,7 @@ enum SelfTest {
             "Project/Sources/Methods", isDirectory: true
         )
         let target = methods.appendingPathComponent("Begruessung.4dm")
+        let outer = methods.appendingPathComponent("Verpacke.4dm")
         let caller = methods.appendingPathComponent("Aufrufer.4dm")
         let targetSource = """
         //%attributes = {}
@@ -6205,15 +6206,25 @@ enum SelfTest {
         #DECLARE($name_t : Text; $anzahl_i : Integer)->$gruss_t : Text
         $gruss_t:="Hallo "+$name_t
         """
+        let outerSource = """
+        //%attributes = {}
+        // Verpackt einen Text.
+        #DECLARE($inhalt_t : Text; $breite_i : Integer)->$paket_t : Text
+        $paket_t:="["+$inhalt_t+"]"
+        """
+        // Zeile 2: einfacher Aufruf. Zeile 3: verschachtelter Aufruf — die
+        // innere Methode ist Argument der äußeren.
         let callerSource = """
         // Aufrufer
         Begruessung("Welt";2)
+        Verpacke(Begruessung("Du";1);80)
         """
         do {
             try FileManager.default.createDirectory(
                 at: methods, withIntermediateDirectories: true
             )
             try targetSource.write(to: target, atomically: true, encoding: .utf8)
+            try outerSource.write(to: outer, atomically: true, encoding: .utf8)
             try callerSource.write(to: caller, atomically: true, encoding: .utf8)
         } catch {
             try? FileManager.default.removeItem(at: projectRoot)
@@ -6230,7 +6241,8 @@ enum SelfTest {
         ws: Workspace, root: NSView, window: NSWindow,
         projectRoot: URL, caller: URL, tick: Int
     ) {
-        guard ws.fourDProjectMethodNames.contains("begruessung") else {
+        guard ws.fourDProjectMethodNames.contains("begruessung"),
+              ws.fourDProjectMethodNames.contains("verpacke") else {
             if tick >= 40 {
                 ws.closeProject()
                 try? FileManager.default.removeItem(at: projectRoot)
@@ -6300,12 +6312,21 @@ enum SelfTest {
            text.contains("$gruss_t : Text"),
            text.contains("Baut die Grußformel."),
            text.contains("Zweite Kopfzeile mit Details.") {
-            // Cursor an den Zeilenanfang → Panel muss verschwinden.
+            // Verschachtelter Aufruf: Cursor in die Klammern der INNEREN
+            // Methode, die selbst Argument der äußeren ist.
+            let ns = textView.string as NSString
+            let inner = ns.range(of: "\"Du\"")
+            guard inner.location != NSNotFound else {
+                ws.closeProject()
+                try? FileManager.default.removeItem(at: projectRoot)
+                finish(false, "verschachtelte Aufrufzeile fehlt")
+            }
             textView.selectionManager.setSelectedRange(
-                NSRange(location: 0, length: 0)
+                NSRange(location: inner.max, length: 0)
             )
-            pollFourDSignaturePanelGone(
-                ws: ws, window: window, projectRoot: projectRoot, tick: 0
+            pollFourDSignatureNestedInner(
+                ws: ws, window: window, textView: textView,
+                projectRoot: projectRoot, tick: 0
             )
             return
         }
@@ -6324,14 +6345,91 @@ enum SelfTest {
         }
     }
 
+    /// Im verschachtelten Aufruf muss die INNERE Methode angezeigt werden.
+    private static func pollFourDSignatureNestedInner(
+        ws: Workspace, window: NSWindow, textView: TextView,
+        projectRoot: URL, tick: Int
+    ) {
+        if let text = fourDSignaturePanelText(window: window),
+           text.contains("Begruessung"),
+           text.contains("$name_t : Text"),
+           !text.contains("Verpacke") {
+            // Cursor HINTER die innere schließende Klammer (vor `;80`):
+            // jetzt gilt wieder der äußere Aufruf, aktiver Parameter 0.
+            let ns = textView.string as NSString
+            let closing = ns.range(of: "\"Du\";1)")
+            guard closing.location != NSNotFound else {
+                ws.closeProject()
+                try? FileManager.default.removeItem(at: projectRoot)
+                finish(false, "innere schließende Klammer fehlt")
+            }
+            textView.selectionManager.setSelectedRange(
+                NSRange(location: closing.max, length: 0)
+            )
+            pollFourDSignatureNestedOuter(
+                ws: ws, window: window, textView: textView,
+                projectRoot: projectRoot, tick: 0
+            )
+            return
+        }
+        if tick >= 40 {
+            let seen = fourDSignaturePanelText(window: window) ?? "(kein Panel)"
+            ws.closeProject()
+            try? FileManager.default.removeItem(at: projectRoot)
+            finish(false, "verschachtelt: innere Methode erscheint nicht; "
+                + "gesehen: \(seen.prefix(300))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollFourDSignatureNestedInner(
+                ws: ws, window: window, textView: textView,
+                projectRoot: projectRoot, tick: tick + 1
+            )
+        }
+    }
+
+    /// Hinter der inneren Klammer zeigt das Panel wieder die äußere Methode.
+    private static func pollFourDSignatureNestedOuter(
+        ws: Workspace, window: NSWindow, textView: TextView,
+        projectRoot: URL, tick: Int
+    ) {
+        if let text = fourDSignaturePanelText(window: window),
+           text.contains("Verpacke"),
+           text.contains("$inhalt_t : Text"),
+           text.contains("Verpackt einen Text."),
+           !text.contains("$name_t") {
+            // Cursor an den Zeilenanfang → Panel muss verschwinden.
+            textView.selectionManager.setSelectedRange(
+                NSRange(location: 0, length: 0)
+            )
+            pollFourDSignaturePanelGone(
+                ws: ws, window: window, projectRoot: projectRoot, tick: 0
+            )
+            return
+        }
+        if tick >= 40 {
+            let seen = fourDSignaturePanelText(window: window) ?? "(kein Panel)"
+            ws.closeProject()
+            try? FileManager.default.removeItem(at: projectRoot)
+            finish(false, "verschachtelt: äußere Methode erscheint hinter der "
+                + "inneren Klammer nicht; gesehen: \(seen.prefix(300))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollFourDSignatureNestedOuter(
+                ws: ws, window: window, textView: textView,
+                projectRoot: projectRoot, tick: tick + 1
+            )
+        }
+    }
+
     private static func pollFourDSignaturePanelGone(
         ws: Workspace, window: NSWindow, projectRoot: URL, tick: Int
     ) {
         if fourDSignaturePanelText(window: window) == nil {
             ws.closeProject()
             try? FileManager.default.removeItem(at: projectRoot)
-            finish(true, "Parameterhilfe zeigt Signatur samt Kommentarkopf "
-                + "und verschwindet außerhalb der Klammern")
+            finish(true, "Parameterhilfe zeigt Signatur samt Kommentarkopf, "
+                + "wechselt verschachtelt zwischen innerer und äußerer "
+                + "Methode und verschwindet außerhalb der Klammern")
         }
         if tick >= 40 {
             ws.closeProject()
