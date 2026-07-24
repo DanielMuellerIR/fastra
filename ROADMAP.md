@@ -6,6 +6,12 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Jetzt
 
+- **Test-Defaults-Aufräumer integrieren** (2026-07-24): Branch
+  `claude/kind-dewdney-f519ae` (Nebensession) löscht die von Testläufen
+  hinterlassenen UUID-Suiten in `~/Library/Preferences`
+  (`TestDefaultsJanitorTests`, Erstbereinigung 8286 → 37 Dateien) — bei
+  Gelegenheit nach main übernehmen (z. B. `/cherry-pick-to-main`).
+
 - **4D-Parameterhilfe/Typeahead: verbliebene Komponenten-/Plugin-Grenzen**
   (Rest des Daniel-Auftrags 2026-07-24; Komponentenmethoden selbst sind mit
   v1.50.0 umgesetzt — Typeahead + Signaturhilfe aus `.4dbase`, `.4DZ` und
