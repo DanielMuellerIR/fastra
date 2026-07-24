@@ -56,6 +56,26 @@ final class FourDSignatureHelpController: ObservableObject {
                 signature: signature,
                 activeParameterIndex: context.activeParameterIndex
             )
+        } else if let componentMethod = workspace.fourDComponentMethods[lowered],
+                  let signature = signature(forComponentMethod: componentMethod) {
+            // Geteilte Komponentenmethode: Signatur aus `.4dm`-Quelle
+            // (Platte oder 4DZ-Archiv) bzw. aus der Methodendokumentation.
+            // Eine Doku ohne Deklarationszeilen beweist NICHT, dass die
+            // Methode parameterlos ist.
+            let documentationBased: Bool
+            if case .documentation = componentMethod.source {
+                documentationBased = true
+            } else {
+                documentationBased = false
+            }
+            title = Self.attributedSignature(
+                methodName: context.methodName,
+                signature: signature,
+                activeParameterIndex: context.activeParameterIndex,
+                parametersAreKnown: !documentationBased
+                    || !signature.parameters.isEmpty
+                    || signature.returnParameter != nil
+            )
         } else if let details = FourDSymbols.commandDetails[lowered],
                   let commandSignature = details.signature {
             // Eingebauter 4D-Befehl: Signatur aus der Befehlsliste.
@@ -104,12 +124,48 @@ final class FourDSignatureHelpController: ObservableObject {
         return parsed
     }
 
+    /// Signatur einer Komponentenmethode. Quellen auf der Platte laufen über
+    /// den Datei-Cache; 4DZ-Einträge werden einzeln gelesen und pro Archiv-
+    /// Änderungsdatum gecacht. Ohne Signaturquelle (kompiliert, keine Doku)
+    /// gibt es ehrlich keine Hilfe — niemals erfundene Parameter.
+    private func signature(
+        forComponentMethod method: FourDComponentMethod
+    ) -> FourDMethodSignature? {
+        switch method.source {
+        case .sourceFile(let url), .documentation(let url):
+            return signature(for: url)
+        case .zipEntry(let archive, let entryPath):
+            let key = archive.path + "#" + entryPath
+            let modified = (try? FileManager.default
+                .attributesOfItem(atPath: archive.path)[.modificationDate] as? Date)
+                .flatMap { $0 } ?? .distantPast
+            if let cached = cache[key], cached.modified == modified {
+                return cached.signature
+            }
+            guard let entries = FourDZipArchive.entries(of: archive),
+                  let entry = entries.first(where: { $0.path == entryPath }),
+                  let data = FourDZipArchive.data(
+                    of: entry, in: archive,
+                    maximumSize: FourDComponentIndex.maximumEntryBytes
+                  ),
+                  let source = FourDComponentIndex.decodeText(data) else {
+                return nil
+            }
+            let parsed = FourDSignatureParser.parse(methodSource: source)
+            cache[key] = (modified, parsed)
+            return parsed
+        case .nameOnly:
+            return nil
+        }
+    }
+
     // MARK: - Darstellung
 
     static func attributedSignature(
         methodName: String,
         signature: FourDMethodSignature,
-        activeParameterIndex: Int
+        activeParameterIndex: Int,
+        parametersAreKnown: Bool = true
     ) -> NSAttributedString {
         let size = NSFont.smallSystemFontSize
         let regular = NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
@@ -124,7 +180,10 @@ final class FourDSignatureHelpController: ObservableObject {
         append(methodName, font: bold)
         append("(")
         if signature.parameters.isEmpty {
-            append(L10n.string("keine Parameter"), color: .secondaryLabelColor)
+            // Aus einer Methodendoku ohne Deklarationszeilen lässt sich
+            // „keine Parameter“ nicht ehrlich behaupten — dann nur „…“.
+            append(parametersAreKnown ? L10n.string("keine Parameter") : "…",
+                   color: .secondaryLabelColor)
         }
         for (index, parameter) in signature.parameters.enumerated() {
             if index > 0 { append("; ") }

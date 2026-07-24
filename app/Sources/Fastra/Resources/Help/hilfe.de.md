@@ -327,7 +327,8 @@ Sprachmenü lässt sich 4D auch für andere Dateien manuell aktivieren.
 
 **Vervollständigung:** In `.4dm`-Methoden schlägt Fastra ab zwei
 eingegebenen Zeichen Befehle (mit Syntax-Signatur), die Projektmethoden des
-geöffneten Projekts und Konstanten vor — Esc
+geöffneten Projekts, geteilte Methoden der Projekt-Komponenten
+(gekennzeichnet mit dem Komponentennamen) und Konstanten vor — Esc
 oder ⌃Leertaste
 öffnen die Liste auch manuell, ↑/↓ wählen, Return/Tab übernimmt, Esc
 schließt. Die Namen, Signaturen und Befehlsnummern stammen aus der
@@ -346,6 +347,15 @@ Rückgabe). Für eingebaute 4D-Befehle erscheint die Signatur aus der
 Befehlsliste. Verschachtelte Aufrufe folgen dem Cursor: Innerhalb der
 Klammern der inneren Methode gilt deren Signatur, dahinter wieder die der
 äußeren.
+
+**Komponenten:** Auch geteilte Methoden (`shared`) der Komponenten unter
+`Components/` kennt Fastra — aus entpackten `.4dbase`-Ordnern ebenso wie
+aus `.4DZ`-Archiven, die dafür nicht entpackt werden müssen. Bei
+kompilierten Komponenten ohne Quelltext nutzt Fastra die mitgelieferte
+Methodendokumentation als Signaturquelle; fehlt auch die, erscheint die
+Methode nur im Typeahead, ohne erfundene Parameter (das Panel zeigt dann
+`(…)`). Heißt eine Projektmethode wie eine Komponentenmethode, gewinnt
+die Projektmethode.
 
 **`.4DForm` prüfen:** „Text → Dokument prüfen“ validiert Formulardateien
 zusätzlich gegen das mitgelieferte Formular-Schema (MIT-lizenziert, von

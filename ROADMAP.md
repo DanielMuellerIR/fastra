@@ -6,41 +6,23 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Jetzt
 
-- **4D-Parameterhilfe/Typeahead für Komponenten- und Plugin-Methoden**
-  (Daniel-Auftrag 2026-07-24, Prio 2 nach den Projektmethoden aus
-  v1.48.0/v1.49.0 — nächste Session):
-  - **Ausgangslage im Code:** Signatur-Parser und Aufrufkontext liegen in
-    `app/Sources/Fastra/FourDSignatureHelp.swift` (pure Logik, 15 Tests in
-    `FourDSignatureHelpTests.swift`), das Panel in
-    `FourDSignatureHelpPanel.swift`, das Typeahead in `FourDCompletion.swift`
-    (Projektmethoden via `Workspace.fourDProjectMethodDisplayNames`).
-    Methodenauflösung: `FourDSignatureHelpLogic.methodFileURL` sucht bisher
-    nur `…/Sources/Methods/<Name>.4dm`. Selbsttests: `sighelp4d` (inkl.
-    Verschachtelung), `completion4d`.
-  - **Befund aus dem BA-Referenzprojekt (2026-07-24):** Komponenten liegen
-    unter `<Projekt>/components/*.4dbase/Contents/` mit einem `.4DZ`-Archiv
-    (echtes ZIP). Die sechs BA-Komponenten sind KOMPILIERT: Im 4DZ steckt
-    `Project/DerivedData/…`, aber **kein einziges `.4dm`** — Quelltexte sind
-    dort also nicht verfügbar. `Project/Sources/dependencies.json` existiert.
-    Ein `Plugins`-Ordner existiert in BA nicht.
-  - **Zu klärender Weg (in dieser Reihenfolge prüfen):** 1) Interpretierte
-    Komponenten: 4DZ als ZIP öffnen bzw. entpackte `.4dbase` mit
-    `Project/Sources/Methods/*.4dm` — dann greift der vorhandene Parser
-    unverändert; nur `methodFileURL` und der Index brauchen Komponenten-
-    Wurzeln (inkl. Lesen aus ZIP ohne Vollentpacken, Größenlimit). 2) Für
-    kompilierte Komponenten prüfen, ob ein Katalog der exportierten Methoden
-    existiert (im 4DZ, in `Contents/Resources/` oder via `dependencies.json`
-    aufgelösten Quellen); ohne Signaturquelle ehrlich nur den Methodennamen
-    im Typeahead anbieten (Kennzeichnung „Komponente“), keine erfundenen
-    Parameter. 3) Plugins erst angehen, wenn ein reales Projekt mit
-    `Plugins`-Ordner als Fixture verfügbar ist — Struktur dann zuerst am
-    echten Bundle erheben, nichts aus Erinnerung raten.
-  - **Verbindlich:** Fixtures für Tests selbst schreiben (keine BA-Inhalte
-    ins öffentliche Repo); eine lokale BA-Arbeitskopie zum Testen ist
-    erlaubt (Daniel-Freigabe 2026-07-24), Original unter
-    `~/Documents/gita/BA` nie verändern. Hilfe (DE+EN) und `sighelp4d`/
-    Unit-Tests erweitern; Namenskollision Projektmethode vs. Komponente
-    klären (Projektmethode gewinnt).
+- **4D-Parameterhilfe/Typeahead: verbliebene Komponenten-/Plugin-Grenzen**
+  (Rest des Daniel-Auftrags 2026-07-24; Komponentenmethoden selbst sind mit
+  v1.50.0 umgesetzt — Typeahead + Signaturhilfe aus `.4dbase`, `.4DZ` und
+  Methodendokumentation, nur geteilte Methoden, Projektmethode gewinnt):
+  - **Plugins:** erst angehen, wenn ein reales Projekt mit `Plugins`-Ordner
+    als Fixture verfügbar ist — Struktur dann zuerst am echten Bundle
+    erheben, nichts aus Erinnerung raten (in BA existiert kein solcher
+    Ordner).
+  - **GitHub-Abhängigkeiten:** `Project/Sources/dependencies.json` kann
+    Komponenten benennen, die nicht unter `<Projekt>/Components/` liegen
+    (z. B. von 4D verwaltete Downloads). Bewusst offen, bis der reale
+    Ablageort an einem echten Projekt erhoben ist.
+  - **Benannte klassische Parameter:** 4D-Methodendoku kompilierter
+    Komponenten deklariert Parameter teils als benannte Variablen
+    (`C_LONGINT($pid_i)`) — der Parser zählt ehrlich nur `$N`/`#DECLARE`;
+    das Panel zeigt dann `(…)`. Eine Zuordnung benannter Deklarationen zu
+    Parameterpositionen wäre Raterei und bleibt bewusst außen vor.
 - **Soft Wrap, Rechteckauswahl und Einrückung** (beschlossen 2026-07-19):
   Umsetzung in vier getrennten Etappen mit eigener Verifikation und Version.
   **Umgesetzt: Etappe 1 (Formatprofile und Fußzeilen-Bedienung, v1.40.0),

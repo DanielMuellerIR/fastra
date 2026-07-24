@@ -312,7 +312,9 @@ table. Via the language menu, 4D can also be enabled manually for other files.
 real XML — they open with JSON or XML rendering.
 
 **Completion:** In `.4dm` methods, Fastra suggests commands (with their
-syntax signature), the open project's methods, and constants after two typed characters — Esc or ⌃Space also opens
+syntax signature), the open project's methods, shared methods of the
+project's components (labeled with the component name), and constants
+after two typed characters — Esc or ⌃Space also opens
 the list manually, ↑/↓ select, Return/Tab accepts, Esc closes. The
 names, signatures, and command numbers come from the official 4D
 documentation (CC BY 4.0, © 4D SAS — see the third-party notices).
@@ -328,6 +330,15 @@ the method's `.4dm` file directly: both
 return value). For built-in 4D commands the signature comes from the
 bundled command list. Nested calls follow the cursor: inside the inner
 method's parentheses its signature applies, behind them the outer one again.
+
+**Components:** Fastra also knows the shared methods of the components
+under `Components/` — from unpacked `.4dbase` folders as well as from
+`.4DZ` archives, which do not need to be extracted for this. For compiled
+components without source code, Fastra uses the bundled method
+documentation as the signature source; if that is missing too, the method
+only appears in the typeahead, without invented parameters (the panel then
+shows `(…)`). If a project method has the same name as a component
+method, the project method wins.
 
 **Checking `.4DForm`:** “Text → Check Document” additionally validates
 form files against the bundled form schema (MIT-licensed, by Mathieu

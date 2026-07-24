@@ -6212,19 +6212,37 @@ enum SelfTest {
         #DECLARE($inhalt_t : Text; $breite_i : Integer)->$paket_t : Text
         $paket_t:="["+$inhalt_t+"]"
         """
+        // Geteilte Methode einer entpackten Komponente — sie muss in der
+        // Parameterhilfe genauso funktionieren wie eine Projektmethode.
+        let componentMethods = projectRoot.appendingPathComponent(
+            "Components/Werkzeug.4dbase/Project/Sources/Methods", isDirectory: true
+        )
+        let componentTarget = componentMethods.appendingPathComponent("Werkzeug_Miss.4dm")
+        let componentSource = """
+        //%attributes = {"shared":true}
+        // Misst einen Text.
+        #DECLARE($text_t : Text)->$laenge_i : Integer
+        $laenge_i:=Length($text_t)
+        """
         // Zeile 2: einfacher Aufruf. Zeile 3: verschachtelter Aufruf — die
-        // innere Methode ist Argument der äußeren.
+        // innere Methode ist Argument der äußeren. Zeile 4: Komponente.
         let callerSource = """
         // Aufrufer
         Begruessung("Welt";2)
         Verpacke(Begruessung("Du";1);80)
+        Werkzeug_Miss("Probe")
         """
         do {
             try FileManager.default.createDirectory(
                 at: methods, withIntermediateDirectories: true
             )
+            try FileManager.default.createDirectory(
+                at: componentMethods, withIntermediateDirectories: true
+            )
             try targetSource.write(to: target, atomically: true, encoding: .utf8)
             try outerSource.write(to: outer, atomically: true, encoding: .utf8)
+            try componentSource.write(to: componentTarget, atomically: true,
+                                      encoding: .utf8)
             try callerSource.write(to: caller, atomically: true, encoding: .utf8)
         } catch {
             try? FileManager.default.removeItem(at: projectRoot)
@@ -6242,11 +6260,12 @@ enum SelfTest {
         projectRoot: URL, caller: URL, tick: Int
     ) {
         guard ws.fourDProjectMethodNames.contains("begruessung"),
-              ws.fourDProjectMethodNames.contains("verpacke") else {
+              ws.fourDProjectMethodNames.contains("verpacke"),
+              ws.fourDComponentMethods["werkzeug_miss"] != nil else {
             if tick >= 40 {
                 ws.closeProject()
                 try? FileManager.default.removeItem(at: projectRoot)
-                finish(false, "Projektindex kennt Begruessung nach 10 s nicht")
+                finish(false, "Projekt-/Komponentenindex ist nach 10 s unvollständig")
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                 pollFourDSignatureIndexReady(
@@ -6397,12 +6416,20 @@ enum SelfTest {
            text.contains("$inhalt_t : Text"),
            text.contains("Verpackt einen Text."),
            !text.contains("$name_t") {
-            // Cursor an den Zeilenanfang → Panel muss verschwinden.
+            // Cursor in den Aufruf der Komponentenmethode.
+            let ns = textView.string as NSString
+            let componentCall = ns.range(of: "\"Probe\"")
+            guard componentCall.location != NSNotFound else {
+                ws.closeProject()
+                try? FileManager.default.removeItem(at: projectRoot)
+                finish(false, "Komponenten-Aufrufzeile fehlt")
+            }
             textView.selectionManager.setSelectedRange(
-                NSRange(location: 0, length: 0)
+                NSRange(location: componentCall.max, length: 0)
             )
-            pollFourDSignaturePanelGone(
-                ws: ws, window: window, projectRoot: projectRoot, tick: 0
+            pollFourDSignatureComponent(
+                ws: ws, window: window, textView: textView,
+                projectRoot: projectRoot, tick: 0
             )
             return
         }
@@ -6421,6 +6448,41 @@ enum SelfTest {
         }
     }
 
+    /// Die geteilte Komponentenmethode zeigt Signatur und Kommentarkopf wie
+    /// eine Projektmethode (Komponentenmethoden-Auftrag 2026-07-24).
+    private static func pollFourDSignatureComponent(
+        ws: Workspace, window: NSWindow, textView: TextView,
+        projectRoot: URL, tick: Int
+    ) {
+        if let text = fourDSignaturePanelText(window: window),
+           text.contains("Werkzeug_Miss"),
+           text.contains("$text_t : Text"),
+           text.contains("$laenge_i : Integer"),
+           text.contains("Misst einen Text.") {
+            // Cursor an den Zeilenanfang → Panel muss verschwinden.
+            textView.selectionManager.setSelectedRange(
+                NSRange(location: 0, length: 0)
+            )
+            pollFourDSignaturePanelGone(
+                ws: ws, window: window, projectRoot: projectRoot, tick: 0
+            )
+            return
+        }
+        if tick >= 40 {
+            let seen = fourDSignaturePanelText(window: window) ?? "(kein Panel)"
+            ws.closeProject()
+            try? FileManager.default.removeItem(at: projectRoot)
+            finish(false, "Komponentenmethode erscheint nicht in der "
+                + "Parameterhilfe; gesehen: \(seen.prefix(300))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollFourDSignatureComponent(
+                ws: ws, window: window, textView: textView,
+                projectRoot: projectRoot, tick: tick + 1
+            )
+        }
+    }
+
     private static func pollFourDSignaturePanelGone(
         ws: Workspace, window: NSWindow, projectRoot: URL, tick: Int
     ) {
@@ -6429,7 +6491,8 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: projectRoot)
             finish(true, "Parameterhilfe zeigt Signatur samt Kommentarkopf, "
                 + "wechselt verschachtelt zwischen innerer und äußerer "
-                + "Methode und verschwindet außerhalb der Klammern")
+                + "Methode, kennt geteilte Komponentenmethoden und "
+                + "verschwindet außerhalb der Klammern")
         }
         if tick >= 40 {
             ws.closeProject()

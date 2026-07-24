@@ -66,7 +66,14 @@ enum FourDSignatureParser {
 
     static func parse(methodSource: String) -> FourDMethodSignature {
         var signature = FourDMethodSignature()
-        let lines = methodSource.components(separatedBy: "\n")
+        // Zeilenenden normalisieren: Quelldateien nutzen `\n`, die von 4D
+        // exportierten Methodendoku-Dateien (Komponenten) dagegen `\r` und
+        // ein UTF-8-BOM, das sonst die erste Kommentarzeile verdecken würde.
+        var normalized = methodSource
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        if normalized.hasPrefix("\u{FEFF}") { normalized.removeFirst() }
+        let lines = normalized.components(separatedBy: "\n")
         signature.headerComment = headerComment(of: lines)
 
         // Neuer Stil gewinnt: Die erste #DECLARE-Zeile beschreibt die

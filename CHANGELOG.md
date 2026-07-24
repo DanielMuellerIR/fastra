@@ -9,6 +9,34 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.50.0] — 2026-07-24
+
+### Hinzugefügt
+
+- 4D-Vervollständigung und Parameterhilfe kennen jetzt auch die geteilten
+  Methoden (`shared`) der Projekt-Komponenten unter `Components/` —
+  gekennzeichnet mit dem Komponentennamen und einsortiert nach den
+  Projektmethoden. Drei Komponentenformen werden gelesen: entpackte
+  `.4dbase`-Ordner mit `.4dm`-Quellen, `.4DZ`-Archive (interpretiert) und
+  kompilierte `.4DZ` ohne Quelltext. Archive werden dafür nicht entpackt:
+  Ein eigener minimaler ZIP-Leser holt nur die benötigten Einträge mit
+  Größenlimit heraus.
+- Signaturquellen ehrlich nach Verfügbarkeit: `.4dm`-Quelle (Platte oder
+  Archiv), sonst die mitgelieferte Methodendokumentation
+  (`Documentation/Methods/*.md`, BOM-/CR-tolerant geparst), sonst nur der
+  Methodenname im Typeahead — keine erfundenen Parameter; belegt eine
+  Doku keine Parameter, zeigt das Panel `(…)` statt „keine Parameter“.
+  Nur geteilte Methoden werden angeboten (`//%attributes` bzw.
+  `methodAttributes.json`); bei Namensgleichheit gewinnt die
+  Projektmethode. Realprüfung am BA-Referenzprojekt: 440 geteilte
+  Methoden aus sechs kompilierten Komponenten in unter 10 ms.
+
+### Geändert
+
+- Der 4D-Signaturparser normalisiert Zeilenenden (`\r\n`, `\r`) und ein
+  führendes UTF-8-BOM — nötig für die von 4D exportierten
+  Methodendoku-Dateien.
+
 ## [v1.49.0] — 2026-07-24
 
 ### Hinzugefügt

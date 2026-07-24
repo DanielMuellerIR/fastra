@@ -625,6 +625,17 @@ struct EditorView: View {
             fourDCompletion.projectMethodProvider = { [weak workspace] in
                 workspace?.fourDProjectMethodDisplayNames ?? []
             }
+            fourDCompletion.componentMethodProvider = { [weak workspace] in
+                guard let workspace else { return [] }
+                return workspace.fourDComponentMethodDisplayNames.map { name in
+                    FourDCompletionLogic.ComponentMethodEntry(
+                        name: name,
+                        componentName: workspace
+                            .fourDComponentMethods[name.lowercased()]?
+                            .componentName ?? ""
+                    )
+                }
+            }
         }
         // Live-Trefferanzeige (Etappe 2 Wunschpaket 2026-07b): Markierungen
         // leben auf der TextView-Instanz und verschwinden bei jedem Remount

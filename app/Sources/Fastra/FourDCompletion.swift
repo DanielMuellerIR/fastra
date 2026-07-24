@@ -21,12 +21,21 @@ import CodeEditTextView
 enum FourDCompletionLogic {
 
     /// Ein Treffer: kanonischer Name plus Signatur (Befehle) bzw.
-    /// Konstanten- oder Projektmethoden-Kennzeichnung.
+    /// Konstanten-, Projektmethoden- oder Komponenten-Kennzeichnung.
     struct Match: Equatable {
         let name: String
         let signature: String?
         let isConstant: Bool
         var isProjectMethod: Bool = false
+        /// Name der Komponente, wenn der Treffer eine geteilte
+        /// Komponentenmethode ist; sonst `nil`.
+        var componentName: String? = nil
+    }
+
+    /// Eine anbietbare Komponentenmethode (reine Daten für das Matching).
+    struct ComponentMethodEntry: Equatable {
+        let name: String
+        let componentName: String
     }
 
     /// Ab so vielen Zeichen erscheinen Vorschläge beim Tippen
@@ -83,12 +92,14 @@ enum FourDCompletionLogic {
     }
 
     /// Case-tolerante Präfix-Treffer: Befehle (mit Signatur), dann
-    /// Projektmethoden des geöffneten Projekts, dann Konstanten — jeweils
-    /// alphabetisch (die generierten Listen sind sortiert, die Methodenliste
-    /// kommt sortiert aus dem Index). So funktioniert das Typeahead auch in
+    /// Projektmethoden des geöffneten Projekts, dann geteilte
+    /// Komponentenmethoden, dann Konstanten — jeweils alphabetisch (die
+    /// generierten Listen sind sortiert, die Methodenlisten kommen sortiert
+    /// aus den Indizes). So funktioniert das Typeahead auch in
     /// verschachtelten Aufrufen, wo Argumente selbst Methodenaufrufe sind.
     static func matches(forPrefix prefix: String,
                         projectMethods: [String] = [],
+                        componentMethods: [ComponentMethodEntry] = [],
                         limit: Int = maximumMatches) -> [Match] {
         let needle = prefix.lowercased()
         guard !needle.isEmpty else { return [] }
@@ -106,6 +117,17 @@ enum FourDCompletionLogic {
         where method.lowercased().hasPrefix(needle) {
             result.append(Match(name: method, signature: nil,
                                 isConstant: false, isProjectMethod: true))
+            if result.count >= limit { return result }
+        }
+        // Bei Namensgleichheit gewinnt die Projektmethode
+        // (Produktentscheidung 2026-07-24): nur ein Eintrag pro Name.
+        let projectNames = Set(projectMethods.map { $0.lowercased() })
+        for entry in componentMethods
+        where entry.name.lowercased().hasPrefix(needle)
+            && !projectNames.contains(entry.name.lowercased()) {
+            result.append(Match(name: entry.name, signature: nil,
+                                isConstant: false,
+                                componentName: entry.componentName))
             if result.count >= limit { return result }
         }
         for constant in FourDSymbols.constants
@@ -137,6 +159,12 @@ struct FourDSuggestion: CodeSuggestionEntry {
             detail = L10n.string("Projektmethode")
             image = Image(systemName: "m.square")
             imageColor = Color.green
+        } else if let componentName = match.componentName {
+            // Kennzeichnung mit Komponentenname — der Nutzer sieht sofort,
+            // woher die Methode kommt.
+            detail = L10n.format("Komponente „%@“", componentName)
+            image = Image(systemName: "shippingbox")
+            imageColor = Color.orange
         } else if match.isConstant {
             detail = L10n.string("Konstante")
             image = Image(systemName: "k.square")
@@ -160,6 +188,10 @@ final class FourDCompletionDelegate: ObservableObject, CodeSuggestionDelegate {
     /// Index-Refresh aktuell.
     var projectMethodProvider: () -> [String] = { [] }
 
+    /// Liefert die geteilten Komponentenmethoden des aktiven Projekts
+    /// (sortiert) — gleiche Lebensdauer-Logik wie `projectMethodProvider`.
+    var componentMethodProvider: () -> [FourDCompletionLogic.ComponentMethodEntry] = { [] }
+
     /// `true`, solange das Fenster offen ist — beim Weitertippen darf die
     /// Liste auch unter der automatischen Mindestlänge weiterfiltern.
     private var windowIsOpen = false
@@ -177,7 +209,8 @@ final class FourDCompletionDelegate: ObservableObject, CodeSuggestionDelegate {
               let stringRange = Range(range, in: text) else { return nil }
         let prefix = String(text[stringRange])
         let matches = FourDCompletionLogic.matches(
-            forPrefix: prefix, projectMethods: projectMethodProvider()
+            forPrefix: prefix, projectMethods: projectMethodProvider(),
+            componentMethods: componentMethodProvider()
         )
         guard !matches.isEmpty else { return nil }
         return matches.map(FourDSuggestion.init(match:))

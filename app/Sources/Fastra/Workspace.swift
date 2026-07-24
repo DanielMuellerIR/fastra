@@ -427,6 +427,13 @@ final class Workspace: ObservableObject {
     /// Original-Schreibweisen der Projektmethoden, alphabetisch — Grundlage
     /// der Vervollständigung (eingefügt wird exakt der Dateiname).
     @Published private(set) var fourDProjectMethodDisplayNames: [String] = []
+    /// Geteilte Methoden der Projekt-Komponenten (`Components/*.4dbase` bzw.
+    /// `.4DZ`), Schlüssel kleingeschrieben. Wird im selben nebenläufigen
+    /// Scan wie der Projektmethoden-Index aufgebaut.
+    @Published private(set) var fourDComponentMethods: [String: FourDComponentMethod] = [:]
+    /// Original-Schreibweisen der Komponentenmethoden, alphabetisch — für
+    /// die Vervollständigung.
+    @Published private(set) var fourDComponentMethodDisplayNames: [String] = []
     /// Merkt sich den jeweils letzten Hinweis, damit ein verzögertes
     /// Ausblenden niemals einen NEUEREN Hinweis wegräumt.
     private var sidebarNoticeToken = UUID()
@@ -2606,9 +2613,14 @@ final class Workspace: ObservableObject {
         fourDProjectMethodIndexTask?.cancel()
         fourDProjectMethodNames = []
         fourDProjectMethodDisplayNames = []
+        fourDComponentMethods = [:]
+        fourDComponentMethodDisplayNames = []
         fourDProjectMethodIndexTask = Task { @MainActor [weak self] in
-            let displayNames = await Task.detached(priority: .utility) {
-                FourDProjectMethodIndex.methodDisplayNames(in: root)
+            // Projekt- und Komponentenmethoden im selben Hintergrund-Scan:
+            // Beide Ergebnisse gehören zum selben Projektstand.
+            let (displayNames, componentMethods) = await Task.detached(priority: .utility) {
+                (FourDProjectMethodIndex.methodDisplayNames(in: root),
+                 FourDComponentIndex.methods(in: root))
             }.value
             let names = Set(displayNames.keys)
             guard !Task.isCancelled,
@@ -2626,6 +2638,10 @@ final class Workspace: ObservableObject {
             // gegenseitig auf ihre internen Locks warten.
             self.fourDProjectMethodNames = names
             self.fourDProjectMethodDisplayNames = displayNames.values
+                .sorted { $0.lowercased() < $1.lowercased() }
+            self.fourDComponentMethods = componentMethods
+            self.fourDComponentMethodDisplayNames = componentMethods.values
+                .map(\.displayName)
                 .sorted { $0.lowercased() < $1.lowercased() }
         }
     }
@@ -2708,6 +2724,8 @@ final class Workspace: ObservableObject {
         fourDProjectMethodIndexRefreshTask = nil
         fourDProjectMethodNames = []
         fourDProjectMethodDisplayNames = []
+        fourDComponentMethods = [:]
+        fourDComponentMethodDisplayNames = []
         cancelAllGitDiffLoads()
         gitIdentityResolution?.cancel()
         gitIdentityResolution = nil
