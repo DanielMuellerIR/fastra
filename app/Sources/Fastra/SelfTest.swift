@@ -5882,12 +5882,17 @@ enum SelfTest {
         }
     }
 
+    /// Bleibt bis zum Testende liegen: Die Zweitfenster-Stufe öffnet dieselbe
+    /// Datei erneut (Daniels Repro-Ablauf 2026-07-24: ⌘N, dann ⌘O derselben
+    /// Datei, während das erste Fenster sie im Hintergrund offen behält).
+    private static var typeScrollFixtureURL: URL?
+
     private static func pollTypeScrollReloaded(
         window: NSWindow, root: NSView, url: URL, expectedText: String, tick: Int
     ) {
         if let textView = editorTextView(in: root) as? TextView,
            textView.string == expectedText {
-            try? FileManager.default.removeItem(at: url)
+            typeScrollFixtureURL = url
             pollTypeScrollEditorReady(window: window, root: root,
                                       expectedText: expectedText, tick: 0)
             return
@@ -5915,7 +5920,10 @@ enum SelfTest {
             )
             textView.scrollSelectionToVisible()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                typeScrollStageReturn(textView: textView)
+                typeScrollStageReturn(textView: textView) { failures in
+                    typeScrollStageManualScroll(textView: textView,
+                                                failures: failures)
+                }
             }
             return
         }
@@ -5937,8 +5945,11 @@ enum SelfTest {
     /// Stufe 1: MEHRERE Returns am Dateiende — jede neue Zeile muss sichtbar
     /// bleiben. Ein einzelnes Return kann noch in den Sichtbereichs-Rest
     /// unterhalb des Cursors passen; erst die Wiederholung ist streng.
+    /// `label` kennzeichnet Befunde der Zweitfenster-Wiederholung;
+    /// `then` übernimmt die gesammelten Befunde.
     private static func typeScrollStageReturn(
-        textView: TextView, iteration: Int = 0, failures: [String] = []
+        textView: TextView, iteration: Int = 0, failures: [String] = [],
+        label: String = "", then: @escaping ([String]) -> Void
     ) {
         var failures = failures
         if iteration >= 6 {
@@ -5947,9 +5958,9 @@ enum SelfTest {
             textView.insertText("nachgetippt")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                 if !typeScrollCaretVisible(textView) {
-                    failures.append("Tippen auf unsichtbarer Zeile scrollt nicht nach")
+                    failures.append(label + "Tippen auf unsichtbarer Zeile scrollt nicht nach")
                 }
-                typeScrollStageManualScroll(textView: textView, failures: failures)
+                then(failures)
             }
             return
         }
@@ -5973,13 +5984,13 @@ enum SelfTest {
                 let visible = textView.visibleRect
                 let caret = textView.selectionManager.textSelections.first
                     .flatMap { textView.layoutManager.rectForOffset($0.range.max) }
-                failures.append("Return \(iteration + 1) am Dateiende scrollt "
+                failures.append(label + "Return \(iteration + 1) am Dateiende scrollt "
                     + "nicht zur neuen Zeile (sichtbar bis y=\(Int(visible.maxY)), "
                     + "Cursor bei y=\(caret.map { Int($0.minY) } ?? -1), "
                     + "Inhaltshöhe \(Int(textView.frame.height)))")
             }
             typeScrollStageReturn(textView: textView, iteration: iteration + 1,
-                                  failures: failures)
+                                  failures: failures, label: label, then: then)
         }
     }
 
@@ -6130,11 +6141,106 @@ enum SelfTest {
                 failures.append("Tippen änderte den sichtbaren Fensterinhalt "
                     + "NICHT (Pixel identisch — Zeichnung veraltet)")
             }
-            finishTypeScroll(failures: failures, note: "")
+            typeScrollStageSecondWindow(failures: failures, note: "")
+        }
+    }
+
+    /// Stufe 6 (Daniels Repro-Ablauf 2026-07-24): ⌘N öffnet ein ZWEITES
+    /// Fenster, dort wird DIESELBE Datei erneut geladen, während das erste
+    /// Fenster sie im Hintergrund offen behält. Die Return-Serie muss auch
+    /// im Zweitfenster sichtbar scrollen.
+    private static func typeScrollStageSecondWindow(
+        failures: [String], note: String
+    ) {
+        guard let url = typeScrollFixtureURL,
+              let firstWorkspace = Workspace.shared,
+              let firstWindow = NSApp.windows.first(where: {
+                  !SearchWindow.isSearchWindow($0) && $0.isVisible
+                      && WorkspaceWindowRegistry.workspace(for: $0) != nil
+              }) else {
+            finishTypeScroll(failures: failures,
+                             note: note + "; Zweitfenster-Stufe übersprungen "
+                               + "(Ausgangszustand fehlt)")
+            return
+        }
+        firstWindow.makeKeyAndOrderFront(nil)
+        postCmd("n", keyCode: 45, windowNumber: firstWindow.windowNumber)
+        pollTypeScrollSecondWindow(firstWorkspace: firstWorkspace,
+                                   firstWindow: firstWindow, url: url,
+                                   failures: failures, note: note, tick: 0)
+    }
+
+    private static func pollTypeScrollSecondWindow(
+        firstWorkspace: Workspace, firstWindow: NSWindow, url: URL,
+        failures: [String], note: String, tick: Int
+    ) {
+        // Das neue Fenster hat einen EIGENEN Workspace (Registry-Muster wie
+        // im newwindow-Selbsttest).
+        if let secondWindow = NSApp.windows.first(where: {
+               !SearchWindow.isSearchWindow($0) && $0.isVisible
+                   && $0 !== firstWindow
+                   && WorkspaceWindowRegistry.workspace(for: $0) != nil
+                   && WorkspaceWindowRegistry.workspace(for: $0) !== firstWorkspace
+           }),
+           let secondWorkspace = WorkspaceWindowRegistry.workspace(for: secondWindow),
+           let secondRoot = secondWindow.contentView {
+            secondWorkspace.loadFile(at: url.canonicalFileURL) { ok in
+                guard ok else {
+                    finishTypeScroll(failures: failures + ["Zweitfenster: Datei lädt nicht"],
+                                     note: note)
+                    return
+                }
+                pollTypeScrollSecondEditor(root: secondRoot, window: secondWindow,
+                                           failures: failures, note: note, tick: 0)
+            }
+            return
+        }
+        if tick >= 100 {
+            finishTypeScroll(failures: failures
+                + ["Zweitfenster erschien nicht binnen 10 s nach ⌘N"], note: note)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollTypeScrollSecondWindow(firstWorkspace: firstWorkspace,
+                                       firstWindow: firstWindow, url: url,
+                                       failures: failures, note: note, tick: tick + 1)
+        }
+    }
+
+    private static func pollTypeScrollSecondEditor(
+        root: NSView, window: NSWindow, failures: [String], note: String, tick: Int
+    ) {
+        if let textView = editorTextView(in: root) as? TextView,
+           !textView.string.isEmpty {
+            window.makeFirstResponder(textView)
+            let length = (textView.string as NSString).length
+            textView.selectionManager.setSelectedRange(
+                NSRange(location: length, length: 0)
+            )
+            textView.scrollSelectionToVisible()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                typeScrollStageReturn(textView: textView, label: "Zweitfenster: ") {
+                    finishTypeScroll(failures: $0, note: note)
+                }
+            }
+            return
+        }
+        if tick >= 100 {
+            finishTypeScroll(failures: failures
+                + ["Zweitfenster-Editor nicht binnen 10 s bereit"], note: note)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollTypeScrollSecondEditor(root: root, window: window,
+                                       failures: failures, note: note, tick: tick + 1)
         }
     }
 
     private static func finishTypeScroll(failures: [String], note: String) {
+        if let url = typeScrollFixtureURL {
+            try? FileManager.default.removeItem(at: url)
+            typeScrollFixtureURL = nil
+        }
         finish(failures.isEmpty,
                failures.isEmpty
                ? "Tippen scrollt den Cursor sichtbar und zeichnet sichtbar; "
