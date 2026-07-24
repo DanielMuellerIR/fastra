@@ -596,24 +596,16 @@ struct EditorView: View {
             workspace.activeTabContent,
             language: detectedLanguage,
             configuration: editorConfiguration,
-            // Scroll-Position bewusst aus dem State HERAUSFILTERN: CESEs
-            // SwiftUI-Reconcile scrollt sonst bei jedem fremd ausgelösten
-            // View-Update (z. B. Fußzeile nach einem Tastendruck) auf die
-            // zuletzt in den State geschriebene Position zurück — der
-            // Rückschreiber läuft erst im NÄCHSTEN Runloop, der Reconcile
-            // aber sofort. Ergebnis war: Tippen scrollte, der Reconcile
-            // drehte den Scroll zurück, der Cursor verschwand unter dem
-            // Fensterrand (Daniel-Befund 2026-07-24, Call-Stack-Beleg).
-            // Fastra steuert Scrollen ausschließlich selbst (convergeScroll);
-            // ein externes Scroll-Soll über den State gibt es nicht.
-            state: Binding(
-                get: {
-                    var state = editorState
-                    state.scrollPosition = nil
-                    return state
-                },
-                set: { editorState = $0 }
-            ),
+            // Hinweis Scroll-Verhalten: CESEs State-Reconcile drehte mit der
+            // stets einen Runloop alten `state.scrollPosition` frische
+            // Tipp-Scrolls zurück (F.23). Der Reconcile-Zweig ist per
+            // build.sh-Patch 4x deaktiviert — Fastra scrollt ausschließlich
+            // selbst (convergeScroll) und setzt nie ein Scroll-Soll über den
+            // State. Ein Filter-Binding mit eigenen get/set-Closures war die
+            // erste Fassung und crashte in SwiftUIs Zugriffsverfolgung
+            // (SIGSEGV in swift_beginAccess) — daher bewusst das normale
+            // @State-Binding.
+            state: $editorState,
             // Eigen-Sprache aktiv (z. B. 4D): eigener leichter Tokenizer
             // statt tree-sitter — Provider kommt aus der Registry.
             highlightProviders: activeCustomLanguage.map { language in

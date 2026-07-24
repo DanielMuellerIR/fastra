@@ -1964,6 +1964,58 @@ if [ "$RECT_STALE_PATCH_CHANGED" -eq 1 ]; then
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4x. CodeEditSourceEditor — Scroll-Reconcile des SwiftUI-States deaktivieren.
+#
+# `updateControllerWithState` scrollt bei jedem SwiftUI-Update auf
+# `state.scrollPosition`, sobald sie von der echten ClipView-Position
+# abweicht. Der Rueckschreiber des Coordinators laeuft aber via
+# `receive(on: RunLoop.main)` erst im NAECHSTEN Runloop. Loest ein
+# Tastendruck neben dem Tipp-Scroll ein weiteres SwiftUI-Update aus (bei
+# Fastra: Fusszeile mit Zeile/Spalte), gewinnt der Reconcile mit der
+# veralteten Position: Der frische Scroll wird zurueckgedreht, der Cursor
+# verschwindet unter dem Fensterrand (Daniel-Befund 2026-07-24, F.23).
+# Fastra setzt nie ein externes Scroll-Soll ueber den State (Spruenge
+# laufen ueber convergeScroll) — der Zweig wird deshalb deaktiviert.
+CESE_SOURCE_EDITOR="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/SourceEditor/SourceEditor.swift"
+SCROLL_RECONCILE_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: Scroll-Reconcile deaktiviert' \
+    "$CESE_SOURCE_EDITOR" 2>/dev/null; then
+  echo "→ Patche CodeEditSourceEditor (Scroll-Reconcile des States aus)"
+  chmod u+w "$CESE_SOURCE_EDITOR"
+  /usr/bin/python3 - "$CESE_SOURCE_EDITOR" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+old = '''        let scrollView = controller.scrollView
+        if let scrollPosition = state.scrollPosition, scrollPosition != scrollView?.contentView.bounds.origin {'''
+new = '''        let scrollView = controller.scrollView
+        // Fastra-Patch: Scroll-Reconcile deaktiviert. `state.scrollPosition`
+        // ist wegen des Runloop-versetzten Rueckschreibers praktisch immer
+        // einen Schritt alt; der Vergleich unten drehte deshalb frische
+        // Tipp-Scrolls zurueck (Cursor verschwand unter dem Fensterrand).
+        // Fastra steuert Scrollen ausschliesslich selbst.
+        if false, let scrollPosition = state.scrollPosition, scrollPosition != scrollView?.contentView.bounds.origin {'''
+if old not in src:
+    raise SystemExit(
+        f"{path}: Scroll-Reconcile-Struktur hat sich geaendert — Patch 4x pruefen"
+    )
+open(path, "w").write(src.replace(old, new, 1))
+PYEOF
+  SCROLL_RECONCILE_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: Scroll-Reconcile deaktiviert' "$CESE_SOURCE_EDITOR"; then
+  echo "✗ FEHLER: Scroll-Reconcile-Patch hat NICHT gegriffen." >&2
+  exit 1
+fi
+
+if [ "$SCROLL_RECONCILE_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 

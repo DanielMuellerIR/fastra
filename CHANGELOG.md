@@ -9,6 +9,18 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.50.2] — 2026-07-24
+
+### Behoben
+
+- Der Tipp-Scroll-Fix aus v1.50.1 verursachte einen neuen Absturz: Das
+  Filter-Binding mit eigenen get/set-Closures kollidierte mit SwiftUIs
+  Zugriffsverfolgung (SIGSEGV in `swift_beginAccess`). Der fehlerhafte
+  Scroll-Reconcile ist jetzt stattdessen direkt in CodeEditSourceEditor
+  deaktiviert (dokumentierter Checkout-Patch 4x); der `EditorView` nutzt
+  wieder das normale `@State`-Binding. Von Daniel am realen Ablauf
+  abgenommen (⌘V, ⌘Z/⇧⌘Z, Tippen, Return — Scroll folgt, kein Absturz).
+
 ## [v1.50.1] — 2026-07-24
 
 ### Behoben

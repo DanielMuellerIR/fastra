@@ -555,10 +555,19 @@ verschwindet unter dem Fensterrand, Tippen bleibt unsichtbar. Das Race ist
 timing-abhängig — auf demselben Mac im Selbsttest grün, in der echten
 Nutzersitzung zu 100 % rot (Beleg: Call-Stack via Bounds-Change-Spion).
 
-**Fix (Fastra-seitig, `EditorView.actualEditor`):** Das `state`-Binding
-filtert `scrollPosition` beim Lesen auf `nil` — Fastra steuert Scrollen
-ausschließlich selbst (`convergeScroll`), ein externes Scroll-Soll über den
-State existiert nicht. Cursor-Reconcile (externe Sprünge) bleibt erhalten.
+**Fix (Patch 4x in `build.sh`):** Der Scroll-Reconcile-Zweig in
+`SourceEditor.updateControllerWithState` ist deaktiviert — Fastra steuert
+Scrollen ausschließlich selbst (`convergeScroll`), ein externes Scroll-Soll
+über den State existiert nicht. Cursor-Reconcile (externe Sprünge) bleibt
+erhalten.
+
+**Sackgasse (v1.50.1, sofort wieder entfernt):** Ein Fastra-seitiges
+Filter-Binding mit eigenen get/set-Closures (`state.scrollPosition = nil`
+beim Lesen) behob das Race zwar, stürzte aber in SwiftUIs
+Zugriffsverfolgung ab (SIGSEGV in `swift_beginAccess` beim
+Runloop-Observer-Flush): CESEs Coordinator hält das Binding dauerhaft und
+schreibt während View-Updates hinein — das verträgt nur das echte
+`@State`-Binding, keine handgebauten Closures.
 
 **Regression:** `./selftest.sh typescroll` (inkl. erzwungenem Zusatz-Update
 nach jedem Tastendruck und Zweitfenster-Stufe); das Race selbst feuert unter
