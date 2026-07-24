@@ -55,6 +55,21 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   das Ziehen der Datei aus der Titelzeile (Proxy-Icon) ersatzlos. Möglicher
   Ersatz wäre ein `.onDrag` der Datei-URL direkt am Tab — nur bei echtem Bedarf.
 
+## Bekannte Fehler (Code-Review-Probelauf 2026-07-24)
+
+- **`bufferSearching` bleibt nach Abbruch hängen** (`app/Sources/Fastra/SearchRunner.swift`,
+  Abbruch-/Guard-Pfad um Zeile 149 bzw. 181): Wird eine laufende Buffer-Suche
+  in `rerun()` abgebrochen und danach der Ordner-Lauf wegen kurzem/leerem
+  Pattern über den `guard` verworfen, setzt der Fehlerpfad nur
+  `ws.folderSearching = false`. `ws.bufferSearching` bleibt dauerhaft `true`
+  (Spinner klemmt). Fix: beim Abbruch auch `ws.bufferSearching = false` setzen.
+- **Nicht reguläre Dateien werden nicht abgewiesen** (`app/Sources/Fastra/FileLoader.swift`,
+  Zeile 88): `load(url:)` prüft den Dateityp nicht. FIFOs/Gerätedateien
+  gelangen in die synchrone Probe, die unbegrenzt blockieren kann; ein
+  Attributfehler wird zudem als Größe `0` behandelt und umgeht so den
+  Large-File-Pfad. Fix: `.type == .typeRegular` verbindlich prüfen und
+  Attributfehler nicht als Größe `0` interpretieren.
+
 ## Später – nur auf ausdrückliche Anfrage
 
 - **Cross-Platform-Portabilität (Windows/Linux):** Weder Machbarkeit noch
