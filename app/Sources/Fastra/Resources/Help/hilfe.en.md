@@ -443,6 +443,11 @@ the save instead of silently overwriting the on-disk version.
 tabs, its own search). ⌘S saves, ⌘W closes the tab — Fastra asks first
 if there are unsaved changes. ⌘J jumps to a line number.
 
+A dot in the tab indicates unsaved changes. It disappears again as soon as
+the content exactly matches the saved state — whether via Undo or by
+manually reverting your edits. After saving, the new state becomes the
+comparison baseline.
+
 The Home button at the top left returns the current window to the welcome
 screen. Clean tabs are closed. If unsaved content exists, an initial prompt
 first confirms only the overall transition; cancelling leaves the workspace

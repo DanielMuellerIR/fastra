@@ -9,6 +9,47 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.47.0] — 2026-07-24
+
+### Hinzugefügt
+
+- Der Änderungspunkt im Tab verschwindet wieder, sobald Änderungen den Inhalt
+  exakt auf den gespeicherten Stand zurückführen — egal ob per Rückgängig oder
+  durch manuelles Löschen der Eingabe (VS-Code-/BBEdit-Verhalten). Nach dem
+  Speichern gilt der neue Stand als Vergleichsbasis; auch das Zurückschalten
+  eines geänderten Zeilenendes räumt den Punkt wieder ab.
+
+### Behoben
+
+- Klicks und Doppelklicks treffen den Text jetzt bis unmittelbar vor den
+  vertikalen Scrollbalken. Die ausgeblendete Minimap fing bisher in einem rund
+  90 Punkte breiten Band an der rechten Editorkante alle Mausereignisse ab —
+  besonders auffällig neben der Markdown-Vorschau, wo umbrochene Zeilen bis an
+  den Scrollbalken reichen: Der Cursor ließ sich dort nicht setzen, Wörter am
+  rechten Rand nicht per Doppelklick markieren.
+- Ein Doppelklick auf die rechte Hälfte des letzten Zeichens eines Wortes
+  markiert jetzt das Wort statt des Leerraums dahinter (Zeichenzellen-Logik
+  wie in NSTextView und BBEdit).
+- Eine schnelle Maus-Auswahl beginnt jetzt zuverlässig am angeklickten
+  Zeichen. Bisher wurde der Anker erst mit dem ersten Zieh-Ereignis gesetzt;
+  bei schnellen Bewegungen — insbesondere unter den unteren Fensterrand —
+  konnte die Auswahl dadurch weitab vom Klickpunkt beginnen und schien
+  „unten aus dem Fenster zu laufen“.
+
+### Intern
+
+- Drei neue, in `selftest.sh` verankerte Regressionstests schützen die
+  Klickpfade dauerhaft: `rightedge` prüft in der gemeldeten Nutzergeometrie
+  (Markdown-Split, Zeilen bis 646 Zeichen) ein Raster von Klickpunkten bis
+  einen Punkt vor dem Scrollbalken samt Doppelklick an der Umbruchkante;
+  `dragscroll` verlangt beim Ziehen unter den Fensterrand Autoscroll und den
+  am Klickpunkt verankerten Auswahlbeginn; `selshort` wiederholt den
+  Shift+↓-Scrolltest in der kleinen, stark umbrochenen Datei des
+  Fehlerberichts. `dirtyundo` sichert den Änderungspunkt über den echten
+  Editor-Undo-Pfad; sieben neue Unit-Tests decken die Vergleichsbasis ab.
+- Die Ursachen sind als F.19–F.21 in `app/LESSONS-LEARNED.md` dokumentiert,
+  die zugehörigen Checkout-Patches 4t–4v in `docs/BUILD-AND-TEST.md`.
+
 ## [v1.46.8] — 2026-07-22
 
 ### Behoben

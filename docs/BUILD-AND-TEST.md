@@ -78,7 +78,7 @@ Gatekeeper-Akzeptanz und Codesignatur des Quell-Bundles. Beim Version-Bump
 `app/Info.plist` mitziehen (siehe AGENTS.md), sonst zeigt die App eine veraltete
 Version.
 
-`build.sh` kapselt Xcode-Toolchain-Switch + zwanzig Checkout-Patches
+`build.sh` kapselt Xcode-Toolchain-Switch + dreiundzwanzig Checkout-Patches
 (SwiftLint-Plugins aus, CodeEditSymbols Resources, CMD+F-Zombie-Kill,
 toter cursorPositions-Reconcile, verworfene Auto-Vervollständigung schließen,
 Gutter-Drag-Clamp, horizontaler Scrollbalken, Zeilenbreiten-Messung,
@@ -239,6 +239,43 @@ und die produktive Wortauswahl am abgebildeten Wortende müssen dieselbe
 vollständige Auswahl erzeugen. Für die Erstdiagnose kann
 `FASTRA_WORDCLICK_FIXTURE` eine lokale Realdatei laden; der normale Lauf bleibt
 mit einem datenschutzneutralen Größenabbild der 132 Vorzeilen portabel.
+
+Patch 4t (verborgene Minimap schluckt Klicks, 2026-07-24): AppKits
+Default-`hitTest` sortiert verborgene Views selbst aus; `MinimapView`
+überschreibt die Methode aber ohne `isHidden`-Prüfung und frisst Mausereignisse
+mit leeren `mouseDown`-Überschreibungen. Bei ausgeblendeter Minimap (Fastras
+Default) lag deshalb eine unsichtbare, rund 90 pt breite Fläche über der
+rechten Editorkante: Klicks und Doppelklicks auf Text in diesem Band kamen nie
+im Editor an — am auffälligsten im Markdown-Split mit seinen bis an den
+Scrollbalken umbrochenen Zeilen. Der Patch beendet `hitTest` bei
+`isHiddenOrHasHiddenAncestor` sofort mit `nil`.
+
+Patch 4u (Doppelklick-Wortauswahl zellenbasiert, 2026-07-24):
+`textOffsetAtPoint` rundet als Einfüge-Position auf — ein Klick auf die rechte
+Hälfte des letzten Wortzeichens landet auf dem Folgezeichen, und der
+Doppelklick markierte dessen Leerraum statt des Worts. NSTextView und BBEdit
+wählen das Wort über die getroffene Zeichenzelle; der Patch rückt die
+Auswahlbasis vor `selectWord` entsprechend zurück.
+
+Patch 4v (Drag-Anker am Maus-Down, 2026-07-24): Upstream verankert eine
+Maus-Selektion erst im ersten `mouseDragged`. Schnelle Bewegungen liefern grob
+gerasterte Events; das erste Drag-Ereignis kann weit vom Klickpunkt entfernt
+liegen und wird unterhalb des Fensters aufs Dokumentende geklemmt — die
+Auswahl begann dann dort statt am angeklickten Zeichen. Der Patch setzt den
+Anker bereits im `mouseDown`.
+
+Die Selbsttests dazu: `./selftest.sh rightedge` stellt die gemeldete
+Nutzergeometrie her (1100×800, Seitenleiste, integrierte Markdown-Vorschau,
+Zeilen bis 646 Zeichen) und prüft ein Raster von Klickpunkten bis einen Punkt
+vor dem vertikalen Scrollbalken per Fenster-Hit-Test und Koordinatenabbildung,
+anschließend einen echten Doppelklick auf das letzte Zeichen eines Worts an
+der Umbruchkante. `./selftest.sh dragscroll` zieht eine echte Maus-Selektion
+40 Punkte unter das Fenster und verlangt Autoscroll plus einen am Klickpunkt
+verankerten Auswahlbeginn. `./selftest.sh selshort` wiederholt den
+Tastatur-Scrolltest in der kleinen, stark umbrochenen Datei des
+Fehlerberichts. `./selftest.sh dirtyundo` sichert den Änderungspunkt im Tab:
+Einfügen → Punkt, exakte Rücknahme per Undo oder manuellem Löschen → Punkt
+weg, Redo → Punkt wieder da.
 
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 

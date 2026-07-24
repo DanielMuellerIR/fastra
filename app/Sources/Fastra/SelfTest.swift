@@ -368,6 +368,10 @@ enum SelfTest {
         case "jump":      waitForMainWindow { runJumpTest() }
         case "ghosttext": waitForMainWindow { runGhostTextTest() }
         case "wordclick": waitForMainWindow { runWordDoubleClickTest() }
+        case "rightedge": waitForMainWindow { runRightEdgeClickTest() }
+        case "selshort": waitForMainWindow { runShortSelectionScrollTest() }
+        case "dragscroll": waitForMainWindow { runDragScrollTest() }
+        case "dirtyundo": waitForMainWindow { runDirtyUndoTest() }
         case "replaceall": waitForMainWindow { runReplaceAllTest() }
         case "pilldrop":  waitForMainWindow { openSearchThen { runPillDropTest() } }
         case "navmatch":  waitForMainWindow { openSearchThen { runNavMatchTest() } }
@@ -482,7 +486,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -5137,6 +5141,668 @@ enum SelfTest {
         return "rect=\(rect), local=\(local), mapped=\(String(describing: mapped)), "
             + "textBounds=\(textView.bounds), visible=\(textView.visibleRect), "
             + "directHit=\(directHit), windowHit=\(hierarchy.joined(separator: "→"))"
+    }
+
+    // MARK: - -selftest rightedge
+
+    /// Reproduziert die gemeldete Nutzergeometrie vom 2026-07-24: Markdown-
+    /// Datei mit sehr langen Zeilen, integrierte Vorschau daneben, sichtbare
+    /// Seitenleiste, System-Scrollbalken „immer einblenden“. Prüft, dass
+    /// Klicks und Doppelklicks bis unmittelbar vor den vertikalen Scrollbalken
+    /// den Cursor setzen bzw. das ganze Wort markieren.
+    private static func runRightEdgeClickTest() {
+        testLabel = "rightedge"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks() else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        // Exakte Geometrie aus dem Fehlerbericht (Defaults des Nutzers).
+        ws.sidebarWidth = 216.13671875
+        ws.markdownPreviewWidth = 332.3515625
+        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        window.setContentSize(NSSize(width: 1100, height: 800))
+        let text = rightEdgeFixtureContent()
+        // Eigener leerer Ordner: Die Seitenleiste würde sonst den prall
+        // gefüllten System-Temp-Ordner bei jedem SwiftUI-Durchlauf sortieren
+        // und den Test massiv ausbremsen.
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "fastra-rightedge-\(UUID().uuidString)", isDirectory: true
+            )
+        let tmp = directory.appendingPathComponent("rechtsrand.md")
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+            try Data(text.utf8).write(to: tmp)
+        }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+        ws.loadFile(at: tmp) { ok in
+            try? FileManager.default.removeItem(at: directory)
+            guard ok else { finish(false, "Markdown-Fixture lädt nicht") }
+            pollRightEdgeEditorReady(window: window, expectedText: text, tick: 0)
+        }
+    }
+
+    /// Formabbild der Repro-Datei: elf logische Zeilen, die längste 646
+    /// Zeichen. Wortlängen wechseln deterministisch, damit an vielen
+    /// Umbruchkanten echte Wörter nahe am rechten Rand enden.
+    private static func rightEdgeFixtureContent() -> String {
+        let lineLengths = [646, 498, 406, 286, 187, 0, 120, 0, 80, 40, 18]
+        let wordLengths = [4, 7, 3, 9, 5, 11, 6, 2, 8, 5]
+        var lines: [String] = []
+        for (lineIndex, targetLength) in lineLengths.enumerated() {
+            if targetLength == 0 {
+                lines.append("")
+                continue
+            }
+            var line = ""
+            var wordIndex = lineIndex
+            while line.count < targetLength {
+                let length = wordLengths[wordIndex % wordLengths.count]
+                let letter = Character(
+                    UnicodeScalar(UInt8(97 + (wordIndex % 26)))
+                )
+                if !line.isEmpty { line.append(" ") }
+                line.append(String(repeating: letter, count: length))
+                wordIndex += 1
+            }
+            lines.append(String(line.prefix(targetLength)))
+        }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    private static func pollRightEdgeEditorReady(
+        window: NSWindow, expectedText: String, tick: Int
+    ) {
+        if let root = window.contentView,
+           markdownWebView(in: root) != nil,
+           let textView = editorTextView(in: root) as? TextView,
+           textView.string == expectedText,
+           textView.enclosingScrollView != nil {
+            window.makeFirstResponder(textView)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                exerciseRightEdgeClicks(textView: textView, window: window)
+            }
+            return
+        }
+        if tick >= 100 {
+            finish(false, "Markdown-Split mit Fixture nicht binnen 10 s bereit")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollRightEdgeEditorReady(
+                window: window, expectedText: expectedText, tick: tick + 1
+            )
+        }
+    }
+
+    /// Misst die reale Geometrie und prüft ein Raster von Klickpunkten
+    /// unmittelbar links vor dem vertikalen Scrollbalken.
+    private static func exerciseRightEdgeClicks(
+        textView: TextView, window: NSWindow
+    ) {
+        guard let scrollView = textView.enclosingScrollView,
+              let content = window.contentView else {
+            finish(false, "ScrollView oder ContentView fehlt")
+        }
+        textView.layoutManager.layoutLines()
+        var diag: [String] = []
+        diag.append("scrollerStyle=\(scrollView.scrollerStyle.rawValue) "
+            + "(system=\(NSScroller.preferredScrollerStyle.rawValue))")
+        diag.append("scrollView.frame=\(scrollView.frame) "
+            + "contentSize=\(scrollView.contentSize)")
+        diag.append("textView.frame=\(textView.frame) "
+            + "visible=\(textView.visibleRect)")
+        diag.append("edgeInsets=\(textView.layoutManager.edgeInsets) "
+            + "wrapWidth=\(textView.layoutManager.wrapLinesWidth) "
+            + "maxWrap=\(String(describing: textView.layoutManager.maximumWrapWidth))")
+        var scrollerMinXInText: CGFloat = textView.visibleRect.maxX
+        if let scroller = scrollView.verticalScroller, !scroller.isHidden {
+            let inText = textView.convert(scroller.frame, from: scroller.superview)
+            scrollerMinXInText = min(scrollerMinXInText, inText.minX)
+            diag.append("verticalScroller in textView=\(inText)")
+        }
+        diag.append("klickbare rechte Kante x=\(scrollerMinXInText - 1)")
+        // Alle MinimapViews im Fenster mit Sichtbarkeit und Lage vermerken.
+        var minimapInfos: [String] = []
+        func collectMinimaps(in view: NSView) {
+            if String(describing: type(of: view)).contains("Minimap") {
+                let inText = textView.convert(view.bounds, from: view)
+                minimapInfos.append(
+                    "\(type(of: view)) hidden=\(view.isHidden) "
+                    + "hiddenOrAncestor=\(view.isHiddenOrHasHiddenAncestor) "
+                    + "frame=\(view.frame) inTextView=\(inText)"
+                )
+            }
+            for sub in view.subviews { collectMinimaps(in: sub) }
+        }
+        collectMinimaps(in: content)
+        diag.append("Minimaps: " + minimapInfos.joined(separator: " ++ "))
+
+        // Raster: erste 24 sichtbaren visuellen Zeilen, je vier x-Abstände
+        // vor dem Scrollbalken. Für jeden Punkt: Fenster-Hit-Test und
+        // Text-Offset-Auflösung.
+        guard let firstRect = textView.layoutManager.rectForOffset(0) else {
+            finish(false, "kein Zeichenrechteck für Offset 0")
+        }
+        let rowHeight = firstRect.height
+        var deadPoints: [String] = []
+        var checkedRows = 0
+        for row in 0..<24 {
+            let y = firstRect.minY + (CGFloat(row) + 0.5) * rowHeight
+            guard y < textView.visibleRect.maxY else { break }
+            // Nur Zeilen mit Text an der rechten Kante interessieren; ermittle
+            // den rechtesten Zeichenpunkt der visuellen Zeile über eine Sonde
+            // in der Zeilenmitte.
+            guard let probeOffset = textView.layoutManager.textOffsetAtPoint(
+                NSPoint(x: textView.layoutManager.edgeInsets.left + 4, y: y)
+            ) else {
+                deadPoints.append("Zeile \(row): Sonde am Zeilenanfang tot")
+                continue
+            }
+            checkedRows += 1
+            for dx in [1.0, 5.0, 15.0, 30.0] {
+                let point = NSPoint(x: scrollerMinXInText - dx, y: y)
+                let mapped = textView.layoutManager.textOffsetAtPoint(point)
+                let inWindow = textView.convert(point, to: nil)
+                let inContent = content.convert(inWindow, from: nil)
+                var hitDescription = "nil"
+                var hitsTextView = false
+                var hit = content.hitTest(inContent)
+                if let hitView = hit {
+                    hitDescription = String(describing: type(of: hitView))
+                }
+                while let view = hit {
+                    if view === textView { hitsTextView = true; break }
+                    hit = view.superview
+                }
+                if mapped == nil || !hitsTextView {
+                    deadPoints.append(
+                        "Zeile \(row) dx=\(Int(dx)): mapped="
+                        + "\(String(describing: mapped)) hit=\(hitDescription)"
+                        + " (Sondenoffset \(probeOffset))"
+                    )
+                }
+            }
+        }
+        guard checkedRows > 4 else {
+            finish(false, "zu wenige messbare Zeilen — " + diag.joined(separator: " | "))
+        }
+        guard deadPoints.isEmpty else {
+            finish(false, "tote Klickpunkte vor dem Scrollbalken: "
+                + deadPoints.prefix(12).joined(separator: " ;; ")
+                + " || Geometrie: " + diag.joined(separator: " | "))
+        }
+        exerciseRightEdgeDoubleClick(
+            textView: textView, window: window,
+            scrollerMinXInText: scrollerMinXInText, diag: diag
+        )
+    }
+
+    /// Doppelklick auf das letzte Wort einer umbrochenen visuellen Zeile:
+    /// Er muss genau dieses Wort markieren — wie am Wortanfang.
+    private static func exerciseRightEdgeDoubleClick(
+        textView: TextView, window: NSWindow,
+        scrollerMinXInText: CGFloat, diag: [String]
+    ) {
+        // Rechtester Zeichenpunkt der zweiten visuellen Zeile (Zeile 0 der
+        // 646er-Logikzeile ist sicher umbrochen, Zeile 1 beginnt mit Text).
+        guard let firstRect = textView.layoutManager.rectForOffset(0) else {
+            finish(false, "kein Zeichenrechteck für Offset 0")
+        }
+        let y = firstRect.minY + 1.5 * firstRect.height
+        var rightmostOffset: Int?
+        var rightmostRect: CGRect?
+        var x = scrollerMinXInText - 1
+        while x > textView.layoutManager.edgeInsets.left {
+            if let offset = textView.layoutManager.textOffsetAtPoint(
+                NSPoint(x: x, y: y)
+            ), let rect = textView.layoutManager.rectForOffset(offset),
+               rect.width >= 0 {
+                rightmostOffset = offset
+                rightmostRect = rect
+                break
+            }
+            x -= 4
+        }
+        guard let clickOffset = rightmostOffset, rightmostRect != nil else {
+            finish(false, "kein rechtester Zeichenpunkt bestimmbar — "
+                + diag.joined(separator: " | "))
+        }
+        // Wortgrenzen des Zielworts aus dem Text ableiten.
+        let source = textView.string as NSString
+        var wordStart = clickOffset
+        while wordStart > 0,
+              !CharacterSet.whitespacesAndNewlines.contains(
+                UnicodeScalar(source.character(at: wordStart - 1)) ?? " "
+              ) {
+            wordStart -= 1
+        }
+        var wordEnd = clickOffset
+        while wordEnd < source.length,
+              !CharacterSet.whitespacesAndNewlines.contains(
+                UnicodeScalar(source.character(at: wordEnd)) ?? " "
+              ) {
+            wordEnd += 1
+        }
+        let expected = NSRange(location: wordStart, length: wordEnd - wordStart)
+        guard expected.length > 0 else {
+            finish(false, "Zielpunkt liegt auf Leerraum (Offset \(clickOffset))")
+        }
+        // Klick auf das letzte Zeichen des Worts, nicht auf die Wortmitte:
+        // genau der gemeldete Fall.
+        guard let lastCharRect = textView.layoutManager.rectForOffset(
+            max(wordEnd - 1, wordStart)
+        ) else {
+            finish(false, "letztes Wortzeichen ohne Rechteck")
+        }
+        guard postWordDoubleClick(
+            in: textView, window: window, offset: max(wordEnd - 1, wordStart)
+        ) else {
+            finish(false, "Doppelklick nicht erzeugbar")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            let selected = textView.selectedRange()
+            finish(selected == expected,
+                   selected == expected
+                   ? "alle Rasterpunkte klickbar; Doppelklick am rechten Rand "
+                     + "markiert das ganze Wort \(expected)"
+                   : "Doppelklick am rechten Rand: Auswahl \(selected), "
+                     + "erwartet \(expected); Wortrechteck \(lastCharRect); "
+                     + diag.joined(separator: " | "))
+        }
+    }
+
+    // MARK: - -selftest selshort
+
+    /// Variante des Auswahl-Scrolltests mit der kleinen Nutzerdatei: elf
+    /// logische Zeilen, stark umbrochen, Markdown-Split. Shift+↓ bis ans
+    /// Dateiende muss die bewegte Auswahlkante sichtbar halten.
+    private static func runShortSelectionScrollTest() {
+        testLabel = "selshort"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks() else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        ws.sidebarWidth = 216.13671875
+        ws.markdownPreviewWidth = 332.3515625
+        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        window.setContentSize(NSSize(width: 1100, height: 800))
+        let text = rightEdgeFixtureContent()
+        // Eigener leerer Ordner — siehe rightedge: verhindert, dass die
+        // Seitenleiste den vollen System-Temp-Ordner dauernd sortiert.
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "fastra-selshort-\(UUID().uuidString)", isDirectory: true
+            )
+        let tmp = directory.appendingPathComponent("auswahl.md")
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+            try Data(text.utf8).write(to: tmp)
+        }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+        ws.loadFile(at: tmp) { ok in
+            try? FileManager.default.removeItem(at: directory)
+            guard ok else { finish(false, "Markdown-Fixture lädt nicht") }
+            pollShortSelectionEditorReady(
+                window: window, expectedText: text, tick: 0
+            )
+        }
+    }
+
+    private static func pollShortSelectionEditorReady(
+        window: NSWindow, expectedText: String, tick: Int
+    ) {
+        if let root = window.contentView,
+           markdownWebView(in: root) != nil,
+           let textView = editorTextView(in: root) as? TextView,
+           textView.string == expectedText,
+           let scrollView = textView.enclosingScrollView {
+            guard window.makeFirstResponder(textView) else {
+                finish(false, "Editor wird nicht First Responder")
+            }
+            textView.layoutManager.layoutLines()
+            textView.selectionManager.setSelectedRange(
+                NSRange(location: 0, length: 0)
+            )
+            if let flags = NSEvent.keyEvent(
+                with: .flagsChanged, location: .zero,
+                modifierFlags: .shift,
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber, context: nil,
+                characters: "", charactersIgnoringModifiers: "",
+                isARepeat: false, keyCode: 56
+            ) {
+                NSApp.postEvent(flags, atStart: false)
+            }
+            sendShortSelectionKey(
+                textView: textView, scrollView: scrollView,
+                window: window, step: 0
+            )
+            return
+        }
+        if tick >= 100 {
+            finish(false, "Markdown-Split mit Fixture nicht binnen 10 s bereit")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollShortSelectionEditorReady(
+                window: window, expectedText: expectedText, tick: tick + 1
+            )
+        }
+    }
+
+    /// 64 echte Shift+↓ — deutlich mehr als die Datei visuelle Zeilen hat,
+    /// damit die Kante sicher bis ans Dateiende läuft. Nach JEDEM Tastendruck
+    /// (plus Runloop-Takt) muss die bewegte Kante im Viewport liegen.
+    private static func sendShortSelectionKey(
+        textView: TextView, scrollView: NSScrollView,
+        window: NSWindow, step: Int
+    ) {
+        guard let key = NSEvent.keyEvent(
+            with: .keyDown, location: .zero,
+            modifierFlags: .shift,
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber, context: nil,
+            characters: "\u{F701}",
+            charactersIgnoringModifiers: "\u{F701}",
+            isARepeat: step > 0, keyCode: 125
+        ) else {
+            finish(false, "konnte Shift+Pfeil-nach-unten nicht bauen")
+        }
+        NSApp.postEvent(key, atStart: false)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+            let range = textView.selectedRange()
+            let visible = scrollView.documentVisibleRect
+            if range.length > 0,
+               let activeRect = textView.layoutManager.rectForOffset(
+                   NSMaxRange(range)
+               ),
+               // Halbe Zeilenhöhe Toleranz: Der verzögerte Abgleich aus
+               // Patch 4r darf einen Takt hinterherlaufen, aber nie eine
+               // ganze Zeile verlieren.
+               activeRect.minY > visible.maxY + activeRect.height / 2 {
+                finish(false, "Schritt \(step): bewegte Kante \(activeRect) "
+                    + "unterhalb des Viewports \(visible)")
+            }
+            if step < 63 {
+                sendShortSelectionKey(
+                    textView: textView, scrollView: scrollView,
+                    window: window, step: step + 1
+                )
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                let finalRange = textView.selectedRange()
+                let finalVisible = scrollView.documentVisibleRect
+                guard finalRange.length > 0,
+                      NSMaxRange(finalRange)
+                          == (textView.string as NSString).length,
+                      let edge = textView.layoutManager.rectForOffset(
+                          NSMaxRange(finalRange)
+                      ) else {
+                    finish(false, "Auswahl erreicht das Dateiende nicht: "
+                        + "\(textView.selectedRange())")
+                }
+                guard finalVisible.maxY >= edge.maxY - 1 else {
+                    finish(false, "Dateiende-Kante \(edge) liegt unter dem "
+                        + "Viewport \(finalVisible)")
+                }
+                finish(true, "bewegte Kante blieb über 64 Shift+↓ sichtbar "
+                    + "bis ans Dateiende (Viewport \(finalVisible))")
+            }
+        }
+    }
+
+    // MARK: - -selftest dragscroll
+
+    /// Maus-Drag-Selektion über den unteren Fensterrand hinaus: Der Editor
+    /// muss automatisch mitscrollen und die bewegte Kante sichtbar halten,
+    /// statt die Auswahl unsichtbar unter dem Viewport weiterwachsen zu
+    /// lassen.
+    private static func runDragScrollTest() {
+        testLabel = "dragscroll"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks() else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        ws.sidebarWidth = 216.13671875
+        ws.markdownPreviewWidth = 332.3515625
+        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        window.setContentSize(NSSize(width: 1100, height: 800))
+        let text = rightEdgeFixtureContent()
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "fastra-dragscroll-\(UUID().uuidString)", isDirectory: true
+            )
+        let tmp = directory.appendingPathComponent("ziehen.md")
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+            try Data(text.utf8).write(to: tmp)
+        }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+        ws.loadFile(at: tmp) { ok in
+            try? FileManager.default.removeItem(at: directory)
+            guard ok else { finish(false, "Markdown-Fixture lädt nicht") }
+            pollDragScrollEditorReady(window: window, expectedText: text, tick: 0)
+        }
+    }
+
+    private static func pollDragScrollEditorReady(
+        window: NSWindow, expectedText: String, tick: Int
+    ) {
+        if let root = window.contentView,
+           markdownWebView(in: root) != nil,
+           let textView = editorTextView(in: root) as? TextView,
+           textView.string == expectedText,
+           let scrollView = textView.enclosingScrollView {
+            guard window.makeFirstResponder(textView) else {
+                finish(false, "Editor wird nicht First Responder")
+            }
+            textView.layoutManager.layoutLines()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                beginDragScroll(
+                    textView: textView, scrollView: scrollView, window: window
+                )
+            }
+            return
+        }
+        if tick >= 100 {
+            finish(false, "Markdown-Split mit Fixture nicht binnen 10 s bereit")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollDragScrollEditorReady(
+                window: window, expectedText: expectedText, tick: tick + 1
+            )
+        }
+    }
+
+    /// Startet den Drag mit einem echten Maus-Down im Text und zieht dann
+    /// unter den unteren Fensterrand. Die Folgeereignisse laufen über die
+    /// App-Eventqueue, damit `window.currentEvent` und der produktive
+    /// Autoscroll-Timer genauso arbeiten wie bei einer physischen Maus.
+    private static func beginDragScroll(
+        textView: TextView, scrollView: NSScrollView, window: NSWindow
+    ) {
+        guard let startRect = textView.layoutManager.rectForOffset(10) else {
+            finish(false, "Startzeichen ohne Rechteck")
+        }
+        // Bewusst die linke Zeichenhälfte: Die Caret-Rundung ist an der
+        // Zeichenmitte mehrdeutig, der Anker soll eindeutig bei Offset 10
+        // liegen.
+        let startInWindow = textView.convert(
+            NSPoint(x: startRect.minX + 1, y: startRect.midY), to: nil
+        )
+        let initialTop = scrollView.documentVisibleRect.minY
+        let time = ProcessInfo.processInfo.systemUptime
+        guard let down = NSEvent.mouseEvent(
+            with: .leftMouseDown, location: startInWindow, modifierFlags: [],
+            timestamp: time, windowNumber: window.windowNumber, context: nil,
+            eventNumber: Int(time * 1_000), clickCount: 1, pressure: 1
+        ) else {
+            finish(false, "Maus-Down nicht erzeugbar")
+        }
+        textView.mouseDown(with: down)
+        // Zielpunkt 40 Punkte UNTER dem Fenster (Fensterkoordinaten sind
+        // unten-basiert, also negativ).
+        let dragLocation = NSPoint(x: startInWindow.x, y: -40)
+        continueDragScroll(
+            textView: textView, scrollView: scrollView, window: window,
+            dragLocation: dragLocation, initialTop: initialTop, step: 0
+        )
+    }
+
+    private static func continueDragScroll(
+        textView: TextView, scrollView: NSScrollView, window: NSWindow,
+        dragLocation: NSPoint, initialTop: CGFloat, step: Int
+    ) {
+        let time = ProcessInfo.processInfo.systemUptime
+        if let drag = NSEvent.mouseEvent(
+            with: .leftMouseDragged, location: dragLocation,
+            modifierFlags: [], timestamp: time,
+            windowNumber: window.windowNumber, context: nil,
+            eventNumber: Int(time * 1_000) + step + 1, clickCount: 1,
+            pressure: 1
+        ) {
+            NSApp.postEvent(drag, atStart: false)
+        }
+        if step < 45 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+                continueDragScroll(
+                    textView: textView, scrollView: scrollView, window: window,
+                    dragLocation: dragLocation, initialTop: initialTop,
+                    step: step + 1
+                )
+            }
+            return
+        }
+        let upTime = ProcessInfo.processInfo.systemUptime
+        if let up = NSEvent.mouseEvent(
+            with: .leftMouseUp, location: dragLocation, modifierFlags: [],
+            timestamp: upTime, windowNumber: window.windowNumber, context: nil,
+            eventNumber: Int(upTime * 1_000) + 99, clickCount: 1, pressure: 0
+        ) {
+            NSApp.postEvent(up, atStart: false)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            let range = textView.selectedRange()
+            let visible = scrollView.documentVisibleRect
+            guard range.length > 0 else {
+                finish(false, "Drag erzeugte keine Auswahl")
+            }
+            // Der Anker muss am angeklickten Zeichen bleiben, auch wenn das
+            // erste Drag-Ereignis bereits weit unterhalb des Fensters liegt.
+            guard range.location == 10 else {
+                finish(false, "Drag-Anker verrutscht: Auswahl beginnt bei "
+                    + "\(range.location) statt am Klickpunkt 10")
+            }
+            guard visible.minY > initialTop else {
+                finish(false, "Editor scrollte beim Drag über den unteren "
+                    + "Rand nicht mit (Viewport weiter bei y=\(visible.minY), "
+                    + "Auswahl \(range))")
+            }
+            guard let edge = textView.layoutManager.rectForOffset(
+                NSMaxRange(range)
+            ), edge.minY <= visible.maxY + edge.height / 2 else {
+                finish(false, "Auswahlkante liegt nach dem Drag unter dem "
+                    + "Viewport (Auswahl \(range), Viewport \(visible))")
+            }
+            finish(true, "Drag-Autoscroll folgt: Viewport von "
+                + "y=\(Int(initialTop)) auf y=\(Int(visible.minY)), "
+                + "Auswahl \(range) mit sichtbarer Kante")
+        }
+    }
+
+    // MARK: - -selftest dirtyundo
+
+    /// Punkt im Tab über den ECHTEN Editorpfad: Einfügen macht dirty,
+    /// Rückgängig auf den exakten Ladezustand macht wieder sauber, Redo
+    /// wieder dirty, und manuelles Löschen der Einfügung (ohne Undo) räumt
+    /// den Punkt ebenfalls ab.
+    private static func runDirtyUndoTest() {
+        testLabel = "dirtyundo"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks(),
+              let root = window.contentView else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        let content = "Zeile 1\nZeile 2\nZeile 3\n"
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "fastra-dirtyundo-\(UUID().uuidString)", isDirectory: true
+            )
+        let tmp = directory.appendingPathComponent("punkt.md")
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+            try Data(content.utf8).write(to: tmp)
+        }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+        ws.loadFile(at: tmp) { ok in
+            try? FileManager.default.removeItem(at: directory)
+            guard ok else { finish(false, "loadFile schlug fehl") }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                guard let tv = editorTextView(in: root) as? TextView,
+                      tv.string == content else {
+                    finish(false, "Editor-TextView mit Fixture fehlt")
+                }
+                guard ws.activeTab?.isDirty == false else {
+                    finish(false, "Tab ist direkt nach dem Laden dirty")
+                }
+                // Wie im Fehlerbericht: zwei Leerzeilen ans Ende anhängen.
+                tv.selectionManager.setSelectedRange(NSRange(
+                    location: (content as NSString).length, length: 0
+                ))
+                tv.insertText(
+                    "\n\n",
+                    replacementRange: NSRange(location: NSNotFound, length: 0)
+                )
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    guard ws.activeTab?.isDirty == true else {
+                        finish(false, "Einfügen setzte den Punkt nicht")
+                    }
+                    tv.undoManager?.undo()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        guard tv.string == content else {
+                            finish(false, "Undo stellte den Ladezustand nicht her")
+                        }
+                        guard ws.activeTab?.isDirty == false else {
+                            finish(false, "Punkt blieb trotz exakter Rücknahme "
+                                + "per Undo bestehen")
+                        }
+                        tv.undoManager?.redo()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            guard ws.activeTab?.isDirty == true else {
+                                finish(false, "Redo setzte den Punkt nicht erneut")
+                            }
+                            // Manuelles Löschen statt Undo: gleicher Inhalt,
+                            // gleicher Anspruch.
+                            let full = tv.string as NSString
+                            tv.replaceCharacters(
+                                in: NSRange(location: full.length - 2, length: 2),
+                                with: ""
+                            )
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                guard tv.string == content else {
+                                    finish(false, "manuelles Löschen stellte den "
+                                        + "Inhalt nicht wieder her")
+                                }
+                                finish(ws.activeTab?.isDirty == false,
+                                       ws.activeTab?.isDirty == false
+                                       ? "Punkt folgt Laden→Einfügen→Undo→Redo→"
+                                         + "manuellem Löschen korrekt"
+                                       : "Punkt blieb nach manuellem Löschen "
+                                         + "der Einfügung bestehen")
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - -selftest replaceall

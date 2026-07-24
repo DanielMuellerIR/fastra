@@ -165,6 +165,18 @@ struct EditorTab: Identifiable, Hashable {
     /// Grammatik allein reicht nicht: erkanntes XML nutzt z. B. die
     /// HTML-Grammatik, muss aber das XML-Profil und den XML-Namen behalten.
     var contentDetectedFormat: ContentLanguageDetection.Format?
+    /// Abbild des zuletzt geladenen bzw. gespeicherten Stands — bewusst ohne
+    /// zweite Inhaltskopie: UTF-8-Länge (bei nativen Swift-Strings O(1)) als
+    /// billiger Vorfilter, der Hash läuft nur bei gleicher Länge. Damit
+    /// erkennt Fastra, wenn Änderungen den Inhalt exakt auf den gespeicherten
+    /// Stand zurückführen (z. B. per Rückgängig): Der Punkt im Tab verschwindet
+    /// dann wieder, wie in VS Code oder BBEdit. Das Zeilenende gehört zur
+    /// Basis, weil „Zeilenenden umschalten" ohne Textänderung speicherpflichtig
+    /// ist. `nil` = keine gültige Basis (z. B. aus dem Papierkorb gerettet);
+    /// dann bleibt ein einmal gesetzter Punkt bestehen.
+    private(set) var savedContentUTF8Length: Int?
+    private(set) var savedContentHash: Int?
+    private(set) var savedLineEnding: LineEnding?
 
     init(
         id: UUID = UUID(),
@@ -217,6 +229,40 @@ struct EditorTab: Identifiable, Hashable {
         self.fileDiffLoadGeneration = fileDiffLoadGeneration
         self.isWelcome = isWelcome
         self.viewMode = viewMode
+        // Frische Tabs starten mit ihrem Anfangsinhalt als gespeicherter
+        // Basis. Ein bereits geänderter Tab (isDirty) kennt seinen
+        // Plattenstand hier nicht — er erhält erst beim nächsten Laden oder
+        // Speichern wieder eine gültige Basis.
+        if !isDirty {
+            recordSavedContentBaseline()
+        }
+    }
+
+    /// Merkt den aktuellen Inhalt als „gespeicherten" Stand. Nach jedem
+    /// erfolgreichen Laden, Neuladen und Speichern aufrufen.
+    mutating func recordSavedContentBaseline() {
+        savedContentUTF8Length = content.utf8.count
+        savedContentHash = content.hashValue
+        savedLineEnding = lineEnding
+    }
+
+    /// Verwirft die Basis ausdrücklich — z. B. wenn die Datei auf der Platte
+    /// verschwunden ist und der Tab als ungesicherter Entwurf weiterlebt.
+    mutating func invalidateSavedContentBaseline() {
+        savedContentUTF8Length = nil
+        savedContentHash = nil
+        savedLineEnding = nil
+    }
+
+    /// `true`, wenn der aktuelle Stand exakt dem gespeicherten entspricht.
+    /// Der Hash (SipHash über den ganzen Inhalt) läuft nur, wenn die billige
+    /// Längenprüfung schon Gleichheit nahelegt.
+    var matchesSavedContentBaseline: Bool {
+        guard let savedContentUTF8Length, let savedContentHash,
+              let savedLineEnding else { return false }
+        return lineEnding == savedLineEnding
+            && content.utf8.count == savedContentUTF8Length
+            && content.hashValue == savedContentHash
     }
 
     /// Nur normale, vollständig geladene Textdokumente können als Paar für
@@ -1095,7 +1141,16 @@ final class Workspace: ObservableObject {
                 if self.tabs[idx].content != newValue {
                     let oldLength = self.tabs[idx].content.count
                     self.tabs[idx].content = newValue
-                    if !self.tabs[idx].isDirty {
+                    // Punkt im Tab folgt dem Vergleich mit dem gespeicherten
+                    // Stand: Er erscheint bei der ersten echten Abweichung und
+                    // verschwindet wieder, wenn z. B. Rückgängig den Inhalt
+                    // exakt zurückführt (VS-Code-/BBEdit-Verhalten).
+                    let matchesSaved = self.tabs[idx].matchesSavedContentBaseline
+                    if self.tabs[idx].isDirty {
+                        if matchesSaved {
+                            self.tabs[idx].isDirty = false
+                        }
+                    } else if !matchesSaved {
                         self.tabs[idx].isDirty = true
                     }
                     // Inhaltsbasierte Spracherkennung (Etappe 3): reagiert
@@ -1453,7 +1508,10 @@ final class Workspace: ObservableObject {
         guard let idx = activeTabIndex else { return }
         guard tabs[idx].lineEnding != ending else { return }
         tabs[idx].lineEnding = ending
-        tabs[idx].isDirty = true
+        // Zurückschalten auf das gespeicherte Zeilenende (bei unverändertem
+        // Text) macht den Tab wieder sauber — wie eine rückgängig gemachte
+        // Textänderung.
+        tabs[idx].isDirty = !tabs[idx].matchesSavedContentBaseline
     }
 
     // MARK: - Neu öffnen mit Encoding (K6)
@@ -1528,6 +1586,8 @@ final class Workspace: ObservableObject {
                     self.tabs[i].isLoading  = false
                     self.tabs[i].diskModificationDate = ExternalChange.diskModificationDate(of: url)
                     self.tabs[i].diskSnapshot = loaded.diskSnapshot
+                    // Neuer Plattenstand = neue Basis für den Punkt im Tab.
+                    self.tabs[i].recordSavedContentBaseline()
                 case .failure:
                     // Bytes passen nicht zum gewählten Encoding → Tab unverändert
                     // lassen (kein Datenverlust), Spinner aus, Hinweis zeigen.
@@ -1634,6 +1694,8 @@ final class Workspace: ObservableObject {
                     self.tabs[i].isLoading  = false
                     self.tabs[i].diskModificationDate = ExternalChange.diskModificationDate(of: url)
                     self.tabs[i].diskSnapshot = loaded.diskSnapshot
+                    // Neuer Plattenstand = neue Basis für den Punkt im Tab.
+                    self.tabs[i].recordSavedContentBaseline()
                 case .failure:
                     // Datei nicht (mehr) lesbar → Tab-Inhalt behalten, kein
                     // Datenverlust; Spinner aus. Kein Alert im Auto-Pfad —
@@ -1855,6 +1917,9 @@ final class Workspace: ObservableObject {
                     self.tabs[idx].diskSnapshot = loaded.diskSnapshot
                     self.tabs[idx].isDirty    = false
                     self.tabs[idx].isLoading  = false
+                    // Frisch geladener Plattenstand ist die Vergleichsbasis,
+                    // gegen die der Punkt im Tab künftig verschwinden kann.
+                    self.tabs[idx].recordSavedContentBaseline()
                     // BBEdit-Verhalten: das leere unbenannte Start-/Scratch-
                     // Dokument abräumen, sobald eine echte Datei geladen ist
                     // (der gerade geladene Tab bleibt erhalten).
@@ -2076,6 +2141,9 @@ final class Workspace: ObservableObject {
             // App-Wechsel auf die selbst geschriebene Datei an.
             tabs[finalIndex].diskModificationDate = ExternalChange.diskModificationDate(of: url)
             tabs[finalIndex].diskSnapshot = writtenSnapshot
+            // Gespeicherter Stand = neue Basis: Rückgängig bis genau hierher
+            // lässt den Punkt im Tab wieder verschwinden.
+            tabs[finalIndex].recordSavedContentBaseline()
             // Speichern kann den Git-Status geändert haben (Datei jetzt „M").
             refreshGitStatus()
             return true
@@ -2689,6 +2757,9 @@ final class Workspace: ObservableObject {
             tabs[index].path = "Aus Papierkorb gerettet"
             tabs[index].diskModificationDate = nil
             tabs[index].isDirty = true
+            // Ohne Datei gibt es keinen gespeicherten Stand mehr — der Punkt
+            // darf durch Rückgängig nicht mehr verschwinden.
+            tabs[index].invalidateSavedContentBaseline()
         }
     }
 

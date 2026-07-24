@@ -465,6 +465,11 @@ Fenster (eigene Tabs, eigene Suche). ⌘S speichert, ⌘W schließt den Tab —
 bei ungespeicherten Änderungen fragt Fastra nach. ⌘J springt zu einer
 Zeilennummer.
 
+Ein Punkt im Tab zeigt ungespeicherte Änderungen. Er verschwindet wieder,
+sobald der Inhalt exakt dem gespeicherten Stand entspricht — egal ob per
+Rückgängig oder durch manuelles Zurückändern. Nach dem Speichern gilt der
+neue Stand als Vergleichsbasis.
+
 Der Haus-Schalter links oben kehrt im aktuellen Fenster zum
 Willkommensbildschirm zurück. Saubere Tabs werden dabei geschlossen. Gibt es
 ungesicherte Inhalte, bestätigt eine erste Rückfrage zunächst nur den gesamten

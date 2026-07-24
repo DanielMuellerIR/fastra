@@ -1706,6 +1706,198 @@ if [ "$TEXT_EDIT_LAYOUT_PATCH_CHANGED" -eq 1 ]; then
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4t. CodeEditSourceEditor — ausgeblendete Minimap darf keine Klicks schlucken.
+#
+# `MinimapView.hitTest` prüft `isHidden` NICHT und beantwortet Treffer im
+# eigenen sichtbaren Bereich immer selbst; `mouseDown`/`mouseDragged` sind
+# bewusst leere Überschreibungen („Eat mouse events“). AppKits Default-hitTest
+# würde eine verborgene View selbst aussortieren — genau dieser Default ist
+# hier aber überschrieben. Folge (Befund 2026-07-24): Bei ausgeblendeter
+# Minimap (Fastra-Default) liegt eine unsichtbare, ~90 pt breite Fläche über
+# der rechten Editorkante. Klicks und Doppelklicks auf Text in diesem Band
+# kommen nie im Editor an — besonders auffällig im Markdown-Split, wo der
+# Editor schmal ist und umbrochene Zeilen bis an den Scrollbalken reichen.
+CESE_MINIMAP="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/Minimap/MinimapView.swift"
+MINIMAP_HITTEST_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: verborgene Minimap darf keine Klicks schlucken' \
+    "$CESE_MINIMAP" 2>/dev/null; then
+  echo "→ Patche CodeEditSourceEditor (verborgene Minimap schluckt keine Klicks)"
+  chmod u+w "$CESE_MINIMAP"
+  /usr/bin/python3 - "$CESE_MINIMAP" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+old = '''    override public func hitTest(_ point: NSPoint) -> NSView? {
+        guard let point = superview?.convert(point, to: self) else { return nil }'''
+new = '''    override public func hitTest(_ point: NSPoint) -> NSView? {
+        // Fastra-Patch: verborgene Minimap darf keine Klicks schlucken.
+        // Diese Überschreibung ersetzt AppKits Default-hitTest, der hidden
+        // Views selbst aussortieren würde; ohne diese Prüfung fängt die
+        // unsichtbare Minimap alle Klicks am rechten Editorrand ab.
+        guard !isHiddenOrHasHiddenAncestor else { return nil }
+        guard let point = superview?.convert(point, to: self) else { return nil }'''
+if old not in src:
+    raise SystemExit(
+        f"{path}: MinimapView.hitTest hat sich geaendert — Patch 4t pruefen"
+    )
+open(path, "w").write(src.replace(old, new, 1))
+PYEOF
+  MINIMAP_HITTEST_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: verborgene Minimap darf keine Klicks schlucken' \
+    "$CESE_MINIMAP"; then
+  echo "✗ FEHLER: Minimap-hitTest-Patch hat NICHT gegriffen." >&2
+  exit 1
+fi
+
+if [ "$MINIMAP_HITTEST_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4u. CodeEditTextView — Doppelklick-Wortauswahl zellenbasiert wie NSTextView.
+#
+# `textOffsetAtPoint` rundet wie eine Einfüge-Position: Ein Klick auf die
+# rechte Hälfte eines Zeichens liefert den Offset DANACH. Für den einfachen
+# Klick ist das korrektes Caret-Verhalten. Beim Doppelklick führt es aber
+# dazu, dass ein Klick auf die rechte Hälfte des LETZTEN Zeichens eines
+# Wortes das Leerzeichen dahinter markiert statt des Wortes. NSTextView und
+# BBEdit wählen das Wort über die tatsächlich getroffene Zeichenzelle. Der
+# Patch rückt die Auswahlbasis vor `selectWord` auf das Zeichen, dessen
+# Zelle den Klickpunkt wirklich enthält.
+CETV_MOUSE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+Mouse.swift"
+DOUBLECLICK_CELL_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: Wortauswahl trifft die geklickte Zeichenzelle' \
+    "$CETV_MOUSE" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (Doppelklick-Wortauswahl zellenbasiert)"
+  chmod u+w "$CETV_MOUSE"
+  /usr/bin/python3 - "$CETV_MOUSE" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+old = '''    fileprivate func handleDoubleClick(event: NSEvent) {
+        cursorSelectionMode = .word
+
+        guard !event.modifierFlags.contains(.shift) else {
+            super.mouseDown(with: event)
+            return
+        }
+        unmarkText()
+        selectWord(nil)
+    }'''
+new = '''    fileprivate func handleDoubleClick(event: NSEvent) {
+        cursorSelectionMode = .word
+
+        guard !event.modifierFlags.contains(.shift) else {
+            super.mouseDown(with: event)
+            return
+        }
+        unmarkText()
+        // Fastra-Patch: Wortauswahl trifft die geklickte Zeichenzelle.
+        // `textOffsetAtPoint` rundet als Einfuege-Position auf; ein Klick auf
+        // die rechte Haelfte des letzten Wortzeichens landet dadurch auf dem
+        // Folgezeichen und wuerde dessen Leerraum markieren. Liegt der
+        // Klickpunkt tatsaechlich in der Zelle des Vorgaengerzeichens, wird
+        // die Auswahlbasis dorthin verschoben (NSTextView-Verhalten).
+        let clickPoint = convert(event.locationInWindow, from: nil)
+        if let caretOffset = layoutManager.textOffsetAtPoint(clickPoint),
+           caretOffset > 0,
+           let previousRect = layoutManager.rectForOffset(caretOffset - 1),
+           previousRect.contains(clickPoint) {
+            selectionManager.setSelectedRange(
+                NSRange(location: caretOffset - 1, length: 0)
+            )
+        }
+        selectWord(nil)
+    }'''
+if old not in src:
+    raise SystemExit(
+        f"{path}: handleDoubleClick hat sich geaendert — Patch 4u pruefen"
+    )
+open(path, "w").write(src.replace(old, new, 1))
+PYEOF
+  DOUBLECLICK_CELL_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: Wortauswahl trifft die geklickte Zeichenzelle' \
+    "$CETV_MOUSE"; then
+  echo "✗ FEHLER: Doppelklick-Zellen-Patch hat NICHT gegriffen." >&2
+  exit 1
+fi
+
+if [ "$DOUBLECLICK_CELL_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4v. CodeEditTextView — Drag-Anker am Maus-Down verankern.
+#
+# Upstream setzt `mouseDragAnchor` erst beim ERSTEN Drag-Ereignis. Schnelle
+# Mausbewegungen liefern grob gerasterte Events: Das erste Drag-Ereignis kann
+# bereits weit vom Klickpunkt entfernt liegen — unterhalb des Fensters wird
+# es sogar auf das Dokumentende geklemmt. Die Auswahl beginnt dann nicht am
+# angeklickten Zeichen, sondern irgendwo auf dem Weg (Befund 2026-07-24 im
+# dragscroll-Selbsttest: Klick bei Offset 10, Auswahl begann bei 2040).
+CETV_MOUSE_ANCHOR="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+Mouse.swift"
+DRAG_ANCHOR_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: Drag-Anker am Maus-Down verankern' \
+    "$CETV_MOUSE_ANCHOR" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (Drag-Anker am Maus-Down)"
+  chmod u+w "$CETV_MOUSE_ANCHOR"
+  /usr/bin/python3 - "$CETV_MOUSE_ANCHOR" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+old = '''        switch event.clickCount {
+        case 1:
+            handleSingleClick(event: event, offset: offset)'''
+new = '''        // Fastra-Patch: Drag-Anker am Maus-Down verankern. Upstream setzt
+        // ihn erst beim ersten Drag-Ereignis; bei schnellen Bewegungen liegt
+        // das bereits weit vom Klickpunkt entfernt (unterhalb des Fensters
+        // nach dem Clamping sogar am Dokumentende), und die Auswahl beginnt
+        // an der falschen Stelle.
+        let anchorInView = self.convert(event.locationInWindow, from: nil)
+        mouseDragAnchor = CGPoint(
+            x: max(layoutManager.edgeInsets.left, min(anchorInView.x, frame.width)),
+            y: max(0.0, min(anchorInView.y, frame.height))
+        )
+
+        switch event.clickCount {
+        case 1:
+            handleSingleClick(event: event, offset: offset)'''
+if old not in src:
+    raise SystemExit(
+        f"{path}: mouseDown hat sich geaendert — Patch 4v pruefen"
+    )
+open(path, "w").write(src.replace(old, new, 1))
+PYEOF
+  DRAG_ANCHOR_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: Drag-Anker am Maus-Down verankern' \
+    "$CETV_MOUSE_ANCHOR"; then
+  echo "✗ FEHLER: Drag-Anker-Patch hat NICHT gegriffen." >&2
+  exit 1
+fi
+
+if [ "$DRAG_ANCHOR_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 

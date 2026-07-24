@@ -460,3 +460,64 @@ Rest anschließend über `TextView.insertText` einfügt. Danach sendet der Test
 echte Fensterereignisse als Doppelklick an Wortanfang und Wortende. Ein reiner
 Modell- oder Frische-Layout-Test reicht nicht: Text und Zeilenlänge waren auch
 im Fehlerfall korrekt, nur die alten Trefferflächen blieben bestehen.
+
+### F.19 Eine überschriebene hitTest darf hidden nicht ignorieren (2026-07-24)
+
+AppKits Default-`hitTest` sortiert verborgene Views selbst aus. Wer die
+Methode überschreibt, übernimmt diese Pflicht mit. `MinimapView.hitTest`
+(CodeEditSourceEditor) beantwortete Treffer im eigenen sichtbaren Bereich
+immer selbst und prüfte `isHidden` nie; `mouseDown`/`mouseDragged` sind dort
+zusätzlich bewusst leere Überschreibungen („Eat mouse events“). Bei
+ausgeblendeter Minimap — Fastras Default — lag dadurch eine unsichtbare,
+rund 90 pt breite Fläche über der rechten Editorkante: Klicks und
+Doppelklicks auf Text in diesem Band kamen nie im Editor an. Im
+Markdown-Split fiel es zuerst auf, weil der Editor dort schmal ist und
+umbrochene Zeilen bis an den Scrollbalken reichen; betroffen war aber jede
+Ansicht. Die Wirkung ähnelte den älteren Trefferflächen-Fehlern (F.18),
+hatte jedoch eine völlig eigene Ursache — „gleiches Symptom“ heißt bei
+Klickpfaden nicht „gleiche Wurzel“.
+
+**Workaround (Patch 4t in `build.sh`):** `hitTest` beginnt mit
+`guard !isHiddenOrHasHiddenAncestor else { return nil }`.
+
+**Regression:** `./selftest.sh rightedge` stellt die gemeldete Geometrie
+(1100×800, Seitenleiste, integrierte Vorschau, Markdown mit bis zu
+646-Zeichen-Zeilen) wieder her und prüft ein ganzes Raster von Punkten bis
+einen Punkt vor dem vertikalen Scrollbalken: Fenster-Hit-Test muss den
+Editor treffen und `textOffsetAtPoint` eine Position liefern.
+
+### F.20 Caret-Rundung ist die falsche Basis für Doppelklick-Wörter (2026-07-24)
+
+`textOffsetAtPoint` rundet wie eine Einfüge-Position: Ein Klick auf die
+rechte Hälfte eines Zeichens liefert den Offset DANACH. Für den einfachen
+Klick ist das korrekt. Der Doppelklick-Pfad übernahm dieselbe Position und
+markierte deshalb beim Klick auf die rechte Hälfte des letzten Wortzeichens
+den Leerraum hinter dem Wort. NSTextView und BBEdit wählen das Wort über die
+tatsächlich getroffene Zeichenzelle.
+
+**Workaround (Patch 4u in `build.sh`):** Liegt der Klickpunkt in der Zelle
+des Vorgängerzeichens, rückt `handleDoubleClick` die Auswahlbasis vor
+`selectWord` dorthin.
+
+**Regression:** Der zweite Teil von `./selftest.sh rightedge` doppelklickt
+mit echten Fensterereignissen auf das letzte Zeichen eines Wortes an einer
+Umbruchkante und verlangt exakt dieses Wort als Auswahl.
+
+### F.21 Der Drag-Anker gehört an den Maus-Down, nicht an das erste Drag-Event (2026-07-24)
+
+CodeEditTextView verankerte eine Maus-Selektion erst im ERSTEN
+`mouseDragged`. Schnelle Mausbewegungen liefern grob gerasterte Events: Das
+erste Drag-Ereignis kann weit vom Klickpunkt entfernt liegen, unterhalb des
+Fensters wird es durch das Clamping sogar auf das Dokumentende gezogen. Die
+Auswahl begann dann nicht am angeklickten Zeichen (Befund: Klick bei
+Offset 10, Auswahl begann bei 2040) — sichtbar als „Auswahl springt weg /
+läuft unten davon“.
+
+**Workaround (Patch 4v in `build.sh`):** `mouseDown` setzt den Anker sofort
+auf die geklemmte Klickposition; das erste Drag-Ereignis erweitert nur noch.
+
+**Regression:** `./selftest.sh dragscroll` beginnt den Drag bei Offset 10,
+zieht mit echten Events 40 Punkte unter das Fenster und verlangt beides:
+Autoscroll folgt nach unten UND die Auswahl bleibt am Klickpunkt verankert.
+`./selftest.sh selshort` sichert zusätzlich die Tastaturvariante in der
+kleinen, stark umbrochenen Nutzerdatei (11 Zeilen, längste 646 Zeichen).
