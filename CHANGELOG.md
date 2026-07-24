@@ -58,8 +58,8 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
   Doku keine Parameter, zeigt das Panel `(…)` statt „keine Parameter“.
   Nur geteilte Methoden werden angeboten (`//%attributes` bzw.
   `methodAttributes.json`); bei Namensgleichheit gewinnt die
-  Projektmethode. Realprüfung am BA-Referenzprojekt: 440 geteilte
-  Methoden aus sechs kompilierten Komponenten in unter 10 ms.
+  Projektmethode. Realprüfung an einem großen realen 4D-Projekt:
+  440 geteilte Methoden aus sechs kompilierten Komponenten in unter 10 ms.
 
 ### Geändert
 

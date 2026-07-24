@@ -12,8 +12,8 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   Methodendokumentation, nur geteilte Methoden, Projektmethode gewinnt):
   - **Plugins:** erst angehen, wenn ein reales Projekt mit `Plugins`-Ordner
     als Fixture verfügbar ist — Struktur dann zuerst am echten Bundle
-    erheben, nichts aus Erinnerung raten (in BA existiert kein solcher
-    Ordner).
+    erheben, nichts aus Erinnerung raten (im verfügbaren Referenzprojekt
+    existiert kein solcher Ordner).
   - **GitHub-Abhängigkeiten:** `Project/Sources/dependencies.json` kann
     Komponenten benennen, die nicht unter `<Projekt>/Components/` liegen
     (z. B. von 4D verwaltete Downloads). Bewusst offen, bis der reale
