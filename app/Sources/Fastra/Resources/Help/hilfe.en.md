@@ -496,6 +496,12 @@ The welcome screen may coexist with new, still-untitled tabs, but never with a
 saved file or an open folder. Opening a folder, opening a file, or saving a file
 for the first time automatically closes the Welcome tab.
 
+Anything can be handed to Fastra from outside: “Open With → Fastra”, a drop on
+the Dock icon, or `open -a Fastra …` in a terminal accept files of any kind and
+folders as well — a folder is loaded as a project. Fastra offers itself for every
+file type but never makes itself the default app, so double-click assignments
+stay as they are.
+
 When you open a file from the Finder, it lands in the window whose project
 or repository contains it, and that window comes to the front. If no window
 fits, Fastra uses an empty window (such as the welcome screen); if there is

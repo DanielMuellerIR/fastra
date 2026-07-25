@@ -6,6 +6,15 @@
 	<string>de</string>
 	<key>CFBundleDisplayName</key>
 	<string>Fastra</string>
+	<!-- Was Fastra annehmen darf. Wichtig: LaunchServices prüft diese Liste, bevor
+	     ein Ordner oder eine Datei überhaupt bei der App ankommt. Fehlt hier
+	     public.folder, lehnt macOS `open -a Fastra <Ordner>` ab, obwohl die App
+	     Ordner längst als Projekt öffnet (DocumentWindowController.openFinderItems)
+	     — ein Drop auf das Dock-Icon geht an dieser Prüfung vorbei und funktioniert
+	     deshalb trotzdem. Der Auffangeintrag "Alle Dateien" (public.item) deckt
+	     Bilder, E-Books und Binärdateien mit ab; die Hex- und Vorschaupfade der App
+	     zeigen sie an. LSHandlerRank bleibt überall "Alternate": Fastra bietet sich
+	     an, drängt sich aber nicht als Standard-App auf. -->
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -21,6 +30,36 @@
 				<string>public.plain-text</string>
 				<string>public.utf8-plain-text</string>
 				<string>public.source-code</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Ordner</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.folder</string>
+				<string>public.directory</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Alle Dateien</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>*</string>
+			</array>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.item</string>
+				<string>public.content</string>
 				<string>public.data</string>
 			</array>
 		</dict>

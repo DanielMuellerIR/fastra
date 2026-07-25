@@ -9,6 +9,18 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+### Behoben
+
+- Fastra nimmt Ordner und beliebige Dateien jetzt auch über LaunchServices an.
+  Die `CFBundleDocumentTypes` in `app/Info.plist` deklarierten nur Textdateien;
+  deshalb lehnte macOS `open -a Fastra <Ordner>` ab, obwohl die App Ordner
+  längst als Projekt öffnet — ein Drop auf das Dock-Icon umgeht diese Prüfung und
+  funktionierte darum. Neu: eigener Eintrag für Ordner (`public.folder`,
+  `public.directory`) und ein Auffangeintrag „Alle Dateien" (`public.item`) für
+  Bilder, E-Books und Binärdateien, die Vorschau und Hexeditor ohnehin anzeigen.
+  `LSHandlerRank` bleibt überall `Alternate`: Fastra bietet sich an, wird aber
+  nicht Standard-App. Wirksam erst nach einem neuen, installierten Build.
+
 ## [v1.51.0] — 2026-07-25
 
 ### Hinzugefügt

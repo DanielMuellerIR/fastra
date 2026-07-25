@@ -1,3 +1,7 @@
 "CFBundleDisplayName" = "Fastra";
 "CFBundleName" = "Fastra";
 "CFBundleTypeName" = "Text File";
+/* Bei mehreren Dokumenttypen ist der deutsche Name aus Info.plist der Key. */
+"Textdatei" = "Text File";
+"Ordner" = "Folder";
+"Alle Dateien" = "All Files";

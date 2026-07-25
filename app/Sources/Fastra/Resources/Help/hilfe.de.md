@@ -523,6 +523,12 @@ gespeicherten Datei oder einem geöffneten Ordner. Beim Öffnen eines Ordners od
 beim Öffnen beziehungsweise ersten Sichern einer Datei schließt Fastra den
 Willkommen-Tab automatisch.
 
+Von außen lässt sich alles an Fastra übergeben: „Öffnen mit → Fastra“, ein Drop
+auf das Dock-Icon oder `open -a Fastra …` im Terminal nehmen Dateien jeder Art
+und auch Ordner an — ein Ordner wird als Projekt geladen. Fastra bietet sich für
+alle Dateitypen an, macht sich aber nicht zur Standard-App; die Zuordnung per
+Doppelklick bleibt also unverändert.
+
 Öffnest du eine Datei aus dem Finder, landet sie im Fenster, dessen Projekt
 oder Repository sie enthält, und dieses kommt nach vorn. Passt kein Fenster,
 nutzt Fastra ein leeres Fenster (etwa den Willkommensbildschirm); gibt es auch
