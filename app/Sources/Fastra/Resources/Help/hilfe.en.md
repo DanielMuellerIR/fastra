@@ -429,8 +429,11 @@ If the project is a Git repository (and `git` is installed), the sidebar
 additionally shows the **Changes** and **Graph** tabs:
 
 - Branch row with branch switching, ahead/behind, and fetch.
-- **Changes:** stage/unstage files, discard, commit right from the
-  sidebar; push and pull run asynchronously.
+- **Changes:** stage/unstage files, discard, and commit right from the
+  sidebar. After a local commit, the Commit button becomes a Push button:
+  it names the first locally configured remote and shows its effective push
+  address immediately below. Fastra explicitly pushes only to this visible
+  target; push and pull run asynchronously.
 - **Graph:** the commit graph with branches and merges.
 - History (`git log`) and diffs open as read-only tabs; clicking a
   commit hash shows its details.

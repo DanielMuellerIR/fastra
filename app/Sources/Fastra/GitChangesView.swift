@@ -25,6 +25,10 @@ struct GitChangesView: View {
 
     private var staged: [GitChange] { workspace.gitStatus?.stagedChanges ?? [] }
     private var unstaged: [GitChange] { workspace.gitStatus?.unstagedChanges ?? [] }
+    private var primaryAction: GitChangesPrimaryAction {
+        GitChangesPrimaryAction.resolve(status: workspace.gitStatus,
+                                        target: workspace.gitPushTarget)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -69,7 +73,10 @@ struct GitChangesView: View {
                 }
             }
         }
-        .onAppear { workspace.refreshGitOperationState() }
+        .onAppear {
+            workspace.refreshGitOperationState()
+            workspace.refreshGitPushTarget()
+        }
     }
 
     private var operationBanner: some View {
@@ -98,39 +105,81 @@ struct GitChangesView: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// Commit-Feld + Knopf (VS-Code: nur auf dem Änderungen-Tab).
+    /// Commit-Feld + Knopf (VS-Code: nur auf dem Änderungen-Tab). Nach einem
+    /// sauberen lokalen Commit wird derselbe Platz zum expliziten Push-Ziel:
+    /// Remote-Name im Knopf, effektive Adresse unmittelbar darunter.
     private var commitBox: some View {
         VStack(spacing: 6) {
-            TextField("Nachricht (⌘Enter committet)", text: $workspace.commitMessage, axis: .vertical)
-                .textFieldStyle(.plain)
-                .fastraFont(.small)
-                .lineLimit(1...4)
-                .padding(6)
-                .background(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(Theme.surfaceBase)
-                        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Theme.stroke, lineWidth: 1))
-                )
-
-            Button {
-                workspace.gitCommit(message: workspace.commitMessage)
-            } label: {
-                Label("Commit", systemImage: "checkmark")
+            switch primaryAction {
+            case .commit:
+                TextField("Nachricht (⌘Enter committet)",
+                          text: $workspace.commitMessage, axis: .vertical)
+                    .textFieldStyle(.plain)
                     .fastraFont(.small)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 5)
+                    .lineLimit(1...4)
+                    .padding(6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(Theme.surfaceBase)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 5)
+                                    .stroke(Theme.stroke, lineWidth: 1)
+                            )
+                    )
+
+                primaryButton(title: L10n.string("Commit"),
+                              systemImage: "checkmark") {
+                    workspace.gitCommit(message: workspace.commitMessage)
+                }
+                .keyboardShortcut(.return, modifiers: .command)
+                .help("Bereitgestellte Änderungen committen (nichts bereitgestellt → alles)")
+
+            case .push(let target):
+                primaryButton(title: L10n.format("Push zu %@", target.remote),
+                              systemImage: "arrow.up") {
+                    workspace.gitPush(to: target)
+                }
+                .background {
+                    SelfTestMarker(id: "gitPrimaryPush-\(target.remote)")
+                }
+                .help(L10n.format("Lokale Commits ausdrücklich zu %@ übertragen",
+                                  target.remote))
+
+                Text(L10n.format("Push-Ziel: %@", target.displayAddress))
+                    .fastraFont(size: 9, design: .monospaced)
+                    .foregroundColor(Theme.textSecondary)
+                    .lineLimit(3)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .help(target.displayAddress)
+                    .background {
+                        SelfTestMarker(
+                            id: "gitPrimaryPushAddress-\(target.remote)-"
+                                + "\(target.displayAddress.hashValue)"
+                        )
+                    }
+                    .accessibilityLabel(L10n.format("Push-Ziel: %@",
+                                                    target.displayAddress))
             }
-            .buttonStyle(.plain)
-            .foregroundColor(Theme.accentReadable)
-            .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(Theme.surfaceSand.opacity(0.6))
-            )
-            .keyboardShortcut(.return, modifiers: .command)
-            .help("Bereitgestellte Änderungen committen (nichts bereitgestellt → alles)")
-            .disabled(workspace.gitOperationsAreBusy)
         }
         .padding(10)
+    }
+
+    private func primaryButton(title: String, systemImage: String,
+                               action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .fastraFont(.small)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 5)
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(Theme.accentReadable)
+        .background(
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(Theme.surfaceSand.opacity(0.6))
+        )
+        .disabled(workspace.gitOperationsAreBusy)
     }
 
     /// Abschnitts-Kopf mit Titel, Anzahl-Badge und einer Sammel-Aktion rechts.

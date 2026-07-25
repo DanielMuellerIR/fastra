@@ -29,6 +29,18 @@ func gitStageFolder_preparesChangesSidebarEnvironment() {
     #expect(captured.first?.1 == "changes")
 }
 
+@Test("Push-Ziel-Test setzt die Änderungen-Sidebar vor dem Fensteraufbau")
+func gitPushButton_preparesChangesSidebarEnvironment() {
+    var captured: [(String, String)] = []
+    SelfTest.prepareLaunchEnvironment(requestedTest: "gitpushbutton") { key, value in
+        captured.append((key, value))
+    }
+
+    #expect(captured.count == 1)
+    #expect(captured.first?.0 == "FASTRA_SIDEBAR")
+    #expect(captured.first?.1 == "changes")
+}
+
 @Test("Normale Starts setzen keine Shot-Sidebar")
 func normalLaunch_doesNotPrepareSidebarEnvironment() {
     var captured: [(String, String)] = []

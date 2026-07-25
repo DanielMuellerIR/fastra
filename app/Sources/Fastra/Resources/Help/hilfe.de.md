@@ -449,8 +449,11 @@ Ist das Projekt ein Git-Repository (und `git` installiert), zeigt die
 Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**:
 
 - Branch-Zeile mit Branch-Wechsel, Ahead/Behind und Fetch.
-- **Änderungen:** Dateien bereitstellen/entnehmen, verwerfen, Commit
-  direkt aus der Seitenleiste; Push und Pull laufen asynchron.
+- **Änderungen:** Dateien bereitstellen/entnehmen, verwerfen und direkt
+  committen. Nach einem lokalen Commit wird der Commit-Knopf zum Push-Knopf:
+  Er nennt den ersten lokal konfigurierten Remote und zeigt dessen effektive
+  Push-Adresse unmittelbar darunter. Fastra pusht ausdrücklich nur zu diesem
+  sichtbaren Ziel; Push und Pull laufen asynchron.
 - **Graph:** der Commit-Graph mit Verzweigungen und Merges.
 - Verlauf (`git log`) und Diffs öffnen als schreibgeschützte Tabs; ein
   Klick auf einen Commit-Hash zeigt dessen Details.

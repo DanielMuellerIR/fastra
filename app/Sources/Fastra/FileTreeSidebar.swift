@@ -514,9 +514,17 @@ struct GitActionMenu: View {
 
         Divider()
 
-        Button("Push") { workspace.gitPush() }
-            .help("Lokale Commits zum entfernten Repository hochladen (git push).")
+        if let target = workspace.gitPushTarget {
+            Button(L10n.format("Push zu %@", target.remote)) {
+                workspace.gitPush(to: target)
+            }
+            .help(L10n.format("Push-Ziel: %@", target.displayAddress))
             .disabled(workspace.gitOperationsAreBusy)
+        } else {
+            Button("Push") { workspace.gitPush() }
+                .help("Ersten konfigurierten Remote und Push-Adresse prüfen.")
+                .disabled(workspace.gitOperationsAreBusy)
+        }
         Button("Pull (Fast-Forward)") { workspace.gitPullFastForward() }
             .help("Entfernte Commits nur übernehmen, wenn nichts kollidiert — kein Merge-Commit (git pull --ff-only).")
             .disabled(workspace.gitOperationsAreBusy)

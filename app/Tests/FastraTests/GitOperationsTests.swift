@@ -542,10 +542,15 @@ struct GitActionContextTests {
         completeInitialRefresh(executor)
         workspace.gitPush()
         #expect(executor.startedArguments[4]
-                == ["rev-parse", "--abbrev-ref", "@{u}"])
+                == GitRemoteConfiguration.orderedRemoteArguments)
+        executor.complete(4, with: success(
+            Data("remote.minipc.url\nssh-target\u{0}".utf8)
+        ))
+        #expect(executor.startedArguments[5]
+                == ["remote", "get-url", "--push", "--all", "minipc"])
 
         workspace.openProject(at: repository("push-b"))
-        executor.complete(4, with: success(Data("origin/main\n".utf8)))
+        executor.complete(5, with: success(Data("ssh-target\n".utf8)))
         #expect(!executor.startedArguments.contains { $0.first == "push" })
     }
 }

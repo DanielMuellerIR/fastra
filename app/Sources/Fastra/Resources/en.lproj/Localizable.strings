@@ -359,6 +359,15 @@
 "Push erfolgreich" = "Push Succeeded";
 "Push (Upstream anlegen)" = "Push (Set Upstream)";
 "Push erfolgreich · Upstream angelegt" = "Push Succeeded · Upstream Set";
+"Push zu %@" = "Push to %@";
+"Push-Ziel: %@" = "Push target: %@";
+"Push-Ziel" = "Push Target";
+"Lokale Commits ausdrücklich zu %@ übertragen" = "Explicitly push local commits to %@";
+"Push zu %@ erfolgreich" = "Push to %@ Succeeded";
+"Push zu %@ erfolgreich · Upstream angelegt" = "Push to %@ Succeeded · Upstream Set";
+"Das Push-Ziel hat sich seit der Anzeige geändert. Prüfe Remote und Adresse erneut; es wurde nichts übertragen." = "The push target changed after it was displayed. Check the remote and address again; nothing was transferred.";
+"Kein Git-Remote ist in diesem Repository konfiguriert. Es wurde nichts übertragen." = "No Git remote is configured in this repository. Nothing was transferred.";
+"Ersten konfigurierten Remote und Push-Adresse prüfen." = "Check the first configured remote and push address.";
 "Pull erfolgreich" = "Pull Succeeded";
 "Fetch erfolgreich" = "Fetch Succeeded";
 "Branch-Wechsel" = "Switch Branch";

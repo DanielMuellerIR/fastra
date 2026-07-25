@@ -446,6 +446,9 @@ final class Workspace: ObservableObject {
     /// kein Repo oder git nicht installiert → keine Git-Anzeige. Asynchron
     /// über `refreshGitStatus()` gefüllt.
     @Published var gitStatus: GitStatusSummary?
+    /// Erster lokal konfigurierter Remote samt effektiver Push-Adresse. Die
+    /// Änderungen-Ansicht zeigt beides vor jeder normalen Netzwerkaktion.
+    @Published var gitPushTarget: GitPushTarget?
     /// Atomarer, gemeinsam revidierter Zustand aller Git-Oberflächen.
     @Published var gitRepositorySnapshot: GitRepositorySnapshot?
     /// Commit-Historie des aktuellen Projekts für den Graph-Tab (Phase 3).
@@ -727,6 +730,7 @@ final class Workspace: ObservableObject {
     private let terminalDirectoryResolver: TerminalDirectoryResolving
     private var gitDiffLoadLeases: [UUID: GitDiffLoadLease] = [:]
     private var gitIdentityResolution: GitCancelling?
+    var gitPushTargetInspection: GitCancelling?
     var gitOperationStateInspection: GitCancelling?
     var gitIdentityInspection: GitCancelling?
     var gitConflictInspectionLease: GitCancelling?
@@ -2550,6 +2554,8 @@ final class Workspace: ObservableObject {
         projectGeneration &+= 1
         gitRepositoryObservation?.cancel()
         gitIdentityResolution?.cancel()
+        gitPushTargetInspection?.cancel()
+        gitPushTargetInspection = nil
         gitOperationStateInspection?.cancel()
         gitIdentityInspection?.cancel()
         gitConflictInspectionLease?.cancel()
@@ -2559,6 +2565,7 @@ final class Workspace: ObservableObject {
         // Bis der erste Snapshot des neuen Roots eintrifft, darf keine Git-UI
         // oder Aktion versehentlich den Zustand des alten Projekts verwenden.
         gitStatus = nil
+        gitPushTarget = nil
         gitRepositorySnapshot = nil
         gitBranches = []
         gitLog = []
@@ -2729,6 +2736,8 @@ final class Workspace: ObservableObject {
         cancelAllGitDiffLoads()
         gitIdentityResolution?.cancel()
         gitIdentityResolution = nil
+        gitPushTargetInspection?.cancel()
+        gitPushTargetInspection = nil
         gitOperationStateInspection?.cancel()
         gitOperationStateInspection = nil
         gitIdentityInspection?.cancel()
@@ -2741,6 +2750,7 @@ final class Workspace: ObservableObject {
         gitRepositoryObservation = nil
         projectURL = nil
         gitStatus = nil
+        gitPushTarget = nil
         gitRepositorySnapshot = nil
         gitLog = []
         gitBranches = []

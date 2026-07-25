@@ -165,31 +165,127 @@ extension Workspace {
 
     // MARK: Netzwerk
 
-    /// Lokale Commits hochladen (`git push`). Pfiffiges Extra: hat der aktuelle
-    /// Branch noch keinen Upstream (typischer erster Push eines neuen Branches),
-    /// wird automatisch `push -u origin HEAD` gemacht — statt die kryptische
-    /// „has no upstream branch"-Fehlermeldung zu zeigen, die genau Daniels
-    /// Zielgruppe ausbremst.
+    /// Liest den ersten lokal konfigurierten Remote und dessen effektive
+    /// Push-Adresse neu ein. `git remote` wäre hier falsch, weil es Namen
+    /// alphabetisch sortiert und dadurch ein später konfiguriertes `github`
+    /// vor `minipc` setzen könnte.
+    func refreshGitPushTarget() {
+        guard let context = currentGitActionContext, GitRunner.isAvailable else {
+            gitPushTargetInspection?.cancel()
+            gitPushTargetInspection = nil
+            gitPushTarget = nil
+            return
+        }
+        resolveGitPushTarget(context: context) { [weak self] target, _ in
+            self?.gitPushTarget = target
+        }
+    }
+
+    /// Lokale Commits explizit zum ersten konfigurierten Remote hochladen.
+    /// Andere Git-Defaults (`origin`, `remote.pushDefault`, `push.default`)
+    /// dürfen das sichtbare Ziel niemals still ersetzen.
     func gitPush() {
         guard let context = currentGitActionContext, GitRunner.isAvailable else { return }
+        resolveGitPushTarget(context: context) { [weak self] target, failure in
+            guard let self else { return }
+            guard let target else {
+                self.presentMissingPushTarget(failure)
+                return
+            }
+            self.gitPushTarget = target
+            self.performGitPush(to: target, context: context)
+        }
+    }
+
+    /// Push vom transparenten Changes-Knopf. Vor der Netzwerkaktion wird das
+    /// sichtbare Ziel erneut aus Git gelesen; eine zwischenzeitliche Änderung
+    /// bricht ab, statt unbemerkt an eine andere Adresse zu senden.
+    func gitPush(to expectedTarget: GitPushTarget) {
+        guard let context = currentGitActionContext, GitRunner.isAvailable else { return }
+        resolveGitPushTarget(context: context) { [weak self] currentTarget, failure in
+            guard let self else { return }
+            guard let currentTarget else {
+                self.presentMissingPushTarget(failure)
+                return
+            }
+            self.gitPushTarget = currentTarget
+            guard currentTarget == expectedTarget else {
+                Self.presentGitErrorText(
+                    label: "Push",
+                    text: L10n.string(
+                        "Das Push-Ziel hat sich seit der Anzeige geändert. Prüfe Remote und Adresse erneut; es wurde nichts übertragen."
+                    )
+                )
+                return
+            }
+            self.performGitPush(to: currentTarget, context: context)
+        }
+    }
+
+    private func performGitPush(to target: GitPushTarget,
+                                context: GitActionContext) {
         // Upstream vorhanden? `@{u}` löst nur mit gesetztem Upstream auf.
         let request = GitOperationRequest(repository: context.root, kind: .refresh,
                                           arguments: ["rev-parse", "--abbrev-ref", "@{u}"])
         gitOperationsCoordinator.perform(request) { [weak self] outcome in
             DispatchQueue.main.async {
                 guard let self, context.isCurrent(in: self) else { return }
-                if case .completed(let result) = outcome, result.ok {
-                    self.runGitAction(["push"], label: "Push",
-                                      successMessage: "Push erfolgreich", context: context)
-                } else if case .completed = outcome {
-                    self.runGitAction(["push", "-u", "origin", "HEAD"],
-                                      label: "Push (Upstream anlegen)",
-                                      successMessage: "Push erfolgreich · Upstream angelegt",
-                                      context: context)
+                if case .completed(let result) = outcome {
+                    let upstream = result.ok
+                        ? result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+                        : ""
+                    let tracksTarget = upstream == target.remote
+                        || upstream.hasPrefix(target.remote + "/")
+                    let label = L10n.format("Push zu %@", target.remote)
+                    if tracksTarget {
+                        self.runGitAction(["push", target.remote, "HEAD"],
+                                          label: label,
+                                          successMessage: L10n.format(
+                                            "Push zu %@ erfolgreich", target.remote
+                                          ),
+                                          context: context)
+                    } else {
+                        self.runGitAction(["push", "-u", target.remote, "HEAD"],
+                                          label: label,
+                                          successMessage: L10n.format(
+                                            "Push zu %@ erfolgreich · Upstream angelegt",
+                                            target.remote
+                                          ),
+                                          context: context)
+                    }
                 } else {
                     Self.presentGitExecutionFailure(label: "Push", outcome: outcome)
                 }
             }
+        }
+    }
+
+    private func resolveGitPushTarget(
+        context: GitActionContext,
+        completion: @escaping (GitPushTarget?, GitExecutionOutcome?) -> Void
+    ) {
+        gitPushTargetInspection?.cancel()
+        gitPushTargetInspection = GitPushTargetResolver.resolve(
+            repository: context.root,
+            executor: gitOperationsCoordinator.commandExecutor
+        ) { [weak self] target, failure in
+            DispatchQueue.main.async {
+                guard let self, context.isCurrent(in: self) else { return }
+                completion(target, failure)
+            }
+        }
+    }
+
+    private func presentMissingPushTarget(_ failure: GitExecutionOutcome?) {
+        if let failure {
+            Self.presentGitExecutionFailure(label: "Push-Ziel", outcome: failure)
+        } else {
+            Self.presentGitErrorText(
+                label: "Push",
+                text: L10n.string(
+                    "Kein Git-Remote ist in diesem Repository konfiguriert. Es wurde nichts übertragen."
+                )
+            )
         }
     }
 

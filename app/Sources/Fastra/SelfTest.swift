@@ -111,7 +111,7 @@ enum SelfTest {
     ) {
         let sidebar: String?
         switch name {
-        case "gitshot", "gitstagefolder": sidebar = "changes"
+        case "gitshot", "gitstagefolder", "gitpushbutton": sidebar = "changes"
         case "graphshot": sidebar = "graph"
         default: sidebar = nil
         }
@@ -433,6 +433,10 @@ enum SelfTest {
             // Echter Fensterklick auf den Hover-Knopf einer von Git
             // zusammengefassten unversionierten Ordnerzeile.
             waitForMainWindow { runGitStageFolderTest() }
+        case "gitpushbutton":
+            // Echter Fensterklick auf den transparent beschrifteten Push-Knopf:
+            // erster Config-Remote statt alphabetischem `github`.
+            waitForMainWindow { runGitPushButtonTest() }
         case "openscope":
             // Fensterlos — Such-Scope „Geöffnet" end-to-end über Workspace +
             // SearchRunner (Multi-Tab-Suche + Alle-ersetzen über alle Tabs).
@@ -496,7 +500,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, gitstagefolder, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -10145,6 +10149,172 @@ enum SelfTest {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 pollGitStageFolderResult(ws, base: base, repo: repo,
                                          material: material, tick: tick + 1)
+            }
+        }
+    }
+
+    /// Reproduziert den echten Erst-Push eines sauberen Projekts ohne
+    /// Upstream. `minipc` steht zuerst in `.git/config`, `github` würde von
+    /// `git remote` aber alphabetisch zuerst ausgegeben. Der sichtbare Knopf
+    /// und der ausgeführte Push müssen beide dem Config-Ziel folgen.
+    private static func runGitPushButtonTest() {
+        testLabel = "gitpushbutton"
+        guard ProcessInfo.processInfo.environment["FASTRA_SIDEBAR"] == "changes" else {
+            finish(false, "Launch-Fixture FASTRA_SIDEBAR=changes fehlt")
+        }
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        guard GitRunner.isAvailable else {
+            finish(true, "git nicht verfügbar — Git-Ansicht bleibt erwartungsgemäß verborgen")
+        }
+        Workspace.presentGitDialogs = false
+
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-gitpushbutton-\(UUID().uuidString)")
+        let repo = base.appendingPathComponent("karriere")
+        let minipc = base.appendingPathComponent("minipc.git")
+        let github = base.appendingPathComponent("github.git")
+        do {
+            try fm.createDirectory(at: repo, withIntermediateDirectories: true)
+            try fm.createDirectory(at: minipc, withIntermediateDirectories: true)
+            try fm.createDirectory(at: github, withIntermediateDirectories: true)
+            try "Basis\n".write(to: repo.appendingPathComponent("README.md"),
+                                atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "(setup) \(error.localizedDescription)")
+        }
+
+        runGitSequence([["init", "--bare", "-b", "main"]], in: minipc) {
+            minipcOK, minipcError in
+            guard minipcOK else {
+                try? fm.removeItem(at: base)
+                finish(false, "(minipc setup) \(minipcError)")
+            }
+            runGitSequence([["init", "--bare", "-b", "main"]], in: github) {
+                githubOK, githubError in
+                guard githubOK else {
+                    try? fm.removeItem(at: base)
+                    finish(false, "(github setup) \(githubError)")
+                }
+                let setup: [[String]] = [
+                    ["init", "-b", "main"],
+                    ["config", "user.email", "t@t"],
+                    ["config", "user.name", "T"],
+                    ["add", "--", "README.md"],
+                    ["commit", "-m", "lokaler Commit"],
+                    // Reihenfolge ist die Sicherheitsbehauptung des Tests.
+                    ["remote", "add", "minipc", minipc.path],
+                    ["remote", "add", "github", github.path],
+                ]
+                runGitSequence(setup, in: repo) { ok, error in
+                    guard ok else {
+                        try? fm.removeItem(at: base)
+                        finish(false, "(repo setup) \(error)")
+                    }
+                    DispatchQueue.main.async {
+                        ws.openProject(at: repo)
+                        pollGitPushButton(ws, base: base, repo: repo,
+                                          minipc: minipc, github: github, tick: 0)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Wartet auf die gerenderte Sicherheitsanzeige und klickt den echten
+    /// SwiftUI-Knopf über AppKits Fenster-Hit-Testing.
+    private static func pollGitPushButton(_ ws: Workspace, base: URL, repo: URL,
+                                          minipc: URL, github: URL, tick: Int) {
+        let expected = GitPushTarget(remote: "minipc", addresses: [minipc.path])
+        let buttonID = "gitPrimaryPush-minipc"
+        let addressID = "gitPrimaryPushAddress-minipc-"
+            + "\(expected.displayAddress.hashValue)"
+        guard ws.gitPushTarget == expected,
+              GitChangesPrimaryAction.resolve(status: ws.gitStatus,
+                                              target: ws.gitPushTarget)
+                == .push(expected),
+              !ws.gitOperationsAreBusy,
+              let window = mainWindowForAXChecks(),
+              let content = window.contentView,
+              let buttonMarker = markerView(id: buttonID, in: content),
+              let addressMarker = markerView(id: addressID, in: content) else {
+            if tick >= 120 {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Push-Knopf mit erstem Remote und sichtbarer "
+                    + "minipc-Adresse erschien nicht (Ziel: "
+                    + "\(String(describing: ws.gitPushTarget)), Status: "
+                    + "\(String(describing: ws.gitStatus)))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollGitPushButton(ws, base: base, repo: repo,
+                                  minipc: minipc, github: github, tick: tick + 1)
+            }
+            return
+        }
+
+        window.layoutIfNeeded()
+        guard buttonMarker.bounds.width > 0, buttonMarker.bounds.height > 0,
+              addressMarker.bounds.width > 0, addressMarker.bounds.height > 0 else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Push-Knopf oder Zieladresse besitzen keinen sichtbaren Bereich")
+        }
+        let point = buttonMarker.convert(
+            NSPoint(x: buttonMarker.bounds.midX, y: buttonMarker.bounds.midY),
+            to: nil
+        )
+        guard sendMouseClick(at: point, in: window, modifiers: []) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Mausklick auf Push zu minipc nicht erzeugbar")
+        }
+        pollGitPushButtonResult(ws, base: base, repo: repo,
+                                minipc: minipc, github: github, tick: 0)
+    }
+
+    /// Ground Truth sind beide bare Remotes und Gits echter Upstream. Der
+    /// alphabetisch frühere `github`-Remote muss vollständig unberührt bleiben.
+    private static func pollGitPushButtonResult(
+        _ ws: Workspace, base: URL, repo: URL, minipc: URL, github: URL, tick: Int
+    ) {
+        GitRunner.run(["rev-parse", "--verify", "refs/heads/main"], in: minipc) {
+            minipcResult in
+            GitRunner.run(
+                ["show-ref", "--verify", "--quiet", "refs/heads/main"], in: github
+            ) { githubResult in
+                GitRunner.run(["rev-parse", "--abbrev-ref", "@{u}"], in: repo) {
+                    upstreamResult in
+                    DispatchQueue.main.async {
+                        if githubResult?.ok == true {
+                            try? FileManager.default.removeItem(at: base)
+                            finish(false, "Push traf den nicht ausgewählten Remote github")
+                        }
+                        let upstream = upstreamResult?.stdout
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                        let returnedToCommit = GitChangesPrimaryAction.resolve(
+                            status: ws.gitStatus, target: ws.gitPushTarget
+                        ) == .commit
+                        if minipcResult?.ok == true, upstream == "minipc/main",
+                           returnedToCommit {
+                            try? FileManager.default.removeItem(at: base)
+                            finish(true, "Knopf zeigte Push zu minipc und dessen "
+                                + "Adresse; echter Klick pushte nur zu minipc, "
+                                + "setzte minipc/main als Upstream und kehrte "
+                                + "danach in den Commit-Modus zurück")
+                        }
+                        if tick >= 150 {
+                            try? FileManager.default.removeItem(at: base)
+                            finish(false, "Push zu minipc nicht vollständig "
+                                + "(minipc: \(minipcResult?.ok == true), "
+                                + "upstream: \(upstream ?? "nil"), "
+                                + "Commit-Modus: \(returnedToCommit))")
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            pollGitPushButtonResult(
+                                ws, base: base, repo: repo, minipc: minipc,
+                                github: github, tick: tick + 1
+                            )
+                        }
+                    }
+                }
             }
         }
     }

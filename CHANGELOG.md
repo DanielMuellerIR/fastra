@@ -9,6 +9,22 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.50.4] — 2026-07-25
+
+### Behoben
+
+- Der erste Push eines Branches verwendet nicht mehr den fest angenommenen
+  Remote `origin`, sondern ausdrücklich den ersten Remote in der lokalen
+  Git-Konfiguration. Damit funktionieren Repositories, deren einziges oder
+  bevorzugtes Ziel beispielsweise `minipc` heißt.
+
+### Geändert
+
+- Nach einem lokalen Commit wird der Commit-Bereich bei sauberem Arbeitsbaum
+  zum Push-Knopf. Er nennt den ausgewählten Remote und zeigt dessen effektive
+  Push-Adresse direkt darunter. Das Ziel wird vor dem Klick erneut geprüft;
+  ändert es sich zwischen Anzeige und Aktion, bricht Fastra ohne Übertragung ab.
+
 ## [v1.50.3] — 2026-07-25
 
 ### Behoben
