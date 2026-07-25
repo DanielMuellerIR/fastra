@@ -65,6 +65,9 @@ token highlighting, curated patterns, and guided capture groups.
 - **Drag & drop capture groups** from the find field into the replace field.
 - **Scopes**: Current file, all open tabs, folders, or a configured file set in
   the current project.
+- **Fast project filters**: `.json` is shorthand for `*.json`, directory globs
+  prune complete trees early, and `DerivedData` is transparently always
+  excluded.
 - **Projects and Git**: A live file tree, separate staged and unstaged changes,
   a native multi-lane commit graph, and rich diffs without leaving the editor.
 - **4D project support**: Familiar `.4dm` coloring, completion with signatures,
@@ -130,7 +133,9 @@ not run over one another.
 Fastra treats 4D source as more than plain text. `.4dm` methods use a dedicated,
 familiar color scheme for commands, keywords, variables, tables and comments.
 In an open project, Fastra indexes `Project/Sources/Methods` case-insensitively
-and highlights project methods separately from process variables.
+and highlights project methods separately from process variables. Shared
+methods from project components remain a distinct orange, bold category after
+accepting a typeahead suggestion, separate from project methods and commands.
 
 Especially useful when exploring a larger codebase: **Option-double-click** a
 method name to open the corresponding project method, or a class name to open
@@ -138,7 +143,8 @@ its class file. `Function` definitions in the current class jump locally. If no
 target can be found, Fastra opens project search with the name instead of
 failing silently.
 
-- Completion suggests commands with syntax signatures and constants after two
+- Completion suggests commands with syntax signatures, project methods, shared
+  component methods labeled with their component name, and constants after two
   typed characters.
 - **Validate Document** provides local structure checks, validates `.4DForm`
   files against their schema, and can optionally use an already installed

@@ -42,6 +42,7 @@ enum RipgrepFileEnumerator {
                       outputLimit: GitOutputLimit = GitOutputLimit(
                         stdoutBytes: 64 * 1024 * 1024,
                         stderrBytes: 1 * 1024 * 1024),
+                      excludedPatterns: [String] = [],
                       shouldCancel: @escaping @Sendable () -> Bool = { false }) throws -> [URL] {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: root.path,
@@ -56,9 +57,17 @@ enum RipgrepFileEnumerator {
         let completed = DispatchSemaphore(value: 0)
         let outcome = OutcomeBox()
         let policy = GitExecutionPolicy(timeout: timeout, terminationGracePeriod: 0.25)
+        var arguments = ["--files", "--null", "--no-ignore", "--glob", "!.git/**"]
+        // Nur komponentenbezogene Muster, deren Glob-Syntax zwischen Fastra
+        // und ripgrep sicher identisch ist, werden vorgezogen. Der eigene
+        // Matcher bleibt danach immer die verbindliche Nachfilterung.
+        for glob in PathExclusion.ripgrepExclusionGlobs(for: excludedPatterns) {
+            arguments.append(contentsOf: ["--glob", glob])
+        }
+        arguments.append(root.path)
         let token = GitRunner.runExecutable(
             executable,
-            arguments: ["--files", "--null", "--no-ignore", "--glob", "!.git/**", root.path],
+            arguments: arguments,
             in: root,
             outputLimit: outputLimit,
             policy: policy,

@@ -74,7 +74,17 @@ final class SearchRunner {
             workspace.$projectURL.dropFirst().map { _ in () }.eraseToAnyPublisher(),
         ]
 
-        Publishers.MergeMany(triggers)
+        let triggerStream = Publishers.MergeMany(triggers).share()
+
+        // Sicherheitspfad ohne Debounce: Sobald ein Suchinput wechselt,
+        // gehören die sichtbaren Projekt-/Ordner-Treffer nicht mehr zur
+        // aktuellen Semantik. Sofort leeren und laufende Tasks abbrechen;
+        // Navigation, Vorschau und Apply sehen damit nie einen Altstand.
+        triggerStream
+            .sink { [weak self] in self?.searchInputsDidChange() }
+            .store(in: &bag)
+
+        triggerStream
             // 120 ms ist knapp genug fürs Tipp-Gefühl, lang genug, damit
             // selbst auf großen Buffern nicht jede Taste ein Re-Search
             // anstößt. Bei Bedarf später konfigurierbar machen.
@@ -129,6 +139,46 @@ final class SearchRunner {
         catch { return (error as NSError).localizedDescription }
     }
 
+    private func cancelPendingWork() {
+        folderTask?.cancel()
+        folderTask = nil
+        folderRunID &+= 1
+        bufferTask?.cancel()
+        bufferTask = nil
+        bufferRunID &+= 1
+        folderDebounce?.cancel()
+        folderDebounce = nil
+    }
+
+    private static func clearFolderPreview(_ ws: Workspace) {
+        ws.folderResults = []
+        ws.folderTotalMatches = 0
+        ws.folderResultsWereCapped = false
+        ws.activeMatchIndex = 0
+    }
+
+    /// Unmittelbare Invalidierung vor beiden Debounce-Stufen.
+    private func searchInputsDidChange() {
+        guard let ws = workspace else { return }
+        cancelPendingWork()
+        Self.clearFolderPreview(ws)
+
+        guard ws.scope.isFolderLike else {
+            ws.folderSearching = false
+            ws.folderNeedsSearch = false
+            return
+        }
+
+        let options = ws.currentSearchOptions
+        ws.searchError = Self.validationError(for: options)
+        let willRunLive = Self.shouldRunFolderLive(for: ws.findPattern)
+            && !options.isEmpty
+            && ws.searchError == nil
+            && !ws.activeMultiFileSearchURLs.isEmpty
+        ws.folderSearching = willRunLive
+        ws.folderNeedsSearch = !willRunLive
+    }
+
     /// Reagiert auf einen Live-Trigger (Tippen, Options-Toggle, Tab- oder
     /// Scope-Wechsel). Buffer-Scopes (Datei/Geöffnet) suchen sofort. Der
     /// Ordner-Scope sucht gesteuert live: erst ab `minFolderLiveChars` Zeichen
@@ -143,14 +193,7 @@ final class SearchRunner {
         // Laufende Folder- UND Buffer-Suche + armierten Live-Timer immer
         // abbrechen — entweder weil der Scope wechselt oder weil sich die
         // Eingaben geändert haben (frischer Tastendruck → alles neu starten).
-        folderTask?.cancel()
-        folderTask = nil
-        folderRunID &+= 1
-        bufferTask?.cancel()
-        bufferTask = nil
-        bufferRunID &+= 1
-        folderDebounce?.cancel()
-        folderDebounce = nil
+        cancelPendingWork()
 
         if SearchRunner.runsLive(for: ws.scope) {
             if ws.scope == .open {
@@ -168,6 +211,7 @@ final class SearchRunner {
         ws.openResultsWereCapped = false
         ws.bufferMatches = []
         ws.searchError = SearchRunner.validationError(for: ws.currentSearchOptions)
+        Self.clearFolderPreview(ws)
 
         // Live nur oberhalb der Mindestlänge UND mit gültigem Pattern UND
         // mindestens einem aktivierten Ordner. Sonst: alte Ergebnisse weg,
@@ -190,6 +234,8 @@ final class SearchRunner {
         // bereits abgebrochen.
         let work = DispatchWorkItem { [weak self] in self?.runFolderSearch() }
         folderDebounce = work
+        ws.folderSearching = true
+        ws.folderNeedsSearch = false
         DispatchQueue.main.asyncAfter(
             deadline: .now() + .milliseconds(SearchRunner.folderLiveExtraDebounceMs),
             execute: work)
@@ -324,8 +370,8 @@ final class SearchRunner {
     /// und bricht eine schon laufende Suche ab.
     func runFolderSearch() {
         guard let ws = workspace, ws.scope.isFolderLike else { return }
-        folderTask?.cancel()
-        folderTask = nil
+        cancelPendingWork()
+        Self.clearFolderPreview(ws)
         folderRunID &+= 1
         let runID = folderRunID
 
@@ -356,6 +402,7 @@ final class SearchRunner {
             ? ws.projectSearchConfiguration.excludePatterns : []
         let projectRoot = ws.scope == .project ? ws.projectURL : nil
         ws.folderSearching = !options.isEmpty && !urls.isEmpty
+        ws.folderNeedsSearch = false
         ws.searchError = nil
         folderTask = Task.detached(priority: .userInitiated) { [weak self, weak ws] in
             let result = FolderSearch.find(in: urls, filter: filter, options: options,
@@ -364,7 +411,11 @@ final class SearchRunner {
                                            shouldCancel: { Task.isCancelled })
             if Task.isCancelled { return }
             await MainActor.run { [weak self, weak ws] in
-                guard let self, self.folderRunID == runID, let ws else { return }
+                guard let self,
+                      Self.completionBelongsToCurrentRun(
+                        runID, currentRunID: self.folderRunID
+                      ),
+                      let ws else { return }
                 ws.folderResults = result.perFile
                 ws.folderTotalMatches = result.totalMatches
                 // Cap-Flag durchreichen — die Maske zeigt darauf basierend

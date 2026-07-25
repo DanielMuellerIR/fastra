@@ -45,7 +45,39 @@ projektbezogene Ausschlüsse unverändert bleiben.
 Der gebündelte ripgrep-Pfad ist dennoch Standard: Er arbeitet ohne externe
 Installation, enumeriert robust in großen realen Verzeichnisbäumen und besitzt
 einen vollständigen FileManager-Fallback, wenn die Ressource nicht startet.
-Pakete, versteckte Dateien, `.git` und Ausschlüsse werden nach der Enumeration
-noch einmal nach Fastra-Semantik geprüft. Für kleine/lokale Ordner ist kein
-Geschwindigkeitsvorteil zu erwarten; die Anzeige bleibt deshalb ehrlich und
-macht keine Leistungszusage.
+Sichere komponentenbezogene Ausschlüsse werden seit v1.51.0 bereits als
+Negativ-Globs an `rg --files` gereicht. Fastras einmal pro Lauf kompilierter
+Matcher prüft danach trotzdem jeden Kandidaten verbindlich; Paketzugehörigkeit
+wird erst anschließend und pro Verzeichnis gecacht. Für kleine/lokale Ordner
+ist kein Geschwindigkeitsvorteil zu erwarten; die Anzeige bleibt deshalb
+ehrlich und macht keine allgemeine Leistungszusage.
+
+## Reale Projektmessung v1.51.0
+
+Stand: 2026-07-25, M5, etwa 575 MiB großer 4D-Projektkorpus, read-only.
+Ausgeschlossen wurden `.json`, `userPreferences.*` und der verbindliche
+`DerivedData`-Baum. Ein Aufwärmlauf ging den drei dokumentierten Läufen voraus;
+gesucht wurde `util_*` im Modus „Alle Dateien“ über Fastras vollständigen
+Wildcard-/Encoding-/Binärschutz-Pfad.
+
+| Wert | Ergebnis |
+| --- | ---: |
+| Dateien vor Ausschlüssen | 47.030 |
+| Kandidaten nach Pfadausschlüssen | 2.275 |
+| Treffer | 1.552 |
+| Warme Laufzeiten | 0,342 / 0,347 / 0,347 s |
+| Median | 0,347 s |
+| CPU je Lauf | ca. 0,27 s User + 0,06 s System |
+| Prozess-Max-RSS nach lokalem Autorelease-Pool | ca. 333 MiB, stabil |
+
+Der frühere sichtbare Lauf dauerte auf demselben Rechner etwa 6,4 Sekunden.
+Die reale Pfadinventur bestätigte 66 `.json`-Dateien, 43.012 Dateien unter
+`userPreferences.*`-Ordnern und 1.733 Dateien unter `DerivedData`; keine davon
+blieb Kandidat.
+
+Die getrennte Öffnungsdiagnose für eine 21.958 Byte große, 916-zeilige
+`folders.json` meldete den asynchronen Load-Callback nach 0,087 Sekunden und
+den tatsächlich montierten Editor nach 0,259 Sekunden. Damit war der
+Datei-/Editor-Ladepfad kein unabhängiger Mehrsekunden-Flaschenhals; die
+beobachtete Wartezeit gehörte zum noch gültigen Projektscan beziehungsweise
+zu dessen veralteter Trefferbasis.

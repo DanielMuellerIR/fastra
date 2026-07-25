@@ -348,6 +348,7 @@ enum SelfTest {
         case "cmdw":      waitForMainWindow { openSearchThen { runCmdWTest() } }
         case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
         case "searchoptions": waitForMainWindow { openSearchThen { runSearchOptionsTest() } }
+        case "projectinput": waitForMainWindow { openSearchThen { runProjectInputTest() } }
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
         case "tabclosehit": waitForMainWindow { runTabCloseHitTest() }
         case "tabcompare": waitForMainWindow { runTabComparisonTest() }
@@ -413,6 +414,17 @@ enum SelfTest {
             // Fensterlos — Projekt- & Git-Ausbau Etappe 1 (Willkommen-
             // Bedingung, Projekt öffnen, Dateibaum, Repo-Erkennung).
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runProjectTest() }
+        case "projectperf":
+            // Bewusst nicht in ALL_TESTS: benötigt einen ausdrücklich per
+            // FASTRA_PROJECT_PERF_ROOT übergebenen, nur gelesenen Realbestand.
+            DispatchQueue.global(qos: .userInitiated).async {
+                runProjectPerformanceTest()
+            }
+        case "projectopenperf":
+            // Separater echter Workspace-/Editor-Ladepfad für folders.json;
+            // bleibt getrennt von der Suchmessung, damit Ursachen nicht
+            // vermischt werden.
+            waitForMainWindow { runProjectOpenPerformanceTest() }
         case "localization":
             // Fensterlos — prüft zusätzlich zum Unit-Test das fertig gepackte
             // Haupt-App-Bundle. Genau dort sucht SwiftUI statische Schlüssel.
@@ -500,7 +512,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -1324,12 +1336,14 @@ enum SelfTest {
             guard firstWindow.isVisible else {
                 finish(false, "erster Editor wurde beim Sprung ausgeblendet")
             }
-            // Scroll unabhängig über die tatsächlich sichtbare Editorzeile
-            // prüfen, nicht über denselben Ziel-Offset wie der Sprung selbst.
-            let shownLine = secondTV.layoutManager
-                .textLineForPosition(secondTV.visibleRect.midY)
-                .map { $0.index + 1 }
-            let isVisiblyAtTarget = shownLine.map { abs($0 - 110) <= 8 } ?? false
+            // Gefordert ist ein sichtbarer Treffer, keine bestimmte
+            // Zentrierung. Die frühere ±8-Zeilen-Heuristik um die Viewport-
+            // Mitte scheiterte bei einem korrekt sichtbaren Treffer am Rand.
+            let targetOffset = max(secondRange.location, NSMaxRange(secondRange) - 1)
+            let targetRect = secondTV.layoutManager.rectForOffset(targetOffset)
+            let isVisiblyAtTarget = targetRect.map {
+                secondTV.visibleRect.intersects($0)
+            } ?? false
             if secondSearchWindow.isKeyWindow,
                !secondWindow.isKeyWindow,
                isVisiblyAtTarget {
@@ -1341,10 +1355,17 @@ enum SelfTest {
             let shownLine = secondTV.layoutManager
                 .textLineForPosition(secondTV.visibleRect.midY)
                 .map { $0.index + 1 }
+            let targetOffset = secondRange.location == NSNotFound
+                ? nil : max(secondRange.location, NSMaxRange(secondRange) - 1)
+            let targetRect = targetOffset.flatMap {
+                secondTV.layoutManager.rectForOffset($0)
+            }
             finish(false, "zweiter Editor erreichte binnen 1,8 s nicht vollständig Auswahl und Sichtbarkeit "
                    + "bei sicherem Suchfenster-Fokus (selection=\(secondRange), "
                    + "searchKey=\(secondSearchWindow.isKeyWindow), documentKey=\(secondWindow.isKeyWindow), "
-                   + "sichtbare Zeile=\(shownLine.map(String.init) ?? "nil"))")
+                   + "sichtbare Zeile=\(shownLine.map(String.init) ?? "nil"), "
+                   + "Trefferrect=\(targetRect.map { String(describing: $0) } ?? "nil"), "
+                   + "Viewport=\(secondTV.visibleRect))")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
             pollMultiWindowJump(firstTV: firstTV, secondTV: secondTV,
@@ -1723,6 +1744,130 @@ enum SelfTest {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             pollSearchOptionsReset(ws, root: root, tick: tick + 1)
         }
+    }
+
+    /// Prüft den gemeldeten Alt-Treffer-Zustand am ECHTEN Projekt-Filterfeld:
+    /// Ein AppKit-Einfügevorgang muss die gebundene Konfiguration ohne
+    /// Debounce ändern. Noch im selben Main-Thread-Umlauf verschwinden die
+    /// Treffer der vorherigen Semantik; Navigation, Vorschau und Apply bleiben
+    /// bis zum neuen Ergebnis gesperrt. Die gemessene Dauer schützt außerdem
+    /// davor, teure Projektarbeit versehentlich in den TextField-Setter zu
+    /// verschieben.
+    private static func runProjectInputTest() {
+        testLabel = "projectinput"
+        guard let ws = Workspace.shared,
+              let searchWindow = NSApp.windows.first(where: {
+                  $0.frameAutosaveName == SearchWindow.frameAutosaveName
+              }),
+              let root = searchWindow.contentView else {
+            finish(false, "Workspace oder Suchfenster fehlt")
+        }
+
+        let fm = FileManager.default
+        let projectRoot = fm.temporaryDirectory
+            .appendingPathComponent("fastra-projectinput-\(UUID().uuidString)")
+        let file = projectRoot.appendingPathComponent("alt.txt")
+        do {
+            try fm.createDirectory(at: projectRoot, withIntermediateDirectories: true)
+            try "ALTER_TREFFER".write(to: file, atomically: true, encoding: .utf8)
+        } catch {
+            try? fm.removeItem(at: projectRoot)
+            finish(false, "Projekt-Fixture nicht schreibbar: \(error.localizedDescription)")
+        }
+
+        ws.openProject(at: projectRoot)
+        ws.scope = .project
+        ws.findPattern = "ALT"
+        ws.useRegex = false
+        searchWindow.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        // Die Konfigurationsänderungen oben dürfen erst auslaufen; danach
+        // injizieren wir bewusst eine vollständige alte Trefferbasis.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            guard let field = editableTextField(
+                id: "fastra.projectExclusions", in: root
+            ) else {
+                ws.closeProject()
+                try? fm.removeItem(at: projectRoot)
+                finish(false, "Projekt-Ausschlussfeld nicht im echten Fenster gefunden")
+            }
+            let options = SearchOptions(find: "ALT", replace: "", isRegex: false)
+            let match = BufferSearch.Match(
+                range: NSRange(location: 0, length: 3),
+                line: 1, column: 1, matchText: "ALT", replacedText: ""
+            )
+            ws.folderResults = [FolderSearch.PerFileResult(
+                url: file, matches: [match], totalMatches: 1,
+                skipped: nil, snapshot: nil, searchOptions: options
+            )]
+            ws.folderTotalMatches = 1
+            ws.folderSearching = false
+            ws.folderNeedsSearch = false
+            guard ws.navMatches.count == 1 else {
+                ws.closeProject()
+                try? fm.removeItem(at: projectRoot)
+                finish(false, "Alt-Treffer war vor der Eingabe nicht navigierbar")
+            }
+            guard searchWindow.makeFirstResponder(field),
+                  let editor = field.currentEditor() as? NSTextView else {
+                ws.closeProject()
+                try? fm.removeItem(at: projectRoot)
+                finish(false, "Projekt-Ausschlussfeld wurde nicht First Responder")
+            }
+
+            let insertionRange = NSRange(
+                location: field.stringValue.utf16.count, length: 0
+            )
+            let started = ProcessInfo.processInfo.systemUptime
+            editor.insertText(", userPreferences.*" as NSString,
+                              replacementRange: insertionRange)
+            let elapsed = ProcessInfo.processInfo.systemUptime - started
+            let clearedSynchronously = ws.folderResults.isEmpty
+                && ws.folderTotalMatches == 0
+                && ws.navMatches.isEmpty
+                && (ws.folderSearching || ws.folderNeedsSearch)
+                && !ws.applyAllInFolder()
+            let textArrived = field.stringValue.contains("userPreferences.*")
+            let resultCount = ws.folderResults.count
+            let navigationCount = ws.navMatches.count
+            let searching = ws.folderSearching
+            let needsSearch = ws.folderNeedsSearch
+
+            ws.closeProject()
+            try? fm.removeItem(at: projectRoot)
+            guard textArrived, elapsed < 0.25, clearedSynchronously else {
+                finish(false, String(
+                    format: "Filtereingabe/Invalidierung fehlerhaft: Text=%@, %.3f s, "
+                        + "Ergebnisse=%d, Navigation=%d, searching=%@, needs=%@",
+                    textArrived ? "ok" : "fehlt", elapsed,
+                    resultCount, navigationCount,
+                    searching ? "ja" : "nein",
+                    needsSearch ? "ja" : "nein"
+                ))
+            }
+            finish(true, String(
+                format: "echte Filtereingabe in %.3f s; Alt-Treffer, Navigation "
+                    + "und Apply sofort invalidiert", elapsed
+            ))
+        }
+    }
+
+    private static func editableTextField(id: String, in view: NSView) -> NSTextField? {
+        if let field = view as? NSTextField,
+           field.isEditable, field.isEnabled,
+           (field.accessibilityIdentifier() == id
+            // SwiftUI hängt den Identifier je nach macOS-Version an seinen
+            // Wrapper statt an das innere NSTextField. Der in Deutsch und
+            // Englisch eindeutige Placeholder hält den End-to-End-Test dann
+            // am selben produktiven Feld, ohne Feldreihenfolgen zu raten.
+            || field.placeholderString?.contains("generated.swift") == true) {
+            return field
+        }
+        for child in view.subviews {
+            if let field = editableTextField(id: id, in: child) { return field }
+        }
+        return nil
     }
 
     /// Prüft, dass ein Tab-Wechsel (wie nach einem Datei-Drop) den Editor-
@@ -3157,11 +3302,14 @@ enum SelfTest {
     /// sammeln ihre Befunde, damit ein defektes Auto-Popup die unabhängige
     /// Prüfung von ⌃Leertaste, Pfeil und Maus nicht überspringt.
     private final class FourDCompletionTestState {
+        let projectRoot: URL
         let fileURL: URL
         let initialText: String
+        let componentMethod = "ZZF_ComponentShared"
         var failures: [String] = []
 
-        init(fileURL: URL, initialText: String) {
+        init(projectRoot: URL, fileURL: URL, initialText: String) {
+            self.projectRoot = projectRoot
             self.fileURL = fileURL
             self.initialText = initialText
         }
@@ -3189,29 +3337,83 @@ enum SelfTest {
             finish(false, "kein Hauptfenster gefunden")
         }
 
-        // Leeres Dokument: Nur die nachfolgende Test-Eingabe darf die Präfixe
-        // erzeugen. Die Endung schaltet den produktiven 4D-Delegate an.
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("fastra-completion4d-\(UUID().uuidString).4dm")
+        // Echtes temporäres 4D-Projekt: Die geteilte Methode muss durch den
+        // produktiven Komponentenindex in den produktiven Completion-Provider
+        // gelangen. Das leere Aufruferdokument erzeugt danach nur die
+        // ausdrücklich eingegebenen Präfixe.
+        let projectRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-completion4d-\(UUID().uuidString)")
+        let methods = projectRoot.appendingPathComponent(
+            "Project/Sources/Methods", isDirectory: true
+        )
+        let componentMethods = projectRoot.appendingPathComponent(
+            "Components/FastraTools.4dbase/Project/Sources/Methods",
+            isDirectory: true
+        )
+        let url = methods.appendingPathComponent("Aufrufer.4dm")
         // `Workspace.loadFile` kanonisiert `/var` zu `/private/var`. Der Test
         // muss dieselbe URL-Form speichern, sonst würde er einen korrekt
         // geladenen 4D-Tab fälschlich nie als aktiv erkennen.
         let fixtureText = "// Completion-Selbsttest\n"
-        let state = FourDCompletionTestState(fileURL: url.canonicalFileURL,
-                                             initialText: fixtureText)
+        let state = FourDCompletionTestState(
+            projectRoot: projectRoot.canonicalFileURL,
+            fileURL: url.canonicalFileURL,
+            initialText: fixtureText
+        )
         do {
+            try FileManager.default.createDirectory(
+                at: methods, withIntermediateDirectories: true
+            )
+            try FileManager.default.createDirectory(
+                at: componentMethods, withIntermediateDirectories: true
+            )
             try fixtureText.write(to: url, atomically: true, encoding: .utf8)
+            try "//%attributes = {\"shared\":true}\n".write(
+                to: componentMethods.appendingPathComponent("\(state.componentMethod).4dm"),
+                atomically: true, encoding: .utf8
+            )
         } catch {
+            try? FileManager.default.removeItem(at: projectRoot)
             finish(false, "Completion-Fixture nicht schreibbar: \(error.localizedDescription)")
         }
 
-        ws.loadFile(at: state.fileURL) { ok in
-            guard ok else {
-                finishFourDCompletionTest(state, ok: false,
-                                          message: "loadFile (.4dm) schlug fehl")
+        NSApp.appearance = NSAppearance(named: .aqua)
+        ws.openProject(at: state.projectRoot)
+        pollForFourDCompletionComponentIndex(
+            ws: ws, mainWindow: mainWindow, root: root, state: state
+        )
+    }
+
+    private static func pollForFourDCompletionComponentIndex(
+        ws: Workspace,
+        mainWindow: NSWindow,
+        root: NSView,
+        state: FourDCompletionTestState,
+        tick: Int = 0
+    ) {
+        if ws.fourDComponentMethods[state.componentMethod.lowercased()] != nil {
+            ws.loadFile(at: state.fileURL) { ok in
+                guard ok else {
+                    finishFourDCompletionTest(state, ok: false,
+                                              message: "loadFile (.4dm) schlug fehl")
+                }
+                pollForFourDCompletionEditor(
+                    ws: ws, mainWindow: mainWindow, root: root, state: state
+                )
             }
-            pollForFourDCompletionEditor(ws: ws, mainWindow: mainWindow,
-                                         root: root, state: state)
+            return
+        }
+        if tick >= 120 {
+            finishFourDCompletionTest(
+                state, ok: false,
+                message: "Shared-Component-Methode nicht binnen 6 s indiziert"
+            )
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollForFourDCompletionComponentIndex(
+                ws: ws, mainWindow: mainWindow, root: root,
+                state: state, tick: tick + 1
+            )
         }
     }
 
@@ -3535,10 +3737,15 @@ enum SelfTest {
         tick: Int = 0
     ) {
         if textView.string == state.initialText + "ALERT" {
-            finishFourDCompletionTest(state, ok: state.failures.isEmpty,
-                                      message: state.failures.isEmpty
-                                        ? "Auto-Popup, ⌃Leertaste, ↓ und gezielter Doppelklick funktionieren"
-                                        : state.failures.joined(separator: "; "))
+            guard let root = mainWindow.contentView else {
+                finishFourDCompletionTest(
+                    state, ok: false, message: "Hauptfenster verlor contentView"
+                )
+            }
+            startFourDComponentCompletion(
+                mainWindow: mainWindow, root: root, textView: textView, state: state
+            )
+            return
         }
         if tick >= 40 {
             state.failures.append("Doppelklick übernahm den ersten Vorschlag nicht (Text=\"\(textView.string)\")")
@@ -3548,6 +3755,163 @@ enum SelfTest {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
             pollForFourDCompletionApply(mainWindow: mainWindow, textView: textView,
                                         state: state, tick: tick + 1)
+        }
+    }
+
+    /// Zweite, problembezogene Phase: Eine eindeutig benannte geteilte
+    /// Komponentenmethode wird real getippt, im echten Popup übernommen und
+    /// danach unabhängig im TextStorage auf Farbe und Schrift geprüft.
+    private static func startFourDComponentCompletion(
+        mainWindow: NSWindow,
+        root: NSView,
+        textView: TextView,
+        state: FourDCompletionTestState,
+        tick: Int = 0
+    ) {
+        // Die erste Anwendung muss ihr Fenster vollständig geschlossen haben,
+        // bevor der neue Präfix eingegeben wird.
+        guard fourDCompletionWindow(attachedTo: mainWindow) == nil else {
+            if tick >= 40 {
+                finishFourDCompletionTest(
+                    state, ok: false,
+                    message: "ALERT-Popup blieb vor Component-Phase geöffnet"
+                )
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                startFourDComponentCompletion(
+                    mainWindow: mainWindow, root: root, textView: textView,
+                    state: state, tick: tick + 1
+                )
+            }
+            return
+        }
+        guard mainWindow.isKeyWindow, mainWindow.makeFirstResponder(textView) else {
+            finishFourDCompletionTest(
+                state, ok: false,
+                message: "Umgebungsproblem: Fokus vor Component-Typeahead verloren"
+            )
+        }
+        textView.selectionManager.setSelectedRange(
+            NSRange(location: (textView.string as NSString).length, length: 0)
+        )
+        guard insertCompletionCharacter("\nZ", into: textView) else {
+            finishFourDCompletionTest(
+                state, ok: false, message: "konnte ersten Component-Präfix nicht eingeben"
+            )
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            guard insertCompletionCharacter("Z", into: textView) else {
+                finishFourDCompletionTest(
+                    state, ok: false, message: "konnte zweiten Component-Präfix nicht eingeben"
+                )
+            }
+            pollForFourDComponentPopup(
+                mainWindow: mainWindow, root: root, textView: textView, state: state
+            )
+        }
+    }
+
+    private static func pollForFourDComponentPopup(
+        mainWindow: NSWindow,
+        root: NSView,
+        textView: TextView,
+        state: FourDCompletionTestState,
+        tick: Int = 0
+    ) {
+        if let popup = fourDCompletionWindow(attachedTo: mainWindow),
+           let table = completionTable(in: popup), table.numberOfRows > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                guard postCompletionMouseClick(
+                    in: table, row: 0, window: popup, clickCount: 2
+                ) else {
+                    finishFourDCompletionTest(
+                        state, ok: false,
+                        message: "konnte Component-Vorschlag nicht doppelklicken"
+                    )
+                }
+                pollForFourDComponentApply(
+                    mainWindow: mainWindow, root: root,
+                    textView: textView, state: state
+                )
+            }
+            return
+        }
+        if tick >= 80 {
+            finishFourDCompletionTest(
+                state, ok: false,
+                message: "Component-Typeahead-Popup blieb nach „ZZ“ aus"
+            )
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollForFourDComponentPopup(
+                mainWindow: mainWindow, root: root, textView: textView,
+                state: state, tick: tick + 1
+            )
+        }
+    }
+
+    private static func pollForFourDComponentApply(
+        mainWindow: NSWindow,
+        root: NSView,
+        textView: TextView,
+        state: FourDCompletionTestState,
+        tick: Int = 0
+    ) {
+        let expected = state.initialText + "ALERT\n" + state.componentMethod
+        if textView.string == expected {
+            pollForAppliedFourDComponentStyle(
+                root: root, state: state, tick: 0
+            )
+            return
+        }
+        if tick >= 60 {
+            finishFourDCompletionTest(
+                state, ok: false,
+                message: "Component-Doppelklick übernahm nicht den erwarteten Namen "
+                    + "(Text=\"\(textView.string)\")"
+            )
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollForFourDComponentApply(
+                mainWindow: mainWindow, root: root,
+                textView: textView, state: state, tick: tick + 1
+            )
+        }
+    }
+
+    private static func pollForAppliedFourDComponentStyle(
+        root: NSView,
+        state: FourDCompletionTestState,
+        tick: Int
+    ) {
+        let color = fourDComponentMethodExpectedColor(dark: false)
+        let colored = storageSubstringHasColor(
+            state.componentMethod, in: root,
+            r: color.0, g: color.1, b: color.2
+        )
+        let styled = storageSubstringHasStyle(
+            state.componentMethod, in: root, bold: true, italic: false
+        )
+        if colored && styled {
+            finishFourDCompletionTest(
+                state, ok: state.failures.isEmpty,
+                message: state.failures.isEmpty
+                    ? "Auto/⌃Leertaste/Pfeil/Maus funktionieren; Shared-Component "
+                        + "real übernommen und danach orange/fett gerendert"
+                    : state.failures.joined(separator: "; ")
+            )
+        }
+        if tick >= 60 {
+            finishFourDCompletionTest(
+                state, ok: false,
+                message: "übernommene Component-Methode falsch gerendert "
+                    + "(Farbe=\(colored), fett/nicht-kursiv=\(styled))"
+            )
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollForAppliedFourDComponentStyle(
+                root: root, state: state, tick: tick + 1
+            )
         }
     }
 
@@ -3651,7 +4015,9 @@ enum SelfTest {
         ok: Bool,
         message: String
     ) -> Never {
-        try? FileManager.default.removeItem(at: state.fileURL)
+        Workspace.shared?.closeProject()
+        NSApp.appearance = nil
+        try? FileManager.default.removeItem(at: state.projectRoot)
         finish(ok, message)
     }
 
@@ -3684,6 +4050,7 @@ enum SelfTest {
         \tAbr_init
         \tABR_LISTE_LB_AB:=1
         \tNachtrag
+        \tComponent_Shared
         \tQUERY([Auftraege:1]; [Auftraege:1]Nummer=42)
         \tALERT("fertig")
         End if
@@ -3692,13 +4059,24 @@ enum SelfTest {
             .appendingPathComponent("fastra-highlight4d-\(UUID().uuidString)")
         let methods = projectRoot.appendingPathComponent("Project/Sources/Methods",
                                                           isDirectory: true)
+        let componentMethods = projectRoot.appendingPathComponent(
+            "Components/FastraTools.4dbase/Project/Sources/Methods",
+            isDirectory: true
+        )
         let tmp = methods.appendingPathComponent("Highlight.4dm")
         do {
             try FileManager.default.createDirectory(at: methods, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(
+                at: componentMethods, withIntermediateDirectories: true
+            )
             try code.write(to: tmp, atomically: true, encoding: .utf8)
             try "// Projektindex-Fixture\n".write(
                 to: methods.appendingPathComponent("Abr_init.4dm"), atomically: true,
                 encoding: .utf8
+            )
+            try "//%attributes = {\"shared\":true}\n".write(
+                to: componentMethods.appendingPathComponent("Component_Shared.4dm"),
+                atomically: true, encoding: .utf8
             )
         } catch {
             try? FileManager.default.removeItem(at: projectRoot)
@@ -3715,11 +4093,13 @@ enum SelfTest {
     private static func pollFourDProjectMethodIndex(ws: Workspace, root: NSView,
                                                     projectRoot: URL, file: URL,
                                                     code: String, tick: Int) {
-        guard ws.fourDProjectMethodNames.contains("abr_init") else {
+        guard ws.fourDProjectMethodNames.contains("abr_init"),
+              ws.fourDComponentMethods["component_shared"] != nil else {
             if tick >= 40 {
                 ws.closeProject()
                 try? FileManager.default.removeItem(at: projectRoot)
-                finish(false, "4D-Projektmethodenindex enthält Abr_init nach 10 s nicht")
+                finish(false, "4D-Indizes enthalten Abr_init/Component_Shared "
+                    + "nach 10 s nicht")
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                 pollFourDProjectMethodIndex(ws: ws, root: root, projectRoot: projectRoot,
@@ -3733,10 +4113,16 @@ enum SelfTest {
                 try? FileManager.default.removeItem(at: projectRoot)
                 finish(false, "loadFile (.4dm) schlug fehl")
             }
-            pollFourDColors(root: root, url: file, dark: false, indexedMethod: "Abr_init", tick: 0) {
+            pollFourDColors(
+                root: root, url: file, dark: false,
+                indexedMethod: "Abr_init", componentMethod: "Component_Shared", tick: 0
+            ) {
                 // Hell bestanden → dunkel umschalten und erneut beobachten.
                 NSApp.appearance = NSAppearance(named: .darkAqua)
-                pollFourDColors(root: root, url: file, dark: true, indexedMethod: "Abr_init", tick: 0) {
+                pollFourDColors(
+                    root: root, url: file, dark: true,
+                    indexedMethod: "Abr_init", componentMethod: "Component_Shared", tick: 0
+                ) {
                     runFourDDynamicProjectMethodIndexTest(
                         ws: ws, root: root, projectRoot: projectRoot, file: file, code: code
                     )
@@ -3900,8 +4286,13 @@ enum SelfTest {
         dark ? (0x0F, 0x93, 0x0A) : (0x00, 0x00, 0x88)
     }
 
+    private static func fourDComponentMethodExpectedColor(dark: Bool) -> (Int, Int, Int) {
+        dark ? (0xFF, 0x9D, 0x3F) : (0xB3, 0x47, 0x00)
+    }
+
     private static func pollFourDColors(root: NSView, url: URL, dark: Bool,
-                                        indexedMethod: String? = nil, tick: Int,
+                                        indexedMethod: String? = nil,
+                                        componentMethod: String? = nil, tick: Int,
                                         then next: @escaping () -> Void) {
         let expected = fourDExpectedColors(dark: dark)
         // Jede Kategorie wird an ihrem eigenen 4D-Substring geprüft. Das ist
@@ -3930,6 +4321,16 @@ enum SelfTest {
             missing.append(("Projektmethode \(indexedMethod)", methodColor.0,
                             methodColor.1, methodColor.2))
         }
+        let componentColor = fourDComponentMethodExpectedColor(dark: dark)
+        if let componentMethod, (!storageSubstringHasColor(
+            componentMethod, in: root, r: componentColor.0,
+            g: componentColor.1, b: componentColor.2
+        ) || !storageSubstringHasStyle(
+            componentMethod, in: root, bold: true, italic: false
+        )) {
+            missing.append(("Komponentenmethode \(componentMethod)", componentColor.0,
+                            componentColor.1, componentColor.2))
+        }
         if missing.isEmpty {
             next()
             return
@@ -3942,7 +4343,9 @@ enum SelfTest {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             pollFourDColors(root: root, url: url, dark: dark,
-                            indexedMethod: indexedMethod, tick: tick + 1, then: next)
+                            indexedMethod: indexedMethod,
+                            componentMethod: componentMethod,
+                            tick: tick + 1, then: next)
         }
     }
 
@@ -6579,23 +6982,32 @@ enum SelfTest {
         root: NSView, code: String, tick: Int
     ) {
         let comment = fourDExpectedColors(dark: false)[7]
-        if storageSubstringHasColor("QQZWEIQQ", in: root,
-                                    r: comment.1, g: comment.2, b: comment.3),
-           let textView = editorTextView(in: root) as? TextView,
+        if let textView = editorTextView(in: root) as? TextView,
            textView.string == code {
-            // Edit am Ende der Ankerzeile mitten im Kommentarblock.
             let ns = code as NSString
-            let anchor = ns.range(of: "- Ankerzeile für den Edit xx")
-            textView.selectionManager.setSelectedRange(
-                NSRange(location: anchor.max, length: 0)
-            )
-            textView.insertText(
-                "yy", replacementRange: NSRange(location: NSNotFound, length: 0)
-            )
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                pollFourDCommentColorAfterEdit(root: root, tick: 0)
+            let closing = ns.range(of: "QQZWEIQQ")
+            if storageSubstringHasColor("QQZWEIQQ", in: root,
+                                        r: comment.1, g: comment.2, b: comment.3) {
+                // Edit am Ende der Ankerzeile mitten im Kommentarblock.
+                let anchor = ns.range(of: "- Ankerzeile für den Edit xx")
+                textView.selectionManager.setSelectedRange(
+                    NSRange(location: anchor.max, length: 0)
+                )
+                textView.insertText(
+                    "yy", replacementRange: NSRange(location: NSNotFound, length: 0)
+                )
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    pollFourDCommentColorAfterEdit(root: root, tick: 0)
+                }
+                return
             }
-            return
+
+            // CESE hebt abschnittsweise den sichtbaren Bereich hervor. Die
+            // geprüfte Schlusszeile deshalb zuerst wirklich sichtbar machen;
+            // eine bestimmte gespeicherte Fensterhöhe darf den Test nicht
+            // entscheiden. Nach dem Edit weiter oben muss ihre Farbe bleiben.
+            textView.scrollToRange(closing)
+            textView.layoutManager.layoutLines()
         }
         if tick >= 60 {
             NSApp.appearance = nil
@@ -9806,6 +10218,261 @@ enum SelfTest {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
             pollProjectScope(ws, base: base, tick: tick + 1)
+        }
+    }
+
+    // MARK: - Reale Projekt-Performance (nur explizit über Umgebungsvariable)
+
+    private struct PerformanceResourceSnapshot {
+        let userSeconds: Double
+        let systemSeconds: Double
+        let maximumRSSMiB: Double
+    }
+
+    private static func performanceResourceSnapshot() -> PerformanceResourceSnapshot {
+        var usage = rusage()
+        guard getrusage(RUSAGE_SELF, &usage) == 0 else {
+            return PerformanceResourceSnapshot(
+                userSeconds: 0, systemSeconds: 0, maximumRSSMiB: 0
+            )
+        }
+        func seconds(_ value: timeval) -> Double {
+            Double(value.tv_sec) + Double(value.tv_usec) / 1_000_000
+        }
+        return PerformanceResourceSnapshot(
+            userSeconds: seconds(usage.ru_utime),
+            systemSeconds: seconds(usage.ru_stime),
+            // Auf Darwin ist ru_maxrss die maximale Resident-Menge in Bytes.
+            maximumRSSMiB: Double(usage.ru_maxrss) / 1_048_576
+        )
+    }
+
+    private static func projectPerformanceRoot() -> URL? {
+        guard let path = ProcessInfo.processInfo.environment["FASTRA_PROJECT_PERF_ROOT"],
+              !path.isEmpty else { return nil }
+        let url = URL(fileURLWithPath: path).canonicalFileURL
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(
+            atPath: url.path, isDirectory: &isDirectory
+        ), isDirectory.boolValue else { return nil }
+        return url
+    }
+
+    /// Ein Warm-up plus drei echte Läufe durch denselben FolderSearch-Pfad,
+    /// den die Projekt-Suche verwendet. Dieser Diagnosemodus schreibt nichts
+    /// ins übergebene Projekt und liegt absichtlich außerhalb von ALL_TESTS.
+    private static func runProjectPerformanceTest() {
+        testLabel = "projectperf"
+        guard let root = projectPerformanceRoot() else {
+            finish(false, "FASTRA_PROJECT_PERF_ROOT fehlt oder ist kein Ordner")
+        }
+        let exclusions = [".json", "userPreferences.*", "DerivedData"]
+        let matcher = PathExclusion.Matcher(patterns: exclusions, relativeTo: root)
+        let allFiles: [URL]
+        let ripgrepFiltered: [URL]
+        do {
+            allFiles = try RipgrepFileEnumerator.files(in: root)
+            ripgrepFiltered = try RipgrepFileEnumerator.files(
+                in: root, excludedPatterns: exclusions
+            )
+        } catch {
+            finish(false, "Kandidatenliste fehlgeschlagen: \(error)")
+        }
+        let candidates = ripgrepFiltered.filter { !matcher.matches($0) }
+        let textCandidates = candidates.filter {
+            FolderSearch.passesFilter(url: $0, filter: .knownText)
+        }
+        func hasDerivedData(_ url: URL) -> Bool {
+            url.pathComponents.contains("DerivedData")
+        }
+        let jsonCount = allFiles.filter { $0.pathExtension == "json" }.count
+        let preferencesCount = allFiles.filter {
+            $0.pathComponents.contains {
+                $0.hasPrefix("userPreferences.")
+            }
+        }.count
+        let derivedDataCount = allFiles.filter(hasDerivedData).count
+        let leakedJSON = candidates.contains { $0.pathExtension == "json" }
+        let leakedPreferences = candidates.contains {
+            $0.pathComponents.contains {
+                $0.hasPrefix("userPreferences.")
+            }
+        }
+        let leakedDerivedData = candidates.contains(where: hasDerivedData)
+        guard !allFiles.isEmpty, candidates.count < allFiles.count,
+              jsonCount > 0, preferencesCount > 0, derivedDataCount > 0,
+              !leakedJSON, !leakedPreferences, !leakedDerivedData else {
+            finish(false, "Ausschlussinventar fehlerhaft: alle=\(allFiles.count), "
+                + "Kandidaten=\(candidates.count), json=\(jsonCount), "
+                + "userPreferences=\(preferencesCount), DerivedData=\(derivedDataCount), "
+                + "Leaks=\(leakedJSON)/\(leakedPreferences)/\(leakedDerivedData)")
+        }
+
+        let inventory = String(
+            format: "PROJECTPERF inventory all=%d candidates=%d text_candidates=%d "
+                + "search_filter=all "
+                + "json_excluded=%d user_preferences_excluded=%d "
+                + "derived_data_excluded=%d\n",
+            allFiles.count, candidates.count, textCandidates.count, jsonCount,
+            preferencesCount, derivedDataCount
+        )
+        FileHandle.standardError.write(Data(inventory.utf8))
+
+        let options = SearchOptions(
+            find: "util_*", replace: "", isRegex: false,
+            caseSensitive: false, wholeWord: false,
+            treatWildcardLiterally: false
+        )
+        let warmupError: String? = autoreleasepool {
+            FolderSearch.find(
+                in: [root], filter: .all, options: options,
+                excludedPatterns: exclusions, relativeTo: root
+            ).invalidPatternMessage
+        }
+        guard warmupError == nil else {
+            finish(false, "Warm-up fehlgeschlagen: \(warmupError ?? "")")
+        }
+
+        var wallTimes: [Double] = []
+        var lastMatches = 0
+        for run in 1...3 {
+            let measurement = autoreleasepool { () -> (
+                wall: Double, matches: Int, capped: Bool, error: String?,
+                userCPU: Double, systemCPU: Double, maximumRSSMiB: Double
+            ) in
+                let resourcesBefore = performanceResourceSnapshot()
+                let started = ProcessInfo.processInfo.systemUptime
+                let result = FolderSearch.find(
+                    in: [root], filter: .all, options: options,
+                    excludedPatterns: exclusions, relativeTo: root
+                )
+                let wall = ProcessInfo.processInfo.systemUptime - started
+                let resourcesAfter = performanceResourceSnapshot()
+                return (
+                    wall, result.totalMatches, result.wasCapped,
+                    result.invalidPatternMessage,
+                    resourcesAfter.userSeconds - resourcesBefore.userSeconds,
+                    resourcesAfter.systemSeconds - resourcesBefore.systemSeconds,
+                    resourcesAfter.maximumRSSMiB
+                )
+            }
+            guard measurement.error == nil else {
+                finish(false, "Lauf \(run) fehlgeschlagen: "
+                    + (measurement.error ?? "unbekannt"))
+            }
+            wallTimes.append(measurement.wall)
+            lastMatches = measurement.matches
+            let line = String(
+                format: "PROJECTPERF run=%d candidates=%d matches=%d capped=%@ "
+                    + "wall_s=%.4f user_cpu_s=%.4f system_cpu_s=%.4f "
+                    + "max_rss_mib=%.1f\n",
+                run, candidates.count, measurement.matches,
+                measurement.capped ? "yes" : "no", measurement.wall,
+                measurement.userCPU, measurement.systemCPU,
+                measurement.maximumRSSMiB
+            )
+            FileHandle.standardError.write(Data(line.utf8))
+        }
+        let median = wallTimes.sorted()[1]
+        guard median < 1.5 else {
+            finish(false, String(
+                format: "Median %.4f s verfehlt Ziel <1,5 s "
+                    + "(Kandidaten=%d, Treffer=%d)",
+                median, candidates.count, lastMatches
+            ))
+        }
+        finish(true, String(
+            format: "3 warme Realprojekt-Läufe, Median %.4f s (<1,5 s), "
+                + "%d Kandidaten, %d Treffer; Ausschlüsse leakfrei",
+            median, candidates.count, lastMatches
+        ))
+    }
+
+    /// Misst `folders.json` unabhängig vom Suchlauf vom Workspace-Aufruf bis
+    /// zum tatsächlich montierten Editor-Text. Ein schneller Befund belegt,
+    /// dass die beobachtete Wartezeit aus dem Suchscan statt aus FileLoader/
+    /// Editor stammt; nur eine eigenständig langsame Messung rechtfertigt hier
+    /// einen zusätzlichen Ladepfad-Fix.
+    private static func runProjectOpenPerformanceTest() {
+        testLabel = "projectopenperf"
+        guard let ws = Workspace.shared,
+              let root = projectPerformanceRoot(),
+              let mainWindow = NSApp.windows.first(where: {
+                  $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                      && $0.contentView != nil && $0.isVisible
+              }),
+              let view = mainWindow.contentView else {
+            finish(false, "Workspace, Fenster oder FASTRA_PROJECT_PERF_ROOT fehlt")
+        }
+        let file = root.appendingPathComponent("Project/Sources/folders.json")
+            .canonicalFileURL
+        guard let expected = try? String(contentsOf: file, encoding: .utf8) else {
+            finish(false, "Project/Sources/folders.json ist nicht UTF-8-lesbar")
+        }
+
+        ws.openProject(at: root)
+        let resourcesBefore = performanceResourceSnapshot()
+        let started = ProcessInfo.processInfo.systemUptime
+        ws.loadFile(at: file) { ok in
+            let callbackSeconds = ProcessInfo.processInfo.systemUptime - started
+            guard ok else {
+                ws.closeProject()
+                finish(false, "Workspace.loadFile meldete Fehler")
+            }
+            pollProjectOpenPerformance(
+                ws: ws, root: view, expected: expected, file: file,
+                started: started, callbackSeconds: callbackSeconds,
+                resourcesBefore: resourcesBefore, tick: 0
+            )
+        }
+    }
+
+    private static func pollProjectOpenPerformance(
+        ws: Workspace,
+        root: NSView,
+        expected: String,
+        file: URL,
+        started: TimeInterval,
+        callbackSeconds: TimeInterval,
+        resourcesBefore: PerformanceResourceSnapshot,
+        tick: Int
+    ) {
+        if ws.activeTab?.url == file, ws.activeTab?.isLoading == false,
+           let textView = editorTextView(in: root) as? TextView,
+           textView.string == expected {
+            let renderedSeconds = ProcessInfo.processInfo.systemUptime - started
+            let resourcesAfter = performanceResourceSnapshot()
+            let line = String(
+                format: "PROJECTOPEN file_bytes=%d load_callback_s=%.4f "
+                    + "editor_rendered_s=%.4f user_cpu_s=%.4f "
+                    + "system_cpu_s=%.4f max_rss_mib=%.1f\n",
+                expected.utf8.count, callbackSeconds, renderedSeconds,
+                resourcesAfter.userSeconds - resourcesBefore.userSeconds,
+                resourcesAfter.systemSeconds - resourcesBefore.systemSeconds,
+                resourcesAfter.maximumRSSMiB
+            )
+            FileHandle.standardError.write(Data(line.utf8))
+            ws.closeProject()
+            guard renderedSeconds < 1.5 else {
+                finish(false, String(
+                    format: "folders.json brauchte bis zum Editor %.4f s", renderedSeconds
+                ))
+            }
+            finish(true, String(
+                format: "folders.json separat: Load %.4f s, Editor %.4f s (<1,5 s)",
+                callbackSeconds, renderedSeconds
+            ))
+        }
+        if tick >= 200 {
+            ws.closeProject()
+            finish(false, "folders.json nach 5 s nicht im Editor montiert")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.025) {
+            pollProjectOpenPerformance(
+                ws: ws, root: root, expected: expected, file: file,
+                started: started, callbackSeconds: callbackSeconds,
+                resourcesBefore: resourcesBefore, tick: tick + 1
+            )
         }
     }
 

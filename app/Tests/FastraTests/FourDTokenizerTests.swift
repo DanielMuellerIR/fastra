@@ -152,6 +152,35 @@ func fourD_indexedProjectMethods() {
     #expect(result.contains { $0.0 == "ABR_LISTE_LB_AB" && $0.1 == .processVariable })
 }
 
+@Test("Indizierte Component-Methoden erhalten eine eigene Kategorie")
+func fourD_indexedComponentMethods() {
+    let source = "util_arrayFromObjectArray\nUnbekannt()\nALERT(\"ok\")"
+    let result = FourDTokenizer.tokenize(
+        source,
+        componentMethodNames: ["util_arrayfromobjectarray"]
+    ).map { token in
+        let range = Range(token.range, in: source)!
+        return (String(source[range]), token.kind)
+    }
+
+    #expect(result.contains {
+        $0.0 == "util_arrayFromObjectArray" && $0.1 == .componentMethod
+    })
+    #expect(result.contains { $0.0 == "Unbekannt" && $0.1 == .methodCall })
+    #expect(result.contains { $0.0 == "ALERT" && $0.1 == .command })
+}
+
+@Test("Namenskollision: Projektmethode gewinnt vor Component-Methode")
+func fourD_projectMethodWinsComponentCollision() {
+    let source = "Gemeinsam()"
+    let result = FourDTokenizer.tokenize(
+        source,
+        projectMethodNames: ["gemeinsam"],
+        componentMethodNames: ["gemeinsam"]
+    )
+    #expect(result.first?.kind == .projectMethod)
+}
+
 @Test("Zahlen inkl. Dezimalteil; Zahlen in Namen bleiben Namensteil")
 func fourD_numbers() {
     let source = "$pi:=3.14159\n$x2:=7"
@@ -211,7 +240,33 @@ func fourD_captureMapping() {
     #expect(FourDHighlightProvider.capture(for: .field) == .typeAlternate)
     #expect(FourDHighlightProvider.capture(for: .methodCall) == .function)
     #expect(FourDHighlightProvider.capture(for: .projectMethod) == .method)
+    #expect(FourDHighlightProvider.capture(for: .componentMethod) == .componentMethod)
     #expect(FourDHighlightProvider.capture(for: .keyword) == .keyword)
+}
+
+@Test("Component-Index-Refresh erzeugt einen frischen 4D-Provider")
+func fourD_componentRefreshInvalidatesProvider() {
+    let providers = CustomLanguageProviders()
+    let first = providers.provider(
+        for: CustomLanguageRegistry.fourD,
+        projectMethodNames: ["projekt"],
+        componentMethodNames: ["component_a"]
+    )
+    let unchanged = providers.provider(
+        for: CustomLanguageRegistry.fourD,
+        projectMethodNames: ["PROJEKT"],
+        componentMethodNames: ["COMPONENT_A"]
+    )
+    let refreshed = providers.provider(
+        for: CustomLanguageRegistry.fourD,
+        projectMethodNames: ["projekt"],
+        componentMethodNames: ["component_b"]
+    )
+
+    #expect(ObjectIdentifier(first as AnyObject)
+            == ObjectIdentifier(unchanged as AnyObject))
+    #expect(ObjectIdentifier(first as AnyObject)
+            != ObjectIdentifier(refreshed as AnyObject))
 }
 
 /// Liest eine Farbkategorie aus den eingecheckten 4D-Theme-Fixtures.
@@ -279,6 +334,46 @@ func fourD_darkThemeMatchesJSON() throws {
     expectColor(EditorView.fourDThemeDark.text, matches: json["plain_text"] as! [String: Any], "plain_text")
     // dark.json kennt keine Kommentar-Kursivierung — Farbe muss stimmen.
     expectColor(EditorView.fourDThemeDark.comments, matches: json["comments"] as! [String: Any], "comments")
+}
+
+@Test("Component-Farben sind in Hell und Dunkel kontrastreich und semantisch getrennt")
+func fourD_componentThemeIsDistinctAndReadable() {
+    #expect(EditorView.fourDTheme.componentMethods != EditorView.fourDTheme.commands)
+    #expect(EditorView.fourDTheme.componentMethods != EditorView.fourDTheme.methods)
+    #expect(EditorView.fourDTheme.componentMethods != EditorView.fourDTheme.text)
+    #expect(EditorView.fourDThemeDark.componentMethods != EditorView.fourDThemeDark.commands)
+    #expect(EditorView.fourDThemeDark.componentMethods != EditorView.fourDThemeDark.methods)
+    #expect(EditorView.fourDThemeDark.componentMethods != EditorView.fourDThemeDark.text)
+    #expect(contrastRatio(
+        EditorView.fourDTheme.componentMethods.color,
+        EditorView.fourDTheme.background
+    ) >= 4.5)
+    #expect(contrastRatio(
+        EditorView.fourDThemeDark.componentMethods.color,
+        EditorView.fourDThemeDark.background
+    ) >= 4.5)
+
+    // Bestehende Standardthemes übergeben den neuen optionalen Slot nicht:
+    // dessen Default muss exakt die bisherige Befehlsdarstellung erben.
+    #expect(EditorView.fastraTheme.componentMethods == EditorView.fastraTheme.commands)
+    #expect(EditorView.fastraThemeDark.componentMethods == EditorView.fastraThemeDark.commands)
+}
+
+private func contrastRatio(_ foreground: NSColor, _ background: NSColor) -> CGFloat {
+    func luminance(_ color: NSColor) -> CGFloat {
+        let rgb = color.usingColorSpace(.sRGB)!
+        func linear(_ value: CGFloat) -> CGFloat {
+            value <= 0.04045
+                ? value / 12.92
+                : pow((value + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(rgb.redComponent)
+            + 0.7152 * linear(rgb.greenComponent)
+            + 0.0722 * linear(rgb.blueComponent)
+    }
+    let first = luminance(foreground)
+    let second = luminance(background)
+    return (max(first, second) + 0.05) / (min(first, second) + 0.05)
 }
 
 @Test("Endungs-Mapping: 4D-Containerdateien und .4dm")

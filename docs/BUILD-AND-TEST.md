@@ -136,6 +136,21 @@ CodeEditSourceEditor-Artefakte. Regressions-Wächter: Unit-Test gegen die
 eingecheckten 4D-JSON-Farben sowie `./selftest.sh highlight4d`, der im echten
 Editor Methode (Farbe + bold/italic), Befehl, Prozessvariable und String in
 hellem und dunklem Theme beobachtet.
+Patch 4m2 (4D-Komponentenmethoden, 2026-07-25): Completion kannte geteilte
+Komponentenmethoden bereits, der Highlighter verlor diese Herkunft nach dem
+Einfügen aber und ordnete den Namen wieder `.function`/`commands` zu. Der Patch
+ergänzt deshalb `CaptureName.componentMethod` und einen optionalen
+`EditorTheme.componentMethods`-Slot. Dessen rückwärtskompatibler Default ist
+`commands`; bestehende Themes und Sprachen ändern sich dadurch nicht. Der neue
+Capture-Case steht bewusst am Enum-Ende, damit die rohen Werte vorhandener
+Cases stabil bleiben. Harte Marker prüfen Property, Initializer, Zuweisung,
+Mapping sowie beide Capture-Konvertierungen; danach werden die
+CodeEditSourceEditor-Artefakte verworfen. Unit-Tests prüfen Default, Mapping,
+Kontrast und Projektmethoden-Priorität. `./selftest.sh highlight4d` beobachtet
+Projektmethode, Komponentenmethode und Befehl im echten Editor in Hell und
+Dunkel; `./selftest.sh completion4d` übernimmt zusätzlich eine Shared-
+Component real aus der sichtbaren CESE-Liste und liest erst danach Farbe und
+Font aus dem TextStorage.
 Patch 4n (Soft-Wrap-Spalten und Seitenlinie, 2026-07-19): CodeEdit kann
 upstream nur an der Viewportbreite umbrechen. Fastra ergänzt eine optionale
 maximale Layoutbreite und `wrapAtColumn`; die effektive Breite bleibt das
@@ -387,6 +402,17 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
    Zieltest kann der Runner über
    `FASTRA_SELFTEST_APP_BIN` und `FASTRA_SELFTEST_APP_BUNDLE` auf das bereits
    geprüfte Bundle unter `/Applications` gerichtet werden.
+   `-selftest projectinput` öffnet die echte Projekt-Suchmaske, betippt das
+   native Ausschlussfeld und verlangt noch im selben Main-Thread-Umlauf eine
+   leere Treffer-, Navigations- und Apply-Basis. Der Test misst zusätzlich die
+   synchrone Eingabedauer und braucht wie `completion4d` echten Fensterfokus.
+   Die nicht zur Standardsuite gehörenden Diagnosemodi `projectperf` und
+   `projectopenperf` benötigen ausdrücklich
+   `FASTRA_PROJECT_PERF_ROOT=/pfad/zum/nur-gelesenen-projekt`:
+   `projectperf` führt ein Warm-up und drei `util_*`-Läufe aus und meldet
+   Kandidaten, Treffer, Wall-/CPU-Zeit und Max-RSS; `projectopenperf` misst
+   davon getrennt `Project/Sources/folders.json` bis zum tatsächlich
+   montierten Editor. Beide verändern den Realbestand nicht.
    `-selftest textop` bedient eine Texttransformation und beide
    Sortierrichtungen über den echten Notification-/Editorpfad und liest den
    tatsächlich sichtbaren Editorinhalt zurück.
@@ -401,7 +427,7 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
    **Umgebungs-Fallen beim Selbsttest-Aufruf (2026-06-11, alle in `selftest.sh` gekapselt):**
    - **NIEMALS positionale `--selftest-…`-Argumente verwenden (Root Cause des „kein Hauptfenster"-Bugs).** AppKit interpretiert unbekannte positionale Argumente als „zu öffnende Datei" — die App durchläuft dann den Open-File-Launchpfad statt `applicationOpenUntitledFile`, und SwiftUI erzeugt das WindowGroup-Hauptfenster NIE (`NSApp.windows` bleibt leer, Main-Thread idle; empirisch: JEDES `--flag` löst das aus). `-Key Value`-Argumente (NSArgumentDomain) sind unschädlich → daher `-selftest <name>`. Dass die Fenster-Tests früher trotz `--selftest-…` grün waren, lag mutmaßlich an der Fenster-Restauration aus dem Saved State — die seit 2026-06-11 mitgegebene `-ApplePersistenceIgnoreState YES` schaltete genau diese Krücke ab und machte den Bug sichtbar. Alte Aufrufform wird erkannt und FAILt sofort mit Hinweis.
    - **Immer `-ApplePersistenceIgnoreState YES` mitgeben** (`Fastra -selftest findbar -ApplePersistenceIgnoreState YES`). Nach einem abgebrochenen Lauf (z.B. `pkill` in build.sh) zeigt macOS sonst beim nächsten Start den modalen „Fenster wiederherstellen?"-Dialog (`NSPersistentUIManager`) — die App hängt dann VOR dem Selbsttest endlos (per `sample` diagnostiziert: Main-Thread in `promptToIgnorePersistentStateWithCrashHistory`).
-   - **Gesperrter Bildschirm = keine Fenster-Selbsttests.** Bei gesperrter Konsole (`ioreg -n Root -d1 | grep IOConsoleLocked` → Yes) schlagen alle fensterbasierten Tests fehl — das ist Umgebung, nicht Code. Nur `-selftest search` (fensterlos) ist dann aussagekräftig. `selftest.sh` prüft das vorab.
+   - **Gesperrter Bildschirm = keine Fenster-Selbsttests.** Bei gesperrter Konsole (`ioreg -n Root -d1 | grep IOConsoleLocked` → Yes) schlagen alle fensterbasierten Tests fehl — das ist Umgebung, nicht Code. Nur die im Runner ausdrücklich als fensterlos markierten Tests sind dann aussagekräftig. `selftest.sh` prüft das vorab.
    - **`cmdw` und `newwindow` brauchen einen ruhigen Desktop.** macOS 26 verweigert einem im Hintergrund gestarteten Prozess die Selbst-Aktivierung komplett (`NSApp.activate` wirkungslos, `isActive` bleibt false — kooperative Aktivierung). `selftest.sh` startet beide deshalb via `open` und holt die App per System Events nach vorn. Arbeitet gleichzeitig jemand aktiv am Mac (z.B. Claude-App im Vordergrund), holt sich dessen App den Fokus sofort zurück → der Test meldet einen ausgewiesenen Umgebungs-FAIL („Umgebungsproblem", `selftest.sh`-Exit-Code 2), KEINEN Funktionsfehler. Unbeaufsichtigt (entsperrt + idle) laufen lassen oder manuell bewerten.
 
 **Daraus abgeleitete Test-Leitlinien (verbindlich):**

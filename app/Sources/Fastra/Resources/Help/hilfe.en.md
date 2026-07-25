@@ -21,6 +21,16 @@ highlight in the document.
 - **Project** — the project folder, narrowed down by file sets and
   exclude patterns.
 
+**Project exclusions:** Separate multiple patterns with commas. A simple dot
+suffix such as `.json` is shorthand for `*.json`; explicit globs such as
+`userPreferences.*`, `foo?.txt`, and `**` remain unchanged. Matching
+directories exclude their complete subtree, while patterns containing a slash
+are relative to the project root. Case is respected as entered. `DerivedData`
+is always excluded from project searches at any depth and is therefore stated
+below the input field. When you change the search term, file type, or
+exclusions, Fastra removes the old results immediately; navigation, preview,
+and “Replace All” become available again only for the new result.
+
 **Wildcards:** With regex mode off, `*` matches any text **within a
 line**, `**` also matches **across line breaks**. Every wildcard
 automatically becomes a capture group: the pills (`$1`, `$2` …) below
@@ -306,8 +316,10 @@ is changed.
 `.4dm` methods are rendered with a dedicated 4D color scheme (commands,
 keywords, variables, comments like in the 4D editor). In an open project,
 Fastra also recognizes methods in `Project/Sources/Methods` case-insensitively
-and highlights them distinctly from process variables; `[Table:1]` remains a
-table. Via the language menu, 4D can also be enabled manually for other files.
+and highlights them distinctly from process variables. Shared component
+methods are orange and bold, so they remain distinct from project methods and
+ordinary commands after accepting a typeahead suggestion; `[Table:1]` remains
+a table. Via the language menu, 4D can also be enabled manually for other files.
 `.4DProject`/`.4DForm` are real JSON files, `.4DCatalog`/`.4DSettings`
 real XML — they open with JSON or XML rendering.
 
@@ -338,7 +350,7 @@ components without source code, Fastra uses the bundled method
 documentation as the signature source; if that is missing too, the method
 only appears in the typeahead, without invented parameters (the panel then
 shows `(…)`). If a project method has the same name as a component
-method, the project method wins.
+method, the project method wins in both typeahead and highlighting.
 
 **Checking `.4DForm`:** “Text → Check Document” additionally validates
 form files against the bundled form schema (MIT-licensed, by Mathieu

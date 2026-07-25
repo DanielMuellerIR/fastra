@@ -612,7 +612,9 @@ struct EditorView: View {
                 [customProviders.provider(
                     for: language,
                     projectMethodNames: language.id == CustomLanguageRegistry.fourD.id
-                        ? workspace.fourDProjectMethodNames : []
+                        ? workspace.fourDProjectMethodNames : [],
+                    componentMethodNames: language.id == CustomLanguageRegistry.fourD.id
+                        ? Set(workspace.fourDComponentMethods.keys) : []
                 )]
             },
             coordinators: [minimapLayoutCoordinator],
@@ -1431,6 +1433,7 @@ extension EditorView {
     // Slot-Belegung (nach dem EditorTheme-Patch in build.sh):
     //   text       ← plain_text          keywords ← keywords (bold)
     //   commands   ← commands (bold)   methods ← Projektmethoden (bold/italic)
+    //   componentMethods ← Component-Methoden (orange/bold)
     //   values     ← constants           variables ← local_variables (+$1…)
     //   characters ← process_variables (auch <>interprozess — dark.json
     //                kennt ohnehin keine eigene Interprozess-Farbe)
@@ -1460,7 +1463,8 @@ extension EditorView {
         strings:    .init(color: rgb(0x2F, 0x5D, 0x3A)),
         characters: .init(color: rgb(0x9E, 0x60, 0x00), italic: true),
         comments:   .init(color: rgb(0x7F, 0x7E, 0x80)),
-        methods:    .init(color: rgb(0x00, 0x00, 0x88), bold: true, italic: true)
+        methods:    .init(color: rgb(0x00, 0x00, 0x88), bold: true, italic: true),
+        componentMethods: .init(color: rgb(0xB3, 0x47, 0x00), bold: true)
     )
 
     static let fourDThemeDark: EditorTheme = EditorTheme(
@@ -1480,7 +1484,8 @@ extension EditorView {
         strings:    .init(color: rgb(0x94, 0xCE, 0x9F)),
         characters: .init(color: rgb(0xD7, 0xF6, 0x92)),
         comments:   .init(color: rgb(0x74, 0xC5, 0xEA)),
-        methods:    .init(color: rgb(0x0F, 0x93, 0x0A), bold: true, italic: true)
+        methods:    .init(color: rgb(0x0F, 0x93, 0x0A), bold: true, italic: true),
+        componentMethods: .init(color: rgb(0xFF, 0x9D, 0x3F), bold: true)
     )
 
     private static func rgb(_ r: Int, _ g: Int, _ b: Int, _ a: CGFloat = 1) -> NSColor {

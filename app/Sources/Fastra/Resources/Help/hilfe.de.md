@@ -21,6 +21,17 @@ Markierung im Dokument.
 - **Projekt** — der Projektordner, eingeschränkt über Datei-Sets und
   Ausschlussmuster.
 
+**Projekt-Ausschlüsse:** Mehrere Muster werden durch Kommas getrennt. Ein
+einfaches Punkt-Suffix wie `.json` ist die Kurzform für `*.json`; ausdrückliche
+Globs wie `userPreferences.*`, `foo?.txt` und `**` bleiben unverändert.
+Ordner-Treffer schließen den ganzen Unterbaum aus, Slash-Muster beziehen sich
+auf die Projektwurzel. Groß-/Kleinschreibung wird wie eingegeben beachtet.
+`DerivedData` bleibt bei jeder Projekt-Suche unabhängig von der Tiefe
+verbindlich ausgeschlossen und wird deshalb auch unter dem Eingabefeld
+angezeigt. Änderst du Suchbegriff, Dateityp oder Ausschlüsse, entfernt Fastra
+die alte Trefferliste sofort; Navigation, Vorschau und „Alle ersetzen“ werden
+erst mit dem Ergebnis des neuen Laufs wieder aktiv.
+
 **Platzhalter (Wildcards):** Ohne RegEx-Modus steht `*` für beliebigen
 Text **innerhalb einer Zeile**, `**` auch **über Zeilengrenzen hinweg**.
 Jeder Platzhalter wird automatisch zu einer Capture-Gruppe: Die Pillen
@@ -319,7 +330,10 @@ Grund, damit nichts außerhalb des sichtbaren Rechtecks geändert wird.
 (Befehle, Keywords, Variablen, Kommentare wie im 4D-Editor). In einem
 geöffneten Projekt erkennt Fastra zusätzlich Methoden aus
 `Project/Sources/Methods` unabhängig von Groß-/Kleinschreibung und hebt sie
-klar anders als Prozessvariablen hervor; `[Tabelle:1]` bleibt eine Tabelle.
+klar anders als Prozessvariablen hervor. Geteilte Komponentenmethoden werden
+orange und fett dargestellt und bleiben damit auch nach einer Typeahead-
+Übernahme von Projektmethoden und normalen Befehlen unterscheidbar;
+`[Tabelle:1]` bleibt eine Tabelle.
 Über das
 Sprachmenü lässt sich 4D auch für andere Dateien manuell aktivieren.
 `.4DProject`/`.4DForm` sind echte JSON-Dateien, `.4DCatalog`/
@@ -355,7 +369,7 @@ kompilierten Komponenten ohne Quelltext nutzt Fastra die mitgelieferte
 Methodendokumentation als Signaturquelle; fehlt auch die, erscheint die
 Methode nur im Typeahead, ohne erfundene Parameter (das Panel zeigt dann
 `(…)`). Heißt eine Projektmethode wie eine Komponentenmethode, gewinnt
-die Projektmethode.
+die Projektmethode — im Typeahead ebenso wie bei der farblichen Darstellung.
 
 **`.4DForm` prüfen:** „Text → Dokument prüfen“ validiert Formulardateien
 zusätzlich gegen das mitgelieferte Formular-Schema (MIT-lizenziert, von

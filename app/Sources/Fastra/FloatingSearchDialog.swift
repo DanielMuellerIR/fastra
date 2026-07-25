@@ -393,7 +393,13 @@ struct FloatingSearchDialog: View {
                           ))
                     .textFieldStyle(.roundedBorder)
                     .fastraFont(.small)
+                    .accessibilityIdentifier("fastra.projectExclusions")
             }
+
+            Text("DerivedData wird bei Projektsuchen immer ausgeschlossen.")
+                .fastraFont(size: 10)
+                .foregroundColor(Theme.textSecondary)
+                .padding(.leading, 88 * uiScale)
         }
     }
 
@@ -1637,6 +1643,9 @@ struct FloatingSearchDialog: View {
                     // hervorgehobene Buttons wirkten wie zwei Standardaktionen.
                     .buttonStyle(.bordered)
                     .disabled(scopeTotalMatches == 0 || workspace.searchError != nil
+                              || (workspace.scope.isFolderLike
+                                  && (workspace.folderSearching
+                                      || workspace.folderNeedsSearch))
                               || workspace.folderApplying)
                     .help({
                         switch workspace.scope {

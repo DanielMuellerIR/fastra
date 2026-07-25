@@ -3488,6 +3488,10 @@ final class Workspace: ObservableObject {
 
     var navMatches: [NavMatch] {
         if scope.isFolderLike {
+            // Während ein neuer Lauf aussteht oder arbeitet, existiert keine
+            // gültige Navigations-/Apply-Basis — selbst dann nicht, wenn ein
+            // zukünftiger Refactor das physische Leeren einmal verzögert.
+            guard !folderSearching, !folderNeedsSearch else { return [] }
             return folderResults.flatMap { pf in
                 pf.matches.map { NavMatch(id: $0.id, url: pf.url, match: $0) }
             }
@@ -3563,6 +3567,8 @@ final class Workspace: ObservableObject {
     func applyAllInFolder() -> Bool {
         guard scope.isFolderLike,
               searchError == nil,
+              !folderSearching,
+              !folderNeedsSearch,
               !folderResults.isEmpty,
               !folderApplying else { return false }
         let visibleResults = folderResults.filter { !$0.matches.isEmpty }

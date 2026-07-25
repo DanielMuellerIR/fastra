@@ -12,6 +12,7 @@
 "Andere Tabs schließen" = "Close Other Tabs";
 "Aus Bereitstellung nehmen" = "Unstage";
 "Ausschlüsse" = "Exclusions";
+"DerivedData wird bei Projektsuchen immer ausgeschlossen." = "DerivedData is always excluded from project searches.";
 "Auswahl als Suchbegriff" = "Use Selection for Find";
 "Bereitgestellte Änderungen committen (nichts bereitgestellt → alles)" = "Commit staged changes (if nothing is staged, commit everything)";
 "Commit" = "Commit";

@@ -17,6 +17,62 @@ func bufferCompletionRequiresCurrentGeneration() {
     #expect(!SearchRunner.completionBelongsToCurrentRun(7, currentRunID: 8))
 }
 
+@Test("Projektfilter-Wechsel invalidiert Treffer, Navigation und Apply sofort")
+@MainActor
+func projectFilterChangeInvalidatesVisiblePreviewImmediately() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory
+        .appendingPathComponent("fastra-runner-\(UUID().uuidString)", isDirectory: true)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root) }
+
+    let suiteName = "fastra-runner-defaults-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let workspace = Workspace(defaults: defaults)
+    workspace.openProject(at: root)
+    workspace.scope = .project
+    workspace.findPattern = "NADEL"
+
+    // Initiale Combine-Läufe vollständig ablaufen lassen. Erst danach wird
+    // eine bewusst alte, sichtbare Vorschau eingesetzt.
+    try await Task.sleep(for: .milliseconds(550))
+    let options = workspace.currentSearchOptions
+    let match = try #require(BufferSearch.find(
+        in: "NADEL", options: options
+    ).matches.first)
+    workspace.folderResults = [FolderSearch.PerFileResult(
+        url: root.appendingPathComponent("alt.txt"),
+        matches: [match],
+        totalMatches: 1,
+        skipped: nil,
+        snapshot: nil,
+        searchOptions: options
+    )]
+    workspace.folderTotalMatches = 1
+    workspace.folderResultsWereCapped = true
+    var previewConflictWasShown = false
+    workspace.folderPreviewConflictHandler = { _ in
+        previewConflictWasShown = true
+    }
+
+    var config = workspace.projectSearchConfiguration
+    config.fileTypeFilter = config.fileTypeFilter == .all ? .knownText : .all
+    workspace.projectSearchConfiguration = config
+
+    // Diese Aussagen gelten synchron beim Inputwechsel, noch vor dem
+    // 120-ms- und 300-ms-Debounce. Alte Treffer dürfen in diesem Fenster
+    // weder sichtbar noch navigierbar/anwendbar bleiben.
+    #expect(workspace.folderResults.isEmpty)
+    #expect(workspace.folderTotalMatches == 0)
+    #expect(!workspace.folderResultsWereCapped)
+    #expect(workspace.navMatches.isEmpty)
+    #expect(workspace.folderSearching)
+    #expect(!workspace.applyAllInFolder())
+    #expect(!previewConflictWasShown)
+}
+
 // MARK: - runsLive: welcher Scope sucht beim Tippen sofort?
 
 @Test("Datei-Scope sucht live")

@@ -20,9 +20,12 @@ import CodeEditLanguages
 final class FourDHighlightProvider: ObservableObject, HighlightProviding {
 
     private let projectMethodNames: Set<String>
+    private let componentMethodNames: Set<String>
 
-    init(projectMethodNames: Set<String> = []) {
+    init(projectMethodNames: Set<String> = [],
+         componentMethodNames: Set<String> = []) {
         self.projectMethodNames = Set(projectMethodNames.map { $0.lowercased() })
+        self.componentMethodNames = Set(componentMethodNames.map { $0.lowercased() })
     }
 
     /// Oberhalb dieser Textlänge (UTF-16) färbt der Provider nicht mehr —
@@ -49,6 +52,7 @@ final class FourDHighlightProvider: ObservableObject, HighlightProviding {
         // ungewollt umdeutet.
         case .methodCall: return .function
         case .projectMethod: return .method
+        case .componentMethod: return .componentMethod
         }
     }
 
@@ -86,7 +90,9 @@ final class FourDHighlightProvider: ObservableObject, HighlightProviding {
             // Einmal pro Änderung: kompletter Tokenizer-Lauf, dann bedienen
             // alle Chunk-Anfragen denselben Cache.
             cachedRanges = FourDTokenizer.tokenize(
-                text, projectMethodNames: projectMethodNames
+                text,
+                projectMethodNames: projectMethodNames,
+                componentMethodNames: componentMethodNames
             ).compactMap { token in
                 Self.capture(for: token.kind).map {
                     HighlightRange(range: token.range, capture: $0)

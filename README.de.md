@@ -67,6 +67,9 @@ Capture Groups.
 - **Capture Groups per Drag & Drop** vom Such- ins Ersetzen-Feld.
 - **Bereiche**: Aktuelle Datei, alle offenen Tabs, Ordner oder eine konfigurierte
   Dateimenge im aktuellen Projekt.
+- **Schnelle Projektfilter**: `.json` gilt als Kurzform für `*.json`,
+  Ordner-Globs schließen ganze Bäume früh aus und `DerivedData` bleibt
+  transparent immer außen vor.
 - **Projekte und Git**: Lebender Dateibaum, getrennte bereitgestellte und offene
   Änderungen, nativer mehrspuriger Commit-Graph und aussagekräftige Diffs direkt
   im Editor.
@@ -141,7 +144,9 @@ Fastra behandelt 4D-Quellcode nicht als gewöhnlichen Text. `.4dm`-Methoden
 erhalten ein eigenes, vertrautes Farbschema für Befehle, Keywords, Variablen,
 Tabellen und Kommentare. In einem geöffneten Projekt indexiert Fastra
 `Project/Sources/Methods` unabhängig von Groß-/Kleinschreibung und hebt
-Projektmethoden getrennt von Prozessvariablen hervor.
+Projektmethoden getrennt von Prozessvariablen hervor. Geteilte Methoden aus
+Projekt-Komponenten bleiben auch nach der Typeahead-Übernahme als eigene
+orange, fette Kategorie von Projektmethoden und Befehlen unterscheidbar.
 
 Besonders nützlich beim Erkunden größerer Codebasen: **Alt-Doppelklick** auf
 einen Methodennamen öffnet direkt die zugehörige Projektmethode, auf einen
@@ -150,7 +155,8 @@ springen lokal. Ist kein Ziel auffindbar, öffnet Fastra die Projektsuche mit
 dem Namen, statt still nichts zu tun.
 
 - Die Vervollständigung schlägt nach zwei eingegebenen Zeichen Befehle mit
-  Syntax-Signaturen sowie Konstanten vor.
+  Syntax-Signaturen, Projektmethoden, geteilte Komponentenmethoden mit
+  Komponentenname sowie Konstanten vor.
 - **Dokument prüfen** bietet lokale Strukturprüfungen, validiert `.4DForm`-
   Dateien gegen ihr Schema und kann optional ein bereits installiertes tool4d
   für verbindliche Syntaxdiagnosen verwenden. Fastra bündelt oder lädt tool4d

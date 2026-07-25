@@ -591,3 +591,30 @@ Storage liefern ein 0-breites Rechteck statt der Range-Abfrage.
 **Regression:** `TextLayoutManagerStaleOffsetTests` stellt das Fenster nach
 (Storage schrumpft ohne Delegate-Benachrichtigung) — ohne Patch stürzt der
 Testprozess, mit Patch kommt ein ehrliches Rechteck zurück.
+
+### F.25 Completion-Herkunft muss bis ins Theme erhalten bleiben (2026-07-25)
+
+Eine korrekte Typeahead-Zeile beweist noch keine korrekte Darstellung nach
+dem Einfügen. Fastra kannte geteilte 4D-Komponentenmethoden im
+`FourDComponentIndex` und kennzeichnete sie im Popup mit Komponentenname und
+Shippingbox. Der Highlight-Provider erhielt danach jedoch nur die
+Projektmethodennamen; der eingefügte Name fiel auf `.methodCall` zurück und
+erschien wie ein normaler Befehl. Die semantische Herkunft muss deshalb durch
+die ganze Kette reisen: Workspace-Index → Provider-Cache-Schlüssel →
+Tokenizer-Kategorie → Capture → Theme-Slot. Bei einer Namenskollision prüft
+der Tokenizer weiterhin zuerst die Projektmethode.
+
+**Rückwärtskompatibler Patch 4m2:** `EditorTheme.componentMethods` ist
+optional und verwendet ohne Angabe `commands`. Damit behalten alle
+vorhandenen Themes und Sprachen exakt ihre Darstellung. Der neue
+`CaptureName.componentMethod`-Case steht am Enum-Ende; ein Einfügen in der
+Mitte würde die automatisch vergebenen Raw Values vorhandener Cases ändern.
+`build.sh` prüft jede Patchstelle hart und verwirft anschließend die
+CodeEditSourceEditor-Buildprodukte.
+
+**Regressionen:** Tokenizer-/Provider-Tests prüfen Kategorie, Kollision,
+Refresh und Theme-Mapping. `./selftest.sh highlight4d` beobachtet
+Komponentenmethode, Projektmethode und Befehl im echten TextStorage in Hell
+und Dunkel. `./selftest.sh completion4d` übernimmt eine Shared-Component per
+echtem Typeahead-Doppelklick und prüft Farbe sowie Font erst am eingefügten
+Text.

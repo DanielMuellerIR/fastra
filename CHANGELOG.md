@@ -9,6 +9,49 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.51.0] — 2026-07-25
+
+### Hinzugefügt
+
+- Geteilte 4D-Komponentenmethoden besitzen nach der Übernahme aus dem
+  Typeahead eine eigene semantische Darstellung: orange und fett in Hell und
+  Dunkel. Projektmethoden bleiben grün beziehungsweise dunkelblau und gewinnen
+  weiterhin bei Namenskollisionen; Befehle behalten unverändert ihre bisherige
+  Farbe. Ein Component-Index-Refresh invalidiert nun auch den Highlight-
+  Provider.
+- Die Projekt-Suche erklärt ihren verbindlichen `DerivedData`-Ausschluss
+  sichtbar. Neue und bestehende Projektkonfigurationen enthalten ihn effektiv,
+  ohne den direkten Component-Index für
+  `Project/DerivedData/methodAttributes.json` zu beeinflussen.
+- Read-only-Diagnose-Selbsttests messen reale Projektsuchen mit Kandidaten-,
+  Treffer-, CPU- und Speicherdaten sowie den davon getrennten Datei-/Editor-
+  Ladepfad.
+
+### Geändert
+
+- Ausschlüsse werden pro Suchlauf nur einmal kompiliert und vor teuren
+  Paket-/Dateimetadatenprüfungen angewandt. Sichere komponentenbezogene Muster
+  verkleinern bereits die `rg --files`-Kandidatenmenge; Fastras eigener Matcher
+  bleibt der verbindliche Nachfilter. Paketzugehörigkeit wird pro Verzeichnis
+  gecacht, temporäre Dateiobjekte werden pro Datei freigegeben.
+- Ein Punkt-Suffix wie `.json` ist als Kurzform exakt gleichbedeutend mit
+  `*.json`. Explizite Globs, `?`, `**`, projekt-relative Slash-Muster und die
+  bestehende Groß-/Kleinschreibung bleiben erhalten; Ordner-Muster wie
+  `userPreferences.*` schließen den ganzen Baum in beliebiger Tiefe aus.
+- Änderungen an Suchbegriff, Dateityp oder Projekt-Ausschlüssen leeren alte
+  Mehrdatei-Treffer synchron. Spinner beziehungsweise „Suchen erforderlich“
+  erscheinen sofort; Navigation, Vorschau und Apply bleiben bis zum Ergebnis
+  des aktuellen Laufs gesperrt.
+
+### Leistung
+
+- Reale Messung auf einem 575-MB-4D-Projekt: Die Dateikandidaten sinken von
+  47.030 auf 2.275. Drei warme `util_*`-Läufe mit 1.552 Treffern benötigen
+  0,342/0,347/0,347 Sekunden (Median 0,347 Sekunden; zuvor sichtbar etwa
+  6,4 Sekunden). Der separate Pfad für die 22-KB-Datei `folders.json` meldet
+  den Load-Callback nach 0,087 Sekunden und den montierten Editor nach
+  0,259 Sekunden; deshalb war kein eigener Load-/Editor-Fix nötig.
+
 ## [v1.50.4] — 2026-07-25
 
 ### Behoben

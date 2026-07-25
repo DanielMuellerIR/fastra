@@ -125,6 +125,8 @@ struct ProjectFileSet: Identifiable, Codable, Equatable {
 }
 
 struct ProjectSearchConfiguration: Codable, Equatable {
+    static let requiredExcludePattern = "DerivedData"
+
     var fileSets: [ProjectFileSet]
     var activeSetID: UUID
     var fileTypeFilter: FileTypeFilter
@@ -135,7 +137,8 @@ struct ProjectSearchConfiguration: Codable, Equatable {
         let all = ProjectFileSet(name: "Gesamtes Projekt", paths: ["."])
         return ProjectSearchConfiguration(fileSets: [all], activeSetID: all.id,
                                           fileTypeFilter: .knownText,
-                                          excludePatternsText: ".git, .build, build")
+                                          excludePatternsText:
+                                            ".git, .build, build, DerivedData")
     }
 
     var activeSet: ProjectFileSet? {
@@ -143,10 +146,14 @@ struct ProjectSearchConfiguration: Codable, Equatable {
     }
 
     var excludePatterns: [String] {
-        excludePatternsText
+        var patterns = excludePatternsText
             .split(whereSeparator: { $0 == "," || $0.isNewline })
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+        if !patterns.contains(Self.requiredExcludePattern) {
+            patterns.append(Self.requiredExcludePattern)
+        }
+        return patterns
     }
 }
 
@@ -191,6 +198,18 @@ enum ProjectSearchStore {
         var result = config
         if !result.fileSets.contains(where: { $0.id == result.activeSetID }) {
             result.activeSetID = result.fileSets[0].id
+        }
+        // Altstände sichtbar migrieren. `excludePatterns` erzwingt denselben
+        // Schutz zusätzlich sofort, falls der Nutzer den Text im laufenden
+        // Dialog entfernt.
+        if !result.excludePatternsText
+            .split(whereSeparator: { $0 == "," || $0.isNewline })
+            .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+            .contains(ProjectSearchConfiguration.requiredExcludePattern) {
+            let separator = result.excludePatternsText
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : ", "
+            result.excludePatternsText += separator
+                + ProjectSearchConfiguration.requiredExcludePattern
         }
         return result
     }

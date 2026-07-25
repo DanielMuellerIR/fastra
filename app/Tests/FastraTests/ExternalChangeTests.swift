@@ -250,13 +250,17 @@ func workspace_folderApplyBlocksDirtyTab() throws {
     ws.replacePattern = "bar"
     ws.useRegex = false
     ws.caseSensitive = true
-    ws.folderResults = [result]
     ws.tabs = [EditorTab(title: url.lastPathComponent,
                          path: url.deletingLastPathComponent().path,
                          url: url, content: "lokal ungespeichert\n",
                          isDirty: true,
                          diskSnapshot: FileSnapshot(data: Data("foo auf Platte\n".utf8), at: url))]
     ws.activeTabID = ws.tabs[0].id
+    // Tabs sind selbst Suchinputs. Deshalb setzt die Fixture das bereits
+    // abgeschlossene Suchergebnis erst nach dem vorbereiteten Dirty-Tab ein.
+    ws.folderResults = [result]
+    ws.folderSearching = false
+    ws.folderNeedsSearch = false
     let backupRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent("fastra-workspace-undo-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: backupRoot, withIntermediateDirectories: true)
@@ -287,6 +291,9 @@ func workspace_folderApplyRejectsStaleVisibleResult() async throws {
     ws.useRegex = false
     ws.caseSensitive = true
     ws.folderResults = [FolderSearch.searchOneFile(at: url, options: options)]
+    // Die Fixture setzt ein bereits abgeschlossenes Suchergebnis direkt ein.
+    ws.folderSearching = false
+    ws.folderNeedsSearch = false
     let backups = FileManager.default.temporaryDirectory
         .appendingPathComponent("fastra-visible-undo-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: backups, withIntermediateDirectories: true)
@@ -323,6 +330,9 @@ func workspace_folderApplyRunsAsynchronously() async throws {
     ws.useRegex = false
     ws.caseSensitive = true
     ws.folderResults = [FolderSearch.searchOneFile(at: url, options: options)]
+    // Die Fixture setzt ein bereits abgeschlossenes Suchergebnis direkt ein.
+    ws.folderSearching = false
+    ws.folderNeedsSearch = false
     let backups = FileManager.default.temporaryDirectory
         .appendingPathComponent("fastra-async-undo-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: backups, withIntermediateDirectories: true)

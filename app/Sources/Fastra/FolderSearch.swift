@@ -162,6 +162,13 @@ enum FolderSearch {
         // Überlappende Datei-Set-Wurzeln (z. B. „.“ und „Sources“) dürfen
         // dieselbe Datei nicht zweimal durchsuchen oder ersetzen.
         var seenFiles = Set<String>()
+        // Alle Globs genau einmal pro Lauf normalisieren und kompilieren.
+        // Vorher entstand für jeden der zehntausenden Kandidaten je Muster
+        // erneut eine NSRegularExpression.
+        let exclusionMatcher = PathExclusion.Matcher(
+            patterns: excludedPatterns,
+            relativeTo: projectRoot
+        )
 
         outerLoop:
         for folder in folders {
@@ -173,14 +180,15 @@ enum FolderSearch {
             }
             // Datei-Sets dürfen neben Ordnern auch einzelne Dateien enthalten.
             if !rootIsDirectory.boolValue {
-                guard !PathExclusion.matches(folder, patterns: excludedPatterns,
-                                             relativeTo: projectRoot),
+                guard !exclusionMatcher.matches(folder),
                       passesFilter(url: folder, filter: filter),
                       seenFiles.insert(folder.canonicalFileURL.path).inserted else { continue }
-                let result = searchOneFile(at: folder, options: options,
-                                           maxMatches: min(maxResultsPerFile,
-                                                           maxTotalMatches - totalSoFar),
-                                           shouldCancel: shouldCancel)
+                let result = autoreleasepool {
+                    searchOneFile(at: folder, options: options,
+                                  maxMatches: min(maxResultsPerFile,
+                                                  maxTotalMatches - totalSoFar),
+                                  shouldCancel: shouldCancel)
+                }
                 if shouldCancel() { return .empty }
                 if result.skipped != nil || !result.matches.isEmpty { perFile.append(result) }
                 totalSoFar += result.totalMatches
@@ -196,6 +204,7 @@ enum FolderSearch {
             let urls: [URL]
             do {
                 urls = try RipgrepFileEnumerator.files(in: folder,
+                                                       excludedPatterns: excludedPatterns,
                                                        shouldCancel: shouldCancel)
             } catch RipgrepFileEnumerator.Failure.unavailable {
                 do {
@@ -216,23 +225,20 @@ enum FolderSearch {
                         error.localizedDescription),
                     wasCapped: false)
             }
+            var packageCache = PackageMembershipCache(root: folder)
             for url in urls {
                 if shouldCancel() { return .empty }
+                // Billige, bereits kompilierte Pfad- und Dateitypfilter müssen
+                // vor jeder macOS-Metadatenabfrage greifen. Im realen
+                // 4D-Testkorpus schrumpft die Menge von 47.030 auf 2.275.
+                if exclusionMatcher.matches(url) { continue }
+                guard passesFilter(url: url, filter: filter) else { continue }
                 // `rg --files` kennt macOS-Pakete nicht. Ohne diesen Check
                 // würden etwa `.app`- oder `.bundle`-Inhalte anders als im
-                // bisherigen FileManager-Pfad durchsuchbar.
-                guard !isInsidePackage(url, below: folder) else { continue }
-                if PathExclusion.matches(url, patterns: excludedPatterns,
-                                         relativeTo: projectRoot) {
-                    continue
-                }
+                // bisherigen FileManager-Pfad durchsuchbar. Der Cache prüft
+                // jeden Elternordner höchstens einmal pro Suchwurzel.
+                guard !packageCache.contains(url) else { continue }
                 guard seenFiles.insert(url.canonicalFileURL.path).inserted else { continue }
-                if !passesFilter(url: url, filter: filter) {
-                    // Filter-Skips werden NICHT ins Ergebnis aufgenommen
-                    // (zu viel Lärm in jeder Liste). Bei Bedarf einklappbar
-                    // später anzeigen — für jetzt still überspringen.
-                    continue
-                }
 
                 // Datei durchsuchen. Der effektive Pro-Datei-Cap ist das
                 // Minimum aus `maxResultsPerFile` und dem noch verfügbaren
@@ -242,9 +248,15 @@ enum FolderSearch {
                 // tatsächlich ≤ maxTotalMatches ist).
                 let remaining = maxTotalMatches - totalSoFar
                 let effectivePerFile = min(maxResultsPerFile, remaining)
-                let result = searchOneFile(at: url, options: options,
-                                           maxMatches: effectivePerFile,
-                                           shouldCancel: shouldCancel)
+                // Foundation/FileHandle erzeugt beim Lesen temporäre
+                // Objective-C-Objekte. Ohne lokalen Pool bleiben sie in einem
+                // langen detached Task bis zum Laufende liegen; auf realen
+                // Projekten wächst der Resident-Speicher dann pro Datei.
+                let result = autoreleasepool {
+                    searchOneFile(at: url, options: options,
+                                  maxMatches: effectivePerFile,
+                                  shouldCancel: shouldCancel)
+                }
                 if shouldCancel() { return .empty }
 
                 // Nur Dateien aufnehmen, die entweder Treffer ODER einen
@@ -319,15 +331,39 @@ enum FolderSearch {
         return Result(perFile: [], invalidPatternMessage: message, wasCapped: false)
     }
 
-    private static func isInsidePackage(_ url: URL, below root: URL) -> Bool {
-        let rootPath = root.standardizedFileURL.path
-        var parent = url.deletingLastPathComponent()
-        while parent.path.hasPrefix(rootPath) {
-            if (try? parent.resourceValues(forKeys: [.isPackageKey]).isPackage) == true { return true }
-            if parent.standardizedFileURL.path == rootPath { break }
-            parent.deleteLastPathComponent()
+    /// Merkt für jeden Elternordner, ob er selbst oder ein Vorfahr unterhalb
+    /// der Suchwurzel ein macOS-Paket ist. So kostet ein Ordner mit tausenden
+    /// Dateien nur eine `resourceValues`-Abfrage statt tausender identischer.
+    private struct PackageMembershipCache {
+        let rootPath: String
+        var membershipByDirectory: [String: Bool] = [:]
+
+        init(root: URL) {
+            rootPath = root.standardizedFileURL.path
         }
-        return false
+
+        mutating func contains(_ file: URL) -> Bool {
+            containsDirectory(file.deletingLastPathComponent().standardizedFileURL)
+        }
+
+        private mutating func containsDirectory(_ directory: URL) -> Bool {
+            let path = directory.standardizedFileURL.path
+            guard path == rootPath || path.hasPrefix(rootPath + "/") else { return false }
+            if let cached = membershipByDirectory[path] { return cached }
+
+            let directoryIsPackage =
+                (try? directory.resourceValues(forKeys: [.isPackageKey]).isPackage) == true
+            let result: Bool
+            if directoryIsPackage {
+                result = true
+            } else if path == rootPath {
+                result = false
+            } else {
+                result = containsDirectory(directory.deletingLastPathComponent())
+            }
+            membershipByDirectory[path] = result
+            return result
+        }
     }
 
     /// Sucht in genau einer Datei. Liest die Datei, dekodiert sie
@@ -389,29 +425,99 @@ enum FolderSearch {
 /// Pfadkomponente (`build`, `*.generated.swift`); mit Slash für den gesamten
 /// relativen Pfad. Unterstützt `*`, `?` und `**`.
 enum PathExclusion {
-    static func matches(_ url: URL, patterns: [String], relativeTo root: URL?) -> Bool {
-        guard !patterns.isEmpty else { return false }
-        let relative: String
-        if let root {
-            let rootPath = root.standardizedFileURL.path
-            let path = url.standardizedFileURL.path
-            guard path == rootPath || path.hasPrefix(rootPath + "/") else { return false }
-            relative = path == rootPath ? "" : String(path.dropFirst(rootPath.count + 1))
-        } else {
-            relative = url.lastPathComponent
-        }
-        let components = relative.split(separator: "/").map(String.init)
-        return patterns.contains { raw in
-            let pattern = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !pattern.isEmpty else { return false }
-            if pattern.contains("/") {
-                return glob(pattern, matches: relative)
+    /// Ein pro Suchlauf wiederverwendbarer Satz kompilierter Ausschlüsse.
+    struct Matcher {
+        private struct Rule {
+            let matchesWholeRelativePath: Bool
+            let expression: NSRegularExpression
+
+            func matches(_ value: String) -> Bool {
+                let range = NSRange(location: 0, length: (value as NSString).length)
+                return expression.firstMatch(in: value, range: range) != nil
             }
-            return components.contains { glob(pattern, matches: $0) }
+        }
+
+        private let rootPath: String?
+        private let rules: [Rule]
+
+        init(patterns: [String], relativeTo root: URL?) {
+            rootPath = root?.standardizedFileURL.path
+            rules = patterns.compactMap { raw in
+                guard let pattern = PathExclusion.normalizedPattern(raw) else { return nil }
+                let regex = PathExclusion.regularExpression(for: pattern)
+                return Rule(
+                    matchesWholeRelativePath: pattern.contains("/"),
+                    expression: try! NSRegularExpression(pattern: regex)
+                )
+            }
+        }
+
+        func matches(_ url: URL) -> Bool {
+            guard !rules.isEmpty else { return false }
+            let relative: String
+            if let rootPath {
+                let path = url.standardizedFileURL.path
+                guard path == rootPath || path.hasPrefix(rootPath + "/") else { return false }
+                relative = path == rootPath
+                    ? "" : String(path.dropFirst(rootPath.count + 1))
+            } else {
+                relative = url.lastPathComponent
+            }
+            let components = relative.split(separator: "/").map(String.init)
+            return rules.contains { rule in
+                if rule.matchesWholeRelativePath {
+                    return rule.matches(relative)
+                }
+                return components.contains(where: rule.matches)
+            }
         }
     }
 
+    static func matches(_ url: URL, patterns: [String], relativeTo root: URL?) -> Bool {
+        Matcher(patterns: patterns, relativeTo: root).matches(url)
+    }
+
+    /// Sichere ripgrep-Negativglobs für komponentenbezogene Muster. Pfad-
+    /// muster mit Slash bleiben ausschließlich im projekt-relativen Fastra-
+    /// Matcher. Ebenso bleiben Zeichen draußen, deren Glob-Bedeutung (`[]`,
+    /// `{}` usw.) von Fastras bewusst kleiner Syntax abweicht.
+    static func ripgrepExclusionGlobs(for patterns: [String]) -> [String] {
+        let unsafe = CharacterSet(charactersIn: "/[]{}\\!")
+        var result: [String] = []
+        var seen = Set<String>()
+        for raw in patterns {
+            guard let pattern = normalizedPattern(raw),
+                  pattern.rangeOfCharacter(from: unsafe) == nil else { continue }
+            for glob in ["!**/\(pattern)", "!**/\(pattern)/**"]
+            where seen.insert(glob).inserted {
+                result.append(glob)
+            }
+        }
+        return result
+    }
+
     static func glob(_ pattern: String, matches value: String) -> Bool {
+        guard let normalized = normalizedPattern(pattern) else { return false }
+        let regex = regularExpression(for: normalized)
+        return value.range(of: regex, options: .regularExpression) != nil
+    }
+
+    /// `.json` ist die nutzerfreundliche Kurzform für `*.json`. Dieselbe
+    /// Regel lässt `.git` und `.build` als Ordnerkomponenten weiterarbeiten.
+    private static func normalizedPattern(_ raw: String) -> String? {
+        let pattern = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pattern.isEmpty else { return nil }
+        if pattern.count > 1,
+           pattern.hasPrefix("."),
+           !pattern.contains("/"),
+           !pattern.contains("*"),
+           !pattern.contains("?") {
+            return "*" + pattern
+        }
+        return pattern
+    }
+
+    private static func regularExpression(for pattern: String) -> String {
         var regex = "^"
         var index = pattern.startIndex
         while index < pattern.endIndex {
@@ -434,6 +540,6 @@ enum PathExclusion {
             }
         }
         regex += "$"
-        return value.range(of: regex, options: .regularExpression) != nil
+        return regex
     }
 }

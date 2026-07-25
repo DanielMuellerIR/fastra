@@ -14,8 +14,10 @@
 #   2. `-ApplePersistenceIgnoreState YES` verhindert den modalen
 #      „Fenster wiederherstellen?"-Dialog nach einem abgebrochenen Lauf.
 #   3. Bei gesperrtem Bildschirm sind Fenster-Tests nicht aussagekräftig —
-#      der Runner prüft das vorab und lässt dann nur `search` zu.
-#   4. Die Tests `cmdw`, `newwindow`, `completion4d` und `help` brauchen ECHTEN Fenster-Fokus. macOS 26 verweigert
+#      der Runner prüft das vorab und lässt dann nur die ausdrücklich
+#      fensterlos markierten Tests zu.
+#   4. Die Tests `cmdw`, `newwindow`, `completion4d`, `projectinput` und `help`
+#      brauchen ECHTEN Fenster-Fokus. macOS 26 verweigert
 #      einem im Hintergrund gestarteten Prozess die Selbst-Aktivierung
 #      (kooperative Aktivierung) — der Runner holt die App deshalb von
 #      außen per System Events nach vorn. Arbeitet gleichzeitig jemand
@@ -49,9 +51,9 @@ if [[ "$APP_BUNDLE" == /* ]]; then
 else
     APP_BUNDLE_FOR_OPEN="$(pwd)/$APP_BUNDLE"
 fi
-ALL_TESTS=(windows newwindow welcomenew sessionrestore coldopen coldopenoff multisearch findbar fields searchoptions tabswitch tabclosehit tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll selshort dragscroll rightedge dirtyundo emojisplit typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender xpath markdown markdownblanklines markdownjump markdownappearance jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader sidebarfilter filediff tool4dhint tool4dlsp gototarget searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton filemodes selsearch wildcard openscope contrast cmdw)
+ALL_TESTS=(windows newwindow welcomenew sessionrestore coldopen coldopenoff multisearch findbar fields searchoptions projectinput tabswitch tabclosehit tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll selshort dragscroll rightedge dirtyundo emojisplit typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender xpath markdown markdownblanklines markdownjump markdownappearance jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader sidebarfilter filediff tool4dhint tool4dlsp gototarget searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton filemodes selsearch wildcard openscope contrast cmdw)
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
-WINDOWLESS_TESTS=(search project localization updates git gitactions filemodes selsearch wildcard openscope tool4dlsp)
+WINDOWLESS_TESTS=(search project projectperf localization updates git gitactions filemodes selsearch wildcard openscope tool4dlsp)
 # Pro Test max. Wartezeit in Sekunden, bis die SELFTEST-Zeile da sein muss.
 # (Fenster-Polling im Test selbst: bis 15 s; plus Puffer für App-Start.)
 TIMEOUT_SECS=60
@@ -170,9 +172,10 @@ for t in "${TESTS[@]}"; do
             --env "FASTRA_COLDOPEN_FILE=$coldopen_fixture_file" \
             "$coldopen_fixture_file" \
             --args -ApplePersistenceIgnoreState YES
-    elif [[ "$t" == "cmdw" || "$t" == "newwindow" || "$t" == "welcomenew" || "$t" == "completion4d" || "$t" == "help" ]]; then
+    elif [[ "$t" == "cmdw" || "$t" == "newwindow" || "$t" == "welcomenew" || "$t" == "completion4d" || "$t" == "projectinput" || "$t" == "help" ]]; then
         # Diese Tests prüfen echte Tastatur- oder Mausbedienung (bei
-        # `completion4d` ⌃Leertaste, Pfeil und Klick) und brauchen daher
+        # `completion4d` ⌃Leertaste, Pfeil und Klick; bei `projectinput`
+        # die Eingabe ins native Filterfeld) und brauchen daher
         # Fokus → via `open` starten und von außen aktivieren. Der
         # gemeinsame Aufräumpfad `kill_leftovers` beendet die Test-App nach
         # Ergebnis UND Timeout sofort, damit kein Fenster sichtbar bleibt.

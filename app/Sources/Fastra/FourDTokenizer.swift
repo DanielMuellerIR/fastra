@@ -22,6 +22,7 @@
 // | [Tabelle]                   | .type           | tables                  |
 // | Feld (nach [Tabelle]…)      | .typeAlternate  | fields                  |
 // | Projektmethode name / name()| .method         | methods (eigener Slot)  |
+// | Component-Methode name()    | .componentMethod| componentMethods        |
 // | Sonstiger Aufruf / `.f()`   | .function       | commands (wie bisher)   |
 
 import Foundation
@@ -43,6 +44,7 @@ enum FourDTokenizer {
         case field                // Feldname direkt hinter [Tabelle]
         case methodCall           // bezeichner( oder .member( — commands
         case projectMethod        // nur Treffer des geöffneten Methodenindex
+        case componentMethod      // geteilte Methode einer 4D-Component
     }
 
     struct Token: Equatable {
@@ -94,7 +96,9 @@ enum FourDTokenizer {
 
     /// Tokenisiert den kompletten Text. Ein Durchlauf, Zeichen für Zeichen;
     /// UTF-16-Offsets, damit die Ranges direkt in CESE/TextKit passen.
-    static func tokenize(_ text: String, projectMethodNames: Set<String> = []) -> [Token] {
+    static func tokenize(_ text: String,
+                         projectMethodNames: Set<String> = [],
+                         componentMethodNames: Set<String> = []) -> [Token] {
         var tokens: [Token] = []
         let scalars = Array(text.utf16)
         let count = scalars.count
@@ -211,7 +215,8 @@ enum FourDTokenizer {
                                               start: start, phraseEnd: phraseEnd,
                                               expectsField: expectsField,
                                               afterDot: afterDot,
-                                              projectMethodNames: projectMethodNames) {
+                                              projectMethodNames: projectMethodNames,
+                                              componentMethodNames: componentMethodNames) {
                     tokens.append(token)
                     index = token.range.location + token.range.length
                 } else {
@@ -247,7 +252,8 @@ enum FourDTokenizer {
                                        start: Int, phraseEnd: Int,
                                        expectsField: Bool,
                                        afterDot: Bool,
-                                       projectMethodNames: Set<String>) -> Token? {
+                                       projectMethodNames: Set<String>,
+                                       componentMethodNames: Set<String>) -> Token? {
 
         // Wortgrenzen der Phrase für die Longest-Prefix-Versuche.
         var boundaries: [Int] = []   // Endoffsets je Wortende (relativ absolut)
@@ -344,6 +350,16 @@ enum FourDTokenizer {
             if projectMethodNames.contains(candidate.lowercased()) {
                 return Token(range: NSRange(location: start, length: end - start),
                              kind: .projectMethod)
+            }
+        }
+
+        // Component-Methoden folgen bewusst NACH Projektmethoden: Bei einer
+        // Namenskollision bleibt die bestehende Produktentscheidung erhalten.
+        for end in boundaries.reversed() {
+            let candidate = substring(text, start, end)
+            if componentMethodNames.contains(candidate.lowercased()) {
+                return Token(range: NSRange(location: start, length: end - start),
+                             kind: .componentMethod)
             }
         }
 

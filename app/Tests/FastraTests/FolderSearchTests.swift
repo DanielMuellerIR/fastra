@@ -487,6 +487,96 @@ func folderSearch_projectExclusions() throws {
     #expect(result.filesWithMatches.map { $0.url.lastPathComponent } == ["keep.swift"])
 }
 
+// MARK: - Projekt-Ausschlüsse
+
+@Test("Punkt-Suffix .json ist exakt so wirksam wie *.json")
+func pathExclusion_dotSuffixMatchesExtension() {
+    let root = URL(fileURLWithPath: "/tmp/fastra-project")
+    let json = root.appendingPathComponent("Project/Sources/folders.json")
+    let text = root.appendingPathComponent("Project/Sources/folders.txt")
+
+    #expect(PathExclusion.matches(json, patterns: [".json"], relativeTo: root))
+    #expect(PathExclusion.matches(json, patterns: ["*.json"], relativeTo: root))
+    #expect(!PathExclusion.matches(text, patterns: [".json"], relativeTo: root))
+}
+
+@Test(".git und userPreferences.* schließen passende Ordner samt Nachfahren aus")
+func pathExclusion_componentPatternsExcludeTrees() {
+    let root = URL(fileURLWithPath: "/tmp/fastra-project")
+    let gitConfig = root.appendingPathComponent(".git/config")
+    let preferenceFile = root.appendingPathComponent(
+        "Project/Sources/userPreferences.4D/settings/value.txt"
+    )
+
+    #expect(PathExclusion.matches(gitConfig, patterns: [".git"], relativeTo: root))
+    #expect(PathExclusion.matches(
+        preferenceFile, patterns: ["userPreferences.*"], relativeTo: root
+    ))
+}
+
+@Test("DerivedData, Slash-, Fragezeichen- und Doppelstern-Semantik bleiben erhalten")
+func pathExclusion_pathGlobSemantics() {
+    let root = URL(fileURLWithPath: "/tmp/fastra-project")
+    let derived = root.appendingPathComponent(
+        "Components/UTIL.4dbase/Contents/Project/DerivedData/methodAttributes.json"
+    )
+    let matching = root.appendingPathComponent("Project/Sources/deep/file1.txt")
+    let wrongDigitCount = root.appendingPathComponent("Project/Sources/deep/file12.txt")
+
+    #expect(PathExclusion.matches(
+        derived, patterns: ["DerivedData"], relativeTo: root
+    ))
+    #expect(PathExclusion.matches(
+        matching, patterns: ["Project/**/file?.txt"], relativeTo: root
+    ))
+    #expect(!PathExclusion.matches(
+        wrongDigitCount, patterns: ["Project/**/file?.txt"], relativeTo: root
+    ))
+    #expect(!PathExclusion.matches(
+        matching, patterns: ["Components/**"], relativeTo: root
+    ))
+}
+
+@Test("Sichere Komponenten-Ausschlüsse reduzieren bereits die ripgrep-Dateiliste")
+func ripgrepEnumerationPushesDownSafeExclusions() throws {
+    let c = try FolderCorpus()
+    try c.write("keep.txt", "NADEL", in: "Sources")
+    try c.write("generated.txt", "NADEL", in: "Project/DerivedData/cache")
+    try c.write("folders.json", "NADEL", in: "Project/Sources")
+    try c.write("setting.txt", "NADEL", in: "Project/userPreferences.4D/nested")
+
+    let all = try RipgrepFileEnumerator.files(in: c.root)
+    let reduced = try RipgrepFileEnumerator.files(
+        in: c.root,
+        excludedPatterns: ["DerivedData", ".json", "userPreferences.*"]
+    )
+
+    #expect(all.count == 4)
+    #expect(reduced.map(\.lastPathComponent) == ["keep.txt"])
+}
+
+@Test("Unsichere ripgrep-Globs bleiben Kandidaten; Fastras Nachfilter entscheidet")
+func folderSearchKeepsAuthoritativePostFilter() throws {
+    let c = try FolderCorpus()
+    try c.write("literal[.txt", "NADEL")
+    try c.write("keep.txt", "NADEL")
+
+    // `[` ist für Fastra ein Literal, für ripgrep aber Glob-Syntax. Das
+    // Muster darf deshalb nicht vorab an rg gehen und dort mehr verwerfen
+    // als Fastras verbindlicher Matcher.
+    let enumerated = try RipgrepFileEnumerator.files(
+        in: c.root, excludedPatterns: ["literal[.txt"]
+    )
+    #expect(enumerated.count == 2)
+
+    let result = FolderSearch.find(
+        in: [c.root], filter: .knownText,
+        options: SearchOptions(find: "NADEL", replace: "", isRegex: false),
+        excludedPatterns: ["literal[.txt"], relativeTo: c.root
+    )
+    #expect(result.filesWithMatches.map(\.url.lastPathComponent) == ["keep.txt"])
+}
+
 @Test("Datei-Set darf eine einzelne Datei als Suchwurzel enthalten")
 func folderSearch_directFileRoot() throws {
     let c = try FolderCorpus()

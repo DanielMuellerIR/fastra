@@ -78,18 +78,27 @@ enum CustomLanguageRegistry {
 final class CustomLanguageProviders: ObservableObject {
     private var cache: [String: any HighlightProviding] = [:]
     private var fourDProjectMethodNames = Set<String>()
+    private var fourDComponentMethodNames = Set<String>()
 
     func provider(for language: CustomLanguage,
-                  projectMethodNames: Set<String> = []) -> any HighlightProviding {
+                  projectMethodNames: Set<String> = [],
+                  componentMethodNames: Set<String> = []) -> any HighlightProviding {
         if language.id == CustomLanguageRegistry.fourD.id {
-            let normalized = Set(projectMethodNames.map { $0.lowercased() })
+            let normalizedProjects = Set(projectMethodNames.map { $0.lowercased() })
+            let normalizedComponents = Set(componentMethodNames.map { $0.lowercased() })
             // CESE vergleicht Provider über ihre Objektidentität. Eine neue
-            // Instanz nach abgeschlossenem Index-Scan invalidiert daher die
-            // sichtbaren Highlights, ohne den Editor neu zu mounten oder die
-            // Selektion anzutasten.
-            if normalized != fourDProjectMethodNames || cache[language.id] == nil {
-                fourDProjectMethodNames = normalized
-                let fresh = FourDHighlightProvider(projectMethodNames: normalized)
+            // Instanz nach einem Projekt- ODER Component-Index-Scan
+            // invalidiert daher die sichtbaren Highlights, ohne den Editor
+            // neu zu mounten oder die Selektion anzutasten.
+            if normalizedProjects != fourDProjectMethodNames
+                || normalizedComponents != fourDComponentMethodNames
+                || cache[language.id] == nil {
+                fourDProjectMethodNames = normalizedProjects
+                fourDComponentMethodNames = normalizedComponents
+                let fresh = FourDHighlightProvider(
+                    projectMethodNames: normalizedProjects,
+                    componentMethodNames: normalizedComponents
+                )
                 cache[language.id] = fresh
                 return fresh
             }

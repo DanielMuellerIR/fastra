@@ -154,7 +154,7 @@ func projectSearchStore_roundtripPerProject() throws {
     let sources = ProjectFileSet(name: "Quellen", paths: ["Sources", "Package.swift"])
     config.fileSets.append(sources)
     config.activeSetID = sources.id
-    config.excludePatternsText = "build, *.generated.swift"
+    config.excludePatternsText = "build, *.generated.swift, DerivedData"
 
     ProjectSearchStore.save(config, for: first, defaults: defaults)
     #expect(ProjectSearchStore.load(for: first, defaults: defaults) == config)
@@ -174,4 +174,33 @@ func projectSearchStore_normalizesInvalidSelection() throws {
     ProjectSearchStore.save(config, for: root, defaults: defaults)
     let loaded = ProjectSearchStore.load(for: root, defaults: defaults)
     #expect(loaded.activeSetID == only.id)
+}
+
+@Test("Neue und bestehende Projekt-Suchen schließen DerivedData verbindlich aus")
+func projectSearchStore_requiresDerivedDataExclusion() throws {
+    #expect(ProjectSearchConfiguration.fresh().excludePatterns.contains("DerivedData"))
+
+    let suiteName = "fastra-project-search-derived-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let root = URL(fileURLWithPath: "/tmp/projekt-alt")
+    let all = ProjectFileSet(name: "Gesamtes Projekt", paths: ["."])
+    let oldConfig = ProjectSearchConfiguration(
+        fileSets: [all],
+        activeSetID: all.id,
+        fileTypeFilter: .knownText,
+        excludePatternsText: ".git, .build"
+    )
+    let encoded = try JSONEncoder().encode([root.standardizedFileURL.path: oldConfig])
+    defaults.set(encoded, forKey: ProjectSearchStore.key)
+
+    let migrated = ProjectSearchStore.load(for: root, defaults: defaults)
+    #expect(migrated.excludePatterns.contains("DerivedData"))
+    #expect(migrated.excludePatternsText.contains("DerivedData"))
+
+    // Selbst wenn der sichtbare Text im laufenden Dialog geleert wird, bleibt
+    // der verbindliche effektive Ausschluss aktiv.
+    var edited = migrated
+    edited.excludePatternsText = ""
+    #expect(edited.excludePatterns == ["DerivedData"])
 }
