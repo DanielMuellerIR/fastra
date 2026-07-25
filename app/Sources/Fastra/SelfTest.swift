@@ -111,7 +111,7 @@ enum SelfTest {
     ) {
         let sidebar: String?
         switch name {
-        case "gitshot": sidebar = "changes"
+        case "gitshot", "gitstagefolder": sidebar = "changes"
         case "graphshot": sidebar = "graph"
         default: sidebar = nil
         }
@@ -429,6 +429,10 @@ enum SelfTest {
             // Fensterlos — kuratierte Git-Aktionen end-to-end mit bare-Remote
             // (Push/Pull-FF/Amend/Switch/Pickaxe), Etappe 2 Schritt 4.
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runGitActionsTest() }
+        case "gitstagefolder":
+            // Echter Fensterklick auf den Hover-Knopf einer von Git
+            // zusammengefassten unversionierten Ordnerzeile.
+            waitForMainWindow { runGitStageFolderTest() }
         case "openscope":
             // Fensterlos — Such-Scope „Geöffnet" end-to-end über Workspace +
             // SearchRunner (Multi-Tab-Suche + Alle-ersetzen über alle Tabs).
@@ -492,7 +496,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, localization, updates, git, gitactions, gitstagefolder, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -9981,6 +9985,167 @@ enum SelfTest {
                 return
             }
             runGitSequence(Array(cmds.dropFirst()), in: dir, completion)
+        }
+    }
+
+    /// Reproduziert Daniels realen Bedienfall: `git status` fasst einen
+    /// vollständig unversionierten Ordner als `material/` zusammen. Der echte
+    /// Plus-Knopf dieser SwiftUI-Zeile muss den Ordnerinhalt stagen; der
+    /// umgebende Ein-/Doppelklickpfad darf den Ordner nicht als Datei öffnen.
+    private static func runGitStageFolderTest() {
+        testLabel = "gitstagefolder"
+        guard ProcessInfo.processInfo.environment["FASTRA_SIDEBAR"] == "changes" else {
+            finish(false, "Launch-Fixture FASTRA_SIDEBAR=changes fehlt")
+        }
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        guard GitRunner.isAvailable else {
+            finish(true, "git nicht verfügbar — Git-Ansicht bleibt erwartungsgemäß verborgen")
+        }
+        Workspace.presentGitDialogs = false
+
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-gitstagefolder-\(UUID().uuidString)")
+        let repo = base.appendingPathComponent("karriere")
+        do {
+            try fm.createDirectory(at: repo, withIntermediateDirectories: true)
+            try "Basis\n".write(to: repo.appendingPathComponent("README.md"),
+                                atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "(setup) \(error.localizedDescription)")
+        }
+
+        let setup: [[String]] = [
+            ["init", "-b", "main"],
+            ["config", "user.email", "t@t"],
+            ["config", "user.name", "T"],
+            ["config", "status.showUntrackedFiles", "normal"],
+            ["add", "--", "README.md"],
+            ["commit", "-m", "init"],
+        ]
+        runGitSequence(setup, in: repo) { ok, error in
+            guard ok else {
+                try? fm.removeItem(at: base)
+                finish(false, "(setup git) \(error)")
+            }
+            let material = repo.appendingPathComponent("material", isDirectory: true)
+            do {
+                try fm.createDirectory(at: material, withIntermediateDirectories: true)
+                try "Notizen\n".write(to: material.appendingPathComponent("chat.txt"),
+                                      atomically: true, encoding: .utf8)
+                try Data("Bilddaten".utf8).write(
+                    to: material.appendingPathComponent("portrait.jpg"))
+            } catch {
+                try? fm.removeItem(at: base)
+                finish(false, "(material setup) \(error.localizedDescription)")
+            }
+            DispatchQueue.main.async {
+                ws.openProject(at: repo)
+                pollGitStageFolderRow(ws, base: base, repo: repo,
+                                      material: material, tick: 0)
+            }
+        }
+    }
+
+    /// Wartet auf die wirklich gerenderte, zusammengefasste `material/`-Zeile
+    /// und klickt deren Plus über AppKits Fenster-Hit-Testing.
+    private static func pollGitStageFolderRow(_ ws: Workspace, base: URL,
+                                              repo: URL, material: URL,
+                                              tick: Int) {
+        let maxTicks = 100
+        guard let change = ws.gitStatus?.unstagedChanges.first(where: {
+            $0.path == "material/" && $0.unstaged == .untracked
+        }), let window = mainWindowForAXChecks(), let content = window.contentView else {
+            if tick >= maxTicks {
+                try? FileManager.default.removeItem(at: base)
+                let shown = ws.gitStatus?.unstagedChanges.map(\.path) ?? []
+                finish(false, "zusammengefasste Ordnerzeile material/ fehlt "
+                    + "(sichtbar: \(shown))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollGitStageFolderRow(ws, base: base, repo: repo,
+                                      material: material, tick: tick + 1)
+            }
+            return
+        }
+
+        let stageMarkerID = "gitStageAction-\(change.rawPath.hashValue)"
+        let discardMarkerID = "gitDiscardAction-\(change.rawPath.hashValue)"
+        guard let stageMarker = markerView(id: stageMarkerID, in: content),
+              let discardMarker = markerView(id: discardMarkerID, in: content) else {
+            if tick >= maxTicks {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Hover-Knöpfe der material/-Zeile fehlen im AppKit-Baum")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollGitStageFolderRow(ws, base: base, repo: repo,
+                                      material: material, tick: tick + 1)
+            }
+            return
+        }
+        window.layoutIfNeeded()
+        guard stageMarker.bounds.width > 0, stageMarker.bounds.height > 0,
+              discardMarker.bounds.width > 0, discardMarker.bounds.height > 0 else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Hover-Knöpfe besitzen keinen klickbaren Bereich")
+        }
+        let stageFrame = stageMarker.convert(stageMarker.bounds, to: content)
+        let discardFrame = discardMarker.convert(discardMarker.bounds, to: content)
+        guard discardFrame.maxX <= stageFrame.minX else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Verwerfen und Plus liegen noch übereinander "
+                + "(Verwerfen: \(discardFrame), Plus: \(stageFrame))")
+        }
+        let point = stageMarker.convert(
+            NSPoint(x: stageMarker.bounds.midX, y: stageMarker.bounds.midY),
+            to: nil
+        )
+        guard sendMouseClick(at: point, in: window, modifiers: []) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Mausklick auf Plus nicht erzeugbar")
+        }
+        pollGitStageFolderResult(ws, base: base, repo: repo,
+                                 material: material, tick: 0)
+    }
+
+    /// Prüft gegen Gits echten Index. Parallel bleibt der Workspace unter
+    /// Beobachtung: Öffnet die Zeilengeste `material/` als Datei, erscheint
+    /// synchron ein Lade-Tab — genau der vom Nutzer gehörte Warnton-Pfad.
+    private static func pollGitStageFolderResult(_ ws: Workspace, base: URL,
+                                                 repo: URL, material: URL,
+                                                 tick: Int) {
+        if !FileManager.default.fileExists(atPath: material.path) {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Plus-Klick traf stattdessen die überlagerte "
+                + "Verwerfen-Aktion und löschte das temporäre material/")
+        }
+        if ws.tabs.contains(where: {
+            $0.url?.standardizedFileURL == material.standardizedFileURL
+        }) {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Plus-Klick wurde von der Zeilengeste abgefangen "
+                + "und versuchte material/ als Datei zu öffnen")
+        }
+        GitRunner.run(["diff", "--cached", "--name-only", "-z"], in: repo) { result in
+            let names = result?.stdoutData.split(separator: 0).map {
+                String(decoding: $0, as: UTF8.self)
+            } ?? []
+            let expected = Set(["material/chat.txt", "material/portrait.jpg"])
+            if result?.ok == true, Set(names) == expected {
+                try? FileManager.default.removeItem(at: base)
+                finish(true, "Verwerfen und Plus liegen getrennt nebeneinander; "
+                    + "echter Plus-Klick staged die zusammengefasste Ordnerzeile "
+                    + "material/ vollständig, ohne sie als Datei zu öffnen")
+            }
+            if tick >= 100 {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Plus-Klick staged material/ nicht "
+                    + "(Index: \(names), git: \(result?.stderr ?? "nil"))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollGitStageFolderResult(ws, base: base, repo: repo,
+                                         material: material, tick: tick + 1)
+            }
         }
     }
 

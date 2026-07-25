@@ -9,6 +9,16 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.50.3] — 2026-07-25
+
+### Behoben
+
+- Die Hover-Aktionen im Git-Tab **Änderungen** besitzen jetzt eigene,
+  nebeneinanderliegende Klickflächen. Insbesondere staged `+` bei einer von
+  Git zusammengefassten unversionierten Ordnerzeile wie `material/` deren
+  vollständigen Inhalt, statt wirkungslos zu bleiben oder einen Datei-
+  Öffnungsversuch mit Warnton auszulösen.
+
 ## [v1.50.2] — 2026-07-24
 
 ### Behoben

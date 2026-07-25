@@ -181,11 +181,14 @@ private struct GitChangeRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "doc")
-                .fastraFont(size: 11)
-                .foregroundColor(Theme.textSecondary)
-            ZStack(alignment: .trailing) {
+        ZStack(alignment: .trailing) {
+            // Zeilenbedienung und Aktionsknöpfe sind Geschwister. Lägen die
+            // Knöpfe innerhalb dieser Klickgeste, könnte SwiftUI den Plus-Klick
+            // als Zeilenklick behandeln und einen Ordner als Datei öffnen.
+            HStack(spacing: 6) {
+                Image(systemName: "doc")
+                    .fastraFont(size: 11)
+                    .foregroundColor(Theme.textSecondary)
                 HStack(spacing: 6) {
                     Text(change.name)
                         .fastraFont(.small)
@@ -206,56 +209,76 @@ private struct GitChangeRow: View {
                         Spacer(minLength: 0)
                     }
                 }
+                statusBadge
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, 8)
+            .padding(.vertical, 3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            // Ein Einzelklick öffnet weiterhin die Datei. Der exklusive
+            // Doppelklick öffnet stattdessen nur ihren passenden Git-Diff.
+            .gesture(rowTapGesture)
 
-                // Die Aktionen überlagern nur beim Hover das rechte Textende.
-                // So bleibt die Zeile stabil, ohne unsichtbar Platz zu sperren.
-                actionButtons
+            // Die Aktionen überlagern nur beim Hover das rechte Textende.
+            // Das Badge bleibt Teil der Überlagerung, damit keine geschätzte
+            // feste Einrückung zwischen Knöpfen und Badge nötig ist.
+            HStack(spacing: 6) {
+                HStack(spacing: 2) { actionButtons }
                     .padding(.leading, 4)
                     .background(Theme.surfaceRaised)
-                    .opacity(hovering ? 1 : 0)
-                    .allowsHitTesting(hovering)
-                    .accessibilityHidden(!hovering)
+                statusBadge
             }
-            .frame(maxWidth: .infinity)
-            // Status-Badge (farbig, mit erklärendem Tooltip).
-            Text(state.badge)
-                .fastraFont(size: 10, weight: .semibold, design: .monospaced)
-                .foregroundColor(Theme.gitColor(for: state))
-                .help(state.tooltip)
+            .padding(.trailing, 8)
+            .opacity(hovering ? 1 : 0)
+            .allowsHitTesting(hovering)
+            .accessibilityHidden(!hovering)
         }
-        .padding(.leading, 14)
-        .padding(.trailing, 8)
-        .padding(.vertical, 3)
         .background(hovering ? Theme.surfaceRaised : Color.clear)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        // Ein Einzelklick öffnet weiterhin die Datei. Der exklusive
-        // Doppelklick öffnet stattdessen nur ihren passenden Git-Diff.
-        .gesture(
-            TapGesture(count: 2)
-                .exclusively(before: TapGesture(count: 1))
-                .onEnded { value in
-                    guard change.isPathActionable else { return }
-                    switch value {
-                    case .first: openDiff()
-                    case .second: openFile()
-                    }
-                }
-        )
+        .onAppear {
+            // Der Fenster-Selbsttest muss den echten Hover-Knopf klicken,
+            // ohne dafür den Systemzeiger des Nutzers zu bewegen.
+            if SelfTest.requestedTest == "gitstagefolder" { hovering = true }
+        }
         .contextMenu { contextItems }
         .help(change.isPathActionable
               ? L10n.format("Doppelklick: Diff für %@ öffnen", change.path)
               : L10n.string("Dieser Dateipfad ist kein gültiges UTF-8. Fastra zeigt ihn nur an und führt keine Dateiaktion aus."))
     }
 
+    /// Status-Badge (farbig, mit erklärendem Tooltip). Es erscheint im
+    /// Grundlayout und im Hover-Overlay an derselben Stelle.
+    private var statusBadge: some View {
+        Text(state.badge)
+            .fastraFont(size: 10, weight: .semibold, design: .monospaced)
+            .foregroundColor(Theme.gitColor(for: state))
+            .help(state.tooltip)
+    }
+
+    private var rowTapGesture: some Gesture {
+        TapGesture(count: 2)
+            .exclusively(before: TapGesture(count: 1))
+            .onEnded { value in
+                guard change.isPathActionable else { return }
+                switch value {
+                case .first: openDiff()
+                case .second: openFile()
+                }
+            }
+    }
+
     /// Hover-Aktionen: Verwerfen/Bereitstellen (unstaged) bzw. Unstage (staged).
     @ViewBuilder private var actionButtons: some View {
         switch section {
         case .unstaged:
-            iconButton("arrow.uturn.backward", help: "Änderungen verwerfen") {
+            iconButton("arrow.uturn.backward", help: "Änderungen verwerfen",
+                       markerID: "gitDiscardAction-\(change.rawPath.hashValue)") {
                 workspace.gitDiscard(change: change)
             }
-            iconButton("plus", help: "Änderungen bereitstellen") {
+            iconButton("plus", help: "Änderungen bereitstellen",
+                       markerID: "gitStageAction-\(change.rawPath.hashValue)") {
                 if let path = change.actionPath { workspace.gitStage(path: path) }
             }
         case .staged:
@@ -286,7 +309,9 @@ private struct GitChangeRow: View {
         }
     }
 
-    private func iconButton(_ system: String, help: String, action: @escaping () -> Void) -> some View {
+    private func iconButton(_ system: String, help: String,
+                            markerID: String? = nil,
+                            action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: system)
                 .fastraFont(size: 11, weight: .medium)
@@ -295,6 +320,11 @@ private struct GitChangeRow: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .background {
+            if let markerID {
+                SelfTestMarker(id: markerID)
+            }
+        }
         .disabled(!change.isPathActionable)
         .help(help)
     }
