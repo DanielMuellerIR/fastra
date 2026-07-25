@@ -1247,6 +1247,13 @@ struct EditorView: View {
             if let projectURL = workspace.projectURL {
                 FileTreeSidebar(rootURL: projectURL)
                     .frame(maxHeight: .infinity)
+                    // Projektwechsel = neue Sidebar-Identität: FSEvents-
+                    // Wächter, Verzeichnis-Cache und Aufklappzustand hängen
+                    // als @StateObject/@State am Root — ohne `.id` überlebten
+                    // sie den Wechsel und zeigten bzw. beobachteten das ALTE
+                    // Projekt (der Wächter bekäme neue Dateien im neuen
+                    // Projekt nie mit).
+                    .id(projectURL)
                 Divider().opacity(0.3)
             }
 

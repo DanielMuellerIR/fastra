@@ -17,6 +17,12 @@ struct FileTreeSidebar: View {
     /// Zustand ein Neuladen der Ebenen überlebt.
     @State private var expanded: Set<String>
 
+    /// Verzeichnis-Listings pro Ordner im Speicher (Performance-Befund
+    /// 2026-07-24): der Baum liest im View-Body nur noch aus diesem Cache,
+    /// nie mehr direkt von der Platte. FSEvents (`watcher.generation`)
+    /// invalidieren ihn; das frische Listing kommt aus dem Hintergrund.
+    @StateObject private var childrenCache = FileTreeChildrenCache()
+
     /// Asynchron festgestellte leere Ordner → deren Zeilen verlieren das
     /// Aufklapp-Chevron (Etappe 1 Wunschpaket 2026-07).
     @StateObject private var emptiness = FolderEmptinessCache()
@@ -229,6 +235,7 @@ struct FileTreeSidebar: View {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         FileTreeLevel(url: rootURL, depth: 0, expanded: $expanded,
                                       filter: activeFilterResult,
+                                      childrenCache: childrenCache,
                                       emptiness: emptiness,
                                       onMutation: handleTreeMutation)
                     }
@@ -248,6 +255,10 @@ struct FileTreeSidebar: View {
             scheduleFilterScan(query: newValue, debounced: true)
         }
         .onChange(of: watcher.generation) {
+            // Dateiänderung (extern via FSEvents oder eigene Aktion): die
+            // gecachten Listings im Hintergrund neu einlesen. Der alte Stand
+            // bleibt bis zur Lieferung sichtbar — kein Flackern.
+            childrenCache.invalidateAll()
             // Externe Dateiänderungen bei aktivem Filter: denselben Scan
             // idempotent wiederholen — das Ergebnis hängt nur vom aktuellen
             // Plattenstand ab, nie von der Anzahl der Events.
@@ -602,12 +613,14 @@ struct GitActionMenu: View {
 }
 
 /// Eine Ordner-Ebene: listet die Kinder eines Ordners und rendert für
-/// aufgeklappte Unterordner rekursiv die nächste Ebene. Die Kinder werden
-/// direkt im `body` gelesen — ein Verzeichnis-Listing ist mikrosekunden-
-/// schnell, und der Baum ist so bei jedem Neu-Render automatisch aktuell
-/// (kein Live-Watch des Dateisystems nötig; `.onAppear`-Ladelogik war hier
-/// zudem unzuverlässig — der Baum blieb leer, Befund Screenshot 2026-07-12).
-/// Es rendern ohnehin nur AUFGEKLAPPTE Ebenen, große Repos bleiben billig.
+/// aufgeklappte Unterordner rekursiv die nächste Ebene. Die Kinder kommen
+/// aus dem `FileTreeChildrenCache` — der `body` liest also nur Speicher.
+/// Früher las er das Verzeichnis bei jedem Neu-Render direkt von der Platte;
+/// bei sehr großen Ordnern fraß Enumeration+Sortierung den Main-Thread
+/// praktisch komplett (sample-Befund 2026-07-24). Fehlende Einträge lädt der
+/// Cache im Hintergrund nach und publiziert das Ergebnis — `.onAppear`-
+/// Ladelogik direkt im View war dagegen unzuverlässig (der Baum blieb leer,
+/// Befund Screenshot 2026-07-12).
 private struct FileTreeLevel: View {
     let url: URL
     let depth: Int
@@ -616,6 +629,9 @@ private struct FileTreeLevel: View {
     /// klappt Treffer-Pfade ZWANGSWEISE auf — ohne `expanded` anzufassen,
     /// damit Escape/X den vorigen Zustand unverändert wiederherstellt.
     let filter: FileTreeFilterResult?
+    /// Gecachte Verzeichnis-Listings; Published-Updates rendern die Ebene neu,
+    /// sobald ein Hintergrund-Listing eintrifft.
+    @ObservedObject var childrenCache: FileTreeChildrenCache
     @ObservedObject var emptiness: FolderEmptinessCache
     @EnvironmentObject var workspace: Workspace
     let onMutation: () -> Void
@@ -671,6 +687,7 @@ private struct FileTreeLevel: View {
             if node.isDirectory && isExpanded(node) {
                 FileTreeLevel(url: node.url, depth: depth + 1,
                               expanded: $expanded, filter: filter,
+                              childrenCache: childrenCache,
                               emptiness: emptiness,
                               onMutation: onMutation)
             }
@@ -678,9 +695,10 @@ private struct FileTreeLevel: View {
     }
 
     /// Kinder dieser Ebene — unter aktivem Filter nur Treffer-Dateien und
-    /// Ordner auf dem Weg zu Treffern.
+    /// Ordner auf dem Weg zu Treffern. Reiner Speicherzugriff; ein fehlendes
+    /// Listing stößt das Hintergrund-Laden an und liefert vorerst [].
     private var visibleChildren: [FileTreeNode] {
-        let children = FileTree.children(of: url)
+        let children = childrenCache.children(of: url)
         guard let filter else { return children }
         return children.filter { FileTreeFilter.isVisible(node: $0, result: filter) }
     }
@@ -880,6 +898,104 @@ private struct FileTreeContextMenu: View {
 
     private func showError(title: String, error: Error) {
         NSAlert.runWarning(title: title, text: error.localizedDescription)
+    }
+}
+
+/// Hält die Verzeichnis-Listings des Dateibaums pro Ordnerpfad im Speicher
+/// (Performance-Befund 2026-07-24): `FileTreeLevel.body` las die Kinder
+/// bisher bei JEDEM SwiftUI-Durchlauf synchron von der Platte und sortierte
+/// sie — bei sehr großen Ordnern (z. B. dem System-Temp-Ordner) verbrachte
+/// der Main-Thread praktisch die gesamte Zeit in Enumeration+Sortierung.
+///
+/// Grundsätze:
+/// - Der View-Body liest ausschließlich aus diesem Cache (reiner
+///   Speicherzugriff). Fehlt ein Eintrag, wird er auf einer Hintergrund-
+///   Queue geladen; das Published-Update rendert die Ebene danach von selbst.
+/// - Invalidierung kommt vom bestehenden FSEvents-Wächter
+///   (`ProjectFileWatcher.generation`). Der alte Stand bleibt dabei bis zur
+///   Lieferung sichtbar (kein Flackern des Baums).
+/// - Idempotent gegenüber gebündelten FSEvents: unveränderte Listings werden
+///   nicht erneut publiziert, doppelte Ladeaufträge pro Pfad gebündelt.
+@MainActor
+final class FileTreeChildrenCache: ObservableObject {
+    typealias LoadScheduler = (@escaping @Sendable () -> Void) -> Void
+    typealias ResultScheduler = (@escaping @MainActor @Sendable () -> Void) -> Void
+
+    /// Fertige Listings pro Ordnerpfad. Published, damit eintreffende
+    /// Hintergrund-Ergebnisse die sichtbaren Ebenen neu rendern.
+    @Published private(set) var entries: [String: [FileTreeNode]] = [:]
+    /// Pfade mit laufendem Ladeauftrag — bündelt doppelte Anforderungen.
+    private var inFlight: Set<String> = []
+    /// Zählt Invalidierungen. Ein Ladeergebnis, das eine Invalidierung
+    /// ÜBERHOLT hat (Lesen begann davor), wird zwar angezeigt, aber sofort
+    /// durch ein frisches Listing ersetzt.
+    private var generation = 0
+    /// Verzeichnis-Listing, für Tests injizierbar; Default sind die echten
+    /// Filter- und Sortierregeln des Dateibaums.
+    private let listChildren: @Sendable (URL) -> [FileTreeNode]
+    /// Getrennte Scheduler halten die Hintergrund-/Main-Thread-Grenze
+    /// sichtbar und erlauben synchrone Tests (gleiches Muster wie
+    /// `FolderEmptinessCache`).
+    private let scheduleLoad: LoadScheduler
+    private let deliverResult: ResultScheduler
+
+    init(listChildren: @escaping @Sendable (URL) -> [FileTreeNode]
+            = { FileTree.children(of: $0) },
+         scheduleLoad: @escaping LoadScheduler = {
+             DispatchQueue.global(qos: .userInitiated).async(execute: $0)
+         },
+         deliverResult: @escaping ResultScheduler = { work in
+             DispatchQueue.main.async { work() }
+         }) {
+        self.listChildren = listChildren
+        self.scheduleLoad = scheduleLoad
+        self.deliverResult = deliverResult
+    }
+
+    /// Kinder eines Ordners aus dem Speicher. Noch nie geladene Ordner
+    /// liefern vorerst [] und stoßen das Hintergrund-Laden an — darf deshalb
+    /// gefahrlos im View-Body aufgerufen werden (keine Platten-I/O, keine
+    /// Published-Änderung während des Renderns).
+    func children(of url: URL) -> [FileTreeNode] {
+        let path = url.path
+        if let cached = entries[path] { return cached }
+        load(url)
+        return []
+    }
+
+    /// FSEvents-Invalidierung: alle bekannten Listings im Hintergrund neu
+    /// einlesen. Die alten Werte bleiben bis zur Lieferung stehen.
+    func invalidateAll() {
+        generation &+= 1
+        for path in entries.keys {
+            load(URL(fileURLWithPath: path, isDirectory: true))
+        }
+    }
+
+    private func load(_ url: URL) {
+        let path = url.path
+        guard !inFlight.contains(path) else { return }
+        inFlight.insert(path)
+        let expected = generation
+        let list = listChildren
+        let deliver = deliverResult
+        scheduleLoad {
+            let result = list(url)
+            deliver { [weak self] in
+                guard let self else { return }
+                self.inFlight.remove(path)
+                // Unveränderte Listings nicht erneut publizieren — erspart
+                // Render-Kaskaden bei FSEvents ohne sichtbare Änderung.
+                if self.entries[path] != result {
+                    self.entries[path] = result
+                }
+                // Kam WÄHREND des Lesens eine neue Invalidierung, kann das
+                // Ergebnis schon wieder veraltet sein → sofort neu lesen.
+                if self.generation != expected {
+                    self.load(url)
+                }
+            }
+        }
     }
 }
 

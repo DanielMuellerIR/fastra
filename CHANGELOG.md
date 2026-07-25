@@ -11,6 +11,24 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ### Behoben
 
+- Die Abfrage „Fastra möchte Geräte in deinem lokalen Netzwerk suchen" nennt
+  jetzt ihren Grund. Fastra sucht selbst keine Geräte — den Dialog löst der
+  automatische `git fetch` beim Aktivieren aus, sobald ein Projekt ein Remote im
+  Heimnetz hat; macOS rechnet den Zugriff des Hilfsprozesses der App zu. Die
+  `NSLocalNetworkUsageDescription` in `app/Info.plist` erklärt das nun im Dialog
+  statt ihn unbegründet erscheinen zu lassen.
+- Die Projekt-Seitenleiste liest Ordnerinhalte nicht mehr bei jedem
+  SwiftUI-Render-Durchlauf synchron von der Platte. Bei sehr großen Ordnern
+  war das ein Main-Thread-Fresser: 30.000 Einträge kosteten pro Durchlauf
+  rund 940 ms Enumeration+Sortierung — die App wirkte eingefroren
+  (sample-Befund 2026-07-24). Die Listings liegen jetzt in einem Cache pro
+  Ordner (Zugriff ≈ 0,4 µs); Dateiänderungen (FSEvents) lesen im Hintergrund
+  neu ein, der bisherige Stand bleibt bis zur Lieferung sichtbar.
+- Beim Wechsel auf ein anderes Projekt beobachtet der Dateibaum jetzt
+  wirklich den neuen Ordner: FSEvents-Wächter, Verzeichnis-Cache und
+  Aufklappzustand hingen bisher am zuerst geöffneten Projekt — externe
+  Dateiänderungen im neuen Projekt kamen nie an, und der gespeicherte
+  Aufklappzustand des neuen Projekts wurde nicht geladen.
 - Fastra nimmt Ordner und beliebige Dateien jetzt auch über LaunchServices an.
   Die `CFBundleDocumentTypes` in `app/Info.plist` deklarierten nur Textdateien;
   deshalb lehnte macOS `open -a Fastra <Ordner>` ab, obwohl die App Ordner

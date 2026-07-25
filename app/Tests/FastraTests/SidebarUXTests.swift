@@ -7,6 +7,7 @@
 // - Leere-Ordner-Erkennung (FolderEmptinessCache, gleiche Filterregeln)
 
 import Foundation
+import Combine
 import Testing
 @testable import Fastra
 
@@ -350,6 +351,154 @@ func emptinessCache_isIdempotentAcrossRefreshes() throws {
                   atomically: true, encoding: .utf8)
     cache.probe(dir)
     #expect(!cache.isKnownEmpty(dir))
+}
+
+// MARK: - Verzeichnis-Cache des Dateibaums (Performance-Befund 2026-07-24)
+
+/// Zählt Verzeichnis-Listings threadsicher — belegt, dass wiederholte
+/// Body-Zugriffe NICHT erneut von der Platte lesen (der eigentliche Bug).
+private final class ListingCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func increment() { lock.lock(); count += 1; lock.unlock() }
+    var value: Int { lock.lock(); defer { lock.unlock() }; return count }
+}
+
+/// Cache mit synchronen Test-Schedulern: Laden und Lieferung laufen sofort,
+/// die Zustandslogik ist exakt die produktive.
+@MainActor
+private func makeSyncChildrenCache(counter: ListingCounter) -> FileTreeChildrenCache {
+    FileTreeChildrenCache(
+        listChildren: { url in
+            counter.increment()
+            return FileTree.children(of: url)
+        },
+        scheduleLoad: { $0() },
+        deliverResult: { work in MainActor.assumeIsolated { work() } }
+    )
+}
+
+@Test("ChildrenCache: erster Zugriff lädt asynchron, danach nur noch Speicher")
+@MainActor
+func childrenCache_loadsOnceThenServesMemory() throws {
+    let dir = try makeTmpDirectory("cache-basis")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    try "x".write(to: dir.appendingPathComponent("a.txt"),
+                  atomically: true, encoding: .utf8)
+
+    // Verzögerte Lieferung: der Ladeauftrag wird eingesammelt statt sofort
+    // ausgeführt — wie die echte Hintergrund-Queue.
+    var pending: [@Sendable () -> Void] = []
+    let counter = ListingCounter()
+    let cache = FileTreeChildrenCache(
+        listChildren: { url in
+            counter.increment()
+            return FileTree.children(of: url)
+        },
+        scheduleLoad: { pending.append($0) },
+        deliverResult: { work in MainActor.assumeIsolated { work() } }
+    )
+
+    // Vor der Lieferung: leer, aber genau EIN Ladeauftrag geplant — auch
+    // bei wiederholten Body-Zugriffen (Bündelung).
+    #expect(cache.children(of: dir).isEmpty)
+    #expect(cache.children(of: dir).isEmpty)
+    #expect(pending.count == 1)
+
+    // Erst entnehmen, DANN ausführen — work() darf neue Aufträge anhängen,
+    // ohne mit einer laufenden Array-Mutation zu kollidieren.
+    while !pending.isEmpty { pending.removeFirst()() }
+
+    // Nach der Lieferung: Inhalt da — und weitere Zugriffe lesen NUR noch
+    // Speicher (kein weiteres Listing; genau das war der Main-Thread-Fresser).
+    #expect(cache.children(of: dir).map(\.name) == ["a.txt"])
+    _ = cache.children(of: dir)
+    _ = cache.children(of: dir)
+    #expect(counter.value == 1)
+}
+
+@Test("ChildrenCache: Invalidierung zeigt alten Stand weiter und liest neu")
+@MainActor
+func childrenCache_invalidateKeepsStaleUntilReload() throws {
+    let dir = try makeTmpDirectory("cache-invalidierung")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    try "x".write(to: dir.appendingPathComponent("alt.txt"),
+                  atomically: true, encoding: .utf8)
+
+    let counter = ListingCounter()
+    let cache = makeSyncChildrenCache(counter: counter)
+    // Erster Zugriff stößt das (hier synchrone) Laden an und liefert noch [];
+    // ab dem zweiten kommt der Inhalt aus dem Speicher.
+    _ = cache.children(of: dir)
+    #expect(cache.children(of: dir).map(\.name) == ["alt.txt"])
+
+    // Datei kommt dazu (wie eine externe Änderung); erst die FSEvents-
+    // Invalidierung liest neu — synchrone Test-Scheduler liefern sofort.
+    try "y".write(to: dir.appendingPathComponent("neu.txt"),
+                  atomically: true, encoding: .utf8)
+    #expect(cache.children(of: dir).map(\.name) == ["alt.txt"],
+            "Ohne Invalidierung bleibt der gecachte Stand stehen")
+    cache.invalidateAll()
+    #expect(cache.children(of: dir).map(\.name) == ["alt.txt", "neu.txt"])
+    #expect(counter.value == 2)
+}
+
+@Test("ChildrenCache: Invalidierung während laufender Ladung liest erneut")
+@MainActor
+func childrenCache_reloadsWhenInvalidatedMidFlight() throws {
+    let dir = try makeTmpDirectory("cache-rennen")
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    var pending: [@Sendable () -> Void] = []
+    let counter = ListingCounter()
+    let cache = FileTreeChildrenCache(
+        listChildren: { url in
+            counter.increment()
+            return FileTree.children(of: url)
+        },
+        scheduleLoad: { pending.append($0) },
+        deliverResult: { work in MainActor.assumeIsolated { work() } }
+    )
+
+    _ = cache.children(of: dir)          // Ladung läuft (noch nicht geliefert)
+    cache.invalidateAll()                // FSEvent überholt die Ladung
+
+    // Zwischen Start der Ladung und Lieferung ändert sich der Ordner —
+    // genau das Rennen, das FSEvents-Bündelung real erzeugt.
+    try "x".write(to: dir.appendingPathComponent("spät.txt"),
+                  atomically: true, encoding: .utf8)
+
+    // Entnehmen-dann-Ausführen: die 1. Lieferung (veraltet) plant dabei
+    // automatisch die Nachladung ein, die Schleife arbeitet auch die ab.
+    while !pending.isEmpty { pending.removeFirst()() }
+
+    #expect(cache.children(of: dir).map(\.name) == ["spät.txt"],
+            "Das überholte Ergebnis muss automatisch ersetzt werden")
+    #expect(counter.value == 2)
+}
+
+@Test("ChildrenCache: unverändertes Listing publiziert nicht erneut")
+@MainActor
+func childrenCache_unchangedListingDoesNotPublish() throws {
+    let dir = try makeTmpDirectory("cache-still")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    try "x".write(to: dir.appendingPathComponent("a.txt"),
+                  atomically: true, encoding: .utf8)
+
+    let counter = ListingCounter()
+    let cache = makeSyncChildrenCache(counter: counter)
+    _ = cache.children(of: dir)
+
+    var publishCount = 0
+    let subscription = cache.objectWillChange.sink { publishCount += 1 }
+    defer { subscription.cancel() }
+
+    // FSEvents ohne sichtbare Änderung (z. B. atomarer Save-Zwischenschritt):
+    // neu gelesen wird zwar, aber ohne Render-Kaskade.
+    cache.invalidateAll()
+    #expect(counter.value == 2)
+    #expect(publishCount == 0,
+            "Unveränderte Listings dürfen keine Neu-Render auslösen")
 }
 
 // MARK: - Splitter-Breiten sind pro Fenster (Daniel-Befund 2026-07-20)

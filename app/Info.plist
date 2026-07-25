@@ -95,6 +95,12 @@
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<!-- macOS rechnet Netzwerkzugriffe von Hilfsprozessen der startenden App zu.
+	     Fastra selbst sucht keine Geräte; den Dialog löst der automatische
+	     `git fetch` beim Aktivieren aus, wenn ein Projekt ein Remote im lokalen
+	     Netz hat. Ohne diesen Text zeigt macOS die Abfrage ohne jede Begründung. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Fastra ruft für Projekte mit einem Git-Remote im lokalen Netzwerk den aktuellen Stand ab. Ohne diese Erlaubnis funktionieren nur Remotes im Internet.</string>
 	<key>SUAllowsAutomaticUpdates</key>
 	<false/>
 	<key>SUAutomaticallyUpdate</key>
