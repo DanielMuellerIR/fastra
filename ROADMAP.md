@@ -13,7 +13,7 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   Gelegenheit nach main übernehmen (z. B. `/cherry-pick-to-main`).
 
 - **4D-Parameterhilfe/Typeahead: verbliebene Komponenten-/Plugin-Grenzen**
-  (Rest des Daniel-Auftrags 2026-07-24; Komponentenmethoden selbst sind mit
+  (verbleibende Grenze nach der Komponentenmethoden-Unterstützung; diese ist mit
   v1.50.0 umgesetzt — Typeahead + Signaturhilfe aus `.4dbase`, `.4DZ` und
   Methodendokumentation, nur geteilte Methoden, Projektmethode gewinnt):
   - **Plugins:** erst angehen, wenn ein reales Projekt mit `Plugins`-Ordner

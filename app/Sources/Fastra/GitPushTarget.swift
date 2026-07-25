@@ -18,7 +18,7 @@ struct GitPushTarget: Equatable {
 
 enum GitRemoteConfiguration {
     /// `git remote` sortiert alphabetisch und würde damit z. B. `github` vor
-    /// einem zuerst konfigurierten `minipc` liefern. `git config` bewahrt die
+    /// einem zuerst konfigurierten `primary` liefern. `git config` bewahrt die
     /// Reihenfolge der lokalen Remote-Blöcke.
     static let orderedRemoteArguments = [
         "config", "--includes", "--local", "--null", "--get-regexp",

@@ -168,7 +168,7 @@ extension Workspace {
     /// Liest den ersten lokal konfigurierten Remote und dessen effektive
     /// Push-Adresse neu ein. `git remote` wäre hier falsch, weil es Namen
     /// alphabetisch sortiert und dadurch ein später konfiguriertes `github`
-    /// vor `minipc` setzen könnte.
+    /// vor `primary` setzen könnte.
     func refreshGitPushTarget() {
         guard let context = currentGitActionContext, GitRunner.isAvailable else {
             gitPushTargetInspection?.cancel()

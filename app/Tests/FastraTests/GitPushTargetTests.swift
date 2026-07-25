@@ -46,17 +46,17 @@ private func remoteConfigData(_ entries: [(String, String)]) -> Data {
 
 @Suite("Explizites Git-Push-Ziel")
 struct GitPushTargetTests {
-    let minipc = GitPushTarget(remote: "minipc",
-                               addresses: ["dm@server:git/projekt.git"])
+    let primary = GitPushTarget(remote: "primary",
+                               addresses: ["git@example.test:repos/project.git"])
 
     @Test("Erster lokaler Remote folgt Config-Reihenfolge, nicht Alphabet")
     func configOrderWins() {
         let data = remoteConfigData([
-            ("remote.minipc.url", "dm@server:git/projekt.git"),
+            ("remote.primary.url", "git@example.test:repos/project.git"),
             ("remote.github.url", "https://github.com/example/projekt.git"),
         ])
 
-        #expect(GitRemoteConfiguration.firstRemote(from: data) == "minipc")
+        #expect(GitRemoteConfiguration.firstRemote(from: data) == "primary")
     }
 
     @Test("Resolver liest effektive Push-Adresse des ersten Remotes")
@@ -75,16 +75,16 @@ struct GitPushTargetTests {
             GitRemoteConfiguration.orderedRemoteArguments
         ])
         executor.complete(0, stdout: remoteConfigData([
-            ("remote.minipc.url", "fetch-address"),
+            ("remote.primary.url", "fetch-address"),
             ("remote.github.url", "github-address"),
         ]))
         #expect(executor.calls.map(\.arguments) == [
             GitRemoteConfiguration.orderedRemoteArguments,
-            ["remote", "get-url", "--push", "--all", "minipc"],
+            ["remote", "get-url", "--push", "--all", "primary"],
         ])
         executor.complete(1, stdout: Data("push-one\npush-two\n".utf8))
 
-        #expect(resolved == GitPushTarget(remote: "minipc",
+        #expect(resolved == GitPushTarget(remote: "primary",
                                          addresses: ["push-one", "push-two"]))
         #expect(failure == nil)
         _ = lease
@@ -119,8 +119,8 @@ struct GitPushTargetTests {
         let expected = "https://•••" + at + "example.test/team/repo.git…"
         #expect(GitRemoteAddressDisplay.sanitized(address) == expected)
         #expect(GitRemoteAddressDisplay.sanitized(
-            "dm@server:git/projekt.git"
-        ) == "dm@server:git/projekt.git")
+            "git@example.test:repos/project.git"
+        ) == "git@example.test:repos/project.git")
     }
 
     @Test("Sauberer Branch ohne Upstream zum ersten Remote bietet Push")
@@ -129,8 +129,8 @@ struct GitPushTargetTests {
         status.branch = "main"
         status.headOID = "abc"
 
-        #expect(GitChangesPrimaryAction.resolve(status: status, target: minipc)
-                == .push(minipc))
+        #expect(GitChangesPrimaryAction.resolve(status: status, target: primary)
+                == .push(primary))
     }
 
     @Test("Dateiänderungen behalten Commit-Vorrang")
@@ -141,7 +141,7 @@ struct GitPushTargetTests {
         status.changes = [GitChange(path: "README.md", staged: .modified,
                                     unstaged: nil)]
 
-        #expect(GitChangesPrimaryAction.resolve(status: status, target: minipc)
+        #expect(GitChangesPrimaryAction.resolve(status: status, target: primary)
                 == .commit)
     }
 
@@ -150,14 +150,14 @@ struct GitPushTargetTests {
         var status = GitStatusSummary.empty
         status.branch = "main"
         status.headOID = "abc"
-        status.upstream = "minipc/main"
+        status.upstream = "primary/main"
         status.ahead = 0
-        #expect(GitChangesPrimaryAction.resolve(status: status, target: minipc)
+        #expect(GitChangesPrimaryAction.resolve(status: status, target: primary)
                 == .commit)
 
         status.ahead = 2
-        #expect(GitChangesPrimaryAction.resolve(status: status, target: minipc)
-                == .push(minipc))
+        #expect(GitChangesPrimaryAction.resolve(status: status, target: primary)
+                == .push(primary))
     }
 
     @Test("Upstream eines anderen Remotes ersetzt erstes Ziel nicht")
@@ -167,7 +167,7 @@ struct GitPushTargetTests {
         status.headOID = "abc"
         status.upstream = "github/main"
 
-        #expect(GitChangesPrimaryAction.resolve(status: status, target: minipc)
-                == .push(minipc))
+        #expect(GitChangesPrimaryAction.resolve(status: status, target: primary)
+                == .push(primary))
     }
 }

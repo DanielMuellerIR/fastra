@@ -544,10 +544,10 @@ struct GitActionContextTests {
         #expect(executor.startedArguments[4]
                 == GitRemoteConfiguration.orderedRemoteArguments)
         executor.complete(4, with: success(
-            Data("remote.minipc.url\nssh-target\u{0}".utf8)
+            Data("remote.primary.url\nssh-target\u{0}".utf8)
         ))
         #expect(executor.startedArguments[5]
-                == ["remote", "get-url", "--push", "--all", "minipc"])
+                == ["remote", "get-url", "--push", "--all", "primary"])
 
         workspace.openProject(at: repository("push-b"))
         executor.complete(5, with: success(Data("ssh-target\n".utf8)))

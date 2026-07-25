@@ -59,7 +59,7 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 - Der erste Push eines Branches verwendet nicht mehr den fest angenommenen
   Remote `origin`, sondern ausdrücklich den ersten Remote in der lokalen
   Git-Konfiguration. Damit funktionieren Repositories, deren einziges oder
-  bevorzugtes Ziel beispielsweise `minipc` heißt.
+  bevorzugtes Ziel beispielsweise `backup` heißt.
 
 ### Geändert
 
