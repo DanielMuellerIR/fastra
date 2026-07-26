@@ -768,9 +768,19 @@ final class Workspace: ObservableObject {
     /// Dokumentfenster möglich sind, setzen die Fenster-Brücken diesen Wert bei
     /// jedem Fokuswechsel neu; globale Menübefehle landen dadurch nicht im
     /// falschen Dokument.
-    static weak var shared: Workspace? {
-        didSet {
-            ActiveDocumentContext.shared.activate(shared)
+    /// Swift-Testing erzeugt Workspaces parallel, und jede Erzeugung setzt
+    /// diesen Wert. Eine schwache Referenz darf nicht gleichzeitig aus zwei
+    /// Threads überschrieben werden, sonst geben beide dieselbe alte Referenz
+    /// frei (beobachtet am 2026-07-26 als SIGSEGV). Der Zugriff läuft deshalb
+    /// über ein kurz gehaltenes Lock — wie bei `liveWorkspaces`.
+    private static weak var sharedStorage: Workspace?
+    private static let sharedLock = NSLock()
+
+    static var shared: Workspace? {
+        get { sharedLock.withLock { sharedStorage } }
+        set {
+            sharedLock.withLock { sharedStorage = newValue }
+            ActiveDocumentContext.shared.activate(newValue)
         }
     }
 

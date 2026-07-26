@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Testing
 @testable import Fastra
@@ -88,6 +89,32 @@ private func porcelainSnapshot(oid: String) -> Data {
         data.append(0)
     }
     return data
+}
+
+/// Wartet ereignisbasiert darauf, dass beide Fenster denselben Vorgangszustand
+/// melden. Bewusst ohne eigenes Zeitbudget: Der Fan-out läuft über die Queues
+/// des Coordinators und die Main-Queue, deren Latenz unter der vollständigen
+/// parallelen Suite stark schwankt; ein festes Budget wäre nur lastabhängig rot.
+/// Ein echtes Hängen fängt die Zeitgrenze des Tests ab.
+///
+/// Zwei Feinheiten: `@Published` liefert beim Abonnieren sofort den aktuellen
+/// Wert, ein bereits eingetretener Zustand geht also nicht verloren. Und weil
+/// `@Published` in `willSet` sendet, wird das Ergebnis erst über die Main-Queue
+/// zurückgereicht — dort stellt der Store zu, danach ist die Zuweisung sicher
+/// abgeschlossen und der gelesene Property-Wert stimmt.
+private func waitForOperationState(_ state: GitOperationState,
+                                   _ first: Workspace,
+                                   _ second: Workspace) async {
+    var cancellable: AnyCancellable?
+    await withCheckedContinuation { continuation in
+        cancellable = first.$gitOperationState
+            .combineLatest(second.$gitOperationState)
+            .filter { $0.0 == state && $0.1 == state }
+            .receive(on: DispatchQueue.main)
+            .first()
+            .sink { _ in continuation.resume() }
+    }
+    cancellable?.cancel()
 }
 
 private func graphSnapshot(hash: String) -> Data {
@@ -254,7 +281,8 @@ struct GitRepositoryStoreTests {
         #expect(Set(delivered.snapshot()) == ["a:shared", "b:shared"])
     }
 
-    @Test("Zwei Workspaces erhalten denselben zentral erkannten Merge-Zustand")
+    @Test("Zwei Workspaces erhalten denselben zentral erkannten Merge-Zustand",
+          .timeLimit(.minutes(1)))
     func operationFansOutToTwoWorkspaces() async throws {
         let (executor, store) = makeStore()
         let root = repository("operation-fanout")
@@ -288,10 +316,7 @@ struct GitRepositoryStoreTests {
         executor.complete(1, with: success(Data(operationPaths.utf8)))
         executor.complete(2, with: success(Data("main\t*\n".utf8)))
         executor.complete(3, with: success(graphSnapshot(hash: "shared")))
-        for _ in 0..<500 where first.gitOperationState != .merge
-            || second.gitOperationState != .merge {
-            try await Task.sleep(for: .milliseconds(2))
-        }
+        await waitForOperationState(.merge, first, second)
         #expect(first.gitOperationState == .merge)
         #expect(second.gitOperationState == .merge)
         #expect(first.gitRepositorySnapshot?.revision

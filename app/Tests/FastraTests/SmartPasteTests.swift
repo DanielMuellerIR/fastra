@@ -280,7 +280,12 @@ func markdownFromClipboard_largeOutputDoesNotBlock() throws {
     )
     defer { try? FileManager.default.removeItem(at: stub) }
 
-    let result = SmartPaste.markdownFromClipboard(mdClipURL: stub, timeout: 2)
+    // Das Budget ist hier keine Laufzeitbehauptung, sondern nur die Notbremse
+    // gegen ein echtes Hängen: Die alte Implementierung blockierte dauerhaft, ein
+    // Rückfall würde also bei jeder Frist rot. Ein gesunder Lauf braucht wenige
+    // Millisekunden; unter der vollständigen parallelen Suite reichten zwei
+    // Sekunden für `yes | head` samt Prozessstart aber lastabhängig nicht.
+    let result = SmartPaste.markdownFromClipboard(mdClipURL: stub, timeout: 30)
 
     guard case .success(let markdown) = result else {
         Issue.record("Großer Output schlug fehl: \(result)")

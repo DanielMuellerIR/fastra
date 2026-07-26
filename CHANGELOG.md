@@ -218,6 +218,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
   Bilder, E-Books und Binärdateien, die Vorschau und Hexeditor ohnehin anzeigen.
   `LSHandlerRank` bleibt überall `Alternate`: Fastra bietet sich an, wird aber
   nicht Standard-App. Wirksam erst nach einem neuen, installierten Build.
+- `Workspace.shared` und `ActiveDocumentContext` schützen ihre gemeinsamen
+  Referenzen jetzt mit einem kurz gehaltenen Lock. Im Produkt wechselt der
+  Fokus nur auf dem Main-Thread, weshalb das bisher nicht auffiel; die
+  parallele Testsuite erzeugt Workspaces aber aus mehreren Threads, und zwei
+  gleichzeitige Zuweisungen gaben dieselbe alte Referenz doppelt frei — am
+  2026-07-26 als Absturz (`SIGSEGV` in `objc_destructInstance`) im
+  vollständigen Testlauf beobachtet.
+- Sieben lastabhängig wackelige Tests warten nicht länger auf feste
+  Zeitfristen, sondern auf das tatsächliche Ereignis (Fan-out des
+  Git-Zustands, Ladezusage, gewonnene Zeitüberschreitung einer Lock-Transaktion).
+  Wo eine Frist bleibt, ist sie ausdrücklich nur eine Hänge-Erkennung mit
+  begründeter Zahl. Die beiden Lock-Transaktionstests lösen die
+  Zeitüberschreitung über einen neuen, ausschließlich testseitigen Auslöser in
+  `GitRunner.runHoldingIndexLock` genau an der geprüften Stelle aus, statt eine
+  Wanduhrfrist gegen den Start eines echten Git-Prozesses zu setzen.
 
 ## [v1.51.0] — 2026-07-25
 

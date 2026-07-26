@@ -244,6 +244,14 @@ private final class GitLockTransactionCancellation: GitCancelling {
         terminate(.cancelled)
     }
 
+    /// Lässt die Zeitüberschreitung sofort denselben atomaren Weg gewinnen wie
+    /// der Zeitgeber. Nur Tests nutzen das: Sie sollen die Reihenfolge „Timeout
+    /// vor Lock-Kollision“ an einer bestimmten Stelle prüfen, ohne eine
+    /// Wanduhrfrist gegen den Start eines echten Git-Prozesses laufen zu lassen.
+    func timeOutNow() {
+        terminate(.timedOut)
+    }
+
     /// Liefert den bereits atomar gewonnenen Abbruchgrund auch dann, wenn noch
     /// kein Git-Prozess gestartet wurde. So wird ein gleichzeitig sichtbarer
     /// fremder Lock nicht fälschlich als Startfehler vor dem Abbruch gemeldet.
@@ -763,6 +771,7 @@ enum GitRunner {
                                     postSubmitTimeout: TimeInterval = 5,
                                     verify: @escaping (@escaping (Bool) -> Void) -> Void,
                                     commitBoundaryReached: @escaping () -> Void = {},
+                                    timeoutTrigger: ((@escaping () -> Void) -> Void)? = nil,
                                     beforeLockPreflight: (() -> Void)? = nil,
                                     beforeRefLockPreflight: (() -> Void)? = nil,
                                     refPreparationHook: ((RefPreparationPhase) -> Void)? = nil,
@@ -776,6 +785,11 @@ enum GitRunner {
         )
         cancellation.add(indexToken)
         cancellation.scheduleTimeout(policy.timeout ?? 30)
+        // Nur Tests übergeben einen Auslöser. Er wird synchron vor dem
+        // Hintergrundlauf herausgereicht, damit ein Test die Zeitüberschreitung
+        // genau an der geprüften Stelle gewinnen lassen kann statt über eine
+        // kurze Wanduhrfrist, die unter Last auch schon vorher fällt.
+        timeoutTrigger?({ cancellation.timeOutNow() })
         guard let gitPath = resolvedPath,
               let launcherURL = processGroupLauncherURL else {
             let failure: GitStartFailure = resolvedPath == nil

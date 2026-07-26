@@ -86,10 +86,33 @@ private final class IsolatedHomeGitExecutor: GitCommandExecuting {
     }
 }
 
+/// Nimmt den von `runHoldingIndexLock` herausgereichten Timeout-Auslöser auf.
+/// Der Test feuert ihn genau an der Stelle, deren Reihenfolge er prüft, statt
+/// eine kurze Wanduhrfrist gegen den Start eines echten Git-Prozesses zu setzen.
+private final class AdvancedTimeoutTrigger: @unchecked Sendable {
+    private let lock = NSLock()
+    private var trigger: (() -> Void)?
+
+    func store(_ trigger: @escaping () -> Void) {
+        lock.withLock { self.trigger = trigger }
+    }
+
+    func fire() {
+        let stored = lock.withLock { trigger }
+        stored?()
+    }
+}
+
 private struct AdvancedTimeout: Error {}
 
+/// Das Budget ist eine Hänge-Erkennung, keine Laufzeitbehauptung: Die geprüften
+/// Bedingungen treten in einem gesunden Lauf in Millisekunden ein. Unter der
+/// vollständigen parallelen Suite (rund 39 Suites, echte Git-Prozesse) konkurriert
+/// dieser Test aber mit fremder Prozess- und Main-Queue-Last, und die alten drei
+/// Sekunden reichten dafür lastabhängig nicht. 20 Sekunden bleiben klar unter den
+/// Zeitgrenzen der Tests und machen ein echtes Steckenbleiben weiter sicher rot.
 private func waitAdvanced(_ description: String,
-                          timeout: Duration = .seconds(3),
+                          timeout: Duration = .seconds(20),
                           _ condition: @escaping () -> Bool) async throws {
     let clock = ContinuousClock()
     let deadline = clock.now.advanced(by: timeout)
@@ -734,25 +757,29 @@ struct GitConflictMarkerTests {
         _ = FileManager.default.createFile(atPath: foreignLock,
                                            contents: Data("fremd".utf8))
         let entered = AdvancedFlag()
-        let release = DispatchSemaphore(value: 0)
+        let timeout = AdvancedTimeoutTrigger()
         var verifyCalled = false
         var outcome: GitExecutionOutcome?
         _ = GitRunner.runHoldingIndexLock(
             indexPath: paths[0], record: Data(), headRef: headRef, headOID: headOID,
             headRefPath: paths[1], headRefNeedsNoDeref: false,
             worktreeHeadPath: paths[2], headSymbolicTarget: headRef, in: root,
-            timeout: 0.05, verify: { _ in verifyCalled = true },
+            verify: { _ in verifyCalled = true },
+            timeoutTrigger: { timeout.store($0) },
             beforeRefLockPreflight: {
+                // Genau hier hält Git seinen Index-Lock und der fremde Ref-Lock
+                // liegt bereits vor. Die Zeitüberschreitung wird deshalb an
+                // dieser Stelle ereignisbasiert ausgelöst; eine kurze
+                // Wanduhrfrist konnte unter Last schon vor dem Index-Lock
+                // fallen und dann kam dieser Punkt nie.
                 entered.set()
-                _ = release.wait(timeout: .now() + 5)
+                timeout.fire()
             }
         ) { result, _ in outcome = result }
-        try await waitAdvanced("Ref-Lock-Preflight wurde nicht erreicht",
-                               timeout: .seconds(10)) { entered.value }
-        try await Task.sleep(for: .milliseconds(100))
-        release.signal()
-        try await waitAdvanced("Timeout/Ref-Lock-Kollision endete nicht",
-                               timeout: .seconds(10)) { outcome != nil }
+        try await waitAdvanced("Timeout/Ref-Lock-Kollision endete nicht") {
+            outcome != nil
+        }
+        #expect(entered.value)
         #expect(outcome == .timedOut)
         #expect(!verifyCalled)
         #expect(FileManager.default.fileExists(atPath: foreignLock))
@@ -930,17 +957,24 @@ struct GitConflictMarkerTests {
         let headPath = try await requireAdvancedGit(
             ["rev-parse", "--path-format=absolute", "--git-path", "HEAD"], in: root
         ).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        let timeout = AdvancedTimeoutTrigger()
         var verifyCalled = false
         var outcome: GitExecutionOutcome?
         _ = GitRunner.runHoldingIndexLock(
             indexPath: indexPath, record: Data(), headRef: headRef, headOID: headOID,
             headRefPath: refPath, headRefNeedsNoDeref: false,
             worktreeHeadPath: headPath, headSymbolicTarget: headRef, in: root,
-            timeout: 0.2, verify: { _ in verifyCalled = true }
+            verify: { _ in
+                // Die Prüfung läuft unter Index- UND Ref-Lock. Genau dort soll
+                // die Zeitüberschreitung eintreten, deshalb wird sie hier
+                // ereignisbasiert ausgelöst und nie freigegeben. Eine kurze
+                // Wanduhrfrist konnte unter Last schon vor diesem Punkt fallen.
+                verifyCalled = true
+                timeout.fire()
+            },
+            timeoutTrigger: { timeout.store($0) }
         ) { result, _ in outcome = result }
-        try await waitAdvanced("Lock-Timeout endete nicht", timeout: .seconds(10)) {
-            outcome != nil
-        }
+        try await waitAdvanced("Lock-Timeout endete nicht") { outcome != nil }
         #expect(verifyCalled)
         #expect(outcome == .timedOut)
         #expect(!FileManager.default.fileExists(atPath: indexPath + ".lock"))

@@ -424,8 +424,15 @@ private final class MutableGitClock: GitSyncClock {
 
 private struct AsyncTestTimeout: Error {}
 
+/// Das Budget ist eine Hänge-Erkennung, keine Laufzeitbehauptung: Die geprüften
+/// Zustände treten in einem gesunden Lauf in Millisekunden ein. Unter der
+/// vollständigen parallelen Suite und zusätzlicher Fremdlast auf dem Rechner
+/// reichten drei Sekunden lastabhängig nicht (belegt am 2026-07-26: „Mehrere
+/// Fenster zeigen nur eine Erstfrage …" und „Erster Pull persistiert Rebase …"
+/// fielen nur unter Last). 20 Sekunden bleiben klar unter den Zeitgrenzen der
+/// Tests und machen ein echtes Steckenbleiben weiter sicher rot.
 private func waitUntil(_ description: String = "Asynchroner Testzustand wurde nicht erreicht",
-                       timeout: Duration = .seconds(3),
+                       timeout: Duration = .seconds(20),
                        _ condition: @escaping () -> Bool) async throws {
     let clock = ContinuousClock()
     let deadline = clock.now.advanced(by: timeout)

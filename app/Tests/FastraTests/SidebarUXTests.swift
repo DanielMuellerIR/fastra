@@ -102,7 +102,8 @@ func loadFile_keepsExistingProject() async throws {
             "Ein bereits geöffneter Ordner darf sich nicht ändern")
 }
 
-@Test("Implizites Elternordner-Öffnen schließt fremde offene Tabs NICHT")
+@Test("Implizites Elternordner-Öffnen schließt fremde offene Tabs NICHT",
+      .timeLimit(.minutes(1)))
 @MainActor
 func loadFile_parentFolderKeepsUnrelatedTabs() async throws {
     let (defaults, suite) = makeFreshDefaults()
@@ -119,21 +120,24 @@ func loadFile_parentFolderKeepsUnrelatedTabs() async throws {
     try "B".write(to: fileB, atomically: true, encoding: .utf8)
 
     let ws = Workspace(defaults: defaults)
-    var doneA: Bool? = nil
-    ws.loadFile(at: fileA) { ok in doneA = ok }
-    var deadline = Date().addingTimeInterval(5)
-    while doneA == nil, Date() < deadline { await Task.yield() }
+    // Ereignisbasiert auf die Ladezusage warten statt auf eine Frist zu pollen:
+    // Das Laden läuft über einen Hintergrund-Task, dessen Rücklauf unter Last
+    // deutlich länger braucht als die frühere Fünf-Sekunden-Schranke. Bleibt die
+    // Zusage ganz aus, greift die Zeitgrenze des Tests.
+    let doneA = await withCheckedContinuation { continuation in
+        ws.loadFile(at: fileA) { continuation.resume(returning: $0) }
+    }
+    #expect(doneA)
     #expect(ws.projectURL == dirA)
 
     // Projekt wieder schließen (Seitenleiste ohne Projekt), dann zweite
     // Datei öffnen: deren Elternordner wird Projekt, aber der saubere Tab
     // aus dirA muss offen bleiben (kein ausdrücklicher Projektwechsel).
     ws.closeProject()
-    var doneB: Bool? = nil
-    ws.loadFile(at: fileB) { ok in doneB = ok }
-    deadline = Date().addingTimeInterval(5)
-    while doneB == nil, Date() < deadline { await Task.yield() }
-
+    let doneB = await withCheckedContinuation { continuation in
+        ws.loadFile(at: fileB) { continuation.resume(returning: $0) }
+    }
+    #expect(doneB)
     #expect(ws.projectURL == dirB)
     #expect(ws.tabs.contains { $0.url == fileA.canonicalFileURL },
             "Fremder sauberer Tab darf nicht stillschweigend schließen")

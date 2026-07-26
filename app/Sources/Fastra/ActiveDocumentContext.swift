@@ -21,22 +21,31 @@ final class ActiveDocumentContext: ObservableObject {
 
     private weak var activeWorkspace: Workspace?
     private var workspaceObservation: AnyCancellable?
+    /// Im Produkt wechselt der Fokus nur auf dem Main-Thread. Die parallele
+    /// Testsuite erzeugt dagegen gleichzeitig Workspaces aus mehreren Threads,
+    /// und `Workspace.shared` reicht jede Erzeugung hierher weiter. Zwei
+    /// gleichzeitige Zuweisungen würden dieselbe alte Referenz freigeben —
+    /// beobachtet am 2026-07-26 als SIGSEGV in `objc_destructInstance`. Deshalb
+    /// jeden Zugriff auf die beiden Referenzen kurz serialisieren, analog zur
+    /// `liveWorkspaces`-Registry in `Workspace`.
+    private let lock = NSLock()
 
-    var workspace: Workspace? { activeWorkspace }
+    var workspace: Workspace? { lock.withLock { activeWorkspace } }
 
     func activate(_ workspace: Workspace?) {
-        if activeWorkspace === workspace {
-            publishChange()
-            return
-        }
-        activeWorkspace = workspace
-        workspaceObservation = workspace?.objectWillChange.sink {
-            [weak self, weak workspace] _ in
-            // @Published meldet vor der Mutation. Der nächste Main-Loop liest
-            // deshalb garantiert den neuen aktiven Tab bzw. das neue Profil.
-            DispatchQueue.main.async {
-                guard let self, self.activeWorkspace === workspace else { return }
-                self.publishChange()
+        // Nur der Referenzwechsel läuft unter dem Lock. Das Veröffentlichen
+        // bleibt bewusst draußen: Beobachter dürfen dabei zurücklesen.
+        lock.withLock {
+            guard activeWorkspace !== workspace else { return }
+            activeWorkspace = workspace
+            workspaceObservation = workspace?.objectWillChange.sink {
+                [weak self, weak workspace] _ in
+                // @Published meldet vor der Mutation. Der nächste Main-Loop liest
+                // deshalb garantiert den neuen aktiven Tab bzw. das neue Profil.
+                DispatchQueue.main.async {
+                    guard let self, self.workspace === workspace else { return }
+                    self.publishChange()
+                }
             }
         }
         publishChange()
@@ -46,7 +55,7 @@ final class ActiveDocumentContext: ObservableObject {
         revision &+= 1
         NotificationCenter.default.post(
             name: .fastraActiveDocumentContextChanged,
-            object: activeWorkspace
+            object: workspace
         )
     }
 }
