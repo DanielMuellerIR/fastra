@@ -9,6 +9,8 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.52.0] — 2026-07-26
+
 ### Neu
 
 - **Enge HTML-Positivliste in der Markdown-Vorschau.** Bisher wurde jedes rohe
