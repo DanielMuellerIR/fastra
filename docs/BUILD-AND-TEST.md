@@ -437,6 +437,19 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
    - **Immer `-ApplePersistenceIgnoreState YES` mitgeben** (`Fastra -selftest findbar -ApplePersistenceIgnoreState YES`). Nach einem abgebrochenen Lauf (z.B. `pkill` in build.sh) zeigt macOS sonst beim nächsten Start den modalen „Fenster wiederherstellen?"-Dialog (`NSPersistentUIManager`) — die App hängt dann VOR dem Selbsttest endlos (per `sample` diagnostiziert: Main-Thread in `promptToIgnorePersistentStateWithCrashHistory`).
    - **Gesperrter Bildschirm = keine Fenster-Selbsttests.** Bei gesperrter Konsole (`ioreg -n Root -d1 | grep IOConsoleLocked` → Yes) schlagen alle fensterbasierten Tests fehl — das ist Umgebung, nicht Code. Nur die im Runner ausdrücklich als fensterlos markierten Tests sind dann aussagekräftig. `selftest.sh` prüft das vorab.
    - **`cmdw` und `newwindow` brauchen einen ruhigen Desktop.** macOS 26 verweigert einem im Hintergrund gestarteten Prozess die Selbst-Aktivierung komplett (`NSApp.activate` wirkungslos, `isActive` bleibt false — kooperative Aktivierung). `selftest.sh` startet beide deshalb via `open` und holt die App per System Events nach vorn. Arbeitet gleichzeitig jemand aktiv am Mac (z.B. Claude-App im Vordergrund), holt sich dessen App den Fokus sofort zurück → der Test meldet einen ausgewiesenen Umgebungs-FAIL („Umgebungsproblem", `selftest.sh`-Exit-Code 2), KEINEN Funktionsfehler. Unbeaufsichtigt (entsperrt + idle) laufen lassen oder manuell bewerten.
+   - **Ohne Automation-Freigabe antwortet System Events nie (2026-07-26).** In einer ssh-Sitzung oder einem launchd-Job fehlt die Freigabe „darf System Events steuern". Der Apple-Event wartet dann UNBEGRENZT auf den TCC-Dialog, den dort niemand wegklickt — der Runner hing dadurch minutenlang statt einen Umgebungs-FAIL zu melden. `selftest.sh` begrenzt den Aufruf deshalb doppelt (`with timeout of 3 seconds` plus harter Kill nach `ACTIVATE_TIMEOUT_SECS`) und gibt nach der ersten Zeitüberschreitung auf, statt achtmal aufzulaufen. Die Aktivierung übernimmt dann allein LaunchServices (`open` ohne `-g`) — auf einem unbenutzten Mac genügt das für echten Fokus.
+
+   **Fenster-Selbsttests auf einem entfernten Flotten-Mac (verifiziert 2026-07-26 auf M5):**
+   Erst prüfen, ob der Mac wirklich frei ist: `ioreg -n Root -d1 | grep IOConsoleLocked` muss
+   `No` liefern, und `ioreg -c IOHIDSystem` → `HIDIdleTime` zeigt, wie lange niemand am Gerät
+   war. Dann reicht ein gewöhnlicher `ssh`-Aufruf von `./selftest.sh` — der Runner läuft nicht
+   mehr fest, und LaunchServices aktiviert die App. Nur der fokusempfindlichste Test
+   (`completion4d`) meldete so einen Umgebungs-FAIL. Wer auch den grün sehen will, startet den
+   Runner als kurzlebigen launchd-Job in der Aqua-Session — `launchctl bootstrap gui/<uid> <plist>`
+   plus `kickstart`, Ausgabe über `StandardOutPath`, danach `bootout`; dieser Weg überlebt
+   sogar einen ssh-Abbruch. `launchctl asuser` braucht root und geht über ssh nicht. Den Stand
+   dorthin bringt ein eigener Worktree; `.build/artifacts` vorher aus einem gebauten Checkout
+   klonen (`cp -Rc`), sonst scheitert SwiftPM am gesperrten Login-Keychain.
 
 **Daraus abgeleitete Test-Leitlinien (verbindlich):**
 - **Logik aus AppKit-Glue in pure Funktionen ziehen.** Entscheidungen (Event→Aktion, Footer-Kante, find-bezogener Menüpunkt) leben in `KeyRouting`, `CursorFooter`, `DocumentStats`, `AppDelegate.isFindRelated`. Abgedeckt durch `KeyRoutingTests`, `FooterLogicTests`, `FindBarSuppressionTests`, `RegexElementsTests`.

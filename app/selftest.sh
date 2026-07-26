@@ -57,6 +57,10 @@ WINDOWLESS_TESTS=(search project projectperf localization markdownimport updates
 # Pro Test max. Wartezeit in Sekunden, bis die SELFTEST-Zeile da sein muss.
 # (Fenster-Polling im Test selbst: bis 15 s; plus Puffer für App-Start.)
 TIMEOUT_SECS=60
+# Harte Schranke je System-Events-Aufruf. Ein erlaubter Aufruf antwortet in
+# Millisekunden; wartet er länger, fehlt die Automation-Freigabe (s.
+# activate_app).
+ACTIVATE_TIMEOUT_SECS=4
 
 # ── Vorbedingungen ───────────────────────────────────────────────────────
 
@@ -118,6 +122,37 @@ wait_for_result() {
     return 1
 }
 
+# Ein einzelner System-Events-Versuch mit harter Wanduhr-Schranke.
+#
+# Ohne Automation-Freigabe (typisch in einer ssh-Sitzung oder einem
+# launchd-Job) wartet der Apple-Event UNBEGRENZT auf den TCC-Dialog, den dort
+# niemand wegklickt — der Runner hing dadurch minutenlang, statt einen
+# Umgebungs-FAIL zu melden (M5-Befund 2026-07-26). Zwei Schranken, weil eine
+# nicht genügt: `with timeout` deckt den regulären Apple-Event-Ablauf ab
+# (Fehler -1712), der Kill danach jeden Fall, in dem der Aufruf schon vor dem
+# Senden in der Autorisierung feststeckt.
+#
+# Rückgabe: 0 = App ist vorn, 1 = regulär fehlgeschlagen (erneut versuchen
+# sinnvoll), 2 = keine Antwort in der Frist (Freigabe fehlt, Aufgeben).
+activate_once() {
+    osascript -e 'with timeout of 3 seconds' \
+              -e 'tell application "System Events" to set frontmost of (first process whose name is "Fastra") to true' \
+              -e 'end timeout' >/dev/null 2>&1 &
+    local pid=$!
+    local waited=0
+    while [[ $waited -lt $ACTIVATE_TIMEOUT_SECS ]]; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid"
+            return $?
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    kill -9 "$pid" 2>/dev/null
+    wait "$pid" 2>/dev/null
+    return 2
+}
+
 # Holt die Fastra-App per System Events nach vorn (für Tests, die echten
 # Fenster-Fokus brauchen). Mehrere Versuche, weil der Prozess erst nach
 # dem ersten Fenster für System Events greifbar ist. Best effort — bei
@@ -125,9 +160,20 @@ wait_for_result() {
 activate_app() {
     for _ in 1 2 3 4 5 6 7 8; do
         sleep 1
-        if osascript -e 'tell application "System Events" to set frontmost of (first process whose name is "Fastra") to true' >/dev/null 2>&1; then
-            return 0
-        fi
+        activate_once
+        case $? in
+            0) return 0 ;;
+            2)
+                # Keine Antwort heißt fehlende Freigabe, nicht „Fenster noch
+                # nicht da": weitere Versuche liefen nur erneut in die Frist.
+                # LaunchServices hat die App beim `open` schon selbst nach vorn
+                # geholt; auf einem unbenutzten Mac genügt das. Fehlt der Fokus
+                # wirklich, meldet der Test selbst einen Umgebungs-FAIL.
+                echo "  (System Events antwortet nicht — Automation-Freigabe fehlt;" \
+                     "Aktivierung bleibt bei LaunchServices)" >&2
+                return 1
+                ;;
+        esac
     done
     return 1
 }

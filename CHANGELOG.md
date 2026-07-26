@@ -233,6 +233,13 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
   Zeitüberschreitung über einen neuen, ausschließlich testseitigen Auslöser in
   `GitRunner.runHoldingIndexLock` genau an der geprüften Stelle aus, statt eine
   Wanduhrfrist gegen den Start eines echten Git-Prozesses zu setzen.
+- `selftest.sh` hängt nicht mehr unbegrenzt, wenn die Automation-Freigabe für
+  System Events fehlt. In einer ssh-Sitzung oder einem launchd-Job wartete der
+  Apple-Event dauerhaft auf einen TCC-Dialog, den dort niemand wegklickt. Der
+  Aufruf ist jetzt doppelt begrenzt und gibt nach der ersten Zeitüberschreitung
+  auf; aktiviert wird dann allein über LaunchServices, was auf einem unbenutzten
+  Mac für echten Fensterfokus genügt. Damit sind die Fenster-Selbsttests auch
+  auf einem entfernten Flotten-Mac fahrbar (Rezept in `docs/BUILD-AND-TEST.md`).
 
 ## [v1.51.0] — 2026-07-25
 
