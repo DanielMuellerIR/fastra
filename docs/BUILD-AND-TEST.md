@@ -338,6 +338,14 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   `./selftest.sh localization` prüft danach die Tabellen im fertig gepackten
   Haupt-App- und SwiftPM-Ressourcenbundle sowie die lokalen KaTeX-, Mermaid-
   und highlight.js-Dateien.
+- **Markdown-Umwandlung:** `./selftest.sh markdownimport` läuft fensterlos gegen
+  das echte `poormans-text`: Formatkatalog (RTF als Datei, RTFD als Paket),
+  Zwischenspeicher, eine Umwandlung ohne Bilder, eine mit eingebettetem PNG und
+  der Kollisionsschutz — jeweils an echten temporären Dateien. Fehlt das
+  Werkzeug oder kennt es `--formats` noch nicht, meldet der Test ein
+  Umgebungsproblem (Exit 2) statt eines Funktionsfehlers. Gegen einen frisch
+  gebauten, noch nicht installierten Stand testen:
+  `FASTRA_POORMANS_TEXT=<pfad>/.build/debug/poormans-text ./selftest.sh markdownimport`.
 - **Markdown-Vorschau:** `./selftest.sh markdown` lädt ein echtes temporäres PNG,
   eine TeX-Formel, einen Swift-Code-Block und ein Mermaid-Diagramm. Der Test liest
   unabhängig das fertige WebKit-DOM: Bildbreite, MathML, SVG und Highlight-Spans

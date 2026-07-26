@@ -103,6 +103,7 @@ enum HelpSection: CaseIterable {
     case views
     case markdown
     case markdownWriting
+    case markdownImport
     case languages
     case fourD
     case fourDTool
@@ -128,6 +129,8 @@ enum HelpSection: CaseIterable {
         case (.markdown, _):               return "Markdown"
         case (.markdownWriting, "en"):     return "Writing Markdown"
         case (.markdownWriting, _):        return "Markdown schreiben"
+        case (.markdownImport, "en"):      return "Converting Documents to Markdown"
+        case (.markdownImport, _):         return "Dokumente in Markdown umwandeln"
         case (.languages, "en"):           return "Languages and Syntax Colors"
         case (.languages, _):              return "Sprachen und Syntaxfarben"
         case (.fourD, "en"):               return "4D Support"

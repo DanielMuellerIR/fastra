@@ -256,6 +256,37 @@ gewohnt in einem Tab. Nach dem Einfügen scrollt die Vorschau zur
 Einfügestelle. Ungespeicherte Dokumente haben noch keinen Ordner —
 deshalb zuerst speichern (⌘S).
 
+## Dokumente in Markdown umwandeln
+
+Ist das separat installierte Werkzeug **Poor Man's Text** vorhanden, kann Fastra
+ganze Dokumente in Markdown umwandeln. Öffnest du eine erkannte Datei — je nach
+Stand des Werkzeugs etwa `.rtf`, `.rtfd`, `.docx`, `.odt` oder `.doc` —,
+erscheint über dem Editor der Hinweis **In Markdown umwandeln**. Denselben
+Befehl findest du im Menü **Ablage** und im Rechtsklickmenü der Projekt-
+Seitenleiste. Fastra wandelt nichts von selbst um: Der Klick auf den Befehl ist
+die Zustimmung.
+
+Ein `.rtfd`-Dokument ist im Finder ein Ordner. Öffnest du es, fragt Fastra
+deshalb, ob es umgewandelt oder als Projektordner geöffnet werden soll.
+
+**Wo das Ergebnis landet:** direkt neben dem Original. Entstand nur Text, als
+`Name.md`. Wurden Bilder mit herausgelöst, als Ordner `Name` mit `Name.md` und
+einem Unterordner `images`. Ist der Name schon belegt — zum Beispiel weil
+`Bericht.rtf` und `Bericht.docx` nebeneinanderliegen —, weicht Fastra auf
+`Bericht-2` aus. Vorhandene Dateien werden nie überschrieben, und das
+Originaldokument bleibt unverändert.
+
+Die Umwandlung ist bewusst verlustbehaftet: Markdown kann Struktur, Links,
+einfache Auszeichnungen, Listen und Bilder erhalten, aber nicht jede Schrift und
+kein Layout. Meldet das Werkzeug solche Verluste, stehen sie nach der Umwandlung
+in der Leiste über dem Editor.
+
+**Welche Formate angeboten werden**, fragt Fastra beim Start direkt bei Poor
+Man's Text ab und merkt sich die Antwort fünf Minuten. Kann das Werkzeug später
+mehr Formate, nutzt Fastra sie ohne eigenes Update — hast du gerade
+aktualisiert und willst nicht warten, starte Fastra neu. Fehlt das Werkzeug
+oder das von ihm benötigte Pandoc, wird schlicht nichts angeboten.
+
 ## Sprachen und Syntaxfarben
 
 Fastra erkennt die Sprache an der Dateiendung, bei endungslosen Dateien

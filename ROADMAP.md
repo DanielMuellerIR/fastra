@@ -69,6 +69,21 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Kleine offene Ideen
 
+- **Markdown-Umwandlung: bewusst offen gelassen** (umgesetzt 2026-07-26 über
+  `poormans-text --formats`):
+  - Der Formatkatalog wird beim Start vorgewärmt und fünf Minuten
+    zwischengespeichert. Wird `poormans-text` in dieser Zeit aktualisiert,
+    braucht es einen Fastra-Neustart. Bewusst so — eine Invalidierung über
+    einen Dateiwächter wäre für den Nutzen zu viel Maschinerie.
+  - Es läuft immer nur EINE Umwandlung gleichzeitig; der Befehl ist währenddessen
+    gesperrt. Eine Warteschlange lohnt erst, wenn Stapelumwandlung gewünscht ist.
+  - Kein Fortschritt und kein Abbruch während einer Umwandlung. Dafür wäre die
+    direkte Library-Anbindung statt des CLI-Aufrufs nötig (siehe
+    `poormans_text/ROADMAP.md`).
+  - Der Katalog fragt nur, OB ein Werkzeug installiert ist, nicht welche
+    Eingabeformate dessen Version beherrscht. Ein sehr altes Pandoc könnte
+    deshalb erst beim Umwandeln scheitern — dann mit echter Fehlermeldung.
+
 - **Hilfe später hübscher:** Die mitgelieferte Hilfe (Etappe 4 Wunschpaket
   2026-07b) ist bewusst reiner Text ohne Bilder. Screenshots/Illustrationen
   der zentralen Abläufe (Suchmaske, Vorschau→Apply, Git-Seitenleiste) wären

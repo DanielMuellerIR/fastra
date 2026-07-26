@@ -425,6 +425,11 @@ enum SelfTest {
             // bleibt getrennt von der Suchmessung, damit Ursachen nicht
             // vermischt werden.
             waitForMainWindow { runProjectOpenPerformanceTest() }
+        case "markdownimport":
+            // Fensterlos — echte Umwandlung über das installierte
+            // `poormans-text`: Formatkatalog, flache Datei, Ordner mit Bildern
+            // und Kollisionsschutz an echten Dateien.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runMarkdownImportTest() }
         case "localization":
             // Fensterlos — prüft zusätzlich zum Unit-Test das fertig gepackte
             // Haupt-App-Bundle. Genau dort sucht SwiftUI statische Schlüssel.
@@ -12830,5 +12835,195 @@ enum SelfTest {
                 finish(passed, msg)
             }
         }
+    }
+
+    // MARK: - markdownimport (Umwandlung nach Markdown über poormans-text)
+
+    /// End-to-end gegen das ECHTE `poormans-text`: Formatkatalog, eine
+    /// Umwandlung ohne Bilder, eine mit Bildern und der Kollisionsschutz.
+    ///
+    /// Ein Unit-Test kann hier nur die Zerlegung der Antworten prüfen. Ob das
+    /// Werkzeug wirklich gefunden wird, ob `--formats` von diesem Stand
+    /// verstanden wird und ob das Ergebnis tatsächlich neben der Quelle landet,
+    /// zeigt sich erst mit echten Dateien und einem echten Prozess.
+    private static func runMarkdownImportTest() {
+        testLabel = "markdownimport"
+        guard MarkdownImportTool.locate() != nil else {
+            finish(false, "Umgebungsproblem: poormans-text ist nicht installiert "
+                + "(oder \(MarkdownImportTool.overrideEnvironmentKey) zeigt ins Leere)")
+        }
+        MarkdownImportService.shared.withCatalog { catalog in
+            guard let catalog else {
+                finish(false, "Umgebungsproblem: dieser poormans-text-Stand kennt "
+                    + "--formats nicht — Werkzeug aktualisieren")
+            }
+            checkMarkdownImportCatalog(catalog)
+        }
+    }
+
+    private static func checkMarkdownImportCatalog(_ catalog: MarkdownImportCatalog) {
+        guard let rtf = catalog.availableFormat(forExtension: "rtf") else {
+            finish(false, "Katalog meldet RTF nicht als benutzbar — Pandoc installiert?")
+        }
+        guard !rtf.isPackage else {
+            finish(false, "RTF darf kein Ordner-Paket sein")
+        }
+        // RTFD ist der einzige Grund, warum Fastra beim Öffnen eines Ordners
+        // überhaupt nachfragt. Fällt die Kennzeichnung weg, öffnet ein
+        // Dokument still als Projekt.
+        guard catalog.availableFormat(forExtension: "rtfd")?.isPackage == true else {
+            finish(false, "RTFD wird nicht als Ordner-Paket gemeldet")
+        }
+
+        // Zweiter Abruf muss SYNCHRON aus dem Zwischenspeicher kommen, sonst
+        // startet jedes Öffnen einer Datei einen neuen Prozess.
+        var servedSynchronously = false
+        MarkdownImportService.shared.withCatalog { _ in servedSynchronously = true }
+        guard servedSynchronously else {
+            finish(false, "Formatkatalog wird nicht zwischengespeichert")
+        }
+
+        let base: URL
+        do {
+            base = try makeMarkdownImportFixtures()
+        } catch {
+            finish(false, "Fixtures nicht erzeugbar: \(error.localizedDescription)")
+        }
+        convertPlainMarkdownImportFixture(in: base)
+    }
+
+    /// Legt drei Quellen an: eine schlichte RTF, eine RTF mit eingebettetem
+    /// PNG und eine bereits belegte `Belegt.md`, die nicht überschrieben
+    /// werden darf.
+    private static func makeMarkdownImportFixtures() throws -> URL {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-markdownimport-\(UUID().uuidString)",
+                                    isDirectory: true)
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+
+        try Data(#"{\rtf1\ansi Schlichter Text ohne Bild.}"#.utf8)
+            .write(to: base.appendingPathComponent("Schlicht.rtf"), options: .atomic)
+
+        // Bereits belegter Zielname — die Umwandlung muss auf `-2` ausweichen
+        // und diesen Inhalt unangetastet lassen.
+        try Data("bereits da\n".utf8)
+            .write(to: base.appendingPathComponent("Belegt.md"), options: .atomic)
+        try Data(#"{\rtf1\ansi Zweites Dokument.}"#.utf8)
+            .write(to: base.appendingPathComponent("Belegt.rtf"), options: .atomic)
+
+        guard let png = markdownImportPNG() else { throw MarkdownImportFixtureError.png }
+        let hex = png.map { String(format: "%02x", $0) }.joined()
+        let withPicture = "{\\rtf1\\ansi Mit Bild: "
+            + "{\\pict\\pngblip\\picw8\\pich8\\picwgoal120\\pichgoal120\n\(hex)\n}}"
+        try Data(withPicture.utf8)
+            .write(to: base.appendingPathComponent("MitBild.rtf"), options: .atomic)
+        return base
+    }
+
+    private enum MarkdownImportFixtureError: Error { case png }
+
+    private static func markdownImportPNG() -> Data? {
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 8, pixelsHigh: 8,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSColor.systemTeal.setFill()
+        NSRect(x: 0, y: 0, width: 8, height: 8).fill()
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.representation(using: .png, properties: [:])
+    }
+
+    /// Schritt 1: RTF ohne Bilder → `Schlicht.md` direkt neben der Quelle.
+    private static func convertPlainMarkdownImportFixture(in base: URL) {
+        let source = base.appendingPathComponent("Schlicht.rtf")
+        let sourceBytes = try? Data(contentsOf: source)
+        MarkdownImportService.shared.convert(source) { markdownFile in
+            guard let markdownFile else {
+                finishMarkdownImport(base, false,
+                                     "schlichte RTF nicht umgewandelt: "
+                                        + markdownImportFailureText())
+            }
+            guard markdownFile.path == base.appendingPathComponent("Schlicht.md").path else {
+                finishMarkdownImport(base, false,
+                                     "falscher Zielname: \(markdownFile.lastPathComponent)")
+            }
+            let markdown = (try? String(contentsOf: markdownFile, encoding: .utf8)) ?? ""
+            guard markdown.contains("Schlichter Text") else {
+                finishMarkdownImport(base, false, "Markdown ohne Quelltext: \(markdown.prefix(80))")
+            }
+            // Die Quelle darf die Umwandlung bytegleich überstehen.
+            guard (try? Data(contentsOf: source)) == sourceBytes else {
+                finishMarkdownImport(base, false, "die Quelldatei wurde verändert")
+            }
+            // Kein Zwischenverzeichnis darf liegen bleiben.
+            let leftovers = (try? FileManager.default.contentsOfDirectory(atPath: base.path))?
+                .filter { $0.hasPrefix(".fastra-markdown-") } ?? []
+            guard leftovers.isEmpty else {
+                finishMarkdownImport(base, false, "Zwischenverzeichnis blieb liegen: \(leftovers)")
+            }
+            convertCollidingMarkdownImportFixture(in: base)
+        }
+    }
+
+    /// Schritt 2: Zielname ist belegt → `-2`, ohne das Vorhandene anzufassen.
+    private static func convertCollidingMarkdownImportFixture(in base: URL) {
+        let occupied = base.appendingPathComponent("Belegt.md")
+        MarkdownImportService.shared.convert(base.appendingPathComponent("Belegt.rtf")) { file in
+            guard let file else {
+                finishMarkdownImport(base, false,
+                                     "Kollisionsfall nicht umgewandelt: "
+                                        + markdownImportFailureText())
+            }
+            guard file.lastPathComponent == "Belegt-2.md" else {
+                finishMarkdownImport(base, false,
+                                     "Kollision falsch aufgelöst: \(file.lastPathComponent)")
+            }
+            let kept = (try? String(contentsOf: occupied, encoding: .utf8)) ?? ""
+            guard kept == "bereits da\n" else {
+                finishMarkdownImport(base, false, "bestehende Datei wurde überschrieben")
+            }
+            convertPictureMarkdownImportFixture(in: base)
+        }
+    }
+
+    /// Schritt 3: RTF mit Bild → Ordner `MitBild` samt `MitBild.md` und Bild.
+    private static func convertPictureMarkdownImportFixture(in base: URL) {
+        MarkdownImportService.shared.convert(base.appendingPathComponent("MitBild.rtf")) { file in
+            guard let file else {
+                finishMarkdownImport(base, false,
+                                     "Bild-RTF nicht umgewandelt: " + markdownImportFailureText())
+            }
+            let expected = base.appendingPathComponent("MitBild/MitBild.md")
+            guard file.path == expected.path else {
+                finishMarkdownImport(base, false, "Ordnerfall falsch benannt: \(file.path)")
+            }
+            var isDirectory: ObjCBool = false
+            let folder = base.appendingPathComponent("MitBild")
+            guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue,
+                  FileManager.default.fileExists(atPath: file.path) else {
+                finishMarkdownImport(base, false, "Ordner oder Markdown fehlt")
+            }
+            let contents = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+            guard contents.contains("images") else {
+                finishMarkdownImport(base, false, "Bildordner fehlt: \(contents)")
+            }
+            finishMarkdownImport(base, true,
+                                 "Formatkatalog, Zwischenspeicher, flache Umwandlung, "
+                                    + "Kollisionsschutz und Ordnerfall ok")
+        }
+    }
+
+    private static func markdownImportFailureText() -> String {
+        if case .failed(let message) = MarkdownImportService.shared.state { return message }
+        return "kein Grund gemeldet"
+    }
+
+    private static func finishMarkdownImport(_ base: URL, _ ok: Bool, _ message: String) -> Never {
+        try? FileManager.default.removeItem(at: base)
+        finish(ok, message)
     }
 }

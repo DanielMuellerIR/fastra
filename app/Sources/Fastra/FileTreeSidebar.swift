@@ -826,6 +826,13 @@ private struct FileTreeContextMenu: View {
             .help("Öffnet Terminal.app nativ in diesem Ordner.")
 
         if let node {
+            // Umwandeln, ohne die Datei vorher zu öffnen. Nur sichtbar, wenn
+            // das externe Werkzeug dieses Format gerade wirklich beherrscht —
+            // ein Punkt, der immer scheitert, wäre schlimmer als keiner.
+            if workspace.canConvertToMarkdown(node.url) {
+                Divider()
+                Button("In Markdown umwandeln…") { workspace.convertToMarkdown(node.url) }
+            }
             Divider()
             Button("Umbenennen…") { rename(node) }
             Button("In den Papierkorb legen…", role: .destructive) { trash(node) }

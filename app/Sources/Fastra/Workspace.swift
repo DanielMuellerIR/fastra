@@ -597,6 +597,10 @@ final class Workspace: ObservableObject {
     /// aus der Leiste genommen. Scheitern alle gleichzeitig gestarteten Loads,
     /// kann genau dieser Tab wieder eingesetzt werden.
     private var welcomeTabSuppressedByFileLoad: EditorTab?
+    /// Quellen, für die die Markdown-Hinweisleiste weggeklickt wurde. Nur für
+    /// diese Sitzung — der Hinweis ist keine Einstellung, und der Menübefehl
+    /// bleibt ohnehin erreichbar.
+    @Published private var dismissedMarkdownImports: Set<URL> = []
 
     /// Stößt eine (asynchrone) Neuberechnung der Footer-Statistik an.
     /// - Parameters:
@@ -1768,11 +1772,110 @@ final class Workspace: ObservableObject {
             loadFile(at: url)
             return
         }
-        if isDir.boolValue {
-            openProject(at: url)
-        } else {
+        guard isDir.boolValue else {
             loadFile(at: url)
+            return
         }
+        // Ein Ordner OHNE Endung ist immer ein Projekt — der Normalfall bleibt
+        // dadurch völlig unverzögert. Nur ein Ordner MIT Endung kann ein
+        // Dokumentpaket wie `.rtfd` sein; erst dafür wird der Formatkatalog
+        // befragt (aus dem Zwischenspeicher meist sofort).
+        guard !url.pathExtension.isEmpty else {
+            openProject(at: url)
+            return
+        }
+        MarkdownImportService.shared.withCatalog { [weak self] catalog in
+            guard let self else { return }
+            guard let format = catalog?.availableFormat(forExtension: url.pathExtension),
+                  format.isPackage else {
+                self.openProject(at: url)
+                return
+            }
+            self.presentPackageChoice(for: url, format: format)
+        }
+    }
+
+    /// Ein Dokumentpaket sieht im Finder aus wie ein Ordner. Fastra kann es
+    /// nicht gleichzeitig als Projekt öffnen und umwandeln, deshalb ist hier —
+    /// anders als bei einer Datei — eine echte Rückfrage nötig.
+    private func presentPackageChoice(for url: URL, format: MarkdownImportFormat) {
+        let alert = NSAlert()
+        alert.messageText = L10n.format("„%@“ ist ein Dokument, kein Projektordner.",
+                                        url.lastPathComponent)
+        // Bewusst EIN Literal: Ein per `+` zusammengesetzter Text wäre kein
+        // statisch erkennbarer Lokalisierungsschlüssel mehr.
+        alert.informativeText = L10n.format(
+            "Fastra kann das %@-Dokument in Markdown umwandeln und danach öffnen. Das Original bleibt unverändert.",
+            format.identifier.uppercased()
+        )
+        alert.addButton(withTitle: L10n.string("In Markdown umwandeln"))
+        alert.addButton(withTitle: L10n.string("Als Ordner öffnen"))
+        alert.addButton(withTitle: L10n.string("Abbrechen"))
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:  convertToMarkdown(url)
+        case .alertSecondButtonReturn: openProject(at: url)
+        default:                       break
+        }
+    }
+
+    // MARK: - Markdown-Umwandlung
+
+    /// Angebot für den aktiven Tab — oder `nil`, wenn es keins gibt.
+    ///
+    /// Bewusst nur aus dem ZWISCHENGESPEICHERTEN Katalog: Diese Eigenschaft
+    /// wird bei jedem Neuzeichnen gelesen und darf nie einen Prozess starten.
+    func markdownImportOffer(for url: URL?) -> MarkdownImportOffer? {
+        guard let url, !dismissedMarkdownImports.contains(url),
+              let catalog = MarkdownImportService.shared.cachedCatalog,
+              let format = catalog.availableFormat(forExtension: url.pathExtension) else {
+            return nil
+        }
+        return MarkdownImportOffer(sourceURL: url, format: format)
+    }
+
+    /// Kann diese Datei gerade umgewandelt werden? Anders als
+    /// `markdownImportOffer` ignoriert das ein weggeklicktes Angebot — ein
+    /// ausgeblendeter Hinweis darf den Befehl nicht mit verschwinden lassen.
+    func canConvertToMarkdown(_ url: URL) -> Bool {
+        MarkdownImportService.shared.cachedCatalog?
+            .availableFormat(forExtension: url.pathExtension) != nil
+    }
+
+    /// Blendet das Angebot für genau diese Quelle aus — nur für diese Sitzung.
+    /// Der Menübefehl bleibt erreichbar, das Angebot war ja nur ein Hinweis.
+    func dismissMarkdownImport(_ url: URL) {
+        dismissedMarkdownImports.insert(url)
+    }
+
+    /// Wandelt um und öffnet das Ergebnis. Die Quelle bleibt unverändert und
+    /// ihr Tab offen; das Markdown kommt als neuer, aktiver Tab dazu.
+    func convertToMarkdown(_ url: URL) {
+        MarkdownImportService.shared.convert(url) { [weak self] markdownFile in
+            guard let self, let markdownFile else { return }
+            self.dismissedMarkdownImports.insert(url)
+            // Den Projektbaum aktualisiert der FSEvents-Watcher von selbst; nur
+            // der Git-Status wird nicht ereignisgetrieben nachgezogen.
+            self.refreshGitStatus()
+            self.loadFile(at: markdownFile)
+        }
+    }
+
+    /// Menübefehl „In Markdown umwandeln…". Er greift auch dann, wenn die
+    /// Hinweisleiste bereits weggeklickt wurde.
+    func convertActiveTabToMarkdown() {
+        guard let url = activeMarkdownImportSource else { NSSound.beep(); return }
+        convertToMarkdown(url)
+    }
+
+    /// Quelle, die der Menübefehl gerade umwandeln würde — steuert auch, ob der
+    /// Menüpunkt aktiv ist.
+    var activeMarkdownImportSource: URL? {
+        guard let url = activeTab?.url,
+              let catalog = MarkdownImportService.shared.cachedCatalog,
+              catalog.availableFormat(forExtension: url.pathExtension) != nil else {
+            return nil
+        }
+        return url
     }
 
     /// Entfernt „leere Notizzettel"-Tabs — außer dem Tab `keepID`. Ein Tab gilt

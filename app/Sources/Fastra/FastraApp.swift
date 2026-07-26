@@ -246,6 +246,11 @@ struct FastraApp: App {
                 // von der Platte laden; bei ungespeicherten Änderungen fragt
                 // dieselbe Rückfrage wie die automatische Erkennung.
                 Button("Von Festplatte neu laden") { commandWorkspace.reloadActiveTabFromDisk() }
+                // Umwandlung eines erkannten Fremdformats (RTF, DOCX, …) nach
+                // Markdown. Eigene View, damit der Punkt der Verfügbarkeit des
+                // aktiven Tabs folgt; ohne installiertes „Poor Man's Text"
+                // bleibt er still deaktiviert.
+                MarkdownImportMenuItem(workspace: workspace)
                 Divider()
                 Button("Schließen") {
                     // Das Menü bleibt global sichtbar. Ist die Hilfe vorn,
@@ -537,6 +542,30 @@ struct FastraApp: App {
 /// Untermenü „Zuletzt benutzt" (K2). Eigene View mit `@ObservedObject`, damit
 /// SwiftUI das Menü neu aufbaut, sobald sich `recentFiles` ändert (eine
 /// einfache Closure im CommandGroup würde nicht auf Änderungen reagieren).
+/// „In Markdown umwandeln…" für den aktiven Tab.
+///
+/// Der Punkt bleibt immer sichtbar, ist aber nur aktiv, wenn das externe
+/// Werkzeug das Format des aktiven Tabs gerade wirklich umwandeln kann. Ein
+/// verschwindender Menüpunkt wäre schwerer zu verstehen als ein grauer.
+private struct MarkdownImportMenuItem: View {
+    @ObservedObject var workspace: Workspace
+    @ObservedObject private var service = MarkdownImportService.shared
+
+    var body: some View {
+        Button("In Markdown umwandeln…") {
+            (Workspace.shared ?? workspace).convertActiveTabToMarkdown()
+        }
+        .disabled((Workspace.shared ?? workspace).activeMarkdownImportSource == nil || isBusy)
+    }
+
+    /// Während einer laufenden Umwandlung ist der Punkt gesperrt — zwei
+    /// gleichzeitige Läufe könnten denselben freien Zielnamen wählen.
+    private var isBusy: Bool {
+        if case .running = service.state { return true }
+        return false
+    }
+}
+
 private struct RecentFilesMenu: View {
     @ObservedObject var workspace: Workspace
 

@@ -9,6 +9,30 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+### Neu
+
+- **Dokumente in Markdown umwandeln.** Ist
+  [Poor Man's Text](https://github.com/DanielMuellerIR/poormans_text)
+  installiert, bietet Fastra beim Öffnen eines erkannten Fremdformats (RTF,
+  RTFD, DOCX, ODT, DOC) über dem Editor **In Markdown umwandeln** an. Denselben
+  Befehl gibt es im Ablage-Menü und im Rechtsklickmenü des Projektbaums; ein
+  `.rtfd`-Dokument fragt beim Öffnen, ob umgewandelt oder als Projektordner
+  geöffnet werden soll. Das Ergebnis landet neben dem Original — nur Text als
+  `Name.md`, mit extrahierten Bildern als Ordner `Name` mit `Name.md` und
+  `images/`. Ein belegter Zielname führt auf `Name-2`; Bestehendes wird nie
+  überschrieben, die Quelle bleibt bytegleich. Gemeldete Formatverluste stehen
+  danach sichtbar in der Leiste.
+
+  Fastra führt dabei **keine eigene Formatliste**: Welche Dateitypen umwandelbar
+  sind und ob das nötige Pandoc installiert ist, beantwortet
+  `poormans-text --formats --json`. Kommen dort Formate hinzu, wirken sie ohne
+  Fastra-Update. Die Antwort wird beim App-Start vorgewärmt und fünf Minuten
+  zwischengespeichert (Aufruf gemessen ≈ 10 ms), damit das Öffnen von Dateien
+  unverzögert bleibt; wer ein frisch aktualisiertes Werkzeug sofort nutzen will,
+  startet Fastra neu. Fehlt das Werkzeug oder versteht es `--formats` noch
+  nicht, bleibt die Funktion still verborgen — wie bei fehlendem git.
+  Neuer fensterloser Selbsttest `markdownimport`.
+
 ### Behoben
 
 - Die Abfrage „Fastra möchte Geräte in deinem lokalen Netzwerk suchen" nennt

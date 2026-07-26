@@ -108,6 +108,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installFlagsMonitor()
         editorContextMenu.install()
         goToTargetGesture.install()
+        // Formatkatalog für „In Markdown umwandeln" vorwärmen. Der Aufruf
+        // kostet rund 10 ms im Hintergrund; danach steht die Antwort, bevor
+        // der Nutzer die erste Datei öffnet, und das Öffnen bleibt unverzögert.
+        MarkdownImportService.shared.warmCatalog()
         // SwiftUI hat die App-Menüleiste erst nach dem Scene-Aufbau vollständig
         // erzeugt. Die Synchronisierung läuft deshalb im nächsten Main-Runloop
         // und erneut, wenn SwiftUI später Menüpunkte ergänzt oder ersetzt.

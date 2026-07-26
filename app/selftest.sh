@@ -51,9 +51,9 @@ if [[ "$APP_BUNDLE" == /* ]]; then
 else
     APP_BUNDLE_FOR_OPEN="$(pwd)/$APP_BUNDLE"
 fi
-ALL_TESTS=(windows newwindow welcomenew sessionrestore coldopen coldopenoff multisearch findbar fields searchoptions projectinput tabswitch tabclosehit tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll selshort dragscroll rightedge dirtyundo emojisplit typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender xpath markdown markdownblanklines markdownjump markdownappearance jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader sidebarfilter filediff tool4dhint tool4dlsp gototarget searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton filemodes selsearch wildcard openscope contrast cmdw)
+ALL_TESTS=(windows newwindow welcomenew sessionrestore coldopen coldopenoff multisearch findbar fields searchoptions projectinput tabswitch tabclosehit tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll selshort dragscroll rightedge dirtyundo emojisplit typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender xpath markdown markdownblanklines markdownjump markdownappearance jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader sidebarfilter filediff tool4dhint tool4dlsp gototarget searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton markdownimport filemodes selsearch wildcard openscope contrast cmdw)
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
-WINDOWLESS_TESTS=(search project projectperf localization updates git gitactions filemodes selsearch wildcard openscope tool4dlsp)
+WINDOWLESS_TESTS=(search project projectperf localization markdownimport updates git gitactions filemodes selsearch wildcard openscope tool4dlsp)
 # Pro Test max. Wartezeit in Sekunden, bis die SELFTEST-Zeile da sein muss.
 # (Fenster-Polling im Test selbst: bis 15 s; plus Puffer für App-Start.)
 TIMEOUT_SECS=60

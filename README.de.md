@@ -214,6 +214,26 @@ installierte Kommandozeilenwerkzeug
 [md-clip](https://github.com/DanielMuellerIR/md-clip); fehlt es, erklärt Fastra
 die Installation.
 
+**Ganze Dokumente in Markdown umwandeln** kann Fastra, wenn
+[Poor Man's Text](https://github.com/DanielMuellerIR/poormans_text) installiert
+ist. Öffnest du dann etwa eine `.docx`-, `.odt`-, `.doc`- oder `.rtf`-Datei,
+erscheint über dem Editor das Angebot **In Markdown umwandeln**; denselben
+Befehl gibt es im Ablage-Menü und im Rechtsklickmenü des Projektbaums. Ein
+`.rtfd`-Dokument sieht im Finder wie ein Ordner aus — dafür fragt Fastra beim
+Öffnen, ob es umgewandelt oder als Projektordner geöffnet werden soll.
+
+Welche Dateitypen angeboten werden, fragt Fastra beim Start direkt bei Poor
+Man's Text ab. Kommen dort später Formate hinzu, kann Fastra sie sofort, ohne
+eigenes Update. Fehlt das Werkzeug oder das von ihm benötigte Pandoc, bleibt
+das Angebot still aus.
+
+Das Ergebnis landet neben dem Original: entstand nur Text, als `Name.md`;
+entstanden zusätzlich Bilder, als Ordner `Name` mit `Name.md` und `images/`.
+Ist der Name schon belegt, weicht Fastra auf `Name-2` aus — Bestehendes wird nie
+überschrieben, und das Originaldokument bleibt unverändert. Meldet die
+Umwandlung Formatverluste, stehen sie danach sichtbar in der Leiste über dem
+Editor.
+
 ## Mehr als Suchen & Ersetzen
 
 Das Text-Menü bündelt Transformationen, für die man sonst zu den ganz großen

@@ -73,6 +73,10 @@ struct EditorView: View {
     /// `Tool4DAssist.firstContactHintShown`, Mechanik wie Markdown-Assist).
     @State private var showTool4DHint = false
 
+    /// Treibt die Markdown-Umwandlungsleiste: Ein Zustandswechsel (läuft,
+    /// fertig, fehlgeschlagen) muss die Ansicht neu zeichnen.
+    @ObservedObject private var markdownImportService = MarkdownImportService.shared
+
     /// 4D-Vervollständigung (Etappe 6 Wunschpaket 2026-07c). Stark gehalten —
     /// der `completionDelegate` des Editors ist nur eine weak-Referenz.
     @StateObject private var fourDCompletion = FourDCompletionDelegate()
@@ -233,6 +237,19 @@ struct EditorView: View {
         let name = workspace.activeTab?.url?.lastPathComponent
             ?? workspace.activeTab?.title ?? ""
         showTool4DHint = Tool4DAssist.triggersFirstContactHint(fileName: name)
+    }
+
+    /// Angebot für den aktiven Tab — rein aus dem zwischengespeicherten
+    /// Formatkatalog, ohne jeden Prozessaufruf beim Zeichnen.
+    private var markdownImportOffer: MarkdownImportOffer? {
+        workspace.markdownImportOffer(for: workspace.activeTab?.url)
+    }
+
+    /// Sichtbar bei einem offenen Angebot ODER solange eine Umwandlung läuft,
+    /// gemeldet oder fehlgeschlagen ist.
+    private var markdownImportBarIsVisible: Bool {
+        if markdownImportService.state != .idle { return true }
+        return markdownImportOffer != nil
     }
 
     /// Beide Hinweis-Buttons quittieren dauerhaft („einmal pro Nutzer").
@@ -518,6 +535,17 @@ struct EditorView: View {
                 VStack(spacing: 0) {
                     if workspace.activeConflictSupport != .none {
                         GitConflictBar()
+                    }
+                    // Angebot „In Markdown umwandeln" beziehungsweise Ergebnis
+                    // der letzten Umwandlung. Die Leiste zeigt sich nur, wenn
+                    // es wirklich etwas zu sagen gibt.
+                    if markdownImportBarIsVisible {
+                        MarkdownImportBar(offer: markdownImportOffer) {
+                            if let url = markdownImportOffer?.sourceURL {
+                                workspace.dismissMarkdownImport(url)
+                            }
+                        }
+                        Divider().opacity(0.3)
                     }
                     // tool4d-Erst-Kontakt-Hinweis (Etappe 4 Wunschpaket
                     // 2026-07c) — nur solange der aktive Tab 4D zeigt.

@@ -246,6 +246,35 @@ it relatively as well — other files open in a tab as usual. After
 inserting, the preview scrolls to the insertion point. Unsaved documents
 have no folder yet — save first (⌘S).
 
+## Converting Documents to Markdown
+
+When the separately installed **Poor Man's Text** tool is present, Fastra can
+convert whole documents to Markdown. Opening a recognized file — depending on
+the tool's version, for example `.rtf`, `.rtfd`, `.docx`, `.odt`, or `.doc` —
+shows a **Convert to Markdown** hint above the editor. The same command is in
+the **File** menu and in the project sidebar's context menu. Fastra never
+converts on its own: choosing the command is your consent.
+
+An `.rtfd` document is a folder in Finder. When you open one, Fastra therefore
+asks whether to convert it or open it as a project folder.
+
+**Where the result goes:** right next to the original. If only text was
+produced, as `Name.md`. If images were extracted as well, as a folder `Name`
+containing `Name.md` and an `images` subfolder. If that name is already taken —
+for example because `Report.rtf` and `Report.docx` sit side by side — Fastra
+falls back to `Report-2`. Existing files are never overwritten, and the original
+document stays unchanged.
+
+The conversion is deliberately lossy: Markdown can keep structure, links, simple
+emphasis, lists, and images, but not every font and no layout. When the tool
+reports such losses, they appear in the bar above the editor afterwards.
+
+**Which formats are offered** is something Fastra asks Poor Man's Text at
+launch, remembering the answer for five minutes. If the tool later supports more
+formats, Fastra uses them without an update of its own — if you just updated it
+and do not want to wait, restart Fastra. When the tool or the Pandoc it needs is
+missing, nothing is offered.
+
 ## Languages and Syntax Colors
 
 Fastra detects the language from the file extension, and for files

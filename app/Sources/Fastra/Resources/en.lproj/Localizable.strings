@@ -1260,3 +1260,17 @@
 "Apply abbrechen" = "Cancel Apply";
 "Bricht Planung und Preflight ab. Eine bereits begonnene atomare Schreibphase wird sicher abgeschlossen." = "Cancels planning and preflight. An atomic write phase that has already started will finish safely.";
 "Das ursprüngliche Einfügeziel hat sich während der Konvertierung geändert. Es wurde nichts eingefügt." = "The original insertion target changed during conversion. Nothing was inserted.";
+
+/* Markdown-Umwandlung über „Poor Man's Text" */
+"%@ erkannt — Fastra kann das Dokument in Markdown umwandeln." = "%@ detected — Fastra can convert this document to Markdown.";
+"In Markdown umwandeln" = "Convert to Markdown";
+"In Markdown umwandeln…" = "Convert to Markdown…";
+"Als Ordner öffnen" = "Open as Folder";
+"Ausblenden" = "Hide";
+"„%@“ ist ein Dokument, kein Projektordner." = "“%@” is a document, not a project folder.";
+"Fastra kann das %@-Dokument in Markdown umwandeln und danach öffnen. Das Original bleibt unverändert." = "Fastra can convert the %@ document to Markdown and then open it. The original stays unchanged.";
+"„%@“ wird umgewandelt …" = "Converting “%@” …";
+"„%@“ angelegt." = "Created “%@”.";
+"Die Umwandlung ist fehlgeschlagen." = "The conversion failed.";
+"Der Ordner „%@“ ist nicht beschreibbar." = "The folder “%@” is not writable.";
+"„Poor Man's Text“ ist nicht installiert." = "“Poor Man's Text” is not installed.";

@@ -200,6 +200,24 @@ apps into clean Markdown at the cursor. It uses the separately installed
 [md-clip](https://github.com/DanielMuellerIR/md-clip) command-line tool, and
 explains how to install it when it is not available.
 
+**Converting whole documents to Markdown** works when
+[Poor Man's Text](https://github.com/DanielMuellerIR/poormans_text) is
+installed. Opening a `.docx`, `.odt`, `.doc`, or `.rtf` file then shows a
+**Convert to Markdown** offer above the editor; the same command sits in the
+File menu and in the project tree's context menu. An `.rtfd` document looks like
+a folder in Finder, so Fastra asks on open whether to convert it or open it as a
+project folder.
+
+Fastra asks Poor Man's Text at launch which file types it supports. Formats
+added there later work immediately, with no Fastra update. When the tool or the
+Pandoc it needs is missing, the offer stays hidden.
+
+The result lands next to the original: as `Name.md` when only text was produced,
+or as a folder `Name` containing `Name.md` and `images/` when images were
+extracted. If that name is taken, Fastra falls back to `Name-2` — nothing
+existing is ever overwritten, and the source document stays unchanged. Any
+reported format loss appears in the bar above the editor afterwards.
+
 ## More than search & replace
 
 The Text menu bundles transformations that otherwise require heavyweight
