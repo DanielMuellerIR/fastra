@@ -662,6 +662,23 @@ private struct FileTreeLevel: View {
                             && workspace.gitFolderHasChanges(node.url),
                         onMutation: onMutation) {
                 if node.isDirectory {
+                    // Ein Dokumentpaket (`.rtfd`) liegt auf der Platte als
+                    // Ordner, ist aber ein Dokument. Ohne diese Abzweigung
+                    // klappte ein Klick es nur auf — die Umwandlung war im
+                    // Dateibaum nur über das Rechtsklickmenü erreichbar.
+                    if let format = workspace.markdownImportPackageFormat(at: node.url) {
+                        switch Workspace.askMarkdownImportPackageChoice(for: node.url,
+                                                                        format: format) {
+                        case .convert:
+                            workspace.selectedFileTreeFolder = nil
+                            workspace.convertToMarkdown(node.url)
+                            return
+                        case .cancel:
+                            return
+                        case .openAsFolder:
+                            break   // unten wie ein gewöhnlicher Ordner aufklappen
+                        }
+                    }
                     // Ordner-Klick markiert den Ordner (Save-Dialog-Vorschlag,
                     // Etappe 1); leere Ordner bleiben selektierbar, klappen
                     // aber nichts auf.

@@ -205,8 +205,8 @@ explains how to install it when it is not available.
 installed. Opening a `.docx`, `.odt`, `.doc`, or `.rtf` file then shows a
 **Convert to Markdown** offer above the editor; the same command sits in the
 File menu and in the project tree's context menu. An `.rtfd` document looks like
-a folder in Finder, so Fastra asks on open whether to convert it or open it as a
-project folder.
+a folder in Finder, so clicking one asks whether to convert it or open it as a
+folder.
 
 Fastra asks Poor Man's Text at launch which file types it supports. Formats
 added there later work immediately, with no Fastra update. When the tool or the

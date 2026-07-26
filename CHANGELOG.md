@@ -15,9 +15,10 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
   [Poor Man's Text](https://github.com/DanielMuellerIR/poormans_text)
   installiert, bietet Fastra beim Öffnen eines erkannten Fremdformats (RTF,
   RTFD, DOCX, ODT, DOC) über dem Editor **In Markdown umwandeln** an. Denselben
-  Befehl gibt es im Ablage-Menü und im Rechtsklickmenü des Projektbaums; ein
-  `.rtfd`-Dokument fragt beim Öffnen, ob umgewandelt oder als Projektordner
-  geöffnet werden soll. Das Ergebnis landet neben dem Original — nur Text als
+  Befehl gibt es im Ablage-Menü und im Rechtsklickmenü des Projektbaums. Ein
+  `.rtfd`-Dokument liegt auf der Platte als Ordner; ein Klick darauf — beim
+  Öffnen wie in der Projekt-Seitenleiste — fragt deshalb, ob umgewandelt oder
+  als Ordner geöffnet werden soll, statt es stillschweigend aufzuklappen. Das Ergebnis landet neben dem Original — nur Text als
   `Name.md`, mit extrahierten Bildern als Ordner `Name` mit `Name.md` und
   `images/`. Ein belegter Zielname führt auf `Name-2`; Bestehendes wird nie
   überschrieben, die Quelle bleibt bytegleich. Gemeldete Formatverluste stehen

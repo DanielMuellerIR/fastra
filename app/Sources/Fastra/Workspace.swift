@@ -1791,14 +1791,40 @@ final class Workspace: ObservableObject {
                 self.openProject(at: url)
                 return
             }
-            self.presentPackageChoice(for: url, format: format)
+            switch Workspace.askMarkdownImportPackageChoice(for: url, format: format) {
+            case .convert:      self.convertToMarkdown(url)
+            case .openAsFolder: self.openProject(at: url)
+            case .cancel:       break
+            }
         }
     }
 
+    /// Wie ein Dokumentpaket geöffnet werden soll.
+    enum MarkdownImportPackageChoice {
+        case convert
+        case openAsFolder
+        case cancel
+    }
+
+    /// Testhaken: ersetzt die Rückfrage. `nil` = echter Dialog. Nötig, weil ein
+    /// modaler `NSAlert` einen fensterlosen Selbsttest anhalten würde.
+    static var markdownImportPackageChoiceProvider:
+        ((URL, MarkdownImportFormat) -> MarkdownImportPackageChoice)?
+
     /// Ein Dokumentpaket sieht im Finder aus wie ein Ordner. Fastra kann es
-    /// nicht gleichzeitig als Projekt öffnen und umwandeln, deshalb ist hier —
+    /// nicht gleichzeitig als Ordner zeigen und umwandeln, deshalb ist hier —
     /// anders als bei einer Datei — eine echte Rückfrage nötig.
-    private func presentPackageChoice(for url: URL, format: MarkdownImportFormat) {
+    ///
+    /// Die Frage selbst kennt keinen Aufrufer-Kontext: Was „als Ordner öffnen"
+    /// bedeutet, entscheidet die aufrufende Stelle (Projekt laden bzw. im
+    /// Dateibaum aufklappen).
+    static func askMarkdownImportPackageChoice(
+        for url: URL,
+        format: MarkdownImportFormat
+    ) -> MarkdownImportPackageChoice {
+        if let provider = markdownImportPackageChoiceProvider {
+            return provider(url, format)
+        }
         let alert = NSAlert()
         alert.messageText = L10n.format("„%@“ ist ein Dokument, kein Projektordner.",
                                         url.lastPathComponent)
@@ -1812,9 +1838,9 @@ final class Workspace: ObservableObject {
         alert.addButton(withTitle: L10n.string("Als Ordner öffnen"))
         alert.addButton(withTitle: L10n.string("Abbrechen"))
         switch alert.runModal() {
-        case .alertFirstButtonReturn:  convertToMarkdown(url)
-        case .alertSecondButtonReturn: openProject(at: url)
-        default:                       break
+        case .alertFirstButtonReturn:  return .convert
+        case .alertSecondButtonReturn: return .openAsFolder
+        default:                       return .cancel
         }
     }
 
@@ -1839,6 +1865,16 @@ final class Workspace: ObservableObject {
     func canConvertToMarkdown(_ url: URL) -> Bool {
         MarkdownImportService.shared.cachedCatalog?
             .availableFormat(forExtension: url.pathExtension) != nil
+    }
+
+    /// Format, WENN dieser Ordner in Wahrheit ein Dokumentpaket ist (`.rtfd`).
+    /// `nil` für jeden echten Ordner — und auch dann, wenn der Formatkatalog
+    /// noch nicht vorliegt; dann bleibt es beim gewohnten Ordnerverhalten.
+    func markdownImportPackageFormat(at url: URL) -> MarkdownImportFormat? {
+        guard let format = MarkdownImportService.shared.cachedCatalog?
+            .availableFormat(forExtension: url.pathExtension),
+              format.isPackage else { return nil }
+        return format
     }
 
     /// Blendet das Angebot für genau diese Quelle aus — nur für diese Sitzung.

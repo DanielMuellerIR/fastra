@@ -266,8 +266,9 @@ Befehl findest du im Menü **Ablage** und im Rechtsklickmenü der Projekt-
 Seitenleiste. Fastra wandelt nichts von selbst um: Der Klick auf den Befehl ist
 die Zustimmung.
 
-Ein `.rtfd`-Dokument ist im Finder ein Ordner. Öffnest du es, fragt Fastra
-deshalb, ob es umgewandelt oder als Projektordner geöffnet werden soll.
+Ein `.rtfd`-Dokument ist im Finder ein Ordner. Fastra fragt deshalb nach, ob
+es umgewandelt oder als Ordner geöffnet werden soll — sowohl beim Öffnen als
+auch beim Klick darauf in der Projekt-Seitenleiste.
 
 **Wo das Ergebnis landet:** direkt neben dem Original. Entstand nur Text, als
 `Name.md`. Wurden Bilder mit herausgelöst, als Ordner `Name` mit `Name.md` und

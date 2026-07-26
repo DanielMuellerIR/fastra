@@ -255,8 +255,9 @@ shows a **Convert to Markdown** hint above the editor. The same command is in
 the **File** menu and in the project sidebar's context menu. Fastra never
 converts on its own: choosing the command is your consent.
 
-An `.rtfd` document is a folder in Finder. When you open one, Fastra therefore
-asks whether to convert it or open it as a project folder.
+An `.rtfd` document is a folder in Finder. Fastra therefore asks whether to
+convert it or open it as a folder — both when opening it and when clicking it
+in the project sidebar.
 
 **Where the result goes:** right next to the original. If only text was
 produced, as `Name.md`. If images were extracted as well, as a folder `Name`

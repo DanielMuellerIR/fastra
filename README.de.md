@@ -219,8 +219,8 @@ die Installation.
 ist. Öffnest du dann etwa eine `.docx`-, `.odt`-, `.doc`- oder `.rtf`-Datei,
 erscheint über dem Editor das Angebot **In Markdown umwandeln**; denselben
 Befehl gibt es im Ablage-Menü und im Rechtsklickmenü des Projektbaums. Ein
-`.rtfd`-Dokument sieht im Finder wie ein Ordner aus — dafür fragt Fastra beim
-Öffnen, ob es umgewandelt oder als Projektordner geöffnet werden soll.
+`.rtfd`-Dokument sieht im Finder wie ein Ordner aus — ein Klick darauf fragt
+deshalb, ob es umgewandelt oder als Ordner geöffnet werden soll.
 
 Welche Dateitypen angeboten werden, fragt Fastra beim Start direkt bei Poor
 Man's Text ab. Kommen dort später Formate hinzu, kann Fastra sie sofort, ohne

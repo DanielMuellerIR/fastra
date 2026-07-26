@@ -13011,9 +13011,84 @@ enum SelfTest {
             guard contents.contains("images") else {
                 finishMarkdownImport(base, false, "Bildordner fehlt: \(contents)")
             }
+            routePackageMarkdownImportFixture(in: base)
+        }
+    }
+
+    /// Schritt 4: Ein `.rtfd` ist auf der Platte ein ORDNER. Fastra darf es
+    /// deshalb nicht still als Projekt öffnen, sondern muss die Rückfrage
+    /// anbieten und danach wirklich umwandeln. Genau das ging beim ersten
+    /// Anlauf im Dateibaum verloren (Daniel-Befund 2026-07-26).
+    private static func routePackageMarkdownImportFixture(in base: URL) {
+        let package = base.appendingPathComponent("Paket.rtfd", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: package,
+                                                    withIntermediateDirectories: true)
+            try Data(#"{\rtf1\ansi Inhalt eines RTFD-Pakets.}"#.utf8)
+                .write(to: package.appendingPathComponent("TXT.rtf"), options: .atomic)
+        } catch {
+            finishMarkdownImport(base, false, "RTFD-Fixture nicht erzeugbar")
+        }
+
+        // Der Katalog muss das Paket als Paket erkennen — sonst landet es im
+        // Ordnerzweig und wird als Projekt geöffnet.
+        guard let workspace = Workspace.shared else {
+            finishMarkdownImport(base, false, "Umgebungsproblem: kein Workspace")
+        }
+        guard let format = workspace.markdownImportPackageFormat(at: package) else {
+            finishMarkdownImport(base, false,
+                                 "RTFD wird nicht als Dokumentpaket erkannt — "
+                                    + "ein Klick würde es nur aufklappen")
+        }
+        guard format.identifier == "rtfd" else {
+            finishMarkdownImport(base, false, "falsches Paketformat: \(format.identifier)")
+        }
+        // Ein echter Ordner darf davon unberührt bleiben.
+        guard workspace.markdownImportPackageFormat(at: base) == nil else {
+            finishMarkdownImport(base, false, "gewöhnlicher Ordner gilt fälschlich als Dokument")
+        }
+
+        // Die Rückfrage ist modal und würde einen fensterlosen Lauf anhalten;
+        // der Testhaken beantwortet sie mit „umwandeln".
+        var asked = 0
+        Workspace.markdownImportPackageChoiceProvider = { _, _ in
+            asked += 1
+            return .convert
+        }
+        workspace.openFileOrFolder(at: package)
+        pollPackageMarkdownImport(base: base, package: package, asked: { asked }, tick: 0)
+    }
+
+    private static func pollPackageMarkdownImport(base: URL, package: URL,
+                                                  asked: @escaping () -> Int, tick: Int) {
+        let expected = base.appendingPathComponent("Paket.md")
+        if FileManager.default.fileExists(atPath: expected.path) {
+            Workspace.markdownImportPackageChoiceProvider = nil
+            guard asked() == 1 else {
+                finishMarkdownImport(base, false,
+                                     "Rückfrage \(asked())-mal statt einmal gestellt")
+            }
+            // Das Paket selbst muss unangetastet bleiben.
+            guard FileManager.default.fileExists(
+                atPath: package.appendingPathComponent("TXT.rtf").path
+            ) else {
+                finishMarkdownImport(base, false, "das RTFD-Paket wurde verändert")
+            }
+            guard Workspace.shared?.projectURL != package.canonicalFileURL else {
+                finishMarkdownImport(base, false, "das Paket wurde als Projekt geöffnet")
+            }
             finishMarkdownImport(base, true,
                                  "Formatkatalog, Zwischenspeicher, flache Umwandlung, "
-                                    + "Kollisionsschutz und Ordnerfall ok")
+                                    + "Kollisionsschutz, Ordnerfall und RTFD-Paketweg ok")
+        }
+        guard tick < 100 else {
+            Workspace.markdownImportPackageChoiceProvider = nil
+            finishMarkdownImport(base, false,
+                                 "RTFD-Paket nicht umgewandelt (Rückfragen: \(asked()), "
+                                    + "Zustand: " + markdownImportFailureText() + ")")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollPackageMarkdownImport(base: base, package: package, asked: asked, tick: tick + 1)
         }
     }
 
