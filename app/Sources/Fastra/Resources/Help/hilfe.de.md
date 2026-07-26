@@ -256,6 +256,24 @@ gewohnt in einem Tab. Nach dem Einfügen scrollt die Vorschau zur
 Einfügestelle. Ungespeicherte Dokumente haben noch keinen Ordner —
 deshalb zuerst speichern (⌘S).
 
+### HTML in der Vorschau
+
+Markdown-Dateien enthalten oft etwas HTML — am häufigsten ein zentriertes Bild
+am Anfang eines README. Die Vorschau zeigt davon eine bewusst kleine Auswahl:
+Absätze, Textauszeichnungen, Listen, Tabellen, Links, Bilder sowie
+`<details>`/`<summary>`.
+
+Alles andere wird stillschweigend weggelassen, darunter `<script>`, `<style>`,
+`<iframe>` und `<svg>`, außerdem sämtliche Ereignis-Attribute und die Angaben
+`style`, `class` und `id`. Damit kann eine fremde Datei in der Vorschau nichts
+ausführen, nichts nachladen und sich auch nicht über die Darstellung legen.
+Passt an einem HTML-Abschnitt etwas nicht in dieses enge Raster, entfällt der
+ganze Abschnitt — lieber sichtbar zu wenig als unbemerkt zu viel.
+
+Bilder aus solchen HTML-Abschnitten werden wie Markdown-Bilder behandelt:
+lokale Dateien erscheinen, entfernte Adressen werden nicht geladen. Das Öffnen
+einer Markdown-Datei erzeugt also weiterhin keinen Netzverkehr.
+
 ## Dokumente in Markdown umwandeln
 
 Ist das separat installierte Werkzeug **Poor Man's Text** vorhanden, kann Fastra

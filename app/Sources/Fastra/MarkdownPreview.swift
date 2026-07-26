@@ -157,11 +157,19 @@ enum MarkdownRichText {
         let cssFont = fontName == PreviewFonts.systemName
             ? "-apple-system, BlinkMacSystemFont, sans-serif"
             : "'\(cssEscaped(fontName))', -apple-system, sans-serif"
+        // Je Render neu: Nur Fastras eigenes Inline-Skript trägt diesen Wert.
+        // Sollte die HTML-Positivliste je ein `<script>` durchlassen, fehlt ihm
+        // der Nonce und WebKit führt es nicht aus — ein Filterfehler bliebe
+        // damit eine HTML-Injektion und würde keine Codeausführung.
+        // `style-src` behält bewusst `'unsafe-inline'`: KaTeX und Mermaid legen
+        // zur Laufzeit eigene Stilknoten an. Gegen fremdes CSS wirkt hier die
+        // Positivliste, die weder `<style>` noch das `style`-Attribut zulässt.
+        let nonce = UUID().uuidString.replacingOccurrences(of: "-", with: "")
 
         return """
         <!doctype html>
         <html><head><meta charset="utf-8">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: fastra-preview:; style-src 'unsafe-inline' fastra-preview:; script-src 'unsafe-inline' fastra-preview:; connect-src 'none'; media-src 'none'; frame-src 'none'">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: fastra-preview:; style-src 'unsafe-inline' fastra-preview:; script-src 'nonce-\(nonce)' fastra-preview:; connect-src 'none'; media-src 'none'; frame-src 'none'">
         <link rel="stylesheet" href="fastra-preview://resource/highlight.css">
         <style>
         body { margin: 0; padding: 20px; box-sizing: border-box;
@@ -203,7 +211,7 @@ enum MarkdownRichText {
         <script src="fastra-preview://resource/katex.js"></script>
         <script src="fastra-preview://resource/highlight.js"></script>
         <script src="fastra-preview://resource/mermaid.js"></script>
-        <script>
+        <script nonce="\(nonce)">
         const mermaidError = "\(javascriptEscaped(L10n.string("Diagramm konnte nicht gerendert werden.")))";
         if (window.mermaid) {
           mermaid.initialize({
@@ -425,8 +433,18 @@ enum MarkdownRichText {
             extraction: math
         )
 
+        // Rohes HTML durch die enge Positivliste schicken, BEVOR gerendert wird.
+        // Der Prüfer sieht dadurch ausschließlich die Fragmente aus der Datei,
+        // nie Fastras eigenes erzeugtes HTML.
+        MarkdownHTMLSanitizing.apply(to: document)
+
         let extensions = cmark_parser_get_syntax_extensions(parser)
-        guard let rendered = cmark_render_html(document, CMARK_OPT_SOURCEPOS, extensions) else {
+        // `CMARK_OPT_UNSAFE` gibt die oben geprüften Fragmente frei. Was cmark
+        // im sicheren Modus zusätzlich erledigt hätte — unsichere Link-Schemata
+        // leeren — übernimmt `MarkdownHTMLSanitizing` am Baum selbst.
+        guard let rendered = cmark_render_html(document,
+                                               CMARK_OPT_SOURCEPOS | CMARK_OPT_UNSAFE,
+                                               extensions) else {
             return MarkdownRenderedFragment(html: escapedPlainText(markdown), imageURLs: [:])
         }
         defer { free(rendered) }

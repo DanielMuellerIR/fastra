@@ -11702,6 +11702,12 @@ enum SelfTest {
         flowchart LR
           A --> B
         ```
+
+        <p align="center"><img src="pixel.png" width="8" alt="zentriert"></p>
+
+        <img src="fehlt.png" onerror="window.__fastraPwned = 1">
+
+        <script>window.__fastraPwned = 1;</script>
         """
         // Kleines echtes PNG: Der DOM-Test prüft `naturalWidth`, nicht nur das
         // Vorhandensein eines <img>-Elements.
@@ -11775,7 +11781,17 @@ enum SelfTest {
             blankLines: blanks.length === 2
               && blanks.every(node => node.textContent === ''
                 && Math.abs(node.getBoundingClientRect().height - lineHeight) < 0.75),
-            blankCopy: /Kopierstart\\n{3,}Kopierende/.test(selected)
+            blankCopy: /Kopierstart\\n{3,}Kopierende/.test(selected),
+            // Die HTML-Positivliste: Das zentrierte Bild MUSS erscheinen …
+            centered: (() => {
+              const box = document.querySelector('p[align="center"]');
+              const image = box && box.querySelector('img');
+              return !!image && image.naturalWidth > 0;
+            })(),
+            // … und weder ein Ereignis-Attribut noch ein eingeschleustes
+            // <script> darf im echten Renderer zur Ausführung kommen. Ein
+            // reiner String-Test könnte das nicht belegen.
+            notPwned: typeof window.__fastraPwned === 'undefined'
           };
         })()
         """
@@ -11788,9 +11804,12 @@ enum SelfTest {
                 && flags?["mark"] == true
                 && flags?["blankLines"] == true
                 && flags?["blankCopy"] == true
+                && flags?["centered"] == true
+                && flags?["notPwned"] == true
             if passed {
                 try? FileManager.default.removeItem(at: directory)
-                finish(true, "Bild + KaTeX + Mermaid + Codefarben + Textmarker + sichtbare Leerzeilen im DOM")
+                finish(true, "Bild + KaTeX + Mermaid + Codefarben + Textmarker + sichtbare Leerzeilen "
+                    + "+ zentriertes HTML-Bild + kein ausgeführtes Fremdskript im DOM")
             }
             if tick == 119 {
                 try? FileManager.default.removeItem(at: directory)

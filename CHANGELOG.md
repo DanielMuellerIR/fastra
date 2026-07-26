@@ -11,6 +11,39 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ### Neu
 
+- **Enge HTML-Positivliste in der Markdown-Vorschau.** Bisher wurde jedes rohe
+  HTML durch „raw HTML omitted" ersetzt — damit blieb auch der verbreitetste
+  README-Aufbau unsichtbar, ein Bild in `<p align="center">`. Die Vorschau
+  rendert jetzt eine kleine, fest umrissene Menge: Absatz-, Auszeichnungs-,
+  Listen- und Tabellenelemente, `<a>`, `<img>` sowie `<details>`/`<summary>`.
+
+  Die Grenze ist bewusst eng gezogen. Verboten bleiben `<script>`, `<style>`,
+  `<iframe>`, `<object>`, `<svg>` und `<math>` — die letzten beiden, weil sie
+  die HTML-Parsingregeln umschalten und über `foreignObject` beziehungsweise
+  `annotation-xml` zurück nach HTML führen. Ebenso verboten sind alle
+  Ereignis-Attribute (`onerror` und Verwandte), `style`, `class` und `id`:
+  ohne sie kann ein Dokument sich weder über die Vorschau legen noch Text
+  verstecken noch Fastras eigene Skripte per DOM-Clobbering stören.
+
+  Drei Eigenschaften tragen die Sicherheit: Der Prüfer **erzeugt die Ausgabe
+  neu**, statt Eingabebytes durchzureichen — WebKit sieht damit nur Text, den
+  Fastra selbst geschrieben hat. Er ist **fail-closed je Fragment**: Passt ein
+  Detail nicht in die enge Grammatik, fällt das ganze Fragment weg statt
+  halbrepariert zu werden. Und er sieht **nur die Fragmente aus der Datei**,
+  nie Fastras erzeugtes HTML.
+
+  Die `script-src`-Regel der Vorschau nutzt jetzt einen pro Render neuen Nonce
+  statt `'unsafe-inline'`. Sollte die Positivliste je etwas durchlassen, bliebe
+  es eine HTML-Injektion und würde keine Codeausführung. Unsichere Link-Schemata
+  (`javascript:`, `vbscript:`, `file:`, `data:`) prüft Fastra seitdem selbst,
+  weil cmark das nur im vorher genutzten sicheren Modus tat.
+
+  Unverändert gilt: Entfernte Bilder werden neutralisiert, lokale laufen über
+  interne Tokens, und `default-src 'none'` verbietet jeden Netzabruf. Der
+  Selbsttest `markdown` prüft im echten WebKit-DOM beides — dass das zentrierte
+  Bild erscheint und dass weder ein Ereignis-Attribut noch ein eingeschleustes
+  `<script>` zur Ausführung kommt.
+
 - **Dokumente in Markdown umwandeln.** Ist
   [Poor Man's Text](https://github.com/DanielMuellerIR/poormans_text)
   installiert, bietet Fastra beim Öffnen eines erkannten Fremdformats (RTF,

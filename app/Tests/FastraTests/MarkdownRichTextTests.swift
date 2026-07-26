@@ -186,8 +186,14 @@ struct MarkdownRichTextTests {
         )
 
         #expect(fragment.contains("<mark>sicher</mark>"))
-        #expect(!fragment.contains("<script>"))
-        #expect(fragment.contains("raw HTML omitted"))
+        // Seit der HTML-Positivliste (v1.52) steht hier nicht mehr
+        // „raw HTML omitted": Die verworfenen Tags verschwinden ersatzlos.
+        // Der Inhalt DAZWISCHEN bleibt als gewöhnlicher Text stehen — cmark
+        // gibt ihn als eigenen Textknoten aus. Entscheidend ist, dass kein
+        // `script`-Element entsteht; sichtbarer Text führt nichts aus.
+        #expect(!fragment.contains("<script"))
+        #expect(!fragment.contains("</script"))
+        #expect(fragment.contains("alert('x')"))
     }
 
     @Test("Remote-Bilder lösen beim Anzeigen keinen Netzverkehr aus")

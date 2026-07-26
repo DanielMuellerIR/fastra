@@ -190,6 +190,13 @@ approximation, because the rendered text no longer contains the Markdown
 syntax. Links still open in your browser, and dragging out a selection does not
 jump.
 
+The preview does render a little HTML: paragraphs, text emphasis, lists, tables,
+links, images, and `<details>`/`<summary>` — enough for the common README layout
+with a centered image. Anything beyond that is dropped, including `<script>`,
+`<style>`, `<iframe>`, and `<svg>`, as well as all event attributes and the
+`style`, `class`, and `id` attributes. If any detail of an HTML section does not
+fit that narrow grammar, the whole section is dropped.
+
 The preview and all of its rendering libraries stay local. Image paths are
 resolved relative to the Markdown file; remote images are deliberately not
 loaded, so opening a file does not quietly contact the network. A link opens

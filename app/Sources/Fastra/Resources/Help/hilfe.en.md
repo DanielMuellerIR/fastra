@@ -246,6 +246,24 @@ it relatively as well — other files open in a tab as usual. After
 inserting, the preview scrolls to the insertion point. Unsaved documents
 have no folder yet — save first (⌘S).
 
+### HTML in the Preview
+
+Markdown files often contain some HTML — most commonly a centered image at the
+top of a README. The preview shows a deliberately small selection of it:
+paragraphs, text emphasis, lists, tables, links, images, and
+`<details>`/`<summary>`.
+
+Everything else is silently left out, including `<script>`, `<style>`,
+`<iframe>`, and `<svg>`, as well as all event attributes and the `style`,
+`class`, and `id` attributes. A foreign file therefore cannot execute anything
+in the preview, cannot load anything, and cannot lay itself over the display.
+If any detail of an HTML section does not fit this narrow grammar, the whole
+section is dropped — visibly too little beats unnoticed too much.
+
+Images from such HTML sections are treated like Markdown images: local files
+appear, remote addresses are not loaded. Opening a Markdown file still produces
+no network traffic.
+
 ## Converting Documents to Markdown
 
 When the separately installed **Poor Man's Text** tool is present, Fastra can

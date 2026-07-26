@@ -203,6 +203,13 @@ Zeile aus den Umbrüchen vor der Klickstelle bestimmt wird. Die Spalte ist eine
 Näherung, weil im gerenderten Text die Markdown-Syntax fehlt. Links öffnen
 weiterhin den Browser, und eine gezogene Textauswahl löst keinen Sprung aus.
 
+Etwas HTML zeigt die Vorschau mit: Absätze, Textauszeichnungen, Listen,
+Tabellen, Links, Bilder und `<details>`/`<summary>` — genug für den
+verbreiteten README-Aufbau mit zentriertem Bild. Alles darüber hinaus entfällt,
+darunter `<script>`, `<style>`, `<iframe>` und `<svg>` sowie sämtliche
+Ereignis-Attribute und `style`, `class` und `id`. Passt an einem HTML-Abschnitt
+etwas nicht in dieses enge Raster, fällt der ganze Abschnitt weg.
+
 Die Vorschau und ihre Render-Bibliotheken arbeiten ausschließlich lokal.
 Bildpfade werden relativ zur Markdown-Datei aufgelöst; externe Bilder werden
 bewusst nicht nachgeladen. Schon das Öffnen einer Datei erzeugt also keinen
