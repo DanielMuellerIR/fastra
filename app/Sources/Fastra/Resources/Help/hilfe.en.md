@@ -164,6 +164,14 @@ yields real rich text (headings, lists, and bold survive). Copying from the
 editor always yields plain text instead: no font, no color, and nothing a
 target application can alter while converting.
 
+**Symbols that look narrow in the preview:** Unicode treats some characters as
+text characters that only turn into a colored emoji with a trailing variation
+selector (U+FE0F) — `⏸`, `⏹`, or `▶`, for example. The editor still shows them
+in color because macOS only ships the emoji font for them; the preview follows
+the Unicode rule and shows the narrow text form, exactly like browsers, GitHub,
+or Keynote. Fastra does not alter the file here. For the symbol to appear in
+color everywhere, the variation selector has to be in the text.
+
 ### Special Preview Syntax
 
 Fastra uses GitHub-Flavoured Markdown and adds the following local renderings

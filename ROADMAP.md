@@ -128,19 +128,19 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   Screenshot einwandfrei. Wächter `emojisplit` läuft im Standardlauf.
   Daniel prüft mit v1.49.0 gegen; bei erneutem Auftreten Fensterbreite oder
   Screenshot zur Meldung geben.
-- **Eingefügtes ⏸️ erscheint als schmale Textform, Tab-Wechsel repariert es**
-  (Daniel-Meldung 2026-07-27, mit v1.52.0 reproduzierbar am Live-Repro).
-  Derselbe Befund führte zuerst auf eine echte, inzwischen behobene Ursache:
-  Der Editor legte attributierten Text (RTF) aufs Clipboard, und der
-  RTF-nach-HTML-Weg des Zielprogramms verlor U+FE0F — seit v1.52.1 kopiert
-  Fastra reinen Text. Die Darstellung IN Fastra ist damit aber nicht erklärt:
-  Der neue Wächter `emojipaste` fügt ⏸️ an 13 Stellen einer umbrochenen Zeile
-  über das echte Pasteboard ein und prüft danach Speicherinhalt,
-  Attributläufe, Glyph-Runs, die gezeichneten Pixel (Farbe statt Grauwert) und
-  den Text der Live-Vorschau — alles sauber. Passt damit weiter zur Klasse
+- **„Tab-Wechsel repariert die Emoji-Darstellung“** (Daniel-Meldung
+  2026-07-27). Die beiden greifbaren Teile des Befunds sind geklärt und in
+  v1.52.1/v1.52.2 abgearbeitet: Der Editor legte attributierten Text (RTF)
+  aufs Clipboard, dessen RTF-nach-HTML-Weg U+FE0F verlor, und in der
+  gemeldeten Datei steht über die ganze Git-Historie das nackte `⏸` ohne
+  Variantenselektor, das Editor und Vorschau systembedingt unterschiedlich
+  zeigen (Wächter `emojipreview`). Offen bleibt allein die Beobachtung, dass
+  ein Tab-Wechsel die Darstellung verändert hat: Der Wächter `emojipaste`
+  prüft Speicherinhalt, Attributläufe, Glyph-Runs, gezeichnete Pixel und die
+  Live-Vorschau an 13 Einfügestellen und findet nichts. Passt zur Klasse
   „laufende Sitzung zeichnet veraltet“ (F.18). Bei erneutem Auftreten
   notieren: Editor-Text oder Vorschau, Fensterbreite, ob ein App-Neustart
-  genügt, und ob das kopierte Ergebnis (jetzt reiner Text) korrekt ankommt.
+  genügt, und welche Codepoints die Datei an der Stelle wirklich enthält.
 
 - **Kurzzeitig doppelte Zeilenhöhe** beim Emoji-Einfügen über die
   Emoji-Palette (normalisierte sich nach dem nächsten Einfügen von selbst).

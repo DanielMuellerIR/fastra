@@ -1250,6 +1250,7 @@ CETV_COLUMN="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextV
 CETV_COPY_PASTE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+CopyPaste.swift"
 CETV_DELETE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+Delete.swift"
 CETV_REPLACE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+ReplaceCharacters.swift"
+CETV_SELECT="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+Select.swift"
 COLUMN_PATCH_SOURCE="Patches/CodeEditTextView/TextView+ColumnSelection.swift"
 if [ ! -f "$COLUMN_PATCH_SOURCE" ]; then
   echo "✗ FEHLER: Versionierter Rechteckauswahl-Patch fehlt." >&2
@@ -1269,16 +1270,18 @@ if ! grep -q 'Fastra-Patch: Rechteck-Copy' "$CETV_COPY_PASTE" 2>/dev/null \
    || ! grep -q 'Fastra-Patch: Rechteck-Paste' "$CETV_COPY_PASTE" 2>/dev/null \
    || ! grep -q 'Fastra-Patch: Rechteck-Delete' "$CETV_DELETE" 2>/dev/null \
    || ! grep -q 'Fastra-Patch: eine Undo-Gruppe fuer Mehrfachbereiche' "$CETV_REPLACE" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: Doppelklick auf Symbole' "$CETV_SELECT" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: einzelnes Symbol' "$CETV_SELECT" 2>/dev/null \
    || ! grep -q 'fastraColumnSelectionTabWidth = tabWidth' "$CESE_APPEARANCE" 2>/dev/null \
    || ! grep -q 'fastraColumnIndentationUnit' "$CESE_BEHAVIOR" 2>/dev/null; then
   echo "→ Verdrahte Rechteckauswahl mit Copy/Paste, Undo und Editorprofil"
-  chmod u+w "$CETV_COPY_PASTE" "$CETV_DELETE" "$CETV_REPLACE" \
+  chmod u+w "$CETV_COPY_PASTE" "$CETV_DELETE" "$CETV_REPLACE" "$CETV_SELECT" \
     "$CESE_APPEARANCE" "$CESE_BEHAVIOR"
-  /usr/bin/python3 - "$CETV_COPY_PASTE" "$CETV_DELETE" "$CETV_REPLACE" \
+  /usr/bin/python3 - "$CETV_COPY_PASTE" "$CETV_DELETE" "$CETV_REPLACE" "$CETV_SELECT" \
     "$CESE_APPEARANCE" "$CESE_BEHAVIOR" <<'PYEOF'
 import sys
 
-copy_paste, delete, replace_characters, appearance, behavior = sys.argv[1:]
+copy_paste, delete, replace_characters, select, appearance, behavior = sys.argv[1:]
 
 def replace_once(path, marker, old, new):
     src = open(path).read()
@@ -1355,6 +1358,37 @@ replace_once(
         }
         insertText(stringContents, replacementRange: NSRange(location: NSNotFound, length: 0))
     }'''
+)
+replace_once(
+    select,
+    "Fastra-Patch: Doppelklick auf Symbole",
+    '''    internal func findWordBoundary(at position: Int) -> NSRange {
+        guard position >= 0 && position < textStorage.length,''',
+    '''    internal func findWordBoundary(at position: Int) -> NSRange {
+        // Fastra-Patch: Doppelklick auf Symbole und Emojis markiert den ganzen
+        // Graphem-Cluster. Upstream kennt nur Bezeichner, Leerraum,
+        // Zeilenenden und Satzzeichen; ein Emoji markierte deshalb gar nichts
+        // (Daniel-Befund 2026-07-27). Mehrteilige Cluster gewinnen sofort:
+        // Ein Klick auf den Variantenselektor U+FE0F landete sonst in der
+        // Wortlogik, weil Foundation ihn zu den alphanumerischen Zeichen
+        // zaehlt, und markierte nur ihn allein.
+        let fastraCluster = fastraGraphemeClusterRange(at: position)
+        if fastraCluster.length > 1 {
+            return fastraCluster
+        }
+        guard position >= 0 && position < textStorage.length,''',
+)
+replace_once(
+    select,
+    "Fastra-Patch: einzelnes Symbol",
+    '''        } else {
+            return NSRange(location: position, length: 0)
+        }''',
+    '''        } else {
+            // Fastra-Patch: einzelnes Symbol (Pfeil, nacktes ⏸ ohne
+            // Variantenselektor) markiert sich selbst statt nichts.
+            return fastraCluster
+        }''',
 )
 replace_once(
     delete,

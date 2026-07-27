@@ -171,6 +171,14 @@ bleiben erhalten). Aus dem Editor kopiert Fastra dagegen immer reinen Text:
 ohne Schrift und Farbe und ohne dass ein Zielprogramm beim Umwandeln etwas
 verändern kann.
 
+**Symbole, die in der Vorschau schmal aussehen:** Manche Zeichen sind laut
+Unicode Textzeichen und werden erst mit einem angehängten Variantenselektor
+(U+FE0F) zum farbigen Emoji — zum Beispiel `⏸`, `⏹` oder `▶`. Der Editor zeigt
+sie trotzdem farbig, weil macOS für sie nur die Emoji-Schrift besitzt; die
+Vorschau folgt der Unicode-Regel und zeigt die schmale Textform, genau wie
+Browser, GitHub oder Keynote. Fastra verändert die Datei dabei nicht. Soll das
+Symbol überall farbig erscheinen, muss der Variantenselektor im Text stehen.
+
 ### Besondere Vorschau-Syntax
 
 Fastra verwendet GitHub-Flavoured Markdown und ergänzt es in der Vorschau um

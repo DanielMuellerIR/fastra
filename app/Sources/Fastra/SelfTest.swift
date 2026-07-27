@@ -375,6 +375,7 @@ enum SelfTest {
         case "dirtyundo": waitForMainWindow { runDirtyUndoTest() }
         case "emojisplit": waitForMainWindow { runEmojiSplitTest() }
         case "emojipaste": waitForMainWindow { runEmojiPasteTest() }
+        case "emojipreview": waitForMainWindow { runEmojiPreviewTest() }
         case "tabscroll": waitForMainWindow { runTabScrollTest() }
         case "typescroll": waitForMainWindow { runTypeScrollTest() }
         case "emojishot": waitForMainWindow { runEmojiShot() }
@@ -519,7 +520,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -7124,6 +7125,152 @@ enum SelfTest {
             problems.append("kein Glyph-Run deckt die Emoji-Position ab")
         }
         return problems
+    }
+
+    // MARK: - -selftest emojipreview
+
+    /// Hält die gemessene Grenze zwischen Editor und Vorschau fest.
+    ///
+    /// Daniel-Befund 2026-07-27: Ein Sprechskript enthielt 61-mal das nackte
+    /// `⏸` (U+23F8 OHNE Variantenselektor, so in der Datei und über die ganze
+    /// Git-Historie). Der Editor zeigt dafür ein Farb-Emoji, weil CoreText das
+    /// Zeichen in keiner Textschrift findet und auf Apple Color Emoji
+    /// zurückfällt. WebKit entscheidet die Präsentation VOR der Schriftwahl und
+    /// zeigt darum die Textform — wie Browser, GitHub und Keynote es auch tun.
+    /// Fastra wandelt dabei nichts um; erst der Variantenselektor macht aus dem
+    /// Zeichen überall ein Emoji.
+    ///
+    /// Der Test fotografiert vier Fälle in der WebView (nackt/vollständig,
+    /// Inline-Code/Fließtext) und prüft die Farbe der Pixel: Eine
+    /// Emoji-Schrift in der CSS-Kaskade ändert daran nachweislich nichts, und
+    /// ein global erzwungenes `font-variant-emoji` würde auch Pfeile und
+    /// Häkchen kippen. Beide Abweichungen schlagen hier an.
+    private static func runEmojiPreviewTest() {
+        testLabel = "emojipreview"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks() else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        window.setContentSize(NSSize(width: 1100, height: 800))
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "fastra-emojipreview-\(UUID().uuidString)", isDirectory: true
+            )
+        let tmp = directory.appendingPathComponent("preview.md")
+        // Erste Zeile: nacktes Basiszeichen als Inline-Code — genau die Form aus
+        // Daniels Skript. Zweite Zeile: vollständige Emoji-Sequenz als
+        // Kontrollfall.
+        let text = "Code nackt `\u{23F8}` Ende\n\nCode voll `\u{23F8}\u{FE0F}` Ende\n\n"
+            + "Fließtext nackt **\u{23F8}** Ende\n\nFließtext voll *\u{23F8}\u{FE0F}* Ende\n"
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+            try Data(text.utf8).write(to: tmp)
+        }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+
+        ws.loadFile(at: tmp) { ok in
+            try? FileManager.default.removeItem(at: directory)
+            guard ok else { finish(false, "Fixture lädt nicht") }
+            pollEmojiPreviewReady(window: window, tick: 0)
+        }
+    }
+
+    private static func pollEmojiPreviewReady(window: NSWindow, tick: Int) {
+        if let root = window.contentView,
+           let webView = markdownWebView(in: root) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                measureEmojiPreviewColors(
+                    webView: webView,
+                    pending: [
+                        ("code-nackt", "document.querySelectorAll('code')[0]"),
+                        ("code-voll", "document.querySelectorAll('code')[1]"),
+                        ("text-nackt", "document.querySelector('strong')"),
+                        ("text-voll", "document.querySelector('em')")
+                    ],
+                    results: []
+                )
+            }
+            return
+        }
+        if tick >= 100 { finish(false, "Vorschau nicht binnen 10 s bereit") }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollEmojiPreviewReady(window: window, tick: tick + 1)
+        }
+    }
+
+    /// Fotografiert je Fall das Element und meldet, ob es farbig ist.
+    private static func measureEmojiPreviewColors(
+        webView: WKWebView, pending: [(String, String)],
+        results: [(label: String, coloredPixels: Int)]
+    ) {
+        guard let (label, expression) = pending.first else {
+            let details = results.map {
+                "\($0.label): \($0.coloredPixels > 0 ? "farbig (\($0.coloredPixels) Pixel)" : "einfarbig")"
+            }.joined(separator: "; ")
+            let full = results.filter { $0.label.hasSuffix("voll") }
+            let bare = results.filter { $0.label.hasSuffix("nackt") }
+            // Mit Variantenselektor MUSS die Vorschau farbig zeichnen.
+            if full.contains(where: { $0.coloredPixels == 0 }) {
+                finish(false, "⏸️ mit U+FE0F wird in der Vorschau nicht farbig "
+                    + "gezeichnet: \(details)")
+            } else if bare.contains(where: { $0.coloredPixels > 0 }) {
+                // Gegenrichtung: Würde die Vorschau auch das nackte Zeichen
+                // farbig zeichnen (etwa durch ein global gesetztes
+                // `font-variant-emoji: emoji`), kippten auch Pfeile und Häkchen
+                // in Emoji-Form. Das wäre eine Produktentscheidung, keine
+                // Nebenwirkung — deshalb schlägt der Wächter hier bewusst an.
+                finish(false, "Vorschau zeichnet auch das NACKTE ⏸ farbig — "
+                    + "Emoji-Präsentation wurde erzwungen: \(details)")
+            } else {
+                finish(true, "Vorschau folgt Unicode: ⏸️ (mit U+FE0F) farbig, "
+                    + "nacktes ⏸ als Textform — anders als der Editor daneben, "
+                    + "der über CoreTexts Schriftrückfall ein Farb-Emoji zeigt: "
+                    + "\(details)")
+            }
+        }
+        let script = """
+        (function(){
+          const el = \(expression);
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+          return [r.left + window.scrollX, r.top + window.scrollY, r.width, r.height];
+        })()
+        """
+        webView.evaluateJavaScript(script) { value, _ in
+            guard let numbers = value as? [Double], numbers.count == 4 else {
+                finish(false, "Element \(label) in der Vorschau nicht gefunden")
+            }
+            let rect = CGRect(x: numbers[0], y: numbers[1],
+                              width: max(numbers[2], 1), height: max(numbers[3], 1))
+            let configuration = WKSnapshotConfiguration()
+            configuration.rect = rect
+            webView.takeSnapshot(with: configuration) { image, error in
+                guard let image, let bitmap = NSBitmapImageRep(data: image.tiffRepresentation ?? Data()) else {
+                    finish(false, "Snapshot für \(label) fehlgeschlagen: "
+                        + (error?.localizedDescription ?? "kein Bild"))
+                }
+                var colored = 0
+                for x in 0..<bitmap.pixelsWide {
+                    for y in 0..<bitmap.pixelsHigh {
+                        guard let color = bitmap.colorAt(x: x, y: y)?
+                            .usingColorSpace(.sRGB) else { continue }
+                        let spread = max(color.redComponent, color.greenComponent,
+                                         color.blueComponent)
+                            - min(color.redComponent, color.greenComponent,
+                                  color.blueComponent)
+                        if spread > 0.15 { colored += 1 }
+                    }
+                }
+                measureEmojiPreviewColors(
+                    webView: webView,
+                    pending: Array(pending.dropFirst()),
+                    results: results + [(label: label, coloredPixels: colored)]
+                )
+            }
+        }
     }
 
     // MARK: - -selftest tabscroll

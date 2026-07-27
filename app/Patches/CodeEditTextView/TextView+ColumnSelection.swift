@@ -73,6 +73,38 @@ nonisolated(unsafe) private var fastraColumnTabWidthKey: UInt8 = 0
 nonisolated(unsafe) private var fastraColumnIndentationKey: UInt8 = 0
 
 extension TextView {
+    /// Bereich des Graphem-Clusters an einer Position — Grundlage für den
+    /// Doppelklick auf Zeichen, die kein „Wort" bilden.
+    ///
+    /// Upstreams `findWordBoundary` kennt nur Bezeichner, Leerraum, Zeilenenden
+    /// und Satzzeichen; alles andere (Emojis, Pfeile, mathematische Symbole)
+    /// liefert einen leeren Bereich, ein Doppelklick markierte also nichts
+    /// (Daniel-Befund 2026-07-27). Gezählt wird über Swifts `Character`, das
+    /// erweiterte Graphem-Cluster kennt: Basiszeichen plus Variantenselektor,
+    /// Surrogatpaare, Hautfarben-Modifikatoren und ZWJ-Familien bleiben eine
+    /// Einheit. `NSString.rangeOfComposedCharacterSequence` würde eine
+    /// ZWJ-Sequenz in ihre Einzelteile zerlegen.
+    public func fastraGraphemeClusterRange(at location: Int) -> NSRange {
+        let text = string as NSString
+        guard location >= 0, location < text.length else {
+            return NSRange(location: max(0, min(location, text.length)), length: 0)
+        }
+        // Nur die betroffene Zeile durchlaufen: Ein Doppelklick darf nicht das
+        // ganze Dokument in Cluster zerlegen.
+        let lineRange = text.lineRange(for: NSRange(location: location, length: 0))
+        var offset = lineRange.location
+        for character in text.substring(with: lineRange) {
+            let length = String(character).utf16.count
+            // Trifft auch, wenn `location` mitten im Cluster liegt (etwa auf
+            // dem Variantenselektor) — dann gilt der ganze Cluster.
+            if location < offset + length {
+                return NSRange(location: offset, length: length)
+            }
+            offset += length
+        }
+        return NSRange(location: location, length: 0)
+    }
+
     /// Effektive Tabbreite des SourceEditors. CodeEditSourceEditor setzt sie
     /// bei der Erstkonfiguration und bei jedem Profilwechsel.
     public var fastraColumnSelectionTabWidth: Int {
