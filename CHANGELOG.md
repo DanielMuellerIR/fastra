@@ -9,6 +9,31 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.52.2] — 2026-07-27
+
+### Behoben
+
+- **Doppelklick markiert Emojis und Symbole.** Upstreams Wortgrenzen kennen
+  nur Bezeichner, Leerraum, Zeilenenden und Satzzeichen; ein Doppelklick auf
+  ein Emoji, einen Pfeil oder ein mathematisches Symbol markierte deshalb gar
+  nichts. Jetzt markiert er den ganzen Graphem-Cluster — Basiszeichen samt
+  Variantenselektor, Surrogatpaare, Hautfarben-Modifikatoren und
+  ZWJ-Familien bleiben eine Einheit. Auch ein Klick, der auf dem
+  Variantenselektor landet, markiert den vollständigen Cluster; vorher zählte
+  Foundation ihn zu den alphanumerischen Zeichen und markierte ihn allein.
+
+### Dokumentiert
+
+- **Warum manche Symbole in der Vorschau schmal aussehen.** Zeichen wie `⏸`
+  sind laut Unicode Textzeichen und werden erst mit angehängtem
+  Variantenselektor (U+FE0F) zum farbigen Emoji. Der Editor zeigt sie farbig,
+  weil macOS für sie nur die Emoji-Schrift besitzt; die Vorschau folgt der
+  Unicode-Regel wie Browser, GitHub oder Keynote. Fastra verändert die Datei
+  dabei nicht. Die Hilfe erklärt das jetzt in beiden Sprachen, und der neue
+  `-selftest emojipreview` hält die Grenze mit Pixelmessungen an vier Fällen
+  fest — inklusive der Gegenrichtung, damit die Emoji-Präsentation nicht
+  unbeabsichtigt erzwungen wird und Pfeile und Häkchen mitkippen.
+
 ## [v1.52.1] — 2026-07-27
 
 ### Behoben
