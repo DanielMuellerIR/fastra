@@ -9,6 +9,28 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+### Behoben
+
+- **Selbsttests lesen nicht mehr die echten App-Einstellungen.** Jeder
+  Selbsttest-Prozess bekommt über `SelfTest.workspaceDefaults()` eine frisch
+  geleerte eigene Defaults-Suite. An `@AppStorage` lief diese Isolierung
+  bisher vorbei: ohne `store:` liest SwiftUI immer `UserDefaults.standard`,
+  also die tatsächlichen Einstellungen des Benutzers. Eine ausgeblendete
+  Seitenleiste (`editor.sidebarVisible = false`) genügte deshalb, damit der
+  Selbsttest-Prozess die Seitenleiste gar nicht erst aufbaute — `gitstagefolder`
+  fand die Hover-Knöpfe der `material/`-Zeile nicht mehr im AppKit-Baum, und
+  `gitpushbutton` sah ein leeres Push-Ziel, weil `refreshGitPushTarget()` nur
+  aus `GitChangesView.onAppear` läuft. Beide Tests fielen reproduzierbar aus,
+  obwohl am Produkt nichts defekt war und `swift test` grün blieb.
+
+  Alle `@AppStorage`-Deklarationen geben die Suite jetzt ausdrücklich als
+  `store:` mit; im Normalbetrieb liefert `workspaceDefaults()` weiterhin
+  `.standard`, das Produktverhalten bleibt unverändert. Der neue
+  `AppStorageIsolationTests` prüft die Regel an der Quelle, damit eine künftige
+  Deklaration ohne `store:` dieselbe Lücke nicht still wieder aufreißt.
+  Nebeneffekt: auch die README-Screenshots entstehen jetzt unabhängig davon,
+  wie der Benutzer seine Seitenleiste gerade eingestellt hat.
+
 ## [v1.53.0] — 2026-07-27
 
 ### Neu
