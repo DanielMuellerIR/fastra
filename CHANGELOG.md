@@ -60,6 +60,31 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
   schloss.
   Nebeneffekt: auch die README-Screenshots entstehen jetzt unabhängig davon,
   wie der Benutzer seine Seitenleiste gerade eingestellt hat.
+- `Workspace.shared` und `ActiveDocumentContext` schützen ihre gemeinsamen
+  Referenzen jetzt mit einem kurz gehaltenen Lock. Im Produkt wechselt der
+  Fokus nur auf dem Main-Thread, weshalb das bisher nicht auffiel; die
+  parallele Testsuite erzeugt Workspaces aber aus mehreren Threads, und zwei
+  gleichzeitige Zuweisungen gaben dieselbe alte Referenz doppelt frei — am
+  2026-07-26 als Absturz (`SIGSEGV` in `objc_destructInstance`) im
+  vollständigen Testlauf beobachtet.
+- Lastabhängig wackelige Tests warten nicht länger auf feste
+  Zeitfristen, sondern auf das tatsächliche Ereignis (Fan-out des
+  Git-Zustands, Ladezusage, gewonnene Zeitüberschreitung einer Lock-Transaktion).
+  Alle vier Seitenleisten-Ladetests nutzen dafür denselben Helfer: Ein
+  Dauer-`Task.yield()` hielt den Main Actor beschäftigt und verzögerte genau
+  die Zustellung, auf die sie warteten.
+  Wo eine Frist bleibt, ist sie ausdrücklich nur eine Hänge-Erkennung mit
+  begründeter Zahl. Die beiden Lock-Transaktionstests lösen die
+  Zeitüberschreitung über einen neuen, ausschließlich testseitigen Auslöser in
+  `GitRunner.runHoldingIndexLock` genau an der geprüften Stelle aus, statt eine
+  Wanduhrfrist gegen den Start eines echten Git-Prozesses zu setzen.
+- `selftest.sh` hängt nicht mehr unbegrenzt, wenn die Automation-Freigabe für
+  System Events fehlt. In einer ssh-Sitzung oder einem launchd-Job wartete der
+  Apple-Event dauerhaft auf einen TCC-Dialog, den dort niemand wegklickt. Der
+  Aufruf ist jetzt doppelt begrenzt und gibt nach der ersten Zeitüberschreitung
+  auf; aktiviert wird dann allein über LaunchServices, was auf einem unbenutzten
+  Mac für echten Fensterfokus genügt. Damit sind die Fenster-Selbsttests auch
+  auf einem entfernten Flotten-Mac fahrbar (Rezept in `docs/BUILD-AND-TEST.md`).
 
 ## [v1.53.0] — 2026-07-27
 
@@ -218,28 +243,6 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
   Bilder, E-Books und Binärdateien, die Vorschau und Hexeditor ohnehin anzeigen.
   `LSHandlerRank` bleibt überall `Alternate`: Fastra bietet sich an, wird aber
   nicht Standard-App. Wirksam erst nach einem neuen, installierten Build.
-- `Workspace.shared` und `ActiveDocumentContext` schützen ihre gemeinsamen
-  Referenzen jetzt mit einem kurz gehaltenen Lock. Im Produkt wechselt der
-  Fokus nur auf dem Main-Thread, weshalb das bisher nicht auffiel; die
-  parallele Testsuite erzeugt Workspaces aber aus mehreren Threads, und zwei
-  gleichzeitige Zuweisungen gaben dieselbe alte Referenz doppelt frei — am
-  2026-07-26 als Absturz (`SIGSEGV` in `objc_destructInstance`) im
-  vollständigen Testlauf beobachtet.
-- Sieben lastabhängig wackelige Tests warten nicht länger auf feste
-  Zeitfristen, sondern auf das tatsächliche Ereignis (Fan-out des
-  Git-Zustands, Ladezusage, gewonnene Zeitüberschreitung einer Lock-Transaktion).
-  Wo eine Frist bleibt, ist sie ausdrücklich nur eine Hänge-Erkennung mit
-  begründeter Zahl. Die beiden Lock-Transaktionstests lösen die
-  Zeitüberschreitung über einen neuen, ausschließlich testseitigen Auslöser in
-  `GitRunner.runHoldingIndexLock` genau an der geprüften Stelle aus, statt eine
-  Wanduhrfrist gegen den Start eines echten Git-Prozesses zu setzen.
-- `selftest.sh` hängt nicht mehr unbegrenzt, wenn die Automation-Freigabe für
-  System Events fehlt. In einer ssh-Sitzung oder einem launchd-Job wartete der
-  Apple-Event dauerhaft auf einen TCC-Dialog, den dort niemand wegklickt. Der
-  Aufruf ist jetzt doppelt begrenzt und gibt nach der ersten Zeitüberschreitung
-  auf; aktiviert wird dann allein über LaunchServices, was auf einem unbenutzten
-  Mac für echten Fensterfokus genügt. Damit sind die Fenster-Selbsttests auch
-  auf einem entfernten Flotten-Mac fahrbar (Rezept in `docs/BUILD-AND-TEST.md`).
 
 ## [v1.51.0] — 2026-07-25
 

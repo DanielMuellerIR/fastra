@@ -26,6 +26,20 @@ private func makeTmpDirectory(_ name: String = UUID().uuidString) throws -> URL 
     return url.canonicalFileURL
 }
 
+/// Öffnet eine Datei und wartet ereignisbasiert auf die Ladezusage, statt eine
+/// Wanduhrfrist abzupollen. `loadFile` lädt über einen Hintergrund-Task, dessen
+/// Rücklauf unter voller paralleler Testlast deutlich länger braucht als die
+/// frühere Fünf-Sekunden-Schranke — und ein Dauer-`Task.yield()` auf dem Main
+/// Actor verzögerte obendrein genau die Zustellung, auf die hier gewartet wird.
+/// Die Zusage kommt pro Aufruf genau einmal; bleibt sie ganz aus, greift die
+/// Zeitgrenze des jeweiligen Tests.
+@MainActor
+private func awaitLoadFile(_ workspace: Workspace, _ url: URL) async -> Bool {
+    await withCheckedContinuation { continuation in
+        workspace.loadFile(at: url) { continuation.resume(returning: $0) }
+    }
+}
+
 // MARK: - Save-Dialog-Vorschlagsordner
 
 @Test("Save-Vorschlag: markierter Sidebar-Ordner gewinnt vor Projektordner")
@@ -54,7 +68,8 @@ func saveDirectory_systemDefault() {
 
 // MARK: - Elternordner beim Einzeldatei-Öffnen
 
-@Test("Einzeldatei ohne Projekt → Elternordner erscheint als Projekt, Fokus bleibt")
+@Test("Einzeldatei ohne Projekt → Elternordner erscheint als Projekt, Fokus bleibt",
+      .timeLimit(.minutes(1)))
 @MainActor
 func loadFile_opensParentFolderWithoutProject() async throws {
     let (defaults, suite) = makeFreshDefaults()
@@ -65,18 +80,16 @@ func loadFile_opensParentFolderWithoutProject() async throws {
     try "Inhalt".write(to: file, atomically: true, encoding: .utf8)
 
     let ws = Workspace(defaults: defaults)
-    var done: Bool? = nil
-    ws.loadFile(at: file) { ok in done = ok }
-    let deadline = Date().addingTimeInterval(5)
-    while done == nil, Date() < deadline { await Task.yield() }
+    let done = await awaitLoadFile(ws, file)
 
-    #expect(done == true)
+    #expect(done)
     #expect(ws.projectURL == dir, "Elternordner muss als Projekt geöffnet sein")
     #expect(ws.activeTab?.url == file.canonicalFileURL,
             "Der Editor-Fokus muss auf der Datei bleiben")
 }
 
-@Test("Einzeldatei bei offenem Projekt → Projekt bleibt unverändert")
+@Test("Einzeldatei bei offenem Projekt → Projekt bleibt unverändert",
+      .timeLimit(.minutes(1)))
 @MainActor
 func loadFile_keepsExistingProject() async throws {
     let (defaults, suite) = makeFreshDefaults()
@@ -92,12 +105,9 @@ func loadFile_keepsExistingProject() async throws {
 
     let ws = Workspace(defaults: defaults)
     ws.openProject(at: projectDir)
-    var done: Bool? = nil
-    ws.loadFile(at: file) { ok in done = ok }
-    let deadline = Date().addingTimeInterval(5)
-    while done == nil, Date() < deadline { await Task.yield() }
+    let done = await awaitLoadFile(ws, file)
 
-    #expect(done == true)
+    #expect(done)
     #expect(ws.projectURL == projectDir,
             "Ein bereits geöffneter Ordner darf sich nicht ändern")
 }
@@ -120,13 +130,7 @@ func loadFile_parentFolderKeepsUnrelatedTabs() async throws {
     try "B".write(to: fileB, atomically: true, encoding: .utf8)
 
     let ws = Workspace(defaults: defaults)
-    // Ereignisbasiert auf die Ladezusage warten statt auf eine Frist zu pollen:
-    // Das Laden läuft über einen Hintergrund-Task, dessen Rücklauf unter Last
-    // deutlich länger braucht als die frühere Fünf-Sekunden-Schranke. Bleibt die
-    // Zusage ganz aus, greift die Zeitgrenze des Tests.
-    let doneA = await withCheckedContinuation { continuation in
-        ws.loadFile(at: fileA) { continuation.resume(returning: $0) }
-    }
+    let doneA = await awaitLoadFile(ws, fileA)
     #expect(doneA)
     #expect(ws.projectURL == dirA)
 
@@ -134,9 +138,7 @@ func loadFile_parentFolderKeepsUnrelatedTabs() async throws {
     // Datei öffnen: deren Elternordner wird Projekt, aber der saubere Tab
     // aus dirA muss offen bleiben (kein ausdrücklicher Projektwechsel).
     ws.closeProject()
-    let doneB = await withCheckedContinuation { continuation in
-        ws.loadFile(at: fileB) { continuation.resume(returning: $0) }
-    }
+    let doneB = await awaitLoadFile(ws, fileB)
     #expect(doneB)
     #expect(ws.projectURL == dirB)
     #expect(ws.tabs.contains { $0.url == fileA.canonicalFileURL },
@@ -183,7 +185,8 @@ func autoProject_fallsBackToParent() throws {
     #expect(Workspace.autoProjectFolder(for: file)?.path == dir.path)
 }
 
-@Test("Einzeldatei im Repo-Unterordner → Seitenleiste zeigt den Repo-Root")
+@Test("Einzeldatei im Repo-Unterordner → Seitenleiste zeigt den Repo-Root",
+      .timeLimit(.minutes(1)))
 @MainActor
 func loadFile_opensRepositoryRootWithoutProject() async throws {
     let (defaults, suite) = makeFreshDefaults()
@@ -198,12 +201,9 @@ func loadFile_opensRepositoryRootWithoutProject() async throws {
     try "Inhalt".write(to: file, atomically: true, encoding: .utf8)
 
     let ws = Workspace(defaults: defaults)
-    var done: Bool? = nil
-    ws.loadFile(at: file) { ok in done = ok }
-    let deadline = Date().addingTimeInterval(5)
-    while done == nil, Date() < deadline { await Task.yield() }
+    let done = await awaitLoadFile(ws, file)
 
-    #expect(done == true)
+    #expect(done)
     #expect(ws.projectURL == repo, "Der Git-Root muss als Projekt geöffnet sein, nicht docs/")
 }
 
