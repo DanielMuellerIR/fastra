@@ -58,6 +58,128 @@ func gitPath_neverUsrBinStub() {
     #expect(!GitRunner.candidatePaths.contains("/usr/bin/git"))
 }
 
+// MARK: - Erstauflösung des git-Pfads (RunLoop-Crash-Regression 2026-07-17)
+//
+// Hintergrund: `Process.waitUntilExit` dreht den RunLoop des aufrufenden
+// Threads. Lief die allererste git-Pfad-Auflösung (xcode-select) auf dem
+// Main-Thread in einem SwiftUI-Layout-Pass, feuerten Update-Observer
+// reentrant und die App stürzte mit SIGSEGV ab. Die Tests hier sichern die
+// beiden Gegenmaßnahmen ab: Auflösung immer auf eigener Hintergrund-Queue
+// (BackgroundOnceResolver) und Prozesswarten ohne RunLoop-Drehen.
+
+/// Thread-sicherer Recorder: zählt Aufrufe und merkt sich deren Threads.
+private final class ThreadRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var threads: [Thread] = []
+    func record() { lock.lock(); threads.append(Thread.current); lock.unlock() }
+    var count: Int { lock.lock(); defer { lock.unlock() }; return threads.count }
+    var first: Thread? { lock.lock(); defer { lock.unlock() }; return threads.first }
+}
+
+/// Thread-sicherer Sammelbehälter für Ergebnisse aus concurrentPerform.
+private final class ResultsBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String?] = []
+    func append(_ value: String?) { lock.lock(); values.append(value); lock.unlock() }
+    var all: [String?] { lock.lock(); defer { lock.unlock() }; return values }
+}
+
+@Test("Erstauflösung rechnet nie auf dem anfragenden Thread",
+      .timeLimit(.minutes(1)))
+func pathResolver_neverComputesOnCallingThread() {
+    let recorder = ThreadRecorder()
+    let resolver = BackgroundOnceResolver<String?>(label: "test.resolver.thread") {
+        recorder.record()
+        return "/fake/git"
+    }
+    #expect(resolver.value == "/fake/git")
+    #expect(recorder.count == 1)
+    // Der Aufrufer steckt während der Berechnung blockiert in `value` —
+    // die Berechnung MUSS deshalb auf einem anderen Thread gelaufen sein.
+    #expect(recorder.first !== Thread.current)
+}
+
+@Test("Gleichzeitige Erstzugriffe starten die Auflösung genau einmal",
+      .timeLimit(.minutes(1)))
+func pathResolver_computesOnceForConcurrentFirstAccess() {
+    let recorder = ThreadRecorder()
+    let resolver = BackgroundOnceResolver<String?>(label: "test.resolver.once") {
+        recorder.record()
+        // Kleines Fenster, damit alle Aufrufer sicher gleichzeitig ankommen.
+        usleep(20_000)
+        return "/fake/git"
+    }
+    let results = ResultsBox()
+    DispatchQueue.concurrentPerform(iterations: 8) { _ in
+        results.append(resolver.value)
+    }
+    #expect(recorder.count == 1)
+    #expect(results.all.count == 8)
+    #expect(results.all.allSatisfy { $0 == "/fake/git" })
+}
+
+@Test("Vorwärmen blockiert den Aufrufer nicht", .timeLimit(.minutes(1)))
+func pathResolver_prewarmDoesNotBlock() {
+    let started = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+    let resolver = BackgroundOnceResolver<String?>(label: "test.resolver.prewarm") {
+        started.signal()
+        // Hält die Auflösung künstlich offen. `release` wird erst NACH der
+        // Rückkehr von `prewarm()` signalisiert — würde `prewarm()` auf die
+        // Berechnung warten, stünde der Test in einem Deadlock und das
+        // Zeitlimit schlüge fehl.
+        release.wait()
+        return "/fake/git"
+    }
+    resolver.prewarm()
+    #expect(started.wait(timeout: .now() + 5) == .success)
+    release.signal()
+    #expect(resolver.value == "/fake/git")
+}
+
+@Test("Wartender Main-Thread führt keine eingeplante Main-Queue-Arbeit reentrant aus",
+      .timeLimit(.minutes(1)))
+@MainActor
+func pathResolver_doesNotSpinMainRunLoopWhileWaiting() {
+    let resolver = BackgroundOnceResolver<String?>(label: "test.resolver.mainloop") {
+        // Lange genug, dass ein RunLoop-drehendes Warten die unten
+        // eingeplante Main-Queue-Arbeit sicher ausführen würde.
+        usleep(200_000)
+        return "/fake/git"
+    }
+    let reentered = ThreadRecorder()
+    // Dieser Block darf erst laufen, wenn der Main-RunLoop das nächste Mal
+    // regulär dreht. Ein RunLoop-drehendes Warten (waitUntilExit-Muster)
+    // würde ihn mitten im `value`-Zugriff ausführen — exakt die
+    // Crash-Mechanik von 2026-07-17 (reentrante RunLoop-Observer im Layout).
+    RunLoop.main.perform { reentered.record() }
+    #expect(resolver.value == "/fake/git")
+    #expect(reentered.count == 0)
+}
+
+@Test("xcode-select-Abfrage dreht den RunLoop des Main-Threads nicht",
+      .timeLimit(.minutes(1)))
+@MainActor
+func queryXcodeSelect_doesNotSpinMainRunLoop() {
+    let reentered = ThreadRecorder()
+    RunLoop.main.perform { reentered.record() }
+    let dir = GitRunner.queryXcodeSelect()
+    // Mit dem alten `waitUntilExit` liefe der eingeplante RunLoop-Block
+    // während der Abfrage (RunLoop-Drehen im Default-Mode) — der Zähler wäre
+    // dann 1 und dieser Test schlüge fehl. (Verifiziert 2026-07-17: gegen die
+    // waitUntilExit-Variante schlägt genau dieser Test fehl.)
+    #expect(reentered.count == 0)
+    // Umgebungsunabhängige Plausibilität: kein Ergebnis oder absoluter Pfad.
+    #expect(dir == nil || dir?.hasPrefix("/") == true)
+}
+
+@Test("resolvedPath entspricht der reinen Auswahl-Logik mit echter Umgebung")
+func gitPath_resolvedPathMatchesPureResolution() {
+    let expected = GitRunner.resolvePath(candidates: GitRunner.candidatePaths,
+                                         developerDir: GitRunner.developerDirProvider())
+    #expect(GitRunner.resolvedPath == expected)
+}
+
 private func temporaryExecutable(_ body: String) throws -> URL {
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("Fastra-GitRunner-\(UUID().uuidString)")

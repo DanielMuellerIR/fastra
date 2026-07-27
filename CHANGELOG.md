@@ -11,6 +11,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ### Behoben
 
+- **Die erste git-Pfad-Auflösung dreht nie mehr den RunLoop des Aufrufers.**
+  `xcode-select -p` lief beim allerersten Git-Zugriff synchron auf dem Thread
+  dieses Zugriffs, und `Process.waitUntilExit` dreht dabei den RunLoop. Traf
+  das den Main-Thread mitten in einem SwiftUI-Layout-Durchlauf, feuerten
+  Update-Observer reentrant und die App stürzte mit SIGSEGV ab (Befund
+  2026-07-17). v1.20.0 hatte nur den bekannten Auslöser entschärft — die
+  Seitenleiste startet ihre Git-Abfragen seither erst im nächsten
+  Main-Loop-Durchlauf. Jetzt ist die Ursache selbst behoben: Die Auflösung
+  läuft über `BackgroundOnceResolver` immer genau einmal auf einer eigenen
+  Hintergrund-Queue, wird beim App-Start vorgewärmt, und Warten darauf
+  blockiert höchstens kurz einen Thread, ohne dessen RunLoop zu drehen.
+  Nebenbei entfällt damit der bisherige unsynchronisierte Cache, auf den
+  UI- und Git-Hintergrundthreads gemeinsam zugriffen. Sechs neue
+  Regressionstests decken die Mechanik ab; der `xcode-select`-Test schlägt
+  gegen die alte `waitUntilExit`-Variante nachweislich fehl.
 - **Selbsttests lesen nicht mehr die echten App-Einstellungen.** Jeder
   Selbsttest-Prozess bekommt über `SelfTest.workspaceDefaults()` eine frisch
   geleerte eigene Defaults-Suite. An `@AppStorage` lief diese Isolierung

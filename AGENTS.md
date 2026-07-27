@@ -191,6 +191,11 @@ personalisierte Assistentenformulierungen prüfen.
   Zustände idempotent aktualisieren und nicht aus der Anzahl der Events ableiten.
 - Ein aktiver Nutzer kann Fenstertests den Fokus entziehen. Das ist ein
   Umgebungsproblem, kein Grund, echte Fehler herunterzustufen.
+- `Process.waitUntilExit` dreht den RunLoop des aufrufenden Threads. Auf dem
+  Main-Thread feuern dadurch SwiftUI-Update-Observer reentrant mitten im
+  Layout (SIGSEGV). Kindprozesse deshalb nie auf dem Main-Thread abwarten;
+  Warten nur über Semaphore/DispatchGroup, Erstauflösungen auf eigene
+  Hintergrund-Queues legen (siehe `GitRunner`/`BackgroundOnceResolver`).
 
 ## Verhaltensevals
 

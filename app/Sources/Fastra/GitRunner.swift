@@ -378,6 +378,85 @@ private final class GitLockDecision: @unchecked Sendable {
     }
 }
 
+/// Einmalige, thread-sichere Auflösung eines Wertes auf einer eigenen
+/// Hintergrund-Queue. Warum so umständlich statt „beim ersten Zugriff einfach
+/// berechnen"? Die Berechnung kann einen Kindprozess starten (xcode-select),
+/// und `Process.waitUntilExit` dreht den RunLoop des aufrufenden Threads.
+/// Auf dem Main-Thread feuern dadurch SwiftUI-UpdateCycle-Observer mitten im
+/// Layout reentrant, und die App stürzt mit SIGSEGV ab (Befund 2026-07-17,
+/// Pfad: FileTreeSidebar.onAppear → refreshGitOperationState → GitRunner).
+/// Dieser Resolver rechnet deshalb IMMER auf seiner eigenen Queue. Wer das
+/// Ergebnis vor Abschluss braucht, wartet nur per `DispatchGroup.wait` —
+/// das blockiert den Thread, dreht aber nie dessen RunLoop.
+final class BackgroundOnceResolver<Value>: @unchecked Sendable {
+    private enum State {
+        case unresolved
+        /// Läuft gerade — die Gruppe signalisiert den Abschluss.
+        case resolving(DispatchGroup)
+        case resolved(Value)
+    }
+
+    private let lock = NSLock()
+    private var state: State = .unresolved
+    private let queue: DispatchQueue
+    private let compute: () -> Value
+
+    /// `compute` läuft höchstens einmal, immer auf der eigenen seriellen
+    /// Queue. Bewusst keine globale Concurrent-Queue: deren Worker-Pool kann
+    /// in einer ausgelasteten App (parallele Suche, Tests) erschöpft sein,
+    /// die Auflösung soll aber trotzdem sofort anlaufen.
+    init(label: String, compute: @escaping () -> Value) {
+        self.queue = DispatchQueue(label: label, qos: .userInitiated)
+        self.compute = compute
+    }
+
+    /// Auflösung anstoßen, ohne auf das Ergebnis zu warten (App-Start).
+    func prewarm() {
+        beginIfNeeded()
+    }
+
+    /// Das aufgelöste Ergebnis. Läuft die Auflösung noch, wartet der Aufrufer
+    /// blockierend — ohne RunLoop-Drehen — auf ihren Abschluss; danach kommt
+    /// der gecachte Wert sofort zurück.
+    var value: Value {
+        if let group = beginIfNeeded() { group.wait() }
+        lock.lock(); defer { lock.unlock() }
+        guard case .resolved(let value) = state else {
+            // Unerreichbar: `state` wird vor `group.leave()` gesetzt.
+            fatalError("BackgroundOnceResolver: Ergebnis fehlt nach Abschluss")
+        }
+        return value
+    }
+
+    /// Startet die Berechnung, falls sie noch aussteht. Liefert die Gruppe,
+    /// deren Ende das Ergebnis garantiert — oder `nil`, wenn es längst da ist.
+    @discardableResult
+    private func beginIfNeeded() -> DispatchGroup? {
+        lock.lock()
+        switch state {
+        case .resolved:
+            lock.unlock()
+            return nil
+        case .resolving(let group):
+            lock.unlock()
+            return group
+        case .unresolved:
+            let group = DispatchGroup()
+            group.enter()
+            state = .resolving(group)
+            lock.unlock()
+            queue.async { [self] in
+                let value = compute()
+                lock.lock()
+                state = .resolved(value)
+                lock.unlock()
+                group.leave()
+            }
+            return group
+        }
+    }
+}
+
 /// Dünner Wrapper um das `git`-Kommandozeilenprogramm. Philosophie der Etappe:
 /// **Git liefert Logik und Daten, Fastra liefert Sichtbarkeit und Knöpfe.**
 /// Kein libgit2, kein Eigenbau — nur Unterprozess-Aufrufe. Der CLI-Weg erbt
@@ -598,18 +677,29 @@ enum GitRunner {
         return paths.first { fileManager.isExecutableFile(atPath: $0) }
     }
 
-    /// Gecachter git-Pfad. `nil` nach Auflösung = git nicht verfügbar.
-    /// Doppelt-optional, um „noch nicht ermittelt" von „ermittelt: keins" zu
-    /// unterscheiden.
-    private static var cachedPath: String?? = nil
-
-    static var resolvedPath: String? {
-        if let cached = cachedPath { return cached }
-        let path = resolvePath(candidates: candidatePaths,
-                               developerDir: developerDirProvider())
-        cachedPath = .some(path)
-        return path
+    /// Einmalige Hintergrund-Auflösung des git-Pfads; Ergebnis `nil` =
+    /// git nicht verfügbar. Der xcode-select-Kindprozess läuft dadurch nie
+    /// auf dem Thread des Aufrufers — insbesondere nie auf dem Main-Thread
+    /// mitten in einem SwiftUI-Layout-Pass (siehe BackgroundOnceResolver).
+    private static let pathResolver = BackgroundOnceResolver<String?>(
+        label: "com.fastra.git-path-resolution"
+    ) {
+        resolvePath(candidates: candidatePaths,
+                    developerDir: developerDirProvider())
     }
+
+    /// Wärmt die git-Pfad-Auflösung beim App-Start vor. Der erste Git-Guard
+    /// aus der UI (`isAvailable`) findet dann praktisch immer ein fertiges
+    /// Ergebnis vor und muss nie auf den xcode-select-Prozess warten.
+    static func prewarmPathResolution() {
+        pathResolver.prewarm()
+    }
+
+    /// Gecachter git-Pfad. Nur der allererste Zugriff kann kurz blockieren
+    /// (Warten auf die Hintergrund-Auflösung, ohne RunLoop-Drehen); nach
+    /// `prewarmPathResolution()` beim App-Start ist das in der Praxis ein
+    /// reiner Cache-Read.
+    static var resolvedPath: String? { pathResolver.value }
 
     /// Ist ein nutzbares git vorhanden? Steuert, ob Git-UI überhaupt erscheint.
     static var isAvailable: Bool { resolvedPath != nil }
@@ -1267,7 +1357,14 @@ enum GitRunner {
     }
 
     /// Fragt den aktiven Developer-Ordner über `xcode-select -p` ab (dialogfrei).
-    private static func queryXcodeSelect() -> String? {
+    /// WICHTIG: bewusst OHNE `waitUntilExit` — das dreht den RunLoop des
+    /// aufrufenden Threads, und auf dem Main-Thread feuern dadurch SwiftUI-
+    /// Update-Observer reentrant mitten im Layout (SIGSEGV, Befund 2026-07-17).
+    /// `readDataToEndOfFile` ist ein blockierendes read(2) bis EOF und die
+    /// Semaphore wartet nur auf den terminationHandler — beides dreht keinen
+    /// RunLoop. Intern statt privat, damit der Regressionstest genau diese
+    /// Eigenschaft direkt prüfen kann.
+    static func queryXcodeSelect() -> String? {
         let path = "/usr/bin/xcode-select"
         guard FileManager.default.isExecutableFile(atPath: path) else { return nil }
         let process = Process()
@@ -1275,14 +1372,17 @@ enum GitRunner {
         process.arguments = ["-p"]
         let pipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = Pipe()   // stderr verschlucken (Fehlermeldung bei fehlenden Tools)
+        // stderr verschlucken (Fehlermeldung bei fehlenden Tools).
+        process.standardError = FileHandle.nullDevice
+        let finished = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in finished.signal() }
         do {
             try process.run()
         } catch {
             return nil
         }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        finished.wait()
         guard process.terminationStatus == 0 else { return nil }
         let dir = String(decoding: data, as: UTF8.self)
             .trimmingCharacters(in: .whitespacesAndNewlines)

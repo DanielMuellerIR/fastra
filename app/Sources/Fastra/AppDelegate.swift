@@ -96,6 +96,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var openFilesInbox = OpenFilesInbox()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Den git-Pfad sofort im Hintergrund auflösen (startet einmalig
+        // `xcode-select -p`). Der erste Git-Guard aus einem SwiftUI-Layout
+        // (z. B. Sidebar-onAppear → refreshGitOperationState) trifft dadurch
+        // auf ein fertiges Ergebnis, statt auf einen Kindprozess warten zu
+        // müssen (siehe GitRunner.resolvedPath / BackgroundOnceResolver).
+        GitRunner.prewarmPathResolution()
         // Erscheinungsbild anwenden (Einstellungen → Erscheinungsbild):
         // automatisch dem System folgen oder manuell Hell/Dunkel. Ersetzt das
         // v1.0-Erzwingen von .aqua — damals hatten alle Theme-Farben feste
