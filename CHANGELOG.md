@@ -9,6 +9,29 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.53.0] — 2026-07-27
+
+### Neu
+
+- **Text-Transformation „Emoji-Darstellung erzwingen (U+FE0F)".** Zeichen wie
+  `⏸`, `⏹` oder `▶` sind laut Unicode Textzeichen und erscheinen erst mit
+  angehängtem Variantenselektor überall als farbiges Emoji. Die neue Operation
+  in der Unicode-Gruppe schreibt genau diese Absicht in die Datei — danach
+  zeigen auch Vorschau, Browser, GitHub und Keynote das farbige Symbol, nicht
+  nur Fastras Editor mit seinem Schriftrückfall.
+
+  Die Auswahl ist eng gezogen und gemessen, nicht geraten: Zeichen mit eigener
+  Farbdarstellung (🎶) bleiben unberührt, ebenso die Schriftzeichen `©`, `®`,
+  `™`, `‼` und `⁉` sowie `#`, `*` und die Ziffern — alle fünf beziehungsweise
+  drei Gruppen sind formal Emoji-fähig, würden aber als Symbol gerendert und
+  normalen Text verfälschen. Einfache Pfeile, Häkchen, Bullets und
+  Gedankenstriche sind gar nicht Emoji-fähig und damit ohnehin außen vor.
+  Ein vorhandener Selektor wird nicht verdoppelt (zweimal anwenden ist ein
+  No-Op), eine ausdrückliche Textform (U+FE0E) bleibt stehen, und
+  **„Emoji-Darstellung aufheben"** ist der Rückweg. Wie die übrigen
+  Unicode-Operationen wirkt sie auf die Selektion — ohne Selektion auf das
+  ganze Dokument — und unterstützt die Rechteckauswahl.
+
 ## [v1.52.2] — 2026-07-27
 
 ### Behoben
