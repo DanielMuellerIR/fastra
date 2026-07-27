@@ -167,7 +167,9 @@ Vorschau: Tabellen, Codeblöcke mit Syntaxfarben, Formeln (KaTeX) und
 Mermaid-Diagramme — vollständig lokal, ohne Netzzugriff. Ein **Klick in
 die Vorschau** springt im Editor zur passenden Quellzeile. Kopieren aus
 der Vorschau liefert echten Rich-Text (Überschriften, Listen, Fettung
-bleiben erhalten).
+bleiben erhalten). Aus dem Editor kopiert Fastra dagegen immer reinen Text:
+ohne Schrift und Farbe und ohne dass ein Zielprogramm beim Umwandeln etwas
+verändern kann.
 
 ### Besondere Vorschau-Syntax
 
@@ -555,6 +557,11 @@ Schreibvorgang bricht das Speichern immer ab, statt den Plattenstand still zu
 Fenster (eigene Tabs, eigene Suche). ⌘S speichert, ⌘W schließt den Tab —
 bei ungespeicherten Änderungen fragt Fastra nach. ⌘J springt zu einer
 Zeilennummer.
+
+Beim Wechsel zwischen Tabs behält jeder Tab seine Einfügemarke **und** seinen
+sichtbaren Ausschnitt: Beim Zurückwechseln steht der Text wieder genau so da
+wie beim Verlassen. Ein gezielter Sprung — Suchtreffer oder ⌘J — hat dabei
+Vorrang und scrollt wie gewohnt zum Ziel.
 
 Ein Punkt im Tab zeigt ungespeicherte Änderungen. Er verschwindet wieder,
 sobald der Inhalt exakt dem gespeicherten Stand entspricht — egal ob per

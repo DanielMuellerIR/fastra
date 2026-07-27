@@ -128,6 +128,20 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   Screenshot einwandfrei. Wächter `emojisplit` läuft im Standardlauf.
   Daniel prüft mit v1.49.0 gegen; bei erneutem Auftreten Fensterbreite oder
   Screenshot zur Meldung geben.
+- **Eingefügtes ⏸️ erscheint als schmale Textform, Tab-Wechsel repariert es**
+  (Daniel-Meldung 2026-07-27, mit v1.52.0 reproduzierbar am Live-Repro).
+  Derselbe Befund führte zuerst auf eine echte, inzwischen behobene Ursache:
+  Der Editor legte attributierten Text (RTF) aufs Clipboard, und der
+  RTF-nach-HTML-Weg des Zielprogramms verlor U+FE0F — seit v1.52.1 kopiert
+  Fastra reinen Text. Die Darstellung IN Fastra ist damit aber nicht erklärt:
+  Der neue Wächter `emojipaste` fügt ⏸️ an 13 Stellen einer umbrochenen Zeile
+  über das echte Pasteboard ein und prüft danach Speicherinhalt,
+  Attributläufe, Glyph-Runs, die gezeichneten Pixel (Farbe statt Grauwert) und
+  den Text der Live-Vorschau — alles sauber. Passt damit weiter zur Klasse
+  „laufende Sitzung zeichnet veraltet“ (F.18). Bei erneutem Auftreten
+  notieren: Editor-Text oder Vorschau, Fensterbreite, ob ein App-Neustart
+  genügt, und ob das kopierte Ergebnis (jetzt reiner Text) korrekt ankommt.
+
 - **Kurzzeitig doppelte Zeilenhöhe** beim Emoji-Einfügen über die
   Emoji-Palette (normalisierte sich nach dem nächsten Einfügen von selbst).
   Nicht reproduziert; passt zur Klasse „stehengebliebene Layoutfragmente

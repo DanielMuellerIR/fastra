@@ -1265,6 +1265,7 @@ if ! cmp -s "$COLUMN_PATCH_SOURCE" "$CETV_COLUMN"; then
 fi
 
 if ! grep -q 'Fastra-Patch: Rechteck-Copy' "$CETV_COPY_PASTE" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: Plain-Text-Copy' "$CETV_COPY_PASTE" 2>/dev/null \
    || ! grep -q 'Fastra-Patch: Rechteck-Paste' "$CETV_COPY_PASTE" 2>/dev/null \
    || ! grep -q 'Fastra-Patch: Rechteck-Delete' "$CETV_DELETE" 2>/dev/null \
    || ! grep -q 'Fastra-Patch: eine Undo-Gruppe fuer Mehrfachbereiche' "$CETV_REPLACE" 2>/dev/null \
@@ -1300,6 +1301,44 @@ replace_once(
             return
         }
         guard let textSelections = selectionManager?'''
+)
+replace_once(
+    copy_paste,
+    "Fastra-Patch: Plain-Text-Copy",
+    '''        guard let textSelections = selectionManager?
+            .textSelections
+            .compactMap({ textStorage.attributedSubstring(from: $0.range) }),
+              !textSelections.isEmpty else {
+            return
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects(textSelections)''',
+    '''        // Fastra-Patch: Plain-Text-Copy. Upstream legt attributierten Text
+        // aufs Clipboard, wodurch RTF der oberste Flavor ist. Zielprogramme
+        // mit Rich-Text-Vorrang uebernehmen dann Editorschrift und -farbe;
+        // ihr RTF-nach-HTML-Umweg verliert ausserdem Emoji-
+        // Variantenselektoren (U+FE0F). Ein Plaintext-Editor kopiert deshalb
+        // reinen Text. Mehrere Cursor werden zeilenweise verbunden — als
+        // getrennte Pasteboard-Objekte kam beim Einfuegen nur der erste
+        // Bereich an.
+        guard let ranges = selectionManager?.textSelections.map(\\.range),
+              !ranges.isEmpty else {
+            return
+        }
+        let document = NSRange(location: 0, length: textStorage.length)
+        // Eine veraltete Selektion (Mutation vor dem Kopieren) darf keinen
+        // Bereichsfehler werfen; geklemmt wird nur der Lesebereich.
+        let values = ranges.compactMap { range -> String? in
+            let safe = range.intersection(document) ?? NSRange(location: 0, length: 0)
+            guard safe.length > 0 else { return nil }
+            return textStorage.mutableString.substring(with: safe)
+        }
+        guard !values.isEmpty else { return }
+        let separator = layoutManager.detectedLineEnding.rawValue
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects(
+            [values.joined(separator: separator) as NSString]
+        )''',
 )
 replace_once(
     copy_paste,

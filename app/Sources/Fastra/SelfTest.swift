@@ -374,6 +374,8 @@ enum SelfTest {
         case "dragscroll": waitForMainWindow { runDragScrollTest() }
         case "dirtyundo": waitForMainWindow { runDirtyUndoTest() }
         case "emojisplit": waitForMainWindow { runEmojiSplitTest() }
+        case "emojipaste": waitForMainWindow { runEmojiPasteTest() }
+        case "tabscroll": waitForMainWindow { runTabScrollTest() }
         case "typescroll": waitForMainWindow { runTypeScrollTest() }
         case "emojishot": waitForMainWindow { runEmojiShot() }
         case "comment4d": waitForMainWindow { runFourDCommentEditTest() }
@@ -517,7 +519,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -6885,6 +6887,329 @@ enum SelfTest {
             }
         }
         return problems
+    }
+
+    // MARK: - -selftest emojipaste
+
+    /// Ein per ⌘V eingefügtes Emoji mit Variantenselektor (⏸️ = U+23F8 U+FE0F)
+    /// muss SOFORT als Farb-Emoji ausgelegt werden. Daniel-Befund 2026-07-27:
+    /// direkt nach dem Einfügen erschien die schmale Textform (⏸), und erst
+    /// ein Tab-Wechsel hin und zurück zeigte das richtige Symbol. Der Test
+    /// prüft deshalb nicht den Speicherinhalt (der war immer korrekt), sondern
+    /// die tatsächlich getypesetteten Glyphen der Zeile.
+    private static func runEmojiPasteTest() {
+        testLabel = "emojipaste"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks() else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "fastra-emojipaste-\(UUID().uuidString)", isDirectory: true
+            )
+        // Mit integrierter Vorschau prüfen — genau Daniels Arbeitsaufbau.
+        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        window.setContentSize(NSSize(width: 1100, height: 800))
+        let tmp = directory.appendingPathComponent("paste.md")
+        // Lange Zeile: Bei aktivem Umbruch verschiebt jedes eingefügte Emoji
+        // die Umbruchkante — genau die Konstellation, in der ein Cluster
+        // zwischen zwei Umbruchfragmente geraten kann.
+        let longLine = "Hier folgt das Symbol: "
+            + String(repeating: "wort ", count: 40)
+        let text = "Erste Zeile\n\(longLine)\nDritte Zeile\n"
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+            try Data(text.utf8).write(to: tmp)
+        }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+
+        ws.loadFile(at: tmp) { ok in
+            try? FileManager.default.removeItem(at: directory)
+            guard ok else { finish(false, "Fixture lädt nicht") }
+            if !ws.softWrapEnabled { ws.toggleSoftWrap() }
+            waitForEditor(workspace: ws, window: window) { root, textView in
+                guard textView.string == text else {
+                    finish(false, "Editor zeigt den Fixture-Text nicht")
+                }
+                let start = (text as NSString).range(of: "Symbol: ").upperBound
+                // Sweep über die zweite Zeile: Das Emoji wird nacheinander an
+                // wachsenden Positionen eingefügt. Jedes bereits eingefügte
+                // Emoji verschiebt die Umbruchkanten weiter — so wandert die
+                // Kante durch die Einfügestellen.
+                pasteEmojiStep(textView: textView, location: start, step: 0)
+            }
+        }
+    }
+
+    /// Ein Sweep-Schritt: Emoji per echtem Paste einfügen, auslegen lassen,
+    /// Darstellung prüfen, dann weiter.
+    private static func pasteEmojiStep(textView: TextView, location: Int, step: Int) {
+        let maximumSteps = 12
+        guard location <= (textView.string as NSString).length else {
+            finish(false, "Einfügeposition liegt hinter dem Text")
+        }
+        textView.selectionManager.setSelectedRange(NSRange(location: location, length: 0))
+        // Echter Paste-Weg über das Pasteboard; der vorherige Inhalt wird
+        // danach wiederhergestellt.
+        let pasteboard = NSPasteboard.general
+        let backup = (pasteboard.types ?? []).compactMap { type in
+            pasteboard.data(forType: type).map { (type, $0) }
+        }
+        pasteboard.clearContents()
+        pasteboard.setString("\u{23F8}\u{FE0F}", forType: .string)
+        textView.paste(textView)
+        pasteboard.clearContents()
+        if !backup.isEmpty {
+            pasteboard.declareTypes(backup.map(\.0), owner: nil)
+            for (type, data) in backup { pasteboard.setData(data, forType: type) }
+        }
+
+        // Highlighter und Auslegung einen Moment arbeiten lassen — genau in
+        // diesem Fenster trat die falsche Darstellung auf.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            let ns = textView.string as NSString
+            let stored = NSRange(location: location, length: 2)
+            guard stored.upperBound <= ns.length,
+                  ns.substring(with: stored) == "\u{23F8}\u{FE0F}" else {
+                finish(false, "Emoji-Sequenz U+23F8 U+FE0F steht nach dem Einfügen "
+                    + "nicht an Position \(location) — Variantenselektor verloren")
+            }
+            textView.layoutManager.layoutLines()
+            var problems = emojiPresentationProblems(textView: textView, range: stored)
+            // Zusätzlich die tatsächlich gezeichneten Pixel: Ein Farb-Emoji ist
+            // bunt, die schmale Textform einfarbig. Nur so fällt auch ein
+            // Fehler auf, der erst beim Zeichnen entsteht.
+            if problems.isEmpty, let colorProblem = emojiDrawingIsColorless(
+                textView: textView, range: stored
+            ) {
+                problems.append(colorProblem)
+            }
+            guard problems.isEmpty else {
+                finish(false, "Emoji an Position \(location) (Schritt \(step)) falsch "
+                    + "ausgelegt: " + problems.joined(separator: "; "))
+            }
+            if step >= maximumSteps {
+                checkEmojiInPreview(textView: textView, stepCount: maximumSteps + 1)
+                return
+            }
+            // Nächste Stelle ein Stück weiter rechts in derselben Zeile.
+            pasteEmojiStep(textView: textView, location: location + 9, step: step + 1)
+        }
+    }
+
+    /// Rendert den Bereich des Emojis und meldet, wenn dort kein farbiges Pixel
+    /// liegt. `nil` heißt „bunt genug" (oder nicht prüfbar).
+    private static func emojiDrawingIsColorless(
+        textView: TextView, range: NSRange
+    ) -> String? {
+        guard let rect = textView.layoutManager.rectForOffset(range.location) else {
+            return nil
+        }
+        // Etwas Luft um die Glyphzelle, damit das Emoji sicher drin liegt.
+        let area = rect.insetBy(dx: -2, dy: -2)
+        guard area.width > 1, area.height > 1,
+              let bitmap = textView.bitmapImageRepForCachingDisplay(in: area) else {
+            return nil
+        }
+        textView.cacheDisplay(in: area, to: bitmap)
+        var sawColor = false
+        for x in stride(from: 0, to: bitmap.pixelsWide, by: 1) {
+            for y in stride(from: 0, to: bitmap.pixelsHigh, by: 1) {
+                guard let color = bitmap.colorAt(x: x, y: y)?
+                    .usingColorSpace(.sRGB) else { continue }
+                let red = color.redComponent, green = color.greenComponent
+                let blue = color.blueComponent
+                let spread = max(red, green, blue) - min(red, green, blue)
+                // Grautöne (Text, Hintergrund) haben kaum Farbabstand.
+                if spread > 0.15 && color.alphaComponent > 0.2 { sawColor = true }
+            }
+        }
+        return sawColor ? nil : "gezeichneter Bereich \(area.integral) ist einfarbig — "
+            + "es erscheint die schmale Textform statt des Farb-Emojis"
+    }
+
+    /// Zweiter Teil des Tests: Die integrierte Markdown-Vorschau aktualisiert
+    /// sich live über `document.body.innerHTML` statt neu zu laden. Auch dieser
+    /// Weg muss den Variantenselektor behalten — sonst zeigte die Vorschau die
+    /// schmale Textform, bis ein Tab-Wechsel sie neu aufbaut.
+    private static func checkEmojiInPreview(textView: TextView, stepCount: Int) {
+        guard let window = mainWindowForAXChecks(),
+              let root = window.contentView,
+              let webView = markdownWebView(in: root) else {
+            finish(true, "Eingefügtes ⏸️ wird an \(stepCount) Stellen (auch an "
+                + "Umbruchkanten) sofort als ein Farb-Emoji-Glyph ausgelegt "
+                + "(Vorschau nicht offen, deshalb ungeprüft)")
+        }
+        // Der Vorschau Zeit für das Live-Update lassen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            webView.evaluateJavaScript("document.body.innerText") { value, error in
+                guard let shown = value as? String else {
+                    finish(false, "Vorschau-Text nicht lesbar: "
+                        + (error?.localizedDescription ?? "kein Wert"))
+                }
+                // Über die Skalare zählen: Swifts String-Suche vergleicht
+                // Graphem-Cluster, ein nacktes U+23F8 würde in "⏸️" gar nicht
+                // gefunden — genau der Unterschied, um den es hier geht.
+                let scalars = Array(shown.unicodeScalars)
+                var bare = 0
+                var full = 0
+                for (index, scalar) in scalars.enumerated() where scalar.value == 0x23F8 {
+                    bare += 1
+                    if index + 1 < scalars.count, scalars[index + 1].value == 0xFE0F {
+                        full += 1
+                    }
+                }
+                if bare == 0 {
+                    finish(false, "Vorschau zeigt das eingefügte Symbol gar nicht")
+                } else if full < bare {
+                    finish(false, "Vorschau verliert den Variantenselektor: "
+                        + "\(bare) Basiszeichen, davon nur \(full) mit U+FE0F")
+                } else {
+                    finish(true, "Eingefügtes ⏸️ bleibt in Editor (\(stepCount) Stellen, "
+                        + "auch an Umbruchkanten) und in der Live-Vorschau (\(full)×) "
+                        + "vollständig")
+                }
+            }
+        }
+    }
+
+    /// Meldet, wenn die Emoji-Sequenz nicht als EIN Glyph aus einer Emoji-
+    /// Schrift gesetzt wird. Genau daran unterscheidet sich die schmale
+    /// Textform (zwei Runs bzw. Monospace-Schrift) vom Farb-Emoji.
+    private static func emojiPresentationProblems(
+        textView: TextView, range: NSRange
+    ) -> [String] {
+        guard let line = textView.layoutManager.textLineForOffset(range.location) else {
+            return ["Zeile zur Emoji-Position nicht auffindbar"]
+        }
+        var problems: [String] = []
+        var covered = false
+        for fragment in line.data.lineFragments {
+            for content in fragment.data.contents {
+                guard case .text(let ctLine) = content.data else { continue }
+                // CTLine und CTRun zählen beide relativ zum Zeilen-Text (der
+                // Typesetter wird pro logischer Zeile erzeugt) — deshalb nur
+                // den Zeilenanfang addieren, nicht zusätzlich den Fragment-
+                // Anfang.
+                let lineStart = line.range.location
+                for run in (CTLineGetGlyphRuns(ctLine) as? [CTRun]) ?? [] {
+                    let runRange = CTRunGetStringRange(run)
+                    let absolute = NSRange(
+                        location: lineStart + runRange.location,
+                        length: runRange.length
+                    )
+                    guard absolute.intersection(range) != nil else { continue }
+                    covered = true
+                    let attributes = CTRunGetAttributes(run) as NSDictionary
+                    var fontName = "—"
+                    if let raw = attributes[kCTFontAttributeName as String] {
+                        fontName = CTFontCopyPostScriptName(raw as! CTFont) as String
+                    }
+                    let glyphs = CTRunGetGlyphCount(run)
+                    if !fontName.contains("Emoji") {
+                        problems.append(
+                            "Run \(absolute) nutzt \(fontName) statt einer Emoji-Schrift"
+                        )
+                    } else if absolute.length == range.length && glyphs != 1 {
+                        problems.append(
+                            "Run \(absolute) liefert \(glyphs) Glyphen statt einem"
+                        )
+                    }
+                }
+            }
+        }
+        if !covered {
+            problems.append("kein Glyph-Run deckt die Emoji-Position ab")
+        }
+        return problems
+    }
+
+    // MARK: - -selftest tabscroll
+
+    /// Der sichtbare Ausschnitt eines Tabs muss den Tab-Wechsel überleben.
+    /// Daniel-Befund 2026-07-27: Nach Wechsel und Rückwechsel stand die
+    /// Cursorzeile plötzlich in der obersten Bildschirmzeile, weil der neu
+    /// erzeugte Editor am Dateianfang startet und CESE nur die Einfügemarke
+    /// sichtbar macht.
+    private static func runTabScrollTest() {
+        testLabel = "tabscroll"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks() else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        window.setContentSize(NSSize(width: 1000, height: 600))
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "fastra-tabscroll-\(UUID().uuidString)", isDirectory: true
+            )
+        let longFile = directory.appendingPathComponent("lang.txt")
+        let shortFile = directory.appendingPathComponent("kurz.txt")
+        let longText = (1...600).map { "Zeile \($0) mit etwas Text" }
+            .joined(separator: "\n") + "\n"
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+            try Data(longText.utf8).write(to: longFile)
+            try Data("Kurze Datei\n".utf8).write(to: shortFile)
+        }
+        catch { finish(false, "Temp-Dateien nicht schreibbar: \(error.localizedDescription)") }
+
+        ws.loadFile(at: longFile) { ok in
+            guard ok else {
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "lange Datei lädt nicht")
+            }
+            guard let longTabID = ws.activeTabID else {
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "kein aktiver Tab für die lange Datei")
+            }
+            waitForEditor(workspace: ws, window: window) { root, textView in
+                // Cursor in die Mitte des Dokuments und dorthin scrollen.
+                let middle = (textView.string as NSString).range(of: "Zeile 300 ")
+                textView.selectionManager.setSelectedRange(
+                    NSRange(location: middle.location, length: 0)
+                )
+                textView.scrollToRange(NSRange(location: middle.location, length: 0))
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    guard let clipView = textView.enclosingScrollView?.contentView else {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "keine ScrollView am Editor")
+                    }
+                    let expected = clipView.bounds.origin.y
+                    guard expected > 100 else {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "Ausgangsposition nicht gescrollt (y=\(expected))")
+                    }
+                    // Zweite Datei öffnen (wechselt den Tab) …
+                    ws.loadFile(at: shortFile) { ok2 in
+                        try? FileManager.default.removeItem(at: directory)
+                        guard ok2 else { finish(false, "kurze Datei lädt nicht") }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                            // … und zurückwechseln.
+                            ws.selectTab(id: longTabID)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                guard let tv = editorTextView(in: root) as? TextView,
+                                      let clip = tv.enclosingScrollView?.contentView else {
+                                    finish(false, "Editor nach dem Rückwechsel nicht auffindbar")
+                                }
+                                let actual = clip.bounds.origin.y
+                                let delta = abs(actual - expected)
+                                if delta <= 4 {
+                                    finish(true, "Ausschnitt überlebt den Tab-Wechsel "
+                                        + "(y=\(Int(actual)) statt Sprung auf die Cursorzeile)")
+                                } else {
+                                    finish(false, "Scrollposition geändert: erwartet y≈"
+                                        + "\(Int(expected)), tatsächlich \(Int(actual))")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - -selftest emojishot

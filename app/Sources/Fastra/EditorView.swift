@@ -33,6 +33,39 @@ struct EditorCursorMemory {
     }
 }
 
+/// Merkt die Scrollposition pro Tab — dasselbe Prinzip wie
+/// `EditorCursorMemory`, nur für den sichtbaren Ausschnitt.
+///
+/// Nötig, weil der eigentliche Editor beim Tab-Wechsel per `.id` neu erzeugt
+/// wird: Er startet am Dateianfang und CESE macht anschließend nur die
+/// wiederhergestellte Einfügemarke sichtbar. Damit landete die Cursorzeile in
+/// der obersten Bildschirmzeile, statt dass der Ausschnitt von vorher
+/// zurückkam (Daniel-Befund 2026-07-27). Ein Wert von `nil` heißt „für diesen
+/// Tab ist noch nichts bekannt" — dann bleibt CESEs Verhalten unverändert.
+struct EditorScrollMemory {
+    private var offsetsByTab: [UUID: CGPoint] = [:]
+
+    mutating func remember(_ offset: CGPoint?, for tabID: UUID?) {
+        guard let tabID, let offset else { return }
+        offsetsByTab[tabID] = offset
+    }
+
+    func offset(for tabID: UUID?) -> CGPoint? {
+        guard let tabID else { return nil }
+        return offsetsByTab[tabID]
+    }
+
+    /// Legt den Ausschnitt des verlassenen Tabs ab und liefert den des neuen.
+    mutating func switchTab(
+        from previousTabID: UUID?,
+        currentOffset: CGPoint?,
+        to nextTabID: UUID?
+    ) -> CGPoint? {
+        remember(currentOffset, for: previousTabID)
+        return offset(for: nextTabID)
+    }
+}
+
 /// Phase-2-Editor: echter Text-Editor mit Sprach-Highlighting via CodeEditSourceEditor.
 struct EditorView: View {
     @EnvironmentObject var workspace: Workspace
@@ -44,6 +77,13 @@ struct EditorView: View {
     /// verhindert, dass die alte Auswahl versehentlich unter dem neuen Tab
     /// abgelegt wird.
     @State private var cursorMemoryTabID: UUID?
+    /// Ausschnitt pro Tab (siehe `EditorScrollMemory`).
+    @State private var scrollMemory = EditorScrollMemory()
+    /// Ausschnitt, der nach dem nächsten Editor-Aufbau wiederhergestellt werden
+    /// soll. Solange er gesetzt ist, wird NICHT gemerkt — der frisch montierte
+    /// Editor meldet zuerst seine Startposition (0,0) und würde den gemerkten
+    /// Wert sonst überschreiben, bevor er angewandt ist.
+    @State private var pendingScrollRestore: CGPoint?
     @StateObject private var minimapLayoutCoordinator = MinimapLayoutCoordinator()
     /// Highlight-Provider der Eigen-Sprachen (Registry, Etappe 3 Wunschpaket
     /// 2026-07b) — ein Provider je Sprache, überlebt Tab-Wechsel/Remounts.
@@ -201,6 +241,17 @@ struct EditorView: View {
             let restoredRanges = cursorMemory.switchTab(
                 from: cursorMemoryTabID,
                 currentRanges: currentRanges,
+                to: newTabID
+            )
+            // Ausschnitt des verlassenen Tabs sichern und den des neuen
+            // vormerken. Der Live-Wert aus der noch montierten ScrollView hat
+            // Vorrang: `editorState.scrollPosition` kommt einen Runloop
+            // versetzt zurück und wäre nach schnellem Scrollen + Tab-Wechsel
+            // veraltet.
+            let liveOffset = EditorView.currentScrollOffset(in: workspace)
+            pendingScrollRestore = scrollMemory.switchTab(
+                from: cursorMemoryTabID,
+                currentOffset: liveOffset ?? editorState.scrollPosition,
                 to: newTabID
             )
             cursorMemoryTabID = newTabID
@@ -657,6 +708,23 @@ struct EditorView: View {
         // Datei, programmatischer Reload) soll sofort den Tastaturfokus bekommen —
         // sonst verpuffte nach ⌘T ein direktes ⌘V (Daniel-Befund 2026-06-25).
         .onAppear { Self.focusActiveEditor(in: workspace) }
+        // Gemerkten Ausschnitt des Tabs zurückholen. Ohne das riss CESEs
+        // „Einfügemarke sichtbar machen" die Cursorzeile beim Zurückwechseln in
+        // die oberste Bildschirmzeile.
+        .onAppear {
+            guard let target = pendingScrollRestore else { return }
+            EditorView.restoreScrollOffset(target, in: workspace) {
+                pendingScrollRestore = nil
+            }
+        }
+        // Scrollen des Nutzers pro Tab mitschreiben. Während eine
+        // Wiederherstellung aussteht, absichtlich nicht: die Startposition des
+        // frisch montierten Editors darf den gemerkten Wert nicht ersetzen.
+        .onChange(of: editorState.scrollPosition) { _, position in
+            guard pendingScrollRestore == nil else { return }
+            scrollMemory.remember(position,
+                                  for: cursorMemoryTabID ?? workspace.activeTabID)
+        }
         // Typeahead kennt die Projektmethoden: Der Provider liest den
         // Workspace erst beim Aufruf, damit ein Index-Refresh (neue Methode
         // angelegt) ohne Editor-Neuaufbau wirkt.
@@ -876,6 +944,73 @@ struct EditorView: View {
         return targetWorkspace === workspace
     }
 
+    /// Aktuelle Scrollposition der montierten Editor-ScrollView (oder `nil`,
+    /// wenn gerade keine da ist — etwa im Remount-Moment).
+    static func currentScrollOffset(in workspace: Workspace) -> CGPoint? {
+        guard let root = editorWindow(for: workspace)?.contentView,
+              let textView = firstEditorTextView(in: root),
+              let clipView = textView.enclosingScrollView?.contentView else { return nil }
+        return clipView.bounds.origin
+    }
+
+    /// Zählt hoch, sobald ein gezielter Sprung (Treffer, „Zu Zeile") scrollt.
+    /// Eine laufende Wiederherstellung erkennt daran, dass sie überholt wurde,
+    /// und hält an — der Sprung gewinnt immer.
+    private static var scrollRestoreGeneration = 0
+
+    static func cancelScrollRestore() {
+        scrollRestoreGeneration += 1
+    }
+
+    /// Stellt einen gemerkten Ausschnitt nach dem Editor-Aufbau wieder her.
+    ///
+    /// Iterativ wie `convergeScroll`, aber mit dem Ziel-y statt einer Zeile:
+    /// Direkt nach dem Mount sind erst wenige Zeilen ausgelegt, die
+    /// Dokumenthöhe ist deshalb geschätzt und ein Scroll weit nach unten würde
+    /// am (noch zu kleinen) Maximum abgeschnitten. Jeder Versuch legt neue
+    /// Zeilen aus und lässt die Höhe wachsen, bis das Ziel erreichbar ist.
+    static func restoreScrollOffset(_ offset: CGPoint, in workspace: Workspace,
+                                    attempt: Int = 0,
+                                    completion: @escaping () -> Void) {
+        let generation = scrollRestoreGeneration
+        // Auch ein Ziel am Dateianfang wird gesetzt: Stand der Tab oben, der
+        // Cursor aber weiter unten, würde CESEs „Einfügemarke sichtbar machen"
+        // sonst nach unten scrollen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + (attempt == 0 ? 0.05 : 0.03)) {
+            guard generation == scrollRestoreGeneration else { completion(); return }
+            guard let root = editorWindow(for: workspace)?.contentView,
+                  let textView = firstEditorTextView(in: root) as? CodeEditTextView.TextView,
+                  let scrollView = textView.enclosingScrollView else {
+                completion()
+                return
+            }
+            // Auslegen anstoßen, damit die Dokumenthöhe zum Ziel aufwächst.
+            textView.layoutManager.layoutLines()
+            scrollView.contentView.scroll(to: CGPoint(x: offset.x, y: offset.y))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            let reached = abs(scrollView.contentView.bounds.origin.y - offset.y) < 1
+            // Höchstens fünf Nachzieh-Versuche: erreicht, oder das Dokument ist
+            // schlicht kürzer als der gemerkte Ausschnitt (Datei extern
+            // gekürzt) — dann bleibt es beim erreichbaren Maximum.
+            if reached || attempt >= 5 {
+                textView.needsDisplay = true
+                completion()
+                return
+            }
+            restoreScrollOffset(offset, in: workspace, attempt: attempt + 1,
+                                completion: completion)
+        }
+    }
+
+    /// Das Dokumentfenster dieses Workspace (ohne die schwebende Suchmaske).
+    private static func editorWindow(for workspace: Workspace) -> NSWindow? {
+        NSApp.windows.first(where: {
+            !SearchWindow.isSearchWindow($0)
+                && WorkspaceWindowRegistry.workspace(for: $0) === workspace
+                && $0.contentView != nil && $0.isVisible
+        })
+    }
+
     /// Scrollt den Editor sichtbar zum Suchtreffer, ohne dem Suchfenster den
     /// Tastaturfokus zu entreißen. Die TextView darf dabei ausdrücklich NICHT
     /// First Responder werden: Sonst landet das nächste Return unbemerkt im
@@ -883,6 +1018,9 @@ struct EditorView: View {
     /// Position schon übernommen hat, bevor wir scrollen.
     static func scrollEditorForVisibleJump(in workspace: Workspace,
                                            targetLine: Int?, fallbackRange: NSRange?) {
+        // Ein gezielter Sprung schlägt jede noch laufende Ausschnitt-
+        // Wiederherstellung (Treffer in einer anderen Datei wechselt den Tab).
+        cancelScrollRestore()
         DispatchQueue.main.async {
             guard let mainWindow = NSApp.windows.first(where: {
                 !SearchWindow.isSearchWindow($0)

@@ -160,7 +160,9 @@ For Markdown files the split view renders a live preview on the right:
 tables, code blocks with syntax colors, formulas (KaTeX), and Mermaid
 diagrams — fully local, no network access. **Clicking in the preview**
 jumps the editor to the matching source line. Copying from the preview
-yields real rich text (headings, lists, and bold survive).
+yields real rich text (headings, lists, and bold survive). Copying from the
+editor always yields plain text instead: no font, no color, and nothing a
+target application can alter while converting.
 
 ### Special Preview Syntax
 
@@ -528,6 +530,10 @@ the save instead of silently overwriting the on-disk version.
 ⌘T opens a new tab, ⌘N a second, fully independent window (its own
 tabs, its own search). ⌘S saves, ⌘W closes the tab — Fastra asks first
 if there are unsaved changes. ⌘J jumps to a line number.
+
+Switching tabs keeps each tab's insertion point **and** its visible section:
+switching back shows the text exactly where you left it. A deliberate jump — a
+search hit or ⌘J — takes precedence and scrolls to the target as usual.
 
 A dot in the tab indicates unsaved changes. It disappears again as soon as
 the content exactly matches the saved state — whether via Undo or by
