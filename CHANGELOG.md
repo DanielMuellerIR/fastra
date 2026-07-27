@@ -27,7 +27,11 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
   `store:` mit; im Normalbetrieb liefert `workspaceDefaults()` weiterhin
   `.standard`, das Produktverhalten bleibt unverändert. Der neue
   `AppStorageIsolationTests` prüft die Regel an der Quelle, damit eine künftige
-  Deklaration ohne `store:` dieselbe Lücke nicht still wieder aufreißt.
+  Deklaration ohne `store:` dieselbe Lücke nicht still wieder aufreißt. Die
+  fünfzehn Selbsttests, die die integrierte Markdown-Vorschau einschalten,
+  schreiben denselben Schlüssel jetzt ebenfalls in die isolierte Suite —
+  vorher liefen sie nach der Umstellung ins Leere und waren nur durch den
+  Vorgabewert `true` gedeckt.
   Nebeneffekt: auch die README-Screenshots entstehen jetzt unabhängig davon,
   wie der Benutzer seine Seitenleiste gerade eingestellt hat.
 

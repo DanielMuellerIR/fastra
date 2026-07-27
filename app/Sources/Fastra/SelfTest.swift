@@ -273,7 +273,7 @@ enum SelfTest {
                 ]),
                 to: workspaceDefaults()
             )
-            UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+            workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
             selectionScrollFixtureDirectory = directory
             selectionScrollFixtureURL = document
         } catch {
@@ -5148,7 +5148,7 @@ enum SelfTest {
         // Diese Geometrie traf den gemeldeten Fragment-Grenzfall
         // deterministisch. Optionale Werte bleiben für die Erstdiagnose.
         window.setContentSize(NSSize(width: requestedWindowWidth, height: 800))
-        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         ws.loadFile(at: tmp) { ok in
             try? FileManager.default.removeItem(at: tmp)
             guard ok else { finish(false, "Markdown-Fixture lädt nicht") }
@@ -5594,7 +5594,7 @@ enum SelfTest {
         // Exakte Geometrie aus dem Fehlerbericht (Defaults des Nutzers).
         ws.sidebarWidth = 216.13671875
         ws.markdownPreviewWidth = 332.3515625
-        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         window.setContentSize(NSSize(width: 1100, height: 800))
         let text = rightEdgeFixtureContent()
         // Eigener leerer Ordner: Die Seitenleiste würde sonst den prall
@@ -5861,7 +5861,7 @@ enum SelfTest {
         }
         ws.sidebarWidth = 216.13671875
         ws.markdownPreviewWidth = 332.3515625
-        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         window.setContentSize(NSSize(width: 1100, height: 800))
         let text = rightEdgeFixtureContent()
         // Eigener leerer Ordner — siehe rightedge: verhindert, dass die
@@ -6004,7 +6004,7 @@ enum SelfTest {
         }
         ws.sidebarWidth = 216.13671875
         ws.markdownPreviewWidth = 332.3515625
-        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         window.setContentSize(NSSize(width: 1100, height: 800))
         let text = rightEdgeFixtureContent()
         let directory = FileManager.default.temporaryDirectory
@@ -6261,7 +6261,7 @@ enum SelfTest {
         // integrierte Vorschau machen den Editor schmal (wie emojisplit).
         ws.sidebarWidth = 216.13671875
         ws.markdownPreviewWidth = 332.3515625
-        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         window.setContentSize(NSSize(width: 1100, height: 500))
         // FASTRA_TYPESCROLL_FIXTURE erlaubt die Diagnose mit einer realen
         // Datei (Kopie!); der normale Lauf nutzt das neutrale Abbild.
@@ -6696,7 +6696,7 @@ enum SelfTest {
         }
         ws.sidebarWidth = 216.13671875
         ws.markdownPreviewWidth = 332.3515625
-        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         window.setContentSize(NSSize(width: 1100, height: 800))
         let text: String
         if let path = ProcessInfo.processInfo.environment["FASTRA_EMOJI_FIXTURE"],
@@ -6919,7 +6919,7 @@ enum SelfTest {
                 "fastra-emojipaste-\(UUID().uuidString)", isDirectory: true
             )
         // Mit integrierter Vorschau prüfen — genau Daniels Arbeitsaufbau.
-        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         window.setContentSize(NSSize(width: 1100, height: 800))
         let tmp = directory.appendingPathComponent("paste.md")
         // Lange Zeile: Bei aktivem Umbruch verschiebt jedes eingefügte Emoji
@@ -7161,7 +7161,7 @@ enum SelfTest {
               let window = mainWindowForAXChecks() else {
             finish(false, "Workspace oder Hauptfenster fehlt")
         }
-        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         window.setContentSize(NSSize(width: 1100, height: 800))
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(
@@ -7382,7 +7382,7 @@ enum SelfTest {
         }
         ws.sidebarWidth = 216.13671875
         ws.markdownPreviewWidth = 332.3515625
-        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         window.setContentSize(NSSize(width: 1100, height: 800))
         let text: String
         if let path = ProcessInfo.processInfo.environment["FASTRA_EMOJI_FIXTURE"],
@@ -12242,7 +12242,7 @@ enum SelfTest {
             finish(false, "Markdown-Testdateien nicht schreibbar: \(error.localizedDescription)")
         }
 
-        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         ws.loadFile(at: file) { ok in
             guard ok else { finish(false, "Markdown-Datei konnte nicht geladen werden") }
             pollMarkdownDOM(directory: directory, tick: 0)
@@ -12378,7 +12378,7 @@ enum SelfTest {
             finish(false, "Markdown-Testdatei nicht schreibbar: \(error.localizedDescription)")
         }
 
-        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         ws.loadFile(at: file) { ok in
             guard ok else { finish(false, "Markdown-Datei konnte nicht geladen werden") }
             pollMarkdownVisibleBlankLinesDOM(directory: directory, tick: 0)
@@ -12476,7 +12476,7 @@ enum SelfTest {
             finish(false, "Testdatei nicht schreibbar: \(error.localizedDescription)")
         }
 
-        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         ws.loadFile(at: file) { ok in
             guard ok else { finish(false, "Markdown-Datei konnte nicht geladen werden") }
             pollMarkdownJump(workspace: ws, directory: directory, tick: 0)
@@ -12587,7 +12587,7 @@ enum SelfTest {
         }
 
         let original = NSApp.appearance
-        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         // Bewusst dunkel STARTEN und später wechseln — nur so entsteht der
         // Zustand, in dem die Farbe veraltet zurückbleiben konnte.
         NSApp.appearance = NSAppearance(named: .darkAqua)
@@ -12673,7 +12673,7 @@ enum SelfTest {
         do { try demo.write(to: file, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
 
-        UserDefaults.standard.set(true, forKey: "markdown.integratedPreview")
+        workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         ws.loadFile(at: file) { ok in
             guard ok else { finish(false, "Markdown-Datei konnte nicht geladen werden") }
             // WebKit braucht nach dem Tabwechsel einen Layoutdurchlauf, bevor
