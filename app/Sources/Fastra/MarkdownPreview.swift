@@ -43,8 +43,8 @@ struct MarkdownPreviewView: View {
     /// übergeben — `EditorView` reicht den konkreten Workspace herein,
     /// unabhängig davon ob er im SwiftUI-Environment registriert ist.
     @ObservedObject var workspace: Workspace
-    @AppStorage(DocumentZoom.defaultsKey) private var documentZoomLevel = 0
-    @AppStorage(PreviewFonts.defaultsKey) private var previewFontName = PreviewFonts.systemName
+    @AppStorage(DocumentZoom.defaultsKey, store: SelfTest.workspaceDefaults()) private var documentZoomLevel = 0
+    @AppStorage(PreviewFonts.defaultsKey, store: SelfTest.workspaceDefaults()) private var previewFontName = PreviewFonts.systemName
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {

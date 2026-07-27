@@ -349,6 +349,16 @@ enum SelfTest {
     /// 2. Keine Nebenwirkung — ein Selbsttest darf NICHT das echte
     ///    Erststart-Flag der App verbrauchen, sonst sieht der Nutzer das
     ///    Demo beim ersten richtigen Start nie.
+    ///
+    /// VERBINDLICH für `@AppStorage`: JEDE Deklaration muss diese Suite
+    /// ausdrücklich als `store:` mitgeben. Ohne `store:` liest SwiftUI
+    /// `UserDefaults.standard`, also die ECHTEN Einstellungen des Nutzers —
+    /// die Isolierung oben greift für diesen Schlüssel dann nicht. Realer
+    /// Befund 2026-07-27: ein im normalen Betrieb ausgeblendetes
+    /// `editor.sidebarVisible = false` ließ den Selbsttest-Prozess die
+    /// komplette Seitenleiste gar nicht erst aufbauen; `gitstagefolder` und
+    /// `gitpushbutton` fielen dadurch reproduzierbar aus — ohne jeden
+    /// Produktfehler. `AppStorageIsolationTests` hält die Regel fest.
     static func workspaceDefaults() -> UserDefaults {
         guard isSelfTestRun else { return .standard }
         if let cachedWorkspaceDefaults { return cachedWorkspaceDefaults }

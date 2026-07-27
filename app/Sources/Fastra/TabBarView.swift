@@ -10,8 +10,8 @@ struct TabBarView: View {
     @EnvironmentObject var workspace: Workspace
     @Environment(\.uiScale) private var uiScale
 
-    @AppStorage("editor.sidebarVisible") private var showSidebar = true
-    @AppStorage("markdown.integratedPreview") private var showPreview = true
+    @AppStorage("editor.sidebarVisible", store: SelfTest.workspaceDefaults()) private var showSidebar = true
+    @AppStorage("markdown.integratedPreview", store: SelfTest.workspaceDefaults()) private var showPreview = true
 
     private let sidebarMinWidth = 180.0
     private let sidebarMaxWidth = 480.0

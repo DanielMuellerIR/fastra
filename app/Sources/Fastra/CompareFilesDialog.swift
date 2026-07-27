@@ -113,13 +113,13 @@ struct CompareFilesDialog: View {
 
     // Optionen überleben App-Neustarts (BBEdit-Verhalten); Erstzustand:
     // nichts ignorieren (Produktvorgabe).
-    @AppStorage("fastra.fileDiff.ignoreTrailingWhitespace")
+    @AppStorage("fastra.fileDiff.ignoreTrailingWhitespace", store: SelfTest.workspaceDefaults())
     private var ignoreTrailingWhitespace = false
-    @AppStorage("fastra.fileDiff.ignoreAllWhitespace")
+    @AppStorage("fastra.fileDiff.ignoreAllWhitespace", store: SelfTest.workspaceDefaults())
     private var ignoreAllWhitespace = false
-    @AppStorage("fastra.fileDiff.ignoreBlankLines")
+    @AppStorage("fastra.fileDiff.ignoreBlankLines", store: SelfTest.workspaceDefaults())
     private var ignoreBlankLines = false
-    @AppStorage("fastra.fileDiff.ignoreCase")
+    @AppStorage("fastra.fileDiff.ignoreCase", store: SelfTest.workspaceDefaults())
     private var ignoreCase = false
 
     var body: some View {

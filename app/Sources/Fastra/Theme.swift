@@ -255,7 +255,7 @@ private struct FastraFontModifier: ViewModifier {
 /// per Environment weiter. Die diskrete `controlSize` lässt native SwiftUI-
 /// Controls passend zur Schrift mitwachsen beziehungsweise schrumpfen.
 private struct FastraScalingRootModifier: ViewModifier {
-    @AppStorage(UIZoom.defaultsKey) private var zoomLevel = 0
+    @AppStorage(UIZoom.defaultsKey, store: SelfTest.workspaceDefaults()) private var zoomLevel = 0
 
     private var scale: CGFloat { UIZoom.scale(for: zoomLevel) }
     private var controlSize: ControlSize {

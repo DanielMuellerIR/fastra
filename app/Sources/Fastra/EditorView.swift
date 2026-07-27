@@ -103,7 +103,7 @@ struct EditorView: View {
 
     /// Erst-Nutzungs-Hinweis des Markdown-Assistenten (Etappe 5 Wunschpaket
     /// 2026-07b): einmal bestätigt → dauerhaft aus (AppStorage-Flag).
-    @AppStorage(MarkdownAssist.firstUseDefaultsKey)
+    @AppStorage(MarkdownAssist.firstUseDefaultsKey, store: SelfTest.workspaceDefaults())
     private var markdownAssistHintShown = false
     @State private var showMarkdownAssistHint = false
 
@@ -131,13 +131,13 @@ struct EditorView: View {
     /// Relayout griff, und stand im Verdacht, über eine Exception im
     /// Minimap-Layout-Pfad die Editor-Darstellung einfrieren zu lassen. Wie
     /// das Soft-Wrap-Profil reconciled CESE die Änderung live.
-    @AppStorage("editor.showMinimap") private var showMinimap = false
-    @AppStorage(DocumentZoom.defaultsKey) private var documentZoomLevel = 0
-    @AppStorage(EditorFonts.defaultsKey) private var editorFontName = EditorFonts.systemMonospacedName
-    @AppStorage("markdown.integratedPreview") private var showMarkdownPreview = true
+    @AppStorage("editor.showMinimap", store: SelfTest.workspaceDefaults()) private var showMinimap = false
+    @AppStorage(DocumentZoom.defaultsKey, store: SelfTest.workspaceDefaults()) private var documentZoomLevel = 0
+    @AppStorage(EditorFonts.defaultsKey, store: SelfTest.workspaceDefaults()) private var editorFontName = EditorFonts.systemMonospacedName
+    @AppStorage("markdown.integratedPreview", store: SelfTest.workspaceDefaults()) private var showMarkdownPreview = true
     /// Direkter Seitenleisten-Schalter im Fenster-Chrome, wie in Codex.
     /// AppStorage hält alle Dokumentfenster und den Menüpunkt synchron.
-    @AppStorage("editor.sidebarVisible") private var showSidebar = true
+    @AppStorage("editor.sidebarVisible", store: SelfTest.workspaceDefaults()) private var showSidebar = true
 
     // Die Breite der linken Seitenleiste und der rechten Markdown-Vorschau
     // liegen jetzt PRO FENSTER auf dem `workspace` (siehe

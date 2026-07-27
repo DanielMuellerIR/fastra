@@ -14,25 +14,25 @@ struct SettingsView: View {
     /// Erscheinungsbild (automatisch/hell/dunkel). Als String gespeichert
     /// (`AppearanceSetting.rawValue`) — gleicher Schlüssel wie
     /// `AppearanceSetting.current()`, das der AppDelegate beim Start liest.
-    @AppStorage(AppearanceSetting.defaultsKey)
+    @AppStorage(AppearanceSetting.defaultsKey, store: SelfTest.workspaceDefaults())
     private var appearanceRaw = AppearanceSetting.system.rawValue
-    @AppStorage(UIZoom.defaultsKey) private var uiZoomLevel = 0
-    @AppStorage(DocumentZoom.defaultsKey) private var documentZoomLevel = 0
-    @AppStorage(EditorFonts.defaultsKey) private var editorFontName = EditorFonts.systemMonospacedName
-    @AppStorage(SessionRestorationPreferences.enabledKey)
+    @AppStorage(UIZoom.defaultsKey, store: SelfTest.workspaceDefaults()) private var uiZoomLevel = 0
+    @AppStorage(DocumentZoom.defaultsKey, store: SelfTest.workspaceDefaults()) private var documentZoomLevel = 0
+    @AppStorage(EditorFonts.defaultsKey, store: SelfTest.workspaceDefaults()) private var editorFontName = EditorFonts.systemMonospacedName
+    @AppStorage(SessionRestorationPreferences.enabledKey, store: SelfTest.workspaceDefaults())
     private var restoreLastSession = true
-    @AppStorage("markdown.integratedPreview") private var showMarkdownPreview = true
-    @AppStorage(PreviewFonts.defaultsKey) private var previewFontName = PreviewFonts.systemName
-    @AppStorage(GitPreferencesStore.Keys.decision)
+    @AppStorage("markdown.integratedPreview", store: SelfTest.workspaceDefaults()) private var showMarkdownPreview = true
+    @AppStorage(PreviewFonts.defaultsKey, store: SelfTest.workspaceDefaults()) private var previewFontName = PreviewFonts.systemName
+    @AppStorage(GitPreferencesStore.Keys.decision, store: SelfTest.workspaceDefaults())
     private var gitFetchDecision = GitAutomaticFetchDecision.ask.rawValue
-    @AppStorage(GitPreferencesStore.Keys.interval)
+    @AppStorage(GitPreferencesStore.Keys.interval, store: SelfTest.workspaceDefaults())
     private var gitFetchInterval = GitPreferences.defaultFetchInterval
-    @AppStorage(GitPreferencesStore.Keys.fetchOnActivation)
+    @AppStorage(GitPreferencesStore.Keys.fetchOnActivation, store: SelfTest.workspaceDefaults())
     private var gitFetchOnActivation = true
-    @AppStorage(GitPreferencesStore.Keys.remoteScope)
+    @AppStorage(GitPreferencesStore.Keys.remoteScope, store: SelfTest.workspaceDefaults())
     private var gitRemoteScope = GitRemoteScope.relevant.rawValue
-    @AppStorage(GitPreferencesStore.Keys.prune) private var gitFetchPrune = false
-    @AppStorage(GitPreferencesStore.Keys.pullStrategy)
+    @AppStorage(GitPreferencesStore.Keys.prune, store: SelfTest.workspaceDefaults()) private var gitFetchPrune = false
+    @AppStorage(GitPreferencesStore.Keys.pullStrategy, store: SelfTest.workspaceDefaults())
     private var gitPullStrategy = GitPullStrategy.unselected.rawValue
     @StateObject private var editorProfiles = SoftWrapProfileStore()
 

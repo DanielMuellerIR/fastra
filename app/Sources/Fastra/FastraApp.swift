@@ -38,13 +38,13 @@ struct FastraApp: App {
     @StateObject private var activeDocumentContext = ActiveDocumentContext.shared
     // Rechter Vorschau-Streifen (Minimap) an/aus — geteilt mit EditorView über
     // denselben AppStorage-Schlüssel. Default AUS (siehe EditorView-Kommentar).
-    @AppStorage("editor.showMinimap") private var showMinimap = false
+    @AppStorage("editor.showMinimap", store: SelfTest.workspaceDefaults()) private var showMinimap = false
     // Globale, persistente UI-Zoomstufe. Die eigentliche Weitergabe an alle
     // SwiftUI-/AppKit-Unteransichten erledigt `fastraScalingRoot()`.
-    @AppStorage(UIZoom.defaultsKey) private var uiZoomLevel = 0
-    @AppStorage(DocumentZoom.defaultsKey) private var documentZoomLevel = 0
-    @AppStorage("markdown.integratedPreview") private var showMarkdownPreview = true
-    @AppStorage("editor.sidebarVisible") private var showSidebar = true
+    @AppStorage(UIZoom.defaultsKey, store: SelfTest.workspaceDefaults()) private var uiZoomLevel = 0
+    @AppStorage(DocumentZoom.defaultsKey, store: SelfTest.workspaceDefaults()) private var documentZoomLevel = 0
+    @AppStorage("markdown.integratedPreview", store: SelfTest.workspaceDefaults()) private var showMarkdownPreview = true
+    @AppStorage("editor.sidebarVisible", store: SelfTest.workspaceDefaults()) private var showSidebar = true
 
     init() {
         FastraProcessGroupLauncher.runIfRequested()
