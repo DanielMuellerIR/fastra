@@ -9,6 +9,26 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.52.1] — 2026-07-27
+
+### Behoben
+
+- **Kopieren aus dem Editor liefert reinen Text.** Bisher landete ein
+  attributierter Text auf dem Clipboard, wodurch RTF der oberste Flavor war.
+  Programme mit Rich-Text-Vorrang übernahmen damit Editorschrift und -farbe —
+  und ihr Weg über RTF beziehungsweise HTML verlor den Emoji-
+  Variantenselektor: Aus `⏸️` (U+23F8 U+FE0F) wurde `⏸`. Ein Plaintext-Editor
+  schreibt jetzt nur noch reinen Text. Mehrere Einfügemarken werden dabei
+  zeilenweise verbunden; vorher schrieb Fastra getrennte Pasteboard-Objekte,
+  von denen beim Einfügen nur das erste ankam.
+- **Der sichtbare Ausschnitt überlebt den Tab-Wechsel.** Der eigentliche
+  Editor wird beim Wechsel neu erzeugt und startet am Dateianfang; danach
+  machte die wiederhergestellte Einfügemarke nur sich selbst sichtbar. Beim
+  Zurückwechseln stand die Cursorzeile deshalb in der obersten
+  Bildschirmzeile. Fastra merkt sich den Ausschnitt jetzt pro Tab und stellt
+  ihn nach dem Aufbau wieder her. Ein gezielter Sprung (Suchtreffer, ⌘J)
+  hat weiterhin Vorrang.
+
 ## [v1.52.0] — 2026-07-26
 
 ### Neu
