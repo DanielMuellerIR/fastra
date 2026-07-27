@@ -3789,10 +3789,15 @@ enum SelfTest {
         // Die erste Anwendung muss ihr Fenster vollständig geschlossen haben,
         // bevor der neue Präfix eingegeben wird.
         guard fourDCompletionWindow(attachedTo: mainWindow) == nil else {
-            if tick >= 40 {
+            // 120 × 50 ms = 6 s wie die übrigen Warteschleifen dieses Tests.
+            // Mit 2 s meldete er auf belasteter Maschine etwa jeden dritten
+            // Lauf einen Fehler, obwohl das Fenster nur später schloss
+            // (Befund 2026-07-27).
+            if tick >= 120 {
                 finishFourDCompletionTest(
                     state, ok: false,
-                    message: "ALERT-Popup blieb vor Component-Phase geöffnet"
+                    message: "ALERT-Popup blieb auch nach 6 s vor der "
+                        + "Component-Phase geöffnet"
                 )
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {

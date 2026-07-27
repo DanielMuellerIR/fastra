@@ -6,12 +6,6 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Jetzt
 
-- **Test-Defaults-Aufräumer integrieren** (2026-07-24): Branch
-  `claude/kind-dewdney-f519ae` (Nebensession) löscht die von Testläufen
-  hinterlassenen UUID-Suiten in `~/Library/Preferences`
-  (`TestDefaultsJanitorTests`, Erstbereinigung 8286 → 37 Dateien) — bei
-  Gelegenheit nach main übernehmen (z. B. `/cherry-pick-to-main`).
-
 - **4D-Parameterhilfe/Typeahead: verbliebene Komponenten-/Plugin-Grenzen**
   (verbleibende Grenze nach der Komponentenmethoden-Unterstützung; diese ist mit
   v1.50.0 umgesetzt — Typeahead + Signaturhilfe aus `.4dbase`, `.4DZ` und
@@ -141,15 +135,6 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   „laufende Sitzung zeichnet veraltet“ (F.18). Bei erneutem Auftreten
   notieren: Editor-Text oder Vorschau, Fensterbreite, ob ein App-Neustart
   genügt, und welche Codepoints die Datei an der Stelle wirklich enthält.
-
-- **`completion4d` ist flaky** (Befund 2026-07-27): meldet in etwa einem von
-  drei Läufen „ALERT-Popup blieb vor Component-Phase geöffnet", sonst PASS —
-  reproduziert unmittelbar hintereinander in beide Richtungen. Der Test prüft
-  das Schließen des Vorschlagsfensters unter Zeitfrist; auf einer belasteten
-  Maschine reißt sie. Der Doppelklick-Patch aus v1.52.2 ist als Ursache
-  ausgeschlossen: `findWordBoundary` wird ausschließlich von `selectWord` und
-  dem Doppelklick-Drag benutzt, nicht von der Vervollständigung. Zu tun: die
-  Component-Phase auf Polling umstellen, statt auf eine feste Frist zu warten.
 
 - **Kurzzeitig doppelte Zeilenhöhe** beim Emoji-Einfügen über die
   Emoji-Palette (normalisierte sich nach dem nächsten Einfügen von selbst).

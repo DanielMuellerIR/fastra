@@ -32,6 +32,17 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
   schreiben denselben Schlüssel jetzt ebenfalls in die isolierte Suite —
   vorher liefen sie nach der Umstellung ins Leere und waren nur durch den
   Vorgabewert `true` gedeckt.
+- **Testläufe hinterlassen keine toten Defaults-Domains mehr.** Jeder Testlauf
+  legt UUID-Suiten an; `removePersistentDomain` leert sie, cfprefsd lässt die
+  leere Plist aber liegen. Der `TestDefaultsJanitor` löscht bei jedem
+  `swift test` verwaiste Suiten (bekanntes Präfix samt UUID-Suffix, älter als
+  eine Stunde, damit parallele Läufe unberührt bleiben). Erste Bereinigung:
+  1796 → 20 Dateien.
+- **`completion4d` wartet nicht mehr zu kurz.** Die Warteschleife vor der
+  Komponenten-Phase brach nach 2 s ab, während die übrigen Schleifen desselben
+  Tests 6 s zulassen. Auf belasteter Maschine meldete der Test dadurch etwa
+  jeden dritten Lauf einen Fehler, obwohl das Vorschlagsfenster nur später
+  schloss.
   Nebeneffekt: auch die README-Screenshots entstehen jetzt unabhängig davon,
   wie der Benutzer seine Seitenleiste gerade eingestellt hat.
 
