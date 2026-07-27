@@ -237,6 +237,111 @@ func fileLoader_nonexistent_throws() {
     }
 }
 
+// MARK: - Tests: nur reguläre Dateien (Code-Review-Befund 2026-07-24)
+
+/// Nimmt das Ergebnis eines Ladeversuchs von einem fremden Thread entgegen.
+private final class LoadOutcomeBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var error: Error??
+    func store(_ value: Error?) { lock.lock(); error = .some(value); lock.unlock() }
+    var thrownError: Error? {
+        lock.lock(); defer { lock.unlock() }
+        return error ?? nil
+    }
+}
+
+@Test("FileLoader: FIFO wird abgewiesen, statt den Thread zu blockieren",
+      .timeLimit(.minutes(1)))
+func fileLoader_fifo_isRejectedWithoutBlocking() throws {
+    // Eine FIFO ohne Schreiber lässt schon `open(2)` unbegrenzt warten.
+    let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-fileloader-fifo-\(UUID().uuidString)")
+    #expect(mkfifo(url.path, 0o600) == 0, "FIFO konnte nicht angelegt werden")
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    // Der Ladeversuch läuft bewusst auf einem eigenen Thread und wird mit
+    // Frist abgeholt. Fehlt der Typ-Check, blockiert `load(url:)` in `open(2)`
+    // unbegrenzt — und ein synchroner Test würde dann die GANZE Suite aufhängen
+    // statt rot zu werden. Ein Zeitlimit hilft dagegen nicht: es bricht nur
+    // Tasks ab, nicht einen im Kernel steckenden Systemaufruf. (Verifiziert
+    // 2026-07-27: gegen den Stand ohne Typ-Check lief die Suite in 600 s
+    // nicht durch.)
+    let finished = DispatchSemaphore(value: 0)
+    let outcome = LoadOutcomeBox()
+    Thread.detachNewThread {
+        do { _ = try FileLoader.load(url: url); outcome.store(nil) }
+        catch { outcome.store(error) }
+        finished.signal()
+    }
+    guard finished.wait(timeout: .now() + 10) == .success else {
+        Issue.record("load(url:) blockiert auf der FIFO — der Typ-Check fehlt")
+        return
+    }
+    #expect(outcome.thrownError as? FileLoader.LoadError == .notRegularFile)
+}
+
+@Test("FileLoader: Verzeichnis wird als nicht reguläre Datei abgewiesen")
+func fileLoader_directory_isRejected() throws {
+    let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-fileloader-dir-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    #expect(throws: FileLoader.LoadError.notRegularFile) {
+        try FileLoader.load(url: url)
+    }
+}
+
+@Test("FileLoader: Symlink auf eine reguläre Datei bleibt normal ladbar")
+func fileLoader_symlinkToRegularFile_stillLoads() throws {
+    // Doppelte Absicherung. Erstens gegen die naheliegende Fehlimplementierung
+    // des Typ-Checks: Weder `attributesOfItem` noch `URL.isRegularFile` folgen
+    // Symlinks, ein Check darauf würde also legitime Links abweisen.
+    // Zweitens gegen die falsche Größe: Der alte Pfad meldete die Länge des
+    // Link-Eintrags statt die der Zieldatei — genau die Zahl, an der die
+    // Abschnitts-/Hex-Grenze entscheidet.
+    let target = try writeTmpText("Ziel-Inhalt", encoding: .utf8)
+    defer { try? FileManager.default.removeItem(at: target) }
+    let link = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-fileloader-link-\(UUID().uuidString).txt")
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+    defer { try? FileManager.default.removeItem(at: link) }
+
+    let loaded = try FileLoader.load(url: link)
+    #expect(loaded.content == "Ziel-Inhalt")
+    #expect(loaded.displayMode == .text)
+    #expect(loaded.fileSize == UInt64("Ziel-Inhalt".utf8.count))
+}
+
+@Test("FileLoader: unlesbare Attribute enden im Ladefehler, nicht in Größe 0")
+func fileLoader_unreadableAttributes_doNotBecomeSizeZero() throws {
+    // Ein Pfad, dessen Elternverzeichnis nicht durchsucht werden darf: Der
+    // Attributabruf scheitert. Früher galt das als Größe 0 und der Fehler fiel
+    // erst beim Öffnen auf; jetzt scheitert der Ladevorgang an der Stelle, an
+    // der die Größe wirklich unbekannt ist.
+    //
+    // Ehrlich zur Aussagekraft: Dieser Test hält nur die Zusage fest — er wird
+    // auch gegen den alten Stand grün, weil dort das Öffnen ebenfalls
+    // scheitert. Dass die GRÖSSE nicht mehr still auf 0 fällt, belegt der
+    // Symlink-Test oben (alt 107 statt 11 Bytes).
+    let parent = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-fileloader-locked-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.setAttributes([.posixPermissions: 0o700],
+                                               ofItemAtPath: parent.path)
+        try? FileManager.default.removeItem(at: parent)
+    }
+    let file = parent.appendingPathComponent("inhalt.txt")
+    try "Inhalt".write(to: file, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o000],
+                                          ofItemAtPath: parent.path)
+
+    #expect(throws: FileLoader.LoadError.unreadable) {
+        try FileLoader.load(url: file)
+    }
+}
+
 @Test("FileLoader: Binärmüll (Null-Bytes) öffnet automatisch die Hex-Ansicht")
 func fileLoader_binaryNullBytes_opensHex() throws {
     // Datei mit Null-Bytes und ungültigem UTF-8 — typisch für Binärdateien.

@@ -11,6 +11,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ### Behoben
 
+- **Der Such-Spinner bleibt nicht mehr hängen.** Wurde eine laufende Suche im
+  Datei- oder Geöffnet-Bereich abgebrochen und der anschließende Ordner-Lauf
+  danach verworfen — weil der Suchbegriff zu kurz war oder kein Ordner aktiv
+  ist —, drehte sich der Spinner dauerhaft weiter, obwohl gar nichts mehr
+  suchte. Nur die Ordner-Anzeige wurde zurückgesetzt. Jetzt werden Spinner,
+  Trefferzahl und Kappungs-Hinweis des Buffer-Bereichs an derselben Stelle
+  mit geleert.
+- **Nicht reguläre Dateien werden ehrlich abgewiesen.** Beim Öffnen prüft
+  Fastra jetzt zuerst, ob der Pfad überhaupt eine reguläre Datei ist. Eine
+  FIFO (benannte Pipe) ohne Schreiber ließ das Öffnen sonst unbegrenzt warten
+  und hielt den ladenden Thread dauerhaft fest. Im selben Zug zählt ein
+  fehlgeschlagener Attributabruf nicht mehr als Größe 0 — sonst hätte eine
+  sehr große Datei die Abschnitts- und Hex-Grenze umgehen und komplett im
+  Speicher landen können. Symlinks auf reguläre Dateien bleiben normal
+  ladbar und melden nun die Größe der Zieldatei statt die des Link-Eintrags.
 - **Die erste git-Pfad-Auflösung dreht nie mehr den RunLoop des Aufrufers.**
   `xcode-select -p` lief beim allerersten Git-Zugriff synchron auf dem Thread
   dieses Zugriffs, und `Process.waitUntilExit` dreht dabei den RunLoop. Traf

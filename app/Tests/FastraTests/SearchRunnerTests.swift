@@ -8,8 +8,42 @@
 // ein versehentliches „Ordner doch wieder live" als roter Test auffällt.
 
 import Testing
+import Combine
 import Foundation
 @testable import Fastra
+
+/// Wartet ereignisbasiert darauf, dass `condition` am Workspace zutrifft.
+///
+/// Der `SearchRunner` arbeitet über Combine mit 120-ms-Debounce auf der Main
+/// Queue, deren Latenz unter voller paralleler Testlast stark schwankt — eine
+/// Wanduhrfrist wäre hier nur lastabhängig rot. `objectWillChange` feuert VOR
+/// der Zuweisung, deshalb wird die Prüfung über die Main Queue einen Zug
+/// später nachgeholt.
+///
+/// Die 20 Sekunden sind ausdrücklich KEIN Erwartungswert, sondern eine
+/// Hänge-Erkennung: Tritt die Bedingung nie ein, kehrt die Funktion trotzdem
+/// zurück und der aufrufende Test wird an seiner Erwartung rot. Ohne diesen
+/// Ausgang bliebe der Test in `withCheckedContinuation` stecken — eine
+/// nicht-abbrechbare Continuation, an der auch ein `.timeLimit` nichts ändert,
+/// und die ganze Suite würde hängen statt einen Fehler zu melden.
+@MainActor
+private func waitForWorkspace(_ workspace: Workspace,
+                              _ condition: @escaping () -> Bool) async {
+    if condition() { return }
+    var cancellable: AnyCancellable?
+    await withCheckedContinuation { continuation in
+        cancellable = workspace.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .filter { _ in condition() }
+            .first()
+            .timeout(.seconds(20), scheduler: DispatchQueue.main)
+            // Nur der Abschluss löst aus — er kommt in BEIDEN Fällen genau
+            // einmal (Bedingung eingetreten oder Frist abgelaufen).
+            .sink(receiveCompletion: { _ in continuation.resume() },
+                  receiveValue: { _ in })
+    }
+    cancellable?.cancel()
+}
 
 @Test("Nur die aktuelle Buffer-Laufgeneration darf Ergebnisse publizieren")
 func bufferCompletionRequiresCurrentGeneration() {
@@ -71,6 +105,47 @@ func projectFilterChangeInvalidatesVisiblePreviewImmediately() async throws {
     #expect(workspace.folderSearching)
     #expect(!workspace.applyAllInFolder())
     #expect(!previewConflictWasShown)
+}
+
+// MARK: - Spinner-Zustand nach Abbruch (Code-Review-Befund 2026-07-24)
+
+@Test("Verworfener Ordner-Lauf schaltet den Buffer-Spinner ab",
+      .timeLimit(.minutes(1)))
+@MainActor
+func discardedFolderRunClearsBufferSpinner() async throws {
+    let suiteName = "fastra-runner-spinner-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let workspace = Workspace(defaults: defaults)
+    workspace.scope = .folder
+    // Zwei Zeichen liegen unter `minFolderLiveChars` — der Ordner-Lauf wird
+    // deshalb gleich am Guard verworfen und `folderNeedsSearch` gesetzt.
+    workspace.findPattern = "ab"
+    await waitForWorkspace(workspace) { workspace.folderNeedsSearch }
+
+    // Zustand nachstellen, den eine gerade abgebrochene Buffer-Suche
+    // hinterlässt: `cancelPendingWork()` bricht den Task ab, der abgebrochene
+    // Task kehrt vor seinem Main-Actor-Update zurück und lässt den Spinner an.
+    workspace.bufferSearching = true
+    workspace.bufferTotalMatches = 7
+    workspace.bufferResultsWereCapped = true
+
+    // Beliebige Such-Eingabe ändern → derselbe verworfene Ordner-Lauf.
+    // Gewartet wird direkt auf das Ausschalten des Spinners; bleibt es aus,
+    // greift die Zeitgrenze des Tests. (Auf `folderNeedsSearch` zu warten
+    // taugt nicht: das setzt schon die sofortige Invalidierung vor dem
+    // 120-ms-Debounce, also bevor der geprüfte `rerun()` überhaupt läuft.)
+    workspace.caseSensitive.toggle()
+    await waitForWorkspace(workspace) { !workspace.bufferSearching }
+
+    #expect(!workspace.bufferSearching,
+            "Der Buffer-Spinner muss aus sein — es läuft keine Buffer-Suche mehr")
+    #expect(workspace.folderNeedsSearch,
+            "Der Ordner-Lauf muss verworfen und ausdrücklich vorgemerkt sein")
+    #expect(workspace.bufferMatches.isEmpty)
+    #expect(workspace.bufferTotalMatches == 0)
+    #expect(!workspace.bufferResultsWereCapped)
 }
 
 // MARK: - runsLive: welcher Scope sucht beim Tippen sofort?

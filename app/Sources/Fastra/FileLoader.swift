@@ -51,8 +51,13 @@ enum FileLoader {
     /// Fehler, den `load(url:)` werfen kann.
     enum LoadError: Error {
         /// Die Datei konnte weder mit automatischer Encoding-Erkennung
-        /// noch als UTF-8 mit Lossy-Konvertierung gelesen werden.
+        /// noch als UTF-8 mit Lossy-Konvertierung gelesen werden. Gilt auch,
+        /// wenn Typ oder Größe des Pfads gar nicht erst zu ermitteln waren.
         case unreadable
+        /// Der Pfad ist keine reguläre Datei, sondern z. B. ein Verzeichnis,
+        /// eine FIFO (benannte Pipe), ein Socket oder eine Gerätedatei.
+        /// Solche Pfade werden bewusst gar nicht erst geöffnet.
+        case notRegularFile
     }
 
     // MARK: - Kernfunktion
@@ -85,8 +90,33 @@ enum FileLoader {
 
     static func load(url: URL, forcedEncoding: String.Encoding? = nil,
                      largeFileThreshold: UInt64 = largeFileThreshold) throws -> LoadedFile {
-        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
-        let fileSize = (attributes?[.size] as? NSNumber)?.uint64Value ?? 0
+        // Typ und Größe VOR dem ersten Öffnen klären — beides ist eine
+        // Sicherheitsbedingung, keine Bequemlichkeit:
+        // 1. Nicht reguläre Pfade (FIFO, Socket, Gerätedatei, Verzeichnis)
+        //    werden gar nicht erst geöffnet. Schon `open(2)` auf eine FIFO
+        //    ohne Schreiber blockiert unbegrenzt, und die Binär-Probe weiter
+        //    unten würde den aufrufenden Thread dauerhaft festhalten.
+        // 2. Ein Fehler beim Ermitteln der Attribute darf NICHT als Größe 0
+        //    durchgehen. Sonst gälte eine riesige Datei als winzig, umginge
+        //    die Abschnitts-/Hex-Grenze und landete komplett im Speicher.
+        // Gefragt wird über den symlink-aufgelösten Pfad: `isRegularFile`
+        // beschreibt sonst den Link selbst, und ein Link auf eine reguläre
+        // Datei — völlig legitim — würde abgewiesen und meldete obendrein die
+        // Größe des Links statt die der Zieldatei. Ein toter Link löst auf
+        // einen nicht existierenden Pfad auf und wird damit `unreadable`.
+        let attributes: URLResourceValues
+        do {
+            attributes = try url.resolvingSymlinksInPath()
+                .resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+        } catch {
+            throw LoadError.unreadable
+        }
+        guard let isRegularFile = attributes.isRegularFile else { throw LoadError.unreadable }
+        guard isRegularFile else { throw LoadError.notRegularFile }
+        guard let reportedSize = attributes.fileSize, reportedSize >= 0 else {
+            throw LoadError.unreadable
+        }
+        let fileSize = UInt64(reportedSize)
 
         // Null-Byte-Probe ist die verbindliche Binär-Erkennung aus der
         // Roadmap. Nur einen kleinen Anfang lesen — auch eine 20-GB-Datei wird

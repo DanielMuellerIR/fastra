@@ -210,6 +210,15 @@ final class SearchRunner {
         ws.openTotalMatches = 0
         ws.openResultsWereCapped = false
         ws.bufferMatches = []
+        ws.bufferTotalMatches = 0
+        ws.bufferResultsWereCapped = false
+        // Den Buffer-Spinner ausdrücklich mit ausschalten. `cancelPendingWork()`
+        // hat den laufenden Buffer-Task oben abgebrochen; ein abgebrochener Task
+        // kehrt vor seinem Main-Actor-Update zurück und schaltet den Spinner
+        // deshalb NIE selbst aus. Ohne diese Zeile blieb er hängen, sobald der
+        // Ordner-Lauf danach am Guard scheitert (kurzes Pattern, kein Ordner) —
+        // dann setzt ihn auch kein späterer `runFolderSearch` mehr zurück.
+        ws.bufferSearching = false
         ws.searchError = SearchRunner.validationError(for: ws.currentSearchOptions)
         Self.clearFolderPreview(ws)
 
