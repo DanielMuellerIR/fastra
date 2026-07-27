@@ -131,6 +131,9 @@ enum TextOpKind: Int, CaseIterable {
     // 4D-Export-Transformation (Etappe 6 Wunschpaket 2026-07c):
     // Token-Suffixe strippen bzw. Befehls-Token ergänzen.
     case fourDDetokenize, fourDTokenizeCommands
+    // Emoji-Präsentation (Daniel-Befund 2026-07-27): Variantenselektor
+    // U+FE0F ergänzen bzw. entfernen. Wieder hinten angehängt.
+    case addEmojiPresentation, removeEmojiPresentation
 
     /// Menü-Beschriftung.
     var title: String {
@@ -168,6 +171,8 @@ enum TextOpKind: Int, CaseIterable {
         case .decomposeUnicode:  "Unicode zerlegen (NFD)"
         case .fourDDetokenize:        "4D: Token-Suffixe entfernen (:Cnnn/:Knnn)"
         case .fourDTokenizeCommands:  "4D: Befehls-Token ergänzen (:Cnnn)"
+        case .addEmojiPresentation:    "Emoji-Darstellung erzwingen (U+FE0F)"
+        case .removeEmojiPresentation: "Emoji-Darstellung aufheben (U+FE0F)"
         }
         return L10n.string(key)
     }
@@ -193,6 +198,7 @@ enum TextOpKind: Int, CaseIterable {
              .zapGremlins, .straightenQuotes, .educateQuotes,
              .normalizeSpaces, .stripDiacriticals,
              .precomposeUnicode, .decomposeUnicode,
+             .addEmojiPresentation, .removeEmojiPresentation,
              .fourDDetokenize, .fourDTokenizeCommands:
             return true
         default:
@@ -361,7 +367,7 @@ final class EditorContextMenu: NSObject {
         // TextOpKind; ein gemeinsamer Handler liest ihn. Gruppen durch Trenner.
         let textItem = NSMenuItem(title: L10n.string("Text"), action: nil, keyEquivalent: "")
         let textSub = NSMenu()
-        let groupBreaksAfter: Set<TextOpKind> = [.titlecase, .entab, .convertEscapeSequences, .shiftLeft, .joinLinesTight, .removeLineNumbers, .exchangeWords, .removeAllDuplicatedLines, .hardWrap, .decomposeUnicode]
+        let groupBreaksAfter: Set<TextOpKind> = [.titlecase, .entab, .convertEscapeSequences, .shiftLeft, .joinLinesTight, .removeLineNumbers, .exchangeWords, .removeAllDuplicatedLines, .hardWrap, .decomposeUnicode, .fourDTokenizeCommands]
         for kind in TextOpKind.allCases {
             let item = NSMenuItem(title: kind.title,
                                   action: #selector(runTextOp(_:)),
@@ -899,6 +905,9 @@ final class EditorContextMenu: NSObject {
         case .stripDiacriticals: return TextOperations.stripDiacriticals
         case .precomposeUnicode: return TextOperations.precomposeUnicode
         case .decomposeUnicode:  return TextOperations.decomposeUnicode
+        // Emoji-Präsentation: Variantenselektor U+FE0F ergänzen/entfernen.
+        case .addEmojiPresentation:    return TextOperations.addEmojiPresentation
+        case .removeEmojiPresentation: return TextOperations.removeEmojiPresentation
         // 4D-Export-Transformation (Etappe 6): token-basiert über den
         // FourDTokenizer — Strings/Kommentare bleiben unangetastet.
         case .fourDDetokenize:       return FourDTokenTransform.detokenizeOperation

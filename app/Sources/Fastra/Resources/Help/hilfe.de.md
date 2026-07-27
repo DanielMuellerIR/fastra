@@ -119,7 +119,16 @@ Rechtsklickmenü im Editor.
   Anführungszeichen schwungvoll (englisch), Escape-Sequenzen auflösen,
   Zeichen tauschen, Wörter tauschen.
 - **Unicode:** Leerzeichen vereinheitlichen, Diakritische Zeichen
-  entfernen, Unicode zusammensetzen (NFC), Unicode zerlegen (NFD).
+  entfernen, Unicode zusammensetzen (NFC), Unicode zerlegen (NFD),
+  Emoji-Darstellung erzwingen bzw. aufheben (U+FE0F).
+
+**Emoji-Darstellung erzwingen** hängt an Zeichen, die erst mit dem
+Variantenselektor U+FE0F farbig erscheinen, genau diesen Selektor an — aus `⏸`
+wird `⏸️`. Danach zeigt nicht nur Fastras Editor, sondern auch die Vorschau,
+der Browser, GitHub oder Keynote das farbige Symbol. Unangetastet bleiben
+Zeichen, die schon farbig sind (🎶), die Schriftzeichen `©`, `®`, `™`, `‼` und
+`⁉` sowie `#`, `*` und Ziffern — sie würden sonst zu Symbolen. Zweimal
+anwenden ändert nichts mehr; **Emoji-Darstellung aufheben** ist der Rückweg.
 
 Zusätzlich im Menü **Text** und im Rechtsklickmenü: **Dokument
 formatieren** (JSON/XML hübsch einrücken), **Dokument prüfen**
@@ -177,7 +186,8 @@ Unicode Textzeichen und werden erst mit einem angehängten Variantenselektor
 sie trotzdem farbig, weil macOS für sie nur die Emoji-Schrift besitzt; die
 Vorschau folgt der Unicode-Regel und zeigt die schmale Textform, genau wie
 Browser, GitHub oder Keynote. Fastra verändert die Datei dabei nicht. Soll das
-Symbol überall farbig erscheinen, muss der Variantenselektor im Text stehen.
+Symbol überall farbig erscheinen, muss der Variantenselektor im Text stehen —
+dafür gibt es **Text → Emoji-Darstellung erzwingen (U+FE0F)**.
 
 ### Besondere Vorschau-Syntax
 

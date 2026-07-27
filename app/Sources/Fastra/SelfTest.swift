@@ -8667,10 +8667,48 @@ enum SelfTest {
                         )
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                             let expected = "GAMMA\nBETA\nALPHA\n"
-                            finish(tv.string == expected,
-                                   "Text-Op plus beide Sortierrichtungen im echten Editor")
+                            guard tv.string == expected else {
+                                finish(false, "absteigende Sortierung: "
+                                    + "\(tv.string.debugDescription)")
+                            }
+                            checkEmojiPresentationTextOp(tv: tv)
                         }
                     }
+                }
+            }
+        }
+    }
+
+    /// Letzter Schritt von `textop`: Die neue Unicode-Operation
+    /// „Emoji-Darstellung erzwingen" muss über denselben Menüweg im echten
+    /// Editor ankommen — und ihr Rückweg auch. Geprüft wird an Daniels Fall
+    /// (nacktes `⏸`) samt einem Zeichen, das unangetastet bleiben muss.
+    private static func checkEmojiPresentationTextOp(tv: TextView) {
+        let source = "Pause \u{23F8} und \u{00A9} 2026\n"
+        tv.selectionManager.setSelectedRange(
+            NSRange(location: 0, length: (tv.string as NSString).length)
+        )
+        tv.insertText(source, replacementRange: NSRange(location: NSNotFound, length: 0))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            tv.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
+            NotificationCenter.default.post(
+                name: .fastraTextOp,
+                object: TextOpKind.addEmojiPresentation.rawValue
+            )
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                let expected = "Pause \u{23F8}\u{FE0F} und \u{00A9} 2026\n"
+                guard tv.string == expected else {
+                    finish(false, "Emoji-Darstellung erzwingen erreichte den "
+                        + "Editor nicht: \(tv.string.debugDescription)")
+                }
+                NotificationCenter.default.post(
+                    name: .fastraTextOp,
+                    object: TextOpKind.removeEmojiPresentation.rawValue
+                )
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    finish(tv.string == source,
+                           "Text-Op, beide Sortierrichtungen und die "
+                            + "Emoji-Darstellung (hin und zurück) im echten Editor")
                 }
             }
         }

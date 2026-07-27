@@ -115,7 +115,16 @@ right-click menu.
   quotes (English), resolve escape sequences, exchange characters,
   exchange words.
 - **Unicode:** normalize spaces, strip diacritics, compose Unicode
-  (NFC), decompose Unicode (NFD).
+  (NFC), decompose Unicode (NFD), force or undo emoji presentation
+  (U+FE0F).
+
+**Force emoji presentation** appends the variation selector U+FE0F to
+characters that only appear in color with it — `⏸` becomes `⏸️`. Afterwards not
+just Fastra's editor but also the preview, browsers, GitHub, or Keynote show
+the colored symbol. Left untouched: characters that are colored already (🎶),
+the textual signs `©`, `®`, `™`, `‼`, and `⁉`, plus `#`, `*`, and digits —
+those would turn into symbols. Applying it twice changes nothing further;
+**Undo emoji presentation** is the way back.
 
 Also in the **Text** menu and the right-click menu: **Format Document**
 (pretty-print JSON/XML), **Validate Document** (syntax check with error
@@ -170,7 +179,8 @@ selector (U+FE0F) — `⏸`, `⏹`, or `▶`, for example. The editor still show
 in color because macOS only ships the emoji font for them; the preview follows
 the Unicode rule and shows the narrow text form, exactly like browsers, GitHub,
 or Keynote. Fastra does not alter the file here. For the symbol to appear in
-color everywhere, the variation selector has to be in the text.
+color everywhere, the variation selector has to be in the text — use
+**Text → Force emoji presentation (U+FE0F)** for that.
 
 ### Special Preview Syntax
 

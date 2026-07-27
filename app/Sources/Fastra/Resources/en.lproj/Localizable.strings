@@ -338,6 +338,8 @@
 "Diakritische Zeichen entfernen" = "Strip Diacritics";
 "Unicode zusammensetzen (NFC)" = "Precompose Unicode (NFC)";
 "Unicode zerlegen (NFD)" = "Decompose Unicode (NFD)";
+"Emoji-Darstellung erzwingen (U+FE0F)" = "Force emoji presentation (U+FE0F)";
+"Emoji-Darstellung aufheben (U+FE0F)" = "Undo emoji presentation (U+FE0F)";
 "Präfix an jede Zeile" = "Prefix Every Line";
 "Suffix an jede Zeile" = "Suffix Every Line";
 "Nur Zeilen mit Treffer behalten" = "Keep Matching Lines";

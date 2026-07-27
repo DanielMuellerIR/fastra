@@ -255,7 +255,8 @@ Editoren greifen muss. Die anspruchsvolleren darunter:
 - **Treffer extrahieren**: Alle Fundstellen in ein neues Dokument ausleiten.
 - **Zap Gremlins**: Unsichtbare und ungültige Zeichen aufspüren.
 - **Unicode-Normalisierung** (NFC/NFD), Diakritika entfernen, gerade ⇄
-  typografische Anführungszeichen, Escape-Sequenzen.
+  typografische Anführungszeichen, Escape-Sequenzen sowie die
+  Emoji-Darstellung erzwingen oder aufheben (Variantenselektor U+FE0F).
 - Zeilen ausdrücklich alphabetisch auf- oder absteigend sortieren, verbinden
   und deduplizieren, harter Umbruch, Zeilennummern hinzufügen/entfernen,
   Wörter tauschen sowie JSON oder XML formatieren.

@@ -431,6 +431,15 @@ struct FastraApp: App {
                 Button(TextOpKind.stripDiacriticals.title) { postTextOp(.stripDiacriticals) }
                 Button(TextOpKind.precomposeUnicode.title) { postTextOp(.precomposeUnicode) }
                 Button(TextOpKind.decomposeUnicode.title)  { postTextOp(.decomposeUnicode) }
+                // Emoji-Darstellung (Daniel-Befund 2026-07-27): Zeichen wie ⏸
+                // sind laut Unicode Textzeichen und werden erst mit dem
+                // Variantenselektor U+FE0F überall farbig gezeigt.
+                Button(TextOpKind.addEmojiPresentation.title) {
+                    postTextOp(.addEmojiPresentation)
+                }
+                Button(TextOpKind.removeEmojiPresentation.title) {
+                    postTextOp(.removeEmojiPresentation)
+                }
                 Divider()
                 // 4D-Export-Transformation (Etappe 6 Wunschpaket 2026-07c):
                 // Token-Suffixe kanonischer Exporte strippen bzw. Befehls-

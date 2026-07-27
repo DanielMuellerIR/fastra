@@ -1030,6 +1030,87 @@ enum TextOperations {
         }
     }
 
+    /// Ergänzt den Variantenselektor U+FE0F, wo ein Zeichen erst damit als
+    /// farbiges Emoji erscheint (Daniel-Befund 2026-07-27).
+    ///
+    /// Unicode teilt Emoji-fähige Zeichen in zwei Gruppen: Solche mit
+    /// `Emoji_Presentation` (🎶) sind von sich aus farbig. Zeichen wie `⏸`, `⏹`
+    /// oder `▶` gelten dagegen als TEXT-Zeichen und werden erst durch ein
+    /// angehängtes U+FE0F zum Emoji. Fastras Editor zeigt sie trotzdem farbig,
+    /// weil macOS für sie nur die Emoji-Schrift besitzt — Markdown-Vorschau,
+    /// Browser, GitHub und Keynote zeigen die schmale Textform. Diese Operation
+    /// schreibt die Absicht in die Datei, statt sie der Anzeige zu überlassen.
+    ///
+    /// Bewusst NICHT angefasst:
+    /// - Zeichen, die schon `Emoji_Presentation` haben (kein U+FE0F nötig).
+    /// - ASCII: `#`, `*` und die Ziffern sind laut Unicode Emoji-fähig (als
+    ///   Keycap-Basis). Ein U+FE0F daran würde normalen Text in Symbole
+    ///   verwandeln.
+    /// - Die Schriftzeichen `©`, `®`, `™`, `‼` und `⁉`: formal Emoji-fähig,
+    ///   praktisch immer Text — eine Copyright-Zeile soll nicht zum Emoji
+    ///   werden.
+    /// - Vorhandene Variantenselektoren. Zweimal anwenden ändert also nichts
+    ///   mehr (idempotent).
+    ///
+    /// Zeichen-Scope: Selektion, ohne Selektion der ganze Text.
+    static func addEmojiPresentation(in text: String, selection: NSRange) -> LineOperations.Result? {
+        transformSelection(in: text, selection: selection, scalarExactChangeCheck: true) { s in
+            var out = String.UnicodeScalarView()
+            let scalars = Array(s.unicodeScalars)
+            for (index, scalar) in scalars.enumerated() {
+                out.append(scalar)
+                guard needsEmojiVariationSelector(scalar) else { continue }
+                let next = index + 1 < scalars.count ? scalars[index + 1] : nil
+                // Schon vorhandener Selektor (U+FE0F) oder ausdrücklich
+                // gewünschte Textform (U+FE0E) bleiben unangetastet.
+                if next?.value == 0xFE0F || next?.value == 0xFE0E { continue }
+                out.append(Unicode.Scalar(0xFE0F)!)
+            }
+            return String(out)
+        }
+    }
+
+    /// Umkehrung: entfernt den Variantenselektor U+FE0F wieder, sodass die
+    /// Textform gilt. Nützlich, wenn ein Dokument bewusst schmale Symbole
+    /// braucht — und als Rückweg für die Operation oben.
+    ///
+    /// U+FE0E (ausdrückliche Textform) bleibt stehen: Das ist eine eigene
+    /// Aussage des Autors, keine Emoji-Präsentation. Ebenso bleiben
+    /// Selektoren an Zeichen unberührt, die Fastra selbst nie ergänzen würde
+    /// (etwa `©`) — beide Richtungen behandeln dieselbe Zeichenmenge.
+    static func removeEmojiPresentation(in text: String, selection: NSRange) -> LineOperations.Result? {
+        transformSelection(in: text, selection: selection, scalarExactChangeCheck: true) { s in
+            var out = String.UnicodeScalarView()
+            var previous: Unicode.Scalar?
+            for scalar in s.unicodeScalars {
+                if scalar.value == 0xFE0F, let previous, needsEmojiVariationSelector(previous) {
+                    continue
+                }
+                out.append(scalar)
+                previous = scalar
+            }
+            return String(out)
+        }
+    }
+
+    /// `true`, wenn dieses Zeichen erst mit U+FE0F farbig erscheint und Fastra
+    /// den Selektor ergänzen darf. Siehe `addEmojiPresentation` für die
+    /// Begründung der Ausnahmen.
+    static func needsEmojiVariationSelector(_ scalar: Unicode.Scalar) -> Bool {
+        guard scalar.properties.isEmoji,
+              !scalar.properties.isEmojiPresentation,
+              !scalar.isASCII else { return false }
+        // Schriftzeichen, die formal Emoji-fähig sind, praktisch aber Text.
+        let textualSymbols: Set<UInt32> = [
+            0x00A9,   // ©
+            0x00AE,   // ®
+            0x2122,   // ™
+            0x203C,   // ‼
+            0x2049    // ⁉
+        ]
+        return !textualSymbols.contains(scalar.value)
+    }
+
     // MARK: - Interne Helfer
 
     /// Zeichen-Scope-Transformation: wirkt auf die Selektion (oder den ganzen

@@ -238,7 +238,8 @@ editors. The more advanced ones:
 - **Extract matches**: Pull every hit into a new document.
 - **Zap gremlins**: Hunt down invisible and invalid characters.
 - **Unicode normalization** (NFC/NFD), strip diacriticals, straight ⇄ typographic
-  quotes, escape sequences.
+  quotes, escape sequences, plus forcing or undoing emoji presentation
+  (variation selector U+FE0F).
 - Sort lines explicitly in ascending or descending alphabetical order, join
   and deduplicate them, hard wrap, add/remove line numbers, exchange words,
   and format JSON or XML.
