@@ -103,6 +103,33 @@ enum SelfTest {
     /// Setzt Shot-spezifische UI-Fixtures noch vor dem Aufbau der ersten
     /// `EditorView`. Die Variable gilt nur für diesen Selbsttest-Prozess und
     /// hinterlässt nach dessen automatischem Exit keinen persistenten Zustand.
+    /// Schlüssel der appweiten Seitenleisten-Einstellung (siehe EditorView).
+    private static let sidebarVisibleKey = "editor.sidebarVisible"
+
+    /// Diese Tests prüfen Oberflächen INNERHALB der Seitenleiste.
+    private static let sidebarRequiringTests: Set<String> = [
+        "sidebarheader", "sidebarfilter", "sidebarfiltershot",
+        "gitstagefolder", "gitpushbutton", "gitshot", "graphshot"
+    ]
+
+    /// Ursprungswert der Seitenleisten-Einstellung, solange ein Test sie
+    /// erzwingt. `nil` heißt „war nicht gesetzt“ beziehungsweise „nicht
+    /// angefasst“.
+    nonisolated(unsafe) private static var previousSidebarVisible: Bool?
+    nonisolated(unsafe) private static var didForceSidebarVisible = false
+
+    /// Gibt eine erzwungene Seitenleisten-Einstellung wieder frei.
+    private static func restoreSidebarVisibility() {
+        guard didForceSidebarVisible else { return }
+        didForceSidebarVisible = false
+        let defaults = UserDefaults.standard
+        if let previousSidebarVisible {
+            defaults.set(previousSidebarVisible, forKey: sidebarVisibleKey)
+        } else {
+            defaults.removeObject(forKey: sidebarVisibleKey)
+        }
+    }
+
     static func prepareLaunchEnvironment(
         requestedTest name: String? = requestedTest,
         setEnvironment: (_ key: String, _ value: String) -> Void = { key, value in
@@ -116,6 +143,20 @@ enum SelfTest {
         default: sidebar = nil
         }
         if let sidebar { setEnvironment("FASTRA_SIDEBAR", sidebar) }
+        // Tests, die in der Seitenleiste suchen, dürfen nicht an einer
+        // NUTZER-Einstellung hängen: `editor.sidebarVisible` liegt als
+        // @AppStorage in der echten App-Domain, nicht in der isolierten
+        // Selbsttest-Suite. Stand die Seitenleiste ausgeblendet, meldeten
+        // sidebarheader, sidebarfilter, gitstagefolder und gitpushbutton
+        // stundenlang „Knöpfe fehlen im AppKit-Baum“, obwohl die Funktionen
+        // intakt waren (Befund 2026-07-27). `finish` stellt den Wert am Ende
+        // wieder her.
+        if let name, sidebarRequiringTests.contains(name) {
+            let defaults = UserDefaults.standard
+            previousSidebarVisible = defaults.object(forKey: sidebarVisibleKey) as? Bool
+            defaults.set(true, forKey: sidebarVisibleKey)
+            didForceSidebarVisible = true
+        }
         if name == "sessionrestore" {
             prepareSessionRestoreFixture()
         } else if name == "coldopen" || name == "coldopenoff" {
@@ -1403,6 +1444,7 @@ enum SelfTest {
     private static var testLabel = "findbar"
 
     private static func finish(_ ok: Bool, _ msg: String) -> Never {
+        restoreSidebarVisibility()
         FileHandle.standardError.write(Data("SELFTEST \(testLabel): \(ok ? "PASS" : "FAIL") — \(msg)\n".utf8))
         exit(ok ? 0 : 1)
     }
