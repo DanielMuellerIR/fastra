@@ -333,6 +333,15 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
 - **Coverage:** über 700 Tests; Schwerpunkte sind RegEx-/Platzhalter-Parsing,
   Capture Groups, Find/Replace, Datei-/Projekt-/Git-Logik, Encoding,
   Zeilenenden, Hex-/Großdatei-Routing und Textoperationen.
+- **Veröffentlichungs-Hygiene:** `cd app && ./public-history-audit.sh` prüft den
+  ausgehenden Stand gegenüber dem öffentlichen Remote auf interne Angaben —
+  private IP-Bereiche, absolute Home-Pfade, E-Mail-Adressen und ssh-Remotes in
+  Commit-Nachrichten, dazu die eigenen Rechner-/Hostnamen aus der
+  gitignorierten `app/public-history-patterns.local` (auch gegen hinzugefügte
+  Zeilen). Im Release-Lauf ist ein Fund ein harter Fehler. Ohne die lokale
+  Musterdatei greifen nur die eingebauten Muster; das Skript weist darauf hin.
+  Exit 2 bedeutet nur „kein öffentliches Remote bekannt" — dann erst
+  `git fetch <remote>`.
 - **Lokalisierung:** `cd app && ./localization-audit.sh` vergleicht statische
   SwiftUI-Schlüssel mit der englischen Tabelle und prüft Format-Platzhalter.
   `./selftest.sh localization` prüft danach die Tabellen im fertig gepackten

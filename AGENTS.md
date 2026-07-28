@@ -176,6 +176,23 @@ Download-Artefakten nur auf ausdrücklichen Auftrag ausführen. Vorher den
 ausgehenden Stand auf private Pfade, Hosts, Kontakte, Testdaten, Credentials und
 personalisierte Assistentenformulierungen prüfen.
 
+**Commit-Nachrichten bleiben veröffentlichungsfähig.** Sie entstehen im Moment
+der Arbeit, wo Rechnername und Testumgebung die nützliche Angabe sind — und sie
+werden erst Wochen später öffentlich. Deshalb gleich beim Schreiben ohne
+Rechner- und Personennamen, interne Hosts oder absolute Home-Pfade formulieren.
+Der Beleg bleibt dabei vollständig, nur die Herkunft wird allgemein: „belegt
+unter kontrollierter Fremdlast, loadavg 22–40" statt „auf M3", „im
+Arbeitsbetrieb beobachtet" statt eines Personennamens. Das ist keine
+Kosmetikregel: Im Dateiinhalt lässt sich so etwas vor dem Push noch
+generalisieren, in einer Commit-Nachricht nicht mehr — nach dem ersten Push
+bleibt der Text über seine SHA dauerhaft erreichbar.
+
+`app/public-history-audit.sh` prüft das mechanisch am ausgehenden Stand und ist
+im Release-Lauf ein hartes Gate. Die eigenen internen Namen stehen in der
+gitignorierten `app/public-history-patterns.local` — sie gehören nicht ins
+öffentliche Repo, sonst veröffentlicht der Wächter genau das, wovor er schützt.
+Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
+
 ## Bekannte technische Fallen
 
 - CodeEdit-Ressourcen können im Build funktionieren und im `.app` fehlen. Immer

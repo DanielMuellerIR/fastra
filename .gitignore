@@ -32,3 +32,7 @@ app/dist/
 
 # Lokaler Schutz gegen parallele Commit-Blöcke
 .commit-lock
+
+# Lokale Musterliste des public-history-audit: enthält die eigenen internen
+# Rechner-/Hostnamen und gehört deshalb bewusst NICHT ins öffentliche Repo.
+/app/public-history-patterns.local

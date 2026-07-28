@@ -66,6 +66,15 @@ done
 # harter Fehler — erst Hilfe prüfen/aktualisieren, Marker fortschreiben.
 ./help-audit.sh --release
 
+# Veröffentlichungs-Gate: interne Angaben (Rechnernamen, private Pfade, interne
+# Hosts) dürfen nicht mit nach draußen. Exit 2 = kein öffentliches Remote
+# bekannt; das ist ein Umgebungshinweis und kein Grund, den Lauf abzubrechen.
+public_history_status=0
+./public-history-audit.sh --release || public_history_status=$?
+if [ "$public_history_status" -eq 1 ]; then
+  exit 1
+fi
+
 # ─────────────────────────────────────────────────────────────────
 # Signatur-Identität bestimmen — VOR dem langen Build
 # ─────────────────────────────────────────────────────────────────

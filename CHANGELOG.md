@@ -11,6 +11,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ### Intern
 
+- **Fokusverlust im `navmatch`-Selbsttest zählt als Umgebungsproblem.** Verliert
+  Fastra den Fokus an eine fremde App, sagt der Test das jetzt und der Runner
+  zählt einen Umgebungs-FAIL (Exit 2) statt eines Funktionsfehlers — wie
+  `completion4d` es an allen seinen Fokus-Prüfungen schon tat. Ist Fastra
+  dagegen aktiv und nur ein anderes EIGENES Fenster hat den Key-Status, bleibt
+  es ein echter Fehler; genau den sucht der Test. Vorher verdeckte ein Lauf auf
+  einem benutzten Mac echte Fehler in derselben Zusammenfassung.
+- **Wächter gegen interne Angaben im ausgehenden Stand.**
+  `app/public-history-audit.sh` prüft Commit-Nachrichten gegenüber dem
+  öffentlichen Remote auf private IP-Bereiche, absolute Home-Pfade,
+  E-Mail-Adressen und ssh-Remotes; die eigenen Rechner- und Hostnamen kommen
+  aus einer gitignorierten lokalen Musterliste und werden zusätzlich gegen
+  hinzugefügte Zeilen geprüft. Im Release-Lauf ist ein Fund ein hartes Gate.
+  Hintergrund: Solche Angaben lassen sich im Dateiinhalt vor dem Push noch
+  generalisieren, in einer Commit-Nachricht nach dem ersten Push nicht mehr.
 - **`softwrapmodes` ist nicht mehr sporadisch rot.** Der Test merkte sich die
   Identität der Editor-TextView, sobald überhaupt eine im Baum hing — also
   möglicherweise noch vor dem planmäßigen Neuaufbau, den `EditorView` beim

@@ -8391,7 +8391,28 @@ enum SelfTest {
                 finish(false, "(navmatch) Sprung selektierte \"\(selectedText)\", erwartet \"TREFFER\"")
             }
             guard searchWindow.isKeyWindow else {
-                finish(false, "(navmatch) Suchmaske verlor nach Treffer \(expectedIndex) den Key-Status")
+                // Zwei völlig verschiedene Lagen, die vorher beide als
+                // Funktionsfehler galten (Befund 2026-07-28: Der Test war rot,
+                // weil jemand am Mac arbeitete — und verdeckte damit in
+                // derselben Zusammenfassung einen echten Fehler):
+                //
+                // a) Die App ist gar nicht mehr aktiv → eine FREMDE App hat den
+                //    Fokus geholt. Das sagt nichts über Fastra aus und ist ein
+                //    Umgebungsproblem (Exit-Code 2, wie bei `completion4d`).
+                // b) Die App IST aktiv, aber ein anderes EIGENES Fenster ist
+                //    Key → genau der Fehler, den dieser Test sucht.
+                let keyDesc = NSApp.keyWindow.map {
+                    "[\(type(of: $0))] \"\($0.title)\""
+                } ?? "keins"
+                guard NSApp.isActive else {
+                    finish(false, "Umgebungsproblem: Fastra ist nach Treffer "
+                           + "\(expectedIndex) nicht mehr aktiv — eine andere App "
+                           + "hat den Fokus geholt (keyWindow=\(keyDesc)). "
+                           + "Test auf einem unbenutzten Mac wiederholen.")
+                }
+                finish(false, "(navmatch) Suchmaske verlor nach Treffer "
+                       + "\(expectedIndex) den Key-Status an ein anderes "
+                       + "Fastra-Fenster (keyWindow=\(keyDesc))")
             }
             if tv.window?.firstResponder === tv {
                 finish(false, "(navmatch) Editor wurde nach Treffer \(expectedIndex) First Responder")

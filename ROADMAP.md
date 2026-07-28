@@ -89,11 +89,12 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Bekannte Fehler
 
-- **Fokusverlust wird als echter FAIL gemeldet.** `softwrapmodes` und
-  `navmatch` stufen einen verlorenen Key-Status als Funktionsfehler ein statt
-  als Umgebungsproblem. `tool4dlsp` macht es richtig. So verdeckt ein Lauf auf
-  einem benutzten Mac echte Fehler; `navmatch` war am 2026-07-28 genau deshalb
-  rot, obwohl nichts defekt war.
+- **`folderSearch_deduplicatesOverlappingRoots` einmal rot** (2026-07-28,
+  nicht reproduziert). Der Test meldete 0 statt 1 Treffer in einem
+  vollständigen `swift test`; isoliert dreimal und in zwei weiteren
+  vollständigen Läufen grün. Passt zur Klasse der lastabhängigen Befunde
+  dieses Tages. Bei erneutem Auftreten notieren, ob der Lauf unter Fremdlast
+  stand, und den Kandidatenpfad der Datei-Set-Wurzeln prüfen.
 
 ## Offene Beobachtungen (2026-07-24/25, nicht reproduziert)
 
