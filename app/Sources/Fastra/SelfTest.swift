@@ -2577,7 +2577,10 @@ enum SelfTest {
             ws.loadFile(at: tmp) { ok in
                 try? FileManager.default.removeItem(at: tmp)
                 guard ok else { finish(false, "Markdown-Fixture nicht ladbar") }
-                pollForSoftWrapEditor(root: root, tick: 0) { textView, _ in
+                // Bewusst der STABILE Editor: Sonst merkt der Test die Identität
+                // einer TextView, die gleich planmäßig ersetzt wird (isLoading-
+                // Flip), und vergleicht später gegen ein totes Objekt.
+                pollForStableSoftWrapEditor(ws: ws, root: root, tick: 0) { textView, _ in
                     let selection = NSRange(location: 2, length: 7)
                     textView.selectionManager.setSelectedRange(selection)
                     let identity = ObjectIdentifier(textView)
@@ -2585,18 +2588,23 @@ enum SelfTest {
                     let dirtyBefore = ws.activeTab?.isDirty
                     let canUndoBefore = textView.undoManager?.canUndo
 
+                    logEditorIdentity("Start", root: root, expected: identity)
                     ws.setShowPageGuide(true)
                     ws.setPageGuideColumn(40)
                     ws.selectSoftWrapTarget(.window)
                     pollSoftWrapWindowGeometry(
                         ws: ws, root: root, guideColumn: 40, tick: 0
                     ) {
+                        logEditorIdentity("nach Ziel=Fenster",
+                                          root: root, expected: identity)
                         ws.setSoftWrapFixedColumn(40)
                         pollSoftWrapGeometry(
                             ws: ws, root: root, expectedTarget: .fixedColumn,
                             wrapColumn: 40, guideColumn: 40,
                             label: "feste Spalte", tick: 0
                         ) { _ in
+                            logEditorIdentity("nach Ziel=feste Spalte 40",
+                                              root: root, expected: identity)
                             ws.setPageGuideColumn(55)
                             ws.selectSoftWrapTarget(.pageGuide)
                             pollSoftWrapGeometry(
@@ -2604,6 +2612,8 @@ enum SelfTest {
                                 wrapColumn: 55, guideColumn: 55,
                                 label: "Seitenlinie", tick: 0
                             ) { pageGuideWidth in
+                                logEditorIdentity("nach Ziel=Seitenlinie",
+                                                  root: root, expected: identity)
                                 var narrowFrame = mainWindow.frame
                                 narrowFrame.size.width = 430
                                 ws.setSoftWrapFixedColumn(120)
@@ -2615,17 +2625,25 @@ enum SelfTest {
                                     requireViewportClamp: true,
                                     label: "Viewport-Obergrenze", tick: 0
                                 ) { _ in
+                                    logEditorIdentity("nach Schmal-Resize auf 430",
+                                                      root: root, expected: identity)
                                     ws.setPageGuideColumn(55)
                                     ws.selectSoftWrapTarget(.pageGuide)
+                                    logEditorIdentity("nach Ziel=Seitenlinie (2.)",
+                                                      root: root, expected: identity)
                                     mainWindow.setContentSize(
                                         NSSize(width: 900, height: 600)
                                     )
+                                    logEditorIdentity("direkt nach Resize auf 900",
+                                                      root: root, expected: identity)
                                     // Das Resize erst vollständig durch SwiftUI
                                     // reconciliieren lassen. Würden wir die
                                     // Controller-Schrift vorher ändern, spielt das
                                     // anschließende View-Update absichtlich die
                                     // aktuelle App-Zoom-Konfiguration wieder ein.
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                                        logEditorIdentity("0,6 s nach Resize",
+                                                          root: root, expected: identity)
                                         guard let zoomController =
                                             sourceEditorController(for: textView) else {
                                             // Diagnose statt bloßem „verloren": Hängt die
@@ -3153,6 +3171,66 @@ enum SelfTest {
 
     /// Wartet nach einem Dateiwechel, bis TextView und der zugehörige
     /// CodeEdit-Controller gemeinsam in der Responderkette angekommen sind.
+    /// Wartet auf einen Editor, der sich nicht mehr ändert — Voraussetzung
+    /// dafür, seine Identität als Vergleichsbasis zu merken.
+    ///
+    /// Hintergrund (Befund 2026-07-28): `EditorView` erzeugt den SourceEditor
+    /// bewusst NEU, sobald `isLoading` auf false kippt (siehe Kommentar an
+    /// `sourceEditor` — nur so übernimmt CodeEditSourceEditor den geladenen
+    /// Inhalt). `pollForSoftWrapEditor` liefert aber schon die TextView davor.
+    /// Wer dort die Identität merkt, vergleicht später gegen einen Editor, der
+    /// planmäßig ersetzt wurde — der Test war dadurch in etwa jedem vierten
+    /// Lauf rot, ohne dass am Produkt etwas defekt war.
+    ///
+    /// Zwei Bedingungen, beide nötig: Der Tab meldet sich als fertig geladen,
+    /// UND dieselbe TextView überlebt drei aufeinanderfolgende Prüfungen.
+    private static func pollForStableSoftWrapEditor(
+        ws: Workspace, root: NSView, tick: Int, stableTicks: Int = 0,
+        previous: ObjectIdentifier? = nil,
+        completion: @escaping (TextView, TextViewController) -> Void
+    ) {
+        let requiredStableTicks = 3
+        let loaded = ws.activeTab.map { !$0.isLoading } ?? false
+        if loaded, let textView = editorTextView(in: root) as? TextView,
+           let controller = sourceEditorController(for: textView) {
+            let current = ObjectIdentifier(textView)
+            if previous == current {
+                if stableTicks + 1 >= requiredStableTicks {
+                    completion(textView, controller)
+                    return
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    pollForStableSoftWrapEditor(
+                        ws: ws, root: root, tick: tick + 1,
+                        stableTicks: stableTicks + 1, previous: current,
+                        completion: completion
+                    )
+                }
+                return
+            }
+            // Andere (oder erste) TextView → Zählung neu beginnen.
+            if tick < 80 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    pollForStableSoftWrapEditor(
+                        ws: ws, root: root, tick: tick + 1, stableTicks: 0,
+                        previous: current, completion: completion
+                    )
+                }
+                return
+            }
+        }
+        if tick >= 80 {
+            finish(false, "Editor wurde binnen 8 s nicht stabil "
+                   + "(geladen: \(loaded), TextViews: \(editorTextViewCount(in: root)))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollForStableSoftWrapEditor(
+                ws: ws, root: root, tick: tick + 1, stableTicks: 0,
+                previous: previous, completion: completion
+            )
+        }
+    }
+
     private static func pollForSoftWrapEditor(
         root: NSView, tick: Int,
         completion: @escaping (TextView, TextViewController) -> Void
@@ -9394,6 +9472,23 @@ enum SelfTest {
             if let tv = editorTextView(in: sub) { return tv }
         }
         return nil
+    }
+
+    /// Protokolliert, ob die Editor-TextView noch dieselbe ist wie zu Beginn.
+    /// Diagnosehilfe für den sporadischen Editor-Neuaufbau beim Resize
+    /// (Roadmap „Bekannte Fehler", Befund 2026-07-28): Erst wenn an mehreren
+    /// Punkten desselben Ablaufs protokolliert wird, zeigt sich, WELCHER
+    /// Schritt die View austauscht. Schreibt nach stderr, damit die Zeile im
+    /// Testlog steht, ohne das maschinenlesbare SELFTEST-Ergebnis zu stören.
+    private static func logEditorIdentity(_ step: String, root: NSView,
+                                          expected: ObjectIdentifier) {
+        let live = editorTextView(in: root) as? TextView
+        let same = live.map { ObjectIdentifier($0) == expected } ?? false
+        let state = live == nil ? "keine TextView"
+            : (same ? "unverändert" : "ERSETZT")
+        let line = "SELFTEST-DEBUG \(testLabel) [\(step)]: \(state) "
+            + "(TextViews: \(editorTextViewCount(in: root)))\n"
+        FileHandle.standardError.write(Data(line.utf8))
     }
 
     /// Zählt die Editor-TextViews im Baum. Diagnose für den Fall, dass die

@@ -9,6 +9,25 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+### Intern
+
+- **`softwrapmodes` ist nicht mehr sporadisch rot.** Der Test merkte sich die
+  Identität der Editor-TextView, sobald überhaupt eine im Baum hing — also
+  möglicherweise noch vor dem planmäßigen Neuaufbau, den `EditorView` beim
+  Kippen von `isLoading` auslöst (nur so übernimmt CodeEditSourceEditor den
+  geladenen Inhalt). Der spätere Vergleich lief dann gegen ein bereits
+  ersetztes Objekt, und der Test scheiterte mit „Controller vor Font-Zoom
+  verloren", ohne dass am Produkt etwas defekt war — gemessen zwei von acht
+  Läufen. Er wartet jetzt auf einen stabilen Editor: Tab fertig geladen UND
+  dieselbe TextView über drei aufeinanderfolgende Prüfungen. Danach zwölf von
+  zwölf Läufen grün.
+
+  Gefunden hat das erst die Diagnose: Beide Fehlermeldungen des Tests nennen
+  jetzt einzeln, was abweicht, und der Ablauf protokolliert die
+  Editor-Identität an jedem Schritt. Vorher hieß es nur „Controller verloren"
+  beziehungsweise es wurden sechs Zusagen in einer Sammelmeldung
+  zusammengefasst — beides ließ offen, was tatsächlich passiert war.
+
 ## [v1.53.1] — 2026-07-28
 
 ### Behoben
