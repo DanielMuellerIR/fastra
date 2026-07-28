@@ -87,24 +87,39 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   das Ziehen der Datei aus der Titelzeile (Proxy-Icon) ersatzlos. Möglicher
   Ersatz wäre ein `.onDrag` der Datei-URL direkt am Tab — nur bei echtem Bedarf.
 
-- **Sichere Markdown-Vorschau als Argument sichtbar machen** (Idee 2026-07-28):
-  Was Fastras Vorschau tut, steht bisher nur im Changelog, obwohl es ein
-  ungewöhnliches Verkaufsargument ist. Über die eigene Umsetzung lässt sich
-  belegbar reden: `default-src 'none'` verbietet jeden Netzabruf, entfernte
-  Bilder werden neutralisiert, lokale laufen über interne Tokens, der Prüfer
-  erzeugt die Ausgabe neu statt Eingabebytes durchzureichen, `script-src`
-  nutzt einen Nonce pro Render statt `'unsafe-inline'`, und unsichere
-  Link-Schemata prüft Fastra selbst. Eine kleine, fest umrissene HTML-Menge
-  wird gerendert — genug für den verbreiteten README-Aufbau, ohne `<script>`,
-  `<style>`, `<iframe>`, `<svg>`, `<math>`, Ereignis-Attribute, `style`,
-  `class` oder `id`.
+- **Datenschutz und Sicherheit der Markdown-Vorschau erklären** (Idee
+  2026-07-28): Ein kurzer Abschnitt in README und mitgelieferter Hilfe, der
+  beschreibt, wie Fastra Markdown anzeigt und welcher Kompromiss dahintersteht.
+  Der Punkt ist nicht „sicherer als andere", sondern **nachvollziehbar**: Ein
+  Vorschaufenster rendert fremde Dokumente, und Leser sollen wissen, was dabei
+  passiert.
 
-  **Vor einem Vergleich mit anderen Vorschau-Werkzeugen** (Anlass war ein
-  QuickLook-Markdown-Plugin) deren aktuelles Verhalten selbst prüfen und
-  belegen — Version, Standardkonfiguration, tatsächliche Netzabrufe. Eine
-  öffentliche Aussage über fremde Software ohne eigene Messung wäre weder
-  fair noch haltbar, und die Voreinstellungen solcher Werkzeuge ändern sich.
-  Im Zweifel die eigene Umsetzung beschreiben, statt fremde zu bewerten.
+  Zu erklären wäre die bewusste Mitte. Vollständige HTML-Unterdrückung macht
+  verbreitete GitHub-READMEs unbrauchbar — ein zentriertes Logo in
+  `<p align="center"><img …></p>` ist der Normalfall. Fastra rendert deshalb
+  eine kleine, fest umrissene Menge an Elementen, einschließlich `<img>`, und
+  hält gleichzeitig fest: `default-src 'none'` verbietet jeden Netzabruf,
+  entfernte Bilder werden neutralisiert, lokale laufen über interne Tokens,
+  der Prüfer erzeugt die Ausgabe neu statt Eingabebytes durchzureichen,
+  `script-src` nutzt einen Nonce pro Render statt `'unsafe-inline'`, und
+  unsichere Link-Schemata (`javascript:`, `vbscript:`, `file:`, `data:`)
+  prüft Fastra selbst. Kein `<script>`, `<style>`, `<iframe>`, `<svg>`,
+  `<math>`, keine Ereignis-Attribute, kein `style`, `class` oder `id`.
+
+  **Zum Vergleich mit anderen Werkzeugen:** Sachliche, selbst gemessene
+  Angaben sind zulässig, Werturteile über fremde Software nicht. Als
+  Vergleichspunkt gemessen wurde QLMarkdown 1.5.1 (Build 52) in der auf einem
+  Mac vorgefundenen Konfiguration: `<script>` und `<iframe>` werden durch die
+  aktive Tag-Filterung maskiert; Ereignis-Attribute wie `onerror` und
+  `javascript:`-Links bleiben im Ergebnis stehen; entfernte Bild-URLs werden
+  unverändert übernommen; MathJax und Mermaid werden per `<script src>` von
+  einem CDN eingebunden; das erzeugte HTML enthält keine
+  Content-Security-Policy. QLMarkdown lässt sich konfigurieren — beide
+  Bibliotheken können lokal eingebettet und rohes HTML abgeschaltet werden.
+  Eine Aussage über die AUSLIEFERUNGS-Voreinstellung wäre erst nach einer
+  Messung in einer frischen Umgebung belegt; die gemessene Konfiguration ist
+  nicht automatisch die Voreinstellung. Vor Veröffentlichung neu messen:
+  Versionen und Voreinstellungen ändern sich.
 
 ## Bekannte Fehler
 
