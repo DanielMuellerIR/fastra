@@ -106,20 +106,20 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   prüft Fastra selbst. Kein `<script>`, `<style>`, `<iframe>`, `<svg>`,
   `<math>`, keine Ereignis-Attribute, kein `style`, `class` oder `id`.
 
-  **Zum Vergleich mit anderen Werkzeugen:** Sachliche, selbst gemessene
-  Angaben sind zulässig, Werturteile über fremde Software nicht. Als
-  Vergleichspunkt gemessen wurde QLMarkdown 1.5.1 (Build 52) in der auf einem
-  Mac vorgefundenen Konfiguration: `<script>` und `<iframe>` werden durch die
-  aktive Tag-Filterung maskiert; Ereignis-Attribute wie `onerror` und
-  `javascript:`-Links bleiben im Ergebnis stehen; entfernte Bild-URLs werden
-  unverändert übernommen; MathJax und Mermaid werden per `<script src>` von
-  einem CDN eingebunden; das erzeugte HTML enthält keine
-  Content-Security-Policy. QLMarkdown lässt sich konfigurieren — beide
-  Bibliotheken können lokal eingebettet und rohes HTML abgeschaltet werden.
-  Eine Aussage über die AUSLIEFERUNGS-Voreinstellung wäre erst nach einer
-  Messung in einer frischen Umgebung belegt; die gemessene Konfiguration ist
-  nicht automatisch die Voreinstellung. Vor Veröffentlichung neu messen:
-  Versionen und Voreinstellungen ändern sich.
+  **Zum Vergleich mit anderen Werkzeugen:** Umgesetzt ist das in README und
+  Hilfe bewusst ohne Produktnamen und ohne Werturteil — beschrieben wird der
+  Mechanismus, den die wenigsten kennen (entfernte Bilder verraten das Öffnen;
+  Formel- und Diagrammbibliotheken kommen beim Anzeigen von einem CDN), samt
+  Hinweis, dass beides meist umstellbar ist, und einer Anleitung zum
+  Selbst-Nachprüfen. Diese Form altert nicht mit fremden Versionsnummern.
+
+  Sollte je ein konkreter Vergleich gewünscht sein: nur mit eigener, aktueller
+  Messung, und dabei zwischen der VORGEFUNDENEN Konfiguration und der
+  Auslieferungs-Voreinstellung unterscheiden — die sind nicht dasselbe, und
+  eine Aussage über die Voreinstellung braucht eine frische Umgebung. Die
+  Einzelmessung vom 2026-07-28 liegt in der privaten Projektdokumentation,
+  nicht hier: Ein öffentliches Repo ist kein Ort für Befunde über fremde
+  Software, die niemand gegengeprüft hat.
 
 ## Bekannte Fehler
 
