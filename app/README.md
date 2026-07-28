@@ -13,9 +13,9 @@ CommandLineTools-Umgebung nicht durch `swift build` — deshalb das Wrapper-Skri
 
 ```bash
 cd app
+./build.sh                 # legt die gepatchten Checkouts erst an
 swift test
 ./localization-audit.sh
-./build.sh
 ./selftest.sh
 ```
 

@@ -100,7 +100,10 @@ direkt ändern und keine generierten Checkout-Diffs committen.
 - Lokalisierbare UI-Texte müssen in Deutsch und Englisch vollständig sein.
   Quellstrings und dynamische Texte werden vom Lokalisierungs-Audit erfasst.
 - Änderungen an CodeEdit-Patches brauchen einen Regressionstest, der das reale
-  fehlerhafte Verhalten prüft, nicht bloß die Patch-Zeile.
+  fehlerhafte Verhalten prüft, nicht bloß die Patch-Zeile. Jeder Checkout-Patch
+  prüft zusätzlich unmittelbar nach dem Anwenden selbst, ob er gegriffen hat, und
+  bricht den Build sonst mit einer Fehlermeldung ab. Ohne diese Selbstprüfung
+  verschwindet ein Fix lautlos, sobald Upstream die gepatchte Stelle umschreibt.
 - Hilfe-Pflege: Bei nutzersichtbaren Änderungen die mitgelieferte Hilfe
   (`app/Sources/Fastra/Resources/Help/hilfe.de.md` + `hilfe.en.md`, beide
   Sprachen!) prüfen und bei Bedarf aktualisieren, danach den Marker
@@ -121,11 +124,25 @@ Vom Repo-Root:
 
 ```bash
 cd app
+./build.sh                 # legt die gepatchten Checkouts erst an
 swift test
 ./localization-audit.sh
-./build.sh
 ./selftest.sh
 ```
+
+`build.sh` steht bewusst vorn: Nur es stellt den Checkout-Zustand her, gegen den
+`swift test` überhaupt etwas Aussagekräftiges misst. Im frisch geklonten Repo
+scheitert ein roher `swift test` schon am Übersetzen — SwiftLint-Build-Plugin und
+`#Preview`-Macro der Editor-Pakete (`app/LESSONS-LEARNED.md` F.2 und F.4). Der
+gefährlichere Fall ist aber der zweite: Die Patches liegen im Checkout, die
+Editor-Build-Produkte in `.build/` stammen aber noch aus der Zeit davor. Dann
+übersetzt der Lauf anstandslos und meldet trotzdem Fehler im Produktcode, die
+keine sind. Gemessen am 2026-07-28 auf diesem Stand: `swift test` allein ergab 5
+rote Tests (Doppelklick-Wortauswahl über Emoji, Editor-Copy aufs Clipboard —
+beides Verhalten aus gepatchtem CodeEditTextView), nach `./build.sh` waren
+dieselben 1555 Tests grün. Genau deswegen verwirft `build.sh` die betroffenen
+Build-Produkte nach dem Patchen. Ein roter Lauf ohne vorheriges `build.sh` ist
+also kein Befund.
 
 `./build.sh release` erzeugt einen Release-Build im Projekt-Root.
 `./install.sh --no-notarize` signiert lokal ohne Notarisierung und belässt das
@@ -213,6 +230,11 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   Layout (SIGSEGV). Kindprozesse deshalb nie auf dem Main-Thread abwarten;
   Warten nur über Semaphore/DispatchGroup, Erstauflösungen auf eigene
   Hintergrund-Queues legen (siehe `GitRunner`/`BackgroundOnceResolver`).
+- Dateityp und Dateigröße gehören an den symlink-aufgelösten Pfad. Weder
+  `attributesOfItem` noch `URL.isRegularFile` folgen einem Symlink: Ein Link auf
+  eine ganz normale Datei gälte sonst als nicht regulär und würde abgewiesen, und
+  die gemeldete Größe wäre die des Links statt die der Zieldatei — womit eine
+  riesige Datei die Abschnitts- und Hex-Grenze umginge (siehe `FileLoader`).
 
 ## Verhaltensevals
 
