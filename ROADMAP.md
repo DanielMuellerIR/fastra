@@ -87,6 +87,25 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   das Ziehen der Datei aus der Titelzeile (Proxy-Icon) ersatzlos. Möglicher
   Ersatz wäre ein `.onDrag` der Datei-URL direkt am Tab — nur bei echtem Bedarf.
 
+- **Sichere Markdown-Vorschau als Argument sichtbar machen** (Idee 2026-07-28):
+  Was Fastras Vorschau tut, steht bisher nur im Changelog, obwohl es ein
+  ungewöhnliches Verkaufsargument ist. Über die eigene Umsetzung lässt sich
+  belegbar reden: `default-src 'none'` verbietet jeden Netzabruf, entfernte
+  Bilder werden neutralisiert, lokale laufen über interne Tokens, der Prüfer
+  erzeugt die Ausgabe neu statt Eingabebytes durchzureichen, `script-src`
+  nutzt einen Nonce pro Render statt `'unsafe-inline'`, und unsichere
+  Link-Schemata prüft Fastra selbst. Eine kleine, fest umrissene HTML-Menge
+  wird gerendert — genug für den verbreiteten README-Aufbau, ohne `<script>`,
+  `<style>`, `<iframe>`, `<svg>`, `<math>`, Ereignis-Attribute, `style`,
+  `class` oder `id`.
+
+  **Vor einem Vergleich mit anderen Vorschau-Werkzeugen** (Anlass war ein
+  QuickLook-Markdown-Plugin) deren aktuelles Verhalten selbst prüfen und
+  belegen — Version, Standardkonfiguration, tatsächliche Netzabrufe. Eine
+  öffentliche Aussage über fremde Software ohne eigene Messung wäre weder
+  fair noch haltbar, und die Voreinstellungen solcher Werkzeuge ändern sich.
+  Im Zweifel die eigene Umsetzung beschreiben, statt fremde zu bewerten.
+
 ## Bekannte Fehler
 
 - **`folderSearch_deduplicatesOverlappingRoots` einmal rot** (2026-07-28,
