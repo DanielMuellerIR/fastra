@@ -9,6 +9,8 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.53.1] — 2026-07-28
+
 ### Behoben
 
 - **Der Such-Spinner bleibt nicht mehr hängen.** Wurde eine laufende Suche im
@@ -41,6 +43,9 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
   UI- und Git-Hintergrundthreads gemeinsam zugriffen. Sechs neue
   Regressionstests decken die Mechanik ab; der `xcode-select`-Test schlägt
   gegen die alte `waitUntilExit`-Variante nachweislich fehl.
+
+### Intern
+
 - **Selbsttests lesen nicht mehr die echten App-Einstellungen.** Jeder
   Selbsttest-Prozess bekommt über `SelfTest.workspaceDefaults()` eine frisch
   geleerte eigene Defaults-Suite. An `@AppStorage` lief diese Isolierung
@@ -61,7 +66,9 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
   fünfzehn Selbsttests, die die integrierte Markdown-Vorschau einschalten,
   schreiben denselben Schlüssel jetzt ebenfalls in die isolierte Suite —
   vorher liefen sie nach der Umstellung ins Leere und waren nur durch den
-  Vorgabewert `true` gedeckt.
+  Vorgabewert `true` gedeckt. Nebeneffekt: auch die README-Screenshots
+  entstehen jetzt unabhängig davon, wie der Benutzer seine Seitenleiste
+  gerade eingestellt hat.
 - **Testläufe hinterlassen keine toten Defaults-Domains mehr.** Jeder Testlauf
   legt UUID-Suiten an; `removePersistentDomain` leert sie, cfprefsd lässt die
   leere Plist aber liegen. Der `TestDefaultsJanitor` löscht bei jedem
@@ -73,8 +80,6 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
   Tests 6 s zulassen. Auf belasteter Maschine meldete der Test dadurch etwa
   jeden dritten Lauf einen Fehler, obwohl das Vorschlagsfenster nur später
   schloss.
-  Nebeneffekt: auch die README-Screenshots entstehen jetzt unabhängig davon,
-  wie der Benutzer seine Seitenleiste gerade eingestellt hat.
 - `Workspace.shared` und `ActiveDocumentContext` schützen ihre gemeinsamen
   Referenzen jetzt mit einem kurz gehaltenen Lock. Im Produkt wechselt der
   Fokus nur auf dem Main-Thread, weshalb das bisher nicht auffiel; die
@@ -100,6 +105,16 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
   auf; aktiviert wird dann allein über LaunchServices, was auf einem unbenutzten
   Mac für echten Fensterfokus genügt. Damit sind die Fenster-Selbsttests auch
   auf einem entfernten Flotten-Mac fahrbar (Rezept in `docs/BUILD-AND-TEST.md`).
+- **Testläufe hinterlassen keine verwaisten Fixture-Prozesse mehr.** Der
+  SIGKILL-Pfad-Test startet bewusst einen Kindprozess, der SIGTERM blockiert
+  und sich selbst stoppt. Bricht der Lauf vor dem Aufräumen ab, blieb er
+  liegen. Der neue `TestFixtureProcessJanitor` beendet solche Reste bei jedem
+  `swift test` und löscht ihre Skripte — nur nach bekanntem Namensmuster und
+  nur älter als eine Stunde, damit parallele Läufe unberührt bleiben.
+- Die Vorbedingungen des `tool4dlsp`-Selbsttests stehen jetzt in
+  `docs/BUILD-AND-TEST.md`: Er braucht ein installiertes tool4d UND eine
+  ausdrücklich übergebene sichere Kopie eines echten 4D-Projekts. Ein selbst
+  zusammengesetztes Minimalprojekt genügt nachweislich nicht.
 
 ## [v1.53.0] — 2026-07-27
 
