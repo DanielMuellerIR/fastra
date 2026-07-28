@@ -242,6 +242,30 @@ flowchart LR
 KaTeX und Mermaid werden aus der App geladen und vollständig lokal ausgeführt;
 die Vorschau benötigt dafür keinen Netzzugriff.
 
+### Was die Vorschau nicht tut
+
+Die Vorschau stellt ein Dokument dar, das jemand anderes geschrieben hat —
+sie sieht aus wie ein harmloses Abbild der Datei und ist keins. Deshalb geht
+sie nie ins Netz: `default-src 'none'`, entfernte Bilder werden neutralisiert,
+lokale laufen über interne Tokens. Skripte laufen nicht, und Link-Schemata, die
+ausführen statt zu navigieren (`javascript:`, `vbscript:`, `file:`, `data:`),
+verwirft Fastra.
+
+Ganz ohne HTML ginge es nicht: Der verbreitetste README-Aufbau ist ein
+zentriertes Logo als `<p align="center"><img …></p>`. Fastra rendert deshalb
+eine kleine, feste Menge an Elementen — Absätze, Auszeichnungen, Listen,
+Tabellen, `<a>`, `<img>`, `<details>`/`<summary>` — und baut die Ausgabe dabei
+neu auf, statt Eingabebytes durchzureichen.
+
+Bei Werkzeugen, die Markdown schnell anzeigen, ist das nicht selbstverständlich.
+Zwei Muster sind verbreitet: Entfernte Bilder werden geladen, wie sie
+dastehen — wer die Datei geschickt hat, erfährt damit, dass und ungefähr wann
+Sie sie geöffnet haben. Und Formel- oder Diagrammbibliotheken kommen beim
+Anzeigen von einem öffentlichen CDN. Beides ist nicht bösartig und meist
+umstellbar, aber selten sichtbar. Nachprüfen können Sie es bei jedem Werkzeug
+selbst: ein Dokument mit einem entfernten Bild öffnen und die ausgehenden
+Verbindungen beobachten.
+
 ## Markdown schreiben
 
 Bei Markdown-Tabs erscheint über dem Editor eine **Format-Toolbar**; die

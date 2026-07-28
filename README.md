@@ -225,6 +225,38 @@ extracted. If that name is taken, Fastra falls back to `Name-2` — nothing
 existing is ever overwritten, and the source document stays unchanged. Any
 reported format loss appears in the bar above the editor afterwards.
 
+### What the preview does not do
+
+A preview window renders a document somebody else wrote. That is worth a
+thought, because a rendered preview is easy to mistake for a passive picture of
+a file.
+
+Fastra's preview never reaches the network. Its content security policy is
+`default-src 'none'`, remote images are neutralised, and local ones are served
+through internal tokens. Scripts do not run: no `<script>`, no `<style>`, no
+`<iframe>`, no `<svg>` or `<math>`, no event attributes such as `onerror`, and
+no `style`, `class` or `id`. Link schemes that execute rather than navigate —
+`javascript:`, `vbscript:`, `file:`, `data:` — are checked and dropped. The
+sanitiser rebuilds the output instead of passing input bytes through, so the
+renderer only ever sees text Fastra produced. TeX and diagram support ship with
+the app; nothing is fetched from a CDN.
+
+The trade-off is deliberate rather than absolute. Suppressing HTML entirely
+would break the most common README layout there is — a centred logo written as
+`<p align="center"><img …></p>`. Fastra renders a small, fixed set of elements,
+`<img>` among them, and pays for it with the strict rules above.
+
+This is not a given for tools that render Markdown quickly. Two patterns are
+common enough to be worth knowing about, in previews as well as in editors and
+viewers: remote images get loaded as written, which tells whoever sent you the
+file that you opened it and roughly when; and formula or diagram libraries are
+pulled from a public CDN at display time, which is a third party watching the
+same moment. Neither is malicious, and both are usually configurable — but they
+are rarely visible, and few people expect a preview to talk to the internet at
+all. You can check any tool yourself: open a document containing a remote image
+while watching outbound connections, or look at whether the generated HTML
+carries `<script src="https://…">`.
+
 ## More than search & replace
 
 The Text menu bundles transformations that otherwise require heavyweight

@@ -233,6 +233,30 @@ flowchart LR
 KaTeX and Mermaid are loaded from the app and run entirely locally; the
 preview does not need network access for either feature.
 
+### What the preview does not do
+
+The preview renders a document somebody else wrote — it looks like a harmless
+picture of the file, and it is not one. So it never reaches the network:
+`default-src 'none'`, remote images are neutralised, local ones are served
+through internal tokens. Scripts do not run, and link schemes that execute
+rather than navigate (`javascript:`, `vbscript:`, `file:`, `data:`) are
+dropped.
+
+Suppressing HTML entirely was not an option: the most common README layout
+there is happens to be a centred logo written as
+`<p align="center"><img …></p>`. Fastra therefore renders a small, fixed set of
+elements — paragraphs, emphasis, lists, tables, `<a>`, `<img>`,
+`<details>`/`<summary>` — and rebuilds the output instead of passing input
+bytes through.
+
+This is not a given for tools that render Markdown quickly. Two patterns are
+common: remote images get loaded as written, which tells whoever sent you the
+file that you opened it and roughly when; and formula or diagram libraries are
+fetched from a public CDN at display time. Neither is malicious and both are
+usually configurable, but they are rarely visible. You can check any tool
+yourself: open a document containing a remote image and watch the outbound
+connections.
+
 ## Writing Markdown
 
 For Markdown tabs, a **format toolbar** appears above the editor; the

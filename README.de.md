@@ -241,6 +241,41 @@ Ist der Name schon belegt, weicht Fastra auf `Name-2` aus — Bestehendes wird n
 Umwandlung Formatverluste, stehen sie danach sichtbar in der Leiste über dem
 Editor.
 
+### Was die Vorschau nicht tut
+
+Ein Vorschaufenster stellt ein Dokument dar, das jemand anderes geschrieben
+hat. Das ist einen Gedanken wert, denn eine gerenderte Vorschau sieht aus wie
+ein harmloses Abbild der Datei — und ist keins.
+
+Fastras Vorschau greift nie aufs Netz zu. Ihre Content-Security-Policy lautet
+`default-src 'none'`, entfernte Bilder werden neutralisiert, lokale laufen über
+interne Tokens. Skripte laufen nicht: kein `<script>`, kein `<style>`, kein
+`<iframe>`, kein `<svg>` oder `<math>`, keine Ereignis-Attribute wie `onerror`,
+kein `style`, `class` oder `id`. Link-Schemata, die ausführen statt zu
+navigieren — `javascript:`, `vbscript:`, `file:`, `data:` —, prüft Fastra
+selbst und verwirft sie. Der Prüfer baut die Ausgabe neu auf, statt
+Eingabebytes durchzureichen; der Renderer sieht also nur Text, den Fastra
+erzeugt hat. Formel- und Diagrammdarstellung liegen bei der App; von einem CDN
+wird nichts geladen.
+
+Der Kompromiss ist bewusst gewählt und kein Absolutismus. HTML vollständig zu
+unterdrücken würde den verbreitetsten README-Aufbau zerstören, den es gibt: ein
+zentriertes Logo als `<p align="center"><img …></p>`. Fastra rendert deshalb
+eine kleine, feste Menge an Elementen, `<img>` eingeschlossen, und bezahlt das
+mit den strengen Regeln oben.
+
+Selbstverständlich ist das bei Werkzeugen, die Markdown schnell anzeigen, nicht.
+Zwei Muster sind verbreitet genug, um sie zu kennen — in Vorschauen ebenso wie
+in Editoren und Betrachtern: Entfernte Bilder werden geladen, wie sie
+dastehen, und verraten damit demjenigen, der die Datei geschickt hat, dass und
+ungefähr wann Sie sie geöffnet haben. Und Formel- oder Diagrammbibliotheken
+kommen beim Anzeigen von einem öffentlichen CDN, das denselben Moment
+mitbekommt. Beides ist nicht bösartig und meist umstellbar — aber es ist selten
+sichtbar, und kaum jemand erwartet, dass eine Vorschau überhaupt ins Netz geht.
+Nachprüfen lässt sich das bei jedem Werkzeug selbst: ein Dokument mit einem
+entfernten Bild öffnen und dabei die ausgehenden Verbindungen beobachten, oder
+im erzeugten HTML nachsehen, ob dort `<script src="https://…">` steht.
+
 ## Mehr als Suchen & Ersetzen
 
 Das Text-Menü bündelt Transformationen, für die man sonst zu den ganz großen
