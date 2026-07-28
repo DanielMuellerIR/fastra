@@ -181,7 +181,7 @@ der Arbeit, wo Rechnername und Testumgebung die nützliche Angabe sind — und s
 werden erst Wochen später öffentlich. Deshalb gleich beim Schreiben ohne
 Rechner- und Personennamen, interne Hosts oder absolute Home-Pfade formulieren.
 Der Beleg bleibt dabei vollständig, nur die Herkunft wird allgemein: „belegt
-unter kontrollierter Fremdlast, loadavg 22–40" statt „auf M3", „im
+unter kontrollierter Fremdlast, loadavg 22–40" statt eines Rechnernamens, „im
 Arbeitsbetrieb beobachtet" statt eines Personennamens. Das ist keine
 Kosmetikregel: Im Dateiinhalt lässt sich so etwas vor dem Push noch
 generalisieren, in einer Commit-Nachricht nicht mehr — nach dem ersten Push
