@@ -54,7 +54,7 @@ ehrlich und macht keine allgemeine Leistungszusage.
 
 ## Reale Projektmessung v1.51.0
 
-Stand: 2026-07-25, M5, etwa 575 MiB großer 4D-Projektkorpus, read-only.
+Stand: 2026-07-25, Apple Silicon, etwa 575 MiB großer 4D-Projektkorpus, read-only.
 Ausgeschlossen wurden `.json`, `userPreferences.*` und der verbindliche
 `DerivedData`-Baum. Ein Aufwärmlauf ging den drei dokumentierten Läufen voraus;
 gesucht wurde `util_*` im Modus „Alle Dateien“ über Fastras vollständigen

@@ -127,7 +127,7 @@ wait_for_result() {
 # Ohne Automation-Freigabe (typisch in einer ssh-Sitzung oder einem
 # launchd-Job) wartet der Apple-Event UNBEGRENZT auf den TCC-Dialog, den dort
 # niemand wegklickt — der Runner hing dadurch minutenlang, statt einen
-# Umgebungs-FAIL zu melden (M5-Befund 2026-07-26). Zwei Schranken, weil eine
+# Umgebungs-FAIL zu melden (Befund 2026-07-26). Zwei Schranken, weil eine
 # nicht genügt: `with timeout` deckt den regulären Apple-Event-Ablauf ab
 # (Fehler -1712), der Kill danach jeden Fall, in dem der Aufruf schon vor dem
 # Senden in der Autorisierung feststeckt.

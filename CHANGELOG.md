@@ -104,7 +104,7 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
   Aufruf ist jetzt doppelt begrenzt und gibt nach der ersten Zeitüberschreitung
   auf; aktiviert wird dann allein über LaunchServices, was auf einem unbenutzten
   Mac für echten Fensterfokus genügt. Damit sind die Fenster-Selbsttests auch
-  auf einem entfernten Flotten-Mac fahrbar (Rezept in `docs/BUILD-AND-TEST.md`).
+  auf einem entfernten Mac fahrbar (Rezept in `docs/BUILD-AND-TEST.md`).
 - **Testläufe hinterlassen keine verwaisten Fixture-Prozesse mehr.** Der
   SIGKILL-Pfad-Test startet bewusst einen Kindprozess, der SIGTERM blockiert
   und sich selbst stoppt. Bricht der Lauf vor dem Aufräumen ab, blieb er

@@ -2628,7 +2628,24 @@ enum SelfTest {
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                                         guard let zoomController =
                                             sourceEditorController(for: textView) else {
-                                            finish(false, "Controller vor Font-Zoom verloren")
+                                            // Diagnose statt bloßem „verloren": Hängt die
+                                            // gemerkte TextView überhaupt noch im Baum,
+                                            // wie viele gibt es, und ist die aktuell
+                                            // gefundene eine andere? Damit lässt sich
+                                            // unterscheiden, ob nur die Responder-Kette
+                                            // kurz unterbrochen ist oder der Editor
+                                            // wirklich neu aufgebaut wurde.
+                                            let live = editorTextView(in: root) as? TextView
+                                            let sameView = live.map {
+                                                ObjectIdentifier($0) == identity
+                                            } ?? false
+                                            finish(false, "Controller vor Font-Zoom verloren "
+                                                   + "(TextViews im Baum: "
+                                                   + "\(editorTextViewCount(in: root)); "
+                                                   + "gemerkte TextView noch im Fenster: "
+                                                   + "\(textView.window != nil); "
+                                                   + "aktuell gefundene ist dieselbe: "
+                                                   + "\(sameView))")
                                         }
                                         var zoomed = zoomController.configuration
                                         zoomed.appearance.font =
@@ -2643,20 +2660,53 @@ enum SelfTest {
                                             minimumConfiguredWidth: pageGuideWidth,
                                             label: "Font-Zoom", tick: 0
                                         ) { _ in
+                                            // Jede Bedingung EINZELN melden. Vorher
+                                            // fasste eine Sammelmeldung sechs
+                                            // Zusagen zusammen; ein Fehlschlag sagte
+                                            // dann nicht, WAS sich geändert hatte,
+                                            // und war nicht diagnostizierbar
+                                            // (Befund 2026-07-28).
                                             guard let current =
-                                                    editorTextView(in: root) as? TextView,
-                                                  ObjectIdentifier(current) == identity,
-                                                  current.string == textBefore,
-                                                  current.selectedRange() == selection,
-                                                  ws.activeTab?.content == textBefore,
-                                                  ws.activeTab?.isDirty == dirtyBefore,
-                                                  current.undoManager?.canUndo == canUndoBefore else {
-                                                finish(
-                                                    false,
-                                                    "Zielwechsel/Resize/Zoom veränderten "
-                                                        + "Editoridentität, Text, Auswahl, "
-                                                        + "Dirty- oder Undo-Zustand"
-                                                )
+                                                    editorTextView(in: root) as? TextView else {
+                                                finish(false, "Editor-TextView nach dem Zoom "
+                                                       + "nicht im View-Baum erreichbar")
+                                            }
+                                            var deviations: [String] = []
+                                            if ObjectIdentifier(current) != identity {
+                                                deviations.append(
+                                                    "Editoridentität gewechselt (Editor neu "
+                                                    + "aufgebaut; TextViews im Baum: "
+                                                    + "\(editorTextViewCount(in: root)))")
+                                            }
+                                            if current.string != textBefore {
+                                                deviations.append(
+                                                    "Editortext geändert "
+                                                    + "(\(current.string.count) statt "
+                                                    + "\(textBefore.count) Zeichen)")
+                                            }
+                                            if current.selectedRange() != selection {
+                                                deviations.append(
+                                                    "Auswahl \(current.selectedRange()) statt "
+                                                    + "\(selection)")
+                                            }
+                                            if ws.activeTab?.content != textBefore {
+                                                deviations.append("Tab-Inhalt geändert")
+                                            }
+                                            if ws.activeTab?.isDirty != dirtyBefore {
+                                                deviations.append(
+                                                    "Dirty-Zustand "
+                                                    + "\(String(describing: ws.activeTab?.isDirty))"
+                                                    + " statt \(String(describing: dirtyBefore))")
+                                            }
+                                            if current.undoManager?.canUndo != canUndoBefore {
+                                                deviations.append(
+                                                    "Undo-Zustand "
+                                                    + "\(String(describing: current.undoManager?.canUndo))"
+                                                    + " statt \(String(describing: canUndoBefore))")
+                                            }
+                                            guard deviations.isEmpty else {
+                                                finish(false, "Zielwechsel/Resize/Zoom: "
+                                                       + deviations.joined(separator: "; "))
                                             }
                                             let fragments = Array(
                                                 current.layoutManager.lineStorage
@@ -9344,6 +9394,21 @@ enum SelfTest {
             if let tv = editorTextView(in: sub) { return tv }
         }
         return nil
+    }
+
+    /// Zählt die Editor-TextViews im Baum. Diagnose für den Fall, dass die
+    /// Suchheuristik oben eine ANDERE TextView liefert als erwartet: Steht hier
+    /// 2, hängt der alte Editor noch im Baum, während der neue schon da ist —
+    /// dann ist der Editor tatsächlich neu aufgebaut worden. Steht hier 1,
+    /// zeigt die Abweichung auf etwas anderes.
+    private static func editorTextViewCount(in view: NSView) -> Int {
+        let name = String(describing: type(of: view))
+        var count = 0
+        if name.contains("TextView"), view.acceptsFirstResponder, view.frame.height > 50 {
+            count += 1
+        }
+        for sub in view.subviews { count += editorTextViewCount(in: sub) }
+        return count
     }
 
     private static func findView(named className: String, in view: NSView) -> NSView? {

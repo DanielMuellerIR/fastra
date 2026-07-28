@@ -87,6 +87,42 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   das Ziehen der Datei aus der Titelzeile (Proxy-Icon) ersatzlos. Möglicher
   Ersatz wäre ein `.onDrag` der Datei-URL direkt am Tab — nur bei echtem Bedarf.
 
+## Bekannte Fehler
+
+- **Der Editor wird beim Fenster-Resize sporadisch neu aufgebaut**
+  (`softwrapmodes`-Selbsttest, gemessen 2026-07-28). In etwa zwei von acht
+  Läufen ersetzt Fastra die Editor-TextView, während der Test nur die
+  Fenstergröße ändert. Belegt über die Diagnose des Selbsttests: genau **eine**
+  TextView im Baum, die vorher gemerkte hat kein Fenster mehr
+  (`window == nil`), die aktuell gefundene ist ein anderes Objekt. Der Test
+  meldet das als „Controller vor Font-Zoom verloren", weil
+  `sourceEditorController` die Responder-Kette der alten View hochläuft.
+
+  **Warum das zählt:** Der `undoManager` hängt an der TextView. Ein Neuaufbau
+  kostet damit die Undo-Historie — beim Ziehen an der Fenstergröße, ohne dass
+  der Nutzer etwas am Text getan hat. Der Test prüft diese Zusage
+  ausdrücklich (Identität, Text, Auswahl, Dirty- und Undo-Zustand).
+
+  **Ausgeschlossen ist bisher:** die Editor-Identität selbst
+  (`editorIdentity` = `tabID#reloadNonce`; ein Resize berührt beides nicht),
+  und die asynchrone Spracherkennung (greift laut
+  `isEligibleForContentDetection` nur bei Tabs ohne Datei-URL und erhöht den
+  Nonce nicht). Der Befund ist **nicht neu**: Zwischen dem letzten
+  vollständig grünen Selbsttestlauf und der Messung hat sich kein Produktcode
+  geändert (`git diff 78e290e..HEAD -- app/Sources/` leer). Er steckt damit
+  auch in v1.50.2 und älter.
+
+  **Nächster Schritt:** eingrenzen, ob der Austausch schon bei
+  `selectSoftWrapTarget`/`setSoftWrapFixedColumn` passiert oder erst beim
+  Resize — Verdacht auf einen internen Neuaufbau in
+  CodeEditSourceEditors `TextViewController` bei Umbruch-Änderungen.
+
+- **Fokusverlust wird als echter FAIL gemeldet.** `softwrapmodes` und
+  `navmatch` stufen einen verlorenen Key-Status als Funktionsfehler ein statt
+  als Umgebungsproblem. `tool4dlsp` macht es richtig. So verdeckt ein Lauf auf
+  einem benutzten Mac echte Fehler; `navmatch` war am 2026-07-28 genau deshalb
+  rot, obwohl nichts defekt war.
+
 ## Offene Beobachtungen (2026-07-24/25, nicht reproduziert)
 
 - **Editor-Befunde 2026-07-24/25:** Der Return-/Tipp-Scroll-Befund ist mit
@@ -120,6 +156,13 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   „laufende Sitzung zeichnet veraltet“ (F.18). Bei erneutem Auftreten
   notieren: Editor-Text oder Vorschau, Fensterbreite, ob ein App-Neustart
   genügt, und welche Codepoints die Datei an der Stelle wirklich enthält.
+
+  **Zwischenstand 2026-07-28:** Daniel hat die notarisierte v1.53.1 im echten
+  Einsatz benutzt und meldet die Emoji-Darstellung auf beiden Seiten — Editor
+  und Vorschau — als korrekt. Das ist der erste positive Gegenbefund seit der
+  Meldung; die Beobachtung bleibt aber notiert, weil ein einzelner guter Lauf
+  eine sporadische Zeichenfrage nicht ausschließt. Die Wächter `emojipaste`,
+  `emojipreview` und `emojisplit` laufen weiter im Standardlauf.
 
 - **Kurzzeitig doppelte Zeilenhöhe** beim Emoji-Einfügen über die
   Emoji-Palette (normalisierte sich nach dem nächsten Einfügen von selbst).
