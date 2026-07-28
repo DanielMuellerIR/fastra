@@ -3,16 +3,17 @@
 #
 # Was dieses Skript tut (Reihenfolge):
 #   1. Release-Build via build.sh (Xcode-Toolchain, alle Checkout-Patches)
-#   2. App-Bundle code-signieren — entweder mit Developer-ID-Zertifikat (aus
-#      Umgebungsvariable FASTRA_SIGN_IDENTITY) oder mit Ad-hoc-Signierung (-s -)
-#      für lokale Tests ohne Apple-Konto.
+#   2. App-Bundle code-signieren — mit Developer-ID-Zertifikat, das wie in
+#      install.sh automatisch aus dem Schlüsselbund gelesen wird
+#      (FASTRA_SIGN_IDENTITY überschreibt); ohne Zertifikat mit
+#      Ad-hoc-Signierung (-s -) für lokale Tests ohne Apple-Konto.
 #   3. DMG bauen via hdiutil — App + Alias auf /Applications, Volume-Name "Fastra",
 #      mit Hintergrundbild (src/DmgBackground.png) und Finder-Icon-Layout,
 #      Ausgabe in dist/Fastra-<version>.dmg.
 #   4. Signatur des DMG-Inhalts verifizieren.
-#   5. Notarisierung — läuft automatisch, WENN echt signiert wurde
-#      (FASTRA_SIGN_IDENTITY gesetzt) und das Keychain-Profil vorhanden ist;
-#      bei Ad-hoc-Signierung wird der Schritt sauber übersprungen.
+#   5. Notarisierung — läuft automatisch, WENN echt signiert wurde und das
+#      Keychain-Profil vorhanden ist; bei Ad-hoc-Signierung wird der Schritt
+#      sauber übersprungen.
 #
 # Ausgabe der letzten Zeile bei Erfolg:
 #   RELEASE OK: <pfad-zum-dmg>
@@ -21,7 +22,7 @@
 # Voraussetzungen:
 #   - Xcode unter /Applications/Xcode.app (wie bei build.sh)
 #   - Für echte Signierung: gültiges Developer-ID-Zertifikat im Schlüsselbund
-#     und FASTRA_SIGN_IDENTITY gesetzt (z.B. in ~/.zshenv oder .envrc)
+#     (wird selbst gefunden; FASTRA_SIGN_IDENTITY nur zum Überschreiben nötig)
 #   - Für Notarization: ein notarytool-Keychain-Profil (Default "notary",
 #     über NOTARY_PROFILE überschreibbar), pro Mac einmalig eingerichtet via:
 #       xcrun notarytool store-credentials "notary" \
@@ -65,9 +66,35 @@ done
 # harter Fehler — erst Hilfe prüfen/aktualisieren, Marker fortschreiben.
 ./help-audit.sh --release
 
+# ─────────────────────────────────────────────────────────────────
+# Signatur-Identität bestimmen — VOR dem langen Build
+# ─────────────────────────────────────────────────────────────────
+# Gleiche Automatik wie in install.sh: Ist FASTRA_SIGN_IDENTITY nicht gesetzt,
+# wird die Developer ID aus dem Schlüsselbund gelesen. Vorher verlangte dieses
+# Skript die Variable ausdrücklich und fiel sonst still auf Ad-hoc zurück — auf
+# einem korrekt eingerichteten Mac entstand so ein nicht verteilbares DMG,
+# obwohl alles Nötige vorhanden war (Befund 2026-07-28).
+#
+# Der Identitätsname wird bewusst NICHT ausgegeben (Sicherheitsregel „Secrets
+# im Terminal"); gemeldet wird nur, ob und woher eine gefunden wurde.
+SIGN_IDENTITY="${FASTRA_SIGN_IDENTITY:-}"
+if [ -n "$SIGN_IDENTITY" ]; then
+  SIGN_IDENTITY_SOURCE="Umgebungsvariable"
+else
+  SIGN_IDENTITY="$(security find-identity -v -p codesigning \
+    | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+  [ -n "$SIGN_IDENTITY" ] && SIGN_IDENTITY_SOURCE="Schlüsselbund"
+fi
+if [ -z "$SIGN_IDENTITY" ]; then
+  # Ad-hoc: kein Zertifikat, nur lokale Integrität. Gatekeeper blockiert das
+  # Bundle auf anderen Macs, Notarisierung ist technisch unmöglich.
+  SIGN_IDENTITY="-"
+  SIGN_IDENTITY_SOURCE="keine (Ad-hoc)"
+fi
+
 # Bei echter Developer-ID-Signierung vor dem langen Build sicherstellen, dass
 # das lokale Keychain-Profil auf genau diesem Mac verwendbar ist.
-if [ -n "${FASTRA_SIGN_IDENTITY:-}" ]; then
+if [ "$SIGN_IDENTITY" != "-" ]; then
   # shellcheck source=notary-profile.sh
   source "./notary-profile.sh"
   fastra_require_notary_profile
@@ -97,27 +124,18 @@ echo
 # ─────────────────────────────────────────────────────────────────
 # Schritt 2: Code-Signierung
 # ─────────────────────────────────────────────────────────────────
-# Zwei Modi:
-#   a) FASTRA_SIGN_IDENTITY gesetzt → echte Signierung mit Developer-ID
-#      (nötig für Notarization und Weitergabe an andere Macs)
-#   b) nicht gesetzt → Ad-hoc-Signierung (nur für lokale Tests)
-#
-# WICHTIG: Die Identity wird NICHT in die Ausgabe geschrieben (Sicherheitsregel
-# "Secrets im Terminal"). Das Skript meldet nur, ob die env-Variable gesetzt ist.
+# Die Identität steht bereits fest (oben ermittelt, vor dem Build). Hier wird
+# nur noch gemeldet, welcher Modus greift — der Identitätsname selbst bleibt
+# aus der Ausgabe (Sicherheitsregel „Secrets im Terminal").
 echo "→ Schritt 2/5: Code-Signierung"
 
-# Entschlossenheit der Signierungsart prüfen
-if [ -n "${FASTRA_SIGN_IDENTITY:-}" ]; then
-  # Echte Signierung — Identity aus der Umgebungsvariable
-  echo "   Identity aus Umgebungsvariable gesetzt → Developer-ID-Signierung"
-  SIGN_IDENTITY="$FASTRA_SIGN_IDENTITY"
+if [ "$SIGN_IDENTITY" != "-" ]; then
+  echo "   Developer-ID-Signierung (Identität aus: $SIGN_IDENTITY_SOURCE)"
 else
-  # Ad-hoc-Signierung: -s - = kein Zertifikat, nur lokale Integrität
-  # Gatekeeper blockiert dieses Bundle auf anderen Macs — nur für eigene Tests.
-  echo "   ⚠ FASTRA_SIGN_IDENTITY nicht gesetzt → Ad-hoc-Signierung (-s -)"
+  echo "   ⚠ Keine Developer ID gefunden → Ad-hoc-Signierung (-s -)"
   echo "     Das Bundle läuft NUR auf diesem Mac und nur für lokale Tests."
-  echo "     Für Weitergabe und Notarization: Developer-ID in FASTRA_SIGN_IDENTITY setzen."
-  SIGN_IDENTITY="-"
+  echo "     Für Weitergabe und Notarisierung: Developer-ID-Zertifikat in den"
+  echo "     Schlüsselbund legen oder FASTRA_SIGN_IDENTITY setzen."
 fi
 
 # Der gemeinsame Helfer signiert Ressourcen, Sparkles Autoupdate/Updater und

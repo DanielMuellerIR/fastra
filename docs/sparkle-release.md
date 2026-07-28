@@ -38,12 +38,14 @@ Nur sein öffentlicher Gegenpart steht als `SUPublicEDKey` im App-Bundle.
 2. Vom Repository-Root den Release bauen:
 
    ```bash
-   FASTRA_SIGN_IDENTITY="<Developer ID Application …>" \
-   NOTARY_PROFILE=<profil> ./release.sh
+   ./release.sh
    ```
 
    Das Skript signiert Sparkles Helfer von innen nach außen, baut das DMG,
-   notarisiert es und stapelt das Ticket.
+   notarisiert es und stapelt das Ticket. Die Developer ID findet es selbst im
+   Schlüsselbund; `FASTRA_SIGN_IDENTITY` ist nur nötig, um eine bestimmte
+   Identität zu erzwingen, und `NOTARY_PROFILE` nur, wenn das Keychain-Profil
+   dieses Clones nicht gilt.
 3. Tests, Signaturen, Staple, Gatekeeper und das DMG bewusst prüfen.
 4. Tag und GitHub Release mit genau einem DMG anlegen. Release Notes eintragen
    und erst danach veröffentlichen.
