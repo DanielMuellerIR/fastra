@@ -363,6 +363,23 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   schon fertig, und der Test wäre je nach Systemlast mal grün, mal rot. Die
   Erfolgsmeldung weist aus, welcher Fall geprüft wurde; steht dort „Index war
   bereits fertig", lief der Lauf am eigentlichen Risiko vorbei.
+- **tool4d-LSP:** `./selftest.sh tool4dlsp` braucht zwei Dinge, sonst meldet er
+  ein Umgebungsproblem (Exit 2): ein installiertes tool4d und eine ausdrücklich
+  übergebene **sichere Kopie eines echten 4D-Projekts**:
+  `FASTRA_TOOL4D_TEST_PROJECT=<kopie> ./selftest.sh tool4dlsp`. Der Ordner muss
+  in sich oder in seinem `Project`-Unterordner eine `.4DProject`-Datei haben;
+  die geprüfte Methode wählt der Test als erste `.4dm` aus
+  `Project/Sources/Methods` (alphabetisch, damit die Auswahl reproduzierbar
+  bleibt) oder nimmt `FASTRA_TOOL4D_TEST_DOCUMENT` innerhalb des Projekts.
+  Niemals das echte Arbeitsprojekt übergeben — der Test startet einen echten
+  tool4d-Sprachserver darauf.
+
+  Ein selbst zusammengesetztes Minimalprojekt genügt NICHT: Mit einer bloßen
+  `.4DProject`-Datei plus einer `.4dm`-Methode liefert tool4d innerhalb der
+  Wartezeit keine Diagnosen, und der Test schlägt als Funktionsfehler fehl,
+  obwohl am Produkt nichts defekt ist (geprüft 2026-07-28). Welche
+  Projektbestandteile tool4d wirklich braucht, ist offen und gehört am echten
+  Bundle erhoben — nicht geraten.
 - **Hell-/Dunkel-Wechsel der Vorschau:** `./selftest.sh markdownappearance`
   startet bewusst dunkel und schaltet erst im laufenden Betrieb auf hell. Nur
   dieser Ablauf deckt den Fall auf, dass `underPageBackgroundColor` einmalig
