@@ -6,6 +6,20 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Jetzt
 
+- **Tests räumen ihre Preferences-Domains nicht auf** (gemeldet 2026-07-28, M3):
+  Jeder Testlauf legt unter `~/Library/Preferences` eigene Domains mit UUID im
+  Namen an und lässt sie liegen — gefunden wurden 3713 plists (~22 MB), Muster
+  `FastraTests.GitPreferences.<UUID>` (1419), `FastraTests.PatternLibrary.<UUID>`
+  (482), `Fastra-DiffLifecycle-<UUID>`, `fastra-test-extchange-<UUID>`,
+  `search-jump-first/second-<UUID>`; dazu Altbestand des archivierten Vorläufers
+  cregex. Das ist nicht nur Unordnung: `cfprefsd` kam mit der Domain-Flut nicht
+  mehr klar — `defaults read com.apple.Terminal` lieferte NICHTS mehr, und
+  Terminal.app startete mit dem Standardprofil statt Daniels Einstellungen; nach
+  Löschen der 3713 Dateien und cfprefsd-Neustart war alles wieder normal.
+  **Zu tun:** Tests entfernen ihre Domain im `tearDown`
+  (`removePersistentDomain` für den jeweiligen Suite-Namen, alternativ
+  `defaults delete`); zusätzlich ein Guard am Suite-Ende, der meldet, wenn eine
+  Test-Domain übrig bleibt.
 - **4D-Parameterhilfe/Typeahead: verbliebene Komponenten-/Plugin-Grenzen**
   (verbleibende Grenze nach der Komponentenmethoden-Unterstützung; diese ist mit
   v1.50.0 umgesetzt — Typeahead + Signaturhilfe aus `.4dbase`, `.4DZ` und
