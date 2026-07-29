@@ -348,7 +348,11 @@ in der Leiste über dem Editor.
 Man's Text ab und merkt sich die Antwort fünf Minuten. Kann das Werkzeug später
 mehr Formate, nutzt Fastra sie ohne eigenes Update — hast du gerade
 aktualisiert und willst nicht warten, starte Fastra neu. Fehlt das Werkzeug
-oder das von ihm benötigte Pandoc, wird schlicht nichts angeboten.
+selbst, wird schlicht nichts angeboten. Ist es installiert, fehlt aber ein von
+ihm benötigtes Zusatzprogramm (meist Pandoc), sagt Fastra das offen: Die Leiste
+über dem Editor beziehungsweise die Rückfrage beim `.rtfd`-Ordner erklärt, was
+fehlt — Pandoc installierst du im Terminal mit `brew install pandoc` und
+startest Fastra danach neu.
 
 ## Sprachen und Syntaxfarben
 
@@ -597,7 +601,10 @@ Schreibvorgang bricht das Speichern immer ab, statt den Plattenstand still zu
 
 ⌘T öffnet einen neuen Tab, ⌘N ein zweites, vollständig unabhängiges
 Fenster (eigene Tabs, eigene Suche). ⌘S speichert, ⌘W schließt den Tab —
-bei ungespeicherten Änderungen fragt Fastra nach. ⌘J springt zu einer
+bei ungespeicherten Änderungen fragt Fastra nach. Nach dem Schließen wird
+der zuletzt benutzte Tab aktiv; mehrere frisch angelegte leere Tabs lassen
+sich so mit mehrmaligem ⌘W in umgekehrter Reihenfolge wieder schließen,
+ohne dass es ein älteres Dokument trifft. ⌘J springt zu einer
 Zeilennummer.
 
 Beim Wechsel zwischen Tabs behält jeder Tab seine Einfügemarke **und** seinen

@@ -239,6 +239,49 @@ struct MarkdownImportOutputTests {
     }
 }
 
+// Erkanntes Format, aber fehlendes Zusatzprogramm (meist pandoc): Fastra muss
+// erklären, WAS fehlt und WIE man es bekommt, statt das Angebot still
+// auszublenden (Daniel-Befund 2026-07-29 — Poor Man's Text installiert, pandoc
+// nicht, und der RTFD-Import verschwand wortlos).
+@Suite("Erklärung bei fehlendem Zusatzprogramm")
+struct MarkdownImportUnavailableExplanationTests {
+
+    private func format(reason: String?) -> MarkdownImportFormat {
+        MarkdownImportFormat(identifier: "rtfd", fileExtensions: ["rtfd"],
+                             isPackage: true, isAvailable: reason == nil,
+                             unavailableReason: reason)
+    }
+
+    @Test("Die Maschinenform des Werkzeugs wird in Werkzeugnamen zerlegt")
+    func parsesMissingTools() {
+        #expect(format(reason: "missing required tool: pandoc")
+            .missingTools == ["pandoc"])
+        #expect(format(reason: "missing required tool: textutil, pandoc")
+            .missingTools == ["textutil", "pandoc"])
+        #expect(format(reason: nil).missingTools.isEmpty)
+        // Unbekannte Meldung → keine Deutung, die Liste bleibt leer.
+        #expect(format(reason: "kaputt").missingTools.isEmpty)
+    }
+
+    @Test("Fehlendes pandoc erklärt sich samt Installationsbefehl")
+    func pandocHintNamesInstallCommand() throws {
+        let text = try #require(Workspace.markdownImportUnavailableExplanation(
+            for: format(reason: "missing required tool: pandoc")))
+        #expect(text.contains("pandoc"))
+        #expect(text.contains("brew install pandoc"))
+    }
+
+    @Test("Ein unverstandener Grund erscheint wörtlich, ohne pandoc-Rat")
+    func unknownReasonShownVerbatim() {
+        let text = Workspace.markdownImportUnavailableExplanation(
+            for: format(reason: "kaputt"))
+        #expect(text == "kaputt")
+        // Verfügbares Format → nichts zu erklären.
+        #expect(Workspace.markdownImportUnavailableExplanation(
+            for: format(reason: nil)) == nil)
+    }
+}
+
 /// Meldet genau die angegebenen Pfade als ausführbar.
 private final class StubFileManager: FileManager, @unchecked Sendable {
     private let executables: Set<String>

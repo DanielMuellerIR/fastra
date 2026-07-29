@@ -9,6 +9,39 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+### Behoben
+
+- **⌘W schließt in sinnvoller Reihenfolge.** Nach dem Schließen des aktiven
+  Tabs wird jetzt der zuletzt benutzte verbleibende Tab aktiv (Fallback: der
+  Nachbar an derselben Position) statt stumpf der erste Tab der Leiste.
+  Vorher schloss die Folge „echtes Dokument öffnen, mehrere leere Tabs per ⌘T
+  anlegen, zweimal ⌘W" das echte Dokument: Das erste ⌘W warf den Fokus auf
+  `tabs.first` zurück, und das zweite traf damit das Dokument (Daniel-Befund
+  2026-07-29).
+- **Fehlendes pandoc wird erklärt statt verschwiegen.** War Poor Man's Text
+  installiert, aber das von ihm benötigte pandoc nicht, verschwand das
+  Umwandlungsangebot bisher wortlos: kein Hinweis über dem Editor, und ein
+  `.rtfd`-Paket öffnete kommentarlos als Ordner. Jetzt nennen Hinweisleiste
+  und `.rtfd`-Rückfrage das fehlende Zusatzprogramm samt Installationsweg
+  (`brew install pandoc`, danach Fastra neu starten). Grundlage ist die
+  `unavailableReason`-Angabe des Formatkatalogs; unverstandene Gründe
+  erscheinen wörtlich statt gedeutet (Daniel-Befund 2026-07-29).
+- **Kein Fenster ohne Tabs mit Geister-Editor mehr.** Nach dem Schließen des
+  letzten Tabs blieb der Workspace mit null Tabs zurück; zeigte macOS die am
+  Leben gehaltene Fenster-Szene später wieder an (Dock-Klick wirkt wie
+  App-Start), stand ein Fenster ganz ohne Tabs da, dessen Editorfläche sich
+  tippen ließ, aber in kein Dokument schrieb (Daniel-Befund 2026-07-29,
+  einmalig beobachtet). Doppelt abgesichert: Beim Fensterschließen parkt der
+  Workspace jetzt im Willkommens-Zustand, und ein Fenster ohne jeden Tab
+  zeigt notfalls die Willkommensseite statt des Geister-Editors.
+
+### Geändert
+
+- **Markdown-Toolbar nennt Tastenkürzel im Tooltip**, z. B. „Fett (⌘B)"
+  (Daniel-Wunsch 2026-07-29). Kürzel-Beschreibung und Markdown-Menü speisen
+  sich jetzt aus derselben Quelle (`MarkdownFormatCommand.shortcut`) und
+  können nicht mehr auseinanderlaufen.
+
 ### Intern
 
 - **Fokusverlust im `navmatch`-Selbsttest zählt als Umgebungsproblem.** Verliert

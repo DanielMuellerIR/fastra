@@ -74,7 +74,9 @@ func close_dirtySaveWritesAndCloses() throws {
     ws.tabs = [a]
     ws.activeTabID = a.id
     ws.closeTab(id: a.id)
-    #expect(ws.tabs.isEmpty)                                 // geschlossen
+    // Geschlossen; der Workspace parkt seit 2026-07-29 im Willkommens-Zustand,
+    // damit eine später wieder angezeigte Fenster-Szene nie ohne Tabs dasteht.
+    #expect(ws.tabs.map(\.isWelcome) == [true])
     let onDisk = try String(contentsOf: url, encoding: .utf8)
     #expect(onDisk == "neu gesichert")                       // vorher gesichert
 }
@@ -119,8 +121,11 @@ func close_lastCleanTabClosesWindow() {
 
     #expect(asked == false)
     #expect(windowCloseCount == 1)
-    #expect(ws.tabs.isEmpty)
-    #expect(ws.activeTabID == nil)
+    // Fenster zu; der Workspace parkt im Willkommens-Zustand (2026-07-29) —
+    // eine wieder angezeigte Szene zeigt Willkommen statt eines Null-Tab-
+    // Rahmens mit tippbarem Geister-Editor.
+    #expect(ws.tabs.map(\.isWelcome) == [true])
+    #expect(ws.activeTabID == ws.tabs.first?.id)
 }
 
 @Test("Letzter leerer unbenannter Dirty-Tab schließt ohne Rückfrage")
@@ -139,7 +144,8 @@ func close_lastEmptyUntitledDirtyClosesWithoutPrompt() {
 
     #expect(asked == false)
     #expect(windowCloseCount == 1)
-    #expect(ws.tabs.isEmpty)
+    // Fenster zu → Workspace geparkt auf Willkommen (siehe oben, 2026-07-29).
+    #expect(ws.tabs.map(\.isWelcome) == [true])
 }
 
 @Test("Letzter unbenannter Tab mit Inhalt fragt; Abbrechen hält Fenster und Tab offen")
@@ -176,8 +182,9 @@ func close_lastUntitledWithContentDontSaveClosesWindow() {
     ws.closeActiveTab()
 
     #expect(windowCloseCount == 1)
-    #expect(ws.tabs.isEmpty)
-    #expect(ws.activeTabID == nil)
+    // Fenster zu → Workspace geparkt auf Willkommen (siehe oben, 2026-07-29).
+    #expect(ws.tabs.map(\.isWelcome) == [true])
+    #expect(ws.activeTabID == ws.tabs.first?.id)
 }
 
 @Test("closeOtherTabs fragt pro Dirty-Tab; Abbrechen bricht die ganze Aktion ab")

@@ -221,3 +221,40 @@ func markdownFilename() {
     #expect(!MarkdownFormat.isMarkdownFilename("main.swift"))
     #expect(!MarkdownFormat.isMarkdownFilename("Ohne Titel"))
 }
+
+// MARK: - Tastenkürzel in Tooltips (Daniel-Wunsch 2026-07-29)
+
+@Test("Kürzel-Anzeige folgt der Mac-Schreibweise ⌥⇧⌘ + Großbuchstabe")
+func shortcut_displayUsesMacNotation() {
+    #expect(MarkdownFormatShortcut(key: "b").display == "⌘B")
+    #expect(MarkdownFormatShortcut(key: "h", shift: true).display == "⇧⌘H")
+    #expect(MarkdownFormatShortcut(key: "1", option: true).display == "⌥⌘1")
+    #expect(MarkdownFormatShortcut(key: "x", shift: true, option: true).display == "⌥⇧⌘X")
+}
+
+@Test("Jeder Befehl trägt genau das im Menü vergebene Kürzel")
+func shortcut_tableMatchesMenu() {
+    // Erwartung = die Kürzel des „Markdown"-Menüs. Ändert jemand das Menü
+    // (gemeinsame Quelle `MarkdownFormatCommand.shortcut`), muss er diese
+    // Tabelle mitziehen — genau dafür ist der Test da.
+    let expected: [MarkdownFormatCommand: String] = [
+        .bold: "⌘B", .italic: "⌘I", .highlight: "⇧⌘H", .code: "⇧⌘K",
+        .heading1: "⌥⌘1", .heading2: "⌥⌘2", .heading3: "⌥⌘3",
+        .plainParagraph: "⌥⌘0",
+        .bulletList: "⇧⌘8", .orderedList: "⇧⌘7", .quote: "⇧⌘9",
+        .link: "⌘K",
+    ]
+    for command in MarkdownFormatCommand.allCases {
+        #expect(command.shortcut?.display == expected[command],
+                "\(command) erwartet \(expected[command] ?? "kein Kürzel")")
+    }
+}
+
+@Test("Der Tooltip nennt das Kürzel hinter der Beschriftung")
+func shortcut_appearsInHelpText() {
+    #expect(MarkdownFormatCommand.bold.helpText.hasSuffix("(⌘B)"))
+    #expect(MarkdownFormatCommand.quote.helpText.hasSuffix("(⇧⌘9)"))
+    // Befehle ohne Kürzel behalten ihren bisherigen Tooltip ohne Klammerzusatz.
+    #expect(!MarkdownFormatCommand.insertTable.helpText.contains("("))
+    #expect(!MarkdownFormatCommand.hardBreak.helpText.contains("(⌘"))
+}

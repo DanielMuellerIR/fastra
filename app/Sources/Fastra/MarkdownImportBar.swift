@@ -69,7 +69,16 @@ struct MarkdownImportBar: View {
         }
     }
 
+    @ViewBuilder
     private func offerBar(_ offer: MarkdownImportOffer) -> some View {
+        if offer.format.isAvailable {
+            availableOfferBar(offer)
+        } else {
+            unavailableOfferBar(offer)
+        }
+    }
+
+    private func availableOfferBar(_ offer: MarkdownImportOffer) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "arrow.right.doc.on.clipboard")
                 .fastraFont(size: 11)
@@ -91,6 +100,37 @@ struct MarkdownImportBar: View {
             // Klick-Anker für den Fenster-Selbsttest `markdownimport`.
             .background(SelfTestMarker(id: "markdownImportConvertButton")
                 .frame(width: 0, height: 0))
+            closeButton(onDismissOffer)
+        }
+    }
+
+    /// Format erkannt, aber die Umwandlung würde scheitern, weil ein
+    /// Zusatzprogramm (meist pandoc) fehlt. Statt die Leiste ganz zu
+    /// verstecken, steht hier, was fehlt und wie man es installiert
+    /// (Daniel-Befund 2026-07-29).
+    private func unavailableOfferBar(_ offer: MarkdownImportOffer) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .fastraFont(size: 11)
+                .foregroundColor(Theme.gitModified)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: L10n.format(
+                    "%@ erkannt — die Umwandlung in Markdown ist zurzeit nicht möglich.",
+                    offer.format.identifier.uppercased()
+                ))
+                .fastraFont(.small)
+                .foregroundColor(Theme.textSecondary)
+                .lineLimit(2)
+                if let explanation =
+                    Workspace.markdownImportUnavailableExplanation(for: offer.format) {
+                    Text(verbatim: explanation)
+                        .fastraFont(size: 10)
+                        .foregroundColor(Theme.textSecondary)
+                        .lineLimit(3)
+                        .textSelection(.enabled)
+                }
+            }
+            Spacer(minLength: 0)
             closeButton(onDismissOffer)
         }
     }

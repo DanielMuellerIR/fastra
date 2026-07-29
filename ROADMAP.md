@@ -101,6 +101,21 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   das Ziehen der Datei aus der Titelzeile (Proxy-Icon) ersatzlos. Möglicher
   Ersatz wäre ein `.onDrag` der Datei-URL direkt am Tab — nur bei echtem Bedarf.
 
+- **Willkommen als Platzhalter statt eigenem Tab** (Daniel-Idee 2026-07-29):
+  Kein Willkommen-Tab mehr — stattdessen zeigt jeder neue, noch unberührte
+  leere Tab den Willkommensinhalt als Platzhalter hinter dem Cursor in
+  Zeile 1; ab dem ersten getippten Zeichen verschwindet er. Das würde die
+  Sonderrolle des Willkommen-Tabs (eigenes `isWelcome`-Flag, ⌘N-Sonderfall,
+  Abräum-Logik beim Datei-/Projektöffnen) weitgehend auflösen. Machbar als
+  Overlay über der Editorfläche, solange der Tab leer, nicht dirty und ohne
+  URL ist: Die Klickziele (zuletzt benutzt, Öffnen, Hilfe) blieben bedienbar,
+  der erste Tastendruck blendet aus. Zu entscheiden bleibt: Fenstertitel im
+  Platzhalterzustand (bisher Version+Datum), Verhalten der Zuletzt-Liste in
+  JEDEM leeren Tab statt nur einem, und dass damit die Produktentscheidung
+  vom 2026-07-12 („Willkommen ist ein eigener, bestehen bleibender Tab")
+  bewusst ersetzt würde. Produktentscheidung durch Daniel nötig, erst dann
+  Umsetzung.
+
 - **Datenschutz und Sicherheit der Markdown-Vorschau erklären** (Idee
   2026-07-28): Ein kurzer Abschnitt in README und mitgelieferter Hilfe, der
   beschreibt, wie Fastra Markdown anzeigt und welcher Kompromiss dahintersteht.
@@ -144,7 +159,32 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   dieses Tages. Bei erneutem Auftreten notieren, ob der Lauf unter Fremdlast
   stand, und den Kandidatenpfad der Datei-Set-Wurzeln prüfen.
 
-## Offene Beobachtungen (2026-07-24/25, nicht reproduziert)
+## Offene Beobachtungen (nicht reproduziert)
+
+- **⌘⇧+Pfeiltasten ohne Wirkung auf einem anderen Mac** (Daniel-Meldung
+  2026-07-29; auf Daniels M3 funktioniert es). Befund: Fastras eigenes
+  Key-Routing (`KeyRouting.route`) fasst ⌘- und ⌘⇧-Pfeilkombinationen nicht
+  an — sie gehen unverändert an den Editor durch; es gibt also keinen
+  Fastra-Code, der das nur auf einem Rechner abschalten könnte. Verdacht:
+  Umgebung des anderen Macs (systemweite oder App-Tastenkürzel, die
+  ⌘⇧+Pfeil abfangen, Sonderbelegung der Tastatur). Bei erneutem Auftreten
+  auf dem betroffenen Mac prüfen: Systemeinstellungen → Tastatur →
+  Kurzbefehle auf Konflikte, und ob dieselbe Kombination in TextEdit
+  funktioniert (falls nein, ist es kein Fastra-Thema).
+
+- **Fenster ganz ohne Tabs mit tippbarer Editorfläche nach App-Start**
+  (Daniel-Meldung 2026-07-29, einmalig, kein Repro). Analyse: `tabs` kann
+  nur über den Fensterschließen-Pfad (`prepareToCloseWindow`) dauerhaft leer
+  werden; SwiftUI hält Szene samt Workspace am Leben und kann das Fenster
+  später wieder anzeigen (Dock-Klick wirkt wie App-Start) — dann stand ein
+  Fenster ohne Tabs da, dessen Editor ins Leere schrieb. Zweifach
+  abgesichert: Nach dem Leeren kehrt der Workspace sofort in den
+  Willkommens-Zustand zurück, und ein Fenster ohne jeden Tab zeigt zur Not
+  die Willkommensseite statt des Geister-Editors. Sollte es dennoch wieder
+  auftreten: notieren, ob die App vorher wirklich beendet war (⌘Q) oder nur
+  alle Fenster geschlossen waren.
+
+## Ältere offene Beobachtungen (2026-07-24/25, nicht reproduziert)
 
 - **Editor-Befunde 2026-07-24/25:** Der Return-/Tipp-Scroll-Befund ist mit
   v1.50.1 GELÖST (State-Reconcile-Race, F.23; Daniel-verifiziert am

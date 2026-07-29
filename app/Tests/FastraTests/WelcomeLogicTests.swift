@@ -36,9 +36,14 @@ func welcome_hiddenWithFileTab() {
     #expect(!WelcomeLogic.shouldShow(activeTab: tab))
 }
 
-@Test("Kein aktiver Tab → Editor (kein Willkommen)")
-func welcome_hiddenWithoutActiveTab() {
-    #expect(!WelcomeLogic.shouldShow(activeTab: nil))
+@Test("Kein aktiver Tab (= gar kein Tab) → Willkommen statt Geister-Editor")
+func welcome_shownWithoutAnyTab() {
+    // Bewusste Umkehr des früheren Verhaltens (Daniel-Befund 2026-07-29):
+    // `activeTab == nil` heißt „das Fenster hat überhaupt keine Tabs" — ein
+    // kaputter Zwischenzustand. Der frühere Editor-Fallback zeigte dann eine
+    // tippbare Fläche, deren Eingaben in kein Dokument flossen. Die
+    // Willkommensseite ist der einzige ehrliche Zustand ohne Tab.
+    #expect(WelcomeLogic.shouldShow(activeTab: nil))
 }
 
 // MARK: - ⌘N im reinen Willkommenszustand (Wunschpaket 2026-07, Etappe 1)

@@ -87,6 +87,23 @@ struct MarkdownImportFormat: Equatable {
     /// `false`, wenn ein benötigtes Werkzeug (meist Pandoc) gerade fehlt.
     let isAvailable: Bool
     let unavailableReason: String?
+
+    /// Namen der laut Werkzeug fehlenden Zusatzprogramme, z. B. `["pandoc"]`.
+    ///
+    /// `poormans-text` meldet sie in `unavailableReason` in der festen
+    /// Maschinenform `missing required tool: a, b`. Nur dieses Präfix wird
+    /// verstanden; jede andere Meldung liefert eine leere Liste — dann zeigt
+    /// die Oberfläche den Grund wörtlich statt einer Deutung.
+    var missingTools: [String] {
+        let prefix = "missing required tool: "
+        guard let unavailableReason, unavailableReason.hasPrefix(prefix) else {
+            return []
+        }
+        return unavailableReason.dropFirst(prefix.count)
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
 }
 
 /// Die vollständige Antwort auf `poormans-text --formats --json`.

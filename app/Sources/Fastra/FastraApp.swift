@@ -455,38 +455,26 @@ struct FastraApp: App {
             // Rechtsklickmenü; hier tragen sie die Tastenkürzel.
             CommandMenu("Markdown") {
                 Group {
-                    Button(MarkdownFormatCommand.bold.menuTitle) { postMarkdownFormat(.bold) }
-                        .keyboardShortcut("b", modifiers: .command)
-                    Button(MarkdownFormatCommand.italic.menuTitle) { postMarkdownFormat(.italic) }
-                        .keyboardShortcut("i", modifiers: .command)
-                    Button(MarkdownFormatCommand.highlight.menuTitle) { postMarkdownFormat(.highlight) }
-                        .keyboardShortcut("h", modifiers: [.command, .shift])
-                    Button(MarkdownFormatCommand.code.menuTitle) { postMarkdownFormat(.code) }
-                        .keyboardShortcut("k", modifiers: [.command, .shift])
-                    Button(MarkdownFormatCommand.hardBreak.menuTitle) { postMarkdownFormat(.hardBreak) }
+                    markdownFormatButton(.bold)
+                    markdownFormatButton(.italic)
+                    markdownFormatButton(.highlight)
+                    markdownFormatButton(.code)
+                    markdownFormatButton(.hardBreak)
                     Divider()
-                    Button(MarkdownFormatCommand.heading1.menuTitle) { postMarkdownFormat(.heading1) }
-                        .keyboardShortcut("1", modifiers: [.command, .option])
-                    Button(MarkdownFormatCommand.heading2.menuTitle) { postMarkdownFormat(.heading2) }
-                        .keyboardShortcut("2", modifiers: [.command, .option])
-                    Button(MarkdownFormatCommand.heading3.menuTitle) { postMarkdownFormat(.heading3) }
-                        .keyboardShortcut("3", modifiers: [.command, .option])
-                    Button(MarkdownFormatCommand.plainParagraph.menuTitle) { postMarkdownFormat(.plainParagraph) }
-                        .keyboardShortcut("0", modifiers: [.command, .option])
+                    markdownFormatButton(.heading1)
+                    markdownFormatButton(.heading2)
+                    markdownFormatButton(.heading3)
+                    markdownFormatButton(.plainParagraph)
                 }
                 .disabled(!activeTabIsMarkdown)
                 Group {
                     Divider()
-                    Button(MarkdownFormatCommand.bulletList.menuTitle) { postMarkdownFormat(.bulletList) }
-                        .keyboardShortcut("8", modifiers: [.command, .shift])
-                    Button(MarkdownFormatCommand.orderedList.menuTitle) { postMarkdownFormat(.orderedList) }
-                        .keyboardShortcut("7", modifiers: [.command, .shift])
-                    Button(MarkdownFormatCommand.quote.menuTitle) { postMarkdownFormat(.quote) }
-                        .keyboardShortcut("9", modifiers: [.command, .shift])
+                    markdownFormatButton(.bulletList)
+                    markdownFormatButton(.orderedList)
+                    markdownFormatButton(.quote)
                     Divider()
-                    Button(MarkdownFormatCommand.link.menuTitle) { postMarkdownFormat(.link) }
-                        .keyboardShortcut("k", modifiers: .command)
-                    Button(MarkdownFormatCommand.insertTable.menuTitle) { postMarkdownFormat(.insertTable) }
+                    markdownFormatButton(.link)
+                    markdownFormatButton(.insertTable)
                 }
                 .disabled(!activeTabIsMarkdown)
             }
@@ -534,6 +522,25 @@ struct FastraApp: App {
     private func postMarkdownFormat(_ command: MarkdownFormatCommand) {
         NotificationCenter.default.post(name: .fastraMarkdownFormat,
                                         object: command.rawValue)
+    }
+
+    /// Menüpunkt eines Markdown-Befehls. Das Tastenkürzel kommt aus der
+    /// puren Beschreibung in `MarkdownEditing.swift` — derselben Quelle, die
+    /// auch die Toolbar-Tooltips beschriftet. So können Menü und Tooltip
+    /// nicht auseinanderlaufen.
+    @ViewBuilder
+    private func markdownFormatButton(_ command: MarkdownFormatCommand) -> some View {
+        let button = Button(command.menuTitle) { postMarkdownFormat(command) }
+        if let shortcut = command.shortcut {
+            button.keyboardShortcut(
+                KeyEquivalent(shortcut.key),
+                modifiers: EventModifiers([.command])
+                    .union(shortcut.shift ? [.shift] : [])
+                    .union(shortcut.option ? [.option] : [])
+            )
+        } else {
+            button
+        }
     }
 
     /// Aktiver Tab ist ein Markdown-Dokument? Steuert das „Markdown“-Menü.

@@ -85,3 +85,26 @@ func welcomeTab_dismissConverts() {
     // Unterbau-Titel bleibt der lokalisierte Basisname (jetzt sichtbar).
     #expect(ws.tabs[0].title == Workspace.untitledBaseName)
 }
+
+@Test("Fensterschließen hinterlässt den Workspace im Willkommens-Zustand")
+@MainActor
+func welcomeTab_prepareToCloseWindowResetsToWelcome() {
+    // SwiftUI hält die Szene des Hauptfensters samt Workspace am Leben und
+    // kann sie nach dem Schließen wieder anzeigen (Dock-Klick). Bliebe der
+    // Workspace nach `prepareToCloseWindow` bei null Tabs, erschiene dann ein
+    // Fenster ohne Tabs mit tippbarer, aber ins Leere schreibender
+    // Editorfläche (Daniel-Befund 2026-07-29).
+    let (ws, defaults, suite) = makeWelcomeWorkspace()
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let a = EditorTab(title: "a.txt", path: "/tmp", content: "x", isDirty: false)
+    let b = EditorTab(title: "b.txt", path: "/tmp", content: "y", isDirty: false)
+    ws.tabs = [a, b]
+    ws.activeTabID = a.id
+
+    #expect(ws.prepareToCloseWindow())
+    #expect(ws.tabs.count == 1)
+    #expect(ws.tabs[0].isWelcome)
+    #expect(ws.isWelcomeScreen)
+    #expect(ws.activeTabID == ws.tabs[0].id)
+}

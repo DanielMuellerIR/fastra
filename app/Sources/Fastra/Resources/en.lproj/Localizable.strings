@@ -1271,6 +1271,10 @@
 "Ausblenden" = "Hide";
 "„%@“ ist ein Dokument, kein Projektordner." = "“%@” is a document, not a project folder.";
 "Fastra kann das %@-Dokument in Markdown umwandeln und danach öffnen. Das Original bleibt unverändert." = "Fastra can convert the %@ document to Markdown and then open it. The original stays unchanged.";
+"%@ erkannt — die Umwandlung in Markdown ist zurzeit nicht möglich." = "%@ detected — converting to Markdown is not possible right now.";
+"Fastra könnte das %@-Dokument in Markdown umwandeln, doch dafür fehlt gerade etwas." = "Fastra could convert the %@ document to Markdown, but something needed for that is missing.";
+"Es fehlt das Zusatzprogramm %@." = "The helper tool %@ is missing.";
+"pandoc lässt sich im Terminal mit „brew install pandoc“ installieren. Danach Fastra neu starten." = "You can install pandoc in Terminal with “brew install pandoc”. Then restart Fastra.";
 "„%@“ wird umgewandelt …" = "Converting “%@” …";
 "„%@“ angelegt." = "Created “%@”.";
 "Die Umwandlung ist fehlgeschlagen." = "The conversion failed.";

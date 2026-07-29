@@ -56,13 +56,41 @@ extension MarkdownFormatCommand {
     var menuTitle: String { L10n.string(menuTitleKey) }
 
     /// Ausführlicher Tooltip für Befehle, deren Wirkung am Symbol allein
-    /// nicht erkennbar ist. Die übrigen verwenden ihren Menü-Titel.
+    /// nicht erkennbar ist. Die übrigen verwenden ihren Menü-Titel. Hat der
+    /// Befehl ein Tastenkürzel, steht es dahinter — z. B. „Fett (⌘B)"
+    /// (Daniel-Wunsch 2026-07-29).
     var helpText: String {
+        let base: String
         switch self {
         case .hardBreak:
-            L10n.string("Fügt zwei Leerzeichen und einen normalen Zeilenumbruch ein.")
+            base = L10n.string("Fügt zwei Leerzeichen und einen normalen Zeilenumbruch ein.")
         default:
-            menuTitle
+            base = menuTitle
+        }
+        guard let shortcut else { return base }
+        return "\(base) (\(shortcut.display))"
+    }
+
+    /// Tastenkürzel des Befehls — EINE Quelle für Menü und Tooltip. Das
+    /// Markdown-Menü in `FastraApp` übersetzt diese puren Daten in echte
+    /// SwiftUI-Kürzel; wer hier etwas ändert, ändert Menü und Tooltip
+    /// gemeinsam. `nil` = Befehl ist nur per Klick/Menü erreichbar.
+    var shortcut: MarkdownFormatShortcut? {
+        switch self {
+        case .bold:           MarkdownFormatShortcut(key: "b")
+        case .italic:         MarkdownFormatShortcut(key: "i")
+        case .highlight:      MarkdownFormatShortcut(key: "h", shift: true)
+        case .code:           MarkdownFormatShortcut(key: "k", shift: true)
+        case .hardBreak:      nil
+        case .heading1:       MarkdownFormatShortcut(key: "1", option: true)
+        case .heading2:       MarkdownFormatShortcut(key: "2", option: true)
+        case .heading3:       MarkdownFormatShortcut(key: "3", option: true)
+        case .plainParagraph: MarkdownFormatShortcut(key: "0", option: true)
+        case .bulletList:     MarkdownFormatShortcut(key: "8", shift: true)
+        case .orderedList:    MarkdownFormatShortcut(key: "7", shift: true)
+        case .quote:          MarkdownFormatShortcut(key: "9", shift: true)
+        case .link:           MarkdownFormatShortcut(key: "k")
+        case .insertTable:    nil
         }
     }
 
@@ -84,6 +112,26 @@ extension MarkdownFormatCommand {
         case .highlight:      return "highlighter"
         case .hardBreak:      return "arrow.turn.down.left"
         }
+    }
+}
+
+/// Tastenkürzel eines Markdown-Befehls als pure Daten: ein Zeichen plus
+/// Zusatztasten, ⌘ ist immer dabei. Bewusst ohne SwiftUI, damit diese Datei
+/// Foundation-rein und unit-testbar bleibt.
+struct MarkdownFormatShortcut: Equatable {
+    let key: Character
+    var shift = false
+    var option = false
+
+    /// Mac-übliche Anzeige, z. B. „⇧⌘H" oder „⌥⌘1" — Symbolreihenfolge
+    /// ⌥⇧⌘ wie in den Systemmenüs; der Buchstabe erscheint groß.
+    var display: String {
+        var text = ""
+        if option { text += "⌥" }
+        if shift { text += "⇧" }
+        text += "⌘"
+        text += key.uppercased()
+        return text
     }
 }
 

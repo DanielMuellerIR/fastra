@@ -387,8 +387,23 @@ final class Workspace: ObservableObject {
             if oldValue != activeTabID {
                 comparisonTabID = nil
             }
+            // Merkliste „zuletzt benutzt" pflegen: der aktive Tab wandert an
+            // die Spitze. Doppelte Einträge gibt es nicht, jeder Tab steht
+            // höchstens einmal in der Liste.
+            if let id = activeTabID {
+                recentlyActiveTabIDs.removeAll { $0 == id }
+                recentlyActiveTabIDs.insert(id, at: 0)
+            }
         }
     }
+    /// Zuletzt aktive Tabs, der jüngste zuerst. Bestimmt nach dem Schließen
+    /// des aktiven Tabs den Nachfolger: ⌘W soll zum zuletzt benutzten Tab
+    /// zurückkehren und nicht stumpf zum ersten Tab der Leiste springen
+    /// (Daniel-Befund 2026-07-29: echtes Dokument + mehrere frische ⌘T-Tabs,
+    /// zweimal ⌘W schloss das echte Dokument statt der leeren Tabs).
+    /// Einträge geschlossener Tabs werden beim Schließen entfernt; die Liste
+    /// bleibt dadurch so klein wie die Tab-Leiste selbst.
+    private var recentlyActiveTabIDs: [UUID] = []
     // MARK: - Projekt-Zustand (Projekt- & Git-Ausbau, Etappe 1)
     /// Wurzelordner des aktuell geladenen Projekts — steuert die
     /// Dateibaum-Seitenleiste. `nil` = kein Projekt geladen (flache
@@ -1385,16 +1400,17 @@ final class Workspace: ObservableObject {
         guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
         cancelGitDiffLoad(tabID: id)
         tabs.remove(at: idx)
+        recentlyActiveTabIDs.removeAll { $0 == id }
         if comparisonTabID == id {
             comparisonTabID = nil
         }
         // Aktiven Tab konsistent halten: war ein ANDERER Tab aktiv und existiert
         // noch, bleibt er aktiv (mayCloseTab kann activeTabID fürs Sichern kurz
-        // umgesetzt haben); sonst den ersten verbleibenden aktivieren.
+        // umgesetzt haben); sonst übernimmt der zuletzt benutzte Tab.
         if let prev = previousActive, prev != id, tabs.contains(where: { $0.id == prev }) {
             activeTabID = prev
         } else {
-            activeTabID = tabs.first?.id
+            activeTabID = nextActiveTabAfterClosing(removedIndex: idx)
         }
         // Etappe 1 (Wunschpaket 2026-07): Gehören die verbliebenen Dateien
         // alle zu einem anderen Ordner, folgt die Seitenleiste — sichtbar,
@@ -1405,6 +1421,20 @@ final class Workspace: ObservableObject {
     func closeActiveTab() {
         guard let id = activeTabID else { return }
         closeTab(id: id)
+    }
+
+    /// Nachfolger des soeben geschlossenen AKTIVEN Tabs: zuerst der zuletzt
+    /// benutzte noch offene Tab (wie BBEdit und Safari), erst wenn die
+    /// Merkliste nichts mehr hergibt der Nachbar an der bisherigen Position
+    /// (der Tab rechts davon, am Leistenende der links davon).
+    private func nextActiveTabAfterClosing(removedIndex idx: Int) -> UUID? {
+        if let recent = recentlyActiveTabIDs.first(where: { candidate in
+            tabs.contains(where: { $0.id == candidate })
+        }) {
+            return recent
+        }
+        if tabs.indices.contains(idx) { return tabs[idx].id }
+        return tabs.last?.id
     }
 
     /// Löst alle Tabs eines zu schließenden Dokumentfensters nach denselben
@@ -1424,7 +1454,17 @@ final class Workspace: ObservableObject {
         }
         cancelAllGitDiffLoads()
         tabs.removeAll()
+        recentlyActiveTabIDs.removeAll()
         activeTabID = nil
+        // Das Fenster schließt gleich — der Workspace kann es aber überleben:
+        // SwiftUI hält die Szene des Hauptfensters samt Workspace am Leben,
+        // und macOS kann dieselbe Szene später wieder anzeigen (Dock-Klick).
+        // Bliebe es beim leeren Tab-Array, stünde dann ein Fenster ganz ohne
+        // Tabs da, dessen Editorfläche sich tippen lässt, aber nirgendwohin
+        // schreibt (vermutete Ursache von Daniels leerem Startfenster,
+        // 2026-07-29). Deshalb sofort in den definierten Willkommens-Zustand
+        // zurückkehren; im wirklich schließenden Fenster ist das unsichtbar.
+        enterWelcomeState()
         return true
     }
 
@@ -1441,6 +1481,7 @@ final class Workspace: ObservableObject {
             cancelGitDiffLoad(tabID: removedID)
         }
         tabs.removeAll { $0.id != id }
+        recentlyActiveTabIDs.removeAll { $0 != id }
         comparisonTabID = nil
         activeTabID = id
         // Gleiche Seitenleisten-Folge wie beim einzelnen Schließen (Etappe 1).
@@ -1796,7 +1837,11 @@ final class Workspace: ObservableObject {
         }
         MarkdownImportService.shared.withCatalog { [weak self] catalog in
             guard let self else { return }
-            guard let format = catalog?.availableFormat(forExtension: url.pathExtension),
+            // Bewusst auch NICHT verfügbare Formate erkennen: Fehlt nur das
+            // Zusatzwerkzeug (meist pandoc), soll die Rückfrage das erklären,
+            // statt das Dokumentpaket stillschweigend als Ordner zu öffnen
+            // (Daniel-Befund 2026-07-29).
+            guard let format = catalog?.format(forExtension: url.pathExtension),
                   format.isPackage else {
                 self.openProject(at: url)
                 return
@@ -1838,6 +1883,25 @@ final class Workspace: ObservableObject {
         let alert = NSAlert()
         alert.messageText = L10n.format("„%@“ ist ein Dokument, kein Projektordner.",
                                         url.lastPathComponent)
+        // Fehlt das Zusatzwerkzeug (meist pandoc), gibt es keinen
+        // Umwandeln-Knopf, der ohnehin scheitern würde — stattdessen erklärt
+        // der Dialog, was fehlt und wie man es bekommt (Daniel-Befund
+        // 2026-07-29: vorher öffnete das Paket wortlos als Ordner).
+        guard format.isAvailable else {
+            alert.informativeText = [
+                L10n.format(
+                    "Fastra könnte das %@-Dokument in Markdown umwandeln, doch dafür fehlt gerade etwas.",
+                    format.identifier.uppercased()
+                ),
+                markdownImportUnavailableExplanation(for: format),
+            ].compactMap { $0 }.joined(separator: "\n\n")
+            alert.addButton(withTitle: L10n.string("Als Ordner öffnen"))
+            alert.addButton(withTitle: L10n.string("Abbrechen"))
+            switch alert.runModal() {
+            case .alertFirstButtonReturn: return .openAsFolder
+            default:                      return .cancel
+            }
+        }
         // Bewusst EIN Literal: Ein per `+` zusammengesetzter Text wäre kein
         // statisch erkennbarer Lokalisierungsschlüssel mehr.
         alert.informativeText = L10n.format(
@@ -1854,16 +1918,43 @@ final class Workspace: ObservableObject {
         }
     }
 
+    /// Erklärung in Nutzersprache, warum ein erkanntes Format gerade nicht
+    /// umgewandelt werden kann — samt Installationshilfe, wenn das fehlende
+    /// Werkzeug bekannt ist. Wird von Dialog UND Hinweisleiste benutzt.
+    static func markdownImportUnavailableExplanation(
+        for format: MarkdownImportFormat
+    ) -> String? {
+        let missing = format.missingTools
+        guard !missing.isEmpty else {
+            // Unbekannte Maschinenform → den Grund wörtlich zeigen, statt zu
+            // raten. Ohne Grund gibt es auch nichts zu erklären.
+            return format.unavailableReason
+        }
+        var lines = [L10n.format("Es fehlt das Zusatzprogramm %@.",
+                                 missing.joined(separator: ", "))]
+        if missing.contains("pandoc") {
+            lines.append(L10n.string(
+                "pandoc lässt sich im Terminal mit „brew install pandoc“ installieren. Danach Fastra neu starten."
+            ))
+        }
+        return lines.joined(separator: " ")
+    }
+
     // MARK: - Markdown-Umwandlung
 
     /// Angebot für den aktiven Tab — oder `nil`, wenn es keins gibt.
     ///
     /// Bewusst nur aus dem ZWISCHENGESPEICHERTEN Katalog: Diese Eigenschaft
     /// wird bei jedem Neuzeichnen gelesen und darf nie einen Prozess starten.
+    ///
+    /// Auch ein erkanntes, aber gerade NICHT umwandelbares Format liefert ein
+    /// Angebot: Die Leiste zeigt dann statt des Umwandeln-Knopfs, welches
+    /// Zusatzprogramm fehlt (Daniel-Befund 2026-07-29 — vorher blieb die
+    /// Leiste bei fehlendem pandoc einfach unsichtbar).
     func markdownImportOffer(for url: URL?) -> MarkdownImportOffer? {
         guard let url, !dismissedMarkdownImports.contains(url),
               let catalog = MarkdownImportService.shared.cachedCatalog,
-              let format = catalog.availableFormat(forExtension: url.pathExtension) else {
+              let format = catalog.format(forExtension: url.pathExtension) else {
             return nil
         }
         return MarkdownImportOffer(sourceURL: url, format: format)
@@ -1880,9 +1971,11 @@ final class Workspace: ObservableObject {
     /// Format, WENN dieser Ordner in Wahrheit ein Dokumentpaket ist (`.rtfd`).
     /// `nil` für jeden echten Ordner — und auch dann, wenn der Formatkatalog
     /// noch nicht vorliegt; dann bleibt es beim gewohnten Ordnerverhalten.
+    /// Ein bekanntes, aber gerade nicht umwandelbares Paket zählt mit, damit
+    /// die Rückfrage erklären kann, was fehlt (statt wortlos aufzuklappen).
     func markdownImportPackageFormat(at url: URL) -> MarkdownImportFormat? {
         guard let format = MarkdownImportService.shared.cachedCatalog?
-            .availableFormat(forExtension: url.pathExtension),
+            .format(forExtension: url.pathExtension),
               format.isPackage else { return nil }
         return format
     }

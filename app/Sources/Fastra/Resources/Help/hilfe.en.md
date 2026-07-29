@@ -335,8 +335,11 @@ reports such losses, they appear in the bar above the editor afterwards.
 **Which formats are offered** is something Fastra asks Poor Man's Text at
 launch, remembering the answer for five minutes. If the tool later supports more
 formats, Fastra uses them without an update of its own — if you just updated it
-and do not want to wait, restart Fastra. When the tool or the Pandoc it needs is
-missing, nothing is offered.
+and do not want to wait, restart Fastra. When the tool itself is missing,
+nothing is offered. When it is installed but a helper it needs (usually Pandoc)
+is missing, Fastra says so: the bar above the editor — or the `.rtfd` folder
+prompt — explains what is missing. You can install Pandoc in Terminal with
+`brew install pandoc`, then restart Fastra.
 
 ## Languages and Syntax Colors
 
@@ -571,7 +574,10 @@ the save instead of silently overwriting the on-disk version.
 
 ⌘T opens a new tab, ⌘N a second, fully independent window (its own
 tabs, its own search). ⌘S saves, ⌘W closes the tab — Fastra asks first
-if there are unsaved changes. ⌘J jumps to a line number.
+if there are unsaved changes. After closing, the most recently used tab
+becomes active; several freshly created empty tabs can thus be closed
+again with repeated ⌘W in reverse order, without an older document
+getting hit. ⌘J jumps to a line number.
 
 Switching tabs keeps each tab's insertion point **and** its visible section:
 switching back shows the text exactly where you left it. A deliberate jump — a

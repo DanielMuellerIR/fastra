@@ -9,8 +9,13 @@ enum WelcomeLogic {
     /// Editor, nicht die Willkommensseite (Daniel-Wunsch 2026-07-12). Beim
     /// Öffnen einer Datei oder eines Projekts wird der Willkommen-Tab
     /// abgeräumt; neben ungesicherten Entwürfen darf er dagegen bestehen.
+    ///
+    /// GAR KEIN Tab (`nil`) zählt ebenfalls als Willkommen: Ein sichtbares
+    /// Fenster ohne Tabs ist immer ein kaputter Zwischenzustand — dann lieber
+    /// die Willkommensseite als eine tippbare Editorfläche, die in kein
+    /// Dokument schreibt (Daniel-Befund 2026-07-29, leeres Startfenster).
     static func shouldShow(activeTab: EditorTab?) -> Bool {
-        activeTab?.isWelcome == true
+        activeTab == nil || activeTab?.isWelcome == true
     }
 
     /// ⌘N-Sonderfall (Wunschpaket 2026-07, Etappe 1): Zeigt das aktive UND
