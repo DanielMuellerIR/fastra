@@ -1133,7 +1133,7 @@ final class Workspace: ObservableObject {
     /// (Version+Datum statt Dateiname), Home-Symbol, Fußzeile und das
     /// Editor-Overlay greifen auf dieselbe Wahrheit zu.
     var isWelcomeScreen: Bool {
-        WelcomeLogic.shouldShow(activeTab: activeTab, hasProject: projectURL != nil)
+        WelcomeLogic.shouldShow(activeTab: activeTab)
     }
 
     /// Setzt dieses Fenster ohne Zwischenzustand auf genau einen frischen

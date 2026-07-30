@@ -628,10 +628,9 @@ Der Willkommensbildschirm ist kein eigener Tab, sondern eine Starthilfe, die
 über jedem neuen, noch unberührten leeren Tab liegt — wie die Neuer-Tab-Seite
 eines Browsers. Der Cursor steht dabei schon tippbereit in Zeile 1; mit dem
 ersten getippten Zeichen verschwindet die Starthilfe. Auch ein frischer
-⌘T-Tab zeigt sie wieder. Sobald ein Ordner als Projekt geladen ist, bleiben
-leere Tabs einfach leer — die Starthilfe gehört nur zum Zustand, in dem noch
-nichts geöffnet ist. Ein unberührter leerer Tab wird beim Öffnen einer Datei
-automatisch abgeräumt.
+⌘T-Tab zeigt sie wieder, ebenso ein neuer Tab in einem Fenster mit geladenem
+Projekt. Ein unberührter leerer Tab wird beim Öffnen einer Datei automatisch
+abgeräumt.
 
 Von außen lässt sich alles an Fastra übergeben: „Öffnen mit → Fastra“, ein Drop
 auf das Dock-Icon oder `open -a Fastra …` im Terminal nehmen Dateien jeder Art

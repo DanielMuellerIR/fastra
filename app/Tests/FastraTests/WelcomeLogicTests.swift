@@ -2,8 +2,9 @@
 //
 // Tests für die Sichtbarkeits-Logik des Willkommens-Platzhalters
 // (Platzhalter-Modell seit 2026-07-30, Firefox-Neuer-Tab-Muster: JEDER
-// unberührte leere Tab ohne geladenes Projekt zeigt die Starthilfe über dem
-// Editor; das erste Zeichen blendet sie aus). Die Bedingung lebt pur in
+// unberührte leere Tab zeigt die Starthilfe über dem Editor — auch in
+// Fenstern mit geladenem Projekt, Daniel-Befund 2026-07-30; das erste
+// Zeichen blendet sie aus). Die Bedingung lebt pur in
 // WelcomeLogic.shouldShow — die View wertet sie nur aus.
 
 import Foundation
@@ -14,7 +15,7 @@ import Testing
 func welcome_showsForPristineScratchTab() {
     let tab = EditorTab(title: "Ohne Titel", path: "noch nicht gespeichert")
     #expect(tab.isPristineScratch)
-    #expect(WelcomeLogic.shouldShow(activeTab: tab, hasProject: false))
+    #expect(WelcomeLogic.shouldShow(activeTab: tab))
 }
 
 @Test("Auch der zweite frische ⌘T-Tab zeigt den Platzhalter")
@@ -22,37 +23,29 @@ func welcome_showsForEveryFreshTab() {
     // Firefox-Muster: Jeder neue leere Tab ist ein „neuer Tab" mit
     // Starthilfe — nicht nur der erste des Fensters.
     let tab = EditorTab(title: "Ohne Titel 2", path: "—")
-    #expect(WelcomeLogic.shouldShow(activeTab: tab, hasProject: false))
+    #expect(WelcomeLogic.shouldShow(activeTab: tab))
 }
 
 @Test("Aktiver Tab mit Inhalt → Editor ohne Platzhalter")
 func welcome_hiddenWithContent() {
     let tab = EditorTab(title: "contacts.md", path: "Demo", content: "Nachname, Vorname")
-    #expect(!WelcomeLogic.shouldShow(activeTab: tab, hasProject: false))
+    #expect(!WelcomeLogic.shouldShow(activeTab: tab))
 }
 
 @Test("Aktiver Tab mit Datei-URL → Editor ohne Platzhalter")
 func welcome_hiddenWithFileTab() {
     var tab = EditorTab(title: "a.txt", path: "/x")
     tab.url = URL(fileURLWithPath: "/x/a.txt")
-    #expect(!WelcomeLogic.shouldShow(activeTab: tab, hasProject: false))
-}
-
-@Test("Geladenes Projekt → leerer Tab bleibt leer, keine Starthilfe")
-func welcome_hiddenWithProject() {
-    // Neben der Projekt-Seitenleiste wäre „Ordner öffnen…" samt
-    // Zuletzt-Liste nur veralteter Lärm.
-    let tab = EditorTab(title: "Ohne Titel", path: "noch nicht gespeichert")
-    #expect(!WelcomeLogic.shouldShow(activeTab: tab, hasProject: true))
+    #expect(!WelcomeLogic.shouldShow(activeTab: tab))
 }
 
 @Test("Dirty oder ladend → kein Platzhalter")
 func welcome_hiddenForDirtyOrLoadingTab() {
     let dirty = EditorTab(title: "Ohne Titel", path: "—", content: "", isDirty: true)
-    #expect(!WelcomeLogic.shouldShow(activeTab: dirty, hasProject: false))
+    #expect(!WelcomeLogic.shouldShow(activeTab: dirty))
     let loading = EditorTab(title: "a.txt", path: "/x", content: "",
                             isDirty: false, isLoading: true)
-    #expect(!WelcomeLogic.shouldShow(activeTab: loading, hasProject: false))
+    #expect(!WelcomeLogic.shouldShow(activeTab: loading))
 }
 
 @Test("Kein aktiver Tab (= gar kein Tab) → Willkommen statt Geister-Editor")
@@ -61,7 +54,7 @@ func welcome_shownWithoutAnyTab() {
     // kaputter Zwischenzustand (Daniel-Befund 2026-07-29). Lieber die
     // Starthilfe als eine tippbare Fläche, deren Eingaben in kein Dokument
     // fließen.
-    #expect(WelcomeLogic.shouldShow(activeTab: nil, hasProject: false))
+    #expect(WelcomeLogic.shouldShow(activeTab: nil))
 }
 
 // MARK: - ⌘N im reinen Startzustand (Wunschpaket 2026-07, Etappe 1)

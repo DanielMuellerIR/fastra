@@ -44,7 +44,11 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
   Aktionen, Zuletzt-Liste) als Overlay über der Editorfläche; der Cursor
   steht tippbereit in Zeile 1, das erste Zeichen blendet sie aus, ein wieder
   komplett geleerter Tab zeigt sie erneut. Kein Tab trägt mehr die
-  Beschriftung „Willkommen". Mit geladenem Projekt bleiben leere Tabs leer.
+  Beschriftung „Willkommen". Die Starthilfe erscheint bewusst auch in
+  Fenstern mit geladenem Projekt: Fastra setzt beim Öffnen einer Einzeldatei
+  implizit den Elternordner als Projekt — eine Projekt-Sperre hätte sie im
+  Alltag praktisch unsichtbar gemacht (Daniel-Befund 2026-07-30 am
+  installierten Stand).
   Der Zustand ist rein aus dem Tab abgeleitet (`isPristineScratch`) — das
   frühere `isWelcome`-Flag samt Sonderpfaden (Willkommen unterdrücken/
   wiederherstellen beim Datei-Laden, Umwandeln in ⌘N-Fenstern) ist komplett

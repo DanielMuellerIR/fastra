@@ -504,6 +504,11 @@ enum SelfTest {
             // Diagnose: Willkommensbildschirm mit gefüllter Projektliste
             // fürs fenstergezielte Capture (Projekt- & Git-Ausbau, Etappe 1).
             waitForMainWindow { runWelcomeShot() }
+        case "welcometabshot":
+            // Diagnose: ⌘T-Tab in einem Fenster MIT geladenem Projekt — der
+            // frische Tab muss die Starthilfe zeigen (Daniel-Befund
+            // 2026-07-30: Projekt-Sperre hatte sie unterdrückt).
+            waitForMainWindow { runWelcomeTabShot() }
         case "projectshot":
             // Diagnose: Projekt-Dateibaum in der Seitenleiste + geladene
             // Datei fürs fenstergezielte Capture.
@@ -10842,8 +10847,10 @@ enum SelfTest {
         guard ws.projectURL == resolved else {
             finish(false, "(b) projectURL=\(String(describing: ws.projectURL)) statt \(resolved.path)")
         }
-        guard !ws.isWelcomeScreen else {
-            finish(false, "(b) openProject hat den Willkommensbildschirm nicht geschlossen")
+        // Der unberührte Start-Tab bleibt beim Projektöffnen stehen und zeigt
+        // weiterhin die Starthilfe — bewusst OHNE Projekt-Sperre (2026-07-30).
+        guard ws.tabs.count == 1, ws.tabs[0].isPristineScratch else {
+            finish(false, "(b) openProject muss den unberührten Start-Tab stehen lassen")
         }
         guard ws.recentProjects.first?.url.path == resolved.path else {
             finish(false, "(b) Projekt nicht oben in recentProjects: \(ws.recentProjects.map(\.path))")
@@ -12303,6 +12310,35 @@ enum SelfTest {
             ProjectEntry(path: "~/Projekte/Newsletter"),
         ]
         dumpMainWindowThenExit(prefix: "WELCOMESHOT-WINDOW")
+    }
+
+    /// Diagnose (`-selftest welcometabshot`): Daniels Alltagsfall vom
+    /// 2026-07-30 — Fenster mit geladenem Projekt und geöffneter Datei, dann
+    /// ⌘T. Der frische Tab muss die Starthilfe über dem Editor zeigen (keine
+    /// Projekt-Sperre). Kein Funktionstest — die Logik decken die Unit-Tests
+    /// und der `project`-Selbsttest ab; hier zählt die sichtbare Wirkung.
+    private static func runWelcomeTabShot() {
+        testLabel = "welcometabshot"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        // Echtes kleines Projekt-Fixture, damit Seitenleiste und Datei-Tab
+        // dem Alltag entsprechen.
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("fastra-welcometabshot-\(UUID().uuidString)")
+        do {
+            try FileManager.default.createDirectory(at: root,
+                                                    withIntermediateDirectories: true)
+            try "Bestehende Arbeit\n".write(
+                to: root.appendingPathComponent("notiz.txt"),
+                atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "Fixture nicht anlegbar: \(error)")
+        }
+        ws.openProject(at: root)
+        ws.loadFile(at: root.appendingPathComponent("notiz.txt")) { _ in
+            // ⌘T-Äquivalent: frischer leerer Tab im Projektfenster.
+            ws.openNewTab()
+            dumpMainWindowThenExit(prefix: "WELCOMETABSHOT-WINDOW")
+        }
     }
 
     /// Diagnose (`-selftest aboutshot`): Über-Dialog öffnen und seine

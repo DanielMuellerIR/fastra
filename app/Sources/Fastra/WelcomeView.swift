@@ -4,22 +4,26 @@ import SwiftUI
 /// Pure Funktion → unit-testbar (Muster: KeyRouting, FooterLogic).
 enum WelcomeLogic {
     /// Der Willkommens-Platzhalter liegt genau dann über dem Editor, wenn der
-    /// AKTIVE Tab ein unberührter leerer Tab ist (`isPristineScratch`) und
-    /// KEIN Projekt geladen ist — Firefox-artig zeigt damit jeder frische Tab
-    /// (Start, ⌘T, ⌘N-Fenster) die Starthilfe, und das erste getippte Zeichen
-    /// blendet sie aus (Daniel-Entscheidung 2026-07-30; ersetzt den eigenen
-    /// Willkommen-Tab vom 2026-07-12). Tabs mit Inhalt, Datei oder
-    /// Sonderrolle zeigen den nackten Editor. Mit geladenem Projekt wäre die
-    /// Starthilfe („Ordner öffnen…", Zuletzt-Liste) nur noch veralteter Lärm
-    /// neben der Seitenleiste — dort bleibt ein leerer Tab einfach leer.
+    /// AKTIVE Tab ein unberührter leerer Tab ist (`isPristineScratch`) —
+    /// Firefox-artig zeigt damit JEDER frische Tab (Start, ⌘T, ⌘N-Fenster,
+    /// auch in Fenstern mit geladenem Projekt) die Starthilfe, und das erste
+    /// getippte Zeichen blendet sie aus (Daniel-Entscheidung 2026-07-30;
+    /// ersetzt den eigenen Willkommen-Tab vom 2026-07-12). Tabs mit Inhalt,
+    /// Datei oder Sonderrolle zeigen den nackten Editor.
+    ///
+    /// BEWUSST ohne Projekt-Sperre (Daniel-Befund 2026-07-30): Fastra setzt
+    /// beim Öffnen einer Einzeldatei implizit den Elternordner als Projekt —
+    /// mit einer Sperre wäre die Starthilfe im Alltag praktisch nie sichtbar,
+    /// und Daniels Vorgabe lautet „alle neuen Dateien". Wie in Firefox darf
+    /// die Neuer-Tab-Starthilfe neben bestehender Arbeit erscheinen.
     ///
     /// GAR KEIN Tab (`nil`) zählt ebenfalls als Willkommen: Ein sichtbares
     /// Fenster ohne Tabs ist immer ein kaputter Zwischenzustand — dann lieber
     /// die Starthilfe als eine tippbare Editorfläche, die in kein Dokument
     /// schreibt (Daniel-Befund 2026-07-29, leeres Startfenster).
-    static func shouldShow(activeTab: EditorTab?, hasProject: Bool) -> Bool {
+    static func shouldShow(activeTab: EditorTab?) -> Bool {
         guard let activeTab else { return true }
-        return !hasProject && activeTab.isPristineScratch
+        return activeTab.isPristineScratch
     }
 
     /// ⌘N-Sonderfall (Wunschpaket 2026-07, Etappe 1): Zeigt das aktive UND

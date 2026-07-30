@@ -597,10 +597,9 @@ affected file. Cancelling there keeps the project and tabs open.
 The welcome screen is not a tab of its own but a starter overlay that sits on
 top of every fresh, untouched empty tab — like a browser's new-tab page. The
 cursor is already waiting in line 1; the first typed character dismisses the
-overlay. A fresh ⌘T tab shows it again. Once a folder is loaded as a project,
-empty tabs simply stay empty — the starter overlay belongs only to the state
-where nothing is open yet. An untouched empty tab is cleaned up automatically
-when you open a file.
+overlay. A fresh ⌘T tab shows it again, as does a new tab in a window with a
+loaded project. An untouched empty tab is cleaned up automatically when you
+open a file.
 
 Anything can be handed to Fastra from outside: “Open With → Fastra”, a drop on
 the Dock icon, or `open -a Fastra …` in a terminal accept files of any kind and

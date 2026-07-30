@@ -73,6 +73,29 @@ func welcomeTab_firstCharacterDismissesPlaceholder() {
     #expect(ws.tabs[0].isPristineScratch == ws.isWelcomeScreen)
 }
 
+@Test("⌘T zeigt die Starthilfe auch in einem Fenster mit geladenem Projekt")
+@MainActor
+func welcomeTab_placeholderShowsInProjectWindow() throws {
+    // Daniels Alltagsfall (Befund 2026-07-30): Fastra setzt beim Öffnen einer
+    // Einzeldatei implizit den Elternordner als Projekt. Eine Projekt-Sperre
+    // hätte die Starthilfe damit praktisch immer unterdrückt — die Vorgabe
+    // lautet aber „alle neuen Dateien".
+    let (ws, defaults, suite) = makeWelcomeWorkspace()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-welcometab-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root,
+                                            withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    ws.openProject(at: root)
+    #expect(ws.projectURL != nil)
+    ws.openNewTab()
+
+    #expect(ws.activeTab?.isPristineScratch == true)
+    #expect(ws.isWelcomeScreen)
+}
+
 @Test("Zweiter unbenannter Name folgt der Positionsnummer, erster ohne Nummer")
 @MainActor
 func welcomeTab_untitledNaming() {

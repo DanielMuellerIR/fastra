@@ -193,9 +193,9 @@ func projectOpenRemovesWelcomeAndKeepsDraft() throws {
     #expect(workspace.tabs.contains { $0.id == draftID && $0.content == "Entwurf" })
 }
 
-@Test("Projekt öffnen behält den leeren Start-Tab; der Platzhalter verschwindet")
+@Test("Projekt öffnen behält den leeren Start-Tab samt Starthilfe")
 @MainActor
-func projectOpenHidesPlaceholderButKeepsScratch() throws {
+func projectOpenKeepsScratchAndPlaceholder() throws {
     let (workspace, defaults, suite) = homeWorkspace()
     defer { defaults.removePersistentDomain(forName: suite) }
     let directory = try homeFile("dummy.txt", content: "x")
@@ -207,10 +207,10 @@ func projectOpenHidesPlaceholderButKeepsScratch() throws {
     #expect(workspace.projectURL == directory)
     #expect(workspace.tabs.count == 1)
     #expect(workspace.tabs[0].url == nil)
-    // Der Tab selbst bleibt unberührt leer — aber neben einem geladenen
-    // Projekt zeigt er keine Starthilfe mehr.
+    // Der Tab bleibt unberührt leer — und zeigt die Starthilfe auch neben
+    // der Projekt-Seitenleiste (bewusst ohne Projekt-Sperre, 2026-07-30).
     #expect(workspace.tabs[0].isPristineScratch)
-    #expect(!workspace.isWelcomeScreen)
+    #expect(workspace.isWelcomeScreen)
 }
 
 @Test("Datei-Laden lässt den Start-Tab stehen; nach einem Fehler ist er unverändert zurück")
