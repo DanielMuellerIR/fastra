@@ -161,7 +161,7 @@ private extension TabBarView {
                     ForEach(workspace.tabs) { tab in
                         TabPill(
                             tab: tab,
-                            displayTitle: tab.isWelcome ? L10n.string("Willkommen") : tab.title,
+                            displayTitle: tab.title,
                             isActive: tab.id == workspace.activeTabID,
                             isComparisonSelected: tab.id == workspace.comparisonTabID,
                             canCloseOthers: workspace.tabs.count > 1,
@@ -237,7 +237,7 @@ private struct TabPill: View {
                             .controlSize(.small)
                             .frame(width: 11 * uiScale, height: 11 * uiScale)
                     } else {
-                        Image(systemName: tab.isWelcome ? "sparkles" : "doc.text")
+                        Image(systemName: "doc.text")
                             .fastraFont(size: 11)
                             .foregroundColor(Theme.textSecondary)
                     }

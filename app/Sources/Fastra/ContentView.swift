@@ -35,17 +35,13 @@ struct ContentView: View {
             // ausgewachsene Side-by-side-Diff-Vorschau erscheint bei Bedarf
             // als Sheet über diesem Hauptfenster.
             //
-            // Willkommensbildschirm (Projekt- & Git-Ausbau, Etappe 1):
-            // ersetzt den Editor-Bereich, solange nichts geöffnet ist
-            // (Bedingung pur in WelcomeLogic, getestet). Tab-Leiste und
-            // Footer bleiben stehen — nur die Editor-Fläche wechselt.
-            if workspace.isWelcomeScreen {
-                WelcomeView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                EditorView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+            // Willkommens-Platzhalter (Umbau 2026-07-30): Der Editor ist
+            // IMMER montiert — der Willkommensinhalt liegt als Overlay über
+            // der Editorfläche, solange der aktive Tab unberührt leer ist
+            // (Bedingung pur in WelcomeLogic, getestet; Overlay in
+            // EditorView). Der Cursor steht dabei tippbereit in Zeile 1.
+            EditorView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider().opacity(0.5)
 

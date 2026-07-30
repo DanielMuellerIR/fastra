@@ -81,17 +81,20 @@ func ineligibleShiftSelectionFallsBackToSingleTab() {
         fixture.defaults.removePersistentDomain(forName: fixture.suite)
     }
     let current = documentTab("aktuell.txt")
-    let welcome = EditorTab(
-        title: "Willkommen",
-        path: "—",
-        isWelcome: true
+    // Git-Tabs sind nicht vergleichbar (read-only Sonderrolle) — der frühere
+    // Willkommen-Tab existiert seit dem Platzhalter-Modell nicht mehr.
+    let gitTab = EditorTab(
+        title: "Verlauf",
+        path: "Git",
+        content: "Commit-Liste",
+        gitKind: .log
     )
-    fixture.workspace.tabs = [current, welcome]
+    fixture.workspace.tabs = [current, gitTab]
     fixture.workspace.activeTabID = current.id
 
-    fixture.workspace.selectTab(id: welcome.id, extendingComparison: true)
+    fixture.workspace.selectTab(id: gitTab.id, extendingComparison: true)
 
-    #expect(fixture.workspace.activeTabID == welcome.id)
+    #expect(fixture.workspace.activeTabID == gitTab.id)
     #expect(fixture.workspace.comparisonTabID == nil)
     #expect(fixture.workspace.selectedComparisonTabIDs == nil)
 }

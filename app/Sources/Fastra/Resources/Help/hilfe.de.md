@@ -624,10 +624,14 @@ Wechsel; Abbrechen lässt den Arbeitsbereich vollständig unangetastet. Erst nac
 der Bestätigung fragt Fastra jede betroffene Datei einzeln nach dem Sichern.
 Ein Abbruch dort hält Projekt und Tabs offen.
 
-Willkommen kann neben neuen, noch unbenannten Tabs stehen, aber nie neben einer
-gespeicherten Datei oder einem geöffneten Ordner. Beim Öffnen eines Ordners oder
-beim Öffnen beziehungsweise ersten Sichern einer Datei schließt Fastra den
-Willkommen-Tab automatisch.
+Der Willkommensbildschirm ist kein eigener Tab, sondern eine Starthilfe, die
+über jedem neuen, noch unberührten leeren Tab liegt — wie die Neuer-Tab-Seite
+eines Browsers. Der Cursor steht dabei schon tippbereit in Zeile 1; mit dem
+ersten getippten Zeichen verschwindet die Starthilfe. Auch ein frischer
+⌘T-Tab zeigt sie wieder. Sobald ein Ordner als Projekt geladen ist, bleiben
+leere Tabs einfach leer — die Starthilfe gehört nur zum Zustand, in dem noch
+nichts geöffnet ist. Ein unberührter leerer Tab wird beim Öffnen einer Datei
+automatisch abgeräumt.
 
 Von außen lässt sich alles an Fastra übergeben: „Öffnen mit → Fastra“, ein Drop
 auf das Dock-Icon oder `open -a Fastra …` im Terminal nehmen Dateien jeder Art

@@ -76,12 +76,12 @@ func close_dirtySaveWritesAndCloses() throws {
     ws.closeTab(id: a.id)
     // Geschlossen; der Workspace parkt seit 2026-07-29 im Willkommens-Zustand,
     // damit eine später wieder angezeigte Fenster-Szene nie ohne Tabs dasteht.
-    #expect(ws.tabs.map(\.isWelcome) == [true])
+    #expect(ws.tabs.map(\.isPristineScratch) == [true])
     let onDisk = try String(contentsOf: url, encoding: .utf8)
     #expect(onDisk == "neu gesichert")                       // vorher gesichert
 }
 
-@Test("Letzter Tab ohne Fenster-Handler fällt auf Willkommen statt Null-Tab zurück")
+@Test("Letzter Tab ohne Fenster-Handler fällt auf den Startzustand statt Null-Tab zurück")
 func close_lastWithoutWindowHandlerReturnsToWelcome() {
     let ws = makeWorkspace()
     let tab = EditorTab(title: "sauber.txt", path: "/tmp", content: "x")
@@ -91,7 +91,7 @@ func close_lastWithoutWindowHandlerReturnsToWelcome() {
     ws.closeActiveTab()
 
     #expect(ws.tabs.count == 1)
-    #expect(ws.tabs[0].isWelcome)
+    #expect(ws.tabs[0].isPristineScratch)
     #expect(ws.activeTabID == ws.tabs[0].id)
 }
 
@@ -124,7 +124,7 @@ func close_lastCleanTabClosesWindow() {
     // Fenster zu; der Workspace parkt im Willkommens-Zustand (2026-07-29) —
     // eine wieder angezeigte Szene zeigt Willkommen statt eines Null-Tab-
     // Rahmens mit tippbarem Geister-Editor.
-    #expect(ws.tabs.map(\.isWelcome) == [true])
+    #expect(ws.tabs.map(\.isPristineScratch) == [true])
     #expect(ws.activeTabID == ws.tabs.first?.id)
 }
 
@@ -145,7 +145,7 @@ func close_lastEmptyUntitledDirtyClosesWithoutPrompt() {
     #expect(asked == false)
     #expect(windowCloseCount == 1)
     // Fenster zu → Workspace geparkt auf Willkommen (siehe oben, 2026-07-29).
-    #expect(ws.tabs.map(\.isWelcome) == [true])
+    #expect(ws.tabs.map(\.isPristineScratch) == [true])
 }
 
 @Test("Letzter unbenannter Tab mit Inhalt fragt; Abbrechen hält Fenster und Tab offen")
@@ -183,7 +183,7 @@ func close_lastUntitledWithContentDontSaveClosesWindow() {
 
     #expect(windowCloseCount == 1)
     // Fenster zu → Workspace geparkt auf Willkommen (siehe oben, 2026-07-29).
-    #expect(ws.tabs.map(\.isWelcome) == [true])
+    #expect(ws.tabs.map(\.isPristineScratch) == [true])
     #expect(ws.activeTabID == ws.tabs.first?.id)
 }
 

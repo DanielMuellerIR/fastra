@@ -37,6 +37,22 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ### Geändert
 
+- **Willkommen ist jetzt ein Platzhalter über neuen Tabs, kein eigener Tab
+  mehr** (Daniel-Entscheidung 2026-07-30, Firefox-Neuer-Tab-Muster; ersetzt
+  das Willkommen-Tab-Modell vom 2026-07-12). Jeder unberührte leere Tab —
+  Start, ⌘T, ⌘N-Fenster — zeigt die Starthilfe (Wortmarke, Einstiegs-
+  Aktionen, Zuletzt-Liste) als Overlay über der Editorfläche; der Cursor
+  steht tippbereit in Zeile 1, das erste Zeichen blendet sie aus, ein wieder
+  komplett geleerter Tab zeigt sie erneut. Kein Tab trägt mehr die
+  Beschriftung „Willkommen". Mit geladenem Projekt bleiben leere Tabs leer.
+  Der Zustand ist rein aus dem Tab abgeleitet (`isPristineScratch`) — das
+  frühere `isWelcome`-Flag samt Sonderpfaden (Willkommen unterdrücken/
+  wiederherstellen beim Datei-Laden, Umwandeln in ⌘N-Fenstern) ist komplett
+  entfernt; Datei-Laden, Projektwechsel, Home, Fensterschließen und die
+  Sitzungswiederherstellung arbeiten jetzt über dieselbe einfache Regel
+  „unberührte leere Tabs bleiben stehen und werden beim Öffnen echter
+  Dateien abgeräumt". ⌘N wirkt im reinen Startzustand weiter wie ⌘T; ein
+  frisches ⌘N-Fenster zeigt — wie in Firefox — ebenfalls die Starthilfe.
 - **Markdown-Toolbar nennt Tastenkürzel im Tooltip**, z. B. „Fett (⌘B)"
   (Daniel-Wunsch 2026-07-29). Kürzel-Beschreibung und Markdown-Menü speisen
   sich jetzt aus derselben Quelle (`MarkdownFormatCommand.shortcut`) und

@@ -587,11 +587,10 @@ enum SelfTest {
     }
 
     /// Einige Editor-Selbsttests brauchen bewusst ein echtes leeres Dokument.
-    /// Seit der neue Startzustand den Willkommen-Tab zeigt, ist das Fenster
-    /// bereits sichtbar, während CodeEditSourceEditor noch gar nicht montiert
-    /// ist. Diese Tests wandeln deshalb nur ihren eigenen Willkommen-Tab um und
-    /// warten anschließend auf die echte TextView statt eine feste Pause zu
-    /// raten. Screenshot- und Willkommen-Tests verwenden diesen Helfer nicht.
+    /// Das Fenster kann sichtbar sein, bevor CodeEditSourceEditor montiert
+    /// ist. Dieser Helfer wartet deshalb auf die echte TextView, statt eine
+    /// feste Pause zu raten. Screenshot- und Willkommen-Tests verwenden ihn
+    /// nicht.
     private static func waitForEditor(
         workspace: Workspace,
         window: NSWindow,
@@ -601,15 +600,14 @@ enum SelfTest {
         guard let root = window.contentView else {
             finish(false, "Hauptfenster ohne contentView")
         }
-        if workspace.isWelcomeScreen {
-            workspace.dismissWelcomeTab()
-        }
+        // Seit dem Platzhalter-Umbau (2026-07-30) ist der Editor auch im
+        // Willkommens-Zustand montiert — es gibt nichts mehr wegzuklicken.
         if let editor = editorTextView(in: root) as? TextView {
             body(root, editor)
             return
         }
         if tick >= 100 {
-            finish(false, "Editor nach Schließen des Willkommen-Tabs nicht binnen 5 s montiert")
+            finish(false, "Editor nicht binnen 5 s montiert")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             waitForEditor(workspace: workspace, window: window,
@@ -741,16 +739,18 @@ enum SelfTest {
         )
     }
 
-    /// ⌘N im reinen Willkommenszustand (Wunschpaket 2026-07, Etappe 1): Es
-    /// darf KEIN zweites Fenster entstehen; dasselbe Fenster bekommt wie bei
-    /// ⌘T einen normalen Editor-Tab NEBEN dem erhaltenen Willkommen-Tab.
+    /// ⌘N im reinen Startzustand (Wunschpaket 2026-07 Etappe 1; Platzhalter-
+    /// Modell 2026-07-30): Es darf KEIN zweites Fenster entstehen; dasselbe
+    /// Fenster bekommt wie bei ⌘T einen zweiten leeren Tab. Der bisherige
+    /// Start-Tab bleibt daneben erhalten.
     private static func runWelcomeNewTabTest() {
         guard let ws = Workspace.shared else {
             finish(false, "kein aktiver Workspace")
         }
         guard ws.isWelcomeScreen, ws.tabs.count == 1 else {
-            finish(false, "Ausgangszustand ist nicht der reine Willkommenszustand")
+            finish(false, "Ausgangszustand ist nicht der reine Startzustand")
         }
+        let originalTabID = ws.tabs[0].id
         guard let mainMenu = NSApp.mainMenu,
               menuItem(forKeyEquivalent: "n", in: mainMenu) != nil else {
             finish(false, "kein Menüpunkt mit ⌘N gefunden")
@@ -767,32 +767,37 @@ enum SelfTest {
             DocumentWindowController.visibleDocumentWindowCount()
         }
         postCmd("n", keyCode: 45, windowNumber: mainWindow.windowNumber)
-        pollForWelcomeNewTab(ws: ws, windowsBefore: windowsBefore)
+        pollForWelcomeNewTab(ws: ws, windowsBefore: windowsBefore,
+                             originalTabID: originalTabID)
     }
 
     private static func pollForWelcomeNewTab(ws: Workspace, windowsBefore: Int,
+                                             originalTabID: UUID,
                                              tick: Int = 0) {
         if ws.tabs.count == 2 {
             let windowsNow = MainActor.assumeIsolated {
                 DocumentWindowController.visibleDocumentWindowCount()
             }
             guard windowsNow == windowsBefore else {
-                finish(false, "⌘N im Willkommenszustand öffnete trotzdem ein zweites Fenster")
+                finish(false, "⌘N im Startzustand öffnete trotzdem ein zweites Fenster")
             }
-            guard let active = ws.activeTab, !active.isWelcome,
+            // Der NEUE Tab ist aktiv — als frischer leerer Tab zeigt auch er
+            // den Willkommens-Platzhalter (Firefox-Muster).
+            guard let active = ws.activeTab, active.id != originalTabID,
                   active.content.isEmpty else {
                 finish(false, "⌘N aktivierte keinen neuen leeren Editor-Tab")
             }
-            guard ws.tabs.contains(where: { $0.isWelcome }) else {
-                finish(false, "der Willkommen-Tab muss daneben erhalten bleiben")
+            guard ws.tabs.contains(where: { $0.id == originalTabID }) else {
+                finish(false, "der bisherige Start-Tab muss daneben erhalten bleiben")
             }
-            finish(true, "⌘N wirkt im reinen Willkommenszustand wie ⌘T")
+            finish(true, "⌘N wirkt im reinen Startzustand wie ⌘T")
         }
         if tick >= 100 {
             finish(false, "⌘N legte binnen 5 s keinen zweiten Tab an — \(windowsSummary())")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollForWelcomeNewTab(ws: ws, windowsBefore: windowsBefore, tick: tick + 1)
+            pollForWelcomeNewTab(ws: ws, windowsBefore: windowsBefore,
+                                 originalTabID: originalTabID, tick: tick + 1)
         }
     }
 
@@ -901,7 +906,9 @@ enum SelfTest {
             && Set(openedURLs) == expectedURLs
             && externalWorkspace?.activeTab?.url?.canonicalFileURL == externalURL
             && workspaces.allSatisfy { workspace in
-                workspace.tabs.allSatisfy { !$0.isWelcome }
+                // Neben wiederhergestellten Dateien darf kein übrig
+                // gebliebener leerer Start-Tab stehen.
+                workspace.tabs.allSatisfy { !$0.isPristineScratch }
             }
             && (restoreEnabled
                 ? restoredProjectsArePresent
@@ -957,12 +964,12 @@ enum SelfTest {
                   newTab.content.isEmpty else {
                 finish(false, "zweites Fenster enthält kein einzelnes leeres neues Dokument")
             }
-            // „Nie mehr als ein Willkommen" (Daniel-Befund 2026-07-12): Ein
-            // per ⌘N geöffnetes Fenster muss direkt den Editor zeigen, NICHT
-            // erneut die Willkommensseite — sonst ließen sich beliebig viele
-            // Willkommens-Fenster stapeln.
-            guard !newWorkspace.isWelcomeScreen else {
-                finish(false, "⌘N-Fenster zeigt erneut den Willkommensbildschirm")
+            // Platzhalter-Modell (2026-07-30, ersetzt „nie mehr als ein
+            // Willkommen" vom 2026-07-12): Der frische leere Tab des neuen
+            // Fensters zeigt wie in Firefox die Starthilfe über dem Editor —
+            // das ist jetzt der korrekte Zustand, kein Fehler.
+            guard newWorkspace.isWelcomeScreen else {
+                finish(false, "⌘N-Fenster zeigt keinen Willkommens-Platzhalter über dem leeren Tab")
             }
 
             // Das ist die sichtbare Produktwirkung: Das neue AppKit-Fenster
@@ -10813,19 +10820,18 @@ enum SelfTest {
         }
 
         // ── (a) Willkommens-Bedingung ─────────────────────────────────────
-        // Erststart-Demo-Tab (hat Inhalt) → Willkommen verborgen. Danach
-        // Folgestart simulieren (ein leerer unbenannter Tab) → sichtbar.
+        // Tab mit Inhalt → Platzhalter verborgen. Danach den Startzustand
+        // simulieren (ein unberührter leerer Tab, kein Projekt) → sichtbar.
         ws.tabs = [EditorTab(title: "contacts.md", path: "Demo", content: "Demo-Inhalt")]
         ws.activeTabID = ws.tabs[0].id
         if ws.isWelcomeScreen {
-            finish(false, "(a) Willkommen sichtbar, obwohl der aktive Tab kein Willkommen-Tab ist")
+            finish(false, "(a) Willkommen sichtbar, obwohl der aktive Tab Inhalt trägt")
         }
-        ws.tabs = [EditorTab(title: Workspace.untitledBaseName,
-                             path: "noch nicht gespeichert", isWelcome: true)]
+        ws.tabs = [Workspace.makeScratchTab()]
         ws.activeTabID = ws.tabs[0].id
         ws.projectURL = nil
         guard ws.isWelcomeScreen else {
-            finish(false, "(a) Willkommen verborgen trotz aktivem Willkommen-Tab")
+            finish(false, "(a) Willkommen verborgen trotz unberührtem leeren Tab ohne Projekt")
         }
 
         // ── (b) Projekt öffnen ────────────────────────────────────────────
@@ -12285,11 +12291,10 @@ enum SelfTest {
     private static func runWelcomeShot() {
         testLabel = "welcomeshot"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
-        // Folgestart-Zustand simulieren (die Selbsttest-Suite ist frisch →
-        // die App startete mit dem Demo-Tab): leerer unbenannter Tab plus
-        // Beispiel-Projekte, damit die Liste auf dem Screenshot gefüllt ist.
-        ws.tabs = [EditorTab(title: Workspace.untitledBaseName,
-                             path: "noch nicht gespeichert", isWelcome: true)]
+        // Startzustand simulieren: unberührter leerer Tab (zeigt den
+        // Willkommens-Platzhalter) plus Beispiel-Projekte, damit die Liste
+        // auf dem Screenshot gefüllt ist.
+        ws.tabs = [Workspace.makeScratchTab()]
         ws.activeTabID = ws.tabs.first?.id
         ws.projectURL = nil
         ws.recentProjects = [

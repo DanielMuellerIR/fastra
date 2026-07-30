@@ -42,18 +42,20 @@ func wsLoad_placeholderIsLoadingImmediately() async throws {
     defer { try? FileManager.default.removeItem(at: url) }
 
     // loadFile aufrufen — kehrt sofort zurück, BEVOR der Hintergrund-Task
-    // fertig ist. Der Platzhalter-Tab muss sofort da sein und Willkommen
-    // atomar ersetzen, weil beide Zustände nie nebeneinander stehen dürfen.
+    // fertig ist. Der Lade-Platzhalter muss sofort da und AKTIV sein; der
+    // unberührte Start-Tab darf während des Ladens stehen bleiben (sein
+    // Willkommens-Platzhalter zeigt sich nur, wenn er selbst aktiv ist).
     var completionCalled = false
     ws.loadFile(at: url) { _ in completionCalled = true }
 
     // DIREKT nach dem Aufruf (noch im selben RunLoop-Tick) prüfen:
-    #expect(ws.tabs.count == 1,
-            "Platzhalter muss Willkommen sofort ersetzen")
-    #expect(!ws.tabs.contains { $0.isWelcome })
     let placeholder = ws.tabs.last
     #expect(placeholder?.isLoading == true,
             "Platzhalter-Tab muss sofort isLoading = true haben")
+    #expect(ws.activeTabID == placeholder?.id,
+            "Lade-Platzhalter muss sofort aktiv sein")
+    #expect(!ws.isWelcomeScreen,
+            "während des Ladens darf kein Willkommens-Platzhalter sichtbar sein")
 
     // Jetzt auf die Completion warten (max. 5 s).
     let deadline = Date().addingTimeInterval(5)
@@ -61,6 +63,8 @@ func wsLoad_placeholderIsLoadingImmediately() async throws {
         await Task.yield()
     }
     #expect(completionCalled, "Completion wurde nie aufgerufen")
+    // Nach erfolgreichem Laden ist der unberührte Start-Tab abgeräumt.
+    #expect(ws.tabs.count == 1, "Start-Tab muss nach dem Laden abgeräumt sein")
 }
 
 @Test("loadFile: Nach Completion isLoading = false + Inhalt vorhanden")

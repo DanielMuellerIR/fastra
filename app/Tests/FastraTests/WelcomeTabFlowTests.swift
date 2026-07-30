@@ -1,9 +1,11 @@
 // WelcomeTabFlowTests.swift
 //
-// Sichert das per-Tab-Willkommen-Modell (2026-07-12) ab: Der Willkommen-Tab
-// ist ein eigener Tab, der bei ⌘T/„Neue Datei" bestehen bleibt — daneben
-// entsteht ein echter Editor-Tab, in den gesprungen wird. Neue unbenannte
-// Tabs tragen den lokalisierten Basisnamen mit Positionsnummer.
+// Sichert das Platzhalter-Modell des Willkommensbildschirms ab (2026-07-30,
+// Firefox-Neuer-Tab-Muster; ersetzt den eigenen Willkommen-Tab vom
+// 2026-07-12): Jeder unberührte leere Tab zeigt die Starthilfe über dem
+// Editor; ⌘T legt daneben einen weiteren frischen Tab an, der sie ebenfalls
+// zeigt; das erste getippte Zeichen blendet sie aus. Neue unbenannte Tabs
+// tragen den lokalisierten Basisnamen mit Positionsnummer.
 
 import Foundation
 import Testing
@@ -15,9 +17,9 @@ private func makeFreshDefaults() -> (UserDefaults, suiteName: String) {
     return (UserDefaults(suiteName: suiteName)!, suiteName)
 }
 
-/// Liefert einen Workspace im Folgestart-Zustand (Willkommen-Tab), indem der
-/// erste Init das Erststart-Flag verbraucht und der zweite den Folgestart
-/// simuliert.
+/// Liefert einen Workspace im Folgestart-Zustand (ein unberührter leerer
+/// Start-Tab), indem der erste Init das Erststart-Flag verbraucht und der
+/// zweite den Folgestart simuliert.
 @MainActor
 private func makeWelcomeWorkspace() -> (Workspace, UserDefaults, String) {
     let (defaults, suite) = makeFreshDefaults()
@@ -25,40 +27,50 @@ private func makeWelcomeWorkspace() -> (Workspace, UserDefaults, String) {
     return (Workspace(defaults: defaults), defaults, suite)
 }
 
-@Test("Folgestart legt genau einen Willkommen-Tab an, Willkommen sichtbar")
+@Test("Folgestart legt genau einen unberührten leeren Tab an, Platzhalter sichtbar")
 @MainActor
-func welcomeTab_folgestartHasWelcomeTab() {
+func welcomeTab_folgestartShowsPlaceholder() {
     let (ws, defaults, suite) = makeWelcomeWorkspace()
     defer { defaults.removePersistentDomain(forName: suite) }
 
     #expect(ws.tabs.count == 1)
-    #expect(ws.tabs.first?.isWelcome == true)
+    #expect(ws.tabs.first?.isPristineScratch == true)
     #expect(ws.isWelcomeScreen)
 }
 
-@Test("⌘T lässt den Willkommen-Tab stehen und springt in den neuen Editor-Tab")
+@Test("⌘T legt einen zweiten frischen Tab an — auch er zeigt den Platzhalter")
 @MainActor
-func welcomeTab_openNewTabKeepsWelcomeAndJumps() {
+func welcomeTab_openNewTabKeepsFirstAndShowsPlaceholderAgain() {
     let (ws, defaults, suite) = makeWelcomeWorkspace()
     defer { defaults.removePersistentDomain(forName: suite) }
-    let welcomeID = ws.tabs[0].id
+    let firstID = ws.tabs[0].id
 
     ws.openNewTab()
 
-    // Willkommen-Tab bleibt als eigener Tab „Willkommen".
+    // Der erste Tab bleibt stehen; der neue ist aktiv.
     #expect(ws.tabs.count == 2)
-    #expect(ws.tabs[0].id == welcomeID)
-    #expect(ws.tabs[0].isWelcome == true)
-    // Zweiter Tab: normaler Editor-Tab mit lokalisiertem Namen an Position 2.
-    #expect(ws.tabs[1].isWelcome == false)
+    #expect(ws.tabs[0].id == firstID)
     #expect(ws.tabs[1].title == Workspace.untitledName(position: 2))
-    // In den zweiten Tab gesprungen → Editor sichtbar, nicht Willkommen.
     #expect(ws.activeTabID == ws.tabs[1].id)
+    // Firefox-Muster: Auch der frische zweite Tab ist unberührt leer und
+    // zeigt deshalb den Willkommens-Platzhalter.
+    #expect(ws.tabs[1].isPristineScratch)
+    #expect(ws.isWelcomeScreen)
+}
+
+@Test("Das erste getippte Zeichen blendet den Platzhalter aus — Löschen bringt ihn zurück")
+@MainActor
+func welcomeTab_firstCharacterDismissesPlaceholder() {
+    let (ws, defaults, suite) = makeWelcomeWorkspace()
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    ws.activeTabContent.wrappedValue = "a"
     #expect(!ws.isWelcomeScreen)
 
-    // Zurück auf den Willkommen-Tab → Willkommen wieder sichtbar.
-    ws.activeTabID = welcomeID
-    #expect(ws.isWelcomeScreen)
+    // Bewusst zustandsfrei abgeleitet: Wird der Tab wieder exakt leer und
+    // ungeändert, gilt er erneut als unberührt und die Starthilfe erscheint.
+    ws.activeTabContent.wrappedValue = ""
+    #expect(ws.tabs[0].isPristineScratch == ws.isWelcomeScreen)
 }
 
 @Test("Zweiter unbenannter Name folgt der Positionsnummer, erster ohne Nummer")
@@ -71,24 +83,9 @@ func welcomeTab_untitledNaming() {
     #expect(Workspace.untitledName(position: 3) == "\(base) 3")
 }
 
-@Test("dismissWelcomeTab wandelt den Willkommen-Tab in ein normales Dokument")
+@Test("Fensterschließen hinterlässt den Workspace im Startzustand")
 @MainActor
-func welcomeTab_dismissConverts() {
-    let (ws, defaults, suite) = makeWelcomeWorkspace()
-    defer { defaults.removePersistentDomain(forName: suite) }
-
-    ws.dismissWelcomeTab()
-
-    #expect(ws.tabs.count == 1)
-    #expect(ws.tabs[0].isWelcome == false)
-    #expect(!ws.isWelcomeScreen)
-    // Unterbau-Titel bleibt der lokalisierte Basisname (jetzt sichtbar).
-    #expect(ws.tabs[0].title == Workspace.untitledBaseName)
-}
-
-@Test("Fensterschließen hinterlässt den Workspace im Willkommens-Zustand")
-@MainActor
-func welcomeTab_prepareToCloseWindowResetsToWelcome() {
+func welcomeTab_prepareToCloseWindowResetsToStartState() {
     // SwiftUI hält die Szene des Hauptfensters samt Workspace am Leben und
     // kann sie nach dem Schließen wieder anzeigen (Dock-Klick). Bliebe der
     // Workspace nach `prepareToCloseWindow` bei null Tabs, erschiene dann ein
@@ -104,7 +101,7 @@ func welcomeTab_prepareToCloseWindowResetsToWelcome() {
 
     #expect(ws.prepareToCloseWindow())
     #expect(ws.tabs.count == 1)
-    #expect(ws.tabs[0].isWelcome)
+    #expect(ws.tabs[0].isPristineScratch)
     #expect(ws.isWelcomeScreen)
     #expect(ws.activeTabID == ws.tabs[0].id)
 }

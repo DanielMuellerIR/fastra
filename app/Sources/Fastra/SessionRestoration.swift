@@ -213,11 +213,12 @@ extension Workspace {
         }
         guard !documentURLs.isEmpty else {
             // Die Dateien konnten zwischen Store-Vorprüfung und echtem Restore
-            // verschwinden. Inzwischen im Startfenster erzeugte Tabs oder ein
-            // bewusst geöffnetes Projekt haben Vorrang und dürfen niemals vom
-            // verspäteten Restore gelöscht werden. Nur der unberührte Start-
-            // zustand fällt auf ein frisches Willkommen zurück.
-            if projectURL == nil, tabs.allSatisfy({ $0.isWelcome }) {
+            // verschwinden. Inzwischen im Startfenster erzeugte Inhalte oder
+            // ein bewusst geöffnetes Projekt haben Vorrang und dürfen niemals
+            // vom verspäteten Restore gelöscht werden. Nur der unberührte
+            // Startzustand (ausschließlich frische leere Tabs) fällt auf
+            // einen sauberen Start-Tab zurück.
+            if projectURL == nil, tabs.allSatisfy({ $0.isPristineScratch }) {
                 enterWelcomeState()
             }
             completion?()
@@ -261,11 +262,11 @@ extension Workspace {
         }
 
         // Die Lade-Platzhalter der Dateien stehen jetzt (synchron angehängt).
-        // Den beim Projekt-Öffnen entstandenen leeren „Ohne Titel"-Tab bzw.
-        // den Willkommen-Tab deshalb SOFORT entfernen, noch in diesem Runloop-
-        // Tick. Sonst blitzt er auf, bis der erste asynchrone Ladevorgang ihn
-        // wegräumt (Daniel-Befund 2026-07-20). Die Platzhalter (isLoading =
-        // true, mit URL) sind kein leerer Scratch und bleiben erhalten.
+        // Den unberührten Start-Tab des Fensters deshalb SOFORT entfernen,
+        // noch in diesem Runloop-Tick. Sonst blitzt er auf, bis der erste
+        // asynchrone Ladevorgang ihn wegräumt (Daniel-Befund 2026-07-20).
+        // Die Platzhalter (isLoading = true, mit URL) sind kein unberührter
+        // leerer Tab und bleiben erhalten.
         if let active = activeTabID {
             tabs = Workspace.tabsRemovingEmptyScratch(tabs, keeping: active)
         }

@@ -3,30 +3,37 @@ import SwiftUI
 /// Entscheidet, ob der Willkommensbildschirm den Editor-Bereich ersetzt.
 /// Pure Funktion → unit-testbar (Muster: KeyRouting, FooterLogic).
 enum WelcomeLogic {
-    /// Der Willkommensbildschirm erscheint genau dann, wenn der AKTIVE Tab der
-    /// Willkommen-Tab ist (per-Tab-Flag `isWelcome`). Er ist ein eigener Tab,
-    /// der bestehen bleibt: ein zweiter (leerer) Editor-Tab daneben zeigt den
-    /// Editor, nicht die Willkommensseite (Daniel-Wunsch 2026-07-12). Beim
-    /// Öffnen einer Datei oder eines Projekts wird der Willkommen-Tab
-    /// abgeräumt; neben ungesicherten Entwürfen darf er dagegen bestehen.
+    /// Der Willkommens-Platzhalter liegt genau dann über dem Editor, wenn der
+    /// AKTIVE Tab ein unberührter leerer Tab ist (`isPristineScratch`) und
+    /// KEIN Projekt geladen ist — Firefox-artig zeigt damit jeder frische Tab
+    /// (Start, ⌘T, ⌘N-Fenster) die Starthilfe, und das erste getippte Zeichen
+    /// blendet sie aus (Daniel-Entscheidung 2026-07-30; ersetzt den eigenen
+    /// Willkommen-Tab vom 2026-07-12). Tabs mit Inhalt, Datei oder
+    /// Sonderrolle zeigen den nackten Editor. Mit geladenem Projekt wäre die
+    /// Starthilfe („Ordner öffnen…", Zuletzt-Liste) nur noch veralteter Lärm
+    /// neben der Seitenleiste — dort bleibt ein leerer Tab einfach leer.
     ///
     /// GAR KEIN Tab (`nil`) zählt ebenfalls als Willkommen: Ein sichtbares
     /// Fenster ohne Tabs ist immer ein kaputter Zwischenzustand — dann lieber
-    /// die Willkommensseite als eine tippbare Editorfläche, die in kein
-    /// Dokument schreibt (Daniel-Befund 2026-07-29, leeres Startfenster).
-    static func shouldShow(activeTab: EditorTab?) -> Bool {
-        activeTab == nil || activeTab?.isWelcome == true
+    /// die Starthilfe als eine tippbare Editorfläche, die in kein Dokument
+    /// schreibt (Daniel-Befund 2026-07-29, leeres Startfenster).
+    static func shouldShow(activeTab: EditorTab?, hasProject: Bool) -> Bool {
+        guard let activeTab else { return true }
+        return !hasProject && activeTab.isPristineScratch
     }
 
     /// ⌘N-Sonderfall (Wunschpaket 2026-07, Etappe 1): Zeigt das aktive UND
-    /// einzige Dokumentfenster nur den Willkommen-Tab, öffnet ⌘N wie ⌘T einen
-    /// neuen Tab im selben Fenster — ein zweites, fast identisches Fenster
-    /// neben dem unbenutzten Willkommensfenster wäre nur verwirrend. Sobald
-    /// mehr offen ist (weiterer Tab oder weiteres Fenster), bleibt ⌘N das
-    /// gewohnte Fenster-Kommando.
+    /// einzige Dokumentfenster nur einen unberührten leeren Tab ohne Projekt
+    /// (= reiner Startzustand), öffnet ⌘N wie ⌘T einen neuen Tab im selben
+    /// Fenster — ein zweites, fast identisches Fenster neben dem unbenutzten
+    /// Startfenster wäre nur verwirrend. Sobald mehr offen ist (weiterer
+    /// Tab, Projekt oder weiteres Fenster), bleibt ⌘N das gewohnte
+    /// Fenster-Kommando.
     static func newWindowCommandOpensTab(tabs: [EditorTab],
+                                         hasProject: Bool,
                                          visibleDocumentWindows: Int) -> Bool {
-        visibleDocumentWindows <= 1 && tabs.count == 1 && tabs[0].isWelcome
+        visibleDocumentWindows <= 1 && !hasProject
+            && tabs.count == 1 && tabs[0].isPristineScratch
     }
 }
 
@@ -46,10 +53,14 @@ enum WelcomeLayout {
     }
 }
 
-/// Willkommensbildschirm (VS-Code-Muster, aber Apple-dezent): erscheint statt
-/// des Editors, wenn noch nichts geöffnet ist. Bietet die drei Einstiegs-
-/// Aktionen und die Liste der zuletzt benutzten Projekte — ein Klick lädt
-/// das Projekt in die Seitenleiste.
+/// Willkommens-Platzhalter (Firefox-Neuer-Tab-Muster, aber Apple-dezent):
+/// liegt als Overlay ÜBER der Editorfläche, solange der aktive Tab ein
+/// unberührter leerer Tab ist. Der Cursor blinkt dahinter in Zeile 1; das
+/// erste getippte Zeichen blendet das Overlay aus (die Bedingung lebt in
+/// `WelcomeLogic.shouldShow`). Bietet die drei Einstiegs-Aktionen und die
+/// Liste der zuletzt benutzten Projekte — ein Klick lädt das Projekt in die
+/// Seitenleiste. Bewusst OHNE eigenen Hintergrund: Klicks in freie Flächen
+/// erreichen den Editor darunter, nur die eigentlichen Inhalte fangen sie ab.
 struct WelcomeView: View {
     @EnvironmentObject var workspace: Workspace
     @Environment(\.uiScale) private var uiScale
@@ -62,7 +73,6 @@ struct WelcomeView: View {
                 total: workspace.recentProjects.count
             ))
         }
-        .background(Theme.surfaceRaised)
     }
 
     private func welcomeContent(visibleProjectCount: Int) -> some View {
@@ -82,9 +92,9 @@ struct WelcomeView: View {
             // Einstiegs-Aktionen.
             VStack(alignment: .leading, spacing: 10) {
                 welcomeAction("Neue Datei", system: "square.and.pencil", shortcut: "⌘T") {
-                    // Identisch zum ⌘T-Menübefehl: legt DANEBEN einen neuen
-                    // Editor-Tab an und springt hinein — der Willkommen-Tab
-                    // bleibt als eigener Tab „Willkommen" erhalten.
+                    // Identisch zum ⌘T-Menübefehl: legt einen neuen leeren
+                    // Tab an und springt hinein. Auch er zeigt den
+                    // Platzhalter, bis das erste Zeichen getippt ist.
                     workspace.openNewTab()
                 }
                 welcomeAction("Datei öffnen…", system: "doc", shortcut: "⌘O") {

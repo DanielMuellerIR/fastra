@@ -76,19 +76,14 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     // wiederhergestellt; spätere Nutzer-Resizes bleiben davon unberührt.
     private var frameToRestoreAfterFirstLayout: NSRect?
 
-    private init(defaults: UserDefaults, showWelcome: Bool,
+    private init(defaults: UserDefaults,
                  restoredFrame: NSRect? = nil) {
         workspace = Workspace(defaults: defaults)
-        // Willkommen nur, wenn dies das ERSTE/einzige Dokumentfenster ist
-        // (Daniel-Wunsch 2026-07-12): Beim Start ohne offenes Fenster — auch
-        // per ⌘N — soll die Willkommensseite kommen. Ist dagegen schon ein
-        // Fenster offen, startet das neue direkt im Editor, damit sich nicht
-        // beliebig viele Willkommens-Fenster stapeln. Der Workspace legt beim
-        // Folgestart ohnehin einen Willkommen-Tab an; ohne Willkommen wandeln
-        // wir ihn hier in ein normales leeres Dokument um.
-        if !showWelcome {
-            workspace.dismissWelcomeTab()
-        }
+        // Jedes Fenster startet gleich: mit einem unberührten leeren Tab,
+        // über dem der Willkommens-Platzhalter liegt (Firefox-Muster,
+        // Daniel-Entscheidung 2026-07-30 — ersetzt die Sonderrolle des
+        // ersten Fensters vom 2026-07-12). Beim Wiederherstellen ersetzen
+        // die geladenen Dateien diesen Tab gleich wieder.
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0,
                                 width: MainWindowSizing.defaultWidth,
@@ -148,18 +143,6 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
                             display: false)
         } else {
             window.center()
-        }
-    }
-
-    /// `true`, wenn bereits ein sichtbares Dokumentfenster offen ist. Bestimmt,
-    /// ob ein neu geöffnetes Fenster die Willkommensseite zeigt: nur das erste/
-    /// einzige tut das. Zählt Startfenster (SwiftUI) und ⌘N-Fenster (AppKit)
-    /// über ihre Workspace-Zuordnung bzw. den Fenster-Identifier.
-    private static func hasOpenDocumentWindow() -> Bool {
-        NSApp.windows.contains { win in
-            guard win.isVisible else { return false }
-            if win.identifier?.rawValue == "Fastra.DocumentWindow" { return true }
-            return WorkspaceWindowRegistry.workspace(for: win) != nil
         }
     }
 
@@ -331,8 +314,7 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     /// 2026-07-12): ⌘N ohne offenes Fenster → Willkommen, sonst direkt Editor.
     @discardableResult
     static func openNewDocument(defaults: UserDefaults = SelfTest.workspaceDefaults()) -> Workspace {
-        let showWelcome = !hasOpenDocumentWindow()
-        let controller = DocumentWindowController(defaults: defaults, showWelcome: showWelcome)
+        let controller = DocumentWindowController(defaults: defaults)
         openControllers[ObjectIdentifier(controller.window)] = controller
         controller.window.makeKeyAndOrderFront(nil)
         // Ins „Fenster"-Menü aufnehmen. Per AppKit erzeugte Fenster tauchen dort
@@ -358,7 +340,7 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     ) -> Workspace {
         let restoredFrame = state.frame?.visibleRect(in: screenFrames)
         let controller = DocumentWindowController(
-            defaults: defaults, showWelcome: false,
+            defaults: defaults,
             restoredFrame: restoredFrame
         )
         openControllers[ObjectIdentifier(controller.window)] = controller

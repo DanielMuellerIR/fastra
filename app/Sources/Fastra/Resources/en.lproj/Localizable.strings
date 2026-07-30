@@ -22,7 +22,6 @@
 "Datei erst speichern…" = "Save File First…";
 "Datei oder Ordner öffnen (⌘O)" = "Open File or Folder (⌘O)";
 "Datei öffnen" = "Open File";
-"Datei öffnen (⌘O), Text eingeben oder Datei hierher ziehen" = "Open a file (⌘O), enter text, or drag a file here";
 "Datei öffnen…" = "Open File…";
 "Datei-Set" = "File Set";
 "Dateitypen" = "File Types";
@@ -241,7 +240,6 @@
 "In den Papierkorb" = "Move to Trash";
 "Der Eintrag kann über den Finder wiederhergestellt werden." = "The item can be restored using Finder.";
 "Unbekannt" = "Unknown";
-"Willkommen" = "Welcome";
 "Automatisch" = "Automatic";
 "Hell" = "Light";
 "Dunkel" = "Dark";

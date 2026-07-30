@@ -850,24 +850,19 @@ struct EditorView: View {
         // (sonst bliebe der alte Text stehen — „Ersetzen wirkt folgenlos").
         .id(EditorView.editorIdentity(tabID: workspace.activeTab?.id,
                                       reloadNonce: workspace.editorReloadNonce))
-        // Empty-State-Overlay: zentrierter Hinweis, wenn der Tab geladen
-        // ist, aber noch keinen Inhalt hat. allowsHitTesting(false) ist
-        // ZWINGEND — Klicks und Tastatureingaben sollen den Editor (der im
-        // Hintergrund liegt) ungehindert erreichen. Beim ersten getippten
-        // Zeichen ist content nicht mehr leer → SwiftUI blendet das Overlay
-        // automatisch aus; der Editor wird dabei NICHT neu erzeugt, weil
-        // .id(tab.id) konstant bleibt.
+        // Willkommens-Platzhalter (Umbau 2026-07-30, ersetzt den früheren
+        // Einzeilen-Hinweis): Solange der aktive Tab ein unberührter leerer
+        // Tab ist, liegt der Willkommensinhalt über der Editorfläche —
+        // Cursor und Tastatur gehören weiter dem Editor dahinter. Beim
+        // ersten getippten Zeichen ist der Tab nicht mehr unberührt →
+        // SwiftUI blendet das Overlay automatisch aus; der Editor wird dabei
+        // NICHT neu erzeugt, weil .id(tab.id) konstant bleibt. Die
+        // Willkommens-Knöpfe bleiben klickbar; freie Flächen reichen Klicks
+        // an den Editor durch (WelcomeView hat bewusst keinen Hintergrund).
         .overlay(
             Group {
-                if workspace.activeTab != nil
-                    && workspace.activeTabContent.wrappedValue.isEmpty {
-                    VStack(spacing: 6) {
-                        Text("Datei öffnen (⌘O), Text eingeben oder Datei hierher ziehen")
-                            .fastraFont(.small)
-                            .foregroundColor(Theme.textSecondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .allowsHitTesting(false)
+                if workspace.isWelcomeScreen {
+                    WelcomeView()
                 }
             }
         )
@@ -1505,9 +1500,7 @@ private struct FileRow: View {
             Image(systemName: "doc")
                 .foregroundColor(isActive ? Theme.accentReadable : Theme.textSecondary)
                 .fastraFont(size: 11)
-            // Willkommen-Tab konsistent zur Tab-Leiste als „Willkommen"
-            // beschriften (nicht mit seinem Unterbau-Titel „Ohne Titel").
-            Text(verbatim: tab.isWelcome ? L10n.string("Willkommen") : tab.title)
+            Text(verbatim: tab.title)
                 .fastraFont(.small)
                 .foregroundColor(isActive ? Theme.textPrimary : Theme.textSecondary)
                 .lineLimit(1)

@@ -195,9 +195,9 @@ func eligibility_rules() {
     manual.languageOverride = .json
     #expect(!Workspace.isEligibleForContentDetection(manual))
 
-    var welcome = plain
-    welcome.isWelcome = true
-    #expect(!Workspace.isEligibleForContentDetection(welcome))
+    var gitTab = plain
+    gitTab.gitKind = .log
+    #expect(!Workspace.isEligibleForContentDetection(gitTab))
 }
 
 @Test("Sofortige Erkennung nach Block-Einfügung setzt die Tab-Sprache")

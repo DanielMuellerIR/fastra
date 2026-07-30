@@ -149,7 +149,7 @@ func sessionWorkspaceRestore() async throws {
     #expect(!workspace.tabs.contains(where: { $0.url == nil }))
 }
 
-@Test("Restore lässt keinen leeren „Ohne Titel“-/Willkommen-Tab aufblitzen")
+@Test("Restore lässt keinen leeren Start-Tab aufblitzen")
 @MainActor
 func sessionRestoreHasNoTransientScratchTab() throws {
     let (defaults, suite) = sessionDefaults()
@@ -161,8 +161,9 @@ func sessionRestoreHasNoTransientScratchTab() throws {
     defer { try? FileManager.default.removeItem(at: directory) }
 
     let workspace = Workspace(defaults: defaults)
-    // Ausgangslage wie beim echten Folgestart: ein Willkommen-Tab ist offen.
-    #expect(workspace.tabs.contains { $0.isWelcome })
+    // Ausgangslage wie beim echten Folgestart: ein unberührter Start-Tab
+    // (zeigt den Willkommens-Platzhalter) ist offen.
+    #expect(workspace.tabs.contains { $0.isPristineScratch })
 
     let state = RestorableWindowState(
         projectPath: directory.path,
@@ -176,8 +177,8 @@ func sessionRestoreHasNoTransientScratchTab() throws {
     // ersten Frame zeichnen würde (Daniel-Befund 2026-07-20).
     workspace.restore(state)
 
-    #expect(!workspace.tabs.contains { $0.isWelcome },
-            "Willkommen-Tab darf beim Restore nicht kurz aufblitzen")
+    #expect(!workspace.tabs.contains { $0.isPristineScratch },
+            "Start-Tab darf beim Restore nicht kurz aufblitzen")
     #expect(!workspace.tabs.contains { $0.url == nil },
             "Kein leerer „Ohne Titel“-Tab neben den geladenen Dateien")
     #expect(workspace.tabs.count == 2)
@@ -239,7 +240,7 @@ func sessionAllLoadsFailReturnsToWelcome() async throws {
     #expect(finished)
     #expect(workspace.projectURL == nil)
     #expect(workspace.tabs.count == 1)
-    #expect(workspace.tabs[0].isWelcome)
+    #expect(workspace.tabs[0].isPristineScratch)
     #expect(workspace.activeTabID == workspace.tabs[0].id)
 }
 

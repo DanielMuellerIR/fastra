@@ -49,7 +49,7 @@ func homeCleanTabsReturnDirectly() throws {
     #expect(filePromptCount == 0)
     #expect(workspace.projectURL == nil)
     #expect(workspace.tabs.count == 1)
-    #expect(workspace.tabs[0].isWelcome)
+    #expect(workspace.tabs[0].isPristineScratch)
     #expect(workspace.activeTabID == workspace.tabs[0].id)
 }
 
@@ -124,7 +124,7 @@ func homeSavesDirtyFileBeforeWelcome() throws {
     #expect(try String(contentsOf: url, encoding: .utf8) == "neu")
     #expect(workspace.projectURL == nil)
     #expect(workspace.tabs.count == 1)
-    #expect(workspace.tabs[0].isWelcome)
+    #expect(workspace.tabs[0].isPristineScratch)
 }
 
 @Test("Später Datei-Abbruch behält alle Tabs; frühere Sicherung bleibt erhalten")
@@ -189,13 +189,13 @@ func projectOpenRemovesWelcomeAndKeepsDraft() throws {
     workspace.openProject(at: directory)
 
     #expect(workspace.projectURL == directory)
-    #expect(!workspace.tabs.contains { $0.isWelcome })
+    #expect(!workspace.isWelcomeScreen)
     #expect(workspace.tabs.contains { $0.id == draftID && $0.content == "Entwurf" })
 }
 
-@Test("Projekt öffnen ersetzt reines Willkommen durch normalen Scratch-Tab")
+@Test("Projekt öffnen behält den leeren Start-Tab; der Platzhalter verschwindet")
 @MainActor
-func projectOpenNeverCoexistsWithWelcome() throws {
+func projectOpenHidesPlaceholderButKeepsScratch() throws {
     let (workspace, defaults, suite) = homeWorkspace()
     defer { defaults.removePersistentDomain(forName: suite) }
     let directory = try homeFile("dummy.txt", content: "x")
@@ -206,13 +206,16 @@ func projectOpenNeverCoexistsWithWelcome() throws {
 
     #expect(workspace.projectURL == directory)
     #expect(workspace.tabs.count == 1)
-    #expect(!workspace.tabs[0].isWelcome)
     #expect(workspace.tabs[0].url == nil)
+    // Der Tab selbst bleibt unberührt leer — aber neben einem geladenen
+    // Projekt zeigt er keine Starthilfe mehr.
+    #expect(workspace.tabs[0].isPristineScratch)
+    #expect(!workspace.isWelcomeScreen)
 }
 
-@Test("Datei-Laden unterdrückt Willkommen sofort und stellt es bei Fehler wieder her")
+@Test("Datei-Laden lässt den Start-Tab stehen; nach einem Fehler ist er unverändert zurück")
 @MainActor
-func fileLoadNeverCoexistsWithWelcome() async {
+func fileLoadKeepsScratchAndRestoresItAfterFailure() async {
     let (workspace, defaults, suite) = homeWorkspace()
     defer { defaults.removePersistentDomain(forName: suite) }
     let missing = FileManager.default.temporaryDirectory
@@ -221,8 +224,11 @@ func fileLoadNeverCoexistsWithWelcome() async {
     var result: Bool?
 
     workspace.loadFile(at: missing) { result = $0 }
-    #expect(!workspace.tabs.contains { $0.isWelcome })
+    // Während des Ladens: Lade-Platzhalter aktiv, Start-Tab bleibt daneben
+    // stehen, kein Willkommens-Platzhalter sichtbar.
+    #expect(workspace.tabs.count == 2)
     #expect(workspace.tabs.contains { $0.url == missing && $0.isLoading })
+    #expect(!workspace.isWelcomeScreen)
 
     let deadline = Date().addingTimeInterval(5)
     while result == nil, Date() < deadline { await Task.yield() }
@@ -230,6 +236,7 @@ func fileLoadNeverCoexistsWithWelcome() async {
     #expect(result == false)
     #expect(workspace.projectURL == nil)
     #expect(workspace.tabs.count == 1)
-    #expect(workspace.tabs[0].isWelcome)
+    #expect(workspace.tabs[0].isPristineScratch)
     #expect(workspace.activeTabID == workspace.tabs[0].id)
+    #expect(workspace.isWelcomeScreen)
 }

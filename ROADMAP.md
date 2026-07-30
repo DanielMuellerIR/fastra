@@ -101,20 +101,11 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   das Ziehen der Datei aus der Titelzeile (Proxy-Icon) ersatzlos. Möglicher
   Ersatz wäre ein `.onDrag` der Datei-URL direkt am Tab — nur bei echtem Bedarf.
 
-- **Willkommen als Platzhalter statt eigenem Tab** (Daniel-Idee 2026-07-29):
-  Kein Willkommen-Tab mehr — stattdessen zeigt jeder neue, noch unberührte
-  leere Tab den Willkommensinhalt als Platzhalter hinter dem Cursor in
-  Zeile 1; ab dem ersten getippten Zeichen verschwindet er. Das würde die
-  Sonderrolle des Willkommen-Tabs (eigenes `isWelcome`-Flag, ⌘N-Sonderfall,
-  Abräum-Logik beim Datei-/Projektöffnen) weitgehend auflösen. Machbar als
-  Overlay über der Editorfläche, solange der Tab leer, nicht dirty und ohne
-  URL ist: Die Klickziele (zuletzt benutzt, Öffnen, Hilfe) blieben bedienbar,
-  der erste Tastendruck blendet aus. Zu entscheiden bleibt: Fenstertitel im
-  Platzhalterzustand (bisher Version+Datum), Verhalten der Zuletzt-Liste in
-  JEDEM leeren Tab statt nur einem, und dass damit die Produktentscheidung
-  vom 2026-07-12 („Willkommen ist ein eigener, bestehen bleibender Tab")
-  bewusst ersetzt würde. Produktentscheidung durch Daniel nötig, erst dann
-  Umsetzung.
+- **Willkommen als Platzhalter statt eigenem Tab:** Von Daniel am 2026-07-30
+  entschieden und umgesetzt (siehe CHANGELOG Unreleased). Offen bleibt nur
+  die visuelle Feinabnahme auf einer echten UI-Sitzung: Overlay-Position
+  relativ zu Cursorzeile und Gutter, Klickdurchlässigkeit der freien
+  Flächen, README-Screenshots des Startzustands.
 
 - **Datenschutz und Sicherheit der Markdown-Vorschau erklären** (Idee
   2026-07-28): Ein kurzer Abschnitt in README und mitgelieferter Hilfe, der
