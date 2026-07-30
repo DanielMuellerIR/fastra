@@ -366,6 +366,9 @@
 "Aus Bereitstellung nehmen (%ld Dateien)" = "Unstage (%ld Files)";
 "Alle Änderungen verwerfen" = "Discard All Changes";
 "Gesamt-Diff aller offenen Änderungen anzeigen" = "Show a combined diff of all open changes";
+"Alle Änderungen verwerfen — einzelne oder mehrere Dateien über Rechtsklick bzw. ⇧/⌘-Klick" = "Discard all changes — for single or several files use right-click or ⇧/⌘-click";
+"Alle bereitstellen — einzelne oder mehrere Dateien über Rechtsklick bzw. ⇧/⌘-Klick" = "Stage all — for single or several files use right-click or ⇧/⌘-click";
+"Alle aus Bereitstellung nehmen — einzelne oder mehrere Dateien über Rechtsklick bzw. ⇧/⌘-Klick" = "Unstage all — for single or several files use right-click or ⇧/⌘-click";
 "Push erfolgreich" = "Push Succeeded";
 "Push (Upstream anlegen)" = "Push (Set Upstream)";
 "Push erfolgreich · Upstream angelegt" = "Push Succeeded · Upstream Set";

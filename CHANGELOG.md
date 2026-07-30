@@ -32,6 +32,16 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ### Behoben
 
+- **Die Abschnittsköpfe der Änderungen-Liste scrollen nicht mehr weg**
+  (Daniel-Wunsch 2026-07-30). „BEREITGESTELLT" und „ÄNDERUNGEN" bleiben samt
+  ihren Sammel-Knöpfen oben stehen; bei 85 geänderten Dateien waren
+  Überschrift und Knöpfe vorher nach wenigen Zeilen aus dem Bild. Zwei
+  Folgefehler derselben Kopfzeile fielen dabei auf und sind mitbehoben: Die
+  Anzahl-Badge wurde seit dem dritten Knopf zusammengequetscht (bei 60
+  Änderungen nur noch ein Strich), und in einer schmal gezogenen Seitenleiste
+  schnitt die Überschrift den letzten Knopf ab. Jetzt weicht zuerst die
+  Überschrift — gekürzt, nie umgebrochen; Knöpfe und Anzahl bleiben
+  vollständig.
 - **In der zweispaltigen Diff-Ansicht laufen die Spalten nicht mehr ineinander**
   (Daniel-Befund 2026-07-30 am Gesamt-Diff). Jede Zeile, die breiter als eine
   halbe Fensterbreite war, wurde über die Spaltengrenze hinaus gezeichnet und
@@ -73,6 +83,11 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ### Geändert
 
+- **Die Tooltips der Sammel-Knöpfe nennen die Alternative** (Daniel-Wunsch
+  2026-07-30): „Alle Änderungen verwerfen — einzelne oder mehrere Dateien über
+  Rechtsklick bzw. ⇧/⌘-Klick". Wer den Knopf sieht, erfährt damit auch, dass
+  es die feinere Auswahl gibt; gleiches gilt für Bereitstellen und
+  Aus-Bereitstellung-nehmen.
 - **Willkommen ist jetzt ein Platzhalter über neuen Tabs, kein eigener Tab
   mehr** (Daniel-Entscheidung 2026-07-30, Firefox-Neuer-Tab-Muster; ersetzt
   das Willkommen-Tab-Modell vom 2026-07-12). Jeder unberührte leere Tab —
@@ -110,6 +125,16 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
   das Verhalten nicht automatisiert prüfbar war. Zwei dabei gelernte Fallen
   stehen jetzt in `AGENTS.md` (Nicht-Maus-Events und `clickCount`;
   `postEvent` statt `sendEvent` für `NSApp.currentEvent`).
+- **Neuer Fenster-Selbsttest `gitstickyheader`** füllt ein echtes Repo mit 60
+  Änderungen, scrollt die Liste um 400 pt und prüft dann: Die Liste hat sich
+  wirklich bewegt, der Abschnittskopf steht unverändert an derselben Stelle,
+  er klebt an der Listenoberkante, und beide geprüften Kopf-Knöpfe sind
+  vollständig sichtbar. Gegengeprüft: Ohne `pinnedViews` meldet er „Der
+  Abschnittskopf ist mitgescrollt (vorher y=232, nachher y=-168)". Dazu der
+  Diagnose-Shot `gitstickyshot`. Eine erste Testfassung war selbst falsch —
+  sie scrollte über `NSApp.postEvent` (kam nie an) und suchte den Kopf an der
+  falschen Kante, weil SwiftUIs Hosting-Views geflippt sind (y wächst nach
+  unten); beides steht jetzt als Falle in `AGENTS.md`.
 - **Neuer Fenster-Selbsttest `diffwide`** messt die Geometrie der
   zweispaltigen Diff-Ansicht an den echten Zell-Frames: beide Spalten gleich
   breit, Spaltenbreite unabhängig vom Inhalt, keine Überlappung, und die

@@ -577,7 +577,10 @@ Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**:
 - **Sammel-Knöpfe im Abschnittskopf „ÄNDERUNGEN“:** Gesamt-Diff aller
   offenen Änderungen in der zweispaltigen Ansicht öffnen, alle Änderungen
   verwerfen, alles bereitstellen. Im Kopf „BEREITGESTELLT“ steht der Knopf,
-  der alles wieder aus der Bereitstellung nimmt.
+  der alles wieder aus der Bereitstellung nimmt. Die Abschnittsköpfe bleiben
+  beim Scrollen oben stehen, damit Überschrift und Knöpfe auch bei vielen
+  Dateien erreichbar sind; in einer schmal gezogenen Seitenleiste wird
+  zuerst die Überschrift gekürzt, nie ein Knopf.
 - **Graph:** der Commit-Graph mit Verzweigungen und Merges.
 - Verlauf (`git log`) und Diffs öffnen als schreibgeschützte Tabs; ein
   Klick auf einen Commit-Hash zeigt dessen Details.

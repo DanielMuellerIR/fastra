@@ -61,40 +61,57 @@ struct GitChangesView: View {
                 }
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 1) {
+                    // `pinnedViews: [.sectionHeaders]` hält den jeweiligen
+                    // Abschnittskopf samt Sammel-Knöpfen beim Scrollen oben
+                    // stehen (Daniel-Wunsch 2026-07-30) — bei 85 geänderten
+                    // Dateien waren Überschrift und Knöpfe sonst weggescrollt.
+                    LazyVStack(alignment: .leading, spacing: 1,
+                               pinnedViews: [.sectionHeaders]) {
                         if !staged.isEmpty {
-                            sectionHeader("BEREITGESTELLT", count: staged.count, actions: [
-                                HeaderAction(icon: "minus",
-                                             help: "Alle aus Bereitstellung nehmen") {
-                                    workspace.gitUnstageAll()
-                                },
-                            ])
-                            ForEach(staged) { change in
-                                row(for: change, section: .staged)
+                            Section {
+                                ForEach(staged) { change in
+                                    row(for: change, section: .staged)
+                                }
+                            } header: {
+                                sectionHeader("BEREITGESTELLT", count: staged.count,
+                                              markerID: "gitSectionHeader-staged",
+                                              actions: [
+                                    HeaderAction(icon: "minus",
+                                                 help: "Alle aus Bereitstellung nehmen — einzelne oder mehrere Dateien über Rechtsklick bzw. ⇧/⌘-Klick") {
+                                        workspace.gitUnstageAll()
+                                    },
+                                ])
                             }
                         }
                         if !unstaged.isEmpty {
-                            // Drei Sammel-Aktionen wie in VS Code, nur dauerhaft
-                            // sichtbar: Gesamt-Diff, alles verwerfen, alles
-                            // bereitstellen (Daniel-Wunsch 2026-07-30).
-                            sectionHeader("ÄNDERUNGEN", count: unstaged.count, actions: [
-                                HeaderAction(icon: "rectangle.split.2x1",
-                                             help: "Gesamt-Diff aller offenen Änderungen anzeigen",
-                                             markerID: "gitHeaderOpenDiff") {
-                                    workspace.openGitDiff()
-                                },
-                                HeaderAction(icon: "arrow.uturn.backward",
-                                             help: "Alle Änderungen verwerfen",
-                                             markerID: "gitHeaderDiscardAll") {
-                                    workspace.gitDiscard(changes: unstaged)
-                                },
-                                HeaderAction(icon: "plus",
-                                             help: "Alle bereitstellen") {
-                                    workspace.gitStageAll()
-                                },
-                            ])
-                            ForEach(unstaged) { change in
-                                row(for: change, section: .unstaged)
+                            Section {
+                                ForEach(unstaged) { change in
+                                    row(for: change, section: .unstaged)
+                                }
+                            } header: {
+                                // Drei Sammel-Aktionen wie in VS Code, nur
+                                // dauerhaft sichtbar: Gesamt-Diff, alles
+                                // verwerfen, alles bereitstellen
+                                // (Daniel-Wunsch 2026-07-30).
+                                sectionHeader("ÄNDERUNGEN", count: unstaged.count,
+                                              markerID: "gitSectionHeader-unstaged",
+                                              actions: [
+                                    HeaderAction(icon: "rectangle.split.2x1",
+                                                 help: "Gesamt-Diff aller offenen Änderungen anzeigen",
+                                                 markerID: "gitHeaderOpenDiff") {
+                                        workspace.openGitDiff()
+                                    },
+                                    HeaderAction(icon: "arrow.uturn.backward",
+                                                 help: "Alle Änderungen verwerfen — einzelne oder mehrere Dateien über Rechtsklick bzw. ⇧/⌘-Klick",
+                                                 markerID: "gitHeaderDiscardAll") {
+                                        workspace.gitDiscard(changes: unstaged)
+                                    },
+                                    HeaderAction(icon: "plus",
+                                                 help: "Alle bereitstellen — einzelne oder mehrere Dateien über Rechtsklick bzw. ⇧/⌘-Klick",
+                                                 markerID: "gitHeaderStageAll") {
+                                        workspace.gitStageAll()
+                                    },
+                                ])
                             }
                         }
                     }
@@ -266,7 +283,10 @@ struct GitChangesView: View {
     }
 
     /// Abschnitts-Kopf mit Titel, Anzahl-Badge und Sammel-Aktionen rechts.
+    /// Er bleibt beim Scrollen oben stehen und braucht deshalb einen deckenden
+    /// Hintergrund — sonst schienen die durchlaufenden Dateizeilen hindurch.
     private func sectionHeader(_ title: String, count: Int,
+                               markerID: String,
                                actions: [HeaderAction]) -> some View {
         HStack(spacing: 6) {
             Text(verbatim: L10n.string(title))
@@ -274,13 +294,22 @@ struct GitChangesView: View {
                 .tracking(0.6)
                 .foregroundColor(Theme.textSecondary)
                 .lineLimit(1)                       // nie umbrechen (Daniel 2026-07-12)
-                .fixedSize(horizontal: true, vertical: false)
+                // Seit dem dritten Knopf gilt: In einer schmal gezogenen
+                // Seitenleiste weicht ZUERST der Titel (gekürzt, nie
+                // umgebrochen). Mit `fixedSize` bestand er auf seiner
+                // Idealbreite und schnitt stattdessen den letzten Knopf ab.
+                .truncationMode(.tail)
+                .layoutPriority(-1)
             Text("\(count)")
                 .fastraFont(size: 9, weight: .semibold, design: .monospaced)
                 .foregroundColor(Theme.textSecondary)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 1)
                 .background(Capsule().fill(Theme.surfaceSand))
+                // Seit dem dritten Knopf im Kopf ist der Platz knapp: Ohne
+                // eigene Idealbreite quetschte SwiftUI zuerst diese Zahl —
+                // bei 60 Änderungen war sie nur noch ein Strich.
+                .fixedSize(horizontal: true, vertical: false)
             Spacer(minLength: 0)
             // `enumerated`, weil die Aktionen keine eigene Identität brauchen:
             // die Liste ist klein, konstant und pro Abschnitt fest verdrahtet.
@@ -304,6 +333,19 @@ struct GitChangesView: View {
         .padding(.horizontal, 14)
         .padding(.top, 12)
         .padding(.bottom, 4)
+        // Deckender Hintergrund in der Farbe der Seitenleiste: Der festgepinnte
+        // Kopf liegt über den scrollenden Zeilen.
+        .background(Theme.surfaceBase)
+        .overlay(alignment: .bottom) {
+            // Feine Kante, damit der stehende Kopf sichtbar von der ersten
+            // durchlaufenden Zeile getrennt bleibt.
+            Rectangle()
+                .fill(Theme.stroke)
+                .frame(height: 1)
+        }
+        .background {
+            SelfTestMarker(id: markerID)
+        }
     }
 }
 

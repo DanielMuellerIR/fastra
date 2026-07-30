@@ -116,7 +116,8 @@ enum SelfTest {
         let sidebar: String?
         switch name {
         case "gitshot", "gitstagefolder", "gitpushbutton",
-             "gitmultidiscard": sidebar = "changes"
+             "gitmultidiscard", "gitstickyheader",
+             "gitstickyshot": sidebar = "changes"
         case "graphshot": sidebar = "graph"
         default: sidebar = nil
         }
@@ -472,6 +473,9 @@ enum SelfTest {
             // Echter Fensterklick auf den transparent beschrifteten Push-Knopf:
             // erster Config-Remote statt alphabetischem `github`.
             waitForMainWindow { runGitPushButtonTest() }
+        case "gitstickyheader":
+            // Bleibt der Abschnittskopf samt Sammel-Knöpfen beim Scrollen oben?
+            waitForMainWindow { runGitStickyHeaderTest() }
         case "gitmultidiscard":
             // Echte Fensterklicks: Klick + Shift-Klick + Cmd-Klick markieren
             // mehrere Änderungszeilen, Verwerfen wirkt auf die ganze Auswahl.
@@ -526,6 +530,10 @@ enum SelfTest {
             // Geometrie der zweispaltigen Diff-Ansicht: gleich breite Spalten,
             // Umbruch statt Überlauf bei sehr langen Zeilen.
             waitForMainWindow { runDiffWideTest() }
+        case "gitstickyshot":
+            // Diagnose: gescrollte Änderungen-Liste für die Sichtprüfung des
+            // festgepinnten Abschnittskopfs.
+            waitForMainWindow { runGitStickyShot() }
         case "diffwideshot":
             // Diagnose: zweispaltiger Diff mit überlangen Zeilen — belegt die
             // Spaltengrenze visuell.
@@ -552,7 +560,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitmultidiscard, diffwide, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitmultidiscard, gitstickyheader, diffwide, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -2232,6 +2240,20 @@ enum SelfTest {
         return true
     }
 
+
+    /// Scrollt eine gefundene `NSScrollView` um `points` nach unten. Das
+    /// documentView der SwiftUI-Hosting-ScrollView ist geflippt (y wächst nach
+    /// unten), ein positiver Wert bewegt den Inhalt also weiter nach hinten.
+    private static func scrollGitChangesList(_ scroll: NSScrollView,
+                                             by points: CGFloat) {
+        let clip = scroll.contentView
+        let maximum = max(0, (scroll.documentView?.bounds.height ?? 0)
+                          - clip.bounds.height)
+        let y = min(points, maximum)
+        clip.scroll(to: NSPoint(x: 0, y: y))
+        scroll.reflectScrolledClipView(clip)
+        scroll.window?.layoutIfNeeded()
+    }
 
     private static func pollShiftSelectedTabs(
         _ ws: Workspace,
@@ -11574,6 +11596,172 @@ enum SelfTest {
         }
     }
 
+    /// Daniel-Wunsch 2026-07-30: Der Abschnittskopf „ÄNDERUNGEN" samt
+    /// Sammel-Knöpfen muss beim Scrollen oben stehen bleiben. Der Test füllt
+    /// ein echtes Repo mit so vielen Änderungen, dass die Liste sicher
+    /// scrollt, scrollt die echte NSScrollView der Seitenleiste und prüft
+    /// danach, dass Kopf und Knöpfe weiter an der Oberkante sichtbar sind.
+    private static func runGitStickyHeaderTest() {
+        testLabel = "gitstickyheader"
+        guard ProcessInfo.processInfo.environment["FASTRA_SIDEBAR"] == "changes" else {
+            finish(false, "Launch-Fixture FASTRA_SIDEBAR=changes fehlt")
+        }
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        guard GitRunner.isAvailable else {
+            finish(true, "git nicht verfügbar — Git-Ansicht bleibt erwartungsgemäß verborgen")
+        }
+        Workspace.presentGitDialogs = false
+
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-gitsticky-\(UUID().uuidString)")
+        let repo = base.appendingPathComponent("working-copy")
+        do {
+            try fm.createDirectory(at: repo, withIntermediateDirectories: true)
+            // 60 Dateien: sicher mehr, als in die Seitenleiste passen.
+            for index in 1...60 {
+                try "Basis \(index)\n".write(
+                    to: repo.appendingPathComponent(String(format: "datei-%02d.txt", index)),
+                    atomically: true, encoding: .utf8)
+            }
+        } catch {
+            finish(false, "(setup) \(error.localizedDescription)")
+        }
+        let setup: [[String]] = [
+            ["init", "-b", "main"],
+            ["config", "user.email", "t@t"],
+            ["config", "user.name", "T"],
+            ["add", "-A"],
+            ["commit", "-m", "init"],
+        ]
+        runGitSequence(setup, in: repo) { ok, error in
+            guard ok else {
+                try? fm.removeItem(at: base)
+                finish(false, "(setup git) \(error)")
+            }
+            do {
+                for index in 1...60 {
+                    try "Geändert \(index)\n".write(
+                        to: repo.appendingPathComponent(String(format: "datei-%02d.txt", index)),
+                        atomically: true, encoding: .utf8)
+                }
+            } catch {
+                try? fm.removeItem(at: base)
+                finish(false, "(working tree) \(error.localizedDescription)")
+            }
+            DispatchQueue.main.async {
+                ws.openProject(at: repo)
+                pollGitStickyHeader(ws, base: base, tick: 0)
+            }
+        }
+    }
+
+    private static func pollGitStickyHeader(_ ws: Workspace, base: URL, tick: Int) {
+        guard let window = mainWindowForAXChecks(),
+              let content = window.contentView,
+              let header = markerView(id: "gitSectionHeader-unstaged", in: content),
+              let discard = markerView(id: "gitHeaderDiscardAll", in: content),
+              (ws.gitStatus?.unstagedChanges.count ?? 0) >= 60 else {
+            if tick >= 120 {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Abschnittskopf oder Knopf fehlt "
+                    + "(Änderungen: \(ws.gitStatus?.unstagedChanges.count ?? 0))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollGitStickyHeader(ws, base: base, tick: tick + 1)
+            }
+            return
+        }
+        window.layoutIfNeeded()
+        // Die NSScrollView, in der der Kopf liegt — dieselbe, die der Nutzer
+        // mit dem Trackpad bewegt.
+        var scroll: NSScrollView?
+        var view: NSView? = header.superview
+        while let current = view {
+            if let candidate = current as? NSScrollView { scroll = candidate; break }
+            view = current.superview
+        }
+        guard let scroll else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Keine NSScrollView über dem Abschnittskopf gefunden")
+        }
+        let before = header.convert(header.bounds, to: content)
+        let heightBefore = scroll.documentView?.bounds.height ?? 0
+        guard heightBefore > scroll.contentView.bounds.height + 100 else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Liste ist nicht scrollbar (Inhalt \(Int(heightBefore)) pt, "
+                + "Sichtfenster \(Int(scroll.contentView.bounds.height)) pt)")
+        }
+        // Scrollen über den regulären AppKit-Weg der gefundenen ScrollView.
+        let target: CGFloat = 400
+        scrollGitChangesList(scroll, by: target)
+        let scrolled = scroll.contentView.bounds.origin.y
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            defer { try? FileManager.default.removeItem(at: base) }
+            guard let contentNow = window.contentView,
+                  let headerNow = markerView(id: "gitSectionHeader-unstaged",
+                                             in: contentNow),
+                  let discardNow = markerView(id: "gitHeaderDiscardAll",
+                                              in: contentNow) else {
+                finish(false, "Abschnittskopf ist nach dem Scrollen verschwunden — "
+                    + "er scrollt mit statt oben zu bleiben")
+            }
+            let after = headerNow.convert(headerNow.bounds, to: contentNow)
+            let viewport = scroll.contentView.convert(scroll.contentView.bounds,
+                                                      to: contentNow)
+            _ = discard
+            // (a) Es wurde wirklich gescrollt. Ohne diese Prüfung bestünde der
+            // Test auch dann, wenn die Liste stillstand — der Kopf sitzt ja
+            // ungescrollt ohnehin oben.
+            guard scrolled > 100 else {
+                finish(false, "Die Liste hat sich nicht bewegt (Scroll-Position "
+                    + "\(Int(scrolled)) pt) — die Zusage ist so nicht prüfbar")
+            }
+            // (b) Der Kopf ist trotz des Scrollens an derselben Stelle im
+            // Fenster geblieben. Genau das ist das Festpinnen.
+            guard abs(after.minY - before.minY) < 2 else {
+                finish(false, "Der Abschnittskopf ist mitgescrollt "
+                    + "(vorher y=\(Int(before.minY)), nachher y=\(Int(after.minY)))")
+            }
+            // (c) Und er sitzt an der Oberkante der Liste. Welche Kante „oben"
+            // ist, hängt am Koordinatensystem: SwiftUIs Hosting-Views sind
+            // geflippt (y wächst nach unten), AppKit-Views nicht.
+            let listTop = contentNow.isFlipped ? viewport.minY : viewport.maxY
+            let headerTop = contentNow.isFlipped ? after.minY : after.maxY
+            guard abs(headerTop - listTop) < 2 else {
+                finish(false, "Der Abschnittskopf klebt nicht an der Oberkante "
+                    + "(Kopf \(Int(headerTop)), Listenoberkante \(Int(listTop)))")
+            }
+            // (d) Die Knöpfe sind mitgekommen und liegen im stehenden Kopf.
+            let button = discardNow.convert(discardNow.bounds, to: contentNow)
+            guard button.width > 0, button.height > 0,
+                  button.midY >= after.minY - 1, button.midY <= after.maxY + 1 else {
+                finish(false, "Der Verwerfen-Knopf sitzt nicht im stehenden Kopf "
+                    + "(Knopf \(Int(button.minY))–\(Int(button.maxY)), "
+                    + "Kopf \(Int(after.minY))–\(Int(after.maxY)))")
+            }
+            // (e) Auch der letzte Knopf ist VOLLSTÄNDIG sichtbar. In einer
+            // schmalen Seitenleiste schnitt der Titel ihn vorher ab, weil er
+            // auf seiner Idealbreite bestand.
+            guard let stageNow = markerView(id: "gitHeaderStageAll",
+                                            in: contentNow) else {
+                finish(false, "Der Bereitstellen-Knopf fehlt im Kopf")
+            }
+            let stageFrame = stageNow.convert(stageNow.bounds, to: contentNow)
+            guard stageFrame.width > 0,
+                  stageFrame.maxX <= viewport.maxX + 1 else {
+                finish(false, "Der letzte Kopf-Knopf ist abgeschnitten "
+                    + "(Knopf endet bei \(Int(stageFrame.maxX)), Seitenleiste "
+                    + "bei \(Int(viewport.maxX)))")
+            }
+            finish(true, "60 Änderungen, Liste um \(Int(scrolled)) pt gescrollt: "
+                + "der Abschnittskopf bleibt an der Listenoberkante stehen "
+                + "(y=\(Int(after.minY)) vor und nach dem Scrollen) und die "
+                + "Sammel-Knöpfe sitzen weiter darin")
+        }
+    }
+
     /// Daniel-Wunsch 2026-07-30: Mehrere Dateizeilen der Änderungen-Ansicht
     /// per Klick + Shift-/Cmd-Klick markieren und auf einen Schlag verwerfen.
     /// Der Test klickt echte Fensterzeilen: Klick wählt die M-Zeile, Shift-
@@ -12896,6 +13084,72 @@ enum SelfTest {
         finish(true, "Spalten je \(Int(left.width)) pt breit und gleich hoch; "
             + "die ~900 Zeichen lange Zeile bricht auf \(Int(left.height)) pt "
             + "Höhe in ihrer Spalte um, statt über die Grenze zu laufen")
+    }
+
+    /// Diagnose (`-selftest gitstickyshot`): Änderungen-Liste mit 60 Dateien,
+    /// bereits nach unten gescrollt. Die Aufnahme zeigt, ob der Abschnittskopf
+    /// samt Sammel-Knöpfen oben stehen bleibt.
+    private static func runGitStickyShot() {
+        testLabel = "gitstickyshot"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        Workspace.presentGitDialogs = false
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-gitstickyshot-\(UUID().uuidString)")
+        let repo = base.appendingPathComponent("working-copy")
+        do {
+            try fm.createDirectory(at: repo, withIntermediateDirectories: true)
+            for index in 1...60 {
+                try "Basis \(index)\n".write(
+                    to: repo.appendingPathComponent(String(format: "datei-%02d.txt", index)),
+                    atomically: true, encoding: .utf8)
+            }
+        } catch {
+            finish(false, "(setup) \(error.localizedDescription)")
+        }
+        runGitSequence([["init", "-b", "main"], ["config", "user.email", "t@t"],
+                        ["config", "user.name", "T"], ["add", "-A"],
+                        ["commit", "-m", "init"]], in: repo) { ok, error in
+            guard ok else { finish(false, "(setup git) \(error)") }
+            do {
+                for index in 1...60 {
+                    try "Geändert \(index)\n".write(
+                        to: repo.appendingPathComponent(String(format: "datei-%02d.txt", index)),
+                        atomically: true, encoding: .utf8)
+                }
+            } catch {
+                finish(false, "(working tree) \(error.localizedDescription)")
+            }
+            DispatchQueue.main.async {
+                ws.openProject(at: repo)
+                pollGitStickyShot(ws, tick: 0)
+            }
+        }
+    }
+
+    private static func pollGitStickyShot(_ ws: Workspace, tick: Int) {
+        guard let window = mainWindowForAXChecks(),
+              let content = window.contentView,
+              let header = markerView(id: "gitSectionHeader-unstaged", in: content),
+              (ws.gitStatus?.unstagedChanges.count ?? 0) >= 60 else {
+            if tick >= 120 {
+                finish(false, "(gitstickyshot) Liste nicht bereit")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollGitStickyShot(ws, tick: tick + 1)
+            }
+            return
+        }
+        var scroll: NSScrollView?
+        var view: NSView? = header.superview
+        while let current = view {
+            if let candidate = current as? NSScrollView { scroll = candidate; break }
+            view = current.superview
+        }
+        if let scroll { scrollGitChangesList(scroll, by: 400) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            dumpMainWindowThenExit(prefix: "GITSTICKYSHOT-WINDOW")
+        }
     }
 
     /// Diagnose (`-selftest diffwideshot`): Zweispaltiger Diff mit Zeilen, die

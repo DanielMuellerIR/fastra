@@ -249,6 +249,17 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   Einzelklick-Zweig feuerte nie, obwohl `hitTest` die richtige View traf.
   Klickbare Zeilen deshalb als `Button` bauen und die Klickart aus dem Event
   ableiten; das ist der auch im Test verlässliche Pfad.
+- Die AppKit-Views einer SwiftUI-Hierarchie sind GEFLIPPT: y wächst nach
+  unten, „oben" ist `minY`. Ein Fenster-Selbsttest, der eine Oberkante gegen
+  `maxY` prüft, misst dann verlässlich das Falsche. Vor der Zusage
+  `isFlipped` der Bezugs-View abfragen (siehe `gitstickyheader`).
+- Scrollen in Fenster-Selbsttests: Ein per `CGEvent`/`NSApp.postEvent`
+  erzeugtes Scroll-Rad-Event erreichte die SwiftUI-ScrollView nicht (die
+  Scroll-Position blieb 0). Verlässlich ist der reguläre AppKit-Weg über die
+  gefundene `NSScrollView`: `contentView.scroll(to:)` plus
+  `reflectScrolledClipView` — festgepinnte Abschnittsköpfe folgen dem
+  korrekt. Ein Scroll-Test muss zusätzlich belegen, DASS gescrollt wurde,
+  sonst besteht er auch bei stillstehender Liste.
 
 ## Verhaltensevals
 

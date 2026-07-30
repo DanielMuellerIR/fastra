@@ -551,6 +551,9 @@ additionally shows the **Changes** and **Graph** tabs:
 - **Bulk buttons in the “CHANGES” section header:** open a combined diff of
   all open changes in the two-column view, discard all changes, stage
   everything. The “STAGED” header has the button that unstages everything.
+  Section headers stay pinned while you scroll, so the title and the buttons
+  remain reachable with many files; in a narrow sidebar the title is
+  truncated first, never a button.
 - **Graph:** the commit graph with branches and merges.
 - History (`git log`) and diffs open as read-only tabs; clicking a
   commit hash shows its details.
