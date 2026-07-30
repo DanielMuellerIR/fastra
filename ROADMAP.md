@@ -102,10 +102,12 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   Ersatz wäre ein `.onDrag` der Datei-URL direkt am Tab — nur bei echtem Bedarf.
 
 - **Willkommen als Platzhalter statt eigenem Tab:** Von Daniel am 2026-07-30
-  entschieden und umgesetzt (siehe CHANGELOG Unreleased). Offen bleibt nur
-  die visuelle Feinabnahme auf einer echten UI-Sitzung: Overlay-Position
-  relativ zu Cursorzeile und Gutter, Klickdurchlässigkeit der freien
-  Flächen, README-Screenshots des Startzustands.
+  entschieden, umgesetzt und am installierten Stand abgenommen („Passt nun",
+  nach Entfernen der anfänglichen Projekt-Sperre; siehe CHANGELOG
+  Unreleased). Die README-Screenshots zeigen den Willkommensbildschirm
+  nicht und bleiben unverändert. Offen sind nur noch die fokus-pflichtigen
+  Fenster-Selbsttests (welcomenew, newwindow, cmdw, sessionrestore,
+  coldopen) auf einer geeigneten UI-Sitzung.
 
 - **Datenschutz und Sicherheit der Markdown-Vorschau erklären** (Idee
   2026-07-28): Ein kurzer Abschnitt in README und mitgelieferter Hilfe, der
