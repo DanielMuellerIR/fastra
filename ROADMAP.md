@@ -145,6 +145,18 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Bekannte Fehler
 
+- **Der Selbsttest-Runner meldet `projectperf` als echten Funktionsfehler,
+  obwohl ihm nur die Umgebung fehlt** (2026-07-30). Der Test braucht über
+  `FASTRA_PROJECT_PERF_ROOT` einen externen, nur gelesenen Realbestand mit
+  `userPreferences.*`- und `DerivedData`-Anteilen; fehlt die Variable oder
+  passt der Ordner nicht, scheitert er mit `finish(false, …)` und zählt damit
+  in die echten FAILs statt in die Umgebungs-FAILs (Exit 1 statt 2). Er steht
+  bewusst nicht in `ALL_TESTS`, taucht aber in `WINDOWLESS_TESTS` auf und
+  wandert so leicht in eine handverlesene Testliste. `tool4dlsp` zeigt im
+  selben Runner, wie es richtig geht — dort wird der fehlende Realbestand als
+  Umgebungsproblem ausgewiesen. Beim Anfassen dieselbe Klassifizierung
+  nachziehen.
+
 - **`folderSearch_deduplicatesOverlappingRoots` einmal rot** (2026-07-28,
   nicht reproduziert). Der Test meldete 0 statt 1 Treffer in einem
   vollständigen `swift test`; isoliert dreimal und in zwei weiteren
