@@ -6,7 +6,7 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Jetzt
 
-- **Tests räumen ihre Preferences-Domains nicht auf** (gemeldet 2026-07-28, M3):
+- **Tests räumen ihre Preferences-Domains nicht auf** (gemeldet 2026-07-28):
   Jeder Testlauf legt unter `~/Library/Preferences` eigene Domains mit UUID im
   Namen an und lässt sie liegen — gefunden wurden 3713 plists (~22 MB), Muster
   `FastraTests.GitPreferences.<UUID>` (1419), `FastraTests.PatternLibrary.<UUID>`
@@ -155,7 +155,7 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 ## Offene Beobachtungen (nicht reproduziert)
 
 - **⌘⇧+Pfeiltasten ohne Wirkung auf einem anderen Mac** (Daniel-Meldung
-  2026-07-29; auf Daniels M3 funktioniert es). Befund: Fastras eigenes
+  2026-07-29; auf dem Entwicklungs-Mac funktioniert es). Befund: Fastras eigenes
   Key-Routing (`KeyRouting.route`) fasst ⌘- und ⌘⇧-Pfeilkombinationen nicht
   an — sie gehen unverändert an den Editor durch; es gibt also keinen
   Fastra-Code, der das nur auf einem Rechner abschalten könnte. Verdacht:

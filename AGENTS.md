@@ -187,6 +187,23 @@ Die nutzersichtbare Version folgt dem bestehenden Schema und muss konsistent in
 `CFBundleShortVersionString` und `CFBundleVersion` gemeinsam aktualisieren. Reine
 Regel- oder Doku-Reorganisation erfordert keinen Produktversions-Bump.
 
+**Jede nicht-triviale Änderung erhöht die Version — im selben Commit, nicht erst
+im Release-Lauf.** Nicht-trivial heißt: nutzersichtbares Verhalten ändert sich,
+also jedes neue Merkmal und jede Fehlerbehebung an der Oberfläche. Nur Doku,
+Kommentare, Tests und Umbauten ohne Verhaltensänderung bleiben ohne Bump. Der
+Grund ist praktisch: Die Version ist das einzige Merkmal, an dem sich ein
+installiertes Bundle von einem anderen unterscheiden lässt. Steht in
+`/Applications` dieselbe Nummer wie vor der Änderung, ist bei einer Beobachtung
+aus dem Testbetrieb nicht mehr entscheidbar, ob sie am Code liegt oder an einem
+alten Stand — genau dieser Fall trat am 2026-07-26 auf und ist die Begründung
+des damaligen Bumps auf 1.52.0.
+
+Die Regel war zwischen dem 2026-07-26 und dem 2026-07-30 faktisch außer Kraft:
+Bumps wanderten in eigene `chore(release):`-Commits und blieben dann ganz aus,
+sodass sechs nutzersichtbare Änderungen unter der unveränderten Nummer 1.53.1
+liefen. Die Version 1.60.0 gleicht diesen Rückstand bewusst mit einem größeren
+Sprung aus (Produktentscheidung 2026-07-30).
+
 Ein Build, Tag oder lokales Release ist keine Veröffentlichung. Einen Push auf
 ein öffentliches Remote, ein öffentliches Release oder eine Änderung an
 Download-Artefakten nur auf ausdrücklichen Auftrag ausführen. Vorher den

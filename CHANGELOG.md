@@ -9,6 +9,16 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.60.0] — 2026-07-30
+
+Der Sprung von 1.53.1 auf 1.60.0 ist bewusst größer als die Arbeit einer
+einzelnen Version. Zwischen dem 2026-07-26 und dem 2026-07-30 wanderte die
+Versionserhöhung in eigene Release-Commits und blieb dann ganz aus, sodass sechs
+nutzersichtbare Änderungen unter der unveränderten Nummer 1.53.1 liefen. Ein
+installiertes Bundle war damit nicht mehr von einem älteren zu unterscheiden.
+Ab dieser Version erhöht wieder jede nicht-triviale Änderung die Nummer im selben
+Commit; der Sprung gleicht den aufgelaufenen Rückstand aus.
+
 ### Hinzugefügt
 
 - **Mehrere Dateien auf dem Änderungen-Tab gemeinsam behandeln**
@@ -179,6 +189,14 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
   Editor-Identität an jedem Schritt. Vorher hieß es nur „Controller verloren"
   beziehungsweise es wurden sechs Zusagen in einer Sammelmeldung
   zusammengefasst — beides ließ offen, was tatsächlich passiert war.
+
+- **Die Versionsregel steht wieder ausdrücklich in `AGENTS.md`.** Sie war nie
+  förmlich abgeschafft, verwässerte aber in der Praxis: Ab 1.52.0 entstanden
+  eigene `chore(release):`-Commits für den Bump, und nach 1.53.1 unterblieb er
+  ganz. Der Abschnitt „Version und Veröffentlichung" nennt jetzt beides
+  ausdrücklich — nicht-triviale Änderung erhöht die Version im selben Commit,
+  reine Doku und Tests nicht — samt Begründung, warum ein nicht unterscheidbares
+  Bundle in `/Applications` Testbeobachtungen wertlos macht.
 
 ## [v1.53.1] — 2026-07-28
 
