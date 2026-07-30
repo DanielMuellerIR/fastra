@@ -583,7 +583,9 @@ Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**:
   Klick auf einen Commit-Hash zeigt dessen Details.
 - Git-Diffs nutzen dieselbe zweispaltige Ansicht wie **Dateien
   vergleichen** — inklusive Differenzen-Liste unten und
-  ⌥↑/⌥↓-Navigation (⌥⌘[/⌥⌘] funktionieren weiterhin).
+  ⌥↑/⌥↓-Navigation (⌥⌘[/⌥⌘] funktionieren weiterhin). Beide Spalten sind
+  immer gleich breit; Zeilen, die länger als eine Spalte sind, brechen
+  innerhalb ihrer Spalte um, damit nichts abgeschnitten wird.
 - Merge-Konflikte bekommen eine eigene Leiste mit sicheren
   Auflösungsschritten.
 

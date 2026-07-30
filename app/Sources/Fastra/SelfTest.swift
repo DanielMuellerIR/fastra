@@ -522,6 +522,14 @@ enum SelfTest {
             // Diagnose: Projekt-Dateibaum in der Seitenleiste + geladene
             // Datei fürs fenstergezielte Capture.
             waitForMainWindow { runProjectShot() }
+        case "diffwide":
+            // Geometrie der zweispaltigen Diff-Ansicht: gleich breite Spalten,
+            // Umbruch statt Überlauf bei sehr langen Zeilen.
+            waitForMainWindow { runDiffWideTest() }
+        case "diffwideshot":
+            // Diagnose: zweispaltiger Diff mit überlangen Zeilen — belegt die
+            // Spaltengrenze visuell.
+            waitForMainWindow { runDiffWideShot() }
         case "aboutshot":
             // Diagnose: Über-Dialog für die visuelle Kontrolle von Icon,
             // Wortmarke, Version und Textabständen.
@@ -544,7 +552,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitmultidiscard, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitmultidiscard, diffwide, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -12775,6 +12783,157 @@ enum SelfTest {
             // ⌘T-Äquivalent: frischer leerer Tab im Projektfenster.
             ws.openNewTab()
             dumpMainWindowThenExit(prefix: "WELCOMETABSHOT-WINDOW")
+        }
+    }
+
+    /// Prüft am echten Fenster, was Daniel am 2026-07-30 im Gesamt-Diff sah:
+    /// Zeilen, die breiter als eine Spalte sind, liefen über die Spaltengrenze
+    /// und überschrieben die andere Seite. Messgrößen an den Zell-Frames:
+    /// beide Spalten gleich breit, rechte Spalte hinter der linken, und die
+    /// lange Zeile ist MEHRZEILIG hoch — nur dann bricht der Text in seiner
+    /// Spalte um, statt darüber hinaus gezeichnet zu werden.
+    private static func runDiffWideTest() {
+        testLabel = "diffwide"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-diffwide-\(UUID().uuidString)")
+        // Eine Zeile weit jenseits jeder halben Fensterbreite (rund 900
+        // Zeichen) und eine kurze Vergleichszeile.
+        let longLeft = "ALT " + String(repeating: "links-links-links ", count: 50)
+        let longRight = "NEU " + String(repeating: "rechts-rechts-rechts ", count: 50)
+        var leftLines = (1...8).map { "gemeinsame zeile \($0)" }
+        var rightLines = leftLines
+        leftLines[3] = longLeft
+        rightLines[3] = longRight
+        let leftURL = base.appendingPathComponent("links.txt")
+        let rightURL = base.appendingPathComponent("rechts.txt")
+        do {
+            try fm.createDirectory(at: base, withIntermediateDirectories: true)
+            try leftLines.joined(separator: "\n")
+                .write(to: leftURL, atomically: true, encoding: .utf8)
+            try rightLines.joined(separator: "\n")
+                .write(to: rightURL, atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "(setup) \(error.localizedDescription)")
+        }
+        ws.openFileDiffTab(request: FileDiffRequest(
+            left: .file(leftURL), right: .file(rightURL), options: FileDiffOptions()
+        ))
+        pollDiffWideCells(ws, base: base, tick: 0)
+    }
+
+    private static func pollDiffWideCells(_ ws: Workspace, base: URL, tick: Int) {
+        guard let window = mainWindowForAXChecks(),
+              let content = window.contentView else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Hauptfenster nicht erreichbar")
+        }
+        // Die Zeilen-IDs heißen „row-N". Welche Nummer die lange Zeile trägt,
+        // lässt der Test offen: Er sammelt alle gerenderten Zellen und nimmt
+        // die höchste als die umgebrochene, die niedrigste als Kontrollzeile.
+        window.layoutIfNeeded()
+        var pairs: [(before: CGRect, after: CGRect)] = []
+        for ordinal in 0...20 {
+            guard let before = markerView(id: "diffCell-before-row-\(ordinal)",
+                                          in: content),
+                  let after = markerView(id: "diffCell-after-row-\(ordinal)",
+                                         in: content) else { continue }
+            let beforeFrame = before.convert(before.bounds, to: content)
+            let afterFrame = after.convert(after.bounds, to: content)
+            guard beforeFrame.width > 0, afterFrame.width > 0 else { continue }
+            pairs.append((beforeFrame, afterFrame))
+        }
+        guard pairs.count >= 2,
+              let tallest = pairs.max(by: { $0.before.height < $1.before.height }),
+              let shortest = pairs.min(by: { $0.before.height < $1.before.height })
+        else {
+            if tick >= 100 {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Zell-Marker der Diff-Zeilen fehlen im AppKit-Baum "
+                    + "(gefunden: \(pairs.count))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollDiffWideCells(ws, base: base, tick: tick + 1)
+            }
+            return
+        }
+        let left = tallest.before
+        let right = tallest.after
+        let short = shortest.before
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        // (a) Beide Spalten gleich breit — sonst wäre die Trennlinie schief.
+        guard abs(left.width - right.width) < 1 else {
+            finish(false, "Spalten sind unterschiedlich breit "
+                + "(links \(Int(left.width)) pt, rechts \(Int(right.width)) pt)")
+        }
+        // (b) Die Spaltenbreite folgt dem Fenster, nicht dem Inhalt: Die lange
+        // Zeile ist genauso breit wie die kurze Kontrollzeile.
+        guard abs(left.width - short.width) < 1 else {
+            finish(false, "Die lange Zeile hat ihre Spalte verbreitert "
+                + "(\(Int(left.width)) pt statt \(Int(short.width)) pt) — die "
+                + "zweite Spalte wandert damit aus dem Bild")
+        }
+        // (c) Die rechte Spalte beginnt hinter der linken.
+        guard right.minX >= left.maxX - 1 else {
+            finish(false, "Die Spalten überlappen "
+                + "(links endet \(Int(left.maxX)), rechts beginnt \(Int(right.minX)))")
+        }
+        // (d) Kern des Befunds: Der lange Text bricht in seiner Spalte um.
+        // Bei Überlauf bliebe die Zeile einzeilig (22 pt).
+        guard left.height > short.height * 2 else {
+            finish(false, "Die lange Zeile ist nur \(Int(left.height)) pt hoch "
+                + "(kurze Zeile \(Int(short.height)) pt) — der Text bricht nicht "
+                + "um, sondern läuft über die Spaltengrenze")
+        }
+        // (e) Beide Seiten derselben Zeile sind gleich hoch, damit die
+        // Hintergründe nicht mitten in der Zeile enden.
+        guard abs(left.height - right.height) < 1 else {
+            finish(false, "Die beiden Seiten der langen Zeile sind unterschiedlich "
+                + "hoch (links \(Int(left.height)), rechts \(Int(right.height)))")
+        }
+        finish(true, "Spalten je \(Int(left.width)) pt breit und gleich hoch; "
+            + "die ~900 Zeichen lange Zeile bricht auf \(Int(left.height)) pt "
+            + "Höhe in ihrer Spalte um, statt über die Grenze zu laufen")
+    }
+
+    /// Diagnose (`-selftest diffwideshot`): Zweispaltiger Diff mit Zeilen, die
+    /// deutlich breiter als eine Spalte sind — die Aufnahme zeigt, ob der linke
+    /// Text an der Spaltengrenze endet oder in die rechte Spalte hineinläuft
+    /// (Daniel-Befund 2026-07-30 am Gesamt-Diff).
+    private static func runDiffWideShot() {
+        testLabel = "diffwideshot"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-diffwideshot-\(UUID().uuidString)")
+        // Lange Zeilen mit sichtbar unterschiedlichem Inhalt beider Seiten:
+        // Läuft der linke Text über, überschreibt er rechten Text.
+        let longLeft = "ALT " + String(repeating: "links-links-links ", count: 12)
+        let longRight = "NEU " + String(repeating: "rechts-rechts-rechts ", count: 12)
+        var leftLines = (1...12).map { "gemeinsame zeile \($0)" }
+        var rightLines = leftLines
+        leftLines[3] = longLeft
+        rightLines[3] = longRight
+        leftLines[6] = longLeft + "ende"
+        rightLines[6] = longRight + "ende"
+        let leftURL = base.appendingPathComponent("links.txt")
+        let rightURL = base.appendingPathComponent("rechts.txt")
+        do {
+            try fm.createDirectory(at: base, withIntermediateDirectories: true)
+            try leftLines.joined(separator: "\n")
+                .write(to: leftURL, atomically: true, encoding: .utf8)
+            try rightLines.joined(separator: "\n")
+                .write(to: rightURL, atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "Fixture nicht anlegbar: \(error.localizedDescription)")
+        }
+        ws.openFileDiffTab(request: FileDiffRequest(
+            left: .file(leftURL), right: .file(rightURL), options: FileDiffOptions()
+        ))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            dumpMainWindowThenExit(prefix: "DIFFWIDESHOT-WINDOW")
         }
     }
 

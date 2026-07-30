@@ -32,6 +32,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ### Behoben
 
+- **In der zweispaltigen Diff-Ansicht laufen die Spalten nicht mehr ineinander**
+  (Daniel-Befund 2026-07-30 am Gesamt-Diff). Jede Zeile, die breiter als eine
+  halbe Fensterbreite war, wurde über die Spaltengrenze hinaus gezeichnet und
+  überschrieb den Text der anderen Seite — betroffen waren Git-Diffs und
+  „Dateien vergleichen" gleichermaßen. Ursache: Beide Zellen bekamen
+  `maxWidth: .infinity` und teilten sich damit die sichtbare Breite, während
+  der Text darin per `fixedSize` auf seiner vollen Idealbreite bestand und
+  ungeklippt darüber hinaus zeichnete. Jetzt sind beide Spalten gleich breit
+  und teilen sich die Fläche, und zu langer Text bricht INNERHALB seiner
+  Spalte um. Umbruch statt Kürzung mit „…", weil ein Diff das Zeilenende
+  nicht verschweigen darf; beide Seiten einer Zeile bleiben gleich hoch,
+  damit kein Hintergrund mitten in der Zeile endet. Zwischenstand auf dem Weg
+  dahin — Spaltenbreite aus der längsten Zeile — ist bewusst verworfen: Eine
+  einzige lange Zeile schob die zweite Spalte aus dem Bild und machte den
+  Nebeneinander-Vergleich unbrauchbar.
 - **⌘W schließt in sinnvoller Reihenfolge.** Nach dem Schließen des aktiven
   Tabs wird jetzt der zuletzt benutzte verbleibende Tab aktiv (Fallback: der
   Nachbar an derselben Position) statt stumpf der erste Tab der Leiste.
@@ -95,6 +110,14 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
   das Verhalten nicht automatisiert prüfbar war. Zwei dabei gelernte Fallen
   stehen jetzt in `AGENTS.md` (Nicht-Maus-Events und `clickCount`;
   `postEvent` statt `sendEvent` für `NSApp.currentEvent`).
+- **Neuer Fenster-Selbsttest `diffwide`** messt die Geometrie der
+  zweispaltigen Diff-Ansicht an den echten Zell-Frames: beide Spalten gleich
+  breit, Spaltenbreite unabhängig vom Inhalt, keine Überlappung, und die
+  ~900 Zeichen lange Zeile MEHRZEILIG hoch — nur dann bricht der Text in
+  seiner Spalte um. Gegengeprüft: Mit dem alten Layout meldet er
+  „Die lange Zeile ist nur 22 pt hoch … der Text bricht nicht um, sondern
+  läuft über die Spaltengrenze". Dazu der Diagnose-Shot `diffwideshot` für
+  die Sichtprüfung und fünf Unit-Tests der Breitenrechnung.
 - **Neuer Fenster-Selbsttest `gitmultidiscard`** fährt den gemeldeten
   Bedienfall an einem echten Temp-Repo mit M-, D- und U-Zeile ab: Klick,
   ⇧-Klick, ⌘-Klick, Verwerfen über den Hover-Knopf, danach Einzel- und

@@ -113,14 +113,20 @@ struct DualPaneDiffView<Leading: View>: View {
                 Divider().opacity(0.6)
                 HStack(spacing: 0) {
                     GeometryReader { geometry in
+                        // Die Spaltenbreite steht fest, bevor die Zeilen
+                        // gebaut werden — beide Seiten und alle Zeilen nutzen
+                        // denselben Wert, sonst versetzte sich die Trennlinie.
+                        let column = DiffColumnLayout.columnWidth(
+                            availableWidth: geometry.size.width)
                         ScrollView([.vertical, .horizontal]) {
                             LazyVStack(alignment: .leading, spacing: 0) {
                                 ForEach(items) { item in
-                                    itemView(item)
+                                    itemView(item, columnWidth: column)
                                         .id(item.id)
                                 }
                             }
-                            .frame(minWidth: max(geometry.size.width, 920),
+                            .frame(minWidth: DiffColumnLayout
+                                        .rowWidth(columnWidth: column),
                                    minHeight: geometry.size.height,
                                    alignment: .topLeading)
                         }
@@ -312,90 +318,96 @@ struct DualPaneDiffView<Leading: View>: View {
 
     // MARK: Elemente
 
-    @ViewBuilder
-    private func itemView(_ item: DiffDisplayItem) -> some View {
-        switch item {
-        case .row(let row):
-            alignedRow(row)
-        case .fold(let id, let count, let expanded):
-            Button {
-                if expanded { expandedFolds.remove(id) }
-                else { expandedFolds.insert(id) }
-            } label: {
+    private func itemView(_ item: DiffDisplayItem,
+                          columnWidth: CGFloat) -> some View {
+        // Dekorationszeilen (Dateikopf, Hunk, Lücke, Hinweis) spannen sich über
+        // beide Spalten samt Trenner, damit ihr Hintergrund nicht mitten in der
+        // Diff-Fläche endet.
+        let rowWidth = DiffColumnLayout.rowWidth(columnWidth: columnWidth)
+        return Group {
+            switch item {
+            case .row(let row):
+                alignedRow(row, columnWidth: columnWidth)
+            case .fold(let id, let count, let expanded):
+                Button {
+                    if expanded { expandedFolds.remove(id) }
+                    else { expandedFolds.insert(id) }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: expanded ? "chevron.up" : "ellipsis")
+                        Text(expanded
+                             ? L10n.format("%ld unveränderte Zeilen wieder einklappen", count)
+                             : L10n.format("%ld unveränderte Zeilen einblenden", count))
+                        Spacer()
+                    }
+                    .fastraFont(size: 10)
+                    .foregroundColor(Theme.textSecondary)
+                    .padding(.horizontal, 10)
+                    .frame(minWidth: rowWidth, minHeight: 23, alignment: .leading)
+                    .background(Theme.surfaceSand.opacity(0.22))
+                }
+                .buttonStyle(.plain)
+                .accessibilityValue(expanded
+                                    ? L10n.string("ausgeklappt")
+                                    : L10n.string("eingeklappt"))
+            case .fileHeader(_, let title):
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.text")
+                    Text(title)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                }
+                .fastraFont(.small)
+                .foregroundColor(Theme.textPrimary)
+                .padding(.horizontal, 10)
+                .frame(minWidth: rowWidth, minHeight: 30, alignment: .leading)
+                .background(Theme.surfaceBase)
+                .accessibilityElement(children: .combine)
+            case .hunkHeader(_, let text, let accessibility):
+                HStack {
+                    Text(text)
+                        .fastraFont(.monoSmall)
+                        .foregroundColor(Theme.tokenCharClass)
+                        .textSelection(.enabled)
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .frame(minWidth: rowWidth, minHeight: 24, alignment: .leading)
+                .background(Theme.surfaceSand.opacity(0.38))
+                .accessibilityLabel(accessibility)
+            case .gap(_, let count):
                 HStack(spacing: 6) {
-                    Image(systemName: expanded ? "chevron.up" : "ellipsis")
-                    Text(expanded
-                         ? L10n.format("%ld unveränderte Zeilen wieder einklappen", count)
-                         : L10n.format("%ld unveränderte Zeilen einblenden", count))
+                    Image(systemName: "ellipsis")
+                    Text(L10n.format("%ld weitere unveränderte Zeilen (nicht geladen)", count))
                     Spacer()
                 }
                 .fastraFont(size: 10)
                 .foregroundColor(Theme.textSecondary)
                 .padding(.horizontal, 10)
-                .frame(minWidth: 920, minHeight: 23, alignment: .leading)
-                .background(Theme.surfaceSand.opacity(0.22))
-            }
-            .buttonStyle(.plain)
-            .accessibilityValue(expanded
-                                ? L10n.string("ausgeklappt")
-                                : L10n.string("eingeklappt"))
-        case .fileHeader(_, let title):
-            HStack(spacing: 8) {
-                Image(systemName: "doc.text")
-                Text(title)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer()
-            }
-            .fastraFont(.small)
-            .foregroundColor(Theme.textPrimary)
-            .padding(.horizontal, 10)
-            .frame(minWidth: 920, minHeight: 30, alignment: .leading)
-            .background(Theme.surfaceBase)
-            .accessibilityElement(children: .combine)
-        case .hunkHeader(_, let text, let accessibility):
-            HStack {
-                Text(text)
-                    .fastraFont(.monoSmall)
-                    .foregroundColor(Theme.tokenCharClass)
-                    .textSelection(.enabled)
-                Spacer()
-            }
-            .padding(.horizontal, 10)
-            .frame(minWidth: 920, minHeight: 24, alignment: .leading)
-            .background(Theme.surfaceSand.opacity(0.38))
-            .accessibilityLabel(accessibility)
-        case .gap(_, let count):
-            HStack(spacing: 6) {
-                Image(systemName: "ellipsis")
-                Text(L10n.format("%ld weitere unveränderte Zeilen (nicht geladen)", count))
-                Spacer()
-            }
-            .fastraFont(size: 10)
-            .foregroundColor(Theme.textSecondary)
-            .padding(.horizontal, 10)
-            .frame(minWidth: 920, minHeight: 23, alignment: .leading)
-            .background(Theme.surfaceSand.opacity(0.16))
-            .help("Git hat diesen unveränderten Bereich außerhalb des kontrollierten Kontexts ausgelassen.")
-            .accessibilityElement(children: .combine)
-        case .note(_, let title, let explanation):
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "doc.badge.ellipsis")
-                    .foregroundColor(Theme.textSecondary)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
-                        .foregroundColor(Theme.textPrimary)
-                    Text(explanation)
+                .frame(minWidth: rowWidth, minHeight: 23, alignment: .leading)
+                .background(Theme.surfaceSand.opacity(0.16))
+                .help("Git hat diesen unveränderten Bereich außerhalb des kontrollierten Kontexts ausgelassen.")
+                .accessibilityElement(children: .combine)
+            case .note(_, let title, let explanation):
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "doc.badge.ellipsis")
                         .foregroundColor(Theme.textSecondary)
-                        .textSelection(.enabled)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(title)
+                            .foregroundColor(Theme.textPrimary)
+                        Text(explanation)
+                            .foregroundColor(Theme.textSecondary)
+                            .textSelection(.enabled)
+                    }
+                    Spacer()
                 }
-                Spacer()
+                .fastraFont(.small)
+                .padding(10)
+                .frame(minWidth: rowWidth, alignment: .leading)
+                .background(Theme.surfaceSand.opacity(0.22))
+                .accessibilityElement(children: .combine)
             }
-            .fastraFont(.small)
-            .padding(10)
-            .frame(minWidth: 920, alignment: .leading)
-            .background(Theme.surfaceSand.opacity(0.22))
-            .accessibilityElement(children: .combine)
         }
     }
 
@@ -410,19 +422,26 @@ struct DualPaneDiffView<Leading: View>: View {
         return row.ordinal >= entry.firstOrdinal && row.ordinal <= entry.lastOrdinal
     }
 
-    private func alignedRow(_ row: DiffDisplayRow) -> some View {
+    private func alignedRow(_ row: DiffDisplayRow,
+                            columnWidth: CGFloat) -> some View {
         let tallRow = row.beforeMissingFinalNewline || row.afterMissingFinalNewline
             || row.intralineWasLimited
-        return HStack(spacing: 0) {
+        // `.top`: Bricht eine Seite über mehrere Zeilen um, bleiben beide
+        // Zeilennummern oben auf derselben Höhe stehen.
+        return HStack(alignment: .top, spacing: 0) {
             cell(number: row.beforeNumber, text: row.before,
                  highlight: row.beforeHighlight, before: true, kind: row.kind,
-                 missingFinalNewline: row.beforeMissingFinalNewline)
+                 missingFinalNewline: row.beforeMissingFinalNewline,
+                 width: columnWidth, rowID: row.id)
             Divider().opacity(0.5)
             cell(number: row.afterNumber, text: row.after,
                  highlight: row.afterHighlight, before: false, kind: row.kind,
-                 missingFinalNewline: row.afterMissingFinalNewline)
+                 missingFinalNewline: row.afterMissingFinalNewline,
+                 width: columnWidth, rowID: row.id)
         }
-        .frame(minWidth: 920, minHeight: tallRow ? 38 : 22, alignment: .leading)
+        .frame(minWidth: DiffColumnLayout.rowWidth(columnWidth: columnWidth),
+               maxWidth: DiffColumnLayout.rowWidth(columnWidth: columnWidth),
+               minHeight: tallRow ? 38 : 22, alignment: .leading)
         .overlay(alignment: .bottom) {
             if row.intralineWasLimited {
                 Text("Intra-Zeilen-Markierung wegen Zeilenlänge ausgelassen.")
@@ -465,33 +484,49 @@ struct DualPaneDiffView<Leading: View>: View {
 
     private func cell(number: Int?, text: String?, highlight: Range<Int>?,
                       before: Bool, kind: FileDiff.RowKind,
-                      missingFinalNewline: Bool) -> some View {
+                      missingFinalNewline: Bool, width: CGFloat,
+                      rowID: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
-            HStack(alignment: .top, spacing: 6) {
+            HStack(alignment: .top, spacing: DiffColumnLayout.numberSpacing) {
                 Text(number.map(String.init) ?? "")
                     .fastraFont(size: 9, design: .monospaced)
                     .foregroundColor(Theme.textSecondary)
-                    .frame(width: 44, alignment: .trailing)
+                    .frame(width: DiffColumnLayout.numberWidth, alignment: .trailing)
                     .accessibilityHidden(true)
                 highlightedText(text ?? " ", range: highlight,
                                 color: before ? Theme.diffRemovedFG : Theme.diffAddedFG)
                     .fastraFont(.monoSmall)
                     .foregroundColor(textColor(before: before, kind: kind,
                                                sideEmpty: text == nil))
-                    .fixedSize(horizontal: true, vertical: false)
+                    // Zu langer Text bricht in seiner Spalte um, statt über die
+                    // Spaltengrenze hinaus gezeichnet zu werden (vorher
+                    // `fixedSize(horizontal: true)`). Umbruch statt Kürzung,
+                    // weil ein Diff das Zeilenende nicht verschweigen darf.
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
                     .textSelection(.enabled)
-                Spacer(minLength: 8)
+                Spacer(minLength: DiffColumnLayout.trailingGap)
             }
             if missingFinalNewline {
                 Text("Kein Zeilenumbruch am Dateiende")
                     .fastraFont(size: 9)
                     .foregroundColor(Theme.textSecondary)
-                    .padding(.leading, 44)
+                    .padding(.leading, DiffColumnLayout.numberWidth)
             }
         }
-        .padding(.horizontal, 5)
-        .frame(minWidth: 459, maxWidth: .infinity, minHeight: 22, alignment: .topLeading)
+        .padding(.horizontal, DiffColumnLayout.cellPadding)
+        // `maxHeight: .infinity` dehnt die Zelle auf die Höhe der ganzen Zeile.
+        // Ohne das endete der Hintergrund der kürzeren Seite mitten in einer
+        // Zeile, deren andere Seite über mehrere Zeilen umbricht.
+        .frame(minWidth: width, maxWidth: width, minHeight: 22,
+               maxHeight: .infinity, alignment: .topLeading)
         .background(cellBackground(before: before, kind: kind))
+        .background {
+            // Anker für den `diffwide`-Selbsttest: Er messt an diesen Frames,
+            // ob die Spalten gleich breit bleiben und langer Text in seiner
+            // Spalte umbricht, statt über die Grenze zu laufen.
+            SelfTestMarker(id: "diffCell-\(before ? "before" : "after")-\(rowID)")
+        }
         .accessibilityLabel(L10n.format("%@ Zeile %@: %@",
                                        before ? L10n.string("Vorher") : L10n.string("Nachher"),
                                        number.map(String.init) ?? L10n.string("leer"), text ?? ""))

@@ -556,7 +556,8 @@ additionally shows the **Changes** and **Graph** tabs:
   commit hash shows its details.
 - Git diffs use the same two-column view as **Compare Files** —
   including the differences list at the bottom and ⌥↑/⌥↓ navigation
-  (⌥⌘[/⌥⌘] still work).
+  (⌥⌘[/⌥⌘] still work). Both columns always have the same width; lines
+  longer than one column wrap inside their column so nothing is cut off.
 - Merge conflicts get a dedicated bar with safe resolution steps.
 
 Fastra remains a thin frontend over the installed `git` — destructive
