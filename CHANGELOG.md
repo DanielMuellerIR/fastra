@@ -9,6 +9,27 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- **Mehrere Dateien auf dem Änderungen-Tab gemeinsam behandeln**
+  (Daniel-Wunsch 2026-07-30). In der Dateiliste markiert ein Klick eine Zeile,
+  ⇧-Klick den Bereich bis dorthin und ⌘-Klick einzelne Zeilen zusätzlich oder
+  wieder ab — wie in macOS-Listen üblich; markierte Zeilen sind farbig
+  hinterlegt. Eine Aktion auf einer markierten Zeile (Verwerfen,
+  Bereitstellen, Aus-Bereitstellung-nehmen; Hover-Knopf wie Kontextmenü)
+  wirkt dann auf die ganze Auswahl, und das Kontextmenü nennt die Anzahl.
+  Verwerfen fragt EINMAL für die gesamte Auswahl und weist dabei gesondert
+  aus, wie viele nicht versionierte Dateien dabei gelöscht werden. Getrackte
+  Pfade gehen in ein gemeinsames `git checkout --`, Bereitstellen und
+  Entnehmen in ein gemeinsames `git add` beziehungsweise `git reset` — ein
+  Git-Aufruf statt einer Kette pro Datei.
+- **Sammel-Knöpfe im Kopf der Änderungen-Abschnitte** (VS-Code-Vorbild, hier
+  aber dauerhaft sichtbar statt nur bei Maus-über-Kopfzeile). „ÄNDERUNGEN"
+  bekommt drei Knöpfe: Gesamt-Diff aller offenen Änderungen in der
+  zweispaltigen Ansicht öffnen (`git diff HEAD`), alle Änderungen verwerfen,
+  alles bereitstellen. „BEREITGESTELLT" behält seinen Knopf, der alles wieder
+  aus der Bereitstellung nimmt.
+
 ### Behoben
 
 - **⌘W schließt in sinnvoller Reihenfolge.** Nach dem Schließen des aktiven
@@ -64,6 +85,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ### Intern
 
+- **Die Zeilen der Änderungen-Liste sind jetzt ein Button statt einer
+  Tap-Gesten-Kette.** Modifier und Klickzahl liest der Handler aus dem
+  auslösenden Event (`NSApp.currentEvent`); der Einzelklick markiert sofort
+  und öffnet die Datei erst nach Ablauf des Doppelklick-Fensters, ein
+  Doppelklick storniert diesen wartenden Öffner und zeigt wie bisher nur den
+  Diff. Grund für den Umbau: SwiftUIs `TapGesture(count: 2).exclusively(...)`
+  reagierte in dieser Liste überhaupt nicht auf synthetische Klicks, womit
+  das Verhalten nicht automatisiert prüfbar war. Zwei dabei gelernte Fallen
+  stehen jetzt in `AGENTS.md` (Nicht-Maus-Events und `clickCount`;
+  `postEvent` statt `sendEvent` für `NSApp.currentEvent`).
+- **Neuer Fenster-Selbsttest `gitmultidiscard`** fährt den gemeldeten
+  Bedienfall an einem echten Temp-Repo mit M-, D- und U-Zeile ab: Klick,
+  ⇧-Klick, ⌘-Klick, Verwerfen über den Hover-Knopf, danach Einzel- und
+  Doppelklick sowie die beiden neuen Kopf-Knöpfe. Geprüft wird gegen Gits
+  echten Status, nicht gegen den UI-Zustand.
 - **Fokusverlust im `navmatch`-Selbsttest zählt als Umgebungsproblem.** Verliert
   Fastra den Fokus an eine fremde App, sagt der Test das jetzt und der Runner
   zählt einen Umgebungs-FAIL (Exit 2) statt eines Funktionsfehlers — wie

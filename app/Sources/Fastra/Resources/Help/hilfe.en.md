@@ -541,6 +541,16 @@ additionally shows the **Changes** and **Graph** tabs:
   it names the first locally configured remote and shows its effective push
   address immediately below. Fastra explicitly pushes only to this visible
   target; push and pull run asynchronously.
+- **Several files at once:** in the file list, a click selects one row,
+  ⇧-click selects the range up to it, and ⌘-click adds or removes
+  individual rows. Selected rows have a colored background. An action on a
+  selected row — discard, stage, or unstage, via button or context menu —
+  then applies to the whole selection; the context menu states the count.
+  Discarding asks once for all affected files, and the prompt explicitly
+  says how many of them are untracked files (those get deleted).
+- **Bulk buttons in the “CHANGES” section header:** open a combined diff of
+  all open changes in the two-column view, discard all changes, stage
+  everything. The “STAGED” header has the button that unstages everything.
 - **Graph:** the commit graph with branches and merges.
 - History (`git log`) and diffs open as read-only tabs; clicking a
   commit hash shows its details.

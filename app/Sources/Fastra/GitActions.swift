@@ -82,7 +82,14 @@ extension Workspace {
     /// Eine Datei bereitstellen (`git add -- <path>`). Deckt geänderte, gelöschte
     /// (die Löschung wird bereitgestellt) und untracked Dateien ab.
     func gitStage(path: String) {
-        runGitAction(["add", "--", path], label: "Bereitstellen")
+        gitStage(paths: [path])
+    }
+
+    /// Mehrere Dateien in EINEM `git add` bereitstellen (Mehrfachauswahl in
+    /// der Änderungen-Ansicht, Daniel-Wunsch 2026-07-30).
+    func gitStage(paths: [String]) {
+        guard !paths.isEmpty else { return }
+        runGitAction(["add", "--"] + paths, label: "Bereitstellen")
     }
 
     /// Alle Änderungen bereitstellen (`git add -A`).
@@ -93,7 +100,15 @@ extension Workspace {
     /// Eine Datei aus dem Index nehmen (`git reset -q HEAD -- <path>`). Bewusst
     /// `reset` statt `restore --staged` — breit kompatibel auch mit älterem git.
     func gitUnstage(path: String) {
-        runGitAction(["reset", "-q", "HEAD", "--", path], label: "Aus Bereitstellung nehmen")
+        gitUnstage(paths: [path])
+    }
+
+    /// Mehrere Dateien in EINEM `git reset` aus dem Index nehmen
+    /// (Mehrfachauswahl in der Änderungen-Ansicht).
+    func gitUnstage(paths: [String]) {
+        guard !paths.isEmpty else { return }
+        runGitAction(["reset", "-q", "HEAD", "--"] + paths,
+                     label: "Aus Bereitstellung nehmen")
     }
 
     /// Alle bereitgestellten Änderungen aus dem Index nehmen (`git reset -q HEAD`).
@@ -116,6 +131,32 @@ extension Workspace {
             refreshOpenGitViews()
         } else {
             runGitAction(["checkout", "--", path], label: "Verwerfen")
+        }
+    }
+
+    /// Mehrere Dateien auf einen Schlag verwerfen (Mehrfachauswahl in der
+    /// Änderungen-Ansicht, Daniel-Wunsch 2026-07-30). EINE Rückfrage für die
+    /// ganze Auswahl; danach werden unversionierte Dateien gelöscht und alle
+    /// getrackten in einem gemeinsamen `git checkout --` zurückgesetzt.
+    func gitDiscard(changes: [GitChange]) {
+        guard let root = projectURL else { return }
+        let plan = GitDiscardPlan(changes: changes)
+        guard !plan.isEmpty else { return }
+        // Einzelfall: der bestehende Dialog nennt den Dateinamen — präziser.
+        if plan.totalCount == 1, let only = plan.changes.first {
+            gitDiscard(change: only)
+            return
+        }
+        guard Self.confirmDiscard(count: plan.totalCount,
+                                  untrackedCount: plan.untrackedPaths.count) else { return }
+        for path in plan.untrackedPaths {
+            try? FileManager.default.removeItem(at: root.appendingPathComponent(path))
+        }
+        if plan.trackedPaths.isEmpty {
+            refreshGitStatus()
+            refreshOpenGitViews()
+        } else {
+            runGitAction(["checkout", "--"] + plan.trackedPaths, label: "Verwerfen")
         }
     }
 
@@ -157,6 +198,27 @@ extension Workspace {
         alert.informativeText = untracked
             ? L10n.string("Die nicht versionierte Datei wird gelöscht. Das lässt sich nicht rückgängig machen.")
             : L10n.string("Die Änderungen an dieser Datei gehen verloren. Das lässt sich nicht rückgängig machen.")
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.string("Verwerfen"))
+        alert.addButton(withTitle: L10n.string("Abbrechen"))
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// Verwerfen-Rückfrage für eine Mehrfachauswahl (immer ≥ 2 Dateien — der
+    /// Einzelfall läuft über den Dialog mit Dateinamen). Weist gesondert aus,
+    /// wie viele unversionierte Dateien dabei GELÖSCHT würden.
+    static func confirmDiscard(count: Int, untrackedCount: Int) -> Bool {
+        guard presentGitDialogs else { return true }
+        let alert = NSAlert()
+        alert.messageText = L10n.format("Änderungen an %ld Dateien verwerfen?", count)
+        var info = L10n.string("Die Änderungen an diesen Dateien gehen verloren. Das lässt sich nicht rückgängig machen.")
+        if untrackedCount == 1 {
+            info += "\n" + L10n.string("Eine nicht versionierte Datei wird dabei gelöscht.")
+        } else if untrackedCount > 1 {
+            info += "\n" + L10n.format("%ld nicht versionierte Dateien werden dabei gelöscht.",
+                                       untrackedCount)
+        }
+        alert.informativeText = info
         alert.alertStyle = .warning
         alert.addButton(withTitle: L10n.string("Verwerfen"))
         alert.addButton(withTitle: L10n.string("Abbrechen"))

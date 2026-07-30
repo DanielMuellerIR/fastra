@@ -235,6 +235,20 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   eine ganz normale Datei gälte sonst als nicht regulär und würde abgewiesen, und
   die gemeldete Größe wäre die des Links statt die der Zieldatei — womit eine
   riesige Datei die Abschnitts- und Hex-Grenze umginge (siehe `FileLoader`).
+- `NSEvent.clickCount` ist NUR für Maus-Events definiert. Wird ein Button per
+  Tastatur ausgelöst (Leertaste auf dem fokussierten Button), wirft AppKit in
+  `NSApp.currentEvent?.clickCount` eine Assertion und die App bricht mit
+  SIGABRT ab. Vor dem Zugriff daher immer den `type` prüfen und sonst von
+  einem Einzelklick ausgehen (siehe `GitChangeRow.handleRowClick`).
+- Synthetische Klicks in Fenster-Selbsttests: `window.sendEvent` setzt
+  `NSApp.currentEvent` NICHT. Liest der geklickte Code Modifier oder
+  Klickzahl daraus, muss der Test die Events mit `NSApp.postEvent` in die
+  echte Event-Queue legen (`sendMouseClick(..., viaApp: true)`).
+- SwiftUIs `TapGesture(count: 2).exclusively(before: TapGesture(count: 1))`
+  reagierte in der Änderungen-Liste nicht auf synthetische Klicks — der
+  Einzelklick-Zweig feuerte nie, obwohl `hitTest` die richtige View traf.
+  Klickbare Zeilen deshalb als `Button` bauen und die Klickart aus dem Event
+  ableiten; das ist der auch im Test verlässliche Pfad.
 
 ## Verhaltensevals
 

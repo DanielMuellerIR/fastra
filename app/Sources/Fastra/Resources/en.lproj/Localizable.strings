@@ -357,6 +357,15 @@
 "Änderungen an „%@“ verwerfen?" = "Discard changes to ‘%@’?";
 "Die nicht versionierte Datei wird gelöscht. Das lässt sich nicht rückgängig machen." = "The untracked file will be deleted. This cannot be undone.";
 "Die Änderungen an dieser Datei gehen verloren. Das lässt sich nicht rückgängig machen." = "The changes to this file will be lost. This cannot be undone.";
+"Änderungen an %ld Dateien verwerfen?" = "Discard changes to %ld files?";
+"Die Änderungen an diesen Dateien gehen verloren. Das lässt sich nicht rückgängig machen." = "The changes to these files will be lost. This cannot be undone.";
+"Eine nicht versionierte Datei wird dabei gelöscht." = "One untracked file will be deleted.";
+"%ld nicht versionierte Dateien werden dabei gelöscht." = "%ld untracked files will be deleted.";
+"Änderungen bereitstellen (%ld Dateien)" = "Stage Changes (%ld Files)";
+"Änderungen verwerfen (%ld Dateien)" = "Discard Changes (%ld Files)";
+"Aus Bereitstellung nehmen (%ld Dateien)" = "Unstage (%ld Files)";
+"Alle Änderungen verwerfen" = "Discard All Changes";
+"Gesamt-Diff aller offenen Änderungen anzeigen" = "Show a combined diff of all open changes";
 "Push erfolgreich" = "Push Succeeded";
 "Push (Upstream anlegen)" = "Push (Set Upstream)";
 "Push erfolgreich · Upstream angelegt" = "Push Succeeded · Upstream Set";

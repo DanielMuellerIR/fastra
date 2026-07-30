@@ -566,6 +566,18 @@ Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**:
   Er nennt den ersten lokal konfigurierten Remote und zeigt dessen effektive
   Push-Adresse unmittelbar darunter. Fastra pusht ausdrücklich nur zu diesem
   sichtbaren Ziel; Push und Pull laufen asynchron.
+- **Mehrere Dateien auf einen Schlag:** In der Dateiliste markiert ein Klick
+  eine Zeile, ⇧-Klick den Bereich bis dorthin und ⌘-Klick einzelne Zeilen
+  zusätzlich oder wieder ab. Markierte Zeilen sind farbig hinterlegt. Eine
+  Aktion auf einer markierten Zeile — Verwerfen, Bereitstellen oder
+  Entnehmen, per Knopf oder Kontextmenü — wirkt dann auf die ganze Auswahl;
+  das Kontextmenü nennt die Anzahl. Vor dem Verwerfen kommt eine einzige
+  Rückfrage für alle betroffenen Dateien, und sie sagt ausdrücklich, wie
+  viele davon nicht versionierte Dateien sind (die werden gelöscht).
+- **Sammel-Knöpfe im Abschnittskopf „ÄNDERUNGEN“:** Gesamt-Diff aller
+  offenen Änderungen in der zweispaltigen Ansicht öffnen, alle Änderungen
+  verwerfen, alles bereitstellen. Im Kopf „BEREITGESTELLT“ steht der Knopf,
+  der alles wieder aus der Bereitstellung nimmt.
 - **Graph:** der Commit-Graph mit Verzweigungen und Merges.
 - Verlauf (`git log`) und Diffs öffnen als schreibgeschützte Tabs; ein
   Klick auf einen Commit-Hash zeigt dessen Details.

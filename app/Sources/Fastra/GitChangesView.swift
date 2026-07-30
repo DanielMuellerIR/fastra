@@ -22,9 +22,19 @@ enum SidebarMode: String, CaseIterable {
 /// (Bereitstellen/Verwerfen/Aus-Bereitstellung-nehmen). Nur bei Git-Repo aktiv.
 struct GitChangesView: View {
     @EnvironmentObject var workspace: Workspace
+    /// Mehrfachauswahl der Dateizeilen (Shift-/Cmd-Klick, Daniel 2026-07-30).
+    /// Die Logik selbst lebt testbar in `GitChangesSelection`.
+    @State private var selection = GitChangesSelection()
 
     private var staged: [GitChange] { workspace.gitStatus?.stagedChanges ?? [] }
     private var unstaged: [GitChange] { workspace.gitStatus?.unstagedChanges ?? [] }
+
+    /// Sichtbare Zeilenreihenfolge beider Abschnitte — Grundlage für
+    /// Shift-Bereiche und das Austragen verschwundener Zeilen.
+    private var orderedRowIDs: [GitChangeRowID] {
+        staged.map { GitChangeRowID(section: .staged, rawPath: $0.rawPath) }
+            + unstaged.map { GitChangeRowID(section: .unstaged, rawPath: $0.rawPath) }
+    }
     private var primaryAction: GitChangesPrimaryAction {
         GitChangesPrimaryAction.resolve(status: workspace.gitStatus,
                                         target: workspace.gitPushTarget)
@@ -53,19 +63,38 @@ struct GitChangesView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 1) {
                         if !staged.isEmpty {
-                            sectionHeader("BEREITGESTELLT", count: staged.count,
-                                          action: { workspace.gitUnstageAll() },
-                                          actionIcon: "minus", actionHelp: "Alle aus Bereitstellung nehmen")
+                            sectionHeader("BEREITGESTELLT", count: staged.count, actions: [
+                                HeaderAction(icon: "minus",
+                                             help: "Alle aus Bereitstellung nehmen") {
+                                    workspace.gitUnstageAll()
+                                },
+                            ])
                             ForEach(staged) { change in
-                                GitChangeRow(change: change, section: .staged)
+                                row(for: change, section: .staged)
                             }
                         }
                         if !unstaged.isEmpty {
-                            sectionHeader("ÄNDERUNGEN", count: unstaged.count,
-                                          action: { workspace.gitStageAll() },
-                                          actionIcon: "plus", actionHelp: "Alle bereitstellen")
+                            // Drei Sammel-Aktionen wie in VS Code, nur dauerhaft
+                            // sichtbar: Gesamt-Diff, alles verwerfen, alles
+                            // bereitstellen (Daniel-Wunsch 2026-07-30).
+                            sectionHeader("ÄNDERUNGEN", count: unstaged.count, actions: [
+                                HeaderAction(icon: "rectangle.split.2x1",
+                                             help: "Gesamt-Diff aller offenen Änderungen anzeigen",
+                                             markerID: "gitHeaderOpenDiff") {
+                                    workspace.openGitDiff()
+                                },
+                                HeaderAction(icon: "arrow.uturn.backward",
+                                             help: "Alle Änderungen verwerfen",
+                                             markerID: "gitHeaderDiscardAll") {
+                                    workspace.gitDiscard(changes: unstaged)
+                                },
+                                HeaderAction(icon: "plus",
+                                             help: "Alle bereitstellen") {
+                                    workspace.gitStageAll()
+                                },
+                            ])
                             ForEach(unstaged) { change in
-                                GitChangeRow(change: change, section: .unstaged)
+                                row(for: change, section: .unstaged)
                             }
                         }
                     }
@@ -76,6 +105,44 @@ struct GitChangesView: View {
         .onAppear {
             workspace.refreshGitOperationState()
             workspace.refreshGitPushTarget()
+        }
+        // Nach jedem Status-Refresh verschwundene Zeilen aus der Auswahl
+        // nehmen — sonst wirkte eine spätere Sammel-Aktion auf Unsichtbares.
+        .onChange(of: workspace.gitStatus) {
+            selection.prune(existing: orderedRowIDs)
+        }
+        .background {
+            // Macht die Auswahlgröße für Fenster-Selbsttests beobachtbar:
+            // Die Klick-Folge kann so nach jedem Schritt auf den erwarteten
+            // Zustand warten, statt blind weiterzuklicken.
+            SelfTestMarker(id: "gitChangesSelCount-\(selection.count)")
+        }
+    }
+
+    /// Baut eine Dateizeile samt Auswahl-Zustand und -Reaktionen zusammen.
+    private func row(for change: GitChange, section: GitChangeSection) -> some View {
+        let rowID = GitChangeRowID(section: section, rawPath: change.rawPath)
+        return GitChangeRow(
+            change: change, section: section,
+            isSelected: selection.isSelected(rowID),
+            onSelectPlain: { selection.click(rowID) },
+            onSelectCommand: { selection.commandClick(rowID) },
+            onSelectShift: { selection.shiftClick(rowID, orderedRows: orderedRowIDs) },
+            actionTargets: { actionTargets(for: change, rowID: rowID) }
+        )
+    }
+
+    /// Ziel-Dateien einer Zeilen-Aktion: Ist die Zeile Teil einer
+    /// Mehrfachauswahl, wirkt die Aktion auf alle gewählten Zeilen DESSELBEN
+    /// Abschnitts — sonst nur auf die Zeile selbst. So lassen sich mehrere
+    /// Dateien auf einen Schlag verwerfen oder bereitstellen.
+    private func actionTargets(for change: GitChange,
+                               rowID: GitChangeRowID) -> [GitChange] {
+        guard selection.isSelected(rowID), selection.count > 1 else { return [change] }
+        let source = rowID.section == .staged ? staged : unstaged
+        return source.filter {
+            selection.isSelected(GitChangeRowID(section: rowID.section,
+                                                rawPath: $0.rawPath))
         }
     }
 
@@ -182,10 +249,25 @@ struct GitChangesView: View {
         .disabled(workspace.gitOperationsAreBusy)
     }
 
-    /// Abschnitts-Kopf mit Titel, Anzahl-Badge und einer Sammel-Aktion rechts.
+    /// Eine dauerhaft sichtbare Sammel-Aktion im Abschnitts-Kopf.
+    private struct HeaderAction {
+        let icon: String
+        let help: String
+        var markerID: String?
+        let action: () -> Void
+
+        init(icon: String, help: String, markerID: String? = nil,
+             action: @escaping () -> Void) {
+            self.icon = icon
+            self.help = help
+            self.markerID = markerID
+            self.action = action
+        }
+    }
+
+    /// Abschnitts-Kopf mit Titel, Anzahl-Badge und Sammel-Aktionen rechts.
     private func sectionHeader(_ title: String, count: Int,
-                               action: @escaping () -> Void,
-                               actionIcon: String, actionHelp: String) -> some View {
+                               actions: [HeaderAction]) -> some View {
         HStack(spacing: 6) {
             Text(verbatim: L10n.string(title))
                 .fastraFont(size: 10, weight: .semibold)
@@ -200,13 +282,24 @@ struct GitChangesView: View {
                 .padding(.vertical, 1)
                 .background(Capsule().fill(Theme.surfaceSand))
             Spacer(minLength: 0)
-            Button(action: action) {
-                Image(systemName: actionIcon)
-                    .fastraFont(size: 10, weight: .bold)
-                    .foregroundColor(Theme.textSecondary)
+            // `enumerated`, weil die Aktionen keine eigene Identität brauchen:
+            // die Liste ist klein, konstant und pro Abschnitt fest verdrahtet.
+            ForEach(Array(actions.enumerated()), id: \.offset) { _, item in
+                Button(action: item.action) {
+                    Image(systemName: item.icon)
+                        .fastraFont(size: 10, weight: .bold)
+                        .foregroundColor(Theme.textSecondary)
+                        .frame(width: 16, height: 14)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .background {
+                    if let markerID = item.markerID {
+                        SelfTestMarker(id: markerID)
+                    }
+                }
+                .help(L10n.string(item.help))
             }
-            .buttonStyle(.plain)
-            .help(L10n.string(actionHelp))
         }
         .padding(.horizontal, 14)
         .padding(.top, 12)
@@ -216,13 +309,26 @@ struct GitChangesView: View {
 
 /// Eine Datei-Zeile in der Änderungen-Ansicht — abhängig vom Abschnitt zeigt sie
 /// beim Überfahren die passenden Aktions-Icons und im Kontextmenü dieselben
-/// Aktionen (Daniel-Wunsch 2026-07-12).
+/// Aktionen (Daniel-Wunsch 2026-07-12). Zeilen sind per Shift-/Cmd-Klick
+/// mehrfach markierbar; Aktionen einer markierten Zeile wirken dann auf die
+/// ganze Auswahl (Daniel-Wunsch 2026-07-30).
 private struct GitChangeRow: View {
-    enum Section { case staged, unstaged }
     let change: GitChange
-    let section: Section
+    let section: GitChangeSection
+    /// Auswahl-Zustand und -Reaktionen kommen vom Elternview, das die
+    /// `GitChangesSelection` über beide Abschnitte hinweg besitzt.
+    let isSelected: Bool
+    let onSelectPlain: () -> Void
+    let onSelectCommand: () -> Void
+    let onSelectShift: () -> Void
+    /// Liefert die Dateien, auf die eine Zeilen-Aktion wirken soll (die
+    /// Auswahl, wenn diese Zeile markiert ist — sonst nur diese Zeile).
+    let actionTargets: () -> [GitChange]
     @EnvironmentObject var workspace: Workspace
     @State private var hovering = false
+    /// Wartender Einzelklick-Dateiöffner: Ein Doppelklick storniert ihn,
+    /// damit wie bisher NUR der Diff aufgeht und nicht zusätzlich die Datei.
+    @State private var pendingSingleOpen: DispatchWorkItem?
 
     /// Der für den Abschnitt maßgebliche Zustand (Index bzw. Working-Tree).
     private var state: GitFileState {
@@ -232,42 +338,46 @@ private struct GitChangeRow: View {
     var body: some View {
         ZStack(alignment: .trailing) {
             // Zeilenbedienung und Aktionsknöpfe sind Geschwister. Lägen die
-            // Knöpfe innerhalb dieser Klickgeste, könnte SwiftUI den Plus-Klick
-            // als Zeilenklick behandeln und einen Ordner als Datei öffnen.
-            HStack(spacing: 6) {
-                Image(systemName: "doc")
-                    .fastraFont(size: 11)
-                    .foregroundColor(Theme.textSecondary)
+            // Knöpfe innerhalb des Zeilen-Buttons, könnte SwiftUI den
+            // Plus-Klick als Zeilenklick behandeln und einen Ordner als
+            // Datei öffnen. Die Zeile selbst ist bewusst ein Button statt
+            // einer Tap-Geste: Buttons sind der im Projekt erprobte, auch
+            // für synthetische Testklicks verlässliche Klickpfad; Modifier
+            // und Klickzahl liest der Handler aus dem auslösenden Event.
+            Button(action: handleRowClick) {
                 HStack(spacing: 6) {
-                    Text(change.name)
-                        .fastraFont(.small)
-                        .foregroundColor(Theme.textPrimary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        // Dateinamen sind wichtiger als der ergänzende Ordnerpfad:
-                        // SwiftUI kürzt deshalb zuerst den Pfad und erst danach den Namen.
-                        .layoutPriority(1)
-                    if !change.directory.isEmpty {
-                        Text(change.directory)
-                            .fastraFont(size: 10)
-                            .foregroundColor(Theme.textSecondary)
+                    Image(systemName: "doc")
+                        .fastraFont(size: 11)
+                        .foregroundColor(Theme.textSecondary)
+                    HStack(spacing: 6) {
+                        Text(change.name)
+                            .fastraFont(.small)
+                            .foregroundColor(Theme.textPrimary)
                             .lineLimit(1)
-                            .truncationMode(.head)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        Spacer(minLength: 0)
+                            .truncationMode(.tail)
+                            // Dateinamen sind wichtiger als der ergänzende Ordnerpfad:
+                            // SwiftUI kürzt deshalb zuerst den Pfad und erst danach den Namen.
+                            .layoutPriority(1)
+                        if !change.directory.isEmpty {
+                            Text(change.directory)
+                                .fastraFont(size: 10)
+                                .foregroundColor(Theme.textSecondary)
+                                .lineLimit(1)
+                                .truncationMode(.head)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            Spacer(minLength: 0)
+                        }
                     }
+                    statusBadge
                 }
-                statusBadge
+                .padding(.leading, 14)
+                .padding(.trailing, 8)
+                .padding(.vertical, 3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .padding(.leading, 14)
-            .padding(.trailing, 8)
-            .padding(.vertical, 3)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            // Ein Einzelklick öffnet weiterhin die Datei. Der exklusive
-            // Doppelklick öffnet stattdessen nur ihren passenden Git-Diff.
-            .gesture(rowTapGesture)
+            .buttonStyle(.plain)
 
             // Die Aktionen überlagern nur beim Hover das rechte Textende.
             // Das Badge bleibt Teil der Überlagerung, damit keine geschätzte
@@ -283,13 +393,24 @@ private struct GitChangeRow: View {
             .allowsHitTesting(hovering)
             .accessibilityHidden(!hovering)
         }
-        .background(hovering ? Theme.surfaceRaised : Color.clear)
+        // Markierte Zeilen bleiben auch ohne Hover sichtbar hervorgehoben —
+        // die Auswahl ist die Wirkfläche der folgenden Sammel-Aktion.
+        .background(isSelected ? Theme.accent.opacity(0.18)
+                    : hovering ? Theme.surfaceRaised : Color.clear)
         .contentShape(Rectangle())
+        .background {
+            // Anker für Fenster-Selbsttests, die echte Klicks auf genau
+            // diese Zeile senden (z.B. Mehrfachauswahl + Verwerfen).
+            SelfTestMarker(id: "gitChangeRow-"
+                + (section == .staged ? "staged" : "unstaged")
+                + "-\(change.rawPath.hashValue)")
+        }
         .onHover { hovering = $0 }
         .onAppear {
             // Der Fenster-Selbsttest muss den echten Hover-Knopf klicken,
             // ohne dafür den Systemzeiger des Nutzers zu bewegen.
-            if SelfTest.requestedTest == "gitstagefolder" { hovering = true }
+            if SelfTest.requestedTest == "gitstagefolder"
+                || SelfTest.requestedTest == "gitmultidiscard" { hovering = true }
         }
         .contextMenu { contextItems }
         .help(change.isPathActionable
@@ -306,39 +427,76 @@ private struct GitChangeRow: View {
             .help(state.tooltip)
     }
 
-    private var rowTapGesture: some Gesture {
-        TapGesture(count: 2)
-            .exclusively(before: TapGesture(count: 1))
-            .onEnded { value in
-                guard change.isPathActionable else { return }
-                switch value {
-                case .first: openDiff()
-                case .second: openFile()
-                }
-            }
+    /// Ein Handler für alle Zeilenklicks. Modifier und Klickzahl kommen aus
+    /// dem auslösenden Event: Shift/Cmd markieren nur (wie in macOS-Listen),
+    /// der Einzelklick markiert sofort und öffnet die Datei erst nach dem
+    /// Doppelklick-Fenster, der Doppelklick öffnet stattdessen nur den Diff.
+    private func handleRowClick() {
+        let event = NSApp.currentEvent
+        let flags = event?.modifierFlags
+            .intersection([.command, .shift, .option, .control]) ?? []
+        // `clickCount` ist NUR für Maus-Events definiert — für andere
+        // Event-Typen (z.B. Space-Taste auf dem fokussierten Button) wirft
+        // AppKit eine Assertion. Dann zählt der Klick als Einzelklick.
+        let clickCount: Int
+        switch event?.type {
+        case .leftMouseUp, .leftMouseDown, .rightMouseUp, .rightMouseDown,
+             .otherMouseUp, .otherMouseDown:
+            clickCount = event?.clickCount ?? 1
+        default:
+            clickCount = 1
+        }
+        pendingSingleOpen?.cancel()
+        pendingSingleOpen = nil
+        if flags == .command {
+            onSelectCommand()
+            return
+        }
+        if flags == .shift {
+            onSelectShift()
+            return
+        }
+        guard flags.isEmpty else { return }
+        if clickCount >= 2 {
+            guard change.isPathActionable else { return }
+            openDiff()
+            return
+        }
+        // Einzelklick: sofort markieren (setzt auch den Shift-Anker) …
+        onSelectPlain()
+        guard change.isPathActionable else { return }
+        // … und die Datei verzögert öffnen, falls kein zweiter Klick folgt.
+        let work = DispatchWorkItem { openFile() }
+        pendingSingleOpen = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval,
+                                      execute: work)
     }
 
     /// Hover-Aktionen: Verwerfen/Bereitstellen (unstaged) bzw. Unstage (staged).
+    /// Auf einer markierten Zeile wirken sie auf die gesamte Auswahl.
     @ViewBuilder private var actionButtons: some View {
         switch section {
         case .unstaged:
             iconButton("arrow.uturn.backward", help: "Änderungen verwerfen",
                        markerID: "gitDiscardAction-\(change.rawPath.hashValue)") {
-                workspace.gitDiscard(change: change)
+                workspace.gitDiscard(changes: actionTargets())
             }
             iconButton("plus", help: "Änderungen bereitstellen",
                        markerID: "gitStageAction-\(change.rawPath.hashValue)") {
-                if let path = change.actionPath { workspace.gitStage(path: path) }
+                workspace.gitStage(paths: actionTargets().compactMap(\.actionPath))
             }
         case .staged:
             iconButton("minus", help: "Aus Bereitstellung nehmen") {
-                if let path = change.actionPath { workspace.gitUnstage(path: path) }
+                workspace.gitUnstage(paths: actionTargets().compactMap(\.actionPath))
             }
         }
     }
 
-    /// Kontextmenü mit denselben Aktionen sowie Diff und „Datei öffnen“.
+    /// Kontextmenü mit denselben Aktionen sowie Diff und „Datei öffnen“. Bei
+    /// Mehrfachauswahl weisen die Einträge ehrlich aus, auf wie viele Dateien
+    /// sie wirken.
     @ViewBuilder private var contextItems: some View {
+        let targets = actionTargets()
         Button("Änderungen anzeigen (Diff)") { openDiff() }
             .disabled(!change.isPathActionable)
         Button("Datei öffnen") { openFile() }
@@ -346,14 +504,21 @@ private struct GitChangeRow: View {
         Divider()
         switch section {
         case .unstaged:
-            Button("Änderungen bereitstellen") {
-                if let path = change.actionPath { workspace.gitStage(path: path) }
+            Button(targets.count > 1
+                   ? L10n.format("Änderungen bereitstellen (%ld Dateien)", targets.count)
+                   : L10n.string("Änderungen bereitstellen")) {
+                workspace.gitStage(paths: targets.compactMap(\.actionPath))
             }.disabled(!change.isPathActionable)
-            Button("Änderungen verwerfen") { workspace.gitDiscard(change: change) }
-                .disabled(!change.isPathActionable)
+            Button(targets.count > 1
+                   ? L10n.format("Änderungen verwerfen (%ld Dateien)", targets.count)
+                   : L10n.string("Änderungen verwerfen")) {
+                workspace.gitDiscard(changes: targets)
+            }.disabled(!change.isPathActionable)
         case .staged:
-            Button("Aus Bereitstellung nehmen") {
-                if let path = change.actionPath { workspace.gitUnstage(path: path) }
+            Button(targets.count > 1
+                   ? L10n.format("Aus Bereitstellung nehmen (%ld Dateien)", targets.count)
+                   : L10n.string("Aus Bereitstellung nehmen")) {
+                workspace.gitUnstage(paths: targets.compactMap(\.actionPath))
             }.disabled(!change.isPathActionable)
         }
     }

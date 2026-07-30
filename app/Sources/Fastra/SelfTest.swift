@@ -100,6 +100,10 @@ enum SelfTest {
         requestedTest != nil
     }
 
+    /// Diagnose: AppKit-`hitTest`-Kette des letzten synthetischen Klicks —
+    /// zeigt bei Klick-Fehlschlägen, welche View das Event angenommen hätte.
+    private static var lastHitTestChain = ""
+
     /// Setzt Shot-spezifische UI-Fixtures noch vor dem Aufbau der ersten
     /// `EditorView`. Die Variable gilt nur für diesen Selbsttest-Prozess und
     /// hinterlässt nach dessen automatischem Exit keinen persistenten Zustand.
@@ -111,7 +115,8 @@ enum SelfTest {
     ) {
         let sidebar: String?
         switch name {
-        case "gitshot", "gitstagefolder", "gitpushbutton": sidebar = "changes"
+        case "gitshot", "gitstagefolder", "gitpushbutton",
+             "gitmultidiscard": sidebar = "changes"
         case "graphshot": sidebar = "graph"
         default: sidebar = nil
         }
@@ -467,6 +472,10 @@ enum SelfTest {
             // Echter Fensterklick auf den transparent beschrifteten Push-Knopf:
             // erster Config-Remote statt alphabetischem `github`.
             waitForMainWindow { runGitPushButtonTest() }
+        case "gitmultidiscard":
+            // Echte Fensterklicks: Klick + Shift-Klick + Cmd-Klick markieren
+            // mehrere Änderungszeilen, Verwerfen wirkt auf die ganze Auswahl.
+            waitForMainWindow { runGitMultiDiscardTest() }
         case "openscope":
             // Fensterlos — Such-Scope „Geöffnet" end-to-end über Workspace +
             // SearchRunner (Multi-Tab-Suche + Alle-ersetzen über alle Tabs).
@@ -535,7 +544,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitmultidiscard, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -2169,10 +2178,17 @@ enum SelfTest {
         return sendMouseClick(at: point, in: window, modifiers: modifiers)
     }
 
+    /// Sendet einen synthetischen Linksklick. Standardweg ist `window.sendEvent`
+    /// (bewährt für Buttons und Modifier-Gesten). `viaApp` legt die Events
+    /// stattdessen mit `NSApp.postEvent` in die reguläre Event-Queue: Nur die
+    /// echte Event-Schleife setzt `NSApp.currentEvent`, aus dem z.B. der
+    /// Zeilen-Handler der Änderungen-Ansicht Modifier und Klickzahl liest.
     private static func sendMouseClick(
         at point: NSPoint,
         in window: NSWindow,
-        modifiers: NSEvent.ModifierFlags
+        modifiers: NSEvent.ModifierFlags,
+        viaApp: Bool = false,
+        clickCount: Int = 1
     ) -> Bool {
         let time = ProcessInfo.processInfo.systemUptime
         guard let down = NSEvent.mouseEvent(
@@ -2183,7 +2199,7 @@ enum SelfTest {
             windowNumber: window.windowNumber,
             context: nil,
             eventNumber: 0,
-            clickCount: 1,
+            clickCount: clickCount,
             pressure: 1
         ), let up = NSEvent.mouseEvent(
             with: .leftMouseUp,
@@ -2193,15 +2209,21 @@ enum SelfTest {
             windowNumber: window.windowNumber,
             context: nil,
             eventNumber: 1,
-            clickCount: 1,
+            clickCount: clickCount,
             pressure: 0
         ) else {
             return false
         }
-        window.sendEvent(down)
-        window.sendEvent(up)
+        if viaApp {
+            NSApp.postEvent(down, atStart: false)
+            NSApp.postEvent(up, atStart: false)
+        } else {
+            window.sendEvent(down)
+            window.sendEvent(up)
+        }
         return true
     }
+
 
     private static func pollShiftSelectedTabs(
         _ ws: Workspace,
@@ -11540,6 +11562,421 @@ enum SelfTest {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 pollGitStageFolderResult(ws, base: base, repo: repo,
                                          material: material, tick: tick + 1)
+            }
+        }
+    }
+
+    /// Daniel-Wunsch 2026-07-30: Mehrere Dateizeilen der Änderungen-Ansicht
+    /// per Klick + Shift-/Cmd-Klick markieren und auf einen Schlag verwerfen.
+    /// Der Test klickt echte Fensterzeilen: Klick wählt die M-Zeile, Shift-
+    /// Klick spannt den Bereich bis zur letzten Zeile auf, Cmd-Klick nimmt
+    /// die untracked Datei wieder heraus. Verwerfen über den Hover-Knopf der
+    /// markierten Zeile muss dann GENAU die zwei getrackten Dateien
+    /// zurücksetzen und die abgewählte untracked Datei stehen lassen.
+    private static func runGitMultiDiscardTest() {
+        testLabel = "gitmultidiscard"
+        guard ProcessInfo.processInfo.environment["FASTRA_SIDEBAR"] == "changes" else {
+            finish(false, "Launch-Fixture FASTRA_SIDEBAR=changes fehlt")
+        }
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        guard GitRunner.isAvailable else {
+            finish(true, "git nicht verfügbar — Git-Ansicht bleibt erwartungsgemäß verborgen")
+        }
+        Workspace.presentGitDialogs = false
+
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-gitmultidiscard-\(UUID().uuidString)")
+        let repo = base.appendingPathComponent("working-copy")
+        do {
+            try fm.createDirectory(at: repo, withIntermediateDirectories: true)
+            try "Original A\n".write(to: repo.appendingPathComponent("a-modified.txt"),
+                                     atomically: true, encoding: .utf8)
+            try "Original M\n".write(to: repo.appendingPathComponent("m-deleted.txt"),
+                                     atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "(setup) \(error.localizedDescription)")
+        }
+
+        let setup: [[String]] = [
+            ["init", "-b", "main"],
+            ["config", "user.email", "t@t"],
+            ["config", "user.name", "T"],
+            ["config", "status.showUntrackedFiles", "normal"],
+            ["add", "-A"],
+            ["commit", "-m", "init"],
+        ]
+        runGitSequence(setup, in: repo) { ok, error in
+            guard ok else {
+                try? fm.removeItem(at: base)
+                finish(false, "(setup git) \(error)")
+            }
+            do {
+                // Drei Zustände: geändert (M), gelöscht (D), unversioniert (U).
+                // Die Namen sortieren in jeder von git gelieferten Reihenfolge
+                // gleich: a… vor m… vor z… — die z-Zeile ist sicher die letzte.
+                try "Geändert A\n".write(to: repo.appendingPathComponent("a-modified.txt"),
+                                         atomically: true, encoding: .utf8)
+                try fm.removeItem(at: repo.appendingPathComponent("m-deleted.txt"))
+                try "Neu Z\n".write(to: repo.appendingPathComponent("z-untracked.txt"),
+                                    atomically: true, encoding: .utf8)
+            } catch {
+                try? fm.removeItem(at: base)
+                finish(false, "(working tree setup) \(error.localizedDescription)")
+            }
+            DispatchQueue.main.async {
+                ws.openProject(at: repo)
+                pollGitMultiDiscardRows(ws, base: base, repo: repo, tick: 0)
+            }
+        }
+    }
+
+    /// Wartet, bis alle drei ungestageten Zeilen samt Klick-Markern wirklich
+    /// im Fenster stehen, und startet dann die Klick-Folge.
+    private static func pollGitMultiDiscardRows(_ ws: Workspace, base: URL,
+                                                repo: URL, tick: Int) {
+        let unstaged = ws.gitStatus?.unstagedChanges ?? []
+        let wanted = ["a-modified.txt", "m-deleted.txt", "z-untracked.txt"]
+        let rows = wanted.compactMap { name in
+            unstaged.first(where: { $0.path == name })
+        }
+        let content = mainWindowForAXChecks()?.contentView
+        let markersReady = rows.count == wanted.count && content.map { view in
+            rows.allSatisfy {
+                markerView(id: "gitChangeRow-unstaged-\($0.rawPath.hashValue)",
+                           in: view) != nil
+            } && markerView(id: "gitDiscardAction-\(rows[0].rawPath.hashValue)",
+                            in: view) != nil
+        } == true
+        guard markersReady else {
+            if tick >= 100 {
+                try? FileManager.default.removeItem(at: base)
+                let shown = ws.gitStatus?.unstagedChanges.map(\.path) ?? []
+                finish(false, "Änderungszeilen oder Marker fehlen im Fenster "
+                    + "(sichtbar: \(shown))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollGitMultiDiscardRows(ws, base: base, repo: repo, tick: tick + 1)
+            }
+            return
+        }
+        performGitMultiDiscardClicks(
+            ws, base: base, repo: repo,
+            rowHashes: (first: rows[0].rawPath.hashValue,
+                        last: rows[2].rawPath.hashValue),
+            step: 0
+        )
+    }
+
+    /// Führt die vier Klicks nacheinander aus. Nach jedem Auswahl-Klick
+    /// wartet der Test über den `gitChangesSelCount`-Marker auf die erwartete
+    /// Auswahlgröße — der Einzelklick der Zeile wird über eine
+    /// `exclusively`-Geste erst nach dem Doppelklick-Fenster erkannt. Jeder
+    /// Marker wird vor seinem Klick frisch aufgelöst, weil SwiftUI die Zeilen
+    /// nach jeder Auswahl-Änderung neu rendert.
+    private static func performGitMultiDiscardClicks(
+        _ ws: Workspace, base: URL, repo: URL,
+        rowHashes: (first: Int, last: Int), step: Int
+    ) {
+        // Erwartete Auswahlgrößen: Klick auf M → 1; Shift-Klick auf die
+        // letzte Zeile → Bereich aus 3; Cmd-Klick auf die U-Zeile → 2.
+        let steps: [(markerID: String, flags: NSEvent.ModifierFlags,
+                     expectedCount: Int?, name: String)] = [
+            ("gitChangeRow-unstaged-\(rowHashes.first)", [], 1,
+             "Klick auf die M-Zeile"),
+            ("gitChangeRow-unstaged-\(rowHashes.last)", [.shift], 3,
+             "Shift-Klick auf die U-Zeile"),
+            ("gitChangeRow-unstaged-\(rowHashes.last)", [.command], 2,
+             "Cmd-Klick auf die U-Zeile"),
+            ("gitDiscardAction-\(rowHashes.first)", [], nil,
+             "Klick auf Verwerfen"),
+        ]
+        guard step < steps.count else {
+            pollGitMultiDiscardResult(base: base, repo: repo, tick: 0)
+            return
+        }
+        guard let window = mainWindowForAXChecks(),
+              let content = window.contentView else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Hauptfenster verschwand während der Klick-Folge")
+        }
+        let current = steps[step]
+        guard let marker = markerView(id: current.markerID, in: content) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Marker \(current.markerID) fehlt vor: \(current.name)")
+        }
+        window.layoutIfNeeded()
+        guard marker.bounds.width > 0, marker.bounds.height > 0 else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Marker ohne klickbare Fläche vor: \(current.name)")
+        }
+        // Zeilenmitte treffen — die im Test dauerhaft eingeblendeten
+        // Hover-Knöpfe überlagern nur das rechte Zeilenende.
+        let local = NSPoint(x: marker.bounds.midX, y: marker.bounds.midY)
+        let point = marker.convert(local, to: nil)
+        // Diagnose: Welche AppKit-View nimmt den Klick an dieser Stelle an?
+        if let superview = content.superview {
+            let hit = content.hitTest(superview.convert(point, from: nil))
+            var chain: [String] = []
+            var view: NSView? = hit
+            while let v = view, chain.count < 4 {
+                chain.append(String(describing: type(of: v)))
+                view = v.superview
+            }
+            lastHitTestChain = chain.joined(separator: " < ")
+        }
+        guard sendMouseClick(at: point, in: window, modifiers: current.flags,
+                             viaApp: true) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "\(current.name) nicht erzeugbar")
+        }
+        guard let expected = current.expectedCount else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                performGitMultiDiscardClicks(ws, base: base, repo: repo,
+                                             rowHashes: rowHashes, step: step + 1)
+            }
+            return
+        }
+        pollGitMultiDiscardSelection(ws, base: base, repo: repo,
+                                     rowHashes: rowHashes, step: step,
+                                     expected: expected, name: current.name,
+                                     tick: 0)
+    }
+
+    /// Wartet nach einem Auswahl-Klick auf die erwartete Auswahlgröße und
+    /// meldet bei Timeout präzise, welcher Klick nicht ankam und welcher
+    /// Zählerstand stattdessen sichtbar ist.
+    private static func pollGitMultiDiscardSelection(
+        _ ws: Workspace, base: URL, repo: URL,
+        rowHashes: (first: Int, last: Int), step: Int,
+        expected: Int, name: String, tick: Int
+    ) {
+        let content = mainWindowForAXChecks()?.contentView
+        let reached = content.map {
+            markerView(id: "gitChangesSelCount-\(expected)", in: $0) != nil
+        } == true
+        if reached {
+            performGitMultiDiscardClicks(ws, base: base, repo: repo,
+                                         rowHashes: rowHashes, step: step + 1)
+            return
+        }
+        if tick >= 60 {
+            // Zur Diagnose den tatsächlich sichtbaren Zählerstand suchen.
+            let actual = content.flatMap { view in
+                (0...8).first(where: {
+                    markerView(id: "gitChangesSelCount-\($0)", in: view) != nil
+                })
+            }
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "\(name) kam nicht in der Auswahl an "
+                + "(erwartet \(expected), sichtbar \(actual.map(String.init) ?? "kein Marker"), "
+                + "HitTest: \(lastHitTestChain))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollGitMultiDiscardSelection(ws, base: base, repo: repo,
+                                         rowHashes: rowHashes, step: step,
+                                         expected: expected, name: name,
+                                         tick: tick + 1)
+        }
+    }
+
+    /// Erwartung nach dem Sammel-Verwerfen: beide getrackten Dateien stehen
+    /// wieder auf dem Commit-Stand, die per Cmd-Klick abgewählte untracked
+    /// Datei existiert weiter — und git meldet als einzigen Eintrag
+    /// `?? z-untracked.txt`.
+    private static func pollGitMultiDiscardResult(base: URL, repo: URL, tick: Int) {
+        let fm = FileManager.default
+        let aURL = repo.appendingPathComponent("a-modified.txt")
+        let mURL = repo.appendingPathComponent("m-deleted.txt")
+        let zURL = repo.appendingPathComponent("z-untracked.txt")
+        guard fm.fileExists(atPath: zURL.path) else {
+            try? fm.removeItem(at: base)
+            finish(false, "Cmd-Klick nahm die untracked Datei nicht aus der "
+                + "Auswahl — das Sammel-Verwerfen hat sie mitgelöscht")
+        }
+        GitRunner.run(["status", "--porcelain", "-z"], in: repo) { result in
+            let entries = result?.stdoutData.split(separator: 0).map {
+                String(decoding: $0, as: UTF8.self)
+            } ?? []
+            let aContent = (try? String(contentsOf: aURL, encoding: .utf8)) ?? ""
+            let restored = result?.ok == true
+                && entries == ["?? z-untracked.txt"]
+                && aContent == "Original A\n"
+                && fm.fileExists(atPath: mURL.path)
+            if restored {
+                DispatchQueue.main.async {
+                    runGitMultiDiscardDoubleClick(base: base, repo: repo)
+                }
+                return
+            }
+            if tick >= 140 {
+                try? fm.removeItem(at: base)
+                finish(false, "Sammel-Verwerfen unvollständig (Status: \(entries), "
+                    + "a-modified: \(aContent.debugDescription))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollGitMultiDiscardResult(base: base, repo: repo, tick: tick + 1)
+            }
+        }
+    }
+
+    /// Nachspiel zum Klickpfad-Umbau (Zeilen-Button statt Tap-Gesten): Der
+    /// Einzelklick aus Schritt 1 muss die M-Datei als Tab geöffnet haben,
+    /// und ein Doppelklick auf die verbliebene z-Zeile öffnet NUR den Diff —
+    /// der stornierte Einzelklick-Öffner darf die Datei nicht nachreichen.
+    private static func runGitMultiDiscardDoubleClick(base: URL, repo: URL) {
+        guard let ws = Workspace.shared, let window = mainWindowForAXChecks(),
+              let content = window.contentView else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Fenster für die Doppelklick-Prüfung verschwunden")
+        }
+        let aURL = repo.appendingPathComponent("a-modified.txt")
+        guard ws.tabs.contains(where: {
+            $0.url?.standardizedFileURL == aURL.standardizedFileURL
+        }) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Der Einzelklick auf die M-Zeile öffnete die Datei nicht als Tab")
+        }
+        guard let zChange = ws.gitStatus?.unstagedChanges.first(where: {
+            $0.path == "z-untracked.txt"
+        }), let marker = markerView(
+            id: "gitChangeRow-unstaged-\(zChange.rawPath.hashValue)", in: content
+        ) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "z-Zeile fehlt für die Doppelklick-Prüfung")
+        }
+        window.layoutIfNeeded()
+        let point = marker.convert(
+            NSPoint(x: marker.bounds.midX, y: marker.bounds.midY), to: nil)
+        // Ein echter Doppelklick besteht aus zwei Klickpaaren; das zweite
+        // trägt clickCount 2.
+        guard sendMouseClick(at: point, in: window, modifiers: [], viaApp: true),
+              sendMouseClick(at: point, in: window, modifiers: [], viaApp: true,
+                             clickCount: 2) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Doppelklick nicht erzeugbar")
+        }
+        pollGitMultiDiscardDiffTab(ws, base: base, repo: repo, tick: 0)
+    }
+
+    private static func pollGitMultiDiscardDiffTab(_ ws: Workspace, base: URL,
+                                                   repo: URL, tick: Int) {
+        let zURL = repo.appendingPathComponent("z-untracked.txt")
+        let zFileTabOpen = ws.tabs.contains {
+            $0.url?.standardizedFileURL == zURL.standardizedFileURL
+        }
+        let diffTabOpen = ws.tabs.contains {
+            $0.gitKind == .diff && $0.title.hasSuffix("z-untracked.txt")
+        }
+        if zFileTabOpen {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Der Doppelklick öffnete zusätzlich die Datei statt nur den Diff")
+        }
+        if diffTabOpen {
+            // Nach Ablauf des Doppelklick-Fensters darf der stornierte
+            // Einzelklick die Datei nicht doch noch öffnen.
+            let wait = NSEvent.doubleClickInterval + 0.3
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
+                let lateFileTab = ws.tabs.contains {
+                    $0.url?.standardizedFileURL == zURL.standardizedFileURL
+                }
+                guard !lateFileTab else {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Der stornierte Einzelklick öffnete die Datei "
+                        + "nach dem Doppelklick doch noch")
+                }
+                runGitMultiDiscardHeaderPhase(ws, base: base, repo: repo)
+            }
+            return
+        }
+        if tick >= 100 {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Der Doppelklick öffnete keinen Diff-Tab")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollGitMultiDiscardDiffTab(ws, base: base, repo: repo, tick: tick + 1)
+        }
+    }
+
+    /// Kopf-Aktionen der ÄNDERUNGEN-Sektion (Daniel-Wunsch 2026-07-30):
+    /// Der Diff-Knopf öffnet den Gesamt-Diff-Tab (`git diff HEAD`), der
+    /// Verwerfen-Knopf verwirft die komplette Sektion — hier die letzte
+    /// verbliebene untracked Datei.
+    private static func runGitMultiDiscardHeaderPhase(_ ws: Workspace,
+                                                      base: URL, repo: URL) {
+        guard let window = mainWindowForAXChecks(),
+              let content = window.contentView,
+              let marker = markerView(id: "gitHeaderOpenDiff", in: content) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Kopf-Knopf für den Gesamt-Diff fehlt")
+        }
+        window.layoutIfNeeded()
+        let point = marker.convert(NSPoint(x: marker.bounds.midX,
+                                           y: marker.bounds.midY), to: nil)
+        guard sendMouseClick(at: point, in: window, modifiers: [], viaApp: true) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Klick auf den Gesamt-Diff-Knopf nicht erzeugbar")
+        }
+        pollGitMultiDiscardOverallDiff(ws, base: base, repo: repo, tick: 0)
+    }
+
+    private static func pollGitMultiDiscardOverallDiff(_ ws: Workspace, base: URL,
+                                                       repo: URL, tick: Int) {
+        let overallOpen = ws.tabs.contains {
+            $0.gitDiffRequest?.source == .workingTree(path: nil)
+        }
+        if overallOpen {
+            runGitMultiDiscardHeaderDiscard(base: base, repo: repo)
+            return
+        }
+        if tick >= 100 {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Der Gesamt-Diff-Tab erschien nicht")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollGitMultiDiscardOverallDiff(ws, base: base, repo: repo, tick: tick + 1)
+        }
+    }
+
+    /// Letzter Schritt: „Alle Änderungen verwerfen“ im Abschnitts-Kopf muss
+    /// die verbliebene untracked Datei löschen und das Repo sauber hinterlassen.
+    private static func runGitMultiDiscardHeaderDiscard(base: URL, repo: URL) {
+        guard let window = mainWindowForAXChecks(),
+              let content = window.contentView,
+              let marker = markerView(id: "gitHeaderDiscardAll", in: content) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Kopf-Knopf „Alle Änderungen verwerfen“ fehlt")
+        }
+        window.layoutIfNeeded()
+        let point = marker.convert(NSPoint(x: marker.bounds.midX,
+                                           y: marker.bounds.midY), to: nil)
+        guard sendMouseClick(at: point, in: window, modifiers: [], viaApp: true) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Klick auf „Alle Änderungen verwerfen“ nicht erzeugbar")
+        }
+        pollGitMultiDiscardFinal(base: base, repo: repo, tick: 0)
+    }
+
+    private static func pollGitMultiDiscardFinal(base: URL, repo: URL, tick: Int) {
+        GitRunner.run(["status", "--porcelain", "-z"], in: repo) { result in
+            let entries = result?.stdoutData.split(separator: 0).map {
+                String(decoding: $0, as: UTF8.self)
+            } ?? []
+            if result?.ok == true, entries.isEmpty {
+                try? FileManager.default.removeItem(at: base)
+                finish(true, "Klick + Shift-Klick markieren den Bereich, Cmd-Klick "
+                    + "nimmt die untracked Zeile heraus, Verwerfen setzt genau die "
+                    + "zwei getrackten Dateien in einem Zug zurück; Einzelklick "
+                    + "öffnet die Datei, Doppelklick nur den Diff; die Kopf-Knöpfe "
+                    + "öffnen den Gesamt-Diff und verwerfen den Rest der Sektion")
+            }
+            if tick >= 140 {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "„Alle Änderungen verwerfen“ räumte nicht auf "
+                    + "(Status: \(entries))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollGitMultiDiscardFinal(base: base, repo: repo, tick: tick + 1)
             }
         }
     }
