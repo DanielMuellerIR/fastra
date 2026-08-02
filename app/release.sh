@@ -67,11 +67,21 @@ done
 ./help-audit.sh --release
 
 # Veröffentlichungs-Gate: interne Angaben (Rechnernamen, private Pfade, interne
-# Hosts) dürfen nicht mit nach draußen. Exit 2 = kein öffentliches Remote
-# bekannt; das ist ein Umgebungshinweis und kein Grund, den Lauf abzubrechen.
+# Hosts) dürfen nicht mit nach draußen.
+#
+# Nur Exit 0 heißt „geprüft und sauber". Jeder andere Status bricht ab —
+# einschließlich Exit 2 (kein öffentliches Remote bekannt, also GAR NICHT
+# geprüft) und der Shell-Startfehler 126/127 (Skript nicht ausführbar bzw.
+# nicht gefunden). Bis 2026-08-02 brach nur Exit 1 ab; ein Release konnte
+# damit an einem Wächter vorbeilaufen, der nie gelaufen war (Review
+# 2026-08-02). Ist wirklich kein öffentliches Remote da, holt
+# `git fetch github` den Ref — das ist die Reparatur, kein Grund zum
+# Weitermachen.
 public_history_status=0
 ./public-history-audit.sh --release || public_history_status=$?
-if [ "$public_history_status" -eq 1 ]; then
+if [ "$public_history_status" -ne 0 ]; then
+  echo "Release abgebrochen: public-history-audit endete mit Status $public_history_status." >&2
+  echo "  Nur Status 0 (geprüft und sauber) darf ein Release fortsetzen." >&2
   exit 1
 fi
 

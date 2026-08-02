@@ -28,7 +28,7 @@
 #
 # Exit-Codes:
 #   0 = nichts gefunden (oder Fund im Normallauf, nur als Hinweis)
-#   1 = Fund im Release-Modus
+#   1 = Fund im Release-Modus ODER ein Muster ließ sich nicht anwenden
 #   2 = Umgebungsproblem (kein öffentliches Remote bekannt) — kein Befund
 #
 # Steuerbar für Tests und andere Clones:
@@ -73,26 +73,67 @@ report() {
     printf '  %s\n' "$1"
 }
 
+# Treffer des letzten `scan`-Laufs, eine Zeile je Fund.
+scan_output=""
+
+# grep über stdin MIT ehrlichem Status. grep unterscheidet drei Fälle:
+#   0 = Treffer, 1 = kein Treffer, ab 2 = grep selbst ist gescheitert
+#       (typisch: ein ungültiger regulärer Ausdruck in der lokalen Musterdatei).
+# Das frühere `|| true` warf alle drei in einen Topf: Ein kaputtes privates
+# Muster galt damit als „nichts gefunden" und der Wächter meldete PASS,
+# obwohl er gar nicht geprüft hatte (Review 2026-08-02). Ein solcher Fehler
+# ist deshalb ein harter Abbruch, kein stiller Durchlauf.
+scan() {
+    # `status` ist in zsh ein reservierter Name (Zweitname für `$?`) und
+    # lässt sich nicht überschreiben — daher `rc`.
+    local pattern="$1" rc=0
+    scan_output="$(grep -nE "$pattern")" || rc=$?
+    if [[ $rc -ge 2 ]]; then
+        echo "PUBLIC HISTORY AUDIT: FEHLER — grep endete mit Status $rc beim Muster:" >&2
+        printf '  %s\n' "$pattern" >&2
+        echo "  Ein unanwendbares Muster darf nicht als „nichts gefunden“ durchgehen." >&2
+        exit 1
+    fi
+}
+
 messages="$(git log --format='%h %s%n%b' "$range")"
 
 for pattern in "${builtin_patterns[@]}"; do
+    scan "$pattern" <<< "$messages"
     while IFS= read -r line; do
         [[ -n "$line" ]] && report "Commit-Nachricht: $line"
-    done < <(printf '%s\n' "$messages" | grep -nE "$pattern" || true)
+    done <<< "$scan_output"
 done
 
 # Lokale Musterliste: je Zeile ein erweiterter regulärer Ausdruck.
 # Leerzeilen und Zeilen ab '#' werden übersprungen.
 if [[ -f "$patterns_file" ]]; then
+    # Hinzugefügte Zeilen JE AUSGEHENDEM COMMIT sammeln, nicht aus dem
+    # Netto-Diff `Basis..HEAD`. Wer eine interne Angabe in einem Commit
+    # hinzufügt und in einem späteren wieder entfernt, hat sie im Netto-Diff
+    # nicht mehr — nach dem Push bleibt der Zwischen-Commit aber über seine
+    # SHA dauerhaft erreichbar und damit auch die Angabe darin
+    # (Review 2026-08-02). Jede Zeile trägt vorn die Commit-Kurz-SHA, damit
+    # der Fund benennbar ist.
+    added_lines=""
+    while IFS= read -r sha; do
+        [[ -z "$sha" ]] && continue
+        commit_added="$(git show --format='' --unified=0 "$sha" \
+                        | grep -E '^\+' | grep -vE '^\+\+\+' || true)"
+        [[ -z "$commit_added" ]] && continue
+        added_lines+="$(printf '%s\n' "$commit_added" | sed "s|^|${sha:0:9} |")"$'\n'
+    done < <(git rev-list --reverse "$range")
+
     while IFS= read -r pattern; do
         [[ -z "$pattern" || "$pattern" == \#* ]] && continue
+        scan "$pattern" <<< "$messages"
         while IFS= read -r line; do
             [[ -n "$line" ]] && report "Commit-Nachricht: $line"
-        done < <(printf '%s\n' "$messages" | grep -nE "$pattern" || true)
+        done <<< "$scan_output"
+        scan "$pattern" <<< "$added_lines"
         while IFS= read -r line; do
             [[ -n "$line" ]] && report "Neue Zeile: $line"
-        done < <(git diff "$range" | grep -E '^\+' | grep -vE '^\+\+\+' \
-                 | grep -nE "$pattern" || true)
+        done <<< "$scan_output"
     done < "$patterns_file"
 else
     echo "PUBLIC HISTORY AUDIT: Hinweis — keine lokale Musterdatei ($patterns_file)."
