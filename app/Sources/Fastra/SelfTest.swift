@@ -1222,8 +1222,19 @@ enum SelfTest {
         tick: Int = 0
     ) {
         if !closedWindow.isVisible {
-            guard closedWorkspace.tabs.isEmpty else {
-                finish(false, "Fenster schloss, aber der letzte Tab blieb im Workspace")
+            // `prepareToCloseWindow` fährt den Workspace bewusst in den
+            // Willkommens-Zustand zurück (genau ein frischer Scratch-Tab) und
+            // gerade NICHT in eine leere Tab-Liste: SwiftUI kann dieselbe Szene
+            // später wieder anzeigen, und ohne Tab stünde dann ein Fenster mit
+            // Editorfläche ohne Ziel da. Erwartet wird deshalb genau dieser
+            // Zustand — die frühere Forderung `tabs.isEmpty` ließ den Test bei
+            // korrektem Produktverhalten immer scheitern (Review 2026-08-02).
+            guard closedWorkspace.isWelcomeScreen,
+                  closedWorkspace.tabs.count == 1,
+                  closedWorkspace.tabs.allSatisfy({ $0.url == nil && !$0.isDirty }) else {
+                finish(false, "Fenster schloss, aber der Workspace steht nicht im "
+                    + "Willkommens-Zustand: \(closedWorkspace.tabs.count) Tab(s), "
+                    + "welcome=\(closedWorkspace.isWelcomeScreen)")
             }
             guard originalWindow.isVisible else {
                 finish(false, "⌘W auf dem Zweitfenster schloss auch das erste Fenster")
@@ -1233,7 +1244,7 @@ enum SelfTest {
             }
         }
         if tick >= 100 {
-            finish(false, "⌘W ließ ein Fenster ohne Tabs zurück oder aktivierte den falschen Workspace")
+            finish(false, "⌘W schloss das Zweitfenster nicht oder aktivierte den falschen Workspace")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
             pollForLastTabWindowClose(
