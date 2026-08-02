@@ -1264,6 +1264,7 @@
 "Unbekannter ripgrep-Fehler" = "Unknown ripgrep error";
 "Der Apply-Auftrag ist leer." = "The apply operation is empty.";
 "„%@“ kann nicht auf der sichtbaren Vorschau-Basis ersetzt werden." = "“%@” cannot be replaced from the visible preview basis.";
+"Keine der Dateien ändert sich durch diese Ersetzung. Es wurde nichts verändert." = "None of the files change with this replacement. Nothing was modified.";
 "Backup vorbereiten (%@): %@" = "Prepare backup (%@): %@";
 "Temporäre Datei lesen (%@): %@" = "Read temporary file (%@): %@";
 "Ordner-Apply wird vorbereitet…" = "Preparing folder apply…";
@@ -1288,5 +1289,7 @@
 "„%@“ wird umgewandelt …" = "Converting “%@” …";
 "„%@“ angelegt." = "Created “%@”.";
 "Die Umwandlung ist fehlgeschlagen." = "The conversion failed.";
+"Die Umwandlung hat eine unvollständige Antwort geliefert. Es wurde nichts übernommen." = "The conversion returned an incomplete response. Nothing was imported.";
+"Die Umwandlung hat eine Datei außerhalb ihres Arbeitsordners gemeldet. Es wurde nichts verschoben." = "The conversion reported a file outside its own working folder. Nothing was moved.";
 "Der Ordner „%@“ ist nicht beschreibbar." = "The folder “%@” is not writable.";
 "„Poor Man's Text“ ist nicht installiert." = "“Poor Man's Text” is not installed.";

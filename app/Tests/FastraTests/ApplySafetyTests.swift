@@ -1130,3 +1130,88 @@ func transactionPlanHashIsDeterministicAndSensitive() throws {
     #expect(first.planSHA256 == identical.planSHA256)
     #expect(first.planSHA256 != changed.planSHA256)
 }
+
+// MARK: W-2026-08-02. Wirkungslose Datei bricht nicht mehr den ganzen Auftrag ab
+
+// Befund 2026-08-02: Enthielt ein Auftrag eine Datei, deren Treffer zwar
+// existieren, deren Ersetzung aber exakt den Ausgangstext ergibt, brach der
+// Vorlauf den GESAMTEN Auftrag ab — auch die echten Änderungen aller anderen
+// Dateien. Der Aufbau unten ist der reale Weg: Die Eingaben stammen aus der
+// sichtbaren Ordner-Vorschau (also aus ALLEN Dateien mit Treffern), nicht aus
+// der bereits gefilterten Änderungsliste.
+
+/// Auftrag über alle Treffer-Dateien — so, wie ihn die Ordner-Vorschau baut.
+private func makePreviewTransaction(files: [URL],
+                                    options: SearchOptions) throws -> ApplyTransaction {
+    let plan = ApplyEngine.plan(files: files, options: options)
+    let inputs = try plan.files.map { file in
+        ApplyTransaction.Input(url: file.url,
+                               snapshot: try #require(file.originalSnapshot),
+                               matches: file.matches)
+    }
+    return ApplyTransaction(inputs: inputs, options: options)
+}
+
+@Test("Eine wirkungslose Datei wird übersprungen, die übrigen werden ersetzt")
+func transaction_skipsUnchangedFileAndAppliesTheRest() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-noop-mix-\(UUID().uuidString)", isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: directory,
+                                            withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let changing = directory.appendingPathComponent("gross.txt")
+    let unchanged = directory.appendingPathComponent("klein.txt")
+    try Data("FOO eins".utf8).write(to: changing)
+    try Data("foo zwei".utf8).write(to: unchanged)
+
+    // „foo" ohne Beachtung der Großschreibung durch „foo" ersetzen: In der
+    // ersten Datei ändert das wirklich etwas, in der zweiten nicht.
+    let options = SearchOptions(find: "foo", replace: "foo",
+                                isRegex: false, caseSensitive: false)
+    let transaction = try makePreviewTransaction(files: [changing, unchanged],
+                                                 options: options)
+    #expect(transaction.inputs.count == 2, "Beide Dateien haben sichtbare Treffer")
+
+    let session = try transaction.execute(backupRoot: backups, cleanupOlderThan: nil)
+
+    #expect(try Data(contentsOf: changing) == Data("foo eins".utf8))
+    #expect(try Data(contentsOf: unchanged) == Data("foo zwei".utf8))
+    // Nur die wirklich geschriebene Datei steht in der Sitzung — die
+    // übersprungene braucht weder Backup noch Rückgängig-Eintrag.
+    #expect(session.entries.count == 1)
+    #expect(session.entries.first?.originalPath == changing.path)
+}
+
+@Test("Ändert sich keine einzige Datei, wird der Auftrag ehrlich abgelehnt")
+func transaction_refusesWhenNothingWouldChange() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-noop-all-\(UUID().uuidString)", isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: directory,
+                                            withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let first = directory.appendingPathComponent("a.txt")
+    let second = directory.appendingPathComponent("b.txt")
+    try Data("foo eins".utf8).write(to: first)
+    try Data("foo zwei".utf8).write(to: second)
+
+    let options = SearchOptions(find: "foo", replace: "foo",
+                                isRegex: false, caseSensitive: true)
+    let transaction = try makePreviewTransaction(files: [first, second],
+                                                 options: options)
+
+    #expect(throws: ApplyError.self) {
+        _ = try transaction.execute(backupRoot: backups, cleanupOlderThan: nil)
+    }
+    #expect(try Data(contentsOf: first) == Data("foo eins".utf8))
+    #expect(try Data(contentsOf: second) == Data("foo zwei".utf8))
+    #expect((try FileManager.default.contentsOfDirectory(atPath: backups.path)).isEmpty,
+            "Ein abgelehnter Auftrag darf keine Sitzung hinterlassen")
+}

@@ -754,7 +754,7 @@ extension ApplyEngine {
                 ReplacePlanInput(url: input.url, data: current.data,
                                  snapshot: current.snapshot),
                 options: transaction.options, shouldCancel: shouldCancel)
-            guard file.skipped == nil, file.hasChanges else {
+            guard file.skipped == nil else {
                 throw ApplyError.planNotApplyable(L10n.format(
                     "„%@“ kann nicht auf der sichtbaren Vorschau-Basis ersetzt werden.",
                     input.url.lastPathComponent))
@@ -766,6 +766,14 @@ extension ApplyEngine {
             progress(ApplyTransaction.Progress(
                 phase: .planned, completedFiles: index + 1,
                 totalFiles: total, fileName: input.url.lastPathComponent))
+
+            // Datei mit Treffern, deren Ersetzungen aber exakt den Ausgangstext
+            // ergeben (etwa „foo" → „foo"): Es gibt nichts zu schreiben. Diese
+            // Datei wird übersprungen und bekommt deshalb weder Backup noch
+            // Eintrag in der Sitzung. Bis 2026-08-02 brach eine einzige solche
+            // Datei den GESAMTEN Auftrag ab und verhinderte damit alle echten
+            // Änderungen der übrigen Dateien (Review 2026-08-02).
+            guard file.hasChanges else { continue }
 
             let backupRelativePath = "files/\(index).bin"
             let backupURL = sessionDir.appendingPathComponent(backupRelativePath)
@@ -787,6 +795,14 @@ extension ApplyEngine {
             progress(ApplyTransaction.Progress(
                 phase: .backedUp, completedFiles: index + 1,
                 totalFiles: total, fileName: input.url.lastPathComponent))
+        }
+
+        // Ändert sich durch die Ersetzung KEINE einzige Datei, ist der Auftrag
+        // als Ganzes wirkungslos — das bleibt eine ehrliche Ablehnung statt
+        // eines Erfolgs ohne jede Wirkung.
+        guard !staged.isEmpty else {
+            throw ApplyError.planNotApplyable(L10n.string(
+                "Keine der Dateien ändert sich durch diese Ersetzung. Es wurde nichts verändert."))
         }
 
         try beforePreflight?()
