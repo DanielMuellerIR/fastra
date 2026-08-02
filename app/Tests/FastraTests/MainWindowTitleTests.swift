@@ -54,3 +54,38 @@ func welcomeStateShowsVersionTitleNotUntitled() {
     #expect(metadata.representedURL == nil)
     #expect(!metadata.isDocumentEdited)
 }
+
+// MARK: - Versionsdatum gegen den CHANGELOG
+
+/// Das im Fenstertitel gezeigte Versionsdatum stammt aus `app/Info.plist`,
+/// gepflegt wird die Historie aber im `CHANGELOG.md`. Am 2026-08-02 standen
+/// dort für 1.60.0 zwei verschiedene Daten (Plist 2026-07-25, CHANGELOG
+/// 2026-07-30) — Nutzer sahen für das installierte Bundle also ein falsches
+/// Datum. Dieser Test vergleicht beide Quellen mechanisch, damit das nicht
+/// wieder unbemerkt auseinanderläuft.
+@Test("Version und Versionsdatum aus Info.plist stehen so im CHANGELOG")
+func infoPlistVersionMatchesChangelog() throws {
+    let appDirectory = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()   // FastraTests
+        .deletingLastPathComponent()   // Tests
+        .deletingLastPathComponent()   // app
+    let plistURL = appDirectory.appendingPathComponent("Info.plist")
+    let changelogURL = appDirectory.deletingLastPathComponent()
+        .appendingPathComponent("CHANGELOG.md")
+
+    let plist = try #require(
+        try PropertyListSerialization.propertyList(
+            from: Data(contentsOf: plistURL), format: nil) as? [String: Any])
+    let version = try #require(plist["CFBundleShortVersionString"] as? String)
+    let versionDate = try #require(plist["FastraVersionDate"] as? String)
+
+    // Der CHANGELOG führt jede Version als „## [v<Version>] — <Datum>".
+    let changelog = try String(contentsOf: changelogURL, encoding: .utf8)
+    let heading = changelog
+        .split(separator: "\n", omittingEmptySubsequences: false)
+        .first { $0.hasPrefix("## [v\(version)] — ") }
+    let entry = try #require(heading.map(String.init),
+                             "Keine CHANGELOG-Überschrift für v\(version)")
+    #expect(entry.hasSuffix("— \(versionDate)"),
+            "Info.plist datiert v\(version) auf \(versionDate), CHANGELOG sagt: \(entry)")
+}
