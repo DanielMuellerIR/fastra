@@ -173,6 +173,9 @@ func replaceActiveMatch_adjustsFrozenSelectionRange() {
                               searchRange: ws.activeSearchRange)
     ws.bufferMatches = r.matches
     ws.bufferTotalMatches = r.totalMatches
+    // Wie der echte Runner: sichtbare Treffer und ihre Optionen gehören
+    // zusammen — ohne das gibt die Vorschau-Grenze kein Ersetzen frei.
+    ws.visibleBufferResultsOptions = ws.currentSearchOptions
     #expect(ws.bufferMatches.count == 2)
     ws.activeMatchIndex = 0
 
@@ -203,10 +206,82 @@ func applyAllInSelection_adjustsFrozenSelectionRange() {
                               searchRange: ws.activeSearchRange)
     ws.bufferMatches = r.matches
     ws.bufferTotalMatches = r.totalMatches
+    ws.visibleBufferResultsOptions = ws.currentSearchOptions
 
     // Beide Treffer in der Auswahl ersetzen: „XXXXX XXXXX foo" (delta +4).
     ws.applyAllInActiveBuffer()
     #expect(ws.activeTabContent.wrappedValue == "XXXXX XXXXX foo")
     // Auswahl wandert von Länge 7 auf 7 + 4 = 11 mit (deckt „XXXXX XXXXX").
     #expect(ws.activeSearchRange == NSRange(location: 0, length: 11))
+}
+
+// MARK: - Vorschau-Grenze: Ersetzen nur auf der SICHTBAREN Trefferbasis
+
+// Befund 2026-08-02: `searchInputsDidChange` leerte nur die Ordner-Vorschau.
+// Trefferzahl und Treffer der Datei-/Geöffnet-Suche blieben bis zum 120 ms
+// später laufenden Neu-Suchen stehen, während „Alle ersetzen" die Ersetzung
+// schon mit den NEUEN Optionen rechnete. In diesem Fenster gab eine Vorschau
+// zum alten Muster eine Änderung nach dem neuen frei — genau das, was die
+// Vorschau-Grenze verhindern soll.
+
+@Test("Alle ersetzen läuft nicht mit alter Vorschau und neuem Muster")
+@MainActor
+func applyAll_refusesPreviewFromAnEarlierPattern() {
+    let ws = makeWorkspace(content: "foo foo")
+    ws.scope = .file
+    ws.useRegex = false
+    ws.findPattern = "foo"
+    ws.replacePattern = "X"
+
+    // Vorschau materialisieren, wie der Such-Runner es tut.
+    let preview = BufferSearch.find(in: ws.activeTabContent.wrappedValue,
+                                    options: ws.currentSearchOptions,
+                                    searchRange: ws.activeSearchRange)
+    ws.bufferMatches = preview.matches
+    ws.bufferTotalMatches = preview.totalMatches
+    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    #expect(ws.bufferTotalMatches == 2)
+
+    // Ein Tastendruck ändert das Muster. Der Neulauf ist verzögert und hier
+    // bewusst noch nicht gelaufen: Die sichtbare Trefferzahl gehört weiter
+    // zu „foo", das Muster ist aber schon „o".
+    ws.findPattern = "o"
+    #expect(ws.bufferTotalMatches == 2, "Die sichtbare Vorschau soll stehen bleiben")
+
+    ws.applyAllInActiveBuffer()
+    #expect(ws.activeTabContent.wrappedValue == "foo foo",
+            "Ersetzen darf erst nach einer Vorschau zum neuen Muster laufen")
+
+    // Sobald die Vorschau zum aktuellen Muster gehört, greift „Alle ersetzen"
+    // wieder — die Sperre ist eng auf das Fenster begrenzt.
+    let fresh = BufferSearch.find(in: ws.activeTabContent.wrappedValue,
+                                  options: ws.currentSearchOptions,
+                                  searchRange: ws.activeSearchRange)
+    ws.bufferMatches = fresh.matches
+    ws.bufferTotalMatches = fresh.totalMatches
+    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    ws.applyAllInActiveBuffer()
+    #expect(ws.activeTabContent.wrappedValue == "fXX fXX")
+}
+
+@Test("Einzel-Ersetzen läuft nicht auf einem Treffer aus einem alten Lauf")
+@MainActor
+func replaceActiveMatch_refusesPreviewFromAnEarlierPattern() {
+    let ws = makeWorkspace(content: "foo foo")
+    ws.scope = .file
+    ws.useRegex = false
+    ws.findPattern = "foo"
+    ws.replacePattern = "X"
+
+    let preview = BufferSearch.find(in: ws.activeTabContent.wrappedValue,
+                                    options: ws.currentSearchOptions,
+                                    searchRange: ws.activeSearchRange)
+    ws.bufferMatches = preview.matches
+    ws.bufferTotalMatches = preview.totalMatches
+    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    ws.activeMatchIndex = 0
+
+    ws.findPattern = "o"
+    ws.replaceActiveMatch()
+    #expect(ws.activeTabContent.wrappedValue == "foo foo")
 }

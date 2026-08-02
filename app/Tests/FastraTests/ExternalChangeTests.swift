@@ -518,3 +518,37 @@ func workspace_reopenEncodingGenerationProtectsNewerContent() async throws {
     #expect(ws.tabs[idx].isDirty)
     #expect(!ws.tabs[idx].isLoading)
 }
+
+// MARK: - Reload setzt auch die gespeicherte Vergleichsbasis
+
+// Befund 2026-08-02: Der Reload offener Tabs (etwa nach einem Ordner-Apply)
+// ersetzte Inhalt und Platten-Abbild und setzte `isDirty = false`, ließ aber
+// im Gegensatz zu jedem anderen Lade- und Speicherpfad die alte Vergleichs-
+// basis stehen. Ein Rückgängig auf den Inhalt VOR dem Apply traf damit genau
+// diese alte Basis: Der Tab galt als sauber, obwohl er von der Platte abwich,
+// und ⌘W hätte ihn ohne Nachfrage geschlossen.
+
+@Test("Nach dem Reload gilt der frische Inhalt als gespeicherter Stand")
+@MainActor
+func workspace_reloadRecordsSavedContentBaseline() async throws {
+    let url = try writeTmpUTF8("vor dem Apply\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let ws = await loadedWorkspace(url)
+    let idx = try #require(ws.tabs.firstIndex { $0.url == url })
+    ws.activeTabID = ws.tabs[idx].id
+
+    try Data("nach dem Apply\n".utf8).write(to: url, options: .atomic)
+    ws.reloadOpenTabs(for: [url])
+    #expect(await waitForContent(ws, idx: idx, expected: "nach dem Apply\n"))
+    #expect(!ws.tabs[idx].isDirty)
+
+    // Rückgängig bis vor den Apply: Der Tab weicht jetzt von der Platte ab und
+    // muss das auch zeigen.
+    ws.activeTabContent.wrappedValue = "vor dem Apply\n"
+    #expect(ws.tabs[idx].isDirty,
+            "Der Inhalt von vor dem Apply ist NICHT der gespeicherte Stand")
+
+    // Und der frisch geladene Stand gilt weiterhin als sauber.
+    ws.activeTabContent.wrappedValue = "nach dem Apply\n"
+    #expect(!ws.tabs[idx].isDirty)
+}

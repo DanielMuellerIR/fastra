@@ -723,6 +723,24 @@ final class Workspace: ObservableObject {
     /// die Maske zeigt dann den orangen Hinweis-Streifen.
     @Published var openResultsWereCapped: Bool = false
 
+    /// Die Suchoptionen, zu denen die aktuell SICHTBAREN Treffer der Datei-
+    /// und Geöffnet-Suche gehören. `nil` heißt: Es gibt gerade keine gültige
+    /// Vorschau — eine Eingabe hat sich geändert und der neue Lauf ist noch
+    /// nicht fertig.
+    ///
+    /// Warum ein eigenes Feld: „Alle ersetzen" rechnet die Ersetzung frisch
+    /// aus `currentSearchOptions`, benutzt als Freigabe aber nur die
+    /// Trefferzahl der Vorschau. Zwischen einem Tastendruck und dem 120 ms
+    /// später laufenden Neu-Suchen gehörten beide zu VERSCHIEDENEN Mustern:
+    /// Die alte sichtbare Trefferzahl gab eine Ersetzung frei, die mit dem
+    /// neuen Muster gerechnet wurde — eine Änderung ohne je gezeigte
+    /// Vorschau (Review 2026-08-02). Der Ordner-Scope prüft dasselbe schon
+    /// länger über `result.searchOptions == options` in `applyAllInFolder`.
+    ///
+    /// Bewusst NICHT `@Published`: Das Feld steuert nur die Freigabe, keine
+    /// Anzeige — jede Änderung würde sonst die gesamte Maske neu zeichnen.
+    var visibleBufferResultsOptions: SearchOptions?
+
     /// Wird in `init` aufgebaut und hält die Combine-Subscription am
     /// Leben. Sucht in `bufferMatches` neu, sobald sich Such-Inputs
     /// oder der aktive Buffer ändern.
@@ -4007,6 +4025,13 @@ final class Workspace: ObservableObject {
                         self.tabs[idx].diskModificationDate = ExternalChange.diskModificationDate(of: url)
                         self.tabs[idx].isDirty    = false
                         self.tabs[idx].isLoading  = false
+                        // Der frisch geladene Inhalt IST jetzt der gespeicherte
+                        // Stand — wie auf jedem anderen Lade- und Speicherpfad.
+                        // Ohne diese Zeile blieb die alte Basis stehen: Ein Undo
+                        // auf den Vor-Apply-Inhalt hätte den Tab wieder „sauber"
+                        // aussehen lassen, und ⌘W hätte ihn ohne Nachfrage
+                        // geschlossen (Review 2026-08-02).
+                        self.tabs[idx].recordSavedContentBaseline()
                     } else {
                         // Reload fehlgeschlagen: isLoading zurücksetzen,
                         // aber alten Inhalt NICHT löschen (besser veralteter
@@ -4025,7 +4050,14 @@ final class Workspace: ObservableObject {
     func applyAllInActiveBuffer() {
         // `bufferTotalMatches` statt `bufferMatches.count` als Gate: bei
         // gekappter Liste gibt es mehr Treffer als materialisiert sind.
-        guard bufferTotalMatches > 0, searchError == nil else { return }
+        //
+        // Die zweite Bedingung hält die Vorschau-Grenze: Die sichtbare
+        // Trefferzahl darf nur eine Ersetzung freigeben, die zu GENAU DIESEN
+        // Optionen gehört. Sonst gäbe der alte Trefferstand kurz nach einem
+        // Tastendruck eine Ersetzung mit dem neuen Muster frei
+        // (Review 2026-08-02).
+        guard bufferTotalMatches > 0, searchError == nil,
+              visibleBufferResultsOptions == currentSearchOptions else { return }
         recordSearchHistory()
         let text = activeTabContent.wrappedValue
         // Voll-Replace über den ganzen Text (bzw. die eingefrorene Auswahl bei
@@ -4058,7 +4090,10 @@ final class Workspace: ObservableObject {
     /// Buffer-Pfad). Liefert die Anzahl geänderter Tabs (Testbarkeit).
     @discardableResult
     func applyAllInOpenTabs() -> Int {
-        guard openTotalMatches > 0, searchError == nil else { return 0 }
+        // Gleiche Vorschau-Grenze wie im Datei-Scope: nur eine Trefferzahl,
+        // die zu den aktuellen Suchoptionen gehört, gibt das Ersetzen frei.
+        guard openTotalMatches > 0, searchError == nil,
+              visibleBufferResultsOptions == currentSearchOptions else { return 0 }
         recordSearchHistory()
         let inputs = tabs.filter { !$0.isLoading }.map {
             OpenTabsSearch.TabInput(id: $0.id, title: $0.title, content: $0.content)
@@ -4083,7 +4118,12 @@ final class Workspace: ObservableObject {
     /// Scope schreibt auf die Platte und kommt erst mit dem persistenten
     /// Ergebnis-Fenster (Schritt 2); deshalb hier bewusst ausgeklammert.
     func replaceActiveMatch() {
+        // Auch hier gilt die Vorschau-Grenze, und zwar noch direkter als beim
+        // Alle-Ersetzen: Der Treffer wird als BEREICH in den aktuellen Text
+        // gespleißt. Gehört er zu einem älteren Muster oder Textstand, träfe
+        // der Bereich die falsche Stelle (Review 2026-08-02).
         guard !scope.isFolderLike, searchError == nil,
+              visibleBufferResultsOptions == currentSearchOptions,
               activeMatchIndex < bufferMatches.count else { return }
         recordSearchHistory()
         let match = bufferMatches[activeMatchIndex]
@@ -4118,6 +4158,9 @@ final class Workspace: ObservableObject {
         bufferMatches = result.matches
         bufferTotalMatches = result.totalMatches
         bufferResultsWereCapped = result.wasCapped
+        // Die frische Vorschau gehört zu genau diesen Optionen — sonst bliebe
+        // „Alle ersetzen" nach einem Einzel-Ersetzen bis zum Async-Lauf gesperrt.
+        visibleBufferResultsOptions = currentSearchOptions
         searchError = result.invalidPatternMessage
         if activeMatchIndex >= result.matches.count {
             activeMatchIndex = max(0, result.matches.count - 1)

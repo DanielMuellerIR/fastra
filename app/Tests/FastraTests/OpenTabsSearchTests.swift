@@ -126,8 +126,10 @@ func workspace_applyAllInOpenTabs() {
     ws.replacePattern = "X"
     ws.useRegex = false
     ws.caseSensitive = true
-    // Guard-Futter: der Apply-Pfad prüft den Treffer-Stand des Runners.
+    // Guard-Futter: der Apply-Pfad prüft den Treffer-Stand des Runners UND
+    // ob dieser Stand zu den aktuellen Suchoptionen gehört.
     ws.openTotalMatches = 2
+    ws.visibleBufferResultsOptions = ws.currentSearchOptions
     let changedCount = ws.applyAllInOpenTabs()
     #expect(changedCount == 2)
     #expect(ws.tabs[0].content == "X bar")
@@ -162,4 +164,83 @@ func workspace_extractInOpenScope() {
     ws.openTotalMatches = r.totalMatches
     #expect(ws.extractHitsToNewTab() == true)
     #expect(ws.tabs.last?.content == "foo eins\nfoo zwei\n")
+}
+
+@Test("Alle ersetzen im Geöffnet-Scope hält dieselbe Vorschau-Grenze")
+func workspace_applyAllInOpenTabs_refusesStalePreview() {
+    let ws = makeWorkspace(tabs: [("a.txt", "foo bar")])
+    ws.findPattern = "foo"
+    ws.replacePattern = "X"
+    ws.useRegex = false
+    ws.caseSensitive = true
+    ws.openTotalMatches = 1
+    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+
+    // Muster geändert, Neulauf noch nicht gelaufen → die sichtbare
+    // Trefferzahl gehört zum alten Muster und gibt nichts frei.
+    ws.findPattern = "bar"
+    #expect(ws.applyAllInOpenTabs() == 0)
+    #expect(ws.tabs[0].content == "foo bar")
+}
+
+// Der Selbsttest `openscope` fiel am 2026-08-02 auf eine Lücke herein, die
+// kein Test mit von Hand gesetztem Zustand sehen konnte: Die Freigabe für
+// „Alle ersetzen" wurde zwar bei jeder Eingabeänderung entzogen, vom
+// Geöffnet-Lauf des Such-Runners aber nie wieder erteilt. Dieser Test geht
+// deshalb bewusst über den ECHTEN Runner samt Verzögerung.
+@Test("Der Such-Runner gibt Alle ersetzen im Geöffnet-Scope wieder frei")
+@MainActor
+func workspace_runnerRestoresOpenScopeApplyGate() async throws {
+    let ws = makeWorkspace(tabs: [("a.txt", "MARKER eins"), ("b.txt", "ohne Treffer")])
+    ws.useRegex = false
+    ws.caseSensitive = true
+    ws.findPattern = "MARKER"
+    ws.replacePattern = "ERSETZT"
+
+    // Warten, bis der Lauf fertig ist UND seine Treffer als zu den aktuellen
+    // Eingaben gehörig ausgewiesen hat. Genau dieses Ausweisen fehlte im
+    // Geöffnet-Lauf: Ohne es läuft die Schleife in ihre Frist und die Prüfung
+    // darunter schlägt fehl.
+    //
+    // Warum die Bedingung so vollständig sein muss: Jede einzelne Zuweisung
+    // oben stößt einen verzögerten Lauf an. Liegen zwei Zuweisungen unter Last
+    // mehr als 120 ms auseinander, gibt es ZWEI Läufe — und die Trefferzahl des
+    // ersten steht schon da, während der zweite noch aussteht.
+    let deadline = Date().addingTimeInterval(5)
+    while !(ws.openTotalMatches == 1 && !ws.bufferSearching
+            && ws.visibleBufferResultsOptions == ws.currentSearchOptions),
+          Date() < deadline {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(ws.openTotalMatches == 1, "Der Such-Runner hat nicht geliefert")
+    #expect(ws.visibleBufferResultsOptions == ws.currentSearchOptions,
+            "Der Geöffnet-Lauf hat seine Vorschau nicht als aktuell ausgewiesen")
+
+    #expect(ws.applyAllInOpenTabs() == 1)
+    #expect(ws.tabs[0].content == "ERSETZT eins")
+}
+
+@Test("Der Such-Runner gibt Alle ersetzen im Datei-Scope wieder frei")
+@MainActor
+func workspace_runnerRestoresFileScopeApplyGate() async throws {
+    let ws = makeWorkspace(tabs: [("a.txt", "MARKER eins")])
+    ws.scope = .file
+    ws.useRegex = false
+    ws.caseSensitive = true
+    ws.findPattern = "MARKER"
+    ws.replacePattern = "ERSETZT"
+
+    // Gleiche vollständige Bedingung wie im Geöffnet-Fall (siehe dort).
+    let deadline = Date().addingTimeInterval(5)
+    while !(ws.bufferTotalMatches == 1 && !ws.bufferSearching
+            && ws.visibleBufferResultsOptions == ws.currentSearchOptions),
+          Date() < deadline {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(ws.bufferTotalMatches == 1, "Der Such-Runner hat nicht geliefert")
+    #expect(ws.visibleBufferResultsOptions == ws.currentSearchOptions,
+            "Der Datei-Lauf hat seine Vorschau nicht als aktuell ausgewiesen")
+
+    ws.applyAllInActiveBuffer()
+    #expect(ws.tabs[0].content == "ERSETZT eins")
 }

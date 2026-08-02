@@ -162,6 +162,12 @@ final class SearchRunner {
         guard let ws = workspace else { return }
         cancelPendingWork()
         Self.clearFolderPreview(ws)
+        // Die sichtbaren Buffer-/Geöffnet-Treffer bleiben absichtlich stehen
+        // (sonst blinkte die Trefferzahl bei jedem Tastendruck auf 0), ihre
+        // Freigabe für „Alle ersetzen" gilt aber ab sofort nicht mehr: Sie
+        // gehören noch zum alten Muster. Erst der Neulauf unten setzt sie
+        // wieder — dann passen Vorschau und Ersetzung wieder zusammen.
+        ws.visibleBufferResultsOptions = nil
 
         guard ws.scope.isFolderLike else {
             ws.folderSearching = false
@@ -212,6 +218,7 @@ final class SearchRunner {
         ws.bufferMatches = []
         ws.bufferTotalMatches = 0
         ws.bufferResultsWereCapped = false
+        ws.visibleBufferResultsOptions = nil
         // Den Buffer-Spinner ausdrücklich mit ausschalten. `cancelPendingWork()`
         // hat den laufenden Buffer-Task oben abgebrochen; ein abgebrochener Task
         // kehrt vor seinem Main-Actor-Update zurück und schaltet den Spinner
@@ -283,6 +290,7 @@ final class SearchRunner {
             ws.bufferMatches = []
             ws.bufferTotalMatches = 0
             ws.bufferResultsWereCapped = false
+            ws.visibleBufferResultsOptions = nil
             ws.searchError = nil
             ws.bufferSearching = false
             return
@@ -305,6 +313,9 @@ final class SearchRunner {
                 ws.bufferMatches = result.matches
                 ws.bufferTotalMatches = result.totalMatches
                 ws.bufferResultsWereCapped = result.wasCapped
+                // Sichtbare Vorschau und ihre Optionen gehören zusammen und
+                // werden deshalb im selben Schritt gesetzt.
+                ws.visibleBufferResultsOptions = options
                 ws.searchError = result.invalidPatternMessage
                 ws.bufferSearching = false
                 if ws.activeMatchIndex >= result.matches.count {
@@ -333,6 +344,7 @@ final class SearchRunner {
         ws.bufferMatches = []
         ws.bufferTotalMatches = 0
         ws.bufferResultsWereCapped = false
+        ws.visibleBufferResultsOptions = nil
 
         let options = ws.currentSearchOptions
         // Lade-Tabs überspringen: deren `content` ist noch leer/halb —
@@ -346,6 +358,7 @@ final class SearchRunner {
             ws.openResults = []
             ws.openTotalMatches = 0
             ws.openResultsWereCapped = false
+            ws.visibleBufferResultsOptions = nil
             ws.searchError = nil
             ws.bufferSearching = false
             return
@@ -364,6 +377,9 @@ final class SearchRunner {
                 ws.openResults = result.perTab
                 ws.openTotalMatches = result.totalMatches
                 ws.openResultsWereCapped = result.wasCapped
+                // Sichtbare Vorschau und ihre Optionen gehören zusammen und
+                // werden deshalb im selben Schritt gesetzt (wie im Datei-Scope).
+                ws.visibleBufferResultsOptions = options
                 ws.searchError = result.invalidPatternMessage
                 ws.bufferSearching = false
                 let materialized = result.perTab.reduce(0) { $0 + $1.matches.count }
@@ -392,6 +408,7 @@ final class SearchRunner {
         ws.bufferTotalMatches = 0
         ws.bufferResultsWereCapped = false
         ws.bufferSearching = false
+        ws.visibleBufferResultsOptions = nil
         ws.folderNeedsSearch = false
 
         // Pattern vor dem Async-Lauf validieren — roter Streifen sofort,
