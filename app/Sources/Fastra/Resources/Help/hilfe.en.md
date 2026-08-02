@@ -58,7 +58,9 @@ in `NSRegularExpression`). Capture groups appear as pills as well.
   preview before the first write. Changed files and affected tabs with unsaved
   edits block the whole operation. Planning, backup and writing run in the
   background with progress feedback; cancelling before the short write phase
-  leaves every target file unchanged.
+  leaves every target file unchanged. A file whose replacement yields exactly
+  the same text is skipped — there is nothing to write for it. The operation is
+  refused only when not a single file would change.
 - Fastra writes atomically per file and creates an automatic backup. “Undo”
   restores only files that were actually changed and stops if any of them was
   edited again after the replace.

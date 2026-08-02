@@ -60,7 +60,10 @@ Vorher/Nachher-Beispiel ab.
   alle Dateien gegen die sichtbare Vorschau. Geänderte Dateien und betroffene
   Tabs mit ungespeicherten Änderungen blockieren den gesamten Vorgang. Planung,
   Backup und Schreiben laufen mit Fortschrittsanzeige im Hintergrund; ein
-  Abbruch vor der kurzen Schreibphase verändert keine Zieldatei.
+  Abbruch vor der kurzen Schreibphase verändert keine Zieldatei. Eine Datei,
+  bei der die Ersetzung genau denselben Text ergibt, wird übersprungen — es
+  gibt für sie nichts zu schreiben. Abgelehnt wird der Vorgang nur, wenn sich
+  keine einzige Datei ändert.
 - Fastra schreibt atomar pro Datei und legt automatisch ein Backup an.
   „Rückgängig“ spielt nur tatsächlich angewendete Dateien bit-exakt zurück und
   bricht ab, wenn sich eine davon nach dem Ersetzen erneut geändert hat.
