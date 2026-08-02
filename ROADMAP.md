@@ -75,6 +75,56 @@ Erledigte Arbeit und historische Entscheidungen stehen in
     mangels Analyse bzw. Unterscheidbarkeit (siehe Slot-Mapping in
     `EditorView.swift`).
 
+## Robustheit-Nacharbeit aus dem Code-Review 2026-08-02
+
+Beim Review vom 2026-08-02 bestätigte, aber bewusst nicht sofort gefixte
+Punkte (die akuten Funde sind mit v1.60.1 behoben). Gebündelt nach Thema:
+
+- **I/O-Härtung:** blockierendes `open` vor der Typprüfung bei FIFOs
+  (`FileSnapshot.swift:59`); Symlink-TOCTOU zwischen Attributprüfung und
+  Lesen (`FileLoader.swift:109`); Apply schreibt auf die Symlink-URL statt
+  des kanonischen Ziels (`FolderSearch.swift:185`); `readToEnd()` ohne
+  Größengrenze (`FileSnapshot.swift:70`); 4DZ-Zentralverzeichnis bis ~4 GiB
+  am Stück (`FourDZipArchive.swift:70`); Komponentengröße 0/Symlink
+  (`FourDComponentIndex.swift:128`).
+- **Git-Pfad:** expliziter Refspec statt `git push <remote> HEAD`
+  (`GitActions.swift:303`) und Push-Ziel unmittelbar vor dem Push erneut
+  binden (`GitActions.swift:287`); Konfliktdateien beim Mehrfach-Verwerfen
+  ausnehmen (`GitChangesSelection.swift:88`); Teil-Löschfehler nicht
+  verschlucken (`GitActions.swift:152`); Doppel-Öffnen/Projektwechsel-Race
+  im Änderungen-Panel (`GitChangesView.swift:511`).
+- **Nebenläufigkeit/UI:** `Workspace.shared`-Setter vs. Kontextaktivierung
+  seriell auf dem Main-Thread (`Workspace.swift:797`); Projekt-Scan als
+  strukturierter, abbrechbarer Task (`Workspace.swift:2832`);
+  Scroll-Restore-Generation pro Editor statt prozessweit
+  (`EditorView.swift:954`); Markdown-Import-Anzeige an Besitzer-Fenster
+  binden (`EditorView.swift:301`); Restore-Completion nicht an die
+  Workspace-Lebenszeit koppeln (`SessionRestoration.swift:242`);
+  Signaturabruf von der MainActor-Blockade lösen
+  (`FourDSignatureHelpPanel.swift:119`).
+- **Undo/Apply-Speicher:** Backups sequenziell statt alle vorab laden
+  (`ApplyEngine.swift:1182`) und `.restored`-Einträge vor dem Backup-Zugriff
+  überspringen (`ApplyEngine.swift:1185`).
+- **4D-Sprachhelfer:** Tokenizer-Komplexität begrenzen
+  (`FourDTokenizer.swift:292`); Completion nicht in Kommentar/String
+  (`FourDCompletion.swift:203`) und manueller Ein-Zeichen-Trigger
+  (`FourDCompletion.swift:225`); Blockkommentare in der Signaturhilfe
+  (`FourDSignatureHelp.swift:223`); Dateipfad case-korrekt aus dem Index
+  (`FourDSignatureHelp.swift:349`); Symlink-Methoden indexieren
+  (`FourDProjectMethodIndex.swift:43`).
+- **Selbsttest-/Skript-Hygiene:** Umgebungsfehler als Exit 2 kennzeichnen
+  (`SelfTest.swift:11043`, `:11181`); Janitor-Spur bei pkill-Fehler behalten
+  (`TestDefaultsJanitorTests.swift:99`); screenshot-run stellt den vorherigen
+  Appearance-Wert exakt wieder her (`screenshot-run.sh:54`).
+- **Editor-Details:** Doppelklick bei zerlegtem Unicode
+  (`build.sh:1375`-Patch); Spaltenselektion ohne komplette Zeilenkopie
+  (`TextView+ColumnSelection.swift:94`); Emoji-Selektor an Rangegrenzen
+  (`TextOperations.swift:1063`); `closingTail()` ans Dokumentende
+  (`MarkdownHTMLWhitelist.swift:408`).
+- **Toter Code:** `planSHA256` an der Apply-Grenze prüfen oder entfernen
+  (`ApplyEngine.swift:174`); Test-only `apply(plan:)` auf den produktiven
+  Transaktionskern führen (`ApplyEngine.swift:934`).
+
 ## Kleine offene Ideen
 
 - **Markdown-Umwandlung: bewusst offen gelassen** (umgesetzt 2026-07-26 über
