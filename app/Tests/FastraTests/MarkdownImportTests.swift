@@ -295,3 +295,214 @@ private final class StubFileManager: FileManager, @unchecked Sendable {
         executables.contains(path)
     }
 }
+
+// MARK: - Die Antwort des Werkzeugs ist eine fremde Eingabe
+
+// Zwei Befunde vom 2026-08-02, beide am selben Punkt: Fastra hat der Antwort
+// von `poormans-text` zu weit vertraut.
+//
+//   * Der gemeldete Pfad `markdownFile` wurde ungeprüft VERSCHOBEN. Eine
+//     falsche Antwort konnte damit die Quelldatei bewegen — gegen die zentrale
+//     Zusage „Die Quelle wird nie verändert".
+//   * Eine bekanntermaßen abgeschnittene Ausgabe wurde wie ein normaler
+//     Abschluss behandelt. Abgeschnittenes, aber noch lesbares JSON mit
+//     `ok: true` galt dadurch als gültiges Ergebnis.
+
+@Suite("Pfadprüfung der Werkzeugantwort")
+struct MarkdownImportOutputGuardTests {
+
+    /// Legt `<tmp>/staging/out` an und liefert beide Ordner.
+    private func makeStaging() throws -> (staging: URL, output: URL) {
+        let staging = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-mdguard-\(UUID().uuidString)")
+        let output = staging.appendingPathComponent("out", isDirectory: true)
+        try FileManager.default.createDirectory(at: output,
+                                                withIntermediateDirectories: true)
+        return (staging, output)
+    }
+
+    @Test("Eine gewöhnliche Datei im Ausgabeordner darf veröffentlicht werden")
+    func regularFileInsideOutputIsAllowed() throws {
+        let (staging, output) = try makeStaging()
+        defer { try? FileManager.default.removeItem(at: staging) }
+        let file = output.appendingPathComponent("Bericht.md")
+        try "# Titel\n".write(to: file, atomically: true, encoding: .utf8)
+
+        // Beide Seiten werden symbolisch aufgelöst: Der temporäre Ordner liegt
+        // real unter /private/var, gemeldet wird oft /var — ein Textvergleich
+        // allein würde den gültigen Normalfall abweisen.
+        #expect(MarkdownImportOutputGuard.isPublishableFile(file, in: output))
+    }
+
+    @Test("Ein Pfad außerhalb des Ausgabeordners wird abgewiesen")
+    func fileOutsideOutputIsRejected() throws {
+        let (staging, output) = try makeStaging()
+        defer { try? FileManager.default.removeItem(at: staging) }
+        let foreign = staging.appendingPathComponent("Quelle.rtf")
+        try "egal".write(to: foreign, atomically: true, encoding: .utf8)
+
+        #expect(!MarkdownImportOutputGuard.isPublishableFile(foreign, in: output))
+        // Auch der Umweg über „..“ führt nicht hinaus.
+        let sneaky = output.appendingPathComponent("../Quelle.rtf")
+        #expect(!MarkdownImportOutputGuard.isPublishableFile(sneaky, in: output))
+    }
+
+    @Test("Ein Verweis im Ausgabeordner zählt nicht als Datei")
+    func symlinkInsideOutputIsRejected() throws {
+        let (staging, output) = try makeStaging()
+        defer { try? FileManager.default.removeItem(at: staging) }
+        let outside = staging.appendingPathComponent("Fremd.md")
+        try "fremd".write(to: outside, atomically: true, encoding: .utf8)
+        let inside = output.appendingPathComponent("Echt.md")
+        try "echt".write(to: inside, atomically: true, encoding: .utf8)
+
+        // Verweis nach draußen: Das Ziel liegt außerhalb.
+        let toOutside = output.appendingPathComponent("nach-draussen.md")
+        try FileManager.default.createSymbolicLink(at: toOutside,
+                                                   withDestinationURL: outside)
+        #expect(!MarkdownImportOutputGuard.isPublishableFile(toOutside, in: output))
+
+        // Verweis nach innen: Das Ziel ist erlaubt, verschoben würde aber der
+        // Verweis selbst — und der zeigt danach ins Leere.
+        let toInside = output.appendingPathComponent("nach-innen.md")
+        try FileManager.default.createSymbolicLink(at: toInside,
+                                                   withDestinationURL: inside)
+        #expect(!MarkdownImportOutputGuard.isPublishableFile(toInside, in: output))
+    }
+
+    @Test("Ein Ordner ist keine veröffentlichbare Datei")
+    func directoryIsRejected() throws {
+        let (staging, output) = try makeStaging()
+        defer { try? FileManager.default.removeItem(at: staging) }
+        let directory = output.appendingPathComponent("Unterordner", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory,
+                                                withIntermediateDirectories: false)
+        #expect(!MarkdownImportOutputGuard.isPublishableFile(directory, in: output))
+        // Ein gar nicht vorhandener Pfad ebenso wenig.
+        #expect(!MarkdownImportOutputGuard.isPublishableFile(
+            output.appendingPathComponent("gibtsnicht.md"), in: output))
+    }
+}
+
+@Suite("Umwandlung: unbrauchbare Werkzeugantworten")
+struct MarkdownImportServiceGuardTests {
+
+    /// Ein Ordner mit einer Quelldatei darin.
+    private func makeSourceFolder() throws -> (folder: URL, source: URL) {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-mdservice-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder,
+                                                withIntermediateDirectories: true)
+        let source = folder.appendingPathComponent("Bericht.rtf")
+        try "Originalinhalt".write(to: source, atomically: true, encoding: .utf8)
+        return (folder, source)
+    }
+
+    /// Dienst mit ersetztem Werkzeugpfad und ersetztem Prozessaufruf — läuft
+    /// damit ohne installiertes `poormans-text`.
+    private func makeService(
+        answer: @escaping (URL) -> MarkdownImportProcessOutcome
+    ) -> MarkdownImportService {
+        let service = MarkdownImportService()
+        service.locateTool = { URL(fileURLWithPath: "/bin/echo") }
+        service.runProcess = { _, arguments, _, completion in
+            // Fastra übergibt den Ausgabeordner als `--output <pfad>`.
+            let outputPath = arguments.firstIndex(of: "--output")
+                .map { arguments[$0 + 1] } ?? ""
+            completion(answer(URL(fileURLWithPath: outputPath)))
+        }
+        return service
+    }
+
+    @Test("Abgeschnittene Ausgabe wird nie als gültiges Ergebnis gelesen")
+    @MainActor
+    func truncatedOutputIsAnImportError() throws {
+        let (folder, source) = try makeSourceFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        let service = makeService { output in
+            // Das Werkzeug hat wirklich gearbeitet und eine Datei angelegt —
+            // sonst würde dieser Test schon am fehlenden Ergebnis scheitern
+            // und nicht an der gekürzten Ausgabe.
+            try? FileManager.default.createDirectory(at: output,
+                                                     withIntermediateDirectories: true)
+            let produced = output.appendingPathComponent("Bericht.md")
+            try? "# halb\n".write(to: produced, atomically: true, encoding: .utf8)
+            // Für sich genommen lesbares Erfolgs-JSON — der Runner weiß aber,
+            // dass er die Ausgabe gekürzt hat.
+            let json = #"{"ok":true,"markdownFile":"\#(produced.path)","assets":[]}"#
+            return MarkdownImportProcessOutcome(exitCode: 0,
+                                                stdout: Data(json.utf8),
+                                                stderr: Data(),
+                                                outputIsComplete: false)
+        }
+
+        var reported: URL? = URL(fileURLWithPath: "/noch-nicht-gesetzt")
+        service.convert(source) { reported = $0 }
+
+        #expect(reported == nil)
+        if case .failed = service.state {} else {
+            Issue.record("Erwartet: Fehlerzustand, tatsächlich: \(service.state)")
+        }
+        #expect(FileManager.default.fileExists(atPath: source.path))
+        #expect(!FileManager.default.fileExists(
+            atPath: folder.appendingPathComponent("Bericht.md").path))
+    }
+
+    @Test("Ein Pfad außerhalb des Arbeitsordners verschiebt nichts")
+    @MainActor
+    func pathOutsideStagingIsRefused() throws {
+        let (folder, source) = try makeSourceFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        // Die Werkzeugantwort zeigt auf die QUELLE. Ohne Prüfung hätte Fastra
+        // sie nach „Bericht.md" verschoben — die Quelle wäre weg gewesen.
+        let service = makeService { _ in
+            let json = #"{"ok":true,"markdownFile":"\#(source.path)","assets":[]}"#
+            return MarkdownImportProcessOutcome(exitCode: 0,
+                                                stdout: Data(json.utf8),
+                                                stderr: Data(),
+                                                outputIsComplete: true)
+        }
+
+        var reported: URL? = URL(fileURLWithPath: "/noch-nicht-gesetzt")
+        service.convert(source) { reported = $0 }
+
+        #expect(reported == nil)
+        if case .failed = service.state {} else {
+            Issue.record("Erwartet: Fehlerzustand, tatsächlich: \(service.state)")
+        }
+        #expect(FileManager.default.fileExists(atPath: source.path))
+        #expect(try String(contentsOf: source, encoding: .utf8) == "Originalinhalt")
+        #expect(!FileManager.default.fileExists(
+            atPath: folder.appendingPathComponent("Bericht.md").path))
+    }
+
+    @Test("Eine saubere Antwort wird ganz normal veröffentlicht")
+    @MainActor
+    func validAnswerIsPublished() throws {
+        let (folder, source) = try makeSourceFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        let service = makeService { output in
+            // Das Werkzeug legt seine Ausgabe selbst an.
+            try? FileManager.default.createDirectory(at: output,
+                                                     withIntermediateDirectories: true)
+            let produced = output.appendingPathComponent("Bericht.md")
+            try? "# Bericht\n".write(to: produced, atomically: true, encoding: .utf8)
+            let json = #"{"ok":true,"markdownFile":"\#(produced.path)","assets":[]}"#
+            return MarkdownImportProcessOutcome(exitCode: 0,
+                                                stdout: Data(json.utf8),
+                                                stderr: Data(),
+                                                outputIsComplete: true)
+        }
+
+        var reported: URL?
+        service.convert(source) { reported = $0 }
+
+        let target = folder.appendingPathComponent("Bericht.md")
+        #expect(reported?.lastPathComponent == "Bericht.md")
+        #expect(FileManager.default.fileExists(atPath: target.path))
+        #expect(FileManager.default.fileExists(atPath: source.path))
+    }
+}

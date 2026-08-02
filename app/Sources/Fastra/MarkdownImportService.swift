@@ -43,7 +43,12 @@ final class MarkdownImportService: ObservableObject {
     private var pendingCatalogRequests: [(MarkdownImportCatalog?) -> Void] = []
 
     /// Testhaken: ersetzt den echten Prozessaufruf. `nil` = echter Aufruf.
-    var runProcess: ((URL, [String], TimeInterval, @escaping (Int32, Data, Data) -> Void) -> Void)?
+    var runProcess: ((URL, [String], TimeInterval,
+                      @escaping (MarkdownImportProcessOutcome) -> Void) -> Void)?
+    /// Testhaken daneben: wo das Werkzeug liegt. `nil` heißt „nicht
+    /// installiert". Ohne diesen Haken hinge jeder Test daran, ob auf dem
+    /// Rechner gerade `poormans-text` installiert ist.
+    var locateTool: () -> URL? = { MarkdownImportTool.locate() }
 
     // MARK: - Formatkatalog
 
@@ -66,7 +71,7 @@ final class MarkdownImportService: ObservableObject {
         guard !isProbing else { return }
         isProbing = true
 
-        guard let executable = MarkdownImportTool.locate() else {
+        guard let executable = locateTool() else {
             // Werkzeug nicht installiert: still ausblenden, wie bei fehlendem
             // git. Auch dieses Ergebnis wird zwischengespeichert, sonst würde
             // bei jedem Öffnen erneut das Dateisystem abgesucht.
@@ -76,11 +81,15 @@ final class MarkdownImportService: ObservableObject {
 
         run(executable: executable,
             arguments: ["--formats", "--json"],
-            timeout: Self.catalogTimeout) { [weak self] status, stdout, _ in
+            timeout: Self.catalogTimeout) { [weak self] outcome in
             guard let self else { return }
             // Eine ältere CLI kennt `--formats` nicht und endet mit 64. Das ist
             // kein Fehler, sondern schlicht „kann Fastra nicht bedienen".
-            self.finishProbe(with: status == 0 ? MarkdownImportCatalog.decode(stdout) : nil)
+            // Eine unvollständige Ausgabe wird gar nicht erst gelesen — ein
+            // abgeschnittener Katalog sähe aus wie ein kleinerer Katalog.
+            let usable = outcome.exitCode == 0 && outcome.outputIsComplete
+            self.finishProbe(with: usable
+                             ? MarkdownImportCatalog.decode(outcome.stdout) : nil)
         }
     }
 
@@ -115,7 +124,7 @@ final class MarkdownImportService: ObservableObject {
     }
 
     private func beginConversion(_ sourceURL: URL, completion: ((URL?) -> Void)?) {
-        guard let executable = MarkdownImportTool.locate() else {
+        guard let executable = locateTool() else {
             fail(L10n.string("„Poor Man's Text“ ist nicht installiert."), completion)
             return
         }
@@ -146,13 +155,24 @@ final class MarkdownImportService: ObservableObject {
         state = .running(sourceURL)
         run(executable: executable,
             arguments: ["--json", "--output", output.path, "--", sourceURL.path],
-            timeout: Self.conversionTimeout) { [weak self] status, stdout, stderr in
+            timeout: Self.conversionTimeout) { [weak self] outcome in
             guard let self else { return }
             defer { try? FileManager.default.removeItem(at: staging) }
 
-            guard status == 0, let produced = MarkdownImportOutput.decode(stdout) else {
-                let message = MarkdownImportOutput.decodeError(stdout)
-                    ?? String(decoding: stderr, as: UTF8.self)
+            // Bekanntermaßen unvollständige Ausgabe wird NICHT gelesen. Ein
+            // abgeschnittenes, aber zufällig noch lesbares JSON mit `ok: true`
+            // wäre sonst als gültiges Ergebnis durchgegangen und hätte eine
+            // halbe Umwandlung neben die Quelle gelegt (Review 2026-08-02).
+            guard outcome.outputIsComplete else {
+                self.fail(L10n.string("Die Umwandlung hat eine unvollständige Antwort geliefert. Es wurde nichts übernommen."),
+                          completion)
+                return
+            }
+
+            guard outcome.exitCode == 0,
+                  let produced = MarkdownImportOutput.decode(outcome.stdout) else {
+                let message = MarkdownImportOutput.decodeError(outcome.stdout)
+                    ?? String(decoding: outcome.stderr, as: UTF8.self)
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                 self.fail(message.isEmpty
                           ? L10n.string("Die Umwandlung ist fehlgeschlagen.")
@@ -169,6 +189,18 @@ final class MarkdownImportService: ObservableObject {
     private func publish(_ produced: MarkdownImportOutput, output: URL, staging: URL,
                          sourceURL: URL, completion: ((URL?) -> Void)?) {
         let producesAssets = !produced.assets.isEmpty
+
+        // Der gemeldete Pfad wird gleich VERSCHOBEN. Er muss deshalb wirklich
+        // eine gewöhnliche Datei im eigenen Ausgabeordner sein — sonst würde
+        // eine fehlerhafte Werkzeugantwort die Quelldatei oder irgendeine
+        // andere erreichbare Datei bewegen (Review 2026-08-02).
+        guard MarkdownImportOutputGuard.isPublishableFile(produced.markdownFile,
+                                                          in: output) else {
+            fail(L10n.string("Die Umwandlung hat eine Datei außerhalb ihres Arbeitsordners gemeldet. Es wurde nichts verschoben."),
+                 completion)
+            return
+        }
+
         let target = MarkdownImportNaming.availableTarget(forSource: sourceURL,
                                                           producesAssets: producesAssets)
         do {
@@ -211,7 +243,7 @@ final class MarkdownImportService: ObservableObject {
     /// Runner aus `GitRunner`: eigene Prozessgruppe, Frist, Ausgabegrenze und
     /// bereinigte Umgebung sind dort schon gelöst und gelten hier genauso.
     private func run(executable: URL, arguments: [String], timeout: TimeInterval,
-                     completion: @escaping (Int32, Data, Data) -> Void) {
+                     completion: @escaping (MarkdownImportProcessOutcome) -> Void) {
         if let runProcess {
             runProcess(executable, arguments, timeout, completion)
             return
@@ -224,16 +256,44 @@ final class MarkdownImportService: ObservableObject {
         ) { outcome in
             switch outcome {
             case .completed(let result):
-                completion(result.exitCode, result.stdoutData, result.stderrData)
+                // Die Ausgabegrenze des Runners kann zugeschlagen haben. Dann
+                // ist das JSON abgeschnitten, auch wenn der Prozess mit 0 endete.
+                completion(MarkdownImportProcessOutcome(
+                    exitCode: result.exitCode,
+                    stdout: result.stdoutData,
+                    stderr: result.stderrData,
+                    outputIsComplete: !result.stdoutWasTruncated))
             case .captureFailed(let failure):
-                completion(failure.partialResult.exitCode,
-                           failure.partialResult.stdoutData,
-                           failure.partialResult.stderrData)
+                // Teilausgabe eines gescheiterten Einsammelns. Sie wird
+                // bewusst NICHT wie ein normaler Abschluss weitergereicht:
+                // Sie ist per Definition unvollständig.
+                completion(MarkdownImportProcessOutcome(
+                    exitCode: failure.partialResult.exitCode,
+                    stdout: failure.partialResult.stdoutData,
+                    stderr: failure.partialResult.stderrData,
+                    outputIsComplete: false))
             case .startFailed, .cancelled, .timedOut:
-                completion(-1, Data(), Data())
+                // Hier gibt es gar keine Ausgabe — nichts ist abgeschnitten,
+                // der Aufruf ist schlicht fehlgeschlagen.
+                completion(MarkdownImportProcessOutcome(
+                    exitCode: -1, stdout: Data(), stderr: Data(),
+                    outputIsComplete: true))
             }
         }
     }
+}
+
+/// Ergebnis eines Werkzeugaufrufs, so wie dieser Dienst es braucht.
+///
+/// `outputIsComplete == false` heißt: Die Standardausgabe ist BEKANNTERMASSEN
+/// unvollständig — entweder scheiterte das Einsammeln, oder die Ausgabegrenze
+/// des Runners griff. Sie darf dann nie dekodiert werden. Nur `stdout` zählt
+/// dafür; eine gekürzte Fehlerausgabe ist bloß ein kürzerer Erklärungstext.
+struct MarkdownImportProcessOutcome {
+    let exitCode: Int32
+    let stdout: Data
+    let stderr: Data
+    let outputIsComplete: Bool
 }
 
 /// Sichtbarer Zustand der Umwandlung. Die Leiste über dem Editor liest ihn.

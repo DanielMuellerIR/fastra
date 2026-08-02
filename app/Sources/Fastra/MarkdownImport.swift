@@ -195,6 +195,42 @@ struct MarkdownImportOutput: Equatable {
     }
 }
 
+/// Prüft die vom Werkzeug gemeldeten Pfade, BEVOR Fastra damit eine Datei
+/// bewegt.
+///
+/// Die Antwort des Werkzeugs ist eine fremde Eingabe. Sie nennt einen
+/// absoluten Pfad, und Fastra verschiebt danach genau diesen. Ungeprüft könnte
+/// eine fehlerhafte oder manipulierte Antwort die Quelldatei selbst oder eine
+/// beliebige andere erreichbare Datei verschieben und damit die zentrale
+/// Zusage „Die Quelle wird nie verändert" brechen (Review 2026-08-02).
+enum MarkdownImportOutputGuard {
+
+    /// `true`, wenn `candidate` eine gewöhnliche Datei INNERHALB von
+    /// `directory` ist.
+    ///
+    /// Beide Seiten werden vorher symbolisch aufgelöst. Das ist nicht
+    /// übertriebene Vorsicht, sondern der Normalfall: Fastra übergibt
+    /// `/var/folders/…` als Ausgabeordner, das Werkzeug meldet denselben Ort
+    /// als `/private/var/folders/…` zurück. Ein reiner Textvergleich würde
+    /// also die gültige Antwort abweisen.
+    ///
+    /// Der Kandidat selbst darf danach kein symbolischer Verweis mehr sein.
+    /// Ein Verweis im Ausgabeordner könnte auf ein erlaubtes Ziel zeigen —
+    /// verschoben würde aber der Verweis, und übrig bliebe neben der Quelle
+    /// ein ins Leere zeigender Link, sobald das Zwischenverzeichnis weg ist.
+    static func isPublishableFile(_ candidate: URL, in directory: URL) -> Bool {
+        let allowed = directory.resolvingSymlinksInPath().standardizedFileURL.path
+        let resolved = candidate.resolvingSymlinksInPath().standardizedFileURL.path
+        guard resolved.hasPrefix(allowed + "/") else { return false }
+
+        // `lstat` beschreibt den Pfad SELBST und folgt keinem Verweis —
+        // genau die Auskunft, die hier gebraucht wird.
+        var info = stat()
+        guard lstat(candidate.path, &info) == 0 else { return false }
+        return (info.st_mode & S_IFMT) == S_IFREG
+    }
+}
+
 // MARK: - Zielname neben der Quelle
 
 /// Bestimmt, wie das Ergebnis neben der Ursprungsdatei heißt.

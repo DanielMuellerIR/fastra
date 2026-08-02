@@ -436,7 +436,14 @@ enum MarkdownRichText {
         // Rohes HTML durch die enge Positivliste schicken, BEVOR gerendert wird.
         // Der Prüfer sieht dadurch ausschließlich die Fragmente aus der Datei,
         // nie Fastras eigenes erzeugtes HTML.
-        MarkdownHTMLSanitizing.apply(to: document)
+        //
+        // Scheitert die Bereinigung, steht im Baum noch ungeprüftes HTML — und
+        // der Renderer unten läuft mit `CMARK_OPT_UNSAFE`, würde es also
+        // unverändert an WebKit weiterreichen. Deshalb hier derselbe sichere
+        // Ausweg wie bei einem Parser-Fehler: escapeter Klartext.
+        guard MarkdownHTMLSanitizing.apply(to: document) else {
+            return MarkdownRenderedFragment(html: escapedPlainText(markdown), imageURLs: [:])
+        }
 
         let extensions = cmark_parser_get_syntax_extensions(parser)
         // `CMARK_OPT_UNSAFE` gibt die oben geprüften Fragmente frei. Was cmark

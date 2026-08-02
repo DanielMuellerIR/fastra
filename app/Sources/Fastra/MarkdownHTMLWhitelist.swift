@@ -371,11 +371,22 @@ enum MarkdownHTMLWhitelist {
 ///    `UNSAFE` tut es das nicht mehr, also muss es hier passieren.
 enum MarkdownHTMLSanitizing {
 
-    static func apply(to document: UnsafeMutablePointer<cmark_node>) {
+    /// Liefert `true`, wenn der Baum vollständig bereinigt wurde.
+    ///
+    /// Bei `false` ist die Bereinigung unterwegs gescheitert und der Baum
+    /// **darf nicht gerendert werden**: Die Vorschau rendert mit
+    /// `CMARK_OPT_UNSAFE`, gibt also alles durch, was hier stehen bleibt.
+    /// Früher gab diese Funktion bei einem cmark-Fehler stillschweigend auf
+    /// und ignorierte die Rückgabewerte der Schreibzugriffe — die
+    /// Sicherheitsgrenze stand damit im Fehlerfall offen statt zu schließen
+    /// (Review 2026-08-02). `cmark_node_set_literal` und
+    /// `cmark_node_set_url` melden Erfolg mit `1`.
+    @discardableResult
+    static func apply(to document: UnsafeMutablePointer<cmark_node>) -> Bool {
         var sanitizer = MarkdownHTMLWhitelist.Sanitizer()
         var lastHTMLNode: UnsafeMutablePointer<cmark_node>?
 
-        guard let iterator = cmark_iter_new(document) else { return }
+        guard let iterator = cmark_iter_new(document) else { return false }
         defer { cmark_iter_free(iterator) }
 
         while true {
@@ -387,12 +398,18 @@ enum MarkdownHTMLSanitizing {
             switch cmark_node_get_type(node) {
             case CMARK_NODE_HTML_BLOCK, CMARK_NODE_HTML_INLINE:
                 let raw = cmark_node_get_literal(node).map { String(cString: $0) } ?? ""
-                cmark_node_set_literal(node, sanitizer.sanitize(raw))
+                // Schlägt das Ersetzen fehl, bleibt das ROHE HTML im Knoten
+                // stehen. Sofort abbrechen statt weiterlaufen.
+                guard cmark_node_set_literal(node, sanitizer.sanitize(raw)) == 1 else {
+                    return false
+                }
                 lastHTMLNode = node
             case CMARK_NODE_LINK, CMARK_NODE_IMAGE:
                 let url = cmark_node_get_url(node).map { String(cString: $0) } ?? ""
                 if !url.isEmpty, !MarkdownHTMLWhitelist.isSafeLink(url) {
-                    cmark_node_set_url(node, "")
+                    // Dasselbe für ein unsicheres Linkziel: Bleibt es stehen,
+                    // landet `javascript:` unverändert im Renderer.
+                    guard cmark_node_set_url(node, "") == 1 else { return false }
                 }
             default:
                 break
@@ -405,8 +422,11 @@ enum MarkdownHTMLSanitizing {
             let tail = sanitizer.closingTail()
             if !tail.isEmpty {
                 let existing = cmark_node_get_literal(lastHTMLNode).map { String(cString: $0) } ?? ""
-                cmark_node_set_literal(lastHTMLNode, existing + tail)
+                guard cmark_node_set_literal(lastHTMLNode, existing + tail) == 1 else {
+                    return false
+                }
             }
         }
+        return true
     }
 }
