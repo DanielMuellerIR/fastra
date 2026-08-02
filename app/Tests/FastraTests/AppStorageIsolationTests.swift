@@ -33,8 +33,17 @@ private struct AppStorageDeclaration {
     let arguments: String
 }
 
-/// Sammelt alle echten `@AppStorage(...)`-Deklarationen. Erwähnungen in
-/// Kommentaren (dort steht `@AppStorage` ohne öffnende Klammer) zählen nicht.
+/// Sammelt alle echten `AppStorage(...)`-Stellen. Erfasst werden zwei
+/// Schreibweisen:
+///
+/// * die Deklaration `@AppStorage(...)`, und
+/// * der nachträgliche Neubau `_feld = AppStorage(...)` in einem `init()`.
+///
+/// Die zweite Form ist die gefährlichere: Sie ERSETZT einen korrekt
+/// deklarierten Wrapper und verlor dabei bis 2026-08-02 in `SettingsView` das
+/// `store:` — sechs Git-Einstellungen liefen dadurch trotz Isolierung gegen die
+/// echten Nutzer-Defaults (Review 2026-08-02). Erwähnungen in Kommentaren
+/// (dort steht `@AppStorage` ohne öffnende Klammer) zählen nicht.
 private func collectAppStorageDeclarations() throws -> [AppStorageDeclaration] {
     let files = try FileManager.default.subpathsOfDirectory(atPath: sourcesURL.path)
         .filter { $0.hasSuffix(".swift") }
@@ -43,23 +52,34 @@ private func collectAppStorageDeclarations() throws -> [AppStorageDeclaration] {
     for relativePath in files {
         let text = try String(contentsOf: sourcesURL.appendingPathComponent(relativePath),
                               encoding: .utf8)
-        for (index, line) in text.components(separatedBy: .newlines).enumerated() {
-            guard let range = line.range(of: "@AppStorage(") else { continue }
+        let lines = text.components(separatedBy: .newlines)
+        for (index, line) in lines.enumerated() {
+            let range = line.range(of: "@AppStorage(") ?? line.range(of: "= AppStorage(")
+            guard let range else { continue }
             // Argumentliste bis zur PASSENDEN schließenden Klammer. Einfach
             // bis zur ersten `)` zu lesen wäre falsch: `store:
             // SelfTest.workspaceDefaults()` bringt selbst ein Klammerpaar mit.
-            // Alle heutigen Fundstellen schließen auf derselben Zeile; bliebe
-            // eine offen, fiele sie hier als Rest ohne `store:` auf und damit
-            // im Test.
+            // Die Liste darf sich über mehrere Zeilen erstrecken — genau so
+            // stehen die im `init()` neu gebauten Wrapper da. Bräche der
+            // Scanner am Zeilenende ab, sähe er dort eine leere Argumentliste
+            // und meldete einen Fehlalarm statt der echten Lage.
             var depth = 1
             var arguments = ""
-            for character in line[range.upperBound...] {
-                if character == "(" { depth += 1 }
-                if character == ")" {
-                    depth -= 1
-                    if depth == 0 { break }
+            var cursor = index
+            collect: while cursor < lines.count {
+                let rest = cursor == index
+                    ? String(lines[cursor][range.upperBound...])
+                    : lines[cursor]
+                for character in rest {
+                    if character == "(" { depth += 1 }
+                    if character == ")" {
+                        depth -= 1
+                        if depth == 0 { break collect }
+                    }
+                    arguments.append(character)
                 }
-                arguments.append(character)
+                arguments.append("\n")
+                cursor += 1
             }
             found.append(AppStorageDeclaration(file: relativePath,
                                                line: index + 1,

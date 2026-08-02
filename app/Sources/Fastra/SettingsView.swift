@@ -40,30 +40,45 @@ struct SettingsView: View {
         // AppStorage kennt die typisierte Migration/Intervallbegrenzung nicht.
         // Die geladenen Werte dienen deshalb als Initialwerte, solange der
         // jeweilige neue Schlüssel noch nicht existiert.
-        let preferences = GitPreferencesStore().load()
+        //
+        // WICHTIG: Diese sechs Wrapper werden hier NEU gebaut und ersetzen die
+        // oben deklarierten. Ohne `store:` läge der Ersatz auf `.standard` —
+        // ein Selbsttest hätte damit die echten Git-Einstellungen des Nutzers
+        // gelesen UND überschrieben, obwohl `SelfTest.workspaceDefaults()`
+        // genau das verhindern soll (Review 2026-08-02). Im normalen Betrieb
+        // liefert diese Funktion `.standard`, das Verhalten bleibt also gleich.
+        let preferences = GitPreferencesStore(
+            defaults: SelfTest.workspaceDefaults()
+        ).load()
         _gitFetchDecision = AppStorage(
             wrappedValue: preferences.automaticFetchDecision.rawValue,
-            GitPreferencesStore.Keys.decision
+            GitPreferencesStore.Keys.decision,
+            store: SelfTest.workspaceDefaults()
         )
         _gitFetchInterval = AppStorage(
             wrappedValue: preferences.fetchIntervalSeconds,
-            GitPreferencesStore.Keys.interval
+            GitPreferencesStore.Keys.interval,
+            store: SelfTest.workspaceDefaults()
         )
         _gitFetchOnActivation = AppStorage(
             wrappedValue: preferences.fetchOnActivation,
-            GitPreferencesStore.Keys.fetchOnActivation
+            GitPreferencesStore.Keys.fetchOnActivation,
+            store: SelfTest.workspaceDefaults()
         )
         _gitRemoteScope = AppStorage(
             wrappedValue: preferences.remoteScope.rawValue,
-            GitPreferencesStore.Keys.remoteScope
+            GitPreferencesStore.Keys.remoteScope,
+            store: SelfTest.workspaceDefaults()
         )
         _gitFetchPrune = AppStorage(
             wrappedValue: preferences.prune,
-            GitPreferencesStore.Keys.prune
+            GitPreferencesStore.Keys.prune,
+            store: SelfTest.workspaceDefaults()
         )
         _gitPullStrategy = AppStorage(
             wrappedValue: preferences.pullStrategy.rawValue,
-            GitPreferencesStore.Keys.pullStrategy
+            GitPreferencesStore.Keys.pullStrategy,
+            store: SelfTest.workspaceDefaults()
         )
     }
 
@@ -166,7 +181,10 @@ struct SettingsView: View {
                 }
                 Button("Erstfrage zu automatischem Fetch zurücksetzen") {
                     gitFetchDecision = GitAutomaticFetchDecision.ask.rawValue
-                    GitPreferencesStore().clearAutomaticFetchPromptDeferral()
+                    // Gleiche Isolation wie im `init()`: im Selbsttest darf auch
+                    // dieses Zurücksetzen nur die Testablage treffen.
+                    GitPreferencesStore(defaults: SelfTest.workspaceDefaults())
+                        .clearAutomaticFetchPromptDeferral()
                     gitPreferencesChanged()
                 }
                 Text("Diese Einstellungen steuern nur Fastra. Sie ändern weder .git/config noch deine globale Git-Konfiguration.")
