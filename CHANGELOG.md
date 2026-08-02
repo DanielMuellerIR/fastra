@@ -9,6 +9,70 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.60.1] — 2026-08-02
+
+Sammelstand aus dem Code-Review vom 2026-08-02. Ausschließlich Fehlerbehebungen;
+kein neues Verhalten.
+
+### Behoben
+
+- **„Alle ersetzen" wirkt wieder nur auf die sichtbare Trefferbasis.** Änderte
+  man Suchbegriff oder Ersatztext, wurden im Datei- und Geöffnet-Bereich zwar
+  die Ergebnisse neu berechnet — aber erst nach einer kurzen Verzögerung. In
+  diesem Fenster gab die noch sichtbare, alte Trefferzahl eine Ersetzung frei,
+  die bereits mit dem NEUEN Muster gerechnet wurde: eine Änderung, deren
+  Vorschau nie zu sehen war. Die sichtbaren Treffer merken sich jetzt, zu
+  welchen Suchoptionen sie gehören; „Alle ersetzen" und „Ersetzen" laufen erst
+  wieder, wenn Vorschau und Eingaben zusammenpassen. Für den Ordner-Bereich galt
+  das schon vorher. Die Trefferliste bleibt dabei bewusst stehen, damit die
+  Anzeige beim Tippen nicht flackert.
+- **Eine Datei ohne echte Änderung bricht den Ordner-Apply nicht mehr ab.**
+  Enthielt ein Auftrag eine Datei, deren Treffer zwar existieren, deren
+  Ersetzung aber genau denselben Text ergibt (etwa „foo" durch „foo" ohne
+  Beachtung der Großschreibung), scheiterte der GESAMTE Vorgang — auch alle
+  echten Änderungen der übrigen Dateien. Solche Dateien werden jetzt
+  übersprungen und bekommen weder Sicherung noch Rückgängig-Eintrag. Nur wenn
+  sich keine einzige Datei ändert, wird der Auftrag abgelehnt.
+- **Ein neu geladener Tab gilt wieder als gespeichert.** Wurden offene Tabs nach
+  einer Ordner-Ersetzung von der Platte nachgeladen, blieb die Vergleichsbasis
+  für den Änderungspunkt auf dem Stand VOR dem Nachladen stehen. Ein Rückgängig
+  auf den alten Inhalt ließ den Tab dann fälschlich sauber aussehen, und ⌘W
+  hätte ihn ohne Nachfrage geschlossen. Inhalt, Platten-Abbild und
+  Vergleichsbasis werden jetzt gemeinsam aktualisiert.
+- **Das Versionsdatum im Fenstertitel stimmt wieder mit dem Changelog überein**
+  (siehe v1.60.0: Bundle nannte 2026-07-25 statt 2026-07-30). Ein Test
+  vergleicht beide Quellen jetzt mechanisch.
+
+### Sicherheit
+
+- **Die Markdown-Umwandlung vertraut der Antwort ihres Werkzeugs nicht mehr
+  blind.** Der von `poormans-text` gemeldete Ergebnispfad wurde ungeprüft
+  verschoben. Eine fehlerhafte Antwort konnte damit die Quelldatei selbst
+  bewegen — gegen die zugesagte Regel „Die Quelle wird nie verändert". Der Pfad
+  muss jetzt nachweislich eine gewöhnliche Datei im eigenen Arbeitsordner sein;
+  Verweise und Ordner werden abgewiesen. Zusätzlich gilt eine bekanntermaßen
+  abgeschnittene Ausgabe als Fehler und wird gar nicht erst gelesen: Vorher
+  konnte abgeschnittenes, aber zufällig noch lesbares JSON als gültiges Ergebnis
+  durchgehen.
+- **Die Markdown-Vorschau schließt sich, wenn die HTML-Bereinigung scheitert.**
+  Die Vorschau rendert bewusst mit `CMARK_OPT_UNSAFE` und verlässt sich darauf,
+  dass rohes HTML und Linkziele vorher geprüft wurden. Schlug in dieser Prüfung
+  ein cmark-Aufruf fehl, lief sie stillschweigend weiter und ungeprüftes HTML
+  hätte WebKit erreichen können. Jetzt meldet die Bereinigung ihren Fehlschlag,
+  und die Vorschau zeigt in diesem Fall nur escapeten Klartext.
+
+### Intern
+
+- Der Wächter gegen interne Angaben in der öffentlichen Historie prüft jeden
+  ausgehenden Commit einzeln statt nur den Netto-Diff, wertet grep-Fehler nicht
+  mehr als „nichts gefunden" und lässt im Release-Lauf nur noch Exitcode 0
+  durch.
+- Der Einstellungs-Dialog hält die Selbsttest-Isolierung auch dort ein, wo er
+  AppStorage-Wrapper im `init()` neu aufbaut; der zugehörige Wächter erkennt
+  diese Schreibweise jetzt.
+- Der `newwindow`-Selbsttest erwartet den Willkommens-Zustand statt einer leeren
+  Tab-Liste und scheitert damit nicht mehr bei korrektem Produktverhalten.
+
 ## [v1.60.0] — 2026-07-30
 
 Der Sprung von 1.53.1 auf 1.60.0 ist bewusst größer als die Arbeit einer
