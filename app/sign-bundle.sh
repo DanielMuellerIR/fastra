@@ -23,6 +23,24 @@ if [ "$IDENTITY" != "-" ]; then
   SIGN_ARGS+=(--options runtime --timestamp)
 fi
 
+# Debug-Symbole aus der eigenen Binärdatei entfernen, BEVOR signiert wird (strip
+# macht eine vorhandene Signatur ungültig). `swift build -c release` legt eine
+# Debug-Map hinein: für jede übersetzte Quelldatei einen Eintrag mit dem vollen
+# Pfad ihrer .o-Datei auf dem Build-Mac. Die App braucht das nicht, es verrät
+# nur Benutzernamen und Projektaufbau (gefunden am 2026-08-04). `strip -S` nimmt
+# genau diese Debug-Symbole und lässt die normale Symboltabelle stehen, damit
+# Absturzberichte lesbar bleiben. Xcode tut das bei Release-Builds von sich aus
+# (STRIP_STYLE=debugging), SwiftPM nicht.
+#
+# Nur die eigene Binärdatei: ripgrep, PCRE2 und Sparkle kommen fertig gebaut von
+# außen und tragen keinen Pfad dieses Macs.
+for eigene in "$APP/Contents/MacOS/"*; do
+  [ -f "$eigene" ] || continue
+  if file -b "$eigene" | grep -q 'Mach-O'; then
+    strip -S "$eigene"
+  fi
+done
+
 # SwiftPM-Ressourcen enthalten unter anderem ripgrep und PCRE2. Mach-O-Dateien
 # dort müssen explizit signiert werden, weil sie nicht in Frameworks/Helpers
 # liegen und eine äußere Signatur sie nicht automatisch korrekt behandelt.
