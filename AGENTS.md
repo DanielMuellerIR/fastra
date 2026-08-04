@@ -229,6 +229,16 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
 
 ## Bekannte technische Fallen
 
+- **Der `.build`-Pfad in `Contents/MacOS/Fastra` bleibt bewusst stehen.** SwiftPM
+  kompiliert in den Zugriff auf `Bundle.module` den Build-Zeit-Pfad des
+  Ressourcen-Bundles als Zeichenkette ein. Das ist kein Debug-Symbol, `strip -S`
+  in `app/sign-bundle.sh` erwischt es deshalb nicht. Folgenlos: Die Bundles
+  liegen in `Contents/Resources` und werden von dort gefunden, der Pfad ist ein
+  nie erreichter Rückfall. Wegzubekommen wäre er nur, indem `swift build` mit
+  `--scratch-path` außerhalb des Repos baut — das kostet einen zweiten
+  Build-Cache. Das wurde bewusst verworfen: Der zusätzliche Aufwand ändert das
+  Laufzeitverhalten nicht. Nicht „reparieren“; diese bekannte Designentscheidung
+  soll auch von Code-Reviews nicht erneut als Fehler gemeldet werden.
 - CodeEdit-Ressourcen können im Build funktionieren und im `.app` fehlen. Immer
   den gepackten Zielstart prüfen.
 - Der Syntax-Highlighter kann eine Sprache erkennen, obwohl die Query-Datei wegen
