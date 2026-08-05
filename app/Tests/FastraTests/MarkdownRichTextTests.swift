@@ -221,6 +221,19 @@ struct MarkdownRichTextTests {
         #expect(!fragment.html.contains("/tmp/Fastra"))
     }
 
+    @Test("Prozentcodierte reservierte Zeichen bleiben Teil des Bilddateinamens")
+    func encodedReservedCharactersStayInLocalImageFilename() {
+        let documentURL = URL(fileURLWithPath: "/tmp/Testprotokoll/Bericht.md")
+        let fragment = MarkdownRichText.renderedFragment(
+            markdown: "![Bild](images/1__%23%24%21%40%25%21%23__Pasted%20Graphic%205.png)",
+            documentURL: documentURL
+        )
+
+        #expect(fragment.html.contains("src=\"fastra-preview://image/image-0\""))
+        #expect(fragment.imageURLs["image-0"]?.path ==
+                "/tmp/Testprotokoll/images/1__#$!@%!#__Pasted Graphic 5.png")
+    }
+
     @Test("Nichtlokale und nicht unterstützte Bildquellen bleiben gesperrt",
           arguments: [
             "//example.com/bild.png",

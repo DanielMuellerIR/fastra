@@ -9863,8 +9863,8 @@ enum SelfTest {
                                          outside: URL, tabsBefore: Int, tick: Int) {
         let maxTicks = 40
         let copied = FileManager.default.fileExists(
-            atPath: base.appendingPathComponent("quelle.png").path)
-        let linked = tv.string.contains("![quelle](quelle.png)")
+            atPath: base.appendingPathComponent("images/quelle.png").path)
+        let linked = tv.string.contains("![quelle](images/quelle.png)")
         let opened = ws.tabs.contains { $0.title == "begleit.txt" }
         func cleanup() {
             try? FileManager.default.removeItem(at: base)

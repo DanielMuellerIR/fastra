@@ -135,11 +135,15 @@ func store_fileCollisionAndDedup() throws {
         // 1. Kopie: Originalname.
         let first = try MarkdownImageStore.storeImageFile(source, documentURL: doc)
         #expect(first.fileURL.lastPathComponent == "foto.png")
+        #expect(first.fileURL.deletingLastPathComponent().lastPathComponent == "images")
+        #expect(first.link == "![foto](images/foto.png)")
 
         // 2. identische Quelle erneut → KEIN Doppel, vorhandene verlinken.
         let again = try MarkdownImageStore.storeImageFile(source, documentURL: doc)
         #expect(again.fileURL == first.fileURL)
-        let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        let files = try FileManager.default.contentsOfDirectory(
+            atPath: dir.appendingPathComponent("images").path
+        )
             .filter { $0.hasSuffix(".png") }
         #expect(files == ["foto.png"])
 
@@ -155,21 +159,42 @@ func store_fileCollisionAndDedup() throws {
     }
 }
 
-@Test("storeImageFile: Datei bereits im Dokumentbaum → nur verlinken, nicht kopieren")
-func store_fileInsideTreeLinksOnly() throws {
+@Test("storeImageFile: Datei bereits im images-Ordner → nur verlinken, nicht kopieren")
+func store_fileInsideImagesLinksOnly() throws {
     try withTempDir { dir in
         let doc = dir.appendingPathComponent("Seite.md")
         try "x".write(to: doc, atomically: true, encoding: .utf8)
-        let sub = dir.appendingPathComponent("bilder")
+        let sub = dir.appendingPathComponent("images")
         try FileManager.default.createDirectory(at: sub, withIntermediateDirectories: true)
         let existing = sub.appendingPathComponent("logo.png")
         try tinyPNG().write(to: existing)
 
         let stored = try MarkdownImageStore.storeImageFile(existing, documentURL: doc)
         #expect(stored.fileURL == existing)
-        #expect(stored.link == "![logo](bilder/logo.png)")
+        #expect(stored.link == "![logo](images/logo.png)")
         let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
         #expect(!files.contains("logo.png"), "es darf keine Kopie neben dem Dokument entstehen")
+    }
+}
+
+@Test("storeImageFile: Bild aus anderem Dokument-Unterordner wird nach images kopiert")
+func store_fileElsewhereInDocumentTreeCopiesIntoImages() throws {
+    try withTempDir { dir in
+        let doc = dir.appendingPathComponent("Seite.md")
+        try "x".write(to: doc, atomically: true, encoding: .utf8)
+        let sourceDirectory = dir.appendingPathComponent("uploads")
+        try FileManager.default.createDirectory(at: sourceDirectory,
+                                                withIntermediateDirectories: true)
+        let source = sourceDirectory.appendingPathComponent("Original Name.png")
+        try tinyPNG().write(to: source)
+
+        let stored = try MarkdownImageStore.storeImageFile(source, documentURL: doc)
+
+        #expect(stored.fileURL.path == dir.appendingPathComponent(
+            "images/Original Name.png"
+        ).path)
+        #expect(stored.link == "![Original Name](images/Original%20Name.png)")
+        #expect(FileManager.default.fileExists(atPath: source.path))
     }
 }
 

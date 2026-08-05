@@ -286,7 +286,8 @@ does not insert into another document.
 as a file **next to the document** (`documentname-YYYY-MM-DD-hhmmss.png`;
 PNG/JPEG/GIF keep their format, everything else becomes PNG) and links
 it relatively at the cursor position. **Dragging an image file** into
-the Markdown editor copies it unchanged into the document folder (name
+the Markdown editor keeps its original filename and copies it unchanged
+into the `images` subfolder (name
 collision → suffix; a byte-identical file is not duplicated) and links
 it relatively as well — other files open in a tab as usual. After
 inserting, the preview scrolls to the insertion point. Unsaved documents

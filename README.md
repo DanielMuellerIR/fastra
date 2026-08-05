@@ -166,8 +166,9 @@ app supports it.
 
 A source-formatting toolbar plus menu and context-menu commands cover emphasis,
 headings, lists, quotes, links and tables as normal undoable Markdown edits.
-Pasting or dropping an image saves or copies it beside the saved document and
-inserts a relative link, so text and images remain portable together.
+Pasting an image saves it beside the document. Dropping an existing image file
+keeps its original filename and copies it into `images/`. Fastra inserts a
+relative link in both cases, so text and images remain portable together.
 
 Fastra's preview adds one deliberately narrow extension to GFM for visible
 blank lines: a source line containing only two or more ordinary ASCII spaces

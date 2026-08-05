@@ -454,17 +454,26 @@ enum MarkdownImages {
 
     private static func localImageURL(from rawSource: String,
                                       documentURL: URL?) -> URL? {
-        let decoded = htmlUnescaped(rawSource).removingPercentEncoding ?? htmlUnescaped(rawSource)
+        let unescaped = htmlUnescaped(rawSource)
+        // Ein echtes `#` trennt das URL-Fragment ab. `%23` ist dagegen ein
+        // zulässiges Rautezeichen IM Dateinamen und darf erst danach decodiert
+        // werden. Die frühere Reihenfolge kürzte solche Pfade auf den Teil vor
+        // `%23` und ließ vorhandene Bilder dadurch scheinbar verschwinden.
+        let encodedPath = unescaped.split(
+            separator: "#",
+            maxSplits: 1,
+            omittingEmptySubsequences: false
+        ).first.map(String.init) ?? unescaped
+        let decoded = encodedPath.removingPercentEncoding ?? encodedPath
         guard !decoded.isEmpty,
               !decoded.hasPrefix("//") else { return nil }
 
-        let withoutFragment = decoded.split(separator: "#", maxSplits: 1).first.map(String.init) ?? decoded
-        if let components = URLComponents(string: withoutFragment), components.scheme != nil {
+        if let components = URLComponents(string: decoded), components.scheme != nil {
             return nil
         }
-        guard !withoutFragment.hasPrefix("/"), let documentURL else { return nil }
+        guard !decoded.hasPrefix("/"), let documentURL else { return nil }
         return documentURL.deletingLastPathComponent()
-            .appendingPathComponent(withoutFragment)
+            .appendingPathComponent(decoded)
             .standardizedFileURL
     }
 

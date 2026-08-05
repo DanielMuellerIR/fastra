@@ -296,7 +296,8 @@ wird kontrolliert abgebrochen und nichts in ein anderes Dokument eingefügt.
 als Datei **neben dem Dokument** ab (`dokumentname-JJJJ-MM-TT-hhmmss.png`;
 PNG/JPEG/GIF behalten ihr Format, alles andere wird PNG) und verlinkt es
 relativ an der Cursorposition. Eine **Bilddatei per Drag-and-drop** in
-den Markdown-Editor wird unverändert in den Dokumentordner kopiert
+den Markdown-Editor wird unter ihrem ursprünglichen Dateinamen unverändert
+in den Unterordner `images` kopiert
 (Namenskollision → Suffix; byte-identische Datei wird nicht doppelt
 abgelegt) und ebenfalls relativ verlinkt — andere Dateien öffnen wie
 gewohnt in einem Tab. Nach dem Einfügen scrollt die Vorschau zur

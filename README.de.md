@@ -177,9 +177,10 @@ oder Rich Text kopieren, sofern das Zielprogramm es unterstützt.
 
 Eine Formatierungs-Toolbar sowie Befehle in Menü und Rechtsklickmenü decken
 Hervorhebungen, Überschriften, Listen, Zitate, Links und Tabellen als normale,
-widerrufbare Markdown-Edits ab. Eingefügte oder abgelegte Bilder speichert
-beziehungsweise kopiert Fastra neben das gespeicherte Dokument und setzt einen
-relativen Link, damit Text und Bilder gemeinsam portabel bleiben.
+widerrufbare Markdown-Edits ab. Ein eingefügtes Bild speichert Fastra neben dem
+Dokument. Eine hineingezogene Bilddatei behält ihren ursprünglichen Dateinamen
+und wird nach `images/` kopiert. In beiden Fällen setzt Fastra einen relativen
+Link, damit Text und Bilder gemeinsam portabel bleiben.
 
 Fastras Vorschau ergänzt GFM um eine bewusst enge Schreibweise für sichtbare
 Leerzeilen: Eine Quellzeile, die ausschließlich aus mindestens zwei normalen

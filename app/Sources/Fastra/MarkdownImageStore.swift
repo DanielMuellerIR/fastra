@@ -2,7 +2,7 @@
 //
 // Bild-Ablage für das assistierte Markdown-Schreiben (Etappe 5 Wunschpaket
 // 2026-07b): Pasteboard-Bilddaten und gezogene Bilddateien landen als Datei
-// im Dokumentordner und werden relativ verlinkt.
+// beim Datei-Import im images-Unterordner und werden relativ verlinkt.
 //
 // Leitplanken: Dateischreibvorgänge sind atomar (bei Abbruch bleibt der
 // Ausgangszustand erhalten), beim Kopieren werden Dateiinhalte NIEMALS
@@ -146,22 +146,32 @@ enum MarkdownImageStore {
         return (markdownImageLink(fileName: name, relativePath: relative), target)
     }
 
-    /// Kopiert eine Bild-DATEI unverändert in den Dokumentordner:
-    /// - liegt sie bereits unterhalb des Dokumentordners → nur verlinken;
+    /// Kopiert eine Bild-DATEI unverändert in den `images`-Unterordner:
+    /// - liegt sie bereits im images-Unterordner → nur verlinken;
     /// - Namenskollision → Suffix, byte-identische Datei → nicht doppeln.
     static func storeImageFile(_ sourceURL: URL,
                                documentURL: URL,
                                fileManager: FileManager = .default)
     throws -> (link: String, fileURL: URL) {
-        let directory = documentURL.deletingLastPathComponent().standardizedFileURL
+        let documentDirectory = documentURL.deletingLastPathComponent().standardizedFileURL
+        let directory = documentDirectory
+            .appendingPathComponent("images", isDirectory: true)
+            .standardizedFileURL
+        let source = sourceURL.standardizedFileURL
+        let directoryPrefix = directory.path.hasSuffix("/")
+            ? directory.path
+            : directory.path + "/"
 
-        // Schon im Dokumentbaum? Dann NICHT kopieren, nur verlinken.
-        if let relative = relativeLinkPath(from: documentURL, to: sourceURL) {
-            return (markdownImageLink(fileName: sourceURL.lastPathComponent,
-                                      relativePath: relative), sourceURL)
+        // Schon im images-Unterordner? Dann NICHT kopieren, nur verlinken.
+        if source.path.hasPrefix(directoryPrefix),
+           let relative = relativeLinkPath(from: documentURL, to: source) {
+            return (markdownImageLink(fileName: source.lastPathComponent,
+                                      relativePath: relative), source)
         }
 
-        let sourceName = sourceURL.lastPathComponent
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let sourceName = source.lastPathComponent
         let base = (sourceName as NSString).deletingPathExtension
         let fileExtension = (sourceName as NSString).pathExtension
 
@@ -177,7 +187,7 @@ enum MarkdownImageStore {
                 // `copyItem` verändert Inhalte nie; bei Abbruch bleibt die
                 // Quelle unangetastet und das Ziel existiert nicht halb —
                 // FileManager kopiert auf APFS über einen Klon/Temp-Pfad.
-                try fileManager.copyItem(at: sourceURL, to: candidate)
+                try fileManager.copyItem(at: source, to: candidate)
                 guard let relative = relativeLinkPath(from: documentURL, to: candidate) else {
                     try? fileManager.removeItem(at: candidate)
                     throw StoreError.unreadableImage
@@ -185,7 +195,7 @@ enum MarkdownImageStore {
                 return (markdownImageLink(fileName: candidateName,
                                           relativePath: relative), candidate)
             }
-            if contentsEqual(sourceURL, candidate, fileManager: fileManager) {
+            if contentsEqual(source, candidate, fileManager: fileManager) {
                 guard let relative = relativeLinkPath(from: documentURL, to: candidate) else {
                     throw StoreError.unreadableImage
                 }

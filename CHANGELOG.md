@@ -9,6 +9,18 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.60.2] — 2026-08-05
+
+### Behoben
+
+- **Lokale Bilder mit reservierten Zeichen im Dateinamen erscheinen wieder in
+  der Markdown-Vorschau.** Ein prozentcodiertes `#` wurde zu früh decodiert und
+  danach fälschlich als Beginn eines URL-Fragments behandelt; der Dateipfad
+  brach dadurch vor dem Zeichen ab.
+- **Hineingezogene Bilddateien landen gesammelt im Unterordner `images`.** Der
+  ursprüngliche Dateiname bleibt erhalten; Namenskollisionen bekommen wie
+  bisher ein Suffix, und identische Dateien werden nicht doppelt kopiert.
+
 ## [v1.60.1] — 2026-08-02
 
 Sammelstand aus dem Code-Review vom 2026-08-02. Ausschließlich Fehlerbehebungen;
