@@ -9,6 +9,18 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.62.1] — 2026-08-05
+
+### Behoben
+
+- **Das Anklicken eines Ordner-Treffers startet keine neue Suche mehr.** Das
+  Öffnen der Funddatei verändert intern die Tab-Liste, den aktiven Tab und
+  gegebenenfalls das angezeigte Projekt. Diese Änderungen galten bisher auch
+  im Ordner-Bereich fälschlich als neue Sucheingabe: Die Trefferliste wurde
+  geleert, neu aufgebaut und sprang dabei zum ersten Ergebnis. Suchauslöser
+  werden jetzt nach Bereich getrennt; die bestehende Trefferbasis und der
+  aktive Eintrag bleiben beim Öffnen erhalten.
+
 ## [v1.62.0] — 2026-08-05
 
 ### Hinzugefügt

@@ -46,6 +46,32 @@ final class SearchRunner {
     /// 120-ms-Pipeline-Debounce → ~0,42 s nach dem letzten Tastendruck.
     static let folderLiveExtraDebounceMs = 300
 
+    /// Art einer Modelländerung, die möglicherweise eine neue Suche braucht.
+    /// Nicht jeder publizierte Workspace-Wert gehört in jedem Scope zur
+    /// Trefferbasis: Ein Tabwechsel ist für Datei/Geöffnet relevant, darf aber
+    /// eine fertige Ordnersuche beim Öffnen ihres Treffers nicht verwerfen.
+    enum SearchInput {
+        case options
+        case activeDocument
+        case scope
+        case folderSources
+        case projectSources
+    }
+
+    static func inputAffectsSearch(_ input: SearchInput,
+                                   in scope: Workspace.SearchScope) -> Bool {
+        switch input {
+        case .options, .scope:
+            return true
+        case .activeDocument:
+            return scope == .file || scope == .open
+        case .folderSources:
+            return scope == .folder
+        case .projectSources:
+            return scope == .project
+        }
+    }
+
     init(workspace: Workspace) {
         self.workspace = workspace
 
@@ -53,28 +79,34 @@ final class SearchRunner {
         // brauchen die konkreten Werte hier NICHT — beim Re-Run lesen
         // wir sie direkt vom Workspace. Combine erlaubt CombineLatest
         // nur bis Arity 4, deshalb über MergeMany.
-        let triggers: [AnyPublisher<Void, Never>] = [
-            workspace.$findPattern.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            workspace.$replacePattern.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            workspace.$useRegex.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            workspace.$caseSensitive.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            workspace.$wholeWord.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+        let triggers: [AnyPublisher<SearchInput, Never>] = [
+            workspace.$findPattern.dropFirst().map { _ in SearchInput.options }.eraseToAnyPublisher(),
+            workspace.$replacePattern.dropFirst().map { _ in SearchInput.options }.eraseToAnyPublisher(),
+            workspace.$useRegex.dropFirst().map { _ in SearchInput.options }.eraseToAnyPublisher(),
+            workspace.$caseSensitive.dropFirst().map { _ in SearchInput.options }.eraseToAnyPublisher(),
+            workspace.$wholeWord.dropFirst().map { _ in SearchInput.options }.eraseToAnyPublisher(),
             // Mini-Schalter „* wörtlich nehmen" (Feature J) → Such-Semantik
             // ändert sich (Platzhalter ⇄ literal) → neu suchen.
-            workspace.$treatWildcardLiterally.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            workspace.$treatWildcardLiterally.dropFirst().map { _ in SearchInput.options }.eraseToAnyPublisher(),
             // „Nur in Auswahl" (K3) umschalten → Buffer-Suche neu laufen
             // lassen (anderer Such-Bereich).
-            workspace.$searchInSelectionOnly.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            workspace.$activeTabID.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            workspace.$tabs.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            workspace.$scope.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            workspace.$recentSearchFolders.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            workspace.$fileTypeFilter.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            workspace.$projectSearchConfiguration.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            workspace.$projectURL.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            workspace.$searchInSelectionOnly.dropFirst().map { _ in SearchInput.activeDocument }.eraseToAnyPublisher(),
+            workspace.$activeTabID.dropFirst().map { _ in SearchInput.activeDocument }.eraseToAnyPublisher(),
+            workspace.$tabs.dropFirst().map { _ in SearchInput.activeDocument }.eraseToAnyPublisher(),
+            workspace.$scope.dropFirst().map { _ in SearchInput.scope }.eraseToAnyPublisher(),
+            workspace.$recentSearchFolders.dropFirst().map { _ in SearchInput.folderSources }.eraseToAnyPublisher(),
+            workspace.$fileTypeFilter.dropFirst().map { _ in SearchInput.folderSources }.eraseToAnyPublisher(),
+            workspace.$projectSearchConfiguration.dropFirst().map { _ in SearchInput.projectSources }.eraseToAnyPublisher(),
+            workspace.$projectURL.dropFirst().map { _ in SearchInput.projectSources }.eraseToAnyPublisher(),
         ]
 
-        let triggerStream = Publishers.MergeMany(triggers).share()
+        let triggerStream = Publishers.MergeMany(triggers)
+            .filter { [weak workspace] input in
+                guard let scope = workspace?.scope else { return false }
+                return Self.inputAffectsSearch(input, in: scope)
+            }
+            .map { _ in () }
+            .share()
 
         // Sicherheitspfad ohne Debounce: Sobald ein Suchinput wechselt,
         // gehören die sichtbaren Projekt-/Ordner-Treffer nicht mehr zur

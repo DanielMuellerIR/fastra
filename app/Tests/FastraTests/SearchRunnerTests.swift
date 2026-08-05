@@ -51,6 +51,23 @@ func bufferCompletionRequiresCurrentGeneration() {
     #expect(!SearchRunner.completionBelongsToCurrentRun(7, currentRunID: 8))
 }
 
+@Test("Suchauslöser wirken nur in den Scopes, deren Trefferbasis sie ändern")
+func searchInputsAreScopeSpecific() {
+    for scope in Workspace.SearchScope.allCases {
+        #expect(SearchRunner.inputAffectsSearch(.options, in: scope))
+        #expect(SearchRunner.inputAffectsSearch(.scope, in: scope))
+    }
+    #expect(SearchRunner.inputAffectsSearch(.activeDocument, in: .file))
+    #expect(SearchRunner.inputAffectsSearch(.activeDocument, in: .open))
+    #expect(!SearchRunner.inputAffectsSearch(.activeDocument, in: .folder))
+    #expect(!SearchRunner.inputAffectsSearch(.activeDocument, in: .project))
+
+    #expect(SearchRunner.inputAffectsSearch(.folderSources, in: .folder))
+    #expect(!SearchRunner.inputAffectsSearch(.folderSources, in: .project))
+    #expect(SearchRunner.inputAffectsSearch(.projectSources, in: .project))
+    #expect(!SearchRunner.inputAffectsSearch(.projectSources, in: .folder))
+}
+
 @Test("Projektfilter-Wechsel invalidiert Treffer, Navigation und Apply sofort")
 @MainActor
 func projectFilterChangeInvalidatesVisiblePreviewImmediately() async throws {
@@ -105,6 +122,57 @@ func projectFilterChangeInvalidatesVisiblePreviewImmediately() async throws {
     #expect(workspace.folderSearching)
     #expect(!workspace.applyAllInFolder())
     #expect(!previewConflictWasShown)
+}
+
+@Test("Ordner-Treffer bleibt beim Öffnen seiner Datei vollständig erhalten")
+@MainActor
+func folderPreviewSurvivesOpeningMatchedFile() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory
+        .appendingPathComponent("fastra-folder-hit-\(UUID().uuidString)",
+                              isDirectory: true)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root) }
+    let file = root.appendingPathComponent("treffer.txt")
+    try "vorher NADEL nachher\n".write(to: file, atomically: true, encoding: .utf8)
+
+    let suiteName = "fastra-folder-hit-defaults-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let workspace = Workspace(defaults: defaults)
+    workspace.recentSearchFolders = [
+        SearchFolderEntry(path: root.path, enabled: true)
+    ]
+    workspace.scope = .folder
+    workspace.useRegex = false
+    workspace.findPattern = "NADEL"
+    // Wirklich auf den abgeschlossenen initialen Ordnerlauf warten. Erst dann
+    // ist garantiert, dass kein verzögertes Combine-Debounce mehr unterwegs
+    // ist, das unsere Beobachtung unter paralleler Testsuite verfälscht.
+    await waitForWorkspace(workspace) {
+        !workspace.folderSearching
+            && !workspace.folderNeedsSearch
+            && workspace.folderTotalMatches == 1
+    }
+    let visibleResult = try #require(workspace.folderResults.first)
+    #expect(workspace.folderResults == [visibleResult])
+
+    let loaded = await withCheckedContinuation { continuation in
+        // Entspricht dem Klickpfad in FloatingSearchDialog.handleMatchTap:
+        // `loadFile` legt synchron einen Lade-Tab an und wechselt dessen ID.
+        workspace.loadFile(at: file) { continuation.resume(returning: $0) }
+        #expect(workspace.folderResults == [visibleResult])
+        #expect(workspace.folderTotalMatches == 1)
+        #expect(!workspace.folderNeedsSearch)
+        #expect(!workspace.folderSearching)
+    }
+
+    #expect(loaded)
+    #expect(workspace.folderResults == [visibleResult])
+    #expect(workspace.folderTotalMatches == 1)
+    #expect(!workspace.folderNeedsSearch)
+    #expect(!workspace.folderSearching)
 }
 
 // MARK: - Spinner-Zustand nach Abbruch (Code-Review-Befund 2026-07-24)
