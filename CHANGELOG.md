@@ -9,6 +9,26 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.61.0] — 2026-08-05
+
+### Hinzugefügt
+
+- **Neue Dokumente beginnen beim Speichern im Ordner der zuvor aktiven Datei.**
+  Nach ⌘T bleibt damit der Arbeitsordner erhalten — unabhängig davon, ob zuerst
+  Text eingefügt oder der leere Tab direkt gespeichert wird. Ein bewusst in der
+  Seitenleiste markierter Ordner hat weiterhin Vorrang; der Projektordner bleibt
+  der letzte Rückfall.
+
+### Behoben
+
+- **Die erste Ordnersuche crasht in der installierten App nicht mehr.** Der
+  ripgrep-Locator griff noch direkt auf SwiftPMs `Bundle.module` zu. Auf dem
+  Build-Mac verdeckte dessen absoluter Rückfallpfad den Fehler; auf einem
+  anderen Mac endete der erste Suchlauf mit einem Fatalfehler. Die Suche nutzt
+  jetzt Fastras portablen Ressourcen-Locator, und das Bundle-Gate führt selbst
+  eine echte Ordnersuche aus, während alle lokalen Build-Bundles verborgen
+  sind.
+
 ## [v1.60.2] — 2026-08-05
 
 ### Behoben

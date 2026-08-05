@@ -5,6 +5,14 @@ Suche und Ersetzung über Dateien und Ordner. Der Kern: **Vor jeder
 Mehrfachänderung siehst du eine vollständige Vorschau** — Fastra schreibt
 nie in Dateien, ohne dass du die Auswirkungen vorher gesehen hast.
 
+## Dokumente und Speichern
+
+⌘T öffnet einen neuen Tab. Beim ersten Speichern schlägt Fastra den Ordner
+der Datei vor, die unmittelbar vorher aktiv war — auch wenn du erst Text
+einfügst oder den neuen Tab leer speicherst. Ein bewusst in der Seitenleiste
+markierter Ordner hat Vorrang; ohne Dokumentkontext dient der Projektordner
+als Rückfall.
+
 ## Suchen und Ersetzen
 
 ⌘F öffnet die Suchmaske (⇧⌘F direkt im Ordner-Bereich; ⌘E übernimmt die

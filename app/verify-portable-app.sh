@@ -53,33 +53,40 @@ if [[ ${#MOVED_BUNDLES[@]} -eq 0 ]]; then
     exit 1
 fi
 
-FASTRA_SELFTEST=localization "$APP_BIN" -ApplePersistenceIgnoreState YES \
-    >/dev/null 2>"$ERR_FILE" &
-APP_PID=$!
+# `localization` liest das Ressourcenbundle direkt. `search` geht zusätzlich
+# durch die echte Ordnersuche und startet den gebündelten ripgrep-Prozess. So
+# fällt auch ein einzelner vergessener `Bundle.module`-Zugriff auf, statt erst
+# beim Nutzer auf einem anderen Mac zu crashen.
+for SELFTEST_NAME in localization search; do
+    : > "$ERR_FILE"
+    FASTRA_SELFTEST="$SELFTEST_NAME" "$APP_BIN" -ApplePersistenceIgnoreState YES \
+        >/dev/null 2>"$ERR_FILE" &
+    APP_PID=$!
 
-# Ein kaputter Ressourcenpfad crasht sofort; ein anderer Start-Hänger darf den
-# Build aber ebenfalls nicht endlos blockieren. Der fensterlose Test braucht
-# normalerweise deutlich unter einer Sekunde.
-for _ in {1..150}; do
-    if ! kill -0 "$APP_PID" 2>/dev/null; then
-        break
+    # Ein kaputter Ressourcenpfad crasht sofort; ein anderer Start-Hänger darf
+    # den Build ebenfalls nicht endlos blockieren. Beide Tests sind fensterlos.
+    for _ in {1..150}; do
+        if ! kill -0 "$APP_PID" 2>/dev/null; then
+            break
+        fi
+        sleep 0.1
+    done
+
+    if kill -0 "$APP_PID" 2>/dev/null; then
+        echo "✗ Portabilitätsprüfung: Selbsttest $SELFTEST_NAME hängt länger als 15 Sekunden." >&2
+        exit 1
     fi
-    sleep 0.1
+
+    wait "$APP_PID"
+    STATUS=$?
+    APP_PID=""
+
+    if [[ $STATUS -ne 0 ]] \
+        || ! grep -q "^SELFTEST $SELFTEST_NAME: PASS" "$ERR_FILE"; then
+        echo "✗ Portabilitätsprüfung: Selbsttest $SELFTEST_NAME scheitert ohne lokalen Build-Fallback." >&2
+        tail -20 "$ERR_FILE" >&2
+        exit 1
+    fi
 done
 
-if kill -0 "$APP_PID" 2>/dev/null; then
-    echo "✗ Portabilitätsprüfung: installierter Start hängt länger als 15 Sekunden." >&2
-    exit 1
-fi
-
-wait "$APP_PID"
-STATUS=$?
-APP_PID=""
-
-if [[ $STATUS -ne 0 ]] || ! grep -q '^SELFTEST localization: PASS' "$ERR_FILE"; then
-    echo "✗ Portabilitätsprüfung: Fastra startet ohne lokalen Build-Fallback nicht." >&2
-    tail -20 "$ERR_FILE" >&2
-    exit 1
-fi
-
-echo "→ Portabilitätsprüfung: Start ohne lokalen Build-Fallback erfolgreich"
+echo "→ Portabilitätsprüfung: Ressourcen und Ordnersuche funktionieren ohne lokalen Build-Fallback"

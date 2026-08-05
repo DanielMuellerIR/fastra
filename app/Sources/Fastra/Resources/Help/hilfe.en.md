@@ -5,6 +5,14 @@ and replace across files and folders. The core idea: **before any bulk
 change you see a complete preview** — Fastra never writes to files
 without you having seen the effect first.
 
+## Documents and Saving
+
+⌘T opens a new tab. On its first save, Fastra suggests the folder of the file
+that was active immediately beforehand — whether you pasted text first or save
+the new tab while it is still empty. A folder deliberately selected in the
+sidebar takes priority; without document context, the project folder is the
+fallback.
+
 ## Search and Replace
 
 ⌘F opens the search panel (⇧⌘F opens it directly in folder scope; ⌘E

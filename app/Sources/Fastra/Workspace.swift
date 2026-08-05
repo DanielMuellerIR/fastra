@@ -85,6 +85,11 @@ struct EditorTab: Identifiable, Hashable {
     var title: String
     var path: String
     var url: URL?
+    /// Ordner, den ein frisch angelegter ungespeicherter Tab beim ersten
+    /// Sichern vorschlagen soll. `openNewTab()` übernimmt ihn vom zuvor
+    /// aktiven Dokument; er ist reiner Fensterzustand und wird nicht
+    /// sitzungsübergreifend gespeichert.
+    var initialSaveDirectory: URL?
     var content: String {
         didSet { contentRevision &+= 1 }
     }
@@ -176,6 +181,7 @@ struct EditorTab: Identifiable, Hashable {
         title: String,
         path: String,
         url: URL? = nil,
+        initialSaveDirectory: URL? = nil,
         content: String = "",
         encoding: String.Encoding = .utf8,
         bom: Data = Data(),
@@ -200,6 +206,7 @@ struct EditorTab: Identifiable, Hashable {
         self.title = title
         self.path = path
         self.url = url
+        self.initialSaveDirectory = initialSaveDirectory
         self.content = content
         self.contentRevision = 0
         self.encoding = encoding
@@ -1271,9 +1278,16 @@ final class Workspace: ObservableObject {
     }
 
     func openNewTab() {
+        // Der neue Tab verliert absichtlich die Datei-URL, aber nicht den
+        // räumlichen Kontext: Sein erster Save-Dialog beginnt im Ordner des
+        // Dokuments, das unmittelbar vor ⌘T aktiv war. Bei einer Kette neuer
+        // Tabs wird derselbe Hinweis weitergereicht.
+        let initialSaveDirectory = activeTab?.url?.deletingLastPathComponent()
+            ?? activeTab?.initialSaveDirectory
         let new = EditorTab(
             title: Workspace.untitledName(position: tabs.count + 1),
             path: "—",
+            initialSaveDirectory: initialSaveDirectory,
             content: ""
         )
         tabs.append(new)
@@ -2217,11 +2231,15 @@ final class Workspace: ObservableObject {
         panel.canCreateDirectories = true
         panel.nameFieldStringValue = tabs[idx].title
         panel.message = L10n.string("Datei speichern unter…")
-        // Vorschlagsordner (Etappe 1 Wunschpaket 2026-07): markierter
-        // Seitenleisten-Ordner vor Projektordner; existiert keiner (mehr),
-        // bleibt das Systemverhalten des Panels unangetastet.
+        // Vorschlagsordner: eine bewusste Seitenleisten-Markierung gewinnt.
+        // Danach folgt der Ordner dieses Dokuments bzw. bei einem neuen Tab
+        // der Ordner der unmittelbar zuvor aktiven Datei; der Projektordner
+        // bleibt der letzte Fallback.
+        let documentDirectory = tabs[idx].url?.deletingLastPathComponent()
+            ?? tabs[idx].initialSaveDirectory
         if let directory = Self.suggestedSaveDirectory(
             selectedFolder: usableDirectory(selectedFileTreeFolder),
+            documentDirectory: usableDirectory(documentDirectory),
             projectURL: usableDirectory(projectURL)
         ) {
             panel.directoryURL = directory
@@ -2664,11 +2682,13 @@ final class Workspace: ObservableObject {
     }
 
     /// Vorschlagsordner für den Save-Dialog: der in der Seitenleiste
-    /// markierte Ordner gewinnt vor dem Projektordner; ohne beides `nil`
-    /// (= Systemverhalten). Pure Funktion → unit-testbar.
+    /// markierte Ordner gewinnt vor dem Dokumentkontext und dieser vor dem
+    /// Projektordner; ohne alles `nil` (= Systemverhalten).
+    /// Pure Funktion → unit-testbar.
     static func suggestedSaveDirectory(selectedFolder: URL?,
+                                       documentDirectory: URL?,
                                        projectURL: URL?) -> URL? {
-        selectedFolder ?? projectURL
+        selectedFolder ?? documentDirectory ?? projectURL
     }
 
     /// Nur ein noch existierender Ordner taugt als Panel-Vorschlag —

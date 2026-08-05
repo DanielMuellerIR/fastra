@@ -1,7 +1,7 @@
 // SidebarUXTests.swift
 //
 // Tests für die Etappe-1-UX des Wunschpakets 2026-07:
-// - Save-Dialog-Vorschlagsordner (markierter Sidebar-Ordner vor Projektordner)
+// - Save-Dialog-Vorschlagsordner (Sidebar vor Dokumentkontext vor Projekt)
 // - Elternordner-Öffnen beim Einzeldatei-Öffnen ohne Projekt
 // - Entschärfter Ordnerwechsel nach Tab-Schließen (projectSwitchTarget)
 // - Leere-Ordner-Erkennung (FolderEmptinessCache, gleiche Filterregeln)
@@ -45,25 +45,58 @@ private func awaitLoadFile(_ workspace: Workspace, _ url: URL) async -> Bool {
 @Test("Save-Vorschlag: markierter Sidebar-Ordner gewinnt vor Projektordner")
 func saveDirectory_selectedFolderWins() {
     let selected = URL(fileURLWithPath: "/tmp/projekt/unterordner")
+    let document = URL(fileURLWithPath: "/tmp/projekt/dokumente")
     let project = URL(fileURLWithPath: "/tmp/projekt")
     #expect(Workspace.suggestedSaveDirectory(
-        selectedFolder: selected, projectURL: project
+        selectedFolder: selected, documentDirectory: document, projectURL: project
     ) == selected)
 }
 
-@Test("Save-Vorschlag: ohne Markierung fällt er auf den Projektordner zurück")
+@Test("Save-Vorschlag: ohne Markierung gewinnt der Dokumentordner")
+func saveDirectory_documentFallback() {
+    let document = URL(fileURLWithPath: "/tmp/projekt/dokumente")
+    let project = URL(fileURLWithPath: "/tmp/projekt")
+    #expect(Workspace.suggestedSaveDirectory(
+        selectedFolder: nil, documentDirectory: document, projectURL: project
+    ) == document)
+}
+
+@Test("Save-Vorschlag: ohne Dokumentkontext fällt er auf das Projekt zurück")
 func saveDirectory_projectFallback() {
     let project = URL(fileURLWithPath: "/tmp/projekt")
     #expect(Workspace.suggestedSaveDirectory(
-        selectedFolder: nil, projectURL: project
+        selectedFolder: nil, documentDirectory: nil, projectURL: project
     ) == project)
 }
 
 @Test("Save-Vorschlag: ohne beides bleibt es beim Systemverhalten (nil)")
 func saveDirectory_systemDefault() {
     #expect(Workspace.suggestedSaveDirectory(
-        selectedFolder: nil, projectURL: nil
+        selectedFolder: nil, documentDirectory: nil, projectURL: nil
     ) == nil)
+}
+
+@Test("Neuer Tab übernimmt den Ordner der zuvor aktiven Datei")
+@MainActor
+func newTab_inheritsActiveDocumentDirectory() {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let ws = Workspace(defaults: defaults)
+    let directory = URL(fileURLWithPath: "/tmp/projekt/dokumente", isDirectory: true)
+    let document = directory.appendingPathComponent("vorne.txt")
+    let source = EditorTab(title: document.lastPathComponent,
+                           path: directory.path, url: document)
+    ws.tabs = [source]
+    ws.activeTabID = source.id
+
+    ws.openNewTab()
+
+    #expect(ws.activeTab?.url == nil)
+    #expect(ws.activeTab?.initialSaveDirectory == directory)
+
+    // Auch mehrere neue Tabs behalten den letzten echten Dateiordner bei.
+    ws.openNewTab()
+    #expect(ws.activeTab?.initialSaveDirectory == directory)
 }
 
 // MARK: - Elternordner beim Einzeldatei-Öffnen

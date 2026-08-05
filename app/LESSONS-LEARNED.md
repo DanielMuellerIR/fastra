@@ -62,12 +62,15 @@ anderen Mac crashte sie sofort in `Bundle.module`.
 verwenden, die in einer gepackten App zuerst `Bundle.main.resourceURL` prüfen,
 und SwiftPM-`.bundle`-Verzeichnisse unter `Contents/Resources` kopieren.
 Bundles direkt in der `.app`-Wurzel sind keine Alternative: Codesign lehnt sie
-als „unsealed contents" ab. Danach
-`verify-portable-app.sh` ausführen: Das Skript blendet alle lokalen
-Build-Bundles kurz aus und verlangt einen echten fensterlosen `localization`-
-Start aus der gepackten App. `build.sh` und `install.sh` rufen dieses Gate
-automatisch auf. Codesign, Notarisierung, Stapler und Gatekeeper prüfen
-Integrität und Vertrauen, aber nicht, ob die App ihre Laufzeitressourcen findet.
+als „unsealed contents" ab. Danach `verify-portable-app.sh` ausführen: Das
+Skript blendet alle lokalen Build-Bundles kurz aus und verlangt einen echten
+fensterlosen `localization`-Start sowie eine Ordnersuche mit dem gebündelten
+ripgrep aus der gepackten App. Der zweite Lauf ist nötig, weil ein einzelner
+später Pfad (konkret 2026-08-05: `RipgrepFileEnumerator`) beim Start noch
+unberührt bleiben und erst beim ersten Suchlauf in `Bundle.module` crashen
+kann. `build.sh` und `install.sh` rufen dieses Gate automatisch auf. Codesign,
+Notarisierung, Stapler und Gatekeeper prüfen Integrität und Vertrauen, aber
+nicht, ob die App ihre Laufzeitressourcen findet.
 
 ## F · CodeEdit-Build-Realität und Checkout-Patches
 

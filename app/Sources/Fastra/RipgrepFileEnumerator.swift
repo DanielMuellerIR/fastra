@@ -125,10 +125,13 @@ enum RipgrepFileEnumerator {
     }
 
     private static var executableURL: URL? {
-        let bundles = [Bundle.main, Bundle.module]
-        return bundles.lazy.compactMap {
-            $0.url(forResource: "rg", withExtension: nil, subdirectory: "ripgrep")
-                ?? $0.url(forResource: "rg", withExtension: nil)
-        }.first
+        // Im gepackten App-Bundle liegt das SwiftPM-Ressourcenbundle unter
+        // Contents/Resources. Ein direkter Zugriff auf `Bundle.module` fällt
+        // dort auf den einkompilierten Build-Pfad zurück und trappt auf einem
+        // anderen Mac schon beim ersten Ordnersuchlauf (LESSONS A.5).
+        let bundle = AppResources.bundle
+        return bundle.url(forResource: "rg", withExtension: nil,
+                          subdirectory: "ripgrep")
+            ?? bundle.url(forResource: "rg", withExtension: nil)
     }
 }

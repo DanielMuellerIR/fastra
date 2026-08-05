@@ -51,9 +51,12 @@ Executable und enthalten zusätzlich einen absoluten Fallback in
 `.build/<Konfiguration>`. Eine signierbare macOS-App braucht die Bundles aber
 unter `Contents/Resources`. Fastras Locator und die `build.sh`-Patches für
 CodeEditSymbols/CodeEditLanguages bevorzugen deshalb
-`Bundle.main.resourceURL`; danach ruft der Build `verify-portable-app.sh` auf: Alle
-lokalen `.build/*.bundle`-Fallbacks werden kurz ausgeblendet, dann muss der
-fensterlose Selbsttest `localization` aus der gepackten App starten.
+`Bundle.main.resourceURL`; danach ruft der Build `verify-portable-app.sh` auf:
+Alle lokalen `.build/*.bundle`-Fallbacks werden kurz ausgeblendet, dann müssen
+aus der gepackten App sowohl der fensterlose Selbsttest `localization` als auch
+eine echte Ordnersuche mit dem gebündelten ripgrep starten. Der zweite Lauf
+schützt speziell gegen einzelne vergessene `Bundle.module`-Zugriffe, die beim
+App-Start noch nicht ausgeführt werden.
 `install.sh` wiederholt dieses Gate nach dem Kopieren mit der tatsächlich
 installierten App. Signatur-, Stapler- und Gatekeeper-Prüfungen ersetzen
 diesen echten Zielstart nicht.
