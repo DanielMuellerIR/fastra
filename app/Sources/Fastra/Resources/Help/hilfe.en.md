@@ -15,10 +15,12 @@ fallback.
 
 ## Search and Replace
 
-⌘F opens the search panel (⇧⌘F opens it directly in folder scope; ⌘E
-uses the current selection as the search term). The search runs **live
-while you type** and shows every match both in the results list and as a
-highlight in the document.
+⌘F opens the search panel in file scope, ⇧⌘F in folder scope; ⌘E uses the
+current selection as the search term. If the panel is already open and its
+search field is populated, ⌘F and ⇧⌘F only bring it forward — the selected
+scope and results stay intact. Search runs **live while you type**. The results
+list shows the remainder of the line after every match for context, while all
+matches in the currently visible document are highlighted immediately.
 
 **Scopes** (top of the panel):
 
@@ -75,7 +77,11 @@ in `NSRegularExpression`). Capture groups appear as pills as well.
 
 **Navigation:** Return or ⌘G jumps to the next match, ⇧⌘G to the
 previous one; the arrow keys walk the results list, which scrolls to the
-active match. Escape hides the panel.
+active match. The editor centers the target line as far as the document edges
+allow and gives it a stronger colored highlight while the search panel is
+open. That line highlight remains visible with a selected match and with
+ordinary multiline or rectangular selections; only one active selection line
+is emphasized. Escape hides the panel.
 
 ## Comparing Files
 

@@ -71,6 +71,34 @@ func hitLineLabelHasNoPrefixOrThousandsSeparator() {
     #expect(FloatingSearchDialog.hitLineLabel(12_345) == "12345")
 }
 
+@Test("Offene Suche mit Suchbegriff behält ihren Scope bei beiden Suchkürzeln")
+func presentingSearchPreservesPopulatedOpenScope() {
+    for requested in [Workspace.SearchScope.file, .folder] {
+        #expect(Workspace.searchScopeWhenPresenting(
+            requested: requested,
+            current: .folder,
+            dialogOpen: true,
+            findPattern: "Yellowjackets"
+        ) == .folder)
+    }
+}
+
+@Test("Leere oder geschlossene Suche übernimmt den Scope des Kürzels")
+func presentingSearchUsesShortcutScopeWhenEmptyOrClosed() {
+    #expect(Workspace.searchScopeWhenPresenting(
+        requested: .file,
+        current: .folder,
+        dialogOpen: true,
+        findPattern: ""
+    ) == .file)
+    #expect(Workspace.searchScopeWhenPresenting(
+        requested: .folder,
+        current: .file,
+        dialogOpen: false,
+        findPattern: "vorhanden"
+    ) == .folder)
+}
+
 @Test("Ordner-Apply-Fortschritt ist nur während des laufenden Apply sichtbar")
 func folderApplyProgressVisibilityFollowsLifecycle() {
     #expect(FloatingSearchDialog.visibleFolderApplyProgress(

@@ -9,6 +9,35 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.62.0] — 2026-08-05
+
+### Hinzugefügt
+
+- **Die Trefferliste zeigt nach jedem Fund den restlichen Zeileninhalt.** Der
+  Treffer bleibt deutlich, der folgende Kontext erscheint schwächer. Gleich
+  benannte Fundstellen lassen sich dadurch unterscheiden, bevor man eine Datei
+  öffnet.
+- **Alle Treffer des sichtbaren Dokuments sind sofort farbig markiert** — auch
+  bei Suchen über geöffnete Tabs, Ordner oder Projekte. Der aktive Treffer
+  erhält zusätzlich eine deutlichere, farbige aktuelle Zeile.
+
+### Geändert
+
+- **Treffersprünge zentrieren die Zielzeile im Editor.** Nur nahe
+  Dokumentanfang oder -ende wird auf den erreichbaren Ausschnitt begrenzt.
+- **Die aktuelle Zeile bleibt auch bei einer Textauswahl sichtbar.** Eine
+  mehrzeilige oder rechteckige Auswahl behält genau eine aktive Zeile; ihre
+  eigentlichen Auswahlflächen bleiben vollständig erhalten.
+- **Eine offene, befüllte Suchmaske behält ihren Suchbereich.** ⌘F und ⇧⌘F
+  holen sie dann nur nach vorn. Ist die Maske geschlossen oder das Suchfeld
+  leer, wählen die Kürzel weiterhin Datei beziehungsweise Ordner.
+
+### Behoben
+
+- **Ein versehentlicher Scope-Wechsel leert die Ordner-Trefferliste nicht mehr.**
+  Damit bleibt auch ein angeklickter unterer Treffer aktiv, statt nach einer
+  neuen Datei-Suche wieder beim ersten Ergebnis zu landen.
+
 ## [v1.61.0] — 2026-08-05
 
 ### Hinzugefügt

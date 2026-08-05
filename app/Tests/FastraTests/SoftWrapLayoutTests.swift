@@ -45,6 +45,81 @@ struct SoftWrapLayoutTests {
         return result
     }
 
+    @Test("Treffersprung berechnet eine mittige, an den Dokumenträndern begrenzte Position")
+    func searchJumpCenteredScrollPosition() {
+        #expect(EditorView.centeredScrollY(targetMidY: 500, viewportHeight: 200,
+                                           documentHeight: 1000) == 400)
+        #expect(EditorView.centeredScrollY(targetMidY: 20, viewportHeight: 200,
+                                           documentHeight: 1000) == 0)
+        #expect(EditorView.centeredScrollY(targetMidY: 980, viewportHeight: 200,
+                                           documentHeight: 1000) == 800)
+    }
+
+    @Test("Auswahl behält genau eine aktuelle Zeile; Rechteckauswahl färbt nicht alle Zeilen")
+    @MainActor
+    func selectedRangesKeepOneCurrentLine() throws {
+        let editor = controller(text: "eins\nzwei\ndrei\nvier", wrapLines: false)
+        let manager = try #require(editor.textView.selectionManager)
+
+        manager.setSelectedRanges([
+            NSRange(location: 0, length: 4),
+            NSRange(location: 5, length: 4),
+            NSRange(location: 10, length: 4),
+        ])
+        #expect(manager.fastraHighlightedLineOffsets == [10])
+
+        manager.setSelectedRanges([
+            NSRange(location: 1, length: 0),
+            NSRange(location: 6, length: 0),
+        ])
+        #expect(manager.fastraHighlightedLineOffsets == [1, 6])
+
+        let backwards = TextSelectionManager.TextSelection(
+            range: NSRange(location: 5, length: 9)
+        )
+        backwards.pivot = 14
+        manager.textSelections = [backwards]
+        #expect(manager.fastraHighlightedLineOffsets == [5])
+    }
+
+    @Test("Nichtleere Auswahl zeichnet die aktuelle Zeile wirklich über die Textbreite")
+    @MainActor
+    func selectionDrawsCurrentLineBackground() throws {
+        let editor = controller(text: "eins\nzwei\ndrei\nvier", width: 500,
+                                wrapLines: false)
+        let manager = try #require(editor.textView.selectionManager)
+        manager.selectedLineBackgroundColor = .systemPink
+        manager.setSelectedRanges([
+            NSRange(location: 0, length: 4),
+            NSRange(location: 5, length: 4),
+            NSRange(location: 10, length: 4),
+        ])
+
+        // Weit rechts liegt kein ausgewählter Text. Farbige Pixel können dort
+        // daher nur vom vollen Hintergrund der aktuellen Zeile stammen. Ohne
+        // Patch zeichnet upstream bei nichtleeren Ranges dort gar nichts.
+        let width = 500
+        let height = 120
+        let bitmap = try #require(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+            isPlanar: false, colorSpaceName: .deviceRGB,
+            bytesPerRow: 0, bitsPerPixel: 0
+        ))
+        let graphics = try #require(NSGraphicsContext(bitmapImageRep: bitmap))
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = graphics
+        manager.drawSelections(in: NSRect(x: 0, y: 0, width: width, height: height))
+        NSGraphicsContext.restoreGraphicsState()
+
+        let coloredRows = (0..<height).filter {
+            (bitmap.colorAt(x: 450, y: $0)?.alphaComponent ?? 0) > 0.1
+        }
+        #expect(!coloredRows.isEmpty)
+        #expect(coloredRows.count < 30,
+                "Rechteckauswahl darf nicht drei volle Zeilen hervorheben")
+    }
+
     @Test("Feste Spalte begrenzt den echten Layout-Manager")
     @MainActor
     func fixedColumnControlsRealLayoutWidth() throws {

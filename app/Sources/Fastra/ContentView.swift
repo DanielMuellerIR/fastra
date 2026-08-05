@@ -128,21 +128,18 @@ struct ContentView: View {
             }
         }
         // Auf die globalen CMD+F / CMD+SHIFT+F-Shortcuts reagieren
-        // (siehe AppDelegate.installKeyMonitor). Wir setzen den Scope
-        // entsprechend und öffnen die Maske.
+        // (siehe AppDelegate.installKeyMonitor). Eine bereits offene,
+        // befüllte Suche wird nur nach vorn geholt und behält ihren Scope.
         .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFile)) { _ in
             guard Workspace.shared === workspace else { return }
-            workspace.scope = .file
             // „Nur in Auswahl" (K3) automatisch einschalten, wenn beim Öffnen
             // eine MEHRZEILIGE Selektion im Editor steht (BBEdit-Verhalten).
-            workspace.captureSelectionForSearch()
-            workspace.showSearchDialog = true
+            workspace.presentSearch(requestedScope: .file, captureSelection: true)
             searchPanel?.show()
         }
         .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFolder)) { _ in
             guard Workspace.shared === workspace else { return }
-            workspace.scope = .folder
-            workspace.showSearchDialog = true
+            workspace.presentSearch(requestedScope: .folder)
             searchPanel?.show()
         }
         .onReceive(NotificationCenter.default.publisher(for: .fastraHideSearch)) { _ in

@@ -22,8 +22,22 @@ enum BufferSearch {
         let column: Int
         /// Original-Text des Treffers (zum Anzeigen in der Liste).
         let matchText: String
+        /// Rest der logischen Zeile NACH dem Treffer, ohne Zeilenumbruch.
+        /// Die Trefferliste zeigt ihn direkt hinter `matchText`, damit zwei
+        /// gleichlautende Funde ohne Öffnen der Datei unterscheidbar sind.
+        let lineRemainder: String
         /// Text, der nach Apply an dieser Stelle stünde (inkl. $1-Backrefs).
         let replacedText: String
+
+        init(range: NSRange, line: Int, column: Int, matchText: String,
+             lineRemainder: String = "", replacedText: String) {
+            self.range = range
+            self.line = line
+            self.column = column
+            self.matchText = matchText
+            self.lineRemainder = lineRemainder
+            self.replacedText = replacedText
+        }
     }
 
     /// Ergebnis eines Such-Laufs. Bei ungültigem Pattern liegt `matches`
@@ -130,13 +144,25 @@ enum BufferSearch {
                 let r = result.range
                 let (line, column) = lineColumn(forOffset: r.location, lineStarts: lineStarts)
                 let matchText = ns.substring(with: r)
+                // Kontext endet am Inhaltsende der Zeile, also VOR CR/LF.
+                // Bei mehrzeiligen Treffern zählt die Zeile des Trefferendes:
+                // Genau dort setzt der sichtbare Rest nach dem Treffer an.
+                let afterMatch = NSMaxRange(r)
+                var contentEnd = afterMatch
+                ns.getLineStart(nil, end: nil, contentsEnd: &contentEnd,
+                                for: NSRange(location: afterMatch, length: 0))
+                let lineRemainder = contentEnd > afterMatch
+                    ? ns.substring(with: NSRange(location: afterMatch,
+                                                 length: contentEnd - afterMatch))
+                    : ""
                 // Über CaseTemplate statt direkt: unterstützt BBEdits
                 // \U/\L/\u/\l/\E im Ersetzungsmuster (Fast Path ohne
                 // Operatoren = unverändert NSRegularExpression).
                 let replacedText = CaseTemplate.replacement(for: result, in: text,
                                                             regex: regex, template: template)
                 matches.append(Match(range: r, line: line, column: column,
-                                     matchText: matchText, replacedText: replacedText))
+                                     matchText: matchText, lineRemainder: lineRemainder,
+                                     replacedText: replacedText))
             }
         }
         if cancelled { return .empty }

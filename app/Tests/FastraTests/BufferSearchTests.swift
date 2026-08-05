@@ -36,6 +36,30 @@ func find_countsAcrossLines() {
     #expect(r.matches.count == 3)
 }
 
+@Test("Treffer trägt den restlichen Zeileninhalt als Listenkontext")
+func find_includesLineRemainder() {
+    let r = BufferSearch.find(in: "vorne TREFFER und danach mehr\nzweite Zeile",
+                              options: SearchOptions(find: "TREFFER", replace: "",
+                                                     isRegex: false, caseSensitive: true))
+    #expect(r.matches.first?.lineRemainder == " und danach mehr")
+}
+
+@Test("Zeilenkontext endet vor CRLF und bleibt bei Treffer am Zeilenende leer")
+func find_lineRemainderStopsBeforeCRLF() {
+    let r = BufferSearch.find(in: "eins FUND\r\nzwei FUND",
+                              options: SearchOptions(find: "FUND", replace: "",
+                                                     isRegex: false, caseSensitive: true))
+    #expect(r.matches.map(\.lineRemainder) == ["", ""])
+}
+
+@Test("Mehrzeiliger Treffer zeigt den Rest seiner letzten Zeile")
+func find_multilineMatchUsesLastLineRemainder() {
+    let r = BufferSearch.find(in: "START\nENDE danach\n",
+                              options: SearchOptions(find: "START\\nENDE", replace: "",
+                                                     isRegex: true, caseSensitive: true))
+    #expect(r.matches.first?.lineRemainder == " danach")
+}
+
 // MARK: - Zeile/Spalte (1-basiert)
 
 @Test("Treffer in der ersten Zeile beginnt bei Zeile 1, Spalte 1")

@@ -753,6 +753,15 @@ struct EditorView: View {
         .onReceive(workspace.$bufferMatches) { _ in
             EditorView.updateSearchEmphasis(in: workspace)
         }
+        .onReceive(workspace.$folderResults) { _ in
+            EditorView.updateSearchEmphasis(in: workspace)
+        }
+        .onReceive(workspace.$openResults) { _ in
+            EditorView.updateSearchEmphasis(in: workspace)
+        }
+        .onChange(of: workspace.activeTabID) {
+            EditorView.updateSearchEmphasis(in: workspace)
+        }
         .onChange(of: workspace.scope) {
             EditorView.updateSearchEmphasis(in: workspace)
         }
@@ -1138,10 +1147,16 @@ struct EditorView: View {
             guard SearchEmphasis.shouldShow(scope: workspace.scope,
                                             dialogOpen: workspace.showSearchDialog,
                                             viewMode: workspace.activeViewMode) else { return }
-            let plan = SearchEmphasis.plan(
-                matchRanges: workspace.bufferMatches.map(\.range),
-                totalMatches: workspace.bufferTotalMatches
-            )
+            guard let source = SearchEmphasis.source(
+                scope: workspace.scope,
+                activeTab: workspace.activeTab,
+                bufferMatches: workspace.bufferMatches,
+                bufferTotalMatches: workspace.bufferTotalMatches,
+                folderResults: workspace.folderResults,
+                openResults: workspace.openResults
+            ) else { return }
+            let plan = SearchEmphasis.plan(matchRanges: source.matches.map(\.range),
+                                           totalMatches: source.totalMatches)
             // Treffer-Ranges stammen aus dem (debounce-alten) Suchlauf; nach
             // schnellem Weitertippen könnten sie hinter dem aktuellen Text
             // liegen. Out-of-Bounds-Ranges würden im EmphasisManager eine
@@ -1199,16 +1214,24 @@ struct EditorView: View {
         }
     }
 
+    /// Vertikale Zielposition für einen mittig dargestellten Treffer. An
+    /// Dokumentanfang und -ende wird auf den erreichbaren Bereich begrenzt.
+    static func centeredScrollY(targetMidY: CGFloat, viewportHeight: CGFloat,
+                                documentHeight: CGFloat) -> CGFloat {
+        min(max(targetMidY - viewportHeight / 2, 0),
+            max(documentHeight - viewportHeight, 0))
+    }
+
     /// Scrollt iterativ zur Ziel-Zeile, bis die TATSÄCHLICH zentrierte Zeile
     /// (unabhängig über `textLineForPosition` gemessen, NICHT über die
     /// `rectForOffset`-Schätzung) nahe genug am Ziel ist. Nötig, weil
     /// `scrollToRange` bei mehrzeilig gewrappten Zeilen wegen geschätzter
     /// Zeilenhöhen zu kurz scrollt; jeder Lauf legt mehr Zeilen aus und
-    /// korrigiert die Schätzung. Abbruch bei Toleranz, Stillstand oder
-    /// Versuchs-Limit (kein Endlos-Loop).
+    /// korrigiert die Schätzung. Abbruch bei Toleranz, erreichbarem
+    /// Dokumentrand oder Versuchs-Limit (kein Endlos-Loop).
     private static func convergeScroll(_ tv: CodeEditTextView.TextView,
                                        targetLine: Int?, fallback: NSRange,
-                                       attempt: Int = 0, lastShown: Int = -1) {
+                                       attempt: Int = 0) {
         // Ziel-Offset bei jedem Lauf NEU aus der Zeile bestimmen (die
         // ausgelegten Höhen ändern die Position nicht, aber so bleibt es robust).
         let targetRange: NSRange
@@ -1218,17 +1241,45 @@ struct EditorView: View {
         } else {
             targetRange = fallback
         }
-        tv.scrollToRange(targetRange)
+        guard let scrollView = tv.enclosingScrollView,
+              let targetRect = tv.layoutManager.rectForOffset(targetRange.location) else {
+            return
+        }
+        // Anders als CodeEditTextViews `scrollToRange` scrollen wir auch,
+        // wenn der Treffer bereits knapp im Viewport liegt. Dessen früher
+        // Return war der Grund, warum angeklickte Treffer am unteren Rand
+        // statt in der Mitte stehen blieben.
+        let clip = scrollView.contentView
+        let documentHeight = max(tv.layoutManager.estimatedHeight(),
+                                 scrollView.documentView?.frame.height ?? 0)
+        let targetY = centeredScrollY(targetMidY: targetRect.midY,
+                                      viewportHeight: clip.bounds.height,
+                                      documentHeight: documentHeight)
+        clip.scroll(to: CGPoint(x: clip.bounds.origin.x, y: targetY))
+        scrollView.reflectScrolledClipView(clip)
+        tv.layoutManager.layoutLines()
+        tv.needsDisplay = true
 
-        // Ohne Zeilennummer (z.B. reiner Range-Sprung) keine Konvergenz nötig.
+        // Ohne Zeilennummer wird die Range einmal exakt zentriert. Bei einer
+        // Zeile korrigieren Folge-Pässe die Schätzung gewrappter Zeilen.
         guard let targetLine, targetLine > 0, attempt < 16 else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.045) {
             guard let shown = tv.layoutManager.textLineForPosition(tv.visibleRect.midY)?.index else { return }
             let shownLine = shown + 1
-            // Nah genug → fertig. Kein Fortschritt mehr (Stillstand) → aufhören.
-            if abs(shownLine - targetLine) <= 2 || shownLine == lastShown { return }
+            let currentDocumentHeight = max(tv.layoutManager.estimatedHeight(),
+                                            scrollView.documentView?.frame.height ?? 0)
+            let maxY = max(currentDocumentHeight - clip.bounds.height, 0)
+            let currentTargetMidY = tv.layoutManager.rectForOffset(targetRange.location)?.midY
+            let targetIsVisible = currentTargetMidY.map {
+                tv.visibleRect.minY <= $0 && $0 <= tv.visibleRect.maxY
+            } ?? false
+            let atVerticalLimit = targetIsVisible
+                && (clip.bounds.origin.y <= 1 || abs(clip.bounds.origin.y - maxY) < 1)
+            // Nah genug → fertig. An einem Dokumentrand ist eine exakte
+            // Zentrierung naturgemäß nicht möglich.
+            if abs(shownLine - targetLine) <= 2 || atVerticalLimit { return }
             convergeScroll(tv, targetLine: targetLine, fallback: fallback,
-                           attempt: attempt + 1, lastShown: shownLine)
+                           attempt: attempt + 1)
         }
     }
 
@@ -1287,11 +1338,14 @@ struct EditorView: View {
     }
 
     private var editorConfiguration: SourceEditorConfiguration {
-        .init(
+        let baseTheme = activeCustomLanguage.map {
+            colorScheme == .dark ? $0.darkTheme : $0.lightTheme
+        } ?? (colorScheme == .dark ? Self.fastraThemeDark : Self.fastraTheme)
+        return .init(
             appearance: .init(
-                theme: activeCustomLanguage.map {
-                    colorScheme == .dark ? $0.darkTheme : $0.lightTheme
-                } ?? (colorScheme == .dark ? Self.fastraThemeDark : Self.fastraTheme),
+                theme: Self.theme(baseTheme,
+                                  emphasizingCurrentLine: workspace.showSearchDialog,
+                                  darkMode: colorScheme == .dark),
                 font: .fastraEditorFont(name: editorFontName, size: 13,
                                         scale: DocumentZoom.scale(for: documentZoomLevel)),
                 wrapLines: workspace.softWrapEnabled,
@@ -1527,6 +1581,19 @@ private struct FileRow: View {
 // MARK: - Theme
 
 extension EditorView {
+    /// Hebt bei offener Suchmaske nur die aktuelle Zeile farbiger hervor.
+    /// Das Trefferwort selbst bleibt zusätzlich über `SearchEmphasis`
+    /// markiert; die normale Textselektion wird darüber gezeichnet.
+    static func theme(_ base: EditorTheme, emphasizingCurrentLine: Bool,
+                      darkMode: Bool) -> EditorTheme {
+        guard emphasizingCurrentLine else { return base }
+        var result = base
+        result.lineHighlight = darkMode
+            ? rgb(0x1B, 0x4F, 0x74, 0.78)
+            : rgb(0xC7, 0xE0, 0xFA, 0.82)
+        return result
+    }
+
     /// Helles, neutrales Editor-Theme passend zum Codex-nahen Fenster-Chrome.
     /// Token-Farben sind bewusst dezent — der Editor soll lesbar bleiben, nicht überfärbt.
     ///

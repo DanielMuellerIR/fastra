@@ -621,3 +621,25 @@ Komponentenmethode, Projektmethode und Befehl im echten TextStorage in Hell
 und Dunkel. `./selftest.sh completion4d` übernimmt eine Shared-Component per
 echtem Typeahead-Doppelklick und prüft Farbe sowie Font erst am eingefügten
 Text.
+
+### F.26 Aktuelle Zeile und Textauswahl sind zwei getrennte Ebenen (2026-08-05)
+
+`TextSelectionManager.drawSelections` zeichnete upstream entweder den
+Hintergrund einer leeren Cursorzeile **oder** die Rechtecke einer nichtleeren
+Auswahl. Sobald Fastra einen Suchtreffer selektierte, verschwand dadurch die
+aktuelle Zeile. Der Gutter wiederholte dieselbe Einschränkung. Ein schlichtes
+Entfernen der `isEmpty`-Prüfung ist falsch: Eine Rechteckauswahl besteht aus
+mehreren Ranges und würde dann jede ihrer Zeilen als „aktuell“ einfärben;
+mehrzeilige Auswahlen könnten ebenfalls uneindeutig werden.
+
+**Fix (Patch 4y in `build.sh`):** `fastraHighlightedLineOffsets` trennt die
+Zeilenebene von den Auswahlrechtecken. Mehrere leere Cursor markieren weiter
+ihre jeweiligen Zeilen. Existiert mindestens eine echte Auswahl, liefert nur
+die primäre (letzte) Range eine aktuelle Zeile; bei Tastaturauswahl bestimmt
+der Gegenpol des `pivot` die bewegte Kante. Textfläche und Gutter verwenden
+dieselbe Liste. Die Auswahlrechtecke werden danach weiterhin vollständig
+gezeichnet.
+
+**Regression:** `SoftWrapLayoutTests.selectedRangesKeepOneCurrentLine` prüft
+eine rechteckartige Mehrfachauswahl, mehrere leere Cursor und eine rückwärts
+aufgezogene Auswahl direkt am gepatchten `TextSelectionManager`.

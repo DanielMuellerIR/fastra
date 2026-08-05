@@ -2196,6 +2196,151 @@ if [ "$SCROLL_RECONCILE_PATCH_CHANGED" -eq 1 ]; then
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4y. CodeEditTextView/SourceEditor — aktuelle Zeile auch bei Auswahl.
+#
+# Upstream zeichnet den Zeilenhintergrund nur fuer leere Cursor-Ranges. Sobald
+# ein Suchtreffer oder normaler Text selektiert ist, verschwindet deshalb die
+# wichtigste Orientierung. Bei mehrzeiliger oder rechteckiger Auswahl duerfen
+# aber nicht alle Teil-Ranges eine ganze Zeile faerben: genau die aktive Range
+# liefert eine Zeile, alle Auswahlrechtecke bleiben zusaetzlich sichtbar.
+# Regressionstest: SoftWrapLayoutTests.selectedRangesKeepOneCurrentLine.
+CETV_SELECTION_DRAW="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextSelectionManager/TextSelectionManager+Draw.swift"
+CESE_GUTTER="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/Gutter/GutterView.swift"
+CURRENT_LINE_SELECTION_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: aktuelle Zeile bleibt auch bei Textauswahl sichtbar' \
+    "$CETV_SELECTION_DRAW" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (aktuelle Zeile auch bei Auswahl)"
+  chmod u+w "$CETV_SELECTION_DRAW"
+  /usr/bin/python3 - "$CETV_SELECTION_DRAW" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+old_loop = '''        var highlightedLines: Set<TextLine.ID> = []
+        // For each selection in the rect
+        for textSelection in textSelections {
+            if textSelection.range.isEmpty {
+                drawHighlightedLine(
+                    in: rect,
+                    for: textSelection,
+                    context: context,
+                    highlightedLines: &highlightedLines
+                )
+            } else {
+                drawSelectedRange(in: rect, for: textSelection, context: context)
+            }
+        }'''
+new_loop = '''        var highlightedLines: Set<TextLine.ID> = []
+        // Fastra-Patch: aktuelle Zeile bleibt auch bei Textauswahl sichtbar.
+        // Mehrfach-Cursor markieren weiterhin alle Cursorzeilen; sobald echte
+        // Selektionen existieren, markiert nur deren primaere/letzte Range
+        // genau eine aktive Zeile (wichtig fuer Rechteckauswahl).
+        for offset in fastraHighlightedLineOffsets {
+            drawHighlightedLine(
+                in: rect,
+                at: offset,
+                context: context,
+                highlightedLines: &highlightedLines
+            )
+        }
+        for textSelection in textSelections where !textSelection.range.isEmpty {
+            drawSelectedRange(in: rect, for: textSelection, context: context)
+        }'''
+old_signature = '''    private func drawHighlightedLine(
+        in rect: NSRect,
+        for textSelection: TextSelection,
+        context: CGContext,
+        highlightedLines: inout Set<TextLine.ID>
+    ) {
+        guard let linePosition = layoutManager?.textLineForOffset(textSelection.range.location),'''
+new_signature = '''    private func drawHighlightedLine(
+        in rect: NSRect,
+        at offset: Int,
+        context: CGContext,
+        highlightedLines: inout Set<TextLine.ID>
+    ) {
+        guard let linePosition = layoutManager?.textLineForOffset(offset),'''
+if old_loop not in src or old_signature not in src:
+    raise SystemExit(
+        f"{path}: Auswahl-Zeichenstruktur hat sich geaendert — Patch 4y pruefen"
+    )
+src = src.replace(old_loop, new_loop, 1).replace(old_signature, new_signature, 1)
+
+anchor = '''extension TextSelectionManager {
+    /// Draws line backgrounds and selection rects for each selection in the given rect.'''
+replacement = '''extension TextSelectionManager {
+    /// Offsets der Zeilen, die als aktuelle Zeile gezeichnet werden. Leere
+    /// Mehrfach-Cursor behalten je eine Zeile. Bei echter Auswahl gibt es
+    /// genau eine aktive Zeile; die letzte Range ist auch bei einer
+    /// Rechteckauswahl die primaere Range. `pivot` bezeichnet den festen
+    /// Anker, daher ist das jeweils andere Range-Ende die aktive Kante.
+    public var fastraHighlightedLineOffsets: [Int] {
+        let selections = textSelections.filter { !$0.range.isEmpty }
+        guard let primary = selections.last else {
+            return textSelections.map { $0.range.location }
+        }
+        guard let pivot = primary.pivot else {
+            return [primary.range.location]
+        }
+        return [pivot == primary.range.location ? primary.range.max : primary.range.location]
+    }
+
+    /// Draws line backgrounds and selection rects for each selection in the given rect.'''
+if anchor not in src:
+    raise SystemExit(f"{path}: Extension-Anker fehlt — Patch 4y pruefen")
+src = src.replace(anchor, replacement, 1)
+open(path, "w").write(src)
+PYEOF
+  CURRENT_LINE_SELECTION_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: Gutter folgt derselben aktiven Auswahlzeile' \
+    "$CESE_GUTTER" 2>/dev/null; then
+  echo "→ Patche CodeEditSourceEditor (Gutter-Zeile auch bei Auswahl)"
+  chmod u+w "$CESE_GUTTER"
+  /usr/bin/python3 - "$CESE_GUTTER" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+old = '''        for selection in selectionManager.textSelections where selection.range.isEmpty {
+            guard let line = textView.layoutManager.textLineForOffset(selection.range.location),
+                  visibleRange.intersection(line.range) != nil || selection.range.location == textView.length,
+                  !highlightedLines.contains(line.data.id) else {'''
+new = '''        // Fastra-Patch: Gutter folgt derselben aktiven Auswahlzeile
+        // wie die Textflaeche; Rechteck-/Mehrzeilenauswahl faerbt nie jede
+        // betroffene Zeile als aktuelle Zeile ein.
+        for offset in selectionManager.fastraHighlightedLineOffsets {
+            guard let line = textView.layoutManager.textLineForOffset(offset),
+                  visibleRange.intersection(line.range) != nil || offset == textView.length,
+                  !highlightedLines.contains(line.data.id) else {'''
+if old not in src:
+    raise SystemExit(
+        f"{path}: Gutter-Auswahlstruktur hat sich geaendert — Patch 4y pruefen"
+    )
+open(path, "w").write(src.replace(old, new, 1))
+PYEOF
+  CURRENT_LINE_SELECTION_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: aktuelle Zeile bleibt auch bei Textauswahl sichtbar' \
+       "$CETV_SELECTION_DRAW" \
+   || ! grep -q 'public var fastraHighlightedLineOffsets' "$CETV_SELECTION_DRAW" \
+   || ! grep -q 'Fastra-Patch: Gutter folgt derselben aktiven Auswahlzeile' \
+       "$CESE_GUTTER"; then
+  echo "✗ FEHLER: Patch für aktuelle Zeile bei Auswahl hat NICHT vollständig gegriffen." >&2
+  exit 1
+fi
+
+if [ "$CURRENT_LINE_SELECTION_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 

@@ -1685,9 +1685,14 @@ private struct HitRow: View {
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
                     .frame(minWidth: 28, alignment: .trailing)
-                Text(match.matchText)
-                    .fastraFont(.monoSmall)
+                // Treffer deutlich, den folgenden Zeilenrest schwächer:
+                // dadurch liefert die Liste Kontext, ohne den Fund selbst zu
+                // verwischen. Leerzeichen im Rest bleiben exakt erhalten.
+                (Text(verbatim: match.matchText)
                     .foregroundColor(Theme.textPrimary)
+                 + Text(verbatim: match.lineRemainder)
+                    .foregroundColor(Theme.textSecondary))
+                    .fastraFont(.monoSmall)
                     .lineLimit(1)
                 Spacer()
             }

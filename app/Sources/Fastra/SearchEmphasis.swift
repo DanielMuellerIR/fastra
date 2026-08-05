@@ -30,6 +30,42 @@ enum SearchEmphasis {
         let truncated: Bool
     }
 
+    /// Trefferquelle des gerade sichtbaren Dokuments. Im Ordner-/Projekt-
+    /// Scope stammen Ranges von der Platte; sie sind nur sicher, wenn der
+    /// geöffnete Tab sauber ist und exakt dieselbe Dateibasis besitzt.
+    struct Source: Equatable {
+        let matches: [BufferSearch.Match]
+        let totalMatches: Int
+    }
+
+    static func source(scope: Workspace.SearchScope,
+                       activeTab: EditorTab?,
+                       bufferMatches: [BufferSearch.Match],
+                       bufferTotalMatches: Int,
+                       folderResults: [FolderSearch.PerFileResult],
+                       openResults: [OpenTabsSearch.TabHits]) -> Source? {
+        guard let activeTab else { return nil }
+        switch scope {
+        case .file:
+            return Source(matches: bufferMatches, totalMatches: bufferTotalMatches)
+        case .open:
+            guard let result = openResults.first(where: { $0.id == activeTab.id }) else {
+                return nil
+            }
+            return Source(matches: result.matches, totalMatches: result.totalMatches)
+        case .folder, .project:
+            guard !activeTab.isDirty,
+                  let url = activeTab.url?.canonicalFileURL,
+                  let snapshot = activeTab.diskSnapshot,
+                  let result = folderResults.first(where: {
+                      $0.url.canonicalFileURL == url && $0.snapshot == snapshot
+                  }) else {
+                return nil
+            }
+            return Source(matches: result.matches, totalMatches: result.totalMatches)
+        }
+    }
+
     /// Pure Cap-Logik (unit-testbar): höchstens `cap` Ranges werden
     /// gezeichnet; `truncated` wird wahr, sobald die ECHTE Gesamtzahl der
     /// Treffer über dem Gezeichneten liegt.
@@ -39,13 +75,13 @@ enum SearchEmphasis {
         return Plan(ranges: shown, truncated: totalMatches > shown.count)
     }
 
-    /// Sichtbarkeitsbedingung (pure, unit-testbar): nur bei offener
-    /// Suchmaske, nur im Datei-Scope (aktives Dokument) und nur in der
-    /// Text-Ansicht. Ordner-/Projekt-/Geöffnet-Scope markieren weiterhin
-    /// nur über die Trefferliste.
+    /// Sichtbarkeitsbedingung (pure, unit-testbar): bei offener Suchmaske in
+    /// der Text-Ansicht. Welcher Teil einer Mehrdateisuche ins aktive
+    /// Dokument gehört, entscheidet `source` separat und dateibasis-sicher.
     static func shouldShow(scope: Workspace.SearchScope, dialogOpen: Bool,
                            viewMode: EditorViewMode) -> Bool {
-        dialogOpen && scope == .file && viewMode == .text
+        _ = scope
+        return dialogOpen && viewMode == .text
     }
 
     /// Flache, helle Markierung im Stil der System-Suchhervorhebung.

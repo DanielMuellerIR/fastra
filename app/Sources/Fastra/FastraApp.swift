@@ -274,8 +274,8 @@ struct FastraApp: App {
             CommandMenu("Suchen") {
                 // CMD+F: Suchen in der aktuellen Datei (kompakter Modus).
                 Button("Suchen & Ersetzen…") {
-                    commandWorkspace.scope = .file
-                    commandWorkspace.showSearchDialog = true
+                    NotificationCenter.default.post(name: .fastraShowSearchFile,
+                                                    object: nil)
                 }
                 .keyboardShortcut("f", modifiers: .command)
 
@@ -283,8 +283,8 @@ struct FastraApp: App {
                 // Beim Öffnen wird der Scope auf „Ordner" gesetzt — das
                 // Fenster wächst automatisch, falls noch zu klein.
                 Button("In Ordnern suchen…") {
-                    commandWorkspace.scope = .folder
-                    commandWorkspace.showSearchDialog = true
+                    NotificationCenter.default.post(name: .fastraShowSearchFolder,
+                                                    object: nil)
                 }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
 

@@ -10086,9 +10086,12 @@ enum SelfTest {
             guard ws.activeTab?.isDirty == false else {
                 finish(false, "(a) Live-Markierung machte den Tab dirty — sie muss reine Anzeige sein")
             }
-            // (b) Navigation ans Ende: erst „erster Treffer", dann 110× weiter.
+            // (b) Tief ins Dokument navigieren: genug, damit die Liste sicher
+            // scrollt, aber mit ausreichend Zeilen UNTER dem Ziel für eine
+            // geometrisch mögliche Editor-Zentrierung. Ein Treffer neun
+            // Zeilen vor Dokumentende kann naturgemäß nicht mittig stehen.
             NotificationCenter.default.post(name: .fastraGotoFirstMatch, object: nil)
-            for _ in 0..<110 {
+            for _ in 0..<70 {
                 NotificationCenter.default.post(name: .fastraGotoNextMatch, object: nil)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
@@ -10118,7 +10121,10 @@ enum SelfTest {
         // Zeile verrät die echte Scroll-Position der Trefferliste.
         let table = firstTableView(in: searchRoot)
         let firstVisible = table.map { $0.rows(in: $0.visibleRect).location } ?? -1
-        if ws.activeMatchIndex == 110, firstVisible > 40, searchEmphasisVisible(in: tv) {
+        let centeredLine = tv.layoutManager.textLineForPosition(tv.visibleRect.midY)
+            .map { $0.index + 1 } ?? -1
+        if ws.activeMatchIndex == 70, firstVisible > 20,
+           abs(centeredLine - 71) <= 2, searchEmphasisVisible(in: tv) {
             // (c) Dialog schließen → Markierung muss vollständig verschwinden.
             ws.showSearchDialog = false
             pollSearchMarkCleared(tv: tv, tick: 0)
@@ -10127,6 +10133,7 @@ enum SelfTest {
         if tick >= maxTicks {
             finish(false, "(b) Trefferliste/Editor folgen nicht: "
                 + "activeIndex=\(ws.activeMatchIndex), ersteSichtbareZeile=\(firstVisible), "
+                + "Editor-Mitte=Zeile \(centeredLine), erwartet≈71, "
                 + "editorMarkierungSichtbar=\(searchEmphasisVisible(in: tv))")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -10139,7 +10146,7 @@ enum SelfTest {
         let layers = searchEmphasisLayerCount(in: tv)
         if layers == 0 {
             finish(true, "Treffer live markiert (Layer real beobachtet, auch nach "
-                + "Sprung ans Ende), Liste scrollt zum aktiven Treffer, "
+                + "Sprung ans Ende), Liste scrollt und Editor zentriert den aktiven Treffer, "
                 + "Dialogschluss räumt alles")
         }
         if tick >= maxTicks {
@@ -12853,7 +12860,10 @@ enum SelfTest {
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent(fileName)
         // Mehrere Zeilen → die Live-Vorschau zeigt „erste 3 + … und N weitere".
-        let demo = "ring, The\nhobbit, The\nempire, The\nphantom menace, The\nmatrix, The\n"
+        // Die Jahreszahlen liegen hinter dem Treffer. Damit belegen die
+        // README-Screenshots sichtbar, dass die Trefferliste auch den Rest
+        // der jeweiligen Zeile als schwächeren Kontext anzeigt.
+        let demo = "ring, The — 2002\nhobbit, The — 2012\nempire, The — 1980\nphantom menace, The — 1999\nmatrix, The — 1999\n"
         do { try demo.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
         ws.loadFile(at: tmp) { ok in
@@ -12879,7 +12889,9 @@ enum SelfTest {
         let fileName = screenshotIsEnglish ? "MovieList.txt" : "Filmliste.txt"
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent(fileName)
-        let demo = "ring, The\nhobbit, The\nempire, The\nphantom menace, The\nmatrix, The\n"
+        // Der RegEx-Treffer endet vor der Jahreszahl; ihr sichtbar schwächerer
+        // Text prüft auch in dieser Aufnahme den neuen Zeilenkontext.
+        let demo = "ring, The — 2002\nhobbit, The — 2012\nempire, The — 1980\nphantom menace, The — 1999\nmatrix, The — 1999\n"
         do { try demo.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
         ws.loadFile(at: tmp) { ok in

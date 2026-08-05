@@ -3622,6 +3622,34 @@ final class Workspace: ObservableObject {
         var isFolderLike: Bool { self == .folder || self == .project }
     }
 
+    /// Entscheidet, ob ein Suchkürzel den Scope wechseln darf. Ist eine
+    /// befüllte Suchmaske bereits offen, bedeutet ⌘F bzw. ⇧⌘F nur noch
+    /// „Maske nach vorn“: Ein unbemerkter Wechsel von Ordner zu Datei würde
+    /// sonst die Ergebnisliste neu aufbauen und den aktiven Treffer verlieren.
+    static func searchScopeWhenPresenting(requested: SearchScope,
+                                          current: SearchScope,
+                                          dialogOpen: Bool,
+                                          findPattern: String) -> SearchScope {
+        dialogOpen && !findPattern.isEmpty ? current : requested
+    }
+
+    /// Gemeinsamer Modellpfad für Menü und globale Tastenkürzel. Die
+    /// Auswahl wird nur beim echten NEUÖFFNEN der Datei-Suche eingefroren;
+    /// ein bloßes Nach-vorn-Holen verändert weder Scope noch „Nur Auswahl“.
+    func presentSearch(requestedScope: SearchScope, captureSelection: Bool = false) {
+        let preserveExistingSearch = showSearchDialog && !findPattern.isEmpty
+        scope = Self.searchScopeWhenPresenting(
+            requested: requestedScope,
+            current: scope,
+            dialogOpen: showSearchDialog,
+            findPattern: findPattern
+        )
+        if captureSelection && !preserveExistingSearch && scope == .file {
+            captureSelectionForSearch()
+        }
+        showSearchDialog = true
+    }
+
     // MARK: - Ordner-Quellen (Sichtbar nur bei scope == .folder)
 
     /// Zuletzt für die Suche verwendete Ordner. Beim Init aus

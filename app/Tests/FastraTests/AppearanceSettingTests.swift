@@ -50,6 +50,19 @@ struct AppearanceSettingTests {
         #expect(EditorView.fastraTheme.text.color != EditorView.fastraThemeDark.text.color)
     }
 
+    @Test("Offener Suchdialog verstärkt ausschließlich die aktuelle Zeile")
+    func searchThemeHighlightsCurrentLine() {
+        let base = EditorView.fastraTheme
+        let active = EditorView.theme(base, emphasizingCurrentLine: true,
+                                      darkMode: false)
+        #expect(active.lineHighlight != base.lineHighlight)
+        #expect(active.text == base.text)
+        #expect(active.background == base.background)
+        #expect(active.selection == base.selection)
+        #expect(EditorView.theme(base, emphasizingCurrentLine: false,
+                                 darkMode: false) == base)
+    }
+
     @Test("Editor-Theme-Farben sind komponentenbasiert (Minimap-Falle F.6b)")
     func editorThemeFarbenSindRGB() {
         // CESEs MinimapView.setTheme ruft `brightnessComponent` auf den

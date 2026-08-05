@@ -15,10 +15,12 @@ als Rückfall.
 
 ## Suchen und Ersetzen
 
-⌘F öffnet die Suchmaske (⇧⌘F direkt im Ordner-Bereich; ⌘E übernimmt die
-aktuelle Auswahl als Suchbegriff). Die Suche läuft **live beim Tippen**
-und zeigt jeden Treffer sowohl in der Trefferliste als auch als
-Markierung im Dokument.
+⌘F öffnet die Suchmaske im Datei-Bereich, ⇧⌘F im Ordner-Bereich; ⌘E übernimmt
+die aktuelle Auswahl als Suchbegriff. Ist die Maske bereits offen und das
+Suchfeld befüllt, holen ⌘F und ⇧⌘F sie nur nach vorn — der gewählte Bereich und
+die Treffer bleiben erhalten. Die Suche läuft **live beim Tippen**. In der
+Trefferliste steht hinter jedem Fund der restliche Zeileninhalt als Kontext;
+im gerade sichtbaren Dokument werden alle Treffer sofort farbig markiert.
 
 **Suchbereiche** (oben in der Maske):
 
@@ -78,7 +80,12 @@ Vorher/Nachher-Beispiel ab.
 
 **Navigation:** Return bzw. ⌘G springt zum nächsten, ⇧⌘G zum vorherigen
 Treffer; die Pfeiltasten wandern durch die Trefferliste, die dabei zum
-aktiven Treffer scrollt. Escape blendet die Maske aus.
+aktiven Treffer scrollt. Der Editor zentriert die Zielzeile soweit es der
+Dokumentrand erlaubt und hebt sie bei offener Suchmaske zusätzlich deutlich
+farbig hervor. Die Zeilenhervorhebung bleibt auch über der Auswahl eines
+Treffers sowie bei normalen mehrzeiligen oder rechteckigen Auswahlen sichtbar;
+es wird dabei immer nur eine aktive Auswahlzeile betont. Escape blendet die
+Maske aus.
 
 ## Dateien vergleichen
 
