@@ -24,7 +24,8 @@ jobs:
     runs-on: macos-15
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      # Die Adresse kommt vom Anlauf, der wirklich veröffentlicht hat.
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment-retry.outputs.page_url }}
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
@@ -97,16 +98,33 @@ jobs:
           name: github-pages-${{ github.run_attempt }}
           path: site
 
-      # Die Frist ist bewusst länger als die voreingestellten 10 Minuten. Sie
-      # begrenzt nicht die eigene Arbeit, sondern das Warten auf GitHubs
-      # Pages-Warteschlange: Am 2026-08-06 stand das Deployment zweimal über
-      # 10 Minuten auf `deployment_queued` und die Action brach ab, obwohl der
-      # Feed längst fertig und signiert war. Ein abgebrochener Versuch ist hier
-      # teuer, weil die Deployment-Kennung der Commit-SHA entspricht — der
-      # nächste Anlauf desselben Commits sah danach den abgebrochenen Zustand.
+      # Zwei Anläufe statt einer längeren Frist: `deploy-pages` deckelt seine
+      # `timeout`-Eingabe hart bei 10 Minuten („timeout set to the maximum of
+      # 600000 milliseconds", am 2026-08-06 im Lauf mit 30 Minuten belegt). Die
+      # Frist begrenzt dabei nicht die eigene Arbeit, sondern das Warten auf
+      # GitHubs Pages-Warteschlange — die stand an diesem Tag zweimal über
+      # 10 Minuten auf `deployment_queued`, während der Feed längst erzeugt und
+      # signiert war. Der erste Anlauf darf deshalb scheitern, ohne den Lauf zu
+      # beenden; der zweite veröffentlicht dasselbe Artefakt.
       - name: Appcast auf GitHub Pages veröffentlichen
         id: deployment
+        continue-on-error: true
         uses: actions/deploy-pages@v5
         with:
           artifact_name: github-pages-${{ github.run_attempt }}
-          timeout: 1800000
+
+      # Pause vor dem zweiten Anlauf: Ein Fristablauf bricht das Deployment ab,
+      # und dessen Kennung entspricht der Commit-SHA. Ohne Pause bekam der
+      # unmittelbar folgende Anlauf desselben Commits genau diesen
+      # abgebrochenen Zustand zurückgemeldet und gab sofort auf.
+      - name: Vor dem zweiten Anlauf warten
+        if: steps.deployment.outcome == 'failure'
+        shell: bash
+        run: sleep 60
+
+      - name: Appcast auf GitHub Pages veröffentlichen (zweiter Anlauf)
+        id: deployment-retry
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v5
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
