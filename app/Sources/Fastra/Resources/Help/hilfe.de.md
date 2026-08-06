@@ -18,9 +18,13 @@ als Rückfall.
 ⌘F öffnet die Suchmaske im Datei-Bereich, ⇧⌘F im Ordner-Bereich; ⌘E übernimmt
 die aktuelle Auswahl als Suchbegriff. Ist die Maske bereits offen und das
 Suchfeld befüllt, holen ⌘F und ⇧⌘F sie nur nach vorn — der gewählte Bereich und
-die Treffer bleiben erhalten. Die Suche läuft **live beim Tippen**. In der
-Trefferliste steht hinter jedem Fund der restliche Zeileninhalt als Kontext;
-im gerade sichtbaren Dokument werden alle Treffer sofort farbig markiert.
+die Treffer bleiben erhalten; der Menüpunkt „In Ordnern suchen…“ wechselt
+dagegen immer in den Ordner-Bereich. Die Suche läuft **live beim Tippen**. In
+der Trefferliste steht hinter jedem Fund der restliche Zeileninhalt als
+Kontext; bei sehr langen Zeilen endet er nach rund 400 Zeichen mit „…“. Im
+gerade sichtbaren Dokument werden die ersten 2 000 Treffer sofort farbig
+markiert — im Ordner- und Projekt-Bereich nur, solange der geöffnete Tab
+ungeändert zur durchsuchten Dateifassung passt.
 
 **Suchbereiche** (oben in der Maske):
 

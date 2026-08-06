@@ -76,6 +76,16 @@ SwiftPM-Buildverzeichnis reicht nicht: absolute `.build`-Fallbacks können lokal
 einen kaputten Bundle-Pfad verdecken. `verify-portable-app.sh` und der
 `localization`-Selbsttest sind verbindliche Wächter.
 
+Ressourcen deshalb immer über `AppResources.bundle` holen, nie direkt über
+`Bundle.module`. Im App-Bundle liegt das Ressourcenpaket unter
+`Contents/Resources`; der SwiftPM-Rückfall sucht dagegen am absoluten
+`.build`-Pfad des Build-Macs und trappt dort. Auf dem Build-Mac fällt das nie
+auf, in der installierten App stürzt es ab. Ein Portabilitätstest muss die
+lokalen Build-Ressourcen ausblenden UND den betroffenen Funktionspfad im
+gepackten Bundle wirklich ausführen — ein bloßer Start genügt nicht: Am
+2026-08-05 blieb `RipgrepFileEnumerator` beim Start unberührt und stürzte erst
+beim ersten Ordner-Suchlauf ab.
+
 Lokale Referenz-Checkouts unter `repos/` sind gitignored. Sie dienen dem Lesen
 und Vergleichen, nicht als zweite Quelle für Produktcode. Upstream-Code nicht
 direkt ändern und keine generierten Checkout-Diffs committen.
@@ -238,7 +248,10 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   `--scratch-path` außerhalb des Repos baut — das kostet einen zweiten
   Build-Cache. Das wurde bewusst verworfen: Der zusätzliche Aufwand ändert das
   Laufzeitverhalten nicht. Nicht „reparieren“; diese bekannte Designentscheidung
-  soll auch von Code-Reviews nicht erneut als Fehler gemeldet werden.
+  soll auch von Code-Reviews nicht erneut als Fehler gemeldet werden. Folgenlos
+  ist der Pfad allerdings nur, solange kein Code direkt auf `Bundle.module`
+  zugreift — sonst wird aus dem nie erreichten Rückfall ein echter Absturz
+  (siehe „Architektur und Abhängigkeiten“).
 - CodeEdit-Ressourcen können im Build funktionieren und im `.app` fehlen. Immer
   den gepackten Zielstart prüfen.
 - Der Syntax-Highlighter kann eine Sprache erkennen, obwohl die Query-Datei wegen
@@ -280,6 +293,21 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   unten, „oben" ist `minY`. Ein Fenster-Selbsttest, der eine Oberkante gegen
   `maxY` prüft, misst dann verlässlich das Falsche. Vor der Zusage
   `isFlipped` der Bezugs-View abfragen (siehe `gitstickyheader`).
+- Ein prozentcodiertes `%23` in einem Markdown-Bildpfad ist ein Rautezeichen im
+  DATEINAMEN, kein URL-Fragment. Erst das Fragment am echten `#` abtrennen,
+  danach prozentdecodieren. In der umgekehrten Reihenfolge endet der Pfad vor
+  dem decodierten `#`, und ein vorhandenes Bild gilt als nicht gefunden (siehe
+  `MarkdownImages.localImageURL`).
+- Eine Modelländerung darf nur dann eine neue Suche auslösen, wenn sie Eingaben
+  des AKTIVEN Suchbereichs verändert. `SearchRunner` behandelte Änderungen an
+  `tabs`, `activeTabID` und `projectURL` immer als neue Sucheingabe: Ein
+  Trefferklick ruft `loadFile`, dessen Lade-Tab verändert `tabs`/`activeTabID`
+  — und die fertigen Ordnerergebnisse wurden geleert und neu gesucht.
+  Tabwechsel und das Öffnen einer Funddatei dürfen eine laufende Ordnersuche
+  weder leeren noch neu starten (`SearchRunner.inputAffectsSearch`). Umgekehrt
+  gilt: Verändert Fastra selbst Dateien (Ordner-Apply, Rückgängig), muss die
+  Trefferbasis ausdrücklich für ungültig erklärt werden — dafür gibt es
+  `folderResultsBecameStale()`, keinen Combine-Auslöser.
 - Scrollen in Fenster-Selbsttests: Ein per `CGEvent`/`NSApp.postEvent`
   erzeugtes Scroll-Rad-Event erreichte die SwiftUI-ScrollView nicht (die
   Scroll-Position blieb 0). Verlässlich ist der reguläre AppKit-Weg über die

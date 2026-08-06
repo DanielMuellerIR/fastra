@@ -99,6 +99,28 @@ func presentingSearchUsesShortcutScopeWhenEmptyOrClosed() {
     ) == .folder)
 }
 
+@Test("Der Menüpunkt „In Ordnern suchen…“ erzwingt den Ordner-Bereich")
+@MainActor
+func menuEntryForcesFolderScope() {
+    let suiteName = "fastra-test-presentsearch-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let ws = Workspace(defaults: defaults)
+    ws.scope = .file
+    ws.findPattern = "Yellowjackets"
+    ws.showSearchDialog = true
+
+    // Kurzbefehl ⇧⌘F: befüllte Maske bleibt in ihrem Bereich.
+    ws.presentSearch(requestedScope: .folder)
+    #expect(ws.scope == .file)
+
+    // Menüpunkt: Der sichtbare Text verspricht die Ordnersuche und muss sie
+    // deshalb auch herstellen (Review 2026-08-06).
+    ws.presentSearch(requestedScope: .folder, forceScope: true)
+    #expect(ws.scope == .folder)
+    #expect(ws.showSearchDialog)
+}
+
 @Test("Ordner-Apply-Fortschritt ist nur während des laufenden Apply sichtbar")
 func folderApplyProgressVisibilityFollowsLifecycle() {
     #expect(FloatingSearchDialog.visibleFolderApplyProgress(

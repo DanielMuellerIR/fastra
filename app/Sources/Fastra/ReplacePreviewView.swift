@@ -117,8 +117,14 @@ struct ReplacePreviewView: View {
                 .keyboardShortcut(.cancelAction)
             Spacer()
             Button("Alle ersetzen") {
-                workspace.applyAllInActiveBuffer()
-                workspace.livePreview = false
+                // Nur nach einer bestätigten Anwendung schließen. Kurz nach
+                // einem Tastendruck gehören die hier gezeigten Treffer noch
+                // zum vorigen Muster; der Workspace lehnt das Ersetzen dann
+                // ab, und die Vorschau verschwand bisher trotzdem — ohne dass
+                // irgendetwas ersetzt wurde (Review 2026-08-06).
+                if workspace.applyAllInActiveBuffer() {
+                    workspace.livePreview = false
+                }
             }
             .keyboardShortcut(.defaultAction)
             .disabled(result.rows.isEmpty)

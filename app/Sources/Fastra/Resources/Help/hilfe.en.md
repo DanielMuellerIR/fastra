@@ -18,9 +18,12 @@ fallback.
 ⌘F opens the search panel in file scope, ⇧⌘F in folder scope; ⌘E uses the
 current selection as the search term. If the panel is already open and its
 search field is populated, ⌘F and ⇧⌘F only bring it forward — the selected
-scope and results stay intact. Search runs **live while you type**. The results
-list shows the remainder of the line after every match for context, while all
-matches in the currently visible document are highlighted immediately.
+scope and results stay intact; the menu item “Search in Folders…” always
+switches to folder scope. Search runs **live while you type**. The results list
+shows the remainder of the line after every match for context; on very long
+lines it ends after about 400 characters with “…”. The first 2,000 matches in
+the currently visible document are highlighted immediately — in folder and
+project scope only while the open tab still matches the searched file version.
 
 **Scopes** (top of the panel):
 

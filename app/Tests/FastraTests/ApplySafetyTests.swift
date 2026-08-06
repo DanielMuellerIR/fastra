@@ -1111,6 +1111,56 @@ func transactionGlobalPreflightRejectsLateConflict() throws {
     #expect(try FileManager.default.contentsOfDirectory(atPath: backups.path).isEmpty)
 }
 
+@Test("Globaler Preflight prüft auch die wirkungslosen Eingaben")
+func transactionGlobalPreflightCoversEffectlessInputs() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-transaction-effectless-\(UUID().uuidString)",
+                                isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: directory,
+                                            withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let effectless = directory.appendingPathComponent("effectless.txt")
+    let changing = directory.appendingPathComponent("changing.txt")
+    try Data("foo bleibt\n".utf8).write(to: effectless)
+    try Data("FOO wird klein\n".utf8).write(to: changing)
+
+    // „foo" → „foo" ohne Rücksicht auf Groß-/Kleinschreibung: Die erste Datei
+    // hat einen Treffer, ändert sich dadurch aber nicht und bekommt deshalb
+    // weder Backup noch Eintrag in der Sitzung. Die zweite ändert sich sehr
+    // wohl. Ohne die Vollprüfung liefe der Auftrag hier durch und schriebe die
+    // zweite Datei, obwohl die erste nicht mehr dem Vorschaustand entspricht.
+    let options = SearchOptions(find: "foo", replace: "foo", isRegex: false,
+                                caseSensitive: false)
+    let plan = ApplyEngine.plan(files: [effectless, changing], options: options)
+    let inputs = try plan.files.map { file in
+        ApplyTransaction.Input(url: file.url,
+                               snapshot: try #require(file.originalSnapshot),
+                               matches: file.matches)
+    }
+    #expect(inputs.count == 2)
+    #expect(plan.changedFiles.count == 1)
+    let transaction = ApplyTransaction(inputs: inputs, options: options)
+    let external = Data("foo fremd\n".utf8)
+
+    do {
+        _ = try transaction.execute(
+            backupRoot: backups, cleanupOlderThan: nil,
+            beforePreflight: { try external.write(to: effectless, options: .atomic) })
+        Issue.record("Der späte Konflikt in der wirkungslosen Datei hätte stoppen müssen")
+    } catch ApplyError.conflict {
+        // Erwartet: Die Vorabprüfung deckt ALLE Eingaben ab, nicht nur die
+        // tatsächlich zu schreibenden.
+    }
+
+    #expect(try Data(contentsOf: changing) == Data("FOO wird klein\n".utf8))
+    #expect(try Data(contentsOf: effectless) == external)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: backups.path).isEmpty)
+}
+
 @Test("ApplyTransaction-Planhash bindet Optionen, Vorschau und Ziele")
 func transactionPlanHashIsDeterministicAndSensitive() throws {
     let directory = FileManager.default.temporaryDirectory

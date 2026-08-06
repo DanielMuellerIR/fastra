@@ -169,7 +169,23 @@ enum MarkdownImageStore {
                                       relativePath: relative), source)
         }
 
+        // Vor dem Anlegen merken, ob es den Ordner schon gab. Scheitert das
+        // Kopieren danach (Quelle verschwunden, nicht lesbar), soll die
+        // gescheiterte Aktion den Dokumentordner nicht sichtbar verändern —
+        // ein leerer neuer `images`-Ordner blieb bisher stehen
+        // (Review 2026-08-06).
+        let directoryExistedBefore = fileManager.fileExists(atPath: directory.path)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        var stored = false
+        defer {
+            // Nur einen von DIESEM Aufruf angelegten und weiterhin leeren
+            // Ordner zurücknehmen; fremde Inhalte bleiben unberührt.
+            if !stored, !directoryExistedBefore,
+               let entries = try? fileManager.contentsOfDirectory(atPath: directory.path),
+               entries.isEmpty {
+                try? fileManager.removeItem(at: directory)
+            }
+        }
 
         let sourceName = source.lastPathComponent
         let base = (sourceName as NSString).deletingPathExtension
@@ -192,6 +208,7 @@ enum MarkdownImageStore {
                     try? fileManager.removeItem(at: candidate)
                     throw StoreError.unreadableImage
                 }
+                stored = true
                 return (markdownImageLink(fileName: candidateName,
                                           relativePath: relative), candidate)
             }
@@ -199,6 +216,7 @@ enum MarkdownImageStore {
                 guard let relative = relativeLinkPath(from: documentURL, to: candidate) else {
                     throw StoreError.unreadableImage
                 }
+                stored = true
                 return (markdownImageLink(fileName: candidateName,
                                           relativePath: relative), candidate)
             }

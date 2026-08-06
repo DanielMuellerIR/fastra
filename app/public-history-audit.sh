@@ -96,6 +96,21 @@ scan() {
     fi
 }
 
+# Wie `scan`, aber ohne Zeilennummern und mit frei wählbaren grep-Argumenten.
+# Ergebnis steht in `grep_output`; Status 1 („kein Treffer") liefert einen
+# leeren Wert, ab Status 2 bricht der Wächter hart ab.
+filter() {
+    local rc=0
+    grep_output="$(grep "$@")" || rc=$?
+    if [[ $rc -ge 2 ]]; then
+        echo "PUBLIC HISTORY AUDIT: FEHLER — grep endete mit Status $rc beim Filtern" >&2
+        echo "  der hinzugefügten Zeilen. Ein Fehler darf nicht als „nichts" >&2
+        echo "  gefunden“ durchgehen." >&2
+        exit 1
+    fi
+    [[ $rc -eq 0 ]] || grep_output=""
+}
+
 messages="$(git log --format='%h %s%n%b' "$range")"
 
 for pattern in "${builtin_patterns[@]}"; do
@@ -118,8 +133,21 @@ if [[ -f "$patterns_file" ]]; then
     added_lines=""
     while IFS= read -r sha; do
         [[ -z "$sha" ]] && continue
-        commit_added="$(git show --format='' --unified=0 "$sha" \
-                        | grep -E '^\+' | grep -vE '^\+\+\+' || true)"
+        # `git show` MUSS gelingen. Vorher stand es mit den beiden Filtern in
+        # EINER Pipe, die auf `|| true` endete: Wegen `pipefail` verschluckte
+        # das nicht nur den erwartbaren Status 1 eines ergebnislosen `grep`,
+        # sondern auch einen echten Fehler von `git show` — der Commit lief
+        # dann mit leerem Inhalt durch die Prüfung (Review 2026-08-06).
+        commit_diff=""
+        if ! commit_diff="$(git show --format='' --unified=0 "$sha")"; then
+            echo "PUBLIC HISTORY AUDIT: FEHLER — „git show $sha“ scheiterte." >&2
+            echo "  Ein ungeprüfter Commit darf nicht als sauber gelten." >&2
+            exit 1
+        fi
+        filter -E '^\+' <<< "$commit_diff"
+        [[ -z "$grep_output" ]] && continue
+        filter -vE '^\+\+\+' <<< "$grep_output"
+        commit_added="$grep_output"
         [[ -z "$commit_added" ]] && continue
         added_lines+="$(printf '%s\n' "$commit_added" | sed "s|^|${sha:0:9} |")"$'\n'
     done < <(git rev-list --reverse "$range")

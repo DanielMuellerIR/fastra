@@ -2440,7 +2440,16 @@ fi
 # Auch lokale Builds brauchen nach dem Einbetten von Sparkle eine konsistente
 # innere Signatur. Der Release-/Installationspfad signiert dasselbe Bundle
 # später noch einmal mit Developer ID, Hardened Runtime und Zeitstempel.
-./sign-bundle.sh "$APP" -
+#
+# `sign-bundle.sh` strippt vor dem Signieren die Debug-Map. Für ein
+# Debug-Bundle wäre das falsch — genau diese Symbole braucht lldb, und die
+# Zeile oben sagt ausdrücklich, dass Debug sie behält. Deshalb bekommt nur der
+# Release-Build den strippenden Aufruf (Review 2026-08-06).
+if [ "$CONFIG" = "release" ]; then
+  ./sign-bundle.sh "$APP" -
+else
+  ./sign-bundle.sh "$APP" - --keep-debug-symbols
+fi
 
 # Pflicht-Gate für verteilbare Bundles: Blendet die absoluten SwiftPM-
 # Build-Fallbacks kurz aus und startet den fensterlosen Lokalisierungstest.

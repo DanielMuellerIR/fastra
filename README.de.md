@@ -67,9 +67,10 @@ Capture Groups.
 - **Capture Groups per Drag & Drop** vom Such- ins Ersetzen-Feld.
 - **Bereiche**: Aktuelle Datei, alle offenen Tabs, Ordner oder eine konfigurierte
   Dateimenge im aktuellen Projekt.
-- **Sofortiger Suchkontext**: Treffer zeigen den Rest ihrer Zeile; alle Funde
-  im sichtbaren Dokument sind markiert, und das aktive Ziel wird auf einer
-  deutlich hervorgehobenen Zeile zentriert.
+- **Sofortiger Suchkontext**: Treffer zeigen den Rest ihrer Zeile (bei sehr
+  langen Zeilen gekürzt); die ersten 2 000 Funde im sichtbaren Dokument sind
+  markiert, und das aktive Ziel wird auf einer deutlich hervorgehobenen Zeile
+  zentriert.
 - **Schnelle Projektfilter**: `.json` gilt als Kurzform für `*.json`,
   Ordner-Globs schließen ganze Bäume früh aus und `DerivedData` bleibt
   transparent immer außen vor.

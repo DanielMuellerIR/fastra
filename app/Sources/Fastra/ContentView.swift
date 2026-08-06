@@ -142,6 +142,14 @@ struct ContentView: View {
             workspace.presentSearch(requestedScope: .folder)
             searchPanel?.show()
         }
+        // Menüpunkt „In Ordnern suchen…": Sein sichtbarer Text verspricht die
+        // Ordnersuche, deshalb wird der Bereich hier erzwungen — anders als
+        // beim bereichserhaltenden Kurzbefehl darüber.
+        .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFolderForced)) { _ in
+            guard Workspace.shared === workspace else { return }
+            workspace.presentSearch(requestedScope: .folder, forceScope: true)
+            searchPanel?.show()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .fastraHideSearch)) { _ in
             guard Workspace.shared === workspace else { return }
             workspace.showSearchDialog = false

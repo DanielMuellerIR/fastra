@@ -60,6 +60,43 @@ func find_multilineMatchUsesLastLineRemainder() {
     #expect(r.matches.first?.lineRemainder == " danach")
 }
 
+// Befund 2026-08-06: Der Zeilenrest wurde ungekürzt kopiert. Eine zulässige
+// 32-MiB-Datei ohne Zeilenumbruch (einzeiliges JSON) erzeugte damit pro
+// materialisiertem Treffer eine fast vollständige Kopie der Zeile — bei 2.000
+// Treffern zig Gigabyte, an denen die App am Speicherdruck starb.
+
+@Test("Zeilenkontext wird gekürzt und zeigt die Kürzung an")
+func find_lineRemainderIsCapped() {
+    let text = "NADEL" + String(repeating: "x", count: 5_000)
+    let r = BufferSearch.find(in: text,
+                              options: SearchOptions(find: "NADEL", replace: "",
+                                                     isRegex: false, caseSensitive: true))
+    let remainder = r.matches.first?.lineRemainder ?? ""
+    #expect(remainder == String(repeating: "x",
+                                count: BufferSearch.maxLineRemainderLength) + "…")
+}
+
+@Test("Der gekürzte Zeilenkontext schneidet kein Zeichen mitten durch")
+func find_lineRemainderCutsOnCharacterBoundary() {
+    // „😀x" belegt drei UTF-16-Einheiten. Die Grenze bei 400 fällt damit mitten
+    // in ein Surrogatpaar; der Schnitt muss davor liegen (133 × drei = 399).
+    let text = "NADEL" + String(repeating: "😀x", count: 400)
+    let r = BufferSearch.find(in: text,
+                              options: SearchOptions(find: "NADEL", replace: "",
+                                                     isRegex: false, caseSensitive: true))
+    let remainder = r.matches.first?.lineRemainder ?? ""
+    #expect(remainder == String(repeating: "😀x", count: 133) + "…")
+    #expect(!remainder.unicodeScalars.contains { $0 == "\u{FFFD}" })
+}
+
+@Test("Ein kurzer Zeilenkontext bleibt unverändert und ohne Kürzungszeichen")
+func find_shortLineRemainderIsUntouched() {
+    let r = BufferSearch.find(in: "vorne NADEL kurzer Rest",
+                              options: SearchOptions(find: "NADEL", replace: "",
+                                                     isRegex: false, caseSensitive: true))
+    #expect(r.matches.first?.lineRemainder == " kurzer Rest")
+}
+
 // MARK: - Zeile/Spalte (1-basiert)
 
 @Test("Treffer in der ersten Zeile beginnt bei Zeile 1, Spalte 1")

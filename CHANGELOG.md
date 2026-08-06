@@ -9,6 +9,47 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.62.2] — 2026-08-06
+
+### Behoben
+
+- **Die Vorabprüfung eines Ordner-Apply deckt jetzt wirklich alle Ziele ab.**
+  Dateien, deren Ersetzung genau den Ausgangstext ergibt, werden beim Schreiben
+  übersprungen — sie fielen dadurch auch aus der abschließenden Prüfung heraus.
+  Änderte sich eine solche Datei zwischen Planung und Schreibphase, blieb das
+  unbemerkt, während die übrigen Dateien geschrieben wurden.
+- **Sehr lange Zeilen sprengen den Speicher nicht mehr.** Der in der
+  Trefferliste gezeigte Zeilenrest wird jetzt nach rund 400 Zeichen mit „…“
+  gekürzt. In einer großen Datei ohne Zeilenumbruch entstand vorher pro Treffer
+  eine fast vollständige Kopie der Zeile.
+- **Die Umwandlung nach Markdown prüft ihren Arbeitsordner strenger.** Ist der
+  vom Werkzeug erzeugte Ausgabeordner selbst ein symbolischer Verweis, wird das
+  Ergebnis nicht mehr übernommen.
+- **Nach Ordner-Apply und Rückgängig verlangt die Maske eine neue Suche.** Die
+  sichtbare Trefferliste stammte sonst weiterhin von der Dateifassung vor dem
+  Schreiben.
+- **Ersetzen-Aktionen sind während der kurzen Nachlaufzeit nach einem
+  Tastendruck gesperrt.** Vorschau, „Ersetzen“ und „Alle ersetzen“ sahen in
+  diesem Fenster aktiv aus, taten aber nichts; eine geöffnete Vorschau schloss
+  sich dabei sogar ohne jede Änderung.
+- **Der Menüpunkt „In Ordnern suchen…“ wechselt jetzt immer in den
+  Ordner-Bereich.** Die Kurzbefehle ⌘F und ⇧⌘F holen eine befüllte Maske
+  weiterhin nur nach vorn.
+- **Ein Einstellungs-Selbsttest fasst keine echten Nutzerdaten mehr an.**
+  Editor-Profile, Erscheinungsbild und der wiederherstellbare Sitzungszustand
+  liefen bisher an der Testisolierung vorbei.
+- **Eine gescheiterte Bildübernahme lässt keinen leeren `images`-Ordner
+  zurück.**
+- **Ein Import wird nicht mehr abgelehnt, wenn nur die Fehlerausgabe des
+  Werkzeugs unvollständig war.** Maßgeblich ist allein die Standardausgabe.
+
+### Intern
+
+- Der Wächter über die ausgehende Historie bricht ab, wenn `git show` für einen
+  Commit scheitert, statt ihn mit leerem Inhalt als geprüft zu behandeln.
+- Debug-Bundles behalten beim Signieren ihre Debug-Symbole; nur der
+  Release-Build wird gestrippt.
+
 ## [v1.62.1] — 2026-08-05
 
 ### Behoben

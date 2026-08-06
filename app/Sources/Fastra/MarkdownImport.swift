@@ -219,6 +219,16 @@ enum MarkdownImportOutputGuard {
     /// verschoben würde aber der Verweis, und übrig bliebe neben der Quelle
     /// ein ins Leere zeigender Link, sobald das Zwischenverzeichnis weg ist.
     static func isPublishableFile(_ candidate: URL, in directory: URL) -> Bool {
+        // Der Ausgabeordner selbst muss ein ECHTER Ordner sein. Fastra legt nur
+        // das Zwischenverzeichnis an; `out` darin erzeugt das Werkzeug. Wäre
+        // `out` ein Verweis auf einen fremden Ordner, zeigten unten beide
+        // aufgelösten Pfade dorthin, der Präfixvergleich ginge auf und Fastra
+        // holte eine beliebige fremde Datei — und entfernte sie an ihrem
+        // Ursprungsort (Review 2026-08-06).
+        var directoryInfo = stat()
+        guard lstat(directory.path, &directoryInfo) == 0,
+              (directoryInfo.st_mode & S_IFMT) == S_IFDIR else { return false }
+
         let allowed = directory.resolvingSymlinksInPath().standardizedFileURL.path
         let resolved = candidate.resolvingSymlinksInPath().standardizedFileURL.path
         guard resolved.hasPrefix(allowed + "/") else { return false }

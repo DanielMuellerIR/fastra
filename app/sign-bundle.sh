@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
 # Signiert Fastras eingebettete Programme von innen nach außen.
-# Aufruf: ./sign-bundle.sh <Fastra.app> <codesign-identity-oder-->
+# Aufruf: ./sign-bundle.sh <Fastra.app> <codesign-identity-oder--> [--keep-debug-symbols]
 
 set -euo pipefail
 
-if [ "$#" -ne 2 ]; then
-  echo "Aufruf: ./sign-bundle.sh <Fastra.app> <codesign-identity-oder->" >&2
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+  echo "Aufruf: ./sign-bundle.sh <Fastra.app> <codesign-identity-oder-> [--keep-debug-symbols]" >&2
   exit 2
 fi
 
 APP="$1"
 IDENTITY="$2"
+STRIP_OPTION="${3:-}"
+if [ -n "$STRIP_OPTION" ] && [ "$STRIP_OPTION" != "--keep-debug-symbols" ]; then
+  echo "✗ Unbekannte Option: $STRIP_OPTION (erlaubt ist nur --keep-debug-symbols)" >&2
+  exit 2
+fi
 SPARKLE_FRAMEWORK="$APP/Contents/Frameworks/Sparkle.framework"
 
 [ -d "$APP" ] || { echo "✗ App-Bundle fehlt: $APP" >&2; exit 1; }
@@ -34,12 +39,22 @@ fi
 #
 # Nur die eigene Binärdatei: ripgrep, PCRE2 und Sparkle kommen fertig gebaut von
 # außen und tragen keinen Pfad dieses Macs.
-for eigene in "$APP/Contents/MacOS/"*; do
-  [ -f "$eigene" ] || continue
-  if file -b "$eigene" | grep -q 'Mach-O'; then
-    strip -S "$eigene"
-  fi
-done
+#
+# `--keep-debug-symbols` überspringt das Strippen. Ein Debug-Bundle soll seine
+# Debug-Map behalten — sie ist bei SwiftPM die einzige Verbindung zwischen
+# Binärdatei und Quelltext, ohne sie zeigt lldb keine Zeilennummern mehr.
+# `build.sh` setzt die Option deshalb für jeden Nicht-Release-Build
+# (Review 2026-08-06).
+if [ "$STRIP_OPTION" = "--keep-debug-symbols" ]; then
+  echo "→ Debug-Bundle: Debug-Symbole bleiben erhalten"
+else
+  for eigene in "$APP/Contents/MacOS/"*; do
+    [ -f "$eigene" ] || continue
+    if file -b "$eigene" | grep -q 'Mach-O'; then
+      strip -S "$eigene"
+    fi
+  done
+fi
 
 # SwiftPM-Ressourcen enthalten unter anderem ripgrep und PCRE2. Mach-O-Dateien
 # dort müssen explizit signiert werden, weil sie nicht in Frameworks/Helpers

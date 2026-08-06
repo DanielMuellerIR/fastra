@@ -13,7 +13,8 @@ struct SettingsView: View {
     @Environment(\.uiScale) private var uiScale
     /// Erscheinungsbild (automatisch/hell/dunkel). Als String gespeichert
     /// (`AppearanceSetting.rawValue`) — gleicher Schlüssel wie
-    /// `AppearanceSetting.current()`, das der AppDelegate beim Start liest.
+    /// `AppearanceSetting.current(defaults:)`, das der AppDelegate beim Start
+    /// liest.
     @AppStorage(AppearanceSetting.defaultsKey, store: SelfTest.workspaceDefaults())
     private var appearanceRaw = AppearanceSetting.system.rawValue
     @AppStorage(UIZoom.defaultsKey, store: SelfTest.workspaceDefaults()) private var uiZoomLevel = 0
@@ -34,7 +35,13 @@ struct SettingsView: View {
     @AppStorage(GitPreferencesStore.Keys.prune, store: SelfTest.workspaceDefaults()) private var gitFetchPrune = false
     @AppStorage(GitPreferencesStore.Keys.pullStrategy, store: SelfTest.workspaceDefaults())
     private var gitPullStrategy = GitPullStrategy.unselected.rawValue
-    @StateObject private var editorProfiles = SoftWrapProfileStore()
+    // Auch dieser Speicher gehört in die Selbsttest-Suite: Sein `init`
+    // migriert und schreibt beim ersten Zugriff. Mit `.standard` hätte ein
+    // Einstellungs-Selbsttest die echten Editor-Profile des Nutzers
+    // verändert (Review 2026-08-06). Im Normalbetrieb liefert
+    // `SelfTest.workspaceDefaults()` `.standard` — Verhalten unverändert.
+    @StateObject private var editorProfiles =
+        SoftWrapProfileStore(defaults: SelfTest.workspaceDefaults())
 
     init() {
         // AppStorage kennt die typisierte Migration/Intervallbegrenzung nicht.
@@ -202,11 +209,16 @@ struct SettingsView: View {
         // Über, dieser Dialog) wechseln live; die dynamischen Theme-Farben
         // und das Editor-Theme ziehen automatisch mit.
         .onChange(of: appearanceRaw) {
-            AppearanceSetting.current().apply()
+            // Gelesen wird aus DERSELBEN Suite, in die der Picker oben
+            // geschrieben hat. Mit `.standard` läse ein Selbsttest den echten
+            // Wert des Nutzers und wendete den falschen an (Review 2026-08-06).
+            AppearanceSetting.current(defaults: SelfTest.workspaceDefaults()).apply()
         }
         .onChange(of: restoreLastSession) {
             if !restoreLastSession {
-                SessionStateStore.clear()
+                // Ohne die Suite löschte ein Selbsttest den echten
+                // wiederherstellbaren Sitzungszustand des Nutzers.
+                SessionStateStore.clear(in: SelfTest.workspaceDefaults())
             }
         }
         .onChange(of: gitFetchDecision) { gitPreferencesChanged() }

@@ -198,6 +198,42 @@ func store_fileElsewhereInDocumentTreeCopiesIntoImages() throws {
     }
 }
 
+@Test("storeImageFile: gescheitertes Kopieren lässt keinen leeren images-Ordner zurück")
+func store_failedCopyLeavesNoEmptyImagesFolder() throws {
+    try withTempDir { dir in
+        let doc = dir.appendingPathComponent("Seite.md")
+        try "x".write(to: doc, atomically: true, encoding: .utf8)
+        // Quelle existiert nicht → `copyItem` wirft. Der Zielordner wird
+        // vorher angelegt und muss danach wieder verschwinden: Eine
+        // gescheiterte Aktion darf den Dokumentordner nicht sichtbar
+        // verändern (Review 2026-08-06).
+        let missing = dir.appendingPathComponent("gibtsnicht.png")
+
+        #expect(throws: (any Error).self) {
+            _ = try MarkdownImageStore.storeImageFile(missing, documentURL: doc)
+        }
+        #expect(!FileManager.default.fileExists(
+            atPath: dir.appendingPathComponent("images").path))
+    }
+}
+
+@Test("storeImageFile: ein vorhandener images-Ordner bleibt auch im Fehlerfall stehen")
+func store_failedCopyKeepsPreexistingImagesFolder() throws {
+    try withTempDir { dir in
+        let doc = dir.appendingPathComponent("Seite.md")
+        try "x".write(to: doc, atomically: true, encoding: .utf8)
+        let images = dir.appendingPathComponent("images", isDirectory: true)
+        try FileManager.default.createDirectory(at: images,
+                                                withIntermediateDirectories: true)
+        let missing = dir.appendingPathComponent("gibtsnicht.png")
+
+        #expect(throws: (any Error).self) {
+            _ = try MarkdownImageStore.storeImageFile(missing, documentURL: doc)
+        }
+        #expect(FileManager.default.fileExists(atPath: images.path))
+    }
+}
+
 // MARK: - Drop-Abgrenzung
 
 @Test("partitionDroppedURLs: Bilder → einfügen, alles andere → öffnen")

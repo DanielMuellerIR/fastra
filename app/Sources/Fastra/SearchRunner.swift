@@ -217,6 +217,25 @@ final class SearchRunner {
         ws.folderNeedsSearch = !willRunLive
     }
 
+    /// Verwirft die sichtbaren Ordner-/Projekt-Treffer, weil FASTRA SELBST die
+    /// Dateien auf der Platte verändert hat (Ordner-Apply, Rückgängig).
+    ///
+    /// Das ist bewusst kein Combine-Trigger: Ein Tabwechsel oder das Öffnen
+    /// einer Funddatei darf eine fertige Ordnersuche weder leeren noch neu
+    /// starten (siehe `inputAffectsSearch`). Nach einem eigenen
+    /// Mehrdatei-Schreibgang stimmt die Trefferbasis dagegen nachweislich
+    /// nicht mehr: Trefferzahl, Navigation und Sprungziele zeigten sonst auf
+    /// Text, den es so nicht mehr gibt (Review 2026-08-06). Die Maske fragt
+    /// danach über `folderNeedsSearch` nach einem neuen Such-Lauf, statt
+    /// ungefragt eine teure Ordnersuche zu starten.
+    func folderResultsBecameStale() {
+        guard let ws = workspace, ws.scope.isFolderLike else { return }
+        cancelPendingWork()
+        Self.clearFolderPreview(ws)
+        ws.folderSearching = false
+        ws.folderNeedsSearch = true
+    }
+
     /// Reagiert auf einen Live-Trigger (Tippen, Options-Toggle, Tab- oder
     /// Scope-Wechsel). Buffer-Scopes (Datei/Geöffnet) suchen sofort. Der
     /// Ordner-Scope sucht gesteuert live: erst ab `minFolderLiveChars` Zeichen

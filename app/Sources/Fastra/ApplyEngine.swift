@@ -738,6 +738,13 @@ extension ApplyEngine {
 
         var staged: [StagedFile] = []
         staged.reserveCapacity(transaction.inputs.count)
+        // Erwarteter Platten-Stand JEDER Eingabe — auch der wirkungslosen, die
+        // unten übersprungen werden. Der globale Preflight prüft diese Liste,
+        // nicht nur `staged`: Sonst bliebe eine Datei, die sich nach ihrer
+        // Planung noch ändert, unbemerkt, obwohl die Transaktion zusagt, vor
+        // dem ersten Schreiben ALLE Ziele erneut zu prüfen (Review 2026-08-06).
+        var expectedOnDisk: [(url: URL, snapshot: FileSnapshot)] = []
+        expectedOnDisk.reserveCapacity(transaction.inputs.count)
         let total = transaction.inputs.count
 
         // Planung + Backup halten immer nur die aktuelle Datei im Speicher.
@@ -763,6 +770,7 @@ extension ApplyEngine {
                 throw ApplyError.conflict(L10n.string(
                     "Die berechnete Änderung stimmt nicht mehr mit der sichtbaren Vorschau überein. Starte die Suche erneut; es wurde nichts verändert."))
             }
+            expectedOnDisk.append((url: input.url, snapshot: current.snapshot))
             progress(ApplyTransaction.Progress(
                 phase: .planned, completedFiles: index + 1,
                 totalFiles: total, fileName: input.url.lastPathComponent))
@@ -809,10 +817,10 @@ extension ApplyEngine {
 
         // Alle Ziele noch einmal prüfen, bevor auch nur ein Ziel verändert
         // wird. Der Durchlauf liest weiterhin nur eine Datei gleichzeitig.
-        for item in staged {
+        for item in expectedOnDisk {
             if shouldCancel() { throw ApplyError.cancelled }
             guard let current = try? FileSnapshot.read(from: item.url),
-                  current.snapshot == item.expectedSnapshot else {
+                  current.snapshot == item.snapshot else {
                 throw ApplyError.conflict(L10n.format(
                     "„%@“ wurde seit der Vorschau geändert. Es wurde nichts verändert.",
                     item.url.lastPathComponent))

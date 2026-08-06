@@ -61,6 +61,41 @@ enum BufferSearch {
                                         wasCapped: false, invalidPatternMessage: nil)
     }
 
+    /// Höchstlänge des angezeigten Zeilenrests in UTF-16-Einheiten.
+    ///
+    /// Ohne Grenze kopiert jeder Treffer den kompletten Rest seiner logischen
+    /// Zeile. Bei einer erlaubten 32-MiB-Datei ohne Zeilenumbruch (etwa ein
+    /// einzeiliges JSON) sind das pro Treffer fast 32 MiB — mal 2.000
+    /// materialisierter Treffer zig Gigabyte, an denen die App am
+    /// Speicherdruck stirbt (Review 2026-08-06). Die Trefferliste zeigt
+    /// ohnehin nur EINE abgeschnittene Zeile.
+    static let maxLineRemainderLength = 400
+
+    /// Der sichtbare Zeilenrest hinter einem Treffer, auf `limit`
+    /// UTF-16-Einheiten begrenzt.
+    ///
+    /// Der Schnitt landet nie mitten in einem Graphem (Emoji, kombinierende
+    /// Zeichen): `rangeOfComposedCharacterSequence` liefert die Grenzen des
+    /// Clusters an der Schnittstelle, und der Rest endet davor. Wurde gekürzt,
+    /// macht ein angehängtes „…" das sichtbar — keine stille Trunkierung.
+    static func lineRemainder(in ns: NSString, from start: Int, to contentEnd: Int,
+                              limit: Int = maxLineRemainderLength) -> String {
+        guard contentEnd > start else { return "" }
+        let available = contentEnd - start
+        guard available > limit else {
+            return ns.substring(with: NSRange(location: start, length: available))
+        }
+        var end = start + limit
+        let cluster = ns.rangeOfComposedCharacterSequence(at: end)
+        // Beginnt das Graphem nach dem Trefferende, endet der Rest davor.
+        // Ein einzelnes übergroßes Graphem bleibt sonst lieber vollständig,
+        // als in zwei kaputte Hälften zu zerfallen.
+        end = cluster.location > start
+            ? cluster.location
+            : min(contentEnd, NSMaxRange(cluster))
+        return ns.substring(with: NSRange(location: start, length: end - start)) + "…"
+    }
+
     /// Standard-Obergrenze für materialisierte Treffer in der Live-Liste.
     /// Eine flache Liste mit Zehntausenden Zeilen ist kein Navigations-
     /// werkzeug (BBEdits gruppierter Results-Browser schon) — und pro
@@ -151,10 +186,8 @@ enum BufferSearch {
                 var contentEnd = afterMatch
                 ns.getLineStart(nil, end: nil, contentsEnd: &contentEnd,
                                 for: NSRange(location: afterMatch, length: 0))
-                let lineRemainder = contentEnd > afterMatch
-                    ? ns.substring(with: NSRange(location: afterMatch,
-                                                 length: contentEnd - afterMatch))
-                    : ""
+                let lineRemainder = Self.lineRemainder(in: ns, from: afterMatch,
+                                                       to: contentEnd)
                 // Über CaseTemplate statt direkt: unterstützt BBEdits
                 // \U/\L/\u/\l/\E im Ersetzungsmuster (Fast Path ohne
                 // Operatoren = unverändert NSRegularExpression).

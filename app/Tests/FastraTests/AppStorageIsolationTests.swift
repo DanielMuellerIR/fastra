@@ -111,6 +111,28 @@ struct AppStorageIsolationTests {
             """)
     }
 
+    /// Dieselbe Lücke an anderer Stelle: Nicht jeder Speicher hängt an
+    /// `@AppStorage`. `SoftWrapProfileStore`, `AppearanceSetting.current` und
+    /// `SessionStateStore.clear` haben `UserDefaults.standard` als Vorgabe.
+    /// Ohne ausdrückliches Argument las und schrieb ein Einstellungs-
+    /// Selbsttest damit die echten Nutzerdaten — und löschte beim Abschalten
+    /// der Sitzungswiederherstellung sogar den echten wiederherstellbaren
+    /// Sitzungszustand (Review 2026-08-06).
+    @Test("SettingsView reicht die isolierbare Suite auch an eigene Speicher weiter")
+    func settingsViewPassesTheIsolatableStoreEverywhere() throws {
+        let text = try String(
+            contentsOf: sourcesURL.appendingPathComponent("SettingsView.swift"),
+            encoding: .utf8)
+        for call in ["SoftWrapProfileStore()", "AppearanceSetting.current()",
+                     "SessionStateStore.clear()"] {
+            #expect(!text.contains(call), """
+                `\(call)` in SettingsView.swift greift auf UserDefaults.standard \
+                zu und hebelt die Selbsttest-Isolierung aus. Erwartet wird der \
+                Aufruf mit `SelfTest.workspaceDefaults()`.
+                """)
+        }
+    }
+
     /// Schützt den Wächter selbst: findet der Scanner nichts mehr (z. B. weil
     /// sich die Schreibweise ändert), bliebe der Test oben stumm grün.
     @Test("Der Quell-Scanner findet überhaupt Deklarationen")

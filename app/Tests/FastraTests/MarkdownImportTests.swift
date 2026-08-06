@@ -370,6 +370,37 @@ struct MarkdownImportOutputGuardTests {
         #expect(!MarkdownImportOutputGuard.isPublishableFile(toInside, in: output))
     }
 
+    @Test("Ein Ausgabeordner, der selbst ein Verweis ist, wird abgewiesen")
+    func symlinkedOutputDirectoryIsRejected() throws {
+        let fm = FileManager.default
+        let staging = fm.temporaryDirectory
+            .appendingPathComponent("fastra-mdguard-\(UUID().uuidString)",
+                                    isDirectory: true)
+        let foreign = fm.temporaryDirectory
+            .appendingPathComponent("fastra-mdforeign-\(UUID().uuidString)",
+                                    isDirectory: true)
+        try fm.createDirectory(at: staging, withIntermediateDirectories: true)
+        try fm.createDirectory(at: foreign, withIntermediateDirectories: true)
+        defer {
+            try? fm.removeItem(at: staging)
+            try? fm.removeItem(at: foreign)
+        }
+        let victim = foreign.appendingPathComponent("Fremd.md")
+        try "fremd".write(to: victim, atomically: true, encoding: .utf8)
+
+        // Fastra legt nur das Zwischenverzeichnis an; „out" darin erzeugt das
+        // Werkzeug. Macht es daraus einen Verweis auf einen fremden Ordner,
+        // lösen sich Ordner UND gemeldete Datei in denselben fremden Ordner
+        // auf — der reine Präfixvergleich ginge auf, und Fastra verschöbe eine
+        // beliebige fremde Datei (Review 2026-08-06).
+        let output = staging.appendingPathComponent("out", isDirectory: true)
+        try fm.createSymbolicLink(at: output, withDestinationURL: foreign)
+
+        #expect(!MarkdownImportOutputGuard.isPublishableFile(
+            output.appendingPathComponent("Fremd.md"), in: output))
+        #expect(fm.fileExists(atPath: victim.path))
+    }
+
     @Test("Ein Ordner ist keine veröffentlichbare Datei")
     func directoryIsRejected() throws {
         let (staging, output) = try makeStaging()
@@ -381,6 +412,45 @@ struct MarkdownImportOutputGuardTests {
         // Ein gar nicht vorhandener Pfad ebenso wenig.
         #expect(!MarkdownImportOutputGuard.isPublishableFile(
             output.appendingPathComponent("gibtsnicht.md"), in: output))
+    }
+}
+
+@Suite("Vollständigkeit der Werkzeug-Ausgabe")
+struct MarkdownImportOutcomeTests {
+
+    private func result(stdout: String, truncated: Bool = false) -> GitResult {
+        GitResult(exitCode: 0, stdoutData: Data(stdout.utf8),
+                  stderrData: Data(), stdoutWasTruncated: truncated)
+    }
+
+    @Test("Nur die Fehlerausgabe scheiterte — die Standardausgabe bleibt gültig")
+    func stderrOnlyCaptureFailureKeepsStdoutComplete() {
+        // `GitCaptureFailure` trägt beide Fehler getrennt. Zählte jeder davon
+        // als unvollständige Ausgabe, würde ein technisch gelungener Import
+        // grundlos abgelehnt (Review 2026-08-06).
+        let outcome = MarkdownImportProcessOutcome(.captureFailed(GitCaptureFailure(
+            stdoutError: nil,
+            stderrError: "Fehlerausgabe konnte nicht eingesammelt werden",
+            partialResult: result(stdout: #"{"ok":true}"#))))
+        #expect(outcome.outputIsComplete)
+        #expect(outcome.stdout == Data(#"{"ok":true}"#.utf8))
+    }
+
+    @Test("Ein Fehler der Standardausgabe macht sie unvollständig")
+    func stdoutCaptureFailureMarksOutputIncomplete() {
+        let outcome = MarkdownImportProcessOutcome(.captureFailed(GitCaptureFailure(
+            stdoutError: "abgebrochen", stderrError: nil,
+            partialResult: result(stdout: #"{"ok":true}"#))))
+        #expect(!outcome.outputIsComplete)
+    }
+
+    @Test("Eine an der Ausgabegrenze gekürzte Standardausgabe gilt nie als vollständig")
+    func truncatedStdoutIsNeverComplete() {
+        let truncated = result(stdout: #"{"ok":true}"#, truncated: true)
+        #expect(!MarkdownImportProcessOutcome(.completed(truncated)).outputIsComplete)
+        #expect(!MarkdownImportProcessOutcome(.captureFailed(GitCaptureFailure(
+            stdoutError: nil, stderrError: "nur stderr",
+            partialResult: truncated))).outputIsComplete)
     }
 }
 

@@ -248,7 +248,10 @@ func applyAll_refusesPreviewFromAnEarlierPattern() {
     ws.findPattern = "o"
     #expect(ws.bufferTotalMatches == 2, "Die sichtbare Vorschau soll stehen bleiben")
 
-    ws.applyAllInActiveBuffer()
+    // Der Rückgabewert muss die Ablehnung MELDEN. Die Vorschau schloss sich
+    // sonst nach einem folgenlosen Klick, ohne dass etwas ersetzt wurde
+    // (Review 2026-08-06).
+    #expect(ws.applyAllInActiveBuffer() == false)
     #expect(ws.activeTabContent.wrappedValue == "foo foo",
             "Ersetzen darf erst nach einer Vorschau zum neuen Muster laufen")
 
@@ -260,7 +263,7 @@ func applyAll_refusesPreviewFromAnEarlierPattern() {
     ws.bufferMatches = fresh.matches
     ws.bufferTotalMatches = fresh.totalMatches
     ws.visibleBufferResultsOptions = ws.currentSearchOptions
-    ws.applyAllInActiveBuffer()
+    #expect(ws.applyAllInActiveBuffer() == true)
     #expect(ws.activeTabContent.wrappedValue == "fXX fXX")
 }
 

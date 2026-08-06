@@ -254,31 +254,7 @@ final class MarkdownImportService: ObservableObject {
             in: FileManager.default.temporaryDirectory,
             policy: GitExecutionPolicy(timeout: timeout, terminationGracePeriod: 0.5)
         ) { outcome in
-            switch outcome {
-            case .completed(let result):
-                // Die Ausgabegrenze des Runners kann zugeschlagen haben. Dann
-                // ist das JSON abgeschnitten, auch wenn der Prozess mit 0 endete.
-                completion(MarkdownImportProcessOutcome(
-                    exitCode: result.exitCode,
-                    stdout: result.stdoutData,
-                    stderr: result.stderrData,
-                    outputIsComplete: !result.stdoutWasTruncated))
-            case .captureFailed(let failure):
-                // Teilausgabe eines gescheiterten Einsammelns. Sie wird
-                // bewusst NICHT wie ein normaler Abschluss weitergereicht:
-                // Sie ist per Definition unvollständig.
-                completion(MarkdownImportProcessOutcome(
-                    exitCode: failure.partialResult.exitCode,
-                    stdout: failure.partialResult.stdoutData,
-                    stderr: failure.partialResult.stderrData,
-                    outputIsComplete: false))
-            case .startFailed, .cancelled, .timedOut:
-                // Hier gibt es gar keine Ausgabe — nichts ist abgeschnitten,
-                // der Aufruf ist schlicht fehlgeschlagen.
-                completion(MarkdownImportProcessOutcome(
-                    exitCode: -1, stdout: Data(), stderr: Data(),
-                    outputIsComplete: true))
-            }
+            completion(MarkdownImportProcessOutcome(outcome))
         }
     }
 }
@@ -294,6 +270,45 @@ struct MarkdownImportProcessOutcome {
     let stdout: Data
     let stderr: Data
     let outputIsComplete: Bool
+}
+
+// Eigene Erweiterung, damit der von Swift erzeugte memberwise-Initialisierer
+// erhalten bleibt — Tests und der injizierte Prozessaufruf bauen damit
+// künstliche Antworten.
+extension MarkdownImportProcessOutcome {
+
+    /// Übersetzt das Ergebnis des gemeinsamen Prozess-Runners in die Sicht
+    /// dieses Dienstes. Bewusst als eigener, reiner Schritt: Die
+    /// Vollständigkeitsregel ist die sicherheitsrelevante Stelle und lässt
+    /// sich so ohne echten Kindprozess prüfen.
+    init(_ outcome: GitExecutionOutcome) {
+        switch outcome {
+        case .completed(let result):
+            // Die Ausgabegrenze des Runners kann zugeschlagen haben. Dann ist
+            // das JSON abgeschnitten, auch wenn der Prozess mit 0 endete.
+            self.init(exitCode: result.exitCode,
+                      stdout: result.stdoutData,
+                      stderr: result.stderrData,
+                      outputIsComplete: !result.stdoutWasTruncated)
+        case .captureFailed(let failure):
+            // Das Einsammeln ist gescheitert — aber `GitCaptureFailure` trägt
+            // die Fehler von stdout und stderr GETRENNT. Scheiterte nur die
+            // Fehlerausgabe, ist die Standardausgabe trotzdem vollständig;
+            // bisher wurde ein technisch gelungener Import deshalb grundlos
+            // abgelehnt (Review 2026-08-06). Maßgeblich ist allein stdout:
+            // kein eigener Fehler und nicht an der Ausgabegrenze gekürzt.
+            self.init(exitCode: failure.partialResult.exitCode,
+                      stdout: failure.partialResult.stdoutData,
+                      stderr: failure.partialResult.stderrData,
+                      outputIsComplete: failure.stdoutError == nil
+                          && !failure.partialResult.stdoutWasTruncated)
+        case .startFailed, .cancelled, .timedOut:
+            // Hier gibt es gar keine Ausgabe — nichts ist abgeschnitten, der
+            // Aufruf ist schlicht fehlgeschlagen.
+            self.init(exitCode: -1, stdout: Data(), stderr: Data(),
+                      outputIsComplete: true)
+        }
+    }
 }
 
 /// Sichtbarer Zustand der Umwandlung. Die Leiste über dem Editor liest ihn.

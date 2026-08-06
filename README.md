@@ -65,9 +65,10 @@ token highlighting, curated patterns, and guided capture groups.
 - **Drag & drop capture groups** from the find field into the replace field.
 - **Scopes**: Current file, all open tabs, folders, or a configured file set in
   the current project.
-- **Immediate search context**: Results include the remainder of their line;
-  all matches in the visible document are highlighted, and the active target
-  is centered on a clearly emphasized line.
+- **Immediate search context**: Results include the remainder of their line
+  (shortened on very long lines); the first 2,000 matches in the visible
+  document are highlighted, and the active target is centered on a clearly
+  emphasized line.
 - **Fast project filters**: `.json` is shorthand for `*.json`, directory globs
   prune complete trees early, and `DerivedData` is transparently always
   excluded.

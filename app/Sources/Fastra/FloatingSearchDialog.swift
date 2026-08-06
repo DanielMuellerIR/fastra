@@ -1529,6 +1529,21 @@ struct FloatingSearchDialog: View {
 
     // MARK: - Action-Zeile
 
+    /// `true`, wenn die sichtbaren Buffer-/Geöffnet-Treffer wirklich zum
+    /// AKTUELL eingegebenen Muster gehören.
+    ///
+    /// Direkt nach einem Tastendruck stimmt das für rund 120 ms nicht: Die
+    /// alte Trefferzahl bleibt absichtlich stehen (sonst blinkte sie bei jedem
+    /// Zeichen auf 0), die Ersetzen-Pfade im Workspace lehnen den Aufruf aber
+    /// still ab. Ohne diese Bedingung sähen Vorschau, „Ersetzen" und „Alle
+    /// ersetzen" in diesem Fenster aktiv aus und täten nichts
+    /// (Review 2026-08-06). Im Ordner-/Projekt-Bereich gilt sie nicht — dort
+    /// sperren `folderSearching`/`folderNeedsSearch` bereits.
+    private var visibleResultsMatchCurrentSearch: Bool {
+        workspace.scope.isFolderLike
+            || workspace.visibleBufferResultsOptions == workspace.currentSearchOptions
+    }
+
     // Zweizeilig (Daniel-Feedback 2026-06-04): die sechs Buttons passten
     // bei minimaler Fensterbreite nicht sauber in eine Zeile. Aufteilung
     // nach Absicht — Zeile 1 navigiert nur durch die Treffer, Zeile 2
@@ -1591,7 +1606,8 @@ struct FloatingSearchDialog: View {
                     .buttonStyle(.bordered)
                     .disabled(workspace.scope != .file
                               || workspace.bufferMatches.isEmpty
-                              || workspace.searchError != nil)
+                              || workspace.searchError != nil
+                              || !visibleResultsMatchCurrentSearch)
                     .help("Zeigt im Hauptfenster ein Vorher/Nachher-Diff aller Ersetzungen im aktiven Buffer — jede betroffene Zeile vorher und nachher.")
 
                 // Einzel-Ersetzen (ein Treffer + zum nächsten springen). Nur im
@@ -1600,7 +1616,8 @@ struct FloatingSearchDialog: View {
                 Button("Ersetzen") { workspace.replaceActiveMatch() }
                     .disabled(workspace.scope.isFolderLike
                               || workspace.bufferMatches.isEmpty
-                              || workspace.searchError != nil)
+                              || workspace.searchError != nil
+                              || !visibleResultsMatchCurrentSearch)
                     .help("Nur den aktiven Treffer ersetzen und zum nächsten springen. Im Ordner-Modus (noch) nicht verfügbar.")
 
                 // Im Folder-Scope und nach einem erfolgreichen Apply gibt es
@@ -1646,7 +1663,8 @@ struct FloatingSearchDialog: View {
                               || (workspace.scope.isFolderLike
                                   && (workspace.folderSearching
                                       || workspace.folderNeedsSearch))
-                              || workspace.folderApplying)
+                              || workspace.folderApplying
+                              || !visibleResultsMatchCurrentSearch)
                     .help({
                         switch workspace.scope {
                         case .folder, .project:

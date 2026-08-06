@@ -3636,9 +3636,15 @@ final class Workspace: ObservableObject {
     /// Gemeinsamer Modellpfad für Menü und globale Tastenkürzel. Die
     /// Auswahl wird nur beim echten NEUÖFFNEN der Datei-Suche eingefroren;
     /// ein bloßes Nach-vorn-Holen verändert weder Scope noch „Nur Auswahl“.
-    func presentSearch(requestedScope: SearchScope, captureSelection: Bool = false) {
+    ///
+    /// `forceScope` gilt für den ausdrücklich beschrifteten Menüpunkt „In
+    /// Ordnern suchen…“: Er verspricht einen bestimmten Bereich und muss ihn
+    /// deshalb auch bei offener, befüllter Maske herstellen. Die Kurzbefehle
+    /// bleiben bereichserhaltend (Review 2026-08-06).
+    func presentSearch(requestedScope: SearchScope, captureSelection: Bool = false,
+                       forceScope: Bool = false) {
         let preserveExistingSearch = showSearchDialog && !findPattern.isEmpty
-        scope = Self.searchScopeWhenPresenting(
+        scope = forceScope ? requestedScope : Self.searchScopeWhenPresenting(
             requested: requestedScope,
             current: scope,
             dialogOpen: showSearchDialog,
@@ -3942,6 +3948,9 @@ final class Workspace: ObservableObject {
         switch result {
         case .success(let session):
             lastApplySession = session
+            // Die Dateien auf der Platte sind jetzt andere als die, aus denen
+            // die sichtbare Trefferliste entstand.
+            searchRunner?.folderResultsBecameStale()
             reloadOpenTabs(for: session.entries.map {
                 URL(fileURLWithPath: $0.originalPath)
             })
@@ -3959,6 +3968,8 @@ final class Workspace: ObservableObject {
             NSAlert.runWarning(
                 title: L10n.string("Apply teilweise fehlgeschlagen"),
                 text: L10n.format("%@\n\nBereits geschriebene Dateien können über die Rückgängig-Aktion zurückgespielt werden.", message))
+            // Auch der Teil-Erfolg hat Dateien verändert.
+            searchRunner?.folderResultsBecameStale()
             reloadOpenTabs(for: session.entries.map {
                 URL(fileURLWithPath: $0.originalPath)
             })
@@ -3973,6 +3984,9 @@ final class Workspace: ObservableObject {
         guard !folderApplying, let session = lastApplySession else { return false }
         do {
             try ApplyEngine.undo(session)
+            // Rückgängig schreibt die Dateien erneut — dieselbe Lage wie nach
+            // dem Apply: Die sichtbaren Treffer gehören zu einem alten Stand.
+            searchRunner?.folderResultsBecameStale()
             reloadOpenTabs(for: session.entries.map { URL(fileURLWithPath: $0.originalPath) })
             lastApplySession = nil
             return true
@@ -3987,6 +4001,7 @@ final class Workspace: ObservableObject {
             NSAlert.runWarning(
                 title: L10n.string("Rückgängig teilweise fehlgeschlagen"),
                 text: L10n.format("%@\n\nDer bereits gespeicherte Fortschritt kann mit Rückgängig fortgesetzt werden.", message))
+            searchRunner?.folderResultsBecameStale()
             reloadOpenTabs(for: partial.entries.filter { $0.state == .restored }
                 .map { URL(fileURLWithPath: $0.originalPath) })
             return false
@@ -4095,7 +4110,12 @@ final class Workspace: ObservableObject {
     /// ihre Replacement-Texte. NUR im Speicher — keine Disk-Writes, kein
     /// Apply-Backup (das ist die Schiene für die Ordner-Suche). Speichern
     /// erfolgt wie gewohnt über CMD+S; das markiert den Tab als dirty.
-    func applyAllInActiveBuffer() {
+    /// Liefert `true`, wenn wirklich ersetzt wurde. Der Rückgabewert ist keine
+    /// Kosmetik: Die Vorschau darf sich nur nach einer bestätigten Anwendung
+    /// schließen, sonst verschwindet sie im Debounce-Fenster wirkungslos
+    /// (Review 2026-08-06).
+    @discardableResult
+    func applyAllInActiveBuffer() -> Bool {
         // `bufferTotalMatches` statt `bufferMatches.count` als Gate: bei
         // gekappter Liste gibt es mehr Treffer als materialisiert sind.
         //
@@ -4105,7 +4125,7 @@ final class Workspace: ObservableObject {
         // Tastendruck eine Ersetzung mit dem neuen Muster frei
         // (Review 2026-08-02).
         guard bufferTotalMatches > 0, searchError == nil,
-              visibleBufferResultsOptions == currentSearchOptions else { return }
+              visibleBufferResultsOptions == currentSearchOptions else { return false }
         recordSearchHistory()
         let text = activeTabContent.wrappedValue
         // Voll-Replace über den ganzen Text (bzw. die eingefrorene Auswahl bei
@@ -4113,7 +4133,7 @@ final class Workspace: ObservableObject {
         // Listen-Caps (sonst blieben gekappte Treffer stehen).
         guard let replaced = BufferSearch.replaceAll(in: text, options: currentSearchOptions,
                                                      searchRange: activeSearchRange),
-              replaced != text else { return }
+              replaced != text else { return false }
         activeTabContent.wrappedValue = replaced
         // Editor zur Neuerzeugung zwingen, sonst zeigt CodeEditSourceEditor
         // weiter den Vor-Replace-Text (Binding-Änderungen fließen NICHT zurück
@@ -4128,6 +4148,7 @@ final class Workspace: ObservableObject {
         // Nach Apply gibt es typischerweise 0 Treffer (Pattern matched
         // den eingefügten Replace-Text nicht mehr); activeMatchIndex
         // wird vom Runner auf 0 geclampt.
+        return true
     }
 
     /// „Alle ersetzen" im Geöffnet-Scope: ersetzt ALLE Treffer in ALLEN

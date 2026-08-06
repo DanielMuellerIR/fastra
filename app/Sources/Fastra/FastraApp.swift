@@ -282,8 +282,14 @@ struct FastraApp: App {
                 // CMD+SHIFT+F: Suchen in Ordnern (erweiterter Modus).
                 // Beim Öffnen wird der Scope auf „Ordner" gesetzt — das
                 // Fenster wächst automatisch, falls noch zu klein.
+                //
+                // Der Menüklick nutzt bewusst die ERZWINGENDE Notification:
+                // Der Kurzbefehl ⇧⌘F holt eine bereits befüllte Maske nur nach
+                // vorn und behält ihren Bereich, ein ausdrücklich mit „In
+                // Ordnern suchen…" beschrifteter Menüpunkt muss dagegen immer
+                // die Ordnersuche zeigen (Review 2026-08-06).
                 Button("In Ordnern suchen…") {
-                    NotificationCenter.default.post(name: .fastraShowSearchFolder,
+                    NotificationCenter.default.post(name: .fastraShowSearchFolderForced,
                                                     object: nil)
                 }
                 .keyboardShortcut("f", modifiers: [.command, .shift])

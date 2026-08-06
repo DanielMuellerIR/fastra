@@ -349,6 +349,64 @@ func workspace_folderApplyRunsAsynchronously() async throws {
     #expect(ws.lastApplySession?.entries.map(\.state) == [.applied])
 }
 
+// Befund 2026-08-06: Seit die Suchauslöser nach Bereich getrennt sind, löst
+// eine Tab-Änderung im Ordner-Bereich keine neue Suche mehr aus — richtig für
+// den Trefferklick, aber Fastras EIGENE Schreibvorgänge (Ordner-Apply und
+// dessen Rückgängig) machten die sichtbare Trefferbasis damit still veraltet.
+// Trefferzahl und Sprungziele zeigten auf Text, den es so nicht mehr gibt.
+
+@Test("Rückgängig verwirft die sichtbare Ordner-Trefferbasis")
+@MainActor
+func workspace_folderUndoInvalidatesVisibleResults() async throws {
+    let url = try writeTmpUTF8("foo sichtbar\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let (defaults, _) = makeFreshDefaults()
+    let ws = Workspace(defaults: defaults)
+    let options = SearchOptions(find: "foo", replace: "bar", isRegex: false,
+                                caseSensitive: true)
+    ws.scope = .folder
+    ws.findPattern = "foo"
+    ws.replacePattern = "bar"
+    ws.useRegex = false
+    ws.caseSensitive = true
+    ws.folderResults = [FolderSearch.searchOneFile(at: url, options: options)]
+    ws.folderSearching = false
+    ws.folderNeedsSearch = false
+    let backups = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-undo-stale-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: backups, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: backups) }
+    ws.folderApplyBackupRoot = backups
+
+    #expect(ws.applyAllInFolder())
+    for _ in 0..<200 where ws.folderApplying {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(try Data(contentsOf: url) == Data("bar sichtbar\n".utf8))
+
+    // Trefferbasis wiederherstellen, wie sie eine erneute Ordnersuche liefern
+    // würde. Bewusst OHNE die veröffentlichten Sucheingaben anzufassen: Sonst
+    // liefe der 120-ms-Debounce des Suchläufers mit und die Beobachtung unten
+    // wäre nicht mehr eindeutig dem Rückgängig zuzuordnen.
+    let afterApply = SearchOptions(find: "bar", replace: "baz", isRegex: false,
+                                   caseSensitive: true)
+    let visible = FolderSearch.searchOneFile(at: url, options: afterApply)
+    ws.folderResults = [visible]
+    ws.folderTotalMatches = visible.totalMatches
+    ws.folderSearching = false
+    ws.folderNeedsSearch = false
+    #expect(!visible.matches.isEmpty)
+
+    #expect(ws.undoLastFolderApply())
+
+    #expect(try Data(contentsOf: url) == Data("foo sichtbar\n".utf8))
+    #expect(ws.folderResults.isEmpty,
+            "Rückgängig hat die Datei erneut geschrieben — die sichtbaren Treffer gelten nicht mehr")
+    #expect(ws.folderTotalMatches == 0)
+    #expect(ws.folderNeedsSearch, "Die Maske muss einen neuen Such-Lauf verlangen")
+    #expect(!ws.folderSearching)
+}
+
 @Test("Gelöschtes Save-Ziel gilt als Konflikt und wird nicht still neu angelegt")
 @MainActor
 func workspace_saveDeletedDocumentRequiresConfirmation() async throws {

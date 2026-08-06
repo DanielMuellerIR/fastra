@@ -9,8 +9,16 @@ import Sparkle
 extension Notification.Name {
     /// CMD+F — Suchmaske öffnen im Datei-Modus.
     static let fastraShowSearchFile   = Notification.Name("fastra.show.search.file")
-    /// CMD+SHIFT+F — Suchmaske öffnen im Ordner-Modus.
+    /// CMD+SHIFT+F — Suchmaske öffnen im Ordner-Modus. Ist bereits eine
+    /// befüllte Maske offen, holt der Kurzbefehl sie nur nach vorn und behält
+    /// ihren Bereich (siehe `Workspace.searchScopeWhenPresenting`).
     static let fastraShowSearchFolder = Notification.Name("fastra.show.search.folder")
+    /// Menüpunkt „In Ordnern suchen…“ — anders als der Kurzbefehl ERZWINGT er
+    /// den Ordner-Bereich. Ein so beschrifteter Menüpunkt muss auch wirklich
+    /// die Ordnersuche zeigen; bisher blieb er bei offener, befüllter Maske im
+    /// Datei- oder Projektbereich stehen (Review 2026-08-06).
+    static let fastraShowSearchFolderForced =
+        Notification.Name("fastra.show.search.folder.forced")
     /// ESC im Suchfenster — Suchmaske ausblenden.
     static let fastraHideSearch       = Notification.Name("fastra.hide.search")
     /// CMD+G — zum nächsten Treffer springen.
