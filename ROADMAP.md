@@ -207,6 +207,21 @@ Punkte (die akuten Funde sind mit v1.60.1 behoben). Gebündelt nach Thema:
   Umgebungsproblem ausgewiesen. Beim Anfassen dieselbe Klassifizierung
   nachziehen.
 
+- **`selftest.sh` lässt seine Fehlerdateien liegen.** Der Runner legt pro Test
+  mit `mktemp` eine Datei für stderr an und entfernt sie nicht wieder. Ein
+  vollständiger Lauf hinterlässt so rund achtzig Dateien im Temp-Ordner.
+  Harmlos, aber unsauber — beim nächsten Anfassen des Runners aufräumen.
+
+- **`SmartPaste.markdownFromClipboard` beendet beim Fristablauf nur das direkte
+  Kind.** Startet das Umwandlungswerkzeug seinerseits Kinder, überleben die den
+  Abbruch. Richtig wäre, die ganze Prozessgruppe zu beenden.
+
+- **Warteschleifen mit `Task.yield()` in vier Testdateien** (EmptyScratchTab,
+  ExternalChange, WorkspaceLoad, OpenFileOrFolder). Sie drehen frei, bis eine
+  Bedingung eintritt, statt auf ein Signal zu warten — unter Fremdlast der
+  wahrscheinlichste Kandidat für sporadische Hänger. Auf robustes Warten
+  umstellen.
+
 - **`folderSearch_deduplicatesOverlappingRoots` einmal rot** (2026-07-28,
   nicht reproduziert). Der Test meldete 0 statt 1 Treffer in einem
   vollständigen `swift test`; isoliert dreimal und in zwei weiteren
