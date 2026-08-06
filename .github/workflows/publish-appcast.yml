@@ -83,11 +83,30 @@ jobs:
 
           xmllint --noout site/appcast.xml
 
+      # Der Artefaktname trägt die Versuchsnummer des Laufs. Beim Wiederholen
+      # eines Laufs („Re-run jobs") läuft dieser Schritt erneut, und ein
+      # gleichnamiges Artefakt aus dem ersten Versuch bleibt daneben bestehen:
+      # `deploy-pages` fand dann zwei Artefakte namens `github-pages` und brach
+      # ab, statt zu veröffentlichen (am 2026-08-06 beim Release 1.63.0
+      # aufgetreten). Mit der Versuchsnummer bekommt jeder Versuch seinen
+      # eigenen Namen, und der Deploy-Schritt bekommt denselben ausdrücklich
+      # genannt.
       - name: Pages-Artefakt hochladen
         uses: actions/upload-pages-artifact@v5
         with:
+          name: github-pages-${{ github.run_attempt }}
           path: site
 
+      # Die Frist ist bewusst länger als die voreingestellten 10 Minuten. Sie
+      # begrenzt nicht die eigene Arbeit, sondern das Warten auf GitHubs
+      # Pages-Warteschlange: Am 2026-08-06 stand das Deployment zweimal über
+      # 10 Minuten auf `deployment_queued` und die Action brach ab, obwohl der
+      # Feed längst fertig und signiert war. Ein abgebrochener Versuch ist hier
+      # teuer, weil die Deployment-Kennung der Commit-SHA entspricht — der
+      # nächste Anlauf desselben Commits sah danach den abgebrochenen Zustand.
       - name: Appcast auf GitHub Pages veröffentlichen
         id: deployment
         uses: actions/deploy-pages@v5
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
+          timeout: 1800000
