@@ -56,3 +56,27 @@ Nur sein öffentlicher Gegenpart steht als `SUPublicEDKey` im App-Bundle.
 
 Der Workflow kann für ein bestehendes Tag manuell gestartet werden. Er erwartet
 genau ein `*.dmg`; der Feed enthält nur das aktuelle Vollupdate und keine Deltas.
+
+## Wenn das Pages-Deployment hängt
+
+Beim Release 1.63.0 stand das Deployment mehrfach über zehn Minuten auf
+`deployment_queued` und die Action brach ab, obwohl der Feed längst erzeugt und
+signiert war. Der Rückstau liegt bei GitHub; die Statusseite meldete dabei
+nichts. Zwei Dinge helfen ausdrücklich **nicht** — beides geprüft:
+
+- Die Frist verlängern. `deploy-pages` deckelt seine `timeout`-Eingabe hart bei
+  zehn Minuten und schreibt die Kürzung ins Log.
+- Denselben Lauf wiederholen. Ein zweiter Anlauf desselben Commits bekommt den
+  abgebrochenen Zustand zurückgemeldet und gibt nach Sekunden auf (die
+  Deployment-Kennung ist die Commit-SHA); mit einer Minute Pause ebenso wie mit
+  fünf.
+
+Richtig ist ein **frischer** Lauf, wenn die Warteschlange wieder frei ist:
+
+```bash
+gh workflow run publish-appcast.yml -f tag=v<version>
+```
+
+Bis dahin liefert die Seite unverändert das zuletzt erfolgreich veröffentlichte
+Update aus — bestehende Installationen sehen also die vorige Version, nie einen
+kaputten Feed. Der Release samt DMG ist davon ohnehin unberührt.
