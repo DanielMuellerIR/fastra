@@ -77,6 +77,10 @@ struct StatusBarView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
         .background(Theme.surfaceSand.opacity(0.5))
+        // Marker für den Fenster-Selbsttest `footerfit`: Er misst an dieser
+        // View, ob die Fußzeile vollständig im Fenster liegt. Bewusst OHNE
+        // Nullgröße — der Marker soll die echte Fußzeilenfläche abbilden.
+        .background(SelfTestMarker(id: "footerBar"))
         // Gesamten Footer-Text dimmen, wenn das Hauptfenster nicht vorn ist.
         .opacity(isFrontmost ? 1.0 : 0.45)
     }

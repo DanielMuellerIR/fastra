@@ -9,6 +9,37 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.63.0] — 2026-08-06
+
+### Neu
+
+- **Die Formatwahl aus der Fußzeile gilt jetzt der Datei, nicht nur dem Tab.**
+  Wer eine Datei im Sprach-Chip auf ein Format stellt, findet sie beim nächsten
+  Öffnen wieder so vor. Das zählt vor allem bei Dateien ohne Endung, für die die
+  Automatik nichts erkennen kann. „Automatisch“ löscht den gemerkten Eintrag.
+- **Neue Fenster öffnen in praktischer Höhe.** Ohne Vorbildfenster nimmt ein
+  neues Fenster mindestens 80 % der nutzbaren Bildschirmhöhe ein statt der
+  bisherigen festen 720 Punkte. Kleiner ziehen bleibt jederzeit möglich; eine
+  einmalige Korrektur beim ersten Start hebt außerdem zu flach gespeicherte
+  Fenster an.
+
+### Behoben
+
+- **Die Markdown-Vorschau folgt der Formatwahl der Fußzeile.** Ein Umstellen auf
+  „Markdown“ öffnet die Vorschau samt Format-Toolbar auch ohne `.md`-Endung; ein
+  Wechsel auf ein anderes Format schließt sie wieder. Bisher entschied allein der
+  Dateiname, sodass beides wirkungslos blieb.
+- **Nach dem Austausch eines Bildes zeigt die Vorschau das neue Bild.** Die
+  interne Adresse eines Vorschaubildes hieß für das erste Bild jedes Renderlaufs
+  gleich; WebKit lieferte darunter seine zwischengespeicherte, also die alte
+  Fassung. Im Quelltext stand der neue Dateiname, in der Vorschau das vorherige
+  Bild, und erst ein Neustart räumte den Zwischenspeicher. Die Adresse beschreibt
+  jetzt die Datei selbst (Pfad, Änderungsdatum, Größe).
+- **Die Fußzeile wird nicht mehr abgeschnitten.** Sie hatte eine feste Höhe von
+  24 Punkten. Sobald der Ansichts-Umschalter dazukam — er erscheint nur bei einer
+  gespeicherten Datei —, wuchs ihr Inhalt darüber hinaus und der Fensterrand
+  schnitt ihn unten ab.
+
 ## [v1.62.2] — 2026-08-06
 
 ### Behoben

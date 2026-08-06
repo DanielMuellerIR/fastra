@@ -441,7 +441,7 @@ enum MarkdownImages {
             let replacement: String
             if let imageURL = localImageURL(from: rawSource, documentURL: documentURL),
                MarkdownPreviewAssets.imageMIMEType(for: imageURL) != nil {
-                let token = "image-\(images.count)"
+                let token = imageToken(for: imageURL)
                 images[token] = imageURL
                 replacement = "\(MarkdownPreviewAssets.scheme)://image/\(token)"
             } else {
@@ -450,6 +450,48 @@ enum MarkdownImages {
             mutable.replaceCharacters(in: sourceRange, with: replacement)
         }
         return MarkdownRenderedFragment(html: mutable as String, imageURLs: images)
+    }
+
+    /// Interner Name, unter dem WebKit ein Bild anfordert.
+    ///
+    /// Er beschreibt die IDENTITÄT der Datei (Pfad, Änderungsdatum, Größe) und
+    /// nicht mehr ihre Position im Dokument. Der frühere Name „image-0" war für
+    /// das erste Bild jedes Renderlaufs derselbe: Nach dem Austausch eines
+    /// Bildes lieferte WebKit unter der unveränderten Adresse die zuvor
+    /// geladene Datei aus seinem Speicher-Cache — im Quelltext stand der neue
+    /// Dateiname, die Vorschau zeigte das alte Bild, und erst ein Neustart der
+    /// App räumte den Cache (Daniel-Befund 2026-08-06).
+    ///
+    /// Unverändertes Bild → unveränderter Name → WebKit lädt es beim Tippen
+    /// nicht bei jedem Zeichen neu.
+    static func imageToken(for url: URL,
+                           fileManager: FileManager = .default) -> String {
+        // Bewusst `FileManager` statt `URL.resourceValues`: Eine URL merkt
+        // sich einmal gelesene Dateiattribute und lieferte für dieselbe URL
+        // weiterhin die ALTE Größe, nachdem die Datei ersetzt wurde. Der
+        // Zielpfad ist zudem symlink-aufgelöst, damit ein Link die Größe
+        // seiner Zieldatei meldet und nicht die des Links (AGENTS.md).
+        let path = url.resolvingSymlinksInPath().standardizedFileURL.path
+        let attributes = try? fileManager.attributesOfItem(atPath: path)
+        // Fehlt die Datei (oder verweigert sie Auskunft), bleibt der Pfad
+        // allein die Identität — dann gibt es ohnehin nichts anzuzeigen.
+        let modified = (attributes?[.modificationDate] as? Date)?
+            .timeIntervalSinceReferenceDate ?? 0
+        let size = (attributes?[.size] as? NSNumber)?.uint64Value ?? 0
+        let identity = "\(path)|\(modified)|\(size)"
+        return "image-\(stableHash(identity))"
+    }
+
+    /// FNV-1a (64 Bit) als Hexzeichenkette. Swifts eingebauter `Hasher` ist
+    /// pro Programmstart zufällig gesalzen und taugt deshalb weder für einen
+    /// stabilen Test noch für eine über Renderläufe hinweg gleiche Adresse.
+    private static func stableHash(_ value: String) -> String {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in value.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100_0000_01b3
+        }
+        return String(hash, radix: 16)
     }
 
     private static func localImageURL(from rawSource: String,

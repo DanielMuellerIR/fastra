@@ -56,6 +56,14 @@ enum LanguageMenuSupport {
         return [.grammar(.default)] + sorted
     }
 
+    /// Umkehrung zu `Entry.id`: findet den Menüeintrag zu einem gemerkten
+    /// Bezeichner. Eine Sprache, die es nicht mehr gibt (ausgeschnittene
+    /// Grammatik, entfernte Eigen-Sprache), liefert `nil` — die gemerkte Wahl
+    /// wird dann still zur Automatik, statt einen leeren Chip zu zeigen.
+    static func entry(withID id: String) -> Entry? {
+        selectableEntries.first { $0.id == id }
+    }
+
     /// Lesbarer Menü-/Chip-Name. `tsName` ist technisch („cpp", „csharp") —
     /// die gängigen Namen sind kuratiert, der Rest wird kapitalisiert.
     static func displayName(for language: CodeLanguage) -> String {

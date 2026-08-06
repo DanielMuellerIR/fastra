@@ -517,9 +517,7 @@ struct EditorView: View {
     }
 
     private var showsIntegratedMarkdownPreview: Bool {
-        guard showMarkdownPreview, let tab = workspace.activeTab else { return false }
-        let name = tab.title.lowercased()
-        return name.hasSuffix(".md") || name.hasSuffix(".markdown")
+        showMarkdownPreview && workspace.activeTabIsMarkdown
     }
 
     private var markdownSplitter: some View {

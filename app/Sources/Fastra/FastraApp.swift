@@ -552,9 +552,7 @@ struct FastraApp: App {
 
     /// Aktiver Tab ist ein Markdown-Dokument? Steuert das „Markdown“-Menü.
     private var activeTabIsMarkdown: Bool {
-        let name = commandWorkspace.activeTab?.url?.lastPathComponent
-            ?? commandWorkspace.activeTab?.title ?? ""
-        return MarkdownFormat.isMarkdownFilename(name)
+        commandWorkspace.activeTabIsMarkdown
     }
 
     private func postDocumentFormatting() {

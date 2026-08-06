@@ -764,6 +764,8 @@ final class Workspace: ObservableObject {
     /// Gemeinsame Quelle für formatspezifischen Soft Wrap. Der Store ist
     /// injizierbar und bleibt dadurch mit isolierten Defaults unit-testbar.
     let softWrapProfiles: SoftWrapProfileStore
+    /// Gemerkte manuelle Formatwahl je Datei (Sprach-Chip in der Fußzeile).
+    let languageChoices: LanguageChoiceStore
     let gitPreferencesStore: GitPreferencesStore
     let gitOperationsCoordinator: GitOperationsCoordinator
     let gitRepositoryStore: GitRepositoryStore
@@ -866,6 +868,7 @@ final class Workspace: ObservableObject {
         self.defaultsStore = defaults
         self.softWrapProfiles = softWrapProfiles
             ?? SoftWrapProfileStore(defaults: defaults)
+        self.languageChoices = LanguageChoiceStore(defaults: defaults)
         self.gitPreferencesStore = GitPreferencesStore(defaults: defaults)
         self.gitOperationsCoordinator = gitOperationsCoordinator
         self.terminalOpener = terminalOpener
@@ -1033,6 +1036,17 @@ final class Workspace: ObservableObject {
     /// Eine einzige Formatauflösung für Footer, Editor und Formatprofil.
     var activeDocumentFormat: DocumentFormat {
         DocumentFormatResolver.resolve(tab: activeTab)
+    }
+
+    /// Zeigt der aktive Tab ein Markdown-Dokument? Gemeinsame Antwort für
+    /// Vorschau, Toolbar, Bild-Drop, Tab-Leiste und Markdown-Menü — alle
+    /// folgen damit derselben Formatwahl wie der Sprach-Chip in der Fußzeile.
+    var activeTabIsMarkdown: Bool {
+        // Git-Verlauf und Dateivergleiche sind read-only Sonderansichten und
+        // bekommen keine Markdown-Werkzeuge, auch wenn ihr Inhalt Markdown ist.
+        guard let tab = activeTab, tab.gitKind == nil,
+              tab.fileDiffRequest == nil else { return false }
+        return MarkdownFormat.isMarkdown(format: activeDocumentFormat)
     }
 
     var softWrapEnabled: Bool {
@@ -2176,6 +2190,9 @@ final class Workspace: ObservableObject {
                     self.tabs[idx].diskModificationDate = ExternalChange.diskModificationDate(of: url)
                     self.tabs[idx].diskSnapshot = loaded.diskSnapshot
                     self.tabs[idx].isDirty    = false
+                    // Früher manuell gewähltes Format dieser Datei zurückholen,
+                    // BEVOR der Editor mit `isLoading = false` entsteht.
+                    self.applyRememberedLanguageChoice(toTabAt: idx)
                     self.tabs[idx].isLoading  = false
                     // Frisch geladener Plattenstand ist die Vergleichsbasis,
                     // gegen die der Punkt im Tab künftig verschwinden kann.
@@ -2596,6 +2613,12 @@ final class Workspace: ObservableObject {
             editorReloadNonce += 1
         }
         tabs[idx].languageOverride = language
+        // Die Wahl gehört zur DATEI, nicht nur zum offenen Tab: Beim nächsten
+        // Öffnen soll dieselbe Datei wieder mit diesem Format erscheinen.
+        rememberLanguageChoice(
+            language.map { LanguageMenuSupport.Entry.grammar($0).id },
+            forTabAt: idx
+        )
         if language != nil {
             // Manuelle Wahl beendet die Automatik: wartende Analyse abräumen.
             languageDetectionWork[tabs[idx].id]?.cancel()
@@ -2619,9 +2642,39 @@ final class Workspace: ObservableObject {
         guard tabs[idx].customLanguageOverrideID != language.id else { return }
         tabs[idx].customLanguageOverrideID = language.id
         tabs[idx].languageOverride = nil
+        rememberLanguageChoice(LanguageMenuSupport.Entry.custom(language).id,
+                               forTabAt: idx)
         languageDetectionWork[tabs[idx].id]?.cancel()
         languageDetectionWork.removeValue(forKey: tabs[idx].id)
         editorReloadNonce += 1
+    }
+
+    /// Schreibt die manuelle Formatwahl in den dateibezogenen Speicher.
+    /// `nil` = „Automatisch" und löscht einen vorhandenen Eintrag. Ein Tab
+    /// ohne Datei (noch nicht gespeichert) hat nichts zu merken.
+    private func rememberLanguageChoice(_ entryID: String?, forTabAt idx: Int) {
+        guard let url = tabs[idx].url else { return }
+        languageChoices.setChoiceID(entryID, for: url)
+    }
+
+    /// Holt eine gemerkte Formatwahl auf einen frisch geladenen Tab zurück.
+    /// Läuft VOR dem ersten Editor-Aufbau, damit Grammatik und Chip von
+    /// Anfang an stimmen und kein sichtbarer Sprachwechsel nachflackert.
+    private func applyRememberedLanguageChoice(toTabAt idx: Int) {
+        guard let url = tabs[idx].url,
+              let entryID = languageChoices.choiceID(for: url),
+              let entry = LanguageMenuSupport.entry(withID: entryID) else { return }
+        switch entry {
+        case .grammar(let language):
+            tabs[idx].languageOverride = language
+            tabs[idx].customLanguageOverrideID = nil
+        case .custom(let language):
+            tabs[idx].customLanguageOverrideID = language.id
+            tabs[idx].languageOverride = nil
+        }
+        // Eine manuelle Wahl beendet die Automatik — wie beim Setzen im Menü.
+        languageDetectionWork[tabs[idx].id]?.cancel()
+        languageDetectionWork.removeValue(forKey: tabs[idx].id)
     }
 
     // MARK: - XPath-Navigation (Etappe 5 Wunschpaket 2026-07)

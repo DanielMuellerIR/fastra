@@ -411,6 +411,9 @@ enum SelfTest {
         case "colpaste":  waitForMainWindow { runColumnPasteTest() }
         case "gutterdim": waitForMainWindow { runGutterDimmingTest() }
         case "sidebarheader": waitForMainWindow { runSidebarHeaderTest() }
+        case "footerfit": waitForMainWindow { runFooterFitTest() }
+        case "windowheight": waitForMainWindow { runWindowHeightTest() }
+        case "mdformat": waitForMainWindow { runMarkdownFormatSwitchTest() }
         case "sidebarfilter": waitForMainWindow { runSidebarFilterTest() }
         case "filediff": waitForMainWindow { runFileDiffTest() }
         case "tool4dhint": waitForMainWindow { runTool4DHintTest() }
@@ -10256,6 +10259,238 @@ enum SelfTest {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             pollViewModePickerGone(base: base, tick: tick + 1)
+        }
+    }
+
+    // MARK: - Selbsttest footerfit (Daniel-Befund 2026-08-06)
+
+    /// Liegt die Fußzeile vollständig im Fenster?
+    ///
+    /// Sie hatte eine FESTE Höhe von 24 Punkten. Sobald der Ansichts-
+    /// Umschalter dazukam — er erscheint nur für eine gespeicherte Datei und
+    /// ist als Segmentregler höher als reiner Text —, wuchs ihr Inhalt über
+    /// diesen Rahmen hinaus, und der Fensterrand schnitt ihn unten ab. Genau
+    /// dieser Fall wird hier mit einer echten Datei nachgestellt und am
+    /// wirklichen Layout gemessen.
+    private static func runFooterFitTest() {
+        testLabel = "footerfit"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard let window = mainWindowForAXChecks(), let root = window.contentView else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-footerfit-\(UUID().uuidString)")
+        let doc = base.appendingPathComponent("fusszeile.txt")
+        do {
+            try fm.createDirectory(at: base, withIntermediateDirectories: true)
+            try "Zeile 1\nZeile 2\n".write(to: doc, atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "(setup) Fixture nicht schreibbar: \(error.localizedDescription)")
+        }
+        ws.loadFile(at: doc) { ok in
+            guard ok else {
+                try? fm.removeItem(at: base)
+                finish(false, "(setup) fusszeile.txt lädt nicht")
+            }
+            pollFooterFit(root: root, base: base, tick: 0)
+        }
+    }
+
+    private static func pollFooterFit(root: NSView, base: URL, tick: Int) {
+        let maxTicks = 40            // 40 × 0,25 s = 10 s
+        // Erst messen, wenn die Fußzeile steht UND der Umschalter wirklich
+        // drin liegt — er ist der Grund, aus dem sie höher wird.
+        if let footer = markerView(id: "footerBar", in: root),
+           markerViewExists(id: "viewModePickerMarker", in: root),
+           footer.frame.height > 1 {
+            let frame = footer.convert(footer.bounds, to: root)
+            // SwiftUIs AppKit-Views sind GEFLIPPT: y wächst nach unten, die
+            // Unterkante ist `maxY`. Vor der Zusage trotzdem nachfragen.
+            let overflow = root.isFlipped
+                ? frame.maxY - root.bounds.maxY
+                : root.bounds.minY - frame.minY
+            try? FileManager.default.removeItem(at: base)
+            guard overflow <= 0.5 else {
+                finish(false, String(
+                    format: "Fußzeile ragt %.1f pt über den unteren Fensterrand hinaus "
+                        + "(Höhe %.1f pt, Fenster %.1f pt)",
+                    overflow, frame.height, root.bounds.height
+                ))
+            }
+            finish(true, String(
+                format: "Fußzeile mit Ansichts-Umschalter vollständig im Fenster "
+                    + "(Höhe %.1f pt, Reserve %.1f pt)",
+                frame.height, -overflow
+            ))
+        }
+        if tick >= maxTicks {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "nach 10 s keine gemessene Fußzeile mit Ansichts-Umschalter")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollFooterFit(root: root, base: base, tick: tick + 1)
+        }
+    }
+
+    // MARK: - Selbsttest windowheight (Daniel-Wunsch 2026-08-06)
+
+    /// Wächst ein zu flach gespeichertes Fenster wirklich auf eine praktische
+    /// Höhe — und bleibt die Korrektur danach einmalig?
+    ///
+    /// Gemessen wird am ECHTEN Fenster mit einer eigenen Defaults-Suite; die
+    /// Merkmarke des Nutzers bleibt dadurch unberührt.
+    private static func runWindowHeightTest() {
+        testLabel = "windowheight"
+        guard let window = mainWindowForAXChecks() else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+        guard let screen = window.screen ?? NSScreen.main else {
+            finish(false, "Umgebungsproblem: kein Bildschirm ermittelbar")
+        }
+        let suiteName = "fastra-windowheight-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            finish(false, "(setup) eigene Defaults-Suite nicht anlegbar")
+        }
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let visible = screen.visibleFrame
+        let expected = MainWindowSizing.newWindowSize(inVisibleScreen: visible.size).height
+        // Absichtlich flach — der Zustand aus dem Befund.
+        let flat = NSRect(x: visible.minX + 40, y: visible.maxY - 460,
+                          width: MainWindowSizing.defaultWidth, height: 420)
+        window.setFrame(flat, display: true)
+        guard abs(window.frame.height - 420) < 1 else {
+            finish(false, "Umgebungsproblem: Fenster nimmt die Testgröße nicht an "
+                + "(\(window.frame.height) pt)")
+        }
+
+        guard MainActor.assumeIsolated({
+            MainWindowHeightNormalization.runOnce(defaults: defaults)
+        }) else {
+            finish(false, "Korrektur lief nicht, obwohl sie noch nie lief")
+        }
+        let corrected = window.frame.height
+        guard corrected >= expected - 1 else {
+            finish(false, String(
+                format: "Fenster bleibt mit %.0f pt zu flach (erwartet mindestens %.0f pt)",
+                corrected, expected
+            ))
+        }
+        guard corrected <= visible.height + 1 else {
+            finish(false, String(format: "Fenster ragt mit %.0f pt über den Bildschirm",
+                                 corrected))
+        }
+
+        // Einmaligkeit: Ein zweiter Aufruf darf eine bewusst kleine Größe
+        // nicht wieder anfassen.
+        window.setFrame(flat, display: true)
+        guard !MainActor.assumeIsolated({
+            MainWindowHeightNormalization.runOnce(defaults: defaults)
+        }) else {
+            finish(false, "Korrektur lief ein zweites Mal")
+        }
+        guard abs(window.frame.height - 420) < 1 else {
+            finish(false, "Korrektur hat die bewusst kleine Größe erneut verändert")
+        }
+        finish(true, String(
+            format: "flaches Fenster von 420 pt auf %.0f pt korrigiert "
+                + "(mindestens %.0f pt bei %.0f pt Bildschirmhöhe), Korrektur bleibt einmalig",
+            corrected, expected, visible.height
+        ))
+    }
+
+    // MARK: - Selbsttest mdformat (Daniel-Befund 2026-08-06)
+
+    /// Folgt die Markdown-Vorschau der Formatwahl aus der Fußzeile?
+    ///
+    /// Geprüft wird an einer Datei OHNE Markdown-Endung:
+    /// (a) Vor der Wahl gibt es keine Vorschau.
+    /// (b) Wahl „Markdown" öffnet sie wirklich (echte WKWebView im Layout).
+    /// (c) Wahl eines anderen Formats schließt sie wieder.
+    /// (d) Die Wahl ist danach für diese DATEI gemerkt.
+    private static func runMarkdownFormatSwitchTest() {
+        testLabel = "mdformat"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard let window = mainWindowForAXChecks(), let root = window.contentView else {
+            finish(false, "kein Hauptfenster gefunden")
+        }
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-mdformat-\(UUID().uuidString)")
+        // Bewusst ohne Endung: Genau hier kann die Automatik nichts erkennen.
+        let doc = base.appendingPathComponent("protokoll")
+        do {
+            try fm.createDirectory(at: base, withIntermediateDirectories: true)
+            try "# Protokoll\n\nErster Absatz.\n".write(to: doc, atomically: true,
+                                                        encoding: .utf8)
+        } catch {
+            finish(false, "(setup) Fixture nicht schreibbar: \(error.localizedDescription)")
+        }
+        ws.loadFile(at: doc) { ok in
+            guard ok else {
+                try? fm.removeItem(at: base)
+                finish(false, "(setup) protokoll lädt nicht")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                guard markdownWebView(in: root) == nil else {
+                    try? fm.removeItem(at: base)
+                    finish(false, "(a) Vorschau ist ohne Markdown-Format schon offen")
+                }
+                ws.setLanguageOverride(.markdown)
+                pollMarkdownFormatPreview(ws, root: root, base: base,
+                                          document: doc, tick: 0)
+            }
+        }
+    }
+
+    private static func pollMarkdownFormatPreview(_ ws: Workspace, root: NSView,
+                                                  base: URL, document: URL,
+                                                  tick: Int) {
+        let maxTicks = 40            // 10 s
+        if markdownWebView(in: root) != nil {
+            // (d) Gemerkte Wahl der Datei — sie muss ein erneutes Öffnen
+            // überleben, sonst ist die Endungslosigkeit wieder das Problem.
+            guard ws.languageChoices.choiceID(for: document)
+                    == LanguageMenuSupport.Entry.grammar(.markdown).id else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "(d) Formatwahl wurde für die Datei nicht gemerkt")
+            }
+            ws.setLanguageOverride(.json)
+            pollMarkdownFormatPreviewClosed(root: root, base: base, tick: 0)
+            return
+        }
+        if tick >= maxTicks {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "(b) Vorschau öffnet nicht, obwohl das Format auf "
+                + "Markdown steht")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollMarkdownFormatPreview(ws, root: root, base: base,
+                                      document: document, tick: tick + 1)
+        }
+    }
+
+    private static func pollMarkdownFormatPreviewClosed(root: NSView, base: URL,
+                                                        tick: Int) {
+        let maxTicks = 40            // 10 s
+        if markdownWebView(in: root) == nil {
+            try? FileManager.default.removeItem(at: base)
+            finish(true, "Vorschau folgt der Formatwahl der Fußzeile: öffnet bei "
+                + "Markdown, schließt beim Wechsel, Wahl bleibt gemerkt")
+        }
+        if tick >= maxTicks {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "(c) Vorschau bleibt offen, obwohl das Format nicht mehr "
+                + "Markdown ist")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollMarkdownFormatPreviewClosed(root: root, base: base, tick: tick + 1)
         }
     }
 

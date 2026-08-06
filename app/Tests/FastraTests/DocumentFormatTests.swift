@@ -98,4 +98,39 @@ struct DocumentFormatTests {
         #expect(actualOff == Set(SoftWrapFactoryDefaults.classes.keys)
             .subtracting(expectedOn))
     }
+
+    // Die Markdown-Funktionen (Vorschau, Toolbar, Bild-Drop) hingen früher am
+    // Dateinamen. Ein Umstellen im Sprach-Chip der Fußzeile blieb dadurch ohne
+    // Wirkung: Die Vorschau öffnete nicht und schloss auch nicht wieder
+    // (Daniel-Befund 2026-08-06).
+    @Test("Markdown-Erkennung folgt dem Format der Fußzeile, nicht der Endung")
+    func markdownFollowsTheChosenFormat() {
+        // Datei ohne Endung, im Chip auf Markdown gestellt.
+        var chosen = EditorTab(title: "protokoll", path: "—",
+                               url: URL(fileURLWithPath: "/tmp/protokoll"))
+        chosen.languageOverride = .markdown
+        #expect(MarkdownFormat.isMarkdown(
+            format: DocumentFormatResolver.resolve(tab: chosen)
+        ))
+
+        // .md-Datei, im Chip bewusst auf ein anderes Format gestellt.
+        var switchedAway = EditorTab(title: "notizen.md", path: "—",
+                                     url: URL(fileURLWithPath: "/tmp/notizen.md"))
+        switchedAway.languageOverride = .json
+        #expect(!MarkdownFormat.isMarkdown(
+            format: DocumentFormatResolver.resolve(tab: switchedAway)
+        ))
+
+        // Ohne manuelle Wahl entscheidet weiterhin die Endung.
+        let automatic = EditorTab(title: "notizen.md", path: "—",
+                                  url: URL(fileURLWithPath: "/tmp/notizen.md"))
+        #expect(MarkdownFormat.isMarkdown(
+            format: DocumentFormatResolver.resolve(tab: automatic)
+        ))
+        let plain = EditorTab(title: "main.swift", path: "—",
+                              url: URL(fileURLWithPath: "/tmp/main.swift"))
+        #expect(!MarkdownFormat.isMarkdown(
+            format: DocumentFormatResolver.resolve(tab: plain)
+        ))
+    }
 }

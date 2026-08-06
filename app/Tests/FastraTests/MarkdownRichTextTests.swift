@@ -208,30 +208,106 @@ struct MarkdownRichTextTests {
     }
 
     @Test("Lokale Bilder werden relativ zur Markdown-Datei sicher aufgelöst")
-    func localImagesUseOpaquePreviewURLs() {
+    func localImagesUseOpaquePreviewURLs() throws {
         let documentURL = URL(fileURLWithPath: "/tmp/Fastra Handbuch/README.md")
         let fragment = MarkdownRichText.renderedFragment(
             markdown: "![Fenster](screenshots/editor%20light.png)",
             documentURL: documentURL
         )
 
-        #expect(fragment.html.contains("src=\"fastra-preview://image/image-0\""))
-        #expect(fragment.imageURLs["image-0"]?.path ==
+        let token = try #require(fragment.imageURLs.keys.first)
+        #expect(fragment.html.contains("src=\"fastra-preview://image/\(token)\""))
+        #expect(fragment.imageURLs[token]?.path ==
                 "/tmp/Fastra Handbuch/screenshots/editor light.png")
         #expect(!fragment.html.contains("/tmp/Fastra"))
     }
 
     @Test("Prozentcodierte reservierte Zeichen bleiben Teil des Bilddateinamens")
-    func encodedReservedCharactersStayInLocalImageFilename() {
+    func encodedReservedCharactersStayInLocalImageFilename() throws {
         let documentURL = URL(fileURLWithPath: "/tmp/Testprotokoll/Bericht.md")
         let fragment = MarkdownRichText.renderedFragment(
             markdown: "![Bild](images/1__%23%24%21%40%25%21%23__Pasted%20Graphic%205.png)",
             documentURL: documentURL
         )
 
-        #expect(fragment.html.contains("src=\"fastra-preview://image/image-0\""))
-        #expect(fragment.imageURLs["image-0"]?.path ==
+        let token = try #require(fragment.imageURLs.keys.first)
+        #expect(fragment.html.contains("src=\"fastra-preview://image/\(token)\""))
+        #expect(fragment.imageURLs[token]?.path ==
                 "/tmp/Testprotokoll/images/1__#$!@%!#__Pasted Graphic 5.png")
+    }
+
+    // Regression zum Daniel-Befund 2026-08-06: Nach dem Austausch eines
+    // Bildes zeigte die Vorschau das vorherige. Die Vorschau-Adresse hieß für
+    // das erste Bild jedes Laufs „image-0"; WebKit lieferte darunter seine
+    // zwischengespeicherte Fassung. Zwei verschiedene Dateien dürfen deshalb
+    // nie dieselbe Adresse bekommen.
+    @Test("Ausgetauschtes Bild bekommt eine andere Vorschau-Adresse")
+    func replacedImageGetsFreshPreviewURL() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FastraImageToken-\(UUID().uuidString)",
+                                    isDirectory: true)
+        try FileManager.default.createDirectory(at: directory,
+                                                withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let documentURL = directory.appendingPathComponent("Protokoll.md")
+        let old = directory.appendingPathComponent("alt.png")
+        let new = directory.appendingPathComponent("neu.png")
+        try Data(repeating: 0xA0, count: 64).write(to: old)
+        try Data(repeating: 0xB0, count: 128).write(to: new)
+
+        let before = MarkdownRichText.renderedFragment(
+            markdown: "![Bild](alt.png)", documentURL: documentURL
+        )
+        let after = MarkdownRichText.renderedFragment(
+            markdown: "![Bild](neu.png)", documentURL: documentURL
+        )
+
+        let oldToken = try #require(before.imageURLs.keys.first)
+        let newToken = try #require(after.imageURLs.keys.first)
+        #expect(oldToken != newToken)
+        #expect(before.imageURLs[oldToken]?.lastPathComponent == "alt.png")
+        #expect(after.imageURLs[newToken]?.lastPathComponent == "neu.png")
+    }
+
+    @Test("Gleicher Dateiname mit neuem Inhalt gilt als anderes Bild")
+    func rewrittenImageFileGetsFreshPreviewURL() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FastraImageToken-\(UUID().uuidString)",
+                                    isDirectory: true)
+        try FileManager.default.createDirectory(at: directory,
+                                                withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let documentURL = directory.appendingPathComponent("Protokoll.md")
+        let image = directory.appendingPathComponent("bild.png")
+        try Data(repeating: 0xA0, count: 64).write(to: image)
+        let before = MarkdownImages.imageToken(for: image)
+
+        try Data(repeating: 0xB0, count: 4096).write(to: image)
+        #expect(MarkdownImages.imageToken(for: image) != before)
+    }
+
+    @Test("Unverändertes Bild behält seine Adresse (kein Neuladen beim Tippen)")
+    func unchangedImageKeepsPreviewURL() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FastraImageToken-\(UUID().uuidString)",
+                                    isDirectory: true)
+        try FileManager.default.createDirectory(at: directory,
+                                                withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let documentURL = directory.appendingPathComponent("Protokoll.md")
+        let image = directory.appendingPathComponent("bild.png")
+        try Data(repeating: 0xA0, count: 64).write(to: image)
+
+        let first = MarkdownRichText.renderedFragment(
+            markdown: "![Bild](bild.png)", documentURL: documentURL
+        )
+        let second = MarkdownRichText.renderedFragment(
+            markdown: "![Bild](bild.png)\n\nNoch ein Satz.", documentURL: documentURL
+        )
+        #expect(first.imageURLs.keys.first == second.imageURLs.keys.first)
     }
 
     @Test("Nichtlokale und nicht unterstützte Bildquellen bleiben gesperrt",

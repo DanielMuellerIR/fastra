@@ -193,8 +193,9 @@ als eine Ansicht bietet:
 
 ## Markdown
 
-Bei Markdown-Dateien zeigt die geteilte Ansicht rechts die gerenderte
-Vorschau: Tabellen, Codeblöcke mit Syntaxfarben, Formeln (KaTeX) und
+Bei Markdown-Dokumenten zeigt die geteilte Ansicht rechts die gerenderte
+Vorschau — bei einer `.md`-Datei automatisch, sonst sobald du das Format
+im Sprach-Chip der Fußzeile auf Markdown stellst: Tabellen, Codeblöcke mit Syntaxfarben, Formeln (KaTeX) und
 Mermaid-Diagramme — vollständig lokal, ohne Netzzugriff. Ein **Klick in
 die Vorschau** springt im Editor zur passenden Quellzeile. Kopieren aus
 der Vorschau liefert echten Rich-Text (Überschriften, Listen, Fettung
@@ -383,6 +384,15 @@ Fastra erkennt die Sprache an der Dateiendung, bei endungslosen Dateien
 am Inhalt. Der Sprach-Chip in der Fußzeile öffnet das Sprachmenü: Die
 manuelle Wahl gewinnt immer vor der Automatik, „Automatisch“ kehrt zu
 ihr zurück.
+
+Die manuelle Wahl merkt sich Fastra **für diese Datei**. Beim nächsten
+Öffnen erscheint sie wieder in diesem Format — das ist vor allem für
+Dateien ohne Endung wichtig, bei denen die Automatik nichts erkennen kann.
+„Automatisch“ löscht den gemerkten Eintrag wieder.
+
+Die Wahl steuert auch die Markdown-Funktionen: Stellst du eine Datei auf
+**Markdown**, öffnet sich die Vorschau und die Format-Toolbar erscheint;
+wechselst du auf ein anderes Format, schließt sich die Vorschau wieder.
 
 ## Soft Wrap
 
@@ -640,7 +650,10 @@ Schreibvorgang bricht das Speichern immer ab, statt den Plattenstand still zu
 ## Fenster und Tabs
 
 ⌘T öffnet einen neuen Tab, ⌘N ein zweites, vollständig unabhängiges
-Fenster (eigene Tabs, eigene Suche). ⌘S speichert, ⌘W schließt den Tab —
+Fenster (eigene Tabs, eigene Suche). Ein neues Fenster übernimmt die Größe
+des vordersten Fensters; gibt es keins, öffnet es hoch genug, um den
+Bildschirm wirklich zu nutzen. Kleiner ziehen kannst du es jederzeit — die
+selbst gewählte Größe bleibt erhalten. ⌘S speichert, ⌘W schließt den Tab —
 bei ungespeicherten Änderungen fragt Fastra nach. Nach dem Schließen wird
 der zuletzt benutzte Tab aktiv; mehrere frisch angelegte leere Tabs lassen
 sich so mit mehrmaligem ⌘W in umgekehrter Reihenfolge wieder schließen,

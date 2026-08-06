@@ -55,8 +55,16 @@ struct ContentView: View {
                 })
             }
 
+            // Mindest-, KEINE Festhöhe: Die Fußzeile ist mal höher als 24 pt —
+            // der Ansichts-Umschalter (Text/Hex) erscheint nur bei einer
+            // gespeicherten Datei und ist als Segmentregler höher als reiner
+            // Text. Eine feste Höhe ließ den Inhalt über den Rahmen
+            // hinauswachsen; unten schnitt ihn der Fensterrand ab, sodass die
+            // Fußzeile beim Öffnen einer vorhandenen Datei nur halb zu sehen
+            // war (Daniel-Befund 2026-08-06).
             StatusBarView()
-                .frame(height: 24 * uiScale)
+                .frame(minHeight: 24 * uiScale)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .background(Theme.surfaceBase)
         .foregroundColor(Theme.textPrimary)

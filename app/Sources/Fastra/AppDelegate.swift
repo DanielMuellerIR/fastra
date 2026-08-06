@@ -368,13 +368,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Restores zustellt, müssen bis zu dessen Ende im Puffer bleiben.
                 self?.openFilesInbox.finishLaunching()
                 self?.deliverPendingOpenFiles()
+                // Erst jetzt stehen alle wiederhergestellten Rahmen; die
+                // einmalige Höhenkorrektur würde sonst gegen den Restore
+                // arbeiten.
+                Self.normalizeWindowHeightsOnce()
             }
         } else {
             // Sollte SwiftUI seinen Workspace ausnahmsweise erst im nächsten
             // Runloop erzeugen, übernimmt dessen Ready-Notification den Drain.
             openFilesInbox.finishLaunching()
             deliverPendingOpenFiles()
+            Self.normalizeWindowHeightsOnce()
         }
+    }
+
+    /// Einmalige Korrektur zu flach gespeicherter Fensterhöhen.
+    ///
+    /// Selbsttestläufe bleiben außen vor: Sie bekommen eine frische
+    /// Defaults-Suite, würden die Korrektur also bei JEDEM Lauf ausführen —
+    /// mitten in Fenstertests, die ihre Größen selbst setzen. Der Selbsttest
+    /// `windowheight` ruft sie stattdessen gezielt mit eigener Suite auf.
+    @MainActor
+    private static func normalizeWindowHeightsOnce() {
+        guard !SelfTest.isSelfTestRun else { return }
+        MainWindowHeightNormalization.runOnce(defaults: SelfTest.workspaceDefaults())
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {

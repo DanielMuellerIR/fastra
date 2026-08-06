@@ -184,7 +184,9 @@ offers more than one view:
 
 ## Markdown
 
-For Markdown files the split view renders a live preview on the right:
+For Markdown documents the split view renders a live preview on the right —
+automatically for a `.md` file, otherwise as soon as you set the format to
+Markdown in the footer's language chip:
 tables, code blocks with syntax colors, formulas (KaTeX), and Mermaid
 diagrams — fully local, no network access. **Clicking in the preview**
 jumps the editor to the matching source line. Copying from the preview
@@ -367,6 +369,15 @@ Fastra detects the language from the file extension, and for files
 without one, from the content. The language chip in the footer opens the
 language menu: a manual choice always beats the automatics;
 “Automatic” returns to them.
+
+Fastra remembers a manual choice **per file**. The next time you open that
+file it comes back in the same format — which matters most for files without
+an extension, where the automatics have nothing to go on. “Automatic” drops
+the remembered entry again.
+
+The choice also drives the Markdown features: set a file to **Markdown** and
+the preview opens along with the format toolbar; switch to another format and
+the preview closes again.
 
 ## Soft Wrap
 
@@ -607,7 +618,9 @@ the save instead of silently overwriting the on-disk version.
 ## Windows and Tabs
 
 ⌘T opens a new tab, ⌘N a second, fully independent window (its own
-tabs, its own search). ⌘S saves, ⌘W closes the tab — Fastra asks first
+tabs, its own search). A new window adopts the size of the frontmost one;
+with no window open it starts tall enough to actually use the screen. You can
+always drag it smaller — a size you choose yourself is kept. ⌘S saves, ⌘W closes the tab — Fastra asks first
 if there are unsaved changes. After closing, the most recently used tab
 becomes active; several freshly created empty tabs can thus be closed
 again with repeated ⌘W in reverse order, without an older document

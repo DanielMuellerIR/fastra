@@ -49,7 +49,7 @@ struct MarkdownPreviewView: View {
 
     var body: some View {
         Group {
-            if let tab = workspace.activeTab, isMarkdown(tab.title) {
+            if let tab = workspace.activeTab, workspace.activeTabIsMarkdown {
                 // Markdown-Tab: Vorschau mit GFM-Thema.
                 markdownContent(tab: tab)
             } else {
@@ -123,14 +123,6 @@ struct MarkdownPreviewView: View {
         .background(Theme.surfaceRaised)
     }
 
-    // MARK: Hilfsmethoden
-
-    /// Prüft, ob ein Dateiname als Markdown gilt.
-    /// Erkannte Endungen: .md und .markdown (Groß-/Kleinschreibung egal).
-    private func isMarkdown(_ filename: String) -> Bool {
-        let lower = filename.lowercased()
-        return lower.hasSuffix(".md") || lower.hasSuffix(".markdown")
-    }
 }
 
 // MARK: - Auswählbare Rich-Text-Vorschau

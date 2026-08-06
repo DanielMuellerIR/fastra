@@ -7,6 +7,7 @@
 // für Markdown-Tabs (Toolbar, Rechtsklickmenü, Markdown-Menü).
 
 import Foundation
+import CodeEditLanguages
 
 /// Die angebotenen Befehle. Rohwert wandert durch die Notification
 /// (`.fastraMarkdownFormat`) — neue Fälle deshalb IMMER hinten anhängen.
@@ -146,11 +147,25 @@ enum MarkdownFormat {
         let selection: NSRange
     }
 
-    /// Gilt der Dateiname als Markdown? (Gleiche Regel wie die integrierte
-    /// Vorschau: .md/.markdown, Groß-/Kleinschreibung egal.)
+    /// Gilt der Dateiname als Markdown? (.md/.markdown, Groß-/Kleinschreibung
+    /// egal.) Diese reine Namensregel beantwortet Fragen zu einer DATEI —
+    /// ob die Markdown-Funktionen der Oberfläche erscheinen, entscheidet
+    /// dagegen `isMarkdown(format:)` am effektiven Format.
     static func isMarkdownFilename(_ filename: String) -> Bool {
         let lower = filename.lowercased()
         return lower.hasSuffix(".md") || lower.hasSuffix(".markdown")
+    }
+
+    /// Gilt das EFFEKTIVE Dokumentformat als Markdown?
+    ///
+    /// Maßgeblich ist derselbe Wert, den der Sprach-Chip in der Fußzeile
+    /// anzeigt — die manuelle Wahl gewinnt darin vor der Endung. Nur so
+    /// öffnet ein Umstellen auf „Markdown" die Vorschau, und ein Wechsel
+    /// zu einem anderen Format schließt sie wieder (Daniel-Befund
+    /// 2026-08-06). Die frühere Prüfung sah nur den Dateinamen und ließ die
+    /// Vorschau deshalb unabhängig von der Wahl in der Fußzeile stehen.
+    static func isMarkdown(format: DocumentFormat) -> Bool {
+        format.id == .grammar(.markdown)
     }
 
     // MARK: Inline-Auszeichnung (Fett/Kursiv/Textmarker/Code)

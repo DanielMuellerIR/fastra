@@ -141,6 +141,13 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
             frameToRestoreAfterFirstLayout = frame
             window.setFrame(frame,
                             display: false)
+        } else if let visible = (window.screen ?? NSScreen.main)?.visibleFrame {
+            // Erstes Fenster ohne Vorbild: praktische Startgröße statt der
+            // festen 1100×720. Auf einem großen Bildschirm ist ein 720 Punkte
+            // hohes Fenster unnötig flach (Daniel-Wunsch 2026-08-06).
+            let frame = MainWindowSizing.newWindowFrame(inVisibleScreen: visible)
+            frameToRestoreAfterFirstLayout = frame
+            window.setFrame(frame, display: false)
         } else {
             window.center()
         }
@@ -381,5 +388,50 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         WorkspaceWindowRegistry.unregister(window)
         NSApp.removeWindowsItem(window)
         Self.openControllers.removeValue(forKey: ObjectIdentifier(window))
+    }
+}
+
+/// Einmalige Korrektur zu flach gespeicherter Fensterrahmen.
+///
+/// Neue Fenster bekommen ihre praktische Größe schon beim Anlegen. Wer Fastra
+/// aber vorher benutzt hat, trägt einen gespeicherten Rahmen mit sich herum —
+/// vom Startfenster (SwiftUI merkt sich dessen Größe selbst) bis zu den
+/// Rahmen der Sitzungswiederherstellung. Diese Korrektur läuft deshalb genau
+/// EINMAL pro Nutzer; danach gehört jede Fenstergröße wieder allein dem
+/// Nutzer, auch eine bewusst kleine.
+@MainActor
+enum MainWindowHeightNormalization {
+    static let defaultsKey = "window.practicalHeightNormalized.v1"
+
+    /// - Parameter remainingAttempts: Beim Start kann noch kein Fenster
+    ///   sichtbar sein; dann wird kurz erneut nachgesehen, statt die einmalige
+    ///   Korrektur ungenutzt zu verbrauchen.
+    @discardableResult
+    static func runOnce(defaults: UserDefaults, remainingAttempts: Int = 20) -> Bool {
+        guard !defaults.bool(forKey: defaultsKey) else { return false }
+        let windows = DocumentWindowController.visibleDocumentWindows()
+        guard !windows.isEmpty else {
+            guard remainingAttempts > 0 else { return false }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                runOnce(defaults: defaults,
+                        remainingAttempts: remainingAttempts - 1)
+            }
+            return false
+        }
+        defaults.set(true, forKey: defaultsKey)
+        for window in windows {
+            // Vollbild und Symbolfenster haben keinen sinnvollen Rahmen.
+            guard !window.styleMask.contains(.fullScreen),
+                  !window.isMiniaturized,
+                  let visible = (window.screen ?? NSScreen.main)?.visibleFrame else {
+                continue
+            }
+            let normalized = MainWindowSizing.heightNormalizedFrame(
+                window.frame, inVisibleScreen: visible
+            )
+            guard normalized != window.frame else { continue }
+            window.setFrame(normalized, display: true)
+        }
+        return true
     }
 }

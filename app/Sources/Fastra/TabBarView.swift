@@ -97,8 +97,7 @@ struct TabBarView: View {
     }
 
     private var activeTabIsMarkdown: Bool {
-        guard let title = workspace.activeTab?.title.lowercased() else { return false }
-        return title.hasSuffix(".md") || title.hasSuffix(".markdown")
+        workspace.activeTabIsMarkdown
     }
 
     private func titlebarIcon(_ systemName: String, active: Bool) -> some View {

@@ -44,11 +44,10 @@ final class DroppedURLCollector {
 @MainActor
 enum MarkdownAssist {
 
-    /// Ist der aktive Tab des Workspace ein Markdown-Dokument?
+    /// Ist der aktive Tab des Workspace ein Markdown-Dokument? Entscheidend
+    /// ist das effektive Format aus der Fußzeile, nicht die Dateiendung.
     static func isMarkdownTabActive(in workspace: Workspace?) -> Bool {
-        guard let tab = workspace?.activeTab else { return false }
-        let name = tab.url?.lastPathComponent ?? tab.title
-        return MarkdownFormat.isMarkdownFilename(name)
+        workspace?.activeTabIsMarkdown ?? false
     }
 
     // MARK: - Formatbefehle
