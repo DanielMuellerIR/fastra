@@ -315,6 +315,35 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   `reflectScrolledClipView` — festgepinnte Abschnittsköpfe folgen dem
   korrekt. Ein Scroll-Test muss zusätzlich belegen, DASS gescrollt wurde,
   sonst besteht er auch bei stillstehender Liste.
+- Die interne Adresse eines Vorschaubildes muss die DATEIIDENTITÄT abbilden,
+  nicht seine Position im Dokument. WebKit liefert unter einer unveränderten
+  Adresse die zuvor geladene Datei aus seinem Speicher-Cache: Unter dem
+  positionsbezogenen Namen `image-0` zeigte die Vorschau nach einem
+  Bildwechsel weiter das alte Bild, obwohl im Quelltext der neue Dateiname
+  stand. Die Adresse deshalb aus aufgelöstem Pfad, Änderungsdatum und Größe
+  bilden (siehe `MarkdownRendering.imageToken`).
+- Ein persistenter Store, von dem mehrere Fenster je eine langlebige Instanz
+  halten, darf nie seinen vollständigen, beim Initialisieren geladenen Zustand
+  zurückschreiben. Sonst überschreibt das schreibende Fenster alles, was ein
+  anderes Fenster inzwischen gespeichert hat — genau so gingen gemerkte
+  Formatwahlen verloren. Entweder teilen sich alle Fenster eine Instanz, oder
+  der Store lädt vor jeder Änderung neu und führt zusammen (siehe
+  `LanguageChoiceStore`).
+- Der Apply-Preflight muss auch wirkungslose Eingaben schützen. Eine Datei ohne
+  aktuell wirksame Ersetzung darf nicht schon vor der abschließenden
+  Snapshot-Prüfung aus der Mehrdatei-Transaktion fallen: Sie kann sich zwischen
+  Vorschau und Apply so ändern, dass ein zuvor wirkungsloser Treffer wirksam
+  wird. Geprüft wird deshalb der erwartete Platten-Stand ALLER Eingaben,
+  geschrieben werden nur die tatsächlich geänderten Dateien (siehe
+  `ApplyEngine`, `expectedOnDisk`).
+- Eine Symlink-Prüfung beginnt am unvertrauenswürdigen Verzeichnis. Der
+  Vergleich zweier mit `resolvingSymlinksInPath` aufgelöster Pfade reicht
+  nicht, wenn das vom Fremdwerkzeug angelegte Ausgabeverzeichnis selbst ein
+  Verweis sein darf: Dann zeigen beide aufgelösten Pfade in den fremden Ordner
+  und der Präfixvergleich geht auf. Das Ausgabeverzeichnis zuerst per `lstat`
+  als echten Ordner innerhalb des eigenen Zwischenverzeichnisses bestätigen,
+  erst danach Kandidaten auflösen und übernehmen (siehe
+  `MarkdownImport.isPublishableFile`).
 
 ## Verhaltensevals
 
