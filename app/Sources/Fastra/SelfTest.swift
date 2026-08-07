@@ -648,6 +648,44 @@ enum SelfTest {
         }
     }
 
+    /// Wie `waitForEditor`, wartet zusätzlich auf einen Ankertext im Editor
+    /// und liefert dessen Bereich mit.
+    ///
+    /// `waitForEditor` meldet den Editor schon, sobald er MONTIERT ist — der
+    /// Dateiinhalt kann dann noch fehlen. Ein ungeprüftes `range(of:)` liefert
+    /// in diesem Moment `NSNotFound`. Als Selektionsbereich weitergereicht
+    /// bringt das die ganze App zum Absturz: Der Attachment-Beobachter von
+    /// CodeEditTextView baut aus jeder Selektion ein `IndexSet`, und
+    /// `IndexSet.insert(range:)` trappt bei `NSNotFound` als Untergrenze
+    /// (zweimal beobachtet am 2026-08-07 unter Last). Ein Test darf die App
+    /// nicht abschießen, wenn er nur zu früh hinsieht — also warten statt
+    /// raten und im Zweifel ehrlich scheitern.
+    private static func waitForEditorShowing(
+        workspace: Workspace,
+        window: NSWindow,
+        text needle: String,
+        tick: Int = 0,
+        onTimeout: @escaping () -> Void,
+        then body: @escaping (NSView, TextView, NSRange) -> Void
+    ) {
+        waitForEditor(workspace: workspace, window: window) { root, textView in
+            let found = (textView.string as NSString).range(of: needle)
+            if found.location != NSNotFound {
+                body(root, textView, found)
+                return
+            }
+            if tick >= 100 {
+                onTimeout()
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                waitForEditorShowing(workspace: workspace, window: window,
+                                     text: needle, tick: tick + 1,
+                                     onTimeout: onTimeout, then: body)
+            }
+        }
+    }
+
     /// Öffnet die Suchmaske (exakt wie CMD+F) und wartet, bis sie sichtbar
     /// ist, dann `body`. Nötig, seit `showSearchDialog` per Default `false`
     /// startet (die Maske öffnet NICHT mehr automatisch beim Start). Vorher
@@ -3146,7 +3184,21 @@ enum SelfTest {
               let rect = textView.layoutManager.rectForOffset(
                 line.range.location
               ) else {
-            finish(false, "Ankerzeile nicht layoutbar")
+            // Noch kein Layout für die Zielzeile: Unter Last ist das ein
+            // normaler Zwischenzustand, kein Befund. Deshalb innerhalb
+            // derselben Frist erneut versuchen wie beim Konvergieren unten,
+            // statt den Lauf beim ersten Blick rot zu melden.
+            if tick >= 30 {
+                finish(false, "Ankerzeile \(targetLine + 1) auch nach 30 "
+                    + "Versuchen nicht layoutbar")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                convergeSoftWrapAnchor(
+                    textView: textView, targetLine: targetLine,
+                    tick: tick + 1, completion: completion
+                )
+            }
+            return
         }
         let targetY = max(
             rect.minY - scrollView.contentInsets.top,
@@ -7534,9 +7586,16 @@ enum SelfTest {
                 try? FileManager.default.removeItem(at: directory)
                 finish(false, "kein aktiver Tab für die lange Datei")
             }
-            waitForEditor(workspace: ws, window: window) { root, textView in
-                // Cursor in die Mitte des Dokuments und dorthin scrollen.
-                let middle = (textView.string as NSString).range(of: "Zeile 300 ")
+            // Cursor in die Mitte des Dokuments und dorthin scrollen — erst,
+            // wenn der Editor den Inhalt der langen Datei wirklich zeigt.
+            waitForEditorShowing(
+                workspace: ws, window: window, text: "Zeile 300 ",
+                onTimeout: {
+                    try? FileManager.default.removeItem(at: directory)
+                    finish(false, "Editor zeigt den Inhalt der langen Datei "
+                        + "nicht binnen 5 s")
+                }
+            ) { root, textView, middle in
                 textView.selectionManager.setSelectedRange(
                     NSRange(location: middle.location, length: 0)
                 )

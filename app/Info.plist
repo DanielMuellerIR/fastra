@@ -6,15 +6,6 @@
 	<string>de</string>
 	<key>CFBundleDisplayName</key>
 	<string>Fastra</string>
-	<!-- Was Fastra annehmen darf. Wichtig: LaunchServices prüft diese Liste, bevor
-	     ein Ordner oder eine Datei überhaupt bei der App ankommt. Fehlt hier
-	     public.folder, lehnt macOS `open -a Fastra <Ordner>` ab, obwohl die App
-	     Ordner längst als Projekt öffnet (DocumentWindowController.openFinderItems)
-	     — ein Drop auf das Dock-Icon geht an dieser Prüfung vorbei und funktioniert
-	     deshalb trotzdem. Der Auffangeintrag "Alle Dateien" (public.item) deckt
-	     Bilder, E-Books und Binärdateien mit ab; die Hex- und Vorschaupfade der App
-	     zeigen sie an. LSHandlerRank bleibt überall "Alternate": Fastra bietet sich
-	     an, drängt sich aber nicht als Standard-App auf. -->
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -46,16 +37,16 @@
 			</array>
 		</dict>
 		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>*</string>
+			</array>
 			<key>CFBundleTypeName</key>
 			<string>Alle Dateien</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
 			<string>Alternate</string>
-			<key>CFBundleTypeExtensions</key>
-			<array>
-				<string>*</string>
-			</array>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>public.item</string>
@@ -84,9 +75,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.63.2</string>
+	<string>1.63.3</string>
 	<key>CFBundleVersion</key>
-	<string>142</string>
+	<string>143</string>
 	<key>FastraVersionDate</key>
 	<string>2026-08-07</string>
 	<key>LSApplicationCategoryType</key>
@@ -95,10 +86,6 @@
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
-	<!-- macOS rechnet Netzwerkzugriffe von Hilfsprozessen der startenden App zu.
-	     Fastra selbst sucht keine Geräte; den Dialog löst der automatische
-	     `git fetch` beim Aktivieren aus, wenn ein Projekt ein Remote im lokalen
-	     Netz hat. Ohne diesen Text zeigt macOS die Abfrage ohne jede Begründung. -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Fastra ruft für Projekte mit einem Git-Remote im lokalen Netzwerk den aktuellen Stand ab. Ohne diese Erlaubnis funktionieren nur Remotes im Internet.</string>
 	<key>SUAllowsAutomaticUpdates</key>

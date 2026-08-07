@@ -255,6 +255,18 @@ denselben Umbau — das Rendern eines Fragments in den Hintergrund, abgesichert
   wahrscheinlichste Kandidat für sporadische Hänger. Auf robustes Warten
   umstellen.
 
+- **Ein ungültiger Selektionsbereich bringt die ganze App zum Absturz.** Der
+  Attachment-Beobachter von CodeEditTextView baut aus jeder Textselektion ein
+  `IndexSet`; `IndexSet.insert(range:)` trappt bei `NSNotFound` als
+  Untergrenze, und die App endet mit SIGTRAP im Main-Thread
+  (`TextAttachmentManager.setUpSelectionListener`). Beobachtet am 2026-08-06
+  und erneut am 2026-08-07, jeweils ausgelöst von einem Selbsttest, der einen
+  nicht gefundenen `range(of:)` ungeprüft weiterreichte — die Tests sind
+  inzwischen gehärtet. Der Produktcode setzt an allen sieben Aufrufstellen
+  geklemmte oder feste Bereiche, ein Nutzerpfad ist also nicht belegt.
+  **Zu tun:** vor `setSelectedRange` eine gemeinsame Klemmung ziehen, damit
+  ein künftiger Aufrufer diese Falle nicht erneut aufmacht.
+
 - **`folderSearch_deduplicatesOverlappingRoots` einmal rot** (2026-07-28,
   nicht reproduziert). Der Test meldete 0 statt 1 Treffer in einem
   vollständigen `swift test`; isoliert dreimal und in zwei weiteren

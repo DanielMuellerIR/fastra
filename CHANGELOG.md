@@ -9,6 +9,18 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.63.3] — 2026-08-07
+
+### Behoben
+
+- **Ein Bild, das gemeinsam mit einer anderen Datei auf ein Markdown-Dokument
+  gezogen wird, ist wieder verlinkt.** Seit die Bild-Ablage im Hintergrund
+  läuft (1.63.1), war die mitgezogene Datei bereits als neuer Tab geöffnet,
+  wenn das Kopieren fertig war. Der fertige Link wurde deshalb verworfen —
+  damit er nicht im inzwischen vorderen fremden Text landet —, und das Bild lag
+  unverlinkt im `images`-Ordner. Die übrigen Dateien öffnen jetzt erst, wenn
+  der Link steht.
+
 ## [v1.63.2] — 2026-08-07
 
 ### Behoben

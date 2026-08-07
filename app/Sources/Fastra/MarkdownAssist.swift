@@ -168,16 +168,26 @@ enum MarkdownAssist {
     static func handleDroppedFileURLs(_ urls: [URL], workspace: Workspace) -> Bool {
         guard !urls.isEmpty else { return false }
         let partition = MarkdownImageStore.partitionDroppedURLs(urls)
-        if !partition.insert.isEmpty {
-            let textView = editorTextView(for: workspace)
-            if let textView {
-                insertImageFiles(partition.insert, workspace: workspace, textView: textView)
-            }
-        }
         // Nicht-Bilder: bestehender „öffnen“-Pfad (Dateien → Tabs,
         // Ordner → Projekt) — derselbe wie beim Fenster-Drop.
-        for url in DropHandling.openableItems(from: partition.open) {
-            workspace.openFileOrFolder(at: url)
+        let openables = DropHandling.openableItems(from: partition.open)
+        func openRemaining() {
+            for url in openables {
+                workspace.openFileOrFolder(at: url)
+            }
+        }
+        // Das Öffnen macht einen ANDEREN Tab aktiv. Seit die Bild-Ablage im
+        // Hintergrund läuft, muss es deshalb warten, bis der Link wirklich im
+        // Markdown-Dokument steht: Sonst ist beim Abschluss der Ablage längst
+        // die mitgezogene Textdatei aktiv, und `finishImageInsertion` verwirft
+        // den Link, weil er sonst im fremden Text landen würde. Das Bild lag
+        // dann kopiert im `images`-Ordner, ohne dass es jemand verlinkt hatte
+        // (Regression aus 1.63.1, gefunden vom `mdassist`-Selbsttest).
+        if !partition.insert.isEmpty, let textView = editorTextView(for: workspace) {
+            insertImageFiles(partition.insert, workspace: workspace,
+                             textView: textView, completion: openRemaining)
+        } else {
+            openRemaining()
         }
         return !(partition.insert.isEmpty && partition.open.isEmpty)
     }
@@ -192,9 +202,16 @@ enum MarkdownAssist {
 
     // MARK: - Gemeinsame Einfüge-Pfade
 
+    /// `completion` läuft auf dem Main-Thread, sobald die Ablage abgeschlossen
+    /// ist — auch dann, wenn gar nicht eingefügt werden konnte. Der Drop-Pfad
+    /// hängt daran das Öffnen der übrigen Dateien.
     private static func insertImageFiles(_ urls: [URL], workspace: Workspace,
-                                         textView: TextView) {
-        guard let documentURL = savedDocumentURL(workspace) else { return }
+                                         textView: TextView,
+                                         completion: (() -> Void)? = nil) {
+        guard let documentURL = savedDocumentURL(workspace) else {
+            completion?()
+            return
+        }
         // Ablegen heißt kopieren und im Kollisionsfall bis zu 9 999 Mal ganze
         // Dateien byteweise vergleichen. Das lief bisher auf dem Main-Thread:
         // Ein großes Bild oder viele gleichnamige Kandidaten froren die
@@ -212,6 +229,7 @@ enum MarkdownAssist {
             }.value
             finishImageInsertion(outcome, documentURL: documentURL,
                                  workspace: workspace, textView: textView)
+            completion?()
         }
     }
 
