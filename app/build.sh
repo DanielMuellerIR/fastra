@@ -2203,14 +2203,27 @@ fi
 # wichtigste Orientierung. Bei mehrzeiliger oder rechteckiger Auswahl duerfen
 # aber nicht alle Teil-Ranges eine ganze Zeile faerben: genau die aktive Range
 # liefert eine Zeile, alle Auswahlrechtecke bleiben zusaetzlich sichtbar.
-# Regressionstest: SoftWrapLayoutTests.selectedRangesKeepOneCurrentLine.
+# Regressionstest: SoftWrapLayoutTests.selectedRangesKeepOneCurrentLine und
+# SoftWrapLayoutTests.backwardColumnSelectionHighlightsHeadLine.
 CETV_SELECTION_DRAW="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextSelectionManager/TextSelectionManager+Draw.swift"
 CESE_GUTTER="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/Gutter/GutterView.swift"
 CURRENT_LINE_SELECTION_PATCH_CHANGED=0
+# Zwei Marker: der erste zeigt, dass ueberhaupt gepatcht wurde, der zweite,
+# dass es die AKTUELLE Fassung ist. Ein Checkout mit der alten Fassung wird
+# zuerst aus Git zurueckgesetzt — sonst faende der Patch seinen Ankertext
+# nicht mehr und der Build braeche mit einer irrefuehrenden Meldung ab.
 if ! grep -q 'Fastra-Patch: aktuelle Zeile bleibt auch bei Textauswahl sichtbar' \
-    "$CETV_SELECTION_DRAW" 2>/dev/null; then
+    "$CETV_SELECTION_DRAW" 2>/dev/null \
+   || ! grep -q 'fastraColumnSelectionHeadOffset' "$CETV_SELECTION_DRAW" 2>/dev/null; then
   echo "→ Patche CodeEditTextView (aktuelle Zeile auch bei Auswahl)"
   chmod u+w "$CETV_SELECTION_DRAW"
+  if grep -q 'Fastra-Patch: aktuelle Zeile bleibt auch bei Textauswahl sichtbar' \
+      "$CETV_SELECTION_DRAW" 2>/dev/null; then
+    echo "  (aeltere Patchfassung gefunden — Datei wird zuerst zurueckgesetzt)"
+    git -C "$CHECKOUTS/CodeEditTextView" checkout -- \
+      Sources/CodeEditTextView/TextSelectionManager/TextSelectionManager+Draw.swift
+    chmod u+w "$CETV_SELECTION_DRAW"
+  fi
   /usr/bin/python3 - "$CETV_SELECTION_DRAW" <<'PYEOF'
 import sys
 
@@ -2271,13 +2284,20 @@ anchor = '''extension TextSelectionManager {
 replacement = '''extension TextSelectionManager {
     /// Offsets der Zeilen, die als aktuelle Zeile gezeichnet werden. Leere
     /// Mehrfach-Cursor behalten je eine Zeile. Bei echter Auswahl gibt es
-    /// genau eine aktive Zeile; die letzte Range ist auch bei einer
-    /// Rechteckauswahl die primaere Range. `pivot` bezeichnet den festen
-    /// Anker, daher ist das jeweils andere Range-Ende die aktive Kante.
+    /// genau eine aktive Zeile; sonst ist die letzte Range die primaere.
+    /// `pivot` bezeichnet den festen Anker, daher ist das jeweils andere
+    /// Range-Ende die aktive Kante.
     public var fastraHighlightedLineOffsets: [Int] {
         let selections = textSelections.filter { !$0.range.isEmpty }
         guard let primary = selections.last else {
             return textSelections.map { $0.range.location }
+        }
+        // Eine Rechteckauswahl kennt ihre aktive Kopfzeile selbst. Ihre
+        // Zeilenbereiche entstehen immer von oben nach unten, bei einem nach
+        // oben gezogenen Rechteck ist die Kopfzeile also die ERSTE Range.
+        // Ohne diese Nachfrage leuchtete dort die unterste Zeile.
+        if let head = textView?.fastraColumnSelectionHeadOffset {
+            return [head]
         }
         guard let pivot = primary.pivot else {
             return [primary.range.location]
@@ -2326,6 +2346,7 @@ fi
 if ! grep -q 'Fastra-Patch: aktuelle Zeile bleibt auch bei Textauswahl sichtbar' \
        "$CETV_SELECTION_DRAW" \
    || ! grep -q 'public var fastraHighlightedLineOffsets' "$CETV_SELECTION_DRAW" \
+   || ! grep -q 'fastraColumnSelectionHeadOffset' "$CETV_SELECTION_DRAW" \
    || ! grep -q 'Fastra-Patch: Gutter folgt derselben aktiven Auswahlzeile' \
        "$CESE_GUTTER"; then
   echo "✗ FEHLER: Patch für aktuelle Zeile bei Auswahl hat NICHT vollständig gegriffen." >&2

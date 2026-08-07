@@ -159,6 +159,19 @@ extension TextView {
         )
     }
 
+    /// Offset der AKTIVEN Kopfzeile einer gültigen Rechteckauswahl.
+    ///
+    /// `fastraSetColumnSelection` erzeugt die Zeilenbereiche immer von oben
+    /// nach unten, unabhängig von der Ziehrichtung. Bei einem nach OBEN
+    /// gezogenen Rechteck ist die zuletzt bewegte Zeile deshalb die erste und
+    /// nicht die letzte Range. Die Hervorhebung der aktuellen Zeile fragt
+    /// darum hier nach, statt die letzte Range zu raten — sonst leuchtete die
+    /// falsche Zeile (Review 2026-08-06).
+    public var fastraColumnSelectionHeadOffset: Int? {
+        guard let state = fastraValidColumnSelectionState() else { return nil }
+        return state.rows.first { $0.lineIndex == state.headLine }?.range.location
+    }
+
     /// Setzt ein Rechteck zwischen zwei Punkten. Die Punkte bestimmen zuerst
     /// ihre logische Textzeile und die echte Spalte innerhalb dieser Zeile.
     /// Danach entsteht pro logischer Zeile genau ein Bereich - unabhängig von

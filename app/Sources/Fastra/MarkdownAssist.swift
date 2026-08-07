@@ -195,17 +195,67 @@ enum MarkdownAssist {
     private static func insertImageFiles(_ urls: [URL], workspace: Workspace,
                                          textView: TextView) {
         guard let documentURL = savedDocumentURL(workspace) else { return }
+        // Ablegen heißt kopieren und im Kollisionsfall bis zu 9 999 Mal ganze
+        // Dateien byteweise vergleichen. Das lief bisher auf dem Main-Thread:
+        // Ein großes Bild oder viele gleichnamige Kandidaten froren die
+        // Oberfläche beim Ablegen sichtbar ein (Review 2026-08-06). Das
+        // Datei-I/O läuft deshalb im Hintergrund, das Einfügen wieder auf dem
+        // Main-Thread.
+        //
+        // `Task` statt `DispatchQueue`: Der äußere Task erbt den Main-Actor und
+        // darf Workspace und TextView deshalb weiterreichen. Nur der abgetrennte
+        // innere Task verlässt den Main-Thread — und der bekommt ausschließlich
+        // Werte, die gefahrlos zwischen Threads wandern (Dateiadressen).
+        Task {
+            let outcome = await Task.detached(priority: .userInitiated) {
+                storeImageFiles(urls, documentURL: documentURL)
+            }.value
+            finishImageInsertion(outcome, documentURL: documentURL,
+                                 workspace: workspace, textView: textView)
+        }
+    }
+
+    /// Legt alle Bilddateien ab und sammelt Links und Fehlertexte ein.
+    ///
+    /// Bewusst `nonisolated` und ohne UI: So ist sichtbar, dass dieser Teil
+    /// abseits des Main-Threads laufen darf, und er lässt sich ohne Fenster
+    /// testen.
+    nonisolated static func storeImageFiles(_ urls: [URL], documentURL: URL)
+    -> (links: [String], failures: [String]) {
         var links: [String] = []
+        var failures: [String] = []
         for url in urls {
             do {
                 let stored = try MarkdownImageStore.storeImageFile(url, documentURL: documentURL)
                 links.append(stored.link)
             } catch {
-                NSAlert.runWarning(title: L10n.string("Bild konnte nicht übernommen werden"),
-                                   text: error.localizedDescription)
+                failures.append(error.localizedDescription)
             }
         }
-        insertLinks(links, into: textView, workspace: workspace)
+        return (links, failures)
+    }
+
+    /// Zweiter Halbschritt auf dem Main-Thread: meldet Fehler und fügt die
+    /// fertigen Links ein.
+    ///
+    /// Zwischen Ablage und Einfügen kann der Nutzer den Tab gewechselt oder
+    /// das Fenster geschlossen haben. Deshalb erst prüfen, ob noch dasselbe
+    /// Dokument aktiv ist und sein Editor noch in einem Fenster hängt — sonst
+    /// landete der Link in einem fremden Text. Die abgelegten Bilddateien
+    /// bleiben in beiden Fällen erhalten.
+    private static func finishImageInsertion(
+        _ outcome: (links: [String], failures: [String]),
+        documentURL: URL, workspace: Workspace, textView: TextView
+    ) {
+        for message in outcome.failures {
+            NSAlert.runWarning(title: L10n.string("Bild konnte nicht übernommen werden"),
+                               text: message)
+        }
+        guard !outcome.links.isEmpty,
+              workspace.activeTab?.url == documentURL else { return }
+        let target = textView.window != nil ? textView : editorTextView(for: workspace)
+        guard let target else { return }
+        insertLinks(outcome.links, into: target, workspace: workspace)
     }
 
     private static func insertImageData(_ data: Data, typeIdentifier: String,

@@ -82,6 +82,25 @@ struct SoftWrapLayoutTests {
         #expect(manager.fastraHighlightedLineOffsets == [5])
     }
 
+    @Test("Nach oben gezogene Rechteckauswahl hebt die Kopfzeile hervor")
+    @MainActor
+    func backwardColumnSelectionHighlightsHeadLine() throws {
+        let editor = controller(text: "eins\nzwei\ndrei\nvier", wrapLines: false)
+        let manager = try #require(editor.textView.selectionManager)
+
+        // Start in Zeile 3 („drei", Offsets 10...14), dann ein Rechteck NACH
+        // OBEN aufziehen. Die Kopfzeile ist danach „zwei" — die Zeilenbereiche
+        // stehen in der Auswahl aber immer von oben nach unten.
+        manager.setSelectedRanges([NSRange(location: 10, length: 2)])
+        #expect(editor.textView.fastraSelectColumn(upwards: true))
+
+        let snapshot = try #require(editor.textView.fastraColumnSelectionSnapshot)
+        #expect(snapshot.ranges == [NSRange(location: 5, length: 2),
+                                    NSRange(location: 10, length: 2)])
+        // Ohne den Patch leuchtete hier die unterste Zeile (Offset 10).
+        #expect(manager.fastraHighlightedLineOffsets == [5])
+    }
+
     @Test("Nichtleere Auswahl zeichnet die aktuelle Zeile wirklich über die Textbreite")
     @MainActor
     func selectionDrawsCurrentLineBackground() throws {

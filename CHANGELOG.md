@@ -9,6 +9,28 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.63.1] — 2026-08-07
+
+### Behoben
+
+- **Ein abgelegtes oder eingefügtes Bild blockiert die Oberfläche nicht mehr.**
+  Kopieren und die Prüfung auf eine schon vorhandene, byte-gleiche Datei liefen
+  auf dem Bedien-Thread; ein großes Bild oder viele gleichnamige Kandidaten
+  ließen das Fenster spürbar stehen. Beides läuft jetzt im Hintergrund;
+  eingefügt wird erst danach und nur, wenn noch dasselbe Dokument offen ist.
+- **Eine nach oben gezogene Spaltenauswahl hebt die richtige Zeile hervor.**
+  Die Zeilenbereiche eines Rechtecks stehen immer von oben nach unten; die
+  aktuelle Zeile wurde deshalb an der untersten statt an der zuletzt bewegten
+  Zeile gezeichnet.
+
+### Dokumentation
+
+- Die READMEs sagen jetzt auch, dass die Trefferhervorhebung im Ordner- und
+  Projekt-Bereich nur gilt, solange der offene Tab zur durchsuchten
+  Dateifassung passt — die mitgelieferte Hilfe sagte das bereits.
+- Drei Roadmap-Verweise zeigten auf falsche Zeilen. Sie nennen jetzt Typ- und
+  Funktionsnamen, die beim Verschieben von Code nicht veralten.
+
 ## [v1.63.0] — 2026-08-06
 
 ### Neu

@@ -94,7 +94,8 @@ Punkte (die akuten Funde sind mit v1.60.1 behoben). Gebündelt nach Thema:
   verschlucken (`GitActions.swift:152`); Doppel-Öffnen/Projektwechsel-Race
   im Änderungen-Panel (`GitChangesView.swift:511`).
 - **Nebenläufigkeit/UI:** `Workspace.shared`-Setter vs. Kontextaktivierung
-  seriell auf dem Main-Thread (`Workspace.swift:797`); Projekt-Scan als
+  seriell auf dem Main-Thread (`Workspace.swift`, `sharedStorage`/`sharedLock`);
+  Projekt-Scan als
   strukturierter, abbrechbarer Task (`Workspace.swift:2832`);
   Scroll-Restore-Generation pro Editor statt prozessweit
   (`EditorView.swift:954`); Markdown-Import-Anzeige an Besitzer-Fenster
@@ -118,9 +119,10 @@ Punkte (die akuten Funde sind mit v1.60.1 behoben). Gebündelt nach Thema:
   Appearance-Wert exakt wieder her (`screenshot-run.sh:54`).
 - **Editor-Details:** Doppelklick bei zerlegtem Unicode
   (`build.sh:1375`-Patch); Spaltenselektion ohne komplette Zeilenkopie
-  (`TextView+ColumnSelection.swift:94`); Emoji-Selektor an Rangegrenzen
-  (`TextOperations.swift:1063`); `closingTail()` ans Dokumentende
-  (`MarkdownHTMLWhitelist.swift:408`).
+  (`app/Patches/CodeEditTextView/TextView+ColumnSelection.swift`,
+  `fastraVisualColumn`/`fastraOffset(forColumn:in:edge:)`); Emoji-Selektor an
+  Rangegrenzen (`TextOperations.swift:1063`); `closingTail()` ans Dokumentende
+  (`MarkdownHTMLWhitelist.swift`, `MarkdownHTMLSanitizing.apply(to:)`).
 - **Toter Code:** `planSHA256` an der Apply-Grenze prüfen oder entfernen
   (`ApplyEngine.swift:174`); Test-only `apply(plan:)` auf den produktiven
   Transaktionskern führen (`ApplyEngine.swift:934`).
@@ -228,6 +230,14 @@ Punkte (die akuten Funde sind mit v1.60.1 behoben). Gebündelt nach Thema:
   vollständigen Läufen grün. Passt zur Klasse der lastabhängigen Befunde
   dieses Tages. Bei erneutem Auftreten notieren, ob der Lauf unter Fremdlast
   stand, und den Kandidatenpfad der Datei-Set-Wurzeln prüfen.
+
+- **„Timeout gewinnt deterministisch gegen einen bereits vorhandenen
+  Ref-Lock" sporadisch rot** (`GitConflictAndAdvancedTests.swift:786`,
+  beobachtet 2026-08-07 in zwei von sechs vollständigen `swift test`-Läufen).
+  Die Erwartung, dass `index.lock` weg ist, wird direkt nach der Completion
+  geprüft; das aufgerufene `git` hat seinen Lock zu diesem Zeitpunkt aber
+  nicht zwingend schon entfernt. Beim Anfassen auf ein Warten mit kurzer
+  Frist umstellen statt auf eine Momentaufnahme.
 
 ## Offene Beobachtungen (nicht reproduziert)
 

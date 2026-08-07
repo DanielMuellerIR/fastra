@@ -234,6 +234,32 @@ func store_failedCopyKeepsPreexistingImagesFolder() throws {
     }
 }
 
+// MARK: - Hintergrund-Ablage mehrerer Bilder
+
+@Test("storeImageFiles: sammelt Links und Fehler, ohne beim ersten Fehler aufzugeben")
+func storeImageFiles_collectsLinksAndFailures() throws {
+    try withTempDir { dir in
+        let doc = dir.appendingPathComponent("Seite.md")
+        try "x".write(to: doc, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(
+            at: dir.appendingPathComponent("uploads"), withIntermediateDirectories: true)
+        let good = dir.appendingPathComponent("uploads/foto.png")
+        try tinyPNG().write(to: good)
+        let missing = dir.appendingPathComponent("gibtsnicht.png")
+
+        // Dieser Schritt läuft im Produktivpfad auf einer Hintergrund-Queue
+        // (Review 2026-08-06). Er darf deshalb keine Oberfläche anfassen und
+        // muss alle Ergebnisse als Rückgabewert liefern — Fehlermeldungen
+        // eingeschlossen.
+        let outcome = MarkdownAssist.storeImageFiles([missing, good], documentURL: doc)
+
+        #expect(outcome.links == ["![foto](images/foto.png)"])
+        #expect(outcome.failures.count == 1)
+        #expect(FileManager.default.fileExists(
+            atPath: dir.appendingPathComponent("images/foto.png").path))
+    }
+}
+
 // MARK: - Drop-Abgrenzung
 
 @Test("partitionDroppedURLs: Bilder → einfügen, alles andere → öffnen")

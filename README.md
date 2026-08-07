@@ -67,8 +67,9 @@ token highlighting, curated patterns, and guided capture groups.
   the current project.
 - **Immediate search context**: Results include the remainder of their line
   (shortened on very long lines); the first 2,000 matches in the visible
-  document are highlighted, and the active target is centered on a clearly
-  emphasized line.
+  document are highlighted — in folder and project scope only while the open
+  tab still matches the searched file version — and the active target is
+  centered on a clearly emphasized line.
 - **Fast project filters**: `.json` is shorthand for `*.json`, directory globs
   prune complete trees early, and `DerivedData` is transparently always
   excluded.
