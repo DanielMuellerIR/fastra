@@ -388,7 +388,8 @@ ihr zurück.
 Die manuelle Wahl merkt sich Fastra **für diese Datei**. Beim nächsten
 Öffnen erscheint sie wieder in diesem Format — das ist vor allem für
 Dateien ohne Endung wichtig, bei denen die Automatik nichts erkennen kann.
-„Automatisch“ löscht den gemerkten Eintrag wieder.
+„Automatisch“ löscht den gemerkten Eintrag wieder. Umbenennen und
+„Speichern unter“ nehmen den Eintrag an den neuen Pfad mit.
 
 Die Wahl steuert auch die Markdown-Funktionen: Stellst du eine Datei auf
 **Markdown**, öffnet sich die Vorschau und die Format-Toolbar erscheint;

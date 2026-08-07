@@ -127,7 +127,12 @@ struct ReplacePreviewView: View {
                 }
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(result.rows.isEmpty)
+            // Zwei Gründe zu sperren: Ohne Zeilen gibt es nichts zu ersetzen,
+            // und kurz nach einem Tastendruck gehören die noch sichtbaren
+            // Zeilen zum VORIGEN Muster. Der Workspace lehnt den zweiten Fall
+            // ab; ohne diese Kopplung blieb der Knopf trotzdem aktiv und der
+            // Klick folgenlos (Review 2026-08-06).
+            .disabled(result.rows.isEmpty || !workspace.canApplyAllInActiveBuffer)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

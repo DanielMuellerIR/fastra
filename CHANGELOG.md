@@ -9,6 +9,47 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.63.2] — 2026-08-07
+
+### Behoben
+
+- **Die gemerkte Formatwahl geht im Mehrfensterbetrieb nicht mehr verloren.**
+  Jedes Dokumentfenster hielt eine eigene Kopie des Speichers und schrieb sie
+  vollständig zurück: Wählte Fenster B ein Format, verschwand still die Wahl,
+  die Fenster A kurz zuvor getroffen hatte. Beide Fenster lesen und ändern
+  jetzt immer den aktuellen Stand.
+- **„Speichern unter“ nimmt die Formatwahl mit an den neuen Pfad.** In einem
+  noch nie gespeicherten Tab hatte die Wahl mangels Datei gar keinen Ort, und
+  auch bei einer bestehenden Datei blieb sie am alten Pfad zurück. Beim
+  nächsten Öffnen fiel Fastra deshalb auf die Automatik zurück — gerade bei
+  einer Datei ohne Endung ist das sichtbar.
+- **Datei- und Ordnerumbenennungen ziehen die Formatwahlen mit.** Bisher blieb
+  der Eintrag am alten Pfad liegen. Für eine geschlossene Datei in einem
+  verschobenen Ordner gab es nicht einmal einen Tab, über den sich das hätte
+  nachbessern lassen.
+- **Ein ausgetauschtes Vorschaubild wird auch dann erkannt, wenn Größe und
+  Änderungsdatum gleich bleiben.** Die interne Adresse beschreibt die Datei
+  jetzt zusätzlich über Inode und Statusänderungszeit. Vorher konnte ein
+  Sync-Werkzeug, das Zeitstempel erhält, ein anderes Bild unter derselben
+  Adresse hinterlassen — WebKit lieferte dann weiter die alte Fassung aus
+  seinem Zwischenspeicher.
+- **„Alle ersetzen“ in der Vorschau ist gesperrt, solange die gezeigten Zeilen
+  zum vorigen Suchmuster gehören.** Der Knopf sah kurz nach einem Tastendruck
+  aktiv aus, der Klick blieb aber folgenlos. Vorschau und Suchdialog fragen
+  jetzt dieselbe Freigabe ab.
+- **Die einmalige Höhenkorrektur lässt ein selbst gezogenes Fenster in Ruhe.**
+  Sie läuft erst, wenn die Sitzungswiederherstellung alle Dokumente geladen
+  hat; wer währenddessen ein sichtbares Fenster kleiner zog, sah es danach
+  wieder aufgezogen.
+
+### Sicherheit
+
+- **Der private Sparkle-Signierschlüssel liegt nicht mehr in der Umgebung des
+  gesamten Veröffentlichungs-Jobs.** Er hängt jetzt allein am Signierschritt;
+  das Auflösen der Abhängigkeiten läuft in einem eigenen Schritt ohne ihn.
+  Zusätzlich sind die fremden Actions auf vollständige Commits fixiert statt
+  auf verschiebbare Hauptversions-Tags.
+
 ## [v1.63.1] — 2026-08-07
 
 ### Behoben

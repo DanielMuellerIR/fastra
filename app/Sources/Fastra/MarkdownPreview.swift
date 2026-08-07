@@ -136,7 +136,27 @@ enum MarkdownRichText {
                              fontName: String,
                              fontSize: CGFloat,
                              darkMode: Bool) -> String {
-        let fragment = renderedFragment(markdown: markdown, documentURL: documentURL)
+        htmlDocument(
+            fragment: renderedFragment(markdown: markdown, documentURL: documentURL),
+            fontName: fontName,
+            fontSize: fontSize,
+            darkMode: darkMode
+        )
+    }
+
+    /// Wie oben, aber mit einem bereits gerenderten Fragment.
+    ///
+    /// Der Vollreload der Vorschau braucht das Fragment ohnehin selbst — es
+    /// enthält die Zuordnung „interne Adresse → Bilddatei" für den
+    /// Scheme-Handler. Vorher rechnete er es zweimal: einmal für diese
+    /// Zuordnung und gleich danach noch einmal in `htmlDocument`. Jeder
+    /// Renderlauf kostet einen cmark-Durchlauf und je Bild einen
+    /// Dateisystemzugriff, und beides läuft auf dem UI-Thread
+    /// (Review 2026-08-06).
+    static func htmlDocument(fragment: MarkdownRenderedFragment,
+                             fontName: String,
+                             fontSize: CGFloat,
+                             darkMode: Bool) -> String {
         let bodyColor = darkMode ? "#F2F2F2" : "#363636"
         let secondary = darkMode ? "#A8A8A8" : "#737373"
         let surface = darkMode ? "#171717" : "#FFFFFF"
@@ -585,9 +605,10 @@ private struct MarkdownRichTextView: NSViewRepresentable {
                 documentURL: documentURL
             )
             coordinator.assetHandler.setImageURLs(fragment.imageURLs)
+            // Dasselbe Fragment weiterreichen, statt es für das HTML ein
+            // zweites Mal zu rendern (Review 2026-08-06).
             let document = MarkdownRichText.htmlDocument(
-                markdown: markdown,
-                documentURL: documentURL,
+                fragment: fragment,
                 fontName: fontName,
                 fontSize: fontSize,
                 darkMode: darkMode

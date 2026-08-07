@@ -2267,11 +2267,29 @@ final class Workspace: ObservableObject {
               write(tab: tabs[currentIndex], to: url,
                     expectedTargetState: expectedState),
               let savedIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
-        tabs[savedIndex].url = url
-        tabs[savedIndex].title = url.lastPathComponent
-        tabs[savedIndex].path = url.deletingLastPathComponent().path
+        adoptSavedTarget(url, forTabAt: savedIndex)
         activeTabID = tabID
         openParentFolderIfProjectMissing(for: url)
+    }
+
+    /// Übernimmt das Ziel eines erfolgreichen „Speichern unter" in den Tab.
+    ///
+    /// Bewusst eine eigene Methode: Der Zustandswechsel nach dem Schreiben
+    /// ist damit ohne den modalen Speichern-Dialog prüfbar.
+    func adoptSavedTarget(_ url: URL, forTabAt idx: Int) {
+        tabs[idx].url = url
+        tabs[idx].title = url.lastPathComponent
+        tabs[idx].path = url.deletingLastPathComponent().path
+        // Die manuelle Formatwahl gehört zur DATEI und muss deshalb am NEUEN
+        // Pfad landen. Bei einem noch nie gespeicherten Tab war sie mangels
+        // URL überhaupt nicht abgelegt (siehe `rememberLanguageChoice`), bei
+        // einer bestehenden Datei hing sie am alten Pfad. Ohne diese Zeile
+        // öffnete die eben geschriebene Datei wieder mit der Automatik —
+        // gerade bei einer Datei ohne Endung fällt das sofort auf
+        // (Review 2026-08-06). „Automatisch" schreibt bewusst `nil` und
+        // löscht damit eine ältere Wahl am Zielpfad.
+        rememberLanguageChoice(currentLanguageChoiceID(forTabAt: idx),
+                               forTabAt: idx)
     }
 
     /// Rückfrage bei einem Save-Ziel, das nicht mehr dem geladenen Snapshot
@@ -2655,6 +2673,18 @@ final class Workspace: ObservableObject {
     private func rememberLanguageChoice(_ entryID: String?, forTabAt idx: Int) {
         guard let url = tabs[idx].url else { return }
         languageChoices.setChoiceID(entryID, for: url)
+    }
+
+    /// Der Menü-Bezeichner der aktuell wirksamen MANUELLEN Wahl eines Tabs —
+    /// `nil`, wenn die Automatik gilt. Eine Eigen-Sprache trägt ihre Kennung
+    /// selbst als Bezeichner (`LanguageMenuSupport.Entry.custom`), eine
+    /// Grammatik bekommt den `grammar.`-Bezeichner.
+    private func currentLanguageChoiceID(forTabAt idx: Int) -> String? {
+        if let customID = tabs[idx].customLanguageOverrideID { return customID }
+        if let language = tabs[idx].languageOverride {
+            return LanguageMenuSupport.Entry.grammar(language).id
+        }
+        return nil
     }
 
     /// Holt eine gemerkte Formatwahl auf einen frisch geladenen Tab zurück.
@@ -3062,6 +3092,11 @@ final class Workspace: ObservableObject {
     /// diese Kopplung würde ein späteres ⌘S am alten Pfad eine zweite Datei
     /// erzeugen. Bei Ordnern werden alle darin geöffneten Dateien angepasst.
     func handleFileTreeMove(from source: URL, to destination: URL) {
+        // Die gemerkten Formatwahlen hängen am Dateipfad und müssen deshalb
+        // mitwandern. Das gilt auch für Dateien in einem verschobenen Ordner,
+        // die gar nicht offen sind — für sie gibt es keinen Tab, über den man
+        // später nachbessern könnte (Review 2026-08-06).
+        languageChoices.moveChoices(from: source, to: destination)
         for index in tabs.indices {
             guard let oldURL = tabs[index].url,
                   let newURL = Self.movedURL(oldURL, from: source, to: destination)
@@ -4159,6 +4194,26 @@ final class Workspace: ObservableObject {
         }
     }
 
+    /// Gemeinsame Freigabe für „Alle ersetzen" im aktiven Buffer.
+    ///
+    /// `bufferTotalMatches` statt `bufferMatches.count`: bei gekappter Liste
+    /// gibt es mehr Treffer als materialisiert sind.
+    ///
+    /// Die letzte Bedingung hält die Vorschau-Grenze: Die sichtbare
+    /// Trefferzahl darf nur eine Ersetzung freigeben, die zu GENAU DIESEN
+    /// Optionen gehört. Sonst gäbe der alte Trefferstand kurz nach einem
+    /// Tastendruck eine Ersetzung mit dem neuen Muster frei
+    /// (Review 2026-08-02).
+    ///
+    /// Jede Oberfläche mit einem „Alle ersetzen"-Knopf muss dieselbe Freigabe
+    /// abfragen. Die Vorschau tat das nicht und ließ ihren Knopf allein an
+    /// der Zeilenzahl aktiv: Ein Klick im Debounce-Fenster sah wirksam aus
+    /// und tat nichts (Review 2026-08-06).
+    var canApplyAllInActiveBuffer: Bool {
+        bufferTotalMatches > 0 && searchError == nil
+            && visibleBufferResultsOptions == currentSearchOptions
+    }
+
     /// Ersetzt alle aktuell gefundenen Treffer im aktiven Buffer durch
     /// ihre Replacement-Texte. NUR im Speicher — keine Disk-Writes, kein
     /// Apply-Backup (das ist die Schiene für die Ordner-Suche). Speichern
@@ -4169,16 +4224,7 @@ final class Workspace: ObservableObject {
     /// (Review 2026-08-06).
     @discardableResult
     func applyAllInActiveBuffer() -> Bool {
-        // `bufferTotalMatches` statt `bufferMatches.count` als Gate: bei
-        // gekappter Liste gibt es mehr Treffer als materialisiert sind.
-        //
-        // Die zweite Bedingung hält die Vorschau-Grenze: Die sichtbare
-        // Trefferzahl darf nur eine Ersetzung freigeben, die zu GENAU DIESEN
-        // Optionen gehört. Sonst gäbe der alte Trefferstand kurz nach einem
-        // Tastendruck eine Ersetzung mit dem neuen Muster frei
-        // (Review 2026-08-02).
-        guard bufferTotalMatches > 0, searchError == nil,
-              visibleBufferResultsOptions == currentSearchOptions else { return false }
+        guard canApplyAllInActiveBuffer else { return false }
         recordSearchHistory()
         let text = activeTabContent.wrappedValue
         // Voll-Replace über den ganzen Text (bzw. die eingefrorene Auswahl bei

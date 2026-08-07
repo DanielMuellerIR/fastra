@@ -127,6 +127,37 @@ Punkte (die akuten Funde sind mit v1.60.1 behoben). Gebündelt nach Thema:
   (`ApplyEngine.swift:174`); Test-only `apply(plan:)` auf den produktiven
   Transaktionskern führen (`ApplyEngine.swift:934`).
 
+## Nacharbeit aus dem Code-Review 2026-08-06 (Abendlauf)
+
+Beide Punkte betreffen die Markdown-Vorschau und hängen zusammen: Sie brauchen
+denselben Umbau — das Rendern eines Fragments in den Hintergrund, abgesichert
+über eine Generationsnummer. Deshalb bewusst gemeinsam und nicht nebenbei. Die
+übrigen sieben Funde des Laufs sind mit v1.63.2 behoben.
+
+- **Ein extern ausgetauschtes Bild aktualisiert die offene Vorschau nicht**
+  (`MarkdownPreview.swift`, `MarkdownRichTextView.update`): Bei unverändertem
+  Markdown kehrt die Aktualisierung zurück, bevor die Bild-Adressen neu
+  berechnet werden. Für die referenzierten Bilddateien gibt es keinen
+  Beobachter, also löst ein Überschreiben am gleichen Pfad gar nichts aus —
+  die Vorschau zeigt die alte Fassung, bis sich Markdown, Dokumentpfad oder
+  Darstellungsstil ändern. **Zu tun:** die Elternordner der referenzierten
+  Bilder über FSEvents beobachten (`ProjectFileWatcher` als Vorlage, aber
+  mehrere Pfade und ohne Projektbindung) und bei einer Änderung
+  generationengesichert ein frisches Fragment einspielen. **Prüfen:** nicht
+  nur als Unit-Test — der echte Vorschau-Pfad braucht eine Fenstersitzung,
+  ein Bild am gleichen Pfad überschreiben und die Anzeige wirklich ansehen.
+- **Das Fragment entsteht auf dem UI-Thread** (`MarkdownPreview.swift`,
+  `MarkdownRichText.renderedFragment`): Jeder Renderlauf kostet einen
+  cmark-Durchlauf und je Bild einen Dateisystemzugriff. Bei vielen Bildern
+  oder Bildern auf einem eingebundenen Netzlaufwerk kann das Tippen dadurch
+  sichtbar hängen. Der doppelte Lauf beim Vollreload ist mit v1.63.2 weg
+  (`htmlDocument(fragment:…)`), das Rendern selbst läuft weiter auf dem
+  UI-Thread. **Zu tun:** das Rendern auf eine eigene serielle Queue legen und
+  das Ergebnis generationengesichert zurückgeben. **Achtung:**
+  `cmark_gfm_core_extensions_ensure_registered()` schreibt in eine globale
+  Registrierung — alle Renderwege müssten dann über dieselbe serielle Queue
+  laufen, sonst entsteht ein Wettlauf.
+
 ## Kleine offene Ideen
 
 - **Markdown-Umwandlung: bewusst offen gelassen** (umgesetzt 2026-07-26 über

@@ -454,31 +454,49 @@ enum MarkdownImages {
 
     /// Interner Name, unter dem WebKit ein Bild anfordert.
     ///
-    /// Er beschreibt die IDENTITÄT der Datei (Pfad, Änderungsdatum, Größe) und
-    /// nicht mehr ihre Position im Dokument. Der frühere Name „image-0" war für
-    /// das erste Bild jedes Renderlaufs derselbe: Nach dem Austausch eines
-    /// Bildes lieferte WebKit unter der unveränderten Adresse die zuvor
-    /// geladene Datei aus seinem Speicher-Cache — im Quelltext stand der neue
-    /// Dateiname, die Vorschau zeigte das alte Bild, und erst ein Neustart der
-    /// App räumte den Cache (Daniel-Befund 2026-08-06).
+    /// Er beschreibt die IDENTITÄT der Datei (Pfad, Inode, Größe, Änderungs-
+    /// und Statusänderungszeit) und nicht mehr ihre Position im Dokument. Der
+    /// frühere Name „image-0" war für das erste Bild jedes Renderlaufs
+    /// derselbe: Nach dem Austausch eines Bildes lieferte WebKit unter der
+    /// unveränderten Adresse die zuvor geladene Datei aus seinem
+    /// Speicher-Cache — im Quelltext stand der neue Dateiname, die Vorschau
+    /// zeigte das alte Bild, und erst ein Neustart der App räumte den Cache
+    /// (Daniel-Befund 2026-08-06).
     ///
     /// Unverändertes Bild → unveränderter Name → WebKit lädt es beim Tippen
     /// nicht bei jedem Zeichen neu.
-    static func imageToken(for url: URL,
-                           fileManager: FileManager = .default) -> String {
-        // Bewusst `FileManager` statt `URL.resourceValues`: Eine URL merkt
-        // sich einmal gelesene Dateiattribute und lieferte für dieselbe URL
-        // weiterhin die ALTE Größe, nachdem die Datei ersetzt wurde. Der
-        // Zielpfad ist zudem symlink-aufgelöst, damit ein Link die Größe
+    static func imageToken(for url: URL) -> String {
+        // Der Zielpfad ist symlink-aufgelöst, damit ein Link die Identität
         // seiner Zieldatei meldet und nicht die des Links (AGENTS.md).
         let path = url.resolvingSymlinksInPath().standardizedFileURL.path
-        let attributes = try? fileManager.attributesOfItem(atPath: path)
-        // Fehlt die Datei (oder verweigert sie Auskunft), bleibt der Pfad
-        // allein die Identität — dann gibt es ohnehin nichts anzuzeigen.
-        let modified = (attributes?[.modificationDate] as? Date)?
-            .timeIntervalSinceReferenceDate ?? 0
-        let size = (attributes?[.size] as? NSNumber)?.uint64Value ?? 0
-        let identity = "\(path)|\(modified)|\(size)"
+        // Bewusst `stat(2)` statt `URL.resourceValues` oder
+        // `FileManager.attributesOfItem`:
+        //   • Eine URL merkt sich einmal gelesene Dateiattribute und lieferte
+        //     für dieselbe URL weiterhin die ALTE Größe, nachdem die Datei
+        //     ersetzt wurde.
+        //   • `attributesOfItem` baut für jedes Bild ein Wörterbuch mit
+        //     Objective-C-Objekten auf. Das läuft bei JEDEM Renderlauf, also
+        //     beim Tippen — ein einzelner Systemaufruf ist hier deutlich
+        //     billiger.
+        //   • Nur `stat` liefert Inode und `st_ctime`, und genau die fehlten
+        //     der Identität: Ein inhaltlich anderes Bild kann mit GLEICHER
+        //     Größe und beibehaltenem Änderungsdatum eintreffen — etwa durch
+        //     ein Sync-Werkzeug, das Zeitstempel erhält, oder auf einem
+        //     Dateisystem mit grober Zeitauflösung. Beim atomaren Ersetzen
+        //     wechselt das Inode, und `st_ctime` lässt sich aus dem
+        //     Nutzerraum nicht zurückstellen: Selbst das Zurücksetzen des
+        //     Änderungsdatums setzt es auf „jetzt" (Review 2026-08-06).
+        var info = stat()
+        guard stat(path, &info) == 0 else {
+            // Fehlt die Datei (oder verweigert sie Auskunft), bleibt der Pfad
+            // allein die Identität — dann gibt es ohnehin nichts anzuzeigen.
+            return "image-\(stableHash(path))"
+        }
+        let identity = """
+        \(path)|\(info.st_dev)|\(info.st_ino)|\(info.st_size)|\
+        \(info.st_mtimespec.tv_sec).\(info.st_mtimespec.tv_nsec)|\
+        \(info.st_ctimespec.tv_sec).\(info.st_ctimespec.tv_nsec)
+        """
         return "image-\(stableHash(identity))"
     }
 

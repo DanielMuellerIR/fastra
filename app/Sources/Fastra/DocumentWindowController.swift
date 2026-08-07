@@ -403,6 +403,71 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
 enum MainWindowHeightNormalization {
     static let defaultsKey = "window.practicalHeightNormalized.v1"
 
+    /// Fenster, deren Größe der Nutzer selbst am Rahmen gezogen hat.
+    ///
+    /// Die Korrektur läuft erst, wenn die Sitzungswiederherstellung ALLE
+    /// Dokumente geladen hat. Die Fenster stehen aber schon vorher sichtbar da:
+    /// Bei einer langsamen Wiederherstellung kann der Nutzer eines davon
+    /// bewusst kleiner ziehen — und die Korrektur zog es danach wieder groß,
+    /// obwohl die Größe da längst ihm gehörte (Review 2026-08-06).
+    private static var userResizedWindows: Set<ObjectIdentifier> = []
+
+    private static var resizeObservation: NSObjectProtocol?
+    private static var resizeObservationCenter: NotificationCenter?
+
+    /// `didEndLiveResize` feuert NUR, wenn der Nutzer den Fensterrahmen
+    /// losgelassen hat — ein programmatisches `setFrame` (Wiederherstellung,
+    /// diese Korrektur selbst) löst es nicht aus. Genau diese Unterscheidung
+    /// braucht die Ausnahme oben. Beim App-Start einmal aufrufen, bevor die
+    /// Wiederherstellung beginnt.
+    ///
+    /// Ist die Korrektur längst gelaufen, gibt es nichts mehr auszunehmen —
+    /// dann wird gar nicht erst beobachtet und die Liste bleibt leer.
+    static func observeUserResizes(
+        defaults: UserDefaults,
+        notificationCenter: NotificationCenter = .default
+    ) {
+        guard !defaults.bool(forKey: defaultsKey), resizeObservation == nil else {
+            return
+        }
+        resizeObservationCenter = notificationCenter
+        resizeObservation = notificationCenter.addObserver(
+            forName: NSWindow.didEndLiveResizeNotification,
+            object: nil,
+            queue: .main
+        ) { note in
+            guard let window = note.object as? NSWindow else { return }
+            MainActor.assumeIsolated { noteUserResize(of: window) }
+        }
+    }
+
+    /// Nach der einmaligen Korrektur ist die Beobachtung überflüssig. Ohne
+    /// dieses Abmelden würde die Liste über die ganze Programmlaufzeit
+    /// weiterwachsen, ohne je wieder gelesen zu werden.
+    private static func stopObservingUserResizes() {
+        if let resizeObservation {
+            (resizeObservationCenter ?? .default).removeObserver(resizeObservation)
+        }
+        resizeObservation = nil
+        resizeObservationCenter = nil
+        userResizedWindows.removeAll()
+    }
+
+    /// Merkt ein vom Nutzer selbst verändertes Fenster vor.
+    static func noteUserResize(of window: NSWindow) {
+        userResizedWindows.insert(ObjectIdentifier(window))
+    }
+
+    /// `true`, wenn dieses Fenster von der einmaligen Korrektur ausgenommen ist.
+    static func isExcludedFromNormalization(_ window: NSWindow) -> Bool {
+        userResizedWindows.contains(ObjectIdentifier(window))
+    }
+
+    /// Nur für Tests: setzt die vorgemerkten Fenster zurück.
+    static func resetUserResizesForTesting() {
+        userResizedWindows.removeAll()
+    }
+
     /// - Parameter remainingAttempts: Beim Start kann noch kein Fenster
     ///   sichtbar sein; dann wird kurz erneut nachgesehen, statt die einmalige
     ///   Korrektur ungenutzt zu verbrauchen.
@@ -421,8 +486,11 @@ enum MainWindowHeightNormalization {
         defaults.set(true, forKey: defaultsKey)
         for window in windows {
             // Vollbild und Symbolfenster haben keinen sinnvollen Rahmen.
+            // Ein während der Wiederherstellung selbst gezogenes Fenster
+            // bleibt unangetastet.
             guard !window.styleMask.contains(.fullScreen),
                   !window.isMiniaturized,
+                  !isExcludedFromNormalization(window),
                   let visible = (window.screen ?? NSScreen.main)?.visibleFrame else {
                 continue
             }
@@ -432,6 +500,7 @@ enum MainWindowHeightNormalization {
             guard normalized != window.frame else { continue }
             window.setFrame(normalized, display: true)
         }
+        stopObservingUserResizes()
         return true
     }
 }

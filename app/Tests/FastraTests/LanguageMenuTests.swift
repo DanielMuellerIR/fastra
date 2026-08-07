@@ -121,3 +121,69 @@ func workspace_setCustomOverride() {
     #expect(ws.tabs[0].customLanguageOverrideID == nil)
     #expect(ws.tabs[0].languageOverride == nil)
 }
+
+// MARK: - Die gemerkte Formatwahl folgt der Datei
+
+/// Eigener Temp-Ordner je Test. Der Speicher schlüsselt über den kanonischen
+/// Pfad, und den gibt es nur für wirklich vorhandene Dateien.
+private func makeChoiceTestDirectory() throws -> URL {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-lang-choice-\(UUID().uuidString)",
+                                isDirectory: true)
+    try FileManager.default.createDirectory(at: directory,
+                                            withIntermediateDirectories: true)
+    return directory
+}
+
+@Test("„Speichern unter“ legt die manuelle Formatwahl unter dem neuen Pfad ab")
+@MainActor
+func workspace_saveAsRemembersLanguageChoice() throws {
+    let suite = "fastra-test-lang-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let directory = try makeChoiceTestDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let ws = Workspace(defaults: defaults)
+    // Noch nie gespeicherter Tab: Die Wahl hatte mangels URL keinen Ort.
+    ws.tabs = [tab(title: "Ohne Titel")]
+    ws.activeTabID = ws.tabs[0].id
+    ws.setLanguageOverride(.markdown)
+
+    // Zielname OHNE Endung — genau dort ist die Automatik machtlos.
+    let target = directory.appendingPathComponent("notiz")
+    try Data().write(to: target)
+    ws.adoptSavedTarget(target, forTabAt: 0)
+
+    #expect(ws.languageChoices.choiceID(for: target)
+            == LanguageMenuSupport.Entry.grammar(.markdown).id)
+}
+
+@Test("Ordner umbenennen zieht die gemerkte Formatwahl mit")
+@MainActor
+func workspace_fileTreeMoveMovesLanguageChoice() throws {
+    let suite = "fastra-test-lang-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let directory = try makeChoiceTestDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let ws = Workspace(defaults: defaults)
+    let source = directory.appendingPathComponent("alt", isDirectory: true)
+    try FileManager.default.createDirectory(at: source,
+                                            withIntermediateDirectories: true)
+    // Die Datei ist NICHT geöffnet: Ohne die Wanderung im Speicher gäbe es
+    // keinen Tab, über den man nachbessern könnte.
+    let file = source.appendingPathComponent("notiz")
+    try Data().write(to: file)
+    let markdown = LanguageMenuSupport.Entry.grammar(.markdown).id
+    ws.languageChoices.setChoiceID(markdown, for: file)
+
+    let destination = directory.appendingPathComponent("neu", isDirectory: true)
+    try FileManager.default.moveItem(at: source, to: destination)
+    ws.handleFileTreeMove(from: source, to: destination)
+
+    #expect(ws.languageChoices.choiceID(for: destination.appendingPathComponent("notiz"))
+            == markdown)
+    #expect(ws.languageChoices.choiceID(for: file) == nil)
+}

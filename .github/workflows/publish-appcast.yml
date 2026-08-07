@@ -25,17 +25,26 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    # Der private Sparkle-Schlüssel steht bewusst NICHT hier. Alles in `env`
+    # eines Jobs liegt in der Prozessumgebung JEDES Schritts — auch der
+    # fremden `uses:`-Actions. Der Schlüssel ist der langlebige
+    # Vertrauensanker für Fastra-Updates; wer ihn liest, kann beliebige
+    # Archive gültig signieren. Er hängt deshalb nur am Signierschritt
+    # (Review 2026-08-06).
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
-      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
 
     steps:
+      # Fremde Actions sind auf den vollständigen Commit fixiert, nicht auf
+      # ein Hauptversions-Tag. Ein Tag lässt sich verschieben; ein Commit
+      # nicht. Der Kommentar nennt die Version, damit ein bewusstes Update
+      # lesbar bleibt (Review 2026-08-06).
       - name: Quelltext auschecken
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: GitHub Pages vorbereiten
-        uses: actions/configure-pages@v6
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
       - name: Release-DMG und Release Notes laden
         shell: bash
@@ -54,21 +63,33 @@ jobs:
           # Gleicher Basisname: generate_appcast ordnet die Markdown-Datei dem DMG zu.
           gh release view "$RELEASE_TAG" --json body --jq .body > "${dmgs[0]%.dmg}.md"
 
-      - name: Signierten Appcast erzeugen
+      # Bewusst ein eigener Schritt OHNE das Secret: Das Auflösen der
+      # Abhängigkeiten lädt fremden Code (SwiftPM-Pakete, Sparkles
+      # Werkzeug-Artefakt) und darf den privaten Schlüssel deshalb nicht in
+      # seiner Umgebung finden.
+      - name: Signierwerkzeug bereitstellen
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "$SPARKLE_PRIVATE_KEY" ]]; then
-            echo "FEHLER: GitHub-Secret SPARKLE_PRIVATE_KEY fehlt." >&2
-            exit 1
-          fi
-
           swift package --package-path app resolve
           tool="$(find app/.build/artifacts/sparkle -type f -name generate_appcast -print -quit)"
           if [[ -z "$tool" ]]; then
             echo "FEHLER: Sparkles generate_appcast wurde nicht gefunden." >&2
             exit 1
           fi
+          echo "SPARKLE_TOOL=$tool" >> "$GITHUB_ENV"
+
+      - name: Signierten Appcast erzeugen
+        shell: bash
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$SPARKLE_PRIVATE_KEY" ]]; then
+            echo "FEHLER: GitHub-Secret SPARKLE_PRIVATE_KEY fehlt." >&2
+            exit 1
+          fi
+          tool="$SPARKLE_TOOL"
 
           # Der geheime Schlüssel steht weder in argv noch in einer Datei oder im Log.
           printf '%s' "$SPARKLE_PRIVATE_KEY" | "$tool" \
@@ -92,7 +113,7 @@ jobs:
       # eigenen Namen, und der Deploy-Schritt bekommt denselben ausdrücklich
       # genannt.
       - name: Pages-Artefakt hochladen
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           name: github-pages-${{ github.run_attempt }}
           path: site
@@ -117,6 +138,6 @@ jobs:
       # zuletzt erfolgreich veröffentlichte Update aus.
       - name: Appcast auf GitHub Pages veröffentlichen
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
         with:
           artifact_name: github-pages-${{ github.run_attempt }}

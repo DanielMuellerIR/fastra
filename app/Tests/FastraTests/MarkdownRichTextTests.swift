@@ -288,6 +288,43 @@ struct MarkdownRichTextTests {
         #expect(MarkdownImages.imageToken(for: image) != before)
     }
 
+    @Test("Gleiche Größe und zurückgestelltes Änderungsdatum gelten trotzdem als neues Bild")
+    func replacedImageWithPreservedTimestampGetsFreshPreviewURL() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FastraImageToken-\(UUID().uuidString)",
+                                    isDirectory: true)
+        try FileManager.default.createDirectory(at: directory,
+                                                withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let image = directory.appendingPathComponent("bild.png")
+        try Data(repeating: 0xA0, count: 512).write(to: image)
+        var original = stat()
+        #expect(stat(image.path, &original) == 0)
+        let before = MarkdownImages.imageToken(for: image)
+
+        // Anderer Inhalt, GLEICHE Größe, Änderungsdatum exakt
+        // wiederhergestellt — so hinterlässt ein Sync-Werkzeug eine Datei,
+        // das Zeitstempel erhält. Vorher bekam sie dieselbe interne Adresse,
+        // und WebKit lieferte das alte Bild aus seinem Cache
+        // (Review 2026-08-06).
+        try Data(repeating: 0xB0, count: 512).write(to: image)
+        // `utimensat` statt `setAttributes`: nur so ist der Zeitstempel bis
+        // auf die Nanosekunde derselbe — ein Date-Umweg rundet.
+        var times = [original.st_atimespec, original.st_mtimespec]
+        #expect(utimensat(AT_FDCWD, image.path, &times, 0) == 0)
+
+        // Erst belegen, dass Größe und Änderungsdatum wirklich gleich sind —
+        // sonst prüfte der Test etwas anderes als den beschriebenen Fall.
+        var replaced = stat()
+        #expect(stat(image.path, &replaced) == 0)
+        #expect(replaced.st_size == original.st_size)
+        #expect(replaced.st_mtimespec.tv_sec == original.st_mtimespec.tv_sec)
+        #expect(replaced.st_mtimespec.tv_nsec == original.st_mtimespec.tv_nsec)
+
+        #expect(MarkdownImages.imageToken(for: image) != before)
+    }
+
     @Test("Unverändertes Bild behält seine Adresse (kein Neuladen beim Tippen)")
     func unchangedImageKeepsPreviewURL() throws {
         let directory = FileManager.default.temporaryDirectory

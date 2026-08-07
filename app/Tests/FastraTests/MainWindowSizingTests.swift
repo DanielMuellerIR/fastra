@@ -5,6 +5,7 @@
 // Nutzer danach jederzeit. Die Rechnung bleibt hier pur und damit ohne
 // echten Bildschirm prüfbar.
 
+import AppKit
 import CoreGraphics
 import Testing
 @testable import Fastra
@@ -59,5 +60,26 @@ struct MainWindowSizingTests {
         let tall = CGRect(x: 10, y: 20, width: 900, height: 900)
         #expect(MainWindowSizing.heightNormalizedFrame(tall, inVisibleScreen: notebook)
                 == tall)
+    }
+
+    /// Die einmalige Korrektur läuft erst, wenn die Sitzungswiederherstellung
+    /// ALLE Dokumente geladen hat. Bis dahin stehen die Fenster längst
+    /// sichtbar da: Zieht der Nutzer eines davon bewusst kleiner, darf die
+    /// Korrektur es danach nicht wieder aufziehen (Review 2026-08-06).
+    @Test("Ein selbst gezogenes Fenster ist von der einmaligen Korrektur ausgenommen")
+    @MainActor
+    func userResizedWindowIsExcluded() {
+        MainWindowHeightNormalization.resetUserResizesForTesting()
+        defer { MainWindowHeightNormalization.resetUserResizesForTesting() }
+
+        let untouched = NSWindow()
+        let dragged = NSWindow()
+        #expect(!MainWindowHeightNormalization.isExcludedFromNormalization(dragged))
+
+        MainWindowHeightNormalization.noteUserResize(of: dragged)
+
+        #expect(MainWindowHeightNormalization.isExcludedFromNormalization(dragged))
+        // Nur das wirklich gezogene Fenster ist ausgenommen.
+        #expect(!MainWindowHeightNormalization.isExcludedFromNormalization(untouched))
     }
 }

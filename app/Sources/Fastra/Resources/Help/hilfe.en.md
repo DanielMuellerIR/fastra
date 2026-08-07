@@ -373,7 +373,8 @@ language menu: a manual choice always beats the automatics;
 Fastra remembers a manual choice **per file**. The next time you open that
 file it comes back in the same format — which matters most for files without
 an extension, where the automatics have nothing to go on. “Automatic” drops
-the remembered entry again.
+the remembered entry again. Renaming and “Save As” carry the entry over to
+the new path.
 
 The choice also drives the Markdown features: set a file to **Markdown** and
 the preview opens along with the format toolbar; switch to another format and

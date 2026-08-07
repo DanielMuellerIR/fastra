@@ -352,6 +352,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.scheduleSoftWrapMenuSynchronization()
         }
 
+        // Ab jetzt mitschreiben, welche Fenster der Nutzer SELBST zieht. Das
+        // muss vor der Wiederherstellung stehen: Sie kann lange dauern, ihre
+        // Fenster sind aber schon sichtbar, und die einmalige Höhenkorrektur
+        // am Ende darf ein bewusst kleiner gezogenes Fenster nicht wieder
+        // aufziehen (Review 2026-08-06).
+        MainWindowHeightNormalization.observeUserResizes(
+            defaults: SelfTest.workspaceDefaults()
+        )
+
         // Eigene, inhaltlich begrenzte Wiederherstellung statt AppKits
         // undurchsichtiger Fensterarchive: nur gespeicherte Dateipfade,
         // Projektordner und Fensterrahmen. Finder-Dateien sind ein ZUSÄTZLICHER
