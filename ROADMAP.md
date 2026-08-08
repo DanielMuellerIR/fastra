@@ -255,17 +255,50 @@ denselben Umbau — das Rendern eines Fragments in den Hintergrund, abgesichert
   wahrscheinlichste Kandidat für sporadische Hänger. Auf robustes Warten
   umstellen.
 
-- **Ein ungültiger Selektionsbereich bringt die ganze App zum Absturz.** Der
-  Attachment-Beobachter von CodeEditTextView baut aus jeder Textselektion ein
-  `IndexSet`; `IndexSet.insert(range:)` trappt bei `NSNotFound` als
-  Untergrenze, und die App endet mit SIGTRAP im Main-Thread
-  (`TextAttachmentManager.setUpSelectionListener`). Beobachtet am 2026-08-06
-  und erneut am 2026-08-07, jeweils ausgelöst von einem Selbsttest, der einen
-  nicht gefundenen `range(of:)` ungeprüft weiterreichte — die Tests sind
-  inzwischen gehärtet. Der Produktcode setzt an allen sieben Aufrufstellen
-  geklemmte oder feste Bereiche, ein Nutzerpfad ist also nicht belegt.
-  **Zu tun:** vor `setSelectedRange` eine gemeinsame Klemmung ziehen, damit
-  ein künftiger Aufrufer diese Falle nicht erneut aufmacht.
+- **Klemmung auch auf der SCHREIB-Seite der Auswahl.** Die Lese-Seite ist mit
+  v1.64.0 erledigt: Alle Zugriffe gehen über `TextView.fastraSafeSelectedRange`
+  (`SelectionClamping.clamp`), nachdem ein `NSNotFound`-Bereich die Anwendung
+  im Undo-Verwalter abbrechen ließ. Offen bleibt die Gegenrichtung: Auch
+  `setSelectedRange` sollte einen ungültigen Bereich abweisen, statt ihn
+  anzunehmen — der Attachment-Beobachter von CodeEditTextView baut daraus ein
+  `IndexSet`, und `IndexSet.insert(range:)` trappt bei `NSNotFound`
+  (zweimal beobachtet, ausgelöst von Selbsttests; die sind inzwischen
+  gehärtet).
+
+## Aus dem Dauertest und den Betriebsmeldungen (2026-08-07/08)
+
+Der lange Dauertest (`app/soak-test.sh`) läuft; diese Punkte hat er oder der
+Arbeitsbetrieb gemeldet und sie sind noch offen.
+
+- **Vorschau bleibt nach einem neuen Tab stehen.** Der Dauertest meldet nach
+  der Aktion „neuer Tab": Ein Fenster zeigt eine Markdown-Vorschau, obwohl das
+  aktive Dokument keins ist. Zu klären, ob die Vorschau wirklich fremden
+  Inhalt zeigt oder nur einen Runloop später nachzieht.
+- **Nach einem Neustart stehen nicht alle Fenster wieder.** Der Dauertest
+  öffnet drei Fenster, findet nach dem Neustart aber nur eins. Verdacht:
+  `captureCurrentSession` läuft in `applicationShouldTerminate`, der
+  Selbsttest beendet aber über seinen eigenen Weg — dann wird die Sitzung nie
+  gespeichert.
+- **Ein geschlossenes Fenster kommt beim Öffnen einer weiteren Datei zurück**
+  (mit 1.63.3 reproduziert). Verdacht: `Workspace.init` ruft
+  `deliverPendingOpenFiles()`, also löst jedes neu erzeugte Fenster eine
+  Nachlieferung aus dem Öffnen-Puffer aus.
+- **Die Ansicht kriecht beim Markieren mit der Maus nach unten** — nur in
+  Markdown, auch wenn die Markierung nach oben wandert. Nicht reproduzierbar;
+  trat nach längerer Arbeit mit mehreren umgewandelten Protokollen auf. Der
+  Selbsttest `dragnoscroll` fängt es nicht ein: Die synthetischen
+  Drag-Ereignisse kommen nicht einzeln an, die Auswahl bleibt in jedem Lauf
+  gleich groß. Verdacht ist der Fastra-Patch in
+  `SourceEditor.updateControllerWithState`, der bei ungleichen
+  `cursorPositions` mit `scrollToVisible: true` nachzieht, obwohl der
+  SwiftUI-Zustand runloop-versetzt veraltet ist.
+- **Das Fenstermenü listete nur eine von zwei offenen Dateien.** In kurzer
+  Nachstellung korrekt — also zustandsabhängig.
+- **Dauertest realistischer machen.** Große, echte Dokumente statt erzeugter
+  Fixtures; ein `.rtfd` über `poormans-text` umwandeln und direkt
+  weiterbearbeiten; lange 4D-Methoden mit Completion, ALT-Doppelklick und
+  Signaturhilfe; mehrere Fenster nebeneinander samt Verschieben und
+  Größenändern; Kopieren und Einfügen zwischen Fenstern; Menübefehle.
 
 - **`folderSearch_deduplicatesOverlappingRoots` einmal rot** (2026-07-28,
   nicht reproduziert). Der Test meldete 0 statt 1 Treffer in einem
