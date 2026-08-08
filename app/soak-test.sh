@@ -106,6 +106,15 @@ cleanup() {
   # Erst das 4D-Projekt zurücksetzen (braucht die Merkdateien im
   # Arbeitsverzeichnis), dann aufräumen. Läuft auch bei Abbruch.
   restore_4d_project
+  # Bei Befunden oder einem Absturz die BEWEISE erhalten: Protokoll und
+  # Phasenausgaben (mit Exception-Text und Stacktrace) überleben das
+  # Aufräumen. Nur die Logs — die kopierten echten Dokumente nicht.
+  if [ "${KEEP_EVIDENCE:-0}" -eq 1 ]; then
+    local evidence="${TMPDIR:-/tmp}/fastra-soak-befunde-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$evidence"
+    cp "$LOG" "$WORK_DIR"/phase-*.out "$evidence"/ 2>/dev/null || true
+    echo "   Beweise gesichert: $evidence" >&2
+  fi
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
@@ -266,10 +275,18 @@ run_phase() {
   local status=$?
   echo "   Phase $phase beendet (Status $status, ${waited}s)"
   tail -2 "$WORK_DIR/phase-$phase.out" | sed 's/^/   /'
+  # Status 1 sind gemeldete Befunde; alles darüber (z. B. 134 = SIGABRT)
+  # ist ein Absturz — dann die Phasenausgabe mit dem Exception-Text
+  # aufheben (siehe cleanup) und den Lauf als gescheitert zählen.
+  if [ "$status" -gt 1 ]; then
+    KEEP_EVIDENCE=1
+    echo "SOAK-BEFUND phase=$phase aktion=? invariante=Lauf endet ohne Absturz detail=Exit-Status $status" >> "$LOG"
+  fi
   return 0
 }
 
 PHASES_FAILED=0
+KEEP_EVIDENCE=0
 run_phase 1 "Dokumente anlegen, drei Fenster öffnen, arbeiten" || PHASES_FAILED=$((PHASES_FAILED + 1))
 run_phase 2 "nach Neustart: Sitzung prüfen und weiterarbeiten"  || PHASES_FAILED=$((PHASES_FAILED + 1))
 run_phase 3 "nach zweitem Neustart: abschließende Runde"        || PHASES_FAILED=$((PHASES_FAILED + 1))
@@ -288,6 +305,7 @@ ACTIONS=$(awk -F'aktionen=' '/^SOAK-ZUSAMMENFASSUNG/{split($2,a," "); s+=a[1]} E
 # Skript meldete trotzdem „SOAK OK". Ein Test, der bei kaputtem Aufbau Erfolg
 # meldet, ist schlimmer als keiner.
 if [ "$PHASES_FAILED" -gt 0 ]; then
+  KEEP_EVIDENCE=1
   echo "SOAK FAIL — $PHASES_FAILED von 3 Phasen sind nicht durchgelaufen." >&2
   echo "Ausgaben der Phasen:" >&2
   for phase in 1 2 3; do
@@ -305,6 +323,7 @@ if [ "$ACTIONS" -eq 0 ]; then
 fi
 
 if [ "$FINDINGS" -gt 0 ]; then
+  KEEP_EVIDENCE=1
   echo "SOAK FAIL — $FINDINGS Invarianten-Verstoß(e) bei $ACTIONS Aktionen:"
   echo
   grep "^SOAK-BEFUND" "$LOG" | sed 's/^/  /'

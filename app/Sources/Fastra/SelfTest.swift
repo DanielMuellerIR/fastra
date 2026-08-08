@@ -370,6 +370,7 @@ enum SelfTest {
         case "coldopen": waitForMainWindow { runColdOpenTest(restoreEnabled: true) }
         case "coldopenoff": waitForMainWindow { runColdOpenTest(restoreEnabled: false) }
         case "multisearch": waitForMainWindow { runMultiWindowSearchJumpTest() }
+        case "bgscroll": waitForMainWindow { runBackgroundScrollTest() }
         case "cmdw":      waitForMainWindow { openSearchThen { runCmdWTest() } }
         case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
         case "searchoptions": waitForMainWindow { openSearchThen { runSearchOptionsTest() } }
@@ -1490,6 +1491,228 @@ enum SelfTest {
                                 firstWindow: firstWindow, secondWindow: secondWindow,
                                 secondSearchWindow: secondSearchWindow,
                                 tick: tick + 1)
+        }
+    }
+
+    // MARK: - -selftest bgscroll
+
+    /// Hintergrundfenster dürfen bei prozessweiten SwiftUI-Neubewertungen nie
+    /// ungefragt scrollen (Dauertest-Befund 2026-08-09).
+    ///
+    /// Hintergrund: Der Treffer-Sprung schreibt eine `CursorPosition` mit
+    /// `range == .notFound` in den Editor-State; der CESE-Coordinator verwirft
+    /// die aufgelöste Rückmeldung im `isUpdatingFromRepresentable`-Fenster —
+    /// State und Controller konvergieren danach nie. Der 4c-Patch in build.sh
+    /// (`updateControllerWithState`) feuerte deshalb bei JEDER Neubewertung
+    /// erneut `setCursorPositions(..., scrollToVisible: true)`: Sobald eine
+    /// prozessweite Einstellung (hier: UI-Zoom) alle EditorViews neu bewertete,
+    /// scrollte auch ein nie angefasstes HINTERGRUND-Fenster zurück zu seinem
+    /// alten Sprungziel. Der Fix bindet das Scrollen ans Key-Window; dieser
+    /// Test stellt genau das Szenario nach und misst, dass der Ausschnitt des
+    /// hinteren Fensters stehen bleibt.
+    private static func runBackgroundScrollTest() {
+        testLabel = "bgscroll"
+        guard let frontWorkspace = Workspace.shared,
+              let frontWindow = NSApp.windows.first(where: {
+                  !SearchWindow.isSearchWindow($0)
+                      && WorkspaceWindowRegistry.workspace(for: $0) === frontWorkspace
+                      && $0.isVisible
+              }) else {
+            finish(false, "kein erstes Dokumentfenster mit Workspace-Zuordnung")
+        }
+        // Zweites Fenster öffnen — es wird nach dem präparierten Sprung das
+        // HINTERGRUND-Fenster (siehe `MainActor.assumeIsolated` in multisearch).
+        let backWorkspace = MainActor.assumeIsolated {
+            DocumentWindowController.openNewDocument(defaults: workspaceDefaults())
+        }
+        guard let backWindow = NSApp.windows.first(where: {
+            !SearchWindow.isSearchWindow($0)
+                && WorkspaceWindowRegistry.workspace(for: $0) === backWorkspace
+                && $0.isVisible
+        }) else {
+            finish(false, "kein zweites Dokumentfenster mit Workspace-Zuordnung")
+        }
+
+        // Langer Inhalt in beiden Fenstern; der Treffer liegt weit unten,
+        // damit der Sprung im hinteren Fenster sichtbar scrollen MUSS.
+        var backLines = (1...200).map { "Hinteres Fenster, Zeile \($0): leer" }
+        backLines[169] = "Hinteres Fenster, Zeile 170: bgscrolltreffer"
+        frontWorkspace.activeTabContent.wrappedValue =
+            (1...200).map { "Vorderes Fenster, Zeile \($0)" }.joined(separator: "\n")
+        backWorkspace.activeTabContent.wrappedValue = backLines.joined(separator: "\n")
+        // CESE übernimmt programmatische Binding-Änderungen nicht live; der
+        // produktive Reload-Zähler remountet beide Editoren mit dem Testinhalt.
+        frontWorkspace.editorReloadNonce += 1
+        backWorkspace.editorReloadNonce += 1
+
+        NSApp.activate(ignoringOtherApps: true)
+        pollBackgroundScrollEditors(frontWindow: frontWindow,
+                                    backWorkspace: backWorkspace,
+                                    backWindow: backWindow)
+    }
+
+    /// Wartet, bis beide Editoren montiert sind und der hintere den Testinhalt
+    /// wirklich zeigt, und löst dann den echten Treffer-Sprung aus (derselbe
+    /// Weg wie Suchtreffer-Klick und ⌘G, siehe `postMatchJump`).
+    private static func pollBackgroundScrollEditors(frontWindow: NSWindow,
+                                                    backWorkspace: Workspace,
+                                                    backWindow: NSWindow,
+                                                    tick: Int = 0) {
+        let frontTV = frontWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
+        let backTV = backWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
+        if let backTV, frontTV != nil,
+           (backTV.string as NSString).range(of: "bgscrolltreffer").location != NSNotFound {
+            let result = BufferSearch.find(
+                in: backWorkspace.activeTab?.content ?? "",
+                options: SearchOptions(find: "bgscrolltreffer", replace: "",
+                                       isRegex: false, caseSensitive: true)
+            )
+            guard let target = result.matches.first, target.line == 170 else {
+                finish(false, "bgscrolltreffer-Testtreffer auf Zeile 170 fehlt")
+            }
+            // Der Sprung hinterlässt im Editor-State des hinteren Fensters die
+            // nie konvergierende `.notFound`-CursorPosition — genau der
+            // Zustand, in dem der alte 4c-Patch bei jeder Neubewertung erneut
+            // scrollte.
+            NotificationCenter.default.postMatchJump(target, for: backWorkspace)
+            pollBackgroundScrollJump(frontWindow: frontWindow,
+                                     backWindow: backWindow, backTV: backTV)
+            return
+        }
+        if tick >= 100 {
+            finish(false, "Editoren mit Testinhalt wurden nicht binnen 5 s bereit "
+                   + "(vorderer=\(frontTV != nil), hinterer=\(backTV != nil))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollBackgroundScrollEditors(frontWindow: frontWindow,
+                                        backWorkspace: backWorkspace,
+                                        backWindow: backWindow, tick: tick + 1)
+        }
+    }
+
+    /// Wartet, bis der Sprung im hinteren Fenster Auswahl UND sichtbares
+    /// Scrollen bewirkt hat — der Beleg, dass das Sprungziel weit unten liegt.
+    ///
+    /// Zusätzlich muss die Scrollposition drei Ticks lang STILLSTEHEN: Der
+    /// Sprung scrollt konvergierend über mehrere Runloop-Durchläufe
+    /// (`convergeScroll`); ein zu frühes Zurückscrollen an den Anfang würde
+    /// sonst mit dessen letzten Iterationen kollidieren und den Test flaky
+    /// machen.
+    private static func pollBackgroundScrollJump(frontWindow: NSWindow,
+                                                 backWindow: NSWindow,
+                                                 backTV: TextView,
+                                                 tick: Int = 0,
+                                                 lastY: CGFloat = -1,
+                                                 stableTicks: Int = 0) {
+        let selection = backTV.selectedRange()
+        let clip = backTV.enclosingScrollView?.contentView
+        let scrolledY = clip?.bounds.origin.y ?? 0
+        let isStable = scrolledY == lastY
+        if selection.location != NSNotFound, selection.length > 0,
+           NSMaxRange(selection) <= (backTV.string as NSString).length,
+           (backTV.string as NSString).substring(with: selection) == "bgscrolltreffer",
+           scrolledY > 300, isStable, stableTicks >= 2 {
+            // ERST den Fensterwechsel: Solange das hintere Fenster selbst Key
+            // ist, darf auch der reparierte Patch dort scrollen — das
+            // Zurückscrollen an den Anfang passiert deshalb erst, wenn das
+            // vordere Fenster sicher Key ist.
+            frontWindow.makeKeyAndOrderFront(nil)
+            pollBackgroundScrollKeyWindow(frontWindow: frontWindow,
+                                          backWindow: backWindow, backTV: backTV)
+            return
+        }
+        if tick >= 100 {
+            finish(false, "Sprung im hinteren Fenster kam nicht ruhig an "
+                   + "(selection=\(selection), y=\(Int(scrolledY)), stabil=\(stableTicks))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollBackgroundScrollJump(frontWindow: frontWindow,
+                                     backWindow: backWindow, backTV: backTV,
+                                     tick: tick + 1,
+                                     lastY: scrolledY,
+                                     stableTicks: isStable ? stableTicks + 1 : 0)
+        }
+    }
+
+    /// Wartet, bis das vordere Fenster wirklich Key ist und das hintere nicht,
+    /// und scrollt das hintere Fenster DANN an den Dateianfang — so, wie ein
+    /// Nutzer es dort zuletzt stehen gelassen hätte.
+    private static func pollBackgroundScrollKeyWindow(frontWindow: NSWindow,
+                                                      backWindow: NSWindow,
+                                                      backTV: TextView,
+                                                      tick: Int = 0) {
+        if frontWindow.isKeyWindow, !backWindow.isKeyWindow {
+            // Regulärer AppKit-Weg statt synthetischer Scroll-Events (siehe
+            // AGENTS.md, Scrollen in Fenster-Selbsttests).
+            guard let scrollView = backTV.enclosingScrollView else {
+                finish(false, "keine ScrollView am hinteren Editor")
+            }
+            let clip = scrollView.contentView
+            clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: 0))
+            scrollView.reflectScrolledClipView(clip)
+            pollBackgroundScrollTop(backWindow: backWindow, backTV: backTV)
+            return
+        }
+        if tick >= 100 {
+            finish(false, "vorderes Fenster wurde nicht Key "
+                   + "(frontKey=\(frontWindow.isKeyWindow), backKey=\(backWindow.isKeyWindow))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollBackgroundScrollKeyWindow(frontWindow: frontWindow,
+                                          backWindow: backWindow, backTV: backTV,
+                                          tick: tick + 1)
+        }
+    }
+
+    /// Wartet, bis der Ausschnitt des hinteren Fensters oben angekommen ist
+    /// (Beleg, DASS gescrollt wurde), und startet dann die eigentliche Messung.
+    private static func pollBackgroundScrollTop(backWindow: NSWindow,
+                                                backTV: TextView,
+                                                tick: Int = 0) {
+        let y = backTV.enclosingScrollView?.contentView.bounds.origin.y ?? -1
+        if y == 0 {
+            observeBackgroundScroll(backWindow: backWindow, backTV: backTV)
+            return
+        }
+        if tick >= 100 {
+            finish(false, "Rückscrollen an den Anfang kam nicht an (y=\(Int(y)))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollBackgroundScrollTop(backWindow: backWindow, backTV: backTV,
+                                    tick: tick + 1)
+        }
+    }
+
+    /// Die eigentliche Prüfung: Während des Beobachtungsfensters wird zweimal
+    /// der prozessweite UI-Zoom verstellt (bewertet ALLE EditorViews neu, wie
+    /// ⌘+ im Betrieb). Vor dem Fix scrollte das hintere Fenster daraufhin
+    /// zurück zu seinem alten Sprungziel (y sprang von 0 auf über 2000);
+    /// mit dem Fix bleibt sein Ausschnitt stehen.
+    private static func observeBackgroundScroll(backWindow: NSWindow,
+                                                backTV: TextView,
+                                                tick: Int = 0) {
+        let y = backTV.enclosingScrollView?.contentView.bounds.origin.y ?? -1
+        // Toleranz für Reflow-Rauschen beim Zoomwechsel; der Fehlerfall liegt
+        // um Größenordnungen darüber (Sprungziel Zeile 170).
+        if y > 40 {
+            finish(false, "Hintergrundfenster scrollte ungefragt (y=\(Int(y)))")
+        }
+        if tick == 5 {
+            workspaceDefaults().set(1, forKey: UIZoom.defaultsKey)
+        }
+        // Zweiter Zoomwechsel: Falls der Coordinator die erste Neubewertung
+        // über sein `isUpdateFromTextView`-Fenster geschluckt hat, greift
+        // sicher die zweite.
+        if tick == 20 {
+            workspaceDefaults().set(2, forKey: UIZoom.defaultsKey)
+        }
+        if tick >= 50 {
+            finish(true, "Ausschnitt des Hintergrundfensters blieb trotz zweier "
+                   + "prozessweiter Neubewertungen stehen (y=\(Int(y)))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            observeBackgroundScroll(backWindow: backWindow, backTV: backTV,
+                                    tick: tick + 1)
         }
     }
 

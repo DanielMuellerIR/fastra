@@ -108,10 +108,21 @@ fi
 # Selbsttest `-selftest jump` deckte es auf. Fix: gegen den IST-Stand des
 # Controllers vergleichen (controller.cursorPositions) und beim Anwenden in
 # Sicht scrollen (scrollToVisible), damit der Sprung auch sichtbar wird.
+#
+# WICHTIG (Dauertest-Befund 2026-08-09): Das Scrollen ist ans Key-Window
+# gebunden. Der Vergleich oben feuert bei JEDER SwiftUI-Neubewertung erneut,
+# solange State und Controller divergieren — und nach einem Treffer-Sprung
+# konvergieren sie nie: Der Sprung-Pfad schreibt eine CursorPosition mit
+# range == .notFound, der Coordinator verwirft die aufgelöste Rückmeldung im
+# isUpdatingFromRepresentable-Fenster. Mit bedingungslosem `scrollToVisible:
+# true` scrollten dadurch auch HINTERGRUND-Fenster spontan, sobald irgendeine
+# prozessweite Einstellung (z.B. Zoom) alle EditorViews neu bewertete.
+# Selektion setzen bleibt für alle Fenster; nur das Scrollen gehört dem
+# aktiven Fenster. Regressionstest: `-selftest bgscroll`.
 CESE_SE="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/SourceEditor/SourceEditor.swift"
 if grep -q 'cursorPositions != state.cursorPositions' "$CESE_SE" 2>/dev/null; then
   echo "→ Patche CodeEditSourceEditor (toten cursorPositions-Reconcile reparieren)"
-  /usr/bin/perl -i -0pe 's/cursorPositions != state\.cursorPositions \{\s*\n\s*controller\.setCursorPositions\(cursorPositions\)/cursorPositions != controller.cursorPositions {  \/\/ Fastra-Patch: upstream verglich state.cursorPositions mit sich selbst (immer false) -> externer Sprung wirkte nie\n            controller.setCursorPositions(cursorPositions, scrollToVisible: true)/' "$CESE_SE"
+  /usr/bin/perl -i -0pe 's/cursorPositions != state\.cursorPositions \{\s*\n\s*controller\.setCursorPositions\(cursorPositions\)/cursorPositions != controller.cursorPositions {  \/\/ Fastra-Patch: upstream verglich state.cursorPositions mit sich selbst (immer false) -> externer Sprung wirkte nie\n            \/\/ Fastra-Patch: Scrollen nur im Key-Window -- ein Hintergrundfenster darf bei SwiftUI-Neubewertungen nie ungefragt scrollen (Dauertest-Befund 2026-08-09)\n            controller.setCursorPositions(cursorPositions, scrollToVisible: controller.textView?.window?.isKeyWindow == true)/' "$CESE_SE"
   # Verifizieren, dass der Patch gegriffen hat — sonst bleibt der Sprung tot.
   if grep -q 'cursorPositions != state.cursorPositions' "$CESE_SE" 2>/dev/null; then
     echo "✗ FEHLER: cursorPositions-Reconcile-Patch hat NICHT gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
@@ -122,6 +133,33 @@ if grep -q 'cursorPositions != state.cursorPositions' "$CESE_SE" 2>/dev/null; th
 rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
 rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
       .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4c-Nachzug: Checkouts mit der ALTEN Patchfassung (`scrollToVisible: true`
+# für alle Fenster) auf die Key-Window-Fassung migrieren, ohne den Checkout
+# neu aufzulösen. Der Block oben greift nur bei frischem Upstream-Text; ein
+# bereits gepatchter Checkout liefe sonst mit dem alten Fehlverhalten weiter.
+if grep -qF 'controller.setCursorPositions(cursorPositions, scrollToVisible: true)' "$CESE_SE" 2>/dev/null; then
+  echo "→ Migriere CodeEditSourceEditor (4c: Scrollen nur noch im Key-Window)"
+  /usr/bin/perl -i -0pe 's/controller\.setCursorPositions\(cursorPositions, scrollToVisible: true\)/\/\/ Fastra-Patch: Scrollen nur im Key-Window -- ein Hintergrundfenster darf bei SwiftUI-Neubewertungen nie ungefragt scrollen (Dauertest-Befund 2026-08-09)\n            controller.setCursorPositions(cursorPositions, scrollToVisible: controller.textView?.window?.isKeyWindow == true)/' "$CESE_SE"
+  # Selbstprüfung: Die alte Form darf nicht mehr vorkommen — sonst hat die
+  # Migration nicht gegriffen und Hintergrundfenster scrollten weiter.
+  if grep -qF 'controller.setCursorPositions(cursorPositions, scrollToVisible: true)' "$CESE_SE" 2>/dev/null; then
+    echo "✗ FEHLER: Key-Window-Migration des cursorPositions-Patches hat NICHT gegriffen. Build abgebrochen." >&2
+    exit 1
+  fi
+  # SPM trackt Checkout-Änderungen nicht → Modul neu übersetzen lassen.
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# Endkontrolle für beide Wege (frischer Checkout ODER Migration): Die
+# Key-Window-Scrollbindung muss jetzt in der Quelle stehen. Fehlt sie, hat
+# Upstream die Stelle umgebaut und der Fix wäre lautlos verschwunden.
+if ! grep -qF 'scrollToVisible: controller.textView?.window?.isKeyWindow == true' "$CESE_SE" 2>/dev/null; then
+  echo "✗ FEHLER: Key-Window-Scrollbindung fehlt in SourceEditor.swift — Quelle hat sich geändert. Build abgebrochen." >&2
+  exit 1
 fi
 
 # 4c1. Patch CodeEditSourceEditor — verworfene Auto-Vervollständigung sauber
@@ -2354,6 +2392,143 @@ if ! grep -q 'Fastra-Patch: aktuelle Zeile bleibt auch bei Textauswahl sichtbar'
 fi
 
 if [ "$CURRENT_LINE_SELECTION_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z. CodeEditTextView — TextLine.prepareForDisplay darf bei veralteter
+# Zeilen-Range nicht crashen.
+#
+# Waehrend einer Undo-Klammer beschreibt lineStorage noch den ALTEN (laengeren)
+# Text. Loest in diesem Fenster ein reentranter Scroll-Callback ein Layout aus
+# (scrollSelectionToVisible → synchroner Bounds-Beobachter → layoutLines),
+# reicht layoutLine eine Range aus dem veralteten lineStorage an
+# `stringRef.attributedSubstring(from:)` weiter, die ueber das aktuelle
+# Textende hinausreicht — NSRangeException, SIGABRT (belegt im Dauertest,
+# Crash-Report 2026-08-09, nach ~1600 Aktionen). Der Patch clampt die Range
+# ehrlich gegen das echte Textende; bleibt nichts uebrig, kehrt die Funktion
+# ohne Typeset zurueck und meldet die Zeile erneut layoutbeduerftig — der
+# naechste Layout-Lauf arbeitet dann mit nachgezogenem lineStorage.
+# Regressionstest: TextLinePrepareForDisplayClampTests.
+CETV_TEXTLINE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextLine/TextLine.swift"
+TEXTLINE_CLAMP_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: Zeilen-Range gegen das aktuelle Textende clampen' \
+    "$CETV_TEXTLINE" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (prepareForDisplay crash-fest bei Undo-Fenster)"
+  chmod u+w "$CETV_TEXTLINE"
+  /usr/bin/python3 - "$CETV_TEXTLINE" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+old = '''        let string = stringRef.attributedSubstring(from: range)
+        let maxWidth = typesetter.typeset(
+            string,
+            documentRange: range,'''
+new = '''        // Fastra-Patch: Zeilen-Range gegen das aktuelle Textende clampen.
+        // Waehrend einer Undo-Klammer beschreibt lineStorage noch den alten
+        // Text; ein reentranter Scroll-Callback (scrollSelectionToVisible ->
+        // synchroner Bounds-Beobachter -> layoutLines) layoutet dann gegen
+        // den schon kuerzeren Speicher. Ungeklemmt wirft attributedSubstring
+        // eine NSRangeException und die App bricht mit SIGABRT ab (belegt im
+        // Dauertest, Crash-Report 2026-08-09). Liegt die Zeile ganz hinter
+        // dem Textende, kehren wir ohne Typeset zurueck; setNeedsLayout()
+        // loescht die alten Fragmente und der naechste Layout-Lauf arbeitet
+        // mit nachgezogenem lineStorage.
+        let clampedLocation = min(range.location, stringRef.length)
+        let clampedRange = NSRange(
+            location: clampedLocation,
+            length: min(range.length, stringRef.length - clampedLocation)
+        )
+        if clampedRange != range && clampedRange.length == 0 {
+            setNeedsLayout()
+            return
+        }
+        let string = stringRef.attributedSubstring(from: clampedRange)
+        let maxWidth = typesetter.typeset(
+            string,
+            documentRange: clampedRange,'''
+if old not in src:
+    raise SystemExit(
+        f"{path}: prepareForDisplay-Struktur hat sich geaendert — Patch 4z pruefen"
+    )
+open(path, "w").write(src.replace(old, new, 1))
+PYEOF
+  TEXTLINE_CLAMP_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: Zeilen-Range gegen das aktuelle Textende clampen' "$CETV_TEXTLINE"; then
+  echo "✗ FEHLER: prepareForDisplay-Clamp-Patch hat NICHT gegriffen." >&2
+  exit 1
+fi
+
+if [ "$TEXTLINE_CLAMP_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z1. CodeEditTextView — layoutLines nicht gegen inkonsistente Zwischenstaende
+# laufen lassen.
+#
+# Der vorgesehene Schutz `guard !isInTransaction` in layoutLines ist TOT:
+# `transactionCounter` wird nirgends im Paket erhoeht (per grep verifiziert
+# 2026-08-09), `isInTransaction` ist damit immer false. Genau das Fenster, das
+# er abschirmen sollte — lineStorage beschreibt waehrend einer Undo-Klammer
+# noch den alten Text — erreicht layoutLines deshalb ungebremst (siehe 4z).
+# Ersatz: ein billiger Laengenvergleich. Weicht lineStorage.length vom echten
+# textStorage.length ab, ist der Zustand mitten in einer Mutation; dann kein
+# Layout — der naechste Durchlauf laeuft mit nachgezogenem lineStorage.
+CETV_LAYOUT="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextLayoutManager/TextLayoutManager+Layout.swift"
+LAYOUT_CONSISTENCY_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: toter Transaktionsschutz durch Laengenvergleich ersetzt' \
+    "$CETV_LAYOUT" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (layoutLines: Konsistenz-Ausstieg statt totem Transaktionsschutz)"
+  chmod u+w "$CETV_LAYOUT"
+  /usr/bin/python3 - "$CETV_LAYOUT" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+old = '''        guard let visibleRect = rect ?? delegate?.visibleRect,
+              !isInTransaction,
+              let textStorage else {
+            return []
+        }'''
+new = '''        // Fastra-Patch: toter Transaktionsschutz durch Laengenvergleich ersetzt.
+        // `isInTransaction` ist immer false (transactionCounter wird nirgends
+        // erhoeht). Weicht die Laenge des Zeilen-Storage vom echten Text ab
+        // (Undo-Klammer, reentranter Scroll-Callback), layouten wir NICHT
+        // gegen den inkonsistenten Zwischenstand — der naechste Durchlauf
+        // laeuft mit nachgezogenem lineStorage (Dauertest-Befund 2026-08-09).
+        guard let visibleRect = rect ?? delegate?.visibleRect,
+              !isInTransaction,
+              let textStorage,
+              lineStorage.length == textStorage.length else {
+            return []
+        }'''
+if old not in src:
+    raise SystemExit(
+        f"{path}: layoutLines-Guard hat sich geaendert — Patch 4z1 pruefen"
+    )
+open(path, "w").write(src.replace(old, new, 1))
+PYEOF
+  LAYOUT_CONSISTENCY_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: toter Transaktionsschutz durch Laengenvergleich ersetzt' "$CETV_LAYOUT"; then
+  echo "✗ FEHLER: layoutLines-Konsistenz-Patch hat NICHT gegriffen." >&2
+  exit 1
+fi
+
+if [ "$LAYOUT_CONSISTENCY_PATCH_CHANGED" -eq 1 ]; then
   rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
   rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
         .build/*/release/Modules/CodeEditTextView.swiftmodule

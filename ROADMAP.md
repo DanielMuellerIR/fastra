@@ -288,6 +288,23 @@ und sie sind noch offen.
   `SourceEditor.updateControllerWithState`, der bei ungleichen
   `cursorPositions` mit `scrollToVisible: true` nachzieht, obwohl der
   SwiftUI-Zustand runloop-versetzt veraltet ist.
+  **Teilweise entschärft mit 1.65.0:** Das Nachzieh-Scrollen ist jetzt ans
+  Key-Window gebunden (Hintergrundfenster scrollen nie mehr ungefragt,
+  Selbsttest `bgscroll`). Im aktiven Fenster kann der Zweig aber weiter
+  feuern, solange State und Controller divergieren. **Offen bleibt die
+  Wurzel:** Nach einem Treffer-Sprung konvergiert der Round-Trip nie, weil
+  `EditorView` (Sprung-Pfad, `.fastraJumpToRange`) eine `CursorPosition`
+  mit `range == .notFound` schreibt und der CESE-Coordinator die aufgelöste
+  Rückmeldung im `isUpdatingFromRepresentable`-Fenster verwirft. Eine echte
+  Range dort zu schreiben wurde geprüft und verworfen (2026-08-09): Beim
+  Sprung in eine andere Datei existiert der Ziel-Editor zum
+  Notification-Zeitpunkt noch nicht (Remount per `.id`), Zeile/Spalte ist
+  bewusst die driftfreie Adressierung — und selbst eine echte Range würde
+  nicht konvergieren, weil `CursorPosition` auch Zeile/Spalte vergleicht
+  (der Range-Initializer setzt sie auf −1; der vollständige Initializer ist
+  CESE-intern). Der saubere Weg wäre, im 4c-Patch den Vergleich über
+  `controller.resolveCursorPosition` zu führen, damit ein bereits
+  angewandter Sprung als „gleich" erkannt wird.
 - **Das Fenstermenü listete nur eine von zwei offenen Dateien.** In kurzer
   Nachstellung korrekt — also zustandsabhängig.
 - **`GoToTargetGesture` nutzt `Workspace.shared` statt des Event-Fensters**

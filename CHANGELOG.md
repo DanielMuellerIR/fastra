@@ -9,6 +9,28 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.65.0] — 2026-08-09
+
+### Behoben
+
+- **Fastra bricht unter Last nicht mehr beim Rückgängigmachen ab.** Nach
+  langer Arbeit mit mehreren großen Dokumenten konnte ein Undo die App ohne
+  Rückfrage beenden: Das Editor-Layout arbeitete in einem kurzen Fenster noch
+  mit den Zeilen des alten, längeren Texts und griff damit hinter das neue
+  Textende (NSRangeException). Zwei Sicherungen greifen jetzt: Das Layout
+  läuft nicht mehr gegen einen erkennbar inkonsistenten Zwischenstand an,
+  und eine veraltete Zeilen-Range wird vor dem Zugriff ehrlich auf das
+  aktuelle Textende geklemmt. Gefunden im langen realistischen Dauertest
+  (`app/soak-test.sh`, Absturz nach ~1600 Aktionen); Regressionstest
+  `TextLinePrepareForDisplayClampTests`.
+- **Hintergrundfenster scrollen nicht mehr ungefragt.** Nach einem
+  Treffer-Sprung konnte ein nie angefasstes Fenster im Hintergrund spontan
+  zu seinem alten Sprungziel zurückscrollen, sobald eine prozessweite
+  Einstellung (etwa der UI-Zoom) alle Editor-Ansichten neu bewertete. Das
+  Nachziehen der Einfügemarke bleibt für alle Fenster erhalten; nur das
+  Scrollen ist jetzt an das aktive Fenster gebunden. Ebenfalls ein Befund
+  des langen Dauertests; neuer Fenster-Selbsttest `bgscroll`.
+
 ## [v1.64.0] — 2026-08-08
 
 ### Behoben
