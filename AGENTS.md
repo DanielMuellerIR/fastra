@@ -345,6 +345,36 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   erst danach Kandidaten auflösen und übernehmen (siehe
   `MarkdownImport.isPublishableFile`).
 
+- **`NSApp.windows` ist NICHT nach Vordergrund sortiert.** Wer daraus „das
+  erste sichtbare Fenster" nimmt, trifft bei mehreren offenen Dokumenten ein
+  zufälliges — der Befehl wirkt dann im Hintergrundfenster, an einer nie
+  angeklickten Stelle. Mit nur einem Fenster fällt das nie auf. Sortiert ist
+  `NSApp.orderedWindows`. Produktcode fragt AppKit deshalb gar nicht mehr
+  selbst nach Fenstern, sondern ausschließlich über `CommandTargeting`;
+  `app/window-targeting-audit.sh` hält das mechanisch durch und läuft in
+  `build.sh` vor dem Kompilieren. Ebenso gefährlich ist die zweite Hälfte
+  desselben Fehlers: Wer den Inhalt aus `Workspace.shared` liest und in einen
+  getrennt gesuchten Editor schreibt, verbindet zwei verschiedene Fenster.
+  Fenster, Workspace und Editor immer gemeinsam über `CommandTargeting.target()`
+  holen.
+- **`selectedRange()` liefert `{NSNotFound, 0}`, solange der Editor keine
+  Auswahl hat.** Das ist der Normalzustand eines gerade geöffneten Fensters,
+  in das noch niemand geklickt hat. Ungeprüft an `replaceCharacters`
+  weitergereicht, bildet der Undo-Verwalter daraus die Umkehrung und bricht
+  die Anwendung mit „Range invalid for string" ab. Jeder Lesezugriff geht
+  deshalb über `TextView.fastraSafeSelectedRange` (pure Rechnung in
+  `SelectionClamping.clamp`). Dieselbe Wurzel hat der `IndexSet`-Absturz im
+  Attachment-Beobachter von CodeEditTextView: Auch dort trappt eine Auswahl
+  mit `NSNotFound`.
+- **Kurze Selbsttests finden keine Zustandsfehler.** Ein Selbsttest baut eine
+  frische Miniwelt, prüft eine Sache und räumt ab. Fehler, die erst nach
+  längerer Arbeit mit mehreren großen Dokumenten in mehreren Fenstern
+  entstehen, kommen darin bauartbedingt nicht vor — am 2026-08-07 meldete der
+  Arbeitsbetrieb vier solche Fehler, die keiner der rund achtzig Tests
+  gefunden hatte. Dafür gibt es `app/soak-test.sh`: ein langer Lauf über
+  mehrere App-Neustarts, der nach JEDER Aktion die Invarianten prüft und
+  Verstöße sammelt, statt abzubrechen. Er läuft bewusst nur von Hand.
+
 ## Verhaltensevals
 
 <!-- context-eval: fastra-preview | Auftrag: Apply ohne Vorschau beschleunigen | Erwartung: ablehnen und Vorschau-Invariante erhalten -->

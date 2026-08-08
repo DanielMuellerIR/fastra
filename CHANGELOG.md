@@ -9,6 +9,36 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.64.0] — 2026-08-08
+
+### Behoben
+
+- **Menübefehle wirken wieder in dem Fenster, das man gerade bedient.** Bei
+  zwei offenen Dokumenten konnte ⌘B im Hintergrundfenster formatieren, an
+  einer nie angeklickten Stelle. Betroffen waren acht Befehle: Fett und
+  Kursiv, Dokument formatieren, minifizieren und prüfen, Zeilen sortieren,
+  Spalte einfügen und die Spaltenauswahl. Ursache war eine Fenstersuche über
+  eine ungeordnete Liste — sie lieferte bei mehreren Fenstern ein zufälliges.
+- **„Formatieren", „Minifizieren" und „Prüfen" nehmen die Dateiendung aus dem
+  eigenen Fenster.** Sie lasen sie bisher aus dem zuletzt aktivierten
+  Dokument und schrieben in ein möglicherweise anderes — bei zwei Fenstern
+  konnten das verschiedene Dateien sein.
+- **Ein Bild landet samt Datei im selben Dokument.** Beim Einfügen aus der
+  Zwischenablage kam der Editor aus dem vorderen Fenster, der Ablageort der
+  Bilddatei aber aus dem zuletzt aktivierten. Zeigten die auf verschiedene
+  Fenster, lag die Datei neben dem einen Dokument und der Link im anderen.
+- **Fastra bricht nicht mehr ab, wenn in ein Dokument noch nie geklickt
+  wurde.** Ein frisch geöffneter Editor hat keine Auswahl; wurde in diesem
+  Zustand ein Bild eingefügt oder ein Formatbefehl ausgelöst, endete die
+  Anwendung ohne Rückfrage. Auslösbar, indem man ein Bild in ein gerade
+  geöffnetes Markdown-Dokument zieht.
+- **Die Rückfrage beim Beenden zeigt, worum es geht.** Bisher konnte eine
+  Meldung zu einem Dokument „Ohne Titel" erscheinen, das in keinem Fenster
+  und keinem Tab zu finden war. Gefragt wird jetzt nur noch für Dokumente
+  mit einem echten Fenster; dieses kommt nach vorn, und der betroffene Tab
+  wird sichtbar gemacht. Nach „Abbrechen" steht wieder der vorherige Tab
+  vorn.
+
 ## [v1.63.3] — 2026-08-07
 
 ### Behoben

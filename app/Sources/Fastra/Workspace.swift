@@ -1396,14 +1396,20 @@ final class Workspace: ObservableObject {
         guard Self.requiresSaveBeforeClosing(tab) else {
             return true
         }
+        // Den Tab, um den es geht, VOR der Rückfrage nach vorn holen. Sonst
+        // nennt der Dialog einen Dateinamen, während im Fenster ein ganz
+        // anderer Tab steht: Der Nutzer kann nicht nachsehen, worüber er
+        // gerade entscheidet, und „Nicht sichern" wird zum Blindflug
+        // (Fehlerbericht 2026-08-07). Der `.save`-Zweig brauchte diese
+        // Aktivierung ohnehin — jetzt gilt sie für alle drei Antworten.
+        // Die Aufrufer stellen den ursprünglich aktiven Tab am Ende wieder her.
+        activeTabID = id
         switch confirmCloseHandler(tab.title) {
         case .dontSave:
             return true
         case .cancel:
             return false
         case .save:
-            // saveActiveTab wirkt auf den AKTIVEN Tab → diesen kurz aktivieren.
-            activeTabID = id
             saveActiveTab()
             // Erfolg = der Tab ist jetzt nicht mehr dirty (Panel/Schreiben ok).
             if let i = tabs.firstIndex(where: { $0.id == id }) { return !tabs[i].isDirty }

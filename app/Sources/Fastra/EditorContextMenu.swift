@@ -19,7 +19,52 @@
 import AppKit
 import CodeEditTextView
 
+/// Pure Klemmung einer gemeldeten Textauswahl — ohne AppKit prüfbar.
+///
+/// Bewusst von der TextView getrennt: Ein Editor braucht ein Fenster, die
+/// Rechnung nicht. So lässt sich jeder Grenzfall als Unit-Test festnageln,
+/// statt ihn in einem Fenstertest zu hoffen.
+enum SelectionClamping {
+    /// Bringt `range` in einen Bereich, der für einen Text der Länge
+    /// `textLength` gefahrlos verwendbar ist.
+    ///
+    /// `NSNotFound` ist der Normalfall eines Editors ohne Auswahl und wird
+    /// zum Dokumentanfang — dort erwartet auch AppKit einen frischen
+    /// Einfügepunkt.
+    static func clamp(_ range: NSRange, textLength: Int) -> NSRange {
+        let length = max(0, textLength)
+        guard range.location != NSNotFound, range.location >= 0 else {
+            return NSRange(location: 0, length: 0)
+        }
+        let location = min(range.location, length)
+        return NSRange(location: location,
+                       length: min(max(0, range.length), length - location))
+    }
+}
+
 extension TextView {
+    /// Auswahl, die garantiert INNERHALB des Textes liegt.
+    ///
+    /// `selectedRange()` liefert `{NSNotFound, 0}`, solange der Editor
+    /// überhaupt keine Auswahl hat — der Normalzustand eines frisch
+    /// geöffneten Fensters, in das noch niemand geklickt hat
+    /// (`TextView+NSTextInput.swift`: `textSelections.first?.range ??
+    /// NSRange(location: NSNotFound, length: 0)`).
+    ///
+    /// Wer diesen Wert ungeprüft an `replaceCharacters` weitergibt, bricht
+    /// die ganze Anwendung ab: Der Undo-Verwalter bildet die Umkehrung der
+    /// Änderung und trifft dabei auf „Range invalid for string". Real
+    /// auslösbar, indem man in ein gerade geöffnetes Markdown-Dokument ein
+    /// Bild zieht, ohne vorher hineingeklickt zu haben (vom Dauertest
+    /// gefunden, 2026-08-08).
+    ///
+    /// Dieselbe Wurzel hat der `IndexSet`-Absturz aus den Fenstertests:
+    /// Auch dort war eine Auswahl mit `NSNotFound` die Ursache. Deshalb
+    /// gehen ALLE Lesezugriffe auf die Auswahl über diese eine Stelle.
+    var fastraSafeSelectedRange: NSRange {
+        SelectionClamping.clamp(selectedRange(), textLength: textStorage.length)
+    }
+
     /// Wendet eine Fastra-Textoperation als eigene Undo-Gruppe an und hält die
     /// Auswahl an einer stabilen, zum Ergebnis passenden Position.
     ///
@@ -32,7 +77,7 @@ extension TextView {
     /// Die expliziten Auswahl-Snapshots verhindern beide Zustände, ohne
     /// normales Tippen oder Einfügen zu verändern.
     func fastraApplyTextOperation(replacing range: NSRange, with replacement: String) {
-        let selectionBefore = selectedRange()
+        let selectionBefore = fastraSafeSelectedRange
         let selectedWholeDocument = range.location == 0
             && range.length == textStorage.length
             && selectionBefore == range
@@ -340,8 +385,12 @@ final class EditorContextMenu: NSObject {
                                 keyEquivalent: "")
         format.target = self
         format.toolTip = L10n.string("Formatiert JSON oder XML. Eine Auswahl wird einzeln formatiert.")
-        let filename = Workspace.shared?.activeTab?.url?.pathExtension
-            ?? (Workspace.shared?.activeTab?.title as NSString?)?.pathExtension
+        // Der Menüaufbau kennt seinen Editor — die Endung deshalb aus DESSEN
+        // Tab holen, nicht aus dem globalen `Workspace.shared`. Sonst richtet
+        // sich das Kontextmenü eines Fensters nach dem Dokument eines anderen.
+        let menuTab = workspace(forEditor: textView)?.activeTab
+        let filename = menuTab?.url?.pathExtension
+            ?? (menuTab?.title as NSString?)?.pathExtension
         format.isEnabled = !hasColumnSelection
             && DocumentFormatter.supports(fileExtension: filename)
 
@@ -396,7 +445,9 @@ final class EditorContextMenu: NSObject {
         // Markdown-Submenü (Etappe 5 Wunschpaket 2026-07b) — nur sichtbar,
         // wenn der aktive Tab ein Markdown-Dokument ist. (Der Monitor läuft
         // auf dem Main-Thread; die Klasse ist nur nicht annotiert.)
-        if MainActor.assumeIsolated({ MarkdownAssist.isMarkdownTabActive(in: Workspace.shared) }) {
+        if MainActor.assumeIsolated({
+            MarkdownAssist.isMarkdownTabActive(in: CommandTargeting.workspace(for: textView))
+        }) {
             let markdownItem = NSMenuItem(title: "Markdown", action: nil, keyEquivalent: "")
             let markdownSub = NSMenu()
             let breaksAfter: Set<MarkdownFormatCommand> = [.hardBreak, .plainParagraph, .quote, .link]
@@ -487,11 +538,17 @@ final class EditorContextMenu: NSObject {
             warnColumnSelectionUnsupported()
             return
         }
-        guard let tab = Workspace.shared?.activeTab else { NSSound.beep(); return }
+        // Dateiendung aus dem Tab GENAU DIESES Editors — nicht aus
+        // `Workspace.shared`. Sonst formatiert Fenster A seinen Text nach der
+        // Endung von Fenster B (Fehlerbericht 2026-08-07).
+        guard let tab = workspace(forEditor: textView)?.activeTab else {
+            NSSound.beep()
+            return
+        }
         let fileExtension = tab.url?.pathExtension ?? (tab.title as NSString).pathExtension
         do {
             guard let result = try DocumentFormatter.format(in: textView.string,
-                                                            selection: textView.selectedRange(),
+                                                            selection: textView.fastraSafeSelectedRange,
                                                             fileExtension: fileExtension) else {
                 NSSound.beep()
                 return
@@ -522,13 +579,17 @@ final class EditorContextMenu: NSObject {
             warnColumnSelectionUnsupported()
             return
         }
-        guard let tab = Workspace.shared?.activeTab else { NSSound.beep(); return }
+        // Dateiendung aus dem Tab GENAU DIESES Editors (siehe `format`).
+        guard let tab = workspace(forEditor: textView)?.activeTab else {
+            NSSound.beep()
+            return
+        }
         let fileExtension = tab.url?.pathExtension
             ?? (tab.title as NSString).pathExtension
         do {
             guard let result = try DocumentFormatter.minify(
                 in: textView.string,
-                selection: textView.selectedRange(),
+                selection: textView.fastraSafeSelectedRange,
                 fileExtension: fileExtension
             ) else {
                 NSSound.beep()   // bereits minimal → No-op
@@ -550,7 +611,8 @@ final class EditorContextMenu: NSObject {
     }
 
     private func lint(on textView: TextView) {
-        guard let workspace = Workspace.shared,
+        // Workspace GENAU DIESES Editors (siehe `format`).
+        guard let workspace = workspace(forEditor: textView),
               let tab = workspace.activeTab else {
             NSSound.beep()
             return
@@ -787,8 +849,15 @@ final class EditorContextMenu: NSObject {
     /// sind sonst deaktiviert, defensiv wird trotzdem geprüft.
     func applyMarkdownFormatToActiveEditor(_ command: MarkdownFormatCommand) {
         MainActor.assumeIsolated {
-            guard MarkdownAssist.isMarkdownTabActive(in: Workspace.shared),
-                  let textView = activeEditorTextView() else { NSSound.beep(); return }
+            // Workspace UND Editor in einem Zugriff aus demselben Fenster.
+            // Vorher stammte die Markdown-Prüfung aus `Workspace.shared` und
+            // der Editor aus einer eigenen Suche: Zeigte `shared` auf ein
+            // anderes Fenster, blieb ⌘B wirkungslos (nur ein Beep) — oder es
+            // wirkte im falschen Dokument (Fehlerbericht 2026-08-07).
+            guard let target = CommandTargeting.target(),
+                  MarkdownAssist.isMarkdownTabActive(in: target.workspace)
+            else { NSSound.beep(); return }
+            let textView = target.textView
             guard textView.fastraColumnSelectionSnapshot == nil else {
                 warnColumnSelectionUnsupported()
                 return
@@ -986,27 +1055,31 @@ final class EditorContextMenu: NSObject {
 
     /// Sucht die Editor-TextView im vorderen sichtbaren Hauptfenster (ohne das
     /// Such-Panel). Für Menüleisten-Aktionen, die kein Rechtsklick-Ziel haben.
+    /// Editor des Fensters, das der Nutzer gerade bedient.
+    ///
+    /// Lief bis 2026-08-07 über `NSApp.windows` und nahm das erste sichtbare
+    /// Fenster mit Editor. Diese Menge ist NICHT nach Vordergrund sortiert:
+    /// Bei zwei offenen Dokumenten landete ⌘B im Hintergrundfenster, an der
+    /// Cursorposition, die es dort zufällig gab. Die Zielwahl liegt jetzt
+    /// vollständig in `CommandTargeting`.
+    ///
+    /// `assumeIsolated`: Diese Klasse ist nicht als `@MainActor` deklariert,
+    /// läuft aber ausschließlich dort — Menü-Aktionen und die
+    /// Notification-Beobachter des AppDelegate kommen alle auf dem
+    /// Main-Thread an. Dasselbe Muster wie an den übrigen Stellen der Datei.
     private func activeEditorTextView() -> TextView? {
-        for window in NSApp.windows where window.isVisible {
-            if SearchWindow.isSearchWindow(window) { continue }
-            if let content = window.contentView, let tv = descendantTextView(in: content) {
-                return tv
-            }
-        }
-        return nil
+        MainActor.assumeIsolated { CommandTargeting.targetEditorTextView() }
     }
 
     private func activeEditorTextView(for workspace: Workspace) -> TextView? {
-        let prioritized = NSApp.windows.sorted { lhs, rhs in
-            (lhs.isKeyWindow ? 1 : 0) > (rhs.isKeyWindow ? 1 : 0)
-        }
-        for window in prioritized where window.isVisible {
-            guard !SearchWindow.isSearchWindow(window),
-                  WorkspaceWindowRegistry.workspace(for: window) === workspace,
-                  let content = window.contentView else { continue }
-            if let textView = descendantTextView(in: content) { return textView }
-        }
-        return nil
+        MainActor.assumeIsolated { CommandTargeting.editorTextView(for: workspace) }
+    }
+
+    /// Workspace, zu dem DIESER Editor gehört (siehe `activeEditorTextView`
+    /// zur Isolation). Wer Inhalt liest und Text schreibt, muss beides aus
+    /// demselben Fenster nehmen.
+    private func workspace(forEditor textView: TextView) -> Workspace? {
+        MainActor.assumeIsolated { CommandTargeting.workspace(for: textView) }
     }
 
     private func descendantTextView(in view: NSView) -> TextView? {
@@ -1053,7 +1126,7 @@ final class EditorContextMenu: NSObject {
             return
         }
         let text = textView.string
-        let selection = textView.selectedRange()
+        let selection = textView.fastraSafeSelectedRange
         guard let result = operation(text, selection) else {
             // Nichts zu tun (eine Zeile / keine Duplikate) — kurzer Beep
             // als Feedback statt stiller Funkstille.

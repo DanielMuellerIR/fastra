@@ -329,7 +329,16 @@ enum SelfTest {
         if let cachedWorkspaceDefaults { return cachedWorkspaceDefaults }
         let suiteName = "io.github.fastra.selftest"
         let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
+        // Normalerweise startet jeder Selbsttest auf einem leeren Stand.
+        // Der Dauertest ist die Ausnahme: Er läuft über mehrere App-Starts,
+        // und seine Phasen ab 2 prüfen gerade das, was die
+        // Sitzungswiederherstellung aus der vorigen Phase mitbringt. Würde
+        // hier geleert, gäbe es nichts wiederherzustellen — der Test
+        // übersähe genau die Fehler, für die er gebaut wurde.
+        let soakPhase = UserDefaults.standard.integer(forKey: "soakPhase")
+        if soakPhase <= 1 {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
         cachedWorkspaceDefaults = defaults
         return defaults
     }
@@ -388,6 +397,8 @@ enum SelfTest {
         case "rightedge": waitForMainWindow { runRightEdgeClickTest() }
         case "selshort": waitForMainWindow { runShortSelectionScrollTest() }
         case "dragscroll": waitForMainWindow { runDragScrollTest() }
+        case "dragnoscroll": waitForMainWindow { runDragNoScrollTest() }
+        case "soak": waitForMainWindow { MainActor.assumeIsolated { runSoakTest() } }
         case "dirtyundo": waitForMainWindow { runDirtyUndoTest() }
         case "emojisplit": waitForMainWindow { runEmojiSplitTest() }
         case "emojipaste": waitForMainWindow { runEmojiPasteTest() }
@@ -6259,6 +6270,285 @@ enum SelfTest {
     /// muss automatisch mitscrollen und die bewegte Kante sichtbar halten,
     /// statt die Auswahl unsichtbar unter dem Viewport weiterwachsen zu
     /// lassen.
+    /// Einstieg des langen Dauertests. Die Arbeit selbst liegt in
+    /// `SoakTest`; hier steht nur die Phasensteuerung.
+    ///
+    /// Parameter kommen als reguläre Defaults-Argumente:
+    ///   -soakPhase 1|2|3   Abschnitt des Laufs (Phase 2 folgt einem Neustart)
+    ///   -soakRounds  N     Aktionen je Phase
+    ///   -soakDir     Pfad  Arbeitsverzeichnis mit den Testdokumenten
+    ///   -soakLog     Pfad  gemeinsames Befundprotokoll aller Phasen
+    @MainActor
+    private static func runSoakTest() {
+        testLabel = "soak"
+        let defaults = UserDefaults.standard
+        let phase = max(1, defaults.integer(forKey: "soakPhase"))
+        let rounds = max(1, defaults.integer(forKey: "soakRounds"))
+        guard let directoryPath = defaults.string(forKey: "soakDir"),
+              let logPath = defaults.string(forKey: "soakLog") else {
+            finish(false, "soakDir und soakLog müssen übergeben werden")
+        }
+        let directory = URL(fileURLWithPath: directoryPath)
+        let logURL = URL(fileURLWithPath: logPath)
+        guard let workspace = Workspace.shared,
+              mainWindowForAXChecks() != nil else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        SoakTest.reset()
+        SoakTest.currentPhase = "\(phase)"
+        // Startwert aus der Phase: wechselnde Abläufe, aber wiederholbar.
+        SoakTest.seedRandom(UInt64(phase) &* 7_919 &+ 1)
+
+        if phase == 1 {
+            let documents = SoakTest.prepareDocuments(in: directory, count: 3)
+            guard documents.count == 3 else {
+                finish(false, "Testdokumente nicht erzeugbar")
+            }
+            // Erstes Dokument ins vorhandene Fenster, für die übrigen je ein
+            // eigenes Fenster — so entsteht die Mehrfenster-Lage, in der die
+            // gemeldeten Fehler auftraten.
+            workspace.loadFile(at: documents[0]) { _ in
+                for document in documents.dropFirst() {
+                    let extra = DocumentWindowController.openNewDocument()
+                    extra.loadFile(at: document) { _ in }
+                }
+                waitForSoakWindows(expected: 3, tick: 0) {
+                    runSoakRounds(rounds: rounds, done: 0, logURL: logURL)
+                }
+            }
+            return
+        }
+
+        // Phase 2 und 3 folgen einem Neustart: Erst prüfen, was die
+        // Sitzungswiederherstellung geliefert hat, dann weiterarbeiten.
+        waitForSoakWindows(expected: 3, tick: 0) {
+            SoakTest.checkInvariants(action: "nach dem Neustart",
+                                     before: SoakTest.snapshot(),
+                                     target: nil, expectedWindowCount: 3)
+            runSoakRounds(rounds: rounds, done: 0, logURL: logURL)
+        }
+    }
+
+    /// Wartet, bis die erwartete Zahl Dokumentfenster wirklich steht.
+    /// Ein Dauertest, der auf halb aufgebauten Fenstern losläuft, meldet
+    /// Scheinbefunde.
+    @MainActor
+    private static func waitForSoakWindows(expected: Int, tick: Int,
+                                           then body: @escaping @MainActor () -> Void) {
+        if SoakTest.documentWindows().count >= expected {
+            // Kurz nachlaufen lassen: Fenster stehen, Inhalte laden noch.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                MainActor.assumeIsolated { body() }
+            }
+            return
+        }
+        if tick >= 200 {
+            SoakTest.record("Fenster stehen nach dem Start",
+                            "erwartet \(expected), tatsächlich "
+                            + "\(SoakTest.documentWindows().count) nach 20 s")
+            body()
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            MainActor.assumeIsolated {
+                waitForSoakWindows(expected: expected, tick: tick + 1, then: body)
+            }
+        }
+    }
+
+    /// Führt die Runden mit Pausen aus — bewusst NICHT in einer engen
+    /// Schleife: Zwischen den Aktionen müssen Layout, Vorschau und
+    /// Hintergrundarbeit tatsächlich laufen, sonst prüft der Test einen
+    /// Zustand, den es im Betrieb nie gibt.
+    @MainActor
+    private static func runSoakRounds(rounds: Int, done: Int, logURL: URL) {
+        guard done < rounds else {
+            SoakTest.appendReport(to: logURL)
+            let count = SoakTest.findings.count
+            finish(count == 0,
+                   count == 0
+                   ? "Dauertest ohne Befund (\(SoakTest.actionsRun) Aktionen)"
+                   : "\(count) Invarianten-Verstoß(e) bei "
+                     + "\(SoakTest.actionsRun) Aktionen — Protokoll: "
+                     + logURL.lastPathComponent)
+        }
+        _ = SoakTest.runOneRound()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            MainActor.assumeIsolated {
+                runSoakRounds(rounds: rounds, done: done + 1, logURL: logURL)
+            }
+        }
+    }
+
+    /// Gegenstück zu `dragscroll`: Ein Drag INNERHALB des sichtbaren
+    /// Ausschnitts darf die Ansicht NICHT bewegen.
+    ///
+    /// Der Fehler dahinter (Fehlerbericht aus dem Arbeitsbetrieb,
+    /// 2026-08-07): Beim Markieren mit der Maus kroch das Fenster langsam
+    /// immer weiter nach unten — auch dann, wenn die Markierung nach OBEN
+    /// wanderte. `dragscroll` hat das nie bemerkt, weil er nur die
+    /// Gegenrichtung prüft: Zieht man unter den Fensterrand, SOLL gescrollt
+    /// werden. Genau deshalb braucht ein Autoscroll zwei Tests — einen, der
+    /// belegt, dass es scrollt, und einen, der belegt, dass es das sonst
+    /// bleiben lässt.
+    ///
+    /// Bewusst MIT eingeschalteter Markdown-Vorschau: Genau so trat der
+    /// Fehler im Arbeitsbetrieb auf, und die Vorschau bringt eine zweite
+    /// Scroll-Quelle ins Spiel (Editor meldet der Vorschau seine Zeile). In
+    /// einer reinen Textdatei ohne Vorschau war das Verhalten unauffällig —
+    /// diese Konstellation ist also die aussagekräftige.
+    private static func runDragNoScrollTest() {
+        testLabel = "dragnoscroll"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks() else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        ws.sidebarWidth = 216.13671875
+        ws.markdownPreviewWidth = 332.3515625
+        workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
+        window.setContentSize(NSSize(width: 1100, height: 800))
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "fastra-dragnoscroll-\(UUID().uuidString)", isDirectory: true
+            )
+        let file = directory.appendingPathComponent("lang.md")
+        let text = (1...800).map { "Zeile \($0) mit genug Text zum Markieren" }
+            .joined(separator: "\n") + "\n"
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+            try Data(text.utf8).write(to: file)
+        }
+        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
+
+        ws.loadFile(at: file) { ok in
+            try? FileManager.default.removeItem(at: directory)
+            guard ok else { finish(false, "Fixture lädt nicht") }
+            waitForEditorShowing(
+                workspace: ws, window: window, text: "Zeile 400 ",
+                onTimeout: { finish(false, "Editor zeigt den Inhalt nicht binnen 5 s") }
+            ) { root, textView, _ in
+                guard let scrollView = textView.enclosingScrollView else {
+                    finish(false, "keine ScrollView am Editor")
+                }
+                // Die Vorschau muss wirklich stehen — sonst prüft der Test
+                // eine Konstellation, die es beim Nutzer gar nicht gab.
+                guard markdownWebView(in: root) != nil else {
+                    finish(false, "Markdown-Vorschau nicht aufgebaut")
+                }
+                guard window.makeFirstResponder(textView) else {
+                    finish(false, "Editor wird nicht First Responder")
+                }
+                textView.layoutManager.layoutLines()
+                // In die Mitte des Dokuments scrollen, damit nach oben UND
+                // unten Platz zum (fälschlichen) Scrollen bleibt.
+                scrollView.contentView.scroll(
+                    to: NSPoint(x: 0, y: max(0, textView.frame.height / 2))
+                )
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    beginDragNoScroll(textView: textView, scrollView: scrollView,
+                                      window: window)
+                }
+            }
+        }
+    }
+
+    private static func beginDragNoScroll(
+        textView: TextView, scrollView: NSScrollView, window: NSWindow
+    ) {
+        let visible = scrollView.documentVisibleRect
+        // Startpunkt klar INNERHALB: 120 Punkte unter der Oberkante des
+        // sichtbaren Ausschnitts, waagerecht in der Textspalte.
+        let startInView = NSPoint(x: visible.minX + 200, y: visible.minY + 120)
+        let startInWindow = textView.convert(startInView, to: nil)
+        let initialTop = visible.minY
+        let time = ProcessInfo.processInfo.systemUptime
+        guard let down = NSEvent.mouseEvent(
+            with: .leftMouseDown, location: startInWindow, modifierFlags: [],
+            timestamp: time, windowNumber: window.windowNumber, context: nil,
+            eventNumber: Int(time * 1_000), clickCount: 1, pressure: 1
+        ) else {
+            finish(false, "Maus-Down nicht erzeugbar")
+        }
+        textView.mouseDown(with: down)
+        continueDragNoScroll(
+            textView: textView, scrollView: scrollView, window: window,
+            startInView: startInView, initialTop: initialTop, step: 0
+        )
+    }
+
+    /// Zieht die Maus SCHRITTWEISE nach oben — jeder Schritt zwei Punkte,
+    /// alle klar innerhalb des sichtbaren Ausschnitts.
+    ///
+    /// Die Bewegung ist wesentlich: Ein Drag, der immer wieder denselben Punkt
+    /// meldet, ändert die Auswahl nur einmal. Der Fehler entsteht aber erst
+    /// durch die FORTLAUFENDE Änderung — sie schreibt über SwiftUI eine
+    /// jeweils veraltete Cursorposition zurück, und deren Anzeige zieht die
+    /// Ansicht mit. Ein Test mit stehendem Zielpunkt übersieht das (erst so
+    /// bemerkt: die erste Fassung dieses Tests bestand trotz des Fehlers).
+    private static func continueDragNoScroll(
+        textView: TextView, scrollView: NSScrollView, window: NSWindow,
+        startInView: NSPoint, initialTop: CGFloat, step: Int
+    ) {
+        let maxSteps = 30
+        // Nach oben wandern, aber nie über die Oberkante des Ausschnitts
+        // hinaus: 30 Schritte à 2 Punkte = 60 Punkte, Startpunkt lag 120
+        // Punkte darunter.
+        let dragInView = NSPoint(x: startInView.x,
+                                 y: startInView.y - CGFloat(step) * 2)
+        let dragLocation = textView.convert(dragInView, to: nil)
+        let time = ProcessInfo.processInfo.systemUptime
+        if let drag = NSEvent.mouseEvent(
+            with: .leftMouseDragged, location: dragLocation,
+            modifierFlags: [], timestamp: time,
+            windowNumber: window.windowNumber, context: nil,
+            eventNumber: Int(time * 1_000) + step + 1, clickCount: 1,
+            pressure: 1
+        ) {
+            NSApp.postEvent(drag, atStart: false)
+        }
+        if step < maxSteps {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+                continueDragNoScroll(
+                    textView: textView, scrollView: scrollView, window: window,
+                    startInView: startInView, initialTop: initialTop,
+                    step: step + 1
+                )
+            }
+            return
+        }
+        let upTime = ProcessInfo.processInfo.systemUptime
+        if let up = NSEvent.mouseEvent(
+            with: .leftMouseUp, location: dragLocation, modifierFlags: [],
+            timestamp: upTime, windowNumber: window.windowNumber, context: nil,
+            eventNumber: Int(upTime * 1_000) + 99, clickCount: 1, pressure: 0
+        ) {
+            NSApp.postEvent(up, atStart: false)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            let range = textView.selectedRange()
+            let movedBy = abs(scrollView.documentVisibleRect.minY - initialTop)
+            // Erst belegen, dass der Drag überhaupt ankam — sonst bestünde der
+            // Test auch bei wirkungslosen Ereignissen.
+            guard range.length > 0 else {
+                finish(false, "Drag erzeugte keine Auswahl — Ereignisse kamen "
+                    + "nicht an, der Test wäre wertlos")
+            }
+            // 1 Punkt Toleranz für Rundung im Layout.
+            guard movedBy <= 1 else {
+                finish(false, "Ansicht ist beim Markieren INNERHALB des "
+                    + "Fensters um \(Int(movedBy)) Punkte gewandert "
+                    + "(y=\(Int(initialTop)) → "
+                    + "\(Int(scrollView.documentVisibleRect.minY)))")
+            }
+            finish(true, "Markieren innerhalb des Fensters bewegt die Ansicht "
+                + "nicht (Auswahl \(range.length) Zeichen, y unverändert bei "
+                + "\(Int(initialTop)))")
+        }
+    }
+
     private static func runDragScrollTest() {
         testLabel = "dragscroll"
         guard let ws = Workspace.shared,

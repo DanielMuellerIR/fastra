@@ -59,14 +59,14 @@ enum MarkdownAssist {
         case .insertTable:
             guard let configuration = promptForTable() else { return }
             let edit = MarkdownFormat.insertTable(
-                textView.string, selection: textView.selectedRange(),
+                textView.string, selection: textView.fastraSafeSelectedRange,
                 columns: configuration.columns, header: configuration.header
             )
             perform(edit, on: textView)
         default:
             guard let edit = MarkdownFormat.edit(for: command,
                                                  text: textView.string,
-                                                 selection: textView.selectedRange())
+                                                 selection: textView.fastraSafeSelectedRange)
             else { return }
             perform(edit, on: textView)
         }
@@ -117,10 +117,15 @@ enum MarkdownAssist {
     /// normales Einfügen (Event läuft weiter; ⌘⇧V bleibt die explizite
     /// Rich-Text-Konvertierung via SmartPaste).
     static func handlePasteCommand() -> Bool {
-        guard let workspace = Workspace.shared,
-              isMarkdownTabActive(in: workspace),
-              let keyWindow = NSApp.keyWindow,
+        // Editor UND Workspace aus DEMSELBEN Fenster. Vorher kam der Editor
+        // aus dem Tastatur-Fenster, der Workspace aber aus `Workspace.shared`:
+        // Zeigten die auf verschiedene Fenster, landete die Bilddatei neben
+        // dem einen Dokument und der Link im anderen (Fehlerbericht
+        // 2026-08-07).
+        guard let keyWindow = NSApp.keyWindow,
               !SearchWindow.isSearchWindow(keyWindow),
+              let workspace = WorkspaceWindowRegistry.workspace(for: keyWindow),
+              isMarkdownTabActive(in: workspace),
               let textView = keyWindow.firstResponder as? TextView else { return false }
 
         let pasteboard = NSPasteboard.general
@@ -311,7 +316,10 @@ enum MarkdownAssist {
     private static func insertLinks(_ links: [String], into textView: TextView,
                                     workspace: Workspace) {
         guard !links.isEmpty else { return }
-        let selection = textView.selectedRange()
+        // Geklemmt: Ohne Klick in den Editor gibt es keine Auswahl, und
+        // `selectedRange()` liefert dann NSNotFound (siehe
+        // `fastraSafeSelectedRange`) — das Einfügen bräche die App ab.
+        let selection = textView.fastraSafeSelectedRange
         let insertion = links.joined(separator: "\n")
         textView.replaceCharacters(in: selection, with: insertion)
         let caret = selection.location + (insertion as NSString).length
@@ -349,16 +357,12 @@ enum MarkdownAssist {
 
     // MARK: - TextView-Suche
 
-    /// Editor-TextView des Workspace-Fensters (gleiche Heuristik wie
-    /// `EditorView.firstEditorTextView`, hier über den Fenster-Registry-Weg).
+    /// Editor-TextView des Workspace-Fensters.
+    ///
+    /// Die Fenstersuche liegt in `CommandTargeting` — siehe dort, warum es in
+    /// der ganzen Anwendung nur einen Weg zu Fenstern geben darf.
     static func editorTextView(for workspace: Workspace) -> TextView? {
-        for window in NSApp.windows where window.isVisible {
-            guard !SearchWindow.isSearchWindow(window),
-                  WorkspaceWindowRegistry.workspace(for: window) === workspace,
-                  let content = window.contentView else { continue }
-            if let textView = descendantTextView(in: content) { return textView }
-        }
-        return nil
+        CommandTargeting.editorTextView(for: workspace)
     }
 
     private static func descendantTextView(in view: NSView) -> TextView? {

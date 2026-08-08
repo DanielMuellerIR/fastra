@@ -2365,6 +2365,13 @@ fi
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 
+# 5b. Fenster-Zielwahl prüfen — VOR dem Kompilieren, weil es ein reiner
+# Quelltext-Check ist und in Sekunden abbricht, statt den Fehler erst nach
+# Minuten Bauzeit zu zeigen. Der Wächter verhindert die Rückkehr eines
+# Fehlers, der die Anwendung unbenutzbar macht: ein Befehl, der im falschen
+# Fenster wirkt (Fehlerbericht 2026-08-07). Begründung im Skript selbst.
+./window-targeting-audit.sh
+
 # 6. Build über Xcode-Toolchain (PreviewsMacros + SourceKit liegen dort)
 CONFIG="${1:-debug}"
 echo "→ Build (Konfiguration: $CONFIG)"

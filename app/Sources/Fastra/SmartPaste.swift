@@ -244,7 +244,7 @@ enum SmartPaste {
                 editorID: ObjectIdentifier(editor),
                 focusedWindowID: NSApp.keyWindow.map(ObjectIdentifier.init),
                 firstResponderID: NSApp.keyWindow?.firstResponder.map(ObjectIdentifier.init),
-                selectedRange: editor.selectedRange())
+                selectedRange: editor.fastraSafeSelectedRange)
             return TargetLease(workspace: workspace, window: window,
                                editor: editor, state: state)
         }
@@ -262,7 +262,7 @@ enum SmartPaste {
                 editorID: ObjectIdentifier(editor),
                 focusedWindowID: NSApp.keyWindow.map(ObjectIdentifier.init),
                 firstResponderID: NSApp.keyWindow?.firstResponder.map(ObjectIdentifier.init),
-                selectedRange: editor.selectedRange())
+                selectedRange: editor.fastraSafeSelectedRange)
             guard targetIsUnchanged(initialState, current) else { return false }
             // Nicht NSNotFound/current verwenden: Die validierte ursprüngliche
             // Auswahl ist selbst Teil des Leases und wird explizit ersetzt.

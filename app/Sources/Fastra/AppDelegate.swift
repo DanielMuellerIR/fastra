@@ -608,7 +608,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Jedes Dokumentfenster besitzt einen eigenen Workspace. Erst beenden,
         // wenn alle ungesicherten Tabs geklärt sind; „Abbrechen" in einem
         // beliebigen Fenster stoppt ⌘Q für die ganze App.
+        //
+        // Gefragt wird NUR für Workspaces, die noch zu einem Fenster gehören,
+        // und dieses Fenster kommt vorher nach vorn. `Workspace.allLive` ist
+        // eine schwache Menge aller lebenden Workspaces — darin steckt auch,
+        // was kein Fenster mehr hat. Beim Update-Neustart erschien dadurch die
+        // Rückfrage „Wollen Sie die Datei ‚Ohne Titel' sichern?" zu einem
+        // Dokument, das der Nutzer nirgends finden konnte: kein Fenster, kein
+        // Tab, keine Möglichkeit nachzusehen, worum es geht (Fehlerbericht
+        // 2026-08-07). Eine Rückfrage ohne sichtbaren Gegenstand ist nicht
+        // beantwortbar — also entweder zeigen oder gar nicht fragen.
         for workspace in Workspace.allLive {
+            guard let window = CommandTargeting.registeredWindow(for: workspace) else {
+                continue   // verwaist: gehört zu keinem Fenster mehr
+            }
+            window.makeKeyAndOrderFront(nil)
             guard workspace.confirmCloseAllDirtyForQuit() else { return .terminateCancel }
         }
         SessionRestorationCoordinator.captureCurrentSession(

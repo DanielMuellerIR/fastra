@@ -189,11 +189,7 @@ struct ContentView: View {
             if xpathPanel == nil {
                 xpathPanel = XPathPanelController(workspace: workspace)
             }
-            let host = NSApp.windows.first {
-                $0.isVisible && WorkspaceWindowRegistry.workspace(for: $0) === workspace
-                    && !SearchWindow.isSearchWindow($0)
-            }
-            xpathPanel?.show(over: host)
+            xpathPanel?.show(over: CommandTargeting.documentWindow(for: workspace))
         }
     }
 

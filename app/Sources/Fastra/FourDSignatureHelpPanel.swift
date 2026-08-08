@@ -300,11 +300,7 @@ final class FourDSignatureHelpController: ObservableObject {
     // MARK: - Fenster-/View-Suche (gleiche Muster wie EditorView)
 
     private static func editorWindow(for workspace: Workspace) -> NSWindow? {
-        NSApp.windows.first(where: {
-            !SearchWindow.isSearchWindow($0)
-                && WorkspaceWindowRegistry.workspace(for: $0) === workspace
-                && $0.contentView != nil && $0.isVisible
-        })
+        CommandTargeting.documentWindow(for: workspace)
     }
 
     private static func firstTextView(in view: NSView) -> TextView? {

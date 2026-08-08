@@ -1006,11 +1006,7 @@ struct EditorView: View {
 
     /// Das Dokumentfenster dieses Workspace (ohne die schwebende Suchmaske).
     private static func editorWindow(for workspace: Workspace) -> NSWindow? {
-        NSApp.windows.first(where: {
-            !SearchWindow.isSearchWindow($0)
-                && WorkspaceWindowRegistry.workspace(for: $0) === workspace
-                && $0.contentView != nil && $0.isVisible
-        })
+        CommandTargeting.documentWindow(for: workspace)
     }
 
     /// Scrollt den Editor sichtbar zum Suchtreffer, ohne dem Suchfenster den
@@ -1024,11 +1020,8 @@ struct EditorView: View {
         // Wiederherstellung (Treffer in einer anderen Datei wechselt den Tab).
         cancelScrollRestore()
         DispatchQueue.main.async {
-            guard let mainWindow = NSApp.windows.first(where: {
-                !SearchWindow.isSearchWindow($0)
-                    && WorkspaceWindowRegistry.workspace(for: $0) === workspace
-                    && $0.contentView != nil && $0.isVisible
-            }), let root = mainWindow.contentView,
+            guard let mainWindow = CommandTargeting.documentWindow(for: workspace),
+                  let root = mainWindow.contentView,
                   let tv = firstEditorTextView(in: root) else { return }
             guard let textView = tv as? CodeEditTextView.TextView else { return }
             // Robust zum Treffer scrollen (Daniel-Befund 2026-06-22: Treffer
@@ -1132,11 +1125,8 @@ struct EditorView: View {
     /// auf Ersetzen oder die Vorschau-Trefferbasis.
     static func updateSearchEmphasis(in workspace: Workspace) {
         DispatchQueue.main.async {
-            guard let mainWindow = NSApp.windows.first(where: {
-                !SearchWindow.isSearchWindow($0)
-                    && WorkspaceWindowRegistry.workspace(for: $0) === workspace
-                    && $0.contentView != nil && $0.isVisible
-            }), let root = mainWindow.contentView,
+            guard let mainWindow = CommandTargeting.documentWindow(for: workspace),
+                  let root = mainWindow.contentView,
                   let textView = firstEditorTextView(in: root) as? CodeEditTextView.TextView,
                   let manager = textView.emphasisManager else { return }
             // Immer zuerst räumen (Musterwechsel vor Neuanzeige) — die
@@ -1188,11 +1178,8 @@ struct EditorView: View {
     /// TextView schon in der View-Hierarchie hängt, bevor wir sie fokussieren.
     static func focusActiveEditor(in workspace: Workspace) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            guard let mainWindow = NSApp.windows.first(where: {
-                !SearchWindow.isSearchWindow($0)
-                    && WorkspaceWindowRegistry.workspace(for: $0) === workspace
-                    && $0.contentView != nil && $0.isVisible
-            }), let root = mainWindow.contentView,
+            guard let mainWindow = CommandTargeting.documentWindow(for: workspace),
+                  let root = mainWindow.contentView,
                   let tv = firstEditorTextView(in: root) else { return }
             // Nur fokussieren, wenn das Hauptfenster Key ist — sonst (offene
             // Suchmaske vorne) würden wir der Maske den Tastaturfokus klauen.
