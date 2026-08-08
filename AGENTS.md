@@ -374,6 +374,18 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   gefunden hatte. Dafür gibt es `app/soak-test.sh`: ein langer Lauf über
   mehrere App-Neustarts, der nach JEDER Aktion die Invarianten prüft und
   Verstöße sammelt, statt abzubrechen. Er läuft bewusst nur von Hand.
+- **Wird ein bisher synchroner Dokumentablauf teilweise in den Hintergrund
+  verlegt, ändert sich seine Reihenfolge.** Der abschließende Teil läuft erst
+  später und muss das Dokument wiederfinden, in dem er begonnen hat. Beim
+  gemischten Drop — ein Bild zusammen mit einer anderen Datei — öffnete der
+  Drop-Pfad die mitgezogene Datei sofort als neuen Tab. War das Kopieren im
+  Hintergrund fertig, sah `finishImageInsertion` ein fremdes aktives Dokument
+  und verwarf den Bildlink; das Bild lag kopiert im `images`-Ordner, ohne dass
+  es jemand verlinkt hatte. Die Prüfung war richtig, nur zur falschen Zeit
+  gemessen. Eine nachfolgende Aktion, die das aktive Dokument wechselt, gehört
+  deshalb an den Abschluss des Hintergrundschritts: erst den Link einfügen,
+  dann die übrigen Dateien öffnen (siehe
+  `MarkdownAssist.handleDroppedFileURLs`, geprüft vom `mdassist`-Selbsttest).
 
 ## Verhaltensevals
 
