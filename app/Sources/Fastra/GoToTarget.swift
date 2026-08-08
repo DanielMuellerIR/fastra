@@ -354,9 +354,20 @@ final class GoToTargetGesture: NSObject {
               let window = event.window,
               let contentView = window.contentView else { return event }
         let point = contentView.convert(event.locationInWindow, from: nil)
+        // Der Workspace muss aus dem FENSTER DES KLICKS kommen, nicht aus dem
+        // globalen `Workspace.shared`: Der Monitor sieht den Doppelklick,
+        // BEVOR ein hinteres Fenster durch ihn Key wird, und nach einer
+        // Sitzungswiederherstellung zeigt `shared` auf den zuletzt erzeugten
+        // Workspace. Beides ließ den Methodensprung im falschen Fenster
+        // landen (Befund aus dem Dauertest 2026-08-08, Selbsttest
+        // `gototargetwin`). `assumeIsolated`: Der lokale Event-Monitor läuft
+        // immer auf dem Main-Thread — dasselbe Muster wie im
+        // `EditorContextMenu`.
         guard let hit = contentView.hitTest(point),
               let textView = textViewAncestor(of: hit),
-              let workspace = Workspace.shared,
+              let workspace = MainActor.assumeIsolated({
+                  CommandTargeting.workspace(for: textView)
+              }),
               let tab = workspace.activeTab,
               let provider = GoToTarget.provider(
                 forFileName: tab.url?.lastPathComponent ?? tab.title

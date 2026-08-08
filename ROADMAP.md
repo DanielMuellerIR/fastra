@@ -307,13 +307,6 @@ und sie sind noch offen.
   angewandter Sprung als „gleich" erkannt wird.
 - **Das Fenstermenü listete nur eine von zwei offenen Dateien.** In kurzer
   Nachstellung korrekt — also zustandsabhängig.
-- **`GoToTargetGesture` nutzt `Workspace.shared` statt des Event-Fensters**
-  (`GoToTarget.swift`, beim Umbau auf `CommandTargeting` übersehen). Beim
-  ALT-Doppelklick in einem Hintergrundfenster könnte der Sprung deshalb im
-  falschen Fenster landen — dieselbe Fehlerklasse wie die mit 1.64.0
-  behobenen Menübefehle. Der Dauertest klickt bisher nur im
-  Vordergrundfenster und kann es deshalb noch nicht belegen.
-
 - **`folderSearch_deduplicatesOverlappingRoots` einmal rot** (2026-07-28,
   nicht reproduziert). Der Test meldete 0 statt 1 Treffer in einem
   vollständigen `swift test`; isoliert dreimal und in zwei weiteren

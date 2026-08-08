@@ -433,6 +433,7 @@ enum SelfTest {
             runTool4DLSPIntegrationTest()
         }
         case "gototarget": waitForMainWindow { runGoToTargetTest() }
+        case "gototargetwin": waitForMainWindow { runGoToTargetTwoWindowTest() }
         case "searchmark": waitForMainWindow { openSearchThen { runSearchMarkTest() } }
         case "help": waitForMainWindow { runHelpTest() }
         case "mdassist": waitForMainWindow { runMarkdownAssistTest() }
@@ -11601,6 +11602,217 @@ enum SelfTest {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             pollGoToTargetResult(ws, base: base, expectedFile: expectedFile,
                                  tick: tick + 1, completion: completion)
+        }
+    }
+
+    // MARK: - Selbsttest gototargetwin (Befund aus dem Dauertest 2026-08-08)
+
+    /// Alt-Doppelklick „Gehe zum Ziel" bei ZWEI offenen Fenstern: Die Geste
+    /// muss im FENSTER DES KLICKS wirken — auch wenn `Workspace.shared`
+    /// gerade auf das andere Fenster zeigt.
+    ///
+    /// Der Fehler dahinter: `GoToTargetGesture` holte Workspace und Tab aus
+    /// dem globalen `Workspace.shared`, die geklickte TextView aber aus dem
+    /// Event-Fenster. Bei zwei Fenstern verband das zwei verschiedene
+    /// Dokumente — der Methodensprung landete im falschen Fenster (dieselbe
+    /// Fehlerklasse wie die mit v1.64.0 behobenen Menübefehle).
+    ///
+    /// `Workspace.shared` zeigt im echten Betrieb regelmäßig NICHT auf das
+    /// geklickte Fenster: Der lokale Maus-Monitor sieht den Doppelklick,
+    /// BEVOR das hintere Fenster durch den Klick Key wird (erst danach
+    /// aktualisiert die Aktivierungsbrücke `shared`), und nach einer
+    /// Sitzungswiederherstellung zeigt `shared` auf den zuletzt erzeugten
+    /// Workspace. Der Test stellt diese Lage deshalb gezielt her.
+    private static func runGoToTargetTwoWindowTest() {
+        testLabel = "gototargetwin"
+        guard let firstWorkspace = Workspace.shared,
+              let firstWindow = NSApp.windows.first(where: {
+                  !SearchWindow.isSearchWindow($0)
+                      && WorkspaceWindowRegistry.workspace(for: $0) === firstWorkspace
+                      && $0.isVisible
+              }) else {
+            finish(false, "kein erstes Dokumentfenster mit Workspace-Zuordnung")
+        }
+        // Zwei GETRENNTE 4D-Projekte mit gleichnamiger Methode: Nur so ist
+        // sichtbar, WESSEN Methode der Sprung öffnet.
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-gototargetwin-\(UUID().uuidString)")
+        let frontMethods = base.appendingPathComponent("vorn/Project/Sources/Methods")
+        let backMethods = base.appendingPathComponent("hinten/Project/Sources/Methods")
+        let frontCaller = frontMethods.appendingPathComponent("Haupt.4dm")
+        let frontTarget = frontMethods.appendingPathComponent("ZielMethode.4dm")
+        let backCaller = backMethods.appendingPathComponent("Aufrufer.4dm")
+        let backTarget = backMethods.appendingPathComponent("ZielMethode.4dm")
+        do {
+            try fm.createDirectory(at: frontMethods, withIntermediateDirectories: true)
+            try fm.createDirectory(at: backMethods, withIntermediateDirectories: true)
+            try "ZielMethode($vorn)\n".write(to: frontCaller, atomically: true,
+                                             encoding: .utf8)
+            try "// Methode vorn\n".write(to: frontTarget, atomically: true,
+                                          encoding: .utf8)
+            try "ZielMethode($hinten)\n".write(to: backCaller, atomically: true,
+                                               encoding: .utf8)
+            try "// Methode hinten\n".write(to: backTarget, atomically: true,
+                                            encoding: .utf8)
+        } catch {
+            finish(false, "(setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
+        }
+        let secondWorkspace = MainActor.assumeIsolated {
+            DocumentWindowController.openNewDocument(defaults: workspaceDefaults())
+        }
+        guard let secondWindow = NSApp.windows.first(where: {
+            !SearchWindow.isSearchWindow($0)
+                && WorkspaceWindowRegistry.workspace(for: $0) === secondWorkspace
+                && $0.isVisible
+        }) else {
+            try? fm.removeItem(at: base)
+            finish(false, "kein zweites Dokumentfenster mit Workspace-Zuordnung")
+        }
+        firstWorkspace.loadFile(at: frontCaller) { ok in
+            guard ok else {
+                try? fm.removeItem(at: base)
+                finish(false, "(setup) Haupt.4dm lädt nicht")
+            }
+            secondWorkspace.loadFile(at: backCaller) { ok in
+                guard ok else {
+                    try? fm.removeItem(at: base)
+                    finish(false, "(setup) Aufrufer.4dm lädt nicht")
+                }
+                // Teil 1: Klick ins HINTERE Fenster, während das vordere die
+                // Tastatur hat und `Workspace.shared` auf das vordere zeigt.
+                firstWindow.makeKeyAndOrderFront(nil)
+                goToTargetTwoWindowClick(
+                    clicked: (secondWorkspace, secondWindow),
+                    other: (firstWorkspace, firstWindow),
+                    needle: "ZielMethode($hinten)",
+                    sharedPointsTo: firstWorkspace,
+                    expectedTarget: backTarget,
+                    otherStaysAt: frontCaller,
+                    cleanup: base,
+                    label: "hinteres Fenster"
+                ) {
+                    // Teil 2: Klick ins VORDERE Fenster, während `shared` —
+                    // wie nach einer Sitzungswiederherstellung — auf das
+                    // hintere zeigt.
+                    goToTargetTwoWindowClick(
+                        clicked: (firstWorkspace, firstWindow),
+                        other: (secondWorkspace, secondWindow),
+                        needle: "ZielMethode($vorn)",
+                        sharedPointsTo: secondWorkspace,
+                        expectedTarget: frontTarget,
+                        otherStaysAt: backTarget,
+                        cleanup: base,
+                        label: "vorderes Fenster"
+                    ) {
+                        try? fm.removeItem(at: base)
+                        finish(true, "Alt-Doppelklick öffnete in beiden Fenstern "
+                            + "die Methode des JEWEILS geklickten Projekts; das "
+                            + "andere Fenster blieb unberührt")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Synthetisiert einen Alt-Doppelklick auf `needle` im Fenster `clicked`
+    /// und prüft anschließend BEIDE Fenster: Das geklickte muss
+    /// `expectedTarget` öffnen, das andere bei `otherStaysAt` bleiben.
+    /// `sharedPointsTo` stellt vor dem Klick den globalen Zustand her, der
+    /// den Fehler auslöste: `Workspace.shared` zeigt auf das ANDERE Fenster.
+    private static func goToTargetTwoWindowClick(
+        clicked: (workspace: Workspace, window: NSWindow),
+        other: (workspace: Workspace, window: NSWindow),
+        needle: String,
+        sharedPointsTo: Workspace,
+        expectedTarget: URL,
+        otherStaysAt: URL,
+        cleanup base: URL,
+        label: String,
+        completion: @escaping () -> Void
+    ) {
+        waitForEditorShowing(
+            workspace: clicked.workspace, window: clicked.window, text: needle,
+            onTimeout: {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "(\(label)) Editor zeigt „\(needle)“ nicht binnen 5 s")
+            }
+        ) { _, textView, range in
+            Workspace.shared = sharedPointsTo
+            guard let rect = textView.layoutManager.rectsFor(range:
+                NSRange(location: range.location, length: 1)).first else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "(\(label)) keine Layout-Position für „\(needle)“")
+            }
+            // Punkt in Fenster-Koordinaten; Events über die App-Queue posten,
+            // damit der lokale Monitor (GoToTargetGesture) sie WIRKLICH sieht.
+            let windowPoint = textView.convert(NSPoint(x: rect.midX, y: rect.midY),
+                                               to: nil)
+            let time = ProcessInfo.processInfo.systemUptime
+            for (clickCount, type) in [(1, NSEvent.EventType.leftMouseDown),
+                                       (1, .leftMouseUp),
+                                       (2, .leftMouseDown),
+                                       (2, .leftMouseUp)] {
+                guard let event = NSEvent.mouseEvent(
+                    with: type, location: windowPoint, modifierFlags: [.option],
+                    timestamp: time, windowNumber: clicked.window.windowNumber,
+                    context: nil, eventNumber: 0, clickCount: clickCount,
+                    pressure: 1
+                ) else {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "(\(label)) Maus-Events nicht baubar")
+                }
+                NSApp.postEvent(event, atStart: false)
+            }
+            pollGoToTargetTwoWindowResult(
+                clicked: clicked.workspace, other: other.workspace,
+                expectedTarget: expectedTarget, otherStaysAt: otherStaysAt,
+                cleanup: base, label: label, tick: 0, completion: completion
+            )
+        }
+    }
+
+    private static func pollGoToTargetTwoWindowResult(
+        clicked: Workspace, other: Workspace,
+        expectedTarget: URL, otherStaysAt: URL,
+        cleanup base: URL, label: String, tick: Int,
+        completion: @escaping () -> Void
+    ) {
+        // Symlink-aufgelöst vergleichen: Die Fixtures liegen unter
+        // `/var/folders/…`, der geladene Tab meldet `/private/var/…` —
+        // dieselbe Falle wie bei `FileLoader` (siehe AGENTS.md).
+        func resolved(_ url: URL?) -> String? {
+            url?.resolvingSymlinksInPath().path
+        }
+        let clickedPath = resolved(clicked.activeTab?.url)
+        let otherPath = resolved(other.activeTab?.url)
+        if clickedPath == resolved(expectedTarget) {
+            // Der Sprung kam im richtigen Fenster an — das andere darf sich
+            // dabei nicht bewegt haben.
+            guard otherPath == resolved(otherStaysAt) else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "(\(label)) Sprung veränderte auch das andere "
+                    + "Fenster: aktiver Tab dort \(otherPath ?? "kein Pfad")")
+            }
+            completion()
+            return
+        }
+        if tick >= 40 {            // 10 s
+            try? FileManager.default.removeItem(at: base)
+            // Für die Diagnose zeigen, WO die Datei stattdessen landete —
+            // beim ursprünglichen Fehler öffnete das ANDERE Fenster seine
+            // gleichnamige Methode.
+            finish(false, "(\(label)) Sprung blieb im geklickten Fenster aus "
+                + "(dort aktiv: \(clickedPath ?? "kein Pfad"), "
+                + "anderes Fenster: \(otherPath ?? "kein Pfad"))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollGoToTargetTwoWindowResult(
+                clicked: clicked, other: other,
+                expectedTarget: expectedTarget, otherStaysAt: otherStaysAt,
+                cleanup: base, label: label, tick: tick + 1,
+                completion: completion
+            )
         }
     }
 

@@ -9,6 +9,28 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.65.1] — 2026-08-09
+
+### Behoben
+
+- **Alt-Doppelklick „Gehe zum Ziel“ springt im Fenster des Klicks.** Die Geste
+  holte ihren Workspace aus dem globalen `Workspace.shared` statt aus dem
+  geklickten Fenster — dieselbe Fehlerklasse wie die mit v1.64.0 behobenen
+  Menübefehle, beim damaligen Umbau übersehen. Bei zwei offenen Fenstern
+  öffnete der Methodensprung die Zieldatei dadurch im falschen Fenster und
+  konnte dort sogar eine gleichnamige Methode des anderen Projekts treffen
+  (reproduziert mit dem neuen Zwei-Fenster-Selbsttest `gototargetwin`; der
+  Klick ins hintere Fenster ließ dieses unverändert und öffnete stattdessen
+  im vorderen dessen eigene `ZielMethode.4dm`). Die Zielwahl läuft jetzt über
+  `CommandTargeting.workspace(for:)`.
+- **Der Wächter `window-targeting-audit.sh` erfasst jetzt auch
+  `Workspace.shared`.** Bisher prüfte er nur direkte Fensterzugriffe über
+  `NSApp.windows` — genau deshalb blieb die Stelle oben unentdeckt.
+  Lesezugriffe auf `Workspace.shared` außerhalb einer begründeten
+  Ausnahmeliste sind jetzt ebenfalls ein Baufehler; Zuweisungen und
+  `===`-Identitätsvergleiche bleiben erlaubt. Gegen den echten Verstoß
+  geprüft: Vor dem Fix meldete er exakt die fehlerhafte Zeile, danach nichts.
+
 ## [v1.65.0] — 2026-08-09
 
 ### Behoben
