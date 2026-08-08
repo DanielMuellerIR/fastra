@@ -267,18 +267,14 @@ denselben Umbau — das Rendern eines Fragments in den Hintergrund, abgesichert
 
 ## Aus dem Dauertest und den Betriebsmeldungen (2026-08-07/08)
 
-Der lange Dauertest (`app/soak-test.sh`) läuft; diese Punkte hat er oder der
-Arbeitsbetrieb gemeldet und sie sind noch offen.
+Der lange Dauertest (`app/soak-test.sh`) läuft — seit dem Realismus-Ausbau
+auch mit echten Dokumenten, RTFD-Umwandlung samt sofortiger
+Weiterbearbeitung, einem echten 4D-Projekt (Completion, Signaturhilfe,
+ALT-Doppelklick), Fenstergeometrie, Kopieren/Einfügen zwischen Fenstern und
+echten Menübefehlen (private Datenquellen in der gitignorierten
+`app/soak-test.local`). Diese Punkte hat er oder der Arbeitsbetrieb gemeldet
+und sie sind noch offen.
 
-- **Vorschau bleibt nach einem neuen Tab stehen.** Der Dauertest meldet nach
-  der Aktion „neuer Tab": Ein Fenster zeigt eine Markdown-Vorschau, obwohl das
-  aktive Dokument keins ist. Zu klären, ob die Vorschau wirklich fremden
-  Inhalt zeigt oder nur einen Runloop später nachzieht.
-- **Nach einem Neustart stehen nicht alle Fenster wieder.** Der Dauertest
-  öffnet drei Fenster, findet nach dem Neustart aber nur eins. Verdacht:
-  `captureCurrentSession` läuft in `applicationShouldTerminate`, der
-  Selbsttest beendet aber über seinen eigenen Weg — dann wird die Sitzung nie
-  gespeichert.
 - **Ein geschlossenes Fenster kommt beim Öffnen einer weiteren Datei zurück**
   (mit 1.63.3 reproduziert). Verdacht: `Workspace.init` ruft
   `deliverPendingOpenFiles()`, also löst jedes neu erzeugte Fenster eine
@@ -294,11 +290,12 @@ Arbeitsbetrieb gemeldet und sie sind noch offen.
   SwiftUI-Zustand runloop-versetzt veraltet ist.
 - **Das Fenstermenü listete nur eine von zwei offenen Dateien.** In kurzer
   Nachstellung korrekt — also zustandsabhängig.
-- **Dauertest realistischer machen.** Große, echte Dokumente statt erzeugter
-  Fixtures; ein `.rtfd` über `poormans-text` umwandeln und direkt
-  weiterbearbeiten; lange 4D-Methoden mit Completion, ALT-Doppelklick und
-  Signaturhilfe; mehrere Fenster nebeneinander samt Verschieben und
-  Größenändern; Kopieren und Einfügen zwischen Fenstern; Menübefehle.
+- **`GoToTargetGesture` nutzt `Workspace.shared` statt des Event-Fensters**
+  (`GoToTarget.swift`, beim Umbau auf `CommandTargeting` übersehen). Beim
+  ALT-Doppelklick in einem Hintergrundfenster könnte der Sprung deshalb im
+  falschen Fenster landen — dieselbe Fehlerklasse wie die mit 1.64.0
+  behobenen Menübefehle. Der Dauertest klickt bisher nur im
+  Vordergrundfenster und kann es deshalb noch nicht belegen.
 
 - **`folderSearch_deduplicatesOverlappingRoots` einmal rot** (2026-07-28,
   nicht reproduziert). Der Test meldete 0 statt 1 Treffer in einem

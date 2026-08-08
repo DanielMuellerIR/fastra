@@ -27,6 +27,25 @@
 #   ./soak-test.sh                # Standard: 3 Phasen à 60 Aktionen
 #   ./soak-test.sh --rounds 200   # längerer Lauf (~30 min)
 #   ./soak-test.sh --rounds 10    # schnelle Rauchprobe des Testaufbaus selbst
+#   ./soak-test.sh --fixtures-only  # ohne echte Dokumente/Projekte
+#
+# ECHTE DOKUMENTE UND PROJEKTE (optional)
+#
+# Kurze Tests mit Miniaturdateien finden die Fehler nicht, die im Alltag
+# auftreten. Der Lauf kann deshalb mit echten Daten arbeiten, deren private
+# Pfade in der gitignorierten Datei `soak-test.local` stehen (Shell-Syntax):
+#
+#   FASTRA_SOAK_RTFD="…/Testprotokoll.rtfd"   # wird ins Arbeitsverzeichnis
+#   FASTRA_SOAK_MD_DIR="…/Protokoll-Ordner"   # KOPIERT (die Umwandlung
+#                                             # schreibt neben die Quelle!)
+#   FASTRA_SOAK_4D_PROJECT="…/projektwurzel"  # wird DIREKT bearbeitet;
+#                                             # muss ein Git-Projekt sein
+#
+# Das 4D-Projekt wird absichtlich am Ort bearbeitet (echtes Nutzungs-
+# verhalten). Nach dem Lauf setzt das Skript ausschließlich die Dateien
+# zurück, die der Lauf selbst verschmutzt hat; zuvor schon veränderte
+# Dateien (fremder WIP) bleiben unangetastet. Inhalte, Namen oder Auszüge
+# aus diesen Quellen dürfen nie ins Repo gelangen.
 #
 # EXIT-CODES (wie bei selftest.sh)
 #   0 = keine Invarianten-Verstöße
@@ -38,14 +57,19 @@ set -u
 cd "$(dirname "$0")"
 
 ROUNDS=60
+FIXTURES_ONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --rounds)
       ROUNDS="${2:-60}"
       shift 2
       ;;
+    --fixtures-only)
+      FIXTURES_ONLY=1
+      shift
+      ;;
     -h|--help)
-      sed -n '2,32p' "$0"
+      sed -n '2,50p' "$0"
       exit 0
       ;;
     *)
@@ -54,6 +78,12 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+# Private Pfade aus der lokalen, gitignorierten Konfiguration.
+if [ "$FIXTURES_ONLY" -eq 0 ] && [ -f soak-test.local ]; then
+  # shellcheck disable=SC1091
+  . ./soak-test.local
+fi
 
 APP=".build/debug/Fastra.app"
 BINARY="$APP/Contents/MacOS/Fastra"
@@ -73,12 +103,134 @@ mkdir -p "$WORK_DIR"
 # leert sie, ab Phase 2 bleibt die Sitzung erhalten.
 
 cleanup() {
+  # Erst das 4D-Projekt zurücksetzen (braucht die Merkdateien im
+  # Arbeitsverzeichnis), dann aufräumen. Läuft auch bei Abbruch.
+  restore_4d_project
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
 
+# Echte Dokumente KOPIEREN: Tippen, Sichern und die RTFD-Umwandlung (deren
+# Ergebnis neben der Quelle landet) dürfen die Originale nie berühren.
+REAL_DIR="$WORK_DIR/real"
+if [ -n "${FASTRA_SOAK_RTFD:-}" ] && [ -e "$FASTRA_SOAK_RTFD" ]; then
+  mkdir -p "$REAL_DIR"
+  cp -R "$FASTRA_SOAK_RTFD" "$REAL_DIR/protokoll-import.rtfd"
+fi
+if [ -n "${FASTRA_SOAK_MD_DIR:-}" ] && [ -d "$FASTRA_SOAK_MD_DIR" ]; then
+  mkdir -p "$REAL_DIR/markdown"
+  cp -R "$FASTRA_SOAK_MD_DIR/." "$REAL_DIR/markdown/"
+fi
+
+# Das 4D-Projekt wird am Ort bearbeitet. Vorher den Schmutzstand merken,
+# damit hinterher NUR die vom Lauf verschmutzten Dateien zurückgesetzt
+# werden — fremder WIP bleibt unangetastet.
+SOAK_4D=""
+SOAK_4D_METHOD=""
+DIRTY_BEFORE="$WORK_DIR/4d-dirty-before.txt"
+if [ -n "${FASTRA_SOAK_4D_PROJECT:-}" ] && [ -d "$FASTRA_SOAK_4D_PROJECT" ]; then
+  if git -C "$FASTRA_SOAK_4D_PROJECT" rev-parse --git-dir >/dev/null 2>&1; then
+    SOAK_4D="$FASTRA_SOAK_4D_PROJECT"
+    git -C "$SOAK_4D" status --porcelain=v1 -z | tr '\0' '\n' > "$DIRTY_BEFORE"
+    # Die größte SAUBERE Methode wählen: In eine bereits verschmutzte Datei
+    # (fremder WIP) darf der Lauf nicht tippen — ein Zurücksetzen würde dort
+    # den WIP mitlöschen, also wird sie gar nicht erst geöffnet.
+    SOAK_4D_METHOD=$(python3 - "$SOAK_4D" "$DIRTY_BEFORE" <<'PYEOF'
+import os, sys
+root, dirty_path = sys.argv[1], sys.argv[2]
+dirty = set()
+for line in open(dirty_path, encoding="utf-8", errors="replace").read().splitlines():
+    if len(line) > 3:
+        dirty.add(os.path.join(root, line[3:]))
+methods = os.path.join(root, "Project", "Sources", "Methods")
+best, best_lines = "", -1
+if os.path.isdir(methods):
+    for name in os.listdir(methods):
+        full = os.path.join(methods, name)
+        if name.endswith(".4dm") and full not in dirty and os.path.isfile(full):
+            # Nach ZEILEN wählen, nicht nach Bytes: Eine lange echte Methode
+            # (viele Zeilen Code) prüft Completion und Signaturhilfe besser
+            # als eine Datentabelle aus wenigen Riesenzeilen.
+            try:
+                with open(full, "rb") as handle:
+                    lines = handle.read().count(b"\n")
+            except OSError:
+                continue
+            if lines > best_lines:
+                best, best_lines = full, lines
+print(best)
+PYEOF
+)
+    # Für die Warnung nach dem Lauf: Änderungszeiten der schon vorher
+    # verschmutzten Dateien merken.
+    python3 - "$SOAK_4D" "$DIRTY_BEFORE" > "$WORK_DIR/4d-dirty-mtimes.txt" <<'PYEOF'
+import os, sys
+root, dirty_path = sys.argv[1], sys.argv[2]
+for line in open(dirty_path, encoding="utf-8", errors="replace").read().splitlines():
+    if len(line) > 3:
+        full = os.path.join(root, line[3:])
+        try:
+            print(f"{os.path.getmtime(full)}\t{line[3:]}")
+        except OSError:
+            pass
+PYEOF
+  else
+    echo "⚠ 4D-Projekt ist kein Git-Repo — wird ausgelassen (kein Sicherheitsnetz): $FASTRA_SOAK_4D_PROJECT" >&2
+  fi
+fi
+
+restore_4d_project() {
+  [ -n "${SOAK_4D:-}" ] || return 0
+  # Nur zurücksetzen, was der Lauf NEU verschmutzt hat. Der Vergleich läuft
+  # über python3, damit Dateinamen mit Leerzeichen sicher behandelt werden.
+  git -C "$SOAK_4D" status --porcelain=v1 -z | tr '\0' '\n' > "$WORK_DIR/4d-dirty-after.txt"
+  python3 - "$SOAK_4D" "$DIRTY_BEFORE" "$WORK_DIR/4d-dirty-after.txt" <<'PYEOF'
+import subprocess, sys
+root, before_path, after_path = sys.argv[1], sys.argv[2], sys.argv[3]
+def entries(path):
+    result = {}
+    for line in open(path, encoding="utf-8", errors="replace").read().splitlines():
+        if len(line) > 3:
+            result[line[3:]] = line[:2]
+    return result
+before, after = entries(before_path), entries(after_path)
+fresh = [f for f in after if f not in before]
+tracked = [f for f, st in after.items() if f in fresh and st not in ("??",)]
+untracked = [f for f in fresh if after[f] == "??"]
+for f in tracked:
+    subprocess.run(["git", "-C", root, "checkout", "--", f], check=False)
+if tracked:
+    print(f"   4D-Projekt: {len(tracked)} vom Lauf geänderte Datei(en) zurückgesetzt")
+if untracked:
+    # Neue Dateien (z. B. eine RTFD-Umwandlung neben der Quelle) nur melden,
+    # nicht löschen — Löschen wäre eine destruktive Entscheidung.
+    print("   4D-Projekt: neue, nicht versionierte Datei(en) übrig:")
+    for f in untracked:
+        print(f"     {f}")
+PYEOF
+  # Schon vorher verschmutzte Dateien (fremder WIP) werden NIE zurückgesetzt.
+  # Hat der Lauf eine davon dennoch verändert, nur ehrlich warnen.
+  if [ -f "$WORK_DIR/4d-dirty-mtimes.txt" ]; then
+    python3 - "$SOAK_4D" "$WORK_DIR/4d-dirty-mtimes.txt" <<'PYEOF'
+import os, sys
+root, mtimes_path = sys.argv[1], sys.argv[2]
+for line in open(mtimes_path, encoding="utf-8", errors="replace").read().splitlines():
+    stamp, _, rel = line.partition("\t")
+    full = os.path.join(root, rel)
+    try:
+        if abs(os.path.getmtime(full) - float(stamp)) > 0.5:
+            print(f"   ⚠ 4D-Projekt: {rel} war schon vorher verändert (WIP) und wurde "
+                  "vom Lauf berührt — bitte selbst prüfen, NICHT automatisch zurückgesetzt.")
+    except (OSError, ValueError):
+        pass
+PYEOF
+  fi
+}
+
 echo "▶ Fastra Dauertest — $ROUNDS Aktionen je Phase, 3 Phasen"
 echo "   Arbeitsverzeichnis: $WORK_DIR"
+if [ -d "$REAL_DIR" ]; then echo "   Echte Dokumente: kopiert nach $REAL_DIR"; fi
+if [ -n "$SOAK_4D" ]; then echo "   4D-Projekt (am Ort): $SOAK_4D"; fi
 echo
 
 run_phase() {
@@ -95,6 +247,8 @@ run_phase() {
     -soakRounds "$ROUNDS" \
     -soakDir "$WORK_DIR" \
     -soakLog "$LOG" \
+    ${SOAK_4D:+-soak4DProject "$SOAK_4D"} \
+    ${SOAK_4D_METHOD:+-soak4DMethod "$SOAK_4D_METHOD"} \
     >"$WORK_DIR/phase-$phase.out" 2>&1 &
   local pid=$!
   local waited=0

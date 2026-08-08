@@ -36,3 +36,7 @@ app/dist/
 # Lokale Musterliste des public-history-audit: enthält die eigenen internen
 # Rechner-/Hostnamen und gehört deshalb bewusst NICHT ins öffentliche Repo.
 /app/public-history-patterns.local
+
+# Lokale Datenquellen des Dauertests: private Pfade zu echten Dokumenten und
+# Projekten. Ohne die Datei läuft der Dauertest mit erzeugten Fixtures.
+/app/soak-test.local

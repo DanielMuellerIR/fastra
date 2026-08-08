@@ -6276,8 +6276,14 @@ enum SelfTest {
     /// Parameter kommen als reguläre Defaults-Argumente:
     ///   -soakPhase 1|2|3   Abschnitt des Laufs (Phase 2 folgt einem Neustart)
     ///   -soakRounds  N     Aktionen je Phase
-    ///   -soakDir     Pfad  Arbeitsverzeichnis mit den Testdokumenten
+    ///   -soakDir     Pfad  Arbeitsverzeichnis mit den Testdokumenten;
+    ///                      optional liegen unter `real/` Kopien echter
+    ///                      Dokumente (Markdown-Ordner, RTFD-Bundle)
     ///   -soakLog     Pfad  gemeinsames Befundprotokoll aller Phasen
+    ///   -soak4DProject Pfad  Wurzel eines echten 4D-Projekts (optional,
+    ///                      Phase 3)
+    ///   -soak4DMethod  Pfad  vom Skript gewählte `.4dm`-Methode (optional;
+    ///                      ohne sie entfällt das 4D-Szenario)
     @MainActor
     private static func runSoakTest() {
         testLabel = "soak"
@@ -6298,6 +6304,10 @@ enum SelfTest {
         SoakTest.currentPhase = "\(phase)"
         // Startwert aus der Phase: wechselnde Abläufe, aber wiederholbar.
         SoakTest.seedRandom(UInt64(phase) &* 7_919 &+ 1)
+        // Der Dauertest kopiert selbst (⌘C) und darf fremden
+        // Clipboard-Inhalt nicht zerstören: am Anfang sichern, am
+        // Phasenende wiederherstellen.
+        backupSoakPasteboard()
 
         if phase == 1 {
             let documents = SoakTest.prepareDocuments(in: directory, count: 3)
@@ -6313,12 +6323,39 @@ enum SelfTest {
             // stehengebliebene Markdown-Vorschau überhaupt aufdecken.
             workspace.loadFile(at: documents[0]) { _ in
                 workspace.loadFile(at: textDocument) { _ in
-                    for document in documents.dropFirst() {
-                        let extra = DocumentWindowController.openNewDocument()
-                        extra.loadFile(at: document) { _ in }
+                    // Fensteraufbau und Rundenstart als Fortsetzung, weil
+                    // davor optional noch ein ECHTES Markdown-Dokument als
+                    // weiterer Tab ins erste Fenster kommt.
+                    let openWindowsThenRun = {
+                        for document in documents.dropFirst() {
+                            let extra = DocumentWindowController.openNewDocument()
+                            extra.loadFile(at: document) { _ in }
+                        }
+                        waitForSoakWindows(expected: 3, tick: 0) {
+                            // Ein optional bereitgestelltes echtes
+                            // RTFD-Bundle wird NACH dem Fensteraufbau über
+                            // den echten Öffnen-Pfad umgewandelt und sofort
+                            // weiterbearbeitet; erst danach starten die
+                            // Runden. (Die Umwandlung schreibt ihr Ergebnis
+                            // neben die Quelle, also ins Arbeitsverzeichnis.)
+                            if let bundle = SoakTest.realRTFDBundle(in: directory) {
+                                SoakTest.runRTFDImport(bundle: bundle,
+                                                       workspace: workspace) {
+                                    runSoakRounds(rounds: rounds, done: 0,
+                                                  logURL: logURL)
+                                }
+                            } else {
+                                runSoakRounds(rounds: rounds, done: 0,
+                                              logURL: logURL)
+                            }
+                        }
                     }
-                    waitForSoakWindows(expected: 3, tick: 0) {
-                        runSoakRounds(rounds: rounds, done: 0, logURL: logURL)
+                    if let realMarkdown = SoakTest.realMarkdownDocument(in: directory) {
+                        workspace.loadFile(at: realMarkdown) { _ in
+                            openWindowsThenRun()
+                        }
+                    } else {
+                        openWindowsThenRun()
                     }
                 }
             }
@@ -6331,7 +6368,54 @@ enum SelfTest {
             SoakTest.checkInvariants(action: "nach dem Neustart",
                                      before: SoakTest.snapshot(),
                                      target: nil, expectedWindowCount: 3)
+            // Phase 3 optional mit echtem 4D-Projekt: neues Fenster, Projekt
+            // öffnen, Sprachfunktionen prüfen — danach normale Runden, an
+            // denen das 4D-Fenster teilnimmt.
+            if phase >= 3,
+               let projectPath = defaults.string(forKey: "soak4DProject"),
+               !projectPath.isEmpty {
+                guard let methodPath = defaults.string(forKey: "soak4DMethod"),
+                      !methodPath.isEmpty,
+                      FileManager.default.fileExists(atPath: methodPath) else {
+                    // Die Methode (längste git-saubere) wählt das Skript aus;
+                    // ohne diese Angabe bewusst NICHT selbst wählen, sondern
+                    // das Szenario überspringen.
+                    SoakTest.note("4D-Szenario übersprungen: -soak4DMethod "
+                                  + "fehlt oder zeigt auf keine Datei")
+                    runSoakRounds(rounds: rounds, done: 0, logURL: logURL)
+                    return
+                }
+                SoakTest.runFourDScenario(
+                    projectURL: URL(fileURLWithPath: projectPath),
+                    methodURL: URL(fileURLWithPath: methodPath)
+                ) {
+                    runSoakRounds(rounds: rounds, done: 0, logURL: logURL)
+                }
+                return
+            }
             runSoakRounds(rounds: rounds, done: 0, logURL: logURL)
+        }
+    }
+
+    /// Der Dauertest kopiert selbst in die Zwischenablage. Fremder Inhalt
+    /// wird deshalb vollständig (alle Typen, nicht nur der String) gesichert
+    /// und am Phasenende wiederhergestellt — Muster wie beim Emoji-Paste-Test.
+    private static var soakPasteboardBackup: [(NSPasteboard.PasteboardType, Data)] = []
+
+    private static func backupSoakPasteboard() {
+        let pasteboard = NSPasteboard.general
+        soakPasteboardBackup = (pasteboard.types ?? []).compactMap { type in
+            pasteboard.data(forType: type).map { (type, $0) }
+        }
+    }
+
+    private static func restoreSoakPasteboard() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        guard !soakPasteboardBackup.isEmpty else { return }
+        pasteboard.declareTypes(soakPasteboardBackup.map(\.0), owner: nil)
+        for (type, data) in soakPasteboardBackup {
+            pasteboard.setData(data, forType: type)
         }
     }
 
@@ -6377,6 +6461,9 @@ enum SelfTest {
             SessionRestorationCoordinator.captureCurrentSession(
                 defaults: workspaceDefaults())
             workspaceDefaults().synchronize()
+            // Fremden Clipboard-Inhalt wiederherstellen, bevor der Prozess
+            // endet — der Dauertest hat ihn möglicherweise überschrieben.
+            restoreSoakPasteboard()
             SoakTest.appendReport(to: logURL)
             let count = SoakTest.findings.count
             finish(count == 0,

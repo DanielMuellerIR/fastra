@@ -27,6 +27,16 @@
 //     Ergebnis", sondern „gilt alles, was immer gelten muss".
 //   * Er läuft bei einem Verstoß WEITER und sammelt. Bei Zustandsfehlern
 //     ist das Muster über die Zeit die eigentliche Information.
+//   * Er arbeitet, wo vorhanden, mit ECHTEN Dokumenten statt nur mit
+//     Fixtures: einer realen Markdown-Datei, einem RTFD-Bundle, das über
+//     den echten Öffnen-Pfad umgewandelt und SOFORT weiterbearbeitet wird,
+//     und einem echten 4D-Projekt samt Completion, Signaturhilfe und
+//     ALT-Doppelklick. (Die Dateien stellt das Skript bereit; Namen und
+//     Pfade echter Quellen gehören nicht in diesen Code.)
+//   * Er verschiebt und skaliert Fenster, kopiert über die Zwischenablage
+//     zwischen Fenstern (⌘C/⌘V über die Responder-Chain) und löst Sichern,
+//     „Neuer Tab" und Rückgängig über die ECHTEN Menübefehle aus — nicht
+//     über direkte Modellaufrufe.
 //
 // Die Invarianten sind der Kern. Sie sind so gewählt, dass jeder der vier
 // gemeldeten Fehler an mindestens einer davon auffällt.
@@ -58,6 +68,12 @@ enum SoakTest {
     static func record(_ invariant: String, _ detail: String) {
         findings.append(Finding(phase: currentPhase, action: lastAction,
                                 invariant: invariant, detail: detail))
+    }
+
+    /// Hinweis ins Lauf-Log (stderr) — bewusst KEIN Befund. Für optionale
+    /// Schritte, die mangels passender Stelle übersprungen werden.
+    static func note(_ text: String) {
+        FileHandle.standardError.write(Data("SOAK-HINWEIS \(text)\n".utf8))
     }
 
     // MARK: - Zustandsschnappschuss
@@ -298,6 +314,16 @@ enum SoakTest {
     /// (1) Eine Aktion darf nur das Fenster verändern, in dem sie ausgelöst
     /// wurde. Findet den Fehler „Befehl landet im falschen Fenster" —
     /// unabhängig davon, WELCHER Befehl es war.
+    /// Fenster, deren scrollY-Prüfung nach einem Resize vorübergehend
+    /// ausgesetzt ist: Ein Breiten-Resize wickelt Soft-Wrap-Text neu, und
+    /// `documentVisibleRect.minY` zieht dabei VERZÖGERT nach — auch erst in
+    /// der Folgerunde. Auswahl, Textlänge und Änderungspunkt bleiben für
+    /// diese Fenster scharf geprüft.
+    private static var scrollForgiven: Set<ObjectIdentifier> = []
+    /// Runden bis zur Leerung von `scrollForgiven` (Ende der übernächsten
+    /// Runde nach dem Resize), heruntergezählt am Ende von `finishRound`.
+    private static var scrollForgivenRoundsRemaining = 0
+
     private static func checkOtherWindowsUntouched(
         before: [ObjectIdentifier: WindowSnapshot],
         after: [ObjectIdentifier: WindowSnapshot],
@@ -318,7 +344,8 @@ enum SoakTest {
                        + "\(old.textLength) auf \(new.textLength) — die "
                        + "Änderung landete im falschen Dokument")
             }
-            if abs(old.scrollY - new.scrollY) > 1 {
+            if abs(old.scrollY - new.scrollY) > 1,
+               !scrollForgiven.contains(id) {
                 record("Fremdes Fenster unverändert",
                        "\(old.title): Ansicht wanderte von \(Int(old.scrollY)) "
                        + "nach \(Int(new.scrollY))")
@@ -430,6 +457,10 @@ enum SoakTest {
         case undo
         case scroll
         case newTab
+        case moveWindow
+        case resizeWindow
+        case copy
+        case paste
 
         var label: String {
             switch self {
@@ -443,6 +474,10 @@ enum SoakTest {
             case .undo:         "rückgängig"
             case .scroll:       "scrollen"
             case .newTab:       "neuer Tab"
+            case .moveWindow:   "Fenster verschieben"
+            case .resizeWindow: "Fenstergröße ändern"
+            case .copy:         "kopieren (⌘C)"
+            case .paste:        "einfügen (⌘V)"
             }
         }
     }
@@ -496,8 +531,19 @@ enum SoakTest {
                                             object: command.rawValue)
 
         case .save:
-            guard workspace.activeTab?.url != nil else { return nil }
-            workspace.saveActiveTab()
+            // Nur mit gespeicherter Datei — sonst öffnete „Sichern" den
+            // modalen „Sichern unter…"-Dialog und hielte den Lauf an.
+            // Geprüft werden BEIDE beteiligten Workspaces: der des
+            // Vorderfensters und der an die Menübefehle gebundene
+            // `Workspace.shared`, der nur bei `didBecomeKey` nachgeführt
+            // wird. Genau diese Kopplung soll der Test über den ECHTEN
+            // Menübefehl treffen — schlägt dabei eine Invariante an, ist
+            // das ein Produktbefund, kein Testproblem.
+            guard workspace.activeTab?.url != nil,
+                  Workspace.shared?.activeTab?.url != nil else { return nil }
+            guard let item = commandMenuItem(forKeyEquivalent: "s"),
+                  let menuAction = item.action else { return nil }
+            _ = NSApp.sendAction(menuAction, to: item.target, from: item)
 
         case .switchTab:
             guard workspace.tabs.count > 1 else { return nil }
@@ -515,7 +561,11 @@ enum SoakTest {
 
         case .undo:
             guard textView.undoManager?.canUndo == true else { return nil }
-            textView.undoManager?.undo()
+            // Der echte Weg von ⌘Z: über die Responder-Chain, nicht direkt
+            // am Undo-Verwalter vorbei. `undo:` implementiert die TextView
+            // modulintern, deshalb per Name statt `#selector`.
+            _ = window.makeFirstResponder(textView)
+            _ = NSApp.sendAction(NSSelectorFromString("undo:"), to: nil, from: nil)
 
         case .scroll:
             guard let scrollView = textView.enclosingScrollView else { return nil }
@@ -525,11 +575,120 @@ enum SoakTest {
 
         case .newTab:
             // Nicht unbegrenzt wachsen lassen — sonst misst der Test am Ende
-            // nur noch Tabverwaltung.
+            // nur noch Tabverwaltung. Ausgelöst über den echten ⌘T-Menüpunkt,
+            // der wie „Sichern" an `Workspace.shared` gebunden ist.
             guard workspace.tabs.count < 6 else { return nil }
-            workspace.openNewTab()
+            guard let item = commandMenuItem(forKeyEquivalent: "t"),
+                  let menuAction = item.action else { return nil }
+            _ = NSApp.sendAction(menuAction, to: item.target, from: item)
+
+        case .moveWindow:
+            // Zufällige Position, aber der Rahmen bleibt vollständig im
+            // sichtbaren Bildschirmbereich: Der Test prüft Fensterbewegung,
+            // nicht das Wiederfinden verlorener Fenster.
+            guard let visible = (window.screen ?? NSScreen.main)?.visibleFrame
+            else { return nil }
+            let frame = window.frame
+            let spanX = Int(visible.maxX - frame.width - visible.minX)
+            let spanY = Int(visible.maxY - frame.height - visible.minY)
+            guard spanX >= 0, spanY >= 0 else { return nil }
+            window.setFrameOrigin(NSPoint(
+                x: visible.minX + CGFloat(nextRandom(spanX + 1)),
+                y: visible.minY + CGFloat(nextRandom(spanY + 1))))
+
+        case .resizeWindow:
+            // Zufällige Größe zwischen Mindestgröße und sichtbarem Bereich;
+            // die Position wird so geklemmt, dass das Fenster sichtbar
+            // bleibt. Nie miniaturisieren.
+            guard let visible = (window.screen ?? NSScreen.main)?.visibleFrame
+            else { return nil }
+            let minWidth = MainWindowSizing.minimumWidth
+            let minHeight = MainWindowSizing.minimumHeight
+            guard visible.width >= minWidth, visible.height >= minHeight
+            else { return nil }
+            let width = minWidth
+                + CGFloat(nextRandom(Int(visible.width - minWidth) + 1))
+            let height = minHeight
+                + CGFloat(nextRandom(Int(visible.height - minHeight) + 1))
+            var origin = window.frame.origin
+            origin.x = min(max(visible.minX, origin.x), visible.maxX - width)
+            origin.y = min(max(visible.minY, origin.y), visible.maxY - height)
+            window.setFrame(NSRect(x: origin.x, y: origin.y,
+                                   width: width, height: height),
+                            display: true)
+            // Ein Breiten-Resize wickelt Soft-Wrap-Text neu;
+            // `documentVisibleRect.minY` zieht dabei verzögert nach — auch
+            // erst in der FOLGERUNDE. Die scrollY-Prüfung für dieses Fenster
+            // deshalb zwei Runden lang aussetzen (siehe `scrollForgiven`).
+            scrollForgiven.insert(ObjectIdentifier(window))
+            scrollForgivenRoundsRemaining = 2
+
+        case .copy:
+            // Zufällige Auswahl, dann ⌘C über die Responder-Chain — der
+            // echte Weg in die gepatchte TextView. Zusammen mit
+            // `.switchWindow` und `.paste` entsteht über die Zeit echtes
+            // Kopieren zwischen Fenstern.
+            let length = (textView.string as NSString).length
+            guard length > 40 else { return nil }
+            let start = nextRandom(max(1, length - 30))
+            textView.selectionManager.setSelectedRange(
+                NSRange(location: start, length: min(25, length - start))
+            )
+            _ = window.makeFirstResponder(textView)
+            if !NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) {
+                record("Kopierbefehl erreicht den Editor",
+                       "\(window.title): sendAction(copy:) fand keinen Empfänger")
+            }
+
+        case .paste:
+            // Nur mit Textinhalt in der Zwischenablage; Bild-Paste und
+            // Smart Paste (⇧⌘V, modale Fehlermeldung) bleiben bewusst außen
+            // vor. Der Einfügepunkt wird auf den gültigen Bereich geklemmt.
+            guard let clip = NSPasteboard.general.string(forType: .string),
+                  !clip.isEmpty else { return nil }
+            _ = window.makeFirstResponder(textView)
+            textView.selectionManager.setSelectedRange(
+                safeSelection(in: textView, window: window)
+            )
+            if !NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil) {
+                record("Einfügebefehl erreicht den Editor",
+                       "\(window.title): sendAction(paste:) fand keinen Empfänger")
+            }
         }
         return (window, action.label)
+    }
+
+    /// Sucht den ⌘-Menüpunkt FRISCH im aktuellen Hauptmenü. Referenzen werden
+    /// bewusst nie gecacht: SwiftUI baut das Menü laufend neu auf, ein
+    /// gemerkter `NSMenuItem` zeigte dann ins Leere. `update()` entspricht dem
+    /// Aufklappen des Menüs samt SwiftUI-Validierung; ein deaktivierter Punkt
+    /// führt zum Überspringen der Aktion.
+    private static func commandMenuItem(forKeyEquivalent key: String) -> NSMenuItem? {
+        guard let mainMenu = NSApp.mainMenu else { return nil }
+        mainMenu.update()
+        guard let item = menuItem(forKeyEquivalent: key, in: mainMenu),
+              item.isEnabled, item.action != nil else { return nil }
+        return item
+    }
+
+    /// Rekursive Suche wie im Selbsttest: Modifier werden geprüft, damit
+    /// nicht ⇧⌘S („Sichern unter…") statt ⌘S getroffen wird. Der Vergleich
+    /// ist bewusst exakt (Kleinbuchstabe): Ein Shift-Kürzel kann auch als
+    /// GROSSBUCHSTABE ohne .shift-Maske codiert sein.
+    private static func menuItem(forKeyEquivalent key: String,
+                                 in menu: NSMenu) -> NSMenuItem? {
+        for item in menu.items {
+            if item.keyEquivalent == key,
+               item.keyEquivalentModifierMask.contains(.command),
+               !item.keyEquivalentModifierMask.contains(.shift) {
+                return item
+            }
+            if let submenu = item.submenu,
+               let found = menuItem(forKeyEquivalent: key, in: submenu) {
+                return found
+            }
+        }
+        return nil
     }
 
     /// Zwischenstand einer Runde: Die Aktion ist bereits ausgeführt, die
@@ -581,10 +740,25 @@ enum SoakTest {
             // Nach dem Rückgängigmachen muss der Text ANDERS sein als vorher
             // (sonst hat Undo nichts getan) — geprüft wird die Rückkehr auf
             // den Stand davor beim nächsten Redo-freien Vergleich. Hier
-            // genügt, dass der Editor nicht leer zurückbleibt.
-            if textView.string.isEmpty {
+            // genügt, dass der Editor nicht leer zurückbleibt. Das gilt nur
+            // für Tabs MIT Datei: Ein leerer Editor hieße dort, der geladene
+            // Dateiinhalt ist verloren. Ein Scratch-Tab (⌘T, ohne Datei)
+            // beginnt dagegen leer — dort ist leer nach dem Rückgängigmachen
+            // der ersten Eingabe schlicht der Ausgangszustand.
+            let tabHasFile = WorkspaceWindowRegistry.workspace(for: window)?
+                .activeTab?.url != nil
+            if textView.string.isEmpty, tabHasFile {
                 record("Rückgängig stellt den vorigen Text her",
                        "\(window.title): Editor ist nach dem Rückgängigmachen leer")
+            }
+        }
+        // Die scrollY-Nachsicht nach einem Resize endet mit dem Abschluss der
+        // ÜBERNÄCHSTEN Runde: erst dann ist die verzögerte Neuauslegung des
+        // Soft-Wrap-Textes sicher durch.
+        if scrollForgivenRoundsRemaining > 0 {
+            scrollForgivenRoundsRemaining -= 1
+            if scrollForgivenRoundsRemaining == 0 {
+                scrollForgiven.removeAll()
             }
         }
     }
@@ -609,6 +783,8 @@ enum SoakTest {
         findings = []
         actionsRun = 0
         lastAction = "—"
+        scrollForgiven.removeAll()
+        scrollForgivenRoundsRemaining = 0
     }
 
     // MARK: - Phasen über App-Neustarts hinweg
@@ -689,5 +865,541 @@ enum SoakTest {
         let url = directory.appendingPathComponent("notizen.txt")
         try? Data(lines.joined(separator: "\n").utf8).write(to: url)
         return url
+    }
+
+    // MARK: - Echte Dokumente (Phase 1)
+    //
+    // `soak-test.sh` kann unter `<soakDir>/real/` Kopien echter Dokumente
+    // bereitstellen. Fehlen sie, läuft alles wie bisher mit den Fixtures.
+
+    /// Die optional bereitgestellte echte Markdown-Datei:
+    /// `<soakDir>/real/markdown/` enthält genau eine `.md` (plus `images/`).
+    /// `nil` = nicht vorhanden.
+    static func realMarkdownDocument(in directory: URL) -> URL? {
+        let folder = directory.appendingPathComponent("real/markdown",
+                                                      isDirectory: true)
+        let entries = (try? FileManager.default.contentsOfDirectory(
+            at: folder, includingPropertiesForKeys: nil)) ?? []
+        return entries.first { $0.pathExtension.lowercased() == "md" }
+    }
+
+    /// Das optional bereitgestellte echte RTFD-Bundle. `nil` = nicht vorhanden.
+    static func realRTFDBundle(in directory: URL) -> URL? {
+        let bundle = directory.appendingPathComponent("real/protokoll-import.rtfd",
+                                                      isDirectory: true)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: bundle.path,
+                                             isDirectory: &isDirectory),
+              isDirectory.boolValue else { return nil }
+        return bundle
+    }
+
+    /// Öffnet das RTFD-Bundle über den ECHTEN Öffnen-Pfad (`openFileOrFolder`),
+    /// wählt die Rückfrage automatisch mit „umwandeln" und bearbeitet den
+    /// entstandenen Markdown-Tab SOFORT weiter — genau in diesem Zustand
+    /// werden Fehler vermutet. `MarkdownImportService` ist ein Singleton;
+    /// es läuft nie eine zweite Umwandlung parallel.
+    static func runRTFDImport(bundle: URL, workspace: Workspace,
+                              completion: @escaping @MainActor () -> Void) {
+        // Das erste Fenster nach vorn holen: Notification- und Menübefehle
+        // der folgenden Schritte wirken auf das VORDERSTE Fenster.
+        let window = documentWindows().first {
+            WorkspaceWindowRegistry.workspace(for: $0) === workspace
+        }
+        window?.makeKeyAndOrderFront(nil)
+        // Die echte Rückfrage ist ein modaler NSAlert und würde den Lauf
+        // anhalten; der Testhaken wählt automatisch „In Markdown umwandeln".
+        Workspace.markdownImportPackageChoiceProvider = { _, _ in .convert }
+        workspace.openFileOrFolder(at: bundle)
+        pollRTFDImportResult(workspace: workspace, window: window, tick: 0,
+                             completion: completion)
+    }
+
+    /// Wartet auf das Ende der Umwandlung: Zustand `finished`, der erzeugte
+    /// Markdown-Tab ist aktiv und fertig geladen. Frist 60 s.
+    private static func pollRTFDImportResult(
+        workspace: Workspace, window: NSWindow?, tick: Int,
+        completion: @escaping @MainActor () -> Void
+    ) {
+        let invariant = "RTFD-Umwandlung liefert einen bearbeitbaren Tab"
+        if case .failed(let message) = MarkdownImportService.shared.state {
+            Workspace.markdownImportPackageChoiceProvider = nil
+            record(invariant, "Umwandlung fehlgeschlagen: \(message)")
+            completion()
+            return
+        }
+        // Fertig heißt: Zustand `finished`, der erzeugte Tab ist aktiv und
+        // geladen UND der Editor steht wirklich im Fenster. Das Modell ist
+        // dem View-Baum einen Runloop voraus — ohne die letzte Bedingung
+        // prüfte der Test einen Editor, den SwiftUI noch gar nicht gebaut hat.
+        if case .finished(let markdownFile, _) = MarkdownImportService.shared.state,
+           let tab = workspace.activeTab, !tab.isLoading,
+           tab.url?.canonicalFileURL.path == markdownFile.canonicalFileURL.path,
+           let window, let content = window.contentView,
+           descendantTextView(in: content) != nil {
+            Workspace.markdownImportPackageChoiceProvider = nil
+            runRTFDEditSteps(window: window, workspace: workspace,
+                             completion: completion)
+            return
+        }
+        if tick >= 600 {
+            Workspace.markdownImportPackageChoiceProvider = nil
+            record(invariant,
+                   "Umwandlung nicht binnen 60 s fertig "
+                   + "(aktiver Tab: \(workspace.activeTab?.title ?? "—"))")
+            completion()
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            MainActor.assumeIsolated {
+                pollRTFDImportResult(workspace: workspace, window: window,
+                                     tick: tick + 1, completion: completion)
+            }
+        }
+    }
+
+    /// Bearbeitet den frisch umgewandelten Tab sofort weiter: tippen, fett,
+    /// sichern — je Schritt mit Runloop-Settling und Invariantenprüfung.
+    private static func runRTFDEditSteps(window: NSWindow, workspace: Workspace,
+                                         completion: @escaping @MainActor () -> Void) {
+        guard let content = window.contentView,
+              let textView = descendantTextView(in: content) else {
+            record("RTFD-Umwandlung liefert einen bearbeitbaren Tab",
+                   "\(window.title): kein Editor nach der Umwandlung")
+            completion()
+            return
+        }
+        // Schritt 1: an der Cursorposition tippen (frischer Tab → Textanfang).
+        let beforeType = snapshot()
+        textView.replaceCharacters(in: safeSelection(in: textView, window: window),
+                                   with: "Soak-RTFD ")
+        settleThenCheck(label: "RTFD: tippen", before: beforeType,
+                        target: window) {
+            // Schritt 2: fett über die Menü-Notification, wie `perform(.bold)`.
+            let beforeBold = snapshot()
+            let length = (textView.string as NSString).length
+            if length > 20 {
+                let start = nextRandom(max(1, length - 12))
+                textView.selectionManager.setSelectedRange(
+                    NSRange(location: start, length: 8)
+                )
+            }
+            NotificationCenter.default.post(name: .fastraMarkdownFormat,
+                                            object: MarkdownFormatCommand.bold.rawValue)
+            settleThenCheck(label: "RTFD: fett (⌘B)", before: beforeBold,
+                            target: window) {
+                // Schritt 3: sichern und die Sichern-Zusage prüfen.
+                let beforeSave = snapshot()
+                workspace.saveActiveTab()
+                settleThenCheck(label: "RTFD: sichern", before: beforeSave,
+                                target: window) {
+                    checkSaveWroteWindowContent(window: window)
+                    completion()
+                }
+            }
+        }
+    }
+
+    /// Ein Runloop-Durchlauf (0,1 s) wie in `runSoakRounds`, dann die
+    /// Invarianten prüfen — für gescriptete Schritte außerhalb der Runden.
+    private static func settleThenCheck(
+        label: String,
+        before: [ObjectIdentifier: WindowSnapshot],
+        target: NSWindow,
+        then body: @escaping @MainActor () -> Void
+    ) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            MainActor.assumeIsolated {
+                checkInvariants(action: label, before: before, target: target,
+                                expectedWindowCount: nil)
+                body()
+            }
+        }
+    }
+
+    // MARK: - 4D-Szenario (Phase 3)
+    //
+    // Nur mit `-soak4DProject` (Wurzel eines echten 4D-Projekts) und
+    // `-soak4DMethod` (vom Skript gewählte lange, git-saubere Methode).
+    // Die Completion-/Signatur-Popups sind Kindfenster und werden von
+    // `documentWindows()` bereits herausgefiltert.
+
+    /// Öffnet das 4D-Projekt in einem NEUEN Fenster, wartet auf den
+    /// Methodenindex, lädt die vorgegebene Methode und prüft die drei
+    /// Sprachfunktionen. Danach nimmt das Fenster am Zufallsbetrieb teil.
+    static func runFourDScenario(projectURL: URL, methodURL: URL,
+                                 completion: @escaping @MainActor () -> Void) {
+        let fourDWorkspace = DocumentWindowController.openNewDocument()
+        fourDWorkspace.openProject(at: projectURL)
+        // Frist 30 s: Erst mit stehendem Methodenindex sind Completion,
+        // Signaturhilfe und Methodensprünge überhaupt möglich.
+        pollCondition(tick: 0, maxTicks: 120, interval: 0.25, condition: {
+            !fourDWorkspace.fourDProjectMethodNames.isEmpty
+        }) { indexed in
+            if !indexed {
+                record("4D-Methodenindex steht",
+                       "Projektindex blieb 30 s leer — Runden starten trotzdem")
+                completion()
+                return
+            }
+            fourDWorkspace.loadFile(at: methodURL) { loaded in
+                guard loaded else {
+                    record("4D-Methodenindex steht",
+                           "\(methodURL.lastPathComponent) ließ sich nicht laden")
+                    completion()
+                    return
+                }
+                waitForFourDEditor(workspace: fourDWorkspace, tick: 0) { found in
+                    guard let (window, textView) = found else {
+                        record("4D-Methodenindex steht",
+                               "4D-Editor nicht binnen 10 s montiert")
+                        completion()
+                        return
+                    }
+                    runFourDCompletionStep(window: window, textView: textView) {
+                        runFourDSignatureStep(workspace: fourDWorkspace,
+                                              window: window,
+                                              textView: textView) {
+                            runFourDGoToStep(projectURL: projectURL,
+                                             workspace: fourDWorkspace,
+                                             window: window,
+                                             textView: textView,
+                                             completion: completion)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Allgemeines Pollen auf dem Main-Thread; ruft `body(true)` sobald die
+    /// Bedingung gilt, `body(false)` nach Fristablauf.
+    private static func pollCondition(
+        tick: Int, maxTicks: Int, interval: TimeInterval,
+        condition: @escaping @MainActor () -> Bool,
+        then body: @escaping @MainActor (Bool) -> Void
+    ) {
+        if condition() { body(true); return }
+        if tick >= maxTicks { body(false); return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + interval) {
+            MainActor.assumeIsolated {
+                pollCondition(tick: tick + 1, maxTicks: maxTicks,
+                              interval: interval, condition: condition,
+                              then: body)
+            }
+        }
+    }
+
+    /// Wartet auf die fertig geladene `.4dm`-Ansicht samt TextView im
+    /// zugehörigen Fenster. Frist 10 s.
+    private static func waitForFourDEditor(
+        workspace: Workspace, tick: Int,
+        then body: @escaping @MainActor ((NSWindow, TextView)?) -> Void
+    ) {
+        if workspace.activeTab?.isLoading == false,
+           workspace.activeTab?.url?.pathExtension.lowercased() == "4dm",
+           let window = documentWindows().first(where: {
+               WorkspaceWindowRegistry.workspace(for: $0) === workspace
+           }),
+           let content = window.contentView,
+           let textView = descendantTextView(in: content),
+           !textView.string.isEmpty {
+            body((window, textView))
+            return
+        }
+        if tick >= 100 { body(nil); return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            MainActor.assumeIsolated {
+                waitForFourDEditor(workspace: workspace, tick: tick + 1,
+                                   then: body)
+            }
+        }
+    }
+
+    /// Schritt 1: Zwei Zeichen auf einer frischen Zeile am Dokumentende
+    /// tippen — über `insertText`, also durch dieselbe CESE-Textmutation wie
+    /// eine echte Taste, bewusst NICHT am Delegate vorbei. Danach muss das
+    /// Vorschlagsfenster erscheinen; geschlossen wird es wie beim
+    /// Completion-Selbsttest mit Escape.
+    private static func runFourDCompletionStep(
+        window: NSWindow, textView: TextView,
+        completion: @escaping @MainActor () -> Void
+    ) {
+        let before = snapshot()
+        window.makeKeyAndOrderFront(nil)
+        _ = window.makeFirstResponder(textView)
+        appendText("\nA", to: textView)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            MainActor.assumeIsolated {
+                appendText("L", to: textView)
+                pollCondition(tick: 0, maxTicks: 50, interval: 0.1, condition: {
+                    completionPopup(of: window) != nil
+                }) { appeared in
+                    if !appeared {
+                        record("4D: Completion zeigt Vorschläge",
+                               "kein Vorschlagsfenster binnen 5 s nach zwei "
+                               + "getippten Zeichen am Zeilenanfang")
+                    }
+                    closeCompletionPopup(window: window, tick: 0) {
+                        settleThenCheck(label: "4D: Completion", before: before,
+                                        target: window) { completion() }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Schritt 2: Cursor in die Klammern eines Aufrufs setzen und auf das
+    /// Signaturhilfe-Panel warten.
+    ///
+    /// Die Stelle wird gezielt gewählt und VORHER verifiziert:
+    /// `fourDProjectMethodDisplayNames` liefert die Original-Schreibweise —
+    /// der Namensindex selbst ist kleingeschrieben und träfe im Text nie —
+    /// und `FourDSignatureHelpLogic.callContext` bestätigt, dass die Stelle
+    /// wirklich als Aufruf zählt (kein Kommentar, kein Keyword, Klammer noch
+    /// offen). Gibt es im Dokument keinen solchen Aufruf, tippt der Test
+    /// selbst einen ans Dokumentende — über `insertText`, den echten
+    /// Tastenweg. Erst mit verifizierter Stelle ist ein ausbleibendes Panel
+    /// ein BEFUND; an einer beliebigen Klammer wäre es nur geraten.
+    ///
+    /// Das Panel hat zusätzlich ein Sichtbarkeits-Gate: Liegt die öffnende
+    /// Klammer außerhalb von `visibleRect`, blendet es sich sofort wieder
+    /// aus. Deshalb wird die Stelle erst gescrollt und der Cursor einen
+    /// Runloop-Tick später gesetzt.
+    private static func runFourDSignatureStep(
+        workspace: Workspace, window: NSWindow, textView: TextView,
+        completion: @escaping @MainActor () -> Void
+    ) {
+        let text = textView.string as NSString
+        var cursorLocation = NSNotFound
+        outer: for name in workspace.fourDProjectMethodDisplayNames {
+            var search = NSRange(location: 0, length: text.length)
+            while true {
+                let call = text.range(of: "\(name)(", range: search)
+                guard call.location != NSNotFound else { break }
+                let candidate = call.location + call.length
+                if FourDSignatureHelpLogic.callContext(
+                    in: textView.string, utf16CursorLocation: candidate) != nil {
+                    cursorLocation = candidate
+                    break outer
+                }
+                let next = call.location + 1
+                search = NSRange(location: next, length: text.length - next)
+            }
+        }
+        if cursorLocation == NSNotFound {
+            // Für den selbst getippten Aufruf einen Namen wählen, der auch
+            // als Aufruf ZÄHLT: `calleeName` verlangt Buchstabe oder
+            // Unterstrich am Anfang — „00_Done(" wäre kein Methodenaufruf.
+            let callable = workspace.fourDProjectMethodDisplayNames.first {
+                guard let first = $0.first else { return false }
+                return first.isLetter || first == "_"
+            }
+            guard let name = callable else {
+                note("4D-Signaturhilfe übersprungen: keine indizierte Methode "
+                     + "mit aufrufbarem Namen")
+                completion()
+                return
+            }
+            _ = window.makeFirstResponder(textView)
+            appendText("\n\(name)(", to: textView)
+            cursorLocation = (textView.string as NSString).length
+            guard FourDSignatureHelpLogic.callContext(
+                in: textView.string, utf16CursorLocation: cursorLocation) != nil
+            else {
+                note("4D-Signaturhilfe übersprungen: selbst getippter Aufruf "
+                     + "ergibt keinen Aufrufkontext")
+                completion()
+                return
+            }
+        }
+        let before = snapshot()
+        _ = window.makeFirstResponder(textView)
+        // Erst die Stelle sichtbar machen (Sichtbarkeits-Gate des Panels),
+        // dann den Cursor setzen — dieselbe Reihenfolge wie beim
+        // ALT-Doppelklick-Schritt.
+        if let rect = textView.layoutManager.rectsFor(
+            range: NSRange(location: max(0, cursorLocation - 1), length: 1)).first {
+            textView.scrollToVisible(rect.insetBy(dx: 0, dy: -40))
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            MainActor.assumeIsolated {
+                textView.selectionManager.setSelectedRange(
+                    NSRange(location: cursorLocation, length: 0)
+                )
+                pollCondition(tick: 0, maxTicks: 50, interval: 0.1, condition: {
+                    signaturePanelText(of: window) != nil
+                }) { appeared in
+                    if !appeared {
+                        record("4D: Signaturhilfe erscheint am Aufruf",
+                               "kein Panel binnen 5 s, obwohl die Stelle laut "
+                               + "callContext ein gültiger Methodenaufruf ist")
+                    }
+                    settleThenCheck(label: "4D: Signaturhilfe", before: before,
+                                    target: window) { completion() }
+                }
+            }
+        }
+    }
+
+    /// Schritt 3: ALT-Doppelklick auf einen Methodennamen, der als Datei
+    /// existiert, indiziert ist und im Text vorkommt. Erfolg = der aktive Tab
+    /// wechselt zur Zieldatei (Frist 5 s). ACHTUNG: `GoToTargetGesture` nutzt
+    /// intern `Workspace.shared` — landet der Sprung in einem FREMDEN
+    /// Fenster, ist das ein echter Produktbefund, den die Invarianten melden
+    /// sollen; hier wird nichts unterdrückt.
+    private static func runFourDGoToStep(
+        projectURL: URL, workspace: Workspace,
+        window: NSWindow, textView: TextView,
+        completion: @escaping @MainActor () -> Void
+    ) {
+        let methodsDirectory = projectURL
+            .appendingPathComponent("Project/Sources/Methods", isDirectory: true)
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: methodsDirectory, includingPropertiesForKeys: nil)) ?? []
+        let text = textView.string as NSString
+        let currentFile = workspace.activeTab?.url?.lastPathComponent
+        // Der Name darf nicht die gerade offene Methode selbst sein — sonst
+        // wäre kein Tabwechsel beobachtbar.
+        var chosen: (file: String, range: NSRange)?
+        for file in files where file.pathExtension.lowercased() == "4dm" {
+            let name = file.deletingPathExtension().lastPathComponent
+            guard file.lastPathComponent != currentFile,
+                  workspace.fourDProjectMethodNames.contains(name.lowercased())
+            else { continue }
+            let range = text.range(of: name)
+            guard range.location != NSNotFound else { continue }
+            chosen = (file.lastPathComponent, range)
+            break
+        }
+        guard let chosen else {
+            note("4D-ALT-Doppelklick übersprungen: kein indizierter "
+                 + "Methodenname aus dem Projekt im Text gefunden")
+            completion()
+            return
+        }
+        guard let rect = textView.layoutManager.rectsFor(
+            range: NSRange(location: chosen.range.location, length: 1)).first
+        else {
+            note("4D-ALT-Doppelklick übersprungen: keine Layout-Position "
+                 + "für den Methodennamen")
+            completion()
+            return
+        }
+        let before = snapshot()
+        // Die Stelle sichtbar machen — ein Klick auf eine Position außerhalb
+        // des Viewports träfe eine andere Zeile oder gar nicht den Editor.
+        textView.scrollToVisible(rect.insetBy(dx: 0, dy: -40))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            MainActor.assumeIsolated {
+                // down/up/down/up mit clickCount 1,1,2,2 und ⌥ über die
+                // App-Queue, damit der lokale Monitor (GoToTargetGesture)
+                // die Events wirklich sieht.
+                let windowPoint = textView.convert(
+                    NSPoint(x: rect.midX, y: rect.midY), to: nil)
+                let time = ProcessInfo.processInfo.systemUptime
+                for (clickCount, type) in [(1, NSEvent.EventType.leftMouseDown),
+                                           (1, .leftMouseUp),
+                                           (2, .leftMouseDown),
+                                           (2, .leftMouseUp)] {
+                    guard let event = NSEvent.mouseEvent(
+                        with: type, location: windowPoint,
+                        modifierFlags: [.option], timestamp: time,
+                        windowNumber: window.windowNumber, context: nil,
+                        eventNumber: 0, clickCount: clickCount, pressure: 1
+                    ) else { continue }
+                    NSApp.postEvent(event, atStart: false)
+                }
+                pollCondition(tick: 0, maxTicks: 20, interval: 0.25, condition: {
+                    workspace.activeTab?.url?.lastPathComponent == chosen.file
+                }) { jumped in
+                    if !jumped {
+                        record("4D: ALT-Doppelklick öffnet die Methode",
+                               "Sprung zur Zielmethode blieb binnen 5 s aus "
+                               + "(aktiver Tab: \(workspace.activeTab?.title ?? "—"))")
+                    }
+                    settleThenCheck(label: "4D: ALT-Doppelklick", before: before,
+                                    target: window) { completion() }
+                }
+            }
+        }
+    }
+
+    /// Fügt Text am Dokumentende ein — wie `insertCompletionCharacter` im
+    /// Selbsttest: über die öffentliche AppKit-Eingabemethode.
+    private static func appendText(_ text: String, to textView: TextView) {
+        let end = (textView.string as NSString).length
+        textView.selectionManager.setSelectedRange(
+            NSRange(location: end, length: 0)
+        )
+        textView.insertText(text as NSString,
+                            replacementRange: NSRange(location: end, length: 0))
+    }
+
+    /// Das Completion-Fenster ist ein sichtbares Kindfenster mit Tabelle —
+    /// dieselbe öffentliche Form, über die es auch der Completion-Selbsttest
+    /// beobachtet.
+    private static func completionPopup(of window: NSWindow) -> NSWindow? {
+        (window.childWindows ?? []).first { child in
+            guard child.isVisible, let content = child.contentView else {
+                return false
+            }
+            return descendantTableView(in: content) != nil
+        }
+    }
+
+    private static func descendantTableView(in view: NSView) -> NSTableView? {
+        if let table = view as? NSTableView { return table }
+        for sub in view.subviews {
+            if let found = descendantTableView(in: sub) { return found }
+        }
+        return nil
+    }
+
+    /// Text des Signaturhilfe-Panels (randloses Kindfenster mit Label);
+    /// `nil`, wenn keines sichtbar ist.
+    private static func signaturePanelText(of window: NSWindow) -> String? {
+        for child in window.childWindows ?? [] {
+            guard child.styleMask.contains(.borderless), child.isVisible,
+                  let content = child.contentView else { continue }
+            for view in content.subviews {
+                if let label = view as? NSTextField {
+                    return label.attributedStringValue.string
+                }
+            }
+        }
+        return nil
+    }
+
+    /// Schließt das Vorschlagsfenster mit Escape; bleibt es hängen, wird es
+    /// nach 1,5 s hart geschlossen (Notnagel wie im Completion-Selbsttest).
+    private static func closeCompletionPopup(
+        window: NSWindow, tick: Int,
+        then body: @escaping @MainActor () -> Void
+    ) {
+        guard let popup = completionPopup(of: window) else { body(); return }
+        if tick == 0 {
+            postEscapeKey(windowNumber: window.windowNumber)
+        } else if tick >= 30 {
+            popup.close()
+            body()
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            MainActor.assumeIsolated {
+                closeCompletionPopup(window: window, tick: tick + 1, then: body)
+            }
+        }
+    }
+
+    private static func postEscapeKey(windowNumber: Int) {
+        guard let key = NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: windowNumber, context: nil,
+            characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}",
+            isARepeat: false, keyCode: 53
+        ) else { return }
+        NSApp.postEvent(key, atStart: false)
     }
 }
