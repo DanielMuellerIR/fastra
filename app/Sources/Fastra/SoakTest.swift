@@ -156,10 +156,19 @@ enum SoakTest {
     /// Der Dauertest darf an einem kaputten Zustand nicht selbst abstürzen —
     /// sonst endet der Lauf, statt weiterzusammeln. Gemeldet wird der Zustand
     /// trotzdem: Die Klemmung verdeckt nichts, sie hält den Lauf am Leben.
+    ///
+    /// Ausnahme: `{NSNotFound, 0}` ist KEIN kaputter Zustand, sondern der
+    /// dokumentierte Normalfall eines Fensters, in das noch niemand geklickt
+    /// hat — nach der Sitzungswiederherstellung steht jedes Fenster so da.
+    /// Ein Mensch klickt vor dem Tippen; der Test bildet das nach, indem er
+    /// den Einfügepunkt an den Textanfang setzt, ohne einen Befund zu melden.
     private static func safeSelection(in textView: TextView,
                                       window: NSWindow) -> NSRange {
         let length = (textView.string as NSString).length
         let range = textView.selectedRange()
+        if range.location == NSNotFound, range.length == 0 {
+            return NSRange(location: 0, length: 0)
+        }
         guard range.location != NSNotFound, range.location >= 0,
               range.location + range.length <= length else {
             record("Auswahl liegt im Text",
@@ -523,12 +532,25 @@ enum SoakTest {
         return (window, action.label)
     }
 
-    /// Eine Runde: Aktion wählen, Zustand sichern, ausführen, prüfen.
+    /// Zwischenstand einer Runde: Die Aktion ist bereits ausgeführt, die
+    /// Prüfung folgt getrennt. Der Treiber legt zwischen beide einen
+    /// Runloop-Durchlauf, weil SwiftUI abgeleitete Ansichten (etwa die
+    /// Markdown-Vorschau-Spalte) erst in der nächsten Transaktion umbaut —
+    /// eine synchrone Prüfung fände noch den alten View-Baum und meldete
+    /// einen Fehler, den es im Betrieb nie gibt.
+    struct PendingRound {
+        let label: String
+        let target: NSWindow
+        let action: Action
+        let before: [ObjectIdentifier: WindowSnapshot]
+        let undoBaseline: (String, TextView, NSWindow)?
+    }
+
+    /// Erste Hälfte einer Runde: Aktion wählen, Zustand sichern, ausführen.
     ///
-    /// Der Rückgabewert sagt, ob wirklich etwas ausgeführt wurde — eine
-    /// übersprungene Aktion darf nicht als Prüfung zählen.
-    @discardableResult
-    static func runOneRound() -> Bool {
+    /// `nil` heißt: Es wurde nichts ausgeführt — eine übersprungene Aktion
+    /// darf nicht als Prüfung zählen.
+    static func startRound() -> PendingRound? {
         let all = Action.allCases
         let action = all[nextRandom(all.count)]
         let before = snapshot()
@@ -541,13 +563,21 @@ enum SoakTest {
             return (textView.string, textView, window)
         }()
 
-        guard let done = perform(action) else { return false }
-        checkInvariants(action: done.label, before: before,
-                        target: done.target, expectedWindowCount: nil)
-        if action == .save {
-            checkSaveWroteWindowContent(window: done.target)
+        guard let done = perform(action) else { return nil }
+        return PendingRound(label: done.label, target: done.target,
+                            action: action, before: before,
+                            undoBaseline: undoBaseline)
+    }
+
+    /// Zweite Hälfte einer Runde: die Invarianten gegen den inzwischen
+    /// gesetzten Zustand prüfen.
+    static func finishRound(_ round: PendingRound) {
+        checkInvariants(action: round.label, before: round.before,
+                        target: round.target, expectedWindowCount: nil)
+        if round.action == .save {
+            checkSaveWroteWindowContent(window: round.target)
         }
-        if let (_, textView, window) = undoBaseline {
+        if let (_, textView, window) = round.undoBaseline {
             // Nach dem Rückgängigmachen muss der Text ANDERS sein als vorher
             // (sonst hat Undo nichts getan) — geprüft wird die Rückkehr auf
             // den Stand davor beim nächsten Redo-freien Vergleich. Hier
@@ -557,7 +587,6 @@ enum SoakTest {
                        "\(window.title): Editor ist nach dem Rückgängigmachen leer")
             }
         }
-        return true
     }
 
     // MARK: - Bericht
@@ -644,5 +673,21 @@ enum SoakTest {
             urls.append(url)
         }
         return urls
+    }
+
+    /// Ein Nicht-Markdown-Dokument für die gemischte Tab-Lage. Ohne ein
+    /// solches Dokument könnte die Invariante „Vorschau gehört zu ihrem
+    /// Fenster" nie echt anschlagen: Ein leerer neuer Tab zeigt die
+    /// Startansicht (ganz ohne Editor und Vorschau), erst ein aktives
+    /// Nicht-Markdown-DOKUMENT lässt eine stehengebliebene Vorschau auffliegen.
+    static func prepareTextDocument(in directory: URL) -> URL {
+        var lines: [String] = []
+        for line in 1...200 {
+            lines.append("Notizzeile \(line): einfacher Text ohne Auszeichnung, "
+                + "damit ein Tab mit fremdem Dateityp im Spiel ist.")
+        }
+        let url = directory.appendingPathComponent("notizen.txt")
+        try? Data(lines.joined(separator: "\n").utf8).write(to: url)
+        return url
     }
 }

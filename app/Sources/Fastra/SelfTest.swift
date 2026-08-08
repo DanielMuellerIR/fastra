@@ -6304,16 +6304,22 @@ enum SelfTest {
             guard documents.count == 3 else {
                 finish(false, "Testdokumente nicht erzeugbar")
             }
+            let textDocument = SoakTest.prepareTextDocument(in: directory)
             // Erstes Dokument ins vorhandene Fenster, für die übrigen je ein
             // eigenes Fenster — so entsteht die Mehrfenster-Lage, in der die
-            // gemeldeten Fehler auftraten.
+            // gemeldeten Fehler auftraten. Ins erste Fenster kommt zusätzlich
+            // ein Text-Tab: Erst ein Nicht-Markdown-DOKUMENT (kein leerer
+            // Tab, der nur die Startansicht zeigt) kann eine
+            // stehengebliebene Markdown-Vorschau überhaupt aufdecken.
             workspace.loadFile(at: documents[0]) { _ in
-                for document in documents.dropFirst() {
-                    let extra = DocumentWindowController.openNewDocument()
-                    extra.loadFile(at: document) { _ in }
-                }
-                waitForSoakWindows(expected: 3, tick: 0) {
-                    runSoakRounds(rounds: rounds, done: 0, logURL: logURL)
+                workspace.loadFile(at: textDocument) { _ in
+                    for document in documents.dropFirst() {
+                        let extra = DocumentWindowController.openNewDocument()
+                        extra.loadFile(at: document) { _ in }
+                    }
+                    waitForSoakWindows(expected: 3, tick: 0) {
+                        runSoakRounds(rounds: rounds, done: 0, logURL: logURL)
+                    }
                 }
             }
             return
@@ -6363,6 +6369,14 @@ enum SelfTest {
     @MainActor
     private static func runSoakRounds(rounds: Int, done: Int, logURL: URL) {
         guard done < rounds else {
+            // Der Selbsttest beendet über exit(), nicht über NSApp.terminate —
+            // applicationShouldTerminate und damit das reguläre Sichern der
+            // Sitzung laufen also nie. Damit die nächste Phase die Fenster
+            // wiederfindet, hier ausdrücklich speichern. synchronize(),
+            // weil exit() das Zurückschreiben an cfprefsd nicht abwartet.
+            SessionRestorationCoordinator.captureCurrentSession(
+                defaults: workspaceDefaults())
+            workspaceDefaults().synchronize()
             SoakTest.appendReport(to: logURL)
             let count = SoakTest.findings.count
             finish(count == 0,
@@ -6372,10 +6386,20 @@ enum SelfTest {
                      + "\(SoakTest.actionsRun) Aktionen — Protokoll: "
                      + logURL.lastPathComponent)
         }
-        _ = SoakTest.runOneRound()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+        let pending = SoakTest.startRound()
+        // Erst einen Runloop-Durchlauf setzen lassen, DANN prüfen: SwiftUI
+        // baut abgeleitete Ansichten (z. B. die Vorschau-Spalte nach einem
+        // Tabwechsel) erst in der nächsten Transaktion um. Die restliche
+        // Pause hält den Abstand zwischen den Aktionen wie bisher.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             MainActor.assumeIsolated {
-                runSoakRounds(rounds: rounds, done: done + 1, logURL: logURL)
+                if let pending { SoakTest.finishRound(pending) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    MainActor.assumeIsolated {
+                        runSoakRounds(rounds: rounds, done: done + 1,
+                                      logURL: logURL)
+                    }
+                }
             }
         }
     }
