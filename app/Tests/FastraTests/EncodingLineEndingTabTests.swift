@@ -69,7 +69,7 @@ func fileLoader_forcedWrongEncodingThrows() throws {
 @MainActor
 private func makeWS(content: String) -> Workspace {
     let suite = "fastra.tests.k69.\(UUID().uuidString)"
-    let ws = Workspace(defaults: UserDefaults(suiteName: suite)!)
+    let ws = Workspace(defaults: testSuiteDefaults(named: suite))
     ws.tabs = [EditorTab(title: "t", path: "-", content: content)]
     ws.activeTabID = ws.tabs[0].id
     return ws

@@ -362,6 +362,13 @@ enum SelfTest {
         }
         guard let name = requestedTest else { return }
         testLabel = name
+        // Am Prozessende liegengebliebene Test-Domains früherer,
+        // abgestürzter Läufe abräumen (nur älter als eine Stunde — aktive
+        // Suiten eines parallel laufenden `swift test` bleiben unberührt).
+        // Registriert nur im Selbsttest-Modus; ein normaler App-Start räumt
+        // nichts weg (Roadmap 2026-07-28: 3713 liegengebliebene Test-Plists
+        // brachten cfprefsd aus dem Tritt).
+        atexit { TestDefaultsPurge.purgeStale() }
         switch name {
         case "findbar":   waitForMainWindow { runFindBarTest() }
         case "newwindow": waitForMainWindow { runNewWindowTest() }

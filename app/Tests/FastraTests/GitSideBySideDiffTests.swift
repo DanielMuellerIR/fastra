@@ -516,7 +516,7 @@ private func makeDiffWorkspace() async throws
     let coordinator = GitOperationsCoordinator(executor: executor)
     let store = GitRepositoryStore(executor: executor, coordinator: coordinator)
     let suite = "Fastra-DiffLifecycle-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = testSuiteDefaults(named: suite)
     let workspace = Workspace(defaults: defaults, gitOperationsCoordinator: coordinator,
                               gitRepositoryStore: store)
     let repo = FileManager.default.temporaryDirectory

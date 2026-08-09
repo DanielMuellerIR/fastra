@@ -75,7 +75,7 @@ func scratch_multipleRemoved() {
 @MainActor
 func loadFile_removesEmptyScratchTab() async throws {
     let suiteName = "fastra-test-scratch-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
+    let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
 
     let ws = Workspace(defaults: defaults)
@@ -91,8 +91,7 @@ func loadFile_removesEmptyScratchTab() async throws {
 
     var done = false
     ws.loadFile(at: url) { _ in done = true }
-    let deadline = Date().addingTimeInterval(5)
-    while !done, Date() < deadline { await Task.yield() }
+    await waitUntil { done }
     #expect(done, "Completion wurde nie aufgerufen")
 
     // Der leere Scratch ist weg, nur der geladene Datei-Tab bleibt.
@@ -106,7 +105,7 @@ func loadFile_removesEmptyScratchTab() async throws {
 @MainActor
 func loadFile_keepsTypedUntitledTab() async throws {
     let suiteName = "fastra-test-scratch2-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
+    let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
 
     let ws = Workspace(defaults: defaults)
@@ -121,8 +120,7 @@ func loadFile_keepsTypedUntitledTab() async throws {
 
     var done = false
     ws.loadFile(at: url) { _ in done = true }
-    let deadline = Date().addingTimeInterval(5)
-    while !done, Date() < deadline { await Task.yield() }
+    await waitUntil { done }
     #expect(done)
 
     // Der getippte Entwurf bleibt erhalten, der geladene Tab kommt dazu.

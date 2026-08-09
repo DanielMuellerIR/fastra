@@ -11,7 +11,7 @@ import Testing
 
 private func makeWorkspace() -> (Workspace, String) {
     let suiteName = "fastra-dirty-tests-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
+    let defaults = testSuiteDefaults(named: suiteName)
     return (Workspace(defaults: defaults), suiteName)
 }
 

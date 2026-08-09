@@ -223,7 +223,7 @@ func targetStateRejectsEveryRelevantChange() {
 @MainActor
 @Test("Kontext-Smart-Paste bindet die angeklickte TextView ohne First Responder")
 func contextLeaseCapturesExplicitEditor() throws {
-    let defaults = UserDefaults(suiteName: "smart-paste-context-\(UUID().uuidString)")!
+    let defaults = testSuiteDefaults(named: "smart-paste-context-\(UUID().uuidString)")
     let workspace = Workspace(defaults: defaults)
     let textView = CodeEditTextView.TextView(string: "Anfang Ende")
     textView.selectionManager.setSelectedRange(NSRange(location: 7, length: 4))

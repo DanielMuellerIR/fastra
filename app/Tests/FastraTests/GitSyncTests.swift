@@ -450,7 +450,7 @@ struct GitAutoFetchControllerTests {
         -> (GitAutoFetchController, SyncTestExecutor, ManualGitScheduler,
             UserDefaults, String) {
         let suite = "Fastra-GitAutoFetch-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = testSuiteDefaults(named: suite)
         let preferencesStore = GitPreferencesStore(defaults: defaults)
         var preferences = GitPreferences()
         preferences.automaticFetchDecision = decision
@@ -469,7 +469,7 @@ struct GitAutoFetchControllerTests {
     @Test("Ohne Aktivierungs-Fetch wartet der erste Abruf ein volles Intervall")
     func activationWithoutImmediateFetch() async throws {
         let suite = "Fastra-GitAutoFetch-Activation-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = testSuiteDefaults(named: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         var preferences = GitPreferences()
         preferences.automaticFetchDecision = .automatic
@@ -501,7 +501,7 @@ struct GitAutoFetchControllerTests {
     @Test("Timer startet nur die pro Repository fälligen Fetches")
     func staggeredRepositories() async throws {
         let suite = "Fastra-GitAutoFetch-Staggered-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = testSuiteDefaults(named: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         var preferences = GitPreferences()
         preferences.automaticFetchDecision = .automatic
@@ -629,7 +629,7 @@ struct GitWorkspacePullTests {
         let coordinator = GitOperationsCoordinator(executor: executor)
         let store = GitRepositoryStore(executor: executor, coordinator: coordinator)
         let suite = "Fastra-Pull-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = testSuiteDefaults(named: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         let workspace = Workspace(defaults: defaults,
                                   gitOperationsCoordinator: coordinator,
@@ -728,7 +728,7 @@ struct GitWorkspacePullTests {
         let coordinator = GitOperationsCoordinator(executor: executor)
         let store = GitRepositoryStore(executor: executor, coordinator: coordinator)
         let suite = "Fastra-Pull-Dedup-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = testSuiteDefaults(named: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         var preferences = GitPreferences()
         preferences.pullStrategy = .rebase

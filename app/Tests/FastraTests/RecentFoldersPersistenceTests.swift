@@ -11,7 +11,7 @@ import Foundation
 
 private func makeDefaults() -> UserDefaults {
     let suite = "fastra.tests.\(UUID().uuidString)"
-    let d = UserDefaults(suiteName: suite)!
+    let d = testSuiteDefaults(named: suite)
     d.removePersistentDomain(forName: suite)
     return d
 }

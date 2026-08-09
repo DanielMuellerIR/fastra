@@ -15,7 +15,7 @@ func openFileOrFolder_directoryOpensProject() throws {
     try fm.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? fm.removeItem(at: dir) }
 
-    let ws = Workspace(defaults: UserDefaults(suiteName: "ff-\(UUID().uuidString)")!)
+    let ws = Workspace(defaults: testSuiteDefaults(named: "ff-\(UUID().uuidString)"))
     ws.openFileOrFolder(at: dir)
 
     #expect(ws.projectURL == dir.canonicalFileURL)
@@ -29,7 +29,7 @@ func openFileOrFolder_fileOpensTab() async throws {
     try "hallo".write(to: file, atomically: true, encoding: .utf8)
     defer { try? fm.removeItem(at: file) }
 
-    let ws = Workspace(defaults: UserDefaults(suiteName: "ff-\(UUID().uuidString)")!)
+    let ws = Workspace(defaults: testSuiteDefaults(named: "ff-\(UUID().uuidString)"))
     ws.openFileOrFolder(at: file)
 
     // loadFile legt den (Platzhalter-)Tab mit gesetzter URL sofort synchron an.
@@ -37,8 +37,7 @@ func openFileOrFolder_fileOpensTab() async throws {
 
     // Nach dem asynchronen Laden öffnet der Einzeldatei-Pfad den
     // unmittelbaren Elternordner als Projekt (Wunschpaket 2026-07, Etappe 1).
-    let deadline = Date().addingTimeInterval(5)
-    while ws.projectURL == nil, Date() < deadline { await Task.yield() }
+    await waitUntil { ws.projectURL != nil }
     #expect(ws.projectURL == file.canonicalFileURL.deletingLastPathComponent())
 }
 

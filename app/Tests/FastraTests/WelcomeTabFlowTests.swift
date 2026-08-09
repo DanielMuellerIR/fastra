@@ -14,7 +14,7 @@ import Testing
 /// Frische, isolierte UserDefaults-Suite für genau einen Test.
 private func makeFreshDefaults() -> (UserDefaults, suiteName: String) {
     let suiteName = "fastra-test-welcometab-\(UUID().uuidString)"
-    return (UserDefaults(suiteName: suiteName)!, suiteName)
+    return (testSuiteDefaults(named: suiteName), suiteName)
 }
 
 /// Liefert einen Workspace im Folgestart-Zustand (ein unberührter leerer

@@ -14,7 +14,7 @@ import Testing
 /// Der Aufrufer räumt sie via `removePersistentDomain` wieder ab.
 private func makeFreshDefaults() -> (UserDefaults, suiteName: String) {
     let suiteName = "fastra-test-donation-\(UUID().uuidString)"
-    return (UserDefaults(suiteName: suiteName)!, suiteName)
+    return (testSuiteDefaults(named: suiteName), suiteName)
 }
 
 // MARK: - shouldShow-Logik

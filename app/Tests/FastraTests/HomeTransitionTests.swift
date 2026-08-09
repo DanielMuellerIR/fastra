@@ -4,7 +4,7 @@ import Testing
 
 private func homeWorkspace() -> (Workspace, UserDefaults, String) {
     let suite = "fastra-home-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = testSuiteDefaults(named: suite)
     defaults.removePersistentDomain(forName: suite)
     return (Workspace(defaults: defaults), defaults, suite)
 }

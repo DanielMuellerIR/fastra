@@ -12,7 +12,7 @@ import Testing
 /// Der Aufrufer räumt sie via `removePersistentDomain` wieder ab.
 private func makeFreshDefaults() -> (UserDefaults, suiteName: String) {
     let suiteName = "fastra-test-firstlaunch-\(UUID().uuidString)"
-    return (UserDefaults(suiteName: suiteName)!, suiteName)
+    return (testSuiteDefaults(named: suiteName), suiteName)
 }
 
 @Test("Workspace beim ersten Start: Start-Tab mit Platzhalter, keine Demodaten")

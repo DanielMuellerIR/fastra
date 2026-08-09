@@ -156,7 +156,7 @@ func downsampling_keepsSmallImage() throws {
 @MainActor
 func saving_refusesBinaryDisplayModes() throws {
     let suite = "fastra-viewmode-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = testSuiteDefaults(named: suite)
     defer { defaults.removePersistentDomain(forName: suite) }
     let target = FileManager.default.temporaryDirectory
         .appendingPathComponent("fastra-viewmode-save-\(UUID().uuidString).png")

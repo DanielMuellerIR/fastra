@@ -4,7 +4,7 @@ import Testing
 
 private func isolatedGitDefaults() -> UserDefaults {
     let name = "FastraTests.GitPreferences.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: name)!
+    let defaults = testSuiteDefaults(named: name)
     defaults.removePersistentDomain(forName: name)
     return defaults
 }

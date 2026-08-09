@@ -68,7 +68,7 @@ func fileTree_nodeIdentityIsPath() {
 @Test("Aufklappzustand ist pro Projekt getrennt und bleibt erhalten")
 func fileTree_expansionPersistence() throws {
     let suiteName = "fastra-filetree-expanded-\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
     let first = URL(fileURLWithPath: "/tmp/projekt-a")
     let second = URL(fileURLWithPath: "/tmp/projekt-b")

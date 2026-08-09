@@ -103,7 +103,7 @@ func presentingSearchUsesShortcutScopeWhenEmptyOrClosed() {
 @MainActor
 func menuEntryForcesFolderScope() {
     let suiteName = "fastra-test-presentsearch-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
+    let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
     let ws = Workspace(defaults: defaults)
     ws.scope = .file

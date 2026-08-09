@@ -78,7 +78,7 @@ func projectFilterChangeInvalidatesVisiblePreviewImmediately() async throws {
     defer { try? fm.removeItem(at: root) }
 
     let suiteName = "fastra-runner-defaults-\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
 
     let workspace = Workspace(defaults: defaults)
@@ -137,7 +137,7 @@ func folderPreviewSurvivesOpeningMatchedFile() async throws {
     try "vorher NADEL nachher\n".write(to: file, atomically: true, encoding: .utf8)
 
     let suiteName = "fastra-folder-hit-defaults-\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
 
     let workspace = Workspace(defaults: defaults)
@@ -182,7 +182,7 @@ func folderPreviewSurvivesOpeningMatchedFile() async throws {
 @MainActor
 func discardedFolderRunClearsBufferSpinner() async throws {
     let suiteName = "fastra-runner-spinner-\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
 
     let workspace = Workspace(defaults: defaults)

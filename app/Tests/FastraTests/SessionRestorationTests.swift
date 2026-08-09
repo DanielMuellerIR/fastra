@@ -5,7 +5,7 @@ import Testing
 
 private func sessionDefaults() -> (UserDefaults, String) {
     let suite = "fastra-test-session-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = testSuiteDefaults(named: suite)
     defaults.removePersistentDomain(forName: suite)
     return (defaults, suite)
 }

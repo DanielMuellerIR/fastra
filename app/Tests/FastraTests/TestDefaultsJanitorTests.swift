@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+@testable import Fastra
 
 // Viele Tests legen pro Lauf eigene UserDefaults-Suiten mit UUID-Namen an
 // (z. B. "Fastra-DiffLifecycle-<UUID>"). `removePersistentDomain` leert die
@@ -312,4 +313,32 @@ func janitorPurgesOnlyStaleTestDomains() throws {
 func purgeStaleTestDefaultsDomains() throws {
     // Kein Assert auf eine Mindestzahl: Auf einem sauberen System ist 0 korrekt.
     try TestDefaultsJanitor.purgeStaleDomains()
+}
+
+@Test("TestDefaultsPurge erkennt nur UUID-Testdomains und entfernt Registriertes")
+func purgeRecognizesAndRemovesTestDomains() {
+    // Erkennung: Präfix UND UUID müssen zusammenkommen.
+    #expect(TestDefaultsPurge.isTestDomain(
+        "FastraTests.GitPreferences.9E8B2C1A-1234-4EAB-9F00-ABCDEF012345"))
+    #expect(TestDefaultsPurge.isTestDomain(
+        "fastra-test-extchange-9E8B2C1A-1234-4EAB-9F00-ABCDEF012345"))
+    #expect(!TestDefaultsPurge.isTestDomain("de.dm0.fastra"))
+    #expect(!TestDefaultsPurge.isTestDomain("com.apple.Terminal"))
+    // Präfix ohne UUID bleibt stehen (z. B. die feste Selbsttest-Suite).
+    #expect(!TestDefaultsPurge.isTestDomain("fastra-feste-suite"))
+    // UUID ohne Test-Präfix bleibt ebenfalls stehen.
+    #expect(!TestDefaultsPurge.isTestDomain(
+        "org.example.9E8B2C1A-1234-4EAB-9F00-ABCDEF012345"))
+
+    // Registry-Weg: Eine registrierte, beschriebene Suite verschwindet mit
+    // purgeRegistered() aus den Preferences.
+    let name = "FastraTests.PurgeProbe.\(UUID().uuidString)"
+    TestDefaultsPurge.register(name)
+    let defaults = UserDefaults(suiteName: name)!
+    defaults.set(true, forKey: "probe")
+    // synchronize erzwingt das Persistieren der Domain vor dem Purge.
+    defaults.synchronize()
+    let remaining = TestDefaultsPurge.purgeRegistered()
+    #expect(UserDefaults.standard.persistentDomain(forName: name) == nil)
+    #expect(!remaining.contains(name))
 }

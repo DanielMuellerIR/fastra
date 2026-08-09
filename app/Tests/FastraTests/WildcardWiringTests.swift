@@ -42,7 +42,7 @@ func usesWildcard_literalSwitch() {
 @MainActor
 func wildcardLiteralOption_activationCondition() {
     let suite = "fastra.tests.wildcard-option.\(UUID().uuidString)"
-    let ws = Workspace(defaults: UserDefaults(suiteName: suite)!)
+    let ws = Workspace(defaults: testSuiteDefaults(named: suite))
 
     ws.findPattern = "a*b"
     ws.useRegex = true
@@ -59,7 +59,7 @@ func wildcardLiteralOption_activationCondition() {
 @MainActor
 func wildcardLiteralOption_invalidStateResetsSelection() {
     let suite = "fastra.tests.wildcard-reset.\(UUID().uuidString)"
-    let ws = Workspace(defaults: UserDefaults(suiteName: suite)!)
+    let ws = Workspace(defaults: testSuiteDefaults(named: suite))
 
     ws.useRegex = false
     ws.findPattern = "a*b"

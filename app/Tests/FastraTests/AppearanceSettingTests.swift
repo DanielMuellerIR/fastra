@@ -11,7 +11,7 @@ struct AppearanceSettingTests {
     /// Einstellungen nicht anfassen.
     private func freshDefaults() -> UserDefaults {
         let name = "fastra.tests.appearance.\(UUID().uuidString)"
-        let d = UserDefaults(suiteName: name)!
+        let d = testSuiteDefaults(named: name)
         d.removePersistentDomain(forName: name)
         return d
     }

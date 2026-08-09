@@ -99,7 +99,7 @@ func routing_titleExtensionCounts() {
 @MainActor
 func workspace_setCustomOverride() {
     let suite = "fastra-test-lang-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = testSuiteDefaults(named: suite)
     defer { defaults.removePersistentDomain(forName: suite) }
     let ws = Workspace(defaults: defaults)
     ws.tabs = [tab(title: "notizen.txt", url: URL(fileURLWithPath: "/tmp/notizen.txt"))]
@@ -139,7 +139,7 @@ private func makeChoiceTestDirectory() throws -> URL {
 @MainActor
 func workspace_saveAsRemembersLanguageChoice() throws {
     let suite = "fastra-test-lang-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = testSuiteDefaults(named: suite)
     defer { defaults.removePersistentDomain(forName: suite) }
     let directory = try makeChoiceTestDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -163,7 +163,7 @@ func workspace_saveAsRemembersLanguageChoice() throws {
 @MainActor
 func workspace_fileTreeMoveMovesLanguageChoice() throws {
     let suite = "fastra-test-lang-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = testSuiteDefaults(named: suite)
     defer { defaults.removePersistentDomain(forName: suite) }
     let directory = try makeChoiceTestDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

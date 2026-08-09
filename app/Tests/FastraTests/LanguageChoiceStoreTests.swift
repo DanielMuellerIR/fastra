@@ -14,7 +14,7 @@ private struct LanguageChoiceFixture {
     let defaults: UserDefaults
 
     init() {
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = testSuiteDefaults(named: suiteName)
         defaults.removePersistentDomain(forName: suiteName)
     }
 

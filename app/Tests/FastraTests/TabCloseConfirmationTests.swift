@@ -14,7 +14,7 @@ import Testing
 
 private func makeWorkspace() -> Workspace {
     let suite = "fastra-close-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = testSuiteDefaults(named: suite)
     defaults.removePersistentDomain(forName: suite)
     return Workspace(defaults: defaults)
 }

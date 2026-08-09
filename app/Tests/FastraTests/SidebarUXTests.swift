@@ -15,7 +15,7 @@ import Testing
 
 private func makeFreshDefaults() -> (UserDefaults, suiteName: String) {
     let suiteName = "fastra-test-sidebarux-\(UUID().uuidString)"
-    return (UserDefaults(suiteName: suiteName)!, suiteName)
+    return (testSuiteDefaults(named: suiteName), suiteName)
 }
 
 /// Legt einen temporären Ordner an und gibt seine kanonische URL zurück.

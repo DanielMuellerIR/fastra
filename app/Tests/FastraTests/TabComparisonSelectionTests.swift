@@ -14,7 +14,7 @@ private func makeTabComparisonWorkspace() -> (
     suite: String
 ) {
     let suite = "fastra-tab-comparison-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = testSuiteDefaults(named: suite)
     defaults.removePersistentDomain(forName: suite)
     let workspace = Workspace(defaults: defaults)
     return (workspace, defaults, suite)

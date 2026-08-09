@@ -50,7 +50,7 @@ private func makeWorkspace(content: String, find: String, replace: String = "",
     // Historie — die darf nicht in die echten Defaults des Nutzers leaken
     // (gleiches Muster wie TabCloseConfirmationTests).
     let suite = "fastra-extract-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = testSuiteDefaults(named: suite)
     defaults.removePersistentDomain(forName: suite)
     let ws = Workspace(defaults: defaults)
     // Definierter Ausgangszustand: genau ein Tab mit bekanntem Inhalt.

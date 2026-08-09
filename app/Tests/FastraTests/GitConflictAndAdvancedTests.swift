@@ -193,7 +193,7 @@ private func absentOperationPaths(in repository: URL) -> GitExecutionOutcome {
 
 private func makeDefaults(_ suffix: String) -> (UserDefaults, String) {
     let name = "Fastra-P4-\(suffix)-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: name)!
+    let defaults = testSuiteDefaults(named: name)
     defaults.removePersistentDomain(forName: name)
     return (defaults, name)
 }
@@ -783,8 +783,19 @@ struct GitConflictMarkerTests {
         #expect(outcome == .timedOut)
         #expect(!verifyCalled)
         #expect(FileManager.default.fileExists(atPath: foreignLock))
-        #expect(!FileManager.default.fileExists(atPath: paths[0] + ".lock"))
-        #expect(!FileManager.default.fileExists(atPath: paths[2] + ".lock"))
+        // Nicht als Momentaufnahme prüfen: Das aufgerufene git hat seine
+        // eigenen Locks unmittelbar nach der Completion nicht zwingend schon
+        // entfernt (zweimal beobachtet 2026-08-07 in vollen Läufen). Kurze
+        // Frist statt sofortigem Blick.
+        try await waitAdvanced("Index-Lock blieb nach dem Timeout liegen") {
+            !FileManager.default.fileExists(atPath: paths[0] + ".lock")
+        }
+        try await waitAdvanced("Worktree-HEAD-Lock blieb nach dem Timeout liegen") {
+            !FileManager.default.fileExists(atPath: paths[2] + ".lock")
+        }
+        // Der fremde Ref-Lock muss die Aufräumphase ÜBERLEBEN — er gehört
+        // nicht dieser Transaktion.
+        #expect(FileManager.default.fileExists(atPath: foreignLock))
     }
 
     @Test("Symbolischer Worktree-HEAD bleibt unter derselben Reftransaktion unverändert",

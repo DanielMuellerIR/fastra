@@ -91,7 +91,7 @@ private func makeWorkspace(tabs tabContents: [(String, String)]) -> Workspace {
     // Isolierte Defaults-Suite (recordSearchHistory darf nicht in die
     // echten Nutzer-Defaults leaken) — Muster wie TabCloseConfirmationTests.
     let suite = "fastra-openscope-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = testSuiteDefaults(named: suite)
     defaults.removePersistentDomain(forName: suite)
     let ws = Workspace(defaults: defaults)
     ws.tabs = tabContents.map { EditorTab(title: $0.0, path: "—", content: $0.1) }

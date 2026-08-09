@@ -10,7 +10,7 @@ import Testing
 
 private func makeDefaults() -> UserDefaults {
     let suite = "fastra.tests.projects.\(UUID().uuidString)"
-    let d = UserDefaults(suiteName: suite)!
+    let d = testSuiteDefaults(named: suite)
     d.removePersistentDomain(forName: suite)
     return d
 }
@@ -146,7 +146,7 @@ func canonical_missingPathUnchanged() {
 @Test("Projekt-Suchkonfiguration bleibt pro Projekt getrennt erhalten")
 func projectSearchStore_roundtripPerProject() throws {
     let suiteName = "fastra-project-search-\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
     let first = URL(fileURLWithPath: "/tmp/projekt-a")
     let second = URL(fileURLWithPath: "/tmp/projekt-b")
@@ -164,7 +164,7 @@ func projectSearchStore_roundtripPerProject() throws {
 @Test("Projekt-Suchkonfiguration repariert eine ungültige aktive Auswahl")
 func projectSearchStore_normalizesInvalidSelection() throws {
     let suiteName = "fastra-project-search-invalid-\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
     let root = URL(fileURLWithPath: "/tmp/projekt")
     let only = ProjectFileSet(name: "Quellen", paths: ["Sources"])
@@ -181,7 +181,7 @@ func projectSearchStore_requiresDerivedDataExclusion() throws {
     #expect(ProjectSearchConfiguration.fresh().excludePatterns.contains("DerivedData"))
 
     let suiteName = "fastra-project-search-derived-\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
     let root = URL(fileURLWithPath: "/tmp/projekt-alt")
     let all = ProjectFileSet(name: "Gesamtes Projekt", paths: ["."])

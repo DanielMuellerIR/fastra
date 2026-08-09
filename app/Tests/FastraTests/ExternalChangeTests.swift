@@ -14,7 +14,7 @@ import Testing
 
 private func makeFreshDefaults() -> (UserDefaults, suiteName: String) {
     let suiteName = "fastra-test-extchange-\(UUID().uuidString)"
-    return (UserDefaults(suiteName: suiteName)!, suiteName)
+    return (testSuiteDefaults(named: suiteName), suiteName)
 }
 
 private func writeTmpUTF8(_ content: String) throws -> URL {
@@ -42,8 +42,7 @@ private func loadedWorkspace(_ url: URL) async -> Workspace {
     let ws = Workspace(defaults: defaults)
     var done = false
     ws.loadFile(at: url) { _ in done = true }
-    let deadline = Date().addingTimeInterval(5)
-    while !done, Date() < deadline { await Task.yield() }
+    await waitUntil { done }
     return ws
 }
 
@@ -51,9 +50,7 @@ private func loadedWorkspace(_ url: URL) async -> Workspace {
 /// läuft asynchron über Task.detached).
 @MainActor
 private func waitForContent(_ ws: Workspace, idx: Int, expected: String) async -> Bool {
-    let deadline = Date().addingTimeInterval(5)
-    while ws.tabs[idx].content != expected, Date() < deadline { await Task.yield() }
-    return ws.tabs[idx].content == expected
+    return await waitUntil { ws.tabs[idx].content == expected }
 }
 
 // MARK: - Pure Entscheidungs-Logik
@@ -173,9 +170,9 @@ func workspace_ownSaveIsNoExternalChange() async throws {
 
     ws.saveActiveTab()   // schreibt direkt (Tab hat URL) und zieht das Datum nach
     ws.checkExternalChanges()
-    // Kurz warten: ein fälschlicher Reload wäre asynchron.
-    let deadline = Date().addingTimeInterval(0.3)
-    while Date() < deadline { await Task.yield() }
+    // Kurz warten: ein fälschlicher Reload wäre asynchron. Feste Pause mit
+    // echtem Schlafen — eine Yield-Schleife würde den Main-Actor belegen.
+    try? await Task.sleep(nanoseconds: 300_000_000)
     #expect(asked == false)
     #expect(ws.tabs[idx].content == "gespeichert\n")
 }

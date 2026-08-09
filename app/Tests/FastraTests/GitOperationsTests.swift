@@ -296,8 +296,8 @@ struct GitRepositoryStoreTests {
         }.joined(separator: "\n") + "\n"
         let suiteA = "Fastra-Store-A-\(UUID().uuidString)"
         let suiteB = "Fastra-Store-B-\(UUID().uuidString)"
-        let defaultsA = UserDefaults(suiteName: suiteA)!
-        let defaultsB = UserDefaults(suiteName: suiteB)!
+        let defaultsA = testSuiteDefaults(named: suiteA)
+        let defaultsB = testSuiteDefaults(named: suiteB)
         defer {
             defaultsA.removePersistentDomain(forName: suiteA)
             defaultsB.removePersistentDomain(forName: suiteB)
@@ -506,7 +506,7 @@ struct GitActionContextTests {
         let coordinator = GitOperationsCoordinator(executor: executor)
         let store = GitRepositoryStore(executor: executor, coordinator: coordinator)
         let suite = "Fastra-GitActionContext-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = testSuiteDefaults(named: suite)
         return (executor,
                 Workspace(defaults: defaults, gitOperationsCoordinator: coordinator,
                           gitRepositoryStore: store),

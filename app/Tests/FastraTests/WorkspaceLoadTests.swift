@@ -13,7 +13,7 @@ import Testing
 /// Frische, isolierte UserDefaults-Suite — wie in FirstLaunchTests.
 private func makeFreshDefaults() -> (UserDefaults, suiteName: String) {
     let suiteName = "fastra-test-wsload-\(UUID().uuidString)"
-    return (UserDefaults(suiteName: suiteName)!, suiteName)
+    return (testSuiteDefaults(named: suiteName), suiteName)
 }
 
 /// Schreibt `content` mit UTF-8 in eine temporäre Datei und gibt die URL zurück.
@@ -112,8 +112,7 @@ func wsLoad_dedup_noSecondTab() async throws {
     // Erster Ladevorgang abwarten.
     var firstDone = false
     ws.loadFile(at: url) { _ in firstDone = true }
-    let d1 = Date().addingTimeInterval(5)
-    while !firstDone, Date() < d1 { await Task.yield() }
+    await waitUntil { firstDone }
 
     let countAfterFirst = ws.tabs.count
 

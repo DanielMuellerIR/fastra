@@ -6,7 +6,7 @@ import Testing
 struct PatternLibraryTests {
     private func defaults() -> UserDefaults {
         let suite = "FastraTests.PatternLibrary.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = testSuiteDefaults(named: suite)
         defaults.removePersistentDomain(forName: suite)
         return defaults
     }

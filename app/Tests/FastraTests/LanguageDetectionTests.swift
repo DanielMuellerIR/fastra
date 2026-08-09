@@ -204,7 +204,7 @@ func eligibility_rules() {
 @MainActor
 func workspace_detectsAfterBulkInsert() throws {
     let suite = "fastra-langdetect-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = testSuiteDefaults(named: suite)
     defer { defaults.removePersistentDomain(forName: suite) }
 
     let ws = Workspace(
@@ -229,7 +229,7 @@ func workspace_detectsAfterBulkInsert() throws {
 @MainActor
 func workspace_detectsShebang() throws {
     let suite = "fastra-langdetect-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = testSuiteDefaults(named: suite)
     defer { defaults.removePersistentDomain(forName: suite) }
 
     let ws = Workspace(
@@ -254,7 +254,7 @@ func workspace_detectsShebang() throws {
 @MainActor
 func workspace_manualOverrideStopsAutomatic() async throws {
     let suite = "fastra-langdetect-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = testSuiteDefaults(named: suite)
     defer { defaults.removePersistentDomain(forName: suite) }
 
     let ws = Workspace(defaults: defaults)

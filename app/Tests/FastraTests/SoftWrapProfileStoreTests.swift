@@ -8,7 +8,7 @@ private struct SoftWrapDefaultsFixture {
     let notificationCenter = NotificationCenter()
 
     init() {
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = testSuiteDefaults(named: suiteName)
         defaults.removePersistentDomain(forName: suiteName)
     }
 

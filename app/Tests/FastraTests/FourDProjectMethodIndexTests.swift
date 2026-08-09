@@ -48,7 +48,7 @@ func fourDMethodIndex_workspaceWatcherRefreshesAndStops() async throws {
     let methods = root.appendingPathComponent("Project/Sources/Methods")
     let nextMethods = nextRoot.appendingPathComponent("Project/Sources/Methods")
     let suiteName = "fastra-4d-watch-defaults-\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    let defaults = testSuiteDefaults(named: suiteName)
     defer {
         try? fm.removeItem(at: root)
         try? fm.removeItem(at: nextRoot)
