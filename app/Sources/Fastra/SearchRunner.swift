@@ -113,7 +113,27 @@ final class SearchRunner {
         // aktuellen Semantik. Sofort leeren und laufende Tasks abbrechen;
         // Navigation, Vorschau und Apply sehen damit nie einen Altstand.
         triggerStream
-            .sink { [weak self] in self?.searchInputsDidChange() }
+            .sink { [weak self] in
+                // Combine liefert synchron auf dem Thread, der den Suchinput
+                // geschrieben hat. Im Produkt ist das immer der Main-Thread —
+                // dort MUSS die Invalidierung auch synchron bleiben, damit
+                // Navigation, Vorschau und Apply nie einen Altstand sehen.
+                // Die parallele Testsuite schreibt Inputs dagegen von eigenen
+                // Threads: Liefe die Invalidierung dort, beschrieben zwei
+                // Threads gleichzeitig dieselben starken Referenzen
+                // (`folderTask`, `folderDebounce`, `visibleBufferResults-
+                // Options`) — das alte Objekt würde doppelt freigegeben,
+                // beobachtet am 2026-08-09 als Heap-Korruption (SIGSEGV mit
+                // Müll-Adressen). Von fremden Threads zieht die Invalidierung
+                // deshalb auf die Main-Queue um; dort serialisiert sie sich
+                // mit `rerun()`. (Regressionstest:
+                // WorkspaceParallelStressTests.)
+                if Thread.isMainThread {
+                    self?.searchInputsDidChange()
+                } else {
+                    DispatchQueue.main.async { self?.searchInputsDidChange() }
+                }
+            }
             .store(in: &bag)
 
         triggerStream
@@ -127,6 +147,11 @@ final class SearchRunner {
         // Initial einmal laufen lassen, damit die Maske beim Öffnen
         // direkt etwas zeigt (falls schon ein findPattern voreingestellt
         // ist — der Prototyp startet mit einer E-Mail-Demo-RegEx).
+        // Dieser Dispatch ist der FRÜHESTE Weg, auf dem ein frisch
+        // erzeugter Workspace die Main-Queue erreicht — noch vor
+        // `Workspace.shared`. `Workspace.init` muss deshalb alle
+        // @Published-Speicher anlegen, BEVOR es den SearchRunner erzeugt
+        // (siehe dort, Vorwärm-Kommentar).
         DispatchQueue.main.async { [weak self] in self?.rerun() }
     }
 

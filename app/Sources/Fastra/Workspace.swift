@@ -928,6 +928,23 @@ final class Workspace: ObservableObject {
         self.activeTabID = scratch.id
         self.findPattern = ""
         self.replacePattern = ""
+        // Combine legt das Verlags-Objekt hinter jedem @Published-Feld erst
+        // beim ersten Zugriff an und tauscht dabei UNGESCHÜTZT den internen
+        // Feldspeicher aus. Ab der nächsten Zeile entkommt `self` anderen
+        // Threads: Der SearchRunner schickt sein initiales `rerun()` auf die
+        // Main-Queue (die dort viele @Published-Felder liest UND schreibt),
+        // und `Workspace.shared` stößt die Kontextaktivierung an, deren
+        // objectWillChange-Getter ALLE Felder einzeln verdrahtet. Die
+        // parallele Testsuite erzeugt Workspaces auf eigenen Threads —
+        // Main- und Erzeuger-Thread konvertierten dann denselben Speicher
+        // gleichzeitig, beobachtet am 2026-08-09 als SIGSEGV/Heap-Korruption
+        // (os_unfair_lock auf NULL in PublishedSubject, Müll-Adressen in
+        // deinit und Subject-Sends). Der eine Getter-Aufruf hier erledigt
+        // die komplette Anlage, solange NUR dieser Thread das Objekt kennt;
+        // danach sind alle @Published-Zugriffe durch Combines interne
+        // Verriegelung gedeckt. MUSS vor der SearchRunner-Erzeugung stehen.
+        // (Regressionstest: WorkspaceParallelStressTests.)
+        _ = objectWillChange
         self.searchRunner = SearchRunner(workspace: self)
         Workspace.registerLive(self)
         Workspace.shared = self

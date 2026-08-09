@@ -344,6 +344,21 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   als echten Ordner innerhalb des eigenen Zwischenverzeichnisses bestätigen,
   erst danach Kandidaten auflösen und übernehmen (siehe
   `MarkdownImport.isPublishableFile`).
+- Combine legt das Verlags-Objekt hinter jedem `@Published`-Feld erst beim
+  ERSTEN Zugriff an und tauscht dabei ungeschützt den Feldspeicher aus. Ein
+  ObservableObject muss deshalb einmal `_ = objectWillChange` auf seinem
+  erzeugenden Thread durchlaufen, BEVOR es irgendeinen anderen Thread
+  erreicht; danach verriegelt Combine intern. `Workspace.init` erreichte die
+  Main-Queue schon über den initialen `rerun()`-Dispatch des SearchRunner —
+  noch vor `Workspace.shared` —, und in der parallelen Testsuite
+  konvertierten Main- und Erzeuger-Thread denselben Speicher gleichzeitig:
+  SIGSEGV/Heap-Korruption (2026-08-09). Zweite Falle derselben Art: `sink`
+  liefert synchron auf dem SCHREIBENDEN Thread. Ein Sink, der starke
+  Referenzen zuweist (Sofort-Invalidierung des SearchRunner), muss von
+  fremden Threads auf die Main-Queue umziehen, sonst geben zwei Threads
+  dasselbe alte Objekt doppelt frei. Wächter: Vorwärm-Aufruf in
+  `Workspace.init` VOR der SearchRunner-Erzeugung, Regressionstest
+  `WorkspaceParallelStressTests`.
 
 - **`NSApp.windows` ist NICHT nach Vordergrund sortiert.** Wer daraus „das
   erste sichtbare Fenster" nimmt, trifft bei mehreren offenen Dokumenten ein
