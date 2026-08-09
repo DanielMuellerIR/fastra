@@ -10,10 +10,11 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   (verbleibende Grenze nach der Komponentenmethoden-Unterstützung; diese ist mit
   v1.50.0 umgesetzt — Typeahead + Signaturhilfe aus `.4dbase`, `.4DZ` und
   Methodendokumentation, nur geteilte Methoden, Projektmethode gewinnt):
-  - **Plugins:** erst angehen, wenn ein reales Projekt mit `Plugins`-Ordner
-    als Fixture verfügbar ist — Struktur dann zuerst am echten Bundle
-    erheben, nichts aus Erinnerung raten (im verfügbaren Referenzprojekt
-    existiert kein solcher Ordner).
+  - **Plugins:** Struktur zuerst am echten Bundle erheben, nichts aus
+    Erinnerung raten. **Stand 2026-08-09:** Ein reales Referenzprojekt MIT
+    `Plugins`-Ordner (enthält `4D InternetCommands.bundle`) ist inzwischen
+    lokal verfügbar (privater Pfad, siehe gitignorierte
+    `app/soak-test.local`) — die Erhebung kann bei Bedarf starten.
   - **GitHub-Abhängigkeiten:** `Project/Sources/dependencies.json` kann
     Komponenten benennen, die nicht unter `<Projekt>/Components/` liegen
     (z. B. von 4D verwaltete Downloads). Bewusst offen, bis der reale
