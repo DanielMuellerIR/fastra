@@ -94,6 +94,7 @@ fi
 
 WORK_DIR="$(mktemp -d)/fastra-soak"
 LOG="$WORK_DIR/befunde.log"
+PASTEBOARD_BACKUP="$WORK_DIR/pasteboard-backup.plist"
 mkdir -p "$WORK_DIR"
 : > "$LOG"
 
@@ -103,21 +104,36 @@ mkdir -p "$WORK_DIR"
 # leert sie, ab Phase 2 bleibt die Sitzung erhalten.
 
 cleanup() {
-  # Erst das 4D-Projekt zurücksetzen (braucht die Merkdateien im
-  # Arbeitsverzeichnis), dann aufräumen. Läuft auch bei Abbruch.
-  restore_4d_project
+  local original_status=$?
+  local cleanup_failed=0
+  # Bei einem äußeren Abbruch darf nur der von diesem Runner gestartete
+  # Phasenprozess beendet werden. Danach kann ein frischer App-Prozess die
+  # persistierte Zwischenablage-Sicherung gefahrlos einspielen.
+  if [ -n "${SOAK_PHASE_PID:-}" ] && kill -0 "$SOAK_PHASE_PID" 2>/dev/null; then
+    kill -9 "$SOAK_PHASE_PID" 2>/dev/null || true
+    wait "$SOAK_PHASE_PID" 2>/dev/null || true
+  fi
+  restore_soak_pasteboard cleanup || cleanup_failed=1
+  # Danach das 4D-Projekt zurücksetzen (braucht die Merkdateien im
+  # Arbeitsverzeichnis) und erst dann aufräumen. Läuft auch bei Abbruch.
+  restore_4d_project || cleanup_failed=1
   # Bei Befunden oder einem Absturz die BEWEISE erhalten: Protokoll und
   # Phasenausgaben (mit Exception-Text und Stacktrace) überleben das
   # Aufräumen. Nur die Logs — die kopierten echten Dokumente nicht.
-  if [ "${KEEP_EVIDENCE:-0}" -eq 1 ]; then
+  if [ "${KEEP_EVIDENCE:-0}" -eq 1 ] || [ "$cleanup_failed" -eq 1 ]; then
     local evidence="${TMPDIR:-/tmp}/fastra-soak-befunde-$(date +%Y%m%d-%H%M%S)"
     mkdir -p "$evidence"
-    cp "$LOG" "$WORK_DIR"/phase-*.out "$evidence"/ 2>/dev/null || true
+    cp "$LOG" "$WORK_DIR"/phase-*.out "$WORK_DIR"/pasteboard-restore-*.out \
+       "$PASTEBOARD_BACKUP" "$evidence"/ 2>/dev/null || true
     echo "   Beweise gesichert: $evidence" >&2
   fi
   rm -rf "$WORK_DIR"
+  if [ "$cleanup_failed" -eq 1 ] && [ "$original_status" -eq 0 ]; then
+    echo "SOAK FAIL — externe Testdaten konnten nicht vollständig wiederhergestellt werden." >&2
+    trap - EXIT
+    exit 1
+  fi
 }
-trap cleanup EXIT
 
 # Echte Dokumente KOPIEREN: Tippen, Sichern und die RTFD-Umwandlung (deren
 # Ergebnis neben der Quelle landet) dürfen die Originale nie berühren.
@@ -136,6 +152,7 @@ fi
 # werden — fremder WIP bleibt unangetastet.
 SOAK_4D=""
 SOAK_4D_METHOD=""
+SOAK_4D_RESTORED=0
 DIRTY_BEFORE="$WORK_DIR/4d-dirty-before.txt"
 if [ -n "${FASTRA_SOAK_4D_PROJECT:-}" ] && [ -d "$FASTRA_SOAK_4D_PROJECT" ]; then
   if git -C "$FASTRA_SOAK_4D_PROJECT" rev-parse --git-dir >/dev/null 2>&1; then
@@ -189,13 +206,28 @@ PYEOF
 fi
 
 restore_4d_project() {
+  [ "${SOAK_4D_RESTORED:-0}" -eq 0 ] || return 0
   [ -n "${SOAK_4D:-}" ] || return 0
-  # Nur zurücksetzen, was der Lauf NEU verschmutzt hat. Der Vergleich läuft
-  # über python3, damit Dateinamen mit Leerzeichen sicher behandelt werden.
-  git -C "$SOAK_4D" status --porcelain=v1 -z | tr '\0' '\n' > "$WORK_DIR/4d-dirty-after.txt"
-  python3 - "$SOAK_4D" "$DIRTY_BEFORE" "$WORK_DIR/4d-dirty-after.txt" <<'PYEOF'
-import subprocess, sys
-root, before_path, after_path = sys.argv[1], sys.argv[2], sys.argv[3]
+  # Nur von der App unmittelbar vor einer eigenen Textmutation protokollierte
+  # 4D-Pfade gehören nachweislich dem Lauf. Andere neue Änderungen können
+  # parallel von Nutzer oder Werkzeug stammen: melden, niemals anfassen.
+  if ! git -C "$SOAK_4D" status --porcelain=v1 -z \
+      > "$WORK_DIR/4d-dirty-after.raw"; then
+    echo "   ✗ 4D-Projektstatus für die Bereinigung nicht lesbar" >&2
+    return 1
+  fi
+  tr '\0' '\n' < "$WORK_DIR/4d-dirty-after.raw" \
+    > "$WORK_DIR/4d-dirty-after.txt"
+  : > "$WORK_DIR/4d-touched.txt"
+  local phase_output
+  for phase_output in "$WORK_DIR"/phase-*.out; do
+    [ -f "$phase_output" ] || continue
+    sed -n 's/^SOAK-4D-DATEI: //p' "$phase_output" >> "$WORK_DIR/4d-touched.txt"
+  done
+  python3 - "$SOAK_4D" "$DIRTY_BEFORE" "$WORK_DIR/4d-dirty-after.txt" \
+    "$WORK_DIR/4d-touched.txt" <<'PYEOF'
+import os, subprocess, sys
+root, before_path, after_path, touched_path = sys.argv[1:5]
 def entries(path):
     result = {}
     for line in open(path, encoding="utf-8", errors="replace").read().splitlines():
@@ -206,17 +238,50 @@ before, after = entries(before_path), entries(after_path)
 fresh = [f for f in after if f not in before]
 tracked = [f for f, st in after.items() if f in fresh and st not in ("??",)]
 untracked = [f for f in fresh if after[f] == "??"]
-for f in tracked:
-    subprocess.run(["git", "-C", root, "checkout", "--", f], check=False)
-if tracked:
-    print(f"   4D-Projekt: {len(tracked)} vom Lauf geänderte Datei(en) zurückgesetzt")
+root_abs = os.path.abspath(root)
+owned = set()
+invalid = []
+for path in open(touched_path, encoding="utf-8", errors="replace").read().splitlines():
+    touched_abs = os.path.abspath(path)
+    try:
+        if os.path.commonpath((root_abs, touched_abs)) == root_abs:
+            owned.add(os.path.relpath(touched_abs, root_abs))
+        else:
+            invalid.append(path)
+    except ValueError:
+        invalid.append(path)
+
+failed = bool(invalid)
+restored_count = 0
+for path in sorted(f for f in tracked if f in owned):
+    restored = subprocess.run(
+        ["git", "-C", root, "checkout", "--", path],
+        capture_output=True, text=True, errors="replace")
+    if restored.returncode == 0:
+        restored_count += 1
+    else:
+        failed = True
+        detail = (restored.stderr or restored.stdout).strip() or "ohne Git-Fehlertext"
+        print(f"   ✗ 4D-Projekt: {path} nicht zurücksetzbar: {detail}",
+              file=sys.stderr)
+if restored_count:
+    print(f"   4D-Projekt: {restored_count} test-eigene Datei(en) zurückgesetzt")
+
+untouched = [f for f in tracked if f not in owned]
+if untouched:
+    print("   ⚠ 4D-Projekt: andere neue Änderung(en) bleiben unangetastet:")
+    for f in untouched:
+        print(f"     {f}")
 if untracked:
-    # Neue Dateien (z. B. eine RTFD-Umwandlung neben der Quelle) nur melden,
-    # nicht löschen — Löschen wäre eine destruktive Entscheidung.
-    print("   4D-Projekt: neue, nicht versionierte Datei(en) übrig:")
+    print("   ⚠ 4D-Projekt: neue, nicht versionierte Datei(en) bleiben unangetastet:")
     for f in untracked:
         print(f"     {f}")
+for path in invalid:
+    print(f"   ✗ 4D-Projekt: protokollierter Pfad liegt außerhalb des Repos: {path}",
+          file=sys.stderr)
+sys.exit(1 if failed else 0)
 PYEOF
+  local restore_status=$?
   # Schon vorher verschmutzte Dateien (fremder WIP) werden NIE zurückgesetzt.
   # Hat der Lauf eine davon dennoch verändert, nur ehrlich warnen.
   if [ -f "$WORK_DIR/4d-dirty-mtimes.txt" ]; then
@@ -234,6 +299,8 @@ for line in open(mtimes_path, encoding="utf-8", errors="replace").read().splitli
         pass
 PYEOF
   fi
+  [ "$restore_status" -eq 0 ] || return "$restore_status"
+  SOAK_4D_RESTORED=1
 }
 
 echo "▶ Fastra Dauertest — $ROUNDS Aktionen je Phase, 3 Phasen"
@@ -241,6 +308,48 @@ echo "   Arbeitsverzeichnis: $WORK_DIR"
 if [ -d "$REAL_DIR" ]; then echo "   Echte Dokumente: kopiert nach $REAL_DIR"; fi
 if [ -n "$SOAK_4D" ]; then echo "   4D-Projekt (am Ort): $SOAK_4D"; fi
 echo
+
+SOAK_PHASE_PID=""
+
+# Stellt eine von der App persistierte, itemgetreue Zwischenablage-Sicherung in
+# einem kleinen eigenen App-Aufruf wieder her. Das deckt normale Fehler,
+# App-Abstürze und den Timeout-Kill ab. Nicht abfangbar bleibt nur ein harter
+# Abbruch des RUNNERS selbst (SIGKILL/Systemausfall) zwischen Clipboard-Änderung
+# und diesem Schritt; dann bleibt die Sicherung im oben ausgegebenen WORK_DIR.
+restore_soak_pasteboard() {
+  local label="${1:-cleanup}"
+  [ -f "$PASTEBOARD_BACKUP" ] || return 0
+  local output="$WORK_DIR/pasteboard-restore-$label.out"
+  "$BINARY" -selftest soakpasteboardrestore \
+    -soakDir "$WORK_DIR" \
+    -soakPhase 2 \
+    -ApplePersistenceIgnoreState YES >"$output" 2>&1 &
+  local pid=$!
+  local waited=0
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep 1
+    waited=$((waited + 1))
+    if [ "$waited" -gt 30 ]; then
+      kill -9 "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      echo "   ✗ Zwischenablage-Wiederherstellung hängt seit ${waited}s" >&2
+      return 1
+    fi
+  done
+  wait "$pid"
+  local status=$?
+  if [ "$status" -ne 0 ] || [ -f "$PASTEBOARD_BACKUP" ]; then
+    echo "   ✗ Zwischenablage-Wiederherstellung fehlgeschlagen (Status $status)" >&2
+    tail -2 "$output" 2>/dev/null | sed 's/^/     /' >&2
+    return 1
+  fi
+  return 0
+}
+
+# Erst ab hier können Phasen externe Zustände verändern. Beide
+# Wiederherstellungsfunktionen sind nun definiert und stehen dem Trap auch bei
+# einem Abbruch während der ersten Phase sicher zur Verfügung.
+trap cleanup EXIT
 
 run_phase() {
   local phase="$1"
@@ -251,6 +360,9 @@ run_phase() {
   local timeout=$(( ROUNDS * 3 + 120 ))
   local start
   start=$(date +%s)
+  local findings_before
+  findings_before=$(grep -c '^SOAK-BEFUND' "$LOG" 2>/dev/null)
+  findings_before=${findings_before:-0}
   "$BINARY" -selftest soak \
     -soakPhase "$phase" \
     -soakRounds "$ROUNDS" \
@@ -260,29 +372,53 @@ run_phase() {
     ${SOAK_4D_METHOD:+-soak4DMethod "$SOAK_4D_METHOD"} \
     >"$WORK_DIR/phase-$phase.out" 2>&1 &
   local pid=$!
+  SOAK_PHASE_PID="$pid"
   local waited=0
+  local timed_out=0
+  local status=0
   while kill -0 "$pid" 2>/dev/null; do
     sleep 1
     waited=$(( $(date +%s) - start ))
     if [ "$waited" -gt "$timeout" ]; then
       echo "   ✗ Phase $phase hängt seit ${waited}s — abgebrochen" >&2
       kill -9 "$pid" 2>/dev/null || true
-      echo "SOAK-BEFUND phase=$phase aktion=? invariante=Lauf endet invariante detail=Zeitüberschreitung nach ${waited}s" >> "$LOG"
-      return 1
+      wait "$pid" 2>/dev/null || true
+      echo "SOAK-BEFUND phase=$phase aktion=? invariante=Lauf endet kontrolliert detail=Zeitüberschreitung nach ${waited}s" >> "$LOG"
+      timed_out=1
+      status=124
+      break
     fi
   done
-  wait "$pid"
-  local status=$?
+  if [ "$timed_out" -eq 0 ]; then
+    wait "$pid"
+    status=$?
+  fi
+  SOAK_PHASE_PID=""
   echo "   Phase $phase beendet (Status $status, ${waited}s)"
   tail -2 "$WORK_DIR/phase-$phase.out" | sed 's/^/   /'
-  # Status 1 sind gemeldete Befunde; alles darüber (z. B. 134 = SIGABRT)
-  # ist ein Absturz — dann die Phasenausgabe mit dem Exception-Text
-  # aufheben (siehe cleanup) und den Lauf als gescheitert zählen.
-  if [ "$status" -gt 1 ]; then
+  local phase_failed=0
+  # Jeder von null verschiedene Status ist ein gescheiterter Phasenlauf. Falls
+  # `finish(false)` vor dem regulären Bericht beendet hat, die letzte
+  # SELFTEST-Zeile als synthetischen Befund festhalten.
+  if [ "$status" -ne 0 ]; then
+    phase_failed=1
     KEEP_EVIDENCE=1
-    echo "SOAK-BEFUND phase=$phase aktion=? invariante=Lauf endet ohne Absturz detail=Exit-Status $status" >> "$LOG"
+    local findings_after detail
+    findings_after=$(grep -c '^SOAK-BEFUND' "$LOG" 2>/dev/null)
+    findings_after=${findings_after:-0}
+    if [ "$findings_after" -eq "$findings_before" ]; then
+      detail=$(grep '^SELFTEST ' "$WORK_DIR/phase-$phase.out" 2>/dev/null | tail -1)
+      detail=${detail:-"Exit-Status $status ohne SELFTEST-Abschlusszeile"}
+      printf 'SOAK-BEFUND phase=%s aktion=? invariante=Phase endet kontrolliert detail=%s\n' \
+        "$phase" "$detail" >> "$LOG"
+    fi
   fi
-  return 0
+  if ! restore_soak_pasteboard "phase-$phase"; then
+    phase_failed=1
+    KEEP_EVIDENCE=1
+    echo "SOAK-BEFUND phase=$phase aktion=? invariante=Zwischenablage wird wiederhergestellt detail=Hilfsaufruf fehlgeschlagen" >> "$LOG"
+  fi
+  return "$phase_failed"
 }
 
 PHASES_FAILED=0
@@ -290,6 +426,13 @@ KEEP_EVIDENCE=0
 run_phase 1 "Dokumente anlegen, drei Fenster öffnen, arbeiten" || PHASES_FAILED=$((PHASES_FAILED + 1))
 run_phase 2 "nach Neustart: Sitzung prüfen und weiterarbeiten"  || PHASES_FAILED=$((PHASES_FAILED + 1))
 run_phase 3 "nach zweitem Neustart: abschließende Runde"        || PHASES_FAILED=$((PHASES_FAILED + 1))
+
+EXTERNAL_RESTORE_FAILED=0
+if ! restore_4d_project; then
+  EXTERNAL_RESTORE_FAILED=1
+  KEEP_EVIDENCE=1
+  echo "SOAK-BEFUND phase=cleanup aktion=? invariante=4D-Testdatei wird wiederhergestellt detail=4D-Bereinigung fehlgeschlagen" >> "$LOG"
+fi
 
 echo
 echo "────────────────────────────────────────────────────────────"
@@ -304,14 +447,23 @@ ACTIONS=$(awk -F'aktionen=' '/^SOAK-ZUSAMMENFASSUNG/{split($2,a," "); s+=a[1]} E
 # erste Probelauf tat genau das: Alle drei Phasen brachen sofort ab, und das
 # Skript meldete trotzdem „SOAK OK". Ein Test, der bei kaputtem Aufbau Erfolg
 # meldet, ist schlimmer als keiner.
-if [ "$PHASES_FAILED" -gt 0 ]; then
+if [ "$PHASES_FAILED" -gt 0 ] || [ "$EXTERNAL_RESTORE_FAILED" -gt 0 ]; then
   KEEP_EVIDENCE=1
-  echo "SOAK FAIL — $PHASES_FAILED von 3 Phasen sind nicht durchgelaufen." >&2
-  echo "Ausgaben der Phasen:" >&2
-  for phase in 1 2 3; do
-    echo "  ── Phase $phase ──" >&2
-    tail -3 "$WORK_DIR/phase-$phase.out" 2>/dev/null | sed 's/^/    /' >&2
-  done
+  if [ "$PHASES_FAILED" -gt 0 ]; then
+    echo "SOAK FAIL — $PHASES_FAILED von 3 Phasen sind nicht durchgelaufen." >&2
+    echo "Ausgaben der Phasen:" >&2
+    for phase in 1 2 3; do
+      echo "  ── Phase $phase ──" >&2
+      tail -3 "$WORK_DIR/phase-$phase.out" 2>/dev/null | sed 's/^/    /' >&2
+    done
+  fi
+  if [ "$EXTERNAL_RESTORE_FAILED" -gt 0 ]; then
+    echo "SOAK FAIL — test-eigene 4D-Dateien konnten nicht sicher zurückgesetzt werden." >&2
+  fi
+  if [ "$FINDINGS" -gt 0 ]; then
+    echo "Befunde im Report-Log: $FINDINGS" >&2
+    grep '^SOAK-BEFUND' "$LOG" | sed 's/^/  /' >&2
+  fi
   exit 1
 fi
 

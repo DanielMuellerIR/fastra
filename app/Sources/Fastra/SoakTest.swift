@@ -85,6 +85,7 @@ enum SoakTest {
         let selection: NSRange
         let scrollY: CGFloat
         let textLength: Int
+        let textHash: Int
         let isEdited: Bool
     }
 
@@ -96,12 +97,14 @@ enum SoakTest {
             guard let content = window.contentView,
                   let textView = descendantTextView(in: content) else { continue }
             let workspace = WorkspaceWindowRegistry.workspace(for: window)
+            let text = textView.string
             result[ObjectIdentifier(window)] = WindowSnapshot(
                 title: window.title,
                 documentPath: workspace?.activeTab?.url?.path,
                 selection: textView.selectedRange(),
                 scrollY: textView.enclosingScrollView?.documentVisibleRect.minY ?? 0,
-                textLength: (textView.string as NSString).length,
+                textLength: (text as NSString).length,
+                textHash: text.hashValue,
                 isEdited: window.isDocumentEdited
             )
         }
@@ -338,11 +341,25 @@ enum SoakTest {
                        + "nach \(new.selection), obwohl die Aktion einem "
                        + "anderen Fenster galt")
             }
-            if old.textLength != new.textLength {
+            if old.documentPath != new.documentPath {
                 record("Fremdes Fenster unverändert",
-                       "\(old.title): Textlänge änderte sich von "
-                       + "\(old.textLength) auf \(new.textLength) — die "
-                       + "Änderung landete im falschen Dokument")
+                       "\(old.title): aktives Dokument wechselte von "
+                       + "\(old.documentPath ?? "keinem Dateipfad") auf "
+                       + "\(new.documentPath ?? "keinen Dateipfad")")
+            }
+            if old.textLength != new.textLength || old.textHash != new.textHash {
+                let lengthDetail = old.textLength == new.textLength
+                    ? "bei gleichbleibender Textlänge \(old.textLength)"
+                    : "von \(old.textLength) auf \(new.textLength) Zeichen"
+                record("Fremdes Fenster unverändert",
+                       "\(old.title): Textinhalt änderte sich \(lengthDetail) — "
+                       + "die Änderung landete im falschen Dokument")
+            }
+            if old.isEdited != new.isEdited {
+                record("Fremdes Fenster unverändert",
+                       "\(old.title): Änderungspunkt wechselte von "
+                       + "\(old.isEdited ? "gesetzt" : "nicht gesetzt") auf "
+                       + "\(new.isEdited ? "gesetzt" : "nicht gesetzt")")
             }
             if abs(old.scrollY - new.scrollY) > 1,
                !scrollForgiven.contains(id) {
@@ -485,12 +502,25 @@ enum SoakTest {
     /// Fester Pseudozufall (linear kongruent). Bewusst kein
     /// systemabhängiger Zufall: Ein Lauf muss sich wiederholen lassen.
     private static var randomState: UInt64 = 0x5DEECE66D
+    /// Externes 4D-Projekt der dritten Phase. Nach jeder nachgewiesenen eigenen
+    /// Textmutation protokolliert der Test den aktiven Pfad genau einmal; nur
+    /// diese Pfade darf der Runner später überhaupt zurücksetzen.
+    private static var fourDProjectRoot: URL?
+    private static var touchedFourDPaths: Set<String> = []
 
     static func seedRandom(_ seed: UInt64) { randomState = seed | 1 }
 
     private static func nextRandom(_ upperBound: Int) -> Int {
         randomState = randomState &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
         return Int((randomState >> 33) % UInt64(max(1, upperBound)))
+    }
+
+    private static func noteFourDMutation(in workspace: Workspace) {
+        guard let rootPath = fourDProjectRoot?.standardizedFileURL.path,
+              let filePath = workspace.activeTab?.url?.standardizedFileURL.path,
+              filePath == rootPath || filePath.hasPrefix(rootPath + "/"),
+              touchedFourDPaths.insert(filePath).inserted else { return }
+        FileHandle.standardError.write(Data("SOAK-4D-DATEI: \(filePath)\n".utf8))
     }
 
     /// Führt eine Aktion im vorderen Fenster aus und meldet, welches Fenster
@@ -506,9 +536,11 @@ enum SoakTest {
         switch action {
         case .type:
             // An der Cursorposition einfügen — wie Tippen, nur in einem Rutsch.
+            let textBefore = textView.string
             let insertion = "Soak\(actionsRun) "
             textView.replaceCharacters(in: safeSelection(in: textView, window: window),
                                        with: insertion)
+            if textView.string != textBefore { noteFourDMutation(in: workspace) }
 
         case .select:
             let length = (textView.string as NSString).length
@@ -526,9 +558,11 @@ enum SoakTest {
             textView.selectionManager.setSelectedRange(
                 NSRange(location: start, length: 8)
             )
+            let textBefore = textView.string
             let command: MarkdownFormatCommand = action == .bold ? .bold : .italic
             NotificationCenter.default.post(name: .fastraMarkdownFormat,
                                             object: command.rawValue)
+            if textView.string != textBefore { noteFourDMutation(in: workspace) }
 
         case .save:
             // Nur mit gespeicherter Datei — sonst öffnete „Sichern" den
@@ -561,11 +595,13 @@ enum SoakTest {
 
         case .undo:
             guard textView.undoManager?.canUndo == true else { return nil }
+            let textBefore = textView.string
             // Der echte Weg von ⌘Z: über die Responder-Chain, nicht direkt
             // am Undo-Verwalter vorbei. `undo:` implementiert die TextView
             // modulintern, deshalb per Name statt `#selector`.
             _ = window.makeFirstResponder(textView)
             _ = NSApp.sendAction(NSSelectorFromString("undo:"), to: nil, from: nil)
+            if textView.string != textBefore { noteFourDMutation(in: workspace) }
 
         case .scroll:
             guard let scrollView = textView.enclosingScrollView else { return nil }
@@ -646,6 +682,7 @@ enum SoakTest {
             // vor. Der Einfügepunkt wird auf den gültigen Bereich geklemmt.
             guard let clip = NSPasteboard.general.string(forType: .string),
                   !clip.isEmpty else { return nil }
+            let textBefore = textView.string
             _ = window.makeFirstResponder(textView)
             textView.selectionManager.setSelectedRange(
                 safeSelection(in: textView, window: window)
@@ -654,6 +691,7 @@ enum SoakTest {
                 record("Einfügebefehl erreicht den Editor",
                        "\(window.title): sendAction(paste:) fand keinen Empfänger")
             }
+            if textView.string != textBefore { noteFourDMutation(in: workspace) }
         }
         return (window, action.label)
     }
@@ -736,20 +774,33 @@ enum SoakTest {
         if round.action == .save {
             checkSaveWroteWindowContent(window: round.target)
         }
-        if let (_, textView, window) = round.undoBaseline {
+        if let (baseline, textView, window) = round.undoBaseline {
             // Nach dem Rückgängigmachen muss der Text ANDERS sein als vorher
-            // (sonst hat Undo nichts getan) — geprüft wird die Rückkehr auf
-            // den Stand davor beim nächsten Redo-freien Vergleich. Hier
-            // genügt, dass der Editor nicht leer zurückbleibt. Das gilt nur
-            // für Tabs MIT Datei: Ein leerer Editor hieße dort, der geladene
-            // Dateiinhalt ist verloren. Ein Scratch-Tab (⌘T, ohne Datei)
-            // beginnt dagegen leer — dort ist leer nach dem Rückgängigmachen
-            // der ersten Eingabe schlicht der Ausgangszustand.
+            // (sonst hat Undo nichts getan). Die bisherige Nicht-leer-Prüfung
+            // bleibt als eigener Schutz für Datei-Tabs bestehen. Danach wird
+            // die Aktion per Redo wiederholt: Erst dieser zweite Schritt kann
+            // exakt mit dem Text VOR dem Undo verglichen werden.
             let tabHasFile = WorkspaceWindowRegistry.workspace(for: window)?
                 .activeTab?.url != nil
             if textView.string.isEmpty, tabHasFile {
                 record("Rückgängig stellt den vorigen Text her",
                        "\(window.title): Editor ist nach dem Rückgängigmachen leer")
+            }
+            if textView.undoManager?.canRedo != true {
+                record("Rückgängig stellt den vorigen Text her",
+                       "\(window.title): nach dem Rückgängigmachen ist kein "
+                       + "Wiederholen möglich")
+            } else {
+                _ = window.makeFirstResponder(textView)
+                let handled = NSApp.sendAction(NSSelectorFromString("redo:"),
+                                               to: nil, from: nil)
+                if handled {
+                    checkUndoRestored(expected: baseline, in: textView, window: window)
+                } else {
+                    record("Rückgängig stellt den vorigen Text her",
+                           "\(window.title): Wiederholen wurde von der "
+                           + "Responder-Kette nicht angenommen")
+                }
             }
         }
         // Die scrollY-Nachsicht nach einem Resize endet mit dem Abschluss der
@@ -785,6 +836,8 @@ enum SoakTest {
         lastAction = "—"
         scrollForgiven.removeAll()
         scrollForgivenRoundsRemaining = 0
+        fourDProjectRoot = nil
+        touchedFourDPaths.removeAll()
     }
 
     // MARK: - Phasen über App-Neustarts hinweg
@@ -1029,6 +1082,7 @@ enum SoakTest {
     /// Sprachfunktionen. Danach nimmt das Fenster am Zufallsbetrieb teil.
     static func runFourDScenario(projectURL: URL, methodURL: URL,
                                  completion: @escaping @MainActor () -> Void) {
+        fourDProjectRoot = projectURL.standardizedFileURL
         let fourDWorkspace = DocumentWindowController.openNewDocument()
         fourDWorkspace.openProject(at: projectURL)
         // Frist 30 s: Erst mit stehendem Methodenindex sind Completion,
@@ -1056,7 +1110,8 @@ enum SoakTest {
                         completion()
                         return
                     }
-                    runFourDCompletionStep(window: window, textView: textView) {
+                        runFourDCompletionStep(workspace: fourDWorkspace,
+                                               window: window, textView: textView) {
                         runFourDSignatureStep(workspace: fourDWorkspace,
                                               window: window,
                                               textView: textView) {
@@ -1122,13 +1177,14 @@ enum SoakTest {
     /// Vorschlagsfenster erscheinen; geschlossen wird es wie beim
     /// Completion-Selbsttest mit Escape.
     private static func runFourDCompletionStep(
-        window: NSWindow, textView: TextView,
+        workspace: Workspace, window: NSWindow, textView: TextView,
         completion: @escaping @MainActor () -> Void
     ) {
         let before = snapshot()
         window.makeKeyAndOrderFront(nil)
         _ = window.makeFirstResponder(textView)
         appendText("\nA", to: textView)
+        noteFourDMutation(in: workspace)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             MainActor.assumeIsolated {
                 appendText("L", to: textView)
@@ -1203,6 +1259,7 @@ enum SoakTest {
             }
             _ = window.makeFirstResponder(textView)
             appendText("\n\(name)(", to: textView)
+            noteFourDMutation(in: workspace)
             cursorLocation = (textView.string as NSString).length
             guard FourDSignatureHelpLogic.callContext(
                 in: textView.string, utf16CursorLocation: cursorLocation) != nil

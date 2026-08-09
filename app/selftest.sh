@@ -69,6 +69,31 @@ if [[ ! -x "$APP_BIN" ]]; then
     exit 1
 fi
 
+# Für Prozessabgleich und Direktstarts immer denselben kanonischen Pfad dieses
+# konfigurierten Bundles verwenden. So kann der Aufräumpfad keine installierte
+# Fastra-App oder einen Build aus einem anderen Worktree treffen.
+absolute_executable_path() {
+    local path="$1"
+    local directory
+    directory="$(dirname "$path")"
+    if [[ "$directory" != /* ]]; then
+        directory="$(pwd)/$directory"
+    fi
+    (cd "$directory" && printf '%s/%s\n' "$(pwd -P)" "$(basename "$path")")
+}
+
+escape_process_pattern() {
+    printf '%s\n' "$1" | sed 's/[][\\.^$*+?(){}|]/\\&/g'
+}
+
+APP_BIN_ABSOLUTE="$(absolute_executable_path "$APP_BIN")"
+APP_BUNDLE_BIN_ABSOLUTE="$(absolute_executable_path "$APP_BUNDLE_FOR_OPEN/Contents/MacOS/Fastra")"
+APP_PROCESS_PATTERNS=("^$(escape_process_pattern "$APP_BIN_ABSOLUTE")([[:space:]]|$)")
+if [[ "$APP_BUNDLE_BIN_ABSOLUTE" != "$APP_BIN_ABSOLUTE" ]]; then
+    APP_PROCESS_PATTERNS+=("^$(escape_process_pattern "$APP_BUNDLE_BIN_ABSOLUTE")([[:space:]]|$)")
+fi
+STARTED_PIDS=()
+
 # Gesperrter Bildschirm? Dann sind alle fensterbasierten Tests Umgebungs-
 # rauschen (siehe ../docs/BUILD-AND-TEST.md, Umgebungs-Falle 2). Nur `search` ist dann
 # aussagekräftig (fensterlos).
@@ -101,10 +126,38 @@ fi
 
 # ── Hilfsfunktionen ──────────────────────────────────────────────────────
 
-# Alle noch laufenden Fastra-Instanzen beenden (Reste verfälschen
-# Aktivierung und System-Events-Abfragen).
+# Eine vom Runner direkt gestartete PID merken. LaunchServices gibt die App-PID
+# nicht zurück; solche Starts werden ergänzend über den exakten Bundle-Pfad
+# gefunden.
+track_started_pid() {
+    STARTED_PIDS+=("$1")
+}
+
+remember_bundle_pids() {
+    local pattern pid
+    for pattern in "${APP_PROCESS_PATTERNS[@]}"; do
+        while IFS= read -r pid; do
+            [[ "$pid" =~ ^[0-9]+$ ]] && STARTED_PIDS+=("$pid")
+        done < <(pgrep -f "$pattern" 2>/dev/null || true)
+    done
+}
+
+# Zuerst nur die selbst gestarteten PIDs beenden. Der Restabgleich ist bewusst
+# auf den absoluten Binary-Pfad des konfigurierten Bundles beschränkt; das alte
+# globale `Fastra.app/...`-Muster gefährdete andere Worktrees und Nutzerarbeit.
 kill_leftovers() {
-    pkill -f 'Fastra.app/Contents/MacOS/Fastra' 2>/dev/null
+    local pid pattern
+    # macOS liefert bash 3.2: Dort gilt ein LEERES Array unter `set -u` bei
+    # `"${arr[@]}"` als unbound. Die Längenabfrage umgeht das gefahrlos.
+    if [ "${#STARTED_PIDS[@]}" -gt 0 ]; then
+        for pid in "${STARTED_PIDS[@]}"; do
+            kill "$pid" 2>/dev/null || true
+        done
+    fi
+    for pattern in "${APP_PROCESS_PATTERNS[@]}"; do
+        pkill -f "$pattern" 2>/dev/null || true
+    done
+    STARTED_PIDS=()
     sleep 1
 }
 
@@ -218,6 +271,7 @@ for t in "${TESTS[@]}"; do
             --env "FASTRA_COLDOPEN_FILE=$coldopen_fixture_file" \
             "$coldopen_fixture_file" \
             --args -ApplePersistenceIgnoreState YES
+        remember_bundle_pids
     elif [[ "$t" == "cmdw" || "$t" == "newwindow" || "$t" == "welcomenew" || "$t" == "completion4d" || "$t" == "projectinput" || "$t" == "help" ]]; then
         # Diese Tests prüfen echte Tastatur- oder Mausbedienung (bei
         # `completion4d` ⌃Leertaste, Pfeil und Klick; bei `projectinput`
@@ -226,13 +280,16 @@ for t in "${TESTS[@]}"; do
         # gemeinsame Aufräumpfad `kill_leftovers` beendet die Test-App nach
         # Ergebnis UND Timeout sofort, damit kein Fenster sichtbar bleibt.
         # starten (LaunchServices) und von außen aktivieren.
-        open -n "$APP_BUNDLE" --stdout /dev/null --stderr "$errfile" \
+        open -n "$APP_BUNDLE_FOR_OPEN" --stdout /dev/null --stderr "$errfile" \
             --args -selftest "$t" -ApplePersistenceIgnoreState YES
+        remember_bundle_pids
         activate_app
+        remember_bundle_pids
     else
         # Alle anderen Tests laufen ohne echten Fokus → Binary direkt.
-        "$APP_BIN" -selftest "$t" -ApplePersistenceIgnoreState YES \
+        "$APP_BIN_ABSOLUTE" -selftest "$t" -ApplePersistenceIgnoreState YES \
             >/dev/null 2>"$errfile" &
+        track_started_pid "$!"
     fi
 
     if ! wait_for_result "$errfile"; then

@@ -407,6 +407,9 @@ enum SelfTest {
         case "dragscroll": waitForMainWindow { runDragScrollTest() }
         case "dragnoscroll": waitForMainWindow { runDragNoScrollTest() }
         case "soak": waitForMainWindow { MainActor.assumeIsolated { runSoakTest() } }
+        case "soakpasteboardrestore": DispatchQueue.main.async {
+            MainActor.assumeIsolated { runSoakPasteboardRestore() }
+        }
         case "dirtyundo": waitForMainWindow { runDirtyUndoTest() }
         case "emojisplit": waitForMainWindow { runEmojiSplitTest() }
         case "emojipaste": waitForMainWindow { runEmojiPasteTest() }
@@ -6698,6 +6701,15 @@ enum SelfTest {
         }
         let directory = URL(fileURLWithPath: directoryPath)
         let logURL = URL(fileURLWithPath: logPath)
+        let pasteboardBackupURL = directory.appendingPathComponent("pasteboard-backup.plist")
+        do {
+            // Nach einem Absturz der vorigen Phase liegt deren Sicherung noch
+            // da. Sie gehört zurück, bevor diese Phase einen neuen Stand merkt.
+            _ = try restoreSoakPasteboardIfPresent(from: pasteboardBackupURL)
+        } catch {
+            finish(false, "liegengebliebene Zwischenablage nicht wiederherstellbar: "
+                   + error.localizedDescription)
+        }
         guard let workspace = Workspace.shared,
               mainWindowForAXChecks() != nil else {
             finish(false, "Workspace oder Hauptfenster fehlt")
@@ -6709,7 +6721,12 @@ enum SelfTest {
         // Der Dauertest kopiert selbst (⌘C) und darf fremden
         // Clipboard-Inhalt nicht zerstören: am Anfang sichern, am
         // Phasenende wiederherstellen.
-        backupSoakPasteboard()
+        do {
+            try backupSoakPasteboard(to: pasteboardBackupURL)
+        } catch {
+            finish(false, "Zwischenablage nicht sicherbar: "
+                   + error.localizedDescription)
+        }
 
         if phase == 1 {
             let documents = SoakTest.prepareDocuments(in: directory, count: 3)
@@ -6799,25 +6816,96 @@ enum SelfTest {
         }
     }
 
-    /// Der Dauertest kopiert selbst in die Zwischenablage. Fremder Inhalt
-    /// wird deshalb vollständig (alle Typen, nicht nur der String) gesichert
-    /// und am Phasenende wiederhergestellt — Muster wie beim Emoji-Paste-Test.
-    private static var soakPasteboardBackup: [(NSPasteboard.PasteboardType, Data)] = []
+    /// Der Dauertest kopiert selbst in die Zwischenablage. Fremder Inhalt wird
+    /// deshalb itemgetreu gesichert: Jedes Item behält seine eigene Kombination
+    /// aus Typen und Daten. Die Datei lässt auch den Runner nach einem Absturz
+    /// oder Timeout wiederherstellen.
+    private typealias SoakPasteboardBackup = [[String: Data]]
+    private static var soakPasteboardBackup: SoakPasteboardBackup?
 
-    private static func backupSoakPasteboard() {
+    @MainActor
+    private static func backupSoakPasteboard(to backupURL: URL) throws {
         let pasteboard = NSPasteboard.general
-        soakPasteboardBackup = (pasteboard.types ?? []).compactMap { type in
-            pasteboard.data(forType: type).map { (type, $0) }
+        let backup: SoakPasteboardBackup = (pasteboard.pasteboardItems ?? []).map { item in
+            Dictionary(uniqueKeysWithValues: item.types.compactMap { type in
+                item.data(forType: type).map { (type.rawValue, $0) }
+            })
         }
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: backup, format: .binary, options: 0)
+        try data.write(to: backupURL, options: .atomic)
+        soakPasteboardBackup = backup
     }
 
-    private static func restoreSoakPasteboard() {
+    /// Stellt eine gespeicherte Zwischenablage wieder her. `false` bedeutet,
+    /// dass keine Sicherung vorlag; auch eine bewusst leere Zwischenablage ist
+    /// dagegen eine vorhandene (leere) Property-List-Datei.
+    @MainActor
+    @discardableResult
+    private static func restoreSoakPasteboardIfPresent(from backupURL: URL) throws -> Bool {
+        let fileManager = FileManager.default
+        let backup: SoakPasteboardBackup
+        if let inMemory = soakPasteboardBackup {
+            backup = inMemory
+        } else {
+            guard fileManager.fileExists(atPath: backupURL.path) else { return false }
+            let data = try Data(contentsOf: backupURL)
+            guard let decoded = try PropertyListSerialization.propertyList(
+                from: data, options: [], format: nil) as? SoakPasteboardBackup else {
+                throw NSError(domain: "FastraSoakPasteboard", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey:
+                                "Sicherungsdatei hat kein gültiges Item-/Typ-Format"])
+            }
+            backup = decoded
+        }
+
+        var items: [NSPasteboardItem] = []
+        for storedItem in backup {
+            let item = NSPasteboardItem()
+            for (rawType, data) in storedItem {
+                guard item.setData(data, forType: NSPasteboard.PasteboardType(rawValue: rawType))
+                else {
+                    throw NSError(domain: "FastraSoakPasteboard", code: 2,
+                                  userInfo: [NSLocalizedDescriptionKey:
+                                    "Pasteboard-Typ \(rawType) ließ sich nicht vorbereiten"])
+                }
+            }
+            items.append(item)
+        }
+
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        guard !soakPasteboardBackup.isEmpty else { return }
-        pasteboard.declareTypes(soakPasteboardBackup.map(\.0), owner: nil)
-        for (type, data) in soakPasteboardBackup {
-            pasteboard.setData(data, forType: type)
+        if !items.isEmpty, !pasteboard.writeObjects(items) {
+            throw NSError(domain: "FastraSoakPasteboard", code: 3,
+                          userInfo: [NSLocalizedDescriptionKey:
+                            "gesicherte Pasteboard-Items wurden nicht angenommen"])
+        }
+        soakPasteboardBackup = nil
+        if fileManager.fileExists(atPath: backupURL.path) {
+            try fileManager.removeItem(at: backupURL)
+        }
+        return true
+    }
+
+    /// Kleiner fensterloser Hilfsaufruf für `soak-test.sh`. Er wird nach einem
+    /// harten Abbruch in einem frischen App-Prozess gestartet, damit AppKit die
+    /// itemgetreue Sicherung zurückschreiben kann.
+    @MainActor
+    private static func runSoakPasteboardRestore() {
+        testLabel = "soakpasteboardrestore"
+        guard let directoryPath = UserDefaults.standard.string(forKey: "soakDir") else {
+            finish(false, "soakDir muss übergeben werden")
+        }
+        let backupURL = URL(fileURLWithPath: directoryPath)
+            .appendingPathComponent("pasteboard-backup.plist")
+        do {
+            let restored = try restoreSoakPasteboardIfPresent(from: backupURL)
+            finish(true, restored
+                   ? "Zwischenablage itemgetreu wiederhergestellt"
+                   : "keine liegengebliebene Zwischenablage-Sicherung")
+        } catch {
+            finish(false, "Zwischenablage nicht wiederherstellbar: "
+                   + error.localizedDescription)
         }
     }
 
@@ -6865,7 +6953,14 @@ enum SelfTest {
             workspaceDefaults().synchronize()
             // Fremden Clipboard-Inhalt wiederherstellen, bevor der Prozess
             // endet — der Dauertest hat ihn möglicherweise überschrieben.
-            restoreSoakPasteboard()
+            let backupURL = logURL.deletingLastPathComponent()
+                .appendingPathComponent("pasteboard-backup.plist")
+            do {
+                _ = try restoreSoakPasteboardIfPresent(from: backupURL)
+            } catch {
+                SoakTest.record("Zwischenablage wird wiederhergestellt",
+                                error.localizedDescription)
+            }
             SoakTest.appendReport(to: logURL)
             let count = SoakTest.findings.count
             finish(count == 0,
@@ -10731,11 +10826,12 @@ enum SelfTest {
             atPath: base.appendingPathComponent("images/quelle.png").path)
         let linked = tv.string.contains("![quelle](images/quelle.png)")
         let opened = ws.tabs.contains { $0.title == "begleit.txt" }
+        let exactlyOneTabAdded = ws.tabs.count == tabsBefore + 1
         func cleanup() {
             try? FileManager.default.removeItem(at: base)
             try? FileManager.default.removeItem(at: outside)
         }
-        if copied, linked, opened {
+        if copied, linked, opened, exactlyOneTabAdded {
             cleanup()
             finish(true, "Toolbar layoutet, Bild-Paste legt Datei + relativen Link an, "
                 + "Vorschau rendert + scrollt, Drop trennt einfügen/öffnen")
@@ -10743,7 +10839,7 @@ enum SelfTest {
         if tick >= maxTicks {
             cleanup()
             finish(false, "(c) nach 10 s: kopiert=\(copied), verlinkt=\(linked), "
-                + "geöffnet=\(opened)")
+                + "geöffnet=\(opened), Tabs=\(ws.tabs.count) statt \(tabsBefore + 1)")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             pollMarkdownDrop(ws, tv: tv, base: base, outside: outside,
