@@ -393,8 +393,42 @@ enum MarkdownRichText {
         renderedFragment(markdown: markdown, documentURL: nil).html
     }
 
+    /// EINE serielle Queue für alle cmark-Renderläufe:
+    /// `cmark_gfm_core_extensions_ensure_registered()` schreibt in eine
+    /// globale Registrierung — zwei parallele Läufe wären ein Wettlauf.
+    /// Auch die synchronen Einstiege (Tests, `htmlFragment`) laufen deshalb
+    /// über diese Queue.
+    private static let renderQueue = DispatchQueue(
+        label: "de.dm0.fastra.markdown-render", qos: .userInitiated)
+
+    /// Rendert im Hintergrund und liefert das Ergebnis auf dem Main-Thread.
+    /// Der Vorschau-Pfad nutzt diesen Weg: Jeder Renderlauf kostet einen
+    /// cmark-Durchlauf und je Bild einen Dateisystemzugriff — auf dem
+    /// UI-Thread konnte das Tippen bei vielen Bildern oder Netzlaufwerken
+    /// sichtbar hängen (Roadmap „Nacharbeit 2026-08-06"). Veraltete
+    /// Ergebnisse verwirft der Aufrufer über seine Generationsnummer.
+    static func renderFragment(markdown: String, documentURL: URL?,
+                               completion: @escaping (MarkdownRenderedFragment) -> Void) {
+        renderQueue.async {
+            let fragment = renderFragmentOnQueue(markdown: markdown,
+                                                 documentURL: documentURL)
+            DispatchQueue.main.async { completion(fragment) }
+        }
+    }
+
+    /// Synchron — blockiert den Aufrufer, bis die Render-Queue frei ist.
+    /// Im Produkt rendert nur die Vorschau (asynchron); dieser Einstieg
+    /// bleibt für Tests und Werkzeuge.
     static func renderedFragment(markdown: String,
                                  documentURL: URL?) -> MarkdownRenderedFragment {
+        renderQueue.sync {
+            renderFragmentOnQueue(markdown: markdown, documentURL: documentURL)
+        }
+    }
+
+    /// Der eigentliche Renderlauf. NUR von `renderQueue` aus aufrufen.
+    private static func renderFragmentOnQueue(markdown: String,
+                                              documentURL: URL?) -> MarkdownRenderedFragment {
         let math = MarkdownMath.extract(from: markdown)
         // cmark rendert Erweiterungen nur, wenn dieselbe Extension-Liste auch
         // an den HTML-Renderer gereicht wird. Fehlt sie dort, würden Tabellen
@@ -595,40 +629,57 @@ private struct MarkdownRichTextView: NSViewRepresentable {
             ? NSColor(srgbRed: 0x17 / 255, green: 0x17 / 255, blue: 0x17 / 255, alpha: 1)
             : NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
 
+        coordinator.documentURL = documentURL
         let styleIdentity = "\(darkMode)|\(fontName)|\(fontSize)|\(documentURL?.path ?? "")"
         if coordinator.styleIdentity != styleIdentity {
             coordinator.styleIdentity = styleIdentity
             coordinator.markdown = markdown
             coordinator.isReady = false
-            let fragment = MarkdownRichText.renderedFragment(
-                markdown: markdown,
-                documentURL: documentURL
-            )
-            coordinator.assetHandler.setImageURLs(fragment.imageURLs)
-            // Dasselbe Fragment weiterreichen, statt es für das HTML ein
-            // zweites Mal zu rendern (Review 2026-08-06).
-            let document = MarkdownRichText.htmlDocument(
-                fragment: fragment,
-                fontName: fontName,
-                fontSize: fontSize,
-                darkMode: darkMode
-            )
-            webView.loadHTMLString(document, baseURL: nil)
+            // Rendern läuft im Hintergrund auf der seriellen Render-Queue;
+            // die Generation verwirft ein überholtes Ergebnis (Roadmap
+            // „Nacharbeit 2026-08-06"). Dasselbe Fragment wird für das HTML
+            // weiterverwendet, statt ein zweites Mal zu rendern
+            // (Review 2026-08-06).
+            coordinator.renderGeneration &+= 1
+            let generation = coordinator.renderGeneration
+            let fontName = fontName
+            let fontSize = fontSize
+            let darkMode = darkMode
+            MarkdownRichText.renderFragment(
+                markdown: markdown, documentURL: documentURL
+            ) { [weak coordinator, weak webView] fragment in
+                guard let coordinator, let webView,
+                      coordinator.renderGeneration == generation else { return }
+                coordinator.assetHandler.setImageURLs(fragment.imageURLs)
+                coordinator.watchReferencedImages(of: fragment)
+                let document = MarkdownRichText.htmlDocument(
+                    fragment: fragment,
+                    fontName: fontName,
+                    fontSize: fontSize,
+                    darkMode: darkMode
+                )
+                webView.loadHTMLString(document, baseURL: nil)
+            }
             return
         }
 
         guard coordinator.markdown != markdown else { return }
         coordinator.markdown = markdown
-        let fragment = MarkdownRichText.renderedFragment(
-            markdown: markdown,
-            documentURL: documentURL
-        )
-        coordinator.assetHandler.setImageURLs(fragment.imageURLs)
-        guard coordinator.isReady else {
-            coordinator.pendingFragment = fragment
-            return
+        coordinator.renderGeneration &+= 1
+        let generation = coordinator.renderGeneration
+        MarkdownRichText.renderFragment(
+            markdown: markdown, documentURL: documentURL
+        ) { [weak coordinator, weak webView] fragment in
+            guard let coordinator, let webView,
+                  coordinator.renderGeneration == generation else { return }
+            coordinator.assetHandler.setImageURLs(fragment.imageURLs)
+            coordinator.watchReferencedImages(of: fragment)
+            guard coordinator.isReady else {
+                coordinator.pendingFragment = fragment
+                return
+            }
+            coordinator.replaceBody(with: fragment, in: webView)
         }
-        coordinator.replaceBody(with: fragment, in: webView)
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
@@ -639,6 +690,49 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         let assetHandler = MarkdownPreviewSchemeHandler()
         // Schwach: Der Workspace gehört der Dokumentszene, nicht der Vorschau.
         weak var workspace: Workspace?
+        /// Zählt bei jedem angestoßenen Renderlauf hoch; eine Completion mit
+        /// alter Generation wird verworfen (Hintergrund-Rendering).
+        var renderGeneration: UInt64 = 0
+        /// Für den Bildwächter-Neurender nötig — das Update hält ihn aktuell.
+        var documentURL: URL?
+        /// Beobachtet die Elternordner der referenzierten Bilder: Ein extern
+        /// am gleichen Pfad ausgetauschtes Bild spielt generationengesichert
+        /// ein frisches Fragment ein (Roadmap „Nacharbeit 2026-08-06"). Der
+        /// Bild-Token trägt Änderungsdatum und Größe — der Austausch umgeht
+        /// damit auch WebKits Speicher-Cache.
+        private let imageWatcher = MarkdownImageWatcher()
+
+        /// Ordnerliste nachziehen und den Änderungs-Handler (einmalig) binden.
+        func watchReferencedImages(of fragment: MarkdownRenderedFragment) {
+            if imageWatcher.onChange == nil {
+                imageWatcher.onChange = { [weak self] in
+                    self?.renderAfterExternalImageChange()
+                }
+            }
+            imageWatcher.update(imageURLs: Array(fragment.imageURLs.values))
+        }
+
+        /// Ein beobachteter Bildordner hat sich geändert: denselben Markdown-
+        /// Stand neu rendern. Die neuen Bild-Tokens (Pfad+Datum+Größe) lassen
+        /// die Vorschau das ausgetauschte Bild wirklich neu laden.
+        private func renderAfterExternalImageChange() {
+            guard let webView = revealWebView else { return }
+            renderGeneration &+= 1
+            let generation = renderGeneration
+            MarkdownRichText.renderFragment(
+                markdown: markdown, documentURL: documentURL
+            ) { [weak self, weak webView] fragment in
+                guard let self, let webView,
+                      self.renderGeneration == generation else { return }
+                self.assetHandler.setImageURLs(fragment.imageURLs)
+                self.watchReferencedImages(of: fragment)
+                guard self.isReady else {
+                    self.pendingFragment = fragment
+                    return
+                }
+                self.replaceBody(with: fragment, in: webView)
+            }
+        }
 
         // Editor→Vorschau-Sprung (Etappe 5 Wunschpaket 2026-07b): Nach einem
         // Bild-/Tabellen-Einfügen scrollt die Vorschau zur Einfügestelle —

@@ -9,6 +9,30 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.67.0] — 2026-08-09
+
+### Verbessert
+
+Die beiden zusammengehörigen Markdown-Vorschau-Punkte aus dem Abendlauf-Review
+vom 2026-08-06 — gemeinsam umgesetzt über dasselbe Fundament (Rendern im
+Hintergrund, abgesichert über eine Generationsnummer):
+
+- **Ein extern ausgetauschtes Bild erscheint jetzt in der offenen Vorschau.**
+  Fastra beobachtet die Elternordner aller referenzierten Bilder über FSEvents
+  (`MarkdownImageWatcher`, mehrere Pfade, ohne Projektbindung) und spielt bei
+  einer Änderung generationengesichert ein frisches Fragment ein; der
+  Bild-Token aus Pfad, Änderungsdatum und Größe umgeht dabei WebKits
+  Speicher-Cache. Vorher zeigte die Vorschau die alte Fassung, bis sich
+  Markdown, Dokumentpfad oder Darstellungsstil änderten. Geprüft am echten
+  Vorschau-Pfad: neuer Fenster-Selbsttest `mdimagewatch` tauscht die Datei am
+  gleichen Pfad aus und misst die dargestellte Bildbreite (1 px → 2 px).
+- **Das Vorschau-Fragment entsteht nicht mehr auf dem UI-Thread.** Alle
+  cmark-Renderläufe laufen über EINE serielle Hintergrund-Queue — auch die
+  synchronen Einstiege, denn die cmark-Extension-Registrierung ist global und
+  parallele Läufe wären ein Wettlauf. Bei vielen Bildern oder Bildern auf
+  einem Netzlaufwerk konnte das Tippen vorher sichtbar hängen; veraltete
+  Ergebnisse verwirft die Vorschau über ihre Generationsnummer.
+
 ## [v1.66.1] — 2026-08-09
 
 ### Behoben

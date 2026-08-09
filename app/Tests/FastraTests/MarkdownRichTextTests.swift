@@ -509,4 +509,34 @@ struct MarkdownRichTextTests {
         #expect(open.lowerBound < paragraph.lowerBound)
         #expect(paragraph.upperBound <= close.lowerBound)
     }
+
+    @Test("MarkdownImageWatcher meldet Änderungen in beobachteten Bildordnern")
+    @MainActor
+    func imageWatcherFiresOnDirectoryChange() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-imagewatch-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory,
+                                                withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let image = directory.appendingPathComponent("bild.png")
+        try Data([0x89]).write(to: image)
+
+        let watcher = MarkdownImageWatcher()
+        defer { watcher.stop() }
+        var fired = false
+        watcher.onChange = { fired = true }
+        watcher.update(imageURLs: [image])
+        #expect(watcher.watchedDirectories == [directory.path])
+
+        // Kurz warten, bis der FSEvents-Stream wirklich lauscht, dann die Datei
+        // am gleichen Pfad austauschen (atomar, wie externe Werkzeuge).
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        try Data([0x89, 0x50]).write(to: image, options: .atomic)
+        let observed = await waitUntil(timeout: 5) { fired }
+        #expect(observed, "FSEvents-Änderung kam nicht binnen 5 s an")
+
+        // Unveränderte Ordnermenge lässt den Stream stehen (kein Neuaufbau).
+        watcher.update(imageURLs: [image])
+        #expect(watcher.watchedDirectories == [directory.path])
+    }
 }

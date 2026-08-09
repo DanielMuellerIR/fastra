@@ -444,6 +444,7 @@ enum SelfTest {
         case "searchmark": waitForMainWindow { openSearchThen { runSearchMarkTest() } }
         case "help": waitForMainWindow { runHelpTest() }
         case "mdassist": waitForMainWindow { runMarkdownAssistTest() }
+        case "mdimagewatch": waitForMainWindow { runMarkdownImageWatchTest() }
         case "filemodes":
             // Fensterlos — echte Dateien durch den Workspace-Ladepfad routen:
             // Null-Bytes → Hex, große Textdatei → abschnittsweise.
@@ -583,7 +584,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitmultidiscard, gitstickyheader, diffwide, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, mdimagewatch, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitmultidiscard, gitstickyheader, diffwide, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -14565,6 +14566,90 @@ enum SelfTest {
     /// Prüft die echte WebKit-Vorschau samt gebündelten Bibliotheken. Anders als
     /// ein String-Test beobachtet dieser Pfad das fertige DOM: Bild dekodiert,
     /// KaTeX-MathML erzeugt, Mermaid-SVG gezeichnet und Code hervorgehoben.
+    /// Ein extern am gleichen Pfad ausgetauschtes Bild muss in der OFFENEN
+    /// Vorschau erscheinen (Roadmap „Nacharbeit 2026-08-06"): Der
+    /// FSEvents-Bildwächter spielt generationengesichert ein frisches
+    /// Fragment ein; der Bild-Token (Pfad+Datum+Größe) umgeht WebKits Cache.
+    /// Geprüft wird am ECHTEN Vorschau-Pfad über `naturalWidth` — erst 1 px
+    /// (Original), nach dem Austausch 2 px.
+    private static func runMarkdownImageWatchTest() {
+        testLabel = "mdimagewatch"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Fastra-MdImageWatch-\(UUID().uuidString)")
+        let file = directory.appendingPathComponent("Bildwechsel.md")
+        let image = directory.appendingPathComponent("wechsel.png")
+        let onePixel = Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")!
+        // Der 2×2-Ersatz stammt aus einem echten PNG-Encoder-Lauf; sollte die
+        // Base64-Form je beschädigt werden, bricht der Test hier ehrlich ab.
+        guard let replacement = Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII=") else {
+            finish(false, "2×2-PNG-Fixture ist nicht dekodierbar")
+        }
+        do {
+            try FileManager.default.createDirectory(at: directory,
+                                                    withIntermediateDirectories: true)
+            try onePixel.write(to: image, options: .atomic)
+            try "# Bildwechsel\n\n![Wechselbild](wechsel.png)\n"
+                .write(to: file, atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "Umgebungsproblem: (setup) Fixtures nicht schreibbar: \(error.localizedDescription)")
+        }
+        workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
+        ws.loadFile(at: file) { ok in
+            guard ok else { finish(false, "Markdown-Datei konnte nicht geladen werden") }
+            pollImageWatchWidth(expected: 1, directory: directory, tick: 0) {
+                do {
+                    // Austausch am GLEICHEN Pfad — atomar, wie es externe
+                    // Werkzeuge tun. Markdown und Stil bleiben unverändert;
+                    // nur der Wächter kann die Vorschau aktualisieren.
+                    try replacement.write(to: image, options: .atomic)
+                } catch {
+                    try? FileManager.default.removeItem(at: directory)
+                    finish(false, "Bild-Austausch nicht schreibbar: \(error.localizedDescription)")
+                }
+                pollImageWatchWidth(expected: 2, directory: directory, tick: 0) {
+                    try? FileManager.default.removeItem(at: directory)
+                    finish(true, "extern ausgetauschtes Bild erschien in der offenen Vorschau (1 px → 2 px)")
+                }
+            }
+        }
+    }
+
+    /// Wartet, bis das erste Vorschau-Bild die erwartete natürliche Breite
+    /// zeigt — der Beweis, dass WIRKLICH die neue Datei gerendert ist.
+    private static func pollImageWatchWidth(expected: Int, directory: URL,
+                                            tick: Int,
+                                            then continuation: @escaping () -> Void) {
+        guard tick < 120 else {
+            try? FileManager.default.removeItem(at: directory)
+            finish(false, "Vorschau-Bild erreichte Breite \(expected) nicht binnen 12 s")
+        }
+        let retry = {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                pollImageWatchWidth(expected: expected, directory: directory,
+                                    tick: tick + 1, then: continuation)
+            }
+        }
+        guard let root = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        })?.contentView,
+              let webView = markdownWebView(in: root) else {
+            retry()
+            return
+        }
+        let script = "(() => { const i = document.images[0]; return i ? i.naturalWidth : 0; })()"
+        webView.evaluateJavaScript(script) { result, _ in
+            if let width = result as? Int, width == expected {
+                continuation()
+            } else {
+                retry()
+            }
+        }
+    }
+
     private static func runMarkdownRenderTest() {
         testLabel = "markdown"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
