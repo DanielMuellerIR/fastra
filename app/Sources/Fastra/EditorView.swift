@@ -1341,9 +1341,16 @@ struct EditorView: View {
                 font: .fastraEditorFont(name: editorFontName, size: 13,
                                         scale: DocumentZoom.scale(for: documentZoomLevel)),
                 wrapLines: workspace.softWrapEnabled,
-                tabWidth: 4
+                // Tab-Darstellungsbreite aus dem Einrückungsprofil des
+                // Formats (Etappe 4); Werkstandard bleibt 4.
+                tabWidth: workspace.activeIndentationProfile.tabWidth
             ),
             behavior: .init(
+                // Was die Tab-Taste einfügt, bestimmt dasselbe Profil —
+                // Return/Auto-Indent übernimmt es über CESEs TextFormation.
+                indentOption: workspace.activeIndentationProfile.usesTabs
+                    ? .tab
+                    : .spaces(count: workspace.activeIndentationProfile.indentWidth),
                 reformatAtColumn: workspace.pageGuideColumn,
                 wrapAtColumn: workspace.effectiveSoftWrapColumn
             ),

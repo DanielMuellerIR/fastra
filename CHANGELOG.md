@@ -9,6 +9,56 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.68.0] — 2026-08-09
+
+Etappe 4 des Soft-Wrap-Pakets (Beschluss 2026-07-19), Teil 1 und 2:
+Einrückungsprofile und „Einfügen und Einrückung angleichen". Teil 3 — die
+rein visuelle Einrückung von Soft-Wrap-Folgezeilen — bleibt als eigener
+Roadmap-Punkt offen; die BBEdit-Semantik der drei Modi ist dort bereits
+erhoben und festgehalten.
+
+### Hinzugefügt
+
+- **Einrückungsprofil pro Format:** Im Soft-Wrap-Optionsmenü der Fußzeile
+  wählbar — die Tab-Taste fügt einen Tabulator oder 2/3/4/8 Leerzeichen
+  ein, die Tabbreite (2/3/4/8 Spalten) bestimmt die Darstellung.
+  Werkstandard bleibt das bisherige Verhalten (vier Leerzeichen, Tabbreite
+  vier). Das Profil wird wie Soft Wrap pro Dokumentformat gespeichert,
+  wirkt sofort in allen offenen Dokumenten und über Neustarts hinweg;
+  „Für … auf Werkseinstellung zurücksetzen" nimmt es mit zurück.
+- **„Einfügen und Einrückung angleichen"** (Bearbeiten-Menü, ⌥⇧⌘V; BBEdit
+  „Paste and Match Indentation", Handbuch 16.0.2 S. 89): Der
+  Clipboard-Block landet auf der Einrückung der Zielzeile — gemeinsame
+  Basis-Einrückung entfernt, relative Verschachtelung erhalten, Ergebnis in
+  Tabs/Leerzeichen des wirksamen Profils. Leere Zielzeile → die zuletzt
+  davor stehende nicht leere Zeile zählt; Leerzeilen bleiben leer; der
+  Zeilenendungsstil des Dokuments bleibt erhalten; ohne abschließenden
+  Clipboard-Umbruch endet auch das Ergebnis ohne. Die gesamte Einfügung ist
+  EINE Undo-Aktion. Bei Rechteck- oder Mehrfachauswahl erklärt der Befehl
+  sichtbar, dass er dort nicht wirkt — niemals nur der erste Bereich.
+
+### Geändert
+
+- **Alle Einrückungswege teilen ein Profil:** Tab-Taste und
+  Return-Auto-Indent (Editor-Konfiguration), Einrücken/Ausrücken sowie
+  Tabs↔Leerzeichen verwenden dieselben Profilwerte. Einrücken setzt beim
+  Leerzeichen-Werkstandard jetzt vier Leerzeichen statt wie bisher einen
+  Tab — vorher benutzten Tab-Taste und „Einrücken" unterschiedliche
+  Einheiten. Eine Profiländerung formatiert bestehenden Text nie
+  automatisch um.
+
+### Intern
+
+- Neue Unit-Tests für Profil-Persistenz/-Validierung (inklusive
+  unveränderter Alt-Payloads), die Whitespace-Ausdrucksformen und
+  tabellarische Fälle des Einfüge-Algorithmus (verschachtelt, gemischte
+  Tabs/Spaces, Leerzeilen, CRLF, fehlender End-Umbruch, Unicode, leere und
+  mittige Zielzeilen). Fenster-Selbsttest `pasteindent` prüft den echten
+  Befehlsweg samt Einzel-Undo. Die BBEdit-Live-Gegenprüfung per Automation
+  scheiterte in dieser Sitzung an der fehlenden System-Events-Freigabe;
+  die Semantik stammt aus dem Handbuch (S. 89/125/262) und ist in den
+  Tabellentests festgeschrieben.
+
 ## [v1.67.1] — 2026-08-09
 
 ### Behoben

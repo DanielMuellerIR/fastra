@@ -117,6 +117,18 @@ struct FastraApp: App {
                 }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
 
+                // Etappe 4 (BBEdit „Paste and Match Indentation"): setzt den
+                // Clipboard-Block auf die Einrückung der Zielzeile, relative
+                // Verschachtelung bleibt erhalten, Ausdruck in Tabs/
+                // Leerzeichen des Formatprofils.
+                Button("Einfügen und Einrückung angleichen") {
+                    NotificationCenter.default.post(
+                        name: .fastraPasteMatchingIndentation,
+                        object: nil
+                    )
+                }
+                .keyboardShortcut("v", modifiers: [.command, .shift, .option])
+
                 Divider()
                 Button("Spalte einfügen") {
                     NotificationCenter.default.post(

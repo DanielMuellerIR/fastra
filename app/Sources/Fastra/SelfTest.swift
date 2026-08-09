@@ -445,6 +445,7 @@ enum SelfTest {
         case "help": waitForMainWindow { runHelpTest() }
         case "mdassist": waitForMainWindow { runMarkdownAssistTest() }
         case "mdimagewatch": waitForMainWindow { runMarkdownImageWatchTest() }
+        case "pasteindent": waitForMainWindow { runPasteMatchIndentationTest() }
         case "filemodes":
             // Fensterlos — echte Dateien durch den Workspace-Ladepfad routen:
             // Null-Bytes → Hex, große Textdatei → abschnittsweise.
@@ -584,7 +585,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, mdimagewatch, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitmultidiscard, gitstickyheader, diffwide, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, mdimagewatch, pasteindent, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitmultidiscard, gitstickyheader, diffwide, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -14572,6 +14573,61 @@ enum SelfTest {
     /// Fragment ein; der Bild-Token (Pfad+Datum+Größe) umgeht WebKits Cache.
     /// Geprüft wird am ECHTEN Vorschau-Pfad über `naturalWidth` — erst 1 px
     /// (Original), nach dem Austausch 2 px.
+    /// „Einfügen und Einrückung angleichen" (Etappe 4) am ECHTEN Befehlsweg:
+    /// Clipboard setzen, Notification wie aus dem Menü posten, Ergebnis und
+    /// die EINE Undo-Aktion prüfen.
+    private static func runPasteMatchIndentationTest() {
+        testLabel = "pasteindent"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-pasteindent-\(UUID().uuidString).txt")
+        let original = "    ziel\n"
+        do { try original.write(to: url, atomically: true, encoding: .utf8) }
+        catch {
+            finish(false, "Umgebungsproblem: (setup) Fixture nicht schreibbar: \(error.localizedDescription)")
+        }
+        ws.loadFile(at: url) { ok in
+            try? FileManager.default.removeItem(at: url)
+            guard ok else { finish(false, "Fixture lädt nicht") }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                guard let window = NSApp.windows.first(where: {
+                    $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                        && $0.contentView != nil && $0.isVisible
+                }), let root = window.contentView,
+                      let textView = editorTextView(in: root) as? TextView else {
+                    finish(false, "Editor-TextView nicht gefunden")
+                }
+                window.makeFirstResponder(textView)
+                // Cursor ans Dokumentende (leerer Zeilenanfang hinter der
+                // eingerückten Zielzeile → Kontext erbt deren 4 Spalten).
+                textView.selectionManager.setSelectedRange(
+                    NSRange(location: (textView.string as NSString).length, length: 0)
+                )
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString("if x {\n    y()\n}\n", forType: .string)
+                NotificationCenter.default.post(
+                    name: .fastraPasteMatchingIndentation, object: nil
+                )
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    let expected = "    ziel\n    if x {\n        y()\n    }\n"
+                    guard textView.string == expected else {
+                        finish(false, "Einfügung falsch: \(textView.string.debugDescription) statt \(expected.debugDescription)")
+                    }
+                    // Genau EINE Undo-Aktion stellt den Ausgangstext her.
+                    textView.undoManager?.undo()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        guard textView.string == original else {
+                            finish(false, "Undo stellte nicht den Ausgangstext her: \(textView.string.debugDescription)")
+                        }
+                        finish(true, "Block sitzt auf der Ziel-Einrückung (relativ erhalten), eine Undo-Aktion stellt alles zurück")
+                    }
+                }
+            }
+        }
+    }
+
     private static func runMarkdownImageWatchTest() {
         testLabel = "mdimagewatch"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }

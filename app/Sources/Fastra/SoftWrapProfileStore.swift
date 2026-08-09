@@ -25,17 +25,30 @@ final class SoftWrapProfileStore: ObservableObject {
         var softWrapEnabled: Bool?
         var target: SoftWrapTarget?
         var fixedColumn: Int?
+        // Einrückungsprofil (Etappe 4, Beschluss 2026-07-19). Optionale
+        // Felder — vorhandene v2-Payloads laden unverändert, `nil` heißt
+        // Werkstandard (Leerzeichen, Breite 4, Tabbreite 4).
+        var indentUsesTabs: Bool?
+        var indentWidth: Int?
+        var tabWidth: Int?
 
         init(softWrapEnabled: Bool? = nil,
              target: SoftWrapTarget? = nil,
-             fixedColumn: Int? = nil) {
+             fixedColumn: Int? = nil,
+             indentUsesTabs: Bool? = nil,
+             indentWidth: Int? = nil,
+             tabWidth: Int? = nil) {
             self.softWrapEnabled = softWrapEnabled
             self.target = target
             self.fixedColumn = fixedColumn
+            self.indentUsesTabs = indentUsesTabs
+            self.indentWidth = indentWidth
+            self.tabWidth = tabWidth
         }
 
         var isEmpty: Bool {
             softWrapEnabled == nil && target == nil && fixedColumn == nil
+                && indentUsesTabs == nil && indentWidth == nil && tabWidth == nil
         }
     }
 
@@ -64,6 +77,11 @@ final class SoftWrapProfileStore: ObservableObject {
     static let currentVersion = 2
     static let factoryColumn = 80
     static let validColumnRange = 20...500
+    /// Werkstandard der Einrückung: das bisher fest verdrahtete Verhalten
+    /// (vier Leerzeichen, Tabbreite vier) — migrationssicher.
+    static let factoryIndentWidth = IndentationProfile.factory.indentWidth
+    static let factoryTabWidth = IndentationProfile.factory.tabWidth
+    static let validIndentRange = 1...16
 
     @Published private(set) var revision: UInt64 = 0
 
@@ -122,6 +140,41 @@ final class SoftWrapProfileStore: ObservableObject {
 
     func fixedColumn(for formatID: DocumentFormatID) -> Int {
         Self.validatedColumn(payload.formats[formatID.rawValue]?.fixedColumn)
+    }
+
+    /// Das wirksame Einrückungsprofil des Formats (Etappe 4).
+    func indentationProfile(for formatID: DocumentFormatID) -> IndentationProfile {
+        let stored = payload.formats[formatID.rawValue]
+        return IndentationProfile(
+            usesTabs: stored?.indentUsesTabs ?? false,
+            indentWidth: Self.validatedIndent(stored?.indentWidth,
+                                              factory: Self.factoryIndentWidth),
+            tabWidth: Self.validatedIndent(stored?.tabWidth,
+                                           factory: Self.factoryTabWidth)
+        )
+    }
+
+    func setIndentUsesTabs(_ usesTabs: Bool, for formatID: DocumentFormatID) {
+        updateProfile(for: formatID) {
+            $0.indentUsesTabs = usesTabs ? true : nil
+        }
+        persistAndNotify()
+    }
+
+    func setIndentWidth(_ width: Int, for formatID: DocumentFormatID) {
+        let validated = Self.validatedIndent(width, factory: Self.factoryIndentWidth)
+        updateProfile(for: formatID) {
+            $0.indentWidth = validated == Self.factoryIndentWidth ? nil : validated
+        }
+        persistAndNotify()
+    }
+
+    func setTabWidth(_ width: Int, for formatID: DocumentFormatID) {
+        let validated = Self.validatedIndent(width, factory: Self.factoryTabWidth)
+        updateProfile(for: formatID) {
+            $0.tabWidth = validated == Self.factoryTabWidth ? nil : validated
+        }
+        persistAndNotify()
     }
 
     var pageGuideColumn: Int {
@@ -223,6 +276,11 @@ final class SoftWrapProfileStore: ObservableObject {
         return column
     }
 
+    static func validatedIndent(_ value: Int?, factory: Int) -> Int {
+        guard let value, validIndentRange.contains(value) else { return factory }
+        return value
+    }
+
     private func updateProfile(
         for formatID: DocumentFormatID,
         _ update: (inout StoredProfile) -> Void
@@ -254,6 +312,17 @@ final class SoftWrapProfileStore: ObservableObject {
             }
             if profile.target == .window {
                 profile.target = nil
+            }
+            if profile.indentUsesTabs == false { profile.indentUsesTabs = nil }
+            if let width = profile.indentWidth {
+                let validated = validatedIndent(width, factory: factoryIndentWidth)
+                profile.indentWidth =
+                    validated == factoryIndentWidth ? nil : validated
+            }
+            if let width = profile.tabWidth {
+                let validated = validatedIndent(width, factory: factoryTabWidth)
+                profile.tabWidth =
+                    validated == factoryTabWidth ? nil : validated
             }
             return profile.isEmpty ? nil : profile
         }

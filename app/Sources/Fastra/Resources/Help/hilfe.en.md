@@ -411,6 +411,30 @@ Wrap off, long lines remain reachable through the horizontal scroll bar.
 Toggling it changes neither text nor selection, undo history, or the saved
 file. The topmost displayed text line remains steadily anchored in place.
 
+## Indentation
+
+The same options menu carries the format's **indentation profile**: the Tab
+key inserts either a **tab** or **2, 3, 4, or 8 spaces**, and the **tab
+width** controls how wide a tab character is displayed. The factory default
+is four spaces with a tab width of four. Like Soft Wrap, this profile is
+stored **per document format**, applies immediately to all open documents,
+and survives restarts; “Reset … to factory default” removes it as well.
+
+The same profile drives **Shift Right/Shift Left** (Text menu and right
+click), **Detab/Entab**, and the automatic indentation after Return.
+Changing the profile **never** reformats existing text automatically — it
+takes effect with the next keystroke or command.
+
+**Edit → Paste and Match Indentation** (⌥⇧⌘V) inserts the clipboard text so
+it sits on the target line's indentation: the block's common base
+indentation is removed, the relative nesting is preserved, and the result
+is expressed in the active profile's tabs or spaces. If the target line is
+empty, the most recent non-empty line above it counts. Blank lines in the
+block stay blank, the document's line-ending style is preserved, and the
+whole insertion is a single undo action. With an active column or
+multi-range selection the command visibly explains that it does not apply
+there.
+
 ## Column Selection
 
 **Option-drag** selects the same column range across multiple **logical text

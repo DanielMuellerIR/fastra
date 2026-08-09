@@ -52,6 +52,8 @@ extension Notification.Name {
     static let fastraMinifyDocument   = Notification.Name("fastra.minify.document")
     /// Sichtbare Rechteck-Befehle aus Menüleiste und Selbsttests.
     static let fastraPasteColumn      = Notification.Name("fastra.column.paste")
+    static let fastraPasteMatchingIndentation =
+        Notification.Name("fastra.paste.matchIndentation")
     static let fastraSelectColumnUp   = Notification.Name("fastra.column.select.up")
     static let fastraSelectColumnDown = Notification.Name("fastra.column.select.down")
 }
@@ -221,6 +223,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { [weak self] _ in
             self?.editorContextMenu.pasteColumnInActiveEditor()
+        }
+        NotificationCenter.default.addObserver(
+            forName: .fastraPasteMatchingIndentation,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.editorContextMenu.pasteMatchingIndentationInActiveEditor()
         }
         NotificationCenter.default.addObserver(
             forName: .fastraSelectColumnUp,

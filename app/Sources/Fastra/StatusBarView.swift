@@ -378,6 +378,58 @@ struct StatusBarView: View {
             }
         }
         Divider()
+        // Einrückungsprofil (Etappe 4): Tab-Taste, Shift-Links/Rechts,
+        // Entab/Detab und „Einfügen und Einrückung angleichen" nutzen
+        // dieselbe Einstellung. Eine Profiländerung formatiert bestehenden
+        // Text NIE automatisch um.
+        Menu {
+            Button {
+                workspace.setIndentUsesTabs(true)
+            } label: {
+                if workspace.activeIndentationProfile.usesTabs {
+                    Label("Tabulator", systemImage: "checkmark")
+                } else {
+                    Text("Tabulator")
+                }
+            }
+            ForEach([2, 3, 4, 8], id: \.self) { width in
+                Button {
+                    workspace.setIndentWidth(width)
+                } label: {
+                    if !workspace.activeIndentationProfile.usesTabs,
+                       workspace.activeIndentationProfile.indentWidth == width {
+                        Label(L10n.format("%ld Leerzeichen", width),
+                              systemImage: "checkmark")
+                    } else {
+                        Text(verbatim: L10n.format("%ld Leerzeichen", width))
+                    }
+                }
+            }
+            Divider()
+            Menu("Tabbreite") {
+                ForEach([2, 3, 4, 8], id: \.self) { width in
+                    Button {
+                        workspace.setEditorTabWidth(width)
+                    } label: {
+                        if workspace.activeIndentationProfile.tabWidth == width {
+                            Label(L10n.format("%ld Spalten", width),
+                                  systemImage: "checkmark")
+                        } else {
+                            Text(verbatim: L10n.format("%ld Spalten", width))
+                        }
+                    }
+                }
+            }
+        } label: {
+            Text(verbatim: L10n.format(
+                "Einrückung: %@",
+                workspace.activeIndentationProfile.usesTabs
+                    ? L10n.string("Tabulator")
+                    : L10n.format("%ld Leerzeichen",
+                                  workspace.activeIndentationProfile.indentWidth)
+            ))
+        }
+        Divider()
         Toggle("Seitenlinie anzeigen", isOn: Binding(
             get: { workspace.showPageGuide },
             set: { workspace.setShowPageGuide($0) }

@@ -819,6 +819,53 @@ final class EditorContextMenu: NSObject {
         apply(kind, on: textView)
     }
 
+    /// „Einfügen und Einrückung angleichen" (Etappe 4; BBEdit „Paste and
+    /// Match Indentation", ⌥⇧⌘V): fügt den Clipboard-Text so ein, dass er
+    /// auf der Einrückung der Zielzeile sitzt; relative Verschachtelung
+    /// bleibt erhalten, das Ergebnis nutzt Tabs/Leerzeichen des wirksamen
+    /// Profils. Rechteck- und Mehrfachauswahl sind bewusst ausgenommen —
+    /// niemals nur den ersten Bereich ändern (sichtbare Erklärung statt
+    /// stiller Teilwirkung). Genau EINE Undo-Aktion.
+    func pasteMatchingIndentationInActiveEditor() {
+        MainActor.assumeIsolated {
+            guard let target = CommandTargeting.target() else {
+                NSSound.beep()
+                return
+            }
+            let textView = target.textView
+            guard textView.fastraColumnSelectionSnapshot == nil,
+                  textView.selectionManager.textSelections.count <= 1 else {
+                warnColumnSelectionUnsupported()
+                return
+            }
+            guard let clipboard = NSPasteboard.general.string(forType: .string),
+                  !clipboard.isEmpty else {
+                NSSound.beep()
+                return
+            }
+            let text = textView.string
+            let selection = textView.fastraSafeSelectedRange
+            let profile = target.workspace.activeIndentationProfile
+            let lineEnding = target.workspace.activeTab?.lineEnding
+                ?? LineEnding.detect(in: text)
+            let context = IndentationMatchingPaste.targetContext(
+                documentText: text,
+                insertionLocation: selection.location,
+                profile: profile
+            )
+            let matched = IndentationMatchingPaste.matchedText(
+                clipboard: clipboard,
+                targetColumns: context.columns,
+                indentFirstLine: context.prefixIsWhitespaceOnly,
+                lineEnding: lineEnding,
+                profile: profile
+            )
+            // Über denselben Undo-Pfad wie die Text-Operationen: EIN
+            // widerrufbarer Edit durch CESEs Undo-Manager.
+            textView.fastraApplyTextOperation(replacing: selection, with: matched)
+        }
+    }
+
     /// Sichtbarer Paste-Column-Befehl. Der Editor selbst entscheidet, ob die
     /// linke Rechteckkante oder der primäre Cursor die Zielspalte festlegt.
     func pasteColumnInActiveEditor() {
@@ -935,26 +982,40 @@ final class EditorContextMenu: NSObject {
             }
 
         default:
-            let op = operation(for: kind)
+            let op = operation(for: kind, profile: indentationProfile(for: textView))
             applyLineOperation(on: textView) { text, selection in op(text, selection) }
         }
     }
 
+    /// Wirksames Einrückungsprofil für Operationen auf dieser TextView —
+    /// aus dem Workspace ihres Fensters (Etappe 4). Ohne zuordenbares
+    /// Fenster gilt der Werkstandard. Alle Aufrufer arbeiten auf einer
+    /// AppKit-View, also auf dem Main-Thread.
+    private func indentationProfile(for textView: TextView) -> IndentationProfile {
+        MainActor.assumeIsolated {
+            CommandTargeting.workspace(for: textView)?.activeIndentationProfile
+                ?? .factory
+        }
+    }
+
     /// Mappt eine `TextOpKind` auf die zugehörige pure `TextOperations`-Funktion.
-    private func operation(for kind: TextOpKind) -> (String, NSRange) -> LineOperations.Result? {
+    /// Einrückungs-Operationen erhalten das wirksame Profil (Etappe 4).
+    private func operation(for kind: TextOpKind,
+                           profile: IndentationProfile = .factory)
+        -> (String, NSRange) -> LineOperations.Result? {
         switch kind {
         case .uppercase:        return TextOperations.uppercase
         case .lowercase:        return TextOperations.lowercase
         case .titlecase:        return TextOperations.titlecase
         case .trimTrailing:     return TextOperations.trimTrailingWhitespace
-        case .detab:            return TextOperations.detab
-        case .entab:            return TextOperations.entab
+        case .detab:            return { TextOperations.detab(in: $0, selection: $1, tabWidth: profile.tabWidth) }
+        case .entab:            return { TextOperations.entab(in: $0, selection: $1, tabWidth: profile.tabWidth) }
         case .zapGremlins:      return TextOperations.zapGremlins
         case .straightenQuotes: return TextOperations.straightenQuotes
         case .educateQuotes:    return TextOperations.educateQuotes
         case .convertEscapeSequences: return TextOperations.convertEscapeSequences
-        case .shiftRight:       return TextOperations.shiftRight
-        case .shiftLeft:        return TextOperations.shiftLeft
+        case .shiftRight:       return { TextOperations.shiftRight(in: $0, selection: $1, profile: profile) }
+        case .shiftLeft:        return { TextOperations.shiftLeft(in: $0, selection: $1, profile: profile) }
         case .reverseLines:     return TextOperations.reverseLines
         case .removeBlankLines: return TextOperations.removeBlankLines
         // Beide Join-Varianten teilen sich die pure Funktion, nur der Trenner
@@ -1000,7 +1061,7 @@ final class EditorContextMenu: NSObject {
         }
         let text = textView.string
         let nsText = text as NSString
-        let transform = operation(for: kind)
+        let transform = operation(for: kind, profile: indentationProfile(for: textView))
         var replacements: [String] = []
         replacements.reserveCapacity(snapshot.ranges.count)
 

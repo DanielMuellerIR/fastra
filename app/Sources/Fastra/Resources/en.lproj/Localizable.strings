@@ -364,6 +364,12 @@
 "„%@“ konnte nicht gelöscht werden: %@" = "‘%@’ could not be deleted: %@";
 "%ld Datei(en) konnten nicht gelöscht werden: %@" = "%ld file(s) could not be deleted: %@";
 "Kein aktiver Branch (Detached HEAD) — es ist unklar, wohin der Push gehen soll. Erst einen Branch auschecken." = "No active branch (detached HEAD)—it is unclear where the push should go. Check out a branch first.";
+"Einfügen und Einrückung angleichen" = "Paste and Match Indentation";
+"Einrückung: %@" = "Indentation: %@";
+"Tabulator" = "Tab";
+"%ld Leerzeichen" = "%ld Spaces";
+"Tabbreite" = "Tab Width";
+"%ld Spalten" = "%ld Columns";
 "Änderungen bereitstellen (%ld Dateien)" = "Stage Changes (%ld Files)";
 "Änderungen verwerfen (%ld Dateien)" = "Discard Changes (%ld Files)";
 "Aus Bereitstellung nehmen (%ld Dateien)" = "Unstage (%ld Files)";

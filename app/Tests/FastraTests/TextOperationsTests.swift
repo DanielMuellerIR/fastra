@@ -68,9 +68,14 @@ func entab_detab_roundtrip() {
 
 // MARK: - Ein-/Ausrücken
 
-@Test("shiftRight stellt jeder Zeile einen Tab voran")
+@Test("shiftRight rückt mit der Einheit des Profils ein (Werkstandard: 4 Leerzeichen)")
 func shift_right() {
-    #expect(TextOperations.shiftRight(in: "a\nb", selection: whole)?.newText == "\ta\n\tb")
+    // Etappe 4 vereinheitlicht die Einrückung: Werkstandard ist wie bei der
+    // Tab-Taste Leerzeichen×4; ein Tab-Profil erzeugt weiterhin Tabs.
+    #expect(TextOperations.shiftRight(in: "a\nb", selection: whole)?.newText == "    a\n    b")
+    let tabs = IndentationProfile(usesTabs: true, indentWidth: 4, tabWidth: 4)
+    #expect(TextOperations.shiftRight(in: "a\nb", selection: whole,
+                                      profile: tabs)?.newText == "\ta\n\tb")
 }
 
 @Test("shiftLeft entfernt führenden Tab oder bis zu tabWidth Leerzeichen")
@@ -132,7 +137,7 @@ func line_op_expands_selection() {
     let text = "alpha\nbeta\ngamma"
     // Selektion mitten in „beta" (Position 7, Länge 1) → ganze Zeile 2.
     let r = TextOperations.shiftRight(in: text, selection: NSRange(location: 7, length: 1))
-    #expect(r?.newText == "alpha\n\tbeta\ngamma")
+    #expect(r?.newText == "alpha\n    beta\ngamma")
 }
 
 // MARK: - Zap Gremlins (Steuerzeichen entfernen)

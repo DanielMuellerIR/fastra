@@ -428,6 +428,33 @@ erreichbar. Das Umschalten ändert weder Text noch Auswahl, Rückgängig-
 Verlauf oder gespeicherte Datei. Die oberste angezeigte Textzeile bleibt dabei
 ruhig an derselben Stelle.
 
+## Einrückung
+
+Im selben Optionsmenü steht das **Einrückungsprofil** des Formats: Die
+Tab-Taste fügt wahlweise einen **Tabulator** oder **2, 3, 4 oder 8
+Leerzeichen** ein; die **Tabbreite** bestimmt, wie breit ein Tabulator
+dargestellt wird. Werkseinstellung sind vier Leerzeichen bei Tabbreite
+vier. Auch dieses Profil gilt **pro Dokumentformat**, sofort für alle
+offenen Dokumente und über Neustarts hinweg; „Für … auf Werkseinstellung
+zurücksetzen“ nimmt es mit zurück.
+
+Dasselbe Profil verwenden **Einrücken/Ausrücken** (Textmenü und
+Rechtsklick), **Tabs in Leerzeichen/Leerzeichen in Tabs** und die
+automatische Einrückung nach Return. Eine Profiländerung formatiert
+bestehenden Text **nie** automatisch um — sie wirkt erst beim nächsten
+Tippen oder Befehl.
+
+**Bearbeiten → Einfügen und Einrückung angleichen** (⌥⇧⌘V) fügt den
+Text der Zwischenablage so ein, dass er auf der Einrückung der Zielzeile
+sitzt: Die gemeinsame Grund-Einrückung des kopierten Blocks wird entfernt,
+die relative Verschachtelung bleibt erhalten, und das Ergebnis wird in
+Tabs bzw. Leerzeichen des aktiven Profils ausgedrückt. Ist die Zielzeile
+leer, zählt die zuletzt davor stehende nicht leere Zeile. Leerzeilen des
+Blocks bleiben leer, der Zeilenendungsstil des Dokuments bleibt erhalten,
+und die gesamte Einfügung ist eine einzige Rückgängig-Aktion. Bei einer
+aktiven Rechteck- oder Mehrfachauswahl erklärt der Befehl sichtbar, dass
+er dort nicht wirkt.
+
 ## Rechteckauswahl
 
 Mit **Alt-Drag** markiert Fastra denselben Spaltenbereich über mehrere

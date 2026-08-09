@@ -1134,6 +1134,29 @@ final class Workspace: ObservableObject {
         softWrapProfiles.resetToFactoryDefault(for: activeDocumentFormat.id)
     }
 
+    // MARK: - Einrückungsprofil (Etappe 4, Beschluss 2026-07-19)
+
+    /// Das wirksame Einrückungsprofil des aktiven Formats. Return/Tab
+    /// (CESE-`indentOption`), Shift-Links/Rechts, Entab/Detab und
+    /// „Einfügen und Einrückung angleichen" verwenden alle dieses Profil.
+    var activeIndentationProfile: IndentationProfile {
+        softWrapProfiles.indentationProfile(for: activeDocumentFormat.id)
+    }
+
+    func setIndentUsesTabs(_ usesTabs: Bool) {
+        softWrapProfiles.setIndentUsesTabs(usesTabs, for: activeDocumentFormat.id)
+    }
+
+    func setIndentWidth(_ width: Int) {
+        // Eine Breitenwahl ist zugleich die Entscheidung für Leerzeichen.
+        softWrapProfiles.setIndentUsesTabs(false, for: activeDocumentFormat.id)
+        softWrapProfiles.setIndentWidth(width, for: activeDocumentFormat.id)
+    }
+
+    func setEditorTabWidth(_ width: Int) {
+        softWrapProfiles.setTabWidth(width, for: activeDocumentFormat.id)
+    }
+
     /// Ziel des globalen Menübefehls. Ein Projekt hat Vorrang; ohne Projekt
     /// dient nur eine echte aktive Datei als Quelle.
     var terminalDirectory: URL? {

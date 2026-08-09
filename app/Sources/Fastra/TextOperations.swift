@@ -66,7 +66,8 @@ enum TextOperations {
 
     /// Tabs → Leerzeichen, tab-stopp-bewusst (ein Tab füllt bis zur nächsten
     /// Spalte, die ein Vielfaches von `tabWidth` ist).
-    static func detab(in text: String, selection: NSRange) -> LineOperations.Result? {
+    static func detab(in text: String, selection: NSRange,
+                      tabWidth: Int = TextOperations.tabWidth) -> LineOperations.Result? {
         transformLines(in: text, selection: selection) { lines in
             lines.map { line in
                 var out = ""
@@ -89,13 +90,15 @@ enum TextOperations {
     /// Leerzeichen → Tabs, tab-stopp-bewusst: ein Lauf von Leerzeichen wird
     /// durch Tabs ersetzt, soweit ein Tab innerhalb des Laufs eine volle
     /// Tab-Stopp-Grenze erreicht; ein Rest bleibt als Leerzeichen.
-    static func entab(in text: String, selection: NSRange) -> LineOperations.Result? {
+    static func entab(in text: String, selection: NSRange,
+                      tabWidth: Int = TextOperations.tabWidth) -> LineOperations.Result? {
         transformLines(in: text, selection: selection) { lines in
-            lines.map { entabLine($0) }
+            lines.map { entabLine($0, tabWidth: tabWidth) }
         }
     }
 
-    private static func entabLine(_ line: String) -> String {
+    private static func entabLine(_ line: String,
+                                  tabWidth: Int = TextOperations.tabWidth) -> String {
         var out = ""
         var col = 0          // aktuelle Spalte in der AUSGABE
         var pending = 0      // gesammelte Leerzeichen
@@ -136,22 +139,28 @@ enum TextOperations {
 
     // MARK: - Ein-/Ausrücken (Zeilen-Scope)
 
-    /// Rückt jede Zeile um eine Tab-Weite EIN (ein führender Tab).
-    static func shiftRight(in text: String, selection: NSRange) -> LineOperations.Result? {
+    /// Rückt jede Zeile um EINE Einrückungsstufe des Profils EIN
+    /// (Tab-Profil: ein führender Tab; Leerzeichen-Profil: `indentWidth`
+    /// Leerzeichen). Etappe 4: alle Einrückungsbefehle teilen ein Profil.
+    static func shiftRight(in text: String, selection: NSRange,
+                           profile: IndentationProfile = .factory) -> LineOperations.Result? {
         transformLines(in: text, selection: selection) { lines in
-            lines.map { "\t" + $0 }
+            lines.map { profile.unitString + $0 }
         }
     }
 
-    /// Rückt jede Zeile um eine Tab-Weite AUS: ein führender Tab wird entfernt,
-    /// sonst bis zu `tabWidth` führende Leerzeichen.
-    static func shiftLeft(in text: String, selection: NSRange) -> LineOperations.Result? {
-        transformLines(in: text, selection: selection) { lines in
+    /// Rückt jede Zeile um EINE Einrückungsstufe AUS: ein führender Tab wird
+    /// entfernt, sonst bis zu einer Stufe führende Leerzeichen
+    /// (Leerzeichen-Profil: `indentWidth`, Tab-Profil: `tabWidth`).
+    static func shiftLeft(in text: String, selection: NSRange,
+                          profile: IndentationProfile = .factory) -> LineOperations.Result? {
+        let spaceStep = profile.usesTabs ? profile.tabWidth : profile.indentWidth
+        return transformLines(in: text, selection: selection) { lines in
             lines.map { line in
                 if line.hasPrefix("\t") { return String(line.dropFirst()) }
                 var n = 0
                 for ch in line {
-                    if ch == " " && n < tabWidth { n += 1 } else { break }
+                    if ch == " " && n < spaceStep { n += 1 } else { break }
                 }
                 return String(line.dropFirst(n))
             }
