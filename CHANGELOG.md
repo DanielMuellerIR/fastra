@@ -9,6 +9,31 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.66.1] — 2026-08-09
+
+### Behoben
+
+- **Der Fristablauf der Markdown-Umwandlung aus der Zwischenablage beendet
+  jetzt die ganze Prozessgruppe.** md-clip startet über denselben
+  Prozessgruppen-Launcher wie Git; vorher überlebten von md-clip gestartete
+  Kindprozesse (pandoc, Helfer) den Abbruch (Roadmap „Bekannte Fehler";
+  Regressionstest mit echtem Enkelprozess).
+- **`setSelectedRange` weist ungültige Auswahlbereiche ab** (neuer
+  CodeEditTextView-Patch 4t-2): Ein `{NSNotFound, 0}` aus veraltetem State
+  konnte über den Attachment-Beobachter ein `IndexSet` bauen und die App
+  beenden — die Plural-Form filterte bereits, die Singular-Form übernahm
+  ungeprüft. Die bestehende Auswahl bleibt bei einem abgewiesenen Bereich
+  stehen (Regressionstest).
+- **Ein per SIGKILL beendeter Git-Vorgang lässt keinen toten `index.lock`
+  mehr zurück:** Läuft die SIGTERM-Schonfrist unter Last ab, bevor git
+  aufräumt, entfernt Fastra die nachweislich eigene Lockspur jetzt selbst —
+  vorher hing jede weitere Git-Aktion an ihr fest (sporadisch in vollen
+  Testläufen beobachtet).
+- **Testinfrastruktur räumt ihre Preferences-Domains vollständig ab:** Der
+  Registry-Purge entfernt jetzt auch die geleerten Plist-Dateien; ein voller
+  `swift test`-Lauf hinterlässt null Test-Domains (vorher sammelten sich
+  hunderte 42-Byte-Reste pro Tag an).
+
 ## [v1.66.0] — 2026-08-09
 
 ### Behoben

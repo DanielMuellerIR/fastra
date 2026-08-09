@@ -833,11 +833,14 @@ final class Workspace: ObservableObject {
             // überholen — Storage und Kontext zeigten dann dauerhaft auf
             // verschiedene Workspaces (Review 2026-08-02). Durch das erneute
             // Lesen konvergiert der Kontext stets auf den letzten Write.
+            // (Direkt über den Lock statt über den Getter: Der Fenster-Audit
+            // erlaubt `Workspace.shared`-Lesezugriffe nur in CommandTargeting;
+            // HIER ist der Zugriff Teil des Setters selbst.)
             if Thread.isMainThread {
-                ActiveDocumentContext.shared.activate(Workspace.shared)
+                ActiveDocumentContext.shared.activate(sharedLock.withLock { sharedStorage })
             } else {
                 DispatchQueue.main.async {
-                    ActiveDocumentContext.shared.activate(Workspace.shared)
+                    ActiveDocumentContext.shared.activate(sharedLock.withLock { sharedStorage })
                 }
             }
         }

@@ -351,12 +351,25 @@ enum SmartPaste {
     ) -> Result<String, SmartPasteError> {
 
         // Process vorbereiten: md-clip ohne --replace → stdout-Modus.
-        let process = Process()
-        process.executableURL = mdClipURL
         // Keine weiteren Argumente nötig: md-clip --auto-detect (default)
         // liest HTML oder RTF aus dem Clipboard und konvertiert nach GFM.
         // --quiet unterdrückt Status-Logs auf stderr (wir wollen nur Output).
-        process.arguments = ["--quiet"]
+        //
+        // Gestartet wird über den Prozessgruppen-Launcher (derselbe
+        // Mechanismus wie bei GitRunner): md-clip kann eigene Kindprozesse
+        // starten (pandoc, Helfer), und beim Fristablauf muss die GANZE
+        // Gruppe enden — vorher überlebten Enkelprozesse den Abbruch
+        // (Roadmap „Bekannte Fehler").
+        let process = Process()
+        let launcherURL = GitRunner.processGroupLauncherURL
+        if let launcherURL {
+            process.executableURL = launcherURL
+            process.arguments = [FastraProcessGroupLauncher.flag,
+                                 mdClipURL.path, "--quiet"]
+        } else {
+            process.executableURL = mdClipURL
+            process.arguments = ["--quiet"]
+        }
 
         // stdout und stderr werden schon während des Prozesses geleert. Das
         // verhindert volle Pipe-Puffer und ein EOF-Warten auf Unterprozesse.
@@ -387,6 +400,20 @@ enum SmartPaste {
             return .failure(.conversionFailed(L10n.format("Prozess konnte nicht gestartet werden: %@", error.localizedDescription)))
         }
 
+        // Die eigene Prozessgruppe entsteht im Launcher-Kind VOR dem exec;
+        // hier nur kurz beobachten, bis sie steht (wie in GitRunner). Ohne
+        // Launcher bleibt `processGroupID` nil und der Abbruch trifft wie
+        // bisher nur den direkten Kindprozess.
+        var processGroupID: pid_t?
+        if launcherURL != nil {
+            let pid = process.processIdentifier
+            for _ in 0..<500 {
+                if Darwin.getpgid(pid) == pid { processGroupID = pid; break }
+                if !process.isRunning { break }
+                usleep(1_000)
+            }
+        }
+
         // Auf Abschluss warten — in der App maximal 10 Sekunden. Der Parameter
         // ist injizierbar, damit der echte Timeout-Pfad schnell testbar bleibt.
         let deadline = DispatchTime.now() + timeout
@@ -394,14 +421,30 @@ enum SmartPaste {
 
         if didFinish == .timedOut {
             // Erst regulär beenden. Ignoriert das Tool SIGTERM, folgt nach
-            // kurzer Schonfrist SIGKILL, damit md-clip nicht weiterläuft.
+            // kurzer Schonfrist SIGKILL — an die GANZE Gruppe, damit auch
+            // Enkelprozesse den Fristablauf nicht überleben.
             if process.isRunning {
-                process.terminate()
+                if let processGroupID {
+                    Darwin.kill(-processGroupID, SIGTERM)
+                    // Ein extern angehaltener Prozess muss den SIGTERM noch
+                    // ausführen dürfen (gleiches Muster wie GitRunner).
+                    Darwin.kill(-processGroupID, SIGCONT)
+                } else {
+                    process.terminate()
+                }
             }
             if semaphore.wait(timeout: .now() + .milliseconds(250)) == .timedOut,
                process.isRunning {
-                _ = Darwin.kill(process.processIdentifier, SIGKILL)
+                if let processGroupID {
+                    Darwin.kill(-processGroupID, SIGKILL)
+                } else {
+                    _ = Darwin.kill(process.processIdentifier, SIGKILL)
+                }
                 _ = semaphore.wait(timeout: .now() + .seconds(1))
+            } else if let processGroupID {
+                // Der direkte Kindprozess ist schon weg — mögliche Enkel in
+                // der Gruppe trotzdem sicher beenden.
+                Darwin.kill(-processGroupID, SIGKILL)
             }
             return .failure(.timeout)
         }

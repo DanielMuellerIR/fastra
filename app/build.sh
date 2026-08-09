@@ -2023,6 +2023,58 @@ if [ "$MINIMAP_HITTEST_PATCH_CHANGED" -eq 1 ]; then
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4t-2. CodeEditTextView — setSelectedRange weist ungültige Bereiche ab.
+#
+# `setSelectedRanges` (Plural) filtert ungültige Bereiche bereits heraus,
+# `setSelectedRange` (Singular) übernahm sie ungeprüft. Ein {NSNotFound, 0}
+# aus veraltetem SwiftUI-State wanderte so in die Selektion; der
+# Attachment-Beobachter baut daraus ein IndexSet und trappt
+# (`IndexSet.insert(range:)` mit NSNotFound — zweimal beobachtet, Roadmap
+# „Bekannte Fehler"). Der Patch weist ungültige Bereiche ab und behält die
+# bestehende Auswahl.
+CETV_SELMGR="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextSelectionManager/TextSelectionManager.swift"
+SELRANGE_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: ungueltigen Bereich abweisen' "$CETV_SELMGR" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (setSelectedRange weist ungültige Bereiche ab)"
+  chmod u+w "$CETV_SELMGR"
+  /usr/bin/python3 - "$CETV_SELMGR" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+old = '''    public func setSelectedRange(_ range: NSRange) {
+        textSelections.forEach { $0.view?.removeFromSuperview() }'''
+new = '''    public func setSelectedRange(_ range: NSRange) {
+        // Fastra-Patch: ungueltigen Bereich abweisen — dieselbe Pruefung wie
+        // in setSelectedRanges. Ein {NSNotFound, 0} aus veraltetem State
+        // wanderte sonst in die Selektion; der Attachment-Beobachter baut
+        // daraus ein IndexSet und trappt (IndexSet.insert mit NSNotFound).
+        // Die bestehende Auswahl bleibt in dem Fall unveraendert stehen.
+        let fastraLimit = textStorage?.length ?? 0
+        guard range.location != NSNotFound,
+              (0...fastraLimit).contains(range.location),
+              (0...fastraLimit).contains(range.max) else {
+            return
+        }
+        textSelections.forEach { $0.view?.removeFromSuperview() }'''
+if old not in src:
+    raise SystemExit(f"{path}: setSelectedRange hat sich geaendert — Patch 4t-2 pruefen")
+open(path, "w").write(src.replace(old, new, 1))
+PYEOF
+  SELRANGE_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: ungueltigen Bereich abweisen' "$CETV_SELMGR"; then
+  echo "✗ FEHLER: setSelectedRange-Patch hat NICHT gegriffen." >&2
+  exit 1
+fi
+
+if [ "$SELRANGE_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+fi
+
 # 4u. CodeEditTextView — Doppelklick-Wortauswahl zellenbasiert wie NSTextView.
 #
 # `textOffsetAtPoint` rundet wie eine Einfüge-Position: Ein Klick auf die
@@ -2035,7 +2087,7 @@ fi
 # Zelle den Klickpunkt wirklich enthält.
 CETV_MOUSE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+Mouse.swift"
 DOUBLECLICK_CELL_PATCH_CHANGED=0
-if ! grep -q 'Fastra-Patch: Wortauswahl trifft die geklickte Zeichenzelle — zusammengesetzte Sequenz' \
+if ! grep -q 'Fastra-Patch: Wortauswahl trifft die geklickte Zeichenzelle (zusammengesetzt)' \
     "$CETV_MOUSE" 2>/dev/null; then
   echo "→ Patche CodeEditTextView (Doppelklick-Wortauswahl zellenbasiert, zusammengesetzt)"
   chmod u+w "$CETV_MOUSE"
@@ -2089,14 +2141,14 @@ new = '''    fileprivate func handleDoubleClick(event: NSEvent) {
             return
         }
         unmarkText()
-        // Fastra-Patch: Wortauswahl trifft die geklickte Zeichenzelle —
-        // zusammengesetzte Sequenz. `textOffsetAtPoint` rundet als
-        // Einfuege-Position auf; ein Klick auf die rechte Haelfte des letzten
-        // Wortzeichens landet dadurch auf dem Folgezeichen und wuerde dessen
-        // Leerraum markieren. Das Vorgaengerzeichen kann aus MEHREREN
-        // UTF-16-Einheiten bestehen (Emoji, kombinierende Akzente) — die
-        // Auswahlbasis rueckt deshalb an den ANFANG seiner zusammengesetzten
-        // Sequenz, nie mitten hinein (Review 2026-08-02).
+        // Fastra-Patch: Wortauswahl trifft die geklickte Zeichenzelle (zusammengesetzt).
+        // `textOffsetAtPoint` rundet als Einfuege-Position auf; ein Klick auf
+        // die rechte Haelfte des letzten Wortzeichens landet dadurch auf dem
+        // Folgezeichen und wuerde dessen Leerraum markieren. Das
+        // Vorgaengerzeichen kann aus MEHREREN UTF-16-Einheiten bestehen
+        // (Emoji, kombinierende Akzente) — die Auswahlbasis rueckt deshalb an
+        // den ANFANG seiner zusammengesetzten Sequenz, nie mitten hinein
+        // (Review 2026-08-02).
         let clickPoint = convert(event.locationInWindow, from: nil)
         if let caretOffset = layoutManager.textOffsetAtPoint(clickPoint),
            caretOffset > 0 {
@@ -2111,10 +2163,18 @@ new = '''    fileprivate func handleDoubleClick(event: NSEvent) {
         }
         selectWord(nil)
     }'''
+interim_head = """        // Fastra-Patch: Wortauswahl trifft die geklickte Zeichenzelle —
+        // zusammengesetzte Sequenz."""
 if pristine in src:
     src = src.replace(pristine, new, 1)
 elif previous in src:
     src = src.replace(previous, new, 1)
+elif interim_head in src:
+    # Zwischenstand mit umbrochenem Marker: nur den Kommentarkopf auf die
+    # einzeilige, grep-bare Form heben — der Code selbst ist bereits richtig.
+    src = src.replace(interim_head,
+        """        // Fastra-Patch: Wortauswahl trifft die geklickte Zeichenzelle (zusammengesetzt).
+        // Hinweis: siehe Patch 4u in build.sh.""", 1)
 else:
     raise SystemExit(
         f"{path}: handleDoubleClick hat sich geaendert — Patch 4u pruefen"
@@ -2124,7 +2184,7 @@ PYEOF
   DOUBLECLICK_CELL_PATCH_CHANGED=1
 fi
 
-if ! grep -q 'Fastra-Patch: Wortauswahl trifft die geklickte Zeichenzelle — zusammengesetzte Sequenz' \
+if ! grep -q 'Fastra-Patch: Wortauswahl trifft die geklickte Zeichenzelle (zusammengesetzt)' \
     "$CETV_MOUSE"; then
   echo "✗ FEHLER: Doppelklick-Zellen-Patch hat NICHT gegriffen." >&2
   exit 1

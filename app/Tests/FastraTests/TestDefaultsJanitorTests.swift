@@ -339,6 +339,9 @@ func purgeRecognizesAndRemovesTestDomains() {
     // synchronize erzwingt das Persistieren der Domain vor dem Purge.
     defaults.synchronize()
     let remaining = TestDefaultsPurge.purgeRegistered()
-    #expect(UserDefaults.standard.persistentDomain(forName: name) == nil)
+    // `persistentDomain` einer soeben entfernten Suite kann in-Prozess ein
+    // LEERES Dictionary statt nil melden — beides heißt: keine Werte mehr da.
+    let domain = UserDefaults.standard.persistentDomain(forName: name)
+    #expect(domain == nil || domain?.isEmpty == true)
     #expect(!remaining.contains(name))
 }

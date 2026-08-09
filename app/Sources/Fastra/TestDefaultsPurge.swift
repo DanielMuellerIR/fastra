@@ -66,12 +66,30 @@ enum TestDefaultsPurge {
     /// Rückgabe: Domains, die sich NICHT entfernen ließen (sollte leer sein);
     /// der Aufrufer meldet sie sichtbar.
     @discardableResult
-    static func purgeRegistered() -> [String] {
+    static func purgeRegistered(preferencesDirectory: URL? = nil) -> [String] {
+        let directory = preferencesDirectory
+            ?? FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Preferences", isDirectory: true)
         let names = lock.withLock { registered }
         var remaining: [String] = []
         for name in names {
-            UserDefaults.standard.removePersistentDomain(forName: name)
-            if UserDefaults.standard.persistentDomain(forName: name) != nil {
+            // Über eine EIGENE Instanz der Suite entfernen und sofort
+            // synchronisieren: `removePersistentDomain` über `.standard`
+            // ließ beschriebene Suiten beim Prozessende stehen — die
+            // Suite-Instanz der Tests hielt ihren Stand noch im Speicher.
+            let defaults = UserDefaults(suiteName: name)
+            defaults?.removePersistentDomain(forName: name)
+            defaults?.synchronize()
+            // `removePersistentDomain` LEERT die Domain, lässt aber die dann
+            // inhaltslose Plist-Datei liegen — genau daraus entstand der
+            // 3713-Dateien-Berg. Die eigene Datei deshalb mit entfernen.
+            try? FileManager.default.removeItem(
+                at: directory.appendingPathComponent(name + ".plist"))
+            // Verifikation direkt an cfprefsd vorbeigefragt, nicht am
+            // möglicherweise veralteten Instanz-Cache.
+            if let keys = CFPreferencesCopyKeyList(
+                name as CFString, kCFPreferencesCurrentUser, kCFPreferencesAnyHost
+            ), CFArrayGetCount(keys) > 0 {
                 remaining.append(name)
             }
         }

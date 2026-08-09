@@ -914,6 +914,15 @@ enum GitRunner {
                 _ = readers.wait(timeout: .now() + 1)
                 _ = indexToken.finish()
                 cancellation.finish()
+                // Ein per SIGKILL beendetes git kann seinen Index-Lock nicht
+                // mehr entfernen (die SIGTERM-Schonfrist kann unter Last vor
+                // gits Aufräumen ablaufen). Der Lock stammt nachweislich von
+                // UNSEREM, jetzt beendeten Kind — der Preflight oben hat einen
+                // fremden Lock ausgeschlossen. Die tote Spur deshalb selbst
+                // entfernen, sonst hinge jede weitere Git-Aktion an ihr fest
+                // (sporadisch als liegen gebliebener index.lock beobachtet,
+                // 2026-08-07/09).
+                try? FileManager.default.removeItem(atPath: lockPath)
                 DispatchQueue.main.async { completion(outcome, false) }
                 return
             }

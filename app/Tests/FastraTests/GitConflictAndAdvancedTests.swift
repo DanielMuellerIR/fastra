@@ -1334,11 +1334,18 @@ struct GitConflictMarkerTests {
         workspace.tabs = [first, second]
         workspace.activeTabID = first.id
         workspace.invalidateAndRefreshActiveConflictInspection()
-        #expect(executor.count == 1)
+        // Kein blinder Weiterlauf: Startet die erste Attributprüfung nicht
+        // (lastabhängig beobachtet, 2026-08-09), würde `cancellations[0]`
+        // unten die GANZE Suite per Index-Trap beenden statt einen sauberen
+        // Testfehler zu melden.
+        guard executor.count == 1 else {
+            Issue.record("Erste Attributprüfung startete nicht (executor.count == \(executor.count))")
+            return
+        }
         workspace.activeTabID = second.id
         workspace.invalidateAndRefreshActiveConflictInspection()
         #expect(executor.count == 1)
-        #expect(executor.cancellations[0])
+        #expect(executor.cancellations.first == true)
 
         executor.complete(0, advancedSuccess(selectedConflictAttributeData(path: "eins.txt")))
         try await waitAdvanced("Attributprüfung des neuen Tabs startete nicht") {

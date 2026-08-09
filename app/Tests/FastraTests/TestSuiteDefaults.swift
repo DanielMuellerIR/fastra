@@ -21,6 +21,9 @@ private let installTestDefaultsPurge: Void = {
                 ("WARNUNG: Test-Preferences-Domains blieben übrig: "
                     + remaining.joined(separator: ", ") + "\n").utf8))
         }
+        // Zusätzlich die Reste früherer, abgestürzter Läufe (älter als eine
+        // Stunde — aktive Suiten paralleler Prozesse bleiben unberührt).
+        TestDefaultsPurge.purgeStale()
     }
 }()
 

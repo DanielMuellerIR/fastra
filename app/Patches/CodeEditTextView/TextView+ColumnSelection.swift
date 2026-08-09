@@ -494,8 +494,8 @@ private extension TextView {
                                options: [.byComposedCharacterSequences,
                                          .substringNotRequired]) { _, range, _, _ in
             if range.length == 1, ns.character(at: range.location) == 0x09 {
-                column += fastraColumnSelectionTabWidth
-                    - (column % fastraColumnSelectionTabWidth)
+                column += self.fastraColumnSelectionTabWidth
+                    - (column % self.fastraColumnSelectionTabWidth)
             } else {
                 // Eine zusammengesetzte Sequenz ist EIN Graphem — Emoji und
                 // kombinierende Zeichen zählen damit genau einmal.
@@ -541,8 +541,8 @@ private extension TextView {
             }
             let nextColumn: Int
             if range.length == 1, ns.character(at: range.location) == 0x09 {
-                nextColumn = column + fastraColumnSelectionTabWidth
-                    - (column % fastraColumnSelectionTabWidth)
+                nextColumn = column + self.fastraColumnSelectionTabWidth
+                    - (column % self.fastraColumnSelectionTabWidth)
             } else {
                 nextColumn = column + 1
             }

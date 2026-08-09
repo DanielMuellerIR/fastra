@@ -338,3 +338,55 @@ func markdownFromClipboard_timeoutKillsResistantProcess() throws {
     #expect(result == .failure(.timeout))
     #expect(elapsed < 1.0, "Timeout-Aufräumen dauerte \(elapsed) Sekunden")
 }
+
+@Test("markdownFromClipboard: Fristablauf beendet auch Enkelprozesse")
+func markdownFromClipboard_timeoutKillsGrandchildren() throws {
+    // Der Stub startet einen langlebigen Enkel und blockiert dann SIGTERM.
+    // Beim Fristablauf muss die GANZE Prozessgruppe enden — vorher überlebte
+    // der Enkel den Abbruch (Roadmap „Bekannte Fehler", Review 2026-08-02).
+    let stub = try makeMdClipStub(
+        name: "grandchild",
+        body: """
+        /bin/sleep 300 &
+        echo $! > "$0.pid"
+        trap '' TERM
+        while :; do /bin/sleep 1; done
+        """
+    )
+    defer { try? FileManager.default.removeItem(at: stub) }
+    let pidFile = stub.path + ".pid"
+    defer { try? FileManager.default.removeItem(atPath: pidFile) }
+
+    // Frist großzügig: Der Prozessgruppen-Launcher ist das komplette
+    // Fastra-Binary — unter paralleler Testlast kann allein dessen dyld-Start
+    // über eine Sekunde dauern (einmal beobachtet). Der Stub muss seine
+    // PID-Datei sicher geschrieben haben, bevor der Abbruch kommt.
+    let result = SmartPaste.markdownFromClipboard(mdClipURL: stub, timeout: 5.0)
+    #expect(result == .failure(.timeout))
+
+    // Die PID-Datei entsteht in der ersten Stub-Zeile — nach dem Ergebnis
+    // notfalls kurz auf sie warten (Dateisystem-Sichtbarkeit).
+    var raw: String?
+    let pidDeadline = Date().addingTimeInterval(2)
+    while raw == nil, Date() < pidDeadline {
+        raw = try? String(contentsOfFile: pidFile, encoding: .utf8)
+        if raw == nil { usleep(50_000) }
+    }
+    guard let raw,
+          let grandchild = pid_t(raw.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+        Issue.record("Enkel-PID wurde nicht geschrieben — Stub lief nicht an")
+        return
+    }
+    // Der SIGKILL an die Gruppe wirkt asynchron; kurz mit Frist nachprüfen.
+    // `kill(pid, 0)` liefert -1/ESRCH, sobald der Prozess weg ist. Ein noch
+    // nicht abgeholter Zombie meldet 0 — den Erfolgsfall erkennt man daran,
+    // dass er nie wieder lebendig wird; hier reicht ESRCH oder Zombie-Reap
+    // durch launchd (der Enkel wurde an ihn umgehängt).
+    var gone = false
+    let deadline = Date().addingTimeInterval(3)
+    while Date() < deadline {
+        if Darwin.kill(grandchild, 0) != 0 { gone = true; break }
+        usleep(50_000)
+    }
+    #expect(gone, "Enkelprozess \(grandchild) überlebte den Fristablauf")
+}

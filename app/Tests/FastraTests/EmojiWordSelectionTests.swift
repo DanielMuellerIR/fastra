@@ -107,3 +107,24 @@ func doubleClickRightHalfStepsBackByComposedCluster() {
     let selected = textView.selectionManager.textSelections.first?.range
     #expect(selected == NSRange(location: 4, length: 2))
 }
+
+@Test("setSelectedRange weist NSNotFound und Bereiche hinter dem Textende ab")
+@MainActor
+func setSelectedRangeRejectsInvalidRanges() {
+    // Regressionstest für den build.sh-Patch 4t-2 (Roadmap „Bekannte
+    // Fehler"): Ein ungültiger Bereich darf die Selektion nicht erreichen —
+    // der Attachment-Beobachter baute daraus ein IndexSet und trappte.
+    let textView = CodeEditTextView.TextView(string: "kurzer Text")
+    textView.frame = NSRect(x: 0, y: 0, width: 400, height: 100)
+    textView.layoutManager.layoutLines()
+    textView.selectionManager.setSelectedRange(NSRange(location: 3, length: 2))
+
+    textView.selectionManager.setSelectedRange(
+        NSRange(location: NSNotFound, length: 0))
+    #expect(textView.selectionManager.textSelections.first?.range
+            == NSRange(location: 3, length: 2))
+
+    textView.selectionManager.setSelectedRange(NSRange(location: 999, length: 1))
+    #expect(textView.selectionManager.textSelections.first?.range
+            == NSRange(location: 3, length: 2))
+}
