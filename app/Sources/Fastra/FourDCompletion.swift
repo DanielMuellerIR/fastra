@@ -198,8 +198,12 @@ final class FourDCompletionDelegate: ObservableObject, CodeSuggestionDelegate {
 
     /// Vom CESE-Patch (`build.sh` 4b-2) per Notification gesetzt: Der nächste
     /// Vorschlags-Request stammt aus dem manuellen Aufruf (Esc/⌃Leertaste)
-    /// und darf schon ab EINEM Zeichen liefern. Beim Lesen verbraucht.
-    private var manualTriggerArmed = false
+    /// und darf schon ab EINEM Zeichen liefern. Beim Lesen verbraucht und
+    /// zusätzlich zeitlich begrenzt — eine verirrte Scharfschaltung ohne
+    /// folgenden Request darf nicht Minuten später ein Tipp-Popup bei einem
+    /// Zeichen auslösen (Selbsttestbefund completion4d, 2026-08-09).
+    private var manualTriggerArmedAt: Date?
+    private static let manualTriggerLifetime: TimeInterval = 0.5
     private var manualTriggerObserver: NSObjectProtocol?
 
     static let manualTriggerNotification =
@@ -211,7 +215,7 @@ final class FourDCompletionDelegate: ObservableObject, CodeSuggestionDelegate {
         ) { [weak self] _ in
             // queue: .main garantiert den Main-Thread; die Klasse ist
             // MainActor-isoliert.
-            MainActor.assumeIsolated { self?.manualTriggerArmed = true }
+            MainActor.assumeIsolated { self?.manualTriggerArmedAt = Date() }
         }
     }
 
@@ -254,8 +258,10 @@ final class FourDCompletionDelegate: ObservableObject, CodeSuggestionDelegate {
         // genügt EIN Zeichen; das automatische Tipp-Popup bleibt
         // unaufdringlich (ab zwei Zeichen). Ein offenes Fenster filtert
         // ebenfalls ab einem Zeichen weiter.
-        let manual = manualTriggerArmed
-        manualTriggerArmed = false
+        let manual = manualTriggerArmedAt.map {
+            Date().timeIntervalSince($0) <= Self.manualTriggerLifetime
+        } ?? false
+        manualTriggerArmedAt = nil
         let minimum = (windowIsOpen || manual)
             ? 1 : FourDCompletionLogic.automaticMinimumPrefixLength
         guard let items = suggestions(textView: textView,

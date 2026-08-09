@@ -4453,6 +4453,42 @@ enum SelfTest {
             finishFourDCompletionTest(state, ok: false,
                                       message: "Umgebungsproblem: Fokus vor Ein-Zeichen-Phase verloren")
         }
+        // Ein noch offenes Popup der Komponenten-Phase zuerst schließen —
+        // sonst gilt legitim die Ein-Zeichen-Filterung des OFFENEN Fensters
+        // und die Phase misst nicht den Auto-Trigger.
+        closeCompletionPopupIfNeeded(mainWindow: mainWindow, tick: 0) {
+            startManualOneCharTyping(mainWindow: mainWindow, root: root,
+                                     textView: textView, state: state)
+        }
+    }
+
+    /// Schließt ein eventuell offenes Vorschlagsfenster per Esc und wartet,
+    /// bis es wirklich weg ist (Fallback nach 1,5 s: hartes close()).
+    private static func closeCompletionPopupIfNeeded(
+        mainWindow: NSWindow, tick: Int, then continuation: @escaping () -> Void
+    ) {
+        guard fourDCompletionWindow(attachedTo: mainWindow) != nil else {
+            continuation()
+            return
+        }
+        if tick == 0 {
+            postKey("\u{1b}", keyCode: 53, windowNumber: mainWindow.windowNumber)
+        }
+        if tick >= 30 {
+            fourDCompletionWindow(attachedTo: mainWindow)?.close()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: continuation)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            closeCompletionPopupIfNeeded(mainWindow: mainWindow, tick: tick + 1,
+                                         then: continuation)
+        }
+    }
+
+    private static func startManualOneCharTyping(
+        mainWindow: NSWindow, root: NSView, textView: TextView,
+        state: FourDCompletionTestState
+    ) {
         textView.selectionManager.setSelectedRange(
             NSRange(location: (textView.string as NSString).length, length: 0)
         )

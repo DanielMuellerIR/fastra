@@ -9,6 +9,34 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.68.1] — 2026-08-09
+
+### Behoben
+
+Nacharbeit aus dem vollen Selbsttest- und Dauertestlauf zu v1.68.0:
+
+- **Nach dem ersten Vorschlags-Popup blieb die Ein-Zeichen-Filterung für
+  immer aktiv** (neuer CESE-Patch 4b-3): Upstream deklariert
+  `completionWindowDidClose()`, ruft es aber nirgends auf — Fastras
+  `windowIsOpen` wurde dadurch nie zurückgesetzt, und nach dem ersten Popup
+  öffnete jedes einzelne getippte Zeichen die Liste. Das Schließen wird
+  jetzt im zentralen `willClose()` gemeldet. Gefunden von der neuen
+  `completion4d`-Phase.
+- **Der manuelle Ein-Zeichen-Trigger wird nicht mehr scharfgeschaltet, wenn
+  Esc nur ein offenes Popup schließt** (Patch 4b-2 verschoben: Meldung erst
+  nach dem isVisible-Zweig) und verfällt zusätzlich nach 0,5 s ohne
+  folgenden Request.
+- **Cmd-/Shift-Klicks im Änderungen-Panel stornieren den wartenden
+  Einzelklick-Öffner nicht mehr:** Auswahl-Aufbau lässt eine zuvor per
+  Einzelklick angeforderte Datei weiterhin öffnen; nur ein neuer
+  Plain-Klick oder Doppelklick ersetzt bzw. storniert den Warteposten
+  (Selbsttest `gitmultidiscard` schreibt den Vertrag fest).
+- **Die Sitzungswiederherstellung gibt unter Fremdlast nicht mehr nach 2 s
+  auf:** Das Wartefenster auf das erste SwiftUI-Fenster beträgt jetzt 10 s.
+  Vorher ließ ein langsamer Kaltstart ALLE weiteren Fenster weg — im
+  Dauertest kam nach dem Neustart nur 1 von 3 Fenstern zurück (Soak-Befund
+  2026-08-09 unter kontrollierter Fremdlast).
+
 ## [v1.68.0] — 2026-08-09
 
 Etappe 4 des Soft-Wrap-Pakets (Beschluss 2026-07-19), Teil 1 und 2:

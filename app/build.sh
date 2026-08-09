@@ -132,7 +132,11 @@ fi
 # Notification, unmittelbar bevor CESE die Vorschläge anfordert.
 if ! grep -q 'fastra.completion.manualTrigger' "$CESE_LC" 2>/dev/null; then
   echo "→ Patche CodeEditSourceEditor (manueller Completion-Aufruf meldet sich)"
-  /usr/bin/perl -i -0pe 's/(private func handleShowCompletions\(_ event: NSEvent\) -> NSEvent\? \{\s*\n\s*if let completionDelegate = self\.completionDelegate,\s*\n\s*let cursorPosition = cursorPositions\.first \{)/$1\n            NotificationCenter.default.post(name: Notification.Name("fastra.completion.manualTrigger"), object: self)  \/\/ Fastra-Patch: manueller Aufruf (Esc\/Ctrl-Space) erlaubt Ein-Zeichen-Vorschlaege/' "$CESE_LC"
+  # WICHTIG: Die Meldung kommt erst NACH dem isVisible-Zweig — ein Esc, das
+  # nur ein OFFENES Popup schliesst, ist KEIN manueller Oeffnen-Wunsch und
+  # duerfe den Ein-Zeichen-Modus nicht scharfschalten (Selbsttestbefund
+  # completion4d, 2026-08-09).
+  /usr/bin/perl -i -0pe 's/(if SuggestionController\.shared\.isVisible \{\s*\n\s*SuggestionController\.shared\.close\(\)\s*\n\s*return event\s*\n\s*\}\n)/$1            NotificationCenter.default.post(name: Notification.Name("fastra.completion.manualTrigger"), object: self)  \/\/ Fastra-Patch: manueller Aufruf (Esc\/Ctrl-Space) erlaubt Ein-Zeichen-Vorschlaege\n/' "$CESE_LC"
   if ! grep -q 'fastra.completion.manualTrigger' "$CESE_LC" 2>/dev/null; then
     echo "✗ FEHLER: Manual-Completion-Patch hat NICHT gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
     exit 1
@@ -274,6 +278,28 @@ if grep -q 'guard let completionItems = await delegate.completionSuggestionsRequ
   # SPM behandelt Checkout-Sources als unveränderlich. Deshalb wie bei den
   # anderen CESE-Patches das Modul löschen, damit der Produktbuild den Fix
   # wirklich enthält statt eine alte Binärdatei zu verwenden.
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4b-3. Patch CodeEditSourceEditor — Delegate erfährt vom Fenster-Schließen.
+#
+# `CodeSuggestionDelegate.completionWindowDidClose()` ist im Protokoll
+# deklariert, wird von CESE aber NIRGENDS aufgerufen. Fastras Delegate hält
+# darüber seinen `windowIsOpen`-Zustand — ohne den Aufruf blieb er nach dem
+# ERSTEN Popup für immer wahr, und die Ein-Zeichen-Mindestlänge des offenen
+# Fensters galt ab da dauerhaft (Selbsttestbefund completion4d, 2026-08-09:
+# Auto-Popup schon bei einem Zeichen). Der Patch meldet das Schließen im
+# zentralen willClose() des Modells; der Aufruf ist idempotent.
+if ! grep -q 'Fastra-Patch: Delegate erfaehrt vom Schliessen' "$CESE_SUGGESTIONS" 2>/dev/null; then
+  echo "→ Patche CodeEditSourceEditor (completionWindowDidClose wird gemeldet)"
+  chmod u+w "$CESE_SUGGESTIONS"
+  /usr/bin/perl -i -0pe 's/    func willClose\(\) \{\n        items\.removeAll\(\)/    func willClose() {\n        delegate?.completionWindowDidClose()  \/\/ Fastra-Patch: Delegate erfaehrt vom Schliessen (upstream nie aufgerufen)\n        items.removeAll()/' "$CESE_SUGGESTIONS"
+  if ! grep -q 'Fastra-Patch: Delegate erfaehrt vom Schliessen' "$CESE_SUGGESTIONS" 2>/dev/null; then
+    echo "✗ FEHLER: willClose-Delegate-Patch hat NICHT gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
+    exit 1
+  fi
   rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
   rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule

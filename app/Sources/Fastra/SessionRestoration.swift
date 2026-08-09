@@ -329,8 +329,13 @@ enum SessionRestorationCoordinator {
             completion()
             return
         }
+        // 10 s Wartefenster (200 × 50 ms): Unter Fremdlast kann SwiftUIs
+        // erstes Fenster mehrere Sekunden brauchen. Mit den früheren 2 s gab
+        // der Restore dann komplett auf und ließ ALLE weiteren Fenster weg —
+        // im Dauertest kam nach dem Neustart nur 1 von 3 Fenstern zurück
+        // (Soak-Befund 2026-08-09, unter kontrollierter Fremdlast).
         waitForPrimaryWindow(primaryWorkspace, session: availableSession,
-                             defaults: defaults, remainingAttempts: 40,
+                             defaults: defaults, remainingAttempts: 200,
                              completion: completion)
     }
 

@@ -506,7 +506,11 @@ private struct GitChangeRow: View {
         default:
             clickCount = 1
         }
-        pendingSingleOpen.replace(with: nil)
+        // Modifier-Klicks bauen nur die AUSWAHL um — ein zuvor geplanter
+        // Einzelklick-Öffner einer anderen Zeile bleibt bestehen (der Nutzer
+        // hat diese Datei angefordert; Selbsttest gitmultidiscard schreibt
+        // den Vertrag fest). Nur ein neuer PLAIN-Klick oder Doppelklick
+        // ersetzt bzw. storniert den Warteposten.
         if flags == .command {
             onSelectCommand()
             return
@@ -516,6 +520,7 @@ private struct GitChangeRow: View {
             return
         }
         guard flags.isEmpty else { return }
+        pendingSingleOpen.replace(with: nil)
         if clickCount >= 2 {
             guard change.isPathActionable else { return }
             openDiff()
