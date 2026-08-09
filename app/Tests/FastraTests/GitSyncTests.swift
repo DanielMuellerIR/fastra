@@ -431,6 +431,13 @@ private struct AsyncTestTimeout: Error {}
 /// Fenster zeigen nur eine Erstfrage …" und „Erster Pull persistiert Rebase …"
 /// fielen nur unter Last). 20 Sekunden bleiben klar unter den Zeitgrenzen der
 /// Tests und machen ein echtes Steckenbleiben weiter sicher rot.
+///
+/// `@MainActor` wie die Workspace-Pull-Suite (Begründung dort): So liest auch
+/// die Poll-Closure Workspace-Zustand nie neben einer Main-Queue-Completion.
+/// Während `Task.sleep` ist der Main-Thread frei, die Completions laufen
+/// dazwischen. Für die übrigen Aufrufer (Auto-Fetch-Tests) ist die Isolation
+/// folgenlos: Deren Bedingungen lesen nur intern verriegelte Zähler.
+@MainActor
 private func waitUntil(_ description: String = "Asynchroner Testzustand wurde nicht erreicht",
                        timeout: Duration = .seconds(20),
                        _ condition: @escaping () -> Bool) async throws {
@@ -620,6 +627,15 @@ struct GitAutoFetchControllerTests {
     }
 }
 
+// Die Suite treibt Workspaces, deren Completions per `DispatchQueue.main.async`
+// zurückkommen und dabei auch EINFACHE (nicht-`@Published`) Instanzvariablen
+// anfassen. Von einem eigenen Test-Thread aus wäre das dieselbe Absturzklasse,
+// die am 2026-08-09 in GitConflictAndAdvancedTests als SIGSEGV belegt wurde
+// (siehe dort und AGENTS.md, „Bekannte technische Fallen"). Im Produkt läuft
+// der Workspace vollständig auf dem Main-Thread; die MainActor-Tests bilden
+// genau das ab. Die übrigen Suiten dieser Datei treiben nur Store, Coordinator
+// und Controller, die intern verriegelt sind; sie bleiben parallel.
+@MainActor
 @Suite("Workspace-Pull", .serialized)
 struct GitWorkspacePullTests {
     @Test("Erster Pull persistiert Rebase und startet weder Stash noch Push")

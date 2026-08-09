@@ -510,6 +510,15 @@ private final class ControlledDiffExecutor: GitCommandExecuting {
     }
 }
 
+// `@MainActor` für Aufbau und Lifecycle-Tests: Sie treiben einen Workspace,
+// dessen Diff- und Store-Completions per `DispatchQueue.main.async`
+// zurückkommen und dabei auch EINFACHE (nicht-`@Published`) Instanzvariablen
+// anfassen (Tab-Liste, Diff-Ladegenerationen). Von einem eigenen Test-Thread
+// aus wäre das dieselbe Absturzklasse, die am 2026-08-09 in
+// GitConflictAndAdvancedTests als SIGSEGV belegt wurde (siehe dort und
+// AGENTS.md, „Bekannte technische Fallen"). Die Parser- und Request-Tests
+// dieser Datei berühren keinen Workspace und bleiben parallel.
+@MainActor
 private func makeDiffWorkspace() async throws
     -> (ControlledDiffExecutor, Workspace, UserDefaults, String, URL) {
     let executor = ControlledDiffExecutor()
@@ -562,6 +571,8 @@ private func gitResult(_ text: String, exitCode: Int32 = 0) -> GitResult {
     GitResult(exitCode: exitCode, stdoutData: Data(text.utf8), stderrData: Data())
 }
 
+// MainActor: treibt einen Workspace (Begründung an makeDiffWorkspace).
+@MainActor
 @Test("Geschlossener Diff-Tab wird durch verspätete Completion nicht neu angelegt")
 func sideBySideClosedTabStaysClosed() async throws {
     guard GitRunner.isAvailable else { return }
@@ -575,10 +586,15 @@ func sideBySideClosedTabStaysClosed() async throws {
     workspace.closeTab(id: tabID)
     #expect(executor.isCancelled(4))
     executor.complete(4, result: gitResult(normalPatch))
+    // Die verspätete Completion springt auf die Main-Queue; erst nach dem
+    // Drain ist entschieden, ob sie den Tab fälschlich neu angelegt hätte.
+    await drainMainQueue()
     #expect(!workspace.tabs.contains(where: { $0.id == tabID }))
     #expect(!workspace.tabs.contains(where: { $0.gitDiffRequest != nil }))
 }
 
+// MainActor: treibt einen Workspace (Begründung an makeDiffWorkspace).
+@MainActor
 @Test("Trailing Diff-Refresh gewinnt gegen laufenden alten Read")
 func sideBySideRefreshDoesNotDeduplicateRunningRead() async throws {
     guard GitRunner.isAvailable else { return }
@@ -608,6 +624,8 @@ func sideBySideRefreshDoesNotDeduplicateRunningRead() async throws {
     #expect(!rows.contains(where: { $0.after == "alt-read" }))
 }
 
+// MainActor: treibt einen Workspace (Begründung an makeDiffWorkspace).
+@MainActor
 @Test("Untracked Diff akzeptiert Exit 1 auch beim Refresh")
 func sideBySideUntrackedRefreshAcceptsDifferenceExit() async throws {
     guard GitRunner.isAvailable else { return }
@@ -642,11 +660,30 @@ func sideBySideUntrackedRefreshAcceptsDifferenceExit() async throws {
 
 private struct DiffStateTimeout: Error {}
 
+/// Lässt alle bereits eingereihten Main-Queue-Blöcke durchlaufen, bevor der
+/// Test weiter prüft. Nötig nach einer Completion, die NICHT mehr wirken soll:
+/// Ihre Verarbeitung springt per `DispatchQueue.main.async` auf die Main-Queue,
+/// und ein MainActor-Test käme ihr sonst zuvor — die negative Erwartung wäre
+/// dann immer erfüllt, auch wenn die Verarbeitung fälschlich weiterliefe. Der
+/// Continuation-Block reiht sich HINTER die schon wartenden Blöcke ein (FIFO
+/// der Main-Queue), danach ist die verspätete Completion sicher verarbeitet.
+@MainActor
+private func drainMainQueue() async {
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        DispatchQueue.main.async { continuation.resume() }
+    }
+}
+
 // Die Frist ist bewusst großzügig: Sie ist keine Leistungsaussage, sondern nur
 // eine Obergrenze gegen ewiges Warten. Die Schleife endet, sobald die Bedingung
 // zutrifft — ein erfüllter Zustand kostet also nichts. Auf ausgelasteten
 // Maschinen (parallele Testsuite, CI) kann eine knappe Frist dagegen zuschlagen,
 // bevor der erwartete Zustand überhaupt publiziert werden konnte.
+//
+// `@MainActor` wie die Lifecycle-Tests (Begründung an makeDiffWorkspace): So
+// liest auch die Poll-Closure Workspace-Zustand nie neben einer
+// Main-Queue-Completion. Während `Task.sleep` ist der Main-Thread frei.
+@MainActor
 private func waitForDiffState(_ description: String, timeout: Duration = .seconds(30),
                               _ condition: @escaping () -> Bool) async throws {
     let clock = ContinuousClock()

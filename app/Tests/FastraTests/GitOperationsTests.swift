@@ -102,6 +102,11 @@ private func porcelainSnapshot(oid: String) -> Data {
 /// `@Published` in `willSet` sendet, wird das Ergebnis erst über die Main-Queue
 /// zurückgereicht — dort stellt der Store zu, danach ist die Zuweisung sicher
 /// abgeschlossen und der gelesene Property-Wert stimmt.
+///
+/// `@MainActor` wie der Fan-out-Test selbst (Begründung dort): So entsteht das
+/// Combine-Abo auf den Workspace-Publishern nie neben einer
+/// Main-Queue-Zustellung. Während des `await` ist der Main-Thread frei.
+@MainActor
 private func waitForOperationState(_ state: GitOperationState,
                                    _ first: Workspace,
                                    _ second: Workspace) async {
@@ -281,6 +286,16 @@ struct GitRepositoryStoreTests {
         #expect(Set(delivered.snapshot()) == ["a:shared", "b:shared"])
     }
 
+    // `@MainActor` nur für diesen Test der Suite: Er ist der einzige hier, der
+    // Workspace-Instanzen treibt. Deren Completions kommen per
+    // `DispatchQueue.main.async` zurück und fassen dabei auch EINFACHE
+    // (nicht-`@Published`) Instanzvariablen an. Liefe der Test auf einem
+    // eigenen Thread, läse er unsynchronisiert neben Main — dieselbe
+    // Absturzklasse, die am 2026-08-09 in GitConflictAndAdvancedTests als
+    // SIGSEGV belegt wurde (siehe dort und AGENTS.md, „Bekannte technische
+    // Fallen"). Die übrigen Tests der Suite treiben nur Store und Coordinator,
+    // die intern verriegelt und bewusst threadsicher sind; sie bleiben parallel.
+    @MainActor
     @Test("Zwei Workspaces erhalten denselben zentral erkannten Merge-Zustand",
           .timeLimit(.minutes(1)))
     func operationFansOutToTwoWorkspaces() async throws {
@@ -499,6 +514,24 @@ private func waitForStoreSnapshot(_ store: GitRepositoryStore, repository: URL,
     throw StoreRealTestError.timeout
 }
 
+/// Lässt alle bereits eingereihten Main-Queue-Blöcke durchlaufen, bevor der
+/// Test weiter prüft. Nötig nach einer Completion, die NICHT mehr wirken soll:
+/// Ihre Verarbeitung springt per `DispatchQueue.main.async` auf die Main-Queue,
+/// und ein MainActor-Test käme ihr sonst zuvor — die negative Erwartung wäre
+/// dann immer erfüllt, auch wenn die Verarbeitung fälschlich weiterliefe. Der
+/// Continuation-Block reiht sich HINTER die schon wartenden Blöcke ein (FIFO
+/// der Main-Queue), danach ist die verspätete Completion sicher verarbeitet.
+@MainActor
+private func drainMainQueue() async {
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        DispatchQueue.main.async { continuation.resume() }
+    }
+}
+
+// MainActor aus demselben Grund wie der Workspace-Fan-out-Test oben: Beide
+// Tests treiben einen Workspace, dessen Completions auf der Main-Queue
+// zurückkommen (siehe AGENTS.md, „Bekannte technische Fallen").
+@MainActor
 @Suite("Projektgebundene Git-Aktionsketten", .serialized)
 struct GitActionContextTests {
     private func makeWorkspace() -> (ControlledGitExecutor, Workspace, UserDefaults, String) {
@@ -552,11 +585,14 @@ struct GitActionContextTests {
 
         workspace.openProject(at: repository("action-b"))
         executor.complete(8, with: success())
+        // Die add-Completion springt auf die Main-Queue; erst nach dem Drain
+        // ist entschieden, ob sie fälschlich noch einen Commit gestartet hätte.
+        await drainMainQueue()
         #expect(!executor.startedArguments.contains { $0.first == "commit" })
     }
 
     @Test("Projektwechsel während Push-Preflight startet keinen Push im neuen Repo")
-    func projectSwitchStopsPushChain() {
+    func projectSwitchStopsPushChain() async {
         guard GitRunner.isAvailable else {
             Issue.record("git ist in der Testumgebung nicht verfügbar")
             return
@@ -576,6 +612,9 @@ struct GitActionContextTests {
 
         workspace.openProject(at: repository("push-b"))
         executor.complete(5, with: success(Data("ssh-target\n".utf8)))
+        // Wie oben: Erst der Drain lässt die Preflight-Completion wirklich
+        // laufen, sonst wäre die Push-Verneinung immer erfüllt.
+        await drainMainQueue()
         #expect(!executor.startedArguments.contains { $0.first == "push" })
     }
 }
