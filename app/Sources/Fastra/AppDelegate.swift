@@ -90,6 +90,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Hält den Local-Event-Monitor am Leben — sonst wird er deinitialisiert.
     private var keyMonitor: Any?
+    /// Einmal-Beobachter für die Kaltstart-Auslieferung gepufferter
+    /// Open-URLs — meldet sich nach getaner Arbeit ab (siehe Registrierung).
+    private var workspaceReadyObserver: NSObjectProtocol?
     /// Monitor auf Modifier-Änderungen — siehe installFlagsMonitor.
     private var flagsMonitor: Any?
     /// Rechtsklick-Menü des Editors (Zeilen sortieren, Duplikate,
@@ -138,13 +141,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Sobald der Workspace bereit ist (Notification aus `Workspace.init`),
         // beim Kaltstart gepufferte Finder-/CLI-Open-URLs ausliefern (K1).
-        // codereview-ok: AppDelegate ist App-Lebenszeit-Singleton, Closure nutzt [weak self], Observer wird bei Prozess-Ende abgeräumt — kein Leak (2026-07-01)
-        NotificationCenter.default.addObserver(
+        // Der Beobachter ist ein EINMALZWECK für genau diesen Kaltstart-Fall:
+        // Bliebe er dauerhaft registriert, stieße JEDES später erzeugte
+        // Fenster eine Nachlieferung aus dem Öffnen-Puffer an — so kam ein
+        // bereits geschlossenes Fenster beim Öffnen einer weiteren Datei
+        // zurück (Dauertest-Befund 2026-08-07/08, mit 1.63.3 reproduziert).
+        // Nach der ersten Auslieferung NACH Kaltstart-Ende meldet er sich ab.
+        workspaceReadyObserver = NotificationCenter.default.addObserver(
             forName: .fastraWorkspaceReady,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.deliverPendingOpenFiles()
+            guard let self else { return }
+            self.deliverPendingOpenFiles()
+            if self.openFilesInbox.launchDidFinish,
+               let observer = self.workspaceReadyObserver {
+                NotificationCenter.default.removeObserver(observer)
+                self.workspaceReadyObserver = nil
+            }
         }
 
         // Menüleisten-„Text"-Operationen (BBEdit-Basics) auf den aktiven Editor

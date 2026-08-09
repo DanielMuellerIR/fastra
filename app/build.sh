@@ -209,6 +209,48 @@ if ! grep -qF 'scrollToVisible: controller.textView?.window?.isKeyWindow == true
   exit 1
 fi
 
+# 4c-2. Wurzelbehandlung des Nachzieh-Scrollens (Dauertest 2026-08-07/09):
+# Nach einem Treffer-Sprung schreibt der Sprung-Pfad eine CursorPosition mit
+# range == .notFound (nur Zeile/Spalte — bewusst, driftfreie Adressierung).
+# Der Coordinator verwirft die aufgelöste Rückmeldung im
+# isUpdatingFromRepresentable-Fenster, State und Controller konvergieren also
+# NIE — der Zweig oben feuerte deshalb bei jeder SwiftUI-Neubewertung erneut
+# und konnte die aktive Ansicht beim Markieren mit der Maus nachziehen. Der
+# Vergleich läuft jetzt über controller.resolveCursorPosition: Ein bereits
+# angewandter Sprung gilt damit als „gleich", der Zweig wird still.
+if ! grep -qF 'Vergleich ueber resolveCursorPosition' "$CESE_SE" 2>/dev/null; then
+  echo "→ Patche CodeEditSourceEditor (4c-2: Sprungvergleich über resolveCursorPosition)"
+  chmod u+w "$CESE_SE"
+  /usr/bin/python3 - "$CESE_SE" <<'PYEOF'
+import sys, re
+
+path = sys.argv[1]
+src = open(path).read()
+old = ('        if let cursorPositions = state.cursorPositions, '
+       'cursorPositions != controller.cursorPositions {'
+       '  // Fastra-Patch: upstream verglich state.cursorPositions mit sich selbst (immer false) -> externer Sprung wirkte nie')
+new = ('        if let cursorPositions = state.cursorPositions,\n'
+       '           cursorPositions.compactMap({ controller.resolveCursorPosition($0) }) != controller.cursorPositions {'
+       '  // Fastra-Patch: Vergleich ueber resolveCursorPosition -- ein angewandter Sprung (nur Zeile/Spalte, range == .notFound) gilt sonst nie als gleich; der Zweig feuerte dann bei jeder SwiftUI-Neubewertung erneut und zog die aktive Ansicht nach (Dauertest-Wurzel 2026-08-07/09)')
+if old not in src:
+    raise SystemExit(f"{path}: 4c-Vergleichszeile nicht gefunden — Patch 4c-2 pruefen")
+src = src.replace(old, new, 1)
+# Doppelten Kommentar aus einer frueheren Migration einmalig deduplizieren.
+dup = ('            // Fastra-Patch: Scrollen nur im Key-Window -- ein Hintergrundfenster darf bei SwiftUI-Neubewertungen nie ungefragt scrollen (Dauertest-Befund 2026-08-09)\n'
+       '            // Fastra-Patch: Scrollen nur im Key-Window -- ein Hintergrundfenster darf bei SwiftUI-Neubewertungen nie ungefragt scrollen (Dauertest-Befund 2026-08-09)\n')
+single = ('            // Fastra-Patch: Scrollen nur im Key-Window -- ein Hintergrundfenster darf bei SwiftUI-Neubewertungen nie ungefragt scrollen (Dauertest-Befund 2026-08-09)\n')
+src = src.replace(dup, single)
+open(path, "w").write(src)
+PYEOF
+  if ! grep -qF 'Vergleich ueber resolveCursorPosition' "$CESE_SE" 2>/dev/null; then
+    echo "✗ FEHLER: 4c-2-Patch (resolveCursorPosition-Vergleich) hat NICHT gegriffen. Build abgebrochen." >&2
+    exit 1
+  fi
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # 4c1. Patch CodeEditSourceEditor — verworfene Auto-Vervollständigung sauber
 #       zurücksetzen.
 #

@@ -9,6 +9,33 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.67.1] — 2026-08-09
+
+### Behoben
+
+Zwei offene Funde aus dem langen Dauertest (2026-08-07/08):
+
+- **Ein geschlossenes Fenster kommt beim Öffnen einer weiteren Datei nicht
+  mehr zurück.** Der Kaltstart-Beobachter, der gepufferte Finder-Open-URLs
+  ausliefert, blieb dauerhaft registriert — jedes später erzeugte Fenster
+  stieß damit eine Nachlieferung aus dem Öffnen-Puffer an und konnte Dateien
+  eines längst geschlossenen Fensters wieder öffnen (mit 1.63.3
+  reproduziert). Der Beobachter meldet sich jetzt nach der ersten
+  Auslieferung nach Kaltstart-Ende ab; `sessionrestore` und `coldopen`
+  prüfen die Zustellwege weiter.
+- **Wurzel des Nachzieh-Scrollens behoben** (CodeEditSourceEditor-Patch
+  4c-2): Nach einem Treffer-Sprung verglich der Editor-Reconcile den
+  SwiftUI-Zustand (nur Zeile/Spalte, `range == .notFound`) mit den
+  aufgelösten Controller-Positionen — nie gleich, der Zweig feuerte bei
+  jeder SwiftUI-Neubewertung erneut und konnte die aktive Ansicht beim
+  Markieren mit der Maus nachziehen. Der Vergleich läuft jetzt über
+  `controller.resolveCursorPosition`; ein bereits angewandter Sprung gilt
+  als gleich und der Zweig wird still. Sprung- und Scroll-Selbsttests
+  (`jump`, `bgscroll`, `scrolljump`, `dragscroll`, `dragnoscroll`,
+  `multisearch`, `markdownjump`) bleiben grün; die ursprüngliche
+  Kriech-Beobachtung war nicht deterministisch reproduzierbar und bleibt
+  zur Bestätigung im Blick.
+
 ## [v1.67.0] — 2026-08-09
 
 ### Verbessert
