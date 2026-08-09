@@ -111,6 +111,12 @@ private struct AdvancedTimeout: Error {}
 /// dieser Test aber mit fremder Prozess- und Main-Queue-Last, und die alten drei
 /// Sekunden reichten dafür lastabhängig nicht. 20 Sekunden bleiben klar unter den
 /// Zeitgrenzen der Tests und machen ein echtes Steckenbleiben weiter sicher rot.
+///
+/// `@MainActor` wie die Suites dieser Datei (Begründung an der
+/// Konfliktmarker-Suite): So läuft auch die Poll-Closure auf dem Main-Thread
+/// und liest Workspace-Zustand nie neben einer Main-Queue-Completion. Während
+/// `Task.sleep` ist der Main-Thread frei, die Completions laufen dazwischen.
+@MainActor
 private func waitAdvanced(_ description: String,
                           timeout: Duration = .seconds(20),
                           _ condition: @escaping () -> Bool) async throws {
@@ -260,6 +266,17 @@ private func makeMergeConflict(in root: URL) async throws -> URL {
     return file
 }
 
+// Alle drei Suites dieser Datei laufen auf dem MainActor: Die Workspace-
+// Completions (Konflikt-Inspektion, Git-Mutation, Identität) kommen per
+// `DispatchQueue.main.async` zurück und lesen/schreiben dabei auch EINFACHE
+// (nicht-`@Published`) Instanzvariablen wie `gitConflictInspectionRequestIDs`.
+// Trieben die Tests denselben Workspace von einem eigenen Thread, liefe dieser
+// Zugriff unsynchronisiert neben Main — beobachtet am 2026-08-09 als SIGSEGV
+// beim Dictionary-Lookup in der Inspektions-Completion. Im Produkt läuft der
+// Workspace vollständig auf dem Main-Thread; die MainActor-Tests bilden genau
+// das ab. Blockierende Warterei gibt es hier nur in Callbacks, die auf
+// GitRunner-Hintergrund-Threads laufen; gewartet wird per `waitAdvanced`.
+@MainActor
 @Suite("Konfliktmarker", .serialized)
 struct GitConflictMarkerTests {
     @Test("Git-eigener update-index-Lock koppelt Prüfung und Stage-0-Mutation",
@@ -2012,6 +2029,8 @@ struct GitConflictMarkerTests {
     }
 }
 
+// MainActor aus demselben Grund wie die Konfliktmarker-Suite (siehe dort).
+@MainActor
 @Suite("Sichere Git-Mutationen", .serialized)
 struct GitValidatedMutationTests {
     @Test("Abbruch und Mutationsschutz entscheiden atomar; genau der erste gewinnt")
@@ -2771,6 +2790,8 @@ struct GitValidatedMutationTests {
     }
 }
 
+// MainActor aus demselben Grund wie die Konfliktmarker-Suite (siehe dort).
+@MainActor
 @Suite("Git-Identität", .serialized)
 struct GitIdentityTests {
     @Test("Lokale und globale Identity-Paare werden mit isoliertem HOME real geschrieben")

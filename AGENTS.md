@@ -359,6 +359,16 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   dasselbe alte Objekt doppelt frei. Wächter: Vorwärm-Aufruf in
   `Workspace.init` VOR der SearchRunner-Erzeugung, Regressionstest
   `WorkspaceParallelStressTests`.
+- Verwandte Falle nur der Testsuite: Workspace-Completions kommen per
+  `DispatchQueue.main.async` zurück und fassen dabei auch EINFACHE
+  (nicht-`@Published`) Instanzvariablen an, etwa
+  `gitConflictInspectionRequestIDs`. Ein Test, der denselben Workspace von
+  einem eigenen Thread treibt, liest und schreibt dann unsynchronisiert neben
+  Main — beobachtet am 2026-08-09 als SIGSEGV beim Dictionary-Lookup in der
+  Konflikt-Inspektions-Completion. Solche Tests gehören mitsamt ihren
+  Warte-Helfern auf den `@MainActor` (siehe `GitConflictAndAdvancedTests`);
+  das bildet zugleich das Produkt ab, dessen Workspace vollständig auf dem
+  Main-Thread läuft. Im Produktcode ist deshalb nichts zu „reparieren“.
 
 - **`NSApp.windows` ist NICHT nach Vordergrund sortiert.** Wer daraus „das
   erste sichtbare Fenster" nimmt, trifft bei mehreren offenen Dokumenten ein
