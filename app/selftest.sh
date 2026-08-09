@@ -237,6 +237,9 @@ for t in "${TESTS[@]}"; do
 
     if ! wait_for_result "$errfile"; then
         echo "SELFTEST $t: FAIL — keine Ergebnis-Zeile binnen ${TIMEOUT_SECS}s (Runner-Timeout)"
+        # Beim Timeout bleibt die stderr-Datei zur Diagnose liegen —
+        # der Pfad wird dafür sichtbar genannt.
+        echo "  stderr: $errfile"
         summary+="✗ $t (Timeout)\n"
         real_fail_count=$((real_fail_count + 1))
         kill_leftovers
@@ -250,15 +253,19 @@ for t in "${TESTS[@]}"; do
     if [[ "$line" == *": PASS"* ]]; then
         pass_count=$((pass_count + 1))
         summary+="✓ $t\n"
+        rm -f -- "$errfile"
     elif [[ "$line" == *"Umgebungsproblem"* ]]; then
         # Vom Test selbst als Umgebungsproblem ausgewiesen (z.B. Fokus
         # wurde vom aktiv arbeitenden Nutzer zurückgeholt) — gesondert
         # zählen, damit echte Funktionsfehler nicht untergehen.
         env_fail_count=$((env_fail_count + 1))
         summary+="⚠ $t (Umgebung)\n"
+        rm -f -- "$errfile"
     else
         real_fail_count=$((real_fail_count + 1))
         summary+="✗ $t\n"
+        # Bei echten FAILs bleibt die stderr-Datei zur Diagnose liegen.
+        echo "  stderr: $errfile"
     fi
     cleanup_coldopen_fixture
 done

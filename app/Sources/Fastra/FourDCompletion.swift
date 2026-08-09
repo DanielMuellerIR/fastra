@@ -196,12 +196,42 @@ final class FourDCompletionDelegate: ObservableObject, CodeSuggestionDelegate {
     /// Liste auch unter der automatischen Mindestlänge weiterfiltern.
     private var windowIsOpen = false
 
+    /// Vom CESE-Patch (`build.sh` 4b-2) per Notification gesetzt: Der nächste
+    /// Vorschlags-Request stammt aus dem manuellen Aufruf (Esc/⌃Leertaste)
+    /// und darf schon ab EINEM Zeichen liefern. Beim Lesen verbraucht.
+    private var manualTriggerArmed = false
+    private var manualTriggerObserver: NSObjectProtocol?
+
+    static let manualTriggerNotification =
+        Notification.Name("fastra.completion.manualTrigger")
+
+    init() {
+        manualTriggerObserver = NotificationCenter.default.addObserver(
+            forName: Self.manualTriggerNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            // queue: .main garantiert den Main-Thread; die Klasse ist
+            // MainActor-isoliert.
+            MainActor.assumeIsolated { self?.manualTriggerArmed = true }
+        }
+    }
+
+    deinit {
+        if let manualTriggerObserver {
+            NotificationCenter.default.removeObserver(manualTriggerObserver)
+        }
+    }
+
     /// Vorschläge zum aktuellen Cursor. `nil` = nichts anzeigen.
     private func suggestions(textView: TextViewController,
                              cursorPosition: CursorPosition,
                              minimumLength: Int) -> [CodeSuggestionEntry]? {
         let text = textView.textView.string
         guard cursorPosition.range.length == 0,
+              // In Kommentaren und String-Literalen sind Methodennamen-
+              // Vorschläge sinnlos und stören beim Prosa-Tippen
+              // (Review 2026-08-02).
+              !FourDSignatureHelpLogic.isInsideCommentOrString(
+                  in: text, utf16Location: cursorPosition.range.location),
               let range = FourDCompletionLogic.prefixRange(
                 in: text, utf16CursorLocation: cursorPosition.range.location
               ),
@@ -220,9 +250,13 @@ final class FourDCompletionDelegate: ObservableObject, CodeSuggestionDelegate {
         textView: TextViewController,
         cursorPosition: CursorPosition
     ) async -> (windowPosition: CursorPosition, items: [CodeSuggestionEntry])? {
-        // Beim manuellen Öffnen (Esc/⌃Leertaste) genügt EIN Zeichen; das
-        // automatische Tipp-Popup bleibt unaufdringlich (ab zwei Zeichen).
-        let minimum = windowIsOpen
+        // Beim manuellen Öffnen (Esc/⌃Leertaste, vom CESE-Patch gemeldet)
+        // genügt EIN Zeichen; das automatische Tipp-Popup bleibt
+        // unaufdringlich (ab zwei Zeichen). Ein offenes Fenster filtert
+        // ebenfalls ab einem Zeichen weiter.
+        let manual = manualTriggerArmed
+        manualTriggerArmed = false
+        let minimum = (windowIsOpen || manual)
             ? 1 : FourDCompletionLogic.automaticMinimumPrefixLength
         guard let items = suggestions(textView: textView,
                                       cursorPosition: cursorPosition,

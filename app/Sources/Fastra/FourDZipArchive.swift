@@ -67,6 +67,12 @@ enum FourDZipArchive {
               UInt64(directoryOffset) + UInt64(directorySize) <= fileSize else {
             return nil
         }
+        // Das Feld ist 32 Bit breit — ein beschädigtes oder bösartiges Archiv
+        // könnte bis ~4 GiB Verzeichnis deklarieren, die unten am Stück in
+        // den Speicher gelesen würden. Reale 4DZ-Verzeichnisse liegen im
+        // niedrigen Megabyte-Bereich (max. 65.534 Einträge à ~46 Bytes plus
+        // Namen); 32 MiB sind eine großzügige, ehrliche Obergrenze.
+        guard directorySize <= 32 * 1024 * 1024 else { return nil }
         guard let directory = read(file, offset: UInt64(directoryOffset),
                                    count: directorySize) else { return nil }
 

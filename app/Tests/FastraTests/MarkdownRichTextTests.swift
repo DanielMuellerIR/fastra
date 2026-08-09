@@ -493,4 +493,20 @@ struct MarkdownRichTextTests {
         guard !needle.isEmpty else { return 0 }
         return haystack.components(separatedBy: needle).count - 1
     }
+
+    @Test("Offene HTML-Elemente schließen erst am Dokumentende")
+    func openElementsCloseAtDocumentEnd() throws {
+        // Ein nie geschlossenes <details> soll den nachfolgenden Absatz
+        // einschachteln — das erzwungene </details> kommt deshalb ganz ans
+        // Dokumentende, nicht an den letzten HTML-Knoten mitten im Text
+        // (Review 2026-08-02).
+        let fragment = MarkdownRichText.htmlFragment(
+            markdown: "<details>\n\nAbsatz im Element.\n"
+        )
+        let open = try #require(fragment.range(of: "<details>"))
+        let close = try #require(fragment.range(of: "</details>"))
+        let paragraph = try #require(fragment.range(of: "Absatz im Element."))
+        #expect(open.lowerBound < paragraph.lowerBound)
+        #expect(paragraph.upperBound <= close.lowerBound)
+    }
 }

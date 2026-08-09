@@ -1126,8 +1126,16 @@ enum TextOperations {
         let ns = text as NSString
         guard ns.length > 0 else { return nil }
         let full = NSRange(location: 0, length: ns.length)
-        let range = selection.length > 0 ? NSIntersectionRange(selection, full) : full
+        var range = selection.length > 0 ? NSIntersectionRange(selection, full) : full
         guard range.length > 0 else { return nil }
+        if scalarExactChangeCheck {
+            // Rangegrenzen nie mitten durch eine zusammengesetzte Sequenz
+            // legen: Endete die Auswahl zwischen Basiszeichen und dessen
+            // U+FE0F, entstünde beim Ergänzen ein DOPPELTER Selektor, und
+            // ein zerschnittenes Surrogatpaar ergäbe kaputte Zeichen
+            // (Review 2026-08-02).
+            range = ns.rangeOfComposedCharacterSequences(for: range)
+        }
         let original = ns.substring(with: range)
         let transformed = transform(original)
         let unchanged = scalarExactChangeCheck

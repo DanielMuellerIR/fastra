@@ -361,6 +361,9 @@
 "Die Änderungen an diesen Dateien gehen verloren. Das lässt sich nicht rückgängig machen." = "The changes to these files will be lost. This cannot be undone.";
 "Eine nicht versionierte Datei wird dabei gelöscht." = "One untracked file will be deleted.";
 "%ld nicht versionierte Dateien werden dabei gelöscht." = "%ld untracked files will be deleted.";
+"„%@“ konnte nicht gelöscht werden: %@" = "‘%@’ could not be deleted: %@";
+"%ld Datei(en) konnten nicht gelöscht werden: %@" = "%ld file(s) could not be deleted: %@";
+"Kein aktiver Branch (Detached HEAD) — es ist unklar, wohin der Push gehen soll. Erst einen Branch auschecken." = "No active branch (detached HEAD)—it is unclear where the push should go. Check out a branch first.";
 "Änderungen bereitstellen (%ld Dateien)" = "Stage Changes (%ld Files)";
 "Änderungen verwerfen (%ld Dateien)" = "Discard Changes (%ld Files)";
 "Aus Bereitstellung nehmen (%ld Dateien)" = "Unstage (%ld Files)";

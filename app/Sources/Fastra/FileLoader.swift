@@ -90,42 +90,37 @@ enum FileLoader {
 
     static func load(url: URL, forcedEncoding: String.Encoding? = nil,
                      largeFileThreshold: UInt64 = largeFileThreshold) throws -> LoadedFile {
-        // Typ und Größe VOR dem ersten Öffnen klären — beides ist eine
-        // Sicherheitsbedingung, keine Bequemlichkeit:
+        // Typ und Größe am GEÖFFNETEN Deskriptor klären — nicht vorab am
+        // Pfad. Beides ist eine Sicherheitsbedingung, keine Bequemlichkeit:
         // 1. Nicht reguläre Pfade (FIFO, Socket, Gerätedatei, Verzeichnis)
-        //    werden gar nicht erst geöffnet. Schon `open(2)` auf eine FIFO
-        //    ohne Schreiber blockiert unbegrenzt, und die Binär-Probe weiter
-        //    unten würde den aufrufenden Thread dauerhaft festhalten.
+        //    dürfen nie gelesen werden. `openRegularFile` öffnet mit
+        //    O_NONBLOCK — schon `open(2)` auf eine FIFO ohne Schreiber würde
+        //    sonst unbegrenzt blockieren — und weist alles Nicht-Reguläre am
+        //    Deskriptor ab. Weil Typ, Größe und Probe am SELBEN geöffneten
+        //    Dateiobjekt hängen, kann ein Symlink zwischen Prüfung und Lesen
+        //    nicht mehr auf ein anderes Ziel umgebogen werden (TOCTOU,
+        //    Review 2026-08-02).
         // 2. Ein Fehler beim Ermitteln der Attribute darf NICHT als Größe 0
         //    durchgehen. Sonst gälte eine riesige Datei als winzig, umginge
         //    die Abschnitts-/Hex-Grenze und landete komplett im Speicher.
-        // Gefragt wird über den symlink-aufgelösten Pfad: `isRegularFile`
-        // beschreibt sonst den Link selbst, und ein Link auf eine reguläre
-        // Datei — völlig legitim — würde abgewiesen und meldete obendrein die
-        // Größe des Links statt die der Zieldatei. Ein toter Link löst auf
-        // einen nicht existierenden Pfad auf und wird damit `unreadable`.
-        let attributes: URLResourceValues
+        //    `fstat` liefert die echte Größe des Zielobjekts; ein toter Link
+        //    scheitert schon beim Öffnen und wird `unreadable`.
+        // Die Null-Byte-Probe ist die verbindliche Binär-Erkennung aus der
+        // Roadmap. Nur einen kleinen Anfang lesen — auch eine 20-GB-Datei
+        // wird dadurch praktisch sofort als Hex-View geöffnet.
+        let probe: Data
+        let fileSize: UInt64
         do {
-            attributes = try url.resolvingSymlinksInPath()
-                .resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            let (descriptor, info) = try FileSnapshot.openRegularFile(at: url)
+            fileSize = UInt64(max(0, info.st_size))
+            let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+            probe = (try? handle.read(upToCount: binaryProbeSize)) ?? Data()
+            try? handle.close()
+        } catch FileSnapshotReadError.notRegularFile {
+            throw LoadError.notRegularFile
         } catch {
             throw LoadError.unreadable
         }
-        guard let isRegularFile = attributes.isRegularFile else { throw LoadError.unreadable }
-        guard isRegularFile else { throw LoadError.notRegularFile }
-        guard let reportedSize = attributes.fileSize, reportedSize >= 0 else {
-            throw LoadError.unreadable
-        }
-        let fileSize = UInt64(reportedSize)
-
-        // Null-Byte-Probe ist die verbindliche Binär-Erkennung aus der
-        // Roadmap. Nur einen kleinen Anfang lesen — auch eine 20-GB-Datei wird
-        // dadurch praktisch sofort als Hex-View geöffnet.
-        guard let handle = try? FileHandle(forReadingFrom: url) else {
-            throw LoadError.unreadable
-        }
-        let probe = try handle.read(upToCount: binaryProbeSize) ?? Data()
-        try? handle.close()
         let (probeBOM, probeBOMEncoding) = ApplyEngine.detectBOM(in: probe)
 
         if let enc = forcedEncoding {
@@ -259,9 +254,13 @@ enum FileLoader {
     /// einzulesen. Diese synchrone Hilfsfunktion darf wie `load` nur aus dem
     /// Hintergrund aufgerufen werden.
     private static func containsNUL(url: URL, startingAt offset: UInt64) throws -> Bool {
-        guard let handle = try? FileHandle(forReadingFrom: url) else {
+        // Auch der Nachscan geht über den gehärteten Deskriptor-Pfad: Ein
+        // inzwischen umgebogener Symlink (z. B. auf eine FIFO) darf den
+        // Hintergrund-Thread nicht festhalten.
+        guard let opened = try? FileSnapshot.openRegularFile(at: url) else {
             throw LoadError.unreadable
         }
+        let handle = FileHandle(fileDescriptor: opened.descriptor, closeOnDealloc: true)
         defer { try? handle.close() }
         do {
             try handle.seek(toOffset: offset)

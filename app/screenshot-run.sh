@@ -49,9 +49,22 @@ cleanup_fixture() {
   fi
 }
 
+# Den VORHERIGEN Appearance-Wert exakt merken (Review 2026-08-02): Der Lauf
+# darf die Nutzereinstellung nicht pauschal auf "system" zwingen, sondern
+# stellt genau den Stand von vorher wieder her — auch „gar nicht gesetzt".
+PREVIOUS_APPEARANCE="$(defaults read "$DOMAIN" app.appearance 2>/dev/null || true)"
+
+restore_appearance() {
+  if [ -n "$PREVIOUS_APPEARANCE" ]; then
+    defaults write "$DOMAIN" app.appearance "$PREVIOUS_APPEARANCE"
+  else
+    defaults delete "$DOMAIN" app.appearance 2>/dev/null || true
+  fi
+}
+
 cleanup() {
   cleanup_fixture
-  defaults write "$DOMAIN" app.appearance system
+  restore_appearance
 }
 trap cleanup EXIT
 

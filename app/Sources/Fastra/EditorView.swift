@@ -297,9 +297,15 @@ struct EditorView: View {
     }
 
     /// Sichtbar bei einem offenen Angebot ODER solange eine Umwandlung läuft,
-    /// gemeldet oder fehlgeschlagen ist.
+    /// gemeldet oder fehlgeschlagen ist. Der Umwandlungszustand zählt nur im
+    /// Besitzer-Fenster: Der Dienst ist ein Singleton, und ohne diese Bindung
+    /// zeigte JEDES offene Fenster die Laufanzeige (Review 2026-08-02).
     private var markdownImportBarIsVisible: Bool {
-        if markdownImportService.state != .idle { return true }
+        if markdownImportService.state != .idle,
+           markdownImportService.owner == nil
+               || markdownImportService.owner === workspace {
+            return true
+        }
         return markdownImportOffer != nil
     }
 
@@ -955,13 +961,13 @@ struct EditorView: View {
         return clipView.bounds.origin
     }
 
-    /// Zählt hoch, sobald ein gezielter Sprung (Treffer, „Zu Zeile") scrollt.
-    /// Eine laufende Wiederherstellung erkennt daran, dass sie überholt wurde,
-    /// und hält an — der Sprung gewinnt immer.
-    private static var scrollRestoreGeneration = 0
-
-    static func cancelScrollRestore() {
-        scrollRestoreGeneration += 1
+    /// Storniert die laufende Ausschnitt-Wiederherstellung EINES Fensters.
+    /// Die Generation lebt am Workspace statt prozessweit: Ein Sprung in
+    /// Fenster A darf die Wiederherstellung in Fenster B nicht anhalten
+    /// (Review 2026-08-02). Der Sprung im eigenen Fenster gewinnt weiterhin
+    /// immer.
+    static func cancelScrollRestore(in workspace: Workspace) {
+        workspace.scrollRestoreGeneration += 1
     }
 
     /// Stellt einen gemerkten Ausschnitt nach dem Editor-Aufbau wieder her.
@@ -974,12 +980,12 @@ struct EditorView: View {
     static func restoreScrollOffset(_ offset: CGPoint, in workspace: Workspace,
                                     attempt: Int = 0,
                                     completion: @escaping () -> Void) {
-        let generation = scrollRestoreGeneration
+        let generation = workspace.scrollRestoreGeneration
         // Auch ein Ziel am Dateianfang wird gesetzt: Stand der Tab oben, der
         // Cursor aber weiter unten, würde CESEs „Einfügemarke sichtbar machen"
         // sonst nach unten scrollen.
         DispatchQueue.main.asyncAfter(deadline: .now() + (attempt == 0 ? 0.05 : 0.03)) {
-            guard generation == scrollRestoreGeneration else { completion(); return }
+            guard generation == workspace.scrollRestoreGeneration else { completion(); return }
             guard let root = editorWindow(for: workspace)?.contentView,
                   let textView = firstEditorTextView(in: root) as? CodeEditTextView.TextView,
                   let scrollView = textView.enclosingScrollView else {
@@ -1016,9 +1022,10 @@ struct EditorView: View {
     /// Position schon übernommen hat, bevor wir scrollen.
     static func scrollEditorForVisibleJump(in workspace: Workspace,
                                            targetLine: Int?, fallbackRange: NSRange?) {
-        // Ein gezielter Sprung schlägt jede noch laufende Ausschnitt-
-        // Wiederherstellung (Treffer in einer anderen Datei wechselt den Tab).
-        cancelScrollRestore()
+        // Ein gezielter Sprung schlägt die noch laufende Ausschnitt-
+        // Wiederherstellung DIESES Fensters (Treffer in einer anderen Datei
+        // wechselt den Tab).
+        cancelScrollRestore(in: workspace)
         DispatchQueue.main.async {
             guard let mainWindow = CommandTargeting.documentWindow(for: workspace),
                   let root = mainWindow.contentView,

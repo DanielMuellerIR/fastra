@@ -113,3 +113,26 @@ func selectorRuleMatchesBothDirections() {
         #expect(!TextOperations.needsEmojiVariationSelector(Unicode.Scalar(value)!))
     }
 }
+
+@Test("Auswahlgrenze zwischen Basiszeichen und Selektor erzeugt keinen Doppel-Selektor")
+@MainActor
+func selectionBoundaryInsideClusterStaysIdempotent() throws {
+    // "⏸️" = U+23F8 U+FE0F. Die Auswahl endet GENAU zwischen beiden —
+    // vorher sah die Transformation nur das Basiszeichen und hängte einen
+    // ZWEITEN Selektor an (Review 2026-08-02). Die Range wird jetzt auf
+    // zusammengesetzte Sequenzen ausgeweitet; der vorhandene Selektor wird
+    // erkannt und nichts verändert.
+    let text = "vor \u{23F8}\u{FE0F} nach"
+    let result = TextOperations.addEmojiPresentation(
+        in: text, selection: NSRange(location: 0, length: 5)
+    )
+    #expect(result == nil)
+    // Auswahl, die ein Surrogatpaar halbiert, zerschneidet keine Zeichen:
+    // Das 🎶 (2 UTF-16-Einheiten) bleibt intakt, der Rest der Auswahl wird
+    // normal behandelt.
+    let music = "\u{23F8} 🎶"
+    let half = try #require(TextOperations.addEmojiPresentation(
+        in: music, selection: NSRange(location: 0, length: 3)
+    ))
+    #expect(half.newText == "\u{23F8}\u{FE0F} 🎶")
+}

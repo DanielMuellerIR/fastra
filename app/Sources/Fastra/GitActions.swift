@@ -126,7 +126,17 @@ extension Workspace {
         guard Self.confirmDiscard(name: change.name, untracked: isUntracked) else { return }
         if isUntracked {
             // Untracked: Datei physisch entfernen (VS-Code-Verhalten „Discard").
-            try? FileManager.default.removeItem(at: root.appendingPathComponent(path))
+            // Ein Fehlschlag (Rechte, bereits gesperrt) wird sichtbar gemeldet —
+            // die Datei stünde sonst weiter in der Liste, ohne dass klar wäre,
+            // warum das Verwerfen „nichts getan" hat (Review 2026-08-02).
+            do {
+                try FileManager.default.removeItem(at: root.appendingPathComponent(path))
+            } catch {
+                Self.presentGitErrorText(
+                    label: "Verwerfen",
+                    text: L10n.format("„%@“ konnte nicht gelöscht werden: %@",
+                                      change.name, error.localizedDescription))
+            }
             refreshGitStatus()
             refreshOpenGitViews()
         } else {
@@ -149,8 +159,23 @@ extension Workspace {
         }
         guard Self.confirmDiscard(count: plan.totalCount,
                                   untrackedCount: plan.untrackedPaths.count) else { return }
+        // Teil-Löschfehler nicht verschlucken: Was sich nicht löschen ließ,
+        // wird gesammelt und EINMAL sichtbar gemeldet — sonst blieben Dateien
+        // kommentarlos in der Liste stehen (Review 2026-08-02).
+        var deleteFailures: [String] = []
         for path in plan.untrackedPaths {
-            try? FileManager.default.removeItem(at: root.appendingPathComponent(path))
+            do {
+                try FileManager.default.removeItem(at: root.appendingPathComponent(path))
+            } catch {
+                deleteFailures.append((path as NSString).lastPathComponent)
+            }
+        }
+        if !deleteFailures.isEmpty {
+            Self.presentGitErrorText(
+                label: "Verwerfen",
+                text: L10n.format("%ld Datei(en) konnten nicht gelöscht werden: %@",
+                                  deleteFailures.count,
+                                  deleteFailures.joined(separator: ", ")))
         }
         if plan.trackedPaths.isEmpty {
             refreshGitStatus()
@@ -286,6 +311,34 @@ extension Workspace {
 
     private func performGitPush(to target: GitPushTarget,
                                 context: GitActionContext) {
+        // Zuerst den aktuellen Branch bestimmen: Der Push nennt sein Ziel
+        // unten als EXPLIZITEN Refspec. `git push <remote> HEAD` überließe
+        // die Zielwahl der HEAD-Auflösung — ein Detached HEAD soll aber
+        // sichtbar scheitern, statt dass Git rät (Review 2026-08-02).
+        let branchRequest = GitOperationRequest(
+            repository: context.root, kind: .refresh,
+            arguments: ["symbolic-ref", "--short", "--quiet", "HEAD"])
+        gitOperationsCoordinator.perform(branchRequest) { [weak self] branchOutcome in
+            DispatchQueue.main.async {
+                guard let self, context.isCurrent(in: self) else { return }
+                guard case .completed(let branchResult) = branchOutcome else {
+                    Self.presentGitExecutionFailure(label: "Push", outcome: branchOutcome)
+                    return
+                }
+                let branch = branchResult.stdout
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard branchResult.ok, !branch.isEmpty else {
+                    Self.presentGitErrorText(label: "Push", text: L10n.string(
+                        "Kein aktiver Branch (Detached HEAD) — es ist unklar, wohin der Push gehen soll. Erst einen Branch auschecken."))
+                    return
+                }
+                self.performGitPush(to: target, branch: branch, context: context)
+            }
+        }
+    }
+
+    private func performGitPush(to target: GitPushTarget, branch: String,
+                                context: GitActionContext) {
         // Upstream vorhanden? `@{u}` löst nur mit gesetztem Upstream auf.
         let request = GitOperationRequest(repository: context.root, kind: .refresh,
                                           arguments: ["rev-parse", "--abbrev-ref", "@{u}"])
@@ -298,22 +351,42 @@ extension Workspace {
                         : ""
                     let tracksTarget = upstream == target.remote
                         || upstream.hasPrefix(target.remote + "/")
-                    let label = L10n.format("Push zu %@", target.remote)
-                    if tracksTarget {
-                        self.runGitAction(["push", target.remote, "HEAD"],
-                                          label: label,
-                                          successMessage: L10n.format(
-                                            "Push zu %@ erfolgreich", target.remote
-                                          ),
-                                          context: context)
-                    } else {
-                        self.runGitAction(["push", "-u", target.remote, "HEAD"],
-                                          label: label,
-                                          successMessage: L10n.format(
-                                            "Push zu %@ erfolgreich · Upstream angelegt",
-                                            target.remote
-                                          ),
-                                          context: context)
+                    // Das Ziel unmittelbar vor der Netzwerkaktion noch einmal
+                    // aus Git lesen: Wurde das Remote seit der Auflösung
+                    // umbenannt oder seine Adresse geändert, bricht der Push
+                    // ab, statt unbemerkt an eine andere Adresse zu senden
+                    // (Review 2026-08-02).
+                    self.resolveGitPushTarget(context: context) { [weak self] current, _ in
+                        guard let self else { return }
+                        guard let current, current == target else {
+                            Self.presentGitErrorText(
+                                label: "Push",
+                                text: L10n.string(
+                                    "Das Push-Ziel hat sich seit der Anzeige geändert. Prüfe Remote und Adresse erneut; es wurde nichts übertragen."))
+                            return
+                        }
+                        // Voll qualifizierter Refspec: gleicher Branchname auf
+                        // beiden Seiten, exakt das bisherige `HEAD`-Verhalten —
+                        // nur ohne Interpretationsspielraum für push.default
+                        // oder Remote-Konfiguration.
+                        let refspec = "refs/heads/\(branch):refs/heads/\(branch)"
+                        let label = L10n.format("Push zu %@", target.remote)
+                        if tracksTarget {
+                            self.runGitAction(["push", target.remote, refspec],
+                                              label: label,
+                                              successMessage: L10n.format(
+                                                "Push zu %@ erfolgreich", target.remote
+                                              ),
+                                              context: context)
+                        } else {
+                            self.runGitAction(["push", "-u", target.remote, refspec],
+                                              label: label,
+                                              successMessage: L10n.format(
+                                                "Push zu %@ erfolgreich · Upstream angelegt",
+                                                target.remote
+                                              ),
+                                              context: context)
+                        }
                     }
                 } else {
                     Self.presentGitExecutionFailure(label: "Push", outcome: outcome)

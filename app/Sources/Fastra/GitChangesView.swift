@@ -25,6 +25,9 @@ struct GitChangesView: View {
     /// Mehrfachauswahl der Dateizeilen (Shift-/Cmd-Klick, Daniel 2026-07-30).
     /// Die Logik selbst lebt testbar in `GitChangesSelection`.
     @State private var selection = GitChangesSelection()
+    /// Ein gemeinsamer Warteposten für den verzögerten Einzelklick-Öffner
+    /// über ALLE Zeilen beider Abschnitte — siehe `PendingSingleOpen`.
+    @State private var pendingSingleOpen = PendingSingleOpen()
 
     private var staged: [GitChange] { workspace.gitStatus?.stagedChanges ?? [] }
     private var unstaged: [GitChange] { workspace.gitStatus?.unstagedChanges ?? [] }
@@ -145,7 +148,8 @@ struct GitChangesView: View {
             onSelectPlain: { selection.click(rowID) },
             onSelectCommand: { selection.commandClick(rowID) },
             onSelectShift: { selection.shiftClick(rowID, orderedRows: orderedRowIDs) },
-            actionTargets: { actionTargets(for: change, rowID: rowID) }
+            actionTargets: { actionTargets(for: change, rowID: rowID) },
+            pendingSingleOpen: pendingSingleOpen
         )
     }
 
@@ -354,6 +358,19 @@ struct GitChangesView: View {
 /// Aktionen (Daniel-Wunsch 2026-07-12). Zeilen sind per Shift-/Cmd-Klick
 /// mehrfach markierbar; Aktionen einer markierten Zeile wirken dann auf die
 /// ganze Auswahl (Daniel-Wunsch 2026-07-30).
+/// Teilt den wartenden Einzelklick-Öffner über ALLE Zeilen beider Abschnitte:
+/// Ein neuer Klick storniert den alten Warteposten. Vorher hielt jede Zeile
+/// ihren eigenen — zwei schnelle Klicks auf verschiedene Zeilen öffneten dann
+/// BEIDE Dateien statt nur der zuletzt geklickten (Review 2026-08-02).
+final class PendingSingleOpen {
+    private var pending: DispatchWorkItem?
+    /// Storniert den alten Warteposten und übernimmt den neuen (oder nil).
+    func replace(with work: DispatchWorkItem?) {
+        pending?.cancel()
+        pending = work
+    }
+}
+
 private struct GitChangeRow: View {
     let change: GitChange
     let section: GitChangeSection
@@ -366,11 +383,12 @@ private struct GitChangeRow: View {
     /// Liefert die Dateien, auf die eine Zeilen-Aktion wirken soll (die
     /// Auswahl, wenn diese Zeile markiert ist — sonst nur diese Zeile).
     let actionTargets: () -> [GitChange]
-    @EnvironmentObject var workspace: Workspace
-    @State private var hovering = false
     /// Wartender Einzelklick-Dateiöffner: Ein Doppelklick storniert ihn,
     /// damit wie bisher NUR der Diff aufgeht und nicht zusätzlich die Datei.
-    @State private var pendingSingleOpen: DispatchWorkItem?
+    /// Bewusst der GEMEINSAME Koordinator des Panels statt Zeilen-State.
+    let pendingSingleOpen: PendingSingleOpen
+    @EnvironmentObject var workspace: Workspace
+    @State private var hovering = false
 
     /// Der für den Abschnitt maßgebliche Zustand (Index bzw. Working-Tree).
     private var state: GitFileState {
@@ -488,8 +506,7 @@ private struct GitChangeRow: View {
         default:
             clickCount = 1
         }
-        pendingSingleOpen?.cancel()
-        pendingSingleOpen = nil
+        pendingSingleOpen.replace(with: nil)
         if flags == .command {
             onSelectCommand()
             return
@@ -508,8 +525,15 @@ private struct GitChangeRow: View {
         onSelectPlain()
         guard change.isPathActionable else { return }
         // … und die Datei verzögert öffnen, falls kein zweiter Klick folgt.
-        let work = DispatchWorkItem { openFile() }
-        pendingSingleOpen = work
+        // Das Projekt zum Klickzeitpunkt festhalten: Wechselt es im
+        // Wartefenster, gehört der repo-relative Pfad zum ALTEN Projekt und
+        // darf im neuen nichts öffnen (Review 2026-08-02).
+        let expectedRoot = workspace.projectURL
+        let work = DispatchWorkItem {
+            guard workspace.projectURL == expectedRoot else { return }
+            openFile()
+        }
+        pendingSingleOpen.replace(with: work)
         DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval,
                                       execute: work)
     }

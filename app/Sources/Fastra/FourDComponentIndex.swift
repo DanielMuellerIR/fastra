@@ -55,6 +55,10 @@ enum FourDComponentIndex {
                         fileManager: FileManager = .default) -> [String: FourDComponentMethod] {
         var result: [String: FourDComponentMethod] = [:]
         for bundle in componentBundles(in: projectURL, fileManager: fileManager) {
+            // Abbruchpunkt pro Komponente: Nach einem Projektwechsel bricht
+            // der alte Scan hier früh ab, statt weiter Archive zu lesen. Das
+            // Teilergebnis verwirft der Aufrufer ohnehin (Review 2026-08-02).
+            if Task.isCancelled { return result }
             for method in methods(ofComponentAt: bundle, fileManager: fileManager) {
                 let key = method.displayName.lowercased()
                 if result[key] == nil { result[key] = method }
@@ -125,10 +129,17 @@ enum FourDComponentIndex {
                 options: [.skipsHiddenFiles]
             ) else { continue }
             for file in files where file.pathExtension.lowercased() == "4dm" {
-                let size = (try? file.resourceValues(forKeys: [.fileSizeKey]))?
-                    .fileSize ?? 0
-                guard size <= maximumEntryBytes,
-                      let source = try? String(contentsOf: file, encoding: .utf8),
+                // Typ und Größe am symlink-aufgelösten Pfad prüfen: `fileSize`
+                // beschreibt sonst den Link statt der Zieldatei, und ein
+                // Attributfehler darf nicht als Größe 0 durchgehen — sonst
+                // umginge eine riesige oder nicht reguläre Datei die Grenze
+                // (Review 2026-08-02).
+                let resolved = file.resolvingSymlinksInPath()
+                guard let values = try? resolved.resourceValues(
+                          forKeys: [.isRegularFileKey, .fileSizeKey]),
+                      values.isRegularFile == true,
+                      let size = values.fileSize, size <= maximumEntryBytes,
+                      let source = try? String(contentsOf: resolved, encoding: .utf8),
                       isSharedMethodSource(source) else { continue }
                 fromFiles.append(FourDComponentMethod(
                     displayName: file.deletingPathExtension().lastPathComponent,

@@ -25,8 +25,12 @@ enum FolderSearch {
         case binary
         /// Encoding ließ sich nicht erkennen.
         case undecodable
-        /// Datei nicht lesbar (Rechte, kaputter Symlink etc.).
+        /// Datei nicht lesbar (Rechte, kaputter Symlink, FIFO etc.).
         case unreadable
+        /// Datei überschreitet die Sicherheitsgrenze für vollständige
+        /// Reads (`FileSnapshot.maximumReadBytes`) und wird bewusst nicht
+        /// in den Speicher geladen.
+        case tooLarge
     }
 
     /// Ein einzelnes Such-Ergebnis pro Datei. Treffer kommen direkt aus
@@ -180,11 +184,17 @@ enum FolderSearch {
             }
             // Datei-Sets dürfen neben Ordnern auch einzelne Dateien enthalten.
             if !rootIsDirectory.boolValue {
+                // Symlinks sofort auf das echte Ziel auflösen: Treffer und ein
+                // späteres Apply arbeiten dann am kanonischen Pfad. Ein
+                // atomarer Austausch auf der LINK-URL würde sonst den Link
+                // selbst durch eine reguläre Datei ersetzen, statt das Ziel zu
+                // ändern (Review 2026-08-02).
+                let canonical = folder.canonicalFileURL
                 guard !exclusionMatcher.matches(folder),
                       passesFilter(url: folder, filter: filter),
-                      seenFiles.insert(folder.canonicalFileURL.path).inserted else { continue }
+                      seenFiles.insert(canonical.path).inserted else { continue }
                 let result = autoreleasepool {
-                    searchOneFile(at: folder, options: options,
+                    searchOneFile(at: canonical, options: options,
                                   maxMatches: min(maxResultsPerFile,
                                                   maxTotalMatches - totalSoFar),
                                   shouldCancel: shouldCancel)
@@ -380,7 +390,16 @@ enum FolderSearch {
                                  skipped: nil, snapshot: nil,
                                  searchOptions: options)
         }
-        guard let read = try? FileSnapshot.read(from: url) else {
+        let read: (data: Data, snapshot: FileSnapshot)
+        do {
+            read = try FileSnapshot.read(from: url)
+        } catch FileSnapshotReadError.tooLarge {
+            // Bewusst eigener Grund statt „unlesbar": Die Datei existiert und
+            // wäre lesbar, sie ist nur größer als die Speicher-Grenze.
+            return PerFileResult(url: url, matches: [], totalMatches: 0,
+                                 skipped: .tooLarge, snapshot: nil,
+                                 searchOptions: options)
+        } catch {
             return PerFileResult(url: url, matches: [], totalMatches: 0,
                                  skipped: .unreadable, snapshot: nil,
                                  searchOptions: options)

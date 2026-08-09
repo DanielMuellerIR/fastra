@@ -93,6 +93,12 @@ enum FourDTokenizer {
     private static let commandTable = SymbolTable(FourDSymbols.commands)
     private static let constantTable = SymbolTable(FourDSymbols.constants)
     private static let keywordTable = SymbolTable(keywords)
+    /// Längste Wortzahl über alle Symboltabellen — Obergrenze für die
+    /// Longest-Prefix-Suche in `classifyPhrase`: Mehr Wörter als das kann
+    /// kein Tabelleneintrag treffen (Review 2026-08-02).
+    private static let maximumTableWordCount = max(commandTable.maxWords,
+                                                   max(constantTable.maxWords,
+                                                       keywordTable.maxWords))
 
     /// Tokenisiert den kompletten Text. Ein Durchlauf, Zeichen für Zeichen;
     /// UTF-16-Offsets, damit die Ranges direkt in CESE/TextKit passen.
@@ -255,11 +261,15 @@ enum FourDTokenizer {
                                        projectMethodNames: Set<String>,
                                        componentMethodNames: Set<String>) -> Token? {
 
-        // Wortgrenzen der Phrase für die Longest-Prefix-Versuche.
+        // Wortgrenzen der Phrase für die Longest-Prefix-Versuche. Bewusst auf
+        // die Wortzahl des längsten Tabelleneintrags begrenzt: Eine lange
+        // Wortkette (etwa Prosa hinter einem Befehl) baute sonst pro Position
+        // Substrings über die GANZE Restphrase — quadratischer Aufwand auf
+        // pathologischen Zeilen (Review 2026-08-02).
         var boundaries: [Int] = []   // Endoffsets je Wortende (relativ absolut)
         var i = start
         var lastWasSpace = true
-        while i < phraseEnd {
+        while i < phraseEnd, boundaries.count < Self.maximumTableWordCount {
             let c = Character(Unicode.Scalar(scalars[i])!)
             if c == " " {
                 if !lastWasSpace { boundaries.append(i) }
@@ -269,7 +279,9 @@ enum FourDTokenizer {
             }
             i += 1
         }
-        boundaries.append(phraseEnd)
+        if boundaries.count < Self.maximumTableWordCount {
+            boundaries.append(phraseEnd)
+        }
 
         // `name:C123` → Befehl, `name:K12:34` → Konstante (nur EIN Wortende
         // vor dem Doppelpunkt prüfen — Suffix klebt direkt am Namen).

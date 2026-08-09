@@ -127,6 +127,10 @@ struct PlannedFileChange: Equatable {
 /// Gesamt-Plan über alle gescannten Dateien.
 struct ReplacePlan: Equatable {
     let files: [PlannedFileChange]
+    /// Die Suchsemantik, aus der dieser Plan entstand. `apply(plan:)` reicht
+    /// sie an den Transaktionskern weiter, der jede Datei auf exakt dieser
+    /// Basis erneut plant und gegen die sichtbaren Treffer vergleicht.
+    let options: SearchOptions
 
     var changedFiles: [PlannedFileChange] { files.filter { $0.hasChanges } }
     var skippedFiles: [PlannedFileChange] { files.filter { $0.skipped != nil } }
@@ -167,40 +171,17 @@ struct ApplyTransaction {
         let fileName: String
     }
 
+    // Ein früherer `planSHA256` über Suchsemantik, Zielpfade und Treffer
+    // wurde entfernt (Review 2026-08-02): Die Transaktion ist ein reiner
+    // Wert-Typ und kann sich nach dem Bau nicht mehr ändern — der Hash wurde
+    // an keiner Grenze geprüft. Der echte Schutz gegen veränderte Ziele ist
+    // der Snapshot-Preflight in `execute` (`expectedOnDisk`).
     let inputs: [Input]
     let options: SearchOptions
-    /// Hash über Suchsemantik, Zielpfade, Vorschau-Snapshots und sichtbare
-    /// Treffer. Nach dem Start kann kein UI-Zustand den Auftrag verändern.
-    let planSHA256: String
 
     init(inputs: [Input], options: SearchOptions) {
         self.inputs = inputs
         self.options = options
-        var digest = SHA256()
-        func add(_ value: String) {
-            digest.update(data: Data(value.utf8))
-            digest.update(data: Data([0]))
-        }
-        add(options.find)
-        add(options.replace)
-        add(String(options.isRegex))
-        add(String(options.caseSensitive))
-        add(String(options.wholeWord))
-        add(String(options.treatWildcardLiterally))
-        for input in inputs {
-            add(input.url.standardizedFileURL.path)
-            add(input.snapshot.sha256)
-            add(String(input.snapshot.byteCount))
-            add(String(input.snapshot.identity?.volumeNumber ?? 0))
-            add(String(input.snapshot.identity?.fileNumber ?? 0))
-            for match in input.matches {
-                add(String(match.range.location))
-                add(String(match.range.length))
-                add(match.before)
-                add(match.after)
-            }
-        }
-        planSHA256 = digest.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     @discardableResult
@@ -210,13 +191,15 @@ struct ApplyTransaction {
         shouldCancel: @escaping @Sendable () -> Bool = { false },
         progress: (Progress) -> Void = { _ in },
         beforePreflight: (() throws -> Void)? = nil,
-        atomicReplace: ((URL, URL) throws -> Void)? = nil
+        atomicReplace: ((Data, URL, URL) throws -> Void)? = nil,
+        manifestWriter: ((ApplySession) throws -> Void)? = nil
     ) throws -> ApplySession {
         try ApplyEngine.execute(
             transaction: self, backupRoot: backupRoot,
             cleanupOlderThan: cleanupOlderThan,
             shouldCancel: shouldCancel, progress: progress,
-            beforePreflight: beforePreflight, atomicReplace: atomicReplace)
+            beforePreflight: beforePreflight, atomicReplace: atomicReplace,
+            manifestWriter: manifestWriter)
     }
 }
 
@@ -228,7 +211,7 @@ enum ApplyEngine {
     /// erhalten, damit Tests deterministisch arbeiten.
     static func plan(files: [URL], options: SearchOptions) -> ReplacePlan {
         guard !options.isEmpty else {
-            return ReplacePlan(files: [])
+            return ReplacePlan(files: [], options: options)
         }
         let regex: NSRegularExpression
         do {
@@ -243,7 +226,7 @@ enum ApplyEngine {
                                   matches: [],
                                   skipped: .invalidPattern("\(error)"))
             }
-            return ReplacePlan(files: invalid)
+            return ReplacePlan(files: invalid, options: options)
         }
 
         let planned = files.map { url in
@@ -256,13 +239,13 @@ enum ApplyEngine {
             return planSingle(url: url, data: read.data, snapshot: read.snapshot,
                               regex: regex, options: options)
         }
-        return ReplacePlan(files: planned)
+        return ReplacePlan(files: planned, options: options)
     }
 
     /// Plan aus einer bereits stabil gelesenen Vorschau-Basis. Dieser Pfad
     /// ist die Sicherheitsbrücke zwischen sichtbarer Ordnersuche und Apply.
     static func plan(inputs: [ReplacePlanInput], options: SearchOptions) -> ReplacePlan {
-        guard !options.isEmpty else { return ReplacePlan(files: []) }
+        guard !options.isEmpty else { return ReplacePlan(files: [], options: options) }
         let regex: NSRegularExpression
         do {
             regex = try buildRegex(options)
@@ -272,12 +255,12 @@ enum ApplyEngine {
                                   encoding: nil, bom: Data(),
                                   originalBytes: input.data, newBytes: input.data,
                                   matches: [], skipped: .invalidPattern("\(error)"))
-            })
+            }, options: options)
         }
         return ReplacePlan(files: inputs.map {
             planSingle(url: $0.url, data: $0.data, snapshot: $0.snapshot,
                        regex: regex, options: options)
-        })
+        }, options: options)
     }
 
     // MARK: - Einzeldatei
@@ -694,8 +677,16 @@ extension ApplyEngine {
         shouldCancel: @escaping @Sendable () -> Bool,
         progress: (ApplyTransaction.Progress) -> Void,
         beforePreflight: (() throws -> Void)? = nil,
-        atomicReplace: ((URL, URL) throws -> Void)? = nil
+        atomicReplace: ((Data, URL, URL) throws -> Void)? = nil,
+        manifestWriter: ((ApplySession) throws -> Void)? = nil
     ) throws -> ApplySession {
+        // Testhaken wie beim Undo: `manifestWriter` ersetzt das Schreiben des
+        // Journals, `atomicReplace` den atomaren Austausch. Das Produkt
+        // übergibt beides nie.
+        func persist(_ candidate: ApplySession) throws {
+            if let manifestWriter { try manifestWriter(candidate) }
+            else { try writeManifest(candidate) }
+        }
         guard !transaction.inputs.isEmpty, !transaction.options.isEmpty else {
             throw ApplyError.planNotApplyable(L10n.string("Der Apply-Auftrag ist leer."))
         }
@@ -831,7 +822,7 @@ extension ApplyEngine {
         var session = ApplySession(timestamp: now,
                                    sessionDirectory: sessionDir, entries: [])
         do {
-            try writeManifest(session)
+            try persist(session)
         } catch {
             throw ApplyError.backupFailed(L10n.format(
                 "Manifest schreiben: %@", error.localizedDescription))
@@ -868,7 +859,7 @@ extension ApplyEngine {
                 timestamp: now, sessionDirectory: sessionDir,
                 entries: session.entries + [pending])
             do {
-                try writeManifest(withPending)
+                try persist(withPending)
                 session = withPending
             } catch {
                 keepSession = !session.entries.isEmpty
@@ -899,7 +890,7 @@ extension ApplyEngine {
                     // zwingend für Recovery/Undo erhalten.
                     replacementAttempted = true
                     if let atomicReplace {
-                        try atomicReplace(coordinatedURL, temporaryURL)
+                        try atomicReplace(newBytes, coordinatedURL, temporaryURL)
                     } else {
                         try replacePreparedTemporaryFile(at: coordinatedURL,
                                                          temporaryURL: temporaryURL)
@@ -919,7 +910,7 @@ extension ApplyEngine {
                 let appliedSession = ApplySession(
                     timestamp: now, sessionDirectory: sessionDir,
                     entries: Array(session.entries.dropLast()) + [appliedEntry])
-                try writeManifest(appliedSession)
+                try persist(appliedSession)
                 session = appliedSession
                 progress(ApplyTransaction.Progress(
                     phase: .applied, completedFiles: index + 1,
@@ -928,7 +919,7 @@ extension ApplyEngine {
                 try? FileManager.default.removeItem(at: temporaryURL)
                 if !replacementAttempted {
                     session = beforePending
-                    try? writeManifest(session)
+                    try? persist(session)
                 }
                 keepSession = !session.entries.isEmpty || replacementAttempted
                 if case ApplyError.conflict(let message) = error {
@@ -946,8 +937,11 @@ extension ApplyEngine {
         return session
     }
 
-    /// Wendet einen Plan an. Schreibt Backups, dann atomar die neuen Bytes.
-    /// Reine Skip-Dateien (binary/undecodable) werden NICHT angefasst.
+    /// Wendet einen Plan an — seit Review 2026-08-02 als dünner Adapter über
+    /// den produktiven Transaktionskern (`execute(transaction:)`). Vorher
+    /// pflegte dieser Einstieg eine eigene, fast identische Backup-/Journal-/
+    /// Replace-Implementierung, die nur noch von Tests ausgeführt wurde — die
+    /// Tests prüften damit eine Kopie statt des echten Schreibpfads.
     ///
     /// - Parameters:
     ///   - plan: vorher per `plan(...)` berechnet.
@@ -960,209 +954,29 @@ extension ApplyEngine {
                       cleanupOlderThan: TimeInterval? = 30 * 24 * 60 * 60,
                       atomicReplace: ((Data, URL, URL) throws -> Void)? = nil,
                       manifestWriter: ((ApplySession) throws -> Void)? = nil) throws -> ApplySession {
-        // Plan-Validierung: keine ungültigen Patterns, keine widersprüchlichen
-        // Files (skipped UND changed gleichzeitig kann nicht passieren laut
-        // Datenmodell, aber Skip-Reasons wie `.invalidPattern` müssen draußen
-        // bleiben — die signalisieren „auch NICHT versuchen").
+        // Skip-Reasons wie `.invalidPattern` signalisieren „auch NICHT
+        // versuchen" und bleiben ein harter Fehler; andere Skips (binär,
+        // nicht dekodierbar) werden wie bisher schlicht nicht angefasst.
         for file in plan.files {
             if case .invalidPattern(let msg) = file.skipped {
                 throw ApplyError.planNotApplyable(L10n.format("ungültige RegEx: %@", msg))
             }
         }
-
-        let root = backupRoot ?? defaultBackupRoot
-        let toChange = plan.files.enumerated().filter { $0.element.hasChanges }
-
-        // Transaktions-Preflight: ALLE Ziele prüfen, bevor Backup-Ordner oder
-        // Writes entstehen. So kann ein bereits sichtbarer Konflikt niemals zu
-        // einem halb begonnenen neuen Apply führen.
-        for (_, file) in toChange {
-            guard let expected = file.originalSnapshot,
-                  let current = try? FileSnapshot.read(from: file.url),
-                  current.data == file.originalBytes,
-                  current.snapshot == expected else {
-                throw ApplyError.conflict(L10n.format(
-                    "„%@“ wurde seit der Vorschau geändert. Es wurde nichts verändert.",
-                    file.url.lastPathComponent))
+        let inputs = plan.files
+            .filter { $0.skipped == nil }
+            .compactMap { file -> ApplyTransaction.Input? in
+                guard let snapshot = file.originalSnapshot else { return nil }
+                return ApplyTransaction.Input(url: file.url, snapshot: snapshot,
+                                              matches: file.matches)
             }
-        }
-
-        // Cleanup VOR neuem Session-Aufbau, damit alte Snapshots nicht ewig
-        // herumliegen. Stirbt Cleanup, ist das nicht fatal — wir loggen
-        // nicht (App ist offline) und machen weiter.
-        if let maxAge = cleanupOlderThan {
-            try? cleanupBackups(maxAge: maxAge, in: root)
-        }
-
-        // Session-Ordner mit ISO-Timestamp + UUID-Präfix für Eindeutigkeit
-        // (zwei Apply-Aufrufe in derselben Sekunde sollen nicht kollidieren).
-        let now = Date()
-        let dirName = "session-\(iso8601Compact(now))-\(UUID().uuidString.prefix(8))"
-        let sessionDir = root.appendingPathComponent(dirName, isDirectory: true)
-        let filesDir = sessionDir.appendingPathComponent("files", isDirectory: true)
-        do {
-            try FileManager.default.createDirectory(at: filesDir, withIntermediateDirectories: true)
-        } catch {
-            throw ApplyError.backupFailed(L10n.format("Backup-Ordner anlegen: %@", error.localizedDescription))
-        }
-
-        // 1. Backup-Phase: ALLE Originale zuerst sichern. Erst wenn das
-        //    komplett ist, wird auch nur eine Datei verändert.
-        var preparedEntries: [(index: Int, file: PlannedFileChange,
-                               backupName: String, originalSHA256: String)] = []
-        for (i, file) in toChange {
-            let backupName = "files/\(i).bin"
-            let backupURL = sessionDir.appendingPathComponent(backupName)
-            do {
-                try file.originalBytes.write(to: backupURL, options: .atomic)
-            } catch {
-                // Aufräumen: angefangene Session-Ordner wieder weg.
-                try? FileManager.default.removeItem(at: sessionDir)
-                throw ApplyError.backupFailed(L10n.format("Backup schreiben (%@): %@",
-                                                          file.url.lastPathComponent,
-                                                          error.localizedDescription))
-            }
-            preparedEntries.append((index: i, file: file,
-                                    backupName: backupName,
-                                    originalSHA256: FileSnapshot.sha256Hex(file.originalBytes)))
-        }
-
-        func persist(_ candidate: ApplySession) throws {
-            if let manifestWriter {
-                try manifestWriter(candidate)
-            } else {
-                try writeManifest(candidate)
-            }
-        }
-
-        // 2. Leeres Journal anlegen. Vor JEDEM Replace kommt ein pending-
-        // Eintrag hinein; nach Erfolg wird derselbe Eintrag auf applied
-        // fortgeschrieben. So bleibt auch das Crash-Fenster zwischen Replace
-        // und zweitem Manifest-Write sicher rekonstruierbar.
-        var session = ApplySession(timestamp: now, sessionDirectory: sessionDir, entries: [])
-        do {
-            try persist(session)
-        } catch {
-            try? FileManager.default.removeItem(at: sessionDir)
-            throw ApplyError.backupFailed(L10n.format("Manifest schreiben: %@", error.localizedDescription))
-        }
-
-        // 3. Schreibphase: pro Datei atomar via replaceItemAt.
-        for prepared in preparedEntries {
-            let i = prepared.index
-            let file = prepared.file
-            // Temp und Ziel müssen auf demselben Volume liegen, sonst ist
-            // `replaceItemAt` kein belastbarer atomarer Austausch.
-            let tmpURL = temporarySiblingURL(for: file.url, purpose: "apply-\(i)")
-
-            let expectedApplied = FileSnapshot(data: file.newBytes, identity: nil)
-            let pending = UndoEntry(originalPath: file.url.path,
-                                    backupRelativePath: prepared.backupName,
-                                    originalSHA256: prepared.originalSHA256,
-                                    encodingRawValue: file.encoding?.rawValue,
-                                    bom: file.bom,
-                                    appliedSnapshot: expectedApplied,
-                                    state: .pending)
-            let beforePending = session
-            let withPending = ApplySession(timestamp: now, sessionDirectory: sessionDir,
-                                           entries: session.entries + [pending])
-            do {
-                try persist(withPending)
-                session = withPending
-            } catch {
-                if session.entries.contains(where: { $0.state == .applied || $0.state == .pending }) {
-                    throw ApplyError.writeFailed(partial: session,
-                                                 message: L10n.format("Manifest schreiben: %@",
-                                                                      error.localizedDescription))
-                }
-                try? FileManager.default.removeItem(at: sessionDir)
-                throw ApplyError.backupFailed(L10n.format("Manifest schreiben: %@",
-                                                          error.localizedDescription))
-            }
-
-            // Die potenziell große Temp-Datei entsteht VOR der letzten
-            // Zielprüfung. Innerhalb der koordinierten Sektion bleiben danach
-            // nur noch descriptorgebundener Snapshot und atomarer Austausch.
-            do {
-                try file.newBytes.write(to: tmpURL, options: .atomic)
-            } catch {
-                session = beforePending
-                try? persist(session)
-                try? FileManager.default.removeItem(at: tmpURL)
-                if session.entries.isEmpty {
-                    throw ApplyError.backupFailed(L10n.format("Temporäre Datei schreiben (%@): %@",
-                                                              file.url.lastPathComponent,
-                                                              error.localizedDescription))
-                }
-                throw ApplyError.writeFailed(partial: session,
-                                             message: L10n.format("%@: %@",
-                                                                  file.url.lastPathComponent,
-                                                                  error.localizedDescription))
-            }
-
-            var replacementAttempted = false
-            do {
-                let applied = try coordinateReplacing(file.url) { coordinatedURL in
-                    // Zweite Prüfung unmittelbar vor jedem einzelnen Replace.
-                    // NSFileCoordinator koppelt sie für kooperierende Writer an
-                    // dieselbe Schreibsektion wie den atomaren Austausch.
-                    let current = try FileSnapshot.read(from: coordinatedURL)
-                    guard let expected = file.originalSnapshot,
-                          current.data == file.originalBytes,
-                          current.snapshot == expected else {
-                        throw ApplyError.conflict(L10n.format(
-                            "„%@“ wurde während des Apply geändert.",
-                            file.url.lastPathComponent))
-                    }
-                    replacementAttempted = true
-                    if let atomicReplace {
-                        try atomicReplace(file.newBytes, coordinatedURL, tmpURL)
-                    } else {
-                        try replacePreparedTemporaryFile(at: coordinatedURL,
-                                                         temporaryURL: tmpURL)
-                    }
-                    return FileSnapshot(data: file.newBytes, at: coordinatedURL)
-                }
-                let entry = UndoEntry(originalPath: pending.originalPath,
-                                      backupRelativePath: pending.backupRelativePath,
-                                      originalSHA256: pending.originalSHA256,
-                                      encodingRawValue: pending.encodingRawValue,
-                                      bom: pending.bom,
-                                      appliedSnapshot: applied, state: .applied)
-                let appliedSession = ApplySession(
-                    timestamp: now, sessionDirectory: sessionDir,
-                    entries: Array(session.entries.dropLast()) + [entry])
-                // Schlägt dieser Write fehl, bleibt das persistierte pending-
-                // Journal erhalten. Undo löst es anhand des Zielhashes auf.
-                try persist(appliedSession)
-                session = appliedSession
-            } catch {
-                // Halbfertige Tmp-Datei nicht liegen lassen (nach erfolgreichem
-                // replaceItemAt existiert sie nicht mehr — dann schlägt das
-                // Löschen still fehl, ist ok). Review 2026-07-03.
-                try? FileManager.default.removeItem(at: tmpURL)
-                // Partieller Apply. Wir liefern die bisher gültige Session
-                // zurück, damit der Aufrufer per undo(_:) zurückrollen kann.
-                if !replacementAttempted {
-                    // Ein definitiv nicht ausgeführter Replace gehört nicht in
-                    // eine normale Partial-Session. Crash-Recovery bleibt über
-                    // den vorher persistierten pending-Zustand abgedeckt; hier
-                    // können wir ihn kontrolliert wieder entfernen.
-                    session = beforePending
-                    try? persist(session)
-                }
-                if case ApplyError.conflict(let message) = error {
-                    if session.entries.isEmpty { throw ApplyError.conflict(message) }
-                    throw ApplyError.writeFailed(partial: session, message: message)
-                }
-                throw ApplyError.writeFailed(partial: session,
-                                             message: L10n.format("%@: %@",
-                                                                  file.url.lastPathComponent,
-                                                                  error.localizedDescription))
-            }
-        }
-
-        return session
+        let transaction = ApplyTransaction(inputs: inputs, options: plan.options)
+        return try execute(transaction: transaction,
+                           backupRoot: backupRoot,
+                           cleanupOlderThan: cleanupOlderThan,
+                           shouldCancel: { false },
+                           progress: { _ in },
+                           atomicReplace: atomicReplace,
+                           manifestWriter: manifestWriter)
     }
 
     /// Spielt eine Apply-Session bit-genau zurück. Atomar pro Datei.
@@ -1203,10 +1017,19 @@ extension ApplyEngine {
             }
             return .undoConflict(message)
         }
-        var prepared: [(index: Int, backupBytes: Data)] = []
+        var prepared: [Int] = []
         for index in working.entries.indices {
             let entry = working.entries[index]
+            // Bereits restaurierte Einträge VOR jedem Backup-Zugriff
+            // überspringen: Ihr Backup wird nicht mehr gebraucht, und ein
+            // fehlendes oder beschädigtes Backup eines längst erledigten
+            // Eintrags darf das restliche Rückgängig nicht blockieren
+            // (Review 2026-08-02).
+            if entry.state == .restored { continue }
             let backup = session.sessionDirectory.appendingPathComponent(entry.backupRelativePath)
+            // Die Bytes leben nur für diesen Schleifendurchlauf; die
+            // Schreibphase unten liest sie sequenziell erneut. Vorher lagen
+            // ALLE Backups gleichzeitig im Speicher (Review 2026-08-02).
             let backupBytes = try Data(contentsOf: backup)
             // Sanity: stimmt der Hash noch? Wenn nicht, wurde der Backup-
             // Ordner manipuliert — wir brechen ab, statt potenziell
@@ -1215,7 +1038,6 @@ extension ApplyEngine {
                 throw ApplyError.backupFailed(L10n.format("Backup-Hash stimmt nicht: %@",
                                                           entry.backupRelativePath))
             }
-            if entry.state == .restored { continue }
 
             let target = URL(fileURLWithPath: entry.originalPath)
             guard let current = try? FileSnapshot.read(from: target),
@@ -1256,18 +1078,27 @@ extension ApplyEngine {
                                          state: .applied)
                 working = replacing(working, index: index, with: resolved)
             }
-            prepared.append((index, backupBytes))
+            prepared.append(index)
         }
 
         if working != session { try persist(working) }
 
-        for item in prepared {
-            let entry = working.entries[item.index]
-            let backupBytes = item.backupBytes
+        for index in prepared {
+            let entry = working.entries[index]
             let target = URL(fileURLWithPath: entry.originalPath)
             let tmp = temporarySiblingURL(for: target, purpose: "undo")
             defer { try? FileManager.default.removeItem(at: tmp) }
             do {
+                // Backup erst JETZT lesen (eine Datei nach der anderen) und
+                // den Hash erneut prüfen: Zwischen Prüf- und Schreibphase
+                // darf niemand den Backup-Ordner ausgetauscht haben.
+                let backup = session.sessionDirectory
+                    .appendingPathComponent(entry.backupRelativePath)
+                let backupBytes = try Data(contentsOf: backup)
+                guard FileSnapshot.sha256Hex(backupBytes) == entry.originalSHA256 else {
+                    throw ApplyError.backupFailed(L10n.format(
+                        "Backup-Hash stimmt nicht: %@", entry.backupRelativePath))
+                }
                 // Wieder vor der finalen Zielprüfung vorbereiten: große
                 // Backup-Bytes verlängern das TOCTOU-Fenster nicht.
                 try backupBytes.write(to: tmp, options: .atomic)
@@ -1294,7 +1125,7 @@ extension ApplyEngine {
                                          bom: entry.bom,
                                          appliedSnapshot: entry.appliedSnapshot,
                                          state: .restored)
-                let restoredSession = replacing(working, index: item.index, with: restored)
+                let restoredSession = replacing(working, index: index, with: restored)
                 // Bei Manifestfehler bleibt der persistierte Applied-Zustand;
                 // der nächste Lauf erkennt die bereits originalen Bytes und
                 // setzt den Eintrag ohne erneuten Write auf restored.
@@ -1303,6 +1134,12 @@ extension ApplyEngine {
             } catch let error as ApplyError {
                 if case .undoConflict(let message) = error {
                     throw conflictError(message)
+                }
+                if case .backupFailed(let message) = error {
+                    // Der geprüfte Klartext (z. B. Hash-Abweichung) ist die
+                    // ehrliche Meldung — `localizedDescription` eines rohen
+                    // Enum-Fehlers wäre nur Foundation-Kauderwelsch.
+                    throw ApplyError.undoFailed(partial: working, message: message)
                 }
                 throw ApplyError.undoFailed(partial: working,
                                             message: error.localizedDescription)

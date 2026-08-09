@@ -991,7 +991,7 @@ func transactionReplaceFailureAfterSideEffectKeepsPendingEntry() throws {
     do {
         _ = try transaction.execute(
             backupRoot: backups, cleanupOlderThan: nil,
-            atomicReplace: { target, temporary in
+            atomicReplace: { _, target, temporary in
                 _ = try FileManager.default.replaceItemAt(target,
                                                            withItemAt: temporary)
                 throw ApplyTestFailure.injected
@@ -1159,26 +1159,6 @@ func transactionGlobalPreflightCoversEffectlessInputs() throws {
     #expect(try Data(contentsOf: changing) == Data("FOO wird klein\n".utf8))
     #expect(try Data(contentsOf: effectless) == external)
     #expect(try FileManager.default.contentsOfDirectory(atPath: backups.path).isEmpty)
-}
-
-@Test("ApplyTransaction-Planhash bindet Optionen, Vorschau und Ziele")
-func transactionPlanHashIsDeterministicAndSensitive() throws {
-    let directory = FileManager.default.temporaryDirectory
-        .appendingPathComponent("fastra-transaction-hash-\(UUID().uuidString)", isDirectory: true)
-    try FileManager.default.createDirectory(at: directory,
-                                            withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let target = directory.appendingPathComponent("target.txt")
-    try Data("foo".utf8).write(to: target)
-    let first = try makeTransaction(files: [target])
-    let identical = try makeTransaction(files: [target])
-    let changed = try makeTransaction(
-        files: [target],
-        options: SearchOptions(find: "foo", replace: "BAR",
-                               isRegex: false, caseSensitive: true))
-
-    #expect(first.planSHA256 == identical.planSHA256)
-    #expect(first.planSHA256 != changed.planSHA256)
 }
 
 // MARK: W-2026-08-02. Wirkungslose Datei bricht nicht mehr den ganzen Auftrag ab

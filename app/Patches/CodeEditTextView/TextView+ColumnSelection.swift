@@ -482,10 +482,27 @@ private extension TextView {
             location: line.contentRange.location,
             length: bounded - line.contentRange.location
         )
-        return fastraVisualWidth(
-            of: (string as NSString).substring(with: prefixRange),
-            startingAt: 0
-        )
+        // Ohne Zeilenkopie (Review 2026-08-02): Vorher kopierte jeder Aufruf
+        // den Zeilenanfang als eigenen String — auf sehr langen Zeilen und
+        // bei jedem Maus-Tick ein spürbarer Allokationsposten. Die
+        // Graphem-Zählung läuft jetzt direkt über den Dokumentspeicher;
+        // ein Tab ist immer genau EINE UTF-16-Einheit und wird über den
+        // Zeichencode erkannt.
+        let ns = string as NSString
+        var column = 0
+        ns.enumerateSubstrings(in: prefixRange,
+                               options: [.byComposedCharacterSequences,
+                                         .substringNotRequired]) { _, range, _, _ in
+            if range.length == 1, ns.character(at: range.location) == 0x09 {
+                column += fastraColumnSelectionTabWidth
+                    - (column % fastraColumnSelectionTabWidth)
+            } else {
+                // Eine zusammengesetzte Sequenz ist EIN Graphem — Emoji und
+                // kombinierende Zeichen zählen damit genau einmal.
+                column += 1
+            }
+        }
+        return column
     }
 
     func fastraVisualWidth(of value: String, startingAt start: Int) -> Int {
@@ -508,31 +525,35 @@ private extension TextView {
         in line: FastraLogicalLine,
         edge: FastraColumnEdge
     ) -> Int {
-        let content = (string as NSString).substring(with: line.contentRange)
+        // Ohne Zeilenkopie und mit frühem Stopp (Review 2026-08-02): Die
+        // Suche läuft graphemweise über den Dokumentspeicher und endet an
+        // der Zielspalte, statt vorher die GANZE Zeile zu kopieren.
+        let ns = string as NSString
         var column = 0
-        var utf16Offset = 0
-
-        for character in content {
+        var result: Int?
+        ns.enumerateSubstrings(in: line.contentRange,
+                               options: [.byComposedCharacterSequences,
+                                         .substringNotRequired]) { _, range, _, stop in
             if target <= column {
-                return line.contentRange.location + utf16Offset
+                result = range.location
+                stop.pointee = true
+                return
             }
-            let characterLength = String(character).utf16.count
             let nextColumn: Int
-            if character == "\t" {
+            if range.length == 1, ns.character(at: range.location) == 0x09 {
                 nextColumn = column + fastraColumnSelectionTabWidth
                     - (column % fastraColumnSelectionTabWidth)
             } else {
                 nextColumn = column + 1
             }
-
             if target < nextColumn {
-                return line.contentRange.location + utf16Offset
-                    + (edge == .trailing ? characterLength : 0)
+                result = edge == .trailing ? NSMaxRange(range) : range.location
+                stop.pointee = true
+                return
             }
-            utf16Offset += characterLength
             column = nextColumn
         }
-        return NSMaxRange(line.contentRange)
+        return result ?? NSMaxRange(line.contentRange)
     }
 
     func fastraRange(

@@ -96,7 +96,13 @@ enum TestFixtureProcessJanitor {
             guard modified < cutoff else { continue }
             // Erst den Prozess beenden, dann das Skript entfernen — sonst
             // verlöre der nächste Lauf die Spur zum noch laufenden Rest.
-            if killProcesses(runningScriptNamed: name) { result.processesKilled += 1 }
+            let outcome = killProcesses(runningScriptNamed: name)
+            if outcome == .killed { result.processesKilled += 1 }
+            // Scheiterte pkill (Startfehler oder Exit > 1), bleibt die
+            // Skript-Spur ausdrücklich liegen: Sie ist der einzige Anker,
+            // über den ein späterer Lauf den womöglich noch laufenden Rest
+            // wiederfindet (Review 2026-08-02).
+            guard outcome != .failed else { continue }
             if (try? FileManager.default.removeItem(at: url)) != nil {
                 result.scriptsRemoved += 1
             }
@@ -115,8 +121,15 @@ enum TestFixtureProcessJanitor {
     ///
     /// SIGKILL ist Pflicht, nicht Härte: Die Fixture blockiert SIGTERM
     /// ausdrücklich und ist im echten Leck-Fall zusätzlich gestoppt.
-    /// Rückgabe: `true`, wenn mindestens ein Prozess getroffen wurde.
-    private static func killProcesses(runningScriptNamed name: String) -> Bool {
+    /// Ergebnis des pkill-Aufrufs — die Unterscheidung „nichts lief" von
+    /// „pkill scheiterte" entscheidet, ob die Skript-Spur gelöscht werden darf.
+    private enum KillOutcome {
+        case killed        // Exit 0: mindestens ein Prozess getroffen
+        case noneRunning   // Exit 1: kein passender Prozess
+        case failed        // Startfehler oder Exit > 1
+    }
+
+    private static func killProcesses(runningScriptNamed name: String) -> KillOutcome {
         let pkill = Process()
         pkill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
         // `-U` grenzt auf eigene Prozesse ein. `pkill` sucht und signalisiert in
@@ -130,10 +143,14 @@ enum TestFixtureProcessJanitor {
         // Regel gilt im ganzen Projekt einheitlich.
         let finished = DispatchSemaphore(value: 0)
         pkill.terminationHandler = { _ in finished.signal() }
-        guard (try? pkill.run()) != nil else { return false }
+        guard (try? pkill.run()) != nil else { return .failed }
         finished.wait()
-        // Exit 0 = mindestens ein Treffer, 1 = nichts gefunden.
-        return pkill.terminationStatus == 0
+        // Exit 0 = mindestens ein Treffer, 1 = nichts gefunden, >1 = Fehler.
+        switch pkill.terminationStatus {
+        case 0: return .killed
+        case 1: return .noneRunning
+        default: return .failed
+        }
     }
 }
 

@@ -122,6 +122,26 @@ if grep -q 'self.findViewController?.showFindPanel()' "$CESE_LC" 2>/dev/null; th
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4b-2. Patch CodeEditSourceEditor — manuellen Completion-Aufruf melden.
+#
+# `completionSuggestionsRequested` unterscheidet upstream nicht, ob die Liste
+# automatisch (getippter Buchstabe) oder manuell (Esc/⌃Leertaste) angefordert
+# wurde. Fastras Delegate braucht das aber: Der manuelle Aufruf darf schon ab
+# EINEM Zeichen liefern, das Tipp-Popup bleibt ab zwei Zeichen unaufdringlich
+# (Review 2026-08-02). Der Patch meldet den manuellen Weg über eine
+# Notification, unmittelbar bevor CESE die Vorschläge anfordert.
+if ! grep -q 'fastra.completion.manualTrigger' "$CESE_LC" 2>/dev/null; then
+  echo "→ Patche CodeEditSourceEditor (manueller Completion-Aufruf meldet sich)"
+  /usr/bin/perl -i -0pe 's/(private func handleShowCompletions\(_ event: NSEvent\) -> NSEvent\? \{\s*\n\s*if let completionDelegate = self\.completionDelegate,\s*\n\s*let cursorPosition = cursorPositions\.first \{)/$1\n            NotificationCenter.default.post(name: Notification.Name("fastra.completion.manualTrigger"), object: self)  \/\/ Fastra-Patch: manueller Aufruf (Esc\/Ctrl-Space) erlaubt Ein-Zeichen-Vorschlaege/' "$CESE_LC"
+  if ! grep -q 'fastra.completion.manualTrigger' "$CESE_LC" 2>/dev/null; then
+    echo "✗ FEHLER: Manual-Completion-Patch hat NICHT gegriffen — Quelle hat sich geändert. Build abgebrochen." >&2
+    exit 1
+  fi
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # 4c. Patch CodeEditSourceEditor — toten cursorPositions-Reconcile reparieren.
 #
 # In SourceEditor.updateControllerWithState steht upstream:
@@ -2015,16 +2035,16 @@ fi
 # Zelle den Klickpunkt wirklich enthält.
 CETV_MOUSE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+Mouse.swift"
 DOUBLECLICK_CELL_PATCH_CHANGED=0
-if ! grep -q 'Fastra-Patch: Wortauswahl trifft die geklickte Zeichenzelle' \
+if ! grep -q 'Fastra-Patch: Wortauswahl trifft die geklickte Zeichenzelle — zusammengesetzte Sequenz' \
     "$CETV_MOUSE" 2>/dev/null; then
-  echo "→ Patche CodeEditTextView (Doppelklick-Wortauswahl zellenbasiert)"
+  echo "→ Patche CodeEditTextView (Doppelklick-Wortauswahl zellenbasiert, zusammengesetzt)"
   chmod u+w "$CETV_MOUSE"
   /usr/bin/python3 - "$CETV_MOUSE" <<'PYEOF'
 import sys
 
 path = sys.argv[1]
 src = open(path).read()
-old = '''    fileprivate func handleDoubleClick(event: NSEvent) {
+pristine = '''    fileprivate func handleDoubleClick(event: NSEvent) {
         cursorSelectionMode = .word
 
         guard !event.modifierFlags.contains(.shift) else {
@@ -2034,7 +2054,9 @@ old = '''    fileprivate func handleDoubleClick(event: NSEvent) {
         unmarkText()
         selectWord(nil)
     }'''
-new = '''    fileprivate func handleDoubleClick(event: NSEvent) {
+# Vorgaengerfassung dieses Patches (rueckte um genau EINE UTF-16-Einheit
+# zurueck — bei Emoji/kombinierenden Zeichen mitten in den Cluster).
+previous = '''    fileprivate func handleDoubleClick(event: NSEvent) {
         cursorSelectionMode = .word
 
         guard !event.modifierFlags.contains(.shift) else {
@@ -2059,16 +2081,50 @@ new = '''    fileprivate func handleDoubleClick(event: NSEvent) {
         }
         selectWord(nil)
     }'''
-if old not in src:
+new = '''    fileprivate func handleDoubleClick(event: NSEvent) {
+        cursorSelectionMode = .word
+
+        guard !event.modifierFlags.contains(.shift) else {
+            super.mouseDown(with: event)
+            return
+        }
+        unmarkText()
+        // Fastra-Patch: Wortauswahl trifft die geklickte Zeichenzelle —
+        // zusammengesetzte Sequenz. `textOffsetAtPoint` rundet als
+        // Einfuege-Position auf; ein Klick auf die rechte Haelfte des letzten
+        // Wortzeichens landet dadurch auf dem Folgezeichen und wuerde dessen
+        // Leerraum markieren. Das Vorgaengerzeichen kann aus MEHREREN
+        // UTF-16-Einheiten bestehen (Emoji, kombinierende Akzente) — die
+        // Auswahlbasis rueckt deshalb an den ANFANG seiner zusammengesetzten
+        // Sequenz, nie mitten hinein (Review 2026-08-02).
+        let clickPoint = convert(event.locationInWindow, from: nil)
+        if let caretOffset = layoutManager.textOffsetAtPoint(clickPoint),
+           caretOffset > 0 {
+            let previousStart = (string as NSString)
+                .rangeOfComposedCharacterSequence(at: caretOffset - 1).location
+            if let previousRect = layoutManager.rectForOffset(previousStart),
+               previousRect.contains(clickPoint) {
+                selectionManager.setSelectedRange(
+                    NSRange(location: previousStart, length: 0)
+                )
+            }
+        }
+        selectWord(nil)
+    }'''
+if pristine in src:
+    src = src.replace(pristine, new, 1)
+elif previous in src:
+    src = src.replace(previous, new, 1)
+else:
     raise SystemExit(
         f"{path}: handleDoubleClick hat sich geaendert — Patch 4u pruefen"
     )
-open(path, "w").write(src.replace(old, new, 1))
+open(path, "w").write(src)
 PYEOF
   DOUBLECLICK_CELL_PATCH_CHANGED=1
 fi
 
-if ! grep -q 'Fastra-Patch: Wortauswahl trifft die geklickte Zeichenzelle' \
+if ! grep -q 'Fastra-Patch: Wortauswahl trifft die geklickte Zeichenzelle — zusammengesetzte Sequenz' \
     "$CETV_MOUSE"; then
   echo "✗ FEHLER: Doppelklick-Zellen-Patch hat NICHT gegriffen." >&2
   exit 1

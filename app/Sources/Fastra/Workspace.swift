@@ -796,6 +796,11 @@ final class Workspace: ObservableObject {
     /// Erhöht sich bei jedem Projektwechsel. Asynchrone Aktionsketten binden
     /// sich an diesen Wert und können nie in ein später geöffnetes Repo laufen.
     private(set) var projectGeneration: UInt64 = 0
+    /// Zählt hoch, sobald ein gezielter Sprung in DIESEM Fenster scrollt.
+    /// Die laufende Ausschnitt-Wiederherstellung dieses Fensters erkennt
+    /// daran, dass sie überholt wurde (`EditorView.restoreScrollOffset`).
+    /// Bewusst je Workspace statt prozessweit (Review 2026-08-02).
+    var scrollRestoreGeneration = 0
 
     /// In Tests injizierbar; der Produktpfad postet an den sichtbaren nativen
     /// Editor und läuft damit durch dessen Undo-Manager.
@@ -822,7 +827,19 @@ final class Workspace: ObservableObject {
         get { sharedLock.withLock { sharedStorage } }
         set {
             sharedLock.withLock { sharedStorage = newValue }
-            ActiveDocumentContext.shared.activate(newValue)
+            // Die Kontextaktivierung liest den Wert ERNEUT aus dem Storage
+            // und läuft immer auf dem Main-Thread. Vorher konnte eine späte
+            // Aktivierung mit ihrem alten, festgehaltenen Wert eine neuere
+            // überholen — Storage und Kontext zeigten dann dauerhaft auf
+            // verschiedene Workspaces (Review 2026-08-02). Durch das erneute
+            // Lesen konvergiert der Kontext stets auf den letzten Write.
+            if Thread.isMainThread {
+                ActiveDocumentContext.shared.activate(Workspace.shared)
+            } else {
+                DispatchQueue.main.async {
+                    ActiveDocumentContext.shared.activate(Workspace.shared)
+                }
+            }
         }
     }
 
@@ -2034,7 +2051,7 @@ final class Workspace: ObservableObject {
     /// Wandelt um und öffnet das Ergebnis. Die Quelle bleibt unverändert und
     /// ihr Tab offen; das Markdown kommt als neuer, aktiver Tab dazu.
     func convertToMarkdown(_ url: URL) {
-        MarkdownImportService.shared.convert(url) { [weak self] markdownFile in
+        MarkdownImportService.shared.convert(url, owner: self) { [weak self] markdownFile in
             guard let self, let markdownFile else { return }
             self.dismissedMarkdownImports.insert(url)
             // Den Projektbaum aktualisiert der FSEvents-Watcher von selbst; nur
@@ -2956,10 +2973,19 @@ final class Workspace: ObservableObject {
         fourDProjectMethodIndexTask = Task { @MainActor [weak self] in
             // Projekt- und Komponentenmethoden im selben Hintergrund-Scan:
             // Beide Ergebnisse gehören zum selben Projektstand.
-            let (displayNames, componentMethods) = await Task.detached(priority: .utility) {
+            // `Task.detached` erbt KEINE Cancellation — der Handler reicht
+            // das `cancel()` des äußeren Tasks deshalb ausdrücklich an den
+            // Scan weiter, der an seinen Schleifen `Task.isCancelled` prüft
+            // und früh abbricht (Review 2026-08-02).
+            let scan = Task.detached(priority: .utility) {
                 (FourDProjectMethodIndex.methodDisplayNames(in: root),
                  FourDComponentIndex.methods(in: root))
-            }.value
+            }
+            let (displayNames, componentMethods) = await withTaskCancellationHandler {
+                await scan.value
+            } onCancel: {
+                scan.cancel()
+            }
             let names = Set(displayNames.keys)
             guard !Task.isCancelled,
                   let self,

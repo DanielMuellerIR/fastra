@@ -85,7 +85,13 @@ struct GitDiscardPlan {
     let trackedPaths: [String]
 
     init(changes: [GitChange]) {
-        let actionable = changes.filter { $0.unstaged != nil && $0.isPathActionable }
+        // Konfliktdateien nimmt der Plan bewusst aus: `git checkout --`
+        // scheitert auf unmerged Pfaden, und ein Löschen mitten in der
+        // Konfliktauflösung wäre Datenverlust. Sie bleiben unangetastet in
+        // der Liste stehen (Review 2026-08-02).
+        let actionable = changes.filter {
+            $0.unstaged != nil && $0.unstaged != .conflicted && $0.isPathActionable
+        }
         self.changes = actionable
         self.untrackedPaths = actionable
             .filter { $0.unstaged == .untracked }

@@ -9,6 +9,68 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.66.0] — 2026-08-09
+
+### Behoben
+
+Robustheit-Nacharbeit aus dem Code-Review vom 2026-08-02 — die beim damaligen
+Release v1.60.1 bewusst zurückgestellten Punkte, gebündelt nach Thema:
+
+- **I/O-Härtung:** Alle vollständigen Datei-Reads (Suche, Apply, Undo, Laden)
+  laufen über einen gemeinsamen, deskriptorbasierten Pfad: nicht blockierendes
+  Öffnen (eine benannte Pipe kann den Ladevorgang nicht mehr festhalten),
+  Typprüfung am geöffneten Deskriptor statt am Pfad (kein
+  Symlink-Umbiegefenster mehr) und eine 256-MiB-Obergrenze mit chunkweisem
+  Lesen — eine unerwartet riesige Datei landet nicht mehr komplett im
+  Speicher, die Ordnersuche weist sie als eigenen Skip-Grund aus. Das
+  4DZ-Zentralverzeichnis ist auf 32 MiB gedeckelt, Komponenten-Methodendateien
+  werden am symlink-aufgelösten Pfad geprüft. Ein Datei-Set mit einer
+  Symlink-Wurzel arbeitet ab sofort auf dem kanonischen Ziel — ein Apply
+  ersetzt damit nie mehr den Link selbst.
+- **Git:** Der Push nennt sein Ziel als expliziten Refspec und bricht bei
+  Detached HEAD sichtbar ab; unmittelbar vor der Netzwerkaktion wird das
+  Push-Ziel erneut aus Git gelesen. Beim Verwerfen bleiben Konfliktdateien
+  ausgenommen, und fehlgeschlagene Löschungen unversionierter Dateien werden
+  sichtbar gemeldet statt verschluckt. Im Änderungen-Panel öffnen zwei
+  schnelle Klicks auf verschiedene Zeilen nur noch die zuletzt geklickte
+  Datei, und ein Projektwechsel im Doppelklick-Wartefenster öffnet nichts
+  mehr aus dem alten Projekt.
+- **Nebenläufigkeit/UI:** `Workspace.shared` und die Kontextaktivierung
+  konvergieren immer auf den letzten Stand; der 4D-Methoden-Scan bricht nach
+  einem Projektwechsel wirklich ab; die Scroll-Wiederherstellung gilt pro
+  Fenster statt prozessweit; die Markdown-Import-Leiste erscheint nur im
+  auslösenden Fenster; die Session-Wiederherstellung meldet ihren Abschluss
+  auch dann, wenn das Fenster vorher geschlossen wurde; die 4D-Signaturhilfe
+  liest Methodendateien und Archive im Hintergrund statt beim Tippen auf dem
+  Main-Thread (Cache-Treffer bleiben synchron).
+- **Undo/Apply:** Rückgängig lädt Backups nacheinander statt alle vorab in
+  den Speicher und überspringt bereits restaurierte Einträge vor dem
+  Backup-Zugriff. Der ungenutzte `planSHA256` ist entfernt; das test-only
+  `apply(plan:)` läuft jetzt als dünner Adapter über den produktiven
+  Transaktionskern — die Apply-Sicherheitstests prüfen damit den echten
+  Schreibpfad statt einer Kopie.
+- **4D-Sprachhelfer:** Die Vervollständigung schweigt in Kommentaren und
+  String-Literalen; der manuelle Aufruf (Esc/⌃Leertaste) liefert schon ab
+  einem Zeichen (neuer CESE-Patch meldet den manuellen Weg); die
+  Signaturhilfe kennt Blockkommentare (`/* … */`, auch mehrzeilig) und
+  findet Methodendateien auf case-sensitiven Dateisystemen über die
+  Schreibweise aus dem Index; verlinkte Methodendateien werden indexiert;
+  der Tokenizer begrenzt die Longest-Prefix-Suche auf die Wortzahl des
+  längsten Tabelleneintrags (keine quadratischen Kosten auf Prosa-Zeilen).
+- **Editor-Details:** Der Doppelklick-Zellenpatch rückt clusterweise zurück
+  (kein Sprung mitten in Emoji/kombinierte Zeichen); die Rechteckauswahl
+  zählt Spalten ohne komplette Zeilenkopien; die Emoji-Selektor-Operationen
+  weiten Auswahlgrenzen auf ganze Zeichen aus (kein Doppel-Selektor an der
+  Auswahlkante); nicht geschlossene HTML-Elemente der Markdown-Vorschau
+  schließen erst am Dokumentende statt mitten im Text.
+- **Selbsttest-/Skript-Hygiene:** Fixture-Anlegefehler zählen als
+  Umgebungsproblem (Exit 2 statt 1); der Defaults-Janitor behält seine
+  Skript-Spur, wenn `pkill` scheitert; `screenshot-run.sh` stellt den
+  vorherigen Appearance-Wert exakt wieder her; `selftest.sh` räumt seine
+  stderr-Dateien auf (bei echten FAILs bleiben sie mit sichtbarem Pfad zur
+  Diagnose liegen); der `completion4d`-Selbsttest prüft zusätzlich den
+  manuellen Ein-Zeichen-Aufruf und die Kommentar-Stille.
+
 ## [v1.65.1] — 2026-08-09
 
 ### Behoben

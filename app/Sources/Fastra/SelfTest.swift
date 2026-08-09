@@ -4409,13 +4409,8 @@ enum SelfTest {
             state.componentMethod, in: root, bold: true, italic: false
         )
         if colored && styled {
-            finishFourDCompletionTest(
-                state, ok: state.failures.isEmpty,
-                message: state.failures.isEmpty
-                    ? "Auto/⌃Leertaste/Pfeil/Maus funktionieren; Shared-Component "
-                        + "real übernommen und danach orange/fett gerendert"
-                    : state.failures.joined(separator: "; ")
-            )
+            startManualOneCharCompletion(root: root, state: state)
+            return
         }
         if tick >= 60 {
             finishFourDCompletionTest(
@@ -4428,6 +4423,144 @@ enum SelfTest {
             pollForAppliedFourDComponentStyle(
                 root: root, state: state, tick: tick + 1
             )
+        }
+    }
+
+    /// Manueller Ein-Zeichen-Aufruf (Review 2026-08-02): Nach einer neuen
+    /// Zeile mit nur EINEM Buchstaben darf das automatische Popup nicht
+    /// erscheinen (Mindestlänge 2), ⌃Leertaste muss die Liste aber öffnen —
+    /// das prüft den CESE-Patch `fastra.completion.manualTrigger` am echten
+    /// Event-Weg.
+    private static func startManualOneCharCompletion(
+        root: NSView,
+        state: FourDCompletionTestState
+    ) {
+        guard let mainWindow = root.window,
+              let textView = editorTextView(in: root) as? TextView else {
+            finishFourDCompletionTest(state, ok: false,
+                                      message: "Editor-TextView für Ein-Zeichen-Phase nicht gefunden")
+        }
+        guard mainWindow.isKeyWindow, mainWindow.makeFirstResponder(textView) else {
+            finishFourDCompletionTest(state, ok: false,
+                                      message: "Umgebungsproblem: Fokus vor Ein-Zeichen-Phase verloren")
+        }
+        textView.selectionManager.setSelectedRange(
+            NSRange(location: (textView.string as NSString).length, length: 0)
+        )
+        guard insertCompletionCharacter("\nA", into: textView) else {
+            finishFourDCompletionTest(state, ok: false,
+                                      message: "konnte Ein-Zeichen-Präfix nicht eingeben")
+        }
+        // 0.6 s Karenz: In dieser Zeit dürfte ein (falsches) Auto-Popup
+        // längst da sein — die produktive CESE-Task-Kette braucht < 0,2 s.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            if fourDCompletionWindow(attachedTo: mainWindow) != nil {
+                state.failures.append("Auto-Popup erschien schon bei EINEM Zeichen")
+            }
+            guard let event = NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: .control,
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: mainWindow.windowNumber, context: nil,
+                characters: " ", charactersIgnoringModifiers: " ",
+                isARepeat: false, keyCode: 49
+            ) else {
+                finishFourDCompletionTest(state, ok: false,
+                                          message: "konnte ⌃Leertaste-Event (Ein-Zeichen) nicht bauen")
+            }
+            NSApp.postEvent(event, atStart: false)
+            pollForManualOneCharCompletion(mainWindow: mainWindow, root: root,
+                                           textView: textView, state: state)
+        }
+    }
+
+    private static func pollForManualOneCharCompletion(
+        mainWindow: NSWindow,
+        root: NSView,
+        textView: TextView,
+        state: FourDCompletionTestState,
+        tick: Int = 0
+    ) {
+        if let popup = fourDCompletionWindow(attachedTo: mainWindow),
+           let table = completionTable(in: popup), table.numberOfRows >= 1 {
+            // Popup wieder schließen (Esc), dann die Kommentar-Phase.
+            postKey("\u{1b}", keyCode: 53, windowNumber: mainWindow.windowNumber)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                fourDCompletionWindow(attachedTo: mainWindow)?.close()
+                startCommentSuppressedCompletion(mainWindow: mainWindow,
+                                                 root: root, textView: textView,
+                                                 state: state)
+            }
+            return
+        }
+        if tick >= 80 {
+            state.failures.append("⌃Leertaste öffnete bei EINEM Zeichen keine Liste")
+            startCommentSuppressedCompletion(mainWindow: mainWindow, root: root,
+                                             textView: textView, state: state)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollForManualOneCharCompletion(mainWindow: mainWindow, root: root,
+                                           textView: textView, state: state,
+                                           tick: tick + 1)
+        }
+    }
+
+    /// In Kommentaren gibt es keine Vorschläge (Review 2026-08-02): Weder das
+    /// automatische Tipp-Popup noch ⌃Leertaste dürfen hinter `// ` etwas
+    /// öffnen.
+    private static func startCommentSuppressedCompletion(
+        mainWindow: NSWindow,
+        root: NSView,
+        textView: TextView,
+        state: FourDCompletionTestState
+    ) {
+        guard mainWindow.isKeyWindow, mainWindow.makeFirstResponder(textView) else {
+            finishFourDCompletionTest(state, ok: false,
+                                      message: "Umgebungsproblem: Fokus vor Kommentar-Phase verloren")
+        }
+        textView.selectionManager.setSelectedRange(
+            NSRange(location: (textView.string as NSString).length, length: 0)
+        )
+        guard insertCompletionCharacter("\n// A", into: textView) else {
+            finishFourDCompletionTest(state, ok: false,
+                                      message: "konnte Kommentarzeile nicht eingeben")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            guard insertCompletionCharacter("L", into: textView) else {
+                finishFourDCompletionTest(state, ok: false,
+                                          message: "konnte zweiten Kommentar-Buchstaben nicht eingeben")
+            }
+            // Gleiche Karenz wie oben — diesmal MUSS es still bleiben.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                if fourDCompletionWindow(attachedTo: mainWindow) != nil {
+                    state.failures.append("Auto-Popup erschien im Kommentar")
+                }
+                guard let event = NSEvent.keyEvent(
+                    with: .keyDown, location: .zero, modifierFlags: .control,
+                    timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: mainWindow.windowNumber, context: nil,
+                    characters: " ", charactersIgnoringModifiers: " ",
+                    isARepeat: false, keyCode: 49
+                ) else {
+                    finishFourDCompletionTest(state, ok: false,
+                                              message: "konnte ⌃Leertaste-Event (Kommentar) nicht bauen")
+                }
+                NSApp.postEvent(event, atStart: false)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    if fourDCompletionWindow(attachedTo: mainWindow) != nil {
+                        state.failures.append("⌃Leertaste öffnete im Kommentar eine Liste")
+                        fourDCompletionWindow(attachedTo: mainWindow)?.close()
+                    }
+                    finishFourDCompletionTest(
+                        state, ok: state.failures.isEmpty,
+                        message: state.failures.isEmpty
+                            ? "Auto/⌃Leertaste/Pfeil/Maus funktionieren; Shared-Component "
+                                + "real übernommen und orange/fett gerendert; manueller "
+                                + "Ein-Zeichen-Aufruf öffnet, Kommentar bleibt still"
+                            : state.failures.joined(separator: "; ")
+                    )
+                }
+            }
         }
     }
 
@@ -10433,7 +10566,7 @@ enum SelfTest {
             try "Begleittext".write(to: outside.appendingPathComponent("begleit.txt"),
                                     atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "(setup) Fixtures nicht schreibbar: \(error.localizedDescription)")
+            finish(false, "Umgebungsproblem: (setup) Fixtures nicht schreibbar: \(error.localizedDescription)")
         }
 
         ws.loadFile(at: doc) { ok in
@@ -10894,7 +11027,7 @@ enum SelfTest {
             try "KOPFTEST".write(to: project.appendingPathComponent("notiz.txt"),
                                  atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "(setup) Testprojekt nicht anlegbar: \(error.localizedDescription)")
+            finish(false, "Umgebungsproblem: (setup) Testprojekt nicht anlegbar: \(error.localizedDescription)")
         }
         ws.openProject(at: project)
         ws.loadFile(at: project.appendingPathComponent("notiz.txt")) { ok in
@@ -10972,7 +11105,7 @@ enum SelfTest {
             try fm.createDirectory(at: base, withIntermediateDirectories: true)
             try "Zeile 1\nZeile 2\n".write(to: doc, atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "(setup) Fixture nicht schreibbar: \(error.localizedDescription)")
+            finish(false, "Umgebungsproblem: (setup) Fixture nicht schreibbar: \(error.localizedDescription)")
         }
         ws.loadFile(at: doc) { ok in
             guard ok else {
@@ -11036,7 +11169,7 @@ enum SelfTest {
         }
         let suiteName = "fastra-windowheight-\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
-            finish(false, "(setup) eigene Defaults-Suite nicht anlegbar")
+            finish(false, "Umgebungsproblem: (setup) eigene Defaults-Suite nicht anlegbar")
         }
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -11114,7 +11247,7 @@ enum SelfTest {
             try "# Protokoll\n\nErster Absatz.\n".write(to: doc, atomically: true,
                                                         encoding: .utf8)
         } catch {
-            finish(false, "(setup) Fixture nicht schreibbar: \(error.localizedDescription)")
+            finish(false, "Umgebungsproblem: (setup) Fixture nicht schreibbar: \(error.localizedDescription)")
         }
         ws.loadFile(at: doc) { ok in
             guard ok else {
@@ -11208,7 +11341,7 @@ enum SelfTest {
             try "C".write(to: project.appendingPathComponent("sub/drei-treffer.txt"),
                           atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "(setup) Testprojekt nicht anlegbar: \(error.localizedDescription)")
+            finish(false, "Umgebungsproblem: (setup) Testprojekt nicht anlegbar: \(error.localizedDescription)")
         }
         ws.openProject(at: project)
         pollSidebarFilterBaseline(ws, base: base, tick: 0)
@@ -11385,7 +11518,7 @@ enum SelfTest {
             try "$x:=1".write(to: first, atomically: true, encoding: .utf8)
             try "$y:=2".write(to: second, atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "(setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
+            finish(false, "Umgebungsproblem: (setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
         }
         ws.loadFile(at: first) { ok in
             guard ok else {
@@ -11509,7 +11642,7 @@ enum SelfTest {
             try "# Ziel\n".write(to: markdownTarget, atomically: true,
                                  encoding: .utf8)
         } catch {
-            finish(false, "(setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
+            finish(false, "Umgebungsproblem: (setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
         }
         ws.loadFile(at: caller) { ok in
             guard ok else {
@@ -11656,7 +11789,7 @@ enum SelfTest {
             try "// Methode hinten\n".write(to: backTarget, atomically: true,
                                             encoding: .utf8)
         } catch {
-            finish(false, "(setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
+            finish(false, "Umgebungsproblem: (setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
         }
         let secondWorkspace = MainActor.assumeIsolated {
             DocumentWindowController.openNewDocument(defaults: workspaceDefaults())
@@ -11871,7 +12004,7 @@ enum SelfTest {
             try rightLines.joined(separator: "\n")
                 .write(to: rightURL, atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "(setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
+            finish(false, "Umgebungsproblem: (setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
         }
         // ── (a) Dialog öffnen — erscheint ein echtes Sheet? ────────────────
         ws.showCompareFilesDialog = true
@@ -12021,7 +12154,7 @@ enum SelfTest {
             try "PROJEKTTEST-B".write(to: repo.appendingPathComponent("sub/b.txt"),
                                       atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "(setup) Testprojekt nicht anlegbar: \(error)")
+            finish(false, "Umgebungsproblem: (setup) Testprojekt nicht anlegbar: \(error)")
         }
 
         // ── (a) Willkommens-Bedingung ─────────────────────────────────────
@@ -12188,7 +12321,11 @@ enum SelfTest {
     private static func runProjectPerformanceTest() {
         testLabel = "projectperf"
         guard let root = projectPerformanceRoot() else {
-            finish(false, "FASTRA_PROJECT_PERF_ROOT fehlt oder ist kein Ordner")
+            // Fehlender Realbestand ist ein Umgebungsproblem, kein
+            // Funktionsfehler — gleiche Klassifizierung wie bei `tool4dlsp`
+            // (Roadmap „Bekannte Fehler", 2026-07-30): Der Runner zählt die
+            // Zeile damit als Exit 2 statt als echten FAIL.
+            finish(false, "Umgebungsproblem: FASTRA_PROJECT_PERF_ROOT fehlt oder ist kein Ordner")
         }
         let exclusions = [".json", "userPreferences.*", "DerivedData"]
         let matcher = PathExclusion.Matcher(patterns: exclusions, relativeTo: root)
@@ -12427,7 +12564,7 @@ enum SelfTest {
             try "tief".write(to: repo.appendingPathComponent("sub/deep.txt"),
                              atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "(setup) Temp-Repo nicht anlegbar: \(error)")
+            finish(false, "Umgebungsproblem: (setup) Temp-Repo nicht anlegbar: \(error)")
         }
 
         // git init + Erst-Commit über GitRunner selbst (seriell verkettet).
@@ -14400,7 +14537,7 @@ enum SelfTest {
                 .write(to: repo.appendingPathComponent("js/app.js"),
                        atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "(setup) Temp-Projekt nicht anlegbar: \(error)")
+            finish(false, "Umgebungsproblem: (setup) Temp-Projekt nicht anlegbar: \(error)")
         }
         ws.openProject(at: repo)
         ws.loadFile(at: repo.appendingPathComponent("index.html")) { ok in

@@ -239,7 +239,14 @@ extension Workspace {
         for url in documentURLs {
             loadFile(at: url) { [weak self] _ in
                 remaining -= 1
-                guard remaining == 0, let self else { return }
+                guard remaining == 0 else { return }
+                // Die Abschlussmeldung hängt NICHT an der Workspace-Lebenszeit:
+                // Schließt jemand das Fenster, während die Loads laufen, muss
+                // der wartende Aufrufer trotzdem sein Signal bekommen — sonst
+                // bliebe z. B. die Restore-Kette der übrigen Fenster stehen
+                // (Review 2026-08-02).
+                defer { completion?() }
+                guard let self else { return }
                 if let activePath = state.activeDocumentPath {
                     let canonicalActive = URL(fileURLWithPath: activePath)
                         .canonicalFileURL
@@ -257,7 +264,6 @@ extension Workspace {
                 } else if !self.tabs.contains(where: { $0.id == self.activeTabID }) {
                     self.activeTabID = self.tabs.first?.id
                 }
-                completion?()
             }
         }
 

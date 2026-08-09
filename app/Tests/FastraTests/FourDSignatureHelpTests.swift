@@ -206,3 +206,62 @@ func resolvesMethodFile() throws {
     )
     #expect(viaDocument?.lastPathComponent == "Begruessung.4dm")
 }
+
+// MARK: - Kommentare (Review 2026-08-02)
+
+@Test("Blockkommentar in der Zeile: Cursor darin bekommt keine Hilfe")
+func contextInsideInlineBlockComment() {
+    let text = "Rechne($a) /* Notiz("
+    let context = FourDSignatureHelpLogic.callContext(
+        in: text, utf16CursorLocation: (text as NSString).length
+    )
+    #expect(context == nil)
+}
+
+@Test("Geschlossener Blockkommentar vor dem Aufruf stört die Hilfe nicht")
+func contextAfterClosedBlockComment() {
+    let text = "/* Kopf */ Rechne($a"
+    let context = FourDSignatureHelpLogic.callContext(
+        in: text, utf16CursorLocation: (text as NSString).length
+    )
+    #expect(context?.methodName == "Rechne")
+}
+
+@Test("Mehrzeiliger Blockkommentar: Zeile darin bekommt keine Hilfe")
+func contextInsideMultilineBlockComment() {
+    let text = "/* Anfang\nRechne($a"
+    let context = FourDSignatureHelpLogic.callContext(
+        in: text, utf16CursorLocation: (text as NSString).length
+    )
+    #expect(context == nil)
+    // Nach dem schließenden `*/` gilt die Hilfe wieder.
+    let closed = "/* Anfang\n*/\nRechne($a"
+    let after = FourDSignatureHelpLogic.callContext(
+        in: closed, utf16CursorLocation: (closed as NSString).length
+    )
+    #expect(after?.methodName == "Rechne")
+}
+
+@Test("isInsideCommentOrString erkennt Zeilen-, Block-Kommentar und String")
+func insideCommentOrString() {
+    // Zeilenkommentar.
+    let line = "code // Prosa"
+    #expect(FourDSignatureHelpLogic.isInsideCommentOrString(
+        in: line, utf16Location: (line as NSString).length))
+    // Blockkommentar über Zeilen hinweg.
+    let block = "/* Anfang\nmitten"
+    #expect(FourDSignatureHelpLogic.isInsideCommentOrString(
+        in: block, utf16Location: (block as NSString).length))
+    // String-Literal — auch mit escaptem Anführungszeichen.
+    let string = "ALERT(\"Hallo \\\"Du"
+    #expect(FourDSignatureHelpLogic.isInsideCommentOrString(
+        in: string, utf16Location: (string as NSString).length))
+    // Normaler Code bleibt frei.
+    let code = "ALERT(Variable"
+    #expect(!FourDSignatureHelpLogic.isInsideCommentOrString(
+        in: code, utf16Location: (code as NSString).length))
+    // Hinter einem GESCHLOSSENEN String/Kommentar ebenfalls frei.
+    let closed = "\"Text\" /* x */ code"
+    #expect(!FourDSignatureHelpLogic.isInsideCommentOrString(
+        in: closed, utf16Location: (closed as NSString).length))
+}

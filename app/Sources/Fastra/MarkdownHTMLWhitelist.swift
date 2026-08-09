@@ -416,13 +416,21 @@ enum MarkdownHTMLSanitizing {
             }
         }
 
-        // Offene Elemente am letzten HTML-Knoten schließen. Ohne das könnte ein
-        // nicht geschlossenes `<div>` den Rest des Dokuments einschachteln.
-        if let lastHTMLNode {
+        // Offene Elemente am DOKUMENTENDE schließen — nicht am letzten
+        // HTML-Knoten: Der kann mitten im Dokument liegen, und ein dort
+        // eingefügtes `</details>` schnitte den nachfolgenden Markdown-Inhalt
+        // aus dem Element heraus, obwohl der Autor ihn hineingeschrieben hat
+        // (Review 2026-08-02). Ein eigener HTML-Block ganz am Ende hält die
+        // Ausgabe wohlgeformt UND die Einschachtelung wie geschrieben.
+        if lastHTMLNode != nil {
             let tail = sanitizer.closingTail()
             if !tail.isEmpty {
-                let existing = cmark_node_get_literal(lastHTMLNode).map { String(cString: $0) } ?? ""
-                guard cmark_node_set_literal(lastHTMLNode, existing + tail) == 1 else {
+                guard let tailNode = cmark_node_new(CMARK_NODE_HTML_BLOCK) else {
+                    return false
+                }
+                guard cmark_node_set_literal(tailNode, tail) == 1,
+                      cmark_node_append_child(document, tailNode) == 1 else {
+                    cmark_node_free(tailNode)
                     return false
                 }
             }

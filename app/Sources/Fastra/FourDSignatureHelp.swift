@@ -213,6 +213,10 @@ enum FourDSignatureHelpLogic {
                                                   length: 0))
         guard cursor >= lineRange.location else { return nil }
 
+        // Beginnt die Zeile bereits INNERHALB eines mehrzeiligen
+        // Blockkommentars, gibt es keine Hilfe (Review 2026-08-02).
+        if lineStartsInsideBlockComment(ns, lineStart: lineRange.location) { return nil }
+
         struct OpenParen {
             let location: Int
             var semicolons: Int
@@ -237,9 +241,19 @@ enum FourDSignatureHelpLogic {
                 // Zeilenkommentar: Alles dahinter ist kein Code mehr. Steht
                 // der Cursor im Kommentar, gibt es keine Hilfe.
                 if index + 1 < ns.length,
-                   let next = Unicode.Scalar(ns.character(at: index + 1)),
-                   Character(next) == "/" {
-                    return nil
+                   let next = Unicode.Scalar(ns.character(at: index + 1)) {
+                    if Character(next) == "/" { return nil }
+                    // Blockkommentar in der Zeile: bis zum schließenden `*/`
+                    // überspringen. Endet er nicht vor dem Cursor, steht der
+                    // Cursor im Kommentar → keine Hilfe (Review 2026-08-02).
+                    if Character(next) == "*" {
+                        guard let close = blockCommentClose(ns, openIndex: index,
+                                                            before: cursor) else {
+                            return nil
+                        }
+                        index = close
+                        continue
+                    }
                 }
             case "(":
                 stack.append(OpenParen(location: index, semicolons: 0))
@@ -265,6 +279,91 @@ enum FourDSignatureHelpLogic {
             openParenLocation: innermost.location,
             activeParameterIndex: innermost.semicolons
         )
+    }
+
+    /// UTF-16-Fenster des Rückwärts-Scans nach einem offenen `/*`. Die Grenze
+    /// ist eine ehrliche Abwägung: ein Volltext-Scan pro Cursorbewegung wäre
+    /// auf großen Dateien zu teuer, und ein Blockkommentar, der mehr als
+    /// 64.000 Zeichen vor der Zeile beginnt, ist praktisch Prosa.
+    static let blockCommentLookbackUTF16 = 64_000
+
+    /// `true`, wenn vor `lineStart` zuletzt ein `/*` ohne zugehöriges `*/`
+    /// steht — die Zeile beginnt dann in einem Blockkommentar. Ein `/*` in
+    /// einem String-Literal davor kann das Urteil in seltenen Fällen
+    /// verfälschen; das ist eine dokumentierte Grenze dieses Scans.
+    static func lineStartsInsideBlockComment(_ ns: NSString, lineStart: Int) -> Bool {
+        guard lineStart > 1 else { return false }
+        let windowStart = max(0, lineStart - blockCommentLookbackUTF16)
+        var index = lineStart - 2
+        while index >= windowStart {
+            let first = ns.character(at: index)
+            let second = ns.character(at: index + 1)
+            if first == UInt16(UInt8(ascii: "*")), second == UInt16(UInt8(ascii: "/")) { return false }
+            if first == UInt16(UInt8(ascii: "/")), second == UInt16(UInt8(ascii: "*")) { return true }
+            index -= 1
+        }
+        return false
+    }
+
+    /// Index HINTER dem schließenden `*/` eines bei `openIndex` beginnenden
+    /// Blockkommentars — oder `nil`, wenn er nicht vor `limit` endet.
+    private static func blockCommentClose(_ ns: NSString, openIndex: Int,
+                                          before limit: Int) -> Int? {
+        var scan = openIndex + 2
+        while scan + 1 < ns.length, scan + 1 < limit {
+            if ns.character(at: scan) == UInt16(UInt8(ascii: "*")),
+               ns.character(at: scan + 1) == UInt16(UInt8(ascii: "/")) {
+                return scan + 2
+            }
+            scan += 1
+        }
+        return nil
+    }
+
+    /// `true`, wenn die Position in einem Kommentar (Zeilen- oder Block-)
+    /// oder einem String-Literal steht. Die Vervollständigung unterdrückt
+    /// dort ihre Vorschläge: Methodennamen sind beim Prosa-Tippen sinnlos
+    /// und stören (Review 2026-08-02).
+    static func isInsideCommentOrString(in text: String,
+                                        utf16Location location: Int) -> Bool {
+        let ns = text as NSString
+        guard location >= 0, location <= ns.length else { return false }
+        let lineRange = ns.lineRange(for: NSRange(location: min(location, max(ns.length - 1, 0)),
+                                                  length: 0))
+        guard location >= lineRange.location else { return false }
+        if lineStartsInsideBlockComment(ns, lineStart: lineRange.location) { return true }
+        var index = lineRange.location
+        var inString = false
+        while index < location, index < ns.length {
+            let unit = ns.character(at: index)
+            guard let scalar = Unicode.Scalar(unit) else { index += 1; continue }
+            let char = Character(scalar)
+            if inString {
+                if char == "\\" { index += 2; continue }
+                if char == "\"" { inString = false }
+                index += 1
+                continue
+            }
+            if char == "\"" {
+                inString = true
+                index += 1
+                continue
+            }
+            if char == "/", index + 1 < ns.length,
+               let next = Unicode.Scalar(ns.character(at: index + 1)) {
+                if Character(next) == "/" { return true }
+                if Character(next) == "*" {
+                    guard let close = blockCommentClose(ns, openIndex: index,
+                                                        before: location) else {
+                        return true
+                    }
+                    index = close
+                    continue
+                }
+            }
+            index += 1
+        }
+        return inString
     }
 
     /// Bezeichner unmittelbar vor der Klammer — wie in 4D dürfen Methoden-

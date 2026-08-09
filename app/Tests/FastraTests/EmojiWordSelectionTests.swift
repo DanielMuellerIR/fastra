@@ -67,3 +67,43 @@ func doubleClickKeepsWordBehaviour() {
     // Leerraum bleibt Leerraum-Auswahl.
     #expect(selection(in: text, doubleClickAt: 5) == NSRange(location: 5, length: 1))
 }
+
+@Test("Doppelklick auf die rechte Zellenhälfte rückt clusterweise zurück")
+@MainActor
+func doubleClickRightHalfStepsBackByComposedCluster() {
+    // Regressionstest für den build.sh-Patch 4u (Review 2026-08-02): Die
+    // Auswahlbasis rückte um genau EINE UTF-16-Einheit zurück und landete
+    // bei zerlegtem Unicode mitten im Cluster. Geprüft wird der echte
+    // Mausweg (mouseDown mit clickCount 2) in einem echten Fenster.
+    let text = "Wort🎶 Ende"                    // Surrogatpaar an Offset 4–5
+    let textView = CodeEditTextView.TextView(string: text)
+    textView.frame = NSRect(x: 0, y: 0, width: 600, height: 200)
+    let window = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 600, height: 200),
+        styleMask: [.borderless], backing: .buffered, defer: false
+    )
+    window.contentView = textView
+    textView.layoutManager.layoutLines()
+    guard let emojiRect = textView.layoutManager.rectForOffset(4),
+          emojiRect.width > 0 else {
+        Issue.record("Emoji-Zelle wurde nicht ausgelegt")
+        return
+    }
+    // Rechte Hälfte der Emoji-Zelle: `textOffsetAtPoint` rundet auf den
+    // Offset HINTER dem Cluster; die Rückrechnung muss an dessen Anfang.
+    let clickPoint = NSPoint(x: emojiRect.maxX - max(1, emojiRect.width * 0.25),
+                             y: emojiRect.midY)
+    let pointInWindow = textView.convert(clickPoint, to: nil)
+    guard let event = NSEvent.mouseEvent(
+        with: .leftMouseDown, location: pointInWindow, modifierFlags: [],
+        timestamp: ProcessInfo.processInfo.systemUptime,
+        windowNumber: window.windowNumber, context: nil,
+        eventNumber: 0, clickCount: 2, pressure: 1
+    ) else {
+        Issue.record("Doppelklick-Event nicht baubar")
+        return
+    }
+    textView.mouseDown(with: event)
+    let selected = textView.selectionManager.textSelections.first?.range
+    #expect(selected == NSRange(location: 4, length: 2))
+}

@@ -586,7 +586,10 @@ func folderSearch_directFileRoot() throws {
         options: SearchOptions(find: "EINZEL", replace: "", isRegex: false)
     )
     #expect(result.totalMatches == 1)
-    #expect(result.filesWithMatches.first?.url == file)
+    // Das Ergebnis trägt seit Review 2026-08-02 den KANONISCHEN Pfad
+    // (Symlinks aufgelöst, `/var` → `/private/var`): Ein späteres Apply
+    // schreibt damit garantiert auf das echte Ziel statt auf einen Link.
+    #expect(result.filesWithMatches.first?.url == file.canonicalFileURL)
 }
 
 @Test("Überlappende Datei-Set-Wurzeln liefern jede Datei nur einmal")

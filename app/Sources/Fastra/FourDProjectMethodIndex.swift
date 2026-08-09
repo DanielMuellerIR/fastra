@@ -40,7 +40,12 @@ enum FourDProjectMethodIndex {
             ) else { continue }
 
             for file in files where file.pathExtension.lowercased() == "4dm" {
-                let values = try? file.resourceValues(forKeys: [.isRegularFileKey])
+                // Am symlink-aufgelösten Pfad prüfen: `isRegularFile`
+                // beschreibt sonst den Link selbst, und eine völlig legitime
+                // verlinkte Methodendatei fiele aus dem Index
+                // (Review 2026-08-02).
+                let values = try? file.resolvingSymlinksInPath()
+                    .resourceValues(forKeys: [.isRegularFileKey])
                 guard values?.isRegularFile != false else { continue }
                 let display = file.deletingPathExtension().lastPathComponent
                 names[display.lowercased()] = display
