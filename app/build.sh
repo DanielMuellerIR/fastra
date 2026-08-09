@@ -19,14 +19,41 @@
 set -e
 cd "$(dirname "$0")"
 
-# Sicherheitshalber alle laufenden Fastra-Instanzen beenden — sonst kann
+# Sicherheitshalber laufende EIGENE Fastra-Instanzen beenden — sonst kann
 # das spätere Bundle-Kopieren auf ein offenes Binary treffen und nur
 # halb überschreiben. Das hatte uns einmal eine Stunde Debug gekostet.
-if pgrep -x Fastra >/dev/null 2>&1; then
-  echo "→ Vorhandene Fastra-Instanz beenden"
-  pkill -x Fastra || true
-  sleep 1
-fi
+#
+# Bewusst KEIN pauschales `pkill -x Fastra` mehr: Das beendete JEDE
+# Fastra-Instanz auf dem Mac — auch die installierte App aus /Applications
+# und die eines parallel bauenden Worktrees (dieselbe Falle wie das am
+# 2026-08-09 in selftest.sh behobene `pkill -f`). Eigen ist eine Instanz
+# nur, wenn ihr gestartetes Binary (Spalte „comm" von ps) an einem Ort
+# liegt, den dieses Skript gleich überschreibt: im hiesigen .build/-Baum
+# oder in der Doppelklick-Kopie Fastra.app im Projekt-Root. Die pwd-P-
+# Varianten decken den Fall ab, dass derselbe Ort einmal über einen
+# Symlink und einmal direkt betreten wurde.
+kill_own_fastra_instances() {
+  local build_tree build_tree_phys root_bin root_bin_phys pid comm killed=0
+  build_tree="$(pwd)/.build"
+  build_tree_phys="$(pwd -P)/.build"
+  root_bin="$(cd .. && pwd)/Fastra.app/Contents/MacOS/Fastra"
+  root_bin_phys="$(cd .. && pwd -P)/Fastra.app/Contents/MacOS/Fastra"
+  for pid in $(pgrep -x Fastra 2>/dev/null || true); do
+    comm="$(ps -p "$pid" -o comm= 2>/dev/null || true)"
+    case "$comm" in
+      "$build_tree"/*|"$build_tree_phys"/*|"$root_bin"|"$root_bin_phys")
+        echo "→ Eigene laufende Fastra-Instanz beenden (PID $pid: $comm)"
+        kill "$pid" 2>/dev/null || true
+        killed=1
+        ;;
+    esac
+  done
+  # Erst nach dem Beenden kurz warten, damit die Binaries wirklich frei sind.
+  if [ "$killed" -eq 1 ]; then
+    sleep 1
+  fi
+}
+kill_own_fastra_instances
 
 CHECKOUTS=".build/checkouts"
 

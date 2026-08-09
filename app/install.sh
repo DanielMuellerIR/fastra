@@ -122,14 +122,31 @@ xcrun stapler validate "$APP"
 spctl --assess --type execute --verbose=2 "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 
-# Laufende Instanz vorher beenden, damit das Kopieren kein offenes Binary
-# trifft.
-if pgrep -x Fastra >/dev/null 2>&1; then
-  echo "→ Laufende Fastra-Instanz beenden"
-  pkill -x Fastra || true
-  sleep 1
-fi
 DEST="/Applications/Fastra.app"
+
+# Laufende Instanz des ZIELBUNDLES vorher beenden, damit das Kopieren kein
+# offenes Binary trifft. Bewusst KEIN pauschales `pkill -x Fastra` mehr:
+# Das beendete JEDE Fastra-Instanz auf dem Mac — auch Test-Builds aus
+# .build-Bäumen oder Bundle-Kopien anderer Worktrees (dieselbe Falle wie
+# das am 2026-08-09 in selftest.sh behobene `pkill -f`). Beendet wird nur
+# ein Prozess, dessen gestartetes Binary (Spalte „comm" von ps) exakt das
+# Binary des Bundles ist, das dieses Skript gleich ersetzt.
+kill_target_fastra_instances() {
+  local pid comm killed=0
+  for pid in $(pgrep -x Fastra 2>/dev/null || true); do
+    comm="$(ps -p "$pid" -o comm= 2>/dev/null || true)"
+    if [ "$comm" = "$DEST/Contents/MacOS/Fastra" ]; then
+      echo "→ Laufende Fastra-Instanz aus $DEST beenden (PID $pid)"
+      kill "$pid" 2>/dev/null || true
+      killed=1
+    fi
+  done
+  # Erst nach dem Beenden kurz warten, damit das Binary wirklich frei ist.
+  if [ "$killed" -eq 1 ]; then
+    sleep 1
+  fi
+}
+kill_target_fastra_instances
 rm -rf "$DEST"
 ditto "$APP" "$DEST"
 
