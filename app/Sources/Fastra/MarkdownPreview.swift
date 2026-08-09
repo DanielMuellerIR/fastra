@@ -635,6 +635,9 @@ private struct MarkdownRichTextView: NSViewRepresentable {
             coordinator.styleIdentity = styleIdentity
             coordinator.markdown = markdown
             coordinator.isReady = false
+            // Ein Fragment aus dem vorherigen vollständigen Ladevorgang darf
+            // `didFinish` nicht über das neue Dokument schreiben.
+            coordinator.pendingFragment = nil
             // Rendern läuft im Hintergrund auf der seriellen Render-Queue;
             // die Generation verwirft ein überholtes Ergebnis (Roadmap
             // „Nacharbeit 2026-08-06"). Dasselbe Fragment wird für das HTML

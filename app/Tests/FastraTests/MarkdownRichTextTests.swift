@@ -430,6 +430,26 @@ struct MarkdownRichTextTests {
         #expect(MarkdownPreviewAssets.resource(named: "mermaid.js") != nil)
     }
 
+    @Test("Vorschaubild-Prüfung folgt einem Symlink bis zur regulären Datei")
+    func previewImageValidation_followsSymlink() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-preview-image-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory,
+                                                withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let image = directory.appendingPathComponent("original.png")
+        let symlink = directory.appendingPathComponent("verweis.png")
+        let contents = Data([0x89, 0x50, 0x4E, 0x47])
+        try contents.write(to: image)
+        try FileManager.default.createSymbolicLink(at: symlink,
+                                                    withDestinationURL: image)
+
+        let readable = try MarkdownPreviewAssets.readableImageURL(symlink)
+
+        #expect(readable == image.resolvingSymlinksInPath().standardizedFileURL)
+        #expect(try Data(contentsOf: readable) == contents)
+    }
+
     @Test("Copy-Handler liefert Klartext und formatiertes HTML")
     func clipboardScriptOffersPlainAndRichRepresentations() {
         let document = MarkdownRichText.htmlDocument(

@@ -462,9 +462,9 @@ struct EditorView: View {
             let collector = DroppedURLCollector(expected: fileProviders.count) { urls in
                 MarkdownAssist.handleDroppedFileURLs(urls, workspace: target)
             }
-            for provider in fileProviders {
+            for (index, provider) in fileProviders.enumerated() {
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                    DispatchQueue.main.async { collector.add(url) }
+                    DispatchQueue.main.async { collector.add(url, at: index) }
                 }
             }
             return true

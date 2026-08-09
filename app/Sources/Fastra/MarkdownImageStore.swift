@@ -15,6 +15,34 @@ import UniformTypeIdentifiers
 
 enum MarkdownImageStore {
 
+    /// Serialisiert nur die kurze Namenswahl+Veröffentlichung je Zielordner.
+    /// Die Registry selbst ist geschützt; verschiedene Dokumentordner
+    /// können weiterhin parallel schreiben.
+    private final class DirectoryLockRegistry: @unchecked Sendable {
+        private let registryLock = NSLock()
+        private var locks: [String: NSLock] = [:]
+
+        func withLock<T>(for directory: URL, _ body: () throws -> T) rethrows -> T {
+            let key = directory.resolvingSymlinksInPath().standardizedFileURL.path
+            registryLock.lock()
+            let lock: NSLock
+            if let existing = locks[key] {
+                lock = existing
+            } else {
+                let created = NSLock()
+                locks[key] = created
+                lock = created
+            }
+            registryLock.unlock()
+
+            lock.lock()
+            defer { lock.unlock() }
+            return try body()
+        }
+    }
+
+    private static let directoryLocks = DirectoryLockRegistry()
+
     /// Bildformate, die beim Einfügen UNVERÄNDERT bleiben. Alles andere
     /// (z. B. TIFF vom System-Screenshot-Pasteboard) wird verlustfrei und
     /// universell als PNG abgelegt.
@@ -111,6 +139,7 @@ enum MarkdownImageStore {
     enum StoreError: LocalizedError {
         case documentNotSaved
         case unreadableImage
+        case invalidImagesDirectory
 
         var errorDescription: String? {
             switch self {
@@ -118,6 +147,8 @@ enum MarkdownImageStore {
                 return L10n.string("Das Dokument hat noch keinen Speicherort. Bitte erst speichern (⌘S) — dann kann Fastra Bilder daneben ablegen.")
             case .unreadableImage:
                 return L10n.string("Die Bilddaten konnten nicht gelesen werden.")
+            case .invalidImagesDirectory:
+                return L10n.string("„images“ ist kein echter Ordner. Bitte den symbolischen Link oder die Datei umbenennen und erneut versuchen.")
             }
         }
     }
@@ -132,18 +163,26 @@ enum MarkdownImageStore {
         let directory = documentURL.deletingLastPathComponent()
         let base = pastedImageBaseName(documentName: documentURL.lastPathComponent,
                                        date: now)
-        let name = collisionFreeName(base: base, fileExtension: prepared.fileExtension) {
-            fileManager.fileExists(atPath: directory.appendingPathComponent($0).path)
+        return try directoryLocks.withLock(for: directory) {
+            // Namenswahl und atomare Veröffentlichung bilden innerhalb DIESES
+            // Dokumentordners einen Schritt. So können zwei gleichzeitige
+            // Paste-Vorgänge nicht denselben freien Namen wählen.
+            let name = collisionFreeName(base: base,
+                                         fileExtension: prepared.fileExtension) {
+                fileManager.fileExists(
+                    atPath: directory.appendingPathComponent($0).path
+                )
+            }
+            let target = directory.appendingPathComponent(name)
+            // Atomar: erst vollständig schreiben, dann sichtbar werden.
+            try prepared.data.write(to: target, options: .atomic)
+            guard let relative = relativeLinkPath(from: documentURL, to: target) else {
+                // Kann konstruktionsbedingt nicht passieren — defensiv aufräumen.
+                try? fileManager.removeItem(at: target)
+                throw StoreError.unreadableImage
+            }
+            return (markdownImageLink(fileName: name, relativePath: relative), target)
         }
-        let target = directory.appendingPathComponent(name)
-        // Atomar: erst vollständig schreiben, dann sichtbar werden.
-        try prepared.data.write(to: target, options: .atomic)
-        guard let relative = relativeLinkPath(from: documentURL, to: target) else {
-            // Kann konstruktionsbedingt nicht passieren — defensiv aufräumen.
-            try? fileManager.removeItem(at: target)
-            throw StoreError.unreadableImage
-        }
-        return (markdownImageLink(fileName: name, relativePath: relative), target)
     }
 
     /// Kopiert eine Bild-DATEI unverändert in den `images`-Unterordner:
@@ -158,9 +197,20 @@ enum MarkdownImageStore {
             .appendingPathComponent("images", isDirectory: true)
             .standardizedFileURL
         let source = sourceURL.standardizedFileURL
+        guard let readableSource = regularFileURL(for: source) else {
+            throw StoreError.unreadableImage
+        }
         let directoryPrefix = directory.path.hasSuffix("/")
             ? directory.path
             : directory.path + "/"
+
+        // `attributesOfItem` beschreibt den Pfad selbst. Ein vorhandenes
+        // `images` darf deshalb weder Symlink noch gewöhnliche Datei sein;
+        // andernfalls würde das Kopieren unbemerkt außerhalb des
+        // Dokumentordners landen.
+        let directoryExistedBefore = try ensureRealDirectory(
+            directory, fileManager: fileManager
+        )
 
         // Schon im images-Unterordner? Dann NICHT kopieren, nur verlinken.
         if source.path.hasPrefix(directoryPrefix),
@@ -174,8 +224,6 @@ enum MarkdownImageStore {
         // gescheiterte Aktion den Dokumentordner nicht sichtbar verändern —
         // ein leerer neuer `images`-Ordner blieb bisher stehen
         // (Review 2026-08-06).
-        let directoryExistedBefore = fileManager.fileExists(atPath: directory.path)
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         var stored = false
         defer {
             // Nur einen von DIESEM Aufruf angelegten und weiterhin leeren
@@ -203,16 +251,25 @@ enum MarkdownImageStore {
                 // `copyItem` verändert Inhalte nie; bei Abbruch bleibt die
                 // Quelle unangetastet und das Ziel existiert nicht halb —
                 // FileManager kopiert auf APFS über einen Klon/Temp-Pfad.
-                try fileManager.copyItem(at: source, to: candidate)
-                guard let relative = relativeLinkPath(from: documentURL, to: candidate) else {
-                    try? fileManager.removeItem(at: candidate)
-                    throw StoreError.unreadableImage
+                do {
+                    try fileManager.copyItem(at: readableSource, to: candidate)
+                    guard let relative = relativeLinkPath(
+                        from: documentURL, to: candidate
+                    ) else {
+                        try? fileManager.removeItem(at: candidate)
+                        throw StoreError.unreadableImage
+                    }
+                    stored = true
+                    return (markdownImageLink(fileName: candidateName,
+                                              relativePath: relative), candidate)
+                } catch {
+                    // Ein paralleler Vorgang kann den eben noch freien Namen
+                    // belegt haben. Nur dann neu suchen; echte Kopierfehler
+                    // bleiben sichtbar.
+                    guard isFileExistsError(error) else { throw error }
                 }
-                stored = true
-                return (markdownImageLink(fileName: candidateName,
-                                          relativePath: relative), candidate)
             }
-            if contentsEqual(source, candidate, fileManager: fileManager) {
+            if contentsEqual(readableSource, candidate, fileManager: fileManager) {
                 guard let relative = relativeLinkPath(from: documentURL, to: candidate) else {
                     throw StoreError.unreadableImage
                 }
@@ -231,15 +288,59 @@ enum MarkdownImageStore {
         fileManager.contentsEqual(atPath: a.path, andPath: b.path)
     }
 
-    // MARK: - Drop-Abgrenzung (pure)
+    /// Gibt den aufgelösten Pfad nur für eine gewöhnliche Datei zurück.
+    private static func regularFileURL(for url: URL) -> URL? {
+        let resolved = url.resolvingSymlinksInPath().standardizedFileURL
+        let values = try? resolved.resourceValues(forKeys: [.isRegularFileKey])
+        return values?.isRegularFile == true ? resolved : nil
+    }
+
+    /// Legt `directory` bei Bedarf an und bestätigt danach per lstat-artiger
+    /// FileManager-Abfrage, dass der Pfad selbst ein echter Ordner ist.
+    /// Rückgabe `true` bedeutet: Er war schon vor diesem Aufruf vorhanden.
+    private static func ensureRealDirectory(_ directory: URL,
+                                            fileManager: FileManager) throws -> Bool {
+        let existedBefore: Bool
+        do {
+            _ = try fileManager.attributesOfItem(atPath: directory.path)
+            existedBefore = true
+        } catch {
+            guard isNoSuchFileError(error) else { throw error }
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            existedBefore = false
+        }
+        let attributes = try fileManager.attributesOfItem(atPath: directory.path)
+        guard attributes[.type] as? FileAttributeType == .typeDirectory else {
+            throw StoreError.invalidImagesDirectory
+        }
+        return existedBefore
+    }
+
+    private static func isFileExistsError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == NSCocoaErrorDomain
+            && nsError.code == NSFileWriteFileExistsError
+    }
+
+    private static func isNoSuchFileError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == NSCocoaErrorDomain
+            && (nsError.code == NSFileNoSuchFileError
+                || nsError.code == NSFileReadNoSuchFileError)
+    }
+
+    // MARK: - Drop-Abgrenzung (Dateityp)
 
     /// Teilt gezogene Datei-URLs auf: Bilddateien werden ins Markdown
     /// EINGEFÜGT, alles andere behält das bestehende Verhalten „öffnen“.
+    /// Der Typ wird am symlink-aufgelösten Ziel geprüft; ein Bild-Symlink
+    /// bleibt damit zulässig, ein Ordner namens `archiv.png` dagegen nicht.
     static func partitionDroppedURLs(_ urls: [URL]) -> (insert: [URL], open: [URL]) {
         var insert: [URL] = []
         var open: [URL] = []
         for url in urls {
-            if insertableImageExtensions.contains(url.pathExtension.lowercased()) {
+            if insertableImageExtensions.contains(url.pathExtension.lowercased()),
+               regularFileURL(for: url) != nil {
                 insert.append(url)
             } else {
                 open.append(url)

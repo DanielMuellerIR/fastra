@@ -119,6 +119,41 @@ func store_pastedData() throws {
     }
 }
 
+@Test("storePastedData: parallele Ablagen erhalten verschiedene Suffixnamen")
+func store_parallelPastedDataUsesSuffix() async throws {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-mdimage-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let doc = dir.appendingPathComponent("Notizen.md")
+    try "x".write(to: doc, atomically: true, encoding: .utf8)
+    let prepared = MarkdownImageStore.PreparedImageData(data: tinyPNG(),
+                                                        fileExtension: "png")
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    let names = await withTaskGroup(of: String.self, returning: [String].self) { group in
+        for _ in 0..<2 {
+            group.addTask {
+                do {
+                    return try MarkdownImageStore.storePastedData(
+                        prepared, documentURL: doc, now: now
+                    ).fileURL.lastPathComponent
+                } catch {
+                    return "FEHLER: \(error.localizedDescription)"
+                }
+            }
+        }
+        var collected: [String] = []
+        for await name in group { collected.append(name) }
+        return collected
+    }
+
+    let base = MarkdownImageStore.pastedImageBaseName(
+        documentName: doc.lastPathComponent, date: now
+    )
+    #expect(Set(names) == ["\(base).png", "\(base)-2.png"])
+}
+
 @Test("storeImageFile: Kollision → Suffix, byte-identisch → dedup (kein Doppel)")
 func store_fileCollisionAndDedup() throws {
     try withTempDir { dir in
@@ -156,6 +191,81 @@ func store_fileCollisionAndDedup() throws {
         try other.write(to: source2)
         let suffixed = try MarkdownImageStore.storeImageFile(source2, documentURL: doc)
         #expect(suffixed.fileURL.lastPathComponent == "foto-2.png")
+    }
+}
+
+@Test("storeImageFile: parallele Namenskollision wird per Suffix aufgelöst")
+func store_parallelFileCollisionUsesSuffix() async throws {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-mdimage-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let doc = dir.appendingPathComponent("Seite.md")
+    try "x".write(to: doc, atomically: true, encoding: .utf8)
+    try FileManager.default.createDirectory(
+        at: dir.appendingPathComponent("images"), withIntermediateDirectories: true
+    )
+    let sourceA = dir.appendingPathComponent("a/foto.png")
+    let sourceB = dir.appendingPathComponent("b/foto.png")
+    try FileManager.default.createDirectory(
+        at: sourceA.deletingLastPathComponent(), withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+        at: sourceB.deletingLastPathComponent(), withIntermediateDirectories: true
+    )
+    try tinyPNG().write(to: sourceA)
+    var other = tinyPNG()
+    other.append(0)
+    try other.write(to: sourceB)
+
+    let names = await withTaskGroup(of: String.self, returning: [String].self) { group in
+        for source in [sourceA, sourceB] {
+            group.addTask {
+                do {
+                    return try MarkdownImageStore.storeImageFile(
+                        source, documentURL: doc
+                    ).fileURL.lastPathComponent
+                } catch {
+                    return "FEHLER: \(error.localizedDescription)"
+                }
+            }
+        }
+        var collected: [String] = []
+        for await name in group { collected.append(name) }
+        return collected
+    }
+
+    #expect(Set(names) == ["foto.png", "foto-2.png"])
+}
+
+@Test("storeImageFile: images-Symlink wird abgelehnt, echter Ordner akzeptiert")
+func store_imagesDirectoryMustNotBeSymlink() throws {
+    try withTempDir { dir in
+        let doc = dir.appendingPathComponent("Seite.md")
+        let source = dir.appendingPathComponent("quelle/foto.png")
+        let foreign = dir.appendingPathComponent("fremd", isDirectory: true)
+        try "x".write(to: doc, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(
+            at: source.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(at: foreign, withIntermediateDirectories: true)
+        try tinyPNG().write(to: source)
+        let images = dir.appendingPathComponent("images", isDirectory: true)
+        try FileManager.default.createSymbolicLink(at: images, withDestinationURL: foreign)
+
+        var rejected = false
+        do {
+            _ = try MarkdownImageStore.storeImageFile(source, documentURL: doc)
+        } catch MarkdownImageStore.StoreError.invalidImagesDirectory {
+            rejected = true
+        }
+        #expect(rejected)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: foreign.path).isEmpty)
+
+        try FileManager.default.removeItem(at: images)
+        try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
+        let stored = try MarkdownImageStore.storeImageFile(source, documentURL: doc)
+        #expect(stored.fileURL == images.appendingPathComponent("foto.png"))
     }
 }
 
@@ -260,14 +370,105 @@ func storeImageFiles_collectsLinksAndFailures() throws {
     }
 }
 
+@Test("storeImageData: Aufbereitung und Ablage liefern UI-freies Ergebnis")
+func storeImageData_returnsLinkWithoutUI() throws {
+    try withTempDir { dir in
+        let doc = dir.appendingPathComponent("Seite.md")
+        try "x".write(to: doc, atomically: true, encoding: .utf8)
+
+        let outcome = MarkdownAssist.storeImageData(
+            tinyPNG(), typeIdentifier: "public.png", documentURL: doc
+        )
+
+        #expect(outcome.failures.isEmpty)
+        #expect(outcome.links.count == 1)
+        #expect(outcome.links[0].hasPrefix("![Seite-"))
+    }
+}
+
 // MARK: - Drop-Abgrenzung
 
 @Test("partitionDroppedURLs: Bilder → einfügen, alles andere → öffnen")
-func partition_dropURLs() {
-    let image = URL(fileURLWithPath: "/tmp/a.PNG")
-    let text = URL(fileURLWithPath: "/tmp/b.txt")
-    let folder = URL(fileURLWithPath: "/tmp/ordner")
-    let result = MarkdownImageStore.partitionDroppedURLs([image, text, folder])
-    #expect(result.insert == [image])
-    #expect(result.open == [text, folder])
+func partition_dropURLs() throws {
+    try withTempDir { dir in
+        let image = dir.appendingPathComponent("a.PNG")
+        let text = dir.appendingPathComponent("b.txt")
+        let folder = dir.appendingPathComponent("ordner", isDirectory: true)
+        try tinyPNG().write(to: image)
+        try "Text".write(to: text, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: folder,
+                                                withIntermediateDirectories: true)
+
+        let result = MarkdownImageStore.partitionDroppedURLs([image, text, folder])
+
+        #expect(result.insert == [image])
+        #expect(result.open == [text, folder])
+    }
+}
+
+@Test("partitionDroppedURLs: PNG-Ordner wird geöffnet, Bild-Symlink eingefügt")
+func partition_dropURLTypesFollowSymlinks() throws {
+    try withTempDir { dir in
+        let folder = dir.appendingPathComponent("archiv.png", isDirectory: true)
+        let image = dir.appendingPathComponent("original.png")
+        let symlink = dir.appendingPathComponent("verweis.png")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try tinyPNG().write(to: image)
+        try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: image)
+
+        let result = MarkdownImageStore.partitionDroppedURLs([folder, symlink])
+
+        #expect(result.insert == [symlink])
+        #expect(result.open == [folder])
+    }
+}
+
+// MARK: - Asynchroner Abschluss
+
+@Test("Bild-Einfügemarke: nur unverändertes Ziel ersetzt die alte Auswahl")
+@MainActor
+func imageInsertionRange_usesRevisionBoundSelection() {
+    let tabID = UUID()
+    let initial = MarkdownAssist.ImageInsertionState(
+        tabID: tabID, contentRevision: 4, selectionRevision: 7,
+        selectedRange: NSRange(location: 3, length: 5)
+    )
+    #expect(MarkdownAssist.imageInsertionRange(
+        initial: initial, current: initial
+    ) == NSRange(location: 3, length: 5))
+
+    let edited = MarkdownAssist.ImageInsertionState(
+        tabID: tabID, contentRevision: 5, selectionRevision: 8,
+        selectedRange: NSRange(location: 12, length: 4)
+    )
+    #expect(MarkdownAssist.imageInsertionRange(
+        initial: initial, current: edited
+    ) == NSRange(location: 12, length: 0))
+
+    // Auch zurück an dieselbe sichtbare Range bewegen zählt als Änderung.
+    let movedBack = MarkdownAssist.ImageInsertionState(
+        tabID: tabID, contentRevision: 4, selectionRevision: 9,
+        selectedRange: initial.selectedRange
+    )
+    #expect(MarkdownAssist.imageInsertionRange(
+        initial: initial, current: movedBack
+    ) == NSRange(location: 3, length: 0))
+}
+
+@Test("DroppedURLCollector liefert Provider-Reihenfolge trotz verdrehter Callbacks")
+@MainActor
+func droppedURLCollector_preservesProviderOrder() {
+    let first = URL(fileURLWithPath: "/tmp/erst.png")
+    let second = URL(fileURLWithPath: "/tmp/zweit.png")
+    let third = URL(fileURLWithPath: "/tmp/dritt.png")
+    var completed: [[URL]] = []
+    let collector = DroppedURLCollector(expected: 3) { completed.append($0) }
+
+    collector.add(third, at: 2)
+    collector.add(third, at: 2) // Doppel-Callback darf nicht doppelt zählen.
+    collector.add(first, at: 0)
+    #expect(completed.isEmpty)
+    collector.add(second, at: 1)
+
+    #expect(completed == [[first, second, third]])
 }

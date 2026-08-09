@@ -40,6 +40,21 @@ enum MarkdownPreviewAssets {
         default: return nil
         }
     }
+
+    /// Prüft Typ und Größe am symlink-aufgelösten Ziel und gibt genau diese
+    /// geprüfte Adresse für den anschließenden Lesezugriff zurück.
+    static func readableImageURL(_ url: URL) throws -> URL {
+        let resolved = url.resolvingSymlinksInPath().standardizedFileURL
+        let values = try resolved.resourceValues(forKeys: [
+            .isRegularFileKey, .fileSizeKey
+        ])
+        guard values.isRegularFile == true,
+              let size = values.fileSize,
+              size <= maximumImageBytes else {
+            throw CocoaError(.fileReadTooLarge)
+        }
+        return resolved
+    }
 }
 
 /// Liefert ausschließlich die von `MarkdownRichText` freigegebenen lokalen
@@ -91,17 +106,11 @@ final class MarkdownPreviewSchemeHandler: NSObject, WKURLSchemeHandler {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             do {
+                var readableURL = source.url
                 if requestURL.host == "image" {
-                    let values = try source.url.resourceValues(forKeys: [
-                        .isRegularFileKey, .fileSizeKey
-                    ])
-                    guard values.isRegularFile == true,
-                          let size = values.fileSize,
-                          size <= MarkdownPreviewAssets.maximumImageBytes else {
-                        throw CocoaError(.fileReadTooLarge)
-                    }
+                    readableURL = try MarkdownPreviewAssets.readableImageURL(source.url)
                 }
-                let data = try Data(contentsOf: source.url, options: [.mappedIfSafe])
+                let data = try Data(contentsOf: readableURL, options: [.mappedIfSafe])
                 guard !self.isCancelled(taskID) else {
                     self.forget(taskID)
                     return

@@ -21,28 +21,113 @@ extension Notification.Name {
 }
 
 /// Sammelt asynchron geladene Drop-URLs auf dem Main-Thread und ruft die
-/// Completion genau EINMAL, sobald alle Provider geantwortet haben —
-/// so bleibt die Einfüge-Reihenfolge stabil und es gibt kein Data-Race.
+/// Completion genau EINMAL, sobald alle Provider geantwortet haben. Jeder
+/// Provider schreibt in seinen ursprünglichen Platz; dadurch bleibt die
+/// Einfüge-Reihenfolge auch bei verdrehten Callback-Zeiten stabil.
 @MainActor
 final class DroppedURLCollector {
-    private var urls: [URL] = []
+    private var urls: [URL?]
+    private var receivedIndices: Set<Int> = []
     private var remaining: Int
     private let completion: ([URL]) -> Void
 
     init(expected: Int, completion: @escaping ([URL]) -> Void) {
-        remaining = max(1, expected)
+        let count = max(1, expected)
+        urls = Array(repeating: nil, count: count)
+        remaining = count
         self.completion = completion
     }
 
-    func add(_ url: URL?) {
-        if let url { urls.append(url) }
+    func add(_ url: URL?, at index: Int) {
+        guard urls.indices.contains(index), receivedIndices.insert(index).inserted else {
+            return
+        }
+        urls[index] = url
         remaining -= 1
-        if remaining == 0 { completion(urls) }
+        if remaining == 0 { completion(urls.compactMap { $0 }) }
     }
 }
 
 @MainActor
 enum MarkdownAssist {
+
+    /// Reiner, testbarer Teil der revisionsgebundenen Einfügemarke.
+    struct ImageInsertionState: Equatable {
+        let tabID: UUID
+        let contentRevision: UInt64
+        let selectionRevision: Int
+        let selectedRange: NSRange
+    }
+
+    /// Bindet einen asynchronen Bildvorgang an Dokument und Fenster. Der
+    /// Editor selbst darf von SwiftUI inzwischen neu aufgebaut worden sein;
+    /// dann wird ausschließlich im selben Fenster ein Ersatz gesucht.
+    @MainActor
+    private final class ImageInsertionLease {
+        private weak var workspace: Workspace?
+        private weak var window: NSWindow?
+        private weak var editor: TextView?
+        let documentURL: URL
+        let initialState: ImageInsertionState
+
+        private init(workspace: Workspace, window: NSWindow, editor: TextView,
+                     documentURL: URL, state: ImageInsertionState) {
+            self.workspace = workspace
+            self.window = window
+            self.editor = editor
+            self.documentURL = documentURL
+            initialState = state
+        }
+
+        static func capture(workspace: Workspace, textView: TextView,
+                            documentURL: URL) -> ImageInsertionLease? {
+            guard let window = textView.window,
+                  let tab = workspace.activeTab,
+                  tab.url == documentURL,
+                  WorkspaceWindowRegistry.workspace(for: window) === workspace else {
+                return nil
+            }
+            let state = ImageInsertionState(
+                tabID: tab.id,
+                contentRevision: tab.contentRevision,
+                selectionRevision: workspace.selectionRevision,
+                selectedRange: textView.fastraSafeSelectedRange
+            )
+            return ImageInsertionLease(workspace: workspace, window: window,
+                                       editor: textView, documentURL: documentURL,
+                                       state: state)
+        }
+
+        func target() -> (textView: TextView, replacementRange: NSRange)? {
+            guard let workspace, let window,
+                  WorkspaceWindowRegistry.workspace(for: window) === workspace,
+                  let tab = workspace.activeTab,
+                  tab.id == initialState.tabID,
+                  tab.url == documentURL else { return nil }
+            let target = editor?.window === window
+                ? editor
+                : MarkdownAssist.editorTextView(for: workspace)
+            guard let target, target.window === window else { return nil }
+            let current = ImageInsertionState(
+                tabID: tab.id,
+                contentRevision: tab.contentRevision,
+                selectionRevision: workspace.selectionRevision,
+                selectedRange: target.fastraSafeSelectedRange
+            )
+            return (target, MarkdownAssist.imageInsertionRange(
+                initial: initialState, current: current
+            ))
+        }
+    }
+
+    /// Nur ein vollständig unverändertes Ziel darf die damals markierte
+    /// Auswahl ersetzen. Nach Tippen oder Cursorbewegung wird am aktuellen
+    /// Auswahlanfang eingefügt, ohne den inzwischen gewählten Text zu löschen.
+    nonisolated static func imageInsertionRange(initial: ImageInsertionState,
+                                                current: ImageInsertionState) -> NSRange {
+        if initial == current { return initial.selectedRange }
+        return NSRange(location: current.selectedRange.location, length: 0)
+    }
 
     /// Ist der aktive Tab des Workspace ein Markdown-Dokument? Entscheidend
     /// ist das effektive Format aus der Fußzeile, nicht die Dateiendung.
@@ -172,29 +257,51 @@ enum MarkdownAssist {
     @discardableResult
     static func handleDroppedFileURLs(_ urls: [URL], workspace: Workspace) -> Bool {
         guard !urls.isEmpty else { return false }
-        let partition = MarkdownImageStore.partitionDroppedURLs(urls)
-        // Nicht-Bilder: bestehender „öffnen“-Pfad (Dateien → Tabs,
-        // Ordner → Projekt) — derselbe wie beim Fenster-Drop.
-        let openables = DropHandling.openableItems(from: partition.open)
-        func openRemaining() {
-            for url in openables {
-                workspace.openFileOrFolder(at: url)
+        // Die Einfügemarke gehört zum Drop-Zeitpunkt, nicht zum späteren
+        // Abschluss der Dateityp-Prüfung oder des Kopierens.
+        let initialTextView = editorTextView(for: workspace)
+        let initialLease: ImageInsertionLease? = {
+            guard let initialTextView, let documentURL = workspace.activeTab?.url else {
+                return nil
+            }
+            return ImageInsertionLease.capture(
+                workspace: workspace, textView: initialTextView,
+                documentURL: documentURL
+            )
+        }()
+        // Symlink-Auflösung und Dateityp-Prüfung greifen auf das Dateisystem
+        // zu und laufen deshalb nicht im UI-Thread.
+        Task {
+            let partition = await Task.detached(priority: .userInitiated) {
+                MarkdownImageStore.partitionDroppedURLs(urls)
+            }.value
+            // Nicht-Bilder: bestehender „öffnen“-Pfad (Dateien → Tabs,
+            // Ordner → Projekt) — derselbe wie beim Fenster-Drop.
+            let openables = await Task.detached(priority: .userInitiated) {
+                DropHandling.openableItems(from: partition.open)
+            }.value
+            func openRemaining() {
+                for url in openables {
+                    workspace.openFileOrFolder(at: url)
+                }
+            }
+            // Das Öffnen macht einen ANDEREN Tab aktiv. Seit die Bild-Ablage im
+            // Hintergrund läuft, muss es deshalb warten, bis der Link wirklich im
+            // Markdown-Dokument steht: Sonst ist beim Abschluss der Ablage längst
+            // die mitgezogene Textdatei aktiv, und `finishImageInsertion` verwirft
+            // den Link, weil er sonst im fremden Text landen würde. Das Bild lag
+            // dann kopiert im `images`-Ordner, ohne dass es jemand verlinkt hatte
+            // (Regression aus 1.63.1, gefunden vom `mdassist`-Selbsttest).
+            if !partition.insert.isEmpty,
+               let textView = initialTextView ?? editorTextView(for: workspace) {
+                insertImageFiles(partition.insert, workspace: workspace,
+                                 textView: textView, lease: initialLease,
+                                 completion: openRemaining)
+            } else {
+                openRemaining()
             }
         }
-        // Das Öffnen macht einen ANDEREN Tab aktiv. Seit die Bild-Ablage im
-        // Hintergrund läuft, muss es deshalb warten, bis der Link wirklich im
-        // Markdown-Dokument steht: Sonst ist beim Abschluss der Ablage längst
-        // die mitgezogene Textdatei aktiv, und `finishImageInsertion` verwirft
-        // den Link, weil er sonst im fremden Text landen würde. Das Bild lag
-        // dann kopiert im `images`-Ordner, ohne dass es jemand verlinkt hatte
-        // (Regression aus 1.63.1, gefunden vom `mdassist`-Selbsttest).
-        if !partition.insert.isEmpty, let textView = editorTextView(for: workspace) {
-            insertImageFiles(partition.insert, workspace: workspace,
-                             textView: textView, completion: openRemaining)
-        } else {
-            openRemaining()
-        }
-        return !(partition.insert.isEmpty && partition.open.isEmpty)
+        return true
     }
 
     /// Browser-Drop ohne lokale Datei (Bilddaten) — verhält sich wie Paste.
@@ -212,8 +319,15 @@ enum MarkdownAssist {
     /// hängt daran das Öffnen der übrigen Dateien.
     private static func insertImageFiles(_ urls: [URL], workspace: Workspace,
                                          textView: TextView,
+                                         lease capturedLease: ImageInsertionLease? = nil,
                                          completion: (() -> Void)? = nil) {
         guard let documentURL = savedDocumentURL(workspace) else {
+            completion?()
+            return
+        }
+        guard let lease = capturedLease ?? ImageInsertionLease.capture(
+            workspace: workspace, textView: textView, documentURL: documentURL
+        ), lease.documentURL == documentURL else {
             completion?()
             return
         }
@@ -225,15 +339,14 @@ enum MarkdownAssist {
         // Main-Thread.
         //
         // `Task` statt `DispatchQueue`: Der äußere Task erbt den Main-Actor und
-        // darf Workspace und TextView deshalb weiterreichen. Nur der abgetrennte
+        // darf Workspace und Einfüge-Lease deshalb halten. Nur der abgetrennte
         // innere Task verlässt den Main-Thread — und der bekommt ausschließlich
         // Werte, die gefahrlos zwischen Threads wandern (Dateiadressen).
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {
                 storeImageFiles(urls, documentURL: documentURL)
             }.value
-            finishImageInsertion(outcome, documentURL: documentURL,
-                                 workspace: workspace, textView: textView)
+            finishImageInsertion(outcome, lease: lease, workspace: workspace)
             completion?()
         }
     }
@@ -261,42 +374,59 @@ enum MarkdownAssist {
     /// Zweiter Halbschritt auf dem Main-Thread: meldet Fehler und fügt die
     /// fertigen Links ein.
     ///
-    /// Zwischen Ablage und Einfügen kann der Nutzer den Tab gewechselt oder
-    /// das Fenster geschlossen haben. Deshalb erst prüfen, ob noch dasselbe
-    /// Dokument aktiv ist und sein Editor noch in einem Fenster hängt — sonst
-    /// landete der Link in einem fremden Text. Die abgelegten Bilddateien
-    /// bleiben in beiden Fällen erhalten.
+    /// Zwischen Ablage und Einfügen kann der Nutzer Text, Auswahl oder Tab
+    /// geändert oder das Fenster geschlossen haben. Der Lease prüft deshalb
+    /// Dokument und Fenster und entscheidet zwischen ursprünglicher Auswahl
+    /// und aktueller reiner Einfügestelle. Abgelegte Bilddateien bleiben bei
+    /// einem nicht mehr vorhandenen Ziel erhalten.
     private static func finishImageInsertion(
         _ outcome: (links: [String], failures: [String]),
-        documentURL: URL, workspace: Workspace, textView: TextView
+        lease: ImageInsertionLease, workspace: Workspace
     ) {
         for message in outcome.failures {
             NSAlert.runWarning(title: L10n.string("Bild konnte nicht übernommen werden"),
                                text: message)
         }
         guard !outcome.links.isEmpty,
-              workspace.activeTab?.url == documentURL else { return }
-        let target = textView.window != nil ? textView : editorTextView(for: workspace)
-        guard let target else { return }
-        insertLinks(outcome.links, into: target, workspace: workspace)
+              let target = lease.target() else { return }
+        insertLinks(outcome.links, into: target.textView,
+                    replacing: target.replacementRange, workspace: workspace)
     }
 
     private static func insertImageData(_ data: Data, typeIdentifier: String,
                                         workspace: Workspace, textView: TextView) {
         guard let documentURL = savedDocumentURL(workspace) else { return }
-        guard let prepared = MarkdownImageStore.prepare(imageData: data,
-                                                        typeIdentifier: typeIdentifier) else {
-            NSAlert.runWarning(title: L10n.string("Bild konnte nicht übernommen werden"),
-                               text: MarkdownImageStore.StoreError.unreadableImage.localizedDescription)
-            return
+        guard let lease = ImageInsertionLease.capture(
+            workspace: workspace, textView: textView, documentURL: documentURL
+        ) else { return }
+        // Auch TIFF/HEIC-Dekodierung und das atomare Schreiben können bei
+        // großen Pasteboard-Bildern dauern. Der abgetrennte Task erhält nur
+        // Bilddaten, Typkennung und Dokumentadresse, niemals UI-Objekte.
+        Task {
+            let outcome = await Task.detached(priority: .userInitiated) {
+                storeImageData(data, typeIdentifier: typeIdentifier,
+                               documentURL: documentURL)
+            }.value
+            finishImageInsertion(outcome, lease: lease, workspace: workspace)
+        }
+    }
+
+    /// Bereitet rohe Bilddaten auf und schreibt sie ohne UI-Zugriff.
+    nonisolated static func storeImageData(_ data: Data, typeIdentifier: String,
+                                           documentURL: URL)
+    -> (links: [String], failures: [String]) {
+        guard let prepared = MarkdownImageStore.prepare(
+            imageData: data, typeIdentifier: typeIdentifier
+        ) else {
+            return ([], [MarkdownImageStore.StoreError.unreadableImage.localizedDescription])
         }
         do {
-            let stored = try MarkdownImageStore.storePastedData(prepared,
-                                                                documentURL: documentURL)
-            insertLinks([stored.link], into: textView, workspace: workspace)
+            let stored = try MarkdownImageStore.storePastedData(
+                prepared, documentURL: documentURL
+            )
+            return ([stored.link], [])
         } catch {
-            NSAlert.runWarning(title: L10n.string("Bild konnte nicht übernommen werden"),
-                               text: error.localizedDescription)
+            return ([], [error.localizedDescription])
         }
     }
 
@@ -311,15 +441,12 @@ enum MarkdownAssist {
         return nil
     }
 
-    /// Fügt die Links an der Cursorposition ein (mehrere zeilenweise),
+    /// Fügt die Links an der validierten Stelle ein (mehrere zeilenweise),
     /// setzt den Cursor dahinter und meldet der Vorschau die Einfügezeile.
     private static func insertLinks(_ links: [String], into textView: TextView,
+                                    replacing selection: NSRange,
                                     workspace: Workspace) {
         guard !links.isEmpty else { return }
-        // Geklemmt: Ohne Klick in den Editor gibt es keine Auswahl, und
-        // `selectedRange()` liefert dann NSNotFound (siehe
-        // `fastraSafeSelectedRange`) — das Einfügen bräche die App ab.
-        let selection = textView.fastraSafeSelectedRange
         let insertion = links.joined(separator: "\n")
         textView.replaceCharacters(in: selection, with: insertion)
         let caret = selection.location + (insertion as NSString).length

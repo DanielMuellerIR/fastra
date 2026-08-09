@@ -1067,6 +1067,7 @@
 "Erst speichern" = "Save First";
 "Das Dokument hat noch keinen Speicherort. Bitte erst speichern (⌘S) — dann kann Fastra Bilder daneben ablegen." = "The document has no location on disk yet. Please save it first (⌘S) — then Fastra can store images next to it.";
 "Die Bilddaten konnten nicht gelesen werden." = "The image data could not be read.";
+"„images“ ist kein echter Ordner. Bitte den symbolischen Link oder die Datei umbenennen und erneut versuchen." = "‘images’ is not a real folder. Rename the symbolic link or file, then try again.";
 "Fastra legt eingefügte Bilder neben dem Dokument ab und verlinkt sie relativ — Details in der Hilfe." = "Fastra stores inserted images next to the document and links them relatively — see Help for details.";
 "Hilfe öffnen" = "Open Help";
 "Hinweis ausblenden" = "Dismiss hint";

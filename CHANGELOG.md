@@ -9,6 +9,40 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.68.3] — 2026-08-09
+
+### Behoben
+
+Zweiter Block der Abarbeitung des Code-Reviews vom 2026-08-09
+(Markdown-Bildablage und Vorschau):
+
+- **Der Bildlink landet nach asynchronem Kopieren nicht mehr an einer
+  inzwischen veränderten Stelle:** Paste und Drop merken sich beim Start eine
+  revisionsgebundene Einfügemarke (Tab, Inhalts- und Auswahlrevision,
+  Auswahl). Nur ein völlig unverändertes Ziel ersetzt die damalige Auswahl;
+  nach Tippen oder Cursorbewegung wird der Link an der aktuellen Position
+  rein eingefügt, ohne neu markierten Text zu löschen.
+- **Ein `images`-Symlink kann die Bildablage nicht mehr aus dem
+  Dokumentordner herausleiten:** Ist `images` ein symbolischer Link oder
+  eine Datei, wird die Ablage mit verständlicher Meldung abgewiesen, statt
+  still ins Linkziel zu schreiben.
+- **Ein Verzeichnis mit Bildendung (z. B. `archiv.png`) wird nicht mehr als
+  Bild kopiert:** Die Drop-Einteilung prüft den symlink-aufgelösten Dateityp;
+  ein Symlink auf ein echtes Bild bleibt zulässig.
+- **Zwischenablage-Bilder blockieren die Oberfläche nicht mehr:** Auch der
+  Paste-/Browser-Drop-Pfad dekodiert und schreibt jetzt im Hintergrund
+  (bisher nur der Datei-Drop).
+- **Parallele Bildablagen kollidieren nicht mehr beim Dateinamen:** Die
+  Paste-Ablage serialisiert Namenswahl und Schreiben je Zielordner; die
+  Dateikopie wiederholt bei einem belegten Namen die Suffixsuche.
+- **Mehrere gleichzeitig gezogene Dateien behalten ihre Reihenfolge:** Die
+  Drop-Sammlung sortiert nach Provider-Index statt nach Callback-Tempo.
+- **Die Vorschau zeigt nach Stil- oder Dokumentwechsel keinen alten Inhalt
+  mehr:** Ein liegengebliebenes Render-Fragment des vorherigen Ladevorgangs
+  wird beim vollständigen Neuladen verworfen.
+- **Ein per Symlink referenziertes Bild erscheint jetzt in der Vorschau:**
+  Typ- und Größenprüfung laufen am aufgelösten Ziel statt am Link.
+
 ## [v1.68.2] — 2026-08-09
 
 ### Behoben
