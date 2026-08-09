@@ -6,20 +6,6 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Jetzt
 
-- **Tests räumen ihre Preferences-Domains nicht auf** (gemeldet 2026-07-28):
-  Jeder Testlauf legt unter `~/Library/Preferences` eigene Domains mit UUID im
-  Namen an und lässt sie liegen — gefunden wurden 3713 plists (~22 MB), Muster
-  `FastraTests.GitPreferences.<UUID>` (1419), `FastraTests.PatternLibrary.<UUID>`
-  (482), `Fastra-DiffLifecycle-<UUID>`, `fastra-test-extchange-<UUID>`,
-  `search-jump-first/second-<UUID>`; dazu Altbestand des archivierten Vorläufers
-  cregex. Das ist nicht nur Unordnung: `cfprefsd` kam mit der Domain-Flut nicht
-  mehr klar — `defaults read com.apple.Terminal` lieferte NICHTS mehr, und
-  Terminal.app startete mit dem Standardprofil statt Daniels Einstellungen; nach
-  Löschen der 3713 Dateien und cfprefsd-Neustart war alles wieder normal.
-  **Zu tun:** Tests entfernen ihre Domain im `tearDown`
-  (`removePersistentDomain` für den jeweiligen Suite-Namen, alternativ
-  `defaults delete`); zusätzlich ein Guard am Suite-Ende, der meldet, wenn eine
-  Test-Domain übrig bleibt.
 - **4D-Parameterhilfe/Typeahead: verbliebene Komponenten-/Plugin-Grenzen**
   (verbleibende Grenze nach der Komponentenmethoden-Unterstützung; diese ist mit
   v1.50.0 umgesetzt — Typeahead + Signaturhilfe aus `.4dbase`, `.4DZ` und
@@ -40,9 +26,27 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 - **Soft Wrap, Rechteckauswahl und Einrückung** (beschlossen 2026-07-19):
   Umsetzung in vier getrennten Etappen mit eigener Verifikation und Version.
   **Umgesetzt: Etappe 1 (Formatprofile und Fußzeilen-Bedienung, v1.40.0),
-  Etappe 2 (Umbruchziele und Seitenlinie, v1.41.0) und Etappe 3
-  (Rechteckauswahl unter Soft Wrap, v1.42.0).** Offen bleibt Etappe 4
-  (Einrückungsprofile, intelligentes Einfügen und Folgezeilen-Einrückung).
+  Etappe 2 (Umbruchziele und Seitenlinie, v1.41.0), Etappe 3
+  (Rechteckauswahl unter Soft Wrap, v1.42.0) sowie aus Etappe 4 die
+  Einrückungsprofile pro Format und „Einfügen und Einrückung angleichen"
+  (v1.68.0).** Offen bleibt aus Etappe 4 die rein visuelle Einrückung von
+  Soft-Wrap-Folgezeilen (Spezifikation:
+  theplan `tasks/fastra-soft-wrap-2026-07/goal-4-einrueckung.md`, Punkt 3):
+  - Die BBEdit-Semantik der drei Modi ist erhoben (Handbuch 16.0.2, S. 125
+    und 262): „Flush Left" = Folgefragmente bündig am Fensterrand,
+    „First Line" = auf der Einrückung der ersten Zeile, „Reverse" = genau
+    EINE Einrückungsstufe tiefer als die erste Zeile. Werkstandard soll
+    „First Line" sein; der Wert gehört ins Formatprofil (Feld ist im Store
+    vorbereitet, aber bewusst noch nicht angelegt — kein totes Setting).
+  - Der Kern ist Geometrie im CodeEditTextView-Layout: Folgefragmente
+    brauchen einen eigenen x-Ursprung UND eine entsprechend verkleinerte
+    Umbruchbreite (mindestens ein Graphem pro Fragment). Denselben Ursprung
+    müssen teilen: Zeichnen, Caret, `rectForOffset`, `textOffsetAtPoint`,
+    Auswahlflächen, IME, Drag-and-drop, Auto-Scroll und Rechteckauswahl —
+    ein nur optisch eingerückter Text mit falschem Klickziel gilt als nicht
+    fertig. Wegen dieser Streuung über viele Layout-Stellen ist der Punkt
+    eine eigene, konzentrierte Etappe mit Fenster-Selbsttest
+    `softwrapindent` und darf nicht nebenbei entstehen.
 - **Wunschpaket 3** (beschlossen 2026-07-18):
   **Alle acht Etappen umgesetzt:** Etappe 1 (Diff-Kern & Datei-Diff
   dual-pane, v1.32.0), Etappe 2 (Git-Diff auf gemeinsamem Renderer,
@@ -74,89 +78,6 @@ Erledigte Arbeit und historische Entscheidungen stehen in
     nicht; `errors`/`plug_ins`/`member` aus den Farbvorgaben entfallen
     mangels Analyse bzw. Unterscheidbarkeit (siehe Slot-Mapping in
     `EditorView.swift`).
-
-## Robustheit-Nacharbeit aus dem Code-Review 2026-08-02
-
-Beim Review vom 2026-08-02 bestätigte, aber bewusst nicht sofort gefixte
-Punkte (die akuten Funde sind mit v1.60.1 behoben). Gebündelt nach Thema:
-
-- **I/O-Härtung:** blockierendes `open` vor der Typprüfung bei FIFOs
-  (`FileSnapshot.swift:59`); Symlink-TOCTOU zwischen Attributprüfung und
-  Lesen (`FileLoader.swift:109`); Apply schreibt auf die Symlink-URL statt
-  des kanonischen Ziels (`FolderSearch.swift:185`); `readToEnd()` ohne
-  Größengrenze (`FileSnapshot.swift:70`); 4DZ-Zentralverzeichnis bis ~4 GiB
-  am Stück (`FourDZipArchive.swift:70`); Komponentengröße 0/Symlink
-  (`FourDComponentIndex.swift:128`).
-- **Git-Pfad:** expliziter Refspec statt `git push <remote> HEAD`
-  (`GitActions.swift:303`) und Push-Ziel unmittelbar vor dem Push erneut
-  binden (`GitActions.swift:287`); Konfliktdateien beim Mehrfach-Verwerfen
-  ausnehmen (`GitChangesSelection.swift:88`); Teil-Löschfehler nicht
-  verschlucken (`GitActions.swift:152`); Doppel-Öffnen/Projektwechsel-Race
-  im Änderungen-Panel (`GitChangesView.swift:511`).
-- **Nebenläufigkeit/UI:** `Workspace.shared`-Setter vs. Kontextaktivierung
-  seriell auf dem Main-Thread (`Workspace.swift`, `sharedStorage`/`sharedLock`);
-  Projekt-Scan als
-  strukturierter, abbrechbarer Task (`Workspace.swift:2832`);
-  Scroll-Restore-Generation pro Editor statt prozessweit
-  (`EditorView.swift:954`); Markdown-Import-Anzeige an Besitzer-Fenster
-  binden (`EditorView.swift:301`); Restore-Completion nicht an die
-  Workspace-Lebenszeit koppeln (`SessionRestoration.swift:242`);
-  Signaturabruf von der MainActor-Blockade lösen
-  (`FourDSignatureHelpPanel.swift:119`).
-- **Undo/Apply-Speicher:** Backups sequenziell statt alle vorab laden
-  (`ApplyEngine.swift:1182`) und `.restored`-Einträge vor dem Backup-Zugriff
-  überspringen (`ApplyEngine.swift:1185`).
-- **4D-Sprachhelfer:** Tokenizer-Komplexität begrenzen
-  (`FourDTokenizer.swift:292`); Completion nicht in Kommentar/String
-  (`FourDCompletion.swift:203`) und manueller Ein-Zeichen-Trigger
-  (`FourDCompletion.swift:225`); Blockkommentare in der Signaturhilfe
-  (`FourDSignatureHelp.swift:223`); Dateipfad case-korrekt aus dem Index
-  (`FourDSignatureHelp.swift:349`); Symlink-Methoden indexieren
-  (`FourDProjectMethodIndex.swift:43`).
-- **Selbsttest-/Skript-Hygiene:** Umgebungsfehler als Exit 2 kennzeichnen
-  (`SelfTest.swift:11043`, `:11181`); Janitor-Spur bei pkill-Fehler behalten
-  (`TestDefaultsJanitorTests.swift:99`); screenshot-run stellt den vorherigen
-  Appearance-Wert exakt wieder her (`screenshot-run.sh:54`).
-- **Editor-Details:** Doppelklick bei zerlegtem Unicode
-  (`build.sh:1375`-Patch); Spaltenselektion ohne komplette Zeilenkopie
-  (`app/Patches/CodeEditTextView/TextView+ColumnSelection.swift`,
-  `fastraVisualColumn`/`fastraOffset(forColumn:in:edge:)`); Emoji-Selektor an
-  Rangegrenzen (`TextOperations.swift:1063`); `closingTail()` ans Dokumentende
-  (`MarkdownHTMLWhitelist.swift`, `MarkdownHTMLSanitizing.apply(to:)`).
-- **Toter Code:** `planSHA256` an der Apply-Grenze prüfen oder entfernen
-  (`ApplyEngine.swift:174`); Test-only `apply(plan:)` auf den produktiven
-  Transaktionskern führen (`ApplyEngine.swift:934`).
-
-## Nacharbeit aus dem Code-Review 2026-08-06 (Abendlauf)
-
-Beide Punkte betreffen die Markdown-Vorschau und hängen zusammen: Sie brauchen
-denselben Umbau — das Rendern eines Fragments in den Hintergrund, abgesichert
-über eine Generationsnummer. Deshalb bewusst gemeinsam und nicht nebenbei. Die
-übrigen sieben Funde des Laufs sind mit v1.63.2 behoben.
-
-- **Ein extern ausgetauschtes Bild aktualisiert die offene Vorschau nicht**
-  (`MarkdownPreview.swift`, `MarkdownRichTextView.update`): Bei unverändertem
-  Markdown kehrt die Aktualisierung zurück, bevor die Bild-Adressen neu
-  berechnet werden. Für die referenzierten Bilddateien gibt es keinen
-  Beobachter, also löst ein Überschreiben am gleichen Pfad gar nichts aus —
-  die Vorschau zeigt die alte Fassung, bis sich Markdown, Dokumentpfad oder
-  Darstellungsstil ändern. **Zu tun:** die Elternordner der referenzierten
-  Bilder über FSEvents beobachten (`ProjectFileWatcher` als Vorlage, aber
-  mehrere Pfade und ohne Projektbindung) und bei einer Änderung
-  generationengesichert ein frisches Fragment einspielen. **Prüfen:** nicht
-  nur als Unit-Test — der echte Vorschau-Pfad braucht eine Fenstersitzung,
-  ein Bild am gleichen Pfad überschreiben und die Anzeige wirklich ansehen.
-- **Das Fragment entsteht auf dem UI-Thread** (`MarkdownPreview.swift`,
-  `MarkdownRichText.renderedFragment`): Jeder Renderlauf kostet einen
-  cmark-Durchlauf und je Bild einen Dateisystemzugriff. Bei vielen Bildern
-  oder Bildern auf einem eingebundenen Netzlaufwerk kann das Tippen dadurch
-  sichtbar hängen. Der doppelte Lauf beim Vollreload ist mit v1.63.2 weg
-  (`htmlDocument(fragment:…)`), das Rendern selbst läuft weiter auf dem
-  UI-Thread. **Zu tun:** das Rendern auf eine eigene serielle Queue legen und
-  das Ergebnis generationengesichert zurückgeben. **Achtung:**
-  `cmark_gfm_core_extensions_ensure_registered()` schreibt in eine globale
-  Registrierung — alle Renderwege müssten dann über dieselbe serielle Queue
-  laufen, sonst entsteht ein Wettlauf.
 
 ## Kleine offene Ideen
 
@@ -192,78 +113,16 @@ denselben Umbau — das Rendern eines Fragments in den Hintergrund, abgesichert
   Fenster-Selbsttests (welcomenew, newwindow, cmdw, sessionrestore,
   coldopen) auf einer geeigneten UI-Sitzung.
 
-- **Datenschutz und Sicherheit der Markdown-Vorschau erklären** (Idee
-  2026-07-28): Ein kurzer Abschnitt in README und mitgelieferter Hilfe, der
-  beschreibt, wie Fastra Markdown anzeigt und welcher Kompromiss dahintersteht.
-  Der Punkt ist nicht „sicherer als andere", sondern **nachvollziehbar**: Ein
-  Vorschaufenster rendert fremde Dokumente, und Leser sollen wissen, was dabei
-  passiert.
-
-  Zu erklären wäre die bewusste Mitte. Vollständige HTML-Unterdrückung macht
-  verbreitete GitHub-READMEs unbrauchbar — ein zentriertes Logo in
-  `<p align="center"><img …></p>` ist der Normalfall. Fastra rendert deshalb
-  eine kleine, fest umrissene Menge an Elementen, einschließlich `<img>`, und
-  hält gleichzeitig fest: `default-src 'none'` verbietet jeden Netzabruf,
-  entfernte Bilder werden neutralisiert, lokale laufen über interne Tokens,
-  der Prüfer erzeugt die Ausgabe neu statt Eingabebytes durchzureichen,
-  `script-src` nutzt einen Nonce pro Render statt `'unsafe-inline'`, und
-  unsichere Link-Schemata (`javascript:`, `vbscript:`, `file:`, `data:`)
-  prüft Fastra selbst. Kein `<script>`, `<style>`, `<iframe>`, `<svg>`,
-  `<math>`, keine Ereignis-Attribute, kein `style`, `class` oder `id`.
-
-  **Zum Vergleich mit anderen Werkzeugen:** Umgesetzt ist das in README und
-  Hilfe bewusst ohne Produktnamen und ohne Werturteil — beschrieben wird der
-  Mechanismus, den die wenigsten kennen (entfernte Bilder verraten das Öffnen;
-  Formel- und Diagrammbibliotheken kommen beim Anzeigen von einem CDN), samt
-  Hinweis, dass beides meist umstellbar ist, und einer Anleitung zum
-  Selbst-Nachprüfen. Diese Form altert nicht mit fremden Versionsnummern.
-
-  Sollte je ein konkreter Vergleich gewünscht sein: nur mit eigener, aktueller
-  Messung, und dabei zwischen der VORGEFUNDENEN Konfiguration und der
-  Auslieferungs-Voreinstellung unterscheiden — die sind nicht dasselbe, und
-  eine Aussage über die Voreinstellung braucht eine frische Umgebung. Die
-  Einzelmessung vom 2026-07-28 liegt in der privaten Projektdokumentation,
-  nicht hier: Ein öffentliches Repo ist kein Ort für Befunde über fremde
-  Software, die niemand gegengeprüft hat.
-
-## Bekannte Fehler
-
-- **Der Selbsttest-Runner meldet `projectperf` als echten Funktionsfehler,
-  obwohl ihm nur die Umgebung fehlt** (2026-07-30). Der Test braucht über
-  `FASTRA_PROJECT_PERF_ROOT` einen externen, nur gelesenen Realbestand mit
-  `userPreferences.*`- und `DerivedData`-Anteilen; fehlt die Variable oder
-  passt der Ordner nicht, scheitert er mit `finish(false, …)` und zählt damit
-  in die echten FAILs statt in die Umgebungs-FAILs (Exit 1 statt 2). Er steht
-  bewusst nicht in `ALL_TESTS`, taucht aber in `WINDOWLESS_TESTS` auf und
-  wandert so leicht in eine handverlesene Testliste. `tool4dlsp` zeigt im
-  selben Runner, wie es richtig geht — dort wird der fehlende Realbestand als
-  Umgebungsproblem ausgewiesen. Beim Anfassen dieselbe Klassifizierung
-  nachziehen.
-
-- **`selftest.sh` lässt seine Fehlerdateien liegen.** Der Runner legt pro Test
-  mit `mktemp` eine Datei für stderr an und entfernt sie nicht wieder. Ein
-  vollständiger Lauf hinterlässt so rund achtzig Dateien im Temp-Ordner.
-  Harmlos, aber unsauber — beim nächsten Anfassen des Runners aufräumen.
-
-- **`SmartPaste.markdownFromClipboard` beendet beim Fristablauf nur das direkte
-  Kind.** Startet das Umwandlungswerkzeug seinerseits Kinder, überleben die den
-  Abbruch. Richtig wäre, die ganze Prozessgruppe zu beenden.
-
-- **Warteschleifen mit `Task.yield()` in vier Testdateien** (EmptyScratchTab,
-  ExternalChange, WorkspaceLoad, OpenFileOrFolder). Sie drehen frei, bis eine
-  Bedingung eintritt, statt auf ein Signal zu warten — unter Fremdlast der
-  wahrscheinlichste Kandidat für sporadische Hänger. Auf robustes Warten
-  umstellen.
-
-- **Klemmung auch auf der SCHREIB-Seite der Auswahl.** Die Lese-Seite ist mit
-  v1.64.0 erledigt: Alle Zugriffe gehen über `TextView.fastraSafeSelectedRange`
-  (`SelectionClamping.clamp`), nachdem ein `NSNotFound`-Bereich die Anwendung
-  im Undo-Verwalter abbrechen ließ. Offen bleibt die Gegenrichtung: Auch
-  `setSelectedRange` sollte einen ungültigen Bereich abweisen, statt ihn
-  anzunehmen — der Attachment-Beobachter von CodeEditTextView baut daraus ein
-  `IndexSet`, und `IndexSet.insert(range:)` trappt bei `NSNotFound`
-  (zweimal beobachtet, ausgelöst von Selbsttests; die sind inzwischen
-  gehärtet).
+- **Datenschutz-Erklärung der Markdown-Vorschau: Produktvergleiche bleiben
+  bewusst draußen** (Rest der Idee 2026-07-28; der erklärende Abschnitt
+  selbst steht seit v1.5x in README und mitgelieferter Hilfe, bewusst ohne
+  Produktnamen und Werturteile). Sollte je ein konkreter Vergleich mit
+  anderen Werkzeugen gewünscht sein: nur mit eigener, aktueller Messung,
+  und dabei zwischen der VORGEFUNDENEN Konfiguration und der
+  Auslieferungs-Voreinstellung unterscheiden — eine Aussage über die
+  Voreinstellung braucht eine frische Umgebung. Die Einzelmessung vom
+  2026-07-28 liegt in der privaten Projektdokumentation; ein öffentliches
+  Repo ist kein Ort für ungeprüfte Befunde über fremde Software.
 
 ## Aus dem Dauertest und den Betriebsmeldungen (2026-08-07/08)
 
@@ -275,36 +134,17 @@ echten Menübefehlen (private Datenquellen in der gitignorierten
 `app/soak-test.local`). Diese Punkte hat er oder der Arbeitsbetrieb gemeldet
 und sie sind noch offen.
 
-- **Ein geschlossenes Fenster kommt beim Öffnen einer weiteren Datei zurück**
-  (mit 1.63.3 reproduziert). Verdacht: `Workspace.init` ruft
-  `deliverPendingOpenFiles()`, also löst jedes neu erzeugte Fenster eine
-  Nachlieferung aus dem Öffnen-Puffer aus.
 - **Die Ansicht kriecht beim Markieren mit der Maus nach unten** — nur in
-  Markdown, auch wenn die Markierung nach oben wandert. Nicht reproduzierbar;
-  trat nach längerer Arbeit mit mehreren umgewandelten Protokollen auf. Der
-  Selbsttest `dragnoscroll` fängt es nicht ein: Die synthetischen
-  Drag-Ereignisse kommen nicht einzeln an, die Auswahl bleibt in jedem Lauf
-  gleich groß. Verdacht ist der Fastra-Patch in
-  `SourceEditor.updateControllerWithState`, der bei ungleichen
-  `cursorPositions` mit `scrollToVisible: true` nachzieht, obwohl der
-  SwiftUI-Zustand runloop-versetzt veraltet ist.
-  **Teilweise entschärft mit 1.65.0:** Das Nachzieh-Scrollen ist jetzt ans
-  Key-Window gebunden (Hintergrundfenster scrollen nie mehr ungefragt,
-  Selbsttest `bgscroll`). Im aktiven Fenster kann der Zweig aber weiter
-  feuern, solange State und Controller divergieren. **Offen bleibt die
-  Wurzel:** Nach einem Treffer-Sprung konvergiert der Round-Trip nie, weil
-  `EditorView` (Sprung-Pfad, `.fastraJumpToRange`) eine `CursorPosition`
-  mit `range == .notFound` schreibt und der CESE-Coordinator die aufgelöste
-  Rückmeldung im `isUpdatingFromRepresentable`-Fenster verwirft. Eine echte
-  Range dort zu schreiben wurde geprüft und verworfen (2026-08-09): Beim
-  Sprung in eine andere Datei existiert der Ziel-Editor zum
-  Notification-Zeitpunkt noch nicht (Remount per `.id`), Zeile/Spalte ist
-  bewusst die driftfreie Adressierung — und selbst eine echte Range würde
-  nicht konvergieren, weil `CursorPosition` auch Zeile/Spalte vergleicht
-  (der Range-Initializer setzt sie auf −1; der vollständige Initializer ist
-  CESE-intern). Der saubere Weg wäre, im 4c-Patch den Vergleich über
-  `controller.resolveCursorPosition` zu führen, damit ein bereits
-  angewandter Sprung als „gleich" erkannt wird.
+  Markdown, nicht deterministisch reproduzierbar (der Selbsttest
+  `dragnoscroll` fängt es nicht ein: synthetische Drag-Ereignisse kommen
+  nicht einzeln an). **Wurzel mit v1.67.1 behandelt:** Das Nachzieh-Scrollen
+  war seit v1.65.0 ans Key-Window gebunden (`bgscroll`); mit dem
+  CESE-Patch 4c-2 vergleicht der Reconcile jetzt über
+  `controller.resolveCursorPosition`, wodurch ein bereits angewandter
+  Sprung (range == .notFound, nur Zeile/Spalte) als „gleich" gilt und der
+  Zweig nicht mehr bei jeder SwiftUI-Neubewertung feuert. Die Beobachtung
+  bleibt bis zur Bestätigung im Arbeitsbetrieb notiert; bei erneutem
+  Auftreten Repro-Schritte und geöffnete Dokumente festhalten.
 - **Das Fenstermenü listete nur eine von zwei offenen Dateien.** In kurzer
   Nachstellung korrekt — also zustandsabhängig.
 - **`folderSearch_deduplicatesOverlappingRoots` einmal rot** (2026-07-28,
@@ -314,13 +154,15 @@ und sie sind noch offen.
   dieses Tages. Bei erneutem Auftreten notieren, ob der Lauf unter Fremdlast
   stand, und den Kandidatenpfad der Datei-Set-Wurzeln prüfen.
 
-- **„Timeout gewinnt deterministisch gegen einen bereits vorhandenen
-  Ref-Lock" sporadisch rot** (`GitConflictAndAdvancedTests.swift:786`,
-  beobachtet 2026-08-07 in zwei von sechs vollständigen `swift test`-Läufen).
-  Die Erwartung, dass `index.lock` weg ist, wird direkt nach der Completion
-  geprüft; das aufgerufene `git` hat seinen Lock zu diesem Zeitpunkt aber
-  nicht zwingend schon entfernt. Beim Anfassen auf ein Warten mit kurzer
-  Frist umstellen statt auf eine Momentaufnahme.
+- **„Späte Attributantwort eines alten Tabs" lastabhängig rot**
+  (`GitConflictAndAdvancedTests`, beobachtet 2026-08-09 in zwei von etwa
+  acht vollständigen `swift test`-Läufen): Die erste Attributprüfung
+  startete gar nicht (`executor.count == 0`) — der Guard in
+  `invalidateAndRefreshActiveConflictInspection` bricht dann still ab.
+  Der Test degradiert seit 2026-08-09 sauber (Issue statt Index-Trap, der
+  vorher die GANZE Suite beendete). Ursache unklar; Verdacht ist ein
+  asynchroner Überschreiber von `gitStatus` unter Testparallelität. Bei
+  erneutem Auftreten die Guard-Bedingungen einzeln protokollieren.
 
 ## Offene Beobachtungen (nicht reproduziert)
 
