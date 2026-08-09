@@ -365,11 +365,4 @@ enum MarkdownAssist {
         CommandTargeting.editorTextView(for: workspace)
     }
 
-    private static func descendantTextView(in view: NSView) -> TextView? {
-        if let tv = view as? TextView { return tv }
-        for sub in view.subviews {
-            if let found = descendantTextView(in: sub) { return found }
-        }
-        return nil
-    }
 }

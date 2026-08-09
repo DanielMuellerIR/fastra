@@ -86,16 +86,6 @@ enum CommandTargeting {
         return windows[index]
     }
 
-    /// Workspace des Fensters, das der Nutzer bedient.
-    ///
-    /// Ersetzt `Workspace.shared` überall dort, wo ein BEFEHL sein Ziel sucht.
-    /// `Workspace.shared` bleibt für alles zulässig, was nicht an ein Fenster
-    /// gebunden ist (etwa das Ausliefern gepufferter Öffnen-Anfragen).
-    static func targetWorkspace() -> Workspace? {
-        guard let window = targetDocumentWindow() else { return nil }
-        return WorkspaceWindowRegistry.workspace(for: window)
-    }
-
     /// Editor-TextView des Fensters, das der Nutzer bedient.
     static func targetEditorTextView() -> TextView? {
         guard let window = targetDocumentWindow(),
@@ -153,7 +143,13 @@ enum CommandTargeting {
     static func registeredWindow(for workspace: Workspace) -> NSWindow? {
         if let visible = documentWindow(for: workspace) { return visible }
         return WorkspaceWindowRegistry.registeredWindows().first {
-            WorkspaceWindowRegistry.workspace(for: $0) === workspace
+            // Der Rückfall darf die Sichtbarkeit bewusst NICHT verlangen:
+            // AppKit kann hintere Dokumentfenster beim Beenden ausblenden.
+            // Such- und Hilfefenster kennen teils denselben Workspace, sind
+            // aber niemals der sichtbare Gegenstand einer Sicherungsfrage.
+            !SearchWindow.isSearchWindow($0)
+                && !HelpWindow.isHelpWindow($0)
+                && WorkspaceWindowRegistry.workspace(for: $0) === workspace
         }
     }
 

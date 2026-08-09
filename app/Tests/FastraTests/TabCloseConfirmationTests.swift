@@ -45,6 +45,22 @@ func close_dirtyCancelKeeps() {
     #expect(ws.tabs.map(\.id) == [a.id])     // Abbrechen → Tab bleibt
 }
 
+@Test("Nicht-aktiven Dirty-Tab schließen: Abbrechen stellt den aktiven Tab wieder her")
+func close_inactiveDirtyCancelRestoresActive() {
+    let ws = makeWorkspace()
+    ws.confirmCloseHandler = { _ in .cancel }
+    let active = EditorTab(title: "active.txt", path: "/tmp", isDirty: false)
+    let other = EditorTab(title: "other.txt", path: "/tmp",
+                          content: "ungesichert", isDirty: true)
+    ws.tabs = [active, other]
+    ws.activeTabID = active.id
+
+    ws.closeTab(id: other.id)
+
+    #expect(ws.tabs.map(\.id) == [active.id, other.id])
+    #expect(ws.activeTabID == active.id)
+}
+
 @Test("Dirty-Tab: Nicht sichern schließt und verwirft")
 func close_dirtyDontSaveCloses() {
     let ws = makeWorkspace()
@@ -197,6 +213,7 @@ func close_othersCancelAborts() {
     ws.activeTabID = keep.id
     ws.closeOtherTabs(keeping: keep.id)
     #expect(ws.tabs.count == 2)             // nichts geschlossen
+    #expect(ws.activeTabID == keep.id)      // ursprünglicher Tab bleibt sichtbar
 }
 
 @Test("closeOtherTabs mit Nicht sichern schließt die anderen, behält den Ziel-Tab")

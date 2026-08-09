@@ -641,15 +641,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Tab, keine Möglichkeit nachzusehen, worum es geht (Fehlerbericht
         // 2026-08-07). Eine Rückfrage ohne sichtbaren Gegenstand ist nicht
         // beantwortbar — also entweder zeigen oder gar nicht fragen.
-        for workspace in Workspace.allLive {
+        // Die Fensterliste VOR den Rückfragen einfrieren: Das Vorholen eines
+        // Fensters verändert `NSApp.orderedWindows`. Die Sitzung selbst wird
+        // erst DANACH erfasst, weil „Sichern unter…" einem unbenannten Tab erst
+        // während der Rückfragen seine Datei-URL geben kann.
+        let orderedWindows = DocumentWindowController.restorableDocumentWindows()
+        for documentWindow in orderedWindows {
+            guard let workspace = WorkspaceWindowRegistry.workspace(for: documentWindow) else {
+                continue
+            }
             guard let window = CommandTargeting.registeredWindow(for: workspace) else {
                 continue   // verwaist: gehört zu keinem Fenster mehr
             }
-            window.makeKeyAndOrderFront(nil)
+            // Saubere Fenster nicht vorholen: Ohne Dialog gäbe es keinen Grund
+            // dafür, und ein späterer Abbruch soll die Z-Reihenfolge erhalten.
+            if workspace.hasTabsRequiringSaveBeforeClosing {
+                window.makeKeyAndOrderFront(nil)
+            }
             guard workspace.confirmCloseAllDirtyForQuit() else { return .terminateCancel }
         }
         SessionRestorationCoordinator.captureCurrentSession(
-            defaults: SelfTest.workspaceDefaults()
+            defaults: SelfTest.workspaceDefaults(),
+            windows: orderedWindows
         )
         return .terminateNow
     }

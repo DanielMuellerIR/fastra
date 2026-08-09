@@ -9,6 +9,33 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.68.2] — 2026-08-09
+
+### Behoben
+
+Erster Block der Abarbeitung des Code-Reviews vom 2026-08-09 (Fensterwahl beim
+Beenden und Tab-Schließen):
+
+- **Der Beenden-Rückfall kann nicht mehr das Suchfenster statt des
+  Dokumentfensters nach vorn holen:** `CommandTargeting.registeredWindow`
+  schließt Such- und Hilfefenster im Registry-Rückfall jetzt aus. Vorher
+  konnte die Sicherungsrückfrage vor dem Suchfenster erscheinen, während das
+  betroffene Dokument unsichtbar blieb.
+- **Beenden würfelt die Fensterreihenfolge nicht mehr durcheinander:** Die
+  Rückfrageschleife läuft jetzt in echter Vordergrund-Reihenfolge über die
+  eingefrorene Fensterliste statt über die ungeordnete `allLive`-Menge, holt
+  nur noch Fenster mit sicherungspflichtigen Tabs nach vorn und erfasst die
+  Sitzung erst nach den Dialogen — so bleibt beim nächsten Start das echte
+  Vorderfenster vorn, und ein per „Sichern unter…“ erst im Dialog benannter
+  Tab landet trotzdem in der Wiederherstellung.
+- **Abgebrochenes Tab-Schließen lässt den aktiven Tab unverändert:**
+  `closeTab` und `closeOtherTabs` stellen bei „Abbrechen“ oder gescheitertem
+  Sichern den zuvor aktiven Tab wieder her, statt den abgefragten Tab aktiv
+  zu lassen.
+- Tote Doppelimplementierungen entfernt (`descendantTextView`-Kopien in
+  EditorContextMenu und MarkdownAssist, unbenutztes
+  `CommandTargeting.targetWorkspace()`).
+
 ## [v1.68.1] — 2026-08-09
 
 ### Behoben

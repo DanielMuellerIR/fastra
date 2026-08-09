@@ -287,7 +287,8 @@ enum SessionRestorationCoordinator {
     private static var restoreWasScheduled = false
 
     static func captureCurrentSession(
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        windows: [NSWindow]? = nil
     ) {
         guard SessionRestorationPreferences.isEnabled(in: defaults) else {
             SessionStateStore.clear(in: defaults)
@@ -297,8 +298,9 @@ enum SessionRestorationCoordinator {
         // unsichtbar schalten. Die Registry unterscheidet diese weiterhin
         // offenen Fenster von wirklich geschlossenen und verhindert so, dass
         // nur das Vorderfenster in der nächsten Sitzung übrig bleibt.
-        let windows = DocumentWindowController.restorableDocumentWindows()
-        let states = windows.compactMap { window in
+        let restorableWindows = windows
+            ?? DocumentWindowController.restorableDocumentWindows()
+        let states = restorableWindows.compactMap { window in
             WorkspaceWindowRegistry.workspace(for: window)?
                 .restorableWindowState(frame: window.frame)
         }

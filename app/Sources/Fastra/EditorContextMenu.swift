@@ -1143,14 +1143,6 @@ final class EditorContextMenu: NSObject {
         MainActor.assumeIsolated { CommandTargeting.workspace(for: textView) }
     }
 
-    private func descendantTextView(in view: NSView) -> TextView? {
-        if let tv = view as? TextView { return tv }
-        for sub in view.subviews {
-            if let tv = descendantTextView(in: sub) { return tv }
-        }
-        return nil
-    }
-
     @objc private func sortLines(_ sender: NSMenuItem) {
         guard let direction = LineOperations.SortDirection(rawValue: sender.tag) else {
             NSSound.beep()

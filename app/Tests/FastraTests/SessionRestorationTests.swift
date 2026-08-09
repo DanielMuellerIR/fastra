@@ -330,3 +330,37 @@ func sessionCaptureIncludesRegisteredHiddenWindows() throws {
     #expect(capturedPaths.contains([firstURL.path]))
     #expect(capturedPaths.contains([secondURL.path]))
 }
+
+@Test("Eingefrorene Fensterliste erfasst nachträglich benannten Tab")
+@MainActor
+func sessionCaptureUsesFrozenWindowsWithCurrentTabState() throws {
+    let (defaults, suite) = sessionDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let savedURL = try sessionFile("nachtraeglich-benannt.txt", content: "Text")
+    defer {
+        try? FileManager.default.removeItem(
+            at: savedURL.deletingLastPathComponent()
+        )
+    }
+
+    let workspace = Workspace(defaults: defaults)
+    let window = NSWindow()
+    WorkspaceWindowRegistry.register(workspace, for: window)
+    defer { WorkspaceWindowRegistry.unregister(window) }
+
+    // Der Beenden-Pfad friert die Fensterreihenfolge vor den Dialogen ein.
+    // „Sichern unter…" ergänzt die Datei-URL erst danach.
+    let frozenWindows = [window]
+    workspace.tabs[0].title = savedURL.lastPathComponent
+    workspace.tabs[0].path = savedURL.deletingLastPathComponent().path
+    workspace.tabs[0].url = savedURL
+
+    SessionRestorationCoordinator.captureCurrentSession(
+        defaults: defaults,
+        windows: frozenWindows
+    )
+
+    let capturedPaths = SessionStateStore.load(from: defaults)?.windows
+        .map(\.documentPaths)
+    #expect(capturedPaths == [[savedURL.path]])
+}

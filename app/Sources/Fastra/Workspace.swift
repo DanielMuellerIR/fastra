@@ -1420,6 +1420,13 @@ final class Workspace: ObservableObject {
         return tab.isDirty && !isEmptyUntitled
     }
 
+    /// Braucht dieser Workspace beim Schließen mindestens eine Rückfrage?
+    /// Der Beenden-Pfad nutzt exakt dieselbe Verlustprüfung wie `mayCloseTab`,
+    /// damit er nur dann das zugehörige Fenster nach vorn holt.
+    var hasTabsRequiringSaveBeforeClosing: Bool {
+        tabs.contains(where: Self.requiresSaveBeforeClosing)
+    }
+
     /// Darf der Tab geschlossen werden? Sauberer Tab → ja, OHNE Rückfrage (so
     /// schließt ein leeres/unverändertes Dokument wie bisher sofort). Dirty →
     /// fragt über `confirmCloseHandler`: „Nicht sichern" → ja (verwerfen),
@@ -1484,7 +1491,13 @@ final class Workspace: ObservableObject {
         }
 
         let previousActive = activeTabID
-        guard mayCloseTab(id: id) else { return }           // Abbrechen → Tab bleibt
+        guard mayCloseTab(id: id) else {
+            if let previousActive,
+               tabs.contains(where: { $0.id == previousActive }) {
+                activeTabID = previousActive
+            }
+            return                                          // Abbrechen → Tab bleibt
+        }
         guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
         cancelGitDiffLoad(tabID: id)
         tabs.remove(at: idx)
@@ -1562,8 +1575,15 @@ final class Workspace: ObservableObject {
     /// GESAMTE Aktion ab (es wird dann kein Tab geschlossen).
     func closeOtherTabs(keeping id: UUID) {
         guard tabs.contains(where: { $0.id == id }) else { return }
+        let previousActive = activeTabID
         for otherID in tabs.map(\.id) where otherID != id {
-            guard mayCloseTab(id: otherID) else { return }   // Abbrechen → alles bleibt
+            guard mayCloseTab(id: otherID) else {
+                if let previousActive,
+                   tabs.contains(where: { $0.id == previousActive }) {
+                    activeTabID = previousActive
+                }
+                return                                      // Abbrechen → alles bleibt
+            }
         }
         for removedID in tabs.map(\.id) where removedID != id {
             cancelGitDiffLoad(tabID: removedID)
