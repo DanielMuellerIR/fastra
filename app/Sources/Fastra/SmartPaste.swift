@@ -24,6 +24,45 @@ import Foundation
 
 // MARK: - Nicht blockierende Prozessausgabe
 
+/// Gemeinsame Obergrenze für ALLE Bytes, die md-clip in einem Lauf über
+/// stdout und stderr zusammen liefern darf.
+///
+/// Die Grenze im Drain (`maximumBytesPerPass`) schützt nur den seriellen
+/// Reader vor einem dauerhaft schreibenden Descriptor — nicht den Speicher:
+/// Ein defektes oder manipuliertes md-clip kann innerhalb der zehn Sekunden
+/// beliebig oft nachliefern. Dieser Zähler ist deshalb die harte Gesamtgrenze;
+/// bei Überschreitung meldet er das GENAU EINMAL, damit der Aufrufer die
+/// Prozessgruppe sofort abbricht.
+private final class ProcessOutputBudget {
+    private let lock = NSLock()
+    private var remaining: Int
+    private var exceeded = false
+    private let onExceeded: () -> Void
+
+    init(limit: Int, onExceeded: @escaping () -> Void) {
+        remaining = max(0, limit)
+        self.onExceeded = onExceeded
+    }
+
+    /// Fordert Platz für `count` Bytes an und liefert, wie viele davon noch
+    /// behalten werden dürfen. Der Rest wird verworfen.
+    func claim(_ count: Int) -> Int {
+        let wanted = max(0, count)
+        lock.lock()
+        let allowed = min(wanted, remaining)
+        remaining -= allowed
+        let isFirstOverflow = allowed < wanted && !exceeded
+        if isFirstOverflow { exceeded = true }
+        lock.unlock()
+        // Die Meldung läuft bewusst OHNE gehaltene Sperre: Sie weckt den
+        // wartenden Aufrufer, der seinerseits `isExceeded` abfragt.
+        if isFirstOverflow { onExceeded() }
+        return allowed
+    }
+
+    var isExceeded: Bool { lock.withLock { exceeded } }
+}
+
 /// Liest eine Prozess-Pipe fortlaufend in den Arbeitsspeicher.
 ///
 /// Ein Lesen erst nach Prozessende kann doppelt blockieren: Ein großer Output
@@ -39,10 +78,13 @@ private final class ProcessPipeCapture {
     private let cancellationFinished = DispatchSemaphore(value: 0)
     private let source: DispatchSourceRead
     private let readDescriptor: Int32
+    private let budget: ProcessOutputBudget
     private var data = Data()
     private var isFinished = false
 
-    init() throws {
+    /// - Parameter budget: Gemeinsames Restbudget beider Ausgabeströme.
+    init(budget: ProcessOutputBudget) throws {
+        self.budget = budget
         readDescriptor = pipe.fileHandleForReading.fileDescriptor
 
         // Nicht blockierend lesen: So wartet auch der abschließende Drain nie
@@ -113,7 +155,14 @@ private final class ProcessPipeCapture {
             }
 
             if bytesRead > 0 {
-                data.append(contentsOf: buffer.prefix(bytesRead))
+                // Nur so viel behalten, wie das gemeinsame Gesamtbudget noch
+                // hergibt. Gelesen wird trotzdem weiter (und verworfen), damit
+                // der Kindprozess nicht im vollen Pipe-Puffer festhängt, bevor
+                // der Abbruch greift.
+                let allowed = budget.claim(bytesRead)
+                if allowed > 0 {
+                    data.append(contentsOf: buffer.prefix(allowed))
+                }
                 bytesDrained += bytesRead
                 continue
             }
@@ -333,7 +382,9 @@ enum SmartPaste {
     /// Ablauf:
     ///   1. md-clip als `Process` starten, stdout + stderr fortlaufend aus Pipes lesen.
     ///   2. Mit `DispatchSemaphore` auf Ende warten (max. 10 Sekunden).
-    ///   3. Bei Timeout: md-clip beenden, nötigenfalls SIGKILL senden und `.timeout` zurückgeben.
+    ///   3. Bei Timeout ODER überschrittenem Ausgabebudget: md-clip beenden,
+    ///      nötigenfalls SIGKILL an die ganze Gruppe senden und `.timeout`
+    ///      bzw. `.conversionFailed` zurückgeben.
     ///   4. Bei Exit ≠ 0 (md-clip kennt drei Fehlercodes):
     ///      Code 1 = kein konvertierbares Format → `.noFormattedContent`
     ///      Code 2 = Dependency fehlt (pandoc o.ä.) → `.conversionFailed`
@@ -344,10 +395,16 @@ enum SmartPaste {
     /// Sie darf NICHT auf dem Main-Thread aufgerufen werden.
     ///
     /// - Parameter mdClipURL: Absoluter Pfad zum md-clip-Binary.
+    /// - Parameter maximumOutputBytes: Harte Gesamtgrenze für stdout und
+    ///   stderr zusammen. Wird sie überschritten, endet die ganze
+    ///   Prozessgruppe und der Nutzer bekommt einen sichtbaren Fehler statt
+    ///   eines unbegrenzt wachsenden Puffers. Injizierbar, damit der
+    ///   Überlaufpfad ohne riesige Testausgabe prüfbar bleibt.
     /// - Returns: `.success(markdownString)` oder `.failure(SmartPasteError)`.
     static func markdownFromClipboard(
         mdClipURL: URL,
-        timeout: TimeInterval = 10
+        timeout: TimeInterval = 10,
+        maximumOutputBytes: Int = 16 * 1024 * 1024
     ) -> Result<String, SmartPasteError> {
 
         // Process vorbereiten: md-clip ohne --replace → stdout-Modus.
@@ -371,13 +428,25 @@ enum SmartPaste {
             process.arguments = ["--quiet"]
         }
 
+        // Semaphore: wir blockieren hier auf Ende des Prozesses.
+        // Der Hauptthread darf hier NICHT stehen — der Aufrufer muss das
+        // sicherstellen (z.B. via Task.detached oder DispatchQueue.global).
+        // Sie wird auch beim Überschreiten des Ausgabebudgets signalisiert,
+        // damit ein Datenschwall nicht bis zum Fristablauf laufen muss.
+        let semaphore = DispatchSemaphore(value: 0)
+
         // stdout und stderr werden schon während des Prozesses geleert. Das
         // verhindert volle Pipe-Puffer und ein EOF-Warten auf Unterprozesse.
+        // Beide teilen sich EIN Gesamtbudget — sonst könnte ein Strom die
+        // Grenze des anderen ungenutzt lassen und trotzdem den Speicher füllen.
+        let budget = ProcessOutputBudget(limit: maximumOutputBytes) {
+            semaphore.signal()
+        }
         let stdoutCapture: ProcessPipeCapture
         let stderrCapture: ProcessPipeCapture
         do {
-            stdoutCapture = try ProcessPipeCapture()
-            stderrCapture = try ProcessPipeCapture()
+            stdoutCapture = try ProcessPipeCapture(budget: budget)
+            stderrCapture = try ProcessPipeCapture(budget: budget)
         } catch {
             return .failure(.conversionFailed(error.localizedDescription))
         }
@@ -388,10 +457,6 @@ enum SmartPaste {
             _ = stderrCapture.finish()
         }
 
-        // Semaphore: wir blockieren hier auf Ende des Prozesses.
-        // Der Hauptthread darf hier NICHT stehen — der Aufrufer muss das
-        // sicherstellen (z.B. via Task.detached oder DispatchQueue.global).
-        let semaphore = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in semaphore.signal() }
 
         do {
@@ -414,15 +479,10 @@ enum SmartPaste {
             }
         }
 
-        // Auf Abschluss warten — in der App maximal 10 Sekunden. Der Parameter
-        // ist injizierbar, damit der echte Timeout-Pfad schnell testbar bleibt.
-        let deadline = DispatchTime.now() + timeout
-        let didFinish = semaphore.wait(timeout: deadline)
-
-        if didFinish == .timedOut {
-            // Erst regulär beenden. Ignoriert das Tool SIGTERM, folgt nach
-            // kurzer Schonfrist SIGKILL — an die GANZE Gruppe, damit auch
-            // Enkelprozesse den Fristablauf nicht überleben.
+        // Beendet den Kindprozess und — wenn vorhanden — seine ganze Gruppe.
+        // Erst regulär (SIGTERM), nach kurzer Schonfrist hart (SIGKILL).
+        // Gemeinsam genutzt von Fristablauf und Budgetüberschreitung.
+        func terminateProcessTree() {
             if process.isRunning {
                 if let processGroupID {
                     Darwin.kill(-processGroupID, SIGTERM)
@@ -446,6 +506,28 @@ enum SmartPaste {
                 // der Gruppe trotzdem sicher beenden.
                 Darwin.kill(-processGroupID, SIGKILL)
             }
+        }
+
+        // Auf Abschluss warten — in der App maximal 10 Sekunden. Der Parameter
+        // ist injizierbar, damit der echte Timeout-Pfad schnell testbar bleibt.
+        let deadline = DispatchTime.now() + timeout
+        let didFinish = semaphore.wait(timeout: deadline)
+
+        // Zuerst das Ausgabebudget prüfen: Bei Überschreitung weckt der
+        // Budgetzähler diese Wartestelle, der Prozess kann also noch laufen.
+        // Ein Weiterlesen von Exit-Code und Ausgabe wäre dann sinnlos.
+        if budget.isExceeded {
+            terminateProcessTree()
+            let limitText = ByteCountFormatter.string(
+                fromByteCount: Int64(maximumOutputBytes), countStyle: .file)
+            return .failure(.conversionFailed(L10n.format(
+                "md-clip lieferte mehr als %@ Ausgabe; die Konvertierung wurde abgebrochen.",
+                limitText
+            )))
+        }
+
+        if didFinish == .timedOut {
+            terminateProcessTree()
             return .failure(.timeout)
         }
 

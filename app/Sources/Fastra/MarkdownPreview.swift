@@ -398,23 +398,10 @@ enum MarkdownRichText {
     /// globale Registrierung — zwei parallele Läufe wären ein Wettlauf.
     /// Auch die synchronen Einstiege (Tests, `htmlFragment`) laufen deshalb
     /// über diese Queue.
-    private static let renderQueue = DispatchQueue(
+    /// `fileprivate`, weil `MarkdownRenderCoalescer` (weiter unten in dieser
+    /// Datei) seine verdichteten Läufe auf genau dieser Queue ausführt.
+    fileprivate static let renderQueue = DispatchQueue(
         label: "de.dm0.fastra.markdown-render", qos: .userInitiated)
-
-    /// Rendert im Hintergrund und liefert das Ergebnis auf dem Main-Thread.
-    /// Der Vorschau-Pfad nutzt diesen Weg: Jeder Renderlauf kostet einen
-    /// cmark-Durchlauf und je Bild einen Dateisystemzugriff — auf dem
-    /// UI-Thread konnte das Tippen bei vielen Bildern oder Netzlaufwerken
-    /// sichtbar hängen (Roadmap „Nacharbeit 2026-08-06"). Veraltete
-    /// Ergebnisse verwirft der Aufrufer über seine Generationsnummer.
-    static func renderFragment(markdown: String, documentURL: URL?,
-                               completion: @escaping (MarkdownRenderedFragment) -> Void) {
-        renderQueue.async {
-            let fragment = renderFragmentOnQueue(markdown: markdown,
-                                                 documentURL: documentURL)
-            DispatchQueue.main.async { completion(fragment) }
-        }
-    }
 
     /// Synchron — blockiert den Aufrufer, bis die Render-Queue frei ist.
     /// Im Produkt rendert nur die Vorschau (asynchron); dieser Einstieg
@@ -427,8 +414,8 @@ enum MarkdownRichText {
     }
 
     /// Der eigentliche Renderlauf. NUR von `renderQueue` aus aufrufen.
-    private static func renderFragmentOnQueue(markdown: String,
-                                              documentURL: URL?) -> MarkdownRenderedFragment {
+    fileprivate static func renderFragmentOnQueue(markdown: String,
+                                                  documentURL: URL?) -> MarkdownRenderedFragment {
         let math = MarkdownMath.extract(from: markdown)
         // cmark rendert Erweiterungen nur, wenn dieselbe Extension-Liste auch
         // an den HTML-Renderer gereicht wird. Fehlt sie dort, würden Tabellen
@@ -537,6 +524,80 @@ enum MarkdownRichText {
     }
 }
 
+/// Sammelt die Renderanforderungen EINER Vorschau nach der Regel „die jüngste
+/// gewinnt".
+///
+/// Jede Texteingabe braucht ein frisches Fragment, und ein Renderlauf kostet
+/// einen cmark-Durchlauf plus je Bild einen Systemaufruf. Vorher wurde für
+/// jeden Tastendruck ein eigener Lauf in die eine serielle Render-Queue
+/// gestellt, und ob sein Ergebnis überhaupt noch aktuell ist, prüfte die
+/// Vorschau erst NACH der teuren Arbeit. In einem großen Dokument wuchs beim
+/// schnellen Tippen eine Warteschlange längst überholter Läufe
+/// (Code-Review 2026-08-10).
+///
+/// Hier wartet stattdessen immer höchstens EINE Anforderung; eine neue ersetzt
+/// die wartende. Die Completion einer so ersetzten Anforderung läuft nie — die
+/// Vorschau braucht sie auch nicht, denn sie zeigt ohnehin nur den neuesten
+/// Stand.
+final class MarkdownRenderCoalescer: @unchecked Sendable {
+
+    private struct Request {
+        let markdown: String
+        let documentURL: URL?
+        let completion: (MarkdownRenderedFragment) -> Void
+    }
+
+    private let lock = NSLock()
+    /// Die einzige wartende Anforderung (`nil` = nichts zu tun).
+    private var pending: Request?
+    /// `true`, solange ein Block auf der Render-Queue liegt oder gerade läuft.
+    private var isScheduled = false
+
+    /// Meldet eine Renderanforderung an. `completion` läuft auf dem
+    /// Main-Thread, aber nur für die jeweils zuletzt angemeldete Anforderung.
+    func render(markdown: String, documentURL: URL?,
+                completion: @escaping (MarkdownRenderedFragment) -> Void) {
+        lock.lock()
+        pending = Request(markdown: markdown, documentURL: documentURL,
+                          completion: completion)
+        let needsSchedule = !isScheduled
+        isScheduled = true
+        lock.unlock()
+        guard needsSchedule else { return }
+        schedule()
+    }
+
+    private func schedule() {
+        MarkdownRichText.renderQueue.async { [weak self] in self?.step() }
+    }
+
+    /// Genau EIN Renderlauf je Queue-Block. Ist währenddessen eine neuere
+    /// Anforderung eingegangen, stellt sie sich hinten an — so kommen andere
+    /// Fenster zwischen zwei Läufen an die gemeinsame serielle Queue, statt
+    /// von einer Endlosschleife ausgesperrt zu werden.
+    private func step() {
+        lock.lock()
+        guard let request = pending else {
+            isScheduled = false
+            lock.unlock()
+            return
+        }
+        pending = nil
+        lock.unlock()
+
+        let fragment = MarkdownRichText.renderFragmentOnQueue(
+            markdown: request.markdown, documentURL: request.documentURL
+        )
+        DispatchQueue.main.async { request.completion(fragment) }
+
+        lock.lock()
+        let hasMore = pending != nil
+        if !hasMore { isScheduled = false }
+        lock.unlock()
+        if hasMore { schedule() }
+    }
+}
+
 /// Schreibt eine Markdown-Auswahl in allen für native Mac-Programme relevanten
 /// Darstellungen. Pages bevorzugt RTF, Browser und Web-Editoren können HTML
 /// verwenden, reine Textziele fallen weiterhin sauber auf Klartext zurück.
@@ -630,6 +691,12 @@ private struct MarkdownRichTextView: NSViewRepresentable {
             : NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
 
         coordinator.documentURL = documentURL
+        // Die Stilwerte gehören in den Coordinator: Er lebt länger als diese
+        // SwiftUI-Struktur und muss aus einem später eintreffenden Fragment
+        // notfalls selbst ein vollständiges Dokument bauen können.
+        coordinator.fontName = fontName
+        coordinator.fontSize = fontSize
+        coordinator.darkMode = darkMode
         let styleIdentity = "\(darkMode)|\(fontName)|\(fontSize)|\(documentURL?.path ?? "")"
         if coordinator.styleIdentity != styleIdentity {
             coordinator.styleIdentity = styleIdentity
@@ -638,6 +705,15 @@ private struct MarkdownRichTextView: NSViewRepresentable {
             // Ein Fragment aus dem vorherigen vollständigen Ladevorgang darf
             // `didFinish` nicht über das neue Dokument schreiben.
             coordinator.pendingFragment = nil
+            // Solange noch kein `loadHTMLString` gelaufen ist, braucht die
+            // Vorschau ein VOLLSTÄNDIGES Dokument. Diesen Bedarf merkte sich
+            // vorher niemand: Wurde getippt, bevor das erste Fragment fertig
+            // war, verwarf die Generationsprüfung die erste Completion, und
+            // die zweite legte ihr Fragment wegen `isReady == false` nur
+            // beiseite — für ein `didFinish`, das ohne gestartete Navigation
+            // nie kommt. Die Vorschau blieb dauerhaft leer
+            // (Code-Review 2026-08-10).
+            coordinator.needsFullLoad = true
             // Rendern läuft im Hintergrund auf der seriellen Render-Queue;
             // die Generation verwirft ein überholtes Ergebnis (Roadmap
             // „Nacharbeit 2026-08-06"). Dasselbe Fragment wird für das HTML
@@ -645,23 +721,12 @@ private struct MarkdownRichTextView: NSViewRepresentable {
             // (Review 2026-08-06).
             coordinator.renderGeneration &+= 1
             let generation = coordinator.renderGeneration
-            let fontName = fontName
-            let fontSize = fontSize
-            let darkMode = darkMode
-            MarkdownRichText.renderFragment(
+            coordinator.renderRequest.render(
                 markdown: markdown, documentURL: documentURL
             ) { [weak coordinator, weak webView] fragment in
                 guard let coordinator, let webView,
                       coordinator.renderGeneration == generation else { return }
-                coordinator.assetHandler.setImageURLs(fragment.imageURLs)
-                coordinator.watchReferencedImages(of: fragment)
-                let document = MarkdownRichText.htmlDocument(
-                    fragment: fragment,
-                    fontName: fontName,
-                    fontSize: fontSize,
-                    darkMode: darkMode
-                )
-                webView.loadHTMLString(document, baseURL: nil)
+                coordinator.deliver(fragment, in: webView)
             }
             return
         }
@@ -670,18 +735,12 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         coordinator.markdown = markdown
         coordinator.renderGeneration &+= 1
         let generation = coordinator.renderGeneration
-        MarkdownRichText.renderFragment(
+        coordinator.renderRequest.render(
             markdown: markdown, documentURL: documentURL
         ) { [weak coordinator, weak webView] fragment in
             guard let coordinator, let webView,
                   coordinator.renderGeneration == generation else { return }
-            coordinator.assetHandler.setImageURLs(fragment.imageURLs)
-            coordinator.watchReferencedImages(of: fragment)
-            guard coordinator.isReady else {
-                coordinator.pendingFragment = fragment
-                return
-            }
-            coordinator.replaceBody(with: fragment, in: webView)
+            coordinator.deliver(fragment, in: webView)
         }
     }
 
@@ -690,6 +749,20 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         var markdown = ""
         var isReady = false
         var pendingFragment: MarkdownRenderedFragment?
+        /// Stilwerte des letzten Updates — nötig, um aus einem fertigen
+        /// Fragment ein vollständiges HTML-Dokument bauen zu können.
+        var fontName = PreviewFonts.systemName
+        var fontSize: CGFloat = 14
+        var darkMode = false
+        /// `true`, solange für dieses Dokument noch kein `loadHTMLString`
+        /// gestartet wurde. Dann muss das nächste fertige Fragment als
+        /// VOLLSTÄNDIGES Dokument geladen werden — ein bloßes Beiseitelegen
+        /// würde auf ein `didFinish` warten, das nie kommt.
+        var needsFullLoad = true
+        /// Verdichtet die Renderanforderungen DIESER Vorschau; beim Tippen
+        /// wartet dadurch höchstens eine Anforderung statt einer wachsenden
+        /// Warteschlange überholter Läufe.
+        let renderRequest = MarkdownRenderCoalescer()
         let assetHandler = MarkdownPreviewSchemeHandler()
         // Schwach: Der Workspace gehört der Dokumentszene, nicht der Vorschau.
         weak var workspace: Workspace?
@@ -722,19 +795,47 @@ private struct MarkdownRichTextView: NSViewRepresentable {
             guard let webView = revealWebView else { return }
             renderGeneration &+= 1
             let generation = renderGeneration
-            MarkdownRichText.renderFragment(
+            renderRequest.render(
                 markdown: markdown, documentURL: documentURL
             ) { [weak self, weak webView] fragment in
                 guard let self, let webView,
                       self.renderGeneration == generation else { return }
-                self.assetHandler.setImageURLs(fragment.imageURLs)
-                self.watchReferencedImages(of: fragment)
-                guard self.isReady else {
-                    self.pendingFragment = fragment
-                    return
-                }
-                self.replaceBody(with: fragment, in: webView)
+                self.deliver(fragment, in: webView)
             }
+        }
+
+        /// Der EINE Ort, an dem ein fertiges Fragment in die Vorschau geht.
+        ///
+        /// Hier entscheidet sich, ob ein vollständiges Dokument geladen, das
+        /// Fragment für das noch laufende Laden beiseitegelegt oder nur der
+        /// Body ersetzt wird. Vorher stand diese Entscheidung an drei Stellen
+        /// getrennt — und genau eine davon (der Stilwechsel) lud immer
+        /// vollständig, während die beiden anderen einen Vollreload gar nicht
+        /// auslösen konnten.
+        func deliver(_ fragment: MarkdownRenderedFragment, in webView: WKWebView) {
+            assetHandler.setImageURLs(fragment.imageURLs)
+            watchReferencedImages(of: fragment)
+            if needsFullLoad {
+                // Erstnavigation dieses Dokuments: Erst ab jetzt kann
+                // `didFinish` überhaupt eintreffen.
+                needsFullLoad = false
+                isReady = false
+                pendingFragment = nil
+                let document = MarkdownRichText.htmlDocument(
+                    fragment: fragment,
+                    fontName: fontName,
+                    fontSize: fontSize,
+                    darkMode: darkMode
+                )
+                webView.loadHTMLString(document, baseURL: nil)
+                return
+            }
+            guard isReady else {
+                // Vollreload läuft noch — das Fragment wartet auf `didFinish`.
+                pendingFragment = fragment
+                return
+            }
+            replaceBody(with: fragment, in: webView)
         }
 
         // Editor→Vorschau-Sprung (Etappe 5 Wunschpaket 2026-07b): Nach einem

@@ -204,82 +204,94 @@ enum MarkdownImageStore {
             ? directory.path
             : directory.path + "/"
 
-        // `attributesOfItem` beschreibt den Pfad selbst. Ein vorhandenes
-        // `images` darf deshalb weder Symlink noch gewöhnliche Datei sein;
-        // andernfalls würde das Kopieren unbemerkt außerhalb des
-        // Dokumentordners landen.
-        let directoryExistedBefore = try ensureRealDirectory(
-            directory, fileManager: fileManager
-        )
+        // Anlegen des Ordners, Besitzentscheidung, Kopie und das Zurücknehmen
+        // eines leer gebliebenen Ordners bilden EINEN Schritt je Zielordner.
+        // Vorher lag das Anlegen außerhalb: Zwei gleichzeitige Drops in
+        // denselben neuen `images`-Ordner sahen beide „von mir angelegt";
+        // scheiterte der eine, entfernte sein `defer` den noch leeren Ordner,
+        // während der andere gerade zum Kopieren ansetzte — ein völlig
+        // gültiger paralleler Bild-Drop scheiterte dann am fehlenden
+        // Zielordner (Code-Review 2026-08-10).
+        return try directoryLocks.withLock(for: directory) {
+            // `attributesOfItem` beschreibt den Pfad selbst. Ein vorhandenes
+            // `images` darf deshalb weder Symlink noch gewöhnliche Datei sein;
+            // andernfalls würde das Kopieren unbemerkt außerhalb des
+            // Dokumentordners landen.
+            //
+            // Der Rückgabewert merkt zugleich, ob es den Ordner schon vor
+            // diesem Aufruf gab. Scheitert das Kopieren danach (Quelle
+            // verschwunden, nicht lesbar), soll die gescheiterte Aktion den
+            // Dokumentordner nicht sichtbar verändern — ein leerer neuer
+            // `images`-Ordner blieb bisher stehen (Review 2026-08-06).
+            let directoryExistedBefore = try ensureRealDirectory(
+                directory, fileManager: fileManager
+            )
 
-        // Schon im images-Unterordner? Dann NICHT kopieren, nur verlinken.
-        if source.path.hasPrefix(directoryPrefix),
-           let relative = relativeLinkPath(from: documentURL, to: source) {
-            return (markdownImageLink(fileName: source.lastPathComponent,
-                                      relativePath: relative), source)
-        }
-
-        // Vor dem Anlegen merken, ob es den Ordner schon gab. Scheitert das
-        // Kopieren danach (Quelle verschwunden, nicht lesbar), soll die
-        // gescheiterte Aktion den Dokumentordner nicht sichtbar verändern —
-        // ein leerer neuer `images`-Ordner blieb bisher stehen
-        // (Review 2026-08-06).
-        var stored = false
-        defer {
-            // Nur einen von DIESEM Aufruf angelegten und weiterhin leeren
-            // Ordner zurücknehmen; fremde Inhalte bleiben unberührt.
-            if !stored, !directoryExistedBefore,
-               let entries = try? fileManager.contentsOfDirectory(atPath: directory.path),
-               entries.isEmpty {
-                try? fileManager.removeItem(at: directory)
+            // Schon im images-Unterordner? Dann NICHT kopieren, nur verlinken.
+            if source.path.hasPrefix(directoryPrefix),
+               let relative = relativeLinkPath(from: documentURL, to: source) {
+                return (markdownImageLink(fileName: source.lastPathComponent,
+                                          relativePath: relative), source)
             }
-        }
 
-        let sourceName = source.lastPathComponent
-        let base = (sourceName as NSString).deletingPathExtension
-        let fileExtension = (sourceName as NSString).pathExtension
+            var stored = false
+            defer {
+                // Nur einen von DIESEM Aufruf angelegten und weiterhin leeren
+                // Ordner zurücknehmen; fremde Inhalte bleiben unberührt.
+                if !stored, !directoryExistedBefore,
+                   let entries = try? fileManager.contentsOfDirectory(atPath: directory.path),
+                   entries.isEmpty {
+                    try? fileManager.removeItem(at: directory)
+                }
+            }
 
-        // Kandidaten in Suffix-Reihenfolge: vorhandene byte-identische Datei
-        // wird wiederverwendet, sonst der erste freie Name.
-        var counter = 1
-        while counter < 10_000 {
-            let candidateName = counter == 1
-                ? sourceName
-                : "\(base)-\(counter).\(fileExtension)"
-            let candidate = directory.appendingPathComponent(candidateName)
-            if !fileManager.fileExists(atPath: candidate.path) {
-                // `copyItem` verändert Inhalte nie; bei Abbruch bleibt die
-                // Quelle unangetastet und das Ziel existiert nicht halb —
-                // FileManager kopiert auf APFS über einen Klon/Temp-Pfad.
-                do {
-                    try fileManager.copyItem(at: readableSource, to: candidate)
-                    guard let relative = relativeLinkPath(
-                        from: documentURL, to: candidate
-                    ) else {
-                        try? fileManager.removeItem(at: candidate)
+            let sourceName = source.lastPathComponent
+            let base = (sourceName as NSString).deletingPathExtension
+            let fileExtension = (sourceName as NSString).pathExtension
+
+            // Kandidaten in Suffix-Reihenfolge: vorhandene byte-identische Datei
+            // wird wiederverwendet, sonst der erste freie Name.
+            var counter = 1
+            while counter < 10_000 {
+                let candidateName = counter == 1
+                    ? sourceName
+                    : "\(base)-\(counter).\(fileExtension)"
+                let candidate = directory.appendingPathComponent(candidateName)
+                if !fileManager.fileExists(atPath: candidate.path) {
+                    // `copyItem` verändert Inhalte nie; bei Abbruch bleibt die
+                    // Quelle unangetastet und das Ziel existiert nicht halb —
+                    // FileManager kopiert auf APFS über einen Klon/Temp-Pfad.
+                    do {
+                        try fileManager.copyItem(at: readableSource, to: candidate)
+                        guard let relative = relativeLinkPath(
+                            from: documentURL, to: candidate
+                        ) else {
+                            try? fileManager.removeItem(at: candidate)
+                            throw StoreError.unreadableImage
+                        }
+                        stored = true
+                        return (markdownImageLink(fileName: candidateName,
+                                                  relativePath: relative), candidate)
+                    } catch {
+                        // Ein Vorgang AUSSERHALB dieses Prozesses kann den eben
+                        // noch freien Namen belegt haben — der Ordner-Lock
+                        // schützt nur Fastras eigene Aufrufe. Nur dann neu
+                        // suchen; echte Kopierfehler bleiben sichtbar.
+                        guard isFileExistsError(error) else { throw error }
+                    }
+                }
+                if contentsEqual(readableSource, candidate, fileManager: fileManager) {
+                    guard let relative = relativeLinkPath(from: documentURL, to: candidate) else {
                         throw StoreError.unreadableImage
                     }
                     stored = true
                     return (markdownImageLink(fileName: candidateName,
                                               relativePath: relative), candidate)
-                } catch {
-                    // Ein paralleler Vorgang kann den eben noch freien Namen
-                    // belegt haben. Nur dann neu suchen; echte Kopierfehler
-                    // bleiben sichtbar.
-                    guard isFileExistsError(error) else { throw error }
                 }
+                counter += 1
             }
-            if contentsEqual(readableSource, candidate, fileManager: fileManager) {
-                guard let relative = relativeLinkPath(from: documentURL, to: candidate) else {
-                    throw StoreError.unreadableImage
-                }
-                stored = true
-                return (markdownImageLink(fileName: candidateName,
-                                          relativePath: relative), candidate)
-            }
-            counter += 1
+            throw StoreError.unreadableImage
         }
-        throw StoreError.unreadableImage
     }
 
     /// Byte-Vergleich zweier Dateien (Größe zuerst — billiger Kurzschluss).

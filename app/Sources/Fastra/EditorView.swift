@@ -296,17 +296,35 @@ struct EditorView: View {
         workspace.markdownImportOffer(for: workspace.activeTab?.url)
     }
 
-    /// Sichtbar bei einem offenen Angebot ODER solange eine Umwandlung läuft,
-    /// gemeldet oder fehlgeschlagen ist. Der Umwandlungszustand zählt nur im
-    /// Besitzer-Fenster: Der Dienst ist ein Singleton, und ohne diese Bindung
+    /// Gehört der aktuelle Umwandlungszustand DIESEM Fenster? Der Dienst ist
+    /// ein Singleton; `owner == nil` heißt „ohne Fensterbezug gestartet"
+    /// (Selbsttests) und zählt deshalb wie ein eigener Lauf.
+    private var markdownImportStateIsOurs: Bool {
+        markdownImportService.owner == nil
+            || markdownImportService.owner === workspace
+    }
+
+    /// Sichtbar bei einem offenen Angebot ODER solange eine Umwandlung DIESES
+    /// Fensters läuft, gemeldet oder fehlgeschlagen ist. Ohne diese Bindung
     /// zeigte JEDES offene Fenster die Laufanzeige (Review 2026-08-02).
+    ///
+    /// Ein fremder Nicht-Idle-Zustand zählt hier wie Idle: Die Leiste zeigt
+    /// dann höchstens das EIGENE Angebot dieses Fensters. Fortschritt, Erfolg
+    /// oder Fehler aus Fenster A — samt dessen „Im Finder zeigen"-Knopf auf
+    /// eine hier nie geöffnete Datei — erscheinen in Fenster B nie; dafür
+    /// bekommt `MarkdownImportBar` unten den fenstereigenen `effectiveState`
+    /// (Code-Review 2026-08-10).
     private var markdownImportBarIsVisible: Bool {
-        if markdownImportService.state != .idle,
-           markdownImportService.owner == nil
-               || markdownImportService.owner === workspace {
+        if markdownImportService.state != .idle, markdownImportStateIsOurs {
             return true
         }
         return markdownImportOffer != nil
+    }
+
+    /// Zustand, den die Leiste in DIESEM Fenster zeichnen darf: der globale
+    /// Dienstzustand nur, wenn er diesem Fenster gehört — sonst Idle.
+    private var markdownImportEffectiveState: MarkdownImportState {
+        markdownImportStateIsOurs ? markdownImportService.state : .idle
     }
 
     /// Beide Hinweis-Buttons quittieren dauerhaft („einmal pro Nutzer").
@@ -595,7 +613,8 @@ struct EditorView: View {
                     // der letzten Umwandlung. Die Leiste zeigt sich nur, wenn
                     // es wirklich etwas zu sagen gibt.
                     if markdownImportBarIsVisible {
-                        MarkdownImportBar(offer: markdownImportOffer) {
+                        MarkdownImportBar(offer: markdownImportOffer,
+                                          effectiveState: markdownImportEffectiveState) {
                             if let url = markdownImportOffer?.sourceURL {
                                 workspace.dismissMarkdownImport(url)
                             }

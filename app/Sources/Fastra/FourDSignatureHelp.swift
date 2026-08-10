@@ -213,10 +213,6 @@ enum FourDSignatureHelpLogic {
                                                   length: 0))
         guard cursor >= lineRange.location else { return nil }
 
-        // Beginnt die Zeile bereits INNERHALB eines mehrzeiligen
-        // Blockkommentars, gibt es keine Hilfe (Review 2026-08-02).
-        if lineStartsInsideBlockComment(ns, lineStart: lineRange.location) { return nil }
-
         struct OpenParen {
             let location: Int
             var semicolons: Int
@@ -224,6 +220,18 @@ enum FourDSignatureHelpLogic {
         var stack: [OpenParen] = []
         var index = lineRange.location
         var inString = false
+
+        // Beginnt die Zeile bereits INNERHALB eines mehrzeiligen
+        // Blockkommentars, startet der Scan im Kommentarzustand: Endet der
+        // Kommentar mit einem `*/` vor dem Cursor, steht dahinter wieder
+        // gültiger 4D-Code und wird ganz normal ausgewertet. Fehlt das `*/`,
+        // steht der Cursor selbst im Kommentar — dann gibt es keine Hilfe
+        // (Review 2026-08-10; vorher brach die Zeile hier immer ab).
+        if lineStartsInsideBlockComment(ns, lineStart: lineRange.location) {
+            guard let close = blockCommentEnd(ns, from: lineRange.location,
+                                              before: cursor) else { return nil }
+            index = close
+        }
         while index < cursor, index < ns.length {
             let unit = ns.character(at: index)
             guard let scalar = Unicode.Scalar(unit) else { index += 1; continue }
@@ -309,7 +317,16 @@ enum FourDSignatureHelpLogic {
     /// Blockkommentars — oder `nil`, wenn er nicht vor `limit` endet.
     private static func blockCommentClose(_ ns: NSString, openIndex: Int,
                                           before limit: Int) -> Int? {
-        var scan = openIndex + 2
+        blockCommentEnd(ns, from: openIndex + 2, before: limit)
+    }
+
+    /// Index HINTER dem nächsten `*/` ab `from` — oder `nil`, wenn vor `limit`
+    /// keines mehr kommt. Getrennt vom Aufruf oben, weil eine Zeile auch
+    /// MITTEN in einem Blockkommentar beginnen kann: Dann gibt es keine
+    /// öffnende `/*`-Stelle in dieser Zeile, wohl aber ein schließendes `*/`.
+    private static func blockCommentEnd(_ ns: NSString, from: Int,
+                                        before limit: Int) -> Int? {
+        var scan = from
         while scan + 1 < ns.length, scan + 1 < limit {
             if ns.character(at: scan) == UInt16(UInt8(ascii: "*")),
                ns.character(at: scan + 1) == UInt16(UInt8(ascii: "/")) {
@@ -331,9 +348,17 @@ enum FourDSignatureHelpLogic {
         let lineRange = ns.lineRange(for: NSRange(location: min(location, max(ns.length - 1, 0)),
                                                   length: 0))
         guard location >= lineRange.location else { return false }
-        if lineStartsInsideBlockComment(ns, lineStart: lineRange.location) { return true }
         var index = lineRange.location
         var inString = false
+        // Wie in `callContext`: Eine Zeile, die in einem Blockkommentar
+        // beginnt, kann hinter ihrem `*/` wieder Code enthalten. Nur wenn das
+        // `*/` fehlt, steht die Position wirklich im Kommentar
+        // (Review 2026-08-10).
+        if lineStartsInsideBlockComment(ns, lineStart: lineRange.location) {
+            guard let close = blockCommentEnd(ns, from: lineRange.location,
+                                              before: location) else { return true }
+            index = close
+        }
         while index < location, index < ns.length {
             let unit = ns.character(at: index)
             guard let scalar = Unicode.Scalar(unit) else { index += 1; continue }

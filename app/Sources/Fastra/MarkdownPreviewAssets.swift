@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import WebKit
 
@@ -42,7 +43,8 @@ enum MarkdownPreviewAssets {
     }
 
     /// Prüft Typ und Größe am symlink-aufgelösten Ziel und gibt genau diese
-    /// geprüfte Adresse für den anschließenden Lesezugriff zurück.
+    /// geprüfte Adresse zurück. Das ist eine Vorprüfung am PFAD — verbindlich
+    /// entscheidet `readImageData` am geöffneten Deskriptor.
     static func readableImageURL(_ url: URL) throws -> URL {
         let resolved = url.resolvingSymlinksInPath().standardizedFileURL
         let values = try resolved.resourceValues(forKeys: [
@@ -54,6 +56,44 @@ enum MarkdownPreviewAssets {
             throw CocoaError(.fileReadTooLarge)
         }
         return resolved
+    }
+
+    /// Liest ein Vorschaubild und hält dabei die 32-MiB-Grenze ein.
+    ///
+    /// Entscheidend ist, dass Typ- und Größenprüfung an DEMSELBEN geöffneten
+    /// Dateiobjekt hängen, aus dem anschließend gelesen wird. Eine Prüfung am
+    /// Pfad und ein späteres `Data(contentsOf:)` öffnen die Adresse zweimal:
+    /// Dazwischen kann ein Symlink umgebogen oder die Datei atomar ersetzt
+    /// werden, und die Vorschau lädt eine ganz andere, beliebig große Datei
+    /// (Review 2026-08-10). Ein Symlink auf eine normale Bilddatei bleibt
+    /// erlaubt — `open` folgt ihm, `fstat` beschreibt das Ziel.
+    static func readImageData(_ url: URL) throws -> Data {
+        let resolved = try readableImageURL(url)
+        let opened: (descriptor: Int32, stat: stat)
+        do {
+            opened = try FileSnapshot.openRegularFile(at: resolved)
+        } catch FileSnapshotReadError.notRegularFile {
+            throw CocoaError(.fileReadUnknown)
+        }
+        defer { close(opened.descriptor) }
+        guard opened.stat.st_size >= 0,
+              opened.stat.st_size <= Int64(maximumImageBytes) else {
+            throw CocoaError(.fileReadTooLarge)
+        }
+        let handle = FileHandle(fileDescriptor: opened.descriptor, closeOnDealloc: false)
+        var data = Data()
+        data.reserveCapacity(Int(opened.stat.st_size))
+        while true {
+            let chunk = try handle.read(upToCount: 4 * 1024 * 1024) ?? Data()
+            if chunk.isEmpty { break }
+            data.append(chunk)
+            // Die Grenze gilt auch WÄHREND des Lesens: Wächst die Datei nach
+            // dem Öffnen, wäre der Speicher sonst schon verbraucht.
+            guard data.count <= maximumImageBytes else {
+                throw CocoaError(.fileReadTooLarge)
+            }
+        }
+        return data
     }
 }
 
@@ -106,11 +146,16 @@ final class MarkdownPreviewSchemeHandler: NSObject, WKURLSchemeHandler {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             do {
-                var readableURL = source.url
+                // Bilder kommen aus dem Dateisystem des Nutzers und werden
+                // deshalb über den geprüften Deskriptor-Pfad gelesen. Die
+                // gebündelten Bibliotheken liegen im App-Bundle und dürfen
+                // weiter speicherschonend gemappt werden.
+                let data: Data
                 if requestURL.host == "image" {
-                    readableURL = try MarkdownPreviewAssets.readableImageURL(source.url)
+                    data = try MarkdownPreviewAssets.readImageData(source.url)
+                } else {
+                    data = try Data(contentsOf: source.url, options: [.mappedIfSafe])
                 }
-                let data = try Data(contentsOf: readableURL, options: [.mappedIfSafe])
                 guard !self.isCancelled(taskID) else {
                     self.forget(taskID)
                     return

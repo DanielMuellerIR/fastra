@@ -145,10 +145,14 @@ if [ "$findings" -gt 0 ]; then
   Stattdessen verwenden:
     CommandTargeting.target()                 — Fenster + Workspace + Editor,
                                                 das der Nutzer gerade bedient
+    CommandTargeting.targetDocumentWindow()   — nur das Fenster
     CommandTargeting.targetEditorTextView()   — nur der Editor
-    CommandTargeting.targetWorkspace()        — nur der Workspace
     CommandTargeting.workspace(for: textView) — Workspace zu EINEM Editor
     CommandTargeting.documentWindow(for: ws)  — Fenster eines Workspace
+
+  Einen Workspace allein gibt es bewusst nicht: Wer den Workspace des gerade
+  bedienten Fensters braucht, nimmt `target()` und verwendet Fenster,
+  Workspace und Editor aus DEMSELBEN Zugriff.
 
   Braucht eine Datei wirklich den direkten Zugriff, gehört sie mit Begründung
   in die ALLOWED- bzw. READS_ALLOWED-Liste dieses Skripts — nicht der

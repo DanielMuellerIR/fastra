@@ -67,10 +67,29 @@ enum TestDefaultsPurge {
     /// der Aufrufer meldet sie sichtbar.
     @discardableResult
     static func purgeRegistered(preferencesDirectory: URL? = nil) -> [String] {
+        let names = lock.withLock { registered }
+        return purge(names: names, preferencesDirectory: preferencesDirectory)
+    }
+
+    /// Entfernt GENAU EINE registrierte Suite und meldet sie ab.
+    ///
+    /// Nötig für Tests, die den Registry-Weg selbst prüfen: `purgeRegistered()`
+    /// räumt alle bis dahin registrierten Suiten des Prozesses ab — mitten im
+    /// standardmäßig parallelen Testlauf verlören dadurch gleichzeitig
+    /// laufende Tests ihren Preferences-Zustand.
+    @discardableResult
+    static func purgeRegistered(only name: String,
+                                preferencesDirectory: URL? = nil) -> [String] {
+        lock.withLock { _ = registered.remove(name) }
+        return purge(names: [name], preferencesDirectory: preferencesDirectory)
+    }
+
+    /// Gemeinsamer Kern beider Purge-Wege.
+    private static func purge(names: Set<String>,
+                              preferencesDirectory: URL?) -> [String] {
         let directory = preferencesDirectory
             ?? FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("Library/Preferences", isDirectory: true)
-        let names = lock.withLock { registered }
         var remaining: [String] = []
         for name in names {
             // Über eine EIGENE Instanz der Suite entfernen und sofort

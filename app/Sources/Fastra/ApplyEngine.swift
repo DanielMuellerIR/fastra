@@ -979,6 +979,40 @@ extension ApplyEngine {
                            manifestWriter: manifestWriter)
     }
 
+    /// Liest eine Backup-Datei über den gehärteten Deskriptor-Pfad statt über
+    /// `Data(contentsOf:)`.
+    ///
+    /// Der Hash-Vergleich unten schützt den INHALT, aber er kommt zu spät für
+    /// den Speicher: Ein beschädigtes oder ausgetauschtes Backup könnte
+    /// beliebig groß sein und wäre längst vollständig eingelesen, bevor der
+    /// Hash überhaupt gebildet wird. `FileSnapshot.read` prüft deshalb schon
+    /// beim Öffnen Typ (nur reguläre Dateien) und Größe (256-MiB-Grenze) am
+    /// selben Deskriptor, aus dem gelesen wird — ein Backup-Ordner, den ein
+    /// Fremder gegen einen Verweis auf eine Riesendatei tauscht, kann den
+    /// Rückgängig-Lauf so nicht mehr über den Speicher kippen
+    /// (Review 2026-08-10).
+    ///
+    /// Legitime Backups bleiben unberührt: Sie entstehen aus Dateien, die
+    /// Suche und Apply selbst über dieselbe 256-MiB-Grenze gelesen haben.
+    /// Die Fehler werden auf `CocoaError` abgebildet, damit die Meldung im
+    /// Rückgängig-Dialog lesbar bleibt.
+    ///
+    /// Der Hash kommt aus dem Snapshot des Lesevorgangs und wird deshalb
+    /// zurückgegeben: Ein zweites `sha256Hex` über dieselben Bytes wäre reine
+    /// doppelte Rechenarbeit.
+    private static func readBackup(at url: URL) throws -> (bytes: Data, sha256: String) {
+        do {
+            let read = try FileSnapshot.read(from: url)
+            return (read.data, read.snapshot.sha256)
+        } catch FileSnapshotReadError.tooLarge {
+            throw CocoaError(.fileReadTooLarge)
+        } catch FileSnapshotReadError.notRegularFile {
+            throw CocoaError(.fileReadUnknown)
+        } catch FileSnapshotReadError.changedDuringRead {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+    }
+
     /// Spielt eine Apply-Session bit-genau zurück. Atomar pro Datei.
     /// Hash-Check warnt, wenn das Backup beschädigt ist.
     @discardableResult
@@ -1030,11 +1064,11 @@ extension ApplyEngine {
             // Die Bytes leben nur für diesen Schleifendurchlauf; die
             // Schreibphase unten liest sie sequenziell erneut. Vorher lagen
             // ALLE Backups gleichzeitig im Speicher (Review 2026-08-02).
-            let backupBytes = try Data(contentsOf: backup)
+            let (backupBytes, backupSHA256) = try readBackup(at: backup)
             // Sanity: stimmt der Hash noch? Wenn nicht, wurde der Backup-
             // Ordner manipuliert — wir brechen ab, statt potenziell
             // falsche Bytes zurückzuspielen.
-            guard FileSnapshot.sha256Hex(backupBytes) == entry.originalSHA256 else {
+            guard backupSHA256 == entry.originalSHA256 else {
                 throw ApplyError.backupFailed(L10n.format("Backup-Hash stimmt nicht: %@",
                                                           entry.backupRelativePath))
             }
@@ -1094,8 +1128,8 @@ extension ApplyEngine {
                 // darf niemand den Backup-Ordner ausgetauscht haben.
                 let backup = session.sessionDirectory
                     .appendingPathComponent(entry.backupRelativePath)
-                let backupBytes = try Data(contentsOf: backup)
-                guard FileSnapshot.sha256Hex(backupBytes) == entry.originalSHA256 else {
+                let (backupBytes, backupSHA256) = try readBackup(at: backup)
+                guard backupSHA256 == entry.originalSHA256 else {
                     throw ApplyError.backupFailed(L10n.format(
                         "Backup-Hash stimmt nicht: %@", entry.backupRelativePath))
                 }

@@ -860,9 +860,18 @@ final class EditorContextMenu: NSObject {
                 lineEnding: lineEnding,
                 profile: profile
             )
+            // Bereits vorhandene Einrückung vor dem Cursor gehört zum
+            // ersetzten Bereich: `matchedText` setzt die Zielspalte selbst vor
+            // die erste Zeile. Bliebe der vorhandene Whitespace stehen,
+            // addierten sich beide und der Block säße auf einer automatisch
+            // eingerückten Leerzeile eine Ebene zu tief.
+            let replaced = NSRange(
+                location: context.replacementStart,
+                length: selection.location - context.replacementStart
+                    + selection.length)
             // Über denselben Undo-Pfad wie die Text-Operationen: EIN
             // widerrufbarer Edit durch CESEs Undo-Manager.
-            textView.fastraApplyTextOperation(replacing: selection, with: matched)
+            textView.fastraApplyTextOperation(replacing: replaced, with: matched)
         }
     }
 

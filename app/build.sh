@@ -146,6 +146,71 @@ if ! grep -q 'fastra.completion.manualTrigger' "$CESE_LC" 2>/dev/null; then
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4b-2-Nachzug: Checkouts, die Version 1.66.0 noch an der ALTEN Stelle gepatcht
+# hat (Meldung VOR dem isVisible-Zweig), auf die neue Position migrieren.
+#
+# Der Block oben greift nur, wenn der Marker `fastra.completion.manualTrigger`
+# ganz fehlt. Ein bereits alt gepatchter Checkout enthält ihn — er wurde also
+# weder migriert noch neu übersetzt und behielt das alte Fehlverhalten: Ein
+# Esc, das nur ein offenes Popup schliesst, schaltete den Ein-Zeichen-Modus
+# für den nächsten Request scharf (Review 2026-08-10). Die Migration schiebt
+# genau die eine Zeile hinter den isVisible-Zweig.
+if /usr/bin/python3 - "$CESE_LC" <<'PYEOF'
+import os, stat, sys
+
+path = sys.argv[1]
+src = open(path).read()
+note = ('            NotificationCenter.default.post(name: Notification.Name('
+        '"fastra.completion.manualTrigger"), object: self)'
+        '  // Fastra-Patch: manueller Aufruf (Esc/Ctrl-Space) erlaubt Ein-Zeichen-Vorschlaege\n')
+visible = ('            if SuggestionController.shared.isVisible {\n'
+           '                SuggestionController.shared.close()\n'
+           '                return event\n'
+           '            }\n')
+old = note + visible      # v1.66.0: Meldung VOR dem isVisible-Zweig
+new = visible + note      # ab v1.68.1: Meldung DANACH
+if old not in src:
+    sys.exit(2)           # nichts zu migrieren
+print("→ Migriere CodeEditSourceEditor (4b-2: Manuell-Trigger hinter den isVisible-Zweig)")
+os.chmod(path, os.stat(path).st_mode | stat.S_IWUSR)
+open(path, "w").write(src.replace(old, new, 1))
+PYEOF
+then
+  # SPM trackt Quell-Änderungen in .build/checkouts NICHT → Build-Produkte
+  # verwerfen, sonst bliebe die alte Fassung einkompiliert (wie bei 4b/4c).
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# Endkontrolle für beide Wege (frischer Patch ODER Migration): Die Meldung muss
+# MIT ihrem Kontext hinter dem isVisible-Zweig stehen und darf davor nicht mehr
+# vorkommen. Fehlt sie oder steht sie noch vorn, hat Upstream die Stelle
+# umgebaut und der Fix wäre lautlos verschwunden.
+if ! /usr/bin/python3 - "$CESE_LC" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+note = ('            NotificationCenter.default.post(name: Notification.Name('
+        '"fastra.completion.manualTrigger"), object: self)'
+        '  // Fastra-Patch: manueller Aufruf (Esc/Ctrl-Space) erlaubt Ein-Zeichen-Vorschlaege\n')
+visible = ('            if SuggestionController.shared.isVisible {\n'
+           '                SuggestionController.shared.close()\n'
+           '                return event\n'
+           '            }\n')
+if note + visible in src:
+    print("  Meldung steht noch VOR dem isVisible-Zweig.", file=sys.stderr)
+    sys.exit(1)
+if visible + note not in src:
+    print("  Meldung samt isVisible-Kontext nicht gefunden.", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+then
+  echo "✗ FEHLER: Manual-Completion-Patch steht nicht an der geprüften Stelle. Build abgebrochen." >&2
+  exit 1
+fi
+
 # 4c. Patch CodeEditSourceEditor — toten cursorPositions-Reconcile reparieren.
 #
 # In SourceEditor.updateControllerWithState steht upstream:

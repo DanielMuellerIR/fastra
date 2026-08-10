@@ -93,12 +93,26 @@ enum FourDTokenizer {
     private static let commandTable = SymbolTable(FourDSymbols.commands)
     private static let constantTable = SymbolTable(FourDSymbols.constants)
     private static let keywordTable = SymbolTable(keywords)
-    /// Längste Wortzahl über alle Symboltabellen — Obergrenze für die
-    /// Longest-Prefix-Suche in `classifyPhrase`: Mehr Wörter als das kann
-    /// kein Tabelleneintrag treffen (Review 2026-08-02).
+    /// Längste Wortzahl über alle STATISCHEN Symboltabellen: Mehr Wörter als
+    /// das kann kein Tabelleneintrag treffen (Review 2026-08-02). Für die
+    /// Longest-Prefix-Suche in `classifyPhrase` ist das nur die Untergrenze —
+    /// dynamische Methodennamen können sie anheben (siehe `tokenize`).
     private static let maximumTableWordCount = max(commandTable.maxWords,
                                                    max(constantTable.maxWords,
                                                        keywordTable.maxWords))
+
+    /// Höchste Wortzahl einer Namensmenge (Projekt-/Komponentenmethoden).
+    /// 4D-Methodennamen dürfen Leerzeichen enthalten; die Suche darf deshalb
+    /// nicht an der statischen Tabellengrenze enden.
+    private static func maximumWordCount(of names: Set<String>) -> Int {
+        var maximum = 1
+        for name in names {
+            var words = 1
+            for character in name where character == " " { words += 1 }
+            if words > maximum { maximum = words }
+        }
+        return maximum
+    }
 
     /// Tokenisiert den kompletten Text. Ein Durchlauf, Zeichen für Zeichen;
     /// UTF-16-Offsets, damit die Ranges direkt in CESE/TextKit passen.
@@ -109,6 +123,15 @@ enum FourDTokenizer {
         let scalars = Array(text.utf16)
         let count = scalars.count
         var index = 0
+        // Obergrenze der Longest-Prefix-Suche: die längste Phrase, die
+        // überhaupt noch treffen kann. Die statischen Tabellen allein reichen
+        // dafür nicht — ein Projekt- oder Komponentenmethodenname mit mehr
+        // Wörtern als der längste 4D-Befehl wurde sonst nie vollständig
+        // erkannt und blieb halb eingefärbt (Review 2026-08-10). Einmal je
+        // Tokenisierung berechnet, nicht je Phrase.
+        let maximumWords = max(maximumTableWordCount,
+                               max(maximumWordCount(of: projectMethodNames),
+                                   maximumWordCount(of: componentMethodNames)))
         // `true`, solange direkt zuvor eine ]-Klammer einer Tabellenreferenz
         // endete — der nächste Bezeichner ist dann ein FELD dieser Tabelle.
         var expectsField = false
@@ -222,7 +245,8 @@ enum FourDTokenizer {
                                               expectsField: expectsField,
                                               afterDot: afterDot,
                                               projectMethodNames: projectMethodNames,
-                                              componentMethodNames: componentMethodNames) {
+                                              componentMethodNames: componentMethodNames,
+                                              maximumWords: maximumWords) {
                     tokens.append(token)
                     index = token.range.location + token.range.length
                 } else {
@@ -259,17 +283,19 @@ enum FourDTokenizer {
                                        expectsField: Bool,
                                        afterDot: Bool,
                                        projectMethodNames: Set<String>,
-                                       componentMethodNames: Set<String>) -> Token? {
+                                       componentMethodNames: Set<String>,
+                                       maximumWords: Int) -> Token? {
 
         // Wortgrenzen der Phrase für die Longest-Prefix-Versuche. Bewusst auf
-        // die Wortzahl des längsten Tabelleneintrags begrenzt: Eine lange
+        // `maximumWords` begrenzt — die Wortzahl des längsten überhaupt
+        // möglichen Treffers (Tabellen UND Methodenindizes): Eine lange
         // Wortkette (etwa Prosa hinter einem Befehl) baute sonst pro Position
         // Substrings über die GANZE Restphrase — quadratischer Aufwand auf
         // pathologischen Zeilen (Review 2026-08-02).
         var boundaries: [Int] = []   // Endoffsets je Wortende (relativ absolut)
         var i = start
         var lastWasSpace = true
-        while i < phraseEnd, boundaries.count < Self.maximumTableWordCount {
+        while i < phraseEnd, boundaries.count < maximumWords {
             let c = Character(Unicode.Scalar(scalars[i])!)
             if c == " " {
                 if !lastWasSpace { boundaries.append(i) }
@@ -279,7 +305,7 @@ enum FourDTokenizer {
             }
             i += 1
         }
-        if boundaries.count < Self.maximumTableWordCount {
+        if boundaries.count < maximumWords {
             boundaries.append(phraseEnd)
         }
 

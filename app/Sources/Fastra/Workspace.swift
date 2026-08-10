@@ -2166,7 +2166,8 @@ final class Workspace: ObservableObject {
     /// - Parameter completion: Optionaler Callback, der auf dem Main-Thread
     ///   aufgerufen wird. `true` = Inhalt steht im Tab (Datei war schon offen
     ///   oder Laden erfolgreich). `false` = Laden fehlgeschlagen, Platzhalter
-    ///   wurde entfernt.
+    ///   wurde entfernt. Zugesichert wird GENAU EIN Aufruf — auch dann, wenn
+    ///   der Workspace während des Ladens verschwindet (Fenster geschlossen).
     ///
     /// Ablauf:
     /// 1. Dedup: Datei schon offen → aktiv schalten, completion(true) sofort.
@@ -2230,6 +2231,23 @@ final class Workspace: ObservableObject {
 
             // Zurück auf den Main-Thread für alle UI-/Model-Mutationen.
             await MainActor.run { [weak self] in
+                // ── Completion garantieren ────────────────────────────────
+                // Die Completion hängt NICHT am Workspace: Schließt der Nutzer
+                // das Fenster während des Ladens, ist `self` hier nil — der
+                // Wartende (z. B. `SessionRestorationCoordinator`, der seine
+                // offenen Fenster ausschließlich über diese Rückmeldungen
+                // herunterzählt) bekäme sonst nie eine Antwort und lieferte
+                // gepufferte Finder-/CLI-Öffnungen nicht mehr aus.
+                // `report` ist einmalig; das `defer` fängt jeden Rückweg ab,
+                // auf dem sonst gar nichts gemeldet würde.
+                var didReport = false
+                func report(_ success: Bool) {
+                    guard !didReport else { return }
+                    didReport = true
+                    completion?(success)
+                }
+                defer { report(false) }
+
                 guard let self else { return }
 
                 // ── Generation-Guard ──────────────────────────────────────
@@ -2247,7 +2265,7 @@ final class Workspace: ObservableObject {
                     if !self.tabs.contains(where: { $0.id == tabID }) {
                         self.loadGeneration.removeValue(forKey: tabID)
                     }
-                    completion?(false)
+                    report(false)
                     return
                 }
 
@@ -2263,7 +2281,7 @@ final class Workspace: ObservableObject {
                     // SourceEditor NEU → makeNSViewController läuft mit
                     // fertigem Inhalt (CESE-Falle umgangen).
                     guard let idx = self.tabs.firstIndex(where: { $0.id == tabID }) else {
-                        completion?(false)
+                        report(false)
                         return
                     }
                     self.tabs[idx].content    = loaded.content
@@ -2289,7 +2307,7 @@ final class Workspace: ObservableObject {
                     self.tabs = Workspace.tabsRemovingEmptyScratch(self.tabs, keeping: tabID)
                     self.noteRecentFile(url)
                     self.openParentFolderIfProjectMissing(for: url)
-                    completion?(true)
+                    report(true)
 
                 case .failure:
                     // ── Fehler ────────────────────────────────────────────
@@ -2299,7 +2317,7 @@ final class Workspace: ObservableObject {
                     NSSound.beep()
                     self.tabs.removeAll { $0.id == tabID }
                     self.activeTabID = previousActiveTabID
-                    completion?(false)
+                    report(false)
                 }
             }
         }

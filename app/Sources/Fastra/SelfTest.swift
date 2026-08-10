@@ -368,7 +368,14 @@ enum SelfTest {
         // Registriert nur im Selbsttest-Modus; ein normaler App-Start räumt
         // nichts weg (Roadmap 2026-07-28: 3713 liegengebliebene Test-Plists
         // brachten cfprefsd aus dem Tritt).
-        atexit { TestDefaultsPurge.purgeStale() }
+        atexit {
+            // Zuerst die eigenen Suiten DIESES Laufs (Registry), dann die
+            // Reste früherer Läufe. Ohne den Registry-Schritt bliebe jede
+            // frisch angelegte UUID-Suite eines Selbsttests liegen: Für den
+            // Stale-Aufräumer ist sie mit unter einer Stunde noch zu jung.
+            TestDefaultsPurge.purgeRegistered()
+            TestDefaultsPurge.purgeStale()
+        }
         switch name {
         case "findbar":   waitForMainWindow { runFindBarTest() }
         case "newwindow": waitForMainWindow { runNewWindowTest() }
@@ -6704,7 +6711,9 @@ enum SelfTest {
         let pasteboardBackupURL = directory.appendingPathComponent("pasteboard-backup.plist")
         do {
             // Nach einem Absturz der vorigen Phase liegt deren Sicherung noch
-            // da. Sie gehört zurück, bevor diese Phase einen neuen Stand merkt.
+            // da. Sie gehört zurück, bevor diese Phase einen neuen Stand merkt
+            // — es sei denn, inzwischen hat jemand anders kopiert; dann bleibt
+            // der neuere Inhalt stehen (Besitzprüfung in der Wiederherstellung).
             _ = try restoreSoakPasteboardIfPresent(from: pasteboardBackupURL)
         } catch {
             finish(false, "liegengebliebene Zwischenablage nicht wiederherstellbar: "
@@ -6816,51 +6825,29 @@ enum SelfTest {
         }
     }
 
-    /// Der Dauertest kopiert selbst in die Zwischenablage. Fremder Inhalt wird
-    /// deshalb itemgetreu gesichert: Jedes Item behält seine eigene Kombination
-    /// aus Typen und Daten. Die Datei lässt auch den Runner nach einem Absturz
-    /// oder Timeout wiederherstellen.
-    private typealias SoakPasteboardBackup = [[String: Data]]
-    private static var soakPasteboardBackup: SoakPasteboardBackup?
+    // MARK: - Zwischenablage sichern und zurückgeben
 
-    @MainActor
-    private static func backupSoakPasteboard(to backupURL: URL) throws {
-        let pasteboard = NSPasteboard.general
-        let backup: SoakPasteboardBackup = (pasteboard.pasteboardItems ?? []).map { item in
+    /// Eine itemgetreue Sicherung der Zwischenablage: je Item die eigene
+    /// Kombination aus Typ-Name und Daten. Bewusst nur aus Zeichenketten und
+    /// Daten gebaut, damit sie sich unverändert als Property-List speichern
+    /// lässt.
+    private typealias StoredPasteboardItems = [[String: Data]]
+
+    /// Liest alle Items der allgemeinen Zwischenablage itemgetreu aus.
+    private static func capturePasteboardItems() -> StoredPasteboardItems {
+        (NSPasteboard.general.pasteboardItems ?? []).map { item in
             Dictionary(uniqueKeysWithValues: item.types.compactMap { type in
                 item.data(forType: type).map { (type.rawValue, $0) }
             })
         }
-        let data = try PropertyListSerialization.data(
-            fromPropertyList: backup, format: .binary, options: 0)
-        try data.write(to: backupURL, options: .atomic)
-        soakPasteboardBackup = backup
     }
 
-    /// Stellt eine gespeicherte Zwischenablage wieder her. `false` bedeutet,
-    /// dass keine Sicherung vorlag; auch eine bewusst leere Zwischenablage ist
-    /// dagegen eine vorhandene (leere) Property-List-Datei.
-    @MainActor
-    @discardableResult
-    private static func restoreSoakPasteboardIfPresent(from backupURL: URL) throws -> Bool {
-        let fileManager = FileManager.default
-        let backup: SoakPasteboardBackup
-        if let inMemory = soakPasteboardBackup {
-            backup = inMemory
-        } else {
-            guard fileManager.fileExists(atPath: backupURL.path) else { return false }
-            let data = try Data(contentsOf: backupURL)
-            guard let decoded = try PropertyListSerialization.propertyList(
-                from: data, options: [], format: nil) as? SoakPasteboardBackup else {
-                throw NSError(domain: "FastraSoakPasteboard", code: 1,
-                              userInfo: [NSLocalizedDescriptionKey:
-                                "Sicherungsdatei hat kein gültiges Item-/Typ-Format"])
-            }
-            backup = decoded
-        }
-
+    /// Schreibt eine Sicherung itemgetreu zurück. Nimmt AppKit einen Typ oder
+    /// die Items nicht an, wirft der Aufruf: Ein stilles Verschlucken würde
+    /// genau den Verlust verstecken, gegen den gesichert wurde.
+    private static func writePasteboardItems(_ stored: StoredPasteboardItems) throws {
         var items: [NSPasteboardItem] = []
-        for storedItem in backup {
+        for storedItem in stored {
             let item = NSPasteboardItem()
             for (rawType, data) in storedItem {
                 guard item.setData(data, forType: NSPasteboard.PasteboardType(rawValue: rawType))
@@ -6880,11 +6867,144 @@ enum SelfTest {
                           userInfo: [NSLocalizedDescriptionKey:
                             "gesicherte Pasteboard-Items wurden nicht angenommen"])
         }
+    }
+
+    /// Besitznachweis über `NSPasteboard.changeCount`. Der Zähler steigt
+    /// systemweit bei JEDEM Schreiben. Merkt sich ein Test den Stand direkt
+    /// NACH seiner eigenen Änderung, erkennt er später sicher, ob der Inhalt
+    /// noch der eigene ist: Ist der Zähler weitergelaufen, hat inzwischen
+    /// jemand anders kopiert — meist der Nutzer selbst. Dann darf keine
+    /// Sicherung zurückgeschrieben werden, sonst verschwindet dessen frische
+    /// Kopie. (Ein Selbsttest kann sein eigenes Schreiben nicht am Zähler
+    /// erkennen, deshalb wird der Stand ausdrücklich nach jeder eigenen
+    /// Änderung neu gemerkt.)
+    private static func pasteboardIsStillOwned(since ownedChangeCount: Int) -> Bool {
+        NSPasteboard.general.changeCount == ownedChangeCount
+    }
+
+    /// Der Dauertest kopiert selbst in die Zwischenablage. Fremder Inhalt wird
+    /// deshalb itemgetreu gesichert: Jedes Item behält seine eigene Kombination
+    /// aus Typen und Daten. Die Datei lässt auch den Runner nach einem Absturz
+    /// oder Timeout wiederherstellen. Mitgesichert wird der `changeCount`-Stand
+    /// nach der letzten test-eigenen Änderung — er entscheidet beim
+    /// Wiederherstellen darüber, ob die Zwischenablage überhaupt noch dem Test
+    /// gehört. Der Stand gehört deshalb auch in die DATEI: Nach einem Absturz
+    /// spielt ein frischer Prozess die Sicherung ein und hat kein Gedächtnis.
+    private struct SoakPasteboardBackup {
+        var items: StoredPasteboardItems
+        var ownedChangeCount: Int
+    }
+    private static var soakPasteboardBackup: SoakPasteboardBackup?
+    private static let soakPasteboardItemsKey = "items"
+    private static let soakPasteboardOwnedKey = "ownedChangeCount"
+
+    /// Ablageort der Sicherung. Protokoll und Sicherung liegen im selben
+    /// Arbeitsverzeichnis, das der Runner anlegt.
+    private static func soakPasteboardBackupURL(logURL: URL) -> URL {
+        logURL.deletingLastPathComponent()
+            .appendingPathComponent("pasteboard-backup.plist")
+    }
+
+    @MainActor
+    private static func backupSoakPasteboard(to backupURL: URL) throws {
+        // Vor der ersten eigenen Änderung ist der aktuelle Zählerstand der
+        // eigene Bezugspunkt: Solange er gilt, hat niemand anders geschrieben.
+        let backup = SoakPasteboardBackup(items: capturePasteboardItems(),
+                                          ownedChangeCount: NSPasteboard.general.changeCount)
+        try writeSoakPasteboardBackup(backup, to: backupURL)
+    }
+
+    @MainActor
+    private static func writeSoakPasteboardBackup(_ backup: SoakPasteboardBackup,
+                                                  to backupURL: URL) throws {
+        let plist: [String: Any] = [
+            soakPasteboardItemsKey: backup.items,
+            soakPasteboardOwnedKey: backup.ownedChangeCount,
+        ]
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: plist, format: .binary, options: 0)
+        try data.write(to: backupURL, options: .atomic)
+        soakPasteboardBackup = backup
+    }
+
+    /// Schreibt den Besitzstand fort, nachdem der Dauertest selbst kopiert hat.
+    /// Aufruf nach jeder Runde: Was sich WÄHREND einer Runde geändert hat, hat
+    /// der Test selbst ausgelöst — er hat die App gerade gesteuert. Ändert sich
+    /// danach noch etwas, war es jemand anders.
+    ///
+    /// Geschrieben wird die Datei nur, wenn der Zähler wirklich gewandert ist;
+    /// sonst liefe pro Runde eine überflüssige Schreiboperation.
+    @MainActor
+    private static func noteSoakPasteboardOwnership(to backupURL: URL) {
+        guard var backup = soakPasteboardBackup else { return }
+        let current = NSPasteboard.general.changeCount
+        guard backup.ownedChangeCount != current else { return }
+        backup.ownedChangeCount = current
+        // Scheitert das Fortschreiben, bleibt der ältere Stand in der Datei
+        // stehen: Der Wiederhersteller hält die Zwischenablage dann für fremd
+        // und fasst sie nicht an — die sichere Richtung.
+        do { try writeSoakPasteboardBackup(backup, to: backupURL) }
+        catch {
+            SoakTest.record("Besitzstand der Zwischenablage wird fortgeschrieben",
+                            error.localizedDescription)
+        }
+    }
+
+    /// Ergebnis eines Wiederherstellungsversuchs.
+    private enum SoakPasteboardRestoreOutcome: Equatable {
+        /// Sicherung war da und wurde eingespielt.
+        case restored
+        /// Es lag gar keine Sicherung vor. (Eine bewusst leere Zwischenablage
+        /// ist dagegen eine vorhandene, leere Sicherung.)
+        case noBackup
+        /// Nach der letzten test-eigenen Änderung hat jemand anders kopiert.
+        /// Der neuere Inhalt bleibt unangetastet.
+        case keptForeignContent
+    }
+
+    /// Stellt eine gespeicherte Zwischenablage wieder her — aber nur, wenn sie
+    /// noch dem Test gehört (siehe `pasteboardIsStillOwned`).
+    @MainActor
+    @discardableResult
+    private static func restoreSoakPasteboardIfPresent(
+        from backupURL: URL
+    ) throws -> SoakPasteboardRestoreOutcome {
+        let fileManager = FileManager.default
+        let backup: SoakPasteboardBackup
+        if let inMemory = soakPasteboardBackup {
+            backup = inMemory
+        } else {
+            guard fileManager.fileExists(atPath: backupURL.path) else { return .noBackup }
+            let data = try Data(contentsOf: backupURL)
+            guard let plist = try PropertyListSerialization.propertyList(
+                from: data, options: [], format: nil) as? [String: Any],
+                  let items = plist[soakPasteboardItemsKey] as? StoredPasteboardItems,
+                  let owned = plist[soakPasteboardOwnedKey] as? Int else {
+                throw NSError(domain: "FastraSoakPasteboard", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey:
+                                "Sicherungsdatei hat kein gültiges Format "
+                                + "(\(soakPasteboardItemsKey)/\(soakPasteboardOwnedKey))"])
+            }
+            backup = SoakPasteboardBackup(items: items, ownedChangeCount: owned)
+        }
+
+        // Fremder, neuerer Inhalt bleibt stehen. Die Sicherung wird trotzdem
+        // verworfen: Die Entscheidung ist endgültig, ein späterer Versuch
+        // käme zum selben Ergebnis und die Datei bliebe ewig liegen.
+        guard pasteboardIsStillOwned(since: backup.ownedChangeCount) else {
+            soakPasteboardBackup = nil
+            if fileManager.fileExists(atPath: backupURL.path) {
+                try fileManager.removeItem(at: backupURL)
+            }
+            return .keptForeignContent
+        }
+
+        try writePasteboardItems(backup.items)
         soakPasteboardBackup = nil
         if fileManager.fileExists(atPath: backupURL.path) {
             try fileManager.removeItem(at: backupURL)
         }
-        return true
+        return .restored
     }
 
     /// Kleiner fensterloser Hilfsaufruf für `soak-test.sh`. Er wird nach einem
@@ -6899,10 +7019,15 @@ enum SelfTest {
         let backupURL = URL(fileURLWithPath: directoryPath)
             .appendingPathComponent("pasteboard-backup.plist")
         do {
-            let restored = try restoreSoakPasteboardIfPresent(from: backupURL)
-            finish(true, restored
-                   ? "Zwischenablage itemgetreu wiederhergestellt"
-                   : "keine liegengebliebene Zwischenablage-Sicherung")
+            switch try restoreSoakPasteboardIfPresent(from: backupURL) {
+            case .restored:
+                finish(true, "Zwischenablage itemgetreu wiederhergestellt")
+            case .noBackup:
+                finish(true, "keine liegengebliebene Zwischenablage-Sicherung")
+            case .keptForeignContent:
+                finish(true, "Zwischenablage inzwischen anderweitig beschrieben — "
+                       + "neuerer Inhalt bleibt unangetastet")
+            }
         } catch {
             finish(false, "Zwischenablage nicht wiederherstellbar: "
                    + error.localizedDescription)
@@ -6953,10 +7078,15 @@ enum SelfTest {
             workspaceDefaults().synchronize()
             // Fremden Clipboard-Inhalt wiederherstellen, bevor der Prozess
             // endet — der Dauertest hat ihn möglicherweise überschrieben.
-            let backupURL = logURL.deletingLastPathComponent()
-                .appendingPathComponent("pasteboard-backup.plist")
+            // Hat der Nutzer nach der letzten test-eigenen Kopie selbst etwas
+            // kopiert, bleibt sein neuerer Inhalt stehen.
+            let backupURL = soakPasteboardBackupURL(logURL: logURL)
             do {
-                _ = try restoreSoakPasteboardIfPresent(from: backupURL)
+                let outcome = try restoreSoakPasteboardIfPresent(from: backupURL)
+                if outcome == .keptForeignContent {
+                    SoakTest.note("Zwischenablage zeigte am Phasenende fremden, "
+                                  + "neueren Inhalt — Sicherung bewusst nicht eingespielt")
+                }
             } catch {
                 SoakTest.record("Zwischenablage wird wiederhergestellt",
                                 error.localizedDescription)
@@ -6978,6 +7108,10 @@ enum SelfTest {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             MainActor.assumeIsolated {
                 if let pending { SoakTest.finishRound(pending) }
+                // Hat die Runde selbst kopiert (⌘C-Aktion), gehört der neue
+                // Zwischenablage-Inhalt dem Test: Besitzstand fortschreiben.
+                // Was sich SPÄTER ändert, kam von außen und bleibt erhalten.
+                noteSoakPasteboardOwnership(to: soakPasteboardBackupURL(logURL: logURL))
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                     MainActor.assumeIsolated {
                         runSoakRounds(rounds: rounds, done: done + 1,
@@ -11313,6 +11447,14 @@ enum SelfTest {
             finish(false, "Umgebungsproblem: (setup) eigene Defaults-Suite nicht anlegbar")
         }
         defaults.removePersistentDomain(forName: suiteName)
+        // Beim zentralen Aufräumer anmelden: Jeder Abschluss dieses Tests geht
+        // über `finish` und damit über `exit()`. Der Swift-Stack wird dabei
+        // nicht abgewickelt, das `defer` unten liefe also nie — ohne die
+        // Anmeldung bliebe pro Selbsttestlauf eine weitere Preferences-Domain
+        // liegen (der Stale-Aufräumer fasst sie erst nach einer Stunde an).
+        // Das `defer` bleibt trotzdem stehen: Es greift, sollte der Test
+        // irgendwann regulär zurückkehren.
+        TestDefaultsPurge.register(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let visible = screen.visibleFrame
@@ -14711,25 +14853,25 @@ enum SelfTest {
     private static func runPasteMatchIndentationTest() {
         testLabel = "pasteindent"
         guard let ws = Workspace.shared else {
-            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+            finishPasteIndent(false, "Workspace.shared ist nil (Test-Hook fehlt)")
         }
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("fastra-pasteindent-\(UUID().uuidString).txt")
         let original = "    ziel\n"
         do { try original.write(to: url, atomically: true, encoding: .utf8) }
         catch {
-            finish(false, "Umgebungsproblem: (setup) Fixture nicht schreibbar: \(error.localizedDescription)")
+            finishPasteIndent(false, "Umgebungsproblem: (setup) Fixture nicht schreibbar: \(error.localizedDescription)")
         }
         ws.loadFile(at: url) { ok in
             try? FileManager.default.removeItem(at: url)
-            guard ok else { finish(false, "Fixture lädt nicht") }
+            guard ok else { finishPasteIndent(false, "Fixture lädt nicht") }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                 guard let window = NSApp.windows.first(where: {
                     $0.frameAutosaveName != SearchWindow.frameAutosaveName
                         && $0.contentView != nil && $0.isVisible
                 }), let root = window.contentView,
                       let textView = editorTextView(in: root) as? TextView else {
-                    finish(false, "Editor-TextView nicht gefunden")
+                    finishPasteIndent(false, "Editor-TextView nicht gefunden")
                 }
                 window.makeFirstResponder(textView)
                 // Cursor ans Dokumentende (leerer Zeilenanfang hinter der
@@ -14737,27 +14879,67 @@ enum SelfTest {
                 textView.selectionManager.setSelectedRange(
                     NSRange(location: (textView.string as NSString).length, length: 0)
                 )
+                // Der Test überschreibt die Zwischenablage des Nutzers. Sie
+                // wird deshalb itemgetreu gesichert; direkt nach dem eigenen
+                // Schreiben wird der Besitzstand gemerkt, damit
+                // `finishPasteIndent` eine später vom Nutzer angelegte Kopie
+                // nicht wieder überschreibt.
+                pasteIndentPasteboardBackup = capturePasteboardItems()
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString("if x {\n    y()\n}\n", forType: .string)
+                pasteIndentPasteboardOwnedChangeCount = NSPasteboard.general.changeCount
                 NotificationCenter.default.post(
                     name: .fastraPasteMatchingIndentation, object: nil
                 )
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     let expected = "    ziel\n    if x {\n        y()\n    }\n"
                     guard textView.string == expected else {
-                        finish(false, "Einfügung falsch: \(textView.string.debugDescription) statt \(expected.debugDescription)")
+                        finishPasteIndent(false, "Einfügung falsch: \(textView.string.debugDescription) statt \(expected.debugDescription)")
                     }
                     // Genau EINE Undo-Aktion stellt den Ausgangstext her.
                     textView.undoManager?.undo()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         guard textView.string == original else {
-                            finish(false, "Undo stellte nicht den Ausgangstext her: \(textView.string.debugDescription)")
+                            finishPasteIndent(false, "Undo stellte nicht den Ausgangstext her: \(textView.string.debugDescription)")
                         }
-                        finish(true, "Block sitzt auf der Ziel-Einrückung (relativ erhalten), eine Undo-Aktion stellt alles zurück")
+                        finishPasteIndent(true, "Block sitzt auf der Ziel-Einrückung (relativ erhalten), eine Undo-Aktion stellt alles zurück")
                     }
                 }
             }
         }
+    }
+
+    /// Sicherung der Zwischenablage für `pasteindent`, plus der Zählerstand
+    /// nach dem test-eigenen Schreiben (Besitznachweis, siehe
+    /// `pasteboardIsStillOwned`).
+    private static var pasteIndentPasteboardBackup: StoredPasteboardItems?
+    private static var pasteIndentPasteboardOwnedChangeCount: Int?
+
+    /// Beendet `pasteindent` und gibt vorher die Zwischenablage zurück.
+    ///
+    /// Nötig, weil `finish` den Prozess über `exit()` verlässt: Der Swift-Stack
+    /// wird dabei nicht abgewickelt, ein `defer` liefe also nie. Der Aufruf
+    /// deckt alle Wege aus dem Test ab — Erfolg, Fehler und frühen Abbruch;
+    /// vor der Sicherung ist er wirkungslos.
+    private static func finishPasteIndent(_ ok: Bool, _ message: String) -> Never {
+        var note = ""
+        if let backup = pasteIndentPasteboardBackup {
+            pasteIndentPasteboardBackup = nil
+            if let owned = pasteIndentPasteboardOwnedChangeCount,
+               pasteboardIsStillOwned(since: owned) {
+                do { try writePasteboardItems(backup) }
+                catch {
+                    note = " — Warnung: Zwischenablage nicht zurückgegeben ("
+                        + error.localizedDescription + ")"
+                }
+            } else {
+                // Während des Tests hat jemand anders kopiert, typischerweise
+                // der Nutzer. Sein neuerer Inhalt bleibt unangetastet.
+                note = " (Zwischenablage inzwischen anderweitig beschrieben — "
+                    + "neuerer Inhalt behalten)"
+            }
+        }
+        finish(ok, message + note)
     }
 
     private static func runMarkdownImageWatchTest() {

@@ -100,9 +100,15 @@ enum IndentationMatchingPaste {
     ///   ihrer Zeile nur Whitespace steht — nur dann wird auch die ERSTE
     ///   eingefügte Zeile eingerückt; mitten in einer Zeile bliebe sonst
     ///   Whitespace im Satz stehen.
+    /// - `replacementStart`: Dokumentposition, ab der ersetzt werden muss.
+    ///   Steht vor der Einfügestelle nur Einrückung (typisch auf einer
+    ///   automatisch eingerückten Leerzeile), gehört diese zum Block und wird
+    ///   MIT ersetzt — sonst addierte sie sich zu der Einrückung, die
+    ///   `matchedText` der ersten Zeile ohnehin voranstellt, und der Block
+    ///   säße eine Ebene zu tief. Sonst ist es die Einfügestelle selbst.
     static func targetContext(documentText: String, insertionLocation: Int,
                               profile: IndentationProfile)
-        -> (columns: Int, prefixIsWhitespaceOnly: Bool) {
+        -> (columns: Int, prefixIsWhitespaceOnly: Bool, replacementStart: Int) {
         let ns = documentText as NSString
         let location = max(0, min(insertionLocation, ns.length))
         // Die Position HINTER einem End-Umbruch ist der Anfang einer leeren
@@ -123,6 +129,9 @@ enum IndentationMatchingPaste {
         let prefix = ns.substring(with: NSRange(location: lineRange.location,
                                                 length: max(0, location - lineRange.location)))
         let prefixIsWhitespaceOnly = prefix.allSatisfy { $0 == " " || $0 == "\t" }
+        // Reiner Whitespace vor der Einfügestelle ist bereits vorhandene
+        // Einrückung: Sie wird mit ersetzt, statt sich zu verdoppeln.
+        let replacementStart = prefixIsWhitespaceOnly ? lineRange.location : location
 
         var probeRange = lineRange
         var probeLine = ns.substring(with: probeRange)
@@ -133,10 +142,12 @@ enum IndentationMatchingPaste {
             probeLine = ns.substring(with: probeRange)
                 .trimmingCharacters(in: .newlines)
         }
-        guard !isBlank(probeLine) else { return (0, prefixIsWhitespaceOnly) }
+        guard !isBlank(probeLine) else {
+            return (0, prefixIsWhitespaceOnly, replacementStart)
+        }
         let columns = profile.visualColumns(
             ofLeadingWhitespace: leadingWhitespace(of: probeLine))
-        return (columns, prefixIsWhitespaceOnly)
+        return (columns, prefixIsWhitespaceOnly, replacementStart)
     }
 
     /// Der Kernalgorithmus (Spezifikation Etappe 4, Punkt 2):

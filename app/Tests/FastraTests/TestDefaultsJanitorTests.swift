@@ -331,14 +331,20 @@ func purgeRecognizesAndRemovesTestDomains() {
         "org.example.9E8B2C1A-1234-4EAB-9F00-ABCDEF012345"))
 
     // Registry-Weg: Eine registrierte, beschriebene Suite verschwindet mit
-    // purgeRegistered() aus den Preferences.
+    // dem Purge aus den Preferences.
+    //
+    // Nur die EIGENE Probe-Suite abräumen: Das ungezielte
+    // `purgeRegistered()` würde jede bis dahin prozessweit registrierte Suite
+    // leeren — also auch die der zahlreichen Tests, die im standardmäßig
+    // parallelen Lauf gerade `testSuiteDefaults` benutzen. Genau daraus
+    // entstanden sporadische Rotläufe (Review 2026-08-10).
     let name = "FastraTests.PurgeProbe.\(UUID().uuidString)"
     TestDefaultsPurge.register(name)
     let defaults = UserDefaults(suiteName: name)!
     defaults.set(true, forKey: "probe")
     // synchronize erzwingt das Persistieren der Domain vor dem Purge.
     defaults.synchronize()
-    let remaining = TestDefaultsPurge.purgeRegistered()
+    let remaining = TestDefaultsPurge.purgeRegistered(only: name)
     // `persistentDomain` einer soeben entfernten Suite kann in-Prozess ein
     // LEERES Dictionary statt nil melden — beides heißt: keine Werte mehr da.
     let domain = UserDefaults.standard.persistentDomain(forName: name)

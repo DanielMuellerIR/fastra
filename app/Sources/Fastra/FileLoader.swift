@@ -10,6 +10,7 @@
 // I/O (String(contentsOf:), Data(contentsOf:)) findet weiterhin synchron statt —
 // aber jetzt auf einem Hintergrund-Thread via `Task.detached`.
 
+import Darwin
 import Foundation
 
 /// Darstellungsart eines geöffneten Tabs. Text bleibt voll editierbar; große
@@ -96,10 +97,10 @@ enum FileLoader {
         //    dürfen nie gelesen werden. `openRegularFile` öffnet mit
         //    O_NONBLOCK — schon `open(2)` auf eine FIFO ohne Schreiber würde
         //    sonst unbegrenzt blockieren — und weist alles Nicht-Reguläre am
-        //    Deskriptor ab. Weil Typ, Größe und Probe am SELBEN geöffneten
-        //    Dateiobjekt hängen, kann ein Symlink zwischen Prüfung und Lesen
-        //    nicht mehr auf ein anderes Ziel umgebogen werden (TOCTOU,
-        //    Review 2026-08-02).
+        //    Deskriptor ab. Weil Typ, Größe, Probe UND der spätere Voll-Read
+        //    am SELBEN geöffneten Dateiobjekt hängen, kann ein Symlink
+        //    zwischen Prüfung und Lesen nicht mehr auf ein anderes Ziel
+        //    umgebogen werden (TOCTOU, Review 2026-08-02 und 2026-08-10).
         // 2. Ein Fehler beim Ermitteln der Attribute darf NICHT als Größe 0
         //    durchgehen. Sonst gälte eine riesige Datei als winzig, umginge
         //    die Abschnitts-/Hex-Grenze und landete komplett im Speicher.
@@ -108,19 +109,26 @@ enum FileLoader {
         // Die Null-Byte-Probe ist die verbindliche Binär-Erkennung aus der
         // Roadmap. Nur einen kleinen Anfang lesen — auch eine 20-GB-Datei
         // wird dadurch praktisch sofort als Hex-View geöffnet.
-        let probe: Data
-        let fileSize: UInt64
+        let opened: (descriptor: Int32, stat: stat)
         do {
-            let (descriptor, info) = try FileSnapshot.openRegularFile(at: url)
-            fileSize = UInt64(max(0, info.st_size))
-            let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
-            probe = (try? handle.read(upToCount: binaryProbeSize)) ?? Data()
-            try? handle.close()
+            opened = try FileSnapshot.openRegularFile(at: url)
         } catch FileSnapshotReadError.notRegularFile {
             throw LoadError.notRegularFile
         } catch {
             throw LoadError.unreadable
         }
+        // Der Deskriptor bleibt bis zum Ende dieses Ladevorgangs offen: Probe,
+        // Nachscan und Voll-Read hängen dadurch alle am SELBEN Dateiobjekt.
+        // Ein zweites `open` desselben Pfades — etwa über
+        // `FileSnapshot.read(from:)` — könnte nach einem umgebogenen Symlink
+        // oder einem atomaren Austausch eine völlig andere und viel größere
+        // Datei liefern. Die oben geprüfte Größe gälte dann für eine Datei,
+        // die gar nicht gelesen wird, und die 32-MiB-Grenze für editierbare
+        // Dateien wäre umgangen (Review 2026-08-10).
+        defer { close(opened.descriptor) }
+        let fileSize = UInt64(max(0, opened.stat.st_size))
+        let handle = FileHandle(fileDescriptor: opened.descriptor, closeOnDealloc: false)
+        let probe = (try? handle.read(upToCount: binaryProbeSize)) ?? Data()
         let (probeBOM, probeBOMEncoding) = ApplyEngine.detectBOM(in: probe)
 
         if let enc = forcedEncoding {
@@ -134,7 +142,9 @@ enum FileLoader {
                                   lineEnding: .lf, displayMode: .chunkedText,
                                   fileSize: fileSize, diskSnapshot: nil)
             }
-            guard let read = try? FileSnapshot.read(from: url) else {
+            guard let read = try? readAll(descriptor: opened.descriptor,
+                                          openedAs: opened.stat,
+                                          byteLimit: largeFileThreshold) else {
                 throw LoadError.unreadable
             }
             let data = read.data
@@ -166,7 +176,7 @@ enum FileLoader {
             // deshalb den Rest abschnittsweise. BOM-markiertes UTF-16 bleibt
             // erlaubt; dort sind Nullbytes erwartbarer Bestandteil des Texts.
             if !bomEncodingAllowsNUL(probeBOMEncoding),
-               try containsNUL(url: url, startingAt: UInt64(probe.count)) {
+               try containsNUL(handle: handle, startingAt: UInt64(probe.count)) {
                 return LoadedFile(content: "", encoding: .utf8, bom: Data(),
                                   lineEnding: .lf, displayMode: .hex,
                                   fileSize: fileSize, diskSnapshot: nil)
@@ -178,7 +188,11 @@ enum FileLoader {
                               diskSnapshot: nil)
         }
 
-        guard let read = try? FileSnapshot.read(from: url) else { throw LoadError.unreadable }
+        guard let read = try? readAll(descriptor: opened.descriptor,
+                                      openedAs: opened.stat,
+                                      byteLimit: largeFileThreshold) else {
+            throw LoadError.unreadable
+        }
         let data = read.data
         let (bom, bomEncoding) = ApplyEngine.detectBOM(in: data)
         // Kleine Dateien liegen hier ohnehin vollständig vor. Daher erneut
@@ -250,18 +264,68 @@ enum FileLoader {
             || encoding == .utf32LittleEndian || encoding == .utf32BigEndian
     }
 
+    /// Liest die Datei vollständig aus einem BEREITS geöffneten Deskriptor und
+    /// baut daraus den Save-Snapshot.
+    ///
+    /// Warum nicht `FileSnapshot.read(from:)`? Das öffnet den Pfad erneut. Ein
+    /// Symlink oder ein atomarer Austausch kann in genau diesem Moment auf eine
+    /// andere Datei zeigen — die Entscheidung „klein genug zum Editieren" wäre
+    /// dann an der einen, der Inhalt aus der anderen Datei gemessen.
+    ///
+    /// `byteLimit` ist hart und gilt zusätzlich WÄHREND des Lesens: Wächst die
+    /// Datei nach dem Öffnen über die Grenze, bricht der Lauf ab, statt den
+    /// Speicher zu füllen. Die anschließende String-Dekodierung kann ein
+    /// Vielfaches der Bytezahl belegen.
+    private static func readAll(descriptor: Int32, openedAs before: stat,
+                                byteLimit: UInt64) throws
+        -> (data: Data, snapshot: FileSnapshot) {
+        let limit = min(byteLimit, FileSnapshot.maximumReadBytes)
+        guard before.st_size >= 0, UInt64(before.st_size) <= limit else {
+            throw FileSnapshotReadError.tooLarge(byteCount: UInt64(max(0, before.st_size)))
+        }
+        // Zurück auf Position 0: Die Binärprobe hat den Lesezeiger schon
+        // bewegt, der Voll-Read braucht aber die Datei ab dem ersten Byte.
+        guard lseek(descriptor, 0, SEEK_SET) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: false)
+        var data = Data()
+        data.reserveCapacity(Int(before.st_size))
+        while true {
+            let chunk = try handle.read(upToCount: 4 * 1024 * 1024) ?? Data()
+            if chunk.isEmpty { break }
+            data.append(chunk)
+            guard UInt64(data.count) <= limit else {
+                throw FileSnapshotReadError.tooLarge(byteCount: UInt64(data.count))
+            }
+        }
+        var after = stat()
+        guard fstat(descriptor, &after) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        // Volume und Inode können sich am offenen Deskriptor nicht mehr ändern.
+        // Größe und Zeitstempel schon: Wurde IN die Datei geschrieben, während
+        // wir lasen, passen Probe, Inhalt und Snapshot zu keinem einzigen
+        // Plattenstand — dann lieber gar kein Ergebnis.
+        guard before.st_size == after.st_size,
+              before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec,
+              before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec,
+              before.st_ctimespec.tv_sec == after.st_ctimespec.tv_sec,
+              before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec else {
+            throw FileSnapshotReadError.changedDuringRead
+        }
+        return (data, FileSnapshot(data: data, identity: FileIdentity(stat: after)))
+    }
+
     /// Sucht ab `offset` bis EOF nach einem Nullbyte, ohne die Datei komplett
     /// einzulesen. Diese synchrone Hilfsfunktion darf wie `load` nur aus dem
     /// Hintergrund aufgerufen werden.
-    private static func containsNUL(url: URL, startingAt offset: UInt64) throws -> Bool {
-        // Auch der Nachscan geht über den gehärteten Deskriptor-Pfad: Ein
-        // inzwischen umgebogener Symlink (z. B. auf eine FIFO) darf den
-        // Hintergrund-Thread nicht festhalten.
-        guard let opened = try? FileSnapshot.openRegularFile(at: url) else {
-            throw LoadError.unreadable
-        }
-        let handle = FileHandle(fileDescriptor: opened.descriptor, closeOnDealloc: true)
-        defer { try? handle.close() }
+    ///
+    /// `handle` ist bewusst der bereits offene Deskriptor des Ladevorgangs und
+    /// kein Pfad: Nur so urteilt der Nachscan über dieselbe Datei, deren Typ
+    /// und Größe vorher geprüft wurden. Ein zweites Öffnen könnte inzwischen
+    /// auf ein anderes Ziel zeigen.
+    private static func containsNUL(handle: FileHandle, startingAt offset: UInt64) throws -> Bool {
         do {
             try handle.seek(toOffset: offset)
             while true {

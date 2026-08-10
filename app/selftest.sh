@@ -15,7 +15,9 @@
 #      „Fenster wiederherstellen?"-Dialog nach einem abgebrochenen Lauf.
 #   3. Bei gesperrtem Bildschirm sind Fenster-Tests nicht aussagekräftig —
 #      der Runner prüft das vorab und lässt dann nur die ausdrücklich
-#      fensterlos markierten Tests zu.
+#      fensterlos markierten Tests zu. Die ausgelassenen Tests werden als
+#      übersprungen ausgewiesen und erzwingen Exit 2; ein unvollständiger
+#      Lauf darf nie als bestanden gelten.
 #   4. Die Tests `cmdw`, `newwindow`, `completion4d`, `projectinput` und `help`
 #      brauchen ECHTEN Fenster-Fokus. macOS 26 verweigert
 #      einem im Hintergrund gestarteten Prozess die Selbst-Aktivierung
@@ -108,13 +110,28 @@ else
     TESTS=("${ALL_TESTS[@]}")
 fi
 
+# Ausgelassene Tests werden weiter unten als Umgebungs-Skips gezählt. Das Array
+# muss auch im Normalfall existieren: Unter `set -u` ist eine nie zugewiesene
+# Variable ein Fehler.
+SKIPPED_TESTS=()
+
 if console_locked; then
     echo "⚠ Bildschirm ist gesperrt — Fenster-Selbsttests sind nicht aussagekräftig."
     FILTERED=()
     for t in "${TESTS[@]}"; do
+        is_windowless=0
         for w in "${WINDOWLESS_TESTS[@]}"; do
-            [[ "$t" == "$w" ]] && FILTERED+=("$t")
+            [[ "$t" == "$w" ]] && is_windowless=1
         done
+        if [[ $is_windowless -eq 1 ]]; then
+            FILTERED+=("$t")
+        else
+            # Jeder herausgefilterte Test ist ein ausgelassener Test und muss
+            # als solcher gezählt werden. Ohne diese Buchhaltung endete ein
+            # Lauf, der fast alles übersprungen hat, mit Exit 0 und galt
+            # maschinenlesbar als vollständig bestanden.
+            SKIPPED_TESTS+=("$t")
+        fi
     done
     if [[ ${#FILTERED[@]} -eq 0 ]]; then
         echo "  Keiner der angeforderten Tests ist fensterlos. Abbruch (Exit 2)."
@@ -185,11 +202,19 @@ wait_for_result() {
 # (Fehler -1712), der Kill danach jeden Fall, in dem der Aufruf schon vor dem
 # Senden in der Autorisierung feststeckt.
 #
+# Angesprochen wird der Prozess über seine Unix-PID ($1), nicht über den Namen
+# „Fastra": Der Aufräumpfad lässt andere Fastra-Builds (installierte App,
+# anderer Worktree) bewusst laufen, und `first process whose name is "Fastra"`
+# hätte davon einen beliebigen nach vorn geholt — der Test hätte dann ein
+# fremdes Fenster aktiviert, dem Nutzer den Fokus gestohlen und anschließend
+# einen irreführenden Umgebungsfehler gemeldet.
+#
 # Rückgabe: 0 = App ist vorn, 1 = regulär fehlgeschlagen (erneut versuchen
 # sinnvoll), 2 = keine Antwort in der Frist (Freigabe fehlt, Aufgeben).
 activate_once() {
+    local target_pid="$1"
     osascript -e 'with timeout of 3 seconds' \
-              -e 'tell application "System Events" to set frontmost of (first process whose name is "Fastra") to true' \
+              -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $target_pid) to true" \
               -e 'end timeout' >/dev/null 2>&1 &
     local pid=$!
     local waited=0
@@ -206,14 +231,33 @@ activate_once() {
     return 2
 }
 
-# Holt die Fastra-App per System Events nach vorn (für Tests, die echten
-# Fenster-Fokus brauchen). Mehrere Versuche, weil der Prozess erst nach
-# dem ersten Fenster für System Events greifbar ist. Best effort — bei
-# aktiv benutztem Desktop gewinnt der Nutzer-Fokus trotzdem.
+# PID des in dieser Runde gestarteten Test-Bundles: die zuletzt erfasste.
+# `kill_leftovers` leert die Liste zu Beginn jeder Runde, es kann also nur ein
+# Prozess dieser Runde darin stehen.
+current_app_pid() {
+    if [ "${#STARTED_PIDS[@]}" -gt 0 ]; then
+        printf '%s\n' "${STARTED_PIDS[${#STARTED_PIDS[@]} - 1]}"
+    fi
+}
+
+# Holt die per `open` gestartete Test-App nach vorn (für Tests, die echten
+# Fenster-Fokus brauchen). Mehrere Versuche, weil LaunchServices die App erst
+# nach kurzer Zeit als Prozess anlegt — die PID wird deshalb in der Schleife
+# nachgeholt. Best effort: bei aktiv benutztem Desktop gewinnt der
+# Nutzer-Fokus trotzdem.
 activate_app() {
+    local target_pid=""
     for _ in 1 2 3 4 5 6 7 8; do
         sleep 1
-        activate_once
+        if [[ ! "$target_pid" =~ ^[0-9]+$ ]]; then
+            remember_bundle_pids
+            target_pid="$(current_app_pid)"
+        fi
+        if [[ ! "$target_pid" =~ ^[0-9]+$ ]]; then
+            # Prozess noch nicht da — nächster Versuch.
+            continue
+        fi
+        activate_once "$target_pid"
         case $? in
             0) return 0 ;;
             2)
@@ -228,6 +272,10 @@ activate_app() {
                 ;;
         esac
     done
+    if [[ ! "$target_pid" =~ ^[0-9]+$ ]]; then
+        echo "  (Test-Bundle ist nicht als Prozess auffindbar — Aktivierung" \
+             "bleibt bei LaunchServices)" >&2
+    fi
     return 1
 }
 
@@ -247,12 +295,57 @@ cleanup_coldopen_fixture() {
     coldopen_fixture_file=""
 }
 
+# Aufräumen auch bei Abbruch. Ohne Trap blieben nach einem Strg-C mitten in
+# einem Test die per LaunchServices gestarteten Testprozesse mit sichtbaren
+# Fenstern und die Kaltstart-Fixture liegen — der nächste Lauf traf dann auf
+# eine fremde Ausgangslage. Bereinigt wird ausschließlich, was dieser Runner
+# selbst erfasst hat: die gemerkten PIDs des konfigurierten Bundles und genau
+# das eine mktemp-Fixture-Verzeichnis.
+#
+# Der Exit-Code des Abbruchs bleibt erhalten: Bei einem regulären Ende wird der
+# vorliegende Status weitergereicht, bei einem Signal beendet sich der Runner
+# selbst mit demselben Signal (der Aufrufer sieht also 128 + Signalnummer).
+cleanup_on_exit() {
+    local original_status=$?
+    trap - EXIT INT TERM
+    kill_leftovers
+    cleanup_coldopen_fixture
+    exit "$original_status"
+}
+
+cleanup_on_signal() {
+    local signal="$1"
+    trap - EXIT INT TERM
+    kill_leftovers
+    cleanup_coldopen_fixture
+    trap - "$signal"
+    kill -"$signal" $$
+}
+
+trap cleanup_on_exit EXIT
+trap 'cleanup_on_signal INT' INT
+trap 'cleanup_on_signal TERM' TERM
+
 # ── Testlauf ─────────────────────────────────────────────────────────────
 
 pass_count=0
 real_fail_count=0
 env_fail_count=0
+skip_count=0
 summary=""
+
+# Wegen gesperrtem Bildschirm ausgelassene Fenstertests sofort ausweisen — je
+# eine maschinenlesbare Zeile im gewohnten `SELFTEST <name>:`-Format. Sie
+# zwingen am Ende Exit 2: Der Lauf ist unvollständig, nicht bestanden.
+# macOS liefert bash 3.2: Ein leeres Array unter `set -u` erst über die Länge
+# prüfen, sonst gilt "${arr[@]}" als unbound.
+if [[ ${#SKIPPED_TESTS[@]} -gt 0 ]]; then
+    for t in "${SKIPPED_TESTS[@]}"; do
+        echo "SELFTEST $t: SKIP — Bildschirm gesperrt (Umgebungsproblem)"
+        summary+="⚠ $t (übersprungen: Bildschirm gesperrt)\n"
+        skip_count=$((skip_count + 1))
+    done
+fi
 
 for t in "${TESTS[@]}"; do
     kill_leftovers
@@ -335,11 +428,11 @@ cleanup_coldopen_fixture
 echo ""
 echo "── Selbsttest-Zusammenfassung ──"
 printf "%b" "$summary"
-echo "PASS: $pass_count · echte FAILs: $real_fail_count · Umgebungs-FAILs: $env_fail_count"
+echo "PASS: $pass_count · echte FAILs: $real_fail_count · Umgebungs-FAILs: $env_fail_count · übersprungen: $skip_count"
 
 if [[ $real_fail_count -gt 0 ]]; then
     exit 1
-elif [[ $env_fail_count -gt 0 ]]; then
+elif [[ $env_fail_count -gt 0 || $skip_count -gt 0 ]]; then
     exit 2
 fi
 exit 0

@@ -9,6 +9,88 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.69.0] — 2026-08-10
+
+### Behoben
+
+Vollständige Abarbeitung des Code-Reviews vom 2026-08-10 (30 Funde, alle
+triagiert und bestätigt). Schwerpunkte:
+
+Git-Sicherheit:
+
+- **Fastra löscht kein fremdes `index.lock` mehr:** Der Abbruchpfad des
+  Index-Locks merkt sich beim Erwerb die Dateiidentität (Gerät + Inode) und
+  entfernt die Lock-Datei nur, wenn sie unverändert die eigene ist. Vorher
+  konnte in einem engen Zeitfenster der frisch angelegte Lock eines anderen
+  Git-Prozesses gelöscht werden — mit Risiko eines beschädigten Index.
+- **„Verwerfen" wirkt nur noch im bestätigten Repository:** Einzel- und
+  Mehrfach-Verwerfen frieren den Repository-Kontext vor der Rückfrage ein.
+  Wechselt das Projekt, während der Bestätigungsdialog offen ist, bricht die
+  Aktion mit sichtbarer Meldung ab, statt gleichnamige Dateien im neuen
+  Repository zu verwerfen oder zu löschen.
+- **Push geht an die geprüfte Adresse:** Der Push wird per Konfigurations-Pin
+  an genau die Adresse gebunden, die die Sicherheitsprüfung bestätigt hat.
+  Eine zwischenzeitlich extern umgebogene Remote-Konfiguration kann den
+  laufenden Push nicht mehr auf ein nie bestätigtes Ziel umlenken.
+
+Dateisicherheit:
+
+- **Größenprüfung und Inhalt stammen jetzt garantiert aus derselben Datei:**
+  Editor-Laden, Undo-Backups und Vorschau-Bilder lesen am selben
+  Dateideskriptor, an dem Typ, Größe und Identität geprüft wurden. Ein
+  Symlink- oder Datei-Austausch im richtigen Moment konnte vorher die
+  32-MiB-Grenze umgehen und beliebig große Dateien in den Speicher ziehen.
+- **`md-clip`-Ausgaben haben ein hartes Gesamtlimit:** Ein defektes
+  Konvertierungsprogramm kann Fastra nicht mehr über unbegrenzt wachsende
+  Ausgabepuffer zum Absturz bringen; stattdessen erscheint ein verständlicher
+  Konvertierungsfehler.
+
+Markdown und Editor:
+
+- **Die Vorschau bleibt nicht mehr leer, wenn man sofort nach dem Öffnen
+  tippt:** Das jeweils neueste Fragment wird vollständig geladen, auch wenn
+  die Erstnavigation noch nicht gestartet war.
+- **Die Vorschau läuft beim schnellen Tippen nicht mehr hinterher:** Wartende
+  Render-Anforderungen werden verdichtet — nur die jüngste wird gerendert
+  („der jüngste gewinnt").
+- **Verlinkte Bilder aktualisieren sich zuverlässig:** Der Bildwächter
+  beobachtet zusätzlich den Ordner des symlink-aufgelösten Ziels.
+- **Kein fremder Import-Zustand mehr in Zweitfenstern:** Jedes Fenster zeigt
+  nur noch den eigenen Umwandlungsfortschritt; das eigene Angebot bleibt
+  auch während einer fremden Umwandlung sichtbar.
+- **Parallele Bild-Drops kollidieren nicht mehr beim Anlegen des
+  `images`-Ordners:** Anlage, Besitzentscheidung und Kopie laufen unter
+  demselben Lock.
+- **„Einfügen mit passender Einrückung" doppelt die Einrückung nicht mehr,**
+  wenn der Cursor bereits hinter Einrückungszeichen steht: Der vorhandene
+  Präfix wird in den ersetzten Bereich aufgenommen.
+- **Fensterwiederherstellung verklemmt sich nicht mehr,** wenn ein Fenster
+  während des Ladens geschlossen wird: Jeder Ladevorgang meldet sein Ende
+  jetzt garantiert genau einmal.
+
+4D-Unterstützung:
+
+- **Signaturhilfe:** Veraltete Hilfe kehrt nach dem Ausblenden nicht mehr
+  zurück; Code hinter einem schließenden `*/` bekommt wieder Hilfe und
+  Vervollständigung; Datei- und Archivzugriffe laufen vollständig im
+  Hintergrund statt bei jeder Cursorbewegung auf dem Main-Thread.
+- **Vervollständigung:** Der manuelle Auslöser (⌃Leertaste) wirkt nur noch im
+  auslösenden Fenster; ein bereits von v1.66.0 gepatchter Build-Checkout wird
+  jetzt korrekt auf die neue Patch-Position migriert.
+- **Hervorhebung:** Projekt- und Komponentenmethoden mit vielen Wortteilen
+  werden vollständig hervorgehoben; nicht lesbare Einträge (tote Symlinks)
+  gelangen nicht mehr in den Methodenindex.
+
+Testinfrastruktur (ohne Produktverhalten, aber Teil der Zusagen an Agenten):
+
+- `selftest.sh` meldet herausgefilterte Fenstertests jetzt als Skips und
+  liefert dann zwingend Exit 2 statt eines irreführenden Exit 0; eine
+  Trap-Bereinigung räumt bei Abbruch auf; die Fensteraktivierung trifft per
+  PID das richtige Bundle. Der `pasteindent`-Selbsttest und die
+  Soak-Bereinigung sichern die Zwischenablage des Nutzers und stellen nur
+  noch nachweislich test-eigenen Inhalt wieder her; der Soak-Lauf setzt
+  4D-Dateien nur noch zurück, wenn ihr Inhalt exakt dem Teststand entspricht.
+
 ## [v1.68.3] — 2026-08-09
 
 ### Behoben

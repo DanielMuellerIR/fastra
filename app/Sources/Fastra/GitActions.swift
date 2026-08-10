@@ -27,6 +27,41 @@ struct GitActionContext: Equatable {
     }
 }
 
+/// Baut die Argumente eines Pushs und entscheidet, ob die geprüfte Adresse an
+/// genau diesen Aufruf gebunden werden darf. Bewusst reine Rechnung ohne
+/// Prozessstart, damit der Regressionstest die Argumentliste direkt prüfen kann.
+enum GitPushCommand {
+    /// Festnageln ist nur dann eindeutig, wenn genau EINE Push-Adresse geprüft
+    /// wurde und das Repository selbst keine `pushurl` gesetzt hat. Grund: Ein
+    /// `-c`-Wert ergänzt mehrwertige Git-Konfiguration, er ersetzt sie nicht —
+    /// sonst würde Fastra ein zusätzliches Ziel beliefern statt eines
+    /// festgelegten.
+    ///
+    /// Grenze, die keine Aufrufform aufhebt: `url.<basis>.insteadOf` schreibt
+    /// auch eine wörtlich übergebene Adresse um. Gegen eine feindlich veränderte
+    /// Git-Konfiguration schützt deshalb erst die Prüfung unmittelbar davor.
+    static func pinnableAddress(of target: GitPushTarget,
+                                hasConfiguredPushURL: Bool) -> String? {
+        guard !hasConfiguredPushURL, target.addresses.count == 1,
+              let address = target.addresses.first, !address.isEmpty
+        else { return nil }
+        return address
+    }
+
+    static func arguments(remote: String, refspec: String, setUpstream: Bool,
+                          pinnedAddress: String?) -> [String] {
+        var arguments: [String] = []
+        if let pinnedAddress {
+            // `-c` gehört VOR das Unterkommando und gilt nur für diesen Lauf.
+            arguments += ["-c", "remote.\(remote).pushurl=\(pinnedAddress)"]
+        }
+        arguments.append("push")
+        if setUpstream { arguments.append("-u") }
+        arguments += [remote, refspec]
+        return arguments
+    }
+}
+
 /// Kuratierte Git-Aktionen (Projekt- & Git-Ausbau, Etappe 2, Schritt 4).
 /// Philosophie: **Git liefert Logik, Fastra macht die häufigen — und ein paar
 /// pfiffige — Aufrufe per Knopf zugänglich**, für Leute, die Git verstehen,
@@ -121,9 +156,27 @@ extension Workspace {
     /// Working-Tree auf den Index-/HEAD-Stand zurücksetzen (`git checkout --`).
     /// Nur in der Unstaged-Sektion angeboten (VS-Code-Platzierung).
     func gitDiscard(change: GitChange) {
-        guard let root = projectURL, let path = change.actionPath else { return }
+        // Repository UND Aktionskontext vor der Rückfrage gemeinsam einfrieren.
+        guard let context = currentGitActionContext, change.isPathActionable
+        else { return }
         let isUntracked = change.unstaged == .untracked
         guard Self.confirmDiscard(name: change.name, untracked: isUntracked) else { return }
+        gitDiscard(change: change, context: context)
+    }
+
+    /// Führt das Verwerfen mit dem VOR der Rückfrage eingefrorenen Kontext aus.
+    /// Der modale Dialog dreht eine eigene Ereignisschleife, in der das Fenster
+    /// längst ein anderes Projekt öffnen kann. Ohne die Aktualitätsprüfung würde
+    /// eine Bestätigung für Repository A eine gleichnamige Datei im inzwischen
+    /// geöffneten Repository B verwerfen (Review 2026-08-10).
+    func gitDiscard(change: GitChange, context: GitActionContext) {
+        guard let path = change.actionPath else { return }
+        guard context.isCurrent(in: self) else {
+            Self.presentStaleGitContext(label: "Verwerfen")
+            return
+        }
+        let root = context.root
+        let isUntracked = change.unstaged == .untracked
         if isUntracked {
             // Untracked: Datei physisch entfernen (VS-Code-Verhalten „Discard").
             // Ein Fehlschlag (Rechte, bereits gesperrt) wird sichtbar gemeldet —
@@ -140,7 +193,8 @@ extension Workspace {
             refreshGitStatus()
             refreshOpenGitViews()
         } else {
-            runGitAction(["checkout", "--", path], label: "Verwerfen")
+            runGitAction(["checkout", "--", path], label: "Verwerfen",
+                         context: context)
         }
     }
 
@@ -149,7 +203,9 @@ extension Workspace {
     /// ganze Auswahl; danach werden unversionierte Dateien gelöscht und alle
     /// getrackten in einem gemeinsamen `git checkout --` zurückgesetzt.
     func gitDiscard(changes: [GitChange]) {
-        guard let root = projectURL else { return }
+        // Wie im Einzelfall: Repository und Aktionskontext werden gemeinsam vor
+        // der Rückfrage eingefroren und danach auf Aktualität geprüft.
+        guard let context = currentGitActionContext else { return }
         let plan = GitDiscardPlan(changes: changes)
         guard !plan.isEmpty else { return }
         // Einzelfall: der bestehende Dialog nennt den Dateinamen — präziser.
@@ -159,6 +215,19 @@ extension Workspace {
         }
         guard Self.confirmDiscard(count: plan.totalCount,
                                   untrackedCount: plan.untrackedPaths.count) else { return }
+        gitDiscard(changes: changes, context: context)
+    }
+
+    /// Mehrfach-Verwerfen mit dem eingefrorenen Kontext (Begründung siehe
+    /// `gitDiscard(change:context:)`).
+    func gitDiscard(changes: [GitChange], context: GitActionContext) {
+        let plan = GitDiscardPlan(changes: changes)
+        guard !plan.isEmpty else { return }
+        guard context.isCurrent(in: self) else {
+            Self.presentStaleGitContext(label: "Verwerfen")
+            return
+        }
+        let root = context.root
         // Teil-Löschfehler nicht verschlucken: Was sich nicht löschen ließ,
         // wird gesammelt und EINMAL sichtbar gemeldet — sonst blieben Dateien
         // kommentarlos in der Liste stehen (Review 2026-08-02).
@@ -181,8 +250,18 @@ extension Workspace {
             refreshGitStatus()
             refreshOpenGitViews()
         } else {
-            runGitAction(["checkout", "--"] + plan.trackedPaths, label: "Verwerfen")
+            runGitAction(["checkout", "--"] + plan.trackedPaths,
+                         label: "Verwerfen", context: context)
         }
+    }
+
+    /// Einheitliche Meldung, wenn ein eingefrorener Kontext nach der Rückfrage
+    /// nicht mehr das aktuelle Projekt beschreibt. Bewusst derselbe Text wie in
+    /// den übrigen Sicherheitsabbrüchen (siehe `GitConflictActions`).
+    static func presentStaleGitContext(label: String) {
+        presentGitErrorText(
+            label: label,
+            text: L10n.string("Repository, Branch oder Arbeitsbaum haben sich während der Sicherheitsprüfung geändert. Prüfe den neuen Stand und starte die Aktion erneut."))
     }
 
     /// Bereitgestellte Änderungen committen. Nichts bereitgestellt → erst alles
@@ -370,27 +449,63 @@ extension Workspace {
                         // nur ohne Interpretationsspielraum für push.default
                         // oder Remote-Konfiguration.
                         let refspec = "refs/heads/\(branch):refs/heads/\(branch)"
-                        let label = L10n.format("Push zu %@", target.remote)
-                        if tracksTarget {
-                            self.runGitAction(["push", target.remote, refspec],
-                                              label: label,
-                                              successMessage: L10n.format(
-                                                "Push zu %@ erfolgreich", target.remote
-                                              ),
-                                              context: context)
-                        } else {
-                            self.runGitAction(["push", "-u", target.remote, refspec],
-                                              label: label,
-                                              successMessage: L10n.format(
-                                                "Push zu %@ erfolgreich · Upstream angelegt",
-                                                target.remote
-                                              ),
-                                              context: context)
-                        }
+                        self.startVerifiedPush(to: current, refspec: refspec,
+                                               tracksTarget: tracksTarget,
+                                               context: context)
                     }
                 } else {
                     Self.presentGitExecutionFailure(label: "Push", outcome: outcome)
                 }
+            }
+        }
+    }
+
+    /// Startet den Push gegen die soeben GEPRÜFTE Adresse. `git push <remote>`
+    /// allein würde den Remote-Namen beim Prozessstart erneut auflösen: Eine
+    /// Konfigurationsänderung zwischen Prüfung und Start ginge dann an eine nie
+    /// bestätigte Adresse (Review 2026-08-10). `-c remote.<name>.pushurl=…` gilt
+    /// nur für genau diesen Aufruf, bindet ihn an die geprüfte Adresse und lässt
+    /// zugleich den Remote-Namen stehen — Git führt dadurch wie bisher die
+    /// Remote-Tracking-Referenz mit und `-u` setzt den Upstream wie gehabt.
+    ///
+    /// Vorher wird gelesen, ob das Repository überhaupt eine `pushurl` gesetzt
+    /// hat: Ein `-c`-Wert ERGÄNZT mehrwertige Konfiguration, er ersetzt sie
+    /// nicht. Ohne diese Vorbedingung entstünde ein zweites Push-Ziel statt
+    /// eines festgenagelten.
+    private func startVerifiedPush(to target: GitPushTarget, refspec: String,
+                                   tracksTarget: Bool,
+                                   context: GitActionContext) {
+        let request = GitOperationRequest(
+            repository: context.root, kind: .refresh,
+            arguments: ["config", "--includes", "--get-all",
+                        "remote.\(target.remote).pushurl"])
+        gitOperationsCoordinator.perform(request) { [weak self] outcome in
+            DispatchQueue.main.async {
+                guard let self, context.isCurrent(in: self) else { return }
+                let hasConfiguredPushURL: Bool
+                if case .completed(let result) = outcome {
+                    // Exit 1 ohne Ausgabe heißt bei `git config` schlicht
+                    // „nicht gesetzt“ und ist kein Fehler.
+                    hasConfiguredPushURL = !result.stdout
+                        .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                } else {
+                    // Ohne verlässliche Auskunft nicht festnageln: ein
+                    // zusätzliches Ziel wäre schlimmer als der bisherige Weg.
+                    hasConfiguredPushURL = true
+                }
+                let arguments = GitPushCommand.arguments(
+                    remote: target.remote, refspec: refspec,
+                    setUpstream: !tracksTarget,
+                    pinnedAddress: GitPushCommand.pinnableAddress(
+                        of: target, hasConfiguredPushURL: hasConfiguredPushURL))
+                self.runGitAction(
+                    arguments,
+                    label: L10n.format("Push zu %@", target.remote),
+                    successMessage: tracksTarget
+                        ? L10n.format("Push zu %@ erfolgreich", target.remote)
+                        : L10n.format("Push zu %@ erfolgreich · Upstream angelegt",
+                                      target.remote),
+                    context: context, kind: .push)
             }
         }
     }
@@ -599,19 +714,26 @@ extension Workspace {
     func runGitAction(_ args: [String], label: String,
                       successMessage: String? = nil,
                       context suppliedContext: GitActionContext? = nil,
+                      kind explicitKind: GitOperationKind? = nil,
                       refreshOnFailure: Bool = false,
                       then: ((GitActionContext) -> Void)? = nil)
         -> GitOperationLease? {
         guard let context = suppliedContext ?? currentGitActionContext,
               GitRunner.isAvailable else { return nil }
-        let first = args.first
         let kind: GitOperationKind
-        switch first {
-        case "fetch": kind = .fetch
-        case "pull": kind = .pull
-        case "push": kind = .push
-        case "switch", "checkout": kind = .checkout
-        default: kind = .workingTreeMutation
+        // Beginnt der Aufruf mit einer `-c`-Option, sagt das erste Argument
+        // nichts mehr über die Art der Operation. Solche Aufrufe geben sie
+        // deshalb ausdrücklich mit.
+        if let explicitKind {
+            kind = explicitKind
+        } else {
+            switch args.first {
+            case "fetch": kind = .fetch
+            case "pull": kind = .pull
+            case "push": kind = .push
+            case "switch", "checkout": kind = .checkout
+            default: kind = .workingTreeMutation
+            }
         }
         let request = GitOperationRequest(repository: context.root, kind: kind,
                                           arguments: args)

@@ -645,6 +645,60 @@ enum GitRunner {
         }
     }
 
+    /// Identität einer Lockdatei: Gerät und Inode. Zwei nacheinander unter
+    /// demselben PFAD angelegte Dateien tragen verschiedene Inodes — nur daran
+    /// lässt sich der eigene Lock von dem eines fremden Git-Prozesses
+    /// unterscheiden. Ein reiner Pfadvergleich kann das nicht.
+    struct LockIdentity: Equatable {
+        let device: dev_t
+        let inode: ino_t
+    }
+
+    /// Ergebnis des Aufräumens einer eigenen Lockdatei.
+    enum LockRelease: Equatable {
+        /// Die eigene Lockdatei wurde entfernt.
+        case released
+        /// Es lag keine Datei mehr unter dem Pfad — Git hat selbst aufgeräumt.
+        case vanished
+        /// Unter dem Pfad liegt inzwischen eine ANDERE Datei. Sie gehört einem
+        /// fremden Schreiber und bleibt unangetastet.
+        case foreign
+        /// Das Entfernen schlug fehl (Rechte, Dateisystem).
+        case failed(String)
+    }
+
+    /// Identität der Datei unter `path`. Bewusst `lstat`: Einem untergeschobenen
+    /// Symlink wird nicht gefolgt, er fällt dadurch als fremde Datei auf.
+    static func lockIdentity(atPath path: String) -> LockIdentity? {
+        var info = stat()
+        guard lstat(path, &info) == 0 else { return nil }
+        return LockIdentity(device: info.st_dev, inode: info.st_ino)
+    }
+
+    /// Entfernt eine Lockdatei NUR, wenn sie noch dieselbe Datei ist, die dieser
+    /// Vorgang selbst angelegt gesehen hat. Der Pfad allein genügt nicht: Hat
+    /// Git seinen Lock bereits entfernt und ein anderer Git-Prozess in genau
+    /// diesem Moment einen neuen angelegt, würde ein pfadbasiertes Löschen die
+    /// Sperre des Fremden aufheben — zwei Schreiber könnten dann gleichzeitig
+    /// den Index verändern (Review 2026-08-10).
+    ///
+    /// Restrisiko, bewusst benannt: Zwischen Identitätsprüfung und `unlink`
+    /// bleibt ein winziges Fenster; ein „lösche nur bei passendem Inode" gibt es
+    /// als Systemaufruf nicht. Das Fenster ist aber um Größenordnungen kleiner
+    /// als der bisherige Zustand, in dem gar nicht geprüft wurde.
+    @discardableResult
+    static func releaseOwnLock(atPath path: String,
+                               identity: LockIdentity?) -> LockRelease {
+        guard let current = lockIdentity(atPath: path) else { return .vanished }
+        guard let identity, current == identity else { return .foreign }
+        do {
+            try FileManager.default.removeItem(atPath: path)
+            return .released
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
     /// Kandidaten-Pfade für ein NUTZBARES git-Binary, in Prioritätsreihenfolge.
     /// Bewusst NICHT `/usr/bin/git`: das ist unter macOS ein Shim, der bei
     /// fehlenden Command Line Tools einen modalen Installations-Dialog öffnet.
@@ -882,6 +936,10 @@ enum GitRunner {
                 usleep(1_000)
             }
             let acquiredLock = FileManager.default.fileExists(atPath: lockPath)
+            // Die Identität des eigenen Locks sofort festhalten. Nur damit lässt
+            // sich später entscheiden, ob unter dem Pfad noch UNSERE Datei liegt
+            // oder inzwischen der Lock eines fremden Git-Prozesses.
+            let ownLockIdentity = lockIdentity(atPath: lockPath)
             guard acquiredLock, process.isRunning else {
                 try? input.fileHandleForWriting.close()
                 process.waitUntilExit()
@@ -922,7 +980,13 @@ enum GitRunner {
                 // entfernen, sonst hinge jede weitere Git-Aktion an ihr fest
                 // (sporadisch als liegen gebliebener index.lock beobachtet,
                 // 2026-08-07/09).
-                try? FileManager.default.removeItem(atPath: lockPath)
+                //
+                // Entfernt wird aber ausschließlich die Datei mit der beim
+                // Erwerb gemerkten Identität: Hat unser git seinen Lock selbst
+                // abgeräumt und in dieser Lücke ein anderer Git-Prozess einen
+                // neuen angelegt, gehört die Datei dem Fremden und muss liegen
+                // bleiben (Review 2026-08-10).
+                _ = releaseOwnLock(atPath: lockPath, identity: ownLockIdentity)
                 DispatchQueue.main.async { completion(outcome, false) }
                 return
             }

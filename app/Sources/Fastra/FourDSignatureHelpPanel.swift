@@ -20,9 +20,10 @@ final class FourDSignatureHelpController: ObservableObject {
 
     private var panel: NSPanel?
     private var panelHost: NSWindow?
-    /// Signatur-Cache pro Methodendatei; ungültig, sobald sich das
-    /// Änderungsdatum der Datei ändert.
-    private var cache: [String: (modified: Date, signature: FourDMethodSignature)] = [:]
+    /// Signatur-Cache pro Methodendatei bzw. Archiveintrag; ungültig, sobald
+    /// sich das Änderungsdatum ändert. Der Cache wird ausschließlich aus dem
+    /// Hintergrundauftrag benutzt und sperrt sich deshalb selbst.
+    private let cache = FourDSignatureResolver.Cache()
     /// Zählt bei jeder Cursorbewegung hoch. Ein Hintergrund-Signaturabruf,
     /// der erst nach der nächsten Bewegung zurückkommt, ist damit erkennbar
     /// veraltet und wird verworfen.
@@ -32,6 +33,13 @@ final class FourDSignatureHelpController: ObservableObject {
     func update(workspace: Workspace,
                 cursorPositions: [CursorPosition],
                 isFourDActive: Bool) {
+        // Zuerst ALLE noch laufenden Hintergrundauflösungen entwerten — auch
+        // dann, wenn dieser Aufruf gleich unten abbricht. Vorher zählte nur
+        // der Erfolgsfall hoch: Eine bereits laufende Auflösung behielt ihre
+        // gültige Generation und zeigte die längst veraltete Hilfe danach
+        // erneut an (Review 2026-08-10).
+        updateGeneration &+= 1
+        let generation = updateGeneration
         guard isFourDActive,
               cursorPositions.count == 1,
               let cursor = cursorPositions.first,
@@ -46,194 +54,95 @@ final class FourDSignatureHelpController: ObservableObject {
             hide()
             return
         }
-        // Der eigentliche Signaturabruf kann Platten- und Archivzugriffe
-        // kosten und läuft deshalb im Hintergrund (Cache-Treffer antworten
-        // synchron). Die Generation verwirft ein verspätetes Ergebnis, wenn
-        // der Cursor längst weitergewandert ist (Review 2026-08-02).
-        updateGeneration &+= 1
-        let generation = updateGeneration
-        resolveTitle(workspace: workspace, context: context) { [weak self] title in
-            guard let self, generation == self.updateGeneration else { return }
-            guard let title else {
-                self.hide()
-                return
-            }
-            // Fenster oder Editor können sich während eines Hintergrund-Reads
-            // geändert haben — dann nicht mehr an die alte Ansicht ankern.
-            guard textView.window === window, window.isVisible else {
-                self.hide()
-                return
-            }
-            self.show(text: title, anchoredAt: context.openParenLocation,
-                      textView: textView, window: window)
-        }
-    }
-
-    /// Baut den Panel-Text: Projektmethode → Komponentenmethode → 4D-Befehl.
-    /// `completion` läuft immer auf dem Main-Thread; sie liefert `nil`, wenn
-    /// keine der drei Quellen etwas Ehrliches zu zeigen hat.
-    private func resolveTitle(workspace: Workspace,
-                              context: FourDCallContext,
-                              completion: @escaping (NSAttributedString?) -> Void) {
-        let lowered = context.methodName.lowercased()
-        if workspace.fourDProjectMethodNames.contains(lowered),
-           let fileURL = FourDSignatureHelpLogic.methodFileURL(
-               // Die Schreibweise der DATEI kommt aus dem Index, nicht aus dem
-               // getippten Aufruf: 4D vergleicht Methodennamen ohne Groß-/
-               // Kleinschreibung, ein case-sensitives Dateisystem aber nicht —
-               // `alert(…)` fände `ALERT.4dm` sonst nicht (Review 2026-08-02).
-               named: workspace.fourDProjectMethodDisplayNames
-                   .first(where: { $0.lowercased() == lowered })
-                   ?? context.methodName,
-               projectURL: workspace.projectURL,
-               documentURL: workspace.activeTab?.url
-           ) {
-            withSignature(for: fileURL) { [weak self] signature in
-                guard let self else { return completion(nil) }
-                if let signature {
-                    completion(Self.attributedSignature(
-                        methodName: context.methodName,
-                        signature: signature,
+        // Alles, was die Platte anfasst — Existenzprüfung der Methodendatei,
+        // Änderungsdatum, Lesen des Archivs und Parsen —, läuft im
+        // Hintergrund. Auf einem Netz- oder Wechseldatenträger blockierte
+        // sonst jede Cursorbewegung die Oberfläche (Review 2026-08-10). Aus
+        // dem Workspace werden hier nur reine Daten entnommen; die Generation
+        // verwirft ein verspätetes Ergebnis.
+        let request = titleRequest(workspace: workspace, context: context)
+        let cache = cache
+        DispatchQueue.global(qos: .userInitiated).async {
+            let resolved = FourDSignatureResolver.title(for: request, cache: cache)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, generation == self.updateGeneration else { return }
+                guard let resolved else {
+                    self.hide()
+                    return
+                }
+                // Fenster oder Editor können sich während eines Hintergrund-
+                // Reads geändert haben — dann nicht mehr an die alte Ansicht
+                // ankern.
+                guard textView.window === window, window.isVisible else {
+                    self.hide()
+                    return
+                }
+                self.show(
+                    text: Self.attributedTitle(
+                        resolved, methodName: context.methodName,
                         activeParameterIndex: context.activeParameterIndex
-                    ))
-                } else {
-                    self.resolveFallbackTitle(workspace: workspace,
-                                              context: context,
-                                              lowered: lowered,
-                                              completion: completion)
-                }
+                    ),
+                    anchoredAt: context.openParenLocation,
+                    textView: textView, window: window
+                )
             }
-            return
         }
-        resolveFallbackTitle(workspace: workspace, context: context,
-                             lowered: lowered, completion: completion)
     }
 
-    private func resolveFallbackTitle(workspace: Workspace,
-                                      context: FourDCallContext,
-                                      lowered: String,
-                                      completion: @escaping (NSAttributedString?) -> Void) {
-        if let componentMethod = workspace.fourDComponentMethods[lowered] {
-            // Geteilte Komponentenmethode: Signatur aus `.4dm`-Quelle
-            // (Platte oder 4DZ-Archiv) bzw. aus der Methodendokumentation.
-            // Eine Doku ohne Deklarationszeilen beweist NICHT, dass die
-            // Methode parameterlos ist.
-            withSignature(forComponentMethod: componentMethod) { signature in
-                if let signature {
-                    let documentationBased: Bool
-                    if case .documentation = componentMethod.source {
-                        documentationBased = true
-                    } else {
-                        documentationBased = false
-                    }
-                    completion(Self.attributedSignature(
-                        methodName: context.methodName,
-                        signature: signature,
-                        activeParameterIndex: context.activeParameterIndex,
-                        parametersAreKnown: !documentationBased
-                            || !signature.parameters.isEmpty
-                            || signature.returnParameter != nil
-                    ))
-                } else {
-                    completion(Self.commandTitle(lowered: lowered))
-                }
-            }
-            return
-        }
-        completion(Self.commandTitle(lowered: lowered))
-    }
-
-    /// Eingebauter 4D-Befehl: Signatur aus der mitgelieferten Befehlsliste.
-    private static func commandTitle(lowered: String) -> NSAttributedString? {
-        guard let details = FourDSymbols.commandDetails[lowered],
-              let commandSignature = details.signature else { return nil }
-        return NSAttributedString(
-            string: commandSignature,
-            attributes: [
-                .font: NSFont.monospacedSystemFont(
-                    ofSize: NSFont.smallSystemFontSize, weight: .regular
-                ),
-                .foregroundColor: NSColor.labelColor,
-            ]
+    private func titleRequest(workspace: Workspace,
+                              context: FourDCallContext) -> FourDSignatureResolver.Request {
+        let lowered = context.methodName.lowercased()
+        // Die Schreibweise der DATEI kommt aus dem Index, nicht aus dem
+        // getippten Aufruf: 4D vergleicht Methodennamen ohne Groß-/
+        // Kleinschreibung, ein case-sensitives Dateisystem aber nicht —
+        // `alert(…)` fände `ALERT.4dm` sonst nicht (Review 2026-08-02).
+        let fileName = workspace.fourDProjectMethodNames.contains(lowered)
+            ? (workspace.fourDProjectMethodDisplayNames
+                .first(where: { $0.lowercased() == lowered }) ?? context.methodName)
+            : nil
+        return FourDSignatureResolver.Request(
+            lowered: lowered,
+            projectMethodFileName: fileName,
+            projectURL: workspace.projectURL,
+            documentURL: workspace.activeTab?.url,
+            componentMethod: workspace.fourDComponentMethods[lowered]
         )
     }
 
+    /// Main-Thread: aus dem Auflösungsergebnis den fertigen Panel-Text bauen.
+    private static func attributedTitle(_ resolved: FourDSignatureResolver.Title,
+                                        methodName: String,
+                                        activeParameterIndex: Int) -> NSAttributedString {
+        switch resolved {
+        case .signature(let signature, let parametersAreKnown):
+            return attributedSignature(methodName: methodName,
+                                       signature: signature,
+                                       activeParameterIndex: activeParameterIndex,
+                                       parametersAreKnown: parametersAreKnown)
+        case .command(let commandSignature):
+            return NSAttributedString(
+                string: commandSignature,
+                attributes: [
+                    .font: NSFont.monospacedSystemFont(
+                        ofSize: NSFont.smallSystemFontSize, weight: .regular
+                    ),
+                    .foregroundColor: NSColor.labelColor,
+                ]
+            )
+        }
+    }
+
     func hide() {
+        // Ausblenden entwertet ebenfalls jede laufende Auflösung: Sonst
+        // könnte ein Tabwechsel (`hide()` von außen) vom verspäteten
+        // Ergebnis der alten Datei wieder überschrieben werden.
+        updateGeneration &+= 1
         if let panel {
             panel.parent?.removeChildWindow(panel)
             panel.orderOut(nil)
         }
         panel = nil
         panelHost = nil
-    }
-
-    // MARK: - Signatur laden
-
-    /// Liefert die Signatur einer Methodendatei. Cache-Treffer antworten
-    /// SYNCHRON (kein Flackern beim Tippen); nur der echte Plattenzugriff
-    /// samt Parsen läuft im Hintergrund — er blockierte sonst bei jeder
-    /// ersten Anzeige den Main-Thread (Review 2026-08-02). `completion`
-    /// läuft immer auf dem Main-Thread.
-    private func withSignature(for fileURL: URL,
-                               completion: @escaping (FourDMethodSignature?) -> Void) {
-        let path = fileURL.path
-        let modified = (try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date)
-            .flatMap { $0 } ?? .distantPast
-        if let cached = cache[path], cached.modified == modified {
-            completion(cached.signature)
-            return
-        }
-        DispatchQueue.global(qos: .userInitiated).async {
-            let parsed = (try? String(contentsOf: fileURL, encoding: .utf8))
-                .map { FourDSignatureParser.parse(methodSource: $0) }
-            DispatchQueue.main.async {
-                if let parsed { self.cache[path] = (modified, parsed) }
-                completion(parsed)
-            }
-        }
-    }
-
-    /// Signatur einer Komponentenmethode. Quellen auf der Platte laufen über
-    /// den Datei-Cache; 4DZ-Einträge werden einzeln gelesen und pro Archiv-
-    /// Änderungsdatum gecacht. Ohne Signaturquelle (kompiliert, keine Doku)
-    /// gibt es ehrlich keine Hilfe — niemals erfundene Parameter.
-    private func withSignature(
-        forComponentMethod method: FourDComponentMethod,
-        completion: @escaping (FourDMethodSignature?) -> Void
-    ) {
-        switch method.source {
-        case .sourceFile(let url), .documentation(let url):
-            withSignature(for: url, completion: completion)
-        case .zipEntry(let archive, let entryPath):
-            let key = archive.path + "#" + entryPath
-            let modified = (try? FileManager.default
-                .attributesOfItem(atPath: archive.path)[.modificationDate] as? Date)
-                .flatMap { $0 } ?? .distantPast
-            if let cached = cache[key], cached.modified == modified {
-                completion(cached.signature)
-                return
-            }
-            // Archiv öffnen und Eintrag dekomprimieren kostet spürbar Zeit —
-            // gehört wie der Plattenpfad oben in den Hintergrund.
-            DispatchQueue.global(qos: .userInitiated).async {
-                var parsed: FourDMethodSignature?
-                if let entries = FourDZipArchive.entries(of: archive),
-                   let entry = entries.first(where: { $0.path == entryPath }),
-                   let data = FourDZipArchive.data(
-                       of: entry, in: archive,
-                       maximumSize: FourDComponentIndex.maximumEntryBytes
-                   ),
-                   let source = FourDComponentIndex.decodeText(data) {
-                    parsed = FourDSignatureParser.parse(methodSource: source)
-                }
-                DispatchQueue.main.async {
-                    if let parsed { self.cache[key] = (modified, parsed) }
-                    completion(parsed)
-                }
-            }
-        case .nameOnly:
-            completion(nil)
-        }
     }
 
     // MARK: - Darstellung
@@ -388,5 +297,151 @@ final class FourDSignatureHelpController: ObservableObject {
             if let found = firstTextView(in: sub) { return found }
         }
         return nil
+    }
+}
+
+// MARK: - Signatur laden (Hintergrund)
+
+/// Der Teil der Parameterhilfe, der die PLATTE anfasst: Methodendatei suchen,
+/// Änderungsdatum lesen, Datei bzw. 4DZ-Eintrag lesen und parsen. Er steht
+/// bewusst außerhalb des `@MainActor`-Controllers, damit er vollständig auf
+/// einer Hintergrund-Queue laufen kann — auf einem Netz- oder
+/// Wechseldatenträger blockierte jede dieser Fragen sonst die Oberfläche
+/// (Review 2026-08-10).
+private enum FourDSignatureResolver {
+
+    /// Alle Eingaben einer Auflösung als reine Daten. Der Hintergrundauftrag
+    /// darf den Workspace nicht anfassen — der lebt auf dem Main-Thread —,
+    /// deshalb wird vorher dort alles Nötige herauskopiert.
+    struct Request {
+        let lowered: String
+        /// Dateiname der Projektmethode in Original-Schreibweise; `nil`, wenn
+        /// der Aufruf keine Projektmethode trifft.
+        let projectMethodFileName: String?
+        let projectURL: URL?
+        let documentURL: URL?
+        let componentMethod: FourDComponentMethod?
+    }
+
+    /// Ergebnis der Auflösung — bewusst reine Daten: Schrift und Farben
+    /// (AppKit) entstehen erst auf dem Main-Thread.
+    enum Title {
+        case signature(FourDMethodSignature, parametersAreKnown: Bool)
+        /// Signaturtext eines eingebauten 4D-Befehls.
+        case command(String)
+    }
+
+    /// Signatur-Cache pro Methodendatei bzw. Archiveintrag; ein Eintrag gilt
+    /// nur, solange das gemerkte Änderungsdatum stimmt. Er wird aus dem
+    /// Hintergrund gelesen und geschrieben und sperrt sich deshalb selbst.
+    final class Cache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var entries: [String: (modified: Date, signature: FourDMethodSignature)] = [:]
+
+        func signature(forKey key: String, modified: Date) -> FourDMethodSignature? {
+            lock.lock()
+            defer { lock.unlock() }
+            guard let entry = entries[key], entry.modified == modified else { return nil }
+            return entry.signature
+        }
+
+        func store(_ signature: FourDMethodSignature, forKey key: String,
+                   modified: Date) {
+            lock.lock()
+            defer { lock.unlock() }
+            entries[key] = (modified, signature)
+        }
+    }
+
+    /// Reihenfolge der Quellen: Projektmethode → Komponentenmethode →
+    /// 4D-Befehl. `nil`, wenn keine davon etwas Ehrliches zu zeigen hat.
+    static func title(for request: Request, cache: Cache) -> Title? {
+        if let fileName = request.projectMethodFileName,
+           let fileURL = FourDSignatureHelpLogic.methodFileURL(
+               named: fileName,
+               projectURL: request.projectURL,
+               documentURL: request.documentURL
+           ),
+           let signature = signature(forFileAt: fileURL, cache: cache) {
+            return .signature(signature, parametersAreKnown: true)
+        }
+        // Geteilte Komponentenmethode: Signatur aus `.4dm`-Quelle (Platte
+        // oder 4DZ-Archiv) bzw. aus der Methodendokumentation. Eine Doku ohne
+        // Deklarationszeilen beweist NICHT, dass die Methode parameterlos ist.
+        if let componentMethod = request.componentMethod,
+           let signature = signature(forComponentMethod: componentMethod,
+                                     cache: cache) {
+            let documentationBased: Bool
+            if case .documentation = componentMethod.source {
+                documentationBased = true
+            } else {
+                documentationBased = false
+            }
+            return .signature(
+                signature,
+                parametersAreKnown: !documentationBased
+                    || !signature.parameters.isEmpty
+                    || signature.returnParameter != nil
+            )
+        }
+        // Eingebauter 4D-Befehl: Signatur aus der mitgelieferten Befehlsliste.
+        guard let details = FourDSymbols.commandDetails[request.lowered],
+              let commandSignature = details.signature else { return nil }
+        return .command(commandSignature)
+    }
+
+    /// Änderungsdatum einer Datei; nicht lesbar → `distantPast`. Dann gilt ein
+    /// vorhandener Cache-Eintrag als veraltet und wird neu gelesen.
+    private static func modificationDate(ofItemAt path: String) -> Date {
+        (try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date)
+            .flatMap { $0 } ?? .distantPast
+    }
+
+    /// Signatur einer Methodendatei — Änderungsdatum, Lesen und Parsen.
+    private static func signature(forFileAt fileURL: URL,
+                                  cache: Cache) -> FourDMethodSignature? {
+        let path = fileURL.path
+        let modified = modificationDate(ofItemAt: path)
+        if let cached = cache.signature(forKey: path, modified: modified) {
+            return cached
+        }
+        guard let source = try? String(contentsOf: fileURL, encoding: .utf8) else {
+            return nil
+        }
+        let parsed = FourDSignatureParser.parse(methodSource: source)
+        cache.store(parsed, forKey: path, modified: modified)
+        return parsed
+    }
+
+    /// Signatur einer Komponentenmethode. Quellen auf der Platte laufen über
+    /// den Datei-Cache; 4DZ-Einträge werden einzeln gelesen und pro Archiv-
+    /// Änderungsdatum gecacht. Ohne Signaturquelle (kompiliert, keine Doku)
+    /// gibt es ehrlich keine Hilfe — niemals erfundene Parameter.
+    private static func signature(forComponentMethod method: FourDComponentMethod,
+                                  cache: Cache) -> FourDMethodSignature? {
+        switch method.source {
+        case .sourceFile(let url), .documentation(let url):
+            return signature(forFileAt: url, cache: cache)
+        case .zipEntry(let archive, let entryPath):
+            let key = archive.path + "#" + entryPath
+            let modified = modificationDate(ofItemAt: archive.path)
+            if let cached = cache.signature(forKey: key, modified: modified) {
+                return cached
+            }
+            // Archiv öffnen und Eintrag dekomprimieren kostet spürbar Zeit —
+            // gehört wie der Plattenpfad oben in den Hintergrund.
+            guard let entries = FourDZipArchive.entries(of: archive),
+                  let entry = entries.first(where: { $0.path == entryPath }),
+                  let data = FourDZipArchive.data(
+                      of: entry, in: archive,
+                      maximumSize: FourDComponentIndex.maximumEntryBytes
+                  ),
+                  let source = FourDComponentIndex.decodeText(data) else { return nil }
+            let parsed = FourDSignatureParser.parse(methodSource: source)
+            cache.store(parsed, forKey: key, modified: modified)
+            return parsed
+        case .nameOnly:
+            return nil
+        }
     }
 }

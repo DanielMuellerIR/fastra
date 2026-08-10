@@ -11,7 +11,9 @@
 // Projektbindung: Ein Markdown-Dokument darf Bilder aus beliebigen Ordnern
 // referenzieren. Beobachtet werden die Elternordner (nicht die Dateien
 // selbst) — ein atomarer Austausch ersetzt die Datei durch ein neues Objekt,
-// und der Ordner meldet das zuverlässig.
+// und der Ordner meldet das zuverlässig. Bei einem symbolischen Link zählen
+// beide Ordner: der des Links und der des aufgelösten Ziels (siehe
+// `directoriesToWatch`).
 
 import Foundation
 import CoreServices
@@ -32,14 +34,46 @@ final class MarkdownImageWatcher {
     /// Bild-Dateien. Eine unveränderte Menge lässt den laufenden Stream
     /// stehen (kein Neuaufbau bei jedem Tastendruck).
     func update(imageURLs: [URL]) {
-        let directories = Set(imageURLs.map {
-            $0.deletingLastPathComponent().path
-        })
+        let directories = Self.directoriesToWatch(for: imageURLs)
         guard directories != watchedDirectories else { return }
         watchedDirectories = directories
         stop()
         guard !directories.isEmpty else { return }
         start(paths: Array(directories))
+    }
+
+    /// Die zu beobachtenden Ordner: zu jedem Bild der Elternordner des
+    /// verlinkten Pfades UND der des symlink-aufgelösten Ziels.
+    ///
+    /// Der zweite Ordner ist nicht bloß Vorsicht: Vorschau-Ausgabe und
+    /// Bild-Kennung (`MarkdownImages.imageToken`) lesen ausdrücklich das
+    /// aufgelöste Ziel. Zeigt `bilder/foo.png` als symbolischer Link in einen
+    /// anderen Ordner, dann tauscht ein externes Werkzeug die Datei DORT aus —
+    /// im Ordner des Links passiert dabei nichts, es gibt also kein Ereignis
+    /// und die offene Vorschau zeigte weiter das alte Bild
+    /// (Code-Review 2026-08-10).
+    ///
+    /// Die Auflösung passiert bei jedem Aufruf neu, damit ein auf ein anderes
+    /// Ziel umgehängter Link den neuen Zielordner mitbringt. Sie kostet je Bild
+    /// zwei `realpath`-artige Zugriffe und läuft nur nach einem fertigen
+    /// Renderlauf, der ohnehin jedes Bild einmal per `stat` anfasst.
+    ///
+    /// Wichtig ist die Reihenfolge der beiden Rechnungen: Für den Ordner des
+    /// LINKS wird erst der Dateiname abgeschnitten und dann aufgelöst (sonst
+    /// verschwände genau der Ordner, in dem der Link liegt); für den Ordner des
+    /// ZIELS umgekehrt. Ist die Datei gar kein Link, ergeben beide Rechnungen
+    /// denselben Pfad und die Menge bleibt einelementig.
+    static func directoriesToWatch(for imageURLs: [URL]) -> Set<String> {
+        var directories: Set<String> = []
+        for url in imageURLs {
+            let linkDirectory = url.deletingLastPathComponent()
+                .resolvingSymlinksInPath().standardizedFileURL
+            directories.insert(linkDirectory.path)
+            let targetDirectory = url.resolvingSymlinksInPath().standardizedFileURL
+                .deletingLastPathComponent()
+            directories.insert(targetDirectory.path)
+        }
+        return directories
     }
 
     private func start(paths: [String]) {

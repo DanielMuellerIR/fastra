@@ -43,10 +43,14 @@ enum FourDProjectMethodIndex {
                 // Am symlink-aufgelösten Pfad prüfen: `isRegularFile`
                 // beschreibt sonst den Link selbst, und eine völlig legitime
                 // verlinkte Methodendatei fiele aus dem Index
-                // (Review 2026-08-02).
+                // (Review 2026-08-02). Aufgenommen wird nur, was NACHWEISLICH
+                // eine normale Datei ist: Eine fehlgeschlagene Abfrage oder
+                // ein ins Leere zeigender Symlink lieferte `nil` und wäre
+                // vorher als Phantommethode in Highlighting und
+                // Vervollständigung gelandet (Review 2026-08-10).
                 let values = try? file.resolvingSymlinksInPath()
                     .resourceValues(forKeys: [.isRegularFileKey])
-                guard values?.isRegularFile != false else { continue }
+                guard values?.isRegularFile == true else { continue }
                 let display = file.deletingPathExtension().lastPathComponent
                 names[display.lowercased()] = display
             }

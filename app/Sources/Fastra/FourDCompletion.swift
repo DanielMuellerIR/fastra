@@ -205,6 +205,13 @@ final class FourDCompletionDelegate: ObservableObject, CodeSuggestionDelegate {
     private var manualTriggerArmedAt: Date?
     private static let manualTriggerLifetime: TimeInterval = 0.5
     private var manualTriggerObserver: NSObjectProtocol?
+    /// Der Editor-Controller, der den manuellen Aufruf ausgelöst hat. Die
+    /// Notification läuft prozessweit; ohne diese Zuordnung schaltet ein
+    /// ⌃Leertaste in Fenster A auch die Delegates ALLER anderen 4D-Fenster
+    /// scharf, und dort erschiene beim nächsten getippten Zeichen ein
+    /// ungewolltes Popup (Review 2026-08-10). Schwach gehalten: Der
+    /// Controller hält seinerseits den Delegate.
+    private weak var manualTriggerController: TextViewController?
 
     static let manualTriggerNotification =
         Notification.Name("fastra.completion.manualTrigger")
@@ -212,10 +219,17 @@ final class FourDCompletionDelegate: ObservableObject, CodeSuggestionDelegate {
     init() {
         manualTriggerObserver = NotificationCenter.default.addObserver(
             forName: Self.manualTriggerNotification, object: nil, queue: .main
-        ) { [weak self] _ in
+        ) { [weak self] notification in
             // queue: .main garantiert den Main-Thread; die Klasse ist
             // MainActor-isoliert.
-            MainActor.assumeIsolated { self?.manualTriggerArmedAt = Date() }
+            MainActor.assumeIsolated {
+                self?.manualTriggerArmedAt = Date()
+                // Der Patch schickt den auslösenden Controller als Objekt der
+                // Notification mit; nur dessen eigener Request darf den
+                // Ein-Zeichen-Modus später verbrauchen.
+                self?.manualTriggerController =
+                    notification.object as? TextViewController
+            }
         }
     }
 
@@ -257,11 +271,20 @@ final class FourDCompletionDelegate: ObservableObject, CodeSuggestionDelegate {
         // Beim manuellen Öffnen (Esc/⌃Leertaste, vom CESE-Patch gemeldet)
         // genügt EIN Zeichen; das automatische Tipp-Popup bleibt
         // unaufdringlich (ab zwei Zeichen). Ein offenes Fenster filtert
-        // ebenfalls ab einem Zeichen weiter.
-        let manual = manualTriggerArmedAt.map {
-            Date().timeIntervalSince($0) <= Self.manualTriggerLifetime
-        } ?? false
-        manualTriggerArmedAt = nil
+        // ebenfalls ab einem Zeichen weiter. Verbraucht wird die
+        // Scharfschaltung nur vom Request DESSELBEN Editors — sonst reichte
+        // ein manueller Aufruf in einem Fenster in alle anderen hinüber.
+        let manual = manualTriggerController === textView
+            && (manualTriggerArmedAt.map {
+                Date().timeIntervalSince($0) <= Self.manualTriggerLifetime
+            } ?? false)
+        // Verbrauchen darf nur der zugeordnete Editor. Ein fremder Request
+        // löscht die Scharfschaltung nicht, sonst käme sie beim eigentlichen
+        // Aufrufer nie an.
+        if manualTriggerController === textView {
+            manualTriggerArmedAt = nil
+            manualTriggerController = nil
+        }
         let minimum = (windowIsOpen || manual)
             ? 1 : FourDCompletionLogic.automaticMinimumPrefixLength
         guard let items = suggestions(textView: textView,

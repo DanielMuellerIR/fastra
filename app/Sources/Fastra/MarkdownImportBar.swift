@@ -13,6 +13,12 @@ import SwiftUI
 struct MarkdownImportBar: View {
     /// Quelle, für die das Angebot gilt (nur im Angebots-Zustand gesetzt).
     let offer: MarkdownImportOffer?
+    /// Zustand, den DIESES Fenster zeichnen darf. Der Dienst ist ein
+    /// Singleton; läuft dort die Umwandlung eines ANDEREN Fensters, übergibt
+    /// `EditorView` hier `.idle`, damit die Leiste nur das eigene Angebot
+    /// zeigt statt fremdem Fortschritt, Erfolg oder Fehler
+    /// (Code-Review 2026-08-10).
+    let effectiveState: MarkdownImportState
     /// Blendet das Angebot für diesen Tab aus, ohne etwas umzuwandeln.
     let onDismissOffer: () -> Void
 
@@ -30,7 +36,7 @@ struct MarkdownImportBar: View {
 
     private var background: some View {
         Group {
-            if case .failed = service.state {
+            if case .failed = effectiveState {
                 Theme.surfaceSand.opacity(0.9)
             } else {
                 Theme.surfaceSand.opacity(0.6)
@@ -40,7 +46,7 @@ struct MarkdownImportBar: View {
 
     @ViewBuilder
     private var content: some View {
-        switch service.state {
+        switch effectiveState {
         case .running(let url):
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)

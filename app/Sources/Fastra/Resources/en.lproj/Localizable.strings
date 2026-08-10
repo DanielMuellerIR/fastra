@@ -286,6 +286,7 @@
 "Die Markdown-Konvertierung ist fehlgeschlagen.\n\nDetails: %@" = "Markdown conversion failed.\n\nDetails: %@";
 "Die Konvertierung hat zu lange gedauert (Zeitlimit: 10 Sekunden). Bitte versuche es erneut oder verwende kleinere Inhalte." = "Conversion took too long (time limit: 10 seconds). Try again or use smaller content.";
 "md-clip beendete sich mit Code %ld. %@" = "md-clip exited with code %ld. %@";
+"md-clip lieferte mehr als %@ Ausgabe; die Konvertierung wurde abgebrochen." = "md-clip produced more than %@ of output; the conversion was stopped.";
 "Ungespeicherte Änderungen — klicken zum Schließen" = "Unsaved changes—click to close";
 "Tab schließen" = "Close Tab";
 "Zeichen / Wörter / Zeilen (Selektion)" = "Characters / Words / Lines (Selection)";
