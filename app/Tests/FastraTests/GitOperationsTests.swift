@@ -287,6 +287,23 @@ struct GitRepositoryStoreTests {
         #expect(Set(delivered.snapshot()) == ["a:shared", "b:shared"])
     }
 
+    @Test("Ausdrücklicher Full-Refresh liest nach laufendem Batch nochmals frisch")
+    func explicitFullRefreshQueuesFreshBatch() {
+        let (executor, store) = makeStore()
+        let repo = repository("fresh-after-full")
+        store.refresh(repository: repo, scope: .full)
+        store.refresh(
+            repository: repo, scope: .full,
+            ensureFreshAfterCurrentBatch: true
+        )
+        #expect(executor.count == 5)
+
+        completeFull(executor, offset: 0, oid: "old")
+        #expect(executor.count == 10)
+        completeFull(executor, offset: 5, oid: "new")
+        #expect(store.snapshot(for: repo)?.headOID == "new")
+    }
+
     // `@MainActor` nur für diesen Test der Suite: Er ist der einzige hier, der
     // Workspace-Instanzen treibt. Deren Completions kommen per
     // `DispatchQueue.main.async` zurück und fassen dabei auch EINFACHE

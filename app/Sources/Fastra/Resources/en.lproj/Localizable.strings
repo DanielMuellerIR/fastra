@@ -1342,6 +1342,7 @@
 "Push prüfen" = "Review Push";
 "Das Push-Ziel lieferte keinen eindeutigen Branch-Stand. Es wurde nichts übertragen." = "The push target did not return an unambiguous branch state. Nothing was transferred.";
 "Remote: %@\nAdresse: %@\nZiel: %@\nQuell-Commit: %@\n\n%@" = "Remote: %@\nAddress: %@\nTarget: %@\nSource commit: %@\n\n%@";
+"Remote: %@\nAdresse: %@\nZiel: %@\nQuell-Commit: %@" = "Remote: %@\nAddress: %@\nTarget: %@\nSource commit: %@";
 "Remote: %@\nAdresse: %@\nZiel: %@\nQuell-Commit: %@\nErwarteter Remote-Commit: %@\n\nFastra überschreibt nur, wenn das Ziel noch exakt diesen Remote-Commit besitzt. Es wird niemals --force ohne Lease verwendet." = "Remote: %@\nAddress: %@\nTarget: %@\nSource commit: %@\nExpected remote commit: %@\n\nFastra overwrites only if the target still has exactly this remote commit. It never uses --force without a lease.";
 "Vergleich je Remote: %@. %@ Der Vergleich nutzt den zuletzt abgerufenen Remote-Tracking-Stand; der Server kann bereits neuer sein." = "Comparison by remote: %@. %@ The comparison uses the most recently fetched remote-tracking state; the server may already be newer.";
 "+%ld weitere" = "+%ld more";

@@ -615,7 +615,7 @@ final class GitRepositoryStore {
 
     private final class Batch {
         let scope: GitRefreshScope
-        var fullRequestedAfterStatus = false
+        var fullRequestedAfterBatch = false
         var lease: GitOperationLease?
         var consistencyAttempt = 0
         init(scope: GitRefreshScope) { self.scope = scope }
@@ -659,12 +659,14 @@ final class GitRepositoryStore {
         }
     }
 
-    func refresh(repository: URL, scope: GitRefreshScope) {
+    func refresh(repository: URL, scope: GitRefreshScope,
+                 ensureFreshAfterCurrentBatch: Bool = false) {
         let path = GitOperationRequest.canonicalRepositoryPath(repository)
         lock.lock()
         if let batch = batches[path] {
-            if batch.scope == .status && scope == .full {
-                batch.fullRequestedAfterStatus = true
+            if scope == .full,
+               (batch.scope == .status || ensureFreshAfterCurrentBatch) {
+                batch.fullRequestedAfterBatch = true
             }
             lock.unlock()
             return
@@ -992,7 +994,7 @@ final class GitRepositoryStore {
         if !headIsRepresented || !trackingUsesSameHead {
             if scope == .status {
                 lock.lock()
-                batches[path]?.fullRequestedAfterStatus = true
+                batches[path]?.fullRequestedAfterBatch = true
                 lock.unlock()
                 finishBatch(repository: repository, path: path, publish: nil)
             } else if attempt < 2 {
@@ -1023,7 +1025,7 @@ final class GitRepositoryStore {
     private func finishBatch(repository: URL, path: String,
                              publish snapshot: GitRepositorySnapshot?) {
         lock.lock()
-        let requestFull = batches[path]?.fullRequestedAfterStatus == true
+        let requestFull = batches[path]?.fullRequestedAfterBatch == true
         batches.removeValue(forKey: path)
         if let snapshot { snapshots[path] = snapshot }
         let callbacks = snapshot == nil ? [] : Array(observers[path, default: [:]].values)

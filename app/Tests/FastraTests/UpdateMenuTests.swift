@@ -5,6 +5,21 @@ import Testing
 
 @Suite("Sparkle-Update-Menü")
 struct UpdateMenuTests {
+    @Test("Sparkle startet nur im normalen App-Prozess")
+    func updaterDoesNotStartDuringSelfTests() {
+        #expect(AppDelegate.shouldStartUpdater(isSelfTestRun: false))
+        #expect(!AppDelegate.shouldStartUpdater(isSelfTestRun: true))
+        #expect(AppDelegate.shouldCreateUpdater(
+            isSelfTestRun: false, requestedTest: nil
+        ))
+        #expect(!AppDelegate.shouldCreateUpdater(
+            isSelfTestRun: true, requestedTest: "search"
+        ))
+        #expect(AppDelegate.shouldCreateUpdater(
+            isSelfTestRun: true, requestedTest: "updates"
+        ))
+    }
+
     @Test("Menüpunkt behält Sparkle als Target und Action")
     func nativeMenuItemWiring() {
         let target = SPUStandardUpdaterController(

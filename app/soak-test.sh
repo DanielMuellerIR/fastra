@@ -52,6 +52,7 @@
 #   2 = Umgebungsfehler (kein Bundle, kein Fensterfokus)
 
 set -u
+umask 077
 
 cd "$(dirname "$0")"
 
@@ -59,6 +60,10 @@ cd "$(dirname "$0")"
 # Fokus- und Prozess-Eingriff auch über mehrere Worktrees hinweg.
 # shellcheck source=tools/gui-test-lock.sh
 . ./tools/gui-test-lock.sh
+# shellcheck source=tools/test-sandbox.sh
+. ./tools/test-sandbox.sh
+# shellcheck source=tools/test-process-tree.sh
+. ./tools/test-process-tree.sh
 
 ROUNDS=60
 FIXTURES_ONLY=0
@@ -114,13 +119,189 @@ if [ ! -x "$BINARY" ]; then
   echo "SOAK: Umgebungsfehler — $BINARY fehlt. Erst ./build.sh ausführen." >&2
   exit 2
 fi
+BINARY_ABSOLUTE="$(cd "$(dirname "$BINARY")" && printf '%s/%s\n' "$(pwd -P)" "$(basename "$BINARY")")"
 
-WORK_ROOT="$(mktemp -d)"
+SOAK_PRODUCT_DEFAULTS_DOMAIN="de.dm0.fastra"
+SOAK_PRODUCT_DEFAULTS_BACKUP=""
+SOAK_PRODUCT_DEFAULTS_EXISTED=0
+SOAK_PRODUCT_DEFAULTS_SNAPSHOT_READY=0
+SOAK_SAVED_STATE_PARENT="$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null || true)"
+SOAK_SAVED_STATE_PARENT="${SOAK_SAVED_STATE_PARENT%/}"
+SOAK_SAVED_STATE_DIR="$SOAK_SAVED_STATE_PARENT/de.dm0.fastra.savedState"
+SOAK_SAVED_STATE_BACKUP=""
+SOAK_SAVED_STATE_EXISTED=0
+SOAK_SAVED_STATE_SNAPSHOT_READY=0
+
+foreign_fastra_process_is_running() {
+  # Vor Snapshot und Restore darf überhaupt keine Fastra-Instanz laufen.
+  # Ein gleicher Binary-Pfad beweist kein Eigentum dieses Runners.
+  pgrep -f '/Fastra\.app/Contents/MacOS/Fastra([[:space:]]|$)' \
+    >/dev/null 2>&1
+}
+
+snapshot_product_defaults() {
+  foreign_fastra_process_is_running && {
+    echo "SOAK: Umgebungsfehler — eine andere Fastra-App läuft." >&2
+    return 2
+  }
+  SOAK_PRODUCT_DEFAULTS_BACKUP="$FASTRA_TEST_SANDBOX/product-defaults.plist"
+  local read_error="$FASTRA_TEST_SANDBOX/product-defaults-read.err"
+  if /usr/bin/defaults read "$SOAK_PRODUCT_DEFAULTS_DOMAIN" \
+      >/dev/null 2>"$read_error"; then
+    /usr/bin/defaults export "$SOAK_PRODUCT_DEFAULTS_DOMAIN" \
+      "$SOAK_PRODUCT_DEFAULTS_BACKUP" >/dev/null 2>&1 || return 2
+    SOAK_PRODUCT_DEFAULTS_EXISTED=1
+  elif grep -Fq "Domain $SOAK_PRODUCT_DEFAULTS_DOMAIN does not exist" "$read_error"; then
+    rm -f -- "$SOAK_PRODUCT_DEFAULTS_BACKUP"
+  else
+    echo "SOAK: Umgebungsfehler — Fastra-Einstellungen nicht sicher lesbar." >&2
+    return 2
+  fi
+  SOAK_PRODUCT_DEFAULTS_SNAPSHOT_READY=1
+}
+
+restore_product_defaults() {
+  [ "$SOAK_PRODUCT_DEFAULTS_SNAPSHOT_READY" -eq 1 ] || return 0
+  foreign_fastra_process_is_running && return 2
+  if [ "$SOAK_PRODUCT_DEFAULTS_EXISTED" -eq 1 ]; then
+    /usr/bin/defaults import "$SOAK_PRODUCT_DEFAULTS_DOMAIN" \
+      "$SOAK_PRODUCT_DEFAULTS_BACKUP" >/dev/null 2>&1 || return 2
+    /usr/bin/defaults export "$SOAK_PRODUCT_DEFAULTS_DOMAIN" - 2>/dev/null \
+      | /usr/bin/python3 -c \
+          'import datetime,plistlib,sys
+def same(a,b):
+    if isinstance(a,datetime.datetime) and isinstance(b,datetime.datetime): return abs((a-b).total_seconds()) < 1
+    if type(a) is not type(b): return False
+    if isinstance(a,dict): return a.keys()==b.keys() and all(same(a[k],b[k]) for k in a)
+    if isinstance(a,list): return len(a)==len(b) and all(same(x,y) for x,y in zip(a,b))
+    return a==b
+a=plistlib.load(open(sys.argv[1],"rb")); b=plistlib.loads(sys.stdin.buffer.read()); raise SystemExit(0 if same(a,b) else 1)' \
+          "$SOAK_PRODUCT_DEFAULTS_BACKUP"
+  else
+    /usr/bin/defaults delete "$SOAK_PRODUCT_DEFAULTS_DOMAIN" >/dev/null 2>&1 || true
+    local read_error="$FASTRA_TEST_SANDBOX/product-defaults-restore-read.err"
+    if /usr/bin/defaults read "$SOAK_PRODUCT_DEFAULTS_DOMAIN" \
+        >/dev/null 2>"$read_error"; then
+      return 2
+    fi
+    grep -Fq "Domain $SOAK_PRODUCT_DEFAULTS_DOMAIN does not exist" "$read_error"
+  fi
+}
+
+saved_state_path_is_safe() {
+  [ -n "$SOAK_SAVED_STATE_PARENT" ] && [ "$1" = "$SOAK_SAVED_STATE_DIR" ]
+}
+
+remove_product_saved_state() {
+  [ ! -e "$SOAK_SAVED_STATE_DIR" ] && return 0
+  saved_state_path_is_safe "$SOAK_SAVED_STATE_DIR" || return 2
+  [ -d "$SOAK_SAVED_STATE_DIR" ] && [ ! -L "$SOAK_SAVED_STATE_DIR" ] || return 2
+  [ "$(stat -f '%u' "$SOAK_SAVED_STATE_DIR" 2>/dev/null || true)" = "$UID" ] || return 2
+  find "$SOAK_SAVED_STATE_DIR" -depth -delete 2>/dev/null
+}
+
+snapshot_product_saved_state() {
+  saved_state_path_is_safe "$SOAK_SAVED_STATE_DIR" || return 2
+  SOAK_SAVED_STATE_BACKUP="$FASTRA_TEST_SANDBOX/product-saved-state"
+  if [ -d "$SOAK_SAVED_STATE_DIR" ] && [ ! -L "$SOAK_SAVED_STATE_DIR" ]; then
+    [ "$(stat -f '%u' "$SOAK_SAVED_STATE_DIR" 2>/dev/null || true)" = "$UID" ] || return 2
+    /usr/bin/ditto "$SOAK_SAVED_STATE_DIR" "$SOAK_SAVED_STATE_BACKUP" \
+      >/dev/null 2>&1 || return 2
+    SOAK_SAVED_STATE_EXISTED=1
+  fi
+  SOAK_SAVED_STATE_SNAPSHOT_READY=1
+}
+
+restore_product_saved_state() {
+  [ "$SOAK_SAVED_STATE_SNAPSHOT_READY" -eq 1 ] || return 0
+  foreign_fastra_process_is_running && return 2
+  remove_product_saved_state || return 2
+  if [ "$SOAK_SAVED_STATE_EXISTED" -eq 1 ]; then
+    /usr/bin/ditto "$SOAK_SAVED_STATE_BACKUP" "$SOAK_SAVED_STATE_DIR" \
+      >/dev/null 2>&1 || return 2
+    diff -qr "$SOAK_SAVED_STATE_BACKUP" "$SOAK_SAVED_STATE_DIR" \
+      >/dev/null 2>&1
+  fi
+}
+
+# Diagnosebeweise sind nützlich, aber nicht unbegrenzt. Sie enthalten nur
+# Logs und gegebenenfalls die itemgetreue Zwischenablage-Sicherung, niemals
+# kopierte reale Dokumente. Die fünf jüngsten Läufe bleiben für die Auswertung.
+prune_soak_evidence() {
+  local parents=(/tmp)
+  local inherited_tmp="${TMPDIR:-}"
+  inherited_tmp="${inherited_tmp%/}"
+  if [ -n "$inherited_tmp" ] && [ "$inherited_tmp" != "/tmp" ]; then
+    parents+=("$inherited_tmp")
+  fi
+  local stale owner parent allowed
+  # Die ersten Versionen des Runners legten Belege mit der normalen umask an.
+  # Bevor bis zu fünf davon aufbewahrt werden, werden nur eigentümereigene,
+  # echte Verzeichnisse auf private Rechte gehärtet.
+  while IFS= read -r stale; do
+    [ -d "$stale" ] && [ ! -L "$stale" ] || continue
+    owner=$(stat -f '%u' "$stale" 2>/dev/null || true)
+    [ "$owner" = "$UID" ] || continue
+    chmod 700 "$stale" 2>/dev/null || true
+    find "$stale" -type d -exec chmod 700 {} + 2>/dev/null || true
+    find "$stale" -type f -exec chmod 600 {} + 2>/dev/null || true
+  done < <(find "${parents[@]}" -maxdepth 1 -type d \
+      -name 'fastra-soak-befunde-*' -print 2>/dev/null)
+  while IFS= read -r stale; do
+    [ -d "$stale" ] && [ ! -L "$stale" ] || continue
+    owner=$(stat -f '%u' "$stale" 2>/dev/null || true)
+    [ "$owner" = "$UID" ] || continue
+    allowed=0
+    for parent in "${parents[@]}"; do
+      case "$stale" in "$parent"/fastra-soak-befunde-*) allowed=1 ;; esac
+    done
+    [ "$allowed" -eq 1 ] && rm -rf -- "$stale"
+  done < <(
+    find "${parents[@]}" -maxdepth 1 -type d -name 'fastra-soak-befunde-*' \
+      -exec stat -f '%m %N' {} + 2>/dev/null \
+      | sort -rn | sed -n '6,$s/^[0-9][0-9]* //p'
+  )
+}
+early_cleanup() {
+  local original_status=$?
+  local failed=0
+  trap - EXIT INT TERM
+  if [[ "${FASTRA_TEST_PENDING_PID:-}" =~ ^[0-9]+$ ]]; then
+    terminate_fastra_test_process_trees "$FASTRA_TEST_PENDING_PID" || failed=1
+    wait "$FASTRA_TEST_PENDING_PID" 2>/dev/null || true
+  fi
+  release_fastra_gui_test_lock || failed=1
+  release_fastra_test_sandbox || failed=1
+  if [ "$failed" -eq 1 ] && [ "$original_status" -eq 0 ]; then
+    echo "SOAK: frühes Aufräumen blieb unvollständig." >&2
+    exit 2
+  fi
+  [ "$failed" -eq 0 ] || echo "SOAK: frühes Aufräumen blieb zusätzlich unvollständig." >&2
+  exit "$original_status"
+}
+
+prune_soak_evidence
+
+create_fastra_test_sandbox soak-run || exit 2
+# Unmittelbar nach dem erfolgreichen mktemp gehört die Sandbox dem Trap. So
+# kann auch ein Signal zwischen Einrichtung und GUI-Sperre nichts hinterlassen.
+trap early_cleanup EXIT
+# Sperre VOR jedem Snapshot des echten Nutzerzustands. Ein abgewiesener
+# Parallelrunner darf weder Einstellungen anfassen noch für sein Cleanup einen
+# eigenen Fastra-Hilfsprozess starten.
+acquire_fastra_gui_test_lock || exit 2
+snapshot_product_defaults || exit 2
+snapshot_product_saved_state || exit 2
+SOAK_DEFAULTS_SUITE="Fastra-$(/usr/bin/uuidgen)"
+FASTRA_TEST_DEFAULTS_REGISTRY="$FASTRA_TEST_SANDBOX/defaults-registry.txt"
+: > "$FASTRA_TEST_DEFAULTS_REGISTRY" || exit 2
+WORK_ROOT="$FASTRA_TEST_SANDBOX"
 WORK_DIR="$WORK_ROOT/fastra-soak"
 LOG="$WORK_DIR/befunde.log"
 PASTEBOARD_BACKUP="$WORK_DIR/pasteboard-backup.plist"
 mkdir -p "$WORK_DIR"
 : > "$LOG"
+SOAK_APP_STARTED=0
 
 # Eigene Defaults-Suite: Der Dauertest darf die echten Einstellungen des
 # Nutzers nicht anfassen — er öffnet Fenster, ändert Formate und speichert.
@@ -130,31 +311,118 @@ mkdir -p "$WORK_DIR"
 cleanup() {
   local original_status=$?
   local cleanup_failed=0
+  local process_cleanup_failed=0
+  local evidence_saved=1
+  local recovery_backup_needed=0
   # Bei einem äußeren Abbruch darf nur der von diesem Runner gestartete
   # Phasenprozess beendet werden. Danach kann ein frischer App-Prozess die
   # persistierte Zwischenablage-Sicherung gefahrlos einspielen.
-  if [ -n "${SOAK_PHASE_PID:-}" ] && kill -0 "$SOAK_PHASE_PID" 2>/dev/null; then
-    kill -9 "$SOAK_PHASE_PID" 2>/dev/null || true
-    wait "$SOAK_PHASE_PID" 2>/dev/null || true
+  local cleanup_pid
+  local cleanup_targets=()
+  [ -n "${SOAK_PHASE_PID:-}" ] && cleanup_targets+=("$SOAK_PHASE_PID")
+  if [[ "${FASTRA_TEST_PENDING_PID:-}" =~ ^[0-9]+$ ]]; then
+    cleanup_targets+=("$FASTRA_TEST_PENDING_PID")
   fi
-  restore_soak_pasteboard cleanup || cleanup_failed=1
-  release_fastra_gui_test_lock
+  if [ "${#SOAK_REMAINING_PIDS[@]}" -gt 0 ]; then
+    cleanup_targets+=("${SOAK_REMAINING_PIDS[@]}")
+  fi
+  if [ "${#cleanup_targets[@]}" -gt 0 ]; then
+    for cleanup_pid in "${cleanup_targets[@]}"; do
+      if ! terminate_fastra_test_process_trees "$cleanup_pid"; then
+        cleanup_failed=1
+        process_cleanup_failed=1
+      fi
+      wait "$cleanup_pid" 2>/dev/null || true
+    done
+  fi
+  if [ "$process_cleanup_failed" -eq 0 ] && [ "$SOAK_APP_STARTED" -eq 1 ]; then
+    restore_soak_pasteboard cleanup || cleanup_failed=1
+    purge_soak_defaults || cleanup_failed=1
+  fi
+  # Die beiden Hilfsaufrufe können selbst noch einen nicht beendbaren
+  # Prozess melden. Im selben EXIT-Durchlauf genau diese Roots erneut prüfen.
+  if [ "$process_cleanup_failed" -eq 0 ] \
+     && [ "${#SOAK_REMAINING_PIDS[@]}" -gt 0 ]; then
+    for cleanup_pid in "${SOAK_REMAINING_PIDS[@]}"; do
+      if ! terminate_fastra_test_process_trees "$cleanup_pid"; then
+        cleanup_failed=1
+        process_cleanup_failed=1
+      fi
+      wait "$cleanup_pid" 2>/dev/null || true
+    done
+  fi
+  if [ "$process_cleanup_failed" -eq 0 ]; then
+    purge_fastra_registered_test_defaults "$FASTRA_TEST_DEFAULTS_REGISTRY" \
+      || cleanup_failed=1
+    if ! restore_product_defaults; then
+      cleanup_failed=1
+      recovery_backup_needed=1
+    fi
+    if ! restore_product_saved_state; then
+      cleanup_failed=1
+      recovery_backup_needed=1
+    fi
+  else
+    # Solange ein alter App-/Hilfsprozess möglicherweise noch lebt, darf kein
+    # neuer Fastra-Helfer starten und kein Preferences-Stand darunter
+    # ausgetauscht werden. Die private Sandbox bleibt als Rettungsbeleg erhalten.
+    recovery_backup_needed=1
+  fi
+  release_fastra_gui_test_lock || cleanup_failed=1
   # Bei Befunden oder einem Absturz die BEWEISE erhalten: Protokoll und
   # Phasenausgaben (mit Exception-Text und Stacktrace) überleben das
   # Aufräumen. Nur die Logs — die kopierten echten Dokumente nicht.
-  if [ "${KEEP_EVIDENCE:-0}" -eq 1 ] || [ "$cleanup_failed" -eq 1 ]; then
-    local evidence="${TMPDIR:-/tmp}/fastra-soak-befunde-$(date +%Y%m%d-%H%M%S)"
-    mkdir -p "$evidence"
-    cp "$LOG" "$WORK_DIR"/phase-*.out "$WORK_DIR"/pasteboard-restore-*.out \
-       "$PASTEBOARD_BACKUP" "$evidence"/ 2>/dev/null || true
-    echo "   Beweise gesichert: $evidence" >&2
+  if [ "${KEEP_EVIDENCE:-0}" -eq 1 ] || [ "$cleanup_failed" -eq 1 ] \
+     || [ "$original_status" -ne 0 ]; then
+    local evidence
+    evidence=$(mktemp -d "/tmp/fastra-soak-befunde-$(date +%Y%m%d-%H%M%S).XXXXXX") \
+      || evidence_saved=0
+    if [ "$evidence_saved" -eq 1 ]; then
+      cp -- "$LOG" "$evidence/befunde.log" || evidence_saved=0
+      local candidate
+      for candidate in "$WORK_DIR"/phase-*.out \
+                       "$WORK_DIR"/pasteboard-restore-*.out \
+                       "$WORK_DIR/defaults-purge.out" \
+                       "$PASTEBOARD_BACKUP"; do
+        [ -f "$candidate" ] || continue
+        cp -- "$candidate" "$evidence/" || evidence_saved=0
+      done
+      # Nutzer-Preferences sind keine gewöhnliche Diagnose. Nur wenn ihre
+      # Wiederherstellung selbst scheiterte, dient die private Kopie als
+      # Recovery-Backup und darf den Runner überleben.
+      if [ "$recovery_backup_needed" -eq 1 ] \
+         && [ -f "$SOAK_PRODUCT_DEFAULTS_BACKUP" ]; then
+        cp -- "$SOAK_PRODUCT_DEFAULTS_BACKUP" "$evidence/" || evidence_saved=0
+      fi
+    fi
+    if [ "$evidence_saved" -eq 1 ]; then
+      echo "   Beweise gesichert: $evidence" >&2
+      prune_soak_evidence
+    else
+      [ -z "${evidence:-}" ] || rm -rf -- "$evidence"
+      # Für eine manuelle Clipboard-Rettung bleibt die Sandbox privat liegen;
+      # echte kopierte Arbeitsdokumente werden dafür nicht benötigt und dürfen
+      # bei einem Kopier-/Plattenfehler nicht unbefristet Speicher belegen.
+      [ -z "${REAL_DIR:-}" ] || rm -rf -- "$REAL_DIR"
+      echo "   ✗ Beweise konnten nicht kopiert werden; private Sandbox bleibt erhalten:" >&2
+      echo "     $WORK_ROOT" >&2
+      cleanup_failed=1
+    fi
   fi
-  rm -rf "${WORK_ROOT:?}"
+  if [ "$evidence_saved" -eq 1 ] && [ "$recovery_backup_needed" -eq 0 ]; then
+    release_fastra_test_sandbox || cleanup_failed=1
+  elif [ "$recovery_backup_needed" -eq 1 ]; then
+    echo "   Private Sandbox mit Einstellungs-/Fenster-Sicherung bleibt erhalten:" >&2
+    echo "     $WORK_ROOT" >&2
+  fi
+  trap - EXIT
   if [ "$cleanup_failed" -eq 1 ] && [ "$original_status" -eq 0 ]; then
     echo "SOAK FAIL — externe Testdaten konnten nicht vollständig wiederhergestellt werden." >&2
-    trap - EXIT
     exit 1
+  elif [ "$cleanup_failed" -eq 1 ]; then
+    echo "SOAK: Zusätzlich blieb das Aufräumen unvollständig." >&2
   fi
+  exit "$original_status"
 }
 
 # Echte Dokumente KOPIEREN: Tippen, Sichern und die RTFD-Umwandlung (deren
@@ -249,6 +517,30 @@ if [ -n "$SOAK_4D" ]; then echo "   4D-Projekt (isolierte Kopie): $SOAK_4D"; fi
 echo
 
 SOAK_PHASE_PID=""
+SOAK_REMAINING_PIDS=()
+SOAK_PROCESS_CLEANUP_BLOCKED=0
+
+remember_soak_cleanup_failure() {
+  local pid="$1"
+  local existing
+  if [ "${#SOAK_REMAINING_PIDS[@]}" -gt 0 ]; then
+    for existing in "${SOAK_REMAINING_PIDS[@]}"; do
+      [ "$existing" = "$pid" ] && return 0
+    done
+  fi
+  SOAK_REMAINING_PIDS+=("$pid")
+}
+
+cleanup_soak_process() {
+  local pid="$1"
+  if ! terminate_fastra_test_process_trees "$pid"; then
+    remember_soak_cleanup_failure "$pid"
+    SOAK_PROCESS_CLEANUP_BLOCKED=1
+    return 1
+  fi
+  wait "$pid" 2>/dev/null || true
+  return 0
+}
 
 # Stellt eine von der App persistierte, itemgetreue Zwischenablage-Sicherung in
 # einem kleinen eigenen App-Aufruf wieder her. Das deckt normale Fehler,
@@ -259,26 +551,74 @@ restore_soak_pasteboard() {
   local label="${1:-cleanup}"
   [ -f "$PASTEBOARD_BACKUP" ] || return 0
   local output="$WORK_DIR/pasteboard-restore-$label.out"
-  "$BINARY" -selftest soakpasteboardrestore \
+  if ! TMPDIR="$FASTRA_TEST_TMPDIR/" \
+  CFFIXED_USER_HOME="$FASTRA_TEST_CF_HOME" \
+  CFPREFERENCES_AVOID_DAEMON=1 \
+  HOME="$FASTRA_TEST_CF_HOME" \
+  FASTRA_SELFTEST_DEFAULTS_SUITE="$SOAK_DEFAULTS_SUITE" \
+  FASTRA_TEST_DEFAULTS_REGISTRY="$FASTRA_TEST_DEFAULTS_REGISTRY" \
+  fastra_test_start_new_session "$BINARY" -selftest soakpasteboardrestore \
     -soakDir "$WORK_DIR" \
     -soakPhase 2 \
-    -ApplePersistenceIgnoreState YES >"$output" 2>&1 &
-  local pid=$!
+    -ApplePersistenceIgnoreState YES >"$output" 2>&1; then
+    echo "   ✗ Zwischenablage-Hilfsprozess ließ sich nicht sicher starten" >&2
+    return 1
+  fi
+  local pid="$FASTRA_TEST_STARTED_PID"
   local waited=0
   while kill -0 "$pid" 2>/dev/null; do
     sleep 1
     waited=$((waited + 1))
     if [ "$waited" -gt 30 ]; then
-      kill -9 "$pid" 2>/dev/null || true
-      wait "$pid" 2>/dev/null || true
+      cleanup_soak_process "$pid" || true
       echo "   ✗ Zwischenablage-Wiederherstellung hängt seit ${waited}s" >&2
       return 1
     fi
   done
   wait "$pid"
   local status=$?
+  cleanup_soak_process "$pid" || return 1
   if [ "$status" -ne 0 ] || [ -f "$PASTEBOARD_BACKUP" ]; then
     echo "   ✗ Zwischenablage-Wiederherstellung fehlgeschlagen (Status $status)" >&2
+    tail -2 "$output" 2>/dev/null | sed 's/^/     /' >&2
+    return 1
+  fi
+  return 0
+}
+
+# Die drei Phasen teilen absichtlich eine Suite. Nach dem letzten Prozess —
+# oder nach einem Abbruch — entfernt ein eigener App-Aufruf diese Domain samt
+# Plist über dieselbe verifizierte Routine wie die Unit-Tests.
+purge_soak_defaults() {
+  local output="$WORK_DIR/defaults-purge.out"
+  if ! TMPDIR="$FASTRA_TEST_TMPDIR/" \
+  CFFIXED_USER_HOME="$FASTRA_TEST_CF_HOME" \
+  CFPREFERENCES_AVOID_DAEMON=1 \
+  HOME="$FASTRA_TEST_CF_HOME" \
+  FASTRA_SELFTEST_DEFAULTS_SUITE="$SOAK_DEFAULTS_SUITE" \
+  FASTRA_TEST_DEFAULTS_REGISTRY="$FASTRA_TEST_DEFAULTS_REGISTRY" \
+  fastra_test_start_new_session "$BINARY" -selftest soakdefaultspurge \
+    -soakPhase 2 \
+    -ApplePersistenceIgnoreState YES >"$output" 2>&1; then
+    echo "   ✗ Preferences-Hilfsprozess ließ sich nicht sicher starten" >&2
+    return 1
+  fi
+  local pid="$FASTRA_TEST_STARTED_PID"
+  local waited=0
+  while fastra_test_pid_is_live "$pid"; do
+    sleep 0.1
+    waited=$((waited + 1))
+    if [ "$waited" -ge 300 ]; then
+      cleanup_soak_process "$pid" || true
+      echo "   ✗ Test-Preferences-Aufräumen überschritt 30 s" >&2
+      return 1
+    fi
+  done
+  wait "$pid"
+  local status=$?
+  cleanup_soak_process "$pid" || return 1
+  if [ "$status" -ne 0 ]; then
+    echo "   ✗ Test-Preferences-Aufräumen fehlgeschlagen (Status $status)" >&2
     tail -2 "$output" 2>/dev/null | sed 's/^/     /' >&2
     return 1
   fi
@@ -289,7 +629,6 @@ restore_soak_pasteboard() {
 # Wiederherstellungsfunktionen sind nun definiert und stehen dem Trap auch bei
 # einem Abbruch während der ersten Phase sicher zur Verfügung.
 trap cleanup EXIT
-acquire_fastra_gui_test_lock || exit 2
 SOAK_STARTED_MS=$(/usr/bin/perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000')
 SOAK_HEAD_START=$(git -C .. rev-parse HEAD 2>/dev/null || true)
 SOAK_BINARY_SHA_START=$(shasum -a 256 "$BINARY" | awk '{print $1}')
@@ -307,15 +646,25 @@ run_phase() {
   local findings_before
   findings_before=$(grep -c '^SOAK-BEFUND' "$LOG" 2>/dev/null)
   findings_before=${findings_before:-0}
-  "$BINARY" -selftest soak \
+  if ! TMPDIR="$FASTRA_TEST_TMPDIR/" \
+  CFFIXED_USER_HOME="$FASTRA_TEST_CF_HOME" \
+  CFPREFERENCES_AVOID_DAEMON=1 \
+  HOME="$FASTRA_TEST_CF_HOME" \
+  FASTRA_SELFTEST_DEFAULTS_SUITE="$SOAK_DEFAULTS_SUITE" \
+  FASTRA_TEST_DEFAULTS_REGISTRY="$FASTRA_TEST_DEFAULTS_REGISTRY" \
+  fastra_test_start_new_session "$BINARY" -selftest soak \
     -soakPhase "$phase" \
     -soakRounds "$ROUNDS" \
     -soakDir "$WORK_DIR" \
     -soakLog "$LOG" \
     ${SOAK_4D:+-soak4DProject "$SOAK_4D"} \
     ${SOAK_4D_METHOD:+-soak4DMethod "$SOAK_4D_METHOD"} \
-    >"$WORK_DIR/phase-$phase.out" 2>&1 &
-  local pid=$!
+    >"$WORK_DIR/phase-$phase.out" 2>&1; then
+    echo "   ✗ Phase $phase ließ sich nicht in einer eigenen Prozessgruppe starten" >&2
+    return 1
+  fi
+  local pid="$FASTRA_TEST_STARTED_PID"
+  SOAK_APP_STARTED=1
   SOAK_PHASE_PID="$pid"
   local waited=0
   local timed_out=0
@@ -325,19 +674,26 @@ run_phase() {
     waited=$(( $(date +%s) - start ))
     if [ "$waited" -gt "$timeout" ]; then
       echo "   ✗ Phase $phase hängt seit ${waited}s — abgebrochen" >&2
-      kill -9 "$pid" 2>/dev/null || true
-      wait "$pid" 2>/dev/null || true
+      if cleanup_soak_process "$pid"; then
+        status=124
+      else
+        status=125
+      fi
       echo "SOAK-BEFUND phase=$phase aktion=? invariante=Lauf endet kontrolliert detail=Zeitüberschreitung nach ${waited}s" >> "$LOG"
       timed_out=1
-      status=124
       break
     fi
   done
   if [ "$timed_out" -eq 0 ]; then
     wait "$pid"
     status=$?
+    # Der App-Prozess kann sein Ergebnis schon geschrieben haben, während ein
+    # von ihm gestartetes Kind in derselben Prozessgruppe weiterlebt.
+    cleanup_soak_process "$pid" || status=125
   fi
-  SOAK_PHASE_PID=""
+  if [ "$status" -ne 125 ]; then
+    SOAK_PHASE_PID=""
+  fi
   echo "   Phase $phase beendet (Status $status, ${waited}s)"
   tail -2 "$WORK_DIR/phase-$phase.out" | sed 's/^/   /'
   local phase_failed=0
@@ -357,6 +713,14 @@ run_phase() {
         "$phase" "$detail" >> "$LOG"
     fi
   fi
+  # Ein Status 125 heißt: Der alte Prozessbaum kann noch leben. In dieser
+  # Lage weder einen Clipboard-Helfer noch die nächste Phase parallel starten;
+  # der EXIT-Trap bekommt sofort die alleinige Nachräumchance.
+  if [ "$SOAK_PROCESS_CLEANUP_BLOCKED" -eq 1 ]; then
+    KEEP_EVIDENCE=1
+    echo "SOAK-BEFUND phase=$phase aktion=? invariante=Prozessbaum endet vollständig detail=Cleanup blieb unvollständig; Folgephasen gestoppt" >> "$LOG"
+    return 1
+  fi
   if ! restore_soak_pasteboard "phase-$phase"; then
     phase_failed=1
     KEEP_EVIDENCE=1
@@ -368,7 +732,9 @@ run_phase() {
 PHASES_FAILED=0
 KEEP_EVIDENCE=0
 run_phase 1 "Dokumente anlegen, drei Fenster öffnen, arbeiten" || PHASES_FAILED=$((PHASES_FAILED + 1))
+[ "$SOAK_PROCESS_CLEANUP_BLOCKED" -eq 0 ] || exit 1
 run_phase 2 "nach Neustart: Sitzung prüfen und weiterarbeiten"  || PHASES_FAILED=$((PHASES_FAILED + 1))
+[ "$SOAK_PROCESS_CLEANUP_BLOCKED" -eq 0 ] || exit 1
 run_phase 3 "nach zweitem Neustart: abschließende Runde"        || PHASES_FAILED=$((PHASES_FAILED + 1))
 
 echo
@@ -401,6 +767,7 @@ fi
 
 # Ebenso wertlos: Alle Phasen laufen, aber es wurde nichts geprüft.
 if [ "$ACTIONS" -eq 0 ]; then
+  KEEP_EVIDENCE=1
   echo "SOAK FAIL — kein einziger Prüfschritt ausgeführt. Der Testaufbau" >&2
   echo "greift nicht; ein grünes Ergebnis wäre hier bedeutungslos." >&2
   exit 1

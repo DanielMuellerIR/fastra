@@ -3331,7 +3331,14 @@ final class Workspace: ObservableObject {
     /// Lädt die lokalen Branches asynchron. Remote-Branches bleiben bewusst
     /// außen vor: Ein Klick soll keinen impliziten Tracking-Branch erzeugen.
     func refreshGitBranches() {
-        refreshGitRepositoryFully()
+        guard let root = projectURL, GitRunner.isAvailable else { return }
+        // Eine ausdrückliche Branch-Aktualisierung muss NACH einem schon
+        // laufenden Full-Batch nochmals lesen. Sonst kann ein externer
+        // Checkout genau während dieses Batches dauerhaft unsichtbar bleiben.
+        gitRepositoryStore.refresh(
+            repository: root, scope: .full,
+            ensureFreshAfterCurrentBatch: true
+        )
     }
 
     func refreshGitRepositoryFully() {

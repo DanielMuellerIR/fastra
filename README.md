@@ -365,7 +365,8 @@ TOML, TypeScript/TSX and YAML. Everything else opens as plain text.
 ```bash
 cd app
 ./build.sh release   # bundle lands in the project root as Fastra.app
-./selftest.sh        # unit tests + in-app self-tests
+./test.sh            # unit tests in an isolated disposable sandbox
+./selftest.sh        # in-app self-tests
 ```
 
 Details: [Build and test](docs/BUILD-AND-TEST.md) ·

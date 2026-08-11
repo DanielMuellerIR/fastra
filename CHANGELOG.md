@@ -9,6 +9,30 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.72.1] — 2026-08-11
+
+### Behoben
+
+- **Eine ausdrücklich aktualisierte Branch-Liste zeigt externe Wechsel sicher:**
+  Läuft beim Aktualisieren bereits ein vollständiger Git-Lesevorgang, folgt
+  danach genau ein neuer Lauf. Ein externer Checkout kann dadurch nicht mehr
+  im Ergebnis des schon vorher begonnenen Lesevorgangs verschwinden.
+
+### Verbessert
+
+- **Tests hinterlassen keine verstreuten Preferences- und Temp-Dateien mehr:**
+  Unit-Tests, In-App-Selbsttests und der Dauertest laufen jeweils in einer
+  eigenen Wegwerf-Sandbox für temporäre Dateien und Core-Foundation-
+  Preferences. Der äußere Runner entfernt leere, von `cfprefsd` verzögert
+  zurückgeschriebene Test-Domains erst nach dem Prozessende. Erfolg, Fehler,
+  Timeouts und Signale räumen außerdem Kindprozesse auf; nur wiederverwendbare
+  Build- und Dependency-Caches bleiben erhalten.
+- **Selbsttests geben Systemzustand zuverlässig zurück:** Tests mit Copy/Paste
+  sichern die Zwischenablage itemgetreu und auf Platte und stellen sie auch
+  nach einem App-Absturz wieder her. Sparkle startet in Selbsttests nicht, und
+  über LaunchServices gestartete Debug-Bundles werden danach wieder
+  abgemeldet. Diagnosebeweise bleiben privat und auf fünf Läufe begrenzt.
+
 ## [v1.72.0] — 2026-08-11
 
 ### Hinzugefügt

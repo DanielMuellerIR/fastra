@@ -76,13 +76,36 @@ enum SearchWindow {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
+    /// Selbsttests prüfen einen lokalen Build und dürfen weder Sparkle-
+    /// Preferences schreiben noch einen echten Appcast-Abruf auslösen.
+    static func shouldStartUpdater(isSelfTestRun: Bool) -> Bool {
+        !isSelfTestRun
+    }
+
+    /// Schon das Erzeugen des Sparkle-Controllers aktualisiert Host-Defaults.
+    /// Selbsttests brauchen ihn deshalb ausschließlich für den gezielten
+    /// `updates`-Verdrahtungstest; alle anderen Prozesse bleiben vollständig
+    /// frei von Sparkle-Nebenwirkungen.
+    static func shouldCreateUpdater(isSelfTestRun: Bool,
+                                    requestedTest: String?) -> Bool {
+        !isSelfTestRun || requestedTest == "updates"
+    }
+
     /// Sparkle verwaltet Suche, Download, Signaturprüfung, Austausch der App
     /// und Neustart. Der Controller lebt exakt einmal für die App-Laufzeit.
-    private let updaterController = SPUStandardUpdaterController(
-        startingUpdater: true,
-        updaterDelegate: nil,
-        userDriverDelegate: nil
-    )
+    private let updaterController: SPUStandardUpdaterController? = {
+        guard AppDelegate.shouldCreateUpdater(
+            isSelfTestRun: SelfTest.isSelfTestRun,
+            requestedTest: SelfTest.requestedTest
+        ) else { return nil }
+        return SPUStandardUpdaterController(
+            startingUpdater: AppDelegate.shouldStartUpdater(
+                isSelfTestRun: SelfTest.isSelfTestRun
+            ),
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
+    }()
     /// SwiftUI baut das App-Menü nach `applicationDidFinishLaunching` noch
     /// einmal neu. Mehrere Menü-Notifications werden in einen Main-Runloop-
     /// Durchlauf zusammengefasst, damit der Sparkle-Eintrag danach erhalten bleibt.
@@ -477,8 +500,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.updateMenuInstallScheduled = false
-            guard let appMenu = NSApp.mainMenu?.items.first?.submenu else { return }
-            Self.synchronizeUpdateMenuItem(in: appMenu, target: self.updaterController)
+            guard let appMenu = NSApp.mainMenu?.items.first?.submenu,
+                  let updaterController = self.updaterController else { return }
+            Self.synchronizeUpdateMenuItem(in: appMenu, target: updaterController)
         }
     }
 

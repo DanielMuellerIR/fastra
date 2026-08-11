@@ -67,30 +67,14 @@ private func removing(_ allowed: String, from text: String) -> String {
     text.replacingOccurrences(of: allowed, with: "")
 }
 
-@Test("pasteindent verlässt den Test nur über den Zwischenablage-Rückgabepfad")
+@Test("pasteindent nutzt die zentrale, absturzfeste Zwischenablage-Sicherung")
 func pasteIndentRestoresPasteboardOnEveryExit() throws {
     let source = try String(contentsOf: selfTestSourceURL, encoding: .utf8)
     let body = try functionBody(named: "func runPasteMatchIndentationTest()", in: source)
 
-    // Der Test überschreibt `NSPasteboard.general`. Jeder Weg hinaus — Erfolg,
-    // Fehler, früher Abbruch — muss deshalb über `finishPasteIndent` laufen,
-    // das die Sicherung zurückschreibt. Ein direktes `finish(` würde die
-    // Zwischenablage des Nutzers behalten.
-    let withoutWrapper = removing("finishPasteIndent(", from: body)
-    #expect(!withoutWrapper.contains("finish("), """
-        `runPasteMatchIndentationTest` ruft `finish(` direkt auf. Der Test \
-        überschreibt die Zwischenablage des Nutzers; jeder Abschluss muss über \
-        `finishPasteIndent` gehen, sonst bleibt der Testinhalt darin stehen.
-        """)
-
-    // Und er muss überhaupt sichern, bevor er schreibt.
-    #expect(body.contains("capturePasteboardItems()"), """
-        `runPasteMatchIndentationTest` sichert die Zwischenablage nicht mehr \
-        (`capturePasteboardItems()` fehlt).
-        """)
-    #expect(body.contains("pasteIndentPasteboardOwnedChangeCount"), """
-        `runPasteMatchIndentationTest` merkt sich den Besitzstand nicht mehr — \
-        ohne ihn kann die Rückgabe eine neuere Kopie des Nutzers überschreiben.
+    #expect(body.contains("writeSelfTestPasteboardString("), """
+        `runPasteMatchIndentationTest` nutzt die zentrale, itemgetreue und vor \
+        der Änderung persistierte Sicherung nicht mehr.
         """)
 }
 
@@ -105,12 +89,49 @@ func pasteboardRestorePathsCheckOwnership() throws {
         würde damit einen Inhalt überschreiben, den der Nutzer während des \
         langen Laufs selbst kopiert hat.
         """)
+    #expect(soakRestore.contains("guard backup.mutationConfirmed"), """
+        Ein nur vorbereiteter Soak-Zählerschritt darf nach einem Crash nicht \
+        automatisch über eine mögliche Nutzerkopie geschrieben werden.
+        """)
 
-    let pasteIndentFinish = try functionBody(
-        named: "func finishPasteIndent(", in: source)
-    #expect(pasteIndentFinish.contains("pasteboardIsStillOwned("), """
-        `finishPasteIndent` prüft den Besitzstand nicht mehr und würde eine \
-        neuere Kopie des Nutzers überschreiben.
+    let selfTestFinish = try functionBody(
+        named: "func finishSelfTestPasteboardMutation(", in: source)
+    #expect(selfTestFinish.contains("pasteboardIsStillOwned("), """
+        Der zentrale Selbsttest-Abschluss prüft den Besitzstand nicht mehr und \
+        würde eine neuere Kopie des Nutzers überschreiben.
+        """)
+    let persistence = try functionBody(
+        named: "func persistSelfTestPasteboardBackup(", in: source)
+    #expect(persistence.contains(".atomic"), """
+        Die Crash-Sicherung der Zwischenablage wird nicht mehr atomar geschrieben.
+        """)
+    let prepare = try functionBody(
+        named: "func prepareSelfTestPasteboardMutation()", in: source)
+    #expect(prepare.contains("ownedChangeCount &+= 1"))
+    #expect(prepare.contains("mutationConfirmed = false"), """
+        Ein vorab journalisierter Zählerschritt muss bis zur Nachkontrolle als \
+        unbestätigt gelten. Sonst könnte nach einem Crash genau eine Nutzerkopie \
+        fälschlich als Testinhalt zurückgeschrieben werden.
+        """)
+    #expect(prepare.contains("persistSelfTestPasteboardBackup(backup)"), """
+        Der erwartete Besitzstand muss VOR der Pasteboard-Änderung atomar auf \
+        Platte stehen; eine nachträgliche Blindübernahme öffnet das Crash-Fenster.
+        """)
+    let note = try functionBody(
+        named: "func noteSelfTestPasteboardMutation(", in: source)
+    #expect(note.contains("mutationConfirmed = true"))
+    #expect(note.contains("capturePasteboardItems() == expectedItems"), """
+        Ein passender Zähler allein beweist nicht, dass der Test geschrieben \
+        hat; vor der Bestätigung müssen Items, Typen und Daten vollständig dem \
+        erwarteten Testinhalt entsprechen.
+        """)
+    #expect(note.contains("persistSelfTestPasteboardBackup(backup)"), """
+        Erst die geprüfte Änderung darf das Crash-Journal als automatisch \
+        wiederherstellbar bestätigen.
+        """)
+    #expect(selfTestFinish.contains("guard backup.mutationConfirmed"), """
+        Eine nur vorbereitete Änderung darf nach einem Crash keinen möglicherweise \
+        neueren Nutzerinhalt überschreiben.
         """)
 }
 

@@ -537,7 +537,8 @@ enum SoakTest {
     /// sie verändern durfte. `nil` heißt: Die Aktion war nicht möglich (etwa
     /// Sichern ohne Datei) und zählt nicht als Prüfung.
     static func perform(_ action: Action) -> (
-        target: NSWindow, label: String, pasteboardChangeCount: Int?
+        target: NSWindow, label: String, pasteboardChangeCount: Int?,
+        pasteboardExpectedString: String?
     )? {
         guard let window = documentWindows().first,
               let content = window.contentView,
@@ -557,6 +558,7 @@ enum SoakTest {
         _ = window.makeFirstResponder(textView)
 
         var pasteboardChangeCount: Int?
+        var pasteboardExpectedString: String?
         switch action {
         case .type:
             // An der Cursorposition einfügen — wie Tippen, nur in einem Rutsch.
@@ -615,7 +617,7 @@ enum SoakTest {
             // NICHTS am Inhalt ändern — auch das prüfen die Invarianten.
             let other = windows[1 + nextRandom(windows.count - 1)]
             other.makeKeyAndOrderFront(nil)
-            return (other, action.label, nil)
+            return (other, action.label, nil, nil)
 
         case .undo:
             guard textView.undoManager?.canUndo == true else { return nil }
@@ -697,9 +699,16 @@ enum SoakTest {
             let length = (textView.string as NSString).length
             guard length > 40 else { return nil }
             let start = nextRandom(max(1, length - 30))
-            textView.selectionManager.setSelectedRange(
-                NSRange(location: start, length: min(25, length - start))
-            )
+            let selection = NSRange(location: start,
+                                    length: min(25, length - start))
+            let expectedCopy = (textView.string as NSString)
+                .substring(with: selection)
+            textView.selectionManager.setSelectedRange(selection)
+            guard SelfTest.prepareSoakPasteboardMutation() else {
+                record("Zwischenablage vor ⌘C sichern",
+                       "Besitz war nicht mehr eindeutig oder das Journal nicht schreibbar")
+                return nil
+            }
             let responderAccepted = window.makeFirstResponder(textView)
             let beforeCopy = NSPasteboard.general.changeCount
             if !NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) {
@@ -709,7 +718,14 @@ enum SoakTest {
                                         responderAccepted: responderAccepted))
             } else {
                 let afterCopy = NSPasteboard.general.changeCount
-                if afterCopy != beforeCopy { pasteboardChangeCount = afterCopy }
+                if afterCopy != beforeCopy,
+                   NSPasteboard.general.string(forType: .string) == expectedCopy {
+                    pasteboardChangeCount = afterCopy
+                    pasteboardExpectedString = expectedCopy
+                } else {
+                    record("Kopierter Inhalt gehört zur Testauswahl",
+                           "Zähler oder Text stimmt nach ⌘C nicht")
+                }
             }
 
         case .paste:
@@ -729,7 +745,8 @@ enum SoakTest {
             }
             if textView.string != textBefore { noteFourDMutation(in: workspace) }
         }
-        return (window, action.label, pasteboardChangeCount)
+        return (window, action.label, pasteboardChangeCount,
+                pasteboardExpectedString)
     }
 
     /// Fokuslage für einen fehlgeschlagenen Responder-Befehl. Die Diagnose
@@ -792,6 +809,7 @@ enum SoakTest {
         /// gesetzt. Andere Aktionen dürfen einen inzwischen fremden
         /// Zwischenablage-Zähler niemals als Testbesitz übernehmen.
         let pasteboardChangeCount: Int?
+        let pasteboardExpectedString: String?
     }
 
     /// Erste Hälfte einer Runde: Aktion wählen, Zustand sichern, ausführen.
@@ -819,7 +837,8 @@ enum SoakTest {
         return PendingRound(label: done.label, target: done.target,
                             action: action, before: before,
                             undoBaseline: undoBaseline,
-                            pasteboardChangeCount: done.pasteboardChangeCount)
+                            pasteboardChangeCount: done.pasteboardChangeCount,
+                            pasteboardExpectedString: done.pasteboardExpectedString)
     }
 
     /// Zweite Hälfte einer Runde: die Invarianten gegen den inzwischen

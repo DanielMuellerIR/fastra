@@ -522,7 +522,7 @@ cd app
 FASTRA_PROJECT_PERF_ROOT=/pfad/zur/fixture ./performance-baseline.sh long 60
 ```
 
-`standard` baut zuerst, führt `swift test`, den Lokalisierungs-Audit und die
+`standard` baut zuerst, führt `./test.sh`, den Lokalisierungs-Audit und die
 vollständige Selbsttestsuite aus. Nur ein vollständig grüner Lauf von einem
 sauberen, währenddessen unveränderten Git-Stand und App-Binary wird als
 Baseline gespeichert. Nur der Wrapper darf die kanonische Historie ergänzen,
@@ -548,8 +548,49 @@ Konfigurationen sind nicht direkt vergleichbar.
 Alle In-App-Selbsttests und der Dauertest verwenden einen gemeinsamen, pro
 Nutzer maschinenweiten Lock. Damit können zwei Worktrees ihre App-Prozesse und
 den Fensterfokus nicht mehr gegenseitig verfälschen. Ein zweiter Runner endet
-als Umgebungsfehler (Exit 2); reine `swift test`-Läufe bleiben davon unabhängig.
+als Umgebungsfehler (Exit 2); reine `./test.sh`-Läufe bleiben davon unabhängig.
 Ein nachweislich verwaister Lock wird beim nächsten Start übernommen.
+
+`./test.sh`, `selftest.sh` und `soak-test.sh` geben jedem Lauf außerdem ein
+eigenes `TMPDIR` und ein eigenes Core-Foundation-Preferences-Verzeichnis. Am
+Ende wird genau diese Sandbox entfernt, auch bei einem roten Lauf oder Signal.
+Benannte `UserDefaults`-Suiten können diese Umleitung auf macOS umgehen und
+lassen über `cfprefsd` nach dem Prozessende nochmals eine leere Plist entstehen.
+Der Testcode meldet seine exakten UUID-Domains deshalb zusätzlich an den
+äußeren Runner; nur dieser kann die letzte leere Plist nach dem Prozessende
+sicher entfernen. Ein per SIGKILL oder Rechnerausfall unterbrochener
+Sandbox-Rest wird beim nächsten Lauf nach 24 Stunden übernommen, sofern PID
+UND Startzeit nicht mehr zum damaligen Besitzer gehören.
+
+AppKit und Sparkle beachten diese Umleitung nicht in jedem Pfad. Die beiden
+GUI-Runner sichern deshalb zusätzlich die echte Fastra-Preferences-Domain und
+den von AppKit im Nutzer-Temp-Verzeichnis angelegten gespeicherten
+Fensterzustand und stellen beide nach dem letzten Testprozess semantisch bzw.
+dateigetreu wieder her. Der Lauf beginnt nur, wenn keine andere Fastra-Instanz
+läuft und der Snapshot vollständig belegt ist; ein Lese- oder Kopierfehler
+bricht ab, ohne den Originalzustand anzufassen. Die maschinenweite GUI-Sperre
+wird vor diesen Snapshots erworben.
+
+`cfprefsd` kann eine bereits geleerte Test-Domain erst nach dem Ende des
+Testprozesses nochmals als leere Plist schreiben. Der äußere Runner beobachtet
+die exakt registrierten UUID-Domains deshalb weitere 1,5 Sekunden und entfernt
+nur diese. Das ist ein fester Abschluss pro Suite, nicht pro Einzeltest.
+
+Die Runner verfolgen auch Kindprozesse und eigene Prozessgruppen. Bei Timeout
+oder Signal folgen auf `TERM` und `CONT` nach kurzer Frist ein begrenztes
+`KILL` und eine echte Ende-Prüfung; Git-, Import- oder Capture-Prozesse dürfen
+nicht im Hintergrund weiterlaufen. In-App-Tests mit Copy/Paste sichern die
+allgemeine Zwischenablage itemgetreu innerhalb der Sandbox. Der normale
+Abschluss gibt sie selbst zurück, nach Crash oder Timeout übernimmt ein
+frischer Hilfsprozess. Hat der Nutzer inzwischen kopiert, bleibt der neuere
+Inhalt unangetastet. Sparkle wird im Selbsttest gar nicht gestartet.
+
+Fehlerausgaben der kurzen Selbsttests und Beweise des Dauertests werden mit
+Zugriffsrechten nur für den aktuellen Nutzer aufbewahrt; jeweils höchstens die
+fünf jüngsten Läufe. Ein per LaunchServices gestartetes Debug-Bundle wird nach
+dem Lauf am exakten Pfad wieder abgemeldet. SwiftPM-, Build-, Dependency- und
+die begrenzte lokale Performancehistorie liegen bewusst außerhalb der
+Wegwerf-Sandbox und bleiben für spätere Läufe erhalten.
 
 **Daraus abgeleitete Test-Leitlinien (verbindlich):**
 - **Logik aus AppKit-Glue in pure Funktionen ziehen.** Entscheidungen (Event→Aktion, Footer-Kante, find-bezogener Menüpunkt) leben in `KeyRouting`, `CursorFooter`, `DocumentStats`, `AppDelegate.isFindRelated`. Abgedeckt durch `KeyRoutingTests`, `FooterLogicTests`, `FindBarSuppressionTests`, `RegexElementsTests`.

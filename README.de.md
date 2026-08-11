@@ -389,7 +389,8 @@ Swift, TOML, TypeScript/TSX und YAML. Alles andere öffnet als reiner Text.
 ```bash
 cd app
 ./build.sh release   # Bundle landet als Fastra.app im Projekt-Root
-./selftest.sh        # Unit-Tests + In-App-Selbsttests
+./test.sh            # Unit-Tests in einer isolierten Wegwerf-Sandbox
+./selftest.sh        # In-App-Selbsttests
 ```
 
 Details: [Build und Tests](docs/BUILD-AND-TEST.md) ·

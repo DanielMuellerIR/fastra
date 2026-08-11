@@ -19,12 +19,34 @@
 //    Echte Nutzer-Domains tragen nie eine UUID im Namen; das Alter schützt
 //    die noch aktiven Suiten paralleler Prozesse.
 //
-// Entfernt wird über `removePersistentDomain` (cfprefsd-sauber), nicht durch
-// rohes Datei-Löschen.
+// Im Prozess wird über `removePersistentDomain` (cfprefsd-sauber) geleert.
+// Der äußere Test-Runner bekommt zusätzlich die exakt registrierten Namen und
+// entfernt eine von cfprefsd NACH Prozessende nochmals angelegte leere Plist.
+// Erst dann existiert keine lebende UserDefaults-Instanz mehr, die sie erneut
+// zurückschreiben könnte.
 
 import Foundation
 
 enum TestDefaultsPurge {
+
+    /// Leitet den Dateipfad aus derselben CFFIXED_USER_HOME-Umgebung ab, die
+    /// auch CFPreferences verwendet. `FileManager.homeDirectoryForCurrentUser`
+    /// bleibt trotz Test-Sandbox auf dem echten Benutzerordner und würde beim
+    /// Nachräumen genau dort leere UUID-Plists anfassen.
+    static func resolvedPreferencesDirectory(
+        explicit: URL? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL {
+        if let explicit { return explicit.standardizedFileURL }
+        if let fixedHome = environment["CFFIXED_USER_HOME"], !fixedHome.isEmpty {
+            return URL(fileURLWithPath: fixedHome, isDirectory: true)
+                .appendingPathComponent("Library/Preferences", isDirectory: true)
+                .standardizedFileURL
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Preferences", isDirectory: true)
+            .standardizedFileURL
+    }
 
     /// Präfixe, unter denen Tests und Selbsttests eigene Suiten anlegen.
     /// Neue Test-Suiten sollten unter einem dieser Präfixe bleiben — sonst
@@ -43,13 +65,18 @@ enum TestDefaultsPurge {
         pattern: "[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"
     )
 
+    private static let safeNamePattern = try? NSRegularExpression(
+        pattern: "^[A-Za-z0-9._-]+$"
+    )
+
     /// `true` nur für Domains, die ein Test-Präfix tragen UND eine UUID im
     /// Namen haben.
     static func isTestDomain(_ name: String) -> Bool {
         guard prefixes.contains(where: { name.hasPrefix($0) }),
-              let uuidPattern else { return false }
+              let uuidPattern, let safeNamePattern else { return false }
         let range = NSRange(name.startIndex..., in: name)
-        return uuidPattern.firstMatch(in: name, range: range) != nil
+        return safeNamePattern.firstMatch(in: name, range: range)?.range == range
+            && uuidPattern.firstMatch(in: name, range: range) != nil
     }
 
     // MARK: - Registry (eigene Suiten dieses Prozesses)
@@ -58,8 +85,36 @@ enum TestDefaultsPurge {
     private static let lock = NSLock()
 
     /// Merkt eine in diesem Prozess angelegte Test-Suite zum Abräumen vor.
-    static func register(_ name: String) {
-        lock.withLock { _ = registered.insert(name) }
+    @discardableResult
+    static func register(_ name: String) -> Bool {
+        guard isTestDomain(name) else { return false }
+        return lock.withLock {
+            let inserted = registered.insert(name).inserted
+            guard inserted,
+                  let path = ProcessInfo.processInfo.environment[
+                    "FASTRA_TEST_DEFAULTS_REGISTRY"
+                  ], !path.isEmpty else { return true }
+            let url = URL(fileURLWithPath: path)
+            if !FileManager.default.fileExists(atPath: path) {
+                guard FileManager.default.createFile(
+                    atPath: path, contents: nil,
+                    attributes: [.posixPermissions: 0o600]
+                ) else { return false }
+            }
+            guard let handle = try? FileHandle(forWritingTo: url) else { return false }
+            do {
+                try handle.seekToEnd()
+                try handle.write(contentsOf: Data((name + "\n").utf8))
+                try handle.close()
+                return true
+            } catch {
+                // Der normale prozessinterne Purge bleibt weiterhin aktiv.
+                // Der Runner übernimmt die Datei nur als zweite Absicherung
+                // NACH dem Ende von cfprefsd-Schreibvorgängen.
+                try? handle.close()
+                return false
+            }
+        }
     }
 
     /// Entfernt genau die registrierten Suiten dieses Prozesses.
@@ -106,11 +161,13 @@ enum TestDefaultsPurge {
     /// Gemeinsamer Kern beider Purge-Wege.
     private static func purge(names: Set<String>,
                               preferencesDirectory: URL?) -> [String] {
-        let directory = preferencesDirectory
-            ?? FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Library/Preferences", isDirectory: true)
+        let directory = resolvedPreferencesDirectory(explicit: preferencesDirectory)
         var remaining: [String] = []
         for name in names {
+            guard isTestDomain(name) else {
+                remaining.append(name)
+                continue
+            }
             // Über eine EIGENE Instanz der Suite entfernen und sofort
             // synchronisieren: `removePersistentDomain` über `.standard`
             // ließ beschriebene Suiten beim Prozessende stehen — die
@@ -121,13 +178,30 @@ enum TestDefaultsPurge {
             // `removePersistentDomain` LEERT die Domain, lässt aber die dann
             // inhaltslose Plist-Datei liegen — genau daraus entstand der
             // 3713-Dateien-Berg. Die eigene Datei deshalb mit entfernen.
-            try? FileManager.default.removeItem(
-                at: directory.appendingPathComponent(name + ".plist"))
+            let normalizedDirectory = directory
+            let plist = normalizedDirectory
+                .appendingPathComponent(name + ".plist", isDirectory: false)
+                .standardizedFileURL
+            guard plist.deletingLastPathComponent() == normalizedDirectory else {
+                remaining.append(name)
+                continue
+            }
+            do {
+                try FileManager.default.removeItem(at: plist)
+            } catch where (error as NSError).code == NSFileNoSuchFileError {
+                // Schon weg ist ebenfalls Erfolg.
+            } catch {
+                remaining.append(name)
+            }
             // Verifikation direkt an cfprefsd vorbeigefragt, nicht am
             // möglicherweise veralteten Instanz-Cache.
             if let keys = CFPreferencesCopyKeyList(
                 name as CFString, kCFPreferencesCurrentUser, kCFPreferencesAnyHost
             ), CFArrayGetCount(keys) > 0 {
+                if !remaining.contains(name) { remaining.append(name) }
+            }
+            if FileManager.default.fileExists(atPath: plist.path),
+               !remaining.contains(name) {
                 remaining.append(name)
             }
         }
@@ -142,9 +216,7 @@ enum TestDefaultsPurge {
     @discardableResult
     static func purgeStale(olderThan age: TimeInterval = 3600,
                            preferencesDirectory: URL? = nil) -> Int {
-        let directory = preferencesDirectory
-            ?? FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Library/Preferences", isDirectory: true)
+        let directory = resolvedPreferencesDirectory(explicit: preferencesDirectory)
         let cutoff = Date().addingTimeInterval(-age)
         let entries = (try? FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: [.contentModificationDateKey],

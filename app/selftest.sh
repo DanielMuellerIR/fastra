@@ -40,12 +40,17 @@
 # der App weiter; am Ende steht eine Zusammenfassung.
 
 set -u
+umask 077
 
 cd "$(dirname "$0")"
 
 # Gemeinsame, worktreeübergreifende Sperre für Fensterläufe.
 # shellcheck source=tools/gui-test-lock.sh
 . ./tools/gui-test-lock.sh
+# shellcheck source=tools/test-sandbox.sh
+. ./tools/test-sandbox.sh
+# shellcheck source=tools/test-process-tree.sh
+. ./tools/test-process-tree.sh
 
 if [[ "${1:-}" == "--performance-status" ]]; then
     /usr/bin/python3 ./tools/selftest-performance.py status \
@@ -129,14 +134,19 @@ escape_process_pattern() {
 APP_BIN_ABSOLUTE="$(absolute_executable_path "$APP_BIN")"
 if [[ -x "$APP_BUNDLE_FOR_OPEN/Contents/MacOS/Fastra" ]]; then
     APP_BUNDLE_BIN_ABSOLUTE="$(absolute_executable_path "$APP_BUNDLE_FOR_OPEN/Contents/MacOS/Fastra")"
+    APP_BUNDLE_CANONICAL="$(dirname "$(dirname "$(dirname "$APP_BUNDLE_BIN_ABSOLUTE")")")"
+    APP_BUNDLE_FOR_OPEN="$APP_BUNDLE_CANONICAL"
 else
     APP_BUNDLE_BIN_ABSOLUTE="$APP_BIN_ABSOLUTE"
+    APP_BUNDLE_CANONICAL=""
 fi
 APP_PROCESS_PATTERNS=("^$(escape_process_pattern "$APP_BIN_ABSOLUTE")([[:space:]]|$)")
 if [[ "$APP_BUNDLE_BIN_ABSOLUTE" != "$APP_BIN_ABSOLUTE" ]]; then
     APP_PROCESS_PATTERNS+=("^$(escape_process_pattern "$APP_BUNDLE_BIN_ABSOLUTE")([[:space:]]|$)")
 fi
 STARTED_PIDS=()
+CURRENT_TEST_NAME=""
+LAUNCH_SERVICES_USED=0
 
 # Gesperrter Bildschirm? Dann sind alle fensterbasierten Tests Umgebungs-
 # rauschen (siehe ../docs/BUILD-AND-TEST.md, Umgebungs-Falle 2). Nur `search` ist dann
@@ -191,10 +201,30 @@ track_started_pid() {
 }
 
 remember_bundle_pids() {
-    local pattern pid
+    local pattern pid command existing already_tracked
     for pattern in "${APP_PROCESS_PATTERNS[@]}"; do
         while IFS= read -r pid; do
-            [[ "$pid" =~ ^[0-9]+$ ]] && STARTED_PIDS+=("$pid")
+            if [[ "$pid" =~ ^[0-9]+$ ]]; then
+                # LaunchServices nennt die PID nicht. Deshalb nur den Prozess
+                # erfassen, dessen Argumente beziehungsweise Umgebung genau
+                # den aktuellen Selbsttest nennen. Ein Nutzer darf denselben
+                # Debug-Build parallel manuell starten, ohne dass der Runner
+                # ihn später als vermeintlichen Restprozess beendet.
+                command=$(ps eww -p "$pid" -o command= 2>/dev/null || true)
+                fastra_test_command_names_selftest \
+                    "$command" "$CURRENT_TEST_NAME" || continue
+                already_tracked=0
+                if [ "${#STARTED_PIDS[@]}" -gt 0 ]; then
+                    for existing in "${STARTED_PIDS[@]}"; do
+                        [ "$existing" = "$pid" ] && already_tracked=1
+                    done
+                fi
+                [ "$already_tracked" -eq 0 ] || continue
+                STARTED_PIDS+=("$pid")
+                fastra_test_root_was_started_by_runner "$pid" \
+                    || fastra_test_remember_process_group "$pid" \
+                    || true
+            fi
         done < <(pgrep -f "$pattern" 2>/dev/null || true)
     done
 }
@@ -213,7 +243,32 @@ pid_matches_configured_bundle() {
 }
 
 kill_leftovers() {
-    local pid pattern tick still_running
+    local launch_scan_ticks="${1:-2}"
+    local pid scan found
+    local app_targets=()
+    # LaunchServices liefert die PID nicht atomar mit `open`. Ein Signal kann
+    # deshalb zwischen dem Start und dem ersten normalen Ergebnis-Poll
+    # eintreffen. Unmittelbar vor jedem Cleanup noch einmal testgenau nach dem
+    # aktuellen Bundle und -selftest-Namen suchen und den Starttoken merken.
+    if [ "${CURRENT_LAUNCH_MODE:-direct}" = "launchservices" ]; then
+        scan=0
+        while [ "$scan" -lt "$launch_scan_ticks" ]; do
+            remember_bundle_pids
+            found=0
+            if [ "${#STARTED_PIDS[@]}" -gt 0 ]; then
+                for pid in "${STARTED_PIDS[@]}"; do
+                    if pid_matches_configured_bundle "$pid" \
+                       || fastra_test_root_was_started_by_runner "$pid"; then
+                        found=1
+                        break
+                    fi
+                done
+            fi
+            [ "$found" -eq 1 ] && break
+            sleep 0.1
+            scan=$((scan + 1))
+        done
+    fi
     # macOS liefert bash 3.2: Dort gilt ein LEERES Array unter `set -u` bei
     # `"${arr[@]}"` als unbound. Die Längenabfrage umgeht das gefahrlos.
     if [ "${#STARTED_PIDS[@]}" -gt 0 ]; then
@@ -221,45 +276,27 @@ kill_leftovers() {
             # Zwischen Ergebniszeile und Cleanup kann die App bereits enden
             # und macOS die Nummer neu vergeben. Vor dem Signal deshalb den
             # Prozesspfad noch einmal gegen genau dieses Test-Bundle prüfen.
-            if pid_matches_configured_bundle "$pid"; then
-                kill "$pid" 2>/dev/null || true
+            if pid_matches_configured_bundle "$pid" \
+               || fastra_test_root_was_started_by_runner "$pid"; then
+                app_targets+=("$pid")
             fi
         done
     fi
-    # Nur der Besitzer der maschinenweiten Sperre darf einen alten Prozess des
-    # konfigurierten Bundles über den Pfad finden. Ein wegen der Sperre
-    # abgewiesener Runner durchläuft ebenfalls den EXIT-Trap und darf dabei den
-    # rechtmäßigen Testprozess keinesfalls beenden.
-    if [[ "$FASTRA_GUI_LOCK_HELD" -eq 1 ]]; then
-        for pattern in "${APP_PROCESS_PATTERNS[@]}"; do
-            pkill -f "$pattern" 2>/dev/null || true
-        done
+    if [[ "${FASTRA_TEST_PENDING_PID:-}" =~ ^[0-9]+$ ]]; then
+        app_targets+=("$FASTRA_TEST_PENDING_PID")
     fi
-    STARTED_PIDS=()
-    # Nicht pauschal eine Sekunde warten: Meist existiert gar kein Restprozess.
-    # Falls doch, engmaschig bis zum echten Ende warten und ausschließlich das
-    # konfigurierte Test-Bundle nach einer Sekunde hart beenden.
-    tick=0
-    while [[ $tick -lt 40 ]]; do
-        still_running=0
-        if [[ "$FASTRA_GUI_LOCK_HELD" -eq 1 ]]; then
-            for pattern in "${APP_PROCESS_PATTERNS[@]}"; do
-                pgrep -f "$pattern" >/dev/null 2>&1 && still_running=1
-            done
-        fi
-        [[ $still_running -eq 0 ]] && return 0
-        if [[ $tick -eq 20 ]]; then
-            if [[ "$FASTRA_GUI_LOCK_HELD" -eq 1 ]]; then
-                for pattern in "${APP_PROCESS_PATTERNS[@]}"; do
-                    pkill -9 -f "$pattern" 2>/dev/null || true
-                done
-            fi
-        fi
-        sleep 0.05
-        tick=$((tick + 1))
+    if [ "${#app_targets[@]}" -eq 0 ]; then
+        STARTED_PIDS=()
+        return 0
+    fi
+    if ! terminate_fastra_test_process_trees "${app_targets[@]}"; then
+        echo "✗ Der vorherige Fastra-Testprozess oder ein Kindprozess ließ sich nicht beenden." >&2
+        return 1
+    fi
+    for pid in "${app_targets[@]}"; do
+        wait "$pid" 2>/dev/null || true
     done
-    echo "✗ Der vorherige Fastra-Testprozess ließ sich nicht beenden." >&2
-    return 1
+    STARTED_PIDS=()
 }
 
 # Wartet, bis die SELFTEST-Zeile in $1 auftaucht oder das Timeout reißt.
@@ -268,6 +305,10 @@ wait_for_result() {
     local waited_ticks=0
     local max_ticks=$((TIMEOUT_SECS * 10))
     while [[ $waited_ticks -lt $max_ticks ]]; do
+        if [ "${CURRENT_LAUNCH_MODE:-direct}" = "launchservices" ] \
+           && [ "${#STARTED_PIDS[@]}" -eq 0 ]; then
+            remember_bundle_pids
+        fi
         if grep -q '^SELFTEST ' "$errfile" 2>/dev/null; then
             return 0
         fi
@@ -384,6 +425,234 @@ cleanup_coldopen_fixture() {
     coldopen_fixture_file=""
 }
 
+# Nach Crash oder Timeout liegt die itemgetreue Sicherung noch in der
+# Runner-Sandbox. Ein frischer, fensterloser App-Aufruf spielt sie nur dann
+# zurück, wenn der changeCount weiterhin den Test als letzten Schreiber
+# ausweist. Neuere Nutzerinhalte bleiben dadurch unangetastet.
+restore_selftest_pasteboard() {
+    local backup="${SELFTEST_PASTEBOARD_DIR:-}/pasteboard-backup.plist"
+    [ -n "${SELFTEST_PASTEBOARD_DIR:-}" ] && [ -f "$backup" ] || return 0
+    local output="$FASTRA_TEST_TMPDIR/pasteboard-restore.out"
+    if ! TMPDIR="$FASTRA_TEST_TMPDIR/" \
+    CFFIXED_USER_HOME="$FASTRA_TEST_CF_HOME" \
+    CFPREFERENCES_AVOID_DAEMON=1 \
+    HOME="$FASTRA_TEST_CF_HOME" \
+    FASTRA_SELFTEST_DEFAULTS_SUITE="$SELFTEST_DEFAULTS_SUITE" \
+    FASTRA_TEST_DEFAULTS_REGISTRY="$FASTRA_TEST_DEFAULTS_REGISTRY" \
+    fastra_test_start_new_session "$APP_BIN_ABSOLUTE" -selftest soakpasteboardrestore \
+        -soakDir "$SELFTEST_PASTEBOARD_DIR" \
+        -soakPhase 2 \
+        -ApplePersistenceIgnoreState YES >"$output" 2>&1; then
+        echo "✗ Zwischenablage-Hilfsprozess ließ sich nicht sicher starten." >&2
+        return 1
+    fi
+    local pid="$FASTRA_TEST_STARTED_PID"
+    # Gehört ab jetzt zum Runner. Scheitert seine Terminierung, kann der
+    # allgemeine Aufräumpfad dieselbe PID samt Starttoken erneut versuchen.
+    track_started_pid "$pid"
+    local tick=0
+    while fastra_test_pid_is_live "$pid"; do
+        sleep 0.1
+        tick=$((tick + 1))
+        if [ "$tick" -ge 300 ]; then
+            if [ "${FASTRA_SELFTEST_TEST_HELPER_CLEANUP_FAILURE:-0}" = "1" ] \
+               || ! terminate_fastra_test_process_trees "$pid"; then
+                SELFTEST_PROCESS_CLEANUP_BLOCKED=1
+                return 1
+            fi
+            wait "$pid" 2>/dev/null || true
+            echo "✗ Zwischenablage-Wiederherstellung überschritt 30 s." >&2
+            return 1
+        fi
+    done
+    wait "$pid"
+    local status=$?
+    # Der Test-Hook simuliert ausschließlich den sonst kaum zuverlässig
+    # erzeugbaren Fehlerpfad. Produktionsläufe setzen ihn nie.
+    if [ "${FASTRA_SELFTEST_TEST_HELPER_CLEANUP_FAILURE:-0}" = "1" ] \
+       || ! terminate_fastra_test_process_trees "$pid"; then
+        SELFTEST_PROCESS_CLEANUP_BLOCKED=1
+        return 1
+    fi
+    if [ "$status" -ne 0 ] || [ -f "$backup" ]; then
+        echo "✗ Zwischenablage-Wiederherstellung fehlgeschlagen (Status $status)." >&2
+        tail -2 "$output" 2>/dev/null | sed 's/^/  /' >&2
+        return 1
+    fi
+    return 0
+}
+
+unregister_test_bundle_from_launch_services() {
+    [ "${LAUNCH_SERVICES_USED:-0}" -eq 1 ] || return 0
+    [ -n "$APP_BUNDLE_CANONICAL" ] || return 2
+    case "$APP_BUNDLE_CANONICAL" in /Applications/*) return 0 ;; esac
+    local lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+    [ -x "$lsregister" ] || return 2
+    "$lsregister" -u "$APP_BUNDLE_CANONICAL" >/dev/null 2>&1
+}
+
+PRODUCT_DEFAULTS_DOMAIN="de.dm0.fastra"
+PRODUCT_DEFAULTS_BACKUP=""
+PRODUCT_DEFAULTS_EXISTED=0
+PRODUCT_DEFAULTS_SNAPSHOT_READY=0
+PRODUCT_SAVED_STATE_PARENT="$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null || true)"
+PRODUCT_SAVED_STATE_PARENT="${PRODUCT_SAVED_STATE_PARENT%/}"
+PRODUCT_SAVED_STATE_DIR="$PRODUCT_SAVED_STATE_PARENT/de.dm0.fastra.savedState"
+PRODUCT_SAVED_STATE_BACKUP=""
+PRODUCT_SAVED_STATE_EXISTED=0
+PRODUCT_SAVED_STATE_SNAPSHOT_READY=0
+
+foreign_fastra_process_is_running() {
+    # Snapshot und Restore laufen nur, wenn alle runner-eigenen App-Prozesse
+    # bereits beendet sind. Jede jetzt sichtbare Fastra-Instanz ist daher
+    # fremd — auch wenn sie zufällig dasselbe Debug-Binary verwendet.
+    pgrep -f '/Fastra\.app/Contents/MacOS/Fastra([[:space:]]|$)' \
+        >/dev/null 2>&1
+}
+
+snapshot_product_defaults() {
+    foreign_fastra_process_is_running && {
+        echo "✗ Eine andere Fastra-App läuft. Echte Einstellungen können nicht sicher isoliert werden." >&2
+        return 2
+    }
+    PRODUCT_DEFAULTS_BACKUP="$FASTRA_TEST_SANDBOX/product-defaults.plist"
+    local read_error="$FASTRA_TEST_SANDBOX/product-defaults-read.err"
+    if /usr/bin/defaults read "$PRODUCT_DEFAULTS_DOMAIN" \
+        >/dev/null 2>"$read_error"; then
+        /usr/bin/defaults export "$PRODUCT_DEFAULTS_DOMAIN" \
+            "$PRODUCT_DEFAULTS_BACKUP" >/dev/null 2>&1 || return 2
+        PRODUCT_DEFAULTS_EXISTED=1
+    elif grep -Fq "Domain $PRODUCT_DEFAULTS_DOMAIN does not exist" "$read_error"; then
+        PRODUCT_DEFAULTS_EXISTED=0
+        rm -f -- "$PRODUCT_DEFAULTS_BACKUP"
+    else
+        echo "✗ Fastra-Einstellungen konnten nicht sicher gelesen werden." >&2
+        return 2
+    fi
+    PRODUCT_DEFAULTS_SNAPSHOT_READY=1
+}
+
+restore_product_defaults() {
+    [ "$PRODUCT_DEFAULTS_SNAPSHOT_READY" -eq 1 ] || return 0
+    foreign_fastra_process_is_running && return 2
+    if [ "$PRODUCT_DEFAULTS_EXISTED" -eq 1 ]; then
+        [ -f "$PRODUCT_DEFAULTS_BACKUP" ] || return 2
+        /usr/bin/defaults import "$PRODUCT_DEFAULTS_DOMAIN" \
+            "$PRODUCT_DEFAULTS_BACKUP" >/dev/null 2>&1 || return 2
+        # Semantischer Vergleich statt Binärhash: plist-Ausgabe darf ihre
+        # interne Reihenfolge ändern, Schlüssel und Werte aber nicht.
+        /usr/bin/defaults export "$PRODUCT_DEFAULTS_DOMAIN" - 2>/dev/null \
+            | /usr/bin/python3 -c \
+                'import datetime,plistlib,sys
+def same(a,b):
+    if isinstance(a,datetime.datetime) and isinstance(b,datetime.datetime): return abs((a-b).total_seconds()) < 1
+    if type(a) is not type(b): return False
+    if isinstance(a,dict): return a.keys()==b.keys() and all(same(a[k],b[k]) for k in a)
+    if isinstance(a,list): return len(a)==len(b) and all(same(x,y) for x,y in zip(a,b))
+    return a==b
+a=plistlib.load(open(sys.argv[1],"rb")); b=plistlib.loads(sys.stdin.buffer.read()); raise SystemExit(0 if same(a,b) else 1)' \
+                "$PRODUCT_DEFAULTS_BACKUP"
+    else
+        /usr/bin/defaults delete "$PRODUCT_DEFAULTS_DOMAIN" >/dev/null 2>&1 || true
+        local read_error="$FASTRA_TEST_SANDBOX/product-defaults-restore-read.err"
+        if /usr/bin/defaults read "$PRODUCT_DEFAULTS_DOMAIN" \
+            >/dev/null 2>"$read_error"; then
+            return 2
+        fi
+        grep -Fq "Domain $PRODUCT_DEFAULTS_DOMAIN does not exist" "$read_error"
+    fi
+}
+
+product_saved_state_path_is_safe() {
+    local path="$1"
+    [ -n "$PRODUCT_SAVED_STATE_PARENT" ] \
+        && [ "$path" = "$PRODUCT_SAVED_STATE_DIR" ]
+}
+
+remove_product_saved_state() {
+    [ ! -e "$PRODUCT_SAVED_STATE_DIR" ] && return 0
+    product_saved_state_path_is_safe "$PRODUCT_SAVED_STATE_DIR" || return 2
+    [ -d "$PRODUCT_SAVED_STATE_DIR" ] && [ ! -L "$PRODUCT_SAVED_STATE_DIR" ] || return 2
+    [ "$(stat -f '%u' "$PRODUCT_SAVED_STATE_DIR" 2>/dev/null || true)" = "$UID" ] \
+        || return 2
+    find "$PRODUCT_SAVED_STATE_DIR" -depth -delete 2>/dev/null
+}
+
+snapshot_product_saved_state() {
+    product_saved_state_path_is_safe "$PRODUCT_SAVED_STATE_DIR" || return 2
+    PRODUCT_SAVED_STATE_BACKUP="$FASTRA_TEST_SANDBOX/product-saved-state"
+    if [ -d "$PRODUCT_SAVED_STATE_DIR" ] && [ ! -L "$PRODUCT_SAVED_STATE_DIR" ]; then
+        [ "$(stat -f '%u' "$PRODUCT_SAVED_STATE_DIR" 2>/dev/null || true)" = "$UID" ] \
+            || return 2
+        /usr/bin/ditto "$PRODUCT_SAVED_STATE_DIR" "$PRODUCT_SAVED_STATE_BACKUP" \
+            >/dev/null 2>&1 || return 2
+        PRODUCT_SAVED_STATE_EXISTED=1
+    fi
+    # Erst ein vollständig erfolgreicher Snapshot darf den Restore scharf
+    # stellen. Scheitert `ditto`, darf der EXIT-Trap das Original nie löschen.
+    PRODUCT_SAVED_STATE_SNAPSHOT_READY=1
+}
+
+restore_product_saved_state() {
+    [ "$PRODUCT_SAVED_STATE_SNAPSHOT_READY" -eq 1 ] || return 0
+    foreign_fastra_process_is_running && return 2
+    remove_product_saved_state || return 2
+    if [ "$PRODUCT_SAVED_STATE_EXISTED" -eq 1 ]; then
+        [ -d "$PRODUCT_SAVED_STATE_BACKUP" ] || return 2
+        /usr/bin/ditto "$PRODUCT_SAVED_STATE_BACKUP" "$PRODUCT_SAVED_STATE_DIR" \
+            >/dev/null 2>&1 || return 2
+        diff -qr "$PRODUCT_SAVED_STATE_BACKUP" "$PRODUCT_SAVED_STATE_DIR" \
+            >/dev/null 2>&1
+    fi
+}
+
+prune_selftest_evidence() {
+    local stale owner
+    while IFS= read -r stale; do
+        [ -d "$stale" ] && [ ! -L "$stale" ] || continue
+        owner=$(stat -f '%u' "$stale" 2>/dev/null || true)
+        [ "$owner" = "$UID" ] || continue
+        case "$stale" in /tmp/fastra-selftest-befunde-*) rm -rf -- "$stale" ;; esac
+    done < <(
+        find /tmp -maxdepth 1 -type d -name 'fastra-selftest-befunde-*' \
+            -exec stat -f '%m %N' {} + 2>/dev/null \
+            | sort -rn | sed -n '6,$s/^[0-9][0-9]* //p'
+    )
+}
+
+SELFTEST_EVIDENCE_DIR=""
+preserve_selftest_error() {
+    local source="$1"
+    local test_name="$2"
+    if [ -z "$SELFTEST_EVIDENCE_DIR" ]; then
+        SELFTEST_EVIDENCE_DIR=$(mktemp -d \
+            "/tmp/fastra-selftest-befunde-$(date +%Y%m%d-%H%M%S).XXXXXX") || return 1
+    fi
+    if ! cp -- "$source" "$SELFTEST_EVIDENCE_DIR/$test_name.stderr"; then
+        echo "  Diagnose konnte nicht kopiert werden; letzte Ausgabe:" >&2
+        tail -20 "$source" 2>/dev/null | sed 's/^/    /' >&2
+        return 1
+    fi
+    prune_selftest_evidence
+    echo "  Diagnose: $SELFTEST_EVIDENCE_DIR/$test_name.stderr"
+}
+
+preserve_selftest_pasteboard_recovery() {
+    local backup="${SELFTEST_PASTEBOARD_DIR:-}/pasteboard-backup.plist"
+    [ -f "$backup" ] || return 0
+    if [ -z "$SELFTEST_EVIDENCE_DIR" ]; then
+        SELFTEST_EVIDENCE_DIR=$(mktemp -d \
+            "/tmp/fastra-selftest-befunde-$(date +%Y%m%d-%H%M%S).XXXXXX") || return 1
+    fi
+    cp -- "$backup" "$SELFTEST_EVIDENCE_DIR/pasteboard-backup.plist" || return 1
+    if [ -f "$FASTRA_TEST_TMPDIR/pasteboard-restore.out" ]; then
+        cp -- "$FASTRA_TEST_TMPDIR/pasteboard-restore.out" \
+            "$SELFTEST_EVIDENCE_DIR/pasteboard-restore.out" || return 1
+    fi
+    prune_selftest_evidence
+    echo "  Zwischenablage-Sicherung: $SELFTEST_EVIDENCE_DIR" >&2
+}
+
 # Aufräumen auch bei Abbruch. Ohne Trap blieben nach einem Strg-C mitten in
 # einem Test die per LaunchServices gestarteten Testprozesse mit sichtbaren
 # Fenstern und die Kaltstart-Fixture liegen — der nächste Lauf traf dann auf
@@ -396,12 +665,58 @@ cleanup_coldopen_fixture() {
 # selbst mit demselben Signal (der Aufrufer sieht also 128 + Signalnummer).
 cleanup_on_exit() {
     local original_status=$?
+    local sandbox_status=0
+    local keep_sandbox=0
     trap - EXIT INT TERM
-    kill_leftovers || true
+    local process_cleanup_failed=0
+    if ! kill_leftovers; then
+        SELFTEST_CLEANUP_FAILED=1
+        process_cleanup_failed=1
+        keep_sandbox=1
+    else
+        SELFTEST_PROCESS_CLEANUP_BLOCKED=0
+    fi
+    if [ "$process_cleanup_failed" -eq 0 ]; then
+        if ! restore_selftest_pasteboard; then
+            SELFTEST_CLEANUP_FAILED=1
+            preserve_selftest_pasteboard_recovery || keep_sandbox=1
+        fi
+        if [ "${SELFTEST_PROCESS_CLEANUP_BLOCKED:-0}" -eq 1 ]; then
+            process_cleanup_failed=1
+            keep_sandbox=1
+        fi
+    fi
+    if [ "$process_cleanup_failed" -eq 0 ]; then
+        purge_fastra_registered_test_defaults \
+            "${FASTRA_TEST_DEFAULTS_REGISTRY:-}" || SELFTEST_CLEANUP_FAILED=1
+        if ! restore_product_defaults; then
+            SELFTEST_CLEANUP_FAILED=1
+            keep_sandbox=1
+        fi
+        if ! restore_product_saved_state; then
+            SELFTEST_CLEANUP_FAILED=1
+            keep_sandbox=1
+        fi
+    else
+        # Kein neuer App-Helfer und kein Preferences-Austausch, solange der
+        # alte Prozessbaum möglicherweise noch schreibt.
+        keep_sandbox=1
+    fi
     cleanup_coldopen_fixture
-    release_fastra_gui_test_lock
+    unregister_test_bundle_from_launch_services || SELFTEST_CLEANUP_FAILED=1
+    release_fastra_gui_test_lock || SELFTEST_CLEANUP_FAILED=1
     if [[ -n "${PERFORMANCE_SAMPLES_FILE:-}" ]]; then
         rm -f -- "$PERFORMANCE_SAMPLES_FILE"
+    fi
+    if [ "$keep_sandbox" -eq 0 ]; then
+        release_fastra_test_sandbox || sandbox_status=$?
+    else
+        echo "  Private Test-Sandbox zur manuellen Wiederherstellung behalten: $FASTRA_TEST_SANDBOX" >&2
+        sandbox_status=2
+    fi
+    if [[ "$sandbox_status" -ne 0 || "${SELFTEST_CLEANUP_FAILED:-0}" -ne 0 ]]; then
+        echo "✗ Selbsttest-Aufräumen konnte nicht vollständig abgeschlossen werden." >&2
+        [ "$original_status" -ne 0 ] || exit 2
     fi
     exit "$original_status"
 }
@@ -409,11 +724,56 @@ cleanup_on_exit() {
 cleanup_on_signal() {
     local signal="$1"
     trap - EXIT INT TERM
-    kill_leftovers || true
+    local keep_sandbox=0
+    local cleanup_failed=0
+    local process_cleanup_failed=0
+    # LaunchServices kann nach `open` mehrere Sekunden bis zur sichtbaren PID
+    # brauchen. Der Signalpfad wartet bounded bis zu derselben 8-s-Frist wie
+    # die Aktivierung, damit keine spät gestartete Test-App entkommt.
+    if ! kill_leftovers 80; then
+        cleanup_failed=1
+        process_cleanup_failed=1
+        keep_sandbox=1
+    else
+        SELFTEST_PROCESS_CLEANUP_BLOCKED=0
+    fi
+    if [ "$process_cleanup_failed" -eq 0 ]; then
+        if ! restore_selftest_pasteboard; then
+            preserve_selftest_pasteboard_recovery || keep_sandbox=1
+            cleanup_failed=1
+        fi
+        if [ "${SELFTEST_PROCESS_CLEANUP_BLOCKED:-0}" -eq 1 ]; then
+            process_cleanup_failed=1
+            keep_sandbox=1
+        fi
+    fi
+    if [ "$process_cleanup_failed" -eq 0 ]; then
+        purge_fastra_registered_test_defaults \
+            "${FASTRA_TEST_DEFAULTS_REGISTRY:-}" || cleanup_failed=1
+        if ! restore_product_defaults; then
+            keep_sandbox=1
+            cleanup_failed=1
+        fi
+        if ! restore_product_saved_state; then
+            keep_sandbox=1
+            cleanup_failed=1
+        fi
+    else
+        keep_sandbox=1
+    fi
     cleanup_coldopen_fixture
-    release_fastra_gui_test_lock
+    unregister_test_bundle_from_launch_services || cleanup_failed=1
+    release_fastra_gui_test_lock || cleanup_failed=1
     if [[ -n "${PERFORMANCE_SAMPLES_FILE:-}" ]]; then
         rm -f -- "$PERFORMANCE_SAMPLES_FILE"
+    fi
+    if [ "$keep_sandbox" -eq 0 ]; then
+        release_fastra_test_sandbox || cleanup_failed=1
+    else
+        echo "  Private Test-Sandbox zur manuellen Wiederherstellung behalten: $FASTRA_TEST_SANDBOX" >&2
+    fi
+    if [ "$cleanup_failed" -ne 0 ]; then
+        echo "✗ Selbsttest-Aufräumen blieb beim Signal unvollständig." >&2
     fi
     trap - "$signal"
     kill -"$signal" $$
@@ -426,6 +786,17 @@ trap 'cleanup_on_signal TERM' TERM
 if [[ $NEEDS_GUI_LOCK -eq 1 ]]; then
     acquire_fastra_gui_test_lock || exit 2
 fi
+create_fastra_test_sandbox selftest-run || exit 2
+snapshot_product_defaults || exit 2
+snapshot_product_saved_state || exit 2
+SELFTEST_PASTEBOARD_DIR="$FASTRA_TEST_SANDBOX/selftest-pasteboard"
+mkdir -p "$SELFTEST_PASTEBOARD_DIR" || exit 2
+SELFTEST_DEFAULTS_SUITE="Fastra-$(/usr/bin/uuidgen)"
+FASTRA_TEST_DEFAULTS_REGISTRY="$FASTRA_TEST_SANDBOX/defaults-registry.txt"
+: > "$FASTRA_TEST_DEFAULTS_REGISTRY" || exit 2
+SELFTEST_CLEANUP_FAILED=0
+SELFTEST_PROCESS_CLEANUP_BLOCKED=0
+prune_selftest_evidence
 
 # ── Testlauf ─────────────────────────────────────────────────────────────
 
@@ -434,7 +805,7 @@ real_fail_count=0
 env_fail_count=0
 skip_count=0
 summary=""
-PERFORMANCE_SAMPLES_FILE="$(mktemp /tmp/fastra-selftest-performance.XXXXXX)"
+PERFORMANCE_SAMPLES_FILE="$(mktemp "$FASTRA_TEST_TMPDIR/performance.XXXXXX")"
 RUN_HEAD_START="$(git -C .. rev-parse HEAD 2>/dev/null || true)"
 RUN_BINARY_SHA_START="$(shasum -a 256 "$APP_BIN_ABSOLUTE" | awk '{print $1}')"
 RUN_DIRTY_START="$(git -C .. status --porcelain 2>/dev/null || true)"
@@ -467,6 +838,9 @@ if [[ ${#SKIPPED_TESTS[@]} -gt 0 ]]; then
 fi
 
 for t in "${TESTS[@]}"; do
+    CURRENT_TEST_NAME="$t"
+    safe_test_name=$(printf '%s' "$t" | tr -c 'A-Za-z0-9._-' '_')
+    [ -n "$safe_test_name" ] || safe_test_name="unknown"
     iteration_started="$(now_milliseconds)"
     if ! kill_leftovers; then
         echo "SELFTEST $t: Umgebungsproblem — vorheriger Testprozess läuft weiter"
@@ -474,28 +848,46 @@ for t in "${TESTS[@]}"; do
         env_fail_count=$((env_fail_count + 1))
         break
     fi
+    if ! restore_selftest_pasteboard; then
+        echo "SELFTEST $t: Umgebungsproblem — Zwischenablage konnte nicht zurückgegeben werden"
+        summary+="⚠ $t (Zwischenablage-Aufräumen fehlgeschlagen)\n"
+        env_fail_count=$((env_fail_count + 1))
+        SELFTEST_CLEANUP_FAILED=1
+        break
+    fi
     cleanup_finished="$(now_milliseconds)"
-    errfile="$(mktemp /tmp/fastra-selftest-${t}.XXXXXX)"
+    errfile="$(mktemp "$FASTRA_TEST_TMPDIR/$safe_test_name.stderr.XXXXXX")"
 
     launch_started="$(now_milliseconds)"
     launch_mode="direct"
+    CURRENT_LAUNCH_MODE="direct"
     if [[ "$t" == "coldopen" || "$t" == "coldopenoff" ]]; then
         launch_mode="launchservices"
+        CURRENT_LAUNCH_MODE="launchservices"
         # Reale Kaltstart-Zustellung: LaunchServices öffnet eine existierende
         # Datei mit genau dem frisch gebauten Bundle. Der Testprozess legt
         # parallel vor seinem ersten Workspace eine abweichende alte Sitzung an.
-        coldopen_fixture_dir="$(mktemp -d /tmp/fastra-selftest-coldopen.XXXXXX)"
+        coldopen_fixture_dir="$(mktemp -d "$FASTRA_TEST_TMPDIR/coldopen.XXXXXX")"
         coldopen_fixture_file="$coldopen_fixture_dir/README.de.md"
         printf 'Explizit per LaunchServices geöffnet\n' > "$coldopen_fixture_file"
+        LAUNCH_SERVICES_USED=1
         open -g -n -a "$APP_BUNDLE_FOR_OPEN" \
             --stdout /dev/null --stderr "$errfile" \
             --env "FASTRA_SELFTEST=$t" \
             --env "FASTRA_COLDOPEN_FILE=$coldopen_fixture_file" \
+            --env "TMPDIR=$FASTRA_TEST_TMPDIR/" \
+            --env "CFFIXED_USER_HOME=$FASTRA_TEST_CF_HOME" \
+            --env "CFPREFERENCES_AVOID_DAEMON=1" \
+            --env "HOME=$FASTRA_TEST_CF_HOME" \
+            --env "FASTRA_SELFTEST_DEFAULTS_SUITE=$SELFTEST_DEFAULTS_SUITE" \
+            --env "FASTRA_TEST_DEFAULTS_REGISTRY=$FASTRA_TEST_DEFAULTS_REGISTRY" \
+            --env "FASTRA_SELFTEST_PASTEBOARD_DIR=$SELFTEST_PASTEBOARD_DIR" \
             "$coldopen_fixture_file" \
             --args -ApplePersistenceIgnoreState YES
         remember_bundle_pids
     elif [[ "$t" == "cmdw" || "$t" == "newwindow" || "$t" == "welcomenew" || "$t" == "completion4d" || "$t" == "projectinput" || "$t" == "help" ]]; then
         launch_mode="launchservices"
+        CURRENT_LAUNCH_MODE="launchservices"
         # Diese Tests prüfen echte Tastatur- oder Mausbedienung (bei
         # `completion4d` ⌃Leertaste, Pfeil und Klick; bei `projectinput`
         # die Eingabe ins native Filterfeld) und brauchen daher
@@ -503,24 +895,42 @@ for t in "${TESTS[@]}"; do
         # gemeinsame Aufräumpfad `kill_leftovers` beendet die Test-App nach
         # Ergebnis UND Timeout sofort, damit kein Fenster sichtbar bleibt.
         # starten (LaunchServices) und von außen aktivieren.
+        LAUNCH_SERVICES_USED=1
         open -n "$APP_BUNDLE_FOR_OPEN" --stdout /dev/null --stderr "$errfile" \
+            --env "TMPDIR=$FASTRA_TEST_TMPDIR/" \
+            --env "CFFIXED_USER_HOME=$FASTRA_TEST_CF_HOME" \
+            --env "CFPREFERENCES_AVOID_DAEMON=1" \
+            --env "HOME=$FASTRA_TEST_CF_HOME" \
+            --env "FASTRA_SELFTEST_DEFAULTS_SUITE=$SELFTEST_DEFAULTS_SUITE" \
+            --env "FASTRA_TEST_DEFAULTS_REGISTRY=$FASTRA_TEST_DEFAULTS_REGISTRY" \
+            --env "FASTRA_SELFTEST_PASTEBOARD_DIR=$SELFTEST_PASTEBOARD_DIR" \
             --args -selftest "$t" -ApplePersistenceIgnoreState YES
         remember_bundle_pids
         activate_app
         remember_bundle_pids
     else
         # Alle anderen Tests laufen ohne echten Fokus → Binary direkt.
-        "$APP_BIN_ABSOLUTE" -selftest "$t" -ApplePersistenceIgnoreState YES \
-            >/dev/null 2>"$errfile" &
-        track_started_pid "$!"
+        if ! TMPDIR="$FASTRA_TEST_TMPDIR/" \
+        CFFIXED_USER_HOME="$FASTRA_TEST_CF_HOME" \
+        CFPREFERENCES_AVOID_DAEMON=1 \
+        HOME="$FASTRA_TEST_CF_HOME" \
+        FASTRA_SELFTEST_DEFAULTS_SUITE="$SELFTEST_DEFAULTS_SUITE" \
+        FASTRA_TEST_DEFAULTS_REGISTRY="$FASTRA_TEST_DEFAULTS_REGISTRY" \
+        FASTRA_SELFTEST_PASTEBOARD_DIR="$SELFTEST_PASTEBOARD_DIR" \
+        fastra_test_start_new_session "$APP_BIN_ABSOLUTE" \
+            -selftest "$t" -ApplePersistenceIgnoreState YES \
+            >/dev/null 2>"$errfile"; then
+            echo "SELFTEST $t: Umgebungsproblem — Testprozess ließ sich nicht sicher starten"
+            summary+="⚠ $t (Start fehlgeschlagen)\n"
+            env_fail_count=$((env_fail_count + 1))
+            break
+        fi
+        track_started_pid "$FASTRA_TEST_STARTED_PID"
     fi
 
     if ! wait_for_result "$errfile"; then
         result_finished="$(now_milliseconds)"
         echo "SELFTEST $t: FAIL — keine Ergebnis-Zeile binnen ${TIMEOUT_SECS}s (Runner-Timeout)"
-        # Beim Timeout bleibt die stderr-Datei zur Diagnose liegen —
-        # der Pfad wird dafür sichtbar genannt.
-        echo "  stderr: $errfile"
         summary+="✗ $t (Timeout)\n"
         real_fail_count=$((real_fail_count + 1))
         cleanup_ms=$((cleanup_finished - iteration_started))
@@ -530,9 +940,19 @@ for t in "${TESTS[@]}"; do
             "$t" "TIMEOUT" "-1" "$launch_ms" "$total_ms" "$cleanup_ms" \
             "$launch_mode" >> "$PERFORMANCE_SAMPLES_FILE"
         echo "PERFORMANCE $t cleanup_ms=$cleanup_ms launch_to_result_ms=$launch_ms app_ms=-1 total_ms=$total_ms"
-        if ! kill_leftovers; then
+        if ! kill_leftovers 80; then
             summary+="⚠ Runner-Aufräumen nach $t fehlgeschlagen\n"
             env_fail_count=$((env_fail_count + 1))
+            break
+        fi
+        # Erst nach TERM/KILL und wait kopieren: Kindprozesse dürfen ihre
+        # letzte Diagnose beim Beenden noch vollständig flushen.
+        preserve_selftest_error "$errfile" "$safe_test_name" \
+            || SELFTEST_CLEANUP_FAILED=1
+        if ! restore_selftest_pasteboard; then
+            summary+="⚠ Zwischenablage-Aufräumen nach $t fehlgeschlagen\n"
+            env_fail_count=$((env_fail_count + 1))
+            SELFTEST_CLEANUP_FAILED=1
             break
         fi
         cleanup_coldopen_fixture
@@ -559,8 +979,8 @@ for t in "${TESTS[@]}"; do
     else
         real_fail_count=$((real_fail_count + 1))
         summary+="✗ $t\n"
-        # Bei echten FAILs bleibt die stderr-Datei zur Diagnose liegen.
-        echo "  stderr: $errfile"
+        preserve_selftest_error "$errfile" "$safe_test_name" \
+            || SELFTEST_CLEANUP_FAILED=1
     fi
     if [[ "$line" == *": PASS"* ]]; then
         performance_status="PASS"

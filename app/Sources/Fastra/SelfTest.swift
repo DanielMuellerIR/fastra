@@ -336,7 +336,9 @@ enum SelfTest {
     static func workspaceDefaults() -> UserDefaults {
         guard isSelfTestRun else { return .standard }
         if let cachedWorkspaceDefaults { return cachedWorkspaceDefaults }
-        let suiteName = "io.github.fastra.selftest"
+        let suiteName = ProcessInfo.processInfo.environment[
+            "FASTRA_SELFTEST_DEFAULTS_SUITE"
+        ] ?? "Fastra-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         // Normalerweise startet jeder Selbsttest auf einem leeren Stand.
         // Der Dauertest ist die Ausnahme: Er läuft über mehrere App-Starts,
@@ -347,6 +349,14 @@ enum SelfTest {
         let soakPhase = UserDefaults.standard.integer(forKey: "soakPhase")
         if soakPhase <= 1 {
             defaults.removePersistentDomain(forName: suiteName)
+        }
+        // Normale Selbsttests räumen ihre vom Runner benannte Suite beim
+        // Prozessende sofort ab. Die drei Soak-Prozesse teilen den Zustand
+        // dagegen absichtlich; dort übernimmt der Runner nach Phase 3.
+        if !(requestedTest?.hasPrefix("soak") ?? false) {
+            guard TestDefaultsPurge.register(suiteName) else {
+                finish(false, "Test-Einstellungen konnten nicht sicher registriert werden")
+            }
         }
         cachedWorkspaceDefaults = defaults
         return defaults
@@ -428,6 +438,9 @@ enum SelfTest {
         case "soak": waitForMainWindow { MainActor.assumeIsolated { runSoakTest() } }
         case "soakpasteboardrestore": DispatchQueue.main.async {
             MainActor.assumeIsolated { runSoakPasteboardRestore() }
+        }
+        case "soakdefaultspurge": DispatchQueue.main.async {
+            runSoakDefaultsPurge()
         }
         case "dirtyundo": waitForMainWindow { runDirtyUndoTest() }
         case "emojisplit": waitForMainWindow { runEmojiSplitTest() }
@@ -1836,6 +1849,18 @@ enum SelfTest {
     private static var testStartedNanoseconds = DispatchTime.now().uptimeNanoseconds
 
     private static func finish(_ ok: Bool, _ msg: String) -> Never {
+        var finalOK = ok
+        var finalMessage = msg
+        switch finishSelfTestPasteboardMutation() {
+        case .none, .restored:
+            break
+        case .keptNewerContent:
+            finalMessage += " (Zwischenablage inzwischen anderweitig beschrieben — "
+                + "neuerer Inhalt behalten)"
+        case .failed(let error):
+            finalOK = false
+            finalMessage += " — Zwischenablage nicht zurückgegeben (\(error))"
+        }
         if let windowRoutingFixtureDirectory {
             try? FileManager.default.removeItem(at: windowRoutingFixtureDirectory)
             self.windowRoutingFixtureDirectory = nil
@@ -1843,9 +1868,9 @@ enum SelfTest {
         let elapsed = DispatchTime.now().uptimeNanoseconds - testStartedNanoseconds
         let appMilliseconds = elapsed / 1_000_000
         let output = "SELFTEST-METRIC test=\(testLabel) app_ms=\(appMilliseconds)\n"
-            + "SELFTEST \(testLabel): \(ok ? "PASS" : "FAIL") — \(msg)\n"
+            + "SELFTEST \(testLabel): \(finalOK ? "PASS" : "FAIL") — \(finalMessage)\n"
         FileHandle.standardError.write(Data(output.utf8))
-        exit(ok ? 0 : 1)
+        exit(finalOK ? 0 : 1)
     }
 
     /// CMD+W bei vorderer Suchmaske → Maske schließt sich.
@@ -3329,7 +3354,12 @@ enum SelfTest {
         ws.loadFile(at: tmp) { ok in
             try? FileManager.default.removeItem(at: tmp)
             guard ok else { finish(false, "Text-Fixture nicht ladbar") }
-            pollForSoftWrapEditor(root: root, tick: 0) { textView, _ in
+            // `loadFile` meldet den Inhalt, bevor der isLoading-Flip seinen
+            // planmäßigen Editor-Neuaufbau sicher beendet hat. Eine nur kurz
+            // gefundene TextView kann deshalb später vom Fenster getrennt
+            // sein und ihre Zielzeile niemals auslegen. Derselbe stabile
+            // Editor-Wächter schützt bereits `softwrapmodes`.
+            pollForStableSoftWrapEditor(ws: ws, root: root, tick: 0) { textView, _ in
                 ws.setSoftWrapFixedColumn(40)
                 pollSoftWrapState(
                     ws: ws, root: root, expectedFormat: .plainText,
@@ -7016,18 +7046,54 @@ enum SelfTest {
     private typealias StoredPasteboardItems = [[String: Data]]
 
     /// Liest alle Items der allgemeinen Zwischenablage itemgetreu aus.
-    private static func capturePasteboardItems() -> StoredPasteboardItems {
-        (NSPasteboard.general.pasteboardItems ?? []).map { item in
-            Dictionary(uniqueKeysWithValues: item.types.compactMap { type in
-                item.data(forType: type).map { (type.rawValue, $0) }
-            })
+    private static func capturePasteboardItems() throws -> StoredPasteboardItems {
+        try (NSPasteboard.general.pasteboardItems ?? []).map { item in
+            var stored: [String: Data] = [:]
+            for type in item.types {
+                guard let data = item.data(forType: type) else {
+                    throw NSError(
+                        domain: "FastraSelfTestPasteboard", code: 4,
+                        userInfo: [NSLocalizedDescriptionKey:
+                            "Zwischenablage-Typ \(type.rawValue) ließ sich nicht vollständig sichern"]
+                    )
+                }
+                stored[type.rawValue] = data
+            }
+            return stored
         }
+    }
+
+    /// Erwartungswert für Copy-/Cut-Pfade, die genau ein Plain-Text-Item
+    /// schreiben sollen. Nicht nur der sichtbare String zählt: Ein fremdes
+    /// HTML-/RTF-Item mit demselben Text darf nie als test-eigener Inhalt
+    /// bestätigt und beim Aufräumen überschrieben werden.
+    private static func plainTextPasteboardItems(
+        _ string: String
+    ) throws -> StoredPasteboardItems {
+        let item = NSPasteboardItem()
+        guard item.setString(string, forType: .string) else {
+            throw NSError(domain: "FastraSelfTestPasteboard", code: 12,
+                          userInfo: [NSLocalizedDescriptionKey:
+                            "erwarteter Plain-Text ließ sich nicht vorbereiten"])
+        }
+        var stored: [String: Data] = [:]
+        for type in item.types {
+            guard let data = item.data(forType: type) else {
+                throw NSError(domain: "FastraSelfTestPasteboard", code: 13,
+                              userInfo: [NSLocalizedDescriptionKey:
+                                "erwarteter Plain-Text-Typ ließ sich nicht lesen"])
+            }
+            stored[type.rawValue] = data
+        }
+        return [stored]
     }
 
     /// Schreibt eine Sicherung itemgetreu zurück. Nimmt AppKit einen Typ oder
     /// die Items nicht an, wirft der Aufruf: Ein stilles Verschlucken würde
     /// genau den Verlust verstecken, gegen den gesichert wurde.
-    private static func writePasteboardItems(_ stored: StoredPasteboardItems) throws {
+    private static func preparedPasteboardItems(
+        _ stored: StoredPasteboardItems
+    ) throws -> [NSPasteboardItem] {
         var items: [NSPasteboardItem] = []
         for storedItem in stored {
             let item = NSPasteboardItem()
@@ -7041,7 +7107,12 @@ enum SelfTest {
             }
             items.append(item)
         }
+        return items
+    }
 
+    private static func writePreparedPasteboardItems(
+        _ items: [NSPasteboardItem]
+    ) throws {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         if !items.isEmpty, !pasteboard.writeObjects(items) {
@@ -7049,6 +7120,10 @@ enum SelfTest {
                           userInfo: [NSLocalizedDescriptionKey:
                             "gesicherte Pasteboard-Items wurden nicht angenommen"])
         }
+    }
+
+    private static func writePasteboardItems(_ stored: StoredPasteboardItems) throws {
+        try writePreparedPasteboardItems(preparedPasteboardItems(stored))
     }
 
     /// Besitznachweis über `NSPasteboard.changeCount`. Der Zähler steigt
@@ -7064,6 +7139,201 @@ enum SelfTest {
         NSPasteboard.general.changeCount == ownedChangeCount
     }
 
+    /// Kurze Selbsttests mit Copy/Paste sichern die Nutzer-Zwischenablage im
+    /// Speicher. VOR jeder test-eigenen Änderung werden der erwartete nächste
+    /// Zählerstand und der Zustand „noch unbestätigt“ atomar persistiert. Erst
+    /// die Nachkontrolle bestätigt den Testbesitz. Ein Absturz dazwischen
+    /// bewahrt die private Sicherung, schreibt sie aber nicht automatisch über
+    /// einen möglicherweise inzwischen kopierten Nutzerinhalt.
+    private static var selfTestPasteboardBackup: SoakPasteboardBackup?
+
+    /// Der Runner gibt einen Pfad IN seiner Wegwerf-Sandbox vor. Die Datei
+    /// überlebt einen Absturz des App-Prozesses, sodass der Runner die
+    /// Zwischenablage anschließend zurückgeben kann. Ein direkter Aufruf ohne
+    /// Runner bleibt im Speicher abgesichert und erzeugt keine lose Datei.
+    private static var selfTestPasteboardBackupURL: URL? {
+        guard let directory = ProcessInfo.processInfo.environment[
+            "FASTRA_SELFTEST_PASTEBOARD_DIR"
+        ], !directory.isEmpty else { return nil }
+        return URL(fileURLWithPath: directory, isDirectory: true)
+            .appendingPathComponent("pasteboard-backup.plist")
+    }
+
+    private static func persistSelfTestPasteboardBackup(
+        _ backup: SoakPasteboardBackup
+    ) throws {
+        guard let url = selfTestPasteboardBackupURL else { return }
+        let plist: [String: Any] = [
+            soakPasteboardItemsKey: backup.items,
+            soakPasteboardOwnedKey: backup.ownedChangeCount,
+            soakPasteboardConfirmedKey: backup.mutationConfirmed,
+        ]
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: plist, format: .binary, options: 0
+        )
+        try data.write(to: url, options: .atomic)
+    }
+
+    /// Muss unmittelbar VOR jeder eigenen Änderung aufgerufen werden. Hat der
+    /// Nutzer seit der vorigen Teständerung selbst kopiert, endet der Test als
+    /// Umgebungsfehler, statt den neueren Inhalt nochmals zu überschreiben.
+    private static func prepareSelfTestPasteboardMutation() throws {
+        var backup: SoakPasteboardBackup
+        if let existing = selfTestPasteboardBackup {
+            guard pasteboardIsStillOwned(since: existing.ownedChangeCount) else {
+                throw NSError(
+                    domain: "FastraSelfTestPasteboard", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey:
+                        "Umgebungsproblem: Zwischenablage wurde während des Tests benutzt"]
+                )
+            }
+            backup = existing
+        } else {
+            backup = SoakPasteboardBackup(
+                items: try capturePasteboardItems(),
+                ownedChangeCount: NSPasteboard.general.changeCount,
+                mutationConfirmed: true
+            )
+        }
+        backup.ownedChangeCount &+= 1
+        backup.mutationConfirmed = false
+        // Das Journal MUSS vor der Änderung auf Platte stehen. Danach darf
+        // auch SIGKILL die Rückgabe nicht mehr vom alten Zähler abkoppeln.
+        try persistSelfTestPasteboardBackup(backup)
+        selfTestPasteboardBackup = backup
+    }
+
+    private static func noteSelfTestPasteboardMutation(
+        expectedItems: StoredPasteboardItems
+    ) throws {
+        guard var backup = selfTestPasteboardBackup else { return }
+        let actual = NSPasteboard.general.changeCount
+        guard actual == backup.ownedChangeCount else {
+            throw NSError(
+                domain: "FastraSelfTestPasteboard", code: 5,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Umgebungsproblem: Zwischenablage änderte sich nicht genau einmal "
+                    + "(erwartet \(backup.ownedChangeCount), erhalten \(actual))"]
+            )
+        }
+        guard try capturePasteboardItems() == expectedItems else {
+            throw NSError(
+                domain: "FastraSelfTestPasteboard", code: 9,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Zwischenablage-Zähler passte, der Inhalt stammt aber nicht vom Test"]
+            )
+        }
+        backup.mutationConfirmed = true
+        try persistSelfTestPasteboardBackup(backup)
+        selfTestPasteboardBackup = backup
+    }
+
+    /// Ersetzt die allgemeine Zwischenablage mit genau EINER AppKit-
+    /// Schreiboperation. `clearContents` plus `setString` wären zwei getrennte
+    /// globale Änderungen und ließen dazwischen ein Crash-/Fremdkopie-Fenster.
+    private static func writeSelfTestPasteboardItem(_ item: NSPasteboardItem) {
+        var expectedItem: [String: Data] = [:]
+        for type in item.types {
+            guard let data = item.data(forType: type) else {
+                finish(false, "Testinhalt ließ sich nicht vollständig vorbereiten")
+            }
+            expectedItem[type.rawValue] = data
+        }
+        prepareSelfTestPasteboardMutationOrFinish()
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        for type in item.types {
+            guard let data = item.data(forType: type),
+                  pasteboard.setData(data, forType: type) else {
+                finish(false, "Testinhalt wurde von der Zwischenablage nicht angenommen")
+            }
+        }
+        noteSelfTestPasteboardMutationOrFinish(expectedItems: [expectedItem])
+    }
+
+    private static func writeSelfTestPasteboardString(_ string: String) {
+        let item = NSPasteboardItem()
+        guard item.setString(string, forType: .string) else {
+            finish(false, "Testtext ließ sich für die Zwischenablage nicht vorbereiten")
+        }
+        writeSelfTestPasteboardItem(item)
+    }
+
+    private static func writeSelfTestPasteboardData(
+        _ data: Data, type: NSPasteboard.PasteboardType
+    ) {
+        let item = NSPasteboardItem()
+        guard item.setData(data, forType: type) else {
+            finish(false, "Testdaten ließen sich für die Zwischenablage nicht vorbereiten")
+        }
+        writeSelfTestPasteboardItem(item)
+    }
+
+    private static func prepareSelfTestPasteboardMutationOrFinish() {
+        do { try prepareSelfTestPasteboardMutation() }
+        catch { finish(false, error.localizedDescription) }
+    }
+
+    private static func noteSelfTestPasteboardMutationOrFinish(
+        expectedItems: StoredPasteboardItems
+    ) {
+        do {
+            try noteSelfTestPasteboardMutation(expectedItems: expectedItems)
+        }
+        catch {
+            finish(false, "Zwischenablage-Sicherung konnte nicht fortgeschrieben werden: "
+                   + error.localizedDescription)
+        }
+    }
+
+    private enum SelfTestPasteboardCleanup {
+        case none
+        case restored
+        case keptNewerContent
+        case failed(String)
+    }
+
+    private static func finishSelfTestPasteboardMutation() -> SelfTestPasteboardCleanup {
+        guard var backup = selfTestPasteboardBackup else { return .none }
+        guard backup.mutationConfirmed else {
+            return .failed("vorbereitete Zwischenablage-Änderung wurde nicht bestätigt; "
+                           + "Sicherung bleibt zur manuellen Rettung erhalten")
+        }
+        guard pasteboardIsStillOwned(since: backup.ownedChangeCount) else {
+            selfTestPasteboardBackup = nil
+            if let url = selfTestPasteboardBackupURL {
+                try? FileManager.default.removeItem(at: url)
+            }
+            return .keptNewerContent
+        }
+        do {
+            let items = try preparedPasteboardItems(backup.items)
+            // Auch die RÜCKGABE ist ein globaler Schreibvorgang. Den nächsten
+            // Zähler vorab journalisieren, damit ein fehlgeschlagener
+            // `writeObjects`-Versuch die einzige Plattensicherung nicht für
+            // jeden späteren Rettungsversuch unbrauchbar macht.
+            backup.ownedChangeCount &+= 1
+            backup.mutationConfirmed = false
+            try persistSelfTestPasteboardBackup(backup)
+            selfTestPasteboardBackup = backup
+            try writePreparedPasteboardItems(items)
+            guard NSPasteboard.general.changeCount == backup.ownedChangeCount else {
+                throw NSError(domain: "FastraSelfTestPasteboard", code: 6,
+                              userInfo: [NSLocalizedDescriptionKey:
+                                "Zwischenablage-Rückgabe änderte den Zähler unerwartet"])
+            }
+            backup.mutationConfirmed = true
+            try persistSelfTestPasteboardBackup(backup)
+            selfTestPasteboardBackup = nil
+            if let url = selfTestPasteboardBackupURL {
+                try? FileManager.default.removeItem(at: url)
+            }
+            return .restored
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
     /// Der Dauertest kopiert selbst in die Zwischenablage. Fremder Inhalt wird
     /// deshalb itemgetreu gesichert: Jedes Item behält seine eigene Kombination
     /// aus Typen und Daten. Die Datei lässt auch den Runner nach einem Absturz
@@ -7075,10 +7345,18 @@ enum SelfTest {
     private struct SoakPasteboardBackup {
         var items: StoredPasteboardItems
         var ownedChangeCount: Int
+        /// `false` heißt: Der erwartete Zähler wurde VOR einer Änderung
+        /// journalisiert, die App konnte ihren Abschluss aber noch nicht
+        /// bestätigen. Dieser Zustand darf nach einem Crash nie automatisch
+        /// zurückgeschrieben werden: Genau eine Nutzerkopie könnte denselben
+        /// Zählerschritt erzeugt haben.
+        var mutationConfirmed: Bool
     }
     private static var soakPasteboardBackup: SoakPasteboardBackup?
+    private static var soakPasteboardBackupFileURL: URL?
     private static let soakPasteboardItemsKey = "items"
     private static let soakPasteboardOwnedKey = "ownedChangeCount"
+    private static let soakPasteboardConfirmedKey = "mutationConfirmed"
 
     /// Ablageort der Sicherung. Protokoll und Sicherung liegen im selben
     /// Arbeitsverzeichnis, das der Runner anlegt.
@@ -7091,8 +7369,10 @@ enum SelfTest {
     private static func backupSoakPasteboard(to backupURL: URL) throws {
         // Vor der ersten eigenen Änderung ist der aktuelle Zählerstand der
         // eigene Bezugspunkt: Solange er gilt, hat niemand anders geschrieben.
-        let backup = SoakPasteboardBackup(items: capturePasteboardItems(),
-                                          ownedChangeCount: NSPasteboard.general.changeCount)
+        let backup = SoakPasteboardBackup(items: try capturePasteboardItems(),
+                                          ownedChangeCount: NSPasteboard.general.changeCount,
+                                          mutationConfirmed: true)
+        soakPasteboardBackupFileURL = backupURL
         try writeSoakPasteboardBackup(backup, to: backupURL)
     }
 
@@ -7102,6 +7382,7 @@ enum SelfTest {
         let plist: [String: Any] = [
             soakPasteboardItemsKey: backup.items,
             soakPasteboardOwnedKey: backup.ownedChangeCount,
+            soakPasteboardConfirmedKey: backup.mutationConfirmed,
         ]
         let data = try PropertyListSerialization.data(
             fromPropertyList: plist, format: .binary, options: 0)
@@ -7109,24 +7390,62 @@ enum SelfTest {
         soakPasteboardBackup = backup
     }
 
-    /// Schreibt den Besitzstand ausschließlich nach einer nachweislich
-    /// erfolgreichen test-eigenen Kopie fort. Der übergebene Zähler stammt
-    /// unmittelbar aus `SoakTest.perform(.copy)`; hat danach schon jemand
-    /// anderes kopiert, bleibt die Sicherung bewusst auf dem älteren Stand.
+    /// Journaliert VOR dem echten ⌘C den exakt erwarteten nächsten Zähler als
+    /// unbestätigt. Erst die Nachkontrolle macht ihn wiederherstellbar. Bei
+    /// einem Absturz in der Lücke bleibt die Sicherung für eine manuelle
+    /// Rettung erhalten, ohne möglicherweise fremden Inhalt zu überschreiben.
+    @MainActor
+    static func prepareSoakPasteboardMutation() -> Bool {
+        guard var backup = soakPasteboardBackup else { return false }
+        guard NSPasteboard.general.changeCount == backup.ownedChangeCount,
+              backup.mutationConfirmed,
+              let backupURL = soakPasteboardBackupFileURL else { return false }
+        backup.ownedChangeCount &+= 1
+        backup.mutationConfirmed = false
+        do {
+            try writeSoakPasteboardBackup(backup, to: backupURL)
+            return true
+        }
+        catch {
+            SoakTest.record("Besitzstand der Zwischenablage wird vorbereitet",
+                            error.localizedDescription)
+            return false
+        }
+    }
+
     @MainActor
     private static func noteSoakPasteboardOwnership(
-        changeCount ownedChangeCount: Int, to backupURL: URL
+        changeCount: Int, expectedString: String
     ) {
-        guard var backup = soakPasteboardBackup else { return }
-        guard NSPasteboard.general.changeCount == ownedChangeCount,
-              backup.ownedChangeCount != ownedChangeCount else { return }
-        backup.ownedChangeCount = ownedChangeCount
-        // Scheitert das Fortschreiben, bleibt der ältere Stand in der Datei
-        // stehen: Der Wiederhersteller hält die Zwischenablage dann für fremd
-        // und fasst sie nicht an — die sichere Richtung.
-        do { try writeSoakPasteboardBackup(backup, to: backupURL) }
-        catch {
-            SoakTest.record("Besitzstand der Zwischenablage wird fortgeschrieben",
+        guard var backup = soakPasteboardBackup,
+              backup.ownedChangeCount == changeCount,
+              NSPasteboard.general.changeCount == changeCount else {
+            SoakTest.record(
+                "Besitzstand der Zwischenablage wird bestätigt",
+                "⌘C änderte den globalen Zähler nicht genau einmal"
+            )
+            return
+        }
+        guard let expectedItems = try? plainTextPasteboardItems(expectedString),
+              let actualItems = try? capturePasteboardItems(),
+              actualItems == expectedItems else {
+            SoakTest.record(
+                "Besitzstand der Zwischenablage wird bestätigt",
+                "Zähler passte, die vollständigen Clipboard-Items stammen aber "
+                + "nicht aus der Testauswahl"
+            )
+            return
+        }
+        guard let backupURL = soakPasteboardBackupFileURL else {
+            SoakTest.record("Besitzstand der Zwischenablage wird bestätigt",
+                            "Sicherungsdatei fehlt")
+            return
+        }
+        backup.mutationConfirmed = true
+        do {
+            try writeSoakPasteboardBackup(backup, to: backupURL)
+        } catch {
+            SoakTest.record("Besitzstand der Zwischenablage wird bestätigt",
                             error.localizedDescription)
         }
     }
@@ -7151,7 +7470,7 @@ enum SelfTest {
         from backupURL: URL
     ) throws -> SoakPasteboardRestoreOutcome {
         let fileManager = FileManager.default
-        let backup: SoakPasteboardBackup
+        var backup: SoakPasteboardBackup
         if let inMemory = soakPasteboardBackup {
             backup = inMemory
         } else {
@@ -7160,13 +7479,27 @@ enum SelfTest {
             guard let plist = try PropertyListSerialization.propertyList(
                 from: data, options: [], format: nil) as? [String: Any],
                   let items = plist[soakPasteboardItemsKey] as? StoredPasteboardItems,
-                  let owned = plist[soakPasteboardOwnedKey] as? Int else {
+                  let owned = plist[soakPasteboardOwnedKey] as? Int,
+                  let confirmed = plist[soakPasteboardConfirmedKey] as? Bool else {
                 throw NSError(domain: "FastraSoakPasteboard", code: 1,
                               userInfo: [NSLocalizedDescriptionKey:
                                 "Sicherungsdatei hat kein gültiges Format "
-                                + "(\(soakPasteboardItemsKey)/\(soakPasteboardOwnedKey))"])
+                                + "(\(soakPasteboardItemsKey)/\(soakPasteboardOwnedKey)/"
+                                + "\(soakPasteboardConfirmedKey))"])
             }
-            backup = SoakPasteboardBackup(items: items, ownedChangeCount: owned)
+            backup = SoakPasteboardBackup(items: items,
+                                          ownedChangeCount: owned,
+                                          mutationConfirmed: confirmed)
+        }
+
+        guard backup.mutationConfirmed else {
+            throw NSError(
+                domain: "FastraSoakPasteboard", code: 7,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "vorbereitete Zwischenablage-Änderung wurde vor dem Abbruch "
+                    + "nicht bestätigt; neuer Inhalt bleibt unangetastet und die "
+                    + "private Sicherung wird aufbewahrt"]
+            )
         }
 
         // Fremder, neuerer Inhalt bleibt stehen. Die Sicherung wird trotzdem
@@ -7180,7 +7513,22 @@ enum SelfTest {
             return .keptForeignContent
         }
 
-        try writePasteboardItems(backup.items)
+        let preparedItems = try preparedPasteboardItems(backup.items)
+        // `clearContents` erhöht den globalen Zähler genau einmal. Der
+        // erwartete Stand muss vor dem Restore auf Platte stehen: Scheitert
+        // danach `writeObjects`, kann derselbe oder ein frischer Prozess die
+        // Sicherung weiterhin eindeutig als eigenen Schreibversuch erkennen.
+        backup.ownedChangeCount &+= 1
+        backup.mutationConfirmed = false
+        try writeSoakPasteboardBackup(backup, to: backupURL)
+        try writePreparedPasteboardItems(preparedItems)
+        guard NSPasteboard.general.changeCount == backup.ownedChangeCount else {
+            throw NSError(domain: "FastraSoakPasteboard", code: 8,
+                          userInfo: [NSLocalizedDescriptionKey:
+                            "Zwischenablage-Rückgabe änderte den Zähler unerwartet"])
+        }
+        backup.mutationConfirmed = true
+        try writeSoakPasteboardBackup(backup, to: backupURL)
         soakPasteboardBackup = nil
         if fileManager.fileExists(atPath: backupURL.path) {
             try fileManager.removeItem(at: backupURL)
@@ -7213,6 +7561,26 @@ enum SelfTest {
             finish(false, "Zwischenablage nicht wiederherstellbar: "
                    + error.localizedDescription)
         }
+    }
+
+    /// Der Dauertest teilt eine zufällig benannte Suite über drei App-Starts.
+    /// Erst danach darf sie verschwinden. Der eigene Hilfsprozess macht das
+    /// über dieselbe cfprefsd-saubere Routine wie die Unit-Tests.
+    private static func runSoakDefaultsPurge() {
+        testLabel = "soakdefaultspurge"
+        guard let suiteName = ProcessInfo.processInfo.environment[
+            "FASTRA_SELFTEST_DEFAULTS_SUITE"
+        ], !suiteName.isEmpty else {
+            finish(false, "FASTRA_SELFTEST_DEFAULTS_SUITE fehlt")
+        }
+        guard TestDefaultsPurge.register(suiteName) else {
+            finish(false, "Test-Preferences-Suite ließ sich nicht beim Runner anmelden")
+        }
+        let remaining = TestDefaultsPurge.purgeRegistered(only: suiteName)
+        guard remaining.isEmpty else {
+            finish(false, "Test-Preferences-Suite blieb erhalten")
+        }
+        finish(true, "Test-Preferences-Suite entfernt")
     }
 
     /// Wartet, bis die erwartete Zahl Dokumentfenster wirklich steht.
@@ -7318,10 +7686,10 @@ enum SelfTest {
         // Nur eine nachweislich erfolgreiche ⌘C-Aktion darf Besitz
         // begründen. Bei jeder anderen Aktion könnte eine Änderung des
         // systemweiten Zählers vom Nutzer stammen.
-        if let owned = pending?.pasteboardChangeCount {
-            noteSoakPasteboardOwnership(
-                changeCount: owned,
-                to: soakPasteboardBackupURL(logURL: logURL))
+        if let owned = pending?.pasteboardChangeCount,
+           let expected = pending?.pasteboardExpectedString {
+            noteSoakPasteboardOwnership(changeCount: owned,
+                                         expectedString: expected)
         }
         // Die restliche Pause hält den Abstand zwischen Aktionen wie bisher.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
@@ -8473,20 +8841,11 @@ enum SelfTest {
             finish(false, "Einfügeposition liegt hinter dem Text")
         }
         textView.selectionManager.setSelectedRange(NSRange(location: location, length: 0))
-        // Echter Paste-Weg über das Pasteboard; der vorherige Inhalt wird
-        // danach wiederhergestellt.
-        let pasteboard = NSPasteboard.general
-        let backup = (pasteboard.types ?? []).compactMap { type in
-            pasteboard.data(forType: type).map { (type, $0) }
-        }
-        pasteboard.clearContents()
-        pasteboard.setString("\u{23F8}\u{FE0F}", forType: .string)
+        // Echter Paste-Weg über das Pasteboard. Die runnerweite, itemgetreue
+        // Sicherung wird erst beim Testabschluss zurückgegeben und überlebt
+        // auch einen App-Absturz.
+        writeSelfTestPasteboardString("\u{23F8}\u{FE0F}")
         textView.paste(textView)
-        pasteboard.clearContents()
-        if !backup.isEmpty {
-            pasteboard.declareTypes(backup.map(\.0), owner: nil)
-            for (type, data) in backup { pasteboard.setData(data, forType: type) }
-        }
 
         // Highlighter und Auslegung einen Moment arbeiten lassen — genau in
         // diesem Fenster trat die falsche Darstellung auf.
@@ -10671,7 +11030,14 @@ enum SelfTest {
                 let base = "abCDef\nabXYef\nab12ef"
 
                 _ = selectThree(base)
+                prepareSelfTestPasteboardMutationOrFinish()
                 tv.copy(tv)
+                guard let expectedColumnCopy = try? plainTextPasteboardItems(
+                    "CD\nXY\n12\n") else {
+                    finish(false, "Erwarteter Rechteck-Copy ließ sich nicht vorbereiten")
+                }
+                noteSelfTestPasteboardMutationOrFinish(
+                    expectedItems: expectedColumnCopy)
                 check(
                     NSPasteboard.general.string(forType: .string)
                         == "CD\nXY\n12\n",
@@ -10679,8 +11045,7 @@ enum SelfTest {
                 )
 
                 var undoBefore = selectThree(base)
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString("Q", forType: .string)
+                writeSelfTestPasteboardString("Q")
                 tv.paste(tv)
                 check(tv.string == "abQef\nabQef\nabQef", "Fill-down Paste falsch")
                 checkOneUndo(undoBefore, "Fill-down Paste")
@@ -10690,8 +11055,7 @@ enum SelfTest {
                 check(tv.string == "abQef\nabQef\nabQef", "Fill-down Redo falsch")
 
                 undoBefore = selectThree(base)
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString("1\n22", forType: .string)
+                writeSelfTestPasteboardString("1\n22")
                 tv.paste(tv)
                 check(
                     tv.string == "ab1ef\nab22ef\nabef",
@@ -10722,8 +11086,7 @@ enum SelfTest {
                 checkOneUndo(undoBefore, "Backspace mit kurzen Zeilen")
 
                 undoBefore = selectThree(shortRows, start: 4, length: 1)
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString("Q", forType: .string)
+                writeSelfTestPasteboardString("Q")
                 tv.paste(tv)
                 check(
                     tv.string == "abcdQf\nabQ\nabcQ",
@@ -10732,7 +11095,10 @@ enum SelfTest {
                 checkOneUndo(undoBefore, "Paste mit kurzen Zeilen")
 
                 undoBefore = selectThree(base)
+                prepareSelfTestPasteboardMutationOrFinish()
                 tv.cut(tv)
+                noteSelfTestPasteboardMutationOrFinish(
+                    expectedItems: expectedColumnCopy)
                 check(tv.string == "abef\nabef\nabef", "Cut auf Rechteck falsch")
                 check(
                     NSPasteboard.general.string(forType: .string)
@@ -10746,8 +11112,7 @@ enum SelfTest {
                 let padded = "abcdef\nab\nabc"
                 undoBefore = selectThree(padded, start: 4, length: 1)
                 tv.fastraColumnIndentationUnit = "\t"
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString("X\nY\nZ", forType: .string)
+                writeSelfTestPasteboardString("X\nY\nZ")
                 NotificationCenter.default.post(
                     name: .fastraPasteColumn,
                     object: nil
@@ -11086,9 +11451,9 @@ enum SelfTest {
                 tv.selectionManager.setSelectedRange(
                     NSRange(location: (tv.string as NSString).length, length: 0))
                 let png = (try? Data(contentsOf: outside.appendingPathComponent("quelle.png"))) ?? Data()
-                let pasteboard = NSPasteboard.general
-                pasteboard.clearContents()
-                pasteboard.setData(png, forType: NSPasteboard.PasteboardType("public.png"))
+                writeSelfTestPasteboardData(
+                    png, type: NSPasteboard.PasteboardType("public.png")
+                )
                 attemptMarkdownPaste(ws, tv: tv, root: root, base: base,
                                      outside: outside, window: mainWindow, tick: 0)
             }
@@ -11897,7 +12262,9 @@ enum SelfTest {
         // liegen (der Stale-Aufräumer fasst sie erst nach einer Stunde an).
         // Das `defer` bleibt trotzdem stehen: Es greift, sollte der Test
         // irgendwann regulär zurückkehren.
-        TestDefaultsPurge.register(suiteName)
+        guard TestDefaultsPurge.register(suiteName) else {
+            finish(false, "Umgebungsproblem: Test-Preferences-Suite nicht registrierbar")
+        }
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let visible = screen.visibleFrame
@@ -15539,15 +15906,9 @@ enum SelfTest {
                 textView.selectionManager.setSelectedRange(
                     NSRange(location: (textView.string as NSString).length, length: 0)
                 )
-                // Der Test überschreibt die Zwischenablage des Nutzers. Sie
-                // wird deshalb itemgetreu gesichert; direkt nach dem eigenen
-                // Schreiben wird der Besitzstand gemerkt, damit
-                // `finishPasteIndent` eine später vom Nutzer angelegte Kopie
-                // nicht wieder überschreibt.
-                pasteIndentPasteboardBackup = capturePasteboardItems()
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString("if x {\n    y()\n}\n", forType: .string)
-                pasteIndentPasteboardOwnedChangeCount = NSPasteboard.general.changeCount
+                // Der runnerweite Schutz sichert itemgetreu und zusätzlich auf
+                // Platte, damit auch ein Crash vor dem Abschluss heilbar ist.
+                writeSelfTestPasteboardString("if x {\n    y()\n}\n")
                 NotificationCenter.default.post(
                     name: .fastraPasteMatchingIndentation, object: nil
                 )
@@ -15569,37 +15930,10 @@ enum SelfTest {
         }
     }
 
-    /// Sicherung der Zwischenablage für `pasteindent`, plus der Zählerstand
-    /// nach dem test-eigenen Schreiben (Besitznachweis, siehe
-    /// `pasteboardIsStillOwned`).
-    private static var pasteIndentPasteboardBackup: StoredPasteboardItems?
-    private static var pasteIndentPasteboardOwnedChangeCount: Int?
-
-    /// Beendet `pasteindent` und gibt vorher die Zwischenablage zurück.
-    ///
-    /// Nötig, weil `finish` den Prozess über `exit()` verlässt: Der Swift-Stack
-    /// wird dabei nicht abgewickelt, ein `defer` liefe also nie. Der Aufruf
-    /// deckt alle Wege aus dem Test ab — Erfolg, Fehler und frühen Abbruch;
-    /// vor der Sicherung ist er wirkungslos.
+    /// Behält den sprechenden Abschlussnamen des Tests; die zentrale
+    /// `finish`-Funktion gibt die Zwischenablage für alle Selbsttests zurück.
     private static func finishPasteIndent(_ ok: Bool, _ message: String) -> Never {
-        var note = ""
-        if let backup = pasteIndentPasteboardBackup {
-            pasteIndentPasteboardBackup = nil
-            if let owned = pasteIndentPasteboardOwnedChangeCount,
-               pasteboardIsStillOwned(since: owned) {
-                do { try writePasteboardItems(backup) }
-                catch {
-                    note = " — Warnung: Zwischenablage nicht zurückgegeben ("
-                        + error.localizedDescription + ")"
-                }
-            } else {
-                // Während des Tests hat jemand anders kopiert, typischerweise
-                // der Nutzer. Sein neuerer Inhalt bleibt unangetastet.
-                note = " (Zwischenablage inzwischen anderweitig beschrieben — "
-                    + "neuerer Inhalt behalten)"
-            }
-        }
-        finish(ok, message + note)
+        finish(ok, message)
     }
 
     private static func runMarkdownImageWatchTest() {

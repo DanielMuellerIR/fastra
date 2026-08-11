@@ -77,9 +77,11 @@ release_fastra_gui_test_lock() {
     [ "$FASTRA_GUI_LOCK_HELD" -eq 1 ] || return 0
     local owner=""
     owner=$(sed -n '1p' "$FASTRA_GUI_LOCK_DIR/pid" 2>/dev/null || true)
-    if [ "$owner" = "$$" ]; then
-        rm -f -- "$FASTRA_GUI_LOCK_DIR/pid" 2>/dev/null || true
-        rmdir "$FASTRA_GUI_LOCK_DIR" 2>/dev/null || true
+    if [ "$owner" != "$$" ]; then
+        echo "✗ Fenster-Test-Sperre gehört beim Freigeben nicht mehr diesem Runner." >&2
+        return 2
     fi
+    rm -f -- "$FASTRA_GUI_LOCK_DIR/pid" 2>/dev/null || return 2
+    rmdir "$FASTRA_GUI_LOCK_DIR" 2>/dev/null || return 2
     FASTRA_GUI_LOCK_HELD=0
 }

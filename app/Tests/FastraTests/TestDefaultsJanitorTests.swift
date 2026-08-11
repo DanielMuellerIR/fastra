@@ -26,9 +26,10 @@ enum TestDefaultsJanitor {
     /// behalten parallel laufende Testprozesse ihre noch aktiven Suiten.
     /// Rückgabe: Anzahl der entfernten Domains.
     @discardableResult
-    static func purgeStaleDomains(olderThan age: TimeInterval = 3600) throws -> Int {
-        let preferences = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Preferences", isDirectory: true)
+    static func purgeStaleDomains(olderThan age: TimeInterval = 3600,
+                                  preferencesDirectory: URL? = nil) throws -> Int {
+        let preferences = TestDefaultsPurge.resolvedPreferencesDirectory(
+            explicit: preferencesDirectory)
         let regex = try NSRegularExpression(pattern: stalePattern)
         let cutoff = Date().addingTimeInterval(-age)
         var removed = 0
@@ -285,8 +286,12 @@ func purgeStaleFixtureProcesses() throws {
 
 @Test("Janitor entfernt verwaiste Test-Domains, verschont aktive und fremde")
 func janitorPurgesOnlyStaleTestDomains() throws {
-    let preferences = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Preferences", isDirectory: true)
+    let preferences = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-preferences-test-\(UUID().uuidString)",
+                              isDirectory: true)
+    try FileManager.default.createDirectory(
+        at: preferences, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: preferences) }
     let uuid = UUID().uuidString
     let staleName = "fastra-janitor-selftest-\(uuid)"
     let staleURL = preferences.appendingPathComponent(staleName + ".plist")
@@ -301,7 +306,7 @@ func janitorPurgesOnlyStaleTestDomains() throws {
     defer { try? FileManager.default.removeItem(at: freshURL) }
     defer { try? FileManager.default.removeItem(at: staleURL) }
 
-    try TestDefaultsJanitor.purgeStaleDomains()
+    try TestDefaultsJanitor.purgeStaleDomains(preferencesDirectory: preferences)
 
     #expect(!FileManager.default.fileExists(atPath: staleURL.path),
             "Alte Test-Domain muss entfernt werden")
@@ -329,6 +334,10 @@ func purgeRecognizesAndRemovesTestDomains() {
     // UUID ohne Test-Präfix bleibt ebenfalls stehen.
     #expect(!TestDefaultsPurge.isTestDomain(
         "org.example.9E8B2C1A-1234-4EAB-9F00-ABCDEF012345"))
+    #expect(!TestDefaultsPurge.isTestDomain(
+        "FastraTests/../../Terminal.9E8B2C1A-1234-4EAB-9F00-ABCDEF012345"))
+    #expect(!TestDefaultsPurge.register(
+        "FastraTests/../../Terminal.9E8B2C1A-1234-4EAB-9F00-ABCDEF012345"))
 
     // Registry-Weg: Eine registrierte, beschriebene Suite verschwindet mit
     // dem Purge aus den Preferences.
@@ -350,6 +359,15 @@ func purgeRecognizesAndRemovesTestDomains() {
     let domain = UserDefaults.standard.persistentDomain(forName: name)
     #expect(domain == nil || domain?.isEmpty == true)
     #expect(!remaining.contains(name))
+}
+
+@Test("TestDefaultsPurge folgt in der Sandbox CFFIXED_USER_HOME")
+func purgeUsesFixedPreferencesHome() {
+    let fixed = "/tmp/fastra-fixed-home-\(UUID().uuidString)"
+    let directory = TestDefaultsPurge.resolvedPreferencesDirectory(
+        environment: ["CFFIXED_USER_HOME": fixed]
+    )
+    #expect(directory.path == fixed + "/Library/Preferences")
 }
 
 @Test("TestDefaultsPurge meldet eine fehlgeschlagene Suite nicht vorzeitig ab")

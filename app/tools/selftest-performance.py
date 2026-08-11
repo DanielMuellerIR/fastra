@@ -20,6 +20,7 @@ import io
 
 VERSION = 1
 MAX_RUNS = 20
+MAX_CORRUPT_FILES = 3
 LONG_MAX_AGE_DAYS = 7
 LONG_MAX_RELEVANT_COMMITS = 20
 RELEVANT_PATHS = [
@@ -89,6 +90,23 @@ def empty_data() -> dict:
         "standard": {},
         "long": {},
     }
+
+
+def prune_corrupt_files(path: Path) -> None:
+    """Behält nur wenige beschädigte Messdateien als Diagnosebeleg."""
+    try:
+        candidates = sorted(
+            path.parent.glob(path.name + ".corrupt-*"),
+            key=lambda candidate: candidate.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError:
+        return
+    for stale in candidates[MAX_CORRUPT_FILES:]:
+        try:
+            stale.unlink()
+        except OSError:
+            pass
 
 
 def validate_timestamp(value: object, label: str) -> None:
@@ -167,6 +185,7 @@ def load_data(path: Path) -> dict:
         )
         try:
             path.replace(quarantine)
+            prune_corrupt_files(path)
             print(
                 "PERFORMANCE-WARN Beschädigte Messdatei wurde nach "
                 f"{display_path(quarantine)} verschoben: {display_error(error)}",
@@ -426,6 +445,17 @@ def self_test(_: argparse.Namespace) -> int:
                 recovered = load_data(path)
             assert recovered["version"] == VERSION
             assert list(path.parent.glob("performance-v1.json.corrupt-*"))
+
+            for index in range(MAX_CORRUPT_FILES + 2):
+                stale = path.parent / f"performance-v1.json.corrupt-old-{index}"
+                stale.write_text("alt", encoding="utf-8")
+                os.utime(stale, (index + 1, index + 1))
+            path.write_text("{wieder kaputt", encoding="utf-8")
+            with contextlib.redirect_stderr(io.StringIO()):
+                load_data(path)
+            assert len(list(path.parent.glob(
+                "performance-v1.json.corrupt-*"
+            ))) <= MAX_CORRUPT_FILES
 
             path.write_text(
                 '{"version": 1, "machine": {}, "standard": [], "long": {}}',

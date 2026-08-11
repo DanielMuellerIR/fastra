@@ -8,6 +8,7 @@
 // 3713 liegengebliebene Test-Plists brachten cfprefsd aus dem Tritt).
 
 import Foundation
+import Testing
 @testable import Fastra
 
 /// Einmalige atexit-Registrierung; ausgelöst beim ersten Suite-Aufbau.
@@ -33,7 +34,9 @@ private let installTestDefaultsPurge: Void = {
 /// der Stale-Aufräumer auch die Reste eines abgestürzten Laufs weg.
 func testSuiteDefaults(named name: String) -> UserDefaults {
     _ = installTestDefaultsPurge
-    TestDefaultsPurge.register(name)
+    if !TestDefaultsPurge.register(name) {
+        Issue.record("Test-Preferences-Suite ließ sich nicht beim äußeren Runner anmelden")
+    }
     let defaults = UserDefaults(suiteName: name)!
     defaults.removePersistentDomain(forName: name)
     return defaults

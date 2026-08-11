@@ -28,7 +28,7 @@ fi
 start_head="$(git -C .. rev-parse HEAD)"
 
 ./build.sh || exit $?
-swift test || exit $?
+./test.sh || exit $?
 ./localization-audit.sh || exit $?
 FASTRA_PERFORMANCE_BASELINE_RUN=1 ./selftest.sh || exit $?
 

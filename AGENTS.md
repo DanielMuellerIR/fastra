@@ -135,19 +135,20 @@ Vom Repo-Root:
 ```bash
 cd app
 ./build.sh                 # legt die gepatchten Checkouts erst an
-swift test
+./test.sh                  # ruft swift test in einer Wegwerf-Sandbox auf
 ./localization-audit.sh
 ./selftest.sh
 ```
 
 `build.sh` steht bewusst vorn: Nur es stellt den Checkout-Zustand her, gegen den
-`swift test` überhaupt etwas Aussagekräftiges misst. Im frisch geklonten Repo
-scheitert ein roher `swift test` schon am Übersetzen — SwiftLint-Build-Plugin und
+`./test.sh` überhaupt etwas Aussagekräftiges misst. Im frisch geklonten Repo
+scheitert der enthaltene `swift test` schon am Übersetzen — SwiftLint-Build-Plugin und
 `#Preview`-Macro der Editor-Pakete (`app/LESSONS-LEARNED.md` F.2 und F.4). Der
 gefährlichere Fall ist aber der zweite: Die Patches liegen im Checkout, die
 Editor-Build-Produkte in `.build/` stammen aber noch aus der Zeit davor. Dann
 übersetzt der Lauf anstandslos und meldet trotzdem Fehler im Produktcode, die
-keine sind. Gemessen am 2026-07-28 auf diesem Stand: `swift test` allein ergab 5
+keine sind. Gemessen am 2026-07-28 auf diesem Stand: `swift test` ohne vorherigen
+Build ergab 5
 rote Tests (Doppelklick-Wortauswahl über Emoji, Editor-Copy aufs Clipboard —
 beides Verhalten aus gepatchtem CodeEditTextView), nach `./build.sh` waren
 dieselben 1555 Tests grün. Genau deswegen verwirft `build.sh` die betroffenen
@@ -179,7 +180,7 @@ Dateien interpretiert und sind falsch.
 
 Testumfang nach Risiko:
 
-- Parser, Wildcards, Ersetzungen, Dateifilter: `swift test` plus passende
+- Parser, Wildcards, Ersetzungen, Dateifilter: `./test.sh` plus passende
   In-App-Selbsttests.
 - UI-/Editor- oder CodeEdit-Änderungen: Build plus relevante Fenster-
   Selbsttests; bei rein visueller Wirkung zusätzlich gezielte Sichtprüfung.
