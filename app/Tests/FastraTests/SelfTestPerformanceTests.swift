@@ -294,9 +294,28 @@ struct SelfTestPerformanceTests {
         try """
         #!/bin/bash
         "$FASTRA_TEST_OPEN_APP/Contents/MacOS/Fastra" -selftest cmdw -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
-        printf '%s\n' "$!" > "$FASTRA_TEST_CHILD_PID"
-        sleep .05
-        ps -ww -p "$!" -o command= > "$FASTRA_TEST_CHILD_COMMAND"
+        child_pid=$!
+        printf '%s\n' "$child_pid" > "$FASTRA_TEST_CHILD_PID"
+        child_ready=0
+        for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+          child_command="$(ps -ww -p "$child_pid" -o command= 2>/dev/null || true)"
+          if [[ "$child_command" == "$FASTRA_TEST_OPEN_APP/Contents/MacOS/Fastra -selftest cmdw "* ]]; then
+            printf '%s\n' "$child_command" > "$FASTRA_TEST_CHILD_COMMAND"
+            child_ready=1
+            break
+          fi
+          sleep .05
+        done
+        if [ "$child_ready" -ne 1 ]; then
+          kill -KILL "$child_pid" 2>/dev/null || true
+          wait "$child_pid" 2>/dev/null || true
+          exit 74
+        fi
+        # Ein nicht-interaktives Bash-Skript kann beim Verlassen noch auf ein
+        # eigenes Hintergrundkind warten. Der open-Ersatz muss dagegen wie das
+        # echte `open` sofort zurückkehren, damit Bash das TERM vor der normalen
+        # Runner-Buchhaltung verarbeitet und genau dieses Fenster testet.
+        disown "$child_pid" 2>/dev/null || true
         # Bash führt den Trap nach Rückkehr dieses `open`-Ersatzes aus: exakt
         # vor der normalen track_started_app_bundle-Zeile des Runners.
         kill -TERM "$PPID"
