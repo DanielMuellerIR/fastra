@@ -597,11 +597,15 @@ struct MarkdownImportOwnershipTests {
         let ownerID = try #require(owner?.instanceID)
         service.convert(source, owner: owner)
         #expect(service.ownerID == ownerID)
+
+        // `ActiveDocumentContext` beobachtet immer den zuletzt aktivierten
+        // Workspace. Erst der echte Fensterwechsel löst diese Beobachtung;
+        // ohne ihn würde der Test den Besitzer selbst noch am Leben halten.
+        let other = Workspace()
         owner = nil
         #expect(service.owner == nil)
         #expect(service.ownerID == ownerID)
 
-        let other = Workspace()
         #expect(!service.isOwned(by: other))
         #expect(service.isRunning)
     }
