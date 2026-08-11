@@ -256,6 +256,7 @@ struct SelfTestPerformanceTests {
         let lock = root.appendingPathComponent("gui.lock")
         let fakeApp = root.appendingPathComponent("Signal.app")
         let fakeBinary = fakeApp.appendingPathComponent("Contents/MacOS/Fastra")
+        let fakeSource = root.appendingPathComponent("fake-app.c")
         let fakeInfo = fakeApp.appendingPathComponent("Contents/Info.plist")
         let fakeOpen = root.appendingPathComponent("open")
         let fakeLSRegister = root.appendingPathComponent("lsregister")
@@ -288,9 +289,18 @@ struct SelfTestPerformanceTests {
             options: 0
         )
         try infoData.write(to: fakeInfo)
-        try FileManager.default.copyItem(
-            at: URL(fileURLWithPath: "/usr/bin/yes"), to: fakeBinary
+        try """
+        #include <signal.h>
+        #include <unistd.h>
+        int main(void) {
+            signal(SIGTERM, SIG_IGN);
+            for (;;) pause();
+        }
+        """.write(to: fakeSource, atomically: true, encoding: .utf8)
+        let compile = try runPerformanceTool(
+            "/usr/bin/clang", arguments: [fakeSource.path, "-o", fakeBinary.path]
         )
+        try #require(compile.status == 0, "Fake-App-Kompilierung: \(compile.output)")
         try """
         #!/bin/bash
         "$FASTRA_TEST_OPEN_APP/Contents/MacOS/Fastra" -selftest cmdw -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
@@ -298,7 +308,7 @@ struct SelfTestPerformanceTests {
         printf '%s\n' "$child_pid" > "$FASTRA_TEST_CHILD_PID"
         child_ready=0
         for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-          child_command="$(ps -ww -p "$child_pid" -o command= 2>/dev/null || true)"
+          child_command="$(ps eww -p "$child_pid" -o command= 2>/dev/null || true)"
           if [[ "$child_command" == "$FASTRA_TEST_OPEN_APP/Contents/MacOS/Fastra -selftest cmdw "* ]]; then
             printf '%s\n' "$child_command" > "$FASTRA_TEST_CHILD_COMMAND"
             child_ready=1
