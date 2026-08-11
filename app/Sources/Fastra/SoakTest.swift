@@ -535,6 +535,17 @@ enum SoakTest {
               let workspace = WorkspaceWindowRegistry.workspace(for: window)
         else { return nil }
 
+        // Ein Mensch bedient immer das vordere, aktive Fenster. Die direkte
+        // Teststeuerung kann dagegen ein geordnetes Fenster erwischen, das
+        // noch nicht Key Window ist. Dann findet `NSApp.sendAction` trotz
+        // vorhandener TextView keinen Empfänger, und Menübefehle können gegen
+        // das zuletzt aktive andere Fenster aufgelöst werden. Vor jeder
+        // menschlichen Aktion deshalb dieselbe Fokuslage herstellen wie ein
+        // echter Klick in den Editor.
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        _ = window.makeFirstResponder(textView)
+
         var pasteboardChangeCount: Int?
         switch action {
         case .type:
@@ -602,8 +613,14 @@ enum SoakTest {
             // Der echte Weg von ⌘Z: über die Responder-Chain, nicht direkt
             // am Undo-Verwalter vorbei. `undo:` implementiert die TextView
             // modulintern, deshalb per Name statt `#selector`.
-            _ = window.makeFirstResponder(textView)
-            _ = NSApp.sendAction(NSSelectorFromString("undo:"), to: nil, from: nil)
+            let responderAccepted = window.makeFirstResponder(textView)
+            let commandAccepted = NSApp.sendAction(
+                NSSelectorFromString("undo:"), to: nil, from: nil)
+            if !commandAccepted {
+                record("Rückgängig erreicht den Editor",
+                       responderState(window: window, textView: textView,
+                                      responderAccepted: responderAccepted))
+            }
             if textView.string != textBefore { noteFourDMutation(in: workspace) }
 
         case .scroll:
@@ -673,11 +690,13 @@ enum SoakTest {
             textView.selectionManager.setSelectedRange(
                 NSRange(location: start, length: min(25, length - start))
             )
-            _ = window.makeFirstResponder(textView)
+            let responderAccepted = window.makeFirstResponder(textView)
             let beforeCopy = NSPasteboard.general.changeCount
             if !NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) {
                 record("Kopierbefehl erreicht den Editor",
-                       "\(window.title): sendAction(copy:) fand keinen Empfänger")
+                       "\(window.title): sendAction(copy:) fand keinen Empfänger; "
+                       + responderState(window: window, textView: textView,
+                                        responderAccepted: responderAccepted))
             } else {
                 let afterCopy = NSPasteboard.general.changeCount
                 if afterCopy != beforeCopy { pasteboardChangeCount = afterCopy }
@@ -701,6 +720,17 @@ enum SoakTest {
             if textView.string != textBefore { noteFourDMutation(in: workspace) }
         }
         return (window, action.label, pasteboardChangeCount)
+    }
+
+    /// Fokuslage für einen fehlgeschlagenen Responder-Befehl. Die Diagnose
+    /// enthält nur AppKit-Zustand, niemals Dokumentinhalt.
+    private static func responderState(window: NSWindow, textView: TextView,
+                                       responderAccepted: Bool) -> String {
+        let firstResponder = window.firstResponder.map { String(describing: type(of: $0)) }
+            ?? "nil"
+        return "active=\(NSApp.isActive), key=\(window.isKeyWindow), "
+            + "makeFirstResponder=\(responderAccepted), first=\(firstResponder), "
+            + "textViewImFenster=\(textView.window === window)"
     }
 
     /// Sucht den ⌘-Menüpunkt FRISCH im aktuellen Hauptmenü. Referenzen werden
@@ -761,6 +791,10 @@ enum SoakTest {
     static func startRound() -> PendingRound? {
         let all = Action.allCases
         let action = all[nextRandom(all.count)]
+        // `perform` kann bereits während der Aktion einen Befund melden
+        // (etwa wenn die Responder-Kette einen Kopierbefehl ablehnt). Der
+        // Report muss dann diese und nicht die vorherige Aktion nennen.
+        lastAction = action.label
         let before = snapshot()
         // Vor dem Rückgängigmachen den Text merken, um (8) prüfen zu können.
         let undoBaseline: (String, TextView, NSWindow)? = {

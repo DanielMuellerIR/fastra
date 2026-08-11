@@ -4473,12 +4473,22 @@ enum SelfTest {
     }
 
     /// Schließt ein eventuell offenes Vorschlagsfenster per Esc und wartet,
-    /// bis es wirklich weg ist (Fallback nach 1,5 s: hartes close()).
+    /// bis es stabil weg ist (Fallback nach 1,5 s: hartes close()). Eine noch
+    /// laufende Vorschlagsanforderung kann das Fenster kurz nach dem Schließen
+    /// erneut öffnen; erst 0,3 s ohne Fenster starten die nächste Testphase.
     private static func closeCompletionPopupIfNeeded(
         mainWindow: NSWindow, tick: Int, then continuation: @escaping () -> Void
     ) {
         guard fourDCompletionWindow(attachedTo: mainWindow) != nil else {
-            continuation()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                if fourDCompletionWindow(attachedTo: mainWindow) == nil {
+                    continuation()
+                } else {
+                    closeCompletionPopupIfNeeded(
+                        mainWindow: mainWindow, tick: 0, then: continuation
+                    )
+                }
+            }
             return
         }
         if tick == 0 {
@@ -8238,7 +8248,14 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: directory)
             guard ok else { finish(false, "Fixture lädt nicht") }
             if !ws.softWrapEnabled { ws.toggleSoftWrap() }
-            waitForEditor(workspace: ws, window: window) { root, textView in
+            waitForEditorShowing(
+                workspace: ws,
+                window: window,
+                text: "Dritte Zeile",
+                onTimeout: {
+                    finish(false, "Editor zeigt den Fixture-Text nicht binnen 5 s")
+                }
+            ) { _, textView, _ in
                 guard textView.string == text else {
                     finish(false, "Editor zeigt den Fixture-Text nicht")
                 }

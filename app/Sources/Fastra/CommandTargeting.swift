@@ -93,6 +93,17 @@ enum CommandTargeting {
         return descendantTextView(in: content)
     }
 
+    /// Workspace des Fensters, das der Nutzer gerade bedient.
+    ///
+    /// Menübefehle wie „Neuer Tab“ brauchen keinen bereits montierten Editor.
+    /// Sie dürfen ihr Ziel trotzdem nicht aus `Workspace.shared` lesen: Nach
+    /// einer Sitzungswiederherstellung kann dieser Wert auf dem zuletzt
+    /// erzeugten statt auf dem vordersten Fenster stehen.
+    static func targetWorkspace() -> Workspace? {
+        guard let window = targetDocumentWindow() else { return nil }
+        return WorkspaceWindowRegistry.workspace(for: window)
+    }
+
     /// Fenster, Workspace und Editor in EINEM Zugriff.
     ///
     /// Wer Inhalt liest und Text schreibt, muss beides aus DEMSELBEN Fenster

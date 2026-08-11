@@ -9,6 +9,22 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.70.1] — 2026-08-11
+
+### Behoben
+
+- **Globale Menübefehle wirken im vordersten Dokumentfenster:** Nach einer
+  Sitzungswiederherstellung mit mehreren Fenstern konnten unter anderem
+  „Neuer Tab“, „In Markdown umwandeln“ und Einträge aus „Zuletzt benutzt“
+  noch den zuletzt erzeugten statt den aktuell bedienten Arbeitsbereich
+  treffen. Fastra löst diese Befehle nun über das tatsächliche vorderste
+  Dokumentfenster auf.
+- **Der Dauertest stellt seinen vorausgesetzten Vordergrundzustand selbst
+  her:** Vor simulierten Benutzeraktionen aktiviert er Fastra und den
+  konkreten Editor. Dadurch werden verlorene GUI-Ereignisse nicht mehr als
+  Produktfehler protokolliert; fehlgeschlagene Responder-Befehle enthalten
+  zugleich eine genaue Fokusdiagnose.
+
 ## [v1.70.0] — 2026-08-11
 
 ### Behoben

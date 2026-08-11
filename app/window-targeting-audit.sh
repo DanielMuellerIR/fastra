@@ -87,13 +87,11 @@ EOF
 # `CommandTargeting.workspace(for:)` bzw. `CommandTargeting.target()` umgebaut.
 #
 # Dateien, die `Workspace.shared` mit Begründung lesen dürfen:
-#   FastraApp.swift    — SwiftUI-Menüleiste; `commandWorkspace` ist der
-#                        dokumentierte Routing-Hook der Aktivierungsbrücke
 #   AppDelegate.swift  — App-Lebenszyklus (Start, Beenden, Aktivierung),
 #                        kein Befehl auf ein bestimmtes Fenster
 #   SelfTest.swift     — Testcode stellt Zustände von außen her
 #   SoakTest.swift     — desgleichen, langer Dauertest
-READS_ALLOWED="FastraApp.swift AppDelegate.swift SelfTest.swift SoakTest.swift"
+READS_ALLOWED="AppDelegate.swift SelfTest.swift SoakTest.swift"
 
 reads_allowed() {
   local base

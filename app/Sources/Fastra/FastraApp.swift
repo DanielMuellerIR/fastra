@@ -519,10 +519,11 @@ struct FastraApp: App {
     }
 
     /// Ziel aller globalen Menübefehle. Das `@StateObject` gehört nur zum
-    /// Startfenster; bei einem per ⌘N geöffneten Fenster zeigt `shared` auf
-    /// dessen Workspace (gesetzt von der Fenster-Aktivierungsbrücke).
+    /// Startfenster; zusätzliche Fenster werden deshalb über ihre echte
+    /// Vordergrundreihenfolge aufgelöst. Der Rückfall greift nur, solange
+    /// noch kein registriertes Dokumentfenster als Ziel existiert.
     private var commandWorkspace: Workspace {
-        Workspace.shared ?? workspace
+        CommandTargeting.targetWorkspace() ?? workspace
     }
 
     /// Schickt eine Text-Operation an den AppDelegate (→ aktiver Editor).
@@ -586,9 +587,13 @@ private struct MarkdownImportMenuItem: View {
 
     var body: some View {
         Button("In Markdown umwandeln…") {
-            (Workspace.shared ?? workspace).convertActiveTabToMarkdown()
+            commandWorkspace.convertActiveTabToMarkdown()
         }
-        .disabled((Workspace.shared ?? workspace).activeMarkdownImportSource == nil || isBusy)
+        .disabled(commandWorkspace.activeMarkdownImportSource == nil || isBusy)
+    }
+
+    private var commandWorkspace: Workspace {
+        CommandTargeting.targetWorkspace() ?? workspace
     }
 
     /// Während einer laufenden Umwandlung ist der Punkt gesperrt — zwei
@@ -610,7 +615,7 @@ private struct RecentFilesMenu: View {
                 ForEach(workspace.recentFiles, id: \.self) { path in
                     Button((path as NSString).lastPathComponent) {
                         let expanded = (path as NSString).expandingTildeInPath
-                        (Workspace.shared ?? workspace).loadFile(
+                        commandWorkspace.loadFile(
                             at: URL(fileURLWithPath: expanded)
                         )
                     }
@@ -619,5 +624,9 @@ private struct RecentFilesMenu: View {
                 Button("Einträge löschen") { workspace.recentFiles = [] }
             }
         }
+    }
+
+    private var commandWorkspace: Workspace {
+        CommandTargeting.targetWorkspace() ?? workspace
     }
 }
