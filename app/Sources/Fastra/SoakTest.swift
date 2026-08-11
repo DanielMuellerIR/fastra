@@ -533,6 +533,23 @@ enum SoakTest {
         FileHandle.standardError.write(Data("SOAK-4D-DATEI: \(filePath)\n".utf8))
     }
 
+    /// Stellt VOR einer respondergebundenen Aktion die Fokuslage eines echten
+    /// Klicks her. `NSApp.activate` und `makeKeyAndOrderFront` werden von AppKit
+    /// nicht immer im selben Runloop-Durchlauf sichtbar; der Treiber wartet
+    /// deshalb begrenzt auf `true`, bevor er `startRound()` aufruft.
+    static func prepareFrontWindowForAction() -> Bool {
+        guard let window = documentWindows().first else { return false }
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        return NSApp.isActive && window.isKeyWindow
+    }
+
+    static func frontWindowFocusState() -> String {
+        let window = documentWindows().first
+        return "active=\(NSApp.isActive), key=\(window?.isKeyWindow ?? false), "
+            + "Dokumentfenster=\(documentWindows().count)"
+    }
+
     /// Führt eine Aktion im vorderen Fenster aus und meldet, welches Fenster
     /// sie verändern durfte. `nil` heißt: Die Aktion war nicht möglich (etwa
     /// Sichern ohne Datei) und zählt nicht als Prüfung.

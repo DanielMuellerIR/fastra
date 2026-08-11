@@ -7629,7 +7629,8 @@ enum SelfTest {
     /// Hintergrundarbeit tatsächlich laufen, sonst prüft der Test einen
     /// Zustand, den es im Betrieb nie gibt.
     @MainActor
-    private static func runSoakRounds(rounds: Int, done: Int, logURL: URL) {
+    private static func runSoakRounds(rounds: Int, done: Int, logURL: URL,
+                                      focusTick: Int = 0) {
         guard done < rounds else {
             // Der Selbsttest beendet über exit(), nicht über NSApp.terminate —
             // applicationShouldTerminate und damit das reguläre Sichern der
@@ -7662,6 +7663,31 @@ enum SelfTest {
                    : "\(count) Invarianten-Verstoß(e) bei "
                      + "\(SoakTest.actionsRun) Aktionen — Protokoll: "
                      + logURL.lastPathComponent)
+        }
+        // Aktivierung und Key-Window-Wechsel sind asynchron. Ein sofortiges
+        // ⌘Z/⌘C/⌘V würde sonst gelegentlich noch an die vorherige App
+        // beziehungsweise gar keinen Responder gehen. Das wäre ein Fehler des
+        // Testtreibers: Ein echter Mausklick liefert seine Aktion erst NACH dem
+        // Fokuswechsel. Bis zu zwei Sekunden auf genau diesen Zustand warten.
+        if !SoakTest.prepareFrontWindowForAction() {
+            if focusTick < 40 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    MainActor.assumeIsolated {
+                        runSoakRounds(rounds: rounds, done: done, logURL: logURL,
+                                      focusTick: focusTick + 1)
+                    }
+                }
+            } else {
+                SoakTest.record("Aktionsfenster erhält den Fokus",
+                                SoakTest.frontWindowFocusState())
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    MainActor.assumeIsolated {
+                        runSoakRounds(rounds: rounds, done: done + 1,
+                                      logURL: logURL)
+                    }
+                }
+            }
+            return
         }
         let pending = SoakTest.startRound()
         // Erst einen Runloop-Durchlauf setzen lassen, DANN den tatsächlichen
