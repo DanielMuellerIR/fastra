@@ -212,6 +212,14 @@ struct MainWindowTitleBridge: NSViewRepresentable {
             guard let window else { return }
             if let workspace {
                 WorkspaceWindowRegistry.register(workspace, for: window)
+                // Genau diese Brücke gehört zu einem Dokumentfenster. Ein
+                // allgemeiner Registry-Callback wäre zu breit: Auch das
+                // Suchfenster kann denselben Workspace registrieren und darf
+                // die Sitzungswiederherstellung nicht verfrüht starten.
+                SessionRestorationCoordinator.documentWindowDidRegister(
+                    workspace,
+                    window: window
+                )
                 // Workspace entscheidet, WANN geschlossen werden darf; AppKit
                 // führt danach nur noch das tatsächliche Fensterschließen aus.
                 workspace.closeWindowHandler = { [weak window] in

@@ -1480,7 +1480,7 @@ struct EditorView: View {
             ForEach(workspace.tabs) { tab in
                 FileRow(tab: tab, isActive: tab.id == workspace.activeTab?.id)
                     .contentShape(Rectangle())
-                    .onTapGesture { workspace.activeTabID = tab.id }
+                    .onTapGesture { workspace.selectTab(id: tab.id) }
             }
 
             if workspace.projectURL == nil {

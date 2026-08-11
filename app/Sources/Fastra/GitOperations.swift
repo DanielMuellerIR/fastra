@@ -194,6 +194,137 @@ private final class GitCompositeCancellation: GitCancelling {
     }
 }
 
+/// Git vor 2.41 braucht einen `rev-list`-Aufruf je Remote-Ref. Ein kleines
+/// festes Fenster verhindert, dass ein Repository mit sehr vielen Branches
+/// hunderte Prozesse gleichzeitig startet und den Rechner oder Repo-Slot
+/// unnötig blockiert.
+private final class GitRemoteTrackingFallbackCounter: GitCancelling {
+    static let maximumConcurrentCount = 4
+
+    private let refs: [GitRemoteTrackingRefList.Ref]
+    private let headOID: String
+    private let repository: URL
+    private let executor: GitCommandExecuting
+    private weak var composite: GitCompositeCancellation?
+    private let completion: (GitExecutionOutcome) -> Void
+    private let lock = NSLock()
+    private var nextIndex = 0
+    private var activeCount = 0
+    private var counts: [String: (remoteOnly: Int, headOnly: Int)] = [:]
+    private var firstFailure: GitExecutionOutcome?
+    private var cancelled = false
+    private var finished = false
+
+    init(refs: [GitRemoteTrackingRefList.Ref], headOID: String,
+         repository: URL, executor: GitCommandExecuting,
+         composite: GitCompositeCancellation,
+         completion: @escaping (GitExecutionOutcome) -> Void) {
+        self.refs = refs
+        self.headOID = headOID
+        self.repository = repository
+        self.executor = executor
+        self.composite = composite
+        self.completion = completion
+    }
+
+    func start() {
+        launchAvailableCounts()
+    }
+
+    func cancel() {
+        lock.lock()
+        guard !finished, !cancelled else { lock.unlock(); return }
+        cancelled = true
+        let shouldFinish = activeCount == 0
+        if shouldFinish { finished = true }
+        lock.unlock()
+        if shouldFinish { completion(.cancelled) }
+    }
+
+    private func launchAvailableCounts() {
+        while true {
+            lock.lock()
+            guard !finished else { lock.unlock(); return }
+            if cancelled {
+                let shouldFinish = activeCount == 0
+                if shouldFinish { finished = true }
+                lock.unlock()
+                if shouldFinish { completion(.cancelled) }
+                return
+            }
+            if activeCount < Self.maximumConcurrentCount,
+               nextIndex < refs.count {
+                // Immer nur EINEN unmittelbar folgenden Start reservieren.
+                // So liegen bei einem Abbruch nie bis zu vier noch gar nicht
+                // gestartete Prozesse als vermeintlich „aktiv" im Scheduler.
+                let ref = refs[nextIndex]
+                nextIndex += 1
+                activeCount += 1
+                lock.unlock()
+                launchCount(for: ref)
+                continue
+            }
+            let shouldFinish = nextIndex == refs.count && activeCount == 0
+            if shouldFinish { finished = true }
+            let final = shouldFinish ? finalOutcome() : nil
+            lock.unlock()
+
+            if let final { completion(final) }
+            return
+        }
+    }
+
+    private func launchCount(for ref: GitRemoteTrackingRefList.Ref) {
+        // Zwischen Slot-Reservierung und Prozessstart kann ein anderer Thread
+        // den ganzen Batch abbrechen. Dann wird die Reservierung ohne Start
+        // zurückgegeben; der letzte aktive Slot schließt genau einmal ab.
+        lock.lock()
+        if cancelled {
+            activeCount -= 1
+            let shouldFinish = activeCount == 0
+            if shouldFinish { finished = true }
+            lock.unlock()
+            if shouldFinish { completion(.cancelled) }
+            return
+        }
+        lock.unlock()
+
+        let token = executor.execute(
+            arguments: ["rev-list", "--left-right", "--count",
+                        "\(headOID)...\(ref.oid)"],
+            in: repository, outputLimit: .default, policy: .default
+        ) { [self] outcome in
+            lock.lock()
+            if !cancelled, case .completed(let result) = outcome, result.ok {
+                let fields = result.stdout.split(whereSeparator: \Character.isWhitespace)
+                if fields.count == 2,
+                   let headOnly = Int(fields[0]),
+                   let remoteOnly = Int(fields[1]) {
+                    counts[ref.refName] = (remoteOnly, headOnly)
+                } else if firstFailure == nil {
+                    firstFailure = .completed(GitResult(
+                        exitCode: 1, stdout: result.stdout,
+                        stderr: "Ungültige rev-list-Zähler"
+                    ))
+                }
+            } else if !cancelled, firstFailure == nil {
+                firstFailure = outcome
+            }
+            activeCount -= 1
+            lock.unlock()
+            launchAvailableCounts()
+        }
+        composite?.add(token)
+    }
+
+    /// Nur unter `lock` aufrufen.
+    private func finalOutcome() -> GitExecutionOutcome {
+        firstFailure ?? .completed(GitRemoteTrackingRefList.renderedResult(
+            listing: .init(headOID: headOID, refs: refs), counts: counts
+        ))
+    }
+}
+
 /// App-weite Schranke für Git-Operationen. Der Slot bleibt bei einem Full-
 /// Refresh über alle drei Read-Prozesse gehalten; eine Mutation kann deshalb
 /// nie zwischen Status, Branches und Graph rutschen.
@@ -429,10 +560,12 @@ final class GitOperationsCoordinator {
 struct GitFetchSnapshot: Equatable {
     var lastAttempt: Date?
     var lastSuccess: Date?
+    var lastSuccessByRemote: [String: Date]
     var error: String?
     var isBusy: Bool
 
     static let none = GitFetchSnapshot(lastAttempt: nil, lastSuccess: nil,
+                                       lastSuccessByRemote: [:],
                                        error: nil, isBusy: false)
 }
 
@@ -443,6 +576,7 @@ struct GitRepositorySnapshot: Equatable {
     let headOID: String?
     let branches: [GitBranch]
     let graph: [GitCommit]
+    let remoteTracking: [GitRemoteTrackingState]
     let operation: GitOperationState?
     let fetch: GitFetchSnapshot
     let operations: GitOperationsState
@@ -494,6 +628,7 @@ final class GitRepositoryStore {
         var operation: GitExecutionOutcome?
         var branches: GitExecutionOutcome?
         var graph: GitExecutionOutcome?
+        var remoteTracking: GitExecutionOutcome?
         init(remaining: Int) { self.remaining = remaining }
     }
 
@@ -553,6 +688,7 @@ final class GitRepositoryStore {
             repositoryPath: path, status: previous.status,
             upstream: previous.upstream, headOID: previous.headOID,
             branches: previous.branches, graph: previous.graph,
+            remoteTracking: previous.remoteTracking,
             operation: previous.operation,
             fetch: previous.fetch, operations: coordinator.state(for: repository),
             revision: previous.revision + 1
@@ -568,7 +704,9 @@ final class GitRepositoryStore {
     /// Status, Branches und Graph für alle Fenster konsistent neu ein.
     @discardableResult
     func fetch(repository: URL, preferences: GitPreferences, remotes: [String],
-               attemptDate: Date = Date()) -> GitOperationLease? {
+               attemptDate: Date = Date(),
+               completion: ((GitExecutionOutcome) -> Void)? = nil)
+        -> GitOperationLease? {
         let path = GitOperationRequest.canonicalRepositoryPath(repository)
         lock.lock()
         let previous = snapshots[path]
@@ -582,6 +720,7 @@ final class GitRepositoryStore {
             repositoryPath: path, status: previous?.status,
             upstream: previous?.upstream, headOID: previous?.headOID,
             branches: previous?.branches ?? [], graph: previous?.graph ?? [],
+            remoteTracking: previous?.remoteTracking ?? [],
             operation: previous?.operation,
             fetch: reservedFetch, operations: coordinator.state(for: repository),
             revision: (previous?.revision ?? 0) + 1
@@ -594,6 +733,15 @@ final class GitRepositoryStore {
         let arguments = GitFetchPlan.arguments(preferences: preferences,
                                                upstream: upstream,
                                                remotes: remotes)
+        let requestedRemotes: [String]
+        switch preferences.remoteScope {
+        case .all:
+            requestedRemotes = remotes
+        case .relevant:
+            requestedRemotes = GitFetchPlan.relevantRemote(
+                upstream: upstream, remotes: remotes
+            ).map { [$0] } ?? []
+        }
         let request = GitOperationRequest(repository: repository, kind: .fetch,
                                           arguments: arguments)
         return coordinator.perform(request) { [weak self] outcome in
@@ -614,11 +762,18 @@ final class GitRepositoryStore {
             self.updateFetch(repository: repository) {
                 $0.isBusy = false
                 $0.error = error
-                if succeeded { $0.lastSuccess = Date() }
+                if succeeded {
+                    let successDate = Date()
+                    $0.lastSuccess = successDate
+                    for remote in requestedRemotes {
+                        $0.lastSuccessByRemote[remote] = successDate
+                    }
+                }
             }
             if outcome != .cancelled {
                 self.refresh(repository: repository, scope: .full)
             }
+            completion?(outcome)
         }
     }
 
@@ -637,6 +792,7 @@ final class GitRepositoryStore {
             headOID: previous?.headOID,
             branches: previous?.branches ?? [],
             graph: previous?.graph ?? [],
+            remoteTracking: previous?.remoteTracking ?? [],
             operation: previous?.operation,
             fetch: fetch,
             operations: coordinator.state(for: repository),
@@ -650,7 +806,7 @@ final class GitRepositoryStore {
 
     private func startBatch(repository: URL, path: String, scope: GitRefreshScope,
                             attempt: Int) {
-        let aggregate = Aggregate(remaining: scope == .status ? 2 : 4)
+        let aggregate = Aggregate(remaining: scope == .status ? 2 : 5)
         let lease = coordinator.performBatch(repository: repository,
                                               identity: "repository-store-\(path)-\(scope.rawValue)-\(attempt)") {
             [executor] finish in
@@ -679,6 +835,11 @@ final class GitRepositoryStore {
                 composite.add(executor.execute(arguments: GitGraph.arguments,
                                                in: repository, outputLimit: .default,
                                                policy: .default) { record(\.graph, $0) })
+                self.loadRemoteTracking(
+                    repository: repository,
+                    executor: executor,
+                    composite: composite
+                ) { record(\.remoteTracking, $0) }
             }
             return composite
         } completion: { [weak self] outcome in
@@ -695,6 +856,83 @@ final class GitRepositoryStore {
             lock.unlock()
             lease.cancel()
         }
+    }
+
+    /// Git 2.41+ berechnet alle Zähler in einem `for-each-ref`. Schlägt nur
+    /// dieser neue Format-Atom fehl, liest der kompatible Pfad dieselben OIDs
+    /// ein und zählt je Ref mit dem seit Langem verfügbaren `rev-list`.
+    private func loadRemoteTracking(
+        repository: URL,
+        executor: GitCommandExecuting,
+        composite: GitCompositeCancellation,
+        completion: @escaping (GitExecutionOutcome) -> Void
+    ) {
+        let headToken = executor.execute(
+            arguments: GitRemoteTrackingRefList.headArguments,
+            in: repository, outputLimit: .default,
+            policy: .default
+        ) { headOutcome in
+            guard case .completed(let headResult) = headOutcome,
+                  let headOID = GitRemoteTrackingRefList.frozenHeadOID(
+                    headResult
+                  ) else {
+                completion(headOutcome)
+                return
+            }
+            let modern = executor.execute(
+                arguments: GitRemoteTrackingList.arguments(headOID: headOID),
+                in: repository, outputLimit: .default,
+                policy: .default
+            ) { modernOutcome in
+                guard case .completed(let modernResult) = modernOutcome else {
+                    completion(modernOutcome)
+                    return
+                }
+                if modernResult.ok {
+                    let parsed = GitRemoteTrackingList.parse(modernResult.stdout)
+                    completion(.completed(GitRemoteTrackingList.renderedResult(
+                        headOID: headOID, states: parsed.states
+                    )))
+                    return
+                }
+                let listToken = executor.execute(
+                    arguments: GitRemoteTrackingRefList.arguments,
+                    in: repository, outputLimit: .default,
+                    policy: .default
+                ) { listOutcome in
+                    guard case .completed(let listResult) = listOutcome,
+                          listResult.ok else {
+                        completion(listOutcome)
+                        return
+                    }
+                    let parsed = GitRemoteTrackingRefList.parse(listResult.stdout)
+                    let listing = GitRemoteTrackingRefList.Listing(
+                        headOID: headOID, refs: parsed.refs
+                    )
+                    guard !listing.refs.isEmpty else {
+                        completion(.completed(
+                            GitRemoteTrackingRefList.renderedResult(
+                                listing: listing, counts: [:]
+                            )
+                        ))
+                        return
+                    }
+                    let counter = GitRemoteTrackingFallbackCounter(
+                        refs: listing.refs, headOID: headOID,
+                        repository: repository, executor: executor,
+                        composite: composite, completion: completion
+                    )
+                    // Vor den Kindprozessen eintragen: Ein Batch-Abbruch setzt
+                    // zuerst das Scheduler-Gate und kann dadurch keine neuen
+                    // rev-list-Aufrufe aus abgebrochenen Completions nachfüllen.
+                    composite.add(counter)
+                    counter.start()
+                }
+                composite.add(listToken)
+            }
+            composite.add(modern)
+        }
+        composite.add(headToken)
     }
 
     private func completeBatch(repository: URL, path: String, scope: GitRefreshScope,
@@ -714,6 +952,7 @@ final class GitRepositoryStore {
         let operationResult = aggregate.operation?.usableResult
         let branchResult = aggregate.branches?.usableResult
         let graphResult = aggregate.graph?.usableResult
+        let remoteTrackingResult = aggregate.remoteTracking?.usableResult
         let status = statusResult.map { GitStatusParser.parse($0.stdoutData) }
             ?? (aggregate.status?.isCompletedGitFailure == true
                 ? nil : previous?.status)
@@ -727,6 +966,14 @@ final class GitRepositoryStore {
                 ?? (aggregate.graph?.isCompletedGitFailure == true
                     ? [] : previous?.graph ?? [])
             : previous?.graph ?? []
+        let remoteTrackingSnapshot = scope == .full
+            ? remoteTrackingResult.map { GitRemoteTrackingList.parse($0.stdout) }
+            : nil
+        let remoteTracking = scope == .full
+            ? remoteTrackingSnapshot?.states
+                ?? (aggregate.remoteTracking?.isCompletedGitFailure == true
+                    ? [] : previous?.remoteTracking ?? [])
+            : previous?.remoteTracking ?? []
         let operation = operationResult.map {
             GitOperationStateDetector.detect(stdout: $0.stdout,
                                              repository: repository)
@@ -739,7 +986,10 @@ final class GitRepositoryStore {
         // den letzten verifizierten Snapshot, statt inkonsistent zu publizieren.
         let headIsRepresented = status?.headOID == nil
             || graph.contains(where: { $0.hash == status?.headOID })
-        if !headIsRepresented {
+        let trackingUsesSameHead = status?.headOID == nil
+            || remoteTrackingSnapshot?.headOID == nil
+            || remoteTrackingSnapshot?.headOID == status?.headOID
+        if !headIsRepresented || !trackingUsesSameHead {
             if scope == .status {
                 lock.lock()
                 batches[path]?.fullRequestedAfterStatus = true
@@ -761,6 +1011,7 @@ final class GitRepositoryStore {
             headOID: status?.headOID,
             branches: branches,
             graph: graph,
+            remoteTracking: remoteTracking,
             operation: operation,
             fetch: previous?.fetch ?? .none,
             operations: coordinator.state(for: repository),

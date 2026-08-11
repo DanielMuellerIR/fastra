@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Testing
 @testable import Fastra
@@ -54,17 +55,20 @@ struct GitPushTargetTests {
         let data = remoteConfigData([
             ("remote.primary.url", "git@example.test:repos/project.git"),
             ("remote.github.url", "https://github.com/example/projekt.git"),
+            ("remote.primary.url", "second-fetch-address"),
         ])
 
+        #expect(GitRemoteConfiguration.orderedRemotes(from: data)
+                == ["primary", "github"])
         #expect(GitRemoteConfiguration.firstRemote(from: data) == "primary")
     }
 
-    @Test("Resolver liest effektive Push-Adresse des ersten Remotes")
-    func resolverUsesFirstRemoteAndPushURL() {
+    @Test("Resolver liest alle effektiven Push-Adressen in Config-Reihenfolge")
+    func resolverUsesAllRemotesAndPushURLs() {
         let executor = PushTargetTestExecutor()
-        var resolved: GitPushTarget?
+        var resolved: [GitPushTarget] = []
         var failure: GitExecutionOutcome?
-        let lease = GitPushTargetResolver.resolve(
+        let lease = GitPushTargetResolver.resolveAll(
             repository: URL(fileURLWithPath: "/tmp/repo"), executor: executor
         ) {
             resolved = $0
@@ -82,11 +86,87 @@ struct GitPushTargetTests {
             GitRemoteConfiguration.orderedRemoteArguments,
             ["remote", "get-url", "--push", "--all", "primary"],
         ])
-        executor.complete(1, stdout: Data("push-one\npush-two\n".utf8))
+        executor.complete(1, stdout: Data("primary-push\n".utf8))
+        #expect(executor.calls.map(\.arguments) == [
+            GitRemoteConfiguration.orderedRemoteArguments,
+            ["remote", "get-url", "--push", "--all", "primary"],
+            ["remote", "get-url", "--push", "--all", "github"],
+        ])
+        executor.complete(2, stdout: Data("github-push\n".utf8))
 
-        #expect(resolved == GitPushTarget(remote: "primary",
-                                         addresses: ["push-one", "push-two"]))
+        #expect(resolved == [
+            GitPushTarget(remote: "primary", addresses: ["primary-push"]),
+            GitPushTarget(remote: "github", addresses: ["github-push"]),
+        ])
         #expect(failure == nil)
+        _ = lease
+    }
+
+    @Test("Verspäteter alter Anzeige-Refresh überschreibt den jüngeren nicht")
+    @MainActor
+    func staleDisplayRefreshCannotPublish() async {
+        let executor = PushTargetTestExecutor()
+        let coordinator = GitOperationsCoordinator(executor: executor)
+        let suite = "Fastra-PushTarget-Race-\(UUID().uuidString)"
+        let defaults = testSuiteDefaults(named: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let workspace = Workspace(defaults: defaults,
+                                  gitOperationsCoordinator: coordinator)
+        workspace.projectURL = URL(fileURLWithPath: "/tmp/repo")
+        var publishedRemotes: [[String]] = []
+        let observation = workspace.$gitPushTargets.sink { targets in
+            let remotes = targets.map(\.remote)
+            if !remotes.isEmpty { publishedRemotes.append(remotes) }
+        }
+
+        workspace.refreshGitPushTarget()
+        #expect(executor.calls.count == 1)
+        executor.complete(0, stdout: remoteConfigData([
+            ("remote.old.url", "old-fetch")
+        ]))
+        #expect(executor.calls.count == 2)
+        executor.complete(1, stdout: Data("old-push\n".utf8))
+
+        // Die alte Auflösung ist nun fertig, ihre Veröffentlichung liegt aber
+        // noch auf der Main-Queue. Der zweite Refresh muss sie allein über die
+        // Anfrage-ID entwerten; ein nachträgliches cancel() käme zu spät.
+        workspace.refreshGitPushTarget()
+        #expect(executor.calls.count == 3)
+        executor.complete(2, stdout: remoteConfigData([
+            ("remote.new.url", "new-fetch")
+        ]))
+        #expect(executor.calls.count == 4)
+        executor.complete(3, stdout: Data("new-push\n".utf8))
+
+        #expect(await waitUntil {
+            workspace.gitPushTargets.map(\.remote) == ["new"]
+        })
+        #expect(publishedRemotes == [["new"]])
+        _ = observation
+    }
+
+    @Test("Gezielte Auflösung fragt nur den ausgewählten Remote ab")
+    func targetedResolverReadsOnlySelectedRemote() {
+        let executor = PushTargetTestExecutor()
+        var resolved: GitPushTarget?
+        let lease = GitPushTargetResolver.resolve(
+            remote: "github",
+            repository: URL(fileURLWithPath: "/tmp/repo"),
+            executor: executor
+        ) { target, _ in
+            resolved = target
+        }
+        executor.complete(0, stdout: remoteConfigData([
+            ("remote.primary.url", "primary-fetch"),
+            ("remote.github.url", "github-fetch"),
+        ]))
+        #expect(executor.calls.map(\.arguments) == [
+            GitRemoteConfiguration.orderedRemoteArguments,
+            ["remote", "get-url", "--push", "--all", "github"],
+        ])
+        executor.complete(1, stdout: Data("github-push\n".utf8))
+        #expect(resolved == GitPushTarget(remote: "github",
+                                         addresses: ["github-push"]))
         _ = lease
     }
 
@@ -94,9 +174,9 @@ struct GitPushTargetTests {
     func noRemoteIsNotExecutionFailure() {
         let executor = PushTargetTestExecutor()
         var didComplete = false
-        var resolved: GitPushTarget?
+        var resolved: [GitPushTarget] = []
         var failure: GitExecutionOutcome?
-        let lease = GitPushTargetResolver.resolve(
+        let lease = GitPushTargetResolver.resolveAll(
             repository: URL(fileURLWithPath: "/tmp/repo"), executor: executor
         ) {
             didComplete = true
@@ -106,7 +186,7 @@ struct GitPushTargetTests {
         executor.complete(0, exitCode: 1)
 
         #expect(didComplete)
-        #expect(resolved == nil)
+        #expect(resolved.isEmpty)
         #expect(failure == nil)
         _ = lease
     }
@@ -129,8 +209,9 @@ struct GitPushTargetTests {
         status.branch = "main"
         status.headOID = "abc"
 
-        #expect(GitChangesPrimaryAction.resolve(status: status, target: primary)
-                == .push(primary))
+        #expect(GitChangesPrimaryAction.resolve(status: status,
+                                                targets: [primary])
+                == .push([primary]))
     }
 
     @Test("Dateiänderungen behalten Commit-Vorrang")
@@ -141,23 +222,23 @@ struct GitPushTargetTests {
         status.changes = [GitChange(path: "README.md", staged: .modified,
                                     unstaged: nil)]
 
-        #expect(GitChangesPrimaryAction.resolve(status: status, target: primary)
+        #expect(GitChangesPrimaryAction.resolve(status: status,
+                                                targets: [primary])
                 == .commit)
     }
 
-    @Test("Passender Upstream pusht nur bei Ahead")
-    func matchingUpstreamUsesAhead() {
+    @Test("Sauberer Branch zeigt alle Ziele auch ohne Ahead-Zähler")
+    func cleanBranchShowsEveryTarget() {
         var status = GitStatusSummary.empty
         status.branch = "main"
         status.headOID = "abc"
         status.upstream = "primary/main"
         status.ahead = 0
-        #expect(GitChangesPrimaryAction.resolve(status: status, target: primary)
-                == .commit)
-
-        status.ahead = 2
-        #expect(GitChangesPrimaryAction.resolve(status: status, target: primary)
-                == .push(primary))
+        let github = GitPushTarget(remote: "github",
+                                   addresses: ["github-address"])
+        #expect(GitChangesPrimaryAction.resolve(
+            status: status, targets: [primary, github]
+        ) == .push([primary, github]))
     }
 
     @Test("Upstream eines anderen Remotes ersetzt erstes Ziel nicht")
@@ -167,7 +248,8 @@ struct GitPushTargetTests {
         status.headOID = "abc"
         status.upstream = "github/main"
 
-        #expect(GitChangesPrimaryAction.resolve(status: status, target: primary)
-                == .push(primary))
+        #expect(GitChangesPrimaryAction.resolve(status: status,
+                                                targets: [primary])
+                == .push([primary]))
     }
 }

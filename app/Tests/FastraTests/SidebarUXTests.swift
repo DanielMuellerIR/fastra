@@ -3,7 +3,7 @@
 // Tests für die Etappe-1-UX des Wunschpakets 2026-07:
 // - Save-Dialog-Vorschlagsordner (Sidebar vor Dokumentkontext vor Projekt)
 // - Elternordner-Öffnen beim Einzeldatei-Öffnen ohne Projekt
-// - Entschärfter Ordnerwechsel nach Tab-Schließen (projectSwitchTarget)
+// - Git-Root-Kontext bei Tabwechsel und Tab-Schließen
 // - Leere-Ordner-Erkennung (FolderEmptinessCache, gleiche Filterregeln)
 
 import Foundation
@@ -121,10 +121,10 @@ func loadFile_opensParentFolderWithoutProject() async throws {
             "Der Editor-Fokus muss auf der Datei bleiben")
 }
 
-@Test("Einzeldatei bei offenem Projekt → Projekt bleibt unverändert",
+@Test("Fremde Nicht-Git-Datei behält einen ausdrücklich geöffneten Projektkontext",
       .timeLimit(.minutes(1)))
 @MainActor
-func loadFile_keepsExistingProject() async throws {
+func loadFile_keepsExplicitProjectForNonGitFile() async throws {
     let (defaults, suite) = makeFreshDefaults()
     defer { defaults.removePersistentDomain(forName: suite) }
     let projectDir = try makeTmpDirectory("projekt")
@@ -142,7 +142,8 @@ func loadFile_keepsExistingProject() async throws {
 
     #expect(done)
     #expect(ws.projectURL == projectDir,
-            "Ein bereits geöffneter Ordner darf sich nicht ändern")
+            "Nur ein Git-Root darf einen bestehenden Projektkontext automatisch ersetzen")
+    #expect(ws.tabs.contains { $0.url == file.canonicalFileURL })
 }
 
 @Test("Implizites Elternordner-Öffnen schließt fremde offene Tabs NICHT",
@@ -218,6 +219,23 @@ func autoProject_fallsBackToParent() throws {
     #expect(Workspace.autoProjectFolder(for: file)?.path == dir.path)
 }
 
+@Test("Projektkontext: ungetrackte tiefe Datei gewinnt mit ihrer Git-Wurzel")
+func projectContext_prefersRepositoryRootForUntrackedFile() throws {
+    let repo = try makeTmpDirectory("context-repo")
+    defer { try? FileManager.default.removeItem(at: repo) }
+    try FileManager.default.createDirectory(at: repo.appendingPathComponent(".git"),
+                                            withIntermediateDirectories: true)
+    let nested = repo.appendingPathComponent("inter/2026/tief")
+    try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+    let file = nested.appendingPathComponent("ungetrackt.txt")
+    try "x".write(to: file, atomically: true, encoding: .utf8)
+
+    #expect(Workspace.projectContextTarget(
+        for: file,
+        currentProject: nested
+    ) == repo)
+}
+
 @Test("Einzeldatei im Repo-Unterordner → Seitenleiste zeigt den Repo-Root",
       .timeLimit(.minutes(1)))
 @MainActor
@@ -240,96 +258,137 @@ func loadFile_opensRepositoryRootWithoutProject() async throws {
     #expect(ws.projectURL == repo, "Der Git-Root muss als Projekt geöffnet sein, nicht docs/")
 }
 
-// MARK: - Entschärfter Ordnerwechsel nach Tab-Schließen
+@Test("Tabwechsel zwischen Repositories folgt immer der Git-Wurzel",
+      .timeLimit(.minutes(1)))
+@MainActor
+func activeTabSwitch_followsRepositoryRootInBothDirections() async throws {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let repoA = try makeTmpDirectory("tabwechsel-a")
+    let repoB = try makeTmpDirectory("tabwechsel-b")
+    defer {
+        try? FileManager.default.removeItem(at: repoA)
+        try? FileManager.default.removeItem(at: repoB)
+    }
+    for repo in [repoA, repoB] {
+        try FileManager.default.createDirectory(at: repo.appendingPathComponent(".git"),
+                                                withIntermediateDirectories: true)
+    }
+    let fileA = repoA.appendingPathComponent("inter/2026/tief/a.txt")
+    let fileB = repoB.appendingPathComponent("src/noch/tiefer/b.txt")
+    try FileManager.default.createDirectory(at: fileA.deletingLastPathComponent(),
+                                            withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: fileB.deletingLastPathComponent(),
+                                            withIntermediateDirectories: true)
+    try "A".write(to: fileA, atomically: true, encoding: .utf8)
+    try "B".write(to: fileB, atomically: true, encoding: .utf8)
 
-private func fileTab(_ path: String) -> EditorTab {
-    let url = URL(fileURLWithPath: path)
-    return EditorTab(title: url.lastPathComponent,
-                     path: url.deletingLastPathComponent().path, url: url)
+    let ws = Workspace(defaults: defaults)
+    #expect(await awaitLoadFile(ws, fileA))
+    let tabA = try #require(ws.activeTabID)
+    #expect(ws.projectURL == repoA)
+    #expect(await awaitLoadFile(ws, fileB))
+    let tabB = try #require(ws.activeTabID)
+    #expect(ws.projectURL == repoB)
+    #expect(ws.tabs.count == 2, "Der implizite Projektwechsel darf den fremden Tab nicht schließen")
+
+    ws.selectTab(id: tabA)
+    #expect(ws.projectURL == repoA)
+
+    ws.selectTab(id: tabB)
+    #expect(ws.projectURL == repoB)
+    #expect(ws.tabs.count == 2)
 }
 
-@Test("Ordnerwechsel: alle verbliebenen Dateien im selben fremden Ordner → Ziel")
-func projectSwitch_targetsForeignFolder() {
-    let tabs = [fileTab("/tmp/anderswo/a.txt"), fileTab("/tmp/anderswo/b.txt")]
-    let target = Workspace.projectSwitchTarget(
-        tabs: tabs, projectURL: URL(fileURLWithPath: "/tmp/projekt"),
-        searchUIActive: false
-    )
-    #expect(target?.path == "/tmp/anderswo")
+@Test("Schließen des aktiven Tabs stellt die Git-Wurzel des Vorgängers her",
+      .timeLimit(.minutes(1)))
+@MainActor
+func closeActiveTab_restoresPreviousRepositoryRoot() async throws {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let repoA = try makeTmpDirectory("schliessen-a")
+    let repoB = try makeTmpDirectory("schliessen-b")
+    defer {
+        try? FileManager.default.removeItem(at: repoA)
+        try? FileManager.default.removeItem(at: repoB)
+    }
+    for repo in [repoA, repoB] {
+        try FileManager.default.createDirectory(at: repo.appendingPathComponent(".git"),
+                                                withIntermediateDirectories: true)
+    }
+    let fileA = repoA.appendingPathComponent("inter/2026/ungetrackt.txt")
+    let fileB = repoB.appendingPathComponent("anderes/projekt.txt")
+    try FileManager.default.createDirectory(at: fileA.deletingLastPathComponent(),
+                                            withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: fileB.deletingLastPathComponent(),
+                                            withIntermediateDirectories: true)
+    try "A".write(to: fileA, atomically: true, encoding: .utf8)
+    try "B".write(to: fileB, atomically: true, encoding: .utf8)
+
+    let ws = Workspace(defaults: defaults)
+    #expect(await awaitLoadFile(ws, fileA))
+    let tabA = try #require(ws.activeTabID)
+    #expect(await awaitLoadFile(ws, fileB))
+    let tabB = try #require(ws.activeTabID)
+    #expect(ws.projectURL == repoB)
+
+    // Die Merkliste kennt A nun ausdrücklich als Vorgänger von B.
+    ws.selectTab(id: tabA)
+    ws.selectTab(id: tabB)
+    ws.closeActiveTab()
+
+    #expect(ws.activeTabID == tabA)
+    #expect(ws.activeTab?.url == fileA.canonicalFileURL)
+    #expect(ws.projectURL == repoA,
+            "Nach dem impliziten Tabwechsel muss der Repo-Root statt inter/2026 erscheinen")
+    #expect(!ws.tabs.contains { $0.id == tabB })
 }
 
-@Test("Ordnerwechsel: Datei im Projekt verbleibt → kein Wechsel")
-func projectSwitch_keepsProjectWithRemainingFile() {
-    let tabs = [fileTab("/tmp/projekt/drin.txt"), fileTab("/tmp/anderswo/a.txt")]
-    #expect(Workspace.projectSwitchTarget(
-        tabs: tabs, projectURL: URL(fileURLWithPath: "/tmp/projekt"),
-        searchUIActive: false
-    ) == nil)
-}
+@Test("Projektkontext wird nach Suche und Live-Vorschau zuverlässig nachgeholt",
+      .timeLimit(.minutes(1)))
+@MainActor
+func projectContext_followsTabAfterSearchCloses() async throws {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let repoA = try makeTmpDirectory("suche-a")
+    let repoB = try makeTmpDirectory("suche-b")
+    defer {
+        try? FileManager.default.removeItem(at: repoA)
+        try? FileManager.default.removeItem(at: repoB)
+    }
+    for repo in [repoA, repoB] {
+        try FileManager.default.createDirectory(at: repo.appendingPathComponent(".git"),
+                                                withIntermediateDirectories: true)
+    }
+    let fileA = repoA.appendingPathComponent("inter/2026/a.txt")
+    let fileB = repoB.appendingPathComponent("tief/b.txt")
+    try FileManager.default.createDirectory(at: fileA.deletingLastPathComponent(),
+                                            withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: fileB.deletingLastPathComponent(),
+                                            withIntermediateDirectories: true)
+    try "A".write(to: fileA, atomically: true, encoding: .utf8)
+    try "B".write(to: fileB, atomically: true, encoding: .utf8)
 
-@Test("Ordnerwechsel: aktive Such-/Ersetzungsvorschau blockiert den Wechsel")
-func projectSwitch_blockedDuringSearchPreview() {
-    let tabs = [fileTab("/tmp/anderswo/a.txt")]
-    #expect(Workspace.projectSwitchTarget(
-        tabs: tabs, projectURL: URL(fileURLWithPath: "/tmp/projekt"),
-        searchUIActive: true
-    ) == nil)
-}
+    let ws = Workspace(defaults: defaults)
+    #expect(await awaitLoadFile(ws, fileA))
+    let tabA = try #require(ws.activeTabID)
+    #expect(await awaitLoadFile(ws, fileB))
+    #expect(ws.projectURL == repoB)
 
-@Test("Ordnerwechsel: Dateien aus VERSCHIEDENEN fremden Ordnern → kein Wechsel")
-func projectSwitch_blockedForMixedForeignFolders() {
-    // Ein Wechsel würde den zweiten Tab schließen (liegt außerhalb des
-    // Zielordners) — also konservativ gar nicht wechseln.
-    let tabs = [fileTab("/tmp/anderswo/a.txt"), fileTab("/tmp/nochwoanders/b.txt")]
-    #expect(Workspace.projectSwitchTarget(
-        tabs: tabs, projectURL: URL(fileURLWithPath: "/tmp/projekt"),
-        searchUIActive: false
-    ) == nil)
-}
-
-@Test("Ordnerwechsel: Unterordner-Datei unter dem Zielordner zählt als drin")
-func projectSwitch_allowsSubfolderUnderTarget() {
-    let tabs = [fileTab("/tmp/anderswo/a.txt"), fileTab("/tmp/anderswo/sub/b.txt")]
-    let target = Workspace.projectSwitchTarget(
-        tabs: tabs, projectURL: URL(fileURLWithPath: "/tmp/projekt"),
-        searchUIActive: false
-    )
-    #expect(target?.path == "/tmp/anderswo")
-}
-
-@Test("Ordnerwechsel: Git-Ansicht offen → Projekt bleibt")
-func projectSwitch_blockedWithGitTab() {
-    var git = EditorTab(title: "Verlauf", path: "—")
-    git.gitKind = .log
-    let tabs = [git, fileTab("/tmp/anderswo/a.txt")]
-    #expect(Workspace.projectSwitchTarget(
-        tabs: tabs, projectURL: URL(fileURLWithPath: "/tmp/projekt"),
-        searchUIActive: false
-    ) == nil)
-}
-
-@Test("Ordnerwechsel: ohne Projekt oder ohne Datei-Tabs → kein Wechsel")
-func projectSwitch_needsProjectAndFiles() {
-    let scratch = EditorTab(title: "Ohne Titel", path: "—")
-    #expect(Workspace.projectSwitchTarget(
-        tabs: [fileTab("/tmp/anderswo/a.txt")], projectURL: nil,
-        searchUIActive: false
-    ) == nil)
-    #expect(Workspace.projectSwitchTarget(
-        tabs: [scratch], projectURL: URL(fileURLWithPath: "/tmp/projekt"),
-        searchUIActive: false
-    ) == nil)
-}
-
-@Test("Ordnerwechsel: ähnlicher Präfix-Nachbar gilt nicht als im Projekt")
-func projectSwitch_prefixNeighborIsForeign() {
-    // /tmp/projekt-alt beginnt wie /tmp/projekt, liegt aber außerhalb.
-    let tabs = [fileTab("/tmp/projekt-alt/a.txt")]
-    let target = Workspace.projectSwitchTarget(
-        tabs: tabs, projectURL: URL(fileURLWithPath: "/tmp/projekt"),
-        searchUIActive: false
-    )
-    #expect(target?.path == "/tmp/projekt-alt")
+    // Beide Sperren bilden den schärfsten Fall: Das Schließen nur einer
+    // Oberfläche darf den Kontext noch nicht wechseln. Erst wenn Suche UND
+    // Live-Vorschau beendet sind, wird der aktive Tab nachgezogen.
+    ws.showSearchDialog = true
+    ws.livePreview = true
+    ws.selectTab(id: tabA)
+    #expect(ws.projectURL == repoB,
+            "Der Suchbereich bleibt während der geöffneten Suche eingefroren")
+    ws.showSearchDialog = false
+    #expect(ws.projectURL == repoB,
+            "Die noch aktive Live-Vorschau hält den Projektkontext weiter fest")
+    ws.livePreview = false
+    #expect(ws.projectURL == repoA,
+            "Nach dem Schließen beider Sperren muss der aktive Repo-Root erscheinen")
 }
 
 // MARK: - Leere-Ordner-Erkennung

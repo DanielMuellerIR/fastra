@@ -40,7 +40,7 @@ struct GitChangesView: View {
     }
     private var primaryAction: GitChangesPrimaryAction {
         GitChangesPrimaryAction.resolve(status: workspace.gitStatus,
-                                        target: workspace.gitPushTarget)
+                                        targets: workspace.gitPushTargets)
     }
 
     var body: some View {
@@ -194,8 +194,8 @@ struct GitChangesView: View {
     }
 
     /// Commit-Feld + Knopf (VS-Code: nur auf dem Änderungen-Tab). Nach einem
-    /// sauberen lokalen Commit wird derselbe Platz zum expliziten Push-Ziel:
-    /// Remote-Name im Knopf, effektive Adresse unmittelbar darunter.
+    /// sauberen lokalen Commit wird derselbe Platz zu getrennten Push-Flächen:
+    /// Remote-Name und effektive Adresse bleiben je Ziel gemeinsam sichtbar.
     private var commitBox: some View {
         VStack(spacing: 6) {
             switch primaryAction {
@@ -222,35 +222,70 @@ struct GitChangesView: View {
                 .keyboardShortcut(.return, modifiers: .command)
                 .help("Bereitgestellte Änderungen committen (nichts bereitgestellt → alles)")
 
-            case .push(let target):
-                primaryButton(title: L10n.format("Push zu %@", target.remote),
-                              systemImage: "arrow.up") {
-                    workspace.gitPush(to: target)
+            case .push(let targets):
+                LazyVGrid(
+                    // Zwei Ziele bleiben auch in der realen schmalen
+                    // Seitenleiste nebeneinander. `adaptive(minimum:)` brach
+                    // dort trotz ausreichender lesbarer Kartenbreite in zwei
+                    // Zeilen um und widersprach der sichtbaren Zusage.
+                    columns: targets.count > 1
+                        ? [GridItem(.flexible(), spacing: 6),
+                           GridItem(.flexible(), spacing: 6)]
+                        : [GridItem(.flexible())],
+                    spacing: 6
+                ) {
+                    ForEach(targets, id: \.remote) { target in
+                        pushTargetButton(target)
+                    }
                 }
-                .background {
-                    SelfTestMarker(id: "gitPrimaryPush-\(target.remote)")
-                }
-                .help(L10n.format("Lokale Commits ausdrücklich zu %@ übertragen",
-                                  target.remote))
+            }
+        }
+        .padding(10)
+    }
 
-                Text(L10n.format("Push-Ziel: %@", target.displayAddress))
+    /// Die gesamte Karte ist klickbar. Bei zwei Remotes liegen die Karten in
+    /// einer normalen Seitenleistenbreite nebeneinander; weitere Ziele brechen
+    /// automatisch in die nächste Zeile um, statt unlesbar schmal zu werden.
+    private func pushTargetButton(_ target: GitPushTarget) -> some View {
+        Button {
+            workspace.gitPush(to: target)
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                Label(L10n.format("Push zu %@", target.remote),
+                      systemImage: "arrow.up")
+                    .fastraFont(.small)
+                    .lineLimit(1)
+                Text(target.displayAddress)
                     .fastraFont(size: 9, design: .monospaced)
                     .foregroundColor(Theme.textSecondary)
-                    .lineLimit(3)
+                    .lineLimit(2)
                     .truncationMode(.middle)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .help(target.displayAddress)
                     .background {
                         SelfTestMarker(
                             id: "gitPrimaryPushAddress-\(target.remote)-"
                                 + "\(target.displayAddress.hashValue)"
                         )
                     }
-                    .accessibilityLabel(L10n.format("Push-Ziel: %@",
-                                                    target.displayAddress))
             }
+            .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 5)
         }
-        .padding(10)
+        .buttonStyle(.plain)
+        .foregroundColor(Theme.accentReadable)
+        .background(
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(Theme.surfaceSand.opacity(0.6))
+        )
+        .background {
+            SelfTestMarker(id: "gitPrimaryPush-\(target.remote)")
+        }
+        .disabled(workspace.gitOperationsAreBusy)
+        .help(L10n.format("Lokale Commits ausdrücklich zu %@ übertragen: %@",
+                          target.remote, target.displayAddress))
+        .accessibilityLabel(L10n.format("Push zu %@, Ziel %@",
+                                        target.remote, target.displayAddress))
     }
 
     private func primaryButton(title: String, systemImage: String,

@@ -123,11 +123,21 @@ vollwertigen Git-Client.
   Tastaturnavigation zwischen Änderungsblöcken erscheinen. Binäre und kombinierte
   Patches bleiben über klare Metadaten beziehungsweise den auswählbaren
   Unified-Fallback zugänglich.
-- In der Projekt-Seitenleiste stehen aktueller Branch, Ahead/Behind-Stand und
-  Dateistatus. Fetch kann manuell oder bei aktiver App zeitgesteuert laufen;
-  Alter und Fehler bleiben sichtbar. Pull verwendet immer eine gewählte Strategie
+- In der Projekt-Seitenleiste und im Graph stehen Ahead/Behind-Zähler für jeden
+  Remote. Lokale und entfernte Branches sind unterscheidbar, mehrere Remotes
+  behalten ihre eigene Farbe. Fetch kann manuell oder bei aktiver App
+  zeitgesteuert laufen; Alter und Fehler bleiben sichtbar. Pull verwendet immer eine gewählte Strategie
   (Rebase, Merge oder nur Fast-Forward), prüft das Repository unmittelbar vor
   dem Start erneut und versteckt weder automatischen Stash noch Push.
+- Vor einem Push holt Fastra den Ziel-Remote und zeigt eine gebundene Vorschau
+  mit Adresse, Ziel-Ref, Commit und Ahead/Behind-Zahlen. Ändert sich einer
+  dieser Werte vor der Ausführung, wird nichts übertragen. Divergenzen und
+  abgelehnte Nicht-Fast-Forward-Pushes werden erklärt; Force-with-Lease bleibt
+  ein getrennt bestätigter Folgeschritt. Jeder konfigurierte Remote erhält eine
+  eigene klickbare Push-Fläche; zwei Ziele stehen bei normaler Breite
+  nebeneinander und lassen sich unabhängig übertragen. Die
+  Upstream-Konfiguration bleibt dabei immer unverändert, auch wenn der Branch
+  noch keinen Upstream besitzt.
 - Kuratierte Aktionen decken neuen Branch, Stash/Pop, Cherry-pick, Revert sowie
   Fortsetzen und Abbrechen eines laufenden Git-Vorgangs ab. Destruktive oder
   verlaufsändernde Wege besitzen eine frische Vorprüfung und Bestätigung. Force

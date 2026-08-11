@@ -240,6 +240,7 @@ struct GitRepositoryStoreTests {
         executor.complete(offset + 1, with: success(Data()))
         executor.complete(offset + 2, with: success(Data("main\t*\n".utf8)))
         executor.complete(offset + 3, with: success(graphSnapshot(hash: oid)))
+        executor.complete(offset + 4, with: success(Data()))
     }
 
     @Test("Snapshot bündelt Status, Upstream, HEAD, Branches und Graph")
@@ -279,7 +280,7 @@ struct GitRepositoryStoreTests {
             })
             store.refresh(repository: repo, scope: .full)
             store.refresh(repository: repo, scope: .full)
-            #expect(executor.count == 4)
+            #expect(executor.count == 5)
             completeFull(executor, offset: 0, oid: "shared")
         }
         _ = observations
@@ -326,11 +327,12 @@ struct GitRepositoryStoreTests {
                                gitRepositoryStore: store)
         first.openProject(at: root)
         second.openProject(at: root)
-        #expect(executor.count == 4)
+        #expect(executor.count == 5)
         executor.complete(0, with: success(porcelainSnapshot(oid: "shared")))
         executor.complete(1, with: success(Data(operationPaths.utf8)))
         executor.complete(2, with: success(Data("main\t*\n".utf8)))
         executor.complete(3, with: success(graphSnapshot(hash: "shared")))
+        executor.complete(4, with: success(Data()))
         await waitForOperationState(.merge, first, second)
         #expect(first.gitOperationState == .merge)
         #expect(second.gitOperationState == .merge)
@@ -348,13 +350,13 @@ struct GitRepositoryStoreTests {
         completeFull(executor, offset: 0, oid: "one")
         while revisions.snapshot().count < 1 { await Task.yield() }
         store.refresh(repository: repo, scope: .status)
-        #expect(executor.count == 6)
-        executor.complete(4, with: success(porcelainSnapshot(oid: "two")))
-        executor.complete(5, with: success(Data()))
-        while executor.count < 10 { await Task.yield() }
+        #expect(executor.count == 7)
+        executor.complete(5, with: success(porcelainSnapshot(oid: "two")))
+        executor.complete(6, with: success(Data()))
+        while executor.count < 12 { await Task.yield() }
         #expect(revisions.snapshot().count == 1)
         #expect(store.snapshot(for: repo)?.headOID == "one")
-        completeFull(executor, offset: 6, oid: "two")
+        completeFull(executor, offset: 7, oid: "two")
         while revisions.snapshot().count < 2 { await Task.yield() }
         _ = observation
         #expect(revisions.snapshot()[1].headOID == "two")
@@ -373,22 +375,24 @@ struct GitRepositoryStoreTests {
         executor.complete(1, with: success(Data()))
         executor.complete(2, with: success(Data("main\t*\n".utf8)))
         executor.complete(3, with: success(graphSnapshot(hash: "old")))
-        while executor.count < 8 { await Task.yield() }
+        executor.complete(4, with: success(Data()))
+        while executor.count < 10 { await Task.yield() }
         #expect(delivered.snapshot().isEmpty)
 
-        executor.complete(4, with: success(porcelainSnapshot(oid: "newer")))
-        executor.complete(5, with: success(Data()))
-        executor.complete(6, with: success(Data("main\t*\n".utf8)))
-        executor.complete(7, with: success(graphSnapshot(hash: "new")))
-        while executor.count < 12 { await Task.yield() }
+        executor.complete(5, with: success(porcelainSnapshot(oid: "newer")))
+        executor.complete(6, with: success(Data()))
+        executor.complete(7, with: success(Data("main\t*\n".utf8)))
+        executor.complete(8, with: success(graphSnapshot(hash: "new")))
+        executor.complete(9, with: success(Data()))
+        while executor.count < 15 { await Task.yield() }
         #expect(delivered.snapshot().isEmpty)
 
-        completeFull(executor, offset: 8, oid: "stable")
+        completeFull(executor, offset: 10, oid: "stable")
         while delivered.snapshot().isEmpty { await Task.yield() }
         _ = observation
         #expect(delivered.snapshot().last?.headOID == "stable")
         #expect(delivered.snapshot().last?.graph.first?.hash == "stable")
-        #expect(executor.count == 12)
+        #expect(executor.count == 15)
     }
 
     @Test("Drei inkonsistente Full-Batches enden ohne Endlosschleife und ohne Snapshot")
@@ -397,17 +401,18 @@ struct GitRepositoryStoreTests {
         let repo = repository("bounded-race")
         store.refresh(repository: repo, scope: .full)
         for attempt in 0..<3 {
-            let offset = attempt * 4
+            let offset = attempt * 5
             executor.complete(offset, with: success(porcelainSnapshot(oid: "status-\(attempt)")))
             executor.complete(offset + 1, with: success(Data()))
             executor.complete(offset + 2, with: success(Data("main\t*\n".utf8)))
             executor.complete(offset + 3, with: success(graphSnapshot(hash: "graph-\(attempt)")))
+            executor.complete(offset + 4, with: success(Data()))
             if attempt < 2 {
-                while executor.count < offset + 8 { await Task.yield() }
+                while executor.count < offset + 10 { await Task.yield() }
             }
         }
         while store.coordinator.state(for: repo) != .idle { await Task.yield() }
-        #expect(executor.count == 12)
+        #expect(executor.count == 15)
         #expect(store.snapshot(for: repo) == nil)
     }
 
@@ -421,8 +426,8 @@ struct GitRepositoryStoreTests {
         let truncated = GitResult(exitCode: 0,
                                   stdoutData: porcelainSnapshot(oid: "partial"),
                                   stderrData: Data(), stdoutWasTruncated: true)
-        executor.complete(4, with: .completed(truncated))
-        executor.complete(5, with: success(Data()))
+        executor.complete(5, with: .completed(truncated))
+        executor.complete(6, with: success(Data()))
         #expect(store.snapshot(for: repo)?.headOID == "verified")
         #expect(store.snapshot(for: repo)?.graph.first?.hash == "verified")
     }
@@ -437,7 +442,7 @@ struct GitRepositoryStoreTests {
         store.refresh(repository: repo, scope: .full)
         #expect(executor.count == 1)
         executor.complete(0, with: success())
-        #expect(executor.count == 5)
+        #expect(executor.count == 6)
         completeFull(executor, offset: 1, oid: "after-write")
         #expect(store.coordinator.state(for: repo) == .idle)
     }
@@ -447,7 +452,7 @@ struct GitRepositoryStoreTests {
         let (executor, store) = makeStore()
         store.refresh(repository: repository("parallel-a"), scope: .full)
         store.refresh(repository: repository("parallel-b"), scope: .full)
-        #expect(executor.count == 8)
+        #expect(executor.count == 10)
     }
 
     @Test("Externer Checkout plus Commit eskaliert Status zu konsistentem Full-Snapshot")
@@ -551,6 +556,7 @@ struct GitActionContextTests {
         executor.complete(1, with: success())
         executor.complete(2, with: success(Data("main\t*\n".utf8)))
         executor.complete(3, with: success(graphSnapshot(hash: "initial")))
+        executor.complete(4, with: success())
     }
 
     @Test("Projektwechsel zwischen add und commit verhindert den Commit im neuen Repo")
@@ -565,26 +571,26 @@ struct GitActionContextTests {
         completeInitialRefresh(executor)
         workspace.gitStatus = .empty
         workspace.gitCommit(message: "Test")
-        #expect(executor.startedArguments[4]
+        #expect(executor.startedArguments[5]
                 == ["config", "--includes", "--local", "--get", "user.name"])
-        executor.complete(4, with: success(Data("Test User\n".utf8)))
-        executor.complete(5, with: success(Data("test@example.test\n".utf8)))
-        executor.complete(6, with: success(Data("Global User\n".utf8)))
-        executor.complete(7, with: success(Data("global@example.test\n".utf8)))
+        executor.complete(5, with: success(Data("Test User\n".utf8)))
+        executor.complete(6, with: success(Data("test@example.test\n".utf8)))
+        executor.complete(7, with: success(Data("Global User\n".utf8)))
+        executor.complete(8, with: success(Data("global@example.test\n".utf8)))
         // Die Completion springt bewusst auf die Main Queue. In der gesamten
         // parallelen Suite kann deren Scheduling deutlich länger dauern als
         // im isolierten Test; die Sicherheitsbehauptung hat keine 1-s-Frist.
-        for _ in 0..<2_500 where executor.count < 9 {
+        for _ in 0..<2_500 where executor.count < 10 {
             try await Task.sleep(for: .milliseconds(2))
         }
-        guard executor.count >= 9 else {
+        guard executor.count >= 10 else {
             Issue.record("Identity-Prüfung startete add nicht binnen 5 Sekunden")
             return
         }
-        #expect(executor.startedArguments[8] == ["add", "-A"])
+        #expect(executor.startedArguments[9] == ["add", "-A"])
 
         workspace.openProject(at: repository("action-b"))
-        executor.complete(8, with: success())
+        executor.complete(9, with: success())
         // Die add-Completion springt auf die Main-Queue; erst nach dem Drain
         // ist entschieden, ob sie fälschlich noch einen Commit gestartet hätte.
         await drainMainQueue()
@@ -602,16 +608,16 @@ struct GitActionContextTests {
         workspace.openProject(at: repository("push-a"))
         completeInitialRefresh(executor)
         workspace.gitPush()
-        #expect(executor.startedArguments[4]
+        #expect(executor.startedArguments[5]
                 == GitRemoteConfiguration.orderedRemoteArguments)
-        executor.complete(4, with: success(
+        executor.complete(5, with: success(
             Data("remote.primary.url\nssh-target\u{0}".utf8)
         ))
-        #expect(executor.startedArguments[5]
+        #expect(executor.startedArguments[6]
                 == ["remote", "get-url", "--push", "--all", "primary"])
 
         workspace.openProject(at: repository("push-b"))
-        executor.complete(5, with: success(Data("ssh-target\n".utf8)))
+        executor.complete(6, with: success(Data("ssh-target\n".utf8)))
         // Wie oben: Erst der Drain lässt die Preflight-Completion wirklich
         // laufen, sonst wäre die Push-Verneinung immer erfüllt.
         await drainMainQueue()

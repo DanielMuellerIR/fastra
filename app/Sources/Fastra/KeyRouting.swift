@@ -26,6 +26,9 @@ enum KeyRoute: Equatable {
     case hideSearch
     /// CMD+W bei vorderem Hilfe-Fenster — nur die Hilfe schließen.
     case closeHelp
+    /// CMD+W bei einem echten vorderen Dokumentfenster — dessen Workspace
+    /// direkt schließen, statt das Ziel später aus globalem Zustand zu raten.
+    case closeDocument
     /// CMD+G — zum nächsten Treffer springen.
     case gotoNextMatch
     /// CMD+SHIFT+G — zum vorigen Treffer springen.
@@ -65,7 +68,8 @@ enum KeyRouting {
         charactersIgnoringModifiers: String?,
         keyCode: UInt16,
         isSearchWindowKey: Bool,
-        isHelpWindowKey: Bool = false
+        isHelpWindowKey: Bool = false,
+        isDocumentWindowKey: Bool = false
     ) -> KeyRoute {
         guard isKeyDown else { return .passThrough }
 
@@ -99,7 +103,8 @@ enum KeyRouting {
             let extra = modifierFlags.intersection([.option, .control, .shift])
             guard extra.isEmpty else { return .passThrough }
             if isHelpWindowKey { return .closeHelp }
-            return isSearchWindowKey ? .hideSearch : .passThrough
+            if isSearchWindowKey { return .hideSearch }
+            return isDocumentWindowKey ? .closeDocument : .passThrough
         }
 
         // CMD+G / CMD+SHIFT+G — Treffer-Navigation.
@@ -142,7 +147,8 @@ enum KeyRouting {
         case .gotoNextMatch:      return .fastraGotoNextMatch
         case .gotoPreviousMatch:  return .fastraGotoPreviousMatch
         case .showGotoLine:       return .fastraShowGotoLine
-        case .closeHelp, .moveToBeginningOfDocument, .moveToEndOfDocument:
+        case .closeHelp, .closeDocument,
+             .moveToBeginningOfDocument, .moveToEndOfDocument:
             // Diese Aktionen gehen direkt an die fokussierte Editor-TextView;
             // eine globale Notification würde Suchfelder versehentlich erfassen.
             return nil

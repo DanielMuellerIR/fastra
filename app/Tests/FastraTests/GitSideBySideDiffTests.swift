@@ -544,6 +544,9 @@ private func makeDiffWorkspace() async throws
     executor.complete(3, result: GitResult(exitCode: 0,
                                            stdoutData: graphDiffSnapshot(oid),
                                            stderrData: Data()))
+    executor.complete(4, result: GitResult(exitCode: 0,
+                                           stdoutData: Data(),
+                                           stderrData: Data()))
     // Der Store publiziert den vollständigen Snapshot bewusst auf Main. Erst
     // danach dürfen Lifecycle-Tests einen Diff-Tab öffnen, sonst kann die noch
     // ausstehende Graph-Aktualisierung dessen erste Generation abbrechen.
@@ -580,12 +583,12 @@ func sideBySideClosedTabStaysClosed() async throws {
     defer { defaults.removePersistentDomain(forName: suite) }
     workspace.openGitChangeDiff(change: GitChange(path: "a.txt", staged: nil,
                                                   unstaged: .modified), staged: false)
-    #expect(executor.count == 5)
+    #expect(executor.count == 6)
     let tabID = try? #require(workspace.tabs.first(where: { $0.gitDiffRequest != nil })?.id)
     guard let tabID else { return }
     workspace.closeTab(id: tabID)
-    #expect(executor.isCancelled(4))
-    executor.complete(4, result: gitResult(normalPatch))
+    #expect(executor.isCancelled(5))
+    executor.complete(5, result: gitResult(normalPatch))
     // Die verspätete Completion springt auf die Main-Queue; erst nach dem
     // Drain ist entschieden, ob sie den Tab fälschlich neu angelegt hätte.
     await drainMainQueue()
@@ -603,14 +606,14 @@ func sideBySideRefreshDoesNotDeduplicateRunningRead() async throws {
     let change = GitChange(path: "a.txt", staged: nil, unstaged: .modified)
     workspace.openGitChangeDiff(change: change, staged: false)
     workspace.refreshOpenGitDiffTabs()
-    #expect(executor.count == 5)
-    #expect(executor.isCancelled(4))
-    executor.complete(4, result: gitResult(normalPatch.replacingOccurrences(of: "neu value",
+    #expect(executor.count == 6)
+    #expect(executor.isCancelled(5))
+    executor.complete(5, result: gitResult(normalPatch.replacingOccurrences(of: "neu value",
                                                                              with: "alt-read")))
     try await waitForDiffState("Trailing Refresh wurde nicht gestartet") {
-        executor.count >= 6
+        executor.count >= 7
     }
-    executor.complete(5, result: gitResult(normalPatch.replacingOccurrences(of: "neu value",
+    executor.complete(6, result: gitResult(normalPatch.replacingOccurrences(of: "neu value",
                                                                              with: "fresh-read")))
     try await waitForDiffState("Trailing Refresh wurde nicht im Tab publiziert") {
         workspace.tabs.first(where: { $0.gitDiffRequest != nil })?.gitDiffDocument?
@@ -633,20 +636,20 @@ func sideBySideUntrackedRefreshAcceptsDifferenceExit() async throws {
     defer { defaults.removePersistentDomain(forName: suite) }
     let change = GitChange(path: "neu.txt", staged: nil, unstaged: .untracked)
     workspace.openGitChangeDiff(change: change, staged: false)
-    #expect(executor.arguments(4).contains("--no-index"))
-    executor.complete(4, result: gitResult(normalPatch, exitCode: 1))
+    #expect(executor.arguments(5).contains("--no-index"))
+    executor.complete(5, result: gitResult(normalPatch, exitCode: 1))
     try await waitForDiffState("Erster Untracked-Diff wurde nicht publiziert") {
         workspace.tabs.first(where: { $0.gitDiffRequest != nil })?.gitDiffDocument?
             .hunks.isEmpty == false
     }
     workspace.refreshOpenGitDiffTabs()
     try await waitForDiffState("Untracked-Refresh wurde nicht gestartet") {
-        executor.count >= 6
+        executor.count >= 7
     }
-    #expect(executor.arguments(5).contains("--no-index"))
+    #expect(executor.arguments(6).contains("--no-index"))
     let refreshedPatch = normalPatch.replacingOccurrences(of: "neu value",
                                                            with: "refresh-read")
-    executor.complete(5, result: gitResult(refreshedPatch, exitCode: 1))
+    executor.complete(6, result: gitResult(refreshedPatch, exitCode: 1))
     try await waitForDiffState("Untracked-Refresh wurde nicht im Tab publiziert") {
         workspace.tabs.first(where: { $0.gitDiffRequest != nil })?.gitDiffDocument?
             .hunks.flatMap(\.rows).contains(where: { $0.after == "refresh-read" }) == true

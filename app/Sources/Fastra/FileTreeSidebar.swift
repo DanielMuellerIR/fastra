@@ -98,23 +98,44 @@ struct FileTreeSidebar: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .help("Lokalen Branch auswählen")
                     .disabled(workspace.gitOperationsAreBusy)
-                    if status.ahead > 0 || status.behind > 0 {
+                    if !relevantRemoteTrackingStates.isEmpty {
                         TimelineView(.periodic(from: .now, by: 60)) { context in
-                            Text(Self.aheadBehindText(status))
-                                .fastraFont(size: 9)
-                                .foregroundColor(Theme.textSecondary)
-                                .lineLimit(2)
-                                .help(Self.comparisonDescription(
-                                    status, fetch: workspace.gitRepositorySnapshot?.fetch,
-                                    now: context.date
-                                ))
-                                .accessibilityLabel(L10n.format(
-                                    "Vergleich mit %@: %@",
-                                    status.upstream ?? L10n.string("Kein Upstream"),
-                                    Self.aheadBehindText(status)
-                                ))
-                                .accessibilityHint("Der Vergleich nutzt den zuletzt abgerufenen Remote-Tracking-Stand. Der Server kann bereits neuer sein.")
+                            VStack(alignment: .trailing, spacing: 1) {
+                                ForEach(Self.visibleRemoteComparisons(
+                                    relevantRemoteTrackingStates
+                                )) { state in
+                                    Text("\(state.remote) \(state.compactCounts)")
+                                        .fastraFont(size: 9, design: .monospaced)
+                                        .foregroundColor(Self.remoteColor(state.remote))
+                                        .lineLimit(1)
+                                }
+                                let additional = Self.additionalRemoteComparisonCount(
+                                    relevantRemoteTrackingStates
+                                )
+                                if additional > 0 {
+                                    Text(L10n.format(
+                                        "+%ld weitere",
+                                        additional
+                                    ))
+                                    .fastraFont(size: 9)
+                                    .foregroundColor(Theme.textSecondary)
+                                }
+                            }
+                            .help(Self.remoteComparisonDescription(
+                                relevantRemoteTrackingStates,
+                                fetch: workspace.gitRepositorySnapshot?.fetch,
+                                now: context.date
+                            ))
+                            .accessibilityLabel(Self.remoteComparisonText(
+                                relevantRemoteTrackingStates
+                            ))
+                            .accessibilityHint("Der Vergleich nutzt den zuletzt abgerufenen Remote-Tracking-Stand. Der Server kann bereits neuer sein.")
                         }
+                    } else if status.ahead > 0 || status.behind > 0 {
+                        Text(Self.aheadBehindText(status))
+                            .fastraFont(size: 9)
+                            .foregroundColor(Theme.textSecondary)
+                            .lineLimit(2)
                     }
                     Spacer(minLength: 0)
                     // Verlauf öffnen (git log --graph als read-only-Tab).
@@ -158,6 +179,12 @@ struct FileTreeSidebar: View {
                     .help("Git-Aktionen")
                     .accessibilityLabel("Git-Aktionen")
                     .accessibilityHint("Öffnet weitere sichere Git-Befehle.")
+                    // Remotes können außerhalb Fastras geändert werden. Jeder
+                    // bewusste Menüaufruf liest sie deshalb neu; der aktuelle
+                    // Stand bleibt bis zur asynchronen Antwort sichtbar.
+                    .simultaneousGesture(TapGesture().onEnded {
+                        workspace.refreshGitPushTarget()
+                    })
 
                     TimelineView(.periodic(from: .now, by: 60)) { context in
                         fetchControl(now: context.date)
@@ -282,6 +309,10 @@ struct FileTreeSidebar: View {
             DispatchQueue.main.async {
                 workspace.refreshGitOperationState()
                 workspace.refreshGitIdentity()
+                // Push-Ziele gehören schon zum normalen Dateien-Tab. Vorher
+                // erschienen die getrennten Remote-Aktionen erst, nachdem der
+                // Nutzer einmal in den Änderungen-Tab gewechselt hatte.
+                workspace.refreshGitPushTarget()
             }
         }
     }
@@ -432,6 +463,67 @@ struct FileTreeSidebar: View {
         return parts.joined(separator: L10n.string(", "))
     }
 
+    private var relevantRemoteTrackingStates: [GitRemoteTrackingState] {
+        GitRemoteTrackingPresentation.relevantStates(
+            workspace.gitRepositorySnapshot?.remoteTracking ?? [],
+            branch: workspace.gitStatus?.branch,
+            upstream: workspace.gitStatus?.upstream
+        )
+    }
+
+    static func remoteComparisonText(
+        _ states: [GitRemoteTrackingState]
+    ) -> String {
+        states.map { "\($0.shortName): \($0.compactCounts)" }
+            .joined(separator: L10n.string(", "))
+    }
+
+    static func visibleRemoteComparisons(
+        _ states: [GitRemoteTrackingState]
+    ) -> [GitRemoteTrackingState] {
+        Array(states.prefix(3))
+    }
+
+    static func additionalRemoteComparisonCount(
+        _ states: [GitRemoteTrackingState]
+    ) -> Int {
+        max(0, states.count - 3)
+    }
+
+    private static func remoteColor(_ remote: String) -> Color {
+        Theme.groupColors[GitRemoteColorIndex.index(
+            for: remote,
+            colorCount: Theme.groupColors.count
+        )]
+    }
+
+    static func remoteComparisonDescription(
+        _ states: [GitRemoteTrackingState],
+        fetch: GitFetchSnapshot?,
+        now: Date
+    ) -> String {
+        let comparisons = states.map { state -> String in
+            let freshness: String
+            if let date = fetch?.lastSuccessByRemote[state.remote] {
+                freshness = L10n.format(
+                    "zuletzt %@ abgerufen",
+                    ageDescription(since: date, now: now)
+                )
+            } else {
+                freshness = L10n.string("für diesen Remote noch nicht abgerufen")
+            }
+            return "\(state.shortName): \(state.compactCounts) · \(freshness)"
+        }.joined(separator: L10n.string(", "))
+        let error = fetch?.error.map {
+            " " + L10n.format("Letzter Fetch fehlgeschlagen: %@", $0)
+        } ?? ""
+        return L10n.format(
+            "Vergleich je Remote: %@.%@ Der Vergleich nutzt lokale Remote-Tracking-Refs; der Server kann bereits neuer sein.",
+            comparisons,
+            error
+        )
+    }
+
     @ViewBuilder private func fetchControl(now: Date) -> some View {
         if workspace.gitRepositorySnapshot?.fetch.isBusy == true {
             ProgressView()
@@ -525,15 +617,17 @@ struct GitActionMenu: View {
 
         Divider()
 
-        if let target = workspace.gitPushTarget {
-            Button(L10n.format("Push zu %@", target.remote)) {
-                workspace.gitPush(to: target)
+        if !workspace.gitPushTargets.isEmpty {
+            ForEach(workspace.gitPushTargets, id: \.remote) { target in
+                Button(L10n.format("Push zu %@", target.remote)) {
+                    workspace.gitPush(to: target)
+                }
+                .help(L10n.format("Push-Ziel: %@", target.displayAddress))
+                .disabled(workspace.gitOperationsAreBusy)
             }
-            .help(L10n.format("Push-Ziel: %@", target.displayAddress))
-            .disabled(workspace.gitOperationsAreBusy)
         } else {
             Button("Push") { workspace.gitPush() }
-                .help("Ersten konfigurierten Remote und Push-Adresse prüfen.")
+                .help("Konfigurierte Remotes und Push-Adressen prüfen.")
                 .disabled(workspace.gitOperationsAreBusy)
         }
         Button("Pull (Fast-Forward)") { workspace.gitPullFastForward() }

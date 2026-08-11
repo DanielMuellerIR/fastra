@@ -156,9 +156,18 @@ func cmdW_closesOnlyWhenHelpIsKey() {
     let document = KeyRouting.route(
         isKeyDown: true, modifierFlags: [.command],
         charactersIgnoringModifiers: "w", keyCode: 13,
-        isSearchWindowKey: false, isHelpWindowKey: false
+        isSearchWindowKey: false, isHelpWindowKey: false,
+        isDocumentWindowKey: true
     )
-    #expect(document == .passThrough)
+    #expect(document == .closeDocument)
+
+    let unknown = KeyRouting.route(
+        isKeyDown: true, modifierFlags: [.command],
+        charactersIgnoringModifiers: "w", keyCode: 13,
+        isSearchWindowKey: false, isHelpWindowKey: false,
+        isDocumentWindowKey: false
+    )
+    #expect(unknown == .passThrough)
 }
 
 @Test("CMD+SHIFT+W wird nicht als Maske-Schließen behandelt")

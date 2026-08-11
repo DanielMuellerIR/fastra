@@ -247,13 +247,14 @@ extension Workspace {
                 // (Review 2026-08-02).
                 defer { completion?() }
                 guard let self else { return }
+                var finalActiveTabID = self.activeTabID
                 if let activePath = state.activeDocumentPath {
                     let canonicalActive = URL(fileURLWithPath: activePath)
                         .canonicalFileURL
                     if let tab = self.tabs.first(where: {
                         $0.url?.canonicalFileURL == canonicalActive
                     }) {
-                        self.activeTabID = tab.id
+                        finalActiveTabID = tab.id
                     }
                 }
                 // Ein einzelner Load-Fehler setzt activeTabID auf seinen
@@ -261,8 +262,17 @@ extension Workspace {
                 // deshalb gegen die tatsächlich überlebenden Tabs abgleichen.
                 if self.tabs.isEmpty {
                     self.enterWelcomeState()
-                } else if !self.tabs.contains(where: { $0.id == self.activeTabID }) {
-                    self.activeTabID = self.tabs.first?.id
+                } else {
+                    if !self.tabs.contains(where: { $0.id == finalActiveTabID }) {
+                        finalActiveTabID = self.tabs.first?.id
+                    }
+                    // Der endgültige Restore-Wechsel ist genauso stabil wie
+                    // ein Nutzer-Klick. Dadurch folgt auch der Projekt- und
+                    // Git-Kontext dem gespeicherten aktiven Tab, statt beim
+                    // zuletzt fertig geladenen anderen Repository zu bleiben.
+                    if let finalActiveTabID {
+                        self.selectTab(id: finalActiveTabID)
+                    }
                 }
             }
         }
@@ -279,12 +289,72 @@ extension Workspace {
     }
 }
 
+/// Einmaliges Gate zwischen SwiftUIs Workspace und dem dazugehörigen echten
+/// Dokumentfenster. Identität statt Gleichheit verhindert, dass ein anderes
+/// Fenster den noch ausstehenden Kaltstart-Restore übernimmt.
+@MainActor
+final class PrimaryWindowRestoreGate {
+    private let expectedWorkspace: Workspace
+    private var action: ((NSWindow) -> Void)?
+
+    init(expectedWorkspace: Workspace,
+         action: @escaping (NSWindow) -> Void) {
+        self.expectedWorkspace = expectedWorkspace
+        self.action = action
+    }
+
+    private func takeAction(for workspace: Workspace) -> ((NSWindow) -> Void)? {
+        guard workspace === expectedWorkspace, let action else { return nil }
+        // Vor dem Einplanen löschen: Auch ein reentrant neu aufgebauter
+        // SwiftUI-Bridge-Knoten kann den Restore dann nicht doppelt starten.
+        self.action = nil
+        return action
+    }
+
+    /// Konsumiert den Restore genau einmal, führt ihn aber erst nach dem
+    /// laufenden SwiftUI-/AppKit-View-Aufbau aus. `updateNSView` darf nicht
+    /// synchron wieder ObservableObject-Zustand und neue Fenster erzeugen.
+    func scheduleAction(for workspace: Workspace, window: NSWindow) -> Bool {
+        guard let action = takeAction(for: workspace) else { return false }
+        DispatchQueue.main.async {
+            action(window)
+        }
+        return true
+    }
+}
+
+/// Zählt die asynchronen Fenster-Restores herunter und meldet den Start erst
+/// dann als abgeschlossen. Zusätzliche oder reentrante Completions bleiben
+/// wirkungslos; der AppDelegate leert seinen Finder-Puffer genau einmal.
+@MainActor
+final class RestoreCompletionLatch {
+    private var remaining: Int
+    private var completion: (() -> Void)?
+
+    init(count: Int, completion: @escaping () -> Void) {
+        precondition(count > 0)
+        remaining = count
+        self.completion = completion
+    }
+
+    func finishOne() {
+        guard remaining > 0 else { return }
+        remaining -= 1
+        guard remaining == 0, let completion else { return }
+        self.completion = nil
+        completion()
+    }
+}
+
 /// Bindet den Codable-Store an den echten AppKit-Fenster-Lifecycle. Der
 /// Coordinator ist Main-Actor-isoliert, weil NSWindow und Workspace UI-State
 /// nur dort gelesen bzw. aufgebaut werden dürfen.
 @MainActor
 enum SessionRestorationCoordinator {
     private static var restoreWasScheduled = false
+    /// Hält nur den einmaligen ausstehenden Aufruf, keinen globalen Observer.
+    /// Ohne Zeitgrenze bleiben auch sehr langsame Kaltstarts vollständig.
+    private static var primaryWindowGate: PrimaryWindowRestoreGate?
 
     static func captureCurrentSession(
         defaults: UserDefaults = .standard,
@@ -331,41 +401,48 @@ enum SessionRestorationCoordinator {
             completion()
             return
         }
-        // 10 s Wartefenster (200 × 50 ms): Unter Fremdlast kann SwiftUIs
-        // erstes Fenster mehrere Sekunden brauchen. Mit den früheren 2 s gab
-        // der Restore dann komplett auf und ließ ALLE weiteren Fenster weg —
-        // im Dauertest kam nach dem Neustart nur 1 von 3 Fenstern zurück
-        // (Soak-Befund 2026-08-09, unter kontrollierter Fremdlast).
-        waitForPrimaryWindow(primaryWorkspace, session: availableSession,
-                             defaults: defaults, remainingAttempts: 200,
-                             completion: completion)
+        let gate = PrimaryWindowRestoreGate(
+            expectedWorkspace: primaryWorkspace
+        ) { primaryWindow in
+            restore(
+                availableSession,
+                into: primaryWorkspace,
+                primaryWindow: primaryWindow,
+                defaults: defaults,
+                completion: completion
+            )
+        }
+        primaryWindowGate = gate
+
+        // Die Bridge kann schon vor applicationDidFinishLaunching registriert
+        // worden sein. CommandTargeting filtert Such- und Hilfefenster aus.
+        if let primaryWindow = CommandTargeting.registeredWindow(
+            for: primaryWorkspace
+        ) {
+            documentWindowDidRegister(primaryWorkspace, window: primaryWindow)
+        }
     }
 
-    private static func waitForPrimaryWindow(
-        _ primaryWorkspace: Workspace,
-        session: RestorableSessionState,
-        defaults: UserDefaults,
-        remainingAttempts: Int,
-        completion: @escaping () -> Void
-    ) {
-        guard let primaryWindow = DocumentWindowController
-            .visibleDocumentWindows()
-            .first(where: {
-                WorkspaceWindowRegistry.workspace(for: $0) === primaryWorkspace
-            }) else {
-            guard remainingAttempts > 0 else {
-                completion()
-                return
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                waitForPrimaryWindow(primaryWorkspace, session: session,
-                                     defaults: defaults,
-                                     remainingAttempts: remainingAttempts - 1,
-                                     completion: completion)
-            }
+    /// Ereigniseingang ausschließlich aus der Metadaten-Brücke eines echten
+    /// Dokumentfensters. Suchfenster registrieren sich zwar ebenfalls in der
+    /// Workspace-Registry, rufen diesen Pfad aber absichtlich nicht auf.
+    static func documentWindowDidRegister(_ workspace: Workspace,
+                                          window: NSWindow) {
+        guard primaryWindowGate?.scheduleAction(
+            for: workspace, window: window
+        ) == true else {
             return
         }
+        primaryWindowGate = nil
+    }
 
+    private static func restore(
+        _ session: RestorableSessionState,
+        into primaryWorkspace: Workspace,
+        primaryWindow: NSWindow,
+        defaults: UserDefaults,
+        completion: @escaping () -> Void
+    ) {
         let screenFrames = NSScreen.screens.map(\.visibleFrame)
         let primaryState = session.windows[0]
         if let frame = primaryState.frame?.visibleRect(in: screenFrames) {
@@ -374,23 +451,22 @@ enum SessionRestorationCoordinator {
                 primaryWindow.setFrame(frame, display: true)
             }
         }
-        var remainingRestores = session.windows.count
-        func restoreFinished() {
-            remainingRestores -= 1
-            guard remainingRestores == 0 else { return }
-            completion()
-        }
-        primaryWorkspace.restore(primaryState, completion: restoreFinished)
+        let latch = RestoreCompletionLatch(
+            count: session.windows.count,
+            completion: completion
+        )
+        primaryWorkspace.restore(primaryState, completion: latch.finishOne)
 
         // Von hinten nach vorn aufbauen. Danach kommt das ursprünglich
         // vorderste Hauptfenster wieder ganz nach vorn.
         for state in session.windows.dropFirst().reversed() {
             DocumentWindowController.openRestoredDocument(
                 state, defaults: defaults, screenFrames: screenFrames,
-                completion: restoreFinished
+                completion: latch.finishOne
             )
         }
         primaryWindow.makeKeyAndOrderFront(nil)
         Workspace.shared = primaryWorkspace
     }
+
 }

@@ -42,10 +42,17 @@ enum WindowTargeting {
         let isDocumentWindow: Bool
         /// Hat dieses Fenster gerade die Tastatur?
         let isKey: Bool
+        /// Darf dieses Hilfsfenster Befehle an das Dokument dahinter geben?
+        /// Das gilt bewusst nur für Fastras Suchmaske. Ein unbekanntes oder
+        /// noch nicht registriertes Vorderfenster darf niemals bewirken, dass
+        /// ein Dokumentfenster im Hintergrund getroffen wird.
+        let allowsDocumentFallback: Bool
 
-        init(isDocumentWindow: Bool, isKey: Bool) {
+        init(isDocumentWindow: Bool, isKey: Bool,
+             allowsDocumentFallback: Bool = false) {
             self.isDocumentWindow = isDocumentWindow
             self.isKey = isKey
+            self.allowsDocumentFallback = allowsDocumentFallback
         }
     }
 
@@ -54,16 +61,16 @@ enum WindowTargeting {
     /// `candidates` kommt in AppKits Vordergrund-Reihenfolge (vorne zuerst).
     ///
     /// Die Regeln, in dieser Reihenfolge:
-    /// 1. Bedient der Nutzer gerade ein Dokumentfenster, gilt dieses. Das ist
-    ///    der Normalfall und die einzige Regel, die der alte Code verletzte.
-    /// 2. Liegt ein anderes Fenster vorne — typisch die schwebende Suchmaske,
-    ///    die den Tastaturfokus hält —, gilt das vorderste Dokumentfenster
-    ///    dahinter. Ein Befehl aus der Menüleiste soll wirken, ohne dass der
-    ///    Nutzer erst das Dokument anklicken muss.
-    /// 3. Ohne Dokumentfenster gibt es kein Ziel.
+    /// 1. Bedient der Nutzer gerade ein Dokumentfenster, gilt dieses.
+    /// 2. Hält die BEKANNTE Suchmaske die Tastatur, gilt das vorderste
+    ///    Dokumentfenster dahinter.
+    /// 3. Hält ein anderes Fenster die Tastatur, gibt es kein Dokumentziel.
+    ///    Besonders ⌘W darf dann niemals ein Fenster dahinter schließen.
+    /// 4. Ohne Key-Window gilt das vorderste Dokumentfenster.
     static func targetIndex(in candidates: [Candidate]) -> Int? {
-        if let keyed = candidates.firstIndex(where: { $0.isDocumentWindow && $0.isKey }) {
-            return keyed
+        if let keyed = candidates.firstIndex(where: \.isKey) {
+            if candidates[keyed].isDocumentWindow { return keyed }
+            guard candidates[keyed].allowsDocumentFallback else { return nil }
         }
         return candidates.firstIndex(where: { $0.isDocumentWindow })
     }
@@ -80,7 +87,8 @@ enum CommandTargeting {
         let windows = orderedWindows()
         let candidates = windows.map {
             WindowTargeting.Candidate(isDocumentWindow: isDocumentWindow($0),
-                                      isKey: $0.isKeyWindow)
+                                      isKey: $0.isKeyWindow,
+                                      allowsDocumentFallback: SearchWindow.isSearchWindow($0))
         }
         guard let index = WindowTargeting.targetIndex(in: candidates) else { return nil }
         return windows[index]

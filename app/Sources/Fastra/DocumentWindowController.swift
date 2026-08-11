@@ -41,7 +41,7 @@ enum FinderOpenRouter {
 
         // (2) Projekt/Repo enthält die Datei. Grenzsicherer Prefix-Vergleich:
         // „/tmp/projekt-alt/x“ darf NICHT als in „/tmp/projekt“ liegend gelten
-        // (gleiche Regel wie `Workspace.projectSwitchTarget`).
+        // (gleiche grenzsichere Pfadregel wie im Workspace-Projektkontext).
         if let project = windows.firstIndex(where: { snapshot in
             guard let root = snapshot.projectURL?.canonicalFileURL.path else { return false }
             let prefix = root.hasSuffix("/") ? root : root + "/"
@@ -218,7 +218,13 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     static func workspaceForOpening(
         defaults: UserDefaults = SelfTest.workspaceDefaults()
     ) -> Workspace {
-        frontmostVisibleWorkspace() ?? openNewDocument(defaults: defaults)
+        // Ein echtes Key-Dokumentfenster ist das eindeutigste Ziel. Direkt
+        // nach makeKeyAndOrderFront kann AppKits orderedWindows-Reihenfolge
+        // noch den vorherigen Rahmen zuerst liefern; genau dann darf ein aus
+        // Finder/Dock geöffneter Ordner nicht im Hintergrundfenster landen.
+        CommandTargeting.targetWorkspace()
+            ?? frontmostVisibleWorkspace()
+            ?? openNewDocument(defaults: defaults)
     }
 
     /// Öffnet eine Liste aus dem Finder/Dock stammender URLs im jeweils am

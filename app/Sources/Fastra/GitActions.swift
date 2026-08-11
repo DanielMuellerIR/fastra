@@ -29,12 +29,15 @@ struct GitActionContext: Equatable {
 }
 
 /// Baut einen Push, dessen geprüfte Adresse nur in der Prozessumgebung liegt.
-/// Der flüchtige Remote-Name verhindert, dass Git die Adresse zwischen Prüfung
-/// und Prozessstart erneut aus veränderlicher Repository-Konfiguration liest.
+/// Eine einmalige Zufallsadresse wird im SELBEN Git-Prozess genau einmal auf
+/// das bestätigte Ziel abgebildet. Git wendet URL-Umschreibungen nicht erneut
+/// auf das Ergebnis an; selbst eine inzwischen geänderte Repository-
+/// Konfiguration kann das Ziel deshalb nicht mehr umleiten.
 enum GitPushCommand {
     struct Invocation: Equatable {
         let arguments: [String]
         let environment: [String: String]
+        let configuration: [GitConfigurationEntry]
     }
 
     static func verifiedAddress(of target: GitPushTarget) -> String? {
@@ -51,16 +54,56 @@ enum GitPushCommand {
         return output.isEmpty && (result.ok || result.exitCode == 1)
     }
 
-    static func invocation(remote: String, address: String, refspec: String,
-                           temporaryRemote: String) -> Invocation {
-        let variable = "FASTRA_GIT_PUSH_URL"
+    private static func boundInvocation(address: String, temporaryRemote: String,
+                                        arguments: [String]) -> Invocation {
+        let sentinel = "fastra-bound-\(UUID().uuidString.lowercased())://target"
         return Invocation(
+            arguments: arguments,
+            // Git-Ausgaben, die Fastra maschinell einordnet, bleiben damit
+            // unabhängig von der Sprache des angemeldeten Nutzers stabil.
+            // GIT_CONFIG_COUNT liegt auf Command-Scope. Der echte Zielwert
+            // bleibt in der Umgebung; argv enthält weder Zugangsdaten noch
+            // die Adresse. `url` UND `pushurl` tragen denselben einmaligen
+            // Sentinel; damit kann auch eine breite `pushInsteadOf`-Regel den
+            // Push nicht vor der exakten Abbildung auf das bestätigte Ziel
+            // abfangen.
+            environment: ["LC_ALL": "C", "LANG": "C"],
+            configuration: [
+                GitConfigurationEntry(
+                    key: "remote.\(temporaryRemote).url", value: sentinel
+                ),
+                // Eine explizite Push-Adresse verhindert, dass eine kurz vor
+                // dem Prozessstart ergänzte `pushInsteadOf`-Regel den noch
+                // nicht aufgelösten Sentinel-Präfix als eigenes Ziel abfängt.
+                GitConfigurationEntry(
+                    key: "remote.\(temporaryRemote).pushurl", value: sentinel
+                ),
+                GitConfigurationEntry(
+                    key: "url.\(address).insteadOf", value: sentinel
+                ),
+            ]
+        )
+    }
+
+    static func inspectionInvocation(address: String, temporaryRemote: String,
+                                     arguments: [String]) -> Invocation {
+        boundInvocation(address: address, temporaryRemote: temporaryRemote,
+                        arguments: arguments)
+    }
+
+    static func invocation(remote: String, address: String, refspec: String,
+                           remoteRef: String, expectedOID: String?,
+                           temporaryRemote: String) -> Invocation {
+        let expected = expectedOID ?? ""
+        return boundInvocation(
+            address: address,
+            temporaryRemote: temporaryRemote,
             arguments: [
-                "--config-env=remote.\(temporaryRemote).url=\(variable)",
                 "-c", "remote.\(temporaryRemote).fetch=+refs/heads/*:refs/remotes/\(remote)/*",
-                "push", temporaryRemote, refspec
-            ],
-            environment: [variable: address]
+                "push", "--porcelain",
+                "--force-with-lease=\(remoteRef):\(expected)",
+                temporaryRemote, refspec,
+            ]
         )
     }
 }
@@ -92,11 +135,12 @@ extension Workspace {
 
         guard let context = currentGitActionContext else { return }
         ensureGitIdentity(context: context) { [weak self] context in
-            self?.runGitAction(["add", "-A"], label: "Stagen", context: context) {
+            self?.runGitAction(["add", "-A"], label: "Stagen", context: context,
+                               then: {
                 [weak self] context in
                 self?.runGitAction(["commit", "-m", message], label: "Commit",
                                    context: context)
-            }
+            })
         }
     }
 
@@ -107,11 +151,12 @@ extension Workspace {
         guard projectURL != nil, !gitOperationsAreBusy else { return }
         guard let context = currentGitActionContext else { return }
         ensureGitIdentity(context: context) { [weak self] context in
-            self?.runGitAction(["add", "-A"], label: "Stagen", context: context) {
+            self?.runGitAction(["add", "-A"], label: "Stagen", context: context,
+                               then: {
                 [weak self] context in
                 self?.runGitAction(["commit", "--amend", "--no-edit"],
                                    label: "Ergänzen", context: context)
-            }
+            })
         }
     }
 
@@ -287,10 +332,10 @@ extension Workspace {
                                   context: context, then: done)
             } else {
                 self.runGitAction(["add", "-A"], label: "Bereitstellen",
-                                  context: context) { [weak self] context in
+                                  context: context, then: { [weak self] context in
                     self?.runGitAction(["commit", "-m", msg], label: "Commit",
                                        context: context, then: done)
-                }
+                })
             }
         }
     }
@@ -351,19 +396,31 @@ extension Workspace {
 
     // MARK: Netzwerk
 
-    /// Liest den ersten lokal konfigurierten Remote und dessen effektive
-    /// Push-Adresse neu ein. `git remote` wäre hier falsch, weil es Namen
-    /// alphabetisch sortiert und dadurch ein später konfiguriertes `github`
-    /// vor `primary` setzen könnte.
+    /// Liest alle lokal konfigurierten Remotes und ihre effektiven
+    /// Push-Adressen neu ein. `git remote` wäre hier falsch, weil es Namen
+    /// alphabetisch statt in der sichtbaren Config-Reihenfolge sortiert.
     func refreshGitPushTarget() {
         guard let context = currentGitActionContext, GitRunner.isAvailable else {
             gitPushTargetInspection?.cancel()
             gitPushTargetInspection = nil
-            gitPushTarget = nil
+            gitPushTargetInspectionRequestID = nil
+            gitPushTargets = []
             return
         }
-        resolveGitPushTarget(context: context) { [weak self] target, _ in
-            self?.gitPushTarget = target
+        gitPushTargetInspection?.cancel()
+        let requestID = UUID()
+        gitPushTargetInspectionRequestID = requestID
+        gitPushTargetInspection = GitPushTargetResolver.resolveAll(
+            repository: context.root,
+            executor: gitOperationsCoordinator.commandExecutor
+        ) { [weak self] targets, _ in
+            DispatchQueue.main.async {
+                guard let self, context.isCurrent(in: self),
+                      self.gitPushTargetInspectionRequestID == requestID else {
+                    return
+                }
+                self.gitPushTargets = targets
+            }
         }
     }
 
@@ -372,13 +429,12 @@ extension Workspace {
     /// dürfen das sichtbare Ziel niemals still ersetzen.
     func gitPush() {
         guard let context = currentGitActionContext, GitRunner.isAvailable else { return }
-        resolveGitPushTarget(context: context) { [weak self] target, failure in
+        resolveGitPushTargets(context: context) { [weak self] targets, failure in
             guard let self else { return }
-            guard let target else {
+            guard let target = targets.first else {
                 self.presentMissingPushTarget(failure)
                 return
             }
-            self.gitPushTarget = target
             self.performGitPush(to: target, context: context)
         }
     }
@@ -388,13 +444,13 @@ extension Workspace {
     /// bricht ab, statt unbemerkt an eine andere Adresse zu senden.
     func gitPush(to expectedTarget: GitPushTarget) {
         guard let context = currentGitActionContext, GitRunner.isAvailable else { return }
-        resolveGitPushTarget(context: context) { [weak self] currentTarget, failure in
+        resolveGitPushTarget(remote: expectedTarget.remote,
+                             context: context) { [weak self] currentTarget, failure in
             guard let self else { return }
             guard let currentTarget else {
                 self.presentMissingPushTarget(failure)
                 return
             }
-            self.gitPushTarget = currentTarget
             guard currentTarget == expectedTarget else {
                 Self.presentGitErrorText(
                     label: "Push",
@@ -438,44 +494,386 @@ extension Workspace {
 
     private func performGitPush(to target: GitPushTarget, branch: String,
                                 context: GitActionContext) {
-        // Upstream vorhanden? `@{u}` löst nur mit gesetztem Upstream auf.
-        let request = GitOperationRequest(repository: context.root, kind: .refresh,
-                                          arguments: ["rev-parse", "--abbrev-ref", "@{u}"])
+        // Das Ziel unmittelbar vor der Netzwerkaktion noch einmal aus Git
+        // lesen. Upstream-Konfiguration und OIDs werden anschließend als ein
+        // gemeinsamer Plan aufgelöst und vor dem Push nochmals neu gelesen.
+        resolveGitPushTarget(remote: target.remote,
+                             context: context) { [weak self] current, _ in
+            guard let self else { return }
+            guard let current, current == target else {
+                Self.presentGitErrorText(
+                    label: "Push",
+                    text: L10n.string(
+                        "Das Push-Ziel hat sich seit der Anzeige geändert. Prüfe Remote und Adresse erneut; es wurde nichts übertragen."))
+                return
+            }
+            self.preparePushPreview(target: current, branch: branch,
+                                    context: context)
+        }
+    }
+
+    /// Prüft die sichtbare Push-Adresse auf Eindeutigkeit, bevor sie für die
+    /// Remote-Inspektion in die Prozessumgebung gebunden wird. `url` und
+    /// `pushurl` dürfen auf verschiedene Repositorys zeigen; ein gewöhnliches
+    /// `git fetch <remote>` wäre deshalb keine verlässliche Push-Vorschau.
+    private func preparePushPreview(
+        target: GitPushTarget,
+        branch: String,
+        context: GitActionContext
+    ) {
+        validatePushTargetBinding(target, context: context) { [weak self] in
+            guard let self else { return }
+            self.resolvePushPlan(
+                target: target,
+                expectedBranch: branch,
+                context: context,
+                completion: { [weak self] plan in
+                    self?.presentPushPlan(plan, context: context)
+                }
+            )
+        }
+    }
+
+    private func validatePushTargetBinding(
+        _ target: GitPushTarget,
+        context: GitActionContext,
+        completion: @escaping () -> Void
+    ) {
+        guard GitPushCommand.verifiedAddress(of: target) != nil else {
+            Self.presentGitErrorText(
+                label: "Push",
+                text: L10n.string("Das Remote hat mehrere Push-Adressen. Fastra überträgt erst, wenn genau ein sichtbares Ziel konfiguriert ist."))
+            return
+        }
+        performPushRead(
+            ["config", "--includes", "--get-regexp",
+             "^url\\..*\\.\\(insteadOf\\|pushInsteadOf\\)$"],
+            label: "Push",
+            context: context,
+            acceptedExitCodes: [0, 1]
+        ) { result in
+            guard GitPushCommand.rewriteRulesAreAbsent(result) else {
+                Self.presentGitErrorText(
+                    label: "Push",
+                    text: L10n.string("Git-URL-Umschreibregeln machen das Push-Ziel mehrdeutig. Entferne insteadOf/pushInsteadOf oder pushe bewusst im Terminal."))
+                return
+            }
+            completion()
+        }
+    }
+
+    /// Liest den Plan ausschließlich über OIDs. Ref-Namen werden nur zum
+    /// Auflösen benutzt; die spätere Mutation bekommt den unveränderlichen
+    /// Source-Commit aus diesem Ergebnis.
+    private func resolvePushPlan(
+        target: GitPushTarget,
+        expectedBranch: String,
+        context: GitActionContext,
+        completion: @escaping (GitPushPlan) -> Void
+    ) {
+        performPushRead(
+            ["symbolic-ref", "--short", "--quiet", "HEAD"],
+            label: "Push",
+            context: context
+        ) { [weak self] branchResult in
+            guard let self else { return }
+            let currentBranch = branchResult.stdout
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard branchResult.ok, currentBranch == expectedBranch else {
+                Self.presentGitErrorText(
+                    label: "Push",
+                    text: L10n.string(
+                        "Der aktive Branch hat sich während der Push-Prüfung geändert. Öffne die Vorschau erneut."
+                    )
+                )
+                return
+            }
+            self.resolvePushUpstreamState(
+                branch: currentBranch, target: target, context: context
+            ) { [weak self] tracksTarget in
+                guard let self else { return }
+                self.performPushRead(["rev-parse", "HEAD"], label: "Push",
+                                     context: context) { [weak self] sourceResult in
+                    guard let self,
+                          let sourceOID = GitPushPlanParsing.oid(sourceResult) else {
+                        Self.presentGitError(label: "Push", result: sourceResult)
+                        return
+                    }
+                    self.resolvePushRemoteState(
+                        target: target,
+                        branch: currentBranch,
+                        sourceOID: sourceOID,
+                        tracksTarget: tracksTarget,
+                        context: context,
+                        completion: completion
+                    )
+                }
+            }
+        }
+    }
+
+    /// Liest die Upstream-KONFIGURATION statt nur die lokale Tracking-Ref.
+    /// `@{u}` kann trotz vorhandenem Upstream scheitern, wenn die Remote-Ref
+    /// noch nicht gefetcht oder lokal gelöscht wurde. Das darf einen Push zu
+    /// einem zweiten Remote niemals zum stillen Upstream-Wechsel machen.
+    private func resolvePushUpstreamState(
+        branch: String,
+        target: GitPushTarget,
+        context: GitActionContext,
+        completion: @escaping (_ tracksTarget: Bool) -> Void
+    ) {
+        performPushRead(
+            ["config", "--get", "branch.\(branch).remote"],
+            label: "Push", context: context, acceptedExitCodes: [0, 1]
+        ) { [weak self] remoteResult in
+            guard let self else { return }
+            self.performPushRead(
+                ["config", "--get", "branch.\(branch).merge"],
+                label: "Push", context: context, acceptedExitCodes: [0, 1]
+            ) { mergeResult in
+                let configuredRemote = remoteResult.ok
+                    ? remoteResult.stdout.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ) : nil
+                let configuredMerge = mergeResult.ok
+                    ? mergeResult.stdout.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ) : nil
+                completion(configuredRemote == target.remote
+                    && configuredMerge == "refs/heads/\(branch)")
+            }
+        }
+    }
+
+    private func resolvePushRemoteState(
+        target: GitPushTarget,
+        branch: String,
+        sourceOID: String,
+        tracksTarget: Bool,
+        context: GitActionContext,
+        completion: @escaping (GitPushPlan) -> Void
+    ) {
+        guard let address = GitPushCommand.verifiedAddress(of: target) else { return }
+        let remoteRef = "refs/heads/\(branch)"
+        let temporaryRemote = "fastra-inspect-\(UUID().uuidString)"
+        let inspection = GitPushCommand.inspectionInvocation(
+            address: address,
+            temporaryRemote: temporaryRemote,
+            arguments: ["ls-remote", "--exit-code", "--refs",
+                        temporaryRemote, remoteRef]
+        )
+        performPushRead(
+            inspection.arguments,
+            label: "Push",
+            context: context,
+            environment: inspection.environment,
+            configuration: inspection.configuration,
+            acceptedExitCodes: [0, 2]
+        ) { [weak self] remoteResult in
+            guard let self else { return }
+            if remoteResult.exitCode == 2 {
+                completion(GitPushPlan(
+                    target: target, branch: branch, sourceOID: sourceOID,
+                    remoteRef: remoteRef, remoteOID: nil,
+                    localAhead: 0, localBehind: 0, tracksTarget: tracksTarget,
+                ))
+                return
+            }
+            guard let remoteOID = GitPushPlanParsing.remoteOID(
+                remoteResult, expectedRef: remoteRef
+            ) else {
+                Self.presentGitErrorText(
+                    label: "Push",
+                    text: L10n.string("Das Push-Ziel lieferte keinen eindeutigen Branch-Stand. Es wurde nichts übertragen."))
+                return
+            }
+            // Den soeben angekündigten Commit über dieselbe gebundene Adresse
+            // holen. Bewegt sich der Ref dazwischen und der Server liefert die
+            // alte angekündigte OID nicht mehr, bricht die Vorschau sicher ab.
+            let fetch = GitPushCommand.inspectionInvocation(
+                address: address,
+                temporaryRemote: temporaryRemote,
+                arguments: ["fetch", "--no-tags", "--no-write-fetch-head",
+                            temporaryRemote, remoteOID]
+            )
+            self.performPushRead(
+                fetch.arguments,
+                label: "Fetch",
+                context: context,
+                environment: fetch.environment,
+                configuration: fetch.configuration
+            ) { [weak self] _ in
+                guard let self else { return }
+                self.performPushRead(
+                    ["rev-list", "--left-right", "--count",
+                     "\(sourceOID)...\(remoteOID)"],
+                    label: "Push",
+                    context: context
+                ) { countResult in
+                    guard let counts = GitPushPlanParsing.counts(countResult) else {
+                        Self.presentGitError(label: "Push", result: countResult)
+                        return
+                    }
+                    completion(GitPushPlan(
+                        target: target, branch: branch, sourceOID: sourceOID,
+                        remoteRef: remoteRef, remoteOID: remoteOID,
+                        localAhead: counts.ahead, localBehind: counts.behind,
+                        tracksTarget: tracksTarget
+                    ))
+                }
+            }
+        }
+    }
+
+    private func performPushRead(
+        _ arguments: [String],
+        label: String,
+        context: GitActionContext,
+        environment: [String: String] = [:],
+        configuration: [GitConfigurationEntry] = [],
+        acceptedExitCodes: Set<Int32> = [0],
+        completion: @escaping (GitResult) -> Void
+    ) {
+        var policy = GitExecutionPolicy.default
+        policy.environment = environment
+        policy.configuration = configuration
+        let request = GitOperationRequest(
+            repository: context.root,
+            kind: .refresh,
+            arguments: arguments,
+            policy: policy
+        )
         gitOperationsCoordinator.perform(request) { [weak self] outcome in
             DispatchQueue.main.async {
                 guard let self, context.isCurrent(in: self) else { return }
-                if case .completed(let result) = outcome {
-                    let upstream = result.ok
-                        ? result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-                        : ""
-                    let tracksTarget = upstream == target.remote
-                        || upstream.hasPrefix(target.remote + "/")
-                    // Das Ziel unmittelbar vor der Netzwerkaktion noch einmal
-                    // aus Git lesen: Wurde das Remote seit der Auflösung
-                    // umbenannt oder seine Adresse geändert, bricht der Push
-                    // ab, statt unbemerkt an eine andere Adresse zu senden
-                    // (Review 2026-08-02).
-                    self.resolveGitPushTarget(context: context) { [weak self] current, _ in
-                        guard let self else { return }
-                        guard let current, current == target else {
-                            Self.presentGitErrorText(
-                                label: "Push",
-                                text: L10n.string(
-                                    "Das Push-Ziel hat sich seit der Anzeige geändert. Prüfe Remote und Adresse erneut; es wurde nichts übertragen."))
-                            return
-                        }
-                        // Voll qualifizierter Refspec: gleicher Branchname auf
-                        // beiden Seiten, exakt das bisherige `HEAD`-Verhalten —
-                        // nur ohne Interpretationsspielraum für push.default
-                        // oder Remote-Konfiguration.
-                        let refspec = "refs/heads/\(branch):refs/heads/\(branch)"
-                        self.startVerifiedPush(to: current, branch: branch,
-                                               refspec: refspec,
-                                               tracksTarget: tracksTarget,
-                                               context: context)
+                guard case .completed(let result) = outcome else {
+                    Self.presentGitExecutionFailure(label: label, outcome: outcome)
+                    return
+                }
+                guard acceptedExitCodes.contains(result.exitCode) else {
+                    Self.presentGitError(label: label, result: result)
+                    return
+                }
+                completion(result)
+            }
+        }
+    }
+
+    private func presentPushPlan(_ plan: GitPushPlan,
+                                 context: GitActionContext) {
+        guard plan.hasChangesToPush else {
+            Self.presentGitErrorText(
+                label: "Push",
+                text: L10n.string("Für dieses Remote gibt es keine lokalen Commits zu pushen.")
+            )
+            return
+        }
+        if !plan.canFastForward {
+            guard plan.tracksTarget else {
+                Self.presentGitErrorText(
+                    label: "Push",
+                    text: plan.confirmation.explanation + "\n\n" + L10n.string(
+                        "Das gewählte Remote ist nicht der Upstream dieses Branches. Ein Force Push wird deshalb nicht automatisch angeboten."
+                    )
+                )
+                return
+            }
+            if gitMutationConfirmationHandler(plan.confirmation) {
+                prepareBoundForcePush(plan, context: context)
+            }
+            return
+        }
+        guard gitMutationConfirmationHandler(plan.confirmation) else { return }
+        revalidatePushPlan(plan, context: context, force: false)
+    }
+
+    private func revalidatePushPlan(_ plan: GitPushPlan,
+                                    context: GitActionContext,
+                                    force: Bool) {
+        resolveGitPushTarget(remote: plan.target.remote,
+                             context: context) { [weak self] current, _ in
+            guard let self else { return }
+            guard let current, current == plan.target else {
+                Self.presentGitErrorText(
+                    label: "Push",
+                    text: L10n.string(
+                        "Das Push-Ziel hat sich seit der Vorschau geändert. Prüfe Remote und Adresse erneut; es wurde nichts übertragen."
+                    )
+                )
+                return
+            }
+            self.validatePushTargetBinding(current, context: context) { [weak self] in
+                guard let self else { return }
+                self.resolvePushPlan(
+                    target: current,
+                    expectedBranch: plan.branch,
+                    context: context
+                ) { [weak self] currentPlan in
+                    guard let self else { return }
+                    guard currentPlan == plan else {
+                        Self.presentGitErrorText(
+                            label: "Push",
+                            text: L10n.string(
+                                "Commits oder Remote-Stand haben sich seit der Vorschau geändert. Öffne die Push-Vorschau erneut; es wurde nichts übertragen."
+                            )
+                        )
+                        return
                     }
-                } else {
-                    Self.presentGitExecutionFailure(label: "Push", outcome: outcome)
+                    self.startVerifiedPush(plan, context: context, force: force)
+                }
+            }
+        }
+    }
+
+    /// Der erste Divergenzdialog ist nur das Folgeangebot. Vor der eigentlichen
+    /// Force-Bestätigung werden Adresse, Quell-Commit und echte Remote-OID erneut
+    /// über die gebundene Push-Adresse gelesen.
+    private func prepareBoundForcePush(_ previousPlan: GitPushPlan,
+                                       context: GitActionContext) {
+        resolveGitPushTarget(remote: previousPlan.target.remote,
+                             context: context) { [weak self] current, _ in
+            guard let self else { return }
+            guard let current, current == previousPlan.target else {
+                Self.presentGitErrorText(
+                    label: "Push",
+                    text: L10n.string("Das Push-Ziel hat sich seit der Anzeige geändert. Prüfe Remote und Adresse erneut; es wurde nichts übertragen."))
+                return
+            }
+            self.validatePushTargetBinding(current, context: context) { [weak self] in
+                guard let self else { return }
+                self.resolvePushPlan(
+                    target: current,
+                    expectedBranch: previousPlan.branch,
+                    context: context
+                ) { [weak self] plan in
+                    guard let self else { return }
+                    guard let remoteOID = plan.remoteOID else {
+                        Self.presentGitErrorText(
+                            label: "Push",
+                            text: L10n.string("Der Remote-Branch existiert nicht mehr. Öffne die normale Push-Vorschau erneut."))
+                        return
+                    }
+                    guard !plan.canFastForward else {
+                        // Die erneute Inspektion kann eine inzwischen behobene
+                        // Divergenz zeigen. Dann gilt wieder der normale Pfad.
+                        self.presentPushPlan(plan, context: context)
+                        return
+                    }
+                    let confirmation = GitMutationConfirmation(
+                        title: L10n.string("Force Push with Lease ausführen?"),
+                        explanation: L10n.format(
+                            "Remote: %@\nAdresse: %@\nZiel: %@\nQuell-Commit: %@\nErwarteter Remote-Commit: %@\n\nFastra überschreibt nur, wenn das Ziel noch exakt diesen Remote-Commit besitzt. Es wird niemals --force ohne Lease verwendet.",
+                            plan.target.remote,
+                            plan.target.displayAddress,
+                            plan.remoteRef,
+                            String(plan.sourceOID.prefix(12)),
+                            String(remoteOID.prefix(12))
+                        ),
+                        confirmTitle: L10n.string("Mit Lease erzwingen"),
+                        isDestructive: true
+                    )
+                    guard self.gitMutationConfirmationHandler(confirmation) else { return }
+                    self.revalidatePushPlan(plan, context: context, force: true)
                 }
             }
         }
@@ -485,10 +883,10 @@ extension Workspace {
     /// Solche Regeln könnten selbst eine wörtlich geprüfte Adresse ein zweites
     /// Mal umschreiben; ein sichtbarer Abbruch ist dann die einzige eindeutige
     /// Zielbindung.
-    private func startVerifiedPush(to target: GitPushTarget, branch: String,
-                                   refspec: String,
-                                   tracksTarget: Bool,
-                                   context: GitActionContext) {
+    private func startVerifiedPush(_ plan: GitPushPlan,
+                                   context: GitActionContext,
+                                   force: Bool) {
+        let target = plan.target
         guard let address = GitPushCommand.verifiedAddress(of: target) else {
             Self.presentGitErrorText(
                 label: "Push",
@@ -514,42 +912,109 @@ extension Workspace {
                 }
                 let temporaryRemote = "fastra-verified-\(UUID().uuidString)"
                 let invocation = GitPushCommand.invocation(
-                    remote: target.remote, address: address, refspec: refspec,
+                    remote: target.remote, address: address,
+                    refspec: "\(plan.sourceOID):\(plan.remoteRef)",
+                    remoteRef: plan.remoteRef,
+                    expectedOID: plan.remoteOID,
                     temporaryRemote: temporaryRemote)
-                let finish: (GitActionContext) -> Void = { [weak self] context in
+                let finish: (GitActionContext) -> Void = { [weak self] _ in
                     guard let self else { return }
-                    if tracksTarget {
-                        self.recordGitSuccess(L10n.format(
-                            "Push zu %@ erfolgreich", target.remote))
-                        self.refreshGitRepositoryFully()
-                        self.refreshOpenGitViews()
-                    } else {
-                        // Der flüchtige Remote darf nie als dauerhafter Upstream
-                        // gespeichert werden. Nach dem erfolgreichen Push zeigt
-                        // die Tracking-Referenz bereits auf den echten Remote.
-                        self.runGitAction(
-                            ["branch", "--set-upstream-to=\(target.remote)/\(branch)", branch],
-                            label: "Upstream",
-                            successMessage: L10n.format(
-                                "Push zu %@ erfolgreich · Upstream angelegt",
-                                target.remote), context: context)
-                    }
+                    // Eine bewusst gewählte Remote-Fläche ändert niemals die
+                    // Upstream-Konfiguration. So bleiben mehrere Ziele
+                    // gleichwertig und ein anderes Werkzeug kann die lokale
+                    // Tracking-Entscheidung nicht während des Pushs verlieren.
+                    self.recordGitSuccess(L10n.format(
+                        "Push zu %@ erfolgreich", target.remote))
+                    self.refreshGitRepositoryFully()
+                    self.refreshOpenGitViews()
                 }
                 self.runGitAction(
                     invocation.arguments,
                     label: L10n.format("Push zu %@", target.remote),
                     context: context, kind: .push,
-                    environment: invocation.environment, then: finish)
+                    environment: invocation.environment,
+                    configuration: invocation.configuration,
+                    refreshOnFailure: true,
+                    failureHandler: { [weak self] result in
+                        self?.handleRejectedPush(
+                            result, plan: plan, context: context,
+                            alreadyForced: force
+                        ) ?? false
+                    },
+                    then: finish)
             }
         }
     }
 
+    /// Ein Remote kann sich auch nach dem verpflichtenden Fetch und der
+    /// Vorschau noch ändern. Git bleibt die letzte Instanz und lehnt diesen
+    /// Push ab. Fastra erklärt den Konflikt, zeigt die echte Ausgabe und bietet
+    /// Force-with-Lease ausschließlich als neue, getrennte Prüfung an.
+    private func handleRejectedPush(_ result: GitResult,
+                                    plan: GitPushPlan,
+                                    context: GitActionContext,
+                                    alreadyForced: Bool) -> Bool {
+        let leaseChanged = GitPushFailureClassification.isLeaseStale(result)
+        guard leaseChanged
+                || GitPushFailureClassification.isNonFastForward(result) else {
+            return false
+        }
+        let raw = [result.stderrForDisplay, result.stdoutForDisplay]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        var explanation = leaseChanged
+            ? L10n.string(
+                "Der Remote-Branch entspricht nicht mehr dem bestätigten Stand. Fastra hat nichts übertragen. Hole den neuen Stand und öffne die Push-Vorschau erneut."
+            )
+            : L10n.string(
+                "Das Remote enthält inzwischen Commits, die in deinem lokalen Branch fehlen. Fastra hat nichts übertragen. Hole den neuen Stand und prüfe die Änderungen; ein normaler Push würde sonst Remote-Commits überschreiben."
+            )
+        if !raw.isEmpty {
+            explanation += "\n\n" + L10n.string("Git-Ausgabe:") + "\n" + raw
+        }
+        guard plan.tracksTarget, !alreadyForced else {
+            Self.presentGitErrorText(label: "Push", text: explanation)
+            return true
+        }
+        let confirmation = GitMutationConfirmation(
+            title: L10n.string("Push abgelehnt"),
+            explanation: explanation,
+            confirmTitle: L10n.string("Force Push with Lease prüfen"),
+            isDestructive: true
+        )
+        if gitMutationConfirmationHandler(confirmation) {
+            prepareBoundForcePush(plan, context: context)
+        }
+        return true
+    }
+
+    private func resolveGitPushTargets(
+        context: GitActionContext,
+        completion: @escaping ([GitPushTarget], GitExecutionOutcome?) -> Void
+    ) {
+        gitPushActionTargetInspection?.cancel()
+        gitPushActionTargetInspection = GitPushTargetResolver.resolveAll(
+            repository: context.root,
+            executor: gitOperationsCoordinator.commandExecutor
+        ) { [weak self] targets, failure in
+            DispatchQueue.main.async {
+                guard let self, context.isCurrent(in: self) else { return }
+                completion(targets, failure)
+            }
+        }
+    }
+
+    /// Löst die ausgewählte Remote-Fläche erneut gegen die aktuelle lokale
+    /// Konfiguration auf. Andere Remotes dürfen dabei weder das Ziel ersetzen
+    /// noch die Config-Reihenfolge zur impliziten Auswahl machen.
     private func resolveGitPushTarget(
+        remote: String,
         context: GitActionContext,
         completion: @escaping (GitPushTarget?, GitExecutionOutcome?) -> Void
     ) {
-        gitPushTargetInspection?.cancel()
-        gitPushTargetInspection = GitPushTargetResolver.resolve(
+        gitPushActionTargetInspection?.cancel()
+        gitPushActionTargetInspection = GitPushTargetResolver.resolve(
+            remote: remote,
             repository: context.root,
             executor: gitOperationsCoordinator.commandExecutor
         ) { [weak self] target, failure in
@@ -589,9 +1054,12 @@ extension Workspace {
     /// Entfernten Stand holen, ohne lokal etwas zu ändern (`git fetch`).
     func gitFetch() {
         guard let root = projectURL else { return }
+        let remotes = Array(Set(
+            gitRepositorySnapshot?.remoteTracking.map(\.remote) ?? []
+        )).sorted()
         gitRepositoryStore.fetch(repository: root,
                                  preferences: gitPreferencesStore.load(),
-                                 remotes: [])
+                                 remotes: remotes)
     }
 
     private func startSafePull(strategyOverride: GitPullStrategy?) {
@@ -708,13 +1176,13 @@ extension Workspace {
         // nach einem externen Wechsel noch den alten Branch enthalten; darauf
         // zu guard-en würde dann genau den gewünschten Wechsel verschlucken.
         guard gitBranches.first(where: { $0.isCurrent })?.name != name else { return }
-        runGitAction(["switch", name], label: "Branch-Wechsel") {
+        runGitAction(["switch", name], label: "Branch-Wechsel", then: {
             [weak self] _ in
             guard let self else { return }
             self.recordGitSuccess(L10n.format("Branch „%@“ aktiv", name))
             self.refreshGitRepositoryFully()
             self.refreshOpenGitViews()
-        }
+        })
     }
 
     /// Pickaxe-Suche (`git log -S<text>`): findet die Commits, die eine
@@ -750,7 +1218,9 @@ extension Workspace {
                       context suppliedContext: GitActionContext? = nil,
                       kind explicitKind: GitOperationKind? = nil,
                       environment: [String: String] = [:],
+                      configuration: [GitConfigurationEntry] = [],
                       refreshOnFailure: Bool = false,
+                      failureHandler: ((GitResult) -> Bool)? = nil,
                       then: ((GitActionContext) -> Void)? = nil)
         -> GitOperationLease? {
         guard let context = suppliedContext ?? currentGitActionContext,
@@ -772,6 +1242,7 @@ extension Workspace {
         }
         var policy = GitExecutionPolicy.default
         policy.environment = environment
+        policy.configuration = configuration
         let request = GitOperationRequest(repository: context.root, kind: kind,
                                           arguments: args, policy: policy)
         let lease = gitOperationsCoordinator.perform(request) { [weak self] outcome in
@@ -792,6 +1263,7 @@ extension Workspace {
                         self.refreshGitRepositoryFully()
                         self.refreshOpenGitViews()
                     }
+                    if failureHandler?(result) == true { return }
                     Self.presentGitError(label: label, result: result)
                     return
                 }

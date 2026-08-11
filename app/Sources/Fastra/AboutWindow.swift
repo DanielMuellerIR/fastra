@@ -17,9 +17,15 @@ import SwiftUI
 /// den Über-Dialog.
 enum AboutWindow {
 
+    private static let identifier = NSUserInterfaceItemIdentifier("Fastra.AboutWindow")
+
     /// Schwache Referenz auf das laufende Fenster — `nil`, wenn es noch
     /// nie erzeugt oder inzwischen geschlossen wurde.
     private static weak var window: NSWindow?
+
+    static func isAboutWindow(_ candidate: NSWindow?) -> Bool {
+        candidate?.identifier == identifier
+    }
 
     /// Über-Fenster öffnen. Beim ersten Aufruf wird es erzeugt; bei
     /// weiteren Aufrufen wird es nur nach vorn geholt.
@@ -40,6 +46,7 @@ enum AboutWindow {
             defer: false
         )
         w.title = L10n.string("Über Fastra")
+        w.identifier = identifier
         w.titlebarAppearsTransparent = false
         w.isMovableByWindowBackground = true
         // Fenster wirklich freigeben, wenn es geschlossen wird —

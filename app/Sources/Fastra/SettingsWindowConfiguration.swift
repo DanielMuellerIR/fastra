@@ -5,12 +5,21 @@ import SwiftUI
 /// wiederhergestellten Fenstern SwiftUI-Idealgrößen häufig; deshalb setzen wir
 /// die erste sichtbare Größe und erlauben danach normales manuelles Resizing.
 struct SettingsWindowConfiguration: NSViewRepresentable {
+    static let windowIdentifier = NSUserInterfaceItemIdentifier(
+        "Fastra.SettingsWindow"
+    )
+
+    static func isSettingsWindow(_ candidate: NSWindow?) -> Bool {
+        candidate?.identifier == windowIdentifier
+    }
+
     let preferredContentSize: NSSize
     let minimumContentSize: NSSize
 
     func makeNSView(context: Context) -> SettingsWindowProbe {
         let view = SettingsWindowProbe()
         view.configure = { window in
+            window.identifier = Self.windowIdentifier
             window.styleMask.insert(.resizable)
             window.minSize = minimumContentSize
             if window.contentView?.bounds.height ?? 0 < preferredContentSize.height {

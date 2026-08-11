@@ -114,11 +114,20 @@ a text editor first, not a replacement for a full Git client.
   an overview ruler and keyboard navigation between hunks; binary and combined
   patches remain available through explicit metadata or the selectable unified
   fallback.
-- The current branch, ahead/behind state and file status are visible in the
-  project sidebar. Fetch can be manual or scheduled while Fastra is active;
-  its age and errors stay visible. Pull always uses a selected strategy
+- The project sidebar and graph show ahead/behind counts for every remote.
+  Local and remote branches remain distinct, and each remote keeps its own
+  colour. Fetch can be manual or scheduled while Fastra is active; its age and
+  errors stay visible. Pull always uses a selected strategy
   (rebase, merge or fast-forward-only), checks the repository again immediately
   before running, and never hides an automatic stash or push.
+- Before pushing, Fastra fetches the target remote and shows a bound preview
+  with its address, target ref, commit, and ahead/behind counts. If any of
+  these values changes before execution, nothing is transferred. Divergence
+  and rejected non-fast-forward pushes are explained; force-with-lease remains
+  a separately confirmed follow-up action. Every configured remote gets its
+  own clickable push surface; two targets sit side by side at regular widths
+  and can be pushed independently. Upstream configuration always remains
+  unchanged, including when the branch has no upstream yet.
 - Curated actions cover creating a branch, stash/pop, cherry-pick, revert and
   continuing or aborting an active Git operation. Destructive or history-
   changing paths use a fresh preflight and confirmation. Force push is exposed

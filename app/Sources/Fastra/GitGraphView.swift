@@ -335,22 +335,64 @@ private struct GraphRowView: View {
     }
 
     private func refPill(_ ref: String) -> some View {
-        let isTag = ref.hasPrefix("tag: ")
-        let isHead = ref.hasPrefix("HEAD")
-        let label = ref
-            .replacingOccurrences(of: "tag: ", with: "")
-            .replacingOccurrences(of: "HEAD -> ", with: "")
+        let presentation = GitGraphRefPresentation.make(
+            ref: ref,
+            remoteTracking: workspace.gitRepositorySnapshot?.remoteTracking ?? []
+        )
+        let remoteColor = presentation.kind == .remoteBranch
+            ? colorForRemoteRef(presentation.label)
+            : Theme.accentReadable
         return HStack(spacing: 2) {
-            if isTag { Image(systemName: "tag.fill").fastraFont(size: 7) }
-            Text(label)
-                .fastraFont(size: 9, weight: isHead ? .bold : .regular, design: .monospaced)
+            if presentation.kind == .tag {
+                Image(systemName: "tag.fill").fastraFont(size: 7)
+            } else if presentation.kind == .remoteBranch {
+                Image(systemName: "network").fastraFont(size: 7)
+            }
+            Text(presentation.label)
+                .fastraFont(
+                    size: 9,
+                    weight: presentation.kind == .head ? .bold : .regular,
+                    design: .monospaced
+                )
                 .lineLimit(1)
+            if let tracking = presentation.tracking {
+                Text(tracking.compactCounts)
+                    .fastraFont(size: 8, weight: .semibold, design: .monospaced)
+            }
         }
-        .foregroundColor(Theme.accentReadable)
+        .foregroundColor(
+            presentation.kind == .remoteBranch ? Theme.textPrimary : Theme.accentReadable
+        )
         .padding(.horizontal, 5)
         .padding(.vertical, 1)
-        .background(Capsule().fill(Theme.surfaceSand))
+        .background(Capsule().fill(
+            presentation.kind == .remoteBranch
+                ? remoteColor.opacity(0.22)
+                : Theme.surfaceSand
+        ))
+        .overlay(Capsule().stroke(
+            presentation.kind == .remoteBranch
+                ? remoteColor.opacity(0.65)
+                : Color.clear,
+            lineWidth: 0.7
+        ))
         .fixedSize()
+        .help(presentation.tracking.map {
+            L10n.format(
+                "%@: lokal %@",
+                $0.shortName,
+                $0.compactCounts
+            )
+        } ?? "")
+    }
+
+    private func colorForRemoteRef(_ label: String) -> Color {
+        let remote = label.split(separator: "/", maxSplits: 1).first.map(String.init)
+            ?? label
+        return Theme.groupColors[GitRemoteColorIndex.index(
+            for: remote,
+            colorCount: Theme.groupColors.count
+        )]
     }
 
     /// Lanes, die an der Unterkante der Commit-Zeile weiterlaufen. Beim

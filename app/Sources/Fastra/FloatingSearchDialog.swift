@@ -1262,7 +1262,7 @@ struct FloatingSearchDialog: View {
             if let idx = flat.firstIndex(where: { $0.id == match.id }) {
                 workspace.activeMatchIndex = idx
             }
-            if workspace.activeTabID != tabID { workspace.activeTabID = tabID }
+            if workspace.activeTabID != tabID { workspace.selectTab(id: tabID) }
             DispatchQueue.main.async {
                 NotificationCenter.default.postMatchJump(match, for: workspace)
             }

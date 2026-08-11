@@ -749,13 +749,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let keyWindow = NSApp.keyWindow
             let isSearchKey = keyWindow.map(SearchWindow.isSearchWindow) ?? false
             let isHelpKey = HelpWindow.isHelpWindow(keyWindow)
+            let keyWorkspace: Workspace? = keyWindow.flatMap { window in
+                guard !isSearchKey, !isHelpKey else { return nil }
+                return WorkspaceWindowRegistry.workspace(for: window)
+            }
             let route = KeyRouting.route(
                 isKeyDown: event.type == .keyDown,
                 modifierFlags: event.modifierFlags,
                 charactersIgnoringModifiers: event.charactersIgnoringModifiers,
                 keyCode: event.keyCode,
                 isSearchWindowKey: isSearchKey,
-                isHelpWindowKey: isHelpKey
+                isHelpWindowKey: isHelpKey,
+                isDocumentWindowKey: keyWorkspace != nil
             )
 
             // FN+←/FN+→ (Home/End) sind nur im echten Code-Editor sinnvoll.
@@ -765,6 +770,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             switch route {
             case .closeHelp:
                 MainActor.assumeIsolated { HelpWindow.close() }
+                return nil
+
+            case .closeDocument:
+                // Das konkrete Key-Window und sein Workspace wurden aus
+                // demselben Event ermittelt. So kann ⌘W selbst bei mehreren
+                // Fenstern nie über einen späteren Fallback im Hintergrund
+                // landen. Verschwindet die Bindung wider Erwarten, bleibt das
+                // Event unangetastet statt ein anderes Fenster zu schließen.
+                guard let keyWorkspace else { return event }
+                MainActor.assumeIsolated { keyWorkspace.closeActiveTab() }
                 return nil
 
             case .moveToBeginningOfDocument(let modifySelection):

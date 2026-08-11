@@ -9,6 +9,47 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.72.0] — 2026-08-11
+
+### Hinzugefügt
+
+- **Ahead/Behind ist für jeden Remote sichtbar:** Seitenleiste und Commit-Graph
+  unterscheiden lokale und entfernte Branches, zeigen den Stand je Remote und
+  geben mehreren Remotes dauerhaft unterscheidbare Farben.
+- **Push besitzt eine gebundene Vorschau:** Fastra holt zuerst den aktuellen
+  Remote-Stand, zeigt Ziel, Adresse, Commit und die zu übertragenden
+  beziehungsweise lokal fehlenden Commits. Zwischen Vorschau und Ausführung
+  werden alle Werte erneut geprüft. Ein abgelehnter Nicht-Fast-Forward-Push
+  wird verständlich erklärt; Force-with-Lease bleibt ein eigener, ausdrücklich
+  bestätigter Folgeschritt.
+- **Mehrere Remotes lassen sich getrennt pushen:** Jeder lokal konfigurierte
+  Remote erhält im Änderungen-Tab eine eigene vollständig klickbare Fläche;
+  zwei Ziele stehen bei normaler Breite nebeneinander. Jeder Push besitzt seine
+  eigene Vorschau und Bestätigung. Bewusst gewählte Pushs verändern die
+  Upstream-Konfiguration nie, auch nicht bei einem Branch ohne Upstream.
+
+### Verbessert
+
+- **Selbsttestzeiten werden je Mac lokal protokolliert:** Standard- und
+  Langläufe besitzen getrennte, begrenzte Historien und warnen bei deutlichen
+  Verschlechterungen oder einem veralteten Langlauf. Ein gemeinsamer GUI-Lock
+  verhindert, dass parallele Fenstertests ihre Ergebnisse verfälschen; feste
+  Wartezeiten des Runners wurden durch kurze Zustandsabfragen ersetzt.
+
+### Behoben
+
+- **Gespeicherte Fenster gehen auch bei einem sehr langsamen Start nicht mehr
+  verloren:** Die Wiederherstellung wartet auf die tatsächliche Registrierung
+  des ersten Dokumentfensters, statt den gesamten gespeicherten Zustand nach
+  zehn Sekunden still zu verwerfen.
+- **Der Projektkontext folgt dem aktiven Datei-Tab:** Auch tief verschachtelte
+  und ungetrackte Dateien zeigen immer die Wurzel ihres Git-Repositories. Das
+  gilt beim normalen Tabwechsel ebenso wie für den impliziten Wechsel nach dem
+  Schließen eines Tabs aus einem anderen Projekt.
+- **⌘W schließt ausschließlich im aktiven Fenster:** Auch ein Fenster mit
+  geöffnetem Ordner und leerem Willkommen-Tab kann kein Dokumentfenster im
+  Hintergrund mehr als versehentliches Ziel verwenden.
+
 ## [v1.71.0] — 2026-08-11
 
 ### Hinzugefügt

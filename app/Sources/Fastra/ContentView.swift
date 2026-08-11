@@ -268,7 +268,7 @@ struct ContentView: View {
             // Tab-Wechsel erzeugt den Editor neu (.id-Kopplung), der Sprung
             // braucht den fertigen Editor (gleiches Muster wie loadFile-
             // Completion im Ordner-Pfad).
-            if workspace.activeTabID != tabID { workspace.activeTabID = tabID }
+            if workspace.activeTabID != tabID { workspace.selectTab(id: tabID) }
             DispatchQueue.main.async {
                 NotificationCenter.default.postMatchJump(target.match, for: workspace)
             }

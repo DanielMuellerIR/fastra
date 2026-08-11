@@ -17,6 +17,7 @@ private final class SyncTestExecutor: GitCommandExecuting {
 
     private let lock = NSLock()
     private var calls: [Call] = []
+    var onExecute: (([String]) -> Void)?
 
     var count: Int { lock.withLock { calls.count } }
     var arguments: [[String]] { lock.withLock { calls.map(\.arguments) } }
@@ -34,6 +35,7 @@ private final class SyncTestExecutor: GitCommandExecuting {
             calls.append(Call(arguments: arguments, directory: directory,
                               completion: completion, token: token))
         }
+        onExecute?(arguments)
         return token
     }
 
@@ -301,6 +303,161 @@ struct GitRepositoryIdentityTests {
 
 @Suite("Git-Fetch-Store")
 struct GitFetchStoreTests {
+    @Test("Git-2.40-Fallback publiziert Remote-Zähler im Snapshot")
+    func compatibleRemoteTrackingFallback() {
+        let executor = SyncTestExecutor()
+        let coordinator = GitOperationsCoordinator(executor: executor)
+        let store = GitRepositoryStore(executor: executor, coordinator: coordinator)
+        let root = syncRepository("remote-fallback")
+        let head = String(repeating: "a", count: 40)
+        store.refresh(repository: root, scope: .full)
+        executor.complete(0, .completed(GitResult(
+            exitCode: 0, stdoutData: syncPorcelain(oid: head), stderrData: Data()
+        )))
+        executor.complete(1, syncSuccess())
+        executor.complete(2, syncSuccess("main\t*\n"))
+        executor.complete(3, .completed(GitResult(
+            exitCode: 0, stdoutData: syncGraph(head), stderrData: Data()
+        )))
+        #expect(executor.arguments[4] == GitRemoteTrackingRefList.headArguments)
+        executor.complete(4, syncSuccess(head + "\n"))
+        #expect(executor.arguments[5]
+                == GitRemoteTrackingList.arguments(headOID: head))
+        executor.complete(5, .completed(GitResult(
+            exitCode: 129, stdout: "", stderr: "unknown field name: ahead-behind"
+        )))
+        #expect(executor.arguments[6] == GitRemoteTrackingRefList.arguments)
+        executor.complete(6, syncSuccess(
+            "refs/heads/main\t\(head)\t\t*\n"
+                + "refs/remotes/origin/main\torigin-oid\t\t\n"
+                + "refs/remotes/github/main\tgithub-oid\t\t\n"
+        ))
+        #expect(executor.arguments[7].last == "\(head)...github-oid")
+        #expect(executor.arguments[8].last == "\(head)...origin-oid")
+        executor.complete(7, syncSuccess("2 3\n"))
+        executor.complete(8, syncSuccess("4 5\n"))
+
+        let states = store.snapshot(for: root)?.remoteTracking ?? []
+        #expect(states.first(where: { $0.remote == "github" })?.localAhead == 2)
+        #expect(states.first(where: { $0.remote == "github" })?.localBehind == 3)
+        #expect(states.first(where: { $0.remote == "origin" })?.localAhead == 4)
+        #expect(states.first(where: { $0.remote == "origin" })?.localBehind == 5)
+    }
+
+    @Test("Git-2.40-Fallback friert detached HEAD ein und begrenzt Prozesse")
+    func compatibleFallbackFreezesDetachedHeadAndBoundsConcurrency() {
+        let executor = SyncTestExecutor()
+        let coordinator = GitOperationsCoordinator(executor: executor)
+        let store = GitRepositoryStore(executor: executor, coordinator: coordinator)
+        let root = syncRepository("remote-detached")
+        let head = String(repeating: "d", count: 40)
+        store.refresh(repository: root, scope: .full)
+        executor.complete(0, .completed(GitResult(
+            exitCode: 0, stdoutData: syncPorcelain(oid: head), stderrData: Data()
+        )))
+        executor.complete(1, syncSuccess())
+        executor.complete(2, syncSuccess())
+        executor.complete(3, .completed(GitResult(
+            exitCode: 0, stdoutData: syncGraph(head), stderrData: Data()
+        )))
+        executor.complete(4, syncSuccess(head + "\n"))
+        executor.complete(5, .completed(GitResult(
+            exitCode: 129, stdout: "", stderr: "unknown field name: ahead-behind"
+        )))
+        let refs = (0..<6).map { index in
+            "refs/remotes/r\(index)/main\toid-\(index)\t\t"
+        }.joined(separator: "\n") + "\n"
+        executor.complete(6, syncSuccess(refs))
+
+        // Nur vier Count-Prozesse beginnen. Jeder Abschluss öffnet höchstens
+        // genau den nächsten Slot; alle verwenden die eingefrorene OID statt
+        // des zwischen Prozessen veränderlichen Namens HEAD.
+        #expect(executor.count == 11)
+        for index in 7...10 {
+            #expect(executor.arguments[index][3].hasPrefix(head + "..."))
+        }
+        executor.complete(7, syncSuccess("1 0\n"))
+        #expect(executor.count == 12)
+        executor.complete(8, syncSuccess("1 0\n"))
+        #expect(executor.count == 13)
+        for index in 9...12 { executor.complete(index, syncSuccess("1 0\n")) }
+
+        let snapshot = store.snapshot(for: root)
+        #expect(snapshot?.headOID == head)
+        #expect(snapshot?.remoteTracking.count == 6)
+        #expect(snapshot?.remoteTracking.allSatisfy {
+            $0.localAhead == 1 && $0.localBehind == 0
+        } == true)
+    }
+
+    @Test("Moderner Remote-Vergleich bindet auch detached HEAD an eine OID")
+    func modernTrackingFreezesDetachedHead() {
+        let executor = SyncTestExecutor()
+        let coordinator = GitOperationsCoordinator(executor: executor)
+        let store = GitRepositoryStore(executor: executor, coordinator: coordinator)
+        let root = syncRepository("remote-modern-detached")
+        let head = String(repeating: "e", count: 40)
+        store.refresh(repository: root, scope: .full)
+        executor.complete(0, .completed(GitResult(
+            exitCode: 0, stdoutData: syncPorcelain(oid: head), stderrData: Data()
+        )))
+        executor.complete(1, syncSuccess())
+        executor.complete(2, syncSuccess())
+        executor.complete(3, .completed(GitResult(
+            exitCode: 0, stdoutData: syncGraph(head), stderrData: Data()
+        )))
+        executor.complete(4, syncSuccess(head + "\n"))
+        #expect(executor.arguments[5]
+                == GitRemoteTrackingList.arguments(headOID: head))
+        // Detached HEAD erzeugt keine lokale Zeile mit `*`. Der Coordinator
+        // muss trotzdem die vor dem Zählen eingefrorene OID publizieren.
+        executor.complete(5, syncSuccess(
+            "refs/remotes/origin/main\tremote-oid\t\t\t2 3\n"
+        ))
+
+        let snapshot = store.snapshot(for: root)
+        #expect(snapshot?.headOID == head)
+        #expect(snapshot?.remoteTracking.first?.localAhead == 3)
+        #expect(snapshot?.remoteTracking.first?.localBehind == 2)
+    }
+
+    @Test("Abbruch startet im Git-2.40-Fallback keine weiteren Zähler")
+    func compatibleFallbackCancellationStopsScheduler() {
+        let executor = SyncTestExecutor()
+        let coordinator = GitOperationsCoordinator(executor: executor)
+        let store = GitRepositoryStore(executor: executor, coordinator: coordinator)
+        let root = syncRepository("remote-fallback-cancel")
+        let head = String(repeating: "f", count: 40)
+        let observation = store.observe(repository: root) { _ in }
+        store.refresh(repository: root, scope: .full)
+        executor.complete(0, .completed(GitResult(
+            exitCode: 0, stdoutData: syncPorcelain(oid: head), stderrData: Data()
+        )))
+        executor.complete(1, syncSuccess())
+        executor.complete(2, syncSuccess())
+        executor.complete(3, .completed(GitResult(
+            exitCode: 0, stdoutData: syncGraph(head), stderrData: Data()
+        )))
+        executor.complete(4, syncSuccess(head + "\n"))
+        executor.complete(5, .completed(GitResult(
+            exitCode: 129, stdout: "", stderr: "unknown field name: ahead-behind"
+        )))
+        let refs = (0..<10).map { index in
+            "refs/remotes/r\(index)/main\toid-\(index)\t\t"
+        }.joined(separator: "\n") + "\n"
+        // Der Hook bricht reentrant schon im allerersten Count-Start ab. Der
+        // Scheduler darf weder die drei weiteren freien Slots noch einen
+        // späteren Ref starten.
+        executor.onExecute = { arguments in
+            if arguments.first == "rev-list" { observation.cancel() }
+        }
+        executor.complete(6, syncSuccess(refs))
+        #expect(executor.count == 8)
+        #expect(executor.isCancelled(7))
+        executor.complete(7, .cancelled)
+        #expect(executor.count == 8)
+    }
+
     @Test("Fetch publiziert Busy, Erfolg und startet konsistent Full-Refresh")
     func fetchLifecycle() {
         let executor = SyncTestExecutor()
@@ -316,17 +473,19 @@ struct GitFetchStoreTests {
         executor.complete(3, .completed(GitResult(exitCode: 0,
                                                    stdoutData: syncGraph(),
                                                    stderrData: Data())))
+        executor.complete(4, syncSuccess())
 
         store.fetch(repository: root, preferences: GitPreferences(),
                     remotes: ["origin"])
-        #expect(executor.arguments[4] == ["fetch", "origin"])
+        #expect(executor.arguments[5] == ["fetch", "origin"])
         #expect(store.snapshot(for: root)?.fetch.isBusy == true)
-        executor.complete(4, syncSuccess())
+        executor.complete(5, syncSuccess())
         #expect(store.snapshot(for: root)?.fetch.isBusy == false)
         #expect(store.snapshot(for: root)?.fetch.lastAttempt != nil)
         #expect(store.snapshot(for: root)?.fetch.lastSuccess != nil)
+        #expect(store.snapshot(for: root)?.fetch.lastSuccessByRemote["origin"] != nil)
         #expect(store.snapshot(for: root)?.fetch.error == nil)
-        #expect(executor.count == 9)
+        #expect(executor.count == 11)
     }
 
     @Test("Fetch-Fehler bewahrt echte Git-Ausgabe und bietet neuen Versuch")
@@ -350,8 +509,13 @@ struct GitFetchStoreTests {
                                                    stderr: "not a repository")))
         executor.complete(4, .completed(GitResult(exitCode: 128, stdout: "",
                                                    stderr: "not a repository")))
+        executor.complete(5, .completed(GitResult(exitCode: 128, stdout: "",
+                                                   stderr: "not a repository")))
+        // Der Remote-Vergleich friert HEAD zuerst ein. Scheitert schon dieser
+        // Schritt, ist der Full-Refresh beendet und der bewusste Retry bekommt
+        // den Repo-Slot.
         store.fetch(repository: root, preferences: GitPreferences(), remotes: ["origin"])
-        #expect(executor.arguments[5] == ["fetch", "origin"])
+        #expect(executor.arguments[6] == ["fetch", "origin"])
     }
 
     @Test("Fetch ohne Git-Text liefert lokalisierbaren Exit-Code-Fallback")
@@ -528,28 +692,28 @@ struct GitAutoFetchControllerTests {
         let first = controller.attach(repository: firstRoot, remotes: ["origin"])
         try await waitUntil { executor.count == 1 }
         executor.complete(0, syncSuccess())
-        try await waitUntil { executor.count == 5 }
-        for index in 1...4 { executor.complete(index, syncSuccess()) }
+        try await waitUntil { executor.count >= 6 }
+        for index in 1...5 { executor.complete(index, syncSuccess()) }
 
         clock.now = clock.now.addingTimeInterval(60)
         let second = controller.attach(repository: secondRoot, remotes: ["origin"])
-        try await waitUntil { executor.count == 6 }
-        executor.complete(5, syncSuccess())
-        try await waitUntil { executor.count == 10 }
-        for index in 6...9 { executor.complete(index, syncSuccess()) }
+        try await waitUntil { executor.count >= 7 }
+        executor.complete(6, syncSuccess())
+        try await waitUntil { executor.count >= 12 }
+        for index in 7...11 { executor.complete(index, syncSuccess()) }
 
         clock.now = clock.now.addingTimeInterval(120)
         scheduler.fireNext()
         try await waitUntil("Fälliger Fetch des ersten Repositories wurde nicht gestartet") {
-            executor.count == 11
+            executor.count >= 13
         }
         let directories = executor.directories
         let arguments = executor.arguments
         let directory = try #require(
-            directories.indices.contains(10) ? directories[10] : nil
+            directories.indices.contains(12) ? directories[12] : nil
         )
         let fetchArguments = try #require(
-            arguments.indices.contains(10) ? arguments[10] : nil
+            arguments.indices.contains(12) ? arguments[12] : nil
         )
         #expect(directory.standardizedFileURL == firstRoot.standardizedFileURL)
         #expect(fetchArguments == ["fetch", "origin"])
@@ -663,6 +827,7 @@ struct GitWorkspacePullTests {
         executor.complete(3, .completed(GitResult(exitCode: 0,
                                                    stdoutData: syncGraph(),
                                                    stderrData: Data())))
+        executor.complete(4, syncSuccess())
         try await waitUntil("Initialer Store-Snapshot wurde nicht veröffentlicht") {
             workspace.gitStatus != nil
         }
@@ -670,38 +835,38 @@ struct GitWorkspacePullTests {
         Workspace.presentGitDialogs = false
         defer { Workspace.presentGitDialogs = oldDialogs }
         workspace.gitPull()
-        #expect(executor.arguments[4] == GitStatusParser.arguments)
-        executor.complete(4, .completed(GitResult(exitCode: 0,
+        #expect(executor.arguments[5] == GitStatusParser.arguments)
+        executor.complete(5, .completed(GitResult(exitCode: 0,
                                                    stdoutData: syncPorcelain(),
                                                    stderrData: Data())))
-        try await waitUntil("Erste Operationsprüfung wurde nicht gestartet") { executor.count >= 6 }
-        #expect(executor.arguments[5] == GitOperationStateDetector.arguments)
-        executor.complete(5, syncSuccess(absentMarkers))
-        try await waitUntil("Zweite Statusprüfung wurde nicht gestartet") { executor.count >= 7 }
-        #expect(executor.arguments[6] == GitStatusParser.arguments)
-        executor.complete(6, .completed(GitResult(exitCode: 0,
+        try await waitUntil("Erste Operationsprüfung wurde nicht gestartet") { executor.count >= 7 }
+        #expect(executor.arguments[6] == GitOperationStateDetector.arguments)
+        executor.complete(6, syncSuccess(absentMarkers))
+        try await waitUntil("Zweite Statusprüfung wurde nicht gestartet") { executor.count >= 8 }
+        #expect(executor.arguments[7] == GitStatusParser.arguments)
+        executor.complete(7, .completed(GitResult(exitCode: 0,
                                                    stdoutData: syncPorcelain(),
                                                    stderrData: Data())))
-        try await waitUntil("Zweite Operationsprüfung wurde nicht gestartet") { executor.count >= 8 }
-        executor.complete(7, syncSuccess(absentMarkers))
-        try await waitUntil("Lokaler Name wurde nicht geprüft") { executor.count >= 9 }
-        #expect(executor.arguments[8]
-                == ["config", "--includes", "--local", "--get", "user.name"])
-        executor.complete(8, syncSuccess("Fastra Test\n"))
-        try await waitUntil("Lokale E-Mail wurde nicht geprüft") { executor.count >= 10 }
+        try await waitUntil("Zweite Operationsprüfung wurde nicht gestartet") { executor.count >= 9 }
+        executor.complete(8, syncSuccess(absentMarkers))
+        try await waitUntil("Lokaler Name wurde nicht geprüft") { executor.count >= 10 }
         #expect(executor.arguments[9]
-                == ["config", "--includes", "--local", "--get", "user.email"])
-        executor.complete(9, syncSuccess("fastra@example.test\n"))
-        try await waitUntil("Globaler Name wurde nicht geprüft") { executor.count >= 11 }
+                == ["config", "--includes", "--local", "--get", "user.name"])
+        executor.complete(9, syncSuccess("Fastra Test\n"))
+        try await waitUntil("Lokale E-Mail wurde nicht geprüft") { executor.count >= 11 }
         #expect(executor.arguments[10]
-                == ["config", "--includes", "--global", "--get", "user.name"])
-        executor.complete(10, syncFailure("nicht gesetzt"))
-        try await waitUntil("Globale E-Mail wurde nicht geprüft") { executor.count >= 12 }
+                == ["config", "--includes", "--local", "--get", "user.email"])
+        executor.complete(10, syncSuccess("fastra@example.test\n"))
+        try await waitUntil("Globaler Name wurde nicht geprüft") { executor.count >= 12 }
         #expect(executor.arguments[11]
-                == ["config", "--includes", "--global", "--get", "user.email"])
+                == ["config", "--includes", "--global", "--get", "user.name"])
         executor.complete(11, syncFailure("nicht gesetzt"))
-        try await waitUntil("Pull wurde nach Identitätsprüfung nicht gestartet") { executor.count >= 13 }
+        try await waitUntil("Globale E-Mail wurde nicht geprüft") { executor.count >= 13 }
         #expect(executor.arguments[12]
+                == ["config", "--includes", "--global", "--get", "user.email"])
+        executor.complete(12, syncFailure("nicht gesetzt"))
+        try await waitUntil("Pull wurde nach Identitätsprüfung nicht gestartet") { executor.count >= 14 }
+        #expect(executor.arguments[13]
                 == ["pull", "--rebase", "--no-autostash"])
         #expect(workspace.gitPreferencesStore.load().pullStrategy == .rebase)
         #expect(!executor.arguments.contains { $0.first == "stash" || $0.first == "push" })

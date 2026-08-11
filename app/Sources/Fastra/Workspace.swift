@@ -476,9 +476,13 @@ final class Workspace: ObservableObject {
     /// kein Repo oder git nicht installiert → keine Git-Anzeige. Asynchron
     /// über `refreshGitStatus()` gefüllt.
     @Published var gitStatus: GitStatusSummary?
-    /// Erster lokal konfigurierter Remote samt effektiver Push-Adresse. Die
-    /// Änderungen-Ansicht zeigt beides vor jeder normalen Netzwerkaktion.
-    @Published var gitPushTarget: GitPushTarget?
+    /// Alle lokal konfigurierten Remotes samt effektiver Push-Adresse in der
+    /// Reihenfolge aus `.git/config`. Die Änderungen-Ansicht bietet jedes Ziel
+    /// getrennt an und zeigt die Adresse direkt in seiner klickbaren Fläche.
+    @Published var gitPushTargets: [GitPushTarget] = []
+    /// Kompatibler Primärwert für Befehle, die bewusst den ersten lokalen
+    /// Remote verwenden. Die sichtbare Oberfläche nutzt `gitPushTargets`.
+    var gitPushTarget: GitPushTarget? { gitPushTargets.first }
     /// Atomarer, gemeinsam revidierter Zustand aller Git-Oberflächen.
     @Published var gitRepositorySnapshot: GitRepositorySnapshot?
     /// Commit-Historie des aktuellen Projekts für den Graph-Tab (Phase 3).
@@ -510,7 +514,17 @@ final class Workspace: ObservableObject {
     // starten, das war nur zum Testen"). CMD+F / CMD+SHIFT+F öffnen sie. Die
     // fenster-abhängigen Selbsttests (cmdw/fields) öffnen sie jetzt selbst,
     // siehe SelfTest.openSearchThen.
-    @Published var showSearchDialog: Bool = false
+    @Published var showSearchDialog: Bool = false {
+        didSet {
+            // Während Suche/Ersetzung bleibt ihr Projektkontext eingefroren.
+            // Nach dem Schließen holen wir einen inzwischen erfolgten stabilen
+            // Tabwechsel nach; sonst bliebe die Seitenleiste dauerhaft beim
+            // vorherigen Repository stehen.
+            if oldValue, !showSearchDialog {
+                synchronizeProjectWithActiveTabIfNeeded()
+            }
+        }
+    }
     /// Öffnet den Dialog „Dateien vergleichen…" (Etappe 1 Wunschpaket
     /// 2026-07c) als Sheet auf dem Hauptfenster.
     @Published var showCompareFilesDialog: Bool = false
@@ -521,7 +535,13 @@ final class Workspace: ObservableObject {
         didSet { disableWildcardLiteralOptionIfUnavailable() }
     }
     @Published var replacePattern: String = "[$1](mailto:$1@$2.$3)"
-    @Published var livePreview: Bool = false
+    @Published var livePreview: Bool = false {
+        didSet {
+            if oldValue, !livePreview {
+                synchronizeProjectWithActiveTabIfNeeded()
+            }
+        }
+    }
     @Published var scope: SearchScope = .folder
 
     // MARK: - Such-Optionen (Suchmasken-Konzept B.5)
@@ -780,7 +800,15 @@ final class Workspace: ObservableObject {
     private let terminalDirectoryResolver: TerminalDirectoryResolving
     private var gitDiffLoadLeases: [UUID: GitDiffLoadLease] = [:]
     private var gitIdentityResolution: GitCancelling?
+    /// Reiner Anzeige-Refresh der Remote-Flächen. Er darf eine bereits vom
+    /// Nutzer gestartete Push-Prüfung nicht abbrechen.
     var gitPushTargetInspection: GitCancelling?
+    /// Nur die jüngste Anzeige-Auflösung darf publizieren. `cancel()` reicht
+    /// nicht, wenn eine ältere Completion bereits auf der Main-Queue liegt.
+    var gitPushTargetInspectionRequestID: UUID?
+    /// Zielauflösung innerhalb einer aktiven Push-Prüfung, getrennt vom
+    /// nebenläufig möglichen Anzeige-Refresh.
+    var gitPushActionTargetInspection: GitCancelling?
     var gitOperationStateInspection: GitCancelling?
     var gitIdentityInspection: GitCancelling?
     var gitConflictInspectionLease: GitCancelling?
@@ -1327,6 +1355,11 @@ final class Workspace: ObservableObject {
 
         comparisonTabID = nil
         activeTabID = id
+        // Anders als ein globaler `activeTabID.didSet` läuft dieser Hook erst
+        // nach einer endgültigen Nutzerauswahl. Ein Save-Dialog darf Tabs für
+        // seine Rückfrage vorübergehend aktivieren, ohne im modalen Runloop
+        // Projekt- und Git-Watcher umzuschalten.
+        synchronizeProjectWithActiveTabIfNeeded()
     }
 
     /// Öffnet den Vergleichsdialog mit optionaler, bereits validierter
@@ -1534,10 +1567,7 @@ final class Workspace: ObservableObject {
         } else {
             activeTabID = nextActiveTabAfterClosing(removedIndex: idx)
         }
-        // Etappe 1 (Wunschpaket 2026-07): Gehören die verbliebenen Dateien
-        // alle zu einem anderen Ordner, folgt die Seitenleiste — sichtbar,
-        // nie während einer aktiven Such-/Ersetzungsvorschau.
-        switchProjectAfterTabCloseIfNeeded()
+        synchronizeProjectWithActiveTabIfNeeded()
     }
 
     func closeActiveTab() {
@@ -1613,8 +1643,7 @@ final class Workspace: ObservableObject {
         recentlyActiveTabIDs.removeAll { $0 != id }
         comparisonTabID = nil
         activeTabID = id
-        // Gleiche Seitenleisten-Folge wie beim einzelnen Schließen (Etappe 1).
-        switchProjectAfterTabCloseIfNeeded()
+        synchronizeProjectWithActiveTabIfNeeded()
     }
 
     /// Vor dem App-Beenden (⌘Q): über JEDEN Tab mit ungespeicherten Änderungen die
@@ -2194,7 +2223,7 @@ final class Workspace: ObservableObject {
         if let existingIdx = tabs.firstIndex(where: { $0.url == url }) {
             activeTabID = tabs[existingIdx].id
             noteRecentFile(url)
-            openParentFolderIfProjectMissing(for: url)
+            synchronizeProjectWithActiveTabIfNeeded()
             completion?(true)
             return
         }
@@ -2310,7 +2339,7 @@ final class Workspace: ObservableObject {
                     // (der gerade geladene Tab bleibt erhalten).
                     self.tabs = Workspace.tabsRemovingEmptyScratch(self.tabs, keeping: tabID)
                     self.noteRecentFile(url)
-                    self.openParentFolderIfProjectMissing(for: url)
+                    self.synchronizeProjectWithActiveTabIfNeeded()
                     report(true)
 
                 case .failure:
@@ -2402,7 +2431,7 @@ final class Workspace: ObservableObject {
                     expectedTargetState: expectedState),
               let savedIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
         adoptSavedTarget(url, forTabAt: savedIndex)
-        openParentFolderIfProjectMissing(for: url)
+        synchronizeProjectWithActiveTabIfNeeded()
     }
 
     /// Übernimmt das Ziel eines erfolgreichen „Speichern unter" in den Tab.
@@ -2619,17 +2648,6 @@ final class Workspace: ObservableObject {
 
     // MARK: - Etappe-1-UX (Wunschpaket 2026-07)
 
-    /// Einzeldatei geöffnet, aber kein Ordner in der Seitenleiste? Dann einen
-    /// passenden Ordner als Projekt zeigen, damit die Seitenleiste nie
-    /// grundlos leer bleibt. Der Editor-Fokus bleibt auf der Datei
-    /// (`openProject` erhält den aktiven Tab), fremde offene Tabs bleiben
-    /// ausdrücklich bestehen. Mit bereits offenem Ordner: no-op.
-    private func openParentFolderIfProjectMissing(for url: URL) {
-        guard projectURL == nil else { return }
-        guard let folder = usableDirectory(Self.autoProjectFolder(for: url)) else { return }
-        openProject(at: folder, keepingUnrelatedTabs: true)
-    }
-
     /// Wählt den Ordner für das AUTOMATISCHE Projekt-Öffnen (Etappe 1
     /// Wunschpaket 2026-07b): Liegt die Datei in einem Git-Repository, ist
     /// dessen Wurzelordner das Ziel — so passen Seitenleisten-Anzeige und
@@ -2643,6 +2661,41 @@ final class Workspace: ObservableObject {
             return root
         }
         return url.deletingLastPathComponent()
+    }
+
+    /// Bestimmt den Projektkontext eines aktiven Datei-Tabs. Ein Git-Root
+    /// gewinnt immer, auch bei tief verschachtelten oder ungetrackten Dateien.
+    /// Ohne Git bleibt der bestehende Projektkontext unverändert; nur wenn
+    /// noch gar kein Projekt offen ist, dient der Elternordner als Ziel.
+    static func projectContextTarget(
+        for url: URL,
+        currentProject: URL?,
+        fileManager: FileManager = .default
+    ) -> URL? {
+        if let repository = ProjectStore.repositoryRoot(for: url,
+                                                        fileManager: fileManager) {
+            return repository.canonicalFileURL
+        }
+        if let current = currentProject?.canonicalFileURL { return current }
+        return url.canonicalFileURL.deletingLastPathComponent()
+    }
+
+    /// Lässt Projekt- und Git-Seitenleiste dem tatsächlich aktiven Datei-Tab
+    /// folgen. Fremde Tabs bleiben offen; ein Wechsel der sichtbaren Datei ist
+    /// kein Auftrag, ihren Inhalt oder andere Tabs zu schließen.
+    private func synchronizeProjectWithActiveTabIfNeeded() {
+        guard !showSearchDialog, !livePreview,
+              let tab = activeTab, !tab.isLoading,
+              let url = tab.url,
+              let target = usableDirectory(Self.projectContextTarget(
+                  for: url, currentProject: projectURL
+              )),
+              target.canonicalFileURL != projectURL?.canonicalFileURL else {
+            return
+        }
+        openProject(at: target, keepingUnrelatedTabs: true)
+        showSidebarNotice(L10n.format("Seitenleiste zeigt jetzt „%@“",
+                                      target.lastPathComponent))
     }
 
     // MARK: - Inhaltsbasierte Spracherkennung (Etappe 3 Wunschpaket 2026-07)
@@ -2931,45 +2984,6 @@ final class Workspace: ObservableObject {
         }
     }
 
-    /// Entschärfter Ordnerwechsel nach Tab-Schließen (Etappe 1): Gehört kein
-    /// verbliebener Datei-Tab mehr zum offenen Projekt und liegen ALLE
-    /// verbliebenen Datei-Tabs unter dem Ordner der ersten Datei, ist dieser
-    /// Ordner das neue Seitenleisten-Ziel. Konservative Bedingungen:
-    /// - Suche/Ersetzungsvorschau offen → nie wechseln (der Suchbereich darf
-    ///   sich niemals still ändern, Produktinvariante).
-    /// - Git-Ansichten gehören zum Projekt → kein Wechsel.
-    /// - Läge auch nur ein Datei-Tab außerhalb des Zielordners, würde der
-    ///   Wechsel ihn schließen → kein Wechsel (nichts geht still verloren).
-    /// Pure Funktion → unit-testbar.
-    static func projectSwitchTarget(tabs: [EditorTab], projectURL: URL?,
-                                    searchUIActive: Bool) -> URL? {
-        guard let root = projectURL?.canonicalFileURL, !searchUIActive else { return nil }
-        guard !tabs.contains(where: { $0.gitKind != nil }) else { return nil }
-        let files = tabs.compactMap { $0.url?.canonicalFileURL }
-        guard let first = files.first else { return nil }
-        let rootPrefix = root.path.hasSuffix("/") ? root.path : root.path + "/"
-        guard !files.contains(where: { $0.path.hasPrefix(rootPrefix) }) else { return nil }
-        let target = first.deletingLastPathComponent()
-        guard target.path != root.path else { return nil }
-        let targetPrefix = target.path.hasSuffix("/") ? target.path : target.path + "/"
-        guard files.allSatisfy({ $0.path.hasPrefix(targetPrefix) }) else { return nil }
-        return target
-    }
-
-    /// Wendet `projectSwitchTarget` nach einem Tab-Schließen an — mit dem
-    /// sichtbaren Hinweis, damit der Wechsel nie unbemerkt passiert.
-    private func switchProjectAfterTabCloseIfNeeded() {
-        guard let target = Self.projectSwitchTarget(
-            tabs: tabs, projectURL: projectURL,
-            searchUIActive: showSearchDialog || livePreview
-        ) else { return }
-        openProject(at: target)
-        // Nach openProject setzen — der Projektwechsel räumt alte Hinweise ab.
-        // codereview-ok: „…“ ist das korrekte deutsche Anführungszeichen-Paar
-        showSidebarNotice(L10n.format("Seitenleiste zeigt jetzt „%@“",
-                                      target.lastPathComponent))
-    }
-
     /// Lädt einen Ordner als Projekt: Dateibaum-Seitenleiste zeigt ihn,
     /// der Ordner wandert in die Zuletzt-benutzt-Liste. URL wird kanonisiert —
     /// gleiche Begründung wie in `loadFile` (Dedup über URL-Formen hinweg).
@@ -3014,6 +3028,9 @@ final class Workspace: ObservableObject {
         gitIdentityResolution?.cancel()
         gitPushTargetInspection?.cancel()
         gitPushTargetInspection = nil
+        gitPushTargetInspectionRequestID = nil
+        gitPushActionTargetInspection?.cancel()
+        gitPushActionTargetInspection = nil
         gitOperationStateInspection?.cancel()
         gitIdentityInspection?.cancel()
         gitConflictInspectionLease?.cancel()
@@ -3023,7 +3040,7 @@ final class Workspace: ObservableObject {
         // Bis der erste Snapshot des neuen Roots eintrifft, darf keine Git-UI
         // oder Aktion versehentlich den Zustand des alten Projekts verwenden.
         gitStatus = nil
-        gitPushTarget = nil
+        gitPushTargets = []
         gitRepositorySnapshot = nil
         gitBranches = []
         gitLog = []
@@ -3204,6 +3221,9 @@ final class Workspace: ObservableObject {
         gitIdentityResolution = nil
         gitPushTargetInspection?.cancel()
         gitPushTargetInspection = nil
+        gitPushTargetInspectionRequestID = nil
+        gitPushActionTargetInspection?.cancel()
+        gitPushActionTargetInspection = nil
         gitOperationStateInspection?.cancel()
         gitOperationStateInspection = nil
         gitIdentityInspection?.cancel()
@@ -3216,7 +3236,7 @@ final class Workspace: ObservableObject {
         gitRepositoryObservation = nil
         projectURL = nil
         gitStatus = nil
-        gitPushTarget = nil
+        gitPushTargets = []
         gitRepositorySnapshot = nil
         gitLog = []
         gitBranches = []

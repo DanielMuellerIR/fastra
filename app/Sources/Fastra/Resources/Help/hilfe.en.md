@@ -590,7 +590,10 @@ navigate.
 
 When you open a single file, the sidebar automatically shows the
 matching folder — if the file lives in a Git repository, its root
-folder. The sidebar header shows the project name (tooltip: full path);
+folder. With tabs from different Git repositories, this context always follows the
+active file tab, including after closing the previously active tab; deeply
+nested and untracked files do not change that rule. The sidebar header shows
+the project name (tooltip: full path);
 **⌘-click the name** for a menu of neighboring folders to switch
 projects quickly, and the right-click menu offers “Show in Finder” and
 more. **⌘-click a document tab** shows the file’s macOS path menu. The
@@ -613,12 +616,22 @@ offered as a link when the filter finds nothing).
 If the project is a Git repository (and `git` is installed), the sidebar
 additionally shows the **Changes** and **Graph** tabs:
 
-- Branch row with branch switching, ahead/behind, and fetch.
+- Branch row with branch switching, fetch, and separate ahead/behind counts for
+  every remote. In the graph, shape and colour distinguish local branches from
+  remote branches, and each remote keeps its colour.
 - **Changes:** stage/unstage files, discard, and commit right from the
   sidebar. After a local commit, the Commit button becomes a Push button:
-  it names the first locally configured remote and shows its effective push
-  address immediately below. Fastra explicitly pushes only to this visible
-  target; push and pull run asynchronously. Multiple push addresses or Git
+  every locally configured remote gets its own fully clickable surface with
+  its name and effective push address; two targets sit side by side at regular
+  widths. Fastra explicitly pushes only to the clicked target and always leaves
+  upstream configuration unchanged, including when the branch has no upstream.
+  Push and pull run asynchronously.
+  Before pushing, Fastra fetches the remote state and shows the address, target
+  ref, source commit, and the local and missing commits. If that basis changes
+  before execution, nothing is transferred. Divergence and rejected
+  non-fast-forward pushes get an explanation; force-with-lease remains a
+  separately confirmed follow-up. Multiple effective push addresses for the
+  same remote or Git
   rules that rewrite addresses through `insteadOf`/`pushInsteadOf` are
   ambiguous and stop with an explanation.
 - **Several files at once:** in the file list, a click selects one row,
@@ -671,8 +684,10 @@ the save instead of silently overwriting the on-disk version.
 ⌘T opens a new tab, ⌘N a second, fully independent window (its own
 tabs, its own search). A new window adopts the size of the frontmost one;
 with no window open it starts tall enough to actually use the screen. You can
-always drag it smaller — a size you choose yourself is kept. ⌘S saves, ⌘W closes the tab — Fastra asks first
-if there are unsaved changes. After closing, the most recently used tab
+always drag it smaller — a size you choose yourself is kept. ⌘S saves, ⌘W
+closes the tab in the window that has keyboard focus; a document window in the
+background is never used as a substitute. Fastra asks first if there are
+unsaved changes. After closing, the most recently used tab
 becomes active; several freshly created empty tabs can thus be closed
 again with repeated ⌘W in reverse order, without an older document
 getting hit. ⌘J jumps to a line number.

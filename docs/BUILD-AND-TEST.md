@@ -501,6 +501,56 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
    dorthin bringt ein eigener Worktree; `.build/artifacts` vorher aus einem gebauten Checkout
    klonen (`cp -Rc`), sonst scheitert SwiftPM am gesperrten Login-Keychain.
 
+### Lokale Laufzeit-Baselines je Mac
+
+Die Vergleichsmessung umfasst nicht nur die Zeit im Testkörper, sondern trennt
+Aufräumen, App-Start bis Ergebnis, die von der App gemeldete Laufzeit und den
+gesamten Test. Sie bleibt bewusst lokal unter
+`$HOME/Library/Application Support/Fastra/SelfTests/<Maschinen-Hash>/` und wird
+auf 20 vollständige Läufe je Konfiguration begrenzt. Die rohe Gerätekennung,
+der Rechnername und Fixture-Pfade werden weder gespeichert noch ausgegeben.
+
+```bash
+cd app
+./performance-baseline.sh standard
+./performance-baseline.sh status
+
+# Seltener Langlauf; 60 Runden je Phase qualifizieren die Frische-Anzeige.
+./performance-baseline.sh long 60
+
+# Optional zusätzlich gegen ein nur gelesenes reales Projekt messen.
+FASTRA_PROJECT_PERF_ROOT=/pfad/zur/fixture ./performance-baseline.sh long 60
+```
+
+`standard` baut zuerst, führt `swift test`, den Lokalisierungs-Audit und die
+vollständige Selbsttestsuite aus. Nur ein vollständig grüner Lauf von einem
+sauberen, währenddessen unveränderten Git-Stand und App-Binary wird als
+Baseline gespeichert. Nur der Wrapper darf die kanonische Historie ergänzen,
+weil er das geprüfte Bundle unmittelbar vorher aus demselben Git-Stand baut.
+Direkte `selftest.sh`- und `soak-test.sh`-Läufe geben weiterhin Zeiten aus,
+verändern Baseline und Frische aber nicht. Einzeltests, Timeouts, Fehler und
+Umgebungs-Skips werden diagnostisch gemessen, verändern die Baseline ebenfalls
+nicht. Debug/Release,
+direkter Start/LaunchServices und verschiedene macOS-Hauptversionen werden nie
+miteinander vermischt. Eine nicht blockierende Warnung erscheint erst, wenn ein
+Test sowohl mehr als 30 Prozent als auch mehr als eine Sekunde langsamer als
+der Median der letzten fünf vergleichbaren Läufe ist.
+
+`long` ergänzt den Standardlauf um den dreiphasigen Dauertest. `projectperf`
+wird nur mit gesetztem `FASTRA_PROJECT_PERF_ROOT` hinzugefügt, weil es eine
+bewusst ausgewählte, nur gelesene Projektkopie braucht. Der Runner erinnert
+nach einem vollständigen Standardlauf an den Langlauf, wenn auf diesem Mac noch
+keiner gespeichert wurde, der letzte älter als sieben Tage ist oder seitdem
+mindestens 20 relevante App-Commits hinzugekommen sind. Unterschiedliche
+Rundenzahlen und Fixture-Profile werden getrennt gespeichert; Rohzeiten solcher
+Konfigurationen sind nicht direkt vergleichbar.
+
+Alle In-App-Selbsttests und der Dauertest verwenden einen gemeinsamen, pro
+Nutzer maschinenweiten Lock. Damit können zwei Worktrees ihre App-Prozesse und
+den Fensterfokus nicht mehr gegenseitig verfälschen. Ein zweiter Runner endet
+als Umgebungsfehler (Exit 2); reine `swift test`-Läufe bleiben davon unabhängig.
+Ein nachweislich verwaister Lock wird beim nächsten Start übernommen.
+
 **Daraus abgeleitete Test-Leitlinien (verbindlich):**
 - **Logik aus AppKit-Glue in pure Funktionen ziehen.** Entscheidungen (Event→Aktion, Footer-Kante, find-bezogener Menüpunkt) leben in `KeyRouting`, `CursorFooter`, `DocumentStats`, `AppDelegate.isFindRelated`. Abgedeckt durch `KeyRoutingTests`, `FooterLogicTests`, `FindBarSuppressionTests`, `RegexElementsTests`.
 - **ABER: Pure Unit-Tests fangen die gefährlichste Bug-Klasse NICHT** — App-weite Event-/Lifecycle-/Monitor-Ordering-Fehler. Die `KeyRouting`-Tests waren grün, während die App komplett unbenutzbar war. Lehre: Logik-Tests sind nötig, aber NICHT hinreichend. Jede Änderung an App-Lifecycle/Fenster/Monitoren MUSS zusätzlich real verifiziert werden (manuell oder per UI-Automation).

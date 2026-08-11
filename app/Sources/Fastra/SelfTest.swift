@@ -60,6 +60,9 @@ enum SelfTest {
     private static var selectionScrollFixtureDirectory: URL?
     private static var selectionScrollFixtureURL: URL?
     private static var selectionScrollSetupError: String?
+    /// Reproduziert im `windows`-Test den gemeldeten Vorderfenster-Zustand:
+    /// Ordner in der Seitenleiste, aber nur ein leerer Willkommen-Tab.
+    private static var windowRoutingFixtureDirectory: URL?
 
     /// Name des angeforderten Selbsttests („findbar", „cmdw", …) oder `nil`.
     ///
@@ -103,6 +106,12 @@ enum SelfTest {
     /// Diagnose: AppKit-`hitTest`-Kette des letzten synthetischen Klicks —
     /// zeigt bei Klick-Fehlschlägen, welche View das Event angenommen hätte.
     private static var lastHitTestChain = ""
+    /// Beweis für `gitpushbutton`: Beide echten Netzwerkaktionen müssen zuvor
+    /// die gebundene Vorschau mit Remote, Adresse, Zielref und Quell-Commit
+    /// durchlaufen haben. Der Selbsttest lebt in einem eigenen Prozess; der
+    /// Zustand kann deshalb nicht in einen anderen Lauf hineinreichen.
+    private static var gitPushButtonExpectedSourcePrefix = ""
+    private static var gitPushButtonConfirmedRemotes: Set<String> = []
 
     /// Setzt Shot-spezifische UI-Fixtures noch vor dem Aufbau der ersten
     /// `EditorView`. Die Variable gilt nur für diesen Selbsttest-Prozess und
@@ -356,12 +365,14 @@ enum SelfTest {
         if let legacy = CommandLine.arguments.first(where: { $0.hasPrefix("--selftest-") }) {
             let name = String(legacy.dropFirst("--selftest-".count))
             testLabel = name
+            testStartedNanoseconds = DispatchTime.now().uptimeNanoseconds
             finish(false, "veraltete Aufrufform \(legacy) — positionale Argumente "
                 + "unterdrücken das SwiftUI-Hauptfenster. Neu: `-selftest \(name)` "
                 + "oder Umgebungsvariable FASTRA_SELFTEST=\(name)")
         }
         guard let name = requestedTest else { return }
         testLabel = name
+        testStartedNanoseconds = DispatchTime.now().uptimeNanoseconds
         // Am Prozessende liegengebliebene Test-Domains früherer,
         // abgestürzter Läufe abräumen (nur älter als eine Stunde — aktive
         // Suiten eines parallel laufenden `swift test` bleiben unberührt).
@@ -1261,13 +1272,53 @@ enum SelfTest {
                 finish(false, "zweites Fenster hat vor dem ⌘W-Test keinen aktiven Tab")
             }
             // Den letzten Tab sauber/leergeleert machen: ⌘W muss nun ohne
-            // Dialog das GESAMTE zweite Fenster schließen.
+            // Dialog das GESAMTE zweite Fenster schließen. Zusätzlich bekommt
+            // das Fenster einen echten Ordner in der Seitenleiste, während der
+            // Tab unberührt/leer bleibt — exakt der gemeldete Arbeitszustand.
             newWorkspace.tabs[activeIndex].content = ""
             newWorkspace.tabs[activeIndex].isDirty = false
+            let folder = FileManager.default.temporaryDirectory
+                .appendingPathComponent("fastra-selftest-windows-folder-\(getpid())")
+                .canonicalFileURL
+            do {
+                try FileManager.default.createDirectory(
+                    at: folder, withIntermediateDirectories: true
+                )
+            } catch {
+                finish(false, "Ordner-Fixture für den ⌘W-Test fehlt: \(error.localizedDescription)")
+            }
+            windowRoutingFixtureDirectory = folder
+            // Nicht direkt am Workspace öffnen: Der gemeldete Zustand entstand
+            // über Finder/Dock. Dieser produktive Router muss dasselbe bereits
+            // aktive Fenster wählen und anschließend wieder nach vorn holen.
+            MainActor.assumeIsolated {
+                DocumentWindowController.openFinderItems([folder])
+            }
+            let commandTargetIsNewWindow = MainActor.assumeIsolated {
+                CommandTargeting.targetDocumentWindow() === newWindow
+                    && CommandTargeting.targetWorkspace() === newWorkspace
+            }
+            guard newWorkspace.projectURL?.resolvingSymlinksInPath()
+                    == folder.resolvingSymlinksInPath(),
+                  newWorkspace.isWelcomeScreen,
+                  newWindow.isKeyWindow,
+                  commandTargetIsNewWindow,
+                  WorkspaceWindowRegistry.workspace(for: newWindow) === newWorkspace else {
+                finish(false, "Vorderfenster erreichte nicht den Zustand "
+                    + "Ordner plus leerer Willkommen-Tab mit eindeutiger Fensterbindung "
+                    + "(Projekt=\(newWorkspace.projectURL?.path ?? "nil"), "
+                    + "erwartet=\(folder.path), Willkommen=\(newWorkspace.isWelcomeScreen), "
+                    + "Key=\(newWindow.isKeyWindow), Ziel=\(commandTargetIsNewWindow), "
+                    + "Registry=\(WorkspaceWindowRegistry.workspace(for: newWindow) === newWorkspace))")
+            }
+            let originalTabIDs = original.tabs.map(\.id)
+            let originalTabContents = original.tabs.map(\.content)
             postCmd("w", keyCode: 13, windowNumber: newWindow.windowNumber)
             pollForLastTabWindowClose(
                 original: original,
                 originalWindow: originalWindow,
+                originalTabIDs: originalTabIDs,
+                originalTabContents: originalTabContents,
                 closedWorkspace: newWorkspace,
                 closedWindow: newWindow
             )
@@ -1293,6 +1344,8 @@ enum SelfTest {
     private static func pollForLastTabWindowClose(
         original: Workspace,
         originalWindow: NSWindow,
+        originalTabIDs: [UUID],
+        originalTabContents: [String],
         closedWorkspace: Workspace,
         closedWindow: NSWindow,
         tick: Int = 0
@@ -1315,6 +1368,11 @@ enum SelfTest {
             guard originalWindow.isVisible else {
                 finish(false, "⌘W auf dem Zweitfenster schloss auch das erste Fenster")
             }
+            guard original.tabs.map(\.id) == originalTabIDs,
+                  original.tabs.map(\.content) == originalTabContents else {
+                finish(false, "⌘W auf dem Zweitfenster veränderte Tabs oder Inhalt "
+                    + "des Hintergrundfensters")
+            }
             if Workspace.shared === original {
                 finish(true, "⌘N/Fokus/⌘T korrekt; ⌘W schließt letzten Tab samt Fenster")
             }
@@ -1326,6 +1384,8 @@ enum SelfTest {
             pollForLastTabWindowClose(
                 original: original,
                 originalWindow: originalWindow,
+                originalTabIDs: originalTabIDs,
+                originalTabContents: originalTabContents,
                 closedWorkspace: closedWorkspace,
                 closedWindow: closedWindow,
                 tick: tick + 1
@@ -1580,11 +1640,17 @@ enum SelfTest {
     private static func pollBackgroundScrollEditors(frontWindow: NSWindow,
                                                     backWorkspace: Workspace,
                                                     backWindow: NSWindow,
-                                                    tick: Int = 0) {
+                                                    tick: Int = 0,
+                                                    previousBackTV: TextView? = nil,
+                                                    stableTicks: Int = 0) {
         let frontTV = frontWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
         let backTV = backWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
+        let sameEditor = backTV === previousBackTV
+        let nextStableTicks = sameEditor ? stableTicks + 1 : 0
         if let backTV, frontTV != nil,
-           (backTV.string as NSString).range(of: "bgscrolltreffer").location != NSNotFound {
+           sourceEditorController(for: backTV) != nil,
+           (backTV.string as NSString).range(of: "bgscrolltreffer").location != NSNotFound,
+           nextStableTicks >= 3 {
             let result = BufferSearch.find(
                 in: backWorkspace.activeTab?.content ?? "",
                 options: SearchOptions(find: "bgscrolltreffer", replace: "",
@@ -1604,12 +1670,16 @@ enum SelfTest {
         }
         if tick >= 100 {
             finish(false, "Editoren mit Testinhalt wurden nicht binnen 5 s bereit "
-                   + "(vorderer=\(frontTV != nil), hinterer=\(backTV != nil))")
+                   + "(vorderer=\(frontTV != nil), hinterer=\(backTV != nil), "
+                   + "Controller=\(backTV.map { sourceEditorController(for: $0) != nil } ?? false), "
+                   + "stabil=\(nextStableTicks))")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             pollBackgroundScrollEditors(frontWindow: frontWindow,
                                         backWorkspace: backWorkspace,
-                                        backWindow: backWindow, tick: tick + 1)
+                                        backWindow: backWindow, tick: tick + 1,
+                                        previousBackTV: backTV,
+                                        stableTicks: nextStableTicks)
         }
     }
 
@@ -1631,6 +1701,12 @@ enum SelfTest {
         let clip = backTV.enclosingScrollView?.contentView
         let scrolledY = clip?.bounds.origin.y ?? 0
         let isStable = scrolledY == lastY
+        let mountedBackTV = backWindow.contentView.flatMap {
+            editorTextView(in: $0) as? TextView
+        }
+        guard mountedBackTV === backTV else {
+            finish(false, "hinterer Editor wurde während des Treffer-Sprungs neu aufgebaut")
+        }
         if selection.location != NSNotFound, selection.length > 0,
            NSMaxRange(selection) <= (backTV.string as NSString).length,
            (backTV.string as NSString).substring(with: selection) == "bgscrolltreffer",
@@ -1757,9 +1833,18 @@ enum SelfTest {
     }
 
     private static var testLabel = "findbar"
+    private static var testStartedNanoseconds = DispatchTime.now().uptimeNanoseconds
 
     private static func finish(_ ok: Bool, _ msg: String) -> Never {
-        FileHandle.standardError.write(Data("SELFTEST \(testLabel): \(ok ? "PASS" : "FAIL") — \(msg)\n".utf8))
+        if let windowRoutingFixtureDirectory {
+            try? FileManager.default.removeItem(at: windowRoutingFixtureDirectory)
+            self.windowRoutingFixtureDirectory = nil
+        }
+        let elapsed = DispatchTime.now().uptimeNanoseconds - testStartedNanoseconds
+        let appMilliseconds = elapsed / 1_000_000
+        let output = "SELFTEST-METRIC test=\(testLabel) app_ms=\(appMilliseconds)\n"
+            + "SELFTEST \(testLabel): \(ok ? "PASS" : "FAIL") — \(msg)\n"
+        FileHandle.standardError.write(Data(output.utf8))
         exit(ok ? 0 : 1)
     }
 
@@ -3514,6 +3599,12 @@ enum SelfTest {
         textView: TextView, targetLine: Int, tick: Int,
         completion: @escaping (Int) -> Void
     ) {
+        // Das Layout von 2.400 langen Umbruchzeilen brauchte nach einem
+        // vollständigen GUI-Lauf auf demselben Mac einmal mehr als 1,5 s.
+        // Der Erfolgsweg wartet nicht länger; nur der noch nicht layoutete
+        // Zwischenzustand erhält dieselbe robuste 5-s-Frist wie andere
+        // Editor-Selbsttests.
+        let maxTicks = 100
         guard let scrollView = textView.enclosingScrollView,
               let line = textView.layoutManager.textLineForIndex(targetLine),
               let rect = textView.layoutManager.rectForOffset(
@@ -3523,8 +3614,8 @@ enum SelfTest {
             // normaler Zwischenzustand, kein Befund. Deshalb innerhalb
             // derselben Frist erneut versuchen wie beim Konvergieren unten,
             // statt den Lauf beim ersten Blick rot zu melden.
-            if tick >= 30 {
-                finish(false, "Ankerzeile \(targetLine + 1) auch nach 30 "
+            if tick >= maxTicks {
+                finish(false, "Ankerzeile \(targetLine + 1) auch nach \(maxTicks) "
                     + "Versuchen nicht layoutbar")
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -3554,7 +3645,7 @@ enum SelfTest {
             )?.index
             if let shown, abs(shown - targetLine) <= 1 {
                 completion(shown)
-            } else if tick >= 30 {
+            } else if tick >= maxTicks {
                 finish(
                     false,
                     "Ankerzeile \(targetLine + 1) nicht oben erreichbar; "
@@ -7191,27 +7282,51 @@ enum SelfTest {
                      + logURL.lastPathComponent)
         }
         let pending = SoakTest.startRound()
-        // Erst einen Runloop-Durchlauf setzen lassen, DANN prüfen: SwiftUI
-        // baut abgeleitete Ansichten (z. B. die Vorschau-Spalte nach einem
-        // Tabwechsel) erst in der nächsten Transaktion um. Die restliche
-        // Pause hält den Abstand zwischen den Aktionen wie bisher.
+        // Erst einen Runloop-Durchlauf setzen lassen, DANN den tatsächlichen
+        // View-Zustand abwarten: Unter Last braucht SwiftUI für den Abbau der
+        // Vorschau gelegentlich mehrere Transaktionen. Eine starre 100-ms-
+        // Annahme meldete dann den alten View-Baum als Produktfehler. Nach
+        // höchstens zwei Sekunden prüft der Test trotzdem und meldet eine
+        // wirklich hängen gebliebene Vorschau unverändert rot.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             MainActor.assumeIsolated {
-                if let pending { SoakTest.finishRound(pending) }
-                // Nur eine nachweislich erfolgreiche ⌘C-Aktion darf Besitz
-                // begründen. Bei jeder anderen Aktion könnte eine Änderung des
-                // systemweiten Zählers vom Nutzer stammen.
-                if let owned = pending?.pasteboardChangeCount {
-                    noteSoakPasteboardOwnership(
-                        changeCount: owned,
-                        to: soakPasteboardBackupURL(logURL: logURL))
+                finishSoakRoundWhenViewsSettled(
+                    pending, rounds: rounds, done: done, logURL: logURL)
+            }
+        }
+    }
+
+    @MainActor
+    private static func finishSoakRoundWhenViewsSettled(
+        _ pending: SoakTest.PendingRound?,
+        rounds: Int,
+        done: Int,
+        logURL: URL,
+        tick: Int = 0
+    ) {
+        if SoakTest.hasPreviewOnNonMarkdownTab(), tick < 40 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                MainActor.assumeIsolated {
+                    finishSoakRoundWhenViewsSettled(
+                        pending, rounds: rounds, done: done,
+                        logURL: logURL, tick: tick + 1)
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    MainActor.assumeIsolated {
-                        runSoakRounds(rounds: rounds, done: done + 1,
-                                      logURL: logURL)
-                    }
-                }
+            }
+            return
+        }
+        if let pending { SoakTest.finishRound(pending) }
+        // Nur eine nachweislich erfolgreiche ⌘C-Aktion darf Besitz
+        // begründen. Bei jeder anderen Aktion könnte eine Änderung des
+        // systemweiten Zählers vom Nutzer stammen.
+        if let owned = pending?.pasteboardChangeCount {
+            noteSoakPasteboardOwnership(
+                changeCount: owned,
+                to: soakPasteboardBackupURL(logURL: logURL))
+        }
+        // Die restliche Pause hält den Abstand zwischen Aktionen wie bisher.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            MainActor.assumeIsolated {
+                runSoakRounds(rounds: rounds, done: done + 1, logURL: logURL)
             }
         }
     }
@@ -14080,10 +14195,9 @@ enum SelfTest {
         }
     }
 
-    /// Reproduziert den echten Erst-Push eines sauberen Projekts ohne
-    /// Upstream. `primary` steht zuerst in `.git/config`, `github` würde von
-    /// `git remote` aber alphabetisch zuerst ausgegeben. Der sichtbare Knopf
-    /// und der ausgeführte Push müssen beide dem Config-Ziel folgen.
+    /// Reproduziert zwei echte Pushs eines sauberen Projekts. `primary` und
+    /// `github` müssen als getrennte klickbare Flächen erscheinen. Beide Pushs
+    /// lassen den Branch bewusst ohne Upstream.
     private static func runGitPushButtonTest() {
         testLabel = "gitpushbutton"
         guard ProcessInfo.processInfo.environment["FASTRA_SIDEBAR"] == "changes" else {
@@ -14101,6 +14215,26 @@ enum SelfTest {
         let repo = base.appendingPathComponent("working-copy")
         let primary = base.appendingPathComponent("primary.git")
         let github = base.appendingPathComponent("github.git")
+        gitPushButtonExpectedSourcePrefix = ""
+        gitPushButtonConfirmedRemotes = []
+        // Der Fenstertest klickt beide echten Push-Flächen. Die Vorschau wird
+        // nicht umgangen, sondern je Remote gegen Name und Adresse geprüft.
+        ws.gitMutationConfirmationHandler = { confirmation in
+            let candidates = [("primary", primary.path), ("github", github.path)]
+            for (remote, address) in candidates {
+                let expected = L10n.format(
+                    "Remote: %@\nAdresse: %@\nZiel: %@\nQuell-Commit: %@",
+                    remote, address, "refs/heads/main",
+                    gitPushButtonExpectedSourcePrefix
+                )
+                if !gitPushButtonExpectedSourcePrefix.isEmpty,
+                   confirmation.explanation.contains(expected) {
+                    gitPushButtonConfirmedRemotes.insert(remote)
+                    return true
+                }
+            }
+            return false
+        }
         do {
             try fm.createDirectory(at: repo, withIntermediateDirectories: true)
             try fm.createDirectory(at: primary, withIntermediateDirectories: true)
@@ -14138,38 +14272,56 @@ enum SelfTest {
                         try? fm.removeItem(at: base)
                         finish(false, "(repo setup) \(error)")
                     }
-                    DispatchQueue.main.async {
-                        ws.openProject(at: repo)
-                        pollGitPushButton(ws, base: base, repo: repo,
-                                          primary: primary, github: github, tick: 0)
+                    GitRunner.run(["rev-parse", "HEAD"], in: repo) { result in
+                        DispatchQueue.main.async {
+                            guard let sourceOID = result?.stdout
+                                .trimmingCharacters(in: .whitespacesAndNewlines),
+                                  result?.ok == true,
+                                  sourceOID.count >= 12 else {
+                                try? fm.removeItem(at: base)
+                                finish(false, "(repo setup) Quell-Commit fehlt")
+                            }
+                            gitPushButtonExpectedSourcePrefix = String(sourceOID.prefix(12))
+                            ws.openProject(at: repo)
+                            pollGitPushButton(ws, base: base, repo: repo,
+                                              primary: primary, github: github, tick: 0)
+                        }
                     }
                 }
             }
         }
     }
 
-    /// Wartet auf die gerenderte Sicherheitsanzeige und klickt den echten
-    /// SwiftUI-Knopf über AppKits Fenster-Hit-Testing.
+    /// Wartet auf beide gerenderten Sicherheitsflächen und klickt zuerst
+    /// `primary` über AppKits echtes Fenster-Hit-Testing.
     private static func pollGitPushButton(_ ws: Workspace, base: URL, repo: URL,
                                           primary: URL, github: URL, tick: Int) {
-        let expected = GitPushTarget(remote: "primary", addresses: [primary.path])
-        let buttonID = "gitPrimaryPush-primary"
-        let addressID = "gitPrimaryPushAddress-primary-"
-            + "\(expected.displayAddress.hashValue)"
-        guard ws.gitPushTarget == expected,
+        let expectedPrimary = GitPushTarget(remote: "primary",
+                                            addresses: [primary.path])
+        let expectedGithub = GitPushTarget(remote: "github",
+                                           addresses: [github.path])
+        let expected = [expectedPrimary, expectedGithub]
+        let primaryAddressID = "gitPrimaryPushAddress-primary-"
+            + "\(expectedPrimary.displayAddress.hashValue)"
+        let githubAddressID = "gitPrimaryPushAddress-github-"
+            + "\(expectedGithub.displayAddress.hashValue)"
+        guard ws.gitPushTargets == expected,
               GitChangesPrimaryAction.resolve(status: ws.gitStatus,
-                                              target: ws.gitPushTarget)
+                                              targets: ws.gitPushTargets)
                 == .push(expected),
               !ws.gitOperationsAreBusy,
               let window = mainWindowForAXChecks(),
               let content = window.contentView,
-              let buttonMarker = markerView(id: buttonID, in: content),
-              let addressMarker = markerView(id: addressID, in: content) else {
+              let primaryButton = markerView(id: "gitPrimaryPush-primary",
+                                             in: content),
+              let githubButton = markerView(id: "gitPrimaryPush-github",
+                                            in: content),
+              let primaryAddress = markerView(id: primaryAddressID, in: content),
+              let githubAddress = markerView(id: githubAddressID, in: content) else {
             if tick >= 120 {
                 try? FileManager.default.removeItem(at: base)
-                finish(false, "Push-Knopf mit erstem Remote und sichtbarer "
-                    + "primary-Adresse erschien nicht (Ziel: "
-                    + "\(String(describing: ws.gitPushTarget)), Status: "
+                finish(false, "Getrennte Push-Flächen mit sichtbaren Adressen "
+                    + "erschienen nicht (Ziele: \(ws.gitPushTargets), Status: "
                     + "\(String(describing: ws.gitStatus)))")
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -14180,26 +14332,48 @@ enum SelfTest {
         }
 
         window.layoutIfNeeded()
-        guard buttonMarker.bounds.width > 0, buttonMarker.bounds.height > 0,
-              addressMarker.bounds.width > 0, addressMarker.bounds.height > 0 else {
+        guard primaryButton.bounds.width > 0, primaryButton.bounds.height > 0,
+              githubButton.bounds.width > 0, githubButton.bounds.height > 0,
+              primaryAddress.bounds.width > 0, primaryAddress.bounds.height > 0,
+              githubAddress.bounds.width > 0, githubAddress.bounds.height > 0 else {
             try? FileManager.default.removeItem(at: base)
-            finish(false, "Push-Knopf oder Zieladresse besitzen keinen sichtbaren Bereich")
+            finish(false, "Push-Fläche oder Zieladresse besitzt keinen sichtbaren Bereich")
         }
-        let point = buttonMarker.convert(
-            NSPoint(x: buttonMarker.bounds.midX, y: buttonMarker.bounds.midY),
+        let primaryFrame = primaryButton.convert(primaryButton.bounds, to: content)
+        let githubFrame = githubButton.convert(githubButton.bounds, to: content)
+        guard abs(primaryFrame.midY - githubFrame.midY) <= 2,
+              primaryFrame.maxX <= githubFrame.minX + 1 else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Push-Flächen für primary und github liegen nicht nebeneinander")
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        guard window.isKeyWindow else {
+            if tick >= 120 {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Dokumentfenster wurde für den primary-Push nicht Key")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollGitPushButton(ws, base: base, repo: repo,
+                                  primary: primary, github: github, tick: tick + 1)
+            }
+            return
+        }
+        let point = primaryButton.convert(
+            NSPoint(x: primaryButton.bounds.midX, y: primaryButton.bounds.midY),
             to: nil
         )
         guard sendMouseClick(at: point, in: window, modifiers: []) else {
             try? FileManager.default.removeItem(at: base)
             finish(false, "Mausklick auf Push zu primary nicht erzeugbar")
         }
-        pollGitPushButtonResult(ws, base: base, repo: repo,
-                                primary: primary, github: github, tick: 0)
+        pollGitPrimaryPushResult(ws, base: base, repo: repo,
+                                 primary: primary, github: github, tick: 0)
     }
 
-    /// Ground Truth sind beide bare Remotes und Gits echter Upstream. Der
-    /// alphabetisch frühere `github`-Remote muss vollständig unberührt bleiben.
-    private static func pollGitPushButtonResult(
+    /// Nach dem ersten Klick muss ausschließlich `primary` den Branch besitzen;
+    /// die Upstream-Konfiguration bleibt leer. Danach folgt der github-Klick.
+    private static func pollGitPrimaryPushResult(
         _ ws: Workspace, base: URL, repo: URL, primary: URL, github: URL, tick: Int
     ) {
         GitRunner.run(["rev-parse", "--verify", "refs/heads/main"], in: primary) {
@@ -14207,35 +14381,33 @@ enum SelfTest {
             GitRunner.run(
                 ["show-ref", "--verify", "--quiet", "refs/heads/main"], in: github
             ) { githubResult in
-                GitRunner.run(["rev-parse", "--abbrev-ref", "@{u}"], in: repo) {
-                    upstreamResult in
+                readGitPushButtonUpstreamConfig(in: repo) {
+                    remoteConfig, mergeConfig in
                     DispatchQueue.main.async {
                         if githubResult?.ok == true {
                             try? FileManager.default.removeItem(at: base)
                             finish(false, "Push traf den nicht ausgewählten Remote github")
                         }
-                        let upstream = upstreamResult?.stdout
-                            .trimmingCharacters(in: .whitespacesAndNewlines)
-                        let returnedToCommit = GitChangesPrimaryAction.resolve(
-                            status: ws.gitStatus, target: ws.gitPushTarget
-                        ) == .commit
-                        if primaryResult?.ok == true, upstream == "primary/main",
-                           returnedToCommit {
-                            try? FileManager.default.removeItem(at: base)
-                            finish(true, "Knopf zeigte Push zu primary und dessen "
-                                + "Adresse; echter Klick pushte nur zu primary, "
-                                + "setzte primary/main als Upstream und kehrte "
-                                + "danach in den Commit-Modus zurück")
+                        if primaryResult?.ok == true,
+                           gitConfigValueIsAbsent(remoteConfig),
+                           gitConfigValueIsAbsent(mergeConfig),
+                           gitRefIsAbsent(githubResult) {
+                            pollGitSecondPushButton(
+                                ws, base: base, repo: repo, primary: primary,
+                                github: github, tick: 0
+                            )
+                            return
                         }
                         if tick >= 150 {
                             try? FileManager.default.removeItem(at: base)
                             finish(false, "Push zu primary nicht vollständig "
                                 + "(primary: \(primaryResult?.ok == true), "
-                                + "upstream: \(upstream ?? "nil"), "
-                                + "Commit-Modus: \(returnedToCommit))")
+                                + "github unberührt: \(gitRefIsAbsent(githubResult)), "
+                                + "remote-config: \(String(describing: remoteConfig)), "
+                                + "merge-config: \(String(describing: mergeConfig)))")
                         }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            pollGitPushButtonResult(
+                            pollGitPrimaryPushResult(
                                 ws, base: base, repo: repo, primary: primary,
                                 github: github, tick: tick + 1
                             )
@@ -14244,6 +14416,144 @@ enum SelfTest {
                 }
             }
         }
+    }
+
+    private static func pollGitSecondPushButton(
+        _ ws: Workspace, base: URL, repo: URL, primary: URL, github: URL, tick: Int,
+        previousMarker: NSView? = nil, stableTicks: Int = 0
+    ) {
+        let expected = [
+            GitPushTarget(remote: "primary", addresses: [primary.path]),
+            GitPushTarget(remote: "github", addresses: [github.path]),
+        ]
+        let window = mainWindowForAXChecks()
+        let content = window?.contentView
+        let marker = content.flatMap {
+            markerView(id: "gitPrimaryPush-github", in: $0)
+        }
+        if let window, !window.isKeyWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+        }
+        let ready = !ws.gitOperationsAreBusy
+            && ws.gitPushTargets == expected
+            && window?.isKeyWindow == true
+            && marker != nil
+        let nextStableTicks = ready && marker === previousMarker
+            ? stableTicks + 1 : 0
+        guard ready, nextStableTicks >= 3,
+              let window, let marker else {
+            if tick >= 120 {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "github-Push-Fläche wurde nach primary-Push nicht "
+                    + "stabil klickbereit (busy=\(ws.gitOperationsAreBusy), "
+                    + "Ziele=\(ws.gitPushTargets), Key=\(window?.isKeyWindow == true), "
+                    + "Marker=\(marker != nil), stabil=\(nextStableTicks))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollGitSecondPushButton(
+                    ws, base: base, repo: repo, primary: primary, github: github,
+                    tick: tick + 1, previousMarker: marker,
+                    stableTicks: nextStableTicks
+                )
+            }
+            return
+        }
+        window.layoutIfNeeded()
+        guard marker.bounds.width > 0, marker.bounds.height > 0 else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "github-Push-Fläche besitzt keinen sichtbaren Bereich")
+        }
+        let point = marker.convert(
+            NSPoint(x: marker.bounds.midX, y: marker.bounds.midY), to: nil
+        )
+        guard sendMouseClick(at: point, in: window, modifiers: []) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Mausklick auf Push zu github nicht erzeugbar")
+        }
+        pollGitSecondPushResult(ws, base: base, repo: repo,
+                                primary: primary, github: github, tick: 0)
+    }
+
+    /// Beide Ziele müssen nun exakt den lokalen HEAD enthalten; auch nach dem
+    /// zweiten Push bleibt der Branch bewusst ohne Upstream.
+    private static func pollGitSecondPushResult(
+        _ ws: Workspace, base: URL, repo: URL, primary: URL, github: URL, tick: Int
+    ) {
+        GitRunner.run(["rev-parse", "HEAD"], in: repo) { localResult in
+            GitRunner.run(["rev-parse", "refs/heads/main"], in: primary) {
+                primaryResult in
+                GitRunner.run(["rev-parse", "refs/heads/main"], in: github) {
+                    githubResult in
+                    readGitPushButtonUpstreamConfig(in: repo) {
+                        remoteConfig, mergeConfig in
+                        DispatchQueue.main.async {
+                            if localResult?.ok == true,
+                               localResult?.stdout == primaryResult?.stdout,
+                               localResult?.stdout == githubResult?.stdout,
+                               gitConfigValueIsAbsent(remoteConfig),
+                               gitConfigValueIsAbsent(mergeConfig),
+                               gitPushButtonConfirmedRemotes == ["primary", "github"] {
+                                try? FileManager.default.removeItem(at: base)
+                                finish(true, "Zwei getrennte Push-Flächen lagen "
+                                    + "nebeneinander; echte Klicks pushten nach "
+                                    + "primary und github, der Branch blieb "
+                                    + "ohne Upstream")
+                            }
+                            if tick >= 150 {
+                                try? FileManager.default.removeItem(at: base)
+                                finish(false, "Push zu github oder Upstream-Schutz "
+                                    + "unvollständig (github: "
+                                    + "\(githubResult?.ok == true), remote-config: "
+                                    + "\(String(describing: remoteConfig)), merge-config: "
+                                    + "\(String(describing: mergeConfig)), Vorschauen: "
+                                    + "\(gitPushButtonConfirmedRemotes.sorted()))")
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                pollGitSecondPushResult(
+                                    ws, base: base, repo: repo, primary: primary,
+                                    github: github, tick: tick + 1
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Liest beide Upstream-Schlüssel einzeln. `rev-parse @{u}` genügt hier
+    /// nicht: Auch eine nur halb geschriebene Konfiguration lässt die
+    /// Auflösung scheitern und sähe fälschlich wie „kein Upstream“ aus.
+    private static func readGitPushButtonUpstreamConfig(
+        in repo: URL,
+        completion: @escaping (GitResult?, GitResult?) -> Void
+    ) {
+        GitRunner.run(["config", "--get", "branch.main.remote"], in: repo) {
+            remoteResult in
+            GitRunner.run(["config", "--get", "branch.main.merge"], in: repo) {
+                mergeResult in
+                completion(remoteResult, mergeResult)
+            }
+        }
+    }
+
+    /// Git meldet einen fehlenden `config --get`-Wert mit Exit 1 und leerer
+    /// Ausgabe. Ein Start-/I/O-Fehler oder ein anderer Exit-Code ist kein
+    /// Beweis für eine fehlende Konfiguration.
+    private static func gitConfigValueIsAbsent(_ result: GitResult?) -> Bool {
+        result?.exitCode == 1
+            && result?.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true
+            && result?.stderr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true
+    }
+
+    /// `git show-ref --verify --quiet` benutzt ausschließlich Exit 1 für
+    /// „Ref fehlt“. Ein nicht gestarteter Prozess oder jeder andere Fehler
+    /// darf nicht als Beleg für ein unberührtes Remote gelten.
+    private static func gitRefIsAbsent(_ result: GitResult?) -> Bool {
+        result?.exitCode == 1
+            && result?.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true
+            && result?.stderr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true
     }
 
     /// Fensterlos — kuratierte Git-Aktionen end-to-end über die echten
@@ -14263,6 +14573,12 @@ enum SelfTest {
         let base = fm.temporaryDirectory.appendingPathComponent("fastra-gitactions-\(UUID().uuidString)")
         let repo = base.appendingPathComponent("work")
         let bare = base.appendingPathComponent("remote.git")
+        // Auch der fensterlose Aktionslauf muss die sichtbare Push-Vorschau
+        // durchlaufen. Bestätigt wird nur das lokale Test-Remote.
+        ws.gitMutationConfirmationHandler = { confirmation in
+            confirmation.explanation.contains("origin")
+                && confirmation.explanation.contains(bare.path)
+        }
         do {
             try fm.createDirectory(at: repo, withIntermediateDirectories: true)
             try fm.createDirectory(at: bare, withIntermediateDirectories: true)
@@ -14371,7 +14687,10 @@ enum SelfTest {
         runGitSequence([["switch", "-c", "feature"]], in: repo) { ok, e in
             guard ok else { try? fm.removeItem(at: base); finish(false, "(switch-setup) \(e)") }
             ws.refreshGitBranches()
-            pollUntil(maxTicks: 150, base: base, fm: fm, label: "branch-list",
+            // Ein vollständiger Fenstertestlauf kann den gemeinsam revidierten
+            // Git-Snapshot unter Last später liefern. Nur der Fehlerfall darf
+            // deshalb bis 9 s warten; der Erfolgsweg läuft sofort weiter.
+            pollUntil(maxTicks: 300, base: base, fm: fm, label: "branch-list",
                       cond: {
                           ws.gitBranches.contains(where: { $0.name == "main" })
                               && ws.gitBranches.contains(where: { $0.name == "feature" && $0.isCurrent })
@@ -14404,8 +14723,8 @@ enum SelfTest {
         }
     }
 
-    /// AUTO-UPSTREAM: neuen Branch OHNE Upstream anlegen, `gitPush()` muss ihn
-    /// selbstständig mit `-u` beim Remote anlegen (der pfiffige Erst-Push).
+    /// Neuer Branch OHNE Upstream: `gitPush()` legt den Remote-Ref an, lässt
+    /// die lokale Upstream-Konfiguration aber bewusst unberührt.
     private static func gitActionsAutoUpstream(_ ws: Workspace, repo: URL, bare: URL, base: URL, fm: FileManager) {
         runGitSequence([["switch", "-c", "ohne-upstream"]], in: repo) { ok, e in
             guard ok else { try? fm.removeItem(at: base); finish(false, "(auto-u setup) \(e)") }
@@ -14414,16 +14733,22 @@ enum SelfTest {
             }
             pollAsync(maxTicks: 150, base: base, fm: fm, label: "auto-upstream",
                       check: { done in
-                          // Der Branch muss jetzt im bare-Remote als Ref existieren.
+                          // Der Branch muss im bare-Remote existieren, ohne dass
+                          // Fastra dabei einen lokalen Upstream erfindet.
                           GitRunner.run(["rev-parse", "--verify", "refs/heads/ohne-upstream"], in: bare) { r in
-                              done(r?.ok == true)
+                              GitRunner.run(
+                                  ["config", "--get", "branch.ohne-upstream.remote"],
+                                  in: repo
+                              ) { upstream in
+                                  done(r?.ok == true && upstream?.ok != true)
+                              }
                           }
                       },
                       next: {
                           try? fm.removeItem(at: base)
                           finish(true, "Git-Aktionen: Push (ahead→0), Pull-FF (Remote-Datei da), "
                               + "Amend (Datei in Commit, Zahl gleich), Branch-Liste + Auswahl, "
-                              + "Pickaxe, Auto-Upstream-Push ok")
+                              + "Pickaxe, Push ohne Upstream-Änderung ok")
                       })
         }
     }

@@ -21,6 +21,68 @@ private func sessionFile(_ name: String, content: String) throws -> URL {
     return url.canonicalFileURL
 }
 
+@Test("Restore-Gate akzeptiert nur den primären Workspace und nur einmal")
+@MainActor
+func sessionPrimaryWindowGateIsIdentityBoundAndOneShot() async {
+    let (defaults, suite) = sessionDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let primary = Workspace(defaults: defaults)
+    let foreign = Workspace(defaults: defaults)
+    let primaryWindow = NSWindow()
+    var restoredWindow: NSWindow?
+    var restoreCount = 0
+    let gate = PrimaryWindowRestoreGate(expectedWorkspace: primary) { window in
+        restoreCount += 1
+        restoredWindow = window
+    }
+
+    // Auch sehr viele fremde Registrierungen lassen das Gate scharf. Damit
+    // hängt die Entscheidung weder an einer Uhr noch an einer Versuchszahl.
+    for _ in 0..<1_000 {
+        #expect(!gate.scheduleAction(for: foreign, window: primaryWindow))
+    }
+    #expect(restoreCount == 0)
+
+    #expect(gate.scheduleAction(for: primary, window: primaryWindow))
+    // Der Bridge-Aufruf darf den Restore nicht synchron aus dem laufenden
+    // SwiftUI-Update starten; ein doppeltes Ereignis bleibt trotzdem wirkungslos.
+    #expect(restoreCount == 0)
+    #expect(!gate.scheduleAction(for: primary, window: primaryWindow))
+    #expect(!gate.scheduleAction(for: foreign, window: primaryWindow))
+
+    // Der anschließend eingereihte Block beweist, dass die vorher geplante
+    // Restore-Aktion im nächsten Main-Queue-Umlauf abgeschlossen wurde.
+    await withCheckedContinuation { continuation in
+        DispatchQueue.main.async {
+            continuation.resume()
+        }
+    }
+    #expect(restoreCount == 1)
+    #expect(restoredWindow === primaryWindow)
+    #expect(restoreCount == 1)
+}
+
+@Test("Restore-Completion wird nach allen Fenstern exakt einmal gemeldet")
+@MainActor
+func sessionRestoreCompletionLatchFinishesExactlyOnce() {
+    var completionCount = 0
+    var latch: RestoreCompletionLatch!
+    latch = RestoreCompletionLatch(count: 3) {
+        completionCount += 1
+        // Reentrante oder versehentlich doppelte Child-Completion.
+        latch.finishOne()
+    }
+
+    latch.finishOne()
+    latch.finishOne()
+    #expect(completionCount == 0)
+    latch.finishOne()
+    #expect(completionCount == 1)
+    latch.finishOne()
+    latch.finishOne()
+    #expect(completionCount == 1)
+}
+
 @Test("Sitzungswiederherstellung ist ohne gespeicherten Wert standardmäßig an")
 func sessionPreferenceDefaultsToEnabled() {
     let (defaults, suite) = sessionDefaults()
@@ -147,6 +209,53 @@ func sessionWorkspaceRestore() async throws {
             == ["a.txt", "b.txt"])
     #expect(workspace.activeTab?.url == first)
     #expect(!workspace.tabs.contains(where: { $0.url == nil }))
+}
+
+@Test("Restore richtet den Projektkontext am gespeicherten aktiven Repo-Tab aus")
+@MainActor
+func sessionWorkspaceRestoreSelectsActiveRepositoryContext() async throws {
+    let (defaults, suite) = sessionDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let base = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-session-repos-\(UUID().uuidString)")
+    let repoA = base.appendingPathComponent("repo-a", isDirectory: true)
+    let repoB = base.appendingPathComponent("repo-b", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: base) }
+    for repo in [repoA, repoB] {
+        try FileManager.default.createDirectory(
+            at: repo.appendingPathComponent(".git", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+    }
+    let fileA = repoA.appendingPathComponent("inter/2026/a.txt")
+    let fileB = repoB.appendingPathComponent("tief/b.txt")
+    try FileManager.default.createDirectory(
+        at: fileA.deletingLastPathComponent(), withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+        at: fileB.deletingLastPathComponent(), withIntermediateDirectories: true
+    )
+    try "A".write(to: fileA, atomically: true, encoding: .utf8)
+    try "B".write(to: fileB, atomically: true, encoding: .utf8)
+
+    let workspace = Workspace(defaults: defaults)
+    let state = RestorableWindowState(
+        projectPath: nil,
+        documentPaths: [fileA.path, fileB.path],
+        activeDocumentPath: fileA.path,
+        frame: nil
+    )
+    var finished = false
+    workspace.restore(state) { finished = true }
+    let deadline = Date().addingTimeInterval(5)
+    while !finished, Date() < deadline {
+        await Task.yield()
+    }
+
+    #expect(finished)
+    #expect(workspace.activeTab?.url?.canonicalFileURL == fileA.canonicalFileURL)
+    #expect(workspace.projectURL?.canonicalFileURL == repoA.canonicalFileURL,
+            "Der Projektkontext muss dem endgültigen aktiven Restore-Tab folgen")
 }
 
 @Test("Restore lässt keinen leeren Start-Tab aufblitzen")

@@ -543,6 +543,28 @@ func gitRunner_sanitizesRepositoryEnvironment() {
     #expect(environment["GIT_LITERAL_PATHSPECS"] == "1")
 }
 
+@Test("Nur bewusste Command-Konfiguration wird nach der Bereinigung ergänzt")
+func gitRunnerAddsTrustedCommandConfiguration() {
+    let environment = GitRunner.sanitizedEnvironment(
+        base: [
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "url.evil.insteadOf",
+            "GIT_CONFIG_VALUE_0": "https://confirmed.example",
+        ],
+        configuration: [
+            GitConfigurationEntry(key: "remote.bound.url",
+                                  value: "fastra-bound-random://target"),
+            GitConfigurationEntry(key: "url.https://confirmed.example.insteadOf",
+                                  value: "fastra-bound-random://target"),
+        ]
+    )
+    #expect(environment["GIT_CONFIG_COUNT"] == "2")
+    #expect(environment["GIT_CONFIG_KEY_0"] == "remote.bound.url")
+    #expect(environment["GIT_CONFIG_VALUE_0"] == "fastra-bound-random://target")
+    #expect(environment["GIT_CONFIG_KEY_1"]
+            == "url.https://confirmed.example.insteadOf")
+}
+
 @Test("Capture-Fehler behält Diagnose und bereits gelesene Ausgabe")
 func gitRunner_formatsCaptureFailureHonestly() {
     let partial = GitResult(exitCode: -1, stdout: "teilweise Ausgabe", stderr: "")

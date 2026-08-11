@@ -271,8 +271,26 @@ struct FastraApp: App {
                     // schließen (gleiches Verhalten wie der Event-Monitor).
                     if HelpWindow.isHelpWindow(NSApp.keyWindow) {
                         HelpWindow.close()
+                    } else if AboutWindow.isAboutWindow(NSApp.keyWindow) {
+                        NSApp.keyWindow?.performClose(nil)
+                    } else if SettingsWindowConfiguration.isSettingsWindow(
+                        NSApp.keyWindow
+                    ) {
+                        NSApp.keyWindow?.performClose(nil)
+                    } else if let searchWindow = NSApp.keyWindow,
+                              SearchWindow.isSearchWindow(searchWindow),
+                              let searchWorkspace = WorkspaceWindowRegistry.workspace(
+                                  for: searchWindow
+                              ) {
+                        searchWorkspace.showSearchDialog = false
+                    } else if let target = CommandTargeting.targetWorkspace() {
+                        // Beim Schließen gibt es bewusst KEINEN Rückfall auf
+                        // den Start-Workspace: Ist das Vorderfenster nicht
+                        // eindeutig gebunden, ist ein No-op sicherer als ein
+                        // geschlossenes Dokumentfenster dahinter.
+                        target.closeActiveTab()
                     } else {
-                        commandWorkspace.closeActiveTab()
+                        NSSound.beep()
                     }
                 }
                     .keyboardShortcut("w", modifiers: .command)
@@ -518,10 +536,13 @@ struct FastraApp: App {
         }
     }
 
-    /// Ziel aller globalen Menübefehle. Das `@StateObject` gehört nur zum
+    /// Ziel der dokumentbezogenen globalen Menübefehle. Das `@StateObject` gehört nur zum
     /// Startfenster; zusätzliche Fenster werden deshalb über ihre echte
-    /// Vordergrundreihenfolge aufgelöst. Der Rückfall greift nur, solange
-    /// noch kein registriertes Dokumentfenster als Ziel existiert.
+    /// Vordergrundreihenfolge aufgelöst. Der bestehende Rückfall hält die schon
+    /// vor der ersten Fensterregistrierung aufgebauten SwiftUI-Menüs
+    /// funktionsfähig, gilt derzeit aber auch bei fokussierten Hilfsfenstern.
+    /// Der besonders verlustreiche Schließen-Befehl verwendet ihn bewusst
+    /// nicht und behandelt Hilfe, Über, Einstellungen und Suche ausdrücklich.
     private var commandWorkspace: Workspace {
         CommandTargeting.targetWorkspace() ?? workspace
     }

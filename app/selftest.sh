@@ -43,6 +43,16 @@ set -u
 
 cd "$(dirname "$0")"
 
+# Gemeinsame, worktreeübergreifende Sperre für Fensterläufe.
+# shellcheck source=tools/gui-test-lock.sh
+. ./tools/gui-test-lock.sh
+
+if [[ "${1:-}" == "--performance-status" ]]; then
+    /usr/bin/python3 ./tools/selftest-performance.py status \
+        --repository "$(cd .. && pwd -P)"
+    exit $?
+fi
+
 # Standardmäßig das frische Debug-Bundle prüfen. Der notarierte Installations-
 # test kann beide Pfade ausdrücklich auf /Applications/Fastra.app setzen, ohne
 # einen zweiten, abweichenden LaunchServices-Runner zu duplizieren.
@@ -72,9 +82,11 @@ ACTIVATE_TIMEOUT_SECS=4
 
 # Zu laufende Tests schon vor der Pfadprüfung bestimmen. Nur dann kann der
 # Runner unterscheiden, ob der angeforderte Lauf LaunchServices benötigt.
+STANDARD_RUN=0
 if [[ $# -gt 0 ]]; then
     TESTS=("$@")
 else
+    STANDARD_RUN=1
     TESTS=("${ALL_TESTS[@]}")
 fi
 
@@ -164,6 +176,11 @@ if console_locked; then
     TESTS=("${FILTERED[@]}")
 fi
 
+# Auch fensterlose Selbsttests starten dasselbe App-Binary und teilen dessen
+# Aufräumpfad. Deshalb serialisiert die maschinenweite Sperre alle Runner;
+# `swift test` bleibt davon unabhängig und kann weiter parallel arbeiten.
+NEEDS_GUI_LOCK=1
+
 # ── Hilfsfunktionen ──────────────────────────────────────────────────────
 
 # Eine vom Runner direkt gestartete PID merken. LaunchServices gibt die App-PID
@@ -185,34 +202,83 @@ remember_bundle_pids() {
 # Zuerst nur die selbst gestarteten PIDs beenden. Der Restabgleich ist bewusst
 # auf den absoluten Binary-Pfad des konfigurierten Bundles beschränkt; das alte
 # globale `Fastra.app/...`-Muster gefährdete andere Worktrees und Nutzerarbeit.
+pid_matches_configured_bundle() {
+    local pid="$1"
+    local command pattern
+    command="$(ps -ww -p "$pid" -o command= 2>/dev/null || true)"
+    for pattern in "${APP_PROCESS_PATTERNS[@]}"; do
+        [[ "$command" =~ $pattern ]] && return 0
+    done
+    return 1
+}
+
 kill_leftovers() {
-    local pid pattern
+    local pid pattern tick still_running
     # macOS liefert bash 3.2: Dort gilt ein LEERES Array unter `set -u` bei
     # `"${arr[@]}"` als unbound. Die Längenabfrage umgeht das gefahrlos.
     if [ "${#STARTED_PIDS[@]}" -gt 0 ]; then
         for pid in "${STARTED_PIDS[@]}"; do
-            kill "$pid" 2>/dev/null || true
+            # Zwischen Ergebniszeile und Cleanup kann die App bereits enden
+            # und macOS die Nummer neu vergeben. Vor dem Signal deshalb den
+            # Prozesspfad noch einmal gegen genau dieses Test-Bundle prüfen.
+            if pid_matches_configured_bundle "$pid"; then
+                kill "$pid" 2>/dev/null || true
+            fi
         done
     fi
-    for pattern in "${APP_PROCESS_PATTERNS[@]}"; do
-        pkill -f "$pattern" 2>/dev/null || true
-    done
+    # Nur der Besitzer der maschinenweiten Sperre darf einen alten Prozess des
+    # konfigurierten Bundles über den Pfad finden. Ein wegen der Sperre
+    # abgewiesener Runner durchläuft ebenfalls den EXIT-Trap und darf dabei den
+    # rechtmäßigen Testprozess keinesfalls beenden.
+    if [[ "$FASTRA_GUI_LOCK_HELD" -eq 1 ]]; then
+        for pattern in "${APP_PROCESS_PATTERNS[@]}"; do
+            pkill -f "$pattern" 2>/dev/null || true
+        done
+    fi
     STARTED_PIDS=()
-    sleep 1
+    # Nicht pauschal eine Sekunde warten: Meist existiert gar kein Restprozess.
+    # Falls doch, engmaschig bis zum echten Ende warten und ausschließlich das
+    # konfigurierte Test-Bundle nach einer Sekunde hart beenden.
+    tick=0
+    while [[ $tick -lt 40 ]]; do
+        still_running=0
+        if [[ "$FASTRA_GUI_LOCK_HELD" -eq 1 ]]; then
+            for pattern in "${APP_PROCESS_PATTERNS[@]}"; do
+                pgrep -f "$pattern" >/dev/null 2>&1 && still_running=1
+            done
+        fi
+        [[ $still_running -eq 0 ]] && return 0
+        if [[ $tick -eq 20 ]]; then
+            if [[ "$FASTRA_GUI_LOCK_HELD" -eq 1 ]]; then
+                for pattern in "${APP_PROCESS_PATTERNS[@]}"; do
+                    pkill -9 -f "$pattern" 2>/dev/null || true
+                done
+            fi
+        fi
+        sleep 0.05
+        tick=$((tick + 1))
+    done
+    echo "✗ Der vorherige Fastra-Testprozess ließ sich nicht beenden." >&2
+    return 1
 }
 
 # Wartet, bis die SELFTEST-Zeile in $1 auftaucht oder das Timeout reißt.
 wait_for_result() {
     local errfile="$1"
-    local waited=0
-    while [[ $waited -lt $TIMEOUT_SECS ]]; do
+    local waited_ticks=0
+    local max_ticks=$((TIMEOUT_SECS * 10))
+    while [[ $waited_ticks -lt $max_ticks ]]; do
         if grep -q '^SELFTEST ' "$errfile" 2>/dev/null; then
             return 0
         fi
-        sleep 1
-        waited=$((waited + 1))
+        sleep 0.1
+        waited_ticks=$((waited_ticks + 1))
     done
     return 1
+}
+
+now_milliseconds() {
+    /usr/bin/perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000'
 }
 
 # Ein einzelner System-Events-Versuch mit harter Wanduhr-Schranke.
@@ -331,16 +397,24 @@ cleanup_coldopen_fixture() {
 cleanup_on_exit() {
     local original_status=$?
     trap - EXIT INT TERM
-    kill_leftovers
+    kill_leftovers || true
     cleanup_coldopen_fixture
+    release_fastra_gui_test_lock
+    if [[ -n "${PERFORMANCE_SAMPLES_FILE:-}" ]]; then
+        rm -f -- "$PERFORMANCE_SAMPLES_FILE"
+    fi
     exit "$original_status"
 }
 
 cleanup_on_signal() {
     local signal="$1"
     trap - EXIT INT TERM
-    kill_leftovers
+    kill_leftovers || true
     cleanup_coldopen_fixture
+    release_fastra_gui_test_lock
+    if [[ -n "${PERFORMANCE_SAMPLES_FILE:-}" ]]; then
+        rm -f -- "$PERFORMANCE_SAMPLES_FILE"
+    fi
     trap - "$signal"
     kill -"$signal" $$
 }
@@ -349,6 +423,10 @@ trap cleanup_on_exit EXIT
 trap 'cleanup_on_signal INT' INT
 trap 'cleanup_on_signal TERM' TERM
 
+if [[ $NEEDS_GUI_LOCK -eq 1 ]]; then
+    acquire_fastra_gui_test_lock || exit 2
+fi
+
 # ── Testlauf ─────────────────────────────────────────────────────────────
 
 pass_count=0
@@ -356,6 +434,24 @@ real_fail_count=0
 env_fail_count=0
 skip_count=0
 summary=""
+PERFORMANCE_SAMPLES_FILE="$(mktemp /tmp/fastra-selftest-performance.XXXXXX)"
+RUN_HEAD_START="$(git -C .. rev-parse HEAD 2>/dev/null || true)"
+RUN_BINARY_SHA_START="$(shasum -a 256 "$APP_BIN_ABSOLUTE" | awk '{print $1}')"
+RUN_DIRTY_START="$(git -C .. status --porcelain 2>/dev/null || true)"
+OS_MAJOR="$(sw_vers -productVersion | cut -d. -f1)"
+if [[ -n "${FASTRA_SELFTEST_BUILD_CONFIGURATION:-}" ]]; then
+    PERFORMANCE_BUILD="$FASTRA_SELFTEST_BUILD_CONFIGURATION"
+elif [[ "$APP_BIN" == ".build/debug/"* || "$APP_BIN" == *"/.build/debug/"* ]]; then
+    PERFORMANCE_BUILD="debug"
+elif [[ "$APP_BIN" == ".build/release/"* || "$APP_BIN" == *"/.build/release/"* \
+       || "$APP_BIN_ABSOLUTE" == "/Applications/"* ]]; then
+    PERFORMANCE_BUILD="release"
+else
+    # Ein ausdrücklich umgebogenes Bundle unbekannter Bauart bekommt eine
+    # eigene Gruppe und wird weder mit Debug noch Release verglichen.
+    PERFORMANCE_BUILD="custom"
+fi
+PERFORMANCE_CONFIGURATION="${PERFORMANCE_BUILD}-mixed-macos${OS_MAJOR}"
 
 # Wegen gesperrtem Bildschirm ausgelassene Fenstertests sofort ausweisen — je
 # eine maschinenlesbare Zeile im gewohnten `SELFTEST <name>:`-Format. Sie
@@ -371,10 +467,20 @@ if [[ ${#SKIPPED_TESTS[@]} -gt 0 ]]; then
 fi
 
 for t in "${TESTS[@]}"; do
-    kill_leftovers
+    iteration_started="$(now_milliseconds)"
+    if ! kill_leftovers; then
+        echo "SELFTEST $t: Umgebungsproblem — vorheriger Testprozess läuft weiter"
+        summary+="⚠ $t (Aufräumen fehlgeschlagen)\n"
+        env_fail_count=$((env_fail_count + 1))
+        break
+    fi
+    cleanup_finished="$(now_milliseconds)"
     errfile="$(mktemp /tmp/fastra-selftest-${t}.XXXXXX)"
 
+    launch_started="$(now_milliseconds)"
+    launch_mode="direct"
     if [[ "$t" == "coldopen" || "$t" == "coldopenoff" ]]; then
+        launch_mode="launchservices"
         # Reale Kaltstart-Zustellung: LaunchServices öffnet eine existierende
         # Datei mit genau dem frisch gebauten Bundle. Der Testprozess legt
         # parallel vor seinem ersten Workspace eine abweichende alte Sitzung an.
@@ -389,6 +495,7 @@ for t in "${TESTS[@]}"; do
             --args -ApplePersistenceIgnoreState YES
         remember_bundle_pids
     elif [[ "$t" == "cmdw" || "$t" == "newwindow" || "$t" == "welcomenew" || "$t" == "completion4d" || "$t" == "projectinput" || "$t" == "help" ]]; then
+        launch_mode="launchservices"
         # Diese Tests prüfen echte Tastatur- oder Mausbedienung (bei
         # `completion4d` ⌃Leertaste, Pfeil und Klick; bei `projectinput`
         # die Eingabe ins native Filterfeld) und brauchen daher
@@ -409,18 +516,33 @@ for t in "${TESTS[@]}"; do
     fi
 
     if ! wait_for_result "$errfile"; then
+        result_finished="$(now_milliseconds)"
         echo "SELFTEST $t: FAIL — keine Ergebnis-Zeile binnen ${TIMEOUT_SECS}s (Runner-Timeout)"
         # Beim Timeout bleibt die stderr-Datei zur Diagnose liegen —
         # der Pfad wird dafür sichtbar genannt.
         echo "  stderr: $errfile"
         summary+="✗ $t (Timeout)\n"
         real_fail_count=$((real_fail_count + 1))
-        kill_leftovers
+        cleanup_ms=$((cleanup_finished - iteration_started))
+        launch_ms=$((result_finished - launch_started))
+        total_ms=$((result_finished - iteration_started))
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "$t" "TIMEOUT" "-1" "$launch_ms" "$total_ms" "$cleanup_ms" \
+            "$launch_mode" >> "$PERFORMANCE_SAMPLES_FILE"
+        echo "PERFORMANCE $t cleanup_ms=$cleanup_ms launch_to_result_ms=$launch_ms app_ms=-1 total_ms=$total_ms"
+        if ! kill_leftovers; then
+            summary+="⚠ Runner-Aufräumen nach $t fehlgeschlagen\n"
+            env_fail_count=$((env_fail_count + 1))
+            break
+        fi
         cleanup_coldopen_fixture
         continue
     fi
 
     line="$(grep '^SELFTEST ' "$errfile" | tail -1)"
+    result_finished="$(now_milliseconds)"
+    app_ms="$(sed -n 's/^SELFTEST-METRIC test=[^ ]* app_ms=\([0-9][0-9]*\)$/\1/p' "$errfile" | tail -1)"
+    app_ms="${app_ms:--1}"
     echo "$line"
 
     if [[ "$line" == *": PASS"* ]]; then
@@ -440,13 +562,57 @@ for t in "${TESTS[@]}"; do
         # Bei echten FAILs bleibt die stderr-Datei zur Diagnose liegen.
         echo "  stderr: $errfile"
     fi
+    if [[ "$line" == *": PASS"* ]]; then
+        performance_status="PASS"
+    elif [[ "$line" == *"Umgebungsproblem"* ]]; then
+        performance_status="ENV"
+    else
+        performance_status="FAIL"
+    fi
+    cleanup_ms=$((cleanup_finished - iteration_started))
+    launch_ms=$((result_finished - launch_started))
+    total_ms=$((result_finished - iteration_started))
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$t" "$performance_status" "$app_ms" "$launch_ms" "$total_ms" \
+        "$cleanup_ms" "$launch_mode" >> "$PERFORMANCE_SAMPLES_FILE"
+    echo "PERFORMANCE $t cleanup_ms=$cleanup_ms launch_to_result_ms=$launch_ms app_ms=$app_ms total_ms=$total_ms"
     cleanup_coldopen_fixture
 done
 
-kill_leftovers
+if ! kill_leftovers; then
+    summary+="⚠ Abschließendes Runner-Aufräumen fehlgeschlagen\n"
+    env_fail_count=$((env_fail_count + 1))
+fi
 cleanup_coldopen_fixture
 
 # ── Zusammenfassung ──────────────────────────────────────────────────────
+
+if [[ $STANDARD_RUN -eq 1 ]]; then
+    RUN_HEAD_END="$(git -C .. rev-parse HEAD 2>/dev/null || true)"
+    RUN_BINARY_SHA_END="$(shasum -a 256 "$APP_BIN_ABSOLUTE" | awk '{print $1}')"
+    RUN_DIRTY_END="$(git -C .. status --porcelain 2>/dev/null || true)"
+    PERFORMANCE_QUALIFIED=""
+    if [[ $real_fail_count -eq 0 && $env_fail_count -eq 0 && $skip_count -eq 0 \
+          && "$RUN_HEAD_START" == "$RUN_HEAD_END" \
+          && "$RUN_BINARY_SHA_START" == "$RUN_BINARY_SHA_END" \
+          && -z "$RUN_DIRTY_START" && -z "$RUN_DIRTY_END" \
+          && "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" == "1" ]]; then
+        PERFORMANCE_QUALIFIED="--qualified"
+    fi
+    PERFORMANCE_RECORDER_STATUS=0
+    /usr/bin/python3 ./tools/selftest-performance.py record-standard \
+        --samples "$PERFORMANCE_SAMPLES_FILE" \
+        --configuration "$PERFORMANCE_CONFIGURATION" \
+        --head "$RUN_HEAD_START" \
+        --binary-sha256 "$RUN_BINARY_SHA_START" \
+        --repository "$(cd .. && pwd -P)" \
+        ${PERFORMANCE_QUALIFIED:+--qualified} || PERFORMANCE_RECORDER_STATUS=$?
+    if [[ $PERFORMANCE_RECORDER_STATUS -ne 0 \
+          && "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" == "1" ]]; then
+        echo "⚠ Lokale Performance-Baseline konnte nicht gespeichert werden."
+        env_fail_count=$((env_fail_count + 1))
+    fi
+fi
 
 echo ""
 echo "── Selbsttest-Zusammenfassung ──"

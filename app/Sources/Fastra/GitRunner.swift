@@ -89,6 +89,11 @@ struct GitOutputLimit: Equatable {
                                           stderrBytes: 4 * 1024 * 1024)
 }
 
+struct GitConfigurationEntry: Equatable {
+    let key: String
+    let value: String
+}
+
 struct GitExecutionPolicy: Equatable {
     /// Auch Netzwerkfehler müssen die Repo-Queue irgendwann freigeben.
     var timeout: TimeInterval?
@@ -103,6 +108,10 @@ struct GitExecutionPolicy: Equatable {
     /// Zusätzliche Werte für genau diesen Prozess. Insbesondere vertrauliche
     /// Remote-Adressen bleiben dadurch aus argv und Prozesslisten heraus.
     var environment: [String: String] = [:]
+    /// Bewusst gesetzte Command-Scope-Konfiguration. Geerbte GIT_CONFIG_*
+    /// Variablen werden zuerst entfernt; ausschließlich diese Einträge werden
+    /// danach nummeriert für genau den gestarteten Prozess ergänzt.
+    var configuration: [GitConfigurationEntry] = []
 
     static let `default` = GitExecutionPolicy(timeout: 120,
                                               terminationGracePeriod: 0.5)
@@ -1150,7 +1159,8 @@ enum GitRunner {
             process.environment = sanitizedEnvironment(
                 base: ProcessInfo.processInfo.environment,
                 additions: additions,
-                editorPolicy: editorPolicy
+                editorPolicy: editorPolicy,
+                configuration: policy.configuration
             )
 
             let stdoutPipe = Pipe()
@@ -1346,7 +1356,8 @@ enum GitRunner {
     /// Credential-Helper-Umgebung bleiben erhalten.
     static func sanitizedEnvironment(base: [String: String],
                                      additions: [String: String] = [:],
-                                     editorPolicy: GitEditorPolicy = .reject)
+                                     editorPolicy: GitEditorPolicy = .reject,
+                                     configuration: [GitConfigurationEntry] = [])
         -> [String: String] {
         var result = base
         for (key, value) in additions { result[key] = value }
@@ -1380,6 +1391,13 @@ enum GitRunner {
         result["GIT_LITERAL_PATHSPECS"] = "1"
         result["GIT_EDITOR"] = editorPolicy.command
         result["GIT_SEQUENCE_EDITOR"] = editorPolicy.command
+        if !configuration.isEmpty {
+            result["GIT_CONFIG_COUNT"] = String(configuration.count)
+            for (index, entry) in configuration.enumerated() {
+                result["GIT_CONFIG_KEY_\(index)"] = entry.key
+                result["GIT_CONFIG_VALUE_\(index)"] = entry.value
+            }
+        }
         return result
     }
 

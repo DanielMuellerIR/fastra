@@ -10,9 +10,19 @@
 // festgenagelt. Ein Fenster-Selbsttest kann eine Regression zeigen, aber
 // nicht alle Kombinationen durchspielen — und er braucht eine UI-Sitzung.
 
+import AppKit
 import Foundation
 import Testing
 @testable import Fastra
+
+@Test("Einstellungsfenster wird für Datei > Schließen eindeutig erkannt")
+@MainActor
+func settingsWindowIsClassifiedForCloseMenu() {
+    let window = NSWindow()
+    #expect(!SettingsWindowConfiguration.isSettingsWindow(window))
+    window.identifier = SettingsWindowConfiguration.windowIdentifier
+    #expect(SettingsWindowConfiguration.isSettingsWindow(window))
+}
 
 @Suite("Zielwahl für Fensterbefehle")
 struct WindowTargetingTests {
@@ -23,7 +33,12 @@ struct WindowTargetingTests {
         Candidate(isDocumentWindow: true, isKey: key)
     }
 
-    private func panel(key: Bool = false) -> Candidate {
+    private func searchPanel(key: Bool = false) -> Candidate {
+        Candidate(isDocumentWindow: false, isKey: key,
+                  allowsDocumentFallback: true)
+    }
+
+    private func unknownWindow(key: Bool = false) -> Candidate {
         Candidate(isDocumentWindow: false, isKey: key)
     }
 
@@ -57,14 +72,14 @@ struct WindowTargetingTests {
     /// vordersten Dokument dahinter.
     @Test("Hält ein Panel die Tastatur, gilt das vorderste Dokumentfenster")
     func panelKeepsKeyboardButIsNoTarget() {
-        let candidates = [panel(key: true), document(), document()]
+        let candidates = [searchPanel(key: true), document(), document()]
         #expect(WindowTargeting.targetIndex(in: candidates) == 1)
     }
 
     @Test("Panels sind nie selbst das Ziel")
     func panelsAreNeverTargets() {
-        #expect(WindowTargeting.targetIndex(in: [panel(key: true)]) == nil)
-        #expect(WindowTargeting.targetIndex(in: [panel(), panel(key: true)]) == nil)
+        #expect(WindowTargeting.targetIndex(in: [searchPanel(key: true)]) == nil)
+        #expect(WindowTargeting.targetIndex(in: [searchPanel(), searchPanel(key: true)]) == nil)
     }
 
     /// Zwei Dokumentfenster, dazwischen ein Panel mit dem Tastaturfokus: Das
@@ -72,8 +87,14 @@ struct WindowTargetingTests {
     /// Dokument.
     @Test("Panel zwischen zwei Dokumenten ändert das Ziel nicht")
     func panelBetweenDocuments() {
-        let candidates = [document(), panel(key: true), document()]
+        let candidates = [document(), searchPanel(key: true), document()]
         #expect(WindowTargeting.targetIndex(in: candidates) == 0)
+    }
+
+    @Test("Unbekanntes Key-Window darf kein Hintergrunddokument treffen")
+    func unknownKeyWindowBlocksDocumentFallback() {
+        let candidates = [unknownWindow(key: true), document(), document()]
+        #expect(WindowTargeting.targetIndex(in: candidates) == nil)
     }
 
     /// Regressionsschutz gegen die alte Implementierung: Sie nahm schlicht das

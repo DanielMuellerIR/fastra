@@ -620,7 +620,10 @@ Fundstellen im Dokument.
 
 Beim Öffnen einer Einzeldatei zeigt die Seitenleiste automatisch den
 passenden Ordner — liegt die Datei in einem Git-Repository, dessen
-Wurzelordner. Der Kopf der Seitenleiste zeigt den Projektnamen (Tooltip:
+Wurzelordner. Bei offenen Tabs aus verschiedenen Git-Repositories folgt dieser
+Kontext immer dem aktiven Datei-Tab, auch nach dem Schließen des zuvor aktiven
+Tabs; tief verschachtelte und ungetrackte Dateien ändern daran nichts. Der Kopf
+der Seitenleiste zeigt den Projektnamen (Tooltip:
 voller Pfad); **⌘-Klick auf den Namen** öffnet ein Menü der
 Nachbarordner zum schnellen Projektwechsel, das Rechtsklickmenü bietet
 „Im Finder zeigen“ und mehr. **⌘-Klick auf einen Dokument-Tab** zeigt
@@ -645,12 +648,22 @@ Filterergebnis).
 Ist das Projekt ein Git-Repository (und `git` installiert), zeigt die
 Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**:
 
-- Branch-Zeile mit Branch-Wechsel, Ahead/Behind und Fetch.
+- Branch-Zeile mit Branch-Wechsel, Fetch und eigenem Ahead/Behind-Stand für
+  jeden Remote. Im Graph unterscheiden Form und Farbe lokale Branches von
+  Remote-Branches; jeder Remote behält seine Farbe.
 - **Änderungen:** Dateien bereitstellen/entnehmen, verwerfen und direkt
   committen. Nach einem lokalen Commit wird der Commit-Knopf zum Push-Knopf:
-  Er nennt den ersten lokal konfigurierten Remote und zeigt dessen effektive
-  Push-Adresse unmittelbar darunter. Fastra pusht ausdrücklich nur zu diesem
-  sichtbaren Ziel; Push und Pull laufen asynchron. Mehrere Push-Adressen oder
+  Jeder lokal konfigurierte Remote erhält eine eigene vollständig klickbare
+  Fläche mit Name und effektiver Push-Adresse; zwei Ziele stehen bei normaler
+  Breite nebeneinander. Fastra pusht ausdrücklich nur zu dem angeklickten Ziel;
+  die Upstream-Konfiguration bleibt dabei immer unverändert — auch wenn der
+  Branch noch keinen Upstream besitzt. Push und Pull laufen asynchron. Vor dem
+  Push holt Fastra den Remote-Stand und zeigt
+  Adresse, Ziel-Ref, Quell-Commit sowie die lokalen und fehlenden Commits.
+  Ändert sich diese Grundlage bis zur Ausführung, wird nichts übertragen.
+  Divergenzen und abgelehnte Nicht-Fast-Forward-Pushes erhalten eine Erklärung;
+  Force-with-Lease bleibt ein eigener bestätigter Folgeschritt. Mehrere
+  effektive Push-Adressen desselben Remotes oder
   Git-Regeln, die Adressen per `insteadOf`/`pushInsteadOf` umschreiben, sind
   nicht eindeutig und werden mit Erklärung abgebrochen.
 - **Mehrere Dateien auf einen Schlag:** In der Dateiliste markiert ein Klick
@@ -710,7 +723,9 @@ Fenster (eigene Tabs, eigene Suche). Ein neues Fenster übernimmt die Größe
 des vordersten Fensters; gibt es keins, öffnet es hoch genug, um den
 Bildschirm wirklich zu nutzen. Kleiner ziehen kannst du es jederzeit — die
 selbst gewählte Größe bleibt erhalten. ⌘S speichert, ⌘W schließt den Tab —
-bei ungespeicherten Änderungen fragt Fastra nach. Nach dem Schließen wird
+immer im Fenster mit Tastaturfokus; ein Dokumentfenster im Hintergrund wird
+niemals als Ersatz gewählt. Bei ungespeicherten Änderungen fragt Fastra nach.
+Nach dem Schließen wird
 der zuletzt benutzte Tab aktiv; mehrere frisch angelegte leere Tabs lassen
 sich so mit mehrmaligem ⌘W in umgekehrter Reihenfolge wieder schließen,
 ohne dass es ein älteres Dokument trifft. ⌘J springt zu einer

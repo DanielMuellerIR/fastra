@@ -240,6 +240,16 @@ enum SoakTest {
     /// den falschen Inhalt oder ist ein Überbleibsel des vorigen Tabs. Beides
     /// fällt einem Menschen erst auf, wenn er den Inhalt liest — dem Test
     /// nicht.
+    static func hasPreviewOnNonMarkdownTab() -> Bool {
+        documentWindows().contains { window in
+            guard let content = window.contentView,
+                  descendantWebView(in: content) != nil,
+                  let workspace = WorkspaceWindowRegistry.workspace(for: window)
+            else { return false }
+            return !MarkdownAssist.isMarkdownTabActive(in: workspace)
+        }
+    }
+
     private static func checkPreviewBelongsToItsWindow() {
         for window in documentWindows() {
             guard let content = window.contentView,

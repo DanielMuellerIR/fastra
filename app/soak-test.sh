@@ -55,12 +55,21 @@ set -u
 
 cd "$(dirname "$0")"
 
+# Dieselbe Sperre wie die kurzen Fenster-Selbsttests verhindert gegenseitigen
+# Fokus- und Prozess-Eingriff auch über mehrere Worktrees hinweg.
+# shellcheck source=tools/gui-test-lock.sh
+. ./tools/gui-test-lock.sh
+
 ROUNDS=60
 FIXTURES_ONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --rounds)
-      ROUNDS="${2:-60}"
+      if [ $# -lt 2 ]; then
+        echo "--rounds braucht eine positive ganze Zahl." >&2
+        exit 2
+      fi
+      ROUNDS="$2"
       shift 2
       ;;
     --fixtures-only)
@@ -77,11 +86,26 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+case "$ROUNDS" in
+  ''|*[!0-9]*)
+    echo "Runden müssen eine positive ganze Zahl sein." >&2
+    exit 2
+    ;;
+esac
+if [ "$ROUNDS" -lt 1 ]; then
+  echo "Runden müssen eine positive ganze Zahl sein." >&2
+  exit 2
+fi
 
 # Private Pfade aus der lokalen, gitignorierten Konfiguration.
 if [ "$FIXTURES_ONLY" -eq 0 ] && [ -f soak-test.local ]; then
   # shellcheck disable=SC1091
   . ./soak-test.local
+fi
+if [ "$FIXTURES_ONLY" -eq 1 ]; then
+  # Auch geerbte Shell-Variablen dürfen einen ausdrücklich reinen Fixture-Lauf
+  # nicht in einen Real-Daten-Lauf verwandeln oder falsch etikettieren.
+  unset FASTRA_SOAK_RTFD FASTRA_SOAK_MD_DIR FASTRA_SOAK_4D_PROJECT
 fi
 
 APP=".build/debug/Fastra.app"
@@ -114,6 +138,7 @@ cleanup() {
     wait "$SOAK_PHASE_PID" 2>/dev/null || true
   fi
   restore_soak_pasteboard cleanup || cleanup_failed=1
+  release_fastra_gui_test_lock
   # Bei Befunden oder einem Absturz die BEWEISE erhalten: Protokoll und
   # Phasenausgaben (mit Exception-Text und Stacktrace) überleben das
   # Aufräumen. Nur die Logs — die kopierten echten Dokumente nicht.
@@ -135,13 +160,19 @@ cleanup() {
 # Echte Dokumente KOPIEREN: Tippen, Sichern und die RTFD-Umwandlung (deren
 # Ergebnis neben der Quelle landet) dürfen die Originale nie berühren.
 REAL_DIR="$WORK_DIR/real"
+SOAK_RTFD_COPIED=0
+SOAK_MD_COPIED=0
 if [ -n "${FASTRA_SOAK_RTFD:-}" ] && [ -e "$FASTRA_SOAK_RTFD" ]; then
   mkdir -p "$REAL_DIR"
-  cp -R "$FASTRA_SOAK_RTFD" "$REAL_DIR/protokoll-import.rtfd"
+  if cp -R "$FASTRA_SOAK_RTFD" "$REAL_DIR/protokoll-import.rtfd"; then
+    SOAK_RTFD_COPIED=1
+  fi
 fi
 if [ -n "${FASTRA_SOAK_MD_DIR:-}" ] && [ -d "$FASTRA_SOAK_MD_DIR" ]; then
   mkdir -p "$REAL_DIR/markdown"
-  cp -R "$FASTRA_SOAK_MD_DIR/." "$REAL_DIR/markdown/"
+  if cp -R "$FASTRA_SOAK_MD_DIR/." "$REAL_DIR/markdown/"; then
+    SOAK_MD_COPIED=1
+  fi
 fi
 
 # Das reale 4D-Projekt wird wie die übrigen echten Eingaben KOPIERT. Direkte
@@ -151,6 +182,7 @@ fi
 # Klasse vollständig.
 SOAK_4D=""
 SOAK_4D_METHOD=""
+SOAK_4D_COPIED=0
 if [ -n "${FASTRA_SOAK_4D_PROJECT:-}" ] && [ -d "$FASTRA_SOAK_4D_PROJECT" ]; then
   SOAK_4D="$REAL_DIR/4d-project"
   mkdir -p "$SOAK_4D"
@@ -159,7 +191,7 @@ if [ -n "${FASTRA_SOAK_4D_PROJECT:-}" ] && [ -d "$FASTRA_SOAK_4D_PROJECT" ]; the
   # reale Fremdprojekt zeigen. Die Git-Daten selbst braucht das Szenario nicht.
   if ! /usr/bin/rsync -aL --exclude='.git' -- \
       "$FASTRA_SOAK_4D_PROJECT/" "$SOAK_4D/"; then
-    echo "⚠ 4D-Projekt konnte nicht sicher kopiert werden — Szenario wird ausgelassen: $FASTRA_SOAK_4D_PROJECT" >&2
+    echo "⚠ 4D-Projekt konnte nicht sicher kopiert werden — Szenario wird ausgelassen." >&2
     rm -rf "$SOAK_4D"
     SOAK_4D=""
   elif find "$SOAK_4D" -type l -print -quit | grep -q .; then
@@ -171,6 +203,7 @@ if [ -n "${FASTRA_SOAK_4D_PROJECT:-}" ] && [ -d "$FASTRA_SOAK_4D_PROJECT" ]; the
     rm -rf "$SOAK_4D"
     SOAK_4D=""
   else
+    SOAK_4D_COPIED=1
     echo "   4D-Projekt: isoliert kopiert nach $SOAK_4D"
   fi
 fi
@@ -256,6 +289,11 @@ restore_soak_pasteboard() {
 # Wiederherstellungsfunktionen sind nun definiert und stehen dem Trap auch bei
 # einem Abbruch während der ersten Phase sicher zur Verfügung.
 trap cleanup EXIT
+acquire_fastra_gui_test_lock || exit 2
+SOAK_STARTED_MS=$(/usr/bin/perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000')
+SOAK_HEAD_START=$(git -C .. rev-parse HEAD 2>/dev/null || true)
+SOAK_BINARY_SHA_START=$(shasum -a 256 "$BINARY" | awk '{print $1}')
+SOAK_DIRTY_START=$(git -C .. status --porcelain 2>/dev/null || true)
 
 run_phase() {
   local phase="$1"
@@ -379,5 +417,34 @@ if [ "$FINDINGS" -gt 0 ]; then
   exit 1
 fi
 
+SOAK_FINISHED_MS=$(/usr/bin/perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000')
+SOAK_HEAD_END=$(git -C .. rev-parse HEAD 2>/dev/null || true)
+SOAK_BINARY_SHA_END=$(shasum -a 256 "$BINARY" | awk '{print $1}')
+SOAK_DIRTY_END=$(git -C .. status --porcelain 2>/dev/null || true)
+SOAK_PROFILE="fixtures-only"
+if [ "$FIXTURES_ONLY" -eq 0 ]; then
+  SOAK_PROFILE="real-rtfd${SOAK_RTFD_COPIED}-md${SOAK_MD_COPIED}-4d${SOAK_4D_COPIED}"
+fi
+SOAK_QUALIFIED=""
+if [ "$ROUNDS" -ge 60 ] && [ "$SOAK_HEAD_START" = "$SOAK_HEAD_END" ] \
+   && [ "$SOAK_BINARY_SHA_START" = "$SOAK_BINARY_SHA_END" ] \
+   && [ -z "$SOAK_DIRTY_START" ] && [ -z "$SOAK_DIRTY_END" ] \
+   && [ "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" = "1" ]; then
+  SOAK_QUALIFIED="--qualified"
+fi
+SOAK_RECORDER_STATUS=0
+/usr/bin/python3 ./tools/selftest-performance.py record-soak \
+  --profile "$SOAK_PROFILE" \
+  --head "$SOAK_HEAD_START" \
+  --binary-sha256 "$SOAK_BINARY_SHA_START" \
+  --rounds "$ROUNDS" \
+  --actions "$ACTIONS" \
+  --wall-ms "$((SOAK_FINISHED_MS - SOAK_STARTED_MS))" \
+  ${SOAK_QUALIFIED:+--qualified} || SOAK_RECORDER_STATUS=$?
+if [ "$SOAK_RECORDER_STATUS" -ne 0 ] \
+   && [ "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" = "1" ]; then
+  echo "SOAK: Umgebungsfehler — lokale Performance-Baseline konnte nicht gespeichert werden." >&2
+  exit 2
+fi
 echo "SOAK OK — $ACTIONS Aktionen, keine Invarianten-Verstöße."
 exit 0
