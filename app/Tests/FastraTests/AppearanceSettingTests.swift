@@ -63,6 +63,53 @@ struct AppearanceSettingTests {
                                  darkMode: false) == base)
     }
 
+    @Test("Aktuelle Zeile hebt sich in Hell und Dunkel deutlich vom Hintergrund ab")
+    func currentLineHasVisibleContrast() {
+        for theme in [EditorView.fastraTheme, EditorView.fastraThemeDark,
+                      EditorView.fourDTheme, EditorView.fourDThemeDark] {
+            guard let background = theme.background.usingColorSpace(.sRGB),
+                  let highlight = theme.lineHighlight.usingColorSpace(.sRGB) else {
+                Issue.record("Theme-Farbe ließ sich nicht nach sRGB wandeln")
+                continue
+            }
+            // Tatsächlich sichtbare Farbe nach Alpha-Mischung mit dem
+            // Editorgrund; bloß unterschiedliche Rohwerte wären zu schwach.
+            let visibleBrightness = highlight.brightnessComponent
+                * highlight.alphaComponent
+                + background.brightnessComponent * (1 - highlight.alphaComponent)
+            #expect(abs(visibleBrightness - background.brightnessComponent) >= 0.09)
+        }
+    }
+
+    @Test("Helle Textauswahl ist heller als die aktive Zeile und bleibt auf Weiß sichtbar")
+    func lightSelectionSeparatesFromCurrentLine() {
+        for theme in [EditorView.fastraTheme, EditorView.fourDTheme] {
+            guard let background = theme.background.usingColorSpace(.sRGB),
+                  let highlight = theme.lineHighlight.usingColorSpace(.sRGB),
+                  let selection = theme.selection.usingColorSpace(.sRGB) else {
+                Issue.record("Theme-Farbe ließ sich nicht nach sRGB wandeln")
+                continue
+            }
+            func mean(_ color: NSColor) -> CGFloat {
+                (color.redComponent + color.greenComponent + color.blueComponent) / 3
+            }
+            func visibleMean(_ foreground: NSColor, over backgroundMean: CGFloat) -> CGFloat {
+                mean(foreground) * foreground.alphaComponent
+                    + backgroundMean * (1 - foreground.alphaComponent)
+            }
+
+            let backgroundMean = mean(background)
+            let activeLineMean = visibleMean(highlight, over: backgroundMean)
+            let selectedActiveLineMean = visibleMean(selection, over: activeLineMean)
+            let selectedWhiteMean = visibleMean(selection, over: backgroundMean)
+
+            // Die Auswahl soll auf der aktiven Zeile klar nach HELL absetzen,
+            // aber auf dem weißen Dokumentgrund weiterhin als Fläche stehen.
+            #expect(selectedActiveLineMean - activeLineMean >= 0.08)
+            #expect(backgroundMean - selectedWhiteMean >= 0.08)
+        }
+    }
+
     @Test("Editor-Theme-Farben sind komponentenbasiert (Minimap-Falle F.6b)")
     func editorThemeFarbenSindRGB() {
         // CESEs MinimapView.setTheme ruft `brightnessComponent` auf den

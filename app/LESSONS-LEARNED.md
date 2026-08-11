@@ -643,3 +643,40 @@ gezeichnet.
 **Regression:** `SoftWrapLayoutTests.selectedRangesKeepOneCurrentLine` prüft
 eine rechteckartige Mehrfachauswahl, mehrere leere Cursor und eine rückwärts
 aufgezogene Auswahl direkt am gepatchten `TextSelectionManager`.
+
+### F.27 Fließtext darf nicht die Einrückungsregeln von Quellcode erben (2026-08-11)
+
+CodeEditSourceEditor verwendete `TextualIndenter.basicPatterns` für jede
+Sprache außer Python und Ruby. Damit galt eine `.txt`-Zeile wie `(1,5) …` als
+geöffneter Klammerblock und Return fügte vier Leerzeichen ein. Entfernte man
+diese von Hand und drückte erneut Return, übersprang der voreingestellte
+Referenzzeilen-Filter die leere Zeile, fand wieder den Klammertext und stellte
+die Einrückung erneut her.
+
+**Fix (Patch 4z2 in `build.sh`):** Reiner Text und Markdown bekommen keine
+Code-Klammermuster. Der Referenzfilter akzeptiert auch die unmittelbare leere
+Vorzeile, damit sie die Einrückung bewusst auf null zurücksetzt. Echte
+Code-Sprachen behalten ihre bisherigen Regeln.
+
+**Regression:** `./selftest.sh mdindent` lädt eine `.txt`-Fixture mit dem
+entscheidenden `(1,5)`-Präfix in den gepackten Editor und prüft Return sowohl
+direkt als auch nach dem manuellen Entfernen einer etwaigen Einrückung.
+
+### F.28 Ein externer Drop braucht die TextView als Drag-Ziel (2026-08-11)
+
+SwiftUIs `onDrop` liefert `NSItemProvider`, aber weder die laufende
+Textposition noch kontinuierliche Randbewegungen. Ein Bild konnte daher nur an
+der schon vorher vorhandenen Einfügemarke landen; eine sichtbare Drop-Marke und
+stationärer Autoscroll waren auf dieser Ebene nicht implementierbar.
+
+**Fix (Patch 4z3 in `build.sh`):** Die echte CodeEditTextView routet von Fastra
+akzeptierte externe Pasteboards vor ihrem normalen Text-Drag. Sie berechnet den
+Offset aus jeder `NSDraggingInfo`-Position, zeichnet dort den vorhandenen
+CodeEdit-Cursor und scrollt mit einem kurzen Timer weiter, solange die Maus am
+oberen oder unteren Viewportrand steht. Beim Loslassen setzt sie erst die
+Textauswahl auf diesen Offset und ruft dann den Markdown-Assistenten. Für andere
+Pasteboards bleibt der Upstream-Pfad unverändert.
+
+**Regression:** `./selftest.sh mddropcursor` treibt die echte
+Drag-Destination mit einer Bilddatei, hält die Maus am unteren Rand und verlangt
+sichtbaren Cursor, messbaren Autoscroll sowie den Link exakt am Drop-Offset.

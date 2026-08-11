@@ -391,6 +391,7 @@ enum SelfTest {
         case "projectinput": waitForMainWindow { openSearchThen { runProjectInputTest() } }
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
         case "tabclosehit": waitForMainWindow { runTabCloseHitTest() }
+        case "tabvisibility": waitForMainWindow { runTabVisibilityTest() }
         case "tabcompare": waitForMainWindow { runTabComparisonTest() }
         case "softwrapprofiles": waitForMainWindow { runSoftWrapProfilesTest() }
         case "softwrapmodes": waitForMainWindow { runSoftWrapModesTest() }
@@ -454,6 +455,8 @@ enum SelfTest {
         case "searchmark": waitForMainWindow { openSearchThen { runSearchMarkTest() } }
         case "help": waitForMainWindow { runHelpTest() }
         case "mdassist": waitForMainWindow { runMarkdownAssistTest() }
+        case "mdindent": waitForMainWindow { runMarkdownIndentTest() }
+        case "mddropcursor": waitForMainWindow { runMarkdownDropCursorTest() }
         case "mdimagewatch": waitForMainWindow { runMarkdownImageWatchTest() }
         case "pasteindent": waitForMainWindow { runPasteMatchIndentationTest() }
         case "filemodes":
@@ -595,7 +598,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, mdimagewatch, pasteindent, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitmultidiscard, gitstickyheader, diffwide, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabvisibility, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, mdimagewatch, mdindent, mddropcursor, pasteindent, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitmultidiscard, gitstickyheader, diffwide, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -2341,6 +2344,84 @@ enum SelfTest {
             keeperID: keeperID,
             tick: 0
         )
+    }
+
+    /// Viele Tabs erzeugen echten horizontalen Überlauf. Manuelles Scrollen
+    /// bleibt zunächst unangetastet; erst der folgende Dokumentwechsel muss
+    /// den aktiven Tab vollständig in den sichtbaren Clip zurückholen.
+    private static func runTabVisibilityTest() {
+        testLabel = "tabvisibility"
+        guard let workspace = Workspace.shared,
+              let window = mainWindowForAXChecks(),
+              let content = window.contentView else {
+            finish(false, "Workspace oder Hauptfenster nicht erreichbar")
+        }
+        for index in 1...18 {
+            workspace.openNewTab()
+            if let activeID = workspace.activeTabID,
+               let tabIndex = workspace.tabs.firstIndex(where: { $0.id == activeID }) {
+                workspace.tabs[tabIndex].title = "Sehr langer Dokumentname \(index) für Tab-Sichtbarkeit.md"
+            }
+        }
+        guard let lastID = workspace.activeTabID,
+              let firstID = workspace.tabs.first?.id else {
+            finish(false, "Test-Tabs nicht erzeugbar")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            guard let lastMarker = markerView(
+                id: "documentTabFrame-\(lastID.uuidString)", in: content
+            ), let scrollView = lastMarker.enclosingScrollView else {
+                finish(false, "vollflächiger Tab-Marker oder ScrollView fehlt")
+            }
+            let clip = scrollView.contentView
+            let maximumX = max(0, (scrollView.documentView?.bounds.width ?? 0)
+                               - clip.bounds.width)
+            guard maximumX > 40 else {
+                finish(false, "Tab-Leiste erzeugte keinen echten horizontalen Überlauf")
+            }
+
+            clip.scroll(to: NSPoint(x: 0, y: clip.bounds.minY))
+            scrollView.reflectScrolledClipView(clip)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                guard clip.bounds.minX < 2 else {
+                    finish(false, "manuelles Scrollen wurde ohne Modelländerung überschrieben")
+                }
+                // Zwei Modelländerungen im selben SwiftUI-Update würden von
+                // „letzter Tab → erster → letzter Tab“ wieder auf den
+                // Ausgangswert zusammenfallen; ein echter Nutzerwechsel hat
+                // ebenfalls mindestens einen Runloop dazwischen.
+                workspace.selectTab(id: firstID)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    workspace.selectTab(id: lastID)
+                    pollActiveTabVisible(workspace, content: content, tabID: lastID,
+                                         manualMaximum: maximumX, tick: 0)
+                }
+            }
+        }
+    }
+
+    private static func pollActiveTabVisible(_ workspace: Workspace, content: NSView,
+                                             tabID: UUID, manualMaximum: CGFloat,
+                                             tick: Int) {
+        if let marker = markerView(id: "documentTabFrame-\(tabID.uuidString)", in: content),
+           let scrollView = marker.enclosingScrollView {
+            let clip = scrollView.contentView
+            let frame = marker.convert(marker.bounds, to: clip)
+            let fullyVisible = frame.minX >= clip.bounds.minX - 1
+                && frame.maxX <= clip.bounds.maxX + 1
+                && frame.width > 20
+            if fullyVisible {
+                finish(true, "manueller Scroll blieb stehen; Dokumentwechsel zeigte aktiven "
+                    + "Tab vollständig (Überlauf \(Int(manualMaximum)) pt)")
+            }
+        }
+        if tick >= 40 {
+            finish(false, "aktiver Tab nach Dokumentwechsel nicht vollständig sichtbar")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollActiveTabVisible(workspace, content: content, tabID: tabID,
+                                 manualMaximum: manualMaximum, tick: tick + 1)
+        }
     }
 
     private static func pollTabCloseTarget(
@@ -9455,6 +9536,16 @@ enum SelfTest {
             super.init()
         }
 
+        init(fileURL: URL, location: NSPoint) {
+            self.pasteboard = NSPasteboard(
+                name: NSPasteboard.Name("fastra.test.file-drop.\(UUID().uuidString)")
+            )
+            self.pasteboard.clearContents()
+            self.pasteboard.writeObjects([fileURL as NSURL])
+            self.draggingLocation = location
+            super.init()
+        }
+
         var draggingPasteboard: NSPasteboard { pasteboard }
         // Externer Drag (nicht das Feld selbst) → die Overrides greifen.
         var draggingSource: Any? { nil }
@@ -10824,9 +10915,10 @@ enum SelfTest {
     /// End-to-End-Prüfung des assistierten Markdown-Schreibens:
     /// (a) Markdown-Toolbar ist für den Markdown-Tab real layoutet.
     /// (b) ⌘V-Pfad mit programmatisch befülltem Pasteboard (PNG): Datei
-    ///     entsteht neben dem Dokument, relativer Link steht im Editor,
+    ///     entsteht im images-Unterordner, relativer Link steht im Editor,
     ///     die Vorschau rendert das Bild UND scrollt zur Einfügestelle.
-    /// (c) Drop-Abgrenzung: Bilddatei wird eingefügt, Textdatei geöffnet.
+    /// (c) Undo/Redo entfernt und restauriert Link und erzeugte Datei.
+    /// (d) Drop-Abgrenzung: Bilddatei wird eingefügt, Textdatei geöffnet.
     private static func runMarkdownAssistTest() {
         testLabel = "mdassist"
         guard let ws = Workspace.shared else {
@@ -10918,7 +11010,9 @@ enum SelfTest {
     private static func pollMarkdownPaste(_ ws: Workspace, tv: TextView, root: NSView,
                                           base: URL, outside: URL, tick: Int) {
         let maxTicks = 40    // 10 s
-        let files = (try? FileManager.default.contentsOfDirectory(atPath: base.path)) ?? []
+        let imagesDirectory = base.appendingPathComponent("images", isDirectory: true)
+        let files = (try? FileManager.default.contentsOfDirectory(
+            atPath: imagesDirectory.path)) ?? []
         let imageFile = files.first { $0.hasPrefix("Notizen-") && $0.hasSuffix(".png") }
         let linkInEditor = tv.string.contains("![Notizen-")
         if let imageFile, linkInEditor {
@@ -10933,8 +11027,8 @@ enum SelfTest {
                 let images = pair?.first as? Int ?? 0
                 let scrollY = (pair?.last as? Double) ?? Double(pair?.last as? Int ?? 0)
                 if images >= 1, scrollY > 50 {
-                    runMarkdownDropPhase(ws, tv: tv, base: base, outside: outside,
-                                         storedImage: imageFile)
+                    runMarkdownPasteUndoPhase(ws, tv: tv, base: base,
+                                              outside: outside, storedImage: imageFile)
                     return
                 }
                 if tick >= maxTicks {
@@ -10957,13 +11051,61 @@ enum SelfTest {
         }
     }
 
-    /// (c) Drop-Abgrenzung: eine Bilddatei + eine Textdatei „fallen" auf den
+    /// (c) Undo/Redo umfasst Link UND ausschließlich die von Fastra gerade
+    /// erzeugte Datei. Der Dateiname wird nicht aus dem Link neu geraten,
+    /// sondern stammt aus der beobachteten images-Ablage.
+    private static func runMarkdownPasteUndoPhase(_ ws: Workspace, tv: TextView,
+                                                  base: URL, outside: URL,
+                                                  storedImage: String) {
+        tv.undoManager?.undo()
+        pollMarkdownPasteUndo(ws, tv: tv, base: base, outside: outside,
+                              storedImage: storedImage, tick: 0)
+    }
+
+    private static func pollMarkdownPasteUndo(_ ws: Workspace, tv: TextView,
+                                              base: URL, outside: URL,
+                                              storedImage: String, tick: Int) {
+        let file = base.appendingPathComponent("images/\(storedImage)")
+        if !tv.string.contains("![Notizen-"),
+           !FileManager.default.fileExists(atPath: file.path) {
+            tv.undoManager?.redo()
+            pollMarkdownPasteRedo(ws, tv: tv, base: base, outside: outside,
+                                  storedImage: storedImage, tick: 0)
+            return
+        }
+        if tick >= 40 {
+            finish(false, "(c) Undo ließ Link oder erzeugte Bilddatei stehen")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollMarkdownPasteUndo(ws, tv: tv, base: base, outside: outside,
+                                  storedImage: storedImage, tick: tick + 1)
+        }
+    }
+
+    private static func pollMarkdownPasteRedo(_ ws: Workspace, tv: TextView,
+                                              base: URL, outside: URL,
+                                              storedImage: String, tick: Int) {
+        let file = base.appendingPathComponent("images/\(storedImage)")
+        if tv.string.contains("![Notizen-"),
+           FileManager.default.fileExists(atPath: file.path) {
+            runMarkdownDropPhase(ws, tv: tv, base: base, outside: outside)
+            return
+        }
+        if tick >= 40 {
+            finish(false, "(c) Redo stellte Link oder Bilddatei nicht wieder her")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollMarkdownPasteRedo(ws, tv: tv, base: base, outside: outside,
+                                  storedImage: storedImage, tick: tick + 1)
+        }
+    }
+
+    /// (d) Drop-Abgrenzung: eine Bilddatei + eine Textdatei „fallen" auf den
     /// Markdown-Editor — das Bild wird kopiert + verlinkt, der Text geöffnet.
     private static func runMarkdownDropPhase(_ ws: Workspace, tv: TextView,
-                                             base: URL, outside: URL,
-                                             storedImage: String) {
+                                             base: URL, outside: URL) {
         let tabsBefore = ws.tabs.count
-        MainActor.assumeIsolated {
+        _ = MainActor.assumeIsolated {
             MarkdownAssist.handleDroppedFileURLs([
                 outside.appendingPathComponent("quelle.png"),
                 outside.appendingPathComponent("begleit.txt"),
@@ -10987,8 +11129,9 @@ enum SelfTest {
         }
         if copied, linked, opened, exactlyOneTabAdded {
             cleanup()
-            finish(true, "Toolbar layoutet, Bild-Paste legt Datei + relativen Link an, "
-                + "Vorschau rendert + scrollt, Drop trennt einfügen/öffnen")
+            finish(true, "Toolbar layoutet, Bild-Paste legt images-Datei + relativen Link an, "
+                + "Undo/Redo umfasst beides; Vorschau rendert + scrollt, "
+                + "Drop trennt einfügen/öffnen")
         }
         if tick >= maxTicks {
             cleanup()
@@ -11007,6 +11150,171 @@ enum SelfTest {
             if let found = firstWebView(in: sub) { return found }
         }
         return nil
+    }
+
+    // MARK: - Selbsttest mdindent / mddropcursor
+
+    /// Reproduktion der gemeldeten Desktop-`.txt`-Datei: `(1,5)` ist normaler
+    /// Fließtext, kein geöffneter Code-Klammerblock. Auch nach einer bewusst
+    /// leeren Zeile darf Return nicht wieder vier Leerzeichen hervorholen.
+    private static func runMarkdownIndentTest() {
+        testLabel = "mdindent"
+        guard let workspace = Workspace.shared,
+              let window = NSApp.windows.first(where: {
+                  $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                      && $0.contentView != nil && $0.isVisible
+              }), let root = window.contentView else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "fastra-mdindent-\(UUID().uuidString).txt"
+        )
+        let original = "2026-08-10\n\n- Vorbereitungen abgeschlossen\n\n(1,5) ggf. nicht abrechnen"
+        do { try Data(original.utf8).write(to: file) }
+        catch { finish(false, "Fixture nicht schreibbar: \(error.localizedDescription)") }
+        workspace.loadFile(at: file) { loaded in
+            guard loaded else {
+                try? FileManager.default.removeItem(at: file)
+                finish(false, "Text-Fixture lädt nicht")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                guard let textView = editorTextView(in: root) as? TextView else {
+                    try? FileManager.default.removeItem(at: file)
+                    finish(false, "echte Editor-TextView fehlt")
+                }
+                textView.selectionManager.setSelectedRange(
+                    NSRange(location: (textView.string as NSString).length, length: 0)
+                )
+                textView.insertNewline(nil)
+                let first = textView.string
+                let firstHasIndent = first.hasSuffix("\n    ") || first.hasSuffix("\n\t")
+
+                // Genau der gemeldete zweite Schritt: automatisch entstandene
+                // Einrückung manuell entfernen, dann erneut Return.
+                if firstHasIndent {
+                    let ns = textView.string as NSString
+                    let lastLine = ns.lineRange(for: NSRange(location: ns.length, length: 0))
+                    let whitespace = ns.substring(with: lastLine).prefix {
+                        $0 == " " || $0 == "\t"
+                    }
+                    if !whitespace.isEmpty {
+                        textView.replaceCharacters(
+                            in: NSRange(location: lastLine.location,
+                                       length: (String(whitespace) as NSString).length),
+                            with: ""
+                        )
+                    }
+                }
+                textView.insertNewline(nil)
+                let secondHasIndent = textView.string.hasSuffix("\n    ")
+                    || textView.string.hasSuffix("\n\t")
+                try? FileManager.default.removeItem(at: file)
+                finish(!firstHasIndent && !secondHasIndent,
+                       "(1,5)-Zeile: erstes Return eingerückt=\(firstHasIndent), "
+                        + "nach manuellem Reset erneut eingerückt=\(secondHasIndent)")
+            }
+        }
+    }
+
+    /// Treibt CodeEditTextViews echte Drag-Destination mit einer Bilddatei.
+    /// Beobachtet werden sichtbare Einfügemarke, stationärer Rand-Autoscroll
+    /// und die endgültige Linkposition im Dokument.
+    private static func runMarkdownDropCursorTest() {
+        testLabel = "mddropcursor"
+        guard let workspace = Workspace.shared,
+              let window = NSApp.windows.first(where: {
+                  $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                      && $0.contentView != nil && $0.isVisible
+              }), let root = window.contentView else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory.appendingPathComponent(
+            "fastra-mddropcursor-\(UUID().uuidString)", isDirectory: true
+        )
+        let document = base.appendingPathComponent("Ziel.md")
+        let source = base.appendingPathComponent("Quelle.png")
+        do {
+            try fm.createDirectory(at: base, withIntermediateDirectories: true)
+            let lines = (1...500).map { "Markdown-Zeile \($0) mit genügend Text" }
+            try Data(lines.joined(separator: "\n").utf8).write(to: document)
+            try writeSolidPNG(to: source, width: 8, height: 8)
+        } catch {
+            try? fm.removeItem(at: base)
+            finish(false, "Fixture nicht schreibbar: \(error.localizedDescription)")
+        }
+        workspace.loadFile(at: document) { loaded in
+            guard loaded else {
+                try? fm.removeItem(at: base)
+                finish(false, "Markdown-Fixture lädt nicht")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                guard let textView = editorTextView(in: root) as? TextView,
+                      let scrollView = textView.enclosingScrollView else {
+                    try? fm.removeItem(at: base)
+                    finish(false, "Editor oder ScrollView fehlt")
+                }
+                MarkdownAssist.configureExternalDrop(on: textView, workspace: workspace)
+                textView.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
+                let visible = textView.visibleRect
+                let localPoint = NSPoint(x: visible.minX + 120, y: visible.maxY - 2)
+                let mock = MockDraggingInfo(
+                    fileURL: source, location: textView.convert(localPoint, to: nil)
+                )
+                let beforeY = scrollView.contentView.bounds.minY
+                let operation = textView.draggingEntered(mock)
+                guard operation.contains(.copy), textView.fastraShowsExternalDropCursor,
+                      textView.fastraExternalDropInsertionOffset != nil else {
+                    try? fm.removeItem(at: base)
+                    finish(false, "Drag zeigt keine positionsgebundene Einfügemarke")
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                    let afterY = scrollView.contentView.bounds.minY
+                    guard afterY > beforeY + 2,
+                          textView.fastraShowsExternalDropCursor,
+                          let dropOffset = textView.fastraExternalDropInsertionOffset else {
+                        textView.draggingExited(mock)
+                        try? fm.removeItem(at: base)
+                        finish(false, "stationärer Drag am unteren Rand scrollte nicht "
+                            + "(y \(beforeY) → \(afterY))")
+                    }
+                    let accepted = textView.performDragOperation(mock)
+                    guard accepted, !textView.fastraShowsExternalDropCursor else {
+                        try? fm.removeItem(at: base)
+                        finish(false, "Drop wurde nicht angenommen oder Cursor blieb stehen")
+                    }
+                    pollMarkdownDropPosition(textView: textView, base: base,
+                                             dropOffset: dropOffset, scrolled: afterY - beforeY,
+                                             tick: 0)
+                }
+            }
+        }
+    }
+
+    private static func pollMarkdownDropPosition(textView: TextView, base: URL,
+                                                 dropOffset: Int, scrolled: CGFloat,
+                                                 tick: Int) {
+        let link = "![Quelle](images/Quelle.png)"
+        let range = (textView.string as NSString).range(of: link)
+        let copied = FileManager.default.fileExists(
+            atPath: base.appendingPathComponent("images/Quelle.png").path
+        )
+        if copied, range.location != NSNotFound {
+            let correctPosition = range.location == dropOffset
+            try? FileManager.default.removeItem(at: base)
+            finish(correctPosition,
+                   "Drag-Cursoroffset=\(dropOffset), Linkoffset=\(range.location), "
+                    + "Rand-Autoscroll=\(Int(scrolled)) pt")
+        }
+        if tick >= 80 {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Bildlink/Ablage nach Drop nicht binnen 8 s fertig")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pollMarkdownDropPosition(textView: textView, base: base,
+                                     dropOffset: dropOffset, scrolled: scrolled,
+                                     tick: tick + 1)
+        }
     }
 
     // MARK: - Selbsttest help (Etappe 4 Wunschpaket 2026-07b)
@@ -11996,8 +12304,15 @@ enum SelfTest {
         let range = (textView.string as NSString).range(of: needle)
         guard let rect = textView.layoutManager.rectsFor(range:
             NSRange(location: range.location, length: 1)).first else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Keine Layout-Position für „\(needle)“")
+            // Der TextStorage ist nach einem Dateiwechsel früher sichtbar als
+            // das asynchron erzeugte Zeilenlayout. Unter Last darf diese
+            // normale Zwischenlage nicht als kaputter Zielsprung gelten.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                goToTargetClick(ws, base: base, needle: needle,
+                                expectedFile: expectedFile, tick: tick + 1,
+                                completion: completion)
+            }
+            return
         }
         // Punkt in Fenster-Koordinaten; Events über die App-Queue posten,
         // damit der lokale Monitor (GoToTargetGesture) sie WIRKLICH sieht.

@@ -822,7 +822,7 @@ private struct FileTreeRow: View {
 /// Native Dateiaktionen am Baum. Löschen bedeutet bewusst „in den Papierkorb“
 /// statt unwiderruflichem `removeItem`; Umbenennen und Neu validieren Namen
 /// zentral über `FileTreeOperations`.
-private struct FileTreeContextMenu: View {
+struct FileTreeContextMenu: View {
     let directory: URL
     let node: FileTreeNode?
     /// `false` nur am gemeinsamen Seitenleisten-Kopf: Dort zeigt bereits der
@@ -851,6 +851,7 @@ private struct FileTreeContextMenu: View {
                 Button("In Markdown umwandeln…") { workspace.convertToMarkdown(node.url) }
             }
             Divider()
+            Button("Duplizieren") { duplicate(node) }
             Button("Umbenennen…") { rename(node) }
             Button("In den Papierkorb legen…", role: .destructive) { trash(node) }
         }
@@ -885,7 +886,8 @@ private struct FileTreeContextMenu: View {
         guard let name = Workspace.promptForText(
             title: L10n.string("Umbenennen"),
             info: L10n.format("Neuer Name für „%@“:", node.name),
-            placeholder: node.name
+            placeholder: node.name,
+            initialValue: node.name
         ) else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed != node.name else { return }
@@ -895,6 +897,25 @@ private struct FileTreeContextMenu: View {
             onMutation()
         } catch {
             showError(title: L10n.format("„%@“ konnte nicht umbenannt werden", node.name), error: error)
+        }
+    }
+
+    private func duplicate(_ node: FileTreeNode) {
+        // Kopieren kann bei großen Dateien oder Verzeichnissen dauern und
+        // blockiert deshalb nicht den Main-Thread. Erst das Aktualisieren des
+        // Dateibaums und Öffnen des neuen Tabs kehrt auf die UI zurück.
+        Task {
+            let result = await Task.detached(priority: .userInitiated) {
+                Result { try FileTreeOperations.duplicate(node.url) }
+            }.value
+            switch result {
+            case .success(let destination):
+                onMutation()
+                if !node.isDirectory { workspace.loadFile(at: destination) }
+            case .failure(let error):
+                showError(title: L10n.format("„%@“ konnte nicht dupliziert werden", node.name),
+                          error: error)
+            }
         }
     }
 

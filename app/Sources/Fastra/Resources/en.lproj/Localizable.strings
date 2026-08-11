@@ -118,6 +118,13 @@
 "Sel" = "Sel";
 "Sichern" = "Save";
 "Speichern" = "Save";
+"Kopie" = "copy";
+"Duplizieren" = "Duplicate";
+"Unbenannt" = "Untitled";
+"„%@“ konnte nicht dupliziert werden" = "“%@” could not be duplicated";
+"Diesen Tab schließen" = "Close This Tab";
+"Format:" = "Format:";
+"Eigene Endung (manuell)" = "Custom extension (manual)";
 "Speichern unter…" = "Save As…";
 "Spenden…" = "Donate…";
 "Spielt die letzte Ordner-Apply-Session bit-exakt aus dem Backup-Ordner zurück." = "Restore the last multi-file replacement exactly from its backup folder.";
@@ -1066,10 +1073,10 @@
 "Spalte %ld" = "Column %ld";
 "Bild konnte nicht übernommen werden" = "The image could not be added";
 "Erst speichern" = "Save First";
-"Das Dokument hat noch keinen Speicherort. Bitte erst speichern (⌘S) — dann kann Fastra Bilder daneben ablegen." = "The document has no location on disk yet. Please save it first (⌘S) — then Fastra can store images next to it.";
+"Das Dokument hat noch keinen Speicherort. Bitte erst speichern (⌘S) — dann kann Fastra Bilder im Unterordner „images“ ablegen." = "The document has no location on disk yet. Please save it first (⌘S) — then Fastra can store images in the “images” subfolder.";
 "Die Bilddaten konnten nicht gelesen werden." = "The image data could not be read.";
 "„images“ ist kein echter Ordner. Bitte den symbolischen Link oder die Datei umbenennen und erneut versuchen." = "‘images’ is not a real folder. Rename the symbolic link or file, then try again.";
-"Fastra legt eingefügte Bilder neben dem Dokument ab und verlinkt sie relativ — Details in der Hilfe." = "Fastra stores inserted images next to the document and links them relatively — see Help for details.";
+"Fastra legt eingefügte Bilder im Unterordner „images“ ab und verlinkt sie relativ — Details in der Hilfe." = "Fastra stores inserted images in the “images” subfolder and links them relatively — see Help for details.";
 "Hilfe öffnen" = "Open Help";
 "Hinweis ausblenden" = "Dismiss hint";
 "Markdown" = "Markdown";

@@ -114,6 +114,33 @@ func fileTree_rejectsInvalidNames() throws {
     }
 }
 
+@Test("Duplizieren setzt Kopie und laufende Nummer vor die Dateiendung")
+func fileTree_duplicateUsesCollisionFreeNameBeforeExtension() throws {
+    try withTempDir { dir in
+        let source = dir.appendingPathComponent("Notiz.md")
+        try "Original".write(to: source, atomically: true, encoding: .utf8)
+
+        let first = try FileTreeOperations.duplicate(source)
+        let second = try FileTreeOperations.duplicate(source)
+
+        #expect(first.lastPathComponent == "Notiz \(L10n.string("Kopie")).md")
+        #expect(second.lastPathComponent == "Notiz \(L10n.string("Kopie")) 2.md")
+        #expect(try String(contentsOf: first, encoding: .utf8) == "Original")
+        #expect(try String(contentsOf: second, encoding: .utf8) == "Original")
+    }
+}
+
+@Test("Duplizieren funktioniert auch bei Dateien ohne Endung")
+func fileTree_duplicateWithoutExtension() throws {
+    try withTempDir { dir in
+        let source = dir.appendingPathComponent("README")
+        try Data([1, 2, 3]).write(to: source)
+        let duplicate = try FileTreeOperations.duplicate(source)
+        #expect(duplicate.lastPathComponent == "README \(L10n.string("Kopie"))")
+        #expect(try Data(contentsOf: duplicate) == Data([1, 2, 3]))
+    }
+}
+
 @Test("FSEvents-Wächter meldet externe Änderungen in Unterordnern")
 @MainActor
 func fileTree_watcherRefreshesRecursively() async throws {

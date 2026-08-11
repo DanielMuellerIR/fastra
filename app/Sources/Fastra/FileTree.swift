@@ -127,4 +127,53 @@ enum FileTreeOperations {
         try fileManager.moveItem(at: source, to: destination)
         return destination
     }
+
+    /// Freier Duplikatname im selben Ordner. Die laufende Nummer steht vor
+    /// der Endung, damit der Dateityp erhalten bleibt:
+    /// `Notiz Kopie.md`, `Notiz Kopie 2.md`, …
+    static func duplicateDestination(for source: URL,
+                                     fileManager: FileManager = .default) -> URL {
+        let directory = source.deletingLastPathComponent()
+        let name = source.lastPathComponent as NSString
+        let fileExtension = name.pathExtension
+        let stem = fileExtension.isEmpty ? name as String : name.deletingPathExtension
+        let copyWord = L10n.string("Kopie")
+        for counter in 1..<10_000 {
+            let suffix = counter == 1 ? " \(copyWord)" : " \(copyWord) \(counter)"
+            let candidateName = fileExtension.isEmpty
+                ? "\(stem)\(suffix)"
+                : "\(stem)\(suffix).\(fileExtension)"
+            let candidate = directory.appendingPathComponent(candidateName)
+            if !fileManager.fileExists(atPath: candidate.path) { return candidate }
+        }
+        // Praktisch unerreichbar; der anschließende copyItem-Aufruf meldet
+        // bei einer echten Kollision weiterhin einen verständlichen Fehler.
+        let fallbackName = fileExtension.isEmpty
+            ? "\(stem) \(copyWord) 10000"
+            : "\(stem) \(copyWord) 10000.\(fileExtension)"
+        return directory.appendingPathComponent(fallbackName)
+    }
+
+    @discardableResult
+    static func duplicate(_ source: URL,
+                          fileManager: FileManager = .default) throws -> URL {
+        let directory = source.deletingLastPathComponent()
+        let temporary = directory.appendingPathComponent(
+            ".fastra-duplicate-\(UUID().uuidString)", isDirectory: false
+        )
+        var temporaryExists = false
+        defer {
+            if temporaryExists { try? fileManager.removeItem(at: temporary) }
+        }
+        // Erst vollständig unter verborgenem Eindeutigkeitsnamen kopieren;
+        // die fertige Kopie wird anschließend innerhalb desselben Ordners
+        // veröffentlicht. Ein Kopierfehler hinterlässt damit kein halbes
+        // sichtbares Duplikat.
+        try fileManager.copyItem(at: source, to: temporary)
+        temporaryExists = true
+        let destination = duplicateDestination(for: source, fileManager: fileManager)
+        try fileManager.moveItem(at: temporary, to: destination)
+        temporaryExists = false
+        return destination
+    }
 }

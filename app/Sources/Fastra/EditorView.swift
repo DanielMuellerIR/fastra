@@ -192,18 +192,11 @@ struct EditorView: View {
                 sidebarSplitter
             }
 
-            // Markdown-Tabs bekommen einen eigenen Drop-Bereich (Etappe 5
-            // Wunschpaket 2026-07b): Bilddateien werden EINGEFÜGT, alles
-            // andere weiterhin geöffnet. Außerhalb des Markdown-Editors
-            // bleibt der Fenster-Drop in ContentView („öffnen“) unberührt.
-            if activeTabIsMarkdown {
-                sourceEditorColumn
-                    .onDrop(of: [.fileURL, .image], isTargeted: nil) { providers in
-                        handleMarkdownDrop(providers)
-                    }
-            } else {
-                sourceEditorColumn
-            }
+            // Der echte CodeEdit-Editor ist bei Markdown selbst Drag-Ziel.
+            // Nur AppKit liefert während des Ziehens eine Textposition für
+            // Einfügemarke und Rand-Autoscroll; konfiguriert wird er nach dem
+            // Montieren in `focusActiveEditor`.
+            sourceEditorColumn
             if showsIntegratedMarkdownPreview {
                 markdownSplitter
                 MarkdownPreviewView(workspace: workspace)
@@ -416,7 +409,7 @@ struct EditorView: View {
             Image(systemName: "lightbulb")
                 .fastraFont(size: 11)
                 .foregroundColor(Theme.accentReadable)
-            Text("Fastra legt eingefügte Bilder neben dem Dokument ab und verlinkt sie relativ — Details in der Hilfe.")
+            Text("Fastra legt eingefügte Bilder im Unterordner „images“ ab und verlinkt sie relativ — Details in der Hilfe.")
                 .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
                 .lineLimit(2)
@@ -463,45 +456,6 @@ struct EditorView: View {
     /// Aktiver Tab ist ein Markdown-Dokument (Etappe 5 Wunschpaket 2026-07b)?
     private var activeTabIsMarkdown: Bool {
         MarkdownAssist.isMarkdownTabActive(in: workspace)
-    }
-
-    /// Drop im Markdown-Editorbereich: Datei-URLs einsammeln (asynchron,
-    /// Ergebnis auf dem Main-Thread bündeln) und an `MarkdownAssist`
-    /// übergeben; ohne Datei-URLs zählt ein reiner Bilddaten-Drag
-    /// (z. B. aus dem Browser) und verhält sich wie Paste.
-    private func handleMarkdownDrop(_ providers: [NSItemProvider]) -> Bool {
-        let target = workspace
-        let fileProviders = providers.filter {
-            $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
-        }
-        if !fileProviders.isEmpty {
-            let collector = DroppedURLCollector(expected: fileProviders.count) { urls in
-                MarkdownAssist.handleDroppedFileURLs(urls, workspace: target)
-            }
-            for (index, provider) in fileProviders.enumerated() {
-                _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                    DispatchQueue.main.async { collector.add(url, at: index) }
-                }
-            }
-            return true
-        }
-        if let provider = providers.first(where: {
-            $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
-        }) {
-            let typeIdentifier = provider.registeredTypeIdentifiers.first {
-                UTType($0)?.conforms(to: .image) == true
-            } ?? UTType.png.identifier
-            provider.loadDataRepresentation(forTypeIdentifier: typeIdentifier) { data, _ in
-                guard let data else { return }
-                DispatchQueue.main.async {
-                    MarkdownAssist.handleDroppedImageData(
-                        data, typeIdentifier: typeIdentifier, workspace: target
-                    )
-                }
-            }
-            return true
-        }
-        return false
     }
 
     /// Aktuell wirksame Breite der Seitenleiste inklusive ihres Splitters.
@@ -732,6 +686,9 @@ struct EditorView: View {
         // Datei, programmatischer Reload) soll sofort den Tastaturfokus bekommen —
         // sonst verpuffte nach ⌘T ein direktes ⌘V (Daniel-Befund 2026-06-25).
         .onAppear { Self.focusActiveEditor(in: workspace) }
+        .onChange(of: activeTabIsMarkdown) { _, _ in
+            Self.configureMarkdownDrop(in: workspace)
+        }
         // Gemerkten Ausschnitt des Tabs zurückholen. Ohne das riss CESEs
         // „Einfügemarke sichtbar machen" die Cursorzeile beim Zurückwechseln in
         // die oberste Bildschirmzeile.
@@ -1208,6 +1165,13 @@ struct EditorView: View {
             guard let mainWindow = CommandTargeting.documentWindow(for: workspace),
                   let root = mainWindow.contentView,
                   let tv = firstEditorTextView(in: root) else { return }
+            if let textView = tv as? CodeEditTextView.TextView {
+                if MarkdownAssist.isMarkdownTabActive(in: workspace) {
+                    MarkdownAssist.configureExternalDrop(on: textView, workspace: workspace)
+                } else {
+                    textView.fastraClearExternalDrop()
+                }
+            }
             // Nur fokussieren, wenn das Hauptfenster Key ist — sonst (offene
             // Suchmaske vorne) würden wir der Maske den Tastaturfokus klauen.
             guard mainWindow.isKeyWindow else { return }
@@ -1222,6 +1186,20 @@ struct EditorView: View {
                 textView.selectionManager.setSelectedRange(
                     NSRange(location: 0, length: 0)
                 )
+            }
+        }
+    }
+
+    private static func configureMarkdownDrop(in workspace: Workspace) {
+        DispatchQueue.main.async {
+            guard let window = CommandTargeting.documentWindow(for: workspace),
+                  let root = window.contentView,
+                  let textView = firstEditorTextView(in: root) as? CodeEditTextView.TextView
+            else { return }
+            if MarkdownAssist.isMarkdownTabActive(in: workspace) {
+                MarkdownAssist.configureExternalDrop(on: textView, workspace: workspace)
+            } else {
+                textView.fastraClearExternalDrop()
             }
         }
     }
@@ -1608,8 +1586,8 @@ extension EditorView {
         guard emphasizingCurrentLine else { return base }
         var result = base
         result.lineHighlight = darkMode
-            ? rgb(0x1B, 0x4F, 0x74, 0.78)
-            : rgb(0xC7, 0xE0, 0xFA, 0.82)
+            ? rgb(0x1B, 0x4F, 0x74, 0.96)
+            : rgb(0x8E, 0xBC, 0xE8, 0.98)
         return result
     }
 
@@ -1626,8 +1604,11 @@ extension EditorView {
         insertionPoint: rgb(0x36, 0x36, 0x36),
         invisibles:     .init(color: rgb(0x36, 0x36, 0x36, 0.18)),
         background:     rgb(0xFF, 0xFF, 0xFF),
-        lineHighlight:  rgb(0xEC, 0xEC, 0xEC, 0.55),
-        selection:      rgb(0x78, 0xA7, 0xE8, 0.42),
+        lineHighlight:  rgb(0xAA, 0xC7, 0xE2, 0.98),
+        // Im hellen Theme liegt die Auswahl bewusst HELLER auf dem blauen
+        // Zeilenband. Zwei ähnlich dunkle Blautöne ließen sich bei einer
+        // Auswahl innerhalb der aktuellen Zeile nur schwer unterscheiden.
+        selection:      rgb(0xD4, 0xE8, 0xF8, 0.96),
         keywords:   .init(color: rgb(0xA3, 0x39, 0x2A), bold: true),
         // commands/values/characters: Seit dem EditorTheme-Patch (build.sh,
         // Etappe 4) bedienen diese Slots .function/.method, .variableBuiltin
@@ -1659,7 +1640,7 @@ extension EditorView {
         insertionPoint: rgb(0xF2, 0xF2, 0xF2),
         invisibles:     .init(color: rgb(0xF2, 0xF2, 0xF2, 0.22)),
         background:     rgb(0x17, 0x17, 0x17),
-        lineHighlight:  rgb(0x33, 0x33, 0x33, 0.62),
+        lineHighlight:  rgb(0x2B, 0x3D, 0x50, 0.98),
         selection:      rgb(0x5E, 0x8E, 0xCC, 0.48),
         keywords:   .init(color: rgb(0xE8, 0x8D, 0x7C), bold: true),
         // Gleiche Patch-Neutralität wie im hellen Theme (siehe Kommentar dort).
@@ -1703,8 +1684,8 @@ extension EditorView {
         insertionPoint: rgb(0x00, 0x00, 0x00),
         invisibles:     .init(color: rgb(0x00, 0x00, 0x00, 0.18)),
         background:     rgb(0xFF, 0xFF, 0xFF),
-        lineHighlight:  rgb(0xEC, 0xEC, 0xEC, 0.55),
-        selection:      rgb(0x78, 0xA7, 0xE8, 0.42),
+        lineHighlight:  rgb(0xAA, 0xC7, 0xE2, 0.98),
+        selection:      rgb(0xD4, 0xE8, 0xF8, 0.96),
         keywords:   .init(color: rgb(0x03, 0x4D, 0x00), bold: true),
         commands:   .init(color: rgb(0x06, 0x8C, 0x00), bold: true),
         types:      .init(color: rgb(0x43, 0x99, 0xD0)),
@@ -1724,7 +1705,7 @@ extension EditorView {
         insertionPoint: rgb(0xAE, 0xAE, 0xAE),
         invisibles:     .init(color: rgb(0xAE, 0xAE, 0xAE, 0.22)),
         background:     rgb(0x17, 0x17, 0x17),
-        lineHighlight:  rgb(0x33, 0x33, 0x33, 0.62),
+        lineHighlight:  rgb(0x2B, 0x3D, 0x50, 0.98),
         selection:      rgb(0x5E, 0x8E, 0xCC, 0.48),
         keywords:   .init(color: rgb(0xE1, 0xDC, 0x32), bold: true),
         commands:   .init(color: rgb(0xB5, 0xD6, 0xDD), bold: true),

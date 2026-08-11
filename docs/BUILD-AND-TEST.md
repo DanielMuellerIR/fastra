@@ -81,7 +81,7 @@ Gatekeeper-Akzeptanz und Codesignatur des Quell-Bundles. Beim Version-Bump
 `app/Info.plist` mitziehen (siehe AGENTS.md), sonst zeigt die App eine veraltete
 Version.
 
-`build.sh` kapselt Xcode-Toolchain-Switch + dreiundzwanzig Checkout-Patches
+`build.sh` kapselt Xcode-Toolchain-Switch + fünfunddreißig Checkout-Patches
 (SwiftLint-Plugins aus, CodeEditSymbols Resources, CMD+F-Zombie-Kill,
 toter cursorPositions-Reconcile, verworfene Auto-Vervollständigung schließen,
 Gutter-Drag-Clamp, horizontaler Scrollbalken, Zeilenbreiten-Messung,
@@ -91,7 +91,9 @@ einschließlich eines optionalen Methoden-Slots, feste Soft-Wrap-Spalten und
 Rechteckauswahl auf logischen Zeilen, vollständige Dateiende-Auswahl,
 stabile Auswahl- und Layoutzustände großer Textoperationen, vollständige
 Trefferflächen nach Texteingaben, klickdurchlässige verborgene Minimap,
-zellenbasierte Doppelklick-Wortauswahl und Drag-Anker am Maus-Down).
+zellenbasierte Doppelklick-Wortauswahl, Drag-Anker am Maus-Down,
+Storage-/Layout-Konsistenz, aktuelle Zeile bei Auswahl, Fließtext-Einrückung
+und den positionsgebundenen externen Bild-Drop).
 
 Seit v1.19.0 verpackt `build.sh` zusätzlich das exakt gepinnte
 `Sparkle.framework` unter `Contents/Frameworks`, entfernt die für die nicht
@@ -304,6 +306,25 @@ prüft die 4D-Parameterhilfe End-to-End: Panel mit Signatur und
 Kommentarkopf innerhalb der Klammern, in verschachtelten Aufrufen erst die
 innere und hinter deren schließender Klammer wieder die äußere Methode,
 ausgeblendet außerhalb.
+
+Patch 4z2 (Fließtext-Einrückung, 2026-08-11): TextFormations allgemeine
+Klammermuster behandelten auch reinen Text und Markdown wie Quellcode. Eine
+Zeile, die mit `(` begann, erhöhte die Einrückung; der Rückwärtsscan übersprang
+danach eine bewusst geleerte Zeile und holte die Einrückung immer wieder
+zurück. Für `.plainText` und `.markdown` verwendet Fastra keine Code-Muster und
+die unmittelbare Vorzeile als einzige Referenz. `./selftest.sh mdindent` treibt
+die echte TextView mit einem datenschutzneutralen Abbild der gemeldeten
+`.txt`-Datei durch beide Return-Schritte.
+
+Patch 4z3 (externer Bild-Drop, 2026-08-11): SwiftUIs `onDrop` übermittelt dem
+Markdown-Assistenten keine Textposition. CodeEditTextView übernimmt externe
+Bild-Drops deshalb vor seinem normalen Text-Drag, zeichnet eine Einfügemarke an
+der Mausposition und scrollt per Timer weiter, solange die Maus am oberen oder
+unteren Rand steht. Nicht akzeptierte Pasteboards laufen unverändert durch den
+Upstream-Pfad. Die versionierte Ergänzung liegt unter
+`app/Patches/CodeEditTextView/`; Marker, kopierte Quelle und Routing werden nach
+jedem Anwenden geprüft. `./selftest.sh mddropcursor` beobachtet Cursor, echten
+Rand-Autoscroll und den Link exakt an der beim Loslassen bestimmten Textposition.
 
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 

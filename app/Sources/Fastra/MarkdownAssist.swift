@@ -20,36 +20,14 @@ extension Notification.Name {
     static let fastraMarkdownAssistUsed = Notification.Name("fastra.markdown.assist.used")
 }
 
-/// Sammelt asynchron geladene Drop-URLs auf dem Main-Thread und ruft die
-/// Completion genau EINMAL, sobald alle Provider geantwortet haben. Jeder
-/// Provider schreibt in seinen ursprünglichen Platz; dadurch bleibt die
-/// Einfüge-Reihenfolge auch bei verdrehten Callback-Zeiten stabil.
-@MainActor
-final class DroppedURLCollector {
-    private var urls: [URL?]
-    private var receivedIndices: Set<Int> = []
-    private var remaining: Int
-    private let completion: ([URL]) -> Void
-
-    init(expected: Int, completion: @escaping ([URL]) -> Void) {
-        let count = max(1, expected)
-        urls = Array(repeating: nil, count: count)
-        remaining = count
-        self.completion = completion
-    }
-
-    func add(_ url: URL?, at index: Int) {
-        guard urls.indices.contains(index), receivedIndices.insert(index).inserted else {
-            return
-        }
-        urls[index] = url
-        remaining -= 1
-        if remaining == 0 { completion(urls.compactMap { $0 }) }
-    }
-}
-
 @MainActor
 enum MarkdownAssist {
+    struct ImageStoreOutcome: Sendable {
+        let storedImages: [MarkdownImageStore.StoredImage]
+        let failures: [String]
+
+        var links: [String] { storedImages.map(\.link) }
+    }
 
     /// Reiner, testbarer Teil der revisionsgebundenen Einfügemarke.
     struct ImageInsertionState: Equatable {
@@ -247,6 +225,43 @@ enum MarkdownAssist {
         return nil
     }
 
+    /// CodeEditTextView als echten Drag-Zielbereich konfigurieren. Nur dieser
+    /// native Pfad kennt die Mausposition im Text und kann deshalb während des
+    /// Ziehens Einfügemarke und Rand-Autoscroll anbieten.
+    static func configureExternalDrop(on textView: TextView, workspace: Workspace) {
+        let types: [NSPasteboard.PasteboardType] = [
+            .fileURL,
+            NSPasteboard.PasteboardType(UTType.image.identifier),
+            NSPasteboard.PasteboardType(UTType.png.identifier),
+            NSPasteboard.PasteboardType(UTType.jpeg.identifier),
+            NSPasteboard.PasteboardType(UTType.gif.identifier),
+            .tiff,
+        ]
+        textView.fastraConfigureExternalDrop(
+            acceptedTypes: types,
+            canHandle: { pasteboard in
+                MainActor.assumeIsolated {
+                    if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL],
+                       !urls.isEmpty { return true }
+                    return readImageData(from: pasteboard) != nil
+                }
+            },
+            perform: { pasteboard, _ in
+                MainActor.assumeIsolated {
+                    if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL],
+                       !urls.isEmpty {
+                        return handleDroppedFileURLs(urls, workspace: workspace)
+                    }
+                    guard let (data, type) = readImageData(from: pasteboard) else {
+                        return false
+                    }
+                    handleDroppedImageData(data, typeIdentifier: type, workspace: workspace)
+                    return true
+                }
+            }
+        )
+    }
+
     // MARK: - Bild einfügen (Drop)
 
     /// Drop im Markdown-Editorbereich: Bilddateien werden EINGEFÜGT, alle
@@ -357,18 +372,18 @@ enum MarkdownAssist {
     /// abseits des Main-Threads laufen darf, und er lässt sich ohne Fenster
     /// testen.
     nonisolated static func storeImageFiles(_ urls: [URL], documentURL: URL)
-    -> (links: [String], failures: [String]) {
-        var links: [String] = []
+    -> ImageStoreOutcome {
+        var storedImages: [MarkdownImageStore.StoredImage] = []
         var failures: [String] = []
         for url in urls {
             do {
                 let stored = try MarkdownImageStore.storeImageFile(url, documentURL: documentURL)
-                links.append(stored.link)
+                storedImages.append(stored)
             } catch {
                 failures.append(error.localizedDescription)
             }
         }
-        return (links, failures)
+        return ImageStoreOutcome(storedImages: storedImages, failures: failures)
     }
 
     /// Zweiter Halbschritt auf dem Main-Thread: meldet Fehler und fügt die
@@ -380,16 +395,16 @@ enum MarkdownAssist {
     /// und aktueller reiner Einfügestelle. Abgelegte Bilddateien bleiben bei
     /// einem nicht mehr vorhandenen Ziel erhalten.
     private static func finishImageInsertion(
-        _ outcome: (links: [String], failures: [String]),
+        _ outcome: ImageStoreOutcome,
         lease: ImageInsertionLease, workspace: Workspace
     ) {
         for message in outcome.failures {
             NSAlert.runWarning(title: L10n.string("Bild konnte nicht übernommen werden"),
                                text: message)
         }
-        guard !outcome.links.isEmpty,
+        guard !outcome.storedImages.isEmpty,
               let target = lease.target() else { return }
-        insertLinks(outcome.links, into: target.textView,
+        insertLinks(outcome.storedImages, into: target.textView,
                     replacing: target.replacementRange, workspace: workspace)
     }
 
@@ -414,19 +429,22 @@ enum MarkdownAssist {
     /// Bereitet rohe Bilddaten auf und schreibt sie ohne UI-Zugriff.
     nonisolated static func storeImageData(_ data: Data, typeIdentifier: String,
                                            documentURL: URL)
-    -> (links: [String], failures: [String]) {
+    -> ImageStoreOutcome {
         guard let prepared = MarkdownImageStore.prepare(
             imageData: data, typeIdentifier: typeIdentifier
         ) else {
-            return ([], [MarkdownImageStore.StoreError.unreadableImage.localizedDescription])
+            return ImageStoreOutcome(
+                storedImages: [],
+                failures: [MarkdownImageStore.StoreError.unreadableImage.localizedDescription]
+            )
         }
         do {
             let stored = try MarkdownImageStore.storePastedData(
                 prepared, documentURL: documentURL
             )
-            return ([stored.link], [])
+            return ImageStoreOutcome(storedImages: [stored], failures: [])
         } catch {
-            return ([], [error.localizedDescription])
+            return ImageStoreOutcome(storedImages: [], failures: [error.localizedDescription])
         }
     }
 
@@ -443,12 +461,16 @@ enum MarkdownAssist {
 
     /// Fügt die Links an der validierten Stelle ein (mehrere zeilenweise),
     /// setzt den Cursor dahinter und meldet der Vorschau die Einfügezeile.
-    private static func insertLinks(_ links: [String], into textView: TextView,
+    private static func insertLinks(_ storedImages: [MarkdownImageStore.StoredImage],
+                                    into textView: TextView,
                                     replacing selection: NSRange,
                                     workspace: Workspace) {
+        let links = storedImages.map(\.link)
         guard !links.isEmpty else { return }
         let insertion = links.joined(separator: "\n")
         textView.replaceCharacters(in: selection, with: insertion)
+        MarkdownImageUndo.register(textView: textView, insertion: insertion,
+                                   storedImages: storedImages)
         let caret = selection.location + (insertion as NSString).length
         textView.selectionManager.setSelectedRange(NSRange(location: caret, length: 0))
         revealInPreview(textView: textView, characterLocation: selection.location,

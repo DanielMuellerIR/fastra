@@ -2813,6 +2813,144 @@ if [ "$LAYOUT_CONSISTENCY_PATCH_CHANGED" -eq 1 ]; then
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4z2. CodeEditSourceEditor — Fließtext nicht wie Klammer-Code einrücken.
+#
+# TextFormations allgemeine Grundmuster behandeln jede Zeile, die mit `(`
+# beginnt, wie einen geöffneten Codeblock. Nach einer bewusst geleerten Zeile
+# sucht der Standard-Indenter zusätzlich rückwärts weiter und übernimmt den
+# alten Treffer erneut. In reinem Text und Markdown gelten diese Klammermuster
+# nicht; erhalten bleibt nur die Einrückung der unmittelbaren Vorzeile.
+# Regression: gepackter Selbsttest `mdindent` mit dem Größen-/Formabbild der
+# gemeldeten Desktop-Datei.
+CESE_TEXT_FORMATION="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/Controller/TextViewController+TextFormation.swift"
+MARKDOWN_INDENT_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: Markdown verwendet keine Code-Klammermuster' \
+    "$CESE_TEXT_FORMATION" 2>/dev/null \
+   || ! grep -q 'case .plainText, .markdown:' "$CESE_TEXT_FORMATION" 2>/dev/null; then
+  echo "→ Patche CodeEditSourceEditor (Fließtext ohne Code-Klammermuster)"
+  chmod u+w "$CESE_TEXT_FORMATION"
+  if grep -q 'Fastra-Patch: Markdown verwendet keine Code-Klammermuster' \
+      "$CESE_TEXT_FORMATION" 2>/dev/null; then
+    echo "  (ältere Patchfassung gefunden — Datei wird zuerst zurückgesetzt)"
+    git -C "$CHECKOUTS/CodeEditSourceEditor" checkout -- \
+      Sources/CodeEditSourceEditor/Controller/TextViewController+TextFormation.swift
+    chmod u+w "$CESE_TEXT_FORMATION"
+  fi
+  /usr/bin/python3 - "$CESE_TEXT_FORMATION" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+old = '''        switch language.id {
+        case .python:
+            return TextualIndenter(patterns: TextualIndenter.pythonPatterns)'''
+new = '''        switch language.id {
+        case .plainText, .markdown:
+            // Fastra-Patch: Markdown verwendet keine Code-Klammermuster;
+            // dasselbe gilt fuer echten Fliesstext.
+            // Eine leere unmittelbare Vorzeile ist zudem ein bewusster
+            // Einrueckungs-Reset und darf nicht uebersprungen werden.
+            return TextualIndenter(patterns: [], referenceLinePredicate: { _, _ in true })
+        case .python:
+            return TextualIndenter(patterns: TextualIndenter.pythonPatterns)'''
+if old not in src:
+    raise SystemExit(f"{path}: Indenter-Switch hat sich geaendert — Patch 4z2 pruefen")
+open(path, "w").write(src.replace(old, new, 1))
+PYEOF
+  MARKDOWN_INDENT_PATCH_CHANGED=1
+fi
+if ! grep -q 'Fastra-Patch: Markdown verwendet keine Code-Klammermuster' \
+    "$CESE_TEXT_FORMATION" \
+   || ! grep -q 'case .plainText, .markdown:' "$CESE_TEXT_FORMATION"; then
+  echo "✗ FEHLER: Fließtext-Einrückungs-Patch hat NICHT gegriffen." >&2
+  exit 1
+fi
+if [ "$MARKDOWN_INDENT_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z3. CodeEditTextView — externer Bild-Drop mit sichtbarer Einfügemarke.
+#
+# SwiftUIs onDrop liefert keine Dokumentposition. Die TextView ist daher
+# selbst Drag-Ziel: Sie zeichnet den Cursor an der Mausposition, scrollt bei
+# stillstehender Maus am oberen/unteren Rand weiter und übergibt den exakten
+# Offset erst beim Loslassen an Fastra. CodeEdits eigener Text-Drag bleibt
+# für alle nicht von Fastra akzeptierten Pasteboards unverändert.
+CETV_EXTERNAL_DROP_SOURCE="Patches/CodeEditTextView/TextView+FastraExternalDrop.swift"
+CETV_EXTERNAL_DROP_TARGET="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+FastraExternalDrop.swift"
+CETV_DRAG="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+Drag.swift"
+EXTERNAL_DROP_PATCH_CHANGED=0
+if [ ! -f "$CETV_EXTERNAL_DROP_SOURCE" ]; then
+  echo "✗ FEHLER: externer Drop-Patch fehlt: $CETV_EXTERNAL_DROP_SOURCE" >&2
+  exit 1
+fi
+if ! cmp -s "$CETV_EXTERNAL_DROP_SOURCE" "$CETV_EXTERNAL_DROP_TARGET"; then
+  echo "→ Ergänze CodeEditTextView (externer Drop-Cursor + Autoscroll)"
+  cp "$CETV_EXTERNAL_DROP_SOURCE" "$CETV_EXTERNAL_DROP_TARGET"
+  EXTERNAL_DROP_PATCH_CHANGED=1
+fi
+if ! grep -q 'Fastra-Patch: externer Drop wird vor dem Standard-Textdrag geroutet' \
+    "$CETV_DRAG" 2>/dev/null; then
+  chmod u+w "$CETV_DRAG"
+  /usr/bin/python3 - "$CETV_DRAG" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+old_entered = '''    override public func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        determineDragOperation(sender)
+    }
+
+    override public func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        determineDragOperation(sender)
+    }'''
+new_entered = '''    override public func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        // Fastra-Patch: externer Drop wird vor dem Standard-Textdrag geroutet.
+        fastraExternalDraggingUpdated(sender) ?? determineDragOperation(sender)
+    }
+
+    override public func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        fastraExternalDraggingUpdated(sender) ?? determineDragOperation(sender)
+    }
+
+    override public func draggingExited(_ sender: (any NSDraggingInfo)?) {
+        fastraCleanUpExternalDrop()
+    }
+
+    override public func concludeDragOperation(_ sender: (any NSDraggingInfo)?) {
+        fastraCleanUpExternalDrop()
+    }'''
+old_perform = '''    override public func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        guard let objects = sender.draggingPasteboard.readObjects(forClasses: pasteboardObjects)?'''
+new_perform = '''    override public func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        if let externalResult = fastraPerformExternalDrop(sender) {
+            return externalResult
+        }
+        guard let objects = sender.draggingPasteboard.readObjects(forClasses: pasteboardObjects)?'''
+if old_entered not in src or old_perform not in src:
+    raise SystemExit(f"{path}: Drag-Zielstruktur hat sich geaendert — Patch 4z3 pruefen")
+src = src.replace(old_entered, new_entered, 1).replace(old_perform, new_perform, 1)
+open(path, "w").write(src)
+PYEOF
+  EXTERNAL_DROP_PATCH_CHANGED=1
+fi
+if ! grep -q 'Fastra-Patch: externer Drop wird vor dem Standard-Textdrag geroutet' "$CETV_DRAG" \
+   || ! grep -q 'public func fastraConfigureExternalDrop' "$CETV_EXTERNAL_DROP_TARGET" \
+   || ! grep -q 'fastraExternalAutoscrollStep' "$CETV_EXTERNAL_DROP_TARGET"; then
+  echo "✗ FEHLER: externer Drop-Patch hat NICHT vollständig gegriffen." >&2
+  exit 1
+fi
+if [ "$EXTERNAL_DROP_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 

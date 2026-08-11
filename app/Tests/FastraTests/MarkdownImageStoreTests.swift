@@ -7,6 +7,7 @@
 import Foundation
 import AppKit
 import Testing
+import CodeEditTextView
 @testable import Fastra
 
 private func withTempDir(_ body: (URL) throws -> Void) throws {
@@ -115,7 +116,7 @@ func prepare_formats() {
 
 // MARK: - Ablage (IO)
 
-@Test("storePastedData: Datei entsteht im Dokumentordner, Link ist relativ")
+@Test("storePastedData: Datei entsteht im images-Unterordner, Link ist relativ")
 func store_pastedData() throws {
     try withTempDir { dir in
         let doc = dir.appendingPathComponent("Notizen.md")
@@ -124,9 +125,13 @@ func store_pastedData() throws {
                                                             fileExtension: "png")
         let stored = try MarkdownImageStore.storePastedData(prepared, documentURL: doc)
         #expect(FileManager.default.fileExists(atPath: stored.fileURL.path))
-        #expect(stored.fileURL.deletingLastPathComponent().path == dir.path)
+        #expect(stored.fileURL.deletingLastPathComponent().path
+                == dir.appendingPathComponent("images").path)
         #expect(stored.link.hasPrefix("![Notizen-"))
+        #expect(stored.link.contains("](images/"))
         #expect(stored.link.hasSuffix(".png)"))
+        #expect(stored.createdByInsertion)
+        #expect(stored.imagesDirectoryCreated)
     }
 }
 
@@ -184,7 +189,7 @@ func store_pastedDataUsesExclusivePublish() throws {
         let base = MarkdownImageStore.pastedImageBaseName(
             documentName: doc.lastPathComponent,
             date: Date(timeIntervalSince1970: 1_800_000_000))
-        #expect(try Data(contentsOf: dir.appendingPathComponent("\(base).png"))
+        #expect(try Data(contentsOf: dir.appendingPathComponent("images/\(base).png"))
                 == Data("fremd".utf8))
         #expect(stored.fileURL.lastPathComponent == "\(base)-2.png")
         #expect(try Data(contentsOf: stored.fileURL) == Data("Fastra".utf8))
@@ -210,9 +215,9 @@ func store_documentDirectorySymlinkKeepsRelativeLink() throws {
 
         #expect(stored.link == MarkdownImageStore.markdownImageLink(
             fileName: stored.fileURL.lastPathComponent,
-            relativePath: stored.fileURL.lastPathComponent))
+            relativePath: "images/\(stored.fileURL.lastPathComponent)"))
         #expect(stored.fileURL.deletingLastPathComponent().standardizedFileURL.path
-                == real.standardizedFileURL.path)
+                == real.appendingPathComponent("images").standardizedFileURL.path)
     }
 }
 
@@ -234,10 +239,12 @@ func store_fileCollisionAndDedup() throws {
         #expect(first.fileURL.lastPathComponent == "foto.png")
         #expect(first.fileURL.deletingLastPathComponent().lastPathComponent == "images")
         #expect(first.link == "![foto](images/foto.png)")
+        #expect(first.createdByInsertion)
 
         // 2. identische Quelle erneut → KEIN Doppel, vorhandene verlinken.
         let again = try MarkdownImageStore.storeImageFile(source, documentURL: doc)
         #expect(again.fileURL == first.fileURL)
+        #expect(!again.createdByInsertion)
         let files = try FileManager.default.contentsOfDirectory(
             atPath: dir.appendingPathComponent("images").path
         )
@@ -437,6 +444,7 @@ func store_fileInsideImagesLinksOnly() throws {
         let stored = try MarkdownImageStore.storeImageFile(existing, documentURL: doc)
         #expect(stored.fileURL == existing)
         #expect(stored.link == "![logo](images/logo.png)")
+        #expect(!stored.createdByInsertion)
         let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
         #expect(!files.contains("logo.png"), "es darf keine Kopie neben dem Dokument entstehen")
     }
@@ -538,6 +546,34 @@ func storeImageData_returnsLinkWithoutUI() throws {
         #expect(outcome.failures.isEmpty)
         #expect(outcome.links.count == 1)
         #expect(outcome.links[0].hasPrefix("![Seite-"))
+        #expect(outcome.links[0].contains("](images/"))
+        #expect(outcome.storedImages[0].createdByInsertion)
+        #expect(outcome.storedImages[0].fileURL.deletingLastPathComponent()
+            .lastPathComponent == "images")
+    }
+}
+
+@Test("Undo eines Fastra-Bildlinks entfernt nur die neu erzeugte Datei; Redo stellt sie wieder her")
+@MainActor
+func imageUndoMovesCreatedFileAndRestoresOnRedo() throws {
+    try withTempDir { dir in
+        let doc = dir.appendingPathComponent("Seite.md")
+        try "".write(to: doc, atomically: true, encoding: .utf8)
+        let stored = try MarkdownImageStore.storePastedData(
+            .init(data: tinyPNG(), fileExtension: "png"), documentURL: doc
+        )
+        let textView = TextView(string: "")
+        textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: stored.link)
+        MarkdownImageUndo.register(textView: textView, insertion: stored.link,
+                                   storedImages: [stored])
+
+        textView.undoManager?.undo()
+        #expect(textView.string.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: stored.fileURL.path))
+
+        textView.undoManager?.redo()
+        #expect(textView.string == stored.link)
+        #expect(FileManager.default.fileExists(atPath: stored.fileURL.path))
     }
 }
 
@@ -608,22 +644,4 @@ func imageInsertionRange_usesRevisionBoundSelection() {
     #expect(MarkdownAssist.imageInsertionRange(
         initial: initial, current: movedBack
     ) == NSRange(location: 3, length: 0))
-}
-
-@Test("DroppedURLCollector liefert Provider-Reihenfolge trotz verdrehter Callbacks")
-@MainActor
-func droppedURLCollector_preservesProviderOrder() {
-    let first = URL(fileURLWithPath: "/tmp/erst.png")
-    let second = URL(fileURLWithPath: "/tmp/zweit.png")
-    let third = URL(fileURLWithPath: "/tmp/dritt.png")
-    var completed: [[URL]] = []
-    let collector = DroppedURLCollector(expected: 3) { completed.append($0) }
-
-    collector.add(third, at: 2)
-    collector.add(third, at: 2) // Doppel-Callback darf nicht doppelt zählen.
-    collector.add(first, at: 0)
-    #expect(completed.isEmpty)
-    collector.add(second, at: 1)
-
-    #expect(completed == [[first, second, third]])
 }

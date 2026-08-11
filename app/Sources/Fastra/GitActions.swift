@@ -841,18 +841,40 @@ extension Workspace {
 
     /// Modaler Ein-Zeilen-Eingabedialog (NSAlert + NSTextField), gleiches Muster
     /// wie „Zu Zeile springen". Liefert `nil` bei Abbruch.
-    static func promptForText(title: String, info: String, placeholder: String) -> String? {
+    static func promptForText(title: String, info: String, placeholder: String,
+                              initialValue: String? = nil) -> String? {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = info
         alert.addButton(withTitle: L10n.string("OK"))
         alert.addButton(withTitle: L10n.string("Abbrechen"))
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
-        field.placeholderString = placeholder
+        let field = promptTextField(placeholder: placeholder, initialValue: initialValue)
         alert.accessoryView = field
-        DispatchQueue.main.async { field.window?.makeFirstResponder(field) }
+        alert.window.initialFirstResponder = field
+        DispatchQueue.main.async {
+            // Beim Umbenennen ist der vorhandene Name echter Feldinhalt und
+            // sofort vollständig ausgewählt: Tippen ersetzt ihn, Pfeil rechts
+            // setzt den Cursor ans Ende, wenn nur etwas angehängt werden soll.
+            _ = focusAndSelectPromptText(field)
+        }
         guard alert.runModal() == .alertFirstButtonReturn else { return nil }
         return field.stringValue
+    }
+
+    static func promptTextField(placeholder: String,
+                                initialValue: String?) -> NSTextField {
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.placeholderString = placeholder
+        field.stringValue = initialValue ?? ""
+        return field
+    }
+
+    /// Liefert die echte Feldeditor-Auswahl als Regressionstest-Anker.
+    @discardableResult
+    static func focusAndSelectPromptText(_ field: NSTextField) -> NSRange? {
+        guard field.window?.makeFirstResponder(field) == true else { return nil }
+        field.selectText(nil)
+        return field.currentEditor()?.selectedRange
     }
 
     /// Steuert, ob Git-Fehler als modaler Dialog erscheinen. In Selbsttests auf

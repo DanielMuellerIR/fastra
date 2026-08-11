@@ -155,35 +155,45 @@ struct SidebarBrandView: View {
 private extension TabBarView {
     private var tabs: some View {
         HStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(workspace.tabs) { tab in
-                        TabPill(
-                            tab: tab,
-                            displayTitle: tab.title,
-                            isActive: tab.id == workspace.activeTabID,
-                            isComparisonSelected: tab.id == workspace.comparisonTabID,
-                            canCloseOthers: workspace.tabs.count > 1,
-                            canCompareSelection: workspace.selectedComparisonTabIDs?
-                                .contains(tab.id) == true,
-                            onSelect: { workspace.selectTab(id: tab.id) },
-                            onExtendSelection: {
-                                workspace.selectTab(
-                                    id: tab.id,
-                                    extendingComparison: true
-                                )
-                            },
-                            onCompareSelection: {
-                                _ = workspace.presentComparisonForSelectedTabs(
-                                    contextTabID: tab.id
-                                )
-                            },
-                            onClose: { workspace.closeTab(id: tab.id) },
-                            onCloseOthers: { workspace.closeOtherTabs(keeping: tab.id) }
-                        )
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(workspace.tabs) { tab in
+                            TabPill(
+                                tab: tab,
+                                displayTitle: tab.title,
+                                isActive: tab.id == workspace.activeTabID,
+                                isComparisonSelected: tab.id == workspace.comparisonTabID,
+                                canCloseOthers: workspace.tabs.count > 1,
+                                canCompareSelection: workspace.selectedComparisonTabIDs?
+                                    .contains(tab.id) == true,
+                                onSelect: { workspace.selectTab(id: tab.id) },
+                                onExtendSelection: {
+                                    workspace.selectTab(
+                                        id: tab.id,
+                                        extendingComparison: true
+                                    )
+                                },
+                                onCompareSelection: {
+                                    _ = workspace.presentComparisonForSelectedTabs(
+                                        contextTabID: tab.id
+                                    )
+                                },
+                                onClose: { workspace.closeTab(id: tab.id) },
+                                onCloseOthers: { workspace.closeOtherTabs(keeping: tab.id) }
+                            )
+                            .id(tab.id)
+                        }
                     }
+                    .padding(.horizontal, 10)
                 }
-                .padding(.horizontal, 10)
+                .onAppear { revealActiveTab(using: proxy) }
+                .onChange(of: workspace.activeTabID) { _, _ in
+                    revealActiveTab(using: proxy)
+                }
+                .onChange(of: workspace.tabs.map(\.id)) { _, _ in
+                    revealActiveTab(using: proxy)
+                }
             }
 
             Button(action: workspace.openNewTab) {
@@ -195,6 +205,16 @@ private extension TabBarView {
             .buttonStyle(.plain)
             .help("Neuer Tab (⌘T)")
             .padding(.trailing, 8)
+        }
+    }
+
+    /// Nur ein echter Dokumentwechsel beziehungsweise eine geänderte
+    /// Tab-Menge greift in die horizontale Position ein. Freies manuelles
+    /// Scrollen bleibt dazwischen unangetastet.
+    private func revealActiveTab(using proxy: ScrollViewProxy) {
+        guard let activeTabID = workspace.activeTabID else { return }
+        DispatchQueue.main.async {
+            proxy.scrollTo(activeTabID, anchor: .center)
         }
     }
 
@@ -226,6 +246,7 @@ private struct TabPill: View {
     @State private var tabHovering = false
     @State private var closeHovering = false
     @Environment(\.uiScale) private var uiScale
+    @EnvironmentObject private var workspace: Workspace
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -341,11 +362,29 @@ private struct TabPill: View {
             }
         )
         .onHover { tabHovering = $0 }
+        // Vollflächiger Geometrieanker für `tabvisibility`: Der ältere
+        // Nullpunkt-Marker im Button bleibt für Klickrollen erhalten.
+        .background(SelfTestMarker(id: "documentTabFrame-\(tab.id.uuidString)"))
         .contextMenu {
             if canCompareSelection {
                 Button("Dateien vergleichen…", action: onCompareSelection)
                 Divider()
             }
+
+            if let url = tab.url {
+                FileTreeContextMenu(
+                    directory: url.deletingLastPathComponent(),
+                    node: FileTreeNode(url: url, isDirectory: false),
+                    onMutation: {}
+                )
+            } else {
+                unavailableFileActions
+            }
+
+            Divider()
+            Button("Speichern") { workspace.saveTab(id: tab.id) }
+                .disabled(!canSave)
+            Button("Diesen Tab schließen", action: onClose)
             Button("Andere Tabs schließen", action: onCloseOthers)
                 .disabled(!canCloseOthers)
         }
@@ -393,5 +432,28 @@ private struct TabPill: View {
             return L10n.string("Für Dateivergleich ausgewählt")
         }
         return ""
+    }
+
+    private var canSave: Bool {
+        tab.gitKind == nil && tab.fileDiffRequest == nil
+            && tab.displayMode == .text && !tab.isLoading
+    }
+
+    /// Ein ungesicherter Tab besitzt weder Datei noch Elternordner. Die
+    /// Dateimenü-Struktur bleibt sichtbar, erklärt ihre Grenze aber über
+    /// deaktivierte Einträge statt die Befehle überraschend verschwinden zu
+    /// lassen.
+    @ViewBuilder private var unavailableFileActions: some View {
+        Group {
+            Button("Neue Datei…") { }.disabled(true)
+            Button("Neuer Ordner…") { }.disabled(true)
+            Divider()
+            Button("Im Finder zeigen…") { }.disabled(true)
+            Button("Terminal hier öffnen …") { }.disabled(true)
+            Divider()
+            Button("Duplizieren") { }.disabled(true)
+            Button("Umbenennen…") { }.disabled(true)
+            Button("In den Papierkorb legen…", role: .destructive) { }.disabled(true)
+        }
     }
 }

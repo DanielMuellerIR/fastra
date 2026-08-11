@@ -2328,7 +2328,15 @@ final class Workspace: ObservableObject {
     }
 
     func saveActiveTab() {
-        guard let idx = activeTabIndex else { return }
+        guard let id = activeTabID else { return }
+        saveTab(id: id)
+    }
+
+    /// Speichert genau den adressierten Tab. Das Tab-Kontextmenü darf damit
+    /// auch ein Hintergrunddokument sichern, ohne dafür still den sichtbaren
+    /// Editor umzuschalten.
+    func saveTab(id: UUID) {
+        guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
         // Git-Text-Tabs (Verlauf/Diff) und Datei-Vergleichs-Tabs sind
         // read-only — ⌘S tut nichts.
         if tabs[idx].gitKind != nil || tabs[idx].fileDiffRequest != nil { return }
@@ -2339,13 +2347,17 @@ final class Workspace: ObservableObject {
         if let url = tabs[idx].url {
             _ = write(tab: tabs[idx], to: url)
         } else {
-            saveActiveTabAs()
+            saveTabAs(id: id)
         }
     }
 
     func saveActiveTabAs() {
-        guard let idx = activeTabIndex else { return }
-        let tabID = tabs[idx].id
+        guard let tabID = activeTabID else { return }
+        saveTabAs(id: tabID)
+    }
+
+    private func saveTabAs(id tabID: UUID) {
+        guard let idx = tabs.firstIndex(where: { $0.id == tabID }) else { return }
         // Read-only Git- und Vergleichs-Tabs lassen sich nicht „speichern unter".
         if tabs[idx].gitKind != nil || tabs[idx].fileDiffRequest != nil { return }
         guard tabs[idx].displayMode == .text else { NSSound.beep(); return }
@@ -2354,7 +2366,18 @@ final class Workspace: ObservableObject {
         let stateCapture = SavePanelStateCapture()
         panel.delegate = stateCapture
         panel.canCreateDirectories = true
-        panel.nameFieldStringValue = tabs[idx].title
+        panel.allowsOtherFileTypes = true
+        panel.isExtensionHidden = false
+        panel.canSelectHiddenExtension = true
+        let format = DocumentFormatResolver.resolve(tab: tabs[idx])
+        let formatChoice = SavePanelFormatSupport.choice(for: format.id)
+        panel.nameFieldStringValue = SavePanelFormatSupport.initialFileName(
+            tabs[idx].title, choice: formatChoice
+        )
+        let formatAccessory = SavePanelFormatAccessory(
+            panel: panel, selectedFormatID: format.id
+        )
+        panel.accessoryView = formatAccessory.view
         panel.message = L10n.string("Datei speichern unter…")
         // Vorschlagsordner: eine bewusste Seitenleisten-Markierung gewinnt.
         // Danach folgt der Ordner dieses Dokuments bzw. bei einem neuen Tab
@@ -2369,14 +2392,16 @@ final class Workspace: ObservableObject {
         ) {
             panel.directoryURL = directory
         }
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        // Das Popup hält sein Target nicht selbst stark. Die ausdrückliche
+        // Lebensdauer umfasst deshalb den gesamten modalen Panel-Lauf.
+        let response = withExtendedLifetime(formatAccessory) { panel.runModal() }
+        guard response == .OK, let url = panel.url else { return }
         guard let expectedState = stateCapture.expectedState,
               let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
               write(tab: tabs[currentIndex], to: url,
                     expectedTargetState: expectedState),
               let savedIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
         adoptSavedTarget(url, forTabAt: savedIndex)
-        activeTabID = tabID
         openParentFolderIfProjectMissing(for: url)
     }
 

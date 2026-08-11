@@ -15,6 +15,23 @@ import UniformTypeIdentifiers
 import Darwin
 
 enum MarkdownImageStore {
+    struct StoredFileIdentity: Equatable, Sendable {
+        let device: UInt64
+        let inode: UInt64
+        let size: Int64
+        let modificationSeconds: Int64
+        let modificationNanoseconds: Int64
+    }
+
+    /// Ergebnis einer Bildablage. Nur `createdByInsertion == true` darf beim
+    /// Rückgängig-Machen des zugehörigen Markdown-Links angefasst werden.
+    struct StoredImage: Sendable {
+        let link: String
+        let fileURL: URL
+        let createdByInsertion: Bool
+        let imagesDirectoryCreated: Bool
+        let identity: StoredFileIdentity
+    }
 
     /// Serialisiert nur die kurze Namenswahl+Veröffentlichung je Zielordner.
     /// Die Registry selbst ist geschützt; verschiedene Dokumentordner
@@ -147,7 +164,7 @@ enum MarkdownImageStore {
         var errorDescription: String? {
             switch self {
             case .documentNotSaved:
-                return L10n.string("Das Dokument hat noch keinen Speicherort. Bitte erst speichern (⌘S) — dann kann Fastra Bilder daneben ablegen.")
+                return L10n.string("Das Dokument hat noch keinen Speicherort. Bitte erst speichern (⌘S) — dann kann Fastra Bilder im Unterordner „images“ ablegen.")
             case .unreadableImage:
                 return L10n.string("Die Bilddaten konnten nicht gelesen werden.")
             case .invalidImagesDirectory:
@@ -188,22 +205,31 @@ enum MarkdownImageStore {
         let inode: ino_t
     }
 
-    /// Legt ROHE Bilddaten als neue Datei neben dem Dokument ab.
-    /// Rückgabe: Markdown-Link + Ziel-URL.
+    /// Legt ROHE Bilddaten als neue Datei im `images`-Unterordner ab.
     static func storePastedData(_ prepared: PreparedImageData,
                                 documentURL: URL,
                                 now: Date = Date(),
                                 hooks: StoreHooks = StoreHooks())
-    throws -> (link: String, fileURL: URL) {
-        let directory = documentURL.deletingLastPathComponent()
+    throws -> StoredImage {
+        let documentDirectory = documentURL.deletingLastPathComponent()
             .resolvingSymlinksInPath().standardizedFileURL
-        let linkDocumentURL = directory.appendingPathComponent(
+        let linkDocumentURL = documentDirectory.appendingPathComponent(
             documentURL.lastPathComponent)
         let base = pastedImageBaseName(documentName: documentURL.lastPathComponent,
                                        date: now)
+        let directory = documentDirectory.appendingPathComponent("images", isDirectory: true)
         return try directoryLocks.withLock(for: directory) {
-            let opened = try openExistingDirectory(directory)
-            defer { Darwin.close(opened.fd) }
+            let opened = try openImagesDirectory(beside: documentDirectory)
+            defer {
+                Darwin.close(opened.fd)
+                if let parentFD = opened.parentFD { Darwin.close(parentFD) }
+            }
+            var stored = false
+            defer {
+                if !stored, opened.created, let parentFD = opened.parentFD {
+                    _ = unlinkat(parentFD, "images", AT_REMOVEDIR)
+                }
+            }
             let temporaryName = ".fastra-paste-\(UUID().uuidString).tmp"
             let temporaryFD = try createFile(named: temporaryName, in: opened.fd)
             var temporaryExists = true
@@ -230,8 +256,15 @@ enum MarkdownImageStore {
                         _ = unlinkat(opened.fd, name, 0)
                         throw StoreError.invalidImagesDirectory
                     }
-                    return (markdownImageLink(fileName: name, relativePath: relative),
-                            target)
+                    let identity = try storedFileIdentity(named: name, in: opened.fd)
+                    stored = true
+                    return StoredImage(
+                        link: markdownImageLink(fileName: name, relativePath: relative),
+                        fileURL: target,
+                        createdByInsertion: true,
+                        imagesDirectoryCreated: opened.created,
+                        identity: identity
+                    )
                 }
                 guard errno == EEXIST else { throw currentPOSIXError() }
             }
@@ -245,7 +278,7 @@ enum MarkdownImageStore {
     static func storeImageFile(_ sourceURL: URL,
                                documentURL: URL,
                                hooks: StoreHooks = StoreHooks())
-    throws -> (link: String, fileURL: URL) {
+    throws -> StoredImage {
         // Die Quelle wird genau einmal geöffnet. Ein Austausch des Pfads nach
         // dieser Stelle kann weder andere Bytes einschleusen noch die spätere
         // Kopie auf eine zweite Datei umlenken.
@@ -289,8 +322,14 @@ enum MarkdownImageStore {
                directoryStillMatches(opened),
                let relative = relativeLinkPath(from: linkDocumentURL, to: source) {
                 stored = true
-                return (markdownImageLink(fileName: source.lastPathComponent,
-                                          relativePath: relative), source)
+                return StoredImage(
+                    link: markdownImageLink(fileName: source.lastPathComponent,
+                                            relativePath: relative),
+                    fileURL: source,
+                    createdByInsertion: false,
+                    imagesDirectoryCreated: false,
+                    identity: storedFileIdentity(from: sourceBefore)
+                )
             }
 
             let temporaryName = ".fastra-copy-\(UUID().uuidString).tmp"
@@ -328,8 +367,15 @@ enum MarkdownImageStore {
                        let relative = relativeLinkPath(from: linkDocumentURL,
                                                        to: candidate) {
                         stored = true
-                        return (markdownImageLink(fileName: candidateName,
-                                                  relativePath: relative), candidate)
+                        return StoredImage(
+                            link: markdownImageLink(fileName: candidateName,
+                                                    relativePath: relative),
+                            fileURL: candidate,
+                            createdByInsertion: false,
+                            imagesDirectoryCreated: false,
+                            identity: try storedFileIdentity(named: candidateName,
+                                                             in: opened.fd)
+                        )
                     }
                     continue
                 }
@@ -347,27 +393,20 @@ enum MarkdownImageStore {
                         throw StoreError.invalidImagesDirectory
                     }
                     stored = true
-                    return (markdownImageLink(fileName: candidateName,
-                                              relativePath: relative), candidate)
+                    return StoredImage(
+                        link: markdownImageLink(fileName: candidateName,
+                                                relativePath: relative),
+                        fileURL: candidate,
+                        createdByInsertion: true,
+                        imagesDirectoryCreated: opened.created,
+                        identity: try storedFileIdentity(named: candidateName,
+                                                         in: opened.fd)
+                    )
                 }
                 guard errno == EEXIST else { throw currentPOSIXError() }
             }
             throw StoreError.unreadableImage
         }
-    }
-
-    private static func openExistingDirectory(_ url: URL) throws -> OpenDirectory {
-        let fd = open(url.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
-        guard fd >= 0 else { throw currentPOSIXError() }
-        var info = stat()
-        guard fstat(fd, &info) == 0 else {
-            Darwin.close(fd)
-            throw currentPOSIXError()
-        }
-        return OpenDirectory(parentFD: nil, fd: fd, url: url,
-                             identity: LockIdentity(device: info.st_dev,
-                                                    inode: info.st_ino),
-                             created: false)
     }
 
     private static func openImagesDirectory(beside documentDirectory: URL) throws
@@ -498,6 +537,28 @@ enum MarkdownImageStore {
             && a.st_size == b.st_size
             && a.st_mtimespec.tv_sec == b.st_mtimespec.tv_sec
             && a.st_mtimespec.tv_nsec == b.st_mtimespec.tv_nsec
+    }
+
+    private static func storedFileIdentity(named name: String, in directoryFD: Int32) throws
+        -> StoredFileIdentity {
+        let fd = openat(directoryFD, name, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+        guard fd >= 0 else { throw currentPOSIXError() }
+        defer { Darwin.close(fd) }
+        var info = stat()
+        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {
+            throw StoreError.unreadableImage
+        }
+        return storedFileIdentity(from: info)
+    }
+
+    private static func storedFileIdentity(from info: stat) -> StoredFileIdentity {
+        StoredFileIdentity(
+            device: UInt64(info.st_dev),
+            inode: UInt64(info.st_ino),
+            size: Int64(info.st_size),
+            modificationSeconds: Int64(info.st_mtimespec.tv_sec),
+            modificationNanoseconds: Int64(info.st_mtimespec.tv_nsec)
+        )
     }
 
     private static func currentPOSIXError() -> NSError {

@@ -13,6 +13,11 @@ einfügst oder den neuen Tab leer speicherst. Ein bewusst in der Seitenleiste
 markierter Ordner hat Vorrang; ohne Dokumentkontext dient der Projektordner
 als Rückfall.
 
+„Speichern unter…“ ergänzt bei neuen Text- und Markdown-Dokumenten `.txt`
+beziehungsweise `.md`. Das Format-Menü bietet alle mitgelieferten
+Syntaxsprachen sowie CSV und XML und setzt beim Wechsel die passende Endung.
+Eine beliebige eigene Endung kannst du weiterhin direkt im Namensfeld eingeben.
+
 ## Suchen und Ersetzen
 
 ⌘F öffnet die Suchmaske im Datei-Bereich, ⇧⌘F im Ordner-Bereich; ⌘E übernimmt
@@ -313,16 +318,22 @@ Umwandlung. Wechselst du währenddessen das Ziel oder bearbeitest den Inhalt,
 wird kontrolliert abgebrochen und nichts in ein anderes Dokument eingefügt.
 
 **Bilder einfügen:** Ein Bild aus der Zwischenablage (⌘V) legt Fastra
-als Datei **neben dem Dokument** ab (`dokumentname-JJJJ-MM-TT-hhmmss.png`;
-PNG/JPEG/GIF behalten ihr Format, alles andere wird PNG) und verlinkt es
-relativ an der Cursorposition. Eine **Bilddatei per Drag-and-drop** in
-den Markdown-Editor wird unter ihrem ursprünglichen Dateinamen unverändert
-in den Unterordner `images` kopiert
+als Datei im Unterordner `images` ab
+(`dokumentname-JJJJ-MM-TT-hhmmss.png`; PNG/JPEG/GIF behalten ihr Format,
+alles andere wird PNG) und verlinkt es relativ an der Cursorposition. Eine
+**Bilddatei per Drag-and-drop** wird unter ihrem ursprünglichen Dateinamen
+unverändert in denselben Unterordner kopiert
 (Namenskollision → Suffix; byte-identische Datei wird nicht doppelt
-abgelegt) und ebenfalls relativ verlinkt — andere Dateien öffnen wie
-gewohnt in einem Tab. Nach dem Einfügen scrollt die Vorschau zur
-Einfügestelle. Ungespeicherte Dokumente haben noch keinen Ordner —
-deshalb zuerst speichern (⌘S).
+abgelegt) und ebenfalls relativ verlinkt — andere Dateien öffnen wie gewohnt
+in einem Tab. Beim Ziehen zeigt der Editor die Einfügemarke an der wirklichen
+Textposition; am oberen und unteren Rand scrollt das Dokument weiter. Nach dem
+Einfügen scrollt die Vorschau zur Einfügestelle. Ungespeicherte Dokumente
+haben noch keinen Ordner — deshalb zuerst speichern (⌘S).
+
+⌘Z entfernt bei einem solchen Paste oder Drop sowohl den Link als auch die
+dabei neu von Fastra erzeugte Bilddatei; Wiederholen stellt beides wieder her.
+Eine bereits vorhandene oder selbst im Dateisystem abgelegte und manuell
+verlinkte Datei wird nie entfernt.
 
 Fastra veröffentlicht eine Bilddatei erst nach der vollständigen Kopie und
 überschreibt keine gleichzeitig entstandene Datei. Wird der echte
@@ -614,7 +625,11 @@ voller Pfad); **⌘-Klick auf den Namen** öffnet ein Menü der
 Nachbarordner zum schnellen Projektwechsel, das Rechtsklickmenü bietet
 „Im Finder zeigen“ und mehr. **⌘-Klick auf einen Dokument-Tab** zeigt
 das macOS-Pfadmenü der Datei. Der Dateibaum kann Dateien und Ordner
-anlegen, umbenennen und in den Papierkorb legen.
+anlegen, umbenennen, duplizieren und in den Papierkorb legen. Ein Duplikat
+erhält vor der Endung „Kopie“ samt nötiger laufender Nummer und öffnet sofort
+als aktiver Tab. Das Rechtsklickmenü eines gespeicherten Tabs enthält dieselben
+Dateiaktionen; bei einem noch ungesicherten Tab sind unpassende Punkte
+deaktiviert.
 
 **Dateien filtern:** Das Filterfeld über dem Dateibaum filtert live nach
 Dateinamen (Teilstring, Groß-/Kleinschreibung egal — bewusst kein
@@ -705,6 +720,12 @@ Beim Wechsel zwischen Tabs behält jeder Tab seine Einfügemarke **und** seinen
 sichtbaren Ausschnitt: Beim Zurückwechseln steht der Text wieder genau so da
 wie beim Verlassen. Ein gezielter Sprung — Suchtreffer oder ⌘J — hat dabei
 Vorrang und scrollt wie gewohnt zum Ziel.
+
+Nach dem Öffnen oder Schließen eines Dokuments und bei jedem Tabwechsel scrollt
+die Tab-Leiste so, dass der aktive Tab vollständig sichtbar ist. Dazwischen
+bleibt eine von Hand gewählte horizontale Scrollposition unangetastet. Das
+Tab-Rechtsklickmenü bietet zusätzlich Speichern, diesen Tab schließen und alle
+anderen Tabs schließen.
 
 Ein Punkt im Tab zeigt ungespeicherte Änderungen. Er verschwindet wieder,
 sobald der Inhalt exakt dem gespeicherten Stand entspricht — egal ob per

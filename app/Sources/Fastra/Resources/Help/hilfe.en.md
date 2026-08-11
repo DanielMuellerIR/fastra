@@ -13,6 +13,11 @@ the new tab while it is still empty. A folder deliberately selected in the
 sidebar takes priority; without document context, the project folder is the
 fallback.
 
+“Save As…” adds `.txt` or `.md` to new text and Markdown documents. Its format
+menu offers every bundled syntax language plus CSV and XML and changes the
+extension when you choose one. You can still type any custom extension directly
+in the name field.
+
 ## Search and Replace
 
 ⌘F opens the search panel in file scope, ⇧⌘F in folder scope; ⌘E uses the
@@ -302,15 +307,19 @@ you switch targets or edit the content while it runs, Fastra stops safely and
 does not insert into another document.
 
 **Inserting images:** Pasting an image from the clipboard (⌘V) stores it
-as a file **next to the document** (`documentname-YYYY-MM-DD-hhmmss.png`;
-PNG/JPEG/GIF keep their format, everything else becomes PNG) and links
-it relatively at the cursor position. **Dragging an image file** into
-the Markdown editor keeps its original filename and copies it unchanged
-into the `images` subfolder (name
-collision → suffix; a byte-identical file is not duplicated) and links
-it relatively as well — other files open in a tab as usual. After
-inserting, the preview scrolls to the insertion point. Unsaved documents
-have no folder yet — save first (⌘S).
+as a file in the `images` subfolder
+(`documentname-YYYY-MM-DD-hhmmss.png`; PNG/JPEG/GIF keep their format,
+everything else becomes PNG) and links it relatively at the cursor position.
+**Dragging an image file** keeps its original filename and copies it unchanged
+into the same subfolder (name collision → suffix; a byte-identical file is not
+duplicated) and links it relatively as well — other files open in a tab as
+usual. While dragging, the editor shows the actual text insertion point and
+keeps scrolling at the top or bottom edge. After inserting, the preview scrolls
+to the insertion point. Unsaved documents have no folder yet — save first (⌘S).
+
+For such a paste or drop, ⌘Z removes both the link and the new image file that
+Fastra created; Redo restores both. An existing file or one placed in the file
+system and linked manually is never removed.
 
 Fastra publishes an image file only after the copy is complete and never
 overwrites a file created concurrently. If the real `images` folder is
@@ -586,6 +595,10 @@ folder. The sidebar header shows the project name (tooltip: full path);
 projects quickly, and the right-click menu offers “Show in Finder” and
 more. **⌘-click a document tab** shows the file’s macOS path menu. The
 file tree can create, rename, and trash files and folders.
+It can also duplicate an item: the copy gets “copy” and, when needed, a running
+number before its extension and opens immediately as the active tab. A saved
+tab's right-click menu contains the same file actions; options that need a file
+stay disabled on an unsaved tab.
 
 **Filtering files:** The filter field above the file tree filters live
 by file name (substring, case-insensitive — deliberately no fuzzy
@@ -667,6 +680,11 @@ getting hit. ⌘J jumps to a line number.
 Switching tabs keeps each tab's insertion point **and** its visible section:
 switching back shows the text exactly where you left it. A deliberate jump — a
 search hit or ⌘J — takes precedence and scrolls to the target as usual.
+
+After opening or closing a document and on every tab switch, the tab bar scrolls
+until the active tab is fully visible. Between those changes, a horizontal
+position you chose manually is left untouched. The tab's right-click menu also
+offers Save, Close This Tab, and Close Other Tabs.
 
 A dot in the tab indicates unsaved changes. It disappears again as soon as
 the content exactly matches the saved state — whether via Undo or by

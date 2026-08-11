@@ -9,6 +9,47 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.71.0] — 2026-08-11
+
+### Hinzugefügt
+
+- **„Speichern unter“ bietet eine Formatauswahl:** Fastra schlägt für neue
+  Text- und Markdown-Dateien `.txt` beziehungsweise `.md` vor. Das Menü enthält
+  alle gebündelten Syntaxsprachen sowie CSV und XML, setzt beim Wechsel die
+  passende Endung und lässt weiterhin jede eigene Endung von Hand zu.
+- **Dateien lassen sich duplizieren:** Das Rechtsklickmenü im Dateibaum erzeugt
+  kollisionsfreie Namen wie `Notiz Kopie.md` und `Notiz Kopie 2.md` und öffnet
+  die Kopie sofort. Dokument-Tabs besitzen nun dieselben Dateiaktionen sowie
+  „Speichern“, „Diesen Tab schließen“ und „Andere Tabs schließen“; ohne
+  gespeicherte Datei bleiben unpassende Aktionen sichtbar deaktiviert.
+
+### Verbessert
+
+- **Umbenennen beginnt mit dem vorhandenen, vollständig markierten Namen:**
+  Direktes Tippen ersetzt ihn; Pfeil rechts setzt den Cursor ans Ende, wenn nur
+  etwas angehängt werden soll.
+- **Der aktive Tab bleibt vollständig sichtbar:** Nach Öffnen, Schließen oder
+  Dokumentwechsel scrollt die Tab-Leiste zum aktiven Dokument. Eine manuell
+  gewählte Scrollposition bleibt bis zu einer solchen Änderung erhalten.
+- **Die aktuelle Zeile ist in Hell und Dunkel klarer erkennbar:** Der
+  kontrastreichere Hintergrund läuft auch durch die Zeilennummern-Spalte. Im
+  Hellmodus setzt sich eine Textauswahl als helleres Blau klar davon ab; die
+  bewährte dunkle Darstellung bleibt unverändert.
+
+### Behoben
+
+- **Klammerartige Fließtextzeilen lösen keine Code-Einrückung mehr aus:** In
+  `.txt`- und Markdown-Dateien wird eine Zeile wie `(1,5) …` nach Return nicht
+  vier Zeichen eingerückt; eine leere unmittelbare Vorzeile setzt eine zuvor
+  vorhandene Einrückung zuverlässig zurück.
+- **Markdown-Bilder landen einheitlich unter `images`:** Das gilt für
+  Zwischenablage und Drag-and-drop. Beim Ziehen zeigt der Editor die wirkliche
+  Einfügemarke, folgt der Mausposition und scrollt am oberen oder unteren Rand.
+- **Rückgängig umfasst eingefügte Bilddateien:** ⌘Z entfernt neben dem von
+  Fastra eingefügten Link nur die bei genau diesem Paste/Drop neu erzeugte
+  Datei; ⌘⇧Z stellt beides wieder her. Bereits vorhandene oder manuell
+  verlinkte Dateien bleiben unangetastet.
+
 ## [v1.70.1] — 2026-08-11
 
 ### Behoben
