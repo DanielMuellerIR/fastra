@@ -16,6 +16,7 @@
 // gepostet, nicht über die Systemsteuerung simuliert.
 
 import AppKit
+import CoreGraphics
 import Darwin
 import PDFKit
 import WebKit
@@ -28,6 +29,19 @@ import CodeEditTextView
 // (erkannte Sprache, tree-sitter-Grammatik, Query-Pfad).
 import CodeEditLanguages
 import Sparkle
+
+/// Hält die TCC-Entscheidung getrennt vom Prozessstart. Die Systemaufnahme-
+/// Closure wird ohne bestehende Freigabe überhaupt nicht ausgewertet.
+enum SelfTestCaptureRouting {
+    static func capture<Value>(
+        screenCaptureAllowed: Bool,
+        systemCapture: () -> Value?,
+        fallback: () -> Value?
+    ) -> Value? {
+        guard screenCaptureAllowed else { return fallback() }
+        return systemCapture() ?? fallback()
+    }
+}
 
 enum SelfTest {
     /// Pro Selbsttest-Prozess genau eine isolierte Defaults-Suite. Mehrere
@@ -8381,6 +8395,18 @@ enum SelfTest {
     /// Zeichnung, weil `CALayer.render(in:)` vorhandene Inhalte verwendet
     /// statt neu durch `draw(_:)` zu gehen.
     private static func typeScrollCapture(window: NSWindow) -> Data? {
+        // `screencapture` öffnet ohne bestehende TCC-Freigabe einen modalen
+        // Systemdialog im Namen von Fastra. Der stiehlt späteren Fenstertests
+        // den Fokus und wird bei neu gebauten Debug-Bundles erneut nötig.
+        // Die reine Vorabprüfung fragt niemals nach einer Berechtigung.
+        SelfTestCaptureRouting.capture(
+            screenCaptureAllowed: CGPreflightScreenCaptureAccess(),
+            systemCapture: { typeScrollSystemCapture(window: window) },
+            fallback: { typeScrollLayerSnapshot(window: window) }
+        )
+    }
+
+    private static func typeScrollSystemCapture(window: NSWindow) -> Data? {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("fastra-typescroll-\(UUID().uuidString).png")
         defer { try? FileManager.default.removeItem(at: url) }
@@ -8390,10 +8416,10 @@ enum SelfTest {
         do {
             try capture.run()
             capture.waitUntilExit()
-        } catch { return typeScrollLayerSnapshot(window: window) }
+        } catch { return nil }
         guard capture.terminationStatus == 0,
               let data = try? Data(contentsOf: url) else {
-            return typeScrollLayerSnapshot(window: window)
+            return nil
         }
         return data
     }

@@ -67,6 +67,7 @@ fastra_test_start_new_session swift test "$@"; then
     exit 2
 fi
 TEST_PROCESS_PID="$FASTRA_TEST_STARTED_PID"
+fastra_test_adopt_started_session || exit 2
 wait "$TEST_PROCESS_PID"
 test_status=$?
 exit "$test_status"

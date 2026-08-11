@@ -14,6 +14,14 @@ private struct PerformanceToolResult {
     let output: String
 }
 
+private func canonicalPath(for url: URL) -> String? {
+    url.path.withCString { source in
+        guard let resolved = realpath(source, nil) else { return nil }
+        defer { free(resolved) }
+        return String(cString: resolved)
+    }
+}
+
 private func runPerformanceTool(_ executable: String,
                                 arguments: [String],
                                 environment: [String: String]? = nil) throws
@@ -40,6 +48,312 @@ private func runPerformanceTool(_ executable: String,
 
 @Suite("Lokale Selbsttest-Performance", .serialized)
 struct SelfTestPerformanceTests {
+    @Test("Fehlende Bildschirmfreigabe startet kein Aufnahme-Werkzeug")
+    func deniedScreenCaptureUsesOnlyFallback() {
+        var systemCalls = 0
+        var fallbackCalls = 0
+        let denied: String? = SelfTestCaptureRouting.capture(
+            screenCaptureAllowed: false,
+            systemCapture: {
+                systemCalls += 1
+                return "system"
+            },
+            fallback: {
+                fallbackCalls += 1
+                return "fallback"
+            }
+        )
+        #expect(denied == "fallback")
+        #expect(systemCalls == 0)
+        #expect(fallbackCalls == 1)
+
+        let allowed: String? = SelfTestCaptureRouting.capture(
+            screenCaptureAllowed: true,
+            systemCapture: {
+                systemCalls += 1
+                return "system"
+            },
+            fallback: {
+                fallbackCalls += 1
+                return "fallback"
+            }
+        )
+        #expect(allowed == "system")
+        #expect(systemCalls == 1)
+        #expect(fallbackCalls == 1)
+    }
+
+    @Test("LaunchServices-Abmeldung schützt installierte und fremde Bundles")
+    func launchServicesCleanupRejectsUnsafeBundles() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-ls-safety-test-\(UUID().uuidString)")
+        let wrongApp = root.appendingPathComponent("Wrong.app")
+        let wrongInfo = wrongApp.appendingPathComponent("Contents/Info.plist")
+        let protectedApplications = root.appendingPathComponent("Applications")
+        let protectedApp = protectedApplications.appendingPathComponent("Fastra.app")
+        let applicationsLink = root.appendingPathComponent("Applications-link.app")
+        let fakeLSRegister = root.appendingPathComponent("lsregister")
+        let probe = root.appendingPathComponent("calls.txt")
+        let helper = performanceToolsDirectory.appendingPathComponent("test-sandbox.sh")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(
+            at: wrongInfo.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        let infoData = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "example.not-fastra"],
+            format: .xml,
+            options: 0
+        )
+        try infoData.write(to: wrongInfo)
+        try FileManager.default.createDirectory(
+            at: protectedApp, withIntermediateDirectories: true
+        )
+        try FileManager.default.createSymbolicLink(
+            at: applicationsLink, withDestinationURL: protectedApp
+        )
+        try "#!/bin/bash\nprintf '%s\\n' \"$@\" >> \"$FASTRA_TEST_LSREGISTER_LOG\"\n"
+            .write(to: fakeLSRegister, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: fakeLSRegister.path
+        )
+
+        let script = """
+        set -u
+        . "$1"
+        FASTRA_TEST_LSREGISTER="$2"
+        FASTRA_TEST_LSREGISTER_LOG="$3"
+        ! unregister_fastra_test_bundle_from_launch_services "$4" || exit 91
+        canonical_link=$(cd "$5" && pwd -P) || exit 92
+        canonical_root=$(cd "$6" && pwd -P) || exit 93
+        fastra_test_bundle_path_is_protected "$canonical_link" "$canonical_root" \
+          || exit 94
+        fastra_test_bundle_path_is_protected /Applications || exit 95
+        [ ! -e "$3" ] || exit 96
+        """
+        let result = try runPerformanceTool(
+            "/bin/bash",
+            arguments: [
+                "-c", script, "ls-safety", helper.path, fakeLSRegister.path,
+                probe.path, wrongApp.path, applicationsLink.path,
+                protectedApplications.path,
+            ]
+        )
+        #expect(result.status == 0, "LaunchServices-Schutz: \(result.output)")
+    }
+
+    @Test("Portabilitäts-Frühfehler meldet kein nie gestartetes Bundle ab")
+    func portableRunnerDoesNotUnregisterBeforeStart() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-portable-early-test-\(UUID().uuidString)")
+        let sandboxParent = root.appendingPathComponent("sandboxes")
+        let fakeApp = root.appendingPathComponent("Fastra.app")
+        let fakeBinary = fakeApp.appendingPathComponent("Contents/MacOS/Fastra")
+        let fakeInfo = fakeApp.appendingPathComponent("Contents/Info.plist")
+        let resources = root.appendingPathComponent("empty-resources")
+        let fakeLSRegister = root.appendingPathComponent("lsregister")
+        let launchProbe = root.appendingPathComponent("launch.txt")
+        let unregisterProbe = root.appendingPathComponent("unregister.txt")
+        let runner = performanceToolsDirectory.deletingLastPathComponent()
+            .appendingPathComponent("verify-portable-app.sh")
+        defer { try? FileManager.default.removeItem(at: root) }
+        for directory in [sandboxParent, fakeBinary.deletingLastPathComponent(), resources] {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+        }
+        let infoData = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "de.dm0.fastra"],
+            format: .xml,
+            options: 0
+        )
+        try infoData.write(to: fakeInfo)
+        try "#!/bin/bash\ntouch \"$FASTRA_TEST_LAUNCH_PROBE\"\nexit 90\n"
+            .write(to: fakeBinary, atomically: true, encoding: .utf8)
+        try "#!/bin/bash\nprintf '%s\\n' \"$@\" >> \"$FASTRA_TEST_LSREGISTER_LOG\"\n"
+            .write(to: fakeLSRegister, atomically: true, encoding: .utf8)
+        for executable in [fakeBinary, fakeLSRegister] {
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o755], ofItemAtPath: executable.path
+            )
+        }
+
+        let result = try runPerformanceTool(
+            "/bin/bash", arguments: [runner.path, fakeApp.path, resources.path],
+            environment: [
+                "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+                "FASTRA_TEST_LAUNCH_PROBE": launchProbe.path,
+                "FASTRA_TEST_LSREGISTER": fakeLSRegister.path,
+                "FASTRA_TEST_LSREGISTER_LOG": unregisterProbe.path,
+            ]
+        )
+        #expect(result.status == 1, "Erwarteter Ressourcen-Frühfehler: \(result.output)")
+        #expect(!FileManager.default.fileExists(atPath: launchProbe.path))
+        #expect(!FileManager.default.fileExists(atPath: unregisterProbe.path))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: sandboxParent.path).isEmpty)
+    }
+
+    @Test("Direkter Selbsttest meldet nur das Bundle seines überschriebenen Binarys ab")
+    func directSelftestUnregistersActualExecutableBundle() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-direct-bundle-test-\(UUID().uuidString)")
+        let sandboxParent = root.appendingPathComponent("sandboxes")
+        let lock = root.appendingPathComponent("gui.lock")
+        let fakeApp = root.appendingPathComponent("Alternate.app")
+        let fakeBinary = fakeApp.appendingPathComponent("Contents/MacOS/Fastra")
+        let fakeInfo = fakeApp.appendingPathComponent("Contents/Info.plist")
+        let fakeLSRegister = root.appendingPathComponent("lsregister")
+        let unregisterProbe = root.appendingPathComponent("unregister.txt")
+        let runner = performanceToolsDirectory.deletingLastPathComponent()
+            .appendingPathComponent("selftest.sh")
+        defer { try? FileManager.default.removeItem(at: root) }
+        for directory in [sandboxParent, fakeBinary.deletingLastPathComponent()] {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+        }
+        let infoData = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "de.dm0.fastra"],
+            format: .xml,
+            options: 0
+        )
+        try infoData.write(to: fakeInfo)
+        try """
+        #!/bin/bash
+        echo 'SELFTEST-METRIC test=search app_ms=1' >&2
+        echo 'SELFTEST search: PASS — Probe' >&2
+        """.write(to: fakeBinary, atomically: true, encoding: .utf8)
+        try "#!/bin/bash\nprintf '%s\\n' \"$@\" >> \"$FASTRA_TEST_LSREGISTER_LOG\"\n"
+            .write(to: fakeLSRegister, atomically: true, encoding: .utf8)
+        for executable in [fakeBinary, fakeLSRegister] {
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o755], ofItemAtPath: executable.path
+            )
+        }
+
+        let result = try runPerformanceTool(
+            "/bin/bash", arguments: [runner.path, "search"], environment: [
+                "FASTRA_GUI_LOCK_DIR": lock.path,
+                "FASTRA_SELFTEST_APP_BIN": fakeBinary.path,
+                "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+                "FASTRA_TEST_LSREGISTER": fakeLSRegister.path,
+                "FASTRA_TEST_LSREGISTER_LOG": unregisterProbe.path,
+            ]
+        )
+        #expect(result.status == 0, "Direkter Selbsttest: \(result.output)")
+        let unregisterArguments = try String(
+            contentsOf: unregisterProbe, encoding: .utf8
+        ).split(whereSeparator: \Character.isNewline).map(String.init)
+        let canonicalFakeApp = try #require(canonicalPath(for: fakeApp))
+        #expect(unregisterArguments == ["-u", canonicalFakeApp])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: sandboxParent.path).isEmpty)
+    }
+
+    @Test("LaunchServices-Signal meldet nur den belegten Test-Bundlepfad ab")
+    func launchServicesSignalTracksBundleBeforeNormalBookkeeping() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-ls-signal-test-\(UUID().uuidString)")
+        let sandboxParent = root.appendingPathComponent("sandboxes")
+        let lock = root.appendingPathComponent("gui.lock")
+        let fakeApp = root.appendingPathComponent("Signal.app")
+        let fakeBinary = fakeApp.appendingPathComponent("Contents/MacOS/Fastra")
+        let fakeInfo = fakeApp.appendingPathComponent("Contents/Info.plist")
+        let fakeOpen = root.appendingPathComponent("open")
+        let fakeLSRegister = root.appendingPathComponent("lsregister")
+        let childPIDFile = root.appendingPathComponent("child.pid")
+        let childCommandFile = root.appendingPathComponent("child-command.txt")
+        let unregisterProbe = root.appendingPathComponent("unregister.txt")
+        let runner = performanceToolsDirectory.deletingLastPathComponent()
+            .appendingPathComponent("selftest.sh")
+        var canonicalFakeBinary: String?
+        defer {
+            if let pid = try? String(contentsOf: childPIDFile, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+               let childPID = Int32(pid), kill(childPID, 0) == 0,
+               let command = try? runPerformanceTool(
+                   "/bin/ps", arguments: ["-p", "\(childPID)", "-o", "command="]
+               ), command.output.contains(canonicalFakeBinary ?? fakeBinary.path) {
+                kill(childPID, SIGKILL)
+                for _ in 0..<100 where kill(childPID, 0) == 0 { usleep(10_000) }
+            }
+            try? FileManager.default.removeItem(at: root)
+        }
+        for directory in [sandboxParent, fakeBinary.deletingLastPathComponent()] {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+        }
+        let infoData = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "de.dm0.fastra"],
+            format: .xml,
+            options: 0
+        )
+        try infoData.write(to: fakeInfo)
+        try FileManager.default.copyItem(
+            at: URL(fileURLWithPath: "/usr/bin/yes"), to: fakeBinary
+        )
+        try """
+        #!/bin/bash
+        "$FASTRA_TEST_OPEN_APP/Contents/MacOS/Fastra" -selftest cmdw -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
+        printf '%s\n' "$!" > "$FASTRA_TEST_CHILD_PID"
+        sleep .05
+        ps -ww -p "$!" -o command= > "$FASTRA_TEST_CHILD_COMMAND"
+        # Bash führt den Trap nach Rückkehr dieses `open`-Ersatzes aus: exakt
+        # vor der normalen track_started_app_bundle-Zeile des Runners.
+        kill -TERM "$PPID"
+        """.write(to: fakeOpen, atomically: true, encoding: .utf8)
+        try "#!/bin/bash\nprintf '%s\\n' \"$@\" >> \"$FASTRA_TEST_LSREGISTER_LOG\"\n"
+            .write(to: fakeLSRegister, atomically: true, encoding: .utf8)
+        for executable in [fakeBinary, fakeOpen, fakeLSRegister] {
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o755], ofItemAtPath: executable.path
+            )
+        }
+
+        let canonicalFakeApp = try #require(canonicalPath(for: fakeApp))
+        canonicalFakeBinary = canonicalFakeApp + "/Contents/MacOS/Fastra"
+        let result = try runPerformanceTool(
+            "/bin/bash", arguments: [runner.path, "cmdw"], environment: [
+                "FASTRA_GUI_LOCK_DIR": lock.path,
+                "FASTRA_SELFTEST_APP_BIN": fakeBinary.path,
+                "FASTRA_SELFTEST_APP_BUNDLE": fakeApp.path,
+                "FASTRA_TEST_OPEN_COMMAND": fakeOpen.path,
+                "FASTRA_TEST_OPEN_APP": canonicalFakeApp,
+                "FASTRA_TEST_CHILD_PID": childPIDFile.path,
+                "FASTRA_TEST_CHILD_COMMAND": childCommandFile.path,
+                "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+                "FASTRA_TEST_LSREGISTER": fakeLSRegister.path,
+                "FASTRA_TEST_LSREGISTER_LOG": unregisterProbe.path,
+                "FASTRA_SELFTEST_TEST_CONSOLE_UNLOCKED": "1",
+            ]
+        )
+        // Der injizierte TERM-Abbruch ist beabsichtigt; entscheidend ist, dass
+        // Prozess-, Sandbox- und LaunchServices-Cleanup vollständig liefen.
+        #expect(result.status != 0)
+        let childCommand = (try? String(
+            contentsOf: childCommandFile, encoding: .utf8
+        )) ?? "<kein Prozessbeleg>"
+        try #require(
+            FileManager.default.fileExists(atPath: unregisterProbe.path),
+            "Runner-Ausgabe: \(result.output); Prozess: \(childCommand)"
+        )
+        let unregisterArguments = try String(
+            contentsOf: unregisterProbe, encoding: .utf8
+        ).split(whereSeparator: \Character.isNewline).map(String.init)
+        #expect(unregisterArguments == ["-u", canonicalFakeApp])
+        guard let childPID = Int32(
+            try String(contentsOf: childPIDFile, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        ) else {
+            Issue.record("LaunchServices-Kindprozess-PID ist ungültig")
+            return
+        }
+        errno = 0
+        #expect(kill(childPID, 0) == -1 && errno == ESRCH)
+        #expect(try FileManager.default.contentsOfDirectory(
+            atPath: sandboxParent.path
+        ).isEmpty)
+    }
+
     @Test("Prozesszuordnung verlangt den vollständigen Selbsttestnamen")
     func processMatchingUsesWholeSelfTestName() throws {
         let helper = performanceToolsDirectory
@@ -167,6 +481,355 @@ struct SelfTestPerformanceTests {
         #expect(result.status == 0, "Prozessbaum-Helfer: \(result.output)")
     }
 
+    @Test("Signal nach Prozessfreigabe räumt auch vor der Übernahme auf")
+    func pendingProcessStartRemainsOwnedUntilAdoption() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-pending-start-test-\(UUID().uuidString)")
+        let sandbox = root.appendingPathComponent("sandbox")
+        let temporaryDirectory = sandbox.appendingPathComponent("tmp")
+        let ready = root.appendingPathComponent("runner-ready")
+        let childPIDFile = root.appendingPathComponent("child.pid")
+        let marker = root.appendingPathComponent("unique-child-marker")
+        let helper = performanceToolsDirectory
+            .appendingPathComponent("test-process-tree.sh")
+        var childPID: pid_t?
+        let process = Process()
+        defer {
+            if process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+                process.waitUntilExit()
+            }
+            // Auch ein Fehler VOR der normalen Swift-Buchhaltung darf die
+            // absichtlich TERM-resistente Fixture nicht verlieren.
+            let cleanupPID = childPID ?? (try? String(
+                contentsOf: childPIDFile, encoding: .utf8
+            )).flatMap {
+                Int32($0.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+            if let cleanupPID, kill(cleanupPID, 0) == 0,
+               let command = try? runPerformanceTool(
+                   "/bin/ps", arguments: ["-p", "\(cleanupPID)", "-o", "command="]
+               ), command.output.contains(marker.path) {
+                let group = getpgid(cleanupPID)
+                if group > 1 { kill(-group, SIGKILL) }
+                for _ in 0..<100 where kill(cleanupPID, 0) == 0 { usleep(10_000) }
+            }
+            try? FileManager.default.removeItem(at: root)
+        }
+        try FileManager.default.createDirectory(
+            at: temporaryDirectory, withIntermediateDirectories: true
+        )
+
+        let script = """
+        set -u
+        . "$1"
+        FASTRA_TEST_TMPDIR="$2"
+        ready="$3"
+        child_pid_file="$4"
+        marker="$5"
+        cleanup_pending_start() {
+          trap - EXIT INT TERM
+          target="${FASTRA_TEST_PENDING_PID:-}"
+          [[ "$target" =~ ^[0-9]+$ ]] || exit 92
+          terminate_fastra_test_process_trees "$target" || exit 93
+          wait "$target" 2>/dev/null || true
+          fastra_test_discard_pending_session || exit 94
+          exit 143
+        }
+        trap cleanup_pending_start TERM
+        fastra_test_start_new_session /bin/bash -c 'trap "" TERM; printf "%s\\n" "$$" > "$1"; marker="$2"; while :; do sleep .1; done' pending-child "$child_pid_file" "$marker" || exit 91
+        # Absichtlich NICHT übernehmen: Genau hier lag das Signal-Fenster.
+        : > "$ready"
+        while :; do sleep .1; done
+        """
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [
+            "-c", script, "pending-start", helper.path, temporaryDirectory.path,
+            ready.path, childPIDFile.path, marker.path,
+        ]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+
+        let readyDeadline = Date().addingTimeInterval(4)
+        while (!FileManager.default.fileExists(atPath: ready.path)
+               || !FileManager.default.fileExists(atPath: childPIDFile.path)),
+              Date() < readyDeadline {
+            usleep(20_000)
+        }
+        try #require(FileManager.default.fileExists(atPath: ready.path))
+        guard let parsedChildPID = Int32(
+            try String(contentsOf: childPIDFile, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        ) else {
+            Issue.record("Kindprozess-PID ist ungültig")
+            return
+        }
+        childPID = parsedChildPID
+
+        #expect(kill(process.processIdentifier, SIGTERM) == 0)
+        let exitDeadline = Date().addingTimeInterval(5)
+        while process.isRunning, Date() < exitDeadline { usleep(20_000) }
+        let timedOut = process.isRunning
+        if timedOut { kill(process.processIdentifier, SIGKILL) }
+        process.waitUntilExit()
+        #expect(!timedOut, "Signal-Cleanup des freigegebenen Starts hing")
+        #expect(process.terminationStatus == 143)
+        if let childPID {
+            errno = 0
+            #expect(kill(childPID, 0) == -1 && errno == ESRCH,
+                    "Freigegebener Testprozess blieb nach dem Signal aktiv")
+        }
+        #expect(try FileManager.default.contentsOfDirectory(
+            atPath: temporaryDirectory.path
+        ).isEmpty)
+    }
+
+    @Test("Signal während Handshake-Löschung bleibt ein sicherer No-op")
+    func pendingHandshakeDiscardIsSignalSafe() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-discard-signal-test-\(UUID().uuidString)")
+        let temporaryDirectory = root.appendingPathComponent("tmp")
+        let handshake = temporaryDirectory.appendingPathComponent("process-start.fixture")
+        let bin = root.appendingPathComponent("bin")
+        let fakeRemove = bin.appendingPathComponent("rm")
+        let helper = performanceToolsDirectory
+            .appendingPathComponent("test-process-tree.sh")
+        defer { try? FileManager.default.removeItem(at: root) }
+        for directory in [handshake, bin] {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+        }
+        try """
+        #!/bin/bash
+        /bin/rm "$@" || exit $?
+        kill -TERM "$PPID"
+        """.write(to: fakeRemove, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: fakeRemove.path
+        )
+
+        let script = """
+        set -u
+        . "$1"
+        FASTRA_TEST_TMPDIR="$2"
+        FASTRA_TEST_PENDING_PID=424242
+        FASTRA_TEST_PENDING_HANDSHAKE="$3"
+        FASTRA_TEST_PENDING_BUNDLE=/tmp/Fastra.app
+        cleanup_discard() {
+          trap - EXIT INT TERM
+          fastra_test_discard_pending_session || exit 92
+          [ -z "$FASTRA_TEST_PENDING_PID" ] || exit 93
+          [ -z "$FASTRA_TEST_PENDING_HANDSHAKE" ] || exit 94
+          [ -z "$FASTRA_TEST_PENDING_BUNDLE" ] || exit 95
+          exit 143
+        }
+        trap cleanup_discard TERM
+        PATH="$4:$PATH"
+        fastra_test_discard_pending_session || exit 91
+        exit 96
+        """
+        let result = try runPerformanceTool(
+            "/bin/bash", arguments: [
+                "-c", script, "discard-signal", helper.path,
+                temporaryDirectory.path, handshake.path, bin.path,
+            ]
+        )
+        #expect(result.status == 143, "Handshake-Signal: \(result.output)")
+        #expect(!FileManager.default.fileExists(atPath: handshake.path))
+    }
+
+    @Test("Soak-Hilfsprozess bleibt während der Übernahme global gebunden")
+    func soakHelperRemainsOwnedDuringAdoption() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-soak-helper-signal-test-\(UUID().uuidString)")
+        let temporaryDirectory = root.appendingPathComponent("tmp")
+        let bin = root.appendingPathComponent("bin")
+        let fakeRemove = bin.appendingPathComponent("rm")
+        let childPIDFile = root.appendingPathComponent("child.pid")
+        let marker = root.appendingPathComponent("unique-soak-helper-marker")
+        let helper = performanceToolsDirectory
+            .appendingPathComponent("test-process-tree.sh")
+        let soakState = performanceToolsDirectory
+            .appendingPathComponent("soak-process-state.sh")
+        defer {
+            if let value = try? String(contentsOf: childPIDFile, encoding: .utf8),
+               let pid = Int32(value.trimmingCharacters(in: .whitespacesAndNewlines)),
+               kill(pid, 0) == 0,
+               let command = try? runPerformanceTool(
+                   "/bin/ps", arguments: ["-p", "\(pid)", "-o", "command="]
+               ), command.output.contains(marker.path) {
+                let group = getpgid(pid)
+                if group > 1 { kill(-group, SIGKILL) }
+                for _ in 0..<100 where kill(pid, 0) == 0 { usleep(10_000) }
+            }
+            try? FileManager.default.removeItem(at: root)
+        }
+        for directory in [temporaryDirectory, bin] {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+        }
+        try """
+        #!/bin/bash
+        /bin/rm "$@" || exit $?
+        kill -TERM "$PPID"
+        """.write(to: fakeRemove, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: fakeRemove.path
+        )
+
+        let script = """
+        set -u
+        . "$1"
+        . "$2"
+        FASTRA_TEST_TMPDIR="$3"
+        child_pid_file="$4"
+        marker="$5"
+        cleanup_soak_helper() {
+          trap - EXIT INT TERM
+          target="${SOAK_PHASE_PID:-}"
+          [[ "$target" =~ ^[0-9]+$ ]] || exit 92
+          terminate_fastra_test_process_trees "$target" || exit 93
+          wait "$target" 2>/dev/null || true
+          fastra_test_discard_pending_session || exit 94
+          exit 143
+        }
+        trap cleanup_soak_helper TERM
+        fastra_test_start_new_session /bin/bash -c 'trap "" TERM; printf "%s\\n" "$$" > "$1"; marker="$2"; while :; do sleep .1; done' soak-helper "$child_pid_file" "$marker" || exit 91
+        SOAK_PHASE_PID="$FASTRA_TEST_STARTED_PID"
+        PATH="$6:$PATH"
+        adopt_soak_process "$SOAK_PHASE_PID" || exit 95
+        exit 96
+        """
+        let result = try runPerformanceTool(
+            "/bin/bash", arguments: [
+                "-c", script, "soak-helper", helper.path, soakState.path,
+                temporaryDirectory.path, childPIDFile.path, marker.path, bin.path,
+            ]
+        )
+        #expect(result.status == 143, "Soak-Hilfsprozess-Signal: \(result.output)")
+        guard let childPID = Int32(
+            try String(contentsOf: childPIDFile, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        ) else {
+            Issue.record("Soak-Hilfsprozess-PID ist ungültig")
+            return
+        }
+        errno = 0
+        #expect(kill(childPID, 0) == -1 && errno == ESRCH,
+                "Soak-Hilfsprozess blieb nach dem Signal aktiv")
+        #expect(try FileManager.default.contentsOfDirectory(
+            atPath: temporaryDirectory.path
+        ).isEmpty)
+    }
+
+    @Test("Soak-Adoptionsfehler beendet den Helfer und sperrt Folgestarts")
+    func soakAdoptionFailureStopsHelperAndFollowups() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-soak-adopt-failure-\(UUID().uuidString)")
+        let temporaryDirectory = root.appendingPathComponent("tmp")
+        let bin = root.appendingPathComponent("bin")
+        let fakeRemove = bin.appendingPathComponent("rm")
+        let childPIDFile = root.appendingPathComponent("child.pid")
+        let marker = root.appendingPathComponent("unique-soak-adopt-marker")
+        let processHelper = performanceToolsDirectory
+            .appendingPathComponent("test-process-tree.sh")
+        let soakState = performanceToolsDirectory
+            .appendingPathComponent("soak-process-state.sh")
+        defer {
+            if let value = try? String(contentsOf: childPIDFile, encoding: .utf8),
+               let pid = Int32(value.trimmingCharacters(in: .whitespacesAndNewlines)),
+               kill(pid, 0) == 0,
+               let command = try? runPerformanceTool(
+                   "/bin/ps", arguments: ["-p", "\(pid)", "-o", "command="]
+               ), command.output.contains(marker.path) {
+                let group = getpgid(pid)
+                if group > 1 { kill(-group, SIGKILL) }
+                for _ in 0..<100 where kill(pid, 0) == 0 { usleep(10_000) }
+            }
+            try? FileManager.default.removeItem(at: root)
+        }
+        for directory in [temporaryDirectory, bin] {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+        }
+        try "#!/bin/bash\nexit 73\n"
+            .write(to: fakeRemove, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: fakeRemove.path
+        )
+
+        let script = """
+        set -u
+        . "$1"
+        . "$2"
+        FASTRA_TEST_TMPDIR="$3"
+        child_pid_file="$4"
+        marker="$5"
+        fastra_test_start_new_session /bin/bash -c 'trap "" TERM; printf "%s\\n" "$$" > "$1"; marker="$2"; while :; do sleep .1; done' soak-adopt "$child_pid_file" "$marker" || exit 91
+        SOAK_PHASE_PID="$FASTRA_TEST_STARTED_PID"
+        PATH="$6:$PATH"
+        adopt_soak_process "$SOAK_PHASE_PID" && exit 92
+        [ "$SOAK_ABORT_FOLLOWING_PHASES" -eq 1 ] || exit 93
+        [ -z "$SOAK_PHASE_PID" ] || exit 94
+        ! fastra_test_pid_is_live "$(cat "$child_pid_file")" || exit 95
+        ! soak_followup_is_safe || exit 96
+        SOAK_ABORT_FOLLOWING_PHASES=0
+        SOAK_PROCESS_CLEANUP_BLOCKED=1
+        ! soak_followup_is_safe || exit 97
+        [ -z "$FASTRA_TEST_PENDING_PID" ] || exit 98
+        """
+        let result = try runPerformanceTool(
+            "/bin/bash", arguments: [
+                "-c", script, "soak-adopt", processHelper.path, soakState.path,
+                temporaryDirectory.path, childPIDFile.path, marker.path, bin.path,
+            ]
+        )
+        #expect(result.status == 0, "Soak-Adoptionsfehler: \(result.output)")
+        guard let childPID = Int32(
+            try String(contentsOf: childPIDFile, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        ) else {
+            Issue.record("Soak-Adoptionsfehler-PID ist ungültig")
+            return
+        }
+        errno = 0
+        #expect(kill(childPID, 0) == -1 && errno == ESRCH)
+    }
+
+    @Test("Soak-Exit-Cleanup wiederholt eine fehlgeschlagene Prozessbeendigung")
+    func soakExitCleanupRetriesFailedTermination() throws {
+        let soakState = performanceToolsDirectory
+            .appendingPathComponent("soak-process-state.sh")
+        let script = """
+        set -u
+        attempts=0
+        terminate_fastra_test_process_trees() {
+          attempts=$((attempts + 1))
+          [ "$attempts" -ge 2 ]
+        }
+        . "$1"
+        SOAK_PHASE_PID=4242
+        cleanup_soak_process "$SOAK_PHASE_PID" && exit 91
+        [ "$SOAK_PROCESS_CLEANUP_BLOCKED" -eq 1 ] || exit 92
+        [ "${#SOAK_REMAINING_PIDS[@]}" -eq 1 ] || exit 93
+        ! soak_followup_is_safe || exit 94
+        retry_soak_cleanup_failures || exit 95
+        [ "$attempts" -eq 2 ] || exit 96
+        [ "$SOAK_PROCESS_CLEANUP_BLOCKED" -eq 0 ] || exit 97
+        [ "${#SOAK_REMAINING_PIDS[@]}" -eq 0 ] || exit 98
+        [ -z "$SOAK_PHASE_PID" ] || exit 99
+        soak_followup_is_safe || exit 100
+        """
+        let result = try runPerformanceTool(
+            "/bin/bash", arguments: ["-c", script, "soak-retry", soakState.path]
+        )
+        #expect(result.status == 0, "Soak-Exit-Retry: \(result.output)")
+    }
+
     @Test("Prozessbaum-Cleanup verschont eine wiederverwendete Root-PID")
     func processTreeCleanupRejectsMismatchedStartToken() throws {
         let helper = performanceToolsDirectory
@@ -278,6 +941,10 @@ struct SelfTestPerformanceTests {
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let fakeApp = root.appendingPathComponent("Fastra.app")
         let fakeBinary = fakeApp.appendingPathComponent("Contents/MacOS/Fastra")
+        let fakeInfo = fakeApp.appendingPathComponent("Contents/Info.plist")
+        let fakeTools = root.appendingPathComponent("bin")
+        let fakeLSRegister = fakeTools.appendingPathComponent("lsregister")
+        let launchServicesProbe = root.appendingPathComponent("lsregister.txt")
         let resources = root.appendingPathComponent("build-resources")
         let bundle = resources.appendingPathComponent("Probe.bundle")
         let bundleFile = bundle.appendingPathComponent("probe.txt")
@@ -309,12 +976,25 @@ struct SelfTestPerformanceTests {
             try? FileManager.default.removeItem(at: root)
         }
         for directory in [sandboxParent, fakeBinary.deletingLastPathComponent(),
-                          bundle, preferences, realPreferences] {
+                          fakeTools, bundle, preferences, realPreferences] {
             try FileManager.default.createDirectory(
                 at: directory, withIntermediateDirectories: true
             )
         }
         try Data("bundle bleibt erhalten".utf8).write(to: bundleFile)
+        let infoData = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "de.dm0.fastra"],
+            format: .xml,
+            options: 0
+        )
+        try infoData.write(to: fakeInfo)
+        try """
+        #!/bin/bash
+        printf '%s\n' "$@" >> "$FASTRA_TEST_LSREGISTER_LOG"
+        """.write(to: fakeLSRegister, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: fakeLSRegister.path
+        )
         try """
         #!/bin/bash
         [ "$CFPREFERENCES_AVOID_DAEMON" = "1" ] || exit 91
@@ -366,6 +1046,8 @@ struct SelfTestPerformanceTests {
                 "FASTRA_TEST_PROBE": probe.path,
                 "FASTRA_TEST_ORPHAN_PIDS": orphanPIDs.path,
                 "FASTRA_TEST_ORPHAN_MARKER": orphanMarker.path,
+                "FASTRA_TEST_LSREGISTER": fakeLSRegister.path,
+                "FASTRA_TEST_LSREGISTER_LOG": launchServicesProbe.path,
             ]
         )
         #expect(result.status == 0, "Portabilitäts-Runner: \(result.output)")
@@ -392,6 +1074,12 @@ struct SelfTestPerformanceTests {
         ).isEmpty)
         #expect(try String(contentsOf: bundleFile, encoding: .utf8)
             == "bundle bleibt erhalten")
+        let unregisterArguments = try String(
+            contentsOf: launchServicesProbe, encoding: .utf8
+        ).split(whereSeparator: \Character.isNewline).map(String.init)
+        let canonicalFakeApp = try #require(canonicalPath(for: fakeApp))
+        #expect(unregisterArguments == ["-u", canonicalFakeApp],
+                "Das direkte Test-Bundle muss am kanonischen Pfad abgemeldet werden")
         let recordedOrphans = try String(contentsOf: orphanPIDs, encoding: .utf8)
             .split(whereSeparator: \Character.isNewline)
             .compactMap { pid_t($0) }

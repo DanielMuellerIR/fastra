@@ -63,6 +63,7 @@ fi
 # einen zweiten, abweichenden LaunchServices-Runner zu duplizieren.
 APP_BIN="${FASTRA_SELFTEST_APP_BIN:-.build/debug/Fastra.app/Contents/MacOS/Fastra}"
 APP_BUNDLE="${FASTRA_SELFTEST_APP_BUNDLE:-.build/debug/Fastra.app}"
+OPEN_COMMAND="${FASTRA_TEST_OPEN_COMMAND:-/usr/bin/open}"
 if [[ "$APP_BUNDLE" == /* ]]; then
     APP_BUNDLE_FOR_OPEN="$APP_BUNDLE"
 else
@@ -132,6 +133,12 @@ escape_process_pattern() {
 }
 
 APP_BIN_ABSOLUTE="$(absolute_executable_path "$APP_BIN")"
+APP_BIN_BUNDLE_CANONICAL=""
+case "$APP_BIN_ABSOLUTE" in
+    */Contents/MacOS/Fastra)
+        APP_BIN_BUNDLE_CANONICAL="$(dirname "$(dirname "$(dirname "$APP_BIN_ABSOLUTE")")")"
+        ;;
+esac
 if [[ -x "$APP_BUNDLE_FOR_OPEN/Contents/MacOS/Fastra" ]]; then
     APP_BUNDLE_BIN_ABSOLUTE="$(absolute_executable_path "$APP_BUNDLE_FOR_OPEN/Contents/MacOS/Fastra")"
     APP_BUNDLE_CANONICAL="$(dirname "$(dirname "$(dirname "$APP_BUNDLE_BIN_ABSOLUTE")")")"
@@ -145,13 +152,16 @@ if [[ "$APP_BUNDLE_BIN_ABSOLUTE" != "$APP_BIN_ABSOLUTE" ]]; then
     APP_PROCESS_PATTERNS+=("^$(escape_process_pattern "$APP_BUNDLE_BIN_ABSOLUTE")([[:space:]]|$)")
 fi
 STARTED_PIDS=()
+STARTED_APP_BUNDLES=()
 CURRENT_TEST_NAME=""
-LAUNCH_SERVICES_USED=0
 
 # Gesperrter Bildschirm? Dann sind alle fensterbasierten Tests Umgebungs-
 # rauschen (siehe ../docs/BUILD-AND-TEST.md, Umgebungs-Falle 2). Nur `search` ist dann
 # aussagekräftig (fensterlos).
 console_locked() {
+    # Rein technische Runner-Integrationstests dürfen nicht vom zufälligen
+    # Sperrstatus des Test-Macs abhängen. Produktläufe setzen diesen Hook nie.
+    [ "${FASTRA_SELFTEST_TEST_CONSOLE_UNLOCKED:-0}" = "1" ] && return 1
     ioreg -n Root -d1 2>/dev/null | grep -q '"IOConsoleLocked" = Yes'
 }
 
@@ -200,6 +210,31 @@ track_started_pid() {
     STARTED_PIDS+=("$1")
 }
 
+# LaunchServices nur für Bundles aufräumen, die dieser Runner nachweislich
+# gestartet hat. Direktstarts können absichtlich aus einem anderen Bundle als
+# APP_BUNDLE stammen; deshalb wird der Pfad aus dem echten Executable gewonnen.
+track_started_app_bundle() {
+    local bundle="$1"
+    local existing
+    [ -n "$bundle" ] || return 0
+    if [ "${#STARTED_APP_BUNDLES[@]}" -gt 0 ]; then
+        for existing in "${STARTED_APP_BUNDLES[@]}"; do
+            [ "$existing" = "$bundle" ] && return 0
+        done
+    fi
+    STARTED_APP_BUNDLES+=("$bundle")
+}
+
+track_started_app_bundle_for_executable() {
+    local executable="$1"
+    case "$executable" in
+        */Contents/MacOS/Fastra)
+            track_started_app_bundle \
+                "$(dirname "$(dirname "$(dirname "$executable")")")"
+            ;;
+    esac
+}
+
 remember_bundle_pids() {
     local pattern pid command existing already_tracked
     for pattern in "${APP_PROCESS_PATTERNS[@]}"; do
@@ -213,6 +248,12 @@ remember_bundle_pids() {
                 command=$(ps eww -p "$pid" -o command= 2>/dev/null || true)
                 fastra_test_command_names_selftest \
                     "$command" "$CURRENT_TEST_NAME" || continue
+                # Ein Signal kann direkt nach einem erfolgreichen `open`,
+                # aber noch vor dessen normaler Nachbuchhaltung eintreffen.
+                # Der exakte Bundle- und Testprozess ist der belastbare Beleg,
+                # dass dieser Runner die spätere LS-Abmeldung besitzen darf.
+                [ "${CURRENT_LAUNCH_MODE:-direct}" = "launchservices" ] \
+                    && track_started_app_bundle "$APP_BUNDLE_CANONICAL"
                 already_tracked=0
                 if [ "${#STARTED_PIDS[@]}" -gt 0 ]; then
                     for existing in "${STARTED_PIDS[@]}"; do
@@ -282,7 +323,13 @@ kill_leftovers() {
             fi
         done
     fi
+    local had_pending=0
     if [[ "${FASTRA_TEST_PENDING_PID:-}" =~ ^[0-9]+$ ]]; then
+        had_pending=1
+        if fastra_test_pending_start_was_released \
+           && [ -n "${FASTRA_TEST_PENDING_BUNDLE:-}" ]; then
+            track_started_app_bundle "$FASTRA_TEST_PENDING_BUNDLE"
+        fi
         app_targets+=("$FASTRA_TEST_PENDING_PID")
     fi
     if [ "${#app_targets[@]}" -eq 0 ]; then
@@ -296,6 +343,9 @@ kill_leftovers() {
     for pid in "${app_targets[@]}"; do
         wait "$pid" 2>/dev/null || true
     done
+    if [ "$had_pending" -eq 1 ]; then
+        fastra_test_discard_pending_session || return 1
+    fi
     STARTED_PIDS=()
 }
 
@@ -433,6 +483,7 @@ restore_selftest_pasteboard() {
     local backup="${SELFTEST_PASTEBOARD_DIR:-}/pasteboard-backup.plist"
     [ -n "${SELFTEST_PASTEBOARD_DIR:-}" ] && [ -f "$backup" ] || return 0
     local output="$FASTRA_TEST_TMPDIR/pasteboard-restore.out"
+    FASTRA_TEST_PENDING_BUNDLE="$APP_BIN_BUNDLE_CANONICAL"
     if ! TMPDIR="$FASTRA_TEST_TMPDIR/" \
     CFFIXED_USER_HOME="$FASTRA_TEST_CF_HOME" \
     CFPREFERENCES_AVOID_DAEMON=1 \
@@ -447,9 +498,14 @@ restore_selftest_pasteboard() {
         return 1
     fi
     local pid="$FASTRA_TEST_STARTED_PID"
+    track_started_app_bundle_for_executable "$APP_BIN_ABSOLUTE"
     # Gehört ab jetzt zum Runner. Scheitert seine Terminierung, kann der
     # allgemeine Aufräumpfad dieselbe PID samt Starttoken erneut versuchen.
     track_started_pid "$pid"
+    fastra_test_adopt_started_session || {
+        SELFTEST_PROCESS_CLEANUP_BLOCKED=1
+        return 1
+    }
     local tick=0
     while fastra_test_pid_is_live "$pid"; do
         sleep 0.1
@@ -483,12 +539,17 @@ restore_selftest_pasteboard() {
 }
 
 unregister_test_bundle_from_launch_services() {
-    [ "${LAUNCH_SERVICES_USED:-0}" -eq 1 ] || return 0
-    [ -n "$APP_BUNDLE_CANONICAL" ] || return 2
-    case "$APP_BUNDLE_CANONICAL" in /Applications/*) return 0 ;; esac
-    local lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-    [ -x "$lsregister" ] || return 2
-    "$lsregister" -u "$APP_BUNDLE_CANONICAL" >/dev/null 2>&1
+    local bundle failed=0
+    if fastra_test_pending_start_was_released \
+       && [ -n "${FASTRA_TEST_PENDING_BUNDLE:-}" ]; then
+        track_started_app_bundle "$FASTRA_TEST_PENDING_BUNDLE"
+    fi
+    [ "${#STARTED_APP_BUNDLES[@]}" -gt 0 ] || return 0
+    for bundle in "${STARTED_APP_BUNDLES[@]}"; do
+        unregister_fastra_test_bundle_from_launch_services "$bundle" \
+            || failed=1
+    done
+    return "$failed"
 }
 
 PRODUCT_DEFAULTS_DOMAIN="de.dm0.fastra"
@@ -703,7 +764,9 @@ cleanup_on_exit() {
         keep_sandbox=1
     fi
     cleanup_coldopen_fixture
-    unregister_test_bundle_from_launch_services || SELFTEST_CLEANUP_FAILED=1
+    if [ "$process_cleanup_failed" -eq 0 ]; then
+        unregister_test_bundle_from_launch_services || SELFTEST_CLEANUP_FAILED=1
+    fi
     release_fastra_gui_test_lock || SELFTEST_CLEANUP_FAILED=1
     if [[ -n "${PERFORMANCE_SAMPLES_FILE:-}" ]]; then
         rm -f -- "$PERFORMANCE_SAMPLES_FILE"
@@ -762,7 +825,9 @@ cleanup_on_signal() {
         keep_sandbox=1
     fi
     cleanup_coldopen_fixture
-    unregister_test_bundle_from_launch_services || cleanup_failed=1
+    if [ "$process_cleanup_failed" -eq 0 ]; then
+        unregister_test_bundle_from_launch_services || cleanup_failed=1
+    fi
     release_fastra_gui_test_lock || cleanup_failed=1
     if [[ -n "${PERFORMANCE_SAMPLES_FILE:-}" ]]; then
         rm -f -- "$PERFORMANCE_SAMPLES_FILE"
@@ -870,8 +935,7 @@ for t in "${TESTS[@]}"; do
         coldopen_fixture_dir="$(mktemp -d "$FASTRA_TEST_TMPDIR/coldopen.XXXXXX")"
         coldopen_fixture_file="$coldopen_fixture_dir/README.de.md"
         printf 'Explizit per LaunchServices geöffnet\n' > "$coldopen_fixture_file"
-        LAUNCH_SERVICES_USED=1
-        open -g -n -a "$APP_BUNDLE_FOR_OPEN" \
+        if ! "$OPEN_COMMAND" -g -n -a "$APP_BUNDLE_FOR_OPEN" \
             --stdout /dev/null --stderr "$errfile" \
             --env "FASTRA_SELFTEST=$t" \
             --env "FASTRA_COLDOPEN_FILE=$coldopen_fixture_file" \
@@ -883,7 +947,13 @@ for t in "${TESTS[@]}"; do
             --env "FASTRA_TEST_DEFAULTS_REGISTRY=$FASTRA_TEST_DEFAULTS_REGISTRY" \
             --env "FASTRA_SELFTEST_PASTEBOARD_DIR=$SELFTEST_PASTEBOARD_DIR" \
             "$coldopen_fixture_file" \
-            --args -ApplePersistenceIgnoreState YES
+            --args -ApplePersistenceIgnoreState YES; then
+            echo "SELFTEST $t: Umgebungsproblem — LaunchServices-Start fehlgeschlagen"
+            summary+="⚠ $t (Start fehlgeschlagen)\n"
+            env_fail_count=$((env_fail_count + 1))
+            break
+        fi
+        track_started_app_bundle "$APP_BUNDLE_CANONICAL"
         remember_bundle_pids
     elif [[ "$t" == "cmdw" || "$t" == "newwindow" || "$t" == "welcomenew" || "$t" == "completion4d" || "$t" == "projectinput" || "$t" == "help" ]]; then
         launch_mode="launchservices"
@@ -895,8 +965,7 @@ for t in "${TESTS[@]}"; do
         # gemeinsame Aufräumpfad `kill_leftovers` beendet die Test-App nach
         # Ergebnis UND Timeout sofort, damit kein Fenster sichtbar bleibt.
         # starten (LaunchServices) und von außen aktivieren.
-        LAUNCH_SERVICES_USED=1
-        open -n "$APP_BUNDLE_FOR_OPEN" --stdout /dev/null --stderr "$errfile" \
+        if ! "$OPEN_COMMAND" -n "$APP_BUNDLE_FOR_OPEN" --stdout /dev/null --stderr "$errfile" \
             --env "TMPDIR=$FASTRA_TEST_TMPDIR/" \
             --env "CFFIXED_USER_HOME=$FASTRA_TEST_CF_HOME" \
             --env "CFPREFERENCES_AVOID_DAEMON=1" \
@@ -904,12 +973,19 @@ for t in "${TESTS[@]}"; do
             --env "FASTRA_SELFTEST_DEFAULTS_SUITE=$SELFTEST_DEFAULTS_SUITE" \
             --env "FASTRA_TEST_DEFAULTS_REGISTRY=$FASTRA_TEST_DEFAULTS_REGISTRY" \
             --env "FASTRA_SELFTEST_PASTEBOARD_DIR=$SELFTEST_PASTEBOARD_DIR" \
-            --args -selftest "$t" -ApplePersistenceIgnoreState YES
+            --args -selftest "$t" -ApplePersistenceIgnoreState YES; then
+            echo "SELFTEST $t: Umgebungsproblem — LaunchServices-Start fehlgeschlagen"
+            summary+="⚠ $t (Start fehlgeschlagen)\n"
+            env_fail_count=$((env_fail_count + 1))
+            break
+        fi
+        track_started_app_bundle "$APP_BUNDLE_CANONICAL"
         remember_bundle_pids
         activate_app
         remember_bundle_pids
     else
         # Alle anderen Tests laufen ohne echten Fokus → Binary direkt.
+        FASTRA_TEST_PENDING_BUNDLE="$APP_BIN_BUNDLE_CANONICAL"
         if ! TMPDIR="$FASTRA_TEST_TMPDIR/" \
         CFFIXED_USER_HOME="$FASTRA_TEST_CF_HOME" \
         CFPREFERENCES_AVOID_DAEMON=1 \
@@ -925,7 +1001,14 @@ for t in "${TESTS[@]}"; do
             env_fail_count=$((env_fail_count + 1))
             break
         fi
+        track_started_app_bundle_for_executable "$APP_BIN_ABSOLUTE"
         track_started_pid "$FASTRA_TEST_STARTED_PID"
+        if ! fastra_test_adopt_started_session; then
+            echo "SELFTEST $t: Umgebungsproblem — Prozessübernahme fehlgeschlagen"
+            summary+="⚠ $t (Startübernahme fehlgeschlagen)\n"
+            env_fail_count=$((env_fail_count + 1))
+            break
+        fi
     fi
 
     if ! wait_for_result "$errfile"; then

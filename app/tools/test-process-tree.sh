@@ -9,6 +9,8 @@ FASTRA_TEST_TREE_PID_TOKENS=()
 FASTRA_TEST_TREE_GROUPS=()
 FASTRA_TEST_STARTED_PID=""
 FASTRA_TEST_PENDING_PID=""
+FASTRA_TEST_PENDING_HANDSHAKE=""
+FASTRA_TEST_PENDING_BUNDLE=""
 FASTRA_TEST_STARTED_ROOTS=()
 FASTRA_TEST_STARTED_GROUPS=()
 FASTRA_TEST_STARTED_TOKENS=()
@@ -30,16 +32,22 @@ fastra_test_command_names_selftest() {
 # hier nicht: Trifft CONT vor dem noch ausstehenden STOP, bliebe der Test
 # anschließend dauerhaft angehalten.
 fastra_test_start_new_session() {
-    local handshake ready go token="" group="" tick=0
+    local handshake ready go released token="" group="" tick=0
+    # Ein zweiter Start vor der ausdrücklichen Übernahme des ersten wäre nicht
+    # eindeutig aufzuräumen. Jeder Aufrufer muss nach eigener Buchhaltung
+    # `fastra_test_adopt_started_session` ausführen.
+    [ -z "$FASTRA_TEST_PENDING_PID" ] || return 2
     handshake=$(mktemp -d "${FASTRA_TEST_TMPDIR:?}/process-start.XXXXXX") \
         || return 2
+    FASTRA_TEST_PENDING_HANDSHAKE="$handshake"
     ready="$handshake/ready"
     go="$handshake/go"
+    released="$handshake/released"
     /usr/bin/python3 -c '
 import os, sys, time
 os.setsid()
-ready, go = sys.argv[1], sys.argv[2]
-parent = int(sys.argv[3])
+ready, go, released = sys.argv[1], sys.argv[2], sys.argv[3]
+parent = int(sys.argv[4])
 # Die erwartete PID kommt vom Runner. Würde das Kind sie erst hier mit
 # getppid() lesen, könnte ein bereits beendeter Runner unbemerkt PID 1 als
 # vermeintlich gesunden Elternprozess festhalten.
@@ -56,8 +64,12 @@ while not os.path.exists(go):
     if os.getppid() != parent or not os.path.isdir(os.path.dirname(ready)):
         raise SystemExit(125)
     time.sleep(0.01)
-os.execvp(sys.argv[4], sys.argv[4:])
-' "$ready" "$go" "$$" "$@" &
+with open(released, "w", encoding="ascii") as handle:
+    handle.write(str(os.getpid()))
+    handle.flush()
+    os.fsync(handle.fileno())
+os.execvp(sys.argv[5], sys.argv[5:])
+' "$ready" "$go" "$released" "$$" "$@" &
     FASTRA_TEST_PENDING_PID=$!
     FASTRA_TEST_STARTED_PID="$FASTRA_TEST_PENDING_PID"
     while [ "$tick" -lt 100 ]; do
@@ -81,6 +93,8 @@ os.execvp(sys.argv[4], sys.argv[4:])
         wait "$FASTRA_TEST_STARTED_PID" 2>/dev/null || true
         rm -rf -- "$handshake"
         FASTRA_TEST_PENDING_PID=""
+        FASTRA_TEST_PENDING_HANDSHAKE=""
+        FASTRA_TEST_PENDING_BUNDLE=""
         FASTRA_TEST_STARTED_PID=""
         return 2
     fi
@@ -92,11 +106,66 @@ os.execvp(sys.argv[4], sys.argv[4:])
         wait "$FASTRA_TEST_STARTED_PID" 2>/dev/null || true
         rm -rf -- "$handshake"
         FASTRA_TEST_PENDING_PID=""
+        FASTRA_TEST_PENDING_HANDSHAKE=""
+        FASTRA_TEST_PENDING_BUNDLE=""
         FASTRA_TEST_STARTED_PID=""
         return 2
     fi
-    FASTRA_TEST_PENDING_PID=""
+    tick=0
+    while [ "$tick" -lt 100 ] && [ ! -s "$released" ]; do
+        fastra_test_pid_matches_token "$FASTRA_TEST_STARTED_PID" "$token" \
+            || break
+        sleep 0.01
+        tick=$((tick + 1))
+    done
+    if [ ! -s "$released" ]; then
+        terminate_fastra_test_process_trees "$FASTRA_TEST_STARTED_PID" \
+            >/dev/null 2>&1 || true
+        wait "$FASTRA_TEST_STARTED_PID" 2>/dev/null || true
+        rm -rf -- "$handshake"
+        FASTRA_TEST_PENDING_PID=""
+        FASTRA_TEST_PENDING_HANDSHAKE=""
+        FASTRA_TEST_PENDING_BUNDLE=""
+        FASTRA_TEST_STARTED_PID=""
+        return 2
+    fi
+    # PENDING bleibt absichtlich gesetzt: Trifft jetzt ein Signal, kennt der
+    # Trap den bereits freigegebenen Prozess noch. Erst nachdem der Aufrufer
+    # seine eigenen PID-/Bundle-Felder gesetzt hat, bestätigt er die Übernahme.
     return 0
+}
+
+fastra_test_pending_start_was_released() {
+    [ -n "$FASTRA_TEST_PENDING_HANDSHAKE" ] \
+        && [ -s "$FASTRA_TEST_PENDING_HANDSHAKE/released" ]
+}
+
+fastra_test_adopt_started_session() {
+    [ -n "$FASTRA_TEST_PENDING_PID" ] || return 2
+    fastra_test_pending_start_was_released || return 2
+    fastra_test_discard_pending_session
+}
+
+fastra_test_discard_pending_session() {
+    local handshake="$FASTRA_TEST_PENDING_HANDSHAKE"
+    if [ -n "$handshake" ]; then
+        case "$handshake" in
+            "$FASTRA_TEST_TMPDIR"/process-start.*) ;;
+            *) return 2 ;;
+        esac
+        if [ -e "$handshake" ] || [ -L "$handshake" ]; then
+            [ -d "$handshake" ] && [ ! -L "$handshake" ] || return 2
+        fi
+    fi
+    # Die Prozess-PID gehört ab jetzt entweder bereits der Buchhaltung des
+    # Aufrufers oder wurde im Cleanup vollständig beendet. Globals VOR dem
+    # externen `rm` leeren: Trifft dort ein Signal, ist ein zweiter Discard
+    # ein harmloser No-op statt eines falschen Cleanup-Blockers.
+    FASTRA_TEST_PENDING_PID=""
+    FASTRA_TEST_PENDING_HANDSHAKE=""
+    FASTRA_TEST_PENDING_BUNDLE=""
+    [ -z "$handshake" ] || [ ! -e "$handshake" ] \
+        || rm -rf -- "$handshake" || return 2
 }
 
 fastra_test_pid_token() {

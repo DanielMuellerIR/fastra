@@ -64,6 +64,8 @@ cd "$(dirname "$0")"
 . ./tools/test-sandbox.sh
 # shellcheck source=tools/test-process-tree.sh
 . ./tools/test-process-tree.sh
+# shellcheck source=tools/soak-process-state.sh
+. ./tools/soak-process-state.sh
 
 ROUNDS=60
 FIXTURES_ONLY=0
@@ -120,6 +122,7 @@ if [ ! -x "$BINARY" ]; then
   exit 2
 fi
 BINARY_ABSOLUTE="$(cd "$(dirname "$BINARY")" && printf '%s/%s\n' "$(pwd -P)" "$(basename "$BINARY")")"
+APP_BUNDLE_CANONICAL="$(cd "$APP" && pwd -P)"
 
 SOAK_PRODUCT_DEFAULTS_DOMAIN="de.dm0.fastra"
 SOAK_PRODUCT_DEFAULTS_BACKUP=""
@@ -319,6 +322,9 @@ cleanup() {
   # persistierte Zwischenablage-Sicherung gefahrlos einspielen.
   local cleanup_pid
   local cleanup_targets=()
+  if fastra_test_pending_start_was_released; then
+    SOAK_APP_STARTED=1
+  fi
   [ -n "${SOAK_PHASE_PID:-}" ] && cleanup_targets+=("$SOAK_PHASE_PID")
   if [[ "${FASTRA_TEST_PENDING_PID:-}" =~ ^[0-9]+$ ]]; then
     cleanup_targets+=("$FASTRA_TEST_PENDING_PID")
@@ -330,30 +336,49 @@ cleanup() {
     for cleanup_pid in "${cleanup_targets[@]}"; do
       if ! terminate_fastra_test_process_trees "$cleanup_pid"; then
         cleanup_failed=1
-        process_cleanup_failed=1
+        remember_soak_cleanup_failure "$cleanup_pid"
+        SOAK_PROCESS_CLEANUP_BLOCKED=1
       fi
       wait "$cleanup_pid" 2>/dev/null || true
     done
   fi
-  if [ "$process_cleanup_failed" -eq 0 ] && [ "$SOAK_APP_STARTED" -eq 1 ]; then
+  if [ "$process_cleanup_failed" -eq 0 ] \
+     && [ "$SOAK_PROCESS_CLEANUP_BLOCKED" -eq 0 ] \
+     && [[ "${FASTRA_TEST_PENDING_PID:-}" =~ ^[0-9]+$ ]]; then
+    fastra_test_discard_pending_session || {
+      cleanup_failed=1
+      process_cleanup_failed=1
+    }
+  fi
+  if [ "$process_cleanup_failed" -eq 0 ] \
+     && [ "$SOAK_PROCESS_CLEANUP_BLOCKED" -eq 0 ] \
+     && [ "$SOAK_APP_STARTED" -eq 1 ]; then
     restore_soak_pasteboard cleanup || cleanup_failed=1
-    purge_soak_defaults || cleanup_failed=1
+    # Der Clipboard-Helfer kann selbst einen nicht beendbaren Prozess melden.
+    # Dann darf kein zweiter App-Helfer neben ihm starten.
+    if soak_followup_is_safe; then
+      purge_soak_defaults || cleanup_failed=1
+    fi
   fi
   # Die beiden Hilfsaufrufe können selbst noch einen nicht beendbaren
   # Prozess melden. Im selben EXIT-Durchlauf genau diese Roots erneut prüfen.
-  if [ "$process_cleanup_failed" -eq 0 ] \
-     && [ "${#SOAK_REMAINING_PIDS[@]}" -gt 0 ]; then
-    for cleanup_pid in "${SOAK_REMAINING_PIDS[@]}"; do
-      if ! terminate_fastra_test_process_trees "$cleanup_pid"; then
-        cleanup_failed=1
-        process_cleanup_failed=1
-      fi
-      wait "$cleanup_pid" 2>/dev/null || true
-    done
+  # Das gilt auch nach einem ersten Fehlschlag: Der Blocker verhindert zwar
+  # neue Hilfsstarts, darf aber die vorhandene Nachräumchance nicht sperren.
+  if [ "${#SOAK_REMAINING_PIDS[@]}" -gt 0 ]; then
+    retry_soak_cleanup_failures || cleanup_failed=1
+  fi
+  if [ "$SOAK_PROCESS_CLEANUP_BLOCKED" -eq 1 ]; then
+    cleanup_failed=1
+    process_cleanup_failed=1
   fi
   if [ "$process_cleanup_failed" -eq 0 ]; then
     purge_fastra_registered_test_defaults "$FASTRA_TEST_DEFAULTS_REGISTRY" \
       || cleanup_failed=1
+    if [ "$SOAK_APP_STARTED" -eq 1 ] \
+       || fastra_test_pending_start_was_released; then
+      unregister_fastra_test_bundle_from_launch_services \
+        "$APP_BUNDLE_CANONICAL" || cleanup_failed=1
+    fi
     if ! restore_product_defaults; then
       cleanup_failed=1
       recovery_backup_needed=1
@@ -516,32 +541,6 @@ if [ -d "$REAL_DIR" ]; then echo "   Echte Dokumente: kopiert nach $REAL_DIR"; f
 if [ -n "$SOAK_4D" ]; then echo "   4D-Projekt (isolierte Kopie): $SOAK_4D"; fi
 echo
 
-SOAK_PHASE_PID=""
-SOAK_REMAINING_PIDS=()
-SOAK_PROCESS_CLEANUP_BLOCKED=0
-
-remember_soak_cleanup_failure() {
-  local pid="$1"
-  local existing
-  if [ "${#SOAK_REMAINING_PIDS[@]}" -gt 0 ]; then
-    for existing in "${SOAK_REMAINING_PIDS[@]}"; do
-      [ "$existing" = "$pid" ] && return 0
-    done
-  fi
-  SOAK_REMAINING_PIDS+=("$pid")
-}
-
-cleanup_soak_process() {
-  local pid="$1"
-  if ! terminate_fastra_test_process_trees "$pid"; then
-    remember_soak_cleanup_failure "$pid"
-    SOAK_PROCESS_CLEANUP_BLOCKED=1
-    return 1
-  fi
-  wait "$pid" 2>/dev/null || true
-  return 0
-}
-
 # Stellt eine von der App persistierte, itemgetreue Zwischenablage-Sicherung in
 # einem kleinen eigenen App-Aufruf wieder her. Das deckt normale Fehler,
 # App-Abstürze und den Timeout-Kill ab. Nicht abfangbar bleibt nur ein harter
@@ -551,6 +550,7 @@ restore_soak_pasteboard() {
   local label="${1:-cleanup}"
   [ -f "$PASTEBOARD_BACKUP" ] || return 0
   local output="$WORK_DIR/pasteboard-restore-$label.out"
+  FASTRA_TEST_PENDING_BUNDLE="$APP_BUNDLE_CANONICAL"
   if ! TMPDIR="$FASTRA_TEST_TMPDIR/" \
   CFFIXED_USER_HOME="$FASTRA_TEST_CF_HOME" \
   CFPREFERENCES_AVOID_DAEMON=1 \
@@ -565,6 +565,8 @@ restore_soak_pasteboard() {
     return 1
   fi
   local pid="$FASTRA_TEST_STARTED_PID"
+  SOAK_PHASE_PID="$pid"
+  adopt_soak_process "$pid" || return 1
   local waited=0
   while kill -0 "$pid" 2>/dev/null; do
     sleep 1
@@ -591,6 +593,7 @@ restore_soak_pasteboard() {
 # Plist über dieselbe verifizierte Routine wie die Unit-Tests.
 purge_soak_defaults() {
   local output="$WORK_DIR/defaults-purge.out"
+  FASTRA_TEST_PENDING_BUNDLE="$APP_BUNDLE_CANONICAL"
   if ! TMPDIR="$FASTRA_TEST_TMPDIR/" \
   CFFIXED_USER_HOME="$FASTRA_TEST_CF_HOME" \
   CFPREFERENCES_AVOID_DAEMON=1 \
@@ -604,6 +607,8 @@ purge_soak_defaults() {
     return 1
   fi
   local pid="$FASTRA_TEST_STARTED_PID"
+  SOAK_PHASE_PID="$pid"
+  adopt_soak_process "$pid" || return 1
   local waited=0
   while fastra_test_pid_is_live "$pid"; do
     sleep 0.1
@@ -646,6 +651,7 @@ run_phase() {
   local findings_before
   findings_before=$(grep -c '^SOAK-BEFUND' "$LOG" 2>/dev/null)
   findings_before=${findings_before:-0}
+  FASTRA_TEST_PENDING_BUNDLE="$APP_BUNDLE_CANONICAL"
   if ! TMPDIR="$FASTRA_TEST_TMPDIR/" \
   CFFIXED_USER_HOME="$FASTRA_TEST_CF_HOME" \
   CFPREFERENCES_AVOID_DAEMON=1 \
@@ -666,6 +672,7 @@ run_phase() {
   local pid="$FASTRA_TEST_STARTED_PID"
   SOAK_APP_STARTED=1
   SOAK_PHASE_PID="$pid"
+  adopt_soak_process "$pid" || return 1
   local waited=0
   local timed_out=0
   local status=0
@@ -732,9 +739,9 @@ run_phase() {
 PHASES_FAILED=0
 KEEP_EVIDENCE=0
 run_phase 1 "Dokumente anlegen, drei Fenster öffnen, arbeiten" || PHASES_FAILED=$((PHASES_FAILED + 1))
-[ "$SOAK_PROCESS_CLEANUP_BLOCKED" -eq 0 ] || exit 1
+soak_followup_is_safe || exit 1
 run_phase 2 "nach Neustart: Sitzung prüfen und weiterarbeiten"  || PHASES_FAILED=$((PHASES_FAILED + 1))
-[ "$SOAK_PROCESS_CLEANUP_BLOCKED" -eq 0 ] || exit 1
+soak_followup_is_safe || exit 1
 run_phase 3 "nach zweitem Neustart: abschließende Runde"        || PHASES_FAILED=$((PHASES_FAILED + 1))
 
 echo

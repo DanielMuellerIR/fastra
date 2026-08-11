@@ -39,6 +39,7 @@ HIDDEN_DIR=""
 ERR_FILE=""
 MOVED_BUNDLES=()
 APP_PID=""
+PORTABLE_APP_STARTED=0
 FASTRA_TEST_DEFAULTS_REGISTRY=""
 
 cleanup_on_exit() {
@@ -47,13 +48,14 @@ cleanup_on_exit() {
     local process_cleanup_failed=0
     local keep_sandbox=0
     trap - EXIT INT TERM
-    if [[ -n "$APP_PID" ]]; then
-        if ! terminate_fastra_test_process_trees "$APP_PID"; then
+    local cleanup_target="${APP_PID:-${FASTRA_TEST_PENDING_PID:-}}"
+    if [[ -n "$cleanup_target" ]]; then
+        if ! terminate_fastra_test_process_trees "$cleanup_target"; then
             cleanup_status=2
             process_cleanup_failed=1
             keep_sandbox=1
         fi
-        wait "$APP_PID" 2>/dev/null || true
+        wait "$cleanup_target" 2>/dev/null || true
     fi
     # macOS liefert noch Bash 3.2. Dort gilt selbst ein deklariertes leeres
     # Array unter `set -u` bei der Expansion als ungebunden. Frühfehler vor
@@ -71,6 +73,11 @@ cleanup_on_exit() {
             "$FASTRA_TEST_DEFAULTS_REGISTRY"; then
             cleanup_status=2
             keep_sandbox=1
+        fi
+        if [[ "$PORTABLE_APP_STARTED" -eq 1 ]] \
+           || fastra_test_pending_start_was_released; then
+            unregister_fastra_test_bundle_from_launch_services "$APP" \
+                || cleanup_status=2
         fi
     fi
     if [[ "$keep_sandbox" -eq 0 ]]; then
@@ -129,6 +136,7 @@ for SELFTEST_NAME in localization search; do
     # Prozesses in die gerade vom zweiten Prozess verwendete Domain fällt.
     PORTABLE_DEFAULTS_SUITE="Fastra-$(/usr/bin/uuidgen)"
     : > "$ERR_FILE"
+    FASTRA_TEST_PENDING_BUNDLE="$APP"
     if ! TMPDIR="$FASTRA_TEST_TMPDIR/" \
     CFFIXED_USER_HOME="$FASTRA_TEST_CF_HOME" \
     CFPREFERENCES_AVOID_DAEMON=1 \
@@ -142,6 +150,11 @@ for SELFTEST_NAME in localization search; do
         exit 2
     fi
     APP_PID="$FASTRA_TEST_STARTED_PID"
+    # Erst der erfolgreiche Prozessstart darf die spätere LaunchServices-
+    # Abmeldung autorisieren. Ein Frühfehler darf keine bereits vorhandene
+    # Registrierung eines anderen Laufs entfernen.
+    PORTABLE_APP_STARTED=1
+    fastra_test_adopt_started_session || exit 2
 
     # Ein kaputter Ressourcenpfad crasht sofort; ein anderer Start-Hänger darf
     # den Build ebenfalls nicht endlos blockieren. Beide Tests sind fensterlos.

@@ -106,6 +106,39 @@ release_fastra_test_sandbox() {
     FASTRA_TEST_CF_HOME=""
 }
 
+# Auch ein direkt gestartetes App-Binary meldet sein Bundle bei LaunchServices
+# an. Ohne die ausdrückliche Abmeldung sammeln sich Debug-Bundles aus jedem
+# Worktree in „Öffnen mit“ und der LaunchServices-Datenbank. Installierte Apps
+# bleiben bewusst registriert; der kanonische Pfad verhindert, dass ein
+# scheinbar harmloser Symlink diesen Schutz umgeht.
+fastra_test_bundle_path_is_protected() {
+    local canonical="$1"
+    local applications_root="${2:-/Applications}"
+    case "$canonical" in
+        "$applications_root"|"$applications_root"/*) return 0 ;;
+    esac
+    return 1
+}
+
+unregister_fastra_test_bundle_from_launch_services() {
+    local bundle="$1"
+    local canonical plist bundle_id lsregister
+    [ -n "$bundle" ] || return 0
+    [ -d "$bundle" ] || return 0
+    canonical=$(cd "$bundle" 2>/dev/null && pwd -P) || return 2
+    fastra_test_bundle_path_is_protected "$canonical" && return 0
+    plist="$canonical/Contents/Info.plist"
+    # Kleine Fake-Bundles der Runner-Unit-Tests können keine echte
+    # LaunchServices-Registrierung erzeugen und brauchen keine Abmeldung.
+    [ -f "$plist" ] && [ ! -L "$plist" ] || return 0
+    bundle_id=$(/usr/bin/plutil -extract CFBundleIdentifier raw -o - "$plist" \
+        2>/dev/null) || return 2
+    [ "$bundle_id" = "de.dm0.fastra" ] || return 2
+    lsregister="${FASTRA_TEST_LSREGISTER:-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister}"
+    [ -x "$lsregister" ] || return 2
+    "$lsregister" -u "$canonical" >/dev/null 2>&1
+}
+
 fastra_test_defaults_domain_is_safe() {
     local domain="$1"
     [[ "$domain" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
