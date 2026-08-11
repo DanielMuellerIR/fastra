@@ -551,9 +551,10 @@ den Fensterfokus nicht mehr gegenseitig verfälschen. Ein zweiter Runner endet
 als Umgebungsfehler (Exit 2); reine `./test.sh`-Läufe bleiben davon unabhängig.
 Ein nachweislich verwaister Lock wird beim nächsten Start übernommen.
 
-`./test.sh`, `selftest.sh` und `soak-test.sh` geben jedem Lauf außerdem ein
-eigenes `TMPDIR` und ein eigenes Core-Foundation-Preferences-Verzeichnis. Am
-Ende wird genau diese Sandbox entfernt, auch bei einem roten Lauf oder Signal.
+`./test.sh`, `selftest.sh`, `soak-test.sh` und die beiden vom Build gestarteten
+Portabilitäts-Selbsttests geben jedem Lauf außerdem ein eigenes `TMPDIR` und ein
+eigenes Core-Foundation-Preferences-Verzeichnis. Am Ende wird genau diese
+Sandbox entfernt, auch bei einem roten Lauf oder Signal.
 Benannte `UserDefaults`-Suiten können diese Umleitung auf macOS umgehen und
 lassen über `cfprefsd` nach dem Prozessende nochmals eine leere Plist entstehen.
 Der Testcode meldet seine exakten UUID-Domains deshalb zusätzlich an den

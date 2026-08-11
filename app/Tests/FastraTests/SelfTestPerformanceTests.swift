@@ -271,6 +271,138 @@ struct SelfTestPerformanceTests {
         ).isEmpty)
     }
 
+    @Test("Portabilitätsprüfung isoliert beide App-Starts und räumt verzögerte Plists")
+    func portableRunnerLeavesNoPreferencesOrFixtures() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-portable-runner-test-\(UUID().uuidString)")
+        let sandboxParent = root.appendingPathComponent("sandboxes")
+        let fakeApp = root.appendingPathComponent("Fastra.app")
+        let fakeBinary = fakeApp.appendingPathComponent("Contents/MacOS/Fastra")
+        let resources = root.appendingPathComponent("build-resources")
+        let bundle = resources.appendingPathComponent("Probe.bundle")
+        let bundleFile = bundle.appendingPathComponent("probe.txt")
+        let preferences = root.appendingPathComponent("preferences")
+        let realPreferences = root.appendingPathComponent("real-preferences")
+        let probe = root.appendingPathComponent("starts.txt")
+        let orphanPIDs = root.appendingPathComponent("orphan-pids.txt")
+        let orphanMarker = root.appendingPathComponent("portable-orphan-marker")
+        let runner = performanceToolsDirectory.deletingLastPathComponent()
+            .appendingPathComponent("verify-portable-app.sh")
+        defer {
+            // Der geprüfte Wrapper ist nicht zugleich die einzige Sicherung
+            // des Tests: Bei einer Regression oder einem frühen Throw beendet
+            // dieser Notausgang nur die eindeutig markierte Fixture-Gruppe.
+            if let contents = try? String(contentsOf: orphanPIDs, encoding: .utf8) {
+                for value in contents.split(whereSeparator: \Character.isNewline) {
+                    guard let pid = pid_t(value),
+                          let details = try? runPerformanceTool(
+                            "/bin/ps",
+                            arguments: ["-p", "\(pid)", "-o", "pgid=,command="]
+                          ),
+                          details.status == 0,
+                          details.output.contains(orphanMarker.path),
+                          let groupText = details.output.split(whereSeparator: { $0.isWhitespace }).first,
+                          let group = pid_t(groupText), group > 1 else { continue }
+                    _ = kill(-group, SIGKILL)
+                }
+            }
+            try? FileManager.default.removeItem(at: root)
+        }
+        for directory in [sandboxParent, fakeBinary.deletingLastPathComponent(),
+                          bundle, preferences, realPreferences] {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+        }
+        try Data("bundle bleibt erhalten".utf8).write(to: bundleFile)
+        try """
+        #!/bin/bash
+        [ "$CFPREFERENCES_AVOID_DAEMON" = "1" ] || exit 91
+        [ "$HOME" = "$CFFIXED_USER_HOME" ] || exit 92
+        [ -n "$FASTRA_SELFTEST_DEFAULTS_SUITE" ] || exit 93
+        [ -n "$FASTRA_TEST_DEFAULTS_REGISTRY" ] || exit 94
+        domain="$FASTRA_SELFTEST_DEFAULTS_SUITE"
+        printf '%s\n' "$domain" >> "$FASTRA_TEST_DEFAULTS_REGISTRY"
+        printf '%s|%s|%s|%s\n' \
+          "$FASTRA_SELFTEST" "$domain" "$TMPDIR" "$CFFIXED_USER_HOME" \
+          >> "$FASTRA_TEST_PROBE"
+        touch "$FASTRA_TEST_PREFERENCES_DIRECTORY/$domain.plist"
+        touch "$FASTRA_TEST_REAL_PREFERENCES_DIRECTORY/$domain.plist"
+        # cfprefsd schreibt gelegentlich erst nach dem App-Ende. Die entkoppelte
+        # Probe bildet genau diesen Nachlauf außerhalb der App-Prozessgruppe ab.
+        /usr/bin/python3 -c \
+          'import os,sys,time; os.setsid(); time.sleep(.2); open(sys.argv[1],"ab").close()' \
+          "$FASTRA_TEST_PREFERENCES_DIRECTORY/$domain.plist" &
+        /usr/bin/python3 -c \
+          'import os,sys,time; os.setsid(); time.sleep(.2); open(sys.argv[1],"ab").close()' \
+          "$FASTRA_TEST_REAL_PREFERENCES_DIRECTORY/$domain.plist" &
+        # Dieses TERM-resistente Kind bleibt dagegen absichtlich in der vom
+        # Runner angelegten App-Prozessgruppe. Der Wrapper muss es auch dann
+        # beenden, wenn sein App-Leiter bereits normal ausgestiegen ist.
+        orphan_ready="$TMPDIR/orphan-ready.$$"
+        /bin/bash -c \
+          'trap "" TERM; orphan_marker="$1"; orphan_ready="$2"; : > "$orphan_ready"; while :; do /bin/sleep 1; done' \
+          fastra-portable-orphan "$FASTRA_TEST_ORPHAN_MARKER" "$orphan_ready" &
+        orphan_pid=$!
+        printf '%s\n' "$orphan_pid" >> "$FASTRA_TEST_ORPHAN_PIDS"
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+          [ -e "$orphan_ready" ] && break
+          /bin/sleep 0.01
+        done
+        [ -e "$orphan_ready" ] || exit 95
+        echo "SELFTEST $FASTRA_SELFTEST: PASS — Probe" >&2
+        exit 0
+        """.write(to: fakeBinary, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: fakeBinary.path
+        )
+
+        let result = try runPerformanceTool(
+            "/bin/bash", arguments: [runner.path, fakeApp.path, resources.path],
+            environment: [
+                "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+                "FASTRA_TEST_PREFERENCES_DIRECTORY": preferences.path,
+                "FASTRA_TEST_REAL_PREFERENCES_DIRECTORY": realPreferences.path,
+                "FASTRA_TEST_PROBE": probe.path,
+                "FASTRA_TEST_ORPHAN_PIDS": orphanPIDs.path,
+                "FASTRA_TEST_ORPHAN_MARKER": orphanMarker.path,
+            ]
+        )
+        #expect(result.status == 0, "Portabilitäts-Runner: \(result.output)")
+        let starts = try String(contentsOf: probe, encoding: .utf8)
+            .split(whereSeparator: \Character.isNewline)
+            .map { $0.split(separator: "|", omittingEmptySubsequences: false).map(String.init) }
+        #expect(starts.count == 2)
+        #expect(starts.map(\.first) == ["localization", "search"])
+        #expect(starts.allSatisfy { $0.count == 4 })
+        #expect(Set(starts.compactMap { $0.count > 1 ? $0[1] : nil }).count == 2,
+                "Jeder App-Start braucht eine eigene Preferences-Suite")
+        for start in starts where start.count == 4 {
+            #expect(start[2].hasPrefix(sandboxParent.path + "/"))
+            #expect(start[3].hasPrefix(sandboxParent.path + "/"))
+        }
+        #expect(try FileManager.default.contentsOfDirectory(
+            atPath: sandboxParent.path
+        ).isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(
+            atPath: preferences.path
+        ).isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(
+            atPath: realPreferences.path
+        ).isEmpty)
+        #expect(try String(contentsOf: bundleFile, encoding: .utf8)
+            == "bundle bleibt erhalten")
+        let recordedOrphans = try String(contentsOf: orphanPIDs, encoding: .utf8)
+            .split(whereSeparator: \Character.isNewline)
+            .compactMap { pid_t($0) }
+        #expect(recordedOrphans.count == 2)
+        for pid in recordedOrphans {
+            errno = 0
+            #expect(kill(pid, 0) == -1 && errno == ESRCH,
+                    "Verwaistes Kind \(pid) lebt nach der Portabilitätsprüfung weiter")
+        }
+    }
+
     @Test("Unit-Test-Runner beendet verwaistes Kind nach Ende des Testprozesses")
     func unitTestRunnerStopsOrphanAfterRootExit() throws {
         let root = FileManager.default.temporaryDirectory
