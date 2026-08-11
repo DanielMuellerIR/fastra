@@ -86,6 +86,17 @@ func imageLink_altText() {
             == "![foto-2](foto-2.png)")
 }
 
+@Test("Markdown-Bildlink maskiert Klammern und Alt-Text-Steuerzeichen")
+func imageLink_escapesMarkdownSyntax() {
+    let doc = URL(fileURLWithPath: "/tmp/projekt/Seite.md")
+    let image = URL(fileURLWithPath: "/tmp/projekt/a:b(b)[c].png")
+    #expect(MarkdownImageStore.relativeLinkPath(from: doc, to: image)
+            == "a%3Ab%28b%29%5Bc%5D.png")
+    #expect(MarkdownImageStore.markdownImageLink(
+        fileName: "a[b]\\c\nzeile.png", relativePath: "sicher.png")
+        == "![a\\[b\\]\\\\c zeile](sicher.png)")
+}
+
 // MARK: - Format-Entscheidung
 
 @Test("prepare: PNG/JPEG/GIF behalten Format, TIFF wird PNG")
@@ -152,6 +163,57 @@ func store_parallelPastedDataUsesSuffix() async throws {
         documentName: doc.lastPathComponent, date: now
     )
     #expect(Set(names) == ["\(base).png", "\(base)-2.png"])
+}
+
+@Test("Paste veröffentlicht nie über eine gleichzeitig entstandene Datei")
+func store_pastedDataUsesExclusivePublish() throws {
+    try withTempDir { dir in
+        let doc = dir.appendingPathComponent("Notizen.md")
+        try "x".write(to: doc, atomically: true, encoding: .utf8)
+        let prepared = MarkdownImageStore.PreparedImageData(
+            data: Data("Fastra".utf8), fileExtension: "png")
+        var insertedCollision = false
+        let stored = try MarkdownImageStore.storePastedData(
+            prepared, documentURL: doc, now: Date(timeIntervalSince1970: 1_800_000_000),
+            hooks: .init(beforePublishing: { target in
+                guard !insertedCollision else { return }
+                insertedCollision = true
+                try? Data("fremd".utf8).write(to: target, options: .withoutOverwriting)
+            }))
+
+        let base = MarkdownImageStore.pastedImageBaseName(
+            documentName: doc.lastPathComponent,
+            date: Date(timeIntervalSince1970: 1_800_000_000))
+        #expect(try Data(contentsOf: dir.appendingPathComponent("\(base).png"))
+                == Data("fremd".utf8))
+        #expect(stored.fileURL.lastPathComponent == "\(base)-2.png")
+        #expect(try Data(contentsOf: stored.fileURL) == Data("Fastra".utf8))
+    }
+}
+
+@Test("Dokumentordner-Symlink behält einen relativen Bildlink")
+func store_documentDirectorySymlinkKeepsRelativeLink() throws {
+    try withTempDir { dir in
+        let real = dir.appendingPathComponent("echt")
+        let alias = dir.appendingPathComponent("alias")
+        try FileManager.default.createDirectory(at: real,
+                                                withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: alias,
+                                                   withDestinationURL: real)
+        let document = alias.appendingPathComponent("Seite.md")
+        try "x".write(to: document, atomically: true, encoding: .utf8)
+        let prepared = MarkdownImageStore.PreparedImageData(
+            data: Data("Bild".utf8), fileExtension: "png")
+        let stored = try MarkdownImageStore.storePastedData(
+            prepared, documentURL: document,
+            now: Date(timeIntervalSince1970: 1_800_000_000))
+
+        #expect(stored.link == MarkdownImageStore.markdownImageLink(
+            fileName: stored.fileURL.lastPathComponent,
+            relativePath: stored.fileURL.lastPathComponent))
+        #expect(stored.fileURL.deletingLastPathComponent().standardizedFileURL.path
+                == real.standardizedFileURL.path)
+    }
 }
 
 @Test("storeImageFile: Kollision → Suffix, byte-identisch → dedup (kein Doppel)")
@@ -238,6 +300,29 @@ func store_parallelFileCollisionUsesSuffix() async throws {
     #expect(Set(names) == ["foto.png", "foto-2.png"])
 }
 
+@Test("Bildkopie veröffentlicht bei externer Namenskollision mit Suffix")
+func store_fileUsesExclusivePublish() throws {
+    try withTempDir { dir in
+        let doc = dir.appendingPathComponent("Seite.md")
+        let source = dir.appendingPathComponent("quelle/foto.png")
+        try "x".write(to: doc, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(
+            at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("Quelle".utf8).write(to: source)
+        var insertedCollision = false
+        let stored = try MarkdownImageStore.storeImageFile(
+            source, documentURL: doc,
+            hooks: .init(beforePublishing: { target in
+                guard !insertedCollision else { return }
+                insertedCollision = true
+                try? Data("fremd".utf8).write(to: target, options: .withoutOverwriting)
+            }))
+        #expect(try Data(contentsOf: dir.appendingPathComponent("images/foto.png"))
+                == Data("fremd".utf8))
+        #expect(stored.fileURL.lastPathComponent == "foto-2.png")
+    }
+}
+
 @Test("storeImageFile: images-Symlink wird abgelehnt, echter Ordner akzeptiert")
 func store_imagesDirectoryMustNotBeSymlink() throws {
     try withTempDir { dir in
@@ -266,6 +351,76 @@ func store_imagesDirectoryMustNotBeSymlink() throws {
         try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
         let stored = try MarkdownImageStore.storeImageFile(source, documentURL: doc)
         #expect(stored.fileURL == images.appendingPathComponent("foto.png"))
+    }
+}
+
+@Test("Austausch des geöffneten images-Ordners schreibt nie ins Symlink-Ziel")
+func store_imagesDirectorySwapIsRejected() throws {
+    try withTempDir { dir in
+        let doc = dir.appendingPathComponent("Seite.md")
+        let source = dir.appendingPathComponent("quelle/foto.png")
+        let foreign = dir.appendingPathComponent("fremd")
+        try "x".write(to: doc, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(
+            at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: foreign,
+                                                withIntermediateDirectories: true)
+        try Data("Bild".utf8).write(to: source)
+
+        #expect(throws: MarkdownImageStore.StoreError.self) {
+            _ = try MarkdownImageStore.storeImageFile(
+                source, documentURL: doc,
+                hooks: .init(afterOpeningImagesDirectory: {
+                    let images = dir.appendingPathComponent("images")
+                    let held = dir.appendingPathComponent("images-alt")
+                    try? FileManager.default.moveItem(at: images, to: held)
+                    try? FileManager.default.createSymbolicLink(
+                        at: images, withDestinationURL: foreign)
+                }))
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: foreign.path).isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(
+            atPath: dir.appendingPathComponent("images-alt").path).isEmpty)
+    }
+}
+
+@Test("Austausch des Quellpfads nach open ändert die kopierten Bytes nicht")
+func store_sourcePathSwapKeepsOpenedFile() throws {
+    try withTempDir { dir in
+        let doc = dir.appendingPathComponent("Seite.md")
+        let source = dir.appendingPathComponent("quelle/foto.png")
+        try "x".write(to: doc, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(
+            at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("ursprünglich".utf8).write(to: source)
+        let stored = try MarkdownImageStore.storeImageFile(
+            source, documentURL: doc,
+            hooks: .init(afterOpeningSource: {
+                let old = source.deletingLastPathComponent()
+                    .appendingPathComponent("alt.png")
+                try? FileManager.default.moveItem(at: source, to: old)
+                try? Data("ausgetauscht".utf8).write(to: source)
+            }))
+        #expect(try Data(contentsOf: stored.fileURL) == Data("ursprünglich".utf8))
+    }
+}
+
+@Test("Abgebrochene Kopie veröffentlicht keine Teil- oder Tempdatei")
+func store_partialCopyIsNeverVisible() throws {
+    try withTempDir { dir in
+        let doc = dir.appendingPathComponent("Seite.md")
+        let source = dir.appendingPathComponent("quelle/gross.png")
+        try "x".write(to: doc, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(
+            at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(repeating: 0x41, count: 200_000).write(to: source)
+        #expect(throws: (any Error).self) {
+            _ = try MarkdownImageStore.storeImageFile(
+                source, documentURL: doc,
+                hooks: .init(failCopyAfterBytes: 70_000))
+        }
+        #expect(!FileManager.default.fileExists(
+            atPath: dir.appendingPathComponent("images").path))
     }
 }
 

@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 
 struct GitActionFeedback: Identifiable, Equatable {
     let id = UUID()
@@ -27,38 +28,40 @@ struct GitActionContext: Equatable {
     }
 }
 
-/// Baut die Argumente eines Pushs und entscheidet, ob die geprüfte Adresse an
-/// genau diesen Aufruf gebunden werden darf. Bewusst reine Rechnung ohne
-/// Prozessstart, damit der Regressionstest die Argumentliste direkt prüfen kann.
+/// Baut einen Push, dessen geprüfte Adresse nur in der Prozessumgebung liegt.
+/// Der flüchtige Remote-Name verhindert, dass Git die Adresse zwischen Prüfung
+/// und Prozessstart erneut aus veränderlicher Repository-Konfiguration liest.
 enum GitPushCommand {
-    /// Festnageln ist nur dann eindeutig, wenn genau EINE Push-Adresse geprüft
-    /// wurde und das Repository selbst keine `pushurl` gesetzt hat. Grund: Ein
-    /// `-c`-Wert ergänzt mehrwertige Git-Konfiguration, er ersetzt sie nicht —
-    /// sonst würde Fastra ein zusätzliches Ziel beliefern statt eines
-    /// festgelegten.
-    ///
-    /// Grenze, die keine Aufrufform aufhebt: `url.<basis>.insteadOf` schreibt
-    /// auch eine wörtlich übergebene Adresse um. Gegen eine feindlich veränderte
-    /// Git-Konfiguration schützt deshalb erst die Prüfung unmittelbar davor.
-    static func pinnableAddress(of target: GitPushTarget,
-                                hasConfiguredPushURL: Bool) -> String? {
-        guard !hasConfiguredPushURL, target.addresses.count == 1,
-              let address = target.addresses.first, !address.isEmpty
-        else { return nil }
+    struct Invocation: Equatable {
+        let arguments: [String]
+        let environment: [String: String]
+    }
+
+    static func verifiedAddress(of target: GitPushTarget) -> String? {
+        guard target.addresses.count == 1,
+              let address = target.addresses.first, !address.isEmpty else { return nil }
         return address
     }
 
-    static func arguments(remote: String, refspec: String, setUpstream: Bool,
-                          pinnedAddress: String?) -> [String] {
-        var arguments: [String] = []
-        if let pinnedAddress {
-            // `-c` gehört VOR das Unterkommando und gilt nur für diesen Lauf.
-            arguments += ["-c", "remote.\(remote).pushurl=\(pinnedAddress)"]
-        }
-        arguments.append("push")
-        if setUpstream { arguments.append("-u") }
-        arguments += [remote, refspec]
-        return arguments
+    /// Exit 1 ohne Ausgabe bedeutet bei `git config --get-regexp`: kein
+    /// Treffer. Jede Ausgabe oder ein technischer Fehler macht die Zielbindung
+    /// dagegen uneindeutig.
+    static func rewriteRulesAreAbsent(_ result: GitResult) -> Bool {
+        let output = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return output.isEmpty && (result.ok || result.exitCode == 1)
+    }
+
+    static func invocation(remote: String, address: String, refspec: String,
+                           temporaryRemote: String) -> Invocation {
+        let variable = "FASTRA_GIT_PUSH_URL"
+        return Invocation(
+            arguments: [
+                "--config-env=remote.\(temporaryRemote).url=\(variable)",
+                "-c", "remote.\(temporaryRemote).fetch=+refs/heads/*:refs/remotes/\(remote)/*",
+                "push", temporaryRemote, refspec
+            ],
+            environment: [variable: address]
+        )
     }
 }
 
@@ -183,7 +186,7 @@ extension Workspace {
             // die Datei stünde sonst weiter in der Liste, ohne dass klar wäre,
             // warum das Verwerfen „nichts getan" hat (Review 2026-08-02).
             do {
-                try FileManager.default.removeItem(at: root.appendingPathComponent(path))
+                try Self.removeUntrackedFile(at: root.appendingPathComponent(path))
             } catch {
                 Self.presentGitErrorText(
                     label: "Verwerfen",
@@ -234,7 +237,7 @@ extension Workspace {
         var deleteFailures: [String] = []
         for path in plan.untrackedPaths {
             do {
-                try FileManager.default.removeItem(at: root.appendingPathComponent(path))
+                try Self.removeUntrackedFile(at: root.appendingPathComponent(path))
             } catch {
                 deleteFailures.append((path as NSString).lastPathComponent)
             }
@@ -327,6 +330,23 @@ extension Workspace {
         alert.addButton(withTitle: L10n.string("Verwerfen"))
         alert.addButton(withTitle: L10n.string("Abbrechen"))
         return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// Entfernt ausschließlich einen einzelnen Verzeichniseintrag. `unlink`
+    /// verweigert echte Ordner; dadurch kann eine kompakt als unversioniert
+    /// gemeldete Verzeichniszeile nie rekursiv darin liegende ignorierte Daten
+    /// mitlöschen. Ein Symlink wird selbst entfernt, nicht sein Ziel.
+    static func removeUntrackedFile(at url: URL) throws {
+        var result: Int32 = -1
+        var savedErrno: Int32 = EINVAL
+        url.withUnsafeFileSystemRepresentation { path in
+            guard let path else { return }
+            result = Darwin.unlink(path)
+            if result != 0 { savedErrno = errno }
+        }
+        guard result == 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(savedErrno))
+        }
     }
 
     // MARK: Netzwerk
@@ -449,7 +469,8 @@ extension Workspace {
                         // nur ohne Interpretationsspielraum für push.default
                         // oder Remote-Konfiguration.
                         let refspec = "refs/heads/\(branch):refs/heads/\(branch)"
-                        self.startVerifiedPush(to: current, refspec: refspec,
+                        self.startVerifiedPush(to: current, branch: branch,
+                                               refspec: refspec,
                                                tracksTarget: tracksTarget,
                                                context: context)
                     }
@@ -460,52 +481,65 @@ extension Workspace {
         }
     }
 
-    /// Startet den Push gegen die soeben GEPRÜFTE Adresse. `git push <remote>`
-    /// allein würde den Remote-Namen beim Prozessstart erneut auflösen: Eine
-    /// Konfigurationsänderung zwischen Prüfung und Start ginge dann an eine nie
-    /// bestätigte Adresse (Review 2026-08-10). `-c remote.<name>.pushurl=…` gilt
-    /// nur für genau diesen Aufruf, bindet ihn an die geprüfte Adresse und lässt
-    /// zugleich den Remote-Namen stehen — Git führt dadurch wie bisher die
-    /// Remote-Tracking-Referenz mit und `-u` setzt den Upstream wie gehabt.
-    ///
-    /// Vorher wird gelesen, ob das Repository überhaupt eine `pushurl` gesetzt
-    /// hat: Ein `-c`-Wert ERGÄNZT mehrwertige Konfiguration, er ersetzt sie
-    /// nicht. Ohne diese Vorbedingung entstünde ein zweites Push-Ziel statt
-    /// eines festgenagelten.
-    private func startVerifiedPush(to target: GitPushTarget, refspec: String,
+    /// Startet nur bei genau einer Adresse und ohne globale URL-Umschreibregeln.
+    /// Solche Regeln könnten selbst eine wörtlich geprüfte Adresse ein zweites
+    /// Mal umschreiben; ein sichtbarer Abbruch ist dann die einzige eindeutige
+    /// Zielbindung.
+    private func startVerifiedPush(to target: GitPushTarget, branch: String,
+                                   refspec: String,
                                    tracksTarget: Bool,
                                    context: GitActionContext) {
+        guard let address = GitPushCommand.verifiedAddress(of: target) else {
+            Self.presentGitErrorText(
+                label: "Push",
+                text: L10n.string("Das Remote hat mehrere Push-Adressen. Fastra überträgt erst, wenn genau ein sichtbares Ziel konfiguriert ist."))
+            return
+        }
         let request = GitOperationRequest(
             repository: context.root, kind: .refresh,
-            arguments: ["config", "--includes", "--get-all",
-                        "remote.\(target.remote).pushurl"])
+            arguments: ["config", "--includes", "--get-regexp",
+                        "^url\\..*\\.\\(insteadOf\\|pushInsteadOf\\)$"])
         gitOperationsCoordinator.perform(request) { [weak self] outcome in
             DispatchQueue.main.async {
                 guard let self, context.isCurrent(in: self) else { return }
-                let hasConfiguredPushURL: Bool
-                if case .completed(let result) = outcome {
-                    // Exit 1 ohne Ausgabe heißt bei `git config` schlicht
-                    // „nicht gesetzt“ und ist kein Fehler.
-                    hasConfiguredPushURL = !result.stdout
-                        .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                } else {
-                    // Ohne verlässliche Auskunft nicht festnageln: ein
-                    // zusätzliches Ziel wäre schlimmer als der bisherige Weg.
-                    hasConfiguredPushURL = true
+                guard case .completed(let result) = outcome else {
+                    Self.presentGitExecutionFailure(label: "Push", outcome: outcome)
+                    return
                 }
-                let arguments = GitPushCommand.arguments(
-                    remote: target.remote, refspec: refspec,
-                    setUpstream: !tracksTarget,
-                    pinnedAddress: GitPushCommand.pinnableAddress(
-                        of: target, hasConfiguredPushURL: hasConfiguredPushURL))
+                guard GitPushCommand.rewriteRulesAreAbsent(result) else {
+                    Self.presentGitErrorText(
+                        label: "Push",
+                        text: L10n.string("Git-URL-Umschreibregeln machen das Push-Ziel mehrdeutig. Entferne insteadOf/pushInsteadOf oder pushe bewusst im Terminal."))
+                    return
+                }
+                let temporaryRemote = "fastra-verified-\(UUID().uuidString)"
+                let invocation = GitPushCommand.invocation(
+                    remote: target.remote, address: address, refspec: refspec,
+                    temporaryRemote: temporaryRemote)
+                let finish: (GitActionContext) -> Void = { [weak self] context in
+                    guard let self else { return }
+                    if tracksTarget {
+                        self.recordGitSuccess(L10n.format(
+                            "Push zu %@ erfolgreich", target.remote))
+                        self.refreshGitRepositoryFully()
+                        self.refreshOpenGitViews()
+                    } else {
+                        // Der flüchtige Remote darf nie als dauerhafter Upstream
+                        // gespeichert werden. Nach dem erfolgreichen Push zeigt
+                        // die Tracking-Referenz bereits auf den echten Remote.
+                        self.runGitAction(
+                            ["branch", "--set-upstream-to=\(target.remote)/\(branch)", branch],
+                            label: "Upstream",
+                            successMessage: L10n.format(
+                                "Push zu %@ erfolgreich · Upstream angelegt",
+                                target.remote), context: context)
+                    }
+                }
                 self.runGitAction(
-                    arguments,
+                    invocation.arguments,
                     label: L10n.format("Push zu %@", target.remote),
-                    successMessage: tracksTarget
-                        ? L10n.format("Push zu %@ erfolgreich", target.remote)
-                        : L10n.format("Push zu %@ erfolgreich · Upstream angelegt",
-                                      target.remote),
-                    context: context, kind: .push)
+                    context: context, kind: .push,
+                    environment: invocation.environment, then: finish)
             }
         }
     }
@@ -715,6 +749,7 @@ extension Workspace {
                       successMessage: String? = nil,
                       context suppliedContext: GitActionContext? = nil,
                       kind explicitKind: GitOperationKind? = nil,
+                      environment: [String: String] = [:],
                       refreshOnFailure: Bool = false,
                       then: ((GitActionContext) -> Void)? = nil)
         -> GitOperationLease? {
@@ -735,8 +770,10 @@ extension Workspace {
             default: kind = .workingTreeMutation
             }
         }
+        var policy = GitExecutionPolicy.default
+        policy.environment = environment
         let request = GitOperationRequest(repository: context.root, kind: kind,
-                                          arguments: args)
+                                          arguments: args, policy: policy)
         let lease = gitOperationsCoordinator.perform(request) { [weak self] outcome in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -762,7 +799,7 @@ extension Workspace {
                     then(context)
                 } else {
                     if let successMessage {
-                        self.recordGitSuccess(L10n.string(successMessage))
+                        self.recordGitSuccess(successMessage)
                     }
                     // Kette fertig: Status + offene Verlauf-/Diff-Tabs auffrischen.
                     self.refreshGitRepositoryFully()

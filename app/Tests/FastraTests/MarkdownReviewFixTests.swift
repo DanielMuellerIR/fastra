@@ -86,28 +86,6 @@ private final class StoreOutcomes {
     }
 }
 
-/// FileManager, der das Kopieren anhält, bis der Test es freigibt. Nur so
-/// lässt sich beweisen, dass ein zweiter Drop in denselben Zielordner
-/// wirklich wartet, statt daneben zu laufen.
-private final class BlockingCopyFileManager: FileManager {
-    let reachedCopy = DispatchSemaphore(value: 0)
-    let mayFinishCopy = DispatchSemaphore(value: 0)
-
-    override func copyItem(at srcURL: URL, to dstURL: URL) throws {
-        reachedCopy.signal()
-        // Notbremse: Ein hängender Test wäre schlimmer als ein roter.
-        _ = mayFinishCopy.wait(timeout: .now() + 10)
-        try super.copyItem(at: srcURL, to: dstURL)
-    }
-}
-
-/// FileManager, dessen Kopie immer scheitert — für die Aufräumzusage.
-private final class FailingCopyFileManager: FileManager {
-    override func copyItem(at srcURL: URL, to dstURL: URL) throws {
-        throw CocoaError(.fileWriteUnknown)
-    }
-}
-
 // MARK: - E2: Verdichtung der Renderanforderungen
 
 @Test("Vorschau-Rendern verdichtet sich auf die jüngste Anforderung")
@@ -187,6 +165,30 @@ func imageWatcher_plainFileYieldsSingleDirectory() throws {
     #expect(directories == [root.resolvingSymlinksInPath().standardizedFileURL.path])
 }
 
+@Test("Bildwächter beobachtet Elternordner eines umhängbaren Ordner-Links")
+func imageWatcher_watchesDirectorySymlinkParent() throws {
+    let root = try makeTempDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let first = root.appendingPathComponent("ablage-a")
+    let second = root.appendingPathComponent("ablage-b")
+    try FileManager.default.createDirectory(at: first, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: second, withIntermediateDirectories: true)
+    let link = root.appendingPathComponent("assets")
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: first)
+
+    let image = link.appendingPathComponent("foto.png")
+    let before = MarkdownImageWatcher.directoriesToWatch(for: [image])
+    #expect(before.contains(root.resolvingSymlinksInPath().path))
+    #expect(before.contains(first.resolvingSymlinksInPath().path))
+
+    try FileManager.default.removeItem(at: link)
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: second)
+    let after = MarkdownImageWatcher.directoriesToWatch(for: [image])
+    #expect(after.contains(root.resolvingSymlinksInPath().path))
+    #expect(after.contains(second.resolvingSymlinksInPath().path))
+    #expect(!after.contains(first.resolvingSymlinksInPath().path))
+}
+
 // MARK: - E5: Ordner-Lock umfasst Anlegen, Kopie und Aufräumen
 
 @Test("Zwei Drops in denselben neuen images-Ordner laufen nacheinander")
@@ -207,13 +209,17 @@ func imageStore_serializesDirectoryCreationAndCopy() async throws {
     try Data("eins".utf8).write(to: first)
     try Data("zwei".utf8).write(to: second)
 
-    let blocking = BlockingCopyFileManager()
+    let reachedCopy = DispatchSemaphore(value: 0)
+    let mayFinishCopy = DispatchSemaphore(value: 0)
     let outcomes = StoreOutcomes()
 
     DispatchQueue.global().async {
         do {
             _ = try MarkdownImageStore.storeImageFile(first, documentURL: document,
-                                                      fileManager: blocking)
+                hooks: .init(afterOpeningImagesDirectory: {
+                    reachedCopy.signal()
+                    _ = mayFinishCopy.wait(timeout: .now() + 10)
+                }))
             outcomes.finish("erster", error: nil)
         } catch {
             outcomes.finish("erster", error: error)
@@ -221,14 +227,14 @@ func imageStore_serializesDirectoryCreationAndCopy() async throws {
     }
     // Ab hier hat der erste Vorgang den `images`-Ordner angelegt und hängt
     // mitten im Kopieren.
-    #expect(blocking.reachedCopy.wait(timeout: .now() + 10) == .success)
+    #expect(reachedCopy.wait(timeout: .now() + 10) == .success)
 
     let secondStarted = DispatchSemaphore(value: 0)
     DispatchQueue.global().async {
         secondStarted.signal()
         do {
             _ = try MarkdownImageStore.storeImageFile(second, documentURL: document,
-                                                      fileManager: .default)
+                                                      hooks: .init())
             outcomes.finish("zweiter", error: nil)
         } catch {
             outcomes.finish("zweiter", error: error)
@@ -244,7 +250,7 @@ func imageStore_serializesDirectoryCreationAndCopy() async throws {
     #expect(outcomes.isFinished("zweiter") == false,
             "Der zweite Drop überholte den ersten — der Ordner-Lock umfasst Anlegen und Kopieren nicht")
 
-    blocking.mayFinishCopy.signal()
+    mayFinishCopy.signal()
     for _ in 0..<100 {
         if outcomes.isFinished("erster") && outcomes.isFinished("zweiter") { break }
         try await Task.sleep(nanoseconds: 100_000_000)
@@ -275,7 +281,7 @@ func imageStore_removesOnlySelfCreatedEmptyDirectory() throws {
     #expect(throws: (any Error).self) {
         _ = try MarkdownImageStore.storeImageFile(
             freshSource, documentURL: freshDocument,
-            fileManager: FailingCopyFileManager()
+            hooks: .init(failCopyAfterBytes: 0)
         )
     }
     #expect(FileManager.default.fileExists(
@@ -297,7 +303,7 @@ func imageStore_removesOnlySelfCreatedEmptyDirectory() throws {
     #expect(throws: (any Error).self) {
         _ = try MarkdownImageStore.storeImageFile(
             existingSource, documentURL: existingDocument,
-            fileManager: FailingCopyFileManager()
+            hooks: .init(failCopyAfterBytes: 0)
         )
     }
     #expect(FileManager.default.fileExists(atPath: keeper.path))

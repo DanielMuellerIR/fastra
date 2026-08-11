@@ -68,6 +68,10 @@ struct GitOperationRequest: Equatable, Hashable {
         hasher.combine(policy.terminationGracePeriod)
         hasher.combine(policy.editorPolicy)
         hasher.combine(policy.standardInput)
+        for key in policy.environment.keys.sorted() {
+            hasher.combine(key)
+            hasher.combine(policy.environment[key])
+        }
     }
 }
 

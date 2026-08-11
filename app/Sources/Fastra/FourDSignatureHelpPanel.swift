@@ -24,10 +24,18 @@ final class FourDSignatureHelpController: ObservableObject {
     /// sich das Änderungsdatum ändert. Der Cache wird ausschließlich aus dem
     /// Hintergrundauftrag benutzt und sperrt sich deshalb selbst.
     private let cache = FourDSignatureResolver.Cache()
+    /// Verdichtet Platten-/Archivauflösungen auf den jüngsten Cursorstand.
+    private let resolutionScheduler = FourDSignatureResolutionScheduler()
     /// Zählt bei jeder Cursorbewegung hoch. Ein Hintergrund-Signaturabruf,
     /// der erst nach der nächsten Bewegung zurückkommt, ist damit erkennbar
     /// veraltet und wird verworfen.
     private var updateGeneration = 0
+    private struct PanelRequestIdentity: Equatable {
+        let window: ObjectIdentifier
+        let method: String
+        let openParenLocation: Int
+    }
+    private var visibleRequestIdentity: PanelRequestIdentity?
 
     /// Zentraler Einstieg: bei jeder Cursorbewegung im aktiven 4D-Editor.
     func update(workspace: Workspace,
@@ -51,8 +59,18 @@ final class FourDSignatureHelpController: ObservableObject {
                 in: textView.string,
                 utf16CursorLocation: cursor.range.location
               ) else {
-            hide()
+            hidePanel()
             return
+        }
+        let panelRequestIdentity = PanelRequestIdentity(
+            window: ObjectIdentifier(window),
+            method: context.methodName.lowercased(),
+            openParenLocation: context.openParenLocation)
+        if let visibleRequestIdentity,
+           visibleRequestIdentity != panelRequestIdentity {
+            // Die alte Hilfe gehört sichtbar zu einem anderen Aufruf. Sie
+            // verschwindet sofort, nicht erst nach dem neuen Plattenzugriff.
+            hidePanel()
         }
         // Alles, was die Platte anfasst — Existenzprüfung der Methodendatei,
         // Änderungsdatum, Lesen des Archivs und Parsen —, läuft im
@@ -62,19 +80,19 @@ final class FourDSignatureHelpController: ObservableObject {
         // verwirft ein verspätetes Ergebnis.
         let request = titleRequest(workspace: workspace, context: context)
         let cache = cache
-        DispatchQueue.global(qos: .userInitiated).async {
-            let resolved = FourDSignatureResolver.title(for: request, cache: cache)
-            DispatchQueue.main.async { [weak self] in
+        resolutionScheduler.submit(key: request, work: {
+            FourDSignatureResolver.title(for: request, cache: cache)
+        }) { [weak self] resolved in
                 guard let self, generation == self.updateGeneration else { return }
                 guard let resolved else {
-                    self.hide()
+                    self.hidePanel()
                     return
                 }
                 // Fenster oder Editor können sich während eines Hintergrund-
                 // Reads geändert haben — dann nicht mehr an die alte Ansicht
                 // ankern.
                 guard textView.window === window, window.isVisible else {
-                    self.hide()
+                    self.hidePanel()
                     return
                 }
                 self.show(
@@ -85,7 +103,9 @@ final class FourDSignatureHelpController: ObservableObject {
                     anchoredAt: context.openParenLocation,
                     textView: textView, window: window
                 )
-            }
+                if self.panel != nil {
+                    self.visibleRequestIdentity = panelRequestIdentity
+                }
         }
     }
 
@@ -137,12 +157,17 @@ final class FourDSignatureHelpController: ObservableObject {
         // könnte ein Tabwechsel (`hide()` von außen) vom verspäteten
         // Ergebnis der alten Datei wieder überschrieben werden.
         updateGeneration &+= 1
+        hidePanel()
+    }
+
+    private func hidePanel() {
         if let panel {
             panel.parent?.removeChildWindow(panel)
             panel.orderOut(nil)
         }
         panel = nil
         panelHost = nil
+        visibleRequestIdentity = nil
     }
 
     // MARK: - Darstellung
@@ -211,7 +236,7 @@ final class FourDSignatureHelpController: ObservableObject {
                       textView: TextView, window: NSWindow) {
         guard let anchorRect = textView.layoutManager.rectForOffset(offset),
               textView.visibleRect.intersects(anchorRect) else {
-            hide()
+            hidePanel()
             return
         }
 
@@ -265,7 +290,7 @@ final class FourDSignatureHelpController: ObservableObject {
 
     private func reusablePanel(in window: NSWindow) -> NSPanel {
         if let panel, panelHost === window { return panel }
-        hide()
+        hidePanel()
         let panel = NSPanel(
             contentRect: .zero,
             styleMask: [.borderless, .nonactivatingPanel],
@@ -308,12 +333,12 @@ final class FourDSignatureHelpController: ObservableObject {
 /// einer Hintergrund-Queue laufen kann — auf einem Netz- oder
 /// Wechseldatenträger blockierte jede dieser Fragen sonst die Oberfläche
 /// (Review 2026-08-10).
-private enum FourDSignatureResolver {
+enum FourDSignatureResolver {
 
     /// Alle Eingaben einer Auflösung als reine Daten. Der Hintergrundauftrag
     /// darf den Workspace nicht anfassen — der lebt auf dem Main-Thread —,
     /// deshalb wird vorher dort alles Nötige herauskopiert.
-    struct Request {
+    struct Request: Hashable {
         let lowered: String
         /// Dateiname der Projektmethode in Original-Schreibweise; `nil`, wenn
         /// der Aufruf keine Projektmethode trifft.
@@ -400,12 +425,13 @@ private enum FourDSignatureResolver {
     /// Signatur einer Methodendatei — Änderungsdatum, Lesen und Parsen.
     private static func signature(forFileAt fileURL: URL,
                                   cache: Cache) -> FourDMethodSignature? {
-        let path = fileURL.path
+        let resolved = fileURL.canonicalFileURL
+        let path = resolved.path
         let modified = modificationDate(ofItemAt: path)
         if let cached = cache.signature(forKey: path, modified: modified) {
             return cached
         }
-        guard let source = try? String(contentsOf: fileURL, encoding: .utf8) else {
+        guard let source = try? String(contentsOf: resolved, encoding: .utf8) else {
             return nil
         }
         let parsed = FourDSignatureParser.parse(methodSource: source)
@@ -423,17 +449,18 @@ private enum FourDSignatureResolver {
         case .sourceFile(let url), .documentation(let url):
             return signature(forFileAt: url, cache: cache)
         case .zipEntry(let archive, let entryPath):
-            let key = archive.path + "#" + entryPath
-            let modified = modificationDate(ofItemAt: archive.path)
+            let resolvedArchive = archive.canonicalFileURL
+            let key = resolvedArchive.path + "#" + entryPath
+            let modified = modificationDate(ofItemAt: resolvedArchive.path)
             if let cached = cache.signature(forKey: key, modified: modified) {
                 return cached
             }
             // Archiv öffnen und Eintrag dekomprimieren kostet spürbar Zeit —
             // gehört wie der Plattenpfad oben in den Hintergrund.
-            guard let entries = FourDZipArchive.entries(of: archive),
+            guard let entries = FourDZipArchive.entries(of: resolvedArchive),
                   let entry = entries.first(where: { $0.path == entryPath }),
                   let data = FourDZipArchive.data(
-                      of: entry, in: archive,
+                      of: entry, in: resolvedArchive,
                       maximumSize: FourDComponentIndex.maximumEntryBytes
                   ),
                   let source = FourDComponentIndex.decodeText(data) else { return nil }
@@ -442,6 +469,71 @@ private enum FourDSignatureResolver {
             return parsed
         case .nameOnly:
             return nil
+        }
+    }
+}
+
+/// Führt höchstens die laufende und die jüngste weitere Signaturauflösung aus.
+/// Gleichartige Cursorupdates ersetzen nur ihre Completion; dadurch wird ein
+/// großes 4DZ-Archiv beim schnellen Tippen nicht dutzendfach nacheinander
+/// geöffnet.
+final class FourDSignatureResolutionScheduler: @unchecked Sendable {
+    private struct Work {
+        let key: FourDSignatureResolver.Request
+        let resolve: () -> FourDSignatureResolver.Title?
+        let completion: (FourDSignatureResolver.Title?) -> Void
+    }
+
+    private let lock = NSLock()
+    private var runningKey: FourDSignatureResolver.Request?
+    private var runningCompletion: ((FourDSignatureResolver.Title?) -> Void)?
+    private var pending: Work?
+
+    func submit(key: FourDSignatureResolver.Request,
+                work: @escaping () -> FourDSignatureResolver.Title?,
+                completion: @escaping (FourDSignatureResolver.Title?) -> Void) {
+        let item = Work(key: key, resolve: work, completion: completion)
+        lock.lock()
+        if let runningKey {
+            if runningKey == key {
+                // Derselbe Inhalt wird bereits gelesen. Nur der jüngste
+                // Cursorstand braucht das Ergebnis; eine fremde wartende
+                // Anfrage wäre jetzt ebenfalls überholt.
+                runningCompletion = completion
+                pending = nil
+            } else {
+                runningCompletion = nil
+                pending = item
+            }
+            lock.unlock()
+            return
+        }
+        self.runningKey = key
+        runningCompletion = completion
+        lock.unlock()
+        run(item)
+    }
+
+    private func run(_ item: Work) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = item.resolve()
+            guard let self else { return }
+            self.lock.lock()
+            let completion = self.runningKey == item.key
+                ? self.runningCompletion : nil
+            self.runningKey = nil
+            self.runningCompletion = nil
+            let next = self.pending
+            self.pending = nil
+            if let next {
+                self.runningKey = next.key
+                self.runningCompletion = next.completion
+            }
+            self.lock.unlock()
+            if let completion {
+                DispatchQueue.main.async { completion(result) }
+            }
+            if let next { self.run(next) }
         }
     }
 }

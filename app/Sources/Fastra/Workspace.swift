@@ -363,6 +363,10 @@ enum SidebarLayout {
 }
 
 final class Workspace: ObservableObject {
+    /// Dauerhafte Fensteridentität für langlebige Singleton-Dienste. Anders
+    /// als eine schwache Referenz bleibt sie auch nach dem Schließen des
+    /// auslösenden Fensters eindeutig und kann keinem anderen Fenster zufallen.
+    let instanceID = UUID()
     typealias LanguageDetectionScheduler = (@escaping @Sendable () -> Void) -> Void
 
     private final class FolderApplyProgressRelay: @unchecked Sendable {
@@ -4205,6 +4209,13 @@ final class Workspace: ObservableObject {
             searchRunner?.folderResultsBecameStale()
             reloadOpenTabs(for: partial.entries.filter { $0.state == .restored }
                 .map { URL(fileURLWithPath: $0.originalPath) })
+            return false
+        } catch ApplyError.backupFailed(let message) {
+            // Beschädigte oder manipulierte Sicherung: Der sichere Abbruch ist
+            // beabsichtigt. Die bereits lokalisierte Hash-/Backup-Ursache muss
+            // als Nutzermeldung erscheinen, nicht als rohe Enum-Beschreibung.
+            NSAlert.runWarning(title: L10n.string("Rückgängig abgelehnt"),
+                               text: message)
             return false
         } catch {
             NSAlert(error: error).runModal()

@@ -12,6 +12,7 @@
 import Foundation
 import AppKit
 import UniformTypeIdentifiers
+import Darwin
 
 enum MarkdownImageStore {
 
@@ -42,11 +43,6 @@ enum MarkdownImageStore {
     }
 
     private static let directoryLocks = DirectoryLockRegistry()
-
-    /// Bildformate, die beim Einfügen UNVERÄNDERT bleiben. Alles andere
-    /// (z. B. TIFF vom System-Screenshot-Pasteboard) wird verlustfrei und
-    /// universell als PNG abgelegt.
-    static let passthroughExtensions: Set<String> = ["png", "jpg", "jpeg", "gif"]
 
     /// Dateiendungen, die als Bild-DATEI eingefügt (statt geöffnet) werden.
     /// Deckt sich mit den Vorschau-Formaten der WKWebView-Bildauflösung.
@@ -95,7 +91,9 @@ enum MarkdownImageStore {
         let relative = String(image.path.dropFirst(dirPrefix.count))
         return relative.split(separator: "/").map { component in
             String(component).addingPercentEncoding(
-                withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "%?#"))
+                withAllowedCharacters: .urlPathAllowed.subtracting(
+                    CharacterSet(charactersIn: "%?#()<>[]\\:")
+                )
             ) ?? String(component)
         }.joined(separator: "/")
     }
@@ -103,6 +101,11 @@ enum MarkdownImageStore {
     /// Markdown-Bildlink; Alt-Text ist der Dateiname ohne Endung.
     static func markdownImageLink(fileName: String, relativePath: String) -> String {
         let alt = (fileName as NSString).deletingPathExtension
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "[", with: "\\[")
+            .replacingOccurrences(of: "]", with: "\\]")
         return "![\(alt)](\(relativePath))"
     }
 
@@ -153,35 +156,86 @@ enum MarkdownImageStore {
         }
     }
 
+    /// Nur für deterministische Regressionstests der Dateisystem-Races. Die
+    /// Produktpfade verwenden den leeren Standardwert.
+    struct StoreHooks {
+        var afterOpeningSource: (() -> Void)?
+        var afterOpeningImagesDirectory: (() -> Void)?
+        var beforePublishing: ((URL) -> Void)?
+        var failCopyAfterBytes: Int?
+
+        init(afterOpeningSource: (() -> Void)? = nil,
+             afterOpeningImagesDirectory: (() -> Void)? = nil,
+             beforePublishing: ((URL) -> Void)? = nil,
+             failCopyAfterBytes: Int? = nil) {
+            self.afterOpeningSource = afterOpeningSource
+            self.afterOpeningImagesDirectory = afterOpeningImagesDirectory
+            self.beforePublishing = beforePublishing
+            self.failCopyAfterBytes = failCopyAfterBytes
+        }
+    }
+
+    private struct OpenDirectory {
+        let parentFD: Int32?
+        let fd: Int32
+        let url: URL
+        let identity: LockIdentity
+        let created: Bool
+    }
+
+    private struct LockIdentity: Equatable {
+        let device: dev_t
+        let inode: ino_t
+    }
+
     /// Legt ROHE Bilddaten als neue Datei neben dem Dokument ab.
     /// Rückgabe: Markdown-Link + Ziel-URL.
     static func storePastedData(_ prepared: PreparedImageData,
                                 documentURL: URL,
                                 now: Date = Date(),
-                                fileManager: FileManager = .default)
+                                hooks: StoreHooks = StoreHooks())
     throws -> (link: String, fileURL: URL) {
         let directory = documentURL.deletingLastPathComponent()
+            .resolvingSymlinksInPath().standardizedFileURL
+        let linkDocumentURL = directory.appendingPathComponent(
+            documentURL.lastPathComponent)
         let base = pastedImageBaseName(documentName: documentURL.lastPathComponent,
                                        date: now)
         return try directoryLocks.withLock(for: directory) {
-            // Namenswahl und atomare Veröffentlichung bilden innerhalb DIESES
-            // Dokumentordners einen Schritt. So können zwei gleichzeitige
-            // Paste-Vorgänge nicht denselben freien Namen wählen.
-            let name = collisionFreeName(base: base,
-                                         fileExtension: prepared.fileExtension) {
-                fileManager.fileExists(
-                    atPath: directory.appendingPathComponent($0).path
-                )
+            let opened = try openExistingDirectory(directory)
+            defer { Darwin.close(opened.fd) }
+            let temporaryName = ".fastra-paste-\(UUID().uuidString).tmp"
+            let temporaryFD = try createFile(named: temporaryName, in: opened.fd)
+            var temporaryExists = true
+            defer {
+                Darwin.close(temporaryFD)
+                if temporaryExists { _ = unlinkat(opened.fd, temporaryName, 0) }
             }
-            let target = directory.appendingPathComponent(name)
-            // Atomar: erst vollständig schreiben, dann sichtbar werden.
-            try prepared.data.write(to: target, options: .atomic)
-            guard let relative = relativeLinkPath(from: documentURL, to: target) else {
-                // Kann konstruktionsbedingt nicht passieren — defensiv aufräumen.
-                try? fileManager.removeItem(at: target)
-                throw StoreError.unreadableImage
+            try writeAll(prepared.data, to: temporaryFD)
+            guard fsync(temporaryFD) == 0 else { throw currentPOSIXError() }
+
+            for counter in 1..<10_000 {
+                let name = counter == 1
+                    ? "\(base).\(prepared.fileExtension)"
+                    : "\(base)-\(counter).\(prepared.fileExtension)"
+                let target = directory.appendingPathComponent(name)
+                hooks.beforePublishing?(target)
+                if renameatx_np(opened.fd, temporaryName, opened.fd, name,
+                                UInt32(RENAME_EXCL)) == 0 {
+                    temporaryExists = false
+                    guard directoryStillMatches(opened),
+                          let relative = relativeLinkPath(from: linkDocumentURL,
+                                                          to: target)
+                    else {
+                        _ = unlinkat(opened.fd, name, 0)
+                        throw StoreError.invalidImagesDirectory
+                    }
+                    return (markdownImageLink(fileName: name, relativePath: relative),
+                            target)
+                }
+                guard errno == EEXIST else { throw currentPOSIXError() }
             }
-            return (markdownImageLink(fileName: name, relativePath: relative), target)
+            throw StoreError.unreadableImage
         }
     }
 
@@ -190,114 +244,264 @@ enum MarkdownImageStore {
     /// - Namenskollision → Suffix, byte-identische Datei → nicht doppeln.
     static func storeImageFile(_ sourceURL: URL,
                                documentURL: URL,
-                               fileManager: FileManager = .default)
+                               hooks: StoreHooks = StoreHooks())
     throws -> (link: String, fileURL: URL) {
-        let documentDirectory = documentURL.deletingLastPathComponent().standardizedFileURL
-        let directory = documentDirectory
-            .appendingPathComponent("images", isDirectory: true)
-            .standardizedFileURL
-        let source = sourceURL.standardizedFileURL
-        guard let readableSource = regularFileURL(for: source) else {
+        // Die Quelle wird genau einmal geöffnet. Ein Austausch des Pfads nach
+        // dieser Stelle kann weder andere Bytes einschleusen noch die spätere
+        // Kopie auf eine zweite Datei umlenken.
+        let source = sourceURL.resolvingSymlinksInPath().standardizedFileURL
+        let sourceFD = open(source.path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+        guard sourceFD >= 0 else { throw StoreError.unreadableImage }
+        defer { Darwin.close(sourceFD) }
+        var sourceBefore = stat()
+        guard fstat(sourceFD, &sourceBefore) == 0,
+              sourceBefore.st_mode & S_IFMT == S_IFREG else {
             throw StoreError.unreadableImage
         }
-        let directoryPrefix = directory.path.hasSuffix("/")
-            ? directory.path
-            : directory.path + "/"
+        hooks.afterOpeningSource?()
 
-        // Anlegen des Ordners, Besitzentscheidung, Kopie und das Zurücknehmen
-        // eines leer gebliebenen Ordners bilden EINEN Schritt je Zielordner.
-        // Vorher lag das Anlegen außerhalb: Zwei gleichzeitige Drops in
-        // denselben neuen `images`-Ordner sahen beide „von mir angelegt";
-        // scheiterte der eine, entfernte sein `defer` den noch leeren Ordner,
-        // während der andere gerade zum Kopieren ansetzte — ein völlig
-        // gültiger paralleler Bild-Drop scheiterte dann am fehlenden
-        // Zielordner (Code-Review 2026-08-10).
+        let documentDirectory = documentURL.deletingLastPathComponent()
+            .resolvingSymlinksInPath().standardizedFileURL
+        let linkDocumentURL = documentDirectory.appendingPathComponent(
+            documentURL.lastPathComponent)
+        let directory = documentDirectory.appendingPathComponent(
+            "images", isDirectory: true)
+
         return try directoryLocks.withLock(for: directory) {
-            // `attributesOfItem` beschreibt den Pfad selbst. Ein vorhandenes
-            // `images` darf deshalb weder Symlink noch gewöhnliche Datei sein;
-            // andernfalls würde das Kopieren unbemerkt außerhalb des
-            // Dokumentordners landen.
-            //
-            // Der Rückgabewert merkt zugleich, ob es den Ordner schon vor
-            // diesem Aufruf gab. Scheitert das Kopieren danach (Quelle
-            // verschwunden, nicht lesbar), soll die gescheiterte Aktion den
-            // Dokumentordner nicht sichtbar verändern — ein leerer neuer
-            // `images`-Ordner blieb bisher stehen (Review 2026-08-06).
-            let directoryExistedBefore = try ensureRealDirectory(
-                directory, fileManager: fileManager
-            )
+            let opened = try openImagesDirectory(beside: documentDirectory)
+            defer {
+                Darwin.close(opened.fd)
+                if let parentFD = opened.parentFD { Darwin.close(parentFD) }
+            }
+            var stored = false
+            defer {
+                // `unlinkat(..., AT_REMOVEDIR)` entfernt ausschließlich den
+                // von uns erzeugten, noch leeren echten Ordner. Ein inzwischen
+                // untergeschobener Symlink wird niemals verfolgt.
+                if !stored, opened.created, let parentFD = opened.parentFD {
+                    _ = unlinkat(parentFD, "images", AT_REMOVEDIR)
+                }
+            }
+            hooks.afterOpeningImagesDirectory?()
 
-            // Schon im images-Unterordner? Dann NICHT kopieren, nur verlinken.
-            if source.path.hasPrefix(directoryPrefix),
-               let relative = relativeLinkPath(from: documentURL, to: source) {
+            // Bereits im geöffneten echten images-Ordner: nur verlinken.
+            if source.deletingLastPathComponent() == directory,
+               directoryStillMatches(opened),
+               let relative = relativeLinkPath(from: linkDocumentURL, to: source) {
+                stored = true
                 return (markdownImageLink(fileName: source.lastPathComponent,
                                           relativePath: relative), source)
             }
 
-            var stored = false
+            let temporaryName = ".fastra-copy-\(UUID().uuidString).tmp"
+            let temporaryFD = try createFile(named: temporaryName, in: opened.fd)
+            var temporaryExists = true
             defer {
-                // Nur einen von DIESEM Aufruf angelegten und weiterhin leeren
-                // Ordner zurücknehmen; fremde Inhalte bleiben unberührt.
-                if !stored, !directoryExistedBefore,
-                   let entries = try? fileManager.contentsOfDirectory(atPath: directory.path),
-                   entries.isEmpty {
-                    try? fileManager.removeItem(at: directory)
-                }
+                Darwin.close(temporaryFD)
+                if temporaryExists { _ = unlinkat(opened.fd, temporaryName, 0) }
+            }
+            try copy(sourceFD: sourceFD, targetFD: temporaryFD,
+                     failAfterBytes: hooks.failCopyAfterBytes)
+            guard fsync(temporaryFD) == 0 else { throw currentPOSIXError() }
+            var sourceAfter = stat()
+            guard fstat(sourceFD, &sourceAfter) == 0,
+                  sameSnapshot(sourceBefore, sourceAfter) else {
+                throw StoreError.unreadableImage
             }
 
-            let sourceName = source.lastPathComponent
+            let sourceName = sourceURL.lastPathComponent
             let base = (sourceName as NSString).deletingPathExtension
             let fileExtension = (sourceName as NSString).pathExtension
-
-            // Kandidaten in Suffix-Reihenfolge: vorhandene byte-identische Datei
-            // wird wiederverwendet, sonst der erste freie Name.
-            var counter = 1
-            while counter < 10_000 {
+            for counter in 1..<10_000 {
                 let candidateName = counter == 1
                     ? sourceName
-                    : "\(base)-\(counter).\(fileExtension)"
+                    : fileExtension.isEmpty
+                        ? "\(base)-\(counter)"
+                        : "\(base)-\(counter).\(fileExtension)"
                 let candidate = directory.appendingPathComponent(candidateName)
-                if !fileManager.fileExists(atPath: candidate.path) {
-                    // `copyItem` verändert Inhalte nie; bei Abbruch bleibt die
-                    // Quelle unangetastet und das Ziel existiert nicht halb —
-                    // FileManager kopiert auf APFS über einen Klon/Temp-Pfad.
-                    do {
-                        try fileManager.copyItem(at: readableSource, to: candidate)
-                        guard let relative = relativeLinkPath(
-                            from: documentURL, to: candidate
-                        ) else {
-                            try? fileManager.removeItem(at: candidate)
-                            throw StoreError.unreadableImage
-                        }
+                let existingFD = openat(opened.fd, candidateName,
+                                        O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+                if existingFD >= 0 {
+                    defer { Darwin.close(existingFD) }
+                    if contentsEqual(sourceFD, existingFD),
+                       directoryStillMatches(opened),
+                       let relative = relativeLinkPath(from: linkDocumentURL,
+                                                       to: candidate) {
                         stored = true
                         return (markdownImageLink(fileName: candidateName,
                                                   relativePath: relative), candidate)
-                    } catch {
-                        // Ein Vorgang AUSSERHALB dieses Prozesses kann den eben
-                        // noch freien Namen belegt haben — der Ordner-Lock
-                        // schützt nur Fastras eigene Aufrufe. Nur dann neu
-                        // suchen; echte Kopierfehler bleiben sichtbar.
-                        guard isFileExistsError(error) else { throw error }
                     }
+                    continue
                 }
-                if contentsEqual(readableSource, candidate, fileManager: fileManager) {
-                    guard let relative = relativeLinkPath(from: documentURL, to: candidate) else {
-                        throw StoreError.unreadableImage
+                if errno != ENOENT && errno != ELOOP { throw currentPOSIXError() }
+                if errno == ELOOP { continue }
+
+                hooks.beforePublishing?(candidate)
+                if renameatx_np(opened.fd, temporaryName, opened.fd,
+                                candidateName, UInt32(RENAME_EXCL)) == 0 {
+                    temporaryExists = false
+                    guard directoryStillMatches(opened),
+                          let relative = relativeLinkPath(from: linkDocumentURL,
+                                                          to: candidate) else {
+                        _ = unlinkat(opened.fd, candidateName, 0)
+                        throw StoreError.invalidImagesDirectory
                     }
                     stored = true
                     return (markdownImageLink(fileName: candidateName,
                                               relativePath: relative), candidate)
                 }
-                counter += 1
+                guard errno == EEXIST else { throw currentPOSIXError() }
             }
             throw StoreError.unreadableImage
         }
     }
 
-    /// Byte-Vergleich zweier Dateien (Größe zuerst — billiger Kurzschluss).
-    static func contentsEqual(_ a: URL, _ b: URL,
-                              fileManager: FileManager = .default) -> Bool {
-        fileManager.contentsEqual(atPath: a.path, andPath: b.path)
+    private static func openExistingDirectory(_ url: URL) throws -> OpenDirectory {
+        let fd = open(url.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard fd >= 0 else { throw currentPOSIXError() }
+        var info = stat()
+        guard fstat(fd, &info) == 0 else {
+            Darwin.close(fd)
+            throw currentPOSIXError()
+        }
+        return OpenDirectory(parentFD: nil, fd: fd, url: url,
+                             identity: LockIdentity(device: info.st_dev,
+                                                    inode: info.st_ino),
+                             created: false)
+    }
+
+    private static func openImagesDirectory(beside documentDirectory: URL) throws
+        -> OpenDirectory {
+        let parentFD = open(documentDirectory.path,
+                            O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard parentFD >= 0 else { throw currentPOSIXError() }
+        var created = false
+        if mkdirat(parentFD, "images", mode_t(0o755)) == 0 {
+            created = true
+        } else if errno != EEXIST {
+            let error = currentPOSIXError()
+            Darwin.close(parentFD)
+            throw error
+        }
+        let fd = openat(parentFD, "images",
+                        O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard fd >= 0 else {
+            if created { _ = unlinkat(parentFD, "images", AT_REMOVEDIR) }
+            Darwin.close(parentFD)
+            throw StoreError.invalidImagesDirectory
+        }
+        var info = stat()
+        guard fstat(fd, &info) == 0 else {
+            let error = currentPOSIXError()
+            Darwin.close(fd)
+            Darwin.close(parentFD)
+            throw error
+        }
+        return OpenDirectory(
+            parentFD: parentFD, fd: fd,
+            url: documentDirectory.appendingPathComponent("images", isDirectory: true),
+            identity: LockIdentity(device: info.st_dev, inode: info.st_ino),
+            created: created
+        )
+    }
+
+    private static func directoryStillMatches(_ directory: OpenDirectory) -> Bool {
+        var info = stat()
+        guard lstat(directory.url.path, &info) == 0,
+              info.st_mode & S_IFMT == S_IFDIR else { return false }
+        return LockIdentity(device: info.st_dev, inode: info.st_ino)
+            == directory.identity
+    }
+
+    private static func createFile(named name: String, in directoryFD: Int32) throws
+        -> Int32 {
+        let fd = openat(directoryFD, name,
+                        O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
+                        mode_t(0o644))
+        guard fd >= 0 else { throw currentPOSIXError() }
+        return fd
+    }
+
+    private static func writeAll(_ data: Data, to fd: Int32) throws {
+        try data.withUnsafeBytes { bytes in
+            var offset = 0
+            while offset < bytes.count {
+                let written = Darwin.write(fd, bytes.baseAddress! + offset,
+                                           bytes.count - offset)
+                if written < 0 {
+                    if errno == EINTR { continue }
+                    throw currentPOSIXError()
+                }
+                guard written > 0 else { throw StoreError.unreadableImage }
+                offset += written
+            }
+        }
+    }
+
+    private static func copy(sourceFD: Int32, targetFD: Int32,
+                             failAfterBytes: Int?) throws {
+        var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+        var total = 0
+        while true {
+            let count = Darwin.read(sourceFD, &buffer, buffer.count)
+            if count < 0 {
+                if errno == EINTR { continue }
+                throw currentPOSIXError()
+            }
+            if count == 0 { return }
+            if let failAfterBytes, total + count > failAfterBytes {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            try buffer.withUnsafeBytes { bytes in
+                var offset = 0
+                while offset < count {
+                    let written = Darwin.write(targetFD,
+                                               bytes.baseAddress! + offset,
+                                               count - offset)
+                    if written < 0 {
+                        if errno == EINTR { continue }
+                        throw currentPOSIXError()
+                    }
+                    guard written > 0 else { throw StoreError.unreadableImage }
+                    offset += written
+                }
+            }
+            total += count
+        }
+    }
+
+    private static func contentsEqual(_ firstFD: Int32, _ secondFD: Int32) -> Bool {
+        var firstInfo = stat()
+        var secondInfo = stat()
+        guard fstat(firstFD, &firstInfo) == 0,
+              fstat(secondFD, &secondInfo) == 0,
+              firstInfo.st_mode & S_IFMT == S_IFREG,
+              secondInfo.st_mode & S_IFMT == S_IFREG,
+              firstInfo.st_size == secondInfo.st_size else { return false }
+        var first = [UInt8](repeating: 0, count: 64 * 1024)
+        var second = first
+        var offset: off_t = 0
+        while offset < firstInfo.st_size {
+            let requested = min(first.count, Int(firstInfo.st_size - offset))
+            let a = pread(firstFD, &first, requested, offset)
+            let b = pread(secondFD, &second, requested, offset)
+            guard a == requested, b == requested,
+                  first.prefix(requested).elementsEqual(second.prefix(requested))
+            else { return false }
+            offset += off_t(requested)
+        }
+        return true
+    }
+
+    private static func sameSnapshot(_ a: stat, _ b: stat) -> Bool {
+        a.st_dev == b.st_dev && a.st_ino == b.st_ino
+            && a.st_size == b.st_size
+            && a.st_mtimespec.tv_sec == b.st_mtimespec.tv_sec
+            && a.st_mtimespec.tv_nsec == b.st_mtimespec.tv_nsec
+    }
+
+    private static func currentPOSIXError() -> NSError {
+        NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
     }
 
     /// Gibt den aufgelösten Pfad nur für eine gewöhnliche Datei zurück.
@@ -305,40 +509,6 @@ enum MarkdownImageStore {
         let resolved = url.resolvingSymlinksInPath().standardizedFileURL
         let values = try? resolved.resourceValues(forKeys: [.isRegularFileKey])
         return values?.isRegularFile == true ? resolved : nil
-    }
-
-    /// Legt `directory` bei Bedarf an und bestätigt danach per lstat-artiger
-    /// FileManager-Abfrage, dass der Pfad selbst ein echter Ordner ist.
-    /// Rückgabe `true` bedeutet: Er war schon vor diesem Aufruf vorhanden.
-    private static func ensureRealDirectory(_ directory: URL,
-                                            fileManager: FileManager) throws -> Bool {
-        let existedBefore: Bool
-        do {
-            _ = try fileManager.attributesOfItem(atPath: directory.path)
-            existedBefore = true
-        } catch {
-            guard isNoSuchFileError(error) else { throw error }
-            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-            existedBefore = false
-        }
-        let attributes = try fileManager.attributesOfItem(atPath: directory.path)
-        guard attributes[.type] as? FileAttributeType == .typeDirectory else {
-            throw StoreError.invalidImagesDirectory
-        }
-        return existedBefore
-    }
-
-    private static func isFileExistsError(_ error: Error) -> Bool {
-        let nsError = error as NSError
-        return nsError.domain == NSCocoaErrorDomain
-            && nsError.code == NSFileWriteFileExistsError
-    }
-
-    private static func isNoSuchFileError(_ error: Error) -> Bool {
-        let nsError = error as NSError
-        return nsError.domain == NSCocoaErrorDomain
-            && (nsError.code == NSFileNoSuchFileError
-                || nsError.code == NSFileReadNoSuchFileError)
     }
 
     // MARK: - Drop-Abgrenzung (Dateityp)

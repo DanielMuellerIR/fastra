@@ -84,3 +84,18 @@ func miscReviewFix_outputBudgetCoversStderr() throws {
     #expect(elapsed < 5.0,
             "Budgetabbruch wartete \(elapsed) Sekunden statt sofort zu greifen")
 }
+
+@Test("markdownFromClipboard: letztes Byte nach Prozessende überschreitet das Budget")
+func miscReviewFix_outputBudgetChecksFinalDrain() throws {
+    let output = String(repeating: "x", count: 65)
+    let stub = try makeBudgetStub(name: "final-drain", body: "printf '\(output)'")
+    defer { try? FileManager.default.removeItem(at: stub) }
+
+    let result = SmartPaste.markdownFromClipboard(
+        mdClipURL: stub, timeout: 10, maximumOutputBytes: 64)
+
+    guard case .failure(.conversionFailed) = result else {
+        Issue.record("65 Bytes wurden trotz 64-Byte-Grenze als Erfolg geliefert: \(result)")
+        return
+    }
+}

@@ -38,14 +38,13 @@
 #   FASTRA_SOAK_RTFD="…/Testprotokoll.rtfd"   # wird ins Arbeitsverzeichnis
 #   FASTRA_SOAK_MD_DIR="…/Protokoll-Ordner"   # KOPIERT (die Umwandlung
 #                                             # schreibt neben die Quelle!)
-#   FASTRA_SOAK_4D_PROJECT="…/projektwurzel"  # wird DIREKT bearbeitet;
-#                                             # muss ein Git-Projekt sein
+#   FASTRA_SOAK_4D_PROJECT="…/projektwurzel"  # wird vollständig in das
+#                                             # Arbeitsverzeichnis KOPIERT
 #
-# Das 4D-Projekt wird absichtlich am Ort bearbeitet (echtes Nutzungs-
-# verhalten). Nach dem Lauf setzt das Skript ausschließlich die Dateien
-# zurück, die der Lauf selbst verschmutzt hat; zuvor schon veränderte
-# Dateien (fremder WIP) bleiben unangetastet. Inhalte, Namen oder Auszüge
-# aus diesen Quellen dürfen nie ins Repo gelangen.
+# Das 4D-Projekt wird niemals am Ort bearbeitet. Der Runner folgt beim Kopieren
+# symbolischen Links, sodass auch verlinkte Methoden und Komponenten als echte
+# Dateien INNERHALB der isolierten Kopie landen. Inhalte, Namen oder Auszüge aus
+# diesen Quellen dürfen nie ins Repo gelangen.
 #
 # EXIT-CODES (wie bei selftest.sh)
 #   0 = keine Invarianten-Verstöße
@@ -92,7 +91,8 @@ if [ ! -x "$BINARY" ]; then
   exit 2
 fi
 
-WORK_DIR="$(mktemp -d)/fastra-soak"
+WORK_ROOT="$(mktemp -d)"
+WORK_DIR="$WORK_ROOT/fastra-soak"
 LOG="$WORK_DIR/befunde.log"
 PASTEBOARD_BACKUP="$WORK_DIR/pasteboard-backup.plist"
 mkdir -p "$WORK_DIR"
@@ -113,16 +113,7 @@ cleanup() {
     kill -9 "$SOAK_PHASE_PID" 2>/dev/null || true
     wait "$SOAK_PHASE_PID" 2>/dev/null || true
   fi
-  # Bricht der Lauf mitten in einer Phase ab, fehlt deren Teststand. Ihn jetzt
-  # nachtragen — unmittelbar nach dem Beenden des Phasenprozesses ist der
-  # Dateiinhalt noch der vom Lauf erzeugte. Schon gemerkte Dateien bleiben
-  # unangetastet ("nur-neue"): Ihr echter Teststand darf nicht durch einen
-  # inzwischen entstandenen fremden überschrieben werden.
-  record_4d_test_state nur-neue "$WORK_DIR"/phase-*.out
   restore_soak_pasteboard cleanup || cleanup_failed=1
-  # Danach das 4D-Projekt zurücksetzen (braucht die Merkdateien im
-  # Arbeitsverzeichnis) und erst dann aufräumen. Läuft auch bei Abbruch.
-  restore_4d_project || cleanup_failed=1
   # Bei Befunden oder einem Absturz die BEWEISE erhalten: Protokoll und
   # Phasenausgaben (mit Exception-Text und Stacktrace) überleben das
   # Aufräumen. Nur die Logs — die kopierten echten Dokumente nicht.
@@ -133,7 +124,7 @@ cleanup() {
        "$PASTEBOARD_BACKUP" "$evidence"/ 2>/dev/null || true
     echo "   Beweise gesichert: $evidence" >&2
   fi
-  rm -rf "$WORK_DIR"
+  rm -rf "${WORK_ROOT:?}"
   if [ "$cleanup_failed" -eq 1 ] && [ "$original_status" -eq 0 ]; then
     echo "SOAK FAIL — externe Testdaten konnten nicht vollständig wiederhergestellt werden." >&2
     trap - EXIT
@@ -153,54 +144,56 @@ if [ -n "${FASTRA_SOAK_MD_DIR:-}" ] && [ -d "$FASTRA_SOAK_MD_DIR" ]; then
   cp -R "$FASTRA_SOAK_MD_DIR/." "$REAL_DIR/markdown/"
 fi
 
-# Das 4D-Projekt wird am Ort bearbeitet. Vorher den Schmutzstand merken,
-# damit hinterher NUR die vom Lauf verschmutzten Dateien zurückgesetzt
-# werden — fremder WIP bleibt unangetastet.
+# Das reale 4D-Projekt wird wie die übrigen echten Eingaben KOPIERT. Direkte
+# Bearbeitung plus spätes `git checkout --` kann fremde Änderungen nicht
+# atomar von Teständerungen trennen; selbst Hash-Prüfungen lassen zwischen
+# Prüfung und Rücksetzen ein Datenverlustfenster. Die Kopie beseitigt diese
+# Klasse vollständig.
 SOAK_4D=""
 SOAK_4D_METHOD=""
-SOAK_4D_RESTORED=0
-DIRTY_BEFORE="$WORK_DIR/4d-dirty-before.txt"
 if [ -n "${FASTRA_SOAK_4D_PROJECT:-}" ] && [ -d "$FASTRA_SOAK_4D_PROJECT" ]; then
-  if git -C "$FASTRA_SOAK_4D_PROJECT" rev-parse --git-dir >/dev/null 2>&1; then
-    # Den Schmutzstand ZUERST roh sichern und den Erfolg von `git status`
-    # prüfen. In der früheren Rohrleitung (`git status … | tr … > Datei`)
-    # zählte nur der Status des erfolgreichen `tr`: Scheiterte `git status`,
-    # entstand eine LEERE Baseline. Eine vorher schon veränderte Datei
-    # (fremder WIP) hätte dann als sauber gegolten, wäre vom Lauf bearbeitet
-    # und hinterher per `git checkout --` zurückgesetzt worden — echter
-    # Datenverlust im Projekt des Nutzers. Ohne verlässlichen Ausgangsstand
-    # bleibt das ganze 4D-Szenario deshalb aus.
-    if git -C "$FASTRA_SOAK_4D_PROJECT" status --porcelain=v1 -z \
-        > "$WORK_DIR/4d-dirty-before.raw"; then
-      SOAK_4D="$FASTRA_SOAK_4D_PROJECT"
-      tr '\0' '\n' < "$WORK_DIR/4d-dirty-before.raw" > "$DIRTY_BEFORE"
-    else
-      echo "⚠ 4D-Projektstatus nicht lesbar — Projekt wird ausgelassen (ohne" \
-           "gesicherten Ausgangsstand darf der Lauf dort nichts anfassen):" \
-           "$FASTRA_SOAK_4D_PROJECT" >&2
-    fi
+  SOAK_4D="$REAL_DIR/4d-project"
+  mkdir -p "$SOAK_4D"
+  # `-L` folgt auch Verzeichnis- und Datei-Symlinks. Ohne diesen Schalter
+  # könnte die Testkopie beim Öffnen einer verlinkten Methode wieder in das
+  # reale Fremdprojekt zeigen. Die Git-Daten selbst braucht das Szenario nicht.
+  if ! /usr/bin/rsync -aL --exclude='.git' -- \
+      "$FASTRA_SOAK_4D_PROJECT/" "$SOAK_4D/"; then
+    echo "⚠ 4D-Projekt konnte nicht sicher kopiert werden — Szenario wird ausgelassen: $FASTRA_SOAK_4D_PROJECT" >&2
+    rm -rf "$SOAK_4D"
+    SOAK_4D=""
+  elif find "$SOAK_4D" -type l -print -quit | grep -q .; then
+    # `-L` sollte jeden Link als echte Datei oder echten Ordner kopieren. Falls
+    # die Quelle während des Kopierens umgebaut wurde und trotzdem ein Link
+    # übrig blieb, darf die App diese Kopie nicht öffnen und darüber wieder in
+    # das Fremdprojekt schreiben.
+    echo "⚠ 4D-Projektkopie enthält noch einen symbolischen Link — Szenario wird ausgelassen." >&2
+    rm -rf "$SOAK_4D"
+    SOAK_4D=""
   else
-    echo "⚠ 4D-Projekt ist kein Git-Repo — wird ausgelassen (kein Sicherheitsnetz): $FASTRA_SOAK_4D_PROJECT" >&2
+    echo "   4D-Projekt: isoliert kopiert nach $SOAK_4D"
   fi
 fi
 
 if [ -n "$SOAK_4D" ]; then
-  # Die größte SAUBERE Methode wählen: In eine bereits verschmutzte Datei
-  # (fremder WIP) darf der Lauf nicht tippen — ein Zurücksetzen würde dort
-  # den WIP mitlöschen, also wird sie gar nicht erst geöffnet.
-  SOAK_4D_METHOD=$(python3 - "$SOAK_4D" "$DIRTY_BEFORE" <<'PYEOF'
-import os, sys
-root, dirty_path = sys.argv[1], sys.argv[2]
-dirty = set()
-for line in open(dirty_path, encoding="utf-8", errors="replace").read().splitlines():
-    if len(line) > 3:
-        dirty.add(os.path.join(root, line[3:]))
+# Die größte echte Methode IN DER KOPIE wählen. `lstat` weist verbleibende
+# Links ab; der kanonische Präfixvergleich verhindert jeden Ausbruch aus der
+# isolierten Wurzel.
+  SOAK_4D_METHOD=$(python3 - "$SOAK_4D" <<'PYEOF'
+import os, stat, sys
+root = os.path.realpath(sys.argv[1])
 methods = os.path.join(root, "Project", "Sources", "Methods")
 best, best_lines = "", -1
-if os.path.isdir(methods):
-    for name in os.listdir(methods):
-        full = os.path.join(methods, name)
-        if name.endswith(".4dm") and full not in dirty and os.path.isfile(full):
+try:
+    methods_info = os.lstat(methods)
+except OSError:
+    methods_info = None
+if methods_info and stat.S_ISDIR(methods_info.st_mode):
+    for entry in os.scandir(methods):
+        full = entry.path
+        resolved = os.path.realpath(full)
+        inside = os.path.commonpath((root, resolved)) == root
+        if entry.name.endswith(".4dm") and inside and entry.is_file(follow_symlinks=False):
             # Nach ZEILEN wählen, nicht nach Bytes: Eine lange echte Methode
             # (viele Zeilen Code) prüft Completion und Signaturhilfe besser
             # als eine Datentabelle aus wenigen Riesenzeilen.
@@ -214,215 +207,12 @@ if os.path.isdir(methods):
 print(best)
 PYEOF
 )
-  # Für die Warnung nach dem Lauf: Änderungszeiten der schon vorher
-  # verschmutzten Dateien merken.
-  python3 - "$SOAK_4D" "$DIRTY_BEFORE" > "$WORK_DIR/4d-dirty-mtimes.txt" <<'PYEOF'
-import os, sys
-root, dirty_path = sys.argv[1], sys.argv[2]
-for line in open(dirty_path, encoding="utf-8", errors="replace").read().splitlines():
-    if len(line) > 3:
-        full = os.path.join(root, line[3:])
-        try:
-            print(f"{os.path.getmtime(full)}\t{line[3:]}")
-        except OSError:
-            pass
-PYEOF
 fi
-
-# Merkt sich, welchen Inhalt der Lauf in den berührten 4D-Dateien HINTERLASSEN
-# hat (SHA-256 je Datei, gesammelt in `4d-test-hashes.txt`).
-#
-# Der Pfadmarker `SOAK-4D-DATEI` allein genügt für die spätere Bereinigung
-# nicht: Er sagt nur, DASS der Lauf diese Datei einmal verändert hat. Ändert
-# ein Mensch oder ein Werkzeug dieselbe Datei danach noch, würde ein
-# bedingungsloses `git checkout --` diese fremden Bytes mitlöschen. Deshalb
-# wird der Teststand direkt nach der jeweiligen Phase festgehalten und vor dem
-# Zurücksetzen gegen den dann aktuellen Inhalt geprüft.
-#
-# $1 = "alle"      → Stand der genannten Dateien neu festhalten (nach einer
-#                    Phase, die genau diese Dateien verändert hat)
-#      "nur-neue"  → nur Dateien ohne bisherigen Eintrag ergänzen (Abbruchweg;
-#                    ein früher gemerkter Stand darf nicht überschrieben werden)
-# $2… = Phasen-Ausgabedateien, aus denen die Pfade gelesen werden
-record_4d_test_state() {
-  [ -n "${SOAK_4D:-}" ] || return 0
-  local mode="$1"
-  shift
-  python3 - "$mode" "$WORK_DIR/4d-test-hashes.txt" "$@" <<'PYEOF'
-import hashlib, os, sys
-mode, store_path = sys.argv[1], sys.argv[2]
-known = {}
-if os.path.exists(store_path):
-    for line in open(store_path, encoding="utf-8", errors="replace").read().splitlines():
-        digest, _, path = line.partition("\t")
-        if path:
-            known[path] = digest
-marker = "SOAK-4D-DATEI: "
-paths = []
-for out_path in sys.argv[3:]:
-    try:
-        text = open(out_path, encoding="utf-8", errors="replace").read()
-    except OSError:
-        continue
-    for line in text.splitlines():
-        if line.startswith(marker):
-            paths.append(line[len(marker):])
-for path in paths:
-    if mode == "nur-neue" and path in known:
-        continue
-    try:
-        with open(path, "rb") as handle:
-            known[path] = hashlib.sha256(handle.read()).hexdigest()
-    except OSError:
-        # Nicht lesbar (etwa gelöscht): kein gemerkter Teststand, also später
-        # auch keine automatische Wiederherstellung dieser Datei.
-        known.pop(path, None)
-with open(store_path, "w", encoding="utf-8") as handle:
-    for path, digest in sorted(known.items()):
-        handle.write(f"{digest}\t{path}\n")
-PYEOF
-}
-
-restore_4d_project() {
-  [ "${SOAK_4D_RESTORED:-0}" -eq 0 ] || return 0
-  [ -n "${SOAK_4D:-}" ] || return 0
-  # Nur von der App unmittelbar vor einer eigenen Textmutation protokollierte
-  # 4D-Pfade gehören nachweislich dem Lauf. Andere neue Änderungen können
-  # parallel von Nutzer oder Werkzeug stammen: melden, niemals anfassen.
-  # Zusätzlich muss der INHALT noch dem gemerkten Teststand entsprechen — ein
-  # Pfad allein unterscheidet später hinzugekommene fremde Bytes nicht von den
-  # Testbytes.
-  if ! git -C "$SOAK_4D" status --porcelain=v1 -z \
-      > "$WORK_DIR/4d-dirty-after.raw"; then
-    echo "   ✗ 4D-Projektstatus für die Bereinigung nicht lesbar" >&2
-    return 1
-  fi
-  tr '\0' '\n' < "$WORK_DIR/4d-dirty-after.raw" \
-    > "$WORK_DIR/4d-dirty-after.txt"
-  : > "$WORK_DIR/4d-touched.txt"
-  local phase_output
-  for phase_output in "$WORK_DIR"/phase-*.out; do
-    [ -f "$phase_output" ] || continue
-    sed -n 's/^SOAK-4D-DATEI: //p' "$phase_output" >> "$WORK_DIR/4d-touched.txt"
-  done
-  python3 - "$SOAK_4D" "$DIRTY_BEFORE" "$WORK_DIR/4d-dirty-after.txt" \
-    "$WORK_DIR/4d-touched.txt" "$WORK_DIR/4d-test-hashes.txt" <<'PYEOF'
-import hashlib, os, subprocess, sys
-root, before_path, after_path, touched_path, hashes_path = sys.argv[1:6]
-def entries(path):
-    result = {}
-    for line in open(path, encoding="utf-8", errors="replace").read().splitlines():
-        if len(line) > 3:
-            result[line[3:]] = line[:2]
-    return result
-before, after = entries(before_path), entries(after_path)
-fresh = [f for f in after if f not in before]
-tracked = [f for f, st in after.items() if f in fresh and st not in ("??",)]
-untracked = [f for f in fresh if after[f] == "??"]
-root_abs = os.path.abspath(root)
-owned = {}
-invalid = []
-for path in open(touched_path, encoding="utf-8", errors="replace").read().splitlines():
-    touched_abs = os.path.abspath(path)
-    try:
-        if os.path.commonpath((root_abs, touched_abs)) == root_abs:
-            owned[os.path.relpath(touched_abs, root_abs)] = touched_abs
-        else:
-            invalid.append(path)
-    except ValueError:
-        invalid.append(path)
-
-# Vom Lauf hinterlassener Inhalt je Datei — direkt nach der jeweiligen Phase
-# gemerkt (siehe record_4d_test_state).
-expected = {}
-try:
-    for line in open(hashes_path, encoding="utf-8", errors="replace").read().splitlines():
-        digest, _, path = line.partition("\t")
-        if path:
-            expected[os.path.abspath(path)] = digest
-except OSError:
-    pass
-
-def digest_of(path):
-    try:
-        with open(path, "rb") as handle:
-            return hashlib.sha256(handle.read()).hexdigest()
-    except OSError:
-        return None
-
-failed = bool(invalid)
-restored_count = 0
-conflicts = []
-for path in sorted(f for f in tracked if f in owned):
-    full = owned[path]
-    # Nur zurücksetzen, solange der Inhalt EXAKT der vom Lauf hinterlassene
-    # ist. Weicht er ab, hat nach der Testmutation jemand anders geschrieben —
-    # dann wäre `git checkout --` ein Datenverlust. In dem Fall wird gemeldet
-    # und nichts geschrieben.
-    want = expected.get(os.path.abspath(full))
-    have = digest_of(full)
-    if want is None or have is None or want != have:
-        conflicts.append(path)
-        failed = True
-        continue
-    restored = subprocess.run(
-        ["git", "-C", root, "checkout", "--", path],
-        capture_output=True, text=True, errors="replace")
-    if restored.returncode == 0:
-        restored_count += 1
-    else:
-        failed = True
-        detail = (restored.stderr or restored.stdout).strip() or "ohne Git-Fehlertext"
-        print(f"   ✗ 4D-Projekt: {path} nicht zurücksetzbar: {detail}",
-              file=sys.stderr)
-if restored_count:
-    print(f"   4D-Projekt: {restored_count} test-eigene Datei(en) zurückgesetzt")
-if conflicts:
-    print("   ✗ 4D-Projekt: Inhalt weicht vom Teststand ab — NICHTS geschrieben,"
-          " bitte selbst prüfen:", file=sys.stderr)
-    for f in conflicts:
-        print(f"     {f}", file=sys.stderr)
-
-untouched = [f for f in tracked if f not in owned]
-if untouched:
-    print("   ⚠ 4D-Projekt: andere neue Änderung(en) bleiben unangetastet:")
-    for f in untouched:
-        print(f"     {f}")
-if untracked:
-    print("   ⚠ 4D-Projekt: neue, nicht versionierte Datei(en) bleiben unangetastet:")
-    for f in untracked:
-        print(f"     {f}")
-for path in invalid:
-    print(f"   ✗ 4D-Projekt: protokollierter Pfad liegt außerhalb des Repos: {path}",
-          file=sys.stderr)
-sys.exit(1 if failed else 0)
-PYEOF
-  local restore_status=$?
-  # Schon vorher verschmutzte Dateien (fremder WIP) werden NIE zurückgesetzt.
-  # Hat der Lauf eine davon dennoch verändert, nur ehrlich warnen.
-  if [ -f "$WORK_DIR/4d-dirty-mtimes.txt" ]; then
-    python3 - "$SOAK_4D" "$WORK_DIR/4d-dirty-mtimes.txt" <<'PYEOF'
-import os, sys
-root, mtimes_path = sys.argv[1], sys.argv[2]
-for line in open(mtimes_path, encoding="utf-8", errors="replace").read().splitlines():
-    stamp, _, rel = line.partition("\t")
-    full = os.path.join(root, rel)
-    try:
-        if abs(os.path.getmtime(full) - float(stamp)) > 0.5:
-            print(f"   ⚠ 4D-Projekt: {rel} war schon vorher verändert (WIP) und wurde "
-                  "vom Lauf berührt — bitte selbst prüfen, NICHT automatisch zurückgesetzt.")
-    except (OSError, ValueError):
-        pass
-PYEOF
-  fi
-  [ "$restore_status" -eq 0 ] || return "$restore_status"
-  SOAK_4D_RESTORED=1
-}
 
 echo "▶ Fastra Dauertest — $ROUNDS Aktionen je Phase, 3 Phasen"
 echo "   Arbeitsverzeichnis: $WORK_DIR"
 if [ -d "$REAL_DIR" ]; then echo "   Echte Dokumente: kopiert nach $REAL_DIR"; fi
-if [ -n "$SOAK_4D" ]; then echo "   4D-Projekt (am Ort): $SOAK_4D"; fi
+if [ -n "$SOAK_4D" ]; then echo "   4D-Projekt (isolierte Kopie): $SOAK_4D"; fi
 echo
 
 SOAK_PHASE_PID=""
@@ -510,10 +300,6 @@ run_phase() {
     status=$?
   fi
   SOAK_PHASE_PID=""
-  # Sofort nach dem Phasenende den hinterlassenen Inhalt der in DIESER Phase
-  # berührten 4D-Dateien merken. Später darf nur zurückgesetzt werden, was noch
-  # genau so aussieht (siehe record_4d_test_state).
-  record_4d_test_state alle "$WORK_DIR/phase-$phase.out"
   echo "   Phase $phase beendet (Status $status, ${waited}s)"
   tail -2 "$WORK_DIR/phase-$phase.out" | sed 's/^/   /'
   local phase_failed=0
@@ -547,13 +333,6 @@ run_phase 1 "Dokumente anlegen, drei Fenster öffnen, arbeiten" || PHASES_FAILED
 run_phase 2 "nach Neustart: Sitzung prüfen und weiterarbeiten"  || PHASES_FAILED=$((PHASES_FAILED + 1))
 run_phase 3 "nach zweitem Neustart: abschließende Runde"        || PHASES_FAILED=$((PHASES_FAILED + 1))
 
-EXTERNAL_RESTORE_FAILED=0
-if ! restore_4d_project; then
-  EXTERNAL_RESTORE_FAILED=1
-  KEEP_EVIDENCE=1
-  echo "SOAK-BEFUND phase=cleanup aktion=? invariante=4D-Testdatei wird wiederhergestellt detail=4D-Bereinigung fehlgeschlagen" >> "$LOG"
-fi
-
 echo
 echo "────────────────────────────────────────────────────────────"
 # `grep -c` zählt 0 und liefert Status 1 — ohne `|| true` bricht `set -e`-artiges
@@ -567,19 +346,14 @@ ACTIONS=$(awk -F'aktionen=' '/^SOAK-ZUSAMMENFASSUNG/{split($2,a," "); s+=a[1]} E
 # erste Probelauf tat genau das: Alle drei Phasen brachen sofort ab, und das
 # Skript meldete trotzdem „SOAK OK". Ein Test, der bei kaputtem Aufbau Erfolg
 # meldet, ist schlimmer als keiner.
-if [ "$PHASES_FAILED" -gt 0 ] || [ "$EXTERNAL_RESTORE_FAILED" -gt 0 ]; then
+if [ "$PHASES_FAILED" -gt 0 ]; then
   KEEP_EVIDENCE=1
-  if [ "$PHASES_FAILED" -gt 0 ]; then
-    echo "SOAK FAIL — $PHASES_FAILED von 3 Phasen sind nicht durchgelaufen." >&2
-    echo "Ausgaben der Phasen:" >&2
-    for phase in 1 2 3; do
-      echo "  ── Phase $phase ──" >&2
-      tail -3 "$WORK_DIR/phase-$phase.out" 2>/dev/null | sed 's/^/    /' >&2
-    done
-  fi
-  if [ "$EXTERNAL_RESTORE_FAILED" -gt 0 ]; then
-    echo "SOAK FAIL — test-eigene 4D-Dateien konnten nicht sicher zurückgesetzt werden." >&2
-  fi
+  echo "SOAK FAIL — $PHASES_FAILED von 3 Phasen sind nicht durchgelaufen." >&2
+  echo "Ausgaben der Phasen:" >&2
+  for phase in 1 2 3; do
+    echo "  ── Phase $phase ──" >&2
+    tail -3 "$WORK_DIR/phase-$phase.out" 2>/dev/null | sed 's/^/    /' >&2
+  done
   if [ "$FINDINGS" -gt 0 ]; then
     echo "Befunde im Report-Log: $FINDINGS" >&2
     grep '^SOAK-BEFUND' "$LOG" | sed 's/^/  /' >&2

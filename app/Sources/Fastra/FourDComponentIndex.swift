@@ -23,7 +23,7 @@
 import Foundation
 
 /// Woher die Signatur einer Komponentenmethode gelesen werden kann.
-enum FourDComponentMethodSource: Equatable {
+enum FourDComponentMethodSource: Hashable {
     /// Entpackte `.4dm`-Quelldatei auf der Platte.
     case sourceFile(URL)
     /// `.4dm`-Quelle als Eintrag in einem `.4DZ`-Archiv.
@@ -35,7 +35,7 @@ enum FourDComponentMethodSource: Equatable {
 }
 
 /// Eine aus dem Hostprojekt aufrufbare Komponentenmethode.
-struct FourDComponentMethod: Equatable {
+struct FourDComponentMethod: Hashable {
     let displayName: String
     /// Name der Komponente (Bundle-Name ohne Endung) — für die Anzeige.
     let componentName: String

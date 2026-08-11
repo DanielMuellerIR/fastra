@@ -1304,3 +1304,6 @@
 "Die Umwandlung hat eine Datei außerhalb ihres Arbeitsordners gemeldet. Es wurde nichts verschoben." = "The conversion reported a file outside its own working folder. Nothing was moved.";
 "Der Ordner „%@“ ist nicht beschreibbar." = "The folder “%@” is not writable.";
 "„Poor Man's Text“ ist nicht installiert." = "“Poor Man's Text” is not installed.";
+"Das Remote hat mehrere Push-Adressen. Fastra überträgt erst, wenn genau ein sichtbares Ziel konfiguriert ist." = "The remote has multiple push addresses. Fastra transfers only when exactly one visible target is configured.";
+"Git-URL-Umschreibregeln machen das Push-Ziel mehrdeutig. Entferne insteadOf/pushInsteadOf oder pushe bewusst im Terminal." = "Git URL rewrite rules make the push target ambiguous. Remove insteadOf/pushInsteadOf or push deliberately in Terminal.";
+"Eine andere Umwandlung läuft bereits." = "Another conversion is already running.";

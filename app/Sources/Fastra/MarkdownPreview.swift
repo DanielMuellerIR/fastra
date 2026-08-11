@@ -777,6 +777,8 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         /// Bild-Token trägt Änderungsdatum und Größe — der Austausch umgeht
         /// damit auch WebKits Speicher-Cache.
         private let imageWatcher = MarkdownImageWatcher()
+        /// Verwirft eine überholte Hintergrund-Auflösung der Wächterpfade.
+        private var imageWatchGeneration: UInt64 = 0
 
         /// Ordnerliste nachziehen und den Änderungs-Handler (einmalig) binden.
         func watchReferencedImages(of fragment: MarkdownRenderedFragment) {
@@ -785,7 +787,18 @@ private struct MarkdownRichTextView: NSViewRepresentable {
                     self?.renderAfterExternalImageChange()
                 }
             }
-            imageWatcher.update(imageURLs: Array(fragment.imageURLs.values))
+            imageWatchGeneration &+= 1
+            let generation = imageWatchGeneration
+            let imageURLs = Array(fragment.imageURLs.values)
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                let directories = MarkdownImageWatcher.directoriesToWatch(
+                    for: imageURLs)
+                DispatchQueue.main.async {
+                    guard let self,
+                          self.imageWatchGeneration == generation else { return }
+                    self.imageWatcher.update(directories: directories)
+                }
+            }
         }
 
         /// Ein beobachteter Bildordner hat sich geändert: denselben Markdown-

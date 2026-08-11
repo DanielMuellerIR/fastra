@@ -18,8 +18,8 @@
 #      fensterlos markierten Tests zu. Die ausgelassenen Tests werden als
 #      übersprungen ausgewiesen und erzwingen Exit 2; ein unvollständiger
 #      Lauf darf nie als bestanden gelten.
-#   4. Die Tests `cmdw`, `newwindow`, `completion4d`, `projectinput` und `help`
-#      brauchen ECHTEN Fenster-Fokus. macOS 26 verweigert
+#   4. Die Tests `cmdw`, `newwindow`, `welcomenew`, `completion4d`,
+#      `projectinput` und `help` brauchen ECHTEN Fenster-Fokus. macOS 26 verweigert
 #      einem im Hintergrund gestarteten Prozess die Selbst-Aktivierung
 #      (kooperative Aktivierung) — der Runner holt die App deshalb von
 #      außen per System Events nach vorn. Arbeitet gleichzeitig jemand
@@ -56,6 +56,10 @@ fi
 ALL_TESTS=(windows newwindow welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions projectinput tabswitch tabclosehit tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge dirtyundo emojisplit emojipaste emojipreview tabscroll typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender xpath markdown markdownblanklines markdownjump markdownappearance mdimagewatch pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader footerfit windowheight mdformat sidebarfilter filediff tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide markdownimport filemodes selsearch wildcard openscope contrast cmdw)
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
 WINDOWLESS_TESTS=(search project projectperf localization markdownimport updates git gitactions filemodes selsearch wildcard openscope tool4dlsp)
+# Diese Tests starten das konfigurierte App-Bundle über LaunchServices. Für sie
+# reicht ein vorhandenes separates Binary nicht: Der Bundle-Pfad muss ebenfalls
+# auf genau diesen Teststand zeigen.
+LAUNCH_SERVICES_TESTS=(coldopen coldopenoff cmdw newwindow welcomenew completion4d projectinput help)
 # Pro Test max. Wartezeit in Sekunden, bis die SELFTEST-Zeile da sein muss.
 # (Fenster-Polling im Test selbst: bis 15 s; plus Puffer für App-Start.)
 TIMEOUT_SECS=60
@@ -66,9 +70,31 @@ ACTIVATE_TIMEOUT_SECS=4
 
 # ── Vorbedingungen ───────────────────────────────────────────────────────
 
+# Zu laufende Tests schon vor der Pfadprüfung bestimmen. Nur dann kann der
+# Runner unterscheiden, ob der angeforderte Lauf LaunchServices benötigt.
+if [[ $# -gt 0 ]]; then
+    TESTS=("$@")
+else
+    TESTS=("${ALL_TESTS[@]}")
+fi
+
 if [[ ! -x "$APP_BIN" ]]; then
     echo "✗ Kein Debug-Build gefunden ($APP_BIN). Erst ./build.sh laufen lassen." >&2
-    exit 1
+    exit 2
+fi
+
+NEEDS_APP_BUNDLE=0
+for requested_test in "${TESTS[@]}"; do
+    for launch_services_test in "${LAUNCH_SERVICES_TESTS[@]}"; do
+        [[ "$requested_test" == "$launch_services_test" ]] && NEEDS_APP_BUNDLE=1
+    done
+done
+if [[ $NEEDS_APP_BUNDLE -eq 1 ]]; then
+    if [[ ! -d "$APP_BUNDLE_FOR_OPEN" || \
+          ! -x "$APP_BUNDLE_FOR_OPEN/Contents/MacOS/Fastra" ]]; then
+        echo "✗ LaunchServices-Test verlangt ein gültiges Fastra-Bundle ($APP_BUNDLE_FOR_OPEN)." >&2
+        exit 2
+    fi
 fi
 
 # Für Prozessabgleich und Direktstarts immer denselben kanonischen Pfad dieses
@@ -89,7 +115,11 @@ escape_process_pattern() {
 }
 
 APP_BIN_ABSOLUTE="$(absolute_executable_path "$APP_BIN")"
-APP_BUNDLE_BIN_ABSOLUTE="$(absolute_executable_path "$APP_BUNDLE_FOR_OPEN/Contents/MacOS/Fastra")"
+if [[ -x "$APP_BUNDLE_FOR_OPEN/Contents/MacOS/Fastra" ]]; then
+    APP_BUNDLE_BIN_ABSOLUTE="$(absolute_executable_path "$APP_BUNDLE_FOR_OPEN/Contents/MacOS/Fastra")"
+else
+    APP_BUNDLE_BIN_ABSOLUTE="$APP_BIN_ABSOLUTE"
+fi
 APP_PROCESS_PATTERNS=("^$(escape_process_pattern "$APP_BIN_ABSOLUTE")([[:space:]]|$)")
 if [[ "$APP_BUNDLE_BIN_ABSOLUTE" != "$APP_BIN_ABSOLUTE" ]]; then
     APP_PROCESS_PATTERNS+=("^$(escape_process_pattern "$APP_BUNDLE_BIN_ABSOLUTE")([[:space:]]|$)")
@@ -102,13 +132,6 @@ STARTED_PIDS=()
 console_locked() {
     ioreg -n Root -d1 2>/dev/null | grep -q '"IOConsoleLocked" = Yes'
 }
-
-# Zu laufende Tests: Argumente oder alle.
-if [[ $# -gt 0 ]]; then
-    TESTS=("$@")
-else
-    TESTS=("${ALL_TESTS[@]}")
-fi
 
 # Ausgelassene Tests werden weiter unten als Umgebungs-Skips gezählt. Das Array
 # muss auch im Normalfall existieren: Unter `set -u` ist eine nie zugewiesene

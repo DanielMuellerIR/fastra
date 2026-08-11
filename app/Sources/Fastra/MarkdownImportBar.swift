@@ -19,6 +19,9 @@ struct MarkdownImportBar: View {
     /// zeigt statt fremdem Fortschritt, Erfolg oder Fehler
     /// (Code-Review 2026-08-10).
     let effectiveState: MarkdownImportState
+    /// Ein anderes Fenster wandelt bereits um. Das eigene Angebot bleibt zur
+    /// Einordnung sichtbar, löst aber keinen wirkungslosen Klick mit Piepton aus.
+    let conversionBlocked: Bool
     /// Blendet das Angebot für diesen Tab aus, ohne etwas umzuwandeln.
     let onDismissOffer: () -> Void
 
@@ -97,12 +100,19 @@ struct MarkdownImportBar: View {
             .foregroundColor(Theme.textSecondary)
             .lineLimit(2)
             Spacer(minLength: 0)
+            if conversionBlocked {
+                Text("Eine andere Umwandlung läuft bereits.")
+                    .fastraFont(size: 10)
+                    .foregroundColor(Theme.textSecondary)
+            }
             Button("In Markdown umwandeln") {
                 workspace.convertToMarkdown(offer.sourceURL)
             }
             .buttonStyle(.plain)
             .fastraFont(size: 11, weight: .semibold)
             .foregroundColor(Theme.accentReadable)
+            .disabled(conversionBlocked)
+            .opacity(conversionBlocked ? 0.5 : 1)
             // Klick-Anker für den Fenster-Selbsttest `markdownimport`.
             .background(SelfTestMarker(id: "markdownImportConvertButton")
                 .frame(width: 0, height: 0))

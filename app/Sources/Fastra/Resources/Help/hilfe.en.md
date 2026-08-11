@@ -312,6 +312,11 @@ it relatively as well — other files open in a tab as usual. After
 inserting, the preview scrolls to the insertion point. Unsaved documents
 have no folder yet — save first (⌘S).
 
+Fastra publishes an image file only after the copy is complete and never
+overwrites a file created concurrently. If the real `images` folder is
+replaced with a symbolic link while copying, the operation stops and writes
+nothing to the link target.
+
 ### HTML in the Preview
 
 Markdown files often contain some HTML — most commonly a centered image at the
@@ -338,6 +343,10 @@ the tool's version, for example `.rtf`, `.rtfd`, `.docx`, `.odt`, or `.doc` —
 shows a **Convert to Markdown** hint above the editor. The same command is in
 the **File** menu and in the project sidebar's context menu. Fastra never
 converts on its own: choosing the command is your consent.
+
+Only one conversion runs across the app at a time. A second window keeps its
+own offer visible, explains that another conversion is active, and disables
+the action until that conversion finishes.
 
 An `.rtfd` document is a folder in Finder. Fastra therefore asks whether to
 convert it or open it as a folder — both when opening it and when clicking it
@@ -596,14 +605,18 @@ additionally shows the **Changes** and **Graph** tabs:
   sidebar. After a local commit, the Commit button becomes a Push button:
   it names the first locally configured remote and shows its effective push
   address immediately below. Fastra explicitly pushes only to this visible
-  target; push and pull run asynchronously.
+  target; push and pull run asynchronously. Multiple push addresses or Git
+  rules that rewrite addresses through `insteadOf`/`pushInsteadOf` are
+  ambiguous and stop with an explanation.
 - **Several files at once:** in the file list, a click selects one row,
   ⇧-click selects the range up to it, and ⌘-click adds or removes
   individual rows. Selected rows have a colored background. An action on a
   selected row — discard, stage, or unstage, via button or context menu —
   then applies to the whole selection; the context menu states the count.
   Discarding asks once for all affected files, and the prompt explicitly
-  says how many of them are untracked files (those get deleted).
+  says how many of them are untracked files (those get deleted). When Git
+  reports a whole untracked folder as one row, Fastra does not delete it
+  recursively, so ignored files inside remain untouched.
 - **Bulk buttons in the “CHANGES” section header:** open a combined diff of
   all open changes in the two-column view, discard all changes, stage
   everything. The “STAGED” header has the button that unstages everything.

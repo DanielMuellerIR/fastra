@@ -1,11 +1,13 @@
 // GitReviewFixTests.swift
 //
-// Regressionstests zu drei Befunden des Code-Reviews vom 2026-08-10:
-//   A1  Der eigene Index-Lock darf nur anhand der DATEIIDENTITÄT aufgeräumt
-//       werden, nie allein anhand des Pfads.
+// Regressionstests zu Git-Befunden der Code-Reviews vom 2026-08-10 und
+// 2026-08-11:
+//   A1  Fastra darf `index.lock` nie selbst entfernen: Selbst ein direkt nach
+//       der Vorprüfung angelegter fremder Lock muss unangetastet bleiben.
 //   A2  „Verwerfen" muss Repository und Aktionskontext vor der Rückfrage
 //       einfrieren und danach auf Aktualität prüfen.
-//   A3  Der Push muss gegen die geprüfte Adresse laufen, ohne dabei die
+//   A3  Der Push muss gegen genau die geprüfte, eindeutige Adresse laufen,
+//       ohne Geheimnisse in Prozessargumente zu schreiben oder die
 //       Remote-Tracking-Referenz zu verlieren.
 //
 // Alle Git-Tests arbeiten ausschließlich gegen temporäre Repositories.
@@ -36,6 +38,23 @@ private func reviewFixGit(_ arguments: [String], in directory: URL) async -> Git
     }
 }
 
+private func reviewFixGit(_ invocation: GitPushCommand.Invocation,
+                          in directory: URL) async -> GitResult {
+    await withCheckedContinuation { continuation in
+        var policy = GitExecutionPolicy.default
+        policy.environment = invocation.environment
+        GitRunner.runDetailed(invocation.arguments, in: directory,
+                              policy: policy) { outcome in
+            switch outcome {
+            case .completed(let result): continuation.resume(returning: result)
+            default:
+                continuation.resume(returning: GitResult(
+                    exitCode: -1, stdout: "", stderr: "GitRunner: \(outcome)"))
+            }
+        }
+    }
+}
+
 /// Fake-Executor: sammelt Aufrufe, ohne je einen Prozess zu starten.
 private final class ReviewFixExecutor: GitCommandExecuting {
     final class Token: GitCancelling {
@@ -46,6 +65,7 @@ private final class ReviewFixExecutor: GitCommandExecuting {
     private struct Call {
         let arguments: [String]
         let directory: URL
+        let policy: GitExecutionPolicy
         let completion: (GitExecutionOutcome) -> Void
     }
 
@@ -55,6 +75,7 @@ private final class ReviewFixExecutor: GitCommandExecuting {
     var count: Int { lock.withLock { calls.count } }
     var arguments: [[String]] { lock.withLock { calls.map(\.arguments) } }
     var directories: [URL] { lock.withLock { calls.map(\.directory) } }
+    var policies: [GitExecutionPolicy] { lock.withLock { calls.map(\.policy) } }
 
     @discardableResult
     func execute(arguments: [String], in directory: URL,
@@ -62,6 +83,7 @@ private final class ReviewFixExecutor: GitCommandExecuting {
                  completion: @escaping (GitExecutionOutcome) -> Void) -> GitCancelling {
         lock.withLock {
             calls.append(Call(arguments: arguments, directory: directory,
+                              policy: policy,
                               completion: completion))
         }
         return Token()
@@ -88,75 +110,29 @@ private func reviewFixUnset() -> GitExecutionOutcome {
     .completed(GitResult(exitCode: 1, stdout: "", stderr: ""))
 }
 
-// MARK: - A1: Identität statt Pfad beim Aufräumen des Index-Locks
-
-@Suite("Git-Lockidentität")
-struct GitReviewFixLockIdentityTests {
-    @Test("Der eigene Lock wird entfernt")
-    func removesOwnLock() throws {
-        let root = try reviewFixTempDirectory("lock-own")
+@Suite("Git-Index-Lock nach dem Preflight")
+struct GitReviewFixLockCollisionTests {
+    @Test("Fremder Lock aus dem Startfenster wird niemals gelöscht")
+    func foreignLockAfterPreflightSurvives() async throws {
+        guard GitRunner.isAvailable else { return }
+        let root = try reviewFixTempDirectory("foreign-index-lock")
         defer { try? FileManager.default.removeItem(at: root) }
-        let lock = root.appendingPathComponent("index.lock").path
-        #expect(FileManager.default.createFile(atPath: lock, contents: Data()))
-        let identity = GitRunner.lockIdentity(atPath: lock)
-        #expect(identity != nil)
-        #expect(GitRunner.releaseOwnLock(atPath: lock, identity: identity) == .released)
-        #expect(!FileManager.default.fileExists(atPath: lock))
-    }
-
-    @Test("Ein inzwischen fremder Lock unter demselben Pfad bleibt liegen")
-    func keepsForeignLock() throws {
-        let root = try reviewFixTempDirectory("lock-foreign")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let lock = root.appendingPathComponent("index.lock").path
-        #expect(FileManager.default.createFile(atPath: lock, contents: Data("eigen".utf8)))
-        let identity = GitRunner.lockIdentity(atPath: lock)
-        // Genau die Lage des Befunds: Unser Git hat seinen Lock schon entfernt,
-        // ein fremder Prozess hat unter demselben Pfad einen neuen angelegt.
-        try FileManager.default.removeItem(atPath: lock)
-        #expect(FileManager.default.createFile(atPath: lock, contents: Data("fremd".utf8)))
-        #expect(GitRunner.lockIdentity(atPath: lock) != identity)
-        #expect(GitRunner.releaseOwnLock(atPath: lock, identity: identity) == .foreign)
-        #expect(FileManager.default.fileExists(atPath: lock))
-        let survivor = try Data(contentsOf: URL(fileURLWithPath: lock))
-        #expect(survivor == Data("fremd".utf8))
-    }
-
-    @Test("Ein bereits von Git aufgeräumter Lock ist kein Fehler")
-    func vanishedLockIsNoError() throws {
-        let root = try reviewFixTempDirectory("lock-vanished")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let lock = root.appendingPathComponent("index.lock").path
-        #expect(FileManager.default.createFile(atPath: lock, contents: Data()))
-        let identity = GitRunner.lockIdentity(atPath: lock)
-        try FileManager.default.removeItem(atPath: lock)
-        #expect(GitRunner.releaseOwnLock(atPath: lock, identity: identity) == .vanished)
-    }
-
-    @Test("Ohne gemerkte Identität wird nichts entfernt")
-    func withoutIdentityNothingIsRemoved() throws {
-        let root = try reviewFixTempDirectory("lock-unknown")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let lock = root.appendingPathComponent("index.lock").path
-        #expect(FileManager.default.createFile(atPath: lock, contents: Data()))
-        #expect(GitRunner.releaseOwnLock(atPath: lock, identity: nil) == .foreign)
-        #expect(FileManager.default.fileExists(atPath: lock))
-    }
-
-    @Test("Ein untergeschobener Symlink gilt nicht als eigener Lock")
-    func symlinkIsNotOwnLock() throws {
-        let root = try reviewFixTempDirectory("lock-symlink")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let target = root.appendingPathComponent("wichtig.txt")
-        try Data("Nutzdaten".utf8).write(to: target)
-        let lock = root.appendingPathComponent("index.lock").path
-        #expect(FileManager.default.createFile(atPath: lock, contents: Data()))
-        let identity = GitRunner.lockIdentity(atPath: lock)
-        try FileManager.default.removeItem(atPath: lock)
-        try FileManager.default.createSymbolicLink(atPath: lock,
-                                                   withDestinationPath: target.path)
-        #expect(GitRunner.releaseOwnLock(atPath: lock, identity: identity) == .foreign)
-        #expect(FileManager.default.fileExists(atPath: target.path))
+        #expect((await reviewFixGit(["init", "-q", "-b", "main"], in: root)).ok)
+        let index = root.appendingPathComponent(".git/index").path
+        let lock = URL(fileURLWithPath: index + ".lock")
+        var outcome: GitExecutionOutcome?
+        _ = GitRunner.runHoldingIndexLock(
+            indexPath: index, record: Data(), headRef: "refs/heads/main",
+            headOID: String(repeating: "0", count: 40),
+            headRefPath: root.appendingPathComponent(".git/refs/heads/main").path,
+            headRefNeedsNoDeref: false,
+            worktreeHeadPath: root.appendingPathComponent(".git/HEAD").path,
+            headSymbolicTarget: "refs/heads/main", in: root,
+            verify: { $0(false) }, afterLockPreflight: {
+                try? Data("fremd".utf8).write(to: lock, options: .withoutOverwriting)
+            }) { result, _ in outcome = result }
+        #expect(await waitUntil(timeout: 10) { outcome != nil })
+        #expect(try Data(contentsOf: lock) == Data("fremd".utf8))
     }
 }
 
@@ -187,6 +163,22 @@ struct GitReviewFixDiscardContextTests {
                        first: try reviewFixTempDirectory("\(name)-a"),
                        second: try reviewFixTempDirectory("\(name)-b"),
                        defaults: defaults, suite: suite)
+    }
+
+    @Test("Kompakter unversionierter Ordner wird nie rekursiv gelöscht")
+    func untrackedDirectoryKeepsIgnoredContents() throws {
+        let root = try reviewFixTempDirectory("discard-directory")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = root.appendingPathComponent("material")
+        try FileManager.default.createDirectory(at: folder,
+                                                withIntermediateDirectories: true)
+        let ignored = folder.appendingPathComponent(".geheim")
+        try Data("behalten".utf8).write(to: ignored)
+
+        #expect(throws: (any Error).self) {
+            try Workspace.removeUntrackedFile(at: folder)
+        }
+        #expect(try Data(contentsOf: ignored) == Data("behalten".utf8))
     }
 
     private func cleanUp(_ fixture: Fixture) {
@@ -290,41 +282,36 @@ struct GitReviewFixPushArgumentTests {
     private let target = GitPushTarget(remote: "origin",
                                        addresses: ["https://example.test/x.git"])
 
-    @Test("Ohne konfigurierte pushurl wird die geprüfte Adresse festgenagelt")
-    func pinsSingleAddress() {
-        let address = GitPushCommand.pinnableAddress(of: target,
-                                                     hasConfiguredPushURL: false)
-        #expect(address == "https://example.test/x.git")
-        #expect(GitPushCommand.arguments(
-            remote: "origin", refspec: "refs/heads/main:refs/heads/main",
-            setUpstream: false, pinnedAddress: address)
-            == ["-c", "remote.origin.pushurl=https://example.test/x.git",
-                "push", "origin", "refs/heads/main:refs/heads/main"])
+    @Test("Geprüfte Adresse liegt nur in der Umgebung, nie in argv")
+    func addressIsNotExposedInArguments() {
+        let invocation = GitPushCommand.invocation(
+            remote: target.remote, address: target.addresses[0],
+            refspec: "refs/heads/main:refs/heads/main",
+            temporaryRemote: "fastra-test")
+        #expect(invocation.environment["FASTRA_GIT_PUSH_URL"]
+                == "https://example.test/x.git")
+        #expect(!invocation.arguments.joined(separator: " ")
+            .contains("https://example.test/x.git"))
+        #expect(invocation.arguments == [
+            "--config-env=remote.fastra-test.url=FASTRA_GIT_PUSH_URL",
+            "-c", "remote.fastra-test.fetch=+refs/heads/*:refs/remotes/origin/*",
+            "push", "fastra-test", "refs/heads/main:refs/heads/main",
+        ])
     }
 
-    @Test("Konfigurierte pushurl oder mehrere Adressen werden nicht festgenagelt")
-    func doesNotPinAmbiguousTargets() {
-        #expect(GitPushCommand.pinnableAddress(of: target,
-                                               hasConfiguredPushURL: true) == nil)
-        let two = GitPushTarget(remote: "origin",
-                                addresses: ["https://a.test/x.git",
-                                            "https://b.test/x.git"])
-        #expect(GitPushCommand.pinnableAddress(of: two,
-                                               hasConfiguredPushURL: false) == nil)
-        // Ohne Festnagelung bleibt exakt der bisherige Aufruf stehen.
-        #expect(GitPushCommand.arguments(
-            remote: "origin", refspec: "refs/heads/main:refs/heads/main",
-            setUpstream: false, pinnedAddress: nil)
-            == ["push", "origin", "refs/heads/main:refs/heads/main"])
-    }
-
-    @Test("Der Upstream-Erstpush behält -u und den Remote-Namen")
-    func firstPushKeepsUpstreamFlag() {
-        #expect(GitPushCommand.arguments(
-            remote: "primary", refspec: "refs/heads/topic:refs/heads/topic",
-            setUpstream: true, pinnedAddress: "/tmp/ziel.git")
-            == ["-c", "remote.primary.pushurl=/tmp/ziel.git", "push", "-u",
-                "primary", "refs/heads/topic:refs/heads/topic"])
+    @Test("Mehrere Push-Adressen und URL-Umschreibregeln gelten als mehrdeutig")
+    func ambiguousTargetsAreRejected() {
+        let multiple = GitPushTarget(remote: "origin", addresses: ["a", "b"])
+        #expect(GitPushCommand.verifiedAddress(of: multiple) == nil)
+        #expect(GitPushCommand.verifiedAddress(of: target)
+                == "https://example.test/x.git")
+        #expect(GitPushCommand.rewriteRulesAreAbsent(GitResult(
+            exitCode: 1, stdout: "", stderr: "")))
+        #expect(!GitPushCommand.rewriteRulesAreAbsent(GitResult(
+            exitCode: 0,
+            stdout: "url.ssh://example/.insteadOf git@example:", stderr: "")))
+        #expect(!GitPushCommand.rewriteRulesAreAbsent(GitResult(
+            exitCode: 2, stdout: "", stderr: "kaputt")))
     }
 }
 
@@ -352,13 +339,13 @@ struct GitReviewFixPushTargetTests {
         #expect((await reviewFixGit(["remote", "add", "origin", changed.path],
                                     in: work)).ok)
 
-        let arguments = GitPushCommand.arguments(
-            remote: "origin", refspec: "refs/heads/main:refs/heads/main",
-            setUpstream: true,
-            pinnedAddress: GitPushCommand.pinnableAddress(
-                of: GitPushTarget(remote: "origin", addresses: [confirmed.path]),
-                hasConfiguredPushURL: false))
-        #expect((await reviewFixGit(arguments, in: work)).ok)
+        let invocation = GitPushCommand.invocation(
+            remote: "origin", address: confirmed.path,
+            refspec: "refs/heads/main:refs/heads/main",
+            temporaryRemote: "fastra-test")
+        #expect((await reviewFixGit(invocation, in: work)).ok)
+        #expect((await reviewFixGit(
+            ["branch", "--set-upstream-to=origin/main", "main"], in: work)).ok)
 
         let head = (await reviewFixGit(["rev-parse", "HEAD"], in: work)).stdout
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -384,7 +371,7 @@ struct GitReviewFixPushTargetTests {
 @MainActor
 @Suite("Push-Ablauf nagelt die geprüfte Adresse fest", .serialized)
 struct GitReviewFixPushFlowTests {
-    @Test("gitPush liest pushurl und startet mit festgenagelter Adresse")
+    @Test("gitPush prüft Umschreibregeln und startet ohne Adresse in argv")
     func pushFlowPinsVerifiedAddress() async throws {
         guard GitRunner.isAvailable else { return }
         let executor = ReviewFixExecutor()
@@ -426,16 +413,20 @@ struct GitReviewFixPushFlowTests {
                                                   stderrData: Data())))
         try await reviewFixSettle(executor, count: 6)
         executor.complete(5, reviewFixSuccess(address))
-        // Neu: Ist überhaupt eine pushurl konfiguriert?
+        // Unmittelbar vor dem Push müssen URL-Umschreibregeln ausgeschlossen sein.
         try await reviewFixSettle(executor, count: 7)
-        let pushURLQuery = try #require(executor.firstIndex {
-            $0 == ["config", "--includes", "--get-all", "remote.origin.pushurl"]
+        let rewriteQuery = try #require(executor.firstIndex {
+            $0 == ["config", "--includes", "--get-regexp",
+                   "^url\\..*\\.\\(insteadOf\\|pushInsteadOf\\)$"]
         })
-        executor.complete(pushURLQuery, reviewFixUnset())
+        executor.complete(rewriteQuery, reviewFixUnset())
         try await reviewFixSettle(executor, count: 8)
-        #expect(executor.arguments.last
-                == ["-c", "remote.origin.pushurl=https://example.test/x.git",
-                    "push", "origin", "refs/heads/main:refs/heads/main"])
+        let pushIndex = executor.arguments.count - 1
+        #expect(executor.arguments[pushIndex].contains("push"))
+        #expect(!executor.arguments[pushIndex].joined(separator: " ")
+            .contains("https://example.test/x.git"))
+        #expect(executor.policies[pushIndex].environment["FASTRA_GIT_PUSH_URL"]
+                == "https://example.test/x.git")
     }
 }
 

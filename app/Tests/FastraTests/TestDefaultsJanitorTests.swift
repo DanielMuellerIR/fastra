@@ -351,3 +351,21 @@ func purgeRecognizesAndRemovesTestDomains() {
     #expect(domain == nil || domain?.isEmpty == true)
     #expect(!remaining.contains(name))
 }
+
+@Test("TestDefaultsPurge meldet eine fehlgeschlagene Suite nicht vorzeitig ab")
+func purgeKeepsFailedSuiteRegistered() {
+    let failed = "FastraTests.PurgeFailed.\(UUID().uuidString)"
+    let succeeded = "FastraTests.PurgeSucceeded.\(UUID().uuidString)"
+    TestDefaultsPurge.register(failed)
+    TestDefaultsPurge.register(succeeded)
+    defer {
+        TestDefaultsPurge.updateRegistration(
+            afterAttempting: [failed], remaining: [])
+    }
+
+    TestDefaultsPurge.updateRegistration(
+        afterAttempting: [failed, succeeded], remaining: [failed])
+
+    #expect(TestDefaultsPurge.isRegistered(failed))
+    #expect(!TestDefaultsPurge.isRegistered(succeeded))
+}

@@ -508,6 +508,15 @@ enum SmartPaste {
             }
         }
 
+        func outputBudgetFailure() -> Result<String, SmartPasteError> {
+            let limitText = ByteCountFormatter.string(
+                fromByteCount: Int64(maximumOutputBytes), countStyle: .file)
+            return .failure(.conversionFailed(L10n.format(
+                "md-clip lieferte mehr als %@ Ausgabe; die Konvertierung wurde abgebrochen.",
+                limitText
+            )))
+        }
+
         // Auf Abschluss warten — in der App maximal 10 Sekunden. Der Parameter
         // ist injizierbar, damit der echte Timeout-Pfad schnell testbar bleibt.
         let deadline = DispatchTime.now() + timeout
@@ -518,12 +527,7 @@ enum SmartPaste {
         // Ein Weiterlesen von Exit-Code und Ausgabe wäre dann sinnlos.
         if budget.isExceeded {
             terminateProcessTree()
-            let limitText = ByteCountFormatter.string(
-                fromByteCount: Int64(maximumOutputBytes), countStyle: .file)
-            return .failure(.conversionFailed(L10n.format(
-                "md-clip lieferte mehr als %@ Ausgabe; die Konvertierung wurde abgebrochen.",
-                limitText
-            )))
+            return outputBudgetFailure()
         }
 
         if didFinish == .timedOut {
@@ -535,6 +539,11 @@ enum SmartPaste {
         // Captures warten bewusst nicht auf EOF eines geerbten Descriptors.
         let outputData = stdoutCapture.finish()
         let stderrData = stderrCapture.finish()
+        // Der Prozessabschluss kann die Semaphore wecken, bevor die letzten
+        // Pipe-Bytes im Capture angekommen sind. Deshalb NACH beiden finalen
+        // Drains erneut prüfen; sonst könnte `limit + 1` als gekürzter Erfolg
+        // durchgehen.
+        if budget.isExceeded { return outputBudgetFailure() }
 
         // Exit-Code auswerten.
         // md-clip-Exit-Codes (laut Skript):

@@ -296,12 +296,10 @@ struct EditorView: View {
         workspace.markdownImportOffer(for: workspace.activeTab?.url)
     }
 
-    /// Gehört der aktuelle Umwandlungszustand DIESEM Fenster? Der Dienst ist
-    /// ein Singleton; `owner == nil` heißt „ohne Fensterbezug gestartet"
-    /// (Selbsttests) und zählt deshalb wie ein eigener Lauf.
+    /// Gehört der aktuelle Umwandlungszustand DIESEM Fenster? Ein fensterloser
+    /// Testlauf (`ownerID == nil`) ist ausdrücklich in KEINEM Fenster sichtbar.
     private var markdownImportStateIsOurs: Bool {
-        markdownImportService.owner == nil
-            || markdownImportService.owner === workspace
+        markdownImportService.isOwned(by: workspace)
     }
 
     /// Sichtbar bei einem offenen Angebot ODER solange eine Umwandlung DIESES
@@ -614,7 +612,10 @@ struct EditorView: View {
                     // es wirklich etwas zu sagen gibt.
                     if markdownImportBarIsVisible {
                         MarkdownImportBar(offer: markdownImportOffer,
-                                          effectiveState: markdownImportEffectiveState) {
+                                          effectiveState: markdownImportEffectiveState,
+                                          conversionBlocked:
+                                            markdownImportService.isRunning
+                                            && !markdownImportStateIsOurs) {
                             if let url = markdownImportOffer?.sourceURL {
                                 workspace.dismissMarkdownImport(url)
                             }

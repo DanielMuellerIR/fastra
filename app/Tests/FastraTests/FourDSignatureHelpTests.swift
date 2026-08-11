@@ -8,6 +8,13 @@ import Foundation
 import Testing
 @testable import Fastra
 
+private final class SignatureWorkRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String] = []
+    func append(_ value: String) { lock.withLock { values.append(value) } }
+    var snapshot: [String] { lock.withLock { values } }
+}
+
 // MARK: - Parser: #DECLARE
 
 @Test("#DECLARE mit benannten Parametern, Typen und Rückgabe")
@@ -205,6 +212,81 @@ func resolvesMethodFile() throws {
         named: "Begruessung", projectURL: nil, documentURL: sibling
     )
     #expect(viaDocument?.lastPathComponent == "Begruessung.4dm")
+}
+
+@Test("Signatur-Cache folgt einem umgehängten Methoden-Symlink")
+func signatureCache_resolvesSymlinkBeforeKeying() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-siglink-\(UUID().uuidString)")
+    let methods = root.appendingPathComponent("Project/Sources/Methods")
+    try FileManager.default.createDirectory(at: methods,
+                                            withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let first = root.appendingPathComponent("erste.4dm")
+    let second = root.appendingPathComponent("zweite.4dm")
+    try "#DECLARE($a : Text)".write(to: first, atomically: true, encoding: .utf8)
+    try "#DECLARE($a : Integer)".write(to: second, atomically: true, encoding: .utf8)
+    let sameDate = Date(timeIntervalSince1970: 1_800_000_000)
+    try FileManager.default.setAttributes([.modificationDate: sameDate],
+                                          ofItemAtPath: first.path)
+    try FileManager.default.setAttributes([.modificationDate: sameDate],
+                                          ofItemAtPath: second.path)
+    let link = methods.appendingPathComponent("Methode.4dm")
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: first)
+    let request = FourDSignatureResolver.Request(
+        lowered: "methode", projectMethodFileName: "Methode",
+        projectURL: root, documentURL: nil, componentMethod: nil)
+    let cache = FourDSignatureResolver.Cache()
+
+    guard case .signature(let firstSignature, _) =
+            FourDSignatureResolver.title(for: request, cache: cache) else {
+        Issue.record("Erste Signatur fehlt")
+        return
+    }
+    #expect(firstSignature.parameters.first?.type == "Text")
+
+    try FileManager.default.removeItem(at: link)
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: second)
+    guard case .signature(let secondSignature, _) =
+            FourDSignatureResolver.title(for: request, cache: cache) else {
+        Issue.record("Zweite Signatur fehlt")
+        return
+    }
+    #expect(secondSignature.parameters.first?.type == "Integer")
+}
+
+@Test("Signatur-Auflösung führt nur laufende und jüngste Anforderung aus")
+@MainActor
+func signatureResolution_coalescesArchiveWork() async {
+    let scheduler = FourDSignatureResolutionScheduler()
+    let recorder = SignatureWorkRecorder()
+    let started = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+    func request(_ name: String) -> FourDSignatureResolver.Request {
+        .init(lowered: name, projectMethodFileName: nil,
+              projectURL: nil, documentURL: nil, componentMethod: nil)
+    }
+
+    scheduler.submit(key: request("erste"), work: {
+        recorder.append("erste")
+        started.signal()
+        _ = release.wait(timeout: .now() + 10)
+        return .command("erste")
+    }, completion: { _ in })
+    #expect(started.wait(timeout: .now() + 10) == .success)
+
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        for name in ["zweite", "dritte", "letzte"] {
+            scheduler.submit(key: request(name), work: {
+                recorder.append(name)
+                return .command(name)
+            }, completion: { _ in
+                if name == "letzte" { continuation.resume() }
+            })
+        }
+        release.signal()
+    }
+    #expect(recorder.snapshot == ["erste", "letzte"])
 }
 
 // MARK: - Kommentare (Review 2026-08-02)

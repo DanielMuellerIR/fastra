@@ -37,12 +37,20 @@ final class MarkdownImportService: ObservableObject {
     @Published private(set) var catalog: MarkdownImportCatalog?
     /// Sichtbarer Zustand der laufenden/letzten Umwandlung — treibt die Leiste.
     @Published var state: MarkdownImportState = .idle
-    /// Das Fenster (Workspace), das die laufende/letzte Umwandlung angestoßen
-    /// hat. Die Leiste zeigt den Zustand nur im Besitzer-Fenster — der Dienst
-    /// ist ein Singleton, und ohne diese Bindung erschien die Laufanzeige in
-    /// JEDEM offenen Fenster (Review 2026-08-02). `nil` = ohne Fensterbezug
-    /// gestartet (Selbsttests); dann verhält sich die Leiste wie zuvor.
+    /// Schwache Referenz nur für Diagnose/Kompatibilität. Für die eigentliche
+    /// Besitzentscheidung zählt `ownerID`: Schließt das auslösende Fenster,
+    /// darf sein laufender Zustand dadurch nicht plötzlich global werden.
     private(set) weak var owner: Workspace?
+    private(set) var ownerID: UUID?
+
+    var isRunning: Bool {
+        if case .running = state { return true }
+        return false
+    }
+
+    func isOwned(by workspace: Workspace) -> Bool {
+        ownerID == workspace.instanceID
+    }
 
     private var catalogProbedAt: Date?
     private var isProbing = false
@@ -128,6 +136,7 @@ final class MarkdownImportService: ObservableObject {
             return
         }
         self.owner = owner
+        ownerID = owner?.instanceID
         beginConversion(sourceURL, completion: completion)
     }
 
@@ -244,6 +253,7 @@ final class MarkdownImportService: ObservableObject {
     func clearState() {
         state = .idle
         owner = nil
+        ownerID = nil
     }
 
     // MARK: - Prozessaufruf

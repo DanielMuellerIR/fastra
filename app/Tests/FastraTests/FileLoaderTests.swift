@@ -237,6 +237,18 @@ func fileLoader_nonexistent_throws() {
     }
 }
 
+@Test("FileLoader: Fehler der ersten Probe bleibt auch bei großer Encoding-Datei ein Ladefehler")
+func fileLoader_forcedLargeProbeFailureIsUnreadable() throws {
+    let url = try writeTmp(Array("Inhalt".utf8))
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    #expect(throws: FileLoader.LoadError.unreadable) {
+        try FileLoader.load(
+            url: url, forcedEncoding: .utf8, largeFileThreshold: 1,
+            probeReader: { _, _ in throw CocoaError(.fileReadUnknown) })
+    }
+}
+
 // MARK: - Tests: nur reguläre Dateien (Code-Review-Befund 2026-07-24)
 
 /// Nimmt das Ergebnis eines Ladeversuchs von einem fremden Thread entgegen.

@@ -9,6 +9,40 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.70.0] — 2026-08-11
+
+### Behoben
+
+Vollständige Abarbeitung des Code-Reviews vom 2026-08-11 (28 Funde, alle
+triagiert und bestätigt):
+
+- **Git-Aktionen sind geschlossen gegen mehrdeutige Ziele und fremde Daten:**
+  Push-Adressen stehen nicht mehr in der Prozessargumentliste; mehrere
+  Push-Adressen und URL-Umschreibregeln führen zu einem sichtbaren Abbruch.
+  Ein unversionierter Ordner wird beim Verwerfen nicht mehr rekursiv samt
+  ignorierter Inhalte gelöscht, und Fastra entfernt nie selbst einen
+  möglicherweise fremden `index.lock`.
+- **Markdown-Bilder sind gegen parallele Änderungen abgesichert:** Quelle und echter
+  Zielordner bleiben über geöffnete Dateideskriptoren gebunden, Teilkopien
+  werden nie sichtbar und eine gleichzeitig entstandene Datei wird nicht
+  überschrieben. Bildnamen werden als sichere Markdown-Links maskiert. Die
+  Vorschau beobachtet auch umhängbare Verzeichnis-Symlinks, ohne dafür
+  Dateisystemzugriffe auf dem Main-Thread auszuführen.
+- **Fensterzustände bleiben eindeutig:** Eine laufende Markdown-Umwandlung
+  bleibt auch nach dem Schließen ihres Fensters diesem Lauf zugeordnet; andere
+  Fenster erklären die Belegung und bieten keinen wirkungslosen Knopf an.
+  Die 4D-Parameterhilfe blendet einen alten Aufruf sofort aus, verdichtet
+  Archivarbeit auf den jüngsten Cursorstand und folgt umgehängten Symlinks.
+- **Grenz- und Fehlerpfade melden sich korrekt:** Smart Paste prüft das
+  Ausgabelimit auch nach dem abschließenden Leeren der Pipes, Datei-Proben
+  verschlucken keine Lesefehler, Undo zeigt Backup-Fehler verständlich und
+  fehlgeschlagene Test-Defaults bleiben zur erneuten Bereinigung registriert.
+- **Testwerkzeuge greifen nicht in Arbeitsdaten ein:** Der Dauertest kopiert
+  ein konfiguriertes 4D-Projekt vollständig in seine isolierte Testwelt und
+  schreibt nie in die Quelle zurück. Zwischenablage-Besitz wird nur noch für
+  echte test-eigene Kopieraktionen beansprucht; fehlende Selbsttest-Binaries
+  und ungültige LaunchServices-Bundles liefern Exit 2 als Umgebungsfehler.
+
 ## [v1.69.0] — 2026-08-10
 
 ### Behoben

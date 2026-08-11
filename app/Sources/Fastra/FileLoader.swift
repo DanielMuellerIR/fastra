@@ -90,7 +90,10 @@ enum FileLoader {
     static let binaryScanChunkSize = 256 * 1024
 
     static func load(url: URL, forcedEncoding: String.Encoding? = nil,
-                     largeFileThreshold: UInt64 = largeFileThreshold) throws -> LoadedFile {
+                     largeFileThreshold: UInt64 = largeFileThreshold,
+                     probeReader: (FileHandle, Int) throws -> Data = { handle, count in
+                         try handle.read(upToCount: count) ?? Data()
+                     }) throws -> LoadedFile {
         // Typ und Größe am GEÖFFNETEN Deskriptor klären — nicht vorab am
         // Pfad. Beides ist eine Sicherheitsbedingung, keine Bequemlichkeit:
         // 1. Nicht reguläre Pfade (FIFO, Socket, Gerätedatei, Verzeichnis)
@@ -128,7 +131,15 @@ enum FileLoader {
         defer { close(opened.descriptor) }
         let fileSize = UInt64(max(0, opened.stat.st_size))
         let handle = FileHandle(fileDescriptor: opened.descriptor, closeOnDealloc: false)
-        let probe = (try? handle.read(upToCount: binaryProbeSize)) ?? Data()
+        let probe: Data
+        do {
+            probe = try probeReader(handle, binaryProbeSize)
+        } catch {
+            // Ein echter Lesefehler ist kein leeres Dateiende. Besonders beim
+            // großen, erzwungen dekodierten Pfad würde eine leere Ersatzprobe
+            // sonst fälschlich einen erfolgreichen read-only Tab erzeugen.
+            throw LoadError.unreadable
+        }
         let (probeBOM, probeBOMEncoding) = ApplyEngine.detectBOM(in: probe)
 
         if let enc = forcedEncoding {

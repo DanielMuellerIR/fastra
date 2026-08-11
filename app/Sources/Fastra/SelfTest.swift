@@ -6927,19 +6927,18 @@ enum SelfTest {
         soakPasteboardBackup = backup
     }
 
-    /// Schreibt den Besitzstand fort, nachdem der Dauertest selbst kopiert hat.
-    /// Aufruf nach jeder Runde: Was sich WÄHREND einer Runde geändert hat, hat
-    /// der Test selbst ausgelöst — er hat die App gerade gesteuert. Ändert sich
-    /// danach noch etwas, war es jemand anders.
-    ///
-    /// Geschrieben wird die Datei nur, wenn der Zähler wirklich gewandert ist;
-    /// sonst liefe pro Runde eine überflüssige Schreiboperation.
+    /// Schreibt den Besitzstand ausschließlich nach einer nachweislich
+    /// erfolgreichen test-eigenen Kopie fort. Der übergebene Zähler stammt
+    /// unmittelbar aus `SoakTest.perform(.copy)`; hat danach schon jemand
+    /// anderes kopiert, bleibt die Sicherung bewusst auf dem älteren Stand.
     @MainActor
-    private static func noteSoakPasteboardOwnership(to backupURL: URL) {
+    private static func noteSoakPasteboardOwnership(
+        changeCount ownedChangeCount: Int, to backupURL: URL
+    ) {
         guard var backup = soakPasteboardBackup else { return }
-        let current = NSPasteboard.general.changeCount
-        guard backup.ownedChangeCount != current else { return }
-        backup.ownedChangeCount = current
+        guard NSPasteboard.general.changeCount == ownedChangeCount,
+              backup.ownedChangeCount != ownedChangeCount else { return }
+        backup.ownedChangeCount = ownedChangeCount
         // Scheitert das Fortschreiben, bleibt der ältere Stand in der Datei
         // stehen: Der Wiederhersteller hält die Zwischenablage dann für fremd
         // und fasst sie nicht an — die sichere Richtung.
@@ -7108,10 +7107,14 @@ enum SelfTest {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             MainActor.assumeIsolated {
                 if let pending { SoakTest.finishRound(pending) }
-                // Hat die Runde selbst kopiert (⌘C-Aktion), gehört der neue
-                // Zwischenablage-Inhalt dem Test: Besitzstand fortschreiben.
-                // Was sich SPÄTER ändert, kam von außen und bleibt erhalten.
-                noteSoakPasteboardOwnership(to: soakPasteboardBackupURL(logURL: logURL))
+                // Nur eine nachweislich erfolgreiche ⌘C-Aktion darf Besitz
+                // begründen. Bei jeder anderen Aktion könnte eine Änderung des
+                // systemweiten Zählers vom Nutzer stammen.
+                if let owned = pending?.pasteboardChangeCount {
+                    noteSoakPasteboardOwnership(
+                        changeCount: owned,
+                        to: soakPasteboardBackupURL(logURL: logURL))
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                     MainActor.assumeIsolated {
                         runSoakRounds(rounds: rounds, done: done + 1,

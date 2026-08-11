@@ -526,13 +526,16 @@ enum SoakTest {
     /// Führt eine Aktion im vorderen Fenster aus und meldet, welches Fenster
     /// sie verändern durfte. `nil` heißt: Die Aktion war nicht möglich (etwa
     /// Sichern ohne Datei) und zählt nicht als Prüfung.
-    static func perform(_ action: Action) -> (target: NSWindow, label: String)? {
+    static func perform(_ action: Action) -> (
+        target: NSWindow, label: String, pasteboardChangeCount: Int?
+    )? {
         guard let window = documentWindows().first,
               let content = window.contentView,
               let textView = descendantTextView(in: content),
               let workspace = WorkspaceWindowRegistry.workspace(for: window)
         else { return nil }
 
+        var pasteboardChangeCount: Int?
         switch action {
         case .type:
             // An der Cursorposition einfügen — wie Tippen, nur in einem Rutsch.
@@ -591,7 +594,7 @@ enum SoakTest {
             // NICHTS am Inhalt ändern — auch das prüfen die Invarianten.
             let other = windows[1 + nextRandom(windows.count - 1)]
             other.makeKeyAndOrderFront(nil)
-            return (other, action.label)
+            return (other, action.label, nil)
 
         case .undo:
             guard textView.undoManager?.canUndo == true else { return nil }
@@ -671,9 +674,13 @@ enum SoakTest {
                 NSRange(location: start, length: min(25, length - start))
             )
             _ = window.makeFirstResponder(textView)
+            let beforeCopy = NSPasteboard.general.changeCount
             if !NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) {
                 record("Kopierbefehl erreicht den Editor",
                        "\(window.title): sendAction(copy:) fand keinen Empfänger")
+            } else {
+                let afterCopy = NSPasteboard.general.changeCount
+                if afterCopy != beforeCopy { pasteboardChangeCount = afterCopy }
             }
 
         case .paste:
@@ -693,7 +700,7 @@ enum SoakTest {
             }
             if textView.string != textBefore { noteFourDMutation(in: workspace) }
         }
-        return (window, action.label)
+        return (window, action.label, pasteboardChangeCount)
     }
 
     /// Sucht den ⌘-Menüpunkt FRISCH im aktuellen Hauptmenü. Referenzen werden
@@ -741,6 +748,10 @@ enum SoakTest {
         let action: Action
         let before: [ObjectIdentifier: WindowSnapshot]
         let undoBaseline: (String, TextView, NSWindow)?
+        /// Nur direkt nach einer nachweislich erfolgreichen test-eigenen Kopie
+        /// gesetzt. Andere Aktionen dürfen einen inzwischen fremden
+        /// Zwischenablage-Zähler niemals als Testbesitz übernehmen.
+        let pasteboardChangeCount: Int?
     }
 
     /// Erste Hälfte einer Runde: Aktion wählen, Zustand sichern, ausführen.
@@ -763,7 +774,8 @@ enum SoakTest {
         guard let done = perform(action) else { return nil }
         return PendingRound(label: done.label, target: done.target,
                             action: action, before: before,
-                            undoBaseline: undoBaseline)
+                            undoBaseline: undoBaseline,
+                            pasteboardChangeCount: done.pasteboardChangeCount)
     }
 
     /// Zweite Hälfte einer Runde: die Invarianten gegen den inzwischen

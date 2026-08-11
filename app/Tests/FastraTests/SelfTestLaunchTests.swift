@@ -2,6 +2,7 @@
 //
 // Prüft die früh gesetzten, rein prozesslokalen UI-Fixtures der Shot-Tests.
 
+import Foundation
 import Testing
 @testable import Fastra
 
@@ -49,4 +50,44 @@ func normalLaunch_doesNotPrepareSidebarEnvironment() {
     }
 
     #expect(captured.isEmpty)
+}
+
+private func runSelfTestRunner(arguments: [String], environment: [String: String]) async
+    throws -> Int32 {
+    let script = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().appendingPathComponent("selftest.sh")
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/bash")
+    process.arguments = [script.path] + arguments
+    process.environment = ProcessInfo.processInfo.environment.merging(environment) {
+        _, new in new
+    }
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
+    return try await withCheckedThrowingContinuation { continuation in
+        process.terminationHandler = { process in
+            continuation.resume(returning: process.terminationStatus)
+        }
+        do { try process.run() } catch { continuation.resume(throwing: error) }
+    }
+}
+
+@Test("Fehlendes Selbsttest-Binary ist ein Umgebungsfehler")
+func selfTestRunner_missingBinaryExitsTwo() async throws {
+    let status = try await runSelfTestRunner(
+        arguments: ["search"],
+        environment: ["FASTRA_SELFTEST_APP_BIN": "/definitely/missing/Fastra"])
+    #expect(status == 2)
+}
+
+@Test("LaunchServices-Test verlangt ein wirklich vorhandenes App-Bundle")
+func selfTestRunner_launchServicesValidatesBundle() async throws {
+    let status = try await runSelfTestRunner(
+        arguments: ["coldopen"],
+        environment: [
+            "FASTRA_SELFTEST_APP_BIN": "/usr/bin/true",
+            "FASTRA_SELFTEST_APP_BUNDLE": "/definitely/missing/Fastra.app",
+        ])
+    #expect(status == 2)
 }

@@ -68,7 +68,9 @@ enum TestDefaultsPurge {
     @discardableResult
     static func purgeRegistered(preferencesDirectory: URL? = nil) -> [String] {
         let names = lock.withLock { registered }
-        return purge(names: names, preferencesDirectory: preferencesDirectory)
+        let remaining = purge(names: names, preferencesDirectory: preferencesDirectory)
+        updateRegistration(afterAttempting: names, remaining: remaining)
+        return remaining
     }
 
     /// Entfernt GENAU EINE registrierte Suite und meldet sie ab.
@@ -80,8 +82,25 @@ enum TestDefaultsPurge {
     @discardableResult
     static func purgeRegistered(only name: String,
                                 preferencesDirectory: URL? = nil) -> [String] {
-        lock.withLock { _ = registered.remove(name) }
-        return purge(names: [name], preferencesDirectory: preferencesDirectory)
+        let attempted: Set<String> = [name]
+        let remaining = purge(names: attempted,
+                              preferencesDirectory: preferencesDirectory)
+        updateRegistration(afterAttempting: attempted, remaining: remaining)
+        return remaining
+    }
+
+    /// Meldet nur bestätigte Erfolge ab. Fehlgeschlagene Domains bleiben für
+    /// den prozessweiten `atexit`-Versuch registriert; andere Suite-Namen, die
+    /// parallel zum Purge hinzukommen, werden nicht angetastet.
+    static func updateRegistration(afterAttempting names: Set<String>,
+                                   remaining: [String]) {
+        let succeeded = names.subtracting(remaining)
+        lock.withLock { registered.subtract(succeeded) }
+    }
+
+    /// Nur für den Regressionstest der Registry-Entscheidung.
+    static func isRegistered(_ name: String) -> Bool {
+        lock.withLock { registered.contains(name) }
     }
 
     /// Gemeinsamer Kern beider Purge-Wege.

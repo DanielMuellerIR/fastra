@@ -17,6 +17,7 @@
 
 import Foundation
 import CoreServices
+import Darwin
 
 final class MarkdownImageWatcher {
 
@@ -34,7 +35,12 @@ final class MarkdownImageWatcher {
     /// Bild-Dateien. Eine unveränderte Menge lässt den laufenden Stream
     /// stehen (kein Neuaufbau bei jedem Tastendruck).
     func update(imageURLs: [URL]) {
-        let directories = Self.directoriesToWatch(for: imageURLs)
+        update(directories: Self.directoriesToWatch(for: imageURLs))
+    }
+
+    /// Übernimmt eine bereits im Hintergrund berechnete Ordnerliste. Aufbau
+    /// und Abbau des FSEvents-Streams bleiben auf dem Main-Thread.
+    func update(directories: Set<String>) {
         guard directories != watchedDirectories else { return }
         watchedDirectories = directories
         stop()
@@ -66,6 +72,24 @@ final class MarkdownImageWatcher {
     static func directoriesToWatch(for imageURLs: [URL]) -> Set<String> {
         var directories: Set<String> = []
         for url in imageURLs {
+            // Auch symbolische VERZEICHNIS-Komponenten beobachten. Wird etwa
+            // `assets` von Ziel A auf Ziel B umgehängt, meldet das der echte
+            // Elternordner des Links; im bisherigen Zielordner passiert nichts.
+            var current = URL(fileURLWithPath: "/", isDirectory: true)
+            for component in url.deletingLastPathComponent()
+                    .standardizedFileURL.pathComponents.dropFirst() {
+                current.appendPathComponent(component)
+                var info = stat()
+                if lstat(current.path, &info) == 0,
+                   info.st_mode & S_IFMT == S_IFLNK {
+                    let parent = current.deletingLastPathComponent()
+                        .resolvingSymlinksInPath().standardizedFileURL
+                    // Top-Level-Systemaliase wie `/var` zeigen dauerhaft nach
+                    // `/private/var`. Dafür den gesamten Wurzelordner zu
+                    // beobachten wäre unverhältnismäßig und nutzlos.
+                    if parent.path != "/" { directories.insert(parent.path) }
+                }
+            }
             let linkDirectory = url.deletingLastPathComponent()
                 .resolvingSymlinksInPath().standardizedFileURL
             directories.insert(linkDirectory.path)

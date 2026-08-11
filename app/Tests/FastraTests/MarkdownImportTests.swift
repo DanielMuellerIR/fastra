@@ -576,3 +576,33 @@ struct MarkdownImportServiceGuardTests {
         #expect(FileManager.default.fileExists(atPath: source.path))
     }
 }
+
+@Suite("Fensterbesitz der Markdown-Umwandlung")
+struct MarkdownImportOwnershipTests {
+    @Test("Geschlossenes Besitzerfenster macht einen Lauf nicht global")
+    @MainActor
+    func ownerIdentitySurvivesWorkspaceDeallocation() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-mdowner-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder,
+                                                withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appendingPathComponent("Quelle.rtf")
+        try "Quelle".write(to: source, atomically: true, encoding: .utf8)
+        let service = MarkdownImportService()
+        service.locateTool = { URL(fileURLWithPath: "/bin/echo") }
+        service.runProcess = { _, _, _, _ in /* absichtlich noch laufend */ }
+
+        var owner: Workspace? = Workspace()
+        let ownerID = try #require(owner?.instanceID)
+        service.convert(source, owner: owner)
+        #expect(service.ownerID == ownerID)
+        owner = nil
+        #expect(service.owner == nil)
+        #expect(service.ownerID == ownerID)
+
+        let other = Workspace()
+        #expect(!service.isOwned(by: other))
+        #expect(service.isRunning)
+    }
+}

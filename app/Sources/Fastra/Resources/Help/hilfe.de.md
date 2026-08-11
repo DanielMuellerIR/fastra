@@ -324,6 +324,11 @@ gewohnt in einem Tab. Nach dem Einfügen scrollt die Vorschau zur
 Einfügestelle. Ungespeicherte Dokumente haben noch keinen Ordner —
 deshalb zuerst speichern (⌘S).
 
+Fastra veröffentlicht eine Bilddatei erst nach der vollständigen Kopie und
+überschreibt keine gleichzeitig entstandene Datei. Wird der echte
+`images`-Ordner währenddessen durch einen symbolischen Link ersetzt, bricht
+die Ablage ab und schreibt nichts ins Linkziel.
+
 ### HTML in der Vorschau
 
 Markdown-Dateien enthalten oft etwas HTML — am häufigsten ein zentriertes Bild
@@ -351,6 +356,10 @@ erscheint über dem Editor der Hinweis **In Markdown umwandeln**. Denselben
 Befehl findest du im Menü **Ablage** und im Rechtsklickmenü der Projekt-
 Seitenleiste. Fastra wandelt nichts von selbst um: Der Klick auf den Befehl ist
 die Zustimmung.
+
+Es läuft appweit höchstens eine Umwandlung. In einem zweiten Fenster bleibt das
+eigene Angebot sichtbar, erklärt aber den laufenden Vorgang und ist bis zu
+dessen Abschluss nicht anklickbar.
 
 Ein `.rtfd`-Dokument ist im Finder ein Ordner. Fastra fragt deshalb nach, ob
 es umgewandelt oder als Ordner geöffnet werden soll — sowohl beim Öffnen als
@@ -626,7 +635,9 @@ Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**:
   committen. Nach einem lokalen Commit wird der Commit-Knopf zum Push-Knopf:
   Er nennt den ersten lokal konfigurierten Remote und zeigt dessen effektive
   Push-Adresse unmittelbar darunter. Fastra pusht ausdrücklich nur zu diesem
-  sichtbaren Ziel; Push und Pull laufen asynchron.
+  sichtbaren Ziel; Push und Pull laufen asynchron. Mehrere Push-Adressen oder
+  Git-Regeln, die Adressen per `insteadOf`/`pushInsteadOf` umschreiben, sind
+  nicht eindeutig und werden mit Erklärung abgebrochen.
 - **Mehrere Dateien auf einen Schlag:** In der Dateiliste markiert ein Klick
   eine Zeile, ⇧-Klick den Bereich bis dorthin und ⌘-Klick einzelne Zeilen
   zusätzlich oder wieder ab. Markierte Zeilen sind farbig hinterlegt. Eine
@@ -634,7 +645,9 @@ Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**:
   Entnehmen, per Knopf oder Kontextmenü — wirkt dann auf die ganze Auswahl;
   das Kontextmenü nennt die Anzahl. Vor dem Verwerfen kommt eine einzige
   Rückfrage für alle betroffenen Dateien, und sie sagt ausdrücklich, wie
-  viele davon nicht versionierte Dateien sind (die werden gelöscht).
+  viele davon nicht versionierte Dateien sind (die werden gelöscht). Meldet
+  Git einen ganzen unversionierten Ordner als eine Zeile, löscht Fastra ihn
+  nicht rekursiv; dadurch bleiben darin liegende ignorierte Dateien erhalten.
 - **Sammel-Knöpfe im Abschnittskopf „ÄNDERUNGEN“:** Gesamt-Diff aller
   offenen Änderungen in der zweispaltigen Ansicht öffnen, alle Änderungen
   verwerfen, alles bereitstellen. Im Kopf „BEREITGESTELLT“ steht der Knopf,
