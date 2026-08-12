@@ -531,7 +531,7 @@ struct FloatingSearchDialog: View {
                         // Return im Suchfeld beginnt bewusst beim ersten
                         // Treffer. Danach gehört der Tastaturfokus der Liste,
                         // nicht dem im Hintergrund sichtbaren Dokumenteditor.
-                        NotificationCenter.default.post(name: .fastraGotoFirstMatch, object: nil)
+                        postNavigation(.fastraGotoFirstMatch)
                         DispatchQueue.main.async { hitListFocused = true }
                     } else {
                         NSSound.beep()
@@ -1053,15 +1053,18 @@ struct FloatingSearchDialog: View {
                         // bloßen Neu-Suchen (Muster getippt) springt sie
                         // bewusst nicht (Etappe 2 Wunschpaket 2026-07b).
                         .onReceive(NotificationCenter.default.publisher(
-                            for: .fastraGotoFirstMatch)) { _ in
+                            for: .fastraGotoFirstMatch)) { note in
+                            guard notificationTargetsThisWorkspace(note) else { return }
                             scrollToActiveMatch(proxy)
                         }
                         .onReceive(NotificationCenter.default.publisher(
-                            for: .fastraGotoNextMatch)) { _ in
+                            for: .fastraGotoNextMatch)) { note in
+                            guard notificationTargetsThisWorkspace(note) else { return }
                             scrollToActiveMatch(proxy)
                         }
                         .onReceive(NotificationCenter.default.publisher(
-                            for: .fastraGotoPreviousMatch)) { _ in
+                            for: .fastraGotoPreviousMatch)) { note in
+                            guard notificationTargetsThisWorkspace(note) else { return }
                             scrollToActiveMatch(proxy)
                         }
                         // Klick auf eine Zeile (handleMatchTap zählt den Token
@@ -1083,15 +1086,15 @@ struct FloatingSearchDialog: View {
             .onMoveCommand { direction in
                 switch direction {
                 case .up:
-                    NotificationCenter.default.post(name: .fastraGotoPreviousMatch, object: nil)
+                    postNavigation(.fastraGotoPreviousMatch)
                 case .down:
-                    NotificationCenter.default.post(name: .fastraGotoNextMatch, object: nil)
+                    postNavigation(.fastraGotoNextMatch)
                 default:
                     break
                 }
             }
             .onKeyPress(.return) {
-                NotificationCenter.default.post(name: .fastraGotoNextMatch, object: nil)
+                postNavigation(.fastraGotoNextMatch)
                 return .handled
             }
             .background(
@@ -1309,7 +1312,7 @@ struct FloatingSearchDialog: View {
 
             HStack(spacing: 4) {
                 Button {
-                    NotificationCenter.default.post(name: .fastraGotoPreviousMatch, object: nil)
+                    postNavigation(.fastraGotoPreviousMatch)
                 } label: {
                     Image(systemName: "chevron.left")
                         .fastraFont(size: 10, weight: .semibold)
@@ -1325,7 +1328,7 @@ struct FloatingSearchDialog: View {
                     .foregroundColor(Theme.textSecondary)
 
                 Button {
-                    NotificationCenter.default.post(name: .fastraGotoNextMatch, object: nil)
+                    postNavigation(.fastraGotoNextMatch)
                 } label: {
                     Image(systemName: "chevron.right")
                         .fastraFont(size: 10, weight: .semibold)
@@ -1569,13 +1572,13 @@ struct FloatingSearchDialog: View {
                 }
 
                 Button("Voriger") {
-                    NotificationCenter.default.post(name: .fastraGotoPreviousMatch, object: nil)
+                    postNavigation(.fastraGotoPreviousMatch)
                 }
                     .disabled(workspace.navMatches.isEmpty)
                     .help("Zum vorherigen Treffer springen — im Dokument an die Fundstelle. Tastenkürzel: ⇧⌘G.")
 
                 Button("Nächster") {
-                    NotificationCenter.default.post(name: .fastraGotoNextMatch, object: nil)
+                    postNavigation(.fastraGotoNextMatch)
                 }
                     // Return = weitersuchen (BBEdit-Verhalten) — aber nur in
                     // Buffer-Scopes. Im Ordner-Scope gehört Return zu „Suchen"
@@ -1677,6 +1680,20 @@ struct FloatingSearchDialog: View {
                     }())
             }
         }
+    }
+
+    /// Navigation bleibt an den Workspace dieser Suchmaske gebunden. Das ist
+    /// besonders bei zwei offenen Dokumenten wichtig, weil alle Dialoge am
+    /// app-weiten NotificationCenter lauschen.
+    private func postNavigation(_ name: Notification.Name) {
+        NotificationCenter.default.post(name: name, object: workspace)
+    }
+
+    private func notificationTargetsThisWorkspace(_ notification: Notification) -> Bool {
+        if let target = notification.object as? Workspace {
+            return target === workspace
+        }
+        return Workspace.shared === workspace
     }
 }
 

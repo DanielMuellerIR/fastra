@@ -9,6 +9,44 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.73.0] — 2026-08-12
+
+### Behoben
+
+- **Lange Undo-/Redo-Folgen bleiben absturzfest:** Gebündelte Textänderungen
+  scrollen erst nach dem vollständigen Aktualisieren des Text- und
+  Zeilen-Speichers. Der im 2.000-Runden-Dauertest beobachtete Absturz in
+  `scrollSelectionToVisible` tritt dadurch nicht mehr auf.
+- **Speichern scrollt kein fremdes Fenster mehr:** Dokumentbefehle, Suche,
+  Treffer-Navigation und Git-Aktionen besitzen nur noch ein eindeutiges
+  Dokumentfenster als Ziel. Ist stattdessen Hilfe, Einstellungen oder ein
+  anderes Hilfsfenster vorn, bleibt ein Dokument im Hintergrund unberührt.
+- **Markdown-Bilddateien folgen exakt ihrem Undo-Schritt:** Link und neu
+  erzeugte Datei sind direkt derselben Undo-Gruppe zugeordnet. Identische
+  Linktexte werden nicht mehr verwechselt; veränderte oder ausgetauschte
+  Dateien und Ordner werden vor Undo, Redo und Verwerfen geschützt.
+- **Git-Remote-Fehler bleiben sichtbar und lokal begrenzt:** Ein defekter
+  Remote entfernt keine bereits aufgelösten Push-Ziele mehr. Gekürzte oder
+  fehlgeschlagene Git-Ausgaben werden nicht als vollständiger Stand
+  veröffentlicht; die echte Git-Meldung bleibt sichtbar.
+- **Test-Runner räumen sicherer auf:** Prozessgruppen werden nur signalisiert,
+  wenn sie nachweislich dem Runner gehören. GUI-Sperren unterscheiden
+  wiederverwendete Prozess-IDs anhand der Startzeit, und Performance-Läufe
+  werden erst nach vollständig erfolgreicher Zustandswiederherstellung
+  gespeichert.
+
+### Verbessert
+
+- **Tabwechsel blockieren die Oberfläche nicht mehr mit Dateisystemarbeit:**
+  Git-Wurzel und Projektordner werden im Hintergrund bestimmt und nur für den
+  weiterhin aktiven Tab übernommen.
+- **Drag-and-drop und lange Editorsitzungen verursachen weniger Arbeit:** Beim
+  Ziehen eines Bildes prüft Fastra nur noch die deklarierten Datentypen statt
+  wiederholt die vollständigen Bilddaten zu laden. Veraltete 4D-Signaturanfragen
+  werden verworfen, erledigte Bild-Undo-Schritte behalten keine globalen
+  Beobachter, und Git liest für Remote-Vergleiche keine lokalen Branches mehr
+  doppelt ein.
+
 ## [v1.72.1] — 2026-08-11
 
 ### Behoben

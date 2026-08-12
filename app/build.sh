@@ -1488,6 +1488,7 @@ if ! grep -q 'Fastra-Patch: Rechteck-Copy' "$CETV_COPY_PASTE" 2>/dev/null \
    || ! grep -q 'Fastra-Patch: Rechteck-Paste' "$CETV_COPY_PASTE" 2>/dev/null \
    || ! grep -q 'Fastra-Patch: Rechteck-Delete' "$CETV_DELETE" 2>/dev/null \
    || ! grep -q 'Fastra-Patch: eine Undo-Gruppe fuer Mehrfachbereiche' "$CETV_REPLACE" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: kein Scrollen waehrend gebuendeltem Undo/Redo' "$CETV_REPLACE" 2>/dev/null \
    || ! grep -q 'Fastra-Patch: Doppelklick auf Symbole' "$CETV_SELECT" 2>/dev/null \
    || ! grep -q 'Fastra-Patch: einzelnes Symbol' "$CETV_SELECT" 2>/dev/null \
    || ! grep -q 'fastraColumnSelectionTabWidth = tabWidth' "$CESE_APPEARANCE" 2>/dev/null \
@@ -1652,6 +1653,22 @@ replace_once(
         NotificationCenter.default.post(name: Self.textWillChangeNotification, object: self)'''
 )
 replace_once(
+    replace_characters,
+    "Fastra-Patch: kein Scrollen waehrend gebuendeltem Undo/Redo",
+    '''        if let selection = selectionManager.textSelections.first, !visibleRect.contains(selection.boundingRect) {
+            scrollSelectionToVisible()
+        }''',
+    '''        // Fastra-Patch: kein Scrollen waehrend gebuendeltem Undo/Redo. Der
+        // aeussere Undo-Manager scrollt erst nach textStorage.endEditing();
+        // hier wuerde ein Bounds-Callback Layout gegen den Zwischenstand
+        // ausloesen (Crash im 2.000-Runden-Dauertest).
+        if !skipUpdateSelection,
+           let selection = selectionManager.textSelections.first,
+           !visibleRect.contains(selection.boundingRect) {
+            scrollSelectionToVisible()
+        }'''
+)
+replace_once(
     appearance,
     "fastraColumnSelectionTabWidth = tabWidth",
     '''            if oldConfig?.tabWidth != tabWidth {
@@ -1679,6 +1696,7 @@ if ! grep -q 'FastraColumnSelectionSnapshot' "$CETV_COLUMN" \
    || ! grep -q 'Fastra-Patch: Rechteck-Paste' "$CETV_COPY_PASTE" \
    || ! grep -q 'Fastra-Patch: Rechteck-Delete' "$CETV_DELETE" \
    || ! grep -q 'Fastra-Patch: eine Undo-Gruppe fuer Mehrfachbereiche' "$CETV_REPLACE" \
+   || ! grep -q 'Fastra-Patch: kein Scrollen waehrend gebuendeltem Undo/Redo' "$CETV_REPLACE" \
    || ! grep -q 'fastraColumnSelectionTabWidth = tabWidth' "$CESE_APPEARANCE" \
    || ! grep -q 'fastraColumnIndentationUnit' "$CESE_BEHAVIOR"; then
   echo "✗ FEHLER: Rechteckauswahl-Patch hat NICHT vollständig gegriffen." >&2
@@ -1923,9 +1941,157 @@ PYEOF
   TEXT_OPERATION_UNDO_PATCH_CHANGED=1
 fi
 
+# Bilddateien, die zusammen mit einem Markdown-Link entstanden sind, gehören
+# an exakt dieselbe Undo-Gruppe. Globale NSUndoManager-Beobachter können bei
+# gleichen Linktexten nicht unterscheiden, welche Einfügung gemeint war, und
+# bleiben außerdem über die Lebenszeit verworfener Redo-Zweige hängen.
+if ! grep -q 'Fastra-Patch: dateibezogene Nebenwirkungen' \
+    "$CETV_UNDO" 2>/dev/null; then
+  echo "→ Ergänze CodeEditTextView-Patch (Nebenwirkungen je Undo-Gruppe)"
+  chmod u+w "$CETV_UNDO"
+  /usr/bin/python3 - "$CETV_UNDO" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+
+def replace_once(old, new, label):
+    global src
+    if old not in src:
+        raise SystemExit(f"{path}: {label} hat sich geaendert — Patch 4q pruefen")
+    src = src.replace(old, new, 1)
+
+replace_once(
+    '''import AppKit
+import TextStory
+''',
+    '''import AppKit
+import TextStory
+
+/// Eine kleine, an eine konkrete Undo-Gruppe gebundene Fastra-Nebenwirkung.
+/// `discard` laeuft hoechstens einmal, auch wenn Stack-Cleanup und `deinit`
+/// denselben verworfenen Redo-Zweig erreichen.
+public final class FastraUndoSideEffect {
+    private let undoAction: () -> Void
+    private let redoAction: () -> Void
+    private let discardAction: () -> Void
+    private var wasDiscarded = false
+
+    init(undo: @escaping () -> Void,
+         redo: @escaping () -> Void,
+         discard: @escaping () -> Void) {
+        undoAction = undo
+        redoAction = redo
+        discardAction = discard
+    }
+
+    func performUndo() { if !wasDiscarded { undoAction() } }
+    func performRedo() { if !wasDiscarded { redoAction() } }
+    func discard() {
+        guard !wasDiscarded else { return }
+        wasDiscarded = true
+        discardAction()
+    }
+
+    deinit { discard() }
+}
+''',
+    "Import-Anker"
+)
+replace_once(
+    '''        var fastraSelectionsBefore: [NSRange]?
+        var fastraSelectionsAfter: [NSRange]?
+    }''',
+    '''        var fastraSelectionsBefore: [NSRange]?
+        var fastraSelectionsAfter: [NSRange]?
+        // Fastra-Patch: dateibezogene Nebenwirkungen gehoeren direkt zur
+        // konkreten Undo-Gruppe statt zu globalen Undo-Benachrichtigungen.
+        var fastraSideEffects: [FastraUndoSideEffect]
+    }''',
+    "UndoGroup"
+)
+replace_once(
+    '''        textView.scrollSelectionToVisible()
+
+        NotificationCenter.default.post(name: .NSUndoManagerDidUndoChange, object: self)''',
+    '''        textView.scrollSelectionToVisible()
+        item.fastraSideEffects.forEach { $0.performUndo() }
+
+        NotificationCenter.default.post(name: .NSUndoManagerDidUndoChange, object: self)''',
+    "Undo-Abschluss"
+)
+replace_once(
+    '''        textView.scrollSelectionToVisible()
+
+        NotificationCenter.default.post(name: .NSUndoManagerDidRedoChange, object: self)''',
+    '''        textView.scrollSelectionToVisible()
+        item.fastraSideEffects.forEach { $0.performRedo() }
+
+        NotificationCenter.default.post(name: .NSUndoManagerDidRedoChange, object: self)''',
+    "Redo-Abschluss"
+)
+replace_once(
+    '''    /// Clears the undo/redo stacks.
+    public func clearStack() {
+        undoStack.removeAll()
+        redoStack.removeAll()
+    }''',
+    '''    /// Haengt eine Fastra-Nebenwirkung an exakt die zuletzt registrierte
+    /// Textaenderung. Ein neuer Edit nach Undo verwirft den Redo-Zweig.
+    @discardableResult
+    public func fastraRegisterSideEffectForLatestUndo(
+        undo: @escaping () -> Void,
+        redo: @escaping () -> Void,
+        discard: @escaping () -> Void
+    ) -> Bool {
+        guard !isUndoing, !isRedoing, !undoStack.isEmpty else { return false }
+        undoStack[undoStack.count - 1].fastraSideEffects.append(
+            FastraUndoSideEffect(undo: undo, redo: redo, discard: discard)
+        )
+        return true
+    }
+
+    /// Clears the undo/redo stacks.
+    public func clearStack() {
+        (undoStack + redoStack).flatMap(\\.fastraSideEffects)
+            .forEach { $0.discard() }
+        undoStack.removeAll()
+        redoStack.removeAll()
+    }''',
+    "clearStack"
+)
+replace_once(
+    '''                fastraSelectionsBefore: nil,
+                fastraSelectionsAfter: nil
+            ))''',
+    '''                fastraSelectionsBefore: nil,
+                fastraSelectionsAfter: nil,
+                fastraSideEffects: []
+            ))''',
+    "UndoGroup-Initialisierung"
+)
+replace_once(
+    '''        redoStack.removeAll()
+    }
+
+    // MARK: - Grouping''',
+    '''        redoStack.flatMap(\\.fastraSideEffects).forEach { $0.discard() }
+        redoStack.removeAll()
+    }
+
+    // MARK: - Grouping''',
+    "Redo-Verwerfen"
+)
+open(path, "w").write(src)
+PYEOF
+  TEXT_OPERATION_UNDO_PATCH_CHANGED=1
+fi
+
 if ! grep -q 'Fastra-Patch: Auswahlzustand grosser Textoperationen' \
     "$CETV_UNDO" \
    || ! grep -q 'Fastra-Patch: Layout nach grosser Textoperation' \
+    "$CETV_UNDO" \
+   || ! grep -q 'Fastra-Patch: dateibezogene Nebenwirkungen' \
     "$CETV_UNDO"; then
   echo "✗ FEHLER: Textoperations-Undo-Patch hat NICHT gegriffen." >&2
   exit 1

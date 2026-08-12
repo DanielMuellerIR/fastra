@@ -49,6 +49,13 @@ struct GitChangesView: View {
                 operationBanner
                 Divider().opacity(0.3)
             }
+            if let warning = workspace.gitPushTargetWarning {
+                Text(warning)
+                    .fastraFont(.small)
+                    .foregroundColor(Theme.gitModified)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+            }
             commitBox
 
             Divider().opacity(0.3)

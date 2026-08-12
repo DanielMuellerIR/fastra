@@ -214,20 +214,10 @@ fastra_test_tree_append_unique_group() {
 fastra_test_tree_collect() {
     local parent="$1"
     local runner_group="$2"
-    local child group
+    local child
     fastra_test_tree_append_unique_pid "$parent"
-    group=$(ps -p "$parent" -o pgid= 2>/dev/null | tr -d ' ' || true)
-    if [[ "$group" =~ ^[0-9]+$ ]] && [ "$group" -gt 1 ] \
-       && [ "$group" != "$runner_group" ]; then
-        fastra_test_tree_append_unique_group "$group"
-    fi
     while IFS= read -r child; do
         [[ "$child" =~ ^[0-9]+$ ]] || continue
-        group=$(ps -p "$child" -o pgid= 2>/dev/null | tr -d ' ' || true)
-        if [[ "$group" =~ ^[0-9]+$ ]] && [ "$group" -gt 1 ] \
-           && [ "$group" != "$runner_group" ]; then
-            fastra_test_tree_append_unique_group "$group"
-        fi
         fastra_test_tree_collect "$child" "$runner_group"
     done < <(pgrep -P "$parent" 2>/dev/null || true)
 }
@@ -236,22 +226,6 @@ fastra_test_pid_matches_token() {
     local wanted_pid="$1"
     local wanted_token="$2"
     [ "$(fastra_test_pid_token "$wanted_pid")" = "$wanted_token" ]
-}
-
-fastra_test_group_has_collected_identity() {
-    local wanted_group="$1"
-    local index pid token group
-    index=0
-    while [ "$index" -lt "${#FASTRA_TEST_TREE_PIDS[@]}" ]; do
-        pid="${FASTRA_TEST_TREE_PIDS[$index]}"
-        token="${FASTRA_TEST_TREE_PID_TOKENS[$index]}"
-        if fastra_test_pid_matches_token "$pid" "$token"; then
-            group=$(ps -p "$pid" -o pgid= 2>/dev/null | tr -d ' ' || true)
-            [ "$group" = "$wanted_group" ] && return 0
-        fi
-        index=$((index + 1))
-    done
-    return 1
 }
 
 fastra_test_root_was_started_by_runner() {
@@ -356,8 +330,7 @@ terminate_fastra_test_process_trees() {
 
     if [ "$group_signals" -eq 1 ] && [ "${#FASTRA_TEST_TREE_GROUPS[@]}" -gt 0 ]; then
         for group in "${FASTRA_TEST_TREE_GROUPS[@]}"; do
-            if fastra_test_group_has_collected_identity "$group" \
-               || fastra_test_started_group_is_owned "$group"; then
+            if fastra_test_started_group_is_owned "$group"; then
                 kill -TERM -"$group" 2>/dev/null || true
                 kill -CONT -"$group" 2>/dev/null || true
             fi
@@ -396,8 +369,7 @@ terminate_fastra_test_process_trees() {
         if [ "$tick" -eq 20 ]; then
             if [ "$group_signals" -eq 1 ] && [ "${#FASTRA_TEST_TREE_GROUPS[@]}" -gt 0 ]; then
                 for group in "${FASTRA_TEST_TREE_GROUPS[@]}"; do
-                    { fastra_test_group_has_collected_identity "$group" \
-                      || fastra_test_started_group_is_owned "$group"; } \
+                    fastra_test_started_group_is_owned "$group" \
                         && kill -KILL -"$group" 2>/dev/null || true
                 done
             fi

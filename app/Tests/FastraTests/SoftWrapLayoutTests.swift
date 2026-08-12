@@ -550,6 +550,34 @@ struct SoftWrapLayoutTests {
         #expect(editor.textView.selectedRange() == NSRange(location: 0, length: 0))
     }
 
+    @Test("Gebündelte Undo-Mutation scrollt nicht während ihres Zwischenstands")
+    @MainActor
+    func groupedUndoMutationDefersScrolling() throws {
+        let text = (1...160).map { "Zeile \($0) mit Text" }
+            .joined(separator: "\n")
+        let editor = controller(text: text, width: 700, wrapLines: false)
+        let scrollView = try #require(editor.scrollView)
+        scrollView.contentView.scroll(to: .zero)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+
+        let end = (text as NSString).length
+        editor.textView.selectionManager.setSelectedRange(
+            NSRange(location: end, length: 0)
+        )
+        let topBefore = scrollView.contentView.bounds.minY
+
+        // CEUndoManager nutzt genau diesen Modus innerhalb von beginEditing /
+        // endEditing. Ein Scroll hier würde synchron Layout gegen den noch
+        // veralteten Zeilen-Storage anstoßen (Crash aus dem 2.000-Runden-Lauf).
+        editor.textView.replaceCharacters(
+            in: NSRange(location: 0, length: 1),
+            with: "X",
+            skipUpdateSelection: true
+        )
+
+        #expect(scrollView.contentView.bounds.minY == topBefore)
+    }
+
     @MainActor
     private func hasVisibleTextFragment(_ editor: TextViewController) -> Bool {
         let visible = editor.textView.visibleRect

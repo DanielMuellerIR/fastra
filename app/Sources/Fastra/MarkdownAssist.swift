@@ -241,9 +241,7 @@ enum MarkdownAssist {
             acceptedTypes: types,
             canHandle: { pasteboard in
                 MainActor.assumeIsolated {
-                    if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL],
-                       !urls.isEmpty { return true }
-                    return readImageData(from: pasteboard) != nil
+                    canHandleImageDrop(types: pasteboard.types ?? [])
                 }
             },
             perform: { pasteboard, _ in
@@ -260,6 +258,15 @@ enum MarkdownAssist {
                 }
             }
         )
+    }
+
+    /// Während AppKit einen Drag bewegt, wird diese Prüfung sehr oft
+    /// aufgerufen. Nur deklarierte Typen ansehen; Datei-URLs und Bildbytes
+    /// werden erst beim tatsächlichen Ablegen materialisiert.
+    static func canHandleImageDrop(types: [NSPasteboard.PasteboardType]) -> Bool {
+        types.contains(.fileURL) || types.contains { type in
+            UTType(type.rawValue)?.conforms(to: .image) == true
+        }
     }
 
     // MARK: - Bild einfügen (Drop)

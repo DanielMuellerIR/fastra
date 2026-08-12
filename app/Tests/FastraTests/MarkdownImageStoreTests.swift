@@ -41,19 +41,6 @@ func pastedName_format() {
     #expect(name == "Notizen-2026-07-18-140309")
 }
 
-@Test("collisionFreeName: erst base.ext, dann base-2.ext, base-3.ext")
-func collisionName_suffixes() {
-    var taken: Set<String> = []
-    #expect(MarkdownImageStore.collisionFreeName(base: "b", fileExtension: "png",
-                                                 exists: { taken.contains($0) }) == "b.png")
-    taken = ["b.png"]
-    #expect(MarkdownImageStore.collisionFreeName(base: "b", fileExtension: "png",
-                                                 exists: { taken.contains($0) }) == "b-2.png")
-    taken = ["b.png", "b-2.png"]
-    #expect(MarkdownImageStore.collisionFreeName(base: "b", fileExtension: "png",
-                                                 exists: { taken.contains($0) }) == "b-3.png")
-}
-
 // MARK: - Relativpfade
 
 @Test("relativeLinkPath: Umlaute und Leerzeichen werden prozent-codiert")
@@ -577,7 +564,89 @@ func imageUndoMovesCreatedFileAndRestoresOnRedo() throws {
     }
 }
 
+@Test("Bild-Undo gehört zur konkreten Einfügung, auch wenn derselbe Link schon vorkommt")
+@MainActor
+func imageUndoWithDuplicateLinkStillMovesItsFile() throws {
+    try withTempDir { dir in
+        let doc = dir.appendingPathComponent("Seite.md")
+        try "".write(to: doc, atomically: true, encoding: .utf8)
+        let stored = try MarkdownImageStore.storePastedData(
+            .init(data: tinyPNG(), fileExtension: "png"), documentURL: doc
+        )
+        let textView = TextView(string: stored.link)
+        (textView.undoManager as? CEUndoManager)?.clearStack()
+        textView.replaceCharacters(
+            in: NSRange(location: (textView.string as NSString).length, length: 0),
+            with: "\n" + stored.link
+        )
+        MarkdownImageUndo.register(textView: textView, insertion: stored.link,
+                                   storedImages: [stored])
+
+        textView.undoManager?.undo()
+        #expect(textView.string == stored.link)
+        #expect(!FileManager.default.fileExists(atPath: stored.fileURL.path))
+
+        // Ein neuer Edit verwirft Redo und damit die versteckte Bildsicherung.
+        textView.replaceCharacters(
+            in: NSRange(location: (textView.string as NSString).length, length: 0),
+            with: "!"
+        )
+        let hidden = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.hasPrefix(".fastra-image-undo-") }
+        #expect(hidden.isEmpty)
+    }
+}
+
+@Test("Bild-Undo verschiebt keine in-place geänderte Datei mit zurückgesetztem mtime")
+@MainActor
+func imageUndoRejectsChangedFileWithRestoredModificationDate() throws {
+    try withTempDir { dir in
+        let doc = dir.appendingPathComponent("Seite.md")
+        try "".write(to: doc, atomically: true, encoding: .utf8)
+        let stored = try MarkdownImageStore.storePastedData(
+            .init(data: tinyPNG(), fileExtension: "png"), documentURL: doc
+        )
+        let textView = TextView(string: "")
+        textView.replaceCharacters(
+            in: NSRange(location: 0, length: 0), with: stored.link
+        )
+        MarkdownImageUndo.register(textView: textView, insertion: stored.link,
+                                   storedImages: [stored])
+
+        let originalDate = try #require(FileManager.default.attributesOfItem(
+            atPath: stored.fileURL.path
+        )[.modificationDate] as? Date)
+        var changed = try Data(contentsOf: stored.fileURL)
+        changed[changed.startIndex] ^= 0x01
+        Thread.sleep(forTimeInterval: 0.01)
+        let handle = try FileHandle(forWritingTo: stored.fileURL)
+        try handle.seek(toOffset: 0)
+        try handle.write(contentsOf: changed)
+        try handle.synchronize()
+        try handle.close()
+        try FileManager.default.setAttributes(
+            [.modificationDate: originalDate], ofItemAtPath: stored.fileURL.path
+        )
+
+        textView.undoManager?.undo()
+
+        #expect(textView.string.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: stored.fileURL.path),
+                "ctime muss die inzwischen geänderte Nutzerversion schützen")
+    }
+}
+
 // MARK: - Drop-Abgrenzung
+
+@Test("Drag-Hover entscheidet nur anhand deklarierter Pasteboard-Typen")
+@MainActor
+func imageDropHoverChecksTypesWithoutReadingPayload() {
+    #expect(MarkdownAssist.canHandleImageDrop(types: [.fileURL]))
+    #expect(MarkdownAssist.canHandleImageDrop(types: [
+        NSPasteboard.PasteboardType("public.png")
+    ]))
+    #expect(!MarkdownAssist.canHandleImageDrop(types: [.string]))
+}
 
 @Test("partitionDroppedURLs: Bilder → einfügen, alles andere → öffnen")
 func partition_dropURLs() throws {

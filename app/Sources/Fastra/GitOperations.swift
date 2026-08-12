@@ -890,7 +890,7 @@ final class GitRepositoryStore {
                     completion(modernOutcome)
                     return
                 }
-                if modernResult.ok {
+                if modernResult.ok, !modernResult.stdoutWasTruncated {
                     let parsed = GitRemoteTrackingList.parse(modernResult.stdout)
                     completion(.completed(GitRemoteTrackingList.renderedResult(
                         headOID: headOID, states: parsed.states
@@ -903,7 +903,7 @@ final class GitRepositoryStore {
                     policy: .default
                 ) { listOutcome in
                     guard case .completed(let listResult) = listOutcome,
-                          listResult.ok else {
+                          listResult.ok, !listResult.stdoutWasTruncated else {
                         completion(listOutcome)
                         return
                     }
@@ -971,10 +971,17 @@ final class GitRepositoryStore {
         let remoteTrackingSnapshot = scope == .full
             ? remoteTrackingResult.map { GitRemoteTrackingList.parse($0.stdout) }
             : nil
+        // Ein technisch gescheiterter Tracking-Read darf den alten Stand nur
+        // behalten, wenn er nachweislich zum weiterhin ausgecheckten Commit
+        // gehört. Nach einem externen Checkout wären alte Zähler irreführend.
+        let previousTrackingMatchesCurrentHead = status?.headOID != nil
+            && previous?.status?.headOID == status?.headOID
         let remoteTracking = scope == .full
             ? remoteTrackingSnapshot?.states
                 ?? (aggregate.remoteTracking?.isCompletedGitFailure == true
-                    ? [] : previous?.remoteTracking ?? [])
+                    ? []
+                    : (previousTrackingMatchesCurrentHead
+                        ? previous?.remoteTracking ?? [] : []))
             : previous?.remoteTracking ?? []
         let operation = operationResult.map {
             GitOperationStateDetector.detect(stdout: $0.stdout,

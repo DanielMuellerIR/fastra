@@ -449,6 +449,60 @@ struct GitRepositoryStoreTests {
         #expect(store.snapshot(for: repo)?.graph.first?.hash == "verified")
     }
 
+    @Test("Gekürzte moderne Remote-Liste wird nicht geparst, sondern fällt zurück")
+    func truncatedRemoteTrackingUsesCompatibleFallback() {
+        let (executor, store) = makeStore()
+        let repo = repository("truncated-remote-tracking")
+        let oid = String(repeating: "a", count: 40)
+        store.refresh(repository: repo, scope: .full)
+        executor.complete(0, with: success(porcelainSnapshot(oid: oid)))
+        executor.complete(1, with: success(Data()))
+        executor.complete(2, with: success(Data("main\t*\n".utf8)))
+        executor.complete(3, with: success(graphSnapshot(hash: oid)))
+        executor.complete(4, with: success(Data((oid + "\n").utf8)))
+        let truncated = GitResult(
+            exitCode: 0,
+            stdoutData: Data("refs/remotes/origin/main\tremote\t\t\t0 2\n".utf8),
+            stderrData: Data(),
+            stdoutWasTruncated: true
+        )
+        executor.complete(5, with: .completed(truncated))
+
+        #expect(executor.startedArguments[6] == GitRemoteTrackingRefList.arguments)
+        #expect(!executor.startedArguments[6].contains("refs/heads"))
+        executor.complete(6, with: .completed(truncated))
+        #expect(store.snapshot(for: repo)?.headOID == oid)
+        #expect(store.snapshot(for: repo)?.remoteTracking.isEmpty == true)
+    }
+
+    @Test("Fehlgeschlagener Remote-Vergleich überträgt alte Zähler nicht auf neuen HEAD")
+    func remoteTrackingFailureAfterCheckoutClearsOldCounts() {
+        let (executor, store) = makeStore()
+        let repo = repository("stale-remote-tracking")
+        let firstOID = String(repeating: "a", count: 40)
+        let secondOID = String(repeating: "b", count: 40)
+        store.refresh(repository: repo, scope: .full)
+        executor.complete(0, with: success(porcelainSnapshot(oid: firstOID)))
+        executor.complete(1, with: success(Data()))
+        executor.complete(2, with: success(Data("main\t*\n".utf8)))
+        executor.complete(3, with: success(graphSnapshot(hash: firstOID)))
+        executor.complete(4, with: success(Data((firstOID + "\n").utf8)))
+        executor.complete(5, with: success(Data(
+            "refs/remotes/origin/main\tremote\t\t\t0 2\n".utf8
+        )))
+        #expect(store.snapshot(for: repo)?.remoteTracking.first?.localAhead == 2)
+
+        store.refresh(repository: repo, scope: .full)
+        executor.complete(6, with: success(porcelainSnapshot(oid: secondOID)))
+        executor.complete(7, with: success(Data()))
+        executor.complete(8, with: success(Data("main\t*\n".utf8)))
+        executor.complete(9, with: success(graphSnapshot(hash: secondOID)))
+        executor.complete(10, with: .timedOut)
+
+        #expect(store.snapshot(for: repo)?.headOID == secondOID)
+        #expect(store.snapshot(for: repo)?.remoteTracking.isEmpty == true)
+    }
+
     @Test("Mutation und vollständiger Read-Batch greifen nicht ineinander")
     func readWriteCoordination() {
         let (executor, store) = makeStore()

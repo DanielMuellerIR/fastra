@@ -59,6 +59,7 @@ final class FourDSignatureHelpController: ObservableObject {
                 in: textView.string,
                 utf16CursorLocation: cursor.range.location
               ) else {
+            resolutionScheduler.invalidate()
             hidePanel()
             return
         }
@@ -157,6 +158,7 @@ final class FourDSignatureHelpController: ObservableObject {
         // könnte ein Tabwechsel (`hide()` von außen) vom verspäteten
         // Ergebnis der alten Datei wieder überschrieben werden.
         updateGeneration &+= 1
+        resolutionScheduler.invalidate()
         hidePanel()
     }
 
@@ -480,26 +482,54 @@ enum FourDSignatureResolver {
 final class FourDSignatureResolutionScheduler: @unchecked Sendable {
     private struct Work {
         let key: FourDSignatureResolver.Request
+        let generation: UInt64
         let resolve: () -> FourDSignatureResolver.Title?
         let completion: (FourDSignatureResolver.Title?) -> Void
     }
 
     private let lock = NSLock()
+    private let dispatchCompletion: (@escaping () -> Void) -> Void
+    private var invalidationGeneration: UInt64 = 0
     private var runningKey: FourDSignatureResolver.Request?
-    private var runningCompletion: ((FourDSignatureResolver.Title?) -> Void)?
+    private var runningCompletion: (
+        generation: UInt64,
+        action: (FourDSignatureResolver.Title?) -> Void
+    )?
     private var pending: Work?
+
+    init(dispatchCompletion: @escaping (@escaping () -> Void) -> Void = { action in
+        DispatchQueue.main.async(execute: action)
+    }) {
+        self.dispatchCompletion = dispatchCompletion
+    }
+
+    /// Verwirft sichtbare und wartende Ergebnisse. Die bereits laufende
+    /// Plattenoperation lässt sich nicht sicher abbrechen, darf danach aber
+    /// weder ihre Completion noch eine überholte Folgearbeit ausführen.
+    func invalidate() {
+        lock.withLock {
+            invalidationGeneration &+= 1
+            runningCompletion = nil
+            pending = nil
+        }
+    }
 
     func submit(key: FourDSignatureResolver.Request,
                 work: @escaping () -> FourDSignatureResolver.Title?,
                 completion: @escaping (FourDSignatureResolver.Title?) -> Void) {
-        let item = Work(key: key, resolve: work, completion: completion)
         lock.lock()
+        let item = Work(
+            key: key,
+            generation: invalidationGeneration,
+            resolve: work,
+            completion: completion
+        )
         if let runningKey {
             if runningKey == key {
                 // Derselbe Inhalt wird bereits gelesen. Nur der jüngste
                 // Cursorstand braucht das Ergebnis; eine fremde wartende
                 // Anfrage wäre jetzt ebenfalls überholt.
-                runningCompletion = completion
+                runningCompletion = (item.generation, completion)
                 pending = nil
             } else {
                 runningCompletion = nil
@@ -509,15 +539,21 @@ final class FourDSignatureResolutionScheduler: @unchecked Sendable {
             return
         }
         self.runningKey = key
-        runningCompletion = completion
+        runningCompletion = (item.generation, completion)
         lock.unlock()
         run(item)
     }
 
     private func run(_ item: Work) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = item.resolve()
             guard let self else { return }
+            // Wurde eine noch nicht begonnene Folgearbeit bereits verworfen,
+            // sparen wir auch deren Plattenzugriff. Eine laufende Auflösung
+            // lässt sich dagegen nicht gefahrlos unterbrechen.
+            let shouldResolve = self.lock.withLock {
+                self.runningKey == item.key && self.runningCompletion != nil
+            }
+            let result = shouldResolve ? item.resolve() : nil
             self.lock.lock()
             let completion = self.runningKey == item.key
                 ? self.runningCompletion : nil
@@ -527,11 +563,20 @@ final class FourDSignatureResolutionScheduler: @unchecked Sendable {
             self.pending = nil
             if let next {
                 self.runningKey = next.key
-                self.runningCompletion = next.completion
+                self.runningCompletion = (next.generation, next.completion)
             }
             self.lock.unlock()
             if let completion {
-                DispatchQueue.main.async { completion(result) }
+                self.dispatchCompletion { [weak self] in
+                    // `invalidate()` kann nach dem Hintergrundlauf, aber vor
+                    // der Ausführung auf dem Main-Thread eintreffen. Auch in
+                    // diesem schmalen Fenster bleibt das Ergebnis unsichtbar.
+                    guard let self,
+                          self.lock.withLock({
+                              self.invalidationGeneration == completion.generation
+                          }) else { return }
+                    completion.action(result)
+                }
             }
             if let next { self.run(next) }
         }

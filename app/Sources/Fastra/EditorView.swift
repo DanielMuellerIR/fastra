@@ -782,7 +782,8 @@ struct EditorView: View {
         .onChange(of: editorState.findPanelVisible) { _, visible in
             guard visible == true else { return }
             editorState.findPanelVisible = false
-            NotificationCenter.default.post(name: .fastraShowSearchFile, object: nil)
+            NotificationCenter.default.post(name: .fastraShowSearchFile,
+                                            object: workspace)
         }
         // Inhalts-Änderungen (Tippen, Datei-Wechsel) lösen ebenfalls eine
         // Neuberechnung aus — sonst hinkt die Zeichen-/Wort-/Zeilen-Zahl.

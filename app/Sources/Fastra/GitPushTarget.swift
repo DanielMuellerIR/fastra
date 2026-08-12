@@ -142,8 +142,41 @@ private final class GitPushTargetResolutionLease: GitCancelling {
     }
 }
 
+struct GitPushTargetResolutionFailure {
+    let remote: String?
+    let outcome: GitExecutionOutcome
+}
+
+enum GitRemoteNameResolver {
+    @discardableResult
+    static func resolve(
+        repository: URL,
+        executor: GitCommandExecuting,
+        completion: @escaping ([String]?, GitExecutionOutcome?) -> Void
+    ) -> GitCancelling {
+        executor.execute(
+            arguments: GitRemoteConfiguration.orderedRemoteArguments,
+            in: repository, outputLimit: .default, policy: .default
+        ) { outcome in
+            guard case .completed(let result) = outcome else {
+                completion(nil, outcome)
+                return
+            }
+            if result.exitCode == 1, result.stdoutData.isEmpty {
+                completion([], nil)
+            } else if result.ok, !result.stdoutWasTruncated {
+                completion(GitRemoteConfiguration.orderedRemotes(
+                    from: result.stdoutData
+                ), nil)
+            } else {
+                completion(nil, outcome)
+            }
+        }
+    }
+}
+
 enum GitPushTargetResolver {
-    typealias Completion = ([GitPushTarget], GitExecutionOutcome?) -> Void
+    typealias Completion = ([GitPushTarget], GitPushTargetResolutionFailure?) -> Void
 
     /// Liest alle lokal konfigurierten Remotes in Config-Reihenfolge und danach
     /// nacheinander ihre effektiven Push-Adressen. Ein Exit 1 ohne Treffer beim
@@ -154,7 +187,7 @@ enum GitPushTargetResolver {
         let lease = GitPushTargetResolutionLease()
 
         func finish(_ targets: [GitPushTarget],
-                    failure: GitExecutionOutcome?) {
+                    failure: GitPushTargetResolutionFailure?) {
             guard lease.claimCompletion() else { return }
             completion(targets, failure)
         }
@@ -165,14 +198,14 @@ enum GitPushTargetResolver {
         ) { configOutcome in
             guard lease.isActive() else { return }
             guard case .completed(let configResult) = configOutcome else {
-                finish([], failure: configOutcome)
+                finish([], failure: .init(remote: nil, outcome: configOutcome))
                 return
             }
-            guard configResult.ok else {
+            guard configResult.ok, !configResult.stdoutWasTruncated else {
                 if configResult.exitCode == 1 && configResult.stdoutData.isEmpty {
                     finish([], failure: nil)
                 } else {
-                    finish([], failure: configOutcome)
+                    finish([], failure: .init(remote: nil, outcome: configOutcome))
                 }
                 return
             }
@@ -185,10 +218,11 @@ enum GitPushTargetResolver {
             }
 
             var targets: [GitPushTarget] = []
+            var firstFailure: GitPushTargetResolutionFailure?
             func resolveAddress(at index: Int) {
                 guard lease.isActive() else { return }
                 guard index < remotes.count else {
-                    finish(targets, failure: nil)
+                    finish(targets, failure: firstFailure)
                     return
                 }
                 let remote = remotes[index]
@@ -198,15 +232,24 @@ enum GitPushTargetResolver {
                 ) { addressOutcome in
                     guard lease.isActive() else { return }
                     guard case .completed(let addressResult) = addressOutcome,
-                          addressResult.ok else {
-                        finish([], failure: addressOutcome)
+                          addressResult.ok,
+                          !addressResult.stdoutWasTruncated else {
+                        if firstFailure == nil {
+                            firstFailure = .init(remote: remote,
+                                                 outcome: addressOutcome)
+                        }
+                        resolveAddress(at: index + 1)
                         return
                     }
                     let addresses = GitRemoteConfiguration.pushAddresses(
                         from: addressResult.stdoutData
                     )
                     guard !addresses.isEmpty else {
-                        finish([], failure: addressOutcome)
+                        if firstFailure == nil {
+                            firstFailure = .init(remote: remote,
+                                                 outcome: addressOutcome)
+                        }
+                        resolveAddress(at: index + 1)
                         return
                     }
                     targets.append(GitPushTarget(remote: remote,
@@ -246,7 +289,7 @@ enum GitPushTargetResolver {
                 finish(nil, failure: configOutcome)
                 return
             }
-            guard configResult.ok else {
+            guard configResult.ok, !configResult.stdoutWasTruncated else {
                 if configResult.exitCode == 1 && configResult.stdoutData.isEmpty {
                     finish(nil, failure: nil)
                 } else {
@@ -268,7 +311,8 @@ enum GitPushTargetResolver {
             ) { addressOutcome in
                 guard lease.isActive() else { return }
                 guard case .completed(let addressResult) = addressOutcome,
-                      addressResult.ok else {
+                      addressResult.ok,
+                      !addressResult.stdoutWasTruncated else {
                     finish(nil, failure: addressOutcome)
                     return
                 }
@@ -294,7 +338,7 @@ enum GitPushTargetResolver {
                         completion: @escaping (GitPushTarget?, GitExecutionOutcome?) -> Void)
         -> GitCancelling {
         resolveAll(repository: repository, executor: executor) { targets, failure in
-            completion(targets.first, failure)
+            completion(targets.first, failure?.outcome)
         }
     }
 }

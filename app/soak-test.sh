@@ -440,10 +440,43 @@ cleanup() {
     echo "   Private Sandbox mit Einstellungs-/Fenster-Sicherung bleibt erhalten:" >&2
     echo "     $WORK_ROOT" >&2
   fi
+  # Erst NACH Wiederherstellung von Prozessen, Defaults, Saved State,
+  # Zwischenablage, GUI-Sperre und Sandbox darf der Lauf in die lokale
+  # Performance-Historie eingehen.
+  if [ "${SOAK_PERFORMANCE_RECORD_PENDING:-0}" -eq 1 ] \
+     && [ "$cleanup_failed" -eq 0 ]; then
+    SOAK_HEAD_END=$(git -C .. rev-parse HEAD 2>/dev/null || true)
+    SOAK_BINARY_SHA_END=$(shasum -a 256 "$BINARY" | awk '{print $1}')
+    SOAK_DIRTY_END=$(git -C .. status --porcelain 2>/dev/null || true)
+    SOAK_QUALIFIED=""
+    if [ "$ROUNDS" -ge 60 ] && [ "$SOAK_HEAD_START" = "$SOAK_HEAD_END" ] \
+       && [ "$SOAK_BINARY_SHA_START" = "$SOAK_BINARY_SHA_END" ] \
+       && [ -z "$SOAK_DIRTY_START" ] && [ -z "$SOAK_DIRTY_END" ] \
+       && [ "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" = "1" ]; then
+      SOAK_QUALIFIED="--qualified"
+    fi
+    SOAK_RECORDER_STATUS=0
+    /usr/bin/python3 ./tools/selftest-performance.py record-soak \
+      --profile "$SOAK_PROFILE" \
+      --head "$SOAK_HEAD_START" \
+      --binary-sha256 "$SOAK_BINARY_SHA_START" \
+      --rounds "$ROUNDS" \
+      --actions "$ACTIONS" \
+      --wall-ms "$SOAK_WALL_MS" \
+      ${SOAK_QUALIFIED:+--qualified} || SOAK_RECORDER_STATUS=$?
+    if [ "$SOAK_RECORDER_STATUS" -ne 0 ] \
+       && [ "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" = "1" ]; then
+      echo "SOAK: Umgebungsfehler — lokale Performance-Baseline konnte nicht gespeichert werden." >&2
+      cleanup_failed=1
+    fi
+  elif [ "${SOAK_PERFORMANCE_RECORD_PENDING:-0}" -eq 1 ] \
+       && [ "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" = "1" ]; then
+    echo "SOAK: Performance-Baseline wegen unvollständigem Cleanup nicht gespeichert." >&2
+  fi
   trap - EXIT
   if [ "$cleanup_failed" -eq 1 ] && [ "$original_status" -eq 0 ]; then
-    echo "SOAK FAIL — externe Testdaten konnten nicht vollständig wiederhergestellt werden." >&2
-    exit 1
+    echo "SOAK: Umgebungsfehler — externe Testdaten konnten nicht vollständig wiederhergestellt werden." >&2
+    exit 2
   elif [ "$cleanup_failed" -eq 1 ]; then
     echo "SOAK: Zusätzlich blieb das Aufräumen unvollständig." >&2
   fi
@@ -792,33 +825,11 @@ if [ "$FINDINGS" -gt 0 ]; then
 fi
 
 SOAK_FINISHED_MS=$(/usr/bin/perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000')
-SOAK_HEAD_END=$(git -C .. rev-parse HEAD 2>/dev/null || true)
-SOAK_BINARY_SHA_END=$(shasum -a 256 "$BINARY" | awk '{print $1}')
-SOAK_DIRTY_END=$(git -C .. status --porcelain 2>/dev/null || true)
 SOAK_PROFILE="fixtures-only"
 if [ "$FIXTURES_ONLY" -eq 0 ]; then
   SOAK_PROFILE="real-rtfd${SOAK_RTFD_COPIED}-md${SOAK_MD_COPIED}-4d${SOAK_4D_COPIED}"
 fi
-SOAK_QUALIFIED=""
-if [ "$ROUNDS" -ge 60 ] && [ "$SOAK_HEAD_START" = "$SOAK_HEAD_END" ] \
-   && [ "$SOAK_BINARY_SHA_START" = "$SOAK_BINARY_SHA_END" ] \
-   && [ -z "$SOAK_DIRTY_START" ] && [ -z "$SOAK_DIRTY_END" ] \
-   && [ "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" = "1" ]; then
-  SOAK_QUALIFIED="--qualified"
-fi
-SOAK_RECORDER_STATUS=0
-/usr/bin/python3 ./tools/selftest-performance.py record-soak \
-  --profile "$SOAK_PROFILE" \
-  --head "$SOAK_HEAD_START" \
-  --binary-sha256 "$SOAK_BINARY_SHA_START" \
-  --rounds "$ROUNDS" \
-  --actions "$ACTIONS" \
-  --wall-ms "$((SOAK_FINISHED_MS - SOAK_STARTED_MS))" \
-  ${SOAK_QUALIFIED:+--qualified} || SOAK_RECORDER_STATUS=$?
-if [ "$SOAK_RECORDER_STATUS" -ne 0 ] \
-   && [ "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" = "1" ]; then
-  echo "SOAK: Umgebungsfehler — lokale Performance-Baseline konnte nicht gespeichert werden." >&2
-  exit 2
-fi
+SOAK_WALL_MS="$((SOAK_FINISHED_MS - SOAK_STARTED_MS))"
+SOAK_PERFORMANCE_RECORD_PENDING=1
 echo "SOAK OK — $ACTIONS Aktionen, keine Invarianten-Verstöße."
 exit 0

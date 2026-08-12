@@ -375,7 +375,7 @@ private struct TabPill: View {
                 FileTreeContextMenu(
                     directory: url.deletingLastPathComponent(),
                     node: FileTreeNode(url: url, isDirectory: false),
-                    onMutation: {}
+                    onMutation: { workspace.refreshGitStatus() }
                 )
             } else {
                 unavailableFileActions

@@ -21,6 +21,8 @@ enum MarkdownImageStore {
         let size: Int64
         let modificationSeconds: Int64
         let modificationNanoseconds: Int64
+        let statusChangeSeconds: Int64
+        let statusChangeNanoseconds: Int64
     }
 
     /// Ergebnis einer Bildablage. Nur `createdByInsertion == true` darf beim
@@ -77,22 +79,6 @@ enum MarkdownImageStore {
         formatter.timeZone = .current
         formatter.dateFormat = "yyyy-MM-dd-HHmmss"
         return "\(base)-\(formatter.string(from: date))"
-    }
-
-    /// Erster freie Name: `base.ext`, dann `base-2.ext`, `base-3.ext`, …
-    /// `exists` ist injizierbar → pure testbar.
-    static func collisionFreeName(base: String, fileExtension: String,
-                                  exists: (String) -> Bool) -> String {
-        let first = "\(base).\(fileExtension)"
-        guard exists(first) else { return first }
-        var counter = 2
-        while counter < 10_000 {
-            let candidate = "\(base)-\(counter).\(fileExtension)"
-            if !exists(candidate) { return candidate }
-            counter += 1
-        }
-        // Praktisch unerreichbar — eindeutiger Notname statt Endlosschleife.
-        return "\(base)-\(UUID().uuidString).\(fileExtension)"
     }
 
     /// Relativer Markdown-Pfad vom Dokument zur Bilddatei. Liegt das Bild
@@ -239,7 +225,6 @@ enum MarkdownImageStore {
             }
             try writeAll(prepared.data, to: temporaryFD)
             guard fsync(temporaryFD) == 0 else { throw currentPOSIXError() }
-
             for counter in 1..<10_000 {
                 let name = counter == 1
                     ? "\(base).\(prepared.fileExtension)"
@@ -256,7 +241,16 @@ enum MarkdownImageStore {
                         _ = unlinkat(opened.fd, name, 0)
                         throw StoreError.invalidImagesDirectory
                     }
-                    let identity = try storedFileIdentity(named: name, in: opened.fd)
+                    let identity: StoredFileIdentity
+                    do {
+                        // `rename` ändert ctime. Deshalb erst danach am
+                        // weiterhin gebundenen FD lesen; ein Pfadaustausch
+                        // kann die Identität dabei nicht umlenken.
+                        identity = try storedFileIdentity(fromFD: temporaryFD)
+                    } catch {
+                        _ = unlinkat(opened.fd, name, 0)
+                        throw error
+                    }
                     stored = true
                     return StoredImage(
                         link: markdownImageLink(fileName: name, relativePath: relative),
@@ -392,16 +386,23 @@ enum MarkdownImageStore {
                         _ = unlinkat(opened.fd, candidateName, 0)
                         throw StoreError.invalidImagesDirectory
                     }
-                    stored = true
-                    return StoredImage(
+                    let copiedIdentity: StoredFileIdentity
+                    do {
+                        copiedIdentity = try storedFileIdentity(fromFD: temporaryFD)
+                    } catch {
+                        _ = unlinkat(opened.fd, candidateName, 0)
+                        throw error
+                    }
+                    let result = StoredImage(
                         link: markdownImageLink(fileName: candidateName,
                                                 relativePath: relative),
                         fileURL: candidate,
                         createdByInsertion: true,
                         imagesDirectoryCreated: opened.created,
-                        identity: try storedFileIdentity(named: candidateName,
-                                                         in: opened.fd)
+                        identity: copiedIdentity
                     )
+                    stored = true
+                    return result
                 }
                 guard errno == EEXIST else { throw currentPOSIXError() }
             }
@@ -551,13 +552,24 @@ enum MarkdownImageStore {
         return storedFileIdentity(from: info)
     }
 
+    private static func storedFileIdentity(fromFD fd: Int32) throws
+        -> StoredFileIdentity {
+        var info = stat()
+        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {
+            throw StoreError.unreadableImage
+        }
+        return storedFileIdentity(from: info)
+    }
+
     private static func storedFileIdentity(from info: stat) -> StoredFileIdentity {
         StoredFileIdentity(
             device: UInt64(info.st_dev),
             inode: UInt64(info.st_ino),
             size: Int64(info.st_size),
             modificationSeconds: Int64(info.st_mtimespec.tv_sec),
-            modificationNanoseconds: Int64(info.st_mtimespec.tv_nsec)
+            modificationNanoseconds: Int64(info.st_mtimespec.tv_nsec),
+            statusChangeSeconds: Int64(info.st_ctimespec.tv_sec),
+            statusChangeNanoseconds: Int64(info.st_ctimespec.tv_nsec)
         )
     }
 

@@ -82,18 +82,22 @@ enum TestDefaultsPurge {
     // MARK: - Registry (eigene Suiten dieses Prozesses)
 
     private static var registered = Set<String>()
+    private static var registeredWithRunner = Set<String>()
     private static let lock = NSLock()
 
     /// Merkt eine in diesem Prozess angelegte Test-Suite zum Abräumen vor.
     @discardableResult
-    static func register(_ name: String) -> Bool {
+    static func register(
+        _ name: String,
+        runnerRegistryPath: String? = ProcessInfo.processInfo.environment[
+            "FASTRA_TEST_DEFAULTS_REGISTRY"
+        ]
+    ) -> Bool {
         guard isTestDomain(name) else { return false }
         return lock.withLock {
-            let inserted = registered.insert(name).inserted
-            guard inserted,
-                  let path = ProcessInfo.processInfo.environment[
-                    "FASTRA_TEST_DEFAULTS_REGISTRY"
-                  ], !path.isEmpty else { return true }
+            registered.insert(name)
+            guard !registeredWithRunner.contains(name),
+                  let path = runnerRegistryPath, !path.isEmpty else { return true }
             let url = URL(fileURLWithPath: path)
             if !FileManager.default.fileExists(atPath: path) {
                 guard FileManager.default.createFile(
@@ -106,6 +110,7 @@ enum TestDefaultsPurge {
                 try handle.seekToEnd()
                 try handle.write(contentsOf: Data((name + "\n").utf8))
                 try handle.close()
+                registeredWithRunner.insert(name)
                 return true
             } catch {
                 // Der normale prozessinterne Purge bleibt weiterhin aktiv.
@@ -150,7 +155,10 @@ enum TestDefaultsPurge {
     static func updateRegistration(afterAttempting names: Set<String>,
                                    remaining: [String]) {
         let succeeded = names.subtracting(remaining)
-        lock.withLock { registered.subtract(succeeded) }
+        lock.withLock {
+            registered.subtract(succeeded)
+            registeredWithRunner.subtract(succeeded)
+        }
     }
 
     /// Nur für den Regressionstest der Registry-Entscheidung.

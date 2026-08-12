@@ -5,17 +5,14 @@ import AppKit
 import ObjectiveC
 
 private final class FastraExternalDropState: NSObject {
-    let acceptedTypes: [NSPasteboard.PasteboardType]
     let canHandle: (NSPasteboard) -> Bool
     let perform: (NSPasteboard, Int) -> Bool
     var insertionOffset: Int?
     var lastWindowPoint: NSPoint?
     var timer: Timer?
 
-    init(acceptedTypes: [NSPasteboard.PasteboardType],
-         canHandle: @escaping (NSPasteboard) -> Bool,
+    init(canHandle: @escaping (NSPasteboard) -> Bool,
          perform: @escaping (NSPasteboard, Int) -> Bool) {
-        self.acceptedTypes = acceptedTypes
         self.canHandle = canHandle
         self.perform = perform
     }
@@ -48,7 +45,7 @@ extension TextView {
     ) {
         fastraCleanUpExternalDrop()
         fastraExternalDropState = FastraExternalDropState(
-            acceptedTypes: acceptedTypes, canHandle: canHandle, perform: perform
+            canHandle: canHandle, perform: perform
         )
         unregisterDraggedTypes()
         registerForDraggedTypes(Self.fastraBaseDraggedTypes + acceptedTypes)

@@ -633,7 +633,9 @@ additionally shows the **Changes** and **Graph** tabs:
   separately confirmed follow-up. Multiple effective push addresses for the
   same remote or Git
   rules that rewrite addresses through `insteadOf`/`pushInsteadOf` are
-  ambiguous and stop with an explanation.
+  ambiguous and stop with an explanation. If only one remote cannot be read,
+  the other push targets remain available and the actual Git message appears
+  as a warning.
 - **Several files at once:** in the file list, a click selects one row,
   ⇧-click selects the range up to it, and ⌘-click adds or removes
   individual rows. Selected rows have a colored background. An action on a
@@ -687,7 +689,9 @@ with no window open it starts tall enough to actually use the screen. You can
 always drag it smaller — a size you choose yourself is kept. ⌘S saves, ⌘W
 closes the tab in the window that has keyboard focus; a document window in the
 background is never used as a substitute. Fastra asks first if there are
-unsaved changes. After closing, the most recently used tab
+unsaved changes. While Help, Settings, or About Fastra is in front, Save,
+Search, match navigation, text, and Git commands likewise leave background
+documents untouched. After closing, the most recently used tab
 becomes active; several freshly created empty tabs can thus be closed
 again with repeated ⌘W in reverse order, without an older document
 getting hit. ⌘J jumps to a line number.

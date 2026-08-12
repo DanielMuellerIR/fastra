@@ -40,6 +40,36 @@ private func awaitLoadFile(_ workspace: Workspace, _ url: URL) async -> Bool {
     }
 }
 
+/// Hält den vom Workspace eingeplanten Dateisystemteil zurück. Der Test kann
+/// damit belegen, dass ein Tab-Klick die Git-Root-Suche nicht inline ausführt.
+private final class ProjectContextProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private let target: URL
+    private var pending: (@Sendable () -> Void)?
+    private var count = 0
+
+    init(target: URL) { self.target = target }
+
+    func schedule(_ work: @escaping @Sendable () -> Void) {
+        lock.withLock { pending = work }
+    }
+
+    func resolve(_ url: URL, _ currentProject: URL?) -> URL? {
+        lock.withLock { count += 1 }
+        return target
+    }
+
+    var resolveCount: Int { lock.withLock { count } }
+
+    func runPending() {
+        let work = lock.withLock { () -> (@Sendable () -> Void)? in
+            defer { pending = nil }
+            return pending
+        }
+        work?()
+    }
+}
+
 // MARK: - Save-Dialog-Vorschlagsordner
 
 @Test("Save-Vorschlag: markierter Sidebar-Ordner gewinnt vor Projektordner")
@@ -116,7 +146,8 @@ func loadFile_opensParentFolderWithoutProject() async throws {
     let done = await awaitLoadFile(ws, file)
 
     #expect(done)
-    #expect(ws.projectURL == dir, "Elternordner muss als Projekt geöffnet sein")
+    #expect(await waitUntil { ws.projectURL == dir },
+            "Elternordner muss als Projekt geöffnet sein")
     #expect(ws.activeTab?.url == file.canonicalFileURL,
             "Der Editor-Fokus muss auf der Datei bleiben")
 }
@@ -166,7 +197,7 @@ func loadFile_parentFolderKeepsUnrelatedTabs() async throws {
     let ws = Workspace(defaults: defaults)
     let doneA = await awaitLoadFile(ws, fileA)
     #expect(doneA)
-    #expect(ws.projectURL == dirA)
+    #expect(await waitUntil { ws.projectURL == dirA })
 
     // Projekt wieder schließen (Seitenleiste ohne Projekt), dann zweite
     // Datei öffnen: deren Elternordner wird Projekt, aber der saubere Tab
@@ -174,12 +205,45 @@ func loadFile_parentFolderKeepsUnrelatedTabs() async throws {
     ws.closeProject()
     let doneB = await awaitLoadFile(ws, fileB)
     #expect(doneB)
-    #expect(ws.projectURL == dirB)
+    #expect(await waitUntil { ws.projectURL == dirB })
     #expect(ws.tabs.contains { $0.url == fileA.canonicalFileURL },
             "Fremder sauberer Tab darf nicht stillschweigend schließen")
 }
 
 // MARK: - Git-Root beim automatischen Ordner-Öffnen (Wunschpaket 2026-07b)
+
+@Test("Tabwechsel plant die Projektauflösung ein, statt den Main-Thread zu blockieren")
+@MainActor
+func projectContextResolutionIsDeferred() throws {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let directory = try makeTmpDirectory("aufloesung-im-hintergrund")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let file = directory.appendingPathComponent("datei.txt")
+    try "Text".write(to: file, atomically: true, encoding: .utf8)
+    let probe = ProjectContextProbe(target: directory)
+    let workspace = Workspace(
+        defaults: defaults,
+        resolveProjectContext: { [probe] url, currentProject in
+            probe.resolve(url, currentProject)
+        },
+        scheduleProjectContextWork: { [probe] work in probe.schedule(work) },
+        deliverProjectContextResult: { work in
+            MainActor.assumeIsolated { work() }
+        }
+    )
+    let tab = EditorTab(title: file.lastPathComponent,
+                        path: directory.path, url: file)
+    workspace.tabs = [tab]
+
+    workspace.selectTab(id: tab.id)
+
+    #expect(probe.resolveCount == 0)
+    #expect(workspace.projectURL == nil)
+    probe.runPending()
+    #expect(probe.resolveCount == 1)
+    #expect(workspace.projectURL == directory)
+}
 
 @Test("autoProjectFolder: Datei tief im Repo → Git-Wurzelordner statt Elternordner")
 func autoProject_prefersRepositoryRoot() throws {
@@ -255,7 +319,8 @@ func loadFile_opensRepositoryRootWithoutProject() async throws {
     let done = await awaitLoadFile(ws, file)
 
     #expect(done)
-    #expect(ws.projectURL == repo, "Der Git-Root muss als Projekt geöffnet sein, nicht docs/")
+    #expect(await waitUntil { ws.projectURL == repo },
+            "Der Git-Root muss als Projekt geöffnet sein, nicht docs/")
 }
 
 @Test("Tabwechsel zwischen Repositories folgt immer der Git-Wurzel",
@@ -286,17 +351,17 @@ func activeTabSwitch_followsRepositoryRootInBothDirections() async throws {
     let ws = Workspace(defaults: defaults)
     #expect(await awaitLoadFile(ws, fileA))
     let tabA = try #require(ws.activeTabID)
-    #expect(ws.projectURL == repoA)
+    #expect(await waitUntil { ws.projectURL == repoA })
     #expect(await awaitLoadFile(ws, fileB))
     let tabB = try #require(ws.activeTabID)
-    #expect(ws.projectURL == repoB)
+    #expect(await waitUntil { ws.projectURL == repoB })
     #expect(ws.tabs.count == 2, "Der implizite Projektwechsel darf den fremden Tab nicht schließen")
 
     ws.selectTab(id: tabA)
-    #expect(ws.projectURL == repoA)
+    #expect(await waitUntil { ws.projectURL == repoA })
 
     ws.selectTab(id: tabB)
-    #expect(ws.projectURL == repoB)
+    #expect(await waitUntil { ws.projectURL == repoB })
     #expect(ws.tabs.count == 2)
 }
 
@@ -330,7 +395,7 @@ func closeActiveTab_restoresPreviousRepositoryRoot() async throws {
     let tabA = try #require(ws.activeTabID)
     #expect(await awaitLoadFile(ws, fileB))
     let tabB = try #require(ws.activeTabID)
-    #expect(ws.projectURL == repoB)
+    #expect(await waitUntil { ws.projectURL == repoB })
 
     // Die Merkliste kennt A nun ausdrücklich als Vorgänger von B.
     ws.selectTab(id: tabA)
@@ -339,7 +404,7 @@ func closeActiveTab_restoresPreviousRepositoryRoot() async throws {
 
     #expect(ws.activeTabID == tabA)
     #expect(ws.activeTab?.url == fileA.canonicalFileURL)
-    #expect(ws.projectURL == repoA,
+    #expect(await waitUntil { ws.projectURL == repoA },
             "Nach dem impliziten Tabwechsel muss der Repo-Root statt inter/2026 erscheinen")
     #expect(!ws.tabs.contains { $0.id == tabB })
 }
@@ -373,7 +438,7 @@ func projectContext_followsTabAfterSearchCloses() async throws {
     #expect(await awaitLoadFile(ws, fileA))
     let tabA = try #require(ws.activeTabID)
     #expect(await awaitLoadFile(ws, fileB))
-    #expect(ws.projectURL == repoB)
+    #expect(await waitUntil { ws.projectURL == repoB })
 
     // Beide Sperren bilden den schärfsten Fall: Das Schließen nur einer
     // Oberfläche darf den Kontext noch nicht wechseln. Erst wenn Suche UND
@@ -387,7 +452,7 @@ func projectContext_followsTabAfterSearchCloses() async throws {
     #expect(ws.projectURL == repoB,
             "Die noch aktive Live-Vorschau hält den Projektkontext weiter fest")
     ws.livePreview = false
-    #expect(ws.projectURL == repoA,
+    #expect(await waitUntil { ws.projectURL == repoA },
             "Nach dem Schließen beider Sperren muss der aktive Repo-Root erscheinen")
 }
 

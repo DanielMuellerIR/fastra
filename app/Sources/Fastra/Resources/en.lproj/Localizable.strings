@@ -1349,3 +1349,9 @@
 "zuletzt %@ abgerufen" = "last fetched %@";
 "für diesen Remote noch nicht abgerufen" = "not yet fetched for this remote";
 "Vergleich je Remote: %@.%@ Der Vergleich nutzt lokale Remote-Tracking-Refs; der Server kann bereits neuer sein." = "Comparison by remote: %@.%@ The comparison uses local remote-tracking refs; the server may already be newer.";
+"Git-Konfiguration" = "Git Configuration";
+"Remote %@ konnte nicht gelesen werden: %@" = "Remote %@ could not be read: %@";
+"Der Git-Vorgang wurde abgebrochen." = "The Git operation was cancelled.";
+"Remote-Branch anlegen" = "Create Remote Branch";
+"Kein Dokumentfenster ist aktiv." = "No document window is active.";
+"Kein Dokumentfenster aktiv" = "No Active Document Window";

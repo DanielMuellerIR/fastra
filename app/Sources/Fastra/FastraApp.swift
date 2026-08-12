@@ -113,8 +113,11 @@ struct FastraApp: App {
             // Konvertierung dispatcht SmartPaste selbst in den Hintergrund.
             CommandGroup(after: .pasteboard) {
                 Button("Formatiert als Markdown einfügen") {
-                    SmartPaste.performSmartPaste(into: commandWorkspace)
+                    if let target = commandWorkspace {
+                        SmartPaste.performSmartPaste(into: target)
+                    }
                 }
+                .disabled(commandWorkspace == nil)
                 .keyboardShortcut("v", modifiers: [.command, .shift])
 
                 // Etappe 4 (BBEdit „Paste and Match Indentation"): setzt den
@@ -122,34 +125,42 @@ struct FastraApp: App {
                 // Verschachtelung bleibt erhalten, Ausdruck in Tabs/
                 // Leerzeichen des Formatprofils.
                 Button("Einfügen und Einrückung angleichen") {
+                    guard commandWorkspace != nil else { return }
                     NotificationCenter.default.post(
                         name: .fastraPasteMatchingIndentation,
                         object: nil
                     )
                 }
+                .disabled(commandWorkspace == nil)
                 .keyboardShortcut("v", modifiers: [.command, .shift, .option])
 
                 Divider()
                 Button("Spalte einfügen") {
+                    guard commandWorkspace != nil else { return }
                     NotificationCenter.default.post(
                         name: .fastraPasteColumn,
                         object: nil
                     )
                 }
+                .disabled(commandWorkspace == nil)
                 .keyboardShortcut("v", modifiers: [.command, .control])
                 Button("Rechteckauswahl nach oben") {
+                    guard commandWorkspace != nil else { return }
                     NotificationCenter.default.post(
                         name: .fastraSelectColumnUp,
                         object: nil
                     )
                 }
+                .disabled(commandWorkspace == nil)
                 .keyboardShortcut(.upArrow, modifiers: [.control, .shift])
                 Button("Rechteckauswahl nach unten") {
+                    guard commandWorkspace != nil else { return }
                     NotificationCenter.default.post(
                         name: .fastraSelectColumnDown,
                         object: nil
                     )
                 }
+                .disabled(commandWorkspace == nil)
                 .keyboardShortcut(.downArrow, modifiers: [.control, .shift])
             }
 
@@ -184,11 +195,11 @@ struct FastraApp: App {
                 // drei Ansichten wie der Umschalter im Editorbereich, hier mit
                 // Shortcuts. ⌃⌘1–3 kollidiert weder mit ⌘1-Tabwechseln noch mit
                 // den CodeEdit-Tastatur-Monitoren (die fangen nur ⌘]/⌘[/⌘F ab).
-                Button("Ansicht: Text") { commandWorkspace.setViewMode(.text) }
+                Button("Ansicht: Text") { commandWorkspace?.setViewMode(.text) }
                     .keyboardShortcut("1", modifiers: [.command, .control])
-                Button("Ansicht: Vorschau") { commandWorkspace.setViewMode(.preview) }
+                Button("Ansicht: Vorschau") { commandWorkspace?.setViewMode(.preview) }
                     .keyboardShortcut("2", modifiers: [.command, .control])
-                Button("Ansicht: Hex") { commandWorkspace.setViewMode(.hex) }
+                Button("Ansicht: Hex") { commandWorkspace?.setViewMode(.hex) }
                     .keyboardShortcut("3", modifiers: [.command, .control])
                 Divider()
                 // Hauptmenü und Fußzeile schalten denselben Wert des aktuell
@@ -200,8 +211,8 @@ struct FastraApp: App {
                     .keyboardShortcut("l", modifiers: [.command, .shift])
                     .disabled(activeDocumentContext.workspace?.activeTab == nil)
                 Toggle("Seitenlinie anzeigen", isOn: Binding(
-                    get: { commandWorkspace.showPageGuide },
-                    set: { commandWorkspace.setShowPageGuide($0) }
+                    get: { commandWorkspace?.showPageGuide ?? false },
+                    set: { commandWorkspace?.setShowPageGuide($0) }
                 ))
                 // Rechter Vorschau-Streifen (Minimap). Default AUS — verdeckte
                 // rechts Text und stand im Freeze-Verdacht (Daniel 2026-07-12).
@@ -217,7 +228,10 @@ struct FastraApp: App {
                     // leerer Tab, kein Projekt): ⌘N legt wie ⌘T einen Tab im
                     // selben Fenster an, statt ein zweites Fenster zu stapeln
                     // (Wunschpaket 2026-07, Etappe 1). Sonst wie gehabt.
-                    let target = commandWorkspace
+                    guard let target = commandWorkspace else {
+                        DocumentWindowController.openNewDocument()
+                        return
+                    }
                     if WelcomeLogic.newWindowCommandOpensTab(
                         tabs: target.tabs,
                         hasProject: target.projectURL != nil,
@@ -230,7 +244,13 @@ struct FastraApp: App {
                     }
                 }
                 .keyboardShortcut("n", modifiers: .command)
-                Button("Neuer Tab") { commandWorkspace.openNewTab() }
+                Button("Neuer Tab") {
+                    if let commandWorkspace {
+                        commandWorkspace.openNewTab()
+                    } else {
+                        DocumentWindowController.openNewDocument()
+                    }
+                }
                     .keyboardShortcut("t", modifiers: .command)
                 Button("Datei öffnen…") {
                     DocumentWindowController.workspaceForOpening().openFile()
@@ -244,11 +264,12 @@ struct FastraApp: App {
                 }
                     .keyboardShortcut("o", modifiers: [.command, .shift])
                 Button("Terminal im aktuellen Ordner …") {
-                    commandWorkspace.openTerminal()
+                    commandWorkspace?.openTerminal()
                 }
-                .disabled(commandWorkspace.terminalDirectory == nil)
-                .help(commandWorkspace.terminalDirectory == nil
-                      ? commandWorkspace.terminalUnavailableReason
+                .disabled(commandWorkspace?.terminalDirectory == nil)
+                .help(commandWorkspace?.terminalDirectory == nil
+                      ? (commandWorkspace?.terminalUnavailableReason
+                         ?? L10n.string("Kein Dokumentfenster ist aktiv."))
                       : L10n.string("Öffnet Terminal.app nativ im aktuellen Projektordner; ohne Projekt im Ordner der aktiven Datei."))
                 // Zuletzt benutzte Dateien (K2). Eigene View mit
                 // @ObservedObject, damit das Untermenü auf Änderungen der
@@ -258,7 +279,7 @@ struct FastraApp: App {
                 // BBEdit „Reload from Disk" (Kap. 3 S. 59): aktiven Tab frisch
                 // von der Platte laden; bei ungespeicherten Änderungen fragt
                 // dieselbe Rückfrage wie die automatische Erkennung.
-                Button("Von Festplatte neu laden") { commandWorkspace.reloadActiveTabFromDisk() }
+                Button("Von Festplatte neu laden") { commandWorkspace?.reloadActiveTabFromDisk() }
                 // Umwandlung eines erkannten Fremdformats (RTF, DOCX, …) nach
                 // Markdown. Eigene View, damit der Punkt der Verfügbarkeit des
                 // aktiven Tabs folgt; ohne installiertes „Poor Man's Text"
@@ -296,17 +317,19 @@ struct FastraApp: App {
                     .keyboardShortcut("w", modifiers: .command)
             }
             CommandGroup(replacing: .saveItem) {
-                Button("Speichern") { commandWorkspace.saveActiveTab() }
+                Button("Speichern") { commandWorkspace?.saveActiveTab() }
                     .keyboardShortcut("s", modifiers: .command)
-                Button("Speichern unter…") { commandWorkspace.saveActiveTabAs() }
+                Button("Speichern unter…") { commandWorkspace?.saveActiveTabAs() }
                     .keyboardShortcut("s", modifiers: [.command, .shift])
             }
             CommandMenu("Suchen") {
                 // CMD+F: Suchen in der aktuellen Datei (kompakter Modus).
                 Button("Suchen & Ersetzen…") {
+                    guard let commandWorkspace else { return }
                     NotificationCenter.default.post(name: .fastraShowSearchFile,
-                                                    object: nil)
+                                                    object: commandWorkspace)
                 }
+                .disabled(commandWorkspace == nil)
                 .keyboardShortcut("f", modifiers: .command)
 
                 // CMD+SHIFT+F: Suchen in Ordnern (erweiterter Modus).
@@ -319,9 +342,11 @@ struct FastraApp: App {
                 // Ordnern suchen…" beschrifteter Menüpunkt muss dagegen immer
                 // die Ordnersuche zeigen (Review 2026-08-06).
                 Button("In Ordnern suchen…") {
+                    guard let commandWorkspace else { return }
                     NotificationCenter.default.post(name: .fastraShowSearchFolderForced,
-                                                    object: nil)
+                                                    object: commandWorkspace)
                 }
+                .disabled(commandWorkspace == nil)
                 .keyboardShortcut("f", modifiers: [.command, .shift])
 
                 Divider()
@@ -330,6 +355,7 @@ struct FastraApp: App {
                 // Find", K5): selektierten Editor-Text als Suchbegriff
                 // übernehmen und die Maske öffnen (sucht NICHT von selbst).
                 Button("Auswahl als Suchbegriff") {
+                    guard let commandWorkspace else { return }
                     commandWorkspace.useSelectionForFind()
                     commandWorkspace.scope = .file
                     // Der selektierte Text wird zum Suchbegriff → global
@@ -341,7 +367,7 @@ struct FastraApp: App {
                 .keyboardShortcut("e", modifiers: .command)
 
                 Button("Suchen & Ersetzen ausblenden") {
-                    commandWorkspace.showSearchDialog = false
+                    commandWorkspace?.showSearchDialog = false
                 }
                     .keyboardShortcut(.escape, modifiers: [])
 
@@ -351,11 +377,12 @@ struct FastraApp: App {
                 // Leiste für XML-artige Dokumente. Teilset: /, //, *, [n],
                 // [@attr], [@attr='wert'], @attr, text().
                 Button("XPath-Navigation…") {
+                    guard let commandWorkspace else { return }
                     NotificationCenter.default.post(name: .fastraShowXPathBar,
-                                                    object: nil)
+                                                    object: commandWorkspace)
                 }
                 .keyboardShortcut("x", modifiers: [.command, .shift])
-                .disabled(!commandWorkspace.activeTabSupportsXPath)
+                .disabled(commandWorkspace?.activeTabSupportsXPath != true)
 
                 Divider()
 
@@ -363,7 +390,7 @@ struct FastraApp: App {
                 // BBEdit „Find Differences"). ⌃⌘D ist frei — ⌘D wäre mit
                 // macOS-Konventionen (Lesezeichen/Duplizieren) belegt.
                 Button("Dateien vergleichen…") {
-                    commandWorkspace.presentCompareFilesDialog()
+                    commandWorkspace?.presentCompareFilesDialog()
                 }
                 .keyboardShortcut("d", modifiers: [.command, .control])
 
@@ -371,10 +398,10 @@ struct FastraApp: App {
                 // Editor-Inhalt gegen den Plattenstand derselben Datei —
                 // ohne Dialog, direkt ins Differenzfenster.
                 Button("Mit gespeicherter Fassung vergleichen") {
-                    commandWorkspace.compareActiveTabAgainstDisk()
+                    commandWorkspace?.compareActiveTabAgainstDisk()
                 }
-                .disabled(!commandWorkspace.canCompareActiveTabAgainstDisk)
-                .help(commandWorkspace.canCompareActiveTabAgainstDisk
+                .disabled(commandWorkspace?.canCompareActiveTabAgainstDisk != true)
+                .help(commandWorkspace?.canCompareActiveTabAgainstDisk == true
                       ? L10n.string("Vergleicht den ungespeicherten Editor-Inhalt mit dem gespeicherten Stand der Datei.")
                       : L10n.string("Nur aktiv, wenn der aktive Tab ungespeicherte Änderungen an einer Datei hat."))
             }
@@ -385,23 +412,25 @@ struct FastraApp: App {
             // Operieren auf der Selektion bzw. — ohne Selektion — der ganzen Datei.
             CommandMenu("Text") {
                 Button("Dokument formatieren") { postDocumentFormatting() }
-                    .disabled(!DocumentFormatter.supports(fileExtension: commandWorkspace.activeTab?.url?.pathExtension
-                        ?? (commandWorkspace.activeTab?.title as NSString?)?.pathExtension))
+                    .disabled(!DocumentFormatter.supports(fileExtension: commandWorkspace?.activeTab?.url?.pathExtension
+                        ?? (commandWorkspace?.activeTab?.title as NSString?)?.pathExtension))
                 // Etappe 6 (Wunschpaket 2026-07): native JSON-/XML-Prüfung
                 // mit Fehlerposition und konservatives Minify — bewusst keine
                 // gebündelten Fremd-Linter (JS/CSS/HTML bleiben außen vor).
                 Button("Dokument prüfen") {
+                    guard commandWorkspace != nil else { return }
                     NotificationCenter.default.post(name: .fastraLintDocument,
                                                     object: nil)
                 }
-                .disabled(!DocumentLinter.supports(fileExtension: commandWorkspace.activeTab?.url?.pathExtension
-                    ?? (commandWorkspace.activeTab?.title as NSString?)?.pathExtension))
+                .disabled(!DocumentLinter.supports(fileExtension: commandWorkspace?.activeTab?.url?.pathExtension
+                    ?? (commandWorkspace?.activeTab?.title as NSString?)?.pathExtension))
                 Button("Dokument minifizieren") {
+                    guard commandWorkspace != nil else { return }
                     NotificationCenter.default.post(name: .fastraMinifyDocument,
                                                     object: nil)
                 }
-                .disabled(!DocumentFormatter.supports(fileExtension: commandWorkspace.activeTab?.url?.pathExtension
-                    ?? (commandWorkspace.activeTab?.title as NSString?)?.pathExtension))
+                .disabled(!DocumentFormatter.supports(fileExtension: commandWorkspace?.activeTab?.url?.pathExtension
+                    ?? (commandWorkspace?.activeTab?.title as NSString?)?.pathExtension))
                 Divider()
                 Button(TextOpKind.uppercase.title)  { postTextOp(.uppercase) }
                 Button(TextOpKind.lowercase.title)  { postTextOp(.lowercase) }
@@ -521,10 +550,14 @@ struct FastraApp: App {
             // Verlauf/Diff öffnen. Nur aktiv, wenn ein Git-Projekt offen ist —
             // ohne Projekt/git bleibt das Menü sichtbar, aber gedimmt.
             CommandMenu("Git") {
-                Button("Verlauf anzeigen") { commandWorkspace.openGitLog() }
-                Button("Änderungen anzeigen (Diff)") { commandWorkspace.openGitDiff() }
+                Button("Verlauf anzeigen") { commandWorkspace?.openGitLog() }
+                Button("Änderungen anzeigen (Diff)") { commandWorkspace?.openGitDiff() }
                 Divider()
-                GitActionMenu(workspace: commandWorkspace)
+                if let commandWorkspace {
+                    GitActionMenu(workspace: commandWorkspace)
+                } else {
+                    Button("Kein Dokumentfenster aktiv") { }.disabled(true)
+                }
             }
         }
 
@@ -536,31 +569,30 @@ struct FastraApp: App {
         }
     }
 
-    /// Ziel der dokumentbezogenen globalen Menübefehle. Das `@StateObject` gehört nur zum
-    /// Startfenster; zusätzliche Fenster werden deshalb über ihre echte
-    /// Vordergrundreihenfolge aufgelöst. Der bestehende Rückfall hält die schon
-    /// vor der ersten Fensterregistrierung aufgebauten SwiftUI-Menüs
-    /// funktionsfähig, gilt derzeit aber auch bei fokussierten Hilfsfenstern.
-    /// Der besonders verlustreiche Schließen-Befehl verwendet ihn bewusst
-    /// nicht und behandelt Hilfe, Über, Einstellungen und Suche ausdrücklich.
-    private var commandWorkspace: Workspace {
-        CommandTargeting.targetWorkspace() ?? workspace
+    /// Ziel der dokumentbezogenen globalen Menübefehle. Bei einem vorderen
+    /// Hilfsfenster gibt es absichtlich keinen Rückfall auf ein Dokument im
+    /// Hintergrund; Befehle sind dann deaktiviert oder ein sicherer No-op.
+    private var commandWorkspace: Workspace? {
+        CommandTargeting.targetWorkspace()
     }
 
     /// Schickt eine Text-Operation an den AppDelegate (→ aktiver Editor).
     /// `object` = `rawValue`, damit der Enum-Wert verlustfrei durch die
     /// Notification kommt (siehe `.fastraTextOp`).
     private func postTextOp(_ kind: TextOpKind) {
+        guard commandWorkspace != nil else { return }
         NotificationCenter.default.post(name: .fastraTextOp, object: kind.rawValue)
     }
 
     private func postLineSort(_ direction: LineOperations.SortDirection) {
+        guard commandWorkspace != nil else { return }
         NotificationCenter.default.post(name: .fastraSortLines,
                                         object: direction.rawValue)
     }
 
     /// Markdown-Formatbefehl an den AppDelegate (Etappe 5 Wunschpaket 2026-07b).
     private func postMarkdownFormat(_ command: MarkdownFormatCommand) {
+        guard commandWorkspace != nil else { return }
         NotificationCenter.default.post(name: .fastraMarkdownFormat,
                                         object: command.rawValue)
     }
@@ -586,10 +618,11 @@ struct FastraApp: App {
 
     /// Aktiver Tab ist ein Markdown-Dokument? Steuert das „Markdown“-Menü.
     private var activeTabIsMarkdown: Bool {
-        commandWorkspace.activeTabIsMarkdown
+        commandWorkspace?.activeTabIsMarkdown == true
     }
 
     private func postDocumentFormatting() {
+        guard commandWorkspace != nil else { return }
         NotificationCenter.default.post(name: .fastraFormatDocument, object: nil)
     }
 }
@@ -608,13 +641,13 @@ private struct MarkdownImportMenuItem: View {
 
     var body: some View {
         Button("In Markdown umwandeln…") {
-            commandWorkspace.convertActiveTabToMarkdown()
+            commandWorkspace?.convertActiveTabToMarkdown()
         }
-        .disabled(commandWorkspace.activeMarkdownImportSource == nil || isBusy)
+        .disabled(commandWorkspace?.activeMarkdownImportSource == nil || isBusy)
     }
 
-    private var commandWorkspace: Workspace {
-        CommandTargeting.targetWorkspace() ?? workspace
+    private var commandWorkspace: Workspace? {
+        CommandTargeting.targetWorkspace()
     }
 
     /// Während einer laufenden Umwandlung ist der Punkt gesperrt — zwei
@@ -636,7 +669,7 @@ private struct RecentFilesMenu: View {
                 ForEach(workspace.recentFiles, id: \.self) { path in
                     Button((path as NSString).lastPathComponent) {
                         let expanded = (path as NSString).expandingTildeInPath
-                        commandWorkspace.loadFile(
+                        commandWorkspace?.loadFile(
                             at: URL(fileURLWithPath: expanded)
                         )
                     }
@@ -645,9 +678,10 @@ private struct RecentFilesMenu: View {
                 Button("Einträge löschen") { workspace.recentFiles = [] }
             }
         }
+        .disabled(commandWorkspace == nil)
     }
 
-    private var commandWorkspace: Workspace {
-        CommandTargeting.targetWorkspace() ?? workspace
+    private var commandWorkspace: Workspace? {
+        CommandTargeting.targetWorkspace()
     }
 }

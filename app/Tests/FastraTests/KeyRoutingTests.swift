@@ -17,7 +17,8 @@ func cmdF_showsFileSearch() {
         modifierFlags: [.command],
         charactersIgnoringModifiers: "f",
         keyCode: 3,
-        isSearchWindowKey: false
+        isSearchWindowKey: false,
+        isDocumentWindowKey: true
     )
     #expect(route == .showSearchFile)
     #expect(KeyRouting.notificationName(for: route) == .fastraShowSearchFile)
@@ -30,7 +31,8 @@ func cmdShiftF_showsFolderSearch() {
         modifierFlags: [.command, .shift],
         charactersIgnoringModifiers: "f",
         keyCode: 3,
-        isSearchWindowKey: false
+        isSearchWindowKey: false,
+        isDocumentWindowKey: true
     )
     #expect(route == .showSearchFolder)
     #expect(KeyRouting.notificationName(for: route) == .fastraShowSearchFolder)
@@ -43,7 +45,8 @@ func cmdF_uppercase() {
         modifierFlags: [.command],
         charactersIgnoringModifiers: "F",
         keyCode: 3,
-        isSearchWindowKey: false
+        isSearchWindowKey: false,
+        isDocumentWindowKey: true
     )
     #expect(route == .showSearchFile)
 }
@@ -208,7 +211,8 @@ func cmdG_gotoNextMatch() {
     let route = KeyRouting.route(
         isKeyDown: true, modifierFlags: [.command],
         charactersIgnoringModifiers: "g", keyCode: 5,
-        isSearchWindowKey: false
+        isSearchWindowKey: false,
+        isDocumentWindowKey: true
     )
     #expect(route == .gotoNextMatch)
     #expect(KeyRouting.notificationName(for: route) == .fastraGotoNextMatch)
@@ -219,7 +223,8 @@ func cmdShiftG_gotoPreviousMatch() {
     let route = KeyRouting.route(
         isKeyDown: true, modifierFlags: [.command, .shift],
         charactersIgnoringModifiers: "g", keyCode: 5,
-        isSearchWindowKey: false
+        isSearchWindowKey: false,
+        isDocumentWindowKey: true
     )
     #expect(route == .gotoPreviousMatch)
     #expect(KeyRouting.notificationName(for: route) == .fastraGotoPreviousMatch)
@@ -245,7 +250,8 @@ func cmdG_worksRegardlessOfKeyWindow() {
     let inEditor = KeyRouting.route(
         isKeyDown: true, modifierFlags: [.command],
         charactersIgnoringModifiers: "g", keyCode: 5,
-        isSearchWindowKey: false
+        isSearchWindowKey: false,
+        isDocumentWindowKey: true
     )
     #expect(inSearch == .gotoNextMatch)
     #expect(inEditor == .gotoNextMatch)
@@ -256,7 +262,8 @@ func cmdJ_showsGotoLine() {
     let route = KeyRouting.route(
         isKeyDown: true, modifierFlags: [.command],
         charactersIgnoringModifiers: "j", keyCode: 38,
-        isSearchWindowKey: false
+        isSearchWindowKey: false,
+        isDocumentWindowKey: true
     )
     #expect(route == .showGotoLine)
     #expect(KeyRouting.notificationName(for: route) == .fastraShowGotoLine)
@@ -267,7 +274,22 @@ func cmdShiftJ_passesThrough() {
     let route = KeyRouting.route(
         isKeyDown: true, modifierFlags: [.command, .shift],
         charactersIgnoringModifiers: "j", keyCode: 38,
-        isSearchWindowKey: false
+        isSearchWindowKey: false,
+        isDocumentWindowKey: true
     )
     #expect(route == .passThrough)
+}
+
+@Test("Dokumentbefehle bleiben bei einem Hilfsfenster im Vordergrund wirkungslos")
+func documentCommands_passThroughForUtilityWindow() {
+    for key in ["f", "g", "j"] {
+        let route = KeyRouting.route(
+            isKeyDown: true, modifierFlags: [.command],
+            charactersIgnoringModifiers: key, keyCode: 0,
+            isSearchWindowKey: false,
+            isHelpWindowKey: true,
+            isDocumentWindowKey: false
+        )
+        #expect(route == .passThrough)
+    }
 }

@@ -7,13 +7,25 @@
 FASTRA_GUI_LOCK_DIR="${FASTRA_GUI_LOCK_DIR:-/tmp/fastra-gui-tests-${UID}.lock}"
 FASTRA_GUI_LOCK_HELD=0
 
+fastra_gui_lock_pid_token() {
+    ps -p "$1" -o lstart= 2>/dev/null | sed 's/^[[:space:]]*//' || true
+}
+
+write_fastra_gui_lock_owner() {
+    local token
+    token=$(fastra_gui_lock_pid_token "$$")
+    [ -n "$token" ] || return 2
+    printf '%s\n%s\n' "$$" "$token" > "$FASTRA_GUI_LOCK_DIR/pid"
+}
+
 acquire_fastra_gui_test_lock() {
     local owner=""
+    local owner_token=""
     local directory_owner=""
     local modified=""
     local now=""
     if mkdir "$FASTRA_GUI_LOCK_DIR" 2>/dev/null; then
-        if ! printf '%s\n' "$$" > "$FASTRA_GUI_LOCK_DIR/pid"; then
+        if ! write_fastra_gui_lock_owner; then
             echo "✗ Besitzer der Fenster-Test-Sperre konnte nicht gespeichert werden." >&2
             rm -f -- "$FASTRA_GUI_LOCK_DIR/pid" 2>/dev/null || true
             rmdir "$FASTRA_GUI_LOCK_DIR" 2>/dev/null || true
@@ -34,8 +46,10 @@ acquire_fastra_gui_test_lock() {
     fi
     if [ -f "$FASTRA_GUI_LOCK_DIR/pid" ] && [ ! -L "$FASTRA_GUI_LOCK_DIR/pid" ]; then
         owner=$(sed -n '1p' "$FASTRA_GUI_LOCK_DIR/pid" 2>/dev/null || true)
+        owner_token=$(sed -n '2p' "$FASTRA_GUI_LOCK_DIR/pid" 2>/dev/null || true)
     fi
-    if [[ "$owner" =~ ^[0-9]+$ ]] && kill -0 "$owner" 2>/dev/null; then
+    if [[ "$owner" =~ ^[0-9]+$ ]] && [ -n "$owner_token" ] \
+       && [ "$(fastra_gui_lock_pid_token "$owner")" = "$owner_token" ]; then
         echo "✗ Ein anderer Fastra-Fenstertest läuft bereits (PID $owner)." >&2
         return 2
     fi
@@ -44,7 +58,7 @@ acquire_fastra_gui_test_lock() {
     # Fenster. Eine zweite Instanz darf die neue Sperre darin nicht als verwaist
     # löschen. Erst ein mindestens zehn Sekunden altes Verzeichnis ohne gültige
     # lebende PID wird übernommen; ein regulärer Erwerb schreibt sie sofort.
-    if [[ ! "$owner" =~ ^[0-9]+$ ]]; then
+    if [[ ! "$owner" =~ ^[0-9]+$ || -z "$owner_token" ]]; then
         modified=$(stat -f '%m' "$FASTRA_GUI_LOCK_DIR" 2>/dev/null || true)
         now=$(date +%s)
         if [[ "$modified" =~ ^[0-9]+$ ]] && [ $((now - modified)) -lt 10 ]; then
@@ -64,7 +78,7 @@ acquire_fastra_gui_test_lock() {
         echo "✗ Fenster-Test-Sperre wurde gleichzeitig übernommen. Erneut versuchen." >&2
         return 2
     fi
-    if ! printf '%s\n' "$$" > "$FASTRA_GUI_LOCK_DIR/pid"; then
+    if ! write_fastra_gui_lock_owner; then
         echo "✗ Besitzer der übernommenen Fenster-Test-Sperre konnte nicht gespeichert werden." >&2
         rm -f -- "$FASTRA_GUI_LOCK_DIR/pid" 2>/dev/null || true
         rmdir "$FASTRA_GUI_LOCK_DIR" 2>/dev/null || true
@@ -76,8 +90,11 @@ acquire_fastra_gui_test_lock() {
 release_fastra_gui_test_lock() {
     [ "$FASTRA_GUI_LOCK_HELD" -eq 1 ] || return 0
     local owner=""
+    local owner_token=""
     owner=$(sed -n '1p' "$FASTRA_GUI_LOCK_DIR/pid" 2>/dev/null || true)
-    if [ "$owner" != "$$" ]; then
+    owner_token=$(sed -n '2p' "$FASTRA_GUI_LOCK_DIR/pid" 2>/dev/null || true)
+    if [ "$owner" != "$$" ] \
+       || [ "$owner_token" != "$(fastra_gui_lock_pid_token "$$")" ]; then
         echo "✗ Fenster-Test-Sperre gehört beim Freigeben nicht mehr diesem Runner." >&2
         return 2
     fi

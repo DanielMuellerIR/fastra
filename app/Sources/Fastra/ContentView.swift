@@ -138,59 +138,70 @@ struct ContentView: View {
         // Auf die globalen CMD+F / CMD+SHIFT+F-Shortcuts reagieren
         // (siehe AppDelegate.installKeyMonitor). Eine bereits offene,
         // befüllte Suche wird nur nach vorn geholt und behält ihren Scope.
-        .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFile)) { _ in
-            guard Workspace.shared === workspace else { return }
+        .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFile)) { note in
+            guard notificationTargetsThisWorkspace(note) else { return }
             // „Nur in Auswahl" (K3) automatisch einschalten, wenn beim Öffnen
             // eine MEHRZEILIGE Selektion im Editor steht (BBEdit-Verhalten).
             workspace.presentSearch(requestedScope: .file, captureSelection: true)
             searchPanel?.show()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFolder)) { _ in
-            guard Workspace.shared === workspace else { return }
+        .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFolder)) { note in
+            guard notificationTargetsThisWorkspace(note) else { return }
             workspace.presentSearch(requestedScope: .folder)
             searchPanel?.show()
         }
         // Menüpunkt „In Ordnern suchen…": Sein sichtbarer Text verspricht die
         // Ordnersuche, deshalb wird der Bereich hier erzwungen — anders als
         // beim bereichserhaltenden Kurzbefehl darüber.
-        .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFolderForced)) { _ in
-            guard Workspace.shared === workspace else { return }
+        .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFolderForced)) { note in
+            guard notificationTargetsThisWorkspace(note) else { return }
             workspace.presentSearch(requestedScope: .folder, forceScope: true)
             searchPanel?.show()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .fastraHideSearch)) { _ in
-            guard Workspace.shared === workspace else { return }
+        .onReceive(NotificationCenter.default.publisher(for: .fastraHideSearch)) { note in
+            guard notificationTargetsThisWorkspace(note) else { return }
             workspace.showSearchDialog = false
         }
         // CMD+G / CMD+SHIFT+G: durch die Treffer im aktiven Buffer
         // navigieren. Wir bewegen `activeMatchIndex` und schicken
         // einen Range-Sprung an den Editor.
-        .onReceive(NotificationCenter.default.publisher(for: .fastraGotoNextMatch)) { _ in
-            guard Workspace.shared === workspace else { return }
+        .onReceive(NotificationCenter.default.publisher(for: .fastraGotoNextMatch)) { note in
+            guard notificationTargetsThisWorkspace(note) else { return }
             navigateMatch(direction: 1)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .fastraGotoPreviousMatch)) { _ in
-            guard Workspace.shared === workspace else { return }
+        .onReceive(NotificationCenter.default.publisher(for: .fastraGotoPreviousMatch)) { note in
+            guard notificationTargetsThisWorkspace(note) else { return }
             navigateMatch(direction: -1)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .fastraGotoFirstMatch)) { _ in
-            guard Workspace.shared === workspace else { return }
+        .onReceive(NotificationCenter.default.publisher(for: .fastraGotoFirstMatch)) { note in
+            guard notificationTargetsThisWorkspace(note) else { return }
             navigateMatch(to: 0)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .fastraShowGotoLine)) { _ in
-            guard Workspace.shared === workspace else { return }
+        .onReceive(NotificationCenter.default.publisher(for: .fastraShowGotoLine)) { note in
+            guard notificationTargetsThisWorkspace(note) else { return }
             showGotoLineDialog()
         }
         // ⇧⌘X — XPath-Leiste über dem Editor öffnen (Etappe 5). Nur für
         // XML-artige Dokumente; das Menü ist sonst bereits deaktiviert.
-        .onReceive(NotificationCenter.default.publisher(for: .fastraShowXPathBar)) { _ in
-            guard Workspace.shared === workspace,
+        .onReceive(NotificationCenter.default.publisher(for: .fastraShowXPathBar)) { note in
+            guard notificationTargetsThisWorkspace(note),
                   workspace.activeTabSupportsXPath else { return }
             if xpathPanel == nil {
                 xpathPanel = XPathPanelController(workspace: workspace)
             }
             xpathPanel?.show(over: CommandTargeting.documentWindow(for: workspace))
         }
+    }
+
+    /// Neuere Befehle tragen den beim Tastendruck oder Menüklick bestimmten
+    /// Workspace direkt in der Notification. Ziellose Nachrichten bleiben für
+    /// bestehende Selbsttests und interne Aufrufer kompatibel und folgen dann
+    /// dem bisherigen `Workspace.shared`-Verhalten.
+    private func notificationTargetsThisWorkspace(_ notification: Notification) -> Bool {
+        if let target = notification.object as? Workspace {
+            return target === workspace
+        }
+        return Workspace.shared === workspace
     }
 
     /// Holt die Datei-URLs asynchron aus den Drag-Providern und routet sie auf

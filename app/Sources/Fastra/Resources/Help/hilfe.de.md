@@ -665,7 +665,9 @@ Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**:
   Force-with-Lease bleibt ein eigener bestätigter Folgeschritt. Mehrere
   effektive Push-Adressen desselben Remotes oder
   Git-Regeln, die Adressen per `insteadOf`/`pushInsteadOf` umschreiben, sind
-  nicht eindeutig und werden mit Erklärung abgebrochen.
+  nicht eindeutig und werden mit Erklärung abgebrochen. Kann Fastra nur einen
+  einzelnen Remote nicht lesen, bleiben die anderen Push-Ziele benutzbar und
+  die echte Git-Meldung erscheint als Hinweis.
 - **Mehrere Dateien auf einen Schlag:** In der Dateiliste markiert ein Klick
   eine Zeile, ⇧-Klick den Bereich bis dorthin und ⌘-Klick einzelne Zeilen
   zusätzlich oder wieder ab. Markierte Zeilen sind farbig hinterlegt. Eine
@@ -725,6 +727,8 @@ Bildschirm wirklich zu nutzen. Kleiner ziehen kannst du es jederzeit — die
 selbst gewählte Größe bleibt erhalten. ⌘S speichert, ⌘W schließt den Tab —
 immer im Fenster mit Tastaturfokus; ein Dokumentfenster im Hintergrund wird
 niemals als Ersatz gewählt. Bei ungespeicherten Änderungen fragt Fastra nach.
+Ist Hilfe, Einstellungen oder „Über Fastra“ vorn, bleiben auch Speichern,
+Suchen, Treffer-Navigation, Text- und Git-Befehle im Hintergrund wirkungslos.
 Nach dem Schließen wird
 der zuletzt benutzte Tab aktiv; mehrere frisch angelegte leere Tabs lassen
 sich so mit mehrmaligem ⌘W in umgekehrter Reihenfolge wieder schließen,

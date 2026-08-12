@@ -56,9 +56,11 @@ struct GitPushPlan: Equatable {
                 : L10n.string("Normaler Push nicht möglich"),
             explanation: explanation,
             confirmTitle: canFastForward
-                ? (localAhead == 1
-                    ? L10n.string("1 Commit pushen")
-                    : L10n.format("%ld Commits pushen", localAhead))
+                ? (remoteOID == nil
+                    ? L10n.string("Remote-Branch anlegen")
+                    : (localAhead == 1
+                        ? L10n.string("1 Commit pushen")
+                        : L10n.format("%ld Commits pushen", localAhead)))
                 : L10n.string("Force Push with Lease prüfen"),
             isDestructive: !canFastForward
         )

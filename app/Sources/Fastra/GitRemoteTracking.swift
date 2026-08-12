@@ -50,7 +50,6 @@ enum GitRemoteTrackingRefList {
     static let arguments = [
         "for-each-ref",
         "--format=%(refname)%09%(objectname)%09%(symref)%09%(HEAD)",
-        "refs/heads",
         "refs/remotes",
     ]
     static let headArguments = ["rev-parse", "--verify", "HEAD"]
@@ -120,7 +119,6 @@ enum GitRemoteTrackingList {
         [
             "for-each-ref",
             "--format=%(refname)%09%(objectname)%09%(symref)%09%(HEAD)%09%(ahead-behind:\(headOID))",
-            "refs/heads",
             "refs/remotes",
         ]
     }

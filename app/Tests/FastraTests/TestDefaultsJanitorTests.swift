@@ -387,3 +387,26 @@ func purgeKeepsFailedSuiteRegistered() {
     #expect(TestDefaultsPurge.isRegistered(failed))
     #expect(!TestDefaultsPurge.isRegistered(succeeded))
 }
+
+@Test("Runner-Registry wird nach einem Schreibfehler erneut versucht")
+func defaultsRunnerRegistrationRetriesAfterFailure() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-defaults-registry-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root,
+                                            withIntermediateDirectories: false)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let name = "FastraTests.RegistryRetry.\(UUID().uuidString)"
+    let registry = root.appendingPathComponent("registry.txt")
+    defer { _ = TestDefaultsPurge.purgeRegistered(only: name) }
+
+    // Ein Verzeichnis kann nicht als Registry-Datei geöffnet werden.
+    #expect(!TestDefaultsPurge.register(name,
+                                       runnerRegistryPath: root.path))
+    #expect(TestDefaultsPurge.isRegistered(name))
+
+    #expect(TestDefaultsPurge.register(name,
+                                      runnerRegistryPath: registry.path))
+    let recorded = try String(contentsOf: registry, encoding: .utf8)
+    #expect(recorded.split(whereSeparator: \.isNewline).map(String.init)
+        == [name])
+}

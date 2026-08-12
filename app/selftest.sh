@@ -728,6 +728,7 @@ cleanup_on_exit() {
     local original_status=$?
     local sandbox_status=0
     local keep_sandbox=0
+    local performance_copy=""
     trap - EXIT INT TERM
     local process_cleanup_failed=0
     if ! kill_leftovers; then
@@ -768,6 +769,15 @@ cleanup_on_exit() {
         unregister_test_bundle_from_launch_services || SELFTEST_CLEANUP_FAILED=1
     fi
     release_fastra_gui_test_lock || SELFTEST_CLEANUP_FAILED=1
+    if [[ "${PERFORMANCE_RECORD_PENDING:-0}" -eq 1 \
+          && -n "${PERFORMANCE_SAMPLES_FILE:-}" ]]; then
+        performance_copy=$(mktemp "/tmp/fastra-performance-${UID}.XXXXXX") \
+            || SELFTEST_CLEANUP_FAILED=1
+        if [[ -n "$performance_copy" ]]; then
+            cp -- "$PERFORMANCE_SAMPLES_FILE" "$performance_copy" \
+                || SELFTEST_CLEANUP_FAILED=1
+        fi
+    fi
     if [[ -n "${PERFORMANCE_SAMPLES_FILE:-}" ]]; then
         rm -f -- "$PERFORMANCE_SAMPLES_FILE"
     fi
@@ -777,6 +787,40 @@ cleanup_on_exit() {
         echo "  Private Test-Sandbox zur manuellen Wiederherstellung behalten: $FASTRA_TEST_SANDBOX" >&2
         sandbox_status=2
     fi
+    # Eine qualifizierte Messung darf erst nach vollständig erfolgreichem
+    # Prozess-, Preferences-, Fenster- und Sandbox-Cleanup gespeichert werden.
+    if [[ -n "$performance_copy" && "$sandbox_status" -eq 0 \
+          && "${SELFTEST_CLEANUP_FAILED:-0}" -eq 0 ]]; then
+        RUN_HEAD_END="$(git -C .. rev-parse HEAD 2>/dev/null || true)"
+        RUN_BINARY_SHA_END="$(shasum -a 256 "$APP_BIN_ABSOLUTE" | awk '{print $1}')"
+        RUN_DIRTY_END="$(git -C .. status --porcelain 2>/dev/null || true)"
+        PERFORMANCE_QUALIFIED=""
+        if [[ $real_fail_count -eq 0 && $env_fail_count -eq 0 && $skip_count -eq 0 \
+              && "$RUN_HEAD_START" == "$RUN_HEAD_END" \
+              && "$RUN_BINARY_SHA_START" == "$RUN_BINARY_SHA_END" \
+              && -z "$RUN_DIRTY_START" && -z "$RUN_DIRTY_END" \
+              && "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" == "1" ]]; then
+            PERFORMANCE_QUALIFIED="--qualified"
+        fi
+        PERFORMANCE_RECORDER_STATUS=0
+        /usr/bin/python3 ./tools/selftest-performance.py record-standard \
+            --samples "$performance_copy" \
+            --configuration "$PERFORMANCE_CONFIGURATION" \
+            --head "$RUN_HEAD_START" \
+            --binary-sha256 "$RUN_BINARY_SHA_START" \
+            --repository "$(cd .. && pwd -P)" \
+            ${PERFORMANCE_QUALIFIED:+--qualified} || PERFORMANCE_RECORDER_STATUS=$?
+        if [[ $PERFORMANCE_RECORDER_STATUS -ne 0 \
+              && "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" == "1" ]]; then
+            echo "⚠ Lokale Performance-Baseline konnte nicht gespeichert werden."
+            SELFTEST_CLEANUP_FAILED=1
+        fi
+    elif [[ "${PERFORMANCE_RECORD_PENDING:-0}" -eq 1 \
+            && "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" == "1" ]]; then
+        echo "⚠ Performance-Baseline wegen unvollständigem Cleanup nicht gespeichert."
+        SELFTEST_CLEANUP_FAILED=1
+    fi
+    [[ -z "$performance_copy" ]] || rm -f -- "$performance_copy"
     if [[ "$sandbox_status" -ne 0 || "${SELFTEST_CLEANUP_FAILED:-0}" -ne 0 ]]; then
         echo "✗ Selbsttest-Aufräumen konnte nicht vollständig abgeschlossen werden." >&2
         [ "$original_status" -ne 0 ] || exit 2
@@ -1090,32 +1134,7 @@ cleanup_coldopen_fixture
 
 # ── Zusammenfassung ──────────────────────────────────────────────────────
 
-if [[ $STANDARD_RUN -eq 1 ]]; then
-    RUN_HEAD_END="$(git -C .. rev-parse HEAD 2>/dev/null || true)"
-    RUN_BINARY_SHA_END="$(shasum -a 256 "$APP_BIN_ABSOLUTE" | awk '{print $1}')"
-    RUN_DIRTY_END="$(git -C .. status --porcelain 2>/dev/null || true)"
-    PERFORMANCE_QUALIFIED=""
-    if [[ $real_fail_count -eq 0 && $env_fail_count -eq 0 && $skip_count -eq 0 \
-          && "$RUN_HEAD_START" == "$RUN_HEAD_END" \
-          && "$RUN_BINARY_SHA_START" == "$RUN_BINARY_SHA_END" \
-          && -z "$RUN_DIRTY_START" && -z "$RUN_DIRTY_END" \
-          && "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" == "1" ]]; then
-        PERFORMANCE_QUALIFIED="--qualified"
-    fi
-    PERFORMANCE_RECORDER_STATUS=0
-    /usr/bin/python3 ./tools/selftest-performance.py record-standard \
-        --samples "$PERFORMANCE_SAMPLES_FILE" \
-        --configuration "$PERFORMANCE_CONFIGURATION" \
-        --head "$RUN_HEAD_START" \
-        --binary-sha256 "$RUN_BINARY_SHA_START" \
-        --repository "$(cd .. && pwd -P)" \
-        ${PERFORMANCE_QUALIFIED:+--qualified} || PERFORMANCE_RECORDER_STATUS=$?
-    if [[ $PERFORMANCE_RECORDER_STATUS -ne 0 \
-          && "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" == "1" ]]; then
-        echo "⚠ Lokale Performance-Baseline konnte nicht gespeichert werden."
-        env_fail_count=$((env_fail_count + 1))
-    fi
-fi
+[[ $STANDARD_RUN -eq 1 ]] && PERFORMANCE_RECORD_PENDING=1
 
 echo ""
 echo "── Selbsttest-Zusammenfassung ──"

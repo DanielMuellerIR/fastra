@@ -61,12 +61,6 @@ private func functionBody(named declaration: String, in source: String) throws -
     return body
 }
 
-/// Entfernt die erlaubte Schreibweise, damit nur der verbotene Rest übrig
-/// bleibt.
-private func removing(_ allowed: String, from text: String) -> String {
-    text.replacingOccurrences(of: allowed, with: "")
-}
-
 @Test("pasteindent nutzt die zentrale, absturzfeste Zwischenablage-Sicherung")
 func pasteIndentRestoresPasteboardOnEveryExit() throws {
     let source = try String(contentsOf: selfTestSourceURL, encoding: .utf8)

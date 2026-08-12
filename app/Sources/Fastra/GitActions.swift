@@ -405,6 +405,7 @@ extension Workspace {
             gitPushTargetInspection = nil
             gitPushTargetInspectionRequestID = nil
             gitPushTargets = []
+            gitPushTargetWarning = nil
             return
         }
         gitPushTargetInspection?.cancel()
@@ -413,13 +414,14 @@ extension Workspace {
         gitPushTargetInspection = GitPushTargetResolver.resolveAll(
             repository: context.root,
             executor: gitOperationsCoordinator.commandExecutor
-        ) { [weak self] targets, _ in
+        ) { [weak self] targets, failure in
             DispatchQueue.main.async {
                 guard let self, context.isCurrent(in: self),
                       self.gitPushTargetInspectionRequestID == requestID else {
                     return
                 }
                 self.gitPushTargets = targets
+                self.gitPushTargetWarning = failure.map(Self.pushTargetFailureText)
             }
         }
     }
@@ -448,7 +450,11 @@ extension Workspace {
                              context: context) { [weak self] currentTarget, failure in
             guard let self else { return }
             guard let currentTarget else {
-                self.presentMissingPushTarget(failure)
+                self.presentMissingPushTarget(failure.map {
+                    GitPushTargetResolutionFailure(
+                        remote: expectedTarget.remote, outcome: $0
+                    )
+                })
                 return
             }
             guard currentTarget == expectedTarget else {
@@ -990,7 +996,7 @@ extension Workspace {
 
     private func resolveGitPushTargets(
         context: GitActionContext,
-        completion: @escaping ([GitPushTarget], GitExecutionOutcome?) -> Void
+        completion: @escaping ([GitPushTarget], GitPushTargetResolutionFailure?) -> Void
     ) {
         gitPushActionTargetInspection?.cancel()
         gitPushActionTargetInspection = GitPushTargetResolver.resolveAll(
@@ -1025,9 +1031,15 @@ extension Workspace {
         }
     }
 
-    private func presentMissingPushTarget(_ failure: GitExecutionOutcome?) {
+    private func presentMissingPushTarget(_ failure: GitPushTargetResolutionFailure?) {
         if let failure {
-            Self.presentGitExecutionFailure(label: "Push-Ziel", outcome: failure)
+            let label = failure.remote.map { "Push-Ziel \($0)" } ?? "Push-Ziel"
+            if case .completed(let result) = failure.outcome {
+                Self.presentGitError(label: label, result: result)
+            } else {
+                Self.presentGitExecutionFailure(label: label,
+                                                outcome: failure.outcome)
+            }
         } else {
             Self.presentGitErrorText(
                 label: "Push",
@@ -1036,6 +1048,24 @@ extension Workspace {
                 )
             )
         }
+    }
+
+    private static func pushTargetFailureText(
+        _ failure: GitPushTargetResolutionFailure
+    ) -> String {
+        let remote = failure.remote ?? L10n.string("Git-Konfiguration")
+        let detail: String
+        if case .completed(let result) = failure.outcome {
+            detail = [result.stderrForDisplay, result.stdoutForDisplay]
+                .first(where: { !$0.isEmpty })
+                ?? L10n.format("git lieferte keine Meldung (Exit-Code %ld).",
+                               Int(result.exitCode))
+        } else {
+            detail = gitExecutionFailureText(failure.outcome)
+                ?? L10n.string("Der Git-Vorgang wurde abgebrochen.")
+        }
+        return L10n.format("Remote %@ konnte nicht gelesen werden: %@",
+                           remote, detail)
     }
 
     /// Entfernten Stand mit einer explizit gewählten Strategie einbinden.
@@ -1053,13 +1083,37 @@ extension Workspace {
 
     /// Entfernten Stand holen, ohne lokal etwas zu ändern (`git fetch`).
     func gitFetch() {
-        guard let root = projectURL else { return }
-        let remotes = Array(Set(
-            gitRepositorySnapshot?.remoteTracking.map(\.remote) ?? []
-        )).sorted()
-        gitRepositoryStore.fetch(repository: root,
-                                 preferences: gitPreferencesStore.load(),
-                                 remotes: remotes)
+        guard let context = currentGitActionContext else { return }
+        gitFetchRemoteInspection?.cancel()
+        let requestID = UUID()
+        gitFetchRemoteInspectionRequestID = requestID
+        gitFetchRemoteInspection = GitRemoteNameResolver.resolve(
+            repository: context.root,
+            executor: gitOperationsCoordinator.commandExecutor
+        ) { [weak self] remotes, failure in
+            DispatchQueue.main.async {
+                guard let self, context.isCurrent(in: self),
+                      self.gitFetchRemoteInspectionRequestID == requestID else { return }
+                self.gitFetchRemoteInspection = nil
+                self.gitFetchRemoteInspectionRequestID = nil
+                guard let remotes else {
+                    if let failure {
+                        if case .completed(let result) = failure {
+                            Self.presentGitError(label: "Fetch-Ziel", result: result)
+                        } else {
+                            Self.presentGitExecutionFailure(label: "Fetch-Ziel",
+                                                            outcome: failure)
+                        }
+                    }
+                    return
+                }
+                self.gitRepositoryStore.fetch(
+                    repository: context.root,
+                    preferences: self.gitPreferencesStore.load(),
+                    remotes: remotes
+                )
+            }
+        }
     }
 
     private func startSafePull(strategyOverride: GitPullStrategy?) {
@@ -1214,7 +1268,6 @@ extension Workspace {
 
     @discardableResult
     func runGitAction(_ args: [String], label: String,
-                      successMessage: String? = nil,
                       context suppliedContext: GitActionContext? = nil,
                       kind explicitKind: GitOperationKind? = nil,
                       environment: [String: String] = [:],
@@ -1270,9 +1323,6 @@ extension Workspace {
                 if let then {
                     then(context)
                 } else {
-                    if let successMessage {
-                        self.recordGitSuccess(successMessage)
-                    }
                     // Kette fertig: Status + offene Verlauf-/Diff-Tabs auffrischen.
                     self.refreshGitRepositoryFully()
                     self.refreshOpenGitViews()

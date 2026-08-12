@@ -15,6 +15,16 @@ private final class SignatureWorkRecorder: @unchecked Sendable {
     var snapshot: [String] { lock.withLock { values } }
 }
 
+private final class SignatureCompletionRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var action: (() -> Void)?
+    func store(_ action: @escaping () -> Void) { lock.withLock { self.action = action } }
+    func run() {
+        let queued = lock.withLock { action }
+        queued?()
+    }
+}
+
 // MARK: - Parser: #DECLARE
 
 @Test("#DECLARE mit benannten Parametern, Typen und Rückgabe")
@@ -287,6 +297,66 @@ func signatureResolution_coalescesArchiveWork() async {
         release.signal()
     }
     #expect(recorder.snapshot == ["erste", "letzte"])
+}
+
+@Test("Ausblenden verwirft wartende Signaturarbeit und laufende Completion")
+@MainActor
+func signatureResolution_invalidationDropsObsoleteWork() async throws {
+    let scheduler = FourDSignatureResolutionScheduler()
+    let recorder = SignatureWorkRecorder()
+    let started = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+    let finished = DispatchSemaphore(value: 0)
+    let first = FourDSignatureResolver.Request(
+        lowered: "erste", projectMethodFileName: nil,
+        projectURL: nil, documentURL: nil, componentMethod: nil
+    )
+    let pending = FourDSignatureResolver.Request(
+        lowered: "wartend", projectMethodFileName: nil,
+        projectURL: nil, documentURL: nil, componentMethod: nil
+    )
+
+    scheduler.submit(key: first, work: {
+        recorder.append("erste")
+        started.signal()
+        _ = release.wait(timeout: .now() + 10)
+        finished.signal()
+        return .command("erste")
+    }, completion: { _ in recorder.append("completion") })
+    #expect(started.wait(timeout: .now() + 10) == .success)
+    scheduler.submit(key: pending, work: {
+        recorder.append("wartend")
+        return .command("wartend")
+    }, completion: { _ in recorder.append("pending-completion") })
+
+    scheduler.invalidate()
+    release.signal()
+    #expect(finished.wait(timeout: .now() + 10) == .success)
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(recorder.snapshot == ["erste"])
+}
+
+@Test("Invalidierung verwirft eine bereits zum Main-Thread gesendete Completion")
+func signatureResolution_invalidationDropsDispatchedCompletion() {
+    let queuedCompletion = SignatureCompletionRecorder()
+    let dispatched = DispatchSemaphore(value: 0)
+    let recorder = SignatureWorkRecorder()
+    let scheduler = FourDSignatureResolutionScheduler { action in
+        queuedCompletion.store(action)
+        dispatched.signal()
+    }
+    let request = FourDSignatureResolver.Request(
+        lowered: "erste", projectMethodFileName: nil,
+        projectURL: nil, documentURL: nil, componentMethod: nil
+    )
+
+    scheduler.submit(key: request, work: { .command("erste") }, completion: { _ in
+        recorder.append("completion")
+    })
+    #expect(dispatched.wait(timeout: .now() + 10) == .success)
+    scheduler.invalidate()
+    queuedCompletion.run()
+    #expect(recorder.snapshot.isEmpty)
 }
 
 // MARK: - Kommentare (Review 2026-08-02)

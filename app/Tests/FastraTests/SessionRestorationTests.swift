@@ -238,7 +238,15 @@ func sessionWorkspaceRestoreSelectsActiveRepositoryContext() async throws {
     try "A".write(to: fileA, atomically: true, encoding: .utf8)
     try "B".write(to: fileB, atomically: true, encoding: .utf8)
 
-    let workspace = Workspace(defaults: defaults)
+    // Der Produktpfad löst den Projektkontext absichtlich asynchron auf.
+    // Dieser Test prüft das Restore-Ergebnis statt die Queue-Latenz und
+    // injiziert deshalb synchrone Scheduler; die eigene Projektkontext-Suite
+    // belegt separat, dass der echte UI-Pfad nicht inline ins Dateisystem geht.
+    let workspace = Workspace(
+        defaults: defaults,
+        scheduleProjectContextWork: { $0() },
+        deliverProjectContextResult: { $0() }
+    )
     let state = RestorableWindowState(
         projectPath: nil,
         documentPaths: [fileA.path, fileB.path],

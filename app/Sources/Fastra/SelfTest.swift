@@ -77,6 +77,10 @@ enum SelfTest {
     /// Reproduziert im `windows`-Test den gemeldeten Vorderfenster-Zustand:
     /// Ordner in der Seitenleiste, aber nur ein leerer Willkommen-Tab.
     private static var windowRoutingFixtureDirectory: URL?
+    /// Echte gespeicherte Datei des Mehrfenster-Scrolltests. Das Sichern im
+    /// Vorderfenster ist der gemeldete Auslöser, nicht nur eine künstliche
+    /// SwiftUI-Neubewertung.
+    private static var backgroundScrollFixtureDirectory: URL?
 
     /// Name des angeforderten Selbsttests („findbar", „cmdw", …) oder `nil`.
     ///
@@ -353,6 +357,9 @@ enum SelfTest {
         let suiteName = ProcessInfo.processInfo.environment[
             "FASTRA_SELFTEST_DEFAULTS_SUITE"
         ] ?? "Fastra-\(UUID().uuidString)"
+        guard TestDefaultsPurge.isTestDomain(suiteName) else {
+            finish(false, "Name der Test-Einstellungen ist nicht sicher")
+        }
         let defaults = UserDefaults(suiteName: suiteName)!
         // Normalerweise startet jeder Selbsttest auf einem leeren Stand.
         // Der Dauertest ist die Ausnahme: Er läuft über mehrere App-Starts,
@@ -1647,8 +1654,37 @@ enum SelfTest {
         // damit der Sprung im hinteren Fenster sichtbar scrollen MUSS.
         var backLines = (1...200).map { "Hinteres Fenster, Zeile \($0): leer" }
         backLines[169] = "Hinteres Fenster, Zeile 170: bgscrolltreffer"
-        frontWorkspace.activeTabContent.wrappedValue =
-            (1...200).map { "Vorderes Fenster, Zeile \($0)" }.joined(separator: "\n")
+        let frontContent = (1...200)
+            .map { "Vorderes Fenster, Zeile \($0)" }.joined(separator: "\n")
+        let fixtureDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-bgscroll-\(UUID().uuidString)",
+                                    isDirectory: true)
+        let fixtureURL = fixtureDirectory.appendingPathComponent("vorn.txt")
+        do {
+            try FileManager.default.createDirectory(
+                at: fixtureDirectory, withIntermediateDirectories: false
+            )
+            try frontContent.write(to: fixtureURL, atomically: true,
+                                   encoding: .utf8)
+            guard let index = frontWorkspace.tabs.firstIndex(where: {
+                $0.id == frontWorkspace.activeTabID
+            }) else {
+                finish(false, "aktiver Vorderfenster-Tab fehlt")
+            }
+            var tab = frontWorkspace.tabs[index]
+            tab.title = fixtureURL.lastPathComponent
+            tab.path = fixtureURL.path
+            tab.url = fixtureURL
+            tab.content = frontContent
+            tab.diskSnapshot = FileSnapshot(data: Data(frontContent.utf8),
+                                             at: fixtureURL)
+            tab.recordSavedContentBaseline()
+            frontWorkspace.tabs[index] = tab
+            backgroundScrollFixtureDirectory = fixtureDirectory
+        } catch {
+            try? FileManager.default.removeItem(at: fixtureDirectory)
+            finish(false, "Speicher-Fixture konnte nicht angelegt werden: \(error)")
+        }
         backWorkspace.activeTabContent.wrappedValue = backLines.joined(separator: "\n")
         // CESE übernimmt programmatische Binding-Änderungen nicht live; der
         // produktive Reload-Zähler remountet beide Editoren mit dem Testinhalt.
@@ -1877,11 +1913,9 @@ enum SelfTest {
         }
     }
 
-    /// Die eigentliche Prüfung: Während des Beobachtungsfensters wird zweimal
-    /// der prozessweite UI-Zoom verstellt (bewertet ALLE EditorViews neu, wie
-    /// ⌘+ im Betrieb). Vor dem Fix scrollte das hintere Fenster daraufhin
-    /// zurück zu seinem alten Sprungziel (y sprang von 0 auf über 2000);
-    /// mit dem Fix bleibt sein Ausschnitt stehen.
+    /// Die eigentliche Prüfung speichert im Vorderfenster eine echte Datei.
+    /// Dessen Workspace-/Git-Neubewertungen dürfen den alten Cursorstand im
+    /// hinteren Editor nicht erneut sichtbar scrollen.
     private static func observeBackgroundScroll(backWindow: NSWindow,
                                                 backTV: TextView,
                                                 tick: Int = 0) {
@@ -1892,17 +1926,24 @@ enum SelfTest {
             finish(false, "Hintergrundfenster scrollte ungefragt (y=\(Int(y)))")
         }
         if tick == 5 {
-            workspaceDefaults().set(1, forKey: UIZoom.defaultsKey)
-        }
-        // Zweiter Zoomwechsel: Falls der Coordinator die erste Neubewertung
-        // über sein `isUpdateFromTextView`-Fenster geschluckt hat, greift
-        // sicher die zweite.
-        if tick == 20 {
-            workspaceDefaults().set(2, forKey: UIZoom.defaultsKey)
+            let (frontWorkspace, registeredBackWorkspace) = MainActor.assumeIsolated {
+                (CommandTargeting.targetWorkspace(),
+                 WorkspaceWindowRegistry.workspace(for: backWindow))
+            }
+            guard let workspace = frontWorkspace,
+                  workspace !== registeredBackWorkspace,
+                  let tabID = workspace.activeTabID else {
+                finish(false, "Vorderfenster-Workspace zum Speichern fehlt")
+            }
+            workspace.activeTabContent.wrappedValue += "\nSpeicher-Auslöser"
+            workspace.saveTab(id: tabID)
+            guard workspace.activeTab?.isDirty == false else {
+                finish(false, "Vorderfenster-Datei blieb nach saveTab ungespeichert")
+            }
         }
         if tick >= 50 {
-            finish(true, "Ausschnitt des Hintergrundfensters blieb trotz zweier "
-                   + "prozessweiter Neubewertungen stehen (y=\(Int(y)))")
+            finish(true, "Ausschnitt des Hintergrundfensters blieb nach echtem "
+                   + "Speichern im Vorderfenster stehen (y=\(Int(y)))")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
             observeBackgroundScroll(backWindow: backWindow, backTV: backTV,
@@ -1946,6 +1987,10 @@ enum SelfTest {
         if let windowRoutingFixtureDirectory {
             try? FileManager.default.removeItem(at: windowRoutingFixtureDirectory)
             self.windowRoutingFixtureDirectory = nil
+        }
+        if let backgroundScrollFixtureDirectory {
+            try? FileManager.default.removeItem(at: backgroundScrollFixtureDirectory)
+            self.backgroundScrollFixtureDirectory = nil
         }
         let elapsed = DispatchTime.now().uptimeNanoseconds - testStartedNanoseconds
         let appMilliseconds = elapsed / 1_000_000

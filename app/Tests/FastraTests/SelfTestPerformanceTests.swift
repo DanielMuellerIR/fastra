@@ -1317,7 +1317,9 @@ struct SelfTestPerformanceTests {
 
         try FileManager.default.createDirectory(at: directory,
                                                 withIntermediateDirectories: false)
-        try "999999\n".write(
+        // Eine wiederverwendete PID darf nicht genügen: Der Startzeit-Token
+        // gehört zu einem anderen Prozess und macht die Sperre damit verwaist.
+        try "\(ProcessInfo.processInfo.processIdentifier)\nfremder-start-token\n".write(
             to: directory.appendingPathComponent("pid"),
             atomically: true,
             encoding: .utf8

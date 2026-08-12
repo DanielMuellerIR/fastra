@@ -368,6 +368,7 @@ final class Workspace: ObservableObject {
     /// auslösenden Fensters eindeutig und kann keinem anderen Fenster zufallen.
     let instanceID = UUID()
     typealias LanguageDetectionScheduler = (@escaping @Sendable () -> Void) -> Void
+    typealias ProjectContextResolver = @Sendable (URL, URL?) -> URL?
 
     private final class FolderApplyProgressRelay: @unchecked Sendable {
         private weak var workspace: Workspace?
@@ -480,9 +481,9 @@ final class Workspace: ObservableObject {
     /// Reihenfolge aus `.git/config`. Die Änderungen-Ansicht bietet jedes Ziel
     /// getrennt an und zeigt die Adresse direkt in seiner klickbaren Fläche.
     @Published var gitPushTargets: [GitPushTarget] = []
-    /// Kompatibler Primärwert für Befehle, die bewusst den ersten lokalen
-    /// Remote verwenden. Die sichtbare Oberfläche nutzt `gitPushTargets`.
-    var gitPushTarget: GitPushTarget? { gitPushTargets.first }
+    /// Sichtbarer Hinweis, wenn einzelne konfigurierte Remotes nicht gelesen
+    /// werden konnten, während andere Ziele weiterhin benutzbar bleiben.
+    @Published var gitPushTargetWarning: String?
     /// Atomarer, gemeinsam revidierter Zustand aller Git-Oberflächen.
     @Published var gitRepositorySnapshot: GitRepositorySnapshot?
     /// Commit-Historie des aktuellen Projekts für den Graph-Tab (Phase 3).
@@ -809,6 +810,11 @@ final class Workspace: ObservableObject {
     /// Zielauflösung innerhalb einer aktiven Push-Prüfung, getrennt vom
     /// nebenläufig möglichen Anzeige-Refresh.
     var gitPushActionTargetInspection: GitCancelling?
+    /// Eigene Config-Auflösung für einen manuellen Fetch. Remote-Tracking-Refs
+    /// sind vor dem ersten Fetch absichtlich noch leer und daher keine Quelle
+    /// für die tatsächlich konfigurierten Remote-Namen.
+    var gitFetchRemoteInspection: GitCancelling?
+    var gitFetchRemoteInspectionRequestID: UUID?
     var gitOperationStateInspection: GitCancelling?
     var gitIdentityInspection: GitCancelling?
     var gitConflictInspectionLease: GitCancelling?
@@ -911,6 +917,15 @@ final class Workspace: ObservableObject {
          },
          deliverLanguageDetectionResult: @escaping LanguageDetectionScheduler = {
              DispatchQueue.main.async(execute: $0)
+         },
+         resolveProjectContext: @escaping ProjectContextResolver = {
+             Workspace.existingProjectContextTarget(for: $0, currentProject: $1)
+         },
+         scheduleProjectContextWork: @escaping LanguageDetectionScheduler = {
+             DispatchQueue.global(qos: .userInitiated).async(execute: $0)
+         },
+         deliverProjectContextResult: @escaping LanguageDetectionScheduler = {
+             DispatchQueue.main.async(execute: $0)
          }) {
         // Die injizierten Defaults merken — ALLE Persistenz-Pfade des
         // Workspace müssen dieselbe Suite nutzen. Vorher schrieb der
@@ -927,6 +942,9 @@ final class Workspace: ObservableObject {
         self.terminalDirectoryResolver = terminalDirectoryResolver
         self.scheduleLanguageDetectionWork = scheduleLanguageDetectionWork
         self.deliverLanguageDetectionResult = deliverLanguageDetectionResult
+        self.resolveProjectContext = resolveProjectContext
+        self.scheduleProjectContextWork = scheduleProjectContextWork
+        self.deliverProjectContextResult = deliverProjectContextResult
         if let gitRepositoryStore {
             self.gitRepositoryStore = gitRepositoryStore
         } else if gitOperationsCoordinator === GitOperationsCoordinator.shared {
@@ -2680,22 +2698,60 @@ final class Workspace: ObservableObject {
         return url.canonicalFileURL.deletingLastPathComponent()
     }
 
+    /// Teurer Dateisystemteil des Projektwechsels. Dieser Helfer läuft im
+    /// Produkt ausschließlich auf der Hintergrund-Queue.
+    static func existingProjectContextTarget(
+        for url: URL,
+        currentProject: URL?,
+        fileManager: FileManager = .default
+    ) -> URL? {
+        guard let target = projectContextTarget(
+            for: url, currentProject: currentProject, fileManager: fileManager
+        ) else { return nil }
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: target.path,
+                                     isDirectory: &isDirectory),
+              isDirectory.boolValue else { return nil }
+        return target.canonicalFileURL
+    }
+
     /// Lässt Projekt- und Git-Seitenleiste dem tatsächlich aktiven Datei-Tab
     /// folgen. Fremde Tabs bleiben offen; ein Wechsel der sichtbaren Datei ist
     /// kein Auftrag, ihren Inhalt oder andere Tabs zu schließen.
     private func synchronizeProjectWithActiveTabIfNeeded() {
         guard !showSearchDialog, !livePreview,
               let tab = activeTab, !tab.isLoading,
-              let url = tab.url,
-              let target = usableDirectory(Self.projectContextTarget(
-                  for: url, currentProject: projectURL
-              )),
-              target.canonicalFileURL != projectURL?.canonicalFileURL else {
+              let url = tab.url else {
             return
         }
-        openProject(at: target, keepingUnrelatedTabs: true)
-        showSidebarNotice(L10n.format("Seitenleiste zeigt jetzt „%@“",
-                                      target.lastPathComponent))
+        projectContextRequestGeneration &+= 1
+        let requestGeneration = projectContextRequestGeneration
+        let tabID = tab.id
+        // Nur lexikalisch normalisieren: `canonicalFileURL` fragt das
+        // Dateisystem ab und gehört deshalb ebenfalls in den Hintergrundteil.
+        let expectedURL = url.standardizedFileURL
+        let expectedProjectGeneration = projectGeneration
+        let currentProject = projectURL
+        let resolve = resolveProjectContext
+        let deliver = deliverProjectContextResult
+        scheduleProjectContextWork { [weak self] in
+            let target = resolve(expectedURL, currentProject)
+            deliver { [weak self] in
+                guard let self,
+                      self.projectContextRequestGeneration == requestGeneration,
+                      self.projectGeneration == expectedProjectGeneration,
+                      !self.showSearchDialog, !self.livePreview,
+                      self.activeTabID == tabID,
+                      self.activeTab?.url?.standardizedFileURL == expectedURL,
+                      let target,
+                      target.standardizedFileURL
+                        != self.projectURL?.standardizedFileURL else { return }
+                self.openProject(at: target, keepingUnrelatedTabs: true)
+                self.showSidebarNotice(L10n.format(
+                    "Seitenleiste zeigt jetzt „%@“", target.lastPathComponent
+                ))
+            }
+        }
     }
 
     // MARK: - Inhaltsbasierte Spracherkennung (Etappe 3 Wunschpaket 2026-07)
@@ -2710,6 +2766,10 @@ final class Workspace: ObservableObject {
     /// zeitabhängigen Polling-Schleifen für denselben Zustandsübergang.
     private let scheduleLanguageDetectionWork: LanguageDetectionScheduler
     private let deliverLanguageDetectionResult: LanguageDetectionScheduler
+    private let resolveProjectContext: ProjectContextResolver
+    private let scheduleProjectContextWork: LanguageDetectionScheduler
+    private let deliverProjectContextResult: LanguageDetectionScheduler
+    private var projectContextRequestGeneration: UInt64 = 0
 
     /// Nur ungespeicherte Tabs ohne Dateiendung, ohne manuelle Sprachwahl
     /// und ohne Sonderrolle (Git/Vergleich) nehmen an der Automatik teil.
@@ -3031,6 +3091,9 @@ final class Workspace: ObservableObject {
         gitPushTargetInspectionRequestID = nil
         gitPushActionTargetInspection?.cancel()
         gitPushActionTargetInspection = nil
+        gitFetchRemoteInspection?.cancel()
+        gitFetchRemoteInspection = nil
+        gitFetchRemoteInspectionRequestID = nil
         gitOperationStateInspection?.cancel()
         gitIdentityInspection?.cancel()
         gitConflictInspectionLease?.cancel()
@@ -3041,6 +3104,7 @@ final class Workspace: ObservableObject {
         // oder Aktion versehentlich den Zustand des alten Projekts verwenden.
         gitStatus = nil
         gitPushTargets = []
+        gitPushTargetWarning = nil
         gitRepositorySnapshot = nil
         gitBranches = []
         gitLog = []
@@ -3224,6 +3288,9 @@ final class Workspace: ObservableObject {
         gitPushTargetInspectionRequestID = nil
         gitPushActionTargetInspection?.cancel()
         gitPushActionTargetInspection = nil
+        gitFetchRemoteInspection?.cancel()
+        gitFetchRemoteInspection = nil
+        gitFetchRemoteInspectionRequestID = nil
         gitOperationStateInspection?.cancel()
         gitOperationStateInspection = nil
         gitIdentityInspection?.cancel()
@@ -3237,6 +3304,7 @@ final class Workspace: ObservableObject {
         projectURL = nil
         gitStatus = nil
         gitPushTargets = []
+        gitPushTargetWarning = nil
         gitRepositorySnapshot = nil
         gitLog = []
         gitBranches = []

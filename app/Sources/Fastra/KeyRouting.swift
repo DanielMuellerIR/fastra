@@ -107,6 +107,13 @@ enum KeyRouting {
             return isDocumentWindowKey ? .closeDocument : .passThrough
         }
 
+        // Dokumentbefehle dürfen kein dahinterliegendes Editorfenster treffen,
+        // während Hilfe, Einstellungen oder „Über Fastra“ vorn sind. Die
+        // Suchmaske bleibt ein erlaubtes Ziel desselben Workspace.
+        guard isDocumentWindowKey || isSearchWindowKey else {
+            return .passThrough
+        }
+
         // CMD+G / CMD+SHIFT+G — Treffer-Navigation.
         if modifierFlags.contains(.command),
            charactersIgnoringModifiers?.lowercased() == "g" {

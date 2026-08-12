@@ -589,24 +589,33 @@ struct MarkdownImportOwnershipTests {
         defer { try? FileManager.default.removeItem(at: folder) }
         let source = folder.appendingPathComponent("Quelle.rtf")
         try "Quelle".write(to: source, atomically: true, encoding: .utf8)
-        let service = MarkdownImportService()
-        service.locateTool = { URL(fileURLWithPath: "/bin/echo") }
-        service.runProcess = { _, _, _, _ in /* absichtlich noch laufend */ }
-
-        var owner: Workspace? = Workspace()
-        let ownerID = try #require(owner?.instanceID)
-        service.convert(source, owner: owner)
+        let (service, ownerID) = makeRunningService(source: source)
         #expect(service.ownerID == ownerID)
 
         // `ActiveDocumentContext` beobachtet immer den zuletzt aktivierten
         // Workspace. Erst der echte Fensterwechsel löst diese Beobachtung;
-        // ohne ihn würde der Test den Besitzer selbst noch am Leben halten.
+        // ohne ihn würde der Kontext den Besitzer noch am Leben halten.
+        // Der Besitzer entsteht absichtlich in einem getrennten Helfer:
+        // Swift darf lokale starke Referenzen sonst bis zum Funktionsende
+        // verlängern, und parallele Vollsuiten machten die ARC-Prüfung damit
+        // sporadisch vom Optimierer statt vom Produktverhalten abhängig.
         let other = Workspace()
-        owner = nil
+        ActiveDocumentContext.shared.activate(other)
         #expect(service.owner == nil)
         #expect(service.ownerID == ownerID)
 
         #expect(!service.isOwned(by: other))
         #expect(service.isRunning)
+    }
+
+    @MainActor
+    private func makeRunningService(source: URL) -> (MarkdownImportService, UUID) {
+        let service = MarkdownImportService()
+        service.locateTool = { URL(fileURLWithPath: "/bin/echo") }
+        service.runProcess = { _, _, _, _ in /* absichtlich noch laufend */ }
+        let owner = Workspace()
+        let ownerID = owner.instanceID
+        service.convert(source, owner: owner)
+        return (service, ownerID)
     }
 }

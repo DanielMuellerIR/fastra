@@ -29,9 +29,10 @@ private final class PushTargetTestExecutor: GitCommandExecuting {
     }
 
     func complete(_ index: Int, exitCode: Int32 = 0, stdout: Data = Data(),
-                  stderr: String = "") {
+                  stderr: String = "", stdoutWasTruncated: Bool = false) {
         calls[index].completion(.completed(GitResult(
-            exitCode: exitCode, stdoutData: stdout, stderrData: Data(stderr.utf8)
+            exitCode: exitCode, stdoutData: stdout, stderrData: Data(stderr.utf8),
+            stdoutWasTruncated: stdoutWasTruncated
         )))
     }
 }
@@ -67,7 +68,7 @@ struct GitPushTargetTests {
     func resolverUsesAllRemotesAndPushURLs() {
         let executor = PushTargetTestExecutor()
         var resolved: [GitPushTarget] = []
-        var failure: GitExecutionOutcome?
+        var failure: GitPushTargetResolutionFailure?
         let lease = GitPushTargetResolver.resolveAll(
             repository: URL(fileURLWithPath: "/tmp/repo"), executor: executor
         ) {
@@ -99,6 +100,36 @@ struct GitPushTargetTests {
             GitPushTarget(remote: "github", addresses: ["github-push"]),
         ])
         #expect(failure == nil)
+        _ = lease
+    }
+
+    @Test("Defekter später Remote behält bereits aufgelöste Push-Ziele")
+    func laterRemoteFailureKeepsValidTargets() {
+        let executor = PushTargetTestExecutor()
+        var resolved: [GitPushTarget] = []
+        var failure: GitPushTargetResolutionFailure?
+        let lease = GitPushTargetResolver.resolveAll(
+            repository: URL(fileURLWithPath: "/tmp/repo"), executor: executor
+        ) {
+            resolved = $0
+            failure = $1
+        }
+        executor.complete(0, stdout: remoteConfigData([
+            ("remote.primary.url", "primary-fetch"),
+            ("remote.broken.url", "broken-fetch"),
+            ("remote.github.url", "github-fetch"),
+        ]))
+        executor.complete(1, stdout: Data("primary-push\n".utf8))
+        executor.complete(2, exitCode: 2, stderr: "defekter Remote")
+        executor.complete(3, stdout: Data("github-push\n".utf8))
+
+        #expect(resolved.map(\.remote) == ["primary", "github"])
+        #expect(failure?.remote == "broken")
+        guard case .completed(let result) = failure?.outcome else {
+            Issue.record("Der Remote-Fehler fehlt")
+            return
+        }
+        #expect(result.stderr == "defekter Remote")
         _ = lease
     }
 
@@ -175,7 +206,7 @@ struct GitPushTargetTests {
         let executor = PushTargetTestExecutor()
         var didComplete = false
         var resolved: [GitPushTarget] = []
-        var failure: GitExecutionOutcome?
+        var failure: GitPushTargetResolutionFailure?
         let lease = GitPushTargetResolver.resolveAll(
             repository: URL(fileURLWithPath: "/tmp/repo"), executor: executor
         ) {

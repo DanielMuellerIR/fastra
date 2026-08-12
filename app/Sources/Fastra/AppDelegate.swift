@@ -773,9 +773,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let keyWindow = NSApp.keyWindow
             let isSearchKey = keyWindow.map(SearchWindow.isSearchWindow) ?? false
             let isHelpKey = HelpWindow.isHelpWindow(keyWindow)
+            let routedWorkspace = keyWindow.flatMap {
+                WorkspaceWindowRegistry.workspace(for: $0)
+            }
             let keyWorkspace: Workspace? = keyWindow.flatMap { window in
                 guard !isSearchKey, !isHelpKey else { return nil }
-                return WorkspaceWindowRegistry.workspace(for: window)
+                return routedWorkspace
             }
             let route = KeyRouting.route(
                 isKeyDown: event.type == .keyDown,
@@ -846,7 +849,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let name = KeyRouting.notificationName(for: route) else {
                 return event   // nicht abfangen
             }
-            NotificationCenter.default.post(name: name, object: nil)
+            // Die app-weite Notification trägt ihr bereits bestimmtes Ziel.
+            // Sonst würden bei mehreren Dokumenten auch fremde ContentViews
+            // und Suchlisten auf denselben Tastendruck reagieren.
+            NotificationCenter.default.post(name: name, object: routedWorkspace)
             return nil         // Event verbrauchen
         }
     }
