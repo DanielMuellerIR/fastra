@@ -1678,6 +1678,70 @@ enum SelfTest {
            sourceEditorController(for: backTV) != nil,
            (backTV.string as NSString).range(of: "bgscrolltreffer").location != NSNotFound,
            nextStableTicks >= 3 {
+            pollBackgroundScrollReadyForJump(frontWindow: frontWindow,
+                                             backWorkspace: backWorkspace,
+                                             backWindow: backWindow,
+                                             backTV: backTV)
+            return
+        }
+        if tick >= 100 {
+            finish(false, "Editoren mit Testinhalt wurden nicht binnen 5 s bereit "
+                   + "(vorderer=\(frontTV != nil), hinterer=\(backTV != nil), "
+                   + "Controller=\(backTV.map { sourceEditorController(for: $0) != nil } ?? false), "
+                   + "stabil=\(nextStableTicks))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollBackgroundScrollEditors(frontWindow: frontWindow,
+                                        backWorkspace: backWorkspace,
+                                        backWindow: backWindow, tick: tick + 1,
+                                        previousBackTV: backTV,
+                                        stableTicks: nextStableTicks)
+        }
+    }
+
+    /// Stellt vor dem einmaligen Treffer-Sprung denselben Zustand her, den ein
+    /// Nutzer durch den Wechsel in das zweite Fenster erzeugt. Ein gerade neu
+    /// montierter CESE-Editor kann schon Inhalt und Controller besitzen, aber
+    /// noch keine Auswahl. Trifft der Sprung genau in diesen ersten
+    /// Abgleich, wird die Zeile gescrollt, während die Auswahl `NSNotFound`
+    /// bleibt. Passives Warten heilt diesen verlorenen Abgleich nicht.
+    private static func pollBackgroundScrollReadyForJump(frontWindow: NSWindow,
+                                                         backWorkspace: Workspace,
+                                                         backWindow: NSWindow,
+                                                         backTV: TextView,
+                                                         tick: Int = 0,
+                                                         previousSelection: NSRange? = nil,
+                                                         stableTicks: Int = 0) {
+        let mountedBackTV = backWindow.contentView.flatMap {
+            editorTextView(in: $0) as? TextView
+        }
+        guard mountedBackTV === backTV else {
+            finish(false, "hinterer Editor wurde vor dem Treffer-Sprung neu aufgebaut")
+        }
+
+        NSApp.activate(ignoringOtherApps: true)
+        backWindow.makeKeyAndOrderFront(nil)
+        let acceptedFirstResponder = backWindow.makeFirstResponder(backTV)
+        if backTV.selectionManager.textSelections.isEmpty {
+            // Entspricht `EditorView.focusActiveEditor`: Erst die echte
+            // Anfangsauswahl anlegen, dann auf CESEs Rückmeldung warten.
+            backTV.selectionManager.setSelectedRange(
+                NSRange(location: 0, length: 0)
+            )
+        }
+
+        let selection = backTV.selectedRange()
+        let validSelection = selection.location != NSNotFound
+            && NSMaxRange(selection) <= (backTV.string as NSString).length
+        let sameSelection = previousSelection.map {
+            NSEqualRanges($0, selection)
+        } ?? false
+        let nextStableTicks = sameSelection ? stableTicks + 1 : 0
+        if NSApp.isActive, backWindow.isKeyWindow,
+           backWindow.firstResponder === backTV,
+           acceptedFirstResponder, validSelection,
+           backWorkspace.cursorLine != nil,
+           nextStableTicks >= 2 {
             let result = BufferSearch.find(
                 in: backWorkspace.activeTab?.content ?? "",
                 options: SearchOptions(find: "bgscrolltreffer", replace: "",
@@ -1696,17 +1760,21 @@ enum SelfTest {
             return
         }
         if tick >= 100 {
-            finish(false, "Editoren mit Testinhalt wurden nicht binnen 5 s bereit "
-                   + "(vorderer=\(frontTV != nil), hinterer=\(backTV != nil), "
-                   + "Controller=\(backTV.map { sourceEditorController(for: $0) != nil } ?? false), "
+            finish(false, "hinterer Editor wurde vor dem Treffer-Sprung nicht eingabebereit "
+                   + "(App aktiv=\(NSApp.isActive), Fenster key=\(backWindow.isKeyWindow), "
+                   + "First Responder=\(backWindow.firstResponder === backTV), "
+                   + "Fokus angenommen=\(acceptedFirstResponder), Auswahl=\(selection), "
+                   + "Cursorzeile=\(backWorkspace.cursorLine.map(String.init) ?? "nil"), "
                    + "stabil=\(nextStableTicks))")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollBackgroundScrollEditors(frontWindow: frontWindow,
-                                        backWorkspace: backWorkspace,
-                                        backWindow: backWindow, tick: tick + 1,
-                                        previousBackTV: backTV,
-                                        stableTicks: nextStableTicks)
+            pollBackgroundScrollReadyForJump(frontWindow: frontWindow,
+                                             backWorkspace: backWorkspace,
+                                             backWindow: backWindow,
+                                             backTV: backTV,
+                                             tick: tick + 1,
+                                             previousSelection: validSelection ? selection : nil,
+                                             stableTicks: nextStableTicks)
         }
     }
 
