@@ -257,6 +257,48 @@ enum TextOpKind: Int, CaseIterable {
 /// selbst hält sie über die Action-Targets am Leben.
 final class EditorContextMenu: NSObject {
 
+    /// Bindet eine nebenläufige Formatierung an genau den Editorzustand ihres
+    /// Starts. Tippen, Tabwechsel oder eine neue Auswahl lassen das späte
+    /// Ergebnis kontrolliert verfallen, statt fremden Text zu überschreiben.
+    private final class FormattingTargetLease {
+        private weak var workspace: Workspace?
+        private weak var window: NSWindow?
+        private weak var editor: TextView?
+        let source: String
+        let selection: NSRange
+        let fileExtension: String
+        private let tabID: UUID
+        private let contentRevision: UInt64
+
+        init?(editor: TextView, workspace: Workspace, fileExtension: String) {
+            guard let window = editor.window,
+                  WorkspaceWindowRegistry.workspace(for: window) === workspace,
+                  let tab = workspace.activeTab else { return nil }
+            self.workspace = workspace
+            self.window = window
+            self.editor = editor
+            self.source = editor.string
+            self.selection = editor.fastraSafeSelectedRange
+            self.fileExtension = fileExtension
+            self.tabID = tab.id
+            self.contentRevision = tab.contentRevision
+        }
+
+        func applyIfUnchanged(_ result: DocumentFormatResult) -> Bool {
+            guard let workspace, let window, let editor,
+                  editor.window === window,
+                  WorkspaceWindowRegistry.workspace(for: window) === workspace,
+                  workspace.activeTabID == tabID,
+                  workspace.activeTab?.contentRevision == contentRevision,
+                  editor.fastraSafeSelectedRange == selection else { return false }
+            editor.fastraApplyTextOperation(
+                replacing: result.affectedRange,
+                with: result.replacement
+            )
+            return true
+        }
+    }
+
     /// Die TextView unter dem letzten Rechtsklick — Ziel aller Aktionen.
     /// `weak`, damit ein geschlossener Editor nicht festgehalten wird.
     private weak var targetTextView: TextView?
@@ -388,11 +430,12 @@ final class EditorContextMenu: NSObject {
         // Der Menüaufbau kennt seinen Editor — die Endung deshalb aus DESSEN
         // Tab holen, nicht aus dem globalen `Workspace.shared`. Sonst richtet
         // sich das Kontextmenü eines Fensters nach dem Dokument eines anderen.
-        let menuTab = workspace(forEditor: textView)?.activeTab
+        let menuWorkspace = workspace(forEditor: textView)
+        let menuTab = menuWorkspace?.activeTab
         let filename = menuTab?.url?.pathExtension
             ?? (menuTab?.title as NSString?)?.pathExtension
         format.isEnabled = !hasColumnSelection
-            && DocumentFormatter.supports(fileExtension: filename)
+            && menuWorkspace?.activeDocumentFormattingExtension != nil
 
         // Prüfen und Minifizieren spiegeln „Text → Dokument prüfen/
         // minifizieren“ aus der Menüleiste. Der Linter deckt mehr Endungen ab
@@ -410,7 +453,7 @@ final class EditorContextMenu: NSObject {
         minify.target = self
         minify.toolTip = L10n.string("Schreibt JSON oder XML kompakt ohne überflüssigen Leerraum. Eine Auswahl wird einzeln minifiziert.")
         minify.isEnabled = !hasColumnSelection
-            && DocumentFormatter.supports(fileExtension: filename)
+            && menuWorkspace?.activeDocumentFormattingExtension != nil
 
         // „Text"-Submenü mit den BBEdit-Basics (TextOperations). Tag trägt die
         // TextOpKind; ein gemeinsamer Handler liest ihn. Gruppen durch Trenner.
@@ -538,25 +581,54 @@ final class EditorContextMenu: NSObject {
             warnColumnSelectionUnsupported()
             return
         }
-        // Dateiendung aus dem Tab GENAU DIESES Editors — nicht aus
-        // `Workspace.shared`. Sonst formatiert Fenster A seinen Text nach der
-        // Endung von Fenster B (Fehlerbericht 2026-08-07).
-        guard let tab = workspace(forEditor: textView)?.activeTab else {
+        // Effektives Format aus dem Workspace GENAU DIESES Editors — nicht
+        // aus `Workspace.shared`. So gewinnt auch eine manuelle JSON-Wahl bei
+        // `.txt`, ohne dass Fenster A nach dem Format von Fenster B arbeitet.
+        guard let workspace = workspace(forEditor: textView),
+              let fileExtension = workspace.activeDocumentFormattingExtension,
+              let lease = FormattingTargetLease(
+                editor: textView,
+                workspace: workspace,
+                fileExtension: fileExtension
+              ) else {
             NSSound.beep()
             return
         }
-        let fileExtension = tab.url?.pathExtension ?? (tab.title as NSString).pathExtension
-        do {
-            guard let result = try DocumentFormatter.format(in: textView.string,
-                                                            selection: textView.fastraSafeSelectedRange,
-                                                            fileExtension: fileExtension) else {
-                NSSound.beep()
-                return
+
+        // JSONSerialization/XMLDocument und die Ausgabeerzeugung dürfen bei
+        // mehreren MiB niemals die Main-Runloop anhalten. Nur Snapshot und
+        // abschließende, validierte Editor-Ersetzung laufen auf dem UI-Thread.
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = Result {
+                try DocumentFormatter.format(
+                    in: lease.source,
+                    selection: lease.selection,
+                    fileExtension: lease.fileExtension
+                )
             }
-            textView.replaceCharacters(in: result.affectedRange, with: result.replacement)
-        } catch {
-            NSAlert.runWarning(title: L10n.string("Formatieren fehlgeschlagen"),
-                               text: error.localizedDescription)
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let formatted):
+                    guard let formatted else {
+                        NSSound.beep()
+                        return
+                    }
+                    guard lease.applyIfUnchanged(formatted) else {
+                        NSAlert.runWarning(
+                            title: L10n.string("Formatierung nicht übernommen"),
+                            text: L10n.string(
+                                "Das Dokument oder die Auswahl hat sich während der Formatierung geändert. Der neue Stand blieb unverändert."
+                            )
+                        )
+                        return
+                    }
+                case .failure(let error):
+                    NSAlert.runWarning(
+                        title: L10n.string("Formatieren fehlgeschlagen"),
+                        text: error.localizedDescription
+                    )
+                }
+            }
         }
     }
 
@@ -579,13 +651,14 @@ final class EditorContextMenu: NSObject {
             warnColumnSelectionUnsupported()
             return
         }
-        // Dateiendung aus dem Tab GENAU DIESES Editors (siehe `format`).
-        guard let tab = workspace(forEditor: textView)?.activeTab else {
+        // Effektives Format aus dem Workspace GENAU DIESES Editors (siehe
+        // `format`).
+        guard let workspace = workspace(forEditor: textView),
+              workspace.activeTab != nil,
+              let fileExtension = workspace.activeDocumentFormattingExtension else {
             NSSound.beep()
             return
         }
-        let fileExtension = tab.url?.pathExtension
-            ?? (tab.title as NSString).pathExtension
         do {
             guard let result = try DocumentFormatter.minify(
                 in: textView.string,

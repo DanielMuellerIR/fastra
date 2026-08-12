@@ -48,5 +48,20 @@ struct DocumentFormatterTests {
         #expect(DocumentFormatter.supports(fileExtension: "XML"))
         #expect(DocumentFormatter.supports(fileExtension: "json"))
         #expect(!DocumentFormatter.supports(fileExtension: "swift"))
+        #expect(DocumentFormatter.supports(formatID: .grammar(.json)))
+        #expect(!DocumentFormatter.supports(formatID: .plainText))
     }
+
+    @Test("Manuell gewähltes JSON formatiert unabhängig von der txt-Endung")
+    func manuallySelectedJSONUsesEffectiveFormat() throws {
+        let source = #"{"blob":"AAAA","z":1}"#
+        let result = try DocumentFormatter.format(
+            in: source,
+            selection: NSRange(location: 0, length: 0),
+            formatID: .grammar(.json)
+        )
+        #expect(result?.replacement.contains("\n") == true)
+        #expect(result?.replacement.contains(#""blob" : "AAAA""#) == true)
+    }
+
 }

@@ -516,7 +516,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             _ = Self.synchronizeSoftWrapMenuState(
                 in: mainMenu,
                 isOn: ActiveDocumentContext.shared.workspace?.softWrapEnabled ?? false,
-                hasDocument: ActiveDocumentContext.shared.workspace?.activeTab != nil
+                hasDocument: ActiveDocumentContext.shared.workspace?.activeTab != nil,
+                canToggle: ActiveDocumentContext.shared.workspace?
+                    .softWrapSuppressedForLongLine != true
             )
         }
     }
@@ -529,17 +531,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static func synchronizeSoftWrapMenuState(
         in menu: NSMenu,
         isOn: Bool,
-        hasDocument: Bool
+        hasDocument: Bool,
+        canToggle: Bool = true
     ) -> NSMenuItem? {
         for item in menu.items {
             if item.title == L10n.string("Soft Wrap") {
                 item.state = isOn ? .on : .off
-                item.isEnabled = hasDocument
+                item.isEnabled = hasDocument && canToggle
                 return item
             }
             if let submenu = item.submenu,
                let found = synchronizeSoftWrapMenuState(
-                   in: submenu, isOn: isOn, hasDocument: hasDocument
+                   in: submenu, isOn: isOn, hasDocument: hasDocument,
+                   canToggle: canToggle
                ) {
                 return found
             }

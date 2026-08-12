@@ -273,11 +273,9 @@ struct StatusBarView: View {
                 .padding(.vertical, 2)
             }
             .buttonStyle(.plain)
+            .disabled(workspace.softWrapSuppressedForLongLine)
             .accessibilityLabel(softWrapStatusText)
-            .accessibilityHint(L10n.format(
-                "Schaltet Soft Wrap für das Format %@ um.",
-                workspace.activeDocumentFormat.displayName
-            ))
+            .accessibilityHint(softWrapControlHelp)
 
             Menu {
                 softWrapOptions
@@ -297,11 +295,7 @@ struct StatusBarView: View {
         .background(Theme.surfaceSand.opacity(0.8))
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .fixedSize()
-        .help(L10n.format(
-            "Soft Wrap für %@: %@. Hauptklick schaltet um; Pfeil oder Rechtsklick öffnet Optionen.",
-            workspace.activeDocumentFormat.displayName,
-            workspace.softWrapEnabled ? L10n.string("Ein") : L10n.string("Aus")
-        ))
+        .help(softWrapControlHelp)
         .contextMenu {
             softWrapOptions
         }
@@ -310,12 +304,35 @@ struct StatusBarView: View {
     }
 
     private var softWrapStatusText: String {
-        L10n.format("Soft Wrap: %@",
-                    workspace.softWrapEnabled ? L10n.string("Ein") : L10n.string("Aus"))
+        if workspace.softWrapSuppressedForLongLine {
+            return L10n.string("Soft Wrap: Aus (sehr lange Zeile)")
+        }
+        return L10n.format("Soft Wrap: %@",
+                           workspace.softWrapEnabled
+                            ? L10n.string("Ein") : L10n.string("Aus"))
+    }
+
+    private var softWrapControlHelp: String {
+        if workspace.softWrapSuppressedForLongLine {
+            return L10n.string(
+                "Soft Wrap bleibt für dieses Dokument automatisch aus, weil eine extrem lange Zeile den Editor sonst blockieren würde. Der Text bleibt unverändert und horizontal scrollbar."
+            )
+        }
+        return L10n.format(
+            "Soft Wrap für %@: %@. Hauptklick schaltet um; Pfeil oder Rechtsklick öffnet Optionen.",
+            workspace.activeDocumentFormat.displayName,
+            workspace.softWrapEnabled ? L10n.string("Ein") : L10n.string("Aus")
+        )
     }
 
     @ViewBuilder
     private var softWrapOptions: some View {
+        if workspace.softWrapSuppressedForLongLine {
+            Text(verbatim: L10n.string(
+                "Für dieses Dokument wegen einer sehr langen Zeile automatisch aus"
+            ))
+            Divider()
+        }
         Button {
             workspace.toggleSoftWrap()
         } label: {
@@ -325,6 +342,7 @@ struct StatusBarView: View {
                 Text(verbatim: softWrapStatusText)
             }
         }
+        .disabled(workspace.softWrapSuppressedForLongLine)
         Divider()
         Button {
             workspace.selectSoftWrapTarget(.window)

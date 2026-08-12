@@ -132,9 +132,14 @@
 "Später" = "Later";
 "Soft Wrap" = "Soft Wrap";
 "Soft Wrap: %@" = "Soft Wrap: %@";
+"Soft Wrap: Aus (sehr lange Zeile)" = "Soft Wrap: Off (very long line)";
 "Soft Wrap für %@: %@. Hauptklick schaltet um; Pfeil oder Rechtsklick öffnet Optionen." = "Soft Wrap for %@: %@. Click the main control to toggle; use the arrow or right-click for options.";
+"Soft Wrap bleibt für dieses Dokument automatisch aus, weil eine extrem lange Zeile den Editor sonst blockieren würde. Der Text bleibt unverändert und horizontal scrollbar." = "Soft Wrap stays off automatically for this document because an extremely long line would otherwise block the editor. The text remains unchanged and horizontally scrollable.";
 "Soft-Wrap-Optionen" = "Soft Wrap Options";
 "Schaltet Soft Wrap für das Format %@ um." = "Toggles Soft Wrap for the %@ format.";
+"Für dieses Dokument wegen einer sehr langen Zeile automatisch aus" = "Automatically off for this document because of a very long line";
+"Formatierung nicht übernommen" = "Formatting Not Applied";
+"Das Dokument oder die Auswahl hat sich während der Formatierung geändert. Der neue Stand blieb unverändert." = "The document or selection changed while formatting. The newer content was left unchanged.";
 "Für %@ auf Werkseinstellung zurücksetzen" = "Reset %@ to Factory Default";
 "Ein" = "On";
 "Aus" = "Off";

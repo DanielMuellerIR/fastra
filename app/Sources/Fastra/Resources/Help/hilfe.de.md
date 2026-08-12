@@ -159,12 +159,14 @@ anwenden ändert nichts mehr; **Emoji-Darstellung aufheben** ist der Rückweg.
 
 Zusätzlich im Menü **Text** und im Rechtsklickmenü: **Dokument
 formatieren** (JSON/XML hübsch einrücken), **Dokument prüfen**
-(Syntaxprüfung mit Fehlerposition) und **Dokument minifizieren**. Die drei
-Einträge sind nur aktiv, wenn die Dateiendung des Tabs passt — formatiert
-und minifiziert werden `json`, `xml`, `xsd`, `xsl`, `xslt` und `plist`,
-geprüft zusätzlich `svg` und die 4D-Containerdateien. Ein neuer,
-ungespeicherter Tab hat keine Endung; benenne ihn beim Sichern etwa
-`daten.json`, dann sind die Einträge wählbar.
+(Syntaxprüfung mit Fehlerposition) und **Dokument minifizieren**. Formatieren
+und Minifizieren folgen dem **effektiven Dokumentformat**: Automatisch werden
+`json`, `xml`, `xsd`, `xsl`, `xslt` und `plist` unterstützt; nach einer
+manuellen Wahl von **JSON** oder **XML** im Sprach-Chip funktionieren die
+Befehle auch in einer `.txt`-Datei oder einem ungespeicherten Tab. Große
+Formatierungen laufen im Hintergrund und werden nur übernommen, solange
+Dokument und Auswahl unverändert sind. Die Prüfung folgt weiterhin der
+Dateiendung und unterstützt zusätzlich `svg` und die 4D-Containerdateien.
 
 ## Gehe zum Ziel
 
@@ -443,6 +445,10 @@ ein Unicode-Zeichen zu zerlegen.
 
 Werkseitig ist Soft Wrap für **Reinen Text, Markdown, HTML und XML ein**.
 Für **4D, JSON, CSV und andere Code-/Konfigurationsformate ist es aus**.
+Enthält ein einzelnes Dokument eine extrem lange logische Zeile, setzt Fastra
+Soft Wrap nur für dieses Dokument automatisch aus. Die gespeicherte Wahl des
+Formats bleibt erhalten und gilt unverändert für andere Dateien; die Fußzeile
+erklärt die vorübergehende Sperre.
 Ohne Soft Wrap bleiben lange Zeilen über den horizontalen Scrollbalken
 erreichbar. Das Umschalten ändert weder Text noch Auswahl, Rückgängig-
 Verlauf oder gespeicherte Datei. Die oberste angezeigte Textzeile bleibt dabei

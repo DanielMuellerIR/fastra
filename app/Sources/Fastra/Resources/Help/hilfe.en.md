@@ -152,11 +152,13 @@ those would turn into symbols. Applying it twice changes nothing further;
 
 Also in the **Text** menu and the right-click menu: **Format Document**
 (pretty-print JSON/XML), **Validate Document** (syntax check with error
-position), and **Minify Document**. The three entries are only active when
-the tab's file extension matches — `json`, `xml`, `xsd`, `xsl`, `xslt` and
-`plist` can be formatted and minified, validation also covers `svg` and the
-4D container files. A new, unsaved tab has no extension; name it something
-like `data.json` when saving and the entries become available.
+position), and **Minify Document**. Formatting and minifying follow the
+**effective document format**: automatic mode supports `json`, `xml`, `xsd`,
+`xsl`, `xslt`, and `plist`; after manually choosing **JSON** or **XML** in the
+language chip, the commands also work in a `.txt` file or an unsaved tab.
+Large formatting jobs run in the background and are applied only while the
+document and selection remain unchanged. Validation continues to follow the
+file extension and additionally covers `svg` and the 4D container files.
 
 ## Go to Target
 
@@ -424,8 +426,12 @@ boundaries when wrapping. A single long word falls back to character
 boundaries without splitting a Unicode character.
 
 The factory default is on for **Plain Text, Markdown, HTML, and XML**. It is
-off for **4D, JSON, CSV, and other code/configuration formats**. With Soft
-Wrap off, long lines remain reachable through the horizontal scroll bar.
+off for **4D, JSON, CSV, and other code/configuration formats**. Fastra
+automatically suspends Soft Wrap for an individual document that
+contains an extremely long logical line. The saved format preference remains
+intact and still applies to other files; the footer explains the temporary
+lockout. With Soft Wrap off, long lines remain reachable through the
+horizontal scroll bar.
 Toggling it changes neither text nor selection, undo history, or the saved
 file. The topmost displayed text line remains steadily anchored in place.
 

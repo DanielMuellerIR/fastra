@@ -29,6 +29,19 @@ struct DocumentFormatResult: Equatable {
 enum DocumentFormatter {
     static let supportedExtensions: Set<String> = ["json", "xml", "xsd", "xsl", "xslt", "plist"]
 
+    /// Manuell gewählte Formate haben Vorrang vor der Dateiendung. So kann
+    /// eine `.txt`-Datei nach der bewussten Wahl „JSON“ auch tatsächlich mit
+    /// dem JSON-Formatter bearbeitet werden.
+    static func canonicalExtension(for formatID: DocumentFormatID) -> String? {
+        if formatID == .grammar(.json) { return "json" }
+        if formatID == .xml { return "xml" }
+        return nil
+    }
+
+    static func supports(formatID: DocumentFormatID) -> Bool {
+        canonicalExtension(for: formatID) != nil
+    }
+
     static func supports(fileExtension: String?) -> Bool {
         guard let fileExtension else { return false }
         return supportedExtensions.contains(fileExtension.lowercased())
@@ -44,6 +57,15 @@ enum DocumentFormatter {
         let formatted = try format(original, fileExtension: fileExtension)
         guard formatted != original else { return nil }
         return DocumentFormatResult(affectedRange: range, replacement: formatted)
+    }
+
+    static func format(in text: String, selection: NSRange,
+                       formatID: DocumentFormatID) throws -> DocumentFormatResult? {
+        guard let fileExtension = canonicalExtension(for: formatID) else {
+            throw DocumentFormatterError.unsupportedFormat
+        }
+        return try format(in: text, selection: selection,
+                          fileExtension: fileExtension)
     }
 
     static func format(_ text: String, fileExtension: String) throws -> String {

@@ -209,7 +209,8 @@ struct FastraApp: App {
                     activeDocumentContext.workspace?.toggleSoftWrap()
                 }
                     .keyboardShortcut("l", modifiers: [.command, .shift])
-                    .disabled(activeDocumentContext.workspace?.activeTab == nil)
+                    .disabled(activeDocumentContext.workspace?.activeTab == nil
+                        || activeDocumentContext.workspace?.softWrapSuppressedForLongLine == true)
                 Toggle("Seitenlinie anzeigen", isOn: Binding(
                     get: { commandWorkspace?.showPageGuide ?? false },
                     set: { commandWorkspace?.setShowPageGuide($0) }
@@ -412,8 +413,7 @@ struct FastraApp: App {
             // Operieren auf der Selektion bzw. — ohne Selektion — der ganzen Datei.
             CommandMenu("Text") {
                 Button("Dokument formatieren") { postDocumentFormatting() }
-                    .disabled(!DocumentFormatter.supports(fileExtension: commandWorkspace?.activeTab?.url?.pathExtension
-                        ?? (commandWorkspace?.activeTab?.title as NSString?)?.pathExtension))
+                    .disabled(commandWorkspace?.activeDocumentFormattingExtension == nil)
                 // Etappe 6 (Wunschpaket 2026-07): native JSON-/XML-Prüfung
                 // mit Fehlerposition und konservatives Minify — bewusst keine
                 // gebündelten Fremd-Linter (JS/CSS/HTML bleiben außen vor).
@@ -429,8 +429,7 @@ struct FastraApp: App {
                     NotificationCenter.default.post(name: .fastraMinifyDocument,
                                                     object: nil)
                 }
-                .disabled(!DocumentFormatter.supports(fileExtension: commandWorkspace?.activeTab?.url?.pathExtension
-                    ?? (commandWorkspace?.activeTab?.title as NSString?)?.pathExtension))
+                .disabled(commandWorkspace?.activeDocumentFormattingExtension == nil)
                 Divider()
                 Button(TextOpKind.uppercase.title)  { postTextOp(.uppercase) }
                 Button(TextOpKind.lowercase.title)  { postTextOp(.lowercase) }

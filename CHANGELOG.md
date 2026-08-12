@@ -9,6 +9,27 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.75.0] — 2026-08-12
+
+### Behoben
+
+- **Dokumente mit einer einzelnen Megazeile bleiben responsiv:** Fastra setzt
+  Soft Wrap nur für das betroffene Dokument automatisch aus, portioniert die
+  unsichtbare CoreText-Arbeit und begrenzt Syntax-Highlighting auf den echten
+  Bildschirmausschnitt. Eine 4,36-MB-Datei öffnet dadurch ohne minutenlange
+  Folgearbeit; der horizontale Scrollbalken erhält den vollständigen Text.
+- **Manuell gewähltes JSON oder XML lässt sich unabhängig von der Endung
+  formatieren:** Auch eine `.txt`-Datei folgt nun der bewussten Formatwahl.
+  Mehrere MiB große Formatierungen laufen außerhalb des UI-Threads und werden
+  nur übernommen, wenn Dokument und Auswahl inzwischen unverändert blieben.
+
+### Verbessert
+
+- **Schwierige große Dokumente besitzen einen dauerhaften Testkorpus:** Die
+  Tests erzeugen TXT, JSON, XML, CSV und Markdown in der gemeldeten
+  Größenklasse prozedural aus erfundenem, ungültigem Base64-artigem Text. Es
+  werden weder Nutzerdaten noch große Fixture-Dateien ins Repository gelegt.
+
 ## [v1.74.0] — 2026-08-12
 
 ### Hinzugefügt

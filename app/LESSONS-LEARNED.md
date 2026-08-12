@@ -417,7 +417,10 @@ geschätzte Höhe. Das Scrollen kann sie erstmals auslegen und dadurch ihre echt
 Position unter den gerade erreichten Viewport verschieben. Ein ausschließlich
 für verbleibende Auswahlen geplanter zweiter Abgleich im folgenden Main-Runloop
 verwendet die stabilisierte Position, ohne normale Cursorbewegungen doppelt zu
-bearbeiten.
+bearbeiten. AppKit rundet den Scrollursprung außerdem auf Gerätepixel. Das
+Scrollziel erhält deshalb vertikal einen Punkt Reserve; sonst kann die aktive
+Zeichenbox trotz korrekter Rechnung um einen Bruchteil eines Punkts außerhalb
+des Viewports bleiben.
 
 **Regressionen:** `SoftWrapLayoutTests.extendingSelectionDownScrollsActiveEdgeIntoView`
 verwendet den echten `TextViewController`, beginnt in einem bereits nach unten
@@ -680,3 +683,31 @@ Pasteboards bleibt der Upstream-Pfad unverändert.
 **Regression:** `./selftest.sh mddropcursor` treibt die echte
 Drag-Destination mit einer Bilddatei, hält die Maus am unteren Rand und verlangt
 sichtbaren Cursor, messbaren Autoscroll sowie den Link exakt am Drop-Offset.
+
+### F.29 Eine Megazeile darf weder CoreText noch den Highlighter besitzen (2026-08-12)
+
+Eine 4,36-MB-Textdatei mit nur einer logischen Zeile blockierte den Editor an
+mehreren voneinander unabhängigen Stellen. Soft Wrap erzeugte tausende
+Umbruchfragmente. Ohne Soft Wrap baute CoreText die gesamte Zeile als ein
+einziges `CTLine` auf. CodeEditSourceEditor wiederholte das Layout beim
+erstmaligen Anwenden bereits gesetzter Insets und Attribute. Schließlich
+meldete `visibleTextRange` horizontal die ganze logische Zeile, sodass der
+Highlighter auch unsichtbare Millionen Zeichen einplante; ein Sprachwechsel
+entfernte alte Attribute synchron im ganzen Dokument.
+
+**Fix (Patch 4z4 in `build.sh`):** Fastra setzt Soft Wrap für das einzelne
+betroffene Dokument aus. CodeEditTextView hält ungebrochene Megazeilen als eine
+visuelle Zeile, portioniert sie intern aber an sicheren Unicode-Grenzen in
+16-KiB-`CTLine`s und zeichnet nur Portionen im Grafik-Ausschnitt. Die
+Anfangskonfiguration wird vor dem Einhängen der TextView angewandt und
+identische Startattribute werden nicht erneut geschrieben. Sichtbare Bereiche
+bleiben horizontal und zwischen logischen Zeilen getrennt; der Sprachwechsel
+setzt nur dort Attribute zurück.
+
+**Regression:** `DifficultDocumentCorpusTests` erzeugt TXT, JSON, XML, CSV und
+Markdown mit jeweils exakt 4.357.697 Byte aus einem ungültigen synthetischen
+Base64-artigen Muster. Die Tests begrenzen Laden, vollständigen Editoraufbau,
+Layout, JSON-Sprachwechsel, echte tree-sitter-Abfrage sowie JSON-/XML-
+Formatierung. `LongLineEditorPerformanceTests` prüft zusätzlich View-Anzahl,
+horizontal sichtbaren Bereich, Zeichendauer und Unicode-Grenzen der internen
+Portionen. Die Fixture-Dateien entstehen nur im Test und liegen nicht im Repo.
