@@ -463,3 +463,22 @@ func fileLoader_invalidUtf8_throws() throws {
     let _ = try? FileLoader.load(url: url)
     // Kein Absturz = implizit PASS.
 }
+
+@Test("FileLoader: ersetzte Vorschau bricht kooperativ nach der Probe ab")
+func fileLoader_previewCancellationStopsRead() throws {
+    let url = try writeTmp(Array(repeating: 65, count: 64 * 1024))
+    defer { try? FileManager.default.removeItem(at: url) }
+    var checks = 0
+
+    do {
+        _ = try FileLoader.load(url: url, isCancelled: {
+            checks += 1
+            return checks >= 2
+        })
+        Issue.record("Der ersetzte Vorschau-Read lief trotz Abbruchsignal weiter")
+    } catch FileLoader.LoadError.cancelled {
+        #expect(checks == 2)
+    } catch {
+        Issue.record("Unerwarteter Fehler: \(error)")
+    }
+}

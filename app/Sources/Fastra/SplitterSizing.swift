@@ -24,4 +24,16 @@ enum SplitterSizing {
                                 minimumTrailing: Double) -> Double {
         max(minimumTrailing, total - occupiedLeading - splitter - minimumLeading)
     }
+
+    /// Wie breit der linke Bereich höchstens sein darf, ohne den Editor ganz
+    /// aus dem Fenster zu drücken. Ist das Fenster selbst schmaler als beide
+    /// Mindestbreiten zusammen, bleibt wenigstens das Seitenleisten-Minimum
+    /// erreichbar; das Layout darf dann wie bisher beide Bereiche stauchen.
+    static func leadingMaximum(total: Double, splitter: Double,
+                               minimumLeading: Double,
+                               minimumTrailing: Double,
+                               absoluteMaximum: Double) -> Double {
+        min(absoluteMaximum,
+            max(minimumLeading, total - splitter - minimumTrailing))
+    }
 }

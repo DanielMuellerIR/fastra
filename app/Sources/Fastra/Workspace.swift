@@ -109,6 +109,24 @@ struct EditorTab: Identifiable, Hashable {
     /// (CESE-Falle: Inhalt kommt erst nach erfolgreicher Completion
     /// ins Tab → .id-Neuerzeugung läuft mit fertigem Inhalt).
     var isLoading: Bool
+    /// Ein Vorschau-Tab stammt aus einem einfachen Klick in der
+    /// Änderungen-Liste. Der nächste einfache Klick darf genau diesen
+    /// ungesicherten Tab wiederverwenden; Doppelklick oder die erste Eingabe
+    /// macht ihn dauerhaft.
+    var isPreview: Bool
+    /// Identität des momentan im Tabplatz dargestellten Dokuments. Sie ändert
+    /// sich auch dann, wenn der flüchtige Vorschau-Tab seine Tab-ID behält.
+    /// Cursor, Scrollposition und Editor-Neuaufbau folgen deshalb dem Inhalt
+    /// statt versehentlich dem wiederverwendeten Platz in der Tab-Leiste.
+    var documentID: UUID
+    /// Erklärung für einen auswählbaren, aber nicht veränderbaren Text-Tab.
+    /// `nil` bezeichnet einen normalen Editor. Die Erklärung erscheint bei
+    /// einem Schreibversuch direkt an der Einfügemarke.
+    var readOnlyReason: String?
+    /// Identität einer aus Git geladenen Vorversion. Solche Tabs besitzen
+    /// absichtlich keine Datei-URL: Die gelöschte Arbeitsdatei darf weder
+    /// gespeichert noch in die Sitzungswiederherstellung aufgenommen werden.
+    var gitSnapshotRequest: GitFileSnapshotRequest?
     /// Änderungsdatum der Datei auf der Platte, wie es beim letzten
     /// Laden/Speichern bekannt war. Basis der Extern-Änderungs-Erkennung
     /// (BBEdit „Reload from Disk"): weicht das echte Disk-Datum davon ab,
@@ -191,6 +209,10 @@ struct EditorTab: Identifiable, Hashable {
         hits: Int = 0,
         isDirty: Bool = false,
         isLoading: Bool = false,
+        isPreview: Bool = false,
+        documentID: UUID = UUID(),
+        readOnlyReason: String? = nil,
+        gitSnapshotRequest: GitFileSnapshotRequest? = nil,
         diskModificationDate: Date? = nil,
         diskSnapshot: FileSnapshot? = nil,
         gitKind: GitTabKind? = nil,
@@ -217,6 +239,10 @@ struct EditorTab: Identifiable, Hashable {
         self.hits = hits
         self.isDirty = isDirty
         self.isLoading = isLoading
+        self.isPreview = isPreview
+        self.documentID = documentID
+        self.readOnlyReason = readOnlyReason
+        self.gitSnapshotRequest = gitSnapshotRequest
         self.diskModificationDate = diskModificationDate
         self.diskSnapshot = diskSnapshot
         self.gitKind = gitKind
@@ -268,6 +294,7 @@ struct EditorTab: Identifiable, Hashable {
     /// Abschnitts-Tabs bleiben gewöhnliche einzelne Tabs.
     var isEligibleForFileComparison: Bool {
         gitKind == nil && fileDiffRequest == nil
+            && gitSnapshotRequest == nil && readOnlyReason == nil
             && !isLoading && displayMode == .text
     }
 
@@ -281,7 +308,8 @@ struct EditorTab: Identifiable, Hashable {
     /// ist bewusst rein aus dem Tab abgeleitet, ohne verstecktes Flag.
     var isPristineScratch: Bool {
         url == nil && content.isEmpty && !isDirty && !isLoading
-            && gitKind == nil && fileDiffRequest == nil && displayMode == .text
+            && gitKind == nil && fileDiffRequest == nil && gitSnapshotRequest == nil
+            && displayMode == .text
     }
 }
 
@@ -350,6 +378,22 @@ private struct GitDiffLoadLease {
     let lease: GitCancelling
 }
 
+private struct GitSnapshotLoadLease {
+    let generation: UInt64
+    let request: GitFileSnapshotRequest
+    let lease: GitCancelling
+}
+
+/// Kleines threadsicheres Signal zwischen Main-Actor und synchronem
+/// Hintergrund-Read. `FileLoader` fragt es zwischen seinen Abschnitten ab.
+private final class PreviewLoadCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    var isCancelled: Bool { lock.withLock { cancelled } }
+    func cancel() { lock.withLock { cancelled = true } }
+}
+
 /// Startwerte und UserDefaults-Schlüssel der ziehbaren Fensterbreiten. Die
 /// Werte sind PRO FENSTER veränderlich (siehe `Workspace.sidebarWidth`); der
 /// gespeicherte Wert dient nur als Startbreite neuer Fenster. Die Schlüssel
@@ -358,6 +402,11 @@ private struct GitDiffLoadLease {
 enum SidebarLayout {
     static let defaultSidebarWidth: Double = 200
     static let defaultPreviewWidth: Double = 420
+    static let minimumSidebarWidth: Double = 180
+    /// Lange Projektpfade dürfen auf breiten Fenstern vollständig lesbar
+    /// werden. Der Editor behält durch sein eigenes Mindestlayout Vorrang,
+    /// wenn das Fenster selbst schmaler ist.
+    static let maximumSidebarWidth: Double = 760
     static let sidebarWidthKey = "editor.sidebarWidth"
     static let previewWidthKey = "markdown.previewWidth"
 }
@@ -644,6 +693,10 @@ final class Workspace: ObservableObject {
     /// Aktuellste Lade-Generation pro Tab-UUID. Pattern analog zu
     /// `statsGeneration` in `recomputeDocumentStats`.
     private var loadGeneration: [UUID: Int] = [:]
+    /// Kooperative Abbruchsignale ausschließlich für flüchtige Dateivorschauen.
+    /// Ein neuer Klick beendet den alten Read an der nächsten Abschnittsgrenze,
+    /// statt mehrere große Dateien parallel bis zum Ende einzulesen.
+    private var previewLoadCancellations: [UUID: PreviewLoadCancellation] = [:]
     /// Quellen, für die die Markdown-Hinweisleiste weggeklickt wurde. Nur für
     /// diese Sitzung — der Hinweis ist keine Einstellung, und der Menübefehl
     /// bleibt ohnehin erreichbar.
@@ -800,6 +853,8 @@ final class Workspace: ObservableObject {
     private let terminalOpener: TerminalOpening
     private let terminalDirectoryResolver: TerminalDirectoryResolving
     private var gitDiffLoadLeases: [UUID: GitDiffLoadLease] = [:]
+    private var gitSnapshotLoadLeases: [UUID: GitSnapshotLoadLease] = [:]
+    private var gitSnapshotLoadGenerations: [UUID: UInt64] = [:]
     private var gitIdentityResolution: GitCancelling?
     /// Reiner Anzeige-Refresh der Remote-Flächen. Er darf eine bereits vom
     /// Nutzer gestartete Push-Prüfung nicht abbrechen.
@@ -1104,6 +1159,8 @@ final class Workspace: ObservableObject {
         tabs.first(where: { $0.id == activeTabID }) ?? tabs.first
     }
 
+    var activeDocumentID: UUID? { activeTab?.documentID }
+
     /// Genau zwei gültige Dokument-Tabs in ihrer sichtbaren Links-nach-rechts-
     /// Reihenfolge. Ein veralteter Zustand nach externen Modelländerungen wird
     /// hier nie als gültiges Paar ausgegeben.
@@ -1323,7 +1380,12 @@ final class Workspace: ObservableObject {
             get: { self.activeTab?.content ?? "" },
             set: { newValue in
                 guard let idx = self.activeTabIndex else { return }
+                guard self.tabs[idx].readOnlyReason == nil else { return }
                 if self.tabs[idx].content != newValue {
+                    // Die erste echte Eingabe macht aus dem flüchtigen
+                    // Quick-Look-Tab ein dauerhaftes Dokument. Sonst könnte
+                    // der nächste einfache Klick ungesicherte Arbeit ersetzen.
+                    self.tabs[idx].isPreview = false
                     let oldLength = self.tabs[idx].content.count
                     self.tabs[idx].content = newValue
                     // Punkt im Tab folgt dem Vergleich mit dem gespeicherten
@@ -1571,7 +1633,10 @@ final class Workspace: ObservableObject {
             return                                          // Abbrechen → Tab bleibt
         }
         guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
+        previewLoadCancellations.removeValue(forKey: id)?.cancel()
+        loadGeneration.removeValue(forKey: id)
         cancelGitDiffLoad(tabID: id)
+        cancelGitSnapshotLoad(tabID: id)
         tabs.remove(at: idx)
         recentlyActiveTabIDs.removeAll { $0 == id }
         if comparisonTabID == id {
@@ -1623,6 +1688,8 @@ final class Workspace: ObservableObject {
             }
         }
         cancelAllGitDiffLoads()
+        cancelAllGitSnapshotLoads()
+        cancelAllPreviewLoads()
         tabs.removeAll()
         recentlyActiveTabIDs.removeAll()
         activeTabID = nil
@@ -1655,7 +1722,10 @@ final class Workspace: ObservableObject {
             }
         }
         for removedID in tabs.map(\.id) where removedID != id {
+            previewLoadCancellations.removeValue(forKey: removedID)?.cancel()
+            loadGeneration.removeValue(forKey: removedID)
             cancelGitDiffLoad(tabID: removedID)
+            cancelGitSnapshotLoad(tabID: removedID)
         }
         tabs.removeAll { $0.id != id }
         recentlyActiveTabIDs.removeAll { $0 != id }
@@ -2228,7 +2298,9 @@ final class Workspace: ObservableObject {
     ///    `isLoading = false`, completion(true).
     ///    Bei Fehler: Beep, Platzhalter entfernen, vorherige activeTabID
     ///    wiederherstellen, completion(false).
-    func loadFile(at url: URL, completion: ((Bool) -> Void)? = nil) {
+    func loadFile(at url: URL, preview: Bool = false,
+                  expectedGitContext: GitActionContext? = nil,
+                  completion: ((Bool) -> Void)? = nil) {
         // URL-Form vereinheitlichen: dieselbe Datei kommt je nach Quelle in
         // verschiedenen Formen an — programmatisch gebaut `/var/…`, aus
         // Verzeichnis-Listings (Projektbaum!) und NSOpenPanel dagegen
@@ -2239,6 +2311,10 @@ final class Workspace: ObservableObject {
         // ── (1) Dedup ──────────────────────────────────────────────────────
         // Wenn die Datei schon als Tab offen ist, nur aktivieren — kein zweiter Tab.
         if let existingIdx = tabs.firstIndex(where: { $0.url == url }) {
+            // Ein Doppelklick folgt in der Änderungen-Liste auf den bereits
+            // ausgeführten Einzelklick. Er findet denselben Tab und steckt ihn
+            // fest, statt einen zweiten zu öffnen.
+            if !preview { tabs[existingIdx].isPreview = false }
             activeTabID = tabs[existingIdx].id
             noteRecentFile(url)
             synchronizeProjectWithActiveTabIfNeeded()
@@ -2250,21 +2326,42 @@ final class Workspace: ObservableObject {
         // Der Tab ist sofort in der Tab-Leiste sichtbar (isLoading = true →
         // Spinner statt Editor). Dadurch fühlt sich die App sofort reaktiv an,
         // auch bei großen Dateien.
-        let previousActiveTabID = activeTabID
+        let replaceablePreviewIndex = preview
+            ? tabs.firstIndex(where: { $0.isPreview && !$0.isDirty })
+            : nil
+        let reusedID = replaceablePreviewIndex.map { tabs[$0].id }
+        let previousActiveTabID: UUID?
+        if let reusedID, activeTabID == reusedID {
+            previousActiveTabID = tabs.first(where: { $0.id != reusedID })?.id
+        } else {
+            previousActiveTabID = activeTabID
+        }
         let placeholder = EditorTab(
+            id: reusedID ?? UUID(),
             title: url.lastPathComponent,
             path: url.deletingLastPathComponent().path,
             url: url,
             content: "",
             isDirty: false,
-            isLoading: true
+            isLoading: true,
+            isPreview: preview
         )
         // Ein etwaiger unberührter Start-Tab bleibt während des Ladens einfach
         // stehen: Sein Willkommens-Platzhalter ist nur sichtbar, wenn ER aktiv
         // ist — aktiv ist ab jetzt der Lade-Platzhalter. Nach erfolgreichem
         // Laden räumt `tabsRemovingEmptyScratch` ihn ab; scheitert das Laden,
         // ist er unverändert wieder da (keine Sonder-Maschinerie mehr nötig).
-        tabs.append(placeholder)
+        if let replaceablePreviewIndex {
+            // Derselbe Tab-Platz bleibt erhalten; dadurch springt die Leiste
+            // beim raschen Durchsehen vieler Dateien nicht nach links/rechts.
+            cancelGitDiffLoad(tabID: placeholder.id)
+            cancelGitSnapshotLoad(tabID: placeholder.id)
+            previewLoadCancellations.removeValue(forKey: placeholder.id)?.cancel()
+            comparisonTabID = nil
+            tabs[replaceablePreviewIndex] = placeholder
+        } else {
+            tabs.append(placeholder)
+        }
         activeTabID = placeholder.id
 
         // ── (3) Generation hochzählen ─────────────────────────────────────
@@ -2273,12 +2370,21 @@ final class Workspace: ObservableObject {
         let tabID = placeholder.id
         let generation = (loadGeneration[tabID] ?? 0) + 1
         loadGeneration[tabID] = generation
+        let previewCancellation = preview ? PreviewLoadCancellation() : nil
+        if let previewCancellation {
+            previewLoadCancellations[tabID] = previewCancellation
+        }
 
         // ── (4) Hintergrund-Task starten ──────────────────────────────────
         // [weak self]: Workspace darf verschwinden (z.B. Preview), ohne Leak.
         Task.detached(priority: .userInitiated) { [weak self] in
             // I/O im Hintergrund — blockiert NICHT den Main-Thread.
-            let loadResult = Result { try FileLoader.load(url: url) }
+            let loadResult = Result {
+                try FileLoader.load(
+                    url: url,
+                    isCancelled: { previewCancellation?.isCancelled == true }
+                )
+            }
 
             // Zurück auf den Main-Thread für alle UI-/Model-Mutationen.
             await MainActor.run { [weak self] in
@@ -2322,6 +2428,28 @@ final class Workspace: ObservableObject {
 
                 // Eintrags-ID verbraucht → aus dem Dictionary entfernen.
                 self.loadGeneration.removeValue(forKey: tabID)
+                if let previewCancellation,
+                   self.previewLoadCancellations[tabID] === previewCancellation {
+                    self.previewLoadCancellations.removeValue(forKey: tabID)
+                }
+
+                // Dateiöffnungen aus der Änderungen-Liste gehören zum beim
+                // Klick eingefrorenen Repository. Nach Projektwechsel oder
+                // Schließen darf ein später Read den alten Kontext keinesfalls
+                // über den aktiven Dateitab erneut öffnen.
+                if let expectedGitContext,
+                   !expectedGitContext.isCurrent(in: self) {
+                    self.tabs.removeAll { $0.id == tabID }
+                    if self.tabs.isEmpty {
+                        let scratch = Self.makeScratchTab()
+                        self.tabs = [scratch]
+                        self.activeTabID = scratch.id
+                    } else if !self.tabs.contains(where: { $0.id == self.activeTabID }) {
+                        self.activeTabID = self.tabs.first?.id
+                    }
+                    report(false)
+                    return
+                }
 
                 switch loadResult {
                 case .success(let loaded):
@@ -2360,14 +2488,32 @@ final class Workspace: ObservableObject {
                     self.synchronizeProjectWithActiveTabIfNeeded()
                     report(true)
 
-                case .failure:
+                case .failure(let error):
                     // ── Fehler ────────────────────────────────────────────
                     // Platzhalter entfernen und früheren Tab reaktivieren.
                     // Ein etwaiger Start-Tab wurde nie angerührt und steht
                     // damit von selbst wieder da.
-                    NSSound.beep()
+                    if case FileLoader.LoadError.cancelled = error {
+                        // Der nächste Vorschauklick ist bereits sichtbar; der
+                        // alte Hintergrundlauf endet absichtlich geräuschlos.
+                    } else {
+                        NSSound.beep()
+                    }
                     self.tabs.removeAll { $0.id == tabID }
-                    self.activeTabID = previousActiveTabID
+                    if let previousActiveTabID,
+                       self.tabs.contains(where: { $0.id == previousActiveTabID }) {
+                        self.activeTabID = previousActiveTabID
+                    } else if self.tabs.isEmpty {
+                        // Ersetzte die fehlgeschlagene Vorschau den einzigen
+                        // vorhandenen Vorschau-Tab, bliebe sonst ein Fenster
+                        // ohne Dokument zurück. Der definierte leere Tab ist
+                        // sicherer als ein nicht mehr beschreibbares Null-Tab.
+                        let scratch = Self.makeScratchTab()
+                        self.tabs = [scratch]
+                        self.activeTabID = scratch.id
+                    } else {
+                        self.activeTabID = self.tabs.first?.id
+                    }
                     report(false)
                 }
             }
@@ -2386,7 +2532,8 @@ final class Workspace: ObservableObject {
         guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
         // Git-Text-Tabs (Verlauf/Diff) und Datei-Vergleichs-Tabs sind
         // read-only — ⌘S tut nichts.
-        if tabs[idx].gitKind != nil || tabs[idx].fileDiffRequest != nil { return }
+        if tabs[idx].gitKind != nil || tabs[idx].fileDiffRequest != nil
+            || tabs[idx].readOnlyReason != nil { return }
         // Abschnitts- und Hex-Views halten absichtlich keinen vollständigen
         // editierbaren Buffer; Speichern wäre daher eine Trunkierungsgefahr.
         guard tabs[idx].displayMode == .text else { NSSound.beep(); return }
@@ -2406,7 +2553,8 @@ final class Workspace: ObservableObject {
     private func saveTabAs(id tabID: UUID) {
         guard let idx = tabs.firstIndex(where: { $0.id == tabID }) else { return }
         // Read-only Git- und Vergleichs-Tabs lassen sich nicht „speichern unter".
-        if tabs[idx].gitKind != nil || tabs[idx].fileDiffRequest != nil { return }
+        if tabs[idx].gitKind != nil || tabs[idx].fileDiffRequest != nil
+            || tabs[idx].readOnlyReason != nil { return }
         guard tabs[idx].displayMode == .text else { NSSound.beep(); return }
         guard !tabs[idx].isLoading else { NSSound.beep(); return }
         let panel = NSSavePanel()
@@ -2777,6 +2925,7 @@ final class Workspace: ObservableObject {
     static func isEligibleForContentDetection(_ tab: EditorTab) -> Bool {
         tab.url == nil && tab.gitKind == nil
             && tab.fileDiffRequest == nil
+            && tab.gitSnapshotRequest == nil
             && tab.languageOverride == nil
             && tab.customLanguageOverrideID == nil
             && (tab.title as NSString).pathExtension.isEmpty
@@ -2965,7 +3114,7 @@ final class Workspace: ObservableObject {
     /// gesprungen wird im Text).
     var activeTabSupportsXPath: Bool {
         guard let tab = activeTab, tab.gitKind == nil,
-              tab.fileDiffRequest == nil else {
+              tab.fileDiffRequest == nil, tab.readOnlyReason == nil else {
             return false
         }
         let name = tab.url?.lastPathComponent ?? tab.title
@@ -2981,7 +3130,7 @@ final class Workspace: ObservableObject {
     /// Git-Ansichten und Datei-Vergleiche haben keinen Umschalter.
     var availableViewModes: [EditorViewMode] {
         guard let tab = activeTab, tab.gitKind == nil,
-              tab.fileDiffRequest == nil else { return [] }
+              tab.fileDiffRequest == nil, tab.readOnlyReason == nil else { return [] }
         return ViewModeRouting.availableModes(
             fileExtension: tab.url?.pathExtension,
             loadedDisplayMode: tab.displayMode,
@@ -3061,6 +3210,8 @@ final class Workspace: ObservableObject {
         NotificationCenter.default.post(name: .fastraProjectContextWillChange, object: self)
         stopFourDProjectMethodWatcher()
         cancelAllGitDiffLoads()
+        cancelAllGitSnapshotLoads()
+        cancelAllPreviewLoads()
         let previousActive = activeTabID
         if !keepingUnrelatedTabs {
             tabs = Self.tabsAfterOpeningProject(tabs, root: url)
@@ -3258,7 +3409,7 @@ final class Workspace: ObservableObject {
             // Ungesicherte echte Tabs bleiben immer erhalten; unbenannte
             // Notizzettel (auch der unberührte Start-Tab) ebenfalls.
             if tab.isDirty { return true }
-            if tab.gitKind != nil { return false }
+            if tab.gitKind != nil || tab.gitSnapshotRequest != nil { return false }
             guard let file = tab.url?.canonicalFileURL else { return true }
             return file.path.hasPrefix(prefix)
         }
@@ -3281,6 +3432,8 @@ final class Workspace: ObservableObject {
         fourDComponentMethods = [:]
         fourDComponentMethodDisplayNames = []
         cancelAllGitDiffLoads()
+        cancelAllGitSnapshotLoads()
+        cancelAllPreviewLoads()
         gitIdentityResolution?.cancel()
         gitIdentityResolution = nil
         gitPushTargetInspection?.cancel()
@@ -3510,6 +3663,180 @@ final class Workspace: ObservableObject {
         )
         loadGitDiffTab(request: request, title: L10n.format("Git-Diff: %@", change.path),
                        emptyText: L10n.string("Kein Inhalt."))
+    }
+
+    /// Öffnet eine Zeile der Änderungen-Liste als schnellen Vorschau-Tab
+    /// oder steckt sie nach einem Doppelklick dauerhaft fest. Gelöschte Dateien
+    /// werden nicht vom (fehlenden) Arbeitsverzeichnis gelesen, sondern aus der
+    /// zum Abschnitt passenden Git-Version rekonstruiert.
+    func openGitChangeFile(change: GitChange, staged: Bool, preview: Bool) {
+        guard let context = currentGitActionContext,
+              let path = change.actionPath,
+              !path.hasSuffix("/") else { return }
+        let state = staged ? change.staged : change.unstaged
+        let snapshotSource: GitFileSnapshotSource?
+        if staged, state == .deleted {
+            snapshotSource = .head
+        } else if !staged, state == .deleted {
+            snapshotSource = .index
+        } else if staged, change.unstaged == .deleted {
+            // Gemischtes MD/AD/RD: Die staged Fassung liegt im Index, während
+            // der Working Tree die Datei bereits entfernt hat.
+            snapshotSource = .index
+        } else {
+            snapshotSource = nil
+        }
+        guard let source = snapshotSource else {
+            loadFile(at: context.root.appendingPathComponent(path), preview: preview,
+                     expectedGitContext: context)
+            return
+        }
+        let request = GitFileSnapshotRequest(
+            repositoryPath: GitOperationRequest.canonicalRepositoryPath(context.root),
+            path: path,
+            source: source
+        )
+        loadGitFileSnapshot(request: request, title: change.name,
+                            directory: change.directory, preview: preview,
+                            context: context)
+    }
+
+    /// Lädt einen einzelnen Git-Blob mit fester Speichergrenze in einen
+    /// normalen, auswählbaren read-only Text-Tab. Fehler erscheinen im Tab;
+    /// ein System-Beep wäre bei aktivierter Bedienungshilfe ein weißes
+    /// Bildschirmblitzen und erklärt zudem die Ursache nicht.
+    private func loadGitFileSnapshot(request: GitFileSnapshotRequest,
+                                     title: String, directory: String,
+                                     preview: Bool, context: GitActionContext) {
+        guard GitRunner.isAvailable,
+              request.repositoryPath
+                == GitOperationRequest.canonicalRepositoryPath(context.root) else { return }
+        if let index = tabs.firstIndex(where: { $0.gitSnapshotRequest == request }) {
+            if !preview {
+                // Der Doppelklick folgt unmittelbar auf den Einzelklick und
+                // steckt dessen bereits geladenen Tab nur fest. Git-Mutationen
+                // stoßen den separaten Snapshot-Refresh selbst an.
+                tabs[index].isPreview = false
+                activeTabID = tabs[index].id
+                return
+            }
+            activeTabID = tabs[index].id
+            // Symbolische Git-Quellen können sich nach Stage/Unstage ändern.
+            // Erneutes Öffnen lädt deshalb denselben Tab frisch, statt einen
+            // womöglich veralteten Blob aus dem Speicher zu zeigen.
+            startGitFileSnapshotLoad(tabID: tabs[index].id, request: request,
+                                     context: context)
+            return
+        }
+
+        let replaceablePreviewIndex = preview
+            ? tabs.firstIndex(where: { $0.isPreview && !$0.isDirty })
+            : nil
+        let reusedID = replaceablePreviewIndex.map { tabs[$0].id }
+        if let reusedID {
+            loadGeneration.removeValue(forKey: reusedID)
+            previewLoadCancellations.removeValue(forKey: reusedID)?.cancel()
+            cancelGitDiffLoad(tabID: reusedID)
+            cancelGitSnapshotLoad(tabID: reusedID)
+            comparisonTabID = nil
+        }
+        let reason = L10n.string(
+            "Diese Datei wurde gelöscht. Fastra zeigt die letzte Git-Version schreibgeschützt."
+        )
+        let tab = EditorTab(
+            id: reusedID ?? UUID(),
+            title: title,
+            path: directory.isEmpty ? L10n.string("Git-Vorversion") : directory,
+            content: "",
+            isLoading: true,
+            isPreview: preview,
+            readOnlyReason: reason,
+            gitSnapshotRequest: request
+        )
+        if let replaceablePreviewIndex {
+            tabs[replaceablePreviewIndex] = tab
+        } else {
+            tabs.append(tab)
+        }
+        activeTabID = tab.id
+        tabs = Workspace.tabsRemovingEmptyScratch(tabs, keeping: tab.id)
+
+        startGitFileSnapshotLoad(tabID: tab.id, request: request,
+                                 context: context)
+    }
+
+    private func startGitFileSnapshotLoad(tabID: UUID,
+                                          request: GitFileSnapshotRequest,
+                                          context: GitActionContext) {
+        guard let initialIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        cancelGitSnapshotLoad(tabID: tabID)
+        let generation = (gitSnapshotLoadGenerations[tabID] ?? 0) &+ 1
+        gitSnapshotLoadGenerations[tabID] = generation
+        tabs[initialIndex].isLoading = true
+        let operation = GitOperationRequest(
+            repository: context.root,
+            kind: .diffRead,
+            arguments: request.arguments,
+            outputLimit: GitOutputLimit(stdoutBytes: Int(FileLoader.largeFileThreshold),
+                                        stderrBytes: 256 * 1024)
+        )
+        let lease = gitOperationsCoordinator.perform(operation) { [weak self] outcome in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard self.gitSnapshotLoadGenerations[tabID] == generation else { return }
+                defer { self.clearGitSnapshotLoad(tabID: tabID,
+                                                  generation: generation) }
+                guard let index = self.tabs.firstIndex(where: { $0.id == tabID }),
+                      self.tabs[index].gitSnapshotRequest == request else { return }
+                guard context.isCurrent(in: self) else {
+                    // Projektwechsel storniert die Operation. Der Tab darf
+                    // trotzdem nicht als ewiger Lade-Spinner stehen bleiben.
+                    self.tabs[index].isLoading = false
+                    self.tabs[index].content = L10n.string(
+                        "Die Git-Vorschau wurde wegen eines Projektwechsels beendet."
+                    )
+                    self.tabs[index].recordSavedContentBaseline()
+                    return
+                }
+                defer { self.tabs[index].isLoading = false }
+                guard case .completed(let result) = outcome, result.exitCode == 0 else {
+                    self.tabs[index].content = Self.gitExecutionFailureText(outcome)
+                        ?? L10n.string("Die letzte Git-Version konnte nicht geladen werden.")
+                    self.tabs[index].recordSavedContentBaseline()
+                    return
+                }
+                guard !result.stdoutWasTruncated else {
+                    self.tabs[index].content = L10n.string(
+                        "Die letzte Git-Version ist zu groß für die vollständige Textvorschau."
+                    )
+                    self.tabs[index].recordSavedContentBaseline()
+                    return
+                }
+                let (bom, bomEncoding) = ApplyEngine.detectBOM(in: result.stdoutData)
+                let payload = Data(result.stdoutData.dropFirst(bom.count))
+                // Nullbytes ohne erklärende Unicode-BOM sind ein belastbares
+                // Binärsignal. Die großzügigen Text-Fallbacks des normalen
+                // Decoders dürfen daraus keinen scheinbar editierbaren Text machen.
+                guard (bomEncoding != nil || !payload.contains(0)),
+                      let decoded = ApplyEngine.decode(payload: payload,
+                                                       bomEncoding: bomEncoding) else {
+                    self.tabs[index].content = L10n.string(
+                        "Die letzte Git-Version ist binär oder verwendet eine nicht unterstützte Zeichenkodierung."
+                    )
+                    self.tabs[index].recordSavedContentBaseline()
+                    return
+                }
+                self.tabs[index].content = decoded.0
+                self.tabs[index].encoding = decoded.1
+                self.tabs[index].bom = bom
+                self.tabs[index].lineEnding = LineEnding.detect(in: decoded.0)
+                self.tabs[index].fileSize = UInt64(result.stdoutData.count)
+                self.tabs[index].recordSavedContentBaseline()
+            }
+        }
+        gitSnapshotLoadLeases[tabID] = GitSnapshotLoadLease(
+            generation: generation, request: request, lease: lease
+        )
     }
 
     /// Öffnet einen einzelnen Commit (`git show <hash>`) als read-only-Tab —
@@ -3818,6 +4145,30 @@ final class Workspace: ObservableObject {
         leases.forEach { $0.cancel() }
     }
 
+    private func cancelGitSnapshotLoad(tabID: UUID) {
+        gitSnapshotLoadLeases.removeValue(forKey: tabID)?.lease.cancel()
+    }
+
+    private func cancelAllGitSnapshotLoads() {
+        let leases = gitSnapshotLoadLeases.values.map(\.lease)
+        gitSnapshotLoadLeases.removeAll()
+        leases.forEach { $0.cancel() }
+    }
+
+    private func cancelAllPreviewLoads() {
+        let cancellations = previewLoadCancellations.values
+        previewLoadCancellations.removeAll()
+        cancellations.forEach { $0.cancel() }
+    }
+
+    private func clearGitSnapshotLoad(tabID: UUID, generation: UInt64) {
+        guard gitSnapshotLoadGenerations[tabID] == generation else { return }
+        gitSnapshotLoadGenerations.removeValue(forKey: tabID)
+        if gitSnapshotLoadLeases[tabID]?.generation == generation {
+            gitSnapshotLoadLeases.removeValue(forKey: tabID)
+        }
+    }
+
     /// Aktualisiert alle offenen Arbeitsbaum-/Index-Diffs dieses Projekts, ohne
     /// dem Nutzer dabei den aktiven Tab wegzunehmen. Historische Commit-Diffs
     /// sind unveränderlich und brauchen keinen Netzwerk-/Mutationsrefresh.
@@ -3834,6 +4185,23 @@ final class Workspace: ObservableObject {
             loadGitDiffTab(request: request, title: title,
                            emptyText: L10n.string("Keine Änderungen."), activate: false,
                            existingTabID: tabID)
+        }
+    }
+
+    /// Index- und HEAD-Adressen sind symbolisch: Nach Stage, Unstage oder
+    /// Amend können sie auf einen anderen Blob zeigen. Offene Vorversions-
+    /// Tabs werden deshalb zusammen mit den Diffs frisch gelesen.
+    func refreshOpenGitSnapshotTabs() {
+        guard let context = currentGitActionContext else { return }
+        let repositoryPath = GitOperationRequest.canonicalRepositoryPath(context.root)
+        let open = tabs.compactMap { tab -> (UUID, GitFileSnapshotRequest)? in
+            guard let request = tab.gitSnapshotRequest,
+                  request.repositoryPath == repositoryPath else { return nil }
+            return (tab.id, request)
+        }
+        for (tabID, request) in open {
+            startGitFileSnapshotLoad(tabID: tabID, request: request,
+                                     context: context)
         }
     }
 

@@ -9,6 +9,37 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.74.0] — 2026-08-12
+
+### Hinzugefügt
+
+- **Änderungen lassen sich als Liste oder Ordnerbaum anzeigen:** Der neue
+  Umschalter verwendet in der Baumansicht dieselben Ordner-Symbole und
+  Aufklapp-Henkel wie der Dateien-Reiter. Die Seitenleiste lässt sich für lange
+  Pfade nun bis 760 Punkte verbreitern.
+- **Einfach- und Doppelklick unterstützen schnelles Durchsehen:** Ein
+  Einfachklick öffnet eine kursive, wiederverwendbare Vorschau; ein Doppelklick
+  oder die erste Bearbeitung macht den Tab dauerhaft.
+
+### Verbessert
+
+- **Gelöschte Dateien bleiben inspizierbar:** Ihr Name erscheint
+  durchgestrichen, ein Klick lädt die passende Vorversion aus Index oder HEAD
+  in einen schreibgeschützten Editor. Tabtitel und Schloss sind rot; ein
+  Schreibversuch zeigt die Erklärung direkt an der Einfügemarke.
+- **Datei-Tabs bleiben eindeutig lesbar:** Vollständige Dateinamen bestimmen
+  die variable Tabbreite; die Leiste scrollt horizontal. Inaktive Tabs besitzen
+  weiterhin eine eigene Fläche und einen sichtbaren Rand.
+- **Git-Sicherheit und Bedienung sind sichtbarer:** Alle kleinen Knöpfe über
+  der Änderungen-Liste reagieren auf Hover. Verwerfen einzelner, mehrerer oder
+  aller Änderungen bleibt bestätigt; auch „Letzten Commit ergänzen“ verlangt
+  jetzt vor dem Umschreiben des Commits eine ausdrückliche Bestätigung.
+- **Vorschauen bleiben auch unter Last eindeutig:** Rasches Durchsehen bricht
+  ersetzte Datei-Ladevorgänge kooperativ ab; Cursor, Ausschnitt und
+  Vergleichsauswahl wandern nicht auf die nächste Vorschau. Projektwechsel
+  können verspätete Datei- oder Git-Ladevorgänge nicht zurückdrehen, und
+  gemischte Git-Löschzustände lesen die richtige Fassung aus Index oder HEAD.
+
 ## [v1.73.0] — 2026-08-12
 
 ### Behoben

@@ -72,8 +72,8 @@ struct EditorView: View {
     @Environment(\.uiScale) private var uiScale
     @State private var editorState = SourceEditorState(cursorPositions: [], findPanelVisible: false)
     @State private var cursorMemory = EditorCursorMemory()
-    /// Der Tab, zu dem `editorState.cursorPositions` momentan gehört. Beim
-    /// Wechsel ist `workspace.activeTabID` bereits neu; diese separate ID
+    /// Das Dokument, zu dem `editorState.cursorPositions` momentan gehört.
+    /// Beim Wechsel ist `workspace.activeDocumentID` bereits neu; diese ID
     /// verhindert, dass die alte Auswahl versehentlich unter dem neuen Tab
     /// abgelegt wird.
     @State private var cursorMemoryTabID: UUID?
@@ -146,8 +146,8 @@ struct EditorView: View {
     // (Daniel-Befund 2026-07-20). Geklemmt wird weiterhin hier in der Ansicht.
 
     /// Grenzen der Seitenleisten-Breite beim Ziehen des Splitters.
-    private let sidebarMinWidth: CGFloat = 180
-    private let sidebarMaxWidth: CGFloat = 480
+    private let sidebarMinWidth = CGFloat(SidebarLayout.minimumSidebarWidth)
+    private let sidebarMaxWidth = CGFloat(SidebarLayout.maximumSidebarWidth)
 
     /// Schmalste Breite, die dem Dokumentinhalt beim Ziehen des Markdown-
     /// Splitters bleiben muss. Kleiner darf der Editor nur werden, wenn das
@@ -182,7 +182,7 @@ struct EditorView: View {
                 // Breite kommt aus der persistenten Einstellung; per Splitter
                 // ziehbar (siehe `sidebarSplitter`). Klemmen schützt vor einer
                 // gespeicherten Un-Breite (z.B. 0) aus einer früheren Version.
-                .frame(width: min(max(CGFloat(workspace.sidebarWidth), sidebarMinWidth), sidebarMaxWidth))
+                .frame(width: effectiveSidebarWidth)
                 .frame(maxHeight: .infinity)
                 .background(Theme.surfaceBase)
                 // AppKit-Editor und Vorschau besitzen kräftige Idealgrößen.
@@ -220,7 +220,15 @@ struct EditorView: View {
             // unsichtbaren 140-pt-Ausgangslage auf 180 pt springt.
             workspace.sidebarWidth = min(max(workspace.sidebarWidth, Double(sidebarMinWidth)),
                                          Double(sidebarMaxWidth))
-            cursorMemoryTabID = workspace.activeTabID
+            cursorMemoryTabID = workspace.activeDocumentID
+        }
+        .onChange(of: effectiveSidebarMaximum) { _, maximum in
+            // Wird das Fenster nach einem breiten Sidebar-Drag verkleinert,
+            // bleibt der Editor sichtbar. Der gespeicherte Wert folgt dem
+            // sichtbaren Splitter, damit der nächste Drag nicht springt.
+            if workspace.sidebarWidth > Double(maximum) {
+                workspace.sidebarWidth = Double(maximum)
+            }
         }
         // Dieser Beobachter lebt absichtlich am stabilen Editor-Root. Die
         // Konfliktleiste selbst verschwindet bei einem normalen Zwischentab;
@@ -229,7 +237,7 @@ struct EditorView: View {
         .onChange(of: workspace.activeTabID) {
             workspace.activeGitConflictFileDidChange()
         }
-        .onChange(of: workspace.activeTabID) { _, newTabID in
+        .onChange(of: workspace.activeDocumentID) { _, newTabID in
             let currentRanges = (editorState.cursorPositions ?? []).map(\.range)
             let restoredRanges = cursorMemory.switchTab(
                 from: cursorMemoryTabID,
@@ -461,8 +469,25 @@ struct EditorView: View {
     /// Aktuell wirksame Breite der Seitenleiste inklusive ihres Splitters.
     private var sidebarOccupiedWidth: CGFloat {
         guard showSidebar else { return 0 }
-        return min(max(CGFloat(workspace.sidebarWidth), sidebarMinWidth), sidebarMaxWidth)
-            + ResizableDivider.thickness
+        return effectiveSidebarWidth + ResizableDivider.thickness
+    }
+
+    /// Fensterabhängige Obergrenze: Die neue großzügige 760-pt-Grenze gilt
+    /// nur, solange daneben mindestens `editorMinWidth` Platz bleibt.
+    private var effectiveSidebarMaximum: CGFloat {
+        guard contentWidth > 0 else { return sidebarMaxWidth }
+        return CGFloat(SplitterSizing.leadingMaximum(
+            total: Double(contentWidth),
+            splitter: Double(ResizableDivider.thickness),
+            minimumLeading: Double(sidebarMinWidth),
+            minimumTrailing: Double(editorMinWidth),
+            absoluteMaximum: Double(sidebarMaxWidth)
+        ))
+    }
+
+    private var effectiveSidebarWidth: CGFloat {
+        min(max(CGFloat(workspace.sidebarWidth), sidebarMinWidth),
+            effectiveSidebarMaximum)
     }
 
     /// Obergrenze der Vorschau (Daniel-Befund 2026-07-16): Früher war hier eine
@@ -540,6 +565,13 @@ struct EditorView: View {
                 // Git-Text-Tab (Etappe 2): read-only Verlauf/Diff statt CESE.
                 GitTextView(kind: kind, content: workspace.activeTab?.content ?? "")
                     .id(workspace.activeTab?.id)
+            } else if let tab = workspace.activeTab,
+                      let reason = tab.readOnlyReason, !tab.isLoading {
+                // Gelöschte Git-Dateien erscheinen als normale auswählbare
+                // Textansicht. Die eigene AppKit-View erklärt einen
+                // Schreibversuch direkt an der Einfügemarke.
+                ReadOnlySourceView(content: tab.content, reason: reason)
+                    .id(tab.id)
             } else if workspace.activeTab?.isLoading == true {
                 // Lade-Zustand: Spinner + Dateiname, kein Editor.
                 // Der Editor wird erst nach Completion neu eingeblendet.
@@ -839,7 +871,7 @@ struct EditorView: View {
         // Buffer-Replace (Alle/Einzel-Ersetzen) zählt ihn hoch → der Editor wird
         // mit dem ersetzten Inhalt neu erzeugt und zeigt die Änderung sofort
         // (sonst bliebe der alte Text stehen — „Ersetzen wirkt folgenlos").
-        .id(EditorView.editorIdentity(tabID: workspace.activeTab?.id,
+        .id(EditorView.editorIdentity(tabID: workspace.activeTab?.documentID,
                                       reloadNonce: workspace.editorReloadNonce))
         // Willkommens-Platzhalter (Umbau 2026-07-30, ersetzt den früheren
         // Einzeilen-Hinweis): Solange der aktive Tab ein unberührter leerer
@@ -1390,8 +1422,12 @@ struct EditorView: View {
     /// Komponente besitzt eine breite Trefferfläche, einen stabilen Cursor und
     /// misst im globalen Koordinatenraum gegen das frühere Zappeln.
     private var sidebarSplitter: some View {
-        ResizableDivider(value: $workspace.sidebarWidth,
-                         range: Double(sidebarMinWidth)...Double(sidebarMaxWidth),
+        let visibleWidth = Binding<Double>(
+            get: { Double(effectiveSidebarWidth) },
+            set: { workspace.sidebarWidth = $0 }
+        )
+        return ResizableDivider(value: visibleWidth,
+                         range: Double(sidebarMinWidth)...Double(effectiveSidebarMaximum),
                          surface: Theme.surfaceBase,
                          trailingSurface: Theme.surfaceRaised,
                          help: "Ziehen, um die Breite der Seitenleiste anzupassen")

@@ -14406,20 +14406,136 @@ enum SelfTest {
             }
             return
         }
-        performGitMultiDiscardClicks(
+        runGitLayoutToggleCheck(
             ws, base: base, repo: repo,
+            deletedHash: rows[1].rawPath.hashValue,
             rowHashes: (first: rows[0].rawPath.hashValue,
-                        last: rows[2].rawPath.hashValue),
-            step: 0
+                        last: rows[2].rawPath.hashValue)
         )
+    }
+
+    /// Der echte Kopfknopf muss flach → Baum → flach umschalten und dabei
+    /// ausschließlich die isolierte Selbsttest-Einstellung verändern.
+    private static func runGitLayoutToggleCheck(
+        _ ws: Workspace, base: URL, repo: URL, deletedHash: Int,
+        rowHashes: (first: Int, last: Int)
+    ) {
+        guard let window = mainWindowForAXChecks(), let content = window.contentView,
+              let marker = markerView(id: "gitChangesLayoutToggle", in: content) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Umschalter für flache/Baum-Ansicht fehlt")
+        }
+        window.layoutIfNeeded()
+        let point = marker.convert(
+            NSPoint(x: marker.bounds.midX, y: marker.bounds.midY), to: nil)
+        guard sendMouseClick(at: point, in: window, modifiers: [], viaApp: true) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Umschalter zur Baumansicht nicht klickbar")
+        }
+        pollGitLayoutToggle(ws, base: base, repo: repo,
+                            deletedHash: deletedHash, rowHashes: rowHashes,
+                            expected: .tree, tick: 0)
+    }
+
+    private static func pollGitLayoutToggle(
+        _ ws: Workspace, base: URL, repo: URL, deletedHash: Int,
+        rowHashes: (first: Int, last: Int),
+        expected: GitChangesLayoutMode, tick: Int
+    ) {
+        let raw = workspaceDefaults().string(forKey: "git.changesLayout")
+        if raw == expected.rawValue {
+            if expected == .tree {
+                guard let window = mainWindowForAXChecks(),
+                      let content = window.contentView,
+                      let marker = markerView(id: "gitChangesLayoutToggle", in: content) else {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Umschalter verschwand in der Baumansicht")
+                }
+                window.layoutIfNeeded()
+                let point = marker.convert(
+                    NSPoint(x: marker.bounds.midX, y: marker.bounds.midY), to: nil)
+                guard sendMouseClick(at: point, in: window,
+                                     modifiers: [], viaApp: true) else {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Rückschalten zur flachen Ansicht nicht klickbar")
+                }
+                pollGitLayoutToggle(ws, base: base, repo: repo,
+                                    deletedHash: deletedHash, rowHashes: rowHashes,
+                                    expected: .flat, tick: 0)
+            } else {
+                runGitDeletedPreviewCheck(ws, base: base, repo: repo,
+                                          deletedHash: deletedHash,
+                                          rowHashes: rowHashes)
+            }
+            return
+        }
+        if tick >= 60 {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Ansichts-Umschalter speicherte nicht „\(expected.rawValue)“")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollGitLayoutToggle(ws, base: base, repo: repo,
+                                deletedHash: deletedHash, rowHashes: rowHashes,
+                                expected: expected, tick: tick + 1)
+        }
+    }
+
+    /// Vor der Mehrfachauswahl prüft derselbe echte Fensterlauf den gemeldeten
+    /// Löschfall: Ein Klick darf weder piepen noch einen sinnlosen Diff zeigen,
+    /// sondern muss die Index-Fassung als auswählbaren read-only Tab laden.
+    private static func runGitDeletedPreviewCheck(
+        _ ws: Workspace, base: URL, repo: URL, deletedHash: Int,
+        rowHashes: (first: Int, last: Int)
+    ) {
+        guard let window = mainWindowForAXChecks(), let content = window.contentView,
+              let marker = markerView(id: "gitChangeRow-unstaged-\(deletedHash)",
+                                      in: content) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Gelöschte Dateizeile fehlt für die read-only Prüfung")
+        }
+        window.layoutIfNeeded()
+        let point = marker.convert(
+            NSPoint(x: marker.bounds.midX, y: marker.bounds.midY), to: nil)
+        guard sendMouseClick(at: point, in: window, modifiers: [], viaApp: true) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Klick auf die gelöschte Dateizeile nicht erzeugbar")
+        }
+        pollGitDeletedPreview(ws, base: base, repo: repo,
+                              rowHashes: rowHashes, tick: 0)
+    }
+
+    private static func pollGitDeletedPreview(
+        _ ws: Workspace, base: URL, repo: URL,
+        rowHashes: (first: Int, last: Int), tick: Int
+    ) {
+        let editorVisible = mainWindowForAXChecks()?.contentView.map {
+            markerView(id: "gitDeletedReadOnlyEditor", in: $0) != nil
+        } == true
+        if let tab = ws.activeTab, !tab.isLoading,
+           tab.gitSnapshotRequest?.path == "m-deleted.txt", editorVisible {
+            guard tab.content == "Original M\n", tab.isPreview,
+                  tab.readOnlyReason != nil else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Gelöschte Datei wurde nicht als richtige read-only Vorschau geladen")
+            }
+            performGitMultiDiscardClicks(ws, base: base, repo: repo,
+                                         rowHashes: rowHashes, step: 0)
+            return
+        }
+        if tick >= 100 {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Read-only Editor der gelöschten Datei erschien nicht")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollGitDeletedPreview(ws, base: base, repo: repo,
+                                  rowHashes: rowHashes, tick: tick + 1)
+        }
     }
 
     /// Führt die vier Klicks nacheinander aus. Nach jedem Auswahl-Klick
     /// wartet der Test über den `gitChangesSelCount`-Marker auf die erwartete
-    /// Auswahlgröße — der Einzelklick der Zeile wird über eine
-    /// `exclusively`-Geste erst nach dem Doppelklick-Fenster erkannt. Jeder
-    /// Marker wird vor seinem Klick frisch aufgelöst, weil SwiftUI die Zeilen
-    /// nach jeder Auswahl-Änderung neu rendert.
+    /// Auswahlgröße. Jeder Marker wird vor seinem Klick frisch aufgelöst,
+    /// weil SwiftUI die Zeilen nach jeder Auswahl-Änderung neu rendert.
     private static func performGitMultiDiscardClicks(
         _ ws: Workspace, base: URL, repo: URL,
         rowHashes: (first: Int, last: Int), step: Int
@@ -14567,9 +14683,9 @@ enum SelfTest {
     }
 
     /// Nachspiel zum Klickpfad-Umbau (Zeilen-Button statt Tap-Gesten): Der
-    /// Einzelklick aus Schritt 1 muss die M-Datei als Tab geöffnet haben,
-    /// und ein Doppelklick auf die verbliebene z-Zeile öffnet NUR den Diff —
-    /// der stornierte Einzelklick-Öffner darf die Datei nicht nachreichen.
+    /// Einzelklick aus Schritt 1 muss die M-Datei als Vorschau geöffnet haben.
+    /// Der Doppelklick auf die verbliebene z-Zeile ersetzt diese Vorschau und
+    /// steckt genau den neuen Datei-Tab dauerhaft fest.
     private static func runGitMultiDiscardDoubleClick(base: URL, repo: URL) {
         guard let ws = Workspace.shared, let window = mainWindowForAXChecks(),
               let content = window.contentView else {
@@ -14579,9 +14695,10 @@ enum SelfTest {
         let aURL = repo.appendingPathComponent("a-modified.txt")
         guard ws.tabs.contains(where: {
             $0.url?.standardizedFileURL == aURL.standardizedFileURL
+                && $0.isPreview
         }) else {
             try? FileManager.default.removeItem(at: base)
-            finish(false, "Der Einzelklick auf die M-Zeile öffnete die Datei nicht als Tab")
+            finish(false, "Der Einzelklick auf die M-Zeile öffnete keinen Vorschau-Tab")
         }
         guard let zChange = ws.gitStatus?.unstagedChanges.first(where: {
             $0.path == "z-untracked.txt"
@@ -14602,45 +14719,43 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: base)
             finish(false, "Doppelklick nicht erzeugbar")
         }
-        pollGitMultiDiscardDiffTab(ws, base: base, repo: repo, tick: 0)
+        pollGitMultiDiscardPinnedTab(ws, base: base, repo: repo, tick: 0)
     }
 
-    private static func pollGitMultiDiscardDiffTab(_ ws: Workspace, base: URL,
-                                                   repo: URL, tick: Int) {
+    private static func pollGitMultiDiscardPinnedTab(_ ws: Workspace, base: URL,
+                                                     repo: URL, tick: Int) {
         let zURL = repo.appendingPathComponent("z-untracked.txt")
-        let zFileTabOpen = ws.tabs.contains {
+        let zTabs = ws.tabs.filter {
             $0.url?.standardizedFileURL == zURL.standardizedFileURL
         }
         let diffTabOpen = ws.tabs.contains {
             $0.gitKind == .diff && $0.title.hasSuffix("z-untracked.txt")
         }
-        if zFileTabOpen {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Der Doppelklick öffnete zusätzlich die Datei statt nur den Diff")
-        }
         if diffTabOpen {
-            // Nach Ablauf des Doppelklick-Fensters darf der stornierte
-            // Einzelklick die Datei nicht doch noch öffnen.
-            let wait = NSEvent.doubleClickInterval + 0.3
-            DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
-                let lateFileTab = ws.tabs.contains {
-                    $0.url?.standardizedFileURL == zURL.standardizedFileURL
-                }
-                guard !lateFileTab else {
-                    try? FileManager.default.removeItem(at: base)
-                    finish(false, "Der stornierte Einzelklick öffnete die Datei "
-                        + "nach dem Doppelklick doch noch")
-                }
-                runGitMultiDiscardHeaderPhase(ws, base: base, repo: repo)
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Der Doppelklick öffnete noch den alten Diff-Pfad")
+        }
+        if zTabs.count == 1, zTabs[0].isLoading == false {
+            guard zTabs[0].isPreview == false else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Der Doppelklick ließ den Datei-Tab nur als Vorschau offen")
             }
+            let aURL = repo.appendingPathComponent("a-modified.txt")
+            guard !ws.tabs.contains(where: {
+                $0.url?.standardizedFileURL == aURL.standardizedFileURL
+            }) else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Die neue Vorschau ersetzte den vorherigen Vorschau-Tab nicht")
+            }
+            runGitMultiDiscardHeaderPhase(ws, base: base, repo: repo)
             return
         }
         if tick >= 100 {
             try? FileManager.default.removeItem(at: base)
-            finish(false, "Der Doppelklick öffnete keinen Diff-Tab")
+            finish(false, "Der Doppelklick öffnete keinen dauerhaften Datei-Tab")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollGitMultiDiscardDiffTab(ws, base: base, repo: repo, tick: tick + 1)
+            pollGitMultiDiscardPinnedTab(ws, base: base, repo: repo, tick: tick + 1)
         }
     }
 
@@ -15191,6 +15306,15 @@ enum SelfTest {
             let countBefore = Int(before?.stdout.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") ?? -1
             try? "v2\n".write(to: repo.appendingPathComponent("app.txt"),
                               atomically: true, encoding: .utf8)
+            var sawAmendConfirmation = false
+            ws.gitMutationConfirmationHandler = { confirmation in
+                let expected = confirmation.title
+                        == L10n.string("Letzten Commit wirklich ergänzen?")
+                    && confirmation.confirmTitle == L10n.string("Commit ersetzen")
+                    && confirmation.isDestructive
+                if expected { sawAmendConfirmation = true }
+                return expected
+            }
             gitActionsWhenIdle(ws, base: base, fm: fm, label: "amend-idle") {
                 ws.gitAmendNoEdit()
             }
@@ -15203,6 +15327,10 @@ enum SelfTest {
                       next: {
                           GitRunner.run(["rev-list", "--count", "HEAD"], in: repo) { after in
                               let countAfter = Int(after?.stdout.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") ?? -2
+                              guard sawAmendConfirmation else {
+                                  try? fm.removeItem(at: base)
+                                  finish(false, "(amend) erwartete destruktive Bestätigung fehlte")
+                              }
                               guard countAfter == countBefore else {
                                   try? fm.removeItem(at: base)
                                   finish(false, "(amend) Commit-Zahl \(countBefore) → \(countAfter) (amend darf nicht erhöhen)")
@@ -15260,6 +15388,10 @@ enum SelfTest {
     private static func gitActionsAutoUpstream(_ ws: Workspace, repo: URL, bare: URL, base: URL, fm: FileManager) {
         runGitSequence([["switch", "-c", "ohne-upstream"]], in: repo) { ok, e in
             guard ok else { try? fm.removeItem(at: base); finish(false, "(auto-u setup) \(e)") }
+            ws.gitMutationConfirmationHandler = { confirmation in
+                confirmation.explanation.contains("origin")
+                    && confirmation.explanation.contains(bare.path)
+            }
             gitActionsWhenIdle(ws, base: base, fm: fm, label: "auto-upstream-idle") {
                 ws.gitPush()
             }

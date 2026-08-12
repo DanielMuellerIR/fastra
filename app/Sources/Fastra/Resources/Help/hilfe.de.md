@@ -632,7 +632,8 @@ anlegen, umbenennen, duplizieren und in den Papierkorb legen. Ein Duplikat
 erhält vor der Endung „Kopie“ samt nötiger laufender Nummer und öffnet sofort
 als aktiver Tab. Das Rechtsklickmenü eines gespeicherten Tabs enthält dieselben
 Dateiaktionen; bei einem noch ungesicherten Tab sind unpassende Punkte
-deaktiviert.
+deaktiviert. Die Seitenleiste lässt sich auf breiten Fenstern bis 760 Punkte
+aufziehen, damit lange Pfade lesbar bleiben.
 
 **Dateien filtern:** Das Filterfeld über dem Dateibaum filtert live nach
 Dateinamen (Teilstring, Groß-/Kleinschreibung egal — bewusst kein
@@ -669,7 +670,8 @@ Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**:
   einzelnen Remote nicht lesen, bleiben die anderen Push-Ziele benutzbar und
   die echte Git-Meldung erscheint als Hinweis.
 - **Mehrere Dateien auf einen Schlag:** In der Dateiliste markiert ein Klick
-  eine Zeile, ⇧-Klick den Bereich bis dorthin und ⌘-Klick einzelne Zeilen
+  eine Zeile und öffnet sie als vorläufige Vorschau, ⇧-Klick markiert den
+  Bereich bis dorthin und ⌘-Klick einzelne Zeilen
   zusätzlich oder wieder ab. Markierte Zeilen sind farbig hinterlegt. Eine
   Aktion auf einer markierten Zeile — Verwerfen, Bereitstellen oder
   Entnehmen, per Knopf oder Kontextmenü — wirkt dann auf die ganze Auswahl;
@@ -678,6 +680,17 @@ Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**:
   viele davon nicht versionierte Dateien sind (die werden gelöscht). Meldet
   Git einen ganzen unversionierten Ordner als eine Zeile, löscht Fastra ihn
   nicht rekursiv; dadurch bleiben darin liegende ignorierte Dateien erhalten.
+- **Liste oder Ordnerbaum:** Der Ordner-Knopf im ersten Abschnittskopf schaltet
+  zwischen der kompakten flachen Liste und einem aufklappbaren Baum um. Der
+  Baum verwendet dieselben Ordner-Symbole und Aufklapp-Henkel wie der
+  Dateien-Reiter. Die Wahl bleibt für den nächsten Start erhalten.
+- **Dateien schnell ansehen:** Einfachklick öffnet einen kursiv beschrifteten
+  Vorschau-Tab; der nächste Einfachklick ersetzt ihn. Doppelklick macht den Tab
+  dauerhaft, ebenso die erste Texteingabe. Gelöschte Dateien sind in der Liste
+  durchgestrichen. Ein Klick öffnet ihre letzte Git-Version in einem
+  schreibgeschützten Editor; roter Tabtitel und Schloss zeigen den Zustand,
+  ein Schreibversuch erklärt ihn direkt an der Einfügemarke. Der Diff bleibt
+  über „Änderungen anzeigen (Diff)“ im Kontextmenü erreichbar.
 - **Sammel-Knöpfe im Abschnittskopf „ÄNDERUNGEN“:** Gesamt-Diff aller
   offenen Änderungen in der zweispaltigen Ansicht öffnen, alle Änderungen
   verwerfen, alles bereitstellen. Im Kopf „BEREITGESTELLT“ steht der Knopf,
@@ -744,7 +757,9 @@ Nach dem Öffnen oder Schließen eines Dokuments und bei jedem Tabwechsel scroll
 die Tab-Leiste so, dass der aktive Tab vollständig sichtbar ist. Dazwischen
 bleibt eine von Hand gewählte horizontale Scrollposition unangetastet. Das
 Tab-Rechtsklickmenü bietet zusätzlich Speichern, diesen Tab schließen und alle
-anderen Tabs schließen.
+anderen Tabs schließen. Tabtitel zeigen Dateinamen immer vollständig; bei
+vielen oder langen Namen scrollt die Leiste horizontal. Aktive und inaktive
+Tabs besitzen klar verschiedene Flächen und Ränder.
 
 Ein Punkt im Tab zeigt ungespeicherte Änderungen. Er verschwindet wieder,
 sobald der Inhalt exakt dem gespeicherten Stand entspricht — egal ob per

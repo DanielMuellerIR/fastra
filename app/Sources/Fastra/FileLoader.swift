@@ -59,6 +59,9 @@ enum FileLoader {
         /// eine FIFO (benannte Pipe), ein Socket oder eine Gerätedatei.
         /// Solche Pfade werden bewusst gar nicht erst geöffnet.
         case notRegularFile
+        /// Ein flüchtiger Vorschau-Tab wurde bereits durch den nächsten Klick
+        /// ersetzt. Der kooperative Abbruch ist kein sichtbarer Lesefehler.
+        case cancelled
     }
 
     // MARK: - Kernfunktion
@@ -91,9 +94,11 @@ enum FileLoader {
 
     static func load(url: URL, forcedEncoding: String.Encoding? = nil,
                      largeFileThreshold: UInt64 = largeFileThreshold,
+                     isCancelled: () -> Bool = { false },
                      probeReader: (FileHandle, Int) throws -> Data = { handle, count in
                          try handle.read(upToCount: count) ?? Data()
                      }) throws -> LoadedFile {
+        guard !isCancelled() else { throw LoadError.cancelled }
         // Typ und Größe am GEÖFFNETEN Deskriptor klären — nicht vorab am
         // Pfad. Beides ist eine Sicherheitsbedingung, keine Bequemlichkeit:
         // 1. Nicht reguläre Pfade (FIFO, Socket, Gerätedatei, Verzeichnis)
@@ -141,6 +146,7 @@ enum FileLoader {
             throw LoadError.unreadable
         }
         let (probeBOM, probeBOMEncoding) = ApplyEngine.detectBOM(in: probe)
+        guard !isCancelled() else { throw LoadError.cancelled }
 
         if let enc = forcedEncoding {
             let bodyEncoding = explicitBodyEncoding(enc, bomEncoding: probeBOMEncoding)
@@ -153,9 +159,15 @@ enum FileLoader {
                                   lineEnding: .lf, displayMode: .chunkedText,
                                   fileSize: fileSize, diskSnapshot: nil)
             }
-            guard let read = try? readAll(descriptor: opened.descriptor,
-                                          openedAs: opened.stat,
-                                          byteLimit: largeFileThreshold) else {
+            let read: (data: Data, snapshot: FileSnapshot)
+            do {
+                read = try readAll(descriptor: opened.descriptor,
+                                   openedAs: opened.stat,
+                                   byteLimit: largeFileThreshold,
+                                   isCancelled: isCancelled)
+            } catch LoadError.cancelled {
+                throw LoadError.cancelled
+            } catch {
                 throw LoadError.unreadable
             }
             let data = read.data
@@ -187,7 +199,8 @@ enum FileLoader {
             // deshalb den Rest abschnittsweise. BOM-markiertes UTF-16 bleibt
             // erlaubt; dort sind Nullbytes erwartbarer Bestandteil des Texts.
             if !bomEncodingAllowsNUL(probeBOMEncoding),
-               try containsNUL(handle: handle, startingAt: UInt64(probe.count)) {
+               try containsNUL(handle: handle, startingAt: UInt64(probe.count),
+                               isCancelled: isCancelled) {
                 return LoadedFile(content: "", encoding: .utf8, bom: Data(),
                                   lineEnding: .lf, displayMode: .hex,
                                   fileSize: fileSize, diskSnapshot: nil)
@@ -199,9 +212,15 @@ enum FileLoader {
                               diskSnapshot: nil)
         }
 
-        guard let read = try? readAll(descriptor: opened.descriptor,
-                                      openedAs: opened.stat,
-                                      byteLimit: largeFileThreshold) else {
+        let read: (data: Data, snapshot: FileSnapshot)
+        do {
+            read = try readAll(descriptor: opened.descriptor,
+                               openedAs: opened.stat,
+                               byteLimit: largeFileThreshold,
+                               isCancelled: isCancelled)
+        } catch LoadError.cancelled {
+            throw LoadError.cancelled
+        } catch {
             throw LoadError.unreadable
         }
         let data = read.data
@@ -288,7 +307,8 @@ enum FileLoader {
     /// Speicher zu füllen. Die anschließende String-Dekodierung kann ein
     /// Vielfaches der Bytezahl belegen.
     private static func readAll(descriptor: Int32, openedAs before: stat,
-                                byteLimit: UInt64) throws
+                                byteLimit: UInt64,
+                                isCancelled: () -> Bool = { false }) throws
         -> (data: Data, snapshot: FileSnapshot) {
         let limit = min(byteLimit, FileSnapshot.maximumReadBytes)
         guard before.st_size >= 0, UInt64(before.st_size) <= limit else {
@@ -303,6 +323,7 @@ enum FileLoader {
         var data = Data()
         data.reserveCapacity(Int(before.st_size))
         while true {
+            guard !isCancelled() else { throw LoadError.cancelled }
             let chunk = try handle.read(upToCount: 4 * 1024 * 1024) ?? Data()
             if chunk.isEmpty { break }
             data.append(chunk)
@@ -336,14 +357,18 @@ enum FileLoader {
     /// kein Pfad: Nur so urteilt der Nachscan über dieselbe Datei, deren Typ
     /// und Größe vorher geprüft wurden. Ein zweites Öffnen könnte inzwischen
     /// auf ein anderes Ziel zeigen.
-    private static func containsNUL(handle: FileHandle, startingAt offset: UInt64) throws -> Bool {
+    private static func containsNUL(handle: FileHandle, startingAt offset: UInt64,
+                                    isCancelled: () -> Bool = { false }) throws -> Bool {
         do {
             try handle.seek(toOffset: offset)
             while true {
+                guard !isCancelled() else { throw LoadError.cancelled }
                 let chunk = try handle.read(upToCount: binaryScanChunkSize) ?? Data()
                 if chunk.isEmpty { return false }
                 if chunk.contains(0) { return true }
             }
+        } catch LoadError.cancelled {
+            throw LoadError.cancelled
         } catch {
             throw LoadError.unreadable
         }

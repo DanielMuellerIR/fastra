@@ -150,6 +150,16 @@ extension Workspace {
     func gitAmendNoEdit() {
         guard projectURL != nil, !gitOperationsAreBusy else { return }
         guard let context = currentGitActionContext else { return }
+        // Amend ersetzt die Spitze des Verlaufs durch einen neuen Commit und
+        // nimmt vorher ALLE offenen Änderungen auf. Das ist deutlich
+        // überraschender als ein normaler Commit und braucht deshalb dieselbe
+        // sichtbare Bestätigung wie andere verlaufsändernde Git-Aktionen.
+        guard gitMutationConfirmationHandler(GitMutationConfirmation(
+            title: L10n.string("Letzten Commit wirklich ergänzen?"),
+            explanation: L10n.string("Alle aktuellen Änderungen werden bereitgestellt und der letzte Commit wird ersetzt. Wurde er bereits geteilt, ändert sich dessen Commit-ID."),
+            confirmTitle: L10n.string("Commit ersetzen"),
+            isDestructive: true
+        )) else { return }
         ensureGitIdentity(context: context) { [weak self] context in
             self?.runGitAction(["add", "-A"], label: "Stagen", context: context,
                                then: {
@@ -1357,6 +1367,7 @@ extension Workspace {
     func refreshOpenGitViews() {
         refreshOpenGitLogView()
         refreshOpenGitDiffTabs()
+        refreshOpenGitSnapshotTabs()
     }
 
     // MARK: - Dialog-Helfer

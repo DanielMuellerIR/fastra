@@ -258,9 +258,13 @@ extension Workspace {
                     }
                 }
                 // Ein einzelner Load-Fehler setzt activeTabID auf seinen
-                // früheren Platzhalter zurück. Nach allen parallelen Loads
-                // deshalb gegen die tatsächlich überlebenden Tabs abgleichen.
-                if self.tabs.isEmpty {
+                // früheren Platzhalter zurück. Erzeugt der sichere Lade-
+                // Fallback dabei nur einen neuen, unberührten Scratch-Tab,
+                // gilt der Restore trotzdem vollständig als gescheitert:
+                // Projektkontext und Beobachter müssen dann ebenfalls weg.
+                // Ein inzwischen vom Nutzer beschriebener Entwurf verhindert
+                // den Welcome-Fallback weiterhin zuverlässig.
+                if self.tabs.allSatisfy({ $0.isPristineScratch }) {
                     self.enterWelcomeState()
                 } else {
                     if !self.tabs.contains(where: { $0.id == finalActiveTabID }) {

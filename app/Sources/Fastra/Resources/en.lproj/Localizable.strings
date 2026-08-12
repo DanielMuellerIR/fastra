@@ -76,6 +76,7 @@
 "Keine Änderungen" = "No Changes";
 "Lange Zeilen am Fensterrand umbrechen" = "Wrap long lines at the window edge";
 "Letzten Commit ergänzen" = "Amend Last Commit";
+"Letzten Commit wirklich ergänzen?" = "Really amend the last commit?";
 "Lokale Commits zum entfernten Repository hochladen (git push)." = "Upload local commits to the remote repository (git push).";
 "Lokalen Branch auswählen" = "Select Local Branch";
 "Markdown-Vorschau ein-/ausblenden" = "Toggle Markdown Preview";
@@ -185,6 +186,8 @@
 "Änderungen anzeigen (git diff)" = "Show Changes (git diff)";
 "Änderungen bereitstellen" = "Stage Changes";
 "Änderungen verwerfen" = "Discard Changes";
+"Änderungen als aufklappbaren Ordnerbaum anzeigen" = "Show changes as an expandable folder tree";
+"Änderungen als flache Liste anzeigen" = "Show changes as a flat list";
 "Über Fastra" = "About Fastra";
 "Nach Updates suchen …" = "Check for Updates…";
 "— Keine —" = "— None —";
@@ -499,6 +502,7 @@
 "Git-Verlauf" = "Git History";
 "Git-Diff" = "Git Diff";
 "Git-Diff: %@" = "Git Diff: %@";
+"Git-Vorversion" = "Previous Git Version";
 "Keine Änderungen gegenüber HEAD." = "No changes compared with HEAD.";
 "Commit %@" = "Commit %@";
 "Kein Inhalt." = "No Content.";
@@ -725,6 +729,13 @@
 "Der Ordner ist nicht verfügbar: %@" = "The folder is unavailable: %@";
 "Der ausgewählte Eltern-Commit ist die linke Vergleichsseite." = "The selected parent commit is the left comparison side.";
 "Die Git-Ausgabe enthält ungültiges UTF-8. Fastra ersetzt keine Bytes und zeigt deshalb keinen möglicherweise verfälschten Text-Diff." = "The Git output contains invalid UTF-8. Fastra does not replace bytes and therefore does not show a potentially distorted text diff.";
+"Die letzte Git-Version konnte nicht geladen werden." = "The previous Git version could not be loaded.";
+"Die letzte Git-Version ist binär oder verwendet eine nicht unterstützte Zeichenkodierung." = "The previous Git version is binary or uses an unsupported text encoding.";
+"Die letzte Git-Version ist zu groß für die vollständige Textvorschau." = "The previous Git version is too large for the complete text preview.";
+"Die Git-Vorschau wurde wegen eines Projektwechsels beendet." = "The Git preview was stopped because the project changed.";
+"Diese Datei wurde gelöscht. Fastra zeigt die letzte Git-Version schreibgeschützt." = "This file was deleted. Fastra is showing the previous Git version as read-only.";
+"Einfachklick: Vorschau, Doppelklick: Tab dauerhaft öffnen — %@" = "Single-click: preview; double-click: keep tab open — %@";
+"Git fasst diesen unversionierten Ordner zusammen; Datei-Vorschau ist nicht verfügbar." = "Git summarizes this untracked folder; file preview is unavailable.";
 "Diff ist zu groß" = "Diff Is Too Large";
 "Diff konnte nicht gelesen werden" = "Diff Could Not Be Read";
 "Doppelklick öffnet den Commit-Diff." = "Double-click opens the commit diff.";
@@ -811,6 +822,8 @@
 "Commit oder Push werden nicht ausgeführt." = "No commit or push will be performed.";
 "Commit per Cherry-pick übernommen" = "Cherry-picked commit";
 "Commit überspringen" = "Skip Commit";
+"Commit ersetzen" = "Replace Commit";
+"Alle aktuellen Änderungen werden bereitgestellt und der letzte Commit wird ersetzt. Wurde er bereits geteilt, ändert sich dessen Commit-ID." = "All current changes will be staged and the last commit will be replaced. If it has already been shared, its commit ID will change.";
 "Commit „%@“ (%@) wird auf Branch „%@“ %@." = "Commit ‘%@’ (%@) on branch ‘%@’ will be %@.";
 "Commit-Hash kopieren" = "Copy Commit Hash";
 "Commit-Hash kopiert" = "Copied commit hash";

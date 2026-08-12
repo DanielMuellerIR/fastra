@@ -601,7 +601,8 @@ file tree can create, rename, and trash files and folders.
 It can also duplicate an item: the copy gets “copy” and, when needed, a running
 number before its extension and opens immediately as the active tab. A saved
 tab's right-click menu contains the same file actions; options that need a file
-stay disabled on an unsaved tab.
+stay disabled on an unsaved tab. On wide windows, the sidebar can be expanded
+to 760 points so long paths remain readable.
 
 **Filtering files:** The filter field above the file tree filters live
 by file name (substring, case-insensitive — deliberately no fuzzy
@@ -637,7 +638,8 @@ additionally shows the **Changes** and **Graph** tabs:
   the other push targets remain available and the actual Git message appears
   as a warning.
 - **Several files at once:** in the file list, a click selects one row,
-  ⇧-click selects the range up to it, and ⌘-click adds or removes
+  opens it as a temporary preview, ⇧-click selects the range up to it, and
+  ⌘-click adds or removes
   individual rows. Selected rows have a colored background. An action on a
   selected row — discard, stage, or unstage, via button or context menu —
   then applies to the whole selection; the context menu states the count.
@@ -645,6 +647,17 @@ additionally shows the **Changes** and **Graph** tabs:
   says how many of them are untracked files (those get deleted). When Git
   reports a whole untracked folder as one row, Fastra does not delete it
   recursively, so ignored files inside remain untouched.
+- **List or folder tree:** the folder button in the first section header
+  switches between the compact flat list and an expandable tree. The tree uses
+  the same folder symbols and disclosure controls as the Files tab. Fastra
+  remembers the choice for the next launch.
+- **Quick file inspection:** a single click opens an italic temporary preview
+  tab; the next single click replaces it. A double click keeps the tab open,
+  as does the first edit. Deleted files are struck through in the list. A click
+  opens their previous Git version in a read-only editor; a red tab title and
+  lock show the state, and an edit attempt explains it right at the insertion
+  point. The diff remains available through “Show Changes (Diff)” in the
+  context menu.
 - **Bulk buttons in the “CHANGES” section header:** open a combined diff of
   all open changes in the two-column view, discard all changes, stage
   everything. The “STAGED” header has the button that unstages everything.
@@ -703,7 +716,9 @@ search hit or ⌘J — takes precedence and scrolls to the target as usual.
 After opening or closing a document and on every tab switch, the tab bar scrolls
 until the active tab is fully visible. Between those changes, a horizontal
 position you chose manually is left untouched. The tab's right-click menu also
-offers Save, Close This Tab, and Close Other Tabs.
+offers Save, Close This Tab, and Close Other Tabs. Tab titles always show the
+full file name; with many or long names, the bar scrolls horizontally. Active
+and inactive tabs use clearly different surfaces and borders.
 
 A dot in the tab indicates unsaved changes. It disappears again as soon as
 the content exactly matches the saved state — whether via Undo or by

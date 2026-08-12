@@ -86,4 +86,20 @@ struct SplitterSizingTests {
                                                     minimumTrailing: 260)
         #expect(narrow == 260)
     }
+
+    @Test("Breite Seitenleiste lässt dem Editor beim Verkleinern Platz")
+    func sidebarMaximumFollowsWindowWidth() {
+        #expect(SplitterSizing.leadingMaximum(
+            total: 1400, splitter: 11, minimumLeading: 180,
+            minimumTrailing: 240, absoluteMaximum: 760
+        ) == 760)
+        #expect(SplitterSizing.leadingMaximum(
+            total: 760, splitter: 11, minimumLeading: 180,
+            minimumTrailing: 240, absoluteMaximum: 760
+        ) == 509)
+        #expect(SplitterSizing.leadingMaximum(
+            total: 300, splitter: 11, minimumLeading: 180,
+            minimumTrailing: 240, absoluteMaximum: 760
+        ) == 180)
+    }
 }

@@ -13,15 +13,24 @@ struct TabBarView: View {
     @AppStorage("editor.sidebarVisible", store: SelfTest.workspaceDefaults()) private var showSidebar = true
     @AppStorage("markdown.integratedPreview", store: SelfTest.workspaceDefaults()) private var showPreview = true
 
-    private let sidebarMinWidth = 180.0
-    private let sidebarMaxWidth = 480.0
+    private let sidebarMinWidth = SidebarLayout.minimumSidebarWidth
+    private let sidebarMaxWidth = SidebarLayout.maximumSidebarWidth
     private let dividerWidth: CGFloat = 11
+
+    @State private var contentWidth: CGFloat = 0
 
     // Die Seitenleisten-Breite liegt pro Fenster auf dem `workspace`, damit der
     // Titelleisten-Vorlauf exakt mit der Seitenleiste darunter fluchtet und der
     // Splitter nur dieses Fenster verändert (Daniel-Befund 2026-07-20).
     private var effectiveSidebarWidth: CGFloat {
-        CGFloat(min(max(workspace.sidebarWidth, sidebarMinWidth), sidebarMaxWidth))
+        let maximum = contentWidth > 0
+            ? SplitterSizing.leadingMaximum(
+                total: Double(contentWidth), splitter: Double(dividerWidth),
+                minimumLeading: sidebarMinWidth, minimumTrailing: 240,
+                absoluteMaximum: sidebarMaxWidth
+            )
+            : sidebarMaxWidth
+        return CGFloat(min(max(workspace.sidebarWidth, sidebarMinWidth), maximum))
     }
 
     var body: some View {
@@ -31,6 +40,15 @@ struct TabBarView: View {
             // Verschieben des Fensters (`isMovableByWindowBackground`).
             .background(Theme.surfaceRaised)
             .focusEffectDisabled()
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear { contentWidth = proxy.size.width }
+                        .onChange(of: proxy.size.width) { _, width in
+                            contentWidth = width
+                        }
+                }
+            )
     }
 
     private var titlebarControls: some View {
@@ -194,6 +212,13 @@ private extension TabBarView {
                 .onChange(of: workspace.tabs.map(\.id)) { _, _ in
                     revealActiveTab(using: proxy)
                 }
+                // Der flüchtige Vorschau-Tab behält absichtlich seine ID,
+                // wenn der nächste Dateiklick ihn ersetzt. Sein Name und
+                // damit seine Breite ändern sich trotzdem; auch dann muss der
+                // vollständige aktive Tab in den sichtbaren Bereich rücken.
+                .onChange(of: workspace.tabs.map(\.title)) { _, _ in
+                    revealActiveTab(using: proxy)
+                }
             }
 
             Button(action: workspace.openNewTab) {
@@ -257,22 +282,23 @@ private struct TabPill: View {
                             .controlSize(.small)
                             .frame(width: 11 * uiScale, height: 11 * uiScale)
                     } else {
-                        Image(systemName: "doc.text")
+                        Image(systemName: tab.readOnlyReason == nil ? "doc.text" : "lock.fill")
                             .fastraFont(size: 11)
-                            .foregroundColor(Theme.textSecondary)
+                            .foregroundColor(tab.readOnlyReason == nil
+                                             ? Theme.textSecondary : Theme.diffRemovedFG)
                     }
 
                     Text(displayTitle)
                         .fastraFont(.small)
+                        .italic(tab.isPreview)
                         .lineLimit(1)
-                        // Die horizontale Tab-Leiste bietet sonst unbegrenzten
-                        // Idealplatz: Sehr lange Dateinamen würden einen einzelnen
-                        // Tab über fast das ganze Fenster ziehen. Mitte kürzen
-                        // erhält Anfang und Dateiendung.
-                        .truncationMode(.middle)
-                        .frame(maxWidth: 180 * uiScale, alignment: .leading)
+                        // Die Tab-Leiste scrollt horizontal. Der Dateiname darf
+                        // deshalb seine echte Breite beanspruchen und wird nie
+                        // zugunsten weiterer Tabs verstümmelt.
+                        .fixedSize(horizontal: true, vertical: false)
                         .foregroundColor(
-                            isActive || isComparisonSelected
+                            tab.readOnlyReason != nil ? Theme.diffRemovedFG
+                            : isActive || isComparisonSelected
                                 ? Theme.textPrimary : Theme.textSecondary
                         )
                         .help(displayTitle)
@@ -411,13 +437,14 @@ private struct TabPill: View {
     private var tabBackground: Color {
         if isActive { return Theme.surfaceSand }
         if isComparisonSelected { return Theme.surfaceBase }
-        return .clear
+        if tabHovering { return Theme.surfaceBase }
+        return Theme.surfaceRaised.opacity(0.82)
     }
 
     private var tabStroke: Color {
         if isActive { return Theme.strokeStrong }
         if isComparisonSelected { return Theme.stroke }
-        return .clear
+        return Theme.stroke.opacity(0.72)
     }
 
     private var selectionMarker: String {
@@ -436,6 +463,7 @@ private struct TabPill: View {
 
     private var canSave: Bool {
         tab.gitKind == nil && tab.fileDiffRequest == nil
+            && tab.readOnlyReason == nil
             && tab.displayMode == .text && !tab.isLoading
     }
 

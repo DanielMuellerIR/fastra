@@ -19,14 +19,14 @@ struct GitRemoteTrackingTests {
         #expect(snapshot.headOID == "localoid")
         #expect(snapshot.states == [
             GitRemoteTrackingState(
-                remote: "github", branch: "main",
-                refName: "refs/remotes/github/main", oid: "ghoid",
-                localAhead: 2, localBehind: 0
-            ),
-            GitRemoteTrackingState(
                 remote: "backup", branch: "main",
                 refName: "refs/remotes/backup/main", oid: "localoid",
                 localAhead: 0, localBehind: 0
+            ),
+            GitRemoteTrackingState(
+                remote: "github", branch: "main",
+                refName: "refs/remotes/github/main", oid: "ghoid",
+                localAhead: 2, localBehind: 0
             ),
             GitRemoteTrackingState(
                 remote: "team", branch: "main",
