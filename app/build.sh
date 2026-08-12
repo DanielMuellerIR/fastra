@@ -3155,8 +3155,8 @@ fi
 # Zeile als `visibleTextRange` — auch ohne Soft Wrap, obwohl horizontal nur ein
 # kleiner Ausschnitt sichtbar ist. CodeEditSourceEditor plant daraufhin fuer
 # jedes Zeichen Highlight-Auftraege. Der Patch ermittelt Anfang und Ende ueber
-# echte Viewport-Punkte. Das eigentliche Langzeilen-Layout schuetzt Fastra im
-# Produktcode, indem Soft Wrap fuer solche Dokumente automatisch aus bleibt.
+# echte Viewport-Punkte. Das eigentliche Langzeilen-Layout wird unten durch
+# virtuelle Fragment-Views auch mit eingeschaltetem Soft Wrap begrenzt.
 # Regression: `LongLineEditorPerformanceTests` prueft die echte Range.
 CETV_TEXT_VIEW_LAYOUT="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+Layout.swift"
 CETV_LAYOUT_MANAGER="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextLayoutManager/TextLayoutManager.swift"
@@ -3653,6 +3653,840 @@ if ! grep -q 'Fastra-Patch: mehrere sichtbare Textbereiche pro Viewport' \
   exit 1
 fi
 if [ "$LONG_LINE_LAYOUT_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z5. CodeEditTextView — Soft Wrap fuer Megazeilen virtualisieren.
+#
+# Der Typesetter muss alle Umbruchpositionen kennen, damit Scrollhoehe,
+# Cursorpositionen und Auswahl exakt bleiben. AppKit-Views duerfen daraus aber
+# nur fuer den sichtbaren Ausschnitt entstehen. Upstream hatte den passenden
+# Iterator bereits vorbereitet, nutzte stattdessen jedoch bewusst die gesamte
+# Fragmentliste. Eine 4,36-MB-Zeile erzeugte dadurch zehntausende NSViews.
+# Zusaetzlich werden sichtbare Highlight-Ranges defensiv auf das aktuelle
+# Dokument geklemmt: Frame-Benachrichtigungen koennen waehrend des JSON-Wechsels
+# noch Geometrie aus dem vorherigen Layout liefern; ein ungeklemmtes IndexSet
+# brach Fastra 1.75.0 dann mit SIGTRAP ab.
+CETV_VIRTUAL_LINE_LAYOUT="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextLayoutManager/TextLayoutManager+Layout.swift"
+VIRTUAL_WRAP_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: Das Fragmentmodell bleibt vollständig' \
+    "$CETV_VIRTUAL_LINE_LAYOUT" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: Geometrieabfragen koennen' \
+    "$CETV_TEXT_VIEW_LAYOUT" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: Nur echte Dokumentindizes' \
+    "$CESE_VISIBLE_RANGE_PROVIDER" 2>/dev/null; then
+  echo "→ Patche CodeEdit (Soft-Wrap-Views virtualisieren und Ranges klemmen)"
+  chmod u+w "$CETV_VIRTUAL_LINE_LAYOUT" "$CETV_TEXT_VIEW_LAYOUT" \
+    "$CESE_VISIBLE_RANGE_PROVIDER"
+  /usr/bin/python3 - "$CETV_VIRTUAL_LINE_LAYOUT" "$CETV_TEXT_VIEW_LAYOUT" \
+    "$CESE_VISIBLE_RANGE_PROVIDER" <<'PYEOF'
+import sys
+
+layout_path, view_path, provider_path = sys.argv[1:]
+layout = open(layout_path).read()
+view = open(view_path).read()
+provider = open(provider_path).read()
+
+def replace_once(source, old, new, path, label):
+    if old not in source:
+        raise SystemExit(
+            f"{path}: {label} hat sich geaendert — Patch 4z5 pruefen"
+        )
+    return source.replace(old, new, 1)
+
+if "Fastra-Patch: Das Fragmentmodell bleibt vollständig" not in layout:
+    old_decision = '''            if forceLayout || linePositionNeedsLayout || wasNotVisible || lineNotEntirelyLaidOut {
+                fullLineLayout()
+            } else {
+                if didLayoutChange || yContentAdjustment > 0 {
+                    // Layout happened and this line needs to be moved but not necessarily re-added
+                    let needsFullLayout = updateLineViewPositions(linePosition)
+                    if needsFullLayout {
+                        fullLineLayout()
+                        continue
+                    }
+                }
+
+                // Make sure the used fragment views aren't dequeued.
+                usedFragmentIDs.formUnion(linePosition.data.lineFragments.map(\\.data.id))
+            }'''
+    new_decision = '''            let visibleFragmentsMissing = lineHasMissingFragmentView(
+                linePosition,
+                yRange: minY..<maxY
+            )
+
+            if forceLayout || linePositionNeedsLayout || wasNotVisible
+                || lineNotEntirelyLaidOut || visibleFragmentsMissing {
+                fullLineLayout()
+            } else {
+                if didLayoutChange || yContentAdjustment > 0 {
+                    // Layout happened and this line needs to be moved but not necessarily re-added
+                    let needsFullLayout = updateLineViewPositions(
+                        linePosition,
+                        yRange: minY..<maxY
+                    )
+                    if needsFullLayout {
+                        fullLineLayout()
+                        continue
+                    }
+                }
+
+                // Fastra-Patch: Nur Fragment-Views im aktuellen Viewport
+                // behalten. Eine einzelne umgebrochene Megazeile kann
+                // zehntausende Fragmente besitzen, sichtbar sind aber nur
+                // wenige davon.
+                markVisibleFragmentViewsUsed(
+                    linePosition,
+                    yRange: minY..<maxY,
+                    usedFragmentIDs: &usedFragmentIDs
+                )
+            }'''
+    layout = replace_once(
+        layout, old_decision, new_decision, layout_path,
+        "Viewport-Entscheidung"
+    )
+
+    old_prepare = '''        let line = position.data
+        if let renderDelegate {
+            renderDelegate.prepareForDisplay(
+                textLine: line,
+                displayData: lineDisplayData,
+                range: position.range,
+                stringRef: textStorage,
+                markedRanges: markedTextManager.markedRanges(in: position.range),
+                attachments: attachments.getAttachmentsStartingIn(position.range)
+            )
+        } else {
+            line.prepareForDisplay(
+                displayData: lineDisplayData,
+                range: position.range,
+                stringRef: textStorage,
+                markedRanges: markedTextManager.markedRanges(in: position.range),
+                attachments: attachments.getAttachmentsStartingIn(position.range)
+            )
+        }'''
+    new_prepare = '''        let line = position.data
+        if line.needsLayout(maxWidth: layoutData.maxWidth) {
+            if let renderDelegate {
+                renderDelegate.prepareForDisplay(
+                    textLine: line,
+                    displayData: lineDisplayData,
+                    range: position.range,
+                    stringRef: textStorage,
+                    markedRanges: markedTextManager.markedRanges(in: position.range),
+                    attachments: attachments.getAttachmentsStartingIn(position.range)
+                )
+            } else {
+                line.prepareForDisplay(
+                    displayData: lineDisplayData,
+                    range: position.range,
+                    stringRef: textStorage,
+                    markedRanges: markedTextManager.markedRanges(in: position.range),
+                    attachments: attachments.getAttachmentsStartingIn(position.range)
+                )
+            }
+        }'''
+    layout = replace_once(
+        layout, old_prepare, new_prepare, layout_path,
+        "Typeset-Wiederverwendung"
+    )
+
+    old_fragment_loop = '''        var height: CGFloat = 0
+        var width: CGFloat = 0
+        let relativeMinY = max(layoutData.minY - position.yPos, 0)
+        let relativeMaxY = max(layoutData.maxY - position.yPos, relativeMinY)
+
+//        for lineFragmentPosition in line.lineFragments.linesStartingAt(
+//            relativeMinY,
+//            until: relativeMaxY
+//        ) {
+        for lineFragmentPosition in line.lineFragments {
+            let lineFragment = lineFragmentPosition.data
+            lineFragment.documentRange = lineFragmentPosition.range.translate(location: position.range.location)
+
+            layoutFragmentView(
+                inLine: position,
+                for: lineFragmentPosition,
+                at: position.yPos + lineFragmentPosition.yPos
+            )
+
+            width = max(width, lineFragment.width)
+            height += lineFragment.scaledHeight
+            laidOutFragmentIDs.insert(lineFragment.id)
+        }
+
+        return CGSize(width: width, height: height)'''
+    new_fragment_loop = '''        var width: CGFloat = 0
+        let relativeMinY = max(layoutData.minY - position.yPos, 0)
+        let relativeMaxY = max(layoutData.maxY - position.yPos, relativeMinY)
+
+        // Fastra-Patch: Das Fragmentmodell bleibt vollständig, damit Scrollen,
+        // Treffergeometrie und Cursorpositionen exakt bleiben. AppKit-Views
+        // entstehen dagegen nur für den sichtbaren Bereich samt Layoutpuffer.
+        for lineFragmentPosition in line.lineFragments.linesStartingAt(
+            relativeMinY,
+            until: relativeMaxY
+        ) {
+            let lineFragment = lineFragmentPosition.data
+            lineFragment.documentRange = lineFragmentPosition.range.translate(location: position.range.location)
+
+            layoutFragmentView(
+                inLine: position,
+                for: lineFragmentPosition,
+                at: position.yPos + lineFragmentPosition.yPos
+            )
+
+            width = max(width, lineFragment.width)
+            laidOutFragmentIDs.insert(lineFragment.id)
+        }
+
+        return CGSize(width: width, height: line.lineFragments.height)'''
+    layout = replace_once(
+        layout, old_fragment_loop, new_fragment_loop, layout_path,
+        "Fragment-View-Schleife"
+    )
+
+    old_update = '''    private func updateLineViewPositions(_ position: TextLineStorage<TextLine>.TextLinePosition) -> Bool {
+        let line = position.data
+        for lineFragmentPosition in line.lineFragments {
+            guard let view = viewReuseQueue.getView(forKey: lineFragmentPosition.data.id) else {
+                return true
+            }
+            lineFragmentPosition.data.documentRange = lineFragmentPosition.range.translate(
+                location: position.range.location
+            )
+            view.frame.origin = CGPoint(x: edgeInsets.left, y: position.yPos + lineFragmentPosition.yPos)
+        }
+        return false
+    }'''
+    new_update = '''    private func lineHasMissingFragmentView(
+        _ position: TextLineStorage<TextLine>.TextLinePosition,
+        yRange: Range<CGFloat>
+    ) -> Bool {
+        let relativeMinY = max(yRange.lowerBound - position.yPos, 0)
+        let relativeMaxY = max(yRange.upperBound - position.yPos, relativeMinY)
+        for fragment in position.data.lineFragments.linesStartingAt(
+            relativeMinY,
+            until: relativeMaxY
+        ) where viewReuseQueue.getView(forKey: fragment.data.id) == nil {
+            return true
+        }
+        return false
+    }
+
+    private func markVisibleFragmentViewsUsed(
+        _ position: TextLineStorage<TextLine>.TextLinePosition,
+        yRange: Range<CGFloat>,
+        usedFragmentIDs: inout Set<LineFragment.ID>
+    ) {
+        let relativeMinY = max(yRange.lowerBound - position.yPos, 0)
+        let relativeMaxY = max(yRange.upperBound - position.yPos, relativeMinY)
+        for fragment in position.data.lineFragments.linesStartingAt(
+            relativeMinY,
+            until: relativeMaxY
+        ) {
+            usedFragmentIDs.insert(fragment.data.id)
+        }
+    }
+
+    private func updateLineViewPositions(
+        _ position: TextLineStorage<TextLine>.TextLinePosition,
+        yRange: Range<CGFloat>
+    ) -> Bool {
+        let line = position.data
+        let relativeMinY = max(yRange.lowerBound - position.yPos, 0)
+        let relativeMaxY = max(yRange.upperBound - position.yPos, relativeMinY)
+        for lineFragmentPosition in line.lineFragments.linesStartingAt(
+            relativeMinY,
+            until: relativeMaxY
+        ) {
+            guard let view = viewReuseQueue.getView(forKey: lineFragmentPosition.data.id) else {
+                return true
+            }
+            lineFragmentPosition.data.documentRange = lineFragmentPosition.range.translate(
+                location: position.range.location
+            )
+            view.frame.origin = CGPoint(x: edgeInsets.left, y: position.yPos + lineFragmentPosition.yPos)
+        }
+        return false
+    }'''
+    layout = replace_once(
+        layout, old_update, new_update, layout_path,
+        "Fragment-View-Aktualisierung"
+    )
+
+if "Fastra-Patch: Geometrieabfragen koennen" not in view:
+    view = replace_once(
+        view,
+        "        return layoutManager.visibleLines().map { line in",
+        "        return layoutManager.visibleLines().compactMap { line in",
+        view_path,
+        "sichtbare Zeilen"
+    )
+    old_range = '''                let start = min(first, last)
+                let end = max(first, last)
+                return NSRange(
+                    start: start,
+                    end: min(end + 1, documentRange.max)
+                )'''
+    new_range = '''                // Fastra-Patch: Geometrieabfragen koennen waehrend einer
+                // synchronen Frame-/Inset-Aktualisierung kurz einen Offset
+                // aus dem vorherigen Layout liefern. Vor jeder NSRange- und
+                // spaeteren IndexSet-Bildung deshalb auf das echte Dokument
+                // klemmen und nie `NSNotFound + 1` berechnen.
+                let documentEnd = textStorage.length
+                let start = min(max(min(first, last), 0), documentEnd)
+                let end = min(max(max(first, last), start), documentEnd)
+                let exclusiveEnd = end < documentEnd ? end + 1 : end
+                return NSRange(
+                    start: start,
+                    end: exclusiveEnd
+                )'''
+    view = replace_once(
+        view, old_range, new_range, view_path,
+        "Viewport-Range-Klemmung"
+    )
+    old_fallback = '''            return NSRange(
+                location: line.range.location,
+                length: min(line.range.length, 16 * 1024)
+            )'''
+    new_fallback = '''            let location = min(max(line.range.location, 0), textStorage.length)
+            let available = textStorage.length - location
+            return NSRange(location: location,
+                           length: min(max(line.range.length, 0),
+                                       min(available, 16 * 1024)))'''
+    view = replace_once(
+        view, old_fallback, new_fallback, view_path,
+        "Viewport-Fallback-Klemmung"
+    )
+
+if "Fastra-Patch: Nur echte Dokumentindizes" not in provider:
+    old_lazy = '''        var result = IndexSet()
+        for range in textView?.visibleTextRanges ?? [] {
+            result.insert(integersIn: range.location..<range.max)
+        }
+        return result'''
+    new_lazy = '''        Self.makeVisibleSet(
+            from: textView?.visibleTextRanges ?? [],
+            documentRange: documentRange
+        )'''
+    provider = replace_once(
+        provider, old_lazy, new_lazy, provider_path,
+        "VisibleSet-Initialisierung"
+    )
+    old_update = '''        guard let textView else { return }
+        var visibleSet = IndexSet()
+        for range in textView.visibleTextRanges {
+            visibleSet.insert(integersIn: range.location..<range.max)
+        }
+        if !(minimapView?.isHidden ?? true), let minimapVisibleRange = minimapView?.visibleTextRange {
+            visibleSet.formUnion(IndexSet(integersIn: minimapVisibleRange))
+        }
+        self.visibleSet = visibleSet
+        delegate?.visibleSetDidUpdate(visibleSet)
+    }
+
+    deinit {'''
+    new_update = '''        guard let textView else { return }
+        var ranges = textView.visibleTextRanges
+        if !(minimapView?.isHidden ?? true), let minimapVisibleRange = minimapView?.visibleTextRange {
+            ranges.append(minimapVisibleRange)
+        }
+        let visibleSet = Self.makeVisibleSet(
+            from: ranges,
+            documentRange: textView.documentRange
+        )
+        self.visibleSet = visibleSet
+        delegate?.visibleSetDidUpdate(visibleSet)
+    }
+
+    /// Fastra-Patch: Nur echte Dokumentindizes an `IndexSet` weitergeben.
+    /// AppKit kann Frame- und Bounds-Benachrichtigungen mitten in einer
+    /// Layoutaenderung senden; dann gehoert eine gemeldete Range mitunter noch
+    /// zur vorherigen Framegroesse. `IndexSet` trappt bei solchen Bereichen,
+    /// statt sie selbst zu klemmen.
+    private static func makeVisibleSet(
+        from ranges: [NSRange],
+        documentRange: NSRange
+    ) -> IndexSet {
+        guard documentRange.location != NSNotFound,
+              documentRange.location >= 0,
+              documentRange.length >= 0 else { return IndexSet() }
+        let (documentEnd, documentOverflow) = documentRange.location
+            .addingReportingOverflow(documentRange.length)
+        guard !documentOverflow else { return IndexSet() }
+
+        var result = IndexSet()
+        for range in ranges where range.location != NSNotFound
+            && range.location >= 0 && range.length >= 0 {
+            let (rangeEnd, rangeOverflow) = range.location
+                .addingReportingOverflow(range.length)
+            guard !rangeOverflow else { continue }
+            let lower = max(range.location, documentRange.location)
+            let upper = min(rangeEnd, documentEnd)
+            if lower < upper {
+                result.insert(integersIn: lower..<upper)
+            }
+        }
+        return result
+    }
+
+    deinit {'''
+    provider = replace_once(
+        provider, old_update, new_update, provider_path,
+        "VisibleSet-Aktualisierung"
+    )
+
+open(layout_path, "w").write(layout)
+open(view_path, "w").write(view)
+open(provider_path, "w").write(provider)
+PYEOF
+  VIRTUAL_WRAP_PATCH_CHANGED=1
+fi
+if ! grep -q 'Fastra-Patch: Das Fragmentmodell bleibt vollständig' \
+    "$CETV_VIRTUAL_LINE_LAYOUT" \
+   || ! grep -q 'Fastra-Patch: Geometrieabfragen koennen' \
+    "$CETV_TEXT_VIEW_LAYOUT" \
+   || ! grep -q 'Fastra-Patch: Nur echte Dokumentindizes' \
+    "$CESE_VISIBLE_RANGE_PROVIDER"; then
+  echo "✗ FEHLER: Soft-Wrap-Virtualisierung hat NICHT gegriffen." >&2
+  exit 1
+fi
+if [ "$VIRTUAL_WRAP_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z6. CodeEdit — Startlayout, sichtbare Syntaxbereiche und verborgene Minimap.
+#
+# Der Editor erzeugt eine TextLine zuerst mit unendlicher Breite und kennt die
+# echte Viewportbreite erst nach dem Einhaengen in die ScrollView. Upstream
+# wertete genau diesen Wechsel nicht als neues Layout: Soft Wrap behielt dann
+# das mehrere Millionen Pixel breite Startfragment. Vor dem ersten endlichen
+# Layout darf dieses provisorische Fragment ausserdem nicht als vollstaendig
+# sichtbar an den Highlighter gehen; sonst werden vier Millionen Zeichen in
+# 4-KB-Auftraegen auf den Main-Thread zurueckgeschrieben. Eine verborgene
+# Minimap darf schliesslich kein zweites Voll-Layout berechnen.
+# Regression: DifficultDocumentCorpusTests und LongLineEditorPerformanceTests.
+CESE_MINIMAP_CONTENT="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/Minimap/MinimapContentView.swift"
+CESE_PERIPHERALS="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/SourceEditorConfiguration/SourceEditorConfiguration+Peripherals.swift"
+RESPONSIVE_WRAP_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: Auch der Wechsel von unendlicher Startbreite' \
+    "$CETV_TEXTLINE" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: Bei Soft Wrap liefern die Fragment-Ranges' \
+    "$CETV_TEXT_VIEW_LAYOUT" 2>/dev/null \
+   || ! grep -q 'Range ist NICHT sichtbar' \
+    "$CETV_TEXT_VIEW_LAYOUT" 2>/dev/null \
+   || ! grep -q 'private func installScrollObserversIfNeeded' \
+    "$CESE_VISIBLE_RANGE_PROVIDER" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: Eine unsichtbare Minimap darf keine zweite Kopie' \
+    "$CESE_MINIMAP_CONTENT" 2>/dev/null \
+   || ! grep -q 'controller.minimapView?.contentView.needsLayout = true' \
+    "$CESE_PERIPHERALS" 2>/dev/null; then
+  echo "→ Patche CodeEdit (Soft Wrap und sichtbare Syntaxbereiche responsiv halten)"
+  chmod u+w "$CETV_TEXTLINE" "$CETV_TEXT_VIEW_LAYOUT" \
+    "$CESE_VISIBLE_RANGE_PROVIDER" \
+    "$CESE_MINIMAP_CONTENT" "$CESE_PERIPHERALS"
+  /usr/bin/python3 - "$CETV_TEXTLINE" "$CETV_TEXT_VIEW_LAYOUT" \
+    "$CESE_VISIBLE_RANGE_PROVIDER" "$CESE_MINIMAP_CONTENT" \
+    "$CESE_PERIPHERALS" <<'PYEOF'
+import sys
+
+(
+    textline_path,
+    view_path,
+    provider_path,
+    minimap_path,
+    peripherals_path,
+) = sys.argv[1:]
+textline = open(textline_path).read()
+view = open(view_path).read()
+provider = open(provider_path).read()
+minimap = open(minimap_path).read()
+peripherals = open(peripherals_path).read()
+
+def replace_once(source, old, new, path, label):
+    if old not in source:
+        raise SystemExit(
+            f"{path}: {label} hat sich geaendert — Patch 4z6 pruefen"
+        )
+    return source.replace(old, new, 1)
+
+if "Fastra-Patch: Auch der Wechsel von unendlicher Startbreite" not in textline:
+    old_width_check = '''    func needsLayout(maxWidth: CGFloat) -> Bool {
+        needsLayout // Force layout
+        || (
+            // Both max widths we're comparing are finite
+            maxWidth.isFinite
+            && (self.maxWidth ?? 0.0).isFinite
+            && maxWidth != (self.maxWidth ?? 0.0)
+        )
+    }'''
+    new_width_check = '''    func needsLayout(maxWidth: CGFloat) -> Bool {
+        // Fastra-Patch: Auch der Wechsel von unendlicher Startbreite zur
+        // echten Viewportbreite braucht ein neues Layout. Andernfalls bleibt
+        // die beim Initialisieren erzeugte, mehrere Millionen Pixel breite
+        // Fragment-View trotz eingeschaltetem Soft Wrap bestehen.
+        guard !maxWidth.isNaN else { return needsLayout }
+        let previousMaxWidth = self.maxWidth ?? 0.0
+        return needsLayout
+            || (!previousMaxWidth.isNaN && maxWidth != previousMaxWidth)
+    }'''
+    textline = replace_once(
+        textline, old_width_check, new_width_check, textline_path,
+        "Startbreiten-Wechsel"
+    )
+
+if "Fastra-Patch: Bei Soft Wrap liefern die Fragment-Ranges" not in view:
+    old_range_query = '''            if let first = layoutManager.textOffsetAtPoint(
+                CGPoint(x: leftX, y: lineTop)
+            ), let last = layoutManager.textOffsetAtPoint(
+                CGPoint(x: rightX, y: lineBottom)
+            ) {'''
+    new_range_query = '''            if layoutManager.wrapLines,
+               line.data.maxWidth?.isFinite == true,
+               let firstFragment = line.data.lineFragments.getLine(
+                   atPosition: max(lineTop - line.yPos, 0)
+               ),
+               let lastFragment = line.data.lineFragments.getLine(
+                   atPosition: max(lineBottom - line.yPos, 0)
+               ) {
+                // Fastra-Patch: Bei Soft Wrap liefern die Fragment-Ranges den
+                // sichtbaren Text direkt. CoreText fuer die linke und rechte
+                // Kante zu befragen ist bei einer Megazeile linear teuer und
+                // geschieht sonst reentrant bei jeder Frame-Benachrichtigung.
+                let rawStart = line.range.location + firstFragment.range.location
+                let rawEnd = line.range.location + lastFragment.range.max
+                let start = min(max(rawStart, 0), textStorage.length)
+                let end = min(max(rawEnd, start), textStorage.length)
+                return NSRange(start: start, end: end)
+            }
+            if layoutManager.wrapLines {
+                // Vor dem ersten Layout besteht eine Megazeile noch aus einem
+                // einzigen Fragment mit unendlicher Breite. Diese provisorische
+                // Range ist NICHT sichtbar und darf weder Parser noch
+                // Textspeicher fuer das ganze Dokument anwerfen.
+                let location = min(max(line.range.location, 0), textStorage.length)
+                let available = textStorage.length - location
+                return NSRange(
+                    location: location,
+                    length: min(max(line.range.length, 0), min(available, 16 * 1024))
+                )
+            }
+            if let first = layoutManager.textOffsetAtPoint(
+                CGPoint(x: leftX, y: lineTop)
+            ), let last = layoutManager.textOffsetAtPoint(
+                CGPoint(x: rightX, y: lineBottom)
+            ) {'''
+    view = replace_once(
+        view, old_range_query, new_range_query, view_path,
+        "sichtbare Soft-Wrap-Range"
+    )
+
+if "private func installScrollObserversIfNeeded" not in provider:
+    old_properties = '''    private weak var textView: TextView?
+    private weak var minimapView: MinimapView?
+    weak var delegate: VisibleRangeProviderDelegate?'''
+    new_properties = '''    private weak var textView: TextView?
+    private weak var minimapView: MinimapView?
+    private weak var observedScrollView: NSScrollView?
+    weak var delegate: VisibleRangeProviderDelegate?'''
+    provider = replace_once(
+        provider, old_properties, new_properties, provider_path,
+        "ScrollView-Speicher"
+    )
+
+    old_observers = '''        if let scrollView = textView.enclosingScrollView {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(visibleTextChanged),
+                name: NSView.frameDidChangeNotification,
+                object: scrollView
+            )
+
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(visibleTextChanged),
+                name: NSView.boundsDidChangeNotification,
+                object: scrollView.contentView
+            )
+        }'''
+    provider = replace_once(
+        provider, old_observers, "        installScrollObserversIfNeeded()",
+        provider_path, "spaete Scroll-Beobachter"
+    )
+
+    old_update_start = '''    @objc func visibleTextChanged() {
+        guard let textView else { return }
+        var ranges = textView.visibleTextRanges'''
+    new_update_start = '''    @objc func visibleTextChanged() {
+        guard let textView else { return }
+        installScrollObserversIfNeeded()
+        var ranges = textView.visibleTextRanges'''
+    provider = replace_once(
+        provider, old_update_start, new_update_start, provider_path,
+        "Scroll-Beobachter nachziehen"
+    )
+
+    old_clamp_comment = '''    /// Fastra-Patch: Nur echte Dokumentindizes an `IndexSet` weitergeben.'''
+    new_observer_method = '''    /// Fastra haengt den TextView erst nach dem Aufbau des Highlighters in die
+    /// ScrollView. Darum koennen die Scroll-Beobachter beim Initialisieren noch
+    /// fehlen und muessen beim ersten Frame-Ereignis nachgezogen werden.
+    private func installScrollObserversIfNeeded() {
+        guard let scrollView = textView?.enclosingScrollView,
+              scrollView !== observedScrollView else { return }
+        if let observedScrollView {
+            NotificationCenter.default.removeObserver(
+                self,
+                name: NSView.frameDidChangeNotification,
+                object: observedScrollView
+            )
+            NotificationCenter.default.removeObserver(
+                self,
+                name: NSView.boundsDidChangeNotification,
+                object: observedScrollView.contentView
+            )
+        }
+        scrollView.postsFrameChangedNotifications = true
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(visibleTextChanged),
+            name: NSView.frameDidChangeNotification,
+            object: scrollView
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(visibleTextChanged),
+            name: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView
+        )
+        observedScrollView = scrollView
+    }
+
+    /// Fastra-Patch: Nur echte Dokumentindizes an `IndexSet` weitergeben.'''
+    provider = replace_once(
+        provider, old_clamp_comment, new_observer_method, provider_path,
+        "Scroll-Beobachter-Methode"
+    )
+
+if "Fastra-Patch: Eine unsichtbare Minimap darf keine zweite Kopie" not in minimap:
+    old_minimap_layout = '''    override public func layout() {
+        super.layout()
+        layoutManager?.layoutLines()
+    }'''
+    new_minimap_layout = '''    override public func layout() {
+        super.layout()
+        // Fastra-Patch: Eine unsichtbare Minimap darf keine zweite Kopie der
+        // gesamten Dokumentgeometrie berechnen. Beim Einblenden wird dieser
+        // View ausdruecklich wieder als layoutbeduerftig markiert.
+        guard !isHiddenOrHasHiddenAncestor else { return }
+        layoutManager?.layoutLines()
+    }'''
+    minimap = replace_once(
+        minimap, old_minimap_layout, new_minimap_layout, minimap_path,
+        "verborgene Minimap"
+    )
+
+if "controller.minimapView?.contentView.needsLayout = true" not in peripherals:
+    old_minimap_toggle = '''            if oldConfig?.showMinimap != showMinimap {
+                controller.minimapView?.isHidden = !showMinimap
+                shouldUpdateInsets = true
+            }'''
+    new_minimap_toggle = '''            if oldConfig?.showMinimap != showMinimap {
+                controller.minimapView?.isHidden = !showMinimap
+                if showMinimap {
+                    controller.minimapView?.needsLayout = true
+                    controller.minimapView?.contentView.needsLayout = true
+                }
+                shouldUpdateInsets = true
+            }'''
+    peripherals = replace_once(
+        peripherals, old_minimap_toggle, new_minimap_toggle, peripherals_path,
+        "Minimap-Wiedereinblendung"
+    )
+
+open(textline_path, "w").write(textline)
+open(view_path, "w").write(view)
+open(provider_path, "w").write(provider)
+open(minimap_path, "w").write(minimap)
+open(peripherals_path, "w").write(peripherals)
+PYEOF
+  RESPONSIVE_WRAP_PATCH_CHANGED=1
+fi
+if ! grep -q 'Fastra-Patch: Auch der Wechsel von unendlicher Startbreite' \
+    "$CETV_TEXTLINE" \
+   || ! grep -q 'Fastra-Patch: Bei Soft Wrap liefern die Fragment-Ranges' \
+    "$CETV_TEXT_VIEW_LAYOUT" \
+   || ! grep -q 'Range ist NICHT sichtbar' \
+    "$CETV_TEXT_VIEW_LAYOUT" \
+   || ! grep -q 'private func installScrollObserversIfNeeded' \
+    "$CESE_VISIBLE_RANGE_PROVIDER" \
+   || ! grep -q 'Fastra-Patch: Eine unsichtbare Minimap darf keine zweite Kopie' \
+    "$CESE_MINIMAP_CONTENT" \
+   || ! grep -q 'controller.minimapView?.contentView.needsLayout = true' \
+    "$CESE_PERIPHERALS"; then
+  echo "✗ FEHLER: responsiver Soft-Wrap-Patch hat NICHT vollständig gegriffen." >&2
+  exit 1
+fi
+if [ "$RESPONSIVE_WRAP_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z7. CodeEditTextView — Wortumbruch bei langen alphanumerischen Tokens.
+#
+# Fuer jedes visuelle Fragment lief Upstream bis zu 100 Zeichen rueckwaerts
+# und erzeugte dabei je Zeichen einen NSString-Substring plus CharacterSet.
+# Eine 4,36-MB-Zeile nur aus Buchstaben brauchte deshalb rund 17 Sekunden.
+# NSString kann Kandidaten rueckwaerts ohne Substring je Zeichen finden. Ein
+# Kandidat wird danach einmal als vollstaendiges Unicode-Graphem geprueft,
+# damit etwa Satzzeichen mit Variantenselektor nie in der Mitte umbrechen.
+FAST_WORD_BREAK_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: Wortumbruch-Kandidaten gesammelt rückwärts suchen' \
+    "$CETV_BREAK" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (Wortumbruch langer Tokens beschleunigen)"
+  chmod u+w "$CETV_BREAK"
+  /usr/bin/python3 - "$CETV_BREAK" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+source = open(path).read()
+old_word_search = '''        let canLastCharacterBreak = (breakIndex - 1 > 0 && ensureCharacterCanBreakLine(at: breakIndex - 1, for: string))
+
+        if isBreakAtEndOfString || canLastCharacterBreak {
+            // Breaking either at the end of the string, or on a whitespace.
+            return breakIndex
+        } else if breakIndex - 1 > 0 {
+            // Try to walk backwards until we hit a whitespace or punctuation
+            var index = breakIndex - 1
+
+            while breakIndex - index < 100 && index > subrange.location {
+                if ensureCharacterCanBreakLine(at: index, for: string) {
+                    return index + 1
+                }
+                index -= 1
+            }
+        }
+
+        return breakIndex
+    }
+
+    /// Ensures the character at the given index can break a line.
+    /// - Parameter index: The index to check at.
+    /// - Returns: True, if the character is a whitespace or punctuation character.
+    private func ensureCharacterCanBreakLine(at index: Int, for string: NSAttributedString) -> Bool {
+        let subrange = (string.string as NSString).rangeOfComposedCharacterSequence(at: index)
+        let set = CharacterSet(charactersIn: (string.string as NSString).substring(with: subrange))
+        return set.isSubset(of: .whitespacesAndNewlines) || set.isSubset(of: .punctuationCharacters)
+    }'''
+new_word_search = '''        if isBreakAtEndOfString {
+            // Breaking either at the end of the string, or on a whitespace.
+            return breakIndex
+        }
+
+        // Fastra-Patch: Wortumbruch-Kandidaten gesammelt rückwärts suchen.
+        // Upstream erzeugte für bis zu 100 einzelne Zeichen je visuellem
+        // Fragment ein Substring und ein CharacterSet. Eine alphanumerische
+        // 4,36-MB-Zeile brauchte dadurch rund 17 Sekunden statt unter einer.
+        let searchStart = max(subrange.location, breakIndex - 100)
+        let source = string.string as NSString
+        var searchEnd = breakIndex
+        while searchEnd > searchStart {
+            let candidate = source.rangeOfCharacter(
+                from: Self.wordBreakCandidates,
+                options: .backwards,
+                range: NSRange(
+                    location: searchStart,
+                    length: searchEnd - searchStart
+                )
+            )
+            guard candidate.location != NSNotFound else { break }
+
+            // `rangeOfCharacter` findet auch das Satzzeichen IN einem
+            // zusammengesetzten Graphem wie einer Emoji-Tastenkappe. Die
+            // bisherige Semantik erlaubt den Umbruch nur, wenn das gesamte
+            // Graphem aus Leerraum ODER Satzzeichen besteht.
+            let composed = source.rangeOfComposedCharacterSequence(
+                at: candidate.location
+            )
+            let characters = CharacterSet(
+                charactersIn: source.substring(with: composed)
+            )
+            if characters.isSubset(of: .whitespacesAndNewlines)
+                || characters.isSubset(of: .punctuationCharacters) {
+                return min(composed.max, breakIndex)
+            }
+            searchEnd = max(searchStart, composed.location)
+        }
+
+        return breakIndex
+    }
+
+    private static let wordBreakCandidates = CharacterSet
+        .whitespacesAndNewlines
+        .union(.punctuationCharacters)'''
+old_fast_word_search = '''        if isBreakAtEndOfString {
+            // Breaking either at the end of the string, or on a whitespace.
+            return breakIndex
+        }
+
+        // Fastra-Patch: Den Wortumbruch in einem Schritt rückwärts suchen.
+        // Upstream erzeugte für bis zu 100 einzelne Zeichen je visuellem
+        // Fragment ein Substring und ein CharacterSet. Eine alphanumerische
+        // 4,36-MB-Zeile brauchte dadurch rund 17 Sekunden statt unter einer.
+        let searchStart = max(subrange.location, breakIndex - 100)
+        let searchRange = NSRange(
+            location: searchStart,
+            length: max(0, breakIndex - searchStart)
+        )
+        let breakRange = (string.string as NSString).rangeOfCharacter(
+            from: Self.wordBreakCharacters,
+            options: .backwards,
+            range: searchRange
+        )
+        if breakRange.location != NSNotFound {
+            return breakRange.max
+        }
+
+        return breakIndex
+    }
+
+    private static let wordBreakCharacters = CharacterSet
+        .whitespacesAndNewlines
+        .union(.punctuationCharacters)'''
+if old_word_search in source:
+    source = source.replace(old_word_search, new_word_search, 1)
+elif old_fast_word_search in source:
+    source = source.replace(old_fast_word_search, new_word_search, 1)
+else:
+    raise SystemExit(
+        f"{path}: Wortumbruch-Suche hat sich geaendert — Patch 4z7 pruefen"
+    )
+open(path, "w").write(source)
+PYEOF
+  FAST_WORD_BREAK_PATCH_CHANGED=1
+fi
+if ! grep -q 'Fastra-Patch: Wortumbruch-Kandidaten gesammelt rückwärts suchen' \
+    "$CETV_BREAK" \
+   || grep -q 'private func ensureCharacterCanBreakLine' "$CETV_BREAK"; then
+  echo "✗ FEHLER: schneller Wortumbruch-Patch hat NICHT vollständig gegriffen." >&2
+  exit 1
+fi
+if [ "$FAST_WORD_BREAK_PATCH_CHANGED" -eq 1 ]; then
   rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
   rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
         .build/*/release/Modules/CodeEditTextView.swiftmodule

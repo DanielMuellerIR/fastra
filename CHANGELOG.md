@@ -9,6 +9,33 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.76.0] — 2026-08-12
+
+### Behoben
+
+- **Soft Wrap bleibt auch bei einer einzelnen Megazeile schnell und frei
+  schaltbar:** Fastra erzeugt nur die sichtbaren Umbruch-Views, verwendet das
+  vollständige Fragmentmodell für exaktes Scrollen weiter und beschleunigt den
+  Wortumbruch langer alphanumerischer Folgen. Die in 1.75.0 eingeführte
+  automatische Abschaltung samt Sperre ist vollständig entfernt.
+- **Der Wechsel einer großen `.txt`-Datei zu JSON bleibt stabil und
+  responsiv:** Provisorische Startgeometrie wird nicht mehr als vollständig
+  sichtbar behandelt; Syntaxfarben werden abschnittsweise geladen und folgen
+  dem Scrollen. Veraltete Geometriebereiche können beim Sprachwechsel keinen
+  `IndexSet`-Absturz mehr auslösen.
+
+### Verbessert
+
+- **Formatieren ist in der Fußzeile sichtbar:** Der Schalter bleibt auch im
+  Textmodus auffindbar und erklärt dort, dass zuerst JSON oder XML gewählt
+  werden muss. Nach der Wahl formatiert er auch mehrere MiB große Dokumente im
+  Hintergrund.
+- **Der prozedurale Belastungskorpus prüft den vollständigen Produktpfad:** Die
+  serialisierten 4,36-MB-Tests decken Soft Wrap, Scrollen, sichtbare
+  Fragment-Views, progressives JSON-Einfärben sowie JSON-/XML-Formatierung und
+  die Editorübernahme ab; eine zusätzliche reine Buchstabenfolge schützt den
+  ungünstigsten Wortumbruchfall.
+
 ## [v1.75.0] — 2026-08-12
 
 ### Behoben

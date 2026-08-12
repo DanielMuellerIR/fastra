@@ -40,38 +40,34 @@ private func unwrappedLongLineEditor(characterCount: Int) -> (TextView, NSScroll
     return (textView, scrollView)
 }
 
-@Test("Langzeilen-Schwelle unterscheidet Megazeile von großer normaler Datei")
-func longLinePolicyDetectsOnlyIndividualLongLines() {
-    let limit = LongLinePerformancePolicy.wrappedLineLimit
-    #expect(LongLinePerformancePolicy.requiresSoftWrapSuppression(
-        in: String(repeating: "A", count: limit)
-    ))
-    #expect(!LongLinePerformancePolicy.requiresSoftWrapSuppression(
-        in: String(repeating: "A", count: limit - 1)
-    ))
-    #expect(!LongLinePerformancePolicy.requiresSoftWrapSuppression(
-        in: String(repeating: "A\n", count: limit)
-    ))
-}
-
-@Test("FileLoader meldet eine kritische Langzeile bereits im Hintergrundpfad")
-func fileLoaderReportsPerformanceCriticalLongLine() throws {
-    let url = FileManager.default.temporaryDirectory
-        .appendingPathComponent("fastra-long-line-\(UUID().uuidString).txt")
-    defer { try? FileManager.default.removeItem(at: url) }
-    try Data(
-        repeating: 0x41,
-        count: LongLinePerformancePolicy.wrappedLineLimit
-    ).write(to: url)
-
-    let loaded = try FileLoader.load(url: url)
-    #expect(loaded.displayMode == .text)
-    #expect(loaded.hasPerformanceCriticalLongLine)
-}
-
-@Test("Plain Text setzt Soft Wrap nur für das betroffene Langzeilen-Dokument aus")
 @MainActor
-func workspaceSuppressesSoftWrapForLongLine() {
+private func wrappedLongLineEditor(characterCount: Int) -> (TextView, NSScrollView) {
+    let scrollView = NSScrollView(
+        frame: NSRect(x: 0, y: 0, width: 800, height: 600)
+    )
+    scrollView.hasVerticalScroller = true
+    scrollView.hasHorizontalScroller = false
+
+    let textView = TextView(
+        string: String(repeating: "A", count: characterCount),
+        font: .monospacedSystemFont(ofSize: 13, weight: .regular),
+        wrapLines: true
+    )
+    scrollView.documentView = textView
+    textView.frame = NSRect(origin: .zero, size: scrollView.contentSize)
+    textView.layoutManager.layoutLines()
+    textView.updateFrameIfNeeded()
+    textView.layoutManager.layoutLines()
+    return (textView, scrollView)
+}
+
+// Derselbe serialisierte Belastungskorpus wie in
+// DifficultDocumentCorpusTests: mehrere parallele 4,36-MB-Layouts würden die
+// Laufzeitmessungen gegenseitig verfälschen und unnötig viel Speicher binden.
+extension DifficultDocumentCorpusTests {
+@Test("Plain Text lässt Soft Wrap auch für eine Megazeile frei schaltbar")
+@MainActor
+func workspaceKeepsSoftWrapAvailableForLongLine() {
     let suiteName = "fastra-long-line-wrap-\(UUID().uuidString)"
     let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -82,23 +78,22 @@ func workspaceSuppressesSoftWrapForLongLine() {
     let tab = EditorTab(
         title: "daten.txt",
         path: "—",
-        content: String(
-            repeating: "A",
-            count: LongLinePerformancePolicy.wrappedLineLimit
-        )
+        content: String(repeating: "A", count: 512 * 1024)
     )
     workspace.tabs = [tab]
     workspace.activeTabID = tab.id
 
     #expect(workspace.configuredSoftWrapEnabled)
-    #expect(workspace.softWrapSuppressedForLongLine)
+    #expect(workspace.softWrapEnabled)
+
+    workspace.toggleSoftWrap()
     #expect(!workspace.softWrapEnabled)
+    workspace.toggleSoftWrap()
+    #expect(workspace.softWrapEnabled)
 
     workspace.setLanguageOverride(.json)
     #expect(workspace.activeDocumentFormat.id == .grammar(.json))
     #expect(workspace.activeDocumentFormattingExtension == "json")
-    #expect(!workspace.softWrapEnabled)
-    #expect(workspace.softWrapSuppressedForLongLine)
 }
 
 @Test("Megazeile ohne Soft Wrap erzeugt nur eine Fragment-View")
@@ -111,6 +106,50 @@ func unwrappedLongLineHasBoundedViewCount() {
         .compactMap { $0 as? LineFragmentView }.count
     #expect(fragmentViewCount <= 2,
             "Es wurden \(fragmentViewCount) Fragment-Views erzeugt")
+}
+
+@Test("Megazeile mit Soft Wrap öffnet schnell und erzeugt nur sichtbare Views")
+@MainActor
+func wrappedLongLineStaysResponsiveAndScrolls() throws {
+    let clock = ContinuousClock()
+    let start = clock.now
+    let (textView, scrollView) = wrappedLongLineEditor(
+        characterCount: longLineTestCharacterCount
+    )
+    let duration = start.duration(to: clock.now)
+
+    let initialRange = try #require(textView.visibleTextRange)
+    let initialViews = textView.subviews
+        .compactMap { $0 as? LineFragmentView }.count
+    #expect(duration < .seconds(2),
+            "Soft-Wrap-Layout brauchte \(duration)")
+    #expect(initialViews < 100,
+            "Es wurden \(initialViews) Fragment-Views erzeugt")
+
+    let middleY = max(0, textView.layoutManager.estimatedHeight() / 2)
+    scrollView.contentView.scroll(to: NSPoint(x: 0, y: middleY))
+    scrollView.reflectScrolledClipView(scrollView.contentView)
+    textView.layoutManager.layoutLines(in: NSRect(
+        x: 0,
+        y: middleY,
+        width: scrollView.contentView.bounds.width,
+        height: scrollView.contentView.bounds.height
+    ))
+
+    let scrolledFragmentViews = textView.subviews
+        .compactMap { $0 as? LineFragmentView }
+        .filter { !$0.isHidden && $0.lineFragment != nil }
+    let retainedFragmentViews = textView.subviews
+        .compactMap { $0 as? LineFragmentView }.count
+    #expect(scrollView.contentView.bounds.minY > 0,
+            "Der Test hat nicht wirklich gescrollt")
+    #expect(scrolledFragmentViews.contains {
+        ($0.lineFragment?.documentRange.location ?? 0) > initialRange.location
+    }, "Die sichtbaren Fragment-Views folgten dem Scrollen nicht")
+    #expect(scrolledFragmentViews.count < 100,
+            "Nach dem Scrollen waren \(scrolledFragmentViews.count) Fragment-Views sichtbar")
+    #expect(retainedFragmentViews < 200,
+            "Die Wiederverwendung hielt \(retainedFragmentViews) Fragment-Views vor")
 }
 
 @Test("Highlighter sieht horizontal nur den Bildschirmausschnitt der Megazeile")
@@ -177,4 +216,5 @@ func unwrappedLongLineDrawingStaysBounded() throws {
 
     #expect(duration < .seconds(1),
             "Zeichnen des sichtbaren Ausschnitts brauchte \(duration)")
+}
 }

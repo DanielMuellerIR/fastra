@@ -19,6 +19,7 @@ struct StatusBarView: View {
             HStack(spacing: 14) {
                 encodingMenu
                 languageMenu
+                formatDocumentButton
                 softWrapControl
                 Text(cursorPosition)
                     .fastraFont(.small)
@@ -254,6 +255,34 @@ struct StatusBarView: View {
         .help("Sprache/Format — manuelle Wahl gewinnt vor der Automatik")
     }
 
+    /// Sichtbarer Hauptweg für die strukturierte Formatierung. Der Befehl
+    /// bleibt auch im Textmodus auffindbar und erklärt dort, dass zuerst JSON
+    /// oder XML gewählt werden muss. Menüleiste und Rechtsklick bieten
+    /// denselben Vorgang weiterhin zusätzlich an.
+    private var formatDocumentButton: some View {
+        Button {
+            NotificationCenter.default.post(
+                name: .fastraFormatDocument,
+                object: nil
+            )
+        } label: {
+            Label("Formatieren", systemImage: "text.alignleft")
+                .fastraFont(size: 11, weight: .medium)
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .fixedSize()
+        .disabled(workspace.activeDocumentFormattingExtension == nil)
+        .help(workspace.activeDocumentFormattingExtension == nil
+              ? "JSON oder XML als Format wählen, um das Dokument zu formatieren."
+              : "Formatiert JSON oder XML. Eine Auswahl wird einzeln formatiert.")
+        .accessibilityIdentifier("formatDocumentButton")
+        .background(
+            SelfTestMarker(id: "formatDocumentButtonMarker")
+                .frame(width: 0, height: 0)
+        )
+    }
+
     /// Schneller Hauptschalter plus separater Menüpfeil. Ein Rechtsklick auf
     /// den gesamten Control öffnet denselben echten Optionsinhalt.
     private var softWrapControl: some View {
@@ -273,7 +302,6 @@ struct StatusBarView: View {
                 .padding(.vertical, 2)
             }
             .buttonStyle(.plain)
-            .disabled(workspace.softWrapSuppressedForLongLine)
             .accessibilityLabel(softWrapStatusText)
             .accessibilityHint(softWrapControlHelp)
 
@@ -304,20 +332,12 @@ struct StatusBarView: View {
     }
 
     private var softWrapStatusText: String {
-        if workspace.softWrapSuppressedForLongLine {
-            return L10n.string("Soft Wrap: Aus (sehr lange Zeile)")
-        }
         return L10n.format("Soft Wrap: %@",
                            workspace.softWrapEnabled
                             ? L10n.string("Ein") : L10n.string("Aus"))
     }
 
     private var softWrapControlHelp: String {
-        if workspace.softWrapSuppressedForLongLine {
-            return L10n.string(
-                "Soft Wrap bleibt für dieses Dokument automatisch aus, weil eine extrem lange Zeile den Editor sonst blockieren würde. Der Text bleibt unverändert und horizontal scrollbar."
-            )
-        }
         return L10n.format(
             "Soft Wrap für %@: %@. Hauptklick schaltet um; Pfeil oder Rechtsklick öffnet Optionen.",
             workspace.activeDocumentFormat.displayName,
@@ -327,12 +347,6 @@ struct StatusBarView: View {
 
     @ViewBuilder
     private var softWrapOptions: some View {
-        if workspace.softWrapSuppressedForLongLine {
-            Text(verbatim: L10n.string(
-                "Für dieses Dokument wegen einer sehr langen Zeile automatisch aus"
-            ))
-            Divider()
-        }
         Button {
             workspace.toggleSoftWrap()
         } label: {
@@ -342,7 +356,6 @@ struct StatusBarView: View {
                 Text(verbatim: softWrapStatusText)
             }
         }
-        .disabled(workspace.softWrapSuppressedForLongLine)
         Divider()
         Button {
             workspace.selectSoftWrapTarget(.window)

@@ -209,8 +209,7 @@ struct FastraApp: App {
                     activeDocumentContext.workspace?.toggleSoftWrap()
                 }
                     .keyboardShortcut("l", modifiers: [.command, .shift])
-                    .disabled(activeDocumentContext.workspace?.activeTab == nil
-                        || activeDocumentContext.workspace?.softWrapSuppressedForLongLine == true)
+                    .disabled(activeDocumentContext.workspace?.activeTab == nil)
                 Toggle("Seitenlinie anzeigen", isOn: Binding(
                     get: { commandWorkspace?.showPageGuide ?? false },
                     set: { commandWorkspace?.setShowPageGuide($0) }

@@ -102,10 +102,6 @@ struct EditorTab: Identifiable, Hashable {
     var lineEnding: LineEnding
     var displayMode: EditorDisplayMode
     var fileSize: UInt64
-    /// Eine einzelne extrem lange logische Zeile würde mit Soft Wrap den
-    /// Editor blockieren. Das Flag kommt beim Öffnen aus `FileLoader` und
-    /// wird nach späteren Inhaltsänderungen nebenläufig neu bestimmt.
-    var hasPerformanceCriticalLongLine: Bool
     var hits: Int
     var isDirty: Bool
     /// `true`, während die Datei im Hintergrund geladen wird.
@@ -210,7 +206,6 @@ struct EditorTab: Identifiable, Hashable {
         lineEnding: LineEnding = .lf,
         displayMode: EditorDisplayMode = .text,
         fileSize: UInt64 = 0,
-        hasPerformanceCriticalLongLine: Bool? = nil,
         hits: Int = 0,
         isDirty: Bool = false,
         isLoading: Bool = false,
@@ -241,8 +236,6 @@ struct EditorTab: Identifiable, Hashable {
         self.lineEnding = lineEnding
         self.displayMode = displayMode
         self.fileSize = fileSize
-        self.hasPerformanceCriticalLongLine = hasPerformanceCriticalLongLine
-            ?? LongLinePerformancePolicy.requiresSoftWrapSuppression(in: content)
         self.hits = hits
         self.isDirty = isDirty
         self.isLoading = isLoading
@@ -1220,19 +1213,13 @@ final class Workspace: ObservableObject {
         return MarkdownFormat.isMarkdown(format: activeDocumentFormat)
     }
 
-    /// Gespeicherte Formatwahl ohne den dokumentbezogenen Langzeilen-Schutz.
-    /// Der Wert bleibt erhalten, damit normale Dateien desselben Formats ihre
-    /// gewohnte Darstellung nicht verlieren.
+    /// Gespeicherte Formatwahl für das aktive effektive Dokumentformat.
     var configuredSoftWrapEnabled: Bool {
         softWrapProfiles.isEnabled(for: activeDocumentFormat.id)
     }
 
-    var softWrapSuppressedForLongLine: Bool {
-        activeTab?.hasPerformanceCriticalLongLine == true
-    }
-
     var softWrapEnabled: Bool {
-        configuredSoftWrapEnabled && !softWrapSuppressedForLongLine
+        configuredSoftWrapEnabled
     }
 
     var softWrapHasOverride: Bool {
@@ -1265,18 +1252,10 @@ final class Workspace: ObservableObject {
     }
 
     func setSoftWrapEnabled(_ enabled: Bool) {
-        guard !enabled || !softWrapSuppressedForLongLine else {
-            NSSound.beep()
-            return
-        }
         softWrapProfiles.setEnabled(enabled, for: activeDocumentFormat.id)
     }
 
     func toggleSoftWrap() {
-        guard !softWrapSuppressedForLongLine else {
-            NSSound.beep()
-            return
-        }
         softWrapProfiles.toggle(for: activeDocumentFormat.id)
     }
 
@@ -1404,7 +1383,6 @@ final class Workspace: ObservableObject {
         // eintreffende Datei-Ladevorgänge in den neuen Zustand hineintragen.
         closeProject()
         loadGeneration.removeAll()
-        longLineDetectionWork.removeAll()
         languageDetectionWork.values.forEach { $0.cancel() }
         languageDetectionWork.removeAll()
 
@@ -1439,8 +1417,6 @@ final class Workspace: ObservableObject {
                     // Tastendruck auf einer mehrere MiB großen Datei.
                     let oldLanguageLength = needsLanguageLengths
                         ? self.tabs[idx].content.count : 0
-                    let oldUTF8Length = self.tabs[idx].content.utf8.count
-                    let newUTF8Length = newValue.utf8.count
                     // Die erste echte Eingabe macht aus dem flüchtigen
                     // Quick-Look-Tab ein dauerhaftes Dokument. Sonst könnte
                     // der nächste einfache Klick ungesicherte Arbeit ersetzen.
@@ -1468,11 +1444,6 @@ final class Workspace: ObservableObject {
                             newLength: newValue.count
                         )
                     }
-                    self.scheduleLongLineDetection(
-                        tabID: tabID,
-                        runImmediately: abs(newUTF8Length - oldUTF8Length)
-                            >= LongLinePerformancePolicy.wrappedLineLimit
-                    )
                 }
             }
         )
@@ -1702,7 +1673,6 @@ final class Workspace: ObservableObject {
         guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
         previewLoadCancellations.removeValue(forKey: id)?.cancel()
         loadGeneration.removeValue(forKey: id)
-        longLineDetectionWork.removeValue(forKey: id)
         cancelGitDiffLoad(tabID: id)
         cancelGitSnapshotLoad(tabID: id)
         tabs.remove(at: idx)
@@ -1792,7 +1762,6 @@ final class Workspace: ObservableObject {
         for removedID in tabs.map(\.id) where removedID != id {
             previewLoadCancellations.removeValue(forKey: removedID)?.cancel()
             loadGeneration.removeValue(forKey: removedID)
-            longLineDetectionWork.removeValue(forKey: removedID)
             cancelGitDiffLoad(tabID: removedID)
             cancelGitSnapshotLoad(tabID: removedID)
         }
@@ -1966,8 +1935,6 @@ final class Workspace: ObservableObject {
                     self.tabs[i].lineEnding = loaded.lineEnding
                     self.tabs[i].displayMode = loaded.displayMode
                     self.tabs[i].fileSize = loaded.fileSize
-                    self.tabs[i].hasPerformanceCriticalLongLine =
-                        loaded.hasPerformanceCriticalLongLine
                     self.tabs[i].isDirty    = false
                     self.tabs[i].isLoading  = false
                     self.tabs[i].diskModificationDate = ExternalChange.diskModificationDate(of: url)
@@ -2076,8 +2043,6 @@ final class Workspace: ObservableObject {
                     self.tabs[i].lineEnding = loaded.lineEnding
                     self.tabs[i].displayMode = loaded.displayMode
                     self.tabs[i].fileSize = loaded.fileSize
-                    self.tabs[i].hasPerformanceCriticalLongLine =
-                        loaded.hasPerformanceCriticalLongLine
                     self.tabs[i].isDirty    = false
                     self.tabs[i].isLoading  = false
                     self.tabs[i].diskModificationDate = ExternalChange.diskModificationDate(of: url)
@@ -2430,7 +2395,6 @@ final class Workspace: ObservableObject {
             cancelGitDiffLoad(tabID: placeholder.id)
             cancelGitSnapshotLoad(tabID: placeholder.id)
             previewLoadCancellations.removeValue(forKey: placeholder.id)?.cancel()
-            longLineDetectionWork.removeValue(forKey: placeholder.id)
             comparisonTabID = nil
             tabs[replaceablePreviewIndex] = placeholder
         } else {
@@ -2543,8 +2507,6 @@ final class Workspace: ObservableObject {
                     self.tabs[idx].lineEnding = loaded.lineEnding
                     self.tabs[idx].displayMode = loaded.displayMode
                     self.tabs[idx].fileSize = loaded.fileSize
-                    self.tabs[idx].hasPerformanceCriticalLongLine =
-                        loaded.hasPerformanceCriticalLongLine
                     // Basis-Datum für die Extern-Änderungs-Erkennung merken.
                     self.tabs[idx].diskModificationDate = ExternalChange.diskModificationDate(of: url)
                     self.tabs[idx].diskSnapshot = loaded.diskSnapshot
@@ -2979,55 +2941,6 @@ final class Workspace: ObservableObject {
     }
 
     // MARK: - Inhaltsbasierte Spracherkennung (Etappe 3 Wunschpaket 2026-07)
-
-    /// Nach Editoränderungen wird der Langzeilenstatus außerhalb des
-    /// Main-Threads neu bestimmt. Große Einfügungen laufen sofort an, normales
-    /// Tippen wird kurz entprellt, damit nicht für jeden Buchstaben ein Scan
-    /// der ganzen Datei startet.
-    private var longLineDetectionWork: [UUID: UInt64] = [:]
-
-    private func scheduleLongLineDetection(tabID: UUID, runImmediately: Bool) {
-        guard let idx = tabs.firstIndex(where: { $0.id == tabID }),
-              tabs[idx].displayMode == .text else { return }
-        let generation = (longLineDetectionWork[tabID] ?? 0) &+ 1
-        longLineDetectionWork[tabID] = generation
-        if runImmediately {
-            beginLongLineDetection(tabID: tabID, generation: generation)
-        } else {
-            // Der verzögerte Block hält absichtlich KEINE Inhaltskopie. Bei
-            // schnellem Tippen wären sonst viele alte Mehr-MiB-Strings bis
-            // zum Ablauf des Debounce gleichzeitig im Speicher geblieben.
-            DispatchQueue.global(qos: .utility).asyncAfter(
-                deadline: .now() + 0.25
-            ) { [weak self] in
-                DispatchQueue.main.async { [weak self] in
-                    self?.beginLongLineDetection(
-                        tabID: tabID,
-                        generation: generation
-                    )
-                }
-            }
-        }
-    }
-
-    private func beginLongLineDetection(tabID: UUID, generation: UInt64) {
-        guard longLineDetectionWork[tabID] == generation,
-              let idx = tabs.firstIndex(where: { $0.id == tabID }) else { return }
-        let content = tabs[idx].content
-        let revision = tabs[idx].contentRevision
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            let hasLongLine = LongLinePerformancePolicy
-                .requiresSoftWrapSuppression(in: content)
-            DispatchQueue.main.async { [weak self] in
-                guard let self,
-                      self.longLineDetectionWork[tabID] == generation,
-                      let currentIndex = self.tabs.firstIndex(where: { $0.id == tabID }),
-                      self.tabs[currentIndex].contentRevision == revision else { return }
-                self.longLineDetectionWork.removeValue(forKey: tabID)
-                self.tabs[currentIndex].hasPerformanceCriticalLongLine = hasLongLine
-            }
-        }
-    }
 
     /// Laufende Debounce-Arbeit je Tab — ein neuer Tastendruck ersetzt die
     /// noch wartende Analyse (klassischer Debounce).
@@ -4909,8 +4822,6 @@ final class Workspace: ObservableObject {
                         self.tabs[idx].lineEnding = loaded.lineEnding
                         self.tabs[idx].displayMode = loaded.displayMode
                         self.tabs[idx].fileSize = loaded.fileSize
-                        self.tabs[idx].hasPerformanceCriticalLongLine =
-                            loaded.hasPerformanceCriticalLongLine
                         self.tabs[idx].diskSnapshot = loaded.diskSnapshot
                         self.tabs[idx].diskModificationDate = ExternalChange.diskModificationDate(of: url)
                         self.tabs[idx].isDirty    = false

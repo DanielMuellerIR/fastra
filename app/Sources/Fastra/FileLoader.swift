@@ -44,10 +44,6 @@ enum FileLoader {
         let lineEnding: LineEnding
         let displayMode: EditorDisplayMode
         let fileSize: UInt64
-        /// Mindestens eine logische Zeile ist zu lang für responsiven
-        /// visuellen Umbruch. Die Ermittlung läuft hier beim Laden bereits
-        /// auf dem Hintergrund-Thread und belastet die Oberfläche nicht.
-        let hasPerformanceCriticalLongLine: Bool
         /// Exakte Byte-/Identitätsbasis dieses Ladevorgangs. Nur editierbare,
         /// vollständig geladene Dateien besitzen einen Save-Snapshot.
         let diskSnapshot: FileSnapshot?
@@ -162,7 +158,6 @@ enum FileLoader {
                 return LoadedFile(content: "", encoding: bodyEncoding, bom: probeBOM,
                                   lineEnding: .lf, displayMode: .chunkedText,
                                   fileSize: fileSize,
-                                  hasPerformanceCriticalLongLine: false,
                                   diskSnapshot: nil)
             }
             let read: (data: Data, snapshot: FileSnapshot)
@@ -186,8 +181,6 @@ enum FileLoader {
             return LoadedFile(content: s, encoding: exactEncoding, bom: bom,
                               lineEnding: LineEnding.detect(in: s),
                               displayMode: .text, fileSize: fileSize,
-                              hasPerformanceCriticalLongLine:
-                                LongLinePerformancePolicy.requiresSoftWrapSuppression(in: s),
                               diskSnapshot: read.snapshot)
         }
 
@@ -200,7 +193,7 @@ enum FileLoader {
         if probe.contains(0) && !bomEncodingAllowsNUL(probeBOMEncoding) {
             return LoadedFile(content: "", encoding: .utf8, bom: Data(), lineEnding: .lf,
                               displayMode: .hex, fileSize: fileSize,
-                              hasPerformanceCriticalLongLine: false, diskSnapshot: nil)
+                              diskSnapshot: nil)
         }
         if fileSize > largeFileThreshold {
             // Die 8-KiB-Probe allein reicht nicht: Binärdaten können erst weit
@@ -213,14 +206,12 @@ enum FileLoader {
                 return LoadedFile(content: "", encoding: .utf8, bom: Data(),
                                   lineEnding: .lf, displayMode: .hex,
                                   fileSize: fileSize,
-                                  hasPerformanceCriticalLongLine: false,
                                   diskSnapshot: nil)
             }
             return LoadedFile(content: "",
                               encoding: probeBOMEncoding ?? .utf8,
                               bom: probeBOM, lineEnding: .lf,
                               displayMode: .chunkedText, fileSize: fileSize,
-                              hasPerformanceCriticalLongLine: false,
                               diskSnapshot: nil)
         }
 
@@ -244,7 +235,6 @@ enum FileLoader {
             return LoadedFile(content: "", encoding: .utf8, bom: Data(),
                               lineEnding: .lf, displayMode: .hex,
                               fileSize: fileSize,
-                              hasPerformanceCriticalLongLine: false,
                               diskSnapshot: nil)
         }
         let payload = Data(data.dropFirst(bom.count))
@@ -267,8 +257,6 @@ enum FileLoader {
         return LoadedFile(content: raw, encoding: detectedEncoding, bom: bom,
                           lineEnding: ending, displayMode: .text,
                           fileSize: fileSize,
-                          hasPerformanceCriticalLongLine:
-                            LongLinePerformancePolicy.requiresSoftWrapSuppression(in: raw),
                           diskSnapshot: read.snapshot)
     }
 

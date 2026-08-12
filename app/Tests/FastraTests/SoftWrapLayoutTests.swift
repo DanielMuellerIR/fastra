@@ -244,6 +244,37 @@ struct SoftWrapLayoutTests {
         #expect(fragments.reduce(0) { $0 + $1.range.length } == storage.length)
     }
 
+    @Test("Wortumbruch trennt keine zusammengesetzte Emoji-Tastenkappe")
+    @MainActor
+    func wordWrapKeepsComposedPunctuationTogether() throws {
+        // Das `#` ist ein Satzzeichen, gehoert mit Variantenselektor und
+        // Tastenkappenzeichen aber zu EINEM Graphem. Die schnelle
+        // Satzzeichensuche darf deshalb nicht direkt hinter `#` umbrechen.
+        let text = String(repeating: "#️⃣", count: 80)
+        let editor = controller(
+            text: text,
+            column: nil,
+            width: 140,
+            wrapLines: true
+        )
+        let fragments = try #require(
+            editor.textView.layoutManager.lineStorage.first?
+                .data.lineFragments
+        )
+        let source = text as NSString
+
+        #expect(fragments.count > 1)
+        for fragment in fragments where fragment.range.max < source.length {
+            let nextGrapheme = source.rangeOfComposedCharacterSequence(
+                at: fragment.range.max
+            )
+            #expect(
+                nextGrapheme.location == fragment.range.max,
+                "Umbruch \(fragment.range.max) liegt mitten in \(nextGrapheme)"
+            )
+        }
+    }
+
     @Test("Langes Zeilenende bleibt über die ganze sichtbare Wortbreite anklickbar")
     @MainActor
     func longLineTailHitTestingMatchesRenderedGlyphs() throws {

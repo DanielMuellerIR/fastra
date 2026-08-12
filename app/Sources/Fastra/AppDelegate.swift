@@ -517,8 +517,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 in: mainMenu,
                 isOn: ActiveDocumentContext.shared.workspace?.softWrapEnabled ?? false,
                 hasDocument: ActiveDocumentContext.shared.workspace?.activeTab != nil,
-                canToggle: ActiveDocumentContext.shared.workspace?
-                    .softWrapSuppressedForLongLine != true
+                canToggle: true
             )
         }
     }

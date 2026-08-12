@@ -15,7 +15,7 @@ import Testing
 
 @Suite("Prozeduraler Korpus schwieriger 4,36-MB-Dokumente", .serialized)
 struct DifficultDocumentCorpusTests {
-    @Test("Alle Formate werden vollständig geladen und als Langzeile markiert")
+    @Test("Alle Formate werden vollständig geladen und richtig aufgelöst")
     func corpusLoadsAndResolvesFormat() throws {
         for fixture in DifficultDocumentFixture.all {
             let content = fixture.makeContent()
@@ -29,21 +29,19 @@ struct DifficultDocumentCorpusTests {
             let loaded = try FileLoader.load(url: url)
             #expect(loaded.content == content, "\(fixture.label) wurde verändert")
             #expect(loaded.displayMode == .text)
-            #expect(loaded.hasPerformanceCriticalLongLine)
 
             let tab = EditorTab(
                 title: fixture.filename,
                 path: url.path,
                 url: url,
-                content: "",
-                hasPerformanceCriticalLongLine: true
+                content: ""
             )
             #expect(DocumentFormatResolver.resolve(tab: tab).id
                     == fixture.expectedFormatID)
         }
     }
 
-    @Test("Alle Formate öffnen im echten Textlayout ohne unbeschränkten Umbruch")
+    @Test("Alle Formate öffnen mit Soft Wrap im echten Textlayout")
     @MainActor
     func corpusEditorLayoutStaysBounded() throws {
         for fixture in DifficultDocumentFixture.all {
@@ -57,7 +55,7 @@ struct DifficultDocumentCorpusTests {
             let textView = TextView(
                 string: content,
                 font: .monospacedSystemFont(ofSize: 13, weight: .regular),
-                wrapLines: false
+                wrapLines: true
             )
             scrollView.documentView = textView
             textView.frame = NSRect(origin: .zero, size: scrollView.contentSize)
@@ -70,7 +68,7 @@ struct DifficultDocumentCorpusTests {
                 .compactMap { $0 as? LineFragmentView }.count
             let visibleLength = textView.visibleTextRanges
                 .reduce(0) { $0 + $1.length }
-            #expect(fragmentViews < 10,
+            #expect(fragmentViews < 100,
                     "\(fixture.label): \(fragmentViews) Fragment-Views")
             #expect(visibleLength < 16 * 1024,
                     "\(fixture.label): \(visibleLength) sichtbare Zeichen")
@@ -116,6 +114,51 @@ struct DifficultDocumentCorpusTests {
                 "XML-Formatierung brauchte \(xmlDuration)")
     }
 
+    @Test("Formatierter 4,36-MB-JSON-Text wird mit Soft Wrap schnell übernommen")
+    @MainActor
+    func formattedJSONAppliesToWrappedEditorQuickly() throws {
+        let source = DifficultDocumentFixture.json.makeContent()
+        let formatted = try DocumentFormatter.format(
+            source,
+            fileExtension: "json"
+        )
+        let scrollView = NSScrollView(
+            frame: NSRect(x: 0, y: 0, width: 800, height: 600)
+        )
+        scrollView.hasVerticalScroller = true
+        let textView = TextView(
+            string: source,
+            font: .monospacedSystemFont(ofSize: 13, weight: .regular),
+            wrapLines: true
+        )
+        scrollView.documentView = textView
+        textView.frame = NSRect(origin: .zero, size: scrollView.contentSize)
+        textView.layoutManager.layoutLines()
+        textView.updateFrameIfNeeded()
+
+        let clock = ContinuousClock()
+        let start = clock.now
+        textView.fastraApplyTextOperation(
+            replacing: NSRange(location: 0, length: textView.textStorage.length),
+            with: formatted
+        )
+        let duration = start.duration(to: clock.now)
+
+        let payload = try #require(
+            try JSONSerialization.jsonObject(with: Data(textView.string.utf8))
+                as? [String: Any]
+        )["payload"] as? String
+        let fragmentViews = textView.subviews
+            .compactMap { $0 as? LineFragmentView }
+            .filter { $0.lineFragment != nil }.count
+        #expect(textView.string == formatted)
+        #expect(payload == DifficultDocumentFixture.json.makePayload())
+        #expect(duration < .seconds(2),
+                "Editorübernahme brauchte \(duration)")
+        #expect(fragmentViews < 100,
+                "Editorübernahme erzeugte \(fragmentViews) Fragment-Views")
+    }
+
     @Test("Editoraufbau und manueller JSON-Wechsel bleiben responsiv")
     @MainActor
     func jsonLanguageSwitchStaysResponsive() async throws {
@@ -126,7 +169,7 @@ struct DifficultDocumentCorpusTests {
             appearance: .init(
                 theme: EditorView.fastraTheme,
                 font: .monospacedSystemFont(ofSize: 13, weight: .regular),
-                wrapLines: false,
+                wrapLines: true,
                 tabWidth: 4
             ),
             peripherals: .init(showMinimap: false)
@@ -173,6 +216,73 @@ struct DifficultDocumentCorpusTests {
         }
         let parseDuration = switchStart.duration(to: clock.now)
 
+        let defaultColor = try #require(
+            controller.attributesFor(nil)[.foregroundColor] as? NSColor
+        )
+        let stringColor = try #require(
+            controller.attributesFor(.string)[.foregroundColor] as? NSColor
+        )
+        #expect(!defaultColor.isEqual(stringColor),
+                "Das Test-Theme muss Strings sichtbar unterscheiden")
+        func hasStringColor(at location: Int) -> Bool {
+            (controller.textView.textStorage.attribute(
+                .foregroundColor,
+                at: location,
+                effectiveRange: nil
+            ) as? NSColor)?.isEqual(stringColor) == true
+        }
+
+        let firstPayloadCharacter = DifficultDocumentFixture.json.prefix.utf16.count
+        let initialHighlightDeadline = clock.now.advanced(by: .seconds(5))
+        while !hasStringColor(at: firstPayloadCharacter),
+              clock.now < initialHighlightDeadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        let initialColor = controller.textView.textStorage.attribute(
+            .foregroundColor,
+            at: firstPayloadCharacter,
+            effectiveRange: nil
+        ) as? NSColor
+
+        // Das Einfärben bleibt abschnittsweise: Nach echtem Scrollen wird nur
+        // der neue sichtbare Teil der Megazeile angefordert und anschließend
+        // korrekt als JSON-String dargestellt.
+        let scrollView = try #require(controller.textView.enclosingScrollView)
+        let initialVisibleRange = try #require(controller.textView.visibleTextRange)
+        let middleY = max(0, controller.textView.layoutManager.estimatedHeight() / 2)
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: middleY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        controller.textView.layoutManager.layoutLines(in: NSRect(
+            x: 0,
+            y: middleY,
+            width: scrollView.contentView.bounds.width,
+            height: scrollView.contentView.bounds.height
+        ))
+        NotificationCenter.default.post(
+            name: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView
+        )
+        let scrolledVisibleRange = try #require(controller.textView.visibleTextRange)
+        let scrolledCharacter = min(
+            scrolledVisibleRange.location + 32,
+            controller.textView.textStorage.length - 1
+        )
+        let colorBeforeScrolledHighlight = controller.textView.textStorage.attribute(
+            .foregroundColor,
+            at: scrolledCharacter,
+            effectiveRange: nil
+        ) as? NSColor
+        let scrolledHighlightDeadline = clock.now.advanced(by: .seconds(5))
+        while !hasStringColor(at: scrolledCharacter),
+              clock.now < scrolledHighlightDeadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        let colorAfterScrolledHighlight = controller.textView.textStorage.attribute(
+            .foregroundColor,
+            at: scrolledCharacter,
+            effectiveRange: nil
+        ) as? NSColor
+
         #expect(setupDuration < .seconds(2),
                 "Editoraufbau blockierte \(setupDuration)")
         #expect(switchDuration < .milliseconds(250),
@@ -185,5 +295,13 @@ struct DifficultDocumentCorpusTests {
                 "JSON-Parser/Highlighter brauchte \(parseDuration)")
         #expect(responsiveTurns > 0,
                 "Warten auf den Parser gab der Task-Schleife keinen Turn")
+        #expect(initialColor?.isEqual(stringColor) == true,
+                "Der erste sichtbare JSON-Ausschnitt wurde nicht eingefärbt")
+        #expect(scrolledVisibleRange.location > initialVisibleRange.max,
+                "Der Test hat die Megazeile nicht bis zu einem neuen Ausschnitt gescrollt")
+        #expect(colorBeforeScrolledHighlight?.isEqual(stringColor) != true,
+                "Ein unsichtbarer JSON-Bereich wurde vorab vollständig eingefärbt")
+        #expect(colorAfterScrolledHighlight?.isEqual(stringColor) == true,
+                "Der neu sichtbare JSON-Ausschnitt wurde nicht eingefärbt")
     }
 }

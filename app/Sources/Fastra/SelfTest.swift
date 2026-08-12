@@ -12370,6 +12370,7 @@ enum SelfTest {
         // drin liegt — er ist der Grund, aus dem sie höher wird.
         if let footer = markerView(id: "footerBar", in: root),
            markerViewExists(id: "viewModePickerMarker", in: root),
+           markerViewExists(id: "formatDocumentButtonMarker", in: root),
            footer.frame.height > 1 {
             let frame = footer.convert(footer.bounds, to: root)
             // SwiftUIs AppKit-Views sind GEFLIPPT: y wächst nach unten, die
@@ -12393,7 +12394,7 @@ enum SelfTest {
         }
         if tick >= maxTicks {
             try? FileManager.default.removeItem(at: base)
-            finish(false, "nach 10 s keine gemessene Fußzeile mit Ansichts-Umschalter")
+            finish(false, "nach 10 s keine gemessene Fußzeile mit Ansichts- und Formatieren-Schalter")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             pollFooterFit(root: root, base: base, tick: tick + 1)

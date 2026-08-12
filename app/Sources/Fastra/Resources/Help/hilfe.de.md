@@ -157,8 +157,11 @@ Zeichen, die schon farbig sind (🎶), die Schriftzeichen `©`, `®`, `™`, `�
 `⁉` sowie `#`, `*` und Ziffern — sie würden sonst zu Symbolen. Zweimal
 anwenden ändert nichts mehr; **Emoji-Darstellung aufheben** ist der Rückweg.
 
-Zusätzlich im Menü **Text** und im Rechtsklickmenü: **Dokument
-formatieren** (JSON/XML hübsch einrücken), **Dokument prüfen**
+Der sichtbare Schalter **Formatieren** in der Fußzeile sowie der Befehl
+**Dokument formatieren** im Menü **Text** und im Rechtsklickmenü rücken
+JSON/XML hübsch ein. Der Schalter bleibt im Textmodus sichtbar und erklärt
+dort, dass zuerst JSON oder XML gewählt werden muss. Ebenfalls im Menü:
+**Dokument prüfen**
 (Syntaxprüfung mit Fehlerposition) und **Dokument minifizieren**. Formatieren
 und Minifizieren folgen dem **effektiven Dokumentformat**: Automatisch werden
 `json`, `xml`, `xsd`, `xsl`, `xslt` und `plist` unterstützt; nach einer
@@ -445,14 +448,13 @@ ein Unicode-Zeichen zu zerlegen.
 
 Werkseitig ist Soft Wrap für **Reinen Text, Markdown, HTML und XML ein**.
 Für **4D, JSON, CSV und andere Code-/Konfigurationsformate ist es aus**.
-Enthält ein einzelnes Dokument eine extrem lange logische Zeile, setzt Fastra
-Soft Wrap nur für dieses Dokument automatisch aus. Die gespeicherte Wahl des
-Formats bleibt erhalten und gilt unverändert für andere Dateien; die Fußzeile
-erklärt die vorübergehende Sperre.
-Ohne Soft Wrap bleiben lange Zeilen über den horizontalen Scrollbalken
-erreichbar. Das Umschalten ändert weder Text noch Auswahl, Rückgängig-
-Verlauf oder gespeicherte Datei. Die oberste angezeigte Textzeile bleibt dabei
-ruhig an derselben Stelle.
+Auch ein mehrere MiB großes Dokument mit einer einzigen logischen Zeile kann
+mit Soft Wrap geöffnet, gescrollt und bearbeitet werden; Fastra hält dafür nur
+den sichtbaren Ausschnitt als Editor-Views vor. Es gibt keine automatische
+Abschaltung oder Sperre. Ohne Soft Wrap bleiben lange Zeilen über den
+horizontalen Scrollbalken erreichbar. Das Umschalten ändert weder Text noch
+Auswahl, Rückgängig-Verlauf oder gespeicherte Datei. Die oberste angezeigte
+Textzeile bleibt dabei ruhig an derselben Stelle.
 
 ## Einrückung
 

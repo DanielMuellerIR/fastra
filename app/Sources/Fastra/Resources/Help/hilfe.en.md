@@ -150,9 +150,11 @@ the textual signs `©`, `®`, `™`, `‼`, and `⁉`, plus `#`, `*`, and digits
 those would turn into symbols. Applying it twice changes nothing further;
 **Undo emoji presentation** is the way back.
 
-Also in the **Text** menu and the right-click menu: **Format Document**
-(pretty-print JSON/XML), **Validate Document** (syntax check with error
-position), and **Minify Document**. Formatting and minifying follow the
+The visible **Format** control in the footer, **Format Document** in the
+**Text** menu, and the editor's right-click menu pretty-print JSON/XML. The
+footer control remains visible in text mode and explains that JSON or XML must
+be selected first. Also in the menu: **Validate Document** (syntax check with
+error position), and **Minify Document**. Formatting and minifying follow the
 **effective document format**: automatic mode supports `json`, `xml`, `xsd`,
 `xsl`, `xslt`, and `plist`; after manually choosing **JSON** or **XML** in the
 language chip, the commands also work in a `.txt` file or an unsaved tab.
@@ -426,12 +428,11 @@ boundaries when wrapping. A single long word falls back to character
 boundaries without splitting a Unicode character.
 
 The factory default is on for **Plain Text, Markdown, HTML, and XML**. It is
-off for **4D, JSON, CSV, and other code/configuration formats**. Fastra
-automatically suspends Soft Wrap for an individual document that
-contains an extremely long logical line. The saved format preference remains
-intact and still applies to other files; the footer explains the temporary
-lockout. With Soft Wrap off, long lines remain reachable through the
-horizontal scroll bar.
+off for **4D, JSON, CSV, and other code/configuration formats**. Even a
+multi-megabyte document containing one logical line can be opened, scrolled,
+and edited with Soft Wrap; Fastra keeps editor views only for the visible
+portion. There is no automatic suspension or lockout. With Soft Wrap off, long
+lines remain reachable through the horizontal scroll bar.
 Toggling it changes neither text nor selection, undo history, or the saved
 file. The topmost displayed text line remains steadily anchored in place.
 
