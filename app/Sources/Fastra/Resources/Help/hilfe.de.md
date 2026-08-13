@@ -446,10 +446,11 @@ ebenfalls wählen; Vorgabe ist 80. Beim Umbruch bevorzugt Fastra
 Wortgrenzen. Ein einzelnes langes Wort wird zeichenweise umbrochen, ohne
 ein Unicode-Zeichen zu zerlegen.
 
-Werkseitig ist Soft Wrap für **Reinen Text, Markdown, HTML und XML ein**.
-Für **4D, JSON, CSV und andere Code-/Konfigurationsformate ist es aus**.
+Werkseitig ist Soft Wrap für **Reinen Text, JSON, Markdown, HTML und XML ein**.
+Für **4D, CSV und andere Code-/Konfigurationsformate ist es aus**.
 Eine `.txt`-Datei ohne gespeicherte eigene Abweichung öffnet deshalb mit
-Soft Wrap am Fensterrand.
+Soft Wrap am Fensterrand. Das bleibt auch so, wenn für sie JSON als Format
+gemerkt ist.
 Auch ein mehrere MiB großes Dokument mit einer einzigen logischen Zeile kann
 mit Soft Wrap geöffnet, gescrollt und bearbeitet werden; Fastra hält dafür nur
 den sichtbaren Ausschnitt als Editor-Views vor. Es gibt keine automatische

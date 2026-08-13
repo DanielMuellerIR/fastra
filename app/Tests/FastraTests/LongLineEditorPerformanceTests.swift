@@ -97,6 +97,10 @@ func workspaceKeepsSoftWrapAvailableForLongLine() {
     workspace.setLanguageOverride(.json)
     #expect(workspace.activeDocumentFormat.id == .grammar(.json))
     #expect(workspace.activeDocumentFormattingID == .grammar(.json))
+    #expect(workspace.softWrapEnabled,
+            "Die gemerkte JSON-Wahl darf Soft Wrap der TXT-Megazeile nicht abschalten")
+    #expect(workspace.softWrapTarget == .window)
+    #expect(workspace.effectiveSoftWrapColumn == nil)
 }
 
 @Test("Megazeile ohne Soft Wrap erzeugt nur eine Fragment-View")

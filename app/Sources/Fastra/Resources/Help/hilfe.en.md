@@ -427,10 +427,10 @@ is configured there as well and defaults to 80. Fastra prefers word
 boundaries when wrapping. A single long word falls back to character
 boundaries without splitting a Unicode character.
 
-The factory default is on for **Plain Text, Markdown, HTML, and XML**. It is
-off for **4D, JSON, CSV, and other code/configuration formats**. A `.txt` file
+The factory default is on for **Plain Text, JSON, Markdown, HTML, and XML**. It
+is off for **4D, CSV, and other code/configuration formats**. A `.txt` file
 without a saved custom override therefore opens with Soft Wrap at the window
-edge. Even a
+edge. This remains true when JSON is remembered as its format. Even a
 multi-megabyte document containing one logical line can be opened, scrolled,
 and edited with Soft Wrap; Fastra keeps editor views only for the visible
 portion. There is no automatic suspension or lockout. With Soft Wrap off, long

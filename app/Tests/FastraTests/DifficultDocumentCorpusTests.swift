@@ -49,7 +49,7 @@ struct DifficultDocumentCorpusTests {
             let scrollView = NSScrollView(
                 frame: NSRect(x: 0, y: 0, width: 800, height: 600)
             )
-            scrollView.hasHorizontalScroller = true
+            scrollView.hasHorizontalScroller = false
             let clock = ContinuousClock()
             let start = clock.now
             let textView = TextView(
@@ -66,8 +66,14 @@ struct DifficultDocumentCorpusTests {
 
             let fragmentViews = textView.subviews
                 .compactMap { $0 as? LineFragmentView }.count
+            let layoutFragmentCount = Array(textView.layoutManager.lineStorage)
+                .reduce(0) { $0 + $1.data.lineFragments.count }
             let visibleLength = textView.visibleTextRanges
                 .reduce(0) { $0 + $1.length }
+            #expect(layoutFragmentCount > 1,
+                    "\(fixture.label): die Megazeile wurde nicht sichtbar umbrochen")
+            #expect(!scrollView.hasHorizontalScroller,
+                    "\(fixture.label): trotz Soft Wrap ist horizontales Scrollen aktiv")
             #expect(fragmentViews < 100,
                     "\(fixture.label): \(fragmentViews) Fragment-Views")
             #expect(visibleLength < 16 * 1024,

@@ -3014,7 +3014,8 @@ enum SelfTest {
     // MARK: - -selftest softwrapprofiles
 
     /// Prüft die komplette Formatprofil-Kette im echten Editor:
-    /// TXT-Default an Fensterrand, Markdown-Default an, 4D-Default aus,
+    /// TXT-Default an Fensterrand, eine als JSON gemerkte `.txt` ebenfalls
+    /// an Fensterrand, Markdown-Default an, 4D-Default aus,
     /// sofortiger CESE-Reconcile ohne Inhalts-/Selektions-/Dirty-/Undo-
     /// Änderung, Vererbung an einen neuen 4D-Tab und appweite Rückschaltung
     /// beider offenen 4D-Tabs. Zusätzlich muss der checkbare Hauptmenüpunkt
@@ -3035,6 +3036,7 @@ enum SelfTest {
             let base = FileManager.default.temporaryDirectory
                 .appendingPathComponent("fastra-softwrap-\(UUID().uuidString)")
             let textURL = base.appendingPathComponent("notizen.txt")
+            let jsonInTextURL = base.appendingPathComponent("daten-json.txt")
             let markdownURL = base.appendingPathComponent("notizen.md")
             let firstFourDURL = base.appendingPathComponent("erste.4dm")
             let secondFourDURL = base.appendingPathComponent("zweite.4dm")
@@ -3045,6 +3047,13 @@ enum SelfTest {
                 )
                 try ("Notizen\n\n\(longLine)\n")
                     .write(to: textURL, atomically: true, encoding: .utf8)
+                // Eine logische Zeile wie im gemeldeten Problemfall. Die
+                // Dateiendung bleibt `.txt`; die gemerkte manuelle Formatwahl
+                // darunter simuliert das erneute Öffnen als JSON.
+                try (#"{"payload":""#
+                    + String(repeating: "A7+/qZ09_-?mN4xB", count: 512)
+                    + #""}"#)
+                    .write(to: jsonInTextURL, atomically: true, encoding: .utf8)
                 try ("# Notizen\n\n\(longLine)\n")
                     .write(to: markdownURL, atomically: true, encoding: .utf8)
                 try ("// Erste 4D-Methode\n\(longLine)\n")
@@ -3054,6 +3063,10 @@ enum SelfTest {
             } catch {
                 finish(false, "Fixtures nicht anlegbar: \(error.localizedDescription)")
             }
+            ws.languageChoices.setChoiceID(
+                LanguageMenuSupport.Entry.grammar(.json).id,
+                for: jsonInTextURL
+            )
 
             ws.loadFile(at: textURL) { ok in
                 guard ok else {
@@ -3066,22 +3079,37 @@ enum SelfTest {
                     label: "TXT-Werkseinstellung am Fensterrand",
                     tick: 0
                 ) {
-                    ws.loadFile(at: markdownURL) { ok in
+                    ws.loadFile(at: jsonInTextURL) { ok in
                         guard ok else {
                             try? FileManager.default.removeItem(at: base)
-                            finish(false, "Markdown-Fixture nicht ladbar")
+                            finish(false, "als JSON gemerkte TXT-Fixture nicht ladbar")
                         }
                         pollSoftWrapState(
                             ws: ws, root: root,
-                            expectedFormat: .grammar(.markdown),
-                            expectedWrap: true,
-                            label: "Markdown-Werkseinstellung", tick: 0
+                            expectedFormat: .grammar(.json),
+                            expectedWrap: true, expectedTarget: .window,
+                            requireWrappedGeometry: true,
+                            label: "gemerkte JSON-Wahl einer TXT-Megazeile",
+                            tick: 0
                         ) {
-                            loadFirstFourDForSoftWrapTest(
-                                ws: ws, root: root, base: base,
-                                firstURL: firstFourDURL,
-                                secondURL: secondFourDURL
-                            )
+                            ws.loadFile(at: markdownURL) { ok in
+                                guard ok else {
+                                    try? FileManager.default.removeItem(at: base)
+                                    finish(false, "Markdown-Fixture nicht ladbar")
+                                }
+                                pollSoftWrapState(
+                                    ws: ws, root: root,
+                                    expectedFormat: .grammar(.markdown),
+                                    expectedWrap: true,
+                                    label: "Markdown-Werkseinstellung", tick: 0
+                                ) {
+                                    loadFirstFourDForSoftWrapTest(
+                                        ws: ws, root: root, base: base,
+                                        firstURL: firstFourDURL,
+                                        secondURL: secondFourDURL
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -3197,7 +3225,8 @@ enum SelfTest {
                 tick: 0
             ) {
                 try? FileManager.default.removeItem(at: base)
-                finish(true, "TXT an/Fensterrand; Markdown an; 4D aus; "
+                finish(true, "TXT und als JSON gemerkte TXT an/Fensterrand; "
+                    + "Markdown an; 4D aus; "
                     + "Live-Reconcile zustandstreu; neuer und beide offene "
                     + "4D-Tabs samt Hauptmenü synchron")
             }
@@ -3208,6 +3237,7 @@ enum SelfTest {
         ws: Workspace, root: NSView,
         expectedFormat: DocumentFormatID, expectedWrap: Bool,
         expectedTarget: SoftWrapTarget? = nil,
+        requireWrappedGeometry: Bool = false,
         label: String, tick: Int, completion: @escaping () -> Void
     ) {
         let textView = editorTextView(in: root) as? TextView
@@ -3217,11 +3247,22 @@ enum SelfTest {
         let menuItem = findMenuItem(titled: "Soft Wrap", in: NSApp.mainMenu)
         let menuMatches = menuItem?.state == (expectedWrap ? .on : .off)
         let targetMatches = expectedTarget.map { ws.softWrapTarget == $0 } ?? true
+        var layoutFragmentCount = 0
+        var geometryMatches = !requireWrappedGeometry
+        if requireWrappedGeometry, let textView,
+           let scrollView = textView.enclosingScrollView {
+            textView.layoutManager.layoutLines()
+            layoutFragmentCount = Array(textView.layoutManager.lineStorage)
+                .reduce(0) { $0 + $1.data.lineFragments.count }
+            geometryMatches = layoutFragmentCount > 1
+                && !scrollView.hasHorizontalScroller
+        }
         if ws.activeDocumentFormat.id == expectedFormat,
            ws.softWrapEnabled == expectedWrap,
            textView?.wrapLines == expectedWrap,
            menuMatches,
-           targetMatches {
+           targetMatches,
+           geometryMatches {
             completion()
             return
         }
@@ -3230,12 +3271,15 @@ enum SelfTest {
                 + "format=\(ws.activeDocumentFormat.id.rawValue), "
                 + "store=\(ws.softWrapEnabled), textView=\(String(describing: textView?.wrapLines)), "
                 + "menu=\(String(describing: menuItem?.state.rawValue)), "
-                + "target=\(ws.softWrapTarget.rawValue)")
+                + "target=\(ws.softWrapTarget.rawValue), "
+                + "Fragmente=\(layoutFragmentCount), "
+                + "H-Scroller=\(String(describing: textView?.enclosingScrollView?.hasHorizontalScroller))")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             pollSoftWrapState(
                 ws: ws, root: root, expectedFormat: expectedFormat,
                 expectedWrap: expectedWrap, expectedTarget: expectedTarget,
+                requireWrappedGeometry: requireWrappedGeometry,
                 label: label, tick: tick + 1,
                 completion: completion
             )
@@ -17454,7 +17498,8 @@ enum SelfTest {
     /// 1. Heartbeat-Timer (30-ms-Takt) auf Main starten — misst die größte
     ///    Tick-Lücke (= wie lange der Main-Thread ohne Chance zum Reagieren war).
     /// 2. `Workspace.loadFile` mit einer prozeduralen 4,36-MB-Textdatei
-    ///    starten. Für Diagnosen kann `FASTRA_LOADPERF_FILE` überschreiben.
+    ///    starten, für die wie im gemeldeten Problemfall JSON gemerkt ist.
+    ///    Für Diagnosen kann `FASTRA_LOADPERF_FILE` überschreiben.
     /// 3. Phase 1 = bis Completion (I/O + Encoding-Erkennung, Hintergrund).
     /// 4. Phase 2 reicht bis zum echten Editor-Mount und eine weitere Sekunde
     ///    über Layout, Statistik und eine etwaige Syntaxanalyse hinweg. Der
@@ -17508,10 +17553,18 @@ enum SelfTest {
             removesFileAfterward = true
         }
         let cleanupFile = {
+            ws.languageChoices.setChoiceID(nil, for: fileURL)
             if removesFileAfterward {
                 try? FileManager.default.removeItem(at: fileURL)
             }
         }
+        // Der reale Problemfall trägt `.txt`, wurde aber zuvor bewusst auf
+        // JSON gestellt. Diese Wahl überlebt das Schließen und entscheidet
+        // beim erneuten Öffnen über Grammatik UND Soft-Wrap-Profil.
+        ws.languageChoices.setChoiceID(
+            LanguageMenuSupport.Entry.grammar(.json).id,
+            for: fileURL
+        )
 
         // Heartbeat-Timer: misst die maximale Tick-Lücke auf dem Main-Thread.
         // Wird der Main-Thread blockiert, verpasst er Ticks → Lücke wächst.
@@ -17587,18 +17640,52 @@ enum SelfTest {
            textView.textStorage.length > 0 {
             let editorElapsed = Date().timeIntervalSince(started)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                stopTimer()
-                cleanupFile()
-                let totalElapsed = Date().timeIntervalSince(started)
-                let gap = maxGap()
-                let passed = gap < maxAcceptableGap && editorElapsed < 2.0
-                let message = String(
-                    format: "Datei=%@ Load=%.3f s Editor=%.3f s Gesamt=%.3f s "
-                        + "maxMainLücke=%.0f ms Ticks=%d",
-                    fileURL.lastPathComponent, callbackElapsed, editorElapsed,
-                    totalElapsed, gap * 1000, tickCount()
-                )
-                finish(passed, message)
+                textView.layoutManager.layoutLines()
+                let layoutFragmentCount = Array(textView.layoutManager.lineStorage)
+                    .reduce(0) { $0 + $1.data.lineFragments.count }
+                let retainedFragmentViewCount = textView.subviews
+                    .compactMap { $0 as? LineFragmentView }.count
+                let visibleFragmentViewCount = textView.subviews
+                    .compactMap { $0 as? LineFragmentView }
+                    .filter { !$0.isHidden && $0.lineFragment != nil }.count
+                let horizontalScroller = textView.enclosingScrollView?
+                    .hasHorizontalScroller ?? true
+                let wrapMatches = ws.activeDocumentFormat.id == .grammar(.json)
+                    && ws.softWrapEnabled
+                    && ws.softWrapTarget == .window
+                    && ws.effectiveSoftWrapColumn == nil
+                    && textView.wrapLines
+                    && !horizontalScroller
+                    && layoutFragmentCount > 1
+                    && visibleFragmentViewCount < 100
+                    && retainedFragmentViewCount < 200
+                // Ein weiterer Timer-Turn gehört zur Messung: Wäre die
+                // Geometrieprüfung selbst teuer, sieht der Heartbeat diese
+                // Lücke noch, bevor wir ihn beenden.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.060) {
+                    stopTimer()
+                    cleanupFile()
+                    let totalElapsed = Date().timeIntervalSince(started)
+                    let gap = maxGap()
+                    let passed = gap < maxAcceptableGap
+                        && editorElapsed < 2.0
+                        && wrapMatches
+                    let message = String(
+                        format: "Datei=%@ Load=%.3f s Editor=%.3f s Gesamt=%.3f s "
+                            + "maxMainLücke=%.0f ms Ticks=%d Format=%@ Wrap=%@ "
+                            + "Ziel=%@ Fragmente=%d Views=%d/%d H-Scroller=%@",
+                        fileURL.lastPathComponent, callbackElapsed, editorElapsed,
+                        totalElapsed, gap * 1000, tickCount(),
+                        ws.activeDocumentFormat.id.rawValue,
+                        textView.wrapLines ? "an" : "aus",
+                        ws.softWrapTarget.rawValue,
+                        layoutFragmentCount,
+                        visibleFragmentViewCount,
+                        retainedFragmentViewCount,
+                        horizontalScroller ? "an" : "aus"
+                    )
+                    finish(passed, message)
+                }
             }
             return
         }

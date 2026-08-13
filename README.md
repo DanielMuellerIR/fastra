@@ -337,8 +337,8 @@ unobtrusively in the bar.
   switcher whose choice always wins.
 - The visible Soft Wrap control next to it stores its on/off state per effective
   format and synchronizes every open document of that format. Plain text,
-  Markdown, HTML, and XML start wrapped; code and configuration formats start
-  unwrapped with horizontal scrolling. Wrap targets can be the window width,
+  JSON, Markdown, HTML, and XML start wrapped; other code and configuration
+  formats start unwrapped with horizontal scrolling. Wrap targets can be the window width,
   an app-wide page guide, or a fixed column; the guide can be shown
   independently.
 - Option-drag selects a rectangle across logical text lines even while they

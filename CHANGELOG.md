@@ -9,6 +9,20 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.78.0] — 2026-08-13
+
+### Behoben
+
+- **Eine als JSON gemerkte `.txt`-Datei behält Soft Wrap am Fensterrand:**
+  JSON startet nun ebenso wie Reiner Text mit Soft Wrap. Dadurch fällt eine
+  große Textdatei nach einer früheren manuellen JSON-Wahl beim erneuten Öffnen
+  nicht mehr auf eine ungebrochene Megazeile zurück. Eine ausdrücklich
+  gespeicherte eigene Abweichung bleibt wirksam.
+- **Der Belastungstest prüft den tatsächlich gemeldeten Öffnungspfad:**
+  `loadperf` merkt für die prozedurale 4,36-MB-`.txt`-Megazeile JSON und
+  verlangt am echten Editor neben kurzen Main-Thread-Pausen nun Soft Wrap am
+  Fensterrand, mehrere Umbruchfragmente und keinen horizontalen Scrollbalken.
+
 ## [v1.77.0] — 2026-08-13
 
 ### Behoben

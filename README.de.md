@@ -361,7 +361,7 @@ aktiv; der Fehler erscheint dezent in der Leiste.
   Wahl immer gewinnt.
 - Der sichtbare Soft-Wrap-Schalter daneben speichert Ein/Aus pro effektivem
   Format und synchronisiert alle offenen Dokumente dieses Formats. Reiner
-  Text, Markdown, HTML und XML starten umbrochen; Code- und
+  Text, JSON, Markdown, HTML und XML starten umbrochen; andere Code- und
   Konfigurationsformate ohne Umbruch und mit horizontalem Scrollen. Als
   Umbruchziel sind Fensterbreite, eine appweite Seitenlinie oder eine feste
   Spalte wählbar; die Seitenlinie lässt sich unabhängig einblenden.

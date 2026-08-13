@@ -103,7 +103,7 @@ enum SoftWrapFactoryDefaults {
         .grammar(.html): .on,
         .grammar(.java): .off,
         .grammar(.javascript): .off,
-        .grammar(.json): .off,
+        .grammar(.json): .on,
         .grammar(.jsx): .off,
         .grammar(.kotlin): .off,
         .grammar(.lua): .off,

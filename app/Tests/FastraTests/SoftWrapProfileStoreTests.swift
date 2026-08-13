@@ -79,7 +79,7 @@ struct SoftWrapProfileStoreTests {
         let migrated = fixture.makeStore()
         #expect(!migrated.isEnabled(for: .plainText))
         #expect(migrated.hasOverride(for: .plainText))
-        #expect(!migrated.isEnabled(for: .grammar(.json)))
+        #expect(migrated.isEnabled(for: .grammar(.json)))
         #expect(migrated.isEnabled(for: .grammar(.html)))
         #expect(fixture.defaults.object(
             forKey: SoftWrapProfileStore.Keys.legacyGlobalWrap

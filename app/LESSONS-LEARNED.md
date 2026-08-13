@@ -727,6 +727,9 @@ Layout, JSON-Sprachwechsel, echte tree-sitter-Abfrage sowie JSON-/XML-
 Formatierung. `LongLineEditorPerformanceTests` prüft zusätzlich View-Anzahl,
 horizontal sichtbaren Bereich, Zeichendauer und Unicode-Grenzen der internen
 Portionen. `./selftest.sh loadperf` erzeugt prozedural eine ebenso große
-`.txt`-Megazeile und misst den Main-Thread-Herzschlag durch den vollständigen
-`Workspace`-, SwiftUI- und CodeEdit-Aufbau bis eine Sekunde nach dem sichtbaren
-Editor. Die Fixture-Dateien entstehen nur im Test und liegen nicht im Repo.
+`.txt`-Megazeile, merkt dafür wie im realen Problemfall JSON und misst den
+Main-Thread-Herzschlag durch den vollständigen `Workspace`-, SwiftUI- und
+CodeEdit-Aufbau bis eine Sekunde nach dem sichtbaren Editor. Zusätzlich müssen
+der echte Editor Soft Wrap am Fensterrand, mehrere Umbruchfragmente und keinen
+horizontalen Scrollbalken melden. Die Fixture-Dateien entstehen nur im Test
+und liegen nicht im Repo.
