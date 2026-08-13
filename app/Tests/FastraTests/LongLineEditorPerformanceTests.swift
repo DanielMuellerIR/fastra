@@ -65,7 +65,7 @@ private func wrappedLongLineEditor(characterCount: Int) -> (TextView, NSScrollVi
 // DifficultDocumentCorpusTests: mehrere parallele 4,36-MB-Layouts würden die
 // Laufzeitmessungen gegenseitig verfälschen und unnötig viel Speicher binden.
 extension DifficultDocumentCorpusTests {
-@Test("Plain Text lässt Soft Wrap auch für eine Megazeile frei schaltbar")
+@Test("TXT öffnet eine Megazeile standardmäßig mit Soft Wrap am Fensterrand")
 @MainActor
 func workspaceKeepsSoftWrapAvailableForLongLine() {
     let suiteName = "fastra-long-line-wrap-\(UUID().uuidString)"
@@ -83,8 +83,11 @@ func workspaceKeepsSoftWrapAvailableForLongLine() {
     workspace.tabs = [tab]
     workspace.activeTabID = tab.id
 
+    #expect(workspace.activeDocumentFormat.id == .plainText)
     #expect(workspace.configuredSoftWrapEnabled)
     #expect(workspace.softWrapEnabled)
+    #expect(workspace.softWrapTarget == .window)
+    #expect(workspace.effectiveSoftWrapColumn == nil)
 
     workspace.toggleSoftWrap()
     #expect(!workspace.softWrapEnabled)

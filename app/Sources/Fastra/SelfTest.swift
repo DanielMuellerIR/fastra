@@ -3014,10 +3014,11 @@ enum SelfTest {
     // MARK: - -selftest softwrapprofiles
 
     /// Prüft die komplette Formatprofil-Kette im echten Editor:
-    /// Markdown-Default an, 4D-Default aus, sofortiger CESE-Reconcile ohne
-    /// Inhalts-/Selektions-/Dirty-/Undo-Änderung, Vererbung an einen neuen
-    /// 4D-Tab und appweite Rückschaltung beider offenen 4D-Tabs. Zusätzlich
-    /// muss der checkbare Hauptmenüpunkt jeden Zustand spiegeln.
+    /// TXT-Default an Fensterrand, Markdown-Default an, 4D-Default aus,
+    /// sofortiger CESE-Reconcile ohne Inhalts-/Selektions-/Dirty-/Undo-
+    /// Änderung, Vererbung an einen neuen 4D-Tab und appweite Rückschaltung
+    /// beider offenen 4D-Tabs. Zusätzlich muss der checkbare Hauptmenüpunkt
+    /// jeden Zustand spiegeln.
     private static func runSoftWrapProfilesTest() {
         testLabel = "softwrapprofiles"
         guard let ws = Workspace.shared else {
@@ -3033,6 +3034,7 @@ enum SelfTest {
         waitForEditor(workspace: ws, window: mainWindow) { root, _ in
             let base = FileManager.default.temporaryDirectory
                 .appendingPathComponent("fastra-softwrap-\(UUID().uuidString)")
+            let textURL = base.appendingPathComponent("notizen.txt")
             let markdownURL = base.appendingPathComponent("notizen.md")
             let firstFourDURL = base.appendingPathComponent("erste.4dm")
             let secondFourDURL = base.appendingPathComponent("zweite.4dm")
@@ -3041,6 +3043,8 @@ enum SelfTest {
                 try FileManager.default.createDirectory(
                     at: base, withIntermediateDirectories: true
                 )
+                try ("Notizen\n\n\(longLine)\n")
+                    .write(to: textURL, atomically: true, encoding: .utf8)
                 try ("# Notizen\n\n\(longLine)\n")
                     .write(to: markdownURL, atomically: true, encoding: .utf8)
                 try ("// Erste 4D-Methode\n\(longLine)\n")
@@ -3051,20 +3055,35 @@ enum SelfTest {
                 finish(false, "Fixtures nicht anlegbar: \(error.localizedDescription)")
             }
 
-            ws.loadFile(at: markdownURL) { ok in
+            ws.loadFile(at: textURL) { ok in
                 guard ok else {
                     try? FileManager.default.removeItem(at: base)
-                    finish(false, "Markdown-Fixture nicht ladbar")
+                    finish(false, "TXT-Fixture nicht ladbar")
                 }
                 pollSoftWrapState(
-                    ws: ws, root: root, expectedFormat: .grammar(.markdown),
-                    expectedWrap: true, label: "Markdown-Werkseinstellung",
+                    ws: ws, root: root, expectedFormat: .plainText,
+                    expectedWrap: true, expectedTarget: .window,
+                    label: "TXT-Werkseinstellung am Fensterrand",
                     tick: 0
                 ) {
-                    loadFirstFourDForSoftWrapTest(
-                        ws: ws, root: root, base: base,
-                        firstURL: firstFourDURL, secondURL: secondFourDURL
-                    )
+                    ws.loadFile(at: markdownURL) { ok in
+                        guard ok else {
+                            try? FileManager.default.removeItem(at: base)
+                            finish(false, "Markdown-Fixture nicht ladbar")
+                        }
+                        pollSoftWrapState(
+                            ws: ws, root: root,
+                            expectedFormat: .grammar(.markdown),
+                            expectedWrap: true,
+                            label: "Markdown-Werkseinstellung", tick: 0
+                        ) {
+                            loadFirstFourDForSoftWrapTest(
+                                ws: ws, root: root, base: base,
+                                firstURL: firstFourDURL,
+                                secondURL: secondFourDURL
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -3178,8 +3197,9 @@ enum SelfTest {
                 tick: 0
             ) {
                 try? FileManager.default.removeItem(at: base)
-                finish(true, "Markdown an; 4D aus; Live-Reconcile zustandstreu; "
-                    + "neuer und beide offene 4D-Tabs samt Hauptmenü synchron")
+                finish(true, "TXT an/Fensterrand; Markdown an; 4D aus; "
+                    + "Live-Reconcile zustandstreu; neuer und beide offene "
+                    + "4D-Tabs samt Hauptmenü synchron")
             }
         }
     }
@@ -3187,6 +3207,7 @@ enum SelfTest {
     private static func pollSoftWrapState(
         ws: Workspace, root: NSView,
         expectedFormat: DocumentFormatID, expectedWrap: Bool,
+        expectedTarget: SoftWrapTarget? = nil,
         label: String, tick: Int, completion: @escaping () -> Void
     ) {
         let textView = editorTextView(in: root) as? TextView
@@ -3195,10 +3216,12 @@ enum SelfTest {
         NSApp.mainMenu?.update()
         let menuItem = findMenuItem(titled: "Soft Wrap", in: NSApp.mainMenu)
         let menuMatches = menuItem?.state == (expectedWrap ? .on : .off)
+        let targetMatches = expectedTarget.map { ws.softWrapTarget == $0 } ?? true
         if ws.activeDocumentFormat.id == expectedFormat,
            ws.softWrapEnabled == expectedWrap,
            textView?.wrapLines == expectedWrap,
-           menuMatches {
+           menuMatches,
+           targetMatches {
             completion()
             return
         }
@@ -3206,12 +3229,14 @@ enum SelfTest {
             finish(false, "\(label) nicht binnen 8 s sichtbar: "
                 + "format=\(ws.activeDocumentFormat.id.rawValue), "
                 + "store=\(ws.softWrapEnabled), textView=\(String(describing: textView?.wrapLines)), "
-                + "menu=\(String(describing: menuItem?.state.rawValue))")
+                + "menu=\(String(describing: menuItem?.state.rawValue)), "
+                + "target=\(ws.softWrapTarget.rawValue)")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             pollSoftWrapState(
                 ws: ws, root: root, expectedFormat: expectedFormat,
-                expectedWrap: expectedWrap, label: label, tick: tick + 1,
+                expectedWrap: expectedWrap, expectedTarget: expectedTarget,
+                label: label, tick: tick + 1,
                 completion: completion
             )
         }
