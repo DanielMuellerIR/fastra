@@ -99,6 +99,20 @@ func stats_trailingNewline() {
     #expect(c.lines == 2)
 }
 
+@Test("Statistik: Unicode, CRLF und Leerraum bleiben exakt")
+func stats_unicodeAndCRLF() {
+    let text = "Äpfel 👨‍👩‍👧‍👦\r\nzweite\tZeile\rEnde"
+    let expected = DocumentStats.Counts(
+        characters: text.count,
+        words: text.split { $0.isWhitespace || $0.isNewline }.count,
+        lines: text.split(
+            omittingEmptySubsequences: false,
+            whereSeparator: \.isNewline
+        ).count
+    )
+    #expect(DocumentStats.counts(of: text) == expected)
+}
+
 @Test("Format: chars / words / lines")
 func stats_format() {
     let s = DocumentStats.format(DocumentStats.Counts(characters: 12, words: 3, lines: 2))

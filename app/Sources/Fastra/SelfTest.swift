@@ -577,8 +577,8 @@ enum SelfTest {
             // Platzhalter ⇄ literal).
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runWildcardTest() }
         case "loadperf":
-            // Fensterlos — misst Main-Runloop-Blockierung während asynchronem
-            // Datei-Laden. Testdatei-Pfad via Env FASTRA_LOADPERF_FILE.
+            // Misst den vollständigen Workspace-/Editor-Ladepfad. Ohne
+            // Vorgabe erzeugt der Test eine synthetische 4,36-MB-Megazeile.
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runLoadPerfTest() }
         case "contrast":  waitForMainWindow { runContrastTest() }
         case "wildcardshot":
@@ -11501,6 +11501,9 @@ enum SelfTest {
         guard let ws = Workspace.shared else {
             finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
         }
+        // Der Produkt-Runner arbeitet bewusst nur bei offener Suchmaske.
+        // Dieser fensterlose Test setzt deshalb denselben aktiven Zustand.
+        ws.showSearchDialog = true
         // Tabs direkt setzen — der Geöffnet-Scope sucht Tab-INHALTE
         // (auch ungespeicherte), keine Dateien. Genau das testen wir.
         ws.tabs = [
@@ -15513,6 +15516,11 @@ enum SelfTest {
         let expectedFirstLine   = 2
         let expectedFirstCol    = 14
 
+        // Die Live-Suche arbeitet nur bei sichtbarer Suchmaske. Das ist der
+        // reale Nutzerpfad und verhindert ungefragte Volltextläufe beim
+        // bloßen Öffnen großer Dateien.
+        ws.showSearchDialog = true
+
         // Scope sicher auf .file setzen. SearchRunner erkennt den Wechsel
         // über seinen Combine-Trigger und sucht im Buffer neu.
         ws.scope = .file
@@ -15582,6 +15590,7 @@ enum SelfTest {
         guard let ws = Workspace.shared else {
             finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
         }
+        ws.showSearchDialog = true
         // Zeilen je 11 Zeichen: „xxx foo yyy". foo-Offsets: 4 (Z1), 16 (Z2), 28 (Z3).
         let content = "aaa foo bbb\nccc foo ddd\neee foo fff"
         let tmp = FileManager.default.temporaryDirectory
@@ -15653,6 +15662,7 @@ enum SelfTest {
         guard let ws = Workspace.shared else {
             finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
         }
+        ws.showSearchDialog = true
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent("fastra-wildcard-\(UUID().uuidString).txt")
         do { try "ring, The".write(to: tmp, atomically: true, encoding: .utf8) }
@@ -17418,29 +17428,64 @@ enum SelfTest {
     /// Vorgehen:
     /// 1. Heartbeat-Timer (30-ms-Takt) auf Main starten — misst die größte
     ///    Tick-Lücke (= wie lange der Main-Thread ohne Chance zum Reagieren war).
-    /// 2. `Workspace.loadFile` mit der Testdatei aus Env `FASTRA_LOADPERF_FILE`
-    ///    starten.
+    /// 2. `Workspace.loadFile` mit einer prozeduralen 4,36-MB-Textdatei
+    ///    starten. Für Diagnosen kann `FASTRA_LOADPERF_FILE` überschreiben.
     /// 3. Phase 1 = bis Completion (I/O + Encoding-Erkennung, Hintergrund).
-    ///    Akzeptanz: keine Main-Lücke > 250 ms.
-    /// 4. Nach Completion (isLoading = false): Phase 2 = CESE-Mount messen
-    ///    (manuell beobachten — kein PASS/FAIL, nur Protokoll).
+    /// 4. Phase 2 reicht bis zum echten Editor-Mount und eine weitere Sekunde
+    ///    über Layout, Statistik und eine etwaige Syntaxanalyse hinweg. Der
+    ///    Herzschlag läuft absichtlich durch BEIDE Phasen: Der frühere Test
+    ///    stoppte ihn im Lade-Callback und übersah damit genau den teuren
+    ///    Editoraufbau, den er eigentlich absichern sollte.
     ///
     /// Aufruf: `-selftest loadperf -ApplePersistenceIgnoreState YES`
-    /// Testdatei: Env `FASTRA_LOADPERF_FILE` (z.B. `/tmp/fastra-perf/50mb-lf.txt`).
+    /// Optionale Testdatei: Env `FASTRA_LOADPERF_FILE`.
     private static func runLoadPerfTest() {
         testLabel = "loadperf"
-        guard let ws = Workspace.shared else {
-            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        guard let ws = Workspace.shared,
+              let mainWindow = NSApp.windows.first(where: {
+                  $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                      && $0.contentView != nil && $0.isVisible
+              }),
+              let rootView = mainWindow.contentView else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
         }
 
-        // Testdatei-Pfad aus der Umgebungsvariable lesen.
-        guard let filePath = ProcessInfo.processInfo.environment["FASTRA_LOADPERF_FILE"],
-              !filePath.isEmpty else {
-            finish(false, "Env FASTRA_LOADPERF_FILE nicht gesetzt — Testdatei-Pfad fehlt")
+        let suppliedPath = ProcessInfo.processInfo.environment["FASTRA_LOADPERF_FILE"]
+            ?? UserDefaults.standard.string(forKey: "loadperfFile")
+        let fileURL: URL
+        let removesFileAfterward: Bool
+        if let suppliedPath, !suppliedPath.isEmpty {
+            fileURL = URL(fileURLWithPath: suppliedPath)
+            removesFileAfterward = false
+            guard FileManager.default.fileExists(atPath: suppliedPath) else {
+                finish(false, "Testdatei nicht gefunden: \(suppliedPath)")
+            }
+        } else {
+            // Exakt dieselbe Größenklasse wie der gemeldete Problemfall, aber
+            // ausschließlich ein deterministisches, absichtlich ungültiges
+            // Base64-ähnliches Muster. Kein realer Inhalt wird gelesen.
+            fileURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "fastra-synthetic-megaline-\(UUID().uuidString).txt"
+                )
+            let targetByteSize = 4_357_697
+            let pattern = "A7+/qZ09_-?mN4xB"
+            let content = String(
+                repeating: pattern,
+                count: targetByteSize / pattern.utf8.count
+            ) + String(pattern.prefix(targetByteSize % pattern.utf8.count))
+            do {
+                try Data(content.utf8).write(to: fileURL, options: .atomic)
+            } catch {
+                finish(false, "synthetische Testdatei nicht schreibbar: "
+                    + error.localizedDescription)
+            }
+            removesFileAfterward = true
         }
-        let fileURL = URL(fileURLWithPath: filePath)
-        guard FileManager.default.fileExists(atPath: filePath) else {
-            finish(false, "Testdatei nicht gefunden: \(filePath)")
+        let cleanupFile = {
+            if removesFileAfterward {
+                try? FileManager.default.removeItem(at: fileURL)
+            }
         }
 
         // Heartbeat-Timer: misst die maximale Tick-Lücke auf dem Main-Thread.
@@ -17448,7 +17493,7 @@ enum SelfTest {
         let heartbeatInterval = 0.030          // 30 ms Soll-Takt
         let maxAcceptableGap  = 0.250          // 250 ms Akzeptanz-Grenze
         var lastTick          = Date()
-        var maxGapPhase1      = 0.0            // größte Lücke während I/O
+        var maxGap            = 0.0            // größte Lücke im Gesamtpfad
         var tickCount         = 0
 
         // Timer auf dem Main-Runloop.
@@ -17458,42 +17503,99 @@ enum SelfTest {
             let gap    = now.timeIntervalSince(lastTick)
             lastTick   = now
             tickCount += 1
-            if gap > maxGapPhase1 { maxGapPhase1 = gap }
+            if gap > maxGap { maxGap = gap }
         }
+        if let timer { RunLoop.main.add(timer, forMode: .common) }
 
-        let phase1Start = Date()
+        let started = Date()
 
         // loadFile ist asynchron — kehrt sofort zurück, I/O im Hintergrund.
         ws.loadFile(at: fileURL) { ok in
             // Completion ist auf Main → hier laufen wir wieder im Hauptthread.
-            let phase1Elapsed = Date().timeIntervalSince(phase1Start)
-
-            // Timer stoppen — Phase 1 beendet.
-            timer?.invalidate()
-            timer = nil
+            let callbackElapsed = Date().timeIntervalSince(started)
 
             guard ok else {
+                timer?.invalidate()
+                timer = nil
+                cleanupFile()
                 finish(false, "loadFile schlug fehl (completion false)")
             }
+            pollLoadPerformanceEditor(
+                ws: ws,
+                rootView: rootView,
+                fileURL: fileURL.canonicalFileURL,
+                started: started,
+                callbackElapsed: callbackElapsed,
+                maxAcceptableGap: maxAcceptableGap,
+                maxGap: { maxGap },
+                tickCount: { tickCount },
+                stopTimer: {
+                    timer?.invalidate()
+                    timer = nil
+                },
+                cleanupFile: cleanupFile,
+                tick: 0
+            )
+        }
+    }
 
-            // Ergebnis formatieren.
-            let gapMs   = Int(maxGapPhase1 * 1000)
-            let phase1s = String(format: "%.2f", phase1Elapsed)
-            let passed  = maxGapPhase1 < maxAcceptableGap
-
-            // Phase-2-Beobachtung: CESE-Mount (Editor-Neuerzeugung) geschieht
-            // jetzt auf Main als SwiftUI-Render-Pass. Wir warten kurz und
-            // protokollieren die Gesamt-Zeit nach Phase 2.
-            let phase2Start = Date()
+    /// Wartet auf die wirkliche CodeEdit-TextView. Erst danach beginnt die
+    /// einsekündige Nachlaufphase, in der Statistik und Highlighter noch
+    /// arbeiten können. Ein bloßes `loadFile`-Completion beweist den
+    /// sichtbaren und bedienbaren Dokumentzustand nicht.
+    private static func pollLoadPerformanceEditor(
+        ws: Workspace,
+        rootView: NSView,
+        fileURL: URL,
+        started: Date,
+        callbackElapsed: TimeInterval,
+        maxAcceptableGap: TimeInterval,
+        maxGap: @escaping () -> TimeInterval,
+        tickCount: @escaping () -> Int,
+        stopTimer: @escaping () -> Void,
+        cleanupFile: @escaping () -> Void,
+        tick: Int
+    ) {
+        if ws.activeTab?.url == fileURL,
+           ws.activeTab?.isLoading == false,
+           let textView = editorTextView(in: rootView) as? TextView,
+           textView.textStorage.length > 0 {
+            let editorElapsed = Date().timeIntervalSince(started)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                let phase2Elapsed = Date().timeIntervalSince(phase2Start)
-                let p2s = String(format: "%.2f", phase2Elapsed)
-                let msg = "Datei=\(URL(fileURLWithPath: filePath).lastPathComponent) "
-                    + "Phase1=\(phase1s)s maxMainLücke=\(gapMs)ms "
-                    + "Ticks=\(tickCount) "
-                    + "Phase2-mount≈\(p2s)s"
-                finish(passed, msg)
+                stopTimer()
+                cleanupFile()
+                let totalElapsed = Date().timeIntervalSince(started)
+                let gap = maxGap()
+                let passed = gap < maxAcceptableGap && editorElapsed < 2.0
+                let message = String(
+                    format: "Datei=%@ Load=%.3f s Editor=%.3f s Gesamt=%.3f s "
+                        + "maxMainLücke=%.0f ms Ticks=%d",
+                    fileURL.lastPathComponent, callbackElapsed, editorElapsed,
+                    totalElapsed, gap * 1000, tickCount()
+                )
+                finish(passed, message)
             }
+            return
+        }
+        guard tick < 500 else {
+            stopTimer()
+            cleanupFile()
+            finish(false, "Datei nach 5 s nicht im echten Editor montiert")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.010) {
+            pollLoadPerformanceEditor(
+                ws: ws,
+                rootView: rootView,
+                fileURL: fileURL,
+                started: started,
+                callbackElapsed: callbackElapsed,
+                maxAcceptableGap: maxAcceptableGap,
+                maxGap: maxGap,
+                tickCount: tickCount,
+                stopTimer: stopTimer,
+                cleanupFile: cleanupFile,
+                tick: tick + 1
+            )
         }
     }
 

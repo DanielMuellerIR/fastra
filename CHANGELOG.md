@@ -9,6 +9,23 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.76.1] — 2026-08-13
+
+### Behoben
+
+- **Das Öffnen einer 4,36-MB-Megazeile blockiert die App nicht mehr:** Der
+  Ladeabschluss veröffentlicht den fertigen Tab nur einmal, Footer-Statistiken
+  werden gebündelt und in einem Durchlauf gezählt, und eine geschlossene
+  Suchmaske startet keine unsichtbare Volltextsuche. Das Editor-Framework
+  vermeidet außerdem drei vollständige attributierte Kopien derselben Zeile
+  sowie wiederholte Soft-Wrap-Durchläufe während der unmittelbar
+  aufeinanderfolgenden SwiftUI-Startaktualisierungen.
+- **Der Geschwindigkeitstest deckt jetzt den tatsächlichen Öffnungspfad ab:**
+  Ein prozedural erzeugtes `.txt`-Dokument läuft durch `Workspace.loadFile`,
+  Soft Wrap und den echten Editoraufbau. Der Main-Thread-Herzschlag bleibt bis
+  eine Sekunde nach dem sichtbaren Editor aktiv, statt bereits im Lade-Callback
+  zu enden.
+
 ## [v1.76.0] — 2026-08-12
 
 ### Behoben

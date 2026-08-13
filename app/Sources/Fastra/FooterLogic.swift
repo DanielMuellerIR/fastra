@@ -144,10 +144,27 @@ enum DocumentStats {
     /// Zählt Zeichen, Wörter und Zeilen eines Textes. Leerer Text → alles 0,
     /// aber 1 Zeile (eine leere Zeile), passend zu Editor-Erwartungen.
     static func counts(of text: some StringProtocol) -> Counts {
-        let chars = text.count
-        let words = text.split { $0.isWhitespace || $0.isNewline }.count
-        let lines = text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).count
-        return Counts(characters: chars, words: words, lines: lines)
+        // Ein Durchlauf statt dreier vollständiger String-Scans. Das ist bei
+        // normalen Texten semantisch identisch zu `count` plus zweimal
+        // `split`, spart bei mehreren Megabyte aber zwei Drittel der Arbeit.
+        var characters = 0
+        var words = 0
+        var lines = 1
+        var isInsideWord = false
+
+        for character in text {
+            characters += 1
+            if character.isNewline { lines += 1 }
+            if character.isWhitespace || character.isNewline {
+                if isInsideWord { words += 1 }
+                isInsideWord = false
+            } else {
+                isInsideWord = true
+            }
+        }
+        if isInsideWord { words += 1 }
+
+        return Counts(characters: characters, words: words, lines: lines)
     }
 
     /// Formatiert Counts als „chars / words / lines".

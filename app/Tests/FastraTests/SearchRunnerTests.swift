@@ -82,6 +82,7 @@ func projectFilterChangeInvalidatesVisiblePreviewImmediately() async throws {
     defer { defaults.removePersistentDomain(forName: suiteName) }
 
     let workspace = Workspace(defaults: defaults)
+    workspace.showSearchDialog = true
     workspace.openProject(at: root)
     workspace.scope = .project
     workspace.findPattern = "NADEL"
@@ -141,6 +142,7 @@ func folderPreviewSurvivesOpeningMatchedFile() async throws {
     defer { defaults.removePersistentDomain(forName: suiteName) }
 
     let workspace = Workspace(defaults: defaults)
+    workspace.showSearchDialog = true
     workspace.recentSearchFolders = [
         SearchFolderEntry(path: root.path, enabled: true)
     ]
@@ -186,6 +188,7 @@ func discardedFolderRunClearsBufferSpinner() async throws {
     defer { defaults.removePersistentDomain(forName: suiteName) }
 
     let workspace = Workspace(defaults: defaults)
+    workspace.showSearchDialog = true
     workspace.scope = .folder
     // Zwei Zeichen liegen unter `minFolderLiveChars` — der Ordner-Lauf wird
     // deshalb gleich am Guard verworfen und `folderNeedsSearch` gesetzt.
@@ -214,6 +217,37 @@ func discardedFolderRunClearsBufferSpinner() async throws {
     #expect(workspace.bufferMatches.isEmpty)
     #expect(workspace.bufferTotalMatches == 0)
     #expect(!workspace.bufferResultsWereCapped)
+}
+
+@Test("Geschlossene Suchmaske durchsucht einen geladenen Megabuffer nicht")
+@MainActor
+func hiddenSearchDoesNotScanLoadedBuffer() async throws {
+    let suiteName = "fastra-runner-hidden-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suiteName)
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let workspace = Workspace(defaults: defaults)
+    workspace.scope = .file
+    workspace.useRegex = false
+    workspace.findPattern = "NADEL"
+    workspace.tabs[0].content = String(repeating: "A", count: 4_357_690)
+        + "NADEL"
+
+    // Deutlich länger als der 120-ms-Debounce warten. Ein alter Runner
+    // liefert in dieser Zeit einen Treffer; der neue darf nicht einmal den
+    // Spinner anschalten, solange die Maske unsichtbar ist.
+    try await Task.sleep(for: .milliseconds(350))
+    #expect(!workspace.showSearchDialog)
+    #expect(!workspace.bufferSearching)
+    #expect(workspace.bufferTotalMatches == 0)
+    #expect(workspace.bufferMatches.isEmpty)
+
+    // Beim Öffnen startet genau derselbe vorbereitete Suchlauf sofort.
+    workspace.showSearchDialog = true
+    await waitForWorkspace(workspace) {
+        workspace.bufferTotalMatches == 1 && !workspace.bufferSearching
+    }
+    #expect(workspace.bufferTotalMatches == 1)
 }
 
 // MARK: - runsLive: welcher Scope sucht beim Tippen sofort?

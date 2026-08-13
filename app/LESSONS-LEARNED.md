@@ -695,14 +695,30 @@ meldete `visibleTextRange` horizontal die ganze logische Zeile, sodass der
 Highlighter auch unsichtbare Millionen Zeichen einplante; ein Sprachwechsel
 entfernte alte Attribute synchron im ganzen Dokument.
 
-**Fix (Patch 4z4 in `build.sh`):** Fastra setzt Soft Wrap für das einzelne
-betroffene Dokument aus. CodeEditTextView hält ungebrochene Megazeilen als eine
-visuelle Zeile, portioniert sie intern aber an sicheren Unicode-Grenzen in
-16-KiB-`CTLine`s und zeichnet nur Portionen im Grafik-Ausschnitt. Die
-Anfangskonfiguration wird vor dem Einhängen der TextView angewandt und
-identische Startattribute werden nicht erneut geschrieben. Sichtbare Bereiche
-bleiben horizontal und zwischen logischen Zeilen getrennt; der Sprachwechsel
-setzt nur dort Attribute zurück.
+**Fix (Patches 4z4–4z10 in `build.sh`):** Soft Wrap bleibt eingeschaltet und
+frei schaltbar. CodeEditTextView hält das vollständige Fragmentmodell für
+exaktes Scrollen, erzeugt aber nur Fragment-Views des sichtbaren Ausschnitts.
+Ungebrochene Megazeilen werden intern an sicheren Unicode-Grenzen in
+16-KiB-`CTLine`s portioniert, lange alphanumerische Tokens ohne zeichenweise
+Substring-Suche umbrochen und nur im Grafik-Ausschnitt gezeichnet. Beim ersten
+Layout geht die dokumentweite Zeile direkt vom Textspeicher an CoreText, statt
+dreimal vollständig als `NSAttributedString` kopiert und von AppKit repariert
+zu werden. Die Anfangskonfiguration wird vor dem Einhängen der TextView
+angewandt. Das Fenster-Einhängen und eine gleichzeitig eintreffende
+Viewport-Benachrichtigung lösen keine Voll-Layouts mit einer provisorischen
+Breite mehr aus. Text, Attribute und Insets treffen beim SwiftUI-Aufbau in
+mehreren unmittelbar aufeinanderfolgenden Aktualisierungen ein; ein kurzer
+fenstergebundener Aufschub bündelt sie vor dem ersten Umbruch, statt dieselbe
+Megazeile mehrfach im selben Main-Runloop-Durchlauf auszulegen. Normales
+Scrollen und spätere Layouts bleiben unmittelbar. Sichtbare Bereiche bleiben
+horizontal und zwischen logischen Zeilen getrennt, und der Sprachwechsel setzt
+nur dort Attribute zurück.
+
+Der App-Ladepfad muss dieselbe Arbeit ebenfalls begrenzen: `Workspace.loadFile`
+publiziert den fertig aufgebauten Tab einmal statt Feld für Feld, eng
+aufeinanderfolgende Footer-Statistiken werden abgebrochen und in einem
+String-Durchlauf neu berechnet. Solange die Suchmaske geschlossen ist, darf ein
+Tabwechsel keine gespeicherte Suchanfrage über den neuen Gesamttext starten.
 
 **Regression:** `DifficultDocumentCorpusTests` erzeugt TXT, JSON, XML, CSV und
 Markdown mit jeweils exakt 4.357.697 Byte aus einem ungültigen synthetischen
@@ -710,4 +726,7 @@ Base64-artigen Muster. Die Tests begrenzen Laden, vollständigen Editoraufbau,
 Layout, JSON-Sprachwechsel, echte tree-sitter-Abfrage sowie JSON-/XML-
 Formatierung. `LongLineEditorPerformanceTests` prüft zusätzlich View-Anzahl,
 horizontal sichtbaren Bereich, Zeichendauer und Unicode-Grenzen der internen
-Portionen. Die Fixture-Dateien entstehen nur im Test und liegen nicht im Repo.
+Portionen. `./selftest.sh loadperf` erzeugt prozedural eine ebenso große
+`.txt`-Megazeile und misst den Main-Thread-Herzschlag durch den vollständigen
+`Workspace`-, SwiftUI- und CodeEdit-Aufbau bis eine Sekunde nach dem sichtbaren
+Editor. Die Fixture-Dateien entstehen nur im Test und liegen nicht im Repo.

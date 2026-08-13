@@ -683,6 +683,10 @@ final class Workspace: ObservableObject {
     /// `true`, wenn sich die aktuelle Statistik auf eine Selektion bezieht.
     @Published var statsIsSelection: Bool = false
     private var statsGeneration = 0
+    /// Bündelt die mehreren SwiftUI-Signale eines Editoraufbaus. Ohne diese
+    /// kurze Verzögerung zählten `onAppear`, Inhalts- und Cursoränderung
+    /// dieselben vier Megabyte gleichzeitig auf mehreren Threads.
+    private var statsTask: Task<Void, Never>?
 
     // MARK: - Asynchrones Datei-Laden (v0.9)
     //
@@ -709,28 +713,38 @@ final class Workspace: ObservableObject {
     ///     vom Editor geliefert) oder `nil`, wenn nur ein Cursor ohne
     ///     Auswahl steht → dann zählt die ganze Datei.
     func recomputeDocumentStats(fullText: String, selectionNSRange: NSRange?) {
+        statsTask?.cancel()
         statsGeneration += 1
         let generation = statsGeneration
+        let textSnapshot = fullText
 
-        // NSRange (UTF-16) in einen Swift-String-Bereich übersetzen. Bei
-        // ungültigem/leerem Range zählt die ganze Datei.
-        let selectedRange: Range<String.Index>? = {
-            guard let ns = selectionNSRange, ns.length > 0 else { return nil }
-            return Range(ns, in: fullText)
-        }()
-        let isSelection = selectedRange != nil
+        statsTask = Task.detached(priority: .userInitiated) { [weak self] in
+            // Ein Editoraufbau veröffentlicht mehrere eng benachbarte
+            // Zustände. Erst den letzten zählen; `String` bleibt bis dahin
+            // als unveränderlicher Copy-on-write-Snapshot geteilt.
+            try? await Task.sleep(for: .milliseconds(40))
+            guard !Task.isCancelled else { return }
 
-        // Eine eigenständige Kopie an den Hintergrund übergeben.
-        let target = String(selectedRange.map { fullText[$0] } ?? fullText[...])
+            // NSRange (UTF-16) erst hier übersetzen. Vorher erzeugte schon
+            // dieser Schritt auf dem UI-Thread eine vollständige Textkopie.
+            let selectedRange: Range<String.Index>? = {
+                guard let ns = selectionNSRange, ns.length > 0 else { return nil }
+                return Range(ns, in: textSnapshot)
+            }()
+            let counts = if let selectedRange {
+                DocumentStats.counts(of: textSnapshot[selectedRange])
+            } else {
+                DocumentStats.counts(of: textSnapshot)
+            }
+            guard !Task.isCancelled else { return }
+            let formatted = DocumentStats.format(counts)
+            let isSelection = selectedRange != nil
 
-        DispatchQueue.global(qos: .userInitiated).async {
-            let text = DocumentStats.format(DocumentStats.counts(of: target))
-
-            DispatchQueue.main.async {
-                // Veraltetes Ergebnis verwerfen.
-                guard generation == self.statsGeneration else { return }
-                self.documentStatsText = text
+            await MainActor.run { [weak self] in
+                guard let self, generation == self.statsGeneration else { return }
+                self.documentStatsText = formatted
                 self.statsIsSelection = isSelection
+                self.statsTask = nil
             }
         }
     }
@@ -2501,27 +2515,37 @@ final class Workspace: ObservableObject {
                         report(false)
                         return
                     }
-                    self.tabs[idx].content    = loaded.content
-                    self.tabs[idx].encoding   = loaded.encoding
-                    self.tabs[idx].bom        = loaded.bom
-                    self.tabs[idx].lineEnding = loaded.lineEnding
-                    self.tabs[idx].displayMode = loaded.displayMode
-                    self.tabs[idx].fileSize = loaded.fileSize
+                    // Den fertigen Tab lokal aufbauen und erst einmalig
+                    // publizieren. Feldweise Zuweisungen an `tabs[idx]`
+                    // lösten vorher für ein einziges Laden mehr als zehn
+                    // vollständige SwiftUI-/Such-/Statistik-Runden aus.
+                    var loadedTab = self.tabs[idx]
+                    loadedTab.content    = loaded.content
+                    loadedTab.encoding   = loaded.encoding
+                    loadedTab.bom        = loaded.bom
+                    loadedTab.lineEnding = loaded.lineEnding
+                    loadedTab.displayMode = loaded.displayMode
+                    loadedTab.fileSize = loaded.fileSize
                     // Basis-Datum für die Extern-Änderungs-Erkennung merken.
-                    self.tabs[idx].diskModificationDate = ExternalChange.diskModificationDate(of: url)
-                    self.tabs[idx].diskSnapshot = loaded.diskSnapshot
-                    self.tabs[idx].isDirty    = false
+                    loadedTab.diskModificationDate = ExternalChange.diskModificationDate(of: url)
+                    loadedTab.diskSnapshot = loaded.diskSnapshot
+                    loadedTab.isDirty = false
                     // Früher manuell gewähltes Format dieser Datei zurückholen,
                     // BEVOR der Editor mit `isLoading = false` entsteht.
-                    self.applyRememberedLanguageChoice(toTabAt: idx)
-                    self.tabs[idx].isLoading  = false
+                    self.applyRememberedLanguageChoice(to: &loadedTab)
+                    loadedTab.isLoading = false
                     // Frisch geladener Plattenstand ist die Vergleichsbasis,
                     // gegen die der Punkt im Tab künftig verschwinden kann.
-                    self.tabs[idx].recordSavedContentBaseline()
+                    loadedTab.recordSavedContentBaseline()
                     // BBEdit-Verhalten: das leere unbenannte Start-/Scratch-
                     // Dokument abräumen, sobald eine echte Datei geladen ist
                     // (der gerade geladene Tab bleibt erhalten).
-                    self.tabs = Workspace.tabsRemovingEmptyScratch(self.tabs, keeping: tabID)
+                    var loadedTabs = self.tabs
+                    loadedTabs[idx] = loadedTab
+                    self.tabs = Workspace.tabsRemovingEmptyScratch(
+                        loadedTabs,
+                        keeping: tabID
+                    )
                     self.noteRecentFile(url)
                     self.synchronizeProjectWithActiveTabIfNeeded()
                     report(true)
@@ -3124,20 +3148,29 @@ final class Workspace: ObservableObject {
     /// Läuft VOR dem ersten Editor-Aufbau, damit Grammatik und Chip von
     /// Anfang an stimmen und kein sichtbarer Sprachwechsel nachflackert.
     private func applyRememberedLanguageChoice(toTabAt idx: Int) {
-        guard let url = tabs[idx].url,
+        var tab = tabs[idx]
+        applyRememberedLanguageChoice(to: &tab)
+        tabs[idx] = tab
+    }
+
+    /// Inout-Fassung für den Ladepfad: Die Formatwahl wird in den noch nicht
+    /// veröffentlichten fertigen Tab geschrieben und verursacht dadurch
+    /// keinen eigenen vollständigen View-Neuaufbau.
+    private func applyRememberedLanguageChoice(to tab: inout EditorTab) {
+        guard let url = tab.url,
               let entryID = languageChoices.choiceID(for: url),
               let entry = LanguageMenuSupport.entry(withID: entryID) else { return }
         switch entry {
         case .grammar(let language):
-            tabs[idx].languageOverride = language
-            tabs[idx].customLanguageOverrideID = nil
+            tab.languageOverride = language
+            tab.customLanguageOverrideID = nil
         case .custom(let language):
-            tabs[idx].customLanguageOverrideID = language.id
-            tabs[idx].languageOverride = nil
+            tab.customLanguageOverrideID = language.id
+            tab.languageOverride = nil
         }
         // Eine manuelle Wahl beendet die Automatik — wie beim Setzen im Menü.
-        languageDetectionWork[tabs[idx].id]?.cancel()
-        languageDetectionWork.removeValue(forKey: tabs[idx].id)
+        languageDetectionWork[tab.id]?.cancel()
+        languageDetectionWork.removeValue(forKey: tab.id)
     }
 
     // MARK: - XPath-Navigation (Etappe 5 Wunschpaket 2026-07)

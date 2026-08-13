@@ -81,7 +81,7 @@ Gatekeeper-Akzeptanz und Codesignatur des Quell-Bundles. Beim Version-Bump
 `app/Info.plist` mitziehen (siehe AGENTS.md), sonst zeigt die App eine veraltete
 Version.
 
-`build.sh` kapselt Xcode-Toolchain-Switch + fünfunddreißig Checkout-Patches
+`build.sh` kapselt Xcode-Toolchain-Switch + sechsunddreißig Checkout-Patches
 (SwiftLint-Plugins aus, CodeEditSymbols Resources, CMD+F-Zombie-Kill,
 toter cursorPositions-Reconcile, verworfene Auto-Vervollständigung schließen,
 Gutter-Drag-Clamp, horizontaler Scrollbalken, Zeilenbreiten-Messung,
@@ -326,6 +326,23 @@ Upstream-Pfad. Die versionierte Ergänzung liegt unter
 jedem Anwenden geprüft. `./selftest.sh mddropcursor` beobachtet Cursor, echten
 Rand-Autoscroll und den Link exakt an der beim Loslassen bestimmten Textposition.
 
+Patches 4z4–4z10 (Megazeilen, 2026-08-12/13): Sichtbare Textbereiche und
+Syntaxattribute bleiben auf den Viewport begrenzt, CoreText arbeitet in
+handlichen Portionen, Soft Wrap hält nur sichtbare Fragment-Views und der
+Wortumbruch langer ASCII-Tokens vermeidet Substrings sowie wiederholte
+Foundation-Zeichensatzobjekte. Unicode nutzt weiterhin den exakten allgemeinen
+Umbruchpfad. Patch 4z8 entfernt zusätzlich drei dokumentweite
+`NSAttributedString`-Kopien aus dem ersten Layout. Patch 4z9 überspringt das
+vorzeitige Voll-Layout beim Einhängen in ein Fenster und nimmt einen bereits
+geplanten AppKit-Durchlauf nicht synchron aus einer Viewport-Benachrichtigung
+vorweg. Patch 4z10 wartet vor dem ersten Umbruch kurz auf die dicht
+aufeinanderfolgenden SwiftUI-Aktualisierungen von Text, Attributen und Insets
+und bündelt ihre Invalidierungen zu einem fenstergebundenen Layoutlauf.
+Normales Scrollen und spätere Layouts bleiben unmittelbar.
+Jeder Teil besitzt eigene Marker und eine harte Prüfung direkt nach dem
+Anwenden. Wächter sind `DifficultDocumentCorpusTests`,
+`LongLineEditorPerformanceTests` und `./selftest.sh loadperf`.
+
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 
 Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
@@ -471,6 +488,12 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
    Kandidaten, Treffer, Wall-/CPU-Zeit und Max-RSS; `projectopenperf` misst
    davon getrennt `Project/Sources/folders.json` bis zum tatsächlich
    montierten Editor. Beide verändern den Realbestand nicht.
+   `-selftest loadperf` gehört dagegen zur Standardsuite und erzeugt selbst
+   eine rein synthetische 4.357.697-Byte-`.txt`-Megazeile. Der Test misst den
+   Main-Thread-Herzschlag durch Datei-I/O, `Workspace.loadFile`, Soft Wrap,
+   echten Editor-Mount, Statistik und eine weitere Sekunde Nachlauf. Für eine
+   gezielte Diagnose kann `FASTRA_LOADPERF_FILE` eine andere, nur gelesene
+   Datei vorgeben; deren Inhalt wird vom Test weder ausgegeben noch dekodiert.
    `-selftest textop` bedient eine Texttransformation und beide
    Sortierrichtungen über den echten Notification-/Editorpfad und liest den
    tatsächlich sichtbaren Editorinhalt zurück.

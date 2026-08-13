@@ -4352,11 +4352,12 @@ fi
 # Fuer jedes visuelle Fragment lief Upstream bis zu 100 Zeichen rueckwaerts
 # und erzeugte dabei je Zeichen einen NSString-Substring plus CharacterSet.
 # Eine 4,36-MB-Zeile nur aus Buchstaben brauchte deshalb rund 17 Sekunden.
-# NSString kann Kandidaten rueckwaerts ohne Substring je Zeichen finden. Ein
-# Kandidat wird danach einmal als vollstaendiges Unicode-Graphem geprueft,
-# damit etwa Satzzeichen mit Variantenselektor nie in der Mitte umbrechen.
+# Der haeufige ASCII-Pfad prueft UTF-16-Codeeinheiten mit direkten Vergleichen
+# und ohne Foundation-Zeichensatzobjekte. Auch die CRLF-Pruefung liest nur die
+# beiden Codeeinheiten. Sobald Unicode oder ein zusammengesetztes Graphem im
+# Suchfenster liegt, greift unveraendert die allgemeine Unicode-Pruefung.
 FAST_WORD_BREAK_PATCH_CHANGED=0
-if ! grep -q 'Fastra-Patch: Wortumbruch-Kandidaten gesammelt rückwärts suchen' \
+if ! grep -q 'Fastra-Patch: ASCII-Wortumbruch mit direkter UTF-16-Prüfung' \
     "$CETV_BREAK" 2>/dev/null; then
   echo "→ Patche CodeEditTextView (Wortumbruch langer Tokens beschleunigen)"
   chmod u+w "$CETV_BREAK"
@@ -4365,6 +4366,31 @@ import sys
 
 path = sys.argv[1]
 source = open(path).read()
+old_crlf_call = '''        var breakIndex = subrange.location + CTTypesetterSuggestClusterBreak(self, subrange.location, constrainingWidth)
+        let isBreakAtEndOfString = breakIndex >= subrange.max
+
+        let isNextCharacterCarriageReturn = checkIfLineBreakOnCRLF(breakIndex, for: string)'''
+new_crlf_call = '''        var breakIndex = subrange.location + CTTypesetterSuggestClusterBreak(self, subrange.location, constrainingWidth)
+        let isBreakAtEndOfString = breakIndex >= subrange.max
+        let source = string.string as NSString
+
+        let isNextCharacterCarriageReturn = checkIfLineBreakOnCRLF(breakIndex, for: source)'''
+old_crlf_check = '''    private func checkIfLineBreakOnCRLF(_ breakIndex: Int, for string: NSAttributedString) -> Bool {
+        guard breakIndex - 1 > 0 && breakIndex + 1 <= string.length else {
+            return false
+        }
+        let substringRange = NSRange(location: breakIndex - 1, length: 2)
+        let substring = string.attributedSubstring(from: substringRange).string
+
+        return substring == LineEnding.carriageReturnLineFeed.rawValue
+    }'''
+new_crlf_check = '''    private func checkIfLineBreakOnCRLF(_ breakIndex: Int, for source: NSString) -> Bool {
+        guard breakIndex - 1 > 0 && breakIndex < source.length else {
+            return false
+        }
+        return source.character(at: breakIndex - 1) == 0x0d
+            && source.character(at: breakIndex) == 0x0a
+    }'''
 old_word_search = '''        let canLastCharacterBreak = (breakIndex - 1 > 0 && ensureCharacterCanBreakLine(at: breakIndex - 1, for: string))
 
         if isBreakAtEndOfString || canLastCharacterBreak {
@@ -4398,12 +4424,22 @@ new_word_search = '''        if isBreakAtEndOfString {
             return breakIndex
         }
 
-        // Fastra-Patch: Wortumbruch-Kandidaten gesammelt rückwärts suchen.
+        // Fastra-Patch: ASCII-Wortumbruch mit direkter UTF-16-Prüfung.
         // Upstream erzeugte für bis zu 100 einzelne Zeichen je visuellem
         // Fragment ein Substring und ein CharacterSet. Eine alphanumerische
         // 4,36-MB-Zeile brauchte dadurch rund 17 Sekunden statt unter einer.
         let searchStart = max(subrange.location, breakIndex - 100)
-        let source = string.string as NSString
+        if let asciiBreak = Self.fastASCIIWordBreak(
+            in: source,
+            searchStart: searchStart,
+            breakIndex: breakIndex
+        ) {
+            return asciiBreak
+        }
+
+        // Unicode und zusammengesetzte Grapheme behalten die bisherige
+        // allgemeine Prüfung. Sie ist teurer, aber für die exakte
+        // Umbruchsemantik nötig und nicht der Megazeilen-Normalfall.
         var searchEnd = breakIndex
         while searchEnd > searchStart {
             let candidate = source.rangeOfCharacter(
@@ -4438,55 +4474,607 @@ new_word_search = '''        if isBreakAtEndOfString {
 
     private static let wordBreakCandidates = CharacterSet
         .whitespacesAndNewlines
-        .union(.punctuationCharacters)'''
-old_fast_word_search = '''        if isBreakAtEndOfString {
-            // Breaking either at the end of the string, or on a whitespace.
-            return breakIndex
-        }
+        .union(.punctuationCharacters)
 
-        // Fastra-Patch: Den Wortumbruch in einem Schritt rückwärts suchen.
-        // Upstream erzeugte für bis zu 100 einzelne Zeichen je visuellem
-        // Fragment ein Substring und ein CharacterSet. Eine alphanumerische
-        // 4,36-MB-Zeile brauchte dadurch rund 17 Sekunden statt unter einer.
-        let searchStart = max(subrange.location, breakIndex - 100)
-        let searchRange = NSRange(
-            location: searchStart,
-            length: max(0, breakIndex - searchStart)
-        )
-        let breakRange = (string.string as NSString).rangeOfCharacter(
-            from: Self.wordBreakCharacters,
-            options: .backwards,
-            range: searchRange
-        )
-        if breakRange.location != NSNotFound {
-            return breakRange.max
+    /// Liefert `nil`, sobald die allgemeine Unicode-Prüfung nötig ist.
+    /// Ein gesetzter Wert ist entweder der letzte ASCII-Umbruchkandidat oder
+    /// unverändert `breakIndex`, wenn die 100 Zeichen keinen enthalten.
+    private static func fastASCIIWordBreak(
+        in source: NSString,
+        searchStart: Int,
+        breakIndex: Int
+    ) -> Int? {
+        var index = breakIndex - 1
+        while index >= searchStart {
+            let character = source.character(at: index)
+            guard character <= 0x7f else { return nil }
+            if isASCIIWordBreak(character) {
+                // Ein ASCII-Satzzeichen kann durch ein nachfolgendes
+                // Kombinationszeichen Teil eines größeren Graphems sein.
+                // Dann muss die vollständige Unicode-Prüfung entscheiden.
+                let nextIndex = index + 1
+                if nextIndex >= source.length {
+                    return nextIndex
+                }
+                let nextCharacter = source.character(at: nextIndex)
+                if nextCharacter <= 0x7f
+                    && !(character == 0x0d && nextCharacter == 0x0a) {
+                    return nextIndex
+                }
+                let composed = source.rangeOfComposedCharacterSequence(at: index)
+                guard composed.length == 1 else { return nil }
+                return composed.max
+            }
+            index -= 1
         }
-
         return breakIndex
     }
 
-    private static let wordBreakCharacters = CharacterSet
-        .whitespacesAndNewlines
-        .union(.punctuationCharacters)'''
-if old_word_search in source:
+    /// ASCII-Teilmenge von `whitespacesAndNewlines ∪ punctuationCharacters`.
+    private static func isASCIIWordBreak(_ character: unichar) -> Bool {
+        (character >= 0x09 && character <= 0x0d)
+            || character == 0x20
+            || (character >= 0x21 && character <= 0x23)
+            || (character >= 0x25 && character <= 0x2a)
+            || (character >= 0x2c && character <= 0x2f)
+            || (character >= 0x3a && character <= 0x3b)
+            || (character >= 0x3f && character <= 0x40)
+            || (character >= 0x5b && character <= 0x5d)
+            || character == 0x5f
+            || character == 0x7b
+            || character == 0x7d
+    }'''
+current_ascii_marker = "Fastra-Patch: ASCII-Wortumbruch ohne Zeichensatzobjekte"
+
+def replace_intermediate_word_search(marker):
+    marker_index = source.index(marker)
+    start = source.rfind("        if isBreakAtEndOfString {", 0, marker_index)
+    end = source.index("\n    /// Check if the break index", marker_index)
+    if start < 0:
+        raise SystemExit(f"{path}: Beginn des bestehenden Wortumbruch-Patches fehlt")
+    return source[:start] + new_word_search + source[end:]
+
+if current_ascii_marker in source:
+    source = source.replace(
+        "Fastra-Patch: ASCII-Wortumbruch ohne Zeichensatzobjekte",
+        "Fastra-Patch: ASCII-Wortumbruch mit direkter UTF-16-Prüfung",
+        1
+    )
+    old_source_line = "        let source = string.string as NSString\n        if let asciiBreak"
+    if old_source_line not in source:
+        raise SystemExit(f"{path}: bestehender ASCII-Pfad hat sich geaendert")
+    source = source.replace(old_source_line, "        if let asciiBreak", 1)
+    old_candidate = '''                let composed = source.rangeOfComposedCharacterSequence(at: index)
+                guard composed.length == 1 else { return nil }
+                return composed.max'''
+    new_candidate = '''                let nextIndex = index + 1
+                if nextIndex >= source.length {
+                    return nextIndex
+                }
+                let nextCharacter = source.character(at: nextIndex)
+                if nextCharacter <= 0x7f
+                    && !(character == 0x0d && nextCharacter == 0x0a) {
+                    return nextIndex
+                }
+                let composed = source.rangeOfComposedCharacterSequence(at: index)
+                guard composed.length == 1 else { return nil }
+                return composed.max'''
+    old_predicate = '''        switch character {
+        case 0x09...0x0d, 0x20,
+             0x21...0x23, 0x25...0x2a, 0x2c...0x2f,
+             0x3a...0x3b, 0x3f...0x40,
+             0x5b...0x5d, 0x5f, 0x7b, 0x7d:
+            true
+        default:
+            false
+        }'''
+    new_predicate = '''        (character >= 0x09 && character <= 0x0d)
+            || character == 0x20
+            || (character >= 0x21 && character <= 0x23)
+            || (character >= 0x25 && character <= 0x2a)
+            || (character >= 0x2c && character <= 0x2f)
+            || (character >= 0x3a && character <= 0x3b)
+            || (character >= 0x3f && character <= 0x40)
+            || (character >= 0x5b && character <= 0x5d)
+            || character == 0x5f
+            || character == 0x7b
+            || character == 0x7d'''
+    if old_candidate not in source or old_predicate not in source:
+        raise SystemExit(f"{path}: bestehende ASCII-Pruefung hat sich geaendert")
+    source = source.replace(old_candidate, new_candidate, 1)
+    source = source.replace(old_predicate, new_predicate, 1)
+elif old_word_search in source:
     source = source.replace(old_word_search, new_word_search, 1)
-elif old_fast_word_search in source:
-    source = source.replace(old_fast_word_search, new_word_search, 1)
+elif "Fastra-Patch: Wortumbruch-Kandidaten gesammelt rückwärts suchen" in source:
+    source = replace_intermediate_word_search(
+        "Fastra-Patch: Wortumbruch-Kandidaten gesammelt rückwärts suchen"
+    )
+elif "Fastra-Patch: Den Wortumbruch in einem Schritt rückwärts suchen" in source:
+    source = replace_intermediate_word_search(
+        "Fastra-Patch: Den Wortumbruch in einem Schritt rückwärts suchen"
+    )
 else:
     raise SystemExit(
         f"{path}: Wortumbruch-Suche hat sich geaendert — Patch 4z7 pruefen"
     )
+if old_crlf_call not in source or old_crlf_check not in source:
+    raise SystemExit(f"{path}: CRLF-Pruefung hat sich geaendert — Patch 4z7 pruefen")
+source = source.replace(old_crlf_call, new_crlf_call, 1)
+source = source.replace(old_crlf_check, new_crlf_check, 1)
 open(path, "w").write(source)
 PYEOF
   FAST_WORD_BREAK_PATCH_CHANGED=1
 fi
-if ! grep -q 'Fastra-Patch: Wortumbruch-Kandidaten gesammelt rückwärts suchen' \
+if ! grep -q 'Fastra-Patch: ASCII-Wortumbruch mit direkter UTF-16-Prüfung' \
     "$CETV_BREAK" \
+   || ! grep -q 'private static func fastASCIIWordBreak' "$CETV_BREAK" \
+   || grep -q 'attributedSubstring(from: substringRange)' "$CETV_BREAK" \
    || grep -q 'private func ensureCharacterCanBreakLine' "$CETV_BREAK"; then
   echo "✗ FEHLER: schneller Wortumbruch-Patch hat NICHT vollständig gegriffen." >&2
   exit 1
 fi
 if [ "$FAST_WORD_BREAK_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z8. CodeEditTextView — Vollkopien einer dokumentweiten Megazeile vermeiden.
+#
+# `TextLine.prepareForDisplay`, `createContentRuns` und
+# `layoutTextUntilLineBreak` erzeugten nacheinander drei vollständige
+# NSAttributedString-Kopien derselben 4,36-MB-Zeile. AppKit repariert beim
+# Kopieren die Attribute und Schriften synchron auf dem Main-Thread; genau
+# dieser Pfad dominierte das reale Öffnungsprofil. Ist die Zeile zugleich das
+# ganze Dokument, darf der unveränderte Speicher direkt an CoreText gehen.
+# Teilbereiche und Zeilen mit Attachments behalten den bisherigen Kopierpfad.
+# Regression: DifficultDocumentCorpusTests und LongLineEditorPerformanceTests.
+CETV_COPY_FREE_TEXTLINE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextLine/TextLine.swift"
+CETV_COPY_FREE_TYPESETTER="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextLine/Typesetter/Typesetter.swift"
+COPY_FREE_MEGALINE_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: dokumentweite Megazeile ohne Attributkopie' \
+    "$CETV_COPY_FREE_TEXTLINE" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: vollstaendigen Content-Run direkt an CoreText' \
+    "$CETV_COPY_FREE_TYPESETTER" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: vollstaendigen Layout-Run nicht erneut kopieren' \
+    "$CETV_COPY_FREE_TYPESETTER" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (Megazeile ohne drei vollständige Attributkopien)"
+  chmod u+w "$CETV_COPY_FREE_TEXTLINE" "$CETV_COPY_FREE_TYPESETTER"
+  /usr/bin/python3 - "$CETV_COPY_FREE_TEXTLINE" "$CETV_COPY_FREE_TYPESETTER" <<'PYEOF'
+import sys
+
+textline_path, typesetter_path = sys.argv[1:]
+textline = open(textline_path).read()
+typesetter = open(typesetter_path).read()
+
+old_textline = '''        let string = stringRef.attributedSubstring(from: clampedRange)
+        let maxWidth = typesetter.typeset('''
+new_textline = '''        // Fastra-Patch: dokumentweite Megazeile ohne Attributkopie.
+        // NSTextStorage ist selbst ein NSAttributedString und bleibt waehrend
+        // des synchronen Typesettings unveraendert. Nur echte Teilbereiche
+        // brauchen weiterhin einen eigenen Substring.
+        let string: NSAttributedString = if clampedRange.location == 0
+            && clampedRange.length == stringRef.length {
+            stringRef
+        } else {
+            stringRef.attributedSubstring(from: clampedRange)
+        }
+        let maxWidth = typesetter.typeset('''
+if "Fastra-Patch: dokumentweite Megazeile ohne Attributkopie" not in textline:
+    if old_textline not in textline:
+        raise SystemExit(
+            f"{textline_path}: TextLine-Substring hat sich geaendert — Patch 4z8 pruefen"
+        )
+    textline = textline.replace(old_textline, new_textline, 1)
+
+old_content_run = '''                    let range = NSRange(location: currentPosition, length: maxPosition - currentPosition)
+                    let substring = string.attributedSubstring(from: range)
+                    runs.append(
+                        ContentRun(
+                            range: range,
+                            type: .string(CTTypesetterCreateWithAttributedString(substring))
+                        )
+                    )'''
+new_content_run = '''                    let range = NSRange(location: currentPosition, length: maxPosition - currentPosition)
+                    // Fastra-Patch: vollstaendigen Content-Run direkt an CoreText.
+                    // Ohne Attachments deckt dieser Range die bereits fertige
+                    // Zeile ab; ein weiterer attributedSubstring waere nur
+                    // eine vollstaendige, synchrone Kopie.
+                    let attributedRun: NSAttributedString = if range.location == 0
+                        && range.length == string.length {
+                        string
+                    } else {
+                        string.attributedSubstring(from: range)
+                    }
+                    runs.append(
+                        ContentRun(
+                            range: range,
+                            type: .string(CTTypesetterCreateWithAttributedString(attributedRun))
+                        )
+                    )'''
+if "Fastra-Patch: vollstaendigen Content-Run direkt an CoreText" not in typesetter:
+    if old_content_run not in typesetter:
+        raise SystemExit(
+            f"{typesetter_path}: Content-Run hat sich geaendert — Patch 4z8 pruefen"
+        )
+    typesetter = typesetter.replace(old_content_run, new_content_run, 1)
+
+old_layout_run = '''        let substring = string.attributedSubstring(from: range)
+        let isUnwrapped = displayData.maxWidth == .greatestFiniteMagnitude'''
+new_layout_run = '''        // Fastra-Patch: vollstaendigen Layout-Run nicht erneut kopieren.
+        let substring: NSAttributedString = if range.location == 0
+            && range.length == string.length {
+            string
+        } else {
+            string.attributedSubstring(from: range)
+        }
+        let isUnwrapped = displayData.maxWidth == .greatestFiniteMagnitude'''
+if "Fastra-Patch: vollstaendigen Layout-Run nicht erneut kopieren" not in typesetter:
+    if old_layout_run not in typesetter:
+        raise SystemExit(
+            f"{typesetter_path}: Layout-Run hat sich geaendert — Patch 4z8 pruefen"
+        )
+    typesetter = typesetter.replace(old_layout_run, new_layout_run, 1)
+
+open(textline_path, "w").write(textline)
+open(typesetter_path, "w").write(typesetter)
+PYEOF
+  COPY_FREE_MEGALINE_PATCH_CHANGED=1
+fi
+if ! grep -q 'Fastra-Patch: dokumentweite Megazeile ohne Attributkopie' \
+    "$CETV_COPY_FREE_TEXTLINE" \
+   || ! grep -q 'Fastra-Patch: vollstaendigen Content-Run direkt an CoreText' \
+    "$CETV_COPY_FREE_TYPESETTER" \
+   || ! grep -q 'Fastra-Patch: vollstaendigen Layout-Run nicht erneut kopieren' \
+    "$CETV_COPY_FREE_TYPESETTER"; then
+  echo "✗ FEHLER: kopierfreier Megazeilen-Patch hat NICHT vollständig gegriffen." >&2
+  exit 1
+fi
+if [ "$COPY_FREE_MEGALINE_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z9. CodeEditTextView — geplante Startlayouts zusammenfassen.
+#
+# `viewWillMove(toWindow:)` läuft beim Einhängen der TextView, bevor AppKit die
+# endgültige Scrollbreite gesetzt hat. Der dortige synchrone `layoutLines()`-
+# Aufruf bricht eine dokumentweite Megazeile deshalb mit einer vorläufigen
+# Breite um; der normale `layout()`-Durchlauf wiederholt dieselbe Arbeit direkt
+# danach mit der echten Breite. Auch eine Viewport-Benachrichtigung darf diesen
+# bereits geplanten AppKit-Durchlauf nicht synchron vorwegnehmen. Beim normalen
+# Scrollen ohne ausstehendes Layout bleibt der unmittelbare Pfad erhalten.
+# Regression: `./selftest.sh loadperf` misst den Main-Thread bis eine Sekunde
+# nach dem sichtbaren Editor und `DifficultDocumentCorpusTests` prüft Soft Wrap.
+CETV_WINDOW_LIFECYCLE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+Lifecycle.swift"
+CETV_TEXT_VIEW_CORE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView.swift"
+WINDOW_LIFECYCLE_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: Fensterwechsel nicht mit provisorischer Geometrie layouten' \
+    "$CETV_WINDOW_LIFECYCLE" 2>/dev/null \
+   || ! grep -q 'hasCompletedLayoutInCurrentWindow = false' \
+    "$CETV_WINDOW_LIFECYCLE" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: erstes Fensterlayout explizit verfolgen' \
+    "$CETV_TEXT_VIEW_CORE" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: regulären Fenster-Layoutlauf merken' \
+    "$CETV_TEXT_VIEW_LAYOUT" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: erstes Fensterlayout nicht synchron vorwegnehmen' \
+    "$CETV_TEXT_VIEW_LAYOUT" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (vorzeitige Startlayouts zusammenfassen)"
+  chmod u+w "$CETV_WINDOW_LIFECYCLE" "$CETV_TEXT_VIEW_LAYOUT" \
+    "$CETV_TEXT_VIEW_CORE"
+  /usr/bin/python3 - "$CETV_WINDOW_LIFECYCLE" "$CETV_TEXT_VIEW_LAYOUT" \
+    "$CETV_TEXT_VIEW_CORE" <<'PYEOF'
+import sys
+
+lifecycle_path, layout_path, core_path = sys.argv[1:]
+lifecycle = open(lifecycle_path).read()
+layout = open(layout_path).read()
+core = open(core_path).read()
+lifecycle_marker = (
+    "Fastra-Patch: Fensterwechsel nicht mit provisorischer Geometrie layouten"
+)
+old_lifecycle = '''    override public func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        layoutManager.layoutLines()
+    }'''
+new_lifecycle = '''    override public func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        hasCompletedLayoutInCurrentWindow = false
+        // Fastra-Patch: Fensterwechsel nicht mit provisorischer Geometrie layouten.
+        // AppKit ruft `layout()` nach dem Einhängen mit der endgültigen
+        // Viewportbreite auf. Der synchrone Upstream-Aufruf hier würde eine
+        // Megazeile vorher vollständig und unmittelbar danach erneut umbrechen.
+    }'''
+if lifecycle_marker not in lifecycle:
+    if old_lifecycle not in lifecycle:
+        raise SystemExit(
+            f"{lifecycle_path}: Fenster-Lebenszyklus hat sich geaendert — "
+            "Patch 4z9 pruefen"
+        )
+    lifecycle = lifecycle.replace(old_lifecycle, new_lifecycle, 1)
+elif "hasCompletedLayoutInCurrentWindow = false" not in lifecycle:
+    old_super = '''        super.viewWillMove(toWindow: newWindow)
+        // Fastra-Patch: Fensterwechsel nicht mit provisorischer Geometrie layouten.'''
+    new_super = '''        super.viewWillMove(toWindow: newWindow)
+        hasCompletedLayoutInCurrentWindow = false
+        // Fastra-Patch: Fensterwechsel nicht mit provisorischer Geometrie layouten.'''
+    if old_super not in lifecycle:
+        raise SystemExit(
+            f"{lifecycle_path}: bestehender Fenster-Patch hat sich geaendert"
+        )
+    lifecycle = lifecycle.replace(old_super, new_super, 1)
+
+core_marker = "Fastra-Patch: erstes Fensterlayout explizit verfolgen"
+old_core = '''    var isFirstResponder: Bool = false'''
+new_core = '''    // Fastra-Patch: erstes Fensterlayout explizit verfolgen.
+    // AppKits `needsLayout` ist während früher Viewport-Benachrichtigungen
+    // bereits wieder false und kann den Startzustand deshalb nicht abbilden.
+    var hasCompletedLayoutInCurrentWindow: Bool = false
+    var isFirstResponder: Bool = false'''
+if core_marker not in core:
+    if old_core not in core:
+        raise SystemExit(
+            f"{core_path}: private TextView-Eigenschaften haben sich geaendert — "
+            "Patch 4z9 pruefen"
+        )
+    core = core.replace(old_core, new_core, 1)
+
+layout_marker = "Fastra-Patch: regulären Fenster-Layoutlauf merken"
+old_layout = '''        super.layout()
+        layoutManager.layoutLines()
+        selectionManager.updateSelectionViews(skipTimerReset: true)'''
+new_layout = '''        super.layout()
+        layoutManager.layoutLines()
+        // Fastra-Patch: regulären Fenster-Layoutlauf merken.
+        hasCompletedLayoutInCurrentWindow = window != nil
+        selectionManager.updateSelectionViews(skipTimerReset: true)'''
+if layout_marker not in layout:
+    if old_layout not in layout:
+        raise SystemExit(
+            f"{layout_path}: regulärer Layoutlauf hat sich geaendert — "
+            "Patch 4z9 pruefen"
+        )
+    layout = layout.replace(old_layout, new_layout, 1)
+
+viewport_marker = "Fastra-Patch: erstes Fensterlayout nicht synchron vorwegnehmen"
+old_viewport = '''    public func updatedViewport(_ newRect: CGRect) {
+        if !updateFrameIfNeeded() {
+            layoutManager.layoutLines()
+        }
+        inputContext?.invalidateCharacterCoordinates()
+    }'''
+previous_viewport = '''    public func updatedViewport(_ newRect: CGRect) {
+        if !updateFrameIfNeeded(), !needsLayout {
+            // Fastra-Patch: bereits geplantes AppKit-Layout nicht synchron vorwegnehmen.
+            // Beim Einhängen ist `needsLayout` schon gesetzt; `layout()` folgt
+            // im selben Anzeigezyklus mit der endgültigen Viewportbreite.
+            // Normales Scrollen ohne ausstehenden Lauf bleibt unmittelbar.
+            layoutManager.layoutLines()
+        }
+        inputContext?.invalidateCharacterCoordinates()
+    }'''
+new_viewport = '''    public func updatedViewport(_ newRect: CGRect) {
+        if !updateFrameIfNeeded(), hasCompletedLayoutInCurrentWindow {
+            // Fastra-Patch: erstes Fensterlayout nicht synchron vorwegnehmen.
+            // AppKit ruft `layout()` nach dem Einhängen mit der endgültigen
+            // Viewportbreite auf. Danach bleibt normales Scrollen unmittelbar.
+            layoutManager.layoutLines()
+        }
+        inputContext?.invalidateCharacterCoordinates()
+    }'''
+if viewport_marker not in layout:
+    if previous_viewport in layout:
+        layout = layout.replace(previous_viewport, new_viewport, 1)
+    elif old_viewport in layout:
+        layout = layout.replace(old_viewport, new_viewport, 1)
+    else:
+        raise SystemExit(
+            f"{layout_path}: Viewport-Aktualisierung hat sich geaendert — "
+            "Patch 4z9 pruefen"
+        )
+
+open(lifecycle_path, "w").write(lifecycle)
+open(layout_path, "w").write(layout)
+open(core_path, "w").write(core)
+PYEOF
+  WINDOW_LIFECYCLE_PATCH_CHANGED=1
+fi
+/usr/bin/python3 - "$CETV_WINDOW_LIFECYCLE" "$CETV_TEXT_VIEW_LAYOUT" \
+  "$CETV_TEXT_VIEW_CORE" <<'PYEOF'
+import re
+import sys
+
+lifecycle_path, layout_path, core_path = sys.argv[1:]
+lifecycle = open(lifecycle_path).read()
+layout = open(layout_path).read()
+core = open(core_path).read()
+match = re.search(
+    r"override public func viewWillMove\(toWindow newWindow: NSWindow\?\) \{(.*?)\n    \}",
+    lifecycle,
+    re.S,
+)
+if (match is None
+        or "Fastra-Patch: Fensterwechsel nicht mit provisorischer Geometrie layouten" not in match.group(1)
+        or "hasCompletedLayoutInCurrentWindow = false" not in match.group(1)
+        or "layoutManager.layoutLines()" in match.group(1)):
+    raise SystemExit(
+        f"{lifecycle_path}: Fenster-Layout-Patch hat NICHT vollstaendig gegriffen"
+    )
+viewport = re.search(
+    r"public func updatedViewport\(_ newRect: CGRect\) \{(.*?)\n    \}",
+    layout,
+    re.S,
+)
+if (viewport is None
+        or "Fastra-Patch: erstes Fensterlayout nicht synchron vorwegnehmen" not in viewport.group(1)
+        or "if !updateFrameIfNeeded(), hasCompletedLayoutInCurrentWindow" not in viewport.group(1)):
+    raise SystemExit(
+        f"{layout_path}: Viewport-Layout-Patch hat NICHT vollstaendig gegriffen"
+    )
+if ("Fastra-Patch: erstes Fensterlayout explizit verfolgen" not in core
+        or "var hasCompletedLayoutInCurrentWindow: Bool = false" not in core
+        or "Fastra-Patch: regulären Fenster-Layoutlauf merken" not in layout
+        or "hasCompletedLayoutInCurrentWindow = window != nil" not in layout):
+    raise SystemExit(
+        f"{core_path}: Fenster-Layout-Zustand hat NICHT vollstaendig gegriffen"
+    )
+PYEOF
+if [ "$WINDOW_LIFECYCLE_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z10. CodeEditTextView — erste Fensteraktualisierungen vor dem Umbruch bündeln.
+#
+# SwiftUI setzt beim Einhängen Text, Attribute, Insets und Editorzustand in
+# mehreren dicht aufeinanderfolgenden Aktualisierungen. Ein sofortiger
+# Soft-Wrap-Lauf kann dieselbe Megazeile dadurch mehrfach vollständig umbrechen
+# und hängt außerdem im selben Main-Runloop-Durchlauf wie der Editoraufbau.
+# Ein kurzer, fenstergebundener Aufschub bündelt diese Invalidierungen zu genau
+# einem Layoutlauf. Normales Scrollen sowie spätere Layouts bleiben synchron.
+# Regression: `./selftest.sh loadperf` hält einen 30-ms-Main-Thread-Herzschlag
+# bis eine Sekunde nach dem echten Editor-Mount am Leben.
+INITIAL_WINDOW_LAYOUT_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: initiales Fensterlayout kurz bündeln' \
+    "$CETV_TEXT_VIEW_LAYOUT" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (erste Fensteraktualisierungen bündeln)"
+  chmod u+w "$CETV_WINDOW_LIFECYCLE" "$CETV_TEXT_VIEW_LAYOUT" \
+    "$CETV_TEXT_VIEW_CORE"
+  /usr/bin/python3 - "$CETV_WINDOW_LIFECYCLE" "$CETV_TEXT_VIEW_LAYOUT" \
+    "$CETV_TEXT_VIEW_CORE" <<'PYEOF'
+import sys
+
+lifecycle_path, layout_path, core_path = sys.argv[1:]
+lifecycle = open(lifecycle_path).read()
+layout = open(layout_path).read()
+core = open(core_path).read()
+
+old_core = '''    var hasCompletedLayoutInCurrentWindow: Bool = false
+    var isFirstResponder: Bool = false'''
+new_core = '''    var hasCompletedLayoutInCurrentWindow: Bool = false
+    var hasScheduledInitialLayoutInCurrentWindow: Bool = false
+    var initialLayoutWindowGeneration: Int = 0
+    var isFirstResponder: Bool = false'''
+if "var hasScheduledInitialLayoutInCurrentWindow" not in core:
+    if old_core not in core:
+        raise SystemExit(
+            f"{core_path}: Fenster-Layoutzustand hat sich geaendert — "
+            "Patch 4z10 pruefen"
+        )
+    core = core.replace(old_core, new_core, 1)
+
+old_lifecycle = '''        hasCompletedLayoutInCurrentWindow = false
+        // Fastra-Patch: Fensterwechsel nicht mit provisorischer Geometrie layouten.'''
+new_lifecycle = '''        hasCompletedLayoutInCurrentWindow = false
+        hasScheduledInitialLayoutInCurrentWindow = false
+        initialLayoutWindowGeneration &+= 1
+        // Fastra-Patch: Fensterwechsel nicht mit provisorischer Geometrie layouten.'''
+if "initialLayoutWindowGeneration &+= 1" not in lifecycle:
+    if old_lifecycle not in lifecycle:
+        raise SystemExit(
+            f"{lifecycle_path}: Fensterwechsel-Zustand hat sich geaendert — "
+            "Patch 4z10 pruefen"
+        )
+    lifecycle = lifecycle.replace(old_lifecycle, new_lifecycle, 1)
+
+old_layout = '''    override public func layout() {
+        super.layout()
+        layoutManager.layoutLines()
+        // Fastra-Patch: regulären Fenster-Layoutlauf merken.
+        hasCompletedLayoutInCurrentWindow = window != nil
+        selectionManager.updateSelectionViews(skipTimerReset: true)
+    }'''
+new_layout = '''    override public func layout() {
+        super.layout()
+
+        if window != nil, !hasCompletedLayoutInCurrentWindow {
+            if !hasScheduledInitialLayoutInCurrentWindow {
+                hasScheduledInitialLayoutInCurrentWindow = true
+                let generation = initialLayoutWindowGeneration
+                // Fastra-Patch: initiales Fensterlayout kurz bündeln.
+                // SwiftUI setzt Text, Attribute und Insets in mehreren dicht
+                // aufeinanderfolgenden Aktualisierungen. Erst danach einmal
+                // umbrechen, statt dieselbe Megazeile mehrfach zu berechnen.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                    guard let self,
+                          self.window != nil,
+                          self.initialLayoutWindowGeneration == generation,
+                          !self.hasCompletedLayoutInCurrentWindow else { return }
+                    self.layoutManager.layoutLines()
+                    self.hasCompletedLayoutInCurrentWindow = true
+                    self.hasScheduledInitialLayoutInCurrentWindow = false
+                    self.selectionManager.updateSelectionViews(skipTimerReset: true)
+                    self.needsDisplay = true
+                }
+            }
+            return
+        }
+
+        layoutManager.layoutLines()
+        // Fastra-Patch: regulären Fenster-Layoutlauf merken.
+        hasCompletedLayoutInCurrentWindow = window != nil
+        selectionManager.updateSelectionViews(skipTimerReset: true)
+    }'''
+if "Fastra-Patch: initiales Fensterlayout kurz bündeln" not in layout:
+    if old_layout not in layout:
+        raise SystemExit(
+            f"{layout_path}: Startlayout hat sich geaendert — Patch 4z10 pruefen"
+        )
+    layout = layout.replace(old_layout, new_layout, 1)
+
+open(lifecycle_path, "w").write(lifecycle)
+open(layout_path, "w").write(layout)
+open(core_path, "w").write(core)
+PYEOF
+  INITIAL_WINDOW_LAYOUT_PATCH_CHANGED=1
+fi
+/usr/bin/python3 - "$CETV_WINDOW_LIFECYCLE" "$CETV_TEXT_VIEW_LAYOUT" \
+  "$CETV_TEXT_VIEW_CORE" <<'PYEOF'
+import re
+import sys
+
+lifecycle_path, layout_path, core_path = sys.argv[1:]
+lifecycle = open(lifecycle_path).read()
+layout = open(layout_path).read()
+core = open(core_path).read()
+layout_method = re.search(
+    r"override public func layout\(\) \{(.*?)\n    \}", layout, re.S
+)
+required_layout_parts = (
+    "Fastra-Patch: initiales Fensterlayout kurz bündeln",
+    "DispatchQueue.main.asyncAfter(deadline: .now() + 0.05)",
+    "self.initialLayoutWindowGeneration == generation",
+    "self.hasCompletedLayoutInCurrentWindow = true",
+)
+if (layout_method is None
+        or any(part not in layout_method.group(1) for part in required_layout_parts)
+        or layout.count("Fastra-Patch: initiales Fensterlayout kurz bündeln") != 1):
+    raise SystemExit(
+        f"{layout_path}: gebündeltes Startlayout hat NICHT vollstaendig gegriffen"
+    )
+if (core.count("var hasScheduledInitialLayoutInCurrentWindow: Bool = false") != 1
+        or core.count("var initialLayoutWindowGeneration: Int = 0") != 1):
+    raise SystemExit(
+        f"{core_path}: Startlayout-Zustand hat NICHT vollstaendig gegriffen"
+    )
+if (lifecycle.count("hasScheduledInitialLayoutInCurrentWindow = false") != 1
+        or lifecycle.count("initialLayoutWindowGeneration &+= 1") != 1):
+    raise SystemExit(
+        f"{lifecycle_path}: Startlayout-Reset hat NICHT vollstaendig gegriffen"
+    )
+PYEOF
+if [ "$INITIAL_WINDOW_LAYOUT_PATCH_CHANGED" -eq 1 ]; then
   rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
   rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
         .build/*/release/Modules/CodeEditTextView.swiftmodule

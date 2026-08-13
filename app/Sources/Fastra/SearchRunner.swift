@@ -102,7 +102,15 @@ final class SearchRunner {
 
         let triggerStream = Publishers.MergeMany(triggers)
             .filter { [weak workspace] input in
-                guard let scope = workspace?.scope else { return false }
+                // Solange die Suchmaske geschlossen ist, gibt es weder eine
+                // sichtbare Live-Suche noch eine Vorschau, die aktuell
+                // gehalten werden müsste. Vorher startete schon das Laden
+                // eines Tabs die gespeicherte Demo-Suche über den kompletten
+                // Buffer — bei Megazeilen reine, unsichtbare Zusatzarbeit.
+                guard let workspace, workspace.showSearchDialog else {
+                    return false
+                }
+                let scope = workspace.scope
                 return Self.inputAffectsSearch(input, in: scope)
             }
             .map { _ in () }
@@ -144,9 +152,33 @@ final class SearchRunner {
             .sink { [weak self] in self?.rerun() }
             .store(in: &bag)
 
-        // Initial einmal laufen lassen, damit die Maske beim Öffnen
-        // direkt etwas zeigt (falls schon ein findPattern voreingestellt
-        // ist — der Prototyp startet mit einer E-Mail-Demo-RegEx).
+        // Öffnen der Maske startet genau einen Lauf mit den aktuellen
+        // Eingaben. Schließen beendet laufende Arbeit sofort; die alten
+        // Treffer dürfen danach insbesondere keinen Apply mehr freigeben.
+        workspace.$showSearchDialog
+            .dropFirst()
+            .sink { [weak self] isVisible in
+                if isVisible {
+                    // @Published sendet vor der eigentlichen Zuweisung. Erst
+                    // im nächsten Main-Turn sieht `rerun()` deshalb den
+                    // neuen sichtbaren Zustand.
+                    DispatchQueue.main.async {
+                        self?.searchVisibilityDidChange(true)
+                    }
+                } else if Thread.isMainThread {
+                    // Schließen muss laufende Arbeit dagegen sofort stoppen;
+                    // dafür reicht der mitgelieferte neue Wert.
+                    self?.searchVisibilityDidChange(false)
+                } else {
+                    DispatchQueue.main.async {
+                        self?.searchVisibilityDidChange(false)
+                    }
+                }
+            }
+            .store(in: &bag)
+
+        // Initial einmal prüfen. Die Maske startet normalerweise geschlossen;
+        // `rerun()` beendet sich dann ohne Volltextarbeit.
         // Dieser Dispatch ist der FRÜHESTE Weg, auf dem ein frisch
         // erzeugter Workspace die Main-Queue erreicht — noch vor
         // `Workspace.shared`. `Workspace.init` muss deshalb alle
@@ -205,6 +237,18 @@ final class SearchRunner {
         bufferRunID &+= 1
         folderDebounce?.cancel()
         folderDebounce = nil
+    }
+
+    private func searchVisibilityDidChange(_ isVisible: Bool) {
+        guard let ws = workspace else { return }
+        cancelPendingWork()
+        guard isVisible else {
+            ws.bufferSearching = false
+            ws.folderSearching = false
+            ws.visibleBufferResultsOptions = nil
+            return
+        }
+        rerun()
     }
 
     private static func clearFolderPreview(_ ws: Workspace) {
@@ -276,6 +320,16 @@ final class SearchRunner {
         // abbrechen — entweder weil der Scope wechselt oder weil sich die
         // Eingaben geändert haben (frischer Tastendruck → alles neu starten).
         cancelPendingWork()
+
+        // `rerun()` ist auch ein interner Live-Trigger. Eine explizite Suche
+        // aus dem Suchdialog geht dagegen direkt über `runFolderSearch()`.
+        // So kann das bloße Öffnen oder Bearbeiten eines Dokuments niemals
+        // im Hintergrund einen Volltextlauf starten.
+        guard ws.showSearchDialog else {
+            ws.bufferSearching = false
+            ws.folderSearching = false
+            return
+        }
 
         if SearchRunner.runsLive(for: ws.scope) {
             if ws.scope == .open {

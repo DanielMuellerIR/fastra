@@ -192,6 +192,7 @@ func workspace_applyAllInOpenTabs_refusesStalePreview() {
 @MainActor
 func workspace_runnerRestoresOpenScopeApplyGate() async throws {
     let ws = makeWorkspace(tabs: [("a.txt", "MARKER eins"), ("b.txt", "ohne Treffer")])
+    ws.showSearchDialog = true
     ws.useRegex = false
     ws.caseSensitive = true
     ws.findPattern = "MARKER"
@@ -224,6 +225,7 @@ func workspace_runnerRestoresOpenScopeApplyGate() async throws {
 @MainActor
 func workspace_runnerRestoresFileScopeApplyGate() async throws {
     let ws = makeWorkspace(tabs: [("a.txt", "MARKER eins")])
+    ws.showSearchDialog = true
     ws.scope = .file
     ws.useRegex = false
     ws.caseSensitive = true
