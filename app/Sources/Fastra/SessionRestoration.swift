@@ -225,13 +225,20 @@ extension Workspace {
             return
         }
 
+        // Jeder neue Restore ersetzt einen älteren. Der Wert wird erst nach
+        // dem Dateivorcheck gebunden, damit ein sofort leer verworfener Stand
+        // keinen langlebigen asynchronen Zustand eröffnet.
+        sessionRestoreGeneration &+= 1
+        let restoreGeneration = sessionRestoreGeneration
+
         if let projectPath = state.projectPath {
             let projectURL = URL(fileURLWithPath: projectPath).canonicalFileURL
             var isDirectory: ObjCBool = false
             if FileManager.default.fileExists(atPath: projectURL.path,
                                               isDirectory: &isDirectory),
                isDirectory.boolValue {
-                openProject(at: projectURL)
+                openProject(at: projectURL,
+                            invalidatingSessionRestore: false)
             }
         }
 
@@ -247,6 +254,12 @@ extension Workspace {
                 // (Review 2026-08-02).
                 defer { completion?() }
                 guard let self else { return }
+                // Während der Loads kann der Nutzer längst ein anderes
+                // Projekt geöffnet haben. Dann gehört nur noch das Completion-
+                // Signal zu diesem Restore, keine seiner Abschlussmutationen.
+                guard self.sessionRestoreGeneration == restoreGeneration else {
+                    return
+                }
                 var finalActiveTabID = self.activeTabID
                 if let activePath = state.activeDocumentPath {
                     let canonicalActive = URL(fileURLWithPath: activePath)

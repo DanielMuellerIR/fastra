@@ -53,15 +53,33 @@ struct DocumentFormatterTests {
     }
 
     @Test("Manuell gewähltes JSON formatiert unabhängig von der txt-Endung")
+    @MainActor
     func manuallySelectedJSONUsesEffectiveFormat() throws {
         let source = #"{"blob":"AAAA","z":1}"#
+        let suite = "fastra-format-id-\(UUID().uuidString)"
+        let defaults = testSuiteDefaults(named: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let workspace = Workspace(defaults: defaults)
+        let tab = EditorTab(title: "daten.txt", path: "—", content: source)
+        workspace.tabs = [tab]
+        workspace.activeTabID = tab.id
+        workspace.setLanguageOverride(.json)
+        let formatID = try #require(workspace.activeDocumentFormattingID)
+
         let result = try DocumentFormatter.format(
             in: source,
             selection: NSRange(location: 0, length: 0),
-            formatID: .grammar(.json)
+            formatID: formatID
         )
+        #expect(formatID == .grammar(.json))
         #expect(result?.replacement.contains("\n") == true)
         #expect(result?.replacement.contains(#""blob" : "AAAA""#) == true)
+
+        workspace.tabs[0].title = "daten.json"
+        #expect(workspace.activeDocumentLintingExtension == "json")
+        workspace.tabs[0].readOnlyReason = "Git-Vorversion"
+        #expect(workspace.activeDocumentFormattingID == nil)
+        #expect(workspace.activeDocumentLintingExtension == nil)
     }
 
 }

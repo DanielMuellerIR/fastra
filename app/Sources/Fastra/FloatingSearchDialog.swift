@@ -1617,10 +1617,7 @@ struct FloatingSearchDialog: View {
                 // Buffer-Scope (Datei/Geöffnet) — Ordner-Einzelersetzen schreibt
                 // auf die Platte und kommt mit dem Ergebnis-Fenster (Schritt 2).
                 Button("Ersetzen") { workspace.replaceActiveMatch() }
-                    .disabled(workspace.scope.isFolderLike
-                              || workspace.bufferMatches.isEmpty
-                              || workspace.searchError != nil
-                              || !visibleResultsMatchCurrentSearch)
+                    .disabled(!workspace.canReplaceActiveSearchMatch)
                     .help("Nur den aktiven Treffer ersetzen und zum nächsten springen. Im Ordner-Modus (noch) nicht verfügbar.")
 
                 // Im Folder-Scope und nach einem erfolgreichen Apply gibt es
@@ -1663,6 +1660,10 @@ struct FloatingSearchDialog: View {
                     // hervorgehobene Buttons wirkten wie zwei Standardaktionen.
                     .buttonStyle(.bordered)
                     .disabled(scopeTotalMatches == 0 || workspace.searchError != nil
+                              || (workspace.scope == .file
+                                  && !workspace.canApplyAllInActiveBuffer)
+                              || (workspace.scope == .open
+                                  && !workspace.canApplyAllInOpenTabs)
                               || (workspace.scope.isFolderLike
                                   && (workspace.folderSearching
                                       || workspace.folderNeedsSearch))

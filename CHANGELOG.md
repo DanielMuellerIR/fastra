@@ -9,6 +9,26 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.77.0] — 2026-08-13
+
+### Behoben
+
+- **Git-Aktionen bleiben an ihrem sichtbaren Zustand gebunden:** Ein normaler
+  Push bricht ab, wenn der erste konfigurierte Remote nicht aufgelöst werden
+  kann, statt unbemerkt den nächsten Remote zu verwenden. Externe
+  Git-Änderungen aktualisieren außerdem offene Index- und HEAD-Vorversionen.
+- **Git-Vorversionen sind konsequent schreibgeschützt:** Suchen und
+  Treffernavigation funktionieren weiterhin, einschließlich Auswahl und
+  Scrollen in der nativen Vorversionsansicht. Ersetzen, Formatieren,
+  Minifizieren und Prüfen werden dort weder angeboten noch als erfolgreicher
+  Modellzugriff gezählt.
+- **Ein verspäteter Sitzungs-Restore überschreibt keinen Nutzerwechsel mehr:**
+  Wird während des Ladens ein anderes Projekt geöffnet, bleiben dessen Tabs,
+  aktiver Tab und Projektkontext unangetastet.
+- **Formatieren und Minifizieren verwenden den wirksamen Formattyp direkt:**
+  Der Produktpfad folgt damit derselben geprüften JSON-/XML-Formatwahl wie die
+  Befehlsfreigabe, auch bei einer manuellen JSON-Wahl für eine `.txt`-Datei.
+
 ## [v1.76.1] — 2026-08-13
 
 ### Behoben

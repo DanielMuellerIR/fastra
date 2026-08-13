@@ -126,6 +126,15 @@ enum DocumentFormatter {
         return DocumentFormatResult(affectedRange: range, replacement: minified)
     }
 
+    static func minify(in text: String, selection: NSRange,
+                       formatID: DocumentFormatID) throws -> DocumentFormatResult? {
+        guard let fileExtension = canonicalExtension(for: formatID) else {
+            throw DocumentFormatterError.unsupportedFormat
+        }
+        return try minify(in: text, selection: selection,
+                          fileExtension: fileExtension)
+    }
+
     static func minify(_ text: String, fileExtension: String) throws -> String {
         switch fileExtension.lowercased() {
         case "json":

@@ -264,6 +264,76 @@ enum GitPushTargetResolver {
         return lease
     }
 
+    /// Löst ausschließlich den ERSTEN lokal konfigurierten Remote auf. Ein
+    /// Fehler dieses Ziels darf niemals dazu führen, dass ein normaler Push
+    /// still auf den nächsten, noch erreichbaren Remote ausweicht.
+    @discardableResult
+    static func resolvePrimary(
+        repository: URL,
+        executor: GitCommandExecuting,
+        completion: @escaping (GitPushTarget?, GitPushTargetResolutionFailure?) -> Void
+    ) -> GitCancelling {
+        let lease = GitPushTargetResolutionLease()
+
+        func finish(_ target: GitPushTarget?,
+                    failure: GitPushTargetResolutionFailure?) {
+            guard lease.claimCompletion() else { return }
+            completion(target, failure)
+        }
+
+        let configToken = executor.execute(
+            arguments: GitRemoteConfiguration.orderedRemoteArguments,
+            in: repository, outputLimit: .default, policy: .default
+        ) { configOutcome in
+            guard lease.isActive() else { return }
+            guard case .completed(let configResult) = configOutcome else {
+                finish(nil, failure: .init(remote: nil, outcome: configOutcome))
+                return
+            }
+            guard configResult.ok, !configResult.stdoutWasTruncated else {
+                if configResult.exitCode == 1 && configResult.stdoutData.isEmpty {
+                    finish(nil, failure: nil)
+                } else {
+                    finish(nil, failure: .init(remote: nil, outcome: configOutcome))
+                }
+                return
+            }
+            guard let remote = GitRemoteConfiguration.firstRemote(
+                from: configResult.stdoutData
+            ) else {
+                finish(nil, failure: nil)
+                return
+            }
+
+            let addressToken = executor.execute(
+                arguments: ["remote", "get-url", "--push", "--all", remote],
+                in: repository, outputLimit: .default, policy: .default
+            ) { addressOutcome in
+                guard lease.isActive() else { return }
+                guard case .completed(let addressResult) = addressOutcome,
+                      addressResult.ok,
+                      !addressResult.stdoutWasTruncated else {
+                    finish(nil, failure: .init(remote: remote,
+                                               outcome: addressOutcome))
+                    return
+                }
+                let addresses = GitRemoteConfiguration.pushAddresses(
+                    from: addressResult.stdoutData
+                )
+                guard !addresses.isEmpty else {
+                    finish(nil, failure: .init(remote: remote,
+                                               outcome: addressOutcome))
+                    return
+                }
+                finish(GitPushTarget(remote: remote, addresses: addresses),
+                       failure: nil)
+            }
+            lease.install(addressToken)
+        }
+        lease.install(configToken)
+        return lease
+    }
+
     /// Löst genau den sichtbar gewählten Remote neu auf. Der Config-Leseschritt
     /// stellt zuerst sicher, dass dieser Name weiterhin lokal konfiguriert ist;
     /// erst danach wird ausschließlich seine effektive Push-Adresse gelesen.
@@ -337,8 +407,8 @@ enum GitPushTargetResolver {
     static func resolve(repository: URL, executor: GitCommandExecuting,
                         completion: @escaping (GitPushTarget?, GitExecutionOutcome?) -> Void)
         -> GitCancelling {
-        resolveAll(repository: repository, executor: executor) { targets, failure in
-            completion(targets.first, failure?.outcome)
+        resolvePrimary(repository: repository, executor: executor) { target, failure in
+            completion(target, failure?.outcome)
         }
     }
 }

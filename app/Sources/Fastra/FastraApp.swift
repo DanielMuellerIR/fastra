@@ -412,7 +412,7 @@ struct FastraApp: App {
             // Operieren auf der Selektion bzw. — ohne Selektion — der ganzen Datei.
             CommandMenu("Text") {
                 Button("Dokument formatieren") { postDocumentFormatting() }
-                    .disabled(commandWorkspace?.activeDocumentFormattingExtension == nil)
+                    .disabled(commandWorkspace?.activeDocumentFormattingID == nil)
                 // Etappe 6 (Wunschpaket 2026-07): native JSON-/XML-Prüfung
                 // mit Fehlerposition und konservatives Minify — bewusst keine
                 // gebündelten Fremd-Linter (JS/CSS/HTML bleiben außen vor).
@@ -421,14 +421,13 @@ struct FastraApp: App {
                     NotificationCenter.default.post(name: .fastraLintDocument,
                                                     object: nil)
                 }
-                .disabled(!DocumentLinter.supports(fileExtension: commandWorkspace?.activeTab?.url?.pathExtension
-                    ?? (commandWorkspace?.activeTab?.title as NSString?)?.pathExtension))
+                .disabled(commandWorkspace?.activeDocumentLintingExtension == nil)
                 Button("Dokument minifizieren") {
                     guard commandWorkspace != nil else { return }
                     NotificationCenter.default.post(name: .fastraMinifyDocument,
                                                     object: nil)
                 }
-                .disabled(commandWorkspace?.activeDocumentFormattingExtension == nil)
+                .disabled(commandWorkspace?.activeDocumentFormattingID == nil)
                 Divider()
                 Button(TextOpKind.uppercase.title)  { postTextOp(.uppercase) }
                 Button(TextOpKind.lowercase.title)  { postTextOp(.lowercase) }

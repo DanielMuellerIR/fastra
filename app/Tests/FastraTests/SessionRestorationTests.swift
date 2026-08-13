@@ -211,6 +211,46 @@ func sessionWorkspaceRestore() async throws {
     #expect(!workspace.tabs.contains(where: { $0.url == nil }))
 }
 
+@Test("Nutzer-Projektwechsel gewinnt gegen verspäteten Sitzungs-Restore")
+@MainActor
+func sessionRestoreCannotClobberNewProject() async throws {
+    let (defaults, suite) = sessionDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let restoredFile = try sessionFile("alt.txt", content: "Alt")
+    let oldDirectory = restoredFile.deletingLastPathComponent()
+    let newProject = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-new-project-\(UUID().uuidString)",
+                                isDirectory: true)
+    try FileManager.default.createDirectory(at: newProject,
+                                            withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: oldDirectory)
+        try? FileManager.default.removeItem(at: newProject)
+    }
+    let workspace = Workspace(defaults: defaults)
+    let state = RestorableWindowState(
+        projectPath: oldDirectory.path,
+        documentPaths: [restoredFile.path],
+        activeDocumentPath: restoredFile.path,
+        frame: nil
+    )
+    var finished = false
+
+    // Die Lade-Platzhalter entstehen synchron. Noch bevor ihr Hintergrund-
+    // load abschließt, wählt der Nutzer bewusst ein anderes Projekt.
+    workspace.restore(state) { finished = true }
+    workspace.openProject(at: newProject)
+    let expectedTabs = workspace.tabs
+    let expectedActiveTabID = workspace.activeTabID
+    let deadline = Date().addingTimeInterval(5)
+    while !finished, Date() < deadline { await Task.yield() }
+
+    #expect(finished)
+    #expect(workspace.projectURL?.canonicalFileURL == newProject.canonicalFileURL)
+    #expect(workspace.tabs == expectedTabs)
+    #expect(workspace.activeTabID == expectedActiveTabID)
+}
+
 @Test("Restore richtet den Projektkontext am gespeicherten aktiven Repo-Tab aus")
 @MainActor
 func sessionWorkspaceRestoreSelectsActiveRepositoryContext() async throws {

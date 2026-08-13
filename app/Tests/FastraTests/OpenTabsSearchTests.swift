@@ -129,6 +129,12 @@ func workspace_applyAllInOpenTabs() {
     // Guard-Futter: der Apply-Pfad prüft den Treffer-Stand des Runners UND
     // ob dieser Stand zu den aktuellen Suchoptionen gehört.
     ws.openTotalMatches = 2
+    ws.openResults = OpenTabsSearch.find(
+        tabs: ws.tabs.map {
+            OpenTabsSearch.TabInput(id: $0.id, title: $0.title,
+                                    content: $0.content)
+        }, options: ws.currentSearchOptions
+    ).perTab
     ws.visibleBufferResultsOptions = ws.currentSearchOptions
     let changedCount = ws.applyAllInOpenTabs()
     #expect(changedCount == 2)
@@ -181,6 +187,62 @@ func workspace_applyAllInOpenTabs_refusesStalePreview() {
     ws.findPattern = "bar"
     #expect(ws.applyAllInOpenTabs() == 0)
     #expect(ws.tabs[0].content == "foo bar")
+}
+
+@Test("Geöffnet-Ersetzen überspringt read-only Git-Vorversionen")
+func workspace_openReplaceOnlyChangesEditableTabs() {
+    let ws = makeWorkspace(tabs: [("edit.txt", "foo"), ("HEAD:gone.txt", "foo")])
+    ws.tabs[1].readOnlyReason = "Git-Vorversion"
+    ws.tabs[1].gitSnapshotRequest = GitFileSnapshotRequest(
+        repositoryPath: "/tmp/repo", path: "gone.txt", source: .head
+    )
+    ws.findPattern = "foo"
+    ws.replacePattern = "X"
+    ws.useRegex = false
+    ws.caseSensitive = true
+    let result = OpenTabsSearch.find(
+        tabs: ws.tabs.map {
+            OpenTabsSearch.TabInput(id: $0.id, title: $0.title,
+                                    content: $0.content)
+        }, options: ws.currentSearchOptions
+    )
+    ws.openResults = result.perTab
+    ws.openTotalMatches = result.totalMatches
+    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+
+    #expect(ws.canApplyAllInOpenTabs)
+    #expect(ws.applyAllInOpenTabs() == 1)
+    #expect(ws.tabs[0].content == "X")
+    #expect(ws.tabs[0].isDirty)
+    #expect(ws.tabs[1].content == "foo")
+    #expect(!ws.tabs[1].isDirty)
+}
+
+@Test("Datei-Ersetzen meldet in read-only Git-Vorversion keinen Erfolg")
+func workspace_fileReplaceRejectsReadOnlySnapshot() {
+    let ws = makeWorkspace(tabs: [("HEAD:gone.txt", "foo")])
+    ws.scope = .file
+    ws.tabs[0].readOnlyReason = "Git-Vorversion"
+    ws.tabs[0].gitSnapshotRequest = GitFileSnapshotRequest(
+        repositoryPath: "/tmp/repo", path: "gone.txt", source: .head
+    )
+    ws.findPattern = "foo"
+    ws.replacePattern = "X"
+    ws.useRegex = false
+    ws.caseSensitive = true
+    let result = BufferSearch.find(in: "foo", options: ws.currentSearchOptions)
+    ws.bufferMatches = result.matches
+    ws.bufferTotalMatches = result.totalMatches
+    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    let oldReloadNonce = ws.editorReloadNonce
+
+    #expect(!ws.canApplyAllInActiveBuffer)
+    #expect(!ws.canReplaceActiveSearchMatch)
+    #expect(!ws.applyAllInActiveBuffer())
+    ws.replaceActiveMatch()
+    #expect(ws.tabs[0].content == "foo")
+    #expect(!ws.tabs[0].isDirty)
+    #expect(ws.editorReloadNonce == oldReloadNonce)
 }
 
 // Der Selbsttest `openscope` fiel am 2026-08-02 auf eine Lücke herein, die

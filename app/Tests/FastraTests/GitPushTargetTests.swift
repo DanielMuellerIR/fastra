@@ -133,6 +133,32 @@ struct GitPushTargetTests {
         _ = lease
     }
 
+    @Test("Normaler Push weicht bei defektem ersten Remote niemals aus")
+    func primaryResolverStopsAtBrokenFirstRemote() {
+        let executor = PushTargetTestExecutor()
+        var resolved: GitPushTarget?
+        var failure: GitPushTargetResolutionFailure?
+        let lease = GitPushTargetResolver.resolvePrimary(
+            repository: URL(fileURLWithPath: "/tmp/repo"), executor: executor
+        ) {
+            resolved = $0
+            failure = $1
+        }
+        executor.complete(0, stdout: remoteConfigData([
+            ("remote.primary.url", "primary-fetch"),
+            ("remote.github.url", "github-fetch"),
+        ]))
+        executor.complete(1, exitCode: 2, stderr: "primaeres Ziel defekt")
+
+        #expect(resolved == nil)
+        #expect(failure?.remote == "primary")
+        #expect(executor.calls.map(\.arguments) == [
+            GitRemoteConfiguration.orderedRemoteArguments,
+            ["remote", "get-url", "--push", "--all", "primary"],
+        ], "Der zweite Remote darf nicht einmal aufgelöst werden")
+        _ = lease
+    }
+
     @Test("Verspäteter alter Anzeige-Refresh überschreibt den jüngeren nicht")
     @MainActor
     func staleDisplayRefreshCannotPublish() async {

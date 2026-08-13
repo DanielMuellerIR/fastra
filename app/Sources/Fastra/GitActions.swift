@@ -441,9 +441,9 @@ extension Workspace {
     /// dürfen das sichtbare Ziel niemals still ersetzen.
     func gitPush() {
         guard let context = currentGitActionContext, GitRunner.isAvailable else { return }
-        resolveGitPushTargets(context: context) { [weak self] targets, failure in
+        resolvePrimaryGitPushTarget(context: context) { [weak self] target, failure in
             guard let self else { return }
-            guard let target = targets.first else {
+            guard let target else {
                 self.presentMissingPushTarget(failure)
                 return
             }
@@ -1004,18 +1004,21 @@ extension Workspace {
         return true
     }
 
-    private func resolveGitPushTargets(
+    /// Der generische Push ist fest an den ersten Config-Remote gebunden.
+    /// Anders als die Anzeigeauflösung darf dieser Pfad defekte Ziele nicht
+    /// überspringen und einen späteren Remote als Ersatz verwenden.
+    private func resolvePrimaryGitPushTarget(
         context: GitActionContext,
-        completion: @escaping ([GitPushTarget], GitPushTargetResolutionFailure?) -> Void
+        completion: @escaping (GitPushTarget?, GitPushTargetResolutionFailure?) -> Void
     ) {
         gitPushActionTargetInspection?.cancel()
-        gitPushActionTargetInspection = GitPushTargetResolver.resolveAll(
+        gitPushActionTargetInspection = GitPushTargetResolver.resolvePrimary(
             repository: context.root,
             executor: gitOperationsCoordinator.commandExecutor
-        ) { [weak self] targets, failure in
+        ) { [weak self] target, failure in
             DispatchQueue.main.async {
                 guard let self, context.isCurrent(in: self) else { return }
-                completion(targets, failure)
+                completion(target, failure)
             }
         }
     }

@@ -570,7 +570,8 @@ struct EditorView: View {
                 // Gelöschte Git-Dateien erscheinen als normale auswählbare
                 // Textansicht. Die eigene AppKit-View erklärt einen
                 // Schreibversuch direkt an der Einfügemarke.
-                ReadOnlySourceView(content: tab.content, reason: reason)
+                ReadOnlySourceView(workspace: workspace,
+                                   content: tab.content, reason: reason)
                     .id(tab.id)
             } else if workspace.activeTab?.isLoading == true {
                 // Lade-Zustand: Spinner + Dateiname, kein Editor.

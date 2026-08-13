@@ -293,9 +293,17 @@ struct EditorTab: Identifiable, Hashable {
     /// „Dateien vergleichen…“ markiert werden. Git-, Diff-, Hex- und
     /// Abschnitts-Tabs bleiben gewöhnliche einzelne Tabs.
     var isEligibleForFileComparison: Bool {
-        gitKind == nil && fileDiffRequest == nil
-            && gitSnapshotRequest == nil && readOnlyReason == nil
-            && !isLoading && displayMode == .text
+        isEditableTextDocument
+    }
+
+    /// Gemeinsame Schreibbarkeitsgrenze für Editorbefehle und Ersetzen.
+    /// Eine sichtbare Textdarstellung allein genügt nicht: Git-Vorversionen,
+    /// Diffs und noch ladende Tabs dürfen niemals über einen Modellpfad
+    /// verändert werden, auch wenn gerade keine echte Editor-View existiert.
+    var isEditableTextDocument: Bool {
+        !isLoading && displayMode == .text && readOnlyReason == nil
+            && gitSnapshotRequest == nil && gitKind == nil
+            && gitDiffRequest == nil && fileDiffRequest == nil
     }
 
     /// „Unberührter Notizzettel": unbenannt, leer, ungeändert, fertig geladen,
@@ -903,6 +911,10 @@ final class Workspace: ObservableObject {
     /// Erhöht sich bei jedem Projektwechsel. Asynchrone Aktionsketten binden
     /// sich an diesen Wert und können nie in ein später geöffnetes Repo laufen.
     private(set) var projectGeneration: UInt64 = 0
+    /// Bindet einen asynchronen Sitzungs-Restore an den Zustand, in dem er
+    /// gestartet wurde. Ein späterer Nutzer-Projektwechsel entwertet seine
+    /// Abschlussaktion, bevor sie Tabs oder Projektkontext zurücksetzen kann.
+    var sessionRestoreGeneration: UInt64 = 0
     /// Zählt hoch, sobald ein gezielter Sprung in DIESEM Fenster scrollt.
     /// Die laufende Ausschnitt-Wiederherstellung dieses Fensters erkennt
     /// daran, dass sie überholt wurde (`EditorView.restoreScrollOffset`).
@@ -1200,19 +1212,20 @@ final class Workspace: ObservableObject {
     /// Formatwahl gewinnt vor der Endung; „Reiner Text“ auf einer `.json`
     /// schaltet die JSON-Befehle daher ebenso bewusst aus wie „JSON“ auf einer
     /// `.txt` sie einschaltet.
-    var activeDocumentFormattingExtension: String? {
-        guard let tab = activeTab else { return nil }
-        if tab.languageOverride != nil || tab.customLanguageOverrideID != nil {
-            return DocumentFormatter.canonicalExtension(for: activeDocumentFormat.id)
-        }
-        if let canonical = DocumentFormatter.canonicalExtension(
-            for: activeDocumentFormat.id
-        ) {
-            return canonical
-        }
+    var activeDocumentFormattingID: DocumentFormatID? {
+        guard activeTab?.isEditableTextDocument == true else { return nil }
+        let formatID = activeDocumentFormat.id
+        return DocumentFormatter.supports(formatID: formatID) ? formatID : nil
+    }
+
+    /// Dateiendung für den Linter, aber nur bei einem wirklich editierbaren,
+    /// vollständig geladenen Textdokument. Damit versprechen Menü und
+    /// Kontextmenü keine Aktion in Git-Vorversionen ohne Editorinstanz.
+    var activeDocumentLintingExtension: String? {
+        guard let tab = activeTab, tab.isEditableTextDocument else { return nil }
         let fileExtension = tab.url?.pathExtension
             ?? (tab.title as NSString).pathExtension
-        return DocumentFormatter.supports(fileExtension: fileExtension)
+        return DocumentLinter.supports(fileExtension: fileExtension)
             ? fileExtension : nil
     }
 
@@ -1419,7 +1432,7 @@ final class Workspace: ObservableObject {
             get: { self.activeTab?.content ?? "" },
             set: { newValue in
                 guard let idx = self.activeTabIndex else { return }
-                guard self.tabs[idx].readOnlyReason == nil else { return }
+                guard self.tabs[idx].isEditableTextDocument else { return }
                 if self.tabs[idx].content != newValue {
                     let tabID = self.tabs[idx].id
                     let needsLanguageLengths = Self.isEligibleForContentDetection(
@@ -2956,7 +2969,12 @@ final class Workspace: ObservableObject {
                       let target,
                       target.standardizedFileURL
                         != self.projectURL?.standardizedFileURL else { return }
-                self.openProject(at: target, keepingUnrelatedTabs: true)
+                // Dieser Projektwechsel gehört zum Abschluss genau des
+                // Datei-Ladevorgangs. Eine Sitzungswiederherstellung darf
+                // sich dadurch nicht selbst entwerten; ausdrückliche Nutzer-
+                // Projektwechsel verwenden weiterhin den Standardwert.
+                self.openProject(at: target, keepingUnrelatedTabs: true,
+                                 invalidatingSessionRestore: false)
                 self.showSidebarNotice(L10n.format(
                     "Seitenleiste zeigt jetzt „%@“", target.lastPathComponent
                 ))
@@ -3276,7 +3294,9 @@ final class Workspace: ObservableObject {
     /// Ein unberührter leerer Start-Tab bleibt in beiden Fällen einfach
     /// stehen — sein Willkommens-Platzhalter zeigt sich nur, solange er
     /// selbst aktiv ist.
-    func openProject(at url: URL, keepingUnrelatedTabs: Bool = false) {
+    func openProject(at url: URL, keepingUnrelatedTabs: Bool = false,
+                     invalidatingSessionRestore: Bool = true) {
+        if invalidatingSessionRestore { sessionRestoreGeneration &+= 1 }
         let url = url.canonicalFileURL
         NotificationCenter.default.post(name: .fastraProjectContextWillChange, object: self)
         stopFourDProjectMethodWatcher()
@@ -3489,6 +3509,7 @@ final class Workspace: ObservableObject {
     /// Blendet den Projekt-Dateibaum wieder aus (Seitenleiste zeigt dann
     /// wie bisher nur die geöffneten Tabs). Offene Tabs bleiben unberührt.
     func closeProject() {
+        sessionRestoreGeneration &+= 1
         NotificationCenter.default.post(name: .fastraProjectContextWillChange, object: self)
         stopFourDProjectMethodWatcher()
         selectedFileTreeFolder = nil
@@ -3611,6 +3632,10 @@ final class Workspace: ObservableObject {
         // wurde, hat sich ihr Patch geändert, obwohl die Status-Flags gleich
         // bleiben. Deshalb nicht allein auf Status-Equality vertrauen.
         refreshOpenGitDiffTabs()
+        // Index und HEAD sind ebenfalls symbolische Quellen. Ein externer
+        // Stage-/Commit-Vorgang kann ihren Inhalt ändern, ohne dass Fastra
+        // selbst durch `refreshOpenGitViews` gelaufen ist.
+        refreshOpenGitSnapshotTabs()
     }
 
     /// Lädt die Commit-Historie für den Graph-Tab asynchron (`git log --all`).
@@ -4893,8 +4918,29 @@ final class Workspace: ObservableObject {
     /// der Zeilenzahl aktiv: Ein Klick im Debounce-Fenster sah wirksam aus
     /// und tat nichts (Review 2026-08-06).
     var canApplyAllInActiveBuffer: Bool {
-        bufferTotalMatches > 0 && searchError == nil
+        activeTab?.isEditableTextDocument == true
+            && bufferTotalMatches > 0 && searchError == nil
             && visibleBufferResultsOptions == currentSearchOptions
+    }
+
+    /// Freigabe für „Alle ersetzen“ im Geöffnet-Bereich. Suchtreffer in
+    /// read-only Git-Ansichten bleiben sichtbar und navigierbar, geben aber
+    /// keinen Schreibbefehl frei, wenn kein betroffener editierbarer Tab
+    /// existiert.
+    var canApplyAllInOpenTabs: Bool {
+        guard openTotalMatches > 0, searchError == nil,
+              visibleBufferResultsOptions == currentSearchOptions else {
+            return false
+        }
+        let matchingTabIDs = Set(openResults.map(\.id))
+        return tabs.contains { matchingTabIDs.contains($0.id) && $0.isEditableTextDocument }
+    }
+
+    var canReplaceActiveSearchMatch: Bool {
+        !scope.isFolderLike && activeTab?.isEditableTextDocument == true
+            && searchError == nil
+            && visibleBufferResultsOptions == currentSearchOptions
+            && activeMatchIndex < bufferMatches.count
     }
 
     /// Ersetzt alle aktuell gefundenen Treffer im aktiven Buffer durch
@@ -4943,10 +4989,9 @@ final class Workspace: ObservableObject {
     func applyAllInOpenTabs() -> Int {
         // Gleiche Vorschau-Grenze wie im Datei-Scope: nur eine Trefferzahl,
         // die zu den aktuellen Suchoptionen gehört, gibt das Ersetzen frei.
-        guard openTotalMatches > 0, searchError == nil,
-              visibleBufferResultsOptions == currentSearchOptions else { return 0 }
+        guard canApplyAllInOpenTabs else { return 0 }
         recordSearchHistory()
-        let inputs = tabs.filter { !$0.isLoading }.map {
+        let inputs = tabs.filter(\.isEditableTextDocument).map {
             OpenTabsSearch.TabInput(id: $0.id, title: $0.title, content: $0.content)
         }
         let changed = OpenTabsSearch.replaceAll(tabs: inputs, options: currentSearchOptions)
@@ -4973,9 +5018,7 @@ final class Workspace: ObservableObject {
         // Alle-Ersetzen: Der Treffer wird als BEREICH in den aktuellen Text
         // gespleißt. Gehört er zu einem älteren Muster oder Textstand, träfe
         // der Bereich die falsche Stelle (Review 2026-08-02).
-        guard !scope.isFolderLike, searchError == nil,
-              visibleBufferResultsOptions == currentSearchOptions,
-              activeMatchIndex < bufferMatches.count else { return }
+        guard canReplaceActiveSearchMatch else { return }
         recordSearchHistory()
         let match = bufferMatches[activeMatchIndex]
         let text = activeTabContent.wrappedValue

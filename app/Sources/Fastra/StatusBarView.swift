@@ -272,8 +272,8 @@ struct StatusBarView: View {
         .buttonStyle(.borderless)
         .controlSize(.small)
         .fixedSize()
-        .disabled(workspace.activeDocumentFormattingExtension == nil)
-        .help(workspace.activeDocumentFormattingExtension == nil
+        .disabled(workspace.activeDocumentFormattingID == nil)
+        .help(workspace.activeDocumentFormattingID == nil
               ? "JSON oder XML als Format wählen, um das Dokument zu formatieren."
               : "Formatiert JSON oder XML. Eine Auswahl wird einzeln formatiert.")
         .accessibilityIdentifier("formatDocumentButton")

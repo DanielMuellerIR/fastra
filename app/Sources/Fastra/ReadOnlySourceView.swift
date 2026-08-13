@@ -6,8 +6,13 @@ import SwiftUI
 /// CodeEdit-Editor: CodeEdit nimmt einer `isEditable == false`-Ansicht den
 /// Tastaturfokus und kann einen Schreibversuch deshalb nicht am Cursor erklären.
 struct ReadOnlySourceView: NSViewRepresentable {
+    let workspace: Workspace
     let content: String
     let reason: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(workspace: workspace)
+    }
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
@@ -43,6 +48,7 @@ struct ReadOnlySourceView: NSViewRepresentable {
         )
         textView.setAccessibilityIdentifier("gitDeletedReadOnlyEditor")
         scrollView.documentView = textView
+        context.coordinator.attach(textView)
         return scrollView
     }
 
@@ -55,6 +61,35 @@ struct ReadOnlySourceView: NSViewRepresentable {
         let limit = (content as NSString).length
         textView.setSelectedRange(NSRange(location: min(oldSelection.location, limit),
                                           length: 0))
+    }
+
+    /// Der normale CodeEdit-Editor verarbeitet Suchsprünge in `EditorView`.
+    /// Git-Vorversionen verwenden dagegen diese native NSTextView; ihr
+    /// Coordinator bindet dieselbe fensteradressierte Notification an die
+    /// sichtbare Auswahl und Scrollposition.
+    final class Coordinator {
+        private weak var workspace: Workspace?
+        private weak var textView: ReadOnlySnapshotTextView?
+        private var observer: NSObjectProtocol?
+
+        init(workspace: Workspace) {
+            self.workspace = workspace
+            observer = NotificationCenter.default.addObserver(
+                forName: .fastraJumpToRange, object: nil, queue: .main
+            ) { [weak self] note in
+                guard let self, let workspace = self.workspace,
+                      note.object as? Workspace === workspace else { return }
+                self.textView?.applySearchJump(note)
+            }
+        }
+
+        func attach(_ textView: ReadOnlySnapshotTextView) {
+            self.textView = textView
+        }
+
+        deinit {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+        }
     }
 }
 
@@ -92,6 +127,22 @@ final class ReadOnlySnapshotTextView: NSTextView {
     override func deleteForward(_ sender: Any?) { showReadOnlyNotice() }
     override func insertText(_ insertString: Any, replacementRange: NSRange) {
         showReadOnlyNotice()
+    }
+
+    /// Wählt den vom Fastra-Suchdialog gemeldeten Treffer in dieser nativen
+    /// read-only Ansicht aus und macht ihn sichtbar. Die Range wird gegen den
+    /// aktuellen Inhalt begrenzt, weil ein externer Git-Refresh zwischen
+    /// Suchlauf und Klick den symbolischen Snapshot bereits ersetzt haben kann.
+    func applySearchJump(_ notification: Notification) {
+        guard let value = notification.userInfo?["range"] as? NSValue else { return }
+        let requested = value.rangeValue
+        guard requested.location != NSNotFound else { return }
+        let limit = (string as NSString).length
+        let location = min(requested.location, limit)
+        let length = min(requested.length, limit - location)
+        let safeRange = NSRange(location: location, length: length)
+        setSelectedRange(safeRange)
+        scrollRangeToVisible(safeRange)
     }
 
     private func showReadOnlyNotice() {

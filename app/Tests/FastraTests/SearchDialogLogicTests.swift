@@ -160,3 +160,25 @@ func matchJumpTargetsOnlyItsWorkspace() {
     #expect(EditorView.jumpNotification(received, targets: second))
     #expect(!EditorView.jumpNotification(received, targets: first))
 }
+
+@MainActor
+@Test("Treffer-Sprung wählt und scrollt auch in Git-Vorversionen")
+func matchJumpUpdatesReadOnlySnapshotView() {
+    let suite = "fastra-search-readonly-jump-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let workspace = Workspace(defaults: defaults)
+    let content = "vor TREFFER nach"
+    let match = BufferSearch.find(
+        in: content,
+        options: SearchOptions(find: "TREFFER", replace: "", isRegex: false)
+    ).matches[0]
+    let textView = ReadOnlySnapshotTextView()
+    textView.string = content
+    let coordinator = ReadOnlySourceView.Coordinator(workspace: workspace)
+    coordinator.attach(textView)
+
+    NotificationCenter.default.postMatchJump(match, for: workspace)
+
+    #expect(textView.selectedRange() == match.range)
+}

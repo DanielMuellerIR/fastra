@@ -266,11 +266,11 @@ final class EditorContextMenu: NSObject {
         private weak var editor: TextView?
         let source: String
         let selection: NSRange
-        let fileExtension: String
+        let formatID: DocumentFormatID
         private let tabID: UUID
         private let contentRevision: UInt64
 
-        init?(editor: TextView, workspace: Workspace, fileExtension: String) {
+        init?(editor: TextView, workspace: Workspace, formatID: DocumentFormatID) {
             guard let window = editor.window,
                   WorkspaceWindowRegistry.workspace(for: window) === workspace,
                   let tab = workspace.activeTab else { return nil }
@@ -279,7 +279,7 @@ final class EditorContextMenu: NSObject {
             self.editor = editor
             self.source = editor.string
             self.selection = editor.fastraSafeSelectedRange
-            self.fileExtension = fileExtension
+            self.formatID = formatID
             self.tabID = tab.id
             self.contentRevision = tab.contentRevision
         }
@@ -431,11 +431,8 @@ final class EditorContextMenu: NSObject {
         // Tab holen, nicht aus dem globalen `Workspace.shared`. Sonst richtet
         // sich das Kontextmenü eines Fensters nach dem Dokument eines anderen.
         let menuWorkspace = workspace(forEditor: textView)
-        let menuTab = menuWorkspace?.activeTab
-        let filename = menuTab?.url?.pathExtension
-            ?? (menuTab?.title as NSString?)?.pathExtension
         format.isEnabled = !hasColumnSelection
-            && menuWorkspace?.activeDocumentFormattingExtension != nil
+            && menuWorkspace?.activeDocumentFormattingID != nil
 
         // Prüfen und Minifizieren spiegeln „Text → Dokument prüfen/
         // minifizieren“ aus der Menüleiste. Der Linter deckt mehr Endungen ab
@@ -445,7 +442,7 @@ final class EditorContextMenu: NSObject {
                               keyEquivalent: "")
         lint.target = self
         lint.toolTip = L10n.string("Prüft JSON oder XML auf Syntaxfehler und nennt Zeile und Spalte.")
-        lint.isEnabled = DocumentLinter.supports(fileExtension: filename)
+        lint.isEnabled = menuWorkspace?.activeDocumentLintingExtension != nil
 
         let minify = NSMenuItem(title: L10n.string("Dokument minifizieren"),
                                 action: #selector(minifyDocument(_:)),
@@ -453,7 +450,7 @@ final class EditorContextMenu: NSObject {
         minify.target = self
         minify.toolTip = L10n.string("Schreibt JSON oder XML kompakt ohne überflüssigen Leerraum. Eine Auswahl wird einzeln minifiziert.")
         minify.isEnabled = !hasColumnSelection
-            && menuWorkspace?.activeDocumentFormattingExtension != nil
+            && menuWorkspace?.activeDocumentFormattingID != nil
 
         // „Text"-Submenü mit den BBEdit-Basics (TextOperations). Tag trägt die
         // TextOpKind; ein gemeinsamer Handler liest ihn. Gruppen durch Trenner.
@@ -585,11 +582,11 @@ final class EditorContextMenu: NSObject {
         // aus `Workspace.shared`. So gewinnt auch eine manuelle JSON-Wahl bei
         // `.txt`, ohne dass Fenster A nach dem Format von Fenster B arbeitet.
         guard let workspace = workspace(forEditor: textView),
-              let fileExtension = workspace.activeDocumentFormattingExtension,
+              let formatID = workspace.activeDocumentFormattingID,
               let lease = FormattingTargetLease(
                 editor: textView,
                 workspace: workspace,
-                fileExtension: fileExtension
+                formatID: formatID
               ) else {
             NSSound.beep()
             return
@@ -603,7 +600,7 @@ final class EditorContextMenu: NSObject {
                 try DocumentFormatter.format(
                     in: lease.source,
                     selection: lease.selection,
-                    fileExtension: lease.fileExtension
+                    formatID: lease.formatID
                 )
             }
             DispatchQueue.main.async {
@@ -654,8 +651,7 @@ final class EditorContextMenu: NSObject {
         // Effektives Format aus dem Workspace GENAU DIESES Editors (siehe
         // `format`).
         guard let workspace = workspace(forEditor: textView),
-              workspace.activeTab != nil,
-              let fileExtension = workspace.activeDocumentFormattingExtension else {
+              let formatID = workspace.activeDocumentFormattingID else {
             NSSound.beep()
             return
         }
@@ -663,7 +659,7 @@ final class EditorContextMenu: NSObject {
             guard let result = try DocumentFormatter.minify(
                 in: textView.string,
                 selection: textView.fastraSafeSelectedRange,
-                fileExtension: fileExtension
+                formatID: formatID
             ) else {
                 NSSound.beep()   // bereits minimal → No-op
                 return
@@ -686,12 +682,11 @@ final class EditorContextMenu: NSObject {
     private func lint(on textView: TextView) {
         // Workspace GENAU DIESES Editors (siehe `format`).
         guard let workspace = workspace(forEditor: textView),
-              let tab = workspace.activeTab else {
+              let tab = workspace.activeTab,
+              let fileExtension = workspace.activeDocumentLintingExtension else {
             NSSound.beep()
             return
         }
-        let fileExtension = tab.url?.pathExtension
-            ?? (tab.title as NSString).pathExtension
         let text = textView.string
         if fileExtension.lowercased() == "4dm", let documentURL = tab.url,
            let projectRoot = workspace.projectURL {

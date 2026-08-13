@@ -122,11 +122,23 @@ func gitFileSnapshot_loadsDeletedFileIntoReadOnlyTab() async {
     #expect(ws.activeTab?.content == "HEAD-Fassung\n")
     #expect(ws.activeTab?.gitSnapshotRequest?.source == .head)
 
-    // Index/HEAD sind symbolische Quellen. Nach einer Git-Mutation lädt der
-    // gemeinsame Refresh den offenen Vorversions-Tab wirklich neu.
-    ws.refreshOpenGitSnapshotTabs()
-    #expect(executor.arguments.count == 3)
-    executor.complete(2, stdout: Data("HEAD-Fassung 2\n".utf8))
+    // Index/HEAD sind symbolische Quellen. Auch ein gewöhnlicher Status-
+    // Refresh nach EXTERNEN Git-Änderungen muss den offenen Vorversions-Tab
+    // neu lesen; der explizite Mutationspfad allein wäre dafür zu schmal.
+    ws.refreshGitStatus()
+    await waitUntil {
+        executor.arguments.filter {
+            $0.prefix(3) == ["cat-file", "blob", "HEAD:Ordner/bereit.txt"]
+        }.count == 2
+    }
+    guard let refreshedSnapshotIndex = executor.arguments.lastIndex(where: {
+        $0 == ["cat-file", "blob", "HEAD:Ordner/bereit.txt"]
+    }) else {
+        Issue.record("Der Status-Refresh hat den offenen HEAD-Snapshot nicht neu gelesen")
+        return
+    }
+    executor.complete(refreshedSnapshotIndex,
+                      stdout: Data("HEAD-Fassung 2\n".utf8))
     await waitUntil { ws.activeTab?.content == "HEAD-Fassung 2\n" }
 }
 
