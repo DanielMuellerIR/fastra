@@ -8778,7 +8778,11 @@ enum SelfTest {
               let context = NSGraphicsContext(bitmapImageRep: rep) else {
             return nil
         }
-        context.cgContext.scaleBy(x: scale, y: scale)
+        // CALayer zeichnet in einem nach oben wachsenden Koordinatensystem,
+        // PNG-Zeilen werden hier aber von oben nach unten gelesen. Ohne die
+        // Spiegelung wäre ein gespeichertes Diagnosebild auf dem Kopf.
+        context.cgContext.translateBy(x: 0, y: CGFloat(height))
+        context.cgContext.scaleBy(x: scale, y: -scale)
         layer.render(in: context.cgContext)
         return rep.representation(using: .png, properties: [:])
     }
