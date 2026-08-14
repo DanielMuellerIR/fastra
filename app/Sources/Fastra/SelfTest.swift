@@ -3598,12 +3598,18 @@ enum SelfTest {
                                             + "Dirty- oder Undo-Zustand"
                                     )
                                 }
-                                finish(
-                                    true,
-                                    "oberste Textzeile \(expectedTopLine + 1) "
-                                        + "blieb mit synchronem Gutter bei "
-                                        + "Aus und Ein ohne Zwischenabweichung identisch"
-                                )
+                                verifySoftWrapGutterExtremes(
+                                    textView: textView,
+                                    window: mainWindow
+                                ) {
+                                    finish(
+                                        true,
+                                        "oberste Textzeile \(expectedTopLine + 1) "
+                                            + "blieb mit synchronem Gutter bei "
+                                            + "Aus und Ein ohne Zwischenabweichung identisch; "
+                                            + "Dokumentanfang und -ende stimmen ebenfalls"
+                                    )
+                                }
                             }
                         }
                     }
@@ -3968,6 +3974,109 @@ enum SelfTest {
             return nil
         }
         return gutter.visibleLineIndicesForDrawing.first
+    }
+
+    /// Prüft zusätzlich die beiden Stellen, an denen der spiegelverkehrte
+    /// Gutter im realen Befund am deutlichsten auffiel. In einer geeigneten
+    /// GUI-Sitzung kann der Test bei Bedarf zwei Fensterbilder aus den
+    /// Layer-Backing-Stores schreiben; dafür ist keine
+    /// Bildschirmaufnahme-Berechtigung nötig.
+    private static func verifySoftWrapGutterExtremes(
+        textView: TextView,
+        window: NSWindow,
+        completion: @escaping () -> Void
+    ) {
+        guard let scrollView = textView.enclosingScrollView else {
+            finish(false, "Editor-ScrollView für Gutter-Randprüfung fehlt")
+        }
+        let screenshotDirectory = ProcessInfo.processInfo.environment[
+            "FASTRA_SOFTWRAPANCHOR_SCREENSHOT_DIR"
+        ].map { URL(fileURLWithPath: $0, isDirectory: true) }
+
+        scrollView.contentView.scroll(
+            to: NSPoint(x: scrollView.contentView.bounds.origin.x, y: 0)
+        )
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        textView.updatedViewport(scrollView.documentVisibleRect)
+        textView.layoutManager.layoutLines(in: textView.visibleRect)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            let topText = textView.layoutManager.textLineForPosition(
+                textView.visibleRect.minY
+            )?.index
+            let topGutter = firstGutterLine(for: textView)
+            guard let topText, topText <= 1, topGutter == topText else {
+                finish(
+                    false,
+                    "Gutter am Dokumentanfang abweichend: Text="
+                        + "\(topText.map { String($0 + 1) } ?? "nil"), Gutter="
+                        + "\(topGutter.map { String($0 + 1) } ?? "nil")"
+                )
+            }
+            window.contentView?.displayIfNeeded()
+            let topImage = screenshotDirectory == nil
+                ? nil : typeScrollLayerSnapshot(window: window)
+
+            let documentHeight = scrollView.documentView?.bounds.maxY
+                ?? textView.bounds.maxY
+            let bottomY = max(
+                documentHeight - scrollView.contentView.bounds.height,
+                0
+            )
+            scrollView.contentView.scroll(
+                to: NSPoint(
+                    x: scrollView.contentView.bounds.origin.x,
+                    y: bottomY
+                )
+            )
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            textView.updatedViewport(scrollView.documentVisibleRect)
+            textView.layoutManager.layoutLines(in: textView.visibleRect)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                let bottomText = textView.layoutManager.textLineForPosition(
+                    textView.visibleRect.minY
+                )?.index
+                let bottomGutter = firstGutterLine(for: textView)
+                guard let bottomText, bottomText > 2_300,
+                      bottomGutter == bottomText else {
+                    finish(
+                        false,
+                        "Gutter am Dokumentende abweichend: Text="
+                            + "\(bottomText.map { String($0 + 1) } ?? "nil"), Gutter="
+                            + "\(bottomGutter.map { String($0 + 1) } ?? "nil")"
+                    )
+                }
+
+                if let screenshotDirectory {
+                    window.contentView?.displayIfNeeded()
+                    guard let topImage,
+                          let bottomImage = typeScrollLayerSnapshot(window: window) else {
+                        finish(false, "Gutter-Fensterbilder konnten nicht gerendert werden")
+                    }
+                    let topURL = screenshotDirectory
+                        .appendingPathComponent("softwrapanchor-top.png")
+                    let bottomURL = screenshotDirectory
+                        .appendingPathComponent("softwrapanchor-bottom.png")
+                    do {
+                        try topImage.write(to: topURL, options: .atomic)
+                        try bottomImage.write(to: bottomURL, options: .atomic)
+                    } catch {
+                        finish(
+                            false,
+                            "Gutter-Fensterbilder nicht schreibbar: "
+                                + error.localizedDescription
+                        )
+                    }
+                    FileHandle.standardError.write(
+                        Data(
+                            "SOFTWRAPANCHOR-SHOTS \(topURL.path) \(bottomURL.path)\n".utf8
+                        )
+                    )
+                }
+                completion()
+            }
+        }
     }
 
     /// Wartet nach einem Dateiwechel, bis TextView und der zugehörige
