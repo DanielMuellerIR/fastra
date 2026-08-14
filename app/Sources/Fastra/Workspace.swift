@@ -419,6 +419,23 @@ enum SidebarLayout {
     static let previewWidthKey = "markdown.previewWidth"
 }
 
+/// Bindet einen asynchronen Datei-Ladevorgang an den Zustand seines Aufrufers.
+/// Der Werttyp hält die Gültigkeitsprüfung getrennt von der abschließenden
+/// Completion-Closure; dadurch bleiben bestehende `loadFile { ... }`-Aufrufe
+/// für Swift eindeutig. Ausgeführt wird die Prüfung ausschließlich auf dem
+/// Main-Thread: unmittelbar vor dem Start und vor dem Publizieren des Tabs.
+struct FileLoadAcceptance: @unchecked Sendable {
+    private let isAccepted: () -> Bool
+
+    init(_ isAccepted: @escaping () -> Bool) {
+        self.isAccepted = isAccepted
+    }
+
+    func acceptsResult() -> Bool {
+        isAccepted()
+    }
+}
+
 final class Workspace: ObservableObject {
     /// Dauerhafte Fensteridentität für langlebige Singleton-Dienste. Anders
     /// als eine schwache Referenz bleibt sie auch nach dem Schließen des
@@ -1885,13 +1902,18 @@ final class Workspace: ObservableObject {
     /// nicht) — stattdessen konvertiert `write` beim Speichern. Der Tab wird
     /// als geändert markiert, damit klar ist, dass Speichern nötig ist.
     func setActiveLineEnding(_ ending: LineEnding) {
-        guard let idx = activeTabIndex else { return }
+        guard let idx = activeTabIndex,
+              tabs[idx].isEditableTextDocument else { return }
         guard tabs[idx].lineEnding != ending else { return }
         tabs[idx].lineEnding = ending
         // Zurückschalten auf das gespeicherte Zeilenende (bei unverändertem
         // Text) macht den Tab wieder sauber — wie eine rückgängig gemachte
         // Textänderung.
         tabs[idx].isDirty = !tabs[idx].matchesSavedContentBaseline
+    }
+
+    var canChangeActiveLineEnding: Bool {
+        activeTab?.isEditableTextDocument == true
     }
 
     // MARK: - Neu öffnen mit Encoding (K6)
@@ -2349,6 +2371,8 @@ final class Workspace: ObservableObject {
     /// Lädt eine Datei asynchron in einen neuen Tab und kehrt sofort zurück.
     ///
     /// - Parameter url: Datei-URL; muss eine reguläre Datei sein.
+    /// - Parameter acceptance: Optionale Bindung an einen Aufruferzustand.
+    ///   Wird sie ungültig, verwirft Fastra den noch laufenden Ladevorgang.
     /// - Parameter completion: Optionaler Callback, der auf dem Main-Thread
     ///   aufgerufen wird. `true` = Inhalt steht im Tab (Datei war schon offen
     ///   oder Laden erfolgreich). `false` = Laden fehlgeschlagen, Platzhalter
@@ -2365,6 +2389,7 @@ final class Workspace: ObservableObject {
     ///    wiederherstellen, completion(false).
     func loadFile(at url: URL, preview: Bool = false,
                   expectedGitContext: GitActionContext? = nil,
+                  acceptance: FileLoadAcceptance? = nil,
                   completion: ((Bool) -> Void)? = nil) {
         // URL-Form vereinheitlichen: dieselbe Datei kommt je nach Quelle in
         // verschiedenen Formen an — programmatisch gebaut `/var/…`, aus
@@ -2373,6 +2398,13 @@ final class Workspace: ObservableObject {
         // Aktiv-Markierung im Projektbaum an `/var` ≠ `/private/var`
         // (Befund Screenshot 2026-07-12).
         let url = url.canonicalFileURL
+        // Ein Restore-Ladevorgang kann bereits entwertet sein, bevor er hier
+        // startet. Dann weder einen vorhandenen Tab aktivieren noch einen
+        // Platzhalter veröffentlichen.
+        guard acceptance?.acceptsResult() != false else {
+            completion?(false)
+            return
+        }
         // ── (1) Dedup ──────────────────────────────────────────────────────
         // Wenn die Datei schon als Tab offen ist, nur aktivieren — kein zweiter Tab.
         if let existingIdx = tabs.firstIndex(where: { $0.url == url }) {
@@ -2472,6 +2504,20 @@ final class Workspace: ObservableObject {
 
                 guard let self else { return }
 
+                func discardPlaceholder() {
+                    self.tabs.removeAll { $0.id == tabID }
+                    if let previousActiveTabID,
+                       self.tabs.contains(where: { $0.id == previousActiveTabID }) {
+                        self.activeTabID = previousActiveTabID
+                    } else if self.tabs.isEmpty {
+                        let scratch = Self.makeScratchTab()
+                        self.tabs = [scratch]
+                        self.activeTabID = scratch.id
+                    } else if !self.tabs.contains(where: { $0.id == self.activeTabID }) {
+                        self.activeTabID = self.tabs.first?.id
+                    }
+                }
+
                 // ── Generation-Guard ──────────────────────────────────────
                 // Wenn der Tab inzwischen geschlossen wurde (`loadGeneration`
                 // hat keine Eintrags-ID mehr) ODER eine neue Generation für
@@ -2487,6 +2533,18 @@ final class Workspace: ObservableObject {
                     if !self.tabs.contains(where: { $0.id == tabID }) {
                         self.loadGeneration.removeValue(forKey: tabID)
                     }
+                    report(false)
+                    return
+                }
+
+                // Sitzungs-Restore und andere gebundene Aufrufer prüfen ihre
+                // Gültigkeit VOR dem Publizieren des fertigen Tabs. Besonders
+                // nach `closeProject()` darf ein verspäteter Restore-Load nicht
+                // mehr über die automatische Projektsynchronisierung den eben
+                // geschlossenen Ordner wieder öffnen.
+                guard acceptance?.acceptsResult() != false else {
+                    self.loadGeneration.removeValue(forKey: tabID)
+                    discardPlaceholder()
                     report(false)
                     return
                 }
@@ -2574,21 +2632,7 @@ final class Workspace: ObservableObject {
                     } else {
                         NSSound.beep()
                     }
-                    self.tabs.removeAll { $0.id == tabID }
-                    if let previousActiveTabID,
-                       self.tabs.contains(where: { $0.id == previousActiveTabID }) {
-                        self.activeTabID = previousActiveTabID
-                    } else if self.tabs.isEmpty {
-                        // Ersetzte die fehlgeschlagene Vorschau den einzigen
-                        // vorhandenen Vorschau-Tab, bliebe sonst ein Fenster
-                        // ohne Dokument zurück. Der definierte leere Tab ist
-                        // sicherer als ein nicht mehr beschreibbares Null-Tab.
-                        let scratch = Self.makeScratchTab()
-                        self.tabs = [scratch]
-                        self.activeTabID = scratch.id
-                    } else {
-                        self.activeTabID = self.tabs.first?.id
-                    }
+                    discardPlaceholder()
                     report(false)
                 }
             }

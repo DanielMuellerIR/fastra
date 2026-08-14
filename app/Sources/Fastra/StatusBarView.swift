@@ -175,6 +175,7 @@ struct StatusBarView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        .disabled(!workspace.canChangeActiveLineEnding)
         .help("Zeilenenden — Änderung wirkt beim Speichern")
     }
 

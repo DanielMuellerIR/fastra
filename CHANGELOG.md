@@ -9,6 +9,38 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.79.0] — 2026-08-14
+
+### Behoben
+
+- **Große umgebrochene Dokumente blockieren beim ersten Layout kürzer:**
+  CodeEditTextView erzeugt für die zehntausenden Umbruchfragmente einer
+  Megazeile keine einzelne Zufallskennung mehr. Eine erst bei Bedarf erzeugte
+  Generation pro tatsächlich aufgebauter logischer Zeile plus fortlaufendem
+  Fragmentindex hält die Kennungen für View-Reuse eindeutig. Der intern
+  erzeugte Klartextspeicher meldet seine bereits vollständigen Schrift- und
+  Farbattribute außerdem sofort als gültig, statt AppKit beim ersten CoreText-
+  Layout die gesamte Megazeile noch einmal prüfen zu lassen. Extern
+  übergebene Textspeicher bleiben unverändert.
+- **Geschlossene Suchmasken hinterlassen keine veralteten Sprungziele:**
+  Treffer, Navigation und Vorschau werden beim Schließen gemeinsam verworfen;
+  Bearbeiten bei geschlossener Maske startet weiterhin keine versteckte Suche.
+- **Verspätete Sitzungswiederherstellung respektiert „Projekt schließen“:**
+  Ein noch laufender Datei-Load kann den gerade geschlossenen Projektordner
+  nicht über seinen fertigen Tab erneut öffnen.
+- **Schreibgeschützte Git-Vorversionen bleiben unverändert:** Die Wahl der
+  Zeilenenden ist dort deaktiviert und kann den Tab weder ändern noch fälschlich
+  als ungespeichert markieren.
+
+### Tests
+
+- **Der 4,36-MB-Geschwindigkeitstest verlangt echte sichtbare Text-Views:**
+  Ein ausgebliebenes Startlayout kann den Test nicht mehr durch einen eigenen
+  Layout-Aufruf bestehen. Der Main-Thread-Herzschlag misst im 10-ms-Takt bei
+  unveränderter Grenze von 250 ms. Der prozedurale Mehrformat-Korpus schaltet
+  Soft Wrap über den echten Editor-Controller ein und prüft beide
+  Scrollbalkenzustände.
+
 ## [v1.78.0] — 2026-08-13
 
 ### Behoben

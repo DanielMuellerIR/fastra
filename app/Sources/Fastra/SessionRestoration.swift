@@ -244,7 +244,12 @@ extension Workspace {
 
         var remaining = documentURLs.count
         for url in documentURLs {
-            loadFile(at: url) { [weak self] _ in
+            loadFile(
+                at: url,
+                acceptance: FileLoadAcceptance { [weak self] in
+                    self?.sessionRestoreGeneration == restoreGeneration
+                }
+            ) { [weak self] _ in
                 remaining -= 1
                 guard remaining == 0 else { return }
                 // Die Abschlussmeldung hängt NICHT an der Workspace-Lebenszeit:

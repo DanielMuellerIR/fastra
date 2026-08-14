@@ -695,7 +695,7 @@ meldete `visibleTextRange` horizontal die ganze logische Zeile, sodass der
 Highlighter auch unsichtbare Millionen Zeichen einplante; ein Sprachwechsel
 entfernte alte Attribute synchron im ganzen Dokument.
 
-**Fix (Patches 4z4–4z10 in `build.sh`):** Soft Wrap bleibt eingeschaltet und
+**Fix (Patches 4z4–4z12 in `build.sh`):** Soft Wrap bleibt eingeschaltet und
 frei schaltbar. CodeEditTextView hält das vollständige Fragmentmodell für
 exaktes Scrollen, erzeugt aber nur Fragment-Views des sichtbaren Ausschnitts.
 Ungebrochene Megazeilen werden intern an sicheren Unicode-Grenzen in
@@ -712,7 +712,18 @@ fenstergebundener Aufschub bündelt sie vor dem ersten Umbruch, statt dieselbe
 Megazeile mehrfach im selben Main-Runloop-Durchlauf auszulegen. Normales
 Scrollen und spätere Layouts bleiben unmittelbar. Sichtbare Bereiche bleiben
 horizontal und zwischen logischen Zeilen getrennt, und der Sprachwechsel setzt
-nur dort Attribute zurück.
+nur dort Attribute zurück. Patch 4z11 ersetzt die einzelne Zufalls-UUID jedes
+Umbruchfragments durch eine erst beim Typeset erzeugte UUID pro logischer
+Zeile und einen fortlaufenden Fragmentindex. Die zusammengesetzte Kennung bleibt
+für View-Reuse eindeutig, spart bei der 4,36-MB-Megazeile aber rund 50.000
+Zufallszahl-Aufrufe im ersten Main-Thread-Layout. Patch 4z12 verwendet für
+intern erzeugten Klartext ein kleines Objective-C-`NSTextStorage`-Backing,
+das die von CodeEditSourceEditor vollständig gesetzten Schrift- und
+Farbattribute als sofort gültig meldet. Dadurch durchsucht AppKit nicht beim
+ersten CoreText-Aufbau die gesamte Megazeile erneut. Die Objective-C-Fassung
+ist bewusst gewählt: Dieselbe dünne Weiterleitung in unoptimiertem Swift ließ
+die Debug-Regressionstests von unter einer Sekunde auf rund sechs Sekunden
+steigen. Extern übergebene Textspeicher behalten AppKits bisherigen Pfad.
 
 Der App-Ladepfad muss dieselbe Arbeit ebenfalls begrenzen: `Workspace.loadFile`
 publiziert den fertig aufgebauten Tab einmal statt Feld für Feld, eng
@@ -730,6 +741,8 @@ Portionen. `./selftest.sh loadperf` erzeugt prozedural eine ebenso große
 `.txt`-Megazeile, merkt dafür wie im realen Problemfall JSON und misst den
 Main-Thread-Herzschlag durch den vollständigen `Workspace`-, SwiftUI- und
 CodeEdit-Aufbau bis eine Sekunde nach dem sichtbaren Editor. Zusätzlich müssen
-der echte Editor Soft Wrap am Fensterrand, mehrere Umbruchfragmente und keinen
-horizontalen Scrollbalken melden. Die Fixture-Dateien entstehen nur im Test
-und liegen nicht im Repo.
+der echte Editor automatisch sichtbare Fragment-Views, Soft Wrap am
+Fensterrand, mehrere Umbruchfragmente und keinen horizontalen Scrollbalken
+melden. Erst danach darf der Test selbst ein Kontrolllayout auslösen. Der
+10-ms-Herzschlag reduziert die Messphasen-Unschärfe, ohne die 250-ms-Grenze zu
+lockern. Die Fixture-Dateien entstehen nur im Test und liegen nicht im Repo.

@@ -46,19 +46,38 @@ struct DifficultDocumentCorpusTests {
     func corpusEditorLayoutStaysBounded() throws {
         for fixture in DifficultDocumentFixture.all {
             let content = fixture.makeContent()
-            let scrollView = NSScrollView(
-                frame: NSRect(x: 0, y: 0, width: 800, height: 600)
+            var configuration = SourceEditorConfiguration(
+                appearance: .init(
+                    theme: EditorView.fastraTheme,
+                    font: .monospacedSystemFont(ofSize: 13, weight: .regular),
+                    wrapLines: false,
+                    tabWidth: 4
+                ),
+                peripherals: .init(showMinimap: false)
             )
-            scrollView.hasHorizontalScroller = false
             let clock = ContinuousClock()
             let start = clock.now
-            let textView = TextView(
+            let controller = TextViewController(
                 string: content,
-                font: .monospacedSystemFont(ofSize: 13, weight: .regular),
-                wrapLines: true
+                language: .default,
+                configuration: configuration,
+                cursorPositions: []
             )
-            scrollView.documentView = textView
-            textView.frame = NSRect(origin: .zero, size: scrollView.contentSize)
+            controller.loadView()
+            controller.view.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+            controller.view.layoutSubtreeIfNeeded()
+            let textView = try #require(controller.textView)
+            let scrollView = try #require(controller.scrollView)
+            #expect(!textView.textStorage.fixesAttributesLazily,
+                    "\(fixture.label): interner Speicher repariert vollständige Attribute erneut")
+            #expect(scrollView.hasHorizontalScroller,
+                    "\(fixture.label): Gegenwert ohne Soft Wrap fehlt")
+
+            // Über denselben produktiven Konfigurationspfad umschalten, den
+            // Fastras formatabhängiges Soft-Wrap-Profil beim Reconcile nutzt.
+            configuration.appearance.wrapLines = true
+            controller.configuration = configuration
+            controller.view.layoutSubtreeIfNeeded()
             textView.layoutManager.layoutLines()
             textView.updateFrameIfNeeded()
             textView.layoutManager.layoutLines()
@@ -168,6 +187,14 @@ struct DifficultDocumentCorpusTests {
     @Test("Editoraufbau und manueller JSON-Wechsel bleiben responsiv")
     @MainActor
     func jsonLanguageSwitchStaysResponsive() async throws {
+        // Die serialisierte Suite zerstört unmittelbar zuvor einen anderen
+        // 4,36-MB-Editor. Dessen AppKit-Aufräumen gehört nicht zur Messung des
+        // folgenden Sprachwechsels. Ein Main-Queue-Turn schafft eine klare
+        // Messgrenze; ab dem Editoraufbau zählt wieder jede Verzögerung.
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+
         let content = DifficultDocumentFixture.json.makeContent()
         let clock = ContinuousClock()
         let setupStart = clock.now

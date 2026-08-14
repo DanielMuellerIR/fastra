@@ -86,6 +86,34 @@ func setActiveLineEnding_marksDirty() {
     #expect(ws.tabs[0].isDirty == true)
 }
 
+@Test("K7: schreibgeschützter Git-Snapshot lehnt Zeilenendenwahl ab")
+@MainActor
+func setActiveLineEnding_readOnlySnapshotStaysCleanAndClosable() {
+    let ws = makeWS(content: "a\nb")
+    ws.tabs[0].gitSnapshotRequest = GitFileSnapshotRequest(
+        repositoryPath: "/tmp/repo", path: "datei.txt", source: .head
+    )
+    ws.tabs[0].readOnlyReason = "Git-Vorversion"
+    let originalEnding = ws.tabs[0].lineEnding
+    var closeQuestionCount = 0
+    var closeWindowCount = 0
+    ws.confirmCloseHandler = { _ in
+        closeQuestionCount += 1
+        return .cancel
+    }
+    ws.closeWindowHandler = { closeWindowCount += 1 }
+
+    #expect(!ws.canChangeActiveLineEnding)
+    ws.setActiveLineEnding(.crlf)
+
+    #expect(ws.tabs[0].lineEnding == originalEnding)
+    #expect(!ws.tabs[0].isDirty)
+    #expect(!ws.hasTabsRequiringSaveBeforeClosing)
+    ws.closeTab(id: ws.tabs[0].id)
+    #expect(closeQuestionCount == 0)
+    #expect(closeWindowCount == 1)
+}
+
 @Test("K7: Speichern schreibt die gewählten Zeilenenden auf die Platte")
 @MainActor
 func save_writesChosenLineEndings() throws {

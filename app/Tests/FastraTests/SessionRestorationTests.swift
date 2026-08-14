@@ -251,6 +251,44 @@ func sessionRestoreCannotClobberNewProject() async throws {
     #expect(workspace.activeTabID == expectedActiveTabID)
 }
 
+@Test("Projekt schließen entwertet noch ladende Restore-Tabs")
+@MainActor
+func sessionRestoreCannotReopenClosedProject() async throws {
+    let (defaults, suite) = sessionDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let restoredFile = try sessionFile("restore.txt", content: "Restore")
+    let directory = restoredFile.deletingLastPathComponent()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let workspace = Workspace(defaults: defaults)
+    let state = RestorableWindowState(
+        projectPath: directory.path,
+        documentPaths: [restoredFile.path],
+        activeDocumentPath: restoredFile.path,
+        frame: nil
+    )
+    var finished = false
+
+    // `restore` veröffentlicht den Lade-Platzhalter synchron. Solange dieser
+    // Main-Actor-Test nicht aussetzt, kann der Hintergrund-Read sein Ergebnis
+    // noch nicht publizieren. Das Schließen trifft daher kontrolliert zwischen
+    // Start und Abschluss des Restore-Ladevorgangs.
+    workspace.restore(state) { finished = true }
+    #expect(workspace.projectURL?.canonicalFileURL == directory.canonicalFileURL)
+    #expect(workspace.tabs.contains { $0.isLoading })
+    workspace.closeProject()
+
+    let deadline = Date().addingTimeInterval(5)
+    while !finished, Date() < deadline { await Task.yield() }
+
+    #expect(finished)
+    #expect(workspace.projectURL == nil,
+            "Verspäteter Restore darf das geschlossene Projekt nicht wieder öffnen")
+    #expect(!workspace.tabs.contains { $0.url?.canonicalFileURL == restoredFile.canonicalFileURL },
+            "Entwerteter Restore darf seinen fertigen Tab nicht publizieren")
+    #expect(workspace.tabs.count == 1 && workspace.tabs[0].isPristineScratch)
+}
+
 @Test("Restore richtet den Projektkontext am gespeicherten aktiven Repo-Tab aus")
 @MainActor
 func sessionWorkspaceRestoreSelectsActiveRepositoryContext() async throws {

@@ -17495,7 +17495,7 @@ enum SelfTest {
     /// Misst, ob das asynchrone Datei-Laden den Main-Runloop NICHT blockiert.
     ///
     /// Vorgehen:
-    /// 1. Heartbeat-Timer (30-ms-Takt) auf Main starten — misst die größte
+    /// 1. Heartbeat-Timer (10-ms-Takt) auf Main starten — misst die größte
     ///    Tick-Lücke (= wie lange der Main-Thread ohne Chance zum Reagieren war).
     /// 2. `Workspace.loadFile` mit einer prozeduralen 4,36-MB-Textdatei
     ///    starten, für die wie im gemeldeten Problemfall JSON gemerkt ist.
@@ -17568,10 +17568,15 @@ enum SelfTest {
 
         // Heartbeat-Timer: misst die maximale Tick-Lücke auf dem Main-Thread.
         // Wird der Main-Thread blockiert, verpasst er Ticks → Lücke wächst.
-        let heartbeatInterval = 0.030          // 30 ms Soll-Takt
+        // 10 ms halten die Messungenauigkeit weit unter der 250-ms-Grenze.
+        // Beim früheren 30-ms-Takt hing das Ergebnis allein davon ab, an
+        // welcher Stelle zwischen zwei Ticks das Layout begann.
+        let heartbeatInterval = 0.010          // 10 ms Soll-Takt
         let maxAcceptableGap  = 0.250          // 250 ms Akzeptanz-Grenze
+        let started           = Date()
         var lastTick          = Date()
         var maxGap            = 0.0            // größte Lücke im Gesamtpfad
+        var maxGapEndedAt     = 0.0            // Phase der größten Lücke
         var tickCount         = 0
 
         // Timer auf dem Main-Runloop.
@@ -17581,11 +17586,12 @@ enum SelfTest {
             let gap    = now.timeIntervalSince(lastTick)
             lastTick   = now
             tickCount += 1
-            if gap > maxGap { maxGap = gap }
+            if gap > maxGap {
+                maxGap = gap
+                maxGapEndedAt = now.timeIntervalSince(started)
+            }
         }
         if let timer { RunLoop.main.add(timer, forMode: .common) }
-
-        let started = Date()
 
         // loadFile ist asynchron — kehrt sofort zurück, I/O im Hintergrund.
         ws.loadFile(at: fileURL) { ok in
@@ -17606,6 +17612,7 @@ enum SelfTest {
                 callbackElapsed: callbackElapsed,
                 maxAcceptableGap: maxAcceptableGap,
                 maxGap: { maxGap },
+                maxGapEndedAt: { maxGapEndedAt },
                 tickCount: { tickCount },
                 stopTimer: {
                     timer?.invalidate()
@@ -17629,6 +17636,7 @@ enum SelfTest {
         callbackElapsed: TimeInterval,
         maxAcceptableGap: TimeInterval,
         maxGap: @escaping () -> TimeInterval,
+        maxGapEndedAt: @escaping () -> TimeInterval,
         tickCount: @escaping () -> Int,
         stopTimer: @escaping () -> Void,
         cleanupFile: @escaping () -> Void,
@@ -17637,9 +17645,15 @@ enum SelfTest {
         if ws.activeTab?.url == fileURL,
            ws.activeTab?.isLoading == false,
            let textView = editorTextView(in: rootView) as? TextView,
-           textView.textStorage.length > 0 {
+           textView.textStorage.length > 0,
+           automaticallyVisibleFragmentViews(in: textView).count > 0 {
             let editorElapsed = Date().timeIntervalSince(started)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                // Erst den automatisch sichtbaren Zustand erfassen. Der Test
+                // darf ein ausgebliebenes Startlayout nicht selbst reparieren.
+                let automaticVisibleViews = automaticallyVisibleFragmentViews(
+                    in: textView
+                )
                 textView.layoutManager.layoutLines()
                 let layoutFragmentCount = Array(textView.layoutManager.lineStorage)
                     .reduce(0) { $0 + $1.data.lineFragments.count }
@@ -17657,6 +17671,8 @@ enum SelfTest {
                     && textView.wrapLines
                     && !horizontalScroller
                     && layoutFragmentCount > 1
+                    && !automaticVisibleViews.isEmpty
+                    && visibleFragmentViewCount > 0
                     && visibleFragmentViewCount < 100
                     && retainedFragmentViewCount < 200
                 // Ein weiterer Timer-Turn gehört zur Messung: Wäre die
@@ -17672,10 +17688,11 @@ enum SelfTest {
                         && wrapMatches
                     let message = String(
                         format: "Datei=%@ Load=%.3f s Editor=%.3f s Gesamt=%.3f s "
-                            + "maxMainLücke=%.0f ms Ticks=%d Format=%@ Wrap=%@ "
+                            + "maxMainLücke=%.0f ms LückeEnde=%.3f s Ticks=%d "
+                            + "Format=%@ Wrap=%@ "
                             + "Ziel=%@ Fragmente=%d Views=%d/%d H-Scroller=%@",
                         fileURL.lastPathComponent, callbackElapsed, editorElapsed,
-                        totalElapsed, gap * 1000, tickCount(),
+                        totalElapsed, gap * 1000, maxGapEndedAt(), tickCount(),
                         ws.activeDocumentFormat.id.rawValue,
                         textView.wrapLines ? "an" : "aus",
                         ws.softWrapTarget.rawValue,
@@ -17703,11 +17720,27 @@ enum SelfTest {
                 callbackElapsed: callbackElapsed,
                 maxAcceptableGap: maxAcceptableGap,
                 maxGap: maxGap,
+                maxGapEndedAt: maxGapEndedAt,
                 tickCount: tickCount,
                 stopTimer: stopTimer,
                 cleanupFile: cleanupFile,
                 tick: tick + 1
             )
+        }
+    }
+
+    /// Nur Fragment-Views, die tatsächlich Text besitzen und den sichtbaren
+    /// Editorbereich schneiden. Ein nichtleerer Textspeicher oder eine
+    /// unsichtbare View beweist noch kein automatisch dargestelltes Dokument.
+    private static func automaticallyVisibleFragmentViews(
+        in textView: TextView
+    ) -> [LineFragmentView] {
+        let visibleRect = textView.visibleRect
+        return textView.subviews.compactMap { $0 as? LineFragmentView }.filter {
+            !$0.isHidden
+                && $0.lineFragment != nil
+                && !$0.frame.intersection(visibleRect).isNull
+                && !$0.frame.intersection(visibleRect).isEmpty
         }
     }
 

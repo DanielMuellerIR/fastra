@@ -4943,7 +4943,7 @@ fi
 # und hängt außerdem im selben Main-Runloop-Durchlauf wie der Editoraufbau.
 # Ein kurzer, fenstergebundener Aufschub bündelt diese Invalidierungen zu genau
 # einem Layoutlauf. Normales Scrollen sowie spätere Layouts bleiben synchron.
-# Regression: `./selftest.sh loadperf` hält einen 30-ms-Main-Thread-Herzschlag
+# Regression: `./selftest.sh loadperf` hält einen 10-ms-Main-Thread-Herzschlag
 # bis eine Sekunde nach dem echten Editor-Mount am Leben.
 INITIAL_WINDOW_LAYOUT_PATCH_CHANGED=0
 if ! grep -q 'Fastra-Patch: initiales Fensterlayout kurz bündeln' \
@@ -5075,6 +5075,504 @@ if (lifecycle.count("hasScheduledInitialLayoutInCurrentWindow = false") != 1
     )
 PYEOF
 if [ "$INITIAL_WINDOW_LAYOUT_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z11. CodeEditTextView — Fragmentkennungen fuer Megazeilen billig erzeugen.
+#
+# Upstream erzeugt fuer jedes visuelle Fragment eine kryptographisch zufaellige
+# UUID. Bei einer 4,36-MB-Zeile mit Soft Wrap sind das rund 50.000 UUIDs im
+# ersten Main-Thread-Layout. Die Kennung muss nur innerhalb der Lebensdauer des
+# Typesetters eindeutig sein. Deshalb bekommt jeder Typesetter eine UUID und
+# seine Fragmente einen fortlaufenden Index. Das behaelt die Eindeutigkeit fuer
+# View-Reuse und spart die tausenden Zufallszahl-Aufrufe.
+# Regression: `./selftest.sh loadperf` misst weiterhin den Main-Thread-
+# Herzschlag und `softwrapanchor`/`hscroll` treiben Wiederlayout und View-Reuse.
+CETV_LINE_FRAGMENT="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextLine/LineFragment.swift"
+CETV_TYPESET_CONTEXT="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextLine/Typesetter/TypesetContext.swift"
+CHEAP_FRAGMENT_ID_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: eine UUID pro Typesetter statt pro Fragment' \
+    "$CETV_LINE_FRAGMENT" 2>/dev/null \
+   || ! grep -q 'private lazy var fragmentGeneration = UUID()' \
+    "$CETV_TYPESETTER" 2>/dev/null \
+   || ! grep -q 'fragmentGeneration: fragmentGeneration' \
+    "$CETV_TYPESETTER" 2>/dev/null \
+   || ! grep -q 'nextFragmentIndex &+= 1' \
+    "$CETV_TYPESET_CONTEXT" 2>/dev/null \
+   || grep -q 'Fastra-Patch: Fragmentarray fuer Megazeilen vorab reservieren' \
+    "$CETV_TYPESET_CONTEXT" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (billige eindeutige Fragmentkennungen)"
+  chmod u+w "$CETV_LINE_FRAGMENT" "$CETV_TYPESETTER" \
+    "$CETV_TYPESET_CONTEXT"
+  /usr/bin/python3 - "$CETV_LINE_FRAGMENT" "$CETV_TYPESETTER" \
+    "$CETV_TYPESET_CONTEXT" <<'PYEOF'
+import sys
+
+fragment_path, typesetter_path, context_path = sys.argv[1:]
+fragment = open(fragment_path).read()
+typesetter = open(typesetter_path).read()
+context = open(context_path).read()
+
+old_fragment_id = '''public final class LineFragment: Identifiable, Equatable {
+    public struct FragmentContent: Equatable {'''
+new_fragment_id = '''public final class LineFragment: Identifiable, Equatable {
+    /// Fastra-Patch: eine UUID pro Typesetter statt pro Fragment.
+    /// Die Generation trennt Neuaufbauten; der Index ist darin eindeutig.
+    public struct FragmentID: Hashable {
+        let generation: UUID
+        let index: Int
+    }
+
+    public struct FragmentContent: Equatable {'''
+if "Fastra-Patch: eine UUID pro Typesetter statt pro Fragment" not in fragment:
+    if old_fragment_id not in fragment:
+        raise SystemExit(
+            f"{fragment_path}: Fragmenttyp hat sich geaendert — Patch 4z11 pruefen"
+        )
+    fragment = fragment.replace(old_fragment_id, new_fragment_id, 1)
+
+old_id_property = '''    public let id = UUID()
+    public var documentRange: NSRange = .notFound'''
+new_id_property = '''    public let id: FragmentID
+    public var documentRange: NSRange = .notFound'''
+if old_id_property in fragment:
+    fragment = fragment.replace(old_id_property, new_id_property, 1)
+elif new_id_property not in fragment:
+    raise SystemExit(
+        f"{fragment_path}: ID-Eigenschaft hat sich geaendert — Patch 4z11 pruefen"
+    )
+
+old_fragment_init = '''    init(
+        contents: [FragmentContent],
+        width: CGFloat,'''
+new_fragment_init = '''    init(
+        id: FragmentID,
+        contents: [FragmentContent],
+        width: CGFloat,'''
+if "        self.id = id\n        self.contents = contents" not in fragment:
+    if old_fragment_init not in fragment:
+        raise SystemExit(
+            f"{fragment_path}: Fragment-Initializer hat sich geaendert — "
+            "Patch 4z11 pruefen"
+        )
+    fragment = fragment.replace(old_fragment_init, new_fragment_init, 1)
+    fragment = fragment.replace(
+        '''    ) {
+        self.contents = contents''',
+        '''    ) {
+        self.id = id
+        self.contents = contents''',
+        1
+    )
+
+old_typesetter_state = '''    public var documentRange: NSRange?
+    public var lineFragments = TextLineStorage<LineFragment>()'''
+new_typesetter_state = '''    public var documentRange: NSRange?
+    public var lineFragments = TextLineStorage<LineFragment>()
+    private lazy var fragmentGeneration = UUID()'''
+if "private lazy var fragmentGeneration = UUID()" not in typesetter:
+    if "private let fragmentGeneration = UUID()" in typesetter:
+        typesetter = typesetter.replace(
+            "private let fragmentGeneration = UUID()",
+            "private lazy var fragmentGeneration = UUID()",
+            1
+        )
+    elif old_typesetter_state not in typesetter:
+        raise SystemExit(
+            f"{typesetter_path}: Typesetter-Zustand hat sich geaendert — "
+            "Patch 4z11 pruefen"
+        )
+    else:
+        typesetter = typesetter.replace(old_typesetter_state, new_typesetter_state, 1)
+
+old_context_call = '''        var context = TypesetContext(documentRange: documentRange, displayData: displayData)'''
+new_context_call = '''        var context = TypesetContext(
+            documentRange: documentRange,
+            displayData: displayData,
+            fragmentGeneration: fragmentGeneration
+        )'''
+if "fragmentGeneration: fragmentGeneration" not in typesetter:
+    if old_context_call not in typesetter:
+        raise SystemExit(
+            f"{typesetter_path}: TypesetContext-Aufruf hat sich geaendert — "
+            "Patch 4z11 pruefen"
+        )
+    typesetter = typesetter.replace(old_context_call, new_context_call, 1)
+
+old_empty_fragment = '''        let fragment = LineFragment(
+            contents: [.init(data: .text(line: ctLine), width: 0.0)],'''
+new_empty_fragment = '''        let fragment = LineFragment(
+            id: .init(generation: fragmentGeneration, index: 0),
+            contents: [.init(data: .text(line: ctLine), width: 0.0)],'''
+if "id: .init(generation: fragmentGeneration, index: 0)" not in typesetter:
+    if old_empty_fragment not in typesetter:
+        raise SystemExit(
+            f"{typesetter_path}: Leerfragment hat sich geaendert — Patch 4z11 pruefen"
+        )
+    typesetter = typesetter.replace(old_empty_fragment, new_empty_fragment, 1)
+
+old_context_state = '''    let documentRange: NSRange
+    let displayData: TextLine.DisplayData
+
+    /// Accumulated generated line fragments.'''
+new_context_state = '''    let documentRange: NSRange
+    let displayData: TextLine.DisplayData
+    let fragmentGeneration: UUID
+    var nextFragmentIndex: Int = 0
+
+    /// Accumulated generated line fragments.'''
+if "var nextFragmentIndex: Int = 0" not in context:
+    if old_context_state not in context:
+        raise SystemExit(
+            f"{context_path}: TypesetContext-Zustand hat sich geaendert — "
+            "Patch 4z11 pruefen"
+        )
+    context = context.replace(old_context_state, new_context_state, 1)
+
+obsolete_reservation = '''
+    init(
+        documentRange: NSRange,
+        displayData: TextLine.DisplayData,
+        fragmentGeneration: UUID
+    ) {
+        self.documentRange = documentRange
+        self.displayData = displayData
+        self.fragmentGeneration = fragmentGeneration
+
+        // Fastra-Patch: Fragmentarray fuer Megazeilen vorab reservieren.
+        // Eine typische Editorbreite fasst deutlich mehr als 64 Zeichen;
+        // der konservative Schaetzwert verhindert die Array-Umschichtungen,
+        // begrenzt die Vorabbelegung aber auch bei extremen Dateien.
+        if displayData.maxWidth != .greatestFiniteMagnitude,
+           documentRange.length >= 64 * 1024 {
+            lines.reserveCapacity(min(documentRange.length / 80 + 1, 100_000))
+        }
+    }
+'''
+if "Fastra-Patch: Fragmentarray fuer Megazeilen vorab reservieren" in context:
+    if obsolete_reservation not in context:
+        raise SystemExit(
+            f"{context_path}: alter Reservierungsversuch hat sich geaendert — "
+            "Patch 4z11 pruefen"
+        )
+    context = context.replace(obsolete_reservation, "", 1)
+
+old_pop = '''    mutating func popCurrentData() {
+        let fragment = LineFragment(
+            contents: fragmentContext.contents,'''
+new_pop = '''    mutating func popCurrentData() {
+        let fragment = LineFragment(
+            id: .init(generation: fragmentGeneration, index: nextFragmentIndex),
+            contents: fragmentContext.contents,'''
+if "id: .init(generation: fragmentGeneration, index: nextFragmentIndex)" not in context:
+    if old_pop not in context:
+        raise SystemExit(
+            f"{context_path}: Fragmentaufbau hat sich geaendert — Patch 4z11 pruefen"
+        )
+    context = context.replace(old_pop, new_pop, 1)
+
+old_append = '''        lines.append(
+            .init(data: fragment, length: currentPosition - fragmentContext.start, height: fragment.scaledHeight)
+        )
+        maxHeight = max(maxHeight, fragment.scaledHeight)'''
+new_append = '''        lines.append(
+            .init(data: fragment, length: currentPosition - fragmentContext.start, height: fragment.scaledHeight)
+        )
+        nextFragmentIndex &+= 1
+        maxHeight = max(maxHeight, fragment.scaledHeight)'''
+if "nextFragmentIndex &+= 1" not in context:
+    if old_append not in context:
+        raise SystemExit(
+            f"{context_path}: Fragmentindex hat sich geaendert — Patch 4z11 pruefen"
+        )
+    context = context.replace(old_append, new_append, 1)
+
+open(fragment_path, "w").write(fragment)
+open(typesetter_path, "w").write(typesetter)
+open(context_path, "w").write(context)
+PYEOF
+  CHEAP_FRAGMENT_ID_PATCH_CHANGED=1
+fi
+if ! grep -q 'Fastra-Patch: eine UUID pro Typesetter statt pro Fragment' \
+    "$CETV_LINE_FRAGMENT" \
+   || ! grep -q 'private lazy var fragmentGeneration = UUID()' \
+    "$CETV_TYPESETTER" \
+   || ! grep -q 'fragmentGeneration: fragmentGeneration' \
+    "$CETV_TYPESETTER" \
+   || ! grep -q 'nextFragmentIndex &+= 1' \
+    "$CETV_TYPESET_CONTEXT" \
+   || grep -q 'Fastra-Patch: Fragmentarray fuer Megazeilen vorab reservieren' \
+    "$CETV_TYPESET_CONTEXT"; then
+  echo "✗ FEHLER: Fragmentkennungs-Patch hat NICHT vollständig gegriffen." >&2
+  exit 1
+fi
+if [ "$CHEAP_FRAGMENT_ID_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z12. CodeEditTextView — vollstaendige Quelltextattribute nicht erneut fixen.
+#
+# Der konkrete NSTextStorage aus AppKit meldet Attribute als "lazy": Beim
+# ersten CTTypesetter ueber eine 4,36-MB-Zeile durchsucht AppKit deshalb den
+# gesamten Speicher nach vermeintlich zu reparierenden Schriftattributen,
+# obwohl CodeEditSourceEditor jedem Zeichen bereits Schrift und Farbe gegeben
+# hat. Ein kleiner regulaerer NSTextStorage-Untertyp mit eigenem
+# NSMutableAttributedString-Backing meldet diese vollstaendigen Attribute als
+# sofort gueltig. CoreText uebernimmt weiterhin Glyphen-Fallback und Umbruch;
+# externe, vom Aufrufer uebergebene NSTextStorage-Instanzen bleiben unveraendert.
+# Regression: `./selftest.sh loadperf` misst den realen Fensterpfad; der
+# prozedurale schwierige Dokumentkorpus prueft Bearbeitung und Unicode-Layout.
+CETV_IMMEDIATE_STORAGE_SWIFT="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/ImmediateAttributeTextStorage.swift"
+CETV_IMMEDIATE_STORAGE_HEADER="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextViewObjC/include/ImmediateAttributeTextStorage.h"
+CETV_IMMEDIATE_STORAGE_IMPL="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextViewObjC/ImmediateAttributeTextStorage.m"
+CETV_OBJC_MODULEMAP="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextViewObjC/include/module.modulemap"
+CETV_SET_TEXT="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+SetText.swift"
+IMMEDIATE_ATTRIBUTE_STORAGE_PATCH_CHANGED=0
+if [ -e "$CETV_IMMEDIATE_STORAGE_SWIFT" ] \
+   || ! grep -q 'Fastra-Patch: vollstaendige Attribute ohne spaetes AppKit-Fixing' \
+    "$CETV_IMMEDIATE_STORAGE_IMPL" 2>/dev/null \
+   || ! grep -q 'header "ImmediateAttributeTextStorage.h"' \
+    "$CETV_OBJC_MODULEMAP" 2>/dev/null \
+   || ! grep -q 'attributes: initialTypingAttributes' \
+    "$CETV_TEXT_VIEW_CORE" 2>/dev/null \
+   || ! grep -q 'attributes: typingAttributes' \
+    "$CETV_SET_TEXT" 2>/dev/null \
+   || ! grep -q 'if !(textStorage is ImmediateAttributeTextStorage)' \
+    "$CETV_SET_TEXT" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (vollständige Attribute sofort gültig)"
+  chmod u+w "$CETV_TEXT_VIEW_CORE" "$CETV_SET_TEXT" "$CETV_OBJC_MODULEMAP"
+  /usr/bin/python3 - "$CETV_IMMEDIATE_STORAGE_SWIFT" \
+    "$CETV_IMMEDIATE_STORAGE_HEADER" "$CETV_IMMEDIATE_STORAGE_IMPL" \
+    "$CETV_OBJC_MODULEMAP" "$CETV_TEXT_VIEW_CORE" "$CETV_SET_TEXT" <<'PYEOF'
+import os
+import sys
+
+(
+    obsolete_swift_path,
+    header_path,
+    implementation_path,
+    modulemap_path,
+    text_view_path,
+    set_text_path,
+) = sys.argv[1:]
+text_view = open(text_view_path).read()
+set_text = open(set_text_path).read()
+modulemap = open(modulemap_path).read()
+
+if os.path.exists(obsolete_swift_path):
+    obsolete = open(obsolete_swift_path).read()
+    if "Fastra-Patch: vollstaendige Attribute ohne spaetes AppKit-Fixing" not in obsolete:
+        raise SystemExit(
+            f"{obsolete_swift_path}: fremde Datei kollidiert mit Patch 4z12"
+        )
+    os.remove(obsolete_swift_path)
+
+header = '''// Fastra-Patch: vollstaendige Attribute ohne spaetes AppKit-Fixing.
+
+#import <AppKit/AppKit.h>
+
+NS_ASSUME_NONNULL_BEGIN
+
+/// Klartextspeicher, dessen vollstaendige Schrift- und Farbattribute nicht
+/// beim ersten CoreText-Layout noch einmal von AppKit repariert werden.
+@interface ImmediateAttributeTextStorage : NSTextStorage {
+@private
+    NSMutableAttributedString *_backing;
+}
+
+- (instancetype)initWithString:(NSString *)string;
+- (instancetype)initWithString:(NSString *)string
+                     attributes:(nullable NSDictionary<NSAttributedStringKey, id> *)attributes;
+
+@end
+
+NS_ASSUME_NONNULL_END
+'''
+
+implementation = '''// Fastra-Patch: vollstaendige Attribute ohne spaetes AppKit-Fixing.
+
+#import "ImmediateAttributeTextStorage.h"
+
+@implementation ImmediateAttributeTextStorage
+
+- (instancetype)initWithString:(NSString *)string {
+    return [self initWithString:string attributes:nil];
+}
+
+- (instancetype)initWithString:(NSString *)string
+                     attributes:(NSDictionary<NSAttributedStringKey, id> *)attributes {
+    self = [super init];
+    if (self) {
+        _backing = [[NSMutableAttributedString alloc] initWithString:string
+                                                          attributes:attributes];
+    }
+    return self;
+}
+
+- (NSString *)string {
+    return _backing.string;
+}
+
+- (BOOL)fixesAttributesLazily {
+    return NO;
+}
+
+- (NSDictionary<NSAttributedStringKey, id> *)attributesAtIndex:(NSUInteger)location
+                                                 effectiveRange:(NSRangePointer)range {
+    return [_backing attributesAtIndex:location effectiveRange:range];
+}
+
+- (void)replaceCharactersInRange:(NSRange)range withString:(NSString *)string {
+    [self beginEditing];
+    [_backing replaceCharactersInRange:range withString:string];
+    [self edited:NSTextStorageEditedCharacters
+           range:range
+  changeInLength:(NSInteger)string.length - (NSInteger)range.length];
+    [self endEditing];
+}
+
+- (void)setAttributes:(NSDictionary<NSAttributedStringKey, id> *)attributes
+                 range:(NSRange)range {
+    [self beginEditing];
+    [_backing setAttributes:attributes range:range];
+    [self edited:NSTextStorageEditedAttributes range:range changeInLength:0];
+    [self endEditing];
+}
+
+@end
+'''
+open(header_path, "w").write(header)
+open(implementation_path, "w").write(implementation)
+
+if 'header "ImmediateAttributeTextStorage.h"' not in modulemap:
+    marker = '    header "CGContextHidden.h"\n'
+    if marker not in modulemap:
+        raise SystemExit(
+            f"{modulemap_path}: Headerliste hat sich geaendert — Patch 4z12 pruefen"
+        )
+    modulemap = modulemap.replace(
+        marker,
+        marker + '    header "ImmediateAttributeTextStorage.h"\n',
+        1,
+    )
+
+for path, source in ((text_view_path, text_view), (set_text_path, set_text)):
+    if "import CodeEditTextViewObjC" not in source:
+        marker = "import AppKit\n"
+        if marker not in source:
+            raise SystemExit(
+                f"{path}: AppKit-Import hat sich geaendert — Patch 4z12 pruefen"
+            )
+        source = source.replace(marker, marker + "import CodeEditTextViewObjC\n", 1)
+    if path == text_view_path:
+        text_view = source
+    else:
+        set_text = source
+
+old_storage_init = '''        self.textStorage = NSTextStorage(string: string)
+        self.delegate = delegate'''
+new_storage_init = '''        let initialTypingAttributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: textColor,
+        ]
+        // Fastra-Patch: intern erzeugter Klartext startet bereits mit einem
+        // vollstaendigen Attributsatz und braucht kein spaetes AppKit-Fixing.
+        self.textStorage = ImmediateAttributeTextStorage(
+            string: string,
+            attributes: initialTypingAttributes
+        )
+        self.delegate = delegate'''
+if "attributes: initialTypingAttributes" not in text_view:
+    if old_storage_init not in text_view:
+        raise SystemExit(
+            f"{text_view_path}: TextStorage-Aufbau hat sich geaendert — Patch 4z12 pruefen"
+        )
+    text_view = text_view.replace(old_storage_init, new_storage_init, 1)
+
+old_typing_attributes = '''        self.typingAttributes = [
+            .font: font,
+            .foregroundColor: textColor,
+        ]
+
+        textStorage.addAttributes(typingAttributes, range: documentRange)'''
+new_typing_attributes = '''        self.typingAttributes = initialTypingAttributes'''
+if old_typing_attributes in text_view:
+    text_view = text_view.replace(old_typing_attributes, new_typing_attributes, 1)
+elif new_typing_attributes not in text_view:
+    raise SystemExit(
+        f"{text_view_path}: initiale Attribute haben sich geaendert — Patch 4z12 pruefen"
+    )
+
+old_set_text = '''        let newStorage = NSTextStorage(string: text)
+        self.setTextStorage(newStorage)'''
+new_set_text = '''        let newStorage = ImmediateAttributeTextStorage(
+            string: text,
+            attributes: typingAttributes
+        )
+        self.setTextStorage(newStorage)'''
+if "attributes: typingAttributes" not in set_text:
+    if old_set_text not in set_text:
+        raise SystemExit(
+            f"{set_text_path}: setText-Aufbau hat sich geaendert — Patch 4z12 pruefen"
+        )
+    set_text = set_text.replace(old_set_text, new_set_text, 1)
+
+old_apply_attributes = '''        textStorage.addAttributes(typingAttributes, range: documentRange)
+        layoutManager.textStorage = textStorage'''
+new_apply_attributes = '''        // Intern erzeugter Speicher erhielt diesen Satz schon atomar im
+        // Initializer. Nur fremde NSTextStorage-Instanzen nachruesten.
+        if !(textStorage is ImmediateAttributeTextStorage) {
+            textStorage.addAttributes(typingAttributes, range: documentRange)
+        }
+        layoutManager.textStorage = textStorage'''
+if "if !(textStorage is ImmediateAttributeTextStorage)" not in set_text:
+    if old_apply_attributes not in set_text:
+        raise SystemExit(
+            f"{set_text_path}: Attributuebernahme hat sich geaendert — Patch 4z12 pruefen"
+        )
+    set_text = set_text.replace(old_apply_attributes, new_apply_attributes, 1)
+
+open(text_view_path, "w").write(text_view)
+open(set_text_path, "w").write(set_text)
+open(modulemap_path, "w").write(modulemap)
+PYEOF
+  IMMEDIATE_ATTRIBUTE_STORAGE_PATCH_CHANGED=1
+fi
+if [ -e "$CETV_IMMEDIATE_STORAGE_SWIFT" ] \
+   || ! grep -q 'Fastra-Patch: vollstaendige Attribute ohne spaetes AppKit-Fixing' \
+    "$CETV_IMMEDIATE_STORAGE_IMPL" \
+   || ! grep -q -- '- (BOOL)fixesAttributesLazily' \
+    "$CETV_IMMEDIATE_STORAGE_IMPL" \
+   || ! grep -q 'header "ImmediateAttributeTextStorage.h"' \
+    "$CETV_OBJC_MODULEMAP" \
+   || ! grep -q 'import CodeEditTextViewObjC' \
+    "$CETV_TEXT_VIEW_CORE" \
+   || ! grep -q 'import CodeEditTextViewObjC' \
+    "$CETV_SET_TEXT" \
+   || ! grep -q 'attributes: initialTypingAttributes' \
+    "$CETV_TEXT_VIEW_CORE" \
+   || ! grep -q 'attributes: typingAttributes' \
+    "$CETV_SET_TEXT" \
+   || ! grep -q 'if !(textStorage is ImmediateAttributeTextStorage)' \
+    "$CETV_SET_TEXT" \
+   || grep -q 'self.textStorage = NSTextStorage(string: string)' \
+    "$CETV_TEXT_VIEW_CORE"; then
+  echo "✗ FEHLER: Sofortattribut-Patch hat NICHT vollständig gegriffen." >&2
+  exit 1
+fi
+if [ "$IMMEDIATE_ATTRIBUTE_STORAGE_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextViewObjC.build \
+         .build/*/release/CodeEditTextViewObjC.build
   rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
   rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
         .build/*/release/Modules/CodeEditTextView.swiftmodule

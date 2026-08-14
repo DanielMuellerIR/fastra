@@ -326,7 +326,7 @@ Upstream-Pfad. Die versionierte Ergänzung liegt unter
 jedem Anwenden geprüft. `./selftest.sh mddropcursor` beobachtet Cursor, echten
 Rand-Autoscroll und den Link exakt an der beim Loslassen bestimmten Textposition.
 
-Patches 4z4–4z10 (Megazeilen, 2026-08-12/13): Sichtbare Textbereiche und
+Patches 4z4–4z12 (Megazeilen, 2026-08-12–14): Sichtbare Textbereiche und
 Syntaxattribute bleiben auf den Viewport begrenzt, CoreText arbeitet in
 handlichen Portionen, Soft Wrap hält nur sichtbare Fragment-Views und der
 Wortumbruch langer ASCII-Tokens vermeidet Substrings sowie wiederholte
@@ -338,7 +338,18 @@ geplanten AppKit-Durchlauf nicht synchron aus einer Viewport-Benachrichtigung
 vorweg. Patch 4z10 wartet vor dem ersten Umbruch kurz auf die dicht
 aufeinanderfolgenden SwiftUI-Aktualisierungen von Text, Attributen und Insets
 und bündelt ihre Invalidierungen zu einem fenstergebundenen Layoutlauf.
-Normales Scrollen und spätere Layouts bleiben unmittelbar.
+Normales Scrollen und spätere Layouts bleiben unmittelbar. Patch 4z11 erzeugt
+Fragmentkennungen aus einer erst beim tatsächlichen Typeset erzeugten UUID pro
+logischer Zeile und einem fortlaufenden Index, statt für jedes der rund 50.000
+Umbruchfragmente einer Megazeile eine eigene UUID anzufordern. Die Generation
+trennt unabhängige Typesetter; der Index bleibt darin eindeutig.
+Patch 4z12 erzeugt Fastras internen Klartextspeicher mit bereits vollständigen
+Schrift- und Farbattributen und meldet sie als sofort gültig. Damit entfällt
+AppKits dokumentweite, erst beim ersten CoreText-Layout ausgelöste
+Attributkorrektur. Die Backing-Methoden liegen in Objective-C, damit derselbe
+Pfad auch in unoptimierten Debug- und Test-Builds schnell bleibt. Fremde,
+explizit übergebene `NSTextStorage`-Instanzen werden weiterhin wie bisher
+behandelt.
 Jeder Teil besitzt eigene Marker und eine harte Prüfung direkt nach dem
 Anwenden. Wächter sind `DifficultDocumentCorpusTests`,
 `LongLineEditorPerformanceTests` und `./selftest.sh loadperf`.
@@ -490,8 +501,11 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
    montierten Editor. Beide verändern den Realbestand nicht.
    `-selftest loadperf` gehört dagegen zur Standardsuite und erzeugt selbst
    eine rein synthetische 4.357.697-Byte-`.txt`-Megazeile. Der Test misst den
-   Main-Thread-Herzschlag durch Datei-I/O, `Workspace.loadFile`, Soft Wrap,
-   echten Editor-Mount, Statistik und eine weitere Sekunde Nachlauf. Für eine
+   Main-Thread-Herzschlag im 10-ms-Takt durch Datei-I/O,
+   `Workspace.loadFile`, Soft Wrap, automatisch sichtbare Fragment-Views,
+   Statistik und eine weitere Sekunde Nachlauf. Erst nach der Sichtprüfung
+   darf der Test ein Kontrolllayout anfordern; die unveränderte Grenze für die
+   größte Main-Thread-Lücke beträgt 250 ms. Für eine
    gezielte Diagnose kann `FASTRA_LOADPERF_FILE` eine andere, nur gelesene
    Datei vorgeben; deren Inhalt wird vom Test weder ausgegeben noch dekodiert.
    `-selftest textop` bedient eine Texttransformation und beide

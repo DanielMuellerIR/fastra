@@ -250,6 +250,41 @@ func hiddenSearchDoesNotScanLoadedBuffer() async throws {
     #expect(workspace.bufferTotalMatches == 1)
 }
 
+@Test("Schließen der Suchmaske verwirft navigierbare Treffer")
+@MainActor
+func closingSearchInvalidatesNavigationWithoutHiddenRescan() async throws {
+    let suiteName = "fastra-runner-close-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suiteName)
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let workspace = Workspace(defaults: defaults)
+    workspace.scope = .file
+    workspace.useRegex = false
+    workspace.tabs[0].content = "vorher NADEL nachher"
+    workspace.findPattern = "NADEL"
+    workspace.showSearchDialog = true
+    await waitForWorkspace(workspace) {
+        workspace.bufferTotalMatches == 1 && !workspace.bufferSearching
+    }
+    #expect(workspace.navMatches.count == 1)
+
+    workspace.showSearchDialog = false
+
+    #expect(workspace.bufferMatches.isEmpty)
+    #expect(workspace.bufferTotalMatches == 0)
+    #expect(workspace.navMatches.isEmpty)
+    #expect(workspace.activeMatchIndex == 0)
+
+    // Bearbeiten bei geschlossener Maske darf keine versteckte Suche starten
+    // und damit auch keine alten oder neuen Navigationsziele veröffentlichen.
+    workspace.tabs[0].content = "NADEL an völlig anderer Stelle"
+    try await Task.sleep(for: .milliseconds(350))
+    #expect(!workspace.bufferSearching)
+    #expect(workspace.bufferMatches.isEmpty)
+    #expect(workspace.bufferTotalMatches == 0)
+    #expect(workspace.navMatches.isEmpty)
+}
+
 // MARK: - runsLive: welcher Scope sucht beim Tippen sofort?
 
 @Test("Datei-Scope sucht live")

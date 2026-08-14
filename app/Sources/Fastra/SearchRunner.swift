@@ -245,7 +245,12 @@ final class SearchRunner {
         guard isVisible else {
             ws.bufferSearching = false
             ws.folderSearching = false
-            ws.visibleBufferResultsOptions = nil
+            // Treffer sind außerhalb der Maske weiterhin über Statuszeile und
+            // ⌘G-Navigation erreichbar. Deshalb nicht nur Apply sperren,
+            // sondern die gesamte navigierbare Vorschau verwerfen. Spätere
+            // Dokumentänderungen bleiben dann billig, ohne auf alte Ranges zu
+            // zeigen; beim erneuten Öffnen startet ohnehin ein frischer Lauf.
+            Self.clearAllPreview(ws)
             return
         }
         rerun()
@@ -255,6 +260,18 @@ final class SearchRunner {
         ws.folderResults = []
         ws.folderTotalMatches = 0
         ws.folderResultsWereCapped = false
+        ws.activeMatchIndex = 0
+    }
+
+    private static func clearAllPreview(_ ws: Workspace) {
+        clearFolderPreview(ws)
+        ws.bufferMatches = []
+        ws.bufferTotalMatches = 0
+        ws.bufferResultsWereCapped = false
+        ws.openResults = []
+        ws.openTotalMatches = 0
+        ws.openResultsWereCapped = false
+        ws.visibleBufferResultsOptions = nil
         ws.activeMatchIndex = 0
     }
 
