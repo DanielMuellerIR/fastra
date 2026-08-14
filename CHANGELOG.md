@@ -9,6 +9,26 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.80.0] — 2026-08-14
+
+### Behoben
+
+- **Zeilennummern und Faltleiste scrollen wieder mit dem Dokument:** Der
+  dokumenthohe Floating-Gutter bestimmt seine sichtbaren Zeilen nun im
+  Koordinatensystem der Textansicht und rechnet Zeichen-, Hover- und
+  Klickpositionen anschließend in seine lokale Ansicht um. Dadurch zeigt ein
+  langes, mehrzeiliges Dokument oben wieder die ersten und unten die letzten
+  Zeilennummern; Auswahlhintergrund und Faltmarkierungen bleiben ausgerichtet.
+
+### Tests
+
+- **Der schwierige prozedurale Dokumentkorpus prüft den echten Gutter:** Ein
+  2.400-zeiliges Soft-Wrap-Dokument wird im realen Editoraufbau nach ganz oben
+  und ganz unten gescrollt. Textansicht und tatsächlich zum Zeichnen gewählte
+  erste Gutter-Zeile müssen jeweils übereinstimmen. Der In-App-Test
+  `softwrapanchor` verlangt dieselbe Übereinstimmung auch beim Umschalten von
+  Soft Wrap.
+
 ## [v1.79.0] — 2026-08-14
 
 ### Behoben

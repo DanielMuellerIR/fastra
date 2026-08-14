@@ -400,6 +400,28 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   gefunden hatte. Dafür gibt es `app/soak-test.sh`: ein langer Lauf über
   mehrere App-Neustarts, der nach JEDER Aktion die Invarianten prüft und
   Verstöße sammelt, statt abzubrechen. Er läuft bewusst nur von Hand.
+- **`exit()` durchläuft AppKits Beenden-Hooks nicht.** In-App-Tests enden über
+  `SelfTest.finish` direkt mit `exit()`. `applicationShouldTerminate` und damit
+  dort untergebrachte Sicherungs- oder Aufräumarbeit laufen dann nicht. Braucht
+  eine folgende Testphase diesen Zustand, muss der Test ihn vor `finish`
+  ausdrücklich speichern und nötigenfalls synchronisieren (siehe
+  `runSoakRounds` und `SessionRestorationCoordinator.captureCurrentSession`).
+- **Eine Test-Sandbox umfasst mehr als ein temporäres Home-Verzeichnis.**
+  `CFFIXED_USER_HOME` isoliert benannte Core-Foundation-Preferences-Domains auf
+  macOS nicht zuverlässig. GUI- und Unit-Runner brauchen deshalb pro Lauf eine
+  zufällige Test-Domain und müssen außerdem temporäre Dateien, Zwischenablage,
+  Kindprozesse sowie eigene LaunchServices-Einträge bei Erfolg, Fehler, Timeout
+  und Signal gezielt aufräumen. Die vollständige Umsetzung und ihre Grenzen
+  stehen in `docs/BUILD-AND-TEST.md` unter der Test-Sandbox.
+- **Ein Floating-Gutter besitzt nicht automatisch die Y-Koordinaten des
+  TextView.** `NSScrollView.addFloatingSubview` hängt den geflippten,
+  dokumenthohen `GutterView` unter eine ungeflippte Ansicht; seine lokale
+  `visibleRect` läuft bei langen Dokumenten dadurch entgegengesetzt zur
+  Textansicht. Sichtbare Zeilen immer im `TextView` bestimmen und nur Zeichen-
+  sowie Mauspositionen zwischen den Views umrechnen. Ein Regressionstest muss
+  oben UND unten in einem langen mehrzeiligen Soft-Wrap-Dokument die tatsächlich
+  vom Gutter gewählte erste Zeile mit der sichtbaren Textzeile vergleichen
+  (`DifficultDocumentCorpusTests`, `softwrapanchor`).
 - **Wird ein bisher synchroner Dokumentablauf teilweise in den Hintergrund
   verlegt, ändert sich seine Reihenfolge.** Der abschließende Teil läuft erst
   später und muss das Dokument wiederfinden, in dem er begonnen hat. Beim

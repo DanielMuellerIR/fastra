@@ -3601,8 +3601,8 @@ enum SelfTest {
                                 finish(
                                     true,
                                     "oberste Textzeile \(expectedTopLine + 1) "
-                                        + "blieb bei Aus und Ein ohne "
-                                        + "Zwischenabweichung identisch"
+                                        + "blieb mit synchronem Gutter bei "
+                                        + "Aus und Ein ohne Zwischenabweichung identisch"
                                 )
                             }
                         }
@@ -3869,13 +3869,16 @@ enum SelfTest {
             let shown = textView.layoutManager.textLineForPosition(
                 textView.visibleRect.minY
             )?.index
-            if let shown, abs(shown - targetLine) <= 1 {
+            let gutterShown = firstGutterLine(for: textView)
+            if let shown, gutterShown == shown,
+               abs(shown - targetLine) <= 1 {
                 completion(shown)
             } else if tick >= maxTicks {
                 finish(
                     false,
                     "Ankerzeile \(targetLine + 1) nicht oben erreichbar; "
-                        + "sichtbar=\(shown.map { String($0 + 1) } ?? "nil")"
+                        + "Text=\(shown.map { String($0 + 1) } ?? "nil"), "
+                        + "Gutter=\(gutterShown.map { String($0 + 1) } ?? "nil")"
                 )
             } else {
                 convergeSoftWrapAnchor(
@@ -3901,6 +3904,7 @@ enum SelfTest {
         let shown = textView.layoutManager.textLineForPosition(
             textView.visibleRect.minY
         )?.index
+        let gutterShown = firstGutterLine(for: textView)
 
         var nextObservedLines = observedLines
         var nextMaximumDrift = maximumDrift
@@ -3923,6 +3927,7 @@ enum SelfTest {
         if tick >= 60 {
             guard wrapApplied,
                   shown == expectedTopLine,
+                  gutterShown == shown,
                   !nextObservedLines.isEmpty,
                   nextObservedLines.allSatisfy({ $0 == expectedTopLine }),
                   nextMaximumDrift <= 2 else {
@@ -3930,6 +3935,7 @@ enum SelfTest {
                     false,
                     "Soft Wrap \(expectedWrap ? "Ein" : "Aus") zappelte: "
                         + "erwartet Zeile \(expectedTopLine + 1), "
+                        + "Gutter=\(gutterShown.map { String($0 + 1) } ?? "nil"), "
                         + "Folge=\(nextObservedLines.map { $0 + 1 }), "
                         + "maximale Drift=\(Int(nextMaximumDrift)) pt"
                 )
@@ -3949,6 +3955,19 @@ enum SelfTest {
                 completion: completion
             )
         }
+    }
+
+    /// Liest dieselbe Zeilenmenge, die der echte CodeEdit-Gutter in seinem
+    /// nächsten Zeichenlauf verwenden wird. Der frühere Test beobachtete nur
+    /// den TextView und konnte einen entgegengesetzt scrollenden Gutter daher
+    /// trotz korrekter Textzeile nicht erkennen.
+    private static func firstGutterLine(for textView: TextView) -> Int? {
+        guard let root = sourceEditorController(for: textView)?.view,
+              let gutter = findView(named: "GutterView", in: root)
+                as? GutterView else {
+            return nil
+        }
+        return gutter.visibleLineIndicesForDrawing.first
     }
 
     /// Wartet nach einem Dateiwechel, bis TextView und der zugehörige

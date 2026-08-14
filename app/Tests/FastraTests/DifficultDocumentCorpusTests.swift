@@ -15,6 +15,73 @@ import Testing
 
 @Suite("Prozeduraler Korpus schwieriger 4,36-MB-Dokumente", .serialized)
 struct DifficultDocumentCorpusTests {
+    @Test("Mehrzeiliger Soft-Wrap-Gutter scrollt mit dem Dokument")
+    @MainActor
+    func wrappedMultilineGutterStaysSynchronized() throws {
+        let longTail = String(repeating: "Wortgruppe ", count: 32)
+        let content = (1...2_400).map {
+            "Synchronzeile \($0)\t\(longTail)Ende \($0)"
+        }.joined(separator: "\n")
+        let configuration = SourceEditorConfiguration(
+            appearance: .init(
+                theme: EditorView.fastraTheme,
+                font: .monospacedSystemFont(ofSize: 13, weight: .regular),
+                wrapLines: true,
+                tabWidth: 4
+            ),
+            peripherals: .init(showMinimap: false)
+        )
+        let controller = TextViewController(
+            string: content,
+            language: .default,
+            configuration: configuration,
+            cursorPositions: []
+        )
+        controller.loadView()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 700, height: 600),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentViewController = controller
+        controller.view.frame = window.contentView?.bounds ?? .zero
+        controller.view.layoutSubtreeIfNeeded()
+
+        let textView = try #require(controller.textView)
+        let scrollView = try #require(controller.scrollView)
+        let gutter = try #require(
+            descendants(of: controller.view).compactMap { $0 as? GutterView }.first
+        )
+        textView.layoutManager.layoutLines()
+        textView.updateFrameIfNeeded()
+        controller.view.layoutSubtreeIfNeeded()
+
+        func verifyPosition(_ y: CGFloat, label: String) {
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: y))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            textView.updatedViewport(scrollView.documentVisibleRect)
+            controller.view.layoutSubtreeIfNeeded()
+
+            let textRect = textView.visibleRect
+            let textLine = textView.layoutManager.textLineForPosition(textRect.minY)?.index
+            let gutterLine = gutter.visibleLineIndicesForDrawing.first
+            #expect(
+                textLine == gutterLine,
+                "\(label): Text zeigt Zeile \(textLine.map { $0 + 1 } ?? -1), Gutter zeichnet ab Zeile \(gutterLine.map { $0 + 1 } ?? -1); Text-y=\(Int(textRect.minY)), Gutter-y=\(Int(gutter.visibleRect.minY))"
+            )
+        }
+
+        verifyPosition(0, label: "oben")
+        let bottomY = max(
+            textView.frame.height - scrollView.documentVisibleRect.height,
+            0
+        )
+        #expect(bottomY > scrollView.documentVisibleRect.height,
+                "Fixture wurde nicht vertikal scrollbar")
+        verifyPosition(bottomY, label: "unten")
+    }
+
     @Test("Alle Formate werden vollständig geladen und richtig aufgelöst")
     func corpusLoadsAndResolvesFormat() throws {
         for fixture in DifficultDocumentFixture.all {
@@ -337,4 +404,9 @@ struct DifficultDocumentCorpusTests {
         #expect(colorAfterScrolledHighlight?.isEqual(stringColor) == true,
                 "Der neu sichtbare JSON-Ausschnitt wurde nicht eingefärbt")
     }
+}
+
+@MainActor
+private func descendants(of root: NSView) -> [NSView] {
+    root.subviews.flatMap { [$0] + descendants(of: $0) }
 }

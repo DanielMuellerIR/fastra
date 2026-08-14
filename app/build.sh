@@ -5581,6 +5581,252 @@ if [ "$IMMEDIATE_ATTRIBUTE_STORAGE_PATCH_CHANGED" -eq 1 ]; then
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4z13. CodeEditSourceEditor — Gutter und Faltleiste in die
+# Dokumentkoordinaten des TextView umrechnen.
+#
+# NSScrollView haengt horizontale Floating-Views direkt unter seine
+# ungeflippte Ansicht. GutterView und TextView sind dagegen beide geflippt.
+# Bei einem dokumenthohen Gutter ist dessen sichtbares lokales Y deshalb zum
+# TextView-Y gespiegelt: oben fragte der Gutter die letzten Zeilen ab, unten
+# die ersten. Kurze Dokumente verdecken das, weil dort Viewport und Dokument
+# fast gleich hoch sind. Der Patch waehlt sichtbare Zeilen ausdruecklich im
+# TextView und rechnet nur ihre Zeichenposition in die lokale Gutter-Ansicht
+# um. Die Faltleiste erhaelt dieselbe Umrechnung fuer Zeichnen und Mausziele.
+# Regressionstest: DifficultDocumentCorpusTests.
+CESE_GUTTER_SCROLL="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/Gutter/GutterView.swift"
+CESE_FOLD_VIEW="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/LineFolding/View/LineFoldRibbonView.swift"
+CESE_FOLD_DRAW="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/LineFolding/View/LineFoldRibbonView+Draw.swift"
+GUTTER_COORDINATE_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: Floating-Gutter in TextView-Koordinaten zeichnen' \
+    "$CESE_GUTTER_SCROLL" 2>/dev/null; then
+  echo "→ Patche CodeEditSourceEditor (Gutter-Scrollrichtung synchronisieren)"
+  chmod u+w "$CESE_GUTTER_SCROLL" "$CESE_FOLD_VIEW" "$CESE_FOLD_DRAW"
+  /usr/bin/python3 - "$CESE_GUTTER_SCROLL" "$CESE_FOLD_VIEW" "$CESE_FOLD_DRAW" <<'PYEOF'
+import sys
+
+gutter_path, fold_view_path, fold_draw_path = sys.argv[1:]
+
+src = open(gutter_path).read()
+flip_anchor = '''    override public var isFlipped: Bool {
+        true
+    }
+'''
+flip_replacement = '''    override public var isFlipped: Bool {
+        true
+    }
+
+    // Fastra-Patch: Floating-Gutter in TextView-Koordinaten zeichnen.
+    // Der Gutter ist eine geflippte, dokumenthohe Floating-View unter dem
+    // ungeflippten NSScrollView. Seine lokale visibleRect ist deshalb zum
+    // sichtbaren TextView-Ausschnitt gespiegelt. Die Auswahl sichtbarer
+    // Zeilen muss direkt aus dem TextView kommen; nur die Zeichenposition
+    // wird anschliessend in den Gutter umgerechnet.
+    private var visibleLinePositionsForDrawing: [TextLineStorage<TextLine>.TextLinePosition] {
+        guard let textView else { return [] }
+        let visibleRect = textView.visibleRect
+        return Array(
+            textView.layoutManager.linesStartingAt(
+                visibleRect.minY,
+                until: visibleRect.maxY
+            )
+        )
+    }
+
+    public var visibleLineIndicesForDrawing: [Int] {
+        visibleLinePositionsForDrawing.map(\\.index)
+    }
+
+    private func gutterY(forTextY yPosition: CGFloat) -> CGFloat {
+        guard let textView else { return yPosition }
+        return convert(NSPoint(x: 0, y: yPosition), from: textView).y
+    }
+
+    private func gutterRect(forTextRect textRect: NSRect) -> NSRect {
+        guard let textView else { return textRect }
+        return convert(textRect, from: textView).standardized
+    }
+'''
+if flip_anchor not in src:
+    raise SystemExit(
+        f"{gutter_path}: Gutter-Koordinatenanker fehlt — Patch 4z13 pruefen"
+    )
+src = src.replace(flip_anchor, flip_replacement, 1)
+
+old_selection = '''            context.fill(
+                CGRect(
+                    x: xPos,
+                    y: line.yPos,
+                    width: width,
+                    height: line.height
+                ).pixelAligned
+            )'''
+new_selection = '''            let localLineRect = gutterRect(
+                forTextRect: NSRect(
+                    x: 0,
+                    y: line.yPos,
+                    width: 1,
+                    height: line.height
+                )
+            )
+            context.fill(
+                CGRect(
+                    x: xPos,
+                    y: localLineRect.minY,
+                    width: width,
+                    height: localLineRect.height
+                ).pixelAligned
+            )'''
+if old_selection not in src:
+    raise SystemExit(
+        f"{gutter_path}: Auswahlrechteck hat sich geaendert — Patch 4z13 pruefen"
+    )
+src = src.replace(old_selection, new_selection, 1)
+
+old_loop = '''        context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+        for linePosition in textView.layoutManager.linesStartingAt(dirtyRect.minY, until: dirtyRect.maxY) {'''
+new_loop = '''        context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+        for linePosition in visibleLinePositionsForDrawing {'''
+if old_loop not in src:
+    raise SystemExit(
+        f"{gutter_path}: Zeilennummern-Schleife hat sich geaendert — Patch 4z13 pruefen"
+    )
+src = src.replace(old_loop, new_loop, 1)
+
+old_y = '''            let yPos = linePosition.yPos + ascent + (fragment?.heightDifference ?? 0)/2 + fontHeightDifference'''
+new_y = '''            let textYPos = linePosition.yPos + ascent
+                + (fragment?.heightDifference ?? 0)/2 + fontHeightDifference
+            let yPos = gutterY(forTextY: textYPos)'''
+if old_y not in src:
+    raise SystemExit(
+        f"{gutter_path}: Zeilennummern-Y hat sich geaendert — Patch 4z13 pruefen"
+    )
+src = src.replace(old_y, new_y, 1)
+open(gutter_path, "w").write(src)
+
+src = open(fold_view_path).read()
+fold_flip_replacement = '''    override public var isFlipped: Bool {
+        true
+    }
+
+    // Fastra-Patch: Mauspositionen der Floating-Faltleiste gehoeren in das
+    // Dokumentkoordinatensystem des TextView, nicht in die lokal gespiegelte
+    // Koordinate der Leiste.
+    func textPoint(forLocalPoint point: NSPoint) -> NSPoint? {
+        guard let textView = model?.controller?.textView else { return nil }
+        return textView.convert(point, from: self)
+    }
+
+    // Zeichencode darf seine bestehenden Dokument-Y-Werte behalten. Diese
+    // Transformation bildet nur die Y-Achse auf die lokale Faltleiste ab;
+    // X bleibt lokal, damit die Marker in der schmalen Leiste liegen.
+    func concatenateTextYTransform(in context: CGContext) {
+        guard let textView = model?.controller?.textView else { return }
+        let localZero = convert(NSPoint(x: 0, y: 0), from: textView).y
+        let localOne = convert(NSPoint(x: 0, y: 1), from: textView).y
+        context.concatenate(
+            CGAffineTransform(
+                a: 1,
+                b: 0,
+                c: 0,
+                d: localOne - localZero,
+                tx: 0,
+                ty: localZero
+            )
+        )
+    }
+'''
+if flip_anchor not in src:
+    raise SystemExit(
+        f"{fold_view_path}: Faltleisten-Koordinatenanker fehlt — Patch 4z13 pruefen"
+    )
+src = src.replace(flip_anchor, fold_flip_replacement, 1)
+
+old_mouse_down = '''        let clickPoint = convert(event.locationInWindow, from: nil)
+        guard let layoutManager = model?.controller?.textView.layoutManager,
+              event.type == .leftMouseDown,
+              let lineNumber = layoutManager.textLineForPosition(clickPoint.y)?.index,'''
+new_mouse_down = '''        let clickPoint = convert(event.locationInWindow, from: nil)
+        guard let layoutManager = model?.controller?.textView.layoutManager,
+              event.type == .leftMouseDown,
+              let textPoint = textPoint(forLocalPoint: clickPoint),
+              let lineNumber = layoutManager.textLineForPosition(textPoint.y)?.index,'''
+if old_mouse_down not in src:
+    raise SystemExit(
+        f"{fold_view_path}: Faltleisten-Klick hat sich geaendert — Patch 4z13 pruefen"
+    )
+src = src.replace(old_mouse_down, new_mouse_down, 1)
+
+old_mouse_move = '''        let pointInView = convert(event.locationInWindow, from: nil)
+        guard let lineNumber = model?.controller?.textView.layoutManager.textLineForPosition(pointInView.y)?.index,'''
+new_mouse_move = '''        let pointInView = convert(event.locationInWindow, from: nil)
+        guard let textPoint = textPoint(forLocalPoint: pointInView),
+              let lineNumber = model?.controller?.textView.layoutManager.textLineForPosition(textPoint.y)?.index,'''
+if old_mouse_move not in src:
+    raise SystemExit(
+        f"{fold_view_path}: Faltleisten-Hover hat sich geaendert — Patch 4z13 pruefen"
+    )
+src = src.replace(old_mouse_move, new_mouse_move, 1)
+open(fold_view_path, "w").write(src)
+
+src = open(fold_draw_path).read()
+old_draw_guard = '''        guard let context = NSGraphicsContext.current?.cgContext,
+              let layoutManager = model?.controller?.textView.layoutManager,
+              // Find the visible lines in the rect AppKit is asking us to draw.
+              let rangeStart = layoutManager.textLineForPosition(dirtyRect.minY),
+              let rangeEnd = layoutManager.textLineForPosition(dirtyRect.maxY) else {
+            return
+        }
+
+        context.saveGState()
+        context.clip(to: dirtyRect)'''
+new_draw_guard = '''        guard let context = NSGraphicsContext.current?.cgContext,
+              let textView = model?.controller?.textView,
+              let layoutManager = textView.layoutManager else {
+            return
+        }
+        let visibleRect = textView.visibleRect
+        let visibleLines = Array(
+            layoutManager.linesStartingAt(
+                visibleRect.minY,
+                until: visibleRect.maxY
+            )
+        )
+        guard let rangeStart = visibleLines.first,
+              let rangeEnd = visibleLines.last else {
+            return
+        }
+
+        context.saveGState()
+        context.clip(to: dirtyRect)
+        concatenateTextYTransform(in: context)'''
+if old_draw_guard not in src:
+    raise SystemExit(
+        f"{fold_draw_path}: Faltleisten-Zeichenbereich hat sich geaendert — Patch 4z13 pruefen"
+    )
+src = src.replace(old_draw_guard, new_draw_guard, 1)
+open(fold_draw_path, "w").write(src)
+PYEOF
+  GUTTER_COORDINATE_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: Floating-Gutter in TextView-Koordinaten zeichnen' \
+       "$CESE_GUTTER_SCROLL" \
+   || ! grep -q 'public var visibleLineIndicesForDrawing' \
+       "$CESE_GUTTER_SCROLL" \
+   || ! grep -q 'gutterY(forTextY: textYPos)' "$CESE_GUTTER_SCROLL" \
+   || ! grep -q 'func textPoint(forLocalPoint point: NSPoint)' "$CESE_FOLD_VIEW" \
+   || ! grep -q 'concatenateTextYTransform(in: context)' "$CESE_FOLD_DRAW"; then
+  echo "✗ FEHLER: Gutter-Koordinaten-Patch hat NICHT vollständig gegriffen." >&2
+  exit 1
+fi
+
+if [ "$GUTTER_COORDINATE_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditSourceEditor.build \
+         .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 
