@@ -851,8 +851,8 @@ private struct MarkdownRichTextView: NSViewRepresentable {
             replaceBody(with: fragment, in: webView)
         }
 
-        // Editor→Vorschau-Sprung (Etappe 5 Wunschpaket 2026-07b): Nach einem
-        // Bild-/Tabellen-Einfügen scrollt die Vorschau zur Einfügestelle —
+        // Editor→Vorschau-Sprung: Nach einem Klick in den Quelltext oder nach
+        // Bild-/Tabellen-Einfügen scrollt die Vorschau zur passenden Stelle —
         // die `data-srcline`-Mechanik rückwärts genutzt.
         weak var revealWebView: WKWebView?
         private var revealObserver: NSObjectProtocol?

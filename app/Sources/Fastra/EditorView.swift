@@ -1076,7 +1076,11 @@ struct EditorView: View {
             // ~485). Jeder Scroll legt den neu sichtbaren Bereich aus (echte
             // Höhen), wodurch die Ziel-Schätzung nach unten wandert; iteratives
             // Nachscrollen konvergiert so auf die echte Position.
-            convergeScroll(textView, targetLine: targetLine, fallback: target)
+            let generation = beginVisibleJumpScroll(on: textView)
+            convergeScroll(
+                textView, targetLine: targetLine, fallback: target,
+                generation: generation
+            )
         }
     }
 
@@ -1119,7 +1123,105 @@ struct EditorView: View {
         }
     }
 
+    /// Übersetzt ausschließlich echte Linksklicks in der Quelltextfläche in
+    /// eine Reveal-Anforderung für die zugehörige Markdown-Vorschau. Ein
+    /// lokaler Event-Monitor ist hier genauer als `cursorPositions`: Dort
+    /// wären Tastaturbewegungen, Suchsprünge und programmatische Selektionen
+    /// nicht von einem Mausklick zu unterscheiden.
+    private final class MarkdownSourceClickRelay {
+        private weak var textView: CodeEditTextView.TextView?
+        private weak var workspace: Workspace?
+        private var monitor: Any?
+
+        init(textView: CodeEditTextView.TextView, workspace: Workspace) {
+            self.textView = textView
+            self.workspace = workspace
+            monitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.leftMouseDown]
+            ) { [weak self] event in
+                self?.handle(event)
+                return event
+            }
+        }
+
+        deinit {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+        }
+
+        private func handle(_ event: NSEvent) {
+            guard !event.modifierFlags.contains(.control),
+                  let textView, let workspace,
+                  event.windowNumber == textView.window?.windowNumber else {
+                return
+            }
+            let point = textView.convert(event.locationInWindow, from: nil)
+            guard textView.visibleRect.contains(point),
+                  let line = textView.layoutManager
+                    .textLineForPosition(point.y)?.index else { return }
+
+            // Ein eigener Klick übernimmt die Navigation. Noch geplante
+            // Nachzieh-Schritte eines älteren Vorschau→Editor-Sprungs dürfen
+            // den gerade angeklickten Ausschnitt nicht wieder wegscrollen.
+            EditorView.cancelVisibleJumpScroll(on: textView)
+
+            // Erst den normalen Editor-Klick abarbeiten lassen. Die Vorschau
+            // scrollt danach unabhängig; Auswahl, Mehrfachklick und Drag-
+            // Beginn bleiben vollständig Sache der TextView.
+            DispatchQueue.main.async { [weak textView, weak workspace] in
+                guard textView?.window != nil, let workspace,
+                      MarkdownAssist.isMarkdownTabActive(in: workspace) else {
+                    return
+                }
+                NotificationCenter.default.post(
+                    name: .fastraMarkdownRevealSourceLine,
+                    object: workspace,
+                    userInfo: ["line": line + 1]
+                )
+            }
+        }
+    }
+
     private static var emphasisScrollRelayKey: UInt8 = 0
+    private static var markdownSourceClickRelayKey: UInt8 = 0
+    private static var visibleJumpScrollStateKey: UInt8 = 0
+
+    /// Kennzeichnet die jüngste gezielte Editor-Scrollfolge. Ein neuer Sprung
+    /// oder ein echter Nutzerklick macht alle älteren Nachzieh-Schritte
+    /// wirkungslos, ohne bereits geplante Dispatch-Blöcke verwalten zu müssen.
+    private final class VisibleJumpScrollState {
+        var generation = 0
+    }
+
+    private static func visibleJumpScrollState(
+        for textView: CodeEditTextView.TextView
+    ) -> VisibleJumpScrollState {
+        if let state = objc_getAssociatedObject(
+            textView, &visibleJumpScrollStateKey
+        ) as? VisibleJumpScrollState {
+            return state
+        }
+        let state = VisibleJumpScrollState()
+        objc_setAssociatedObject(
+            textView, &visibleJumpScrollStateKey, state,
+            .OBJC_ASSOCIATION_RETAIN
+        )
+        return state
+    }
+
+    @discardableResult
+    private static func beginVisibleJumpScroll(
+        on textView: CodeEditTextView.TextView
+    ) -> Int {
+        let state = visibleJumpScrollState(for: textView)
+        state.generation &+= 1
+        return state.generation
+    }
+
+    private static func cancelVisibleJumpScroll(
+        on textView: CodeEditTextView.TextView
+    ) {
+        _ = beginVisibleJumpScroll(on: textView)
+    }
 
     /// Hängt (einmal pro TextView-Instanz) den Scroll-Relay an.
     private static func installEmphasisScrollRelay(on textView: CodeEditTextView.TextView,
@@ -1129,6 +1231,24 @@ struct EditorView: View {
         let relay = SearchEmphasisScrollRelay(clipView: clipView, workspace: workspace)
         objc_setAssociatedObject(textView, &emphasisScrollRelayKey, relay,
                                  .OBJC_ASSOCIATION_RETAIN)
+    }
+
+    /// Ein Relay pro montierter TextView. Das Associated Object sorgt dafür,
+    /// dass der lokale Event-Monitor beim Editor-Remount zuverlässig endet.
+    private static func installMarkdownSourceClickRelay(
+        on textView: CodeEditTextView.TextView,
+        workspace: Workspace
+    ) {
+        guard objc_getAssociatedObject(
+            textView, &markdownSourceClickRelayKey
+        ) == nil else { return }
+        let relay = MarkdownSourceClickRelay(
+            textView: textView, workspace: workspace
+        )
+        objc_setAssociatedObject(
+            textView, &markdownSourceClickRelayKey, relay,
+            .OBJC_ASSOCIATION_RETAIN
+        )
     }
 
     /// Zeichnet die Live-Trefferanzeige neu (Etappe 2 Wunschpaket 2026-07b):
@@ -1200,6 +1320,9 @@ struct EditorView: View {
                   let root = mainWindow.contentView,
                   let tv = firstEditorTextView(in: root) else { return }
             if let textView = tv as? CodeEditTextView.TextView {
+                installMarkdownSourceClickRelay(
+                    on: textView, workspace: workspace
+                )
                 if MarkdownAssist.isMarkdownTabActive(in: workspace) {
                     MarkdownAssist.configureExternalDrop(on: textView, workspace: workspace)
                 } else {
@@ -1255,7 +1378,11 @@ struct EditorView: View {
     /// Dokumentrand oder Versuchs-Limit (kein Endlos-Loop).
     private static func convergeScroll(_ tv: CodeEditTextView.TextView,
                                        targetLine: Int?, fallback: NSRange,
+                                       generation: Int,
                                        attempt: Int = 0) {
+        guard visibleJumpScrollState(for: tv).generation == generation else {
+            return
+        }
         // Ziel-Offset bei jedem Lauf NEU aus der Zeile bestimmen (die
         // ausgelegten Höhen ändern die Position nicht, aber so bleibt es robust).
         let targetRange: NSRange
@@ -1288,6 +1415,9 @@ struct EditorView: View {
         // Zeile korrigieren Folge-Pässe die Schätzung gewrappter Zeilen.
         guard let targetLine, targetLine > 0, attempt < 16 else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.045) {
+            guard visibleJumpScrollState(for: tv).generation == generation else {
+                return
+            }
             guard let shown = tv.layoutManager.textLineForPosition(tv.visibleRect.midY)?.index else { return }
             let shownLine = shown + 1
             let currentDocumentHeight = max(tv.layoutManager.estimatedHeight(),
@@ -1302,8 +1432,10 @@ struct EditorView: View {
             // Nah genug → fertig. An einem Dokumentrand ist eine exakte
             // Zentrierung naturgemäß nicht möglich.
             if abs(shownLine - targetLine) <= 2 || atVerticalLimit { return }
-            convergeScroll(tv, targetLine: targetLine, fallback: fallback,
-                           attempt: attempt + 1)
+            convergeScroll(
+                tv, targetLine: targetLine, fallback: fallback,
+                generation: generation, attempt: attempt + 1
+            )
         }
     }
 

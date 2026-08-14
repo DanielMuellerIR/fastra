@@ -16777,7 +16777,7 @@ enum SelfTest {
         }
     }
 
-    /// Prüft den Klick-Sprung von der Vorschau in den Editor am echten DOM.
+    /// Prüft beide Klick-Sprünge zwischen Vorschau und Editor am echten DOM.
     ///
     /// Der interessante Fall ist ein Klick MITTEN in einen Absatz: Der Block
     /// kennt nur seine erste Zeile, die restlichen löst das Vorschau-JS über
@@ -16791,6 +16791,14 @@ enum SelfTest {
         let file = directory.appendingPathComponent("Sprung.md")
         // Zeile 3/4/5 bilden EINEN Absatz — genau das, was Blockpositionen
         // allein nicht auflösen können.
+        let sections = (1...120).map { number in
+            """
+            ## Abschnitt \(number)
+
+            Inhalt des Abschnitts \(number), damit die Vorschau wirklich weit scrollen kann.
+
+            """
+        }.joined()
         let demo = """
         # Sprungtest
 
@@ -16799,7 +16807,17 @@ enum SelfTest {
         Zeile C
 
         Schlusswort.
+
+        \(sections)
         """
+        let targetMarker = "## Abschnitt 80"
+        let targetRange = (demo as NSString).range(of: targetMarker)
+        guard targetRange.location != NSNotFound else {
+            finish(false, "Zielabschnitt fehlt in der Testdatei")
+        }
+        let targetLine = (demo as NSString)
+            .substring(to: targetRange.location)
+            .components(separatedBy: "\n").count
         do {
             try FileManager.default.createDirectory(at: directory,
                                                     withIntermediateDirectories: true)
@@ -16811,12 +16829,16 @@ enum SelfTest {
         workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         ws.loadFile(at: file) { ok in
             guard ok else { finish(false, "Markdown-Datei konnte nicht geladen werden") }
-            pollMarkdownJump(workspace: ws, directory: directory, tick: 0)
+            pollMarkdownJump(
+                workspace: ws, directory: directory,
+                targetLine: targetLine, tick: 0
+            )
         }
     }
 
     private static func pollMarkdownJump(workspace: Workspace,
                                          directory: URL,
+                                         targetLine: Int,
                                          tick: Int) {
         guard tick < 120 else {
             try? FileManager.default.removeItem(at: directory)
@@ -16828,7 +16850,10 @@ enum SelfTest {
         })?.contentView,
               let webView = markdownWebView(in: root) else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                pollMarkdownJump(workspace: workspace, directory: directory, tick: tick + 1)
+                pollMarkdownJump(
+                    workspace: workspace, directory: directory,
+                    targetLine: targetLine, tick: tick + 1
+                )
             }
             return
         }
@@ -16863,7 +16888,10 @@ enum SelfTest {
             if let info = result as? [String: Any], info["dispatched"] as? Bool == true {
                 // Der Sprung läuft über Notification und Editor-Reconcile,
                 // beides asynchron — deshalb den Cursor nachlaufend prüfen.
-                pollMarkdownJumpResult(workspace: workspace, directory: directory, tick: 0)
+                pollMarkdownJumpResult(
+                    workspace: workspace, directory: directory,
+                    targetLine: targetLine, tick: 0
+                )
                 return
             }
             if tick == 119 {
@@ -16871,27 +16899,226 @@ enum SelfTest {
                 finish(false, "Klick nicht auslösbar: \(String(describing: result))")
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                pollMarkdownJump(workspace: workspace, directory: directory, tick: tick + 1)
+                pollMarkdownJump(
+                    workspace: workspace, directory: directory,
+                    targetLine: targetLine, tick: tick + 1
+                )
             }
         }
     }
 
     private static func pollMarkdownJumpResult(workspace: Workspace,
                                                directory: URL,
+                                               targetLine: Int,
                                                tick: Int) {
         // „Zeile C" ist die fünfte Zeile der Datei; der Absatz beginnt bei 3.
         // Bliebe die Auflösung innerhalb des Blocks aus, stünde hier 3.
         let expected = 5
         if workspace.cursorLine == expected {
-            try? FileManager.default.removeItem(at: directory)
-            finish(true, "Klick in Absatzzeile 3 setzt den Cursor auf Dateizeile \(expected)")
+            beginMarkdownSourceRevealTest(
+                workspace: workspace, directory: directory,
+                targetLine: targetLine
+            )
+            return
         }
         guard tick < 50 else {
             try? FileManager.default.removeItem(at: directory)
-            finish(false, "Cursor steht auf Zeile \(workspace.cursorLine), erwartet \(expected)")
+            finish(
+                false,
+                "Cursor steht auf Zeile "
+                    + "\(workspace.cursorLine.map(String.init) ?? "nil"), "
+                    + "erwartet \(expected)"
+            )
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollMarkdownJumpResult(workspace: workspace, directory: directory, tick: tick + 1)
+            pollMarkdownJumpResult(
+                workspace: workspace, directory: directory,
+                targetLine: targetLine, tick: tick + 1
+            )
+        }
+    }
+
+    /// Gegenrichtung: Vorschau erst nach ganz oben setzen, dann im weit unten
+    /// liegenden Quelltext einen ECHTEN AppKit-Klick senden. Der Test liest
+    /// anschließend WebKits tatsächliche Scrollposition und Blockgeometrie.
+    private static func beginMarkdownSourceRevealTest(
+        workspace: Workspace,
+        directory: URL,
+        targetLine: Int
+    ) {
+        guard let window = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        }), let root = window.contentView,
+           let webView = markdownWebView(in: root) else {
+            try? FileManager.default.removeItem(at: directory)
+            finish(false, "Markdown-Split für Gegenrichtung fehlt")
+        }
+        let resetScript = """
+        (() => {
+          window.scrollTo(0, 0);
+          return { y: window.scrollY, height: document.documentElement.scrollHeight,
+                   viewport: window.innerHeight };
+        })()
+        """
+        webView.evaluateJavaScript(resetScript) { result, error in
+            if let error {
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "Vorschau nicht zurücksetzbar: \(error.localizedDescription)")
+            }
+            guard let values = result as? [String: Any],
+                  let height = (values["height"] as? NSNumber)?.doubleValue,
+                  let viewport = (values["viewport"] as? NSNumber)?.doubleValue,
+                  height > viewport * 2 else {
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "Vorschau ist für den Scroll-Test nicht lang genug")
+            }
+            EditorView.scrollEditorForVisibleJump(
+                in: workspace, targetLine: targetLine, fallbackRange: nil
+            )
+            pollMarkdownSourceClickReady(
+                workspace: workspace, directory: directory,
+                targetLine: targetLine, tick: 0
+            )
+        }
+    }
+
+    /// Wartet nicht auf eine geschätzte Zielposition, sondern bis die
+    /// Zielzeile wirklich im sichtbaren TextView-Ausschnitt liegt.
+    private static func pollMarkdownSourceClickReady(
+        workspace: Workspace,
+        directory: URL,
+        targetLine: Int,
+        tick: Int
+    ) {
+        guard let window = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        }), let root = window.contentView,
+           let textView = editorTextView(in: root) as? TextView,
+           let line = textView.layoutManager.textLineForIndex(targetLine - 1),
+           let rect = textView.layoutManager.rectForOffset(line.range.location) else {
+            if tick >= 100 {
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "Zielzeile im Quelltext nicht layoutbar")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollMarkdownSourceClickReady(
+                    workspace: workspace, directory: directory,
+                    targetLine: targetLine, tick: tick + 1
+                )
+            }
+            return
+        }
+
+        if textView.visibleRect.minY <= rect.midY,
+           rect.midY <= textView.visibleRect.maxY {
+            window.makeKeyAndOrderFront(nil)
+            let localPoint = NSPoint(
+                x: max(rect.minX + 12, textView.visibleRect.minX + 12),
+                y: rect.midY
+            )
+            let windowPoint = textView.convert(localPoint, to: nil)
+            guard sendMouseClick(
+                at: windowPoint, in: window, modifiers: [], viaApp: true
+            ) else {
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "Quelltext-Klick nicht erzeugbar")
+            }
+            pollMarkdownPreviewReveal(
+                workspace: workspace, directory: directory,
+                targetLine: targetLine, tick: 0
+            )
+            return
+        }
+
+        if tick >= 100 {
+            try? FileManager.default.removeItem(at: directory)
+            finish(
+                false,
+                "Quelltext wurde nicht bis zur Zielzeile \(targetLine) gescrollt"
+            )
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollMarkdownSourceClickReady(
+                workspace: workspace, directory: directory,
+                targetLine: targetLine, tick: tick + 1
+            )
+        }
+    }
+
+    /// Erfolg nur, wenn die Vorschau nachweislich von oben weggescrollt ist,
+    /// den Zielblock gefunden hat UND dieser ungefähr in der Mitte liegt.
+    private static func pollMarkdownPreviewReveal(
+        workspace: Workspace,
+        directory: URL,
+        targetLine: Int,
+        tick: Int
+    ) {
+        guard let root = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.contentView != nil && $0.isVisible
+        })?.contentView,
+              let webView = markdownWebView(in: root) else {
+            try? FileManager.default.removeItem(at: directory)
+            finish(false, "Vorschau verschwand während der Gegenprüfung")
+        }
+        let script = """
+        (() => {
+          const target = \(targetLine);
+          let best = null, bestLine = -1;
+          document.querySelectorAll('[data-srcline]').forEach(el => {
+            const line = parseInt(el.getAttribute('data-srcline'), 10);
+            if (Number.isFinite(line) && line <= target && line > bestLine) {
+              bestLine = line; best = el;
+            }
+          });
+          if (!best) return { error: 'Zielblock fehlt' };
+          const rect = best.getBoundingClientRect();
+          return { y: window.scrollY, line: bestLine, top: rect.top,
+                   blockHeight: rect.height, viewport: window.innerHeight };
+        })()
+        """
+        webView.evaluateJavaScript(script) { result, error in
+            if let error {
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "Vorschau-Messung schlug fehl: \(error.localizedDescription)")
+            }
+            let values = result as? [String: Any]
+            let y = (values?["y"] as? NSNumber)?.doubleValue ?? 0
+            let line = (values?["line"] as? NSNumber)?.intValue ?? -1
+            let top = (values?["top"] as? NSNumber)?.doubleValue ?? 0
+            let blockHeight = (values?["blockHeight"] as? NSNumber)?.doubleValue ?? 0
+            let viewport = (values?["viewport"] as? NSNumber)?.doubleValue ?? 0
+            let distanceFromCenter = abs(top + blockHeight / 2 - viewport / 2)
+            if workspace.cursorLine == targetLine,
+               y > 50,
+               line == targetLine,
+               viewport > 0,
+               distanceFromCenter <= max(80, viewport * 0.35) {
+                try? FileManager.default.removeItem(at: directory)
+                finish(
+                    true,
+                    "Vorschau→Quelltext trifft Zeile 5; Quelltext-Klick "
+                        + "zentriert Vorschauzeile \(targetLine)"
+                )
+            }
+            if tick >= 60 {
+                try? FileManager.default.removeItem(at: directory)
+                finish(
+                    false,
+                    "Quelltext-Klick richtete Vorschau nicht aus: Cursor="
+                        + "\(workspace.cursorLine.map(String.init) ?? "nil"), "
+                        + "scrollY=\(Int(y)), Block=\(line), "
+                        + "Mittelabweichung=\(Int(distanceFromCenter))"
+                )
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                pollMarkdownPreviewReveal(
+                    workspace: workspace, directory: directory,
+                    targetLine: targetLine, tick: tick + 1
+                )
+            }
         }
     }
 

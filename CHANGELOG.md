@@ -9,6 +9,26 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.81.0] — 2026-08-14
+
+### Neu
+
+- **Quelltext-Klick richtet die Markdown-Vorschau aus:** Ein normaler Klick in
+  den Editor scrollt die integrierte Vorschau zum passenden Markdown-Block und
+  versucht, ihn mittig anzuzeigen. Tastaturbewegungen, Suchsprünge,
+  Rechtsklicks und programmatische Selektionen lösen den Abgleich nicht aus.
+  Überholte Nachzieh-Schritte eines vorherigen Vorschau-Klicks werden dabei
+  entwertet, damit sie den anschließend bewusst gewählten Quelltextausschnitt
+  nicht wieder wegscrollen.
+
+### Tests
+
+- **Der Markdown-Sprungtest arbeitet nun in beide Richtungen:** Er klickt im
+  echten WebKit-Dokument in einen mehrzeiligen Absatz, setzt die Vorschau
+  zurück nach oben und klickt anschließend über die AppKit-Ereignisqueue weit
+  unten in den echten Editor. Cursorzeile, WebKit-Scrollposition, Quellmarker
+  und Zielgeometrie müssen gemeinsam stimmen.
+
 ## [v1.80.0] — 2026-08-14
 
 ### Behoben

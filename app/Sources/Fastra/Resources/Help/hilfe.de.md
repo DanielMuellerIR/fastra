@@ -207,8 +207,9 @@ Bei Markdown-Dokumenten zeigt die geteilte Ansicht rechts die gerenderte
 Vorschau — bei einer `.md`-Datei automatisch, sonst sobald du das Format
 im Sprach-Chip der Fußzeile auf Markdown stellst: Tabellen, Codeblöcke mit Syntaxfarben, Formeln (KaTeX) und
 Mermaid-Diagramme — vollständig lokal, ohne Netzzugriff. Ein **Klick in
-die Vorschau** springt im Editor zur passenden Quellzeile. Kopieren aus
-der Vorschau liefert echten Rich-Text (Überschriften, Listen, Fettung
+die Vorschau** springt im Editor zur passenden Quellzeile. Umgekehrt richtet
+ein **Klick in den Quelltext** die Vorschau möglichst an derselben Stelle aus.
+Kopieren aus der Vorschau liefert echten Rich-Text (Überschriften, Listen, Fettung
 bleiben erhalten). Aus dem Editor kopiert Fastra dagegen immer reinen Text:
 ohne Schrift und Farbe und ohne dass ein Zielprogramm beim Umwandeln etwas
 verändern kann.

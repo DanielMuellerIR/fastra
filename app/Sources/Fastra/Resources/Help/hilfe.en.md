@@ -198,8 +198,10 @@ automatically for a `.md` file, otherwise as soon as you set the format to
 Markdown in the footer's language chip:
 tables, code blocks with syntax colors, formulas (KaTeX), and Mermaid
 diagrams — fully local, no network access. **Clicking in the preview**
-jumps the editor to the matching source line. Copying from the preview
-yields real rich text (headings, lists, and bold survive). Copying from the
+jumps the editor to the matching source line. In the other direction,
+**clicking in the source** aligns the preview as closely as possible to the
+same place. Copying from the preview yields real rich text (headings, lists,
+and bold survive). Copying from the
 editor always yields plain text instead: no font, no color, and nothing a
 target application can alter while converting.
 
