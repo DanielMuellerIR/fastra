@@ -683,7 +683,9 @@ Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**:
   Adresse, Ziel-Ref, Quell-Commit sowie die lokalen und fehlenden Commits.
   Ändert sich diese Grundlage bis zur Ausführung, wird nichts übertragen.
   Divergenzen und abgelehnte Nicht-Fast-Forward-Pushes erhalten eine Erklärung;
-  Force-with-Lease bleibt ein eigener bestätigter Folgeschritt. Mehrere
+  Force-with-Lease bleibt ein eigener bestätigter Folgeschritt. Auch der
+  eigenständige Force-Push-Befehl im Graph zeigt die effektive Adresse und
+  bindet die Ausführung an diesen bestätigten Stand. Mehrere
   effektive Push-Adressen desselben Remotes oder
   Git-Regeln, die Adressen per `insteadOf`/`pushInsteadOf` umschreiben, sind
   nicht eindeutig und werden mit Erklärung abgebrochen. Kann Fastra nur einen

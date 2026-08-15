@@ -650,7 +650,9 @@ additionally shows the **Changes** and **Graph** tabs:
   ref, source commit, and the local and missing commits. If that basis changes
   before execution, nothing is transferred. Divergence and rejected
   non-fast-forward pushes get an explanation; force-with-lease remains a
-  separately confirmed follow-up. Multiple effective push addresses for the
+  separately confirmed follow-up. The standalone force-push command in the
+  graph also shows the effective address and binds execution to that confirmed
+  state. Multiple effective push addresses for the
   same remote or Git
   rules that rewrite addresses through `insteadOf`/`pushInsteadOf` are
   ambiguous and stop with an explanation. If only one remote cannot be read,
