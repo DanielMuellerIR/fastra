@@ -57,3 +57,21 @@ func recentFiles_roundtrip() {
     RecentFilesStore.save(paths, to: d)
     #expect(RecentFilesStore.load(from: d) == paths)
 }
+
+@Test("Zwei Fenster verlieren die zuletzt geöffnete Datei des anderen nicht")
+@MainActor
+func recentFiles_twoWorkspacesMergeBeforePrepending() {
+    let defaults = makeDefaults()
+    // Beide Fenster entstehen vor der ersten Änderung und halten deshalb
+    // zunächst je eine leere lokale Kopie der Liste.
+    let windowA = Workspace(defaults: defaults)
+    let windowB = Workspace(defaults: defaults)
+
+    windowA.noteRecentFile(URL(fileURLWithPath: "/tmp/fastra-recent-a.txt"))
+    windowB.noteRecentFile(URL(fileURLWithPath: "/tmp/fastra-recent-b.txt"))
+
+    #expect(RecentFilesStore.load(from: defaults) == [
+        "/tmp/fastra-recent-b.txt",
+        "/tmp/fastra-recent-a.txt",
+    ])
+}

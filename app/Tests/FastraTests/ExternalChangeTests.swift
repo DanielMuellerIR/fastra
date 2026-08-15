@@ -61,12 +61,10 @@ func action_missingDates() {
     #expect(ExternalChange.action(isDirty: false, knownDate: Date(), diskDate: nil) == .none)
 }
 
-@Test("Disk gleich alt oder älter → keine Aktion")
-func action_diskNotNewer() {
+@Test("Gleiches Disk-Datum → keine Aktion")
+func action_sameDate() {
     let d = Date()
     #expect(ExternalChange.action(isDirty: false, knownDate: d, diskDate: d) == .none)
-    #expect(ExternalChange.action(isDirty: false, knownDate: d,
-                                  diskDate: d.addingTimeInterval(-5)) == .none)
 }
 
 @Test("Disk neuer + Tab sauber → still neu laden")
@@ -81,6 +79,13 @@ func action_newerDirty() {
     let d = Date()
     #expect(ExternalChange.action(isDirty: true, knownDate: d,
                                   diskDate: d.addingTimeInterval(5)) == .askUser)
+}
+
+@Test("Älterer Disk-Zeitstempel gilt ebenfalls als Änderung")
+func action_olderDate() {
+    let d = Date()
+    #expect(ExternalChange.action(isDirty: false, knownDate: d,
+                                  diskDate: d.addingTimeInterval(-5)) == .reloadSilently)
 }
 
 // MARK: - Workspace-Pfad
@@ -113,6 +118,26 @@ func workspace_cleanTabReloadsSilently() async throws {
     #expect(ws.tabs[idx].isDirty == false)
 }
 
+@Test("Extern ersetzte Datei wird auch bei unverändertem Änderungsdatum erkannt")
+@MainActor
+func workspace_replacedFileWithPreservedDateReloadsSilently() async throws {
+    let url = try writeTmpUTF8("alt\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let ws = await loadedWorkspace(url)
+    let idx = try #require(ws.tabs.firstIndex { $0.url == url })
+    let originalDate = try #require(ws.tabs[idx].diskModificationDate)
+
+    try Data("neu\n".utf8).write(to: url, options: .atomic)
+    try FileManager.default.setAttributes(
+        [.modificationDate: originalDate],
+        ofItemAtPath: url.path
+    )
+    ws.checkExternalChanges()
+
+    #expect(await waitForContent(ws, idx: idx, expected: "neu\n"))
+    #expect(ws.tabs[idx].isDirty == false)
+}
+
 @Test("Extern geändert + Tab dirty + Behalten → Inhalt bleibt, keine zweite Frage")
 @MainActor
 func workspace_dirtyKeepDoesNotReAsk() async throws {
@@ -128,12 +153,13 @@ func workspace_dirtyKeepDoesNotReAsk() async throws {
 
     try simulateExternalEdit(url, content: "extern\n")
     ws.checkExternalChanges()
-    #expect(askCount == 1)
+    #expect(await waitUntil { askCount == 1 })
     #expect(ws.tabs[idx].content == "lokal geändert\n")
 
     // Zweiter App-Wechsel, Datei unverändert → Basis-Datum wurde beim
     // „Behalten" nachgezogen, es darf NICHT erneut fragen.
     ws.checkExternalChanges()
+    try? await Task.sleep(for: .milliseconds(100))
     #expect(askCount == 1)
 }
 

@@ -9,6 +9,27 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.87.0] — 2026-08-15
+
+### Behoben
+
+- **Extern ersetzte Dateien werden auch mit beibehaltenem oder älterem
+  Änderungsdatum erkannt:** Fastra vergleicht beim Zurückkehren in die App
+  Dateiidentität, Größe, Änderungs- und Statuszeit. Nur bei einer Abweichung
+  prüft es den Inhalt im Hintergrund; reine Metadatenänderungen lösen dadurch
+  kein unnötiges Neu-Laden aus.
+- **Mehrere Fenster verlieren keine zuletzt geöffnete Datei mehr:** Vor dem
+  Ergänzen der gemeinsamen Liste lädt jedes Fenster den aktuellen Stand neu.
+  Ein länger offenes zweites Fenster kann Einträge des ersten damit nicht mehr
+  durch seine veraltete lokale Kopie löschen.
+
+### Tests
+
+- **Regressionen prüfen konservierte Zeitstempel und zwei Fenster:** Ein
+  atomarer Fremd-Write mit unverändertem Datum muss den sauberen Tab neu laden;
+  zwei vorab geöffnete Workspaces müssen anschließend beide Recent-Dateien im
+  gemeinsamen Store erhalten.
+
 ## [v1.86.0] — 2026-08-15
 
 ### Behoben
