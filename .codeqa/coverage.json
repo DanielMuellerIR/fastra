@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 903128
+    "tokens_spent": 1191058
   },
   "campaign_history": [
     {
@@ -621,7 +621,22 @@
       "risk": "high",
       "priority": 12,
       "reason": "Selbsttest-, Soak- und Sandbox-Infrastruktur liefert den Beweis für Änderungen und muss Umgebungsfehler ehrlich trennen.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T165221406979+0200",
+        "completed_at": "2026-08-15T17:51:53+02:00",
+        "observed_head": "13ec6a5953bac1832ec0fcd7fb12f5d5287fd2c7",
+        "content_sha256": "8c51cb4d16a5cdaec30425d001266049f006cc3e3e4e29d72f3df8c910129ed6",
+        "file_count": 23,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Soak-Fixtures lösen Symlinks sicher auf; Mehrfenster-Aktionen folgen CommandTargeting; Runner-Fixtures bleiben neben einer laufenden Produkt-App isoliert",
+        "tests": [
+          "./test.sh --filter SelfTestPerformanceTests|SelfTestReviewFixTests|SelfTestLaunchTests|TestDefaultsJanitorTests: 39 passed",
+          "./build.sh: passed einschließlich Fensterziel-Audit, Signatur und portabler Ordnersuche",
+          "./localization-audit.sh: passed; Shell-Syntax, JSON-Fixtures und Performance-Selbsttest: passed"
+        ]
+      }
     },
     {
       "id": "text-operations-formatting",
