@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 2307885
+    "tokens_spent": 2349837
   },
   "campaign_history": [
     {
@@ -833,7 +833,22 @@
       "risk": "low",
       "priority": 18,
       "reason": "Update- und Spendenoberfläche berührt externe Ziele, bleibt aber vom Dokumentkern getrennt.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T165221406979+0200",
+        "completed_at": "2026-08-15T19:00:37+02:00",
+        "observed_head": "57fa337f5f5e2eb5ec2de8a5440926c87b76640b",
+        "content_sha256": "3f48e46626ed9e925d1b181a3335283676d6e036ee43b5d80e7e413c88c8653c",
+        "file_count": 3,
+        "review": "full",
+        "outcome": "reviewed-clean",
+        "summary": "Spendenregeln, isolierte Persistenz, Bannergrenzen sowie Sparkle-Erzeugung, Menüverdrahtung und Bundle-Sicherheitskonfiguration vollständig geprüft; keine lohnende Änderung",
+        "tests": [
+          "Donation/UpdateMenu: 10/10 passed",
+          "gepacktes Bundle: Feed, Signaturprüfung, manuelle Installation und Profiling-Sperre passed",
+          "build.sh einschließlich Portabilitätsprüfung: passed"
+        ]
+      }
     },
     {
       "id": "ui-components",
