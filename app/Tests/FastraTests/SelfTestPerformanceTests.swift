@@ -72,7 +72,7 @@ private func pathIgnoringForeignFastraProcess(in root: URL) throws -> String {
 }
 
 @Suite("Lokale Selbsttest-Performance", .serialized)
-struct SelfTestPerformanceTests {
+struct SerialRunnerIntegrationSelfTestPerformanceTests {
     @Test("Fehlende Bildschirmfreigabe startet kein Aufnahme-Werkzeug")
     func deniedScreenCaptureUsesOnlyFallback() {
         var systemCalls = 0
@@ -981,6 +981,10 @@ struct SelfTestPerformanceTests {
         #!/bin/bash
         [ "$1" = "test" ] || exit 91
         [ "$CFPREFERENCES_AVOID_DAEMON" = "1" ] || exit 92
+        # Der neue Runner führt nach einem Funktionsfehler auch die zweite
+        # Phase aus. Das Fixture erzeugt seine Cleanup-Spuren nur im ersten
+        # Aufruf; der zweite belegt die korrekte Fehleraggregation.
+        [ ! -e "$FASTRA_TEST_PROBE" ] || exit 0
         printf '%s\n%s\n' "$TMPDIR" "$CFFIXED_USER_HOME" > "$FASTRA_TEST_PROBE"
         touch "$TMPDIR/fixture"
         mkdir -p "$CFFIXED_USER_HOME/Library/Preferences"
@@ -1011,7 +1015,7 @@ struct SelfTestPerformanceTests {
                 "FASTRA_TEST_REAL_PREFERENCES_DIRECTORY": realPreferences.path,
             ]
         )
-        #expect(result.status == 7, "Der echte Teststatus muss erhalten bleiben")
+        #expect(result.status == 1, "Testfehler müssen als Exit 1 zusammengeführt werden")
         let recorded = try String(contentsOf: probe, encoding: .utf8)
             .split(whereSeparator: \Character.isNewline)
             .map(String.init)
@@ -1221,7 +1225,7 @@ struct SelfTestPerformanceTests {
                 "FASTRA_TEST_PROBE": probe.path,
             ]
         )
-        #expect(result.status == 7)
+        #expect(result.status == 1)
         let childPID = try #require(Int32(
             String(contentsOf: probe, encoding: .utf8)
                 .trimmingCharacters(in: .whitespacesAndNewlines)

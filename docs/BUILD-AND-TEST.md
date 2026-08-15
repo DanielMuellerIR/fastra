@@ -380,7 +380,24 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
 ## QA-Strategie — Automatisierte Tests
 
 - **Logik** automatisiert via [Swift Testing](https://developer.apple.com/xcode/swift-testing/) (Apple, ab Xcode 16). **UI und Visuelles** manuell — XCUITest ist aus Wartungssicht nicht vertretbar.
-- **Laufzeit:** komplette Suite < 5 Sekunden lokal.
+- **Verbindlicher Einstieg:** `cd app && ./test.sh` führt immer beide
+  Unit-Test-Phasen in derselben isolierten Sandbox aus. Die schnelle Phase läuft
+  parallel. Tests mit echten Git-Prozessen, temporären Repositories oder lokalen
+  Remotes tragen im Swift-Bezeichner das stabile Kennzeichen
+  `gitIntegration`/`GitIntegration`; derselbe reguläre Ausdruck schließt sie in
+  Phase 1 aus und wählt sie in Phase 2 vollständig für einen seriellen Lauf aus.
+  Prozessnahe Runner-Regressionen tragen getrennt davon das Kennzeichen
+  `serialRunnerIntegration`/`SerialRunnerIntegration`, weil sie selbst
+  Prozessgruppen, Pipe-Grenzfälle oder Cleanup-Läufe starten und den parallelen
+  Kern sonst künstlich belasten.
+  Die sichtbaren, lokalisierten Testtitel sind ausdrücklich kein Teil der
+  Gruppierung. Für gezielte Runner-Diagnosen stehen `./test.sh --fast-only` und
+  `./test.sh --serial-integration-only` bereit; ohne diese Optionen bleibt der
+  Lauf vollständig.
+- **Maschinenlesbarer Abschluss:** Jede Phase meldet eine
+  `FASTRA_TEST_PHASE`-Zeile, der Gesamtlauf eine `FASTRA_TEST_SUMMARY`-Zeile.
+  Funktionsfehler ergeben Exit 1. Exit 2 ist ausschließlich Start-, Sandbox-
+  oder Prozess-Cleanup-Problemen vorbehalten.
 - **Workflow:** Tests werden parallel zur Implementierung geschrieben. Eine Phase gilt erst als abgeschlossen, wenn alle Tests grün sind.
 - **Coverage:** über 700 Tests; Schwerpunkte sind RegEx-/Platzhalter-Parsing,
   Capture Groups, Find/Replace, Datei-/Projekt-/Git-Logik, Encoding,
@@ -591,8 +608,10 @@ Ein nachweislich verwaister Lock wird beim nächsten Start übernommen.
 
 `./test.sh`, `selftest.sh`, `soak-test.sh` und die beiden vom Build gestarteten
 Portabilitäts-Selbsttests geben jedem Lauf außerdem ein eigenes `TMPDIR` und ein
-eigenes Core-Foundation-Preferences-Verzeichnis. Am Ende wird genau diese
-Sandbox entfernt, auch bei einem roten Lauf oder Signal.
+eigenes Core-Foundation-Preferences-Verzeichnis. Die schnelle und die serielle
+Git-Phase von `./test.sh` teilen sich genau diese eine Sandbox; zwischen ihnen
+wird der Prozessbaum der abgeschlossenen Phase vollständig beendet. Am Ende
+wird die Sandbox entfernt, auch bei einem roten Lauf oder Signal.
 Benannte `UserDefaults`-Suiten können diese Umleitung auf macOS umgehen und
 lassen über `cfprefsd` nach dem Prozessende nochmals eine leere Plist entstehen.
 Der Testcode meldet seine exakten UUID-Domains deshalb zusätzlich an den

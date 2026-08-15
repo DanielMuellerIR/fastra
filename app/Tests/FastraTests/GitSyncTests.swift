@@ -943,7 +943,7 @@ private func realGit(_ arguments: [String], in directory: URL) async -> GitResul
 }
 
 @Suite("Git-Sync mit lokalen Remotes", .serialized)
-struct GitSyncRepositoryIntegrationTests {
+struct GitIntegrationSyncRepositoryTests {
     @Test("Echte verlinkte Worktrees teilen Common Dir, nicht HEAD oder Markerpfade")
     func linkedWorktreeIdentity() async throws {
         guard GitRunner.isAvailable else { return }

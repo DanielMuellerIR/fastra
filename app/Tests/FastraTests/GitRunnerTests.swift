@@ -160,7 +160,7 @@ func pathResolver_doesNotSpinMainRunLoopWhileWaiting() {
 @Test("xcode-select-Abfrage dreht den RunLoop des Main-Threads nicht",
       .timeLimit(.minutes(1)))
 @MainActor
-func queryXcodeSelect_doesNotSpinMainRunLoop() {
+func serialRunnerIntegration_queryXcodeSelectDoesNotSpinMainRunLoop() {
     let reentered = ThreadRecorder()
     RunLoop.main.perform { reentered.record() }
     let dir = GitRunner.queryXcodeSelect()
@@ -174,7 +174,7 @@ func queryXcodeSelect_doesNotSpinMainRunLoop() {
 }
 
 @Test("resolvedPath entspricht der reinen Auswahl-Logik mit echter Umgebung")
-func gitPath_resolvedPathMatchesPureResolution() {
+func serialRunnerIntegration_resolvedPathMatchesPureResolution() {
     let expected = GitRunner.resolvePath(candidates: GitRunner.candidatePaths,
                                          developerDir: GitRunner.developerDirProvider())
     #expect(GitRunner.resolvedPath == expected)
@@ -216,6 +216,9 @@ private final class ExecutableTestExecutor: GitCommandExecuting {
                                 completion: completion)
     }
 }
+
+@Suite("GitRunner-Prozessintegration", .serialized)
+struct SerialRunnerIntegrationGitRunnerTests {
 
 @Test("stdout und stderr werden gleichzeitig ohne Pipe-Deadlock geleert",
       .timeLimit(.minutes(1)))
@@ -531,6 +534,8 @@ func gitRunner_preservesArgumentsAndEnvironment() async throws {
     #expect(result.stdout == value + "\n0\n1\n")
 }
 
+}
+
 @Test("Repository- und Konfigurations-Umleitungen werden entfernt")
 func gitRunner_sanitizesRepositoryEnvironment() {
     let environment = GitRunner.sanitizedEnvironment(base: [
@@ -620,7 +625,7 @@ private func runGit(_ arguments: [String], in repository: URL,
 }
 
 @Test("core.askPass kann trotz lokaler Konfiguration kein Prompt-Programm starten")
-func gitRunner_blocksConfiguredCoreAskPass() async throws {
+func gitIntegration_runnerBlocksConfiguredCoreAskPass() async throws {
     let repo = FileManager.default.temporaryDirectory
         .appendingPathComponent("Fastra-CoreAskPass-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
@@ -665,7 +670,7 @@ func gitRunner_blocksConfiguredCoreAskPass() async throws {
 }
 
 @Test("Wörtliche Pathspecs schützen Magic-Namen und führenden Bindestrich")
-func gitRunner_usesLiteralPathspecs() async throws {
+func gitIntegration_runnerUsesLiteralPathspecs() async throws {
     let repo = FileManager.default.temporaryDirectory
         .appendingPathComponent("Fastra-Literal-Pathspec-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)

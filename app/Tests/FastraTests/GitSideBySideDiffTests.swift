@@ -382,7 +382,7 @@ func sideBySideCommitParents() {
 }
 
 @Test("Reale Git-Diffs funktionieren für Sonderpfad, Index, Arbeitsbaum und Root-Commit")
-func sideBySideRealRepository() async throws {
+func gitIntegration_sideBySideRealRepository() async throws {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("fastra-diff-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -429,7 +429,7 @@ func sideBySideRealRepository() async throws {
 }
 
 @Test("Realer Merge-Konflikt wird nicht als leerer strukturierter Diff missverstanden")
-func sideBySideRealMergeConflict() async throws {
+func gitIntegration_sideBySideRealMergeConflict() async throws {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("fastra-conflict-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

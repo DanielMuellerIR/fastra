@@ -72,7 +72,7 @@ private func runAudit(root: URL, release: Bool = false) throws -> AuditResult {
 }
 
 @Test("Marker aktuell → PASS, Exit 0")
-func audit_currentMarkerPasses() throws {
+func gitIntegration_auditCurrentMarkerPasses() throws {
     let (root, _) = try makeFixtureRepo()
     defer { try? FileManager.default.removeItem(at: root) }
     let result = try runAudit(root: root)
@@ -81,7 +81,7 @@ func audit_currentMarkerPasses() throws {
 }
 
 @Test("Produktrelevanter Commit nach dem Marker → Hinweis mit Commit, Exit 0")
-func audit_outdatedMarkerHints() throws {
+func gitIntegration_auditOutdatedMarkerHints() throws {
     let (root, _) = try makeFixtureRepo()
     defer { try? FileManager.default.removeItem(at: root) }
     // Neuer Commit unter app/Sources → Marker ist veraltet.
@@ -102,7 +102,7 @@ func audit_outdatedMarkerHints() throws {
 }
 
 @Test("Release-Modus: veralteter Marker → harter Fehler (Exit 1)")
-func audit_releaseModeFails() throws {
+func gitIntegration_auditReleaseModeFails() throws {
     let (root, _) = try makeFixtureRepo()
     defer { try? FileManager.default.removeItem(at: root) }
     try "let c = 3\n".write(
@@ -120,7 +120,7 @@ func audit_releaseModeFails() throws {
 }
 
 @Test("Release-Modus: aktueller Marker → Exit 0 (auch Doku-Commits stören nicht)")
-func audit_releaseModePassesWithDocsOnly() throws {
+func gitIntegration_auditReleaseModePassesWithDocsOnly() throws {
     let (root, _) = try makeFixtureRepo()
     defer { try? FileManager.default.removeItem(at: root) }
     // Ein Commit AUSSERHALB von app/Sources zählt nicht als produktrelevant.
@@ -138,7 +138,7 @@ func audit_releaseModePassesWithDocsOnly() throws {
 }
 
 @Test("Fehlende oder kaputte Markerdatei → Exit 1")
-func audit_missingMarkerFails() throws {
+func gitIntegration_auditMissingMarkerFails() throws {
     let (root, _) = try makeFixtureRepo()
     defer { try? FileManager.default.removeItem(at: root) }
     try FileManager.default.removeItem(

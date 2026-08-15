@@ -100,7 +100,7 @@ private func runHistoryAudit(root: URL, patterns: String?,
 }
 
 @Test("Sauberer ausgehender Stand → PASS, Exit 0")
-func publicHistory_cleanOutgoingPasses() throws {
+func gitIntegration_publicHistoryCleanOutgoingPasses() throws {
     let root = try makeHistoryFixtureRepo()
     defer { try? FileManager.default.removeItem(at: root) }
 
@@ -115,7 +115,7 @@ func publicHistory_cleanOutgoingPasses() throws {
 }
 
 @Test("Interne Angabe nur in einem Zwischen-Commit wird gefunden")
-func publicHistory_findsIntermediateCommitLeak() throws {
+func gitIntegration_publicHistoryFindsIntermediateCommitLeak() throws {
     let root = try makeHistoryFixtureRepo()
     defer { try? FileManager.default.removeItem(at: root) }
 
@@ -154,7 +154,7 @@ func publicHistory_findsIntermediateCommitLeak() throws {
 }
 
 @Test("Unanwendbares privates Muster bricht hart ab statt PASS zu melden")
-func publicHistory_brokenPatternIsHardError() throws {
+func gitIntegration_publicHistoryBrokenPatternIsHardError() throws {
     let root = try makeHistoryFixtureRepo()
     defer { try? FileManager.default.removeItem(at: root) }
 

@@ -112,7 +112,7 @@ private func reviewFixUnset() -> GitExecutionOutcome {
 }
 
 @Suite("Git-Index-Lock nach dem Preflight")
-struct GitReviewFixLockCollisionTests {
+struct GitIntegrationReviewFixLockCollisionTests {
     @Test("Fremder Lock aus dem Startfenster wird niemals gelöscht")
     func foreignLockAfterPreflightSurvives() async throws {
         guard GitRunner.isAvailable else { return }
@@ -327,7 +327,7 @@ struct GitReviewFixPushArgumentTests {
 }
 
 @Suite("Push gegen die geprüfte Adresse (echtes Git)", .serialized)
-struct GitReviewFixPushTargetTests {
+struct GitIntegrationReviewFixPushTargetTests {
     @Test("Die festgenagelte Adresse gewinnt gegen eine geänderte Remote-URL")
     func pinnedAddressWinsAndKeepsTracking() async throws {
         guard GitRunner.isAvailable else { return }
@@ -435,7 +435,7 @@ struct GitReviewFixPushTargetTests {
 
 @MainActor
 @Suite("Push-Ablauf zeigt den gebundenen Plan", .serialized)
-struct GitReviewFixPushFlowTests {
+struct GitIntegrationReviewFixPushFlowTests {
     @Test("gitPush holt den Remote-Stand, bestätigt den Plan und pusht den OID")
     func pushFlowFetchesConfirmsAndPushesBoundOID() async throws {
         guard GitRunner.isAvailable else { return }

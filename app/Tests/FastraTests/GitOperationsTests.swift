@@ -555,7 +555,7 @@ struct GitRepositoryStoreTests {
     }
 
     @Test("Externer Checkout plus Commit eskaliert Status zu konsistentem Full-Snapshot")
-    func realExternalCheckoutAndCommit() async throws {
+    func gitIntegration_realExternalCheckoutAndCommit() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("fastra-store-real-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
