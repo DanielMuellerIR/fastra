@@ -11,6 +11,13 @@ import Testing
 
 private typealias Detection = ContentLanguageDetection
 
+private func synchronousDocumentLanguageDetector() -> DocumentLanguageDetector {
+    DocumentLanguageDetector(
+        scheduleWork: { $0() },
+        deliverResult: { $0() }
+    )
+}
+
 // MARK: - Positivfälle (hohe Konfidenz)
 
 @Test("JSON: vollständiges Objekt wird erkannt")
@@ -218,8 +225,7 @@ func workspace_detectsAfterBulkInsert() throws {
 
     let ws = Workspace(
         defaults: defaults,
-        scheduleLanguageDetectionWork: { $0() },
-        deliverLanguageDetectionResult: { $0() }
+        documentLanguageDetector: synchronousDocumentLanguageDetector()
     )
     let tab = EditorTab(title: Workspace.untitledBaseName, path: "—")
     ws.tabs = [tab]
@@ -243,8 +249,7 @@ func workspace_detectsShebang() throws {
 
     let ws = Workspace(
         defaults: defaults,
-        scheduleLanguageDetectionWork: { $0() },
-        deliverLanguageDetectionResult: { $0() }
+        documentLanguageDetector: synchronousDocumentLanguageDetector()
     )
     let tab = EditorTab(title: Workspace.untitledBaseName, path: "—")
     ws.tabs = [tab]

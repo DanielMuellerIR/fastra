@@ -5,8 +5,9 @@
 // - konservative Format-Heuristiken (nur bei hoher Konfidenz ein Ergebnis)
 // - Hysterese (einmal Erkanntes flackert beim Tippen nicht zurück)
 // - Auslöser-/Drossel-Entscheidung (Paste sofort, sonst Debounce)
-// Die Einbettung (Debounce-Timer, Hintergrund-Thread, Tab-Zustand) liegt im
-// Workspace; hier ist alles pure Funktion und damit direkt unit-testbar.
+// Debounce, Hintergrundarbeit und Abbruch koordiniert der
+// DocumentLanguageDetector; hier ist alles pure Funktion und damit direkt
+// unit-testbar.
 
 import Foundation
 

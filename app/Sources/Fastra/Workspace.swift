@@ -439,7 +439,7 @@ final class Workspace: ObservableObject {
     /// als eine schwache Referenz bleibt sie auch nach dem Schließen des
     /// auslösenden Fensters eindeutig und kann keinem anderen Fenster zufallen.
     let instanceID = UUID()
-    typealias LanguageDetectionScheduler = (@escaping @Sendable () -> Void) -> Void
+    typealias ProjectContextScheduler = (@escaping @Sendable () -> Void) -> Void
     typealias ProjectContextResolver = @Sendable (URL, URL?) -> URL?
 
     private final class FolderApplyProgressRelay: @unchecked Sendable {
@@ -1012,19 +1012,14 @@ final class Workspace: ObservableObject {
          terminalOpener: TerminalOpening = ExternalTerminalLauncher(),
          terminalDirectoryResolver: TerminalDirectoryResolving = DefaultTerminalDirectoryResolver(),
          externalChangeInspector: ExternalChangeInspector = ExternalChangeInspector(),
-         scheduleLanguageDetectionWork: @escaping LanguageDetectionScheduler = {
-             DispatchQueue.global(qos: .utility).async(execute: $0)
-         },
-         deliverLanguageDetectionResult: @escaping LanguageDetectionScheduler = {
-             DispatchQueue.main.async(execute: $0)
-         },
+         documentLanguageDetector: DocumentLanguageDetector? = nil,
          resolveProjectContext: @escaping ProjectContextResolver = {
              Workspace.existingProjectContextTarget(for: $0, currentProject: $1)
          },
-         scheduleProjectContextWork: @escaping LanguageDetectionScheduler = {
+         scheduleProjectContextWork: @escaping ProjectContextScheduler = {
              DispatchQueue.global(qos: .userInitiated).async(execute: $0)
          },
-         deliverProjectContextResult: @escaping LanguageDetectionScheduler = {
+         deliverProjectContextResult: @escaping ProjectContextScheduler = {
              DispatchQueue.main.async(execute: $0)
          }) {
         // Die injizierten Defaults merken — ALLE Persistenz-Pfade des
@@ -1041,8 +1036,8 @@ final class Workspace: ObservableObject {
         self.terminalOpener = terminalOpener
         self.terminalDirectoryResolver = terminalDirectoryResolver
         self.externalChangeInspector = externalChangeInspector
-        self.scheduleLanguageDetectionWork = scheduleLanguageDetectionWork
-        self.deliverLanguageDetectionResult = deliverLanguageDetectionResult
+        self.documentLanguageDetector = documentLanguageDetector
+            ?? DocumentLanguageDetector()
         self.resolveProjectContext = resolveProjectContext
         self.scheduleProjectContextWork = scheduleProjectContextWork
         self.deliverProjectContextResult = deliverProjectContextResult
@@ -1430,8 +1425,7 @@ final class Workspace: ObservableObject {
         // eintreffende Datei-Ladevorgänge in den neuen Zustand hineintragen.
         closeProject()
         loadGeneration.removeAll()
-        languageDetectionWork.values.forEach { $0.cancel() }
-        languageDetectionWork.removeAll()
+        documentLanguageDetector.cancelAll()
 
         let scratch = Self.makeScratchTab()
         tabs = [scratch]
@@ -1720,6 +1714,7 @@ final class Workspace: ObservableObject {
         guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
         previewLoadCancellations.removeValue(forKey: id)?.cancel()
         loadGeneration.removeValue(forKey: id)
+        documentLanguageDetector.cancel(tabID: id, documentID: tabs[idx].documentID)
         cancelGitDiffLoad(tabID: id)
         cancelGitSnapshotLoad(tabID: id)
         tabs.remove(at: idx)
@@ -1809,6 +1804,11 @@ final class Workspace: ObservableObject {
         for removedID in tabs.map(\.id) where removedID != id {
             previewLoadCancellations.removeValue(forKey: removedID)?.cancel()
             loadGeneration.removeValue(forKey: removedID)
+            if let removedTab = tabs.first(where: { $0.id == removedID }) {
+                documentLanguageDetector.cancel(
+                    tabID: removedID, documentID: removedTab.documentID
+                )
+            }
             cancelGitDiffLoad(tabID: removedID)
             cancelGitSnapshotLoad(tabID: removedID)
         }
@@ -2503,6 +2503,7 @@ final class Workspace: ObservableObject {
         if let replaceablePreviewIndex {
             // Derselbe Tab-Platz bleibt erhalten; dadurch springt die Leiste
             // beim raschen Durchsehen vieler Dateien nicht nach links/rechts.
+            documentLanguageDetector.cancel(tabID: placeholder.id)
             cancelGitDiffLoad(tabID: placeholder.id)
             cancelGitSnapshotLoad(tabID: placeholder.id)
             previewLoadCancellations.removeValue(forKey: placeholder.id)?.cancel()
@@ -3107,19 +3108,12 @@ final class Workspace: ObservableObject {
 
     // MARK: - Inhaltsbasierte Spracherkennung (Etappe 3 Wunschpaket 2026-07)
 
-    /// Laufende Debounce-Arbeit je Tab — ein neuer Tastendruck ersetzt die
-    /// noch wartende Analyse (klassischer Debounce).
-    private var languageDetectionWork: [UUID: DispatchWorkItem] = [:]
-    /// Inhaltslänge zur Zeit der letzten Analyse je Tab (Drossel-Basis).
-    private var languageDetectionAnalyzedLength: [UUID: Int] = [:]
-    /// Produktion analysiert im Hintergrund und übernimmt auf dem Main-Thread.
-    /// Tests injizieren synchrone Scheduler und brauchen dadurch keine
-    /// zeitabhängigen Polling-Schleifen für denselben Zustandsübergang.
-    private let scheduleLanguageDetectionWork: LanguageDetectionScheduler
-    private let deliverLanguageDetectionResult: LanguageDetectionScheduler
+    /// Fensterlokale Mechanik für Debounce, Hintergrundarbeit und veraltete
+    /// Ergebnisse. Eignung und jede Mutation des Tab-Zustands bleiben hier.
+    private let documentLanguageDetector: DocumentLanguageDetector
     private let resolveProjectContext: ProjectContextResolver
-    private let scheduleProjectContextWork: LanguageDetectionScheduler
-    private let deliverProjectContextResult: LanguageDetectionScheduler
+    private let scheduleProjectContextWork: ProjectContextScheduler
+    private let deliverProjectContextResult: ProjectContextScheduler
     private var projectContextRequestGeneration: UInt64 = 0
 
     /// Nur ungespeicherte Tabs ohne Dateiendung, ohne manuelle Sprachwahl
@@ -3134,77 +3128,38 @@ final class Workspace: ObservableObject {
             && (tab.title as NSString).pathExtension.isEmpty
     }
 
-    /// Entscheidet über sofortige/verzögerte Analyse (pure Logik in
-    /// `ContentLanguageDetection.trigger`) und plant sie entsprechend ein.
+    /// Übergibt nur die mechanischen Eingaben an den Detector. Der Workspace
+    /// entscheidet weiterhin vor dem Start über die Eignung und unmittelbar
+    /// vor dem Anwenden über Dokumentidentität und manuelle Vorrangregeln.
     func scheduleLanguageDetection(tabID: UUID, oldLength: Int, newLength: Int) {
         guard let idx = tabs.firstIndex(where: { $0.id == tabID }),
               Self.isEligibleForContentDetection(tabs[idx]) else { return }
-        switch ContentLanguageDetection.trigger(
-            oldLength: oldLength, newLength: newLength,
-            lastAnalyzedLength: languageDetectionAnalyzedLength[tabID]
-        ) {
-        case .none:
-            return
-        case .immediate:
-            languageDetectionWork[tabID]?.cancel()
-            performLanguageDetection(tabID: tabID)
-        case .debounced:
-            languageDetectionWork[tabID]?.cancel()
-            let work = DispatchWorkItem { [weak self] in
-                self?.performLanguageDetection(tabID: tabID)
-            }
-            languageDetectionWork[tabID] = work
-            DispatchQueue.main.asyncAfter(
-                deadline: .now() + ContentLanguageDetection.debounceInterval,
-                execute: work
-            )
-        }
-    }
+        let tab = tabs[idx]
+        let request = DocumentLanguageDetector.Request(
+            tabID: tab.id,
+            documentID: tab.documentID,
+            oldLength: oldLength,
+            newLength: newLength,
+            content: tab.content
+        )
+        documentLanguageDetector.schedule(request) { [weak self] result in
+            guard let self,
+                  let i = self.tabs.firstIndex(where: {
+                      $0.id == result.tabID && $0.documentID == result.documentID
+                  }),
+                  Self.isEligibleForContentDetection(self.tabs[i]) else { return }
 
-    /// Analysiert die ersten ~64 KB auf einem Hintergrund-Thread und wendet
-    /// das Ergebnis mit Hysterese an. Bei normalem Tippen entsteht praktisch
-    /// keine Last: Der Aufruf kommt nur nach Debounce + Drossel hierher.
-    private func performLanguageDetection(tabID: UUID) {
-        guard let idx = tabs.firstIndex(where: { $0.id == tabID }),
-              Self.isEligibleForContentDetection(tabs[idx]) else { return }
-        let sample = String(tabs[idx].content
-            .prefix(ContentLanguageDetection.analysisCharacterLimit))
-        let totalLength = tabs[idx].content.count
-        languageDetectionAnalyzedLength[tabID] = totalLength
-
-        let deliver = deliverLanguageDetectionResult
-        scheduleLanguageDetectionWork { [weak self] in
-            let format = ContentLanguageDetection.detect(in: sample)
-            // Kein Format erkannt → Shebang-/Modeline-Erkennung des Editors
-            // (bislang ungenutzter Upstream-Pfad; erkennt z. B. „#!/bin/bash").
-            var language: CodeLanguage?
-            if let format {
-                language = Self.grammarForDetectedFormat(format)
-            } else {
-                let fallback = CodeLanguage.detectLanguageFrom(
-                    // Bewusst ohne Endung: Es zählt allein der Inhalt.
-                    url: URL(fileURLWithPath: "unbenannt"),
-                    prefixBuffer: String(sample.prefix(512)),
-                    suffixBuffer: nil
-                )
-                if fallback.id != .plainText {
-                    language = fallback
-                }
-            }
-            let detectedLanguage = language
-            deliver { [weak self] in
-                guard let self,
-                      let i = self.tabs.firstIndex(where: { $0.id == tabID }),
-                      Self.isEligibleForContentDetection(self.tabs[i]) else { return }
-                // Hysterese über den Grammatik-Vergleich: `nil` (nichts
-                // erkannt) lässt eine bestehende Erkennung stehen.
-                let current = self.tabs[i].contentDetectedLanguage
-                let currentFormat = self.tabs[i].contentDetectedFormat
-                guard let detectedLanguage,
-                      detectedLanguage != current || format != currentFormat else { return }
-                self.tabs[i].contentDetectedLanguage = detectedLanguage
-                self.tabs[i].contentDetectedFormat = format
-            }
+            let format = result.analysis.format
+            let detectedLanguage = format.map(Self.grammarForDetectedFormat)
+                ?? result.analysis.fallbackLanguage
+            // Hysterese über den Grammatik-Vergleich: `nil` (nichts
+            // erkannt) lässt eine bestehende Erkennung stehen.
+            let current = self.tabs[i].contentDetectedLanguage
+            let currentFormat = self.tabs[i].contentDetectedFormat
+            guard let detectedLanguage,
+                  detectedLanguage != current || format != currentFormat else { return }
+            self.tabs[i].contentDetectedLanguage = detectedLanguage
+            self.tabs[i].contentDetectedFormat = format
         }
     }
 
@@ -3237,8 +3192,9 @@ final class Workspace: ObservableObject {
         )
         if language != nil {
             // Manuelle Wahl beendet die Automatik: wartende Analyse abräumen.
-            languageDetectionWork[tabs[idx].id]?.cancel()
-            languageDetectionWork.removeValue(forKey: tabs[idx].id)
+            documentLanguageDetector.cancel(
+                tabID: tabs[idx].id, documentID: tabs[idx].documentID
+            )
         } else {
             // Zurück auf Automatik → direkt neu analysieren.
             scheduleLanguageDetection(tabID: tabs[idx].id,
@@ -3260,8 +3216,9 @@ final class Workspace: ObservableObject {
         tabs[idx].languageOverride = nil
         rememberLanguageChoice(LanguageMenuSupport.Entry.custom(language).id,
                                forTabAt: idx)
-        languageDetectionWork[tabs[idx].id]?.cancel()
-        languageDetectionWork.removeValue(forKey: tabs[idx].id)
+        documentLanguageDetector.cancel(
+            tabID: tabs[idx].id, documentID: tabs[idx].documentID
+        )
         editorReloadNonce += 1
     }
 
@@ -3310,8 +3267,9 @@ final class Workspace: ObservableObject {
             tab.languageOverride = nil
         }
         // Eine manuelle Wahl beendet die Automatik — wie beim Setzen im Menü.
-        languageDetectionWork[tab.id]?.cancel()
-        languageDetectionWork.removeValue(forKey: tab.id)
+        documentLanguageDetector.cancel(
+            tabID: tab.id, documentID: tab.documentID
+        )
     }
 
     // MARK: - XPath-Navigation (Etappe 5 Wunschpaket 2026-07)
