@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 615512
+    "tokens_spent": 903128
   },
   "campaign_history": [
     {
@@ -294,16 +294,16 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T17:22:39+02:00",
-        "observed_head": "f03feaaa32a600ecb98e04f20e5ddaf02a260a2f",
-        "content_sha256": "2ec31eadefb774782aef1071fd44159e49610bea8d3ebc820fc970a29fd41dbd",
+        "completed_at": "2026-08-15T17:39:14+02:00",
+        "observed_head": "8aca77c5e99271c2cb2cb18229204160884ebdd6",
+        "content_sha256": "1397a87d5d9732110b193445836310010577a041e551c13d30452e96263844ec",
         "file_count": 20,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Seit dem letzten Review änderte sich im Paketierungsbereich ausschließlich die konsistente Produktversion von 1.92.0/181 auf 1.93.0/182. Info.plist, gepacktes Bundle und unveränderte Build-Grenzen geprüft; kein weiterer Fehler oder sinnvoller Vereinfachungsbedarf.",
+        "summary": "Seit dem letzten Review änderten sich im Paketierungsbereich nur CFBundleShortVersionString und CFBundleVersion auf 1.94.0/183; Quell- und Bundle-Plist stimmen überein, die Paketierungsgrenzen blieben unverändert.",
         "tests": [
-          "plutil: Info.plist gültig; Quell- und Bundle-Version jeweils 1.93.0/182.",
-          "./build.sh: Build, Fensterziel-Audit, Signatur und portable Ordnersuche bestanden."
+          "plutil: Quell- und Bundle-Info.plist gültig",
+          "build.sh: bestanden einschließlich Signatur und portabler Ordnersuche"
         ]
       }
     },
@@ -573,7 +573,23 @@
       "risk": "high",
       "priority": 11,
       "reason": "4D-Parser, Indizes, LSP und Archive verarbeiten komplexe fremde Projektinhalte und erzeugte Symbolbestände.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T165221406979+0200",
+        "completed_at": "2026-08-15T17:38:46+02:00",
+        "observed_head": "8aca77c5e99271c2cb2cb18229204160884ebdd6",
+        "content_sha256": "e1a7d5ad4544181d5330a90a9ab272c906bd0b3d421719e53ef7b42bc36ac530",
+        "file_count": 27,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Sechs belegte Schutzfehler behoben: Tool4D-Abbruch hält den Lauf bis zum Prozessstopp, ZIP-Verschlüsselung wird abgewiesen, 4D-Token bleiben im Dokument, JSON-Schema vergleicht Typen exakt, klassische Parameternummern und Methodendateien sind begrenzt.",
+        "tests": [
+          "6 neue Regressionstests: vor der Änderung fehlgeschlagen, danach bestanden",
+          "P11-Bereichstest: 153 Tests in 3 Suiten bestanden",
+          "build.sh: bestanden einschließlich Fenster-Zielaudit, Signatur und portabler Ordnersuche",
+          "localization-audit.sh: bestanden"
+        ]
+      }
     },
     {
       "id": "test-harness-performance",
