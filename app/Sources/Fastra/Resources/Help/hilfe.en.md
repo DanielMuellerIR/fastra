@@ -711,9 +711,12 @@ files without a BOM, Fastra distinguishes Windows-1252 characters such as
 typographic quotes and the euro sign from Latin-1. If the format cannot be
 handled safely, the file stays unchanged.
 
-If an open file was changed outside Fastra, saving asks for explicit
-confirmation. A further change immediately before the write always cancels
-the save instead of silently overwriting the on-disk version.
+If an open file was changed outside Fastra, returning to the app prompts when
+the tab has unsaved edits; a clean tab reloads the new on-disk version silently.
+This also works when an external tool preserves the modification date or sets
+it to an older value. Saving likewise asks for explicit confirmation. A
+further change immediately before the write always cancels the save instead
+of silently overwriting the on-disk version.
 
 ## Windows and Tabs
 

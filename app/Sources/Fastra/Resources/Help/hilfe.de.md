@@ -749,9 +749,12 @@ typografische Anführungszeichen und das Eurozeichen von Latin-1. Erkennt
 Fastra das Format nicht sicher, bleibt die Datei unverändert.
 
 Wurde eine geöffnete Datei außerhalb von Fastra geändert, fragt Fastra beim
-Speichern ausdrücklich nach. Eine weitere Änderung unmittelbar vor dem
-Schreibvorgang bricht das Speichern immer ab, statt den Plattenstand still zu
-überschreiben.
+Zurückkehren in die App bei ungesicherten Änderungen nach; ein sauberer Tab
+lädt den neuen Plattenstand still. Das gilt auch, wenn ein Fremdwerkzeug das
+Änderungsdatum beibehält oder auf einen älteren Wert setzt. Beim Speichern
+fragt Fastra ebenfalls ausdrücklich nach. Eine weitere Änderung unmittelbar
+vor dem Schreibvorgang bricht das Speichern immer ab, statt den Plattenstand
+still zu überschreiben.
 
 ## Fenster und Tabs
 
