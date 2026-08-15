@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 1739485
+    "tokens_spent": 1755336
   },
   "campaign_history": [
     {
@@ -294,16 +294,15 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T18:06:00+02:00",
-        "observed_head": "1b87ab0b23070e4d68b923840f5af40ca3d0cd63",
-        "content_sha256": "d068013c3e2f4a04b9aeb670fa9abdc5294144f2ba9f0c5e6d812b1bed7093a8",
+        "completed_at": "2026-08-15T18:21:22+02:00",
+        "observed_head": "18de9c9a18fbf7b20f7d81d90e88b0bc9a9958bc",
+        "content_sha256": "e5e40a3aa8b3b6e94c7fbb01045b28d997374385d2175831498a022ed0ae727f",
         "file_count": 20,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Seit dem letzten Review änderten sich nur CFBundleShortVersionString und CFBundleVersion auf 1.96.0/185; Quell- und Bundle-Plist stimmen überein, die Paketierungsgrenzen blieben unverändert.",
+        "summary": "Seit dem letzten P5-Review änderten sich ausschließlich CFBundleShortVersionString und CFBundleVersion auf 1.97.0/186. Quell- und Bundle-Plist stimmen überein; Paketierungs-, Signatur- und Portabilitätsgrenzen blieben unverändert.",
         "tests": [
-          "plutil und codesign: Quell- und Bundle-Info.plist gültig, Versionen 1.96.0/185 identisch, Bundle-Signatur gültig",
-          "./build.sh: passed einschließlich Fensterziel-Audit, Signatur und portabler Ordnersuche"
+          "plutil: Quell- und Bundle-Info.plist gültig und jeweils 1.97.0/186; codesign --verify --deep --strict grün; ./build.sh grün einschließlich Fenster-Zielprüfung, Signatur und portabler Ordnersuche."
         ]
       }
     },
