@@ -57,13 +57,4 @@ enum FourDProjectMethodIndex {
         }
         return names
     }
-
-    /// Asynchrone Scans dürfen nur ihr ursprüngliches Projekt aktualisieren.
-    /// Diese reine Entscheidung hält das Rennen beim schnellen Projektwechsel
-    /// direkt testbar und unabhängig von SwiftUI.
-    static func shouldApply(resultFor root: URL, generation: UInt64,
-                            currentRoot: URL?, currentGeneration: UInt64) -> Bool {
-        generation == currentGeneration
-            && currentRoot?.canonicalFileURL == root.canonicalFileURL
-    }
 }

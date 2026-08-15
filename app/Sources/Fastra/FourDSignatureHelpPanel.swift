@@ -113,12 +113,13 @@ final class FourDSignatureHelpController: ObservableObject {
     private func titleRequest(workspace: Workspace,
                               context: FourDCallContext) -> FourDSignatureResolver.Request {
         let lowered = context.methodName.lowercased()
+        let snapshot = workspace.fourDMethodIndexSnapshot
         // Die Schreibweise der DATEI kommt aus dem Index, nicht aus dem
         // getippten Aufruf: 4D vergleicht Methodennamen ohne Groß-/
         // Kleinschreibung, ein case-sensitives Dateisystem aber nicht —
         // `alert(…)` fände `ALERT.4dm` sonst nicht (Review 2026-08-02).
-        let fileName = workspace.fourDProjectMethodNames.contains(lowered)
-            ? (workspace.fourDProjectMethodDisplayNames
+        let fileName = snapshot.projectMethodNames.contains(lowered)
+            ? (snapshot.projectMethodDisplayNames
                 .first(where: { $0.lowercased() == lowered }) ?? context.methodName)
             : nil
         return FourDSignatureResolver.Request(
@@ -126,7 +127,7 @@ final class FourDSignatureHelpController: ObservableObject {
             projectMethodFileName: fileName,
             projectURL: workspace.projectURL,
             documentURL: workspace.activeTab?.url,
-            componentMethod: workspace.fourDComponentMethods[lowered]
+            componentMethod: snapshot.componentMethods[lowered]
         )
     }
 

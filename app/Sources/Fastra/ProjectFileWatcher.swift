@@ -7,7 +7,7 @@ import CoreServices
 /// Änderungen, die Terminal, Git oder ein anderes Programm in tiefen
 /// Unterordnern vornehmen. Die kleine Latenz bündelt Speichervorgänge, die aus
 /// mehreren atomaren Rename-/Write-Schritten bestehen, zu einem UI-Refresh.
-final class ProjectFileWatcher: ObservableObject {
+final class ProjectFileWatcher: ObservableObject, FourDProjectWatching {
     @Published private(set) var generation = 0
 
     /// Der Dateibaum nutzt die veröffentlichte Generation zum Rendern. Andere

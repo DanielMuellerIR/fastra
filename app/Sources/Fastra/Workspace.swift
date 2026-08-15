@@ -523,20 +523,23 @@ final class Workspace: ObservableObject {
     /// Dateinamens-Filter der Projekt-Seitenleiste (Etappe 3 Wunschpaket
     /// 2026-07c). Leer = kein Filter. Projektwechsel setzt zurück.
     @Published var fileTreeFilterQuery: String = ""
-    /// Bekannte 4D-Projektmethoden für den sichtbaren `.4dm`-Editor. Der
-    /// Index wird beim Projektwechsel nebenläufig aufgebaut; bis dahin bleibt
-    /// die Menge leer und unbekannte Namen sind weiterhin Prozessvariablen.
-    @Published private(set) var fourDProjectMethodNames = Set<String>()
-    /// Original-Schreibweisen der Projektmethoden, alphabetisch — Grundlage
-    /// der Vervollständigung (eingefügt wird exakt der Dateiname).
-    @Published private(set) var fourDProjectMethodDisplayNames: [String] = []
-    /// Geteilte Methoden der Projekt-Komponenten (`Components/*.4dbase` bzw.
-    /// `.4DZ`), Schlüssel kleingeschrieben. Wird im selben nebenläufigen
-    /// Scan wie der Projektmethoden-Index aufgebaut.
-    @Published private(set) var fourDComponentMethods: [String: FourDComponentMethod] = [:]
-    /// Original-Schreibweisen der Komponentenmethoden, alphabetisch — für
-    /// die Vervollständigung.
-    @Published private(set) var fourDComponentMethodDisplayNames: [String] = []
+    /// Atomarer 4D-Projektindex für dieses Fenster. Projekt- und Komponenten-
+    /// methoden wechseln gemeinsam; bis zum ersten Scan bleibt er leer.
+    @Published private(set) var fourDMethodIndexSnapshot = FourDMethodIndexSnapshot.empty
+    /// Kompatible Lesesichten für bestehende Verbraucher. Sie besitzen keinen
+    /// eigenen Zustand, sondern stammen immer aus demselben Snapshot.
+    var fourDProjectMethodNames: Set<String> {
+        fourDMethodIndexSnapshot.projectMethodNames
+    }
+    var fourDProjectMethodDisplayNames: [String] {
+        fourDMethodIndexSnapshot.projectMethodDisplayNames
+    }
+    var fourDComponentMethods: [String: FourDComponentMethod] {
+        fourDMethodIndexSnapshot.componentMethods
+    }
+    var fourDComponentMethodDisplayNames: [String] {
+        fourDMethodIndexSnapshot.componentMethodDisplayNames
+    }
     /// Merkt sich den jeweils letzten Hinweis, damit ein verzögertes
     /// Ausblenden niemals einen NEUEREN Hinweis wegräumt.
     private var sidebarNoticeToken = UUID()
@@ -920,17 +923,9 @@ final class Workspace: ObservableObject {
     var gitConflictInspectionLease: GitCancelling?
     var gitConflictInspectionRequestIDs: [Data: UUID] = [:]
     private var gitAutoFetchObservation: GitRepositoryObservation?
-    /// Laufender, kleiner Verzeichnis-Scan für 4D-Projektmethoden. Ein neuer
-    /// Projektwechsel ersetzt ihn; zusätzlich schützt `projectGeneration`
-    /// gegen ein Ergebnis, das erst nach dem Wechsel zurückkehrt.
-    private var fourDProjectMethodIndexTask: Task<Void, Never>?
-    /// FSEvents können beim Speichern mehrere Einträge liefern. Dieses kurze
-    /// Debounce bündelt sie zu genau einem neuen Methodenindex-Scan.
-    private var fourDProjectMethodIndexRefreshTask: Task<Void, Never>?
-    /// Der Watcher gehört zum Workspace, nicht zu einem sichtbaren
-    /// Sidebar-Tab. Sonst blieben Projektmethoden beim Wechsel zu Changes
-    /// oder Graph veraltet, obwohl der Editor weiterhin 4D-Dateien zeigt.
-    private var fourDProjectMethodWatcher: ProjectFileWatcher?
+    /// Fensterlokaler Besitzer von Watcher, Scan und Debounce des 4D-Indexes.
+    /// Projekt-URL und Generation bleiben dagegen Quellen des Workspace.
+    private let fourDProjectIndexController = FourDProjectIndexController()
     /// Erhöht sich bei jedem Projektwechsel. Asynchrone Aktionsketten binden
     /// sich an diesen Wert und können nie in ein später geöffnetes Repo laufen.
     private(set) var projectGeneration: UInt64 = 0
@@ -3427,7 +3422,7 @@ final class Workspace: ObservableObject {
         if invalidatingSessionRestore { sessionRestoreGeneration &+= 1 }
         let url = url.canonicalFileURL
         NotificationCenter.default.post(name: .fastraProjectContextWillChange, object: self)
-        stopFourDProjectMethodWatcher()
+        fourDProjectIndexController.stop()
         cancelAllGitDiffLoads()
         cancelAllGitSnapshotLoads()
         cancelAllPreviewLoads()
@@ -3488,8 +3483,16 @@ final class Workspace: ObservableObject {
         showsConflictBase = false
         projectURL = url
         let generation = projectGeneration
-        startFourDProjectMethodIndex(for: url, generation: generation)
-        startFourDProjectMethodWatcher(for: url, generation: generation)
+        fourDMethodIndexSnapshot = .empty
+        fourDProjectIndexController.start(
+            projectURL: url,
+            projectGeneration: generation
+        ) { [weak self] indexedRoot, indexedGeneration, snapshot in
+            guard let self,
+                  self.projectGeneration == indexedGeneration,
+                  self.projectURL?.canonicalFileURL == indexedRoot else { return }
+            self.fourDMethodIndexSnapshot = snapshot
+        }
         gitRepositoryObservation = gitRepositoryStore.observe(repository: url) {
             [weak self] snapshot in
             guard let self, self.projectGeneration == generation,
@@ -3522,102 +3525,6 @@ final class Workspace: ObservableObject {
         }
     }
 
-    /// Liest ausschließlich die beiden 4D-Methodenordner außerhalb des
-    /// Main-Threads. Die Generation verhindert, dass ein langsamer alter
-    /// Scan den Highlight-Index eines inzwischen geöffneten Projekts ersetzt.
-    private func startFourDProjectMethodIndex(for root: URL, generation: UInt64) {
-        fourDProjectMethodIndexTask?.cancel()
-        fourDProjectMethodNames = []
-        fourDProjectMethodDisplayNames = []
-        fourDComponentMethods = [:]
-        fourDComponentMethodDisplayNames = []
-        fourDProjectMethodIndexTask = Task { @MainActor [weak self] in
-            // Projekt- und Komponentenmethoden im selben Hintergrund-Scan:
-            // Beide Ergebnisse gehören zum selben Projektstand.
-            // `Task.detached` erbt KEINE Cancellation — der Handler reicht
-            // das `cancel()` des äußeren Tasks deshalb ausdrücklich an den
-            // Scan weiter, der an seinen Schleifen `Task.isCancelled` prüft
-            // und früh abbricht (Review 2026-08-02).
-            let scan = Task.detached(priority: .utility) {
-                (FourDProjectMethodIndex.methodDisplayNames(in: root),
-                 FourDComponentIndex.methods(in: root))
-            }
-            let (displayNames, componentMethods) = await withTaskCancellationHandler {
-                await scan.value
-            } onCancel: {
-                scan.cancel()
-            }
-            let names = Set(displayNames.keys)
-            guard !Task.isCancelled,
-                  let self,
-                  FourDProjectMethodIndex.shouldApply(
-                    resultFor: root,
-                    generation: generation,
-                    currentRoot: self.projectURL,
-                    currentGeneration: self.projectGeneration
-                  ) else { return }
-
-            // Der Scan oben darf nebenläufig arbeiten. Die veröffentlichte
-            // Menge muss dagegen auf dem Main-Actor wechseln: Combine und
-            // SwiftUI können sonst beim gleichzeitigen Editor-Update
-            // gegenseitig auf ihre internen Locks warten.
-            self.fourDProjectMethodNames = names
-            self.fourDProjectMethodDisplayNames = displayNames.values
-                .sorted { $0.lowercased() < $1.lowercased() }
-            self.fourDComponentMethods = componentMethods
-            self.fourDComponentMethodDisplayNames = componentMethods.values
-                .map(\.displayName)
-                .sorted { $0.lowercased() < $1.lowercased() }
-        }
-    }
-
-    /// Hält die Aktualisierung des 4D-Methodenindex am Projekt selbst. Der
-    /// Dateibaum besitzt zwar einen eigenen Watcher für sein Rendering, kann
-    /// aber unsichtbar sein; dieser zweite Besitzer bleibt deshalb für die
-    /// gesamte Dauer eines geöffneten Projekts aktiv.
-    private func startFourDProjectMethodWatcher(for root: URL, generation: UInt64) {
-        let watcher = ProjectFileWatcher(rootURL: root)
-        watcher.onRefresh = { [weak self, weak watcher] in
-            guard let self,
-                  self.fourDProjectMethodWatcher === watcher,
-                  self.projectGeneration == generation else { return }
-            self.projectFilesDidChange(for: root)
-        }
-        fourDProjectMethodWatcher = watcher
-    }
-
-    /// Stoppt den Stream ausdrücklich vor Wechsel oder Schließen. Das macht
-    /// alte FSEvents wirkungslos und gibt den nativen Beobachter sofort frei.
-    private func stopFourDProjectMethodWatcher() {
-        fourDProjectMethodWatcher?.stop()
-        fourDProjectMethodWatcher = nil
-    }
-
-    /// Der Workspace-eigene Projekt-Watcher meldet externe Änderungen hierher.
-    /// Nur das aktuelle Projekt darf einen neuen Index auslösen; ein alter
-    /// Callback kann dadurch keinen neuen Projektstand überschreiben.
-    func projectFilesDidChange(for observedRoot: URL) {
-        guard let currentRoot = projectURL,
-              currentRoot.canonicalFileURL == observedRoot.canonicalFileURL else {
-            return
-        }
-        let generation = projectGeneration
-        fourDProjectMethodIndexRefreshTask?.cancel()
-        fourDProjectMethodIndexRefreshTask = Task { @MainActor [weak self] in
-            // Atomare Speicheroperationen liefern oft mehrere FSEvents.
-            // Eine kleine Pause verhindert unnötige komplette Scans, ohne
-            // die UI oder den Main-Actor zu blockieren.
-            try? await Task.sleep(for: .milliseconds(180))
-            guard !Task.isCancelled,
-                  let self,
-                  self.projectGeneration == generation,
-                  self.projectURL?.canonicalFileURL == observedRoot.canonicalFileURL else {
-                return
-            }
-            self.startFourDProjectMethodIndex(for: observedRoot, generation: generation)
-        }
-    }
-
     /// Beim Projektwechsel bleiben ungesicherte Inhalte immer erhalten.
     /// Saubere Dateien außerhalb des neuen Projektbaums und alte Git-Ansichten
     /// werden geschlossen; saubere unbenannte Notizzettel bleiben bestehen.
@@ -3639,18 +3546,11 @@ final class Workspace: ObservableObject {
     func closeProject() {
         sessionRestoreGeneration &+= 1
         NotificationCenter.default.post(name: .fastraProjectContextWillChange, object: self)
-        stopFourDProjectMethodWatcher()
+        fourDProjectIndexController.stop()
         selectedFileTreeFolder = nil
         sidebarNotice = nil
         projectGeneration &+= 1
-        fourDProjectMethodIndexTask?.cancel()
-        fourDProjectMethodIndexTask = nil
-        fourDProjectMethodIndexRefreshTask?.cancel()
-        fourDProjectMethodIndexRefreshTask = nil
-        fourDProjectMethodNames = []
-        fourDProjectMethodDisplayNames = []
-        fourDComponentMethods = [:]
-        fourDComponentMethodDisplayNames = []
+        fourDMethodIndexSnapshot = .empty
         cancelAllGitDiffLoads()
         cancelAllGitSnapshotLoads()
         cancelAllPreviewLoads()

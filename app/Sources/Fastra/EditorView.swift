@@ -705,9 +705,9 @@ struct EditorView: View {
                 [customProviders.provider(
                     for: language,
                     projectMethodNames: language.id == CustomLanguageRegistry.fourD.id
-                        ? workspace.fourDProjectMethodNames : [],
+                        ? workspace.fourDMethodIndexSnapshot.projectMethodNames : [],
                     componentMethodNames: language.id == CustomLanguageRegistry.fourD.id
-                        ? Set(workspace.fourDComponentMethods.keys) : []
+                        ? Set(workspace.fourDMethodIndexSnapshot.componentMethods.keys) : []
                 )]
             },
             coordinators: [minimapLayoutCoordinator],
@@ -747,15 +747,16 @@ struct EditorView: View {
         // angelegt) ohne Editor-Neuaufbau wirkt.
         .onAppear {
             fourDCompletion.projectMethodProvider = { [weak workspace] in
-                workspace?.fourDProjectMethodDisplayNames ?? []
+                workspace?.fourDMethodIndexSnapshot.projectMethodDisplayNames ?? []
             }
             fourDCompletion.componentMethodProvider = { [weak workspace] in
                 guard let workspace else { return [] }
-                return workspace.fourDComponentMethodDisplayNames.map { name in
+                let snapshot = workspace.fourDMethodIndexSnapshot
+                return snapshot.componentMethodDisplayNames.map { name in
                     FourDCompletionLogic.ComponentMethodEntry(
                         name: name,
-                        componentName: workspace
-                            .fourDComponentMethods[name.lowercased()]?
+                        componentName: snapshot
+                            .componentMethods[name.lowercased()]?
                             .componentName ?? ""
                     )
                 }
