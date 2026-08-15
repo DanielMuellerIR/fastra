@@ -1033,7 +1033,8 @@ final class EditorContextMenu: NSObject {
                 warnColumnSelectionUnsupported()
                 return
             }
-            MarkdownAssist.applyFormat(command, on: textView)
+            MarkdownAssist.applyFormat(command, on: textView,
+                                       workspace: target.workspace)
         }
     }
 
@@ -1042,11 +1043,17 @@ final class EditorContextMenu: NSObject {
         guard let command = MarkdownFormatCommand(rawValue: sender.tag),
               let textView = targetTextView else { NSSound.beep(); return }
         MainActor.assumeIsolated {
+            guard let workspace = CommandTargeting.workspace(for: textView),
+                  MarkdownAssist.isMarkdownTabActive(in: workspace) else {
+                NSSound.beep()
+                return
+            }
             guard textView.fastraColumnSelectionSnapshot == nil else {
                 warnColumnSelectionUnsupported()
                 return
             }
-            MarkdownAssist.applyFormat(command, on: textView)
+            MarkdownAssist.applyFormat(command, on: textView,
+                                       workspace: workspace)
         }
     }
 

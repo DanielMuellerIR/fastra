@@ -7,6 +7,25 @@ import Foundation
 import Testing
 @testable import Fastra
 
+/// Hält das synchron zugestellte Benachrichtigungsobjekt threadsicher fest.
+/// `NotificationCenter` verlangt eine sendbare Closure, obwohl `post` hier
+/// vollständig auf dem Main-Thread läuft.
+private final class MarkdownFirstUseRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private weak var recordedObject: AnyObject?
+
+    func record(_ notification: Notification) {
+        lock.lock()
+        recordedObject = notification.object as AnyObject?
+        lock.unlock()
+    }
+
+    func matches(_ object: AnyObject) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return recordedObject === object
+    }
+}
+
 /// Wendet einen Edit auf den Text an (Test-Nachbau von replaceCharacters).
 private func applied(_ edit: MarkdownFormat.Edit, to text: String) -> String {
     (text as NSString).replacingCharacters(in: edit.range, with: edit.replacement)
@@ -14,6 +33,42 @@ private func applied(_ edit: MarkdownFormat.Edit, to text: String) -> String {
 
 private func range(_ location: Int, _ length: Int) -> NSRange {
     NSRange(location: location, length: length)
+}
+
+@Test("Markdown-Erstnutzung adressiert nur den auslösenden Workspace")
+@MainActor
+func markdownFirstUse_targetsTriggeringWorkspace() throws {
+    let suiteName = "fastra-test-markdown-first-use-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let center = NotificationCenter()
+    let recorder = MarkdownFirstUseRecorder()
+    let observer = center.addObserver(
+        forName: .fastraMarkdownAssistUsed, object: nil, queue: nil
+    ) { notification in
+        recorder.record(notification)
+    }
+    defer { center.removeObserver(observer) }
+
+    let triggeringWorkspace = Workspace()
+    let otherWorkspace = Workspace()
+    MarkdownAssist.noteFirstUse(
+        in: triggeringWorkspace,
+        defaults: defaults,
+        notificationCenter: center
+    )
+
+    #expect(recorder.matches(triggeringWorkspace))
+    let notification = Notification(
+        name: .fastraMarkdownAssistUsed,
+        object: triggeringWorkspace
+    )
+    #expect(MarkdownAssist.firstUseNotification(
+        notification, targets: triggeringWorkspace
+    ))
+    #expect(!MarkdownAssist.firstUseNotification(
+        notification, targets: otherWorkspace
+    ))
 }
 
 // MARK: - Inline (Fett/Kursiv/Hervorhebung/Code)

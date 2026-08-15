@@ -9,6 +9,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.89.0] — 2026-08-15
+
+### Behoben
+
+- **Der Markdown-Erstnutzungshinweis bleibt im auslösenden Fenster:** Bei
+  mehreren geöffneten Dokumentfenstern zeigt nur noch der Workspace den
+  Hinweis, in dem ein Formatbefehl oder das Einfügen eines Bildes ausgeführt
+  wurde. Selbsttests lesen dabei dieselbe isolierte Einstellungs-Suite wie die
+  Oberfläche.
+
+### Tests
+
+- **Eine Regression prüft Sender und Empfänger:** Das Ereignis trägt den
+  auslösenden Workspace und wird von einem anderen Workspace abgewiesen.
+
 ## [v1.88.0] — 2026-08-15
 
 ### Behoben

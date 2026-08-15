@@ -117,7 +117,8 @@ enum MarkdownAssist {
 
     /// Wendet einen Formatbefehl auf die TextView an — als normaler
     /// Undo-Schritt über `replaceCharacters` (nie über das SwiftUI-Binding).
-    static func applyFormat(_ command: MarkdownFormatCommand, on textView: TextView) {
+    static func applyFormat(_ command: MarkdownFormatCommand, on textView: TextView,
+                            workspace: Workspace) {
         switch command {
         case .insertTable:
             guard let configuration = promptForTable() else { return }
@@ -133,7 +134,7 @@ enum MarkdownAssist {
             else { return }
             perform(edit, on: textView)
         }
-        noteFirstUse()
+        noteFirstUse(in: workspace)
     }
 
     private static func perform(_ edit: MarkdownFormat.Edit, on textView: TextView) {
@@ -482,7 +483,7 @@ enum MarkdownAssist {
         textView.selectionManager.setSelectedRange(NSRange(location: caret, length: 0))
         revealInPreview(textView: textView, characterLocation: selection.location,
                         workspace: workspace)
-        noteFirstUse()
+        noteFirstUse(in: workspace)
     }
 
     /// Meldet der integrierten Vorschau DIESES Workspace die 1-basierte
@@ -506,9 +507,22 @@ enum MarkdownAssist {
 
     /// Beim ersten Format- oder Bild-Einfügen einen dezenten Hinweis
     /// auslösen (EditorView zeigt ihn nicht-modal an).
-    private static func noteFirstUse() {
-        guard !UserDefaults.standard.bool(forKey: firstUseDefaultsKey) else { return }
-        NotificationCenter.default.post(name: .fastraMarkdownAssistUsed, object: nil)
+    static func noteFirstUse(
+        in workspace: Workspace,
+        defaults: UserDefaults = SelfTest.workspaceDefaults(),
+        notificationCenter: NotificationCenter = .default
+    ) {
+        guard !defaults.bool(forKey: firstUseDefaultsKey) else { return }
+        // Der Workspace ist Teil des Ereignisses: Bei mehreren Fenstern darf
+        // nur der Editor reagieren, in dem die Aktion wirklich stattfand.
+        notificationCenter.post(name: .fastraMarkdownAssistUsed, object: workspace)
+    }
+
+    /// Gemeinsame Identitätsprüfung für den SwiftUI-Empfänger und den
+    /// fensterlosen Regressionstest.
+    static func firstUseNotification(_ notification: Notification,
+                                     targets workspace: Workspace) -> Bool {
+        (notification.object as? Workspace) === workspace
     }
 
     // MARK: - TextView-Suche

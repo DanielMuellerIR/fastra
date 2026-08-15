@@ -269,7 +269,10 @@ struct EditorView: View {
         // Erste Nutzung von Markdown-Toolbar/Bild-Einfügen → dezenten,
         // nicht-modalen Hinweis mit Hilfe-Sprung zeigen (einmalig).
         .onReceive(NotificationCenter.default.publisher(
-            for: .fastraMarkdownAssistUsed)) { _ in
+            for: .fastraMarkdownAssistUsed)) { notification in
+            guard MarkdownAssist.firstUseNotification(
+                notification, targets: workspace
+            ) else { return }
             if !markdownAssistHintShown { showMarkdownAssistHint = true }
         }
         // Erstes Öffnen einer 4D-Datei → tool4d-Erst-Kontakt-Hinweis
