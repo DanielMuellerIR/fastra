@@ -6,7 +6,7 @@
     "token_budget": 3000000,
     "status": "active",
     "started_at": "2026-08-15T13:48:23+02:00",
-    "tokens_spent": 1797479
+    "tokens_spent": 2245069
   },
   "campaign_history": [],
   "scope": {
@@ -335,7 +335,20 @@
       "risk": "high",
       "priority": 6,
       "reason": "AppKit-/CodeEdit-Integration, Auswahl, Umbruch und Layout enthalten mehrere dokumentierte Absturz- und Koordinatenfallen.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T134823378515+0200",
+        "completed_at": "2026-08-15T15:47:00+02:00",
+        "observed_head": "a6cd6e7878abdfbb5ea87687193fc134e4028423",
+        "content_sha256": "9929a822aed45cb19a3c5b5c7baa3a7b4cce50652837c2116b4de1259812e8d6",
+        "file_count": 32,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "AppKit-/CodeEdit-Integration, Layout, Soft Wrap, Minimap, Einrückungsprofile, Theme, Nur-Lese-Ansicht, Spaltenauswahl und externer Drop vollständig geprüft. Minifizieren verarbeitet große JSON-/XML-Dokumente nun wie Formatieren im Hintergrund und übernimmt Ergebnisse nur über eine unveränderte Workspace-/Tab-/Auswahl-Lease; Version 1.88.0 und zweisprachige Hilfe ergänzt. Der appweit ungebundene Markdown-Ersthinweis ist als Querschnittsthema nachverfolgt.",
+        "tests": [
+          "Fail-before: der neue Nebenläufigkeitstest kompilierte ohne gemeinsamen Scheduler nicht. Danach zwei neue Scheduler-/Minify-Editorregressionen grün; build.sh samt Portabilitätsprüfung und localization-audit grün. Vollsuite: 1877/1883 grün, drei Selbsttest-Runner-Fälle durch laufende installierte Nutzer-App blockiert und drei lastbedingte Git-Ausreißer; alle drei Git-Tests isoliert in 0,343–0,564 s grün. selftest.sh korrekt Exit 2, nicht als bestanden gewertet; help-audit --release grün."
+        ]
+      }
     },
     {
       "id": "markdown-render-import",
@@ -705,6 +718,18 @@
       "priority": 2,
       "state": "pending",
       "noted_at": "2026-08-15T15:10:25+02:00",
+      "campaign_id": "20260815T134823378515+0200"
+    },
+    {
+      "id": "markdown-first-use-window-routing",
+      "summary": "Der Markdown-Erstnutzungshinweis wird mit object:nil appweit gesendet und von jeder EditorView ungefiltert empfangen; in mehreren offenen Fenstern kann eine Aktion dadurch Hinweise in nicht beteiligten Fenstern öffnen. Sender und Empfänger müssen denselben Workspace binden und dieselbe isolierbare Defaults-Suite verwenden.",
+      "evidence": [
+        "app/Sources/Fastra/EditorView.swift",
+        "app/Sources/Fastra/MarkdownAssist.swift"
+      ],
+      "priority": 2,
+      "state": "pending",
+      "noted_at": "2026-08-15T15:47:00+02:00",
       "campaign_id": "20260815T134823378515+0200"
     }
   ]
