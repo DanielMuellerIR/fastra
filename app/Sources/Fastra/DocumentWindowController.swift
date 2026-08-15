@@ -308,8 +308,11 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     /// richtige Tab entstand, aber ein anderes Fenster nach vorn kam
     /// (Daniel-Befund 2026-07-20).
     private static func raiseWindow(for workspace: Workspace) {
-        let window = (NSApp.orderedWindows + WorkspaceWindowRegistry.registeredWindows())
-            .first { WorkspaceWindowRegistry.workspace(for: $0) === workspace }
+        let window = windowForRaising(
+            workspace,
+            orderedWindows: NSApp.orderedWindows,
+            registeredWindows: WorkspaceWindowRegistry.registeredWindows()
+        )
         guard let window else { return }
         // Bewusst KEIN zusätzliches NSApp.activate(): Der Finder-Öffnen-Vorgang
         // aktiviert die App bereits. Ein zweites Aktivieren holte zuerst das
@@ -319,6 +322,26 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         // aktiviert die App dabei bei Bedarf selbst.
         window.makeKeyAndOrderFront(nil)
         Workspace.shared = workspace
+    }
+
+    /// Getrennte Auswahl für einen fensterlosen Regressionstest. Die Listen
+    /// werden im Produkt aus AppKits Vordergrundordnung und der Registry
+    /// gespeist; der Test muss deshalb kein Fenster sichtbar machen.
+    static func windowForRaising(
+        _ workspace: Workspace,
+        orderedWindows: [NSWindow],
+        registeredWindows: [NSWindow]
+    ) -> NSWindow? {
+        (orderedWindows + registeredWindows)
+            .first {
+                // Die Suchmaske ist absichtlich mit demselben Workspace
+                // registriert, damit Befehle zum richtigen Dokument finden.
+                // Beim Finder-Öffnen ist sie aber niemals das Fenster, das
+                // nach vorn gehört.
+                !SearchWindow.isSearchWindow($0)
+                    && !HelpWindow.isHelpWindow($0)
+                    && WorkspaceWindowRegistry.workspace(for: $0) === workspace
+            }
     }
 
     /// Öffnet ein leeres, unabhängiges Dokumentfenster und gibt dessen

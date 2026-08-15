@@ -9,6 +9,20 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.92.0] — 2026-08-15
+
+### Behoben
+
+- **Finder-Öffnen bringt das Dokumentfenster nach vorn:** Ist die Suchmaske
+  eines passenden Fensters geöffnet, wählt Fastra beim Öffnen einer Datei von
+  außen nun ausdrücklich das zugehörige Dokument statt der Suchmaske.
+
+### Tests
+
+- **Eine Regression prüft Dokument- und Suchfenster desselben Workspace:**
+  Selbst wenn die Suchmaske in der Vordergrund-Reihenfolge zuerst steht, muss
+  der Finder-Pfad das Dokumentfenster wählen.
+
 ## [v1.91.0] — 2026-08-15
 
 ### Behoben

@@ -24,6 +24,36 @@ func settingsWindowIsClassifiedForCloseMenu() {
     #expect(SettingsWindowConfiguration.isSettingsWindow(window))
 }
 
+@Test("Finder-Öffnen holt das Dokument statt seiner Suchmaske nach vorn")
+@MainActor
+func finderOpenRaisesDocumentWindowNotSearchWindow() {
+    let suiteName = "fastra-test-finder-window-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suiteName)
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let workspace = Workspace(defaults: defaults)
+    let documentWindow = NSWindow()
+    documentWindow.identifier = NSUserInterfaceItemIdentifier("Fastra.DocumentWindow")
+    let searchWindow = NSWindow()
+    searchWindow.identifier = SearchWindow.identifier
+
+    WorkspaceWindowRegistry.register(workspace, for: documentWindow)
+    WorkspaceWindowRegistry.register(workspace, for: searchWindow)
+    defer {
+        WorkspaceWindowRegistry.unregister(documentWindow)
+        WorkspaceWindowRegistry.unregister(searchWindow)
+    }
+
+    // Die Suchmaske darf in AppKits Vordergrundordnung vor dem zugehörigen
+    // Dokument stehen. Der Finder-Pfad muss trotzdem das Dokument wählen.
+    let target = DocumentWindowController.windowForRaising(
+        workspace,
+        orderedWindows: [searchWindow, documentWindow],
+        registeredWindows: [documentWindow, searchWindow]
+    )
+    #expect(target === documentWindow)
+}
+
 @Suite("Zielwahl für Fensterbefehle")
 struct WindowTargetingTests {
 
