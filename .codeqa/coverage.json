@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 109474
+    "tokens_spent": 144573
   },
   "campaign_history": [
     {
@@ -347,16 +347,16 @@
       "reason": "AppKit-/CodeEdit-Integration, Auswahl, Umbruch und Layout enthalten mehrere dokumentierte Absturz- und Koordinatenfallen.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T134823378515+0200",
-        "completed_at": "2026-08-15T15:47:00+02:00",
-        "observed_head": "a6cd6e7878abdfbb5ea87687193fc134e4028423",
-        "content_sha256": "9929a822aed45cb19a3c5b5c7baa3a7b4cce50652837c2116b4de1259812e8d6",
+        "campaign_id": "20260815T165221406979+0200",
+        "completed_at": "2026-08-15T16:59:10+02:00",
+        "observed_head": "324b92adf599a1a4e6d06a0d66453f7644906ffd",
+        "content_sha256": "21090002770a7c173c9662f94579fce694c9bf8903af6147fcc6f5f37cc1d968",
         "file_count": 32,
-        "review": "full",
-        "outcome": "improved",
-        "summary": "AppKit-/CodeEdit-Integration, Layout, Soft Wrap, Minimap, Einrückungsprofile, Theme, Nur-Lese-Ansicht, Spaltenauswahl und externer Drop vollständig geprüft. Minifizieren verarbeitet große JSON-/XML-Dokumente nun wie Formatieren im Hintergrund und übernimmt Ergebnisse nur über eine unveränderte Workspace-/Tab-/Auswahl-Lease; Version 1.88.0 und zweisprachige Hilfe ergänzt. Der appweit ungebundene Markdown-Ersthinweis ist als Querschnittsthema nachverfolgt.",
+        "review": "delta-plus-boundaries",
+        "outcome": "reviewed-clean",
+        "summary": "Editor-Delta seit dem Full-Review vollständig geprüft: Markdown-Formatbefehle bestimmen TextView und Workspace gemeinsam über CommandTargeting; die Erstnutzungsbenachrichtigung trägt die Workspace-Identität und nur die zugehörige EditorView reagiert. Alle Sender, Empfänger und Format-Aufrufer projektweit geprüft; kein ungebundener Restpfad oder sinnvoller Vereinfachungsbedarf belegt.",
         "tests": [
-          "Fail-before: der neue Nebenläufigkeitstest kompilierte ohne gemeinsamen Scheduler nicht. Danach zwei neue Scheduler-/Minify-Editorregressionen grün; build.sh samt Portabilitätsprüfung und localization-audit grün. Vollsuite: 1877/1883 grün, drei Selbsttest-Runner-Fälle durch laufende installierte Nutzer-App blockiert und drei lastbedingte Git-Ausreißer; alle drei Git-Tests isoliert in 0,343–0,564 s grün. selftest.sh korrekt Exit 2, nicht als bestanden gewertet; help-audit --release grün."
+          "Markdown-Erstnutzung adressiert nur den auslösenden Workspace: 1/1 grün, Exit 0; window-targeting-audit.sh PASS, Exit 0; Übernahme-build.sh einschließlich realer Portabilitätsprüfung Exit 0."
         ]
       }
     },
