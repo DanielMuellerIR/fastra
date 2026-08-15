@@ -130,6 +130,18 @@ func dedupe_exactComparison() {
     #expect(result?.newText == "a\nA\na ")
 }
 
+@Test("removeDuplicateLines zählt das Datei-End-Newline nicht als leere Dublette")
+func dedupe_trailingNewlineIsNotARealBlankLine() {
+    // Eine echte Leerzeile plus Datei-End-Newline enthält keine Dublette.
+    #expect(LineOperations.removeDuplicateLines(
+        in: "a\n\n", selection: NSRange(location: 0, length: 0)
+    ) == nil)
+    // Zwei echte Leerzeilen sind dagegen Dubletten; genau eine bleibt stehen.
+    #expect(LineOperations.removeDuplicateLines(
+        in: "a\n\n\n", selection: NSRange(location: 0, length: 0)
+    )?.newText == "a\n\n")
+}
+
 // MARK: - CRLF-Robustheit
 
 @Test("sortLines übersteht CRLF-Inhalt ohne Trenner-Verlust")

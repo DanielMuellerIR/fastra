@@ -9,6 +9,19 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.95.0] — 2026-08-15
+
+### Behoben
+
+- **Duplikate entfernen bewahrt echte Leerzeilen am Dateiende:** Das bloße
+  Datei-End-Newline zählt nicht mehr als zweite leere Zeile und löscht dadurch
+  keine tatsächlich vorhandene Leerzeile.
+
+### Tests
+
+- **Eine Regression trennt Leerzeilen vom Datei-End-Newline:** Der Test deckt
+  eine und zwei echte Leerzeilen vor dem abschließenden Zeilenumbruch ab.
+
 ## [v1.94.0] — 2026-08-15
 
 ### Behoben

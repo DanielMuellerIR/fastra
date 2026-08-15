@@ -112,27 +112,32 @@ enum LineOperations {
 
     /// Entfernt doppelte Zeilen im (ausgeweiteten) Selektions-Bereich.
     /// Exakter String-Vergleich; das erste Vorkommen bleibt, die
-    /// Reihenfolge der verbleibenden Zeilen ändert sich nicht.
+    /// Reihenfolge der verbleibenden Zeilen ändert sich nicht. Eine leere
+    /// Phantom-Schlusszeile aus dem Datei-End-Newline zählt nicht als Inhalt;
+    /// sie wird nach der Analyse unverändert wieder angehängt.
     /// `nil`, wenn keine Duplikate vorhanden sind (nichts zu tun).
     static func removeDuplicateLines(in text: String, selection: NSRange) -> Result? {
         let range = expandToFullLines(in: text, selection: selection)
         let ns = text as NSString
         let block = ns.substring(with: range)
         let lines = splitLines(block)
-        guard lines.count >= 2 else { return nil }
+        let hasTrailingEmpty = lines.count >= 2 && lines.last == ""
+        let real = hasTrailingEmpty ? Array(lines.dropLast()) : lines
+        guard real.count >= 2 else { return nil }
 
         var seen = Set<String>()
         var unique: [String] = []
-        for line in lines {
+        for line in real {
             // `insert` liefert `inserted == false` für bereits Gesehenes —
             // ein Durchlauf, Reihenfolge bleibt stabil.
             if seen.insert(line).inserted {
                 unique.append(line)
             }
         }
-        guard unique.count < lines.count else { return nil }
+        guard unique.count < real.count else { return nil }
 
-        let newBlock = unique.joined(separator: separator(of: text))
+        let output = hasTrailingEmpty ? unique + [""] : unique
+        let newBlock = output.joined(separator: separator(of: text))
         let newText = ns.replacingCharacters(in: range, with: newBlock)
         return Result(newText: newText, affectedRange: range, lineCount: unique.count)
     }
