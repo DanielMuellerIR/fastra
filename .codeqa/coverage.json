@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 397179
+    "tokens_spent": 615512
   },
   "campaign_history": [
     {
@@ -294,17 +294,16 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T17:09:07+02:00",
-        "observed_head": "ccec913aa452ccb6d993624b2ac8d2a73d6ec592",
-        "content_sha256": "f78d9c4e9e6d18a0e35f2593fa981c3ad3ad84860f357d935584a40919db5a8a",
+        "completed_at": "2026-08-15T17:22:39+02:00",
+        "observed_head": "f03feaaa32a600ecb98e04f20e5ddaf02a260a2f",
+        "content_sha256": "2ec31eadefb774782aef1071fd44159e49610bea8d3ebc820fc970a29fd41dbd",
         "file_count": 20,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Das einzige Delta ist der konsistente Versions-Bump auf 1.92.0/181; Paketierungsgrenzen bleiben unverändert.",
+        "summary": "Seit dem letzten Review änderte sich im Paketierungsbereich ausschließlich die konsistente Produktversion von 1.92.0/181 auf 1.93.0/182. Info.plist, gepacktes Bundle und unveränderte Build-Grenzen geprüft; kein weiterer Fehler oder sinnvoller Vereinfachungsbedarf.",
         "tests": [
-          "plutil: Info.plist 1.92.0/181 und Datum 2026-08-15 gültig",
-          "./build.sh: Build, Signatur und portable Ordnersuche bestanden; Bundle 1.92.0/181",
-          "BuildInstallationPolicyTests im vorausgehenden Voll-Lauf bestanden"
+          "plutil: Info.plist gültig; Quell- und Bundle-Version jeweils 1.93.0/182.",
+          "./build.sh: Build, Fensterziel-Audit, Signatur und portable Ordnersuche bestanden."
         ]
       }
     },
@@ -521,7 +520,24 @@
       "risk": "high",
       "priority": 10,
       "reason": "Projektbaum, Dateiwächter und externe Terminalübergabe verbinden Dateisystemereignisse mit sichtbarem Zustand.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T165221406979+0200",
+        "completed_at": "2026-08-15T17:22:10+02:00",
+        "observed_head": "f03feaaa32a600ecb98e04f20e5ddaf02a260a2f",
+        "content_sha256": "b0b0e81876117e30cb12c6ebfd9da60e044de39fb30103ac5d4e01a6d39c6eb4",
+        "file_count": 14,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Projekt-Seitenleiste, Dateibaum, Filter, Projektpersistenz, Datei-Wächter, Terminalöffnung und zugehörige Tests vollständig geprüft. Überholte Filterläufe geben den Abbruch nun an ihren abgelösten Scan weiter; Nachbarordner-Auswahlen tragen den Workspace des auslösenden Fensters statt eines überschreibbaren Singleton-Ziels.",
+        "tests": [
+          "Fail-before: Der abgelöste Scan beobachtete den Abbruch nicht; nach Weitergabe bestand die Regression in 0,009 s.",
+          "Fail-before: Nach erneuter Bindung des Menü-Presenters zeigte die erste Auswahl auf den zweiten Workspace; die Auswahl trägt nun ihr ursprüngliches Ziel.",
+          "./test.sh mit P10-Auswahl: 82 Tests in einer Suite bestanden.",
+          "./build.sh: Build, Fensterziel-Audit, Signatur und portable Ordnersuche bestanden; Bundle 1.93.0/182.",
+          "./localization-audit.sh und ./help-audit.sh: bestanden."
+        ]
+      }
     },
     {
       "id": "four-d-tooling",
