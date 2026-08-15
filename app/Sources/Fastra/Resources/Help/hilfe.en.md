@@ -607,7 +607,8 @@ Errors appear on the console; a non-zero exit code means problems.
 
 For XML-like documents, ⇧⌘X shows the XPath bar: type an XPath query,
 Fastra counts the matches and jumps to them in the document as you
-navigate.
+navigate. With incomplete or invalid XML, navigation waits for the document to
+become valid again so stale source positions cannot trigger a jump.
 
 ## Project and Sidebar
 

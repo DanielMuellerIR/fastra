@@ -56,7 +56,7 @@ struct XPathIndex {
             case .unclosedTag(let name, _):
                 return L10n.format("XML unvollständig: „<%@>“ wird nicht geschlossen.", name)
             case .malformed(_):
-                return L10n.string("XML an dieser Stelle nicht lesbar — der letzte gültige Index bleibt aktiv.")
+                return L10n.string("XML an dieser Stelle nicht lesbar — Navigation wartet auf gültiges XML.")
             }
         }
     }
@@ -79,17 +79,64 @@ struct XPathIndex {
             return Character(scalar)
         }
 
-        func skip(until marker: [Character], from: Int) -> Int {
+        func hasPrefix(_ marker: [Character], at start: Int) -> Bool {
+            for (offset, expected) in marker.enumerated() {
+                if char(start + offset) != expected { return false }
+            }
+            return true
+        }
+
+        func skip(until marker: [Character], from: Int) -> Int? {
             var i = from
             while i < count {
-                var matched = true
-                for (offset, m) in marker.enumerated() {
-                    if char(i + offset) != m { matched = false; break }
-                }
-                if matched { return i + marker.count }
+                if hasPrefix(marker, at: i) { return i + marker.count }
                 i += 1
             }
-            return count
+            return nil
+        }
+
+        /// Überspringt eine DOCTYPE-Deklaration einschließlich interner
+        /// Teilmenge. `>` innerhalb von Quotes oder `[…]` beendet sie nicht.
+        func skipDeclaration(from start: Int) -> Int? {
+            var i = start
+            var subsetDepth = 0
+            var quote: Character?
+            while i < count {
+                guard let current = char(i) else { i += 1; continue }
+                if let activeQuote = quote {
+                    if current == activeQuote { quote = nil }
+                } else if current == "\"" || current == "'" {
+                    quote = current
+                } else if current == "[" {
+                    subsetDepth += 1
+                } else if current == "]", subsetDepth > 0 {
+                    subsetDepth -= 1
+                } else if current == ">", subsetDepth == 0 {
+                    return i + 1
+                }
+                i += 1
+            }
+            return nil
+        }
+
+        func isXMLWhitespace(_ unit: UInt16) -> Bool {
+            unit == 0x20 || unit == 0x09 || unit == 0x0A || unit == 0x0D
+        }
+
+        /// Liefert den sichtbaren Inhalt einer Text- oder CDATA-Stelle. Die
+        /// Rechnung arbeitet auf UTF-16-Einheiten; dadurch bleibt auch ein
+        /// führendes Zeichen außerhalb der BMP (etwa ein Emoji) vollständig.
+        func contentRange(from start: Int, to end: Int) -> NSRange? {
+            var first = start
+            while first < end, isXMLWhitespace(scalars[first]) { first += 1 }
+            guard first < end else { return nil }
+            var last = end
+            while last > first, isXMLWhitespace(scalars[last - 1]) { last -= 1 }
+            return NSRange(location: first, length: last - first)
+        }
+
+        func isNameStartChar(_ c: Character) -> Bool {
+            c.isLetter || c == "_"
         }
 
         func isNameChar(_ c: Character) -> Bool {
@@ -106,53 +153,133 @@ struct XPathIndex {
             return (name, i)
         }
 
-        while index < count {
-            guard let c = char(index) else { index += 1; continue }
-            if c != "<" {
-                // Textinhalt: erste nicht-Whitespace-Stelle je Element merken.
-                if !c.isWhitespace, let top = stack.last,
-                   elements[top].firstTextRange == nil {
-                    var end = index
-                    while end < count, char(end) != "<" { end += 1 }
-                    var lastNonWS = index
-                    var probe = index
-                    while probe < end {
-                        if let pc = char(probe), !pc.isWhitespace { lastNonWS = probe }
-                        probe += 1
-                    }
-                    elements[top].firstTextRange = NSRange(location: index,
-                                                           length: lastNonWS - index + 1)
-                    index = end
+        /// XML-Attributwerte werden logisch verglichen, nicht in ihrer
+        /// Quellschreibweise. Aus Sicherheitsgründen expandieren wir nur die
+        /// fünf XML-Entities und numerische Zeichenreferenzen, niemals DTD-
+        /// definierte Entities.
+        func isAllowedXMLScalar(_ value: UInt32) -> Bool {
+            value == 0x09 || value == 0x0A || value == 0x0D
+                || (0x20...0xD7FF).contains(value)
+                || (0xE000...0xFFFD).contains(value)
+                || (0x10000...0x10FFFF).contains(value)
+        }
+
+        func decodedAttributeValue(_ source: String) -> String? {
+            var result = ""
+            var cursor = source.startIndex
+            while cursor < source.endIndex {
+                if source[cursor] != "&" {
+                    guard source[cursor] != "<",
+                          source[cursor].unicodeScalars.allSatisfy({
+                              isAllowedXMLScalar($0.value)
+                          }) else { return nil }
+                    result.append(source[cursor])
+                    cursor = source.index(after: cursor)
                     continue
                 }
-                index += 1
+                guard let semicolon = source[cursor...].firstIndex(of: ";") else {
+                    return nil
+                }
+                let tokenStart = source.index(after: cursor)
+                let token = String(source[tokenStart..<semicolon])
+                switch token {
+                case "amp": result.append("&")
+                case "lt": result.append("<")
+                case "gt": result.append(">")
+                case "quot": result.append("\"")
+                case "apos": result.append("'")
+                default:
+                    let value: UInt32?
+                    if token.hasPrefix("#x") || token.hasPrefix("#X") {
+                        value = UInt32(token.dropFirst(2), radix: 16)
+                    } else if token.hasPrefix("#") {
+                        value = UInt32(token.dropFirst(), radix: 10)
+                    } else {
+                        value = nil
+                    }
+                    guard let value, isAllowedXMLScalar(value),
+                          let scalar = Unicode.Scalar(value) else {
+                        return nil
+                    }
+                    result.unicodeScalars.append(scalar)
+                }
+                cursor = source.index(after: semicolon)
+            }
+            return result
+        }
+
+        while index < count {
+            if scalars[index] != 0x3C { // „<“
+                var end = index
+                while end < count, scalars[end] != 0x3C { end += 1 }
+                guard let sourceRange = Range(NSRange(location: index,
+                                                      length: end - index), in: text) else {
+                    return .failure(.malformed(offset: index))
+                }
+                let source = String(text[sourceRange])
+                guard !source.contains("]]>") && decodedAttributeValue(source) != nil else {
+                    return .failure(.malformed(offset: index))
+                }
+                if let range = contentRange(from: index, to: end) {
+                    guard let top = stack.last else {
+                        return .failure(.malformed(offset: range.location))
+                    }
+                    if elements[top].firstTextRange == nil {
+                        elements[top].firstTextRange = range
+                    }
+                }
+                index = end
                 continue
             }
 
             // `<`-Konstrukte unterscheiden.
             if char(index + 1) == "!" {
-                if char(index + 2) == "-", char(index + 3) == "-" {
-                    index = skip(until: ["-", "-", ">"], from: index + 4)
-                } else if char(index + 2) == "[" {
-                    // CDATA zählt als Text des offenen Elements.
-                    let start = index
-                    index = skip(until: ["]", "]", ">"], from: index + 9)
-                    if let top = stack.last, elements[top].firstTextRange == nil {
-                        elements[top].firstTextRange = NSRange(location: start,
-                                                               length: index - start)
+                if hasPrefix(["!", "-", "-"], at: index + 1) {
+                    guard let end = skip(until: ["-", "-", ">"], from: index + 4) else {
+                        return .failure(.malformed(offset: index))
                     }
+                    var commentIndex = index + 4
+                    while commentIndex < end - 3 {
+                        guard !hasPrefix(["-", "-"], at: commentIndex) else {
+                            return .failure(.malformed(offset: commentIndex))
+                        }
+                        commentIndex += 1
+                    }
+                    index = end
+                } else if hasPrefix(["!", "[", "C", "D", "A", "T", "A", "["],
+                                    at: index + 1) {
+                    // CDATA zählt als Text des offenen Elements.
+                    guard let top = stack.last,
+                          let end = skip(until: ["]", "]", ">"], from: index + 9) else {
+                        return .failure(.malformed(offset: index))
+                    }
+                    if elements[top].firstTextRange == nil,
+                       let range = contentRange(from: index + 9, to: end - 3) {
+                        elements[top].firstTextRange = range
+                    }
+                    index = end
+                } else if hasPrefix(["!", "D", "O", "C", "T", "Y", "P", "E"],
+                                    at: index + 1), roots.isEmpty, stack.isEmpty,
+                          let end = skipDeclaration(from: index + 9) {
+                    index = end
                 } else {
-                    index = skip(until: [">"], from: index + 2)
+                    return .failure(.malformed(offset: index))
                 }
                 continue
             }
             if char(index + 1) == "?" {
-                index = skip(until: ["?", ">"], from: index + 2)
+                guard let end = skip(until: ["?", ">"], from: index + 2) else {
+                    return .failure(.malformed(offset: index))
+                }
+                index = end
                 continue
             }
             if char(index + 1) == "/" {
                 // Schließ-Tag: muss zum obersten Stapel-Element passen.
                 let (name, afterName) = readName(from: index + 2)
+                guard !name.isEmpty else {
+                    return .failure(.malformed(offset: index))
+                }
                 guard let top = stack.popLast() else {
                     return .failure(.malformed(offset: index))
                 }
@@ -160,25 +287,33 @@ struct XPathIndex {
                     return .failure(.mismatchedTag(expected: elements[top].name,
                                                    found: name, offset: index))
                 }
-                index = skip(until: [">"], from: afterName)
+                var close = afterName
+                while close < count, char(close)?.isWhitespace == true { close += 1 }
+                guard char(close) == ">" else {
+                    return .failure(.malformed(offset: close))
+                }
+                index = close + 1
                 continue
             }
 
             // Start-Tag.
             let nameStart = index + 1
             let (name, afterName) = readName(from: nameStart)
-            guard !name.isEmpty else {
-                index += 1
-                continue
+            guard let firstNameChar = char(nameStart), isNameStartChar(firstNameChar),
+                  !name.isEmpty else {
+                return .failure(.malformed(offset: index))
             }
             var attributes: [Attribute] = []
+            var attributeNames = Set<String>()
             var i = afterName
             var selfClosing = false
+            var tagTerminated = false
             attributeScan: while i < count {
                 guard let ac = char(i) else { break }
-                if ac == ">" { i += 1; break }
+                if ac == ">" { i += 1; tagTerminated = true; break }
                 if ac == "/" && char(i + 1) == ">" {
                     selfClosing = true
+                    tagTerminated = true
                     i += 2
                     break
                 }
@@ -186,34 +321,40 @@ struct XPathIndex {
                 // Attributname lesen.
                 let attrNameStart = i
                 let (attrName, afterAttrName) = readName(from: i)
-                guard !attrName.isEmpty else {
+                guard let firstAttrChar = char(attrNameStart),
+                      isNameStartChar(firstAttrChar), !attrName.isEmpty,
+                      attributeNames.insert(attrName).inserted else {
                     return .failure(.malformed(offset: i))
                 }
                 i = afterAttrName
                 while i < count, char(i)?.isWhitespace == true { i += 1 }
-                var value = ""
-                if char(i) == "=" {
-                    i += 1
-                    while i < count, char(i)?.isWhitespace == true { i += 1 }
-                    if let quote = char(i), quote == "\"" || quote == "'" {
-                        i += 1
-                        let valueStart = i
-                        while i < count, char(i) != quote { i += 1 }
-                        if let range = Range(NSRange(location: valueStart,
-                                                     length: i - valueStart), in: text) {
-                            value = String(text[range])
-                        }
-                        i += 1   // schließendes Quote
-                    } else {
-                        return .failure(.malformed(offset: i))
-                    }
+                guard char(i) == "=" else {
+                    return .failure(.malformed(offset: i))
                 }
+                i += 1
+                while i < count, char(i)?.isWhitespace == true { i += 1 }
+                guard let quote = char(i), quote == "\"" || quote == "'" else {
+                    return .failure(.malformed(offset: i))
+                }
+                i += 1
+                let valueStart = i
+                while i < count, char(i) != quote { i += 1 }
+                guard i < count,
+                      let range = Range(NSRange(location: valueStart,
+                                                length: i - valueStart), in: text),
+                      let value = decodedAttributeValue(String(text[range])) else {
+                    return .failure(.malformed(offset: valueStart))
+                }
+                i += 1   // schließendes Quote
                 attributes.append(Attribute(
                     name: attrName, value: value,
                     nameRange: NSRange(location: attrNameStart,
                                        length: afterAttrName - attrNameStart)
                 ))
                 continue attributeScan
+            }
+            guard tagTerminated else {
+                return .failure(.malformed(offset: index))
             }
 
             var element = Element(
@@ -228,6 +369,9 @@ struct XPathIndex {
             if let top = stack.last {
                 elements[top].children.append(newIndex)
             } else {
+                guard roots.isEmpty else {
+                    return .failure(.malformed(offset: index))
+                }
                 roots.append(newIndex)
             }
             if !selfClosing {
@@ -239,6 +383,9 @@ struct XPathIndex {
         if let top = stack.last {
             return .failure(.unclosedTag(name: elements[top].name,
                                          offset: elements[top].nameRange.location))
+        }
+        guard roots.count == 1 else {
+            return .failure(.malformed(offset: 0))
         }
         return .success(XPathIndex(elements: elements, roots: roots))
     }
@@ -291,11 +438,27 @@ struct XPathQuery: Equatable {
         var rest = Substring(input.trimmingCharacters(in: .whitespaces))
         guard !rest.isEmpty else { return .failure(.empty) }
 
-        // Nicht unterstützte Achsen/Funktionen früh und verständlich melden.
-        for unsupported in ["::", "..", "ancestor", "following", "preceding"] {
-            if rest.contains(unsupported) {
-                return .failure(.unsupported(unsupported))
+        // Achsen besitzen immer `::`; die bloßen Wörter „ancestor“ oder
+        // „following“ dürfen dagegen ganz normale Elementnamen sein.
+        for unsupported in ["::", ".."] where rest.contains(unsupported) {
+            return .failure(.unsupported(unsupported))
+        }
+
+        func closingPredicateBracket(in source: Substring) -> Substring.Index? {
+            var cursor = source.index(after: source.startIndex)
+            var quote: Character?
+            while cursor < source.endIndex {
+                let current = source[cursor]
+                if let activeQuote = quote {
+                    if current == activeQuote { quote = nil }
+                } else if current == "'" || current == "\"" {
+                    quote = current
+                } else if current == "]" {
+                    return cursor
+                }
+                cursor = source.index(after: cursor)
             }
+            return nil
         }
 
         var steps: [Step] = []
@@ -350,7 +513,7 @@ struct XPathQuery: Equatable {
             // Prädikate lesen.
             var predicates: [Predicate] = []
             while rest.hasPrefix("[") {
-                guard let close = rest.firstIndex(of: "]") else {
+                guard let close = closingPredicateBracket(in: rest) else {
                     return .failure(.malformed(String(rest)))
                 }
                 let body = String(rest[rest.index(after: rest.startIndex)..<close])
@@ -475,9 +638,13 @@ enum XPathEvaluator {
 
     private static func collectDescendants(of node: Int, in index: XPathIndex,
                                            into result: inout [Int]) {
-        for child in children(of: node, in: index) {
-            result.append(child)
-            collectDescendants(of: child, in: index, into: &result)
+        // Fremdes XML darf beliebig tief verschachtelt sein. Ein expliziter
+        // Stapel bewahrt die Dokumentreihenfolge, ohne den Swift-Callstack zu
+        // verbrauchen und bei tiefen Dokumenten abzustürzen.
+        var pending = Array(children(of: node, in: index).reversed())
+        while let current = pending.popLast() {
+            result.append(current)
+            pending.append(contentsOf: index.elements[current].children.reversed())
         }
     }
 
@@ -513,13 +680,13 @@ enum XPathAutocomplete {
                             limit: Int = 8) -> [String] {
         // Eingabe in „fertigen Pfad“ + „angefangenen Rest“ teilen.
         let (rawPrefix, partial) = splitForCompletion(input)
-        // `/a//te` liefert den Pfad „/a/“ — hängende Trenner fürs Parsen
-        // entfernen (die Trenn-Art des angefangenen Schritts ist für die
-        // Vorschlagsliste unerheblich).
-        var prefixPath = rawPrefix
-        while prefixPath.count > 2 && prefixPath.hasSuffix("/") {
-            prefixPath = String(prefixPath.dropLast())
-        }
+        // Ein relativer Einstieg und `//` beginnen einen Descendant-Schritt.
+        // Diese Information muss bis zur Vorschlagsquelle erhalten bleiben;
+        // sonst würde `//ti` nur Wurzelelemente statt tiefer `titel` anbieten.
+        let descendantStep = rawPrefix.isEmpty || rawPrefix.hasSuffix("//")
+        let prefixPath = rawPrefix.hasSuffix("//")
+            ? String(rawPrefix.dropLast(2))
+            : rawPrefix
 
         let contextElements: [Int]
         if prefixPath.isEmpty || prefixPath == "/" || prefixPath == "//" {
@@ -550,7 +717,17 @@ enum XPathAutocomplete {
             }
         } else {
             let childSource: [Int]
-            if contextElements == [-1] {
+            if descendantStep {
+                var pending = contextElements == [-1]
+                    ? Array(index.roots.reversed())
+                    : Array(contextElements.flatMap { index.elements[$0].children }.reversed())
+                var descendants: [Int] = []
+                while let current = pending.popLast() {
+                    descendants.append(current)
+                    pending.append(contentsOf: index.elements[current].children.reversed())
+                }
+                childSource = descendants
+            } else if contextElements == [-1] {
                 childSource = index.roots
             } else {
                 childSource = contextElements.flatMap {
@@ -576,7 +753,12 @@ enum XPathAutocomplete {
         }
         let path = String(input[..<slash.lowerBound])
         let partial = String(input[slash.upperBound...])
-        // `//te` → Pfad leer, Partial „te“ (descendant bleibt beim Zusammenbau).
+        // Bei `//` den zweiten Schrägstrich im Pfad behalten. Nur dann kann
+        // sowohl die Vorschlagsquelle als auch die spätere Übernahme die
+        // Descendant-Achse unverändert fortsetzen.
+        if path.hasSuffix("/") {
+            return (String(input[..<slash.upperBound]), partial)
+        }
         if path.isEmpty || path == "/" {
             return (String(input[..<slash.upperBound]), partial)
         }

@@ -7,7 +7,8 @@
 //
 // Der Index (XPathSupport.swift) wird asynchron im Hintergrund gebaut und
 // bei Dokumentänderungen debounced erneuert; bei kaputtem XML bleibt der
-// letzte gültige Index aktiv und der Fehler erscheint dezent in der Leiste.
+// letzte gültige Index gespeichert, wird wegen veralteter Quellbereiche aber
+// nicht mehr zum Springen benutzt. Der Fehler erscheint dezent in der Leiste.
 
 import SwiftUI
 import AppKit
@@ -35,7 +36,15 @@ final class XPathBarModel: ObservableObject {
     private(set) var index: XPathIndex?
     private var matches: [XPathEvaluator.Match] = []
     private var matchCursor = 0
-    private var indexedContent: String?
+    private struct DocumentVersion: Equatable {
+        let tabID: UUID
+        let contentRevision: UInt64
+    }
+    /// Version, für die `index` Quellbereiche enthält.
+    private var indexedDocument: DocumentVersion?
+    /// Letzte bereits gestartete Version; verhindert unnötige Neubauten bei
+    /// anderen `objectWillChange`-Ereignissen desselben Workspace.
+    private var requestedDocument: DocumentVersion?
     private var rebuildWork: DispatchWorkItem?
     private var contentObserver: AnyCancellable?
     private var buildGeneration = 0
@@ -61,34 +70,49 @@ final class XPathBarModel: ObservableObject {
     func deactivate() {
         contentObserver = nil
         rebuildWork?.cancel()
+        // Auch ein bereits laufender Hintergrundbau darf ein geschlossenes
+        // oder später für ein anderes Dokument geöffnetes Panel nicht ändern.
+        buildGeneration += 1
+    }
+
+    private func currentDocumentVersion() -> DocumentVersion? {
+        guard let tab = workspace?.activeTab else { return nil }
+        return DocumentVersion(tabID: tab.id, contentRevision: tab.contentRevision)
     }
 
     private func rebuildIndexIfContentChanged() {
-        guard let content = workspace?.activeTabContent.wrappedValue,
-              content != indexedContent else { return }
+        guard let current = currentDocumentVersion(),
+              current != requestedDocument else { return }
         rebuildIndexSoon(delay: 0)
     }
 
-    /// Baut den Index asynchron im Hintergrund. Bei Fehlern bleibt der
-    /// letzte gültige Index stehen; nur der Hinweis wechselt.
+    /// Baut den Index asynchron im Hintergrund. Bei Fehlern bleibt der letzte
+    /// gültige Index gespeichert; seine veralteten Quellbereiche werden aber
+    /// erst nach einem erfolgreichen Neubau wieder zum Springen freigegeben.
     private func rebuildIndexSoon(delay: TimeInterval) {
         rebuildWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, let workspace = self.workspace else { return }
-            let content = workspace.activeTabContent.wrappedValue
-            self.indexedContent = content
+            guard let self, let workspace = self.workspace,
+                  let tab = workspace.activeTab else { return }
+            let document = DocumentVersion(tabID: tab.id,
+                                           contentRevision: tab.contentRevision)
+            let content = tab.content
+            self.requestedDocument = document
             self.buildGeneration += 1
             let generation = self.buildGeneration
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 let result = XPathIndex.build(from: content)
                 DispatchQueue.main.async {
-                    guard let self, self.buildGeneration == generation else { return }
+                    guard let self, self.buildGeneration == generation,
+                          self.currentDocumentVersion() == document else { return }
                     switch result {
                     case .success(let index):
                         self.index = index
+                        self.indexedDocument = document
                         self.errorText = nil
                     case .failure(let error):
-                        // Letzten gültigen Index behalten (Spezifikation).
+                        // Index für Diagnose/erneutes Öffnen behalten, aber
+                        // wegen seiner alten Quellbereiche nicht auswerten.
                         self.errorText = error.userMessage
                     }
                     self.evaluate(jump: false)
@@ -107,7 +131,7 @@ final class XPathBarModel: ObservableObject {
     /// Wertet die aktuelle Query gegen den Index aus; `jump` springt zur
     /// ersten Fundstelle (Live-Springen beim Tippen).
     private func evaluate(jump: Bool) {
-        guard let index else {
+        guard let index, indexedDocument == currentDocumentVersion() else {
             matches = []
             statusText = ""
             // Der Index entsteht asynchron im Hintergrund. Wer die Leiste
@@ -149,6 +173,12 @@ final class XPathBarModel: ObservableObject {
 
     /// Enter/Pfeil-Navigation durch die Fundstellen.
     func step(_ direction: Int) {
+        guard indexedDocument == currentDocumentVersion() else {
+            matches = []
+            statusText = ""
+            rebuildIndexIfContentChanged()
+            return
+        }
         guard !matches.isEmpty else { return }
         matchCursor = ((matchCursor + direction) % matches.count + matches.count)
             % matches.count
@@ -157,7 +187,8 @@ final class XPathBarModel: ObservableObject {
     }
 
     private func jumpToCurrentMatch() {
-        guard let workspace, matches.indices.contains(matchCursor) else { return }
+        guard let workspace, indexedDocument == currentDocumentVersion(),
+              matches.indices.contains(matchCursor) else { return }
         NotificationCenter.default.post(
             name: .fastraJumpToRange, object: workspace,
             userInfo: ["range": NSValue(range: matches[matchCursor].range)]
@@ -165,7 +196,7 @@ final class XPathBarModel: ObservableObject {
     }
 
     private func updateCompletions() {
-        guard let index else {
+        guard let index, indexedDocument == currentDocumentVersion() else {
             completions = []
             return
         }
@@ -281,6 +312,7 @@ private final class KeyableXPathPanel: NSPanel {
 @MainActor
 final class XPathPanelController {
     private weak var workspace: Workspace?
+    private weak var hostWindow: NSWindow?
     private var panel: NSPanel?
     private(set) var model: XPathBarModel?
 
@@ -299,6 +331,7 @@ final class XPathPanelController {
     /// Öffnet die Leiste Spotlight-artig oben mittig über dem Dokumentfenster.
     func show(over window: NSWindow?) {
         guard let workspace else { return }
+        hostWindow = window
         if panel == nil {
             let model = XPathBarModel(workspace: workspace)
             self.model = model
@@ -326,7 +359,7 @@ final class XPathPanelController {
         }
         guard let panel else { return }
         // Position: horizontal zentriert, knapp unter der Tab-Leiste.
-        if let host = window ?? NSApp.mainWindow {
+        if let host = window {
             let frame = host.frame
             let x = frame.midX - panel.frame.width / 2
             let y = frame.maxY - 120 - panel.frame.height
@@ -342,7 +375,9 @@ final class XPathPanelController {
     func close() {
         model?.deactivate()
         panel?.orderOut(nil)
-        // Fokus zurück in den Editor des Dokumentfensters.
-        NSApp.mainWindow?.makeKeyAndOrderFront(nil)
+        // Fokus exakt in das Dokumentfenster zurückgeben, über dem diese
+        // Leiste geöffnet wurde. `NSApp.mainWindow` könnte inzwischen zu
+        // einem anderen Workspace gehören.
+        hostWindow?.makeKeyAndOrderFront(nil)
     }
 }

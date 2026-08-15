@@ -93,6 +93,49 @@ func xpath_indexSkipsNonElements() throws {
     }
 }
 
+@Test("Index: strukturell ungültiges XML wird nicht als navigierbar akzeptiert",
+      arguments: [
+        "<a x></a>",
+        "<a></a",
+        "<a><!-- offen</a>",
+        "<a/><b/>",
+        "Text<a/>",
+        "<1/>",
+        "<a x='offen></a>",
+        "<a><</a>",
+        "<a x='1' x='2'/>",
+        "<a x='<'/>",
+        "<a>AT&T</a>",
+        "<a>&#0;</a>",
+        "<a>\u{1}</a>",
+        "<a><!-- a -- b --></a>",
+        "<a>Text ]]> Rest</a>",
+        "<!DOCTYPE a [<!ELEMENT a EMPTY>",
+      ])
+func xpath_rejectsMalformedStructure(xml: String) {
+    guard case .failure = XPathIndex.build(from: xml) else {
+        Issue.record("Ungültiges XML wurde akzeptiert: \(xml)")
+        return
+    }
+}
+
+@Test("Index: text() beginnt bei Emoji- und CDATA-Inhalt statt an Markup")
+func xpath_textRangesStartAtContent() throws {
+    let xml = "<r><![CDATA[  🚀 Start  ]]><a>🚀 Anfang</a></r>"
+    let index = try buildIndex(xml)
+    let root = index.elements[index.roots[0]]
+    let child = index.elements[root.children[0]]
+
+    #expect(root.firstTextRange.map { text(xml, $0) } == "🚀 Start")
+    #expect(child.firstTextRange.map { text(xml, $0) } == "🚀 Anfang")
+}
+
+@Test("Index: interne DOCTYPE-Teilmengen werden vollständig übersprungen")
+func xpath_doctypeInternalSubset() throws {
+    let xml = "<!DOCTYPE r [<!ELEMENT r (a)><!ELEMENT a EMPTY>]><r><a/></r>"
+    #expect(try buildIndex(xml).elements.map(\.name) == ["r", "a"])
+}
+
 // MARK: - Teilset-Auswertung
 
 private func evaluate(_ expression: String,
@@ -146,6 +189,13 @@ func xpath_attributePredicates() throws {
     #expect(text(sampleXML, matches[0].range) == "titel")
 }
 
+@Test("Attribut-Prädikate vergleichen decodierte XML-Entities")
+func xpath_attributeEntities() throws {
+    let xml = #"<r><a name="A&amp;B"/><a name="&#x1F680;"/></r>"#
+    #expect(try evaluate(#"//a[@name='A&B']"#, xml: xml).count == 1)
+    #expect(try evaluate(#"//a[@name='🚀']"#, xml: xml).count == 1)
+}
+
 @Test("Attribut- und Text-Ziele: @sprache, titel/text()")
 func xpath_terminals() throws {
     #expect(try evaluate("//buch/@sprache") == ["sprache", "sprache"])
@@ -177,6 +227,22 @@ func xpath_unsupportedSyntax() {
     }
 }
 
+@Test("Achsenwörter bleiben als normale Elementnamen erlaubt")
+func xpath_axisWordsAreValidNames() {
+    for expression in ["//ancestor", "//following-item", "/preceding/value"] {
+        guard case .success = XPathQuery.parse(expression) else {
+            Issue.record("Gültiger Elementpfad wurde als Achse abgelehnt: \(expression)")
+            continue
+        }
+    }
+}
+
+@Test("Schließende Klammern in Attributwerten beenden das Prädikat nicht")
+func xpath_predicateMayContainClosingBracket() throws {
+    #expect(try evaluate(#"//buch[@id=']']"#,
+                         xml: #"<r><buch id="]"/></r>"#).count == 1)
+}
+
 // MARK: - Autovervollständigung
 
 @Test("Autovervollständigung: Kind-Elemente und Attribute aus dem Index")
@@ -192,6 +258,10 @@ func xpath_completions() throws {
     // Attributnamen nach `@`.
     #expect(Set(XPathAutocomplete.completions(for: "//buch/@", index: index))
             == Set(["@id", "@sprache"]))
+    // Eine angefangene Descendant-Achse schlägt Namen in beliebiger Tiefe vor.
+    #expect(XPathAutocomplete.completions(for: "//ti", index: index) == ["titel"])
+    #expect(XPathAutocomplete.completions(for: "/bibliothek//ti", index: index)
+            == ["titel"])
 }
 
 @Test("Vorschlag übernehmen ersetzt nur das letzte Teilstück")
@@ -202,6 +272,9 @@ func xpath_completionSplit() {
     let short = XPathAutocomplete.splitForCompletion("//ti")
     #expect(short.path == "//")
     #expect(short.partial == "ti")
+    let descendant = XPathAutocomplete.splitForCompletion("/bibliothek//ti")
+    #expect(descendant.path == "/bibliothek//")
+    #expect(descendant.partial == "ti")
 }
 
 // MARK: - Großes Dokument (asynchroner Aufbau bleibt korrekt)
@@ -216,4 +289,41 @@ func xpath_largeDocument() throws {
     let index = try buildIndex(xml)
     #expect(index.elements.count == 1 + 5000 * 2)
     #expect(try evaluate("//eintrag[@id='4711']/wert", xml: xml).count == 1)
+}
+
+@Test("Tiefes XML wertet Descendants ohne rekursiven Callstack aus")
+func xpath_deepDocument() throws {
+    let depth = 12_000
+    let xml = String(repeating: "<n>", count: depth)
+        + "<ziel/>"
+        + String(repeating: "</n>", count: depth)
+    #expect(try evaluate("//ziel", xml: xml) == ["ziel"])
+}
+
+@Test("Modell springt nach Inhaltswechsel nicht mit veralteten Quellbereichen")
+@MainActor func xpath_modelRejectsStaleIndex() async throws {
+    let suite = "fastra-xpath-model-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let workspace = Workspace(defaults: defaults)
+    workspace.activeTabContent.wrappedValue = "<r><a/></r>"
+    let model = XPathBarModel(workspace: workspace)
+    model.activate()
+    defer { model.deactivate() }
+
+    for _ in 0..<200 where model.index == nil {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(model.index != nil)
+    model.query = "//a"
+    #expect(!model.statusText.isEmpty)
+
+    workspace.activeTabContent.wrappedValue = "<r><b/><a/></r>"
+    model.step(1)
+    #expect(model.statusText.isEmpty)
+
+    for _ in 0..<200 where model.statusText.isEmpty {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(!model.statusText.isEmpty)
 }

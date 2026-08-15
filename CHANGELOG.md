@@ -9,6 +9,29 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.99.0] — 2026-08-15
+
+### Behoben
+
+- **XPath navigiert nur mit aktuellen, gültigen Quellbereichen:** Nach einem
+  Inhalts- oder Tabwechsel kann ein älterer Hintergrundindex weder Treffer
+  installieren noch in das geänderte Dokument springen. Beim Schließen kehrt
+  der Fokus in genau das Fenster zurück, das die Leiste geöffnet hat.
+- **Der XML-Index lehnt beschädigte Struktur zuverlässig ab:** Fehlende
+  Tag-Enden, mehrere Wurzeln, doppelte oder unvollständige Attribute und
+  ungültige Entities werden verständlich gemeldet. CDATA, Emoji am Textanfang,
+  Standard-Entities und sehr tiefe Dokumente behalten korrekte Sprungziele.
+- **XPath-Eingabe und Vorschläge bewahren gültige Namen und `//`:** Wörter wie
+  `ancestor` sind als Elementnamen erlaubt; `]` darf in einem zitierten
+  Attributwert stehen und Descendant-Vorschläge bleiben in beliebiger Tiefe
+  verfügbar.
+
+### Tests
+
+- **21 XPath-Regressionen decken Parser, Index, Modell und große Eingaben ab:**
+  Darunter sind sechzehn beschädigte XML-Strukturen, 12.000 Verschachtelungen,
+  CDATA/Emoji-Offsets, Entity-Vergleiche und ein Inhaltswechsel mit altem Index.
+
 ## [v1.98.0] — 2026-08-15
 
 ### Behoben

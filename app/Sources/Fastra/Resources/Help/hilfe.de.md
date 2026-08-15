@@ -638,7 +638,9 @@ Fehler erscheinen auf der Konsole; Exit-Code ≠ 0 bedeutet Probleme.
 
 Für XML-artige Dokumente blendet ⇧⌘X die XPath-Leiste ein: XPath-Abfrage
 eintippen, Fastra zählt die Treffer und springt beim Navigieren an die
-Fundstellen im Dokument.
+Fundstellen im Dokument. Bei unvollständigem oder ungültigem XML wartet die
+Navigation auf einen wieder gültigen Dokumentstand, damit veraltete
+Quellpositionen keinen Sprung auslösen.
 
 ## Projekt und Seitenleiste
 

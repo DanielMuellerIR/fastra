@@ -1017,7 +1017,7 @@
 "Sprache/Format — manuelle Wahl gewinnt vor der Automatik" = "Language/format — a manual choice always wins over automatic detection";
 "XML unvollständig: „</%@>“ erwartet, „</%@>“ gefunden." = "Incomplete XML: expected “</%1$@>”, found “</%2$@>”.";
 "XML unvollständig: „<%@>“ wird nicht geschlossen." = "Incomplete XML: “<%@>” is never closed.";
-"XML an dieser Stelle nicht lesbar — der letzte gültige Index bleibt aktiv." = "XML is not readable at this position — the last valid index stays active.";
+"XML an dieser Stelle nicht lesbar — Navigation wartet auf gültiges XML." = "XML is not readable at this position — navigation waits for valid XML.";
 "XPath eingeben — z. B. //buch[@id='42']/titel" = "Enter an XPath — e.g. //book[@id='42']/title";
 "„%@“ gehört nicht zum unterstützten XPath-Teilset (/, //, *, [n], [@attr], [@attr='wert'], @attr, text())." = "“%@” is not part of the supported XPath subset (/, //, *, [n], [@attr], [@attr='value'], @attr, text()).";
 "XPath unvollständig oder ungültig bei „%@“." = "XPath is incomplete or invalid at “%@”.";
