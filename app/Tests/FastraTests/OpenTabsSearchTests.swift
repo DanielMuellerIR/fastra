@@ -218,6 +218,100 @@ func workspace_openReplaceOnlyChangesEditableTabs() {
     #expect(!ws.tabs[1].isDirty)
 }
 
+@Test("Einzel-Ersetzen im Geöffnet-Scope ändert den gewählten Ziel-Tab")
+func workspace_replaceActiveOpenMatchTargetsItsTab() {
+    let ws = makeWorkspace(tabs: [("a.txt", "foo eins"), ("b.txt", "foo zwei")])
+    ws.findPattern = "foo"
+    ws.replacePattern = "X"
+    ws.useRegex = false
+    ws.caseSensitive = true
+    let result = OpenTabsSearch.find(
+        tabs: ws.tabs.map {
+            OpenTabsSearch.TabInput(id: $0.id, title: $0.title,
+                                    content: $0.content)
+        }, options: ws.currentSearchOptions
+    )
+    ws.openResults = result.perTab
+    ws.openTotalMatches = result.totalMatches
+    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    ws.activeMatchIndex = 1
+    let targetTabID = ws.tabs[1].id
+    let oldReloadNonce = ws.editorReloadNonce
+
+    #expect(ws.canReplaceActiveSearchMatch)
+    ws.replaceActiveMatch()
+
+    #expect(ws.tabs[0].content == "foo eins")
+    #expect(!ws.tabs[0].isDirty)
+    #expect(ws.tabs[1].content == "X zwei")
+    #expect(ws.tabs[1].isDirty)
+    #expect(ws.activeTabID == targetTabID)
+    #expect(ws.editorReloadNonce == oldReloadNonce + 1)
+}
+
+@Test("Einzel-Ersetzen im Geöffnet-Scope lehnt einen read-only Ziel-Tab ab")
+func workspace_replaceActiveOpenMatchRejectsReadOnlyTarget() {
+    let ws = makeWorkspace(tabs: [("edit.txt", "foo"), ("HEAD:gone.txt", "foo")])
+    ws.tabs[1].readOnlyReason = "Git-Vorversion"
+    ws.tabs[1].gitSnapshotRequest = GitFileSnapshotRequest(
+        repositoryPath: "/tmp/repo", path: "gone.txt", source: .head
+    )
+    ws.findPattern = "foo"
+    ws.replacePattern = "X"
+    ws.useRegex = false
+    ws.caseSensitive = true
+    let result = OpenTabsSearch.find(
+        tabs: ws.tabs.map {
+            OpenTabsSearch.TabInput(id: $0.id, title: $0.title,
+                                    content: $0.content)
+        }, options: ws.currentSearchOptions
+    )
+    ws.openResults = result.perTab
+    ws.openTotalMatches = result.totalMatches
+    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    ws.activeMatchIndex = 1
+
+    #expect(!ws.canReplaceActiveSearchMatch)
+    ws.replaceActiveMatch()
+    #expect(ws.tabs[1].content == "foo")
+    #expect(!ws.tabs[1].isDirty)
+}
+
+@Test("Geöffnet-Einzel-Ersetzen sucht asynchron weiter")
+@MainActor
+func workspace_replaceActiveOpenMatchFindsAgain() async throws {
+    let ws = makeWorkspace(tabs: [("a.txt", "MARKER eins"),
+                                  ("b.txt", "MARKER zwei")])
+    ws.showSearchDialog = true
+    ws.useRegex = false
+    ws.caseSensitive = true
+    ws.findPattern = "MARKER"
+    ws.replacePattern = "ERSETZT"
+
+    var deadline = Date().addingTimeInterval(5)
+    while !(ws.openTotalMatches == 2 && !ws.bufferSearching
+            && ws.visibleBufferResultsOptions == ws.currentSearchOptions),
+          Date() < deadline {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(ws.openTotalMatches == 2, "Der erste Geöffnet-Lauf hat nicht geliefert")
+
+    ws.activeMatchIndex = 1
+    ws.replaceActiveMatch()
+    #expect(ws.tabs[1].content == "ERSETZT zwei")
+
+    deadline = Date().addingTimeInterval(5)
+    while !(ws.openTotalMatches == 1 && !ws.bufferSearching
+            && ws.visibleBufferResultsOptions == ws.currentSearchOptions),
+          Date() < deadline {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(ws.openTotalMatches == 1, "Der Neulauf nach Einzel-Ersetzen fehlt")
+    #expect(ws.activeMatchIndex == 0)
+    #expect(ws.activeTabID == ws.tabs[0].id,
+            "Nach dem letzten Treffer muss der verbleibende Treffer aktiv sein")
+}
+
 @Test("Datei-Ersetzen meldet in read-only Git-Vorversion keinen Erfolg")
 func workspace_fileReplaceRejectsReadOnlySnapshot() {
     let ws = makeWorkspace(tabs: [("HEAD:gone.txt", "foo")])

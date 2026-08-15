@@ -69,3 +69,22 @@ func history_roundtrip() {
     #expect(loaded[0].find == "a" && loaded[0].replace == "x")
     #expect(loaded[1].find == "b" && loaded[1].replace == "")
 }
+
+@Test("Zwei Fenster verlieren den Suchverlauf des anderen nicht")
+@MainActor
+func history_twoWorkspacesMergeBeforePrepending() {
+    let defaults = makeDefaults()
+    let windowA = Workspace(defaults: defaults)
+    let windowB = Workspace(defaults: defaults)
+
+    windowA.findPattern = "alpha"
+    windowA.replacePattern = "eins"
+    windowA.recordSearchHistory()
+    windowB.findPattern = "beta"
+    windowB.replacePattern = "zwei"
+    windowB.recordSearchHistory()
+
+    let persisted = SearchHistoryStore.load(from: defaults)
+    #expect(persisted.map(\.find) == ["beta", "alpha"])
+    #expect(persisted.map(\.replace) == ["zwei", "eins"])
+}

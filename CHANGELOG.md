@@ -9,6 +9,24 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.91.0] — 2026-08-15
+
+### Behoben
+
+- **Einzel-Ersetzen funktioniert in allen geöffneten Dokumenten:** Der
+  „Ersetzen“-Befehl verwendet nun den ausgewählten Treffer samt Ziel-Tab,
+  respektiert schreibgeschützte Ansichten und springt nach dem asynchronen
+  Neulauf zum nächsten vorhandenen Treffer.
+- **Fenster überschreiben keine gemeinsam gespeicherten Listen mehr:**
+  Zuletzt benutzte Projekte, Suchverlauf und Suchordner werden vor jeder
+  Änderung mit dem aktuellen persistenten Stand zusammengeführt.
+
+### Tests
+
+- **Regressionen prüfen Ziel-Tab, Weitersuchen und zwei Fenster:** Die Tests
+  decken Einzel-Ersetzen einschließlich schreibgeschützter Tabs sowie
+  konkurrierende Änderungen an Projekten, Verlauf und Suchordnern ab.
+
 ## [v1.90.0] — 2026-08-15
 
 ### Behoben

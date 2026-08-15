@@ -855,6 +855,11 @@ final class Workspace: ObservableObject {
     @Published var searchError: String? = nil
     /// Index des aktiv im Detail-Bereich gezeigten Treffers.
     @Published var activeMatchIndex: Int = 0
+    /// Nach Einzel-Ersetzen im Geöffnet-Scope liefert erst der asynchrone
+    /// Suchlauf die neue flache Trefferliste. Bis dahin merken wir uns den
+    /// gewünschten Nachrück-Index samt Suchoptionen; nur ein Lauf mit genau
+    /// denselben Optionen darf anschließend dorthin springen.
+    private var pendingOpenReplaceNavigation: (options: SearchOptions, index: Int)?
 
     /// Zähler, der den Editor zu einer Neuerzeugung zwingt, wenn der aktive
     /// Buffer-Inhalt PROGRAMMATISCH geändert wurde (z.B. „Alle ersetzen" /
@@ -3078,7 +3083,10 @@ final class Workspace: ObservableObject {
     /// Merkt sich einen Projekt-Ordner oben in `recentProjects` — nur die
     /// Liste, lädt NICHT das Projekt (Persistenz via Combine-Sink in `init`).
     func noteRecentProject(_ url: URL) {
-        recentProjects = ProjectStore.prepending(url.path, to: recentProjects)
+        // Wie bei `recentFiles` hält jedes Fenster nur eine lokale Ansicht.
+        // Vor dem Schreiben deshalb den gemeinsamen Stand zusammenführen.
+        let persisted = ProjectStore.load(from: defaultsStore)
+        recentProjects = ProjectStore.prepending(url.path, to: persisted)
     }
 
     // MARK: - Etappe-1-UX (Wunschpaket 2026-07)
@@ -4521,7 +4529,17 @@ final class Workspace: ObservableObject {
     /// im Store). Dedup + Cap erledigt `SearchHistoryStore.prepending`.
     func recordSearchHistory() {
         let entry = SearchHistoryEntry(find: findPattern, replace: replacePattern)
-        searchHistory = SearchHistoryStore.prepending(entry, to: searchHistory)
+        // Ein zweites Fenster kann seit unserem Init weitere Einträge
+        // gespeichert haben. Die lokale Kopie darf sie nicht überschreiben.
+        let persisted = SearchHistoryStore.load(from: defaultsStore)
+        searchHistory = SearchHistoryStore.prepending(entry, to: persisted)
+    }
+
+    /// Bewusster Löschbefehl aus dem Verlauf-Menü. Anders als beim Hinzufügen
+    /// wird hier nicht zusammengeführt: Der Nutzer will den gemeinsamen
+    /// persistenten Verlauf vollständig leeren.
+    func clearSearchHistory() {
+        searchHistory = []
     }
 
     /// Übernimmt einen Verlaufs-Eintrag in die Suchfelder (Popup-Auswahl).
@@ -4706,8 +4724,41 @@ final class Workspace: ObservableObject {
         panel.allowsMultipleSelection = true
         panel.message = L10n.string("Ordner zum Durchsuchen auswählen")
         guard panel.runModal() == .OK else { return }
-        recentSearchFolders = Workspace.prependingFolders(panel.urls.map(\.path),
-                                                          to: recentSearchFolders)
+        addSearchFolderPaths(panel.urls.map(\.path))
+    }
+
+    /// Fügt Ordner auf Grundlage des jüngsten gemeinsamen Defaults-Stands
+    /// hinzu. Der getrennte Helfer hält den Panel-Pfad testbar und verhindert,
+    /// dass ein älteres Fenster Einträge eines anderen Fensters verliert.
+    func addSearchFolderPaths(_ paths: [String]) {
+        let persisted = RecentSearchFoldersStore.load(from: defaultsStore)
+        recentSearchFolders = Workspace.prependingFolders(paths, to: persisted)
+    }
+
+    /// Ändert genau den über seinen Pfad identifizierten gemeinsamen Eintrag.
+    /// UUIDs eignen sich hier nicht: Sie werden beim Laden aus UserDefaults
+    /// absichtlich neu erzeugt und unterscheiden sich deshalb je Fenster.
+    func setSearchFolderEnabled(path: String, enabled: Bool) {
+        let normalized = (path as NSString).expandingTildeInPath
+        var persisted = RecentSearchFoldersStore.load(from: defaultsStore)
+        guard let index = persisted.firstIndex(where: {
+            ($0.path as NSString).expandingTildeInPath == normalized
+        }) else {
+            recentSearchFolders = persisted
+            return
+        }
+        persisted[index].enabled = enabled
+        recentSearchFolders = persisted
+    }
+
+    /// Entfernt genau einen Ordner aus dem neuesten gemeinsamen Stand.
+    func removeSearchFolder(path: String) {
+        let normalized = (path as NSString).expandingTildeInPath
+        var persisted = RecentSearchFoldersStore.load(from: defaultsStore)
+        persisted.removeAll {
+            ($0.path as NSString).expandingTildeInPath == normalized
+        }
+        recentSearchFolders = persisted
     }
 
     /// Reine Logik fürs Hinzufügen von Ordnern: jeder neue Pfad landet
@@ -5137,10 +5188,18 @@ final class Workspace: ObservableObject {
     }
 
     var canReplaceActiveSearchMatch: Bool {
-        !scope.isFolderLike && activeTab?.isEditableTextDocument == true
-            && searchError == nil
-            && visibleBufferResultsOptions == currentSearchOptions
-            && activeMatchIndex < bufferMatches.count
+        guard !scope.isFolderLike, searchError == nil,
+              visibleBufferResultsOptions == currentSearchOptions else {
+            return false
+        }
+        if scope == .open {
+            let matches = navMatches
+            guard matches.indices.contains(activeMatchIndex),
+                  let tabID = matches[activeMatchIndex].tabID else { return false }
+            return tabs.first(where: { $0.id == tabID })?.isEditableTextDocument == true
+        }
+        return activeTab?.isEditableTextDocument == true
+            && bufferMatches.indices.contains(activeMatchIndex)
     }
 
     /// Ersetzt alle aktuell gefundenen Treffer im aktiven Buffer durch
@@ -5220,6 +5279,10 @@ final class Workspace: ObservableObject {
         // der Bereich die falsche Stelle (Review 2026-08-02).
         guard canReplaceActiveSearchMatch else { return }
         recordSearchHistory()
+        if scope == .open {
+            replaceActiveOpenMatch()
+            return
+        }
         let match = bufferMatches[activeMatchIndex]
         let text = activeTabContent.wrappedValue
         // applyReplacements ist pur und kann eine Ein-Treffer-Liste
@@ -5268,6 +5331,61 @@ final class Workspace: ObservableObject {
         guard activeMatchIndex < bufferMatches.count else { return }
         let target = bufferMatches[activeMatchIndex]
         NotificationCenter.default.postMatchJump(target, for: self)
+    }
+
+    /// Geöffnet-Scope-Gegenstück zum Datei-Pfad oben. Der sichtbare Treffer
+    /// trägt seine Ziel-Tab-ID; `bufferMatches` ist in diesem Scope absichtlich
+    /// leer. Die erneute Suche über alle Tabs bleibt im `SearchRunner`, damit
+    /// auch viele oder große offene Dokumente den Main-Thread nicht blockieren.
+    private func replaceActiveOpenMatch() {
+        let matches = navMatches
+        guard matches.indices.contains(activeMatchIndex) else { return }
+        let target = matches[activeMatchIndex]
+        guard let tabID = target.tabID,
+              let tabIndex = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[tabIndex].isEditableTextDocument else { return }
+
+        let text = tabs[tabIndex].content
+        let replaced = BufferSearch.applyReplacements(in: text, matches: [target.match])
+        guard replaced != text else { return }
+
+        // Vor der @Published-Array-Mutation setzen: Sie stößt synchron die
+        // Invalidierung und verzögert danach den asynchronen Neulauf an.
+        pendingOpenReplaceNavigation = (currentSearchOptions, activeMatchIndex)
+        tabs[tabIndex].content = replaced
+        tabs[tabIndex].isDirty = true
+        if activeTabID != tabID { selectTab(id: tabID) }
+        editorReloadNonce += 1
+    }
+
+    /// Wird ausschließlich von der erfolgreichen Geöffnet-Suche aufgerufen.
+    /// Der frühere Nachfolger steht nach dem Entfernen des aktiven Treffers am
+    /// selben flachen Index; am Listenende springt der Clamp zum letzten noch
+    /// vorhandenen Treffer. Ein inzwischen geändertes Pattern verwirft den
+    /// vorgemerkten Sprung, statt auf eine andere Trefferbasis zu zeigen.
+    func finishPendingOpenReplaceNavigation(for options: SearchOptions) {
+        guard let pending = pendingOpenReplaceNavigation else { return }
+        pendingOpenReplaceNavigation = nil
+        guard scope == .open, pending.options == options else { return }
+        let matches = navMatches
+        guard !matches.isEmpty else { return }
+
+        activeMatchIndex = min(pending.index, matches.count - 1)
+        let target = matches[activeMatchIndex]
+        if let tabID = target.tabID, activeTabID != tabID {
+            selectTab(id: tabID)
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.scope == .open else { return }
+            NotificationCenter.default.postMatchJump(target.match, for: self)
+        }
+    }
+
+    /// Verhindert, dass ein abgebrochener Geöffnet-Neulauf seinen alten
+    /// Weitersuchen-Auftrag nach Schließen der Maske oder Scope-Wechsel später
+    /// wieder aufgreift.
+    func discardPendingOpenReplaceNavigation() {
+        pendingOpenReplaceNavigation = nil
     }
 
     /// Stößt die explizite Ordner-Suche an („Suchen"-Klick / Return in der

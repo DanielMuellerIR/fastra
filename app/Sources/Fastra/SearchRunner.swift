@@ -243,6 +243,7 @@ final class SearchRunner {
         guard let ws = workspace else { return }
         cancelPendingWork()
         guard isVisible else {
+            ws.discardPendingOpenReplaceNavigation()
             ws.bufferSearching = false
             ws.folderSearching = false
             // Treffer sind außerhalb der Maske weiterhin über Statuszeile und
@@ -343,6 +344,7 @@ final class SearchRunner {
         // So kann das bloße Öffnen oder Bearbeiten eines Dokuments niemals
         // im Hintergrund einen Volltextlauf starten.
         guard ws.showSearchDialog else {
+            ws.discardPendingOpenReplaceNavigation()
             ws.bufferSearching = false
             ws.folderSearching = false
             return
@@ -352,10 +354,13 @@ final class SearchRunner {
             if ws.scope == .open {
                 runOpenSearch(ws)
             } else {
+                ws.discardPendingOpenReplaceNavigation()
                 runBufferSearch(ws)
             }
             return
         }
+
+        ws.discardPendingOpenReplaceNavigation()
 
         // Ordner-Scope. Buffer-/Geöffnet-Treffer verwerfen (kein stale Rest
         // beim Zurückwechseln) und Pattern sofort validieren (roter Streifen).
@@ -502,6 +507,7 @@ final class SearchRunner {
 
         guard !options.isEmpty else {
             bufferTask = nil
+            ws.discardPendingOpenReplaceNavigation()
             ws.openResults = []
             ws.openTotalMatches = 0
             ws.openResultsWereCapped = false
@@ -533,6 +539,7 @@ final class SearchRunner {
                 if ws.activeMatchIndex >= materialized {
                     ws.activeMatchIndex = max(0, materialized - 1)
                 }
+                ws.finishPendingOpenReplaceNavigation(for: options)
             }
         }
     }

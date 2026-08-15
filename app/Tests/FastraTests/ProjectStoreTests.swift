@@ -64,6 +64,22 @@ func projects_roundtrip() {
     #expect(ProjectStore.load(from: d).map(\.path) == ["~/git/a", "~/git/b"])
 }
 
+@Test("Zwei Fenster verlieren das zuletzt gemerkte Projekt des anderen nicht")
+@MainActor
+func projects_twoWorkspacesMergeBeforePrepending() {
+    let defaults = makeDefaults()
+    let windowA = Workspace(defaults: defaults)
+    let windowB = Workspace(defaults: defaults)
+
+    windowA.noteRecentProject(URL(fileURLWithPath: "/tmp/fastra-project-a"))
+    windowB.noteRecentProject(URL(fileURLWithPath: "/tmp/fastra-project-b"))
+
+    #expect(ProjectStore.load(from: defaults).map(\.path) == [
+        "/tmp/fastra-project-b",
+        "/tmp/fastra-project-a",
+    ])
+}
+
 @Test("ProjectEntry: url expandiert Tilde, name ist letzter Pfadteil")
 func projects_entryURLAndName() {
     let entry = ProjectEntry(path: "~/git/fastra")

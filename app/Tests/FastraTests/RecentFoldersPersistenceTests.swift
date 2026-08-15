@@ -65,3 +65,28 @@ func entry_urlExpandsTilde() {
     #expect(!path.hasPrefix("~"), "Tilde wurde nicht expandiert: \(path)")
     #expect(path.contains("/Test"))
 }
+
+@Test("Zwei Fenster führen Hinzufügen, Umschalten und Entfernen von Ordnern zusammen")
+@MainActor
+func recentFolders_twoWorkspacesMutateLatestPersistedState() {
+    let defaults = makeDefaults()
+    RecentSearchFoldersStore.save([], to: defaults)
+    let windowA = Workspace(defaults: defaults)
+    let windowB = Workspace(defaults: defaults)
+
+    windowA.addSearchFolderPaths(["/tmp/fastra-folder-a"])
+    windowB.addSearchFolderPaths(["/tmp/fastra-folder-b"])
+    #expect(RecentSearchFoldersStore.load(from: defaults).map(\.path) == [
+        "/tmp/fastra-folder-b", "/tmp/fastra-folder-a",
+    ])
+
+    windowA.setSearchFolderEnabled(path: "/tmp/fastra-folder-a", enabled: false)
+    var persisted = RecentSearchFoldersStore.load(from: defaults)
+    #expect(persisted.count == 2)
+    #expect(persisted.first(where: { $0.path == "/tmp/fastra-folder-a" })?.enabled == false)
+
+    windowB.removeSearchFolder(path: "/tmp/fastra-folder-b")
+    persisted = RecentSearchFoldersStore.load(from: defaults)
+    #expect(persisted.map(\.path) == ["/tmp/fastra-folder-a"])
+    #expect(persisted[0].enabled == false)
+}

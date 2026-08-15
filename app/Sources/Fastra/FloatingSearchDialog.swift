@@ -273,9 +273,19 @@ struct FloatingSearchDialog: View {
             }
 
             VStack(spacing: 2) {
-                ForEach($workspace.recentSearchFolders) { $entry in
+                ForEach(workspace.recentSearchFolders) { entry in
                     HStack(spacing: 6) {
-                        Toggle("", isOn: $entry.enabled)
+                        Toggle("", isOn: Binding(
+                            get: {
+                                workspace.recentSearchFolders
+                                    .first(where: { $0.path == entry.path })?.enabled
+                                    ?? entry.enabled
+                            },
+                            set: { enabled in
+                                workspace.setSearchFolderEnabled(path: entry.path,
+                                                                 enabled: enabled)
+                            }
+                        ))
                             .toggleStyle(.checkbox)
                             .labelsHidden()
                         Text(entry.path)
@@ -285,7 +295,7 @@ struct FloatingSearchDialog: View {
                             .truncationMode(.middle)
                         Spacer()
                         Button {
-                            workspace.recentSearchFolders.removeAll { $0.id == entry.id }
+                            workspace.removeSearchFolder(path: entry.path)
                         } label: {
                             Image(systemName: "minus.circle")
                                 .fastraFont(size: 11)
@@ -593,7 +603,7 @@ struct FloatingSearchDialog: View {
                     Button(Self.historyLabel(entry)) { workspace.applyHistoryEntry(entry) }
                 }
                 Divider()
-                Button("Verlauf löschen") { workspace.searchHistory = [] }
+                Button("Verlauf löschen") { workspace.clearSearchHistory() }
             }
         } label: {
             Image(systemName: "clock.arrow.circlepath")
