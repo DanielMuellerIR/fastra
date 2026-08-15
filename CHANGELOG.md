@@ -9,6 +9,20 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.90.0] — 2026-08-15
+
+### Behoben
+
+- **Dateivergleiche zählen Windows-Zeilen korrekt:** Ein CRLF-Zeilenumbruch
+  wird in der zweispaltigen Ansicht als ein gemeinsamer Trenner behandelt.
+  Dadurch erscheinen zwischen echten Zeilen keine erfundenen Leerzeilen mehr,
+  und Zeilennummern sowie Änderungsblöcke bleiben korrekt ausgerichtet.
+
+### Tests
+
+- **Eine Regression prüft CRLF-Zeilen im Dateivergleich:** Drei echte Zeilen
+  müssen genau drei Anzeigezeilen mit der Änderung an Zeile zwei ergeben.
+
 ## [v1.89.0] — 2026-08-15
 
 ### Behoben

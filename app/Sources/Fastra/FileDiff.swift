@@ -229,11 +229,8 @@ enum FileDiff {
     /// spürbar dauern), das Ergebnis zurück auf den Main-Thread.
     static func compare(left: String, right: String,
                         options: FileDiffOptions = FileDiffOptions()) -> Outcome {
-        // Wie `ReplacePreview.buildSideBySide`: `.newlines` trennt auch \r\n.
-        // Ein Text mit End-Umbruch erhält dadurch eine letzte Leerzeile —
-        // ein Unterschied im End-Umbruch bleibt so ehrlich sichtbar.
-        let leftLines = left.components(separatedBy: .newlines)
-        let rightLines = right.components(separatedBy: .newlines)
+        let leftLines = logicalLines(in: left)
+        let rightLines = logicalLines(in: right)
         guard leftLines.count <= maximumLineCount else {
             return .limitation(.tooManyLines(side: .left, limit: maximumLineCount))
         }
@@ -321,6 +318,33 @@ enum FileDiff {
     /// „Leerzeilen ignorieren").
     static func isBlank(_ line: String) -> Bool {
         line.allSatisfy { $0.isWhitespace }
+    }
+
+    /// Zerlegt Text in logische Zeilen, ohne CRLF in zwei Trenner zu teilen.
+    /// `NSString.getLineStart` versteht LF, CR, CRLF und die Unicode-
+    /// Zeilentrenner. Ein abschließender Terminator erzeugt ausdrücklich eine
+    /// letzte Leerzeile, damit dieser Dateiunterschied sichtbar bleibt.
+    private static func logicalLines(in text: String) -> [String] {
+        let ns = text as NSString
+        guard ns.length > 0 else { return [""] }
+
+        var lines: [String] = []
+        var index = 0
+        var endedWithTerminator = false
+        while index < ns.length {
+            var end = NSNotFound
+            var contentsEnd = NSNotFound
+            ns.getLineStart(nil, end: &end, contentsEnd: &contentsEnd,
+                            for: NSRange(location: index, length: 0))
+            guard end != NSNotFound, contentsEnd != NSNotFound,
+                  end > index, contentsEnd >= index else { break }
+            lines.append(ns.substring(with: NSRange(
+                location: index, length: contentsEnd - index)))
+            endedWithTerminator = contentsEnd < end
+            index = end
+        }
+        if endedWithTerminator { lines.append("") }
+        return lines
     }
 
     // MARK: - Zeilen-Ausrichtung

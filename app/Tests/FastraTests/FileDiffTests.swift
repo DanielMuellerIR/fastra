@@ -119,6 +119,20 @@ func trailingNewlineDifference() {
     #expect(r.rightLineCount == 2)
 }
 
+@Test("CRLF zählt als ein logischer Zeilenumbruch")
+func crlfDoesNotCreatePhantomRows() {
+    let left = "eins\r\nzwei\r\ndrei"
+    let right = "eins\r\nZWEI\r\ndrei"
+    guard let r = result(FileDiff.compare(left: left, right: right)) else { return }
+
+    #expect(r.leftLineCount == 3)
+    #expect(r.rightLineCount == 3)
+    #expect(r.rows.count == 3)
+    #expect(r.rows.map(\.kind) == [.unchanged, .changed, .unchanged])
+    #expect(r.rows[1].beforeLine == 2)
+    #expect(r.rows[1].afterLine == 2)
+}
+
 // MARK: - Optionen
 
 @Test("Leerraum am Zeilenende ignorieren: nur mit Option identisch")
