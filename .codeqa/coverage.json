@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 1191058
+    "tokens_spent": 1333737
   },
   "campaign_history": [
     {
@@ -660,7 +660,22 @@
       "risk": "medium",
       "priority": 13,
       "reason": "Text- und Zeilenoperationen verändern Nutzerinhalt und benötigen klare Unicode-, Auswahl- und Undo-Semantik.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T165221406979+0200",
+        "completed_at": "2026-08-15T17:58:08+02:00",
+        "observed_head": "81197666d7f9c50b39809c0c163fcc3edd620290",
+        "content_sha256": "f506aab2299f7de85b4bcc071906bbb13b604aef5f6244a579b28c88bcb3283c",
+        "file_count": 15,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Duplikatentfernung trennt echte Leerzeilen vom leeren Schluss-Element eines Datei-End-Newlines",
+        "tests": [
+          "./test.sh --filter CaseTemplate|GoToTarget|GotoLine|LineFilter|LineOperations|MiscReviewFix|ProcessDuplicateLines|TextOperations|UnicodeTransform: 204 passed",
+          "./build.sh: passed einschließlich Fensterziel-Audit, Signatur und portabler Ordnersuche",
+          "./localization-audit.sh und ./help-audit.sh: passed"
+        ]
+      }
     },
     {
       "id": "language-format-lint",
