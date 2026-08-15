@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 86180
+    "tokens_spent": 109474
   },
   "campaign_history": [
     {
@@ -293,16 +293,16 @@
       "reason": "Build-Patches, portable Ressourcen, Signierung und Veröffentlichung schützen die ausgelieferte App und öffentliche Historie.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T134823378515+0200",
-        "completed_at": "2026-08-15T15:32:06+02:00",
-        "observed_head": "80ba1df4198b3937f5aa31219fa7851412cee1cc",
-        "content_sha256": "efa6d43d27808a61abb7c05d4edacb176bb19f325609bd7c3f33c5c67bcbf777",
+        "campaign_id": "20260815T165221406979+0200",
+        "completed_at": "2026-08-15T16:57:33+02:00",
+        "observed_head": "b0a99d94fe5dc776baaf043b4a347785d16e1ccf",
+        "content_sha256": "848a14fb1379f3ff13c2289ed1876052211426ad556e55f6de946d222d53f03a",
         "file_count": 20,
-        "review": "full",
-        "outcome": "improved",
-        "summary": "Installer prüft eine Zwischenkopie und rollt bei Fehlern auf die vorige App zurück; Release-DMGs verwenden private Mountpunkte; der Appcast signiert erst nach Ticket-, Signatur-, Gatekeeper-, Bundle-ID- und Versionsprüfung.",
+        "review": "delta-plus-boundaries",
+        "outcome": "reviewed-clean",
+        "summary": "Seit dem Full-Review änderte sich im Bereich ausschließlich die konsistente Produktversion von 1.87.0/176 auf 1.91.0/180. Info.plist, Changelogfolge, gebündelter Build und Versionsleser an Release-/Appcast-Grenzen geprüft; Installations-, Notarisierungs- und Portabilitätsschutz unverändert, kein Fehler belegt.",
         "tests": [
-          "bash -n und YAML-Syntax grün; 7 BuildInstallationPolicyTests grün; debug build samt Portabilitätsprüfung grün; reales notarisiertes Fastra-1.83.0.dmg vollständig geprüft; localization/help/public-history Audits grün; Gesamtlauf 1877/1881 grün, drei Sandbox-Fälle durch laufende installierte App blockiert und ein Last-Timeout isoliert in 1,196 s grün."
+          "plutil -lint Info.plist Exit 0; gebautes Fastra.app meldet 1.91.0/180; Build- und Installationsrichtlinie 7/7 grün, Exit 0; Übernahme-build.sh einschließlich Portabilitätsprüfung Exit 0."
         ]
       }
     },
