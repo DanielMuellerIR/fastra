@@ -5,7 +5,8 @@
     "id": "20260815T134823378515+0200",
     "token_budget": 3000000,
     "status": "active",
-    "started_at": "2026-08-15T13:48:23+02:00"
+    "started_at": "2026-08-15T13:48:23+02:00",
+    "tokens_spent": 1797479
   },
   "campaign_history": [],
   "scope": {
@@ -280,7 +281,20 @@
       "risk": "critical",
       "priority": 5,
       "reason": "Build-Patches, portable Ressourcen, Signierung und Veröffentlichung schützen die ausgelieferte App und öffentliche Historie.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T134823378515+0200",
+        "completed_at": "2026-08-15T15:32:06+02:00",
+        "observed_head": "80ba1df4198b3937f5aa31219fa7851412cee1cc",
+        "content_sha256": "efa6d43d27808a61abb7c05d4edacb176bb19f325609bd7c3f33c5c67bcbf777",
+        "file_count": 20,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Installer prüft eine Zwischenkopie und rollt bei Fehlern auf die vorige App zurück; Release-DMGs verwenden private Mountpunkte; der Appcast signiert erst nach Ticket-, Signatur-, Gatekeeper-, Bundle-ID- und Versionsprüfung.",
+        "tests": [
+          "bash -n und YAML-Syntax grün; 7 BuildInstallationPolicyTests grün; debug build samt Portabilitätsprüfung grün; reales notarisiertes Fastra-1.83.0.dmg vollständig geprüft; localization/help/public-history Audits grün; Gesamtlauf 1877/1881 grün, drei Sandbox-Fälle durch laufende installierte App blockiert und ein Last-Timeout isoliert in 1,196 s grün."
+        ]
+      }
     },
     {
       "id": "editor-integration-layout",
