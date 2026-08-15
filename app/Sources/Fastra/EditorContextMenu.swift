@@ -42,6 +42,24 @@ enum SelectionClamping {
     }
 }
 
+/// Führt rechenintensive Dokumenttransformationen außerhalb des UI-Threads
+/// aus und liefert ihr Ergebnis für die eigentliche Editoränderung zurück auf
+/// den Main-Thread. Formatieren und Minifizieren teilen damit dieselbe
+/// Nebenläufigkeitsgrenze.
+enum EditorDocumentTransformationScheduler {
+    static func run<Output>(
+        operation: @escaping () -> Output,
+        completion: @escaping (Output) -> Void
+    ) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let output = operation()
+            DispatchQueue.main.async {
+                completion(output)
+            }
+        }
+    }
+}
+
 extension TextView {
     /// Auswahl, die garantiert INNERHALB des Textes liegt.
     ///
@@ -595,15 +613,17 @@ final class EditorContextMenu: NSObject {
         // JSONSerialization/XMLDocument und die Ausgabeerzeugung dürfen bei
         // mehreren MiB niemals die Main-Runloop anhalten. Nur Snapshot und
         // abschließende, validierte Editor-Ersetzung laufen auf dem UI-Thread.
-        DispatchQueue.global(qos: .userInitiated).async {
-            let result = Result {
-                try DocumentFormatter.format(
-                    in: lease.source,
-                    selection: lease.selection,
-                    formatID: lease.formatID
-                )
-            }
-            DispatchQueue.main.async {
+        EditorDocumentTransformationScheduler.run(
+            operation: {
+                Result {
+                    try DocumentFormatter.format(
+                        in: lease.source,
+                        selection: lease.selection,
+                        formatID: lease.formatID
+                    )
+                }
+            },
+            completion: { result in
                 switch result {
                 case .success(let formatted):
                     guard let formatted else {
@@ -626,7 +646,7 @@ final class EditorContextMenu: NSObject {
                     )
                 }
             }
-        }
+        )
     }
 
     /// Menüleisten-Pfad für „Text → Dokument formatieren“.
@@ -643,7 +663,7 @@ final class EditorContextMenu: NSObject {
         minify(on: textView)
     }
 
-    private func minify(on textView: TextView) {
+    func minify(on textView: TextView) {
         guard textView.fastraColumnSelectionSnapshot == nil else {
             warnColumnSelectionUnsupported()
             return
@@ -651,25 +671,52 @@ final class EditorContextMenu: NSObject {
         // Effektives Format aus dem Workspace GENAU DIESES Editors (siehe
         // `format`).
         guard let workspace = workspace(forEditor: textView),
-              let formatID = workspace.activeDocumentFormattingID else {
+              let formatID = workspace.activeDocumentFormattingID,
+              let lease = FormattingTargetLease(
+                editor: textView,
+                workspace: workspace,
+                formatID: formatID
+              ) else {
             NSSound.beep()
             return
         }
-        do {
-            guard let result = try DocumentFormatter.minify(
-                in: textView.string,
-                selection: textView.fastraSafeSelectedRange,
-                formatID: formatID
-            ) else {
-                NSSound.beep()   // bereits minimal → No-op
-                return
+        // Dieselbe Größenklasse wie beim Formatieren: Parsing und Ausgabe
+        // laufen im Hintergrund, anschließend schützt die Lease gegen Tippen,
+        // Tabwechsel und Auswahländerungen während der Berechnung.
+        EditorDocumentTransformationScheduler.run(
+            operation: {
+                Result {
+                    try DocumentFormatter.minify(
+                        in: lease.source,
+                        selection: lease.selection,
+                        formatID: lease.formatID
+                    )
+                }
+            },
+            completion: { result in
+                switch result {
+                case .success(let minified):
+                    guard let minified else {
+                        NSSound.beep()   // bereits minimal → No-op
+                        return
+                    }
+                    guard lease.applyIfUnchanged(minified) else {
+                        NSAlert.runWarning(
+                            title: L10n.string("Minifizierung nicht übernommen"),
+                            text: L10n.string(
+                                "Das Dokument oder die Auswahl hat sich während der Minifizierung geändert. Der neue Stand blieb unverändert."
+                            )
+                        )
+                        return
+                    }
+                case .failure(let error):
+                    NSAlert.runWarning(
+                        title: L10n.string("Minifizieren fehlgeschlagen"),
+                        text: error.localizedDescription
+                    )
+                }
             }
-            textView.replaceCharacters(in: result.affectedRange,
-                                       with: result.replacement)
-        } catch {
-            NSAlert.runWarning(title: L10n.string("Minifizieren fehlgeschlagen"),
-                               text: error.localizedDescription)
-        }
+        )
     }
 
     /// „Text → Dokument prüfen“ (Etappe 6): validiert JSON/XML nativ und

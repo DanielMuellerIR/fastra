@@ -9,6 +9,22 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.88.0] — 2026-08-15
+
+### Behoben
+
+- **Minifizieren blockiert große JSON- und XML-Dokumente nicht mehr:** Die
+  Verarbeitung läuft wie das Formatieren im Hintergrund. Fastra übernimmt das
+  Ergebnis nur, wenn Dokument, Tab und Auswahl seit dem Start unverändert
+  geblieben sind.
+
+### Tests
+
+- **Regressionen prüfen Ausführung und Editorpfad:** Eine kontrolliert
+  angehaltene Transformation muss den UI-Thread freigeben und auf dem
+  Main-Thread zurückkehren; der echte Minify-Befehl muss sein Ergebnis
+  anschließend asynchron über den revisionsgebundenen Editorpfad anwenden.
+
 ## [v1.87.0] — 2026-08-15
 
 ### Behoben

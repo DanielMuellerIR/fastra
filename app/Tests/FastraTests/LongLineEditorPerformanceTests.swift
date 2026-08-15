@@ -65,6 +65,83 @@ private func wrappedLongLineEditor(characterCount: Int) -> (TextView, NSScrollVi
 // DifficultDocumentCorpusTests: mehrere parallele 4,36-MB-Layouts würden die
 // Laufzeitmessungen gegenseitig verfälschen und unnötig viel Speicher binden.
 extension DifficultDocumentCorpusTests {
+@Test("Dokumenttransformationen blockieren den UI-Thread nicht")
+@MainActor
+func documentTransformationsRunOutsideTheMainThread() async {
+    let operationStarted = DispatchSemaphore(value: 0)
+    let mayFinish = DispatchSemaphore(value: 0)
+    let clock = ContinuousClock()
+
+    let completion: (value: String, ranOnMainThread: Bool) =
+        await withCheckedContinuation { continuation in
+            let invocationStart = clock.now
+            EditorDocumentTransformationScheduler.run(
+                operation: {
+                    operationStarted.signal()
+                    _ = mayFinish.wait(timeout: .now() + 2)
+                    return "fertig"
+                },
+                completion: { value in
+                    continuation.resume(returning: (value, Thread.isMainThread))
+                }
+            )
+            let invocationDuration = invocationStart.duration(to: clock.now)
+
+            #expect(invocationDuration < .milliseconds(100),
+                    "Das Einreihen wartete \(invocationDuration) auf die Transformation")
+            #expect(operationStarted.wait(timeout: .now() + 1) == .success,
+                    "Die Hintergrundtransformation startete nicht")
+            mayFinish.signal()
+        }
+
+    #expect(completion.value == "fertig")
+    #expect(completion.ranOnMainThread,
+            "Das Ergebnis muss für die Editoränderung auf den Main-Thread zurückkehren")
+}
+
+@Test("Minifizieren nutzt die asynchrone, revisionsgebundene Editortransformation")
+@MainActor
+func minifyUsesTheAsynchronousEditorTransformation() async throws {
+    let suiteName = "fastra-minify-scheduler-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suiteName)
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let source = """
+    {
+      "zebra": 1,
+      "adler": [1, 2, 3]
+    }
+    """
+    let workspace = Workspace(defaults: defaults)
+    let tab = EditorTab(
+        title: "gross.json",
+        path: "—",
+        content: source
+    )
+    workspace.tabs = [tab]
+    workspace.activeTabID = tab.id
+
+    let textView = TextView(string: source)
+    let controller = NSViewController()
+    controller.view = textView
+    let window = NSWindow(contentViewController: controller)
+    WorkspaceWindowRegistry.register(workspace, for: window)
+    defer {
+        WorkspaceWindowRegistry.unregister(window)
+        window.close()
+    }
+
+    EditorContextMenu().minify(on: textView)
+    #expect(textView.string == source,
+            "Die Hintergrundtransformation darf nicht noch im Aufruf anwenden")
+
+    let expected = #"{"adler":[1,2,3],"zebra":1}"#
+    let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+    while textView.string != expected && ContinuousClock.now < deadline {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(textView.string == expected)
+}
+
 @Test("TXT öffnet eine Megazeile standardmäßig mit Soft Wrap am Fensterrand")
 @MainActor
 func workspaceKeepsSoftWrapAvailableForLongLine() {
