@@ -60,16 +60,49 @@ enum SiblingFolderListing {
 /// Mausposition. Ein Singleton als Target, weil `NSMenuItem` seine Aktion
 /// erst nach Ende des Menü-Trackings zustellt — ein kurzlebiges Objekt wäre
 /// bis dahin womöglich schon wieder freigegeben.
+private final class SiblingFolderMenuContext: @unchecked Sendable {
+    weak var workspace: Workspace?
+
+    init(workspace: Workspace) {
+        self.workspace = workspace
+    }
+}
+
+@MainActor
+private final class SiblingFolderMenuSelection: NSObject {
+    let url: URL
+    weak var workspace: Workspace?
+
+    init(url: URL, workspace: Workspace?) {
+        self.url = url
+        self.workspace = workspace
+    }
+}
+
 @MainActor
 final class SiblingFolderMenuPresenter: NSObject {
     static let shared = SiblingFolderMenuPresenter()
-    private weak var workspace: Workspace?
+
+    /// Die beiden kleinen Methoden halten die Zielauflösung getrennt vom
+    /// nativen Menü-Tracking und dadurch ohne sichtbares Fenster testbar.
+    func selection(for url: URL, workspace: Workspace?) -> Any {
+        SiblingFolderMenuSelection(url: url, workspace: workspace)
+    }
+
+    func destination(for representedObject: Any?) -> (url: URL, workspace: Workspace)? {
+        guard let selection = representedObject as? SiblingFolderMenuSelection,
+              let workspace = selection.workspace else { return nil }
+        return (selection.url, workspace)
+    }
 
     /// Startet das asynchrone Ordner-Listing (nie auf dem Main-Thread) und
     /// zeigt danach das Menü. Die Mausposition wird beim Klick festgehalten,
     /// damit das Menü dort erscheint, wo geklickt wurde.
     func present(for projectURL: URL, workspace: Workspace) {
-        self.workspace = workspace
+        // Der Kontext gehört zu genau diesem Klick. Der Singleton darf keine
+        // globale Workspace-Referenz halten: Ein zweites Fenster kann sonst
+        // vor der Menüauswahl das Ziel des ersten Fensters überschreiben.
+        let context = SiblingFolderMenuContext(workspace: workspace)
         let location = NSEvent.mouseLocation
         Task.detached(priority: .userInitiated) {
             let result: Result<[URL], Error>
@@ -80,12 +113,14 @@ final class SiblingFolderMenuPresenter: NSObject {
             }
             await MainActor.run {
                 SiblingFolderMenuPresenter.shared.show(result, current: projectURL,
-                                                       at: location)
+                                                       at: location,
+                                                       workspace: context.workspace)
             }
         }
     }
 
-    private func show(_ result: Result<[URL], Error>, current: URL, at location: NSPoint) {
+    private func show(_ result: Result<[URL], Error>, current: URL, at location: NSPoint,
+                      workspace: Workspace?) {
         let menu = NSMenu()
         menu.autoenablesItems = false
         switch result {
@@ -106,7 +141,7 @@ final class SiblingFolderMenuPresenter: NSObject {
                                       action: #selector(openSibling(_:)),
                                       keyEquivalent: "")
                 item.target = self
-                item.representedObject = folder
+                item.representedObject = selection(for: folder, workspace: workspace)
                 let isCurrent = folder.path == current.path
                 item.state = isCurrent ? .on : .off
                 item.isEnabled = !isCurrent
@@ -121,10 +156,10 @@ final class SiblingFolderMenuPresenter: NSObject {
     }
 
     @objc private func openSibling(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
+        guard let destination = destination(for: sender.representedObject) else { return }
         // Gleiches Verhalten wie „Ordner öffnen“: ausdrücklicher
         // Projektwechsel, fremde saubere Tabs werden aufgeräumt.
-        workspace?.openProject(at: url)
+        destination.workspace.openProject(at: destination.url)
     }
 }
 

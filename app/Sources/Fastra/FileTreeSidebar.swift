@@ -436,9 +436,9 @@ struct FileTreeSidebar: View {
                 try? await Task.sleep(nanoseconds: 150_000_000)
             }
             guard !Task.isCancelled else { return }
-            let result = await Task.detached(priority: .userInitiated) {
+            let result = await FileTreeFilter.runCancellableScan {
                 FileTreeFilter.scan(rootURL: root, query: query)
-            }.value
+            }
             guard let result, !Task.isCancelled else { return }
             await MainActor.run {
                 // Nur übernehmen, wenn der Nutzer nicht längst weitertippte.

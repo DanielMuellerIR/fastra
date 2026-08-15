@@ -42,6 +42,22 @@ enum FileTreeFilter {
         return name.range(of: query, options: .caseInsensitive) != nil
     }
 
+    /// Führt den blockierenden Dateibaum-Scan abseits des aufrufenden Tasks
+    /// aus. Die kleine Hülle hält die Nebenläufigkeitsgrenze unit-testbar.
+    static func runCancellableScan(
+        _ operation: @escaping @Sendable () -> FileTreeFilterResult?
+    ) async -> FileTreeFilterResult? {
+        let scan = Task.detached(priority: .userInitiated, operation: operation)
+        return await withTaskCancellationHandler {
+            await scan.value
+        } onCancel: {
+            // Ein `Task.detached` ist kein Kind des Aufrufers und übernimmt
+            // dessen Abbruch nicht automatisch. Ohne diese Weitergabe liefen
+            // beim Tippen sämtliche verworfenen 50.000-Dateien-Scans weiter.
+            scan.cancel()
+        }
+    }
+
     /// Rekursiver Scan unter `rootURL`. Läuft ABSICHTLICH über dieselbe
     /// `FileTree.children`-Basis wie der sichtbare Baum: gleiche Regeln
     /// (versteckte Einträge übersprungen) und vor allem DIESELBE Pfadform.

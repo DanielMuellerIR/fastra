@@ -9,6 +9,23 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.93.0] — 2026-08-15
+
+### Behoben
+
+- **Verworfene Dateifilter brechen ihre Arbeit wirklich ab:** Beim schnellen
+  Tippen oder bei aufeinanderfolgenden Dateiänderungen laufen überholte
+  Hintergrundscans nicht mehr bis zur Sicherheitsgrenze weiter.
+- **Nachbarordner öffnen im auslösenden Fenster:** Bei mehreren Fenstern bleibt
+  jede Auswahl im Nachbarordner-Menü an den Workspace ihres ursprünglichen
+  Seitenleistenkopfs gebunden.
+
+### Tests
+
+- **Regressionen prüfen Abbruchweitergabe und Fensterbindung:** Die Tests
+  belegen den Abbruch des abgelösten Scans und zwei nacheinander ausgelöste
+  Nachbarordner-Menüs mit getrennten Workspaces.
+
 ## [v1.92.0] — 2026-08-15
 
 ### Behoben

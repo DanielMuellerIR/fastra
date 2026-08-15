@@ -36,6 +36,54 @@ func filterMatchingEmptyQuery() {
 
 // MARK: - Scan
 
+private final class FilterCancellationProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var started = false
+    private var cancellationObserved = false
+
+    func markStarted() {
+        lock.withLock { started = true }
+    }
+
+    func markCancellationObserved() {
+        lock.withLock { cancellationObserved = true }
+    }
+
+    var hasStarted: Bool {
+        lock.withLock { started }
+    }
+
+    var hasObservedCancellation: Bool {
+        lock.withLock { cancellationObserved }
+    }
+}
+
+@Test("Ein abgelöster Filter-Scan übernimmt den Abbruch des Aufrufers")
+func detachedFilterScanCancellation() async {
+    let probe = FilterCancellationProbe()
+    let scan = Task {
+        await FileTreeFilter.runCancellableScan {
+            probe.markStarted()
+            for _ in 0..<500 {
+                if Task.isCancelled {
+                    probe.markCancellationObserved()
+                    return nil
+                }
+                Thread.sleep(forTimeInterval: 0.001)
+            }
+            return nil
+        }
+    }
+
+    for _ in 0..<100 where !probe.hasStarted {
+        try? await Task.sleep(for: .milliseconds(5))
+    }
+    #expect(probe.hasStarted)
+    scan.cancel()
+    _ = await scan.value
+    #expect(probe.hasObservedCancellation)
+}
+
 private func makeFixtureTree() throws -> URL {
     // Kanonische Form (`/private/var/…`) — dieselbe Pfadform, die auch
     // `contentsOfDirectory` für die echten Baumknoten liefert.

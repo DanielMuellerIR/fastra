@@ -74,3 +74,30 @@ func siblings_throwsForUnreadableParent() {
         _ = try SiblingFolderListing.siblings(of: missing)
     }
 }
+
+@MainActor
+@Test("siblings: eine Menüauswahl bleibt an ihr auslösendes Fenster gebunden")
+func siblingSelectionKeepsOriginatingWorkspace() {
+    let firstSuite = "FastraTests.SiblingMenu.first.\(UUID().uuidString)"
+    let secondSuite = "FastraTests.SiblingMenu.second.\(UUID().uuidString)"
+    let firstDefaults = UserDefaults(suiteName: firstSuite)!
+    let secondDefaults = UserDefaults(suiteName: secondSuite)!
+    defer {
+        firstDefaults.removePersistentDomain(forName: firstSuite)
+        secondDefaults.removePersistentDomain(forName: secondSuite)
+    }
+    let firstWorkspace = Workspace(defaults: firstDefaults)
+    let secondWorkspace = Workspace(defaults: secondDefaults)
+    let presenter = SiblingFolderMenuPresenter()
+    let folder = URL(fileURLWithPath: "/tmp/erstes-fenster")
+
+    let firstSelection = presenter.selection(for: folder, workspace: firstWorkspace)
+    // Während das erste native Menü noch offen ist, kann ein zweiter
+    // Cmd-Klick denselben Presenter erneut verwenden.
+    _ = presenter.selection(for: URL(fileURLWithPath: "/tmp/zweites-fenster"),
+                            workspace: secondWorkspace)
+
+    let destination = presenter.destination(for: firstSelection)
+    #expect(destination?.url == folder)
+    #expect(destination?.workspace === firstWorkspace)
+}
