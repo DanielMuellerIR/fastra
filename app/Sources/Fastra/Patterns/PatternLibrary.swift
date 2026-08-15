@@ -17,44 +17,51 @@ final class PatternLibrary: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        guard let data = defaults.data(forKey: Self.defaultsKey),
-              let saved = try? JSONDecoder().decode([PatternTemplate].self, from: data) else {
-            templates = []
-            return
-        }
-        // Beschädigte oder doppelte Daten werden nicht still übernommen.
-        templates = Self.validated(saved)
+        templates = Self.load(from: defaults)
     }
 
     func save(_ template: PatternTemplate) throws {
         guard !template.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw PatternLibraryError.emptyName
         }
+        guard Self.isAllowedUserID(template.id) else {
+            throw PatternLibraryError.invalidID
+        }
         _ = try template.compile()
-        var next = templates.filter { $0.id != template.id }
+        // Jedes Suchfenster hält eine eigene Library-Instanz. Vor einer
+        // Mutation deshalb den gemeinsamen Stand neu laden, damit ein später
+        // schreibendes Fenster keine Änderungen eines anderen überschreibt.
+        var next = Self.load(from: defaults).filter { $0.id != template.id }
         next.append(template)
         templates = Self.validated(next)
         persist()
     }
 
     func delete(id: String) {
-        templates.removeAll { $0.id == id }
+        templates = Self.load(from: defaults).filter { $0.id != id }
         persist()
     }
 
     /// Fügt eine Exportdatei zusammen, ohne gleichnamige IDs doppelt zu halten.
     @discardableResult
     func `import`(data: Data) throws -> Int {
+        guard data.count <= PatternLibraryImportFile.maximumBytes else {
+            throw PatternLibraryError.importTooLarge
+        }
         let incoming = try JSONDecoder().decode([PatternTemplate].self, from: data)
+        templates = Self.load(from: defaults)
+        var importedIDs = Set<String>()
         for template in incoming {
             guard !template.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            guard Self.isAllowedUserID(template.id) else { continue }
             guard (try? template.compile()) != nil else { continue }
             templates.removeAll { $0.id == template.id }
             templates.append(template)
+            importedIDs.insert(template.id)
         }
         templates = Self.validated(templates)
         persist()
-        return incoming.count
+        return importedIDs.count
     }
 
     func exportData() throws -> Data {
@@ -68,11 +75,28 @@ final class PatternLibrary: ObservableObject {
         defaults.set(data, forKey: Self.defaultsKey)
     }
 
+    private static func load(from defaults: UserDefaults) -> [PatternTemplate] {
+        guard let data = defaults.data(forKey: defaultsKey),
+              let saved = try? JSONDecoder().decode([PatternTemplate].self, from: data) else {
+            return []
+        }
+        // Beschädigte, doppelte und mitgelieferte IDs werden nicht still als
+        // eigene Vorlagen übernommen.
+        return validated(saved)
+    }
+
+    private static let builtInIDs = Set(BuiltInPatterns.all.map(\.id))
+
+    private static func isAllowedUserID(_ id: String) -> Bool {
+        !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !builtInIDs.contains(id)
+    }
+
     private static func validated(_ values: [PatternTemplate]) -> [PatternTemplate] {
         var ids = Set<String>()
         return values.filter { template in
             guard ids.insert(template.id).inserted,
-                  !template.id.isEmpty,
+                  isAllowedUserID(template.id),
                   !template.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   (try? template.compile()) != nil else { return false }
             return true
@@ -80,13 +104,37 @@ final class PatternLibrary: ObservableObject {
     }
 }
 
-enum PatternLibraryError: LocalizedError {
+enum PatternLibraryError: LocalizedError, Sendable {
     case emptyName
+    case invalidID
+    case importTooLarge
 
     var errorDescription: String? {
         switch self {
-        case .emptyName: return "Eine Vorlage braucht einen Namen."
+        case .emptyName:
+            return L10n.string("Eine Vorlage braucht einen Namen.")
+        case .invalidID:
+            return L10n.string("Diese Vorlagen-ID ist leer oder bereits mitgeliefert.")
+        case .importTooLarge:
+            return L10n.string("Die Vorlagendatei ist größer als 1 MB.")
         }
+    }
+}
+
+/// Liest höchstens die für eine kleine Vorlagenbibliothek sinnvolle Menge.
+/// Dadurch lädt eine versehentlich ausgewählte große Datei weder den
+/// Main-Thread noch den Speicher unkontrolliert voll.
+enum PatternLibraryImportFile {
+    static let maximumBytes = 1_048_576
+
+    static func read(from url: URL) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let data = try handle.read(upToCount: maximumBytes + 1) ?? Data()
+        guard data.count <= maximumBytes else {
+            throw PatternLibraryError.importTooLarge
+        }
+        return data
     }
 }
 
@@ -100,7 +148,8 @@ enum ExampleTransformation {
     }
 
     static func infer(source: String, destination: String) -> Inference? {
-        guard !source.isEmpty, !destination.isEmpty, source != destination else { return nil }
+        guard !source.isEmpty, !destination.isEmpty, source != destination,
+              !source.contains("*"), !destination.contains("*") else { return nil }
         let sourceChars = Array(source)
         let destinationChars = Array(destination)
         // Beispiele sind absichtlich kurz. Die Begrenzung verhindert, dass ein

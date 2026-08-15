@@ -63,7 +63,10 @@ wenn RegEx aus ist und der Suchausdruck mindestens ein `*` enthält.
 **RegEx:** Der RegEx-Schalter aktiviert reguläre Ausdrücke
 (ICU-Syntax, wie `NSRegularExpression`). Capture-Gruppen erscheinen
 ebenfalls als Pillen. „Aus Beispiel…“ leitet ein Muster aus einem
-Vorher/Nachher-Beispiel ab.
+Vorher/Nachher-Beispiel ab; Beispiele mit einem wörtlichen `*` sind dabei
+mehrdeutig und werden nicht übernommen. Unter „Vorlagen verwalten…“ kannst du
+eigene RegEx-Vorlagen speichern sowie als JSON importieren oder exportieren.
+Importdateien sind auf 1 MB begrenzt; ungültige Einträge werden übersprungen.
 
 **Optionen:** Groß-/Kleinschreibung, „Ganzes Wort“, „Wrap-around“ und
 „Nur in Auswahl“ (sucht ausschließlich in der eingefrorenen Selektion).

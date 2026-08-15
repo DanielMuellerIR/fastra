@@ -122,15 +122,13 @@ public enum BuiltInPatterns {
     )
 
     /// Markdown-Überschrift `# … ######`. `$1` = Anzahl Doppelkreuze
-    /// (Level), `$2` = Titel.
-    /// Achtung: `^`/`$` brauchen `.anchorsMatchLines` beim Anwenden auf
-    /// mehrzeilige Dokumente — das setzt die Engine später im Anwender-
-    /// Code, nicht in der Vorlage.
+    /// (Level), `$2` = Titel. Die expliziten Zeilengrenzen verhindern, dass
+    /// `\s` oder der Titel bei CRLF- und CR-Dateien in die Folgezeile läuft.
     public static let markdownHeading = PatternTemplate(
         id: "md_heading",
         name: "Markdown-Überschrift",
         category: .textStructure,
-        regex: #"^(#{1,6})\s+(.+)$"#,
+        regex: #"(?:\A|(?<=\n)|(?<=\r)(?!\n))(#{1,6})[ \t]+([^\r\n]+)(?=\r\n|\r|\n|\z)"#,
         exampleMatch: "## Überschrift",
         groupLabels: ["Level (#-Zeichen)", "Titel"]
     )
@@ -155,7 +153,7 @@ public enum BuiltInPatterns {
         id: "code_block",
         name: "Code-Block (Markdown)",
         category: .textStructure,
-        regex: #"```(\w*)\n([\s\S]*?)```"#,
+        regex: #"```(\w*)(?:\r\n|\r|\n)([\s\S]*?)```"#,
         exampleMatch: "```swift\nlet x = 1\n```",
         groupLabels: ["Sprache", "Inhalt"]
     )
@@ -163,12 +161,13 @@ public enum BuiltInPatterns {
     /// Dateipfad — Ordnerpfad (inkl. trailing Slash) + Dateiname.
     /// Klassischer Anwendungsfall für die Drag&Drop-Demo:
     /// „Pfad und Dateiname tauschen" oder „nur Dateinamen behalten".
-    /// Wie bei `markdownHeading` braucht `$` ggf. `.anchorsMatchLines`.
+    /// Die Dateinamengruppe endet ausdrücklich vor jedem unterstützten
+    /// Zeilenende, damit sie keine nachfolgende Zeile verschluckt.
     public static let filePath = PatternTemplate(
         id: "file_path",
         name: "Dateipfad",
         category: .textStructure,
-        regex: #"(.+/)([^/]+)$"#,
+        regex: #"(.+/)([^/\r\n]+)(?=\r\n|\r|\n|\z)"#,
         exampleMatch: "/pfad/zu/notiz.md",
         groupLabels: ["Ordnerpfad", "Dateiname"],
         defaultReplacement: "$2"
@@ -417,7 +416,7 @@ public enum BuiltInPatterns {
         id: "trailing_whitespace",
         name: "Leerraum am Zeilenende",
         category: .whitespace,
-        regex: #"[ \t]+$"#,
+        regex: #"[ \t]+(?=\r\n|\r|\n|$)"#,
         exampleMatch: "Zeile mit Rest   ",
         defaultReplacement: ""
     )
@@ -428,7 +427,7 @@ public enum BuiltInPatterns {
         id: "leading_whitespace",
         name: "Einrückung (Zeilenanfang)",
         category: .whitespace,
-        regex: #"^[ \t]+"#,
+        regex: #"(?:\A|(?<=\n)|(?<=\r)(?!\n))[ \t]+"#,
         exampleMatch: "    eingerückt",
         defaultReplacement: ""
     )
@@ -447,7 +446,7 @@ public enum BuiltInPatterns {
         id: "empty_lines",
         name: "Leerzeilen",
         category: .whitespace,
-        regex: #"^[ \t]*\n"#,
+        regex: #"(?:\A|(?<=\n)|(?<=\r)(?!\n))[ \t]*(?:\r\n|\r|\n)"#,
         exampleMatch: "\n",
         defaultReplacement: ""
     )

@@ -94,14 +94,28 @@ struct PatternEditorView: View {
     private func importTemplates() {
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.json]; panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        do { message = "\(try library.import(data: Data(contentsOf: url))) Vorlagen importiert." }
-        catch { message = error.localizedDescription }
+        Task {
+            do {
+                let data = try await Task.detached(priority: .userInitiated) {
+                    try PatternLibraryImportFile.read(from: url)
+                }.value
+                let imported = try library.import(data: data)
+                message = imported == 1
+                    ? L10n.string("1 Vorlage importiert.")
+                    : L10n.format("%ld Vorlagen importiert.", imported)
+            } catch {
+                message = error.localizedDescription
+            }
+        }
     }
 
     private func exportTemplates() {
         let panel = NSSavePanel(); panel.allowedContentTypes = [.json]; panel.nameFieldStringValue = "Fastra-Vorlagen.json"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        do { try library.exportData().write(to: url, options: .atomic); message = "Vorlagen exportiert." }
+        do {
+            try library.exportData().write(to: url, options: .atomic)
+            message = L10n.string("Vorlagen exportiert.")
+        }
         catch { message = error.localizedDescription }
     }
 }

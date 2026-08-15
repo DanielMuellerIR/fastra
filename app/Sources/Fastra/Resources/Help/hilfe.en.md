@@ -60,7 +60,10 @@ contains at least one `*`.
 
 **Regex:** The regex switch enables regular expressions (ICU syntax, as
 in `NSRegularExpression`). Capture groups appear as pills as well.
-“From example…” derives a pattern from a before/after example.
+“From example…” derives a pattern from a before/after example; examples with a
+literal `*` are ambiguous and are not accepted. Under “Manage Patterns…” you
+can save custom regex patterns and import or export them as JSON. Import files
+are limited to 1 MB; invalid entries are skipped.
 
 **Options:** case sensitivity, “Whole word”, “Wrap-around”, and
 “Selection only” (searches exclusively within the frozen selection).

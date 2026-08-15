@@ -113,3 +113,85 @@ func categoryUnionEqualsAll() {
         .reduce(0, +)
     #expect(unionCount == BuiltInPatterns.all.count)
 }
+
+// MARK: - 8. Zeilenbezogene Vorlagen beachten alle unterstützten Zeilenenden
+
+@Test("Zeilen- und Codeblock-Vorlagen unterstützen LF, CRLF und CR",
+      arguments: ["\n", "\r\n", "\r"])
+func lineEndingPatterns(lineEnding: String) throws {
+    let trailingText = "Erste   \(lineEnding)Zweite"
+    let trailingMatch = try BuiltInPatterns.trailingWhitespace
+        .compile(options: .anchorsMatchLines)
+        .firstMatch(in: trailingText,
+                    range: NSRange(location: 0, length: (trailingText as NSString).length))
+    #expect(trailingMatch?.range == NSRange(location: 5, length: 3))
+
+    let emptyLineText = "Erste\(lineEnding)  \(lineEnding)Letzte"
+    let expectedEmptyRange = NSRange(
+        location: (("Erste" + lineEnding) as NSString).length,
+        length: (("  " + lineEnding) as NSString).length
+    )
+    let emptyLineMatch = try BuiltInPatterns.emptyLines
+        .compile(options: .anchorsMatchLines)
+        .firstMatch(in: emptyLineText,
+                    range: NSRange(location: 0, length: (emptyLineText as NSString).length))
+    #expect(emptyLineMatch?.range == expectedEmptyRange)
+
+    let codeBlock = "```swift\(lineEnding)let value = 1\(lineEnding)```"
+    let codeMatch = try BuiltInPatterns.codeBlock.compile().firstMatch(
+        in: codeBlock,
+        range: NSRange(location: 0, length: (codeBlock as NSString).length)
+    )
+    #expect(codeMatch?.range == NSRange(location: 0, length: (codeBlock as NSString).length))
+
+    let leadingText = "Erste\(lineEnding)  Zweite"
+    let expectedLeadingRange = NSRange(
+        location: (("Erste" + lineEnding) as NSString).length,
+        length: 2
+    )
+    let leadingMatch = try BuiltInPatterns.leadingWhitespace
+        .compile(options: .anchorsMatchLines)
+        .firstMatch(in: leadingText,
+                    range: NSRange(location: 0, length: (leadingText as NSString).length))
+    #expect(leadingMatch?.range == expectedLeadingRange)
+
+    let headingText = "Einleitung\(lineEnding)## Titel\(lineEnding)Ende"
+    let expectedHeadingRange = NSRange(
+        location: (("Einleitung" + lineEnding) as NSString).length,
+        length: ("## Titel" as NSString).length
+    )
+    let headingMatch = try BuiltInPatterns.markdownHeading
+        .compile(options: .anchorsMatchLines)
+        .firstMatch(in: headingText,
+                    range: NSRange(location: 0, length: (headingText as NSString).length))
+    #expect(headingMatch?.range == expectedHeadingRange)
+
+    let orphanHeading = "##\(lineEnding)Kein Titel"
+    let orphanMatch = try BuiltInPatterns.markdownHeading
+        .compile(options: .anchorsMatchLines)
+        .firstMatch(in: orphanHeading,
+                    range: NSRange(location: 0, length: (orphanHeading as NSString).length))
+    #expect(orphanMatch == nil)
+
+    let wholeLineText = "Erste\(lineEnding)Zweite\(lineEnding)Dritte"
+    let expectedWholeLineRange = NSRange(
+        location: (("Erste" + lineEnding) as NSString).length,
+        length: ("Zweite" as NSString).length
+    )
+    let wholeLineMatches = try BuiltInPatterns.wholeLine
+        .compile(options: .anchorsMatchLines)
+        .matches(in: wholeLineText,
+                 range: NSRange(location: 0, length: (wholeLineText as NSString).length))
+    #expect(wholeLineMatches.contains { $0.range == expectedWholeLineRange })
+
+    let filePathText = "Erste\(lineEnding)/pfad/datei.txt\(lineEnding)Dritte"
+    let expectedFilePathRange = NSRange(
+        location: (("Erste" + lineEnding) as NSString).length,
+        length: ("/pfad/datei.txt" as NSString).length
+    )
+    let filePathMatch = try BuiltInPatterns.filePath
+        .compile(options: .anchorsMatchLines)
+        .firstMatch(in: filePathText,
+                    range: NSRange(location: 0, length: (filePathText as NSString).length))
+    #expect(filePathMatch?.range == expectedFilePathRange)
+}

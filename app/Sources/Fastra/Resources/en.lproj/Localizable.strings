@@ -523,6 +523,7 @@
 "Dokumentschrift: Originalgröße" = "Document Font: Actual Size";
 "Eigene Vorlagen" = "Custom Patterns";
 "Eigene Vorlagen speichern sowie importieren oder exportieren" = "Save, import, or export custom patterns";
+"Eine Vorlage braucht einen Namen." = "A pattern needs a name.";
 "Ersetzen (optional)" = "Replace (Optional)";
 "Exportieren…" = "Export…";
 "Fastra übernimmt den gemeinsamen Teil als Platzhalter und zeigt das daraus abgeleitete Suchen-und-Ersetzen-Muster." = "Fastra turns the shared portion into a wildcard and shows the derived search-and-replace pattern.";
@@ -531,6 +532,8 @@
 "Hex-Änderungen schreiben?" = "Write Hex Changes?";
 "Hex-Änderungsvorschau" = "Hex Change Preview";
 "Importieren…" = "Import…";
+"1 Vorlage importiert." = "1 pattern imported.";
+"%ld Vorlagen importiert." = "%ld patterns imported.";
 "Kategorie" = "Category";
 "Leitet aus einem Vorher/Nachher-Beispiel ein Platzhalter-Muster ab." = "Derives a wildcard pattern from a before-and-after example.";
 "Löschen" = "Delete";
@@ -541,6 +544,9 @@
 "Seitenleiste anzeigen" = "Show Sidebar";
 "Speichern fehlgeschlagen" = "Save Failed";
 "Transformation per Beispiel" = "Transformation by Example";
+"Diese Vorlagen-ID ist leer oder bereits mitgeliefert." = "This pattern ID is empty or already built in.";
+"Die Vorlagendatei ist größer als 1 MB." = "The pattern file is larger than 1 MB.";
+"Vorlagen exportiert." = "Patterns exported.";
 "Vorlagen verwalten…" = "Manage Patterns…";
 "Vorschau & Speichern…" = "Preview & Save…";
 "Vorschau-Schrift" = "Preview Font";

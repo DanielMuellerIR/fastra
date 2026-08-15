@@ -9,6 +9,28 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.98.0] — 2026-08-15
+
+### Behoben
+
+- **Eigene Vorlagen bleiben über mehrere Fenster erhalten:** Speichern,
+  Importieren und Löschen führen den gemeinsamen Stand zusammen, statt
+  zwischenzeitliche Änderungen eines anderen Fensters zu überschreiben.
+- **Vorlagenimporte sind begrenzt und melden nur übernommene Einträge:** Fastra
+  liest höchstens 1 MB, verwirft ungültige sowie reservierte IDs und zeigt die
+  tatsächliche Anzahl importierter Vorlagen lokalisiert an.
+- **Zeilenbezogene Vorlagen beachten LF, CRLF und CR:** Markdown-Überschriften,
+  Dateipfade, Codeblöcke und Leerraum-Vorlagen enden zuverlässig an der
+  jeweiligen Zeilengrenze.
+- **„Aus Beispiel…“ lehnt mehrdeutige Sternchen ab:** Ein wörtliches `*` wird
+  nicht mehr still als Platzhalter ausgegeben.
+
+### Tests
+
+- **Vorlagenbibliothek und mitgelieferte Muster besitzen neue Regressionen:**
+  Die Tests decken konkurrierende Fensterstände, begrenzte Importe,
+  reservierte IDs, mehrdeutige Beispiele und alle drei Zeilenendtypen ab.
+
 ## [v1.97.0] — 2026-08-15
 
 ### Behoben
