@@ -2,15 +2,23 @@
   "schema_version": 1,
   "project": "Fastra",
   "campaign": {
-    "id": "20260815T134823378515+0200",
-    "token_budget": 3000000,
-    "status": "paused",
-    "started_at": "2026-08-15T13:48:23+02:00",
-    "tokens_spent": 3072618,
-    "finished_at": "2026-08-15T16:25:51+02:00",
-    "finish_reason": "budget-reached"
+    "id": "20260815T165221406979+0200",
+    "token_budget": 5000000,
+    "status": "active",
+    "started_at": "2026-08-15T16:52:21+02:00",
+    "tokens_spent": 53599
   },
-  "campaign_history": [],
+  "campaign_history": [
+    {
+      "id": "20260815T134823378515+0200",
+      "token_budget": 3000000,
+      "status": "paused",
+      "started_at": "2026-08-15T13:48:23+02:00",
+      "tokens_spent": 3072618,
+      "finished_at": "2026-08-15T16:25:51+02:00",
+      "finish_reason": "budget-reached"
+    }
+  ],
   "scope": {
     "paths": [
       "app/Sources/Fastra",
@@ -118,16 +126,16 @@
       "reason": "Trefferbasis, Vorschau und Apply bilden die zentrale Sicherheitsgrenze des Produkts.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T134823378515+0200",
-        "completed_at": "2026-08-15T14:09:35+02:00",
-        "observed_head": "2737cce9ca4f9ceae59087e26afc70efd611c2a4",
-        "content_sha256": "638ab239e66c4c074d85e10ab41388bf281a84b1576e9932d7b957af9f48bc63",
+        "campaign_id": "20260815T165221406979+0200",
+        "completed_at": "2026-08-15T16:54:24+02:00",
+        "observed_head": "69011ce29a28a6578b2be67cbb51434a53e723ed",
+        "content_sha256": "3afc136ced053276720b28cf115aebf17b19f5f39eb1c8caa7e470ea4045304a",
         "file_count": 41,
-        "review": "full",
-        "outcome": "improved",
-        "summary": "Such-, Treffer-, Ersetzungs- und Vorschaukern vollständig geprüft. Die Side-by-side-Vorschau erfand bei CRLF je Umbruch eine Leerzeile; logische Zeilenzerlegung, Regressionstest und Version 1.84.0 beheben das. Bereichsübergreifende Einzel-Ersetzung für offene Dateien und weitere CRLF-Diffpfade sind als Themen nachverfolgt.",
+        "review": "delta-plus-boundaries",
+        "outcome": "reviewed-clean",
+        "summary": "Änderungen seit dem Full-Review vollständig geprüft: Geöffnet-Einzel-Ersetzen hält Trefferbasis und asynchrones Weitersuchen zusammen; Suchordner und Suchverlauf führen vor Mutationen den jüngsten gemeinsamen Defaults-Stand zusammen. Workspace- und UI-Grenzen sowie projektweite direkte Mutationspfade geprüft; kein neuer Fehler oder sinnvoller Vereinfachungsbedarf belegt.",
         "tests": [
-          "Regression scheiterte vor dem Fix und besteht danach; 15 Vorschautests grün; build.sh, Portabilitätsprüfung und Lokalisierungs-Audit grün. 1848 Unit-Tests liefen: zwei lastabhängige Parallel-Ausreißer, beide isoliert grün. Fenster-Selbsttests nicht erneut gestartet, weil eine installierte Fastra-Instanz des Nutzers lief."
+          "Übernahme: build.sh Exit 0 einschließlich Portabilitätsprüfung; 1870 nicht blockierte Tests mit zwei lastabhängigen Git-Ausreißern, beide isoliert Exit 0. Bereichsgezielt: Geöffnet-Einzel-Ersetzen und beide Mehrfenster-Persistenztests, 3/3 grün, Exit 0."
         ]
       }
     },
