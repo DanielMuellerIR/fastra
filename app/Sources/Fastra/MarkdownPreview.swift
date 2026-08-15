@@ -856,6 +856,11 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         // die `data-srcline`-Mechanik rückwärts genutzt.
         weak var revealWebView: WKWebView?
         private var revealObserver: NSObjectProtocol?
+        // Zählt jede Reveal-Meldung hoch. Nur die Versuchskette der JÜNGSTEN
+        // Meldung darf scrollen: Findet ein älterer Klick sein Ziel erst im
+        // späten Retry, würde er sonst einen inzwischen erfolgten neueren
+        // Sprung wieder wegscrollen.
+        private var revealGeneration = 0
 
         deinit {
             if let revealObserver {
@@ -876,20 +881,30 @@ private struct MarkdownRichTextView: NSViewRepresentable {
                       (note.object as? Workspace) === self.workspace,
                       let line = note.userInfo?["line"] as? Int,
                       let webView = self.revealWebView else { return }
-                self.scrollPreview(toSourceLine: line, in: webView, attempt: 0)
+                self.revealGeneration += 1
+                self.scrollPreview(toSourceLine: line, in: webView,
+                                   attempt: 0, generation: self.revealGeneration)
             }
         }
 
         /// Scrollt zum Block mit der größten `data-srcline` ≤ Zielzeile.
         /// Mehrere idempotente Versuche, weil der frische Inhalt asynchron
-        /// durch `replaceBody` + `enhanceMarkdown` läuft.
+        /// durch `replaceBody` + `enhanceMarkdown` läuft. `generation` bindet
+        /// die Kette an ihre Reveal-Meldung: Sobald eine neuere eintrifft,
+        /// verfallen alle noch ausstehenden Versuche der älteren.
         private func scrollPreview(toSourceLine line: Int, in webView: WKWebView,
-                                   attempt: Int) {
+                                   attempt: Int, generation: Int) {
             let delays: [Double] = [0.25, 0.7, 1.5]
             guard attempt < delays.count else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + delays[attempt]) {
                 [weak self, weak webView] in
-                guard let webView else { return }
+                guard let self, let webView,
+                      generation == self.revealGeneration else { return }
+                // Nach erfolgreichem Sprung zählt das Skript die Body-
+                // Generation hoch: Ein `replaceBody`, dessen `enhanceMarkdown`
+                // gerade noch läuft, erkennt daran, dass seine gemerkte alte
+                // Scrollposition überholt ist, und stellt sie nicht wieder her
+                // — sonst würde der sichtbare Sprung sofort rückgängig gemacht.
                 let script = """
                 (function(target){
                   let best = null, bestLine = -1;
@@ -897,14 +912,19 @@ private struct MarkdownRichTextView: NSViewRepresentable {
                     const l = parseInt(el.getAttribute('data-srcline'));
                     if (!isNaN(l) && l <= target && l > bestLine) { bestLine = l; best = el; }
                   });
-                  if (best) { best.scrollIntoView({block: 'center'}); return true; }
+                  if (best) {
+                    best.scrollIntoView({block: 'center'});
+                    window.markdownGeneration = (window.markdownGeneration || 0) + 1;
+                    return true;
+                  }
                   return false;
                 })(\(line))
                 """
-                webView.evaluateJavaScript(script) { value, _ in
+                webView.evaluateJavaScript(script) { [weak self] value, _ in
                     if (value as? Bool) != true {
                         self?.scrollPreview(toSourceLine: line, in: webView,
-                                            attempt: attempt + 1)
+                                            attempt: attempt + 1,
+                                            generation: generation)
                     }
                 }
             }
@@ -966,6 +986,10 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         private func replaceBody(with fragment: String, in webView: WKWebView) {
             guard let data = try? JSONSerialization.data(withJSONObject: [fragment]),
                   let json = String(data: data, encoding: .utf8) else { return }
+            // `window.markdownGeneration` entwertet die gemerkte Scrollposition:
+            // Sowohl ein neuerer Body-Tausch als auch ein erfolgreicher
+            // Reveal-Sprung (siehe `scrollPreview`) zählen sie hoch — in beiden
+            // Fällen wäre das Wiederherstellen der alten Position falsch.
             let script = """
             (async () => {
               const x = window.scrollX, y = window.scrollY;

@@ -9,6 +9,18 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.82.0] — 2026-08-15
+
+### Behoben
+
+- **Quelltext-Klicks scrollen die Vorschau nicht mehr zurück:** Fanden die
+  Nachzieh-Versuche eines früheren Klicks ihr Ziel erst in einem späten
+  Anlauf, konnten sie einen inzwischen erfolgten neueren Sprung wieder
+  wegscrollen; ebenso machte ein parallel laufender Inhaltstausch einen
+  gerade sichtbaren Sprung durch das Wiederherstellen seiner zuvor gemerkten
+  Scrollposition rückgängig. Jetzt zählt allein der jüngste Klick, und ein
+  erfolgreicher Sprung entwertet die gemerkte Scrollposition.
+
 ## [v1.81.0] — 2026-08-14
 
 ### Neu
