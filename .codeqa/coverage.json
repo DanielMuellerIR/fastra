@@ -113,7 +113,20 @@
       "risk": "critical",
       "priority": 1,
       "reason": "Trefferbasis, Vorschau und Apply bilden die zentrale Sicherheitsgrenze des Produkts.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T134823378515+0200",
+        "completed_at": "2026-08-15T14:09:35+02:00",
+        "observed_head": "2737cce9ca4f9ceae59087e26afc70efd611c2a4",
+        "content_sha256": "638ab239e66c4c074d85e10ab41388bf281a84b1576e9932d7b957af9f48bc63",
+        "file_count": 41,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Such-, Treffer-, Ersetzungs- und Vorschaukern vollständig geprüft. Die Side-by-side-Vorschau erfand bei CRLF je Umbruch eine Leerzeile; logische Zeilenzerlegung, Regressionstest und Version 1.84.0 beheben das. Bereichsübergreifende Einzel-Ersetzung für offene Dateien und weitere CRLF-Diffpfade sind als Themen nachverfolgt.",
+        "tests": [
+          "Regression scheiterte vor dem Fix und besteht danach; 15 Vorschautests grün; build.sh, Portabilitätsprüfung und Lokalisierungs-Audit grün. 1848 Unit-Tests liefen: zwei lastabhängige Parallel-Ausreißer, beide isoliert grün. Fenster-Selbsttests nicht erneut gestartet, weil eine installierte Fastra-Instanz des Nutzers lief."
+        ]
+      }
     },
     {
       "id": "file-io-document-safety",
@@ -601,5 +614,32 @@
     "paradigm": "Pragmatisches MVVM mit zentralem Fenster-Workspace und ereignisgetriebenen asynchronen Diensten",
     "fit": "gespannt",
     "recommendation": "Verantwortungen bereichsweise aus Workspace und großen UI-Dateien in vorhandene Dienste und reine Funktionen verschieben; keinen Paradigmenwechsel beginnen und Vorschau-, Main-Thread- sowie Dateisicherheitsgrenzen erhalten."
-  }
+  },
+  "themes": [
+    {
+      "id": "logical-line-splitting",
+      "summary": "Mehrere Diff-Pfade zerlegen Text mit CharacterSet.newlines und behandeln CRLF dadurch als zwei Umbrüche; gemeinsame logische Zeilensemantik prüfen und gegebenenfalls konsolidieren.",
+      "evidence": [
+        "app/Sources/Fastra/ReplacePreview.swift",
+        "app/Sources/Fastra/FileDiff.swift"
+      ],
+      "priority": 2,
+      "state": "pending",
+      "noted_at": "2026-08-15T13:57:12+02:00",
+      "campaign_id": "20260815T134823378515+0200"
+    },
+    {
+      "id": "open-scope-single-replace",
+      "summary": "Der Ersetzen-Knopf ist für den Geöffnet-Bereich vorgesehen, die Freigabe und Aktion lesen dort aber ausschließlich bufferMatches statt des flachen openResults-Treffers; Einzel-Ersetzen ist dadurch wirkungslos.",
+      "evidence": [
+        "app/Sources/Fastra/FloatingSearchDialog.swift",
+        "app/Sources/Fastra/Workspace.swift",
+        "app/Sources/Fastra/OpenTabsSearch.swift"
+      ],
+      "priority": 1,
+      "state": "pending",
+      "noted_at": "2026-08-15T13:58:57+02:00",
+      "campaign_id": "20260815T134823378515+0200"
+    }
+  ]
 }
