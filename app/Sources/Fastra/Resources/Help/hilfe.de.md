@@ -167,9 +167,10 @@ und Minifizieren folgen dem **effektiven Dokumentformat**: Automatisch werden
 `json`, `xml`, `xsd`, `xsl`, `xslt` und `plist` unterstützt; nach einer
 manuellen Wahl von **JSON** oder **XML** im Sprach-Chip funktionieren die
 Befehle auch in einer `.txt`-Datei oder einem ungespeicherten Tab. Große
-Formatierungen laufen im Hintergrund und werden nur übernommen, solange
-Dokument und Auswahl unverändert sind. Die Prüfung folgt weiterhin der
-Dateiendung und unterstützt zusätzlich `svg` und die 4D-Containerdateien.
+Formatierungen und Minifizierungen laufen im Hintergrund und werden nur
+übernommen, solange Dokument und Auswahl unverändert sind. Die Prüfung folgt
+weiterhin der Dateiendung und unterstützt zusätzlich `svg` und die
+4D-Containerdateien.
 
 ## Gehe zum Ziel
 

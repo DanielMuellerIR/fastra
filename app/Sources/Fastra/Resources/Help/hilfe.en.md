@@ -158,9 +158,10 @@ error position), and **Minify Document**. Formatting and minifying follow the
 **effective document format**: automatic mode supports `json`, `xml`, `xsd`,
 `xsl`, `xslt`, and `plist`; after manually choosing **JSON** or **XML** in the
 language chip, the commands also work in a `.txt` file or an unsaved tab.
-Large formatting jobs run in the background and are applied only while the
-document and selection remain unchanged. Validation continues to follow the
-file extension and additionally covers `svg` and the 4D container files.
+Large formatting and minification jobs run in the background and are applied
+only while the document and selection remain unchanged. Validation continues
+to follow the file extension and additionally covers `svg` and the 4D
+container files.
 
 ## Go to Target
 
