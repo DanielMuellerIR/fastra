@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 381545
+    "tokens_spent": 397179
   },
   "campaign_history": [
     {
@@ -294,15 +294,17 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T16:57:33+02:00",
-        "observed_head": "b0a99d94fe5dc776baaf043b4a347785d16e1ccf",
-        "content_sha256": "848a14fb1379f3ff13c2289ed1876052211426ad556e55f6de946d222d53f03a",
+        "completed_at": "2026-08-15T17:09:07+02:00",
+        "observed_head": "ccec913aa452ccb6d993624b2ac8d2a73d6ec592",
+        "content_sha256": "f78d9c4e9e6d18a0e35f2593fa981c3ad3ad84860f357d935584a40919db5a8a",
         "file_count": 20,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Seit dem Full-Review änderte sich im Bereich ausschließlich die konsistente Produktversion von 1.87.0/176 auf 1.91.0/180. Info.plist, Changelogfolge, gebündelter Build und Versionsleser an Release-/Appcast-Grenzen geprüft; Installations-, Notarisierungs- und Portabilitätsschutz unverändert, kein Fehler belegt.",
+        "summary": "Das einzige Delta ist der konsistente Versions-Bump auf 1.92.0/181; Paketierungsgrenzen bleiben unverändert.",
         "tests": [
-          "plutil -lint Info.plist Exit 0; gebautes Fastra.app meldet 1.91.0/180; Build- und Installationsrichtlinie 7/7 grün, Exit 0; Übernahme-build.sh einschließlich Portabilitätsprüfung Exit 0."
+          "plutil: Info.plist 1.92.0/181 und Datum 2026-08-15 gültig",
+          "./build.sh: Build, Signatur und portable Ordnersuche bestanden; Bundle 1.92.0/181",
+          "BuildInstallationPolicyTests im vorausgehenden Voll-Lauf bestanden"
         ]
       }
     },
