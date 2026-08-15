@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 53599
+    "tokens_spent": 86180
   },
   "campaign_history": [
     {
@@ -251,16 +251,16 @@
       "reason": "Fenstergebundener Dokumentzustand, Persistenz und Wiederherstellung koordinieren zahlreiche asynchrone Produktpfade.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T134823378515+0200",
-        "completed_at": "2026-08-15T15:18:01+02:00",
-        "observed_head": "7871d51998244a0ee89c4f210d167c205b6b4bc4",
-        "content_sha256": "a46ae6d52d4f58a35bb795edbb2ad32c53951bb663852852de144b612cc32e31",
+        "campaign_id": "20260815T165221406979+0200",
+        "completed_at": "2026-08-15T16:56:24+02:00",
+        "observed_head": "364e28a8f7f0901fcdc7881e26e796824ba5ffc3",
+        "content_sha256": "46546af23c9f080127faebf1bbbd270d1da8ce924c0eef6df9e1cad4250e2e49",
         "file_count": 23,
-        "review": "full",
-        "outcome": "improved",
-        "summary": "Externe Änderungen erkennen nun atomare Ersetzungen und konservierte oder ältere Zeitstempel über einen stat-Fingerabdruck plus bedarfsweisen Hintergrundvergleich; getrennte Baselines erhalten den Save-Konfliktschutz nach 'Behalten'. Zuletzt geöffnete Dateien werden vor fensterübergreifenden Mutationen neu aus dem gemeinsamen Store geladen. Version 1.87.0 und zweisprachige Hilfe ergänzt.",
+        "review": "delta-plus-boundaries",
+        "outcome": "reviewed-clean",
+        "summary": "Workspace-Delta seit dem Full-Review vollständig geprüft: Geöffnet-Einzel-Ersetzen, Projektliste, Suchverlauf und Suchordner arbeiten über klar begrenzte Workspace-Helfer; alle fensterübergreifenden Hinzufüge-/Änderungspfade lesen vor dem Schreiben den gemeinsamen Store. Direkte Mutationsvarianten und Store-Grenzen projektweit gesucht; bewusste globale Löschbefehle bleiben korrekt, kein neuer Fehler oder tragfähiger Refactor belegt.",
         "tests": [
-          "build.sh inkl. portable App grün; 43 fokussierte Workspace-/Extern-/Recent-Tests grün; test.sh --skip SelfTestPerformanceTests: 1856/1857 grün, ein bekannter lastabhängiger Git-Identity-Timeout, derselbe Test isoliert in 1,202 s grün; localization-audit sowie help-audit --release grün; GUI-Selbsttests wegen laufender installierter Nutzer-App nicht ausgeführt"
+          "Übernahme-Build Exit 0; 1870 nicht blockierte Unit-Tests mit zwei isoliert grünen Last-Ausreißern. Bereichsgezielt: vier Mehrfenster-Regressionen für Dateien, Projekte, Suchverlauf und Suchordner 4/4 grün, Exit 0."
         ]
       }
     },
