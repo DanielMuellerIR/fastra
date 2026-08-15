@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 1510187
+    "tokens_spent": 1526931
   },
   "campaign_history": [
     {
@@ -294,16 +294,16 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T17:39:14+02:00",
-        "observed_head": "8aca77c5e99271c2cb2cb18229204160884ebdd6",
-        "content_sha256": "1397a87d5d9732110b193445836310010577a041e551c13d30452e96263844ec",
+        "completed_at": "2026-08-15T18:06:00+02:00",
+        "observed_head": "1b87ab0b23070e4d68b923840f5af40ca3d0cd63",
+        "content_sha256": "d068013c3e2f4a04b9aeb670fa9abdc5294144f2ba9f0c5e6d812b1bed7093a8",
         "file_count": 20,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Seit dem letzten Review änderten sich im Paketierungsbereich nur CFBundleShortVersionString und CFBundleVersion auf 1.94.0/183; Quell- und Bundle-Plist stimmen überein, die Paketierungsgrenzen blieben unverändert.",
+        "summary": "Seit dem letzten Review änderten sich nur CFBundleShortVersionString und CFBundleVersion auf 1.96.0/185; Quell- und Bundle-Plist stimmen überein, die Paketierungsgrenzen blieben unverändert.",
         "tests": [
-          "plutil: Quell- und Bundle-Info.plist gültig",
-          "build.sh: bestanden einschließlich Signatur und portabler Ordnersuche"
+          "plutil und codesign: Quell- und Bundle-Info.plist gültig, Versionen 1.96.0/185 identisch, Bundle-Signatur gültig",
+          "./build.sh: passed einschließlich Fensterziel-Audit, Signatur und portabler Ordnersuche"
         ]
       }
     },
