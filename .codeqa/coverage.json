@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 2349837
+    "tokens_spent": 2414904
   },
   "campaign_history": [
     {
@@ -863,7 +863,22 @@
       "risk": "low",
       "priority": 19,
       "reason": "Kleine wiederverwendbare UI-Komponenten tragen Layout- und Interaktionszustand.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T165221406979+0200",
+        "completed_at": "2026-08-15T19:03:37+02:00",
+        "observed_head": "7162b2522b81c76eaf6badc07d2a678292127fba",
+        "content_sha256": "e21edf00be513bbb61b0aed521b6bec7686add6c51d8aef8df6b0525e55fdc96",
+        "file_count": 6,
+        "review": "full",
+        "outcome": "reviewed-clean",
+        "summary": "Drop-Filter, Splitterberechnung und -Geste, Statusleiste sowie Prompt-Testgrenzen vollständig geprüft; Fensterzielwahl und regulärer-Datei-Lader bleiben korrekt, keine lohnende Änderung",
+        "tests": [
+          "Splitter/PromptTextField/DropHandling/FooterLogic: 34/34 passed",
+          "window-targeting-audit.sh: passed",
+          "build.sh einschließlich Portabilitätsprüfung: passed"
+        ]
+      }
     }
   ],
   "architecture": {
