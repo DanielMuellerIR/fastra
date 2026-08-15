@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 144573
+    "tokens_spent": 381545
   },
   "campaign_history": [
     {
@@ -481,7 +481,22 @@
       "risk": "high",
       "priority": 9,
       "reason": "Fensterziel, Befehlsrouting und App-Lebenszyklus dürfen bei mehreren Dokumentfenstern keinen fremden Workspace treffen.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T165221406979+0200",
+        "completed_at": "2026-08-15T17:08:21+02:00",
+        "observed_head": "5a9e0ed97321d0b2644f01cc92b958661520595f",
+        "content_sha256": "42bbaaa140983983879f84eb4a415589142a06afb920361d65f00282b6120aff",
+        "file_count": 19,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Finder-/Dock-Öffnen wählt bei einem gemeinsam registrierten Such- und Dokumentfenster ausdrücklich das Dokument; fensterloser Regressionstest ergänzt.",
+        "tests": [
+          "./test.sh --filter P9-Auswahl: 68 Tests in 3 Suiten bestanden",
+          "./window-targeting-audit.sh: bestanden",
+          "./build.sh: Build, Signatur und portable Ordnersuche bestanden"
+        ]
+      }
     },
     {
       "id": "project-sidebar-files",
