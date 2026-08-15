@@ -145,7 +145,20 @@
       "risk": "critical",
       "priority": 2,
       "reason": "Dateiladen, Platten-Snapshots, große Dateien und Hex-Pfade entscheiden über Datenintegrität und Speichergrenzen.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T134823378515+0200",
+        "completed_at": "2026-08-15T14:31:33+02:00",
+        "observed_head": "b0b920640b04b61ec8305616e0247cfd3420b215",
+        "content_sha256": "31154ba4a94d2b14e71d53d788cc96cc1d446ffaaa84dadaa30b2e98f2cf3e28",
+        "file_count": 10,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Dateiladen, Snapshot-Basis, Bild/PDF-Vorschau, große Text-/Byte-Seiten, Hex-Bearbeitung und zugehörige Regressionen vollständig geprüft. Hex-Speichern prüft nun die sichtbaren Altwerte, kopiert große Dateien begrenzt im Hintergrund und ersetzt erst atomar; Seitenreader weisen Sonderdateien nichtblockierend ab, und verspätete 0-1-0-Antworten können aktuelle Seiten nicht überschreiben.",
+        "tests": [
+          "Fail-before: der Fremdänderungs-Test zeigte stilles Überschreiben. Danach 61 Bereichstests grün; build.sh einschließlich Portabilitätsprüfung, Lokalisierungs- und Hilfe-Audit grün. 1852 Unit-Tests liefen mit einem lastabhängigen Git-Push-Ausreißer, der isoliert in 1,732 s bestand. Fenster-Selbsttests blockiert durch eine bereits laufende installierte Nutzerinstanz."
+        ]
+      }
     },
     {
       "id": "git-execution-mutations",
