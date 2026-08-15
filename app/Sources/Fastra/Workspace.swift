@@ -2,7 +2,6 @@ import SwiftUI
 import AppKit
 import Combine
 import CodeEditLanguages
-import Darwin
 
 extension Notification.Name {
     /// Ein Projektwechsel darf keine Diagnose des alten Projektkontexts mehr
@@ -78,34 +77,6 @@ extension String.Encoding {
         case .macOSRoman:           return "Mac Roman"
         default:                    return L10n.string("Unbekannt")
         }
-    }
-}
-
-/// Leichter Platten-Fingerabdruck für die Erkennung externer Änderungen.
-/// Anders als ein Änderungsdatum allein erkennt er auch atomar ersetzte
-/// Dateien mit beibehaltenem Datum sowie gleich große In-place-Schreibvorgänge.
-/// Die eigentlichen Bytes werden erst im Hintergrund gelesen, wenn sich dieser
-/// Fingerabdruck unterscheidet.
-struct ExternalFileObservation: Equatable, Hashable, Sendable {
-    let device: UInt64
-    let inode: UInt64
-    let byteCount: Int64
-    let modificationSeconds: Int64
-    let modificationNanoseconds: Int64
-    let statusChangeSeconds: Int64
-    let statusChangeNanoseconds: Int64
-
-    init?(url: URL) {
-        guard let opened = try? FileSnapshot.openRegularFile(at: url) else { return nil }
-        defer { Darwin.close(opened.descriptor) }
-        let info = opened.stat
-        device = UInt64(info.st_dev)
-        inode = UInt64(info.st_ino)
-        byteCount = Int64(info.st_size)
-        modificationSeconds = Int64(info.st_mtimespec.tv_sec)
-        modificationNanoseconds = Int64(info.st_mtimespec.tv_nsec)
-        statusChangeSeconds = Int64(info.st_ctimespec.tv_sec)
-        statusChangeNanoseconds = Int64(info.st_ctimespec.tv_nsec)
     }
 }
 
@@ -371,36 +342,6 @@ struct EditorTab: Identifiable, Hashable {
         url == nil && content.isEmpty && !isDirty && !isLoading
             && gitKind == nil && fileDiffRequest == nil && gitSnapshotRequest == nil
             && displayMode == .text
-    }
-}
-
-/// Pure Entscheidungs-Logik der Extern-Änderungs-Erkennung (BBEdit
-/// „Automatically refresh documents" / „Reload from Disk", Handbuch 16.0.1
-/// Kap. 3 S. 59): Was passiert mit einem Tab, dessen Datei sich auf der
-/// Platte geändert hat? Sauberer Tab → still neu laden (kein Datenverlust
-/// möglich). Dirty Tab → Nutzer fragen (lokale Änderungen stehen gegen die
-/// externen). Unbenannt/kein Vergleichsdatum/Datei weg → nichts tun.
-enum ExternalChange {
-    enum Action: Equatable {
-        case none
-        case reloadSilently
-        case askUser
-    }
-
-    static func action(isDirty: Bool, knownDate: Date?, diskDate: Date?) -> Action {
-        guard let known = knownDate, let disk = diskDate else { return .none }
-        // Werkzeuge wie `cp -p`, Restore und Versionskontrollsysteme können
-        // einen älteren Zeitstempel einspielen. Jede Abweichung ist deshalb
-        // eine Änderung; der Workspace-Pfad prüft zusätzlich Identität,
-        // Größe, ctime und bei Bedarf die echten Bytes.
-        guard disk != known else { return .none }
-        return isDirty ? .askUser : .reloadSilently
-    }
-
-    /// Aktuelles Änderungsdatum der Datei auf der Platte (`nil`, wenn die
-    /// Datei nicht erreichbar ist — gelöscht, Volume weg, keine Rechte).
-    static func diskModificationDate(of url: URL) -> Date? {
-        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
     }
 }
 
@@ -783,10 +724,9 @@ final class Workspace: ObservableObject {
     /// Ein neuer Klick beendet den alten Read an der nächsten Abschnittsgrenze,
     /// statt mehrere große Dateien parallel bis zum Ende einzulesen.
     private var previewLoadCancellations: [UUID: PreviewLoadCancellation] = [:]
-    /// Höchstens eine Hintergrundprüfung je Dokument. Eine UUID bindet die
-    /// Rückgabe zusätzlich an den Tabplatz und verhindert, dass ein späterer
-    /// Check von einem älteren Ergebnis überschrieben wird.
-    private var externalChangeInspectionRequestIDs: [UUID: UUID] = [:]
+    /// Fensterlokaler Besitzer der laufenden Plattenprüfungen. Der Inspector
+    /// kennt keinen Workspace; Tab- und Reload-Entscheidungen bleiben hier.
+    private let externalChangeInspector: ExternalChangeInspector
     /// Quellen, für die die Markdown-Hinweisleiste weggeklickt wurde. Nur für
     /// diese Sitzung — der Hinweis ist keine Einstellung, und der Menübefehl
     /// bleibt ohnehin erreichbar.
@@ -1076,6 +1016,7 @@ final class Workspace: ObservableObject {
          gitAutoFetchController: GitAutoFetchController? = nil,
          terminalOpener: TerminalOpening = ExternalTerminalLauncher(),
          terminalDirectoryResolver: TerminalDirectoryResolving = DefaultTerminalDirectoryResolver(),
+         externalChangeInspector: ExternalChangeInspector = ExternalChangeInspector(),
          scheduleLanguageDetectionWork: @escaping LanguageDetectionScheduler = {
              DispatchQueue.global(qos: .utility).async(execute: $0)
          },
@@ -1104,6 +1045,7 @@ final class Workspace: ObservableObject {
         self.gitOperationsCoordinator = gitOperationsCoordinator
         self.terminalOpener = terminalOpener
         self.terminalDirectoryResolver = terminalDirectoryResolver
+        self.externalChangeInspector = externalChangeInspector
         self.scheduleLanguageDetectionWork = scheduleLanguageDetectionWork
         self.deliverLanguageDetectionResult = deliverLanguageDetectionResult
         self.resolveProjectContext = resolveProjectContext
@@ -2098,14 +2040,11 @@ final class Workspace: ObservableObject {
     func checkExternalChanges() {
         for tab in tabs {
             guard let url = tab.url, !tab.isLoading,
-                  externalChangeInspectionRequestIDs[tab.id] == nil,
+                  !externalChangeInspector.isInspecting(tabID: tab.id),
                   let currentObservation = ExternalFileObservation(url: url),
                   currentObservation != tab.externalFileObservation else {
                 continue
             }
-            let requestID = UUID()
-            let tabID = tab.id
-            let documentID = tab.documentID
             let observedContent = tab.externalContentSnapshot ?? tab.diskSnapshot
             // Eine andere Bytezahl beweist die Inhaltsänderung bereits. Nur
             // bei gleicher Größe lohnt der Hashvergleich; Tabs ohne vollständigen
@@ -2113,65 +2052,52 @@ final class Workspace: ObservableObject {
             let shouldReadContent = observedContent.map {
                 Int64($0.byteCount) == currentObservation.byteCount
             } ?? false
-            externalChangeInspectionRequestIDs[tabID] = requestID
-
-            Task.detached(priority: .utility) { [weak self] in
-                // Vorher/Nachher-Fingerabdruck ergänzt die bereits interne
-                // Konsistenzprüfung von FileSnapshot um die kleine Lücke
-                // zwischen dessen Rückgabe und unserer Beobachtung.
-                let before = ExternalFileObservation(url: url)
-                let snapshot: FileSnapshot?
-                if shouldReadContent {
-                    snapshot = try? FileSnapshot.read(from: url).snapshot
-                } else {
-                    snapshot = nil
+            let request = ExternalChangeInspector.Request(
+                tabID: tab.id,
+                documentID: tab.documentID,
+                url: url,
+                shouldReadContent: shouldReadContent
+            )
+            externalChangeInspector.inspect(request) { [weak self] inspection in
+                guard let self,
+                      let after = inspection.observation,
+                      let idx = self.tabs.firstIndex(where: {
+                          $0.id == inspection.tabID
+                              && $0.documentID == inspection.documentID
+                      }),
+                      !self.tabs[idx].isLoading,
+                      after != self.tabs[idx].externalFileObservation else {
+                    return
                 }
-                let after = ExternalFileObservation(url: url)
-                let stableSnapshot = before == after ? snapshot : nil
 
-                await MainActor.run { [weak self] in
-                    guard let self,
-                          self.externalChangeInspectionRequestIDs[tabID] == requestID else {
-                        return
-                    }
-                    self.externalChangeInspectionRequestIDs.removeValue(forKey: tabID)
-                    guard let after,
-                          let idx = self.tabs.firstIndex(where: {
-                              $0.id == tabID && $0.documentID == documentID
-                          }),
-                          !self.tabs[idx].isLoading,
-                          after != self.tabs[idx].externalFileObservation else {
-                        return
-                    }
+                let observedContent = self.tabs[idx].externalContentSnapshot
+                    ?? self.tabs[idx].diskSnapshot
+                if let observedContent, let stableSnapshot = inspection.stableSnapshot,
+                   observedContent.hasSameContent(as: stableSnapshot) {
+                    // Nur Metadaten oder Dateiidentität haben sich
+                    // geändert. Das ist kein sichtbarer Fremdinhalt.
+                    self.tabs[idx].recordExternalFileObservation(
+                        at: inspection.url, snapshot: stableSnapshot,
+                        observation: after
+                    )
+                    return
+                }
 
-                    let observedContent = self.tabs[idx].externalContentSnapshot
-                        ?? self.tabs[idx].diskSnapshot
-                    if let observedContent, let stableSnapshot,
-                       observedContent.hasSameContent(as: stableSnapshot) {
-                        // Nur Metadaten oder Dateiidentität haben sich
-                        // geändert. Das ist kein sichtbarer Fremdinhalt.
+                if self.tabs[idx].isDirty {
+                    if self.externalReloadConfirmHandler(self.tabs[idx].title) {
+                        self.reloadTabFromDisk(id: inspection.tabID)
+                    } else {
+                        // Die automatische Rückfrage gilt als beantwortet;
+                        // `diskSnapshot` bleibt absichtlich alt, damit ein
+                        // späteres Speichern weiterhin gesondert warnt.
                         self.tabs[idx].recordExternalFileObservation(
-                            at: url, snapshot: stableSnapshot,
+                            at: inspection.url,
+                            snapshot: inspection.stableSnapshot,
                             observation: after
                         )
-                        return
                     }
-
-                    if self.tabs[idx].isDirty {
-                        if self.externalReloadConfirmHandler(self.tabs[idx].title) {
-                            self.reloadTabFromDisk(id: tabID)
-                        } else {
-                            // Die automatische Rückfrage gilt als beantwortet;
-                            // `diskSnapshot` bleibt absichtlich alt, damit ein
-                            // späteres Speichern weiterhin gesondert warnt.
-                            self.tabs[idx].recordExternalFileObservation(
-                                at: url, snapshot: stableSnapshot,
-                                observation: after
-                            )
-                        }
-                    } else {
-                        self.reloadTabFromDisk(id: tabID)
-                    }
+                } else {
+                    self.reloadTabFromDisk(id: inspection.tabID)
                 }
             }
         }

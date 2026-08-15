@@ -53,6 +53,138 @@ private func waitForContent(_ ws: Workspace, idx: Int, expected: String) async -
     return await waitUntil { ws.tabs[idx].content == expected }
 }
 
+/// Blockiert nur den ersten Snapshot-Read. Damit können Tests den Zustand
+/// „Prüfung läuft" reproduzieren, ohne den Main-Actor zu blockieren.
+private final class BlockingSnapshotReader: @unchecked Sendable {
+    private let lock = NSLock()
+    private let firstReadGate = DispatchSemaphore(value: 0)
+    private var reads = 0
+
+    var readCount: Int {
+        lock.withLock { reads }
+    }
+
+    func read(_ url: URL) -> FileSnapshot? {
+        let isFirst = lock.withLock {
+            reads += 1
+            return reads == 1
+        }
+        if isFirst { firstReadGate.wait() }
+        return try? FileSnapshot.read(from: url).snapshot
+    }
+
+    func releaseFirstRead() {
+        firstReadGate.signal()
+    }
+}
+
+// MARK: - ExternalChangeInspector
+
+@Test("Inspector überspringt den Voll-Read, wenn die Bytezahl schon abweicht")
+@MainActor
+func externalChangeInspector_skipsUnneededContentRead() async throws {
+    let url = try writeTmpUTF8("anderer Umfang\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let reader = BlockingSnapshotReader()
+    let inspector = ExternalChangeInspector(snapshotReader: { reader.read($0) })
+    let request = ExternalChangeInspector.Request(
+        tabID: UUID(), documentID: UUID(), url: url, shouldReadContent: false
+    )
+    var result: ExternalChangeInspector.Inspection?
+    var deliveredOnMainThread = false
+
+    #expect(inspector.inspect(request) {
+        deliveredOnMainThread = Thread.isMainThread
+        result = $0
+    })
+    #expect(await waitUntil { result != nil })
+    #expect(reader.readCount == 0,
+            "Abschnitts-, Hex- und abweichend große Dateien dürfen nicht vollständig gelesen werden")
+    #expect(result?.stableSnapshot == nil)
+    #expect(result?.observation != nil)
+    #expect(deliveredOnMainThread)
+}
+
+@Test("Inspector startet je Tab höchstens eine parallele Prüfung")
+@MainActor
+func externalChangeInspector_coalescesConcurrentRequestForTab() async throws {
+    let url = try writeTmpUTF8("gleiche Länge\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let reader = BlockingSnapshotReader()
+    defer { reader.releaseFirstRead() }
+    let inspector = ExternalChangeInspector(snapshotReader: { reader.read($0) })
+    let request = ExternalChangeInspector.Request(
+        tabID: UUID(), documentID: UUID(), url: url, shouldReadContent: true
+    )
+    var completionCount = 0
+
+    #expect(inspector.inspect(request) { _ in completionCount += 1 })
+    #expect(await waitUntil { reader.readCount == 1 })
+    #expect(inspector.isInspecting(tabID: request.tabID))
+    #expect(!inspector.inspect(request) { _ in completionCount += 1 })
+
+    reader.releaseFirstRead()
+    #expect(await waitUntil { completionCount == 1 })
+    #expect(!inspector.isInspecting(tabID: request.tabID))
+    #expect(reader.readCount == 1)
+}
+
+@Test("Veraltete Prüfung eines wiederverwendeten Tabplatzes verändert das neue Dokument nicht")
+@MainActor
+func workspace_externalInspectionRejectsReusedTabResult() async throws {
+    let firstURL = try writeTmpUTF8("eins alt\n")
+    let secondURL = try writeTmpUTF8("zwei alt\n")
+    defer {
+        try? FileManager.default.removeItem(at: firstURL)
+        try? FileManager.default.removeItem(at: secondURL)
+    }
+    let reader = BlockingSnapshotReader()
+    defer { reader.releaseFirstRead() }
+    let inspector = ExternalChangeInspector(snapshotReader: { reader.read($0) })
+    let (defaults, _) = makeFreshDefaults()
+    let ws = Workspace(defaults: defaults, externalChangeInspector: inspector)
+    var loaded = false
+    ws.loadFile(at: firstURL) { _ in loaded = true }
+    #expect(await waitUntil { loaded })
+    let idx = try #require(ws.tabs.firstIndex { $0.url == firstURL })
+    let reusedTabID = ws.tabs[idx].id
+
+    // Die erste Prüfung bleibt im Snapshot-Read stehen. Währenddessen zeigt
+    // derselbe Vorschau-Tabplatz bereits ein anderes Dokument.
+    try simulateExternalEdit(firstURL, content: "eins neu\n")
+    ws.checkExternalChanges()
+    #expect(await waitUntil { reader.readCount == 1 })
+    let secondData = Data("zwei alt\n".utf8)
+    var replacement = EditorTab(
+        id: reusedTabID,
+        title: secondURL.lastPathComponent,
+        path: secondURL.deletingLastPathComponent().path,
+        url: secondURL,
+        content: "zwei alt\n",
+        fileSize: UInt64(secondData.count),
+        diskSnapshot: FileSnapshot(data: secondData, at: secondURL)
+    )
+    replacement.recordExternalFileObservation(
+        at: secondURL,
+        snapshot: replacement.diskSnapshot
+    )
+    ws.tabs[idx] = replacement
+    ws.activeTabID = reusedTabID
+
+    reader.releaseFirstRead()
+    try simulateExternalEdit(secondURL, content: "zwei neu\n")
+    for _ in 0..<100 where reader.readCount < 2 {
+        ws.checkExternalChanges()
+        try await Task.sleep(for: .milliseconds(10))
+    }
+
+    #expect(reader.readCount == 2,
+            "Das alte Ergebnis muss verworfen und das neue Dokument getrennt geprüft werden")
+    #expect(await waitForContent(ws, idx: idx, expected: "zwei neu\n"))
+    #expect(ws.tabs[idx].url == secondURL)
+    #expect(ws.tabs[idx].id == reusedTabID)
+}
+
 // MARK: - Pure Entscheidungs-Logik
 
 @Test("Kein Vergleichs- oder Disk-Datum → keine Aktion")
