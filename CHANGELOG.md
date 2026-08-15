@@ -9,6 +9,23 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.97.0] — 2026-08-15
+
+### Behoben
+
+- **UI-Skalierung aktualisiert die Mindestgröße des Einstellungsfensters:** Ein
+  bereits geöffnetes Fenster übernimmt neue Skalierungswerte und bemisst seine
+  Grenze am Inhalt statt am Rahmen.
+- **Englische Einfüge-Befehle bleiben eindeutig:** Das Editor-Kontextmenü zeigt
+  wieder „Paste“, während der Tabellen-Dialog ausdrücklich „Insert Table“
+  verwendet. Überschriften zu Zeilenende-Leerraum behalten ihre Großschreibung.
+
+### Tests
+
+- **Fenstergröße und Lokalisierung besitzen neue Wächter:** Ein fensterloser
+  AppKit-Test prüft anfängliche und aktualisierte Inhaltsgrößen; das
+  Lokalisierungs-Audit lehnt doppelte englische Schlüssel ab.
+
 ## [v1.96.0] — 2026-08-15
 
 ### Behoben

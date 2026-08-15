@@ -1090,7 +1090,6 @@
 "Tabelle einfügen" = "Insert Table";
 "Anzahl der Spalten:" = "Number of columns:";
 "Mit Kopfzeile" = "With header row";
-"Einfügen" = "Insert";
 "Spalte %ld" = "Column %ld";
 "Bild konnte nicht übernommen werden" = "The image could not be added";
 "Erst speichern" = "Save First";
@@ -1134,7 +1133,6 @@
 "Keine Unterschiede — links %ld, rechts %ld Zeilen." = "No differences — %ld lines on the left, %ld on the right.";
 "%@ und %@" = "%@ and %@";
 "alle Leerraum-Unterschiede" = "all whitespace differences";
-"Leerraum am Zeilenende" = "trailing whitespace";
 "Groß-/Kleinschreibung" = "letter case";
 "„%@“ konnte nicht gelesen werden" = "“%@” could not be read";
 "„%@“ ist eine Binärdatei" = "“%@” is a binary file";

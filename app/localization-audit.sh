@@ -14,7 +14,9 @@ xcrun xcstringstool extract --SwiftUI --legacy-localizable-strings \
 plutil -convert json -o "$tmp/en.json" \
   Sources/Fastra/Resources/en.lproj/Localizable.strings
 
-python3 - "$tmp/Localizable.xcstrings" "$tmp/en.json" <<'PY'
+python3 - "$tmp/Localizable.xcstrings" "$tmp/en.json" \
+  Sources/Fastra/Resources/en.lproj/Localizable.strings <<'PY'
+from collections import Counter
 import json
 import pathlib
 import re
@@ -22,6 +24,28 @@ import sys
 
 catalog = json.load(open(sys.argv[1], encoding="utf-8"))["strings"]
 english = json.load(open(sys.argv[2], encoding="utf-8"))
+
+# `plutil` übernimmt bei doppelten Schlüsseln still den letzten Wert. Das kann
+# zwei verschiedene UI-Begriffe unbemerkt auf dieselbe Übersetzung zwingen.
+strings_source = pathlib.Path(sys.argv[3]).read_text(encoding="utf-8")
+strings_key_pattern = re.compile(r'^\s*"((?:\\.|[^"\\])*)"\s*=', re.MULTILINE)
+source_keys = []
+for raw in strings_key_pattern.findall(strings_source):
+    try:
+        source_keys.append(json.loads('"' + raw + '"'))
+    except json.JSONDecodeError:
+        print(f"Nicht lesbarer Schlüssel im englischen Stringkatalog: {raw}",
+              file=sys.stderr)
+        raise SystemExit(1)
+duplicate_keys = sorted(
+    key for key, count in Counter(source_keys).items() if count > 1
+)
+if duplicate_keys:
+    print("Doppelte englische Lokalisierungsschlüssel:", file=sys.stderr)
+    for key in duplicate_keys:
+        print(f"  {key}", file=sys.stderr)
+    raise SystemExit(1)
+
 literal_pattern = re.compile(
     r'L10n\.(?:string|format)\(\s*"((?:\\.|[^"\\])*)"', re.DOTALL
 )

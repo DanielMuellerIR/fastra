@@ -18,18 +18,68 @@ struct SettingsWindowConfiguration: NSViewRepresentable {
 
     func makeNSView(context: Context) -> SettingsWindowProbe {
         let view = SettingsWindowProbe()
-        view.configure = { window in
-            window.identifier = Self.windowIdentifier
-            window.styleMask.insert(.resizable)
-            window.minSize = minimumContentSize
-            if window.contentView?.bounds.height ?? 0 < preferredContentSize.height {
-                window.setContentSize(preferredContentSize)
-            }
-        }
+        apply(to: view)
         return view
     }
 
-    func updateNSView(_ nsView: SettingsWindowProbe, context: Context) { }
+    func updateNSView(_ nsView: SettingsWindowProbe, context: Context) {
+        apply(to: nsView)
+    }
+
+    /// Hält auch ein bereits geöffnetes Einstellungsfenster auf dem aktuellen
+    /// Skalierungswert. Die bevorzugte Größe gilt weiterhin nur beim ersten
+    /// Öffnen, damit ein späteres SwiftUI-Update manuelles Resizing nicht
+    /// rückgängig macht.
+    func apply(to view: SettingsWindowProbe) {
+        let sizing = SettingsWindowSizing(
+            preferredContentSize: preferredContentSize,
+            minimumContentSize: minimumContentSize
+        )
+        view.configure = { window in
+            window.identifier = Self.windowIdentifier
+            window.styleMask.insert(.resizable)
+            sizing.apply(to: window, resizeToPreferred: true)
+        }
+        view.updateSizing(sizing)
+    }
+}
+
+/// Kleine Schnittstelle, damit die Fenstergrößenregel ohne ein echtes
+/// AppKit-Fenster und dessen prozessweite Zustände getestet werden kann.
+protocol SettingsWindowSizingTarget: AnyObject {
+    var fastraCurrentContentSize: NSSize { get }
+    func fastraSetContentSize(_ size: NSSize)
+    func fastraSetMinimumContentSize(_ size: NSSize)
+}
+
+struct SettingsWindowSizing {
+    let preferredContentSize: NSSize
+    let minimumContentSize: NSSize
+
+    func apply(
+        to target: SettingsWindowSizingTarget,
+        resizeToPreferred: Bool
+    ) {
+        target.fastraSetMinimumContentSize(minimumContentSize)
+        if resizeToPreferred,
+           target.fastraCurrentContentSize.height < preferredContentSize.height {
+            target.fastraSetContentSize(preferredContentSize)
+        }
+    }
+}
+
+extension NSWindow: SettingsWindowSizingTarget {
+    var fastraCurrentContentSize: NSSize {
+        contentView?.bounds.size ?? .zero
+    }
+
+    func fastraSetContentSize(_ size: NSSize) {
+        setContentSize(size)
+    }
+
+    func fastraSetMinimumContentSize(_ size: NSSize) {
+        contentMinSize = size
+    }
 }
 
 final class SettingsWindowProbe: NSView {
@@ -51,6 +101,11 @@ final class SettingsWindowProbe: NSView {
             self.configure?(window)
             self.installCloseShortcut(for: window)
         }
+    }
+
+    func updateSizing(_ sizing: SettingsWindowSizing) {
+        guard let window else { return }
+        sizing.apply(to: window, resizeToPreferred: false)
     }
 
     /// SwiftUIs Settings-Scene reicht ⌘W nicht zuverlässig an den eigenen

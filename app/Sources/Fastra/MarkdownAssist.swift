@@ -147,7 +147,7 @@ enum MarkdownAssist {
         let alert = NSAlert()
         alert.messageText = L10n.string("Tabelle einfügen")
         alert.informativeText = L10n.string("Anzahl der Spalten:")
-        alert.addButton(withTitle: L10n.string("Einfügen"))
+        alert.addButton(withTitle: L10n.string("Tabelle einfügen"))
         alert.addButton(withTitle: L10n.string("Abbrechen"))
         let field = NSTextField(string: "3")
         field.frame = NSRect(x: 0, y: 28, width: 200, height: 24)
