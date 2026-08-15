@@ -57,7 +57,7 @@ struct DifficultDocumentCorpusTests {
         textView.updateFrameIfNeeded()
         controller.view.layoutSubtreeIfNeeded()
 
-        func verifyPosition(_ y: CGFloat, label: String) {
+        func verifyPosition(_ y: CGFloat, label: String) throws {
             scrollView.contentView.scroll(to: NSPoint(x: 0, y: y))
             scrollView.reflectScrolledClipView(scrollView.contentView)
             textView.updatedViewport(scrollView.documentVisibleRect)
@@ -70,16 +70,84 @@ struct DifficultDocumentCorpusTests {
                 textLine == gutterLine,
                 "\(label): Text zeigt Zeile \(textLine.map { $0 + 1 } ?? -1), Gutter zeichnet ab Zeile \(gutterLine.map { $0 + 1 } ?? -1); Text-y=\(Int(textRect.minY)), Gutter-y=\(Int(gutter.visibleRect.minY))"
             )
+
+            // Echtes Zeichnen anstoßen: cacheDisplay durchläuft draw(_:) und
+            // damit die Zeilenauswahl UND die Y-Umrechnung wirklich. Der Hook
+            // oben ist nur eine Vorberechnung derselben Auswahl und würde
+            // eine falsche Zeichenposition nicht bemerken.
+            let gutterVisible = gutter.visibleRect
+            let cache = try #require(
+                gutter.bitmapImageRepForCachingDisplay(in: gutterVisible)
+            )
+            gutter.cacheDisplay(in: gutterVisible, to: cache)
+            let drawn = gutter.lastDrawnLineNumbers
+            #expect(
+                drawn.map(\.index) == gutter.visibleLineIndicesForDrawing,
+                "\(label): Gezeichnete Zeilen \(drawn.map { $0.index + 1 }) weichen von der sichtbaren Auswahl ab"
+            )
+            #expect(drawn.first?.index == textLine,
+                    "\(label): Die erste gezeichnete Nummer gehört nicht zur ersten sichtbaren Textzeile")
+
+            // Die Y-Positionen der Nummern müssen aufsteigend im lokal
+            // sichtbaren Gutter-Ausschnitt liegen — vor dem Patch lagen sie
+            // in Textkoordinaten und liefen dem gespiegelten Ausschnitt
+            // entgegen. Toleranz: eine Zeilenhöhe, weil die Randzeilen oben
+            // und unten angeschnitten sein dürfen.
+            let yPositions = drawn.map(\.yPosition)
+            let lineHeightTolerance = yPositions.count > 1
+                ? max(24, yPositions[1] - yPositions[0])
+                : 24
+            #expect(yPositions == yPositions.sorted(),
+                    "\(label): Zeilennummern-Y läuft nicht aufsteigend: \(yPositions.map(Int.init))")
+            #expect(
+                yPositions.allSatisfy {
+                    $0 >= gutterVisible.minY - lineHeightTolerance
+                        && $0 <= gutterVisible.maxY + lineHeightTolerance
+                },
+                "\(label): Nummern außerhalb des sichtbaren Gutter-Ausschnitts \(Int(gutterVisible.minY))–\(Int(gutterVisible.maxY)): \(yPositions.map(Int.init))"
+            )
+            let expectedFirstY = gutter.convert(
+                NSPoint(x: 0, y: textRect.minY), from: textView
+            ).y
+            let firstY = try #require(yPositions.first)
+            #expect(
+                abs(firstY - expectedFirstY) <= lineHeightTolerance,
+                "\(label): Erste Nummer bei y=\(Int(firstY)) statt nahe \(Int(expectedFirstY))"
+            )
+
+            // Klick- und Hover-Ziele der Faltleiste nutzen dieselbe
+            // Umrechnung: Ein Punkt oben im lokal sichtbaren
+            // Leistenausschnitt muss auf die erste sichtbare Textzeile
+            // zeigen — vor dem Patch traf er die gespiegelte Gegenzeile.
+            let ribbonVisible = gutter.foldRibbonVisibleRect
+            #expect(!ribbonVisible.isEmpty,
+                    "\(label): Faltleiste hat keinen sichtbaren Ausschnitt")
+            let probe = NSPoint(
+                x: ribbonVisible.midX,
+                y: ribbonVisible.minY + 1
+            )
+            let converted = try #require(
+                gutter.foldRibbonTextPoint(forRibbonLocalPoint: probe)
+            )
+            // Ein Punkt im lokal sichtbaren Leistenausschnitt muss in das
+            // sichtbare Textband umgerechnet werden — vor dem Patch landete
+            // die unumgerechnete lokale Koordinate im gespiegelten,
+            // unsichtbaren Gegenstück des Dokuments.
+            #expect(
+                converted.y >= textRect.minY - lineHeightTolerance
+                    && converted.y <= textRect.maxY + lineHeightTolerance,
+                "\(label): Faltleisten-Klickziel y=\(Int(converted.y)) liegt außerhalb des sichtbaren Textbandes \(Int(textRect.minY))–\(Int(textRect.maxY)); Leistenausschnitt \(Int(ribbonVisible.minY))–\(Int(ribbonVisible.maxY))"
+            )
         }
 
-        verifyPosition(0, label: "oben")
+        try verifyPosition(0, label: "oben")
         let bottomY = max(
             textView.frame.height - scrollView.documentVisibleRect.height,
             0
         )
         #expect(bottomY > scrollView.documentVisibleRect.height,
                 "Fixture wurde nicht vertikal scrollbar")
-        verifyPosition(bottomY, label: "unten")
+        try verifyPosition(bottomY, label: "unten")
     }
 
     @Test("Alle Formate werden vollständig geladen und richtig aufgelöst")

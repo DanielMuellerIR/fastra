@@ -5341,6 +5341,8 @@ IMMEDIATE_ATTRIBUTE_STORAGE_PATCH_CHANGED=0
 if [ -e "$CETV_IMMEDIATE_STORAGE_SWIFT" ] \
    || ! grep -q 'Fastra-Patch: vollstaendige Attribute ohne spaetes AppKit-Fixing' \
     "$CETV_IMMEDIATE_STORAGE_IMPL" 2>/dev/null \
+   || ! grep -q '@interface ImmediateAttributeTextStorage : NSTextStorage' \
+    "$CETV_IMMEDIATE_STORAGE_HEADER" 2>/dev/null \
    || ! grep -q 'header "ImmediateAttributeTextStorage.h"' \
     "$CETV_OBJC_MODULEMAP" 2>/dev/null \
    || ! grep -q 'attributes: initialTypingAttributes' \
@@ -5369,13 +5371,16 @@ text_view = open(text_view_path).read()
 set_text = open(set_text_path).read()
 modulemap = open(modulemap_path).read()
 
+# Nur pruefen und vormerken — geloescht wird erst nach allen Validierungen
+# am Ende, damit ein Anker-Fehlschlag keinen halb gepatchten Stand hinterlaesst.
+remove_obsolete_swift = False
 if os.path.exists(obsolete_swift_path):
     obsolete = open(obsolete_swift_path).read()
     if "Fastra-Patch: vollstaendige Attribute ohne spaetes AppKit-Fixing" not in obsolete:
         raise SystemExit(
             f"{obsolete_swift_path}: fremde Datei kollidiert mit Patch 4z12"
         )
-    os.remove(obsolete_swift_path)
+    remove_obsolete_swift = True
 
 header = '''// Fastra-Patch: vollstaendige Attribute ohne spaetes AppKit-Fixing.
 
@@ -5451,8 +5456,6 @@ implementation = '''// Fastra-Patch: vollstaendige Attribute ohne spaetes AppKit
 
 @end
 '''
-open(header_path, "w").write(header)
-open(implementation_path, "w").write(implementation)
 
 if 'header "ImmediateAttributeTextStorage.h"' not in modulemap:
     marker = '    header "CGContextHidden.h"\n'
@@ -5542,9 +5545,15 @@ if "if !(textStorage is ImmediateAttributeTextStorage)" not in set_text:
         )
     set_text = set_text.replace(old_apply_attributes, new_apply_attributes, 1)
 
+# Erst NACH allen Validierungen schreiben und aufraeumen — gemeinsam,
+# damit kein halb gepatchter Checkout zurueckbleiben kann.
+open(header_path, "w").write(header)
+open(implementation_path, "w").write(implementation)
 open(text_view_path, "w").write(text_view)
 open(set_text_path, "w").write(set_text)
 open(modulemap_path, "w").write(modulemap)
+if remove_obsolete_swift:
+    os.remove(obsolete_swift_path)
 PYEOF
   IMMEDIATE_ATTRIBUTE_STORAGE_PATCH_CHANGED=1
 fi
@@ -5553,6 +5562,8 @@ if [ -e "$CETV_IMMEDIATE_STORAGE_SWIFT" ] \
     "$CETV_IMMEDIATE_STORAGE_IMPL" \
    || ! grep -q -- '- (BOOL)fixesAttributesLazily' \
     "$CETV_IMMEDIATE_STORAGE_IMPL" \
+   || ! grep -q '@interface ImmediateAttributeTextStorage : NSTextStorage' \
+    "$CETV_IMMEDIATE_STORAGE_HEADER" \
    || ! grep -q 'header "ImmediateAttributeTextStorage.h"' \
     "$CETV_OBJC_MODULEMAP" \
    || ! grep -q 'import CodeEditTextViewObjC' \
@@ -5593,12 +5604,26 @@ fi
 # TextView und rechnet nur ihre Zeichenposition in die lokale Gutter-Ansicht
 # um. Die Faltleiste erhaelt dieselbe Umrechnung fuer Zeichnen und Mausziele.
 # Regressionstest: DifficultDocumentCorpusTests.
+#
+# Der Wächter prueft die Marker ALLER drei Dateien, und der Pythonblock
+# schreibt erst, wenn saemtliche Anker validiert sind: Ein frueherer Stand
+# schrieb GutterView.swift vor der Pruefung der Faltleisten-Anker — schlug
+# dort etwas fehl, blieb der Gutter-Marker stehen, jeder Folgelauf
+# uebersprang den Patch und scheiterte dauerhaft erst an der
+# Abschlusspruefung. Jeder Einzelschritt ist ausserdem idempotent (schon
+# vorhandenes Ergebnis wird uebersprungen), damit ein bereits gepatchter
+# Checkout bei Patch-Erweiterungen in place aufgewertet werden kann.
 CESE_GUTTER_SCROLL="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/Gutter/GutterView.swift"
 CESE_FOLD_VIEW="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/LineFolding/View/LineFoldRibbonView.swift"
 CESE_FOLD_DRAW="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/LineFolding/View/LineFoldRibbonView+Draw.swift"
 GUTTER_COORDINATE_PATCH_CHANGED=0
 if ! grep -q 'Fastra-Patch: Floating-Gutter in TextView-Koordinaten zeichnen' \
-    "$CESE_GUTTER_SCROLL" 2>/dev/null; then
+    "$CESE_GUTTER_SCROLL" 2>/dev/null \
+   || ! grep -q 'lastDrawnLineNumbers.append' "$CESE_GUTTER_SCROLL" 2>/dev/null \
+   || ! grep -q 'foldRibbonTextPoint(forRibbonLocalPoint' \
+    "$CESE_GUTTER_SCROLL" 2>/dev/null \
+   || ! grep -q 'func textPoint(forLocalPoint' "$CESE_FOLD_VIEW" 2>/dev/null \
+   || ! grep -q 'concatenateTextYTransform(in: context)' "$CESE_FOLD_DRAW" 2>/dev/null; then
   echo "→ Patche CodeEditSourceEditor (Gutter-Scrollrichtung synchronisieren)"
   chmod u+w "$CESE_GUTTER_SCROLL" "$CESE_FOLD_VIEW" "$CESE_FOLD_DRAW"
   /usr/bin/python3 - "$CESE_GUTTER_SCROLL" "$CESE_FOLD_VIEW" "$CESE_FOLD_DRAW" <<'PYEOF'
@@ -5606,7 +5631,29 @@ import sys
 
 gutter_path, fold_view_path, fold_draw_path = sys.argv[1:]
 
-src = open(gutter_path).read()
+# Alle drei Quelldateien werden zuerst vollstaendig im Speicher
+# transformiert und validiert; geschrieben wird erst ganz am Ende
+# gemeinsam. Bricht eine Anker-Pruefung ab, bleibt der Checkout
+# unveraendert und selbstheilend.
+gutter = open(gutter_path).read()
+fold_view = open(fold_view_path).read()
+fold_draw = open(fold_draw_path).read()
+
+
+def apply(source, probe, anchor, replacement, description):
+    """Ersetzt `anchor` einmal durch `replacement`, sofern `probe` fehlt.
+
+    `probe` macht den Schritt idempotent: Ist sein Text schon da, wurde
+    dieser Teil des Patches bereits angewandt und bleibt unveraendert.
+    """
+    if probe in source:
+        return source
+    if anchor not in source:
+        raise SystemExit(description)
+    return source.replace(anchor, replacement, 1)
+
+
+# ── GutterView ────────────────────────────────────────────────────────
 flip_anchor = '''    override public var isFlipped: Bool {
         true
     }
@@ -5646,11 +5693,13 @@ flip_replacement = '''    override public var isFlipped: Bool {
         return convert(textRect, from: textView).standardized
     }
 '''
-if flip_anchor not in src:
-    raise SystemExit(
-        f"{gutter_path}: Gutter-Koordinatenanker fehlt — Patch 4z13 pruefen"
-    )
-src = src.replace(flip_anchor, flip_replacement, 1)
+gutter = apply(
+    gutter,
+    'Fastra-Patch: Floating-Gutter in TextView-Koordinaten zeichnen',
+    flip_anchor,
+    flip_replacement,
+    f"{gutter_path}: Gutter-Koordinatenanker fehlt — Patch 4z13 pruefen",
+)
 
 old_selection = '''            context.fill(
                 CGRect(
@@ -5676,41 +5725,114 @@ new_selection = '''            let localLineRect = gutterRect(
                     height: localLineRect.height
                 ).pixelAligned
             )'''
-if old_selection not in src:
-    raise SystemExit(
-        f"{gutter_path}: Auswahlrechteck hat sich geaendert — Patch 4z13 pruefen"
-    )
-src = src.replace(old_selection, new_selection, 1)
+gutter = apply(
+    gutter,
+    'let localLineRect = gutterRect(',
+    old_selection,
+    new_selection,
+    f"{gutter_path}: Auswahlrechteck hat sich geaendert — Patch 4z13 pruefen",
+)
 
 old_loop = '''        context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
         for linePosition in textView.layoutManager.linesStartingAt(dirtyRect.minY, until: dirtyRect.maxY) {'''
 new_loop = '''        context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
         for linePosition in visibleLinePositionsForDrawing {'''
-if old_loop not in src:
-    raise SystemExit(
-        f"{gutter_path}: Zeilennummern-Schleife hat sich geaendert — Patch 4z13 pruefen"
-    )
-src = src.replace(old_loop, new_loop, 1)
+gutter = apply(
+    gutter,
+    'for linePosition in visibleLinePositionsForDrawing',
+    old_loop,
+    new_loop,
+    f"{gutter_path}: Zeilennummern-Schleife hat sich geaendert — Patch 4z13 pruefen",
+)
 
 old_y = '''            let yPos = linePosition.yPos + ascent + (fragment?.heightDifference ?? 0)/2 + fontHeightDifference'''
 new_y = '''            let textYPos = linePosition.yPos + ascent
                 + (fragment?.heightDifference ?? 0)/2 + fontHeightDifference
             let yPos = gutterY(forTextY: textYPos)'''
-if old_y not in src:
-    raise SystemExit(
-        f"{gutter_path}: Zeilennummern-Y hat sich geaendert — Patch 4z13 pruefen"
-    )
-src = src.replace(old_y, new_y, 1)
-open(gutter_path, "w").write(src)
+gutter = apply(
+    gutter,
+    'gutterY(forTextY: textYPos)',
+    old_y,
+    new_y,
+    f"{gutter_path}: Zeilennummern-Y hat sich geaendert — Patch 4z13 pruefen",
+)
 
-src = open(fold_view_path).read()
+# Testhaken: Der ECHTE Zeichenpfad protokolliert je Zeilennummer Index und
+# lokale Y-Position. Regressionstests stossen ueber cacheDisplay das
+# tatsaechliche Zeichnen an und pruefen das Protokoll — statt nur einer
+# Vorberechnung, die den Zeichencode gar nicht durchlaeuft.
+recorder_property = '''    // Fastra-Patch-Testhaken: haelt nach jedem echten Zeichenlauf fest,
+    // welche Zeilennummer an welcher lokalen Y-Position gezeichnet wurde.
+    public private(set) var lastDrawnLineNumbers: [(index: Int, yPosition: CGFloat)] = []
+
+    private func gutterY(forTextY yPosition: CGFloat) -> CGFloat {'''
+gutter = apply(
+    gutter,
+    'public private(set) var lastDrawnLineNumbers',
+    '    private func gutterY(forTextY yPosition: CGFloat) -> CGFloat {',
+    recorder_property,
+    f"{gutter_path}: gutterY-Anker fuer Zeichenprotokoll fehlt — Patch 4z13 pruefen",
+)
+
+recorder_reset_anchor = '''        context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+        for linePosition in visibleLinePositionsForDrawing {'''
+recorder_reset = '''        context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+        lastDrawnLineNumbers.removeAll()
+        for linePosition in visibleLinePositionsForDrawing {'''
+gutter = apply(
+    gutter,
+    'lastDrawnLineNumbers.removeAll()',
+    recorder_reset_anchor,
+    recorder_reset,
+    f"{gutter_path}: Schleifenanker fuer Zeichenprotokoll fehlt — Patch 4z13 pruefen",
+)
+
+recorder_append_anchor = '''            let yPos = gutterY(forTextY: textYPos)'''
+recorder_append = '''            let yPos = gutterY(forTextY: textYPos)
+            lastDrawnLineNumbers.append(
+                (index: linePosition.index, yPosition: yPos)
+            )'''
+gutter = apply(
+    gutter,
+    'lastDrawnLineNumbers.append',
+    recorder_append_anchor,
+    recorder_append,
+    f"{gutter_path}: Y-Anker fuer Zeichenprotokoll fehlt — Patch 4z13 pruefen",
+)
+
+# Testhaken: Klick-/Hover-Umrechnung der Faltleiste ueber den oeffentlichen
+# GutterView erreichbar machen. Die Faltleisten-Klasse selbst bleibt intern:
+# Waere sie public, muessten auch alle ihre AppKit-Overrides (mouseDown,
+# mouseMoved, ...) public werden.
+fold_probe_anchor = '''    public var visibleLineIndicesForDrawing: [Int] {'''
+fold_probe_property = '''    // Fastra-Patch-Testhaken: Klick-/Hover-Umrechnung der internen
+    // Faltleiste fuer Regressionstests erreichbar machen.
+    public var foldRibbonVisibleRect: NSRect {
+        foldingRibbon.visibleRect
+    }
+
+    public func foldRibbonTextPoint(forRibbonLocalPoint point: NSPoint) -> NSPoint? {
+        foldingRibbon.textPoint(forLocalPoint: point)
+    }
+
+    public var visibleLineIndicesForDrawing: [Int] {'''
+gutter = apply(
+    gutter,
+    'foldRibbonTextPoint(forRibbonLocalPoint',
+    fold_probe_anchor,
+    fold_probe_property,
+    f"{gutter_path}: Anker fuer Faltleisten-Testhaken fehlt — Patch 4z13 pruefen",
+)
+
+# ── LineFoldRibbonView ────────────────────────────────────────────────
 fold_flip_replacement = '''    override public var isFlipped: Bool {
         true
     }
 
     // Fastra-Patch: Mauspositionen der Floating-Faltleiste gehoeren in das
     // Dokumentkoordinatensystem des TextView, nicht in die lokal gespiegelte
-    // Koordinate der Leiste.
+    // Koordinate der Leiste. Regressionstests erreichen die Umrechnung ueber
+    // GutterView.foldRibbonTextPoint(forRibbonLocalPoint:).
     func textPoint(forLocalPoint point: NSPoint) -> NSPoint? {
         guard let textView = model?.controller?.textView else { return nil }
         return textView.convert(point, from: self)
@@ -5735,11 +5857,13 @@ fold_flip_replacement = '''    override public var isFlipped: Bool {
         )
     }
 '''
-if flip_anchor not in src:
-    raise SystemExit(
-        f"{fold_view_path}: Faltleisten-Koordinatenanker fehlt — Patch 4z13 pruefen"
-    )
-src = src.replace(flip_anchor, fold_flip_replacement, 1)
+fold_view = apply(
+    fold_view,
+    'func textPoint(forLocalPoint',
+    flip_anchor,
+    fold_flip_replacement,
+    f"{fold_view_path}: Faltleisten-Koordinatenanker fehlt — Patch 4z13 pruefen",
+)
 
 old_mouse_down = '''        let clickPoint = convert(event.locationInWindow, from: nil)
         guard let layoutManager = model?.controller?.textView.layoutManager,
@@ -5750,25 +5874,28 @@ new_mouse_down = '''        let clickPoint = convert(event.locationInWindow, fro
               event.type == .leftMouseDown,
               let textPoint = textPoint(forLocalPoint: clickPoint),
               let lineNumber = layoutManager.textLineForPosition(textPoint.y)?.index,'''
-if old_mouse_down not in src:
-    raise SystemExit(
-        f"{fold_view_path}: Faltleisten-Klick hat sich geaendert — Patch 4z13 pruefen"
-    )
-src = src.replace(old_mouse_down, new_mouse_down, 1)
+fold_view = apply(
+    fold_view,
+    'textPoint(forLocalPoint: clickPoint)',
+    old_mouse_down,
+    new_mouse_down,
+    f"{fold_view_path}: Faltleisten-Klick hat sich geaendert — Patch 4z13 pruefen",
+)
 
 old_mouse_move = '''        let pointInView = convert(event.locationInWindow, from: nil)
         guard let lineNumber = model?.controller?.textView.layoutManager.textLineForPosition(pointInView.y)?.index,'''
 new_mouse_move = '''        let pointInView = convert(event.locationInWindow, from: nil)
         guard let textPoint = textPoint(forLocalPoint: pointInView),
               let lineNumber = model?.controller?.textView.layoutManager.textLineForPosition(textPoint.y)?.index,'''
-if old_mouse_move not in src:
-    raise SystemExit(
-        f"{fold_view_path}: Faltleisten-Hover hat sich geaendert — Patch 4z13 pruefen"
-    )
-src = src.replace(old_mouse_move, new_mouse_move, 1)
-open(fold_view_path, "w").write(src)
+fold_view = apply(
+    fold_view,
+    'textPoint(forLocalPoint: pointInView)',
+    old_mouse_move,
+    new_mouse_move,
+    f"{fold_view_path}: Faltleisten-Hover hat sich geaendert — Patch 4z13 pruefen",
+)
 
-src = open(fold_draw_path).read()
+# ── LineFoldRibbonView+Draw ───────────────────────────────────────────
 old_draw_guard = '''        guard let context = NSGraphicsContext.current?.cgContext,
               let layoutManager = model?.controller?.textView.layoutManager,
               // Find the visible lines in the rect AppKit is asking us to draw.
@@ -5799,12 +5926,19 @@ new_draw_guard = '''        guard let context = NSGraphicsContext.current?.cgCon
         context.saveGState()
         context.clip(to: dirtyRect)
         concatenateTextYTransform(in: context)'''
-if old_draw_guard not in src:
-    raise SystemExit(
-        f"{fold_draw_path}: Faltleisten-Zeichenbereich hat sich geaendert — Patch 4z13 pruefen"
-    )
-src = src.replace(old_draw_guard, new_draw_guard, 1)
-open(fold_draw_path, "w").write(src)
+fold_draw = apply(
+    fold_draw,
+    'concatenateTextYTransform(in: context)',
+    old_draw_guard,
+    new_draw_guard,
+    f"{fold_draw_path}: Faltleisten-Zeichenbereich hat sich geaendert — Patch 4z13 pruefen",
+)
+
+# Erst NACH allen Validierungen schreiben — gemeinsam fuer alle drei
+# Dateien, damit kein halb gepatchter Checkout zurueckbleiben kann.
+open(gutter_path, "w").write(gutter)
+open(fold_view_path, "w").write(fold_view)
+open(fold_draw_path, "w").write(fold_draw)
 PYEOF
   GUTTER_COORDINATE_PATCH_CHANGED=1
 fi
@@ -5814,7 +5948,10 @@ if ! grep -q 'Fastra-Patch: Floating-Gutter in TextView-Koordinaten zeichnen' \
    || ! grep -q 'public var visibleLineIndicesForDrawing' \
        "$CESE_GUTTER_SCROLL" \
    || ! grep -q 'gutterY(forTextY: textYPos)' "$CESE_GUTTER_SCROLL" \
-   || ! grep -q 'func textPoint(forLocalPoint point: NSPoint)' "$CESE_FOLD_VIEW" \
+   || ! grep -q 'lastDrawnLineNumbers.append' "$CESE_GUTTER_SCROLL" \
+   || ! grep -q 'foldRibbonTextPoint(forRibbonLocalPoint' "$CESE_GUTTER_SCROLL" \
+   || ! grep -q 'func textPoint(forLocalPoint point: NSPoint)' \
+       "$CESE_FOLD_VIEW" \
    || ! grep -q 'concatenateTextYTransform(in: context)' "$CESE_FOLD_DRAW"; then
   echo "✗ FEHLER: Gutter-Koordinaten-Patch hat NICHT vollständig gegriffen." >&2
   exit 1

@@ -3976,6 +3976,19 @@ enum SelfTest {
         return gutter.visibleLineIndicesForDrawing.first
     }
 
+    /// Liest, ab welcher Zeile der Gutter zuletzt WIRKLICH gezeichnet hat —
+    /// aus dem Zeichenprotokoll des echten draw-Laufs, nicht aus der
+    /// Vorberechnung derselben Zeilenauswahl. Nur so fällt auch eine falsche
+    /// Y-Umrechnung der gezeichneten Nummern auf.
+    private static func firstDrawnGutterLine(for textView: TextView) -> Int? {
+        guard let root = sourceEditorController(for: textView)?.view,
+              let gutter = findView(named: "GutterView", in: root)
+                as? GutterView else {
+            return nil
+        }
+        return gutter.lastDrawnLineNumbers.first?.index
+    }
+
     /// Prüft zusätzlich die beiden Stellen, an denen der spiegelverkehrte
     /// Gutter im realen Befund am deutlichsten auffiel. In einer geeigneten
     /// GUI-Sitzung kann der Test bei Bedarf zwei Fensterbilder aus den
@@ -4014,6 +4027,15 @@ enum SelfTest {
                 )
             }
             window.contentView?.displayIfNeeded()
+            let topDrawn = firstDrawnGutterLine(for: textView)
+            guard topDrawn == topText else {
+                finish(
+                    false,
+                    "Gutter zeichnete am Dokumentanfang ab Zeile "
+                        + "\(topDrawn.map { String($0 + 1) } ?? "nil") statt "
+                        + "\(String(topText + 1))"
+                )
+            }
             let topImage = screenshotDirectory == nil
                 ? nil : typeScrollLayerSnapshot(window: window)
 
@@ -4045,6 +4067,16 @@ enum SelfTest {
                         "Gutter am Dokumentende abweichend: Text="
                             + "\(bottomText.map { String($0 + 1) } ?? "nil"), Gutter="
                             + "\(bottomGutter.map { String($0 + 1) } ?? "nil")"
+                    )
+                }
+                window.contentView?.displayIfNeeded()
+                let bottomDrawn = firstDrawnGutterLine(for: textView)
+                guard bottomDrawn == bottomText else {
+                    finish(
+                        false,
+                        "Gutter zeichnete am Dokumentende ab Zeile "
+                            + "\(bottomDrawn.map { String($0 + 1) } ?? "nil") statt "
+                            + "\(String(bottomText + 1))"
                     )
                 }
 
