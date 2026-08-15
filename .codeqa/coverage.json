@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 1783813
+    "tokens_spent": 2062336
   },
   "campaign_history": [
     {
@@ -294,15 +294,15 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T18:21:22+02:00",
-        "observed_head": "18de9c9a18fbf7b20f7d81d90e88b0bc9a9958bc",
-        "content_sha256": "e5e40a3aa8b3b6e94c7fbb01045b28d997374385d2175831498a022ed0ae727f",
+        "completed_at": "2026-08-15T18:39:35+02:00",
+        "observed_head": "c25389f22c62b63c2ed16d2324517c9f98ddbfe2",
+        "content_sha256": "89dd1908cd3ed53e148dc2ab30456b6da8fcd0ed75eafefae98609ec313ba9aa",
         "file_count": 20,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Seit dem letzten P5-Review änderten sich ausschließlich CFBundleShortVersionString und CFBundleVersion auf 1.97.0/186. Quell- und Bundle-Plist stimmen überein; Paketierungs-, Signatur- und Portabilitätsgrenzen blieben unverändert.",
+        "summary": "Seit dem letzten P5-Review änderten sich ausschließlich CFBundleShortVersionString und CFBundleVersion auf 1.98.0/187. Quell- und Bundle-Plist stimmen überein; Paketierungs-, Signatur- und Portabilitätsgrenzen blieben unverändert.",
         "tests": [
-          "plutil: Quell- und Bundle-Info.plist gültig und jeweils 1.97.0/186; codesign --verify --deep --strict grün; ./build.sh grün einschließlich Fenster-Zielprüfung, Signatur und portabler Ordnersuche."
+          "plutil: Quell- und Bundle-Info.plist gültig und jeweils 1.98.0/187; codesign --verify --deep --strict grün; ./build.sh grün einschließlich Fenster-Zielprüfung, Signatur und portabler Ordnersuche"
         ]
       }
     },
@@ -747,15 +747,15 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T18:20:26+02:00",
-        "observed_head": "e549ddab418022b962d3bbc36fe777fcaf6ff4eb",
-        "content_sha256": "e93c000c41cfba9c59311f79d33a3b6743e0afd0ce8f1a61f60ff31fc1d59d2c",
+        "completed_at": "2026-08-15T18:40:00+02:00",
+        "observed_head": "c25389f22c62b63c2ed16d2324517c9f98ddbfe2",
+        "content_sha256": "5d0b52b77e88acfe1138e22a2eea5785a2ffcad5157bed9fc043c7a4e5490123",
         "file_count": 21,
-        "review": "full",
-        "outcome": "improved",
-        "summary": "Einstellungen, Erscheinungsbild, Ressourcenauflösung, Hilfe-Rendering, beide Hilfefassungen, Lokalisierung und ihre Audit-Skripte vollständig geprüft. Das Einstellungsfenster verwendet nun echte Inhalts-Mindestgrößen und übernimmt neue UI-Skalierungswerte ohne manuelles Resizing zurückzusetzen; doppelte englische Schlüssel können Paste/Insert und Titel-Großschreibung nicht mehr still verfälschen.",
+        "review": "delta-plus-boundaries",
+        "outcome": "reviewed-clean",
+        "summary": "Seit dem vollständigen P15-Review änderten sich nur die sechs englischen Vorlagenmeldungen und der dazugehörige RegEx-Abschnitt beider Hilfefassungen. Schlüssel, Formatplatzhalter, deutsche Quelltexte und englische Aussagen stimmen mit dem geprüften P16-Verhalten überein; Ressourcenauflösung und Auditlogik blieben unverändert.",
         "tests": [
-          "Fail-before: localization-audit.sh meldete exakt die doppelten Schlüssel Einfügen und Leerraum am Zeilenende; der Größen-Test belegte contentMinSize 0 statt 480×380. Danach 36 Bereichstests gemeinsam grün, Lokalisierungs-Audit mit 1324 englischen Einträgen, Hilfe-Audit normal und Release, Plist-Prüfung sowie build.sh einschließlich Fenster-Zielprüfung, Signatur und portabler Ordnersuche grün. Keine GUI- oder /Applications-Änderung."
+          "./test.sh --filter 'PatternLibrary|Pattern|Localization': 70 Tests bestanden; ./localization-audit.sh: bestanden mit 1330 englischen Einträgen; ./help-audit.sh --release: bestanden; ./build.sh: Ressourcen gebündelt und Portabilitätsprüfung bestanden"
         ]
       }
     },
@@ -772,7 +772,24 @@
       "risk": "medium",
       "priority": 16,
       "reason": "Gespeicherte und eingebaute Suchmuster sind persistente Nutzerinhalte mit Regex-Semantik.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T165221406979+0200",
+        "completed_at": "2026-08-15T18:39:01+02:00",
+        "observed_head": "c25389f22c62b63c2ed16d2324517c9f98ddbfe2",
+        "content_sha256": "85d11a27fb590fa8c6d1b3453f28dbee03d59bdc57ded6de86e7eda2cf43331b",
+        "file_count": 6,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Persistente Vorlagen führen Mehrfenster-Änderungen verlustfrei zusammen; Import ist auf 1 MB begrenzt, validiert IDs, meldet nur übernommene Einträge und läuft beim Dateilesen im Hintergrund. Mitgelieferte zeilenbezogene Muster behandeln LF, CRLF und CR ohne Übergriff; mehrdeutige Sternchen-Beispiele werden abgelehnt. Version 1.98.0, Lokalisierung und Hilfe sind aktualisiert.",
+        "tests": [
+          "./test.sh --filter 'PatternLibrary|Pattern|Localization': 70 Tests bestanden",
+          "./build.sh: bestanden, einschließlich Signatur- und Portabilitätsprüfung",
+          "./localization-audit.sh: bestanden (371 SwiftUI-, 740 L10n-Schlüssel, 1330 englische Einträge)",
+          "./help-audit.sh --release: bestanden",
+          "./test.sh: 1907/1909; zwei parallele Git-Identitätsfehler außerhalb des Bereichs, isoliert mit ./test.sh --filter GitIdentityTests 14/14 bestanden"
+        ]
+      }
     },
     {
       "id": "xpath-navigation",
