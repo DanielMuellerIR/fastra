@@ -9,6 +9,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.84.0] — 2026-08-15
+
+### Behoben
+
+- **Die Änderungsvorschau zählt Windows-Zeilen wieder richtig:** CRLF wird im
+  vollständigen Vorher/Nachher-Vergleich als ein gemeinsamer Zeilenumbruch
+  behandelt. Dadurch erscheinen keine erfundenen Leerzeilen mehr und die
+  angezeigten Zeilennummern bleiben mit dem Dokument ausgerichtet.
+
+### Tests
+
+- **Ein Regressionstest prüft CRLF in der vollständigen Vorschau:** Drei echte
+  Dokumentzeilen müssen genau drei ausgerichtete Diff-Zeilen mit den Nummern
+  1, 2 und 3 ergeben.
+
 ## [v1.83.0] — 2026-08-15
 
 ### Behoben

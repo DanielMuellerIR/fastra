@@ -145,8 +145,8 @@ enum ReplacePreview {
             after += ns.substring(from: cursor)
         }
 
-        let beforeLines = text.components(separatedBy: .newlines)
-        let afterLines = after.components(separatedBy: .newlines)
+        let beforeLines = logicalLines(in: text)
+        let afterLines = logicalLines(in: after)
         let difference = afterLines.difference(from: beforeLines)
         var removed = Set<Int>()
         var inserted = Set<Int>()
@@ -208,6 +208,34 @@ enum ReplacePreview {
     }
 
     // MARK: - Intern
+
+    /// Zerlegt Text nach derselben logischen Zeilensemantik wie Editor und
+    /// Trefferliste. `components(separatedBy: .newlines)` trennt CRLF an
+    /// BEIDEN Zeichen und erfindet dadurch zwischen echten Windows-Zeilen je
+    /// eine Leerzeile. `getLineStart` behandelt CRLF dagegen als gemeinsamen
+    /// Terminator und erhält eine abschließende leere Zeile ausdrücklich.
+    private static func logicalLines(in text: String) -> [String] {
+        let ns = text as NSString
+        guard ns.length > 0 else { return [""] }
+
+        var lines: [String] = []
+        var index = 0
+        var endedWithTerminator = false
+        while index < ns.length {
+            var end = NSNotFound
+            var contentsEnd = NSNotFound
+            ns.getLineStart(nil, end: &end, contentsEnd: &contentsEnd,
+                            for: NSRange(location: index, length: 0))
+            guard end != NSNotFound, contentsEnd != NSNotFound,
+                  end > index, contentsEnd >= index else { break }
+            lines.append(ns.substring(with: NSRange(
+                location: index, length: contentsEnd - index)))
+            endedWithTerminator = contentsEnd < end
+            index = end
+        }
+        if endedWithTerminator { lines.append("") }
+        return lines
+    }
 
     /// Schneidet einen abschließenden Zeilen-Terminator (\n, \r, \r\n) vom
     /// Zeilenbereich ab — wir wollen den reinen Zeilen-Inhalt anzeigen.

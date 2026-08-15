@@ -163,6 +163,20 @@ func preview_sideBySideMultilineAlignment() {
     #expect(result.rows[3].after == "z")
 }
 
+@Test("Side-by-side-Diff behandelt CRLF als einen Zeilenumbruch")
+func preview_sideBySideCRLFLineNumbers() {
+    let text = "alpha\r\nfoo\r\nomega"
+    let found = matches(in: text, find: "foo", replace: "bar")
+    let result = ReplacePreview.buildSideBySide(text: text, matches: found)
+
+    #expect(result.totalRows == 3)
+    #expect(result.changedRows == 1)
+    #expect(result.rows.map(\.beforeLine) == [1, 2, 3])
+    #expect(result.rows.map(\.afterLine) == [1, 2, 3])
+    #expect(result.rows[1].before == "foo")
+    #expect(result.rows[1].after == "bar")
+}
+
 @Test("Side-by-side-Diff kappt nur die Anzeige und behält Gesamtzahlen")
 func preview_sideBySideTruncation() {
     let text = "eins\nzwei\ndrei"
