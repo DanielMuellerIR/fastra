@@ -6,7 +6,7 @@
     "token_budget": 3000000,
     "status": "active",
     "started_at": "2026-08-15T13:48:23+02:00",
-    "tokens_spent": 2245069
+    "tokens_spent": 2554650
   },
   "campaign_history": [],
   "scope": {
@@ -383,7 +383,20 @@
       "risk": "high",
       "priority": 7,
       "reason": "Markdown rendert lokale Inhalte in WebKit und importiert Dateien; Pfad-, Cache- und HTML-Grenzen sind sicherheitsrelevant.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T134823378515+0200",
+        "completed_at": "2026-08-15T15:59:45+02:00",
+        "observed_head": "ecda3cad74573390a603a46a5e9abe467ff98928",
+        "content_sha256": "a6400db146afbfbae9411fb75e5a6676197bab2b68ebf5e1ff4ea1941d5dc17f",
+        "file_count": 26,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Alle 26 Markdown-, WebKit-, Bild-, Import- und Smart-Paste-Pfade vollständig geprüft; den appweiten Erstnutzungshinweis an den auslösenden Workspace und dieselbe isolierbare Defaults-Suite wie EditorView gebunden. HTML-Positivliste, lokale Scheme-Ressourcen, Bildablage/Undo, Import-Staging und Prozessgrenzen blieben ohne weiteren belegten Fund.",
+        "tests": [
+          "Fail-first: neuer Routingtest scheiterte an privatem parameterlosem noteFirstUse und fehlendem Empfängerfilter. Danach fokussierter Routingtest grün; build.sh samt Portabilitätsprüfung grün; localization-audit und explizite verify-portable-app grün; 1884er Vollsuite: neuer Test grün, drei lastabhängige Git-Fälle einzeln grün, drei SelfTestPerformance-Fälle nur wegen laufender installierter Fastra-App blockiert; selftest.sh daher korrekt Exit 2."
+        ]
+      }
     },
     {
       "id": "git-diff-presentation",
@@ -728,9 +741,19 @@
         "app/Sources/Fastra/MarkdownAssist.swift"
       ],
       "priority": 2,
-      "state": "pending",
+      "state": "completed",
       "noted_at": "2026-08-15T15:47:00+02:00",
-      "campaign_id": "20260815T134823378515+0200"
+      "campaign_id": "20260815T134823378515+0200",
+      "started_at": "2026-08-15T15:59:52+02:00",
+      "completed": {
+        "campaign_id": "20260815T134823378515+0200",
+        "completed_at": "2026-08-15T15:59:52+02:00",
+        "observed_head": "ecda3cad74573390a603a46a5e9abe467ff98928",
+        "summary": "Sender trägt den auslösenden Workspace; EditorView akzeptiert nur identische Workspace-Ereignisse; Defaults-Zugriff nutzt SelfTest.workspaceDefaults().",
+        "tests": [
+          "Fensterloser Regressionstest prüft Workspace-Objekt des Senders und weist einen zweiten Workspace ab; fokussiert grün, Vollsuite neuer Test grün."
+        ]
+      }
     }
   ]
 }
