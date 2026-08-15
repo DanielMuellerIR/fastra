@@ -1,8 +1,42 @@
+import Darwin
 import Foundation
 import Testing
 @testable import Fastra
 
 private let textPageSize = 256 * 1024
+
+/// Steuert drei Reader-Aufrufe ohne Zeitraten: Der erste Aufruf für Seite 0
+/// bleibt stehen, bis ein neuerer Seite-0-Aufruf sein Ergebnis veröffentlicht
+/// hat. So bildet der Test die Folge 0 → 1 → 0 deterministisch nach.
+private final class SequencedPageReader: @unchecked Sendable {
+    let firstStarted = DispatchSemaphore(value: 0)
+    let secondStarted = DispatchSemaphore(value: 0)
+    let thirdStarted = DispatchSemaphore(value: 0)
+    let releaseFirst = DispatchSemaphore(value: 0)
+    let firstFinished = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var invocation = 0
+
+    func read(url: URL, offset: UInt64, count: Int) throws -> Data {
+        lock.lock()
+        invocation += 1
+        let current = invocation
+        lock.unlock()
+        switch current {
+        case 1:
+            firstStarted.signal()
+            releaseFirst.wait()
+            firstFinished.signal()
+            return Data(repeating: 0x11, count: count)
+        case 2:
+            secondStarted.signal()
+            return Data(repeating: 0x22, count: count)
+        default:
+            thirdStarted.signal()
+            return Data(repeating: 0x33, count: count)
+        }
+    }
+}
 
 private func temporaryPageFile(_ data: Data) throws -> URL {
     let url = FileManager.default.temporaryDirectory
@@ -42,6 +76,48 @@ private func writeLargeUTF16File(encoding: String.Encoding, bom: Data) throws ->
 
 @Suite("Hex- und Abschnittsansicht")
 struct PagedFileTests {
+    @Test("Byte- und Textseiten weisen FIFO ab, statt beim Öffnen zu blockieren")
+    func pageReadersRejectFIFO() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-page-fifo-\(UUID().uuidString)")
+        #expect(mkfifo(url.path, 0o600) == 0)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        #expect(throws: FileSnapshotReadError.self) {
+            try FilePageReader.read(url: url, offset: 0, count: 16)
+        }
+        #expect(throws: FileSnapshotReadError.self) {
+            try TextFilePageReader.read(
+                url: url, totalBytes: 16, pageSize: 16,
+                pageIndex: 0, encoding: .utf8, bom: Data())
+        }
+    }
+
+    @Test("Späte Antwort einer alten Seite überschreibt keinen neuen 0-1-0-Lauf")
+    @MainActor
+    func staleSamePageResultIsIgnored() async throws {
+        let reader = SequencedPageReader()
+        let model = FilePageModel(
+            url: URL(fileURLWithPath: "/tmp/fastra-controlled-page"),
+            totalBytes: 8, pageSize: 4, reader: reader.read)
+        #expect(reader.firstStarted.wait(timeout: .now() + 5) == .success)
+
+        model.load(page: 1)
+        #expect(reader.secondStarted.wait(timeout: .now() + 5) == .success)
+        model.load(page: 0)
+        #expect(reader.thirdStarted.wait(timeout: .now() + 5) == .success)
+
+        for _ in 0..<100 where model.data != Data(repeating: 0x33, count: 4) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(model.data == Data(repeating: 0x33, count: 4))
+
+        reader.releaseFirst.signal()
+        #expect(reader.firstFinished.wait(timeout: .now() + 5) == .success)
+        for _ in 0..<20 { await Task.yield() }
+        #expect(model.data == Data(repeating: 0x33, count: 4))
+    }
+
     @Test("Seitenmodell lädt nur die angeforderte Byte-Seite")
     @MainActor
     func loadsRequestedPage() async throws {

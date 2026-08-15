@@ -9,6 +9,31 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.85.0] — 2026-08-15
+
+### Behoben
+
+- **Hex-Speichern bleibt bei fremden Änderungen geschlossen:** Vor dem
+  atomaren Ersetzen prüft Fastra jeden in der Vorschau gezeigten Altwert
+  erneut. Hat ein anderes Programm eines dieser Bytes geändert, bleibt die
+  Datei unangetastet und die geplante Änderung sichtbar.
+- **Große Binärdateien blockieren beim Speichern nicht mehr die Oberfläche:**
+  Fastra kopiert und ändert sie jetzt in begrenzten Abschnitten auf einem
+  Hintergrund-Thread, statt die vollständige Datei in den Speicher zu laden.
+- **Abschnittsansichten können nicht mehr an Sonderdateien hängen:** Byte- und
+  Textseiten öffnen nur reguläre Dateien nichtblockierend; ein nachträglich
+  auf eine FIFO, einen Socket oder ein Gerät umgebogener Pfad wird abgewiesen.
+- **Schnelle Seitenwechsel zeigen keinen veralteten Abschnitt mehr:** Bei der
+  Folge 0 → 1 → 0 kann die späte Antwort des ersten Ladevorgangs die neu
+  angeforderte Seite 0 nicht mehr überschreiben.
+
+### Tests
+
+- **Regressionen decken Vorschaukonflikte, Abschnittsgrenzen und FIFO-Pfade
+  ab:** Die Tests prüfen den unveränderten Fremdstand, Änderungen über mehrere
+  Kopierabschnitte, den sofortigen Abbruch beider Seitenreader und einen
+  deterministisch verzögerten 0-1-0-Seitenwechsel.
+
 ## [v1.84.0] — 2026-08-15
 
 ### Behoben

@@ -201,6 +201,14 @@ als eine Ansicht bietet:
   öffnen direkt in der Hex-Ansicht, sehr große Textdateien in einer
   abschnittsweisen Ansicht.
 
+Die Hex-Ansicht ist zunächst schreibgeschützt. **Bearbeiten erlauben** schaltet
+die Eingabe erst nach einer Warnung frei; **Vorschau & Speichern…** zeigt danach
+jede geplante Byte-Änderung und fragt ein zweites Mal. Vor dem atomaren
+Speichern prüft Fastra die angezeigten Altwerte erneut. Hat ein anderes Programm
+eines dieser Bytes inzwischen geändert, bricht Fastra ab und lässt die Datei
+sowie die sichtbare Änderungsliste unangetastet. Auch sehr große Binärdateien
+werden dabei nur abschnittsweise im Hintergrund verarbeitet.
+
 ## Markdown
 
 Bei Markdown-Dokumenten zeigt die geteilte Ansicht rechts die gerenderte

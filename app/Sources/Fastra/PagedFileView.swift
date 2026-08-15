@@ -1,10 +1,37 @@
 import SwiftUI
+import Darwin
 import Foundation
+
+/// Begrenzter Byte-Reader für die Hex-Ansicht. Er öffnet wie `FileLoader`
+/// nichtblockierend und prüft den Typ am Deskriptor; ein nachträglich auf FIFO,
+/// Socket oder Gerät umgebogener Pfad kann den Hintergrund-Task daher nicht
+/// dauerhaft festhalten.
+enum FilePageReader {
+    static func read(url: URL, offset: UInt64, count: Int) throws -> Data {
+        guard count >= 0 else { throw CocoaError(.fileReadCorruptFile) }
+        let opened = try FileSnapshot.openRegularFile(at: url)
+        defer { Darwin.close(opened.descriptor) }
+        let handle = FileHandle(fileDescriptor: opened.descriptor, closeOnDealloc: false)
+        try handle.seek(toOffset: offset)
+        var result = Data()
+        result.reserveCapacity(count)
+        while result.count < count {
+            let remaining = count - result.count
+            guard let chunk = try handle.read(upToCount: remaining), !chunk.isEmpty else {
+                break
+            }
+            result.append(chunk)
+        }
+        return result
+    }
+}
 
 /// Lädt genau eine Seite einer Datei in den Speicher. Seitenwechsel ersetzen
 /// die vorherige `Data` vollständig; Speicherbedarf bleibt damit unabhängig
 /// von der Dateigröße begrenzt.
 final class FilePageModel: ObservableObject {
+    typealias Reader = @Sendable (URL, UInt64, Int) throws -> Data
+
     @Published private(set) var pageIndex = 0
     @Published private(set) var data = Data()
     @Published private(set) var errorMessage: String?
@@ -13,16 +40,22 @@ final class FilePageModel: ObservableObject {
     let url: URL
     let totalBytes: UInt64
     let pageSize: Int
+    private let reader: Reader
+    private var loadGeneration = 0
 
     var pageCount: Int {
         max(1, Int((totalBytes + UInt64(pageSize) - 1) / UInt64(pageSize)))
     }
     var offset: UInt64 { UInt64(pageIndex) * UInt64(pageSize) }
 
-    init(url: URL, totalBytes: UInt64, pageSize: Int) {
+    init(url: URL, totalBytes: UInt64, pageSize: Int,
+         reader: @escaping Reader = { url, offset, count in
+             try FilePageReader.read(url: url, offset: offset, count: count)
+         }) {
         self.url = url
         self.totalBytes = totalBytes
         self.pageSize = pageSize
+        self.reader = reader
         load(page: 0)
     }
 
@@ -34,16 +67,17 @@ final class FilePageModel: ObservableObject {
         let offset = UInt64(page) * UInt64(pageSize)
         let count = Int(min(UInt64(pageSize), totalBytes > offset ? totalBytes - offset : 0))
         let url = self.url
+        let reader = self.reader
+        loadGeneration &+= 1
+        let generation = loadGeneration
 
         Task.detached(priority: .userInitiated) { [weak self] in
             let result: Result<Data, Error> = Result {
-                let handle = try FileHandle(forReadingFrom: url)
-                defer { try? handle.close() }
-                try handle.seek(toOffset: offset)
-                return try handle.read(upToCount: count) ?? Data()
+                try reader(url, offset, count)
             }
             await MainActor.run { [weak self] in
-                guard let self, self.pageIndex == page else { return }
+                guard let self, self.pageIndex == page,
+                      self.loadGeneration == generation else { return }
                 self.isLoading = false
                 switch result {
                 case .success(let data): self.data = data
@@ -85,8 +119,9 @@ enum TextFilePageReader {
         let nominalStart = min(payloadBytes, UInt64(page) * UInt64(pageSize))
         let nominalEnd = min(payloadBytes, UInt64(page + 1) * UInt64(pageSize))
 
-        let handle = try FileHandle(forReadingFrom: url)
-        defer { try? handle.close() }
+        let opened = try FileSnapshot.openRegularFile(at: url)
+        defer { Darwin.close(opened.descriptor) }
+        let handle = FileHandle(fileDescriptor: opened.descriptor, closeOnDealloc: false)
         let start = try alignedBoundary(nominalStart, payloadBytes: payloadBytes,
                                         bomCount: bomCount, encoding: encoding,
                                         handle: handle)
@@ -195,6 +230,7 @@ final class TextFilePageModel: ObservableObject {
     let pageSize: Int
     let encoding: String.Encoding
     let bom: Data
+    private var loadGeneration = 0
 
     var pageCount: Int {
         TextFilePageReader.pageCount(totalBytes: totalBytes, bomCount: bom.count,
@@ -221,6 +257,8 @@ final class TextFilePageModel: ObservableObject {
         let pageSize = self.pageSize
         let encoding = self.encoding
         let bom = self.bom
+        loadGeneration &+= 1
+        let generation = loadGeneration
 
         Task.detached(priority: .userInitiated) { [weak self] in
             let result = Result {
@@ -230,7 +268,8 @@ final class TextFilePageModel: ObservableObject {
                 )
             }
             await MainActor.run { [weak self] in
-                guard let self, self.pageIndex == page else { return }
+                guard let self, self.pageIndex == page,
+                      self.loadGeneration == generation else { return }
                 self.isLoading = false
                 switch result {
                 case .success(let page): self.text = page.text
@@ -383,6 +422,7 @@ struct HexFileView: View {
     @State private var showsChangesPreview = false
     @State private var requestSaveConfirmation = false
     @State private var saveError: String?
+    @State private var isSaving = false
     /// Wird nach einem erfolgreichen Hex-Schreibvorgang aufgerufen — z. B.
     /// damit offene Text-Tabs derselben Datei den neuen Plattenstand über
     /// die Extern-Änderungs-Erkennung abgleichen können.
@@ -422,6 +462,7 @@ struct HexFileView: View {
             }
             Divider()
             FilePageNavigation(model: model)
+                .disabled(isSaving)
         }
         .background(Theme.surfaceRaised)
         .alert("Hex-Bearbeitung erlauben?", isPresented: $requestEditingConfirmation) {
@@ -456,7 +497,9 @@ struct HexFileView: View {
                 Text("\(edits.preview.count) Byte geändert")
                     .fastraFont(.small).foregroundColor(Theme.diffRemovedFG)
                 Button("Vorschau & Speichern…") { showsChangesPreview = true }
+                    .disabled(isSaving)
                 Button("Verwerfen") { edits.discard() }
+                    .disabled(isSaving)
             }
             Toggle("Bearbeiten erlauben", isOn: Binding(
                 get: { editingEnabled },
@@ -467,6 +510,7 @@ struct HexFileView: View {
             ))
             .toggleStyle(.switch)
             .fastraFont(.small)
+            .disabled(isSaving)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 5)
@@ -484,6 +528,7 @@ struct HexFileView: View {
             .textFieldStyle(.plain)
             .fastraFont(.mono)
             .frame(width: CGFloat(count * 3 * 8))
+            .disabled(isSaving)
             Text("|\(asciiRow(at: row))|")
                 .fastraFont(.mono).foregroundColor(Theme.textSecondary)
         }
@@ -512,12 +557,25 @@ struct HexFileView: View {
     }
 
     private func saveChanges() {
-        do {
-            try edits.save(to: model.url)
-            model.load(page: model.pageIndex)
-            onDidWrite?()
-        } catch {
-            saveError = error.localizedDescription
+        let planned = edits.preview
+        guard !planned.isEmpty, !isSaving else { return }
+        let url = model.url
+        isSaving = true
+        Task {
+            // Eine Binärdatei kann viele Gigabyte groß sein. Kopieren,
+            // Altwert-Prüfung und fsync laufen deshalb nie auf dem UI-Thread.
+            let result = await Task.detached(priority: .userInitiated) {
+                Result { try HexEditing.save(planned, to: url) }
+            }.value
+            isSaving = false
+            switch result {
+            case .success:
+                edits.markSaved()
+                model.load(page: model.pageIndex)
+                onDidWrite?()
+            case .failure(let error):
+                saveError = error.localizedDescription
+            }
         }
     }
 }

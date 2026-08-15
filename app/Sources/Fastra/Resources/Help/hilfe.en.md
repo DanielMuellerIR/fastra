@@ -191,6 +191,14 @@ offers more than one view:
   changes of the text tab are not included there. Binary files open
   directly in the hex view, very large text files in a chunked view.
 
+The hex view starts read-only. **Allow Editing** enables input only after a
+warning; **Preview & Save…** then shows every planned byte change and asks a
+second time. Before the atomic save, Fastra checks the displayed old values
+again. If another program has changed any of those bytes in the meantime,
+Fastra stops and leaves both the file and the visible change list untouched.
+Even very large binary files are processed in bounded chunks in the
+background.
+
 ## Markdown
 
 For Markdown documents the split view renders a live preview on the right —
