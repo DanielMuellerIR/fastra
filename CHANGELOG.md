@@ -9,6 +9,28 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.94.0] — 2026-08-15
+
+### Behoben
+
+- **Ersetzte tool4d-Prüfungen räumen ihren Prozess zuverlässig auf:** Ein
+  abgebrochener LSP-Lauf bleibt bis zum kontrollierten Prozessstopp erhalten,
+  auch wenn unmittelbar die nächste Prüfung beginnt.
+- **Beschädigte 4D-Eingaben bleiben begrenzt:** Fastra lehnt verschlüsselte
+  Komponenteneinträge, übergroße Methodendateien und unplausibel hohe
+  klassische Parameternummern ab, statt Chiffretext zu lesen oder ungebremst
+  Speicher zu belegen.
+- **4D-Strings bleiben auch bei unvollständigem Escape im Dokumentbereich:**
+  Ein Schluss-Backslash erzeugt keinen Token mehr, der über das Dateiende ragt.
+- **4D-Formularregeln unterscheiden Wahrheitswerte von Zahlen:** JSON-Schema-
+  Werte wie `true` und `1` gelten bei `enum` und `const` nicht mehr als gleich.
+
+### Tests
+
+- **Sechs Regressionen belegen die Schutzgrenzen:** Die Tests decken
+  Prozessabbruch, ZIP-Verschlüsselung, Dateigröße, Parameternummer, Tokenbereich
+  und typgenaue JSON-Gleichheit ab.
+
 ## [v1.93.0] — 2026-08-15
 
 ### Behoben

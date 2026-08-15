@@ -84,6 +84,7 @@ enum FourDZipArchive {
                   readUInt32(directory, at: cursor) == centralDirectorySignature else {
                 return nil
             }
+            let flags = readUInt16(directory, at: cursor + 8)
             let method = readUInt16(directory, at: cursor + 10)
             let compressed = readUInt32(directory, at: cursor + 20)
             let uncompressed = readUInt32(directory, at: cursor + 24)
@@ -91,9 +92,14 @@ enum FourDZipArchive {
             let extraLength = Int(readUInt16(directory, at: cursor + 30))
             let commentLength = Int(readUInt16(directory, at: cursor + 32))
             let headerOffset = readUInt32(directory, at: cursor + 42)
-            guard compressed != 0xFFFF_FFFF, uncompressed != 0xFFFF_FFFF,
+            // Verschlüsselte Einträge liefern ohne Passwort nur Chiffretext.
+            // 4D-Komponenten brauchen keine Verschlüsselung; daher weder
+            // raten noch gespeicherte Chiffrebytes als Quelltext ausgeben.
+            guard flags & 0x0001 == 0,
+                  compressed != 0xFFFF_FFFF, uncompressed != 0xFFFF_FFFF,
                   headerOffset != 0xFFFF_FFFF,
-                  cursor + 46 + nameLength <= directory.count else {
+                  cursor + 46 + nameLength + extraLength + commentLength
+                    <= directory.count else {
                 return nil
             }
             let nameData = directory.subdata(in: (cursor + 46)..<(cursor + 46 + nameLength))
@@ -127,7 +133,9 @@ enum FourDZipArchive {
         // Längen (die vom zentralen Verzeichnis abweichen dürfen).
         guard let header = read(file, offset: UInt64(entry.localHeaderOffset),
                                 count: 30),
-              readUInt32(header, at: 0) == localHeaderSignature else {
+              readUInt32(header, at: 0) == localHeaderSignature,
+              readUInt16(header, at: 6) & 0x0001 == 0,
+              readUInt16(header, at: 8) == entry.compressionMethod else {
             return nil
         }
         let nameLength = Int(readUInt16(header, at: 26))

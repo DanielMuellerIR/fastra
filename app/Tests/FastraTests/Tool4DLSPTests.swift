@@ -169,6 +169,32 @@ func tool4dLSP_reportsDiagnosticsTimeout() async {
     #expect(mock.wasStopped)
 }
 
+@Test("tool4d-LSP: Ersetzen eines abgebrochenen Laufs räumt den Prozess auf")
+func tool4dLSP_cancelSurvivesImmediateOwnerRelease() async {
+    let mock = Tool4DMockProcess(mode: .noDiagnostics)
+    var validation: Tool4DLSPValidation? = Tool4DLSPValidation(process: mock)
+    validation?.start(
+        executable: URL(fileURLWithPath: "/mock/tool4d"),
+        workspaceRoot: URL(fileURLWithPath: "/mock"),
+        documentURL: URL(fileURLWithPath: "/mock/Project/Sources/Methods/Example.4dm"),
+        text: "// Fixture", timeout: 10,
+        completion: { _ in }
+    )
+    for _ in 0..<200 where !mock.receivedMethods.contains("textDocument/didChange") {
+        try? await Task.sleep(for: .milliseconds(5))
+    }
+    #expect(mock.receivedMethods.contains("textDocument/didChange"))
+
+    // Der Produktpfad ersetzt die einzige starke Referenz unmittelbar nach
+    // `cancel()`. Der alte Lauf muss sich trotzdem bis `stop()` am Leben halten.
+    validation?.cancel()
+    validation = nil
+    for _ in 0..<200 where !mock.wasStopped {
+        try? await Task.sleep(for: .milliseconds(5))
+    }
+    #expect(mock.wasStopped)
+}
+
 @Test("tool4d-LSP: ein null-Pull-Ergebnis ist kein bestandener Check")
 func tool4dLSP_rejectsMissingDiagnosticResult() async {
     let mock = Tool4DMockProcess(mode: .nullDiagnosticResult)

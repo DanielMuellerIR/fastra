@@ -262,6 +262,10 @@ final class Tool4DLSPValidation {
     private var diagnosticsTimer: DispatchWorkItem?
     private var connectionTimer: DispatchWorkItem?
     private var shutdownTimer: DispatchWorkItem?
+    /// `cancel()` kommt unmittelbar vor dem Ersetzen der Besitzerreferenz.
+    /// Während des asynchronen LSP-Shutdowns hält sich der alte Lauf daher
+    /// selbst; `completeCleanup()` löst die Referenz nach `stop()` wieder.
+    private var cancellationRetainer: Tool4DLSPValidation?
 
     init(process: Tool4DLSPProcess = Tool4DNativeProcess(),
          callbackQueue: DispatchQueue = .main) {
@@ -297,7 +301,12 @@ final class Tool4DLSPValidation {
     }
 
     func cancel() {
-        queue.async { [weak self] in self?.finish(.failure(.cancelled)) }
+        // Der Besitzer ersetzt einen Lauf unmittelbar durch den nächsten.
+        // Die Queue muss den alten Lauf deshalb bis zu seinem Aufräumen halten.
+        queue.async {
+            self.cancellationRetainer = self
+            self.finish(.failure(.cancelled))
+        }
     }
 
     private func openListener(executable: URL, text: String,
@@ -587,11 +596,11 @@ final class Tool4DLSPValidation {
         // Das `exit` erhält einen Queue-Durchlauf, bevor Socket und Prozess
         // geschlossen werden. `Tool4DNativeProcess.stop()` erzwingt danach
         // bei Bedarf selbst den sicheren SIGKILL-Fallback.
-        queue.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            guard let self else { return }
+        queue.asyncAfter(deadline: .now() + 0.05) { [self] in
             self.connection?.cancel()
             self.listener?.cancel()
             self.process.stop()
+            self.cancellationRetainer = nil
             if let completion {
                 self.callbackQueue.async { completion(result) }
             }

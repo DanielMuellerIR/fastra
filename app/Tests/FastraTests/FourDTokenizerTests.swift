@@ -42,6 +42,15 @@ func fourD_strings() {
     #expect(strings[1].0 == "\"zwei\"")
 }
 
+@Test("Angefangener String mit Schluss-Backslash bleibt innerhalb des Dokuments")
+func fourD_unterminatedStringEscapeRangeStaysInBounds() {
+    let source = "$text:=\"offen\\"
+    let length = (source as NSString).length
+    let tokens = FourDTokenizer.tokenize(source)
+    #expect(tokens.contains { $0.kind == .string })
+    #expect(tokens.allSatisfy { NSMaxRange($0.range) <= length })
+}
+
 @Test("Schlüsselwörter case-tolerant, auch mehrwortig")
 func fourD_keywords() {
     let source = """

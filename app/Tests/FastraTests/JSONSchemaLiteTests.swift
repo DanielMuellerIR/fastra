@@ -43,6 +43,17 @@ func schemaBasics() {
     #expect(schema.validate(parse(#"{"name": 5}"#))?.pathDescription == "/name")
 }
 
+@Test("enum und const unterscheiden Wahrheitswerte von Zahlen")
+func schemaEqualityKeepsBooleansDistinctFromNumbers() {
+    let booleanEnum = makeSchema(#"{"enum": [true]}"#)
+    #expect(booleanEnum.validate(parse("true")) == nil)
+    #expect(booleanEnum.validate(parse("1")) != nil)
+
+    let numericConst = makeSchema(#"{"const": 1}"#)
+    #expect(numericConst.validate(parse("1.0")) == nil)
+    #expect(numericConst.validate(parse("true")) != nil)
+}
+
 @Test("items, $ref, allOf, anyOf, not und if/then")
 func schemaCombinators() {
     let schema = makeSchema("""

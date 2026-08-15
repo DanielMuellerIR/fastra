@@ -314,10 +314,32 @@ enum JSONSchemaLite {
         }
     }
 
-    /// JSON-Wertegleichheit über die Foundation-Objekte (NSObject-isEqual
-    /// deckt String/Number/Array/Dictionary/Null korrekt ab).
+    /// JSON-Wertegleichheit mit getrennten Typen. Foundation betrachtet
+    /// `true` und `1` als gleiche NSNumber; JSON Schema tut das nicht.
     private static func jsonEqual(_ a: Any, _ b: Any) -> Bool {
-        (a as AnyObject).isEqual(b as AnyObject)
+        if a is NSNull || b is NSNull { return a is NSNull && b is NSNull }
+        if let left = a as? NSNumber, let right = b as? NSNumber {
+            let leftIsBoolean = isBoolean(left)
+            let rightIsBoolean = isBoolean(right)
+            guard leftIsBoolean == rightIsBoolean else { return false }
+            return leftIsBoolean
+                ? left.boolValue == right.boolValue
+                : left.compare(right) == .orderedSame
+        }
+        if let left = a as? String, let right = b as? String {
+            return left == right
+        }
+        if let left = a as? [Any], let right = b as? [Any] {
+            return left.count == right.count
+                && zip(left, right).allSatisfy(jsonEqual)
+        }
+        if let left = a as? [String: Any], let right = b as? [String: Any] {
+            guard left.keys.count == right.keys.count else { return false }
+            return left.allSatisfy { key, value in
+                right[key].map { jsonEqual(value, $0) } ?? false
+            }
+        }
+        return false
     }
 
     private static func displayValue(_ value: Any) -> String {

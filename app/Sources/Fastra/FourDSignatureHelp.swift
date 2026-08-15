@@ -40,6 +40,10 @@ struct FourDMethodSignature: Equatable {
 
 enum FourDSignatureParser {
 
+    /// Verhindert, dass eine beschädigte Deklaration wie `$1000000000`
+    /// beim Auffüllen der Lücken eine entsprechend große Liste anlegt.
+    private static let maximumClassicParameterNumber = 1_024
+
     /// Typnamen der klassischen Compiler-Deklarationen.
     private static let classicTypes: [String: String] = [
         "C_TEXT": "Text", "C_STRING": "Text", "C_LONGINT": "Longint",
@@ -133,14 +137,18 @@ enum FourDSignatureParser {
 
     /// `$3` → 3, sonst nil.
     private static func classicParameterNumber(_ argument: String) -> Int? {
-        guard argument.hasPrefix("$") else { return nil }
-        return Int(argument.dropFirst())
+        guard argument.hasPrefix("$"),
+              let number = Int(argument.dropFirst()),
+              (0...maximumClassicParameterNumber).contains(number) else { return nil }
+        return number
     }
 
     /// `${4}` → 4 (Deklaration „ab Parameter N beliebig viele“).
     private static func variadicStart(_ argument: String) -> Int? {
-        guard argument.hasPrefix("${"), argument.hasSuffix("}") else { return nil }
-        return Int(argument.dropFirst(2).dropLast())
+        guard argument.hasPrefix("${"), argument.hasSuffix("}"),
+              let number = Int(argument.dropFirst(2).dropLast()),
+              (1...maximumClassicParameterNumber).contains(number) else { return nil }
+        return number
     }
 
     private static func declareParameters(

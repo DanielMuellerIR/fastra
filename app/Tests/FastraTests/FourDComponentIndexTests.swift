@@ -83,6 +83,19 @@ private func makeZip(_ entries: [(path: String, data: Data, deflate: Bool)]) -> 
     return out
 }
 
+/// Setzt Bit 0 der lokalen und zentralen General-Purpose-Flags. Bei einem
+/// stored-Eintrag wären die Nutzdaten danach Chiffretext und dürfen niemals
+/// als gelesener Klartext durchgereicht werden.
+private func markFirstZipEntryAsEncrypted(_ archive: Data) -> Data {
+    var result = archive
+    result[6] |= 0x01
+    let centralSignature = Data([0x50, 0x4B, 0x01, 0x02])
+    if let central = result.range(of: centralSignature) {
+        result[central.lowerBound + 8] |= 0x01
+    }
+    return result
+}
+
 /// Roher DEFLATE-Strom, wie ihn ZIP-Methode 8 erwartet.
 private func rawDeflate(_ data: Data) -> Data {
     guard !data.isEmpty else { return Data() }
@@ -152,6 +165,18 @@ func zipArchive_rejectsOversizeAndGarbage() throws {
     let garbage = root.appendingPathComponent("kein.zip")
     try Data("kein Archiv, nur Text".utf8).write(to: garbage)
     #expect(FourDZipArchive.entries(of: garbage) == nil)
+}
+
+@Test("ZIP-Leser lehnt verschlüsselte Einträge vor dem Lesen ab")
+func zipArchive_rejectsEncryptedEntries() throws {
+    let root = try makeTempDirectory("zip-encrypted")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let archive = root.appendingPathComponent("Encrypted.4DZ")
+    let zip = makeZip([("Project/Sources/Methods/Secret.4dm",
+                        Data("kein Klartext".utf8), false)])
+    try markFirstZipEntryAsEncrypted(zip).write(to: archive)
+
+    #expect(FourDZipArchive.entries(of: archive) == nil)
 }
 
 // MARK: - Attribut-Erkennung

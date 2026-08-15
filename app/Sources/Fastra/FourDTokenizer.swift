@@ -184,7 +184,12 @@ enum FourDTokenizer {
                 index += 1
                 while index < count {
                     let c = utf16Char(index)
-                    if c == "\\" { index += 2; continue }
+                    if c == "\\" {
+                        // Ein Schluss-Backslash ohne Folgezeichen darf den
+                        // Tokenbereich nicht hinter das Dokument schieben.
+                        index = min(count, index + 2)
+                        continue
+                    }
                     index += 1
                     if c == "\"" || c == "\n" { break }
                 }

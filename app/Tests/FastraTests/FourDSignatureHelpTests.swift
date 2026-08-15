@@ -95,6 +95,12 @@ func parsesClassicVariadic() {
     ])
 }
 
+@Test("Unplausibel hohe klassische Parameternummer erzeugt keine Riesenliste")
+func rejectsUnboundedClassicParameterNumber() {
+    let signature = FourDSignatureParser.parse(methodSource: "C_TEXT($10000)")
+    #expect(signature.parameters.isEmpty)
+}
+
 // MARK: - Parser: Kommentarkopf
 
 @Test("Kommentarkopf endet an der ersten Nicht-Kommentar-Zeile")
@@ -263,6 +269,29 @@ func signatureCache_resolvesSymlinkBeforeKeying() throws {
         return
     }
     #expect(secondSignature.parameters.first?.type == "Integer")
+}
+
+@Test("Signaturhilfe lädt keine übergroße Methodendatei vollständig")
+func signatureResolverRejectsOversizeFile() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-signature-limit-\(UUID().uuidString)")
+    let methods = root.appendingPathComponent("Project/Sources/Methods")
+    try FileManager.default.createDirectory(at: methods,
+                                            withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let method = methods.appendingPathComponent("ZuGross.4dm")
+    var data = Data("#DECLARE($a : Text)\n".utf8)
+    data.append(Data(repeating: 0x78,
+                     count: FourDComponentIndex.maximumEntryBytes))
+    try data.write(to: method)
+    let request = FourDSignatureResolver.Request(
+        lowered: "zugross", projectMethodFileName: "ZuGross",
+        projectURL: root, documentURL: nil, componentMethod: nil
+    )
+
+    #expect(FourDSignatureResolver.title(
+        for: request, cache: FourDSignatureResolver.Cache()
+    ) == nil)
 }
 
 @Test("Signatur-Auflösung führt nur laufende und jüngste Anforderung aus")

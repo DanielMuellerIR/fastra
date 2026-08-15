@@ -427,15 +427,30 @@ enum FourDSignatureResolver {
     /// Signatur einer Methodendatei — Änderungsdatum, Lesen und Parsen.
     private static func signature(forFileAt fileURL: URL,
                                   cache: Cache) -> FourDMethodSignature? {
-        let resolved = fileURL.canonicalFileURL
+        // `canonicalPathKey` vereinheitlicht Aliasse, folgt einem frisch
+        // angelegten Methoden-Symlink aber nicht auf allen Dateisystemen.
+        let resolved = fileURL.canonicalFileURL.resolvingSymlinksInPath()
         let path = resolved.path
         let modified = modificationDate(ofItemAt: path)
         if let cached = cache.signature(forKey: path, modified: modified) {
             return cached
         }
-        guard let source = try? String(contentsOf: resolved, encoding: .utf8) else {
+        // Methodendateien sind klein. Typ und Größe am aufgelösten Ziel
+        // prüfen und einen möglichen Zuwachs zwischen Prüfung und Lesen mit
+        // einem zusätzlichen Byte erkennen.
+        guard let values = try? resolved.resourceValues(
+                  forKeys: [.isRegularFileKey, .fileSizeKey]),
+              values.isRegularFile == true,
+              let size = values.fileSize,
+              size <= FourDComponentIndex.maximumEntryBytes,
+              let file = try? FileHandle(forReadingFrom: resolved) else {
             return nil
         }
+        defer { try? file.close() }
+        guard let data = try? file.read(
+                  upToCount: FourDComponentIndex.maximumEntryBytes + 1),
+              data.count <= FourDComponentIndex.maximumEntryBytes,
+              let source = FourDComponentIndex.decodeText(data) else { return nil }
         let parsed = FourDSignatureParser.parse(methodSource: source)
         cache.store(parsed, forKey: path, modified: modified)
         return parsed
