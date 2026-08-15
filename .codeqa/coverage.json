@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 1333737
+    "tokens_spent": 1510187
   },
   "campaign_history": [
     {
@@ -700,7 +700,22 @@
       "risk": "medium",
       "priority": 14,
       "reason": "Format-, Sprach-, Lint- und Speicheroptionen bestimmen Interpretation und Ausgabe von Dokumenten.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T165221406979+0200",
+        "completed_at": "2026-08-15T18:05:02+02:00",
+        "observed_head": "5089cba10405f46b731e5edc5e16b7097e3287a1",
+        "content_sha256": "b6848124240d985fe7871b727c084141bc5bff33387ecbb57d37e2932f598841",
+        "file_count": 16,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Gleich lange Inhaltswechsel lösen die Spracherkennung erneut aus; JSON-Fehlerpositionen zählen LF, CRLF und CR korrekt",
+        "tests": [
+          "./test.sh --filter DocumentFormat|DocumentFormatter|DocumentKind|FooterLogic|LanguageDetection|LanguageMenu|LintMinify|SavePanelFormat: 89 passed",
+          "./build.sh: passed einschließlich Fensterziel-Audit, Signatur und portabler Ordnersuche",
+          "./localization-audit.sh und ./help-audit.sh: passed"
+        ]
+      }
     },
     {
       "id": "preferences-help-localization",
