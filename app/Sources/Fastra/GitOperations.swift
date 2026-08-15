@@ -333,23 +333,36 @@ final class GitOperationsCoordinator {
 
     typealias Starter = (@escaping (GitExecutionOutcome) -> Void) -> GitCancelling
 
+    /// Deduplizierung darf nur Prozesse mit wirklich identischer Ausführung
+    /// zusammenlegen. Insbesondere Command-Konfiguration und Umgebung können
+    /// bei gleichen argv ein anderes (oder vertrauliches) Remote binden.
+    private struct DeduplicationKey: Equatable {
+        let repositoryKey: String?
+        let arguments: [String]
+        let outputLimit: GitOutputLimit
+        let policy: GitExecutionPolicy
+    }
+
     private final class Pending {
         let id = UUID()
         let repository: URL
         let kind: GitOperationKind
         let identity: String
+        let deduplicationKey: DeduplicationKey?
         let starter: Starter
         var subscribers: [UUID: (GitExecutionOutcome) -> Void] = [:]
         var activeToken: GitCancelling?
         var hasStarted = false
 
         init(repository: URL, kind: GitOperationKind, identity: String,
+             deduplicationKey: DeduplicationKey?,
              subscriberID: UUID,
              completion: @escaping (GitExecutionOutcome) -> Void,
              starter: @escaping Starter) {
             self.repository = repository
             self.kind = kind
             self.identity = identity
+            self.deduplicationKey = deduplicationKey
             self.starter = starter
             subscribers[subscriberID] = completion
         }
@@ -391,8 +404,17 @@ final class GitOperationsCoordinator {
             + "|\(String(describing: request.policy.timeout))"
             + "|\(request.policy.terminationGracePeriod)"
             + "|\(String(describing: request.policy.editorPolicy))"
+        let deduplicationKey = DeduplicationKey(
+            // Fetches verschiedener verlinkter Worktrees dürfen sich weiterhin
+            // den Prozess im gemeinsamen Git-Verzeichnis teilen.
+            repositoryKey: request.kind == .fetch ? nil : request.repositoryKey,
+            arguments: request.arguments,
+            outputLimit: request.outputLimit,
+            policy: request.policy
+        )
         return enqueue(repository: request.repository, kind: request.kind,
-                       identity: identity, completion: completion) { [executor] finish in
+                       identity: identity, deduplicationKey: deduplicationKey,
+                       completion: completion) { [executor] finish in
             executor.execute(arguments: request.arguments, in: request.repository,
                              outputLimit: request.outputLimit, policy: request.policy,
                              completion: finish)
@@ -468,6 +490,7 @@ final class GitOperationsCoordinator {
     }
 
     private func enqueue(repository: URL, kind: GitOperationKind, identity: String,
+                         deduplicationKey: DeduplicationKey? = nil,
                          completion: @escaping (GitExecutionOutcome) -> Void,
                          starter: @escaping Starter) -> GitOperationLease {
         let key = coordinationKey(for: repository)
@@ -479,11 +502,13 @@ final class GitOperationsCoordinator {
         if mayDeduplicate,
            let existing = queue.first(where: {
                $0.kind == kind && $0.identity == identity
+                   && $0.deduplicationKey == deduplicationKey
            }) {
             pending = existing
             pending.subscribers[subscriberID] = completion
         } else {
             pending = Pending(repository: repository, kind: kind, identity: identity,
+                              deduplicationKey: deduplicationKey,
                               subscriberID: subscriberID, completion: completion,
                               starter: starter)
             queue.append(pending)

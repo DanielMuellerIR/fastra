@@ -145,6 +145,34 @@ struct GitOperationsCoordinatorTests {
         #expect(coordinator.state(for: request.repository) == .idle)
     }
 
+    @Test("Gleiche Reads mit verschiedener Prozesskonfiguration bleiben getrennt")
+    func doesNotDeduplicateDifferentPolicies() {
+        let executor = ControlledGitExecutor()
+        let coordinator = GitOperationsCoordinator(executor: executor)
+        let repo = repository("policy-dedup")
+        var firstPolicy = GitExecutionPolicy.default
+        firstPolicy.configuration = [
+            GitConfigurationEntry(key: "remote.bound.url", value: "erste-adresse")
+        ]
+        var secondPolicy = GitExecutionPolicy.default
+        secondPolicy.configuration = [
+            GitConfigurationEntry(key: "remote.bound.url", value: "zweite-adresse")
+        ]
+
+        coordinator.perform(GitOperationRequest(
+            repository: repo, kind: .refresh,
+            arguments: ["remote", "get-url", "bound"], policy: firstPolicy
+        )) { _ in }
+        coordinator.perform(GitOperationRequest(
+            repository: repo, kind: .refresh,
+            arguments: ["remote", "get-url", "bound"], policy: secondPolicy
+        )) { _ in }
+
+        #expect(coordinator.state(for: repo).queued == [.refresh])
+        executor.complete(0, with: success())
+        #expect(executor.count == 2)
+    }
+
     @Test("Vorgänge desselben Repositories laufen seriell")
     func serializesSameRepository() {
         let executor = ControlledGitExecutor()

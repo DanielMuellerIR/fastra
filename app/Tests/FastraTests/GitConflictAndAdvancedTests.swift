@@ -2691,9 +2691,12 @@ struct GitValidatedMutationTests {
         #expect(target?.remoteRef == "refs/heads/feature/sicher")
         #expect(target?.expectedOID == expected)
         #expect(target?.sourceOID == initialSource)
-        #expect(target?.arguments == [
-            "push", "--force-with-lease=refs/heads/feature/sicher:\(expected)",
-            "--", "origin", "\(initialSource):refs/heads/feature/sicher"
+        #expect(target?.pushAddress == remote.path)
+        #expect(target?.invocation(temporaryRemote: "fastra-test").arguments == [
+            "-c", "remote.fastra-test.fetch=+refs/heads/*:refs/remotes/origin/*",
+            "push", "--porcelain",
+            "--force-with-lease=refs/heads/feature/sicher:\(expected)",
+            "fastra-test", "\(initialSource):refs/heads/feature/sicher"
         ])
 
         try Data("zwei\n".utf8).write(to: root.appendingPathComponent("datei.txt"))
@@ -2787,6 +2790,73 @@ struct GitValidatedMutationTests {
             return
         }
         #expect(!unsafeTargetWasShown)
+    }
+
+    @Test("Force Push bricht ab, wenn sich die bestätigte Push-Adresse ändert")
+    func forcePushRejectsChangedRemoteAddress() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Fastra-ForceAddress-\(UUID().uuidString)")
+        let originalRemote = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Fastra-ForceAddressOriginal-\(UUID().uuidString).git")
+        let replacementRemote = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Fastra-ForceAddressReplacement-\(UUID().uuidString).git")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            try? FileManager.default.removeItem(at: originalRemote)
+            try? FileManager.default.removeItem(at: replacementRemote)
+        }
+
+        _ = try await requireAdvancedGit(["init", "-q", "--bare", originalRemote.path],
+                                         in: root)
+        _ = try await requireAdvancedGit(["init", "-q", "--bare", replacementRemote.path],
+                                         in: root)
+        _ = try await requireAdvancedGit(["init", "-q", "-b", "main"], in: root)
+        _ = try await requireAdvancedGit(["config", "user.name", "Fastra Test"], in: root)
+        _ = try await requireAdvancedGit(["config", "user.email", "fastra@example.test"],
+                                         in: root)
+        let file = root.appendingPathComponent("datei.txt")
+        try Data("eins\n".utf8).write(to: file)
+        _ = try await requireAdvancedGit(["add", "datei.txt"], in: root)
+        _ = try await requireAdvancedGit(["commit", "-q", "-m", "Basis"], in: root)
+        _ = try await requireAdvancedGit(["remote", "add", "origin", originalRemote.path],
+                                         in: root)
+        _ = try await requireAdvancedGit(["push", "-q", "-u", "origin", "HEAD"], in: root)
+        _ = try await requireAdvancedGit(
+            ["push", "-q", replacementRemote.path, "HEAD:refs/heads/main"], in: root
+        )
+        let confirmedRemoteOID = try await requireAdvancedGit(
+            ["rev-parse", "refs/remotes/origin/main"], in: root
+        ).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        try Data("zwei\n".utf8).write(to: file)
+        _ = try await requireAdvancedGit(["commit", "-q", "-am", "Lokal zwei"], in: root)
+
+        var outcome: GitValidatedMutationOutcome?
+        let coordinator = GitOperationsCoordinator(executor: GitRunnerExecutor())
+        _ = GitForcePushRunner.run(
+            repository: root, coordinator: coordinator,
+            decision: { _, proceed in
+                Task {
+                    _ = try? await requireAdvancedGit(
+                        ["remote", "set-url", "--push", "origin", replacementRemote.path],
+                        in: root
+                    )
+                    proceed(true)
+                }
+            },
+            completion: { outcome = $0 }
+        )
+        try await waitAdvanced("Adresswechsel wurde nicht erkannt", timeout: .seconds(15)) {
+            outcome != nil
+        }
+
+        #expect(outcome == .repositoryChanged)
+        let replacementOID = try await requireAdvancedGit(
+            ["--git-dir", replacementRemote.path, "rev-parse", "refs/heads/main"],
+            in: root
+        ).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(replacementOID == confirmedRemoteOID)
     }
 }
 

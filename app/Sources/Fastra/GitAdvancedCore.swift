@@ -953,19 +953,30 @@ struct GitForcePushTarget: Equatable {
     let branchName: String
     let sourceOID: String
     let remote: String
+    let pushAddress: String
     let remoteRef: String
     let expectedOID: String
 
-    var arguments: [String] {
-        ["push", "--force-with-lease=\(remoteRef):\(expectedOID)", "--",
-         remote, "\(sourceOID):\(remoteRef)"]
+    func invocation(temporaryRemote: String) -> GitPushCommand.Invocation {
+        GitPushCommand.invocation(
+            remote: remote,
+            address: pushAddress,
+            refspec: "\(sourceOID):\(remoteRef)",
+            remoteRef: remoteRef,
+            expectedOID: expectedOID,
+            temporaryRemote: temporaryRemote
+        )
     }
 
-    var displayTarget: String { "\(remote):\(remoteRef)" }
+    var displayTarget: String {
+        "\(remote):\(remoteRef)\n\(GitRemoteAddressDisplay.sanitized(pushAddress))"
+    }
 }
 
-/// Löst genau ein Force-Push-Ziel aus Branch-Konfiguration und Upstream-OID
-/// auf, bestätigt diesen Wert und liest alles im selben exklusiven Slot erneut.
+/// Löst genau ein Force-Push-Ziel aus Branch-Konfiguration, effektiver Adresse
+/// und Upstream-OID auf, bestätigt diese Werte und liest alles im selben
+/// exklusiven Slot erneut. Der eigentliche Push bleibt an die bestätigte
+/// Adresse gebunden, auch wenn sich die Remote-Konfiguration danach ändert.
 enum GitForcePushRunner {
     typealias Decision = (GitForcePushTarget, @escaping (Bool) -> Void) -> Void
 
@@ -1016,10 +1027,16 @@ enum GitForcePushRunner {
                                               firstTarget == secondTarget else {
                                             stop(.repositoryChanged); return
                                         }
+                                        let invocation = secondTarget.invocation(
+                                            temporaryRemote: "fastra-force-\(UUID().uuidString)"
+                                        )
+                                        var policy = GitExecutionPolicy.default
+                                        policy.environment = invocation.environment
+                                        policy.configuration = invocation.configuration
                                         cancellation.add(executor.execute(
-                                            arguments: secondTarget.arguments,
+                                            arguments: invocation.arguments,
                                             in: repository, outputLimit: .default,
-                                            policy: .default
+                                            policy: policy
                                         ) { outcome in
                                             box.set(.executed(outcome)); finish(outcome)
                                         })
@@ -1099,7 +1116,7 @@ enum GitForcePushRunner {
                                 "Der Branch besitzt kein eindeutiges externes Push-Remote.")))
                             return
                         }
-                        func resolveMergeTarget() {
+                        func resolveMergeTarget(pushAddress: String) {
                             read(["config", "--local", "--get-all", "branch.\(branch).merge"],
                                  repository: repository, executor: executor,
                                  cancellation: cancellation) { mergeResult in
@@ -1138,7 +1155,8 @@ enum GitForcePushRunner {
                                 completion(.success(safety, GitForcePushTarget(
                                     localRef: localRef, branchName: branch,
                                     sourceOID: sourceOID,
-                                    remote: remote, remoteRef: remoteRef,
+                                    remote: remote, pushAddress: pushAddress,
+                                    remoteRef: remoteRef,
                                     expectedOID: checkedOID)))
                             }
                         }
@@ -1162,7 +1180,47 @@ enum GitForcePushRunner {
                                     "Das konfigurierte Push-Remote ist kein vorhandener Remote-Name.")))
                                 return
                             }
-                            resolveMergeTarget()
+                            cancellation.add(executor.execute(
+                                arguments: ["remote", "get-url", "--push", "--all", remote],
+                                in: repository,
+                                outputLimit: GitOutputLimit(stdoutBytes: 64 * 1024,
+                                                            stderrBytes: 64 * 1024),
+                                policy: .default
+                            ) { addressOutcome in
+                                guard case .completed(let addressResult) = addressOutcome,
+                                      addressResult.ok,
+                                      !addressResult.stdoutWasTruncated else {
+                                    completion(.failure(addressOutcome)); return
+                                }
+                                let addresses = GitRemoteConfiguration.pushAddresses(
+                                    from: addressResult.stdoutData
+                                )
+                                guard addresses.count == 1,
+                                      let pushAddress = addresses.first else {
+                                    completion(.blocked(L10n.string(
+                                        "Das Remote hat mehrere Push-Adressen. Fastra überträgt erst, wenn genau ein sichtbares Ziel konfiguriert ist.")))
+                                    return
+                                }
+                                cancellation.add(executor.execute(
+                                    arguments: [
+                                        "config", "--includes", "--get-regexp",
+                                        "^url\\..*\\.\\(insteadOf\\|pushInsteadOf\\)$"
+                                    ],
+                                    in: repository,
+                                    outputLimit: GitOutputLimit(stdoutBytes: 64 * 1024,
+                                                                stderrBytes: 64 * 1024),
+                                    policy: .default
+                                ) { rewriteOutcome in
+                                    guard case .completed(let rewriteResult) = rewriteOutcome
+                                    else { completion(.failure(rewriteOutcome)); return }
+                                    guard GitPushCommand.rewriteRulesAreAbsent(rewriteResult) else {
+                                        completion(.blocked(L10n.string(
+                                            "Git-URL-Umschreibregeln machen das Push-Ziel mehrdeutig. Entferne insteadOf/pushInsteadOf oder pushe bewusst im Terminal.")))
+                                        return
+                                    }
+                                    resolveMergeTarget(pushAddress: pushAddress)
+                                })
+                            })
                         }
                     }
                     }

@@ -9,6 +9,37 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.86.0] — 2026-08-15
+
+### Behoben
+
+- **Force Push bleibt an die bestätigte Adresse gebunden:** Der eigenständige
+  Force-with-Lease-Befehl zeigt nun neben Remote, Ref und Commit-IDs auch die
+  effektive Push-Adresse. Ändert sie sich während der Bestätigung, bricht
+  Fastra ab; beim anschließenden Git-Prozess steht die geprüfte Adresse nur in
+  der Prozessumgebung und kann nicht durch eine neue Remote-Konfiguration
+  ersetzt werden.
+- **Git-Lesevorgänge mit unterschiedlicher Prozesskonfiguration werden nicht
+  mehr zusammengelegt:** Gleiche Argumente reichen für die Deduplizierung nur
+  noch aus, wenn auch Umgebung, Command-Konfiguration, Standardeingabe und
+  Ausführungsgrenzen identisch sind. Damit kann eine Remote-Prüfung nie das
+  Ergebnis einer anders gebundenen Prüfung erhalten.
+- **Beendete Git-Prozesse hinterlassen keine weiterlaufenden Helfer:** Hält ein
+  Hook oder Kindprozess geerbte Ausgabekanäle offen, beendet Fastra nach dem
+  Elternprozess die verbliebene Prozessgruppe kontrolliert, statt nur die
+  eigenen Pipe-Enden zu schließen.
+- **Geerbte Git-Trace-Schalter können keine Netzwerkdiagnose mehr einschalten:**
+  Fastra entfernt alle `GIT_TRACE*`-Variablen sowie `GIT_CURL_VERBOSE`, bevor
+  ein Git-Prozess startet. Dadurch können vertrauliche Header weder unbemerkt
+  in der Fehlerausgabe noch in einer Trace-Datei landen.
+
+### Tests
+
+- **Regressionen prüfen Adresswechsel, Prozessrichtlinien, Kindprozesse und
+  Trace-Variablen:** Die Tests belegen den Abbruch vor einem umgeleiteten Force
+  Push, getrennte Coordinator-Slots, das Ende eines abgekoppelten Helfers und
+  die bereinigte Prozessumgebung.
+
 ## [v1.85.0] — 2026-08-15
 
 ### Behoben

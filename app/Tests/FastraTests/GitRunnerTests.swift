@@ -427,19 +427,37 @@ func gitRunner_descendantPipeDoesNotBlockCompletion() async throws {
     // Das abgekoppelte Kind lebt deutlich länger als das Budget: Hält es Pipe
     // und Slot doch offen, wartet der Aufruf 30 s statt weniger als 10 s. Der
     // Abstand macht die Aussage unabhängig von der Startlatenz der Maschine.
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("Fastra-NormalProcessGroup-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let pidFile = directory.appendingPathComponent("child.pid")
     let script = try temporaryExecutable("""
     /bin/sleep 30 &
+    print -r -- "$!" > "$1"
     exit 0
     """)
     defer { try? FileManager.default.removeItem(at: script.deletingLastPathComponent()) }
     let started = ContinuousClock.now
-    let outcome = await execute(script)
+    let outcome = await execute(script, arguments: [pidFile.path])
     guard case .completed(let result) = outcome else {
         Issue.record("Elternprozess lieferte kein Ergebnis")
         return
     }
     #expect(result.ok)
     #expect(ContinuousClock.now - started < .seconds(10))
+    let pidText = try String(contentsOf: pidFile, encoding: .utf8)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    let childPID = try #require(pid_t(pidText))
+    defer { Darwin.kill(childPID, SIGKILL) }
+    var disappeared = false
+    for _ in 0..<500 {
+        if Darwin.kill(childPID, 0) != 0 && errno == ESRCH {
+            disappeared = true; break
+        }
+        usleep(1_000)
+    }
+    #expect(disappeared, "Der abgekoppelte Kindprozess lebt nach dem Git-Abschluss weiter")
 }
 
 @Test("Offene Descendant-Pipe gibt den Koordinator-Slot für den Nachfolger frei")
@@ -522,6 +540,9 @@ func gitRunner_sanitizesRepositoryEnvironment() {
         "GIT_CONFIG_KEY_0": "core.sshCommand", "GIT_CONFIG_VALUE_0": "evil",
         "GIT_CONFIG_PARAMETERS": "'core.hooksPath'='/fremd'",
         "GIT_EXEC_PATH": "/fremd/exec", "GIT_EXTERNAL_DIFF": "/fremd/diff",
+        "GIT_TRACE": "1", "GIT_TRACE_PACKET": "1",
+        "GIT_TRACE_CURL": "1", "GIT_TRACE_REDACT": "0",
+        "GIT_TRACE2_EVENT": "/tmp/git-trace.json", "GIT_CURL_VERBOSE": "1",
         "GIT_ASKPASS": "/tmp/gui-askpass", "SSH_ASKPASS": "/tmp/ssh-gui",
         "SSH_ASKPASS_REQUIRE": "force",
     ], additions: ["GIT_DIR": "/nochmals-fremd"])
@@ -536,6 +557,12 @@ func gitRunner_sanitizesRepositoryEnvironment() {
     #expect(environment["GIT_CONFIG_PARAMETERS"] == nil)
     #expect(environment["GIT_EXEC_PATH"] == nil)
     #expect(environment["GIT_EXTERNAL_DIFF"] == nil)
+    #expect(environment["GIT_TRACE"] == nil)
+    #expect(environment["GIT_TRACE_PACKET"] == nil)
+    #expect(environment["GIT_TRACE_CURL"] == nil)
+    #expect(environment["GIT_TRACE_REDACT"] == nil)
+    #expect(environment["GIT_TRACE2_EVENT"] == nil)
+    #expect(environment["GIT_CURL_VERBOSE"] == nil)
     #expect(environment["GIT_TERMINAL_PROMPT"] == "0")
     #expect(environment["GIT_ASKPASS"] == "/usr/bin/false")
     #expect(environment["SSH_ASKPASS"] == "/usr/bin/false")

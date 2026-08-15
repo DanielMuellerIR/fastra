@@ -201,6 +201,26 @@ final class GitCancellationToken: @unchecked Sendable {
         return reason
     }
 
+    /// Endet der gestartete Prozess regulär, können Hooks oder Helfer seine
+    /// Pipe-Deskriptoren geerbt haben und in derselben Prozessgruppe
+    /// weiterleben. Nach dem nachgewiesenen Eltern-Ende räumen wir diese
+    /// Nachfahren auf, ohne das erfolgreiche Git-Ergebnis als Abbruch
+    /// umzuetikettieren.
+    fileprivate func terminateRemainingProcessGroupAfterParentExit() {
+        lock.lock()
+        let runningProcess = process
+        let group = processGroupID
+        lock.unlock()
+        guard let runningProcess, !runningProcess.isRunning, let group else { return }
+        Darwin.kill(-group, SIGTERM)
+        Darwin.kill(-group, SIGCONT)
+        gitDeadlineQueue.asyncAfter(
+            deadline: .now() + terminationGracePeriod
+        ) {
+            Darwin.kill(-group, SIGKILL)
+        }
+    }
+
     /// Git erhält direkt nach dem Start eine eigene Prozessgruppe. Abbruch und
     /// Timeout treffen dadurch auch Hooks und Helper, die sonst nach dem
     /// Git-Elternprozess weiterlaufen oder geerbte Pipes offen halten könnten.
@@ -1233,8 +1253,12 @@ enum GitRunner {
             // für immer blockieren. Nach einer kurzen Drain-Frist schließen wir
             // nur unsere Leseenden; der Git-Prozess ist zu diesem Zeitpunkt weg.
             if readerWait(readers, .now() + 0.5) == .timedOut {
-                stdoutPipe.fileHandleForReading.closeFile()
-                stderrPipe.fileHandleForReading.closeFile()
+                token.terminateRemainingProcessGroupAfterParentExit()
+                let cleanupWait = max(0.5, policy.terminationGracePeriod + 0.1)
+                if readerWait(readers, .now() + cleanupWait) == .timedOut {
+                    stdoutPipe.fileHandleForReading.closeFile()
+                    stderrPipe.fileHandleForReading.closeFile()
+                }
                 if readerWait(readers, .now() + 0.5) == .timedOut {
                     let error = L10n.string("Git-Ausgabe blieb nach dem Schließen der Pipe unvollständig.")
                     stdoutCapture.markForcedIncomplete(error)
@@ -1374,10 +1398,14 @@ enum GitRunner {
             // einschleusen beziehungsweise Schreib-Locks global abschalten.
             "GIT_EXEC_PATH", "GIT_TEMPLATE_DIR", "GIT_EXTERNAL_DIFF",
             "GIT_DIFF_OPTS", "GIT_EDITOR", "GIT_SEQUENCE_EDITOR",
-            "GIT_OPTIONAL_LOCKS", "GIT_ATTR_SOURCE",
+            "GIT_OPTIONAL_LOCKS", "GIT_ATTR_SOURCE", "GIT_CURL_VERBOSE",
         ])
         result = result.filter { key, _ in
             !forbidden.contains(key)
+                // Geerbte Trace-Schalter können Netzwerkdaten in stderr oder
+                // benannte Dateien schreiben; GIT_TRACE_REDACT=0 würde dabei
+                // sogar die Redaktion vertraulicher Header abschalten.
+                && !key.hasPrefix("GIT_TRACE")
                 && !key.hasPrefix("GIT_CONFIG_KEY_")
                 && !key.hasPrefix("GIT_CONFIG_VALUE_")
         }
