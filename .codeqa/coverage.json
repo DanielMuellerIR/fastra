@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 2062336
+    "tokens_spent": 2307885
   },
   "campaign_history": [
     {
@@ -294,15 +294,16 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T18:39:35+02:00",
-        "observed_head": "c25389f22c62b63c2ed16d2324517c9f98ddbfe2",
-        "content_sha256": "89dd1908cd3ed53e148dc2ab30456b6da8fcd0ed75eafefae98609ec313ba9aa",
+        "completed_at": "2026-08-15T18:58:18+02:00",
+        "observed_head": "fb52a6691cf84ed65f47e95db2ba6c6b02b9faee",
+        "content_sha256": "f3c33568bdadaf9d7a57062abfa701e51bd6d636d623a5e98389ea2d37a2dbdd",
         "file_count": 20,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Seit dem letzten P5-Review änderten sich ausschließlich CFBundleShortVersionString und CFBundleVersion auf 1.98.0/187. Quell- und Bundle-Plist stimmen überein; Paketierungs-, Signatur- und Portabilitätsgrenzen blieben unverändert.",
+        "summary": "Versionsdelta 1.99.0/188 und angrenzenden Bundle-, Signatur-, Window-Targeting- und Portabilitätspfad erneut geprüft; keine weitere Änderung nötig",
         "tests": [
-          "plutil: Quell- und Bundle-Info.plist gültig und jeweils 1.98.0/187; codesign --verify --deep --strict grün; ./build.sh grün einschließlich Fenster-Zielprüfung, Signatur und portabler Ordnersuche"
+          "build.sh einschließlich gepacktem Bundle und Portabilitätsprüfung: passed",
+          "Bundle Info.plist: 1.99.0 (188)"
         ]
       }
     },
@@ -747,15 +748,17 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T18:40:00+02:00",
-        "observed_head": "c25389f22c62b63c2ed16d2324517c9f98ddbfe2",
-        "content_sha256": "5d0b52b77e88acfe1138e22a2eea5785a2ffcad5157bed9fc043c7a4e5490123",
+        "completed_at": "2026-08-15T18:58:28+02:00",
+        "observed_head": "fb52a6691cf84ed65f47e95db2ba6c6b02b9faee",
+        "content_sha256": "bb6428bf323c4d022cff905ef9819f68bde755bc366007197c06496034425c70",
         "file_count": 21,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Seit dem vollständigen P15-Review änderten sich nur die sechs englischen Vorlagenmeldungen und der dazugehörige RegEx-Abschnitt beider Hilfefassungen. Schlüssel, Formatplatzhalter, deutsche Quelltexte und englische Aussagen stimmen mit dem geprüften P16-Verhalten überein; Ressourcenauflösung und Auditlogik blieben unverändert.",
+        "summary": "Neue XPath-Fehlermeldung sowie deutsche und englische Hilfe mit Katalog-, Bundle- und Markergrenzen erneut geprüft; vollständig und konsistent",
         "tests": [
-          "./test.sh --filter 'PatternLibrary|Pattern|Localization': 70 Tests bestanden; ./localization-audit.sh: bestanden mit 1330 englischen Einträgen; ./help-audit.sh --release: bestanden; ./build.sh: Ressourcen gebündelt und Portabilitätsprüfung bestanden"
+          "XPath/Localization/HelpContent: 33/33 passed",
+          "localization-audit.sh: passed",
+          "help-audit.sh --release: passed"
         ]
       }
     },
@@ -801,7 +804,24 @@
       "risk": "medium",
       "priority": 17,
       "reason": "XPath-Auswertung und Navigation verarbeiten untrusted XML und müssen Grenzen verständlich melden.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T165221406979+0200",
+        "completed_at": "2026-08-15T18:58:04+02:00",
+        "observed_head": "fb52a6691cf84ed65f47e95db2ba6c6b02b9faee",
+        "content_sha256": "b4bcd21b75547db6f679477dfcf517ee8d061ccfbdad342b070bb73b8cdec06a",
+        "file_count": 3,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "XML-Scanner, Query-Auswertung und Mehrfenster-Modell gegen ungültige Struktur, veraltete Quellbereiche und tiefe Eingaben abgesichert",
+        "tests": [
+          "XPathSupportTests: 21/21 passed",
+          "XPath/Localization/HelpContent: 33/33 passed",
+          "localization-audit.sh: passed",
+          "help-audit.sh --release: passed",
+          "build.sh einschließlich Window-Targeting- und Portabilitätsprüfung: passed"
+        ]
+      }
     },
     {
       "id": "updates-donation-external",
