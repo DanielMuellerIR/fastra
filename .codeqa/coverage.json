@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 1526931
+    "tokens_spent": 1739485
   },
   "campaign_history": [
     {
@@ -745,7 +745,20 @@
       "risk": "medium",
       "priority": 15,
       "reason": "Einstellungen, Ressourcen, Hilfe und Lokalisierung müssen vollständig und aus dem gepackten Bundle verfügbar bleiben.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T165221406979+0200",
+        "completed_at": "2026-08-15T18:20:26+02:00",
+        "observed_head": "e549ddab418022b962d3bbc36fe777fcaf6ff4eb",
+        "content_sha256": "e93c000c41cfba9c59311f79d33a3b6743e0afd0ce8f1a61f60ff31fc1d59d2c",
+        "file_count": 21,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Einstellungen, Erscheinungsbild, Ressourcenauflösung, Hilfe-Rendering, beide Hilfefassungen, Lokalisierung und ihre Audit-Skripte vollständig geprüft. Das Einstellungsfenster verwendet nun echte Inhalts-Mindestgrößen und übernimmt neue UI-Skalierungswerte ohne manuelles Resizing zurückzusetzen; doppelte englische Schlüssel können Paste/Insert und Titel-Großschreibung nicht mehr still verfälschen.",
+        "tests": [
+          "Fail-before: localization-audit.sh meldete exakt die doppelten Schlüssel Einfügen und Leerraum am Zeilenende; der Größen-Test belegte contentMinSize 0 statt 480×380. Danach 36 Bereichstests gemeinsam grün, Lokalisierungs-Audit mit 1324 englischen Einträgen, Hilfe-Audit normal und Release, Plist-Prüfung sowie build.sh einschließlich Fenster-Zielprüfung, Signatur und portabler Ordnersuche grün. Keine GUI- oder /Applications-Änderung."
+        ]
+      }
     },
     {
       "id": "pattern-library",
