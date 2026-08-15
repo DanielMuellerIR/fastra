@@ -488,16 +488,24 @@ cleanup() {
 REAL_DIR="$WORK_DIR/real"
 SOAK_RTFD_COPIED=0
 SOAK_MD_COPIED=0
-if [ -n "${FASTRA_SOAK_RTFD:-}" ] && [ -e "$FASTRA_SOAK_RTFD" ]; then
+if [ -n "${FASTRA_SOAK_RTFD:-}" ] && [ -d "$FASTRA_SOAK_RTFD" ]; then
   mkdir -p "$REAL_DIR"
-  if cp -R "$FASTRA_SOAK_RTFD" "$REAL_DIR/protokoll-import.rtfd"; then
+  if copy_fastra_test_directory_resolving_symlinks \
+      "$FASTRA_SOAK_RTFD" "$REAL_DIR/protokoll-import.rtfd"; then
     SOAK_RTFD_COPIED=1
+  else
+    echo "⚠ RTFD konnte nicht sicher kopiert werden — Szenario wird ausgelassen." >&2
+    rm -rf "$REAL_DIR/protokoll-import.rtfd"
   fi
 fi
 if [ -n "${FASTRA_SOAK_MD_DIR:-}" ] && [ -d "$FASTRA_SOAK_MD_DIR" ]; then
-  mkdir -p "$REAL_DIR/markdown"
-  if cp -R "$FASTRA_SOAK_MD_DIR/." "$REAL_DIR/markdown/"; then
+  mkdir -p "$REAL_DIR"
+  if copy_fastra_test_directory_resolving_symlinks \
+      "$FASTRA_SOAK_MD_DIR" "$REAL_DIR/markdown"; then
     SOAK_MD_COPIED=1
+  else
+    echo "⚠ Markdown-Ordner konnte nicht sicher kopiert werden — Szenario wird ausgelassen." >&2
+    rm -rf "$REAL_DIR/markdown"
   fi
 fi
 

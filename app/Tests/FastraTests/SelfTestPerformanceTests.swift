@@ -46,6 +46,31 @@ private func runPerformanceTool(_ executable: String,
     )
 }
 
+/// Die Runner-Fixtures dürfen eine parallel benutzte Produkt-App nicht als
+/// Teil ihrer künstlichen Prozesswelt behandeln. Nur die eine globale
+/// Fremd-App-Abfrage wird ausgeblendet; Kindprozess-Abfragen gehen weiter an
+/// das echte `pgrep`, damit die Cleanup-Tests aussagekräftig bleiben.
+private func pathIgnoringForeignFastraProcess(in root: URL) throws -> String {
+    let bin = root.appendingPathComponent("bin")
+    let pgrep = bin.appendingPathComponent("pgrep")
+    try FileManager.default.createDirectory(
+        at: bin, withIntermediateDirectories: true
+    )
+    try #"""
+    #!/bin/bash
+    if [ "${1:-}" = "-f" ] \
+       && [ "${2:-}" = '/Fastra\.app/Contents/MacOS/Fastra([[:space:]]|$)' ]; then
+      exit 1
+    fi
+    exec /usr/bin/pgrep "$@"
+    """#.write(to: pgrep, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes(
+        [.posixPermissions: 0o755], ofItemAtPath: pgrep.path
+    )
+    let oldPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+    return bin.path + ":" + oldPath
+}
+
 @Suite("Lokale Selbsttest-Performance", .serialized)
 struct SelfTestPerformanceTests {
     @Test("Fehlende Bildschirmfreigabe startet kein Aufnahme-Werkzeug")
@@ -81,6 +106,42 @@ struct SelfTestPerformanceTests {
         #expect(allowed == "system")
         #expect(systemCalls == 1)
         #expect(fallbackCalls == 1)
+    }
+
+    @Test("Soak-Kopie löst Links auf und lässt Originale unangetastet")
+    func soakFixtureCopyResolvesSymlinks() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-soak-copy-test-\(UUID().uuidString)")
+        let source = root.appendingPathComponent("source")
+        let destination = root.appendingPathComponent("destination")
+        let original = root.appendingPathComponent("original.md")
+        let linkedFile = source.appendingPathComponent("linked.md")
+        let helper = performanceToolsDirectory.appendingPathComponent("test-sandbox.sh")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(
+            at: source, withIntermediateDirectories: true
+        )
+        try "original\n".write(to: original, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(
+            at: linkedFile, withDestinationURL: original
+        )
+
+        let script = """
+        set -u
+        . "$1"
+        copy_fastra_test_directory_resolving_symlinks "$2" "$3" || exit 91
+        [ -f "$3/linked.md" ] && [ ! -L "$3/linked.md" ] || exit 92
+        printf 'sandbox\n' > "$3/linked.md"
+        [ "$(cat "$4")" = original ] || exit 93
+        """
+        let result = try runPerformanceTool(
+            "/bin/bash",
+            arguments: [
+                "-c", script, "soak-copy", helper.path, source.path,
+                destination.path, original.path,
+            ]
+        )
+        #expect(result.status == 0, "Sichere Soak-Kopie: \(result.output)")
     }
 
     @Test("LaunchServices-Abmeldung schützt installierte und fremde Bundles")
@@ -229,9 +290,11 @@ struct SelfTestPerformanceTests {
                 [.posixPermissions: 0o755], ofItemAtPath: executable.path
             )
         }
+        let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
 
         let result = try runPerformanceTool(
             "/bin/bash", arguments: [runner.path, "search"], environment: [
+                "PATH": isolatedPath,
                 "FASTRA_GUI_LOCK_DIR": lock.path,
                 "FASTRA_SELFTEST_APP_BIN": fakeBinary.path,
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
@@ -337,11 +400,13 @@ struct SelfTestPerformanceTests {
                 [.posixPermissions: 0o755], ofItemAtPath: executable.path
             )
         }
+        let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
 
         let canonicalFakeApp = try #require(canonicalPath(for: fakeApp))
         canonicalFakeBinary = canonicalFakeApp + "/Contents/MacOS/Fastra"
         let result = try runPerformanceTool(
             "/bin/bash", arguments: [runner.path, "cmdw"], environment: [
+                "PATH": isolatedPath,
                 "FASTRA_GUI_LOCK_DIR": lock.path,
                 "FASTRA_SELFTEST_APP_BIN": fakeBinary.path,
                 "FASTRA_SELFTEST_APP_BUNDLE": fakeApp.path,
@@ -435,9 +500,11 @@ struct SelfTestPerformanceTests {
         try FileManager.default.setAttributes(
             [.posixPermissions: 0o755], ofItemAtPath: fakeApp.path
         )
+        let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
 
         let result = try runPerformanceTool(
             "/bin/bash", arguments: [runner.path, "search"], environment: [
+                "PATH": isolatedPath,
                 "FASTRA_GUI_LOCK_DIR": lock.path,
                 "FASTRA_SELFTEST_APP_BIN": fakeApp.path,
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,

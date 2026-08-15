@@ -139,6 +139,20 @@ unregister_fastra_test_bundle_from_launch_services() {
     "$lsregister" -u "$canonical" >/dev/null 2>&1
 }
 
+# Echte Test-Fixtures werden in einer Wegwerf-Sandbox verändert. `cp -R`
+# bewahrt symbolische Links und könnte dadurch beim späteren Speichern doch die
+# Originaldatei treffen. `rsync -L` materialisiert jedes Linkziel als normale
+# Datei bzw. normalen Ordner; ein verbliebener Link macht die Kopie unbrauchbar.
+copy_fastra_test_directory_resolving_symlinks() {
+    local source="$1"
+    local destination="$2"
+    [ -d "$source" ] || return 1
+    [ ! -e "$destination" ] && [ ! -L "$destination" ] || return 2
+    mkdir -p "$destination" || return 2
+    /usr/bin/rsync -aL -- "$source/" "$destination/" || return 1
+    ! /usr/bin/find "$destination" -type l -print -quit | /usr/bin/grep -q .
+}
+
 fastra_test_defaults_domain_is_safe() {
     local domain="$1"
     [[ "$domain" =~ ^[A-Za-z0-9._-]+$ ]] || return 1

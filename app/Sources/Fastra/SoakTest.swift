@@ -610,14 +610,10 @@ enum SoakTest {
         case .save:
             // Nur mit gespeicherter Datei — sonst öffnete „Sichern" den
             // modalen „Sichern unter…"-Dialog und hielte den Lauf an.
-            // Geprüft werden BEIDE beteiligten Workspaces: der des
-            // Vorderfensters und der an die Menübefehle gebundene
-            // `Workspace.shared`, der nur bei `didBecomeKey` nachgeführt
-            // wird. Genau diese Kopplung soll der Test über den ECHTEN
-            // Menübefehl treffen — schlägt dabei eine Invariante an, ist
-            // das ein Produktbefund, kein Testproblem.
-            guard workspace.activeTab?.url != nil,
-                  Workspace.shared?.activeTab?.url != nil else { return nil }
+            // Der echte Menüpunkt bestimmt das vordere Dokumentfenster über
+            // `CommandTargeting`. Deshalb darf nur der Workspace dieses
+            // Fensters über die Testausführung entscheiden.
+            guard workspace.activeTab?.url != nil else { return nil }
             guard let item = commandMenuItem(forKeyEquivalent: "s"),
                   let menuAction = item.action else { return nil }
             _ = NSApp.sendAction(menuAction, to: item.target, from: item)
@@ -661,7 +657,7 @@ enum SoakTest {
         case .newTab:
             // Nicht unbegrenzt wachsen lassen — sonst misst der Test am Ende
             // nur noch Tabverwaltung. Ausgelöst über den echten ⌘T-Menüpunkt,
-            // der wie „Sichern" an `Workspace.shared` gebunden ist.
+            // der das vordere Dokumentfenster über `CommandTargeting` trifft.
             guard workspace.tabs.count < 6 else { return nil }
             guard let item = commandMenuItem(forKeyEquivalent: "t"),
                   let menuAction = item.action else { return nil }
@@ -1393,10 +1389,10 @@ enum SoakTest {
 
     /// Schritt 3: ALT-Doppelklick auf einen Methodennamen, der als Datei
     /// existiert, indiziert ist und im Text vorkommt. Erfolg = der aktive Tab
-    /// wechselt zur Zieldatei (Frist 5 s). ACHTUNG: `GoToTargetGesture` nutzt
-    /// intern `Workspace.shared` — landet der Sprung in einem FREMDEN
-    /// Fenster, ist das ein echter Produktbefund, den die Invarianten melden
-    /// sollen; hier wird nichts unterdrückt.
+    /// wechselt zur Zieldatei (Frist 5 s). `GoToTargetGesture` leitet den
+    /// Workspace aus der angeklickten TextView ab. Landet der Sprung trotzdem
+    /// in einem fremden Fenster, melden das die Invarianten als Produktbefund;
+    /// hier wird nichts unterdrückt.
     private static func runFourDGoToStep(
         projectURL: URL, workspace: Workspace,
         window: NSWindow, textView: TextView,
