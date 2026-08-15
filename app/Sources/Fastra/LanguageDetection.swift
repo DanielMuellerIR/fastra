@@ -42,12 +42,14 @@ enum ContentLanguageDetection {
     }
 
     /// Entscheidet aus Längenänderung und letzter Analyse, ob und wie
-    /// analysiert wird. Längen statt Hashes: billig, und für „substanziell
-    /// geändert" völlig ausreichend.
+    /// analysiert wird. Der Aufrufer meldet nur echte Inhaltsänderungen;
+    /// gleiche Länge kann deshalb eine vollständige Ersetzung bedeuten und
+    /// darf die bisher erkannte Sprache nicht dauerhaft festhalten.
     static func trigger(oldLength: Int, newLength: Int,
                         lastAnalyzedLength: Int?) -> Trigger {
         let delta = abs(newLength - oldLength)
         if delta >= bulkInsertThreshold { return .immediate }
+        if delta == 0 { return .debounced }
         guard let lastAnalyzedLength else { return .debounced }
         return abs(newLength - lastAnalyzedLength) >= substantialChangeThreshold
             ? .debounced : .none

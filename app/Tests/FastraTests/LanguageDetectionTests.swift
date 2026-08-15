@@ -176,6 +176,15 @@ func trigger_throttleSkipsTinyChanges() {
                               lastAnalyzedLength: 98) == .none)
 }
 
+@Test("Gleich lange vollständige Ersetzung wird erneut analysiert")
+func trigger_equalLengthReplacementIsDebounced() {
+    // Der Binding-Setter ruft `trigger` nur bei tatsächlich geändertem
+    // Inhalt auf. Gleiche Länge bedeutet hier deshalb nicht „unverändert“:
+    // Eine vollständige Ersetzung kann z. B. JSON durch XML austauschen.
+    #expect(Detection.trigger(oldLength: 100, newLength: 100,
+                              lastAnalyzedLength: 100) == .debounced)
+}
+
 // MARK: - Workspace-Integration (Eignung + manuelle Wahl)
 
 @Test("Eignung: nur ungespeicherte, endungslose Tabs ohne manuelle Wahl")

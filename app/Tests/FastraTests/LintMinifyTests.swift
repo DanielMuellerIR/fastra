@@ -50,6 +50,13 @@ func lint_jsonOffsetTranslation() {
     #expect(issue.line == 2)
 }
 
+@Test("JSON-Lint: Byte-Offset zählt LF, CRLF und CR als Zeilenumbruch")
+func lint_jsonOffsetLineEndings() {
+    #expect(DocumentLinter.lineColumn(atEndOf: "a\nb") == (line: 2, column: 2))
+    #expect(DocumentLinter.lineColumn(atEndOf: "a\r\nb") == (line: 2, column: 2))
+    #expect(DocumentLinter.lineColumn(atEndOf: "a\rb") == (line: 2, column: 2))
+}
+
 @Test("XML-Lint: gültig und kaputt (Position der kaputten Stelle)")
 func lint_xml() {
     #expect(DocumentLinter.lint("<a><b/></a>", fileExtension: "xml")

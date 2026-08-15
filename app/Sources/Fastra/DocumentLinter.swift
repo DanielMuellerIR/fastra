@@ -170,7 +170,10 @@ enum DocumentLinter {
         var line = 1
         var column = 1
         for character in prefix {
-            if character == "\n" {
+            // `Character` fasst CRLF zu einem Zeichen zusammen. `isNewline`
+            // zählt daher LF, CRLF und klassische CR-Dateien jeweils genau
+            // einmal, passend zur Zeilenanzeige des Editors.
+            if character.isNewline {
                 line += 1
                 column = 1
             } else {

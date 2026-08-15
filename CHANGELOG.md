@@ -9,6 +9,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.96.0] — 2026-08-15
+
+### Behoben
+
+- **Die automatische Spracherkennung folgt gleich langen Ersetzungen:** Ersetzt
+  neuer Inhalt einen ungespeicherten Text vollständig, prüft Fastra ihn auch
+  dann erneut, wenn seine Zeichenzahl unverändert bleibt.
+- **JSON-Prüfpositionen berücksichtigen alle Zeilenenden:** Die Rückfallebene
+  für Byte-Offsets zählt neben LF nun auch CRLF und CR als Zeilenumbruch.
+
+### Tests
+
+- **Zwei Regressionen belegen Neuprüfung und Positionszählung:** Die Tests
+  decken gleich lange Inhaltswechsel sowie LF-, CRLF- und CR-Zeilenenden ab.
+
 ## [v1.95.0] — 2026-08-15
 
 ### Behoben
