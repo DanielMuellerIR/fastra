@@ -63,6 +63,74 @@ jobs:
           # Gleicher Basisname: generate_appcast ordnet die Markdown-Datei dem DMG zu.
           gh release view "$RELEASE_TAG" --json body --jq .body > "${dmgs[0]%.dmg}.md"
 
+      # Der Sparkle-Schlüssel darf nur ein Release autorisieren, dessen von
+      # Apple bestätigtes DMG tatsächlich die erwartete Fastra-Version enthält.
+      # Diese Prüfung läuft vor dem Laden des Signierwerkzeugs und ohne Secret.
+      - name: Release-DMG vor Appcast prüfen
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          dmgs=(update/*.dmg)
+          if (( ${#dmgs[@]} != 1 )); then
+            echo "FEHLER: Es muss genau ein Release-DMG vorliegen." >&2
+            exit 1
+          fi
+          dmg="${dmgs[0]}"
+
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "FEHLER: Ungültiges Release-Tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          expected_version="${RELEASE_TAG#v}"
+          if [[ "$(basename "$dmg")" != "Fastra-${expected_version}.dmg" ]]; then
+            echo "FEHLER: DMG-Dateiname passt nicht zu $RELEASE_TAG." >&2
+            exit 1
+          fi
+
+          # Ticket und Signatur des Transportcontainers prüfen, bevor sein
+          # Inhalt überhaupt gemountet wird.
+          xcrun stapler validate "$dmg"
+          codesign --verify --strict --verbose=2 "$dmg"
+
+          mount_dir="$(mktemp -d)"
+          cleanup() {
+            status=$?
+            trap - EXIT
+            hdiutil detach "$mount_dir" -quiet 2>/dev/null || true
+            rm -rf "$mount_dir"
+            exit "$status"
+          }
+          trap cleanup EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+
+          hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mount_dir" >/dev/null
+          apps=("$mount_dir"/*.app)
+          if (( ${#apps[@]} != 1 )) || [[ "$(basename "${apps[0]}")" != "Fastra.app" ]]; then
+            echo "FEHLER: DMG muss genau Fastra.app enthalten." >&2
+            exit 1
+          fi
+          app="${apps[0]}"
+          if [[ -L "$app" ]]; then
+            echo "FEHLER: Fastra.app im DMG darf kein symbolischer Link sein." >&2
+            exit 1
+          fi
+
+          codesign --verify --deep --strict --verbose=2 "$app"
+          spctl --assess --type execute --verbose=2 "$app"
+          identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          if [[ "$identifier" != "de.dm0.fastra" ]]; then
+            echo "FEHLER: Unerwartete Bundle-ID im Release-DMG." >&2
+            exit 1
+          fi
+          if [[ "$version" != "$expected_version" ]]; then
+            echo "FEHLER: App-Version $version passt nicht zu $RELEASE_TAG." >&2
+            exit 1
+          fi
+
       # Bewusst ein eigener Schritt OHNE das Secret: Das Auflösen der
       # Abhängigkeiten lädt fremden Code (SwiftPM-Pakete, Sparkles
       # Werkzeug-Artefakt) und darf den privaten Schlüssel deshalb nicht in

@@ -199,11 +199,25 @@ fi
 DMG_STAGING=$(mktemp -d)
 RW_DMG="$DMG_STAGING/fastra_rw.dmg"
 VOL_NAME="Fastra"
-MOUNT_DIR="/Volumes/$VOL_NAME"
+MOUNT_DIR="$DMG_STAGING/mount"
+VERIFY_MOUNT="$DMG_STAGING/verify"
+mkdir -p "$MOUNT_DIR" "$VERIFY_MOUNT"
 
-# Aufräumen garantieren — auch bei Fehler (trap auf EXIT): erst ein evtl.
-# noch gemountetes Volume aushängen, dann das Arbeitsverzeichnis löschen
-trap 'hdiutil detach "$MOUNT_DIR" -quiet 2>/dev/null || true; rm -rf "$DMG_STAGING"' EXIT
+# Beide Mountpunkte gehören ausschließlich diesem Lauf. Der eine EXIT-Trap
+# räumt sie auch bei Fehlern oder Signalen auf, ohne ein gleichnamiges Volume
+# eines Nutzers anzufassen.
+cleanup_release() {
+  local status=$?
+  trap - EXIT
+  hdiutil detach "$VERIFY_MOUNT" -quiet 2>/dev/null || true
+  hdiutil detach "$MOUNT_DIR" -quiet 2>/dev/null || true
+  rm -rf "$DMG_STAGING"
+  exit "$status"
+}
+trap cleanup_release EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 echo "   Arbeitsverzeichnis: $DMG_STAGING"
 
@@ -223,11 +237,14 @@ tiffutil -cathidpicheck "$DMG_STAGING/DmgBg_1x.png" "$DMG_STAGING/DmgBg_2x.png" 
 
 # b) Beschreibbares DMG erzeugen und mounten. Die Größe (200m) ist bewusst
 #    großzügig — beim Konvertieren (Schritt e) wird ohnehin auf die echte
-#    Größe komprimiert. Hängt von einem früheren, abgebrochenen Lauf noch
-#    ein "Fastra"-Volume, erst aushängen — sonst schlägt der Mount fehl.
-if [ -d "$MOUNT_DIR" ]; then
-  echo "   Altes Volume von früherem Lauf aushängen: $MOUNT_DIR"
-  hdiutil detach "$MOUNT_DIR" -quiet 2>/dev/null || true
+#    Größe komprimiert. Der private Mountpunkt verhindert Kollisionen mit
+#    bereits geöffneten DMGs. Finder adressiert Volumes allerdings per Namen;
+#    ist dort bereits ein Fastra-Volume sichtbar, überspringen wir deshalb nur
+#    das dekorative Finder-Layout und lassen das fremde Volume unangetastet.
+if [ "$FINDER_LAYOUT" = "1" ] && [ -e "/Volumes/$VOL_NAME" ]; then
+  echo "   ⚠ Ein anderes Volume namens $VOL_NAME ist bereits geöffnet."
+  echo "     Finder-Layout wird zum Schutz dieses Volumes übersprungen."
+  FINDER_LAYOUT=0
 fi
 hdiutil create -size 200m -fs HFS+ -volname "$VOL_NAME" -ov -quiet "$RW_DMG"
 hdiutil attach -readwrite -noverify -noautoopen -quiet \
@@ -341,13 +358,7 @@ echo
 # (hdiutil packt nur — die Signatur im Bundle bleibt erhalten.)
 echo "→ Schritt 4/5: Signatur verifizieren"
 
-# DMG temporär einhängen, Bundle prüfen, wieder aushängen
-VERIFY_MOUNT=$(mktemp -d)
-# Zweiten Aufräum-Trap hängen — hdiutil detach läuft bei EXIT
-# (das ursprüngliche "rm -rf $DMG_STAGING" bleibt im Trap und wird
-#  ebenfalls ausgeführt — Shell-Traps akkumulieren sich)
-trap 'hdiutil detach "$VERIFY_MOUNT" -quiet 2>/dev/null || true; rm -rf "$DMG_STAGING"' EXIT
-
+# DMG am zweiten privaten Mountpunkt einhängen, Bundle prüfen, wieder aushängen
 hdiutil attach "$DMG_PATH" -mountpoint "$VERIFY_MOUNT" -quiet -nobrowse
 
 # codesign --verify gibt Fehler aus und setzt Exit-Code ≠ 0 bei ungültiger Signatur

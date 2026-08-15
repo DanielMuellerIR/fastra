@@ -124,6 +124,74 @@ codesign --verify --deep --strict --verbose=2 "$APP"
 
 DEST="/Applications/Fastra.app"
 
+# Die neue App zunächst neben dem Ziel auf demselben Volume aufbauen und dort
+# vollständig prüfen. Erst danach werden zwei atomare Umbenennungen verwendet:
+# alter Stand zur Sicherung, neuer Stand ans endgültige Ziel. Schlägt danach
+# irgendeine Prüfung fehl, stellt der EXIT-Trap die bisherige App wieder her.
+INSTALL_STAGING="$(mktemp -d "/Applications/.Fastra-install.XXXXXX")"
+STAGED_APP="$INSTALL_STAGING/Fastra.app"
+BACKUP_APP="$INSTALL_STAGING/Previous-Fastra.app"
+INSTALL_SWAP_ACTIVE=0
+INSTALL_COMMITTED=0
+HAD_PREVIOUS_INSTALLATION=0
+
+restore_previous_installation() {
+  [ "$INSTALL_SWAP_ACTIVE" -eq 1 ] || return 0
+
+  if [ "$HAD_PREVIOUS_INSTALLATION" -eq 1 ]; then
+    if [ -e "$BACKUP_APP" ]; then
+      # Nur das exakt bekannte Ziel entfernen. Die Sicherung liegt auf
+      # demselben Volume und kann anschließend atomar zurückbenannt werden.
+      if [ -e "$DEST" ]; then
+        rm -rf "$DEST"
+      fi
+      if ! mv "$BACKUP_APP" "$DEST"; then
+        echo "✗ Vorherige Installation konnte nicht wiederhergestellt werden." >&2
+        echo "  Sicherung bleibt erhalten: $BACKUP_APP" >&2
+        return 1
+      fi
+      echo "→ Vorherige Fastra-Installation wiederhergestellt" >&2
+    elif [ ! -e "$DEST" ] || [ ! -e "$STAGED_APP" ]; then
+      # Ohne Sicherung ist nicht mehr eindeutig, welcher Stand am Ziel liegt.
+      # In diesem Fall nichts weiter löschen und die Zwischenablage erhalten.
+      echo "✗ Installationszustand ist nicht eindeutig; keine automatische Bereinigung." >&2
+      echo "  Zwischenablage bleibt erhalten: $INSTALL_STAGING" >&2
+      return 1
+    fi
+  elif [ -e "$DEST" ] && [ ! -e "$STAGED_APP" ]; then
+    # Es gab vorher keine App; eine bereits eingesetzte, aber nicht vollständig
+    # geprüfte neue Kopie darf deshalb wieder entfernt werden.
+    rm -rf "$DEST"
+  fi
+
+  INSTALL_SWAP_ACTIVE=0
+}
+
+cleanup_installation() {
+  local status=$?
+  trap - EXIT
+
+  if [ "$INSTALL_COMMITTED" -ne 1 ]; then
+    if ! restore_previous_installation; then
+      [ "$status" -ne 0 ] || status=1
+      exit "$status"
+    fi
+  fi
+
+  rm -rf "$INSTALL_STAGING"
+  exit "$status"
+}
+trap cleanup_installation EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+ditto "$APP" "$STAGED_APP"
+xcrun stapler validate "$STAGED_APP"
+spctl --assess --type execute --verbose=2 "$STAGED_APP"
+codesign --verify --deep --strict --verbose=2 "$STAGED_APP"
+./verify-portable-app.sh "$STAGED_APP" ".build/release"
+
 # Laufende Instanz des ZIELBUNDLES vorher beenden, damit das Kopieren kein
 # offenes Binary trifft. Bewusst KEIN pauschales `pkill -x Fastra` mehr:
 # Das beendete JEDE Fastra-Instanz auf dem Mac — auch Test-Builds aus
@@ -147,8 +215,15 @@ kill_target_fastra_instances() {
   fi
 }
 kill_target_fastra_instances
-rm -rf "$DEST"
-ditto "$APP" "$DEST"
+
+if [ -e "$DEST" ]; then
+  HAD_PREVIOUS_INSTALLATION=1
+fi
+INSTALL_SWAP_ACTIVE=1
+if [ "$HAD_PREVIOUS_INSTALLATION" -eq 1 ]; then
+  mv "$DEST" "$BACKUP_APP"
+fi
+mv "$STAGED_APP" "$DEST"
 
 # Nicht nur Signatur und Gatekeeper prüfen: Die tatsächlich installierte App
 # muss ohne die absoluten SwiftPM-Build-Fallbacks starten. Genau dieses Gate
@@ -158,6 +233,9 @@ xcrun stapler validate "$DEST"
 spctl --assess --type execute --verbose=2 "$DEST"
 codesign --verify --deep --strict --verbose=2 "$DEST"
 ./verify-portable-app.sh "$DEST" ".build/release"
+
+# Erst nach allen Prüfungen darf der EXIT-Trap die Sicherung verwerfen.
+INSTALL_COMMITTED=1
 
 VERSION="$(defaults read "$DEST/Contents/Info" CFBundleShortVersionString 2>/dev/null || echo "?")"
 echo

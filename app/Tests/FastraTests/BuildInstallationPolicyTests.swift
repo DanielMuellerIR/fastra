@@ -10,6 +10,10 @@ struct BuildInstallationPolicyTests {
             .deletingLastPathComponent()   // app
     }
 
+    private var repositoryDirectory: URL {
+        appDirectory.deletingLastPathComponent()
+    }
+
     @Test("build.sh installiert niemals nach Applications")
     func buildStaysInProjectRoot() throws {
         let script = try String(
@@ -73,5 +77,68 @@ struct BuildInstallationPolicyTests {
         #expect(stapler < destination)
         #expect(gatekeeper < destination)
         #expect(signature < destination)
+    }
+
+    @Test("Installer prüft eine Zwischenkopie und kann den alten Stand zurückrollen")
+    func installationStagesAndKeepsRollbackCopy() throws {
+        let script = try String(
+            contentsOf: appDirectory.appendingPathComponent("install.sh"),
+            encoding: .utf8
+        )
+
+        let stagedCopy = try #require(
+            script.range(of: "ditto \"$APP\" \"$STAGED_APP\"")
+        ).lowerBound
+        let stagedGatekeeper = try #require(
+            script.range(of: "spctl --assess --type execute --verbose=2 \"$STAGED_APP\"")
+        ).lowerBound
+        let backup = try #require(
+            script.range(of: "mv \"$DEST\" \"$BACKUP_APP\"")
+        ).lowerBound
+        let install = try #require(
+            script.range(of: "mv \"$STAGED_APP\" \"$DEST\"")
+        ).lowerBound
+
+        #expect(stagedCopy < stagedGatekeeper)
+        #expect(stagedGatekeeper < backup)
+        #expect(backup < install)
+        #expect(script.contains("restore_previous_installation"))
+    }
+
+    @Test("Release verwendet private Mountpunkte und hängt fremde Volumes nicht aus")
+    func releaseUsesPrivateMountDirectories() throws {
+        let script = try String(
+            contentsOf: appDirectory.appendingPathComponent("release.sh"),
+            encoding: .utf8
+        )
+
+        #expect(script.contains("MOUNT_DIR=\"$DMG_STAGING/mount\""))
+        #expect(script.contains("VERIFY_MOUNT=\"$DMG_STAGING/verify\""))
+        #expect(!script.contains("MOUNT_DIR=\"/Volumes/$VOL_NAME\""))
+        #expect(!script.contains("Altes Volume von früherem Lauf aushängen"))
+    }
+
+    @Test("Appcast signiert nur ein geprüftes und zur Version passendes DMG")
+    func appcastVerifiesReleaseBeforeSigning() throws {
+        let workflow = try String(
+            contentsOf: repositoryDirectory
+                .appendingPathComponent(".github/workflows/publish-appcast.yml"),
+            encoding: .utf8
+        )
+        let verification = try #require(
+            workflow.range(of: "name: Release-DMG vor Appcast prüfen")
+        ).lowerBound
+        let signing = try #require(
+            workflow.range(of: "name: Signierten Appcast erzeugen")
+        ).lowerBound
+        let verificationBlock = workflow[verification..<signing]
+
+        #expect(verification < signing)
+        #expect(verificationBlock.contains("xcrun stapler validate"))
+        #expect(verificationBlock.contains("codesign --verify --deep --strict"))
+        #expect(verificationBlock.contains("spctl --assess --type execute"))
+        #expect(verificationBlock.contains("CFBundleIdentifier"))
+        #expect(verificationBlock.contains("CFBundleShortVersionString"))
+        #expect(verificationBlock.contains("de.dm0.fastra"))
     }
 }
