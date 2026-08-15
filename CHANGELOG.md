@@ -9,6 +9,17 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.83.0] — 2026-08-15
+
+### Behoben
+
+- **Verworfene Restore-Ladevorgänge ersetzen die Tab-Wahl nicht mehr:** Wurde
+  beim Wiederherstellen mehrerer Dateien ein noch ladender Tab entwertet
+  (etwa nach „Projekt schließen“), sprang die Auswahl zeitversetzt auf den
+  beim Ladestart gemerkten Vorgängertab zurück — auch wenn inzwischen bewusst
+  eine andere Registerkarte gewählt war. Der Rücksprung passiert jetzt nur
+  noch, wenn der verworfene Lade-Platzhalter selbst noch aktiv war.
+
 ## [v1.82.0] — 2026-08-15
 
 ### Behoben

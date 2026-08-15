@@ -2505,15 +2505,28 @@ final class Workspace: ObservableObject {
                 guard let self else { return }
 
                 func discardPlaceholder() {
+                    // Nur wenn der Platzhalter beim Verwerfen selbst noch aktiv
+                    // ist, darf sein Verschwinden die Auswahl verschieben. Hat
+                    // der Nutzer während des Ladens bewusst einen anderen Tab
+                    // gewählt (z. B. beim Restore mehrerer Dateien), bliebe
+                    // ein bedingungsloser Rücksprung auf den gemerkten
+                    // Vorgängertab wie eine Geisterhand-Umschaltung zurück.
+                    let placeholderWasActive = self.activeTabID == tabID
                     self.tabs.removeAll { $0.id == tabID }
-                    if let previousActiveTabID,
-                       self.tabs.contains(where: { $0.id == previousActiveTabID }) {
-                        self.activeTabID = previousActiveTabID
-                    } else if self.tabs.isEmpty {
+                    if self.tabs.isEmpty {
                         let scratch = Self.makeScratchTab()
                         self.tabs = [scratch]
                         self.activeTabID = scratch.id
+                    } else if placeholderWasActive {
+                        if let previousActiveTabID,
+                           self.tabs.contains(where: { $0.id == previousActiveTabID }) {
+                            self.activeTabID = previousActiveTabID
+                        } else {
+                            self.activeTabID = self.tabs.first?.id
+                        }
                     } else if !self.tabs.contains(where: { $0.id == self.activeTabID }) {
+                        // Sicherheitsnetz: Zeigt die Auswahl aus anderem Grund
+                        // ins Leere, fällt sie auf den ersten Tab zurück.
                         self.activeTabID = self.tabs.first?.id
                     }
                 }

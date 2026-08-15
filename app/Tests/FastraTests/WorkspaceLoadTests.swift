@@ -208,3 +208,65 @@ func wsLoad_tabClosedBeforeCompletion() async throws {
     // completionResult darf nil geblieben sein (wenn Tab weg → Guard bricht ab).
     // Wir prüfen nur: KEIN Geister-Tab existiert.
 }
+
+// MARK: - Tests: Verworfener Platzhalter respektiert die aktuelle Tab-Wahl
+
+@Test("loadFile: verworfener Restore-Platzhalter lässt bewusst gewählten Tab aktiv")
+@MainActor
+func wsLoad_discardedPlaceholderKeepsUserChosenActiveTab() async throws {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let ws = Workspace(defaults: defaults)
+    let urlA = try writeTmpUTF8("Datei A\n")
+    let urlB = try writeTmpUTF8("Datei B\n")
+    let urlC = try writeTmpUTF8("Datei C\n")
+    defer {
+        try? FileManager.default.removeItem(at: urlA)
+        try? FileManager.default.removeItem(at: urlB)
+        try? FileManager.default.removeItem(at: urlC)
+    }
+
+    // A und B vollständig laden — wie ein Restore mehrerer Dateien, bei dem
+    // die ersten beiden schon fertig sind. Danach ist B der aktive Tab.
+    for url in [urlA, urlB] {
+        var done: Bool? = nil
+        ws.loadFile(at: url) { ok in done = ok }
+        let deadline = Date().addingTimeInterval(5)
+        while done == nil, Date() < deadline {
+            await Task.yield()
+        }
+        #expect(done == true, "Vorbereitendes Laden muss gelingen")
+    }
+
+    // C startet als noch laufender Restore-Ladevorgang; sein gemerkter
+    // Vorgängertab ist damit B.
+    var accepted = true
+    var completionResult: Bool? = nil
+    ws.loadFile(at: urlC, acceptance: FileLoadAcceptance { accepted }) { ok in
+        completionResult = ok
+    }
+    #expect(ws.tabs.first(where: { $0.url == urlC })?.isLoading == true,
+            "C muss als Lade-Platzhalter sichtbar sein")
+
+    // Der Nutzer wählt während des Ladens bewusst A; anschließend wird der
+    // Restore entwertet (wie nach „Projekt schließen“). Beide Schritte laufen
+    // synchron auf Main, bevor die Completion drankommt — kein Race.
+    let tabA = try #require(ws.tabs.first(where: { $0.url == urlA }))
+    ws.activeTabID = tabA.id
+    accepted = false
+
+    // Großzügige Frist: Unter paralleler Testlast kann der Hintergrund-Task
+    // des Ladevorgangs deutlich später drankommen als auf leerer Maschine.
+    let deadline = Date().addingTimeInterval(30)
+    while completionResult == nil, Date() < deadline {
+        await Task.yield()
+    }
+    #expect(completionResult == false, "Entwerteter Ladevorgang muss false melden")
+    #expect(ws.tabs.first(where: { $0.url == urlC }) == nil,
+            "Der verworfene Platzhalter darf nicht zurückbleiben")
+    // Kern des Fixes: Die bewusste Wahl A bleibt bestehen; vor dem Fix
+    // sprang die Auswahl hier zeitversetzt auf den Vorgängertab B zurück.
+    #expect(ws.activeTabID == tabA.id,
+            "Die bewusst gewählte Registerkarte darf nicht ersetzt werden")
+}
