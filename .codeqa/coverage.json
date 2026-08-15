@@ -4,9 +4,11 @@
   "campaign": {
     "id": "20260815T134823378515+0200",
     "token_budget": 3000000,
-    "status": "active",
+    "status": "paused",
     "started_at": "2026-08-15T13:48:23+02:00",
-    "tokens_spent": 2554650
+    "tokens_spent": 3072618,
+    "finished_at": "2026-08-15T16:25:51+02:00",
+    "finish_reason": "budget-reached"
   },
   "campaign_history": [],
   "scope": {
@@ -430,7 +432,20 @@
       "risk": "high",
       "priority": 8,
       "reason": "Diff-, Verlauf- und Konfliktansichten müssen große und mehrdeutige Git-Zustände korrekt und verständlich darstellen.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T134823378515+0200",
+        "completed_at": "2026-08-15T16:10:12+02:00",
+        "observed_head": "c0036819ac5ac14360446763f3a39145bac1e4db",
+        "content_sha256": "0b983ae1f98be7441e2132712128a84dde306156c6dfd7b094fde76ff85dd7f4",
+        "file_count": 25,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Alle 25 zugeordneten Pfade (8.034 Zeilen) vollständig geprüft. FileDiff zerlegte CRLF mit CharacterSet.newlines in zwei Trenner und erzeugte Phantom-Leerzeilen sowie falsche Zeilennummern. Auf NSString-getLineStart-basierte logische Zeilenzerlegung umgestellt, Regression ergänzt, Version 1.90.0/Build 179 und Changelog aktualisiert. Keine weiteren ausreichend belegten Fehler in strukturiertem Git-Diff, Konfliktanzeige, Verlauf, großen oder unversionierten Dateien.",
+        "tests": [
+          "Fail-first: crlfDoesNotCreatePhantomRows meldete 5 statt 3 Zeilen und 4 Issues; nach Fix grün. build.sh grün; 138 Bereichstests einschließlich realer temporärer Git-Repositories grün; localization-audit und verify-portable-app grün. Gesamtsuite: 1.885 Tests, 10 Issues: fünf erwartete SelfTestPerformance-Issues wegen laufender installierter Fastra-App (selftest.sh Exit 2) sowie zwei unter Gesamtauslastung abgelaufene reale Git-Tests; beide isoliert grün (0,801 s / 0,544 s). Hilfe in DE/EN geprüft, keine Textänderung nötig; help-audit --release grün."
+        ]
+      }
     },
     {
       "id": "app-lifecycle-window-commands",
@@ -703,9 +718,19 @@
         "app/Sources/Fastra/FileDiff.swift"
       ],
       "priority": 2,
-      "state": "pending",
+      "state": "completed",
       "noted_at": "2026-08-15T13:57:12+02:00",
-      "campaign_id": "20260815T134823378515+0200"
+      "campaign_id": "20260815T134823378515+0200",
+      "started_at": "2026-08-15T16:10:20+02:00",
+      "completed": {
+        "campaign_id": "20260815T134823378515+0200",
+        "completed_at": "2026-08-15T16:10:20+02:00",
+        "observed_head": "c0036819ac5ac14360446763f3a39145bac1e4db",
+        "summary": "Die beiden betroffenen Vorschaupfade sind CRLF-sicher: ReplacePreview seit P1 und FileDiff seit P8 verwenden logische Zeilenzerlegung über NSString.getLineStart; im Produktcode bleibt kein components(separatedBy: .newlines)-Diffpfad.",
+        "tests": [
+          "ReplacePreview-Regression sideBySideCRLFLineNumbers und neue FileDiff-Regression crlfDoesNotCreatePhantomRows grün; Bereichslauf 138 Tests grün."
+        ]
+      }
     },
     {
       "id": "open-scope-single-replace",
@@ -716,9 +741,19 @@
         "app/Sources/Fastra/OpenTabsSearch.swift"
       ],
       "priority": 1,
-      "state": "pending",
+      "state": "completed",
       "noted_at": "2026-08-15T13:58:57+02:00",
-      "campaign_id": "20260815T134823378515+0200"
+      "campaign_id": "20260815T134823378515+0200",
+      "started_at": "2026-08-15T16:25:42+02:00",
+      "completed": {
+        "campaign_id": "20260815T134823378515+0200",
+        "completed_at": "2026-08-15T16:25:43+02:00",
+        "observed_head": "7431be15ab1f08638bd035eba43d510f5238dd19",
+        "summary": "Einzel-Ersetzen im Geöffnet-Scope verwendet nun den flachen sichtbaren Treffer samt Ziel-Tab, verweigert read-only Ziele und springt erst nach dem asynchronen Neulauf auf derselben Suchbasis weiter.",
+        "tests": [
+          "Fail-first workspace_replaceActiveOpenMatchTargetsItsTab; anschließend Ziel-Tab-, read-only- und asynchroner Weitersuchen-Test sowie 68 thematisch passende Tests grün; build.sh inklusive Portabilitätsprüfung grün."
+        ]
+      }
     },
     {
       "id": "multiwindow-persisted-collections",
@@ -729,9 +764,19 @@
         "app/Sources/Fastra/SearchHistory.swift"
       ],
       "priority": 2,
-      "state": "pending",
+      "state": "completed",
       "noted_at": "2026-08-15T15:10:25+02:00",
-      "campaign_id": "20260815T134823378515+0200"
+      "campaign_id": "20260815T134823378515+0200",
+      "started_at": "2026-08-15T16:25:43+02:00",
+      "completed": {
+        "campaign_id": "20260815T134823378515+0200",
+        "completed_at": "2026-08-15T16:25:43+02:00",
+        "observed_head": "7431be15ab1f08638bd035eba43d510f5238dd19",
+        "summary": "Recent Files, Projekte, Suchverlauf und Suchordner mutieren jeweils den frisch geladenen gemeinsamen Defaults-Stand; Suchordner-UI schreibt über pfadbasierte Workspace-Methoden statt über fensterlokale Bindings.",
+        "tests": [
+          "Zwei-Workspace-Regressionen für Recent Files, Projekte und Suchverlauf sowie Hinzufügen/Umschalten/Entfernen von Suchordnern grün; 68 thematisch passende Tests grün."
+        ]
+      }
     },
     {
       "id": "markdown-first-use-window-routing",
