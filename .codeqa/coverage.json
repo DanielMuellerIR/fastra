@@ -193,7 +193,20 @@
       "risk": "critical",
       "priority": 3,
       "reason": "Git-Prozesse und schreibende Git-Aktionen müssen asynchron, abbrechbar und gegen überraschende Änderungen abgesichert bleiben.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T134823378515+0200",
+        "completed_at": "2026-08-15T14:57:16+02:00",
+        "observed_head": "9b1d57cf0a240dc5b3baae7edb125a2f20b2405c",
+        "content_sha256": "7020c1ca5328e9a9a34c6e8ef4a189d31d776b9816f850514a47836d65d2ccab",
+        "file_count": 26,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Git-Ausführung, Koordination, Status, Fetch/Pull/Push, Branch- und Konfliktmutationen sowie die zugehörigen Regressionen vollständig geprüft. Normale Prozessenden räumen verbliebene Kindprozesse auf; geerbte Trace-Schalter werden entfernt; unterschiedliche Prozessrichtlinien werden nicht dedupliziert; der eigenständige Force Push zeigt und bindet die effektive Adresse und stoppt bei Adresswechsel.",
+        "tests": [
+          "Fail-before: abgekoppelter Helfer lebte weiter, Trace-Variablen blieben erhalten, verschieden konfigurierte Reads wurden dedupliziert und ein Adresswechsel leitete Force Push um. Danach build.sh samt Portabilitätsprüfung, 298 Git-Tests, Lokalisierungs- und Hilfe-Audit grün. Vollsuite: 1854 Tests, zwei lastbedingte 20-s-Ausreißer; beide isoliert grün in 1,221 s und 1,490 s. Fenster-Selbsttests nicht gegen die laufende installierte Nutzerinstanz ausgeführt."
+        ]
+      }
     },
     {
       "id": "workspace-session-state",
