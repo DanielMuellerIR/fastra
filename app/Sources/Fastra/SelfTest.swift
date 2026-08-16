@@ -17219,12 +17219,21 @@ enum SelfTest {
     }
 
     /// Wartet nicht auf eine geschätzte Zielposition, sondern bis die
-    /// Zielzeile wirklich im sichtbaren TextView-Ausschnitt liegt.
+    /// Zielzeile wirklich im sichtbaren TextView-Ausschnitt liegt — UND die
+    /// Geometrie zur Ruhe gekommen ist. Ohne die Ruhe-Prüfung klickte der
+    /// Test unter Volllast mitten in die noch laufende Scroll-/Layout-
+    /// Bewegung des langen Dokuments: Zwischen Koordinatenberechnung und
+    /// Event-Zustellung verschob sich der Text, und der Klick traf eine
+    /// Nachbarzeile (beobachtet 2026-08-16 im Gesamtlauf: Cursor auf 254
+    /// statt 246). `lastSettledY` trägt dafür die Messung des vorigen
+    /// Poll-Durchgangs: Erst wenn zwei Durchgänge dieselbe Position sehen,
+    /// gilt die Bewegung als beendet.
     private static func pollMarkdownSourceClickReady(
         workspace: Workspace,
         directory: URL,
         targetLine: Int,
-        tick: Int
+        tick: Int,
+        lastSettledY: (scrollY: CGFloat, lineMidY: CGFloat)? = nil
     ) {
         guard let window = NSApp.windows.first(where: {
             $0.frameAutosaveName != SearchWindow.frameAutosaveName
@@ -17248,6 +17257,27 @@ enum SelfTest {
 
         if textView.visibleRect.minY <= rect.midY,
            rect.midY <= textView.visibleRect.maxY {
+            // Zielzeile ist sichtbar — aber erst klicken, wenn sich weder
+            // die Scrollposition noch die Zeilen-Geometrie seit dem letzten
+            // Poll-Durchgang bewegt hat. Sonst veralten die gleich
+            // berechneten Klick-Koordinaten, bevor AppKit das Event zustellt.
+            let current = (scrollY: textView.visibleRect.minY, lineMidY: rect.midY)
+            guard let last = lastSettledY,
+                  abs(last.scrollY - current.scrollY) < 0.5,
+                  abs(last.lineMidY - current.lineMidY) < 0.5 else {
+                if tick >= 100 {
+                    try? FileManager.default.removeItem(at: directory)
+                    finish(false, "Quelltext-Scroll kam nicht zur Ruhe")
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    pollMarkdownSourceClickReady(
+                        workspace: workspace, directory: directory,
+                        targetLine: targetLine, tick: tick + 1,
+                        lastSettledY: current
+                    )
+                }
+                return
+            }
             window.makeKeyAndOrderFront(nil)
             let localPoint = NSPoint(
                 x: max(rect.minX + 12, textView.visibleRect.minX + 12),
