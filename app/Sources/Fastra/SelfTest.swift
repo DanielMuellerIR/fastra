@@ -129,6 +129,10 @@ enum SelfTest {
     /// durchlaufen haben. Der Selbsttest lebt in einem eigenen Prozess; der
     /// Zustand kann deshalb nicht in einen anderen Lauf hineinreichen.
     private static var gitPushButtonExpectedSourcePrefix = ""
+    /// Überlauf der Tab-Leiste im Moment des `tabcompare`-Shift-Klicks. Steht
+    /// im Ergebnistext, damit sichtbar bleibt, ob der Test den Ziel-Tab wirklich
+    /// erst sichtbar scrollen musste.
+    private static var tabCompareStripOverflow: CGFloat = 0
     private static var gitPushButtonConfirmedRemotes: Set<String> = []
 
     /// Setzt Shot-spezifische UI-Fixtures noch vor dem Aufbau der ersten
@@ -2783,18 +2787,18 @@ enum SelfTest {
                     }
 
                     do {
-                        let idleID = "documentTab-idle-\(leftTab.id.uuidString)"
-                        guard let idleTab = markerView(id: idleID, in: content) else {
+                        // Vorbedingung bewusst herstellen: Passen beide Tabs
+                        // nicht gleichzeitig in die Leiste, muss der Test den
+                        // Ziel-Tab selbst sichtbar scrollen. Ob das überhaupt
+                        // vorkommt, hing bisher an der Fensterbreite, die ein
+                        // früherer Test im Lauf hinterlassen hatte — deshalb
+                        // fiel der Fehler nur in bestimmten Reihenfolgen auf.
+                        tabCompareStripOverflow = scrollTabStripToEnd(in: content)
+                        if let failure = shiftClickTab(
+                            leftTab.id, in: window, content: content
+                        ) {
                             try? FileManager.default.removeItem(at: directory)
-                            finish(false, "AppKit-Marker des zweiten Tabs fehlt")
-                        }
-                        guard sendTabClick(
-                                on: idleTab,
-                                in: window,
-                                modifiers: .shift
-                              ) else {
-                            try? FileManager.default.removeItem(at: directory)
-                            finish(false, "Shift-Mausereignis nicht erzeugbar")
+                            finish(false, failure)
                         }
                         pollShiftSelectedTabs(
                             ws,
@@ -2810,14 +2814,110 @@ enum SelfTest {
         }
     }
 
+    /// Scrollt die Tab-Leiste ans rechte Ende, sofern sie überhaupt überläuft.
+    /// Dient nur dazu, den weggescrollten Ziel-Tab reproduzierbar herzustellen.
+    /// Rückgabe: der erreichte Überlauf in Punkten (0 = alles passt nebeneinander).
+    @discardableResult
+    private static func scrollTabStripToEnd(in content: NSView) -> CGFloat {
+        var scrollView: NSScrollView?
+        func findStrip(_ view: NSView) {
+            guard scrollView == nil else { return }
+            if view.accessibilityIdentifier().hasPrefix("documentTabFrame-") {
+                scrollView = view.enclosingScrollView
+                return
+            }
+            view.subviews.forEach(findStrip)
+        }
+        findStrip(content)
+        guard let scrollView, let documentView = scrollView.documentView else {
+            return 0
+        }
+        let clip = scrollView.contentView
+        let maximumX = documentView.bounds.width - clip.bounds.width
+        guard maximumX > 1 else { return 0 }      // kein Überlauf, nichts zu tun
+        clip.scroll(to: NSPoint(x: maximumX, y: clip.bounds.origin.y))
+        scrollView.reflectScrolledClipView(clip)
+        scrollView.window?.layoutIfNeeded()
+        return maximumX
+    }
+
+    /// Scrollt die Tab-Leiste so weit, dass der Tab mit `id` vollständig im
+    /// sichtbaren Bereich liegt — genau das, was ein Nutzer vor dem Klick auf
+    /// einen weit rechts liegenden Tab selbst tut. Der reguläre AppKit-Weg
+    /// (`contentView.scroll` + `reflectScrolledClipView`) ist der einzige, der
+    /// die SwiftUI-ScrollView im Test wirklich bewegt (siehe AGENTS.md).
+    /// `false` heißt: Marker oder ScrollView noch nicht da.
+    @discardableResult
+    private static func scrollTabIntoView(id: UUID, in content: NSView) -> Bool {
+        guard let frameMarker = markerView(
+                id: "documentTabFrame-\(id.uuidString)", in: content),
+              let scrollView = frameMarker.enclosingScrollView,
+              let documentView = scrollView.documentView else {
+            return false
+        }
+        let clip = scrollView.contentView
+        let tabRect = frameMarker.convert(frameMarker.bounds, to: documentView)
+        let maximumX = max(0, documentView.bounds.width - clip.bounds.width)
+        var origin = clip.bounds.origin
+        if tabRect.minX < clip.bounds.minX {
+            origin.x = max(0, tabRect.minX - 8)
+        } else if tabRect.maxX > clip.bounds.maxX {
+            origin.x = min(maximumX, tabRect.maxX - clip.bounds.width + 8)
+        } else {
+            return true                       // liegt bereits vollständig frei
+        }
+        clip.scroll(to: origin)
+        scrollView.reflectScrolledClipView(clip)
+        // Ohne erzwungenes Layout misst der Aufrufer gleich darauf noch die
+        // Position VOR dem Scrollen und klickt daneben.
+        scrollView.window?.layoutIfNeeded()
+        return true
+    }
+
+    /// Klickt mittig auf einen Tab-Marker. Rückgabe `nil` = geklickt, sonst der
+    /// Fehlertext.
+    ///
+    /// Der Klickpunkt muss zwingend IN der sichtbaren Tab-Leiste liegen: Ein
+    /// weggescrollter Tab behält seine NSView im Baum, sein Mittelpunkt liegt
+    /// dann aber neben der Leiste. Ein blind gesendeter Klick traf dort am
+    /// 2026-08-16 den Home-Knopf der Titelleiste, der prompt beide Fixture-Tabs
+    /// verwarf — der Test meldete „Tabs verschwunden" statt „danebengeklickt".
     private static func sendTabClick(
         on view: NSView,
         in window: NSWindow,
         modifiers: NSEvent.ModifierFlags
-    ) -> Bool {
+    ) -> String? {
         let local = NSPoint(x: view.bounds.midX, y: view.bounds.midY)
         let point = view.convert(local, to: nil)
-        return sendMouseClick(at: point, in: window, modifiers: modifiers)
+        if let clip = view.enclosingScrollView?.contentView {
+            let strip = clip.convert(clip.bounds, to: nil)
+            guard strip.insetBy(dx: -1, dy: -1).contains(point) else {
+                return "Klickpunkt \(point) liegt außerhalb der sichtbaren "
+                    + "Tab-Leiste \(strip)"
+            }
+        }
+        guard sendMouseClick(at: point, in: window, modifiers: modifiers) else {
+            return "Mausereignis nicht erzeugbar"
+        }
+        return nil
+    }
+
+    /// Kompletter Shift-Klick auf den Tab `id`: erst sichtbar scrollen, dann
+    /// den Auswahl-Marker klicken. Rückgabe `nil` = geklickt.
+    private static func shiftClickTab(
+        _ id: UUID,
+        in window: NSWindow,
+        content: NSView
+    ) -> String? {
+        guard scrollTabIntoView(id: id, in: content) else {
+            return "Tab-Leiste oder Geometrie-Marker des zweiten Tabs fehlt"
+        }
+        guard let idleTab = markerView(
+            id: "documentTab-idle-\(id.uuidString)", in: content
+        ) else {
+            return "AppKit-Marker des zweiten Tabs fehlt"
+        }
+        return sendTabClick(on: idleTab, in: window, modifiers: .shift)
     }
 
     /// Sendet einen synthetischen Linksklick. Standardweg ist `window.sendEvent`
@@ -2929,11 +3029,15 @@ enum SelfTest {
             // beobachtet unter der vollen Selbsttest-Suite, während der Test
             // einzeln verlässlich grün lief. Statt an einer festen Frist zu
             // scheitern, die Geometrie neu messen und den Klick wiederholen.
-            guard clickAttempts < 4,
-                  let idleTab = content.flatMap({
-                      markerView(id: "documentTab-idle-\(leftID.uuidString)", in: $0)
-                  }),
-                  sendTabClick(on: idleTab, in: window, modifiers: .shift) else {
+            let retryFailure: String?
+            if clickAttempts < 4 {
+                retryFailure = content.map {
+                    shiftClickTab(leftID, in: window, content: $0)
+                } ?? "Fensterinhalt nicht erreichbar"
+            } else {
+                retryFailure = "vier Klickversuche blieben ohne Wirkung"
+            }
+            guard retryFailure == nil else {
                 // Diagnose VOR dem Aufräumen erheben — der Test löscht den
                 // Fixture-Ordner selbst, danach misst jede Prüfung nur noch
                 // die eigene Aufräumarbeit.
@@ -2960,7 +3064,8 @@ enum SelfTest {
                 }.count
                 finish(
                     false,
-                    "Shift-Klick nach \(clickAttempts) Versuch(en): "
+                    "Shift-Klick nach \(clickAttempts) Versuch(en) "
+                        + "(\(retryFailure ?? "-")): "
                         + "aktiv=\(ws.activeTabID?.uuidString ?? "nil"), "
                         + "Vergleich=\(ws.comparisonTabID?.uuidString ?? "nil"), "
                         + "Marker aktuell=\(currentMarker != nil), "
@@ -3023,18 +3128,23 @@ enum SelfTest {
             if leftReady, rightReady {
                 ws.showCompareFilesDialog = false
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    guard let root = window.contentView,
-                          let comparisonTab = markerView(
-                            id: "documentTab-comparison-\(leftID.uuidString)",
-                            in: root
-                          ),
-                          sendTabClick(
-                            on: comparisonTab,
-                            in: window,
-                            modifiers: []
-                          ) else {
+                    guard let root = window.contentView else {
                         try? FileManager.default.removeItem(at: directory)
-                        finish(false, "normaler Folgeklick nicht ausführbar")
+                        finish(false, "Fensterinhalt für den Folgeklick fehlt")
+                    }
+                    scrollTabIntoView(id: leftID, in: root)
+                    guard let comparisonTab = markerView(
+                        id: "documentTab-comparison-\(leftID.uuidString)",
+                        in: root
+                    ) else {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "Marker des markierten Tabs fehlt")
+                    }
+                    if let failure = sendTabClick(
+                        on: comparisonTab, in: window, modifiers: []
+                    ) {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "normaler Folgeklick nicht ausführbar: \(failure)")
                     }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                         let cleared = ws.activeTabID == leftID
@@ -3044,7 +3154,9 @@ enum SelfTest {
                             cleared,
                             cleared
                                 ? "Shift-Klick behält Primärtab; zwei Markierungsrollen; "
-                                    + "Dialog links/rechts vorgefüllt; Normalklick räumt auf"
+                                    + "Dialog links/rechts vorgefüllt; Normalklick räumt auf "
+                                    + "(Leisten-Überlauf beim Klick: "
+                                    + "\(Int(tabCompareStripOverflow)) pt)"
                                 : "Normalklick räumte die Zwei-Tab-Auswahl nicht auf"
                         )
                     }

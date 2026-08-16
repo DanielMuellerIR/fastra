@@ -285,6 +285,19 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   `NSApp.currentEvent` NICHT. Liest der geklickte Code Modifier oder
   Klickzahl daraus, muss der Test die Events mit `NSApp.postEvent` in die
   echte Event-Queue legen (`sendMouseClick(..., viaApp: true)`).
+- **Ein weggescrollter Tab behält seine NSView.** Sein Marker liegt dann
+  außerhalb der sichtbaren Tab-Leiste, und ein daraus berechneter
+  synthetischer Klick landet auf einem ganz anderen Bedienelement. Am
+  2026-08-16 traf `tabcompare` in einem schmalen Fenster so den Home-Knopf
+  der Titelleiste: `returnToWelcome()` verwarf beide Fixture-Tabs, und der
+  Test meldete „Tabs verschwunden" statt „danebengeklickt". Ein Tab-Klick
+  scrollt sein Ziel deshalb zuerst sichtbar (`scrollTabIntoView`) und prüft
+  danach, dass der Klickpunkt wirklich in der Leiste liegt. Die Fensterbreite
+  entscheidet, ob der Fall auftritt — und die erbt jeder Testprozess über das
+  gemeinsame Test-Home aus dem Rahmen (`NSWindow Frame main`), den ein
+  früherer Test im selben Lauf hinterlassen hat. Ein Fenstertest, dessen
+  Ergebnis von der Fensterbreite abhängt, muss seine Vorbedingung deshalb
+  selbst herstellen, statt sie zu erben.
 - SwiftUIs `TapGesture(count: 2).exclusively(before: TapGesture(count: 1))`
   reagierte in der Änderungen-Liste nicht auf synthetische Klicks — der
   Einzelklick-Zweig feuerte nie, obwohl `hitTest` die richtige View traf.
