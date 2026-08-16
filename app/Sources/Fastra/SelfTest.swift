@@ -2782,27 +2782,29 @@ enum SelfTest {
                         finish(false, "Fixture-Tabs oder eindeutiger aktueller Tab fehlen")
                     }
 
-                    let idleID = "documentTab-idle-\(leftTab.id.uuidString)"
-                    guard let idleTab = markerView(id: idleID, in: content) else {
-                        try? FileManager.default.removeItem(at: directory)
-                        finish(false, "AppKit-Marker des zweiten Tabs fehlt")
+                    do {
+                        let idleID = "documentTab-idle-\(leftTab.id.uuidString)"
+                        guard let idleTab = markerView(id: idleID, in: content) else {
+                            try? FileManager.default.removeItem(at: directory)
+                            finish(false, "AppKit-Marker des zweiten Tabs fehlt")
+                        }
+                        guard sendTabClick(
+                                on: idleTab,
+                                in: window,
+                                modifiers: .shift
+                              ) else {
+                            try? FileManager.default.removeItem(at: directory)
+                            finish(false, "Shift-Mausereignis nicht erzeugbar")
+                        }
+                        pollShiftSelectedTabs(
+                            ws,
+                            window: window,
+                            directory: directory,
+                            leftID: leftTab.id,
+                            rightID: rightTab.id,
+                            tick: 0
+                        )
                     }
-                    guard sendTabClick(
-                            on: idleTab,
-                            in: window,
-                            modifiers: .shift
-                          ) else {
-                        try? FileManager.default.removeItem(at: directory)
-                        finish(false, "Shift-Mausereignis nicht erzeugbar")
-                    }
-                    pollShiftSelectedTabs(
-                        ws,
-                        window: window,
-                        directory: directory,
-                        leftID: leftTab.id,
-                        rightID: rightTab.id,
-                        tick: 0
-                    )
                 }
             }
         }
@@ -2885,7 +2887,8 @@ enum SelfTest {
         directory: URL,
         leftID: UUID,
         rightID: UUID,
-        tick: Int
+        tick: Int,
+        clickAttempts: Int = 1
     ) {
         let content = window.contentView
         let currentMarker = content.flatMap {
@@ -2919,15 +2922,72 @@ enum SelfTest {
             )
             return
         }
-        guard tick < 30 else {
-            try? FileManager.default.removeItem(at: directory)
-            finish(
-                false,
-                "Shift-Klick: aktiv=\(ws.activeTabID?.uuidString ?? "nil"), "
-                    + "Vergleich=\(ws.comparisonTabID?.uuidString ?? "nil"), "
-                    + "Marker aktuell=\(currentMarker != nil), "
-                    + "zweiter=\(comparisonMarker != nil)"
-            )
+        if tick >= 30 {
+            // Die Tab-Leiste kann zum Klickzeitpunkt noch layouten. Der einmal
+            // berechnete Punkt zeigt dann auf die alte Position des Tabs, und
+            // das synthetische Ereignis landet neben dem gemeinten Tab —
+            // beobachtet unter der vollen Selbsttest-Suite, während der Test
+            // einzeln verlässlich grün lief. Statt an einer festen Frist zu
+            // scheitern, die Geometrie neu messen und den Klick wiederholen.
+            guard clickAttempts < 4,
+                  let idleTab = content.flatMap({
+                      markerView(id: "documentTab-idle-\(leftID.uuidString)", in: $0)
+                  }),
+                  sendTabClick(on: idleTab, in: window, modifiers: .shift) else {
+                // Diagnose VOR dem Aufräumen erheben — der Test löscht den
+                // Fixture-Ordner selbst, danach misst jede Prüfung nur noch
+                // die eigene Aufräumarbeit.
+                let fixtureExists = FileManager.default
+                    .fileExists(atPath: directory.path)
+                let fixtureCount = (try? FileManager.default
+                    .contentsOfDirectory(atPath: directory.path).count) ?? -1
+                try? FileManager.default.removeItem(at: directory)
+                // Welche Tab-Marker liegen im geprüften Fenster wirklich?
+                // Ohne diese Liste ist nicht unterscheidbar, ob der Klick
+                // danebenging oder ob die Prüfung im falschen Fenster sucht.
+                var markerIDs: [String] = []
+                func collectMarkers(_ view: NSView) {
+                    let id = view.accessibilityIdentifier()
+                    if id.hasPrefix("documentTab-") {
+                        markerIDs.append(id)
+                    }
+                    view.subviews.forEach(collectMarkers)
+                }
+                content.map(collectMarkers)
+                let windowCount = NSApp.windows.filter {
+                    $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                        && $0.isVisible && $0.contentView != nil
+                }.count
+                finish(
+                    false,
+                    "Shift-Klick nach \(clickAttempts) Versuch(en): "
+                        + "aktiv=\(ws.activeTabID?.uuidString ?? "nil"), "
+                        + "Vergleich=\(ws.comparisonTabID?.uuidString ?? "nil"), "
+                        + "Marker aktuell=\(currentMarker != nil), "
+                        + "zweiter=\(comparisonMarker != nil), "
+                        + "Tabs=\(ws.tabs.count) "
+                        + "[\(ws.tabs.map { $0.title }.joined(separator: ", "))], "
+                        + "links noch da=\(ws.tabs.contains { $0.id == leftID }), "
+                        + "rechts noch da=\(ws.tabs.contains { $0.id == rightID }), "
+                        + "Fixture-Ordner=\(fixtureExists) "
+                        + "mit \(fixtureCount) Dateien, "
+                        + "Fenster=\(windowCount), "
+                        + "Fenster-Marker=\(markerIDs.count): "
+                        + "\(markerIDs.prefix(6).joined(separator: " | "))"
+                )
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                pollShiftSelectedTabs(
+                    ws,
+                    window: window,
+                    directory: directory,
+                    leftID: leftID,
+                    rightID: rightID,
+                    tick: 0,
+                    clickAttempts: clickAttempts + 1
+                )
+            }
+            return
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             pollShiftSelectedTabs(
@@ -2936,7 +2996,8 @@ enum SelfTest {
                 directory: directory,
                 leftID: leftID,
                 rightID: rightID,
-                tick: tick + 1
+                tick: tick + 1,
+                clickAttempts: clickAttempts
             )
         }
     }
@@ -12490,10 +12551,25 @@ enum SelfTest {
 
     /// Sichtbares Hauptfenster (nicht der Suchdialog) für AX-Prüfungen.
     private static func mainWindowForAXChecks() -> NSWindow? {
-        NSApp.windows.first {
+        let candidates = NSApp.windows.filter {
             $0.frameAutosaveName != SearchWindow.frameAutosaveName
                 && $0.isVisible && $0.contentView != nil
         }
+        // `NSApp.windows` ist NICHT nach Vordergrund sortiert (siehe
+        // AGENTS.md). Hat ein früherer Test im selben Lauf zwei Fenster
+        // wiederhergestellt, liefert `first` irgendeines davon — die Prüfung
+        // sucht die Tabs aus `Workspace.shared` dann in der Ansicht eines
+        // FREMDEN Fensters und findet dort keinen einzigen Marker. Genau so
+        // fiel `tabcompare` nur im Gesamtlauf aus, einzeln nie. Deshalb
+        // zuerst das Fenster nehmen, das wirklich zu `Workspace.shared`
+        // gehört; ohne Zuordnung bleibt es beim bisherigen Verhalten.
+        if let shared = Workspace.shared,
+           let bound = candidates.first(where: {
+               WorkspaceWindowRegistry.workspace(for: $0) === shared
+           }) {
+            return bound
+        }
+        return candidates.first
     }
 
     /// Prüft im ECHTEN Fenster (Etappe 1 Wunschpaket 2026-07b):
