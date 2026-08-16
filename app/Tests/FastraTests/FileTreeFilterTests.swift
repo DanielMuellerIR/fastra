@@ -64,7 +64,15 @@ func detachedFilterScanCancellation() async {
     let scan = Task {
         await FileTreeFilter.runCancellableScan {
             probe.markStarted()
-            for _ in 0..<500 {
+            // Der Körper muss so lange leben, bis das `cancel()` des Tests
+            // ihn erreicht — und das kann in der vollen parallelen Suite
+            // beliebig verzögert sein. Mit einer festen kurzen Schleife
+            // (500 × 1 ms) lief er unter Last schon vor dem Abbruch aus,
+            // und die Beobachtung fehlte (reproduziert 2026-08-16).
+            // Funktioniert die Weitergabe, endet der Scan in Millisekunden;
+            // die Frist begrenzt nur den roten Pfad.
+            let deadline = Date().addingTimeInterval(30)
+            while Date() < deadline {
                 if Task.isCancelled {
                     probe.markCancellationObserved()
                     return nil
@@ -75,10 +83,9 @@ func detachedFilterScanCancellation() async {
         }
     }
 
-    for _ in 0..<100 where !probe.hasStarted {
-        try? await Task.sleep(for: .milliseconds(5))
-    }
-    #expect(probe.hasStarted)
+    // Auch der Start des detachten Scans kann unter Last anstehen; die Frist
+    // ist wieder nur eine Hänge-Erkennung.
+    #expect(await waitUntil(timeout: 30) { probe.hasStarted })
     scan.cancel()
     _ = await scan.value
     #expect(probe.hasObservedCancellation)

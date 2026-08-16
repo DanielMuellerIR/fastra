@@ -802,6 +802,14 @@ enum GitRunner {
                                     in directory: URL,
                                     timeout: TimeInterval = 30,
                                     postSubmitTimeout: TimeInterval = 5,
+                                    // Frist zwischen SIGTERM und SIGKILL. Der Produktwert bleibt
+                                    // bewusst knapp (0,5 s). Tests, die einen laufenden Git-Prozess
+                                    // per Timeout/Abbruch beenden und danach auf das VON GIT SELBST
+                                    // durchgeführte Lock-Aufräumen warten, brauchen eine längere
+                                    // Frist: Wird git unter Volllast vor seinem SIGTERM-Handler hart
+                                    // gekillt, bleibt sein Lock dauerhaft liegen — das ist die
+                                    // dokumentierte Ausnahme, kein Aufräumfehler.
+                                    terminationGracePeriod: TimeInterval = 0.5,
                                     verify: @escaping (@escaping (Bool) -> Void) -> Void,
                                     commitBoundaryReached: @escaping () -> Void = {},
                                     timeoutTrigger: ((@escaping () -> Void) -> Void)? = nil,
@@ -812,7 +820,8 @@ enum GitRunner {
                                     postSubmitProcessGroups: (([pid_t]) -> Void)? = nil,
                                     completion: @escaping (GitExecutionOutcome, Bool) -> Void)
         -> GitCancelling {
-        let policy = GitExecutionPolicy(timeout: timeout, terminationGracePeriod: 0.5)
+        let policy = GitExecutionPolicy(timeout: timeout,
+                                        terminationGracePeriod: terminationGracePeriod)
         let cancellation = GitLockTransactionCancellation()
         let indexToken = GitCancellationToken(
             terminationGracePeriod: policy.terminationGracePeriod

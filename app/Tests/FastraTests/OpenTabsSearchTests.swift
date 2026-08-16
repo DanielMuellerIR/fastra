@@ -288,25 +288,28 @@ func workspace_replaceActiveOpenMatchFindsAgain() async throws {
     ws.findPattern = "MARKER"
     ws.replacePattern = "ERSETZT"
 
-    var deadline = Date().addingTimeInterval(5)
-    while !(ws.openTotalMatches == 2 && !ws.bufferSearching
-            && ws.visibleBufferResultsOptions == ws.currentSearchOptions),
-          Date() < deadline {
-        try await Task.sleep(for: .milliseconds(10))
-    }
-    #expect(ws.openTotalMatches == 2, "Der erste Geöffnet-Lauf hat nicht geliefert")
+    // Die Frist ist eine Hänge-Erkennung, keine Laufzeitbehauptung: Im ruhigen
+    // Lauf liefert der Runner in Millisekunden. In der vollen parallelen Suite
+    // konkurrieren der 120-ms-Debounce (Main-Queue) und der detachte Suchtask
+    // aber mit der Arbeit aller anderen Tests; 5 Sekunden rissen dabei
+    // lastabhängig (2026-08-16 mehrfach reproduziert), obwohl der Lauf danach
+    // korrekt konvergierte. 30 Sekunden machen echtes Steckenbleiben weiter
+    // sicher rot, ohne unter Last falsch zu alarmieren.
+    #expect(await waitUntil(timeout: 30) {
+        ws.openTotalMatches == 2 && !ws.bufferSearching
+            && ws.visibleBufferResultsOptions == ws.currentSearchOptions
+    }, "Der erste Geöffnet-Lauf hat nicht geliefert")
+    #expect(ws.openTotalMatches == 2)
 
     ws.activeMatchIndex = 1
     ws.replaceActiveMatch()
     #expect(ws.tabs[1].content == "ERSETZT zwei")
 
-    deadline = Date().addingTimeInterval(5)
-    while !(ws.openTotalMatches == 1 && !ws.bufferSearching
-            && ws.visibleBufferResultsOptions == ws.currentSearchOptions),
-          Date() < deadline {
-        try await Task.sleep(for: .milliseconds(10))
-    }
-    #expect(ws.openTotalMatches == 1, "Der Neulauf nach Einzel-Ersetzen fehlt")
+    #expect(await waitUntil(timeout: 30) {
+        ws.openTotalMatches == 1 && !ws.bufferSearching
+            && ws.visibleBufferResultsOptions == ws.currentSearchOptions
+    }, "Der Neulauf nach Einzel-Ersetzen fehlt")
+    #expect(ws.openTotalMatches == 1)
     #expect(ws.activeMatchIndex == 0)
     #expect(ws.activeTabID == ws.tabs[0].id,
             "Nach dem letzten Treffer muss der verbleibende Treffer aktiv sein")
@@ -363,13 +366,11 @@ func workspace_runnerRestoresOpenScopeApplyGate() async throws {
     // oben stößt einen verzögerten Lauf an. Liegen zwei Zuweisungen unter Last
     // mehr als 120 ms auseinander, gibt es ZWEI Läufe — und die Trefferzahl des
     // ersten steht schon da, während der zweite noch aussteht.
-    let deadline = Date().addingTimeInterval(5)
-    while !(ws.openTotalMatches == 1 && !ws.bufferSearching
-            && ws.visibleBufferResultsOptions == ws.currentSearchOptions),
-          Date() < deadline {
-        try await Task.sleep(for: .milliseconds(10))
-    }
-    #expect(ws.openTotalMatches == 1, "Der Such-Runner hat nicht geliefert")
+    // 30 s Frist = Hänge-Erkennung unter voller Parallellast (siehe Test oben).
+    #expect(await waitUntil(timeout: 30) {
+        ws.openTotalMatches == 1 && !ws.bufferSearching
+            && ws.visibleBufferResultsOptions == ws.currentSearchOptions
+    }, "Der Such-Runner hat nicht geliefert")
     #expect(ws.visibleBufferResultsOptions == ws.currentSearchOptions,
             "Der Geöffnet-Lauf hat seine Vorschau nicht als aktuell ausgewiesen")
 
@@ -388,14 +389,12 @@ func workspace_runnerRestoresFileScopeApplyGate() async throws {
     ws.findPattern = "MARKER"
     ws.replacePattern = "ERSETZT"
 
-    // Gleiche vollständige Bedingung wie im Geöffnet-Fall (siehe dort).
-    let deadline = Date().addingTimeInterval(5)
-    while !(ws.bufferTotalMatches == 1 && !ws.bufferSearching
-            && ws.visibleBufferResultsOptions == ws.currentSearchOptions),
-          Date() < deadline {
-        try await Task.sleep(for: .milliseconds(10))
-    }
-    #expect(ws.bufferTotalMatches == 1, "Der Such-Runner hat nicht geliefert")
+    // Gleiche vollständige Bedingung wie im Geöffnet-Fall (siehe dort);
+    // 30 s Frist = Hänge-Erkennung unter voller Parallellast (siehe oben).
+    #expect(await waitUntil(timeout: 30) {
+        ws.bufferTotalMatches == 1 && !ws.bufferSearching
+            && ws.visibleBufferResultsOptions == ws.currentSearchOptions
+    }, "Der Such-Runner hat nicht geliefert")
     #expect(ws.visibleBufferResultsOptions == ws.currentSearchOptions,
             "Der Datei-Lauf hat seine Vorschau nicht als aktuell ausgewiesen")
 

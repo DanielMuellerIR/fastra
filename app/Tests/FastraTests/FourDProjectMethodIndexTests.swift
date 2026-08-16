@@ -10,6 +10,16 @@ import Foundation
 import Testing
 @testable import Fastra
 
+/// Warte-Frist der Controller-Tests: eine Hänge-Erkennung, keine
+/// Laufzeitbehauptung. Der Index-Scan läuft im Produkt bewusst als
+/// `Task.detached(priority: .utility)` — in der vollen parallelen Suite kann
+/// so ein niedrig priorisierter Task hinter der `userInitiated`-Arbeit aller
+/// anderen Tests lange anstehen. 15 Sekunden rissen dabei lastabhängig
+/// (beobachtet 2026-08-16 am Warten auf die dritte Zustellung), obwohl der
+/// Scan danach korrekt lief. 30 Sekunden halten echtes Steckenbleiben weiter
+/// sicher rot.
+private let fourDIndexWait: TimeInterval = 30
+
 @Test("Index liest 4dm-Dateinamen case-insensitiv aus dem Methodenordner")
 func fourDMethodIndex_readsProjectMethods() throws {
     let root = FileManager.default.temporaryDirectory
@@ -46,7 +56,7 @@ func fourDProjectIndexController_initialScan() async throws {
         deliveries.append(snapshot)
     }
 
-    #expect(await waitUntil(timeout: 15) { deliveries.count == 1 })
+    #expect(await waitUntil(timeout: fourDIndexWait) { deliveries.count == 1 })
     let snapshot = try #require(deliveries.last)
     #expect(snapshot.projectMethodNames == ["alpha", "zeta"])
     #expect(snapshot.projectMethodDisplayNames == ["Alpha", "zeta"])
@@ -77,7 +87,7 @@ func fourDProjectIndexController_debouncesBundledChanges() async throws {
     controller.start(projectURL: root, projectGeneration: 1) { _, _, snapshot in
         deliveries.append(snapshot)
     }
-    #expect(await waitUntil(timeout: 15) { deliveries.count == 1 })
+    #expect(await waitUntil(timeout: fourDIndexWait) { deliveries.count == 1 })
 
     let projectMethods = root.appendingPathComponent("Project/Sources/Methods")
     let componentMethods = root.appendingPathComponent(
@@ -94,7 +104,7 @@ func fourDProjectIndexController_debouncesBundledChanges() async throws {
     watcher.refresh()
     watcher.refresh()
 
-    #expect(await waitUntil(timeout: 15) { deliveries.count == 2 })
+    #expect(await waitUntil(timeout: fourDIndexWait) { deliveries.count == 2 })
     try await Task.sleep(nanoseconds: 80_000_000)
     #expect(scanner.count == 2)
     #expect(deliveries.count == 2)
@@ -123,12 +133,12 @@ func fourDProjectIndexController_switchDuringScan() async throws {
     controller.start(projectURL: first, projectGeneration: 1) { root, _, _ in
         deliveredRoots.append(root)
     }
-    #expect(await waitUntil(timeout: 15) { scanner.blockedScanStarted })
+    #expect(await waitUntil(timeout: fourDIndexWait) { scanner.blockedScanStarted })
     controller.start(projectURL: second, projectGeneration: 2) { root, _, snapshot in
         #expect(snapshot.projectMethodNames == ["second"])
         deliveredRoots.append(root)
     }
-    #expect(await waitUntil(timeout: 15) {
+    #expect(await waitUntil(timeout: fourDIndexWait) {
         deliveredRoots == [second.canonicalFileURL]
     })
     scanner.releaseBlockedScan()
@@ -151,7 +161,7 @@ func fourDProjectIndexController_stopCancelsScanAndDebounce() async throws {
     blockedController.start(projectURL: blockedRoot, projectGeneration: 1) { _, _, _ in
         blockedDeliveries += 1
     }
-    #expect(await waitUntil(timeout: 15) { blockedScanner.blockedScanStarted })
+    #expect(await waitUntil(timeout: fourDIndexWait) { blockedScanner.blockedScanStarted })
     blockedController.stop()
     blockedScanner.releaseBlockedScan()
     try await Task.sleep(nanoseconds: 60_000_000)
@@ -170,7 +180,7 @@ func fourDProjectIndexController_stopCancelsScanAndDebounce() async throws {
     debounceController.start(projectURL: debounceRoot, projectGeneration: 1) { _, _, _ in
         debounceDeliveries += 1
     }
-    #expect(await waitUntil(timeout: 15) { debounceDeliveries == 1 })
+    #expect(await waitUntil(timeout: fourDIndexWait) { debounceDeliveries == 1 })
     let watcher = try #require(debounceWatchers.created.first)
     watcher.refresh()
     debounceController.stop()
@@ -197,12 +207,12 @@ func fourDProjectIndexController_rejectsStaleWatcherCallback() async throws {
     controller.start(projectURL: first, projectGeneration: 1) { root, _, _ in
         deliveredRoots.append(root)
     }
-    #expect(await waitUntil(timeout: 15) { deliveredRoots.count == 1 })
+    #expect(await waitUntil(timeout: fourDIndexWait) { deliveredRoots.count == 1 })
     let staleCallback = try #require(watchers.created.first?.onRefresh)
     controller.start(projectURL: second, projectGeneration: 2) { root, _, _ in
         deliveredRoots.append(root)
     }
-    #expect(await waitUntil(timeout: 15) { deliveredRoots.count == 2 })
+    #expect(await waitUntil(timeout: fourDIndexWait) { deliveredRoots.count == 2 })
 
     staleCallback()
     try await Task.sleep(nanoseconds: 70_000_000)
@@ -211,7 +221,7 @@ func fourDProjectIndexController_rejectsStaleWatcherCallback() async throws {
 
     let currentWatcher = try #require(watchers.created.last)
     currentWatcher.refresh()
-    #expect(await waitUntil(timeout: 15) { deliveredRoots.count == 3 })
+    #expect(await waitUntil(timeout: fourDIndexWait) { deliveredRoots.count == 3 })
     #expect(deliveredRoots.last == second.canonicalFileURL)
 }
 
@@ -291,7 +301,7 @@ func fourDMethodIndex_twoWorkspacesStayIndependent() async throws {
 
     first.openProject(at: firstRoot)
     second.openProject(at: secondRoot)
-    #expect(await waitUntil(timeout: 15) {
+    #expect(await waitUntil(timeout: fourDIndexWait) {
         first.fourDProjectMethodNames.contains("nur_eins")
             && second.fourDProjectMethodNames.contains("nur_zwei")
     })

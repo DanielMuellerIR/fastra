@@ -781,6 +781,13 @@ struct GitConflictMarkerTests {
             indexPath: paths[0], record: Data(), headRef: headRef, headOID: headOID,
             headRefPath: paths[1], headRefNeedsNoDeref: false,
             worktreeHeadPath: paths[2], headSymbolicTarget: headRef, in: root,
+            // Die Lock-Warteschleifen unten setzen voraus, dass git seinen
+            // SIGTERM-Handler (eigenes Lock-Aufräumen) noch ausführen darf.
+            // Mit der knappen Produkt-Frist von 0,5 s wurde git unter
+            // Volllast gelegentlich vorher hart gekillt — dann bleibt
+            // index.lock dauerhaft liegen und die Warteschleife kann nie
+            // mehr grün werden (Flake-Ursache, analysiert 2026-08-16).
+            terminationGracePeriod: 10,
             verify: { _ in verifyCalled = true },
             timeoutTrigger: { timeout.store($0) },
             beforeRefLockPreflight: {
@@ -992,6 +999,11 @@ struct GitConflictMarkerTests {
             indexPath: indexPath, record: Data(), headRef: headRef, headOID: headOID,
             headRefPath: refPath, headRefNeedsNoDeref: false,
             worktreeHeadPath: headPath, headSymbolicTarget: headRef, in: root,
+            // Wie beim Ref-Lock-Kollisionstest: Die Lock-Prüfungen unten
+            // brauchen den SIGTERM-Pfad, in dem git seine Locks selbst räumt.
+            // Ein harter Kill nach 0,5 s ließe sie unter Volllast dauerhaft
+            // liegen.
+            terminationGracePeriod: 10,
             verify: { _ in
                 // Die Prüfung läuft unter Index- UND Ref-Lock. Genau dort soll
                 // die Zeitüberschreitung eintreten, deshalb wird sie hier
@@ -1005,9 +1017,18 @@ struct GitConflictMarkerTests {
         try await waitAdvanced("Lock-Timeout endete nicht") { outcome != nil }
         #expect(verifyCalled)
         #expect(outcome == .timedOut)
-        #expect(!FileManager.default.fileExists(atPath: indexPath + ".lock"))
-        #expect(!FileManager.default.fileExists(atPath: refPath + ".lock"))
-        #expect(!FileManager.default.fileExists(atPath: headPath + ".lock"))
+        // Kurze Frist statt Momentaufnahme — dieselbe Begründung wie beim
+        // Ref-Lock-Kollisionstest: git räumt seine Locks im SIGTERM-Handler,
+        // nicht zwingend vor der Zustellung der Completion.
+        try await waitAdvanced("Index-Lock blieb nach dem Lock-Timeout liegen") {
+            !FileManager.default.fileExists(atPath: indexPath + ".lock")
+        }
+        try await waitAdvanced("Ref-Lock blieb nach dem Lock-Timeout liegen") {
+            !FileManager.default.fileExists(atPath: refPath + ".lock")
+        }
+        try await waitAdvanced("Worktree-HEAD-Lock blieb nach dem Lock-Timeout liegen") {
+            !FileManager.default.fileExists(atPath: headPath + ".lock")
+        }
     }
 
     @Test("Markerbreiten 1, 3 und 32 werden exakt geparst; falsche Breiten und Separator-Suffixe nicht")
