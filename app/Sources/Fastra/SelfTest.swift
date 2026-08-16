@@ -10252,6 +10252,14 @@ enum SelfTest {
                     finish(false, "Editor zeigt vor dem Replace nicht den Original-Text "
                         + "(string-Anfang: \(String(tv.string.prefix(40))))")
                 }
+                // Der Produkt-Runner arbeitet bewusst nur bei offener
+                // Suchmaske: Seit v1.77 filtert `SearchRunner` alle
+                // Live-Trigger weg, solange `showSearchDialog` falsch ist —
+                // sonst würde schon das Laden eines Tabs einen Volltextlauf
+                // über Megazeilen anstoßen. Dieser Test setzte den Zustand
+                // nicht und wartete deshalb auf eine Suche, die nie startete
+                // (beobachtet als total=0, searching=false).
+                ws.showSearchDialog = true
                 ws.scope = .file
                 ws.useRegex = true
                 ws.caseSensitive = false
@@ -13374,6 +13382,13 @@ enum SelfTest {
             }
         ) { _, textView, range in
             Workspace.shared = sharedPointsTo
+            // Ein HINTERES Fenster zeichnet nicht, und CodeEditTextView legt
+            // Zeilen nur für den gezeichneten Bereich aus. `rectsFor` liefert
+            // dort deshalb keine Position — nicht weil der Text fehlt, sondern
+            // weil er noch nie ausgelegt wurde. Für die reine Messung des
+            // Klickpunkts die Zeilen des winzigen Testdokuments ausdrücklich
+            // auslegen lassen; am Fenster-Stapel ändert das nichts.
+            _ = textView.layoutManager.layoutLines(in: textView.bounds)
             guard let rect = textView.layoutManager.rectsFor(range:
                 NSRange(location: range.location, length: 1)).first else {
                 try? FileManager.default.removeItem(at: base)
