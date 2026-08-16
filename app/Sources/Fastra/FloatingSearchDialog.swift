@@ -1035,8 +1035,7 @@ struct FloatingSearchDialog: View {
                                     ForEach(group.matches) { match in
                                         HitRow(match: match,
                                                isActive: activeMatch?.id == match.id) {
-                                            handleMatchTap(match: match, fileURL: group.url,
-                                                           tabID: group.tabID)
+                                            handleMatchTap(matchID: match.id)
                                         }
                                         .listRowInsets(EdgeInsets(top: 1, leading: 4, bottom: 1, trailing: 4))
                                         .listRowSeparator(.hidden)
@@ -1120,9 +1119,12 @@ struct FloatingSearchDialog: View {
     /// Sprung beziehen sich dadurch garantiert auf denselben Treffer.
     private var activeNavMatch: Workspace.NavMatch? {
         let matches = workspace.navMatches
-        guard !matches.isEmpty else { return nil }
-        let idx = max(0, min(matches.count - 1, workspace.activeMatchIndex))
-        return matches[idx]
+        let transition = SearchMatchSelection.transition(
+            activeIndex: workspace.activeMatchIndex,
+            matches: matches,
+            action: .reconcile
+        )
+        return SearchMatchSelection.target(for: transition.state, in: matches)
     }
 
     /// Der aktuell „aktive" Treffer (für Detail-Bereich + List-Highlight).
@@ -1235,56 +1237,49 @@ struct FloatingSearchDialog: View {
         return L10n.string("Keine Treffer.")
     }
 
-    /// Click-Handler für eine Treffer-Zeile. Im Buffer-Scope einfach den
-    /// activeMatchIndex setzen + Editor-Sprung. Im Folder-Scope zusätzlich
-    /// die Datei öffnen (falls noch nicht offen) und auf den Buffer
-    /// umschalten — der Editor scrollt dann zur Range.
-    // codereview-ok: Tap-Handler und Ergebnis-Zuweisung laufen beide serialisiert auf dem Main-Actor, firstIndex-Lookup ist synchron; schlägt er fehl, bleibt activeMatchIndex unverändert — kein Race, benigne (2026-07-01)
-    private func handleMatchTap(match: BufferSearch.Match, fileURL: URL?,
-                                tabID: UUID? = nil) {
+    /// Click-Handler für eine Treffer-Zeile. Auswahl und Zielauflösung laufen
+    /// über `SearchMatchSelection`; dadurch kann eine inzwischen ersetzte
+    /// List-Zeile weder einen alten Index noch ein altes Sprungziel verwenden.
+    private func handleMatchTap(matchID: UUID) {
         // Nach einem Klick gehören weitere Pfeil-/Return-Eingaben ebenfalls
         // der Trefferliste, nicht dem Dokumenteditor.
         hitListFocused = true
+        let matches = workspace.navMatches
+        let transition = SearchMatchSelection.transition(
+            activeIndex: workspace.activeMatchIndex,
+            matches: matches,
+            action: .select(matchID: matchID)
+        )
+        guard case .activate(let target) = transition.output else { return }
+
+        // Der Workspace bleibt Besitzer des Auswahlindexes. Erst nach einer
+        // gültigen Auflösung gegen seine aktuelle Liste wird er aktualisiert.
+        workspace.activeMatchIndex = transition.state.index
         // Liste zum (gleich gesetzten) aktiven Treffer zentrieren.
         matchTapScrollToken &+= 1
-        if workspace.scope.isFolderLike, let url = fileURL {
-            // activeMatchIndex auf den flachen Treffer-Index setzen, damit
-            // CMD+G beim nächsten Treffer ansetzt — schon VOR dem loadFile,
-            // damit der Index auch dann stimmt, wenn Completion schnell kommt.
-            let flat = workspace.folderResults.flatMap(\.matches)
-            if let idx = flat.firstIndex(where: { $0.id == match.id }) {
-                workspace.activeMatchIndex = idx
+
+        if let tabID = target.tabID {
+            // Geöffnet-Scope: Ziel-Tab aktivieren und den Sprung einen Tick
+            // später posten, nachdem SwiftUI den Editor neu erzeugt hat.
+            if workspace.activeTabID != tabID { workspace.selectTab(id: tabID) }
+            DispatchQueue.main.async {
+                NotificationCenter.default.postMatchJump(target.match, for: workspace)
             }
+            return
+        }
+        if let url = target.url {
             // Tab öffnen oder aktivieren — asynchron. Editor-Sprung erst in
             // der Completion, nachdem der Tab vollständig geladen ist
             // (Race vermieden: postMatchJump braucht den fertigen Inhalt).
             workspace.loadFile(at: url) { ok in
                 guard ok else { return }
                 DispatchQueue.main.async {
-                    NotificationCenter.default.postMatchJump(match, for: workspace)
+                    NotificationCenter.default.postMatchJump(target.match, for: workspace)
                 }
             }
             return
         }
-        if workspace.scope == .open, let tabID = tabID {
-            // Geöffnet-Scope: Index über die FLACHE Liste aller Tab-Treffer
-            // (CMD+G setzt dort an), dann den Ziel-Tab aktivieren und den
-            // Sprung einen Tick später posten (Editor wird beim Tab-Wechsel
-            // neu erzeugt — gleiche Race-Vermeidung wie im Ordner-Pfad).
-            let flat = workspace.openResults.flatMap(\.matches)
-            if let idx = flat.firstIndex(where: { $0.id == match.id }) {
-                workspace.activeMatchIndex = idx
-            }
-            if workspace.activeTabID != tabID { workspace.selectTab(id: tabID) }
-            DispatchQueue.main.async {
-                NotificationCenter.default.postMatchJump(match, for: workspace)
-            }
-            return
-        }
-        if let idx = workspace.bufferMatches.firstIndex(where: { $0.id == match.id }) {
-            workspace.activeMatchIndex = idx
-            NotificationCenter.default.postMatchJump(match, for: workspace)
-        }
+        NotificationCenter.default.postMatchJump(target.match, for: workspace)
     }
 
     /// Zentriert die Trefferliste auf den aktiven Treffer — einen Tick

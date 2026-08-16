@@ -167,15 +167,15 @@ struct ContentView: View {
         // einen Range-Sprung an den Editor.
         .onReceive(NotificationCenter.default.publisher(for: .fastraGotoNextMatch)) { note in
             guard notificationTargetsThisWorkspace(note) else { return }
-            navigateMatch(direction: 1)
+            navigateMatch(action: .move(.next, wrapAround: workspace.wrapAround))
         }
         .onReceive(NotificationCenter.default.publisher(for: .fastraGotoPreviousMatch)) { note in
             guard notificationTargetsThisWorkspace(note) else { return }
-            navigateMatch(direction: -1)
+            navigateMatch(action: .move(.previous, wrapAround: workspace.wrapAround))
         }
         .onReceive(NotificationCenter.default.publisher(for: .fastraGotoFirstMatch)) { note in
             guard notificationTargetsThisWorkspace(note) else { return }
-            navigateMatch(to: 0)
+            navigateMatch(action: .first)
         }
         .onReceive(NotificationCenter.default.publisher(for: .fastraShowGotoLine)) { note in
             guard notificationTargetsThisWorkspace(note) else { return }
@@ -246,33 +246,20 @@ struct ContentView: View {
                                         userInfo: ["range": NSValue(range: range)])
     }
 
-    /// Schaltet `activeMatchIndex` weiter und postet einen Editor-Sprung.
-    /// Funktioniert in beiden Scopes: im Folder-Scope lädt der Sprung bei
-    /// Bedarf die Ziel-Datei in einen Tab, bevor zur Range gesprungen wird.
-    private func navigateMatch(direction: Int) {
-        let list = workspace.navMatches
-        let count = list.count
-        guard count > 0 else { return }
-        var next = workspace.activeMatchIndex + direction
-        if workspace.wrapAround {
-            next = ((next % count) + count) % count
-        } else {
-            next = max(0, min(count - 1, next))
-        }
-        navigateMatch(to: next)
-    }
-
-    /// Aktiviert einen bestimmten Treffer und führt den gemeinsamen
-    /// Tab-/Dateiwechsel samt Editor-Sprung aus. Return im Suchfeld nutzt
-    /// diesen Pfad mit Index 0, damit es unabhängig vom vorherigen Stand
-    /// immer beim ersten sichtbaren Treffer beginnt.
-    private func navigateMatch(to index: Int) {
-        let list = workspace.navMatches
-        guard list.indices.contains(index) else { return }
+    /// Wendet eine pure Auswahlaktion auf die aktuelle Workspace-Liste an und
+    /// führt nur das daraus gelieferte Ziel aus. Return im Suchfeld verwendet
+    /// `.first`; Chevron, Pfeiltasten und ⌘G verwenden `.move`.
+    private func navigateMatch(action: SearchMatchSelection.Action) {
+        let matches = workspace.navMatches
+        let transition = SearchMatchSelection.transition(
+            activeIndex: workspace.activeMatchIndex,
+            matches: matches,
+            action: action
+        )
+        guard case .activate(let target) = transition.output else { return }
         // Diskrete Such-Aktion → ins Such-History-Popup aufnehmen (K4).
         workspace.recordSearchHistory()
-        workspace.activeMatchIndex = index
-        let target = list[index]
+        workspace.activeMatchIndex = transition.state.index
         if let tabID = target.tabID {
             // Geöffnet-Scope: Ziel ist ein offener Tab (auch ungespeichert).
             // Tab aktivieren, Sprung einen Runloop-Tick später posten — der
