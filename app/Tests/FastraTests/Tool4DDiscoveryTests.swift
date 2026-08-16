@@ -78,6 +78,69 @@ func locateInApplications() throws {
     #expect(finding?.executableURL.path.hasSuffix("tool4d.app/Contents/MacOS/tool4d") == true)
 }
 
+@Test("Programme-Ordner: versionierter Bundle-Name wie ein echtes Nightly wird gefunden")
+func locateVersionedBundleName() throws {
+    let scratch = try makeScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let apps = scratch.appendingPathComponent("Applications")
+    // So heißt ein real von 4D heruntergeladenes Nightly — NICHT "tool4d.app".
+    try makeToolBundle(
+        at: apps.appendingPathComponent("tool4d_v21_nightly_2026-08-05.app"),
+        version: "21.1 build 21.100550"
+    )
+    // Fremde Apps im selben Ordner dürfen nicht stören.
+    try makeToolBundle(at: apps.appendingPathComponent("GanzAndereApp.app"),
+                       version: "9.9")
+    let finding = Tool4DDiscovery.locate(
+        environmentPATH: nil,
+        applicationDirectories: [apps],
+        analyzerStorage: scratch.appendingPathComponent("kein-storage")
+    )
+    #expect(finding?.version == "21.1 build 21.100550")
+    #expect(finding?.source == .applications(directory: apps.path))
+    #expect(finding?.executableURL.path
+        .hasSuffix("tool4d_v21_nightly_2026-08-05.app/Contents/MacOS/tool4d") == true)
+}
+
+@Test("Programme-Ordner: bei mehreren tool4d-Bundles gewinnt die höchste Version, numerisch")
+func locateHighestVersionAmongBundles() throws {
+    let scratch = try makeScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let apps = scratch.appendingPathComponent("Applications")
+    // "20.10" ist numerisch NEUER als "20.9" — lexikalisch wäre es umgekehrt.
+    try makeToolBundle(at: apps.appendingPathComponent("tool4d.app"), version: "20.9")
+    try makeToolBundle(at: apps.appendingPathComponent("tool4d_v20_r10.app"),
+                       version: "20.10")
+    // Ein Bundle ohne lesbare Version verliert gegen jedes mit Version.
+    try makeToolBundle(at: apps.appendingPathComponent("tool4d_ohne_version.app"),
+                       version: nil)
+    let finding = Tool4DDiscovery.locate(
+        environmentPATH: nil,
+        applicationDirectories: [apps],
+        analyzerStorage: scratch.appendingPathComponent("kein-storage")
+    )
+    #expect(finding?.version == "20.10")
+}
+
+@Test("Programme-Ordner: zweites Verzeichnis wird durchsucht und die höchste Version gewinnt ordnerübergreifend")
+func locateAcrossApplicationDirectories() throws {
+    let scratch = try makeScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let systemApps = scratch.appendingPathComponent("Applications")
+    let userApps = scratch.appendingPathComponent("UserApplications")
+    try makeToolBundle(at: systemApps.appendingPathComponent("tool4d_v20.app"),
+                       version: "20.4")
+    try makeToolBundle(at: userApps.appendingPathComponent("tool4d_v21.app"),
+                       version: "21.0")
+    let finding = Tool4DDiscovery.locate(
+        environmentPATH: nil,
+        applicationDirectories: [systemApps, userApps],
+        analyzerStorage: scratch.appendingPathComponent("kein-storage")
+    )
+    #expect(finding?.version == "21.0")
+    #expect(finding?.source == .applications(directory: userApps.path))
+}
+
 @Test("Analyzer-Storage: höchste Version gewinnt; ohne Binary kein Fund")
 func locateInAnalyzerStorage() throws {
     let scratch = try makeScratch()

@@ -608,6 +608,10 @@ Installation.
 
 **Hilfe → tool4d finden…** prüft diese bekannten Orte (plus PATH und
 Programme-Ordner), zeigt Fundort und Version an und merkt sich den Pfad.
+In den Programme-Ordnern zählt jedes Bundle, dessen Name mit „tool4d“
+beginnt — auch versionierte Downloads wie `tool4d_v21_nightly_….app` müssen
+also nicht umbenannt werden. Liegen mehrere, wählt Fastra die höchste
+Version.
 
 **Dokument prüfen:** Ist eine gespeicherte `.4dm`-Methode Teil eines geöffneten
 4D-Projekts und tool4d vorhanden, startet **Text → Dokument prüfen** eine

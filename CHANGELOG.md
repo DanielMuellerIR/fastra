@@ -9,6 +9,17 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.99.2] — 2026-08-16
+
+### Behoben
+
+- **„Hilfe → tool4d finden…“ erkennt versionierte Bundle-Namen:** Ein real
+  von 4D heruntergeladenes tool4d heißt versioniert (etwa
+  `tool4d_v21_nightly_….app`); die Suche in den Programme-Ordnern fand aber
+  nur den exakten Namen `tool4d.app`. Jetzt zählt jedes Bundle, dessen Name
+  mit „tool4d“ beginnt; bei mehreren gewinnt die höchste Version aus dem
+  Info.plist (numerisch verglichen, „21.0“ schlägt „20.10“).
+
 ## [v1.99.1] — 2026-08-16
 
 Abarbeitung des Nacht-Code-Reviews vom 2026-08-16 (8 Funde, alle behoben).

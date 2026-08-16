@@ -58,12 +58,9 @@ enum Tool4DDiscovery {
         if let finding = locateInPATH(environmentPATH, fileManager: fileManager) {
             return finding
         }
-        for directory in applicationDirectories {
-            let app = directory.appendingPathComponent("tool4d.app")
-            if let finding = findingFromBundle(app, source: .applications(directory: directory.path),
-                                               fileManager: fileManager) {
-                return finding
-            }
+        if let finding = locateInApplicationDirectories(applicationDirectories,
+                                                        fileManager: fileManager) {
+            return finding
         }
         return locateInAnalyzerStorage(analyzerStorage, fileManager: fileManager)
     }
@@ -91,6 +88,61 @@ enum Tool4DDiscovery {
                            source: .path(directory: directory))
         }
         return nil
+    }
+
+    /// Programme-Ordner: alle Bundles, deren Name mit „tool4d" beginnt und
+    /// auf „.app" endet (Groß-/Kleinschreibung egal). Ein real
+    /// heruntergeladenes tool4d heißt nämlich versioniert, etwa
+    /// „tool4d_v21_nightly_2026-08-05.app" — nur der exakte Name
+    /// „tool4d.app" wäre zu eng und fände es nie. Liegen mehrere solche
+    /// Bundles in den Programme-Ordnern, gewinnt die höchste Version aus
+    /// dem Info.plist; ohne lesbare Version entscheidet der Bundle-Name
+    /// (jeweils numerisch bewusst: „21.0" schlägt „20.10").
+    private static func locateInApplicationDirectories(_ directories: [URL],
+                                                       fileManager: FileManager) -> Finding? {
+        var candidates: [(finding: Finding, bundleName: String)] = []
+        for directory in directories {
+            guard let entries = try? fileManager.contentsOfDirectory(
+                at: directory, includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ) else { continue }
+            for entry in entries {
+                let name = entry.lastPathComponent.lowercased()
+                guard name.hasPrefix("tool4d"), name.hasSuffix(".app") else { continue }
+                if let finding = findingFromBundle(
+                    entry, source: .applications(directory: directory.path),
+                    fileManager: fileManager
+                ) {
+                    candidates.append((finding, entry.lastPathComponent))
+                }
+            }
+        }
+        // `max(by:)` liefert das GRÖSSTE Element; die Ordnung ist bewusst
+        // total, damit das Ergebnis nicht von der Verzeichnis-Lesereihenfolge
+        // abhängt.
+        return candidates.max { lhs, rhs in
+            isCandidateOrderedBefore(lhs, rhs)
+        }?.finding
+    }
+
+    /// Ordnung zweier Programme-Ordner-Kandidaten: erst Version (numerisch,
+    /// fehlende Version verliert immer), bei Gleichstand der Bundle-Name.
+    private static func isCandidateOrderedBefore(
+        _ lhs: (finding: Finding, bundleName: String),
+        _ rhs: (finding: Finding, bundleName: String)
+    ) -> Bool {
+        switch (lhs.finding.version, rhs.finding.version) {
+        case let (lhsVersion?, rhsVersion?):
+            let byVersion = lhsVersion.localizedStandardCompare(rhsVersion)
+            if byVersion != .orderedSame { return byVersion == .orderedAscending }
+        case (nil, _?):
+            return true
+        case (_?, nil):
+            return false
+        case (nil, nil):
+            break
+        }
+        return lhs.bundleName.localizedStandardCompare(rhs.bundleName) == .orderedAscending
     }
 
     /// tool4d.app-Bundle → Finding mit Version aus dem Info.plist.

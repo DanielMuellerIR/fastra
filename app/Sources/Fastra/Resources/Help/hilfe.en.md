@@ -577,7 +577,10 @@ starts no installation.
 
 **Help → Find tool4d…** checks these known locations (plus PATH and the
 Applications folders), shows the location and version, and remembers the
-path.
+path. In the Applications folders any bundle whose name starts with
+"tool4d" counts — versioned downloads such as `tool4d_v21_nightly_….app`
+do not need to be renamed. If several are present, Fastra picks the
+highest version.
 
 **Check Document:** When a saved `.4dm` method belongs to an open 4D project
 and tool4d is available, **Text → Check Document** starts a short local LSP
