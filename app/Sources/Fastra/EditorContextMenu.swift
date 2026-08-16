@@ -859,10 +859,14 @@ final class EditorContextMenu: NSObject {
         tool4DWorkspace = workspace
         validation.start(executable: finding.executableURL, workspaceRoot: workspaceRoot,
                          documentURL: documentURL, text: text) { [weak self, weak workspace] result in
-            guard let self, self.tool4DValidation === validation,
-                  let workspace, workspace.activeTabID == tabID else { return }
+            guard let self, self.tool4DValidation === validation else { return }
+            // Besitzreferenz IMMER lösen, sobald dieser Lauf fertig ist —
+            // auch wenn Tab oder Workspace inzwischen gewechselt haben.
+            // Sonst riefe der nächste Klick `cancel()` auf einem bereits
+            // abgeschlossenen Lauf auf.
             self.tool4DValidation = nil
             self.tool4DWorkspace = nil
+            guard let workspace, workspace.activeTabID == tabID else { return }
             switch result {
             case .success(let diagnostics):
                 self.presentTool4DDiagnostics(diagnostics, text: text, workspace: workspace)

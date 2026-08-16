@@ -302,6 +302,73 @@ struct DocumentLanguageDetectorTests {
         #expect(probe.analyzedLengths == [100])
     }
 
+    @Test("Eine abgebrochene Analyse drosselt die Ersatzanalyse nicht")
+    @MainActor
+    func cancelledAnalysisDoesNotThrottleReplacement() {
+        let background = ManualWorkScheduler()
+        let delays = ManualDelayScheduler()
+        let delivery = ManualWorkScheduler()
+        let recorder = DetectionRecorder()
+        let detector = DocumentLanguageDetector(
+            scheduleWork: background.schedule,
+            scheduleDelayedWork: delays.schedule,
+            deliverResult: delivery.schedule
+        )
+        let tabID = UUID()
+        let documentID = UUID()
+        let bigContent = String(repeating: "x", count: 2_000)
+
+        // Große Einfügung startet sofort eine Analyse — sie bleibt aber im
+        // Hintergrund-Scheduler liegen (noch kein Ergebnis geliefert).
+        detector.schedule(detectorRequest(
+            tabID: tabID, documentID: documentID, content: bigContent
+        ), onResult: recorder.append)
+        #expect(background.count == 1)
+
+        // Die kleine Folgeänderung verwirft die laufende Analyse. Sie darf
+        // dann nicht an der nie gelieferten Länge gemessen und als „zu
+        // klein" verworfen werden — sonst bliebe die Erkennung hängen.
+        detector.schedule(detectorRequest(
+            tabID: tabID, documentID: documentID,
+            oldLength: bigContent.count, content: bigContent + "y"
+        ), onResult: recorder.append)
+        #expect(delays.count == 1, "Ersatzanalyse muss eingeplant sein")
+
+        background.runAll()   // verworfene alte Analyse läuft ins Leere
+        delays.runAll()
+        background.runAll()
+        delivery.runAll()
+
+        #expect(recorder.results.count == 1)
+    }
+
+    @Test("Ein überholtes Debounce-Work-Item startet keine Analyse mehr")
+    @MainActor
+    func supersededDebounceWorkItemIsInert() {
+        let background = ManualWorkScheduler()
+        let delays = ManualDelayScheduler()
+        let recorder = DetectionRecorder()
+        let probe = AnalyzerProbe()
+        let detector = DocumentLanguageDetector(
+            scheduleWork: background.schedule,
+            scheduleDelayedWork: delays.schedule,
+            analyze: probe.analyze
+        )
+        let request = detectorRequest(content: "ein kurzer Satz")
+
+        detector.schedule(request, onResult: recorder.append)
+        #expect(delays.count == 1)
+        detector.cancel(tabID: request.tabID, documentID: request.documentID)
+
+        // Das abgesagte Work-Item liegt noch in der (Test-)Queue; sein
+        // Auftrag samt Snapshot ist aber schon aus dem State entfernt.
+        delays.runAll()
+        background.runAll()
+
+        #expect(probe.analyzedLengths.isEmpty)
+        #expect(recorder.results.isEmpty)
+    }
+
     @Test("Der Produkt-Scheduler liefert Ergebnisse auf dem Main-Thread")
     @MainActor
     func defaultDeliveryReturnsToMainThread() async {

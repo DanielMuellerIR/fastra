@@ -36,36 +36,6 @@ struct ExternalFileObservation: Equatable, Hashable, Sendable {
     }
 }
 
-/// Pure Entscheidungs-Logik der Extern-Änderungs-Erkennung (BBEdit
-/// „Automatically refresh documents" / „Reload from Disk", Handbuch 16.0.1
-/// Kap. 3 S. 59): Was passiert mit einem Tab, dessen Datei sich auf der
-/// Platte geändert hat? Sauberer Tab → still neu laden (kein Datenverlust
-/// möglich). Dirty Tab → Nutzer fragen (lokale Änderungen stehen gegen die
-/// externen). Unbenannt/kein Vergleichsdatum/Datei weg → nichts tun.
-enum ExternalChange {
-    enum Action: Equatable {
-        case none
-        case reloadSilently
-        case askUser
-    }
-
-    static func action(isDirty: Bool, knownDate: Date?, diskDate: Date?) -> Action {
-        guard let known = knownDate, let disk = diskDate else { return .none }
-        // Werkzeuge wie `cp -p`, Restore und Versionskontrollsysteme können
-        // einen älteren Zeitstempel einspielen. Jede Abweichung ist deshalb
-        // eine Änderung; der Workspace-Pfad prüft zusätzlich Identität,
-        // Größe, ctime und bei Bedarf die echten Bytes.
-        guard disk != known else { return .none }
-        return isDirty ? .askUser : .reloadSilently
-    }
-
-    /// Aktuelles Änderungsdatum der Datei auf der Platte (`nil`, wenn die
-    /// Datei nicht erreichbar ist — gelöscht, Volume weg, keine Rechte).
-    static func diskModificationDate(of url: URL) -> Date? {
-        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
-    }
-}
-
 /// Liest den möglichen Fremdstand einer Datei, ohne Tab- oder Fensterzustand
 /// zu besitzen. Pro Tab läuft höchstens eine Prüfung; ein wiederholter Check
 /// kann deshalb keine zweite parallele Voll-Lektüre derselben Datei starten.
@@ -74,7 +44,20 @@ final class ExternalChangeInspector: @unchecked Sendable {
         let tabID: UUID
         let documentID: UUID
         let url: URL
-        let shouldReadContent: Bool
+        /// Zuletzt vom Tab bestätigter Platten-Fingerabdruck. Der frische
+        /// Fingerabdruck entsteht bewusst erst im Hintergrund: Schon ein
+        /// `open`+`fstat` kann auf einem getrennten oder nicht reagierenden
+        /// Datenträger lange blockieren und darf deshalb nie auf dem
+        /// Main-Thread laufen.
+        let knownObservation: ExternalFileObservation?
+        /// Bytezahl des Inhalts, gegen den verglichen würde; `nil`, wenn der
+        /// Tab keinen vollständigen Snapshot besitzt (Abschnitt/Hex). Solche
+        /// Dateien werden nie dafür in den Speicher gelesen.
+        let observedByteCount: Int?
+        /// Ungespeicherte Änderungen im Tab: Eine echte Fremdänderung führt
+        /// dann zur Rückfrage, deren „Behalten" einen Snapshot der
+        /// akzeptierten Fremdfassung braucht — auch bei anderer Dateigröße.
+        let isDirty: Bool
     }
 
     struct Inspection: Sendable {
@@ -120,14 +103,24 @@ final class ExternalChangeInspector: @unchecked Sendable {
 
         let snapshotReader = snapshotReader
         Task.detached(priority: .utility) { [weak self] in
-            // Vorher/Nachher-Fingerabdruck ergänzt die bereits interne
-            // Konsistenzprüfung von FileSnapshot um die kleine Lücke
-            // zwischen dessen Rückgabe und unserer Beobachtung.
             let before = ExternalFileObservation(url: request.url)
-            let snapshot = request.shouldReadContent
-                ? snapshotReader(request.url)
-                : nil
-            let after = ExternalFileObservation(url: request.url)
+            // Die Bytes lohnen sich nur bei einem veränderten Fingerabdruck,
+            // und auch dann nur, wenn (a) die Größe gleich blieb — erst der
+            // Hash entscheidet dann über echt/unecht — oder (b) der Tab
+            // dirty ist und die Rückfrage einen Snapshot der Fremdfassung
+            // braucht. Eine andere Größe bei sauberem Tab beweist die
+            // Änderung bereits ohne Lesen.
+            var snapshot: FileSnapshot?
+            var after = before
+            if let current = before, current != request.knownObservation,
+               let observedByteCount = request.observedByteCount,
+               Int64(observedByteCount) == current.byteCount || request.isDirty {
+                snapshot = snapshotReader(request.url)
+                // Vorher/Nachher-Fingerabdruck ergänzt die bereits interne
+                // Konsistenzprüfung von FileSnapshot um die kleine Lücke
+                // zwischen dessen Rückgabe und unserer Beobachtung.
+                after = ExternalFileObservation(url: request.url)
+            }
             let inspection = Inspection(
                 tabID: request.tabID,
                 documentID: request.documentID,

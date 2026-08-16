@@ -467,7 +467,12 @@ enum FourDSignatureResolver {
         case .sourceFile(let url), .documentation(let url):
             return signature(forFileAt: url, cache: cache)
         case .zipEntry(let archive, let entryPath):
-            let resolvedArchive = archive.canonicalFileURL
+            // Wie beim Datei-Zweig oben: `canonicalPathKey` folgt einem
+            // frisch angelegten Symlink nicht auf allen Dateisystemen.
+            // Cache-Schlüssel und Änderungsdatum müssen an der tatsächlich
+            // gelesenen Zieldatei hängen, sonst liefert ein umgebogener
+            // Archiv-Symlink weiter Signaturen aus dem alten Archiv.
+            let resolvedArchive = archive.canonicalFileURL.resolvingSymlinksInPath()
             let key = resolvedArchive.path + "#" + entryPath
             let modified = modificationDate(ofItemAt: resolvedArchive.path)
             if let cached = cache.signature(forKey: key, modified: modified) {

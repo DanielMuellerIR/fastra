@@ -271,6 +271,57 @@ func signatureCache_resolvesSymlinkBeforeKeying() throws {
     #expect(secondSignature.parameters.first?.type == "Integer")
 }
 
+@Test("Signatur-Cache folgt auch einem umgehängten Archiv-Symlink")
+func signatureCache_resolvesArchiveSymlinkBeforeKeying() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-sigziplink-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root,
+                                            withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    // Zwei echte Archive mit derselben Eintragsstruktur, aber verschiedenen
+    // Signaturen — der Symlink zeigt erst auf das eine, dann auf das andere.
+    let entryPath = "Project/Sources/Methods/Methode.4dm"
+    let first = root.appendingPathComponent("Erste.4DZ")
+    let second = root.appendingPathComponent("Zweite.4DZ")
+    try makeZip([(entryPath, Data("#DECLARE($a : Text)".utf8), false)])
+        .write(to: first)
+    try makeZip([(entryPath, Data("#DECLARE($a : Integer)".utf8), false)])
+        .write(to: second)
+    let sameDate = Date(timeIntervalSince1970: 1_800_000_000)
+    try FileManager.default.setAttributes([.modificationDate: sameDate],
+                                          ofItemAtPath: first.path)
+    try FileManager.default.setAttributes([.modificationDate: sameDate],
+                                          ofItemAtPath: second.path)
+    let link = root.appendingPathComponent("Komponente.4DZ")
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: first)
+
+    let method = FourDComponentMethod(
+        displayName: "Methode", componentName: "Komponente",
+        source: .zipEntry(archive: link, path: entryPath)
+    )
+    let request = FourDSignatureResolver.Request(
+        lowered: "methode", projectMethodFileName: nil,
+        projectURL: nil, documentURL: nil, componentMethod: method)
+    let cache = FourDSignatureResolver.Cache()
+
+    guard case .signature(let firstSignature, _) =
+            FourDSignatureResolver.title(for: request, cache: cache) else {
+        Issue.record("Erste Archiv-Signatur fehlt")
+        return
+    }
+    #expect(firstSignature.parameters.first?.type == "Text")
+
+    try FileManager.default.removeItem(at: link)
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: second)
+    guard case .signature(let secondSignature, _) =
+            FourDSignatureResolver.title(for: request, cache: cache) else {
+        Issue.record("Zweite Archiv-Signatur fehlt")
+        return
+    }
+    #expect(secondSignature.parameters.first?.type == "Integer")
+}
+
 @Test("Signaturhilfe lädt keine übergroße Methodendatei vollständig")
 func signatureResolverRejectsOversizeFile() throws {
     let root = FileManager.default.temporaryDirectory

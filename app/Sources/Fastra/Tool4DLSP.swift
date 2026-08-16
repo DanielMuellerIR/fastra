@@ -304,6 +304,10 @@ final class Tool4DLSPValidation {
         // Der Besitzer ersetzt einen Lauf unmittelbar durch den nächsten.
         // Die Queue muss den alten Lauf deshalb bis zu seinem Aufräumen halten.
         queue.async {
+            // Nach zugestellter Completion gibt es kein Aufräumen mehr, das
+            // den Selbsthalter wieder lösen würde: Ihn jetzt noch zu setzen,
+            // hielte Objekt und LSP-Zustand für immer im Speicher.
+            guard !self.completionDelivered else { return }
             self.cancellationRetainer = self
             self.finish(.failure(.cancelled))
         }

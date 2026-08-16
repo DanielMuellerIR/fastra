@@ -9,6 +9,51 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.99.1] — 2026-08-16
+
+Abarbeitung des Nacht-Code-Reviews vom 2026-08-16 (8 Funde, alle behoben).
+
+### Behoben
+
+- **Automatische Spracherkennung bleibt nicht mehr hängen:** Folgt auf eine
+  große Änderung sofort eine kleine, wurde die laufende Analyse verworfen und
+  die Ersatzanalyse an einer nie gelieferten Länge gemessen — die Erkennung
+  blieb dann auf dem alten Stand. Die Drosselung zählt jetzt nur noch
+  tatsächlich gelieferte Analysen.
+- **Schnelles Tippen hält keine verworfenen Dokument-Snapshots mehr:** Der
+  Debounce-Auftrag der Spracherkennung liegt jetzt im Detector-Zustand statt
+  in der wartenden Main-Queue-Closure; abgesagte Aufträge geben ihren
+  Snapshot sofort frei statt erst nach 0,8 s.
+- **App-Aktivierung blockiert die Oberfläche nicht mehr:** Der
+  Platten-Fingerabdruck der Extern-Änderungs-Erkennung (`open`+`fstat` je Tab)
+  entsteht jetzt in der Hintergrundprüfung statt auf dem Main-Thread — wichtig
+  bei getrennten oder nicht reagierenden Datenträgern.
+- **Kein Extern-Änderungs-Dialog mehr am falschen Tab:** Nach „Sichern unter“
+  oder Verschieben im Dateibaum konnte ein veralteter Befund zum alten Pfad
+  den neu gebundenen Tab treffen und dort Reload oder Dialog auslösen. Die
+  Ergebnisübernahme und alle Reload-Pfade prüfen jetzt zusätzlich die URL.
+- **„Behalten“ warnt bei unveränderten Bytes nicht erneut:** Ist die
+  Fremdfassung anders groß als der Tab-Stand, liest die Prüfung bei
+  ungespeicherten Änderungen die Bytes jetzt einmal im Hintergrund mit;
+  „Behalten“ merkt sich die akzeptierte Fassung, und eine spätere reine
+  Metadatenänderung erzeugt keinen weiteren falschen Dialog.
+- **tool4d-Prüfung leckt nach Tabwechsel keinen Speicher mehr:** `cancel()`
+  auf einem bereits abgeschlossenen Lauf installierte einen nie wieder
+  gelösten Selbsthalter; Lauf- und LSP-Zustand blieben bis zum App-Ende im
+  Speicher. Zusätzlich löst der Aufrufer seine Besitzreferenz jetzt auch bei
+  gewechseltem Tab.
+- **4D-Signaturhilfe folgt umgehängten Archiv-Symlinks:** Der Signatur-Cache
+  löst 4DZ-Archivpfade jetzt wie normale Methodendateien vollständig auf;
+  vorher konnte ein umgebogener Archiv-Symlink Signaturen aus dem alten
+  Archiv liefern.
+
+### Intern
+
+- Totes Zustandsmodell der alten datumsbasierten Extern-Änderungs-Erkennung
+  entfernt (`ExternalChange.Action`, `EditorTab.diskModificationDate` samt
+  synchroner Datumsabfrage); Tests prüfen jetzt die tatsächlichen
+  Beobachtungs- und Snapshot-Entscheidungen.
+
 ## [v1.99.0] — 2026-08-15
 
 ### Behoben

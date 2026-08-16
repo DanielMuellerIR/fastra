@@ -195,6 +195,29 @@ func tool4dLSP_cancelSurvivesImmediateOwnerRelease() async {
     #expect(mock.wasStopped)
 }
 
+@Test("tool4d-LSP: cancel nach zugestellter Completion hält den Lauf nicht fest")
+func tool4dLSP_cancelAfterCompletionDoesNotLeak() async {
+    let mock = Tool4DMockProcess(mode: .pullDiagnostic)
+    var validation: Tool4DLSPValidation? = Tool4DLSPValidation(process: mock)
+    weak var weakValidation = validation
+    let result = await runValidation(validation!, timeout: 1)
+    guard case .success = result else {
+        Issue.record("Mock-Server lieferte kein erfolgreiches Ergebnis: \(result)")
+        return
+    }
+
+    // Der Besitzer merkt den Abschluss nicht immer (z. B. Tabwechsel vor der
+    // Completion) und ruft später `cancel()` auf dem fertigen Lauf auf. Das
+    // darf den Selbsthalter nicht mehr installieren — sonst bleibt der Lauf
+    // samt LSP-Zustand für immer im Speicher.
+    validation?.cancel()
+    validation = nil
+    for _ in 0..<200 where weakValidation != nil {
+        try? await Task.sleep(for: .milliseconds(5))
+    }
+    #expect(weakValidation == nil)
+}
+
 @Test("tool4d-LSP: ein null-Pull-Ergebnis ist kein bestandener Check")
 func tool4dLSP_rejectsMissingDiagnosticResult() async {
     let mock = Tool4DMockProcess(mode: .nullDiagnosticResult)

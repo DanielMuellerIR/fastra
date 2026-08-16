@@ -14,8 +14,9 @@ import Testing
 
 /// Baut ein minimales, formatkorrektes ZIP-Archiv. CRC32 wird nicht
 /// berechnet (der Leser prüft sie bewusst nicht — Formatfehler zeigen sich
-/// über Größen und Signaturen).
-private func makeZip(_ entries: [(path: String, data: Data, deflate: Bool)]) -> Data {
+/// über Größen und Signaturen). Bewusst intern statt `private`: Auch die
+/// Signaturhilfe-Tests bauen sich damit kleine 4DZ-Fixtures.
+func makeZip(_ entries: [(path: String, data: Data, deflate: Bool)]) -> Data {
     var out = Data()
     var central = Data()
 

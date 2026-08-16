@@ -2,8 +2,8 @@
 //
 // Sichert die Extern-Änderungs-Erkennung ab (BBEdit „Reload from Disk" /
 // „Automatically refresh documents", Handbuch 16.0.1 Kap. 3 S. 59):
-// pure Entscheidungs-Logik (ExternalChange.action) + Workspace-Pfad
-// (Basis-Datum beim Laden/Speichern, stiller Reload sauberer Tabs,
+// Inspector-Entscheidungen (wann werden Bytes gelesen?) + Workspace-Pfad
+// (Fingerabdruck beim Laden/Speichern, stiller Reload sauberer Tabs,
 // Rückfrage bei dirty Tabs, „Behalten" fragt nicht erneut).
 
 import Foundation
@@ -88,7 +88,10 @@ func externalChangeInspector_skipsUnneededContentRead() async throws {
     let reader = BlockingSnapshotReader()
     let inspector = ExternalChangeInspector(snapshotReader: { reader.read($0) })
     let request = ExternalChangeInspector.Request(
-        tabID: UUID(), documentID: UUID(), url: url, shouldReadContent: false
+        tabID: UUID(), documentID: UUID(), url: url,
+        knownObservation: nil,
+        observedByteCount: 3,   // bewusst anders als die echte Dateigröße
+        isDirty: false
     )
     var result: ExternalChangeInspector.Inspection?
     var deliveredOnMainThread = false
@@ -99,10 +102,57 @@ func externalChangeInspector_skipsUnneededContentRead() async throws {
     })
     #expect(await waitUntil { result != nil })
     #expect(reader.readCount == 0,
-            "Abschnitts-, Hex- und abweichend große Dateien dürfen nicht vollständig gelesen werden")
+            "Bei sauberem Tab beweist die andere Bytezahl die Änderung bereits ohne Lesen")
     #expect(result?.stableSnapshot == nil)
     #expect(result?.observation != nil)
     #expect(deliveredOnMainThread)
+}
+
+@Test("Inspector liest ohne vollständigen Tab-Snapshot nie die Bytes")
+@MainActor
+func externalChangeInspector_neverReadsWithoutObservedContent() async throws {
+    let url = try writeTmpUTF8("Abschnitt oder Hex\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let reader = BlockingSnapshotReader()
+    let inspector = ExternalChangeInspector(snapshotReader: { reader.read($0) })
+    let request = ExternalChangeInspector.Request(
+        tabID: UUID(), documentID: UUID(), url: url,
+        knownObservation: nil,
+        observedByteCount: nil,   // Abschnitts-/Hex-Tab ohne Voll-Snapshot
+        isDirty: true
+    )
+    var result: ExternalChangeInspector.Inspection?
+
+    #expect(inspector.inspect(request) { result = $0 })
+    #expect(await waitUntil { result != nil })
+    #expect(reader.readCount == 0,
+            "Abschnitts- und Hex-Tabs dürfen nie vollständig in den Speicher gelesen werden")
+    #expect(result?.stableSnapshot == nil)
+}
+
+@Test("Inspector liest bei dirty Tab auch eine abweichend große Fremdfassung")
+@MainActor
+func externalChangeInspector_readsDifferentSizeForDirtyTab() async throws {
+    let url = try writeTmpUTF8("deutlich längere Fremdfassung\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let reader = BlockingSnapshotReader()
+    reader.releaseFirstRead()
+    let inspector = ExternalChangeInspector(snapshotReader: { reader.read($0) })
+    let request = ExternalChangeInspector.Request(
+        tabID: UUID(), documentID: UUID(), url: url,
+        knownObservation: nil,
+        observedByteCount: 4,   // Tab kennt nur die alte, kleinere Fassung
+        isDirty: true
+    )
+    var result: ExternalChangeInspector.Inspection?
+
+    #expect(inspector.inspect(request) { result = $0 })
+    #expect(await waitUntil { result != nil })
+    // Die Rückfrage eines dirty Tabs braucht den Snapshot der Fremdfassung:
+    // Nur so merkt sich „Behalten" die akzeptierten Bytes und eine spätere
+    // reine Metadatenänderung fragt nicht erneut.
+    #expect(reader.readCount == 1)
+    #expect(result?.stableSnapshot != nil)
 }
 
 @Test("Inspector startet je Tab höchstens eine parallele Prüfung")
@@ -114,7 +164,10 @@ func externalChangeInspector_coalescesConcurrentRequestForTab() async throws {
     defer { reader.releaseFirstRead() }
     let inspector = ExternalChangeInspector(snapshotReader: { reader.read($0) })
     let request = ExternalChangeInspector.Request(
-        tabID: UUID(), documentID: UUID(), url: url, shouldReadContent: true
+        tabID: UUID(), documentID: UUID(), url: url,
+        knownObservation: nil,
+        observedByteCount: Data("gleiche Länge\n".utf8).count,
+        isDirty: false
     )
     var completionCount = 0
 
@@ -185,51 +238,16 @@ func workspace_externalInspectionRejectsReusedTabResult() async throws {
     #expect(ws.tabs[idx].id == reusedTabID)
 }
 
-// MARK: - Pure Entscheidungs-Logik
-
-@Test("Kein Vergleichs- oder Disk-Datum → keine Aktion")
-func action_missingDates() {
-    #expect(ExternalChange.action(isDirty: false, knownDate: nil, diskDate: Date()) == .none)
-    #expect(ExternalChange.action(isDirty: false, knownDate: Date(), diskDate: nil) == .none)
-}
-
-@Test("Gleiches Disk-Datum → keine Aktion")
-func action_sameDate() {
-    let d = Date()
-    #expect(ExternalChange.action(isDirty: false, knownDate: d, diskDate: d) == .none)
-}
-
-@Test("Disk neuer + Tab sauber → still neu laden")
-func action_newerClean() {
-    let d = Date()
-    #expect(ExternalChange.action(isDirty: false, knownDate: d,
-                                  diskDate: d.addingTimeInterval(5)) == .reloadSilently)
-}
-
-@Test("Disk neuer + Tab dirty → Nutzer fragen")
-func action_newerDirty() {
-    let d = Date()
-    #expect(ExternalChange.action(isDirty: true, knownDate: d,
-                                  diskDate: d.addingTimeInterval(5)) == .askUser)
-}
-
-@Test("Älterer Disk-Zeitstempel gilt ebenfalls als Änderung")
-func action_olderDate() {
-    let d = Date()
-    #expect(ExternalChange.action(isDirty: false, knownDate: d,
-                                  diskDate: d.addingTimeInterval(-5)) == .reloadSilently)
-}
-
 // MARK: - Workspace-Pfad
 
-@Test("loadFile setzt das Basis-Datum für die Erkennung")
+@Test("loadFile setzt den Platten-Fingerabdruck für die Erkennung")
 @MainActor
 func workspace_loadSetsBaseline() async throws {
     let url = try writeTmpUTF8("Inhalt\n")
     defer { try? FileManager.default.removeItem(at: url) }
     let ws = await loadedWorkspace(url)
     let tab = ws.tabs.first { $0.url == url }
-    #expect(tab?.diskModificationDate != nil)
+    #expect(tab?.externalFileObservation != nil)
 }
 
 @Test("Extern geändert + Tab sauber → stiller Reload mit neuem Inhalt")
@@ -257,7 +275,9 @@ func workspace_replacedFileWithPreservedDateReloadsSilently() async throws {
     defer { try? FileManager.default.removeItem(at: url) }
     let ws = await loadedWorkspace(url)
     let idx = try #require(ws.tabs.firstIndex { $0.url == url })
-    let originalDate = try #require(ws.tabs[idx].diskModificationDate)
+    let originalDate = try #require(
+        (try FileManager.default.attributesOfItem(atPath: url.path))[.modificationDate] as? Date
+    )
 
     try Data("neu\n".utf8).write(to: url, options: .atomic)
     try FileManager.default.setAttributes(
@@ -293,6 +313,112 @@ func workspace_dirtyKeepDoesNotReAsk() async throws {
     ws.checkExternalChanges()
     try? await Task.sleep(for: .milliseconds(100))
     #expect(askCount == 1)
+}
+
+@Test("„Behalten“ bei anderer Dateigröße: reine Metadatenänderung fragt nicht erneut")
+@MainActor
+func workspace_dirtyKeepWithDifferentSizeSurvivesMetadataChange() async throws {
+    let url = try writeTmpUTF8("alt\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let ws = await loadedWorkspace(url)
+    let idx = ws.tabs.firstIndex { $0.url == url }!
+    ws.tabs[idx].content = "lokal geändert\n"
+    ws.tabs[idx].isDirty = true
+
+    var askCount = 0
+    ws.externalReloadConfirmHandler = { _ in askCount += 1; return false }
+
+    // Die Fremdfassung ist DEUTLICH größer — die frühere Abkürzung „andere
+    // Bytezahl → Bytes nie lesen" ließ „Behalten" dann ohne Snapshot der
+    // akzeptierten Fassung zurück, und jede spätere Metadatenänderung
+    // erzeugte einen neuen falschen Dialog.
+    try simulateExternalEdit(url, content: "extern deutlich länger als vorher\n")
+    ws.checkExternalChanges()
+    #expect(await waitUntil { askCount == 1 })
+    #expect(ws.tabs[idx].externalContentSnapshot != nil,
+            "„Behalten“ muss die akzeptierte Fremdfassung als Snapshot besitzen")
+
+    // Nur das Änderungsdatum bewegt sich, die Bytes bleiben die akzeptierten.
+    try FileManager.default.setAttributes(
+        [.modificationDate: Date().addingTimeInterval(20)],
+        ofItemAtPath: url.path)
+    ws.checkExternalChanges()
+    try? await Task.sleep(for: .milliseconds(200))
+    #expect(askCount == 1, "bereits akzeptierte Bytes dürfen nicht erneut warnen")
+    #expect(ws.tabs[idx].content == "lokal geändert\n")
+}
+
+@Test("Veraltete Prüfung trifft keinen inzwischen umgebundenen Tab (Sichern unter/Verschieben)")
+@MainActor
+func workspace_staleInspectionDoesNotHitReboundTab() async throws {
+    let firstURL = try writeTmpUTF8("eins alt\n")
+    let secondURL = try writeTmpUTF8("zwei bleibt\n")
+    defer {
+        try? FileManager.default.removeItem(at: firstURL)
+        try? FileManager.default.removeItem(at: secondURL)
+    }
+    let reader = BlockingSnapshotReader()
+    defer { reader.releaseFirstRead() }
+    let inspector = ExternalChangeInspector(snapshotReader: { reader.read($0) })
+    let (defaults, _) = makeFreshDefaults()
+    let ws = Workspace(defaults: defaults, externalChangeInspector: inspector)
+    var loaded = false
+    ws.loadFile(at: firstURL) { _ in loaded = true }
+    #expect(await waitUntil { loaded })
+    let idx = try #require(ws.tabs.firstIndex { $0.url == firstURL })
+    var askCount = 0
+    ws.externalReloadConfirmHandler = { _ in askCount += 1; return true }
+
+    // Gleiche Größe erzwingt den (blockierten) Byte-Vergleich — die Prüfung
+    // für den ALTEN Pfad hängt jetzt in der Luft.
+    try simulateExternalEdit(firstURL, content: "eins neu\n")
+    ws.checkExternalChanges()
+    #expect(await waitUntil { reader.readCount == 1 })
+
+    // Der Tab wird bei unveränderter Dokument-Identität an einen neuen Pfad
+    // gebunden (wie nach „Sichern unter" oder Verschieben im Dateibaum).
+    ws.tabs[idx].url = secondURL
+    ws.tabs[idx].title = secondURL.lastPathComponent
+    ws.tabs[idx].recordExternalFileObservation(
+        at: secondURL, snapshot: ws.tabs[idx].diskSnapshot
+    )
+
+    reader.releaseFirstRead()
+    try? await Task.sleep(for: .milliseconds(200))
+
+    // Der Befund zum alten Pfad darf am neuen Ziel weder fragen noch laden.
+    #expect(askCount == 0)
+    #expect(ws.tabs[idx].content == "eins alt\n")
+    #expect(ws.tabs[idx].url == secondURL)
+}
+
+@Test("reloadTabFromDisk übernimmt nichts in einen während des Ladens umgebundenen Tab")
+@MainActor
+func workspace_reloadDropsResultAfterURLChange() async throws {
+    let url = try writeTmpUTF8("alt\n")
+    let otherURL = try writeTmpUTF8("anderes Ziel\n")
+    defer {
+        try? FileManager.default.removeItem(at: url)
+        try? FileManager.default.removeItem(at: otherURL)
+    }
+    let ws = await loadedWorkspace(url)
+    let idx = try #require(ws.tabs.firstIndex { $0.url == url })
+    try Data("neu von Platte\n".utf8).write(to: url, options: .atomic)
+    let delayedResult = try FileLoader.load(url: url)
+    let gate = DispatchSemaphore(value: 0)
+    ws.reloadFileLoader = { _ in gate.wait(); return delayedResult }
+
+    ws.reloadTabFromDisk(id: ws.tabs[idx].id)
+    // Während des Ladens wechselt der Tab seinen Pfad (Sichern unter /
+    // Verschieben) — der Inhalt des alten Pfads gehört nicht mehr hierher.
+    ws.tabs[idx].url = otherURL
+    gate.signal()
+    for _ in 0..<100 where ws.tabs[idx].isLoading {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+
+    #expect(ws.tabs[idx].content == "alt\n")
+    #expect(!ws.tabs[idx].isLoading)
 }
 
 @Test("Extern geändert + Tab dirty + Neu-laden → Disk-Inhalt gewinnt")

@@ -65,8 +65,19 @@ final class DocumentLanguageDetector: @unchecked Sendable {
     private struct State {
         var documentID: UUID
         var generation: UInt64
+        /// Länge der letzten ERFOLGREICH gelieferten Analyse. Sie wird erst
+        /// bei der Ergebnisübernahme fortgeschrieben: Würde schon der Start
+        /// zählen, könnte eine abgebrochene Analyse eine kleine Folgeänderung
+        /// als „zu klein" erscheinen lassen — und die Erkennung bliebe auf
+        /// einem nie gelieferten Stand hängen.
         var lastAnalyzedLength: Int?
         var delayedWork: DispatchWorkItem?
+        /// Der Auftrag eines wartenden Debounce-Laufs liegt im State, nicht
+        /// in der Work-Item-Closure: Ein abgesagtes Work-Item bleibt bis zum
+        /// Ablauf der Verzögerung in der Main-Queue stehen — läge der
+        /// Dokument-Snapshot in der Closure, hielte die Queue bei schnellem
+        /// Tippen viele verworfene Snapshots gleichzeitig im Speicher.
+        var pendingRequest: Request?
         var analysisCancellation: Cancellation?
     }
 
@@ -135,15 +146,33 @@ final class DocumentLanguageDetector: @unchecked Sendable {
                 generation: generation,
                 lastAnalyzedLength: lastAnalyzedLength,
                 delayedWork: nil,
+                pendingRequest: nil,
                 analysisCancellation: nil
             )
             if trigger == .debounced {
+                let tabID = request.tabID
                 let work = DispatchWorkItem { [weak self] in
-                    self?.beginAnalysis(
-                        request, generation: generation, onResult: onResult
+                    guard let self else { return }
+                    // Den Auftrag erst jetzt aus dem State holen: Wurde er
+                    // inzwischen ersetzt oder abgebrochen, ist er dort schon
+                    // weg und sein Snapshot bereits freigegeben.
+                    let pending = self.stateLock.withLock { () -> Request? in
+                        guard var state = self.states[tabID],
+                              state.generation == generation,
+                              let request = state.pendingRequest else {
+                            return nil
+                        }
+                        state.pendingRequest = nil
+                        self.states[tabID] = state
+                        return request
+                    }
+                    guard let pending else { return }
+                    self.beginAnalysis(
+                        pending, generation: generation, onResult: onResult
                     )
                 }
                 updated.delayedWork = work
+                updated.pendingRequest = request
                 states[request.tabID] = updated
                 return (trigger, generation, work)
             }
@@ -210,7 +239,6 @@ final class DocumentLanguageDetector: @unchecked Sendable {
                   state.generation == generation else { return false }
             state.delayedWork = nil
             state.analysisCancellation = cancellation
-            state.lastAnalyzedLength = request.newLength
             states[request.tabID] = state
             return true
         }
@@ -224,6 +252,7 @@ final class DocumentLanguageDetector: @unchecked Sendable {
         )
         let tabID = request.tabID
         let documentID = request.documentID
+        let analyzedLength = request.newLength
 
         let analyze = self.analyze
         let deliverResult = self.deliverResult
@@ -247,6 +276,9 @@ final class DocumentLanguageDetector: @unchecked Sendable {
                         return false
                     }
                     current.analysisCancellation = nil
+                    // Erst die tatsächlich gelieferte Analyse zählt als
+                    // Drosselungs-Basis für künftige Änderungen.
+                    current.lastAnalyzedLength = analyzedLength
                     self.states[tabID] = current
                     return true
                 }

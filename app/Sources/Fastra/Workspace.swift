@@ -127,12 +127,6 @@ struct EditorTab: Identifiable, Hashable {
     /// absichtlich keine Datei-URL: Die gelöschte Arbeitsdatei darf weder
     /// gespeichert noch in die Sitzungswiederherstellung aufgenommen werden.
     var gitSnapshotRequest: GitFileSnapshotRequest?
-    /// Änderungsdatum der Datei auf der Platte, wie es beim letzten
-    /// Laden/Speichern bekannt war. Basis der Extern-Änderungs-Erkennung
-    /// (BBEdit „Reload from Disk"): weicht das echte Disk-Datum davon ab,
-    /// wurde die Datei außerhalb von Fastra geändert. `nil` bei
-    /// unbenannten Tabs.
-    var diskModificationDate: Date?
     /// Exakte Byte-/Identitätsbasis des letzten Ladens oder Speicherns. Der
     /// Save-Pfad vergleicht sie unmittelbar vor dem Write und verlässt sich
     /// damit nicht auf die begrenzte Auflösung eines Änderungsdatums.
@@ -220,7 +214,6 @@ struct EditorTab: Identifiable, Hashable {
         documentID: UUID = UUID(),
         readOnlyReason: String? = nil,
         gitSnapshotRequest: GitFileSnapshotRequest? = nil,
-        diskModificationDate: Date? = nil,
         diskSnapshot: FileSnapshot? = nil,
         gitKind: GitTabKind? = nil,
         gitDiffRequest: GitDiffRequest? = nil,
@@ -250,7 +243,6 @@ struct EditorTab: Identifiable, Hashable {
         self.documentID = documentID
         self.readOnlyReason = readOnlyReason
         self.gitSnapshotRequest = gitSnapshotRequest
-        self.diskModificationDate = diskModificationDate
         self.diskSnapshot = diskSnapshot
         // Der asynchrone Ladepfad setzt den echten Platten-Fingerabdruck mit
         // dem fertigen Snapshot. Der Initializer selbst darf keine Datei-I/O
@@ -297,7 +289,6 @@ struct EditorTab: Identifiable, Hashable {
         snapshot: FileSnapshot?,
         observation: ExternalFileObservation? = nil
     ) {
-        diskModificationDate = ExternalChange.diskModificationDate(of: url)
         externalFileObservation = observation ?? ExternalFileObservation(url: url)
         externalContentSnapshot = snapshot
     }
@@ -1976,7 +1967,10 @@ final class Workspace: ObservableObject {
                 self.loadGeneration.removeValue(forKey: tabID)
                 switch result {
                 case .success(let loaded):
-                    guard self.tabs[i].contentRevision == originalRevision,
+                    // URL-Vergleich wie in `reloadTabFromDisk`: kein Inhalt
+                    // des alten Pfads in einen umgebundenen Tab.
+                    guard self.tabs[i].url == url,
+                          self.tabs[i].contentRevision == originalRevision,
                           self.tabs[i].diskSnapshot == originalDiskSnapshot else {
                         self.tabs[i].isLoading = false
                         return
@@ -2035,23 +2029,21 @@ final class Workspace: ObservableObject {
     func checkExternalChanges() {
         for tab in tabs {
             guard let url = tab.url, !tab.isLoading,
-                  !externalChangeInspector.isInspecting(tabID: tab.id),
-                  let currentObservation = ExternalFileObservation(url: url),
-                  currentObservation != tab.externalFileObservation else {
+                  !externalChangeInspector.isInspecting(tabID: tab.id) else {
                 continue
             }
+            // Auf dem Main-Thread nur Modellzustand einsammeln. Schon der
+            // Platten-Fingerabdruck (`open`+`fstat`) kann auf getrennten oder
+            // nicht reagierenden Datenträgern blockieren und entsteht deshalb
+            // erst in der Hintergrundprüfung des Inspectors.
             let observedContent = tab.externalContentSnapshot ?? tab.diskSnapshot
-            // Eine andere Bytezahl beweist die Inhaltsänderung bereits. Nur
-            // bei gleicher Größe lohnt der Hashvergleich; Tabs ohne vollständigen
-            // Snapshot (Abschnitt/Hex) werden nie dafür in den Speicher gelesen.
-            let shouldReadContent = observedContent.map {
-                Int64($0.byteCount) == currentObservation.byteCount
-            } ?? false
             let request = ExternalChangeInspector.Request(
                 tabID: tab.id,
                 documentID: tab.documentID,
                 url: url,
-                shouldReadContent: shouldReadContent
+                knownObservation: tab.externalFileObservation,
+                observedByteCount: observedContent?.byteCount,
+                isDirty: tab.isDirty
             )
             externalChangeInspector.inspect(request) { [weak self] inspection in
                 guard let self,
@@ -2061,6 +2053,11 @@ final class Workspace: ObservableObject {
                               && $0.documentID == inspection.documentID
                       }),
                       !self.tabs[idx].isLoading,
+                      // „Sichern unter" und Verschieben im Dateibaum wechseln
+                      // die URL bei unveränderter Dokument-Identität. Ein
+                      // Befund zum alten Pfad darf dann weder Dialog noch
+                      // Reload am neu gebundenen Tab auslösen.
+                      self.tabs[idx].url == inspection.url,
                       after != self.tabs[idx].externalFileObservation else {
                     return
                 }
@@ -2131,7 +2128,12 @@ final class Workspace: ObservableObject {
                 self.loadGeneration.removeValue(forKey: tabID)
                 switch result {
                 case .success(let loaded):
-                    guard self.tabs[i].contentRevision == originalRevision,
+                    // Der URL-Vergleich schützt gegen „Sichern unter" und
+                    // Verschieben während des Ladens: Der Inhalt des alten
+                    // Pfads darf nicht in den inzwischen umgebundenen Tab
+                    // übernommen werden.
+                    guard self.tabs[i].url == url,
+                          self.tabs[i].contentRevision == originalRevision,
                           self.tabs[i].diskSnapshot == originalDiskSnapshot else {
                         self.tabs[i].isLoading = false
                         return
@@ -3583,7 +3585,6 @@ final class Workspace: ObservableObject {
             guard path == sourcePath || path.hasPrefix(prefix) else { continue }
             tabs[index].url = nil
             tabs[index].path = "Aus Papierkorb gerettet"
-            tabs[index].diskModificationDate = nil
             tabs[index].externalFileObservation = nil
             tabs[index].externalContentSnapshot = nil
             tabs[index].isDirty = true
@@ -4901,7 +4902,11 @@ final class Workspace: ObservableObject {
                     }
                     self.loadGeneration.removeValue(forKey: tabID)
                     if case .success(let loaded) = loadResult {
-                        guard !self.tabs[idx].isDirty,
+                        // URL-Vergleich wie in `reloadTabFromDisk`: kein
+                        // Inhalt des alten Pfads in einen während des Ladens
+                        // umgebundenen Tab.
+                        guard self.tabs[idx].url == url,
+                              !self.tabs[idx].isDirty,
                               self.tabs[idx].contentRevision == originalRevision,
                               self.tabs[idx].diskSnapshot == originalDiskSnapshot else {
                             self.tabs[idx].isLoading = false
