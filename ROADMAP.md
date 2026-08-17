@@ -185,6 +185,17 @@ und sie sind noch offen.
   asynchroner Überschreiber von `gitStatus` unter Testparallelität. Bei
   erneutem Auftreten die Guard-Bedingungen einzeln protokollieren.
 
+- **Eine Ursache lastabhängig roter Tests ist seit 2026-08-17 belegt und
+  behoben.** Im vollen parallelen Lauf steht der Main-Actor mehrere Sekunden
+  am Stück still, weil alle `@MainActor`-Tests im selben Prozess denselben
+  Actor teilen (gemessen: 6,98 s Pause in einer 10-ms-Warteschleife). Eine
+  Wanduhr-Frist verstrich dadurch, ohne dass der Test überhaupt nachsehen
+  konnte; `waitUntil` misst seitdem nur noch beobachtete Zeit (AGENTS.md,
+  „Bekannte technische Fallen"). Die beiden Befunde darüber stammen aus der
+  Zeit davor und sind damit NICHT erklärt: Sie melden einen falschen Wert,
+  keine gerissene Frist. Bei einem neuen lastabhängigen Befund trotzdem
+  zuerst prüfen, ob eine Frist beteiligt war.
+
 ## Offene Beobachtungen (nicht reproduziert)
 
 - **⌘⇧+Pfeiltasten ohne Wirkung auf einem anderen Mac** (Daniel-Meldung

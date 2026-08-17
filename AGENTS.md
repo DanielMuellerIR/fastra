@@ -422,6 +422,26 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   gefunden hatte. Dafür gibt es `app/soak-test.sh`: ein langer Lauf über
   mehrere App-Neustarts, der nach JEDER Aktion die Invarianten prüft und
   Verstöße sammelt, statt abzubrechen. Er läuft bewusst nur von Hand.
+- **Eine Wanduhr-Frist misst im parallelen Testlauf nicht die Wartezeit,
+  sondern die Fremdlast.** swift-testing führt alle Tests im selben Prozess
+  nebenläufig aus, und sämtliche `@MainActor`-Tests teilen sich denselben
+  einen Main-Actor. Ein schwerer Nachbar — etwa der Aufbau eines
+  4,36-MB-Editors — belegt ihn sekundenlang am Stück. Gemessen am 2026-08-17
+  an `ExternalChangeTests` („Veraltete Prüfung eines wiederverwendeten
+  Tabplatzes"): Die 10-ms-Pause der Warteschleife wurde 6,98 s lang nicht
+  bedient, die gesamte 5-Sekunden-Frist verstrich also, ohne dass der Test
+  auch nur ein einziges Mal nachsehen konnte — und er meldete einen Fehler,
+  den es nicht gab. Losgelöste Hintergrundaufgaben liefen in derselben
+  Messung binnen einer Millisekunde an; der Engpass war allein der
+  Main-Actor, weder der Thread-Pool noch der geprüfte Ablauf. Prüfung,
+  Reload und Datei-Read liefen vollständig korrekt, nur später als das
+  Testfenster. `waitUntil` (`Tests/FastraTests/TestWaiting.swift`) zählt
+  deshalb nur noch Zeit, in der die Schleife wirklich an die Reihe kam: Eine
+  Pause weit über der angeforderten Länge gehört einem fremden
+  Main-Actor-Halter und verbraucht die Frist nicht. Ein echt hängendes
+  Verhalten läuft unverändert in die Frist, weil seine Durchläufe regulär
+  stattfinden. Vor jeder Fehlersuche an einem lastabhängig roten Test
+  deshalb zuerst messen, ob die Schleife überhaupt lief.
 - **`exit()` durchläuft AppKits Beenden-Hooks nicht.** In-App-Tests enden über
   `SelfTest.finish` direkt mit `exit()`. `applicationShouldTerminate` und damit
   dort untergebrachte Sicherungs- oder Aufräumarbeit laufen dann nicht. Braucht

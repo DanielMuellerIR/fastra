@@ -9,6 +9,19 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+### Testinfrastruktur
+
+- **Der lastabhängig rote Unit-Test „Veraltete Prüfung eines wiederverwendeten
+  Tabplatzes verändert das neue Dokument nicht" ist erklärt und behoben** —
+  ohne Produktänderung, das geprüfte Verhalten war die ganze Zeit korrekt.
+  Gemessen: Im vollen parallelen Lauf stand der Main-Actor 6,98 s am Stück
+  still (alle `@MainActor`-Tests teilen sich im selben Prozess einen Actor);
+  die 5-Sekunden-Frist der Warteschleife verstrich vollständig in dieser
+  Pause. Prüfung, Reload und Datei-Read liefen korrekt, nur nach dem
+  Testfenster. `waitUntil` zählt jetzt nur noch Zeit, in der die Schleife
+  wirklich an die Reihe kam; ein echter Hänger verbraucht die Frist
+  unverändert. Details in AGENTS.md unter „Bekannte technische Fallen".
+
 ## [v1.100.0] — 2026-08-17
 
 Vollständige Druckfunktion. Fastra konnte bisher gar nicht drucken: Das
