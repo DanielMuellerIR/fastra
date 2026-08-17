@@ -2912,29 +2912,36 @@ enum SelfTest {
     /// Wartephase alle Vorbedingungen her, die vorher eine Wiederholung
     /// nötig machten: Der Klickpunkt muss IN der sichtbaren Leiste liegen
     /// (ein weggescrollter Tab behält seine NSView, sein Mittelpunkt zeigte
-    /// am 2026-08-16 auf den Home-Knopf der Titelleiste), der Hit-Test muss
-    /// die Leiste treffen, und die Geometrie muss über zwei Poll-Durchgänge
-    /// unverändert sein — sonst veralten die Koordinaten zwischen Berechnung
-    /// und Event-Zustellung (dieselbe Falle wie beim markdownjump-Klick).
+    /// am 2026-08-16 auf den Home-Knopf der Titelleiste) und der Hit-Test
+    /// muss die Leiste treffen. Geprüft und geklickt wird im selben
+    /// synchronen Durchlauf — nur so können die Koordinaten zwischen
+    /// Messung und Zustellung nicht veralten (siehe Kommentar unten).
     private static func armSingleShiftClick(
         _ id: UUID,
         in window: NSWindow,
         content: NSView,
         directory: URL,
         tick: Int = 0,
-        lastPoint: NSPoint? = nil,
         completion: @escaping () -> Void
     ) {
-        func tryAgain(_ measured: NSPoint?) {
-            if tick >= 100 {
+        // Messung, Prüfungen und Klick passieren in EINEM synchronen
+        // Main-Thread-Durchlauf: `window.sendEvent` stellt sofort zu,
+        // dazwischen kann sich keine View bewegen. Eine tick-übergreifende
+        // „Ruhe“-Forderung wäre hier dagegen unerfüllbar — SwiftUIs
+        // ScrollView stellt bei jedem Re-Render ihren eigenen gespeicherten
+        // Offset wieder her und pendelte im Gesamtlauf dauerhaft gegen den
+        // Test-Scroll (beobachtet 2026-08-17: Klickpunkt sprang je Tick
+        // zwischen x≈278 und x≈776).
+        func tryAgain(blocker: String) {
+            if tick >= 200 {
                 try? FileManager.default.removeItem(at: directory)
-                finish(false, "Tab-Leiste kam vor dem Shift-Klick nicht zur "
-                    + "Ruhe oder der Klickpunkt trifft sie nicht")
+                finish(false, "Vorbedingung des Shift-Klicks nicht erreicht "
+                    + "(letzter Blocker: \(blocker))")
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 armSingleShiftClick(
                     id, in: window, content: content, directory: directory,
-                    tick: tick + 1, lastPoint: measured, completion: completion
+                    tick: tick + 1, completion: completion
                 )
             }
         }
@@ -2942,7 +2949,7 @@ enum SelfTest {
         guard let idleTab = markerView(
             id: "documentTab-idle-\(id.uuidString)", in: content
         ), let strip = idleTab.enclosingScrollView else {
-            tryAgain(nil)
+            tryAgain(blocker: "Tab-Marker oder Leisten-ScrollView fehlt")
             return
         }
         let local = NSPoint(x: idleTab.bounds.midX, y: idleTab.bounds.midY)
@@ -2950,7 +2957,8 @@ enum SelfTest {
         let clip = strip.contentView
         let stripRect = clip.convert(clip.bounds, to: nil)
         guard stripRect.insetBy(dx: -1, dy: -1).contains(point) else {
-            tryAgain(point)
+            tryAgain(blocker: "Punkt \(point) außerhalb der "
+                + "sichtbaren Leiste \(stripRect)")
             return
         }
         // Hit-Test aus Sicht des Fensters: Der Punkt muss wirklich in der
@@ -2959,16 +2967,10 @@ enum SelfTest {
             ?? content.convert(point, from: nil)
         guard let hit = content.hitTest(inSuperview),
               hit.isDescendant(of: strip) else {
-            tryAgain(point)
-            return
-        }
-        // Erst klicken, wenn zwei aufeinanderfolgende Messungen denselben
-        // Punkt ergeben — die Leiste kann direkt nach dem Scrollen noch
-        // layouten und würde den berechneten Punkt sonst entwerten.
-        guard let lastPoint,
-              abs(lastPoint.x - point.x) < 0.5,
-              abs(lastPoint.y - point.y) < 0.5 else {
-            tryAgain(point)
+            let hitDescription = content.hitTest(inSuperview)
+                .map { String(describing: type(of: $0)) } ?? "nichts"
+            tryAgain(blocker: "Hit-Test bei \(point) trifft "
+                + "\(hitDescription) statt der Tab-Leiste")
             return
         }
         guard sendMouseClick(at: point, in: window, modifiers: .shift) else {
