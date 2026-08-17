@@ -297,7 +297,16 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   gemeinsame Test-Home aus dem Rahmen (`NSWindow Frame main`), den ein
   früherer Test im selben Lauf hinterlassen hat. Ein Fenstertest, dessen
   Ergebnis von der Fensterbreite abhängt, muss seine Vorbedingung deshalb
-  selbst herstellen, statt sie zu erben.
+  selbst herstellen, statt sie zu erben. Zweite Hälfte derselben Falle
+  (2026-08-17): Eine tick-übergreifende „Geometrie ist zur Ruhe gekommen"-
+  Prüfung ist an SwiftUI-ScrollViews UNERFÜLLBAR — die ScrollView stellt
+  bei jedem Re-Render ihren eigenen gespeicherten Offset wieder her und
+  pendelt dauerhaft gegen den Test-Scroll. Da `window.sendEvent` synchron
+  zustellt, sind Messung, Prüfung und Klick im selben Main-Thread-
+  Durchlauf ohnehin racefrei: genau so messen und sofort klicken (siehe
+  `armSingleShiftClick`). Anders bei `NSApp.postEvent` (`viaApp: true`):
+  Dort liegt echte Zeit zwischen Messung und Zustellung, und eine
+  Ruhe-Prüfung ist nötig und angemessen (siehe markdownjump).
 - SwiftUIs `TapGesture(count: 2).exclusively(before: TapGesture(count: 1))`
   reagierte in der Änderungen-Liste nicht auf synthetische Klicks — der
   Einzelklick-Zweig feuerte nie, obwohl `hitTest` die richtige View traf.
