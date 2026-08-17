@@ -66,6 +66,10 @@ final class ExternalChangeInspector: @unchecked Sendable {
         let url: URL
         let observation: ExternalFileObservation?
         let stableSnapshot: FileSnapshot?
+        /// Dirty-Zustand, mit dem die Prüfung gestartet wurde. Ändert er
+        /// sich bis zur Completion, ist die Lese-Entscheidung dieser Prüfung
+        /// veraltet und der Workspace muss neu prüfen statt zu entscheiden.
+        let wasDirty: Bool
     }
 
     typealias SnapshotReader = @Sendable (URL) -> FileSnapshot?
@@ -74,8 +78,12 @@ final class ExternalChangeInspector: @unchecked Sendable {
     private let lock = NSLock()
     private var requestIDs: [UUID: UUID] = [:]
 
+    // Der Vergleich braucht nur Hash+Größe+Identität, nie die Bytes selbst.
+    // `readSnapshotOnly` hält deshalb höchstens einen 4-MiB-Chunk im
+    // Speicher — ein vollständiges `read` würde eine extern gewachsene
+    // Datei dagegen komplett in `Data` ziehen (pro Tab, parallel möglich).
     init(snapshotReader: @escaping SnapshotReader = {
-        try? FileSnapshot.read(from: $0).snapshot
+        try? FileSnapshot.readSnapshotOnly(from: $0)
     }) {
         self.snapshotReader = snapshotReader
     }
@@ -126,7 +134,8 @@ final class ExternalChangeInspector: @unchecked Sendable {
                 documentID: request.documentID,
                 url: request.url,
                 observation: after,
-                stableSnapshot: before == after ? snapshot : nil
+                stableSnapshot: before == after ? snapshot : nil,
+                wasDirty: request.isDirty
             )
 
             await MainActor.run { [weak self] in

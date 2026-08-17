@@ -9,6 +9,48 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.99.3] — 2026-08-17
+
+Abarbeitung des Nacht-Code-Reviews vom 2026-08-17 (7 Funde: 1 P1, 4 P2, 2 P3;
+alle behoben — vier Produkt-Fixes, drei Testhärtungen).
+
+### Behoben
+
+- **Fremdänderungs-Prüfung ohne Speicherlast:** Die Prüfung auf extern
+  geänderte Dateien las die mögliche Fremdfassung bislang vollständig in den
+  Speicher (bis 256 MiB pro Tab, parallel möglich), obwohl sie nur Hash,
+  Größe und Dateiidentität vergleicht. Der Vergleichs-Snapshot entsteht
+  jetzt streamend über 4-MiB-Blöcke — die Speicherlast ist damit unabhängig
+  von der Dateigröße beschränkt.
+- **Prüfanlässe gehen nicht mehr verloren:** Traf ein ausdrücklicher
+  Fremdänderungs-Check (etwa nach einem Hex-Schreibvorgang) ein, während für
+  denselben Tab schon eine Prüfung lief, wurde er stillschweigend verworfen —
+  der Tab blieb bis zum nächsten Aktivierungsereignis veraltet. Solche
+  Anlässe werden jetzt gemerkt und nach Abschluss der laufenden Prüfung mit
+  frischem Zustand nachgeholt.
+- **Keine falsche zweite Rückfrage nach „Behalten“:** Wurde ein Tab während
+  einer laufenden Fremdänderungs-Prüfung dirty, entschied die Prüfung noch
+  mit ihrer veralteten Lese-Entscheidung — „Behalten“ speicherte dann keinen
+  Snapshot der akzeptierten Fremdfassung, und eine spätere reine
+  Metadatenänderung fragte fälschlich erneut. Ändert sich der Dirty-Zustand
+  während der Prüfung, wird das Ergebnis jetzt verworfen und sofort mit dem
+  aktuellen Zustand neu geprüft.
+- **Git-Abbruch kann keine fremden Prozesse mehr treffen:** Der nach
+  SIGTERM geplante SIGKILL-Nachschlag auf die Git-Prozessgruppe blieb auch
+  nach regulärem Prozessende aktiv; eine inzwischen neu vergebene
+  Gruppen-ID hätte fremde Prozesse getroffen. Die Eskalation gehört jetzt
+  dem Abbruch-Token, wird nach nachgewiesenem Gruppenende gelöscht und
+  prüft die Gruppe unmittelbar vor der Zustellung erneut.
+
+### Intern
+
+- Testhärtungen aus demselben Review: `tabcompare` sendet wieder exakt
+  einen Shift-Klick (stabile Vorbedingungen statt Klick-Wiederholung, die
+  eine echte Klick-Regression verdeckt hätte); der 4D-Index-Workspace-Test
+  wartet mit derselben gemeinsamen Frist wie die übrige Suite; die
+  Fenster-Selbsttests holen Workspace und Fenster als Registry-Paar statt
+  aus der unsortierten Fensterliste.
+
 ## [v1.99.2] — 2026-08-16
 
 ### Behoben

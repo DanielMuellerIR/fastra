@@ -57,6 +57,14 @@ struct FileSnapshot: Codable, Equatable, Hashable, Sendable {
         self.identity = identity
     }
 
+    /// Für den streamenden Reader unten: Hash und Größe sind dort schon
+    /// fertig berechnet, ohne dass die Bytes je gesammelt vorlagen.
+    private init(sha256: String, byteCount: Int, identity: FileIdentity?) {
+        self.sha256 = sha256
+        self.byteCount = byteCount
+        self.identity = identity
+    }
+
     /// Obergrenze für vollständige Snapshot-Reads. Sie schützt Ordnersuche,
     /// Apply und Undo davor, eine unerwartet riesige Datei komplett in den
     /// Speicher zu ziehen: 256 MiB liegen weit über der 32-MiB-Grenze
@@ -130,6 +138,53 @@ struct FileSnapshot: Codable, Equatable, Hashable, Sendable {
             throw FileSnapshotReadError.changedDuringRead
         }
         return (data, FileSnapshot(data: data, identity: FileIdentity(stat: after)))
+    }
+
+    /// Wie `read`, aber OHNE die Bytes zu behalten: Der SHA-256 wird
+    /// chunkweise gefüttert, im Speicher liegt nie mehr als ein 4-MiB-Block.
+    /// Das ist der richtige Weg für reine Vergleichs-Snapshots — etwa die
+    /// Fremdänderungs-Prüfung, die den Inhalt selbst gar nicht braucht.
+    /// Vorher-/Nachher-`fstat` sichern wie bei `read` zu, dass Hash und
+    /// Identität zu genau einem unveränderten Dateistand gehören.
+    static func readSnapshotOnly(from url: URL,
+                                 byteLimit: UInt64 = maximumReadBytes) throws
+        -> FileSnapshot {
+        let (descriptor, before) = try openRegularFile(at: url)
+        defer { close(descriptor) }
+
+        guard before.st_size >= 0, UInt64(before.st_size) <= byteLimit else {
+            throw FileSnapshotReadError.tooLarge(byteCount: UInt64(max(0, before.st_size)))
+        }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: false)
+        var hasher = SHA256()
+        var totalBytes: UInt64 = 0
+        while true {
+            let chunk = try handle.read(upToCount: 4 * 1024 * 1024) ?? Data()
+            if chunk.isEmpty { break }
+            hasher.update(data: chunk)
+            totalBytes += UInt64(chunk.count)
+            // Grenze auch hier während des Lesens prüfen: Die Datei kann
+            // unter dem Reader wachsen, und der Hash wäre sonst beliebig teuer.
+            guard totalBytes <= byteLimit else {
+                throw FileSnapshotReadError.tooLarge(byteCount: totalBytes)
+            }
+        }
+        var after = stat()
+        guard fstat(descriptor, &after) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        guard before.st_dev == after.st_dev,
+              before.st_ino == after.st_ino,
+              before.st_size == after.st_size,
+              before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec,
+              before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec,
+              before.st_ctimespec.tv_sec == after.st_ctimespec.tv_sec,
+              before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec else {
+            throw FileSnapshotReadError.changedDuringRead
+        }
+        let digest = hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        return FileSnapshot(sha256: digest, byteCount: Int(totalBytes),
+                            identity: FileIdentity(stat: after))
     }
 
     /// Der Hash schützt den Inhalt; die Identität erkennt zusätzlich einen

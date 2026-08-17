@@ -331,3 +331,43 @@ func fileReadFix_previewImageSwapCannotExceedLimit() throws {
         #expect(data == contents)
     }
 }
+
+// MARK: - Streamender Vergleichs-Snapshot (Nacht-Review-Fund 2026-08-17)
+
+@Test("readSnapshotOnly liefert denselben Snapshot wie der Voll-Read")
+func fileReadFix_streamingSnapshotMatchesFullRead() throws {
+    let directory = try makeReviewFixDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("inhalt.txt")
+    // Mehr als ein 4-MiB-Chunk, damit der Hasher wirklich mehrfach gefüttert
+    // wird und nicht nur der Ein-Chunk-Sonderfall besteht.
+    var content = Data()
+    for index in 0..<5_000 {
+        content.append(Data("Zeile \(index): Inhalt für den Hash\n".utf8))
+    }
+    content.append(Data(repeating: 0x41, count: 5 * 1024 * 1024))
+    try content.write(to: url)
+
+    let full = try FileSnapshot.read(from: url).snapshot
+    let streamed = try FileSnapshot.readSnapshotOnly(from: url)
+
+    #expect(streamed == full,
+            "Hash, Bytezahl und Identität müssen unabhängig vom Leseweg gleich sein")
+}
+
+@Test("readSnapshotOnly weist übergroße Dateien ab, statt sie zu hashen")
+func fileReadFix_streamingSnapshotRejectsOversizedFile() throws {
+    let directory = try makeReviewFixDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("riesig.bin")
+    try makeSparseFile(at: url, size: 8 * 1024 * 1024)
+
+    var thrown: Error?
+    do { _ = try FileSnapshot.readSnapshotOnly(from: url, byteLimit: 1024) }
+    catch { thrown = error }
+
+    guard case .some(FileSnapshotReadError.tooLarge) = thrown else {
+        Issue.record("erwartet tooLarge, war \(String(describing: thrown))")
+        return
+    }
+}

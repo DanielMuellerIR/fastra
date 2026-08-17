@@ -721,6 +721,13 @@ final class Workspace: ObservableObject {
     /// Fensterlokaler Besitzer der laufenden Plattenprüfungen. Der Inspector
     /// kennt keinen Workspace; Tab- und Reload-Entscheidungen bleiben hier.
     private let externalChangeInspector: ExternalChangeInspector
+    /// Tabs, deren Prüf-Anlass während einer bereits laufenden Inspektion
+    /// eintraf. Ohne dieses Gedächtnis ginge ein ausdrücklicher Check (etwa
+    /// nach einem Hex-Schreibvorgang) einfach verloren: Die laufende
+    /// Inspektion hat den alten Stand womöglich schon erfasst und meldet
+    /// dann „nichts Neues“. Nach jeder Completion wird für gemerkte Tabs
+    /// mit frischem Modellzustand erneut geprüft.
+    private var pendingExternalCheckTabIDs: Set<UUID> = []
     /// Quellen, für die die Markdown-Hinweisleiste weggeklickt wurde. Nur für
     /// diese Sitzung — der Hinweis ist keine Einstellung, und der Menübefehl
     /// bleibt ohnehin erreichbar.
@@ -2026,10 +2033,18 @@ final class Workspace: ObservableObject {
     /// älterem Änderungsdatum. Nur bei einer Abweichung werden die Bytes im
     /// Hintergrund gelesen, damit weder große Dateien noch falsche Alarme
     /// durch reine Metadatenänderungen den Main-Thread belasten.
-    func checkExternalChanges() {
+    /// `only` beschränkt die Prüfung auf einen Tab — das nutzen die
+    /// Nachprüfungen aus der Completion, damit sie nicht für alle Tabs
+    /// neue Inspektionen anstoßen.
+    func checkExternalChanges(only limitedTabID: UUID? = nil) {
         for tab in tabs {
-            guard let url = tab.url, !tab.isLoading,
-                  !externalChangeInspector.isInspecting(tabID: tab.id) else {
+            if let limitedTabID, tab.id != limitedTabID { continue }
+            guard let url = tab.url, !tab.isLoading else { continue }
+            guard !externalChangeInspector.isInspecting(tabID: tab.id) else {
+                // Läuft schon eine Prüfung, darf dieser Anlass nicht
+                // stillschweigend entfallen: Die laufende Inspektion kann
+                // den soeben veränderten Stand bereits verpasst haben.
+                pendingExternalCheckTabIDs.insert(tab.id)
                 continue
             }
             // Auf dem Main-Thread nur Modellzustand einsammeln. Schon der
@@ -2046,8 +2061,18 @@ final class Workspace: ObservableObject {
                 isDirty: tab.isDirty
             )
             externalChangeInspector.inspect(request) { [weak self] inspection in
-                guard let self,
-                      let after = inspection.observation,
+                guard let self else { return }
+                // Während der Prüfung eingegangene Anlässe jetzt nachholen —
+                // unabhängig davon, ob dieses Ergebnis unten noch verwertbar
+                // ist. Die Nachprüfung startet mit frischem Modellzustand.
+                let rerunPending = self.pendingExternalCheckTabIDs
+                    .remove(inspection.tabID) != nil
+                defer {
+                    if rerunPending {
+                        self.checkExternalChanges(only: inspection.tabID)
+                    }
+                }
+                guard let after = inspection.observation,
                       let idx = self.tabs.firstIndex(where: {
                           $0.id == inspection.tabID
                               && $0.documentID == inspection.documentID
@@ -2059,6 +2084,21 @@ final class Workspace: ObservableObject {
                       // Reload am neu gebundenen Tab auslösen.
                       self.tabs[idx].url == inspection.url,
                       after != self.tabs[idx].externalFileObservation else {
+                    return
+                }
+
+                // Hat sich der Dirty-Zustand seit dem Start der Prüfung
+                // geändert, passt die damalige Lese-Entscheidung nicht mehr
+                // zum Tab: Eine sauber gestartete Prüfung hat z. B. keinen
+                // Snapshot gelesen, den die Rückfrage eines inzwischen
+                // dirty gewordenen Tabs aber bräuchte. Ergebnis verwerfen
+                // und sofort mit dem aktuellen Zustand neu prüfen.
+                guard inspection.wasDirty == self.tabs[idx].isDirty else {
+                    // Läuft ohnehin gleich eine gemerkte Nachprüfung (defer
+                    // oben), genügt die; sonst hier selbst neu anstoßen.
+                    if !rerunPending {
+                        self.checkExternalChanges(only: inspection.tabID)
+                    }
                     return
                 }
 

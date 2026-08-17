@@ -348,6 +348,43 @@ func workspace_dirtyKeepWithDifferentSizeSurvivesMetadataChange() async throws {
     #expect(ws.tabs[idx].content == "lokal geändert\n")
 }
 
+@Test("Wird der Tab während der laufenden Prüfung dirty, prüft der Workspace neu statt mit alter Lese-Entscheidung zu antworten")
+@MainActor
+func workspace_dirtyDriftDuringInspectionTriggersFreshCheck() async throws {
+    let url = try writeTmpUTF8("alt\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let ws = await loadedWorkspace(url)
+    let idx = ws.tabs.firstIndex { $0.url == url }!
+
+    var askCount = 0
+    ws.externalReloadConfirmHandler = { _ in askCount += 1; return false }
+
+    // Fremdfassung mit ANDERER Größe: Eine sauber gestartete Prüfung liest
+    // dann bewusst keine Bytes. Der Tab wird noch im selben Main-Durchlauf
+    // dirty — die Completion der laufenden Prüfung darf ihre alte
+    // Lese-Entscheidung („kein Snapshot nötig") jetzt nicht mehr anwenden,
+    // sonst speichert „Behalten" keinen Snapshot der akzeptierten Fassung
+    // und jede spätere Metadatenänderung fragt fälschlich erneut.
+    try simulateExternalEdit(url, content: "extern deutlich länger als vorher\n")
+    ws.checkExternalChanges()
+    ws.tabs[idx].content = "lokal geändert\n"
+    ws.tabs[idx].isDirty = true
+
+    #expect(await waitUntil { askCount == 1 })
+    #expect(ws.tabs[idx].content == "lokal geändert\n")
+    #expect(await waitUntil { ws.tabs[idx].externalContentSnapshot != nil },
+            "die Nachprüfung mit aktuellem Dirty-Zustand muss die Fremdfassung als Snapshot liefern")
+
+    // Nur das Änderungsdatum bewegt sich — die bereits beantwortete
+    // Fremdfassung darf nicht erneut warnen.
+    try FileManager.default.setAttributes(
+        [.modificationDate: Date().addingTimeInterval(20)],
+        ofItemAtPath: url.path)
+    ws.checkExternalChanges()
+    try? await Task.sleep(for: .milliseconds(200))
+    #expect(askCount == 1)
+}
+
 @Test("Veraltete Prüfung trifft keinen inzwischen umgebundenen Tab (Sichern unter/Verschieben)")
 @MainActor
 func workspace_staleInspectionDoesNotHitReboundTab() async throws {
