@@ -311,11 +311,15 @@ func fourDMethodIndex_twoWorkspacesStayIndependent() async throws {
 
 @MainActor
 private func waitForFourDMethod(_ name: String, in workspace: Workspace) async throws {
-    for _ in 0..<60 {
-        if workspace.fourDProjectMethodNames.contains(name) { return }
-        try await Task.sleep(for: .milliseconds(50))
+    // Dieselbe gemeinsame Frist wie alle übrigen Warten dieser Suite: Der
+    // `.utility`-Indexscan kann unter Parallellast deutlich länger als die
+    // früheren drei Sekunden anstehen — mit der kurzen Eigenfrist blieb
+    // gerade der Workspace-Watcher-Test lastabhängig rot.
+    guard await waitUntil(timeout: fourDIndexWait, {
+        workspace.fourDProjectMethodNames.contains(name)
+    }) else {
+        throw FourDMethodIndexWaitError.methodMissing(name)
     }
-    throw FourDMethodIndexWaitError.methodMissing(name)
 }
 
 private enum FourDMethodIndexWaitError: Error {

@@ -2794,20 +2794,19 @@ enum SelfTest {
                         // früherer Test im Lauf hinterlassen hatte — deshalb
                         // fiel der Fehler nur in bestimmten Reihenfolgen auf.
                         tabCompareStripOverflow = scrollTabStripToEnd(in: content)
-                        if let failure = shiftClickTab(
-                            leftTab.id, in: window, content: content
+                        armSingleShiftClick(
+                            leftTab.id, in: window, content: content,
+                            directory: directory
                         ) {
-                            try? FileManager.default.removeItem(at: directory)
-                            finish(false, failure)
+                            pollShiftSelectedTabs(
+                                ws,
+                                window: window,
+                                directory: directory,
+                                leftID: leftTab.id,
+                                rightID: rightTab.id,
+                                tick: 0
+                            )
                         }
-                        pollShiftSelectedTabs(
-                            ws,
-                            window: window,
-                            directory: directory,
-                            leftID: leftTab.id,
-                            rightID: rightTab.id,
-                            tick: 0
-                        )
                     }
                 }
             }
@@ -2902,22 +2901,81 @@ enum SelfTest {
         return nil
     }
 
-    /// Kompletter Shift-Klick auf den Tab `id`: erst sichtbar scrollen, dann
-    /// den Auswahl-Marker klicken. Rückgabe `nil` = geklickt.
-    private static func shiftClickTab(
+    /// Wartet, bis der Ziel-Tab sichtbar gescrollt, das Layout zur Ruhe
+    /// gekommen und der Klickpunkt nachweislich von der Tab-Leiste getroffen
+    /// wird — und sendet dann EINEN einzigen Shift-Klick.
+    ///
+    /// Bewusst keine Klick-Wiederholung: Würde der Test nach einer Frist
+    /// einfach erneut klicken, bestünde er auch dann, wenn ein Produktfehler
+    /// den ersten echten Nutzerklick verwirft — geprüft wäre dann nur noch
+    /// „irgendeiner von mehreren Klicks wirkt“. Stattdessen stellt diese
+    /// Wartephase alle Vorbedingungen her, die vorher eine Wiederholung
+    /// nötig machten: Der Klickpunkt muss IN der sichtbaren Leiste liegen
+    /// (ein weggescrollter Tab behält seine NSView, sein Mittelpunkt zeigte
+    /// am 2026-08-16 auf den Home-Knopf der Titelleiste), der Hit-Test muss
+    /// die Leiste treffen, und die Geometrie muss über zwei Poll-Durchgänge
+    /// unverändert sein — sonst veralten die Koordinaten zwischen Berechnung
+    /// und Event-Zustellung (dieselbe Falle wie beim markdownjump-Klick).
+    private static func armSingleShiftClick(
         _ id: UUID,
         in window: NSWindow,
-        content: NSView
-    ) -> String? {
-        guard scrollTabIntoView(id: id, in: content) else {
-            return "Tab-Leiste oder Geometrie-Marker des zweiten Tabs fehlt"
+        content: NSView,
+        directory: URL,
+        tick: Int = 0,
+        lastPoint: NSPoint? = nil,
+        completion: @escaping () -> Void
+    ) {
+        func tryAgain(_ measured: NSPoint?) {
+            if tick >= 100 {
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "Tab-Leiste kam vor dem Shift-Klick nicht zur "
+                    + "Ruhe oder der Klickpunkt trifft sie nicht")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                armSingleShiftClick(
+                    id, in: window, content: content, directory: directory,
+                    tick: tick + 1, lastPoint: measured, completion: completion
+                )
+            }
         }
+        scrollTabIntoView(id: id, in: content)
         guard let idleTab = markerView(
             id: "documentTab-idle-\(id.uuidString)", in: content
-        ) else {
-            return "AppKit-Marker des zweiten Tabs fehlt"
+        ), let strip = idleTab.enclosingScrollView else {
+            tryAgain(nil)
+            return
         }
-        return sendTabClick(on: idleTab, in: window, modifiers: .shift)
+        let local = NSPoint(x: idleTab.bounds.midX, y: idleTab.bounds.midY)
+        let point = idleTab.convert(local, to: nil)
+        let clip = strip.contentView
+        let stripRect = clip.convert(clip.bounds, to: nil)
+        guard stripRect.insetBy(dx: -1, dy: -1).contains(point) else {
+            tryAgain(point)
+            return
+        }
+        // Hit-Test aus Sicht des Fensters: Der Punkt muss wirklich in der
+        // Tab-Leiste landen, nicht auf einem darüberliegenden Bedienelement.
+        let inSuperview = content.superview?.convert(point, from: nil)
+            ?? content.convert(point, from: nil)
+        guard let hit = content.hitTest(inSuperview),
+              hit.isDescendant(of: strip) else {
+            tryAgain(point)
+            return
+        }
+        // Erst klicken, wenn zwei aufeinanderfolgende Messungen denselben
+        // Punkt ergeben — die Leiste kann direkt nach dem Scrollen noch
+        // layouten und würde den berechneten Punkt sonst entwerten.
+        guard let lastPoint,
+              abs(lastPoint.x - point.x) < 0.5,
+              abs(lastPoint.y - point.y) < 0.5 else {
+            tryAgain(point)
+            return
+        }
+        guard sendMouseClick(at: point, in: window, modifiers: .shift) else {
+            try? FileManager.default.removeItem(at: directory)
+            finish(false, "Mausereignis nicht erzeugbar")
+        }
+        completion()
     }
 
     /// Sendet einen synthetischen Linksklick. Standardweg ist `window.sendEvent`
@@ -2987,8 +3045,7 @@ enum SelfTest {
         directory: URL,
         leftID: UUID,
         rightID: UUID,
-        tick: Int,
-        clickAttempts: Int = 1
+        tick: Int
     ) {
         let content = window.contentView
         let currentMarker = content.flatMap {
@@ -3022,77 +3079,54 @@ enum SelfTest {
             )
             return
         }
-        if tick >= 30 {
-            // Die Tab-Leiste kann zum Klickzeitpunkt noch layouten. Der einmal
-            // berechnete Punkt zeigt dann auf die alte Position des Tabs, und
-            // das synthetische Ereignis landet neben dem gemeinten Tab —
-            // beobachtet unter der vollen Selbsttest-Suite, während der Test
-            // einzeln verlässlich grün lief. Statt an einer festen Frist zu
-            // scheitern, die Geometrie neu messen und den Klick wiederholen.
-            let retryFailure: String?
-            if clickAttempts < 4 {
-                retryFailure = content.map {
-                    shiftClickTab(leftID, in: window, content: $0)
-                } ?? "Fensterinhalt nicht erreichbar"
-            } else {
-                retryFailure = "vier Klickversuche blieben ohne Wirkung"
-            }
-            guard retryFailure == nil else {
-                // Diagnose VOR dem Aufräumen erheben — der Test löscht den
-                // Fixture-Ordner selbst, danach misst jede Prüfung nur noch
-                // die eigene Aufräumarbeit.
-                let fixtureExists = FileManager.default
-                    .fileExists(atPath: directory.path)
-                let fixtureCount = (try? FileManager.default
-                    .contentsOfDirectory(atPath: directory.path).count) ?? -1
-                try? FileManager.default.removeItem(at: directory)
-                // Welche Tab-Marker liegen im geprüften Fenster wirklich?
-                // Ohne diese Liste ist nicht unterscheidbar, ob der Klick
-                // danebenging oder ob die Prüfung im falschen Fenster sucht.
-                var markerIDs: [String] = []
-                func collectMarkers(_ view: NSView) {
-                    let id = view.accessibilityIdentifier()
-                    if id.hasPrefix("documentTab-") {
-                        markerIDs.append(id)
-                    }
-                    view.subviews.forEach(collectMarkers)
+        if tick >= 60 {
+            // Der eine gesendete Shift-Klick blieb ohne Wirkung — das ist
+            // jetzt ein echter Befund: Alle Vorbedingungen (sichtbar, stabil,
+            // Hit-Test trifft die Leiste) hat `armSingleShiftClick` vor dem
+            // Ereignis hergestellt. Bewusst KEINE Klick-Wiederholung, sonst
+            // bestünde der Test auch, wenn das Produkt den ersten echten
+            // Nutzerklick verwirft.
+            // Diagnose VOR dem Aufräumen erheben — der Test löscht den
+            // Fixture-Ordner selbst, danach misst jede Prüfung nur noch
+            // die eigene Aufräumarbeit.
+            let fixtureExists = FileManager.default
+                .fileExists(atPath: directory.path)
+            let fixtureCount = (try? FileManager.default
+                .contentsOfDirectory(atPath: directory.path).count) ?? -1
+            try? FileManager.default.removeItem(at: directory)
+            // Welche Tab-Marker liegen im geprüften Fenster wirklich?
+            // Ohne diese Liste ist nicht unterscheidbar, ob der Klick
+            // danebenging oder ob die Prüfung im falschen Fenster sucht.
+            var markerIDs: [String] = []
+            func collectMarkers(_ view: NSView) {
+                let id = view.accessibilityIdentifier()
+                if id.hasPrefix("documentTab-") {
+                    markerIDs.append(id)
                 }
-                content.map(collectMarkers)
-                let windowCount = NSApp.windows.filter {
-                    $0.frameAutosaveName != SearchWindow.frameAutosaveName
-                        && $0.isVisible && $0.contentView != nil
-                }.count
-                finish(
-                    false,
-                    "Shift-Klick nach \(clickAttempts) Versuch(en) "
-                        + "(\(retryFailure ?? "-")): "
-                        + "aktiv=\(ws.activeTabID?.uuidString ?? "nil"), "
-                        + "Vergleich=\(ws.comparisonTabID?.uuidString ?? "nil"), "
-                        + "Marker aktuell=\(currentMarker != nil), "
-                        + "zweiter=\(comparisonMarker != nil), "
-                        + "Tabs=\(ws.tabs.count) "
-                        + "[\(ws.tabs.map { $0.title }.joined(separator: ", "))], "
-                        + "links noch da=\(ws.tabs.contains { $0.id == leftID }), "
-                        + "rechts noch da=\(ws.tabs.contains { $0.id == rightID }), "
-                        + "Fixture-Ordner=\(fixtureExists) "
-                        + "mit \(fixtureCount) Dateien, "
-                        + "Fenster=\(windowCount), "
-                        + "Fenster-Marker=\(markerIDs.count): "
-                        + "\(markerIDs.prefix(6).joined(separator: " | "))"
-                )
+                view.subviews.forEach(collectMarkers)
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                pollShiftSelectedTabs(
-                    ws,
-                    window: window,
-                    directory: directory,
-                    leftID: leftID,
-                    rightID: rightID,
-                    tick: 0,
-                    clickAttempts: clickAttempts + 1
-                )
-            }
-            return
+            content.map(collectMarkers)
+            let windowCount = NSApp.windows.filter {
+                $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                    && $0.isVisible && $0.contentView != nil
+            }.count
+            finish(
+                false,
+                "Der einzelne Shift-Klick blieb ohne Wirkung: "
+                    + "aktiv=\(ws.activeTabID?.uuidString ?? "nil"), "
+                    + "Vergleich=\(ws.comparisonTabID?.uuidString ?? "nil"), "
+                    + "Marker aktuell=\(currentMarker != nil), "
+                    + "zweiter=\(comparisonMarker != nil), "
+                    + "Tabs=\(ws.tabs.count) "
+                    + "[\(ws.tabs.map { $0.title }.joined(separator: ", "))], "
+                    + "links noch da=\(ws.tabs.contains { $0.id == leftID }), "
+                    + "rechts noch da=\(ws.tabs.contains { $0.id == rightID }), "
+                    + "Fixture-Ordner=\(fixtureExists) "
+                    + "mit \(fixtureCount) Dateien, "
+                    + "Fenster=\(windowCount), "
+                    + "Fenster-Marker=\(markerIDs.count): "
+                    + "\(markerIDs.prefix(6).joined(separator: " | "))"
+            )
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             pollShiftSelectedTabs(
@@ -3101,8 +3135,7 @@ enum SelfTest {
                 directory: directory,
                 leftID: leftID,
                 rightID: rightID,
-                tick: tick + 1,
-                clickAttempts: clickAttempts
+                tick: tick + 1
             )
         }
     }
@@ -10389,15 +10422,18 @@ enum SelfTest {
     /// korrekt, nur die View hing hinterher.
     private static func runReplaceAllTest() {
         testLabel = "replaceall"
-        guard let ws = Workspace.shared else {
-            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        // Fenster und Workspace ausschließlich als Registry-Paar holen:
+        // `NSApp.windows.first` wäre bei mehreren Dokumentfenstern ein
+        // zufälliges Fenster, dessen Editor nicht zu `Workspace.shared`
+        // gehört (Nacht-Review-Fund 2026-08-17).
+        pollSharedWorkspaceWindow { ws, mainWindow, root in
+            runReplaceAllTestBody(ws: ws, mainWindow: mainWindow, root: root)
         }
-        guard let mainWindow = NSApp.windows.first(where: {
-            $0.frameAutosaveName != SearchWindow.frameAutosaveName
-                && $0.contentView != nil && $0.isVisible
-        }), let root = mainWindow.contentView else {
-            finish(false, "kein Hauptfenster gefunden")
-        }
+    }
+
+    private static func runReplaceAllTestBody(
+        ws: Workspace, mainWindow: NSWindow, root: NSView
+    ) {
         NSApp.activate(ignoringOtherApps: true)
         mainWindow.makeKeyAndOrderFront(nil)
 
@@ -12681,7 +12717,42 @@ enum SelfTest {
            }) {
             return bound
         }
-        return candidates.first
+        // Ist (noch) keine Registry-Bindung da, entscheidet die nach
+        // Vordergrund SORTIERTE Fensterliste — nie `candidates.first` aus
+        // `NSApp.windows`: Bei mehreren Dokumentfenstern wäre das ein
+        // zufälliges, womöglich fremdes Fenster (siehe AGENTS.md).
+        return NSApp.orderedWindows.first {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                && $0.isVisible && $0.contentView != nil
+        }
+    }
+
+    /// Liefert `Workspace.shared` und SEIN über die Registry gebundenes,
+    /// sichtbares Fenster als Paar — und pollt, bis diese Bindung wirklich
+    /// steht. Bewusst kein Rückfall auf irgendein anderes Fenster: Wer den
+    /// Inhalt aus `Workspace.shared` liest, aber einen getrennt gesuchten
+    /// Editor misst, verbindet bei mehreren Dokumentfenstern zwei
+    /// verschiedene Fenster miteinander (siehe AGENTS.md).
+    private static func pollSharedWorkspaceWindow(
+        tick: Int = 0,
+        then body: @escaping (Workspace, NSWindow, NSView) -> Void
+    ) {
+        if let ws = Workspace.shared,
+           let window = NSApp.windows.first(where: {
+               $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                   && $0.contentView != nil && $0.isVisible
+                   && WorkspaceWindowRegistry.workspace(for: $0) === ws
+           }), let root = window.contentView {
+            body(ws, window, root)
+            return
+        }
+        if tick >= 100 {
+            finish(false, "Workspace.shared ist binnen 5 s an kein "
+                + "sichtbares Fenster gebunden (Registry-Bindung fehlt)")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollSharedWorkspaceWindow(tick: tick + 1, then: body)
+        }
     }
 
     /// Prüft im ECHTEN Fenster (Etappe 1 Wunschpaket 2026-07b):
