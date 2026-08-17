@@ -92,6 +92,10 @@ Capture Groups.
 - **Ein sichtbarer Home-Button** führt das aktuelle Fenster sicher zum
   Willkommensbildschirm zurück. Ungesicherte Arbeit wird zuerst gemeinsam
   bestätigt und erhält anschließend die normalen Speicherdialoge.
+- **Drucken (⌘P)**: Quelltext mit Zeilennummern, Kopf-/Fußzeile und
+  Seitenzahlen — oder bei Markdown wahlweise die gerenderte Vorschau mit
+  Tabellen, Formeln und Diagrammen. Hex-Abzug, Bilder und PDFs drucken
+  ebenfalls.
 - **Light- & Dark-Mode**, natives SwiftUI/AppKit, kein Electron.
 - **Lokal & privat**: Keine Konten, Telemetrie, Dokument-Uploads oder Abos. Die
   Updateprüfung kontaktiert nur Fastras signierten GitHub-Pages-Feed und sendet

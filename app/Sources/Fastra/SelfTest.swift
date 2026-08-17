@@ -449,6 +449,7 @@ enum SelfTest {
         case "xpath": waitForMainWindow { runXPathTest() }
         case "leakscenario": waitForMainWindow { runLeakScenario() }
         case "previewrender": waitForMainWindow { runPreviewRenderTest() }
+        case "print": waitForMainWindow { runPrintTest() }
         case "markdown":  waitForMainWindow { runMarkdownRenderTest() }
         case "markdownblanklines": waitForMainWindow { runMarkdownVisibleBlankLinesTest() }
         case "markdownjump": waitForMainWindow { runMarkdownJumpTest() }
@@ -1972,6 +1973,10 @@ enum SelfTest {
         return nil
     }
 
+    /// Testordner des `print`-Selbsttests — `finish` räumt ihn in jedem
+    /// Ausgang auf (Erfolg, Fehler, Abbruch).
+    private static var printFixtureDirectory: URL?
+
     private static var testLabel = "findbar"
     private static var testStartedNanoseconds = DispatchTime.now().uptimeNanoseconds
 
@@ -1995,6 +2000,10 @@ enum SelfTest {
         if let backgroundScrollFixtureDirectory {
             try? FileManager.default.removeItem(at: backgroundScrollFixtureDirectory)
             self.backgroundScrollFixtureDirectory = nil
+        }
+        if let printFixtureDirectory {
+            try? FileManager.default.removeItem(at: printFixtureDirectory)
+            self.printFixtureDirectory = nil
         }
         let elapsed = DispatchTime.now().uptimeNanoseconds - testStartedNanoseconds
         let appMilliseconds = elapsed / 1_000_000
@@ -18704,5 +18713,412 @@ enum SelfTest {
     private static func finishMarkdownImport(_ base: URL, _ ok: Bool, _ message: String) -> Never {
         try? FileManager.default.removeItem(at: base)
         finish(ok, message)
+    }
+
+    // MARK: - Drucken
+
+    /// Beweist den vollständigen Druckweg, ohne einen Drucker zu brauchen:
+    /// Jeder Auftrag läuft mit `jobDisposition = .save` in eine PDF-Datei, und
+    /// geprüft wird danach am ERGEBNIS — Seitenzahl und wirklich enthaltener
+    /// Text. Ein Test, der nur „kein Fehler geworfen" prüft, würde einen leeren
+    /// oder einseitigen Ausdruck durchgehen lassen.
+    ///
+    /// Vier Teile: langer Quelltext (mehrseitig, Kopf-/Fußzeile,
+    /// Zeilennummern), Markdown-Vorschau (gerendert), dieselbe Markdown-Datei
+    /// als Quelltext (die Wahl muss wirklich etwas ändern) und der Hex-Abzug
+    /// des sichtbaren Abschnitts.
+    private static func runPrintTest() {
+        testLabel = "print"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        // Die erzeugten PDFs sind das eigentliche Ergebnis dieses Tests. Wer
+        // sie ansehen will (Sichtprüfung von Umbruch, Kopf- und Fußzeile),
+        // setzt FASTRA_PRINT_TEST_OUTPUT_DIR — dann bleiben sie liegen.
+        let keepDirectory = ProcessInfo.processInfo.environment[
+            "FASTRA_PRINT_TEST_OUTPUT_DIR"
+        ]
+        let base = keepDirectory.map { URL(fileURLWithPath: $0) }
+            ?? FileManager.default.temporaryDirectory
+                .appendingPathComponent("fastra-print-\(UUID().uuidString)")
+        do {
+            try FileManager.default.createDirectory(at: base,
+                                                    withIntermediateDirectories: true)
+        } catch {
+            finish(false, "Testordner nicht anlegbar: \(error.localizedDescription)")
+        }
+        if keepDirectory == nil { printFixtureDirectory = base }
+
+        let txt = base.appendingPathComponent("quelltext.txt")
+        // 400 Zeilen: sicher mehr als eine Seite, und die letzte Zeile ist ein
+        // Beleg dafür, dass die Seitenaufteilung nichts verschluckt.
+        let content = (1...400).map { "Zeile \($0): abcdefghijklmnop" }
+            .joined(separator: "\n")
+        do { try content.write(to: txt, atomically: true, encoding: .utf8) }
+        catch { finish(false, "Quelltext-Fixture nicht schreibbar") }
+
+        ws.loadFile(at: txt) { ok in
+            guard ok else { finish(false, "loadFile (Quelltext) schlug fehl") }
+            guard let document = ws.printableDocument else {
+                finish(false, "Textdatei meldet keine Druckvorlage")
+            }
+            guard PrintRouting.defaultTarget(document) == .source else {
+                finish(false, "⌘P nimmt bei einer Textdatei nicht den Quelltext")
+            }
+            printToPDF(target: .source, ws: ws, base: base, name: "quelltext") { pdf, text in
+                guard pdf.pageCount >= 2 else {
+                    finish(false, "400 Zeilen ergeben nur \(pdf.pageCount) Seite(n)")
+                }
+                guard text.contains("Zeile 1:"), text.contains("Zeile 400:") else {
+                    finish(false, "erste oder letzte Zeile fehlt im Ausdruck")
+                }
+                guard text.contains("quelltext.txt") else {
+                    finish(false, "Kopfzeile ohne Dokumentnamen")
+                }
+                guard text.contains(PrintDecoration.footerRight(page: 1, of: pdf.pageCount))
+                        || text.contains(PrintDecoration.footerRight(page: 1, of: nil)) else {
+                    finish(false, "Fußzeile ohne Seitenzahl")
+                }
+                runPrintMarkdownPart(ws: ws, base: base, sourcePages: pdf.pageCount)
+            }
+        }
+    }
+
+    /// Markdown: erst die gerenderte Vorschau, dann derselbe Text als
+    /// Quelltext. Die beiden Ausdrucke müssen sich nachweisbar unterscheiden —
+    /// sonst wäre die Wahl im Menü ohne Wirkung.
+    private static func runPrintMarkdownPart(ws: Workspace, base: URL,
+                                             sourcePages: Int) {
+        let markdown = base.appendingPathComponent("bericht.md")
+        // Formel und Diagramm gehören ausdrücklich dazu: Sie entstehen erst im
+        // Dokument (KaTeX, Mermaid) und beweisen damit, dass der Ausdruck auf
+        // das fertige Rendern wartet statt das halbfertige Dokument zu drucken.
+        let text = """
+        # Druckprobe
+
+        Ein Absatz mit **Fettung** und der Formel $E = mc^2$.
+
+        | Spalte | Wert |
+        | --- | --- |
+        | Messung | Tabellenwert |
+
+        - erster Punkt
+        - zweiter Punkt
+
+        ```mermaid
+        graph LR
+          Anfangsknoten --> Endknoten
+        ```
+        """
+        do { try text.write(to: markdown, atomically: true, encoding: .utf8) }
+        catch { finish(false, "Markdown-Fixture nicht schreibbar") }
+
+        ws.loadFile(at: markdown) { ok in
+            guard ok else { finish(false, "loadFile (Markdown) schlug fehl") }
+            guard let document = ws.printableDocument else {
+                finish(false, "Markdown meldet keine Druckvorlage")
+            }
+            guard PrintRouting.availableTargets(document).contains(.markdownPreview),
+                  PrintRouting.availableTargets(document).contains(.source) else {
+                finish(false, "Markdown bietet nicht beide Fassungen an")
+            }
+            printToPDF(target: .markdownPreview, ws: ws, base: base,
+                       name: "vorschau") { previewPDF, previewText in
+                guard previewPDF.pageCount >= 1 else {
+                    finish(false, "Vorschau-Ausdruck hat keine Seite")
+                }
+                guard previewText.contains("Druckprobe"),
+                      previewText.contains("Tabellenwert") else {
+                    finish(false, "Vorschau-Ausdruck ohne gerenderten Inhalt")
+                }
+                // Das Diagramm steht als echter SVG-Text im PDF, wenn Mermaid
+                // fertig geworden ist. Fehlt der Knotenname oder steht statt
+                // des Diagramms die Fehlermeldung da, wurde zu früh gedruckt.
+                guard previewText.contains("Anfangsknoten"),
+                      previewText.contains("Endknoten") else {
+                    finish(false, "Vorschau-Ausdruck ohne gerendertes Diagramm")
+                }
+                guard !previewText.contains(
+                    L10n.string("Diagramm konnte nicht gerendert werden.")) else {
+                    finish(false, "Diagramm im Ausdruck als Fehler gemeldet")
+                }
+                guard !previewText.contains("```mermaid") else {
+                    finish(false, "Diagramm im Ausdruck als roher Codeblock")
+                }
+                // Gerendert heißt: Die Auszeichnungszeichen sind weg. Stünden
+                // „# " oder die Tabellenstriche im PDF, wäre versehentlich der
+                // Quelltext gedruckt worden.
+                guard !previewText.contains("# Druckprobe"),
+                      !previewText.contains("| --- |") else {
+                    finish(false, "Vorschau-Ausdruck enthält rohes Markdown")
+                }
+                printToPDF(target: .source, ws: ws, base: base,
+                           name: "md-quelltext") { _, sourceText in
+                    guard sourceText.contains("# Druckprobe") else {
+                        finish(false, "Quelltext-Ausdruck ohne Markdown-Auszeichnung")
+                    }
+                    runPrintHexPart(ws: ws, base: base)
+                }
+            }
+        }
+    }
+
+    /// Hex: Gedruckt wird der sichtbare Abschnitt. Der Test wartet deshalb
+    /// darauf, dass die Hex-Ansicht ihren geladenen Abschnitt gemeldet hat.
+    private static func runPrintHexPart(ws: Workspace, base: URL) {
+        let binary = base.appendingPathComponent("daten.bin")
+        var bytes = Data()
+        for index in 0..<2048 { bytes.append(UInt8(index % 251)) }
+        // Ein Nullbyte macht die Datei für den Loader eindeutig binär.
+        bytes[0] = 0
+        do { try bytes.write(to: binary) }
+        catch { finish(false, "Binär-Fixture nicht schreibbar") }
+
+        ws.loadFile(at: binary) { ok in
+            guard ok else { finish(false, "loadFile (Binärdatei) schlug fehl") }
+            guard ws.activeViewMode == .hex else {
+                finish(false, "Binärdatei öffnet nicht in der Hex-Ansicht")
+            }
+            pollPrintHexPage(ws: ws, base: base, tick: 0)
+        }
+    }
+
+    private static func pollPrintHexPage(ws: Workspace, base: URL, tick: Int) {
+        if let page = ws.visiblePrintPage, !page.text.isEmpty {
+            guard let document = ws.printableDocument,
+                  PrintRouting.defaultTarget(document) == .hexDump else {
+                finish(false, "⌘P nimmt in der Hex-Ansicht nicht den Abzug")
+            }
+            printToPDF(target: .hexDump, ws: ws, base: base, name: "hex") { pdf, text in
+                guard pdf.pageCount >= 1 else {
+                    finish(false, "Hex-Ausdruck hat keine Seite")
+                }
+                guard text.contains("000000000000"), text.contains("|") else {
+                    finish(false, "Hex-Ausdruck ohne Adressspalte oder ASCII-Spalte")
+                }
+                // Jede Rasterzeile muss VOLLSTÄNDIG auf einer Druckzeile
+                // stehen: Adresse, Bytes und die ASCII-Spalte bis zum
+                // schließenden Strich. Bricht die Zeile um, ist der Abzug
+                // unlesbar — genau das passierte, solange die Druckschrift
+                // nicht an die Seitenbreite angepasst wurde.
+                let addressRows = text.split(separator: "\n").filter { row in
+                    row.count >= 12 && row.prefix(12).allSatisfy { $0.isHexDigit }
+                }
+                guard addressRows.count >= 16 else {
+                    finish(false, "Hex-Ausdruck enthält nur \(addressRows.count) "
+                           + "Rasterzeilen")
+                }
+                // Geprüft wird auf die beiden senkrechten Striche der
+                // ASCII-Spalte, nicht auf das Zeilenende: Die Textauslese des
+                // PDFs hängt an die letzte Zeile einer Seite die Fußzeile an.
+                // Eine umgebrochene Rasterzeile bricht dagegen VOR oder IN der
+                // ASCII-Spalte ab und hat damit weniger als zwei Striche.
+                if let wrapped = addressRows.first(where: {
+                    $0.filter { $0 == "|" }.count < 2
+                }) {
+                    finish(false, "Hex-Rasterzeile umgebrochen: \(wrapped)")
+                }
+                runPrintImageAndPDFPart(ws: ws, base: base,
+                                        hexPages: pdf.pageCount)
+            }
+            return
+        }
+        guard tick < 60 else {
+            finish(false, "Hex-Ansicht meldet binnen 15 s keinen geladenen Abschnitt")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollPrintHexPage(ws: ws, base: base, tick: tick + 1)
+        }
+    }
+
+    /// Bild und PDF: Beides sind Vorschau-Ansichten ohne Editor-Text. Sie
+    /// beweisen, dass „Drucken" nicht am Texteditor hängt.
+    private static func runPrintImageAndPDFPart(ws: Workspace, base: URL,
+                                               hexPages: Int) {
+        let png = base.appendingPathComponent("bild.png")
+        do { try writeSolidPNG(to: png, width: 64, height: 32) }
+        catch { finish(false, "PNG-Fixture nicht schreibbar") }
+
+        ws.loadFile(at: png) { ok in
+            guard ok else { finish(false, "loadFile (PNG) schlug fehl") }
+            guard let document = ws.printableDocument,
+                  PrintRouting.defaultTarget(document) == .image else {
+                finish(false, "⌘P nimmt bei einem Bild nicht die Bildvorschau")
+            }
+            printToPDF(target: .image, ws: ws, base: base, name: "bild") { imagePDF, imageText in
+                guard imagePDF.pageCount == 1 else {
+                    finish(false, "Bildausdruck hat \(imagePDF.pageCount) Seiten "
+                           + "statt einer")
+                }
+                guard imageText.contains("bild.png") else {
+                    finish(false, "Bildausdruck ohne Kopfzeile")
+                }
+                let sourcePDF = base.appendingPathComponent("vorlage.pdf")
+                do { try writeSinglePagePDF(to: sourcePDF) }
+                catch { finish(false, "PDF-Fixture nicht schreibbar") }
+                ws.loadFile(at: sourcePDF) { pdfLoaded in
+                    guard pdfLoaded else { finish(false, "loadFile (PDF) schlug fehl") }
+                    guard let pdfDocument = ws.printableDocument,
+                          PrintRouting.defaultTarget(pdfDocument) == .pdf else {
+                        finish(false, "⌘P nimmt bei einem PDF nicht das PDF")
+                    }
+                    printToPDF(target: .pdf, ws: ws, base: base,
+                               name: "pdf-druck") { printed, _ in
+                        guard printed.pageCount == 1 else {
+                            finish(false, "PDF-Ausdruck hat \(printed.pageCount) "
+                                   + "Seiten statt einer")
+                        }
+                        runPrintPanelPart(ws: ws, base: base, hexPages: hexPages)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Der echte Menüweg: `printVisibleDocument()` ist genau das, was
+    /// „Drucken…" (⌘P) auslöst. Geprüft wird, dass daraufhin das
+    /// System-Druckfenster als Blatt am Dokumentfenster erscheint — der Pfad,
+    /// den jeder Nutzer geht, und der einzige, der die Fenster-Zielwahl und
+    /// die Rückmeldung des Systemdialogs wirklich benutzt.
+    private static func runPrintPanelPart(ws: Workspace, base: URL, hexPages: Int) {
+        // Zuerst der große Ausdruck: Über zwei Megabyte Text fragt Fastra
+        // vorher nach, weil das Aufteilen in Seiten den Main-Thread belegt.
+        // Geprüft wird am echten Blatt, dass diese Frage wirklich kommt — die
+        // Schätzung selbst deckt der Unit-Test ab.
+        let large = base.appendingPathComponent("gross.txt")
+        let block = String(repeating: "Eine Zeile mit etwas Text zum Drucken.\n",
+                           count: 60_000)
+        do { try block.write(to: large, atomically: true, encoding: .utf8) }
+        catch { finish(false, "Großes Fixture nicht schreibbar") }
+        guard block.utf8.count > PrintVolume.confirmationThresholdBytes else {
+            finish(false, "Großes Fixture ist unter der Rückfrage-Schwelle")
+        }
+        ws.loadFile(at: large) { ok in
+            guard ok else { finish(false, "loadFile (großes Dokument) schlug fehl") }
+            MainActor.assumeIsolated { DocumentPrinting.printVisibleDocument() }
+            pollLargePrintWarning(ws: ws, base: base, hexPages: hexPages, tick: 0)
+        }
+    }
+
+    /// Wartet auf das Rückfrage-Blatt und schließt es mit „Abbrechen" wieder.
+    private static func pollLargePrintWarning(ws: Workspace, base: URL,
+                                             hexPages: Int, tick: Int) {
+        if let sheet = NSApp.windows.compactMap({ $0.attachedSheet }).first {
+            let texts = sheetTexts(in: sheet)
+            guard texts.contains(where: { $0.contains(L10n.string("Großer Ausdruck")) }) else {
+                finish(false, "Blatt vor dem großen Ausdruck ist nicht die Rückfrage: "
+                       + texts.joined(separator: " / "))
+            }
+            // Die Seitenschätzung muss eine Zahl nennen, nicht bloß Text.
+            guard texts.contains(where: { $0.contains(where: \.isNumber) }) else {
+                finish(false, "Rückfrage nennt keine geschätzte Seitenzahl")
+            }
+            // Abbrechen ist die zweite Taste. Erst wenn das Blatt wirklich weg
+            // ist, geht der Test weiter: Sonst könnte die anschließende Prüfung
+            // „⌘P öffnet ein Blatt" versehentlich noch dieses hier sehen.
+            MainActor.assumeIsolated {
+                sheet.sheetParent?.endSheet(sheet, returnCode: .alertSecondButtonReturn)
+            }
+            pollSheetGone(ws: ws, base: base, hexPages: hexPages, tick: 0)
+            return
+        }
+        guard tick < 60 else {
+            finish(false, "über zwei Megabyte Text fragen binnen 15 s nicht nach")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollLargePrintWarning(ws: ws, base: base, hexPages: hexPages,
+                                  tick: tick + 1)
+        }
+    }
+
+    private static func pollSheetGone(ws: Workspace, base: URL, hexPages: Int,
+                                     tick: Int) {
+        if NSApp.windows.allSatisfy({ $0.attachedSheet == nil }) {
+            // Abgebrochen heißt abgebrochen: Der große Ausdruck darf jetzt
+            // nicht doch laufen.
+            runPrintPanelStage(ws: ws, base: base, hexPages: hexPages)
+            return
+        }
+        guard tick < 40 else {
+            finish(false, "die Rückfrage zum großen Ausdruck schließt nicht")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollSheetGone(ws: ws, base: base, hexPages: hexPages, tick: tick + 1)
+        }
+    }
+
+    /// Sichtbare Beschriftungen eines Blattes — für die Prüfung, WELCHE
+    /// Rückfrage erscheint.
+    private static func sheetTexts(in sheet: NSWindow) -> [String] {
+        var texts: [String] = []
+        func walk(_ view: NSView) {
+            if let field = view as? NSTextField, !field.stringValue.isEmpty {
+                texts.append(field.stringValue)
+            }
+            view.subviews.forEach(walk)
+        }
+        if let content = sheet.contentView { walk(content) }
+        return texts
+    }
+
+    private static func runPrintPanelStage(ws: Workspace, base: URL, hexPages: Int) {
+        ws.loadFile(at: base.appendingPathComponent("quelltext.txt")) { ok in
+            guard ok else { finish(false, "loadFile (Quelltext, zweiter Lauf) schlug fehl") }
+            MainActor.assumeIsolated { DocumentPrinting.printVisibleDocument() }
+            pollPrintPanel(hexPages: hexPages, tick: 0)
+        }
+    }
+
+    private static func pollPrintPanel(hexPages: Int, tick: Int) {
+        let sheets = NSApp.windows.filter { $0.attachedSheet != nil }
+        if !sheets.isEmpty {
+            finish(true, "mehrseitiger Quelltext mit Kopf-/Fußzeile, gerenderte "
+                   + "Markdown-Vorschau (Formel + Diagramm), Markdown-Quelltext, "
+                   + "Hex-Abzug ohne Umbruch (\(hexPages) Seiten), Bild- und "
+                   + "PDF-Ausdruck im PDF geprüft; großer Text fragt mit "
+                   + "Seitenschätzung nach; ⌘P öffnet das System-Druckfenster")
+        }
+        guard tick < 60 else {
+            finish(false, "⌘P öffnet binnen 15 s kein Druckfenster am Dokumentfenster")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollPrintPanel(hexPages: hexPages, tick: tick + 1)
+        }
+    }
+
+    /// Druckt in eine PDF-Datei und liefert Dokument plus extrahierten Text.
+    ///
+    /// Die Datei entsteht über die Druck-Warteschlange; sie kann deshalb einen
+    /// Moment nach der Rückmeldung des Auftrags noch wachsen. Der Test wartet
+    /// darauf, statt eine halb geschriebene Datei zu lesen.
+    private static func printToPDF(target: PrintTarget, ws: Workspace, base: URL,
+                                   name: String,
+                                   then: @escaping (PDFDocument, String) -> Void) {
+        let output = base.appendingPathComponent("\(name).pdf")
+        // Die Selbsttest-Ketten laufen alle auf dem Main-Thread (jede Stufe
+        // hängt an `DispatchQueue.main`); der Compiler weiß das hier nur nicht.
+        MainActor.assumeIsolated {
+            DocumentPrinting.run(target: target, workspace: ws, window: nil,
+                                 savingTo: output) { outcome in
+                guard outcome == .printed else {
+                    finish(false, "Druck „\(name)\" endete mit \(outcome)")
+                }
+                pollPrintedPDF(at: output, name: name, tick: 0, then: then)
+            }
+        }
+    }
+
+    private static func pollPrintedPDF(at url: URL, name: String, tick: Int,
+                                       then: @escaping (PDFDocument, String) -> Void) {
+        if let document = PDFDocument(url: url), document.pageCount > 0 {
+            then(document, document.string ?? "")
+            return
+        }
+        guard tick < 80 else {
+            finish(false, "PDF „\(name)\" ist nach 20 s nicht lesbar")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollPrintedPDF(at: url, name: name, tick: tick + 1, then: then)
+        }
     }
 }

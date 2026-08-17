@@ -112,6 +112,19 @@ enum CommandTargeting {
         return WorkspaceWindowRegistry.workspace(for: window)
     }
 
+    /// Fenster und Workspace in einem Zugriff — ohne Editor.
+    ///
+    /// Für Befehle, die auch auf Tabs ohne Texteditor wirken: Die Bild-, PDF-
+    /// und Hex-Ansicht enthält keine `TextView`, `target()` unten würde dort
+    /// also `nil` liefern. Drucken muss trotzdem funktionieren.
+    static func targetDocument() -> (window: NSWindow, workspace: Workspace)? {
+        guard let window = targetDocumentWindow(),
+              let workspace = WorkspaceWindowRegistry.workspace(for: window) else {
+            return nil
+        }
+        return (window, workspace)
+    }
+
     /// Fenster, Workspace und Editor in EINEM Zugriff.
     ///
     /// Wer Inhalt liest und Text schreibt, muss beides aus DEMSELBEN Fenster

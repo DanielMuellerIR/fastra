@@ -18,6 +18,36 @@ menu offers every bundled syntax language plus CSV and XML and changes the
 extension when you choose one. You can still type any custom extension directly
 in the name field.
 
+## Printing
+
+⌘P prints **what you currently see**. Which version that is depends on the
+active view:
+
+- The editor prints the source text with line numbers. Long lines wrap and their
+  continuation is indented under the text; nothing is cut off.
+- If the Markdown preview sits next to the editor, ⌘P prints the **rendered**
+  version with tables, formulas and diagrams — exactly what the preview shows.
+- The hex view prints the visible section as a dump. Unsaved byte changes are
+  included, because they are on screen as well.
+- Images and SVGs are fitted onto one page; a PDF document prints page by page,
+  unchanged.
+- A very large text file is shown section by section and therefore printed that
+  way too. The header then says which section it is.
+
+For Markdown the choice is explicitly yours: next to “Print…”, the File menu
+offers **Print Markdown Preview…** and **Print Source Text…**; ⌥⌘P always
+prints the source text. As soon as a document offers more than one version, the
+menu item names the one ⌘P will take.
+
+The header carries document name and date, the footer the file path and
+“Page n of m”. A page break always falls between two lines, never inside one.
+**Settings → Printing** turns line numbers and the header/footer on or off and
+changes the print font size; **File → Page Setup…** (⇧⌘P) sets paper size and
+orientation.
+
+There is no separate command for printing to a PDF file: the system print dialog
+handles that through “PDF” in its bottom-left corner.
+
 ## Search and Replace
 
 ⌘F opens the search panel in file scope, ⇧⌘F in folder scope; ⌘E uses the

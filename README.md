@@ -87,6 +87,9 @@ token highlighting, curated patterns, and guided capture groups.
   undoable as one action.
 - **A visible Home button** safely returns the current window to the welcome
   screen. Unsaved work is confirmed first and then gets its normal save dialogs.
+- **Printing (⌘P)**: source text with line numbers, header/footer and page
+  numbers — or, for Markdown, the rendered preview with tables, formulas and
+  diagrams. Hex dumps, images and PDFs print as well.
 - **Light & dark mode**, native SwiftUI/AppKit, no Electron.
 - **Local & private**: No accounts, telemetry, document uploads, or subscription.
   The update check contacts only Fastra's signed GitHub Pages feed and sends no

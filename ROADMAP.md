@@ -82,6 +82,26 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Kleine offene Ideen
 
+- **Drucken: bewusst gezogene Grenzen** (umgesetzt 2026-08-17, v1.100.0):
+  - Gedruckter **Quelltext ist einfarbig**, ohne Syntaxfarben. Die Einfärbung
+    entsteht im Editor-Paket und wäre außerhalb einer laufenden Editor-Instanz
+    nur mit einer zweiten Highlighter-Anbindung zu haben. Wer farbigen Quelltext
+    auf Papier braucht, kann ihn heute über die Markdown-Vorschau drucken (Code
+    in einem eingezäunten Block). Ein eigener Farbausdruck lohnt erst, wenn er
+    ausdrücklich gewünscht ist.
+  - Die **gerenderte Markdown-Vorschau hat keine Kopf- und Fußzeile**. Diese
+    Seiten setzt WebKit selbst; Seitenzahlen in den Papierrand einer
+    WebKit-Seite gibt es ohne eigene Seitenaufteilung nicht. Quelltext-, Hex-
+    und Bildausdruck haben sie.
+  - **Kein eigener „Als PDF exportieren"-Befehl.** Der Systemdialog kann das
+    schon („PDF" unten links), und ein zweiter Weg dorthin wäre nur eine
+    weitere Stelle, die vom ersten abweichen kann. Programmatisch nutzt genau
+    diesen Weg der `print`-Selbsttest.
+  - **Kein Zubehörfeld im Druckfenster.** Zeilennummern, Kopf-/Fußzeile und
+    Schriftgröße verändern die Seitenaufteilung; ein Feld im Systemdialog müsste
+    sie bei jeder Änderung neu rechnen. Die Werte stehen deshalb sichtbar in den
+    Einstellungen.
+
 - **Markdown-Umwandlung: bewusst offen gelassen** (umgesetzt 2026-07-26 über
   `poormans-text --formats`):
   - Der Formatkatalog wird beim Start vorgewärmt und fünf Minuten

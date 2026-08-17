@@ -18,6 +18,38 @@ beziehungsweise `.md`. Das Format-Menü bietet alle mitgelieferten
 Syntaxsprachen sowie CSV und XML und setzt beim Wechsel die passende Endung.
 Eine beliebige eigene Endung kannst du weiterhin direkt im Namensfeld eingeben.
 
+## Drucken
+
+⌘P druckt, **was du gerade siehst**. Welche Fassung das ist, hängt an der
+aktiven Ansicht:
+
+- Der Editor druckt den Quelltext mit Zeilennummern. Zu lange Zeilen werden
+  umgebrochen und die Fortsetzung rückt unter den Text ein; abgeschnitten wird
+  nichts.
+- Steht die Markdown-Vorschau neben dem Editor, druckt ⌘P die **gerenderte**
+  Fassung mit Tabellen, Formeln und Diagrammen — genau das Bild der Vorschau.
+- Die Hex-Ansicht druckt den sichtbaren Abschnitt als Abzug. Noch nicht
+  gespeicherte Byte-Änderungen stehen mit auf dem Papier, weil sie auch auf dem
+  Bildschirm stehen.
+- Bilder und SVGs werden auf eine Seite eingepasst, ein PDF-Dokument Seite für
+  Seite unverändert gedruckt.
+- Eine sehr große Textdatei wird abschnittsweise angezeigt und deshalb auch
+  abschnittsweise gedruckt. Die Kopfzeile nennt dann, welcher Abschnitt es ist.
+
+Bei Markdown ist die Wahl ausdrücklich deine: Das „Datei“-Menü hat neben
+„Drucken…“ die Punkte **Markdown-Vorschau drucken…** und **Quelltext
+drucken…**; ⌥⌘P druckt immer den Quelltext. Sobald ein Dokument mehr als eine
+Fassung anbietet, nennt der Menüpunkt die Fassung mit, die ⌘P nimmt.
+
+Kopf- und Fußzeile tragen Dokumentname und Datum oben, Dateipfad und
+„Seite n von m“ unten. Ein Seitenumbruch liegt immer zwischen zwei Zeilen, nie
+mitten in einer. **Einstellungen → Drucken** schaltet Zeilennummern und
+Kopf-/Fußzeile ab oder an und ändert die Schriftgröße des Ausdrucks;
+**Datei → Papierformat…** (⇧⌘P) bestimmt Papiergröße und Ausrichtung.
+
+Zum Drucken in eine PDF-Datei gibt es keinen eigenen Befehl: Das übernimmt der
+Systemdialog über „PDF“ unten links.
+
 ## Suchen und Ersetzen
 
 ⌘F öffnet die Suchmaske im Datei-Bereich, ⇧⌘F im Ordner-Bereich; ⌘E übernimmt

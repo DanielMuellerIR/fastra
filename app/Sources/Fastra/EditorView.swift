@@ -659,7 +659,14 @@ struct EditorView: View {
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 4)
                             }
-                            HexFileView(url: url, fileSize: tab.fileSize) {
+                            HexFileView(
+                                url: url,
+                                fileSize: tab.fileSize,
+                                // Der sichtbare Abzug ist die Druckvorlage:
+                                // Die Hex-Ansicht lädt immer nur einen
+                                // Abschnitt, und nur sie weiß, welchen.
+                                onVisiblePage: { workspace.visiblePrintPage = $0 }
+                            ) {
                                 // Hex-Schreibvorgang → offene Text-Tabs derselben
                                 // Datei über den Extern-Änderungs-Pfad abgleichen.
                                 workspace.checkExternalChanges()
@@ -671,8 +678,13 @@ struct EditorView: View {
                     case .text:
                         if let tab = workspace.activeTab,
                            tab.displayMode == .chunkedText, let url = tab.url {
-                            ChunkedTextFileView(url: url, fileSize: tab.fileSize,
-                                                encoding: tab.encoding, bom: tab.bom)
+                            ChunkedTextFileView(
+                                url: url, fileSize: tab.fileSize,
+                                encoding: tab.encoding, bom: tab.bom,
+                                // Wie bei der Hex-Ansicht: Gedruckt wird der
+                                // sichtbare Abschnitt, nicht die ganze Datei.
+                                onVisiblePage: { workspace.visiblePrintPage = $0 }
+                            )
                                 .id(tab.id)
                         } else {
                             actualEditor

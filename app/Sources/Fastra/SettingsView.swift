@@ -24,6 +24,15 @@ struct SettingsView: View {
     private var restoreLastSession = true
     @AppStorage("markdown.integratedPreview", store: SelfTest.workspaceDefaults()) private var showMarkdownPreview = true
     @AppStorage(PreviewFonts.defaultsKey, store: SelfTest.workspaceDefaults()) private var previewFontName = PreviewFonts.systemName
+    // Druckeinstellungen. Die Voreinstellungen hier müssen mit
+    // `PrintPreferences` übereinstimmen: Beide lesen denselben Schlüssel, und
+    // ein nie gesetzter Schlüssel liefert bei `bool(forKey:)` immer `false`.
+    @AppStorage(PrintPreferences.Keys.lineNumbers, store: SelfTest.workspaceDefaults())
+    private var printLineNumbers = PrintPreferences.defaultLineNumbers
+    @AppStorage(PrintPreferences.Keys.headerFooter, store: SelfTest.workspaceDefaults())
+    private var printHeaderFooter = PrintPreferences.defaultHeaderFooter
+    @AppStorage(PrintPreferences.Keys.fontSize, store: SelfTest.workspaceDefaults())
+    private var printFontSize = PrintPreferences.defaultFontSize
     @AppStorage(GitPreferencesStore.Keys.decision, store: SelfTest.workspaceDefaults())
     private var gitFetchDecision = GitAutomaticFetchDecision.ask.rawValue
     @AppStorage(GitPreferencesStore.Keys.interval, store: SelfTest.workspaceDefaults())
@@ -156,6 +165,20 @@ struct SettingsView: View {
                 }
                 Text("Die Vorschau übernimmt die Dokument-Schriftgröße. Markierter Text wird als Klartext und formatiertes HTML kopiert.")
                     .fastraFont(.small).foregroundColor(.secondary)
+            }
+
+            Section("Drucken") {
+                Toggle("Zeilennummern drucken", isOn: $printLineNumbers)
+                Toggle("Kopf- und Fußzeile drucken", isOn: $printHeaderFooter)
+                Stepper(L10n.format("Schriftgröße im Ausdruck: %ld pt",
+                                    Int(printFontSize.rounded())),
+                        value: $printFontSize,
+                        in: PrintPreferences.fontSizeRange,
+                        step: 1)
+                Text("Diese Einstellungen gelten für gedruckten Quelltext und Hex-Abzüge. Die Markdown-Vorschau wird gedruckt, wie sie im Fenster aussieht; Papiergröße und Ausrichtung stehen unter „Datei → Papierformat“.")
+                    .fastraFont(.small)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Section("Git") {

@@ -326,12 +326,18 @@ private struct FilePageNavigation: View {
 /// ein 256-KiB-Abschnitt im SwiftUI-Textbaum.
 struct ChunkedTextFileView: View {
     @StateObject private var model: TextFilePageModel
+    /// Meldet den sichtbaren Abschnitt nach außen — er ist die Druckvorlage.
+    /// Eine große Datei liegt nie vollständig im Tab; ohne diese Meldung
+    /// wüsste „Drucken" nicht, welches Stück gerade zu sehen ist.
+    private let onVisiblePage: ((VisiblePrintPage?) -> Void)?
 
-    init(url: URL, fileSize: UInt64, encoding: String.Encoding, bom: Data) {
+    init(url: URL, fileSize: UInt64, encoding: String.Encoding, bom: Data,
+         onVisiblePage: ((VisiblePrintPage?) -> Void)? = nil) {
         _model = StateObject(wrappedValue: TextFilePageModel(
             url: url, totalBytes: fileSize, pageSize: 256 * 1024,
             encoding: encoding, bom: bom
         ))
+        self.onVisiblePage = onVisiblePage
     }
 
     var body: some View {
@@ -347,6 +353,18 @@ struct ChunkedTextFileView: View {
             TextFilePageNavigation(model: model)
         }
         .background(Theme.surfaceRaised)
+        .onAppear { reportVisiblePage() }
+        .onChange(of: model.text) { _, _ in reportVisiblePage() }
+        .onDisappear { onVisiblePage?(nil) }
+    }
+
+    private func reportVisiblePage() {
+        guard let onVisiblePage else { return }
+        guard !model.text.isEmpty else { onVisiblePage(nil); return }
+        onVisiblePage(VisiblePrintPage(url: model.url,
+                                      pageIndex: model.pageIndex,
+                                      pageCount: model.pageCount,
+                                      text: model.text))
     }
 
     @ViewBuilder private var content: some View {
@@ -427,11 +445,17 @@ struct HexFileView: View {
     /// damit offene Text-Tabs derselben Datei den neuen Plattenstand über
     /// die Extern-Änderungs-Erkennung abgleichen können.
     private let onDidWrite: (() -> Void)?
+    /// Meldet den sichtbaren Abzug nach außen — er ist die Druckvorlage
+    /// (dieselbe Begründung wie bei `ChunkedTextFileView`).
+    private let onVisiblePage: ((VisiblePrintPage?) -> Void)?
 
-    init(url: URL, fileSize: UInt64, onDidWrite: (() -> Void)? = nil) {
+    init(url: URL, fileSize: UInt64,
+         onVisiblePage: ((VisiblePrintPage?) -> Void)? = nil,
+         onDidWrite: (() -> Void)? = nil) {
         _model = StateObject(wrappedValue: FilePageModel(
             url: url, totalBytes: fileSize, pageSize: 16 * 256
         ))
+        self.onVisiblePage = onVisiblePage
         self.onDidWrite = onDidWrite
     }
 
@@ -465,6 +489,12 @@ struct HexFileView: View {
                 .disabled(isSaving)
         }
         .background(Theme.surfaceRaised)
+        .onAppear { reportVisiblePage() }
+        .onChange(of: model.data) { _, _ in reportVisiblePage() }
+        // Noch nicht gespeicherte Byte-Änderungen stehen auf dem Bildschirm —
+        // dann müssen sie auch auf dem Ausdruck stehen.
+        .onChange(of: edits.changes) { _, _ in reportVisiblePage() }
+        .onDisappear { onVisiblePage?(nil) }
         .alert("Hex-Bearbeitung erlauben?", isPresented: $requestEditingConfirmation) {
             Button("Abbrechen", role: .cancel) { }
             Button("Bearbeiten erlauben", role: .destructive) { editingEnabled = true }
@@ -536,15 +566,34 @@ struct HexFileView: View {
     }
 
     private func hexLine(at row: Int) -> String {
-        let end = min(row + 16, model.data.count)
-        let bytes = Array(model.data[row..<end])
-        let address = String(format: "%012llX", model.offset + UInt64(row))
-        let hex = bytes.map { String(format: "%02X", $0) }.joined(separator: " ")
-            .padding(toLength: 16 * 3 - 1, withPad: " ", startingAt: 0)
-        let ascii = String(bytes.map { byte in
-            (32...126).contains(byte) ? Character(UnicodeScalar(byte)) : "."
-        })
-        return "\(address)  \(hex)  |\(ascii)|"
+        let end = min(row + HexDump.bytesPerRow, model.data.count)
+        // Dieselbe Formatierung wie im Ausdruck (`HexDump`) — sonst zeigte
+        // der Drucker etwas anderes als das Fenster.
+        return HexDump.line(bytes: Array(model.data[row..<end]),
+                            address: model.offset + UInt64(row))
+    }
+
+    /// Der geladene Abschnitt mit allen noch nicht gespeicherten Änderungen —
+    /// genau der Stand, den die Ansicht zeigt.
+    private func visiblePageData() -> Data {
+        var page = model.data
+        for (offset, change) in edits.changes {
+            let index = Int(offset) - Int(model.offset)
+            guard index >= 0, index < page.count else { continue }
+            page[page.startIndex + index] = change.newValue
+        }
+        return page
+    }
+
+    private func reportVisiblePage() {
+        guard let onVisiblePage else { return }
+        guard !model.data.isEmpty else { onVisiblePage(nil); return }
+        onVisiblePage(VisiblePrintPage(
+            url: model.url,
+            pageIndex: model.pageIndex,
+            pageCount: model.pageCount,
+            text: HexDump.text(data: visiblePageData(), baseOffset: model.offset)
+        ))
     }
 
     private func asciiRow(at row: Int) -> String {

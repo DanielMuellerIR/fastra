@@ -456,6 +456,36 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   deshalb an den Abschluss des Hintergrundschritts: erst den Link einfügen,
   dann die übrigen Dateien öffnen (siehe
   `MarkdownAssist.handleDroppedFileURLs`, geprüft vom `mdassist`-Selbsttest).
+- **Ein modaler Druckauftrag meldet sich aus einem FREMDEN Thread zurück.**
+  AppKit führt `NSPrintOperation.runModal(for:…)` in einem eigenen Thread aus und
+  ruft `printOperationDidRun:success:contextInfo:` auch dort. Wer in dieser
+  Rückmeldung eine WebView abbaut oder ein Fenster schließt, greift AppKit und
+  WebKit vom falschen Thread an: Am 2026-08-17 brach die Anwendung dabei
+  siebenmal mit SIGTRAP in WebKits `WKWindowVisibilityObserver` ab. Von außen
+  sah das wie ein hängender Druckauftrag aus — es kam einfach keine
+  Rückmeldung, weil der Prozess weg war. Deshalb geht in
+  `PrintCompletionRelay` alles ausdrücklich auf die Main-Queue. Verwandte Falle
+  im gleichen Weg: Aus einer WebKit-Rückmeldung (etwa der Completion von
+  `evaluateJavaScript`) darf der Druck nicht direkt starten — WebKits
+  Druckvorgang dreht selbst den RunLoop und wartet auf den Webprozess; mitten
+  in dessen eigener Rückmeldung aufgerufen, kommt er nie zurück.
+- **`drawPageBorder(with:)` zeichnet im Papier-Koordinatensystem: Nullpunkt
+  unten links, y wächst nach OBEN.** Das gilt auch für eine geflippte View wie
+  `NSTextView`, deren Textzeilen nach unten laufen. Wer die Kopfzeile aus der
+  Flippung der View ableitet, setzt sie unten und die Fußzeile oben auf die
+  Seite (nachgemessen am 2026-08-17 an einem erzeugten PDF). Zweiter Punkt
+  derselben Stelle: Kopf- und Fußzeile brauchen je ein eigenes Rechteck für die
+  linke und die rechte Angabe. In einem gemeinsamen Rechteck lief ein langer
+  Dateipfad unter die rechts stehende Seitenzahl, statt gekürzt zu werden.
+  Beides steht in `PrintPageDecoration`.
+- **Ein Ausdruck mit fester Zeilenbreite darf nicht umbrechen.** Der Hex-Abzug
+  ist ein Raster aus Adresse, Bytes und ASCII-Spalte; bricht eine Zeile am
+  Seitenrand um, ist er unlesbar (gesehen am 2026-08-17: jede zweite Druckzeile
+  war der Rest der vorherigen). Die Druckschrift wird deshalb so weit
+  verkleinert, dass eine ganze Rasterzeile auf die Seite passt
+  (`PrintTextFit`). Für Quelltext gilt das ausdrücklich NICHT — dort ist die
+  Zeilenlänge beliebig, und Schrumpfen bis zur Unlesbarkeit wäre schlechter als
+  ein Umbruch.
 
 ## Verhaltensevals
 

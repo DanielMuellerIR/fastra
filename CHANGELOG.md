@@ -9,6 +9,49 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.100.0] — 2026-08-17
+
+Vollständige Druckfunktion. Fastra konnte bisher gar nicht drucken: Das
+„Datei"-Menü hatte keinen Druckeintrag, und ⌘P war unbelegt.
+
+### Neu
+
+- **Drucken (⌘P) für jede Ansicht.** Gedruckt wird, was zu sehen ist: der
+  Quelltext des Editors, die gerenderte Markdown-Vorschau, der sichtbare
+  Abschnitt einer großen Datei, der Hex-Abzug, eine Bild-/SVG-Vorschau oder ein
+  PDF-Dokument Seite für Seite. Der Menüpunkt nennt die Fassung mit, sobald ein
+  Dokument mehr als eine anbietet („Drucken: Markdown-Vorschau…").
+- **Markdown wahlweise gerendert oder als Quelltext.** Beide Fassungen stehen
+  als eigene Menüpunkte im „Datei"-Menü; ⌥⌘P druckt immer den Quelltext. Die
+  gerenderte Fassung geht über WebKit und enthält deshalb wirklich das, was die
+  Vorschau zeigt — Tabellen, Formeln (KaTeX) und Diagramme (Mermaid). Der
+  Auftrag wartet auf deren Fertigstellung, statt ein halbfertiges Dokument zu
+  drucken.
+- **Kopf- und Fußzeile mit Seitenzahlen** bei Quelltext, Hex-Abzug und
+  Bildausdruck: Dokumentname und Datum oben, Dateipfad und „Seite n von m"
+  unten. Bei einer abschnittsweise geladenen großen Datei nennt die Kopfzeile
+  den gedruckten Abschnitt — ein Ausdruck, der wie die ganze Datei aussieht,
+  aber nur ein Stück davon ist, wäre irreführend.
+- **Zeilennummern im Ausdruck**, umgebrochene Fortsetzungszeilen rücken unter
+  den Text ein. Neuer Einstellungsbereich „Drucken" für Zeilennummern,
+  Kopf-/Fußzeile und Schriftgröße; „Papierformat…" (⇧⌘P) für Papiergröße und
+  Ausrichtung.
+- Der Seitenumbruch des Textausdrucks liegt immer zwischen zwei Zeilen. Der
+  Hex-Abzug verkleinert seine Schrift so weit, dass eine Rasterzeile ganz auf
+  die Seite passt — umgebrochen wäre das Raster unlesbar.
+- Über zwei Megabyte Text fragt Fastra vor dem Drucken nach und nennt die
+  geschätzte Seitenzahl. Das Aufteilen in Seiten muss auf dem Bedien-Thread
+  laufen; ohne diese Frage stünde die Oberfläche bei einer sehr großen Datei
+  ohne Erklärung still. Abgeschnitten wird nie.
+
+### Technisch
+
+- Neuer Selbsttest `print`: Er druckt alle sechs Fassungen ohne Drucker in
+  PDF-Dateien und prüft am Ergebnis Seitenzahl und Inhalt — etwa dass der
+  Vorschau-Ausdruck den Diagrammtext enthält und kein rohes Markdown, und dass
+  keine Hex-Rasterzeile umbricht. Zum Schluss belegt er, dass ⌘P das
+  System-Druckfenster am Dokumentfenster öffnet.
+
 ## [v1.99.3] — 2026-08-17
 
 Abarbeitung des Nacht-Code-Reviews vom 2026-08-17 (7 Funde: 1 P1, 4 P2, 2 P3;

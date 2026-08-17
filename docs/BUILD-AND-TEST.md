@@ -464,6 +464,18 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   gesetzt wurde und WebKits eigene Ableitung einfriert — ein Start direkt im
   Zielmodus bliebe grün. Gegengeprüft: Mit der Farbe nur in `makeNSView`
   schlägt der Test fehl, mit dem Setzen bei jedem Update besteht er.
+- **Drucken:** `./selftest.sh print` druckt alle sechs Fassungen (Quelltext,
+  Markdown-Vorschau, Markdown-Quelltext, Hex-Abzug, Bild, PDF) ohne Drucker in
+  PDF-Dateien und prüft am ERGEBNIS: Seitenzahl, enthaltener Text, gerenderter
+  Diagramm- und Formelinhalt statt rohem Markdown, keine umgebrochene
+  Hex-Rasterzeile. Zum Schluss löst er den echten Menüweg aus und belegt, dass
+  ⌘P das System-Druckfenster am Dokumentfenster öffnet. Möglich macht das
+  `jobDisposition = .save` mit einer im Programm gesetzten Ziel-URL — derselbe
+  Druckweg wie beim Nutzer, nur ohne Dialog.
+
+  Für eine Sichtprüfung des Umbruchs bleiben die erzeugten PDFs liegen:
+  `FASTRA_PRINT_TEST_OUTPUT_DIR=<ordner> ./selftest.sh print`. Ohne die Variable
+  räumt der Test seinen Ordner wieder auf.
 - **Nicht getestet:** visuelles Rendering von Diff/Tokens/Pillen und
   OSS-Framework-Interna von CodeEditSourceEditor. Kritische
   App-weite Bridges werden dagegen über In-App-Selbsttests abgesichert.

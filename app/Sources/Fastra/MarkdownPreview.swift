@@ -131,16 +131,29 @@ struct MarkdownPreviewView: View {
 /// Der Copy-Handler schreibt sowohl Klartext als auch das semantische HTML der
 /// Auswahl; Rich-Text-Ziele behalten dadurch Überschriften, Fettung und Listen.
 enum MarkdownRichText {
+
+    /// Wofür das Dokument gebaut wird.
+    ///
+    /// Der Ausdruck braucht dieselbe Darstellung, aber ein anderes Blatt: Er
+    /// hat einen festen Papierrand statt eines Fensters, und ein Codeblock oder
+    /// eine Tabelle darf nicht mitten in der Seitengrenze auseinanderfallen.
+    enum Purpose {
+        case preview
+        case print
+    }
+
     static func htmlDocument(markdown: String,
                              documentURL: URL? = nil,
                              fontName: String,
                              fontSize: CGFloat,
-                             darkMode: Bool) -> String {
+                             darkMode: Bool,
+                             purpose: Purpose = .preview) -> String {
         htmlDocument(
             fragment: renderedFragment(markdown: markdown, documentURL: documentURL),
             fontName: fontName,
             fontSize: fontSize,
-            darkMode: darkMode
+            darkMode: darkMode,
+            purpose: purpose
         )
     }
 
@@ -156,7 +169,8 @@ enum MarkdownRichText {
     static func htmlDocument(fragment: MarkdownRenderedFragment,
                              fontName: String,
                              fontSize: CGFloat,
-                             darkMode: Bool) -> String {
+                             darkMode: Bool,
+                             purpose: Purpose = .preview) -> String {
         let bodyColor = darkMode ? "#F2F2F2" : "#363636"
         let secondary = darkMode ? "#A8A8A8" : "#737373"
         let surface = darkMode ? "#171717" : "#FFFFFF"
@@ -177,6 +191,24 @@ enum MarkdownRichText {
         // zur Laufzeit eigene Stilknoten an. Gegen fremdes CSS wirkt hier die
         // Positivliste, die weder `<style>` noch das `style`-Attribut zulässt.
         let nonce = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+
+        // Zusätzliche Regeln, die nur auf Papier gelten.
+        let printStyle = purpose == .print ? """
+        /* Der Rand der Seite kommt aus den Druckeinstellungen. Ein eigener
+           Innenabstand des Dokuments käme doppelt dazu. */
+        body { padding: 0; }
+        /* Codeblock, Tabelle, Bild, Formel und Diagramm dürfen an einer
+           Seitengrenze nicht auseinanderfallen, eine Überschrift bleibt bei
+           ihrem Abschnitt. `break-*` ist die heutige Schreibweise,
+           `page-break-*` die ältere, die WebKit ebenfalls versteht. */
+        pre, blockquote, table, img, .math-block, .mermaid-render {
+          break-inside: avoid; page-break-inside: avoid; }
+        h1, h2, h3, h4, h5, h6 { break-after: avoid; page-break-after: avoid; }
+        /* Ein Link ist auf Papier nicht anklickbar. Die Beschriftung bleibt,
+           die Signalfarbe wird zu normaler Textfarbe mit Unterstreichung. */
+        a { color: \(bodyColor); text-decoration: underline; }
+
+        """ : ""
 
         return """
         <!doctype html>
@@ -219,7 +251,7 @@ enum MarkdownRichText {
         pre.mermaid-error::before { content: attr(data-error); display: block;
                                     color: \(secondary); margin-bottom: 0.55em; }
         hr { border: 0; border-top: 1px solid \(border); }
-        </style>
+        \(printStyle)</style>
         <script src="fastra-preview://resource/katex.js"></script>
         <script src="fastra-preview://resource/highlight.js"></script>
         <script src="fastra-preview://resource/mermaid.js"></script>
@@ -384,7 +416,14 @@ enum MarkdownRichText {
             window.webkit.messageHandlers.markdownJump.postMessage(position);
           }
         });
-        window.addEventListener('DOMContentLoaded', () => enhanceMarkdown(document.body));
+        // Die Markierung am Wurzelelement sagt „Formeln, Diagramme und
+        // Code-Einfärbung sind fertig". Der Ausdruck wartet darauf, sonst
+        // druckte er das halbfertige Dokument (siehe MarkdownPrintJob).
+        window.addEventListener('DOMContentLoaded', () => {
+          enhanceMarkdown(document.body).then(() => {
+            document.documentElement.setAttribute('data-fastra-enhanced', '1');
+          });
+        });
         </script></head><body>\(fragment.html)</body></html>
         """
     }

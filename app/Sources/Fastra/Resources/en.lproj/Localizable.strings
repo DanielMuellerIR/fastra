@@ -1378,3 +1378,34 @@
 "Remote-Branch anlegen" = "Create Remote Branch";
 "Kein Dokumentfenster ist aktiv." = "No document window is active.";
 "Kein Dokumentfenster aktiv" = "No Active Document Window";
+
+/* Drucken (Datei-Menü, Einstellungen, Druckfassungen) */
+"Drucken…" = "Print…";
+"Drucken: %@…" = "Print: %@…";
+"Markdown-Vorschau drucken…" = "Print Markdown Preview…";
+"Quelltext drucken…" = "Print Source Text…";
+"Papierformat…" = "Page Setup…";
+"Quelltext" = "Source Text";
+"Hex-Abzug" = "Hex Dump";
+"Bildvorschau" = "Image Preview";
+"PDF-Dokument" = "PDF Document";
+"Seite %ld von %ld" = "Page %ld of %ld";
+"Seite %ld" = "Page %ld";
+"Abschnitt %ld von %ld" = "Section %ld of %ld";
+"Drucken nicht möglich" = "Cannot Print";
+"Kein Dokument zum Drucken." = "No document to print.";
+"Dieses Dokument enthält keinen druckbaren Text." = "This document contains no printable text.";
+"Die Hex-Ansicht hat noch keinen Abschnitt geladen." = "The hex view has not loaded a section yet.";
+"Diese Datei ist nicht als Bild lesbar." = "This file cannot be read as an image.";
+"Dieses PDF ist nicht lesbar." = "This PDF cannot be read.";
+"Vorschau noch nicht fertig" = "Preview Not Finished";
+"Formeln oder Diagramme sind noch nicht vollständig gerendert. Der Ausdruck kann an diesen Stellen unfertig aussehen." = "Formulas or diagrams are not fully rendered yet. The printout may look unfinished in those places.";
+"Trotzdem drucken" = "Print Anyway";
+"Die Vorschau wurde nicht rechtzeitig fertig gerendert." = "The preview did not finish rendering in time.";
+"Drucken" = "Printing";
+"Zeilennummern drucken" = "Print line numbers";
+"Kopf- und Fußzeile drucken" = "Print header and footer";
+"Schriftgröße im Ausdruck: %ld pt" = "Print font size: %ld pt";
+"Diese Einstellungen gelten für gedruckten Quelltext und Hex-Abzüge. Die Markdown-Vorschau wird gedruckt, wie sie im Fenster aussieht; Papiergröße und Ausrichtung stehen unter „Datei → Papierformat“." = "These settings apply to printed source text and hex dumps. The Markdown preview prints the way it looks in the window; paper size and orientation are under “File → Page Setup”.";
+"Großer Ausdruck" = "Large Printout";
+"Dieses Dokument ergibt etwa %ld Seiten. Das Aufteilen in Seiten kann einen Moment dauern; Fastra ist währenddessen nicht bedienbar." = "This document will produce roughly %ld pages. Splitting it into pages may take a moment, during which Fastra will not respond.";

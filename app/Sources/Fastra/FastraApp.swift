@@ -316,11 +316,22 @@ struct FastraApp: App {
                 }
                     .keyboardShortcut("w", modifiers: .command)
             }
-            CommandGroup(replacing: .saveItem) {
-                Button("Speichern") { commandWorkspace?.saveActiveTab() }
-                    .keyboardShortcut("s", modifiers: .command)
-                Button("Speichern unter…") { commandWorkspace?.saveActiveTabAs() }
-                    .keyboardShortcut("s", modifiers: [.command, .shift])
+            // Speichern und Drucken zusammen in EINER Gruppe: Der
+            // Commands-Builder nimmt höchstens zehn Einträge, und die sind
+            // bereits vergeben (siehe Kommentar bei „Über Fastra").
+            Group {
+                CommandGroup(replacing: .saveItem) {
+                    Button("Speichern") { commandWorkspace?.saveActiveTab() }
+                        .keyboardShortcut("s", modifiers: .command)
+                    Button("Speichern unter…") { commandWorkspace?.saveActiveTabAs() }
+                        .keyboardShortcut("s", modifiers: [.command, .shift])
+                }
+                // Drucken (mit Papierformat). Eigene View, damit die Punkte
+                // dem aktiven Tab folgen: Ob ein Dokument druckbar ist und
+                // welche Fassung ⌘P nimmt, hängt an der sichtbaren Ansicht.
+                CommandGroup(replacing: .printItem) {
+                    PrintMenuItems(workspace: workspace)
+                }
             }
             CommandMenu("Suchen") {
                 // CMD+F: Suchen in der aktuellen Datei (kompakter Modus).
@@ -621,6 +632,55 @@ struct FastraApp: App {
     private func postDocumentFormatting() {
         guard commandWorkspace != nil else { return }
         NotificationCenter.default.post(name: .fastraFormatDocument, object: nil)
+    }
+}
+
+/// Die Druck-Punkte im „Datei"-Menü.
+///
+/// ⌘P druckt, was zu sehen ist: in der Hex-Ansicht den Abzug, bei sichtbarer
+/// Markdown-Vorschau die gerenderte Fassung, sonst den Quelltext. Weil das bei
+/// Markdown eine echte Wahl ist, stehen beide Fassungen zusätzlich als eigene
+/// Punkte im Menü — sichtbar und ohne Ratespiel.
+private struct PrintMenuItems: View {
+    @ObservedObject var workspace: Workspace
+
+    var body: some View {
+        Button(defaultTitle) { DocumentPrinting.printVisibleDocument() }
+            .keyboardShortcut("p", modifiers: .command)
+            .disabled(defaultTarget == nil)
+        Button("Markdown-Vorschau drucken…") {
+            DocumentPrinting.printVisibleDocument(as: .markdownPreview)
+        }
+        .disabled(!availableTargets.contains(.markdownPreview))
+        Button("Quelltext drucken…") {
+            DocumentPrinting.printVisibleDocument(as: .source)
+        }
+        .keyboardShortcut("p", modifiers: [.command, .option])
+        .disabled(!availableTargets.contains(.source))
+        Divider()
+        Button("Papierformat…") { DocumentPrinting.presentPageLayout() }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+    }
+
+    /// „Drucken…" nennt die Fassung mit, sobald es mehr als eine gibt. Sonst
+    /// wäre bei Markdown nicht erkennbar, was ⌘P gerade nimmt.
+    private var defaultTitle: String {
+        guard let target = defaultTarget, availableTargets.count > 1 else {
+            return L10n.string("Drucken…")
+        }
+        return L10n.format("Drucken: %@…", target.title)
+    }
+
+    private var document: PrintableDocument? {
+        CommandTargeting.targetWorkspace()?.printableDocument
+    }
+
+    private var availableTargets: [PrintTarget] {
+        document.map { PrintRouting.availableTargets($0) } ?? []
+    }
+
+    private var defaultTarget: PrintTarget? {
+        document.flatMap { PrintRouting.defaultTarget($0) }
     }
 }
 

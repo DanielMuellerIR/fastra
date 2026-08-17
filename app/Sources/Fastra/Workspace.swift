@@ -885,6 +885,17 @@ final class Workspace: ObservableObject {
     /// eine isolierte, Normalbetrieb `.standard`. ALLE Persistenz-Pfade
     /// des Workspace müssen über diese Suite laufen (siehe init-Kommentar).
     private let defaultsStore: UserDefaults
+    /// Dieselbe Suite zum Lesen für Wege außerhalb des Workspace — die
+    /// Druckeinstellungen etwa müssen im Selbsttest aus der isolierten Suite
+    /// kommen und nicht aus `.standard` (siehe `DocumentPrinting`).
+    var preferencesStore: UserDefaults { defaultsStore }
+    /// Was eine seitenweise Ansicht gerade zeigt (Hex-Abzug, Abschnitt einer
+    /// großen Textdatei). Nur diese Ansicht kennt ihren geladenen Abschnitt,
+    /// und genau er ist die Druckvorlage.
+    ///
+    /// Bewusst KEIN `@Published`: Der Wert dient allein dem Drucken und darf
+    /// keinen Neuaufbau der Oberfläche auslösen.
+    var visiblePrintPage: VisiblePrintPage?
     /// Gemeinsame Quelle für formatspezifischen Soft Wrap. Der Store ist
     /// injizierbar und bleibt dadurch mit isolierten Defaults unit-testbar.
     let softWrapProfiles: SoftWrapProfileStore
