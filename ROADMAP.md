@@ -80,6 +80,24 @@ Erledigte Arbeit und historische Entscheidungen stehen in
     mangels Analyse bzw. Unterscheidbarkeit (siehe Slot-Mapping in
     `EditorView.swift`).
 
+## Aus Daniels Ideenliste übernommen (2026-08-18)
+
+- **Markdown-WYSIWYG-Modus („Schreibmodus")** — Daniel hat den bisher
+  ausgeklammerten Punkt aus Wunschpaket 2 am 2026-08-18 ausdrücklich beauftragt.
+  Damit ist die dort formulierte Bedingung („Daniel entscheidet nach gelebter
+  Erfahrung mit Etappe 5 separat und nur auf ausdrücklichen Auftrag") erfüllt;
+  der Punkt gilt nicht mehr als zurückgestellt, sondern als offene Produktarbeit.
+  Der bereits gebaute Einmalimport von RTF/RTFD nach Markdown
+  (`MarkdownImport.swift`) bleibt davon unberührt — gewünscht ist das Bearbeiten
+  im WYSIWYG-Modus, nicht ein weiterer Importweg.
+  Herkunft: Idee #18 in `theplan/ideen.md`.
+
+- **4D-Makros ausführen, allen voran Daniels eigene MAO-Makros** — Fastra soll
+  4D-Makros nicht nur kennen, sondern ausführen können. Der ausdrücklich genannte
+  Schwerpunkt sind Daniels eigene MAO-Makros; deren realen Bestand und Format vor
+  dem Entwurf am echten Material erheben, nicht aus Erinnerung raten.
+  Herkunft: Idee #28 in `theplan/ideen.md`.
+
 ## Kleine offene Ideen
 
 - **Drucken: bewusst gezogene Grenzen** (umgesetzt 2026-08-17, v1.100.0):
