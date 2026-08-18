@@ -28,6 +28,18 @@ enum PrintTarget: String, CaseIterable, Equatable, Hashable {
     /// Eine PDF-Datei — Seite für Seite, unverändert.
     case pdf
 
+    /// Zeichnet dieses Ziel eine eigene Kopf-/Fußzeile in den Seitenrand?
+    /// Markdown druckt über WebKit und ein PDF druckt PDFKit unverändert —
+    /// beide zeichnen keine Dekoration. Der zusätzliche Rand dafür darf dort
+    /// also auch nicht reserviert werden: Er verkleinerte sonst wirkungslos
+    /// die Druckfläche (Reviewfund 2026-08-18).
+    var drawsDecoration: Bool {
+        switch self {
+        case .source, .hexDump, .image: return true
+        case .markdownPreview, .pdf:    return false
+        }
+    }
+
     /// Beschriftung für Menü und Fehlermeldungen.
     var title: String {
         switch self {

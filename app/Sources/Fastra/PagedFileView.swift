@@ -36,6 +36,12 @@ final class FilePageModel: ObservableObject {
     @Published private(set) var data = Data()
     @Published private(set) var errorMessage: String?
     @Published private(set) var isLoading = false
+    /// Zählt abgeschlossene Ladevorgänge. Die Ansicht meldet ihren
+    /// Drucksnapshot pro abgeschlossenem Ladevorgang statt pro Datenänderung:
+    /// Zwei inhaltsgleiche Nachbarseiten ändern `data` nicht — Abschnitts-
+    /// nummer und Hex-Basisadressen im Snapshot blieben sonst veraltet
+    /// (Reviewfund 2026-08-18).
+    @Published private(set) var completedLoadCount = 0
 
     let url: URL
     let totalBytes: UInt64
@@ -80,9 +86,17 @@ final class FilePageModel: ObservableObject {
                       self.loadGeneration == generation else { return }
                 self.isLoading = false
                 switch result {
-                case .success(let data): self.data = data
-                case .failure(let error): self.errorMessage = error.localizedDescription
+                case .success(let data):
+                    self.data = data
+                case .failure(let error):
+                    // Die alten Bytes gehören zur VORIGEN Seite. Blieben sie
+                    // stehen, zeigte die Ansicht zwar den Fehler, aber
+                    // „Drucken" gäbe weiter den alten Abschnitt aus
+                    // (Reviewfund 2026-08-18).
+                    self.data = Data()
+                    self.errorMessage = error.localizedDescription
                 }
+                self.completedLoadCount &+= 1
             }
         }
     }
@@ -224,6 +238,8 @@ final class TextFilePageModel: ObservableObject {
     @Published private(set) var text = ""
     @Published private(set) var errorMessage: String?
     @Published private(set) var isLoading = false
+    /// Siehe `FilePageModel.completedLoadCount` — gleiche Begründung.
+    @Published private(set) var completedLoadCount = 0
 
     let url: URL
     let totalBytes: UInt64
@@ -277,6 +293,7 @@ final class TextFilePageModel: ObservableObject {
                     self.text = ""
                     self.errorMessage = error.localizedDescription
                 }
+                self.completedLoadCount &+= 1
             }
         }
     }
@@ -354,7 +371,10 @@ struct ChunkedTextFileView: View {
         }
         .background(Theme.surfaceRaised)
         .onAppear { reportVisiblePage() }
-        .onChange(of: model.text) { _, _ in reportVisiblePage() }
+        // Pro abgeschlossenem Ladevorgang melden, nicht pro Textänderung:
+        // Zwei inhaltsgleiche Nachbarabschnitte änderten `text` nicht, und
+        // der Drucksnapshot behielte die alte Abschnittsnummer.
+        .onChange(of: model.completedLoadCount) { _, _ in reportVisiblePage() }
         .onDisappear { onVisiblePage?(nil) }
     }
 
@@ -490,7 +510,10 @@ struct HexFileView: View {
         }
         .background(Theme.surfaceRaised)
         .onAppear { reportVisiblePage() }
-        .onChange(of: model.data) { _, _ in reportVisiblePage() }
+        // Pro abgeschlossenem Ladevorgang melden, nicht pro Datenänderung:
+        // Zwei inhaltsgleiche Nachbarseiten (z. B. lauter Nullbytes) änderten
+        // `data` nicht, und der Drucksnapshot behielte die alten Basisadressen.
+        .onChange(of: model.completedLoadCount) { _, _ in reportVisiblePage() }
         // Noch nicht gespeicherte Byte-Änderungen stehen auf dem Bildschirm —
         // dann müssen sie auch auf dem Ausdruck stehen.
         .onChange(of: edits.changes) { _, _ in reportVisiblePage() }
@@ -566,23 +589,24 @@ struct HexFileView: View {
     }
 
     private func hexLine(at row: Int) -> String {
+        // Dieselbe Formatierung wie im Ausdruck (`HexDump`) UND dieselben
+        // effektiven Bytes wie der Drucksnapshot: Auch nach dem Ausschalten
+        // von „Bearbeiten erlauben" bleiben offene Änderungen sichtbar —
+        // sonst druckte Fastra Bytes, die die schreibgeschützte Zeile nicht
+        // zeigt (Reviewfund 2026-08-18). Byteweiser Overlay statt
+        // `visiblePageData()`: Eine Vollkopie der Seite je Zeile wäre beim
+        // Rendern unnötig teuer.
         let end = min(row + HexDump.bytesPerRow, model.data.count)
-        // Dieselbe Formatierung wie im Ausdruck (`HexDump`) — sonst zeigte
-        // der Drucker etwas anderes als das Fenster.
-        return HexDump.line(bytes: Array(model.data[row..<end]),
-                            address: model.offset + UInt64(row))
+        let bytes = (row..<end).map { index in
+            edits.changes[model.offset + UInt64(index)]?.newValue ?? model.data[index]
+        }
+        return HexDump.line(bytes: bytes, address: model.offset + UInt64(row))
     }
 
     /// Der geladene Abschnitt mit allen noch nicht gespeicherten Änderungen —
     /// genau der Stand, den die Ansicht zeigt.
     private func visiblePageData() -> Data {
-        var page = model.data
-        for (offset, change) in edits.changes {
-            let index = Int(offset) - Int(model.offset)
-            guard index >= 0, index < page.count else { continue }
-            page[page.startIndex + index] = change.newValue
-        }
-        return page
+        edits.applied(to: model.data, baseOffset: model.offset)
     }
 
     private func reportVisiblePage() {

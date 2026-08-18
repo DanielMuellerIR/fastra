@@ -199,11 +199,19 @@ enum Tool4DDiscovery {
             ?? values["CFBundleVersion"] as? String
     }
 
-    /// Version für ein Binary, das in einem tool4d.app-Bundle liegen kann
-    /// (…/tool4d.app/Contents/MacOS/tool4d) — sonst `nil`.
+    /// Version für ein Binary, das in einem tool4d-App-Bundle liegen kann
+    /// (…/tool4d….app/Contents/MacOS/tool4d) — sonst `nil`. Dieselbe
+    /// Namensregel wie die Programme-Ordner-Suche: Ein real heruntergeladenes
+    /// Bundle heißt versioniert („tool4d_v21….app"), nur der exakte Name
+    /// „tool4d.app" wäre zu eng — die Version eines über PATH gefundenen oder
+    /// gemerkten versionierten Bundles erschiene dann als unbekannt
+    /// (Reviewfund 2026-08-18).
     static func bundleVersion(forExecutable executable: URL) -> String? {
         let components = executable.pathComponents
-        guard let index = components.lastIndex(of: "tool4d.app"), index >= 1 else {
+        guard let index = components.lastIndex(where: { component in
+            let name = component.lowercased()
+            return name.hasPrefix("tool4d") && name.hasSuffix(".app")
+        }), index >= 1 else {
             return nil
         }
         let appPath = components[...index].joined(separator: "/")

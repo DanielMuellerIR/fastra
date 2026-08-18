@@ -214,6 +214,21 @@ final class HexEditSession: ObservableObject {
         }
     }
 
+    /// Der Seiteninhalt mit allen noch nicht gespeicherten Änderungen — die
+    /// EINE Bytequelle für Anzeige UND Drucksnapshot. Vorher las die
+    /// schreibgeschützte Hex-Zeile die rohen Bytes, der Ausdruck aber die
+    /// geänderten: Auf dem Papier standen Bytes, die auf dem Bildschirm nicht
+    /// zu sehen waren (Reviewfund 2026-08-18).
+    func applied(to data: Data, baseOffset: UInt64) -> Data {
+        var page = data
+        for (offset, change) in changes {
+            let index = Int(offset) - Int(baseOffset)
+            guard index >= 0, index < page.count else { continue }
+            page[page.startIndex + index] = change.newValue
+        }
+        return page
+    }
+
     /// Erst nach erfolgreichem Hintergrund-Save verschwindet die sichtbare
     /// Vorschau. Bei einem Konflikt bleiben alle geplanten Änderungen erhalten.
     func markSaved() {

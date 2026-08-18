@@ -468,14 +468,24 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   Markdown-Vorschau, Markdown-Quelltext, Hex-Abzug, Bild, PDF) ohne Drucker in
   PDF-Dateien und prüft am ERGEBNIS: Seitenzahl, enthaltener Text, gerenderter
   Diagramm- und Formelinhalt statt rohem Markdown, keine umgebrochene
-  Hex-Rasterzeile. Zum Schluss löst er den echten Menüweg aus und belegt, dass
-  ⌘P das System-Druckfenster am Dokumentfenster öffnet. Möglich macht das
+  Hex-Rasterzeile. Zum Schluss prüft er die ⌘P-/⌥⌘P-/⇧⌘P-Menüpunkte
+  strukturell (exaktes Kürzel samt Modifiern), löst den Druckbefehl aus und
+  belegt, dass das System-Druckfenster am Dokumentfenster öffnet. Ein
+  synthetisches ⌘P-Event kann die SwiftUI-Menü-Bindung nicht auslösen
+  (nachgemessen 2026-08-18: SwiftUI-Menüpunkte tragen kein Target/Action, und
+  die Shortcut-Zustellung springt für `NSApp.postEvent`-Events nicht an; ein
+  echter Tastendruck öffnet das Blatt — per System-Events-Probe belegt).
+  Möglich macht das
   `jobDisposition = .save` mit einer im Programm gesetzten Ziel-URL — derselbe
   Druckweg wie beim Nutzer, nur ohne Dialog.
 
   Für eine Sichtprüfung des Umbruchs bleiben die erzeugten PDFs liegen:
-  `FASTRA_PRINT_TEST_OUTPUT_DIR=<ordner> ./selftest.sh print`. Ohne die Variable
-  räumt der Test seinen Ordner wieder auf.
+  `FASTRA_PRINT_TEST_OUTPUT_DIR=<ordner> ./selftest.sh print`. Der Test legt
+  darunter je Lauf einen frischen `fastra-print-<UUID>`-Unterordner an und
+  schreibt nie direkt in den angegebenen Ordner — seine festen Dateinamen
+  (`quelltext.txt`, `bild.png`, …) würden dort sonst gleichnamige vorhandene
+  Dateien überschreiben. Ohne die Variable räumt der Test seinen Ordner wieder
+  auf.
 - **Nicht getestet:** visuelles Rendering von Diff/Tokens/Pillen und
   OSS-Framework-Interna von CodeEditSourceEditor. Kritische
   App-weite Bridges werden dagegen über In-App-Selbsttests abgesichert.

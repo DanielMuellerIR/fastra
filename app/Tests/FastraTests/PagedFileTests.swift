@@ -38,6 +38,22 @@ private final class SequencedPageReader: @unchecked Sendable {
     }
 }
 
+/// Reader, der ab der zweiten Anfrage nur noch Fehler liefert — für die
+/// Prüfung des Fehlerwegs beim Seitenwechsel.
+private final class FailingSecondPageReader: @unchecked Sendable {
+    private let lock = NSLock()
+    private var invocation = 0
+
+    func read(url: URL, offset: UInt64, count: Int) throws -> Data {
+        lock.lock()
+        invocation += 1
+        let current = invocation
+        lock.unlock()
+        if current == 1 { return Data(repeating: 0xAA, count: count) }
+        throw CocoaError(.fileReadUnknown)
+    }
+}
+
 private func temporaryPageFile(_ data: Data) throws -> URL {
     let url = FileManager.default.temporaryDirectory
         .appendingPathComponent("fastra-text-page-\(UUID().uuidString)")
@@ -136,6 +152,59 @@ struct PagedFileTests {
         #expect(model.pageCount == 4)
         #expect(model.offset == 16)
         #expect(model.data == Data(16..<24))
+    }
+
+    @Test("Auch eine inhaltsgleiche Nachbarseite meldet einen abgeschlossenen Ladevorgang")
+    @MainActor
+    func identicalNeighborPageCompletesLoad() async throws {
+        // Datei aus lauter Nullbytes: Zwei Nachbarseiten sind byteidentisch,
+        // `data` ändert sich beim Wechsel also nicht. Der Drucksnapshot der
+        // Hex-Ansicht hängt deshalb am Ladezähler statt an einer
+        // Datenänderung — sonst behielte er die alten Basisadressen
+        // (Reviewfund 2026-08-18).
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-zero-page-\(UUID().uuidString)")
+        try Data(repeating: 0, count: 16).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let model = FilePageModel(url: url, totalBytes: 16, pageSize: 8)
+        for _ in 0..<100 where model.completedLoadCount < 1 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(model.completedLoadCount == 1)
+        let firstPage = model.data
+
+        model.load(page: 1)
+        for _ in 0..<100 where model.completedLoadCount < 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(model.completedLoadCount == 2)
+        #expect(model.offset == 8)
+        // Inhaltsgleich — und trotzdem als Abschluss gemeldet.
+        #expect(model.data == firstPage)
+    }
+
+    @Test("Ein fehlgeschlagener Seitenwechsel leert die alten Bytes")
+    @MainActor
+    func failedLoadClearsData() async throws {
+        let reader = FailingSecondPageReader()
+        let model = FilePageModel(
+            url: URL(fileURLWithPath: "/tmp/fastra-failing-page"),
+            totalBytes: 8, pageSize: 4, reader: reader.read)
+        for _ in 0..<100 where model.completedLoadCount < 1 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(model.data == Data(repeating: 0xAA, count: 4))
+
+        model.load(page: 1)
+        for _ in 0..<100 where model.completedLoadCount < 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(model.errorMessage != nil)
+        // Die alten Bytes gehören zur VORIGEN Seite. Blieben sie stehen,
+        // zeigte die Ansicht den Fehler, aber „Drucken" gäbe weiter den alten
+        // Abschnitt aus (Reviewfund 2026-08-18).
+        #expect(model.data.isEmpty)
     }
 
     @Test("UTF-8-Seiten teilen kein Mehrbytezeichen an der 256-KiB-Grenze")

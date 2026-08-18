@@ -79,6 +79,17 @@ LAUNCH_SERVICES_TESTS=(coldopen coldopenoff cmdw newwindow welcomenew completion
 # Pro Test max. Wartezeit in Sekunden, bis die SELFTEST-Zeile da sein muss.
 # (Fenster-Polling im Test selbst: bis 15 s; plus Puffer für App-Start.)
 TIMEOUT_SECS=60
+# Der print-Test druckt seriell sieben PDFs und wartet auf WebKit-Rendern,
+# Hex-Abschnitt und zwei Blätter; seine internen Einzelfristen summieren sich
+# auf weit über 60 s. Ein unter Last korrekt fortschreitender Lauf darf vom
+# Runner nicht als Funktionsfehler beendet werden (Reviewfund 2026-08-18).
+# Echte Hänger laufen weiterhin in diese Frist.
+timeout_for_test() {
+    case "$1" in
+        print) echo 240 ;;
+        *)     echo "$TIMEOUT_SECS" ;;
+    esac
+}
 # Harte Schranke je System-Events-Aufruf. Ein erlaubter Aufruf antwortet in
 # Millisekunden; wartet er länger, fehlt die Automation-Freigabe (s.
 # activate_app).
@@ -350,10 +361,12 @@ kill_leftovers() {
 }
 
 # Wartet, bis die SELFTEST-Zeile in $1 auftaucht oder das Timeout reißt.
+# $2: Frist in Sekunden (Standard: TIMEOUT_SECS; siehe timeout_for_test).
 wait_for_result() {
     local errfile="$1"
+    local timeout_secs="${2:-$TIMEOUT_SECS}"
     local waited_ticks=0
-    local max_ticks=$((TIMEOUT_SECS * 10))
+    local max_ticks=$((timeout_secs * 10))
     while [[ $waited_ticks -lt $max_ticks ]]; do
         if [ "${CURRENT_LAUNCH_MODE:-direct}" = "launchservices" ] \
            && [ "${#STARTED_PIDS[@]}" -eq 0 ]; then
@@ -1055,9 +1068,10 @@ for t in "${TESTS[@]}"; do
         fi
     fi
 
-    if ! wait_for_result "$errfile"; then
+    test_timeout_secs="$(timeout_for_test "$t")"
+    if ! wait_for_result "$errfile" "$test_timeout_secs"; then
         result_finished="$(now_milliseconds)"
-        echo "SELFTEST $t: FAIL — keine Ergebnis-Zeile binnen ${TIMEOUT_SECS}s (Runner-Timeout)"
+        echo "SELFTEST $t: FAIL — keine Ergebnis-Zeile binnen ${test_timeout_secs}s (Runner-Timeout)"
         summary+="✗ $t (Timeout)\n"
         real_fail_count=$((real_fail_count + 1))
         cleanup_ms=$((cleanup_finished - iteration_started))

@@ -442,3 +442,102 @@ struct MarkdownPrintDocumentTests {
         #expect(document.contains("data-fastra-enhanced"))
     }
 }
+
+// MARK: - Seitenaufteilung des Textdrucks
+
+@Suite("Seitenrechtecke des Textdrucks")
+struct PrintPageRectTests {
+
+    /// Baut die Druck-Textansicht so, wie `makeTextPrintOperation` es tut —
+    /// nur ohne UserDefaults und Kopfzeilen, denn hier zählt allein die
+    /// Seitenaufteilung.
+    @MainActor
+    private func makeView(lineCount: Int, pageHeight: CGFloat)
+        -> (PrintDocumentTextView, NSLayoutManager, NSTextContainer) {
+        let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        let text = (1...lineCount).map { "Zeile \($0)" }.joined(separator: "\n")
+        let storage = NSTextStorage(string: text, attributes: [.font: font])
+        let container = NSTextContainer(
+            size: NSSize(width: 300, height: CGFloat.greatestFiniteMagnitude)
+        )
+        container.widthTracksTextView = false
+        container.lineFragmentPadding = 0
+        let layoutManager = NSLayoutManager()
+        layoutManager.addTextContainer(container)
+        storage.addLayoutManager(layoutManager)
+        let pageSize = NSSize(width: 300, height: pageHeight)
+        let view = PrintDocumentTextView(
+            frame: NSRect(origin: .zero, size: pageSize),
+            textContainer: container
+        )
+        view.pageContentSize = pageSize
+        return (view, layoutManager, container)
+    }
+
+    @MainActor
+    @Test("Seitenrechtecke überlappen nie — die Grenzzeile gehört ganz der Folgeseite")
+    func pageRectsDoNotOverlap() {
+        // Seitenhöhe absichtlich KEIN Vielfaches der Zeilenhöhe: Genau dann
+        // schneidet eine Zeile die Seitengrenze. Mit den früheren
+        // Voll-Höhen-Seiten wurde diese Grenzzeile unten angeschnitten
+        // gezeichnet UND auf der Folgeseite wiederholt (Reviewfund 2026-08-18).
+        let (view, layoutManager, container) = makeView(lineCount: 120,
+                                                        pageHeight: 100)
+        var range = NSRange(location: 0, length: 0)
+        #expect(view.knowsPageRange(&range))
+        #expect(range.length > 1)
+        for page in 2...range.length {
+            let previous = view.rectForPage(page - 1)
+            let current = view.rectForPage(page)
+            #expect(current.minY >= previous.maxY - 0.01,
+                    "Seite \(page) beginnt vor dem Ende von Seite \(page - 1)")
+        }
+        // Und nichts geht verloren: Die letzte Seite reicht bis unter die
+        // letzte Zeile.
+        layoutManager.ensureLayout(for: container)
+        let used = layoutManager.usedRect(for: container)
+        #expect(view.rectForPage(range.length).maxY >= used.maxY - 0.01)
+        #expect(view.rectForPage(1).minY == 0)
+    }
+}
+
+// MARK: - Druckränder je Ziel
+
+@Suite("Dekorationsrand je Druckziel")
+struct PrintDecorationSpaceTests {
+
+    @Test("Nur Text, Hex und Bild zeichnen Kopf-/Fußzeile")
+    func decorationTargets() {
+        #expect(PrintTarget.source.drawsDecoration)
+        #expect(PrintTarget.hexDump.drawsDecoration)
+        #expect(PrintTarget.image.drawsDecoration)
+        #expect(!PrintTarget.markdownPreview.drawsDecoration)
+        #expect(!PrintTarget.pdf.drawsDecoration)
+    }
+
+    @MainActor
+    @Test("Der Dekorationsrand wird nur für dekorierte Ziele reserviert")
+    func decorationSpaceOnlyWhenDecorated() {
+        // Frische Suite: Kopf-/Fußzeile steht dort auf ihrer Voreinstellung AN.
+        let suiteName = "fastra-test-print-margins-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let decorated = DocumentPrinting.makePrintInfo(
+            defaults: defaults, savingTo: nil, decorated: true
+        )
+        let plain = DocumentPrinting.makePrintInfo(
+            defaults: defaults, savingTo: nil, decorated: false
+        )
+        // Markdown und PDF zeichnen keine Kopf-/Fußzeile — bei ihnen darf der
+        // reservierte Rand die Druckfläche nicht verkleinern.
+        #expect(decorated.topMargin == plain.topMargin + 24)
+        #expect(decorated.bottomMargin == plain.bottomMargin + 24)
+        // Abgeschaltete Kopf-/Fußzeile reserviert auch bei dekorierten
+        // Zielen nichts.
+        defaults.set(false, forKey: PrintPreferences.Keys.headerFooter)
+        let switchedOff = DocumentPrinting.makePrintInfo(
+            defaults: defaults, savingTo: nil, decorated: true
+        )
+        #expect(switchedOff.topMargin == plain.topMargin)
+    }
+}

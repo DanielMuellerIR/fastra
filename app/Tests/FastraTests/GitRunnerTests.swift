@@ -699,3 +699,29 @@ func gitIntegration_runnerUsesLiteralPathspecs() async throws {
         .map { String(decoding: $0, as: UTF8.self) }
     #expect(Set(names) == Set([":(glob)**", "-leading"]))
 }
+
+@Test("Nach finish() wird für eine leere Prozessgruppe kein SIGKILL-Nachschlag mehr geplant")
+func noKillEscalationAfterFinishForDeadGroup() throws {
+    // Eine nachweislich beendete PID als Gruppen-ID: ein frisch beendeter
+    // Kindprozess. `kill(-pid, 0)` meldet für ihn ESRCH — die Gruppe ist leer.
+    let probe = Process()
+    probe.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+    try probe.run()
+    probe.waitUntilExit()
+    let deadGroup = probe.processIdentifier
+
+    // Vor finish(): Der Nachschlag wird registriert und von finish() wieder
+    // abgeräumt — der bisherige, verwaltete Weg.
+    let fresh = GitCancellationToken(terminationGracePeriod: 0.05)
+    #expect(fresh.scheduleGroupKillEscalation(deadGroup))
+    _ = fresh.finish()
+
+    // Nach finish(): Die Eskalationsliste ist abgeschlossen; ein jetzt noch
+    // geplanter Nachschlag würde nie mehr aufgeräumt und könnte nach einer
+    // Wiedervergabe der Gruppen-ID eine fremde Prozessgruppe treffen
+    // (Reviewfund 2026-08-18). Für eine leere Gruppe wird deshalb gar nichts
+    // mehr geplant, und der Aufrufer sendet dann auch keine Signale mehr.
+    let finished = GitCancellationToken(terminationGracePeriod: 0.05)
+    _ = finished.finish()
+    #expect(!finished.scheduleGroupKillEscalation(deadGroup))
+}

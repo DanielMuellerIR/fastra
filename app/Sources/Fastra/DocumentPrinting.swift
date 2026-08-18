@@ -91,7 +91,8 @@ enum DocumentPrinting {
             return
         }
         let defaults = workspace.preferencesStore
-        let printInfo = makePrintInfo(defaults: defaults, savingTo: savingTo)
+        let printInfo = makePrintInfo(defaults: defaults, savingTo: savingTo,
+                                      decorated: target.drawsDecoration)
         let jobTitle = tab.title
 
         switch target {
@@ -125,15 +126,19 @@ enum DocumentPrinting {
     /// „Papierformat" — sie gehören dem Nutzer. Verändert werden nur die
     /// Ränder, und zwar nur nach oben: Ein zu enger Rand ließe Kopf- und
     /// Fußzeile in den Text laufen.
-    static func makePrintInfo(defaults: UserDefaults, savingTo: URL?) -> NSPrintInfo {
+    static func makePrintInfo(defaults: UserDefaults, savingTo: URL?,
+                              decorated: Bool) -> NSPrintInfo {
         let info = (NSPrintInfo.shared.copy() as? NSPrintInfo) ?? NSPrintInfo()
         info.horizontalPagination = .automatic
         info.verticalPagination = .automatic
         info.isHorizontallyCentered = false
         info.isVerticallyCentered = false
         let minimumMargin: CGFloat = 40
+        // Platz für Kopf-/Fußzeile nur reservieren, wenn das Ziel sie auch
+        // zeichnet (`PrintTarget.drawsDecoration`) — sonst schrumpfte die
+        // Druckfläche ohne sichtbares Ergebnis.
         let decorationSpace: CGFloat =
-            PrintPreferences.showsHeaderFooter(defaults) ? 24 : 0
+            decorated && PrintPreferences.showsHeaderFooter(defaults) ? 24 : 0
         info.leftMargin = max(info.leftMargin, minimumMargin)
         info.rightMargin = max(info.rightMargin, minimumMargin)
         info.topMargin = max(info.topMargin, minimumMargin) + decorationSpace
@@ -355,7 +360,8 @@ enum DocumentPrinting {
         view.drawsDecoration = PrintPreferences.showsHeaderFooter(defaults)
         view.topMargin = printInfo.topMargin
         view.bottomMargin = printInfo.bottomMargin
-        view.sideMargin = printInfo.leftMargin
+        view.leftMargin = printInfo.leftMargin
+        view.rightMargin = printInfo.rightMargin
         view.isEditable = false
         view.isSelectable = false
         view.drawsBackground = false
@@ -446,7 +452,11 @@ enum DocumentPrinting {
         job.start(markdown: tab.content, documentURL: tab.url,
                   fontName: defaults.string(forKey: PreviewFonts.defaultsKey)
                       ?? PreviewFonts.systemName,
-                  fontSize: 11)
+                  // Dieselbe Schriftgrößen-Einstellung wie beim Textdruck
+                  // (Einstellungen → Drucken). Vorher stand hier eine feste
+                  // 11 — die Einstellung war für Markdown wirkungslos
+                  // (Reviewfund 2026-08-18).
+                  fontSize: CGFloat(PrintPreferences.fontSize(defaults)))
     }
 
     // MARK: - Bild und PDF
@@ -457,31 +467,44 @@ enum DocumentPrinting {
                                    window: NSWindow?,
                                    savingTo: URL?,
                                    completion: @escaping (PrintOutcome) -> Void) {
-        // Dasselbe Laden wie in der Vorschau: `ImagePreviewLoader` dekodiert
-        // über ImageIO direkt auf Zielgröße und übernimmt die EXIF-Drehung.
-        // `NSImage(contentsOf:)` würde stattdessen ein 100-Megapixel-Foto
-        // vollständig in den Speicher holen — und zwar auf dem Main-Thread,
-        // von dem aus der Druckauftrag läuft.
-        guard let url = tab.url,
-              let image = ImagePreviewLoader.loadPreviewImage(url: url),
-              image.size.width > 0, image.size.height > 0 else {
+        guard let url = tab.url else {
             report(.failed(L10n.string("Diese Datei ist nicht als Bild lesbar.")),
                    window: window, completion: completion)
             return
         }
-        let content = contentSize(of: printInfo)
-        let view = PrintImageView(frame: NSRect(origin: .zero, size: content),
-                                  image: image)
-        view.headerLeft = tab.title
-        view.headerRight = PrintDecoration.headerRight(date: Date())
-        view.footerLeftText = PrintDecoration.footerLeft(path: url.path)
-        view.drawsDecoration = PrintPreferences.showsHeaderFooter(defaults)
-        view.topMargin = printInfo.topMargin
-        view.bottomMargin = printInfo.bottomMargin
-        view.sideMargin = printInfo.leftMargin
-        let operation = NSPrintOperation(view: view, printInfo: printInfo)
-        operation.jobTitle = tab.title
-        execute(operation, window: window, savingTo: savingTo, completion: completion)
+        let title = tab.title
+        // Dasselbe Laden wie in der Vorschau: `ImagePreviewLoader` dekodiert
+        // über ImageIO direkt auf Zielgröße und übernimmt die EXIF-Drehung —
+        // und wie dort läuft das Dekodieren im Hintergrund. Ein großes Foto
+        // oder ein langsamer Datenträger darf den Druckbefehl nicht die ganze
+        // Oberfläche blockieren lassen (Reviewfund 2026-08-18). Gedruckt wird
+        // die beim Befehl festgehaltene Datei, auch wenn der Nutzer währenddessen
+        // den Tab wechselt.
+        Task.detached(priority: .userInitiated) {
+            let image = ImagePreviewLoader.loadPreviewImage(url: url)
+            await MainActor.run {
+                guard let image, image.size.width > 0, image.size.height > 0 else {
+                    report(.failed(L10n.string("Diese Datei ist nicht als Bild lesbar.")),
+                           window: window, completion: completion)
+                    return
+                }
+                let content = contentSize(of: printInfo)
+                let view = PrintImageView(frame: NSRect(origin: .zero, size: content),
+                                          image: image)
+                view.headerLeft = title
+                view.headerRight = PrintDecoration.headerRight(date: Date())
+                view.footerLeftText = PrintDecoration.footerLeft(path: url.path)
+                view.drawsDecoration = PrintPreferences.showsHeaderFooter(defaults)
+                view.topMargin = printInfo.topMargin
+                view.bottomMargin = printInfo.bottomMargin
+                view.leftMargin = printInfo.leftMargin
+                view.rightMargin = printInfo.rightMargin
+                let operation = NSPrintOperation(view: view, printInfo: printInfo)
+                operation.jobTitle = title
+                execute(operation, window: window, savingTo: savingTo,
+                        completion: completion)
+            }
+        }
     }
 
     private static func printPDF(tab: EditorTab,
@@ -490,25 +513,39 @@ enum DocumentPrinting {
                                  window: NSWindow?,
                                  savingTo: URL?,
                                  completion: @escaping (PrintOutcome) -> Void) {
-        guard let url = tab.url, let document = PDFDocument(url: url),
-              document.pageCount > 0 else {
+        guard let url = tab.url else {
             report(.failed(L10n.string("Dieses PDF ist nicht lesbar.")),
                    window: window, completion: completion)
             return
         }
-        // PDFKit druckt das Dokument selbst — Seitengröße, Drehung und
-        // eingebettete Schriften bleiben dabei unverändert. Eine eigene
-        // Kopfzeile gibt es hier absichtlich nicht: Sie würde in ein fremdes,
-        // fertig gesetztes Dokument hineinzeichnen.
-        guard let operation = document.printOperation(
-            for: printInfo, scalingMode: .pageScaleDownToFit, autoRotate: true
-        ) else {
-            report(.failed(L10n.string("Dieses PDF ist nicht lesbar.")),
-                   window: window, completion: completion)
-            return
+        // Das Öffnen liest Querverweis-Tabellen von der Platte und kann bei
+        // großen Dateien oder langsamem Datenträger dauern — deshalb im
+        // Hintergrund, wie beim Bilddruck (Reviewfund 2026-08-18).
+        Task.detached(priority: .userInitiated) {
+            let document = PDFDocument(url: url)
+            await MainActor.run {
+                guard let document, document.pageCount > 0 else {
+                    report(.failed(L10n.string("Dieses PDF ist nicht lesbar.")),
+                           window: window, completion: completion)
+                    return
+                }
+                // PDFKit druckt das Dokument selbst — Seitengröße, Drehung und
+                // eingebettete Schriften bleiben dabei unverändert. Eine eigene
+                // Kopfzeile gibt es hier absichtlich nicht: Sie würde in ein
+                // fremdes, fertig gesetztes Dokument hineinzeichnen.
+                guard let operation = document.printOperation(
+                    for: printInfo, scalingMode: .pageScaleDownToFit,
+                    autoRotate: true
+                ) else {
+                    report(.failed(L10n.string("Dieses PDF ist nicht lesbar.")),
+                           window: window, completion: completion)
+                    return
+                }
+                operation.jobTitle = jobTitle
+                execute(operation, window: window, savingTo: savingTo,
+                        completion: completion)
+            }
         }
-        operation.jobTitle = jobTitle
-        execute(operation, window: window, savingTo: savingTo, completion: completion)
     }
 
     // MARK: - Ausführen
@@ -614,7 +651,12 @@ final class PrintDocumentTextView: NSTextView {
     var pageContentSize: NSSize = .zero
     var topMargin: CGFloat = 40
     var bottomMargin: CGFloat = 40
-    var sideMargin: CGFloat = 40
+    // Linker und rechter Rand getrennt: Ein Drucker kann asymmetrische
+    // Systemränder melden, und die Kopf-/Fußzeile muss sich an beiden
+    // orientieren — sonst liefe die rechte Angabe in den unbedruckbaren
+    // Bereich (Reviewfund 2026-08-18).
+    var leftMargin: CGFloat = 40
+    var rightMargin: CGFloat = 40
 
     /// Ergebnis der eigenen Seitenaufteilung.
     private var pageRects: [NSRect] = []
@@ -634,9 +676,12 @@ final class PrintDocumentTextView: NSTextView {
     }
 
     /// Teilt das Dokument in Seiten, deren Grenzen immer zwischen zwei Zeilen
-    /// liegen. Eine Seite behält dabei ihre vollständige Höhe: So bleibt der
-    /// Textanfang auf jeder Seite auf derselben Höhe, auch wenn die letzte
-    /// Zeile davor knapp nicht mehr passte.
+    /// liegen. Eine volle Seite endet dabei GENAU an der Oberkante der ersten
+    /// Zeile, die nicht mehr passt — nicht bei ihrer nominellen vollen Höhe.
+    /// Mit voller Höhe überlappten sich die Druckbereiche: Die Grenzzeile
+    /// wurde unten auf der alten Seite angeschnitten gezeichnet UND auf der
+    /// Folgeseite noch einmal ganz (Reviewfund 2026-08-18). Die etwas kürzere
+    /// Seite lässt stattdessen nur unten etwas Weißraum.
     private func computePageRects() {
         pageRects = []
         guard let layoutManager, let textContainer, pageContentSize.height > 0 else {
@@ -657,11 +702,12 @@ final class PrintDocumentTextView: NSTextView {
             forGlyphRange: NSRange(location: 0, length: glyphs)
         ) { rect, _, _, _, _ in
             // Passt diese Zeile nicht mehr auf die laufende Seite, beginnt an
-            // ihrer Oberkante eine neue.
+            // ihrer Oberkante eine neue — und die laufende Seite endet auch
+            // dort, damit die Grenzzeile nicht angeschnitten doppelt erscheint.
             if rect.maxY - pageTop > pageHeight, rect.minY > pageTop {
                 rects.append(NSRect(x: 0, y: pageTop,
                                     width: self.pageContentSize.width,
-                                    height: pageHeight))
+                                    height: rect.minY - pageTop))
                 pageTop = rect.minY
             }
             lastBottom = max(lastBottom, rect.maxY)
@@ -686,7 +732,8 @@ final class PrintDocumentTextView: NSTextView {
             headerLeft: headerLeft, headerRight: headerRight,
             footerLeft: footerLeftText,
             pageSize: borderSize, topMargin: topMargin,
-            bottomMargin: bottomMargin, sideMargin: sideMargin
+            bottomMargin: bottomMargin,
+            leftMargin: leftMargin, rightMargin: rightMargin
         )
         setFrameSize(savedSize)
     }
@@ -703,7 +750,9 @@ final class PrintImageView: NSView {
     var drawsDecoration = true
     var topMargin: CGFloat = 40
     var bottomMargin: CGFloat = 40
-    var sideMargin: CGFloat = 40
+    // Getrennt aus demselben Grund wie bei `PrintDocumentTextView`.
+    var leftMargin: CGFloat = 40
+    var rightMargin: CGFloat = 40
 
     init(frame: NSRect, image: NSImage) {
         self.image = image
@@ -726,7 +775,8 @@ final class PrintImageView: NSView {
             headerLeft: headerLeft, headerRight: headerRight,
             footerLeft: footerLeftText,
             pageSize: borderSize, topMargin: topMargin,
-            bottomMargin: bottomMargin, sideMargin: sideMargin
+            bottomMargin: bottomMargin,
+            leftMargin: leftMargin, rightMargin: rightMargin
         )
         setFrameSize(savedSize)
     }
@@ -769,13 +819,15 @@ enum PrintPageDecoration {
     /// dadurch unten und die Fußzeile oben auf die Seite.
     static func draw(headerLeft: String, headerRight: String, footerLeft: String,
                      pageSize: NSSize, topMargin: CGFloat, bottomMargin: CGFloat,
-                     sideMargin: CGFloat) {
+                     leftMargin: CGFloat, rightMargin: CGFloat) {
         let operation = NSPrintOperation.current
         let page = operation?.currentPage ?? 1
         let total = (operation?.pageRange.length).flatMap { $0 > 0 ? $0 : nil }
         let footerRight = PrintDecoration.footerRight(page: page, of: total)
 
-        let width = pageSize.width - 2 * sideMargin
+        // Beide Ränder getrennt abziehen: Bei asymmetrischen Druckerrändern
+        // wäre „Papierbreite minus zweimal links" zu breit oder zu schmal.
+        let width = pageSize.width - leftMargin - rightMargin
         guard width > 40 else { return }
         let lineHeight: CGFloat = fontSize * 1.6
         let headerY = pageSize.height - topMargin + 6
@@ -786,14 +838,14 @@ enum PrintPageDecoration {
         // die rechts stehende Seitenzahl (gesehen am 2026-08-17).
         let leftWidth = width * 0.62
         let rightWidth = width - leftWidth - 8
-        let rightX = sideMargin + leftWidth + 8
-        draw(headerLeft, in: NSRect(x: sideMargin, y: headerY,
+        let rightX = leftMargin + leftWidth + 8
+        draw(headerLeft, in: NSRect(x: leftMargin, y: headerY,
                                     width: leftWidth, height: lineHeight),
              alignment: .left)
         draw(headerRight, in: NSRect(x: rightX, y: headerY,
                                      width: rightWidth, height: lineHeight),
              alignment: .right)
-        draw(footerLeft, in: NSRect(x: sideMargin, y: footerY,
+        draw(footerLeft, in: NSRect(x: leftMargin, y: footerY,
                                     width: leftWidth, height: lineHeight),
              alignment: .left)
         draw(footerRight, in: NSRect(x: rightX, y: footerY,

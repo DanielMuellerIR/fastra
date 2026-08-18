@@ -81,6 +81,21 @@ struct HexEditingTests {
         #expect(permissions?.intValue == 0o640)
     }
 
+    @Test("applied(to:) überlagert genau die Änderungen des geladenen Abschnitts")
+    @MainActor func appliedOverlay() {
+        let session = HexEditSession()
+        let data = Data([0x00, 0x11, 0x22, 0x33])
+        // Byte 0 des Abschnitts bei Basisadresse 0x10 ändern.
+        session.editRow("FF 11 22 33", data: data, baseOffset: 0x10, row: 0)
+        // `applied` ist die EINE Bytequelle für schreibgeschützte Anzeige und
+        // Drucksnapshot: Beide müssen dieselben effektiven Bytes zeigen
+        // (Reviewfund 2026-08-18).
+        #expect(session.applied(to: data, baseOffset: 0x10)
+                == Data([0xFF, 0x11, 0x22, 0x33]))
+        // Ein anderer Abschnitt (andere Basisadresse) bleibt unberührt.
+        #expect(session.applied(to: data, baseOffset: 0x40) == data)
+    }
+
     @Test("Große Hex-Datei wird über Abschnittsgrenzen bytegenau geändert")
     func saveStreamsAcrossChunkBoundaries() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

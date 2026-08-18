@@ -9,6 +9,68 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.101.0] — 2026-08-18
+
+Abarbeitung des Nacht-Code-Reviews vom 2026-08-18 (16 Funde, alle bestätigt):
+Korrekturen an der neuen Druckfunktion, ein Prozessgruppen-Race im
+Git-Abbruchweg und eine kleine tool4d-Erkennungslücke.
+
+### Behoben
+
+- **Seitenumbruch des Textdrucks:** Eine Zeile, die die Seitengrenze schnitt,
+  wurde unten auf der alten Seite angeschnitten gezeichnet und auf der
+  Folgeseite noch einmal ganz ausgegeben. Eine volle Seite endet jetzt genau
+  an der Oberkante der ersten Zeile, die nicht mehr passt — wie von Hilfe und
+  Changelog zugesagt liegt jeder Umbruch zwischen zwei Zeilen.
+- **Hex-Ansicht:** Nach dem Ausschalten von „Bearbeiten erlauben" zeigten die
+  schreibgeschützten Zeilen die rohen Datei-Bytes, der Ausdruck enthielt aber
+  weiterhin die offenen Änderungen. Anzeige und Drucksnapshot nutzen jetzt
+  dieselben effektiven Bytes.
+- **Drucksnapshot großer Dateien:** Beim Wechsel auf eine inhaltsgleiche
+  Nachbarseite behielt der Ausdruck Abschnittsnummer und Hex-Basisadressen der
+  alten Seite; nach einem fehlgeschlagenen Seitenwechsel druckte er den alten
+  Abschnitt weiter. Gemeldet wird jetzt jeder abgeschlossene Ladevorgang, und
+  ein Fehler leert die alte Seite.
+- **Wirkungsloser Dekorationsrand:** Markdown- und PDF-Druck zeichnen keine
+  Kopf-/Fußzeile; der dafür reservierte Rand verkleinerte dort trotzdem die
+  Druckfläche. Er wird jetzt nur noch für Text-, Hex- und Bildausdruck
+  reserviert.
+- **Schriftgröße des Markdown-Ausdrucks:** Die Einstellung
+  „Drucken → Schriftgröße" galt bisher nur für Text und Hex; Markdown druckte
+  fest mit 11 pt. Jetzt gilt die Einstellung für alle Textfassungen.
+- **Asymmetrische Druckerränder:** Kopf- und Fußzeile rechneten mit dem linken
+  Rand auch rechts; bei asymmetrischen Systemrändern konnte die rechte Angabe
+  in den unbedruckbaren Bereich laufen. Beide Ränder gehen jetzt getrennt ein.
+- **Oberfläche beim Bild-/PDF-Druck:** Bild-Dekodierung und PDF-Öffnen liefen
+  beim Druckbefehl auf dem Main-Thread und konnten die Oberfläche blockieren;
+  beides lädt jetzt im Hintergrund.
+- **Git-Abbruchweg:** Beendete sich ein Git-Prozess genau zwischen
+  Abbruchsignal und Registrierung des SIGKILL-Nachschlags, blieb der
+  Nachschlag unverwaltet und konnte nach einer Wiedervergabe der
+  Prozessgruppen-ID theoretisch eine fremde Prozessgruppe treffen. Die
+  Registrierung liegt jetzt vor den Signalen und wird nach Abschluss
+  abgelehnt.
+- **tool4d-Version:** Für ein versioniert benanntes Bundle
+  („tool4d_v21….app"), das über PATH oder den gemerkten Pfad gefunden wurde,
+  erschien die Version als unbekannt; jetzt gilt dieselbe Namensregel wie bei
+  der Programme-Ordner-Suche.
+- Der v1.100.0-Changelog-Eintrag versprach Drucken „für jede Ansicht";
+  strukturierte Vergleichsansichten haben bewusst keinen Druckweg. Der Eintrag
+  nennt diese Grenze jetzt.
+
+### Intern
+
+- Der `print`-Selbsttest schreibt bei gesetztem `FASTRA_PRINT_TEST_OUTPUT_DIR`
+  in einen frischen UUID-Unterordner statt direkt in den angegebenen Ordner —
+  vorher konnten gleichnamige Nutzerdateien überschrieben werden. Er prüft
+  jetzt die ⌘P-/⌥⌘P-/⇧⌘P-Menüpunkte strukturell (ein synthetisches ⌘P-Event
+  erreicht SwiftUI-Menübefehle nicht; ein echter Tastendruck wurde per
+  System-Events-Probe belegt), weist die gerenderte KaTeX-Formel sowie Bild-
+  und PDF-Ausdruck pixelbasiert nach; der Runner gibt ihm eine eigene, aus
+  seinen Phasen abgeleitete Frist (240 s). Neue Regressionstests für
+  Seitenrechtecke, Dekorationsrand, Hex-Overlay, Seitenmodelle,
+  Git-Eskalation und tool4d-Versionserkennung.
+
 ## [v1.100.0] — 2026-08-17
 
 Vollständige Druckfunktion. Fastra konnte bisher gar nicht drucken: Das
@@ -16,11 +78,13 @@ Vollständige Druckfunktion. Fastra konnte bisher gar nicht drucken: Das
 
 ### Neu
 
-- **Drucken (⌘P) für jede Ansicht.** Gedruckt wird, was zu sehen ist: der
-  Quelltext des Editors, die gerenderte Markdown-Vorschau, der sichtbare
-  Abschnitt einer großen Datei, der Hex-Abzug, eine Bild-/SVG-Vorschau oder ein
-  PDF-Dokument Seite für Seite. Der Menüpunkt nennt die Fassung mit, sobald ein
-  Dokument mehr als eine anbietet („Drucken: Markdown-Vorschau…").
+- **Drucken (⌘P) für Text-, Markdown-, Hex-, Bild- und PDF-Ansichten.**
+  Gedruckt wird, was zu sehen ist: der Quelltext des Editors, die gerenderte
+  Markdown-Vorschau, der sichtbare Abschnitt einer großen Datei, der Hex-Abzug,
+  eine Bild-/SVG-Vorschau oder ein PDF-Dokument Seite für Seite. Der Menüpunkt
+  nennt die Fassung mit, sobald ein Dokument mehr als eine anbietet
+  („Drucken: Markdown-Vorschau…"). Strukturierte Vergleichsansichten
+  (Git-/Datei-Diff nebeneinander) haben bewusst keinen Druckweg.
 - **Markdown wahlweise gerendert oder als Quelltext.** Beide Fassungen stehen
   als eigene Menüpunkte im „Datei"-Menü; ⌥⌘P druckt immer den Quelltext. Die
   gerenderte Fassung geht über WebKit und enthält deshalb wirklich das, was die

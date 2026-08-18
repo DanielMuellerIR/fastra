@@ -129,7 +129,9 @@ enum GitEditorPolicy: Equatable {
     }
 }
 
-fileprivate enum GitTerminationReason {
+// Nicht fileprivate: `GitCancellationToken.finish()` liefert diesen Typ und
+// ist für den Eskalations-Regressionstest (GitRunnerTests) internal.
+enum GitTerminationReason {
     case cancelled
     case timedOut
 }
@@ -148,6 +150,10 @@ final class GitCancellationToken: @unchecked Sendable {
     /// beendet ist — eine frei gewordene Gruppen-ID kann der Kernel sofort
     /// neu vergeben, und ein nachlaufender SIGKILL träfe dann Unbeteiligte.
     private var killEscalationWorkItems: [DispatchWorkItem] = []
+    /// `finish()` hat die Eskalationsliste abgeschlossen. Danach registrierte
+    /// Nachschläge würden nie mehr über sie aufgeräumt — siehe
+    /// `scheduleGroupKillEscalation`.
+    private var finished = false
     private let terminationGracePeriod: TimeInterval
 
     init(terminationGracePeriod: TimeInterval = GitExecutionPolicy.default.terminationGracePeriod) {
@@ -195,8 +201,11 @@ final class GitCancellationToken: @unchecked Sendable {
         )
     }
 
-    fileprivate func finish() -> GitTerminationReason? {
+    // Nicht fileprivate: Der Regressionstest für die Eskalations-Registrierung
+    // nach `finish()` (GitRunnerTests) braucht Zugriff auf beide Methoden.
+    func finish() -> GitTerminationReason? {
         lock.lock()
+        finished = true
         timeoutWorkItem?.cancel()
         timeoutWorkItem = nil
         process = nil
@@ -226,18 +235,37 @@ final class GitCancellationToken: @unchecked Sendable {
     /// ALLER Mitglieder wiederverwendbar); meldet der Kernel dagegen keinen
     /// Treffer mehr, darf keinesfalls geschossen werden — die ID kann schon
     /// an einen fremden Prozess vergeben sein.
-    fileprivate func scheduleGroupKillEscalation(_ group: pid_t) {
+    /// Liefert `false`, wenn nach `finish()` und nachweislich leerer Gruppe
+    /// gar nichts mehr geplant wurde — der Aufrufer darf dann auch keine
+    /// Signale mehr an die (womöglich schon neu vergebene) ID schicken.
+    @discardableResult
+    func scheduleGroupKillEscalation(_ group: pid_t) -> Bool {
         let item = DispatchWorkItem {
             if Darwin.kill(-group, 0) == 0 {
                 Darwin.kill(-group, SIGKILL)
             }
         }
         lock.lock()
+        if finished {
+            lock.unlock()
+            // `finish()` hat die Liste bereits abgeschlossen; dieser
+            // Nachschlag würde also nie mehr über sie gelöscht. Er darf nur
+            // noch entstehen, wenn die Gruppe nachweislich lebt — nur dann
+            // gehört die ID sicher uns. Ohne lebendes Mitglied könnte die
+            // frei gewordene ID bis zum Ablauf der Frist an einen fremden
+            // Prozess gehen, und der spätere SIGKILL träfe den.
+            guard Darwin.kill(-group, 0) == 0 else { return false }
+            gitDeadlineQueue.asyncAfter(
+                deadline: .now() + terminationGracePeriod, execute: item
+            )
+            return true
+        }
         killEscalationWorkItems.append(item)
         lock.unlock()
         gitDeadlineQueue.asyncAfter(
             deadline: .now() + terminationGracePeriod, execute: item
         )
+        return true
     }
 
     /// Endet der gestartete Prozess regulär, können Hooks oder Helfer seine
@@ -251,9 +279,13 @@ final class GitCancellationToken: @unchecked Sendable {
         let group = processGroupID
         lock.unlock()
         guard let runningProcess, !runningProcess.isRunning, let group else { return }
+        // Registrierung VOR den Signalen: Endete die Gruppe zwischen Signal
+        // und Registrierung, könnte `finish()` die noch leere Liste
+        // abschließen — der danach angehängte Nachschlag bliebe unverwaltet
+        // und träfe nach einer Wiedervergabe der Gruppen-ID Fremde.
+        guard scheduleGroupKillEscalation(group) else { return }
         Darwin.kill(-group, SIGTERM)
         Darwin.kill(-group, SIGCONT)
-        scheduleGroupKillEscalation(group)
     }
 
     /// Git erhält direkt nach dem Start eine eigene Prozessgruppe. Abbruch und
@@ -262,14 +294,17 @@ final class GitCancellationToken: @unchecked Sendable {
     private func terminateSafely(_ process: Process, processGroupID: pid_t?) {
         let pid = process.processIdentifier
         if let processGroupID {
+            // Auch nach beendetem Git-Elternprozess können Helper in der
+            // Gruppe leben; der Nachschlag prüft die Gruppe deshalb selbst
+            // und wird von `finish()` gelöscht, sobald sie leer ist. Er wird
+            // VOR den Signalen registriert: Beendet sich die Gruppe zwischen
+            // Signal und Registrierung, hätte `finish()` sonst die noch leere
+            // Liste abgeschlossen und der Nachschlag bliebe unverwaltet.
+            guard scheduleGroupKillEscalation(processGroupID) else { return }
             Darwin.kill(-processGroupID, SIGTERM)
             // Ein extern angehaltener Prozess muss den bereits zugestellten
             // SIGTERM noch ausführen dürfen, damit Git seine Lockdateien räumt.
             Darwin.kill(-processGroupID, SIGCONT)
-            // Auch nach beendetem Git-Elternprozess können Helper in der
-            // Gruppe leben; der Nachschlag prüft die Gruppe deshalb selbst
-            // und wird von `finish()` gelöscht, sobald sie leer ist.
-            scheduleGroupKillEscalation(processGroupID)
         } else {
             process.terminate()
             gitDeadlineQueue.asyncAfter(

@@ -1977,6 +1977,7 @@ enum SelfTest {
     /// Ausgang auf (Erfolg, Fehler, Abbruch).
     private static var printFixtureDirectory: URL?
 
+
     private static var testLabel = "findbar"
     private static var testStartedNanoseconds = DispatchTime.now().uptimeNanoseconds
 
@@ -18738,9 +18739,13 @@ enum SelfTest {
         let keepDirectory = ProcessInfo.processInfo.environment[
             "FASTRA_PRINT_TEST_OUTPUT_DIR"
         ]
-        let base = keepDirectory.map { URL(fileURLWithPath: $0) }
-            ?? FileManager.default.temporaryDirectory
-                .appendingPathComponent("fastra-print-\(UUID().uuidString)")
+        // NIE direkt in den angegebenen Ordner schreiben: Der Test legt dort
+        // feste Namen wie quelltext.txt oder bild.png an, teils atomar
+        // überschreibend — gleichnamige vorhandene Nutzerdateien wären weg
+        // (Reviewfund 2026-08-18). Deshalb immer ein frischer Unterordner.
+        let base = (keepDirectory.map { URL(fileURLWithPath: $0) }
+            ?? FileManager.default.temporaryDirectory)
+            .appendingPathComponent("fastra-print-\(UUID().uuidString)")
         do {
             try FileManager.default.createDirectory(at: base,
                                                     withIntermediateDirectories: true)
@@ -18779,7 +18784,7 @@ enum SelfTest {
                         || text.contains(PrintDecoration.footerRight(page: 1, of: nil)) else {
                     finish(false, "Fußzeile ohne Seitenzahl")
                 }
-                runPrintMarkdownPart(ws: ws, base: base, sourcePages: pdf.pageCount)
+                runPrintMarkdownPart(ws: ws, base: base)
             }
         }
     }
@@ -18787,8 +18792,7 @@ enum SelfTest {
     /// Markdown: erst die gerenderte Vorschau, dann derselbe Text als
     /// Quelltext. Die beiden Ausdrucke müssen sich nachweisbar unterscheiden —
     /// sonst wäre die Wahl im Menü ohne Wirkung.
-    private static func runPrintMarkdownPart(ws: Workspace, base: URL,
-                                             sourcePages: Int) {
+    private static func runPrintMarkdownPart(ws: Workspace, base: URL) {
         let markdown = base.appendingPathComponent("bericht.md")
         // Formel und Diagramm gehören ausdrücklich dazu: Sie entstehen erst im
         // Dokument (KaTeX, Mermaid) und beweisen damit, dass der Ausdruck auf
@@ -18844,6 +18848,13 @@ enum SelfTest {
                 }
                 guard !previewText.contains("```mermaid") else {
                     finish(false, "Diagramm im Ausdruck als roher Codeblock")
+                }
+                // Die Formel gehört ebenfalls geprüft: Gerendert (KaTeX) sind
+                // die TeX-Zeichen weg. Steht „mc^2" im PDF, wurde entweder
+                // roher Quelltext gedruckt oder KaTeX ist gescheitert und hat
+                // seine Fehlerdarstellung (den TeX-Quelltext) ausgegeben.
+                guard !previewText.contains("mc^2") else {
+                    finish(false, "Formel im Ausdruck nicht gerendert (TeX-Quelltext sichtbar)")
                 }
                 // Gerendert heißt: Die Auszeichnungszeichen sind weg. Stünden
                 // „# " oder die Tabellenstriche im PDF, wäre versehentlich der
@@ -18953,6 +18964,18 @@ enum SelfTest {
                 guard imageText.contains("bild.png") else {
                     finish(false, "Bildausdruck ohne Kopfzeile")
                 }
+                // Die Seite muss das Bild wirklich zeigen: Das Fixture ist
+                // vollflächig rot. Eine leere Seite mit Kopfzeile bestand die
+                // reine Textprüfung vorher auch (Reviewfund 2026-08-18).
+                // Dominanz statt fester Werte: Die Farbraum-Wandlung des
+                // Druckwegs verschiebt reines Rot z. B. auf sRGB 0.9/0.3/0.2.
+                guard firstPageHasPixel(imagePDF, matching: { color in
+                    color.redComponent > 0.6
+                        && color.redComponent
+                            - max(color.greenComponent, color.blueComponent) > 0.25
+                }) else {
+                    finish(false, "Bildausdruck zeigt das rote Fixture-Bild nicht")
+                }
                 let sourcePDF = base.appendingPathComponent("vorlage.pdf")
                 do { try writeSinglePagePDF(to: sourcePDF) }
                 catch { finish(false, "PDF-Fixture nicht schreibbar") }
@@ -18968,6 +18991,19 @@ enum SelfTest {
                             finish(false, "PDF-Ausdruck hat \(printed.pageCount) "
                                    + "Seiten statt einer")
                         }
+                        // Auch hier den Inhalt nachweisen: Das Vorlagen-PDF
+                        // trägt ein blaues Rechteck. Eine leere Seite bestand
+                        // die reine Seitenzahl-Prüfung vorher auch
+                        // (Reviewfund 2026-08-18).
+                        // Dominanz statt fester Werte — gleiche Begründung
+                        // wie beim roten Bild-Fixture.
+                        guard firstPageHasPixel(printed, matching: { color in
+                            color.blueComponent > 0.6
+                                && color.blueComponent
+                                    - max(color.redComponent, color.greenComponent) > 0.25
+                        }) else {
+                            finish(false, "PDF-Ausdruck zeigt das blaue Fixture-Rechteck nicht")
+                        }
                         runPrintPanelPart(ws: ws, base: base, hexPages: hexPages)
                     }
                 }
@@ -18975,11 +19011,13 @@ enum SelfTest {
         }
     }
 
-    /// Der echte Menüweg: `printVisibleDocument()` ist genau das, was
-    /// „Drucken…" (⌘P) auslöst. Geprüft wird, dass daraufhin das
-    /// System-Druckfenster als Blatt am Dokumentfenster erscheint — der Pfad,
-    /// den jeder Nutzer geht, und der einzige, der die Fenster-Zielwahl und
-    /// die Rückmeldung des Systemdialogs wirklich benutzt.
+    /// Der Menüweg: Zum Abschluss prüft der Test die ⌘P-/⌥⌘P-/⇧⌘P-Menüpunkte
+    /// strukturell und löst dann den Druckbefehl aus (siehe
+    /// `runPrintPanelStage`); daraufhin muss das System-Druckfenster als
+    /// Blatt am Dokumentfenster erscheinen — Fenster-Zielwahl und Rückmeldung
+    /// des Systemdialogs inklusive. Vorher kommt die Rückfrage vor einem sehr
+    /// großen Ausdruck an die Reihe; ihr Prüfgegenstand ist das
+    /// Rückfrage-Blatt.
     private static func runPrintPanelPart(ws: Workspace, base: URL, hexPages: Int) {
         // Zuerst der große Ausdruck: Über zwei Megabyte Text fragt Fastra
         // vorher nach, weil das Aufteilen in Seiten den Main-Thread belegt.
@@ -19064,9 +19102,58 @@ enum SelfTest {
     private static func runPrintPanelStage(ws: Workspace, base: URL, hexPages: Int) {
         ws.loadFile(at: base.appendingPathComponent("quelltext.txt")) { ok in
             guard ok else { finish(false, "loadFile (Quelltext, zweiter Lauf) schlug fehl") }
+            // Menü-Bindung strukturell prüfen, dann denselben Befehl aufrufen,
+            // den der Menüpunkt auslöst, und das echte Blatt prüfen.
+            //
+            // Warum kein synthetisches ⌘P: SwiftUI-Menüpunkte tragen KEIN
+            // klassisches Target/Action (nachgemessen 2026-08-18:
+            // action=keine, target=nil, `performActionForItem` läuft ins
+            // Leere), und die SwiftUI-Shortcut-Zustellung springt für per
+            // `NSApp.postEvent` erzeugte ⌘-Events nicht an — auch bei aktiver
+            // App mit Key-Window nicht. Ein ECHTER Tastendruck funktioniert
+            // (per System-Events-Probe am 2026-08-18 belegt: das Druckblatt
+            // öffnet sich), lässt sich aus dem Testprozess aber nicht ohne
+            // zusätzliche Berechtigungen erzeugen. Deshalb: Verschwindet der
+            // Menüpunkt oder verliert er sein Kürzel, fällt der Test über die
+            // Strukturprüfung; den Blatt-Weg beweist der direkte Aufruf
+            // (Reviewfund 2026-08-18).
+            guard menuItem(forExactKeyEquivalent: "p", modifiers: [.command],
+                           in: NSApp.mainMenu) != nil else {
+                finish(false, "kein exakt an ⌘P gebundener Menüpunkt (Drucken…)")
+            }
+            guard menuItem(forExactKeyEquivalent: "p",
+                           modifiers: [.command, .option],
+                           in: NSApp.mainMenu) != nil,
+                  menuItem(forExactKeyEquivalent: "p",
+                           modifiers: [.command, .shift],
+                           in: NSApp.mainMenu) != nil else {
+                finish(false, "⌥⌘P- (Quelltext) oder ⇧⌘P-Menüpunkt (Papierformat) fehlt")
+            }
             MainActor.assumeIsolated { DocumentPrinting.printVisibleDocument() }
             pollPrintPanel(hexPages: hexPages, tick: 0)
         }
+    }
+
+    /// Wie `menuItem(forKeyEquivalent:)`, aber mit EXAKTEM Modifier-Vergleich:
+    /// ⌘P, ⌥⌘P und ⇧⌘P tragen alle das Key-Equivalent „p" — für den
+    /// Druck-Test zählt genau der Punkt mit ausschließlich ⌘.
+    private static func menuItem(forExactKeyEquivalent key: String,
+                                 modifiers: NSEvent.ModifierFlags,
+                                 in menu: NSMenu?) -> NSMenuItem? {
+        guard let menu else { return nil }
+        for item in menu.items {
+            if item.keyEquivalent.lowercased() == key,
+               item.keyEquivalentModifierMask
+                   .intersection([.command, .option, .shift, .control]) == modifiers {
+                return item
+            }
+            if let submenu = item.submenu,
+               let found = menuItem(forExactKeyEquivalent: key,
+                                    modifiers: modifiers, in: submenu) {
+                return found
+            }
+        }
+        return nil
     }
 
     private static func pollPrintPanel(hexPages: Int, tick: Int) {
@@ -19079,7 +19166,8 @@ enum SelfTest {
                    + "Seitenschätzung nach; ⌘P öffnet das System-Druckfenster")
         }
         guard tick < 60 else {
-            finish(false, "⌘P öffnet binnen 15 s kein Druckfenster am Dokumentfenster")
+            finish(false, "der Druckbefehl öffnet binnen 15 s kein Druckfenster am "
+                + "Dokumentfenster — " + windowsSummary())
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             pollPrintPanel(hexPages: hexPages, tick: tick + 1)
@@ -19120,5 +19208,31 @@ enum SelfTest {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             pollPrintedPDF(at: url, name: name, tick: tick + 1, then: then)
         }
+    }
+
+    /// Rendert die erste Seite eines PDFs als Bitmap und sucht in einem
+    /// Abtastraster nach einem Pixel, das die Bedingung erfüllt. Damit weisen
+    /// Bild- und PDF-Ausdruck ihre markante Fixture-Fläche nach — die Lage auf
+    /// der Seite (Einpassung, Zentrierung) muss der Test dafür nicht kennen.
+    private static func firstPageHasPixel(
+        _ pdf: PDFDocument, matching predicate: (NSColor) -> Bool
+    ) -> Bool {
+        guard let page = pdf.page(at: 0) else { return false }
+        let bounds = page.bounds(for: .mediaBox)
+        guard bounds.width > 0, bounds.height > 0 else { return false }
+        let image = page.thumbnail(of: bounds.size, for: .mediaBox)
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff) else { return false }
+        let strideX = max(1, rep.pixelsWide / 48)
+        let strideY = max(1, rep.pixelsHigh / 48)
+        for x in stride(from: 0, to: rep.pixelsWide, by: strideX) {
+            for y in stride(from: 0, to: rep.pixelsHigh, by: strideY) {
+                if let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB),
+                   predicate(color) {
+                    return true
+                }
+            }
+        }
+        return false
     }
 }

@@ -215,6 +215,27 @@ func versionFromExecutableInsideBundle() throws {
         forExecutable: scratch.appendingPathComponent("tool4d")) == nil)
 }
 
+@Test("Version aus Bundle-Pfad auch bei versioniertem Bundle-Namen")
+func versionFromExecutableInsideVersionedBundle() throws {
+    // Dieselbe Namensregel wie die Programme-Ordner-Suche: Ein echtes
+    // Nightly heißt „tool4d_v21….app". Über PATH gefunden oder als gemerkter
+    // Pfad neu geladen, muss seine Version trotzdem lesbar sein — vorher
+    // erkannte `bundleVersion(forExecutable:)` nur exakt „tool4d.app"
+    // (Reviewfund 2026-08-18).
+    let scratch = try makeScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let binary = try makeToolBundle(
+        at: scratch.appendingPathComponent("tool4d_v21_nightly_2026-08-05.app"),
+        version: "21.0"
+    )
+    #expect(Tool4DDiscovery.bundleVersion(forExecutable: binary) == "21.0")
+    // Ein fremdes Bundle, das nur zufällig auf .app endet, zählt nicht.
+    let foreign = try makeToolBundle(
+        at: scratch.appendingPathComponent("anderes-werkzeug.app"), version: "9.9"
+    )
+    #expect(Tool4DDiscovery.bundleVersion(forExecutable: foreign) == nil)
+}
+
 @Test("Erst-Kontakt-Trigger: .4dm und .4DProject, case-insensitiv")
 func firstContactTrigger() {
     #expect(Tool4DAssist.triggersFirstContactHint(fileName: "Methode.4dm"))
