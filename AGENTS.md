@@ -178,6 +178,19 @@ nachholen. Selbsttests werden über `-selftest <name>` bzw. den vorhandenen Runn
 gestartet; unbekannte positionale `--selftest-*`-Argumente werden von AppKit als
 Dateien interpretiert und sind falsch.
 
+Auf einem Test-Mac laufen Fenster- und Integrationstests gegen die
+**notarisierte, nach `/Applications` installierte App**
+(`FASTRA_SELFTEST_APP_BIN`/`FASTRA_SELFTEST_APP_BUNDLE`), nicht gegen den
+ad-hoc-signierten Debug-Build. Grund: macOS merkt sich Berechtigungen (lokales
+Netzwerk, Festplattenvollzugriff, Automation …) dauerhaft nur für eine stabile
+notarisierte Code-Identität; ein ad-hoc-Build bekommt mit jedem Build eine neue
+Identität, die Dialoge kommen bei jedem Lauf wieder und Testfehler sind nicht
+von Berechtigungsproblemen unterscheidbar (Produktentscheidung 2026-08-18).
+Ablauf: einmal notarisiert installieren, Berechtigungen setzen, dann ein
+Testlauf, der belegt, dass keine Dialoge mehr erscheinen — erst danach sind
+Ergebnisse dort belastbar. `build.sh`-Debug-Bundles bleiben für schnelle rein
+interne Iterationen auf dem Entwicklungs-Mac passend.
+
 Testumfang nach Risiko:
 
 - Parser, Wildcards, Ersetzungen, Dateifilter: `./test.sh` plus passende

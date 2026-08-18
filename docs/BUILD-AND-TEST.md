@@ -526,7 +526,17 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
    externe Datei in genau einem Fenster. Für den vorgeschriebenen notarisierten
    Zieltest kann der Runner über
    `FASTRA_SELFTEST_APP_BIN` und `FASTRA_SELFTEST_APP_BUNDLE` auf das bereits
-   geprüfte Bundle unter `/Applications` gerichtet werden.
+   geprüfte Bundle unter `/Applications` gerichtet werden. Auf einem Test-Mac
+   ist das der Standardweg für die ganze Suite: macOS merkt sich
+   TCC-Berechtigungen (lokales Netzwerk, Festplattenvollzugriff, Automation …)
+   dauerhaft nur für eine stabile notarisierte Code-Identität. Ein
+   ad-hoc-signierter Debug-Build erhält mit jedem Build eine neue Identität —
+   die Berechtigungsdialoge erscheinen dann bei jedem Lauf erneut (beobachtet
+   2026-08-18 auf dem Test-Mac: Abfrage „nach Geräten im lokalen Netzwerk
+   suchen" mitten im Suite-Lauf), und Testfehler sind nicht von
+   Berechtigungsproblemen unterscheidbar. Einrichtung je Test-Mac: notarisiert
+   installieren, Berechtigungen einmal setzen, dann ein Kontrolllauf ohne
+   neue Dialoge.
    `-selftest projectinput` öffnet die echte Projekt-Suchmaske, betippt das
    native Ausschlussfeld und verlangt noch im selben Main-Thread-Umlauf eine
    leere Treffer-, Navigations- und Apply-Basis. Der Test misst zusätzlich die
