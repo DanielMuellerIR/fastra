@@ -126,13 +126,14 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   das Ziehen der Datei aus der Titelzeile (Proxy-Icon) ersatzlos. Möglicher
   Ersatz wäre ein `.onDrag` der Datei-URL direkt am Tab — nur bei echtem Bedarf.
 
-- **Willkommen als Platzhalter statt eigenem Tab:** Von Daniel am 2026-07-30
-  entschieden, umgesetzt und am installierten Stand abgenommen („Passt nun",
-  nach Entfernen der anfänglichen Projekt-Sperre; siehe CHANGELOG
-  Unreleased). Die README-Screenshots zeigen den Willkommensbildschirm
-  nicht und bleiben unverändert. Offen sind nur noch die fokus-pflichtigen
-  Fenster-Selbsttests (welcomenew, newwindow, cmdw, sessionrestore,
-  coldopen) auf einer geeigneten UI-Sitzung.
+- **Willkommen als Platzhalter statt eigenem Tab:** Entschieden am
+  2026-07-30, umgesetzt und am installierten Stand abgenommen („Passt nun",
+  nach Entfernen der anfänglichen Projekt-Sperre; veröffentlicht in
+  v1.60.0, siehe CHANGELOG). Die README-Screenshots zeigen den
+  Willkommensbildschirm nicht und bleiben unverändert. Die zugehörigen
+  fokus-pflichtigen Fenster-Selbsttests (welcomenew, newwindow, cmdw,
+  sessionrestore, coldopen) laufen seither regulär in der Fenster-Suite
+  und sind grün — hier ist nichts mehr offen.
 
 - **Datenschutz-Erklärung der Markdown-Vorschau: Produktvergleiche bleiben
   bewusst draußen** (Rest der Idee 2026-07-28; der erklärende Abschnitt
