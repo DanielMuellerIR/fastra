@@ -103,6 +103,13 @@ struct ContentView: View {
             ReplacePreviewView()
                 .environmentObject(workspace)
         }
+        // 4D-Makro-Vorschau (Idee #28): Diff „aktueller Puffer → Makro-
+        // Ergebnis" mit Anwenden/Abbrechen. Ohne diese Vorschau schreibt kein
+        // Makrolauf in den Puffer.
+        .sheet(item: $workspace.fourDMacroPreview) { state in
+            FourDMacroPreviewSheet(state: state)
+                .environmentObject(workspace)
+        }
         // „Dateien vergleichen…" (Etappe 1 Wunschpaket 2026-07c): Sheet mit
         // Links/Rechts-Auswahl und Vergleichsoptionen; das Ergebnis öffnet
         // als eigener Diff-Tab.

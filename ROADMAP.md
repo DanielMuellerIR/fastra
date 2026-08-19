@@ -93,11 +93,14 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   im WYSIWYG-Modus, nicht ein weiterer Importweg.
   Herkunft: Idee #18 in `theplan/ideen.md`.
 
-- **4D-Makros ausführen, allen voran Daniels eigene MAO-Makros** — Fastra soll
-  4D-Makros nicht nur kennen, sondern ausführen können. Der ausdrücklich genannte
-  Schwerpunkt sind Daniels eigene MAO-Makros; deren realen Bestand und Format vor
-  dem Entwurf am echten Material erheben, nicht aus Erinnerung raten.
-  Herkunft: Idee #28 in `theplan/ideen.md`.
+- **4D-Makros: verbliebene Grenzen** — Der Kern ist seit v1.105.0 gebaut
+  (Discovery, Menü, native Text-Makros, Komplettieren über die tool4d-Engine
+  mit Diff-Vorschau, ⌘#/⌘T). Bewusst offen: Makros mit Zwischenablage-,
+  Editor-Auswahl- oder Host-Projekt-Bezug (FileMerge, Sortieren, „Ungenutzte
+  Methoden" …) laufen nur im echten 4D-Methodeneditor — headless bräuchte je
+  Makro eine code-übergebende Variante wie beim Komplettieren. Ebenfalls
+  offen: ein warmer tool4d-Prozess, falls die Kaltstartzeit (real ~3 s) im
+  Alltag stört. Herkunft: Idee #28 in `theplan/ideen.md`.
 
 ## Kleine offene Ideen
 

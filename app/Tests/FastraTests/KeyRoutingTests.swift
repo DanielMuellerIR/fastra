@@ -293,3 +293,62 @@ func documentCommands_passThroughForUtilityWindow() {
         #expect(route == .passThrough)
     }
 }
+
+@Test("CMD+T mit 4D-Makro-Kürzel wird zum Makro geroutet")
+func cmdT_runsFourDMacroWhenShortcutExists() {
+    let route = KeyRouting.route(
+        isKeyDown: true, modifierFlags: [.command],
+        charactersIgnoringModifiers: "t", keyCode: 17,
+        isSearchWindowKey: false,
+        isDocumentWindowKey: true,
+        fourDMacroShortcuts: ["t", "#"]
+    )
+    #expect(route == .runFourDMacro("t"))
+}
+
+@Test("CMD+T ohne aktives 4D-Dokument (leere Kürzelmenge) läuft normal durch")
+func cmdT_passesThroughWithoutMacroShortcuts() {
+    let route = KeyRouting.route(
+        isKeyDown: true, modifierFlags: [.command],
+        charactersIgnoringModifiers: "t", keyCode: 17,
+        isSearchWindowKey: false,
+        isDocumentWindowKey: true
+    )
+    #expect(route == .passThrough)
+}
+
+@Test("CMD+# erreicht das Makro auch mit Shift (US-Layout: ⇧3)")
+func cmdHash_allowsShift() {
+    let route = KeyRouting.route(
+        isKeyDown: true, modifierFlags: [.command, .shift],
+        charactersIgnoringModifiers: "#", keyCode: 20,
+        isSearchWindowKey: false,
+        isDocumentWindowKey: true,
+        fourDMacroShortcuts: ["#"]
+    )
+    #expect(route == .runFourDMacro("#"))
+}
+
+@Test("CMD+OPT+T wird trotz Makro-Kürzel NICHT gekapert")
+func cmdOptT_passesThroughDespiteMacro() {
+    let route = KeyRouting.route(
+        isKeyDown: true, modifierFlags: [.command, .option],
+        charactersIgnoringModifiers: "t", keyCode: 17,
+        isSearchWindowKey: false,
+        isDocumentWindowKey: true,
+        fourDMacroShortcuts: ["t"]
+    )
+    #expect(route == .passThrough)
+}
+
+@Test("Makro-Kürzel greifen nicht, wenn nur die Suchmaske vorn ist")
+func macroShortcut_requiresDocumentWindow() {
+    let route = KeyRouting.route(
+        isKeyDown: true, modifierFlags: [.command],
+        charactersIgnoringModifiers: "t", keyCode: 17,
+        isSearchWindowKey: true,
+        isDocumentWindowKey: false,
+        fourDMacroShortcuts: ["t"]
+    )
+    #expect(route == .passThrough)
+}

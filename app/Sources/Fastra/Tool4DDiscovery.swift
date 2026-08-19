@@ -238,7 +238,9 @@ enum Tool4DAssist {
     static let downloadPageURL = URL(string: "https://product-download.4d.com")!
 
     private static let hintShownKey = "fastra.tool4d.firstContactHintShown"
-    private static let rememberedPathKey = "fastra.tool4d.executablePath"
+    /// Intern statt privat: Das Einstellungen-Fenster bindet denselben
+    /// Schlüssel über `@AppStorage` (Abschnitt „4D").
+    static let rememberedPathKey = "fastra.tool4d.executablePath"
 
     /// „Einmal pro Nutzer": erscheint nie wieder, sobald der Hinweis über
     /// einen der beiden Buttons quittiert wurde. Läuft über die isolierte

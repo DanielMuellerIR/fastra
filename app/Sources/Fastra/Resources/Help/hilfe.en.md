@@ -640,6 +640,43 @@ runs in compiled mode:
 
 Errors appear on the console; a non-zero exit code means problems.
 
+## 4D Macros
+
+For `.4dm` files, Fastra offers the macros of the 4D method editor (the
+“Macros” menu). It finds every “Macros v2” XML file that 4D itself would
+load, relative to the 4D project of the open file:
+
+- in the project's components (`Components/….4dbase/Macros v2`, from 4D v21
+  `….4dbase/Contents/Macros v2`, plus packages linked via
+  `Project/Sources/dependencies.json`),
+- per user under `~/Library/Application Support/4D/Macros v2`,
+- in the installed 4D.app itself (language-specific `Macros.xml`; with
+  several versions the highest wins).
+
+**Text macros** (such as `If`/`While` or your own insertion macros) are
+applied by Fastra directly: placeholders like `<method_name/>`,
+`<selection/>`, date/time and user are substituted, `<caret/>` positions the
+cursor. The insertion is a normal, undoable step.
+
+**The completion family** (`MAO_MethodeKomplettierenNeu` and its variants)
+runs headless through tool4d against an engine project providing the
+`MacroRun` startup method; its folder is set in Settings under “4D”. The
+result always appears as a diff preview first; “Apply” is a single undo step
+and only takes effect while the document still matches the previewed state
+exactly. Token suffixes (`:C41`, `:K5:70`) are preserved: Fastra detokenizes
+before the run and restores the suffixes from the original. `00_DM_Info` and
+`Compiler_*` methods are deliberately excluded from completion.
+
+**Shortcuts:** A `/x` suffix in a macro name (such as “… /#”) becomes ⌘#.
+Inside `.4dm` documents the macro shortcut wins over identical menu
+shortcuts — there ⌘T is “Insert initials and date”, outside 4D files ⌘T
+remains “New Tab”.
+
+**Limits:** Macros that need the clipboard, editor selection through 4D
+methods, or the host project (such as the FileMerge and sort macros) only
+run inside the real 4D method editor. Fastra lists them in the menu and
+explains on invocation why they cannot run here.
+
 ## XPath Bar
 
 For XML-like documents, ⇧⌘X shows the XPath bar: type an XPath query,

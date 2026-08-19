@@ -1413,3 +1413,52 @@
 "Die PDF-Vorschau ist noch nicht geladen." = "The PDF preview has not finished loading yet.";
 "Großer Ausdruck" = "Large Printout";
 "Dieses Dokument ergibt etwa %ld Seiten. Das Aufteilen in Seiten kann einen Moment dauern; Fastra ist währenddessen nicht bedienbar." = "This document will produce roughly %ld pages. Splitting it into pages may take a moment, during which Fastra will not respond.";
+
+/* 4D-Makros: Gründe, warum ein Makro nicht ausführbar ist */
+"Trennlinie im Makro-Menü — hier gibt es nichts auszuführen." = "Separator in the macro menu — there is nothing to run here.";
+"Reiner Anzeigeeintrag: Das Makro fügt keinen Text ein." = "Display-only entry: this macro inserts no text.";
+"Zwischenablage-Makros laufen nur im 4D-Methodeneditor." = "Clipboard macros only work inside the 4D method editor.";
+"Der Methodenaufruf dieses Makros ist nicht lesbar." = "The method call of this macro cannot be read.";
+"Das Makro ruft die 4D-Methode %@ auf und braucht dafür den 4D-Methodeneditor (Editor-Auswahl, Zwischenablage oder Host-Projekt); headless über tool4d ist das nicht ausführbar." = "This macro calls the 4D method %@ and needs the 4D method editor for it (editor selection, clipboard or host project); it cannot run headless via tool4d.";
+"Die Argumente des Komplettieren-Aufrufs (%@) passen zu keiner Variante, die Fastra kennt." = "The arguments of the completion call (%@) do not match any variant Fastra knows.";
+
+/* 4D-Makros: Menü, Engine-Lauf, Vorschau und Einstellungen */
+"00_DM_Info und Compiler_*-Methoden sind bewusst von diesem Makro ausgenommen und bleiben unverändert." = "00_DM_Info and Compiler_* methods are deliberately excluded from this macro and remain unchanged.";
+"4D" = "4D";
+"Aktueller Stand" = "Current State";
+"Angewendet wird als ein Undo-Schritt (⌘Z macht alles rückgängig)." = "Applied as a single undo step (⌘Z reverts everything).";
+"Das Dokument entspricht nicht mehr dem Stand der Vorschau. Führe das Makro erneut aus." = "The document no longer matches the previewed state. Run the macro again.";
+"Das Dokument wurde während des Makrolaufs geändert. Führe das Makro erneut aus." = "The document was changed while the macro was running. Run the macro again.";
+"Das Makro meldete einen Fehler ohne Text." = "The macro reported an error without a message.";
+"Der Makrolauf hat das Zeitlimit von %.0f Sekunden überschritten und wurde beendet." = "The macro run exceeded the time limit of %.0f seconds and was terminated.";
+"Dieser Ordner existiert nicht." = "This folder does not exist.";
+"Dieses Makro läuft über ein 4D-Engine-Projekt mit der Methode MacroRun (MAO_Makros). Trage dessen Projektordner in den Einstellungen unter „4D“ ein." = "This macro runs through a 4D engine project providing the MacroRun method (MAO_Makros). Enter its project folder in Settings under “4D”.";
+"Engine-Projekt nicht gefunden" = "Engine Project Not Found";
+"Ergebnis von „%@“" = "Result of “%@”";
+"Erneut suchen" = "Search Again";
+"Exit 139 ist ein bekannter tool4d-Absturz durch eine debuggerWatches.json in den userPreferences-Ordnern des Engine-Projekts. Diese Datei beiseitelegen und erneut versuchen." = "Exit 139 is a known tool4d crash caused by a debuggerWatches.json in the engine project's userPreferences folders. Move that file aside and try again.";
+"Im Ordner liegt keine .4DProject-Datei (erwartet unter „Project/“)." = "The folder contains no .4DProject file (expected under “Project/”).";
+"Keine Makros gefunden" = "No Macros Found";
+"Keine Änderungen — die Methode ist bereits vollständig." = "No changes — the method is already complete.";
+"Leer gelassen sucht Fastra tool4d selbst (PATH, Programme-Ordner, 4D-Analyzer). Das Makro-Engine-Projekt ist das 4D-Projekt mit der Startup-Methode MacroRun (z. B. MAO_Makros); ohne diesen Pfad laufen nur die nativen Text-Makros, die Komplettieren-Makros erklären dann, was fehlt." = "Left empty, Fastra finds tool4d itself (PATH, Applications folders, 4D analyzer). The macro engine project is the 4D project providing the MacroRun startup method (e.g. MAO_Makros); without this path only the native text macros run, and the completion macros explain what is missing.";
+"Makro „%@“" = "Macro “%@”";
+"Makro „%@“ fehlgeschlagen" = "Macro “%@” Failed";
+"Makro „%@“ ist hier nicht ausführbar" = "Macro “%@” Cannot Run Here";
+"Makro „%@“ — Vorschau der Änderungen" = "Macro “%@” — Preview of Changes";
+"Makro-Engine nicht konfiguriert" = "Macro Engine Not Configured";
+"Makro-Engine-Projekt (Ordner mit Project/…)" = "Macro engine project (folder containing Project/…)";
+"Makro-Ergebnis nicht angewendet" = "Macro Result Not Applied";
+"Makro-Vorschau verworfen" = "Macro Preview Discarded";
+"Makros" = "Macros";
+"Makros gelten für 4D-Methoden (.4dm-Dateien)" = "Macros apply to 4D methods (.4dm files)";
+"Makros neu laden" = "Reload Macros";
+"Methode ist vom Komplettieren-Makro ausgenommen" = "Method Is Excluded from the Completion Macro";
+"Status OK, aber die Ergebnisdatei fehlt oder ist leer." = "Status OK, but the result file is missing or empty.";
+"Temporäre Makro-Dateien konnten nicht angelegt werden: %@" = "Temporary macro files could not be created: %@";
+"Unter %@ liegt keine .4DProject-Datei (erwartet in „Project/“). Prüfe den Pfad in den Einstellungen unter „4D“." = "There is no .4DProject file under %@ (expected in “Project/”). Check the path in Settings under “4D”.";
+"Unverständliche Statusmeldung des Makrolaufs: %@" = "Unintelligible status message from the macro run: %@";
+"automatisch (derzeit nicht gefunden — Hilfe → tool4d finden…)" = "automatic (currently not found — Help → Find tool4d…)";
+"tool4d (Pfad zur ausführbaren Datei)" = "tool4d (path to the executable)";
+"tool4d endete mit Exit-Code %ld, ohne eine Statusdatei zu schreiben." = "tool4d exited with code %ld without writing a status file.";
+"tool4d hat keine Statusdatei geschrieben. Prüfe den Engine-Projektpfad in den Einstellungen (das Projekt braucht die Methode MacroRun) und eine eventuell vorhandene debuggerWatches.json in dessen userPreferences-Ordnern." = "tool4d did not write a status file. Check the engine project path in Settings (the project needs the MacroRun method) and any debuggerWatches.json in its userPreferences folders.";
+"tool4d konnte nicht gestartet werden: %@" = "tool4d could not be started: %@";

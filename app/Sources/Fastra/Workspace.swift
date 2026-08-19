@@ -473,6 +473,9 @@ final class Workspace: ObservableObject {
                 recentlyActiveTabIDs.removeAll { $0 == id }
                 recentlyActiveTabIDs.insert(id, at: 0)
             }
+            // Makro-Katalog folgt der aktiven `.4dm`-Datei (Makros-Menü).
+            // Billig: gescannt wird nur bei gewechseltem Dokumentordner.
+            refreshFourDMacroCatalogIfNeeded()
         }
     }
     /// Zuletzt aktive Tabs, der jüngste zuerst. Bestimmt nach dem Schließen
@@ -528,6 +531,23 @@ final class Workspace: ObservableObject {
     var fourDComponentMethods: [String: FourDComponentMethod] {
         fourDMethodIndexSnapshot.componentMethods
     }
+    /// Geparste 4D-Methodeneditor-Makros für die aktive `.4dm`-Datei
+    /// (Makros-Menü + Shortcuts). Leer, solange keine `.4dm`-Datei aktiv ist
+    /// oder an den bekannten Fundorten keine Makro-XML liegt.
+    @Published var fourDMacros: [FourDMacro] = []
+    /// Schlüssel des letzten Makro-Scans (Dokumentordner), damit ein bloßer
+    /// Tabwechsel innerhalb desselben Ordners keinen neuen Scan auslöst.
+    /// (Intern statt privat: Die Pflege lebt in `FourDMacroAssist.swift`.)
+    var fourDMacroScanKey: String?
+    /// Entwertet veraltete, noch laufende Makro-Scans nach Tab-/Projektwechsel.
+    var fourDMacroScanGeneration = UUID()
+    /// Diff-Vorschau eines Makrolaufs (Sheet). Anwenden ist erst nach dieser
+    /// sichtbaren Vorschau möglich — Produktinvariante „keine Schreibänderung
+    /// ohne Vorschau".
+    @Published var fourDMacroPreview: FourDMacroPreviewState?
+    /// `true`, während ein tool4d-Makrolauf dieses Fensters läuft. Sperrt
+    /// Menüeinträge und Shortcuts gegen parallele Läufe desselben Puffers.
+    @Published var fourDMacroEngineBusy = false
     var fourDComponentMethodDisplayNames: [String] {
         fourDMethodIndexSnapshot.componentMethodDisplayNames
     }

@@ -39,6 +39,10 @@ enum KeyRoute: Equatable {
     case moveToBeginningOfDocument(modifySelection: Bool)
     /// End bzw. FN+→ — an das Ende des Dokuments springen.
     case moveToEndOfDocument(modifySelection: Bool)
+    /// CMD+<Kürzel> eines 4D-Makros bei aktiver `.4dm`-Datei. Kontextsensitiv
+    /// gewinnt das Makro über gleichlautende Menü-Shortcuts (⌘T „Neuer Tab"),
+    /// weil die Kürzelmenge nur bei aktiver 4D-Methode überhaupt gefüllt ist.
+    case runFourDMacro(Character)
     /// Event nicht abfangen — normal weiterreichen.
     case passThrough
 }
@@ -69,7 +73,8 @@ enum KeyRouting {
         keyCode: UInt16,
         isSearchWindowKey: Bool,
         isHelpWindowKey: Bool = false,
-        isDocumentWindowKey: Bool = false
+        isDocumentWindowKey: Bool = false,
+        fourDMacroShortcuts: Set<Character> = []
     ) -> KeyRoute {
         guard isKeyDown else { return .passThrough }
 
@@ -114,6 +119,24 @@ enum KeyRouting {
             return .passThrough
         }
 
+        // CMD+<Kürzel> eines 4D-Makros (z. B. ⌘# „Methode analysieren und
+        // ergänzen", ⌘T „Kürzel und Datum einsetzen"). Nur im echten
+        // Dokumentfenster; die Kürzelmenge ist ausschließlich bei aktiver
+        // `.4dm`-Datei gefüllt — überall sonst behalten ⌘T & Co. ihre
+        // normale Bedeutung. Shift bleibt erlaubt (auf US-Layouts liegt „#"
+        // auf ⇧3), Option/Control brechen bewusst ab.
+        if isDocumentWindowKey, !fourDMacroShortcuts.isEmpty,
+           modifierFlags.contains(.command),
+           let characters = charactersIgnoringModifiers?.lowercased(),
+           characters.count == 1,
+           let key = characters.first,
+           fourDMacroShortcuts.contains(key) {
+            let extra = modifierFlags.intersection([.option, .control])
+            if extra.isEmpty {
+                return .runFourDMacro(key)
+            }
+        }
+
         // CMD+G / CMD+SHIFT+G — Treffer-Navigation.
         if modifierFlags.contains(.command),
            charactersIgnoringModifiers?.lowercased() == "g" {
@@ -155,9 +178,11 @@ enum KeyRouting {
         case .gotoPreviousMatch:  return .fastraGotoPreviousMatch
         case .showGotoLine:       return .fastraShowGotoLine
         case .closeHelp, .closeDocument,
-             .moveToBeginningOfDocument, .moveToEndOfDocument:
-            // Diese Aktionen gehen direkt an die fokussierte Editor-TextView;
-            // eine globale Notification würde Suchfelder versehentlich erfassen.
+             .moveToBeginningOfDocument, .moveToEndOfDocument,
+             .runFourDMacro:
+            // Diese Aktionen gehen direkt an die fokussierte Editor-TextView
+            // bzw. den Workspace des Key-Windows; eine globale Notification
+            // würde Suchfelder oder fremde Fenster versehentlich erfassen.
             return nil
         case .passThrough:        return nil
         }

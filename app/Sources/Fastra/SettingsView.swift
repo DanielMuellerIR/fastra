@@ -44,6 +44,15 @@ struct SettingsView: View {
     @AppStorage(GitPreferencesStore.Keys.prune, store: SelfTest.workspaceDefaults()) private var gitFetchPrune = false
     @AppStorage(GitPreferencesStore.Keys.pullStrategy, store: SelfTest.workspaceDefaults())
     private var gitPullStrategy = GitPullStrategy.unselected.rawValue
+    // 4D-Werkzeuge: gemerkter tool4d-Pfad (derselbe Schlüssel, den auch
+    // „Hilfe → tool4d finden…" pflegt) und das Makro-Engine-Projekt.
+    @AppStorage(Tool4DAssist.rememberedPathKey, store: SelfTest.workspaceDefaults())
+    private var tool4dPath = ""
+    @AppStorage(FourDMacroEngineSettings.projectPathKey, store: SelfTest.workspaceDefaults())
+    private var macroEngineProjectPath = ""
+    /// Einmal beim Öffnen ermittelter Discovery-Fund als Platzhaltertext —
+    /// nicht bei jedem Tastendruck neu suchen.
+    @State private var tool4dDiscoveryPlaceholder = ""
     // Auch dieser Speicher gehört in die Selbsttest-Suite: Sein `init`
     // migriert und schreibt beim ersten Zugriff. Mit `.standard` hätte ein
     // Einstellungs-Selbsttest die echten Editor-Profile des Nutzers
@@ -222,6 +231,27 @@ struct SettingsView: View {
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            Section("4D") {
+                TextField("tool4d (Pfad zur ausführbaren Datei)",
+                          text: $tool4dPath,
+                          prompt: Text(verbatim: tool4dDiscoveryPlaceholder))
+                    .autocorrectionDisabled()
+                TextField("Makro-Engine-Projekt (Ordner mit Project/…)",
+                          text: $macroEngineProjectPath,
+                          prompt: Text(verbatim: "~/git-arbeit/MAO_Makros"))
+                    .autocorrectionDisabled()
+                if let problem = macroEngineProblem {
+                    Text(verbatim: problem)
+                        .fastraFont(.small)
+                        .foregroundColor(Theme.gitModified)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text("Leer gelassen sucht Fastra tool4d selbst (PATH, Programme-Ordner, 4D-Analyzer). Das Makro-Engine-Projekt ist das 4D-Projekt mit der Startup-Methode MacroRun (z. B. MAO_Makros); ohne diesen Pfad laufen nur die nativen Text-Makros, die Komplettieren-Makros erklären dann, was fehlt.")
+                    .fastraFont(.small)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .formStyle(.grouped)
         .background(SettingsWindowConfiguration(
@@ -244,6 +274,12 @@ struct SettingsView: View {
                 SessionStateStore.clear(in: SelfTest.workspaceDefaults())
             }
         }
+        .onAppear {
+            // Einmalige Discovery für den Platzhalter des tool4d-Felds.
+            let found = Tool4DDiscovery.locate()?.executableURL.path
+            tool4dDiscoveryPlaceholder = found
+                ?? L10n.string("automatisch (derzeit nicht gefunden — Hilfe → tool4d finden…)")
+        }
         .onChange(of: gitFetchDecision) { gitPreferencesChanged() }
         .onChange(of: gitFetchInterval) {
             gitFetchInterval = GitPreferences.clampedFetchInterval(gitFetchInterval)
@@ -258,5 +294,26 @@ struct SettingsView: View {
     private func gitPreferencesChanged() {
         NotificationCenter.default.post(name: .fastraGitPreferencesChanged,
                                         object: nil)
+    }
+
+    /// Sichtbares Problem des eingetragenen Engine-Projektpfads — pure
+    /// Prüfung ohne stillen Fallback: leer ist erlaubt (Engine dann bewusst
+    /// unkonfiguriert), ein gesetzter Pfad muss auf ein echtes 4D-Projekt
+    /// zeigen.
+    private var macroEngineProblem: String? {
+        let trimmed = macroEngineProjectPath
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let path = (trimmed as NSString).expandingTildeInPath
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path,
+                                             isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            return L10n.string("Dieser Ordner existiert nicht.")
+        }
+        guard Tool4DProjectLocator.projectFile(in: URL(fileURLWithPath: path)) != nil else {
+            return L10n.string("Im Ordner liegt keine .4DProject-Datei (erwartet unter „Project/“).")
+        }
+        return nil
     }
 }

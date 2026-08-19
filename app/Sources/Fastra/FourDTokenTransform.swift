@@ -62,6 +62,52 @@ enum FourDTokenTransform {
                      options: .regularExpression) != nil
     }
 
+    // MARK: - Lernende Rücktokenisierung (für die 4D-Makro-Engine)
+
+    /// Lernt die vorhandenen Token-Suffixe eines tokenisierten Textes:
+    /// Name (lowercased) → Suffix, z. B. `"alert" → ":C41"` und
+    /// `"into variable" → ":K79:31"`. Grundlage, um nach einem headless
+    /// ausgeführten 4D-Makro (das untokenisierten Code liefert) auch die
+    /// KONSTANTEN-Token wiederherzustellen — deren Nummern stehen in keiner
+    /// öffentlichen Quelle, wohl aber im Original-Puffer.
+    static func learnedSuffixes(from text: String) -> [String: String] {
+        let tokens = FourDTokenizer.tokenize(text)
+        let original = text as NSString
+        var learned: [String: String] = [:]
+        for token in tokens where token.kind == .command || token.kind == .constant {
+            let value = original.substring(with: token.range)
+            guard let colon = value.firstIndex(of: ":") else { continue }
+            let suffix = String(value[colon...])
+            guard isTokenSuffix(suffix) else { continue }
+            learned[String(value[..<colon]).lowercased()] = suffix
+        }
+        return learned
+    }
+
+    /// Fügt einem untokenisierten Text Token-Suffixe wieder an: zuerst das
+    /// gelernte Suffix aus dem Original, für neue Befehle ohne gelerntes
+    /// Suffix die bekannte Befehlsnummer aus `FourDSymbols`. Konstanten ohne
+    /// gelerntes Suffix bleiben unverändert (ehrliche Grenze wie beim
+    /// Menübefehl „Befehls-Token ergänzen").
+    static func retokenize(_ text: String, learned: [String: String]) -> String {
+        let tokens = FourDTokenizer.tokenize(text)
+        let original = text as NSString
+        let result = NSMutableString(string: text)
+        for token in tokens.reversed()
+        where token.kind == .command || token.kind == .constant {
+            let value = original.substring(with: token.range)
+            guard !value.contains(":") else { continue }   // schon tokenisiert
+            if let suffix = learned[value.lowercased()] {
+                result.insert(suffix, at: NSMaxRange(token.range))
+            } else if token.kind == .command,
+                      let number = FourDSymbols
+                          .commandDetails[value.lowercased()]?.number {
+                result.insert(":C\(number)", at: NSMaxRange(token.range))
+            }
+        }
+        return result as String
+    }
+
     // MARK: - Adapter für das „Text"-Menü (Selektion bzw. ganze Datei)
 
     static func detokenizeOperation(in text: String,

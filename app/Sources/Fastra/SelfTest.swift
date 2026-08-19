@@ -496,6 +496,9 @@ enum SelfTest {
         case "mdformat": waitForMainWindow { runMarkdownFormatSwitchTest() }
         case "sidebarfilter": waitForMainWindow { runSidebarFilterTest() }
         case "filediff": waitForMainWindow { runFileDiffTest() }
+        case "macro4d": waitForMainWindow { runFourDMacroSelfTest() }
+        case "macro4dengine":
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runFourDMacroEngineTest() }
         case "tool4dhint": waitForMainWindow { runTool4DHintTest() }
         case "tool4dlsp": DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             runTool4DLSPIntegrationTest()
@@ -648,7 +651,7 @@ enum SelfTest {
         case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabvisibility, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, mdimagewatch, mdindent, mddropcursor, pasteindent, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitmultidiscard, gitstickyheader, diffwide, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabvisibility, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, mdimagewatch, mdindent, mddropcursor, pasteindent, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitmultidiscard, gitstickyheader, diffwide, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, macro4d, macro4dengine, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -13264,6 +13267,161 @@ enum SelfTest {
                 finish(false, "tool4d-LSP-Integration fehlgeschlagen: \(error.localizedDescription)")
             }
         }
+    }
+
+    // MARK: - Selbsttest macro4dengine (tool4d-Engine, Idee #28)
+
+    /// End-to-End-Beweis der tool4d-Engine: braucht ein echtes Engine-Projekt
+    /// mit der Startup-Methode `MacroRun` (über `FASTRA_MACRO_ENGINE_PROJECT`)
+    /// und ein installiertes tool4d. Ohne beides ist das ein Umgebungs-Skip,
+    /// kein grüner Lauf.
+    private static func runFourDMacroEngineTest() {
+        testLabel = "macro4dengine"
+        let env = ProcessInfo.processInfo.environment
+        guard let engineRoot = env["FASTRA_MACRO_ENGINE_PROJECT"],
+              !engineRoot.isEmpty else {
+            finish(false, "Umgebungsproblem: FASTRA_MACRO_ENGINE_PROJECT ist nicht gesetzt (Wurzel des MacroRun-Engine-Projekts)")
+        }
+        guard let projectFile = FourDMacroEngine.engineProjectFile(
+            root: URL(fileURLWithPath: engineRoot)) else {
+            finish(false, "Umgebungsproblem: keine .4DProject-Datei unter \(engineRoot)")
+        }
+        guard let tool = Tool4DAssist.installedTool() else {
+            finish(false, "Umgebungsproblem: kein installiertes tool4d gefunden")
+        }
+        // Untokenisierter, var-basierter Methodencode: genau die Form, die
+        // die Engine nach dem Detokenisieren übergibt. Klassische
+        // C_XXX-Deklarationen verträgt das Makro nicht (Befund 2026-08-19).
+        let code = "// Probemethode für den Engine-Selbsttest\n"
+            + "var $text : Text\n"
+            + "var $laenge : Integer\n"
+            + "$text:=\"eins\"\n"
+            + "$laenge:=Length($text)\n"
+            + "ALERT($text+String($laenge))\n"
+        FourDMacroEngine.run(
+            tool4d: tool.executableURL,
+            engineProjectFile: projectFile,
+            code: code,
+            variant: FourDKomplettierenVariant.standard.rawValue,
+            methodName: "FastraEngineProbe"
+        ) { result in
+            switch result {
+            case .changed(let output):
+                guard output.contains("FastraEngineProbe") else {
+                    finish(false, "Engine lieferte Code ohne den erwarteten Methodenkopf: \(String(output.prefix(120)))")
+                }
+                finish(true, "tool4d-Engine lief durch; Makro ergänzte den Methodenkopf (Ausgabe \(output.count) Zeichen)")
+            case .unchanged:
+                finish(true, "tool4d-Engine lief durch; Makro meldete „Keine Änderungen“")
+            case .failed(let text):
+                finish(false, "Engine-Lauf fehlgeschlagen: \(text)")
+            }
+        }
+    }
+
+    // MARK: - Selbsttest macro4d (4D-Makros, Idee #28)
+
+    /// Beweist die Kette „Discovery → XML-Parse → Katalog → natives
+    /// Text-Makro": Ein Fixture-Projekt bringt eine Komponente mit eigener
+    /// „Macros v2"-XML mit; nach dem Öffnen der `.4dm` muss der Katalog das
+    /// Makro kennen, der Kürzel-Aufruf fügt den gerenderten Text als EINEN
+    /// Undo-Schritt ein und setzt den Cursor an die `<caret/>`-Marke.
+    private static func runFourDMacroSelfTest() {
+        testLabel = "macro4d"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-macro4d-\(UUID().uuidString)")
+        let methods = base.appendingPathComponent("Project/Sources/Methods")
+        let macrosDir = base
+            .appendingPathComponent("Components/Fixture.4dbase/Macros v2")
+        let document = methods.appendingPathComponent("Probe.4dm")
+        let originalCode = "ALERT:C41(\"x\")\n"
+        do {
+            try fm.createDirectory(at: methods, withIntermediateDirectories: true)
+            try fm.createDirectory(at: macrosDir, withIntermediateDirectories: true)
+            try Data().write(to: base.appendingPathComponent("Project/Test.4DProject"))
+            try originalCode.write(to: document, atomically: true, encoding: .utf8)
+            let xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <macros>
+              <macro name="Testkommentar /y" version="2">
+                <text>// <method_name/> <caret/>fertig</text>
+              </macro>
+            </macros>
+            """
+            try xml.write(to: macrosDir.appendingPathComponent("fixture.xml"),
+                          atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "Umgebungsproblem: (setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
+        }
+        ws.loadFile(at: document) { ok in
+            guard ok else {
+                try? fm.removeItem(at: base)
+                finish(false, "Fixture-Methode wurde nicht geladen")
+            }
+            pollFourDMacroCatalog(ws, base: base, tick: 0)
+        }
+    }
+
+    /// Wartet auf den asynchron gescannten Katalog und führt dann das Makro aus.
+    private static func pollFourDMacroCatalog(_ ws: Workspace, base: URL, tick: Int) {
+        guard ws.fourDMacros.contains(where: { $0.shortcutKey == "y" }) else {
+            if tick >= 120 {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Makro-Katalog fand das Fixture-Makro nicht "
+                    + "(Katalog: \(ws.fourDMacros.map(\.displayName)))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollFourDMacroCatalog(ws, base: base, tick: tick + 1)
+            }
+            return
+        }
+        guard let window = mainWindowForAXChecks(), let content = window.contentView,
+              let textView = editorTextView(in: content) as? TextView else {
+            if tick >= 120 {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Editor-TextView für das Makro nicht gefunden")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollFourDMacroCatalog(ws, base: base, tick: tick + 1)
+            }
+            return
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        let originalCode = textView.string
+        // Selbsttests laufen auf der Main-Queue; die Zusicherung entspricht
+        // dem Muster der übrigen @MainActor-Aufrufe in dieser Datei.
+        let handled = MainActor.assumeIsolated {
+            ws.runFourDMacro(shortcut: "y")
+        }
+        guard handled else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Kürzel-Aufruf fand das Katalog-Makro nicht")
+        }
+        let expectedPrefix = "// Probe fertig"
+        let expectedCaret = ("// Probe " as NSString).length
+        guard textView.string.hasPrefix(expectedPrefix),
+              textView.string.hasSuffix(originalCode) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Makro-Einfügung falsch: \(String(textView.string.prefix(40)))")
+        }
+        guard textView.fastraSafeSelectedRange.location == expectedCaret else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Cursor steht nicht an der Caret-Marke "
+                + "(ist \(textView.fastraSafeSelectedRange.location), soll \(expectedCaret))")
+        }
+        textView.undoManager?.undo()
+        guard textView.string == originalCode else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Undo stellte den Ausgangstext nicht her")
+        }
+        try? FileManager.default.removeItem(at: base)
+        finish(true, "Fixture-Makro erschien im Katalog, Kürzel fügte den "
+            + "gerenderten Text als einen Undo-Schritt mit Caret-Position ein")
     }
 
     // MARK: - Selbsttest tool4dhint (Etappe 4 Wunschpaket 2026-07c)

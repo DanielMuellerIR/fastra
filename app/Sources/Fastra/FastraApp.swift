@@ -553,18 +553,32 @@ struct FastraApp: App {
                 .disabled(!activeTabIsMarkdown)
             }
 
-            // „Git"-Menü (Projekt- & Git-Ausbau, Etappe 2). Dieselben kuratierten
-            // Aktionen wie das Popup in der Branch-Zeile (GitActionMenu), plus
-            // Verlauf/Diff öffnen. Nur aktiv, wenn ein Git-Projekt offen ist —
-            // ohne Projekt/git bleibt das Menü sichtbar, aber gedimmt.
-            CommandMenu("Git") {
-                Button("Verlauf anzeigen") { commandWorkspace?.openGitLog() }
-                Button("Änderungen anzeigen (Diff)") { commandWorkspace?.openGitDiff() }
-                Divider()
-                if let commandWorkspace {
-                    GitActionMenu(workspace: commandWorkspace)
-                } else {
-                    Button("Kein Dokumentfenster aktiv") { }.disabled(true)
+            // Gemeinsame Gruppe (Builder-Limit von zehn Einträgen, siehe oben):
+            // „Makros" (4D-Methodeneditor-Makros, Idee #28) und „Git".
+            Group {
+                // „Makros"-Menü: die 4D-Makros der aktiven `.4dm`-Datei.
+                // Ohne 4D-Dokument bleibt das Menü sichtbar, aber erklärt sich.
+                CommandMenu("Makros") {
+                    if let commandWorkspace {
+                        FourDMacroMenuItems(workspace: commandWorkspace)
+                    } else {
+                        Button("Kein Dokumentfenster aktiv") { }.disabled(true)
+                    }
+                }
+
+                // „Git"-Menü (Projekt- & Git-Ausbau, Etappe 2). Dieselben kuratierten
+                // Aktionen wie das Popup in der Branch-Zeile (GitActionMenu), plus
+                // Verlauf/Diff öffnen. Nur aktiv, wenn ein Git-Projekt offen ist —
+                // ohne Projekt/git bleibt das Menü sichtbar, aber gedimmt.
+                CommandMenu("Git") {
+                    Button("Verlauf anzeigen") { commandWorkspace?.openGitLog() }
+                    Button("Änderungen anzeigen (Diff)") { commandWorkspace?.openGitDiff() }
+                    Divider()
+                    if let commandWorkspace {
+                        GitActionMenu(workspace: commandWorkspace)
+                    } else {
+                        Button("Kein Dokumentfenster aktiv") { }.disabled(true)
+                    }
                 }
             }
         }

@@ -9,6 +9,51 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.105.0] — 2026-08-19
+
+4D-Methodeneditor-Makros in Fastra (ROADMAP-Idee #28, Prompt vom 2026-08-19).
+
+### Neu
+
+- **„Makros"-Menü für `.4dm`-Dateien.** Fastra sucht dieselben „Macros v2"-
+  XML-Fundorte ab wie 4D selbst — Komponenten des Projekts der offenen Datei
+  (`Components/….4dbase/Macros v2`, ab v21 `Contents/Macros v2`, plus
+  `dependencies.json`-Verweise), benutzerweit
+  (`~/Library/Application Support/4D/Macros v2`) und die installierte 4D.app
+  (sprachabhängige `Macros.xml`, höchste Version gewinnt). Trenner-Makros
+  werden Menü-Separatoren (`FourDMacros.swift`, `FourDMacroDiscovery.swift`).
+- **Text-Makros laufen nativ:** Platzhalter (`<method_name/>`,
+  `<selection/>`, `<date/>`, `<time/>`, `<user_os/>`) werden ersetzt,
+  `<caret/>` setzt den Cursor; das Einfügen ist ein Undo-Schritt.
+- **Komplettieren-Familie über die tool4d-Engine:** Der Puffer wandert
+  detokenisiert an die neue Startup-Methode `MacroRun` des konfigurierbaren
+  Engine-Projekts (Einstellungen → 4D), das Ergebnis erscheint als
+  Diff-Vorschau (DualPane) und wird erst nach „Anwenden" als EIN
+  Undo-Schritt geschrieben — nur solange das Dokument exakt dem
+  Vorschau-Stand entspricht. Token-Suffixe (`:C41`, `:K5:70`) stellt eine
+  lernende Rücktokenisierung aus dem Original wieder her
+  (`FourDTokenTransform.learnedSuffixes/retokenize`), denn das Makro
+  erwartet und liefert untokenisierten Code (gemessen am 2026-08-19).
+  Bekannte tool4d-Falle entschärft: `debuggerWatches.json` im Engine-Projekt
+  wird für den Lauf beiseitegelegt und danach zurückgelegt (sonst Exit 139).
+- **Shortcuts aus den Makronamen:** `/x`-Suffixe werden zu ⌘-Kürzeln
+  (⌘# „Methode analysieren und ergänzen", ⌘T „Kürzel und Datum einsetzen").
+  Kontextsensitiv über den Tastatur-Monitor: In `.4dm`-Dokumenten gewinnt
+  das Makro, überall sonst behält ⌘T „Neuer Tab" (`KeyRouting`).
+- **Einstellungen → 4D:** tool4d-Pfad (Discovery bleibt der Default) und
+  Makro-Engine-Projekt mit sichtbarer Pfadprüfung statt stillem Fallback.
+- **Grenzen sichtbar gemacht:** Makros mit Zwischenablage-, Editor- oder
+  Host-Bezug (FileMerge, Sortieren, „Ungenutzte Methoden" …) erscheinen im
+  Menü und erklären beim Aufruf, warum sie nur im 4D-Methodeneditor laufen;
+  `00_DM_Info`/`Compiler_*` bleiben vom Komplettieren ausgenommen.
+
+Belege: Unit-Suite grün (u. a. XML-Parser/Discovery/Capability, Rendering-
+und Rücktokenisierungs-Roundtrip, KeyRouting-Kürzel), Fenster-Selbsttest
+`macro4d` (Discovery → Katalog → natives Makro → Caret → Undo), Engine-
+Selbsttest `macro4dengine` end-to-end mit echtem tool4d gegen ein
+MacroRun-Engine-Projekt, Lokalisierungs-Audit, Build mit Portabilitäts-
+prüfung. Die Gegenstelle `MacroRun` liegt im MAO_Makros-Projekt.
+
 ## [v1.104.0] — 2026-08-19
 
 Sichtbare Push-Rückmeldung in der Änderungen-Seitenleiste (Daniel-Wunsch

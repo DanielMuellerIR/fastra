@@ -674,6 +674,45 @@ Gesamtcheck läuft im kompilierten Modus:
 
 Fehler erscheinen auf der Konsole; Exit-Code ≠ 0 bedeutet Probleme.
 
+## 4D-Makros
+
+In `.4dm`-Dateien bietet Fastra die Makros des 4D-Methodeneditors an
+(Menü „Makros“). Gefunden werden alle „Macros v2“-XML-Dateien, die 4D
+selbst laden würde — bezogen auf das 4D-Projekt der offenen Datei:
+
+- in den Komponenten des Projekts (`Components/….4dbase/Macros v2`,
+  ab 4D v21 `….4dbase/Contents/Macros v2`, zusätzlich über
+  `Project/Sources/dependencies.json` verknüpfte Pakete),
+- benutzerweit unter `~/Library/Application Support/4D/Macros v2`,
+- in der installierten 4D.app selbst (sprachabhängige `Macros.xml`; bei
+  mehreren Versionen gewinnt die höchste).
+
+**Text-Makros** (etwa `If`/`While` oder eigene Einfüge-Makros) wendet Fastra
+direkt an: Platzhalter wie `<method_name/>`, `<selection/>`, Datum/Zeit und
+Benutzer werden ersetzt, `<caret/>` setzt den Cursor. Das Einfügen ist ein
+normaler, undo-fähiger Schritt.
+
+**Die Komplettieren-Familie** (`MAO_MethodeKomplettierenNeu` samt ihrer
+Varianten) läuft headless über tool4d gegen ein Engine-Projekt, das die
+Startup-Methode `MacroRun` mitbringt; dessen Ordner steht in den
+Einstellungen unter „4D“. Das Ergebnis erscheint immer zuerst als
+Diff-Vorschau; „Anwenden“ ist ein einzelner Undo-Schritt und wirkt nur,
+solange das Dokument noch exakt dem Stand der Vorschau entspricht.
+Token-Suffixe (`:C41`, `:K5:70`) bleiben dabei erhalten: Fastra
+detokenisiert vor dem Lauf und stellt die Suffixe aus dem Original wieder
+her. `00_DM_Info` und `Compiler_*`-Methoden sind vom Komplettieren bewusst
+ausgenommen.
+
+**Shortcuts:** Ein `/x`-Suffix im Makronamen (etwa „… /#“) wird zu ⌘#.
+In `.4dm`-Dokumenten gewinnt das Makro-Kürzel über gleichlautende
+Menü-Shortcuts — ⌘T ist dort „Kürzel und Datum einsetzen“, außerhalb von
+4D-Dateien bleibt ⌘T „Neuer Tab“.
+
+**Grenzen:** Makros, die Zwischenablage, Editor-Auswahl über 4D-Methoden
+oder das Host-Projekt brauchen (etwa FileMerge- und Sortier-Makros), laufen
+nur im echten 4D-Methodeneditor. Fastra zeigt sie im Menü und erklärt beim
+Aufruf, warum sie hier nicht laufen.
+
 ## XPath-Leiste
 
 Für XML-artige Dokumente blendet ⇧⌘X die XPath-Leiste ein: XPath-Abfrage

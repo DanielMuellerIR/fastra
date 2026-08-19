@@ -783,6 +783,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard !isSearchKey, !isHelpKey else { return nil }
                 return routedWorkspace
             }
+            // Makro-Kürzel der aktiven `.4dm`-Datei (⌘#, ⌘T …). Die Menge ist
+            // nur bei aktiver 4D-Methode gefüllt; überall sonst behalten die
+            // normalen Menü-Shortcuts (⌘T „Neuer Tab") ihre Bedeutung.
+            let macroShortcuts: Set<Character> = MainActor.assumeIsolated {
+                guard let keyWorkspace else { return [] }
+                return Set(keyWorkspace.fourDMacros.compactMap(\.shortcutKey))
+            }
             let route = KeyRouting.route(
                 isKeyDown: event.type == .keyDown,
                 modifierFlags: event.modifierFlags,
@@ -790,7 +797,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 keyCode: event.keyCode,
                 isSearchWindowKey: isSearchKey,
                 isHelpWindowKey: isHelpKey,
-                isDocumentWindowKey: keyWorkspace != nil
+                isDocumentWindowKey: keyWorkspace != nil,
+                fourDMacroShortcuts: macroShortcuts
             )
 
             // FN+←/FN+→ (Home/End) sind nur im echten Code-Editor sinnvoll.
@@ -811,6 +819,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let keyWorkspace else { return event }
                 MainActor.assumeIsolated { keyWorkspace.closeActiveTab() }
                 return nil
+
+            case .runFourDMacro(let key):
+                // 4D-Makro per Kürzel — nur, wenn der Workspace des
+                // Key-Windows es wirklich kennt; sonst Event weiterreichen.
+                guard let keyWorkspace else { return event }
+                let handled = MainActor.assumeIsolated {
+                    keyWorkspace.runFourDMacro(shortcut: key)
+                }
+                return handled ? nil : event
 
             case .moveToBeginningOfDocument(let modifySelection):
                 guard let textView = NSApp.keyWindow?.firstResponder as? TextView else {
