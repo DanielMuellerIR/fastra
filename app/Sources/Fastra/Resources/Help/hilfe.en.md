@@ -41,9 +41,11 @@ menu item names the one ⌘P will take.
 
 The header carries document name and date, the footer the file path and
 “Page n of m”. A page break always falls between two lines, never inside one.
-**Settings → Printing** turns line numbers and the header/footer on or off and
-changes the print font size; **File → Page Setup…** (⇧⌘P) sets paper size and
-orientation.
+Line numbers and the header/footer can be toggled right in the print dialog
+(the “Fastra” section); the preview follows immediately, and the choice is
+remembered for the next print job. The same switches plus the print font size
+live in **Settings → Printing**; **File → Page Setup…** (⇧⌘P) sets paper size
+and orientation.
 
 There is no separate command for printing to a PDF file: the system print dialog
 handles that through “PDF” in its bottom-left corner.

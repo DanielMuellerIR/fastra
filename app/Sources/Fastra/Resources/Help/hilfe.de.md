@@ -43,8 +43,10 @@ Fassung anbietet, nennt der Menüpunkt die Fassung mit, die ⌘P nimmt.
 
 Kopf- und Fußzeile tragen Dokumentname und Datum oben, Dateipfad und
 „Seite n von m“ unten. Ein Seitenumbruch liegt immer zwischen zwei Zeilen, nie
-mitten in einer. **Einstellungen → Drucken** schaltet Zeilennummern und
-Kopf-/Fußzeile ab oder an und ändert die Schriftgröße des Ausdrucks;
+mitten in einer. Zeilennummern und Kopf-/Fußzeile lassen sich direkt im
+Druckdialog umschalten (Abschnitt „Fastra“); die Vorschau folgt sofort, und
+die Wahl wird für den nächsten Ausdruck gemerkt. Dieselben Schalter und die
+Schriftgröße des Ausdrucks stehen in **Einstellungen → Drucken**;
 **Datei → Papierformat…** (⇧⌘P) bestimmt Papiergröße und Ausrichtung.
 
 Zum Drucken in eine PDF-Datei gibt es keinen eigenen Befehl: Das übernimmt der

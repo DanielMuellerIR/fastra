@@ -19086,12 +19086,16 @@ enum SelfTest {
     }
 
     /// Sichtbare Beschriftungen eines Blattes — für die Prüfung, WELCHE
-    /// Rückfrage erscheint.
+    /// Rückfrage erscheint. Neben Textfeldern zählen auch Button-Titel:
+    /// Die Druckdialog-Optionen (Checkboxen) sind nur so auffindbar.
     private static func sheetTexts(in sheet: NSWindow) -> [String] {
         var texts: [String] = []
         func walk(_ view: NSView) {
             if let field = view as? NSTextField, !field.stringValue.isEmpty {
                 texts.append(field.stringValue)
+            }
+            if let button = view as? NSButton, !button.title.isEmpty {
+                texts.append(button.title)
             }
             view.subviews.forEach(walk)
         }
@@ -19157,13 +19161,24 @@ enum SelfTest {
     }
 
     private static func pollPrintPanel(hexPages: Int, tick: Int) {
-        let sheets = NSApp.windows.filter { $0.attachedSheet != nil }
-        if !sheets.isEmpty {
+        let sheets = NSApp.windows.compactMap { $0.attachedSheet }
+        if let sheet = sheets.first {
+            // Das Blatt muss auch die Fastra-Optionen tragen: Ohne die
+            // Checkboxen wäre das Zubehörfeld still verloren gegangen
+            // (beauftragt 2026-08-18).
+            let texts = sheetTexts(in: sheet)
+            guard texts.contains(L10n.string("Kopf- und Fußzeile drucken")),
+                  texts.contains(L10n.string("Zeilennummern drucken")) else {
+                finish(false, "Druckdialog ohne Fastra-Optionen (Kopf-/Fußzeile, "
+                       + "Zeilennummern) — gefunden: "
+                       + texts.joined(separator: " / "))
+            }
             finish(true, "mehrseitiger Quelltext mit Kopf-/Fußzeile, gerenderte "
                    + "Markdown-Vorschau (Formel + Diagramm), Markdown-Quelltext, "
                    + "Hex-Abzug ohne Umbruch (\(hexPages) Seiten), Bild- und "
                    + "PDF-Ausdruck im PDF geprüft; großer Text fragt mit "
-                   + "Seitenschätzung nach; ⌘P öffnet das System-Druckfenster")
+                   + "Seitenschätzung nach; ⌘P öffnet das System-Druckfenster "
+                   + "mit den Fastra-Optionen")
         }
         guard tick < 60 else {
             finish(false, "der Druckbefehl öffnet binnen 15 s kein Druckfenster am "

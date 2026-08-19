@@ -9,6 +9,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.102.0] — 2026-08-18
+
+### Neu
+
+- **Druckoptionen direkt im Druckdialog.** Der Systemdialog hat jetzt einen
+  „Fastra“-Abschnitt mit Schaltern für Kopf-/Fußzeile (die vier Eckangaben
+  Dokumentname, Datum, Dateipfad, Seitenzahl) und — bei Quelltext — für die
+  Zeilennummern. Die Dialog-Vorschau folgt sofort und paginiert bei den
+  Zeilennummern live neu; die Wahl wird in den Einstellungen gemerkt und gilt
+  damit auch für den nächsten Ausdruck. Beim Hex-Abzug entfällt der
+  Zeilennummern-Schalter (der Abzug trägt seine Adressen selbst), beim
+  Bildausdruck gibt es den Kopf-/Fußzeilen-Schalter. Damit ist die zu
+  v1.100.0 bewusst gezogene Grenze „kein Zubehörfeld im Druckfenster“ nach
+  dem Feedback der manuellen Druckabnahme aufgehoben.
+
 ## [v1.101.0] — 2026-08-18
 
 Abarbeitung des Nacht-Code-Reviews vom 2026-08-18 (16 Funde, alle bestätigt):

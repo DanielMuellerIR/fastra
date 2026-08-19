@@ -470,7 +470,8 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   Diagramm- und Formelinhalt statt rohem Markdown, keine umgebrochene
   Hex-Rasterzeile. Zum Schluss prüft er die ⌘P-/⌥⌘P-/⇧⌘P-Menüpunkte
   strukturell (exaktes Kürzel samt Modifiern), löst den Druckbefehl aus und
-  belegt, dass das System-Druckfenster am Dokumentfenster öffnet. Ein
+  belegt, dass das System-Druckfenster am Dokumentfenster öffnet und darin
+  die Fastra-Optionen (Kopf-/Fußzeile, Zeilennummern) stehen. Ein
   synthetisches ⌘P-Event kann die SwiftUI-Menü-Bindung nicht auslösen
   (nachgemessen 2026-08-18: SwiftUI-Menüpunkte tragen kein Target/Action, und
   die Shortcut-Zustellung springt für `NSApp.postEvent`-Events nicht an; ein

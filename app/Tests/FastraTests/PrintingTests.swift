@@ -541,3 +541,79 @@ struct PrintDecorationSpaceTests {
         #expect(switchedOff.topMargin == plain.topMargin)
     }
 }
+
+// MARK: - Druckdialog-Optionen
+
+@Suite("Druckdialog-Optionen")
+struct PrintDialogOptionTests {
+
+    @MainActor
+    @Test("Umschalten im Dialog wirkt auf Auftrag und Einstellungen")
+    func accessoryTogglesUpdatePrintInfoAndDefaults() {
+        let suiteName = "fastra-test-print-dialog-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let info = NSPrintInfo()
+        let accessory = PrintOptionsAccessoryController(
+            printInfo: info, defaults: defaults, offersLineNumbers: true)
+        // Startzustand aus den Voreinstellungen: beide AN.
+        #expect(accessory.headerFooterEnabled)
+        #expect(accessory.lineNumbersEnabled)
+
+        accessory.setHeaderFooter(false)
+        accessory.setLineNumbers(false)
+        // Der laufende Auftrag sieht die Wahl …
+        #expect(PrintDialogOption.value(PrintDialogOption.headerFooter, in: info) == false)
+        #expect(PrintDialogOption.value(PrintDialogOption.lineNumbers, in: info) == false)
+        // … und die Einstellungen merken sie sich für den nächsten Ausdruck.
+        #expect(!PrintPreferences.showsHeaderFooter(defaults))
+        #expect(!PrintPreferences.showsLineNumbers(defaults))
+
+        // Zusammenfassungs-Einträge: mit Zeilennummern-Option zwei, ohne eine.
+        #expect(accessory.localizedSummaryItems().count == 2)
+        let withoutLineNumbers = PrintOptionsAccessoryController(
+            printInfo: info, defaults: defaults, offersLineNumbers: false)
+        #expect(withoutLineNumbers.localizedSummaryItems().count == 1)
+        // Die Vorschau beobachtet beide Schalter.
+        #expect(accessory.keyPathsForValuesAffectingPreview()
+                == ["headerFooterEnabled", "lineNumbersEnabled"])
+    }
+
+    @MainActor
+    @Test("Zeilennummern-Umschalten baut den laufenden Auftrag neu auf")
+    func lineNumberToggleRepaginates() throws {
+        let suiteName = "fastra-test-print-dialog-repag-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let info = DocumentPrinting.makePrintInfo(defaults: defaults,
+                                                 savingTo: nil, decorated: true)
+        let operation = DocumentPrinting.makeTextPrintOperation(
+            text: (1...80).map { "Zeile \($0)" }.joined(separator: "\n"),
+            monospaced: true, printInfo: info, defaults: defaults,
+            jobTitle: "Test", headerLeft: "Test", footerLeft: ""
+        )
+        let view = try #require(operation.view as? PrintDocumentTextView)
+        // Wie im echten Druck: Die View fragt den LAUFENDEN Auftrag.
+        NSPrintOperation.current = operation
+        defer { NSPrintOperation.current = nil }
+
+        var range = NSRange(location: 0, length: 0)
+        #expect(view.knowsPageRange(&range))
+        let numbered = try #require(view.textStorage?.string)
+        // Mit Nummernspalte beginnt die erste Zeile NICHT mit dem Rohtext.
+        #expect(!numbered.hasPrefix("Zeile 1"))
+
+        // Umschalten im Dialog = Schreiben in die PrintInfo-KOPIE des
+        // Auftrags — NSPrintOperation kopiert das übergebene PrintInfo.
+        operation.printInfo.dictionary()[PrintDialogOption.lineNumbers] = false
+        #expect(view.knowsPageRange(&range))
+        let plain = try #require(view.textStorage?.string)
+        #expect(plain.hasPrefix("Zeile 1"))
+        #expect(plain != numbered)
+
+        // Und zurück — der Auftrag bleibt konsistent umschaltbar.
+        operation.printInfo.dictionary()[PrintDialogOption.lineNumbers] = true
+        #expect(view.knowsPageRange(&range))
+        #expect(view.textStorage?.string == numbered)
+    }
+}

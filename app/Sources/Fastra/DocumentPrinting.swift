@@ -196,7 +196,13 @@ enum DocumentPrinting {
                                                        section: section),
                 footerLeft: PrintDecoration.footerLeft(path: tab.url?.path)
             )
+            // WICHTIG: `operation.printInfo` ist eine KOPIE des übergebenen
+            // PrintInfo. Das Zubehörfeld muss auf die Kopie schreiben — nur
+            // sie liest die Seitenaufteilung des laufenden Auftrags.
             execute(operation, window: window, savingTo: savingTo,
+                    accessory: PrintOptionsAccessoryController(
+                        printInfo: operation.printInfo, defaults: defaults,
+                        offersLineNumbers: true),
                     completion: completion)
         }
         confirmLargePrintIfNeeded(text: text, printInfo: printInfo,
@@ -294,7 +300,14 @@ enum DocumentPrinting {
             // eine Rasterzeile ganz auf die Seite passt.
             fixedColumns: HexDump.lineWidthInCharacters
         )
-        execute(operation, window: window, savingTo: savingTo, completion: completion)
+        execute(operation, window: window, savingTo: savingTo,
+                // Ohne Zeilennummern-Option — der Abzug trägt seine Adressen
+                // selbst; umschaltbar bleibt die Kopf-/Fußzeile. Auch hier
+                // gilt: auf die PrintInfo-KOPIE des Auftrags schreiben.
+                accessory: PrintOptionsAccessoryController(
+                    printInfo: operation.printInfo, defaults: defaults,
+                    offersLineNumbers: false),
+                completion: completion)
     }
 
     /// Baut den Druckauftrag für Fließtext.
@@ -330,6 +343,12 @@ enum DocumentPrinting {
         }
         let showsLineNumbers = !forcesLineNumbersOff
             && PrintPreferences.showsLineNumbers(defaults)
+        // Anfangswerte der Dialog-Optionen in den Auftrag legen: Das
+        // Zubehörfeld und die Seitenaufteilung lesen BEIDE von hier — eine
+        // Quelle, kein Auseinanderlaufen (siehe PrintPanelAccessory.swift).
+        printInfo.dictionary()[PrintDialogOption.headerFooter] =
+            PrintPreferences.showsHeaderFooter(defaults)
+        printInfo.dictionary()[PrintDialogOption.lineNumbers] = showsLineNumbers
         let attributed = attributedText(text, font: font,
                                         showsLineNumbers: showsLineNumbers)
         let content = contentSize(of: printInfo)
@@ -362,6 +381,12 @@ enum DocumentPrinting {
         view.bottomMargin = printInfo.bottomMargin
         view.leftMargin = printInfo.leftMargin
         view.rightMargin = printInfo.rightMargin
+        // Für das Umschalten der Zeilennummern im Druckdialog: Die View kann
+        // ihren Text daraus neu aufbauen (siehe `refreshDialogOptions`).
+        view.rawText = text
+        view.baseFont = font
+        view.lineNumbersAllowed = !forcesLineNumbersOff
+        view.currentShowsLineNumbers = showsLineNumbers
         view.isEditable = false
         view.isSelectable = false
         view.drawsBackground = false
@@ -499,9 +524,16 @@ enum DocumentPrinting {
                 view.bottomMargin = printInfo.bottomMargin
                 view.leftMargin = printInfo.leftMargin
                 view.rightMargin = printInfo.rightMargin
+                printInfo.dictionary()[PrintDialogOption.headerFooter] =
+                    PrintPreferences.showsHeaderFooter(defaults)
                 let operation = NSPrintOperation(view: view, printInfo: printInfo)
                 operation.jobTitle = title
                 execute(operation, window: window, savingTo: savingTo,
+                        // Auf die PrintInfo-KOPIE des Auftrags schreiben
+                        // (siehe Quelltext-Weg).
+                        accessory: PrintOptionsAccessoryController(
+                            printInfo: operation.printInfo, defaults: defaults,
+                            offersLineNumbers: false),
                         completion: completion)
             }
         }
@@ -552,13 +584,21 @@ enum DocumentPrinting {
 
     /// Startet den Auftrag: mit Systemdialog als Blatt am Fenster, oder ohne
     /// Dialog direkt in eine Datei.
+    ///
+    /// - Parameter accessory: Optionales Zubehörfeld (Kopf-/Fußzeile,
+    ///   Zeilennummern) für den Systemdialog. Beim Druck in eine Datei gibt
+    ///   es keinen Dialog, das Feld entfällt dann.
     static func execute(_ operation: NSPrintOperation,
                         window: NSWindow?,
                         savingTo: URL?,
+                        accessory: PrintOptionsAccessoryController? = nil,
                         completion: @escaping (PrintOutcome) -> Void) {
         let interactive = savingTo == nil
         operation.showsPrintPanel = interactive
         operation.showsProgressPanel = interactive
+        if interactive, let accessory {
+            operation.printPanel.addAccessoryController(accessory)
+        }
         guard let window else {
             let ok = operation.run()
             completion(ok ? .printed : .cancelled)
@@ -657,14 +697,38 @@ final class PrintDocumentTextView: NSTextView {
     // Bereich (Reviewfund 2026-08-18).
     var leftMargin: CGFloat = 40
     var rightMargin: CGFloat = 40
+    // Grundlage für das Umschalten der Zeilennummern im Druckdialog: Aus dem
+    // Rohtext lässt sich der Inhalt mit oder ohne Nummernspalte jederzeit neu
+    // aufbauen. `currentShowsLineNumbers` hält fest, welchen Stand der
+    // Text-Storage gerade trägt.
+    var rawText = ""
+    var baseFont = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
+    var lineNumbersAllowed = true
+    var currentShowsLineNumbers = false
 
     /// Ergebnis der eigenen Seitenaufteilung.
     private var pageRects: [NSRect] = []
 
     override func knowsPageRange(_ range: NSRangePointer) -> Bool {
+        refreshDialogOptions()
         computePageRects()
         range.pointee = NSRange(location: 1, length: max(1, pageRects.count))
         return true
+    }
+
+    /// Übernimmt die im Druckdialog umgeschalteten Optionen des LAUFENDEN
+    /// Auftrags (siehe PrintPanelAccessory.swift). Nur die Zeilennummern
+    /// verändern den Inhalt und damit die Seitenaufteilung; die Kopf-/Fußzeile
+    /// wird beim Zeichnen der Seitenränder frisch gelesen.
+    private func refreshDialogOptions() {
+        guard lineNumbersAllowed,
+              let wanted = PrintDialogOption.value(
+                  PrintDialogOption.lineNumbers,
+                  in: NSPrintOperation.current?.printInfo),
+              wanted != currentShowsLineNumbers else { return }
+        textStorage?.setAttributedString(DocumentPrinting.attributedText(
+            rawText, font: baseFont, showsLineNumbers: wanted))
+        currentShowsLineNumbers = wanted
     }
 
     override func rectForPage(_ page: Int) -> NSRect {
@@ -720,7 +784,12 @@ final class PrintDocumentTextView: NSTextView {
     }
 
     override func drawPageBorder(with borderSize: NSSize) {
-        guard drawsDecoration else { return }
+        // Im Druckdialog umschaltbar — deshalb frisch aus dem laufenden
+        // Auftrag lesen statt aus dem beim Aufbau eingefrorenen Wert.
+        let decorated = PrintDialogOption.value(
+            PrintDialogOption.headerFooter,
+            in: NSPrintOperation.current?.printInfo) ?? drawsDecoration
+        guard decorated else { return }
         // Kopf- und Fußzeile liegen im Seitenrand, also AUSSERHALB der
         // Textfläche. AppKit erlaubt das Zeichnen dort nur, solange die View
         // für diesen Moment so groß ist wie die ganze Seite. Der Textcontainer
@@ -768,7 +837,12 @@ final class PrintImageView: NSView {
     }
 
     override func drawPageBorder(with borderSize: NSSize) {
-        guard drawsDecoration else { return }
+        // Wie beim Textdruck: im Druckdialog umschaltbar, deshalb frisch aus
+        // dem laufenden Auftrag lesen.
+        let decorated = PrintDialogOption.value(
+            PrintDialogOption.headerFooter,
+            in: NSPrintOperation.current?.printInfo) ?? drawsDecoration
+        guard decorated else { return }
         let savedSize = frame.size
         setFrameSize(borderSize)
         PrintPageDecoration.draw(
