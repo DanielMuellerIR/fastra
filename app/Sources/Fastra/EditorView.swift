@@ -638,10 +638,19 @@ struct EditorView: View {
                             if ViewModeRouting.pdfExtensions.contains(
                                 ViewModeRouting.normalizedExtension(url.pathExtension)
                             ) {
-                                PDFPreviewView(url: url).id(tab.id)
+                                // Das geladene Vorschau-Objekt ist die
+                                // Druckvorlage — wie `visiblePrintPage` bei
+                                // Hex- und Abschnittsansicht.
+                                PDFPreviewView(url: url, onSnapshot: {
+                                    workspace.visiblePreviewSnapshot = $0
+                                })
+                                .id(tab.id)
                             } else {
-                                ImagePreviewView(url: url, fileSize: tab.fileSize)
-                                    .id(tab.id)
+                                ImagePreviewView(url: url, fileSize: tab.fileSize,
+                                                 onSnapshot: {
+                                    workspace.visiblePreviewSnapshot = $0
+                                })
+                                .id(tab.id)
                             }
                         } else {
                             actualEditor

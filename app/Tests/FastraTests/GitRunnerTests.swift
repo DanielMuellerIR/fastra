@@ -700,28 +700,157 @@ func gitIntegration_runnerUsesLiteralPathspecs() async throws {
     #expect(Set(names) == Set([":(glob)**", "-leading"]))
 }
 
-@Test("Nach finish() wird für eine leere Prozessgruppe kein SIGKILL-Nachschlag mehr geplant")
-func noKillEscalationAfterFinishForDeadGroup() throws {
+@Test("Für eine leere Prozessgruppe wird kein SIGKILL-Nachschlag geplant")
+func noKillEscalationForDeadGroup() throws {
     // Eine nachweislich beendete PID als Gruppen-ID: ein frisch beendeter
-    // Kindprozess. `kill(-pid, 0)` meldet für ihn ESRCH — die Gruppe ist leer.
+    // Kindprozess. Sein Gruppen-Schnappschuss ist leer.
     let probe = Process()
     probe.executableURL = URL(fileURLWithPath: "/usr/bin/true")
     try probe.run()
     probe.waitUntilExit()
     let deadGroup = probe.processIdentifier
 
-    // Vor finish(): Der Nachschlag wird registriert und von finish() wieder
-    // abgeräumt — der bisherige, verwaltete Weg.
+    // Eine leere Gruppe bietet nichts zu eskalieren — weder vor noch nach
+    // finish() wird etwas geplant, und der Aufrufer sendet dann auch keine
+    // Gruppensignale mehr (Reviewfunde 2026-08-18 und 2026-08-19).
     let fresh = GitCancellationToken(terminationGracePeriod: 0.05)
-    #expect(fresh.scheduleGroupKillEscalation(deadGroup))
+    #expect(!fresh.scheduleGroupKillEscalation(deadGroup))
     _ = fresh.finish()
 
-    // Nach finish(): Die Eskalationsliste ist abgeschlossen; ein jetzt noch
-    // geplanter Nachschlag würde nie mehr aufgeräumt und könnte nach einer
-    // Wiedervergabe der Gruppen-ID eine fremde Prozessgruppe treffen
-    // (Reviewfund 2026-08-18). Für eine leere Gruppe wird deshalb gar nichts
-    // mehr geplant, und der Aufrufer sendet dann auch keine Signale mehr.
     let finished = GitCancellationToken(terminationGracePeriod: 0.05)
     _ = finished.finish()
     #expect(!finished.scheduleGroupKillEscalation(deadGroup))
+}
+
+/// Deterministische Attrappe der Kernel-Aufrufe: Der Test verschiebt die
+/// „Prozesswelt“ (Mitglieder und ihre Startzeiten) zwischen Registrierung und
+/// Ablauf der Frist und protokolliert jedes gesendete Signal. So lässt sich
+/// die Wiedervergabe einer Prozessgruppen-ID ohne echte Prozesse durchspielen
+/// (Reviewfund 2026-08-19).
+private final class FakeProcessWorld: @unchecked Sendable {
+    private let lock = NSLock()
+    private var members: [pid_t: [ProcessIdentity]] = [:]
+    private var tokens: [pid_t: UInt64] = [:]
+    private var killedProcesses: [(pid: pid_t, signal: Int32)] = []
+    private var signalledGroups: [(group: pid_t, signal: Int32)] = []
+
+    func setGroup(_ group: pid_t, members newMembers: [ProcessIdentity]) {
+        lock.lock()
+        members[group] = newMembers
+        for member in newMembers { tokens[member.pid] = member.startToken }
+        lock.unlock()
+    }
+
+    func setToken(_ pid: pid_t, _ token: UInt64?) {
+        lock.lock()
+        tokens[pid] = token
+        lock.unlock()
+    }
+
+    var processSignals: [(pid: pid_t, signal: Int32)] {
+        lock.lock(); defer { lock.unlock() }
+        return killedProcesses
+    }
+
+    var groupSignals: [(group: pid_t, signal: Int32)] {
+        lock.lock(); defer { lock.unlock() }
+        return signalledGroups
+    }
+
+    var operations: ProcessGroupOperations {
+        ProcessGroupOperations(
+            groupSnapshot: { [self] group in
+                lock.lock(); defer { lock.unlock() }
+                return members[group] ?? []
+            },
+            startToken: { [self] pid in
+                lock.lock(); defer { lock.unlock() }
+                return tokens[pid]
+            },
+            signalProcess: { [self] pid, signal in
+                lock.lock()
+                killedProcesses.append((pid, signal))
+                lock.unlock()
+            },
+            signalGroup: { [self] group, signal in
+                lock.lock()
+                signalledGroups.append((group, signal))
+                lock.unlock()
+            }
+        )
+    }
+}
+
+/// Wartet kurz auf eine Bedingung der Attrappen-Welt — die Eskalationsfrist
+/// läuft real auf der Deadline-Queue, nur die Prozesswelt ist gestellt.
+private func spinUntil(_ condition: () -> Bool) {
+    for _ in 0..<400 where !condition() {
+        usleep(10_000)
+    }
+}
+
+@Test("SIGKILL-Nachschlag beendet nur Mitglieder mit unveränderter Startzeit")
+func killEscalationVerifiesEachMemberIdentity() {
+    let world = FakeProcessWorld()
+    let group: pid_t = 54_321
+    world.setGroup(group, members: [
+        ProcessIdentity(pid: group, startToken: 100),
+        ProcessIdentity(pid: 54_322, startToken: 200),
+        ProcessIdentity(pid: 54_323, startToken: 300),
+    ])
+    let token = GitCancellationToken(terminationGracePeriod: 0.05,
+                                     operations: world.operations)
+    token.recordLeaderStartToken(100)
+    #expect(token.scheduleGroupKillEscalation(group))
+
+    // Zwischen Registrierung und Frist: Ein Helfer endet und seine PID wird
+    // an einen fremden Prozess neu vergeben (andere Startzeit), einer endet
+    // ersatzlos, einer lebt weiter.
+    world.setToken(54_322, 999)
+    world.setToken(54_323, nil)
+
+    spinUntil { !world.processSignals.isEmpty }
+    let killed = world.processSignals.filter { $0.signal == SIGKILL }.map(\.pid)
+    #expect(killed == [group])
+    // Auf die nackte Gruppen-ID wird in der Eskalation NIE geschossen: Nach
+    // einer Wiedervergabe bezeichnete sie eine fremde Gruppe.
+    #expect(world.groupSignals.isEmpty)
+}
+
+@Test("Eine als Gruppen-ID wiedervergebene Leiter-PID wird nicht mehr angefasst")
+func reusedGroupLeaderRefusesEscalation() {
+    let world = FakeProcessWorld()
+    let group: pid_t = 60_000
+    // Die gleichnamige Gruppe existiert wieder — aber ihr Leiter trägt eine
+    // andere Startzeit als der beim Attach gemerkte Git-Prozess: Die ID wurde
+    // nach dem Ende unserer Gruppe neu vergeben.
+    world.setGroup(group, members: [ProcessIdentity(pid: group, startToken: 555)])
+    let token = GitCancellationToken(terminationGracePeriod: 0.05,
+                                     operations: world.operations)
+    token.recordLeaderStartToken(111)
+    #expect(!token.scheduleGroupKillEscalation(group))
+    #expect(world.processSignals.isEmpty)
+    #expect(world.groupSignals.isEmpty)
+}
+
+@Test("Nach finish() geplante Eskalation bleibt auf verifizierte PIDs beschränkt")
+func postFinishEscalationStaysIdentityBound() {
+    let world = FakeProcessWorld()
+    let group: pid_t = 61_000
+    world.setGroup(group, members: [ProcessIdentity(pid: 61_001, startToken: 42)])
+    let token = GitCancellationToken(terminationGracePeriod: 0.05,
+                                     operations: world.operations)
+    token.recordLeaderStartToken(41)
+    _ = token.finish()
+
+    // Nach finish() ist der Nachschlag unverwaltet — er darf deshalb nur
+    // einzeln verifizierte PIDs beenden. Ändert sich die Startzeit des
+    // Mitglieds bis zur Frist (PID neu vergeben), passiert nichts mehr.
+    #expect(token.scheduleGroupKillEscalation(group))
+    world.setToken(61_001, 43)
+    // Die Frist (0,05 s) sicher verstreichen lassen; danach darf kein Signal
+    // gefallen sein.
+    usleep(300_000)
+    #expect(world.processSignals.isEmpty)
+    #expect(world.groupSignals.isEmpty)
 }

@@ -74,6 +74,23 @@ enum ImagePreviewLoader {
     }
 }
 
+// MARK: - Druckvorlage der Vorschau
+
+/// Der geladene Inhalt einer Bild- oder PDF-Vorschau samt Herkunftsdatei.
+/// Er ist die Druckvorlage: Gedruckt wird genau dieses Objekt, nie ein
+/// Neuladen von der Platte — zwischen Vorschauaufbau und Druckbefehl kann
+/// die Datei ersetzt worden sein, und der Ausdruck muss zeigen, was das
+/// Fenster zeigt (Reviewfund 2026-08-19).
+struct VisiblePreviewSnapshot {
+    enum Content {
+        case image(NSImage)
+        case pdf(PDFDocument)
+    }
+
+    let url: URL
+    let content: Content
+}
+
 // MARK: - Bild-Vorschau
 
 /// Lädt das Vorschaubild asynchron; die View zeigt bis dahin einen Spinner.
@@ -134,10 +151,17 @@ private struct ImagePreviewSurface: NSViewRepresentable {
 /// Read-only-Bildvorschau mit Kopfzeile (Maße, Dateigröße).
 struct ImagePreviewView: View {
     @StateObject private var model: ImagePreviewModel
+    private let url: URL
+    /// Meldet das geladene Bild nach außen — es ist die Druckvorlage
+    /// (dieselbe Begründung wie `onVisiblePage` der Hex-Ansicht).
+    private let onSnapshot: ((VisiblePreviewSnapshot?) -> Void)?
 
-    init(url: URL, fileSize: UInt64) {
+    init(url: URL, fileSize: UInt64,
+         onSnapshot: ((VisiblePreviewSnapshot?) -> Void)? = nil) {
         _model = StateObject(wrappedValue: ImagePreviewModel(url: url,
                                                              fileSize: fileSize))
+        self.url = url
+        self.onSnapshot = onSnapshot
     }
 
     var body: some View {
@@ -157,6 +181,15 @@ struct ImagePreviewView: View {
             content
         }
         .background(Theme.surfaceRaised)
+        .onAppear { reportSnapshot() }
+        .onChange(of: model.isLoading) { _, _ in reportSnapshot() }
+        .onDisappear { onSnapshot?(nil) }
+    }
+
+    private func reportSnapshot() {
+        guard let onSnapshot else { return }
+        guard let image = model.image else { onSnapshot(nil); return }
+        onSnapshot(VisiblePreviewSnapshot(url: url, content: .image(image)))
     }
 
     @ViewBuilder private var content: some View {
@@ -224,9 +257,15 @@ private struct PDFPreviewSurface: NSViewRepresentable {
 /// Read-only-PDF-Vorschau mit Kopfzeile (Seitenzahl).
 struct PDFPreviewView: View {
     @StateObject private var model: PDFPreviewModel
+    private let url: URL
+    /// Meldet das geladene Dokument nach außen — es ist die Druckvorlage
+    /// (dieselbe Begründung wie bei `ImagePreviewView`).
+    private let onSnapshot: ((VisiblePreviewSnapshot?) -> Void)?
 
-    init(url: URL) {
+    init(url: URL, onSnapshot: ((VisiblePreviewSnapshot?) -> Void)? = nil) {
         _model = StateObject(wrappedValue: PDFPreviewModel(url: url))
+        self.url = url
+        self.onSnapshot = onSnapshot
     }
 
     var body: some View {
@@ -248,6 +287,15 @@ struct PDFPreviewView: View {
             content
         }
         .background(Theme.surfaceRaised)
+        .onAppear { reportSnapshot() }
+        .onChange(of: model.isLoading) { _, _ in reportSnapshot() }
+        .onDisappear { onSnapshot?(nil) }
+    }
+
+    private func reportSnapshot() {
+        guard let onSnapshot else { return }
+        guard let document = model.document else { onSnapshot(nil); return }
+        onSnapshot(VisiblePreviewSnapshot(url: url, content: .pdf(document)))
     }
 
     @ViewBuilder private var content: some View {

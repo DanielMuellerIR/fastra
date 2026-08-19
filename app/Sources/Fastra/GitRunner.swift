@@ -136,6 +136,75 @@ enum GitTerminationReason {
     case timedOut
 }
 
+/// PID plus Startzeit-Kennung. Nur beide zusammen bezeichnen sicher denselben
+/// Prozess: Eine frei gewordene PID kann der Kernel sofort neu vergeben, die
+/// Startzeit des neuen Prozesses ist dann aber eine andere.
+struct ProcessIdentity: Equatable {
+    let pid: pid_t
+    let startToken: UInt64
+}
+
+/// Injizierbare Prozess-Operationen für Gruppensignale und die
+/// SIGKILL-Eskalation. Im Produkt echte Kernel-Aufrufe (sysctl/kill); Tests
+/// ersetzen sie durch Attrappen und spielen so die Wiedervergabe einer
+/// Prozessgruppen-ID ohne echte Prozesse deterministisch durch
+/// (Reviewfund 2026-08-19).
+struct ProcessGroupOperations {
+    /// Alle Mitglieder einer Prozessgruppe samt Startzeit.
+    var groupSnapshot: (pid_t) -> [ProcessIdentity]
+    /// Startzeit-Kennung eines einzelnen Prozesses; `nil` = existiert nicht.
+    var startToken: (pid_t) -> UInt64?
+    /// Signal an genau einen Prozess.
+    var signalProcess: (pid_t, Int32) -> Void
+    /// Signal an eine ganze Prozessgruppe (`kill(-gruppe, signal)`).
+    var signalGroup: (pid_t, Int32) -> Void
+
+    static let live = ProcessGroupOperations(
+        groupSnapshot: { group in liveGroupSnapshot(group) },
+        startToken: { pid in liveIdentity(of: pid)?.startToken },
+        signalProcess: { pid, signal in _ = Darwin.kill(pid, signal) },
+        signalGroup: { group, signal in _ = Darwin.kill(-group, signal) }
+    )
+
+    /// Mitglieder einer Prozessgruppe über `sysctl KERN_PROC_PGRP`. Bewusst
+    /// nicht `kill(-gruppe, 0)`: Das Signal sagt nur „irgendwer lebt“, die
+    /// Liste liefert Identitäten für die spätere Einzelprüfung.
+    private static func liveGroupSnapshot(_ group: pid_t) -> [ProcessIdentity] {
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PGRP, group]
+        var size = 0
+        guard sysctl(&mib, UInt32(mib.count), nil, &size, nil, 0) == 0,
+              size > 0 else { return [] }
+        // Etwas Reserve: Zwischen Größen- und Datenabfrage können Prozesse
+        // hinzukommen.
+        let capacity = size / MemoryLayout<kinfo_proc>.stride + 8
+        var buffer = [kinfo_proc](repeating: kinfo_proc(), count: capacity)
+        size = capacity * MemoryLayout<kinfo_proc>.stride
+        guard sysctl(&mib, UInt32(mib.count), &buffer, &size, nil, 0) == 0
+        else { return [] }
+        let count = size / MemoryLayout<kinfo_proc>.stride
+        return buffer.prefix(count).compactMap { identity(of: $0) }
+    }
+
+    private static func liveIdentity(of pid: pid_t) -> ProcessIdentity? {
+        guard pid > 0 else { return nil }
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        guard sysctl(&mib, UInt32(mib.count), &info, &size, nil, 0) == 0,
+              size > 0 else { return nil }
+        return identity(of: info)
+    }
+
+    private static func identity(of info: kinfo_proc) -> ProcessIdentity? {
+        let pid = info.kp_proc.p_pid
+        guard pid > 0 else { return nil }
+        let start = info.kp_proc.p_starttime
+        let token = UInt64(bitPattern: Int64(start.tv_sec)) &* 1_000_000
+            &+ UInt64(bitPattern: Int64(start.tv_usec))
+        return ProcessIdentity(pid: pid, startToken: token)
+    }
+}
+
 /// Abbruch-Handle, das auch den Race „Abbruch unmittelbar vor process.run()"
 /// abdeckt. `Process.terminate()` sendet SIGTERM; Git kann dadurch seine eigenen
 /// Lock-/Cleanup-Handler ausführen.
@@ -155,9 +224,18 @@ final class GitCancellationToken: @unchecked Sendable {
     /// `scheduleGroupKillEscalation`.
     private var finished = false
     private let terminationGracePeriod: TimeInterval
+    /// Injizierbare Kernel-Aufrufe — echte im Produkt, Attrappen im Test.
+    private let operations: ProcessGroupOperations
+    /// Startzeit des Gruppenleiters (= des Git-Prozesses), beim Attach
+    /// gemerkt. Sie ist der Anker der Eigentumsprüfung: Trägt die PID der
+    /// Gruppe später eine andere Startzeit, wurde sie neu vergeben und die
+    /// gleichnamige Gruppe ist nicht mehr unsere.
+    private var leaderStartToken: UInt64?
 
-    init(terminationGracePeriod: TimeInterval = GitExecutionPolicy.default.terminationGracePeriod) {
+    init(terminationGracePeriod: TimeInterval = GitExecutionPolicy.default.terminationGracePeriod,
+         operations: ProcessGroupOperations = .live) {
         self.terminationGracePeriod = max(0, terminationGracePeriod)
+        self.operations = operations
     }
 
     func cancel() {
@@ -180,6 +258,9 @@ final class GitCancellationToken: @unchecked Sendable {
     }
 
     fileprivate func attach(_ process: Process, processGroupID: pid_t?) {
+        // Startzeit des Leiters VOR dem Speichern lesen: Der Prozess ist hier
+        // unser noch nicht abgeräumtes Kind, seine Identität also sicher.
+        recordLeaderStartToken(processGroupID.flatMap { operations.startToken($0) })
         lock.lock()
         self.process = process
         self.processGroupID = processGroupID
@@ -216,51 +297,75 @@ final class GitCancellationToken: @unchecked Sendable {
         let reason = terminationReason
         lock.unlock()
         if !escalations.isEmpty {
-            // `kill(-gruppe, 0)` stellt nur die Frage „lebt noch ein
-            // Mitglied?“. Antwortet der Kernel mit einem Fehler, ist die
-            // Gruppe vollständig beendet (oder gehört inzwischen jemand
-            // anderem) — die geplante SIGKILL-Eskalation MUSS dann weg,
-            // bevor die frei gewordene ID neu vergeben wird. Leben noch
-            // Helfer, bleibt sie bestehen und räumt sie wie bisher ab.
-            if group == nil || Darwin.kill(-group!, 0) != 0 {
+            // Ist die Gruppe vollständig beendet, gibt es nichts mehr zu
+            // eskalieren — die geplanten Nachschläge werden aufgeräumt.
+            // (Gefährlich wären sie auch ohne dieses Aufräumen nicht mehr:
+            // Sie beenden nur noch einzeln verifizierte PIDs, nie die nackte
+            // Gruppen-ID.) Leben noch Helfer, bleiben sie bestehen.
+            if group == nil || operations.groupSnapshot(group!).isEmpty {
                 escalations.forEach { $0.cancel() }
             }
         }
         return reason
     }
 
-    /// Plant den SIGKILL-Nachschlag für eine Prozessgruppe. Unmittelbar vor
-    /// dem Schuss wird die Gruppe erneut geprüft: Solange ein Mitglied lebt,
-    /// gehört die ID sicher uns (eine Gruppen-ID wird erst nach dem Ende
-    /// ALLER Mitglieder wiederverwendbar); meldet der Kernel dagegen keinen
-    /// Treffer mehr, darf keinesfalls geschossen werden — die ID kann schon
-    /// an einen fremden Prozess vergeben sein.
-    /// Liefert `false`, wenn nach `finish()` und nachweislich leerer Gruppe
-    /// gar nichts mehr geplant wurde — der Aufrufer darf dann auch keine
-    /// Signale mehr an die (womöglich schon neu vergebene) ID schicken.
+    /// Liefert die Mitglieder der Gruppe, wenn sie nachweislich noch unsere
+    /// ist — sonst `nil`. Leitgedanke wie im Test-Runner-Helfer
+    /// (`test-process-tree.sh`): Solange irgendein Mitglied lebt, kann der
+    /// Kernel die Nummer nicht als NEUE Gruppe vergeben. Fremd wird sie erst
+    /// nach vollständigem Ende aller Mitglieder — dann ist der Schnappschuss
+    /// leer, oder die als Gruppen-ID wiedervergebene Leiter-PID trägt eine
+    /// andere Startzeit als der beim Attach gemerkte Git-Prozess.
+    // Nicht fileprivate: Der Regressionstest (GitRunnerTests) setzt die beim
+    // Attach gemerkte Leiter-Startzeit direkt, ohne einen echten Prozess zu
+    // starten.
+    func recordLeaderStartToken(_ token: UInt64?) {
+        lock.lock()
+        leaderStartToken = token
+        lock.unlock()
+    }
+
+    private func ownedGroupMembers(_ group: pid_t) -> [ProcessIdentity]? {
+        let snapshot = operations.groupSnapshot(group)
+        guard !snapshot.isEmpty else { return nil }
+        lock.lock()
+        let recorded = leaderStartToken
+        lock.unlock()
+        if let recorded, let current = operations.startToken(group),
+           current != recorded {
+            return nil
+        }
+        return snapshot
+    }
+
+    /// Plant den SIGKILL-Nachschlag für eine Prozessgruppe. Der Nachschlag
+    /// schießt NIE auf die nackte Gruppen-ID: Bis zum Ablauf der Frist kann
+    /// die Gruppe enden und ihre ID neu vergeben werden — `kill(-gruppe, …)`
+    /// träfe dann eine fremde Gruppe, selbst mit vorheriger Existenzprobe
+    /// (Reviewfund 2026-08-19). Stattdessen merkt er sich die JETZT bekannten
+    /// Mitglieder und beendet später jedes einzeln, erst nach erneuter
+    /// Prüfung seiner Startzeit. Eine wiedervergebene PID wird dadurch nie
+    /// getroffen; ein nach dem Schnappschuss geborener Enkelprozess kann dem
+    /// Nachschlag entgehen — lieber ein verwaister Helfer als ein Schuss auf
+    /// Unbeteiligte.
+    /// Liefert `false`, wenn die Gruppe leer oder nicht mehr unsere ist —
+    /// der Aufrufer darf dann auch keine Gruppensignale mehr schicken.
     @discardableResult
     func scheduleGroupKillEscalation(_ group: pid_t) -> Bool {
+        guard let members = ownedGroupMembers(group) else { return false }
+        let operations = self.operations
         let item = DispatchWorkItem {
-            if Darwin.kill(-group, 0) == 0 {
-                Darwin.kill(-group, SIGKILL)
+            for member in members
+            where operations.startToken(member.pid) == member.startToken {
+                operations.signalProcess(member.pid, SIGKILL)
             }
         }
         lock.lock()
-        if finished {
-            lock.unlock()
-            // `finish()` hat die Liste bereits abgeschlossen; dieser
-            // Nachschlag würde also nie mehr über sie gelöscht. Er darf nur
-            // noch entstehen, wenn die Gruppe nachweislich lebt — nur dann
-            // gehört die ID sicher uns. Ohne lebendes Mitglied könnte die
-            // frei gewordene ID bis zum Ablauf der Frist an einen fremden
-            // Prozess gehen, und der spätere SIGKILL träfe den.
-            guard Darwin.kill(-group, 0) == 0 else { return false }
-            gitDeadlineQueue.asyncAfter(
-                deadline: .now() + terminationGracePeriod, execute: item
-            )
-            return true
+        if !finished {
+            killEscalationWorkItems.append(item)
         }
-        killEscalationWorkItems.append(item)
+        // Nach `finish()` bleibt der Nachschlag unverwaltet — unschädlich,
+        // weil er nur einzeln verifizierte PIDs anfasst, keine Gruppen-ID.
         lock.unlock()
         gitDeadlineQueue.asyncAfter(
             deadline: .now() + terminationGracePeriod, execute: item
@@ -279,13 +384,13 @@ final class GitCancellationToken: @unchecked Sendable {
         let group = processGroupID
         lock.unlock()
         guard let runningProcess, !runningProcess.isRunning, let group else { return }
-        // Registrierung VOR den Signalen: Endete die Gruppe zwischen Signal
-        // und Registrierung, könnte `finish()` die noch leere Liste
-        // abschließen — der danach angehängte Nachschlag bliebe unverwaltet
-        // und träfe nach einer Wiedervergabe der Gruppen-ID Fremde.
+        // Registrierung VOR den Signalen: Sie prüft zugleich, ob die Gruppe
+        // überhaupt noch lebt und noch unsere ist. Nur dann dürfen die
+        // Gruppensignale folgen — Mikrosekunden nach der Prüfung, nicht erst
+        // nach einer Frist.
         guard scheduleGroupKillEscalation(group) else { return }
-        Darwin.kill(-group, SIGTERM)
-        Darwin.kill(-group, SIGCONT)
+        operations.signalGroup(group, SIGTERM)
+        operations.signalGroup(group, SIGCONT)
     }
 
     /// Git erhält direkt nach dem Start eine eigene Prozessgruppe. Abbruch und
@@ -295,16 +400,15 @@ final class GitCancellationToken: @unchecked Sendable {
         let pid = process.processIdentifier
         if let processGroupID {
             // Auch nach beendetem Git-Elternprozess können Helper in der
-            // Gruppe leben; der Nachschlag prüft die Gruppe deshalb selbst
-            // und wird von `finish()` gelöscht, sobald sie leer ist. Er wird
-            // VOR den Signalen registriert: Beendet sich die Gruppe zwischen
-            // Signal und Registrierung, hätte `finish()` sonst die noch leere
-            // Liste abgeschlossen und der Nachschlag bliebe unverwaltet.
+            // Gruppe leben. Die Registrierung des Nachschlags prüft zugleich
+            // Leben und Eigentum der Gruppe; nur nach ihrem Erfolg dürfen
+            // die Gruppensignale folgen. Schlägt sie fehl (Gruppe leer oder
+            // ID nicht mehr unsere), gibt es nichts sicher zu beenden.
             guard scheduleGroupKillEscalation(processGroupID) else { return }
-            Darwin.kill(-processGroupID, SIGTERM)
+            operations.signalGroup(processGroupID, SIGTERM)
             // Ein extern angehaltener Prozess muss den bereits zugestellten
             // SIGTERM noch ausführen dürfen, damit Git seine Lockdateien räumt.
-            Darwin.kill(-processGroupID, SIGCONT)
+            operations.signalGroup(processGroupID, SIGCONT)
         } else {
             process.terminate()
             gitDeadlineQueue.asyncAfter(

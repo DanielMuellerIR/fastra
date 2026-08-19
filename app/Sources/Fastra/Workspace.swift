@@ -896,6 +896,11 @@ final class Workspace: ObservableObject {
     /// Bewusst KEIN `@Published`: Der Wert dient allein dem Drucken und darf
     /// keinen Neuaufbau der Oberfläche auslösen.
     var visiblePrintPage: VisiblePrintPage?
+    /// Das geladene Objekt der Bild-/PDF-Vorschau — die Druckvorlage dieser
+    /// Ansichten. Gedruckt wird genau dieses Objekt, nie ein Neuladen von der
+    /// Platte (siehe `VisiblePreviewSnapshot`). Bewusst KEIN `@Published`,
+    /// gleiche Begründung wie `visiblePrintPage`.
+    var visiblePreviewSnapshot: VisiblePreviewSnapshot?
     /// Gemeinsame Quelle für formatspezifischen Soft Wrap. Der Store ist
     /// injizierbar und bleibt dadurch mit isolierten Defaults unit-testbar.
     let softWrapProfiles: SoftWrapProfileStore

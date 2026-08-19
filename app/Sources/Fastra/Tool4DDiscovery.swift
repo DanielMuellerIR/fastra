@@ -206,15 +206,26 @@ enum Tool4DDiscovery {
     /// „tool4d.app" wäre zu eng — die Version eines über PATH gefundenen oder
     /// gemerkten versionierten Bundles erschiene dann als unbekannt
     /// (Reviewfund 2026-08-18).
+    ///
+    /// Verlangt wird die ECHTE Bundle-Struktur, also genau das ausführbare
+    /// Binary `<tool4d…*.app>/Contents/MacOS/tool4d`. Ein bloß übergeordnetes
+    /// tool4d-…app-Verzeichnis (etwa `tool4d-wrapper.app/bin/tool4d`) reicht
+    /// nicht: Seine Info.plist beschreibt ein anderes Programm, die Anzeige
+    /// wäre eine fremde Versionsnummer (Reviewfund 2026-08-19). Symlinks —
+    /// typisch ein PATH-Eintrag `/usr/local/bin/tool4d` — werden vor der
+    /// Strukturprüfung aufgelöst.
     static func bundleVersion(forExecutable executable: URL) -> String? {
-        let components = executable.pathComponents
-        guard let index = components.lastIndex(where: { component in
-            let name = component.lowercased()
-            return name.hasPrefix("tool4d") && name.hasSuffix(".app")
-        }), index >= 1 else {
+        let components = executable.resolvingSymlinksInPath().pathComponents
+        guard components.count >= 4 else { return nil }
+        let bundleName = components[components.count - 4].lowercased()
+        guard bundleName.hasPrefix("tool4d"), bundleName.hasSuffix(".app"),
+              components[components.count - 3] == "Contents",
+              components[components.count - 2] == "MacOS",
+              components[components.count - 1].lowercased() == "tool4d" else {
             return nil
         }
-        let appPath = components[...index].joined(separator: "/")
+        let appPath = components[..<(components.count - 3)]
+            .joined(separator: "/")
             .replacingOccurrences(of: "//", with: "/")
         return bundleVersion(appURL: URL(fileURLWithPath: appPath))
     }

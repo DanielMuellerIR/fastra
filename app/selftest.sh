@@ -362,11 +362,16 @@ kill_leftovers() {
 
 # Wartet, bis die SELFTEST-Zeile in $1 auftaucht oder das Timeout reißt.
 # $2: Frist in Sekunden (Standard: TIMEOUT_SECS; siehe timeout_for_test).
+# Rückgabe: 0 = Ergebnis da; 1 = Timeout; 3 = der direkt gestartete
+# Testprozess endete vorzeitig ohne Ergebnis-Zeile — sein Exit-Code steht
+# dann in WAIT_FOR_RESULT_EXIT.
+WAIT_FOR_RESULT_EXIT=""
 wait_for_result() {
     local errfile="$1"
     local timeout_secs="${2:-$TIMEOUT_SECS}"
     local waited_ticks=0
     local max_ticks=$((timeout_secs * 10))
+    WAIT_FOR_RESULT_EXIT=""
     while [[ $waited_ticks -lt $max_ticks ]]; do
         if [ "${CURRENT_LAUNCH_MODE:-direct}" = "launchservices" ] \
            && [ "${#STARTED_PIDS[@]}" -eq 0 ]; then
@@ -374,6 +379,26 @@ wait_for_result() {
         fi
         if grep -q '^SELFTEST ' "$errfile" 2>/dev/null; then
             return 0
+        fi
+        # Ein direkt gestarteter Testprozess ist unser eigenes Kind: Bis zum
+        # `wait` bleibt er als Zombie stehen, seine PID kann also nicht neu
+        # vergeben werden — die Prüfung fasst nie einen fremden Prozess an.
+        # Ist er beendet, ohne eine Ergebnis-Zeile zu schreiben (Absturz,
+        # Signal, früher exit), wäre jedes weitere Warten blind: Die volle
+        # Frist käme als irreführender „Runner-Timeout" zurück — beim
+        # print-Test vier Minuten (Reviewfund 2026-08-19). Stattdessen wird
+        # der Exit-Code sofort eingesammelt und getrennt gemeldet.
+        if [ "${CURRENT_LAUNCH_MODE:-direct}" = "direct" ] \
+           && [ -n "${FASTRA_TEST_STARTED_PID:-}" ] \
+           && ! fastra_test_pid_is_live "$FASTRA_TEST_STARTED_PID"; then
+            # Die Ergebnis-Zeile kann unmittelbar vor dem Prozessende noch
+            # geschrieben worden sein — einmal nachlesen, bevor der Tod zählt.
+            if grep -q '^SELFTEST ' "$errfile" 2>/dev/null; then
+                return 0
+            fi
+            wait "$FASTRA_TEST_STARTED_PID" 2>/dev/null
+            WAIT_FOR_RESULT_EXIT=$?
+            return 3
         fi
         sleep 0.1
         waited_ticks=$((waited_ticks + 1))
@@ -1069,16 +1094,27 @@ for t in "${TESTS[@]}"; do
     fi
 
     test_timeout_secs="$(timeout_for_test "$t")"
-    if ! wait_for_result "$errfile" "$test_timeout_secs"; then
+    wait_result=0
+    wait_for_result "$errfile" "$test_timeout_secs" || wait_result=$?
+    if [ "$wait_result" -ne 0 ]; then
         result_finished="$(now_milliseconds)"
-        echo "SELFTEST $t: FAIL — keine Ergebnis-Zeile binnen ${test_timeout_secs}s (Runner-Timeout)"
-        summary+="✗ $t (Timeout)\n"
+        if [ "$wait_result" -eq 3 ]; then
+            # Früher Tod des Testprozesses: sofort und mit echtem Exit-Code
+            # gemeldet, statt die restliche Frist blind abzuwarten.
+            echo "SELFTEST $t: FAIL — Testprozess endete vorzeitig ohne Ergebnis-Zeile (Exit ${WAIT_FOR_RESULT_EXIT:-unbekannt})"
+            summary+="✗ $t (vorzeitig beendet, Exit ${WAIT_FOR_RESULT_EXIT:-?})\n"
+            fail_kind="CRASH"
+        else
+            echo "SELFTEST $t: FAIL — keine Ergebnis-Zeile binnen ${test_timeout_secs}s (Runner-Timeout)"
+            summary+="✗ $t (Timeout)\n"
+            fail_kind="TIMEOUT"
+        fi
         real_fail_count=$((real_fail_count + 1))
         cleanup_ms=$((cleanup_finished - iteration_started))
         launch_ms=$((result_finished - launch_started))
         total_ms=$((result_finished - iteration_started))
         printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-            "$t" "TIMEOUT" "-1" "$launch_ms" "$total_ms" "$cleanup_ms" \
+            "$t" "$fail_kind" "-1" "$launch_ms" "$total_ms" "$cleanup_ms" \
             "$launch_mode" >> "$PERFORMANCE_SAMPLES_FILE"
         echo "PERFORMANCE $t cleanup_ms=$cleanup_ms launch_to_result_ms=$launch_ms app_ms=-1 total_ms=$total_ms"
         if ! kill_leftovers 80; then

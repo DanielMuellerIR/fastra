@@ -6279,7 +6279,8 @@ enum SelfTest {
     }
 
     /// Einfarbig rotes PNG über CoreGraphics schreiben.
-    private static func writeSolidPNG(to url: URL, width: Int, height: Int) throws {
+    private static func writeSolidPNG(to url: URL, width: Int, height: Int,
+                                      color: NSColor = NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)) throws {
         guard let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
@@ -6287,7 +6288,7 @@ enum SelfTest {
         ) else { throw CocoaError(.fileWriteUnknown) }
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1).setFill()
+        color.setFill()
         NSRect(x: 0, y: 0, width: width, height: height).fill()
         NSGraphicsContext.restoreGraphicsState()
         guard let data = rep.representation(using: .png, properties: [:]) else {
@@ -18856,6 +18857,22 @@ enum SelfTest {
                 guard !previewText.contains("mc^2") else {
                     finish(false, "Formel im Ausdruck nicht gerendert (TeX-Quelltext sichtbar)")
                 }
+                // Positivnachweis dazu: Die GERENDERTE Formel muss im PDF
+                // stehen. KaTeX setzt die Formel mit Mathe-Schriften, deren
+                // Glyphen die PDF-Textauslese als MATHEMATISCHE
+                // Kursivzeichen liefert (nachgemessen 2026-08-19): ohne
+                // Leerraum gelesen „𝐸=𝑚𝑐2" (U+1D438, U+1D45A, U+1D450).
+                // Das weist zugleich nach, dass wirklich die gerenderte
+                // Fassung im Ausdruck steht — roher Quelltext enthielte
+                // gewöhnliche Buchstaben. Eine Regression, die die Formel
+                // ganz entfernt, bestünde die Negativprüfung oben auch
+                // (Reviewfund 2026-08-19).
+                let compactPreview = String(previewText.filter { !$0.isWhitespace })
+                guard compactPreview.contains("𝐸=𝑚𝑐2") else {
+                    finish(false, "gerenderte Formel fehlt im Ausdruck "
+                           + "(erwartet „𝐸=𝑚𝑐2\" im leerraumfreien PDF-Text) — "
+                           + "Text: \(compactPreview.prefix(500))")
+                }
                 // Gerendert heißt: Die Auszeichnungszeichen sind weg. Stünden
                 // „# " oder die Tabellenstriche im PDF, wäre versehentlich der
                 // Quelltext gedruckt worden.
@@ -18956,6 +18973,11 @@ enum SelfTest {
                   PrintRouting.defaultTarget(document) == .image else {
                 finish(false, "⌘P nimmt bei einem Bild nicht die Bildvorschau")
             }
+            // Gedruckt wird das gemeldete Objekt der Vorschau, kein Neuladen
+            // von der Platte — der Test wartet deshalb wie beim Hex-Abzug,
+            // bis die Ansicht ihren Snapshot gemeldet hat (Reviewfund
+            // 2026-08-19).
+            pollPreviewSnapshot(ws: ws, label: "Bild", tick: 0) {
             printToPDF(target: .image, ws: ws, base: base, name: "bild") { imagePDF, imageText in
                 guard imagePDF.pageCount == 1 else {
                     finish(false, "Bildausdruck hat \(imagePDF.pageCount) Seiten "
@@ -18976,6 +18998,26 @@ enum SelfTest {
                 }) else {
                     finish(false, "Bildausdruck zeigt das rote Fixture-Bild nicht")
                 }
+                // Zusage «gedruckt wird, was zu sehen ist»: Die Datei wird auf
+                // der Platte durch ein BLAUES Bild ersetzt, das Fenster zeigt
+                // aber weiter den roten Snapshot. Der nächste Ausdruck muss
+                // ROT bleiben — lüde er neu von der Platte, wäre er blau
+                // (Reviewfund 2026-08-19).
+                do {
+                    try writeSolidPNG(to: png, width: 64, height: 32,
+                                      color: NSColor(srgbRed: 0, green: 0,
+                                                     blue: 1, alpha: 1))
+                } catch { finish(false, "Blaues Ersatz-PNG nicht schreibbar") }
+                printToPDF(target: .image, ws: ws, base: base,
+                           name: "bild-ersetzt") { replacedPDF, _ in
+                guard firstPageHasPixel(replacedPDF, matching: { color in
+                    color.redComponent > 0.6
+                        && color.redComponent
+                            - max(color.greenComponent, color.blueComponent) > 0.25
+                }) else {
+                    finish(false, "Bildausdruck lädt von der Platte neu, statt "
+                           + "den sichtbaren Vorschau-Stand zu drucken")
+                }
                 let sourcePDF = base.appendingPathComponent("vorlage.pdf")
                 do { try writeSinglePagePDF(to: sourcePDF) }
                 catch { finish(false, "PDF-Fixture nicht schreibbar") }
@@ -18985,6 +19027,8 @@ enum SelfTest {
                           PrintRouting.defaultTarget(pdfDocument) == .pdf else {
                         finish(false, "⌘P nimmt bei einem PDF nicht das PDF")
                     }
+                    // Auch das PDF druckt sein gemeldetes Vorschau-Objekt.
+                    pollPreviewSnapshot(ws: ws, label: "PDF", tick: 0) {
                     printToPDF(target: .pdf, ws: ws, base: base,
                                name: "pdf-druck") { printed, _ in
                         guard printed.pageCount == 1 else {
@@ -19006,8 +19050,30 @@ enum SelfTest {
                         }
                         runPrintPanelPart(ws: ws, base: base, hexPages: hexPages)
                     }
+                    }
+                }
                 }
             }
+            }
+        }
+    }
+
+    /// Wartet, bis die Bild-/PDF-Vorschau ihr geladenes Objekt an den
+    /// Workspace gemeldet hat — genau dieses Objekt ist die Druckvorlage
+    /// (Reviewfund 2026-08-19; Muster wie `pollPrintHexPage`).
+    private static func pollPreviewSnapshot(ws: Workspace, label: String,
+                                            tick: Int,
+                                            then: @escaping () -> Void) {
+        if let tab = ws.activeTab, ws.visiblePreviewSnapshot(for: tab) != nil {
+            then()
+            return
+        }
+        guard tick < 60 else {
+            finish(false, "\(label)-Vorschau meldet binnen 15 s kein geladenes "
+                   + "Druckobjekt")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollPreviewSnapshot(ws: ws, label: label, tick: tick + 1, then: then)
         }
     }
 
@@ -19121,20 +19187,39 @@ enum SelfTest {
             // Menüpunkt oder verliert er sein Kürzel, fällt der Test über die
             // Strukturprüfung; den Blatt-Weg beweist der direkte Aufruf
             // (Reviewfund 2026-08-18).
-            guard menuItem(forExactKeyEquivalent: "p", modifiers: [.command],
-                           in: NSApp.mainMenu) != nil else {
-                finish(false, "kein exakt an ⌘P gebundener Menüpunkt (Drucken…)")
+            // Nicht bloß IRGENDEIN Punkt mit passendem Kürzel: Auch der Titel
+            // muss stimmen, sonst bestünde der Test mit einem fremden, nur
+            // zufällig auf „p" gebundenen Menüpunkt (Reviewfund 2026-08-19).
+            // Bei geladenem reinem Quelltext gibt es genau eine Druckfassung,
+            // der ⌘P-Punkt heißt dann schlicht „Drucken…".
+            guard let printItem = menuItem(forExactKeyEquivalent: "p",
+                                           modifiers: [.command],
+                                           in: NSApp.mainMenu),
+                  printItem.title == L10n.string("Drucken…") else {
+                finish(false, "kein ⌘P-Menüpunkt mit Titel „Drucken…\"")
             }
-            guard menuItem(forExactKeyEquivalent: "p",
-                           modifiers: [.command, .option],
-                           in: NSApp.mainMenu) != nil,
-                  menuItem(forExactKeyEquivalent: "p",
-                           modifiers: [.command, .shift],
-                           in: NSApp.mainMenu) != nil else {
-                finish(false, "⌥⌘P- (Quelltext) oder ⇧⌘P-Menüpunkt (Papierformat) fehlt")
+            guard let sourceItem = menuItem(forExactKeyEquivalent: "p",
+                                            modifiers: [.command, .option],
+                                            in: NSApp.mainMenu),
+                  sourceItem.title == L10n.string("Quelltext drucken…"),
+                  let layoutItem = menuItem(forExactKeyEquivalent: "p",
+                                            modifiers: [.command, .shift],
+                                            in: NSApp.mainMenu),
+                  layoutItem.title == L10n.string("Papierformat…") else {
+                finish(false, "⌥⌘P- (Quelltext drucken…) oder ⇧⌘P-Menüpunkt "
+                       + "(Papierformat…) fehlt oder trägt den falschen Titel")
+            }
+            // Das Druckblatt muss am DOKUMENTFENSTER hängen — dem Fenster,
+            // das der Befehl über CommandTargeting trifft. Ein Blatt an einem
+            // beliebigen anderen Fenster zählt nicht (Reviewfund 2026-08-19).
+            guard let expectedWindow = MainActor.assumeIsolated({
+                CommandTargeting.targetDocument()?.window
+            }) else {
+                finish(false, "kein Dokumentfenster für den Druckbefehl")
             }
             MainActor.assumeIsolated { DocumentPrinting.printVisibleDocument() }
-            pollPrintPanel(hexPages: hexPages, tick: 0)
+            pollPrintPanel(expectedWindow: expectedWindow, hexPages: hexPages,
+                           tick: 0)
         }
     }
 
@@ -19160,32 +19245,37 @@ enum SelfTest {
         return nil
     }
 
-    private static func pollPrintPanel(hexPages: Int, tick: Int) {
-        let sheets = NSApp.windows.compactMap { $0.attachedSheet }
-        if let sheet = sheets.first {
+    private static func pollPrintPanel(expectedWindow: NSWindow, hexPages: Int,
+                                       tick: Int) {
+        // Nur das Blatt am erwarteten Dokumentfenster zählt — nicht irgendein
+        // Blatt in irgendeinem Fenster (Reviewfund 2026-08-19).
+        if let sheet = expectedWindow.attachedSheet {
             // Das Blatt muss auch die Fastra-Optionen tragen: Ohne die
             // Checkboxen wäre das Zubehörfeld still verloren gegangen
-            // (beauftragt 2026-08-18).
+            // (beauftragt 2026-08-18). Zugleich weist das ein Fehler- oder
+            // Warn-Blatt ab: Ein NSAlert trägt diese Checkboxen nie.
             let texts = sheetTexts(in: sheet)
             guard texts.contains(L10n.string("Kopf- und Fußzeile drucken")),
                   texts.contains(L10n.string("Zeilennummern drucken")) else {
-                finish(false, "Druckdialog ohne Fastra-Optionen (Kopf-/Fußzeile, "
-                       + "Zeilennummern) — gefunden: "
-                       + texts.joined(separator: " / "))
+                finish(false, "Blatt am Dokumentfenster ist kein Druckdialog "
+                       + "mit Fastra-Optionen (Kopf-/Fußzeile, Zeilennummern) "
+                       + "— gefunden: " + texts.joined(separator: " / "))
             }
             finish(true, "mehrseitiger Quelltext mit Kopf-/Fußzeile, gerenderte "
                    + "Markdown-Vorschau (Formel + Diagramm), Markdown-Quelltext, "
                    + "Hex-Abzug ohne Umbruch (\(hexPages) Seiten), Bild- und "
-                   + "PDF-Ausdruck im PDF geprüft; großer Text fragt mit "
-                   + "Seitenschätzung nach; ⌘P öffnet das System-Druckfenster "
-                   + "mit den Fastra-Optionen")
+                   + "PDF-Ausdruck im PDF geprüft (Bild bleibt nach "
+                   + "Platten-Ersetzung der sichtbare Stand); großer Text fragt "
+                   + "mit Seitenschätzung nach; ⌘P öffnet das System-Druckfenster "
+                   + "am Dokumentfenster mit den Fastra-Optionen")
         }
         guard tick < 60 else {
             finish(false, "der Druckbefehl öffnet binnen 15 s kein Druckfenster am "
                 + "Dokumentfenster — " + windowsSummary())
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollPrintPanel(hexPages: hexPages, tick: tick + 1)
+            pollPrintPanel(expectedWindow: expectedWindow, hexPages: hexPages,
+                           tick: tick + 1)
         }
     }
 

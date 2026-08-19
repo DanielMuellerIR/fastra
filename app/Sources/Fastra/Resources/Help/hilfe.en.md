@@ -26,7 +26,9 @@ active view:
 - The editor prints the source text with line numbers. Long lines wrap and their
   continuation is indented under the text; nothing is cut off.
 - If the Markdown preview sits next to the editor, ⌘P prints the **rendered**
-  version with tables, formulas and diagrams — exactly what the preview shows.
+  version with tables, formulas and diagrams — in content exactly what the
+  preview shows; the print font size comes from **Settings → Printing**, not
+  from the window zoom.
 - The hex view prints the visible section as a dump. Unsaved byte changes are
   included, because they are on screen as well.
 - Images and SVGs are fitted onto one page; a PDF document prints page by page,

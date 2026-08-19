@@ -175,7 +175,7 @@ struct SettingsView: View {
                         value: $printFontSize,
                         in: PrintPreferences.fontSizeRange,
                         step: 1)
-                Text("Diese Einstellungen gelten für gedruckten Quelltext und Hex-Abzüge. Die Markdown-Vorschau wird gedruckt, wie sie im Fenster aussieht; Papiergröße und Ausrichtung stehen unter „Datei → Papierformat“.")
+                Text("Die Schriftgröße gilt für Quelltext, Hex-Abzüge und die gedruckte Markdown-Vorschau. Zeilennummern gibt es nur beim Quelltext; Kopf- und Fußzeile tragen Quelltext-, Hex- und Bildausdrucke. Papiergröße und Ausrichtung stehen unter „Datei → Papierformat“.")
                     .fastraFont(.small)
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -70,9 +70,10 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 - **Wunschpaket 2** (beschlossen 2026-07-18): Alle fünf Etappen sind mit
   v1.27.0–v1.31.0 umgesetzt (Navigation & Chrome, Suchdialog, Sprachmenü
   mit wählbarem 4D, Hilfe samt `help-audit`-Mechanik, assistiertes
-  Markdown-Schreiben mit Bild-Paste/-Drop). Bewusst offen: Echtes
-  WYSIWYG („Schreibmodus“) ist ausgeklammert — Daniel entscheidet nach
-  gelebter Erfahrung mit Etappe 5 separat und nur auf ausdrücklichen Auftrag.
+  Markdown-Schreiben mit Bild-Paste/-Drop). Das hier ursprünglich
+  ausgeklammerte echte WYSIWYG („Schreibmodus“) ist inzwischen ausdrücklich
+  beauftragt — Stand und Auftrag stehen nur noch unter „Aus Daniels
+  Ideenliste übernommen (2026-08-18)“ weiter unten.
 - **Wunschpaket Juli 2026** (beschlossen 2026-07-17): Die sechs Etappen sind
   mit v1.20.0–v1.25.0 umgesetzt. Bewusst offen geblieben:
   - **4D-Farbdetails:** Underline (Konstanten) kennt das CESE-Attributmodell
@@ -146,15 +147,6 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 - **Datei-Drag vom Dokument-Tab:** Mit dem titellosen Fensterchrome entfiel
   das Ziehen der Datei aus der Titelzeile (Proxy-Icon) ersatzlos. Möglicher
   Ersatz wäre ein `.onDrag` der Datei-URL direkt am Tab — nur bei echtem Bedarf.
-
-- **Willkommen als Platzhalter statt eigenem Tab:** Entschieden am
-  2026-07-30, umgesetzt und am installierten Stand abgenommen („Passt nun",
-  nach Entfernen der anfänglichen Projekt-Sperre; veröffentlicht in
-  v1.60.0, siehe CHANGELOG). Die README-Screenshots zeigen den
-  Willkommensbildschirm nicht und bleiben unverändert. Die zugehörigen
-  fokus-pflichtigen Fenster-Selbsttests (welcomenew, newwindow, cmdw,
-  sessionrestore, coldopen) laufen seither regulär in der Fenster-Suite
-  und sind grün — hier ist nichts mehr offen.
 
 - **Datenschutz-Erklärung der Markdown-Vorschau: Produktvergleiche bleiben
   bewusst draußen** (Rest der Idee 2026-07-28; der erklärende Abschnitt

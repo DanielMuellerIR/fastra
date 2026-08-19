@@ -1406,6 +1406,8 @@
 "Zeilennummern drucken" = "Print line numbers";
 "Kopf- und Fußzeile drucken" = "Print header and footer";
 "Schriftgröße im Ausdruck: %ld pt" = "Print font size: %ld pt";
-"Diese Einstellungen gelten für gedruckten Quelltext und Hex-Abzüge. Die Markdown-Vorschau wird gedruckt, wie sie im Fenster aussieht; Papiergröße und Ausrichtung stehen unter „Datei → Papierformat“." = "These settings apply to printed source text and hex dumps. The Markdown preview prints the way it looks in the window; paper size and orientation are under “File → Page Setup”.";
+"Die Schriftgröße gilt für Quelltext, Hex-Abzüge und die gedruckte Markdown-Vorschau. Zeilennummern gibt es nur beim Quelltext; Kopf- und Fußzeile tragen Quelltext-, Hex- und Bildausdrucke. Papiergröße und Ausrichtung stehen unter „Datei → Papierformat“." = "The font size applies to source text, hex dumps and the printed Markdown preview. Line numbers exist only for source text; header and footer appear on source, hex and image printouts. Paper size and orientation are under “File → Page Setup”.";
+"Die Bildvorschau ist noch nicht geladen." = "The image preview has not finished loading yet.";
+"Die PDF-Vorschau ist noch nicht geladen." = "The PDF preview has not finished loading yet.";
 "Großer Ausdruck" = "Large Printout";
 "Dieses Dokument ergibt etwa %ld Seiten. Das Aufteilen in Seiten kann einen Moment dauern; Fastra ist währenddessen nicht bedienbar." = "This document will produce roughly %ld pages. Splitting it into pages may take a moment, during which Fastra will not respond.";

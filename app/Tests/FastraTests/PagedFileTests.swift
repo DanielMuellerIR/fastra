@@ -38,6 +38,24 @@ private final class SequencedPageReader: @unchecked Sendable {
     }
 }
 
+/// Reader, dessen zweite Anfrage blockiert, bis der Test sie freigibt — für
+/// die Prüfung des Zwischenzustands während eines langsamen Seitenwechsels.
+private final class GateablePageReader: @unchecked Sendable {
+    let release = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var invocation = 0
+
+    func read(url: URL, offset: UInt64, count: Int) throws -> Data {
+        lock.lock()
+        invocation += 1
+        let current = invocation
+        lock.unlock()
+        if current == 1 { return Data(repeating: 0xAA, count: count) }
+        release.wait()
+        return Data(repeating: 0xBB, count: count)
+    }
+}
+
 /// Reader, der ab der zweiten Anfrage nur noch Fehler liefert — für die
 /// Prüfung des Fehlerwegs beim Seitenwechsel.
 private final class FailingSecondPageReader: @unchecked Sendable {
@@ -205,6 +223,44 @@ struct PagedFileTests {
         // zeigte die Ansicht den Fehler, aber „Drucken" gäbe weiter den alten
         // Abschnitt aus (Reviewfund 2026-08-18).
         #expect(model.data.isEmpty)
+    }
+
+    @Test("Ein langsamer Seitenwechsel lässt keine alten Bytes unter neuen Adressen stehen")
+    @MainActor
+    func slowPageSwitchExposesNoStaleBytes() async throws {
+        let reader = GateablePageReader()
+        let model = FilePageModel(
+            url: URL(fileURLWithPath: "/tmp/fastra-slow-page"),
+            totalBytes: 8, pageSize: 4, reader: reader.read)
+        for _ in 0..<100 where model.completedLoadCount < 1 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(model.data == Data(repeating: 0xAA, count: 4))
+
+        // Der Wechsel auf Seite 1 bleibt im blockierten Reader stehen. Das
+        // Modell zeigt ab SOFORT den neuen Offset — die alten Bytes müssen
+        // deshalb sofort weg sein: Sonst berechnete `editableRow` Adressen
+        // der neuen Seite über Bytes der alten, und eine Bearbeitung in
+        // diesem Fenster plante eine Änderung am falschen Offset mit dem
+        // falschen Altwert (Reviewfund 2026-08-19).
+        model.load(page: 1)
+        #expect(model.pageIndex == 1)
+        #expect(model.isLoading)
+        #expect(model.data.isEmpty)
+
+        // Ein Bearbeitungsversuch in genau diesem Zwischenzustand findet
+        // keine Zeile vor und plant keine Änderung.
+        let edits = HexEditSession()
+        #expect(edits.textForRow(data: model.data, baseOffset: model.offset,
+                                 row: 0) == "")
+        edits.editRow("FF", data: model.data, baseOffset: model.offset, row: 0)
+        #expect(edits.changes.isEmpty)
+
+        reader.release.signal()
+        for _ in 0..<100 where model.completedLoadCount < 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(model.data == Data(repeating: 0xBB, count: 4))
     }
 
     @Test("UTF-8-Seiten teilen kein Mehrbytezeichen an der 256-KiB-Grenze")

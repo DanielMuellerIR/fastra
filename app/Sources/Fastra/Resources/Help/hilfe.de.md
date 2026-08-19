@@ -27,7 +27,9 @@ aktiven Ansicht:
   umgebrochen und die Fortsetzung rückt unter den Text ein; abgeschnitten wird
   nichts.
 - Steht die Markdown-Vorschau neben dem Editor, druckt ⌘P die **gerenderte**
-  Fassung mit Tabellen, Formeln und Diagrammen — genau das Bild der Vorschau.
+  Fassung mit Tabellen, Formeln und Diagrammen — inhaltlich genau das Bild
+  der Vorschau; die Schriftgröße des Ausdrucks kommt aus
+  **Einstellungen → Drucken**, nicht aus dem Fenster-Zoom.
 - Die Hex-Ansicht druckt den sichtbaren Abschnitt als Abzug. Noch nicht
   gespeicherte Byte-Änderungen stehen mit auf dem Papier, weil sie auch auf dem
   Bildschirm stehen.

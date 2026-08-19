@@ -9,6 +9,69 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.103.0] — 2026-08-19
+
+Abarbeitung des Nacht-Code-Reviews vom 2026-08-19 (13 Funde, alle bestätigt):
+
+### Behoben
+
+- **Git-Abbruch kann keine fremde Prozessgruppe mehr treffen.** Der
+  SIGTERM→SIGKILL-Nachschlag schießt nicht mehr auf die nackte
+  Prozessgruppen-ID (die der Kernel nach dem Ende aller Mitglieder sofort
+  neu vergeben kann), sondern merkt sich die Mitglieder mit PID und
+  Startzeit und beendet später nur einzeln verifizierte Prozesse. Vor jedem
+  Gruppensignal wird zusätzlich geprüft, dass die beim Start gemerkte
+  Leiter-Startzeit noch stimmt. Die Kernel-Aufrufe sind injizierbar; ein
+  Regressionstest spielt die Wiedervergabe der Gruppen-ID deterministisch
+  durch.
+- **Hex-Ansicht: Kein Bearbeiten alter Bytes unter neuen Adressen.** Während
+  eines langsamen Seitenwechsels zeigte die Ansicht bereits den neuen
+  Seitenindex, aber noch die Bytes der alten Seite — eine Bearbeitung in
+  diesem Fenster plante eine Änderung am falschen Offset mit dem falschen
+  Altwert. Jetzt leert der Seitenwechsel die Bytes sofort (Spinner statt
+  Mischanzeige), und der Drucksnapshot wird währenddessen zurückgezogen;
+  die Text-Abschnittsansicht verhält sich gleich.
+- **Bild- und PDF-Druck drucken das sichtbare Vorschau-Objekt.** Vorher lud
+  der Druckweg die Datei erneut von der Platte: War sie seit dem Aufbau der
+  Vorschau ersetzt worden, druckte Fastra anderen Inhalt als das Fenster
+  zeigte. Jetzt melden Bild- und PDF-Vorschau ihr geladenes Objekt an den
+  Workspace, und gedruckt wird genau dieses Objekt; ohne geladene Vorschau
+  lehnt der Auftrag sichtbar ab. Das macht den Weg zugleich synchron —
+  kein festgehaltenes, womöglich schon geschlossenes Fenster und kein
+  doppeltes Lesen der Kopf-/Fußzeilen-Einstellung im Ladefenster mehr.
+  Der `print`-Selbsttest belegt die Zusage: Nach dem Ersetzen der Datei auf
+  der Platte druckt Fastra weiter den sichtbaren Stand.
+- **tool4d-Version nur noch aus der echten Bundle-Struktur.** Die Zuordnung
+  verlangt nach Symlink-Auflösung exakt `tool4d….app/Contents/MacOS/tool4d`;
+  ein Binary an fremder Stelle unter einem nur passend benannten
+  Verzeichnis erhält keine fremde Versionsnummer mehr.
+
+### Geprüft und dokumentiert
+
+- **Einstellungen → Drucken erklärt die echte Reichweite:** Schriftgröße
+  gilt auch für die gedruckte Markdown-Vorschau (seit v1.101.0),
+  Zeilennummern nur für Quelltext, Kopf-/Fußzeile für Quelltext-, Hex- und
+  Bildausdrucke. Hilfe (beide Sprachen) präzisiert, dass der
+  Markdown-Ausdruck inhaltlich der Vorschau entspricht, die Schriftgröße
+  aber aus den Druckeinstellungen kommt.
+- **`print`-Selbsttest schärfer:** positiver Nachweis der gerenderten
+  KaTeX-Formel („𝐸=𝑚𝑐2" in mathematischen Kursivzeichen im leerraumfreien
+  PDF-Text — roher Quelltext enthielte gewöhnliche Buchstaben) statt nur
+  der Abwesenheit des TeX-Quelltexts; die Menüprüfung verlangt die richtigen
+  Titel der drei Druckpunkte, und das Druckblatt muss am erwarteten
+  Dokumentfenster hängen (ein Fehler-Blatt zählt nicht).
+- **Selbsttest-Runner meldet frühe Abstürze sofort:** Endet ein direkt
+  gestarteter Testprozess ohne Ergebnis-Zeile, meldet der Runner den
+  echten Exit-Code als FAIL, statt die volle Frist (beim print-Test vier
+  Minuten) als irreführenden Timeout abzuwarten.
+- **Toter Code entfernt:** der konstant `true` übergebene
+  `monospaced`-Parameter des Text-Druckwegs samt unerreichbarem
+  Proportionalschrift-Zweig und der ungenutzte `workspace`-Parameter des
+  Markdown-Druckwegs.
+- **ROADMAP konsistent:** Der WYSIWYG-Status steht nur noch an einer Stelle
+  (beauftragt 2026-08-18); der erledigte Willkommens-Platzhalter-Eintrag
+  ist raus — die Historie dazu steht im CHANGELOG zu v1.60.0.
+
 ## [v1.102.0] — 2026-08-18
 
 ### Neu

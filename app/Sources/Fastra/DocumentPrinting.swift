@@ -105,16 +105,18 @@ enum DocumentPrinting {
                          defaults: defaults, window: window, savingTo: savingTo,
                          completion: completion)
         case .markdownPreview:
-            printMarkdownPreview(tab: tab, workspace: workspace, printInfo: printInfo,
+            printMarkdownPreview(tab: tab, printInfo: printInfo,
                                  defaults: defaults, jobTitle: jobTitle,
                                  window: window, savingTo: savingTo,
                                  completion: completion)
         case .image:
-            printImage(tab: tab, printInfo: printInfo, defaults: defaults,
-                       window: window, savingTo: savingTo, completion: completion)
+            printImage(tab: tab, workspace: workspace, printInfo: printInfo,
+                       defaults: defaults, window: window, savingTo: savingTo,
+                       completion: completion)
         case .pdf:
-            printPDF(tab: tab, printInfo: printInfo, jobTitle: jobTitle,
-                     window: window, savingTo: savingTo, completion: completion)
+            printPDF(tab: tab, workspace: workspace, printInfo: printInfo,
+                     jobTitle: jobTitle, window: window, savingTo: savingTo,
+                     completion: completion)
         }
     }
 
@@ -188,7 +190,6 @@ enum DocumentPrinting {
         let start = {
             let operation = makeTextPrintOperation(
                 text: text,
-                monospaced: true,
                 printInfo: printInfo,
                 defaults: defaults,
                 jobTitle: tab.title,
@@ -253,7 +254,7 @@ enum DocumentPrinting {
     private static func estimatedPageCount(text: String, printInfo: NSPrintInfo,
                                            defaults: UserDefaults) -> Int {
         let font = printFont(size: CGFloat(PrintPreferences.fontSize(defaults)),
-                             monospaced: true, defaults: defaults)
+                             defaults: defaults)
         let content = contentSize(of: printInfo)
         let characterWidth = ("0" as NSString)
             .size(withAttributes: [.font: font]).width
@@ -287,7 +288,6 @@ enum DocumentPrinting {
         }
         let operation = makeTextPrintOperation(
             text: section.text,
-            monospaced: true,
             printInfo: printInfo,
             defaults: defaults,
             jobTitle: tab.title,
@@ -312,7 +312,6 @@ enum DocumentPrinting {
 
     /// Baut den Druckauftrag für Fließtext.
     static func makeTextPrintOperation(text: String,
-                                       monospaced: Bool,
                                        printInfo: NSPrintInfo,
                                        defaults: UserDefaults,
                                        jobTitle: String,
@@ -322,8 +321,7 @@ enum DocumentPrinting {
                                        fixedColumns: Int? = nil)
         -> NSPrintOperation {
         let desired = PrintPreferences.fontSize(defaults)
-        var font = printFont(size: CGFloat(desired), monospaced: monospaced,
-                             defaults: defaults)
+        var font = printFont(size: CGFloat(desired), defaults: defaults)
         if let fixedColumns {
             // Text mit festem Raster (Hex): Schrift so verkleinern, dass eine
             // ganze Zeile auf die Seite passt. Sonst bricht jede Zeile um und
@@ -337,8 +335,7 @@ enum DocumentPrinting {
                 availableWidth: Double(contentSize(of: printInfo).width)
             )
             if fitted < desired {
-                font = printFont(size: CGFloat(fitted), monospaced: monospaced,
-                                 defaults: defaults)
+                font = printFont(size: CGFloat(fitted), defaults: defaults)
             }
         }
         let showsLineNumbers = !forcesLineNumbersOff
@@ -406,10 +403,10 @@ enum DocumentPrinting {
     /// Ausdruck aussieht wie der Bildschirm. Fehlt sie (deinstalliert), bleibt
     /// die feste Systemschrift — eine stille Ersatzschrift ist hier harmlos,
     /// ändert aber den Zeilenumbruch, deshalb wird sie hier bewusst gewählt
-    /// statt AppKit raten zu lassen.
-    private static func printFont(size: CGFloat, monospaced: Bool,
+    /// statt AppKit raten zu lassen. Fließtext druckt immer monospaced; eine
+    /// Proportionalvariante gäbe es erst mit einem echten Aufrufer.
+    private static func printFont(size: CGFloat,
                                   defaults: UserDefaults) -> NSFont {
-        guard monospaced else { return .systemFont(ofSize: size) }
         let name = defaults.string(forKey: EditorFonts.defaultsKey)
             ?? EditorFonts.systemMonospacedName
         if let font = NSFont(name: name, size: size), font.isFixedPitch {
@@ -459,7 +456,6 @@ enum DocumentPrinting {
     // MARK: - Markdown-Vorschau
 
     private static func printMarkdownPreview(tab: EditorTab,
-                                             workspace: Workspace,
                                              printInfo: NSPrintInfo,
                                              defaults: UserDefaults,
                                              jobTitle: String,
@@ -487,97 +483,85 @@ enum DocumentPrinting {
     // MARK: - Bild und PDF
 
     private static func printImage(tab: EditorTab,
+                                   workspace: Workspace,
                                    printInfo: NSPrintInfo,
                                    defaults: UserDefaults,
                                    window: NSWindow?,
                                    savingTo: URL?,
                                    completion: @escaping (PrintOutcome) -> Void) {
-        guard let url = tab.url else {
-            report(.failed(L10n.string("Diese Datei ist nicht als Bild lesbar.")),
+        // Gedruckt wird das Objekt, das die Vorschau ZEIGT — nie ein Neuladen
+        // von der Platte: Zwischen Vorschauaufbau und Druckbefehl kann die
+        // Datei ersetzt worden sein, und der Ausdruck muss dem sichtbaren,
+        // vom Nutzer geprüften Stand entsprechen (Reviewfund 2026-08-19).
+        // Das erspart zugleich jedes erneute Dekodieren: Der Weg bleibt
+        // synchron, blockiert nichts und braucht kein festgehaltenes Fenster.
+        guard let url = tab.url,
+              let snapshot = workspace.visiblePreviewSnapshot(for: tab),
+              case .image(let image) = snapshot.content,
+              image.size.width > 0, image.size.height > 0 else {
+            report(.failed(L10n.string("Die Bildvorschau ist noch nicht geladen.")),
                    window: window, completion: completion)
             return
         }
         let title = tab.title
-        // Dasselbe Laden wie in der Vorschau: `ImagePreviewLoader` dekodiert
-        // über ImageIO direkt auf Zielgröße und übernimmt die EXIF-Drehung —
-        // und wie dort läuft das Dekodieren im Hintergrund. Ein großes Foto
-        // oder ein langsamer Datenträger darf den Druckbefehl nicht die ganze
-        // Oberfläche blockieren lassen (Reviewfund 2026-08-18). Gedruckt wird
-        // die beim Befehl festgehaltene Datei, auch wenn der Nutzer währenddessen
-        // den Tab wechselt.
-        Task.detached(priority: .userInitiated) {
-            let image = ImagePreviewLoader.loadPreviewImage(url: url)
-            await MainActor.run {
-                guard let image, image.size.width > 0, image.size.height > 0 else {
-                    report(.failed(L10n.string("Diese Datei ist nicht als Bild lesbar.")),
-                           window: window, completion: completion)
-                    return
-                }
-                let content = contentSize(of: printInfo)
-                let view = PrintImageView(frame: NSRect(origin: .zero, size: content),
-                                          image: image)
-                view.headerLeft = title
-                view.headerRight = PrintDecoration.headerRight(date: Date())
-                view.footerLeftText = PrintDecoration.footerLeft(path: url.path)
-                view.drawsDecoration = PrintPreferences.showsHeaderFooter(defaults)
-                view.topMargin = printInfo.topMargin
-                view.bottomMargin = printInfo.bottomMargin
-                view.leftMargin = printInfo.leftMargin
-                view.rightMargin = printInfo.rightMargin
-                printInfo.dictionary()[PrintDialogOption.headerFooter] =
-                    PrintPreferences.showsHeaderFooter(defaults)
-                let operation = NSPrintOperation(view: view, printInfo: printInfo)
-                operation.jobTitle = title
-                execute(operation, window: window, savingTo: savingTo,
-                        // Auf die PrintInfo-KOPIE des Auftrags schreiben
-                        // (siehe Quelltext-Weg).
-                        accessory: PrintOptionsAccessoryController(
-                            printInfo: operation.printInfo, defaults: defaults,
-                            offersLineNumbers: false),
-                        completion: completion)
-            }
-        }
+        let showsHeaderFooter = PrintPreferences.showsHeaderFooter(defaults)
+        let content = contentSize(of: printInfo)
+        let view = PrintImageView(frame: NSRect(origin: .zero, size: content),
+                                  image: image)
+        view.headerLeft = title
+        view.headerRight = PrintDecoration.headerRight(date: Date())
+        view.footerLeftText = PrintDecoration.footerLeft(path: url.path)
+        // Eine einzige Lesung der Einstellung für Randreservierung
+        // (makePrintInfo), Dialog-Anfangswert und Zeichnen — sonst könnten
+        // Druckfläche und Dekoration auseinanderlaufen (Reviewfund 2026-08-19).
+        view.drawsDecoration = showsHeaderFooter
+        view.topMargin = printInfo.topMargin
+        view.bottomMargin = printInfo.bottomMargin
+        view.leftMargin = printInfo.leftMargin
+        view.rightMargin = printInfo.rightMargin
+        printInfo.dictionary()[PrintDialogOption.headerFooter] = showsHeaderFooter
+        let operation = NSPrintOperation(view: view, printInfo: printInfo)
+        operation.jobTitle = title
+        execute(operation, window: window, savingTo: savingTo,
+                // Auf die PrintInfo-KOPIE des Auftrags schreiben
+                // (siehe Quelltext-Weg).
+                accessory: PrintOptionsAccessoryController(
+                    printInfo: operation.printInfo, defaults: defaults,
+                    offersLineNumbers: false),
+                completion: completion)
     }
 
     private static func printPDF(tab: EditorTab,
+                                 workspace: Workspace,
                                  printInfo: NSPrintInfo,
                                  jobTitle: String,
                                  window: NSWindow?,
                                  savingTo: URL?,
                                  completion: @escaping (PrintOutcome) -> Void) {
-        guard let url = tab.url else {
+        // Wie beim Bilddruck: Gedruckt wird das Dokumentobjekt der sichtbaren
+        // Vorschau, kein Neuladen von der Platte (Reviewfund 2026-08-19).
+        guard let snapshot = workspace.visiblePreviewSnapshot(for: tab),
+              case .pdf(let document) = snapshot.content,
+              document.pageCount > 0 else {
+            report(.failed(L10n.string("Die PDF-Vorschau ist noch nicht geladen.")),
+                   window: window, completion: completion)
+            return
+        }
+        // PDFKit druckt das Dokument selbst — Seitengröße, Drehung und
+        // eingebettete Schriften bleiben dabei unverändert. Eine eigene
+        // Kopfzeile gibt es hier absichtlich nicht: Sie würde in ein
+        // fremdes, fertig gesetztes Dokument hineinzeichnen.
+        guard let operation = document.printOperation(
+            for: printInfo, scalingMode: .pageScaleDownToFit,
+            autoRotate: true
+        ) else {
             report(.failed(L10n.string("Dieses PDF ist nicht lesbar.")),
                    window: window, completion: completion)
             return
         }
-        // Das Öffnen liest Querverweis-Tabellen von der Platte und kann bei
-        // großen Dateien oder langsamem Datenträger dauern — deshalb im
-        // Hintergrund, wie beim Bilddruck (Reviewfund 2026-08-18).
-        Task.detached(priority: .userInitiated) {
-            let document = PDFDocument(url: url)
-            await MainActor.run {
-                guard let document, document.pageCount > 0 else {
-                    report(.failed(L10n.string("Dieses PDF ist nicht lesbar.")),
-                           window: window, completion: completion)
-                    return
-                }
-                // PDFKit druckt das Dokument selbst — Seitengröße, Drehung und
-                // eingebettete Schriften bleiben dabei unverändert. Eine eigene
-                // Kopfzeile gibt es hier absichtlich nicht: Sie würde in ein
-                // fremdes, fertig gesetztes Dokument hineinzeichnen.
-                guard let operation = document.printOperation(
-                    for: printInfo, scalingMode: .pageScaleDownToFit,
-                    autoRotate: true
-                ) else {
-                    report(.failed(L10n.string("Dieses PDF ist nicht lesbar.")),
-                           window: window, completion: completion)
-                    return
-                }
-                operation.jobTitle = jobTitle
-                execute(operation, window: window, savingTo: savingTo,
-                        completion: completion)
-            }
-        }
+        operation.jobTitle = jobTitle
+        execute(operation, window: window, savingTo: savingTo,
+                completion: completion)
     }
 
     // MARK: - Ausführen
@@ -1168,5 +1152,13 @@ extension Workspace {
         guard let page = visiblePrintPage, let url = tab.url,
               page.url == url else { return nil }
         return page
+    }
+
+    /// Das geladene Objekt der Bild-/PDF-Vorschau — nur, wenn es wirklich zu
+    /// DIESEM Tab gehört (gleiche Absicherung wie `visiblePrintPage(for:)`).
+    func visiblePreviewSnapshot(for tab: EditorTab) -> VisiblePreviewSnapshot? {
+        guard let snapshot = visiblePreviewSnapshot, let url = tab.url,
+              snapshot.url == url else { return nil }
+        return snapshot
     }
 }

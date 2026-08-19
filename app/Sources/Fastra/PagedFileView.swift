@@ -70,6 +70,14 @@ final class FilePageModel: ObservableObject {
         pageIndex = page
         isLoading = true
         errorMessage = nil
+        // Die alten Bytes gehören zur VORIGEN Seite, `offset` zeigt aber schon
+        // auf die neue. Blieben sie bis zum Hintergrund-Abschluss stehen,
+        // zeigte die Ansicht Adressen der neuen Seite mit Bytes der alten —
+        // und eine Hex-Bearbeitung in diesem Fenster erzeugte eine Änderung
+        // am falschen Offset mit dem falschen Altwert (Reviewfund 2026-08-19).
+        // Leer heißt: Die Ansicht zeigt den Lade-Spinner, bearbeitbare Zeilen
+        // existieren nicht.
+        data = Data()
         let offset = UInt64(page) * UInt64(pageSize)
         let count = Int(min(UInt64(pageSize), totalBytes > offset ? totalBytes - offset : 0))
         let url = self.url
@@ -268,6 +276,10 @@ final class TextFilePageModel: ObservableObject {
         pageIndex = page
         isLoading = true
         errorMessage = nil
+        // Wie in `FilePageModel.load`: Der alte Text gehört zur vorigen
+        // Seite. Bis zum Abschluss zeigt die Ansicht den Spinner statt einer
+        // Mischung aus neuer Abschnittsnummer und altem Inhalt.
+        text = ""
         let url = self.url
         let totalBytes = self.totalBytes
         let pageSize = self.pageSize
@@ -375,6 +387,11 @@ struct ChunkedTextFileView: View {
         // Zwei inhaltsgleiche Nachbarabschnitte änderten `text` nicht, und
         // der Drucksnapshot behielte die alte Abschnittsnummer.
         .onChange(of: model.completedLoadCount) { _, _ in reportVisiblePage() }
+        // Wie bei der Hex-Ansicht: Während eines Abschnittswechsels gibt es
+        // keinen sichtbaren Abschnitt und damit auch keine Druckvorlage.
+        .onChange(of: model.isLoading) { _, loading in
+            if loading { onVisiblePage?(nil) }
+        }
         .onDisappear { onVisiblePage?(nil) }
     }
 
@@ -514,6 +531,12 @@ struct HexFileView: View {
         // Zwei inhaltsgleiche Nachbarseiten (z. B. lauter Nullbytes) änderten
         // `data` nicht, und der Drucksnapshot behielte die alten Basisadressen.
         .onChange(of: model.completedLoadCount) { _, _ in reportVisiblePage() }
+        // Während eines Seitenwechsels gibt es keinen sichtbaren Abzug — der
+        // Bildschirm zeigt den Spinner. „Drucken" muss dann ehrlich ablehnen,
+        // statt den zuletzt gemeldeten alten Abschnitt auszugeben.
+        .onChange(of: model.isLoading) { _, loading in
+            if loading { onVisiblePage?(nil) }
+        }
         // Noch nicht gespeicherte Byte-Änderungen stehen auf dem Bildschirm —
         // dann müssen sie auch auf dem Ausdruck stehen.
         .onChange(of: edits.changes) { _, _ in reportVisiblePage() }

@@ -236,6 +236,49 @@ func versionFromExecutableInsideVersionedBundle() throws {
     #expect(Tool4DDiscovery.bundleVersion(forExecutable: foreign) == nil)
 }
 
+@Test("Nur die echte Bundle-Struktur liefert eine Version — kein bloß übergeordnetes tool4d-Verzeichnis")
+func versionRequiresRealBundleStructure() throws {
+    let scratch = try makeScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    // Ein Verzeichnis, das nur WIE ein tool4d-Bundle heißt, mit einem Binary
+    // an fremder Stelle: `tool4d-wrapper.app/bin/tool4d` ist NICHT das Binary
+    // dieses Bundles — seine Info.plist-Version wäre eine fremde Angabe
+    // (Reviewfund 2026-08-19).
+    let wrapper = scratch.appendingPathComponent("tool4d-wrapper.app")
+    let contents = wrapper.appendingPathComponent("Contents")
+    try FileManager.default.createDirectory(
+        at: wrapper.appendingPathComponent("bin"),
+        withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+        at: contents, withIntermediateDirectories: true)
+    let plist: [String: Any] = ["CFBundleShortVersionString": "7.7"]
+    try PropertyListSerialization.data(
+        fromPropertyList: plist, format: .xml, options: 0
+    ).write(to: contents.appendingPathComponent("Info.plist"))
+    let strayBinary = wrapper.appendingPathComponent("bin/tool4d")
+    try Data("#!/bin/sh\n".utf8).write(to: strayBinary)
+    try FileManager.default.setAttributes(
+        [.posixPermissions: 0o755], ofItemAtPath: strayBinary.path)
+    #expect(Tool4DDiscovery.bundleVersion(forExecutable: strayBinary) == nil)
+}
+
+@Test("Ein Symlink auf das Bundle-Binary (PATH-Eintrag) liefert die Bundle-Version")
+func versionResolvesSymlinkedExecutable() throws {
+    let scratch = try makeScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let binary = try makeToolBundle(
+        at: scratch.appendingPathComponent("tool4d_v21.app"), version: "21.3"
+    )
+    // Typischer PATH-Eintrag: /usr/local/bin/tool4d → Bundle-Binary.
+    let bin = scratch.appendingPathComponent("bin")
+    try FileManager.default.createDirectory(at: bin,
+                                            withIntermediateDirectories: true)
+    let link = bin.appendingPathComponent("tool4d")
+    try FileManager.default.createSymbolicLink(at: link,
+                                               withDestinationURL: binary)
+    #expect(Tool4DDiscovery.bundleVersion(forExecutable: link) == "21.3")
+}
+
 @Test("Erst-Kontakt-Trigger: .4dm und .4DProject, case-insensitiv")
 func firstContactTrigger() {
     #expect(Tool4DAssist.triggersFirstContactHint(fileName: "Methode.4dm"))

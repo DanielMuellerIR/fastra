@@ -589,7 +589,7 @@ struct PrintDialogOptionTests {
                                                  savingTo: nil, decorated: true)
         let operation = DocumentPrinting.makeTextPrintOperation(
             text: (1...80).map { "Zeile \($0)" }.joined(separator: "\n"),
-            monospaced: true, printInfo: info, defaults: defaults,
+            printInfo: info, defaults: defaults,
             jobTitle: "Test", headerLeft: "Test", footerLeft: ""
         )
         let view = try #require(operation.view as? PrintDocumentTextView)
