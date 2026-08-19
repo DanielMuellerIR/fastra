@@ -548,6 +548,13 @@ final class Workspace: ObservableObject {
     /// `true`, während ein tool4d-Makrolauf dieses Fensters läuft. Sperrt
     /// Menüeinträge und Shortcuts gegen parallele Läufe desselben Puffers.
     @Published var fourDMacroEngineBusy = false
+    /// Zuletzt angeforderter, noch von keinem Editor verarbeiteter
+    /// Treffer-Sprung. Die Sprung-Notification kann in eine Editor-
+    /// Neuerzeugung fallen und verpuffen; der frisch eingehängte Editor
+    /// desselben Dokuments holt den Sprung von hier nach und verbraucht ihn
+    /// (siehe `PendingEditorJump`). Bewusst kein `@Published` — der Editor
+    /// liest ihn imperativ beim Erscheinen und im Notification-Pfad.
+    var pendingEditorJump: PendingEditorJump?
     var fourDComponentMethodDisplayNames: [String] {
         fourDMethodIndexSnapshot.componentMethodDisplayNames
     }

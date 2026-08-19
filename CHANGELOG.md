@@ -9,6 +9,26 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.107.0] — 2026-08-19
+
+### Behoben
+
+- **Ein Treffer-Sprung kann nicht mehr in der Editor-Neuerzeugung verloren
+  gehen.** Der Sprung zu einem Suchtreffer (Listen-Klick, ⌘G, „Zu Zeile
+  springen") lief bisher allein über eine einmalige Notification. Fällt die
+  genau in den Moment, in dem SwiftUI den Editor neu erzeugt (Tab-Wechsel,
+  Abschluss des asynchronen Ladens), ist der alte Empfänger schon abgehängt
+  und der neue noch nicht abonniert — der Klick wirkte „folgenlos".
+  Reproduziert im weemac-Gesamtlauf und lokal (jump-Selbsttest, 1 von 3
+  Läufen, Selektion blieb dauerhaft leer). Jeder Sprung hinterlegt sich
+  jetzt zusätzlich als konsumierbarer Zustand am Workspace
+  (`PendingEditorJump`); ein frisch eingehängter Editor desselben Dokuments
+  holt ihn beim Erscheinen nach und verbraucht ihn.
+- **jump-Selbsttest gehärtet:** Die Selektionsprüfung löst die Editor-View
+  in jedem Poll-Tick neu aus der Hierarchie auf (statt eine beim Start
+  eingefangene, womöglich ersetzte View zu befragen) und beobachtet nur
+  wirklich bediente Durchläufe — Fremdlast verbraucht das Fenster nicht.
+
 ## [v1.106.0] — 2026-08-19
 
 Übernahme des Scroll-Fixes aus der parallelen Linie (dort als 1.103.1/196

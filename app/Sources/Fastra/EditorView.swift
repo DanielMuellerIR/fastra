@@ -858,6 +858,16 @@ struct EditorView: View {
         }
         .onAppear {
             scheduleStats(for: editorState.cursorPositions ?? [])
+            // Ein Sprung, dessen Notification in die Editor-Neuerzeugung
+            // fiel (alter Empfänger abgehängt, neuer noch nicht abonniert),
+            // wird hier nachgeholt. Ohne dieses Nachholen wirkte der Klick
+            // auf einen Suchtreffer unter Last gelegentlich „folgenlos"
+            // (reproduziert 2026-08-19 im jump-Selbsttest, 1 von 3 Läufen).
+            guard let pending = workspace.pendingEditorJump,
+                  pending.documentID == workspace.activeTab?.documentID else {
+                return
+            }
+            applyEditorJump(pending)
         }
         // Editor-Sprung zur Treffer-Range (CMD+G / List-Klick / Chevron-
         // Button). Wir schreiben die Range direkt in cursorPositions —
@@ -869,28 +879,14 @@ struct EditorView: View {
             // eigenen Suchtreffer verarbeiten.
             guard Self.jumpNotification(note, targets: workspace) else { return }
             let info = note.userInfo
-            // Absolute Range als Fallback fürs Scrollen (z.B. „Zu Zeile
-            // springen", CMD+J, ohne Zeile/Spalte im userInfo).
-            let fallbackRange = (info?["range"] as? NSValue)?.rangeValue
-            var jumpLine: Int? = nil
-            // Bevorzugter Pfad: Zeile/Spalte (start + end). CESE mappt das
-            // gegen sein eigenes Zeilen-Layout → robust gegen Offset-Drift
-            // zwischen Such-Inhalt und Editor-Storage (siehe
-            // NotificationCenter.postMatchJump).
-            if let sl = info?["startLine"] as? Int, let sc = info?["startColumn"] as? Int,
-               let el = info?["endLine"] as? Int, let ec = info?["endColumn"] as? Int {
-                editorState.cursorPositions = [CursorPosition(
-                    start: CursorPosition.Position(line: sl, column: sc),
-                    end: CursorPosition.Position(line: el, column: ec))]
-                jumpLine = sl
-            } else if let value = info?["range"] as? NSValue {
-                editorState.cursorPositions = [CursorPosition(range: value.rangeValue)]
-            }
-            // Sichtbar scrollen, aber den Fokus in der Suchmaske lassen. Der
-            // nächste Tastendruck darf das Dokument niemals verändern.
-            EditorView.scrollEditorForVisibleJump(in: workspace,
-                                                  targetLine: jumpLine,
-                                                  fallbackRange: fallbackRange)
+            let jump = PendingEditorJump(
+                documentID: workspace.activeTab?.documentID,
+                startLine: info?["startLine"] as? Int,
+                startColumn: info?["startColumn"] as? Int,
+                endLine: info?["endLine"] as? Int,
+                endColumn: info?["endColumn"] as? Int,
+                range: (info?["range"] as? NSValue)?.rangeValue)
+            applyEditorJump(jump)
         }
         // WICHTIG: CodeEditSourceEditor setzt den Text NUR EINMAL in
         // `makeNSViewController`. Sein `updateNSViewController` schiebt
@@ -923,6 +919,33 @@ struct EditorView: View {
                 }
             }
         )
+    }
+
+    /// Wendet einen Editor-Sprung an und verbraucht den hinterlegten
+    /// Pending-Zustand. Gemeinsamer Pfad für die Notification (Normalfall)
+    /// und das Nachholen in `onAppear` (Editor wurde währenddessen neu
+    /// erzeugt). Bevorzugt Zeile/Spalte (robust gegen Offset-Drift, siehe
+    /// `NotificationCenter.postMatchJump`); die absolute Range bleibt der
+    /// Fallback für Sprünge ohne Treffer-Kontext („Zu Zeile springen").
+    private func applyEditorJump(_ jump: PendingEditorJump) {
+        workspace.pendingEditorJump = nil
+        var jumpLine: Int? = nil
+        if let sl = jump.startLine, let sc = jump.startColumn,
+           let el = jump.endLine, let ec = jump.endColumn {
+            editorState.cursorPositions = [CursorPosition(
+                start: CursorPosition.Position(line: sl, column: sc),
+                end: CursorPosition.Position(line: el, column: ec))]
+            jumpLine = sl
+        } else if let range = jump.range {
+            editorState.cursorPositions = [CursorPosition(range: range)]
+        } else {
+            return
+        }
+        // Sichtbar scrollen, aber den Fokus in der Suchmaske lassen. Der
+        // nächste Tastendruck darf das Dokument niemals verändern.
+        EditorView.scrollEditorForVisibleJump(in: workspace,
+                                              targetLine: jumpLine,
+                                              fallbackRange: jump.range)
     }
 
     /// Stabile, hashbare Editor-Identität aus Tab-ID + Reload-Nonce. Ändert

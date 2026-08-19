@@ -377,6 +377,30 @@ enum BufferSearch {
     }
 }
 
+/// Ein angeforderter Editor-Sprung als konsumierbarer Zustand.
+///
+/// Warum nicht nur die Notification? Der Sprung trifft häufig einen Editor,
+/// der gerade neu erzeugt wird (Tab-Wechsel und das Ende des asynchronen
+/// Ladens wechseln die SwiftUI-`.id` des Editors). Eine einmalige
+/// Notification kann genau in dieses Fenster fallen: Der alte Empfänger ist
+/// schon abgehängt, der neue noch nicht abonniert — der Sprung verpufft, und
+/// der Klick auf einen Suchtreffer wirkt „folgenlos" (unter Last am
+/// 2026-08-19 reproduziert, lokal 1 von 3 jump-Selbsttestläufen). Deshalb
+/// hinterlegt jeder Sprung sich zusätzlich hier; der (neu) eingehängte
+/// Editor desselben Dokuments holt ihn beim Erscheinen nach und verbraucht
+/// ihn.
+struct PendingEditorJump {
+    /// Dokument, für das der Sprung gilt — ein später eingehängter Editor
+    /// eines anderen Dokuments darf ihn nicht anwenden.
+    let documentID: UUID?
+    let startLine: Int?
+    let startColumn: Int?
+    let endLine: Int?
+    let endColumn: Int?
+    /// Absolute Range als Fallback (z. B. „Zu Zeile springen").
+    let range: NSRange?
+}
+
 extension NotificationCenter {
     /// Postet einen Editor-Sprung zu einem Treffer über Zeile/Spalte
     /// (Start UND Ende) statt nur der absoluten NSRange.
@@ -397,6 +421,14 @@ extension NotificationCenter {
         let end = BufferSearch.endLineColumn(startLine: match.line,
                                              startColumn: match.column,
                                              matchText: match.matchText)
+        // Zusätzlich zum Post als konsumierbaren Zustand hinterlegen: Fällt
+        // die Notification in eine Editor-Neuerzeugung, holt der frisch
+        // eingehängte Editor den Sprung aus `pendingEditorJump` nach.
+        workspace.pendingEditorJump = PendingEditorJump(
+            documentID: workspace.activeTab?.documentID,
+            startLine: match.line, startColumn: match.column,
+            endLine: end.line, endColumn: end.column,
+            range: match.range)
         // `object` adressiert genau EIN Dokumentfenster. Ohne diese Zuordnung
         // würden bei mehreren offenen Workspaces alle EditorView-Instanzen
         // denselben Treffer-Sprung verarbeiten.

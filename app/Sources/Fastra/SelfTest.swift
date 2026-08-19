@@ -6407,10 +6407,13 @@ enum SelfTest {
                 }
 
                 // Sprung exakt wie GUI: Zeile/Spalte-Pfad über postMatchJump.
+                // Die Selektionsprüfung löst die Editor-View pro Tick neu auf
+                // (siehe pollForSelection) — `tv` hier nicht weiterreichen.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     NotificationCenter.default.postMatchJump(match, for: ws)
-                    pollForSelection(tv, expected: match.matchText, line: match.line,
-                                     column: match.column, label: label, onPass: onPass)
+                    pollForSelection(in: root, expected: match.matchText,
+                                     expectedContent: content,
+                                     label: label, onPass: onPass)
                 }
             }
         }
@@ -10833,10 +10836,38 @@ enum SelfTest {
     /// gültige Selektion da ist → `onPass()` bei Gleichheit, sonst FAIL mit
     /// dem daneben-selektierten Text. Bleibt über das ganze Beobachtungs-
     /// fenster GAR keine Selektion → FAIL (Sprung wirkte nicht).
-    private static func pollForSelection(_ tv: TextView, expected: String,
-                                         line: Int, column: Int, label: String,
+    ///
+    /// Die Editor-View wird bewusst in JEDEM Tick neu aus der Hierarchie
+    /// aufgelöst statt einmal eingefangen: Unter Gesamtlauf-Last kann der
+    /// Editor nach der Bereitschaftsprüfung erneut eingehängt werden — der
+    /// Sprung selektiert dann in der NEUEN View, während eine eingefangene
+    /// alte View für immer `NSNotFound` meldet (dieselbe Fallenklasse wie
+    /// „ein weggescrollter Tab behält seine NSView"; so ausgelöst am
+    /// 2026-08-19 als jump-FAIL nur im weemac-Gesamtlauf, standalone 3/3
+    /// grün). Ticks zählen nur wirklich bediente Durchläufe — Fremdlast
+    /// verbraucht das Fenster nicht.
+    private static func pollForSelection(in root: NSView, expected: String,
+                                         expectedContent: String,
+                                         label: String,
                                          onPass: @escaping () -> Void, tick: Int = 0) {
-        let maxTicks = 50            // 50 × 30 ms ≈ 1,5 s Beobachtungsfenster
+        let maxTicks = 100           // 100 × 30 ms ≈ 3 s bediente Beobachtung
+        let next = {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+                pollForSelection(in: root, expected: expected,
+                                 expectedContent: expectedContent,
+                                 label: label, onPass: onPass, tick: tick + 1)
+            }
+        }
+        guard let tv = editorTextView(in: root) as? TextView,
+              tv.string == expectedContent else {
+            // Editor gerade (wieder) im Umbau — weiter beobachten.
+            if tick >= maxTicks {
+                finish(false, "(\(label)) Editor mit erwartetem Inhalt blieb über "
+                    + "\(maxTicks) Ticks verschwunden")
+            }
+            next()
+            return
+        }
         let editorText = tv.string as NSString
         let sel = tv.selectedRange()
         if sel.location != NSNotFound, sel.length > 0, NSMaxRange(sel) <= editorText.length {
@@ -10852,10 +10883,7 @@ enum SelfTest {
         if tick >= maxTicks {
             finish(false, "(\(label)) Sprung setzte über \(maxTicks) Ticks keine Selektion (selectedRange=\(sel))")
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollForSelection(tv, expected: expected, line: line, column: column,
-                             label: label, onPass: onPass, tick: tick + 1)
-        }
+        next()
     }
 
     // MARK: - -selftest scrolljump

@@ -248,6 +248,12 @@ struct ContentView: View {
         }
         let text = workspace.activeTabContent.wrappedValue
         let range = BufferSearch.nsRange(forLine: line, column: col, in: text)
+        // Wie postMatchJump: zusätzlich konsumierbar hinterlegen, damit ein
+        // gerade neu erzeugter Editor den Sprung nicht verliert.
+        workspace.pendingEditorJump = PendingEditorJump(
+            documentID: workspace.activeTab?.documentID,
+            startLine: nil, startColumn: nil, endLine: nil, endColumn: nil,
+            range: range)
         NotificationCenter.default.post(name: .fastraJumpToRange,
                                         object: workspace,
                                         userInfo: ["range": NSValue(range: range)])
