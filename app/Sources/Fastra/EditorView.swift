@@ -255,6 +255,10 @@ struct EditorView: View {
                 currentOffset: liveOffset ?? editorState.scrollPosition,
                 to: newTabID
             )
+            EditorView.scrollRestoreDebug("switchTab gemerkt="
+                + "\(Int((liveOffset ?? editorState.scrollPosition ?? .zero).y)) "
+                + "live=\(liveOffset != nil) "
+                + "restore=\(pendingScrollRestore.map { Int($0.y) }.map(String.init) ?? "nil")")
             cursorMemoryTabID = newTabID
             selectionAnchor = nil
             editorState.cursorPositions = restoredRanges.map {
@@ -750,7 +754,11 @@ struct EditorView: View {
         // „Einfügemarke sichtbar machen" die Cursorzeile beim Zurückwechseln in
         // die oberste Bildschirmzeile.
         .onAppear {
-            guard let target = pendingScrollRestore else { return }
+            guard let target = pendingScrollRestore else {
+                EditorView.scrollRestoreDebug("onAppear ohne Restore-Ziel")
+                return
+            }
+            EditorView.scrollRestoreDebug("onAppear startet Restore auf y=\(Int(target.y))")
             EditorView.restoreScrollOffset(target, in: workspace) {
                 pendingScrollRestore = nil
             }
@@ -1021,22 +1029,48 @@ struct EditorView: View {
         // Cursor aber weiter unten, würde CESEs „Einfügemarke sichtbar machen"
         // sonst nach unten scrollen.
         DispatchQueue.main.asyncAfter(deadline: .now() + (attempt == 0 ? 0.05 : 0.03)) {
-            guard generation == workspace.scrollRestoreGeneration else { completion(); return }
+            guard generation == workspace.scrollRestoreGeneration else {
+                scrollRestoreDebug("attempt=\(attempt) abgebrochen: Generation überholt")
+                completion(); return
+            }
             guard let root = editorWindow(for: workspace)?.contentView,
                   let textView = firstEditorTextView(in: root) as? CodeEditTextView.TextView,
                   let scrollView = textView.enclosingScrollView else {
+                scrollRestoreDebug("attempt=\(attempt) abgebrochen: "
+                    + "window=\(editorWindow(for: workspace) != nil) "
+                    + "textView=\(editorWindow(for: workspace)?.contentView.flatMap { firstEditorTextView(in: $0) } != nil)")
                 completion()
                 return
             }
             // Auslegen anstoßen, damit die Dokumenthöhe zum Ziel aufwächst.
             textView.layoutManager.layoutLines()
-            scrollView.contentView.scroll(to: CGPoint(x: offset.x, y: offset.y))
+            // NSClipView begrenzt ein programmatisches Scrollziel NICHT selbst:
+            // Ein Ziel jenseits der (direkt nach dem Mount noch zu kleinen)
+            // Dokumenthöhe wird scheinbar übernommen — der Rücklese-Wert zeigt
+            // das volle Ziel —, und erst das nächste AppKit-Layout schnappt
+            // auf den gültigen Bereich zurück, also an den Dokumentanfang.
+            // Genau so verlor der Gesamtlauf unter Last den Ausschnitt
+            // (tabscroll-Flaky, belegt 2026-08-19: „ist=5235" bei nur 533 pt
+            // Dokumenthöhe, danach y=0). Deshalb selbst aufs Erreichbare
+            // begrenzen und Erfolg nur melden, wenn das Ziel wirklich im
+            // schon ausgelegten Dokument liegt.
+            let clipHeight = scrollView.contentView.bounds.height
+            let documentHeight = scrollView.documentView?.frame.height
+                ?? textView.frame.height
+            let reachableMax = max(0, documentHeight - clipHeight)
+            scrollView.contentView.scroll(
+                to: CGPoint(x: offset.x, y: min(offset.y, reachableMax))
+            )
             scrollView.reflectScrolledClipView(scrollView.contentView)
-            let reached = abs(scrollView.contentView.bounds.origin.y - offset.y) < 1
-            // Höchstens fünf Nachzieh-Versuche: erreicht, oder das Dokument ist
+            let reached = offset.y <= reachableMax + 1
+                && abs(scrollView.contentView.bounds.origin.y - offset.y) < 1
+            scrollRestoreDebug("attempt=\(attempt) ziel=\(Int(offset.y)) "
+                + "ist=\(Int(scrollView.contentView.bounds.origin.y)) "
+                + "dokHöhe=\(Int(documentHeight)) reached=\(reached)")
+            // Begrenzte Nachzieh-Versuche: erreicht, oder das Dokument ist
             // schlicht kürzer als der gemerkte Ausschnitt (Datei extern
             // gekürzt) — dann bleibt es beim erreichbaren Maximum.
-            if reached || attempt >= 5 {
+            if reached || attempt >= 9 {
                 textView.needsDisplay = true
                 completion()
                 return
@@ -1044,6 +1078,16 @@ struct EditorView: View {
             restoreScrollOffset(offset, in: workspace, attempt: attempt + 1,
                                 completion: completion)
         }
+    }
+
+    /// Diagnose für die Ausschnitt-Wiederherstellung (Untersuchung des
+    /// tabscroll-Flakys). Nur mit gesetzter Umgebungsvariable
+    /// `FASTRA_SCROLLRESTORE_DEBUG=1` aktiv, sonst stumm; die `@autoclosure`
+    /// sorgt dafür, dass der Meldungstext im Normalbetrieb nie gebaut wird.
+    static func scrollRestoreDebug(_ message: @autoclosure () -> String) {
+        guard ProcessInfo.processInfo.environment["FASTRA_SCROLLRESTORE_DEBUG"] == "1"
+        else { return }
+        FileHandle.standardError.write(Data("SCROLLRESTORE \(message())\n".utf8))
     }
 
     /// Das Dokumentfenster dieses Workspace (ohne die schwebende Suchmaske).

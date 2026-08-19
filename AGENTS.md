@@ -529,6 +529,19 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   `tool4d_v21_nightly_2026-08-05.app`, nicht `tool4d.app`. Passende
   Namensvarianten miterkennen und bei mehreren Funden anhand der Bundle-Version
   deterministisch die höchste wählen (siehe `Tool4DDiscovery.locate`).
+- **`NSClipView.scroll(to:)` begrenzt das Ziel nicht — der Rücklese-Wert kann
+  lügen.** Ein programmatisches Scrollziel jenseits der aktuellen Dokumenthöhe
+  wird scheinbar übernommen (`bounds.origin` zeigt das volle Ziel), und erst
+  das nächste AppKit-Layout schnappt auf den gültigen Bereich zurück — bei
+  einem frisch montierten Editor also an den Dokumentanfang. Eine
+  Erfolgsprüfung, die nur den zurückgelesenen Ursprung vergleicht, beendet
+  ihre Nachzieh-Schleife dann zu früh; unter Last verlor so der
+  Tab-Rückwechsel den gemerkten Ausschnitt (tabscroll nur im Gesamtlauf rot,
+  isoliert grün — belegt 2026-08-19: „ist=5235" bei 533 pt Dokumenthöhe,
+  danach y=0). Erfolg nur melden, wenn das Ziel im schon ausgelegten Dokument
+  liegt, und das Ziel selbst aufs Erreichbare begrenzen (siehe
+  `EditorView.restoreScrollOffset`; Diagnose per
+  `FASTRA_SCROLLRESTORE_DEBUG=1`).
 
 ## Verhaltensevals
 

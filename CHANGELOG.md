@@ -9,6 +9,28 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.106.0] — 2026-08-19
+
+Übernahme des Scroll-Fixes aus der parallelen Linie (dort als 1.103.1/196
+vorbereitet; diese Nummern blieben unveröffentlicht und werden hier durch
+1.106.0/199 ersetzt, weil main inzwischen bei 1.105.0 stand).
+
+### Behoben
+
+- **Tab-Rückwechsel verliert die Scrollposition nicht mehr unter Last.** Die
+  Wiederherstellung des gemerkten Ausschnitts meldete unter hoher Systemlast
+  fälschlich Erfolg: `NSClipView` begrenzt ein programmatisches Scrollziel
+  nicht selbst, der Rücklese-Wert zeigte deshalb kurz das volle Ziel, obwohl
+  das frisch montierte Dokument erst wenige hundert Punkte hoch ausgelegt war
+  — das nächste AppKit-Layout schnappte dann an den Dokumentanfang zurück
+  (belegt im Selbsttest-Gesamtlauf: „ist=5235" bei 533 pt Dokumenthöhe,
+  danach y=0). Die Wiederherstellung begrenzt ihr Ziel jetzt selbst aufs
+  aktuell Erreichbare, meldet Erfolg nur, wenn das Ziel wirklich im
+  ausgelegten Dokument liegt, und zieht sonst nach, bis die Dokumenthöhe
+  aufgewachsen ist. Für künftige Diagnosen protokolliert der Pfad mit
+  `FASTRA_SCROLLRESTORE_DEBUG=1` seine Schritte auf stderr; damit war der
+  zuvor nur im Gesamtlauf auftretende `tabscroll`-Fehlschlag eingrenzbar.
+
 ## [v1.105.0] — 2026-08-19
 
 4D-Methodeneditor-Makros in Fastra (ROADMAP-Idee #28, Prompt vom 2026-08-19).
@@ -84,7 +106,6 @@ Testläufe wartet.
   bisher ihre echte Git-Meldung als Dialog. Jeder Push-Ablauf trägt dafür
   einen Begleit-Token (`GitPushFlowToken`), der auch auf jedem Abbruch- oder
   Fehlerpfad die Laufanzeige zuverlässig zurücknimmt.
-
 ## [v1.103.0] — 2026-08-19
 
 Abarbeitung des Nacht-Code-Reviews vom 2026-08-19 (13 Funde, alle bestätigt):
