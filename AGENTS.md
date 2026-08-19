@@ -519,6 +519,16 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   (`PrintTextFit`). Für Quelltext gilt das ausdrücklich NICHT — dort ist die
   Zeilenlänge beliebig, und Schrumpfen bis zur Unlesbarkeit wäre schlechter als
   ein Umbruch.
+- **`components(separatedBy: .newlines)` behandelt CRLF als zwei Trennzeichen.**
+  Jede Windows-Zeile erzeugt dadurch eine erfundene Leerzeile. Logische Zeilen
+  deshalb mit einer Zerlegung bilden, die `\r\n` als eine Einheit behandelt und
+  den Endumbruch bewusst erhält (CRLF-Fixes in Diff und Suchvorschau,
+  2026-08-15).
+- **Eine Werkzeugsuche in den Programme-Ordnern darf nicht nur den exakten
+  Bundle-Namen erwarten.** Ein echtes Tool4D-Nightly heißt
+  `tool4d_v21_nightly_2026-08-05.app`, nicht `tool4d.app`. Passende
+  Namensvarianten miterkennen und bei mehreren Funden anhand der Bundle-Version
+  deterministisch die höchste wählen (siehe `Tool4DDiscovery.locate`).
 
 ## Verhaltensevals
 
