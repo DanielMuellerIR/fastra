@@ -368,18 +368,38 @@ struct GitChangesView: View {
         .padding(10)
     }
 
-    /// Die gesamte Karte ist klickbar. Bei zwei Remotes liegen die Karten in
-    /// einer normalen Seitenleistenbreite nebeneinander; weitere Ziele brechen
-    /// automatisch in die nächste Zeile um, statt unlesbar schmal zu werden.
+    /// Die gesamte Karte ist klickbar (`contentShape` — mit `.plain`-Buttons
+    /// wäre sonst nur der gemalte Text die Trefferfläche, Daniel 2026-08-19).
+    /// Bei zwei Remotes liegen die Karten in einer normalen
+    /// Seitenleistenbreite nebeneinander; weitere Ziele brechen automatisch
+    /// in die nächste Zeile um, statt unlesbar schmal zu werden.
     private func pushTargetButton(_ target: GitPushTarget) -> some View {
-        Button {
+        let phase = workspace.gitPushFeedback[target.remote]
+        return Button {
             workspace.gitPush(to: target)
         } label: {
             VStack(alignment: .leading, spacing: 3) {
-                Label(L10n.format("Push zu %@", target.remote),
-                      systemImage: "arrow.up")
-                    .fastraFont(.small)
-                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    // Laufender Push: drehender Kreis. Erfolg: zwei Sekunden
+                    // ein Häkchen. Sonst der normale Push-Pfeil.
+                    switch phase {
+                    case .running:
+                        ProgressView()
+                            .controlSize(.small)
+                            .scaleEffect(0.7)
+                            .frame(width: 14, height: 14)
+                    case .succeeded:
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(Theme.diffAddedFG)
+                            .frame(width: 14, height: 14)
+                    case nil:
+                        Image(systemName: "arrow.up")
+                            .frame(width: 14, height: 14)
+                    }
+                    Text(L10n.format("Push zu %@", target.remote))
+                        .fastraFont(.small)
+                        .lineLimit(1)
+                }
                 Text(target.displayAddress)
                     .fastraFont(size: 9, design: .monospaced)
                     .foregroundColor(Theme.textSecondary)
@@ -396,6 +416,7 @@ struct GitChangesView: View {
             .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
             .padding(.horizontal, 7)
             .padding(.vertical, 5)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundColor(Theme.accentReadable)
@@ -406,11 +427,24 @@ struct GitChangesView: View {
         .background {
             SelfTestMarker(id: "gitPrimaryPush-\(target.remote)")
         }
-        .disabled(workspace.gitOperationsAreBusy)
-        .help(L10n.format("Lokale Commits ausdrücklich zu %@ übertragen: %@",
-                          target.remote, target.displayAddress))
+        .background {
+            // Macht die sichtbare Phase für Fenster-Selbsttests beobachtbar.
+            if let phase {
+                SelfTestMarker(id: "gitPushPhase-\(target.remote)-"
+                    + (phase == .running ? "running" : "succeeded"))
+            }
+        }
+        .disabled(workspace.gitOperationsAreBusy || phase == .running)
+        .help(phase == .running
+              ? L10n.format("Push zu %@ läuft …", target.remote)
+              : L10n.format("Lokale Commits ausdrücklich zu %@ übertragen: %@",
+                            target.remote, target.displayAddress))
         .accessibilityLabel(L10n.format("Push zu %@, Ziel %@",
                                         target.remote, target.displayAddress))
+        .accessibilityValue(phase == .running
+                            ? L10n.string("Push läuft")
+                            : phase == .succeeded
+                            ? L10n.string("Push erfolgreich") : "")
     }
 
     private func primaryButton(title: String, systemImage: String,

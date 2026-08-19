@@ -10,6 +10,62 @@ struct GitActionFeedback: Identifiable, Equatable {
     }
 }
 
+/// Phase der sichtbaren Push-Rückmeldung einer Remote-Karte in der
+/// Änderungen-Ansicht.
+enum GitPushFeedbackPhase: Equatable {
+    case running
+    case succeeded
+}
+
+/// Begleitet genau EINEN Push-Ablauf von der angeklickten Karte bis zu seinem
+/// Ende. Jede asynchrone Fortsetzung der Push-Kette hält diesen Token fest.
+/// Erfolg meldet die Kette ausdrücklich über `succeed()`; endet der Ablauf
+/// irgendwo anders (Fehlerdialog, verworfene Vorschau, veralteter Kontext,
+/// Abbruch), wird der Token einfach freigegeben und räumt die laufende
+/// Anzeige in `deinit` selbst auf. So kann kein vergessener Fehlerzweig den
+/// Kreis-Indikator dauerhaft drehen lassen.
+final class GitPushFlowToken {
+    private weak var workspace: Workspace?
+    private let remote: String
+    private let generation: UUID
+    private let lock = NSLock()
+    private var completed = false
+
+    init(workspace: Workspace, remote: String, generation: UUID) {
+        self.workspace = workspace
+        self.remote = remote
+        self.generation = generation
+    }
+
+    /// Meldet den erfolgreich abgeschlossenen Push (zeigt das Häkchen).
+    func succeed() {
+        lock.lock()
+        let isFirstCompletion = !completed
+        completed = true
+        lock.unlock()
+        guard isFirstCompletion else { return }
+        notify(success: true)
+    }
+
+    private func notify(success: Bool) {
+        // Lokale Kopien, damit der Main-Block kein `self` braucht — `notify`
+        // läuft auch aus `deinit`, wo `self` nicht mehr festgehalten werden darf.
+        let workspace = workspace
+        let remote = remote
+        let generation = generation
+        DispatchQueue.main.async {
+            workspace?.finishPushFeedback(remote: remote, generation: generation,
+                                          success: success)
+        }
+    }
+
+    deinit {
+        // `deinit` läuft exklusiv; `completed` braucht hier kein Lock mehr.
+        guard !completed else { return }
+        notify(success: false)
+    }
+}
+
 struct GitActionContext: Equatable {
     let root: URL
     let repositoryKey: String
@@ -436,6 +492,38 @@ extension Workspace {
         }
     }
 
+    // MARK: Push-Rückmeldung der Remote-Karten
+
+    /// Startet die sichtbare Laufanzeige eines Push-Ablaufs für dieses Remote.
+    /// Der zurückgegebene Token wandert durch alle Fortsetzungen der Kette;
+    /// siehe `GitPushFlowToken`.
+    func beginPushFeedback(remote: String) -> GitPushFlowToken {
+        let generation = UUID()
+        gitPushFeedbackGenerations[remote] = generation
+        gitPushFeedback[remote] = .running
+        return GitPushFlowToken(workspace: self, remote: remote,
+                                generation: generation)
+    }
+
+    /// Beendet die Laufanzeige eines Ablaufs. Erfolg zeigt zwei Sekunden lang
+    /// das Häkchen; jedes andere Ende stellt die Karte sofort zurück (die
+    /// eigentliche Fehlermeldung zeigt der jeweilige Dialog).
+    func finishPushFeedback(remote: String, generation: UUID, success: Bool) {
+        guard gitPushFeedbackGenerations[remote] == generation else { return }
+        guard success else {
+            gitPushFeedbackGenerations[remote] = nil
+            gitPushFeedback[remote] = nil
+            return
+        }
+        gitPushFeedback[remote] = .succeeded
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            guard let self,
+                  self.gitPushFeedbackGenerations[remote] == generation else { return }
+            self.gitPushFeedbackGenerations[remote] = nil
+            self.gitPushFeedback[remote] = nil
+        }
+    }
+
     /// Lokale Commits explizit zum ersten konfigurierten Remote hochladen.
     /// Andere Git-Defaults (`origin`, `remote.pushDefault`, `push.default`)
     /// dürfen das sichtbare Ziel niemals still ersetzen.
@@ -447,7 +535,9 @@ extension Workspace {
                 self.presentMissingPushTarget(failure)
                 return
             }
-            self.performGitPush(to: target, context: context)
+            guard self.gitPushFeedback[target.remote] != .running else { return }
+            let feedback = self.beginPushFeedback(remote: target.remote)
+            self.performGitPush(to: target, context: context, feedback: feedback)
         }
     }
 
@@ -456,6 +546,10 @@ extension Workspace {
     /// bricht ab, statt unbemerkt an eine andere Adresse zu senden.
     func gitPush(to expectedTarget: GitPushTarget) {
         guard let context = currentGitActionContext, GitRunner.isAvailable else { return }
+        // Läuft für dieses Remote bereits ein Push, startet ein zweiter Klick
+        // keinen weiteren Ablauf (die Karte ist dann ohnehin deaktiviert).
+        guard gitPushFeedback[expectedTarget.remote] != .running else { return }
+        let feedback = beginPushFeedback(remote: expectedTarget.remote)
         resolveGitPushTarget(remote: expectedTarget.remote,
                              context: context) { [weak self] currentTarget, failure in
             guard let self else { return }
@@ -476,12 +570,14 @@ extension Workspace {
                 )
                 return
             }
-            self.performGitPush(to: currentTarget, context: context)
+            self.performGitPush(to: currentTarget, context: context,
+                                feedback: feedback)
         }
     }
 
     private func performGitPush(to target: GitPushTarget,
-                                context: GitActionContext) {
+                                context: GitActionContext,
+                                feedback: GitPushFlowToken?) {
         // Zuerst den aktuellen Branch bestimmen: Der Push nennt sein Ziel
         // unten als EXPLIZITEN Refspec. `git push <remote> HEAD` überließe
         // die Zielwahl der HEAD-Auflösung — ein Detached HEAD soll aber
@@ -503,13 +599,15 @@ extension Workspace {
                         "Kein aktiver Branch (Detached HEAD) — es ist unklar, wohin der Push gehen soll. Erst einen Branch auschecken."))
                     return
                 }
-                self.performGitPush(to: target, branch: branch, context: context)
+                self.performGitPush(to: target, branch: branch, context: context,
+                                    feedback: feedback)
             }
         }
     }
 
     private func performGitPush(to target: GitPushTarget, branch: String,
-                                context: GitActionContext) {
+                                context: GitActionContext,
+                                feedback: GitPushFlowToken?) {
         // Das Ziel unmittelbar vor der Netzwerkaktion noch einmal aus Git
         // lesen. Upstream-Konfiguration und OIDs werden anschließend als ein
         // gemeinsamer Plan aufgelöst und vor dem Push nochmals neu gelesen.
@@ -524,7 +622,7 @@ extension Workspace {
                 return
             }
             self.preparePushPreview(target: current, branch: branch,
-                                    context: context)
+                                    context: context, feedback: feedback)
         }
     }
 
@@ -535,7 +633,8 @@ extension Workspace {
     private func preparePushPreview(
         target: GitPushTarget,
         branch: String,
-        context: GitActionContext
+        context: GitActionContext,
+        feedback: GitPushFlowToken?
     ) {
         validatePushTargetBinding(target, context: context) { [weak self] in
             guard let self else { return }
@@ -544,7 +643,8 @@ extension Workspace {
                 expectedBranch: branch,
                 context: context,
                 completion: { [weak self] plan in
-                    self?.presentPushPlan(plan, context: context)
+                    self?.presentPushPlan(plan, context: context,
+                                          feedback: feedback)
                 }
             )
         }
@@ -776,7 +876,8 @@ extension Workspace {
     }
 
     private func presentPushPlan(_ plan: GitPushPlan,
-                                 context: GitActionContext) {
+                                 context: GitActionContext,
+                                 feedback: GitPushFlowToken?) {
         guard plan.hasChangesToPush else {
             Self.presentGitErrorText(
                 label: "Push",
@@ -795,17 +896,19 @@ extension Workspace {
                 return
             }
             if gitMutationConfirmationHandler(plan.confirmation) {
-                prepareBoundForcePush(plan, context: context)
+                prepareBoundForcePush(plan, context: context, feedback: feedback)
             }
             return
         }
         guard gitMutationConfirmationHandler(plan.confirmation) else { return }
-        revalidatePushPlan(plan, context: context, force: false)
+        revalidatePushPlan(plan, context: context, force: false,
+                           feedback: feedback)
     }
 
     private func revalidatePushPlan(_ plan: GitPushPlan,
                                     context: GitActionContext,
-                                    force: Bool) {
+                                    force: Bool,
+                                    feedback: GitPushFlowToken?) {
         resolveGitPushTarget(remote: plan.target.remote,
                              context: context) { [weak self] current, _ in
             guard let self else { return }
@@ -835,7 +938,8 @@ extension Workspace {
                         )
                         return
                     }
-                    self.startVerifiedPush(plan, context: context, force: force)
+                    self.startVerifiedPush(plan, context: context, force: force,
+                                           feedback: feedback)
                 }
             }
         }
@@ -845,7 +949,8 @@ extension Workspace {
     /// Force-Bestätigung werden Adresse, Quell-Commit und echte Remote-OID erneut
     /// über die gebundene Push-Adresse gelesen.
     private func prepareBoundForcePush(_ previousPlan: GitPushPlan,
-                                       context: GitActionContext) {
+                                       context: GitActionContext,
+                                       feedback: GitPushFlowToken?) {
         resolveGitPushTarget(remote: previousPlan.target.remote,
                              context: context) { [weak self] current, _ in
             guard let self else { return }
@@ -872,7 +977,8 @@ extension Workspace {
                     guard !plan.canFastForward else {
                         // Die erneute Inspektion kann eine inzwischen behobene
                         // Divergenz zeigen. Dann gilt wieder der normale Pfad.
-                        self.presentPushPlan(plan, context: context)
+                        self.presentPushPlan(plan, context: context,
+                                             feedback: feedback)
                         return
                     }
                     let confirmation = GitMutationConfirmation(
@@ -889,7 +995,8 @@ extension Workspace {
                         isDestructive: true
                     )
                     guard self.gitMutationConfirmationHandler(confirmation) else { return }
-                    self.revalidatePushPlan(plan, context: context, force: true)
+                    self.revalidatePushPlan(plan, context: context, force: true,
+                                            feedback: feedback)
                 }
             }
         }
@@ -901,7 +1008,8 @@ extension Workspace {
     /// Zielbindung.
     private func startVerifiedPush(_ plan: GitPushPlan,
                                    context: GitActionContext,
-                                   force: Bool) {
+                                   force: Bool,
+                                   feedback: GitPushFlowToken?) {
         let target = plan.target
         guard let address = GitPushCommand.verifiedAddress(of: target) else {
             Self.presentGitErrorText(
@@ -939,6 +1047,7 @@ extension Workspace {
                     // Upstream-Konfiguration. So bleiben mehrere Ziele
                     // gleichwertig und ein anderes Werkzeug kann die lokale
                     // Tracking-Entscheidung nicht während des Pushs verlieren.
+                    feedback?.succeed()
                     self.recordGitSuccess(L10n.format(
                         "Push zu %@ erfolgreich", target.remote))
                     self.refreshGitRepositoryFully()
@@ -954,7 +1063,7 @@ extension Workspace {
                     failureHandler: { [weak self] result in
                         self?.handleRejectedPush(
                             result, plan: plan, context: context,
-                            alreadyForced: force
+                            alreadyForced: force, feedback: feedback
                         ) ?? false
                     },
                     then: finish)
@@ -969,7 +1078,8 @@ extension Workspace {
     private func handleRejectedPush(_ result: GitResult,
                                     plan: GitPushPlan,
                                     context: GitActionContext,
-                                    alreadyForced: Bool) -> Bool {
+                                    alreadyForced: Bool,
+                                    feedback: GitPushFlowToken?) -> Bool {
         let leaseChanged = GitPushFailureClassification.isLeaseStale(result)
         guard leaseChanged
                 || GitPushFailureClassification.isNonFastForward(result) else {
@@ -999,7 +1109,7 @@ extension Workspace {
             isDestructive: true
         )
         if gitMutationConfirmationHandler(confirmation) {
-            prepareBoundForcePush(plan, context: context)
+            prepareBoundForcePush(plan, context: context, feedback: feedback)
         }
         return true
     }

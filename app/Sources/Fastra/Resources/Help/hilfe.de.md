@@ -722,7 +722,10 @@ Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**:
   committen. Nach einem lokalen Commit wird der Commit-Knopf zum Push-Knopf:
   Jeder lokal konfigurierte Remote erhält eine eigene vollständig klickbare
   Fläche mit Name und effektiver Push-Adresse; zwei Ziele stehen bei normaler
-  Breite nebeneinander. Fastra pusht ausdrücklich nur zu dem angeklickten Ziel;
+  Breite nebeneinander. Während der Push läuft, dreht in der Karte ein
+  Kreis-Indikator; nach dem Erfolg zeigt sie zwei Sekunden lang ein grünes
+  Häkchen, Fehler erscheinen als Dialog mit der echten Git-Meldung.
+  Fastra pusht ausdrücklich nur zu dem angeklickten Ziel;
   die Upstream-Konfiguration bleibt dabei immer unverändert — auch wenn der
   Branch noch keinen Upstream besitzt. Push und Pull laufen asynchron. Vor dem
   Push holt Fastra den Remote-Stand und zeigt

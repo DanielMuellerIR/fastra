@@ -560,6 +560,14 @@ final class Workspace: ObservableObject {
     @Published var gitBranches: [GitBranch] = []
     /// Kurzlebige, nicht-modale Rückmeldung erfolgreicher Git-Aktionen.
     @Published var gitFeedback: GitActionFeedback?
+    /// Sichtbare Push-Phase je Remote für die Karten der Änderungen-Ansicht:
+    /// `running` zeigt den drehenden Kreis, `succeeded` für zwei Sekunden das
+    /// Häkchen. Kein Eintrag = Karte im Normalzustand.
+    @Published var gitPushFeedback: [String: GitPushFeedbackPhase] = [:]
+    /// Generation je Remote: Ein älterer, noch auslaufender Push-Ablauf darf
+    /// die Anzeige eines neueren nicht mehr verändern (gleiches Muster wie
+    /// die ID in `GitActionFeedback`).
+    var gitPushFeedbackGenerations: [String: UUID] = [:]
     /// Sicher über `git rev-parse --git-path …` erkannter laufender Vorgang.
     /// Der Wert ist nur eine UI-Hilfe; jede Mutation prüft ihn im exklusiven
     /// Repository-Slot unmittelbar vor der Ausführung erneut.
@@ -3490,6 +3498,8 @@ final class Workspace: ObservableObject {
         gitBranches = []
         gitLog = []
         gitFeedback = nil
+        gitPushFeedback = [:]
+        gitPushFeedbackGenerations = [:]
         gitOperationState = nil
         gitIdentity = nil
         gitConflictInspections = [:]
@@ -3598,6 +3608,8 @@ final class Workspace: ObservableObject {
         gitLog = []
         gitBranches = []
         gitFeedback = nil
+        gitPushFeedback = [:]
+        gitPushFeedbackGenerations = [:]
         gitOperationState = nil
         gitIdentity = nil
         gitConflictInspections = [:]

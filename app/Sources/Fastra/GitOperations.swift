@@ -375,9 +375,24 @@ final class GitOperationsCoordinator {
     /// nach erfolgreichem `rev-parse --git-common-dir` eingetragen; Fehler
     /// lassen bewusst den bisherigen Root-Key stehen.
     private var repositoryAliases: [String: String] = [:]
+    /// Wird gerufen, sobald die Warteschlange eines Repositorys leerläuft.
+    /// Der GitRepositoryStore publiziert darüber den frischen (jetzt
+    /// untätigen) Operations-Zustand. Ohne diese Meldung bliebe ein zuletzt
+    /// als „beschäftigt" publizierter Snapshot eingefroren — die Push- und
+    /// Git-Knöpfe der Seitenleiste blieben dann deaktiviert, bis irgendein
+    /// späterer Refresh zufällig neu publiziert (Daniel, 2026-08-19).
+    private var queueDrainObserver: ((URL) -> Void)?
 
     init(executor: GitCommandExecuting) {
         self.executor = executor
+    }
+
+    /// Genau ein Beobachter (der zugehörige Store); ein späterer Aufruf
+    /// ersetzt den früheren bewusst — pro Coordinator gibt es einen Store.
+    func setQueueDrainObserver(_ observer: @escaping (URL) -> Void) {
+        lock.lock()
+        queueDrainObserver = observer
+        lock.unlock()
     }
 
     func register(_ identity: GitRepositoryIdentity) {
@@ -579,6 +594,16 @@ final class GitOperationsCoordinator {
 
         completions.forEach { $0(outcome) }
         if let next { start(next, repositoryKey: repositoryKey) }
+        // Drain erst NACH den Completions prüfen: Eine Completion darf
+        // synchron Folgearbeit einreihen (z. B. den Full-Refresh nach einem
+        // Push). Die Warteschlange ist dann gar nicht leergelaufen, und eine
+        // vorschnelle Meldung publizierte ein Zwischenbild mit veraltetem
+        // Repository-Inhalt.
+        lock.lock()
+        let drainObserver = (queues[repositoryKey]?.isEmpty ?? true)
+            ? queueDrainObserver : nil
+        lock.unlock()
+        drainObserver?(pending.repository)
     }
 }
 
@@ -667,6 +692,12 @@ final class GitRepositoryStore {
     init(executor: GitCommandExecuting, coordinator: GitOperationsCoordinator) {
         self.executor = executor
         self.coordinator = coordinator
+        // Leergelaufene Coordinator-Warteschlange → Operations-Zustand neu
+        // publizieren. `publishOperations` tut ohne vorhandenen Snapshot
+        // nichts; ein unbekanntes Repository ist hier also harmlos.
+        coordinator.setQueueDrainObserver { [weak self] repository in
+            self?.publishOperations(for: repository)
+        }
     }
 
     func observe(repository: URL,
@@ -709,15 +740,23 @@ final class GitRepositoryStore {
 
     func publishOperations(for repository: URL) {
         let path = GitOperationRequest.canonicalRepositoryPath(repository)
+        // Zustand VOR dem Store-Lock lesen: `state(for:)` nimmt den
+        // Coordinator-Lock, und eine feste Lock-Reihenfolge (erst Coordinator,
+        // dann Store) vermeidet jede Verschränkung mit dem Drain-Callback.
+        let operations = coordinator.state(for: repository)
         lock.lock()
         guard let previous = snapshots[path] else { lock.unlock(); return }
+        // Nur publizieren, wenn sich der Operations-Zustand wirklich ändert.
+        // Sonst erzeugte jede Drain-Meldung nach einem ohnehin frisch
+        // publizierten Batch einen zweiten, inhaltsgleichen Snapshot.
+        guard previous.operations != operations else { lock.unlock(); return }
         let snapshot = GitRepositorySnapshot(
             repositoryPath: path, status: previous.status,
             upstream: previous.upstream, headOID: previous.headOID,
             branches: previous.branches, graph: previous.graph,
             remoteTracking: previous.remoteTracking,
             operation: previous.operation,
-            fetch: previous.fetch, operations: coordinator.state(for: repository),
+            fetch: previous.fetch, operations: operations,
             revision: previous.revision + 1
         )
         snapshots[path] = snapshot

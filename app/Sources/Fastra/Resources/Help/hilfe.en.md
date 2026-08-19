@@ -685,7 +685,10 @@ additionally shows the **Changes** and **Graph** tabs:
   sidebar. After a local commit, the Commit button becomes a Push button:
   every locally configured remote gets its own fully clickable surface with
   its name and effective push address; two targets sit side by side at regular
-  widths. Fastra explicitly pushes only to the clicked target and always leaves
+  widths. While the push runs, a spinning indicator turns inside the card;
+  after success it shows a green checkmark for two seconds, and errors appear
+  as a dialog with the real Git message.
+  Fastra explicitly pushes only to the clicked target and always leaves
   upstream configuration unchanged, including when the branch has no upstream.
   Push and pull run asynchronously.
   Before pushing, Fastra fetches the remote state and shows the address, target

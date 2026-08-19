@@ -15538,6 +15538,35 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: base)
             finish(false, "Mausklick auf Push zu primary nicht erzeugbar")
         }
+        pollGitPushPhaseIndicator(ws, base: base, repo: repo,
+                                  primary: primary, github: github, tick: 0)
+    }
+
+    /// Nach dem Klick muss die Karte ihre Phase sichtbar machen: erst der
+    /// Kreis-Indikator (`running`), nach dem Abschluss zwei Sekunden das
+    /// Häkchen (`succeeded`). Der Test akzeptiert beide Marker, weil ein
+    /// schneller lokaler Push den `running`-Zustand überholen kann.
+    private static func pollGitPushPhaseIndicator(
+        _ ws: Workspace, base: URL, repo: URL, primary: URL, github: URL, tick: Int
+    ) {
+        let content = mainWindowForAXChecks()?.contentView
+        let phaseVisible = content.map {
+            markerView(id: "gitPushPhase-primary-running", in: $0) != nil
+                || markerView(id: "gitPushPhase-primary-succeeded", in: $0) != nil
+        } ?? false
+        guard phaseVisible else {
+            if tick >= 120 {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Push-Karte zeigte nach dem Klick weder Kreis-"
+                    + "Indikator noch Erfolgs-Häkchen (gitPushPhase-primary-*)")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollGitPushPhaseIndicator(ws, base: base, repo: repo,
+                                          primary: primary, github: github,
+                                          tick: tick + 1)
+            }
+            return
+        }
         pollGitPrimaryPushResult(ws, base: base, repo: repo,
                                  primary: primary, github: github, tick: 0)
     }
@@ -15659,17 +15688,31 @@ enum SelfTest {
                     readGitPushButtonUpstreamConfig(in: repo) {
                         remoteConfig, mergeConfig in
                         DispatchQueue.main.async {
+                            // Nach dem Ende beider Abläufe (das Häkchen steht
+                            // maximal zwei Sekunden) darf keine Karte mehr
+                            // einen Phasen-Marker tragen — die Anzeige muss
+                            // sich selbst zurücknehmen.
+                            let content = mainWindowForAXChecks()?.contentView
+                            let phasesCleared = content.map { view in
+                                ["primary", "github"].allSatisfy { remote in
+                                    markerView(id: "gitPushPhase-\(remote)-running",
+                                               in: view) == nil
+                                        && markerView(id: "gitPushPhase-\(remote)-succeeded",
+                                                      in: view) == nil
+                                }
+                            } ?? false
                             if localResult?.ok == true,
                                localResult?.stdout == primaryResult?.stdout,
                                localResult?.stdout == githubResult?.stdout,
                                gitConfigValueIsAbsent(remoteConfig),
                                gitConfigValueIsAbsent(mergeConfig),
+                               phasesCleared,
                                gitPushButtonConfirmedRemotes == ["primary", "github"] {
                                 try? FileManager.default.removeItem(at: base)
                                 finish(true, "Zwei getrennte Push-Flächen lagen "
                                     + "nebeneinander; echte Klicks pushten nach "
-                                    + "primary und github, der Branch blieb "
-                                    + "ohne Upstream")
+                                    + "primary und github mit sichtbarer Phase, "
+                                    + "der Branch blieb ohne Upstream")
                             }
                             if tick >= 150 {
                                 try? FileManager.default.removeItem(at: base)

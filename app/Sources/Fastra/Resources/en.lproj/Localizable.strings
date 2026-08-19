@@ -400,6 +400,8 @@
 "Lokale Commits ausdrücklich zu %@ übertragen" = "Explicitly push local commits to %@";
 "Lokale Commits ausdrücklich zu %@ übertragen: %@" = "Explicitly push local commits to %@: %@";
 "Push zu %@, Ziel %@" = "Push to %@, target %@";
+"Push zu %@ läuft …" = "Push to %@ is running …";
+"Push läuft" = "Push running";
 "Push zu %@ erfolgreich" = "Push to %@ Succeeded";
 "Das Push-Ziel hat sich seit der Anzeige geändert. Prüfe Remote und Adresse erneut; es wurde nichts übertragen." = "The push target changed after it was displayed. Check the remote and address again; nothing was transferred.";
 "Kein Git-Remote ist in diesem Repository konfiguriert. Es wurde nichts übertragen." = "No Git remote is configured in this repository. Nothing was transferred.";

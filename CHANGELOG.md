@@ -9,6 +9,37 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.104.0] — 2026-08-19
+
+Sichtbare Push-Rückmeldung in der Änderungen-Seitenleiste (Daniel-Wunsch
+2026-08-19). Die Nummern 1.103.1/Build 196 sind bewusst übersprungen: Sie sind
+von der parallel laufenden tabscroll-Fix-Linie belegt, die noch auf ihre
+Testläufe wartet.
+
+### Behoben
+
+- **Push-Karten bleiben nicht mehr dauerhaft grau.** Nach einem Push (und
+  generell nach jeder Git-Aktion) publizierte der letzte Refresh-Durchlauf
+  einen Snapshot, in dem noch nachlaufende Git-Operationen als „beschäftigt"
+  eingefroren waren — danach publizierte niemand mehr, und alle Git-Knöpfe
+  der Seitenleiste blieben deaktiviert, bis ein Wechsel des
+  Seitenleisten-Tabs zufällig einen frischen Snapshot erzwang. Jetzt meldet
+  der Operations-Koordinator das Leerlaufen seiner Warteschlange an den
+  Repository-Store, der daraufhin den untätigen Zustand publiziert
+  (`GitOperationsCoordinator.setQueueDrainObserver`).
+- **Die ganze Push-Karte ist klickbar.** Vorher traf nur der gemalte Text
+  („Push zu …"); der `.plain`-Button hatte keine `contentShape`-Trefferfläche
+  über die volle Kartengröße.
+
+### Neu
+
+- **Push-Karten zeigen ihren Zustand.** Während der Push läuft, dreht in der
+  Karte ein Kreis-Indikator (die Karte ist solange deaktiviert); nach dem
+  Erfolg erscheint für zwei Sekunden ein grünes Häkchen. Fehler zeigen wie
+  bisher ihre echte Git-Meldung als Dialog. Jeder Push-Ablauf trägt dafür
+  einen Begleit-Token (`GitPushFlowToken`), der auch auf jedem Abbruch- oder
+  Fehlerpfad die Laufanzeige zuverlässig zurücknimmt.
+
 ## [v1.103.0] — 2026-08-19
 
 Abarbeitung des Nacht-Code-Reviews vom 2026-08-19 (13 Funde, alle bestätigt):
