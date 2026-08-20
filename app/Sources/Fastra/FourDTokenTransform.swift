@@ -48,6 +48,10 @@ enum FourDTokenTransform {
         for token in tokens.reversed() where token.kind == .command {
             let value = original.substring(with: token.range)
             guard !value.contains(":") else { continue }   // schon tokenisiert
+            // `Date` und `Time` sind zugleich Befehle und Typen. In einer
+            // Deklaration darf aus `var $d : Date` deshalb nie `Date:C102`
+            // werden.
+            guard !isDeclarationType(token, in: original) else { continue }
             guard let number = FourDSymbols
                 .commandDetails[value.lowercased()]?.number else { continue }
             result.insert(":C\(number)", at: NSMaxRange(token.range))
@@ -93,8 +97,7 @@ enum FourDTokenTransform {
     /// Suffixe neuer, noch unbekannter 4D-Symbole. Kommentare, Zeichenketten,
     /// Zahlen und Variablen mit Sigil (`$x`, `<>x`) bleiben außen vor.
     private static let retokenizableKinds: Set<FourDTokenizer.Kind> = [
-        .command, .constant, .methodCall, .projectMethod, .componentMethod,
-        .processVariable,
+        .command, .constant, .methodCall, .processVariable,
     ]
 
     /// Fügt einem untokenisierten Text Token-Suffixe wieder an: zuerst das
@@ -106,19 +109,75 @@ enum FourDTokenTransform {
         let tokens = FourDTokenizer.tokenize(text)
         let original = text as NSString
         let result = NSMutableString(string: text)
+        // Längster Name zuerst: Sind `MyConst` UND `MyConst Extra` gelernt,
+        // gehört das Suffix am gemeinsamen Start dem vollständigen Symbol.
+        var learnedNames: [(name: String, length: Int, suffix: String)] = []
+        for (name, suffix) in learned {
+            learnedNames.append((name, (name as NSString).length, suffix))
+        }
+        learnedNames.sort {
+            $0.length == $1.length ? $0.name < $1.name : $0.length > $1.length
+        }
         for token in tokens.reversed()
         where retokenizableKinds.contains(token.kind) {
             let value = original.substring(with: token.range)
             guard !value.contains(":") else { continue }   // schon tokenisiert
-            if let suffix = learned[value.lowercased()] {
-                result.insert(suffix, at: NSMaxRange(token.range))
+            if let match = learnedMatch(at: token.range.location,
+                                        tokenValue: value,
+                                        in: original,
+                                        candidates: learnedNames) {
+                result.insert(match.suffix,
+                              at: token.range.location + match.length)
             } else if token.kind == .command,
+                      !isDeclarationType(token, in: original),
                       let number = FourDSymbols
                           .commandDetails[value.lowercased()]?.number {
                 result.insert(":C\(number)", at: NSMaxRange(token.range))
             }
         }
         return result as String
+    }
+
+    /// Vollständiger gelernter Name am Tokenanfang. Der Tokenizer kennt einen
+    /// unbekannten mehrwortigen Namen ohne Suffix nur bis zum ersten Wort;
+    /// die gelernte Symbolmenge liefert hier die fehlende Grenze nach.
+    private static func learnedMatch(
+        at location: Int,
+        tokenValue: String,
+        in text: NSString,
+        candidates: [(name: String, length: Int, suffix: String)]
+    ) -> (length: Int, suffix: String)? {
+        let tokenName = tokenValue.lowercased()
+        for candidate in candidates
+        where candidate.name.hasPrefix(tokenName)
+            && location + candidate.length <= text.length {
+            let range = NSRange(location: location, length: candidate.length)
+            guard text.substring(with: range).compare(
+                candidate.name, options: [.caseInsensitive]
+            ) == .orderedSame else { continue }
+            let end = NSMaxRange(range)
+            if end < text.length,
+               let scalar = UnicodeScalar(text.character(at: end)),
+               CharacterSet.alphanumerics.contains(scalar) || scalar.value == 0x5F {
+                continue
+            }
+            return (candidate.length, candidate.suffix)
+        }
+        return nil
+    }
+
+    /// Erkennt die Typposition in `var … : Typ` und `#DECLARE(… : Typ)`.
+    /// Nur der Text derselben Zeile vor dem Token zählt; Strings und
+    /// Kommentare erreichen diese Funktion nicht als Befehls-Token.
+    private static func isDeclarationType(_ token: FourDTokenizer.Token,
+                                          in text: NSString) -> Bool {
+        guard token.range.location > 0 else { return false }
+        let prefix = text.substring(to: token.range.location)
+        let line = prefix.components(separatedBy: .newlines).last ?? ""
+        return line.range(
+            of: #"(?i)(?:\bvar\b|#declare\b)[^\r\n]*:\s*$"#,
+            options: .regularExpression
+        ) != nil
     }
 
     // MARK: - Adapter für das „Text"-Menü (Selektion bzw. ganze Datei)

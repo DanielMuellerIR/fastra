@@ -182,3 +182,62 @@ func matchJumpUpdatesReadOnlySnapshotView() {
 
     #expect(textView.selectedRange() == match.range)
 }
+
+@MainActor
+@Test("Verzögerter Treffer-Sprung prüft Dokument-ID und kanonische Datei-URL")
+func delayedMatchJumpUsesDocumentIdentity() throws {
+    let suite = "fastra-search-target-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let workspace = Workspace(defaults: defaults)
+    let documentID = workspace.activeDocumentID!
+    let tabID = workspace.activeTabID!
+    let fileName = "fastra-target-\(UUID().uuidString).txt"
+    let url = URL(fileURLWithPath: "/tmp").appendingPathComponent(fileName)
+    try Data().write(to: url)
+    defer { try? FileManager.default.removeItem(at: url) }
+    workspace.tabs[0].url = url
+
+    #expect(MatchJumpTarget.document(documentID).isActive(in: workspace))
+    #expect(!MatchJumpTarget.document(tabID).isActive(in: workspace))
+    #expect(MatchJumpTarget.url(URL(
+        fileURLWithPath: "/private/tmp/\(fileName)"
+    )).isActive(in: workspace))
+    #expect(!MatchJumpTarget.url(url.appendingPathExtension("fremd"))
+        .isActive(in: workspace))
+}
+
+@MainActor
+@Test("Unterdrückter Treffer-Sprung setzt weder Auftrag noch sichtbaren Index fort")
+func suppressedMatchJumpKeepsNavigationState() {
+    let suite = "fastra-search-suppressed-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let workspace = Workspace(defaults: defaults)
+    let posted = NotificationCenter.default.postMatchJump(
+        dialogTestMatch(), for: workspace,
+        requiring: .document(UUID())
+    )
+
+    #expect(!posted)
+    #expect(workspace.pendingEditorJump == nil)
+    #expect(MatchJumpCommit.index(previous: 2, current: 2,
+                                  next: 3, posted: posted) == nil)
+    #expect(MatchJumpCommit.index(previous: 2, current: 2,
+                                  next: 3, posted: true) == 3)
+    #expect(MatchJumpCommit.index(previous: 2, current: 4,
+                                  next: 3, posted: true) == nil)
+}
+
+@Test("Dateigebundene Ansicht wechselt Identität bei Dokument oder Pfad")
+func fileViewIdentityIncludesBothInputs() {
+    let firstID = UUID()
+    let secondID = UUID()
+    let firstURL = URL(fileURLWithPath: "/tmp/eins.txt")
+    let secondURL = URL(fileURLWithPath: "/tmp/zwei.txt")
+    let original = EditorView.fileViewIdentity(tabID: firstID, url: firstURL)
+
+    #expect(original == EditorView.fileViewIdentity(tabID: firstID, url: firstURL))
+    #expect(original != EditorView.fileViewIdentity(tabID: secondID, url: firstURL))
+    #expect(original != EditorView.fileViewIdentity(tabID: firstID, url: secondURL))
+}

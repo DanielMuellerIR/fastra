@@ -182,11 +182,15 @@ struct ProcessGroupOperations {
             let capacity = size / MemoryLayout<kinfo_proc>.stride + 8
             var buffer = [kinfo_proc](repeating: kinfo_proc(), count: capacity)
             size = capacity * MemoryLayout<kinfo_proc>.stride
-            if sysctl(&mib, UInt32(mib.count), &buffer, &size, nil, 0) == 0 {
+            let status = sysctl(&mib, UInt32(mib.count), &buffer, &size, nil, 0)
+            // `errno` sofort sichern: Die anschließende Freigabe des Swift-
+            // Puffers darf den Grund des sysctl-Fehlers nicht überschreiben.
+            let failure = errno
+            if status == 0 {
                 let count = size / MemoryLayout<kinfo_proc>.stride
                 return buffer.prefix(count).compactMap { identity(of: $0) }
             }
-            guard errno == ENOMEM else { return [] }
+            guard failure == ENOMEM else { return [] }
         }
         return []
     }
@@ -263,7 +267,7 @@ final class GitCancellationToken: @unchecked Sendable {
         }
     }
 
-    fileprivate func attach(_ process: Process, processGroupID: pid_t?) {
+    func attach(_ process: Process, processGroupID: pid_t?) {
         // Startzeit des Leiters VOR dem Speichern lesen: Der Prozess ist hier
         // unser noch nicht abgeräumtes Kind, seine Identität also sicher.
         recordLeaderStartToken(processGroupID.flatMap { operations.startToken($0) })
@@ -380,6 +384,8 @@ final class GitCancellationToken: @unchecked Sendable {
     /// Unbeteiligte.
     /// Liefert `false`, wenn die Gruppe leer oder nicht mehr unsere ist —
     /// der Aufrufer darf dann auch keine Signale mehr an sie schicken.
+    /// Internal ist dieser Bool-Wrapper ausschließlich als Testnaht; der
+    /// Produktpfad verwendet die Mitglieder liefernde Variante darunter.
     @discardableResult
     func scheduleGroupKillEscalation(_ group: pid_t) -> Bool {
         scheduleGroupKillEscalationMembers(group) != nil
@@ -415,7 +421,7 @@ final class GitCancellationToken: @unchecked Sendable {
     /// weiterleben. Nach dem nachgewiesenen Eltern-Ende räumen wir diese
     /// Nachfahren auf, ohne das erfolgreiche Git-Ergebnis als Abbruch
     /// umzuetikettieren.
-    fileprivate func terminateRemainingProcessGroupAfterParentExit() {
+    func terminateRemainingProcessGroupAfterParentExit() {
         lock.lock()
         let runningProcess = process
         let group = processGroupID
@@ -432,7 +438,9 @@ final class GitCancellationToken: @unchecked Sendable {
     /// Git erhält direkt nach dem Start eine eigene Prozessgruppe. Abbruch und
     /// Timeout treffen dadurch auch Hooks und Helper, die sonst nach dem
     /// Git-Elternprozess weiterlaufen oder geerbte Pipes offen halten könnten.
-    private func terminateSafely(_ process: Process, processGroupID: pid_t?) {
+    // Internal für den FakeProcessWorld-Test der unmittelbaren TERM/CONT-
+    // Signale; produktiv rufen nur Abbruch und Timeout diese Methode auf.
+    func terminateSafely(_ process: Process, processGroupID: pid_t?) {
         if let processGroupID,
            // Auch nach beendetem Git-Elternprozess können Helper in der
            // Gruppe leben. Die Registrierung des Nachschlags prüft zugleich
@@ -1440,8 +1448,13 @@ enum GitRunner {
                 usleep(1_000)
             }
             guard groupID != nil else {
-                process.terminate()
+                // Auch dieser seltene Startfehler braucht einen harten,
+                // PID-sicheren Nachschlag; blankes waitUntilExit könnte die
+                // Runner-Queue dauerhaft blockieren.
+                token.attach(process, processGroupID: nil)
+                token.cancel()
                 process.waitUntilExit()
+                _ = token.finish()
                 completionQueue.async {
                     completion(.startFailed(.launchFailed(
                         L10n.string("Der Git-Prozess konnte nicht sicher isoliert werden."))))

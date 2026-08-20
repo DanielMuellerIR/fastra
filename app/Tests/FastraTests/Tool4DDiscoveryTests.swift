@@ -288,3 +288,52 @@ func firstContactTrigger() {
     #expect(!Tool4DAssist.triggersFirstContactHint(fileName: "readme.md"))
     #expect(!Tool4DAssist.triggersFirstContactHint(fileName: "ohne-endung"))
 }
+
+@Test("Manueller tool4d-Pfad: leer, Tilde, fehlend, Ordner, Rechte und gültiges Binary")
+func rememberedToolPathBoundaries() throws {
+    let scratch = try makeScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let missing = scratch.appendingPathComponent("fehlt")
+    let directory = scratch.appendingPathComponent("tool4d.app")
+    try FileManager.default.createDirectory(at: directory,
+                                            withIntermediateDirectories: true)
+    let file = scratch.appendingPathComponent("tool4d")
+    try Data("#!/bin/sh\n".utf8).write(to: file)
+    try FileManager.default.setAttributes([.posixPermissions: 0o644],
+                                          ofItemAtPath: file.path)
+
+    #expect(Tool4DAssist.normalizedExecutablePath("  \n") == nil)
+    #expect(Tool4DAssist.normalizedExecutablePath(" ~/bin/tool4d ")
+        == FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("bin/tool4d").path)
+    #expect(Tool4DAssist.executablePathProblem(missing.path) != nil)
+    #expect(Tool4DAssist.executablePathProblem(directory.path)
+        == L10n.string("Das ist ein Ordner. Erwartet wird die ausführbare Datei, z. B. tool4d.app/Contents/MacOS/tool4d."))
+    #expect(Tool4DAssist.executablePathProblem(file.path)
+        == L10n.string("Diese Datei ist nicht ausführbar."))
+    #expect(Tool4DAssist.installedTool(rememberedPath: directory.path) == nil)
+
+    try FileManager.default.setAttributes([.posixPermissions: 0o755],
+                                          ofItemAtPath: file.path)
+    #expect(Tool4DAssist.executablePathProblem(file.path) == nil)
+    #expect(Tool4DAssist.installedTool(rememberedPath: file.path)?.executableURL == file)
+}
+
+@Test("Engine-Projektpfad: leer ist erlaubt, nur ein echter Projektordner gilt")
+func macroEnginePathBoundaries() throws {
+    let scratch = try makeScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let projectDirectory = scratch.appendingPathComponent("Project")
+    try FileManager.default.createDirectory(at: projectDirectory,
+                                            withIntermediateDirectories: true)
+
+    #expect(SettingsView.macroEngineProblem(for: " \n") == nil)
+    #expect(SettingsView.macroEngineProblem(
+        for: scratch.appendingPathComponent("fehlt").path) != nil)
+    #expect(SettingsView.macroEngineProblem(for: scratch.path) != nil)
+
+    try Data().write(to: projectDirectory.appendingPathComponent("Engine.4DProject"))
+    #expect(SettingsView.macroEngineProblem(for: scratch.path) == nil)
+    #expect(SettingsView.pathCheckIsCurrent(checked: "alt", current: "neu") == false)
+    #expect(SettingsView.pathCheckIsCurrent(checked: "neu", current: "neu"))
+}

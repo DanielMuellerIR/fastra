@@ -775,7 +775,7 @@ struct EditorView: View {
         .onChange(of: editorState.scrollPosition) { _, position in
             guard pendingScrollRestore == nil else { return }
             scrollMemory.remember(position,
-                                  for: cursorMemoryTabID ?? workspace.activeTabID)
+                                  for: cursorMemoryTabID ?? workspace.activeDocumentID)
         }
         // Typeahead kennt die Projektmethoden: Der Provider liest den
         // Workspace erst beim Aufruf, damit ein Index-Refresh (neue Methode
@@ -826,7 +826,7 @@ struct EditorView: View {
         .onChange(of: editorState.cursorPositions) { _, positions in
             let list = positions ?? []
             cursorMemory.remember(list.map(\.range),
-                                  for: cursorMemoryTabID ?? workspace.activeTabID)
+                                  for: cursorMemoryTabID ?? workspace.activeDocumentID)
             updateFooterCursor(from: list)
             scheduleStats(for: list)
             // 4D-Parameterhilfe folgt jeder Cursorbewegung; außerhalb eines

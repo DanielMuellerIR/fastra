@@ -1470,3 +1470,11 @@
 "Diese Datei existiert nicht." = "This file does not exist.";
 "Diese Datei ist nicht ausführbar." = "This file is not executable.";
 "Eingetragenes tool4d ist nicht nutzbar" = "Configured tool4d Is Not Usable";
+"Das Makro verlangt das unbekannte 4D-Datumsformat %ld (erlaubt: 0 bis 8)." = "The macro requests the unknown 4D date format %ld (allowed: 0 through 8).";
+"Das Makro verlangt das unbekannte 4D-Zeitformat %ld (erlaubt: 0 bis 6)." = "The macro requests the unknown 4D time format %ld (allowed: 0 through 6).";
+"Komponente %@ — %@" = "Component %@ — %@";
+"Eigene Makros — %@" = "User Macros — %@";
+"4D %@ — %@" = "4D %@ — %@";
+"4D — %@" = "4D — %@";
+"Der Makrolauf wurde abgebrochen." = "The macro run was cancelled.";
+"Der Makrolauf antwortete auch %.0f Sekunden nach dem Zeitlimit nicht und wurde abgebrochen." = "The macro run still had not responded %.0f seconds after the time limit and was cancelled.";

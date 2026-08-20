@@ -303,9 +303,17 @@ enum Tool4DAssist {
     /// die automatische Suche zurück — sonst liefe eine andere tool4d-Version
     /// als die ausdrücklich eingetragene, ohne dass es jemand merkt. Automatik
     /// gilt nur bei leerem Feld; das kündigt der Einstellungsdialog auch so an.
-    static func installedTool(fileManager: FileManager = .default) -> Tool4DDiscovery.Finding? {
-        if let path = normalizedExecutablePath(rememberedExecutablePath) {
-            guard fileManager.isExecutableFile(atPath: path) else { return nil }
+    static func installedTool(
+        rememberedPath: String? = rememberedExecutablePath,
+        fileManager: FileManager = .default
+    ) -> Tool4DDiscovery.Finding? {
+        if let path = normalizedExecutablePath(rememberedPath) {
+            // Dieselbe vollständige Prüfung wie im Einstellungsfeld: Auf
+            // macOS gilt auch ein Ordner als „ausführbar". Er ist trotzdem
+            // kein startbares tool4d-Binary.
+            guard executablePathProblem(path, fileManager: fileManager) == nil else {
+                return nil
+            }
             let executable = URL(fileURLWithPath: path)
             return Tool4DDiscovery.Finding(
                 executableURL: executable,

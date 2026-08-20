@@ -5254,16 +5254,26 @@ final class Workspace: ObservableObject {
         let matches = navMatches
         guard !matches.isEmpty else { return }
 
-        activeMatchIndex = min(pending.index, matches.count - 1)
-        let target = matches[activeMatchIndex]
+        let previousIndex = activeMatchIndex
+        let nextIndex = min(pending.index, matches.count - 1)
+        let target = matches[nextIndex]
         if let tabID = target.tabID, activeTabID != tabID {
             selectTab(id: tabID)
         }
-        let expected = target.tabID.map { MatchJumpTarget.tab($0) }
+        guard let tabID = target.tabID,
+              let documentID = tabs.first(where: { $0.id == tabID })?.documentID
+        else { return }
+        let expected = MatchJumpTarget.document(documentID)
         DispatchQueue.main.async { [weak self] in
             guard let self, self.scope == .open else { return }
-            NotificationCenter.default.postMatchJump(target.match, for: self,
-                                                     requiring: expected)
+            let posted = NotificationCenter.default.postMatchJump(
+                target.match, for: self, requiring: expected
+            )
+            guard let index = MatchJumpCommit.index(
+                previous: previousIndex, current: self.activeMatchIndex,
+                next: nextIndex, posted: posted
+            ) else { return }
+            self.activeMatchIndex = index
         }
     }
 

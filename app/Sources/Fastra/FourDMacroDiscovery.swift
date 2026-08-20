@@ -34,6 +34,23 @@ struct FourDMacroSource: Equatable {
         case userLibrary
         /// Aus der installierten 4D.app (Version aus deren Info.plist).
         case fourDApplication(version: String?)
+
+        /// Eindeutige, nutzersichtbare Herkunft für den Makro-Tooltip. Zwei
+        /// Quellen heißen häufig beide `Macros.xml`; der Dateiname allein
+        /// erklärt dann nicht, welchen Eintrag der Nutzer anklickt.
+        func displayLabel(fileName: String) -> String {
+            switch self {
+            case .component(let name):
+                return L10n.format("Komponente %@ — %@", name, fileName)
+            case .userLibrary:
+                return L10n.format("Eigene Makros — %@", fileName)
+            case .fourDApplication(let version):
+                if let version, !version.isEmpty {
+                    return L10n.format("4D %@ — %@", version, fileName)
+                }
+                return L10n.format("4D — %@", fileName)
+            }
+        }
     }
 }
 

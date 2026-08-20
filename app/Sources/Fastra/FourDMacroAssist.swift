@@ -45,8 +45,9 @@ enum FourDMacroRendering {
     }
 
     /// Übersetzt die Platzhalter-Bausteine eines Text-Makros in echten Text.
-    /// 4D-Datumsformate: 0 = kurzes Systemformat, 1 = ausgeschrieben; alle
-    /// weiteren Nummern fallen bewusst aufs kurze Format zurück.
+    /// Die Nummern entsprechen den von 4D dokumentierten Makroformaten:
+    /// Datum 0…8, Zeit 0…6. Unbekannte Werte lässt `capability` gar nicht bis
+    /// hierher durch.
     static func render(parts: [FourDMacroTextPart], selection: String,
                        methodName: String, fullText: String,
                        date: Date = Date(),
@@ -74,18 +75,80 @@ enum FourDMacroRendering {
                 // solche Makros gar nicht erst hierher.
                 break
             case .date(let format):
-                let formatter = DateFormatter()
-                formatter.locale = locale
-                formatter.dateStyle = format == 1 ? .long : .short
-                text += formatter.string(from: date)
+                text += renderDate(date, format: format, locale: locale)
             case .time(let format):
-                let formatter = DateFormatter()
-                formatter.locale = locale
-                formatter.timeStyle = format == 1 ? .medium : .short
-                text += formatter.string(from: date)
+                text += renderTime(date, format: format, locale: locale)
             }
         }
         return Insertion(text: text, caretUTF16Offset: caret)
+    }
+
+    static func renderDate(_ date: Date, format: Int, locale: Locale) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        switch format {
+        case 0, 1: formatter.dateStyle = .short       // Standard/System kurz
+        case 2:
+            // 4D „System date abbreviated“ enthält zusätzlich den
+            // abgekürzten Wochentag; DateFormatter.medium tut das nicht.
+            formatter.dateFormat = DateFormatter.dateFormat(
+                fromTemplate: "EEE MMM d yyyy", options: 0, locale: locale
+            )
+        case 3: formatter.dateStyle = .full           // System lang
+        case 4:
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            let year = Calendar(identifier: .gregorian).component(.year, from: date)
+            // 4D „Internal date short special“ benutzt nur für 1930…2029
+            // zwei Stellen; außerhalb bleibt das Jahrhundert sichtbar.
+            formatter.dateFormat = (1930...2029).contains(year)
+                ? "MM/dd/yy" : "MM/dd/yyyy"
+        case 5:
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "MMMM d, yyyy"     // Intern lang
+        case 6:
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "MMM d, yyyy"      // Intern abgekürzt
+        case 7:
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "MM/dd/yyyy"       // Intern kurz
+        case 8:
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.dateFormat = "yyyy-MM-dd'T'00:00:00"
+        default:
+            preconditionFailure("Nicht unterstütztes 4D-Datumsformat \(format)")
+        }
+        return formatter.string(from: date)
+    }
+
+    static func renderTime(_ date: Date, format: Int, locale: Locale) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        switch format {
+        case 0, 1: formatter.dateFormat = "HH:mm:ss"
+        case 2: formatter.dateFormat = "HH:mm"
+        case 3, 4:
+            var calendar = Calendar.current
+            calendar.locale = locale
+            let components = calendar.dateComponents([.hour, .minute, .second],
+                                                      from: date)
+            let componentFormatter = DateComponentsFormatter()
+            componentFormatter.calendar = calendar
+            componentFormatter.unitsStyle = .full
+            componentFormatter.allowedUnits = format == 3
+                ? [.hour, .minute, .second] : [.hour, .minute]
+            componentFormatter.zeroFormattingBehavior = [.pad]
+            return componentFormatter.string(from: components) ?? ""
+        case 5: formatter.dateFormat = "h:mm a"
+        case 6:
+            let calendar = Calendar.current
+            let parts = calendar.dateComponents([.hour, .minute, .second], from: date)
+            let minutes = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+            return String(format: "%d:%02d", minutes, parts.second ?? 0)
+        default:
+            preconditionFailure("Nicht unterstütztes 4D-Zeitformat \(format)")
+        }
+        return formatter.string(from: date)
     }
 }
 
@@ -134,7 +197,10 @@ extension Workspace {
             for source in sources {
                 guard let data = try? Data(contentsOf: source.url) else { continue }
                 macros.append(contentsOf: FourDMacroXML.parse(
-                    data: data, sourceLabel: source.url.lastPathComponent,
+                    data: data,
+                    sourceLabel: source.origin.displayLabel(
+                        fileName: source.url.lastPathComponent
+                    ),
                     // Der volle Pfad trennt zwei gleichnamige „Macros.xml".
                     sourceKey: source.url.canonicalFileURL.path))
             }
@@ -146,15 +212,21 @@ extension Workspace {
                       self.fourDMacroScanKey == key,
                       self.activeTab?.url?.pathExtension.lowercased() == "4dm"
                 else { return }
-                self.fourDMacros = parsed
+                self.fourDMacros = FourDMacroXML.resolvingShortcuts(
+                    in: parsed,
+                    reserved: AppMenuShortcutKeys.plainCommandKeys(in: NSApp.mainMenu)
+                )
             }
         }
     }
 
     /// Menüweg: Makro über seine stabile ID ausführen.
     @MainActor func runFourDMacro(id: String) {
-        guard let macro = fourDMacros.first(where: { $0.id == id }) else { return }
-        if !runFourDMacro(macro) { NSSound.beep() }
+        guard let macro = fourDMacros.first(where: { $0.id == id }) else {
+            NSSound.beep()
+            return
+        }
+        _ = runFourDMacro(macro)
     }
 
     /// Shortcut-Weg (⌘ + Kürzelzeichen aus dem Makronamen, z. B. ⌘# und ⌘T).
@@ -163,6 +235,11 @@ extension Workspace {
     /// weiter. Nur so behält ⌘T außerhalb einer 4D-Methode „Neuer Tab".
     @discardableResult
     @MainActor func runFourDMacro(shortcut key: Character) -> Bool {
+        // Den lebenden Menübaum auch beim Tastendruck noch einmal prüfen.
+        // Falls sich Menüs nach dem Katalogscan geändert haben, gewinnt der
+        // App-Befehl weiterhin und das Ereignis wird unverändert weitergereicht.
+        guard !AppMenuShortcutKeys.plainCommandKeys(in: NSApp.mainMenu)
+            .contains(key) else { return false }
         guard let macro = fourDMacros.first(where: { $0.shortcutKey == key }) else {
             return false
         }
@@ -185,19 +262,21 @@ extension Workspace {
                 title: L10n.format("Makro „%@“ ist hier nicht ausführbar",
                                    macro.displayName),
                 text: reason)
+            return false
         case .nativeText:
-            applyNativeMacro(macro, textView: target.textView, documentURL: url)
+            return applyNativeMacro(macro, textView: target.textView,
+                                    documentURL: url)
         case .engine(let variant):
-            runEngineMacro(macro, variant: variant, textView: target.textView,
-                           tab: tab, documentURL: url)
+            return runEngineMacro(macro, variant: variant,
+                                  textView: target.textView,
+                                  tab: tab, documentURL: url)
         }
-        return true
     }
 
     // MARK: Text-Makros (nativ)
 
     @MainActor private func applyNativeMacro(_ macro: FourDMacro, textView: TextView,
-                                  documentURL: URL) {
+                                             documentURL: URL) -> Bool {
         let selection = textView.fastraSafeSelectedRange
         let fullText = textView.string
         let selectedText = (fullText as NSString).substring(with: selection)
@@ -208,7 +287,7 @@ extension Workspace {
                 forFileName: documentURL.lastPathComponent),
             fullText: fullText
         )
-        guard !insertion.text.isEmpty else { return }
+        guard !insertion.text.isEmpty else { return false }
         textView.fastraApplyTextOperation(replacing: selection,
                                           with: insertion.text)
         if let caret = insertion.caretUTF16Offset {
@@ -217,14 +296,16 @@ extension Workspace {
             textView.selectionManager.setSelectedRange(
                 NSRange(location: selection.location + caret, length: 0))
         }
+        return true
     }
 
     // MARK: Komplettieren-Familie (tool4d-Engine mit Diff-Vorschau)
 
-    @MainActor private func runEngineMacro(_ macro: FourDMacro, variant: FourDKomplettierenVariant,
-                                textView: TextView, tab: EditorTab,
-                                documentURL: URL) {
-        guard !fourDMacroEngineBusy else { NSSound.beep(); return }
+    @MainActor private func runEngineMacro(
+        _ macro: FourDMacro, variant: FourDKomplettierenVariant,
+        textView: TextView, tab: EditorTab, documentURL: URL
+    ) -> Bool {
+        guard !fourDMacroEngineBusy else { NSSound.beep(); return false }
         let methodName = FourDMacroXML.normalizedMethodName(
             forFileName: documentURL.lastPathComponent)
         // Daniels Ausnahmen fürs Komplettieren: warnen statt ausführen.
@@ -232,20 +313,20 @@ extension Workspace {
             NSAlert.runWarning(
                 title: L10n.string("Methode ist vom Komplettieren-Makro ausgenommen"),
                 text: L10n.string("00_DM_Info und Compiler_*-Methoden sind bewusst von diesem Makro ausgenommen und bleiben unverändert."))
-            return
+            return false
         }
         guard let engineRootPath = FourDMacroEngineSettings.projectRootPath else {
             NSAlert.runWarning(
                 title: L10n.string("Makro-Engine nicht konfiguriert"),
                 text: L10n.string("Dieses Makro läuft über ein 4D-Engine-Projekt mit der Methode MacroRun (MAO_Makros). Trage dessen Projektordner in den Einstellungen unter „4D“ ein."))
-            return
+            return false
         }
         let engineRoot = URL(fileURLWithPath: engineRootPath)
         guard let projectFile = FourDMacroEngine.engineProjectFile(root: engineRoot) else {
             NSAlert.runWarning(
                 title: L10n.string("Engine-Projekt nicht gefunden"),
                 text: L10n.format("Unter %@ liegt keine .4DProject-Datei (erwartet in „Project/“). Prüfe den Pfad in den Einstellungen unter „4D“.", engineRootPath))
-            return
+            return false
         }
         // Ein eingetragener, aber unbrauchbarer tool4d-Pfad ist ein
         // Konfigurationsfehler und darf nicht still in die automatische Suche
@@ -257,12 +338,12 @@ extension Workspace {
                 title: L10n.string("Eingetragenes tool4d ist nicht nutzbar"),
                 text: L10n.format("%@\n\nPrüfe den Pfad in den Einstellungen unter „4D“ oder leere das Feld, damit Fastra selbst sucht.",
                                   problem))
-            return
+            return false
         }
         guard let tool = Tool4DAssist.installedTool() else {
             // Der bestehende tool4d-Finder erklärt Fundorte und Download.
             Tool4DAssist.runFinder()
-            return
+            return false
         }
 
         let originalText = textView.string
@@ -279,6 +360,7 @@ extension Workspace {
         fourDMacroEngineBusy = true
         FourDMacroEngine.run(
             tool4d: tool.executableURL,
+            engineProjectRoot: engineRoot,
             engineProjectFile: projectFile,
             code: detokenized,
             variant: variant.rawValue,
@@ -314,6 +396,7 @@ extension Workspace {
             }
             }
         }
+        return true
     }
 
     /// Baut den Diff „aktueller Puffer → Makro-Ergebnis" im Hintergrund und
@@ -367,6 +450,26 @@ extension Workspace {
                                           with: preview.resultText)
         fourDMacroPreview = nil
         return true
+    }
+}
+
+/// Schlichte ⌘-Kürzel, die das echte App-Menü bereits belegt. Der lebende
+/// Menübaum ist die Quelle der Wahrheit; dadurch kann ein neues Menükommando
+/// nicht unbemerkt von einem 4D-Makro überschrieben werden.
+enum AppMenuShortcutKeys {
+    @MainActor static func plainCommandKeys(in menu: NSMenu?) -> Set<Character> {
+        guard let menu else { return [] }
+        var result = Set<Character>()
+        for item in menu.items {
+            let modifiers = item.keyEquivalentModifierMask
+                .intersection([.command, .option, .control, .shift])
+            let key = item.keyEquivalent.lowercased()
+            if modifiers == .command, key.count == 1, let character = key.first {
+                result.insert(character)
+            }
+            result.formUnion(plainCommandKeys(in: item.submenu))
+        }
+        return result
     }
 }
 

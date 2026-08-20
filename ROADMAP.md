@@ -102,19 +102,6 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   offen: ein warmer tool4d-Prozess, falls die Kaltstartzeit (real ~3 s) im
   Alltag stört. Herkunft: Idee #28 in `theplan/ideen.md`.
 
-- **4D-Makro-Engine: mehrwortige unbekannte Symbole verlieren ihr
-  Token-Suffix.** Nach einem headless gelaufenen Komplettieren-Makro stellt
-  Fastra die Token-Suffixe aus dem Originalpuffer wieder her. Bei einem
-  Symbol aus MEHREREN Wörtern, das weder im Befehls- noch im Konstanten-
-  katalog steht (etwa eine ganz neue 4D-Konstante „Future const"), gelingt
-  das nicht: Ohne Suffix und ohne Katalogeintrag hat der Tokenizer kein
-  Merkmal, an dem er die Wörter als EIN Symbol erkennen könnte. Einwortige
-  unbekannte Befehle und Konstanten sind seit dem Reviewfund vom 2026-08-20
-  abgedeckt. Lösungsrichtung: Die gelernten Namen vor dem Tokenisieren als
-  zusätzliche Symbolmenge in den Tokenizer geben, statt sie erst danach
-  nachzuschlagen. Festgehalten als Test
-  `learnedRoundtripCannotRebuildUnknownMultiWordSymbols`.
-
 ## Kleine offene Ideen
 
 - **Druck-Ausbau (beauftragt 2026-08-18, aus der manuellen Druckabnahme):**

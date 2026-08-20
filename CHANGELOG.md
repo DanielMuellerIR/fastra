@@ -9,6 +9,51 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.109.0] — 2026-08-20
+
+Folgereview der 4D-Makro-, Treffer-Sprung- und Prozessabbruch-Änderungen aus
+v1.108.0.
+
+### Behoben
+
+- **4D-Typdeklarationen bleiben gültig.** „Befehls-Token ergänzen“ und die
+  Rücktokenisierung hängen an `Date` und `Time` in `var`- oder
+  `#DECLARE`-Deklarationen keine Befehlsnummer mehr an. Mehrwortige neue
+  Befehle und Konstanten erhalten jetzt das längste vollständig gelernte
+  Token-Suffix statt eines Suffixes mitten im Namen.
+- **4D-Makros werden ohne stille Bedeutungsänderung ausgeführt.** Fastra bildet
+  alle dokumentierten Datumsformate 0–8 und Zeitformate 0–6 ab, erkennt auch
+  ausgeschriebene Standardvarianten des Komplettieren-Aufrufs und weist
+  unbekannte Tags auch innerhalb von `<method>` mit ihrem Namen zurück.
+- **Makro-Kürzel verdrängen keine App-Befehle.** Der aktuelle Menübaum bleibt
+  maßgeblich; bei doppelten Makro-Kürzeln behält nur die zuerst geladene Quelle
+  das Kürzel. Tooltips unterscheiden gleichnamige Makros nach Komponente,
+  Benutzerordner oder 4D-Version.
+- **Die Makro-Engine schützt Projektdateien und beendet zuverlässig.** Fastra
+  verwendet den ausdrücklich eingestellten Projektordner, bewahrt bei
+  unterbrochenen Läufen jede Watch-Datei und stellt die jüngste Fassung wieder
+  her. Abbruch, ausbleibender Rückruf und ein fehlgeschlagener
+  Prozessgruppenstart haben jetzt eine Frist und liefern ein Ergebnis.
+- **Eingetragene 4D-Werkzeugpfade werden überall gleich geprüft.** Ein Ordner
+  zählt nicht mehr als tool4d-Binary; „Dokument prüfen“ nennt einen ungültigen
+  Pfad statt einen heuristischen Erfolg zu melden. Die beiden Pfadfelder prüfen
+  nur noch ihren eigenen Wert und verwerfen verspätete Ergebnisse.
+- **Treffer-Navigation hält Anzeige und Editor zusammen.** Verzögerte Sprünge
+  sind an die Dokument-ID statt an einen wiederverwendbaren Tabplatz gebunden;
+  bei einem zwischenzeitlichen Tabwechsel bleibt auch der sichtbare
+  Trefferindex unverändert. Cursor- und Scrollspeicher verwenden durchgehend
+  dieselbe Dokument-ID.
+- **Prozessabbrüche signalisieren nur verifizierte Prozesse.** Git und Smart
+  Paste prüfen PID und Startzeit vor TERM, CONT und KILL; `errno` wird direkt
+  nach der Kernel-Abfrage gesichert. Ein seltener Fehler beim Erzeugen der
+  Prozessgruppe kann den Runner nicht mehr unbegrenzt festhalten.
+
+### Tests
+
+- Neue Regressionstests decken 4D-Pfadgrenzen, Watch-Wiederherstellung,
+  Datums-/Zeitformate, Makro-Kollisionen, Dokumentidentitäten, unterdrückte
+  Treffer-Sprünge und die unmittelbaren Prozesssignale ab.
+
 ## [v1.108.0] — 2026-08-20
 
 Abarbeitung der offenen Funde aus dem Code-Review vom 2026-08-19/20.

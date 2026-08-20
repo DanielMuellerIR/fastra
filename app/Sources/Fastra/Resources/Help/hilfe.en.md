@@ -662,7 +662,11 @@ load, relative to the 4D project of the open file:
 **Text macros** (such as `If`/`While` or your own insertion macros) are
 applied by Fastra directly: placeholders like `<method_name/>`,
 `<selection/>`, date/time and user are substituted, `<caret/>` positions the
-cursor. The insertion is a normal, undoable step.
+cursor. The insertion is a normal, undoable step. Fastra supports date formats
+0–8 and time formats 0–6 from the 4D macro definition; an unknown format
+number or placeholder tag is explained instead of being silently substituted
+differently. A menu item's tooltip identifies its source (component, user
+macro folder, or 4D version), so identically named macros remain distinguishable.
 
 **The completion family** (`MAO_MethodeKomplettierenNeu` and its variants)
 runs headless through tool4d against an engine project providing the
@@ -674,11 +678,11 @@ before the run and restores the suffixes from the original. `00_DM_Info` and
 `Compiler_*` methods are deliberately excluded from completion.
 
 **Shortcuts:** A `/x` suffix in a macro name (such as “… /#”) becomes ⌘#.
-Inside `.4dm` documents the macro shortcut wins over identical menu
-shortcuts — there ⌘T is “Insert initials and date”, outside 4D files ⌘T
-remains “New Tab”. ⌘W is the exception: it always closes the tab. A macro
-with the suffix “ /w” therefore shows no shortcut and is invoked from the
-menu only.
+An existing application menu command always wins. A macro using the same key
+therefore shows no shortcut and remains available through the menu. The same
+rule applies after the first macro when several sources assign the same key;
+only the first one loaded keeps it. A macro shortcut also counts as handled
+only when the macro actually starts or inserts text.
 
 **Limits:** Macros that need the clipboard, editor selection through 4D
 methods, or the host project (such as the FileMerge and sort macros) only

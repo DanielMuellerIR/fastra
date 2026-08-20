@@ -759,6 +759,9 @@ final class EditorContextMenu: NSObject {
         let canonicalRoot = projectRoot.canonicalFileURL
         let canonicalDocument = documentURL.canonicalFileURL
         Task.detached { [weak self, weak workspace] in
+            let pathProblem = Tool4DAssist.executablePathProblem(
+                Tool4DAssist.rememberedExecutablePath
+            )
             let finding = Tool4DAssist.installedTool()
             let projectExists = Tool4DProjectLocator.projectFile(in: canonicalRoot) != nil
             // Der Dateisystemteil bleibt im Detached-Task. Sichtbare UI darf
@@ -772,7 +775,13 @@ final class EditorContextMenu: NSObject {
                       workspace.activeTab?.url?.canonicalFileURL == canonicalDocument else {
                     return
                 }
-                if let finding, projectExists {
+                if let pathProblem {
+                    NSAlert.runWarning(
+                        title: L10n.string("Eingetragenes tool4d ist nicht nutzbar"),
+                        text: L10n.format("%@\n\nPrüfe den Pfad in den Einstellungen unter „4D“ oder leere das Feld, damit Fastra selbst sucht.",
+                                          pathProblem)
+                    )
+                } else if let finding, projectExists {
                     self.lintFourDWithTool4D(
                         finding: finding, workspaceRoot: canonicalRoot,
                         documentURL: canonicalDocument, text: text,

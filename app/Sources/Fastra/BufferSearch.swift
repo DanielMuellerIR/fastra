@@ -408,18 +408,31 @@ struct PendingEditorJump {
 /// hinfällig; ohne diese Prüfung markierte er den Trefferbereich im dann
 /// aktiven, also falschen Dokument.
 enum MatchJumpTarget {
-    /// Ein bereits offener Tab, adressiert über seine Tab-ID.
-    case tab(UUID)
+    /// Ein bereits offenes Dokument, adressiert über seine Dokument-ID. Ein
+    /// wiederverwendeter Vorschau-Tab behält seine Tab-ID, nicht aber diese
+    /// Identität.
+    case document(UUID)
     /// Eine Datei, die der Aufrufer gerade geöffnet hat.
     case url(URL)
 
     func isActive(in workspace: Workspace) -> Bool {
         switch self {
-        case .tab(let id):
-            return workspace.activeTabID == id
+        case .document(let id):
+            return workspace.activeDocumentID == id
         case .url(let url):
             return workspace.activeTab?.url?.canonicalFileURL == url.canonicalFileURL
         }
+    }
+}
+
+/// Der sichtbare Trefferindex darf nur mitwandern, wenn der zugehörige
+/// Editor-Sprung wirklich gepostet wurde und keine neuere Nutzeraktion den
+/// Index inzwischen verändert hat.
+enum MatchJumpCommit {
+    static func index(previous: Int, current: Int, next: Int,
+                      posted: Bool) -> Int? {
+        guard posted, current == previous else { return nil }
+        return next
     }
 }
 
@@ -442,9 +455,10 @@ extension NotificationCenter {
     ///
     /// `requiring` nennt das Dokument, dem der Sprung gilt. Ist es nicht mehr
     /// das aktive, unterbleibt der Post ganz — siehe `MatchJumpTarget`.
+    @discardableResult
     func postMatchJump(_ match: BufferSearch.Match, for workspace: Workspace,
-                       requiring target: MatchJumpTarget? = nil) {
-        guard target?.isActive(in: workspace) ?? true else { return }
+                       requiring target: MatchJumpTarget? = nil) -> Bool {
+        guard target?.isActive(in: workspace) ?? true else { return false }
         let end = BufferSearch.endLineColumn(startLine: match.line,
                                              startColumn: match.column,
                                              matchText: match.matchText)
@@ -464,5 +478,6 @@ extension NotificationCenter {
             "startLine": match.line, "startColumn": match.column,
             "endLine": end.line, "endColumn": end.column,
         ])
+        return true
     }
 }

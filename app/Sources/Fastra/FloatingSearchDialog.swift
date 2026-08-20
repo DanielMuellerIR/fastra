@@ -1252,19 +1252,30 @@ struct FloatingSearchDialog: View {
         )
         guard case .activate(let target) = transition.output else { return }
 
-        // Der Workspace bleibt Besitzer des Auswahlindexes. Erst nach einer
-        // gültigen Auflösung gegen seine aktuelle Liste wird er aktualisiert.
-        workspace.activeMatchIndex = transition.state.index
-        // Liste zum (gleich gesetzten) aktiven Treffer zentrieren.
-        matchTapScrollToken &+= 1
+        let previousIndex = workspace.activeMatchIndex
+        let nextIndex = transition.state.index
+        func commitIndexIfPosted(_ posted: Bool) {
+            guard let index = MatchJumpCommit.index(
+                previous: previousIndex, current: workspace.activeMatchIndex,
+                next: nextIndex, posted: posted
+            ) else { return }
+            workspace.activeMatchIndex = index
+            // Erst ein wirklich ausgeführter Sprung zentriert die Liste.
+            matchTapScrollToken &+= 1
+        }
 
         if let tabID = target.tabID {
             // Geöffnet-Scope: Ziel-Tab aktivieren und den Sprung einen Tick
             // später posten, nachdem SwiftUI den Editor neu erzeugt hat.
+            guard let documentID = workspace.tabs.first(where: { $0.id == tabID })?.documentID
+            else { return }
             if workspace.activeTabID != tabID { workspace.selectTab(id: tabID) }
             DispatchQueue.main.async {
-                NotificationCenter.default.postMatchJump(target.match, for: workspace,
-                                                         requiring: .tab(tabID))
+                let posted = NotificationCenter.default.postMatchJump(
+                    target.match, for: workspace,
+                    requiring: .document(documentID)
+                )
+                commitIndexIfPosted(posted)
             }
             return
         }
@@ -1275,13 +1286,17 @@ struct FloatingSearchDialog: View {
             workspace.loadFile(at: url) { ok in
                 guard ok else { return }
                 DispatchQueue.main.async {
-                    NotificationCenter.default.postMatchJump(target.match, for: workspace,
-                                                             requiring: .url(url))
+                    let posted = NotificationCenter.default.postMatchJump(
+                        target.match, for: workspace, requiring: .url(url)
+                    )
+                    commitIndexIfPosted(posted)
                 }
             }
             return
         }
-        NotificationCenter.default.postMatchJump(target.match, for: workspace)
+        commitIndexIfPosted(
+            NotificationCenter.default.postMatchJump(target.match, for: workspace)
+        )
     }
 
     /// Zentriert die Trefferliste auf den aktiven Treffer — einen Tick

@@ -478,34 +478,21 @@ enum SmartPaste {
                 usleep(1_000)
             }
         }
+        // Derselbe PID-plus-Startzeit-Schutz wie im GitRunner. Dadurch trifft
+        // auch der Smart-Paste-Abbruch nie eine inzwischen fremde Gruppe.
+        let cancellation = GitCancellationToken(terminationGracePeriod: 0.25)
+        cancellation.attach(process, processGroupID: processGroupID)
+        defer { _ = cancellation.finish() }
 
         // Beendet den Kindprozess und — wenn vorhanden — seine ganze Gruppe.
         // Erst regulär (SIGTERM), nach kurzer Schonfrist hart (SIGKILL).
         // Gemeinsam genutzt von Fristablauf und Budgetüberschreitung.
         func terminateProcessTree() {
-            if process.isRunning {
-                if let processGroupID {
-                    Darwin.kill(-processGroupID, SIGTERM)
-                    // Ein extern angehaltener Prozess muss den SIGTERM noch
-                    // ausführen dürfen (gleiches Muster wie GitRunner).
-                    Darwin.kill(-processGroupID, SIGCONT)
-                } else {
-                    process.terminate()
-                }
-            }
-            if semaphore.wait(timeout: .now() + .milliseconds(250)) == .timedOut,
-               process.isRunning {
-                if let processGroupID {
-                    Darwin.kill(-processGroupID, SIGKILL)
-                } else {
-                    _ = Darwin.kill(process.processIdentifier, SIGKILL)
-                }
-                _ = semaphore.wait(timeout: .now() + .seconds(1))
-            } else if let processGroupID {
-                // Der direkte Kindprozess ist schon weg — mögliche Enkel in
-                // der Gruppe trotzdem sicher beenden.
-                Darwin.kill(-processGroupID, SIGKILL)
-            }
+            cancellation.cancel()
+            _ = semaphore.wait(timeout: .now() + .seconds(1))
+            // Ist der Elternprozess bereits weg, können geerbte Deskriptoren
+            // noch bei Helfern derselben sicher identifizierten Gruppe liegen.
+            cancellation.terminateRemainingProcessGroupAfterParentExit()
         }
 
         func outputBudgetFailure() -> Result<String, SmartPasteError> {

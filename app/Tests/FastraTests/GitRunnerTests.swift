@@ -868,3 +868,24 @@ func reapedLeaderKeepsGroupOwnership() {
     token.recordLeaderStartToken(11)
     #expect(token.scheduleGroupKillEscalation(group))
 }
+
+@Test("Unmittelbare TERM/CONT-Signale treffen nur Mitglieder derselben Prozessidentität")
+func immediateSignalsVerifyEachMemberIdentity() {
+    let world = FakeProcessWorld()
+    let group: pid_t = 64_000
+    world.setGroup(group, members: [
+        ProcessIdentity(pid: group, startToken: 10),
+        ProcessIdentity(pid: 64_001, startToken: 20),
+    ])
+    // Der Helfer endet nach dem Gruppen-Schnappschuss und seine PID wird neu
+    // vergeben. Weder TERM noch CONT dürfen den neuen Prozess erreichen.
+    world.setToken(64_001, 99)
+    let token = GitCancellationToken(terminationGracePeriod: 60,
+                                     operations: world.operations)
+    token.recordLeaderStartToken(10)
+
+    token.terminateSafely(Process(), processGroupID: group)
+
+    #expect(world.processSignals.map(\.pid) == [group, group])
+    #expect(world.processSignals.map(\.signal) == [SIGTERM, SIGCONT])
+}

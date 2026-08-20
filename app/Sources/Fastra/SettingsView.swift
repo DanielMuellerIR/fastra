@@ -242,22 +242,12 @@ struct SettingsView: View {
                           text: $tool4dPath,
                           prompt: Text(verbatim: tool4dDiscoveryPlaceholder))
                     .autocorrectionDisabled()
-                if let problem = tool4dPathProblem {
-                    Text(verbatim: problem)
-                        .fastraFont(.small)
-                        .foregroundColor(Theme.gitModified)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                fourDPathProblem(tool4dPathProblem)
                 TextField("Makro-Engine-Projekt (Ordner mit Project/…)",
                           text: $macroEngineProjectPath,
                           prompt: Text(verbatim: "~/git-arbeit/MAO_Makros"))
                     .autocorrectionDisabled()
-                if let problem = macroEngineProblem {
-                    Text(verbatim: problem)
-                        .fastraFont(.small)
-                        .foregroundColor(Theme.gitModified)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                fourDPathProblem(macroEngineProblem)
                 Text("Leer gelassen sucht Fastra tool4d selbst (PATH, Programme-Ordner, 4D-Analyzer). Das Makro-Engine-Projekt ist das 4D-Projekt mit der Startup-Methode MacroRun (z. B. MAO_Makros); ohne diesen Pfad laufen nur die nativen Text-Makros, die Komplettieren-Makros erklären dann, was fehlt.")
                     .fastraFont(.small)
                     .foregroundColor(.secondary)
@@ -297,10 +287,11 @@ struct SettingsView: View {
                     ?? L10n.string("automatisch (derzeit nicht gefunden — Hilfe → tool4d finden…)")
                 DispatchQueue.main.async { tool4dDiscoveryPlaceholder = placeholder }
             }
-            checkFourDPaths()
+            checkTool4DPath()
+            checkMacroEnginePath()
         }
-        .onChange(of: tool4dPath) { checkFourDPaths() }
-        .onChange(of: macroEngineProjectPath) { checkFourDPaths() }
+        .onChange(of: tool4dPath) { checkTool4DPath() }
+        .onChange(of: macroEngineProjectPath) { checkMacroEnginePath() }
         .onChange(of: gitFetchDecision) { gitPreferencesChanged() }
         .onChange(of: gitFetchInterval) {
             gitFetchInterval = GitPreferences.clampedFetchInterval(gitFetchInterval)
@@ -317,20 +308,44 @@ struct SettingsView: View {
                                         object: nil)
     }
 
-    /// Prüft beide 4D-Pfadfelder im Hintergrund und veröffentlicht nur das
-    /// Ergebnis. Die Prüfung fasst das Dateisystem an; beim Rendern oder bei
-    /// jedem Tastendruck auf dem Main-Thread verzögerte sie die Eingabe.
-    private func checkFourDPaths() {
+    @ViewBuilder private func fourDPathProblem(_ problem: String?) -> some View {
+        if let problem {
+            Text(verbatim: problem)
+                .fastraFont(.small)
+                .foregroundColor(Theme.gitModified)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Prüft nur das geänderte tool4d-Feld. Ein langsames Ergebnis wird nur
+    /// veröffentlicht, wenn es noch zu genau dieser Eingabe gehört.
+    private func checkTool4DPath() {
         let toolPath = tool4dPath
-        let enginePath = macroEngineProjectPath
         DispatchQueue.global(qos: .userInitiated).async {
             let toolProblem = Tool4DAssist.executablePathProblem(toolPath)
+            DispatchQueue.main.async {
+                guard Self.pathCheckIsCurrent(checked: toolPath,
+                                              current: tool4dPath) else { return }
+                tool4dPathProblem = toolProblem
+            }
+        }
+    }
+
+    /// Entsprechende Einzelprüfung für das Engine-Projektfeld.
+    private func checkMacroEnginePath() {
+        let enginePath = macroEngineProjectPath
+        DispatchQueue.global(qos: .userInitiated).async {
             let engineProblem = Self.macroEngineProblem(for: enginePath)
             DispatchQueue.main.async {
-                tool4dPathProblem = toolProblem
+                guard Self.pathCheckIsCurrent(checked: enginePath,
+                                              current: macroEngineProjectPath) else { return }
                 macroEngineProblem = engineProblem
             }
         }
+    }
+
+    static func pathCheckIsCurrent(checked: String, current: String) -> Bool {
+        checked == current
     }
 
     /// Sichtbares Problem des eingetragenen Engine-Projektpfads — pure

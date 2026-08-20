@@ -116,11 +116,13 @@ enum FourDMacroEngine {
     /// Führt genau einen MacroRun-Lauf asynchron aus. `code` ist der bereits
     /// DETOKENISIERTE Methodencode (LF-Zeilenenden sind in Ordnung, MacroRun
     /// normalisiert selbst). Die Completion kommt auf der Main-Queue.
-    static func run(tool4d: URL, engineProjectFile: URL, code: String,
+    static func run(tool4d: URL, engineProjectRoot: URL,
+                    engineProjectFile: URL, code: String,
                     variant: String, methodName: String,
                     completion: @escaping (FourDMacroEngineResult) -> Void) {
         runQueue.async {
-            runOnQueue(tool4d: tool4d, engineProjectFile: engineProjectFile,
+            runOnQueue(tool4d: tool4d, engineProjectRoot: engineProjectRoot,
+                       engineProjectFile: engineProjectFile,
                        code: code, variant: variant, methodName: methodName,
                        completion: completion)
         }
@@ -130,7 +132,7 @@ enum FourDMacroEngine {
     /// Die Queue wird währenddessen mit einem Semaphor blockiert, damit ein
     /// zweiter Lauf erst nach dem Zurücklegen der Watch-Dateien beginnt.
     private static func runOnQueue(
-        tool4d: URL, engineProjectFile: URL, code: String,
+        tool4d: URL, engineProjectRoot: URL, engineProjectFile: URL, code: String,
         variant: String, methodName: String,
         completion: @escaping (FourDMacroEngineResult) -> Void
     ) {
@@ -163,17 +165,15 @@ enum FourDMacroEngine {
         // Projektregeln) ist Beiseitelegen vor dem Lauf und Zurücklegen
         // danach — genau das tut die Engine hier selbst; die Datei ist ein
         // regenerierbarer 4D-Cache und gitignored.
-        let engineRoot = engineProjectFile
-            .deletingLastPathComponent()  // …/Project
-            .deletingLastPathComponent()  // Projektwurzel
-        let debuggerWatchesBackups = setAsideDebuggerWatches(in: engineRoot,
+        let debuggerWatchesBackups = setAsideDebuggerWatches(in: engineProjectRoot,
                                                              fileManager: fm)
 
         // Hält die Queue bis zum Abschluss der Nachbereitung besetzt.
         let done = DispatchSemaphore(value: 0)
+        let completionGate = FourDMacroRunCompletionGate()
         var policy = GitExecutionPolicy.default
         policy.timeout = timeout
-        GitRunner.runExecutable(
+        let cancellation = GitRunner.runExecutable(
             tool4d,
             arguments: arguments(projectFile: engineProjectFile,
                                  inputFile: inputFile, outputFile: outputFile,
@@ -184,6 +184,7 @@ enum FourDMacroEngine {
             // nicht auf den Main-Thread.
             completionQueue: DispatchQueue.global(qos: .userInitiated)
         ) { outcome in
+            guard completionGate.claim() else { return }
             defer {
                 fm.removeItemQuietly(at: workDirectory)
                 done.signal()
@@ -205,6 +206,7 @@ enum FourDMacroEngine {
                         "tool4d konnte nicht gestartet werden: %@", detail)))
                     return
                 case .cancelled:
+                    finish(.failed(L10n.string("Der Makrolauf wurde abgebrochen.")))
                     return
                 case .completed(let result):
                     var text = L10n.format(
@@ -225,8 +227,26 @@ enum FourDMacroEngine {
             }
             finish(Self.interpret(status: status, output: output))
         }
-        // Warten blockiert nur diese eigene Queue, nie den Main-Thread.
-        done.wait()
+        // Warten blockiert nur diese eigene Queue, nie den Main-Thread. Eine
+        // zusätzliche Reserve deckt den Rückruf und das Lesen der kleinen
+        // Ergebnisdateien ab. Bleibt selbst der Rückruf aus, stellt dieser
+        // Pfad Watch-Dateien und Queue garantiert wieder her.
+        if done.wait(timeout: .now() + timeout + 5) == .timedOut {
+            cancellation.cancel()
+            if completionGate.claim() {
+                restoreDebuggerWatches(debuggerWatchesBackups, fileManager: fm)
+                fm.removeItemQuietly(at: workDirectory)
+                finish(.failed(L10n.format(
+                    "Der Makrolauf antwortete auch %.0f Sekunden nach dem Zeitlimit nicht und wurde abgebrochen.",
+                    5.0
+                )))
+                done.signal()
+            } else {
+                // Der reguläre Rückruf hat die Nachbereitung bereits
+                // übernommen; nur noch kurz auf deren Abschluss warten.
+                _ = done.wait(timeout: .now() + 5)
+            }
+        }
     }
 
     /// Der Name der Watch-Datei und das gemeinsame Präfix ihrer Beiseite-
@@ -239,7 +259,7 @@ enum FourDMacroEngine {
     /// Legt alle `userPreferences.*/debuggerWatches.json` des Engine-Projekts
     /// unter einem laufeigenen Backup-Namen im selben Ordner beiseite und
     /// liefert die Paare (Original, Backup) für die Wiederherstellung.
-    private static func setAsideDebuggerWatches(
+    static func setAsideDebuggerWatches(
         in engineRoot: URL, fileManager: FileManager
     ) -> [(original: URL, backup: URL)] {
         let entries = (try? fileManager.contentsOfDirectory(
@@ -264,32 +284,74 @@ enum FourDMacroEngine {
     /// Räumt liegen gebliebene Beiseite-Kopien eines früheren Laufs auf, der
     /// zum Beispiel durch einen Programmabbruch nie zurücklegen konnte.
     /// Fehlt die Watch-Datei, wandert die Kopie zurück; hat 4D inzwischen eine
-    /// neue geschrieben, ist die Kopie ein überholter Cache und darf weg.
-    private static func recoverLeftoverWatchesBackups(
+    /// neue geschrieben, bleibt die Kopie unter einem eindeutigen Namen
+    /// erhalten, damit kein möglicherweise noch benötigter Stand verloren geht.
+    static func recoverLeftoverWatchesBackups(
         in directory: URL, fileManager: FileManager
     ) {
         let entries = (try? fileManager.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: nil)) ?? []
         let original = directory.appendingPathComponent(watchesFileName)
-        for leftover in entries.sorted(by: { $0.path < $1.path })
-        where leftover.lastPathComponent.hasPrefix(watchesBackupPrefix) {
-            if fileManager.fileExists(atPath: original.path) {
-                try? fileManager.removeItem(at: leftover)
-            } else {
-                try? fileManager.moveItem(at: leftover, to: original)
+        let leftovers = entries
+            .filter { $0.lastPathComponent.hasPrefix(watchesBackupPrefix) }
+            .sorted {
+                let leftDate = (try? $0.resourceValues(
+                    forKeys: [.contentModificationDateKey]
+                ).contentModificationDate) ?? .distantPast
+                let rightDate = (try? $1.resourceValues(
+                    forKeys: [.contentModificationDateKey]
+                ).contentModificationDate) ?? .distantPast
+                return leftDate == rightDate ? $0.path < $1.path : leftDate > rightDate
             }
+        for leftover in leftovers {
+            if !fileManager.fileExists(atPath: original.path),
+               (try? fileManager.moveItem(at: leftover, to: original)) != nil {
+                continue
+            }
+            preserveDebuggerWatchesBackup(leftover, fileManager: fileManager)
         }
     }
 
     /// Stellt die beiseitegelegten Dateien wieder her. Hat 4D währenddessen
     /// eine neue Datei geschrieben, bleibt die neue stehen.
-    private static func restoreDebuggerWatches(
+    static func restoreDebuggerWatches(
         _ backups: [(original: URL, backup: URL)], fileManager: FileManager
     ) {
-        for (original, backup) in backups
-        where !fileManager.fileExists(atPath: original.path) {
-            try? fileManager.moveItem(at: backup, to: original)
+        for (original, backup) in backups {
+            if !fileManager.fileExists(atPath: original.path) {
+                try? fileManager.moveItem(at: backup, to: original)
+            } else {
+                preserveDebuggerWatchesBackup(backup, fileManager: fileManager)
+            }
         }
+    }
+
+    /// Überzählige oder von einer neuen 4D-Datei verdrängte Sicherungen unter
+    /// einem Namen behalten, den der nächste automatische Lauf nicht erneut
+    /// verarbeitet. Keine Fassung wird still gelöscht.
+    private static func preserveDebuggerWatchesBackup(
+        _ backup: URL, fileManager: FileManager
+    ) {
+        guard fileManager.fileExists(atPath: backup.path) else { return }
+        let preserved = backup.deletingLastPathComponent().appendingPathComponent(
+            "debuggerWatches.json.fastra-macro-preserved-\(UUID().uuidString)"
+        )
+        try? fileManager.moveItem(at: backup, to: preserved)
+    }
+}
+
+/// Genau ein Pfad darf Ergebnis, Watch-Restore und Temp-Cleanup übernehmen:
+/// entweder der reguläre Prozessrückruf oder die äußere Sicherheitsfrist.
+private final class FourDMacroRunCompletionGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var claimed = false
+
+    func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !claimed else { return false }
+        claimed = true
+        return true
     }
 }
 

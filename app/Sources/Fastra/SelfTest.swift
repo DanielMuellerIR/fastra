@@ -13328,6 +13328,7 @@ enum SelfTest {
             + "ALERT($text+String($laenge))\n"
         FourDMacroEngine.run(
             tool4d: tool.executableURL,
+            engineProjectRoot: URL(fileURLWithPath: engineRoot),
             engineProjectFile: projectFile,
             code: code,
             variant: FourDKomplettierenVariant.standard.rawValue,

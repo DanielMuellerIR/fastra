@@ -7,6 +7,7 @@
 
 import Testing
 import Foundation
+import AppKit
 @testable import Fastra
 
 // MARK: - Beispieldaten
@@ -437,7 +438,8 @@ struct FourDMacroRenderingTests {
     @Test("Gelernte Token-Suffixe stellen Befehls- UND Konstanten-Token wieder her")
     func learnedRoundtripRestoresTokens() {
         // Tokenisierter Originalcode, wie er in `.4dm`-Dateien liegt.
-        let original = "var $t : Text\nALERT:C41(Char:C90(13))\n"
+        let original = "var $t : Text\nvar $d : Date\nvar $time : Time\n"
+            + "#DECLARE -> $result : Date\nALERT:C41(Char:C90(13))\n"
             + "If (Application type:C494=tool4d:K5:70)\nEnd if"
         let learned = FourDTokenTransform.learnedSuffixes(from: original)
         let detokenized = FourDTokenTransform.detokenize(original)
@@ -467,18 +469,17 @@ struct FourDMacroRenderingTests {
                 == original)
     }
 
-    @Test("Bekannte Grenze: ein MEHRWORTIGES unbekanntes Symbol bleibt ohne Suffix")
-    func learnedRoundtripCannotRebuildUnknownMultiWordSymbols() {
-        // Ohne Suffix und ohne Katalog-Eintrag hat der Tokenizer kein Merkmal,
-        // an dem er „Future const" als EIN Symbol erkennen könnte — er sieht
-        // nur „Future". Das gelernte Suffix bleibt deshalb liegen. Bewusst als
-        // Test festgehalten, damit die Grenze sichtbar bleibt statt zu
-        // überraschen (als offener Punkt in ROADMAP.md notiert).
-        let original = "If (x=Future const:K91:2)\nEnd if"
+    @Test("Mehrwortige unbekannte Symbole bekommen exakt ihr gelerntes Suffix")
+    func learnedRoundtripRebuildsUnknownMultiWordSymbols() {
+        // Der Tokenizer sieht ohne Suffix nur das erste Wort. Die gelernte
+        // Symbolmenge muss deshalb den längsten vollständigen Namen liefern;
+        // ein kürzeres `Future`-Token darf nicht mitten im Namen landen.
+        let original = "If (x=Future:K91:1)\n"
+            + "If (y=Future const:K91:2)\nEnd if"
         let learned = FourDTokenTransform.learnedSuffixes(from: original)
         let detokenized = FourDTokenTransform.detokenize(original)
         #expect(FourDTokenTransform.retokenize(detokenized, learned: learned)
-                != original)
+                == original)
     }
 
     @Test("Engine-Status: OK, UNVERAENDERT und FEHLER werden korrekt gelesen")
@@ -538,21 +539,34 @@ func macroIDsStayUniqueAcrossSameNamedSources() {
     #expect(first[0].sourceLabel == "Macros.xml")
 }
 
-@Test("Kürzel: ⌘W bleibt „Tab schließen“ und wird nicht als Makro-Kürzel angeboten")
-func macroReservedShortcutW() {
-    // ⌘W wird im Routing VOR den Makros geprüft. Ein angezeigtes ⌘W wäre
-    // deshalb ein Kürzel, das nie auslöst.
-    #expect(FourDMacroXML.splitName("Fenster zu /w").shortcutKey == nil)
-    #expect(FourDMacroXML.splitName("Fenster zu /w").displayName == "Fenster zu")
-    #expect(FourDMacroXML.splitName("Fenster zu /W").shortcutKey == nil)
-    // Andere Kürzel bleiben unberührt.
-    #expect(FourDMacroXML.splitName("Makro /t").shortcutKey == "t")
+@Test("Kürzel: App-Menü gewinnt; doppelte Makro-Kürzel werden nur einmal vergeben")
+func macroShortcutsRespectAppMenuAndDuplicates() {
+    let xml = """
+    <macros>
+      <macro name="Speichern /s"><text>S</text></macro>
+      <macro name="Erstes /x"><text>1</text></macro>
+      <macro name="Zweites /x"><text>2</text></macro>
+      <macro name="Frei /t"><text>T</text></macro>
+    </macros>
+    """
+    let parsed = FourDMacroXML.parse(data: Data(xml.utf8), sourceLabel: "x")
+    let resolved = FourDMacroXML.resolvingShortcuts(in: parsed,
+                                                    reserved: ["s", "w", "q"])
+    #expect(resolved.map(\.shortcutKey) == [nil, "x", nil, "t"])
+    #expect(resolved.map(\.displayName)
+            == ["Speichern", "Erstes", "Zweites", "Frei"])
 }
 
-@Test("Komplettieren: nur die vier bekannten Signaturen gelten")
+@Test("Komplettieren: bekannte Varianten samt ausgeschriebener Standardform gelten")
 func macroKomplettierenSignaturesAreExact() {
     let placeholder = "\"<method_name/>\""
     #expect(FourDMacroXML.komplettierenVariant(arguments: [placeholder]) == .standard)
+    #expect(FourDMacroXML.komplettierenVariant(
+        arguments: [placeholder, "False"]) == .standard)
+    #expect(FourDMacroXML.komplettierenVariant(
+        arguments: [placeholder, "False", "\"\""]) == .standard)
+    #expect(FourDMacroXML.komplettierenVariant(
+        arguments: [placeholder, "False", "\"\"", "False"]) == .standard)
     #expect(FourDMacroXML.komplettierenVariant(
         arguments: [placeholder, "False", "\"\"", "True"]) == .ohneNichtVerwendet)
     #expect(FourDMacroXML.komplettierenVariant(
@@ -590,4 +604,216 @@ func macroEmptyKomplettierenCallIsUnsupported() {
     let macros = FourDMacroXML.parse(data: Data(xml.utf8), sourceLabel: "x.xml")
     #expect(macros.count == 1)
     #expect(unsupportedReason(FourDMacroXML.capability(of: macros[0]))?.isEmpty == false)
+}
+
+@Test("Befehls-Token bleiben aus Date- und Time-Typpositionen heraus")
+func commandTokenizationSkipsDeclarationTypes() {
+    let source = "var $d : Date\nvar $t : Time\n"
+        + "#DECLARE($value : Date)\n#DECLARE -> $result : Time\n"
+        + "Date(\"2026-08-20\")"
+    let tokenized = FourDTokenTransform.tokenizeCommands(source)
+    #expect(tokenized.contains("var $d : Date\n"))
+    #expect(tokenized.contains("var $t : Time\n"))
+    #expect(tokenized.contains("$value : Date)"))
+    #expect(tokenized.contains("$result : Time\n"))
+    #expect(tokenized.contains("Date:C102("))
+}
+
+@Test("Unbekannte Platzhalter werden vor leerem Inhalt erklärt — auch im Methodenaufruf")
+func unknownMacroPlaceholdersNeverDisappearSilently() throws {
+    let textXML = """
+    <macros><macro name="X"><text><neu/></text></macro></macros>
+    """
+    let methodXML = """
+    <macros><macro name="Y"><text><method>\
+    MAO_MethodeKomplettierenNeu("<method_name/>";False;"";True<neu/>)\
+    </method></text></macro></macros>
+    """
+    let textMacro = try #require(FourDMacroXML.parse(
+        data: Data(textXML.utf8), sourceLabel: "x"
+    ).first)
+    let methodMacro = try #require(FourDMacroXML.parse(
+        data: Data(methodXML.utf8), sourceLabel: "y"
+    ).first)
+    #expect(unsupportedReason(FourDMacroXML.capability(of: textMacro))?.contains("<neu/>") == true)
+    #expect(unsupportedReason(FourDMacroXML.capability(of: methodMacro))?.contains("<neu/>") == true)
+}
+
+@Test("4D-Makroformate 0…8 und 0…6 werden abgebildet; fremde Werte werden abgelehnt")
+func macroDateAndTimeFormatsAreExplicit() throws {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let locale = Locale(identifier: "en_US_POSIX")
+    for format in 0...8 {
+        #expect(!FourDMacroRendering.renderDate(date, format: format,
+                                               locale: locale).isEmpty)
+    }
+    for format in 0...6 {
+        #expect(!FourDMacroRendering.renderTime(date, format: format,
+                                               locale: locale).isEmpty)
+    }
+    #expect(FourDMacroRendering.renderDate(date, format: 4, locale: locale)
+        .range(of: #"^\d{2}/\d{2}/\d{2}$"#, options: .regularExpression) != nil)
+    #expect(FourDMacroRendering.renderDate(date, format: 7, locale: locale)
+        .range(of: #"^\d{2}/\d{2}/\d{4}$"#, options: .regularExpression) != nil)
+    #expect(FourDMacroRendering.renderDate(date, format: 8, locale: locale)
+        .range(of: #"^\d{4}-\d{2}-\d{2}T00:00:00$"#,
+               options: .regularExpression) != nil)
+
+    let invalidDateXML = """
+    <macros><macro name="Ungültiges Datum"><text><date format="9"/></text></macro></macros>
+    """
+    let invalidTimeXML = """
+    <macros><macro name="Ungültige Zeit"><text><time format="x"/></text></macro></macros>
+    """
+    let invalidDate = try #require(FourDMacroXML.parse(
+        data: Data(invalidDateXML.utf8), sourceLabel: "x"
+    ).first)
+    let invalidTime = try #require(FourDMacroXML.parse(
+        data: Data(invalidTimeXML.utf8), sourceLabel: "x"
+    ).first)
+    #expect(unsupportedReason(FourDMacroXML.capability(of: invalidDate))?.contains("9") == true)
+    #expect(unsupportedReason(FourDMacroXML.capability(of: invalidTime))?.contains("-1") == true)
+}
+
+@Test("Makro-Herkunft unterscheidet Komponente, Benutzerordner und 4D.app")
+func macroOriginLabelsAreDistinct() {
+    let file = "Macros.xml"
+    let labels = [
+        FourDMacroSource.Origin.component(name: "Werkzeuge").displayLabel(fileName: file),
+        FourDMacroSource.Origin.userLibrary.displayLabel(fileName: file),
+        FourDMacroSource.Origin.fourDApplication(version: "21.0")
+            .displayLabel(fileName: file),
+    ]
+    #expect(Set(labels).count == 3)
+    #expect(labels.allSatisfy { $0.contains(file) })
+}
+
+@MainActor
+@Test("Makro-Kürzel übernehmen keinen schlichten Command-Menübefehl")
+func liveAppMenuDefinesReservedMacroShortcuts() {
+    let root = NSMenu()
+    let file = NSMenu(title: "Datei")
+    let fileItem = NSMenuItem(title: "Datei", action: nil, keyEquivalent: "")
+    fileItem.submenu = file
+    root.addItem(fileItem)
+    file.addItem(withTitle: "Sichern", action: nil, keyEquivalent: "s")
+    let shifted = NSMenuItem(title: "Anders", action: nil, keyEquivalent: "t")
+    shifted.keyEquivalentModifierMask = [.command, .shift]
+    file.addItem(shifted)
+
+    let keys = AppMenuShortcutKeys.plainCommandKeys(in: root)
+    #expect(keys.contains("s"))
+    #expect(!keys.contains("t"))
+}
+
+@Test("Watch-Transaktion legt eine Datei beiseite und stellt sie wieder her")
+func macroEngineWatchTransactionRoundtrip() throws {
+    let root = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let preferences = root.appendingPathComponent("userPreferences.test")
+    try FileManager.default.createDirectory(at: preferences,
+                                            withIntermediateDirectories: true)
+    let original = preferences.appendingPathComponent("debuggerWatches.json")
+    try Data("aktuell".utf8).write(to: original)
+
+    let backups = FourDMacroEngine.setAsideDebuggerWatches(
+        in: root, fileManager: .default
+    )
+    #expect(backups.count == 1)
+    #expect(!FileManager.default.fileExists(atPath: original.path))
+    FourDMacroEngine.restoreDebuggerWatches(backups, fileManager: .default)
+    #expect(try String(contentsOf: original, encoding: .utf8) == "aktuell")
+}
+
+@Test("Watch-Transaktion ohne vorhandene Datei bleibt eine leere Operation")
+func macroEngineWatchTransactionWithoutFile() throws {
+    let root = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(
+        at: root.appendingPathComponent("userPreferences.test"),
+        withIntermediateDirectories: true
+    )
+    #expect(FourDMacroEngine.setAsideDebuggerWatches(
+        in: root, fileManager: .default
+    ).isEmpty)
+}
+
+@Test("Von mehreren Watch-Resten gewinnt der jüngste; ältere Fassungen bleiben erhalten")
+func macroEngineRecoversNewestWatchWithoutDeletingOlderCopies() throws {
+    let directory = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let old = directory.appendingPathComponent(
+        "debuggerWatches.json.fastra-macro-backup-old"
+    )
+    let newest = directory.appendingPathComponent(
+        "debuggerWatches.json.fastra-macro-backup-new"
+    )
+    try Data("alt".utf8).write(to: old)
+    try Data("neu".utf8).write(to: newest)
+    try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1)],
+                                          ofItemAtPath: old.path)
+    try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 2)],
+                                          ofItemAtPath: newest.path)
+
+    FourDMacroEngine.recoverLeftoverWatchesBackups(in: directory,
+                                                   fileManager: .default)
+    let original = directory.appendingPathComponent("debuggerWatches.json")
+    #expect(try String(contentsOf: original, encoding: .utf8) == "neu")
+    let preserved = try FileManager.default.contentsOfDirectory(
+        at: directory, includingPropertiesForKeys: nil
+    ).filter { $0.lastPathComponent.hasPrefix(
+        "debuggerWatches.json.fastra-macro-preserved-"
+    ) }
+    #expect(preserved.count == 1)
+    #expect(try String(contentsOf: preserved[0], encoding: .utf8) == "alt")
+}
+
+@Test("Vorhandene Watch-Datei bleibt stehen; jeder Rest wird bewahrt")
+func macroEnginePreservesLeftoversWhenOriginalExists() throws {
+    let directory = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let original = directory.appendingPathComponent("debuggerWatches.json")
+    try Data("4D-neu".utf8).write(to: original)
+    for index in 1...2 {
+        try Data("Rest \(index)".utf8).write(to: directory.appendingPathComponent(
+            "debuggerWatches.json.fastra-macro-backup-\(index)"
+        ))
+    }
+    FourDMacroEngine.recoverLeftoverWatchesBackups(in: directory,
+                                                   fileManager: .default)
+    #expect(try String(contentsOf: original, encoding: .utf8) == "4D-neu")
+    let entries = try FileManager.default.contentsOfDirectory(
+        at: directory, includingPropertiesForKeys: nil
+    )
+    #expect(entries.filter { $0.lastPathComponent.hasPrefix(
+        "debuggerWatches.json.fastra-macro-preserved-"
+    ) }.count == 2)
+    #expect(entries.allSatisfy {
+        !$0.lastPathComponent.hasPrefix("debuggerWatches.json.fastra-macro-backup-")
+    })
+}
+
+@Test("Restore überschreibt eine von 4D neu angelegte Watch-Datei nicht")
+func macroEngineRestorePreservesBackupWhenOriginalWasRecreated() throws {
+    let directory = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let original = directory.appendingPathComponent("debuggerWatches.json")
+    let backup = directory.appendingPathComponent(
+        "debuggerWatches.json.fastra-macro-backup-run"
+    )
+    try Data("vorher".utf8).write(to: backup)
+    try Data("4D-neu".utf8).write(to: original)
+
+    FourDMacroEngine.restoreDebuggerWatches(
+        [(original, backup)], fileManager: .default
+    )
+
+    #expect(try String(contentsOf: original, encoding: .utf8) == "4D-neu")
+    let preserved = try FileManager.default.contentsOfDirectory(
+        at: directory, includingPropertiesForKeys: nil
+    ).filter { $0.lastPathComponent.hasPrefix(
+        "debuggerWatches.json.fastra-macro-preserved-"
+    ) }
+    #expect(preserved.count == 1)
+    #expect(try String(contentsOf: preserved[0], encoding: .utf8) == "vorher")
 }

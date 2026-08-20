@@ -696,7 +696,12 @@ selbst laden würde — bezogen auf das 4D-Projekt der offenen Datei:
 **Text-Makros** (etwa `If`/`While` oder eigene Einfüge-Makros) wendet Fastra
 direkt an: Platzhalter wie `<method_name/>`, `<selection/>`, Datum/Zeit und
 Benutzer werden ersetzt, `<caret/>` setzt den Cursor. Das Einfügen ist ein
-normaler, undo-fähiger Schritt.
+normaler, undo-fähiger Schritt. Fastra unterstützt die Datumformate 0–8 und
+Zeitformate 0–6 aus der 4D-Makrodefinition; eine fremde Formatnummer oder ein
+unbekanntes Platzhalter-Tag wird erklärt, statt still anders eingesetzt zu
+werden. Der Tooltip eines Menüeintrags nennt seine Quelle (Komponente,
+benutzereigener Makroordner oder 4D-Version), damit gleichnamige Makros
+unterscheidbar bleiben.
 
 **Die Komplettieren-Familie** (`MAO_MethodeKomplettierenNeu` samt ihrer
 Varianten) läuft headless über tool4d gegen ein Engine-Projekt, das die
@@ -710,11 +715,12 @@ her. `00_DM_Info` und `Compiler_*`-Methoden sind vom Komplettieren bewusst
 ausgenommen.
 
 **Shortcuts:** Ein `/x`-Suffix im Makronamen (etwa „… /#“) wird zu ⌘#.
-In `.4dm`-Dokumenten gewinnt das Makro-Kürzel über gleichlautende
-Menü-Shortcuts — ⌘T ist dort „Kürzel und Datum einsetzen“, außerhalb von
-4D-Dateien bleibt ⌘T „Neuer Tab“. Ausgenommen ist ⌘W: Es schließt immer den
-Tab. Ein Makro mit dem Suffix „ /w“ bleibt deshalb ohne angezeigtes Kürzel
-und wird nur über das Menü aufgerufen.
+Ein vorhandener App-Menübefehl gewinnt immer. Ein Makro mit demselben Kürzel
+bleibt deshalb ohne angezeigtes Kürzel und ist weiter über das Menü erreichbar.
+Dasselbe gilt ab dem zweiten Makro, wenn mehrere Quellen dasselbe Kürzel
+vergeben; nur das zuerst geladene behält es. Ein Makro-Kürzel wird außerdem
+nur als verarbeitet gewertet, wenn das Makro tatsächlich startet oder Text
+einsetzt.
 
 **Grenzen:** Makros, die Zwischenablage, Editor-Auswahl über 4D-Methoden
 oder das Host-Projekt brauchen (etwa FileMerge- und Sortier-Makros), laufen

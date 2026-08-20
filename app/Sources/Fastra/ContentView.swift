@@ -272,17 +272,30 @@ struct ContentView: View {
         guard case .activate(let target) = transition.output else { return }
         // Diskrete Such-Aktion → ins Such-History-Popup aufnehmen (K4).
         workspace.recordSearchHistory()
-        workspace.activeMatchIndex = transition.state.index
+        let previousIndex = workspace.activeMatchIndex
+        let nextIndex = transition.state.index
+        func commitIndexIfPosted(_ posted: Bool) {
+            guard let index = MatchJumpCommit.index(
+                previous: previousIndex, current: workspace.activeMatchIndex,
+                next: nextIndex, posted: posted
+            ) else { return }
+            workspace.activeMatchIndex = index
+        }
         if let tabID = target.tabID {
             // Geöffnet-Scope: Ziel ist ein offener Tab (auch ungespeichert).
             // Tab aktivieren, Sprung einen Runloop-Tick später posten — der
             // Tab-Wechsel erzeugt den Editor neu (.id-Kopplung), der Sprung
             // braucht den fertigen Editor (gleiches Muster wie loadFile-
             // Completion im Ordner-Pfad).
+            guard let documentID = workspace.tabs.first(where: { $0.id == tabID })?.documentID
+            else { return }
             if workspace.activeTabID != tabID { workspace.selectTab(id: tabID) }
             DispatchQueue.main.async {
-                NotificationCenter.default.postMatchJump(target.match, for: workspace,
-                                                         requiring: .tab(tabID))
+                let posted = NotificationCenter.default.postMatchJump(
+                    target.match, for: workspace,
+                    requiring: .document(documentID)
+                )
+                commitIndexIfPosted(posted)
             }
         } else if let url = target.url, workspace.activeTab?.url != url {
             // Datei asynchron laden — Editor-Sprung erst in der Completion,
@@ -290,19 +303,22 @@ struct ContentView: View {
             workspace.loadFile(at: url) { ok in
                 guard ok else { return }
                 DispatchQueue.main.async {
-                    NotificationCenter.default.postMatchJump(target.match, for: workspace,
-                                                             requiring: .url(url))
+                    let posted = NotificationCenter.default.postMatchJump(
+                        target.match, for: workspace, requiring: .url(url)
+                    )
+                    commitIndexIfPosted(posted)
                 }
             }
         } else {
             // Datei ist schon offen — Sprung sofort ausführbar. Auch hier gilt
             // der Sprung dem JETZT aktiven Tab, nicht einem, den der Nutzer im
             // Zwischenzeitpunkt nach vorn holt.
-            let activeTabID = workspace.activeTabID
+            let activeDocumentID = workspace.activeDocumentID
             DispatchQueue.main.async {
-                NotificationCenter.default.postMatchJump(
+                let posted = NotificationCenter.default.postMatchJump(
                     target.match, for: workspace,
-                    requiring: activeTabID.map { MatchJumpTarget.tab($0) })
+                    requiring: activeDocumentID.map { MatchJumpTarget.document($0) })
+                commitIndexIfPosted(posted)
             }
         }
     }
