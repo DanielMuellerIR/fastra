@@ -79,6 +79,10 @@ struct FourDMacro: Equatable, Identifiable {
     let isSeparator: Bool
     /// Woher das Makro stammt, etwa der Dateiname der XML — für Tooltips.
     let sourceLabel: String
+    /// Name eines Platzhalter-Tags im `<text>`, das Fastra nicht kennt.
+    /// Ein solches Makro darf nicht eingefügt werden: Der Platzhalter würde
+    /// still verschwinden und der eingesetzte Text wäre unvollständig.
+    let unknownPlaceholder: String?
 }
 
 /// Welche Ausbaustufe der Methoden-Komplettierung ein Makro anfordert.
@@ -109,16 +113,33 @@ enum FourDMacroXML {
     /// Liest eine „Macros v2"-XML. Fehlertolerant: Ist die Datei kaputt,
     /// kommt eine leere Liste zurück — ein defekter Makro-Ordner darf die
     /// übrigen Fundorte nicht verhindern.
-    static func parse(data: Data, sourceLabel: String) -> [FourDMacro] {
+    ///
+    /// `sourceLabel` ist der ANZEIGETEXT der Herkunft (üblicherweise der
+    /// Dateiname, er steht im Tooltip). `sourceKey` ist dagegen die eindeutige
+    /// Kennung der Quelle und gehört in die Makro-ID: Zwei gleichzeitig
+    /// geladene Dateien heißen real beide „Macros.xml“ (mitgelieferte 4D-Makros
+    /// und Komponenten-Makros), und aus gleichen IDs wählte der Menüklick sonst
+    /// stets das erste Makro — also möglicherweise das einer anderen Quelle.
+    /// Fehlt der Schlüssel, gilt weiterhin die Beschriftung.
+    static func parse(data: Data, sourceLabel: String,
+                      sourceKey: String? = nil) -> [FourDMacro] {
         let parser = XMLParser(data: data)
         // Keine externen Entitäten auflösen: Eine fremde XML darf keine
         // Dateien nachladen. (Standardwert; hier ausdrücklich festgehalten.)
         parser.shouldResolveExternalEntities = false
-        let collector = FourDMacroCollector(sourceLabel: sourceLabel)
+        let collector = FourDMacroCollector(sourceLabel: sourceLabel,
+                                            sourceKey: sourceKey ?? sourceLabel)
         parser.delegate = collector
         guard parser.parse() else { return [] }
         return collector.macros
     }
+
+    /// Kürzelzeichen, die Fastra NICHT an ein Makro vergibt, weil die
+    /// Tastenkombination im Dokumentfenster schon fest belegt ist und vor den
+    /// Makros geprüft wird (`KeyRouting`): ⌘W schließt den Tab. Ein als „ /w"
+    /// benanntes Makro bekäme sonst im Menü ein Kürzel angezeigt, das nie
+    /// ausgelöst würde — es bliebe über seinen Menüeintrag aber ausführbar.
+    static let reservedShortcutKeys: Set<Character> = ["w"]
 
     /// Zerlegt den Makronamen in Anzeigename und Kürzel. Ein Kürzel ist das
     /// Suffix „ /x" mit genau EINEM Zeichen; „ /ab" ist keins und bleibt
@@ -135,7 +156,11 @@ enum FourDMacroXML {
         guard !key.isWhitespace else { return (rawName, nil) }
         let display = String(characters[..<(characters.count - 3)])
             .trimmingTrailingWhitespace()
-        return (display, key.lowercasedCharacter)
+        let lowered = key.lowercasedCharacter
+        // Belegte Taste: Anzeigename bleibt gekürzt (4D zeigt das Suffix
+        // ebenfalls nicht an), aber ohne Kürzel im Menü.
+        guard !reservedShortcutKeys.contains(lowered) else { return (display, nil) }
+        return (display, lowered)
     }
 
     // MARK: - Einstufung
@@ -157,6 +182,15 @@ enum FourDMacroXML {
             return .unsupported(
                 reason: L10n.string("Reiner Anzeigeeintrag: Das Makro fügt keinen Text ein.")
             )
+        }
+        // Ein Platzhalter, den Fastra nicht kennt, darf nicht einfach
+        // wegfallen: Der eingefügte Text wäre unvollständig, ohne dass es
+        // jemand merkt (Produktinvariante „keine stillen Fallbacks").
+        if let placeholder = macro.unknownPlaceholder {
+            return .unsupported(reason: L10n.format(
+                "Das Makro enthält den 4D-Platzhalter <%@/>, den Fastra nicht kennt. Es würde sonst unvollständigen Text einsetzen; im 4D-Methodeneditor läuft es weiterhin.",
+                placeholder
+            ))
         }
         if macro.textParts.contains(.clipboard) {
             return .unsupported(
@@ -203,21 +237,44 @@ enum FourDMacroXML {
     /// abbilden. `$1` ist der Methodenname, `$2` ist immer `False` und `$3`
     /// immer `""` — für die Variante zählen allein `$4` (nicht verwendete
     /// Variablen weglassen) und `$5` (var-Umwandlung weglassen).
+    ///
+    /// Geprüft werden ausschließlich die vier real dokumentierten Signaturen,
+    /// samt Argumentzahl und festen Werten. Alles andere ergibt `nil` und wird
+    /// damit als „kennt Fastra nicht" erklärt: Ein fremdes oder künftig
+    /// erweitertes Makro darf nicht als bekannte Variante durchgehen und dann
+    /// mit anderer Bedeutung laufen.
     static func komplettierenVariant(arguments: [String]) -> FourDKomplettierenVariant? {
-        let fourth = arguments.count >= 4 ? booleanLiteral(arguments[3]) : nil
-        let fifth = arguments.count >= 5 ? booleanLiteral(arguments[4]) : nil
-        switch (arguments.count >= 4, arguments.count >= 5) {
-        case (false, _):
-            return .standard
-        case (true, false):
-            return fourth == true ? .ohneNichtVerwendet : nil
-        case (true, true):
-            switch (fourth, fifth) {
-            case (false, false): return .ohneVarUmwandlung
-            case (true, false): return .ohneNichtVerwendetUndVar
-            default: return nil
-            }
+        // Erstes Argument ist immer der Methodenplatzhalter, in beiden
+        // Schreibweisen, die real vorkommen: mit und ohne Anführungszeichen.
+        guard let first = arguments.first, isMethodNamePlaceholder(first) else {
+            return nil
         }
+        if arguments.count == 1 { return .standard }
+        // Ab zwei Argumenten sind $2 und $3 fest vorgegeben.
+        guard arguments.count >= 4,
+              booleanLiteral(arguments[1]) == false,
+              isEmptyStringLiteral(arguments[2]) else { return nil }
+        if arguments.count == 4 {
+            return booleanLiteral(arguments[3]) == true ? .ohneNichtVerwendet : nil
+        }
+        guard arguments.count == 5 else { return nil }
+        switch (booleanLiteral(arguments[3]), booleanLiteral(arguments[4])) {
+        case (false, false): return .ohneVarUmwandlung
+        case (true, false): return .ohneNichtVerwendetUndVar
+        default: return nil
+        }
+    }
+
+    /// Der Methodenplatzhalter `<method_name/>`, wahlweise in doppelten
+    /// Anführungszeichen (so steht er maskiert in der XML).
+    static func isMethodNamePlaceholder(_ argument: String) -> Bool {
+        let trimmed = argument.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed == "<method_name/>" || trimmed == "\"<method_name/>\""
+    }
+
+    /// Die leere Zeichenkette `""` als 4D-Literal.
+    static func isEmptyStringLiteral(_ argument: String) -> Bool {
+        argument.trimmingCharacters(in: .whitespacesAndNewlines) == "\"\""
     }
 
     /// `true`/`false` als 4D-Literal; alles andere ist keine Wahrheitsangabe.
@@ -237,7 +294,10 @@ enum FourDMacroXML {
     /// Anführungszeichen (mit `\"` als maskiertem Anführungszeichen). Ein
     /// Semikolon INNERHALB einer Zeichenkette trennt deshalb nicht.
     /// Ohne Klammern gilt der ganze Text als Methodenname ohne Argumente;
-    /// bei fehlender schließender Klammer kommt `nil` zurück.
+    /// bei fehlender schließender Klammer kommt `nil` zurück. Steht hinter der
+    /// schließenden Klammer noch etwas anderes als Leerraum, ist das kein
+    /// einzelner Aufruf mehr — dann kommt ebenfalls `nil`, statt den Rest
+    /// stillschweigend wegzuwerfen.
     static func parseMethodCall(_ call: String) -> (name: String, arguments: [String])? {
         let characters = Array(call.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !characters.isEmpty else { return nil }
@@ -249,6 +309,7 @@ enum FourDMacroXML {
         guard !name.isEmpty, let close = indexOfMatchingParenthesis(characters, from: open) else {
             return nil
         }
+        guard characters[(close + 1)...].allSatisfy(\.isWhitespace) else { return nil }
         return (name, splitArguments(Array(characters[(open + 1)..<close])))
     }
 
@@ -361,6 +422,8 @@ enum FourDMacroXML {
 private final class FourDMacroCollector: NSObject, XMLParserDelegate {
 
     private let sourceLabel: String
+    /// Eindeutige Kennung der Quelle für die Makro-IDs (siehe `parse`).
+    private let sourceKey: String
     private(set) var macros: [FourDMacro] = []
 
     /// Die gerade offenen Elemente. Über die Tiefe unterscheidet sich das
@@ -376,9 +439,12 @@ private final class FourDMacroCollector: NSObject, XMLParserDelegate {
     private var currentParts: [FourDMacroTextPart] = []
     private var pendingLiteral = ""
     private var currentMethodCall: String?
+    /// Erstes unbekanntes Platzhalter-Tag im `<text>` des laufenden Makros.
+    private var currentUnknownPlaceholder: String?
 
-    init(sourceLabel: String) {
+    init(sourceLabel: String, sourceKey: String) {
         self.sourceLabel = sourceLabel
+        self.sourceKey = sourceKey
     }
 
     func parser(_ parser: XMLParser, didStartElement elementName: String,
@@ -448,6 +514,7 @@ private final class FourDMacroCollector: NSObject, XMLParserDelegate {
         currentParts = []
         pendingLiteral = ""
         currentMethodCall = nil
+        currentUnknownPlaceholder = nil
         textContainerDepth = nil
         methodDepth = nil
     }
@@ -461,25 +528,28 @@ private final class FourDMacroCollector: NSObject, XMLParserDelegate {
             ? (displayName: trimmedName, shortcutKey: Character?.none)
             : FourDMacroXML.splitName(rawName)
         macros.append(FourDMacro(
-            id: "\(sourceLabel)#\(macros.count)",
+            id: "\(sourceKey)#\(macros.count)",
             displayName: split.displayName,
             shortcutKey: split.shortcutKey,
             textParts: currentParts,
             methodCall: currentMethodCall,
             isSeparator: isSeparator,
-            sourceLabel: sourceLabel
+            sourceLabel: sourceLabel,
+            unknownPlaceholder: currentUnknownPlaceholder
         ))
         currentRawName = nil
         currentParts = []
         pendingLiteral = ""
         currentMethodCall = nil
+        currentUnknownPlaceholder = nil
         textContainerDepth = nil
         methodDepth = nil
     }
 
-    /// Bekannte Platzhalter abbilden. Ein unbekanntes Tag wird bewusst nur
-    /// übersprungen — sein Textinhalt läuft ohnehin als `.literal` durch, und
-    /// ein neuer 4D-Platzhalter soll das Makro nicht unbrauchbar machen.
+    /// Bekannte Platzhalter abbilden. Ein unbekanntes Tag wird vermerkt: Sein
+    /// Textinhalt liefe zwar als `.literal` durch, aber die Bedeutung des Tags
+    /// selbst kennt Fastra nicht. Das Makro gilt dadurch als nicht ausführbar
+    /// (siehe `capability`), statt still unvollständigen Text einzusetzen.
     private func appendPlaceholder(_ elementName: String,
                                    attributes: [String: String]) {
         let part: FourDMacroTextPart
@@ -492,7 +562,13 @@ private final class FourDMacroCollector: NSObject, XMLParserDelegate {
         case "clipboard": part = .clipboard
         case "date": part = .date(format: Int(attributes["format"] ?? "") ?? 0)
         case "time": part = .time(format: Int(attributes["format"] ?? "") ?? 0)
-        default: return
+        default:
+            // Der erste unbekannte Platzhalter gewinnt — er steht später in
+            // der Erklärung, warum das Makro nicht ausführbar ist.
+            if currentUnknownPlaceholder == nil {
+                currentUnknownPlaceholder = elementName
+            }
+            return
         }
         flushLiteral()
         currentParts.append(part)

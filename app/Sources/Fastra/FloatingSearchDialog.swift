@@ -1263,7 +1263,8 @@ struct FloatingSearchDialog: View {
             // später posten, nachdem SwiftUI den Editor neu erzeugt hat.
             if workspace.activeTabID != tabID { workspace.selectTab(id: tabID) }
             DispatchQueue.main.async {
-                NotificationCenter.default.postMatchJump(target.match, for: workspace)
+                NotificationCenter.default.postMatchJump(target.match, for: workspace,
+                                                         requiring: .tab(tabID))
             }
             return
         }
@@ -1274,7 +1275,8 @@ struct FloatingSearchDialog: View {
             workspace.loadFile(at: url) { ok in
                 guard ok else { return }
                 DispatchQueue.main.async {
-                    NotificationCenter.default.postMatchJump(target.match, for: workspace)
+                    NotificationCenter.default.postMatchJump(target.match, for: workspace,
+                                                             requiring: .url(url))
                 }
             }
             return

@@ -649,6 +649,12 @@ beginnt — auch versionierte Downloads wie `tool4d_v21_nightly_….app` müssen
 also nicht umbenannt werden. Liegen mehrere, wählt Fastra die höchste
 Version.
 
+**Eigener tool4d-Pfad:** In den Einstellungen unter „4D“ lässt sich die
+ausführbare Datei direkt eintragen; `~` ist erlaubt. Nur ein LEERES Feld
+bedeutet „Fastra sucht selbst“. Zeigt ein eingetragener Pfad ins Leere, auf
+einen Ordner oder auf etwas nicht Ausführbares, sagt das Feld das direkt —
+Fastra weicht dann NICHT still auf eine andere gefundene Installation aus.
+
 **Dokument prüfen:** Ist eine gespeicherte `.4dm`-Methode Teil eines geöffneten
 4D-Projekts und tool4d vorhanden, startet **Text → Dokument prüfen** eine
 kurze lokale LSP-Prüfung. Fastra lauscht nur auf `127.0.0.1`, tool4d verbindet
@@ -706,12 +712,16 @@ ausgenommen.
 **Shortcuts:** Ein `/x`-Suffix im Makronamen (etwa „… /#“) wird zu ⌘#.
 In `.4dm`-Dokumenten gewinnt das Makro-Kürzel über gleichlautende
 Menü-Shortcuts — ⌘T ist dort „Kürzel und Datum einsetzen“, außerhalb von
-4D-Dateien bleibt ⌘T „Neuer Tab“.
+4D-Dateien bleibt ⌘T „Neuer Tab“. Ausgenommen ist ⌘W: Es schließt immer den
+Tab. Ein Makro mit dem Suffix „ /w“ bleibt deshalb ohne angezeigtes Kürzel
+und wird nur über das Menü aufgerufen.
 
 **Grenzen:** Makros, die Zwischenablage, Editor-Auswahl über 4D-Methoden
 oder das Host-Projekt brauchen (etwa FileMerge- und Sortier-Makros), laufen
 nur im echten 4D-Methodeneditor. Fastra zeigt sie im Menü und erklärt beim
-Aufruf, warum sie hier nicht laufen.
+Aufruf, warum sie hier nicht laufen. Dasselbe gilt für ein Makro mit einem
+Platzhalter-Tag, das Fastra nicht kennt: Es würde sonst still unvollständigen
+Text einsetzen.
 
 ## XPath-Leiste
 

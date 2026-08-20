@@ -648,13 +648,13 @@ struct EditorView: View {
                                 PDFPreviewView(url: url, onSnapshot: {
                                     workspace.visiblePreviewSnapshot = $0
                                 })
-                                .id(tab.id)
+                                .id(EditorView.fileViewIdentity(tabID: tab.id, url: url))
                             } else {
                                 ImagePreviewView(url: url, fileSize: tab.fileSize,
                                                  onSnapshot: {
                                     workspace.visiblePreviewSnapshot = $0
                                 })
-                                .id(tab.id)
+                                .id(EditorView.fileViewIdentity(tabID: tab.id, url: url))
                             }
                         } else {
                             actualEditor
@@ -684,7 +684,7 @@ struct EditorView: View {
                                 // Datei über den Extern-Änderungs-Pfad abgleichen.
                                 workspace.checkExternalChanges()
                             }
-                            .id(tab.id)
+                            .id(EditorView.fileViewIdentity(tabID: tab.id, url: url))
                         } else {
                             actualEditor
                         }
@@ -698,7 +698,7 @@ struct EditorView: View {
                                 // sichtbare Abschnitt, nicht die ganze Datei.
                                 onVisiblePage: { workspace.visiblePrintPage = $0 }
                             )
-                                .id(tab.id)
+                                .id(EditorView.fileViewIdentity(tabID: tab.id, url: url))
                         } else {
                             actualEditor
                         }
@@ -758,8 +758,14 @@ struct EditorView: View {
                 EditorView.scrollRestoreDebug("onAppear ohne Restore-Ziel")
                 return
             }
+            // Das Ziel-Dokument festhalten: Wechselt der Nutzer währenddessen
+            // erneut den Tab, darf weder weiter auf dessen ScrollView
+            // gescrollt noch sein frischer Auftrag gelöscht werden.
+            let restoreDocumentID = workspace.activeDocumentID
             EditorView.scrollRestoreDebug("onAppear startet Restore auf y=\(Int(target.y))")
-            EditorView.restoreScrollOffset(target, in: workspace) {
+            EditorView.restoreScrollOffset(target, in: workspace,
+                                           documentID: restoreDocumentID) {
+                guard workspace.activeDocumentID == restoreDocumentID else { return }
                 pendingScrollRestore = nil
             }
         }
@@ -1010,6 +1016,17 @@ struct EditorView: View {
         workspace.cursorColumn = column
     }
 
+    /// SwiftUI-Identität einer datei-gebundenen Ansicht (Bild, PDF, Hex,
+    /// Abschnitte). Die URL gehört mit hinein: Beim Umbenennen oder
+    /// Verschieben einer offenen Datei bleibt die Tab-ID gleich, aber die
+    /// Modelle und die Druckvorlage dieser Ansichten hängen am Pfad. Ohne die
+    /// URL läsen sie danach weiter am alten Ort, und der Ausdruck wies die
+    /// veraltete Vorlage ab („nichts zu drucken"). Mit ihr baut SwiftUI die
+    /// Ansicht am neuen Pfad neu auf.
+    static func fileViewIdentity(tabID: UUID, url: URL) -> String {
+        "\(tabID.uuidString)|\(url.path)"
+    }
+
     /// Prüft die Fensteradresse eines Editor-Sprungs unabhängig von SwiftUI.
     /// Diese kleine Grenze ist unit-testbar; die tatsächliche Selektion und das
     /// Scrollen bleiben Aufgabe des In-App-Selbsttests.
@@ -1044,7 +1061,14 @@ struct EditorView: View {
     /// Dokumenthöhe ist deshalb geschätzt und ein Scroll weit nach unten würde
     /// am (noch zu kleinen) Maximum abgeschnitten. Jeder Versuch legt neue
     /// Zeilen aus und lässt die Höhe wachsen, bis das Ziel erreichbar ist.
+    ///
+    /// `documentID` ist das Dokument, für das der Ausschnitt gilt. Ohne diese
+    /// Bindung liefen die verzögerten Nachzieh-Versuche eines verlassenen Tabs
+    /// auf der inzwischen montierten ScrollView des NEUEN Tabs weiter — der
+    /// sprang dann an den Ausschnitt des vorherigen (die Generation allein
+    /// reicht nicht: ein Tabwechsel erhöht sie nicht).
     static func restoreScrollOffset(_ offset: CGPoint, in workspace: Workspace,
+                                    documentID: UUID?,
                                     attempt: Int = 0,
                                     completion: @escaping () -> Void) {
         let generation = workspace.scrollRestoreGeneration
@@ -1054,6 +1078,10 @@ struct EditorView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + (attempt == 0 ? 0.05 : 0.03)) {
             guard generation == workspace.scrollRestoreGeneration else {
                 scrollRestoreDebug("attempt=\(attempt) abgebrochen: Generation überholt")
+                completion(); return
+            }
+            guard workspace.activeDocumentID == documentID else {
+                scrollRestoreDebug("attempt=\(attempt) abgebrochen: anderes Dokument aktiv")
                 completion(); return
             }
             guard let root = editorWindow(for: workspace)?.contentView,
@@ -1098,8 +1126,8 @@ struct EditorView: View {
                 completion()
                 return
             }
-            restoreScrollOffset(offset, in: workspace, attempt: attempt + 1,
-                                completion: completion)
+            restoreScrollOffset(offset, in: workspace, documentID: documentID,
+                                attempt: attempt + 1, completion: completion)
         }
     }
 

@@ -102,16 +102,24 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   offen: ein warmer tool4d-Prozess, falls die Kaltstartzeit (real ~3 s) im
   Alltag stört. Herkunft: Idee #28 in `theplan/ideen.md`.
 
+- **4D-Makro-Engine: mehrwortige unbekannte Symbole verlieren ihr
+  Token-Suffix.** Nach einem headless gelaufenen Komplettieren-Makro stellt
+  Fastra die Token-Suffixe aus dem Originalpuffer wieder her. Bei einem
+  Symbol aus MEHREREN Wörtern, das weder im Befehls- noch im Konstanten-
+  katalog steht (etwa eine ganz neue 4D-Konstante „Future const"), gelingt
+  das nicht: Ohne Suffix und ohne Katalogeintrag hat der Tokenizer kein
+  Merkmal, an dem er die Wörter als EIN Symbol erkennen könnte. Einwortige
+  unbekannte Befehle und Konstanten sind seit dem Reviewfund vom 2026-08-20
+  abgedeckt. Lösungsrichtung: Die gelernten Namen vor dem Tokenisieren als
+  zusätzliche Symbolmenge in den Tokenizer geben, statt sie erst danach
+  nachzuschlagen. Festgehalten als Test
+  `learnedRoundtripCannotRebuildUnknownMultiWordSymbols`.
+
 ## Kleine offene Ideen
 
 - **Druck-Ausbau (beauftragt 2026-08-18, aus der manuellen Druckabnahme):**
-  Zwei der zu v1.100.0 bewusst gezogenen Grenzen sind damit aufgehoben:
-  - **Optionen im Druckdialog:** Kopf-/Fußzeile (die vier Eck-Angaben
-    Dateiname, Datum, Pfad, Seitenzahl) und Zeilennummern sollen sich direkt
-    im Systemdruckdialog ein- und ausschalten lassen — nicht nur vorab in den
-    Einstellungen. Die frühere Begründung dagegen (Neuaufteilung der Seiten
-    bei jeder Änderung) ist damit als Umsetzungsanforderung zu lösen, nicht
-    mehr als Grenze.
+  Der Schalter-Teil ist mit v1.102.0 erledigt (Kopf-/Fußzeile und
+  Zeilennummern direkt im Systemdruckdialog). Offen bleibt allein:
   - **Syntaxfarben im Quelltext-Ausdruck:** Der Farbausdruck ist jetzt
     ausdrücklich gewünscht. Vor der Umsetzung am echten Code erheben, wie die
     Editor-Einfärbung für den Druck wiederverwendet werden kann (heller

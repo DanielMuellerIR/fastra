@@ -84,6 +84,19 @@ enum FourDTokenTransform {
         return learned
     }
 
+    /// Token-Klassen, die ein gelerntes Suffix zurückbekommen dürfen: alles,
+    /// was ein NAME ist. Der Umweg ist nötig, weil der Tokenizer denselben
+    /// Namen vor und nach dem Entfernen des Suffixes unterschiedlich einstuft:
+    /// `FutureCommand:C9999` erkennt er am `:C` als Befehl, das nackte
+    /// `FutureCommand(` mangels Eintrag im Katalog aber als Methodenaufruf.
+    /// Nur auf `.command`/`.constant` zu schauen verlöre deshalb genau die
+    /// Suffixe neuer, noch unbekannter 4D-Symbole. Kommentare, Zeichenketten,
+    /// Zahlen und Variablen mit Sigil (`$x`, `<>x`) bleiben außen vor.
+    private static let retokenizableKinds: Set<FourDTokenizer.Kind> = [
+        .command, .constant, .methodCall, .projectMethod, .componentMethod,
+        .processVariable,
+    ]
+
     /// Fügt einem untokenisierten Text Token-Suffixe wieder an: zuerst das
     /// gelernte Suffix aus dem Original, für neue Befehle ohne gelerntes
     /// Suffix die bekannte Befehlsnummer aus `FourDSymbols`. Konstanten ohne
@@ -94,7 +107,7 @@ enum FourDTokenTransform {
         let original = text as NSString
         let result = NSMutableString(string: text)
         for token in tokens.reversed()
-        where token.kind == .command || token.kind == .constant {
+        where retokenizableKinds.contains(token.kind) {
             let value = original.substring(with: token.range)
             guard !value.contains(":") else { continue }   // schon tokenisiert
             if let suffix = learned[value.lowercased()] {

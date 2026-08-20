@@ -156,33 +156,39 @@ struct ProcessGroupOperations {
     var startToken: (pid_t) -> UInt64?
     /// Signal an genau einen Prozess.
     var signalProcess: (pid_t, Int32) -> Void
-    /// Signal an eine ganze Prozessgruppe (`kill(-gruppe, signal)`).
-    var signalGroup: (pid_t, Int32) -> Void
 
     static let live = ProcessGroupOperations(
         groupSnapshot: { group in liveGroupSnapshot(group) },
         startToken: { pid in liveIdentity(of: pid)?.startToken },
-        signalProcess: { pid, signal in _ = Darwin.kill(pid, signal) },
-        signalGroup: { group, signal in _ = Darwin.kill(-group, signal) }
+        signalProcess: { pid, signal in _ = Darwin.kill(pid, signal) }
     )
 
     /// Mitglieder einer Prozessgruppe über `sysctl KERN_PROC_PGRP`. Bewusst
     /// nicht `kill(-gruppe, 0)`: Das Signal sagt nur „irgendwer lebt“, die
     /// Liste liefert Identitäten für die spätere Einzelprüfung.
+    ///
+    /// Wächst die Gruppe zwischen Größen- und Datenabfrage über die Reserve
+    /// hinaus, antwortet der Kernel mit `ENOMEM`. Das ist kein „Gruppe leer",
+    /// sondern „nochmal mit mehr Platz fragen" — deshalb die Wiederholung mit
+    /// der jeweils neu gemeldeten Größe.
     private static func liveGroupSnapshot(_ group: pid_t) -> [ProcessIdentity] {
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PGRP, group]
-        var size = 0
-        guard sysctl(&mib, UInt32(mib.count), nil, &size, nil, 0) == 0,
-              size > 0 else { return [] }
-        // Etwas Reserve: Zwischen Größen- und Datenabfrage können Prozesse
-        // hinzukommen.
-        let capacity = size / MemoryLayout<kinfo_proc>.stride + 8
-        var buffer = [kinfo_proc](repeating: kinfo_proc(), count: capacity)
-        size = capacity * MemoryLayout<kinfo_proc>.stride
-        guard sysctl(&mib, UInt32(mib.count), &buffer, &size, nil, 0) == 0
-        else { return [] }
-        let count = size / MemoryLayout<kinfo_proc>.stride
-        return buffer.prefix(count).compactMap { identity(of: $0) }
+        for _ in 0..<4 {
+            var size = 0
+            guard sysctl(&mib, UInt32(mib.count), nil, &size, nil, 0) == 0,
+                  size > 0 else { return [] }
+            // Etwas Reserve: Zwischen Größen- und Datenabfrage können Prozesse
+            // hinzukommen.
+            let capacity = size / MemoryLayout<kinfo_proc>.stride + 8
+            var buffer = [kinfo_proc](repeating: kinfo_proc(), count: capacity)
+            size = capacity * MemoryLayout<kinfo_proc>.stride
+            if sysctl(&mib, UInt32(mib.count), &buffer, &size, nil, 0) == 0 {
+                let count = size / MemoryLayout<kinfo_proc>.stride
+                return buffer.prefix(count).compactMap { identity(of: $0) }
+            }
+            guard errno == ENOMEM else { return [] }
+        }
+        return []
     }
 
     private static func liveIdentity(of pid: pid_t) -> ProcessIdentity? {
@@ -331,11 +337,35 @@ final class GitCancellationToken: @unchecked Sendable {
         lock.lock()
         let recorded = leaderStartToken
         lock.unlock()
-        if let recorded, let current = operations.startToken(group),
-           current != recorded {
+        // Ohne beim Attach sicher gelesene Leiter-Startzeit gibt es keinen
+        // Anker für die Eigentumsprüfung. Dann gilt die Gruppe ausdrücklich
+        // NICHT als unsere: Ein nichtleerer Schnappschuss allein könnte auch
+        // eine unter derselben Nummer neu angelegte fremde Gruppe sein, und
+        // Signale gingen an Prozesse, die Fastra nie gestartet hat.
+        guard let recorded else { return nil }
+        // Ist der Leiter selbst noch Mitglied, muss er unser Git-Prozess sein.
+        // Fehlt er im Schnappschuss, ist er bereits beendet und abgeräumt —
+        // seine überlebenden Helfer bleiben dann unsere Gruppe, denn solange
+        // ein Mitglied lebt, vergibt der Kernel die Nummer nicht neu.
+        if let leader = snapshot.first(where: { $0.pid == group }),
+           leader.startToken != recorded {
             return nil
         }
         return snapshot
+    }
+
+    /// Schickt ein Signal an die gesnapshotten Mitglieder — und zwar an jedes
+    /// einzeln, unmittelbar nach erneuter Prüfung seiner Startzeit. Der Weg
+    /// über `kill(-gruppe, …)` ist bewusst aufgegeben: Zwischen Schnappschuss
+    /// und Signal kann das letzte eigene Mitglied enden und die Nummer neu
+    /// vergeben werden; das Signal träfe dann eine fremde Gruppe. Der Preis
+    /// ist derselbe wie beim SIGKILL-Nachschlag: Ein erst nach dem
+    /// Schnappschuss geborener Enkelprozess entgeht dem Signal.
+    private func signalSnapshotMembers(_ members: [ProcessIdentity], _ signal: Int32) {
+        for member in members
+        where operations.startToken(member.pid) == member.startToken {
+            operations.signalProcess(member.pid, signal)
+        }
     }
 
     /// Plant den SIGKILL-Nachschlag für eine Prozessgruppe. Der Nachschlag
@@ -349,10 +379,17 @@ final class GitCancellationToken: @unchecked Sendable {
     /// Nachschlag entgehen — lieber ein verwaister Helfer als ein Schuss auf
     /// Unbeteiligte.
     /// Liefert `false`, wenn die Gruppe leer oder nicht mehr unsere ist —
-    /// der Aufrufer darf dann auch keine Gruppensignale mehr schicken.
+    /// der Aufrufer darf dann auch keine Signale mehr an sie schicken.
     @discardableResult
     func scheduleGroupKillEscalation(_ group: pid_t) -> Bool {
-        guard let members = ownedGroupMembers(group) else { return false }
+        scheduleGroupKillEscalationMembers(group) != nil
+    }
+
+    /// Wie `scheduleGroupKillEscalation`, liefert aber zusätzlich den
+    /// Schnappschuss zurück: Die ersten Signale gehen an genau diese
+    /// Mitglieder, nicht an die nackte Gruppen-ID.
+    private func scheduleGroupKillEscalationMembers(_ group: pid_t) -> [ProcessIdentity]? {
+        guard let members = ownedGroupMembers(group) else { return nil }
         let operations = self.operations
         let item = DispatchWorkItem {
             for member in members
@@ -370,7 +407,7 @@ final class GitCancellationToken: @unchecked Sendable {
         gitDeadlineQueue.asyncAfter(
             deadline: .now() + terminationGracePeriod, execute: item
         )
-        return true
+        return members
     }
 
     /// Endet der gestartete Prozess regulär, können Hooks oder Helfer seine
@@ -385,42 +422,50 @@ final class GitCancellationToken: @unchecked Sendable {
         lock.unlock()
         guard let runningProcess, !runningProcess.isRunning, let group else { return }
         // Registrierung VOR den Signalen: Sie prüft zugleich, ob die Gruppe
-        // überhaupt noch lebt und noch unsere ist. Nur dann dürfen die
-        // Gruppensignale folgen — Mikrosekunden nach der Prüfung, nicht erst
-        // nach einer Frist.
-        guard scheduleGroupKillEscalation(group) else { return }
-        operations.signalGroup(group, SIGTERM)
-        operations.signalGroup(group, SIGCONT)
+        // überhaupt noch lebt und noch unsere ist, und liefert die Mitglieder,
+        // die jetzt beendet werden dürfen.
+        guard let members = scheduleGroupKillEscalationMembers(group) else { return }
+        signalSnapshotMembers(members, SIGTERM)
+        signalSnapshotMembers(members, SIGCONT)
     }
 
     /// Git erhält direkt nach dem Start eine eigene Prozessgruppe. Abbruch und
     /// Timeout treffen dadurch auch Hooks und Helper, die sonst nach dem
     /// Git-Elternprozess weiterlaufen oder geerbte Pipes offen halten könnten.
     private func terminateSafely(_ process: Process, processGroupID: pid_t?) {
-        let pid = process.processIdentifier
-        if let processGroupID {
-            // Auch nach beendetem Git-Elternprozess können Helper in der
-            // Gruppe leben. Die Registrierung des Nachschlags prüft zugleich
-            // Leben und Eigentum der Gruppe; nur nach ihrem Erfolg dürfen
-            // die Gruppensignale folgen. Schlägt sie fehl (Gruppe leer oder
-            // ID nicht mehr unsere), gibt es nichts sicher zu beenden.
-            guard scheduleGroupKillEscalation(processGroupID) else { return }
-            operations.signalGroup(processGroupID, SIGTERM)
+        if let processGroupID,
+           // Auch nach beendetem Git-Elternprozess können Helper in der
+           // Gruppe leben. Die Registrierung des Nachschlags prüft zugleich
+           // Leben und Eigentum der Gruppe und liefert die Mitglieder, die
+           // jetzt beendet werden dürfen.
+           let members = scheduleGroupKillEscalationMembers(processGroupID) {
+            signalSnapshotMembers(members, SIGTERM)
             // Ein extern angehaltener Prozess muss den bereits zugestellten
             // SIGTERM noch ausführen dürfen, damit Git seine Lockdateien räumt.
-            operations.signalGroup(processGroupID, SIGCONT)
+            signalSnapshotMembers(members, SIGCONT)
         } else {
-            process.terminate()
-            gitDeadlineQueue.asyncAfter(
-                deadline: .now() + terminationGracePeriod
-            ) {
-                // Ohne Gruppen-ID zählt nur der direkte Kindprozess; das
-                // festgehaltene `Process`-Objekt meldet nach dessen Ende
-                // verlässlich `isRunning == false`, ein Schuss auf eine
-                // recycelte PID ist damit ausgeschlossen.
-                if process.isRunning {
-                    Darwin.kill(pid, SIGKILL)
-                }
+            // Kein sicher als unsere belegbarer Gruppen-Schnappschuss — etwa
+            // weil die Leiter-Startzeit beim Attach nicht lesbar war oder die
+            // Gruppenabfrage scheiterte. Dann bleibt der bekannte direkte
+            // Kindprozess: Ihn NICHT zu beenden, hätte die abgebrochene oder
+            // abgelaufene Git-Aktion dauerhaft hängen lassen und ihren Slot
+            // blockiert (Reviewfund 2026-08-20).
+            terminateDirectProcess(process)
+        }
+    }
+
+    /// Beendet ausschließlich den bekannten direkten Kindprozess: erst
+    /// SIGTERM, nach der Frist SIGKILL. Das festgehaltene `Process`-Objekt
+    /// meldet nach dessen Ende verlässlich `isRunning == false`, ein Schuss
+    /// auf eine recycelte PID ist damit ausgeschlossen.
+    private func terminateDirectProcess(_ process: Process) {
+        let pid = process.processIdentifier
+        process.terminate()
+        gitDeadlineQueue.asyncAfter(
+            deadline: .now() + terminationGracePeriod
+        ) {
+            if process.isRunning {
+                Darwin.kill(pid, SIGKILL)
             }
         }
     }

@@ -101,6 +101,11 @@ extension Workspace {
               url.pathExtension.lowercased() == "4dm" else {
             if !fourDMacros.isEmpty { fourDMacros = [] }
             fourDMacroScanKey = nil
+            // Die Generation MUSS mitwandern: Sonst besteht die Completion
+            // eines noch laufenden Scans ihre Prüfung und füllt den gerade
+            // geleerten Katalog wieder. Dessen Kürzel schluckten dann ⌘T & Co.
+            // außerhalb von 4D.
+            fourDMacroScanGeneration = UUID()
             return
         }
         let key = url.deletingLastPathComponent().path
@@ -115,20 +120,32 @@ extension Workspace {
             let sources = FourDMacroDiscovery.macroSources(
                 projectRoot: root,
                 homeDirectory: home,
+                // Dieselben Programme-Ordner, in denen auch der tool4d-Finder
+                // sucht (`Tool4DDiscovery.locate`) — einschließlich des
+                // benutzereigenen `~/Applications`, in dem eine ohne
+                // Administratorrechte installierte 4D.app landet.
                 applicationDirectories: [
                     home.appendingPathComponent("4D"),
                     URL(fileURLWithPath: "/Applications"),
+                    home.appendingPathComponent("Applications"),
                 ]
             )
             var macros: [FourDMacro] = []
             for source in sources {
                 guard let data = try? Data(contentsOf: source.url) else { continue }
                 macros.append(contentsOf: FourDMacroXML.parse(
-                    data: data, sourceLabel: source.url.lastPathComponent))
+                    data: data, sourceLabel: source.url.lastPathComponent,
+                    // Der volle Pfad trennt zwei gleichnamige „Macros.xml".
+                    sourceKey: source.url.canonicalFileURL.path))
             }
             let parsed = macros
             await MainActor.run { [weak self] in
-                guard let self, self.fourDMacroScanGeneration == generation else { return }
+                guard let self, self.fourDMacroScanGeneration == generation,
+                      // Der Katalog gilt nur für die Datei, für die er
+                      // gescannt wurde.
+                      self.fourDMacroScanKey == key,
+                      self.activeTab?.url?.pathExtension.lowercased() == "4dm"
+                else { return }
                 self.fourDMacros = parsed
             }
         }
@@ -137,27 +154,30 @@ extension Workspace {
     /// Menüweg: Makro über seine stabile ID ausführen.
     @MainActor func runFourDMacro(id: String) {
         guard let macro = fourDMacros.first(where: { $0.id == id }) else { return }
-        runFourDMacro(macro)
+        if !runFourDMacro(macro) { NSSound.beep() }
     }
 
     /// Shortcut-Weg (⌘ + Kürzelzeichen aus dem Makronamen, z. B. ⌘# und ⌘T).
-    /// Liefert `false`, wenn kein Makro dieses Kürzel trägt — der Aufrufer
-    /// reicht die Taste dann normal weiter.
+    /// Liefert `false`, wenn kein Makro dieses Kürzel trägt ODER es hier gar
+    /// nicht ausführbar ist — der Aufrufer reicht die Taste dann normal
+    /// weiter. Nur so behält ⌘T außerhalb einer 4D-Methode „Neuer Tab".
     @discardableResult
     @MainActor func runFourDMacro(shortcut key: Character) -> Bool {
         guard let macro = fourDMacros.first(where: { $0.shortcutKey == key }) else {
             return false
         }
-        runFourDMacro(macro)
-        return true
+        return runFourDMacro(macro)
     }
 
-    @MainActor private func runFourDMacro(_ macro: FourDMacro) {
+    /// Führt ein Makro aus. `false` heißt: Dieses Fenster ist gar kein
+    /// gültiges Ziel (kein 4D-Dokument im Vordergrund) — dann ist nichts
+    /// passiert und der Aufrufer entscheidet, was stattdessen gilt.
+    @discardableResult
+    @MainActor private func runFourDMacro(_ macro: FourDMacro) -> Bool {
         guard let target = CommandTargeting.target(), target.workspace === self,
               let tab = activeTab, let url = tab.url,
               url.pathExtension.lowercased() == "4dm" else {
-            NSSound.beep()
-            return
+            return false
         }
         switch FourDMacroXML.capability(of: macro) {
         case .unsupported(let reason):
@@ -171,6 +191,7 @@ extension Workspace {
             runEngineMacro(macro, variant: variant, textView: target.textView,
                            tab: tab, documentURL: url)
         }
+        return true
     }
 
     // MARK: Text-Makros (nativ)
@@ -226,6 +247,18 @@ extension Workspace {
                 text: L10n.format("Unter %@ liegt keine .4DProject-Datei (erwartet in „Project/“). Prüfe den Pfad in den Einstellungen unter „4D“.", engineRootPath))
             return
         }
+        // Ein eingetragener, aber unbrauchbarer tool4d-Pfad ist ein
+        // Konfigurationsfehler und darf nicht still in die automatische Suche
+        // rutschen — sonst liefe eine andere Version als die eingestellte.
+        if let problem = Tool4DAssist.executablePathProblem(
+            Tool4DAssist.rememberedExecutablePath
+        ) {
+            NSAlert.runWarning(
+                title: L10n.string("Eingetragenes tool4d ist nicht nutzbar"),
+                text: L10n.format("%@\n\nPrüfe den Pfad in den Einstellungen unter „4D“ oder leere das Feld, damit Fastra selbst sucht.",
+                                  problem))
+            return
+        }
         guard let tool = Tool4DAssist.installedTool() else {
             // Der bestehende tool4d-Finder erklärt Fundorte und Download.
             Tool4DAssist.runFinder()
@@ -251,8 +284,8 @@ extension Workspace {
             variant: variant.rawValue,
             methodName: methodName
         ) { [weak self] result in
-            // Die Completion kommt bereits auf der Main-Queue (GitRunner,
-            // completionQueue: .main); dem Compiler wird das hier zugesichert.
+            // Die Engine liefert ihr Ergebnis zugesichert auf der Main-Queue
+            // (`FourDMacroEngine.run`); dem Compiler wird das hier zugesichert.
             MainActor.assumeIsolated {
             guard let self else { return }
             self.fourDMacroEngineBusy = false

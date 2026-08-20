@@ -616,6 +616,12 @@ path. In the Applications folders any bundle whose name starts with
 do not need to be renamed. If several are present, Fastra picks the
 highest version.
 
+**Your own tool4d path:** Settings under “4D” lets you enter the executable
+directly; `~` is allowed. Only an EMPTY field means “Fastra searches by
+itself”. If an entered path points nowhere, at a folder, or at something not
+executable, the field says so right away — Fastra does NOT silently fall back
+to some other installation it happens to find.
+
 **Check Document:** When a saved `.4dm` method belongs to an open 4D project
 and tool4d is available, **Text → Check Document** starts a short local LSP
 check. Fastra listens only on `127.0.0.1`, tool4d connects to it, and both
@@ -670,12 +676,16 @@ before the run and restores the suffixes from the original. `00_DM_Info` and
 **Shortcuts:** A `/x` suffix in a macro name (such as “… /#”) becomes ⌘#.
 Inside `.4dm` documents the macro shortcut wins over identical menu
 shortcuts — there ⌘T is “Insert initials and date”, outside 4D files ⌘T
-remains “New Tab”.
+remains “New Tab”. ⌘W is the exception: it always closes the tab. A macro
+with the suffix “ /w” therefore shows no shortcut and is invoked from the
+menu only.
 
 **Limits:** Macros that need the clipboard, editor selection through 4D
 methods, or the host project (such as the FileMerge and sort macros) only
 run inside the real 4D method editor. Fastra lists them in the menu and
-explains on invocation why they cannot run here.
+explains on invocation why they cannot run here. The same applies to a macro
+containing a placeholder tag Fastra does not know: it would otherwise
+silently insert incomplete text.
 
 ## XPath Bar
 

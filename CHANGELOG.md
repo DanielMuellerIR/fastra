@@ -9,6 +9,93 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.108.0] — 2026-08-20
+
+Abarbeitung der offenen Funde aus dem Code-Review vom 2026-08-19/20.
+
+### Behoben
+
+- **Ein Makro-Menüpunkt führt wieder genau sein eigenes Makro aus.** Die
+  Makro-ID bestand aus Dateiname plus laufender Nummer. Real heißen mehrere
+  gleichzeitig geladene Makro-Dateien „Macros.xml" (die mitgelieferte in
+  4D.app und eine in einer Projekt-Komponente) — deren IDs waren damit
+  identisch, und der Klick traf immer das Makro der ERSTEN Quelle. Die ID
+  enthält jetzt den vollen Quellpfad; im Menü-Tooltip steht weiterhin der
+  kurze Dateiname.
+- **⌘T bleibt außerhalb von 4D „Neuer Tab".** Beim Wechsel auf eine
+  Nicht-`.4dm`-Datei wurde der Makro-Katalog geleert, ein noch laufender
+  Hintergrund-Scan füllte ihn aber gleich wieder. Dessen Kürzel schluckten
+  danach ⌘T und Co. mit einem Piepton. Der Scan wird jetzt beim Verlassen
+  einer 4D-Methode entwertet, sein Ergebnis zusätzlich gegen die aktive
+  Datei geprüft, und ein Kürzel gilt nur noch als verarbeitet, wenn das
+  Makro wirklich lief.
+- **⌘W schließt zuverlässig den Tab.** Ein Makro mit dem Namenssuffix „ /w"
+  zeigte im Menü ⌘W an, konnte darüber aber nie auslösen (die Tab-Route
+  gewinnt). Das Kürzel `w` wird jetzt gar nicht erst vergeben; das Makro
+  bleibt über seinen Menüeintrag ausführbar.
+- **Ein unbekannter 4D-Platzhalter setzt keinen unvollständigen Text mehr
+  ein.** Ein Platzhalter-Tag, das Fastra nicht kennt, verschwand still aus
+  dem eingefügten Text. Solche Makros gelten jetzt als nicht ausführbar und
+  nennen den Platzhalter im Grund.
+- **Fremde Komplettieren-Aufrufe gelten nicht mehr als bekannte Variante.**
+  Die Zuordnung akzeptierte null bis drei beliebige Argumente als
+  Standard-Variante und ignorierte Text hinter der schließenden Klammer.
+  Geprüft werden jetzt die vier dokumentierten Signaturen samt
+  Methodenplatzhalter, `False` und Leerstring.
+- **Token-Suffixe neuer 4D-Symbole überleben einen Makrolauf.** Nach dem
+  Detokenisieren hält der Tokenizer ein noch unbekanntes `FutureCommand()`
+  für einen Methodenaufruf, nicht für einen Befehl — sein gelerntes Suffix
+  wurde deshalb nicht zurückgeschrieben und das Vorschau-Ergebnis wich vom
+  Ausgangscode ab. Die Rücktokenisierung berücksichtigt jetzt alle
+  Namens-Token. (Mehrwortige unbekannte Symbole bleiben eine benannte
+  Grenze, siehe ROADMAP.)
+- **Makro-Engine: Die Watch-Datei des Engine-Projekts kann nicht mehr
+  verloren gehen.** Jeder Lauf löschte dieselbe feste Sicherungskopie, bevor
+  er die aktuelle `debuggerWatches.json` dorthin verschob — ein Rest eines
+  abgebrochenen früheren Laufs (die dann einzige Fassung) wurde damit
+  weggeworfen, und zwei Fenster konnten sich gegenseitig überschreiben.
+  Sicherungen tragen jetzt eine laufeigene Kennung, ein liegen gebliebener
+  Rest wird zuerst zurückgestellt, und alle Läufe sind prozessweit
+  serialisiert.
+- **Der Makrolauf blockiert die Oberfläche nicht mehr.** Arbeitsordner
+  anlegen, Code schreiben, Watch-Dateien verschieben und das Ergebnis lesen
+  liefen auf dem Main-Thread; bei einer großen Methode oder einem langsamen
+  Laufwerk hing die App davor und danach. Das alles läuft jetzt im
+  Hintergrund, nur das fertige Ergebnis kommt zurück.
+- **Der Makro-Katalog findet auch ein 4D in `~/Applications`.** Der
+  benutzereigene Programme-Ordner fehlte in der Suche, obwohl der
+  tool4d-Finder ihn längst kennt.
+- **Ein eingetragener tool4d-Pfad wird ernst genommen.** Leerraum und `~`
+  werden aufgelöst; ein gesetzter, aber unbrauchbarer Pfad fällt nicht mehr
+  still auf die automatische Suche zurück, sondern erscheint als Problem
+  direkt unter dem Feld und beim Makroaufruf.
+- **Git-Abbruch trifft nur noch nachweislich eigene Prozesse.** Ohne beim
+  Start sicher gelesene Startzeit des Gruppenleiters galt jede nicht leere
+  Prozessgruppe als eigene — nach dem Ende der ursprünglichen Gruppe konnte
+  das eine fremde unter derselben Nummer sein. Außerdem gingen SIGTERM und
+  SIGCONT an die nackte Gruppen-ID; jetzt gehen sie einzeln an die
+  gesnapshotten Prozesse, jeweils nach erneuter Prüfung ihrer Startzeit.
+- **Eine abgebrochene Git-Aktion hängt nicht mehr dauerhaft.** Scheiterte
+  die Gruppenabfrage (oder war sie nicht sicher prüfbar), wurde gar nichts
+  beendet und der Git-Slot blieb belegt. Jetzt greift in diesem Fall der
+  bekannte direkte Kindprozess, und die Gruppenabfrage wiederholt sich bei
+  `ENOMEM` mit der neu gemeldeten Größe statt „Gruppe leer" zu melden.
+- **Umbenannte Bilder, PDFs, Hex- und Abschnittsansichten lassen sich
+  wieder drucken.** Diese vier Ansichten hingen allein an der Tab-Kennung;
+  nach dem Umbenennen oder Verschieben las das Modell weiter am alten Pfad,
+  und der Ausdruck wies die veraltete Druckvorlage ab. Die Ansichtsidentität
+  enthält jetzt den Pfad.
+- **Ein schneller Tabwechsel verwirft die Ausschnitt-Wiederherstellung des
+  verlassenen Tabs.** Beim Wechsel B → C liefen die Nachzieh-Versuche für B
+  auf der inzwischen montierten Ansicht von C weiter und sprangen dort an
+  Bs Ausschnitt. Die Wiederherstellung ist jetzt an ihr Dokument gebunden.
+- **Ein Treffer-Sprung markiert nicht mehr im falschen Dokument.** Zwischen
+  dem Tabwechsel beziehungsweise dem Laden der Fundstelle und dem verzögert
+  gesendeten Sprung konnte der Nutzer erneut den Tab wechseln. Der Sprung
+  nennt jetzt sein Zieldokument und unterbleibt, wenn ein anderes vorn ist.
+- **Die Einstellungen öffnen sich ohne Verzögerung.** Die tool4d-Suche und
+  die Prüfung des Engine-Projektpfads liefen synchron auf dem Main-Thread.
+
 ## [v1.107.0] — 2026-08-19
 
 ### Behoben

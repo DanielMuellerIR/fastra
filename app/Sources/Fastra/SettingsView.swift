@@ -53,6 +53,11 @@ struct SettingsView: View {
     /// Einmal beim Öffnen ermittelter Discovery-Fund als Platzhaltertext —
     /// nicht bei jedem Tastendruck neu suchen.
     @State private var tool4dDiscoveryPlaceholder = ""
+    /// Sichtbares Problem der beiden 4D-Pfadfelder. Beide Prüfungen fassen das
+    /// Dateisystem an und laufen deshalb im Hintergrund; beim Rendern wird nur
+    /// das fertige Ergebnis gelesen.
+    @State private var tool4dPathProblem: String?
+    @State private var macroEngineProblem: String?
     // Auch dieser Speicher gehört in die Selbsttest-Suite: Sein `init`
     // migriert und schreibt beim ersten Zugriff. Mit `.standard` hätte ein
     // Einstellungs-Selbsttest die echten Editor-Profile des Nutzers
@@ -237,6 +242,12 @@ struct SettingsView: View {
                           text: $tool4dPath,
                           prompt: Text(verbatim: tool4dDiscoveryPlaceholder))
                     .autocorrectionDisabled()
+                if let problem = tool4dPathProblem {
+                    Text(verbatim: problem)
+                        .fastraFont(.small)
+                        .foregroundColor(Theme.gitModified)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 TextField("Makro-Engine-Projekt (Ordner mit Project/…)",
                           text: $macroEngineProjectPath,
                           prompt: Text(verbatim: "~/git-arbeit/MAO_Makros"))
@@ -275,11 +286,21 @@ struct SettingsView: View {
             }
         }
         .onAppear {
-            // Einmalige Discovery für den Platzhalter des tool4d-Felds.
-            let found = Tool4DDiscovery.locate()?.executableURL.path
-            tool4dDiscoveryPlaceholder = found
-                ?? L10n.string("automatisch (derzeit nicht gefunden — Hilfe → tool4d finden…)")
+            // Einmalige Discovery für den Platzhalter des tool4d-Felds. Sie
+            // liest alle PATH-Einträge, beide Programme-Ordner und die Ablage
+            // der Analyzer-Extension — das gehört nicht auf den Main-Thread,
+            // sonst hängt das Öffnen der Einstellungen an einem langsamen
+            // Verzeichnis.
+            DispatchQueue.global(qos: .userInitiated).async {
+                let found = Tool4DDiscovery.locate()?.executableURL.path
+                let placeholder = found
+                    ?? L10n.string("automatisch (derzeit nicht gefunden — Hilfe → tool4d finden…)")
+                DispatchQueue.main.async { tool4dDiscoveryPlaceholder = placeholder }
+            }
+            checkFourDPaths()
         }
+        .onChange(of: tool4dPath) { checkFourDPaths() }
+        .onChange(of: macroEngineProjectPath) { checkFourDPaths() }
         .onChange(of: gitFetchDecision) { gitPreferencesChanged() }
         .onChange(of: gitFetchInterval) {
             gitFetchInterval = GitPreferences.clampedFetchInterval(gitFetchInterval)
@@ -296,13 +317,28 @@ struct SettingsView: View {
                                         object: nil)
     }
 
+    /// Prüft beide 4D-Pfadfelder im Hintergrund und veröffentlicht nur das
+    /// Ergebnis. Die Prüfung fasst das Dateisystem an; beim Rendern oder bei
+    /// jedem Tastendruck auf dem Main-Thread verzögerte sie die Eingabe.
+    private func checkFourDPaths() {
+        let toolPath = tool4dPath
+        let enginePath = macroEngineProjectPath
+        DispatchQueue.global(qos: .userInitiated).async {
+            let toolProblem = Tool4DAssist.executablePathProblem(toolPath)
+            let engineProblem = Self.macroEngineProblem(for: enginePath)
+            DispatchQueue.main.async {
+                tool4dPathProblem = toolProblem
+                macroEngineProblem = engineProblem
+            }
+        }
+    }
+
     /// Sichtbares Problem des eingetragenen Engine-Projektpfads — pure
     /// Prüfung ohne stillen Fallback: leer ist erlaubt (Engine dann bewusst
     /// unkonfiguriert), ein gesetzter Pfad muss auf ein echtes 4D-Projekt
     /// zeigen.
-    private var macroEngineProblem: String? {
-        let trimmed = macroEngineProjectPath
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+    static func macroEngineProblem(for rawPath: String) -> String? {
+        let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let path = (trimmed as NSString).expandingTildeInPath
         var isDirectory: ObjCBool = false

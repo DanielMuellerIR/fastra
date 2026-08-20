@@ -732,7 +732,6 @@ private final class FakeProcessWorld: @unchecked Sendable {
     private var members: [pid_t: [ProcessIdentity]] = [:]
     private var tokens: [pid_t: UInt64] = [:]
     private var killedProcesses: [(pid: pid_t, signal: Int32)] = []
-    private var signalledGroups: [(group: pid_t, signal: Int32)] = []
 
     func setGroup(_ group: pid_t, members newMembers: [ProcessIdentity]) {
         lock.lock()
@@ -752,11 +751,6 @@ private final class FakeProcessWorld: @unchecked Sendable {
         return killedProcesses
     }
 
-    var groupSignals: [(group: pid_t, signal: Int32)] {
-        lock.lock(); defer { lock.unlock() }
-        return signalledGroups
-    }
-
     var operations: ProcessGroupOperations {
         ProcessGroupOperations(
             groupSnapshot: { [self] group in
@@ -770,11 +764,6 @@ private final class FakeProcessWorld: @unchecked Sendable {
             signalProcess: { [self] pid, signal in
                 lock.lock()
                 killedProcesses.append((pid, signal))
-                lock.unlock()
-            },
-            signalGroup: { [self] group, signal in
-                lock.lock()
-                signalledGroups.append((group, signal))
                 lock.unlock()
             }
         )
@@ -812,9 +801,6 @@ func killEscalationVerifiesEachMemberIdentity() {
     spinUntil { !world.processSignals.isEmpty }
     let killed = world.processSignals.filter { $0.signal == SIGKILL }.map(\.pid)
     #expect(killed == [group])
-    // Auf die nackte Gruppen-ID wird in der Eskalation NIE geschossen: Nach
-    // einer Wiedervergabe bezeichnete sie eine fremde Gruppe.
-    #expect(world.groupSignals.isEmpty)
 }
 
 @Test("Eine als Gruppen-ID wiedervergebene Leiter-PID wird nicht mehr angefasst")
@@ -830,7 +816,6 @@ func reusedGroupLeaderRefusesEscalation() {
     token.recordLeaderStartToken(111)
     #expect(!token.scheduleGroupKillEscalation(group))
     #expect(world.processSignals.isEmpty)
-    #expect(world.groupSignals.isEmpty)
 }
 
 @Test("Nach finish() geplante Eskalation bleibt auf verifizierte PIDs beschränkt")
@@ -852,5 +837,34 @@ func postFinishEscalationStaysIdentityBound() {
     // gefallen sein.
     usleep(300_000)
     #expect(world.processSignals.isEmpty)
-    #expect(world.groupSignals.isEmpty)
+}
+
+@Test("Ohne beim Attach gelesene Leiter-Startzeit gilt die Gruppe nicht als unsere")
+func missingLeaderTokenRefusesGroupOwnership() {
+    let world = FakeProcessWorld()
+    let group: pid_t = 62_000
+    // Die Gruppe lebt — aber es gibt keinen Anker, gegen den sich ihre
+    // Zugehörigkeit prüfen ließe. Dann darf gar kein Signal fallen: Nach dem
+    // Ende der ursprünglichen Gruppe könnte dieselbe Nummer eine fremde
+    // bezeichnen (Reviewfund 2026-08-20).
+    world.setGroup(group, members: [ProcessIdentity(pid: group, startToken: 700)])
+    let token = GitCancellationToken(terminationGracePeriod: 0.05,
+                                     operations: world.operations)
+    #expect(!token.scheduleGroupKillEscalation(group))
+    usleep(200_000)
+    #expect(world.processSignals.isEmpty)
+}
+
+@Test("Ein bereits abgeräumter Gruppenleiter macht die Gruppe nicht fremd")
+func reapedLeaderKeepsGroupOwnership() {
+    let world = FakeProcessWorld()
+    let group: pid_t = 63_000
+    // Git selbst ist beendet und abgeräumt, seine Helfer leben weiter. Solange
+    // ein Mitglied lebt, kann der Kernel die Nummer nicht neu vergeben — die
+    // Gruppe bleibt also unsere.
+    world.setGroup(group, members: [ProcessIdentity(pid: 63_001, startToken: 12)])
+    let token = GitCancellationToken(terminationGracePeriod: 0.05,
+                                     operations: world.operations)
+    token.recordLeaderStartToken(11)
+    #expect(token.scheduleGroupKillEscalation(group))
 }

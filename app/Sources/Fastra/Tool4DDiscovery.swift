@@ -264,13 +264,48 @@ enum Tool4DAssist {
         set { SelfTest.workspaceDefaults().set(newValue, forKey: rememberedPathKey) }
     }
 
+    /// Normalisiert einen von Hand eingetragenen tool4d-Pfad: Leerraum am
+    /// Rand weg, `~` auflösen. Ein leeres Feld bleibt `nil` — nur dann sucht
+    /// Fastra selbst. Ohne diesen Schritt scheiterte die übliche Eingabe
+    /// `~/…/tool4d` und Fastra suchte still weiter.
+    static func normalizedExecutablePath(_ raw: String?) -> String? {
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else { return nil }
+        return (trimmed as NSString).expandingTildeInPath
+    }
+
+    /// Problem eines eingetragenen tool4d-Pfads in Nutzersprache; `nil` heißt
+    /// „leer (dann sucht Fastra selbst)" oder „in Ordnung". Bewusst ohne
+    /// stillen Rückfall: Ein gesetzter, aber unbrauchbarer Pfad ist ein
+    /// Konfigurationsfehler und muss sichtbar sein.
+    static func executablePathProblem(_ raw: String?,
+                                      fileManager: FileManager = .default) -> String? {
+        guard let path = normalizedExecutablePath(raw) else { return nil }
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory) else {
+            return L10n.string("Diese Datei existiert nicht.")
+        }
+        guard !isDirectory.boolValue else {
+            return L10n.string("Das ist ein Ordner. Erwartet wird die ausführbare Datei, z. B. tool4d.app/Contents/MacOS/tool4d.")
+        }
+        guard fileManager.isExecutableFile(atPath: path) else {
+            return L10n.string("Diese Datei ist nicht ausführbar.")
+        }
+        return nil
+    }
+
     /// Liefert ausschließlich ein bereits vorhandenes, ausführbares tool4d.
     /// Ein manuell gemerkter Pfad gewinnt, danach greift dieselbe Discovery
     /// wie „Hilfe → tool4d finden…“. Damit startet die Prüfung nie eine
     /// unbekannte oder inzwischen gelöschte Installation.
+    ///
+    /// Wichtig: Ein GESETZTER Pfad, der nicht funktioniert, fällt NICHT auf
+    /// die automatische Suche zurück — sonst liefe eine andere tool4d-Version
+    /// als die ausdrücklich eingetragene, ohne dass es jemand merkt. Automatik
+    /// gilt nur bei leerem Feld; das kündigt der Einstellungsdialog auch so an.
     static func installedTool(fileManager: FileManager = .default) -> Tool4DDiscovery.Finding? {
-        if let path = rememberedExecutablePath,
-           fileManager.isExecutableFile(atPath: path) {
+        if let path = normalizedExecutablePath(rememberedExecutablePath) {
+            guard fileManager.isExecutableFile(atPath: path) else { return nil }
             let executable = URL(fileURLWithPath: path)
             return Tool4DDiscovery.Finding(
                 executableURL: executable,

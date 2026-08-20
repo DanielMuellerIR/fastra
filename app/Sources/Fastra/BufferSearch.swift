@@ -401,6 +401,28 @@ struct PendingEditorJump {
     let range: NSRange?
 }
 
+/// Dokument, dem ein VERZÖGERT gepostetes Treffer-Sprung-Ziel gilt.
+/// Die Aufrufer wechseln erst den Tab beziehungsweise laden die Datei und
+/// posten den Sprung danach — einen Runloop-Tick oder eine ganze Ladezeit
+/// später. Wechselt der Nutzer in diesem Fenster erneut, ist der Sprung
+/// hinfällig; ohne diese Prüfung markierte er den Trefferbereich im dann
+/// aktiven, also falschen Dokument.
+enum MatchJumpTarget {
+    /// Ein bereits offener Tab, adressiert über seine Tab-ID.
+    case tab(UUID)
+    /// Eine Datei, die der Aufrufer gerade geöffnet hat.
+    case url(URL)
+
+    func isActive(in workspace: Workspace) -> Bool {
+        switch self {
+        case .tab(let id):
+            return workspace.activeTabID == id
+        case .url(let url):
+            return workspace.activeTab?.url?.canonicalFileURL == url.canonicalFileURL
+        }
+    }
+}
+
 extension NotificationCenter {
     /// Postet einen Editor-Sprung zu einem Treffer über Zeile/Spalte
     /// (Start UND Ende) statt nur der absoluten NSRange.
@@ -417,7 +439,12 @@ extension NotificationCenter {
     ///
     /// Die absolute Range bleibt als Fallback im userInfo (z.B. für Sprünge
     /// ohne Treffer-Kontext wie „Zu Zeile springen").
-    func postMatchJump(_ match: BufferSearch.Match, for workspace: Workspace) {
+    ///
+    /// `requiring` nennt das Dokument, dem der Sprung gilt. Ist es nicht mehr
+    /// das aktive, unterbleibt der Post ganz — siehe `MatchJumpTarget`.
+    func postMatchJump(_ match: BufferSearch.Match, for workspace: Workspace,
+                       requiring target: MatchJumpTarget? = nil) {
+        guard target?.isActive(in: workspace) ?? true else { return }
         let end = BufferSearch.endLineColumn(startLine: match.line,
                                              startColumn: match.column,
                                              matchText: match.matchText)

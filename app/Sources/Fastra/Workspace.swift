@@ -5259,9 +5259,11 @@ final class Workspace: ObservableObject {
         if let tabID = target.tabID, activeTabID != tabID {
             selectTab(id: tabID)
         }
+        let expected = target.tabID.map { MatchJumpTarget.tab($0) }
         DispatchQueue.main.async { [weak self] in
             guard let self, self.scope == .open else { return }
-            NotificationCenter.default.postMatchJump(target.match, for: self)
+            NotificationCenter.default.postMatchJump(target.match, for: self,
+                                                     requiring: expected)
         }
     }
 

@@ -1462,3 +1462,11 @@
 "tool4d endete mit Exit-Code %ld, ohne eine Statusdatei zu schreiben." = "tool4d exited with code %ld without writing a status file.";
 "tool4d hat keine Statusdatei geschrieben. Prüfe den Engine-Projektpfad in den Einstellungen (das Projekt braucht die Methode MacroRun) und eine eventuell vorhandene debuggerWatches.json in dessen userPreferences-Ordnern." = "tool4d did not write a status file. Check the engine project path in Settings (the project needs the MacroRun method) and any debuggerWatches.json in its userPreferences folders.";
 "tool4d konnte nicht gestartet werden: %@" = "tool4d could not be started: %@";
+
+/* Reviewfunde 2026-08-20: unbekannte 4D-Platzhalter, tool4d-Pfadprüfung */
+"%@\n\nPrüfe den Pfad in den Einstellungen unter „4D“ oder leere das Feld, damit Fastra selbst sucht." = "%@\n\nCheck the path in Settings under “4D”, or clear the field so Fastra searches by itself.";
+"Das Makro enthält den 4D-Platzhalter <%@/>, den Fastra nicht kennt. Es würde sonst unvollständigen Text einsetzen; im 4D-Methodeneditor läuft es weiterhin." = "The macro contains the 4D placeholder <%@/>, which Fastra does not know. It would otherwise insert incomplete text; inside the 4D method editor it still runs.";
+"Das ist ein Ordner. Erwartet wird die ausführbare Datei, z. B. tool4d.app/Contents/MacOS/tool4d." = "That is a folder. The executable file is expected, e.g. tool4d.app/Contents/MacOS/tool4d.";
+"Diese Datei existiert nicht." = "This file does not exist.";
+"Diese Datei ist nicht ausführbar." = "This file is not executable.";
+"Eingetragenes tool4d ist nicht nutzbar" = "Configured tool4d Is Not Usable";

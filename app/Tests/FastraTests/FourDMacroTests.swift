@@ -135,9 +135,11 @@ func macroTextParts() throws {
         .fullText,
     ])
 
-    // Ein unbekanntes Tag wird übersprungen, der Text drumherum bleibt ein
-    // zusammenhängender Baustein.
+    // Ein unbekanntes Tag wird beim Text übersprungen — der Text drumherum
+    // bleibt ein zusammenhängender Baustein —, aber sein Name wird vermerkt.
     #expect(macros[10].textParts == [.literal("vornach")])
+    #expect(macros[10].unknownPlaceholder == "neuer_platzhalter")
+    #expect(macros[5].unknownPlaceholder == nil)
 
     // Anzeigeeintrag ohne <text> und ohne <method>: trotzdem vorhanden.
     #expect(macros[7].textParts.isEmpty)
@@ -182,7 +184,10 @@ func macroCapabilityKinds() throws {
     let macros = try parseSample()
     #expect(FourDMacroXML.capability(of: macros[5]) == .nativeText)
     #expect(FourDMacroXML.capability(of: macros[9]) == .nativeText)
-    #expect(FourDMacroXML.capability(of: macros[10]) == .nativeText)
+    // Ein unbekannter Platzhalter macht das Makro NICHT ausführbar: Fastra
+    // würde sonst still unvollständigen Text einsetzen.
+    #expect(unsupportedReason(FourDMacroXML.capability(of: macros[10]))?
+        .contains("neuer_platzhalter") == true)
 
     #expect(unsupportedReason(FourDMacroXML.capability(of: macros[4]))?.isEmpty == false)
     #expect(unsupportedReason(FourDMacroXML.capability(of: macros[6]))?.isEmpty == false)
@@ -447,6 +452,35 @@ struct FourDMacroRenderingTests {
         #expect(result == "ALERT:C41(\"Hi\")")
     }
 
+    @Test("Auch NOCH UNBEKANNTE 4D-Symbole behalten ihr gelerntes Token-Suffix")
+    func learnedRoundtripCoversUnknownSymbols() {
+        // Weder Befehl noch Konstante stehen im mitgelieferten Katalog. Im
+        // tokenisierten Original erkennt der Tokenizer sie am „:C“/„:K“; ohne
+        // Suffix hält er den einen für einen Methodenaufruf und die andere für
+        // eine Prozessvariable. Genau diese beiden Fälle verloren ihr Suffix.
+        let original = "FutureCommand:C9998(1)\nIf (x=Futureconst:K91:2)\nEnd if"
+        let learned = FourDTokenTransform.learnedSuffixes(from: original)
+        let detokenized = FourDTokenTransform.detokenize(original)
+        #expect(!detokenized.contains(":C9998"))
+        #expect(!detokenized.contains(":K91:2"))
+        #expect(FourDTokenTransform.retokenize(detokenized, learned: learned)
+                == original)
+    }
+
+    @Test("Bekannte Grenze: ein MEHRWORTIGES unbekanntes Symbol bleibt ohne Suffix")
+    func learnedRoundtripCannotRebuildUnknownMultiWordSymbols() {
+        // Ohne Suffix und ohne Katalog-Eintrag hat der Tokenizer kein Merkmal,
+        // an dem er „Future const" als EIN Symbol erkennen könnte — er sieht
+        // nur „Future". Das gelernte Suffix bleibt deshalb liegen. Bewusst als
+        // Test festgehalten, damit die Grenze sichtbar bleibt statt zu
+        // überraschen (als offener Punkt in ROADMAP.md notiert).
+        let original = "If (x=Future const:K91:2)\nEnd if"
+        let learned = FourDTokenTransform.learnedSuffixes(from: original)
+        let detokenized = FourDTokenTransform.detokenize(original)
+        #expect(FourDTokenTransform.retokenize(detokenized, learned: learned)
+                != original)
+    }
+
     @Test("Engine-Status: OK, UNVERAENDERT und FEHLER werden korrekt gelesen")
     func interpretsEngineStatus() {
         #expect(FourDMacroEngine.interpret(status: "OK\n", output: "neu")
@@ -481,4 +515,79 @@ struct FourDMacroRenderingTests {
         #expect(args.contains("MacroRun"))
         #expect(args.contains("/t/in.4dm|/t/out.4dm|komplettieren|Foo"))
     }
+}
+
+// MARK: - Reviewfunde 2026-08-20
+
+@Test("IDs: zwei gleichnamige Quellen kollidieren nicht")
+func macroIDsStayUniqueAcrossSameNamedSources() {
+    // Real gibt es „Macros.xml“ mehrfach gleichzeitig: einmal mitgeliefert in
+    // 4D.app, einmal in einer Projekt-Komponente. Ohne eigenen Quellschlüssel
+    // hätten beide dieselben IDs, und ein Menüklick führte das Makro der
+    // FALSCHEN Quelle aus.
+    let xml = """
+    <macros><macro name="A" version="2"><text>x</text></macro></macros>
+    """
+    let first = FourDMacroXML.parse(data: Data(xml.utf8), sourceLabel: "Macros.xml",
+                                    sourceKey: "/Applications/4D v21/4D.app/…/Macros.xml")
+    let second = FourDMacroXML.parse(data: Data(xml.utf8), sourceLabel: "Macros.xml",
+                                     sourceKey: "/Projekt/Komponente.4dbase/…/Macros.xml")
+    #expect(first.count == 1 && second.count == 1)
+    #expect(first[0].id != second[0].id)
+    // Die Beschriftung bleibt der kurze Dateiname (Tooltip im Menü).
+    #expect(first[0].sourceLabel == "Macros.xml")
+}
+
+@Test("Kürzel: ⌘W bleibt „Tab schließen“ und wird nicht als Makro-Kürzel angeboten")
+func macroReservedShortcutW() {
+    // ⌘W wird im Routing VOR den Makros geprüft. Ein angezeigtes ⌘W wäre
+    // deshalb ein Kürzel, das nie auslöst.
+    #expect(FourDMacroXML.splitName("Fenster zu /w").shortcutKey == nil)
+    #expect(FourDMacroXML.splitName("Fenster zu /w").displayName == "Fenster zu")
+    #expect(FourDMacroXML.splitName("Fenster zu /W").shortcutKey == nil)
+    // Andere Kürzel bleiben unberührt.
+    #expect(FourDMacroXML.splitName("Makro /t").shortcutKey == "t")
+}
+
+@Test("Komplettieren: nur die vier bekannten Signaturen gelten")
+func macroKomplettierenSignaturesAreExact() {
+    let placeholder = "\"<method_name/>\""
+    #expect(FourDMacroXML.komplettierenVariant(arguments: [placeholder]) == .standard)
+    #expect(FourDMacroXML.komplettierenVariant(
+        arguments: [placeholder, "False", "\"\"", "True"]) == .ohneNichtVerwendet)
+    #expect(FourDMacroXML.komplettierenVariant(
+        arguments: [placeholder, "False", "\"\"", "False", "False"]) == .ohneVarUmwandlung)
+    #expect(FourDMacroXML.komplettierenVariant(
+        arguments: [placeholder, "False", "\"\"", "True", "False"])
+        == .ohneNichtVerwendetUndVar)
+
+    // Kein Argument, fremdes erstes Argument, falsche Festwerte, zu viele
+    // Argumente: alles KEINE bekannte Variante mehr.
+    #expect(FourDMacroXML.komplettierenVariant(arguments: []) == nil)
+    #expect(FourDMacroXML.komplettierenVariant(arguments: ["\"Fremd\""]) == nil)
+    #expect(FourDMacroXML.komplettierenVariant(
+        arguments: [placeholder, "True", "\"\"", "True"]) == nil)
+    #expect(FourDMacroXML.komplettierenVariant(
+        arguments: [placeholder, "False", "\"x\"", "True"]) == nil)
+    #expect(FourDMacroXML.komplettierenVariant(
+        arguments: [placeholder, "False", "\"\"", "True", "False", "True"]) == nil)
+}
+
+@Test("Methodenaufruf: Text hinter der schließenden Klammer ist kein Aufruf mehr")
+func macroMethodCallRejectsTrailingText() {
+    #expect(FourDMacroXML.parseMethodCall("Foo(\"a\") ; Bar") == nil)
+    // Reiner Leerraum dahinter bleibt in Ordnung.
+    #expect(FourDMacroXML.parseMethodCall("Foo(\"a\")  \n")?.name == "Foo")
+}
+
+@Test("Ein leeres Makro ohne Argumente gilt nicht mehr als Standard-Komplettieren")
+func macroEmptyKomplettierenCallIsUnsupported() {
+    let xml = """
+    <macros><macro name="X" version="2"><text><method>\
+    MAO_MethodeKomplettierenNeu()\
+    </method></text></macro></macros>
+    """
+    let macros = FourDMacroXML.parse(data: Data(xml.utf8), sourceLabel: "x.xml")
+    #expect(macros.count == 1)
+    #expect(unsupportedReason(FourDMacroXML.capability(of: macros[0]))?.isEmpty == false)
 }

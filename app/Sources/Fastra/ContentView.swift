@@ -281,7 +281,8 @@ struct ContentView: View {
             // Completion im Ordner-Pfad).
             if workspace.activeTabID != tabID { workspace.selectTab(id: tabID) }
             DispatchQueue.main.async {
-                NotificationCenter.default.postMatchJump(target.match, for: workspace)
+                NotificationCenter.default.postMatchJump(target.match, for: workspace,
+                                                         requiring: .tab(tabID))
             }
         } else if let url = target.url, workspace.activeTab?.url != url {
             // Datei asynchron laden — Editor-Sprung erst in der Completion,
@@ -289,13 +290,19 @@ struct ContentView: View {
             workspace.loadFile(at: url) { ok in
                 guard ok else { return }
                 DispatchQueue.main.async {
-                    NotificationCenter.default.postMatchJump(target.match, for: workspace)
+                    NotificationCenter.default.postMatchJump(target.match, for: workspace,
+                                                             requiring: .url(url))
                 }
             }
         } else {
-            // Datei ist schon offen — Sprung sofort ausführbar.
+            // Datei ist schon offen — Sprung sofort ausführbar. Auch hier gilt
+            // der Sprung dem JETZT aktiven Tab, nicht einem, den der Nutzer im
+            // Zwischenzeitpunkt nach vorn holt.
+            let activeTabID = workspace.activeTabID
             DispatchQueue.main.async {
-                NotificationCenter.default.postMatchJump(target.match, for: workspace)
+                NotificationCenter.default.postMatchJump(
+                    target.match, for: workspace,
+                    requiring: activeTabID.map { MatchJumpTarget.tab($0) })
             }
         }
     }

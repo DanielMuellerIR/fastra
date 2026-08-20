@@ -30,7 +30,9 @@ import Foundation
 enum FourDTokenizer {
 
     /// Token-Klassen des Tokenizers (siehe Mapping-Tabelle oben).
-    enum Kind: Equatable {
+    /// `Hashable`, damit Aufrufer Mengen von Klassen bilden können
+    /// (siehe `FourDTokenTransform.retokenizableKinds`).
+    enum Kind: Hashable {
         case comment
         case string
         case number
