@@ -9,6 +9,24 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.110.0] — 2026-08-20
+
+### Behoben
+
+- **Schnelle Treffer-Navigation verliert keine Befehle mehr.** Bei einer
+  bereits offenen Datei führt Fastra den möglichen Editor-Sprung und den
+  sichtbaren Trefferindex wieder in derselben Main-Thread-Runde fort. Zuvor
+  sahen mehrere schnelle „Nächster Treffer“-Befehle denselben alten Index:
+  70 Befehle bewegten die Auswahl nur vom ersten zum zweiten Treffer, obwohl
+  die nachgelagerte Scrollanzeige weiterhin reagierte. Dokument-ID-Prüfung
+  und Schutz vor veralteten Scrollaufträgen bleiben erhalten.
+
+### Tests
+
+- Der bestehende End-to-End-Selbsttest `searchmark` treibt 70 unmittelbar
+  aufeinanderfolgende Navigationsbefehle und prüft Trefferindex, Trefferliste,
+  Editor-Zentrierung sowie die sichtbare Markierung im echten Editor.
+
 ## [v1.109.0] — 2026-08-20
 
 Folgereview der 4D-Makro-, Treffer-Sprung- und Prozessabbruch-Änderungen aus

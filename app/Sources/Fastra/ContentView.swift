@@ -310,16 +310,18 @@ struct ContentView: View {
                 }
             }
         } else {
-            // Datei ist schon offen — Sprung sofort ausführbar. Auch hier gilt
-            // der Sprung dem JETZT aktiven Tab, nicht einem, den der Nutzer im
-            // Zwischenzeitpunkt nach vorn holt.
+            // Datei ist schon offen — Sprung und Index deshalb synchron
+            // fortschreiben. Eine zusätzliche Main-Queue-Runde verliert
+            // schnelle Folgeeingaben: Mehrere ⌘G-/Pfeil-Befehle sähen alle
+            // denselben alten Index und bewegten die Auswahl nur einmal.
+            // Der Dokument-ID-Guard bindet den Sprung trotzdem an den jetzt
+            // aktiven Tab; ein späterer Scrollauftrag verdrängt über seine
+            // Generation lediglich den vorherigen Scroll, nicht die Auswahl.
             let activeDocumentID = workspace.activeDocumentID
-            DispatchQueue.main.async {
-                let posted = NotificationCenter.default.postMatchJump(
-                    target.match, for: workspace,
-                    requiring: activeDocumentID.map { MatchJumpTarget.document($0) })
-                commitIndexIfPosted(posted)
-            }
+            let posted = NotificationCenter.default.postMatchJump(
+                target.match, for: workspace,
+                requiring: activeDocumentID.map { MatchJumpTarget.document($0) })
+            commitIndexIfPosted(posted)
         }
     }
 }
