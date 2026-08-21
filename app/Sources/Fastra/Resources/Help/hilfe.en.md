@@ -678,9 +678,13 @@ before the run and restores the suffixes from the original. `00_DM_Info` and
 `Compiler_*` methods are deliberately excluded from completion.
 
 **Shortcuts:** A `/x` suffix in a macro name (such as “… /#”) becomes ⌘#.
-An existing application menu command always wins. A macro using the same key
-therefore shows no shortcut and remains available through the menu. The same
-rule applies after the first macro when several sources assign the same key;
+An existing application menu command always wins — including commands on ⇧⌘,
+because Fastra also accepts a macro shortcut while Shift is held. Among the
+reserved keys are therefore ⇧⌘L (“Soft Wrap”) and ⇧⌘M (“Show Markdown Preview
+on the Right”); a macro using `/l` or `/m` shows no shortcut and remains
+available through the menu, and so does any other macro whose key a menu
+command already holds. The same rule applies after the first macro when
+several sources assign the same key;
 only the first one loaded keeps it. A macro shortcut also counts as handled
 only when the macro actually starts or inserts text.
 

@@ -715,9 +715,13 @@ her. `00_DM_Info` und `Compiler_*`-Methoden sind vom Komplettieren bewusst
 ausgenommen.
 
 **Shortcuts:** Ein `/x`-Suffix im Makronamen (etwa „… /#“) wird zu ⌘#.
-Ein vorhandener App-Menübefehl gewinnt immer. Ein Makro mit demselben Kürzel
-bleibt deshalb ohne angezeigtes Kürzel und ist weiter über das Menü erreichbar.
-Dasselbe gilt ab dem zweiten Makro, wenn mehrere Quellen dasselbe Kürzel
+Ein vorhandener App-Menübefehl gewinnt immer — auch dann, wenn er auf ⇧⌘
+liegt, denn Fastra nimmt ein Makro-Kürzel auch mit gedrückter Umschalttaste an.
+Belegt sind darum unter anderem ⇧⌘L („Soft Wrap“) und ⇧⌘M
+(„Markdown-Vorschau rechts anzeigen“); ein Makro mit `/l` oder `/m` bleibt
+deshalb ohne angezeigtes Kürzel und ist weiter über das Menü erreichbar. Dasselbe
+gilt für jedes andere Makro, dessen Kürzel ein Menübefehl schon belegt.
+Und ebenso ab dem zweiten Makro, wenn mehrere Quellen dasselbe Kürzel
 vergeben; nur das zuerst geladene behält es. Ein Makro-Kürzel wird außerdem
 nur als verarbeitet gewertet, wenn das Makro tatsächlich startet oder Text
 einsetzt.
