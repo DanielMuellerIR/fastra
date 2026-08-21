@@ -249,7 +249,9 @@ struct ContentView: View {
         let text = workspace.activeTabContent.wrappedValue
         let range = BufferSearch.nsRange(forLine: line, column: col, in: text)
         // Wie postMatchJump: zusätzlich konsumierbar hinterlegen, damit ein
-        // gerade neu erzeugter Editor den Sprung nicht verliert.
+        // gerade neu erzeugter Editor den Sprung nicht verliert. Der Sprung
+        // ist eine Navigation und entwertet ältere, noch laufende Aufträge.
+        _ = workspace.beginMatchJump()
         workspace.pendingEditorJump = PendingEditorJump(
             documentID: workspace.activeTab?.documentID,
             startLine: nil, startColumn: nil, endLine: nil, endColumn: nil,
@@ -274,6 +276,8 @@ struct ContentView: View {
         workspace.recordSearchHistory()
         let previousIndex = workspace.activeMatchIndex
         let nextIndex = transition.state.index
+        // Diese Navigation entwertet alle älteren, noch verzögerten Sprünge.
+        let jumpGeneration = workspace.beginMatchJump()
         func commitIndexIfPosted(_ posted: Bool) {
             guard let index = MatchJumpCommit.index(
                 previous: previousIndex, current: workspace.activeMatchIndex,
@@ -293,7 +297,8 @@ struct ContentView: View {
             DispatchQueue.main.async {
                 let posted = NotificationCenter.default.postMatchJump(
                     target.match, for: workspace,
-                    requiring: .document(documentID)
+                    requiring: .document(documentID),
+                    generation: jumpGeneration
                 )
                 commitIndexIfPosted(posted)
             }
@@ -304,7 +309,8 @@ struct ContentView: View {
                 guard ok else { return }
                 DispatchQueue.main.async {
                     let posted = NotificationCenter.default.postMatchJump(
-                        target.match, for: workspace, requiring: .url(url)
+                        target.match, for: workspace, requiring: .url(url),
+                        generation: jumpGeneration
                     )
                     commitIndexIfPosted(posted)
                 }
@@ -320,7 +326,8 @@ struct ContentView: View {
             let activeDocumentID = workspace.activeDocumentID
             let posted = NotificationCenter.default.postMatchJump(
                 target.match, for: workspace,
-                requiring: activeDocumentID.map { MatchJumpTarget.document($0) })
+                requiring: activeDocumentID.map { MatchJumpTarget.document($0) },
+                generation: jumpGeneration)
             commitIndexIfPosted(posted)
         }
     }

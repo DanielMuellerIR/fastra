@@ -9,6 +9,37 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.111.0] — 2026-08-21
+
+### Behoben
+
+- **Zwei schnelle Treffer in derselben, noch ladenden Datei springen nicht
+  mehr rückwärts.** Jede Navigation zieht jetzt eine Auftragsnummer
+  (`Workspace.beginMatchJump()`); eine verspätete Lade-Completion postet ihren
+  Sprung nur, solange ihre Nummer die aktuelle ist. Der bisherige Dokument-
+  beziehungsweise URL-Guard erkannte diesen Fall nicht, weil beide Aufträge
+  dieselbe Datei meinen: Der Editor sprang zum älteren Treffer, während
+  Trefferliste und Trefferindex den neueren zeigten.
+- **4D-Makros überschreiben keine ⇧⌘-Menübefehle mehr.** Der Tastenrouter
+  nimmt ein Makro-Kürzel auch mit gedrückter Umschalttaste an, die
+  Kürzelreservierung zählte aber nur schlichtes ⌘. Ein Makro mit `/l` oder
+  `/m` schlug deshalb in einer `.4dm`-Datei die realen Befehle ⇧⌘L
+  („Soft Wrap") und ⇧⌘M („Markdown-Vorschau rechts anzeigen").
+  `AppMenuShortcutKeys.reservedMacroKeys` reserviert jetzt ⌘ und ⇧⌘.
+- **Überlappende gelernte 4D-Namen erzeugen keinen doppelt tokenisierten Code
+  mehr.** Sind `Future Tail:K91:2` und `Tail:K92:3` beide gelernt, schrieb die
+  Rücktokenisierung an dasselbe Textende beide Suffixe (`…:K91:2:K92:3`) und
+  damit syntaktisch ungültigen 4D-Code in die Datei. `retokenize` plant die
+  Einfügungen jetzt vorwärts, belegt den Bereich des längsten Treffers und
+  lässt die darin liegenden Tokens aus.
+
+### Tests
+
+- Drei Regressionstests: veralteter Sprungauftrag postet nicht mehr,
+  ⇧⌘-Menübefehle sind reserviert (Option/Control weiterhin nicht), und der
+  Roundtrip mit überlappenden gelernten Namen bleibt verlustfrei. Der dritte
+  Test wurde gegen den unkorrigierten Stand als rot belegt.
+
 ## [v1.110.0] — 2026-08-20
 
 ### Behoben

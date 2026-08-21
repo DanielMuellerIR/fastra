@@ -455,9 +455,16 @@ extension NotificationCenter {
     ///
     /// `requiring` nennt das Dokument, dem der Sprung gilt. Ist es nicht mehr
     /// das aktive, unterbleibt der Post ganz — siehe `MatchJumpTarget`.
+    ///
+    /// `generation` ist die von `Workspace.beginMatchJump()` gezogene Nummer
+    /// des Auftrags. Hat der Nutzer inzwischen erneut navigiert, ist sie
+    /// veraltet und der Post unterbleibt — auch dann, wenn beide Aufträge
+    /// dasselbe Dokument meinen und der `requiring`-Guard deshalb wahr bleibt.
     @discardableResult
     func postMatchJump(_ match: BufferSearch.Match, for workspace: Workspace,
-                       requiring target: MatchJumpTarget? = nil) -> Bool {
+                       requiring target: MatchJumpTarget? = nil,
+                       generation: Int? = nil) -> Bool {
+        if let generation, !workspace.isCurrentMatchJump(generation) { return false }
         guard target?.isActive(in: workspace) ?? true else { return false }
         let end = BufferSearch.endLineColumn(startLine: match.line,
                                              startColumn: match.column,

@@ -555,6 +555,30 @@ final class Workspace: ObservableObject {
     /// (siehe `PendingEditorJump`). Bewusst kein `@Published` — der Editor
     /// liest ihn imperativ beim Erscheinen und im Notification-Pfad.
     var pendingEditorJump: PendingEditorJump?
+    /// Laufende Nummer des zuletzt angemeldeten Treffer-Sprungs. Jede neue
+    /// Navigation (Klick, ⌘G, Pfeil, Nachrück-Sprung) zieht sich hier eine
+    /// Nummer und entwertet damit alle älteren Aufträge.
+    ///
+    /// Warum zusätzlich zu `MatchJumpTarget`? Der Dokument-/URL-Guard erkennt
+    /// nur einen Wechsel des Ziels. Wählt der Nutzer zwei Treffer DERSELBEN
+    /// noch ladenden Datei, ist der Guard für beide wahr: Die späte Completion
+    /// des ersten Auftrags überschreibt dann den bereits geposteten zweiten
+    /// Sprung, und der Editor springt zum älteren Treffer, während die
+    /// Trefferliste den neueren anzeigt. Die Nummer trennt diesen Fall.
+    /// Bewusst kein `@Published`: reiner Ablaufschutz, keine Anzeige.
+    private(set) var matchJumpGeneration: Int = 0
+
+    /// Meldet einen neuen Sprungauftrag an und liefert dessen Nummer. Alle
+    /// zuvor vergebenen Nummern sind danach veraltet.
+    func beginMatchJump() -> Int {
+        matchJumpGeneration &+= 1
+        return matchJumpGeneration
+    }
+
+    /// `true`, solange `generation` der zuletzt angemeldete Auftrag ist.
+    func isCurrentMatchJump(_ generation: Int) -> Bool {
+        generation == matchJumpGeneration
+    }
     var fourDComponentMethodDisplayNames: [String] {
         fourDMethodIndexSnapshot.componentMethodDisplayNames
     }
@@ -5214,7 +5238,8 @@ final class Workspace: ObservableObject {
         // springen — analog zu navigateMatch in ContentView.
         guard activeMatchIndex < bufferMatches.count else { return }
         let target = bufferMatches[activeMatchIndex]
-        NotificationCenter.default.postMatchJump(target, for: self)
+        NotificationCenter.default.postMatchJump(
+            target, for: self, generation: beginMatchJump())
     }
 
     /// Geöffnet-Scope-Gegenstück zum Datei-Pfad oben. Der sichtbare Treffer
@@ -5264,10 +5289,15 @@ final class Workspace: ObservableObject {
               let documentID = tabs.first(where: { $0.id == tabID })?.documentID
         else { return }
         let expected = MatchJumpTarget.document(documentID)
+        // Auch der Nachrück-Sprung ist eine Navigation: Klickt der Nutzer
+        // währenddessen einen anderen Treffer an, darf diese Completion den
+        // neueren Sprung nicht mehr überschreiben.
+        let jumpGeneration = beginMatchJump()
         DispatchQueue.main.async { [weak self] in
             guard let self, self.scope == .open else { return }
             let posted = NotificationCenter.default.postMatchJump(
-                target.match, for: self, requiring: expected
+                target.match, for: self, requiring: expected,
+                generation: jumpGeneration
             )
             guard let index = MatchJumpCommit.index(
                 previous: previousIndex, current: self.activeMatchIndex,

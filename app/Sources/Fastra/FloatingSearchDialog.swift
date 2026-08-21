@@ -1254,6 +1254,8 @@ struct FloatingSearchDialog: View {
 
         let previousIndex = workspace.activeMatchIndex
         let nextIndex = transition.state.index
+        // Dieser Klick entwertet alle älteren, noch verzögerten Sprünge.
+        let jumpGeneration = workspace.beginMatchJump()
         func commitIndexIfPosted(_ posted: Bool) {
             guard let index = MatchJumpCommit.index(
                 previous: previousIndex, current: workspace.activeMatchIndex,
@@ -1273,7 +1275,8 @@ struct FloatingSearchDialog: View {
             DispatchQueue.main.async {
                 let posted = NotificationCenter.default.postMatchJump(
                     target.match, for: workspace,
-                    requiring: .document(documentID)
+                    requiring: .document(documentID),
+                    generation: jumpGeneration
                 )
                 commitIndexIfPosted(posted)
             }
@@ -1287,7 +1290,8 @@ struct FloatingSearchDialog: View {
                 guard ok else { return }
                 DispatchQueue.main.async {
                     let posted = NotificationCenter.default.postMatchJump(
-                        target.match, for: workspace, requiring: .url(url)
+                        target.match, for: workspace, requiring: .url(url),
+                        generation: jumpGeneration
                     )
                     commitIndexIfPosted(posted)
                 }
@@ -1295,7 +1299,8 @@ struct FloatingSearchDialog: View {
             return
         }
         commitIndexIfPosted(
-            NotificationCenter.default.postMatchJump(target.match, for: workspace)
+            NotificationCenter.default.postMatchJump(
+                target.match, for: workspace, generation: jumpGeneration)
         )
     }
 

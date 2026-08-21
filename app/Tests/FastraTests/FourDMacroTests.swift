@@ -482,6 +482,23 @@ struct FourDMacroRenderingTests {
                 == original)
     }
 
+    @Test("Ein gelerntes Teilwort verdoppelt das Suffix des längeren Namens nicht")
+    func learnedRoundtripKeepsOverlappingNamesDisjoint() {
+        // `Future Tail` UND das eigenständige `Tail` sind beide gelernt. Ohne
+        // Bereichsbelegung bekam der enttokenisierte mehrwortige Name zuerst
+        // das Suffix von `Tail` und am selben Offset zusätzlich das von
+        // `Future Tail` — der geschriebene 4D-Code war damit kaputt.
+        let original = "If (x=Future Tail:K91:2)\n"
+            + "If (y=Tail:K92:3)\nEnd if"
+        let learned = FourDTokenTransform.learnedSuffixes(from: original)
+        let detokenized = FourDTokenTransform.detokenize(original)
+        let restored = FourDTokenTransform.retokenize(detokenized,
+                                                      learned: learned)
+        #expect(restored == original)
+        #expect(!restored.contains(":K92:3:K91:2"))
+        #expect(!restored.contains(":K91:2:K92:3"))
+    }
+
     @Test("Engine-Status: OK, UNVERAENDERT und FEHLER werden korrekt gelesen")
     func interpretsEngineStatus() {
         #expect(FourDMacroEngine.interpret(status: "OK\n", output: "neu")
@@ -689,7 +706,7 @@ func macroOriginLabelsAreDistinct() {
 }
 
 @MainActor
-@Test("Makro-Kürzel übernehmen keinen schlichten Command-Menübefehl")
+@Test("Makro-Kürzel übernehmen weder ⌘- noch ⇧⌘-Menübefehle")
 func liveAppMenuDefinesReservedMacroShortcuts() {
     let root = NSMenu()
     let file = NSMenu(title: "Datei")
@@ -697,13 +714,28 @@ func liveAppMenuDefinesReservedMacroShortcuts() {
     fileItem.submenu = file
     root.addItem(fileItem)
     file.addItem(withTitle: "Sichern", action: nil, keyEquivalent: "s")
-    let shifted = NSMenuItem(title: "Anders", action: nil, keyEquivalent: "t")
-    shifted.keyEquivalentModifierMask = [.command, .shift]
-    file.addItem(shifted)
+    // Reale App-Befehle: ⇧⌘L „Soft Wrap", ⇧⌘M „Markdown-Vorschau rechts".
+    // Der Router nimmt ein Makro-Kürzel auch mit Umschalttaste an, deshalb
+    // müssen diese Tasten ebenfalls reserviert sein.
+    let softWrap = NSMenuItem(title: "Soft Wrap", action: nil, keyEquivalent: "l")
+    softWrap.keyEquivalentModifierMask = [.command, .shift]
+    file.addItem(softWrap)
+    // AppKit-Konvention: Großbuchstabe im keyEquivalent bedeutet ⇧, auch ohne
+    // Shift in der Maske.
+    let preview = NSMenuItem(title: "Markdown-Vorschau rechts anzeigen",
+                             action: nil, keyEquivalent: "M")
+    preview.keyEquivalentModifierMask = [.command]
+    file.addItem(preview)
+    // Option/Control brechen im Router ab und reservieren deshalb nichts.
+    let optioned = NSMenuItem(title: "Sonderweg", action: nil, keyEquivalent: "q")
+    optioned.keyEquivalentModifierMask = [.command, .option]
+    file.addItem(optioned)
 
-    let keys = AppMenuShortcutKeys.plainCommandKeys(in: root)
+    let keys = AppMenuShortcutKeys.reservedMacroKeys(in: root)
     #expect(keys.contains("s"))
-    #expect(!keys.contains("t"))
+    #expect(keys.contains("l"))
+    #expect(keys.contains("m"))
+    #expect(!keys.contains("q"))
 }
 
 @Test("Watch-Transaktion legt eine Datei beiseite und stellt sie wieder her")

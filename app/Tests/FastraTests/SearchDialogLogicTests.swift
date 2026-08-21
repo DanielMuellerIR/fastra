@@ -229,6 +229,45 @@ func suppressedMatchJumpKeepsNavigationState() {
                                   next: 3, posted: true) == nil)
 }
 
+@MainActor
+@Test("Ein neuer Sprungauftrag entwertet die Completion des älteren")
+func newerMatchJumpInvalidatesOlderRequest() {
+    let suite = "fastra-search-generation-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let workspace = Workspace(defaults: defaults)
+    let documentID = workspace.activeDocumentID!
+
+    // Zwei Treffer DERSELBEN Datei: Der Dokument-Guard ist für beide wahr,
+    // nur die Auftragsnummer trennt sie.
+    let older = workspace.beginMatchJump()
+    let newer = workspace.beginMatchJump()
+    #expect(!workspace.isCurrentMatchJump(older))
+    #expect(workspace.isCurrentMatchJump(newer))
+
+    // Zwei unterscheidbare Treffer derselben Zeile.
+    let content = "eins TREFFER zwei TREFFER"
+    let found = BufferSearch.find(
+        in: content,
+        options: SearchOptions(find: "TREFFER", replace: "", isRegex: false)
+    ).matches
+    let newerPosted = NotificationCenter.default.postMatchJump(
+        found[1], for: workspace,
+        requiring: .document(documentID), generation: newer
+    )
+    #expect(newerPosted)
+    #expect(workspace.pendingEditorJump?.range == found[1].range)
+
+    // Die verspätete Completion des ersten Auftrags darf den bereits
+    // geposteten neueren Sprung nicht mehr überschreiben.
+    let olderPosted = NotificationCenter.default.postMatchJump(
+        found[0], for: workspace,
+        requiring: .document(documentID), generation: older
+    )
+    #expect(!olderPosted)
+    #expect(workspace.pendingEditorJump?.range == found[1].range)
+}
+
 @Test("Dateigebundene Ansicht wechselt Identität bei Dokument oder Pfad")
 func fileViewIdentityIncludesBothInputs() {
     let firstID = UUID()

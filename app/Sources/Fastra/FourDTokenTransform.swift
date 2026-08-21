@@ -118,22 +118,37 @@ enum FourDTokenTransform {
         learnedNames.sort {
             $0.length == $1.length ? $0.name < $1.name : $0.length > $1.length
         }
-        for token in tokens.reversed()
-        where retokenizableKinds.contains(token.kind) {
+        // Erst planen, dann anwenden. Ein gelernter mehrwortiger Name deckt
+        // die Folge-Tokens mit ab: Für `Future Tail` liefert der Tokenizer
+        // ohne Suffix zwei Namen (`Future` und `Tail`). Sind BEIDE gelernt,
+        // bekäme derselbe Textbereich zwei Suffixe — zuerst das von `Tail`,
+        // danach am selben Offset das von `Future Tail`. Der Vorwärtslauf mit
+        // `claimedUntil` belegt den Bereich des längeren Treffers und lässt
+        // die darin liegenden Tokens aus.
+        var insertions: [(at: Int, suffix: String)] = []
+        var claimedUntil = 0
+        for token in tokens where retokenizableKinds.contains(token.kind) {
+            guard token.range.location >= claimedUntil else { continue }
             let value = original.substring(with: token.range)
             guard !value.contains(":") else { continue }   // schon tokenisiert
             if let match = learnedMatch(at: token.range.location,
                                         tokenValue: value,
                                         in: original,
                                         candidates: learnedNames) {
-                result.insert(match.suffix,
-                              at: token.range.location + match.length)
+                let end = token.range.location + match.length
+                insertions.append((end, match.suffix))
+                claimedUntil = end
             } else if token.kind == .command,
                       !isDeclarationType(token, in: original),
                       let number = FourDSymbols
                           .commandDetails[value.lowercased()]?.number {
-                result.insert(":C\(number)", at: NSMaxRange(token.range))
+                insertions.append((NSMaxRange(token.range), ":C\(number)"))
+                claimedUntil = NSMaxRange(token.range)
             }
+        }
+        // Von hinten einfügen, damit die geplanten Offsets gültig bleiben.
+        for insertion in insertions.reversed() {
+            result.insert(insertion.suffix, at: insertion.at)
         }
         return result as String
     }

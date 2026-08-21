@@ -214,7 +214,7 @@ extension Workspace {
                 else { return }
                 self.fourDMacros = FourDMacroXML.resolvingShortcuts(
                     in: parsed,
-                    reserved: AppMenuShortcutKeys.plainCommandKeys(in: NSApp.mainMenu)
+                    reserved: AppMenuShortcutKeys.reservedMacroKeys(in: NSApp.mainMenu)
                 )
             }
         }
@@ -238,7 +238,7 @@ extension Workspace {
         // Den lebenden Menübaum auch beim Tastendruck noch einmal prüfen.
         // Falls sich Menüs nach dem Katalogscan geändert haben, gewinnt der
         // App-Befehl weiterhin und das Ereignis wird unverändert weitergereicht.
-        guard !AppMenuShortcutKeys.plainCommandKeys(in: NSApp.mainMenu)
+        guard !AppMenuShortcutKeys.reservedMacroKeys(in: NSApp.mainMenu)
             .contains(key) else { return false }
         guard let macro = fourDMacros.first(where: { $0.shortcutKey == key }) else {
             return false
@@ -453,21 +453,34 @@ extension Workspace {
     }
 }
 
-/// Schlichte ⌘-Kürzel, die das echte App-Menü bereits belegt. Der lebende
-/// Menübaum ist die Quelle der Wahrheit; dadurch kann ein neues Menükommando
-/// nicht unbemerkt von einem 4D-Makro überschrieben werden.
+/// ⌘-Kürzel, die das echte App-Menü bereits belegt. Der lebende Menübaum ist
+/// die Quelle der Wahrheit; dadurch kann ein neues Menükommando nicht unbemerkt
+/// von einem 4D-Makro überschrieben werden.
+///
+/// Die Umschalttaste gehört ausdrücklich dazu: Der globale Router leitet ein
+/// Makro-Kürzel auch mit gedrückter Umschalttaste weiter (`KeyRouting`, „Shift
+/// bleibt erlaubt"). Zählte hier nur das schlichte ⌘, behielte ein Makro mit
+/// `/l` oder `/m` sein Kürzel und schlüge in einer `.4dm`-Datei die realen
+/// Menübefehle ⇧⌘L („Soft Wrap") und ⇧⌘M („Markdown-Vorschau rechts anzeigen").
+/// Option und Control brechen im Router ab und reservieren deshalb nichts.
 enum AppMenuShortcutKeys {
-    @MainActor static func plainCommandKeys(in menu: NSMenu?) -> Set<Character> {
+    @MainActor static func reservedMacroKeys(in menu: NSMenu?) -> Set<Character> {
         guard let menu else { return [] }
         var result = Set<Character>()
         for item in menu.items {
             let modifiers = item.keyEquivalentModifierMask
                 .intersection([.command, .option, .control, .shift])
+            // Genau ⌘ oder ⇧⌘ — die beiden Kombinationen, die der Router als
+            // Makro annimmt. `keyEquivalent` kann den Großbuchstaben selbst
+            // tragen (AppKit-Konvention für ⇧); das Kleinschreiben deckt das
+            // mit ab, weil auch der Router `charactersIgnoringModifiers`
+            // kleinschreibt.
             let key = item.keyEquivalent.lowercased()
-            if modifiers == .command, key.count == 1, let character = key.first {
+            if modifiers.subtracting(.shift) == .command,
+               key.count == 1, let character = key.first {
                 result.insert(character)
             }
-            result.formUnion(plainCommandKeys(in: item.submenu))
+            result.formUnion(reservedMacroKeys(in: item.submenu))
         }
         return result
     }
