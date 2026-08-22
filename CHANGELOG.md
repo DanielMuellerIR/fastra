@@ -9,6 +9,34 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.111.1] — 2026-08-22
+
+Nacht-Review 2026-08-22, ein P2-Fund.
+
+### Behoben
+
+- **Ein Suchmusterwechsel entwertet offene Treffer-Sprünge.** Klickte der
+  Nutzer in einer Ordner- oder Projektsuche auf einen Treffer einer noch
+  ladenden Datei und änderte vor Abschluss des Ladens das Suchmuster (oder
+  Optionen, Scope, Quellen), sprang der Editor nach dem Laden trotzdem zum
+  Treffer des alten Musters, und der alte Trefferindex wanderte in die
+  inzwischen leere oder neue Trefferliste. `searchInputsDidChange` verwarf die
+  Trefferbasis, ließ aber die beim Klick gezogene Sprungnummer gelten. Jede
+  Invalidierung der Ordner-Vorschau (Sucheingabe, verworfene Vorschau nach
+  Apply/Rückgängig, neuer Ordnerlauf, geschlossene Maske) entwertet jetzt
+  offene Sprungaufträge mit (`Workspace.invalidateMatchJumps`) und verwirft
+  einen noch nicht verbrauchten `pendingEditorJump`. Ausgenommen bleibt der
+  Dokumentwechsel der Navigation selbst: Im Geöffnet-Scope aktiviert der
+  Sprung den Ziel-Tab, bevor er postet, und darf sich nicht selbst entwerten.
+
+### Tests
+
+- Zwei Regressionstests: Klick → laufender Datei-Load → Musterwechsel →
+  Lade-Completion postet nicht mehr und lässt den Index stehen (gegen den
+  unkorrigierten Stand als rot belegt: Sprung gepostet, Index 1 in leerer
+  Liste); der Tabwechsel einer Geöffnet-Navigation entwertet den eigenen
+  Auftrag nicht.
+
 ## [v1.111.0] — 2026-08-21
 
 ### Behoben

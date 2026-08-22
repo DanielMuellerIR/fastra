@@ -113,7 +113,9 @@ final class SearchRunner {
                 let scope = workspace.scope
                 return Self.inputAffectsSearch(input, in: scope)
             }
-            .map { _ in () }
+            // Die Art des Inputs bleibt erhalten: Die Sofort-Invalidierung
+            // unten behandelt einen Dokumentwechsel anders als ein neues
+            // Muster (siehe `searchInputsDidChange`).
             .share()
 
         // Sicherheitspfad ohne Debounce: Sobald ein Suchinput wechselt,
@@ -121,7 +123,7 @@ final class SearchRunner {
         // aktuellen Semantik. Sofort leeren und laufende Tasks abbrechen;
         // Navigation, Vorschau und Apply sehen damit nie einen Altstand.
         triggerStream
-            .sink { [weak self] in
+            .sink { [weak self] input in
                 // Combine liefert synchron auf dem Thread, der den Suchinput
                 // geschrieben hat. Im Produkt ist das immer der Main-Thread —
                 // dort MUSS die Invalidierung auch synchron bleiben, damit
@@ -137,9 +139,9 @@ final class SearchRunner {
                 // mit `rerun()`. (Regressionstest:
                 // WorkspaceParallelStressTests.)
                 if Thread.isMainThread {
-                    self?.searchInputsDidChange()
+                    self?.searchInputsDidChange(input)
                 } else {
-                    DispatchQueue.main.async { self?.searchInputsDidChange() }
+                    DispatchQueue.main.async { self?.searchInputsDidChange(input) }
                 }
             }
             .store(in: &bag)
@@ -149,7 +151,7 @@ final class SearchRunner {
             // selbst auf großen Buffern nicht jede Taste ein Re-Search
             // anstößt. Bei Bedarf später konfigurierbar machen.
             .debounce(for: .milliseconds(120), scheduler: DispatchQueue.main)
-            .sink { [weak self] in self?.rerun() }
+            .sink { [weak self] _ in self?.rerun() }
             .store(in: &bag)
 
         // Öffnen der Maske startet genau einen Lauf mit den aktuellen
@@ -257,15 +259,27 @@ final class SearchRunner {
         rerun()
     }
 
-    private static func clearFolderPreview(_ ws: Workspace) {
+    /// Verwirft die sichtbare Ordner-/Projekt-Trefferbasis.
+    ///
+    /// `invalidatingJumps`: `true` entwertet zugleich alle offenen
+    /// Sprungaufträge (`Workspace.invalidateMatchJumps`). Ein Trefferklick in
+    /// einer noch ladenden Funddatei postet seinen Sprung erst in der
+    /// Lade-Completion; kommt die nach einer Sucheingabe an, gehört der
+    /// Treffer zu einer Liste, die es nicht mehr gibt — ohne Entwertung sprang
+    /// der Editor dann zum alten Treffer und übernahm den alten Index in die
+    /// neue Trefferbasis (Review 2026-08-22). Nur `false`, wenn der Aufrufer
+    /// weiß, dass die Aufträge weiterhin gültig sind.
+    private static func clearFolderPreview(_ ws: Workspace,
+                                           invalidatingJumps: Bool) {
         ws.folderResults = []
         ws.folderTotalMatches = 0
         ws.folderResultsWereCapped = false
         ws.activeMatchIndex = 0
+        if invalidatingJumps { ws.invalidateMatchJumps() }
     }
 
     private static func clearAllPreview(_ ws: Workspace) {
-        clearFolderPreview(ws)
+        clearFolderPreview(ws, invalidatingJumps: true)
         ws.bufferMatches = []
         ws.bufferTotalMatches = 0
         ws.bufferResultsWereCapped = false
@@ -277,10 +291,18 @@ final class SearchRunner {
     }
 
     /// Unmittelbare Invalidierung vor beiden Debounce-Stufen.
-    private func searchInputsDidChange() {
+    private func searchInputsDidChange(_ input: SearchInput) {
         guard let ws = workspace else { return }
         cancelPendingWork()
-        Self.clearFolderPreview(ws)
+        // Muster, Optionen, Scope oder Quellen: Die navigierbare Trefferbasis
+        // ist weg, offene Sprungaufträge mit ihr. Ein Dokumentwechsel
+        // dagegen IST im Datei-/Geöffnet-Scope der Sprung selbst: Die
+        // Navigation zieht ihre Nummer, aktiviert den Ziel-Tab (Trigger
+        // `activeDocument`) und postet einen Tick später — würde der Tabwechsel
+        // entwerten, käme kein Geöffnet-Sprung in einen anderen Tab mehr an.
+        // Im Ordner-/Projekt-Scope filtert `inputAffectsSearch` diesen Input
+        // ohnehin aus; der Lade-Tab einer Funddatei erreicht diese Stelle nie.
+        Self.clearFolderPreview(ws, invalidatingJumps: input != .activeDocument)
         // Die sichtbaren Buffer-/Geöffnet-Treffer bleiben absichtlich stehen
         // (sonst blinkte die Trefferzahl bei jedem Tastendruck auf 0), ihre
         // Freigabe für „Alle ersetzen" gilt aber ab sofort nicht mehr: Sie
@@ -318,7 +340,7 @@ final class SearchRunner {
     func folderResultsBecameStale() {
         guard let ws = workspace, ws.scope.isFolderLike else { return }
         cancelPendingWork()
-        Self.clearFolderPreview(ws)
+        Self.clearFolderPreview(ws, invalidatingJumps: true)
         ws.folderSearching = false
         ws.folderNeedsSearch = true
     }
@@ -379,7 +401,7 @@ final class SearchRunner {
         // dann setzt ihn auch kein späterer `runFolderSearch` mehr zurück.
         ws.bufferSearching = false
         ws.searchError = SearchRunner.validationError(for: ws.currentSearchOptions)
-        Self.clearFolderPreview(ws)
+        Self.clearFolderPreview(ws, invalidatingJumps: true)
 
         // Live nur oberhalb der Mindestlänge UND mit gültigem Pattern UND
         // mindestens einem aktivierten Ordner. Sonst: alte Ergebnisse weg,
@@ -550,7 +572,7 @@ final class SearchRunner {
     func runFolderSearch() {
         guard let ws = workspace, ws.scope.isFolderLike else { return }
         cancelPendingWork()
-        Self.clearFolderPreview(ws)
+        Self.clearFolderPreview(ws, invalidatingJumps: true)
         folderRunID &+= 1
         let runID = folderRunID
 

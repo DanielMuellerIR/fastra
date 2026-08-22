@@ -579,6 +579,23 @@ final class Workspace: ObservableObject {
     func isCurrentMatchJump(_ generation: Int) -> Bool {
         generation == matchJumpGeneration
     }
+
+    /// Entwertet alle offenen Sprungaufträge, ohne einen neuen anzumelden.
+    ///
+    /// Aufzurufen, sobald die navigierbare Trefferbasis ungültig wird: neues
+    /// Suchmuster, geänderte Optionen oder Scope, verworfene Ordner-Vorschau,
+    /// neuer Ordnerlauf, geschlossene Maske. Ein Trefferklick in einer noch
+    /// ladenden Funddatei zieht seine Nummer beim Klick; ohne diese
+    /// Entwertung passierte seine Lade-Completion nach einer Sucheingabe
+    /// weiterhin `isCurrentMatchJump` und den URL-Guard, postete den Sprung
+    /// aus der ALTEN Ergebnisliste und übernahm den alten Index in die neue
+    /// Trefferbasis (Review 2026-08-22). Ein bereits hinterlegter, noch nicht
+    /// verbrauchter `pendingEditorJump` gehört ebenfalls zur alten Basis und
+    /// wird mit verworfen.
+    func invalidateMatchJumps() {
+        matchJumpGeneration &+= 1
+        pendingEditorJump = nil
+    }
     var fourDComponentMethodDisplayNames: [String] {
         fourDMethodIndexSnapshot.componentMethodDisplayNames
     }

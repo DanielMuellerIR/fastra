@@ -13,6 +13,12 @@ private final class JumpNotificationCapture: @unchecked Sendable {
     var notification: Notification?
 }
 
+/// Ergebnis eines verzögert geposteten Sprungs, aus der Main-Queue-Closure
+/// heraus beschreibbar (Muster wie `JumpNotificationCapture`).
+private final class MatchJumpPostCapture: @unchecked Sendable {
+    var posted: Bool?
+}
+
 /// Erzeugt einen echten Suchtreffer für die Navigationsziel-Tests. Dadurch
 /// hängen die Tests nicht von einem handgebauten Match mit erfundenen Ranges
 /// ab, sondern verwenden denselben Datentyp wie der produktive SearchRunner.
@@ -266,6 +272,106 @@ func newerMatchJumpInvalidatesOlderRequest() {
     )
     #expect(!olderPosted)
     #expect(workspace.pendingEditorJump?.range == found[1].range)
+}
+
+// Befund Review 2026-08-22: `searchInputsDidChange` verwarf die
+// Ordner-Trefferbasis, ließ die Sprunggeneration aber stehen. Ablauf: Klick
+// auf einen Treffer einer noch ladenden Funddatei → Suchmuster wechselt vor
+// der Lade-Completion → die Completion passierte Generation und URL-Guard,
+// postete den Treffer der ALTEN Liste und übernahm dessen Index in die neue,
+// inzwischen leere Trefferbasis.
+@MainActor
+@Test("Ein Suchmusterwechsel entwertet den Sprung einer noch ladenden Funddatei")
+func patternChangeInvalidatesPendingFolderMatchJump() async throws {
+    let suite = "fastra-search-stale-jump-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let workspace = Workspace(defaults: defaults)
+
+    // Ordnersuche mit sichtbarer Maske: Nur dann reagiert der SearchRunner
+    // synchron auf ein neues Muster (Trigger-Filter in `SearchRunner.init`).
+    workspace.scope = .folder
+    workspace.showSearchDialog = true
+    workspace.findPattern = "TREFFER"
+
+    // Die Funddatei liegt wirklich auf der Platte: `loadFile` lädt sie im
+    // Hintergrund und meldet sich erst später auf dem Main-Thread zurück —
+    // genau dieses Fenster nutzt der Ablauf.
+    let content = "eins TREFFER zwei TREFFER"
+    let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-stale-jump-\(UUID().uuidString).txt")
+    try content.write(to: url, atomically: true, encoding: .utf8)
+    defer { try? FileManager.default.removeItem(at: url) }
+    let found = BufferSearch.find(
+        in: content,
+        options: SearchOptions(find: "TREFFER", replace: "", isRegex: false)
+    ).matches
+
+    // Wie `FloatingSearchDialog.handleMatchTap` im Ordner-Scope: Nummer beim
+    // Klick ziehen, Datei laden, Sprung und Index erst in der Completion.
+    let previousIndex = workspace.activeMatchIndex
+    let nextIndex = 1
+    let jumpGeneration = workspace.beginMatchJump()
+    let capture = MatchJumpPostCapture()
+    workspace.loadFile(at: url) { ok in
+        #expect(ok, "Die Funddatei muss sich laden lassen")
+        DispatchQueue.main.async {
+            let didPost = NotificationCenter.default.postMatchJump(
+                found[1], for: workspace, requiring: .url(url),
+                generation: jumpGeneration
+            )
+            if let index = MatchJumpCommit.index(
+                previous: previousIndex, current: workspace.activeMatchIndex,
+                next: nextIndex, posted: didPost
+            ) {
+                workspace.activeMatchIndex = index
+            }
+            capture.posted = didPost
+        }
+    }
+
+    // Noch VOR der Lade-Completion tippt der Nutzer ein neues Muster. Die
+    // Trefferbasis ist damit weg — und mit ihr der offene Sprungauftrag.
+    workspace.findPattern = "ANDERES"
+    #expect(workspace.folderResults.isEmpty)
+    #expect(!workspace.isCurrentMatchJump(jumpGeneration),
+            "Der Musterwechsel muss den Klick-Auftrag entwerten")
+
+    let completed = await waitUntil { capture.posted != nil }
+    #expect(completed, "Die Lade-Completion muss eintreffen")
+    #expect(capture.posted == false,
+            "Kein Sprung zu einem Treffer des alten Musters")
+    #expect(workspace.pendingEditorJump == nil)
+    #expect(workspace.activeMatchIndex == 0,
+            "Der alte Index darf nicht in die neue Trefferbasis wandern")
+}
+
+// Gegenprobe: Im Geöffnet-Scope ist der Tabwechsel Teil der Navigation. Er
+// löst den Trigger `activeDocument` aus und darf den gerade gezogenen
+// Sprungauftrag NICHT entwerten — sonst käme kein Sprung in einen anderen
+// Tab mehr an.
+@MainActor
+@Test("Ein Tabwechsel der Navigation entwertet den eigenen Sprungauftrag nicht")
+func navigationTabSwitchKeepsOwnMatchJump() {
+    let suite = "fastra-search-tabswitch-jump-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let workspace = Workspace(defaults: defaults)
+    workspace.tabs = [
+        EditorTab(title: "a.txt", path: "—", content: "eins"),
+        EditorTab(title: "b.txt", path: "—", content: "TREFFER"),
+    ]
+    workspace.activeTabID = workspace.tabs[0].id
+    workspace.scope = .open
+    workspace.showSearchDialog = true
+
+    let jumpGeneration = workspace.beginMatchJump()
+    workspace.selectTab(id: workspace.tabs[1].id)
+    #expect(workspace.isCurrentMatchJump(jumpGeneration))
+
+    // Ein neues Muster entwertet dagegen auch hier.
+    workspace.findPattern = "TREFFER"
+    #expect(!workspace.isCurrentMatchJump(jumpGeneration))
 }
 
 @Test("Dateigebundene Ansicht wechselt Identität bei Dokument oder Pfad")
