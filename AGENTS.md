@@ -69,7 +69,10 @@ Installationsverhalten, Datei-Doppelklick über LaunchServices,
 Finder-Zuordnungen oder macOS-Datei- bzw. Ordnerberechtigungen relevant sind,
 ist der vollständige notarierte `./install.sh`-Pfad nach `/Applications`
 verbindlich. Er darf auch für normale verifizierte Teststände genutzt werden;
-für schnelle rein interne Iterationen bleibt `build.sh` passend.
+für schnelle rein interne Iterationen bleibt `build.sh` passend. Ein bloßes
+`swift build` aktualisiert das `.app`-Bundle dagegen nicht: Selbst- und
+GUI-Tests gegen `Fastra.app` brauchen vorher `app/build.sh`, sonst prüfen sie
+den alten Stand (2026-08-19: Selbsttest lief gegen das alte Bundle).
 
 Ressourcen müssen aus dem gepackten App-Bundle funktionieren. Ein Erfolg im
 SwiftPM-Buildverzeichnis reicht nicht: absolute `.build`-Fallbacks können lokal
