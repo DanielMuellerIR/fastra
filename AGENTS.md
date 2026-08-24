@@ -544,7 +544,15 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   danach y=0). Erfolg nur melden, wenn das Ziel im schon ausgelegten Dokument
   liegt, und das Ziel selbst aufs Erreichbare begrenzen (siehe
   `EditorView.restoreScrollOffset`; Diagnose per
-  `FASTRA_SCROLLRESTORE_DEBUG=1`).
+  `FASTRA_SCROLLRESTORE_DEBUG=1`). Die Umkehrung derselben Falle traf am
+  2026-08-24 die Seitenleiste: Dort war „das Dokument gibt gerade nicht mehr
+  her als das Erreichte" als Abbruch gedacht — und trifft direkt nach dem
+  Aufbau IMMER zu, weil eine LazyVStack noch keine Zeile ausgelegt hat.
+  Dokumenthöhe und Sichtfenster sind dann gleich groß, die Schleife bricht im
+  ersten Versuch bei Position 0 ab, und die Liste bleibt für immer oben. Eine
+  Nachzieh-Schleife darf deshalb nur bei erreichtem Ziel oder aufgebrauchten
+  Versuchen enden (siehe `SidebarScrollRestore.isSettled`; Diagnose per
+  `FASTRA_SIDEBARSCROLL_DEBUG=1`).
 
 ## Verhaltensevals
 

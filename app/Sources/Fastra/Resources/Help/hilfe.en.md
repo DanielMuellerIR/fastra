@@ -728,6 +728,10 @@ clears the filter and restores the previous expansion state. The filter
 only searches NAMES — for contents, use “Find in Folders…” (⇧⌘F, also
 offered as a link when the filter finds nothing).
 
+Switching between the sidebar tabs is not a fresh start: the filter text
+and its match list, the expanded commits in the graph and each list's
+scroll position are all back in place when you switch back.
+
 ## Git
 
 If the project is a Git repository (and `git` is installed), the sidebar
@@ -786,6 +790,15 @@ additionally shows the **Changes** and **Graph** tabs:
   remain reachable with many files; in a narrow sidebar the title is
   truncated first, never a button.
 - **Graph:** the commit graph with branches and merges.
+- **History of a single file:** right-click a file in the Files tab (or
+  its document tab) → “Show Git History”. Fastra switches to the Graph
+  tab and shows only that file's commits, listed vertically instead of as
+  a branch picture — a history filtered to one file leaves out the
+  commits in between, so branches drawn there would be invented. Renames
+  are followed (`git log --follow`), so the history reaches back past the
+  old file name. The header names the file and the commit count; “Full
+  History” returns to the whole project. Click and double-click on a
+  commit row behave as in the full graph.
 - History (`git log`) and diffs open as read-only tabs; clicking a
   commit hash shows its details.
 - Git diffs use the same two-column view as **Compare Files** —

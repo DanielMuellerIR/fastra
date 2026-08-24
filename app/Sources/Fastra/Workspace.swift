@@ -517,6 +517,20 @@ final class Workspace: ObservableObject {
     /// Dateinamens-Filter der Projekt-Seitenleiste (Etappe 3 Wunschpaket
     /// 2026-07c). Leer = kein Filter. Projektwechsel setzt zurück.
     @Published var fileTreeFilterQuery: String = ""
+    /// Fertiges Scan-Ergebnis zum Filter. Liegt am Workspace und nicht als
+    /// `@State` in der Seitenleiste, weil SwiftUI die Dateien-Ansicht beim
+    /// Wechsel auf einen anderen Seitenleisten-Tab vollständig abbaut: Der
+    /// Suchtext blieb danach stehen, das Ergebnis war weg und der Baum zeigte
+    /// sich ungefiltert (Daniel-Befund 2026-08-24).
+    @Published var fileTreeFilterResult: FileTreeFilterResult?
+    /// Aktiver Tab der Seitenleiste. Ebenfalls am Workspace, weil Befehle ihn
+    /// setzen müssen — „Git-Historie anzeigen" im Kontextmenü des Dateibaums
+    /// springt damit auf den Graph-Tab.
+    @Published var sidebarMode: SidebarMode = .files
+    /// Scrollpositionen der Seitenleisten-Listen über einen Tab-Wechsel
+    /// hinweg. Bewusst NICHT `@Published`: Der Wert wird beim Scrollen
+    /// laufend fortgeschrieben und darf kein SwiftUI-Update auslösen.
+    let sidebarScrollMemory = SidebarScrollMemory()
     /// Atomarer 4D-Projektindex für dieses Fenster. Projekt- und Komponenten-
     /// methoden wechseln gemeinsam; bis zum ersten Scan bleibt er leer.
     @Published private(set) var fourDMethodIndexSnapshot = FourDMethodIndexSnapshot.empty
@@ -624,6 +638,18 @@ final class Workspace: ObservableObject {
     /// Leer = kein Repo/keine Commits oder noch nicht geladen. Asynchron über
     /// `refreshGitLog()` gefüllt.
     @Published var gitLog: [GitCommit] = []
+    /// Auf eine Datei eingeschränkter Verlauf: `nil` = ganze Historie.
+    /// Der volle `gitLog` bleibt daneben stehen, deshalb kommt der Rücksprung
+    /// auf die ganze Historie ohne neuen git-Aufruf aus.
+    @Published var gitHistoryFile: GitHistoryFile?
+    /// Commits, die die unter `gitHistoryFile` genannte Datei geändert haben.
+    @Published var gitFileHistory: [GitCommit] = []
+    /// Ladezustand dazu — die Ansicht unterscheidet damit „lädt noch" von
+    /// „diese Datei hat keine Commits".
+    @Published var gitFileHistoryState: GitFileHistoryState = .idle
+    /// Aufgeklappte Commits des Graph-Tabs. Am Workspace, damit ein
+    /// Tab-Wechsel in der Seitenleiste die Ansicht nicht zusammenklappt.
+    @Published var gitGraphExpandedCommits: Set<String> = []
     /// Lokale Branches für die Auswahl in der Projekt-Seitenleiste.
     @Published var gitBranches: [GitBranch] = []
     /// Kurzlebige, nicht-modale Rückmeldung erfolgreicher Git-Aktionen.
@@ -991,6 +1017,10 @@ final class Workspace: ObservableObject {
     private let terminalOpener: TerminalOpening
     private let terminalDirectoryResolver: TerminalDirectoryResolving
     private var gitDiffLoadLeases: [UUID: GitDiffLoadLease] = [:]
+    /// Laufender Verlaufs-Lauf EINER Datei plus seine Generation. Eine
+    /// überholte Antwort darf die inzwischen gewählte Datei nicht überschreiben.
+    private var gitFileHistoryLease: GitOperationLease?
+    private var gitFileHistoryGeneration: UInt64 = 0
     private var gitSnapshotLoadLeases: [UUID: GitSnapshotLoadLease] = [:]
     private var gitSnapshotLoadGenerations: [UUID: UInt64] = [:]
     private var gitIdentityResolution: GitCancelling?
@@ -3565,6 +3595,7 @@ final class Workspace: ObservableObject {
         gitRepositorySnapshot = nil
         gitBranches = []
         gitLog = []
+        clearGitHistoryFile()
         gitFeedback = nil
         gitPushFeedback = [:]
         gitPushFeedbackGenerations = [:]
@@ -3674,6 +3705,7 @@ final class Workspace: ObservableObject {
         gitPushTargetWarning = nil
         gitRepositorySnapshot = nil
         gitLog = []
+        clearGitHistoryFile()
         gitBranches = []
         gitFeedback = nil
         gitPushFeedback = [:]
@@ -3751,6 +3783,7 @@ final class Workspace: ObservableObject {
             gitRepositorySnapshot = nil
             gitBranches = []
             gitLog = []
+            clearGitHistoryFile()
             return
         }
         invalidateAndRefreshActiveConflictInspection()
@@ -3802,6 +3835,9 @@ final class Workspace: ObservableObject {
         // im bereits offenen Verlauf sichtbar machen.
         if graphChanged {
             refreshOpenGitLogView()
+            // Eine eingeschränkte Dateihistorie ist ein eigener git-Aufruf und
+            // steckt nicht im Snapshot. Sie muss deshalb ausdrücklich nachziehen.
+            refreshGitFileHistoryIfNeeded()
         }
         if graphChanged { refreshOpenGitDiffTabs() }
         if statusChanged { invalidateAndRefreshActiveConflictInspection() }
@@ -3844,6 +3880,97 @@ final class Workspace: ObservableObject {
         guard url.path.hasPrefix(rootPath) else { return false }
         let folderRelative = String(url.path.dropFirst(rootPath.count)) + "/"
         return status.entries.keys.contains { $0.hasPrefix(folderRelative) }
+    }
+
+    // MARK: - Verlauf einer einzelnen Datei (Seitenleiste, Graph-Tab)
+
+    /// Lässt sich für diese Datei überhaupt ein Verlauf zeigen? Ohne Repo,
+    /// ohne git oder außerhalb des Projekts bleibt der Menüpunkt weg, statt
+    /// später wirkungslos zu sein.
+    func canShowGitHistory(for url: URL) -> Bool {
+        guard let root = projectURL, gitStatus != nil, GitRunner.isAvailable else {
+            return false
+        }
+        return GitFileHistory.relativePath(of: url, in: root) != nil
+    }
+
+    /// Schränkt den Graph-Tab auf den Verlauf EINER Datei ein und zeigt ihn.
+    /// Aufrufer ist „Git-Historie anzeigen" im Kontextmenü des Dateibaums.
+    func showGitHistory(for url: URL) {
+        guard let root = projectURL, gitStatus != nil, GitRunner.isAvailable,
+              let relativePath = GitFileHistory.relativePath(of: url, in: root)
+        else { return }
+        let file = GitHistoryFile(relativePath: relativePath)
+        // Der Tabwechsel geschieht auch dann, wenn dieselbe Datei erneut
+        // gewählt wird: Der Nutzer hat sichtbar etwas angefordert.
+        sidebarMode = .graph
+        if gitHistoryFile != file {
+            gitHistoryFile = file
+            gitFileHistory = []
+            gitGraphExpandedCommits = []
+        }
+        loadGitFileHistory(file)
+    }
+
+    /// Zurück zur ganzen Historie. Der volle `gitLog` liegt bereits im
+    /// Speicher, deshalb genügt das Verwerfen der Einschränkung.
+    func clearGitHistoryFile() {
+        guard gitHistoryFile != nil else { return }
+        gitFileHistoryLease?.cancel()
+        gitFileHistoryLease = nil
+        gitHistoryFile = nil
+        gitFileHistory = []
+        gitFileHistoryState = .idle
+        gitGraphExpandedCommits = []
+    }
+
+    /// Lädt die Commits der eingeschränkten Datei asynchron.
+    ///
+    /// Die Generation verwirft die Antwort eines überholten Laufs: Klickt der
+    /// Nutzer schnell hintereinander zwei Dateien an, darf die spätere Antwort
+    /// der ERSTEN Datei die inzwischen sichtbare zweite nicht überschreiben.
+    private func loadGitFileHistory(_ file: GitHistoryFile) {
+        guard let context = currentGitActionContext, GitRunner.isAvailable else { return }
+        gitFileHistoryLease?.cancel()
+        gitFileHistoryGeneration &+= 1
+        let generation = gitFileHistoryGeneration
+        gitFileHistoryState = .loading
+        let request = GitOperationRequest(
+            repository: context.root, kind: .refresh,
+            arguments: GitFileHistory.arguments(relativePath: file.relativePath)
+        )
+        gitFileHistoryLease = gitOperationsCoordinator.perform(request) { [weak self] outcome in
+            guard let self, self.gitFileHistoryGeneration == generation,
+                  context.isCurrent(in: self), self.gitHistoryFile == file else { return }
+            self.gitFileHistoryLease = nil
+            guard case .completed(let result) = outcome else {
+                self.gitFileHistoryState = .failed(
+                    Self.gitExecutionFailureText(outcome)
+                        ?? L10n.string("git-Aufruf fehlgeschlagen.")
+                )
+                return
+            }
+            guard result.ok else {
+                // Echte git-Ausgabe zeigen statt sie zu schlucken (UX-Regel).
+                let message = result.stderrForDisplay
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                self.gitFileHistoryState = .failed(
+                    message.isEmpty ? L10n.string("git-Aufruf fehlgeschlagen.") : message
+                )
+                return
+            }
+            self.gitFileHistory = GitGraph.parse(result.stdoutData)
+            self.gitFileHistoryState = .idle
+        }
+    }
+
+    /// Zieht eine sichtbare Dateihistorie nach, wenn sich das Repository
+    /// geändert hat (eigener Commit, Pull, externe Änderung). Ohne das zeigte
+    /// die eingeschränkte Ansicht nach einem Commit weiter den alten Stand,
+    /// während die ganze Historie daneben schon aktuell war.
+    private func refreshGitFileHistoryIfNeeded() {
+        guard let file = gitHistoryFile else { return }
+        loadGitFileHistory(file)
     }
 
     // MARK: - Git-Text-Tabs: History & Diff (Etappe 2, Schritt 2+3)

@@ -137,6 +137,10 @@ struct GitChangesView: View {
                         }
                     }
                     .padding(.bottom, 8)
+                    // Stelle in der Liste über einen Wechsel des
+                    // Seitenleisten-Tabs hinweg halten.
+                    .sidebarScrollRetention(key: "gitChanges",
+                                            memory: workspace.sidebarScrollMemory)
                 }
             }
         }

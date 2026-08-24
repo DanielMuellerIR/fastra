@@ -149,7 +149,7 @@ enum SelfTest {
         case "gitshot", "gitstagefolder", "gitpushbutton",
              "gitmultidiscard", "gitstickyheader",
              "gitstickyshot": sidebar = "changes"
-        case "graphshot": sidebar = "graph"
+        case "graphshot", "historyshot": sidebar = "graph"
         default: sidebar = nil
         }
         if let sidebar { setEnvironment("FASTRA_SIDEBAR", sidebar) }
@@ -495,6 +495,8 @@ enum SelfTest {
         case "windowheight": waitForMainWindow { runWindowHeightTest() }
         case "mdformat": waitForMainWindow { runMarkdownFormatSwitchTest() }
         case "sidebarfilter": waitForMainWindow { runSidebarFilterTest() }
+        case "sidebarstate": waitForMainWindow { runSidebarStateTest() }
+        case "githistory": waitForMainWindow { runGitHistoryTest() }
         case "filediff": waitForMainWindow { runFileDiffTest() }
         case "macro4d": waitForMainWindow { runFourDMacroSelfTest() }
         case "macro4dengine":
@@ -643,6 +645,11 @@ enum SelfTest {
             // Diagnose: Git-Seitenleiste (Branch-Zeile + eingefärbte Dateien)
             // mit echtem Repo fürs fenstergezielte Capture (Etappe 2).
             waitForMainWindow { runGitShot() }
+        case "historyshot":
+            // Diagnose: Verlauf einer einzelnen Datei in der Seitenleiste —
+            // Sichtprüfung von Kopfzeile und Knopf „Ganze Historie".
+            // Setzt FASTRA_SIDEBAR=graph voraus.
+            waitForMainWindow { runGitHistoryShot() }
         case "graphshot":
             // Diagnose: Git-Graph-Seitenleiste (Multi-Lane-Verzweigung + Merge)
             // mit echtem Branch/Merge-Repo fürs fenstergezielte Capture (Phase 3).
@@ -14857,6 +14864,357 @@ enum SelfTest {
         }
     }
 
+    // MARK: - Selbsttest githistory (Verlauf einer einzelnen Datei)
+
+    /// Prüft den auf eine Datei eingeschränkten Verlauf im ECHTEN Fenster:
+    /// (a) Ausgangslage: Der Graph-Tab zeigt alle vier Commits des Fixtures.
+    /// (b) „Git-Historie anzeigen" schaltet auf den Graph-Tab und zeigt nur
+    ///     die DREI Commits, die `alpha.txt` geändert haben.
+    /// (c) Ein Wechsel auf den Dateien-Tab und zurück lässt die Einschränkung
+    ///     stehen — genau das ging vorher verloren.
+    /// (d) Ein echter Mausklick auf „Ganze Historie" bringt alle vier zurück.
+    private static func runGitHistoryTest() {
+        testLabel = "githistory"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        guard GitRunner.isAvailable else {
+            finish(true, "git nicht verfügbar — Verlaufsansicht bleibt erwartungsgemäß verborgen")
+        }
+        Workspace.presentGitDialogs = false
+
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-githistory-\(UUID().uuidString)")
+        let repo = base.appendingPathComponent("working-copy")
+        let alpha = repo.appendingPathComponent("alpha.txt")
+        let beta = repo.appendingPathComponent("beta.txt")
+        do {
+            try fm.createDirectory(at: repo, withIntermediateDirectories: true)
+            try "alpha 1\n".write(to: alpha, atomically: true, encoding: .utf8)
+            try "beta 1\n".write(to: beta, atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "(setup) \(error.localizedDescription)")
+        }
+        // Vier Commits, von denen nur drei alpha.txt anfassen. Die Zahlen
+        // 4 und 3 sind der eigentliche Beweis: Eine Ansicht, die den Filter
+        // ignoriert, zeigt vier Zeilen.
+        let steps: [[String]] = [
+            ["init", "-b", "main"],
+            ["config", "user.email", "t@t"],
+            ["config", "user.name", "T"],
+            ["add", "-A"],
+            ["commit", "-m", "beide angelegt"],
+        ]
+        runGitSequence(steps, in: repo) { ok, error in
+            guard ok else {
+                try? fm.removeItem(at: base)
+                finish(false, "(setup git) \(error)")
+            }
+            do {
+                try "alpha 2\n".write(to: alpha, atomically: true, encoding: .utf8)
+            } catch {
+                try? fm.removeItem(at: base)
+                finish(false, "(alpha 2) \(error.localizedDescription)")
+            }
+            runGitSequence([["add", "-A"], ["commit", "-m", "alpha zwei"]], in: repo) { ok2, error2 in
+                guard ok2 else {
+                    try? fm.removeItem(at: base)
+                    finish(false, "(commit alpha zwei) \(error2)")
+                }
+                do {
+                    try "beta 2\n".write(to: beta, atomically: true, encoding: .utf8)
+                } catch {
+                    try? fm.removeItem(at: base)
+                    finish(false, "(beta 2) \(error.localizedDescription)")
+                }
+                runGitSequence([["add", "-A"], ["commit", "-m", "beta zwei"]], in: repo) { ok3, error3 in
+                    guard ok3 else {
+                        try? fm.removeItem(at: base)
+                        finish(false, "(commit beta zwei) \(error3)")
+                    }
+                    do {
+                        try "alpha 3\n".write(to: alpha, atomically: true, encoding: .utf8)
+                    } catch {
+                        try? fm.removeItem(at: base)
+                        finish(false, "(alpha 3) \(error.localizedDescription)")
+                    }
+                    runGitSequence([["add", "-A"], ["commit", "-m", "alpha drei"]], in: repo) { ok4, error4 in
+                        guard ok4 else {
+                            try? fm.removeItem(at: base)
+                            finish(false, "(commit alpha drei) \(error4)")
+                        }
+                        DispatchQueue.main.async {
+                            ws.openProject(at: repo)
+                            ws.sidebarMode = .graph
+                            pollGitHistoryFull(ws, base: base, alpha: alpha, tick: 0)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// (a) Ganze Historie: vier gerenderte Zeilen, keine Kopfzeile.
+    private static func pollGitHistoryFull(_ ws: Workspace, base: URL, alpha: URL,
+                                           tick: Int) {
+        let content = mainWindowForAXChecks()?.contentView
+        let fourRows = content.map { markerViewExists(id: "gitGraphRows-4", in: $0) } ?? false
+        if fourRows {
+            ws.showGitHistory(for: alpha)
+            pollGitHistoryFiltered(ws, base: base, alpha: alpha, phase: 0, tick: 0)
+            return
+        }
+        if tick >= 160 {          // 8 s
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Ganze Historie zeigt nach 8 s keine vier Commits "
+                + "(Modell: \(ws.gitLog.count))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollGitHistoryFull(ws, base: base, alpha: alpha, tick: tick + 1)
+        }
+    }
+
+    /// (b) und (c): eingeschränkte Ansicht, danach dieselbe Prüfung nach
+    /// einem Ausflug auf den Dateien-Tab.
+    private static func pollGitHistoryFiltered(_ ws: Workspace, base: URL, alpha: URL,
+                                               phase: Int, tick: Int) {
+        let content = mainWindowForAXChecks()?.contentView
+        let header = content.map {
+            markerViewExists(id: "gitHistoryFile-alpha.txt", in: $0)
+        } ?? false
+        let threeRows = content.map { markerViewExists(id: "gitGraphRows-3", in: $0) } ?? false
+        let onGraph = ws.sidebarMode == .graph
+        if header, threeRows, onGraph {
+            if phase == 0 {
+                // Reiner Tab-Wechsel — er darf die Einschränkung nicht
+                // zurücksetzen.
+                ws.sidebarMode = .files
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    ws.sidebarMode = .graph
+                    pollGitHistoryFiltered(ws, base: base, alpha: alpha,
+                                           phase: 1, tick: 0)
+                }
+                return
+            }
+            clickGitHistoryFullButton(ws, base: base)
+            return
+        }
+        if tick >= 160 {          // 8 s
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Dateiverlauf (Durchgang \(phase + 1)) nach 8 s falsch: "
+                + "Kopfzeile=\(header), drei Zeilen=\(threeRows), Graph-Tab=\(onGraph), "
+                + "Modell: \(ws.gitFileHistory.count) Commits")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollGitHistoryFiltered(ws, base: base, alpha: alpha,
+                                   phase: phase, tick: tick + 1)
+        }
+    }
+
+    /// (d) Echter Mausklick auf „Ganze Historie".
+    private static func clickGitHistoryFullButton(_ ws: Workspace, base: URL) {
+        guard let window = mainWindowForAXChecks(),
+              let content = window.contentView,
+              let marker = markerView(id: "gitHistoryFullButton", in: content) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Knopf „Ganze Historie“ fehlt")
+        }
+        window.layoutIfNeeded()
+        let point = marker.convert(NSPoint(x: marker.bounds.midX,
+                                           y: marker.bounds.midY), to: nil)
+        guard sendMouseClick(at: point, in: window, modifiers: [], viaApp: true) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Klick auf „Ganze Historie“ nicht erzeugbar")
+        }
+        pollGitHistoryRestored(ws, base: base, tick: 0)
+    }
+
+    private static func pollGitHistoryRestored(_ ws: Workspace, base: URL, tick: Int) {
+        let content = mainWindowForAXChecks()?.contentView
+        let fourRows = content.map { markerViewExists(id: "gitGraphRows-4", in: $0) } ?? false
+        let headerGone = content.map {
+            !markerViewExists(id: "gitHistoryFile-alpha.txt", in: $0)
+        } ?? false
+        if fourRows, headerGone, ws.gitHistoryFile == nil {
+            try? FileManager.default.removeItem(at: base)
+            finish(true, "Dateiverlauf zeigt 3 von 4 Commits, überlebt den Tab-Wechsel, "
+                + "und „Ganze Historie“ stellt alle 4 wieder her")
+        }
+        if tick >= 100 {          // 5 s
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Nach dem Klick auf „Ganze Historie“: vier Zeilen=\(fourRows), "
+                + "Kopfzeile weg=\(headerGone), Filter=\(String(describing: ws.gitHistoryFile))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollGitHistoryRestored(ws, base: base, tick: tick + 1)
+        }
+    }
+
+    // MARK: - Selbsttest sidebarstate (Zustand über den Tab-Wechsel)
+
+    /// Prüft, dass ein Wechsel des Seitenleisten-Tabs die Arbeit im
+    /// Dateien-Tab nicht wegwirft (Daniel-Befund 2026-08-24):
+    /// (a) Filter tippen → gefilterte Liste samt Zähler ist gerendert.
+    /// (b) In der echten NSScrollView weit nach unten scrollen.
+    /// (c) Auf den Graph-Tab und zurück — Zähler UND Scrollposition müssen
+    ///     wieder da sein.
+    private static func runSidebarStateTest() {
+        testLabel = "sidebarstate"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        guard GitRunner.isAvailable else {
+            finish(true, "git nicht verfügbar — der Tab-Umschalter erscheint erwartungsgemäß nicht")
+        }
+        Workspace.presentGitDialogs = false
+
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-sidebarstate-\(UUID().uuidString)")
+        let repo = base.appendingPathComponent("working-copy")
+        do {
+            try fm.createDirectory(at: repo, withIntermediateDirectories: true)
+            // 80 Dateien: sicher mehr, als in die Seitenleiste passen.
+            for index in 1...80 {
+                try "Inhalt \(index)\n".write(
+                    to: repo.appendingPathComponent(String(format: "datei-%02d.txt", index)),
+                    atomically: true, encoding: .utf8)
+            }
+        } catch {
+            finish(false, "(setup) \(error.localizedDescription)")
+        }
+        let setup: [[String]] = [
+            ["init", "-b", "main"],
+            ["config", "user.email", "t@t"],
+            ["config", "user.name", "T"],
+            ["add", "-A"],
+            ["commit", "-m", "init"],
+        ]
+        runGitSequence(setup, in: repo) { ok, error in
+            guard ok else {
+                try? fm.removeItem(at: base)
+                finish(false, "(setup git) \(error)")
+            }
+            DispatchQueue.main.async {
+                ws.openProject(at: repo)
+                ws.sidebarMode = .files
+                pollSidebarStateBaseline(ws, base: base, tick: 0)
+            }
+        }
+    }
+
+    /// (a) Warten, bis die gefilterte Liste samt Zähler wirklich gerendert ist.
+    private static func pollSidebarStateBaseline(_ ws: Workspace, base: URL, tick: Int) {
+        let content = mainWindowForAXChecks()?.contentView
+        let listed = content.map {
+            markerViewExists(id: "fileTreeRow-datei-01.txt-voll", in: $0)
+        } ?? false
+        if listed, ws.gitStatus != nil {
+            ws.fileTreeFilterQuery = "datei"
+            pollSidebarStateFiltered(ws, base: base, tick: 0)
+            return
+        }
+        if tick >= 200 {          // 10 s
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Dateibaum nach 10 s nicht gerendert (Repo erkannt: "
+                + "\(ws.gitStatus != nil))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollSidebarStateBaseline(ws, base: base, tick: tick + 1)
+        }
+    }
+
+    private static func pollSidebarStateFiltered(_ ws: Workspace, base: URL, tick: Int) {
+        let content = mainWindowForAXChecks()?.contentView
+        let counter = content.map {
+            markerViewExists(id: "sidebarFilterState-n80-m80", in: $0)
+        } ?? false
+        if counter {
+            scrollSidebarStateTree(ws, base: base)
+            return
+        }
+        if tick >= 200 {          // 10 s
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Filter „datei“ nach 10 s ohne Zähler 80/80")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollSidebarStateFiltered(ws, base: base, tick: tick + 1)
+        }
+    }
+
+    /// (b) Über den regulären AppKit-Weg scrollen — ein synthetisches
+    /// Scrollrad-Event erreicht die SwiftUI-ScrollView nicht (AGENTS.md).
+    private static func scrollSidebarStateTree(_ ws: Workspace, base: URL) {
+        guard let window = mainWindowForAXChecks(),
+              let content = window.contentView,
+              let row = markerView(id: "fileTreeRow-datei-01.txt-gefiltert", in: content)
+                ?? markerView(id: "fileTreeRow-datei-01.txt-voll", in: content),
+              let scroll = enclosingScrollView(of: row) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Keine NSScrollView über dem Dateibaum gefunden")
+        }
+        window.layoutIfNeeded()
+        let documentHeight = scroll.documentView?.bounds.height ?? 0
+        guard documentHeight > scroll.contentView.bounds.height + 200 else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Dateibaum ist nicht scrollbar (Inhalt \(Int(documentHeight)) pt, "
+                + "Sichtfenster \(Int(scroll.contentView.bounds.height)) pt)")
+        }
+        let target: CGFloat = 300
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: target))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        let scrolled = scroll.contentView.bounds.origin.y
+        guard scrolled > 100 else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Der Dateibaum hat sich nicht bewegt (Position \(Int(scrolled)) pt)")
+        }
+        // Der Positionsmerker schreibt beim Scrollen mit; ein kurzer
+        // Runloop-Durchlauf gibt der Benachrichtigung Zeit.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            ws.sidebarMode = .graph
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                ws.sidebarMode = .files
+                pollSidebarStateRestored(ws, base: base, expected: scrolled, tick: 0)
+            }
+        }
+    }
+
+    /// (c) Zähler und Scrollposition müssen zurück sein.
+    private static func pollSidebarStateRestored(_ ws: Workspace, base: URL,
+                                                 expected: CGFloat, tick: Int) {
+        let content = mainWindowForAXChecks()?.contentView
+        let counter = content.map {
+            markerViewExists(id: "sidebarFilterState-n80-m80", in: $0)
+        } ?? false
+        let row = content.flatMap {
+            markerView(id: "fileTreeRow-datei-01.txt-gefiltert", in: $0)
+                ?? markerView(id: "fileTreeRow-datei-01.txt-voll", in: $0)
+        }
+        let restored = row.flatMap { enclosingScrollView(of: $0) }?
+            .contentView.bounds.origin.y ?? 0
+        if counter, abs(restored - expected) < 8 {
+            try? FileManager.default.removeItem(at: base)
+            finish(true, "Nach dem Tab-Wechsel stehen Filter (80/80) und Scrollposition "
+                + "(\(Int(restored)) pt) wieder wie zuvor")
+        }
+        if tick >= 100 {          // 5 s
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Nach dem Tab-Wechsel: Zähler 80/80=\(counter), "
+                + "Scrollposition ist=\(Int(restored)) pt, erwartet=\(Int(expected)) pt")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollSidebarStateRestored(ws, base: base, expected: expected, tick: tick + 1)
+        }
+    }
+
+    /// Nächste NSScrollView oberhalb einer View — dieselbe, die auch der
+    /// Nutzer mit dem Trackpad bewegt.
+    private static func enclosingScrollView(of view: NSView) -> NSScrollView? {
+        var current: NSView? = view.superview
+        while let candidate = current {
+            if let scroll = candidate as? NSScrollView { return scroll }
+            current = candidate.superview
+        }
+        return nil
+    }
+
     /// Daniel-Wunsch 2026-07-30: Der Abschnittskopf „ÄNDERUNGEN" samt
     /// Sammel-Knöpfen muss beim Scrollen oben stehen bleiben. Der Test füllt
     /// ein echtes Repo mit so vielen Änderungen, dass die Liste sicher
@@ -17994,6 +18352,50 @@ enum SelfTest {
     /// Gemeinsames Shot-Finale: größtes sichtbares Fenster (= Hauptfenster)
     /// nach vorn ordnen, Fenster-Nummer auf stderr ausgeben, nach 12 s
     /// Selbst-Exit — gleiche Mechanik wie die Suchmasken-Shots.
+    /// Diagnose-Modus für die Sichtprüfung des Dateiverlaufs: dasselbe
+    /// Demo-Repo wie `graphshot`, danach die Ansicht auf `f.txt`
+    /// eingeschränkt. Zeigt Kopfzeile, Commit-Zahl und den Knopf
+    /// „Ganze Historie" in echter Fenstergröße.
+    private static func runGitHistoryShot() {
+        testLabel = "historyshot"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        guard GitRunner.isAvailable else { finish(false, "git nicht verfügbar") }
+        let fm = FileManager.default
+        let repo = fm.temporaryDirectory.appendingPathComponent("HistoryDemo")
+        try? fm.removeItem(at: repo)
+        try? fm.createDirectory(at: repo, withIntermediateDirectories: true)
+
+        let id = ["-c", "user.email=t@t", "-c", "user.name=Demo"]
+        func write(_ name: String, _ text: String) {
+            try? text.write(to: repo.appendingPathComponent(name), atomically: true,
+                            encoding: .utf8)
+        }
+        func step(_ args: [String], _ next: @escaping () -> Void) {
+            GitRunner.run(id + args, in: repo) { r in
+                guard let r, r.ok else {
+                    finish(false, "(git \(args.first ?? "")) \(r?.stderr ?? "")")
+                }
+                next()
+            }
+        }
+
+        write("f.txt", "a\n")
+        step(["-c", "init.defaultBranch=main", "init"]) {
+        step(["add", "."]) { step(["commit", "-m", "Erster Commit"]) {
+        write("f.txt", "a\nb\n"); step(["commit", "-am", "Zweite Fassung von f.txt"]) {
+        write("g.txt", "x\n"); step(["add", "."]) { step(["commit", "-m", "Nur g.txt"]) {
+        write("f.txt", "a\nb\nc\n"); step(["commit", "-am", "Dritte Fassung von f.txt"]) {
+        write("g.txt", "y\n"); step(["commit", "-am", "Wieder nur g.txt"]) {
+            ws.openProject(at: repo)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                ws.showGitHistory(for: repo.appendingPathComponent("f.txt"))
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    dumpMainWindowThenExit(prefix: "HISTORYSHOT-WINDOW")
+                }
+            }
+        } } } } } } } }
+    }
+
     private static func dumpMainWindowThenExit(prefix: String) {
         let main = NSApp.windows
             .filter { $0.isVisible }

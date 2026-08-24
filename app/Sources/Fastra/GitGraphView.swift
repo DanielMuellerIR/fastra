@@ -15,62 +15,171 @@ enum GitGraphActionAvailability {
 struct GitGraphView: View {
     @EnvironmentObject var workspace: Workspace
     @State private var layout = GraphLayout(rows: [], laneCount: 1)
-    @State private var expandedCommits: Set<String> = []
 
     private let laneWidth: CGFloat = 14
     private let rowHeight: CGFloat = 23
     private let nodeRadius: CGFloat = 4
 
+    /// Eingeschränkt auf eine Datei? Dann kommen Kopfzeile, Commits und
+    /// Leertext aus dem Dateiverlauf statt aus der ganzen Historie.
+    private var historyFile: GitHistoryFile? { workspace.gitHistoryFile }
+
+    /// Eigener Schlüssel je Ansicht: Die Scrollposition der ganzen Historie
+    /// passt nicht auf eine kurze Dateiliste — und umgekehrt.
+    private var scrollKey: String {
+        historyFile.map { "gitGraph:" + $0.relativePath } ?? "gitGraph"
+    }
+
     var body: some View {
-        Group {
-            if layout.rows.isEmpty {
-                VStack {
-                    Spacer()
-                    Text("Noch keine Commits.")
-                        .fastraFont(.small)
-                        .foregroundColor(Theme.textSecondary)
-                        .frame(maxWidth: .infinity)
-                    Spacer()
-                }
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(layout.rows) { row in
-                            GraphRowView(
-                                row: row,
-                                laneWidth: laneWidth,
-                                rowHeight: rowHeight,
-                                nodeRadius: nodeRadius,
-                                isExpanded: expandedCommits.contains(row.id),
-                                toggleExpanded: { toggle(row.id) }
-                            )
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 4)
-                }
-                .clipped()
+        VStack(alignment: .leading, spacing: 0) {
+            if let historyFile {
+                historyHeader(historyFile)
+                Divider().opacity(0.3)
             }
+            content
         }
         .onAppear {
             recompute()
             workspace.refreshGitLog()
         }
         .onChange(of: workspace.gitLog) { recompute() }
+        .onChange(of: workspace.gitFileHistory) { recompute() }
+        .onChange(of: workspace.gitHistoryFile) { recompute() }
         .onChange(of: workspace.gitRepositorySnapshot?.headOID) { recompute() }
     }
 
+    @ViewBuilder
+    private var content: some View {
+        if layout.rows.isEmpty {
+            VStack {
+                Spacer()
+                Text(emptyText)
+                    .fastraFont(.small)
+                    .foregroundColor(Theme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity)
+                Spacer()
+            }
+            .background(SelfTestMarker(id: "gitGraphEmpty").frame(width: 0, height: 0))
+        } else {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(layout.rows) { row in
+                        GraphRowView(
+                            row: row,
+                            laneWidth: laneWidth,
+                            rowHeight: rowHeight,
+                            nodeRadius: nodeRadius,
+                            isExpanded: workspace.gitGraphExpandedCommits.contains(row.id),
+                            toggleExpanded: { toggle(row.id) }
+                        )
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
+                .sidebarScrollRetention(key: scrollKey,
+                                        memory: workspace.sidebarScrollMemory)
+                // Selbsttests lesen hier ab, wie viele Zeilen WIRKLICH
+                // gerendert sind — nicht bloß, was im Modell steht.
+                .background(SelfTestMarker(id: "gitGraphRows-\(layout.rows.count)")
+                    .frame(width: 0, height: 0))
+            }
+            // Die Identität hängt am Schlüssel: Der Wechsel zwischen ganzer
+            // Historie und Dateiverlauf zeigt eine ANDERE Liste und darf die
+            // Position der vorigen nicht erben.
+            .id(scrollKey)
+            .clipped()
+        }
+    }
+
+    /// Kopfzeile der eingeschränkten Ansicht: Welche Datei, wie viele Commits,
+    /// und der Weg zurück zur ganzen Historie.
+    private func historyHeader(_ file: GitHistoryFile) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "clock.arrow.circlepath")
+                .fastraFont(size: 10)
+                .foregroundColor(Theme.accentReadable)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(file.name)
+                    .fastraFont(.small)
+                    .foregroundColor(Theme.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(historySubtitle)
+                    .fastraFont(size: 9)
+                    .foregroundColor(Theme.textSecondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            Button {
+                workspace.clearGitHistoryFile()
+            } label: {
+                Label(L10n.string("Ganze Historie"), systemImage: "arrow.uturn.backward")
+                    .fastraFont(size: 10)
+                    .labelStyle(.titleAndIcon)
+                    .foregroundColor(Theme.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .help("Zurück zum Verlauf des ganzen Projekts")
+            .accessibilityLabel("Ganze Historie anzeigen")
+            // Ohne eigene Größe übernimmt der Hintergrund die Fläche des
+            // Knopfes — der Selbsttest klickt so auf dessen echte Mitte.
+            .background { SelfTestMarker(id: "gitHistoryFullButton") }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .help(L10n.format("Verlauf von %@", file.relativePath))
+        .background(SelfTestMarker(id: "gitHistoryFile-" + file.relativePath)
+            .frame(width: 0, height: 0))
+    }
+
+    private var historySubtitle: String {
+        switch workspace.gitFileHistoryState {
+        case .loading:
+            return L10n.string("Wird geladen …")
+        case .failed:
+            return L10n.string("git-Aufruf fehlgeschlagen.")
+        case .idle:
+            let count = workspace.gitFileHistory.count
+            return count == 1
+                ? L10n.string("1 Commit")
+                : L10n.format("%ld Commits", count)
+        }
+    }
+
+    /// Leertext, der den Grund benennt statt nur „nichts da" zu melden.
+    private var emptyText: String {
+        guard historyFile != nil else { return L10n.string("Noch keine Commits.") }
+        switch workspace.gitFileHistoryState {
+        case .loading:
+            return L10n.string("Wird geladen …")
+        case .failed(let message):
+            return message
+        case .idle:
+            return L10n.string("Für diese Datei gibt es noch keine Commits.")
+        }
+    }
+
     private func recompute() {
-        layout = GitGraph.layout(workspace.gitLog,
-                                 headOID: workspace.gitRepositorySnapshot?.headOID)
-        expandedCommits.formIntersection(Set(workspace.gitLog.map(\.hash)))
+        let headOID = workspace.gitRepositorySnapshot?.headOID
+        let commits: [GitCommit]
+        if workspace.gitHistoryFile != nil {
+            commits = workspace.gitFileHistory
+            layout = GitFileHistory.layout(commits, headOID: headOID)
+        } else {
+            commits = workspace.gitLog
+            layout = GitGraph.layout(commits, headOID: headOID)
+        }
+        workspace.gitGraphExpandedCommits.formIntersection(Set(commits.map(\.hash)))
     }
 
     private func toggle(_ hash: String) {
-        if expandedCommits.contains(hash) {
-            expandedCommits.remove(hash)
+        if workspace.gitGraphExpandedCommits.contains(hash) {
+            workspace.gitGraphExpandedCommits.remove(hash)
         } else {
-            expandedCommits.insert(hash)
+            workspace.gitGraphExpandedCommits.insert(hash)
         }
     }
 }

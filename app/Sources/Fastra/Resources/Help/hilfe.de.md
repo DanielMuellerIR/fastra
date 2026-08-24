@@ -769,6 +769,10 @@ Aufklappzustand wieder her. Der Filter durchsucht nur NAMEN — für
 Inhalte gibt es „In Ordnern suchen…“ (⇧⌘F, auch als Link am leeren
 Filterergebnis).
 
+Ein Wechsel zwischen den Seitenleisten-Tabs ist kein Neuanfang: Filtertext
+samt Trefferliste, aufgeklappte Commits im Graphen und die Scrollposition
+jeder Liste stehen beim Zurückwechseln wieder so da wie vorher.
+
 ## Git
 
 Ist das Projekt ein Git-Repository (und `git` installiert), zeigt die
@@ -829,6 +833,16 @@ Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**:
   Dateien erreichbar sind; in einer schmal gezogenen Seitenleiste wird
   zuerst die Überschrift gekürzt, nie ein Knopf.
 - **Graph:** der Commit-Graph mit Verzweigungen und Merges.
+- **Verlauf einer einzelnen Datei:** Rechtsklick auf eine Datei im
+  Dateien-Tab (oder auf ihren Dokument-Tab) → „Git-Historie anzeigen“.
+  Fastra wechselt auf den Graph-Tab und zeigt dort nur noch die Commits
+  dieser Datei, senkrecht untereinander statt als Verzweigungsbild — in
+  einer nach einer Datei gefilterten Historie fehlen die dazwischen
+  liegenden Commits, Äste wären dort erfunden. Umbenennungen werden
+  mitverfolgt (`git log --follow`), sodass der Verlauf über den alten
+  Dateinamen hinaus zurückreicht. Die Kopfzeile nennt Datei und
+  Commit-Zahl; „Ganze Historie“ führt zurück zum ganzen Projekt. Klick und
+  Doppelklick auf eine Commit-Zeile verhalten sich wie im ganzen Graphen.
 - Verlauf (`git log`) und Diffs öffnen als schreibgeschützte Tabs; ein
   Klick auf einen Commit-Hash zeigt dessen Details.
 - Git-Diffs nutzen dieselbe zweispaltige Ansicht wie **Dateien

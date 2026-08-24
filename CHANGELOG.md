@@ -9,6 +9,44 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.112.0] — 2026-08-24
+
+### Neu
+
+- **Verlauf einer einzelnen Datei.** Rechtsklick auf eine Datei im
+  Dateien-Tab der Seitenleiste → „Git-Historie anzeigen“ springt auf den
+  Graph-Tab und zeigt dort nur noch die Commits dieser Datei. Die Kopfzeile
+  nennt Datei und Commit-Zahl, der Knopf „Ganze Historie“ führt zurück.
+  Grundlage ist `git log --follow -- <pfad>`: Der Verlauf reicht damit auch
+  über Umbenennungen hinweg zurück. Die gefilterte Liste wird bewusst
+  einspurig gezeichnet — in einer nach Pfad gefilterten Historie fehlen die
+  Eltern-Commits, und der normale Lane-Algorithmus zöge daraus Striche für
+  Äste, die es nicht gibt.
+
+### Behoben
+
+- **Der Wechsel des Seitenleisten-Tabs warf die Arbeit im Dateien-Tab weg.**
+  Beleg aus dem Arbeitsbetrieb (2026-08-24): nach einem Blick in den
+  Graph-Tab war die gefilterte Dateiliste wieder ungefiltert und die
+  Scrollposition zurück am Listenanfang. Ursache: SwiftUI zeigt immer nur
+  einen der drei Tabs und baut die anderen vollständig ab — samt
+  Filterergebnis, Aufklappzustand des Graphen und NSScrollView. Filterergebnis,
+  Seitenleisten-Modus und aufgeklappte Commits liegen jetzt am Workspace;
+  die Scrollposition jeder Liste merkt sich `SidebarScrollMemory` und stellt
+  sie nach dem Neuaufbau wieder her (mit Nachzieh-Schleife, weil ein
+  LazyVStack seine Zeilen erst nach und nach auslegt und `NSClipView` ein
+  zu großes Ziel nicht selbst begrenzt).
+
+### Tests
+
+- 30 neue Unit-Tests: git-Argumente des Dateiverlaufs, Repo-relativer Pfad
+  (Symlink-Projekt, Nachbarordner mit gleichem Namensanfang), einspuriges
+  Layout, Positionsspeicher und Wiederherstellungs-Rechnung.
+- Zwei neue Fenster-Selbsttests: `githistory` (4 Commits gesamt, 3 für die
+  gewählte Datei, Tab-Wechsel, echter Klick auf „Ganze Historie“) und
+  `sidebarstate` (Filter 80/80 und Scrollposition überleben den Tab-Wechsel).
+  Dazu der Diagnose-Modus `historyshot` für die Sichtprüfung der Kopfzeile.
+
 ## [v1.111.2] — 2026-08-24
 
 ### Behoben

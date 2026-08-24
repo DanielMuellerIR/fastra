@@ -27,11 +27,14 @@ struct FileTreeSidebar: View {
     /// Aufklapp-Chevron (Etappe 1 Wunschpaket 2026-07).
     @StateObject private var emptiness = FolderEmptinessCache()
 
-    /// Ergebnis des Dateinamens-Filters (Etappe 3 Wunschpaket 2026-07c).
-    /// `nil` = kein Filter aktiv ODER Scan läuft noch. Der gespeicherte
-    /// Aufklappzustand (`expanded`) bleibt während des Filterns unberührt —
-    /// Escape/X stellt so automatisch den vorigen Zustand wieder her.
-    @State private var filterResult: FileTreeFilterResult?
+    // Das Ergebnis des Dateinamens-Filters (Etappe 3 Wunschpaket 2026-07c)
+    // liegt in `workspace.fileTreeFilterResult`, nicht als `@State` hier: Ein
+    // Wechsel auf einen anderen Seitenleisten-Tab baut diese Ansicht komplett
+    // ab. Der Suchtext überlebte das (er lag schon immer am Workspace), das
+    // Ergebnis nicht — der Baum kam ungefiltert zurück. Der gespeicherte
+    // Aufklappzustand (`expanded`) bleibt während des Filterns unberührt;
+    // Escape/X stellt so automatisch den vorigen Zustand wieder her.
+
     /// Laufender Scan — ein neuer Tastendruck ersetzt ihn (Debounce+Cancel).
     @State private var filterScanTask: Task<Void, Never>?
 
@@ -252,7 +255,7 @@ struct FileTreeSidebar: View {
             // schlicht nicht gefunden, und die Seitenleiste hat den Platz.
             filterField
 
-            if let result = filterResult, result.matchCount == 0,
+            if let result = workspace.fileTreeFilterResult, result.matchCount == 0,
                !workspace.fileTreeFilterQuery.isEmpty {
                 // Leerer Treffer → verständlicher Leerzustand statt leerem
                 // Baum, mit Brücke zur Volltextsuche (Ordner-Scope).
@@ -267,6 +270,10 @@ struct FileTreeSidebar: View {
                                       onMutation: handleTreeMutation)
                     }
                     .padding(.bottom, 6)
+                    // Stelle im Baum über einen Wechsel des Seitenleisten-Tabs
+                    // hinweg halten (der Tabwechsel baut diese Ansicht ab).
+                    .sidebarScrollRetention(key: "fileTree",
+                                            memory: workspace.sidebarScrollMemory)
                 }
                 // Das Lesen bindet die Published-Generation an diesen View.
                 // Jede Änderung baut die sichtbaren Ebenen neu. Bewusst NUR
@@ -295,6 +302,15 @@ struct FileTreeSidebar: View {
             }
         }
         .onAppear {
+            // Rückkehr aus einem anderen Seitenleisten-Tab: Der Suchtext steht
+            // noch, ein passendes Ergebnis fehlt aber, wenn der Scan beim
+            // Verlassen noch lief oder das Projekt sich geändert hat. Dann
+            // hier erneut anstoßen — ohne Debounce, es tippt gerade niemand.
+            if !workspace.fileTreeFilterQuery.isEmpty,
+               workspace.fileTreeFilterResult?.query != workspace.fileTreeFilterQuery {
+                scheduleFilterScan(query: workspace.fileTreeFilterQuery,
+                                   debounced: false)
+            }
             // Der Befehle-Button muss laufende Vorgänge und die Herkunft der
             // Identität auch erkennen, wenn der Nutzer nie in den Changes-Tab
             // wechselt. Beide Reads bleiben asynchron und repositorykoordiniert.
@@ -328,7 +344,7 @@ struct FileTreeSidebar: View {
     /// veraltete Ergebnisse (Nutzer tippt schneller als der Scan) nie.
     private var activeFilterResult: FileTreeFilterResult? {
         guard !workspace.fileTreeFilterQuery.isEmpty,
-              let result = filterResult,
+              let result = workspace.fileTreeFilterResult,
               result.query == workspace.fileTreeFilterQuery else { return nil }
         return result
     }
@@ -427,7 +443,7 @@ struct FileTreeSidebar: View {
         filterScanTask?.cancel()
         guard !query.isEmpty else {
             filterScanTask = nil
-            filterResult = nil
+            workspace.fileTreeFilterResult = nil
             return
         }
         let root = rootURL
@@ -443,7 +459,7 @@ struct FileTreeSidebar: View {
             await MainActor.run {
                 // Nur übernehmen, wenn der Nutzer nicht längst weitertippte.
                 guard workspace.fileTreeFilterQuery == query else { return }
-                filterResult = result
+                workspace.fileTreeFilterResult = result
             }
         }
     }
@@ -937,6 +953,14 @@ struct FileTreeContextMenu: View {
             .help("Öffnet Terminal.app nativ in diesem Ordner.")
 
         if let node {
+            // Verlauf genau dieser Datei im Graph-Tab der Seitenleiste. Nur
+            // bei Git-Repo und nur für Dateien: `git log --follow` verlangt
+            // genau einen Pfad und verfolgt damit auch Umbenennungen.
+            if !node.isDirectory, workspace.canShowGitHistory(for: node.url) {
+                Divider()
+                Button("Git-Historie anzeigen") { workspace.showGitHistory(for: node.url) }
+                    .help("Zeigt im Graph-Tab der Seitenleiste nur die Commits dieser Datei.")
+            }
             // Umwandeln, ohne die Datei vorher zu öffnen. Nur sichtbar, wenn
             // das externe Werkzeug dieses Format gerade wirklich beherrscht —
             // ein Punkt, der immer scheitert, wäre schlimmer als keiner.

@@ -1478,3 +1478,13 @@
 "4D — %@" = "4D — %@";
 "Der Makrolauf wurde abgebrochen." = "The macro run was cancelled.";
 "Der Makrolauf antwortete auch %.0f Sekunden nach dem Zeitlimit nicht und wurde abgebrochen." = "The macro run still had not responded %.0f seconds after the time limit and was cancelled.";
+
+/* Verlauf einer einzelnen Datei im Graph-Tab der Seitenleiste (2026-08-24) */
+"Git-Historie anzeigen" = "Show Git History";
+"Zeigt im Graph-Tab der Seitenleiste nur die Commits dieser Datei." = "Shows only this file's commits in the sidebar's graph tab.";
+"Ganze Historie" = "Full History";
+"Ganze Historie anzeigen" = "Show full history";
+"Zurück zum Verlauf des ganzen Projekts" = "Back to the history of the whole project";
+"Verlauf von %@" = "History of %@";
+"Wird geladen …" = "Loading …";
+"Für diese Datei gibt es noch keine Commits." = "There are no commits for this file yet.";

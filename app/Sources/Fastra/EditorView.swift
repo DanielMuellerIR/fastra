@@ -97,10 +97,6 @@ struct EditorView: View {
     /// `nil` = aktuell keine Selektion (nur Cursor).
     @State private var selectionAnchor: Int?
 
-    /// Aktueller Seitenleisten-Modus (Dateien / Änderungen / Graph). Nur bei
-    /// Git-Repo umschaltbar; ohne Repo immer „Dateien".
-    @State private var sidebarMode: SidebarMode = .files
-
     /// Erst-Nutzungs-Hinweis des Markdown-Assistenten (Etappe 5 Wunschpaket
     /// 2026-07b): einmal bestätigt → dauerhaft aus (AppStorage-Flag).
     @AppStorage(MarkdownAssist.firstUseDefaultsKey, store: SelfTest.workspaceDefaults())
@@ -1697,16 +1693,19 @@ struct EditorView: View {
     }
 
     /// Effektiver Modus — fällt auf „Dateien" zurück, wenn der gewählte Modus
-    /// gerade nicht verfügbar ist (z.B. Projekt/Git geschlossen).
+    /// gerade nicht verfügbar ist (z.B. Projekt/Git geschlossen). Der Modus
+    /// selbst liegt am Workspace: „Git-Historie anzeigen" im Kontextmenü des
+    /// Dateibaums schaltet damit auf den Graph-Tab um.
     private var effectiveMode: SidebarMode {
-        availableModes.contains(sidebarMode) ? sidebarMode : .files
+        availableModes.contains(workspace.sidebarMode) ? workspace.sidebarMode : .files
     }
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Umschalter nur zeigen, wenn es überhaupt etwas umzuschalten gibt.
             if availableModes.count > 1 {
-                SidebarModePicker(modes: availableModes, selection: $sidebarMode)
+                SidebarModePicker(modes: availableModes,
+                                  selection: $workspace.sidebarMode)
                 Divider().opacity(0.3)
             }
 
@@ -1734,7 +1733,7 @@ struct EditorView: View {
         .onAppear {
             if let raw = ProcessInfo.processInfo.environment["FASTRA_SIDEBAR"],
                let mode = SidebarMode.allCases.first(where: { $0.rawValue == raw || "\($0)" == raw }) {
-                sidebarMode = mode
+                workspace.sidebarMode = mode
             }
         }
     }
