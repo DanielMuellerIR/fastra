@@ -5964,6 +5964,159 @@ if [ "$GUTTER_COORDINATE_PATCH_CHANGED" -eq 1 ]; then
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4z14. CodeEditTextView — veralteter Auswahl-Anker erzeugte eine Auswahl mit
+# negativer Länge; Absturz beim nächsten Tastendruck.
+#
+# Beleg: Crash-Report 2026-08-24 (SIGTRAP in `CEUndoManager.registerMutation`,
+# „CFString cannot be created from a negative number of bytes“, verlorene
+# Eingabe). `TextSelection.pivot` — der feste Anker einer Shift-Auswahl —
+# überlebt jeden Edit, denn `didReplaceCharacters` verschiebt nur die Range.
+# Nach einem Backspace stand der Anker rechts vom Cursor; das nächste Shift+→
+# nahm in `updateSelectionRange` den Schrumpf-Zweig (`length -= range.length`)
+# und erzeugte z. B. {10, -1}. Der nächste Tastendruck reichte diesen Bereich
+# an den Undo-Manager weiter, dessen `substring(from:)` nur location und max
+# prüft — bei negativer Länge liegt max UNTER location, alle Wächter gehen
+# auf, und erst CoreFoundation bricht ab. Drei Schichten:
+#   a) Wurzel: `didReplaceCharacters` verwirft den Anker — nach jedem Edit
+#      beginnt die nächste Shift-Auswahl neu am aktuellen Cursor.
+#   b) Absturzschutz: `replaceCharacters` überspringt korrupte Bereiche
+#      (negative Länge / außerhalb des Dokuments), statt sie dem
+#      Undo-Manager zu reichen.
+#   c) Beide Auswahl-Setter weisen negative Längen ab (`setSelectedRange`
+#      über den bestehenden 4t-2-Wächter, `setSelectedRanges` im Filter).
+# Regression: Tests/FastraTests/StaleSelectionPivotTests.swift prüft das
+# reale Nutzer-Szenario; am 2026-08-24 gegen den unkorrigierten Stand rot
+# belegt (Signal 5 im Testprozess, identischer Stack wie im Crash-Report).
+CETV_SELUPDATE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextSelectionManager/TextSelectionManager+Update.swift"
+CETV_REPLACE="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+ReplaceCharacters.swift"
+STALE_PIVOT_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: veralteten Auswahl-Anker verwerfen' \
+    "$CETV_SELUPDATE" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (veralteter Auswahl-Anker / negative Auswahl-Länge)"
+  chmod u+w "$CETV_SELUPDATE" "$CETV_REPLACE" "$CETV_SELMGR"
+  /usr/bin/python3 - "$CETV_SELUPDATE" "$CETV_REPLACE" "$CETV_SELMGR" <<'PYEOF'
+import sys
+
+update_path, replace_path, selmgr_path = sys.argv[1:4]
+update_src = open(update_path).read()
+replace_src = open(replace_path).read()
+selmgr_src = open(selmgr_path).read()
+
+# a) Wurzel: Anker nach jedem Edit verwerfen.
+old_update = '''            } else {
+                textSelection.range.length = 0
+            }
+        }
+
+        // Clean up duplicate selection ranges'''
+new_update = '''            } else {
+                textSelection.range.length = 0
+            }
+            // Fastra-Patch: veralteten Auswahl-Anker verwerfen. Der Anker
+            // (pivot) einer frueheren Shift-Auswahl zeigt nach einem Edit
+            // auf den alten Text; die naechste Shift-Bewegung rechnete mit
+            // ihm eine Auswahl mit NEGATIVER Laenge aus, und der uebernaechste
+            // Tastendruck stuerzte im Undo-Manager ab (Crash 2026-08-24).
+            // Nach jedem Edit beginnt die naechste Shift-Auswahl deshalb neu
+            // am aktuellen Cursor.
+            textSelection.pivot = nil
+        }
+
+        // Clean up duplicate selection ranges'''
+if old_update not in update_src:
+    raise SystemExit(
+        f"{update_path}: didReplaceCharacters hat sich geaendert — Patch 4z14a pruefen"
+    )
+update_src = update_src.replace(old_update, new_update, 1)
+
+# b) Absturzschutz an der Mutationsgrenze.
+old_valid = '''        func valid(range: NSRange, string: String) -> Bool {
+            (!range.isEmpty || !string.isEmpty) &&
+            (delegate?.textView(self, shouldReplaceContentsIn: range, with: string) ?? true)
+        }'''
+new_valid = '''        func valid(range: NSRange, string: String) -> Bool {
+            // Fastra-Patch: korrupten Bereich nicht mutieren. Ein Bereich mit
+            // negativer Laenge oder ausserhalb des Dokuments (etwa aus einer
+            // kaputten Auswahl) lief sonst im Undo-Manager beim substring in
+            // einen CoreFoundation-Abbruch — Datenverlust mitten im Tippen
+            // (Crash 2026-08-24). Solche Bereiche werden uebersprungen; die
+            // uebrigen Bereiche desselben Tastendrucks laufen normal weiter.
+            guard range.location >= 0, range.length >= 0,
+                  range.location <= textStorage.length,
+                  range.max <= textStorage.length else {
+                return false
+            }
+            return (!range.isEmpty || !string.isEmpty) &&
+            (delegate?.textView(self, shouldReplaceContentsIn: range, with: string) ?? true)
+        }'''
+if old_valid not in replace_src:
+    raise SystemExit(
+        f"{replace_path}: valid(range:string:) hat sich geaendert — Patch 4z14b pruefen"
+    )
+replace_src = replace_src.replace(old_valid, new_valid, 1)
+
+# c1) setSelectedRange: negative Laenge in den 4t-2-Waechter aufnehmen.
+old_single = '''        guard range.location != NSNotFound,
+              (0...fastraLimit).contains(range.location),
+              (0...fastraLimit).contains(range.max) else {'''
+new_single = '''        guard range.location != NSNotFound,
+              // Fastra-Patch: negative Laenge abweisen — location und max
+              // liegen dann beide im gueltigen Bereich, der Bereich selbst
+              // ist trotzdem korrupt (Crash 2026-08-24).
+              range.length >= 0,
+              (0...fastraLimit).contains(range.location),
+              (0...fastraLimit).contains(range.max) else {'''
+if old_single not in selmgr_src:
+    raise SystemExit(
+        f"{selmgr_path}: setSelectedRange-Waechter (4t-2) fehlt — Patch 4z14c pruefen"
+    )
+selmgr_src = selmgr_src.replace(old_single, new_single, 1)
+
+# c2) setSelectedRanges: negative Laenge im Filter abweisen.
+old_filter = '''            .filter {
+                (0...(textStorage?.length ?? 0)).contains($0.location)
+                && (0...(textStorage?.length ?? 0)).contains($0.max)
+            }'''
+new_filter = '''            .filter {
+                // Fastra-Patch: negative Laenge abweisen (Crash 2026-08-24).
+                $0.length >= 0
+                && (0...(textStorage?.length ?? 0)).contains($0.location)
+                && (0...(textStorage?.length ?? 0)).contains($0.max)
+            }'''
+if old_filter not in selmgr_src:
+    raise SystemExit(
+        f"{selmgr_path}: setSelectedRanges-Filter hat sich geaendert — Patch 4z14c pruefen"
+    )
+selmgr_src = selmgr_src.replace(old_filter, new_filter, 1)
+
+# Erst NACH allen Validierungen schreiben, damit kein halb gepatchter
+# Checkout zurueckbleiben kann.
+open(update_path, "w").write(update_src)
+open(replace_path, "w").write(replace_src)
+open(selmgr_path, "w").write(selmgr_src)
+PYEOF
+  STALE_PIVOT_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: veralteten Auswahl-Anker verwerfen' "$CETV_SELUPDATE" \
+   || ! grep -q 'Fastra-Patch: korrupten Bereich nicht mutieren' "$CETV_REPLACE" \
+   || ! grep -q 'Fastra-Patch: negative Laenge abweisen — location und max' \
+       "$CETV_SELMGR" \
+   || ! grep -q 'Fastra-Patch: negative Laenge abweisen (Crash 2026-08-24)' \
+       "$CETV_SELMGR"; then
+  echo "✗ FEHLER: Auswahl-Anker-Patch (4z14) hat NICHT vollständig gegriffen." >&2
+  exit 1
+fi
+
+if [ "$STALE_PIVOT_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 

@@ -9,6 +9,31 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.111.2] — 2026-08-24
+
+### Behoben
+
+- **Absturz beim Tippen nach Backspace und Shift+Pfeil (Datenverlust).**
+  Beleg: Crash-Report vom 2026-08-24 aus dem Arbeitsbetrieb (SIGTRAP in
+  `CEUndoManager.registerMutation`, „CFString cannot be created from a
+  negative number of bytes“). Der Anker einer Shift-Auswahl
+  (`TextSelection.pivot`) überlebte jeden Edit; nach einem Backspace stand
+  er rechts vom Cursor, und das nächste Shift+→ errechnete daraus eine
+  Auswahl mit negativer Länge (z. B. `{10, -1}`). Der folgende Tastendruck
+  reichte den Bereich an den Undo-Manager weiter, dessen Bereichs-Wächter
+  nur Anfang und Ende prüfen — bei negativer Länge gehen beide auf, und
+  CoreFoundation bricht die App ab. Drei Schichten im
+  CodeEditTextView-Patch (`build.sh` 4z14): Der Edit verwirft den Anker
+  (Wurzel), `replaceCharacters` überspringt korrupte Bereiche statt
+  abzustürzen, und beide Auswahl-Setter weisen negative Längen ab.
+
+### Tests
+
+- Vier Regressionstests (`StaleSelectionPivotTests`) über das reale
+  Nutzer-Szenario Shift-Auswahl → Backspace → Shift+→ → Tippen; gegen den
+  unkorrigierten Stand rot belegt (Testprozess starb mit Signal 5 und
+  identischem Stack wie der Crash-Report).
+
 ## [v1.111.1] — 2026-08-22
 
 Nacht-Review 2026-08-22, ein P2-Fund.

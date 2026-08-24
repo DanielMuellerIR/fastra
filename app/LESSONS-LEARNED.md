@@ -746,3 +746,36 @@ Fensterrand, mehrere Umbruchfragmente und keinen horizontalen Scrollbalken
 melden. Erst danach darf der Test selbst ein Kontrolllayout auslösen. Der
 10-ms-Herzschlag reduziert die Messphasen-Unschärfe, ohne die 250-ms-Grenze zu
 lockern. Die Fixture-Dateien entstehen nur im Test und liegen nicht im Repo.
+
+### F.30 Der Auswahl-Anker überlebt Edits und vergiftet die nächste Shift-Auswahl (2026-08-24)
+
+Beleg: Absturz mit Datenverlust im Arbeitsbetrieb, Crash-Report vom
+2026-08-24 — SIGTRAP in `CEUndoManager.registerMutation` mit „CFString cannot
+be created from a negative number of bytes", ausgelöst durch einen ganz
+normalen Tastendruck.
+
+`TextSelection.pivot` ist der feste Anker, um den Shift+Pfeil eine Auswahl
+dreht. Upstream setzt ihn nur beim ERSTEN Shift-Schritt (`pivot == nil`) und
+verwirft ihn nie wieder: `didReplaceCharacters` verschiebt nach einem Edit
+nur die Range, der Anker bleibt auf dem alten Text stehen. Nach einem
+Backspace zeigt er dadurch RECHTS neben den Cursor. Das nächste Shift+→
+landet in `updateSelectionRange` im Schrumpf-Zweig (`pivot > location`,
+`length -= range.length`) und rechnet aus der leeren Auswahl `{9, 0}` den
+Bereich `{10, -1}` aus.
+
+Die negative Länge fällt durch ALLE Bereichs-Wächter des Pakets: Sowohl
+`substring(from:)` (TextStory) als auch die `setSelectedRange(s)`-Prüfungen
+testen nur `location ≥ 0` und `max ≤ length` — bei negativer Länge liegt
+`max` UNTER `location`, beides geht auf. Erst `-[NSString substringWithRange:]`
+reicht die Länge als CFRange an CoreFoundation weiter, und die App bricht ab.
+Ein Bereichs-Wächter ist also erst vollständig mit `length >= 0`.
+
+Fix (build.sh 4z14, drei Schichten): `didReplaceCharacters` setzt den Anker
+jedes betroffenen Selektionsobjekts auf `nil` (die nächste Shift-Auswahl
+beginnt am aktuellen Cursor — das ist auch das erwartete Verhalten);
+`replaceCharacters` überspringt korrupte Bereiche, statt sie dem
+Undo-Manager zu reichen; beide Auswahl-Setter weisen negative Längen ab.
+
+**Regression:** `StaleSelectionPivotTests` spielt das Nutzer-Szenario
+Shift-Auswahl → Backspace → Shift+→ → Tippen über die öffentlichen APIs
+durch; gegen den unkorrigierten Stand starb der Testprozess mit Signal 5.
