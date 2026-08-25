@@ -381,15 +381,24 @@ func navigationTabSwitchKeepsOwnMatchJump() {
     #expect(!workspace.isCurrentMatchJump(jumpGeneration))
 }
 
-@Test("Dateigebundene Ansicht wechselt Identität bei Dokument oder Pfad")
+@Test("Dateigebundene Ansicht wechselt Identität bei Dokument, Pfad oder Plattenstand")
 func fileViewIdentityIncludesBothInputs() {
     let firstID = UUID()
     let secondID = UUID()
     let firstURL = URL(fileURLWithPath: "/tmp/eins.txt")
     let secondURL = URL(fileURLWithPath: "/tmp/zwei.txt")
-    let original = EditorView.fileViewIdentity(tabID: firstID, url: firstURL)
+    let firstSnapshot = FileSnapshot(data: Data("eins".utf8), identity: nil)
+    let secondSnapshot = FileSnapshot(data: Data("zwei".utf8), identity: nil)
+    let original = EditorView.fileViewIdentity(
+        tabID: firstID, url: firstURL, diskSnapshot: firstSnapshot
+    )
 
-    #expect(original == EditorView.fileViewIdentity(tabID: firstID, url: firstURL))
+    #expect(original == EditorView.fileViewIdentity(
+        tabID: firstID, url: firstURL, diskSnapshot: firstSnapshot
+    ))
     #expect(original != EditorView.fileViewIdentity(tabID: secondID, url: firstURL))
     #expect(original != EditorView.fileViewIdentity(tabID: firstID, url: secondURL))
+    #expect(original != EditorView.fileViewIdentity(
+        tabID: firstID, url: firstURL, diskSnapshot: secondSnapshot
+    ))
 }

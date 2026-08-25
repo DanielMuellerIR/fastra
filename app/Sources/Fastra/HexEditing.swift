@@ -9,7 +9,7 @@ import CryptoKit
 import Darwin
 import Foundation
 
-struct HexByteChange: Equatable, Identifiable, Sendable {
+struct HexByteChange: Equatable, Hashable, Identifiable, Sendable {
     let offset: UInt64
     let oldValue: UInt8
     let newValue: UInt8
@@ -18,6 +18,21 @@ struct HexByteChange: Equatable, Identifiable, Sendable {
     var description: String {
         String(format: "%012llX   %02X → %02X", offset, oldValue, newValue)
     }
+}
+
+struct HexSaveOperation: Equatable, Hashable, Sendable {
+    let id: UUID
+    let changes: [HexByteChange]
+}
+
+private struct HexHistoryValue: Equatable, Hashable, Sendable {
+    let offset: UInt64
+    let change: HexByteChange?
+}
+
+private struct HexHistoryEntry: Equatable, Hashable, Sendable {
+    let before: [HexHistoryValue]
+    let after: [HexHistoryValue]
 }
 
 enum HexEditing {
@@ -212,13 +227,35 @@ enum HexEditing {
     }
 }
 
-@MainActor
-final class HexEditSession: ObservableObject {
-    @Published private(set) var changes: [UInt64: HexByteChange] = [:]
-    @Published private(set) var invalidRowMessage: String?
+/// Ungespeicherte Byteänderungen gehören zum Dokument, nicht zur gerade
+/// montierten SwiftUI-Ansicht. Als Werttyp kann der `EditorTab` den Zustand
+/// deshalb über Ansichts- und Tabwechsel hinweg tragen und beim Schließen
+/// zuverlässig als ungespeichert erkennen.
+struct HexEditSession: Equatable, Hashable, Sendable {
+    /// Identifiziert die aktuell geladene Bytebasis. Verzögerte UI-Aktionen
+    /// dürfen nur auf genau den Bearbeitungszweig wirken, aus dem ihre
+    /// sichtbaren Altwerte stammen.
+    private(set) var editingLineageID = UUID()
+    private(set) var changes: [UInt64: HexByteChange] = [:]
+    /// Skalare Anzeige-Generation. SwiftUI beobachtet diese Zahl statt das
+    /// ganze Dictionary als alten `.onChange`-Wert festzuhalten; sonst erzwang
+    /// die nächste Eingabe erneut eine Vollkopie aller bisherigen Änderungen.
+    private(set) var changeRevision: UInt64 = 0
+    private(set) var invalidRowMessage: String?
+    private(set) var saveErrorMessage: String?
+    private var saveOperationID: UUID?
+    private var undoStack: [HexHistoryEntry] = []
+    private var redoStack: [HexHistoryEntry] = []
 
     var hasChanges: Bool { !changes.isEmpty }
     var preview: [HexByteChange] { changes.values.sorted { $0.offset < $1.offset } }
+    var canUndo: Bool { !undoStack.isEmpty }
+    var canRedo: Bool { !redoStack.isEmpty }
+    var isSaving: Bool { saveOperationID != nil }
+
+    func hasSameEditingLineage(as other: HexEditSession) -> Bool {
+        editingLineageID == other.editingLineageID
+    }
 
     func textForRow(data: Data, baseOffset: UInt64, row: Int) -> String {
         let start = row * 16
@@ -230,20 +267,131 @@ final class HexEditSession: ObservableObject {
         }.joined(separator: " ")
     }
 
-    func editRow(_ text: String, data: Data, baseOffset: UInt64, row: Int) {
+    mutating func editRow(_ text: String, data: Data, baseOffset: UInt64, row: Int) {
+        guard !isSaving else { return }
         let start = row * 16
         let end = min(start + 16, data.count)
         guard start < end, let bytes = HexEditing.parseRow(text, expectedBytes: end - start) else {
-            invalidRowMessage = "Eine Hex-Zeile braucht genau zwei hexadezimale Ziffern pro Byte."
+            invalidRowMessage = L10n.string(
+                "Eine Hex-Zeile braucht genau zwei hexadezimale Ziffern pro Byte."
+            )
             return
         }
         invalidRowMessage = nil
+        let offsets = (start..<end).map { baseOffset + UInt64($0) }
+        let before = offsets.map {
+            HexHistoryValue(offset: $0, change: changes[$0])
+        }
         for (relative, value) in bytes.enumerated() {
             let index = start + relative
             let offset = baseOffset + UInt64(index)
             if value == data[index] { changes.removeValue(forKey: offset) }
-            else { changes[offset] = HexByteChange(offset: offset, oldValue: data[index], newValue: value) }
+            else {
+                changes[offset] = HexByteChange(
+                    offset: offset, oldValue: data[index], newValue: value
+                )
+            }
         }
+        let after = offsets.map {
+            HexHistoryValue(offset: $0, change: changes[$0])
+        }
+        guard before != after else { return }
+        changeRevision &+= 1
+        // Eine Zeilenaktion merkt höchstens ihre 16 betroffenen Offsets.
+        // Die frühere Vollkopie des wachsenden Dictionaries brauchte bei
+        // vielen editierten Zeilen quadratisch immer mehr Speicher.
+        undoStack.append(HexHistoryEntry(before: before, after: after))
+        redoStack.removeAll()
+    }
+
+    mutating func undo() {
+        guard !isSaving, let entry = undoStack.popLast() else { return }
+        apply(entry.before)
+        changeRevision &+= 1
+        redoStack.append(entry)
+        invalidRowMessage = nil
+    }
+
+    mutating func redo() {
+        guard !isSaving, let entry = redoStack.popLast() else { return }
+        apply(entry.after)
+        changeRevision &+= 1
+        undoStack.append(entry)
+        invalidRowMessage = nil
+    }
+
+    private mutating func apply(_ values: [HexHistoryValue]) {
+        for value in values {
+            if let change = value.change { changes[value.offset] = change }
+            else { changes.removeValue(forKey: value.offset) }
+        }
+    }
+
+    private mutating func clearHistory() {
+        undoStack.removeAll()
+        redoStack.removeAll()
+    }
+
+    /// Ein neuer Textpuffer-Stand ist ein anderer Bearbeitungszweig. Alte
+    /// Byte-Offets dürfen danach weder per Undo noch per Redo wieder in die
+    /// inzwischen anders kodierte oder anders lange Datei gelangen.
+    mutating func invalidateHistory() {
+        guard !isSaving else { return }
+        clearHistory()
+        invalidRowMessage = nil
+        editingLineageID = UUID()
+    }
+
+    mutating func beginSave() -> HexSaveOperation? {
+        guard !isSaving, hasChanges else { return nil }
+        let operation = HexSaveOperation(id: UUID(), changes: preview)
+        // Ab hier gehört jede Rückmeldung eindeutig zu dieser Save-Basis.
+        // Vorher von SwiftUI kopierte Sessions dürfen nach Erfolg ODER Fehler
+        // keine inzwischen neueren ungespeicherten Änderungen überschreiben.
+        editingLineageID = UUID()
+        saveOperationID = operation.id
+        saveErrorMessage = nil
+        return operation
+    }
+
+    @discardableResult
+    mutating func markSaved(_ operation: HexSaveOperation) -> Bool {
+        guard saveOperationID == operation.id,
+              preview == operation.changes else { return false }
+        changes = [:]
+        changeRevision &+= 1
+        invalidRowMessage = nil
+        saveErrorMessage = nil
+        saveOperationID = nil
+        clearHistory()
+        // Ein erfolgreicher Abschluss ist eine neue Dokumentbasis. Bereits
+        // von SwiftUI kopierte Werte des alten Zweigs dürfen die gespeicherten
+        // Änderungen danach nicht wieder in den Tab einsetzen.
+        editingLineageID = UUID()
+        return true
+    }
+
+    mutating func markSaveFailed(_ operation: HexSaveOperation, message: String) {
+        guard saveOperationID == operation.id else { return }
+        saveOperationID = nil
+        saveErrorMessage = message
+    }
+
+    mutating func clearSaveError() {
+        saveErrorMessage = nil
+    }
+
+    mutating func discard() {
+        guard !isSaving else { return }
+        let hadChanges = hasChanges
+        changes = [:]
+        invalidRowMessage = nil
+        saveErrorMessage = nil
+        clearHistory()
+        if hadChanges { changeRevision &+= 1 }
+        // Bewusstes Verwerfen schließt diesen Bearbeitungszweig endgültig.
+        // Alte Binding-Kopien werden dadurch am Workspace-Guard abgewiesen.
+        editingLineageID = UUID()
     }
 
     /// Der Seiteninhalt mit allen noch nicht gespeicherten Änderungen — die
@@ -260,12 +408,4 @@ final class HexEditSession: ObservableObject {
         }
         return page
     }
-
-    /// Erst nach erfolgreichem Hintergrund-Save verschwindet die sichtbare
-    /// Vorschau. Bei einem Konflikt bleiben alle geplanten Änderungen erhalten.
-    func markSaved() {
-        changes = [:]
-    }
-
-    func discard() { changes = [:]; invalidRowMessage = nil }
 }

@@ -250,7 +250,7 @@ struct PagedFileTests {
 
         // Ein Bearbeitungsversuch in genau diesem Zwischenzustand findet
         // keine Zeile vor und plant keine Änderung.
-        let edits = HexEditSession()
+        var edits = HexEditSession()
         #expect(edits.textForRow(data: model.data, baseOffset: model.offset,
                                  row: 0) == "")
         edits.editRow("FF", data: model.data, baseOffset: model.offset, row: 0)

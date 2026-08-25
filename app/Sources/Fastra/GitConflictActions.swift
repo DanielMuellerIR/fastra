@@ -163,7 +163,7 @@ extension Workspace {
                 text: L10n.string("Diese Datei kann nicht sicher als Textkonflikt aufgelöst werden."))
             return
         }
-        guard !tab.isDirty else {
+        guard !tab.hasUnsavedChanges else {
             Self.presentGitErrorText(
                 label: "Konfliktauflösung",
                 text: L10n.string("Speichere die Datei zuerst. Erst der gespeicherte Stand darf als gelöst markiert werden."))

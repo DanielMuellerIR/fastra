@@ -80,6 +80,23 @@ extension String.Encoding {
     }
 }
 
+/// Referenzspeicher für den großen Hex-Verlauf eines Dokuments. SwiftUI hält
+/// während eines Renderdurchlaufs mehrere `EditorTab`-Werte desselben
+/// Dokuments; sie sollen dieselbe Session sehen, statt deren wachsendes
+/// Dictionary bei jeder neuen Zeile per Copy-on-write zu vervielfältigen.
+private final class HexEditSessionStorage: Equatable {
+    var value: HexEditSession
+
+    init(_ value: HexEditSession) {
+        self.value = value
+    }
+
+    static func == (lhs: HexEditSessionStorage, rhs: HexEditSessionStorage) -> Bool {
+        lhs.value == rhs.value
+    }
+
+}
+
 struct EditorTab: Identifiable, Hashable {
     let id: UUID
     var title: String
@@ -91,7 +108,12 @@ struct EditorTab: Identifiable, Hashable {
     /// sitzungsübergreifend gespeichert.
     var initialSaveDirectory: URL?
     var content: String {
-        didSet { contentRevision &+= 1 }
+        didSet {
+            contentRevision &+= 1
+            if content != oldValue {
+                hexEditSession.invalidateHistory()
+            }
+        }
     }
     /// Monotone Inhaltsgeneration. Property-Observer erfasst auch direkte
     /// Test-/Hilfspfade; modale Save-Dialoge und asynchrone Reloads dürfen
@@ -104,6 +126,32 @@ struct EditorTab: Identifiable, Hashable {
     var fileSize: UInt64
     var hits: Int
     var isDirty: Bool
+    /// Noch nicht gespeicherte Byteänderungen der Hex-Ansicht. Der Zustand
+    /// liegt absichtlich am Dokument statt an `HexFileView`: SwiftUI baut die
+    /// Ansicht bei Tab- und Ansichtswechseln ab, der Tab muss die Änderungen
+    /// trotzdem weiter schützen und anzeigen können.
+    private var hexEditSessionStorage: HexEditSessionStorage
+    var hexEditSession: HexEditSession {
+        get { hexEditSessionStorage.value }
+        set { hexEditSessionStorage.value = newValue }
+        _modify { yield &hexEditSessionStorage.value }
+    }
+
+    /// Fasst Session und sichtbaren Tabzustand in genau einer Mutation des
+    /// `@Published tabs`-Arrays zusammen. So löst eine Byteaktion nur eine
+    /// Workspace-Aktualisierung aus, obwohl SwiftUI mehrere Felder anzeigt.
+    @discardableResult
+    mutating func updateHexEditSession<Result>(
+        pinHexViewWhenChanged: Bool = false,
+        _ update: (inout HexEditSession) -> Result
+    ) -> Result {
+        let result = update(&hexEditSessionStorage.value)
+        if pinHexViewWhenChanged && hexEditSessionStorage.value.hasChanges {
+            isPreview = false
+            viewMode = .hex
+        }
+        return result
+    }
     /// `true`, während die Datei im Hintergrund geladen wird.
     /// Der Editor zeigt dann einen Lade-Spinner statt dem Inhalt
     /// (CESE-Falle: Inhalt kommt erst nach erfolgreicher Completion
@@ -214,6 +262,7 @@ struct EditorTab: Identifiable, Hashable {
         fileSize: UInt64 = 0,
         hits: Int = 0,
         isDirty: Bool = false,
+        hexEditSession: HexEditSession = HexEditSession(),
         isLoading: Bool = false,
         isPreview: Bool = false,
         documentID: UUID = UUID(),
@@ -243,6 +292,7 @@ struct EditorTab: Identifiable, Hashable {
         self.fileSize = fileSize
         self.hits = hits
         self.isDirty = isDirty
+        self.hexEditSessionStorage = HexEditSessionStorage(hexEditSession)
         self.isLoading = isLoading
         self.isPreview = isPreview
         self.documentID = documentID
@@ -270,6 +320,13 @@ struct EditorTab: Identifiable, Hashable {
         if !isDirty {
             recordSavedContentBaseline()
         }
+    }
+
+    /// `EditorTab` bleibt ein Werttyp, seine Identität ist aber ausschließlich
+    /// die stabile Tab-ID. Der geteilte, veränderliche Hex-Speicher darf den
+    /// Hash einer bereits als Schlüssel gehaltenen Tabkopie niemals ändern.
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
 
     /// Merkt den aktuellen Inhalt als „gespeicherten" Stand. Nach jedem
@@ -306,7 +363,7 @@ struct EditorTab: Identifiable, Hashable {
     mutating func protectContentAfterExternalFileBecameUnavailable() {
         externalFileObservation = nil
         externalFileUnavailable = true
-        if displayMode == .text, diskSnapshot != nil, isEditableTextDocument {
+        if diskSnapshot != nil, isOrdinaryTextDocument {
             isDirty = true
         }
     }
@@ -329,14 +386,28 @@ struct EditorTab: Identifiable, Hashable {
         isEditableTextDocument
     }
 
-    /// Gemeinsame Schreibbarkeitsgrenze für Editorbefehle und Ersetzen.
-    /// Eine sichtbare Textdarstellung allein genügt nicht: Git-Vorversionen,
-    /// Diffs und noch ladende Tabs dürfen niemals über einen Modellpfad
-    /// verändert werden, auch wenn gerade keine echte Editor-View existiert.
-    var isEditableTextDocument: Bool {
+    /// Gemeinsame Verlustgrenze für Schließen, Beenden, Projektwechsel und
+    /// automatische Reloads. `isDirty` bleibt der Textpuffer-Zustand; die
+    /// Hex-Änderungen besitzen eine eigene Vorschau- und Speichersemantik.
+    var hasUnsavedChanges: Bool {
+        isDirty || hexEditSession.hasChanges
+    }
+
+    /// Ein normaler, vollständig geladener Textpuffer. Diese Grundgrenze bleibt
+    /// auch bei offenen Hex-Änderungen wahr: Verschwindet dann die Datei, muss
+    /// Fastra die letzte Volltextkopie unabhängig vom Hex-Zustand schützen.
+    private var isOrdinaryTextDocument: Bool {
         !isLoading && displayMode == .text && readOnlyReason == nil
             && gitSnapshotRequest == nil && gitKind == nil
             && gitDiffRequest == nil && fileDiffRequest == nil
+    }
+
+    /// Gemeinsame Schreibbarkeitsgrenze für Editorbefehle und Ersetzen.
+    /// Eine sichtbare Textdarstellung allein genügt nicht: Git-Vorversionen,
+    /// Diffs, noch ladende Tabs und Dokumente mit einer offenen Byteänderung
+    /// dürfen niemals über einen zweiten Modellpfad verändert werden.
+    var isEditableTextDocument: Bool {
+        isOrdinaryTextDocument && !hexEditSession.hasChanges
     }
 
     /// „Unberührter Notizzettel": unbenannt, leer, ungeändert, fertig geladen,
@@ -351,6 +422,37 @@ struct EditorTab: Identifiable, Hashable {
         url == nil && content.isEmpty && !isDirty && !isLoading
             && gitKind == nil && fileDiffRequest == nil && gitSnapshotRequest == nil
             && displayMode == .text
+    }
+}
+
+/// Unveränderliche Identität der Hex-Basis, die eine konkrete SwiftUI-Ansicht
+/// anzeigt. Der Kontext kopiert nur Skalare und den URL-Wert: Eine alte View
+/// darf nach Reload, Verwerfen oder Save keine neue Session mehr verändern.
+struct HexEditActionContext: Equatable, Sendable {
+    let tabID: UUID
+    let documentID: UUID
+    let editingLineageID: UUID
+    let fileURL: URL?
+
+    init(
+        tabID: UUID,
+        documentID: UUID,
+        editingLineageID: UUID,
+        fileURL: URL?
+    ) {
+        self.tabID = tabID
+        self.documentID = documentID
+        self.editingLineageID = editingLineageID
+        self.fileURL = fileURL
+    }
+
+    init(tab: EditorTab) {
+        self.init(
+            tabID: tab.id,
+            documentID: tab.documentID,
+            editingLineageID: tab.hexEditSession.editingLineageID,
+            fileURL: tab.url
+        )
     }
 }
 
@@ -443,7 +545,70 @@ struct FileLoadAcceptance: @unchecked Sendable {
     }
 }
 
+/// Prozessweite Pfadsperre für Dateioperationen, die einen Plattenstand
+/// außerhalb eines einzelnen Dokumentfensters verändern. Neue Fenster fragen
+/// denselben Zustand ab und können deshalb nicht zwischen Start und Abschluss
+/// einer Ordner-Operation noch eine Hex-Bearbeitung am Ziel beginnen.
+private enum WorkspacePathOperationRegistry {
+    private static let lock = NSLock()
+    private static var pathsByOperation: [UUID: [String]] = [:]
+
+    static func begin(paths: [URL]) -> UUID? {
+        let standardized = Array(Set(paths.map { $0.standardizedFileURL.path }))
+        guard !standardized.isEmpty else { return nil }
+        return lock.withLock {
+            let occupied = pathsByOperation.values.joined()
+            guard !standardized.contains(where: { candidate in
+                occupied.contains(where: { pathsOverlap(candidate, $0) })
+            }) else { return nil }
+            let id = UUID()
+            pathsByOperation[id] = standardized
+            return id
+        }
+    }
+
+    static func finish(_ id: UUID) {
+        _ = lock.withLock { pathsByOperation.removeValue(forKey: id) }
+    }
+
+    static func contains(_ url: URL?) -> Bool {
+        guard let path = url?.standardizedFileURL.path else { return false }
+        return lock.withLock {
+            pathsByOperation.values.joined().contains {
+                path == $0 || path.hasPrefix($0 + "/")
+            }
+        }
+    }
+
+    private static func pathsOverlap(_ lhs: String, _ rhs: String) -> Bool {
+        lhs == rhs || lhs.hasPrefix(rhs + "/") || rhs.hasPrefix(lhs + "/")
+    }
+}
+
 final class Workspace: ObservableObject {
+    struct FileTreeTrashOperation {
+        fileprivate let id: UUID
+        fileprivate let workspaces: [Workspace]
+    }
+
+    struct FileTreeMoveOperation {
+        fileprivate let id: UUID
+        fileprivate let workspaces: [Workspace]
+    }
+
+    private struct FolderApplyMutationOperation {
+        let id: UUID
+        let workspaces: [Workspace]
+    }
+
+    private struct HexSaveMutationOperation {
+        let id: UUID
+        let tabID: UUID
+        let documentID: UUID
+        let path: String
+        let workspaces: [Workspace]
+    }
+
     /// Dauerhafte Fensteridentität für langlebige Singleton-Dienste. Anders
     /// als eine schwache Referenz bleibt sie auch nach dem Schließen des
     /// auslösenden Fensters eindeutig und kann keinem anderen Fenster zufallen.
@@ -473,6 +638,19 @@ final class Workspace: ObservableObject {
     }
 
     @Published var tabs: [EditorTab]
+    /// Ein Speicherbefehl oder Schließen-Dialog kann die dokumentgebundene
+    /// Hex-Vorschau anfordern. Die Anfrage bleibt an eine Tab-ID gebunden,
+    /// damit kein anderes Fenster oder inzwischen gewählter Tab reagiert.
+    @Published private(set) var hexSavePreviewRequestTabID: UUID?
+    /// Während Fastra einen Datei- oder Ordnerpfad in den Papierkorb bewegt,
+    /// darf dort keine neue Byteänderung beginnen: Nach dem Verschieben gäbe
+    /// es für die Hex-Vorschau kein schreibbares Original mehr.
+    @Published private(set) var fileMutationRevision: UInt64 = 0
+    /// Standardmäßig die echten registrierten Dokumentfenster. Tests können
+    /// mehrere headless Workspaces koppeln, ohne dafür NSWindow zu öffnen.
+    var fileTreeMutationWorkspaceProvider: () -> [Workspace] = {
+        WorkspaceWindowRegistry.registeredWorkspaces()
+    }
     /// Zweiter, schwächer markierter Tab einer Vergleichsauswahl. Der aktive
     /// Tab bleibt dabei unverändert die eindeutige Quelle für Editor und Menüs.
     @Published private(set) var comparisonTabID: UUID? = nil
@@ -961,6 +1139,8 @@ final class Workspace: ObservableObject {
     @Published var folderApplyProgressText: String? = nil
     private var folderApplyTask: Task<Void, Never>?
     private var folderApplyGeneration = 0
+    private var folderApplyMutationOperation: FolderApplyMutationOperation?
+    private var hexSaveMutationOperations: [UUID: HexSaveMutationOperation] = [:]
 
     // MARK: Scope „Geöffnet" (BBEdit „Open text documents", Kap. 7 S. 184)
 
@@ -1209,6 +1389,7 @@ final class Workspace: ObservableObject {
         // lokalen Editor das Vertrauen in die Herkunft der angezeigten Daten.
         let scratch = Workspace.makeScratchTab()
         self.tabs = [scratch]
+        self.hexSavePreviewRequestTabID = nil
         self.activeTabID = scratch.id
         self.findPattern = ""
         self.replacePattern = ""
@@ -1366,7 +1547,7 @@ final class Workspace: ObservableObject {
     /// schaltet die JSON-Befehle daher ebenso bewusst aus wie „JSON“ auf einer
     /// `.txt` sie einschaltet.
     var activeDocumentFormattingID: DocumentFormatID? {
-        guard activeTab?.isEditableTextDocument == true else { return nil }
+        guard let tab = activeTab, textEditingIsAllowed(for: tab) else { return nil }
         let formatID = activeDocumentFormat.id
         return DocumentFormatter.supports(formatID: formatID) ? formatID : nil
     }
@@ -1375,7 +1556,7 @@ final class Workspace: ObservableObject {
     /// vollständig geladenen Textdokument. Damit versprechen Menü und
     /// Kontextmenü keine Aktion in Git-Vorversionen ohne Editorinstanz.
     var activeDocumentLintingExtension: String? {
-        guard let tab = activeTab, tab.isEditableTextDocument else { return nil }
+        guard let tab = activeTab, textEditingIsAllowed(for: tab) else { return nil }
         let fileExtension = tab.url?.pathExtension
             ?? (tab.title as NSString).pathExtension
         return DocumentLinter.supports(fileExtension: fileExtension)
@@ -1566,6 +1747,7 @@ final class Workspace: ObservableObject {
         documentLanguageDetector.cancelAll()
 
         let scratch = Self.makeScratchTab()
+        hexSavePreviewRequestTabID = nil
         tabs = [scratch]
         activeTabID = scratch.id
         cursorLine = nil
@@ -1584,7 +1766,7 @@ final class Workspace: ObservableObject {
             get: { self.activeTab?.content ?? "" },
             set: { newValue in
                 guard let idx = self.activeTabIndex else { return }
-                guard self.tabs[idx].isEditableTextDocument else { return }
+                guard self.textEditingIsAllowed(for: self.tabs[idx]) else { return }
                 if self.tabs[idx].content != newValue {
                     let tabID = self.tabs[idx].id
                     let needsLanguageLengths = Self.isEligibleForContentDetection(
@@ -1711,6 +1893,12 @@ final class Workspace: ObservableObject {
     /// `NSAlert`; in Tests injizierbar (kein Modal), damit der Schließen-Pfad
     /// prüfbar bleibt. Bekommt den Tab-Titel, liefert die Nutzer-Entscheidung.
     var confirmCloseHandler: (String) -> CloseConfirmation = Workspace.defaultCloseConfirmation
+    /// Hex-Änderungen brauchen vor jedem Schreiben ihre eigene sichtbare
+    /// Vorschau. „Änderungen prüfen" führt deshalb zurück in diesen Ablauf,
+    /// statt den großen Dateischreibvorgang im modalen Schließen-Hook auf dem
+    /// Main-Thread auszuführen.
+    var confirmHexCloseHandler: (String) -> CloseConfirmation =
+        Workspace.defaultHexCloseConfirmation
 
     /// Schließt das Dokumentfenster, nachdem der letzte Tab erfolgreich
     /// aufgelöst wurde. Die echte App setzt den Handler über
@@ -1745,6 +1933,20 @@ final class Workspace: ObservableObject {
         }
     }
 
+    static func defaultHexCloseConfirmation(_ title: String) -> CloseConfirmation {
+        let alert = NSAlert()
+        alert.messageText = L10n.format("Hex-Änderungen an „%@“ prüfen?", title)
+        alert.informativeText = L10n.string("Fastra schreibt Byteänderungen erst nach der sichtbaren Vorschau und einer weiteren Bestätigung. „Änderungen prüfen“ lässt das Dokument offen und öffnet diese Vorschau.")
+        alert.addButton(withTitle: L10n.string("Änderungen prüfen"))
+        alert.addButton(withTitle: L10n.string("Abbrechen"))
+        alert.addButton(withTitle: L10n.string("Nicht sichern"))
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: return .save
+        case .alertThirdButtonReturn: return .dontSave
+        default:                      return .cancel
+        }
+    }
+
     static func defaultReturnToWelcomeConfirmation() -> Bool {
         let alert = NSAlert()
         alert.messageText = L10n.string("Zum Willkommensbildschirm zurückkehren?")
@@ -1768,7 +1970,7 @@ final class Workspace: ObservableObject {
     /// Tippen und Löschen technisch noch als geändert markiert ist.
     private static func requiresSaveBeforeClosing(_ tab: EditorTab) -> Bool {
         let isEmptyUntitled = tab.url == nil && tab.content.isEmpty
-        return tab.isDirty && !isEmptyUntitled
+        return tab.hexEditSession.hasChanges || (tab.isDirty && !isEmptyUntitled)
     }
 
     /// Braucht dieser Workspace beim Schließen mindestens eine Rückfrage?
@@ -1776,6 +1978,14 @@ final class Workspace: ObservableObject {
     /// damit er nur dann das zugehörige Fenster nach vorn holt.
     var hasTabsRequiringSaveBeforeClosing: Bool {
         tabs.contains(where: Self.requiresSaveBeforeClosing)
+    }
+
+    /// Vorschau und laufender Schreibauftrag sind die Fortsetzung der Aktion
+    /// am betroffenen Dokument. Aufrufer dürfen dann nicht zum zuvor aktiven
+    /// Hintergrund-Tab zurückspringen.
+    private func keepsHexTabVisibleAfterBlockedClose(_ id: UUID) -> Bool {
+        hexSavePreviewRequestTabID == id
+            || tabs.first(where: { $0.id == id })?.hexEditSession.isSaving == true
     }
 
     /// Darf der Tab geschlossen werden? Sauberer Tab → ja, OHNE Rückfrage (so
@@ -1805,15 +2015,28 @@ final class Workspace: ObservableObject {
         // Aktivierung ohnehin — jetzt gilt sie für alle drei Antworten.
         // Die Aufrufer stellen den ursprünglich aktiven Tab am Ende wieder her.
         activeTabID = id
-        switch confirmCloseHandler(tab.title) {
+        // Ein bereits bestätigter Schreibvorgang läuft weiter. Währenddessen
+        // darf weder „Nicht sichern“ den Tab entfernen noch ein zweiter
+        // Speicher- oder Reload-Pfad denselben Zustand übernehmen.
+        guard !tab.hexEditSession.isSaving else { return false }
+        let decision = tab.hexEditSession.hasChanges
+            ? confirmHexCloseHandler(tab.title)
+            : confirmCloseHandler(tab.title)
+        switch decision {
         case .dontSave:
             return true
         case .cancel:
             return false
         case .save:
+            if tab.hexEditSession.hasChanges {
+                requestHexSavePreview(for: id)
+                return false
+            }
             saveActiveTab()
             // Erfolg = der Tab ist jetzt nicht mehr dirty (Panel/Schreiben ok).
-            if let i = tabs.firstIndex(where: { $0.id == id }) { return !tabs[i].isDirty }
+            if let i = tabs.firstIndex(where: { $0.id == id }) {
+                return !tabs[i].hasUnsavedChanges
+            }
             return true
         }
     }
@@ -1843,7 +2066,11 @@ final class Workspace: ObservableObject {
 
         let previousActive = activeTabID
         guard mayCloseTab(id: id) else {
-            if let previousActive,
+            // „Änderungen prüfen“ ist kein Abbruch: Der angeforderte Hex-Tab
+            // muss sichtbar bleiben, damit seine Vorschau erscheinen kann.
+            // Nur ein echter Abbruch stellt den zuvor aktiven Tab wieder her.
+            if !keepsHexTabVisibleAfterBlockedClose(id),
+               let previousActive,
                tabs.contains(where: { $0.id == previousActive }) {
                 activeTabID = previousActive
             }
@@ -1855,6 +2082,7 @@ final class Workspace: ObservableObject {
         documentLanguageDetector.cancel(tabID: id, documentID: tabs[idx].documentID)
         cancelGitDiffLoad(tabID: id)
         cancelGitSnapshotLoad(tabID: id)
+        if hexSavePreviewRequestTabID == id { hexSavePreviewRequestTabID = nil }
         tabs.remove(at: idx)
         recentlyActiveTabIDs.removeAll { $0 == id }
         if comparisonTabID == id {
@@ -1895,10 +2123,15 @@ final class Workspace: ObservableObject {
     /// offen ist. Wird auch vom roten Schließen-Knopf zusätzlicher Fenster
     /// verwendet. `false` bedeutet: Nutzer hat abgebrochen, Fenster bleibt.
     func prepareToCloseWindow() -> Bool {
+        guard !folderApplying else { return false }
         let previousActive = activeTabID
         for id in tabs.map(\.id) {
             guard mayCloseTab(id: id) else {
-                if let previousActive,
+                // Die Hex-Vorschau ist die Fortsetzung der gewählten
+                // Speicheraktion, kein Abbruch. Sie muss den betroffenen Tab
+                // sichtbar lassen; nur „Abbrechen“ stellt den alten Tab her.
+                if !keepsHexTabVisibleAfterBlockedClose(id),
+                   let previousActive,
                    tabs.contains(where: { $0.id == previousActive }) {
                     activeTabID = previousActive
                 }
@@ -1908,6 +2141,7 @@ final class Workspace: ObservableObject {
         cancelAllGitDiffLoads()
         cancelAllGitSnapshotLoads()
         cancelAllPreviewLoads()
+        hexSavePreviewRequestTabID = nil
         tabs.removeAll()
         recentlyActiveTabIDs.removeAll()
         activeTabID = nil
@@ -1932,7 +2166,8 @@ final class Workspace: ObservableObject {
         let previousActive = activeTabID
         for otherID in tabs.map(\.id) where otherID != id {
             guard mayCloseTab(id: otherID) else {
-                if let previousActive,
+                if !keepsHexTabVisibleAfterBlockedClose(otherID),
+                   let previousActive,
                    tabs.contains(where: { $0.id == previousActive }) {
                     activeTabID = previousActive
                 }
@@ -1950,6 +2185,9 @@ final class Workspace: ObservableObject {
             cancelGitDiffLoad(tabID: removedID)
             cancelGitSnapshotLoad(tabID: removedID)
         }
+        if let requested = hexSavePreviewRequestTabID, requested != id {
+            hexSavePreviewRequestTabID = nil
+        }
         tabs.removeAll { $0.id != id }
         recentlyActiveTabIDs.removeAll { $0 != id }
         comparisonTabID = nil
@@ -1965,6 +2203,7 @@ final class Workspace: ObservableObject {
     /// endet ohnehin) — entscheidend ist nur, dass nichts ungefragt verloren geht.
     /// Vom AppDelegate aus `applicationShouldTerminate` aufgerufen.
     func confirmCloseAllDirtyForQuit() -> Bool {
+        guard !folderApplying else { return false }
         // `mayCloseTab` setzt im „Sichern"-Zweig kurz `activeTabID` auf den
         // gerade gesicherten Tab um (saveActiveTab wirkt nur auf den AKTIVEN
         // Tab). Da diese Methode KEINE Tabs schließt, würde ein abgebrochenes
@@ -1976,7 +2215,9 @@ final class Workspace: ObservableObject {
             guard mayCloseTab(id: id) else {
                 // Abgebrochen → ursprünglich aktiven Tab wiederherstellen, falls
                 // er noch existiert (er wird hier ohnehin nie entfernt).
-                if let prev = previousActive, tabs.contains(where: { $0.id == prev }) {
+                if !keepsHexTabVisibleAfterBlockedClose(id),
+                   let prev = previousActive,
+                   tabs.contains(where: { $0.id == prev }) {
                     activeTabID = prev
                 }
                 return false
@@ -2016,9 +2257,13 @@ final class Workspace: ObservableObject {
                 return false
             }
             activeTabID = id
+            if tabs[index].hexEditSession.hasChanges {
+                requestHexSavePreview(for: id)
+                return false
+            }
             saveActiveTab()
             guard let savedIndex = tabs.firstIndex(where: { $0.id == id }),
-                  !tabs[savedIndex].isDirty else {
+                  !tabs[savedIndex].hasUnsavedChanges else {
                 restoreActiveTab(afterCancelledWelcomeTransition: previousActive)
                 return false
             }
@@ -2044,9 +2289,10 @@ final class Workspace: ObservableObject {
     /// als geändert markiert, damit klar ist, dass Speichern nötig ist.
     func setActiveLineEnding(_ ending: LineEnding) {
         guard let idx = activeTabIndex,
-              tabs[idx].isEditableTextDocument else { return }
+              textEditingIsAllowed(for: tabs[idx]) else { return }
         guard tabs[idx].lineEnding != ending else { return }
         tabs[idx].lineEnding = ending
+        tabs[idx].hexEditSession.invalidateHistory()
         // Zurückschalten auf das gespeicherte Zeilenende (bei unverändertem
         // Text) macht den Tab wieder sauber — wie eine rückgängig gemachte
         // Textänderung.
@@ -2054,7 +2300,12 @@ final class Workspace: ObservableObject {
     }
 
     var canChangeActiveLineEnding: Bool {
-        activeTab?.isEditableTextDocument == true
+        guard let tab = activeTab else { return false }
+        return textEditingIsAllowed(for: tab)
+    }
+
+    func textEditingIsAllowed(for tab: EditorTab) -> Bool {
+        tab.isEditableTextDocument && !fileMutationIsInFlight(for: tab.url)
     }
 
     // MARK: - Neu öffnen mit Encoding (K6)
@@ -2078,7 +2329,12 @@ final class Workspace: ObservableObject {
             NSSound.beep()   // unbenannter Tab → nichts zum Neu-Laden
             return
         }
-        if tabs[idx].isDirty {
+        guard !tabs[idx].hexEditSession.isSaving,
+              !fileMutationIsInFlight(for: url) else {
+            NSSound.beep()
+            return
+        }
+        if tabs[idx].hasUnsavedChanges {
             let alert = NSAlert()
             alert.messageText = L10n.string("Ungespeicherte Änderungen verwerfen?")
             // codereview-ok: „…“ (U+201E/U+201C) IST das korrekte deutsche Anführungszeichen-Paar; U+201D wäre englisch (2026-07-06)
@@ -2129,6 +2385,7 @@ final class Workspace: ObservableObject {
                     self.tabs[i].displayMode = loaded.displayMode
                     self.tabs[i].fileSize = loaded.fileSize
                     self.tabs[i].isDirty    = false
+                    self.tabs[i].hexEditSession.discard()
                     self.tabs[i].isLoading  = false
                     self.tabs[i].diskSnapshot = loaded.diskSnapshot
                     self.tabs[i].recordExternalFileObservation(
@@ -2199,7 +2456,7 @@ final class Workspace: ObservableObject {
                 url: url,
                 knownObservation: tab.externalFileObservation,
                 observedByteCount: observedContent?.byteCount,
-                isDirty: tab.isDirty
+                isDirty: tab.hasUnsavedChanges
             )
             externalChangeInspector.inspect(request) { [weak self] inspection in
                 guard let self else { return }
@@ -2244,7 +2501,7 @@ final class Workspace: ObservableObject {
                 // Snapshot gelesen, den die Rückfrage eines inzwischen
                 // dirty gewordenen Tabs aber bräuchte. Ergebnis verwerfen
                 // und sofort mit dem aktuellen Zustand neu prüfen.
-                guard inspection.wasDirty == self.tabs[idx].isDirty else {
+                guard inspection.wasDirty == self.tabs[idx].hasUnsavedChanges else {
                     // Läuft ohnehin gleich eine gemerkte Nachprüfung (defer
                     // oben), genügt die; sonst hier selbst neu anstoßen.
                     if !rerunPending {
@@ -2273,7 +2530,7 @@ final class Workspace: ObservableObject {
                     return
                 }
 
-                if self.tabs[idx].isDirty {
+                if self.tabs[idx].hasUnsavedChanges {
                     if self.externalReloadConfirmHandler(self.tabs[idx].title) {
                         self.reloadTabFromDisk(id: inspection.tabID)
                     } else {
@@ -2303,6 +2560,8 @@ final class Workspace: ObservableObject {
             NSSound.beep()   // unbenannter Tab → nichts zum Neu-Laden
             return
         }
+        guard !tabs[idx].hexEditSession.isSaving,
+              !fileMutationIsInFlight(for: url) else { NSSound.beep(); return }
         let tabID = tabs[idx].id
         let originalRevision = tabs[idx].contentRevision
         let originalDiskSnapshot = tabs[idx].diskSnapshot
@@ -2342,6 +2601,7 @@ final class Workspace: ObservableObject {
                     self.tabs[i].displayMode = loaded.displayMode
                     self.tabs[i].fileSize = loaded.fileSize
                     self.tabs[i].isDirty    = false
+                    self.tabs[i].hexEditSession.discard()
                     self.tabs[i].isLoading  = false
                     self.tabs[i].diskSnapshot = loaded.diskSnapshot
                     self.tabs[i].recordExternalFileObservation(
@@ -2367,11 +2627,17 @@ final class Workspace: ObservableObject {
     /// from Disk"): lädt den AKTIVEN Tab neu; dirty → gleiche Rückfrage
     /// wie die automatische Erkennung.
     func reloadActiveTabFromDisk() {
-        guard let idx = activeTabIndex, tabs[idx].url != nil else {
+        guard let idx = activeTabIndex, let url = tabs[idx].url else {
             NSSound.beep()
             return
         }
-        if tabs[idx].isDirty, !externalReloadConfirmHandler(tabs[idx].title) { return }
+        guard !tabs[idx].hexEditSession.isSaving,
+              !fileMutationIsInFlight(for: url) else {
+            NSSound.beep()
+            return
+        }
+        if tabs[idx].hasUnsavedChanges,
+           !externalReloadConfirmHandler(tabs[idx].title) { return }
         reloadTabFromDisk(id: tabs[idx].id)
     }
 
@@ -2679,7 +2945,7 @@ final class Workspace: ObservableObject {
         // Spinner statt Editor). Dadurch fühlt sich die App sofort reaktiv an,
         // auch bei großen Dateien.
         let replaceablePreviewIndex = preview
-            ? tabs.firstIndex(where: { $0.isPreview && !$0.isDirty })
+            ? tabs.firstIndex(where: { $0.isPreview && !$0.hasUnsavedChanges })
             : nil
         let reusedID = replaceablePreviewIndex.map { tabs[$0].id }
         let previousActiveTabID: UUID?
@@ -2924,6 +3190,15 @@ final class Workspace: ObservableObject {
         // read-only — ⌘S tut nichts.
         if tabs[idx].gitKind != nil || tabs[idx].fileDiffRequest != nil
             || tabs[idx].readOnlyReason != nil { return }
+        guard !tabs[idx].hexEditSession.isSaving else { NSSound.beep(); return }
+        guard !fileMutationIsInFlight(for: tabs[idx].url) else {
+            NSSound.beep()
+            return
+        }
+        if tabs[idx].hexEditSession.hasChanges {
+            requestHexSavePreview(for: id)
+            return
+        }
         // Abschnitts- und Hex-Views halten absichtlich keinen vollständigen
         // editierbaren Buffer; Speichern wäre daher eine Trunkierungsgefahr.
         guard tabs[idx].displayMode == .text else { NSSound.beep(); return }
@@ -2945,6 +3220,22 @@ final class Workspace: ObservableObject {
         // Read-only Git- und Vergleichs-Tabs lassen sich nicht „speichern unter".
         if tabs[idx].gitKind != nil || tabs[idx].fileDiffRequest != nil
             || tabs[idx].readOnlyReason != nil { return }
+        guard !fileMutationIsInFlight(for: tabs[idx].url) else {
+            NSSound.beep()
+            return
+        }
+        let visibleMode = ViewModeRouting.effectiveMode(
+            chosen: tabs[idx].viewMode,
+            fileExtension: tabs[idx].url?.pathExtension,
+            loadedDisplayMode: tabs[idx].displayMode,
+            hasURL: tabs[idx].url != nil
+        )
+        if visibleMode == .hex {
+            saveSafetyWarningHandler(
+                L10n.string("Speichern unter nicht verfügbar"),
+                L10n.string("Die Hex-Ansicht kann noch nicht als neue Datei gespeichert werden. Wechsle bei Textdateien zur Textansicht oder bearbeite die geöffnete Datei über die Hex-Vorschau."))
+            return
+        }
         guard tabs[idx].displayMode == .text else { NSSound.beep(); return }
         guard !tabs[idx].isLoading else { NSSound.beep(); return }
         let panel = NSSavePanel()
@@ -3046,6 +3337,8 @@ final class Workspace: ObservableObject {
     func write(tab: EditorTab, to url: URL,
                expectedTargetState: ExpectedFileState?) -> Bool {
         guard tabs.contains(where: { $0.id == tab.id }) else { return false }
+        guard !fileMutationIsInFlight(for: tab.url),
+              !fileMutationIsInFlight(for: url) else { return false }
         do {
             guard !tab.isLoading else { throw CoordinatedSaveError.tabChanged }
             let capturedRevision = tab.contentRevision
@@ -3168,6 +3461,7 @@ final class Workspace: ObservableObject {
                 // Änderungen bleiben ausdrücklich dirty und erhalten.
                 if let currentIndex = tabs.firstIndex(where: { $0.id == tab.id }) {
                     tabs[currentIndex].diskSnapshot = writtenSnapshot
+                    tabs[currentIndex].fileSize = UInt64(writtenSnapshot.byteCount)
                     tabs[currentIndex].recordExternalFileObservation(
                         snapshot: writtenSnapshot, observation: nil
                     )
@@ -3179,10 +3473,12 @@ final class Workspace: ObservableObject {
                 throw CoordinatedSaveError.tabChangedAfterWrite
             }
             tabs[finalIndex].isDirty = false
+            tabs[finalIndex].hexEditSession.invalidateHistory()
             // Unser eigener Write ist keine „externe" Änderung — Basis-Datum
             // nachziehen, sonst schlüge die Erkennung beim nächsten
             // App-Wechsel auf die selbst geschriebene Datei an.
             tabs[finalIndex].diskSnapshot = writtenSnapshot
+            tabs[finalIndex].fileSize = UInt64(writtenSnapshot.byteCount)
             tabs[finalIndex].recordExternalFileObservation(
                 snapshot: writtenSnapshot, observation: nil
             )
@@ -3533,6 +3829,7 @@ final class Workspace: ObservableObject {
     var availableViewModes: [EditorViewMode] {
         guard let tab = activeTab, tab.gitKind == nil,
               tab.fileDiffRequest == nil, tab.readOnlyReason == nil else { return [] }
+        if tab.hexEditSession.hasChanges { return [.hex] }
         return ViewModeRouting.availableModes(
             fileExtension: tab.url?.pathExtension,
             loadedDisplayMode: tab.displayMode,
@@ -3543,6 +3840,9 @@ final class Workspace: ObservableObject {
     /// Effektive Ansicht des aktiven Tabs (manuelle Wahl vor Standard).
     var activeViewMode: EditorViewMode {
         guard let tab = activeTab else { return .text }
+        // Solange Byteänderungen offen sind, bleibt dieses Dokument in der
+        // einzigen Ansicht, die deren vollständige Vorschau zeigen kann.
+        if tab.hexEditSession.hasChanges { return .hex }
         return ViewModeRouting.effectiveMode(
             chosen: tab.viewMode,
             fileExtension: tab.url?.pathExtension,
@@ -3558,7 +3858,252 @@ final class Workspace: ObservableObject {
             NSSound.beep()
             return
         }
+        guard !tabs[idx].hexEditSession.hasChanges || mode == .hex else {
+            NSSound.beep()
+            return
+        }
         tabs[idx].viewMode = mode
+    }
+
+    /// Bindet `HexFileView` an den Tab statt an ihre eigene Lebensdauer. Die
+    /// erste echte Byteänderung macht einen flüchtigen Vorschau-Tab dauerhaft.
+    func hexEditSessionBinding(for tabID: UUID) -> Binding<HexEditSession> {
+        Binding(
+            get: {
+                self.tabs.first(where: { $0.id == tabID })?.hexEditSession
+                    ?? HexEditSession()
+            },
+            set: { session in
+                guard let idx = self.tabs.firstIndex(where: { $0.id == tabID }) else {
+                    return
+                }
+                let current = self.tabs[idx].hexEditSession
+                // SwiftUI schreibt ein mutiertes Binding als ganzen Wert
+                // zurück. Die Prüfung hier ist die letzte Sicherheitsgrenze,
+                // falls ein bereits aufgebauter Undo-/Redo-Knopf genau dann
+                // feuert, wenn Text- oder Ordnerarbeit den Tab gesperrt hat.
+                guard session.hasSameEditingLineage(as: current),
+                      session == current || self.hexEditingIsAllowed(for: tabID) else {
+                    return
+                }
+                let discardedLastChange = current.hasChanges
+                    && !current.isSaving && !session.hasChanges
+                self.tabs[idx].updateHexEditSession(
+                    pinHexViewWhenChanged: true
+                ) { $0 = session }
+                if discardedLastChange {
+                    self.reloadAcceptedExternalStateAfterDiscardingHexChanges(
+                        tabID: tabID
+                    )
+                }
+            }
+        )
+    }
+
+    /// Startet den dokumentgebundenen Hex-Save nur auf einer weiterhin
+    /// schreibbaren Grundlage. Abschluss und Fehler laufen über die
+    /// Operation-ID unten und bleiben deshalb auch dann zulässig, wenn ein
+    /// Extern-Check den Tab während des Hintergrund-Saves sperrt.
+    func beginHexSave(_ context: HexEditActionContext) -> HexSaveOperation? {
+        guard let idx = hexActionTabIndex(for: context, requiresEditing: true),
+              let url = tabs[idx].url else {
+            return nil
+        }
+        let workspaces = fileTreeMutationWorkspaces()
+        guard let mutationID = WorkspacePathOperationRegistry.begin(paths: [url]) else {
+            NSSound.beep()
+            return nil
+        }
+        guard let operation = tabs[idx].updateHexEditSession({
+            $0.beginSave()
+        }) else {
+            WorkspacePathOperationRegistry.finish(mutationID)
+            return nil
+        }
+        hexSaveMutationOperations[operation.id] = HexSaveMutationOperation(
+            id: mutationID, tabID: context.tabID,
+            documentID: context.documentID,
+            path: url.canonicalFileURL.path, workspaces: workspaces
+        )
+        noteFileMutationChange(in: workspaces)
+        return operation
+    }
+
+    @discardableResult
+    func finishHexSave(_ operation: HexSaveOperation, for tabID: UUID) -> Bool {
+        guard let mutation = hexSaveMutationOperations[operation.id],
+              mutation.tabID == tabID else {
+            return false
+        }
+        hexSaveMutationOperations.removeValue(forKey: operation.id)
+        defer { finishHexSaveMutation(mutation) }
+        guard let idx = tabs.firstIndex(where: {
+            $0.id == tabID && $0.documentID == mutation.documentID
+                && $0.url?.canonicalFileURL.path == mutation.path
+        }) else {
+            return false
+        }
+        let saved = tabs[idx].updateHexEditSession { session in
+            let saved = session.markSaved(operation)
+            if !saved {
+                session.markSaveFailed(
+                    operation, message: L10n.string(
+                        "Der Hex-Speicherzustand hat sich unerwartet geändert. Die Byteänderungen bleiben erhalten."
+                    )
+                )
+            }
+            return saved
+        }
+        return saved
+    }
+
+    func failHexSave(
+        _ operation: HexSaveOperation,
+        for tabID: UUID,
+        message: String
+    ) {
+        guard let mutation = hexSaveMutationOperations[operation.id],
+              mutation.tabID == tabID else { return }
+        hexSaveMutationOperations.removeValue(forKey: operation.id)
+        defer { finishHexSaveMutation(mutation) }
+        guard let idx = tabs.firstIndex(where: {
+            $0.id == tabID && $0.documentID == mutation.documentID
+                && $0.url?.canonicalFileURL.path == mutation.path
+        }) else { return }
+        tabs[idx].updateHexEditSession {
+            $0.markSaveFailed(operation, message: message)
+        }
+    }
+
+    private func finishHexSaveMutation(_ mutation: HexSaveMutationOperation) {
+        WorkspacePathOperationRegistry.finish(mutation.id)
+        noteFileMutationChange(in: fileTreeMutationWorkspaces(
+            including: mutation.workspaces
+        ))
+    }
+
+    func clearHexSaveError(_ context: HexEditActionContext) {
+        guard let idx = hexActionTabIndex(for: context) else { return }
+        tabs[idx].updateHexEditSession { $0.clearSaveError() }
+    }
+
+    /// Verwerfen ist eine Aufräumaktion, keine neue Byteeingabe. Es muss auch
+    /// bei einem inzwischen dirty gewordenen Rettungspuffer funktionieren;
+    /// nur ein noch laufender Save darf seinen eigenen Zustand behalten.
+    func discardHexChanges(_ context: HexEditActionContext) {
+        guard let idx = hexActionTabIndex(for: context),
+              tabs[idx].hexEditSession.hasChanges,
+              !tabs[idx].hexEditSession.isSaving else { return }
+        tabs[idx].updateHexEditSession { $0.discard() }
+        reloadAcceptedExternalStateAfterDiscardingHexChanges(tabID: context.tabID)
+    }
+
+    /// Mutiert die große Session direkt im Dokument-Tab. Der frühere Weg über
+    /// ein schreibendes SwiftUI-Binding hielt während jeder Eingabe noch eine
+    /// alte Wertkopie und kopierte dadurch Dictionary und Undo-Array mit
+    /// wachsendem Verlauf immer wieder vollständig.
+    func editHexRow(
+        _ context: HexEditActionContext,
+        text: String,
+        data: Data,
+        baseOffset: UInt64,
+        row: Int
+    ) {
+        guard let idx = hexActionTabIndex(for: context, requiresEditing: true) else {
+            return
+        }
+        let hadChanges = tabs[idx].hexEditSession.hasChanges
+        tabs[idx].updateHexEditSession(pinHexViewWhenChanged: true) {
+            $0.editRow(text, data: data, baseOffset: baseOffset, row: row)
+        }
+        if hadChanges && !tabs[idx].hexEditSession.hasChanges {
+            reloadAcceptedExternalStateAfterDiscardingHexChanges(
+                tabID: context.tabID
+            )
+        }
+    }
+
+    func undoHexChange(_ context: HexEditActionContext) {
+        guard let idx = hexActionTabIndex(for: context, requiresEditing: true) else {
+            return
+        }
+        let hadChanges = tabs[idx].hexEditSession.hasChanges
+        tabs[idx].updateHexEditSession { $0.undo() }
+        if hadChanges && !tabs[idx].hexEditSession.hasChanges {
+            reloadAcceptedExternalStateAfterDiscardingHexChanges(tabID: context.tabID)
+        }
+    }
+
+    func redoHexChange(_ context: HexEditActionContext) {
+        guard let idx = hexActionTabIndex(for: context, requiresEditing: true) else {
+            return
+        }
+        tabs[idx].updateHexEditSession(pinHexViewWhenChanged: true) {
+            $0.redo()
+        }
+    }
+
+    /// Prüft alle Identitäten, die eine alte View überleben können. Die URL
+    /// gehört dazu, weil „Sichern unter" denselben Tab und dasselbe Dokument
+    /// an einen anderen Plattenstand bindet.
+    private func hexActionTabIndex(
+        for context: HexEditActionContext,
+        requiresEditing: Bool = false
+    ) -> Int? {
+        guard let idx = tabs.firstIndex(where: { $0.id == context.tabID }),
+              tabs[idx].documentID == context.documentID,
+              tabs[idx].hexEditSession.editingLineageID
+                == context.editingLineageID,
+              tabs[idx].url?.canonicalFileURL.path
+                == context.fileURL?.canonicalFileURL.path,
+              !requiresEditing || hexEditingIsAllowed(for: context.tabID) else {
+            return nil
+        }
+        return idx
+    }
+
+    /// „Externen Stand behalten“ bestätigt die neue Datei, ohne eine laufende
+    /// Hex-Bearbeitung zu verwerfen. Sobald Verwerfen oder Undo deren letzte
+    /// Änderung entfernt, muss die Ansicht auf diesen bestätigten Stand
+    /// wechseln; sonst wäre ein sauberer Tab weiterhin an alte Bytes gebunden.
+    private func reloadAcceptedExternalStateAfterDiscardingHexChanges(tabID: UUID) {
+        guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
+        let acceptedContentDiffers = switch (
+            tab.diskSnapshot, tab.externalContentSnapshot
+        ) {
+        case let (old?, accepted?):
+            !old.hasSameContent(as: accepted)
+        case (nil, .some):
+            true
+        default:
+            false
+        }
+        // Bei einem vollständigen Textpuffer hat die Fehlprüfung den Inhalt
+        // bereits als dirty Rettungskopie geschützt. Ein erneuter, sicher
+        // scheiternder Read würde nur kurz den Zugriff darauf blockieren.
+        if tab.isDirty { return }
+        guard tab.externalFileUnavailable || acceptedContentDiffers else { return }
+        reloadTabFromDisk(id: tabID)
+    }
+
+    func hexEditingIsAllowed(for tabID: UUID) -> Bool {
+        guard let tab = tabs.first(where: { $0.id == tabID }) else { return false }
+        return !tab.isDirty && !tab.isLoading
+            && !fileMutationIsInFlight(for: tab.url)
+    }
+
+    func requestHexSavePreview(for tabID: UUID) {
+        guard let idx = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[idx].hexEditSession.hasChanges,
+              !tabs[idx].hexEditSession.isSaving else { return }
+        activeTabID = tabID
+        tabs[idx].viewMode = .hex
+        hexSavePreviewRequestTabID = tabID
+    }
+
+    func consumeHexSavePreviewRequest(for tabID: UUID) {
+        guard hexSavePreviewRequestTabID == tabID else { return }
+        hexSavePreviewRequestTabID = nil
     }
 
     /// Vorschlagsordner für den Save-Dialog: der in der Seitenleiste
@@ -3738,7 +4283,7 @@ final class Workspace: ObservableObject {
         return tabs.filter { tab in
             // Ungesicherte echte Tabs bleiben immer erhalten; unbenannte
             // Notizzettel (auch der unberührte Start-Tab) ebenfalls.
-            if tab.isDirty { return true }
+            if tab.hasUnsavedChanges { return true }
             if tab.gitKind != nil || tab.gitSnapshotRequest != nil { return false }
             guard let file = tab.url?.canonicalFileURL else { return true }
             return file.path.hasPrefix(prefix)
@@ -3801,12 +4346,24 @@ final class Workspace: ObservableObject {
     /// Zieht offene Tabs nach einer Datei- oder Ordner-Umbenennung mit. Ohne
     /// diese Kopplung würde ein späteres ⌘S am alten Pfad eine zweite Datei
     /// erzeugen. Bei Ordnern werden alle darin geöffneten Dateien angepasst.
-    func handleFileTreeMove(from source: URL, to destination: URL) {
+    func handleFileTreeMove(
+        from source: URL,
+        to destination: URL,
+        operation: FileTreeMoveOperation? = nil
+    ) {
         // Die gemerkten Formatwahlen hängen am Dateipfad und müssen deshalb
         // mitwandern. Das gilt auch für Dateien in einem verschobenen Ordner,
         // die gar nicht offen sind — für sie gibt es keinen Tab, über den man
         // später nachbessern könnte (Review 2026-08-06).
         languageChoices.moveChoices(from: source, to: destination)
+        for workspace in fileTreeMutationWorkspaces(
+            including: operation?.workspaces ?? []
+        ) {
+            workspace.handleFileTreeMoveLocally(from: source, to: destination)
+        }
+    }
+
+    private func handleFileTreeMoveLocally(from source: URL, to destination: URL) {
         for index in tabs.indices {
             guard let oldURL = tabs[index].url,
                   let newURL = Self.movedURL(oldURL, from: source, to: destination)
@@ -3820,16 +4377,187 @@ final class Workspace: ObservableObject {
         }
     }
 
+    /// Reserviert Quell- und Zielpfad, bevor die Seitenleiste eine Datei oder
+    /// einen Ordner umbenennt. Ein noch schreibender Hex-Tab darf nicht
+    /// gleichzeitig seinen alten Pfad ersetzen und dort eine zweite Datei
+    /// hinterlassen.
+    @MainActor
+    func beginFileTreeMove(
+        from source: URL,
+        to destination: URL
+    ) -> FileTreeMoveOperation? {
+        let workspaces = fileTreeMutationWorkspaces()
+        let savingHexTabs = workspaces.flatMap { workspace in
+            workspace.tabs.compactMap { tab -> (Workspace, EditorTab)? in
+                guard tab.hexEditSession.isSaving,
+                      tab.url.map({ Self.path($0, isInside: source) }) == true else {
+                    return nil
+                }
+                return (workspace, tab)
+            }
+        }
+        guard savingHexTabs.isEmpty else {
+            if let (workspace, tab) = savingHexTabs.first {
+                workspace.requestHexSavePreview(for: tab.id)
+                CommandTargeting.registeredWindow(for: workspace)?.makeKeyAndOrderFront(nil)
+            }
+            fileTreeMoveConflictHandler(savingHexTabs.map { $0.1.title })
+            return nil
+        }
+        guard let token = WorkspacePathOperationRegistry.begin(
+            paths: [source, destination]
+        ) else {
+            NSSound.beep()
+            return nil
+        }
+        noteFileMutationChange(in: workspaces)
+        return FileTreeMoveOperation(id: token, workspaces: workspaces)
+    }
+
+    func finishFileTreeMove(_ operation: FileTreeMoveOperation) {
+        WorkspacePathOperationRegistry.finish(operation.id)
+        noteFileMutationChange(in: fileTreeMutationWorkspaces(
+            including: operation.workspaces
+        ))
+    }
+
+    var fileTreeMoveConflictHandler: ([String]) -> Void = { titles in
+        NSAlert.runWarning(
+            title: L10n.string("Umbenennen nicht möglich"),
+            text: L10n.format(
+                "Fastra speichert gerade Byteänderungen in %@. Warte auf den Abschluss und benenne den Eintrag danach um.",
+                titles.joined(separator: ", ")
+            )
+        )
+    }
+
+    /// Startet die Papierkorb-Operation nur, wenn kein betroffenes Dokument
+    /// offene Byteänderungen besitzt. Der Token hält neue Hex-Eingaben bis zur
+    /// asynchronen Rückmeldung von NSWorkspace gesperrt.
+    @MainActor
+    func beginFileTreeTrash(_ source: URL) -> FileTreeTrashOperation? {
+        let workspaces = fileTreeMutationWorkspaces()
+        let blocked = workspaces.flatMap { workspace in
+            workspace.tabs.compactMap { tab -> (Workspace, EditorTab)? in
+                guard tab.hexEditSession.hasChanges,
+                      tab.url.map({ Self.path($0, isInside: source) }) == true else {
+                    return nil
+                }
+                return (workspace, tab)
+            }
+        }
+        guard blocked.isEmpty else {
+            if let (workspace, tab) = blocked.first {
+                workspace.requestHexSavePreview(for: tab.id)
+                CommandTargeting.registeredWindow(for: workspace)?.makeKeyAndOrderFront(nil)
+            }
+            fileTreeTrashConflictHandler(blocked.map { $0.1.title })
+            return nil
+        }
+        guard let token = WorkspacePathOperationRegistry.begin(paths: [source]) else {
+            NSSound.beep()
+            return nil
+        }
+        noteFileMutationChange(in: workspaces)
+        return FileTreeTrashOperation(id: token, workspaces: workspaces)
+    }
+
+    func finishFileTreeTrash(_ operation: FileTreeTrashOperation) {
+        WorkspacePathOperationRegistry.finish(operation.id)
+        noteFileMutationChange(in: fileTreeMutationWorkspaces(
+            including: operation.workspaces
+        ))
+    }
+
+    func fileTreeTrashIsInFlight(for url: URL?) -> Bool {
+        fileMutationIsInFlight(for: url)
+    }
+
+    func fileMutationIsInFlight(for url: URL?) -> Bool {
+        WorkspacePathOperationRegistry.contains(url)
+    }
+
+    var fileTreeTrashConflictHandler: ([String]) -> Void = { titles in
+        NSAlert.runWarning(
+            title: L10n.string("Offene Hex-Änderungen"),
+            text: L10n.format(
+                "Speichere oder verwirf zuerst die Byteänderungen in %@. Erst danach kann der Eintrag in den Papierkorb gelegt werden.",
+                titles.joined(separator: ", ")
+            )
+        )
+    }
+
+    private static func path(_ candidate: URL, isInside source: URL) -> Bool {
+        path(candidate.standardizedFileURL.path,
+             isInsidePath: source.standardizedFileURL.path)
+    }
+
+    private static func path(_ candidatePath: String, isInsidePath sourcePath: String) -> Bool {
+        candidatePath == sourcePath || candidatePath.hasPrefix(sourcePath + "/")
+    }
+
+    private func fileTreeMutationWorkspaces() -> [Workspace] {
+        fileTreeMutationWorkspaces(including: [])
+    }
+
+    private func fileTreeMutationWorkspaces(
+        including captured: [Workspace]
+    ) -> [Workspace] {
+        var seen = Set<ObjectIdentifier>()
+        return ([self] + captured + fileTreeMutationWorkspaceProvider()).filter { workspace in
+            seen.insert(ObjectIdentifier(workspace)).inserted
+        }
+    }
+
+    private func noteFileMutationChange(in workspaces: [Workspace]) {
+        for workspace in workspaces {
+            workspace.fileMutationRevision &+= 1
+        }
+    }
+
     /// Offene Inhalte bleiben nach dem Verschieben in den Papierkorb als
     /// unbenannte, geänderte Tabs erhalten. Das schützt auch noch nicht
     /// gespeicherte Änderungen und verhindert ein Wiederanlegen am alten Pfad.
-    func handleFileTreeTrash(_ source: URL) {
+    func handleFileTreeTrash(
+        _ source: URL,
+        operation: FileTreeTrashOperation? = nil
+    ) {
+        let workspaces = fileTreeMutationWorkspaces(
+            including: operation?.workspaces ?? []
+        )
+        for workspace in workspaces {
+            workspace.handleFileTreeTrashLocally(source)
+        }
+    }
+
+    private func handleFileTreeTrashLocally(_ source: URL) {
         let sourcePath = source.standardizedFileURL.path
         let prefix = sourcePath + "/"
+        var nonTextTabIDs: [UUID] = []
         for index in tabs.indices {
             guard let url = tabs[index].url else { continue }
             let path = url.standardizedFileURL.path
             guard path == sourcePath || path.hasPrefix(prefix) else { continue }
+            // Ein Lade-Platzhalter besitzt noch keinen vollständigen Inhalt,
+            // den Fastra retten könnte. Er muss wie eine Abschnittsansicht
+            // verschwinden; seine Generation wird unten gleichzeitig
+            // entwertet, sodass die späte Lade-Completion nichts mehr schreibt.
+            if tabs[index].isLoading {
+                nonTextTabIDs.append(tabs[index].id)
+                continue
+            }
+            // Hex- und Abschnitts-Tabs halten absichtlich keinen vollständigen
+            // Puffer. Ein leerer, als dirty markierter „geretteter" Tab wäre
+            // deshalb keine Rettung. Saubere Exemplare schließen; eine
+            // unerwartet doch dirty Hex-Sitzung bleibt sichtbar erhalten.
+            guard tabs[index].displayMode == .text else {
+                if tabs[index].hasUnsavedChanges {
+                    requestHexSavePreview(for: tabs[index].id)
+                } else {
+                    nonTextTabIDs.append(tabs[index].id)
+                }
+                continue
+            }
             tabs[index].url = nil
             tabs[index].path = "Aus Papierkorb gerettet"
             tabs[index].externalFileObservation = nil
@@ -3838,6 +4566,30 @@ final class Workspace: ObservableObject {
             // Ohne Datei gibt es keinen gespeicherten Stand mehr — der Punkt
             // darf durch Rückgängig nicht mehr verschwinden.
             tabs[index].invalidateSavedContentBaseline()
+        }
+        let previousActive = activeTabID
+        for id in nonTextTabIDs {
+            guard let index = tabs.firstIndex(where: { $0.id == id }) else { continue }
+            previewLoadCancellations.removeValue(forKey: id)?.cancel()
+            loadGeneration.removeValue(forKey: id)
+            documentLanguageDetector.cancel(
+                tabID: id, documentID: tabs[index].documentID
+            )
+            cancelGitDiffLoad(tabID: id)
+            cancelGitSnapshotLoad(tabID: id)
+            recentlyActiveTabIDs.removeAll { $0 == id }
+            if comparisonTabID == id { comparisonTabID = nil }
+            tabs.remove(at: index)
+        }
+        if tabs.isEmpty {
+            let scratch = Self.makeScratchTab()
+            tabs = [scratch]
+            activeTabID = scratch.id
+        } else if let previousActive,
+                  tabs.contains(where: { $0.id == previousActive }) {
+            activeTabID = previousActive
+        } else if !tabs.contains(where: { $0.id == activeTabID }) {
+            activeTabID = tabs.first?.id
         }
     }
 
@@ -4159,7 +4911,7 @@ final class Workspace: ObservableObject {
         }
 
         let replaceablePreviewIndex = preview
-            ? tabs.firstIndex(where: { $0.isPreview && !$0.isDirty })
+            ? tabs.firstIndex(where: { $0.isPreview && !$0.hasUnsavedChanges })
             : nil
         let reusedID = replaceablePreviewIndex.map { tabs[$0].id }
         if let reusedID {
@@ -4993,6 +5745,64 @@ final class Workspace: ObservableObject {
     /// Bestätigungsdialog zeigt. AGENTS.md: > 200 MB.
     static let folderApplyWarnBytes: Int = 200 * 1024 * 1024
 
+    private func blockedTabsForFileMutation(
+        urls: [URL], workspaces: [Workspace]
+    ) -> [(workspace: Workspace, tab: EditorTab)] {
+        let targetPaths = Set(urls.map { $0.canonicalFileURL.path })
+        return workspaces.flatMap { workspace in
+            workspace.tabs.compactMap { tab in
+                guard let url = tab.url,
+                      targetPaths.contains(url.canonicalFileURL.path),
+                      tab.hasUnsavedChanges || tab.isLoading else { return nil }
+                return (workspace, tab)
+            }
+        }
+    }
+
+    private func reportFolderFileMutationConflict(
+        _ blocked: [(workspace: Workspace, tab: EditorTab)]
+    ) {
+        if let first = blocked.first, first.tab.hexEditSession.hasChanges {
+            first.workspace.requestHexSavePreview(for: first.tab.id)
+        }
+        folderApplyConflictHandler(blocked.map(\.tab.title))
+    }
+
+    private func reloadOpenTabsAcrossWorkspaces(
+        for urls: [URL], capturedWorkspaces: [Workspace]
+    ) {
+        for workspace in fileTreeMutationWorkspaces(including: capturedWorkspaces) {
+            workspace.reloadOpenTabs(for: urls)
+        }
+    }
+
+    /// Ein Hex-Save schreibt direkt aus der Abschnittsansicht. Alle Fenster,
+    /// die dieselbe Datei sauber geöffnet haben, müssen den neuen Plattenstand
+    /// trotzdem sofort übernehmen; ein App-Aktivierungswechsel findet bei
+    /// zwei gleichzeitig sichtbaren Fastra-Fenstern nicht statt.
+    func handleHexWrite(at url: URL) {
+        let path = url.canonicalFileURL.path
+        for workspace in fileTreeMutationWorkspaces() {
+            if workspace.folderResults.contains(where: {
+                $0.url.canonicalFileURL.path == path
+            }) {
+                // Der Hex-Save ist eine eigene Plattenmutation. Tabänderungen
+                // starten im Ordner-Scope absichtlich keine neue Suche; die
+                // sichtbare Vorschau muss deshalb hier ausdrücklich verfallen.
+                workspace.searchRunner?.folderResultsBecameStale()
+            }
+            let dirtyIDs = workspace.tabs.compactMap { tab -> UUID? in
+                guard tab.url?.canonicalFileURL.path == path,
+                      tab.hasUnsavedChanges else { return nil }
+                return tab.id
+            }
+            workspace.reloadOpenTabs(for: [url])
+            for id in dirtyIDs {
+                workspace.checkExternalChanges(only: id)
+            }
+        }
+    }
+
     /// Convenience: aktuelle Such-Optionen aus den Workspace-Feldern.
     var currentSearchOptions: SearchOptions {
         SearchOptions(find: findPattern,
@@ -5028,16 +5838,6 @@ final class Workspace: ObservableObject {
             return false
         }
         let urls = visibleResults.map(\.url)
-        let targetPaths = Set(urls.map { $0.canonicalFileURL.path })
-        let blockedTabs = tabs.filter { tab in
-            guard let url = tab.url else { return false }
-            return targetPaths.contains(url.canonicalFileURL.path)
-                && (tab.isDirty || tab.isLoading)
-        }
-        guard blockedTabs.isEmpty else {
-            folderApplyConflictHandler(blockedTabs.map(\.title))
-            return false
-        }
         recordSearchHistory()
 
         // Nur billige, bereits mit der Vorschau gelieferte Metadaten werden
@@ -5078,6 +5878,27 @@ final class Workspace: ObservableObject {
             guard alert.runModal() == .alertFirstButtonReturn else { return false }
         }
 
+        // Ein Alert pumpt die Runloop; auch ein zweites Fenster kann bis hier
+        // noch Text oder Bytes geändert haben. Erst unmittelbar vor dem
+        // Hintergrundstart wird deshalb app-weit erneut geprüft und gesperrt.
+        let mutationWorkspaces = fileTreeMutationWorkspaces()
+        let blockedTabs = blockedTabsForFileMutation(
+            urls: urls, workspaces: mutationWorkspaces
+        )
+        guard blockedTabs.isEmpty else {
+            reportFolderFileMutationConflict(blockedTabs)
+            return false
+        }
+        guard let mutationID = WorkspacePathOperationRegistry.begin(paths: urls) else {
+            folderPreviewConflictHandler(L10n.string(
+                "Eine andere Dateioperation verändert bereits mindestens eine Zieldatei. Warte auf ihren Abschluss und prüfe danach die Vorschau erneut."))
+            return false
+        }
+        folderApplyMutationOperation = FolderApplyMutationOperation(
+            id: mutationID, workspaces: mutationWorkspaces
+        )
+        noteFileMutationChange(in: mutationWorkspaces)
+
         let transaction = ApplyTransaction(inputs: inputs, options: options)
         let backupRoot = folderApplyBackupRoot
         folderApplyGeneration &+= 1
@@ -5098,7 +5919,13 @@ final class Workspace: ObservableObject {
                 result = .failure(error)
             }
             await MainActor.run { [weak self] in
-                self?.finishFolderApply(result, generation: generation)
+                guard let self else {
+                    WorkspacePathOperationRegistry.finish(mutationID)
+                    return
+                }
+                self.finishFolderApply(
+                    result, generation: generation, mutationID: mutationID
+                )
             }
         }
         return true
@@ -5113,9 +5940,21 @@ final class Workspace: ObservableObject {
         folderApplyProgressText = L10n.string("Ordner-Apply wird abgebrochen…")
     }
 
-    private func finishFolderApply(_ result: Result<ApplySession, Error>,
-                                   generation: Int) {
-        guard folderApplyGeneration == generation else { return }
+    private func finishFolderApply(
+        _ result: Result<ApplySession, Error>, generation: Int, mutationID: UUID
+    ) {
+        guard folderApplyGeneration == generation else {
+            WorkspacePathOperationRegistry.finish(mutationID)
+            return
+        }
+        let mutation = folderApplyMutationOperation
+        folderApplyMutationOperation = nil
+        defer {
+            WorkspacePathOperationRegistry.finish(mutationID)
+            noteFileMutationChange(in: fileTreeMutationWorkspaces(
+                including: mutation?.workspaces ?? []
+            ))
+        }
         folderApplyTask = nil
         folderApplying = false
         folderApplyProgressText = nil
@@ -5125,9 +5964,9 @@ final class Workspace: ObservableObject {
             // Die Dateien auf der Platte sind jetzt andere als die, aus denen
             // die sichtbare Trefferliste entstand.
             searchRunner?.folderResultsBecameStale()
-            reloadOpenTabs(for: session.entries.map {
+            reloadOpenTabsAcrossWorkspaces(for: session.entries.map {
                 URL(fileURLWithPath: $0.originalPath)
-            })
+            }, capturedWorkspaces: mutation?.workspaces ?? [])
         case .failure(ApplyError.cancelled):
             break
         case .failure(ApplyError.planNotApplyable(let message)),
@@ -5144,9 +5983,9 @@ final class Workspace: ObservableObject {
                 text: L10n.format("%@\n\nBereits geschriebene Dateien können über die Rückgängig-Aktion zurückgespielt werden.", message))
             // Auch der Teil-Erfolg hat Dateien verändert.
             searchRunner?.folderResultsBecameStale()
-            reloadOpenTabs(for: session.entries.map {
+            reloadOpenTabsAcrossWorkspaces(for: session.entries.map {
                 URL(fileURLWithPath: $0.originalPath)
-            })
+            }, capturedWorkspaces: mutation?.workspaces ?? [])
         case .failure(let error):
             NSAlert(error: error).runModal()
         }
@@ -5156,12 +5995,35 @@ final class Workspace: ObservableObject {
     @discardableResult
     func undoLastFolderApply() -> Bool {
         guard !folderApplying, let session = lastApplySession else { return false }
+        let urls = session.entries.map { URL(fileURLWithPath: $0.originalPath) }
+        let mutationWorkspaces = fileTreeMutationWorkspaces()
+        let blockedTabs = blockedTabsForFileMutation(
+            urls: urls, workspaces: mutationWorkspaces
+        )
+        guard blockedTabs.isEmpty else {
+            reportFolderFileMutationConflict(blockedTabs)
+            return false
+        }
+        guard let mutationID = WorkspacePathOperationRegistry.begin(paths: urls) else {
+            folderPreviewConflictHandler(L10n.string(
+                "Eine andere Dateioperation verändert bereits mindestens eine Zieldatei. Warte auf ihren Abschluss und versuche Rückgängig danach erneut."))
+            return false
+        }
+        noteFileMutationChange(in: mutationWorkspaces)
+        defer {
+            WorkspacePathOperationRegistry.finish(mutationID)
+            noteFileMutationChange(in: fileTreeMutationWorkspaces(
+                including: mutationWorkspaces
+            ))
+        }
         do {
             try ApplyEngine.undo(session)
             // Rückgängig schreibt die Dateien erneut — dieselbe Lage wie nach
             // dem Apply: Die sichtbaren Treffer gehören zu einem alten Stand.
             searchRunner?.folderResultsBecameStale()
-            reloadOpenTabs(for: session.entries.map { URL(fileURLWithPath: $0.originalPath) })
+            reloadOpenTabsAcrossWorkspaces(
+                for: urls, capturedWorkspaces: mutationWorkspaces
+            )
             lastApplySession = nil
             return true
         } catch ApplyError.undoConflict(let message) {
@@ -5176,8 +6038,11 @@ final class Workspace: ObservableObject {
                 title: L10n.string("Rückgängig teilweise fehlgeschlagen"),
                 text: L10n.format("%@\n\nDer bereits gespeicherte Fortschritt kann mit Rückgängig fortgesetzt werden.", message))
             searchRunner?.folderResultsBecameStale()
-            reloadOpenTabs(for: partial.entries.filter { $0.state == .restored }
-                .map { URL(fileURLWithPath: $0.originalPath) })
+            reloadOpenTabsAcrossWorkspaces(
+                for: partial.entries.filter { $0.state == .restored }
+                    .map { URL(fileURLWithPath: $0.originalPath) },
+                capturedWorkspaces: mutationWorkspaces
+            )
             return false
         } catch ApplyError.backupFailed(let message) {
             // Beschädigte oder manipulierte Sicherung: Der sichere Abbruch ist
@@ -5219,7 +6084,7 @@ final class Workspace: ObservableObject {
                   changed.contains(url.canonicalFileURL.path) else { return nil }
             // Ein Dirty-/Ladezustand darf weder hier noch in der Completion
             // automatisch verworfen werden.
-            guard !tab.isDirty, !tab.isLoading else { return nil }
+            guard !tab.hasUnsavedChanges, !tab.isLoading else { return nil }
             return (id: tab.id, url: url, contentRevision: tab.contentRevision,
                     diskSnapshot: tab.diskSnapshot)
         }
@@ -5257,7 +6122,7 @@ final class Workspace: ObservableObject {
                         // Inhalt des alten Pfads in einen während des Ladens
                         // umgebundenen Tab.
                         guard self.tabs[idx].url == url,
-                              !self.tabs[idx].isDirty,
+                              !self.tabs[idx].hasUnsavedChanges,
                               self.tabs[idx].contentRevision == originalRevision,
                               self.tabs[idx].diskSnapshot == originalDiskSnapshot else {
                             self.tabs[idx].isLoading = false
@@ -5269,6 +6134,7 @@ final class Workspace: ObservableObject {
                         self.tabs[idx].lineEnding = loaded.lineEnding
                         self.tabs[idx].displayMode = loaded.displayMode
                         self.tabs[idx].fileSize = loaded.fileSize
+                        self.tabs[idx].hexEditSession.discard()
                         self.tabs[idx].diskSnapshot = loaded.diskSnapshot
                         self.tabs[idx].recordExternalFileObservation(
                             snapshot: loaded.diskSnapshot,
@@ -5313,7 +6179,7 @@ final class Workspace: ObservableObject {
     /// der Zeilenzahl aktiv: Ein Klick im Debounce-Fenster sah wirksam aus
     /// und tat nichts (Review 2026-08-06).
     var canApplyAllInActiveBuffer: Bool {
-        activeTab?.isEditableTextDocument == true
+        activeTab.map { textEditingIsAllowed(for: $0) } == true
             && bufferTotalMatches > 0 && searchError == nil
             && !bufferResultsWereCapped
             && bufferMatches.count == bufferTotalMatches
@@ -5326,7 +6192,7 @@ final class Workspace: ObservableObject {
     var openResultsContainReadOnlyTabs: Bool {
         let matchingTabIDs = Set(openResults.map(\.id))
         return tabs.contains {
-            matchingTabIDs.contains($0.id) && !$0.isEditableTextDocument
+            matchingTabIDs.contains($0.id) && !textEditingIsAllowed(for: $0)
         }
     }
 
@@ -5343,7 +6209,8 @@ final class Workspace: ObservableObject {
         }
         let matchingTabIDs = Set(openResults.map(\.id))
         return !matchingTabIDs.isEmpty && matchingTabIDs.allSatisfy { id in
-            tabs.first(where: { $0.id == id })?.isEditableTextDocument == true
+            guard let tab = tabs.first(where: { $0.id == id }) else { return false }
+            return textEditingIsAllowed(for: tab)
         }
     }
 
@@ -5356,9 +6223,10 @@ final class Workspace: ObservableObject {
             let matches = navMatches
             guard matches.indices.contains(activeMatchIndex),
                   let tabID = matches[activeMatchIndex].tabID else { return false }
-            return tabs.first(where: { $0.id == tabID })?.isEditableTextDocument == true
+            guard let tab = tabs.first(where: { $0.id == tabID }) else { return false }
+            return textEditingIsAllowed(for: tab)
         }
-        return activeTab?.isEditableTextDocument == true
+        return activeTab.map { textEditingIsAllowed(for: $0) } == true
             && bufferMatches.indices.contains(activeMatchIndex)
     }
 
@@ -5411,7 +6279,7 @@ final class Workspace: ObservableObject {
         // die zu den aktuellen Suchoptionen gehört, gibt das Ersetzen frei.
         guard canApplyAllInOpenTabs else { return 0 }
         recordSearchHistory()
-        let inputs = tabs.filter(\.isEditableTextDocument).map {
+        let inputs = tabs.filter { textEditingIsAllowed(for: $0) }.map {
             OpenTabsSearch.TabInput(id: $0.id, title: $0.title, content: $0.content)
         }
         let changed = OpenTabsSearch.replaceAll(tabs: inputs, options: currentSearchOptions)
@@ -5505,7 +6373,7 @@ final class Workspace: ObservableObject {
         let target = matches[activeMatchIndex]
         guard let tabID = target.tabID,
               let tabIndex = tabs.firstIndex(where: { $0.id == tabID }),
-              tabs[tabIndex].isEditableTextDocument else { return }
+              textEditingIsAllowed(for: tabs[tabIndex]) else { return }
 
         let text = tabs[tabIndex].content
         let replaced = BufferSearch.applyReplacements(in: text, matches: [target.match])

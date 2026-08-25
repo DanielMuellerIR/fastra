@@ -71,6 +71,20 @@ enum WorkspaceWindowRegistry {
     static func registeredWindows() -> [NSWindow] {
         workspaces.keyEnumerator().allObjects.compactMap { $0 as? NSWindow }
     }
+
+    /// Alle Dokument-Workspaces genau einmal. Dateibaum-Mutationen müssen
+    /// dieselbe geöffnete Datei auch in einem zweiten Fenster schützen und
+    /// nach Umbenennungen auf den neuen Pfad umhängen.
+    static func registeredWorkspaces() -> [Workspace] {
+        var seen = Set<ObjectIdentifier>()
+        return registeredWindows().compactMap { window in
+            guard let workspace = workspace(for: window),
+                  seen.insert(ObjectIdentifier(workspace)).inserted else {
+                return nil
+            }
+            return workspace
+        }
+    }
 }
 
 /// Testbares Abbild der aktiven Datei für die native Fenstertitelzeile.
@@ -111,7 +125,7 @@ struct MainWindowTitleMetadata: Equatable {
         return MainWindowTitleMetadata(
             title: tab.title,
             representedURL: tab.url,
-            isDocumentEdited: tab.isDirty
+            isDocumentEdited: tab.hasUnsavedChanges
         )
     }
 }

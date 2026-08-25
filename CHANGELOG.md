@@ -9,6 +9,83 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.112.5] — 2026-08-25
+
+### Behoben
+
+- **Ungespeicherte Hex-Änderungen bleiben über Tab- und Ansichtswechsel
+  erhalten.** Der Zustand lag bisher in der jeweils sichtbaren SwiftUI-Ansicht
+  und verschwand, sobald Fastra sie neu aufbaute. Der Dokument-Tab besitzt jetzt
+  die Änderungsliste sowie ihren Rückgängig-/Wiederholen-Verlauf und wird mit
+  der ersten Byteänderung dauerhaft statt als wiederverwendbare Vorschau geführt.
+- **Schließen, Beenden, Projektwechsel, Neuladen und Speichern schützen offene
+  Byteänderungen.** Die gemeinsamen Verlustprüfungen erkennen neben geändertem
+  Text nun auch eine Hex-Änderung. Sichern führt in die vorgeschriebene sichtbare
+  Vorschau zurück; ein ausdrückliches „Nicht sichern“ beziehungsweise bestätigtes
+  Neuladen verwirft die Byteänderungen. „Sichern unter“ schreibt aus der
+  Hex-Ansicht keinen veralteten Textinhalt mehr, sondern erklärt die derzeitige
+  Grenze.
+- **Fehlerhafte Hex-Zeileneingaben zeigen ihren Grund in der Ansicht.** Die
+  bisher nur intern gespeicherte Meldung ist jetzt sichtbar und lokalisiert.
+- **Ein laufender Hex-Speichervorgang bleibt über Tabwechsel hinweg gesperrt.**
+  Schließen, Neuladen, Verwerfen und weitere Byteeingaben warten bis zum Ende;
+  ein Fehler bleibt am Dokument sichtbar. Der Undo-Verlauf speichert pro
+  Zeilenaktion nur noch deren höchstens 16 Offsets statt jedes Mal die gesamte
+  wachsende Änderungsliste.
+- **Dateibaum-Aktionen berücksichtigen alle Dokumentfenster.** Umbenennen hängt
+  jeden offenen Tab auf den neuen Pfad um und wartet auf laufende Hex-Saves;
+  Umbenennen, Ordner-Apply und Papierkorb teilen dieselbe appweite Pfadsperre.
+  Der Papierkorb-Pfad lehnt offene
+  Byteänderungen in jedem Fenster ab und sperrt neue Hex-Eingaben bis zur
+  asynchronen Rückmeldung des Systems. Saubere Hex- und Abschnitts-Tabs werden
+  beim Löschen geschlossen, statt als leere, vermeintlich gerettete Puffer zu
+  erscheinen.
+- **Ordner-Apply und Rückgängig sperren ihre Zieldateien in allen Fenstern.**
+  Während der Operation lassen sich betroffene Text- und Hex-Tabs weder ändern,
+  speichern, neu laden noch schließen. Nach dem Schreiben lädt Fastra jeden
+  offenen Tab derselben Datei neu; ein später geöffnetes Fenster übernimmt die
+  laufende Sperre ebenfalls.
+- **Ein Text- oder Zeilenendenwechsel verwirft veraltete Hex-Historie.** Undo und
+  Redo können dadurch keine Byte-Offsets aus einem früheren Plattenlayout in den
+  neu gespeicherten Text zurücktragen. Ein Text-Save aktualisiert außerdem die
+  Dateigröße und baut eine bereits sichtbare Hex-Ansicht auf dem neuen
+  Platten-Snapshot auf.
+- **Hex-Speichern gleicht dieselbe Datei in allen Fenstern ab.** Saubere Tabs
+  laden den neuen Plattenstand sofort nach; Fastra wartet dafür nicht auf einen
+  erneuten Wechsel zur App.
+- **Eine extern verschwundene Datei schützt ihren letzten Volltext auch bei
+  offenen Hex-Änderungen.** Verwirft der Nutzer die Byteänderung danach, bleibt
+  der nicht mehr auf der Platte vorhandene Text beim Schließen rückfragepflichtig.
+- **Nach „externen Stand behalten“ lädt Hex-Verwerfen den bestätigten
+  Plattenstand.** Das gilt auch für Undo bis zur letzten Byteänderung; der Tab
+  kann dadurch nicht mehr sauber wirken und zugleich veraltete Bytes zeigen.
+- **Hex-Verwerfen und Save-Rückmeldungen bleiben in gesperrten Dokumenten
+  wirksam.** Ein externer Dateiverlust während des Speicherns kann den Tab nicht
+  mehr dauerhaft im Zustand „wird gespeichert“ festhalten; alte SwiftUI-Werte
+  können gespeicherte oder bewusst verworfene Byteänderungen nicht zurückholen.
+- **Hex-Saves teilen die appweite Pfadsperre aller Dateioperationen.** Zwei
+  Fenster können deshalb nicht gleichzeitig dieselbe Datei speichern; auch ein
+  dirty geretteter Volltext bleibt beim Verwerfen nur der Byteänderungen erhalten.
+- **Viele Hex-Zeilen wachsen ohne vollständige Session-Kopie pro Eingabe.**
+  Zeilenänderung, Undo und Redo mutieren den dokumentgebundenen Zustand direkt;
+  SwiftUI beobachtet nur eine skalare Änderungsgeneration statt das gesamte
+  Byte-Dictionary; die Save-Sperre hasht außerdem nur ihre UUID statt die
+  gesamte Vorschau.
+  Jede Aktion prüft neben Tab, Dokument und Pfad eine unveränderlich erfasste
+  Hex-Basisgeneration. Dadurch kann weder ein spätes Textfeld-Ereignis einen
+  wiederverwendeten Vorschauplatz ändern noch eine alte Ansicht nach einem
+  Reload den neuen Bearbeitungszweig verwerfen oder rückgängig machen.
+- **Ein Hex-Save entwertet die betroffene Ordner-Suchvorschau.** Treffer,
+  Navigation und Apply können dadurch nicht auf dem vorherigen Plattenstand
+  sichtbar oder freigegeben bleiben.
+
+### Tests
+
+- Sechsunddreißig neue Lebenszyklus-Regressionen prüfen Tabbesitz, Vorschau-Permanenz,
+  Ansichtsbindung, Undo/Redo, Eingabefehler, Schließen, Beenden, Projektwechsel,
+  Vorschau-Reuse, Papierkorb, Sammel-Reload, Fremdänderungen sowie beide
+  Speicherbefehle.
+
 ## [v1.112.4] — 2026-08-25
 
 ### Behoben

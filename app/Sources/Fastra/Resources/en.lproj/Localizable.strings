@@ -1494,3 +1494,25 @@
 "Verlauf von %@" = "History of %@";
 "Wird geladen …" = "Loading …";
 "Für diese Datei gibt es noch keine Commits." = "There are no commits for this file yet.";
+
+/* Dokumentgebundener Lebenszyklus der Hex-Bearbeitung (2026-08-25) */
+"Hex + ASCII · Bearbeitung aktiv" = "Hex + ASCII · editing enabled";
+"Eine Hex-Zeile braucht genau zwei hexadezimale Ziffern pro Byte." = "A hex row requires exactly two hexadecimal digits per byte.";
+"Hex-Änderung rückgängig" = "Undo Hex Change";
+"Hex-Änderung wiederholen" = "Redo Hex Change";
+"Speichere oder verwirf zuerst die Änderungen im Texteditor." = "Save or discard the changes in the text editor first.";
+"Hex-Änderungen an „%@“ prüfen?" = "Review Hex Changes to “%@”?";
+"Fastra schreibt Byteänderungen erst nach der sichtbaren Vorschau und einer weiteren Bestätigung. „Änderungen prüfen“ lässt das Dokument offen und öffnet diese Vorschau." = "Fastra writes byte changes only after the visible preview and another confirmation. “Review Changes” leaves the document open and opens that preview.";
+"Änderungen prüfen" = "Review Changes";
+"Speichern unter nicht verfügbar" = "Save As Unavailable";
+"Die Hex-Ansicht kann noch nicht als neue Datei gespeichert werden. Wechsle bei Textdateien zur Textansicht oder bearbeite die geöffnete Datei über die Hex-Vorschau." = "Hex view cannot currently be saved as a new file. For text files, switch to Text view, or edit the open file through the Hex preview.";
+"Offene Hex-Änderungen" = "Pending Hex Changes";
+"Speichere oder verwirf zuerst die Byteänderungen in %@. Erst danach kann der Eintrag in den Papierkorb gelegt werden." = "Save or discard the byte changes in %@ first. The item can only be moved to the Trash afterward.";
+"Umbenennen nicht möglich" = "Cannot Rename";
+"Fastra speichert gerade Byteänderungen in %@. Warte auf den Abschluss und benenne den Eintrag danach um." = "Fastra is currently saving byte changes in %@. Wait for it to finish, then rename the item.";
+"Wird gespeichert …" = "Saving …";
+"Der Tab bleibt bis zum Ende des Speicherns geöffnet." = "The tab stays open until saving finishes.";
+"Eine laufende Dateioperation sperrt dieses Dokument vorübergehend." = "A file operation is temporarily locking this document.";
+"Eine andere Dateioperation verändert bereits mindestens eine Zieldatei. Warte auf ihren Abschluss und prüfe danach die Vorschau erneut." = "Another file operation is already changing at least one target file. Wait for it to finish, then review the preview again.";
+"Eine andere Dateioperation verändert bereits mindestens eine Zieldatei. Warte auf ihren Abschluss und versuche Rückgängig danach erneut." = "Another file operation is already changing at least one target file. Wait for it to finish, then try Undo again.";
+"Der Hex-Speicherzustand hat sich unerwartet geändert. Die Byteänderungen bleiben erhalten." = "The Hex save state changed unexpectedly. The byte changes have been preserved.";

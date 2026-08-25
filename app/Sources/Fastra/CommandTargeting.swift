@@ -206,7 +206,7 @@ enum CommandTargeting {
     /// fragt. `orderedWindows` ist von vorne nach hinten sortiert;
     /// `NSApp.windows` wäre es NICHT (siehe Dateikopf).
     private static func orderedWindows() -> [NSWindow] {
-        NSApp.orderedWindows
+        NSApp?.orderedWindows ?? []
     }
 
     /// Echtes Dokumentfenster? Dieselbe Klassifikation wie in

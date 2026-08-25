@@ -299,7 +299,7 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         guard workspace.projectURL == nil else { return false }
         return workspace.tabs.allSatisfy { tab in
             tab.gitKind == nil && tab.fileDiffRequest == nil
-                && tab.url == nil && tab.content.isEmpty && !tab.isDirty
+                && tab.url == nil && tab.content.isEmpty && !tab.hasUnsavedChanges
         }
     }
 

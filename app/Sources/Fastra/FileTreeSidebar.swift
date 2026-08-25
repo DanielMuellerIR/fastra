@@ -1010,8 +1010,20 @@ struct FileTreeContextMenu: View {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed != node.name else { return }
         do {
+            // Quelle und Ziel werden vor dem Verschieben app-weit reserviert.
+            // So kann weder ein Ordner-Apply noch ein Hex-Save denselben Pfad
+            // während der kurzen Umbenennung parallel verändern.
+            let proposedDestination = try FileTreeOperations.destination(
+                named: trimmed, in: node.url.deletingLastPathComponent()
+            )
+            guard let operation = workspace.beginFileTreeMove(
+                from: node.url, to: proposedDestination
+            ) else { return }
+            defer { workspace.finishFileTreeMove(operation) }
             let destination = try FileTreeOperations.rename(node.url, to: trimmed)
-            workspace.handleFileTreeMove(from: node.url, to: destination)
+            workspace.handleFileTreeMove(
+                from: node.url, to: destination, operation: operation
+            )
             onMutation()
         } catch {
             showError(title: L10n.format("„%@“ konnte nicht umbenannt werden", node.name), error: error)
@@ -1038,21 +1050,31 @@ struct FileTreeContextMenu: View {
     }
 
     private func trash(_ node: FileTreeNode) {
+        // Ab hier bis zur NSWorkspace-Rückmeldung sperrt der Workspace neue
+        // Hex-Eingaben am betroffenen Pfad. Textpuffer kann Fastra nach dem
+        // Verschieben als unbenannten Tab retten; eine Byteänderung braucht
+        // dagegen zwingend die noch vorhandene Originaldatei.
+        guard let operation = workspace.beginFileTreeTrash(node.url) else { return }
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = L10n.format("„%@“ in den Papierkorb legen?", node.name)
         alert.informativeText = L10n.string("Der Eintrag kann über den Finder wiederhergestellt werden.")
         alert.addButton(withTitle: L10n.string("In den Papierkorb"))
         alert.addButton(withTitle: L10n.string("Abbrechen"))
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            workspace.finishFileTreeTrash(operation)
+            return
+        }
 
         NSWorkspace.shared.recycle([node.url]) { _, error in
             DispatchQueue.main.async {
                 if let error {
+                    workspace.finishFileTreeTrash(operation)
                     showError(title: L10n.format("„%@“ konnte nicht verschoben werden", node.name),
                               error: error)
                 } else {
-                    workspace.handleFileTreeTrash(node.url)
+                    workspace.handleFileTreeTrash(node.url, operation: operation)
+                    workspace.finishFileTreeTrash(operation)
                     onMutation()
                 }
             }

@@ -238,7 +238,7 @@ struct CompareFilesDialog: View {
                         .foregroundColor(Theme.textPrimary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    Text(tab.isDirty
+                    Text(tab.hasUnsavedChanges
                          ? L10n.string("Offener Tab (ungespeicherte Änderungen)")
                          : L10n.string("Offener Tab"))
                         .fastraFont(size: 10)

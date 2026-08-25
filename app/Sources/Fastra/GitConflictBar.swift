@@ -100,11 +100,11 @@ struct GitConflictBar: View {
                 .controlSize(.small)
                 .disabled(!GitOperationControlAvailability.resolvedEnabled(
                     isBusy: workspace.gitOperationsAreBusy,
-                    isDirty: workspace.activeTab?.isDirty
+                    isDirty: workspace.activeTab?.hasUnsavedChanges
                 ))
                 .help(GitOperationControlText.resolvedHelp(
                     isBusy: workspace.gitOperationsAreBusy,
-                    isDirty: workspace.activeTab?.isDirty
+                    isDirty: workspace.activeTab?.hasUnsavedChanges
                 ))
                 .accessibilityHint(L10n.string("Commit oder Push werden nicht ausgeführt."))
         }

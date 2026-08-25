@@ -471,13 +471,27 @@ private struct TextFilePageNavigation: View {
 /// Wer nichts ändert, bekommt auch keinen Speicher-Zwang.
 struct HexFileView: View {
     @StateObject private var model: FilePageModel
-    @StateObject private var edits = HexEditSession()
+    /// Dokumentgebundener Zustand aus `EditorTab`. Eine lokale StateObject-
+    /// Session ging beim Abbau dieser View verloren (Tab-/Ansichtswechsel).
+    @Binding private var edits: HexEditSession
     @State private var editingEnabled = false
     @State private var requestEditingConfirmation = false
     @State private var showsChangesPreview = false
     @State private var requestSaveConfirmation = false
-    @State private var saveError: String?
-    @State private var isSaving = false
+    /// Ein dirty Textpuffer und Byteänderungen am gespeicherten Stand dürfen
+    /// nicht gleichzeitig entstehen: Beide hätten verschiedene Grundlagen.
+    private let editingIsAllowed: Bool
+    /// Schließen/⌘S kann den Nutzer in diesen sicheren Vorschaupfad leiten.
+    private let requestSavePreview: Bool
+    private let consumeSavePreviewRequest: (() -> Void)?
+    private let beginSave: () -> HexSaveOperation?
+    private let finishSave: (HexSaveOperation) -> Bool
+    private let failSave: (HexSaveOperation, String) -> Void
+    private let clearSaveError: () -> Void
+    private let discardChanges: () -> Void
+    private let editRow: (String, Data, UInt64, Int) -> Void
+    private let undoChange: () -> Void
+    private let redoChange: () -> Void
     /// Wird nach einem erfolgreichen Hex-Schreibvorgang aufgerufen — z. B.
     /// damit offene Text-Tabs derselben Datei den neuen Plattenstand über
     /// die Extern-Änderungs-Erkennung abgleichen können.
@@ -487,11 +501,35 @@ struct HexFileView: View {
     private let onVisiblePage: ((VisiblePrintPage?) -> Void)?
 
     init(url: URL, fileSize: UInt64,
+         edits: Binding<HexEditSession>,
+         editingIsAllowed: Bool = true,
+         requestSavePreview: Bool = false,
+         consumeSavePreviewRequest: (() -> Void)? = nil,
+         beginSave: @escaping () -> HexSaveOperation?,
+         finishSave: @escaping (HexSaveOperation) -> Bool,
+         failSave: @escaping (HexSaveOperation, String) -> Void,
+         clearSaveError: @escaping () -> Void,
+         discardChanges: @escaping () -> Void,
+         editRow: @escaping (String, Data, UInt64, Int) -> Void,
+         undoChange: @escaping () -> Void,
+         redoChange: @escaping () -> Void,
          onVisiblePage: ((VisiblePrintPage?) -> Void)? = nil,
          onDidWrite: (() -> Void)? = nil) {
         _model = StateObject(wrappedValue: FilePageModel(
             url: url, totalBytes: fileSize, pageSize: 16 * 256
         ))
+        _edits = edits
+        self.editingIsAllowed = editingIsAllowed
+        self.requestSavePreview = requestSavePreview
+        self.consumeSavePreviewRequest = consumeSavePreviewRequest
+        self.beginSave = beginSave
+        self.finishSave = finishSave
+        self.failSave = failSave
+        self.clearSaveError = clearSaveError
+        self.discardChanges = discardChanges
+        self.editRow = editRow
+        self.undoChange = undoChange
+        self.redoChange = redoChange
         self.onVisiblePage = onVisiblePage
         self.onDidWrite = onDidWrite
     }
@@ -523,10 +561,13 @@ struct HexFileView: View {
             }
             Divider()
             FilePageNavigation(model: model)
-                .disabled(isSaving)
+                .disabled(edits.isSaving)
         }
         .background(Theme.surfaceRaised)
-        .onAppear { reportVisiblePage() }
+        .onAppear {
+            reportVisiblePage()
+            presentRequestedSavePreviewIfNeeded()
+        }
         // Pro abgeschlossenem Ladevorgang melden, nicht pro Datenänderung:
         // Zwei inhaltsgleiche Nachbarseiten (z. B. lauter Nullbytes) änderten
         // `data` nicht, und der Drucksnapshot behielte die alten Basisadressen.
@@ -539,7 +580,10 @@ struct HexFileView: View {
         }
         // Noch nicht gespeicherte Byte-Änderungen stehen auf dem Bildschirm —
         // dann müssen sie auch auf dem Ausdruck stehen.
-        .onChange(of: edits.changes) { _, _ in reportVisiblePage() }
+        .onChange(of: edits.changeRevision) { _, _ in reportVisiblePage() }
+        .onChange(of: requestSavePreview) { _, requested in
+            if requested { presentRequestedSavePreviewIfNeeded() }
+        }
         .onDisappear { onVisiblePage?(nil) }
         .alert("Hex-Bearbeitung erlauben?", isPresented: $requestEditingConfirmation) {
             Button("Abbrechen", role: .cancel) { }
@@ -559,23 +603,59 @@ struct HexFileView: View {
         } message: {
             Text("\(edits.preview.count) Byte-Änderungen werden atomar gespeichert. Die Originaldatei wird dabei ersetzt.")
         }
-        .alert("Speichern fehlgeschlagen", isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
-            Button("OK", role: .cancel) { saveError = nil }
-        } message: { Text(saveError ?? "") }
+        .alert("Speichern fehlgeschlagen", isPresented: Binding(
+            get: { edits.saveErrorMessage != nil },
+            set: { if !$0 { clearSaveError() } }
+        )) {
+            Button("OK", role: .cancel) { clearSaveError() }
+        } message: {
+            Text(verbatim: edits.saveErrorMessage ?? "")
+        }
     }
 
     private var header: some View {
         HStack(spacing: 10) {
             Label(editingEnabled ? "Hex + ASCII · Bearbeitung aktiv" : "Hex + ASCII · schreibgeschützt", systemImage: "number")
                 .fastraFont(.small).foregroundColor(editingEnabled ? Theme.diffRemovedFG : Theme.textSecondary)
+            if let message = edits.invalidRowMessage {
+                Label {
+                    Text(verbatim: message)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle")
+                }
+                    .fastraFont(.small)
+                    .foregroundColor(Theme.diffRemovedFG)
+                    .lineLimit(1)
+            }
             Spacer()
-            if edits.hasChanges {
-                Text("\(edits.preview.count) Byte geändert")
-                    .fastraFont(.small).foregroundColor(Theme.diffRemovedFG)
+            if edits.hasChanges || edits.canUndo || edits.canRedo {
+                if edits.isSaving {
+                    Text("Wird gespeichert …")
+                        .fastraFont(.small)
+                        .foregroundColor(Theme.textSecondary)
+                }
+                if edits.hasChanges {
+                    Text("\(edits.preview.count) Byte geändert")
+                        .fastraFont(.small).foregroundColor(Theme.diffRemovedFG)
+                }
+                Button { undoChange() } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!edits.canUndo || edits.isSaving || !editingIsAllowed)
+                .help("Hex-Änderung rückgängig")
+                .keyboardShortcut("z", modifiers: .command)
+                Button { redoChange() } label: {
+                    Image(systemName: "arrow.uturn.forward")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!edits.canRedo || edits.isSaving || !editingIsAllowed)
+                .help("Hex-Änderung wiederholen")
+                .keyboardShortcut("z", modifiers: [.command, .shift])
                 Button("Vorschau & Speichern…") { showsChangesPreview = true }
-                    .disabled(isSaving)
-                Button("Verwerfen") { edits.discard() }
-                    .disabled(isSaving)
+                    .disabled(edits.isSaving || !edits.hasChanges)
+                Button("Verwerfen") { discardChanges() }
+                    .disabled(edits.isSaving || !edits.hasChanges)
             }
             Toggle("Bearbeiten erlauben", isOn: Binding(
                 get: { editingEnabled },
@@ -586,7 +666,10 @@ struct HexFileView: View {
             ))
             .toggleStyle(.switch)
             .fastraFont(.small)
-            .disabled(isSaving)
+            .disabled(edits.isSaving || !editingIsAllowed)
+            .help(editingIsAllowed
+                  ? ""
+                  : "Speichere oder verwirf zuerst die Änderungen im Texteditor.")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 5)
@@ -599,12 +682,12 @@ struct HexFileView: View {
                 .fastraFont(.monoSmall).foregroundColor(Theme.textSecondary)
             TextField("", text: Binding(
                 get: { edits.textForRow(data: model.data, baseOffset: model.offset, row: row) },
-                set: { edits.editRow($0, data: model.data, baseOffset: model.offset, row: row) }
+                set: { editRow($0, model.data, model.offset, row) }
             ))
             .textFieldStyle(.plain)
             .fastraFont(.mono)
             .frame(width: CGFloat(count * 3 * 8))
-            .disabled(isSaving)
+            .disabled(edits.isSaving || !editingIsAllowed)
             Text("|\(asciiRow(at: row))|")
                 .fastraFont(.mono).foregroundColor(Theme.textSecondary)
         }
@@ -653,26 +736,31 @@ struct HexFileView: View {
     }
 
     private func saveChanges() {
-        let planned = edits.preview
-        guard !planned.isEmpty, !isSaving else { return }
+        guard let operation = beginSave() else { return }
         let url = model.url
-        isSaving = true
         Task {
             // Eine Binärdatei kann viele Gigabyte groß sein. Kopieren,
             // Altwert-Prüfung und fsync laufen deshalb nie auf dem UI-Thread.
             let result = await Task.detached(priority: .userInitiated) {
-                Result { try HexEditing.save(planned, to: url) }
+                Result { try HexEditing.save(operation.changes, to: url) }
             }.value
-            isSaving = false
             switch result {
             case .success:
-                edits.markSaved()
-                model.load(page: model.pageIndex)
-                onDidWrite?()
+                if finishSave(operation) {
+                    model.load(page: model.pageIndex)
+                    onDidWrite?()
+                }
             case .failure(let error):
-                saveError = error.localizedDescription
+                failSave(operation, error.localizedDescription)
             }
         }
+    }
+
+    private func presentRequestedSavePreviewIfNeeded() {
+        guard requestSavePreview else { return }
+        consumeSavePreviewRequest?()
+        guard edits.hasChanges else { return }
+        showsChangesPreview = true
     }
 }
 

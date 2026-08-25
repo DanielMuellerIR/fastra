@@ -359,12 +359,15 @@ private struct TabPill: View {
                     .foregroundColor(closeForegroundColor)
             }
             .buttonStyle(.plain)
+            .disabled(tab.hexEditSession.isSaving)
             .background(
                 SelfTestMarker(id: "tabClose-\(tab.id.uuidString)")
             )
-            .help(tab.isDirty
-                  ? "Ungespeicherte Änderungen — klicken zum Schließen"
-                  : "Tab schließen")
+            .help(tab.hexEditSession.isSaving
+                  ? "Der Tab bleibt bis zum Ende des Speicherns geöffnet."
+                  : tab.hasUnsavedChanges
+                      ? "Ungespeicherte Änderungen — klicken zum Schließen"
+                      : "Tab schließen")
             .padding(.trailing, 7)
             .onHover { closeHovering = $0 }
         }
@@ -421,7 +424,7 @@ private struct TabPill: View {
     }
 
     private var showsDirtyIndicator: Bool {
-        tab.isDirty && !tabHovering && !closeHovering
+        tab.hasUnsavedChanges && !tabHovering && !closeHovering
     }
 
     private var closeSymbolName: String {
@@ -430,7 +433,7 @@ private struct TabPill: View {
 
     private var closeForegroundColor: Color {
         if tabHovering || closeHovering { return Theme.textPrimary }
-        if tab.isDirty { return Theme.accentReadable }
+        if tab.hasUnsavedChanges { return Theme.accentReadable }
         return Theme.textSecondary.opacity(0.55)
     }
 
@@ -464,7 +467,9 @@ private struct TabPill: View {
     private var canSave: Bool {
         tab.gitKind == nil && tab.fileDiffRequest == nil
             && tab.readOnlyReason == nil
-            && tab.displayMode == .text && !tab.isLoading
+            && (tab.displayMode == .text || tab.hexEditSession.hasChanges)
+            && !tab.isLoading && !tab.hexEditSession.isSaving
+            && !workspace.fileMutationIsInFlight(for: tab.url)
     }
 
     /// Ein ungesicherter Tab besitzt weder Datei noch Elternordner. Die

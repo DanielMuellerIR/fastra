@@ -576,6 +576,19 @@ struct EditorView: View {
                 ReadOnlySourceView(workspace: workspace,
                                    content: tab.content, reason: reason)
                     .id(tab.id)
+            } else if let tab = workspace.activeTab,
+                      workspace.fileMutationIsInFlight(for: tab.url),
+                      !tab.isLoading {
+                // Ordner-Apply, Rückgängig und Papierkorb wirken app-weit auf
+                // den Pfad. Die echte Read-only-View nimmt einem bereits
+                // fokussierten NSTextView ebenfalls die Tastatur, statt nur
+                // einen Binding-Write nachträglich zu verwerfen.
+                ReadOnlySourceView(
+                    workspace: workspace,
+                    content: tab.content,
+                    reason: L10n.string(
+                        "Eine laufende Dateioperation sperrt dieses Dokument vorübergehend."))
+                    .id(tab.id)
             } else if workspace.activeTab?.isLoading == true {
                 // Lade-Zustand: Spinner + Dateiname, kein Editor.
                 // Der Editor wird erst nach Completion neu eingeblendet.
@@ -644,19 +657,29 @@ struct EditorView: View {
                                 PDFPreviewView(url: url, onSnapshot: {
                                     workspace.visiblePreviewSnapshot = $0
                                 })
-                                .id(EditorView.fileViewIdentity(tabID: tab.id, url: url))
+                                .id(EditorView.fileViewIdentity(
+                                    tabID: tab.id, url: url,
+                                    diskSnapshot: tab.diskSnapshot
+                                ))
                             } else {
                                 ImagePreviewView(url: url, fileSize: tab.fileSize,
                                                  onSnapshot: {
                                     workspace.visiblePreviewSnapshot = $0
                                 })
-                                .id(EditorView.fileViewIdentity(tabID: tab.id, url: url))
+                                .id(EditorView.fileViewIdentity(
+                                    tabID: tab.id, url: url,
+                                    diskSnapshot: tab.diskSnapshot
+                                ))
                             }
                         } else {
                             actualEditor
                         }
                     case .hex:
                         if let tab = workspace.activeTab, let url = tab.url {
+                            // Wertkopie statt Referenz-Capture: `EditorTab`-
+                            // Kopien teilen den großen Session-Speicher. Nur
+                            // dieser Kontext friert die sichtbare Basis ein.
+                            let hexActionContext = HexEditActionContext(tab: tab)
                             // Der Hex-Modus liest direkt von der Platte. Hat der
                             // Text-Tab ungespeicherte Änderungen, muss das sichtbar
                             // sein — sonst wirkte die Ansicht still „falsch".
@@ -671,16 +694,58 @@ struct EditorView: View {
                             HexFileView(
                                 url: url,
                                 fileSize: tab.fileSize,
+                                edits: workspace.hexEditSessionBinding(for: tab.id),
+                                editingIsAllowed: workspace.hexEditingIsAllowed(
+                                    for: tab.id
+                                ),
+                                requestSavePreview:
+                                    workspace.hexSavePreviewRequestTabID == tab.id,
+                                consumeSavePreviewRequest: {
+                                    workspace.consumeHexSavePreviewRequest(for: tab.id)
+                                },
+                                beginSave: {
+                                    workspace.beginHexSave(hexActionContext)
+                                },
+                                finishSave: { operation in
+                                    workspace.finishHexSave(operation, for: tab.id)
+                                },
+                                failSave: { operation, message in
+                                    workspace.failHexSave(
+                                        operation, for: tab.id, message: message
+                                    )
+                                },
+                                clearSaveError: {
+                                    workspace.clearHexSaveError(hexActionContext)
+                                },
+                                discardChanges: {
+                                    workspace.discardHexChanges(hexActionContext)
+                                },
+                                editRow: { text, data, baseOffset, row in
+                                    workspace.editHexRow(
+                                        hexActionContext,
+                                        text: text, data: data,
+                                        baseOffset: baseOffset, row: row
+                                    )
+                                },
+                                undoChange: {
+                                    workspace.undoHexChange(hexActionContext)
+                                },
+                                redoChange: {
+                                    workspace.redoHexChange(hexActionContext)
+                                },
                                 // Der sichtbare Abzug ist die Druckvorlage:
                                 // Die Hex-Ansicht lädt immer nur einen
                                 // Abschnitt, und nur sie weiß, welchen.
                                 onVisiblePage: { workspace.visiblePrintPage = $0 }
                             ) {
                                 // Hex-Schreibvorgang → offene Text-Tabs derselben
-                                // Datei über den Extern-Änderungs-Pfad abgleichen.
-                                workspace.checkExternalChanges()
+                                // Datei in allen Fenstern abgleichen.
+                                workspace.handleHexWrite(at: url)
                             }
-                            .id(EditorView.fileViewIdentity(tabID: tab.id, url: url))
+                            .id(EditorView.fileViewIdentity(
+                                tabID: tab.id, url: url,
+                                diskSnapshot: tab.diskSnapshot
+                            ))
                         } else {
                             actualEditor
                         }
@@ -694,7 +759,10 @@ struct EditorView: View {
                                 // sichtbare Abschnitt, nicht die ganze Datei.
                                 onVisiblePage: { workspace.visiblePrintPage = $0 }
                             )
-                                .id(EditorView.fileViewIdentity(tabID: tab.id, url: url))
+                                .id(EditorView.fileViewIdentity(
+                                    tabID: tab.id, url: url,
+                                    diskSnapshot: tab.diskSnapshot
+                                ))
                         } else {
                             actualEditor
                         }
@@ -1019,8 +1087,13 @@ struct EditorView: View {
     /// URL läsen sie danach weiter am alten Ort, und der Ausdruck wies die
     /// veraltete Vorlage ab („nichts zu drucken"). Mit ihr baut SwiftUI die
     /// Ansicht am neuen Pfad neu auf.
-    static func fileViewIdentity(tabID: UUID, url: URL) -> String {
-        "\(tabID.uuidString)|\(url.path)"
+    static func fileViewIdentity(
+        tabID: UUID, url: URL, diskSnapshot: FileSnapshot? = nil
+    ) -> String {
+        let diskVersion = diskSnapshot.map {
+            "\($0.sha256)|\($0.byteCount)"
+        } ?? "unknown"
+        return "\(tabID.uuidString)|\(url.path)|\(diskVersion)"
     }
 
     /// Prüft die Fensteradresse eines Editor-Sprungs unabhängig von SwiftUI.
@@ -1844,7 +1917,7 @@ private struct FileRow: View {
                 .fastraFont(.small)
                 .foregroundColor(isActive ? Theme.textPrimary : Theme.textSecondary)
                 .lineLimit(1)
-            if tab.isDirty {
+            if tab.hasUnsavedChanges {
                 // Dirty-Punkt: accentReadable statt accent — kleines
                 // Zeichen auf hellem Grund braucht besseren Kontrast.
                 Text("•")

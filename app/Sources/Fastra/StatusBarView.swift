@@ -147,6 +147,8 @@ struct StatusBarView: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
+        .disabled(workspace.activeTab?.hexEditSession.isSaving == true
+                  || workspace.fileMutationIsInFlight(for: workspace.activeTab?.url))
         .fixedSize()
         .help("Encoding — neu öffnen mit anderem Encoding")
     }

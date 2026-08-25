@@ -23,11 +23,14 @@ struct HexEditingTests {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try Data([0, 1, 2, 3]).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
-        let session = HexEditSession()
+        var session = HexEditSession()
         session.editRow("00 FE 02 03", data: Data([0, 1, 2, 3]), baseOffset: 0, row: 0)
         #expect(session.preview == [HexByteChange(offset: 1, oldValue: 1, newValue: 0xFE)])
-        try HexEditing.save(session.preview, to: url)
-        session.markSaved()
+        let pendingOperation = session.beginSave()
+        let operation = try #require(pendingOperation)
+        try HexEditing.save(operation.changes, to: url)
+        let saved = session.markSaved(operation)
+        #expect(saved)
         #expect(try Data(contentsOf: url) == Data([0, 0xFE, 2, 3]))
         #expect(session.hasChanges == false)
     }
@@ -38,7 +41,7 @@ struct HexEditingTests {
         let original = Data([0, 1, 2, 3])
         try original.write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
-        let session = HexEditSession()
+        var session = HexEditSession()
         // Die sichtbare Seite kann bei zwischenzeitlich verkleinerter Datei
         // veraltet sein. Der endgültige Save liest deshalb erneut und lehnt
         // den Offset ab, statt einen Teilzustand zu schreiben.
@@ -53,7 +56,7 @@ struct HexEditingTests {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try Data([0, 1, 2, 3]).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
-        let session = HexEditSession()
+        var session = HexEditSession()
         session.editRow("00 FE 02 03", data: Data([0, 1, 2, 3]), baseOffset: 0, row: 0)
 
         // Ein anderes Programm ändert genau das Byte, das die sichtbare
@@ -100,7 +103,7 @@ struct HexEditingTests {
         try Data([0, 1]).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
         try FileManager.default.setAttributes([.posixPermissions: 0o640], ofItemAtPath: url.path)
-        let session = HexEditSession()
+        var session = HexEditSession()
         session.editRow("00 FE", data: Data([0, 1]), baseOffset: 0, row: 0)
         try HexEditing.save(session.preview, to: url)
         let permissions = try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? NSNumber
@@ -109,7 +112,7 @@ struct HexEditingTests {
 
     @Test("applied(to:) überlagert genau die Änderungen des geladenen Abschnitts")
     @MainActor func appliedOverlay() {
-        let session = HexEditSession()
+        var session = HexEditSession()
         let data = Data([0x00, 0x11, 0x22, 0x33])
         // Byte 0 des Abschnitts bei Basisadresse 0x10 ändern.
         session.editRow("FF 11 22 33", data: data, baseOffset: 0x10, row: 0)
