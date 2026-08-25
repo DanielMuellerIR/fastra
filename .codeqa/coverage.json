@@ -213,23 +213,20 @@
       "risk": "critical",
       "priority": 2,
       "reason": "Dateiladen, Platten-Snapshots, große Dateien und Hex-Pfade entscheiden über Datenintegrität und Speichergrenzen.",
-      "state": "pending",
+      "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T134823378515+0200",
-        "completed_at": "2026-08-15T14:31:33+02:00",
-        "observed_head": "b0b920640b04b61ec8305616e0247cfd3420b215",
-        "content_sha256": "31154ba4a94d2b14e71d53d788cc96cc1d446ffaaa84dadaa30b2e98f2cf3e28",
-        "file_count": 10,
-        "review": "full",
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-25T20:08:32+02:00",
+        "observed_head": "9e7806ce5d799bcaa6d0e2f325579c40aefdf90e",
+        "content_sha256": "038f067910f0e3332d91a39fcc40bbbeb2e974763c5c62ea44ac45c88d5ab096",
+        "file_count": 11,
+        "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Dateiladen, Snapshot-Basis, Bild/PDF-Vorschau, große Text-/Byte-Seiten, Hex-Bearbeitung und zugehörige Regressionen vollständig geprüft. Hex-Speichern prüft nun die sichtbaren Altwerte, kopiert große Dateien begrenzt im Hintergrund und ersetzt erst atomar; Seitenreader weisen Sonderdateien nichtblockierend ab, und verspätete 0-1-0-Antworten können aktuelle Seiten nicht überschreiben.",
+        "summary": "Extern gelöschte oder unlesbare Volltextdateien schützen die letzte Tab-Kopie als dirty; Loader-Inhalt, Snapshot und Fremdänderungs-Fingerabdruck stammen aus demselben Deskriptor; Inspector koppelt Snapshots an Volume, Inode und Bytezahl. Weitere belegte Grenzen wurden als fünf Querschnittsthemen registriert.",
         "tests": [
-          "Fail-before: der Fremdänderungs-Test zeigte stilles Überschreiben. Danach 61 Bereichstests grün; build.sh einschließlich Portabilitätsprüfung, Lokalisierungs- und Hilfe-Audit grün. 1852 Unit-Tests liefen mit einem lastabhängigen Git-Push-Ausreißer, der isoliert in 1,732 s bestand. Fenster-Selbsttests blockiert durch eine bereits laufende installierte Nutzerinstanz."
+          "Weemac: build.sh inklusive Portabilitätsprüfung PASS; localization-audit PASS; test.sh 2013 Tests/73 Suites parallel plus 104 Tests/11 Suites seriell, 0 Fehler und 0 Umgebungsfehler; fokussierter Bereichslauf 73 Tests PASS."
         ]
-      },
-      "pending_paths": [
-        "app/Sources/Fastra/ExternalChangeInspector.swift"
-      ]
+      }
     },
     {
       "id": "git-execution-mutations",
@@ -1083,6 +1080,66 @@
       "priority": 3,
       "state": "pending",
       "noted_at": "2026-08-25T16:54:59+02:00",
+      "campaign_id": "20260825T163605228103+0200"
+    },
+    {
+      "id": "atomic-commit-preflight",
+      "summary": "Save, Apply, Undo und Hex schließen den zuletzt geprüften Deskriptor vor replaceItemAt; nicht kooperierende Fremdschreibvorgänge können im verbleibenden Zeitfenster verloren gehen. Der Schreibpfad braucht einen gemeinsamen Commit-Mechanismus mit bis zum Austausch gebundener Version.",
+      "evidence": [
+        "app/Sources/Fastra/Workspace.swift",
+        "app/Sources/Fastra/ApplyEngine.swift",
+        "app/Sources/Fastra/HexEditing.swift"
+      ],
+      "priority": 1,
+      "state": "pending",
+      "noted_at": "2026-08-25T20:00:49+02:00",
+      "campaign_id": "20260825T163605228103+0200"
+    },
+    {
+      "id": "hex-edit-lifecycle",
+      "summary": "Ungespeicherte Hex-Änderungen gehören derzeit einer montierten HexFileView statt dem Dokumentmodell; Ansichtswechsel, Tabwechsel oder Schließen können sie ohne Dirty-Schutz verwerfen.",
+      "evidence": [
+        "app/Sources/Fastra/PagedFileView.swift",
+        "app/Sources/Fastra/Workspace.swift"
+      ],
+      "priority": 1,
+      "state": "pending",
+      "noted_at": "2026-08-25T20:00:49+02:00",
+      "campaign_id": "20260825T163605228103+0200"
+    },
+    {
+      "id": "paged-read-snapshot-consistency",
+      "summary": "Hex- und Textseiten lesen aus einem Deskriptor, prüfen aber Dateiidentität, Größe und Zeitstempel nach den mehrfachen Seeks und Reads nicht erneut; ein Abschnitt kann dadurch verkürzt oder aus verschiedenen Versionen zusammengesetzt werden.",
+      "evidence": [
+        "app/Sources/Fastra/PagedFileView.swift",
+        "app/Sources/Fastra/FileSnapshot.swift"
+      ],
+      "priority": 1,
+      "state": "pending",
+      "noted_at": "2026-08-25T20:00:49+02:00",
+      "campaign_id": "20260825T163605228103+0200"
+    },
+    {
+      "id": "large-file-classification",
+      "summary": "Große BOM-lose CP1252- oder Latin-1-Dateien werden pauschal als UTF-8 eingestuft, während der Seitenreader streng dekodiert; zugleich scannt die Binärklassifikation jede nullfreie Großdatei vollständig vor der ersten Seite.",
+      "evidence": [
+        "app/Sources/Fastra/FileLoader.swift",
+        "app/Sources/Fastra/PagedFileView.swift"
+      ],
+      "priority": 2,
+      "state": "pending",
+      "noted_at": "2026-08-25T20:00:49+02:00",
+      "campaign_id": "20260825T163605228103+0200"
+    },
+    {
+      "id": "paged-read-cancellation",
+      "summary": "Jede Slider-Stufe startet einen eigenen Seiten-Read; Generationsnummern verwerfen nur späte Antworten, beenden die überholte E/A aber nicht.",
+      "evidence": [
+        "app/Sources/Fastra/PagedFileView.swift"
+      ],
+      "priority": 2,
+      "state": "pending",
+      "noted_at": "2026-08-25T20:00:50+02:00",
       "campaign_id": "20260825T163605228103+0200"
     }
   ]
