@@ -47,12 +47,40 @@ enum GitFileHistory {
     ///   auch nur einen entgegen.
     static func arguments(relativePath: String, limit: Int = limit) -> [String] {
         [
-            "log", "--topo-order", "-\(limit)",
+            // Der Pfad stammt aus dem Dateibaum und ist kein Git-Pathspec.
+            // Ohne diese globale Option würden Dateinamen mit `*`, `?`, `[` oder
+            // einem `:(...)`-Präfix als Muster beziehungsweise Pathspec-Magic
+            // ausgewertet und könnten den Verlauf anderer Dateien liefern.
+            "--literal-pathspecs", "log", "--topo-order", "-\(limit)",
             "--pretty=format:%x1e%H%x1f%P%x1f%an%x1f%as%x1f%at%x1f%D%x1f%s%x00",
             "-z", "--raw", "--numstat", "--find-renames",
             "--diff-merges=first-parent", "--follow",
             "--", relativePath,
         ]
+    }
+
+    /// Bereits geladene Zeilen bleiben während eines Refreshs sichtbar. Ist
+    /// der Refresh dagegen fehlgeschlagen, muss die echte Git-Fehlermeldung an
+    /// die Stelle der alten Liste treten; sonst sähe der Nutzer veraltete
+    /// Commits und nur den generischen Fehlertext in der Kopfzeile.
+    static func commitsForDisplay(
+        _ commits: [GitCommit],
+        state: GitFileHistoryState
+    ) -> [GitCommit] {
+        if case .failed = state { return [] }
+        return commits
+    }
+
+    /// Entfernt Aufklappzustand nur, wenn eine erfolgreich geladene Liste ihn
+    /// wirklich nicht mehr enthält. Bei einem Refresh-Fehler bleibt die letzte
+    /// Liste intern erhalten und kann nach „Erneut versuchen“ wieder erscheinen.
+    static func reconciledExpandedCommits(
+        _ expanded: Set<String>,
+        commits: [GitCommit],
+        state: GitFileHistoryState
+    ) -> Set<String> {
+        if case .failed = state { return expanded }
+        return expanded.intersection(commits.map(\.hash))
     }
 
     /// Pfad der Datei relativ zur Repository-Wurzel, oder `nil`, wenn sie gar

@@ -44,6 +44,7 @@ struct GitGraphView: View {
         }
         .onChange(of: workspace.gitLog) { recompute() }
         .onChange(of: workspace.gitFileHistory) { recompute() }
+        .onChange(of: workspace.gitFileHistoryState) { recompute() }
         .onChange(of: workspace.gitHistoryFile) { recompute() }
         .onChange(of: workspace.gitRepositorySnapshot?.headOID) { recompute() }
     }
@@ -166,13 +167,21 @@ struct GitGraphView: View {
         let headOID = workspace.gitRepositorySnapshot?.headOID
         let commits: [GitCommit]
         if workspace.gitHistoryFile != nil {
-            commits = workspace.gitFileHistory
+            commits = GitFileHistory.commitsForDisplay(
+                workspace.gitFileHistory,
+                state: workspace.gitFileHistoryState
+            )
             layout = GitFileHistory.layout(commits, headOID: headOID)
+            workspace.gitGraphExpandedCommits = GitFileHistory.reconciledExpandedCommits(
+                workspace.gitGraphExpandedCommits,
+                commits: workspace.gitFileHistory,
+                state: workspace.gitFileHistoryState
+            )
         } else {
             commits = workspace.gitLog
             layout = GitGraph.layout(commits, headOID: headOID)
+            workspace.gitGraphExpandedCommits.formIntersection(Set(commits.map(\.hash)))
         }
-        workspace.gitGraphExpandedCommits.formIntersection(Set(commits.map(\.hash)))
     }
 
     private func toggle(_ hash: String) {

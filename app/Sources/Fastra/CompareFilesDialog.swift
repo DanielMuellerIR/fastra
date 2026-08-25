@@ -31,6 +31,18 @@ enum CompareDialogLogic {
         }
     }
 
+    enum TabProblem: Equatable {
+        case closed
+        case ineligible
+
+        var message: String {
+            switch self {
+            case .closed: return L10n.string("Tab ist nicht mehr geöffnet.")
+            case .ineligible: return L10n.string("Tab ist nicht mehr vergleichbar.")
+            }
+        }
+    }
+
     /// Schnelle Plausibilitätsprüfung für die Anzeige am Feld.
     static func problem(forFileAt url: URL,
                         fileManager: FileManager = .default) -> FieldProblem? {
@@ -87,6 +99,19 @@ enum CompareDialogLogic {
             )
         }
         return CompareDialogPrefill(left: .none, right: .none)
+    }
+
+    /// Prüft die Auswahl bei jeder Dialog-Auswertung erneut. Ein anfangs
+    /// gültiger Text-Tab kann inzwischen geschlossen, als großer/ binärer
+    /// Abschnitt neu geladen oder durch offene Hex-Änderungen gesperrt sein.
+    static func problem(forTabID id: UUID, tabs: [EditorTab]) -> TabProblem? {
+        guard let tab = tabs.first(where: { $0.id == id }) else { return .closed }
+        return tab.isEligibleForFileComparison ? nil : .ineligible
+    }
+
+    static func eligibleTab(for id: UUID, tabs: [EditorTab]) -> EditorTab? {
+        guard problem(forTabID: id, tabs: tabs) == nil else { return nil }
+        return tabs.first(where: { $0.id == id })
     }
 }
 
@@ -356,8 +381,7 @@ struct CompareFilesDialog: View {
         case .file(let url):
             return CompareDialogLogic.problem(forFileAt: url)?.message
         case .tab(let id):
-            return workspace.tabs.contains(where: { $0.id == id })
-                ? nil : L10n.string("Tab ist nicht mehr geöffnet.")
+            return CompareDialogLogic.problem(forTabID: id, tabs: workspace.tabs)?.message
         }
     }
 
@@ -402,7 +426,9 @@ struct CompareFilesDialog: View {
         case .file(let url):
             return .file(url)
         case .tab(let id):
-            guard let tab = workspace.tabs.first(where: { $0.id == id }) else {
+            guard let tab = CompareDialogLogic.eligibleTab(
+                for: id, tabs: workspace.tabs
+            ) else {
                 return nil
             }
             if let url = tab.url, !tab.isDirty {

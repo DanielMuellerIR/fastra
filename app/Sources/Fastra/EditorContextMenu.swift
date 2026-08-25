@@ -19,6 +19,39 @@
 import AppKit
 import CodeEditTextView
 
+/// Bindet eine asynchrone tool4d-Prüfung an genau den Dokument- und
+/// Projektstand ihres Starts. Eine Vorschau kann ihre Tab-ID für eine andere
+/// Datei wiederverwenden; deshalb reichen Tab-ID und aktiver Workspace allein
+/// nicht als Identität.
+struct Tool4DLintLease: Equatable {
+    let tabID: UUID
+    let documentID: UUID
+    let documentURL: URL
+    let projectRoot: URL
+    let projectGeneration: UInt64
+    let contentRevision: UInt64
+
+    init?(tab: EditorTab, projectRoot: URL, projectGeneration: UInt64) {
+        guard let documentURL = tab.url else { return nil }
+        self.tabID = tab.id
+        self.documentID = tab.documentID
+        self.documentURL = documentURL.canonicalFileURL
+        self.projectRoot = projectRoot.canonicalFileURL
+        self.projectGeneration = projectGeneration
+        self.contentRevision = tab.contentRevision
+    }
+
+    func isCurrent(in workspace: Workspace) -> Bool {
+        guard workspace.projectGeneration == projectGeneration,
+              workspace.projectURL?.canonicalFileURL == projectRoot,
+              let tab = workspace.activeTab else { return false }
+        return tab.id == tabID
+            && tab.documentID == documentID
+            && tab.url?.canonicalFileURL == documentURL
+            && tab.contentRevision == contentRevision
+    }
+}
+
 /// Pure Klemmung einer gemeldeten Textauswahl — ohne AppKit prüfbar.
 ///
 /// Bewusst von der TextView getrennt: Ein Editor braucht ein Fenster, die
@@ -735,11 +768,15 @@ final class EditorContextMenu: NSObject {
             return
         }
         let text = textView.string
-        if fileExtension.lowercased() == "4dm", let documentURL = tab.url,
-           let projectRoot = workspace.projectURL {
+        if fileExtension.lowercased() == "4dm", tab.url != nil,
+           let projectRoot = workspace.projectURL,
+           let lease = Tool4DLintLease(
+               tab: tab,
+               projectRoot: projectRoot,
+               projectGeneration: workspace.projectGeneration
+           ) {
             findTool4DForLinting(
-                documentURL: documentURL, projectRoot: projectRoot, text: text,
-                workspace: workspace, tabID: tab.id, projectGeneration: workspace.projectGeneration,
+                text: text, workspace: workspace, lease: lease,
                 fileExtension: fileExtension
             )
             return
@@ -753,11 +790,11 @@ final class EditorContextMenu: NSObject {
     /// einer sichtbaren Meldung prüft der Main-Thread sie erneut gegen Tab
     /// und Projektgeneration, damit ein spätes Ergebnis nie falsch landet.
     private func findTool4DForLinting(
-        documentURL: URL, projectRoot: URL, text: String, workspace: Workspace,
-        tabID: UUID, projectGeneration: UInt64, fileExtension: String
+        text: String, workspace: Workspace, lease: Tool4DLintLease,
+        fileExtension: String
     ) {
-        let canonicalRoot = projectRoot.canonicalFileURL
-        let canonicalDocument = documentURL.canonicalFileURL
+        let canonicalRoot = lease.projectRoot
+        let canonicalDocument = lease.documentURL
         Task.detached { [weak self, weak workspace] in
             let pathProblem = Tool4DAssist.executablePathProblem(
                 Tool4DAssist.rememberedExecutablePath
@@ -769,10 +806,7 @@ final class EditorContextMenu: NSObject {
             // Rückkehr vermeidet zugleich nicht-sendbare Actor-Captures.
             DispatchQueue.main.async {
                 guard let self, let workspace,
-                      workspace.activeTabID == tabID,
-                      workspace.projectGeneration == projectGeneration,
-                      workspace.projectURL?.canonicalFileURL == canonicalRoot,
-                      workspace.activeTab?.url?.canonicalFileURL == canonicalDocument else {
+                      lease.isCurrent(in: workspace) else {
                     return
                 }
                 if let pathProblem {
@@ -785,7 +819,7 @@ final class EditorContextMenu: NSObject {
                     self.lintFourDWithTool4D(
                         finding: finding, workspaceRoot: canonicalRoot,
                         documentURL: canonicalDocument, text: text,
-                        workspace: workspace, tabID: tabID
+                        workspace: workspace, lease: lease
                     )
                 } else {
                     self.presentLintResult(
@@ -860,7 +894,7 @@ final class EditorContextMenu: NSObject {
     /// veraltete Warnung im falschen Dokument öffnen.
     private func lintFourDWithTool4D(
         finding: Tool4DDiscovery.Finding, workspaceRoot: URL, documentURL: URL,
-        text: String, workspace: Workspace, tabID: UUID
+        text: String, workspace: Workspace, lease: Tool4DLintLease
     ) {
         tool4DValidation?.cancel()
         let validation = Tool4DLSPValidation()
@@ -875,10 +909,12 @@ final class EditorContextMenu: NSObject {
             // abgeschlossenen Lauf auf.
             self.tool4DValidation = nil
             self.tool4DWorkspace = nil
-            guard let workspace, workspace.activeTabID == tabID else { return }
+            guard let workspace, lease.isCurrent(in: workspace) else { return }
             switch result {
             case .success(let diagnostics):
-                self.presentTool4DDiagnostics(diagnostics, text: text, workspace: workspace)
+                self.presentTool4DDiagnostics(
+                    diagnostics, text: text, workspace: workspace, lease: lease
+                )
             case .failure(let error):
                 // Ein abgebrochener älterer Lauf ist kein Nutzerfehler und
                 // bekommt daher keinen Alarm. Alle anderen Fehler erklären
@@ -894,7 +930,9 @@ final class EditorContextMenu: NSObject {
     }
 
     private func presentTool4DDiagnostics(_ diagnostics: [Tool4DDiagnostic],
-                                           text: String, workspace: Workspace) {
+                                           text: String, workspace: Workspace,
+                                           lease: Tool4DLintLease) {
+        guard lease.isCurrent(in: workspace) else { return }
         guard let first = diagnostics.first else {
             let alert = NSAlert()
             alert.alertStyle = .informational
@@ -914,7 +952,8 @@ final class EditorContextMenu: NSObject {
                                             first.line, first.column, first.message, more)
         alert.addButton(withTitle: L10n.string("Zur Fehlerstelle springen"))
         alert.addButton(withTitle: L10n.string("Schließen"))
-        if alert.runModal() == .alertFirstButtonReturn {
+        if alert.runModal() == .alertFirstButtonReturn,
+           lease.isCurrent(in: workspace) {
             let range = BufferSearch.nsRange(forLine: first.line, column: first.column, in: text)
             NotificationCenter.default.post(name: .fastraJumpToRange, object: workspace,
                                             userInfo: ["range": NSValue(range: range)])

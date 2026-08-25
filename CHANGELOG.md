@@ -9,6 +9,19 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.112.6] — 2026-08-25
+
+### Behoben
+
+- **Dateiverlauf, Vergleichsdialog und tool4d-Diagnosen verwerfen veralteten
+  Kontext.** Der Verlauf behandelt Git-Pathspec-Sonderzeichen im Dateinamen
+  wörtlich und zeigt bei einem fehlgeschlagenen Refresh die echte Fehlermeldung
+  statt alter Commitzeilen. Der Vergleichsdialog prüft ausgewählte Tabs nach
+  Hex- oder Lademodusänderungen erneut. Eine späte tool4d-Antwort muss weiterhin
+  zu Dokument, Dateipfad, Inhalt und Projektgeneration ihres Starts passen;
+  auch „Zur Fehlerstelle springen“ prüft diese Bindung unmittelbar vor dem
+  Sprung.
+
 ## [v1.112.5] — 2026-08-25
 
 ### Behoben

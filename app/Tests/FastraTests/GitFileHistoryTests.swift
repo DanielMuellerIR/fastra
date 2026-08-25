@@ -23,6 +23,8 @@ private func rawLog(_ commits: [(h: String, p: String, s: String)]) -> Data {
 @Test("Dateiverlauf folgt Umbenennungen und fragt genau einen Pfad ab")
 func fileHistory_argumentsFollowSinglePath() {
     let args = GitFileHistory.arguments(relativePath: "app/Sources/Fastra/Workspace.swift")
+    #expect(args.first == "--literal-pathspecs")
+    #expect(args.dropFirst().first == "log")
     #expect(args.contains("--follow"))
     // `--follow` verträgt nur einen Pfad; er steht als letztes Argument hinter `--`.
     #expect(args.last == "app/Sources/Fastra/Workspace.swift")
@@ -35,6 +37,14 @@ func fileHistory_argumentsFollowSinglePath() {
     #expect(args.contains("--diff-merges=first-parent"))
     let format = args.first { $0.hasPrefix("--pretty=format:") }
     #expect(format == GitGraph.arguments.first { $0.hasPrefix("--pretty=format:") })
+}
+
+@Test("Dateiverlauf behandelt Pathspec-Sonderzeichen als wörtlichen Dateinamen")
+func fileHistory_argumentsUseLiteralPathspecs() {
+    let path = ":(glob)quelle/[abc]?*.4dm"
+    let args = GitFileHistory.arguments(relativePath: path)
+    #expect(args.first == "--literal-pathspecs")
+    #expect(args.last == path)
 }
 
 @Test("Dateiverlauf zeigt nicht alle Branches")
@@ -186,6 +196,29 @@ func fileHistoryLayout_empty() {
     let layout = GitFileHistory.layout([])
     #expect(layout.rows.isEmpty)
     #expect(layout.laneCount == 1)
+}
+
+@Test("Fehlgeschlagener Dateiverlauf verbirgt alte Zeilen für die echte Fehlermeldung")
+func fileHistory_failedRefreshHidesStaleCommits() {
+    let commits = GitGraph.parse(rawLog([(h: "c1", p: "", s: "alt")]))
+    #expect(GitFileHistory.commitsForDisplay(commits, state: .loading) == commits)
+    #expect(GitFileHistory.commitsForDisplay(commits, state: .idle) == commits)
+    #expect(GitFileHistory.commitsForDisplay(
+        commits, state: .failed("echte git-Meldung")
+    ).isEmpty)
+}
+
+@Test("Fehlgeschlagener Dateiverlauf behält den Aufklappzustand für den Retry")
+func fileHistory_failedRefreshKeepsExpandedCommits() {
+    let commits = GitGraph.parse(rawLog([(h: "c1", p: "", s: "alt")]))
+    let expanded: Set<String> = ["c1", "nicht-mehr-geladen"]
+
+    #expect(GitFileHistory.reconciledExpandedCommits(
+        expanded, commits: commits, state: .failed("git fehlgeschlagen")
+    ) == expanded)
+    #expect(GitFileHistory.reconciledExpandedCommits(
+        expanded, commits: commits, state: .idle
+    ) == ["c1"])
 }
 
 // MARK: - Hilfsfunktion

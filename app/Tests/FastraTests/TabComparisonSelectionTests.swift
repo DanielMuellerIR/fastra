@@ -157,6 +157,18 @@ func compareDialogPrefillUsesPairOrActiveTab() {
     )
 }
 
+@Test("Dialog verwirft einen nachträglich nicht mehr vergleichbaren Tab")
+func compareDialogRevalidatesSelectedTab() {
+    var tab = documentTab("quelle.txt")
+    #expect(CompareDialogLogic.problem(forTabID: tab.id, tabs: [tab]) == nil)
+    #expect(CompareDialogLogic.eligibleTab(for: tab.id, tabs: [tab])?.id == tab.id)
+
+    tab.displayMode = .hex
+    #expect(CompareDialogLogic.problem(forTabID: tab.id, tabs: [tab]) == .ineligible)
+    #expect(CompareDialogLogic.eligibleTab(for: tab.id, tabs: [tab]) == nil)
+    #expect(CompareDialogLogic.problem(forTabID: tab.id, tabs: []) == .closed)
+}
+
 @Test("Schließen des Vergleichspartners räumt die Paarwahl auf")
 func closingComparisonTabClearsSelection() {
     let fixture = makeTabComparisonWorkspace()

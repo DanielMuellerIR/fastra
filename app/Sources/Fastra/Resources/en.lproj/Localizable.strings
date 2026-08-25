@@ -1169,6 +1169,7 @@
 "Offener Tab" = "Open tab";
 "Offener Tab (ungespeicherte Änderungen)" = "Open tab (unsaved changes)";
 "Tab ist nicht mehr geöffnet." = "Tab is no longer open.";
+"Tab ist nicht mehr vergleichbar." = "The tab can no longer be compared.";
 "Datei zum Vergleichen auswählen" = "Choose a file to compare";
 "Beim Vergleichen ignorieren" = "Ignore while comparing";
 "Alle Leerraum-Unterschiede" = "All whitespace differences";

@@ -89,6 +89,48 @@ func lint_supportedExtensions() {
     #expect(!DocumentLinter.supports(fileExtension: nil))
 }
 
+@MainActor
+@Test("tool4d-Ergebnis bleibt an Dokument, Inhalt und Projekt gebunden")
+func tool4DLintLeaseRejectsStaleDocumentState() throws {
+    let suite = "fastra-tool4d-lint-lease-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let workspace = Workspace(defaults: defaults)
+    let root = URL(fileURLWithPath: "/tmp/fastra-tool4d-projekt")
+    let file = root.appendingPathComponent("Sources/A.4dm")
+    let tab = EditorTab(title: "A.4dm", path: file.path, url: file, content: "ALERT")
+    workspace.projectURL = root
+    workspace.tabs = [tab]
+    workspace.activeTabID = tab.id
+
+    let lease = try #require(Tool4DLintLease(
+        tab: tab,
+        projectRoot: root,
+        projectGeneration: workspace.projectGeneration
+    ))
+    #expect(lease.isCurrent(in: workspace))
+
+    workspace.tabs[0].content = "ALERT(\"neu\")"
+    #expect(!lease.isCurrent(in: workspace))
+
+    let reusedTab = EditorTab(
+        id: tab.id,
+        title: "B.4dm",
+        path: root.appendingPathComponent("Sources/B.4dm").path,
+        url: root.appendingPathComponent("Sources/B.4dm"),
+        content: "BEEP"
+    )
+    workspace.tabs = [reusedTab]
+    #expect(!lease.isCurrent(in: workspace))
+
+    let wrongProjectGeneration = try #require(Tool4DLintLease(
+        tab: reusedTab,
+        projectRoot: root,
+        projectGeneration: workspace.projectGeneration &+ 1
+    ))
+    #expect(!wrongProjectGeneration.isCurrent(in: workspace))
+}
+
 // MARK: - Minify
 
 @Test("JSON-Minify: kompakt, Schlüssel sortiert (konsistent zum Formatieren)")
