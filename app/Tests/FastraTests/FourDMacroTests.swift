@@ -8,6 +8,8 @@
 import Testing
 import Foundation
 import AppKit
+import CodeEditTextView
+import Darwin
 @testable import Fastra
 
 // MARK: - Beispieldaten
@@ -167,6 +169,47 @@ func macroBrokenXML() {
     #expect(FourDMacroXML.parse(data: Data("kein XML".utf8), sourceLabel: "text.xml").isEmpty)
 }
 
+@Test("Parserbudgets verwerfen übergroße Quelle, Makrozahl und Text")
+func macroParserBudgetsAreHardLimits() {
+    let one = Data("<macros><macro name=\"A\"><text>12345</text></macro></macros>".utf8)
+    let two = Data("<macros><macro name=\"A\"><text>1</text></macro><macro name=\"B\"><text>2</text></macro></macros>".utf8)
+    let nestedMacros = Data(
+        "<macros><macro name=\"A\"><macro name=\"B\"/></macro></macros>".utf8
+    )
+    let deeplyNested = Data((
+        "<macros><macro name=\"A\"><text>"
+        + String(repeating: "<x>", count: 300)
+        + String(repeating: "</x>", count: 300)
+        + "</text></macro></macros>"
+    ).utf8)
+
+    #expect(FourDMacroXML.parse(
+        data: one, sourceLabel: "bytes.xml",
+        limits: .init(sourceBytes: one.count - 1, macroCount: 10,
+                      textUTF16Units: 100)
+    ).isEmpty)
+    #expect(FourDMacroXML.parse(
+        data: two, sourceLabel: "count.xml",
+        limits: .init(sourceBytes: two.count, macroCount: 1,
+                      textUTF16Units: 100)
+    ).isEmpty)
+    #expect(FourDMacroXML.parse(
+        data: one, sourceLabel: "text.xml",
+        limits: .init(sourceBytes: one.count, macroCount: 10,
+                      textUTF16Units: 4)
+    ).isEmpty)
+    #expect(FourDMacroXML.parse(
+        data: nestedMacros, sourceLabel: "nested-macros.xml",
+        limits: .init(sourceBytes: nestedMacros.count, macroCount: 1,
+                      textUTF16Units: 100)
+    ).isEmpty)
+    #expect(FourDMacroXML.parse(
+        data: deeplyNested, sourceLabel: "nested-elements.xml",
+        limits: .init(sourceBytes: deeplyNested.count, macroCount: 10,
+                      textUTF16Units: 100)
+    ).isEmpty)
+}
+
 // MARK: - Einstufung
 
 @Test("Einstufung: alle vier Komplettieren-Varianten")
@@ -290,6 +333,80 @@ func macroProjectRootAscent() throws {
     #expect(FourDMacroDiscovery.projectRoot(forDocument: fremd) == nil)
 }
 
+@Test("Projektweiter Makro-Cache trifft nur bei unveränderten Quellen")
+func macroCatalogCacheUsesSourceFingerprints() throws {
+    let scratch = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let sourceURL = scratch.appendingPathComponent("Macros.xml")
+    try writeFile(sourceURL,
+                  "<macros><macro name=\"Erstes\"><text>1</text></macro></macros>")
+    let source = FourDMacroSource(url: sourceURL, origin: .userLibrary)
+    let key = "test:\(UUID().uuidString)"
+    let cache = FourDMacroCatalogCache()
+
+    let first = FourDMacroCatalogLoader.load(
+        sources: [source], cacheKey: key, force: false, cache: cache
+    )
+    let second = FourDMacroCatalogLoader.load(
+        sources: [source], cacheKey: key, force: false, cache: cache
+    )
+    #expect(!first.cacheHit)
+    #expect(second.cacheHit)
+    #expect(second.macros.map(\.displayName) == ["Erstes"])
+
+    // Andere Größe garantiert einen neuen Fingerabdruck auch auf Dateisystemen
+    // mit grober Zeitauflösung.
+    try writeFile(sourceURL,
+                  "<macros><macro name=\"Zweites Makro\"><text>22</text></macro></macros>")
+    let changed = FourDMacroCatalogLoader.load(
+        sources: [source], cacheKey: key, force: false, cache: cache
+    )
+    #expect(!changed.cacheHit)
+    #expect(changed.macros.map(\.displayName) == ["Zweites Makro"])
+
+    let forced = FourDMacroCatalogLoader.load(
+        sources: [source], cacheKey: key, force: true, cache: cache
+    )
+    #expect(!forced.cacheHit)
+}
+
+@Test("Makro-Katalogcache teilt globale Quellen und verdrängt alte Projekte")
+func macroCatalogCacheIsBoundedLRU() throws {
+    let scratch = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let sourceURL = scratch.appendingPathComponent("Macros.xml")
+    try writeFile(sourceURL,
+                  "<macros><macro name=\"Klein\"><text>x</text></macro></macros>")
+    let source = FourDMacroSource(url: sourceURL, origin: .userLibrary)
+    let keyPrefix = "lru-test:\(UUID().uuidString):"
+    let cache = FourDMacroCatalogCache(maximumEntryCount: 2)
+
+    #expect(FourDMacroCatalogLoader.cacheKey(projectRoot: nil)
+            == "standalone:global")
+    #expect(FourDMacroCatalogLoader.cacheKey(projectRoot: scratch)
+            != FourDMacroCatalogLoader.cacheKey(projectRoot: nil))
+    for index in 0...2 {
+        let loaded = FourDMacroCatalogLoader.load(
+            sources: [source], cacheKey: "\(keyPrefix)\(index)", force: false,
+            cache: cache
+        )
+        #expect(!loaded.cacheHit)
+    }
+
+    // Nach einem Eintrag mehr als der festen Grenze ist der älteste weg,
+    // der zuletzt verwendete aber weiterhin ein Treffer.
+    let oldest = FourDMacroCatalogLoader.load(
+        sources: [source], cacheKey: "\(keyPrefix)0", force: false,
+        cache: cache
+    )
+    let newest = FourDMacroCatalogLoader.load(
+        sources: [source], cacheKey: "\(keyPrefix)2", force: false,
+        cache: cache
+    )
+    #expect(!oldest.cacheHit)
+    #expect(newest.cacheHit)
+}
+
 @Test("Fundorte: Komponenten (v20 und v21), dependencies.json, Benutzerordner und 4D.app")
 func macroSourcesAcrossAllLocations() throws {
     let scratch = try makeMacroScratch()
@@ -393,6 +510,35 @@ func macroApplicationLanguageChoice() throws {
     #expect(FourDMacroDiscovery.applicationMacrosFile(
         inBundle: nurSpanisch, preferredLanguages: ["fr-FR"], fileManager: fm
     )?.path.contains("/es.lproj/") == true)
+}
+
+@Test("4D.app: vollständige regionale Sprache gewinnt vor ihrer Basis")
+func macroApplicationRegionalLanguageChoice() throws {
+    let scratch = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let bundle = scratch.appendingPathComponent("4D.app")
+    try makeFourDBundle(at: bundle, version: "21.1", languages: ["pt", "pt-BR"])
+
+    let chosen = FourDMacroDiscovery.applicationMacrosFile(
+        inBundle: bundle, preferredLanguages: ["pt_BR"],
+        fileManager: .default
+    )
+    #expect(chosen?.path.contains("/pt-BR.lproj/") == true)
+}
+
+@Test("4D.app: Schriftvariante gewinnt zwischen Region und Basissprache")
+func macroApplicationScriptLanguageChoice() throws {
+    let scratch = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let bundle = scratch.appendingPathComponent("4D.app")
+    try makeFourDBundle(at: bundle, version: "21.1",
+                        languages: ["zh", "zh-Hant"])
+
+    let chosen = FourDMacroDiscovery.applicationMacrosFile(
+        inBundle: bundle, preferredLanguages: ["zh-Hant-TW"],
+        fileManager: .default
+    )
+    #expect(chosen?.path.contains("/zh-Hant.lproj/") == true)
 }
 
 @Test("4D.app: höchste Version gewinnt, numerisch statt lexikalisch")
@@ -738,6 +884,176 @@ func liveAppMenuDefinesReservedMacroShortcuts() {
     #expect(!keys.contains("q"))
 }
 
+@MainActor
+@Test("Makro-Lease erkennt Vorschau-Tab-Reuse, Save As und Projektwechsel")
+func macroExecutionLeaseBindsWholeDocumentContext() throws {
+    let suite = "fastra-test-macro-lease-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let workspace = Workspace(defaults: defaults)
+    let scratch = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let firstURL = scratch.appendingPathComponent("First.4dm")
+    let secondURL = scratch.appendingPathComponent("Second.4dm")
+    try Data("x".utf8).write(to: firstURL)
+    try Data("x".utf8).write(to: secondURL)
+    let projectA = scratch.appendingPathComponent("Project-A")
+    let projectB = scratch.appendingPathComponent("Project-B")
+    try FileManager.default.createDirectory(at: projectA,
+                                            withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: projectB,
+                                            withIntermediateDirectories: true)
+
+    let tabID = UUID()
+    let documentID = UUID()
+    workspace.projectURL = projectA
+    workspace.tabs = [EditorTab(
+        id: tabID, title: "First.4dm", path: scratch.path,
+        url: firstURL, content: "x", documentID: documentID
+    )]
+    workspace.activeTabID = tabID
+    let lease = try #require(FourDMacroExecutionLease(
+        tab: workspace.tabs[0], projectRoot: workspace.projectURL,
+        projectGeneration: workspace.projectGeneration
+    ))
+    #expect(lease.isCurrent(in: workspace))
+
+    // Preview-Reuse: derselbe Platz und dieselbe Revision, aber ein anderes
+    // Dokument. Tab-ID plus Revision allein hätten den alten Stand akzeptiert.
+    workspace.tabs[0] = EditorTab(
+        id: tabID, title: "Second.4dm", path: scratch.path,
+        url: secondURL, content: "x", documentID: UUID()
+    )
+    #expect(!lease.isCurrent(in: workspace))
+
+    // Save As behält die Dokument-ID; erst die gebundene URL erkennt es.
+    workspace.tabs[0] = EditorTab(
+        id: tabID, title: "Second.4dm", path: scratch.path,
+        url: secondURL, content: "x", documentID: documentID
+    )
+    #expect(!lease.isCurrent(in: workspace))
+
+    workspace.tabs[0] = EditorTab(
+        id: tabID, title: "First.4dm", path: scratch.path,
+        url: firstURL, content: "x", documentID: documentID
+    )
+    workspace.projectURL = projectB
+    #expect(!lease.isCurrent(in: workspace))
+
+    // Eine verzögerte Meldung bleibt an das Fenster ihres Starts gebunden.
+    workspace.projectURL = projectA
+    let window = NSWindow()
+    WorkspaceWindowRegistry.register(workspace, for: window)
+    let windowLease = try #require(FourDMacroExecutionLease(
+        tab: workspace.tabs[0], projectRoot: workspace.projectURL,
+        projectGeneration: workspace.projectGeneration,
+        originWindow: window
+    ))
+    #expect(windowLease.isCurrent(in: workspace))
+    #expect(windowLease.originWindow(in: workspace) === window)
+    WorkspaceWindowRegistry.unregister(window)
+    #expect(!windowLease.isCurrent(in: workspace))
+    #expect(windowLease.originWindow(in: workspace) == nil)
+}
+
+@MainActor
+@Test("Makro-Vorschau wendet im gebundenen Editor trotz blockiertem globalem Sheet-Ziel an")
+func macroPreviewApplyUsesBoundEditorInsteadOfGlobalTarget() throws {
+    let suite = "fastra-test-macro-preview-apply-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suite)
+    let competingSuite = "\(suite)-competing"
+    let competingDefaults = testSuiteDefaults(named: competingSuite)
+    defer {
+        defaults.removePersistentDomain(forName: suite)
+        competingDefaults.removePersistentDomain(forName: competingSuite)
+    }
+    let workspace = Workspace(defaults: defaults)
+    let competingWorkspace = Workspace(defaults: competingDefaults)
+    let scratch = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let url = scratch.appendingPathComponent("Probe.4dm")
+    try Data("vorher".utf8).write(to: url)
+    let tab = EditorTab(title: "Probe.4dm", path: scratch.path,
+                        url: url, content: "vorher")
+    workspace.tabs = [tab]
+    workspace.activeTabID = tab.id
+
+    let textView = TextView(string: "vorher")
+    let documentController = NSViewController()
+    documentController.view = textView
+    let documentWindow = NSWindow(contentViewController: documentController)
+    documentWindow.identifier = NSUserInterfaceItemIdentifier(
+        "Fastra.DocumentWindow"
+    )
+    WorkspaceWindowRegistry.register(workspace, for: documentWindow)
+    documentWindow.orderFront(nil)
+    let competingTextView = TextView(string: "konkurrierend")
+    let competingController = NSViewController()
+    competingController.view = competingTextView
+    let competingWindow = NSWindow(contentViewController: competingController)
+    competingWindow.identifier = NSUserInterfaceItemIdentifier(
+        "Fastra.DocumentWindow"
+    )
+    WorkspaceWindowRegistry.register(competingWorkspace, for: competingWindow)
+    // Ohne Key-Window nimmt die globale Zielwahl das vorderste Dokument.
+    // Der konkurrierende Workspace steht absichtlich VOR dem Lease-Fenster.
+    competingWindow.orderFront(nil)
+    defer {
+        WorkspaceWindowRegistry.unregister(competingWindow)
+        competingWindow.close()
+        WorkspaceWindowRegistry.unregister(documentWindow)
+        documentWindow.close()
+    }
+
+    let lease = try #require(FourDMacroExecutionLease(
+        tab: tab, projectRoot: workspace.projectURL,
+        projectGeneration: workspace.projectGeneration,
+        originWindow: documentWindow
+    ))
+    let request = FileDiffRequest(
+        left: .text("vorher", name: "Vorher"),
+        right: .text("nachher", name: "Nachher"),
+        options: FileDiffOptions()
+    )
+    workspace.fourDMacroPreview = FourDMacroPreviewState(
+        macroName: "Test", lease: lease, resultText: "nachher",
+        request: request,
+        document: Workspace.computeFileDiffDocument(request: request)
+    )
+
+    // Während des echten Button-Aufrufs ist das SwiftUI-Sheet ein unbekanntes
+    // Key-Window. Die pure Fensterlogik belegt deterministisch, dass ein
+    // globaler Dokument-Fallback dann absichtlich gesperrt ist. Dieser Test
+    // darf trotzdem headless laufen und prüft anschließend den Lease-Pfad.
+    let keySheetScenario = [
+        WindowTargeting.Candidate(isDocumentWindow: false, isKey: true),
+        WindowTargeting.Candidate(isDocumentWindow: true, isKey: false),
+    ]
+    #expect(WindowTargeting.targetIndex(in: keySheetScenario) == nil)
+    let globalTarget = try #require(CommandTargeting.target())
+    #expect(globalTarget.workspace === competingWorkspace)
+    #expect(workspace.applyFourDMacroPreview())
+    #expect(textView.string == "nachher")
+    #expect(competingTextView.string == "konkurrierend")
+    #expect(workspace.fourDMacroPreview == nil)
+}
+
+@MainActor
+@Test("Eingereihter Makrolauf prüft seine Lease vor jeder Nebenwirkung")
+func macroEngineQueuedRunCanCancelBeforeStart() async {
+    let missing = URL(fileURLWithPath: "/nicht-vorhanden/fastra-tool4d")
+    let result = await withCheckedContinuation { continuation in
+        FourDMacroEngine.run(
+            tool4d: missing,
+            engineProjectRoot: missing.deletingLastPathComponent(),
+            engineProjectFile: missing,
+            code: "C_TEXT($0)", variant: "komplettieren", methodName: "Test",
+            shouldStart: { false }
+        ) { continuation.resume(returning: $0) }
+    }
+    #expect(result == .cancelledBeforeStart)
+}
+
 @Test("Watch-Transaktion legt eine Datei beiseite und stellt sie wieder her")
 func macroEngineWatchTransactionRoundtrip() throws {
     let root = try makeMacroScratch()
@@ -748,13 +1064,39 @@ func macroEngineWatchTransactionRoundtrip() throws {
     let original = preferences.appendingPathComponent("debuggerWatches.json")
     try Data("aktuell".utf8).write(to: original)
 
-    let backups = FourDMacroEngine.setAsideDebuggerWatches(
+    let backups = try FourDMacroEngine.setAsideDebuggerWatches(
         in: root, fileManager: .default
     )
     #expect(backups.count == 1)
     #expect(!FileManager.default.fileExists(atPath: original.path))
-    FourDMacroEngine.restoreDebuggerWatches(backups, fileManager: .default)
+    FourDMacroEngine.restoreDebuggerWatches(backups)
     #expect(try String(contentsOf: original, encoding: .utf8) == "aktuell")
+}
+
+@Test("Watch-Restore bleibt an den ursprünglich geöffneten Ordner gebunden")
+func macroEngineWatchRestoreSurvivesDirectoryReplacement() throws {
+    let root = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let preferences = root.appendingPathComponent("userPreferences.test")
+    let movedPreferences = root.appendingPathComponent("userPreferences.moved")
+    try FileManager.default.createDirectory(at: preferences,
+                                            withIntermediateDirectories: true)
+    let original = preferences.appendingPathComponent("debuggerWatches.json")
+    try Data("ursprünglich".utf8).write(to: original)
+    let backups = try FourDMacroEngine.setAsideDebuggerWatches(
+        in: root, fileManager: .default
+    )
+
+    try FileManager.default.moveItem(at: preferences, to: movedPreferences)
+    try FileManager.default.createDirectory(at: preferences,
+                                            withIntermediateDirectories: true)
+    try Data("Ersatzordner".utf8).write(to: original)
+    FourDMacroEngine.restoreDebuggerWatches(backups)
+
+    #expect(try String(contentsOf: original, encoding: .utf8) == "Ersatzordner")
+    #expect(try String(contentsOf: movedPreferences.appendingPathComponent(
+        "debuggerWatches.json"
+    ), encoding: .utf8) == "ursprünglich")
 }
 
 @Test("Watch-Transaktion ohne vorhandene Datei bleibt eine leere Operation")
@@ -765,9 +1107,123 @@ func macroEngineWatchTransactionWithoutFile() throws {
         at: root.appendingPathComponent("userPreferences.test"),
         withIntermediateDirectories: true
     )
-    #expect(FourDMacroEngine.setAsideDebuggerWatches(
+    #expect(try FourDMacroEngine.setAsideDebuggerWatches(
         in: root, fileManager: .default
     ).isEmpty)
+}
+
+@Test("Watch-Transaktion verwechselt ähnlich benannte Ordner nicht mit Benutzerpräferenzen")
+func macroEngineWatchTransactionRejectsPrefixConfusion() throws {
+    let root = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: root) }
+    for name in ["userPreferences", "userPreferences-test", "userPreferencesEvil"] {
+        let directory = root.appendingPathComponent(name)
+        try FileManager.default.createDirectory(at: directory,
+                                                withIntermediateDirectories: true)
+        try Data(name.utf8).write(to: directory.appendingPathComponent(
+            "debuggerWatches.json"
+        ))
+    }
+
+    #expect(try FourDMacroEngine.setAsideDebuggerWatches(
+        in: root, fileManager: .default
+    ).isEmpty)
+    for name in ["userPreferences", "userPreferences-test", "userPreferencesEvil"] {
+        let original = root.appendingPathComponent(name).appendingPathComponent(
+            "debuggerWatches.json"
+        )
+        #expect(try String(contentsOf: original, encoding: .utf8) == name)
+    }
+}
+
+@Test("Watch-Transaktion folgt keinem userPreferences-Symlink aus dem Engine-Projekt")
+func macroEngineWatchTransactionRejectsPreferencesSymlink() throws {
+    let root = try makeMacroScratch()
+    let outside = try makeMacroScratch()
+    defer {
+        try? FileManager.default.removeItem(at: root)
+        try? FileManager.default.removeItem(at: outside)
+    }
+    let original = outside.appendingPathComponent("debuggerWatches.json")
+    try Data("außerhalb".utf8).write(to: original)
+    try FileManager.default.createSymbolicLink(
+        at: root.appendingPathComponent("userPreferences.test"),
+        withDestinationURL: outside
+    )
+
+    #expect(throws: POSIXError.self) {
+        try FourDMacroEngine.setAsideDebuggerWatches(
+            in: root, fileManager: .default
+        )
+    }
+    #expect(try String(contentsOf: original, encoding: .utf8) == "außerhalb")
+    let outsideEntries = try FileManager.default.contentsOfDirectory(
+        at: outside, includingPropertiesForKeys: nil
+    )
+    #expect(outsideEntries.map(\.lastPathComponent) == ["debuggerWatches.json"])
+}
+
+@Test("Watch-Transaktion startet mit keinem debuggerWatches-Symlink")
+func macroEngineWatchTransactionRejectsWatchSymlink() throws {
+    let root = try makeMacroScratch()
+    let outside = try makeMacroScratch()
+    defer {
+        try? FileManager.default.removeItem(at: root)
+        try? FileManager.default.removeItem(at: outside)
+    }
+    let preferences = root.appendingPathComponent("userPreferences.test")
+    try FileManager.default.createDirectory(at: preferences,
+                                            withIntermediateDirectories: true)
+    let outsideWatch = outside.appendingPathComponent("watch.json")
+    try Data("außerhalb".utf8).write(to: outsideWatch)
+    try FileManager.default.createSymbolicLink(
+        at: preferences.appendingPathComponent("debuggerWatches.json"),
+        withDestinationURL: outsideWatch
+    )
+
+    #expect(throws: POSIXError.self) {
+        try FourDMacroEngine.setAsideDebuggerWatches(
+            in: root, fileManager: .default
+        )
+    }
+    #expect(try String(contentsOf: outsideWatch, encoding: .utf8) == "außerhalb")
+}
+
+@Test("Watch-Vorbereitung bricht bei fehlendem exklusivem Rename ab und rollt zurück")
+func macroEngineWatchPreparationFailureRollsBack() throws {
+    let root = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let names = ["userPreferences.one", "userPreferences.two"]
+    for name in names {
+        let directory = root.appendingPathComponent(name)
+        try FileManager.default.createDirectory(at: directory,
+                                                withIntermediateDirectories: true)
+        try Data(name.utf8).write(to: directory.appendingPathComponent(
+            "debuggerWatches.json"
+        ))
+    }
+    var renameCount = 0
+
+    #expect(throws: POSIXError.self) {
+        try FourDMacroEngine.setAsideDebuggerWatches(
+            in: root, fileManager: .default,
+            exclusiveRename: { directoryFD, source, destination in
+                renameCount += 1
+                if renameCount > 1 { return .ENOTSUP }
+                guard renameatx_np(directoryFD, source,
+                                   directoryFD, destination,
+                                   UInt32(RENAME_EXCL)) != 0 else { return nil }
+                return POSIXErrorCode(rawValue: errno) ?? .EIO
+            }
+        )
+    }
+
+    for name in names {
+        let original = root.appendingPathComponent(name).appendingPathComponent(
+            "debuggerWatches.json"
+        )
+        #expect(try String(contentsOf: original, encoding: .utf8) == name)
+    }
 }
 
 @Test("Von mehreren Watch-Resten gewinnt der jüngste; ältere Fassungen bleiben erhalten")
@@ -825,19 +1281,54 @@ func macroEnginePreservesLeftoversWhenOriginalExists() throws {
     })
 }
 
-@Test("Restore überschreibt eine von 4D neu angelegte Watch-Datei nicht")
-func macroEngineRestorePreservesBackupWhenOriginalWasRecreated() throws {
+@Test("Rest-Rettung überschreibt keine im letzten Moment angelegte Watch-Datei")
+func macroEngineRecoveryUsesExclusiveRename() throws {
     let directory = try makeMacroScratch()
     defer { try? FileManager.default.removeItem(at: directory) }
     let original = directory.appendingPathComponent("debuggerWatches.json")
     let backup = directory.appendingPathComponent(
-        "debuggerWatches.json.fastra-macro-backup-run"
+        "debuggerWatches.json.fastra-macro-backup-race"
     )
     try Data("vorher".utf8).write(to: backup)
-    try Data("4D-neu".utf8).write(to: original)
+    var injected = false
+
+    FourDMacroEngine.recoverLeftoverWatchesBackups(
+        in: directory, fileManager: .default,
+        beforeExclusiveRename: {
+            guard !injected else { return }
+            injected = true
+            try! Data("4D-neu".utf8).write(to: original)
+        }
+    )
+
+    #expect(try String(contentsOf: original, encoding: .utf8) == "4D-neu")
+    let preserved = try FileManager.default.contentsOfDirectory(
+        at: directory, includingPropertiesForKeys: nil
+    ).filter { $0.lastPathComponent.hasPrefix(
+        "debuggerWatches.json.fastra-macro-preserved-"
+    ) }
+    #expect(preserved.count == 1)
+    #expect(try String(contentsOf: preserved[0], encoding: .utf8) == "vorher")
+}
+
+@Test("Restore überschreibt keine im letzten Moment neu angelegte Watch-Datei")
+func macroEngineRestoreUsesExclusiveRename() throws {
+    let root = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let directory = root.appendingPathComponent("userPreferences.test")
+    try FileManager.default.createDirectory(at: directory,
+                                            withIntermediateDirectories: true)
+    let original = directory.appendingPathComponent("debuggerWatches.json")
+    try Data("vorher".utf8).write(to: original)
+    let backups = try FourDMacroEngine.setAsideDebuggerWatches(
+        in: root, fileManager: .default
+    )
 
     FourDMacroEngine.restoreDebuggerWatches(
-        [(original, backup)], fileManager: .default
+        backups,
+        beforeExclusiveRename: {
+            try! Data("4D-neu".utf8).write(to: original)
+        }
     )
 
     #expect(try String(contentsOf: original, encoding: .utf8) == "4D-neu")

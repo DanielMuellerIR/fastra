@@ -311,23 +311,48 @@ enum FourDMacroDiscovery {
                                       preferredLanguages: [String],
                                       fileManager: FileManager) -> URL? {
         let resources = bundle.appendingPathComponent("Contents/Resources", isDirectory: true)
-        var order: [String] = []
-        for language in preferredLanguages + ["de", "en"] {
-            // „de-DE" und „de_DE" meinen denselben lproj-Ordner „de".
-            let base = language.prefix { $0 != "-" && $0 != "_" }.lowercased()
-            if !base.isEmpty, !order.contains(base) { order.append(base) }
-        }
-        for language in order {
-            let candidate = resources
-                .appendingPathComponent("\(language).lproj/Macros.xml")
-            if fileManager.fileExists(atPath: candidate.path) { return candidate }
-        }
         guard let entries = try? fileManager.contentsOfDirectory(
             at: resources, includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
         ) else { return nil }
-        let sorted = entries
-            .filter { $0.pathExtension.lowercased() == "lproj" }
+        let languageDirectories = entries.filter {
+            $0.pathExtension.lowercased() == "lproj"
+        }
+        var directoriesByLanguage: [String: URL] = [:]
+        for directory in languageDirectories {
+            let language = directory.deletingPathExtension().lastPathComponent
+                .replacingOccurrences(of: "_", with: "-")
+                .lowercased()
+            // Bei zwei nur durch Schreibweise verschiedenen Ordnern gewinnt
+            // deterministisch der alphabetisch erste Pfad.
+            if let previous = directoriesByLanguage[language],
+               previous.path.localizedStandardCompare(directory.path)
+                != .orderedDescending {
+                continue
+            }
+            directoriesByLanguage[language] = directory
+        }
+        var order: [String] = []
+        for language in preferredLanguages + ["de", "en"] {
+            // Die BCP-47-Kennung von rechts verkürzen: `zh-Hant-TW` sucht
+            // zuerst die Region, dann die Schriftvariante `zh-Hant` und erst
+            // zuletzt die Basissprache `zh`. Bindestrich und Unterstrich
+            // gelten dabei gleich.
+            let normalized = language.replacingOccurrences(of: "_", with: "-")
+                .lowercased()
+            var components = normalized.split(separator: "-").map(String.init)
+            while !components.isEmpty {
+                let candidate = components.joined(separator: "-")
+                if !order.contains(candidate) { order.append(candidate) }
+                components.removeLast()
+            }
+        }
+        for language in order {
+            guard let directory = directoriesByLanguage[language] else { continue }
+            let candidate = directory.appendingPathComponent("Macros.xml")
+            if fileManager.fileExists(atPath: candidate.path) { return candidate }
+        }
+        let sorted = languageDirectories
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent)
                 == .orderedAscending }
         for directory in sorted {

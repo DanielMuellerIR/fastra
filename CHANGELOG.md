@@ -9,6 +9,38 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.112.8] — 2026-08-26
+
+### Behoben
+
+- **4D-Makroergebnisse bleiben an das vollständige Dokument gebunden.**
+  Vorschau und Anwenden prüfen jetzt zusätzlich Dokumentidentität, kanonischen
+  Pfad und Projektgeneration; ein wiederverwendeter Vorschau-Tab oder „Sichern
+  unter“ kann kein Ergebnis mehr auf eine andere Datei übertragen. Verzögerte
+  Meldungen erscheinen als Sheet am Fenster des Starts, auch wenn inzwischen
+  ein anderes Fenster aktiv ist.
+- **Die tool4d-Vorbereitung blockiert den Editor nicht mehr.** Projekt- und
+  Programmsuche sowie Tokenanalyse laufen gemeinsam im Hintergrund. Der
+  Makrolauf bleibt bis zur fertigen Diff-Vorschau gesperrt, sodass ein älterer
+  Diff keinen neueren überholen kann. Ein hinter einem anderen Fensterlauf
+  eingereihter Auftrag prüft seine Dokumentbindung vor Temp-Dateien,
+  Watch-Transaktion und Prozessstart erneut.
+- **Die Watch-Datei der Makro-Engine bleibt innerhalb des echten
+  `userPreferences.*`-Ordners.** Ähnlich benannte Ordner, Verzeichnissymlinks
+  und irreguläre Dateien werden abgewiesen; Umbenennungen und das spätere
+  Zurücklegen bleiben über einen offenen Deskriptor an den verifizierten Ordner
+  gebunden. Eine im letzten Moment von 4D neu angelegte Datei wird nicht
+  überschrieben. Kann das Dateisystem keine exklusive Umbenennung garantieren,
+  startet Fastra tool4d nicht und rollt bereits vorbereitete Ordner zurück;
+  nach einem Timeout wartet die Wiederherstellung auf das bestätigte Prozessende.
+- **Fremde Makro-XML besitzt feste Speichergrenzen.** Dateigröße, Makrozahl,
+  Quellzahl und gehaltener Text sind begrenzt. Unveränderte Quellen eines
+  4D-Projekts kommen beim Ordnerwechsel aus einem begrenzten
+  Fingerabdruck-Cache; Standalone-Dateien teilen darin ihre globalen Quellen.
+- **Genauere 4D-Sprachpakete gewinnen vor allgemeineren.** Bei `pt-BR` wird
+  zuerst `pt-BR.lproj` und erst danach `pt.lproj` verwendet; `zh-Hant-TW`
+  berücksichtigt zusätzlich `zh-Hant.lproj` vor `zh.lproj`.
+
 ## [v1.112.7] — 2026-08-25
 
 ### Behoben

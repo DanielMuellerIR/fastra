@@ -335,7 +335,8 @@ enum Tool4DAssist {
     }
 
     @MainActor
-    private static func presentFinderResult(_ finding: Tool4DDiscovery.Finding?) {
+    static func presentFinderResult(_ finding: Tool4DDiscovery.Finding?,
+                                    asSheetFor window: NSWindow? = nil) {
         let alert = NSAlert()
         if let finding {
             rememberedExecutablePath = finding.executableURL.path
@@ -348,9 +349,12 @@ enum Tool4DAssist {
             )
             alert.addButton(withTitle: L10n.string("OK"))
             alert.addButton(withTitle: L10n.string("Im Finder zeigen"))
-            let response = alert.runModal()
-            if response == .alertSecondButtonReturn {
-                NSWorkspace.shared.activateFileViewerSelecting([finding.executableURL])
+            present(alert, asSheetFor: window) { response in
+                if response == .alertSecondButtonReturn {
+                    NSWorkspace.shared.activateFileViewerSelecting(
+                        [finding.executableURL]
+                    )
+                }
             }
         } else {
             alert.messageText = L10n.string("Kein tool4d gefunden")
@@ -360,12 +364,26 @@ enum Tool4DAssist {
             alert.addButton(withTitle: L10n.string("OK"))
             alert.addButton(withTitle: L10n.string("Download-Seite öffnen"))
             alert.addButton(withTitle: L10n.string("Hilfe öffnen"))
-            let response = alert.runModal()
-            if response == .alertSecondButtonReturn {
-                NSWorkspace.shared.open(downloadPageURL)
-            } else if response == .alertThirdButtonReturn {
-                HelpWindow.show(anchor: HelpSection.fourDTool.anchor())
+            present(alert, asSheetFor: window) { response in
+                if response == .alertSecondButtonReturn {
+                    NSWorkspace.shared.open(downloadPageURL)
+                } else if response == .alertThirdButtonReturn {
+                    HelpWindow.show(anchor: HelpSection.fourDTool.anchor())
+                }
             }
+        }
+    }
+
+    /// Ein Makrolauf bindet die Meldung an sein Ursprungsfenster; der
+    /// allgemeine Hilfe-Befehl ohne Fenster behält den synchronen Dialog.
+    @MainActor private static func present(
+        _ alert: NSAlert, asSheetFor window: NSWindow?,
+        completion: @escaping (NSApplication.ModalResponse) -> Void
+    ) {
+        if let window {
+            alert.beginSheetModal(for: window, completionHandler: completion)
+        } else {
+            completion(alert.runModal())
         }
     }
 

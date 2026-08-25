@@ -1438,6 +1438,7 @@
 "Das Dokument wurde während des Makrolaufs geändert. Führe das Makro erneut aus." = "The document was changed while the macro was running. Run the macro again.";
 "Das Makro meldete einen Fehler ohne Text." = "The macro reported an error without a message.";
 "Der Makrolauf hat das Zeitlimit von %.0f Sekunden überschritten und wurde beendet." = "The macro run exceeded the time limit of %.0f seconds and was terminated.";
+"Die debuggerWatches.json konnte vor dem Makrolauf nicht sicher beiseitegelegt werden: %@" = "debuggerWatches.json could not be moved aside safely before the macro run: %@";
 "Dieser Ordner existiert nicht." = "This folder does not exist.";
 "Dieses Makro läuft über ein 4D-Engine-Projekt mit der Methode MacroRun (MAO_Makros). Trage dessen Projektordner in den Einstellungen unter „4D“ ein." = "This macro runs through a 4D engine project providing the MacroRun method (MAO_Makros). Enter its project folder in Settings under “4D”.";
 "Engine-Projekt nicht gefunden" = "Engine Project Not Found";
@@ -1484,7 +1485,6 @@
 "4D %@ — %@" = "4D %@ — %@";
 "4D — %@" = "4D — %@";
 "Der Makrolauf wurde abgebrochen." = "The macro run was cancelled.";
-"Der Makrolauf antwortete auch %.0f Sekunden nach dem Zeitlimit nicht und wurde abgebrochen." = "The macro run still had not responded %.0f seconds after the time limit and was cancelled.";
 
 /* Verlauf einer einzelnen Datei im Graph-Tab der Seitenleiste (2026-08-24) */
 "Git-Historie anzeigen" = "Show Git History";

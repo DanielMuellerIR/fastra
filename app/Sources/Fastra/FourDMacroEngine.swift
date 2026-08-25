@@ -17,6 +17,7 @@
 //   Engine-Projekts kann tool4d mit Exit 139 abstürzen lassen; die
 //   Fehlermeldung nennt diesen bekannten Auslöser.
 
+import Darwin
 import Foundation
 
 /// Einstellungen der 4D-Makro-Engine (Einstellungen-Fenster, Abschnitt „4D").
@@ -40,12 +41,44 @@ enum FourDMacroEngineResult: Equatable {
     case changed(String)
     /// Das Makro hatte nichts zu tun („Keine Änderungen").
     case unchanged
+    /// Das gebundene Dokument änderte sich, bevor der eingereihte Lauf seine
+    /// serielle Queue erreichte. Es gab noch keine Prozess-Nebenwirkung.
+    case cancelledBeforeStart
     /// Erklärter Fehler — Text kommt aus der Statusdatei oder beschreibt den
     /// Prozessfehler verständlich.
     case failed(String)
 }
 
 enum FourDMacroEngine {
+
+    /// Besitzt den bereits verifizierten Ordner-Deskriptor bis zum Ende des
+    /// tool4d-Laufs. Ein umbenannter oder am alten Pfad ersetzter
+    /// `userPreferences`-Ordner kann die Wiederherstellung dadurch nicht in
+    /// einen fremden Ordner umlenken.
+    final class DebuggerWatchesBackup: @unchecked Sendable {
+        fileprivate let backupName: String
+
+        private let lock = NSLock()
+        private var directoryFD: Int32?
+
+        fileprivate init(backupName: String, directoryFD: Int32) {
+            self.backupName = backupName
+            self.directoryFD = directoryFD
+        }
+
+        /// Genau ein Abschlussweg übernimmt den Deskriptor. Bleibt der Lauf
+        /// vorher liegen, schließt `deinit` ihn trotzdem.
+        fileprivate func takeDirectoryFD() -> Int32? {
+            lock.withLock {
+                defer { directoryFD = nil }
+                return directoryFD
+            }
+        }
+
+        deinit {
+            if let directoryFD { Darwin.close(directoryFD) }
+        }
+    }
 
     /// Zeitlimit eines Makrolaufs. tool4d-Kaltstart + Makro liegen real bei
     /// wenigen Sekunden; nach Ablauf wird die Prozessgruppe beendet.
@@ -119,11 +152,13 @@ enum FourDMacroEngine {
     static func run(tool4d: URL, engineProjectRoot: URL,
                     engineProjectFile: URL, code: String,
                     variant: String, methodName: String,
+                    shouldStart: @escaping () -> Bool = { true },
                     completion: @escaping (FourDMacroEngineResult) -> Void) {
         runQueue.async {
             runOnQueue(tool4d: tool4d, engineProjectRoot: engineProjectRoot,
                        engineProjectFile: engineProjectFile,
                        code: code, variant: variant, methodName: methodName,
+                       shouldStart: shouldStart,
                        completion: completion)
         }
     }
@@ -134,6 +169,7 @@ enum FourDMacroEngine {
     private static func runOnQueue(
         tool4d: URL, engineProjectRoot: URL, engineProjectFile: URL, code: String,
         variant: String, methodName: String,
+        shouldStart: @escaping () -> Bool,
         completion: @escaping (FourDMacroEngineResult) -> Void
     ) {
         let fm = FileManager.default
@@ -141,6 +177,13 @@ enum FourDMacroEngine {
         /// `FourDMacroAssist` arbeiten auf dem Main-Actor.
         func finish(_ result: FourDMacroEngineResult) {
             DispatchQueue.main.async { completion(result) }
+        }
+        // Ein zweiter Fensterlauf kann bis zu 60 Sekunden hinter dem ersten
+        // warten. Erst nach Erhalt des seriellen Queue-Slots prüfen wir seine
+        // Dokumentbindung erneut, noch bevor Temp-Dateien entstehen.
+        guard shouldStart() else {
+            finish(.cancelledBeforeStart)
+            return
         }
         let workDirectory = fm.temporaryDirectory
             .appendingPathComponent("fastra-4dmacro-\(UUID().uuidString)")
@@ -158,6 +201,11 @@ enum FourDMacroEngine {
                 error.localizedDescription)))
             return
         }
+        guard shouldStart() else {
+            fm.removeItemQuietly(at: workDirectory)
+            finish(.cancelledBeforeStart)
+            return
+        }
 
         // Bekannte tool4d-Falle: Eine `debuggerWatches.json` in den
         // `userPreferences.<Nutzer>`-Ordnern des Engine-Projekts lässt tool4d
@@ -165,12 +213,28 @@ enum FourDMacroEngine {
         // Projektregeln) ist Beiseitelegen vor dem Lauf und Zurücklegen
         // danach — genau das tut die Engine hier selbst; die Datei ist ein
         // regenerierbarer 4D-Cache und gitignored.
-        let debuggerWatchesBackups = setAsideDebuggerWatches(in: engineProjectRoot,
-                                                             fileManager: fm)
+        let debuggerWatchesBackups: [DebuggerWatchesBackup]
+        do {
+            debuggerWatchesBackups = try setAsideDebuggerWatches(
+                in: engineProjectRoot, fileManager: fm
+            )
+        } catch {
+            fm.removeItemQuietly(at: workDirectory)
+            finish(.failed(L10n.format(
+                "Die debuggerWatches.json konnte vor dem Makrolauf nicht sicher beiseitegelegt werden: %@",
+                error.localizedDescription
+            )))
+            return
+        }
+        guard shouldStart() else {
+            restoreDebuggerWatches(debuggerWatchesBackups)
+            fm.removeItemQuietly(at: workDirectory)
+            finish(.cancelledBeforeStart)
+            return
+        }
 
         // Hält die Queue bis zum Abschluss der Nachbereitung besetzt.
         let done = DispatchSemaphore(value: 0)
-        let completionGate = FourDMacroRunCompletionGate()
         var policy = GitExecutionPolicy.default
         policy.timeout = timeout
         let cancellation = GitRunner.runExecutable(
@@ -184,12 +248,11 @@ enum FourDMacroEngine {
             // nicht auf den Main-Thread.
             completionQueue: DispatchQueue.global(qos: .userInitiated)
         ) { outcome in
-            guard completionGate.claim() else { return }
             defer {
                 fm.removeItemQuietly(at: workDirectory)
                 done.signal()
             }
-            restoreDebuggerWatches(debuggerWatchesBackups, fileManager: fm)
+            restoreDebuggerWatches(debuggerWatchesBackups)
             // Statusdatei zuerst: Sie ist die einzige verlässliche Auskunft.
             let status = try? String(contentsOf: statusFile, encoding: .utf8)
             let output = try? String(contentsOf: outputFile, encoding: .utf8)
@@ -229,23 +292,14 @@ enum FourDMacroEngine {
         }
         // Warten blockiert nur diese eigene Queue, nie den Main-Thread. Eine
         // zusätzliche Reserve deckt den Rückruf und das Lesen der kleinen
-        // Ergebnisdateien ab. Bleibt selbst der Rückruf aus, stellt dieser
-        // Pfad Watch-Dateien und Queue garantiert wieder her.
+        // Ergebnisdateien ab. Nach einem Nachschlag warten wir weiter auf die
+        // bestätigte Prozessbeendigung: Vorher dürfen weder Watch-Dateien
+        // zurückkehren noch der Arbeitsordner oder der serielle Slot frei
+        // werden. Bleibt der Runner hängen, bleibt auch dieser Slot bewusst
+        // gesperrt und das Backup erhalten.
         if done.wait(timeout: .now() + timeout + 5) == .timedOut {
             cancellation.cancel()
-            if completionGate.claim() {
-                restoreDebuggerWatches(debuggerWatchesBackups, fileManager: fm)
-                fm.removeItemQuietly(at: workDirectory)
-                finish(.failed(L10n.format(
-                    "Der Makrolauf antwortete auch %.0f Sekunden nach dem Zeitlimit nicht und wurde abgebrochen.",
-                    5.0
-                )))
-                done.signal()
-            } else {
-                // Der reguläre Rückruf hat die Nachbereitung bereits
-                // übernommen; nur noch kurz auf deren Abschluss warten.
-                _ = done.wait(timeout: .now() + 5)
-            }
+            done.wait()
         }
     }
 
@@ -255,27 +309,82 @@ enum FourDMacroEngine {
     /// die Sicherung des ersten überschrieben.
     private static let watchesFileName = "debuggerWatches.json"
     private static let watchesBackupPrefix = "debuggerWatches.json.fastra-macro-backup"
+    private static let preferencesDirectoryPrefix = "userPreferences."
 
     /// Legt alle `userPreferences.*/debuggerWatches.json` des Engine-Projekts
     /// unter einem laufeigenen Backup-Namen im selben Ordner beiseite und
-    /// liefert die Paare (Original, Backup) für die Wiederherstellung.
+    /// hält den geprüften Ordner bis zur Wiederherstellung offen.
     static func setAsideDebuggerWatches(
-        in engineRoot: URL, fileManager: FileManager
-    ) -> [(original: URL, backup: URL)] {
-        let entries = (try? fileManager.contentsOfDirectory(
-            at: engineRoot, includingPropertiesForKeys: nil)) ?? []
-        var backups: [(URL, URL)] = []
-        for entry in entries
-        where entry.lastPathComponent.hasPrefix("userPreferences") {
+        in engineRoot: URL, fileManager: FileManager,
+        exclusiveRename: ((Int32, String, String) -> POSIXErrorCode?)? = nil
+    ) throws -> [DebuggerWatchesBackup] {
+        let entries = try fileManager.contentsOfDirectory(
+            at: engineRoot, includingPropertiesForKeys: nil
+        )
+        var backups: [DebuggerWatchesBackup] = []
+        let rename = exclusiveRename ?? renameExclusively
+
+        func failure(_ code: POSIXErrorCode) -> POSIXError {
+            // Wurde ein früherer Ordner schon vorbereitet, stellen wir ihn
+            // vor dem Abbruch wieder her. Ein nicht atomarer Fallback wäre
+            // gefährlicher als ein erklärter, nicht gestarteter Makrolauf.
+            restoreDebuggerWatches(backups)
+            return POSIXError(code)
+        }
+
+        for entry in entries where isExpectedPreferencesDirectoryName(
+            entry.lastPathComponent
+        ) {
+            var entryInfo = stat()
+            guard lstat(entry.path, &entryInfo) == 0 else {
+                throw failure(posixErrorCode(errno))
+            }
+            // Einen passend benannten Symlink darf tool4d ebenfalls sehen.
+            // Fastra folgt ihm nicht, startet mit der bekannten Crash-Datei
+            // dahinter aber auch nicht still weiter.
+            if entryInfo.st_mode & S_IFMT == S_IFLNK {
+                throw failure(.ELOOP)
+            }
+            guard entryInfo.st_mode & S_IFMT == S_IFDIR else { continue }
+            // `lstat` schließt einen Verzeichnis-Symlink ausdrücklich aus.
+            // Alle folgenden Umbenennungen laufen relativ zum geöffneten FD;
+            // ein später ausgetauschter Pfad kann sie deshalb nicht umlenken.
+            guard let directoryFD = openVerifiedDirectory(entry) else {
+                throw failure(posixErrorCode(errno))
+            }
+            var descriptorTransferred = false
+            defer {
+                if !descriptorTransferred { Darwin.close(directoryFD) }
+            }
             // Rest eines abgebrochenen früheren Laufs zuerst RETTEN, nicht
             // wegwerfen: Er kann die einzige verbliebene Fassung sein.
-            recoverLeftoverWatchesBackups(in: entry, fileManager: fileManager)
-            let watches = entry.appendingPathComponent(watchesFileName)
-            guard fileManager.fileExists(atPath: watches.path) else { continue }
-            let backup = entry.appendingPathComponent(
-                "\(watchesBackupPrefix)-\(UUID().uuidString)")
-            if (try? fileManager.moveItem(at: watches, to: backup)) != nil {
-                backups.append((watches, backup))
+            recoverLeftoverWatchesBackups(directoryFD: directoryFD)
+            var watchesInfo = stat()
+            if fstatat(directoryFD, watchesFileName, &watchesInfo,
+                       AT_SYMLINK_NOFOLLOW) != 0 {
+                if errno == ENOENT { continue }
+                throw failure(posixErrorCode(errno))
+            }
+            guard watchesInfo.st_mode & S_IFMT == S_IFREG else {
+                throw failure(watchesInfo.st_mode & S_IFMT == S_IFLNK
+                              ? .ELOOP : .EINVAL)
+            }
+            var lastError: POSIXErrorCode = .EEXIST
+            for _ in 0..<4 {
+                let backupName = "\(watchesBackupPrefix)-\(UUID().uuidString)"
+                if let error = rename(directoryFD, watchesFileName, backupName) {
+                    lastError = error
+                    if error == .EEXIST { continue }
+                    break
+                }
+                backups.append(DebuggerWatchesBackup(
+                    backupName: backupName, directoryFD: directoryFD
+                ))
+                descriptorTransferred = true
+                break
+            }
+            if !descriptorTransferred {
+                throw failure(lastError)
             }
         }
         return backups
@@ -287,41 +396,70 @@ enum FourDMacroEngine {
     /// neue geschrieben, bleibt die Kopie unter einem eindeutigen Namen
     /// erhalten, damit kein möglicherweise noch benötigter Stand verloren geht.
     static func recoverLeftoverWatchesBackups(
-        in directory: URL, fileManager: FileManager
+        in directory: URL, fileManager: FileManager,
+        beforeExclusiveRename: (() -> Void)? = nil
     ) {
-        let entries = (try? fileManager.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: nil)) ?? []
-        let original = directory.appendingPathComponent(watchesFileName)
-        let leftovers = entries
-            .filter { $0.lastPathComponent.hasPrefix(watchesBackupPrefix) }
-            .sorted {
-                let leftDate = (try? $0.resourceValues(
-                    forKeys: [.contentModificationDateKey]
-                ).contentModificationDate) ?? .distantPast
-                let rightDate = (try? $1.resourceValues(
-                    forKeys: [.contentModificationDateKey]
-                ).contentModificationDate) ?? .distantPast
-                return leftDate == rightDate ? $0.path < $1.path : leftDate > rightDate
+        guard let directoryFD = openVerifiedDirectory(directory) else { return }
+        defer { Darwin.close(directoryFD) }
+        recoverLeftoverWatchesBackups(
+            directoryFD: directoryFD,
+            beforeExclusiveRename: beforeExclusiveRename
+        )
+    }
+
+    private static func recoverLeftoverWatchesBackups(
+        directoryFD: Int32,
+        beforeExclusiveRename: (() -> Void)? = nil
+    ) {
+        // Auch die Namensliste stammt aus demselben offenen Ordner wie die
+        // folgenden `renameatx_np`-Aufrufe. Eine Pfad-Umbenennung zwischen
+        // Öffnen und Auflisten kann die beiden Seiten so nicht trennen.
+        let leftovers = directoryEntryNames(in: directoryFD)
+            .filter {
+                $0.hasPrefix("\(watchesBackupPrefix)-")
+                    && isRegularFile(named: $0, in: directoryFD)
             }
+            .sorted {
+                let leftDate = modificationTime(named: $0, in: directoryFD)
+                let rightDate = modificationTime(named: $1, in: directoryFD)
+                if leftDate.seconds != rightDate.seconds {
+                    return leftDate.seconds > rightDate.seconds
+                }
+                if leftDate.nanoseconds != rightDate.nanoseconds {
+                    return leftDate.nanoseconds > rightDate.nanoseconds
+                }
+                return $0 < $1
+        }
         for leftover in leftovers {
-            if !fileManager.fileExists(atPath: original.path),
-               (try? fileManager.moveItem(at: leftover, to: original)) != nil {
+            beforeExclusiveRename?()
+            if renameatx_np(directoryFD, leftover,
+                            directoryFD, watchesFileName,
+                            UInt32(RENAME_EXCL)) == 0 {
                 continue
             }
-            preserveDebuggerWatchesBackup(leftover, fileManager: fileManager)
+            preserveDebuggerWatchesBackup(named: leftover,
+                                           in: directoryFD)
         }
     }
 
     /// Stellt die beiseitegelegten Dateien wieder her. Hat 4D währenddessen
     /// eine neue Datei geschrieben, bleibt die neue stehen.
     static func restoreDebuggerWatches(
-        _ backups: [(original: URL, backup: URL)], fileManager: FileManager
+        _ backups: [DebuggerWatchesBackup],
+        beforeExclusiveRename: (() -> Void)? = nil
     ) {
-        for (original, backup) in backups {
-            if !fileManager.fileExists(atPath: original.path) {
-                try? fileManager.moveItem(at: backup, to: original)
-            } else {
-                preserveDebuggerWatchesBackup(backup, fileManager: fileManager)
+        for backup in backups {
+            guard let directoryFD = backup.takeDirectoryFD() else { continue }
+            defer { Darwin.close(directoryFD) }
+            let backupName = backup.backupName
+            guard backupName.hasPrefix("\(watchesBackupPrefix)-"),
+                  isRegularFile(named: backupName, in: directoryFD) else { continue }
+            beforeExclusiveRename?()
+            if renameatx_np(directoryFD, backupName,
+                            directoryFD, watchesFileName,
+                            UInt32(RENAME_EXCL)) != 0 {
+                preserveDebuggerWatchesBackup(named: backupName,
+                                               in: directoryFD)
             }
         }
     }
@@ -329,29 +467,99 @@ enum FourDMacroEngine {
     /// Überzählige oder von einer neuen 4D-Datei verdrängte Sicherungen unter
     /// einem Namen behalten, den der nächste automatische Lauf nicht erneut
     /// verarbeitet. Keine Fassung wird still gelöscht.
-    private static func preserveDebuggerWatchesBackup(
-        _ backup: URL, fileManager: FileManager
-    ) {
-        guard fileManager.fileExists(atPath: backup.path) else { return }
-        let preserved = backup.deletingLastPathComponent().appendingPathComponent(
-            "debuggerWatches.json.fastra-macro-preserved-\(UUID().uuidString)"
-        )
-        try? fileManager.moveItem(at: backup, to: preserved)
+    private static func preserveDebuggerWatchesBackup(named backupName: String,
+                                                       in directoryFD: Int32) {
+        guard isRegularFile(named: backupName, in: directoryFD) else { return }
+        // `RENAME_EXCL` verhindert auch beim extrem unwahrscheinlichen
+        // UUID-Treffer, dass eine bereits bewahrte Fassung überschrieben wird.
+        for _ in 0..<4 {
+            let preservedName =
+                "debuggerWatches.json.fastra-macro-preserved-\(UUID().uuidString)"
+            if renameatx_np(directoryFD, backupName,
+                            directoryFD, preservedName,
+                            UInt32(RENAME_EXCL)) == 0 { return }
+            if errno != EEXIST { return }
+        }
     }
-}
 
-/// Genau ein Pfad darf Ergebnis, Watch-Restore und Temp-Cleanup übernehmen:
-/// entweder der reguläre Prozessrückruf oder die äußere Sicherheitsfrist.
-private final class FourDMacroRunCompletionGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var claimed = false
+    private static func isExpectedPreferencesDirectoryName(_ name: String) -> Bool {
+        name.hasPrefix(preferencesDirectoryPrefix)
+            && name.count > preferencesDirectoryPrefix.count
+    }
 
-    func claim() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !claimed else { return false }
-        claimed = true
-        return true
+    /// Öffnet ausschließlich den per `lstat` gesehenen echten Ordner. Der
+    /// Identitätsvergleich schließt auch einen Austausch zwischen `lstat`
+    /// und `open` aus; danach bindet der FD alle Änderungen an genau ihn.
+    private static func openVerifiedDirectory(_ directory: URL) -> Int32? {
+        var pathInfo = stat()
+        guard lstat(directory.path, &pathInfo) == 0,
+              pathInfo.st_mode & S_IFMT == S_IFDIR else { return nil }
+        let fd = Darwin.open(directory.path,
+                             O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard fd >= 0 else { return nil }
+        var openedInfo = stat()
+        guard fstat(fd, &openedInfo) == 0,
+              openedInfo.st_mode & S_IFMT == S_IFDIR,
+              openedInfo.st_dev == pathInfo.st_dev,
+              openedInfo.st_ino == pathInfo.st_ino else {
+            Darwin.close(fd)
+            return nil
+        }
+        return fd
+    }
+
+    /// Listet einen Ordner über einen duplizierten Deskriptor. `fdopendir`
+    /// übernimmt das Duplikat; `closedir` schließt ausschließlich dieses,
+    /// während der ursprüngliche FD für die Transaktion offen bleibt.
+    private static func directoryEntryNames(in directoryFD: Int32) -> [String] {
+        let duplicateFD = Darwin.dup(directoryFD)
+        guard duplicateFD >= 0 else { return [] }
+        guard let stream = fdopendir(duplicateFD) else {
+            Darwin.close(duplicateFD)
+            return []
+        }
+        defer { closedir(stream) }
+        var names: [String] = []
+        while let entry = readdir(stream) {
+            let name = withUnsafePointer(to: entry.pointee.d_name) { pointer in
+                pointer.withMemoryRebound(to: CChar.self,
+                                          capacity: Int(entry.pointee.d_namlen) + 1) {
+                    String(cString: $0)
+                }
+            }
+            if name != "." && name != ".." { names.append(name) }
+        }
+        return names
+    }
+
+    private static func isRegularFile(named name: String,
+                                      in directoryFD: Int32) -> Bool {
+        var info = stat()
+        return fstatat(directoryFD, name, &info, AT_SYMLINK_NOFOLLOW) == 0
+            && info.st_mode & S_IFMT == S_IFREG
+    }
+
+    private static func modificationTime(named name: String, in directoryFD: Int32)
+        -> (seconds: Int, nanoseconds: Int) {
+        var info = stat()
+        guard fstatat(directoryFD, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
+            return (.min, .min)
+        }
+        return (Int(info.st_mtimespec.tv_sec), Int(info.st_mtimespec.tv_nsec))
+    }
+
+    private static func renameExclusively(_ directoryFD: Int32,
+                                          _ sourceName: String,
+                                          _ destinationName: String)
+        -> POSIXErrorCode? {
+        guard renameatx_np(directoryFD, sourceName,
+                           directoryFD, destinationName,
+                           UInt32(RENAME_EXCL)) != 0 else { return nil }
+        return posixErrorCode(errno)
+    }
+
+    private static func posixErrorCode(_ rawValue: Int32) -> POSIXErrorCode {
+        POSIXErrorCode(rawValue: rawValue) ?? .EIO
     }
 }
 

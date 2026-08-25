@@ -108,6 +108,21 @@ enum FourDMacroCapability: Equatable {
 
 enum FourDMacroXML {
 
+    /// Harte Obergrenzen für fremde Makro-XML. Eine einzelne übergroße oder
+    /// absichtlich aufgeblähte Komponente darf weder den Hintergrundscan noch
+    /// den dauerhaft gehaltenen Menükatalog unbeschränkt wachsen lassen.
+    struct Limits: Equatable {
+        let sourceBytes: Int
+        let macroCount: Int
+        let textUTF16Units: Int
+
+        static let catalog = Limits(
+            sourceBytes: 8 * 1024 * 1024,
+            macroCount: 4_096,
+            textUTF16Units: 4 * 1024 * 1024
+        )
+    }
+
     // MARK: - Parsen
 
     /// Liest eine „Macros v2"-XML. Fehlertolerant: Ist die Datei kaputt,
@@ -122,15 +137,18 @@ enum FourDMacroXML {
     /// stets das erste Makro — also möglicherweise das einer anderen Quelle.
     /// Fehlt der Schlüssel, gilt weiterhin die Beschriftung.
     static func parse(data: Data, sourceLabel: String,
-                      sourceKey: String? = nil) -> [FourDMacro] {
+                      sourceKey: String? = nil,
+                      limits: Limits = .catalog) -> [FourDMacro] {
+        guard data.count <= limits.sourceBytes else { return [] }
         let parser = XMLParser(data: data)
         // Keine externen Entitäten auflösen: Eine fremde XML darf keine
         // Dateien nachladen. (Standardwert; hier ausdrücklich festgehalten.)
         parser.shouldResolveExternalEntities = false
         let collector = FourDMacroCollector(sourceLabel: sourceLabel,
-                                            sourceKey: sourceKey ?? sourceLabel)
+                                            sourceKey: sourceKey ?? sourceLabel,
+                                            limits: limits)
         parser.delegate = collector
-        guard parser.parse() else { return [] }
+        guard parser.parse(), !collector.exceededBudget else { return [] }
         return collector.macros
     }
 
@@ -458,10 +476,19 @@ enum FourDMacroXML {
 /// vollständig hier drin.
 private final class FourDMacroCollector: NSObject, XMLParserDelegate {
 
+    /// Das 4D-Schema ist nur wenige Ebenen tief. Die zusätzliche Grenze
+    /// verhindert, dass eine künstlich tief verschachtelte XML den
+    /// Elementstapel trotz begrenzter Dateigröße unnötig aufbläht.
+    private static let maximumElementDepth = 256
+
     private let sourceLabel: String
     /// Eindeutige Kennung der Quelle für die Makro-IDs (siehe `parse`).
     private let sourceKey: String
+    private let limits: FourDMacroXML.Limits
     private(set) var macros: [FourDMacro] = []
+    private(set) var exceededBudget = false
+    private var textUTF16Units = 0
+    private var seenMacroCount = 0
 
     /// Die gerade offenen Elemente. Über die Tiefe unterscheidet sich das
     /// umschließende `<text>`-Element vom gleichnamigen Platzhalter `<text/>`
@@ -479,18 +506,31 @@ private final class FourDMacroCollector: NSObject, XMLParserDelegate {
     /// Erstes unbekanntes Platzhalter-Tag im `<text>` des laufenden Makros.
     private var currentUnknownPlaceholder: String?
 
-    init(sourceLabel: String, sourceKey: String) {
+    init(sourceLabel: String, sourceKey: String,
+         limits: FourDMacroXML.Limits) {
         self.sourceLabel = sourceLabel
         self.sourceKey = sourceKey
+        self.limits = limits
     }
 
     func parser(_ parser: XMLParser, didStartElement elementName: String,
                 namespaceURI: String?, qualifiedName: String?,
                 attributes attributeDict: [String: String]) {
+        guard openElements.count < Self.maximumElementDepth else {
+            exceededBudget = true
+            parser.abortParsing()
+            return
+        }
         openElements.append(elementName)
         let depth = openElements.count
 
         if elementName == "macro" {
+            guard seenMacroCount < limits.macroCount else {
+                exceededBudget = true
+                parser.abortParsing()
+                return
+            }
+            seenMacroCount += 1
             beginMacro(name: attributeDict["name"] ?? "")
             return
         }
@@ -536,6 +576,12 @@ private final class FourDMacroCollector: NSObject, XMLParserDelegate {
     }
 
     func parser(_ parser: XMLParser, foundCharacters string: String) {
+        textUTF16Units += (string as NSString).length
+        guard textUTF16Units <= limits.textUTF16Units else {
+            exceededBudget = true
+            parser.abortParsing()
+            return
+        }
         if methodDepth != nil {
             currentMethodCall? += string
         } else if textContainerDepth != nil {

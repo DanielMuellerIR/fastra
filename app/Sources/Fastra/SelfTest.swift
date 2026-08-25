@@ -13520,6 +13520,8 @@ enum SelfTest {
                 finish(true, "tool4d-Engine lief durch; Makro meldete „Keine Änderungen“")
             case .failed(let text):
                 finish(false, "Engine-Lauf fehlgeschlagen: \(text)")
+            case .cancelledBeforeStart:
+                finish(false, "Engine-Lauf wurde vor dem Start verworfen")
             }
         }
     }
