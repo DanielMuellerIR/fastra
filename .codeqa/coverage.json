@@ -137,15 +137,15 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-25T18:21:10+02:00",
-        "observed_head": "929911d722bf9574c1de657ce8198789484bf885",
-        "content_sha256": "48f8261e076915f13e646d32d3c3e4b72363d81cb8afa8536cc84a892900aa86",
+        "completed_at": "2026-08-25T23:08:28+02:00",
+        "observed_head": "ec15e86db63927185f3f1a0607dfa0e4d4dfa630",
+        "content_sha256": "8bdcd59b6aa3b84beb53bd57a277eaea004cba5a8d2ae25ce899ecf0ff4966f3",
         "file_count": 43,
         "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Delta und heutige Grenzen von Suchlauf, Auswahl, Navigation, Vorschau und Apply geprüft. Geöffnet-Sprünge über Tabgrenzen behalten ihren flachen Trefferindex, weil reine Aktiv-Tab-Wechsel die über alle Tabs gebildete Trefferbasis nicht mehr invalidieren oder redundant neu berechnen. Vor/Zurück rechnet nach Listenwechseln vom geklemmten Zustand; Int-Grenzwerte überlaufen nicht. Fehlende Zustandsmaschinenfälle wurden direkt abgedeckt.",
+        "summary": "Hex-Aktionskontexte frieren die Vorschauidentität ein; veraltete Einzel- und Konfliktaktionen werden vor jeder Mutation verworfen.",
         "tests": [
-          "Weemac: fail-before SearchMatchSelection-Reconciliation 4 Erwartungen rot; Workspace-Tabwechsel 2 Erwartungen rot. Danach 5 gezielte Regressionen grün; build.sh einschließlich Portabilitätsprüfung grün; 2003 schnelle Tests/72 Suites grün; 96 serielle Integrationstests/11 Suites grün; Lokalisierungs-Audit 392/827/1432 grün."
+          "Weemac: app/test.sh vollständig grün (2059 schnelle Tests, 104 serielle Integrationstests, 0 Umgebungsfehler)."
         ]
       }
     },
@@ -175,7 +175,8 @@
         "app/tools/soak-process-state.sh",
         "app/tools/test-process-tree.sh",
         "app/tools/test-sandbox.sh",
-        "app/Tests/FastraTests/UnitTestRunnerTests.swift"
+        "app/Tests/FastraTests/UnitTestRunnerTests.swift",
+        "app/Tests/FastraTests/TestWaitingCancellationTests.swift"
       ],
       "risk": "critical",
       "priority": 1,
@@ -183,15 +184,15 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-25T19:44:32+02:00",
-        "observed_head": "e8e59884372d829e77e2f7f025dd9a7085c3da17",
-        "content_sha256": "28e1aeadf0044f8197c972dd8d3930962cd57869c6e0593b31f53d3c10e57368",
-        "file_count": 24,
+        "completed_at": "2026-08-25T23:08:29+02:00",
+        "observed_head": "ec15e86db63927185f3f1a0607dfa0e4d4dfa630",
+        "content_sha256": "300b5be4a480277996c15756dbdd3a82d40a4ecf28a1b4c42dd953e6e9cc3ca5",
+        "file_count": 25,
         "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Selbsttests liefern typisierte maschinenlesbare Ergebnisse; nur fünf echte Fokusfälle aktivieren die App. Der Unit-Runner trennt schnelle und serielle Tests, schneidet Aufruferfilter phasengerecht, priorisiert Funktionsfehler vor Umgebungsproblemen und beendet abgebrochene Wartehelfer sofort.",
+        "summary": "Neue Abbruchtests und der bereits geprüfte monotone Wartehelfer sichern Testabbrüche unter Fremdlast; die neue Testdatei ist dem Bereich zugeordnet.",
         "tests": [
-          "Weemac: ./test.sh vollständig grün (2009 schnelle Tests/73 Suites + 104 serielle Tests/11 Suites, 0 Umgebungsfehler, Exit 0); 7 gezielte Runner-/Cancellation-Regressionen grün; echter Doppel-Named-Group-Filterlauf 5+0 Tests, Exit 0; windowless Selbsttests search/openscope/selsearch/wildcard grün; build.sh und localization-audit.sh grün."
+          "Weemac: app/test.sh vollständig grün (2059 schnelle Tests, 104 serielle Integrationstests, 0 Umgebungsfehler)."
         ]
       }
     },
@@ -208,7 +209,10 @@
         "app/Tests/FastraTests/FileReadReviewFixTests.swift",
         "app/Tests/FastraTests/HexEditingTests.swift",
         "app/Tests/FastraTests/PagedFileTests.swift",
-        "app/Sources/Fastra/ExternalChangeInspector.swift"
+        "app/Sources/Fastra/ExternalChangeInspector.swift",
+        "app/Sources/Fastra/AtomicFileCommit.swift",
+        "app/Tests/FastraTests/AtomicFileCommitTests.swift",
+        "app/Tests/FastraTests/HexEditLifecycleTests.swift"
       ],
       "risk": "critical",
       "priority": 2,
@@ -216,15 +220,15 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-25T20:08:32+02:00",
-        "observed_head": "9e7806ce5d799bcaa6d0e2f325579c40aefdf90e",
-        "content_sha256": "038f067910f0e3332d91a39fcc40bbbeb2e974763c5c62ea44ac45c88d5ab096",
-        "file_count": 11,
+        "completed_at": "2026-08-25T23:08:29+02:00",
+        "observed_head": "ec15e86db63927185f3f1a0607dfa0e4d4dfa630",
+        "content_sha256": "7b6582575531e8398541cf88bc76a3a2a60f41e72439a37723fe95ab960a2f10",
+        "file_count": 14,
         "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Extern gelöschte oder unlesbare Volltextdateien schützen die letzte Tab-Kopie als dirty; Loader-Inhalt, Snapshot und Fremdänderungs-Fingerabdruck stammen aus demselben Deskriptor; Inspector koppelt Snapshots an Volume, Inode und Bytezahl. Weitere belegte Grenzen wurden als fünf Querschnittsthemen registriert.",
+        "summary": "Hex-Änderungen leben dokumentgebunden, speichern atomar, schützen Snapshot und Aktionskontext und bewahren Dirty-Zustand über Ansichtswechsel; neue Commit- und Lifecycle-Dateien sind dem Bereich zugeordnet.",
         "tests": [
-          "Weemac: build.sh inklusive Portabilitätsprüfung PASS; localization-audit PASS; test.sh 2013 Tests/73 Suites parallel plus 104 Tests/11 Suites seriell, 0 Fehler und 0 Umgebungsfehler; fokussierter Bereichslauf 73 Tests PASS."
+          "Weemac: app/build.sh inklusive Portable-Gate grün; 36 HexEditLifecycleTests und vollständiges app/test.sh mit 2059+104 Tests grün."
         ]
       }
     },
@@ -263,16 +267,16 @@
       "reason": "Git-Prozesse und schreibende Git-Aktionen müssen asynchron, abbrechbar und gegen überraschende Änderungen abgesichert bleiben.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T134823378515+0200",
-        "completed_at": "2026-08-15T14:57:16+02:00",
-        "observed_head": "9b1d57cf0a240dc5b3baae7edb125a2f20b2405c",
-        "content_sha256": "7020c1ca5328e9a9a34c6e8ef4a189d31d776b9816f850514a47836d65d2ccab",
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-25T23:08:29+02:00",
+        "observed_head": "ec15e86db63927185f3f1a0607dfa0e4d4dfa630",
+        "content_sha256": "85e3aaba42ed68eeb7c525610dc0986c6addf0a993556c15aac80741d4069af4",
         "file_count": 26,
-        "review": "full",
+        "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Git-Ausführung, Koordination, Status, Fetch/Pull/Push, Branch- und Konfliktmutationen sowie die zugehörigen Regressionen vollständig geprüft. Normale Prozessenden räumen verbliebene Kindprozesse auf; geerbte Trace-Schalter werden entfernt; unterschiedliche Prozessrichtlinien werden nicht dedupliziert; der eigenständige Force Push zeigt und bindet die effektive Adresse und stoppt bei Adresswechsel.",
+        "summary": "Git-Konfliktaktionen respektieren die app-weiten Dateioperationssperren und können keine parallel laufende Hex-Speicherung überholen.",
         "tests": [
-          "Fail-before: abgekoppelter Helfer lebte weiter, Trace-Variablen blieben erhalten, verschieden konfigurierte Reads wurden dedupliziert und ein Adresswechsel leitete Force Push um. Danach build.sh samt Portabilitätsprüfung, 298 Git-Tests, Lokalisierungs- und Hilfe-Audit grün. Vollsuite: 1854 Tests, zwei lastbedingte 20-s-Ausreißer; beide isoliert grün in 1,221 s und 1,490 s. Fenster-Selbsttests nicht gegen die laufende installierte Nutzerinstanz ausgeführt."
+          "Weemac: vollständiges app/test.sh grün; AtomicFileCommitTests und HexEditLifecycleTests grün."
         ]
       }
     },
@@ -308,16 +312,16 @@
       "reason": "Fenstergebundener Dokumentzustand, Persistenz und Wiederherstellung koordinieren zahlreiche asynchrone Produktpfade.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T16:56:24+02:00",
-        "observed_head": "364e28a8f7f0901fcdc7881e26e796824ba5ffc3",
-        "content_sha256": "46546af23c9f080127faebf1bbbd270d1da8ce924c0eef6df9e1cad4250e2e49",
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-25T23:08:29+02:00",
+        "observed_head": "ec15e86db63927185f3f1a0607dfa0e4d4dfa630",
+        "content_sha256": "f98faf9bf9b0e77b465cfe6df34208ffa9fa323396ba51179970a1586d5eb33e",
         "file_count": 23,
         "review": "delta-plus-boundaries",
-        "outcome": "reviewed-clean",
-        "summary": "Workspace-Delta seit dem Full-Review vollständig geprüft: Geöffnet-Einzel-Ersetzen, Projektliste, Suchverlauf und Suchordner arbeiten über klar begrenzte Workspace-Helfer; alle fensterübergreifenden Hinzufüge-/Änderungspfade lesen vor dem Schreiben den gemeinsamen Store. Direkte Mutationsvarianten und Store-Grenzen projektweit gesucht; bewusste globale Löschbefehle bleiben korrekt, kein neuer Fehler oder tragfähiger Refactor belegt.",
+        "outcome": "improved",
+        "summary": "Workspace besitzt Hex-Sitzung, Dirty-Schutz, Aktionskontexte, Reload- und Mehrfenster-Invalidierung; direkte Byte-Edits veröffentlichen genau eine Zustandsänderung.",
         "tests": [
-          "Übernahme-Build Exit 0; 1870 nicht blockierte Unit-Tests mit zwei isoliert grünen Last-Ausreißern. Bereichsgezielt: vier Mehrfenster-Regressionen für Dateien, Projekte, Suchverlauf und Suchordner 4/4 grün, Exit 0."
+          "Weemac: 36 HexEditLifecycleTests sowie vollständiges app/test.sh (2059+104) grün."
         ]
       }
     },
@@ -350,17 +354,16 @@
       "reason": "Build-Patches, portable Ressourcen, Signierung und Veröffentlichung schützen die ausgelieferte App und öffentliche Historie.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T18:58:18+02:00",
-        "observed_head": "fb52a6691cf84ed65f47e95db2ba6c6b02b9faee",
-        "content_sha256": "f3c33568bdadaf9d7a57062abfa701e51bd6d636d623a5e98389ea2d37a2dbdd",
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-25T23:26:23+02:00",
+        "observed_head": "a9b5882045e452133f8ef8d984d018a225f0b94c",
+        "content_sha256": "492106d91aa3100db5b41b32ab4cd1bba4431d3758fa3175f4d745ea42b5d364",
         "file_count": 20,
         "review": "delta-plus-boundaries",
-        "outcome": "reviewed-clean",
-        "summary": "Versionsdelta 1.99.0/188 und angrenzenden Bundle-, Signatur-, Window-Targeting- und Portabilitätspfad erneut geprüft; keine weitere Änderung nötig",
+        "outcome": "improved",
+        "summary": "Version 1.112.6/213 kennzeichnet die korrigierten Kontextbindungen eindeutig; Paket-Build und Portabilitätsprüfung blieben grün.",
         "tests": [
-          "build.sh einschließlich gepacktem Bundle und Portabilitätsprüfung: passed",
-          "Bundle Info.plist: 1.99.0 (188)"
+          "Weemac: app/build.sh einschließlich window-targeting-audit und verify-portable-app.sh grün; app/test.sh 2063+104 grün."
         ]
       }
     },
@@ -404,23 +407,20 @@
       "risk": "high",
       "priority": 6,
       "reason": "AppKit-/CodeEdit-Integration, Auswahl, Umbruch und Layout enthalten mehrere dokumentierte Absturz- und Koordinatenfallen.",
-      "state": "pending",
+      "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T16:59:10+02:00",
-        "observed_head": "324b92adf599a1a4e6d06a0d66453f7644906ffd",
-        "content_sha256": "21090002770a7c173c9662f94579fce694c9bf8903af6147fcc6f5f37cc1d968",
-        "file_count": 32,
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-25T23:26:23+02:00",
+        "observed_head": "a9b5882045e452133f8ef8d984d018a225f0b94c",
+        "content_sha256": "42ff9938d0a0a77c8d1dd873624ef66c8b2c37cec289180d826d1604f39ed60b",
+        "file_count": 33,
         "review": "delta-plus-boundaries",
-        "outcome": "reviewed-clean",
-        "summary": "Editor-Delta seit dem Full-Review vollständig geprüft: Markdown-Formatbefehle bestimmen TextView und Workspace gemeinsam über CommandTargeting; die Erstnutzungsbenachrichtigung trägt die Workspace-Identität und nur die zugehörige EditorView reagiert. Alle Sender, Empfänger und Format-Aufrufer projektweit geprüft; kein ungebundener Restpfad oder sinnvoller Vereinfachungsbedarf belegt.",
+        "outcome": "improved",
+        "summary": "Asynchrone tool4d-Diagnosen binden Discovery, LSP-Antwort, Alarm und Sprung an Dokumentidentität, kanonische Pfade, Inhaltsrevision und Projektgeneration; der bestehende Auswahlanker-Regressionspfad ist abgedeckt.",
         "tests": [
-          "Markdown-Erstnutzung adressiert nur den auslösenden Workspace: 1/1 grün, Exit 0; window-targeting-audit.sh PASS, Exit 0; Übernahme-build.sh einschließlich realer Portabilitätsprüfung Exit 0."
+          "Weemac: tool4DLintLease-Regressionstest und vollständiges app/test.sh mit 2063+104 Tests grün; unabhängiger Nachreview ohne weiteren Fund."
         ]
-      },
-      "pending_paths": [
-        "app/Tests/FastraTests/StaleSelectionPivotTests.swift"
-      ]
+      }
     },
     {
       "id": "markdown-render-import",
@@ -457,16 +457,16 @@
       "reason": "Markdown rendert lokale Inhalte in WebKit und importiert Dateien; Pfad-, Cache- und HTML-Grenzen sind sicherheitsrelevant.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T18:23:09+02:00",
-        "observed_head": "627addec36b4cc29cb07de6039d713b6390f7899",
-        "content_sha256": "90a5b4e747293583d0804ad80b092287b2050dbdbfe3af6cdd3fccb526234d5a",
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-25T23:26:23+02:00",
+        "observed_head": "a9b5882045e452133f8ef8d984d018a225f0b94c",
+        "content_sha256": "77e41e8d32c5c0e6e572a21b1a1ddb9d7480944fd982596f72a3dd8179b0dc4c",
         "file_count": 26,
         "review": "delta-plus-boundaries",
-        "outcome": "reviewed-clean",
-        "summary": "Seit dem vollständigen P7-Review änderte sich ausschließlich der Bestätigungstitel im Tabellen-Dialog: Er verwendet den bereits vorhandenen eindeutigen Schlüssel Tabelle einfügen und löst damit englisch Insert Table auf. Dialogablauf, Tabellen-Erzeugung, Erstnutzungsrouting und Lokalisierungsgrenzen geprüft; kein weiterer Fehler oder Vereinfachungsbedarf belegt.",
+        "outcome": "improved",
+        "summary": "Die mitgelieferte deutsche und englische Hilfe beschreibt den dokumentgebundenen Hex-Änderungszustand; Render-/Importcode blieb unverändert.",
         "tests": [
-          "31 MarkdownEditing- und Localization-Tests grün; localization-audit.sh mit 1324 eindeutigen englischen Einträgen und plutil für den Katalog grün. Der übergeordnete build.sh-Lauf einschließlich portabler Ordnersuche war bereits für denselben Produktcommit grün."
+          "Weemac: app/build.sh mit Portable-Gate und vollständiges app/test.sh grün; help-audit --release grün."
         ]
       }
     },
@@ -504,24 +504,20 @@
       "risk": "high",
       "priority": 8,
       "reason": "Diff-, Verlauf- und Konfliktansichten müssen große und mehrdeutige Git-Zustände korrekt und verständlich darstellen.",
-      "state": "pending",
+      "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T134823378515+0200",
-        "completed_at": "2026-08-15T16:10:12+02:00",
-        "observed_head": "c0036819ac5ac14360446763f3a39145bac1e4db",
-        "content_sha256": "0b983ae1f98be7441e2132712128a84dde306156c6dfd7b094fde76ff85dd7f4",
-        "file_count": 25,
-        "review": "full",
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-25T23:26:23+02:00",
+        "observed_head": "a9b5882045e452133f8ef8d984d018a225f0b94c",
+        "content_sha256": "226bd50cab712ea3e5ddb2aea2f9e7b429632c33953dffaf7aeed342a462d9f5",
+        "file_count": 27,
+        "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Alle 25 zugeordneten Pfade (8.034 Zeilen) vollständig geprüft. FileDiff zerlegte CRLF mit CharacterSet.newlines in zwei Trenner und erzeugte Phantom-Leerzeilen sowie falsche Zeilennummern. Auf NSString-getLineStart-basierte logische Zeilenzerlegung umgestellt, Regression ergänzt, Version 1.90.0/Build 179 und Changelog aktualisiert. Keine weiteren ausreichend belegten Fehler in strukturiertem Git-Diff, Konfliktanzeige, Verlauf, großen oder unversionierten Dateien.",
+        "summary": "Dateiverlauf behandelt Sonderpfade wörtlich, zeigt nach einem Refresh-Fehler keine veralteten Zeilen und bewahrt dabei den Aufklappzustand für einen Retry; der Vergleichsdialog validiert Tab-Eignung unmittelbar vor der Übernahme.",
         "tests": [
-          "Fail-first: crlfDoesNotCreatePhantomRows meldete 5 statt 3 Zeilen und 4 Issues; nach Fix grün. build.sh grün; 138 Bereichstests einschließlich realer temporärer Git-Repositories grün; localization-audit und verify-portable-app grün. Gesamtsuite: 1.885 Tests, 10 Issues: fünf erwartete SelfTestPerformance-Issues wegen laufender installierter Fastra-App (selftest.sh Exit 2) sowie zwei unter Gesamtauslastung abgelaufene reale Git-Tests; beide isoliert grün (0,801 s / 0,544 s). Hilfe in DE/EN geprüft, keine Textänderung nötig; help-audit --release grün."
+          "Weemac: 7 Dateiverlaufstests, Vergleichsregressionen und vollständiges app/test.sh mit 2063+104 Tests grün; unabhängiger Re-Review abgeschlossen."
         ]
-      },
-      "pending_paths": [
-        "app/Sources/Fastra/GitFileHistory.swift",
-        "app/Tests/FastraTests/GitFileHistoryTests.swift"
-      ]
+      }
     },
     {
       "id": "app-lifecycle-window-commands",
@@ -551,18 +547,16 @@
       "reason": "Fensterziel, Befehlsrouting und App-Lebenszyklus dürfen bei mehreren Dokumentfenstern keinen fremden Workspace treffen.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T17:08:21+02:00",
-        "observed_head": "5a9e0ed97321d0b2644f01cc92b958661520595f",
-        "content_sha256": "42bbaaa140983983879f84eb4a415589142a06afb920361d65f00282b6120aff",
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-25T23:08:10+02:00",
+        "observed_head": "ec15e86db63927185f3f1a0607dfa0e4d4dfa630",
+        "content_sha256": "fe5f093710a560be2173d447efe5da14b3decc35ae1052d2abe4c6d3b2225946",
         "file_count": 19,
-        "review": "full",
+        "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Finder-/Dock-Öffnen wählt bei einem gemeinsam registrierten Such- und Dokumentfenster ausdrücklich das Dokument; fensterloser Regressionstest ergänzt.",
+        "summary": "Schließen, Beenden, Home und Fensterrouting erkennen dokumentgebundene Hex-Änderungen und bestätigen oder verwerfen sie am richtigen Workspace.",
         "tests": [
-          "./test.sh --filter P9-Auswahl: 68 Tests in 3 Suiten bestanden",
-          "./window-targeting-audit.sh: bestanden",
-          "./build.sh: Build, Signatur und portable Ordnersuche bestanden"
+          "Weemac: 36 HexEditLifecycleTests und vollständiges app/test.sh grün; window-targeting-audit grün."
         ]
       }
     },
@@ -587,22 +581,18 @@
       "risk": "high",
       "priority": 10,
       "reason": "Projektbaum, Dateiwächter und externe Terminalübergabe verbinden Dateisystemereignisse mit sichtbarem Zustand.",
-      "state": "pending",
+      "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T17:22:10+02:00",
-        "observed_head": "f03feaaa32a600ecb98e04f20e5ddaf02a260a2f",
-        "content_sha256": "b0b0e81876117e30cb12c6ebfd9da60e044de39fb30103ac5d4e01a6d39c6eb4",
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-25T23:08:30+02:00",
+        "observed_head": "ec15e86db63927185f3f1a0607dfa0e4d4dfa630",
+        "content_sha256": "bc2fed34eb883e9ca9977c599e680745b8d6ef4388d079af0dd4fb850ca9a54c",
         "file_count": 14,
-        "review": "full",
+        "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Projekt-Seitenleiste, Dateibaum, Filter, Projektpersistenz, Datei-Wächter, Terminalöffnung und zugehörige Tests vollständig geprüft. Überholte Filterläufe geben den Abbruch nun an ihren abgelösten Scan weiter; Nachbarordner-Auswahlen tragen den Workspace des auslösenden Fensters statt eines überschreibbaren Singleton-Ziels.",
+        "summary": "Verschieben und Papierkorb sperren betroffene Dateien gegen paralleles Hex-Speichern und entfernen keine noch ladenden Tabs verspätet aus dem Zustand.",
         "tests": [
-          "Fail-before: Der abgelöste Scan beobachtete den Abbruch nicht; nach Weitergabe bestand die Regression in 0,009 s.",
-          "Fail-before: Nach erneuter Bindung des Menü-Presenters zeigte die erste Auswahl auf den zweiten Workspace; die Auswahl trägt nun ihr ursprüngliches Ziel.",
-          "./test.sh mit P10-Auswahl: 82 Tests in einer Suite bestanden.",
-          "./build.sh: Build, Fensterziel-Audit, Signatur und portable Ordnersuche bestanden; Bundle 1.93.0/182.",
-          "./localization-audit.sh und ./help-audit.sh: bestanden."
+          "Weemac: HexEditLifecycleTests und vollständiges app/test.sh grün."
         ]
       }
     },
@@ -841,18 +831,16 @@
       "reason": "Einstellungen, Ressourcen, Hilfe und Lokalisierung müssen vollständig und aus dem gepackten Bundle verfügbar bleiben.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T18:58:28+02:00",
-        "observed_head": "fb52a6691cf84ed65f47e95db2ba6c6b02b9faee",
-        "content_sha256": "bb6428bf323c4d022cff905ef9819f68bde755bc366007197c06496034425c70",
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-25T23:26:24+02:00",
+        "observed_head": "a9b5882045e452133f8ef8d984d018a225f0b94c",
+        "content_sha256": "50a31c5a68daa1f85a320ae17ec1ea1af6e09f3a2f5663e69bcc7a285bfa27ec",
         "file_count": 21,
         "review": "delta-plus-boundaries",
-        "outcome": "reviewed-clean",
-        "summary": "Neue XPath-Fehlermeldung sowie deutsche und englische Hilfe mit Katalog-, Bundle- und Markergrenzen erneut geprüft; vollständig und konsistent",
+        "outcome": "improved",
+        "summary": "Der neue Vergleichsfehler ist vollständig deutsch/englisch lokalisiert; Hilfe-Inhalt und Review-Marker sind bis zum Produktcommit geprüft.",
         "tests": [
-          "XPath/Localization/HelpContent: 33/33 passed",
-          "localization-audit.sh: passed",
-          "help-audit.sh --release: passed"
+          "Weemac: localization-audit 395 SwiftUI-Strings, 846 L10n-Literale und 1457 englische Übersetzungen grün; help-audit --release grün."
         ]
       }
     },
@@ -1113,9 +1101,20 @@
         "app/Sources/Fastra/Workspace.swift"
       ],
       "priority": 1,
-      "state": "pending",
+      "state": "completed",
       "noted_at": "2026-08-25T20:00:49+02:00",
-      "campaign_id": "20260825T163605228103+0200"
+      "campaign_id": "20260825T163605228103+0200",
+      "started_at": "2026-08-25T21:04:00+02:00",
+      "completed": {
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-25T23:05:37+02:00",
+        "observed_head": "ec15e86db63927185f3f1a0607dfa0e4d4dfa630",
+        "summary": "Hex-Änderungen leben dokumentgebunden mit Delta-Undo, stabiler Basisgeneration und appweiten Pfadsperren; Schließen, Reload, Fremdänderungen, Save, Apply, Umbenennen und Papierkorb schützen oder synchronisieren den sichtbaren Stand.",
+        "tests": [
+          "Weemac: build.sh einschließlich Portabilitätsgate und 36 HexEditLifecycleTests bestanden",
+          "Weemac: test.sh mit 2059 schnellen und 104 seriellen Tests, beide Phasen bestanden, keine Umgebungsfehler"
+        ]
+      }
     },
     {
       "id": "paged-read-snapshot-consistency",
