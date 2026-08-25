@@ -79,7 +79,10 @@ private final class UnitTestRunnerFixture {
             if [ "$call" -eq 2 ]; then
               /bin/chmod 500 "$(/usr/bin/dirname "$TMPDIR")"
             fi
-            exit 0
+            if [ "$call" -eq 1 ]; then
+              exit "${FASTRA_TEST_STATUS_1:-0}"
+            fi
+            exit "${FASTRA_TEST_STATUS_2:-0}"
             ;;
           *)
             exit 98
@@ -201,6 +204,33 @@ struct SerialRunnerIntegrationTests {
         #expect(gitFailure.sandboxIsEmpty)
     }
 
+    @Test("Aufruferfilter bleibt in beiden Phasen eine Schnittmenge")
+    func callerFilterIntersectsPhaseFilter() throws {
+        let fixture = try UnitTestRunnerFixture()
+        let result = try fixture.run(arguments: [
+            "--filter", "(?<probe>SelfTestOutcomeTests)",
+            "--filter=(?<probe>UnitTestRunnerTests)",
+        ])
+
+        #expect(result.status == 0, "Runner-Ausgabe: \(result.output)")
+        let calls = try fixture.calls()
+        #expect(calls.count == 2)
+        #expect(calls[0].arguments == [
+            "test", "--parallel", "--skip",
+            "[Gg]itIntegration|[Ss]erialRunnerIntegration",
+            "--filter", "(?<probe>SelfTestOutcomeTests)",
+            "--filter", "(?<probe>UnitTestRunnerTests)",
+        ])
+        #expect(calls[1].arguments == [
+            "test", "--no-parallel", "--filter",
+            "^(?=.*(?:[Gg]itIntegration|[Ss]erialRunnerIntegration))"
+                + "(?=.*(?:(?<probe>SelfTestOutcomeTests))).*$",
+            "--filter",
+            "^(?=.*(?:[Gg]itIntegration|[Ss]erialRunnerIntegration))"
+                + "(?=.*(?:(?<probe>UnitTestRunnerTests))).*$",
+        ])
+    }
+
     @Test("Erste Phase räumt verwaiste Kinder vor der Git-Phase auf")
     func phaseCleanupPreventsProcessOverlap() throws {
         let fixture = try UnitTestRunnerFixture()
@@ -230,5 +260,18 @@ struct SerialRunnerIntegrationTests {
         #expect(cleanup.output.contains("Test-Sandbox konnte nicht entfernt werden"))
         #expect(cleanup.output.contains("environment_errors=1 exit=2"))
         #expect(try cleanupFailure.calls().count == 2)
+    }
+
+    @Test("Funktionsfehler gewinnt auch bei späterem Cleanup-Problem")
+    func functionalFailureWinsOverLaterCleanupFailure() throws {
+        let fixture = try UnitTestRunnerFixture()
+        let result = try fixture.run(
+            mode: "cleanup-failure", firstStatus: 7
+        )
+
+        #expect(result.status == 1, "Runner-Ausgabe: \(result.output)")
+        #expect(result.output.contains("failed_phases=1"))
+        #expect(result.output.contains("environment_errors=1 exit=1"))
+        #expect(try fixture.calls().count == 2)
     }
 }

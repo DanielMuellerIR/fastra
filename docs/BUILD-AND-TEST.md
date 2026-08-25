@@ -393,11 +393,14 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   Die sichtbaren, lokalisierten Testtitel sind ausdrücklich kein Teil der
   Gruppierung. Für gezielte Runner-Diagnosen stehen `./test.sh --fast-only` und
   `./test.sh --serial-integration-only` bereit; ohne diese Optionen bleibt der
-  Lauf vollständig.
+  Lauf vollständig. Weitergereichte `--filter`-Ausdrücke werden mit dem
+  jeweiligen Phasenmarker geschnitten. Swift 6.3 vereinigt mehrere Filter
+  ansonsten und würde schnelle Zieltests in der seriellen Phase erneut starten.
 - **Maschinenlesbarer Abschluss:** Jede Phase meldet eine
   `FASTRA_TEST_PHASE`-Zeile, der Gesamtlauf eine `FASTRA_TEST_SUMMARY`-Zeile.
-  Funktionsfehler ergeben Exit 1. Exit 2 ist ausschließlich Start-, Sandbox-
-  oder Prozess-Cleanup-Problemen vorbehalten.
+  Funktionsfehler ergeben Exit 1 und behalten Vorrang, falls danach zusätzlich
+  ein Start-, Sandbox- oder Prozess-Cleanup-Problem auftritt. Exit 2 ist
+  ausschließlich solchen Umgebungsproblemen ohne Funktionsfehler vorbehalten.
 - **Workflow:** Tests werden parallel zur Implementierung geschrieben. Eine Phase gilt erst als abgeschlossen, wenn alle Tests grün sind.
 - **Coverage:** über 700 Tests; Schwerpunkte sind RegEx-/Platzhalter-Parsing,
   Capture Groups, Find/Replace, Datei-/Projekt-/Git-Logik, Encoding,

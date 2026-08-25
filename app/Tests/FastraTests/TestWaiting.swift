@@ -40,12 +40,28 @@ func waitUntil(timeout seconds: TimeInterval = 5,
     let latestEnd = started.addingTimeInterval(seconds + 20)
     var observed: TimeInterval = 0
     var lastPoll = started
-    while !condition() {
+    while true {
+        guard !Task.isCancelled else { return false }
+        if condition() {
+            // Die Bedingung selbst kann den aktuellen Task abbrechen. Auch
+            // dann ist Abbruch das Ergebnis und kein später Erfolg.
+            return !Task.isCancelled
+        }
         let now = Date()
         observed += min(now.timeIntervalSince(lastPoll), maximumCountedGap)
         lastPoll = now
         guard observed < seconds, now < latestEnd else { return false }
-        try? await Task.sleep(nanoseconds: UInt64(pause * 1_000_000_000))
+        do {
+            try await Task.sleep(nanoseconds: UInt64(pause * 1_000_000_000))
+        } catch is CancellationError {
+            // Ein abgebrochener Test darf die Bedingung nicht weiter pollen.
+            // Die Bool-Schnittstelle bildet den Abbruch wie eine gerissene
+            // Frist auf `false` ab; der aufrufende Task bleibt abgebrochen.
+            return false
+        } catch {
+            // `Task.sleep` wirft derzeit nur bei Abbruch. Falls sich diese
+            // Zusage ändert, endet der Testhelfer trotzdem kontrolliert.
+            return false
+        }
     }
-    return true
 }
