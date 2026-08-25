@@ -131,6 +131,10 @@ enum FourDTokenTransform {
             guard token.range.location >= claimedUntil else { continue }
             let value = original.substring(with: token.range)
             guard !value.contains(":") else { continue }   // schon tokenisiert
+            // Ein aus einem Befehlsvorkommen gelerntes Suffix darf denselben
+            // Namen nicht in einer Typdeklaration tokenisieren (`Date` und
+            // `Time` sind zugleich 4D-Befehle und Typen).
+            guard !isDeclarationType(token, in: original) else { continue }
             if let match = learnedMatch(at: token.range.location,
                                         tokenValue: value,
                                         in: original,
@@ -139,7 +143,6 @@ enum FourDTokenTransform {
                 insertions.append((end, match.suffix))
                 claimedUntil = end
             } else if token.kind == .command,
-                      !isDeclarationType(token, in: original),
                       let number = FourDSymbols
                           .commandDetails[value.lowercased()]?.number {
                 insertions.append((NSMaxRange(token.range), ":C\(number)"))

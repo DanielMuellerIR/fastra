@@ -76,13 +76,21 @@ final class FourDProjectIndexController {
     private var watcher: (any FourDProjectWatching)?
     private var scanTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Never>?
+    private var runningScanSessionID: UUID?
+    private var pendingRescan = false
+    private var rescanDebounceElapsed = false
     private var activeProjectURL: URL?
     private var activeProjectGeneration: UInt64?
     private var activeSessionID: UUID?
     private var snapshotHandler: SnapshotHandler?
 
     init(
-        scanProject: @escaping ScanProject = FourDMethodIndexSnapshot.scan,
+        // Die explizite Closure ist als `@Sendable` kontextualisiert. Eine
+        // nackte Referenz auf die synchrone statische Funktion erzeugt unter
+        // Swift 6 dagegen eine Sendable-Warnung, obwohl sie nichts einfängt.
+        scanProject: @escaping ScanProject = { projectURL in
+            FourDMethodIndexSnapshot.scan(projectURL: projectURL)
+        },
         makeWatcher: @escaping MakeWatcher = { ProjectFileWatcher(rootURL: $0) },
         debounceNanoseconds: UInt64 = 180_000_000
     ) {
@@ -136,6 +144,9 @@ final class FourDProjectIndexController {
         scanTask = nil
         debounceTask?.cancel()
         debounceTask = nil
+        runningScanSessionID = nil
+        pendingRescan = false
+        rescanDebounceElapsed = false
         watcher?.onRefresh = nil
         watcher?.stop()
         watcher = nil
@@ -148,6 +159,11 @@ final class FourDProjectIndexController {
         guard let sessionID = activeSessionID else { return }
         guard matches(root: projectURL, generation: projectGeneration,
                       sessionID: sessionID) else { return }
+        // Die laufende synchrone Dateisystemsuche kann Task-Cancellation nicht
+        // beobachten. Änderungen werden deshalb sofort als Folgescan gemerkt,
+        // während der Debounce nur noch dessen frühesten Start bestimmt.
+        pendingRescan = true
+        rescanDebounceElapsed = false
         debounceTask?.cancel()
         let delay = debounceNanoseconds
         debounceTask = Task { @MainActor [weak self] in
@@ -159,9 +175,11 @@ final class FourDProjectIndexController {
             guard !Task.isCancelled, let self,
                   self.matches(root: projectURL, generation: projectGeneration,
                                sessionID: sessionID) else { return }
-            self.startScan(projectURL: projectURL,
-                           projectGeneration: projectGeneration,
-                           sessionID: sessionID)
+            self.debounceTask = nil
+            self.rescanDebounceElapsed = true
+            self.startPendingScan(projectURL: projectURL,
+                                  projectGeneration: projectGeneration,
+                                  sessionID: sessionID)
         }
     }
 
@@ -169,7 +187,14 @@ final class FourDProjectIndexController {
     /// noch aktuellen, vollständigen Snapshot auf dem Main-Actor zurück.
     private func startScan(projectURL: URL, projectGeneration: UInt64,
                            sessionID: UUID) {
-        scanTask?.cancel()
+        // Ein synchroner Scan läuft trotz Task-Cancellation bis zum Ende. Pro
+        // Projektsitzung darf deshalb nur einer aktiv sein; weitere Änderungen
+        // werden von `startPendingScan` zu genau einem Folgelauf gebündelt.
+        guard runningScanSessionID != sessionID else {
+            pendingRescan = true
+            return
+        }
+        runningScanSessionID = sessionID
         let scanProject = scanProject
         let scan = Task.detached(priority: .utility) {
             scanProject(projectURL)
@@ -180,11 +205,39 @@ final class FourDProjectIndexController {
             } onCancel: {
                 scan.cancel()
             }
-            guard !Task.isCancelled, let self,
+            guard let self,
+                  self.runningScanSessionID == sessionID else { return }
+            self.scanTask = nil
+            self.runningScanSessionID = nil
+            guard !Task.isCancelled,
                   self.matches(root: projectURL, generation: projectGeneration,
                                sessionID: sessionID) else { return }
+            // Hat sich während des Scans etwas geändert, ist sein Ergebnis
+            // möglicherweise aus mehreren Plattenständen zusammengesetzt. Es
+            // bleibt unsichtbar; nach Ablauf des Debounce folgt genau ein Scan.
+            if self.pendingRescan {
+                self.startPendingScan(projectURL: projectURL,
+                                      projectGeneration: projectGeneration,
+                                      sessionID: sessionID)
+                return
+            }
             self.snapshotHandler?(projectURL, projectGeneration, snapshot)
         }
+    }
+
+    /// Startet einen gemerkten Folgescan erst, wenn sowohl der vorherige Scan
+    /// beendet als auch das Debounce-Fenster abgelaufen ist.
+    private func startPendingScan(projectURL: URL, projectGeneration: UInt64,
+                                  sessionID: UUID) {
+        guard pendingRescan, rescanDebounceElapsed,
+              runningScanSessionID == nil,
+              matches(root: projectURL, generation: projectGeneration,
+                      sessionID: sessionID) else { return }
+        pendingRescan = false
+        rescanDebounceElapsed = false
+        startScan(projectURL: projectURL,
+                  projectGeneration: projectGeneration,
+                  sessionID: sessionID)
     }
 
     private func matches(root: URL, generation: UInt64,

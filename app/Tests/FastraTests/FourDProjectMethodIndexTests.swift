@@ -113,6 +113,44 @@ func fourDProjectIndexController_debouncesBundledChanges() async throws {
     #expect(snapshot.componentMethods["component_nachtrag"] != nil)
 }
 
+@Test("Änderungen während eines blockierten Indexscans erzeugen nur einen Folgescan")
+@MainActor
+func fourDProjectIndexController_coalescesRefreshesDuringScan() async throws {
+    let root = URL(fileURLWithPath: "/tmp/fastra-4d-coalesce-\(UUID().uuidString)")
+    let scanner = FirstBlockingFourDScanner()
+    let watchers = TestFourDWatcherFactory()
+    let controller = FourDProjectIndexController(
+        scanProject: { scanner.scan(root: $0) },
+        makeWatcher: watchers.make,
+        debounceNanoseconds: 10_000_000
+    )
+    defer {
+        scanner.releaseFirstScan()
+        controller.stop()
+    }
+    var deliveries: [FourDMethodIndexSnapshot] = []
+    controller.start(projectURL: root, projectGeneration: 1) { _, _, snapshot in
+        deliveries.append(snapshot)
+    }
+    #expect(await waitUntil(timeout: fourDIndexWait) { scanner.firstScanStarted })
+    let watcher = try #require(watchers.created.first)
+
+    // Jeder Abstand übersteigt das Debounce-Fenster. Der alte Aufbau hätte
+    // deshalb drei weitere synchrone Scans parallel zum blockierten gestartet.
+    for _ in 0..<3 {
+        watcher.refresh()
+        try await Task.sleep(nanoseconds: 30_000_000)
+    }
+    #expect(scanner.count == 1)
+    #expect(deliveries.isEmpty)
+
+    scanner.releaseFirstScan()
+    #expect(await waitUntil(timeout: fourDIndexWait) {
+        scanner.count == 2 && deliveries.count == 1
+    })
+    #expect(deliveries.first?.projectMethodNames == ["scan-2"])
+}
+
 @Test("Projektwechsel während eines Scans verwirft das alte Ergebnis")
 @MainActor
 func fourDProjectIndexController_switchDuringScan() async throws {
@@ -416,6 +454,41 @@ private final class BlockingFourDScanner: @unchecked Sendable {
     }
 
     func releaseBlockedScan() {
+        let shouldRelease = lock.withLock { () -> Bool in
+            guard !didRelease else { return false }
+            didRelease = true
+            return true
+        }
+        if shouldRelease { release.signal() }
+    }
+}
+
+/// Blockiert nur den ersten Scan. So lässt sich prüfen, dass beliebig viele
+/// Refreshes währenddessen genau einen unbehinderten Folgescan erzeugen.
+private final class FirstBlockingFourDScanner: @unchecked Sendable {
+    private let lock = NSLock()
+    private let release = DispatchSemaphore(value: 0)
+    private var scanCount = 0
+    private var started = false
+    private var didRelease = false
+
+    var count: Int { lock.withLock { scanCount } }
+    var firstScanStarted: Bool { lock.withLock { started } }
+
+    func scan(root: URL) -> FourDMethodIndexSnapshot {
+        let number = lock.withLock { () -> Int in
+            scanCount += 1
+            if scanCount == 1 { started = true }
+            return scanCount
+        }
+        if number == 1 { release.wait() }
+        return FourDMethodIndexSnapshot(
+            projectMethodDisplayNames: ["scan-\(number)": "scan-\(number)"],
+            componentMethods: [:]
+        )
+    }
+
+    func releaseFirstScan() {
         let shouldRelease = lock.withLock { () -> Bool in
             guard !didRelease else { return false }
             didRelease = true

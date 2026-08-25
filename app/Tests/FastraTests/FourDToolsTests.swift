@@ -138,6 +138,20 @@ func tokenRoundtrip() {
     #expect(FourDTokenTransform.detokenize(plain) == plain)
 }
 
+@Test("Gelernte Date- und Time-Suffixe bleiben aus Typdeklarationen heraus")
+func retokenizeDoesNotTokenizeDeclarationTypes() {
+    let original = """
+    Date:C102
+    Time:C179
+    var $date : Date
+    #DECLARE($time : Time)
+    """
+    let learned = FourDTokenTransform.learnedSuffixes(from: original)
+    let detokenized = FourDTokenTransform.detokenize(original)
+
+    #expect(FourDTokenTransform.retokenize(detokenized, learned: learned) == original)
+}
+
 @Test("Token-Suffix-Erkennung: nur echte :Cnnn/:Knnn(-Formen)")
 func tokenSuffixShapes() {
     #expect(FourDTokenTransform.isTokenSuffix(":C41"))

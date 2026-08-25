@@ -9,6 +9,18 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.112.7] — 2026-08-25
+
+### Behoben
+
+- **4D-Typen bleiben bei der Rücktokenisierung unverändert.** Aus einem
+  Befehlsvorkommen gelernte Suffixe für `Date` oder `Time` werden nicht mehr in
+  `var`- oder `#DECLARE`-Typangaben eingesetzt.
+- **Der 4D-Projektindex bündelt Änderungen während eines laufenden Scans.** Da
+  der synchrone Dateisystemscan nicht mitten im Lauf abbrechen kann, startet
+  Fastra nun höchstens einen Folgescan statt mehrerer paralleler Vollscans und
+  veröffentlicht keinen möglicherweise gemischten Zwischenstand.
+
 ## [v1.112.6] — 2026-08-25
 
 ### Behoben
