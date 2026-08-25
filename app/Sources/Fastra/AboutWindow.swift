@@ -34,7 +34,7 @@ enum AboutWindow {
         if let existing = window {
             // Fenster existiert noch — nach vorne bringen.
             existing.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: false)
+            SelfTest.activateApplication(ignoringOtherApps: false)
             return
         }
 
@@ -71,7 +71,7 @@ enum AboutWindow {
 
         self.window = w
         w.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: false)
+        SelfTest.activateApplication(ignoringOtherApps: false)
     }
 }
 

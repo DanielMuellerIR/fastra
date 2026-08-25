@@ -31,7 +31,7 @@ enum HelpWindow {
     static func show(anchor: String? = nil) {
         if let existing = window, let webView = currentWebView {
             existing.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: false)
+            SelfTest.activateApplication(ignoringOtherApps: false)
             if let anchor { coordinator?.scroll(to: anchor, in: webView) }
             return
         }
@@ -74,7 +74,7 @@ enum HelpWindow {
         window = w
         w.center()
         w.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: false)
+        SelfTest.activateApplication(ignoringOtherApps: false)
     }
 
     /// Enger Fenster-Typ-Check für das globale ⌘W-Routing. Der feste

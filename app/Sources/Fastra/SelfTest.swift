@@ -98,6 +98,20 @@ enum SelfTestFocusRouting {
     }
 }
 
+/// Normale Produktaufrufe und manuelle Selbsttest-Starts dürfen Fastra
+/// unverändert nach vorn holen. Der Runner kann Aktivierung für ausdrücklich
+/// hintergrundfähige Tests sperren; diese können dann auch produktive
+/// Fenster-Helfer verwenden, ohne die gerade benutzte App zu verdrängen.
+enum SelfTestActivationPolicy {
+    static func allowsActivation(
+        isSelfTestRun: Bool,
+        environment: [String: String]
+    ) -> Bool {
+        guard isSelfTestRun else { return true }
+        return environment["FASTRA_SELFTEST_ALLOW_ACTIVATION"] != "0"
+    }
+}
+
 /// Ein abweichender Zähler zusammen mit fremdem Inhalt belegt einen externen
 /// Zwischenablagezugriff. Bleibt dagegen genau der erwartete Testinhalt liegen
 /// oder ist er nicht lesbar, hat der Test seinen eigenen Schreibvorgang nicht
@@ -194,6 +208,16 @@ enum SelfTest {
     /// (siehe `workspaceDefaults()`).
     static var isSelfTestRun: Bool {
         requestedTest != nil
+    }
+
+    /// Einziger Aktivierungspfad für Produktfenster und Selbsttests. Der
+    /// Runner sperrt ihn nur für ausdrücklich hintergrundfähige Tests.
+    static func activateApplication(ignoringOtherApps: Bool) {
+        guard SelfTestActivationPolicy.allowsActivation(
+            isSelfTestRun: isSelfTestRun,
+            environment: ProcessInfo.processInfo.environment
+        ) else { return }
+        NSApp.activate(ignoringOtherApps: ignoringOtherApps)
     }
 
     /// Diagnose: AppKit-`hitTest`-Kette des letzten synthetischen Klicks —
@@ -931,7 +955,7 @@ enum SelfTest {
     /// Führt den ECHTEN Menüpunkt mit ⌘N aus und prüft danach zwei Dinge, die
     /// ein reiner Unit-Test nicht sehen kann: Es erscheint ein zweites Fenster,
     /// und dessen neuer Workspace teilt seinen Inhalt nicht mit dem ersten.
-    private static func runNewWindowTest() {
+    private static func runNewWindowTest(focusedCommandRouting: Bool = false) {
         guard let original = Workspace.shared else {
             finish(false, "kein aktiver Ausgangs-Workspace")
         }
@@ -976,7 +1000,8 @@ enum SelfTest {
             original: original,
             originalWindow: mainWindow,
             marker: marker,
-            expectedSize: expectedSize
+            expectedSize: expectedSize,
+            focusedCommandRouting: focusedCommandRouting
         )
     }
 
@@ -1191,11 +1216,14 @@ enum SelfTest {
         originalWindow: NSWindow,
         marker: String,
         expectedSize: NSSize,
+        focusedCommandRouting: Bool,
         tick: Int = 0
     ) {
         let newWorkspace = Workspace.allLive.first { $0 !== original }
         let newWindow = NSApp.windows.first {
-            $0.identifier?.rawValue == "Fastra.DocumentWindow" && $0.isVisible
+            $0 !== originalWindow
+                && $0.identifier?.rawValue == "Fastra.DocumentWindow"
+                && $0.isVisible
         }
 
         if let newWorkspace, let newWindow {
@@ -1232,6 +1260,7 @@ enum SelfTest {
                         originalWindow: originalWindow,
                         marker: marker,
                         expectedSize: expectedSize,
+                        focusedCommandRouting: focusedCommandRouting,
                         tick: tick + 1
                     )
                 }
@@ -1239,15 +1268,16 @@ enum SelfTest {
             }
 
             // Nicht bloß den Modellzustand prüfen: Direkt nach dem echten ⌘N
-            // muss die echte CodeEdit-TextView First Responder sein und einen
-            // gültigen Einfügepunkt besitzen. Erst dann kann ein sofortiges
-            // Tippen oder ⌘V im neuen Dokument landen.
+            // muss die echte CodeEdit-TextView vorhanden sein und einen
+            // gültigen Einfügepunkt besitzen. Den First-Responder- und
+            // Befehlsrouting-Teil prüft der fokuspflichtige `cmdw`-Lauf.
             pollForNewWindowEditorFocus(
                 original: original,
                 originalWindow: originalWindow,
                 marker: marker,
                 newWorkspace: newWorkspace,
-                newWindow: newWindow
+                newWindow: newWindow,
+                focusedCommandRouting: focusedCommandRouting
             )
             return
         }
@@ -1261,6 +1291,7 @@ enum SelfTest {
                 originalWindow: originalWindow,
                 marker: marker,
                 expectedSize: expectedSize,
+                focusedCommandRouting: focusedCommandRouting,
                 tick: tick + 1
             )
         }
@@ -1272,30 +1303,40 @@ enum SelfTest {
         marker: String,
         newWorkspace: Workspace,
         newWindow: NSWindow,
+        focusedCommandRouting: Bool,
         tick: Int = 0
     ) {
         let editor = newWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
-        if newWindow.isKeyWindow, let editor,
-           newWindow.firstResponder === editor,
-           editor.selectionManager.textSelections.map(\.range) == [NSRange(location: 0, length: 0)] {
+        let validSelection = editor?.selectionManager.textSelections.map(\.range)
+            == [NSRange(location: 0, length: 0)]
+        let focusReady = !focusedCommandRouting
+            || (newWindow.isKeyWindow && newWindow.firstResponder === editor)
+        if editor != nil, validSelection, focusReady {
             newWorkspace.activeTabContent.wrappedValue = "Inhalt nur im zweiten Fenster"
             guard original.activeTab?.content == marker else {
                 finish(false, "Dokumentinhalt wird zwischen den Fenstern geteilt")
             }
-            guard Workspace.shared === newWorkspace else {
+            if focusedCommandRouting, Workspace.shared !== newWorkspace {
                 finish(false, "neues Fenster ist sichtbar, aber nicht aktiver Workspace")
             }
-
-            // Fokus zurück ins erste Fenster und dort den ECHTEN ⌘T-Shortcut
-            // auslösen. So prüft der Test zusätzlich, dass globale Commands
-            // nach einem Fensterwechsel nicht weiter im zweiten Workspace
-            // landen.
             guard originalWindow.isVisible else {
                 finish(false, "erstes Dokumentfenster nach ⌘N nicht mehr sichtbar")
             }
             guard WorkspaceWindowRegistry.workspace(for: originalWindow) === original else {
                 finish(false, "erstes Fenster ist keinem oder dem falschen Workspace zugeordnet")
             }
+            guard WorkspaceWindowRegistry.workspace(for: newWindow) === newWorkspace else {
+                finish(false, "zweites Fenster ist keinem oder dem falschen Workspace zugeordnet")
+            }
+            guard focusedCommandRouting else {
+                finish(true, "⌘N erzeugt im Hintergrund ein passend großes Fenster mit "
+                    + "unabhängigem Workspace und gültigem Editor-Einfügepunkt")
+            }
+
+            // Fokus zurück ins erste Fenster und dort den ECHTEN ⌘T-Shortcut
+            // auslösen. So prüft `cmdw` zusätzlich, dass globale Commands
+            // nach einem Fensterwechsel nicht weiter im zweiten Workspace
+            // landen.
             let originalTabCount = original.tabs.count
             originalWindow.makeKeyAndOrderFront(nil)
             pollForOriginalWindowActivation(
@@ -1309,10 +1350,10 @@ enum SelfTest {
         }
 
         if tick >= 100 {
-            if !newWindow.isKeyWindow {
+            if focusedCommandRouting, !newWindow.isKeyWindow {
                 finish(.environment, "⌘N-Fenster wurde nie Key-Window (Umgebungsproblem)")
             }
-            finish(false, "⌘N-Fenster hat keinen fokussierten Editor "
+            finish(false, "⌘N-Fenster hat keinen verwendbaren Editor "
                 + "(Editor=\(editor != nil), FirstResponder="
                 + "\(String(describing: newWindow.firstResponder)), "
                 + "Selektionen=\(editor?.selectionManager.textSelections.map(\.range) ?? []))")
@@ -1324,6 +1365,7 @@ enum SelfTest {
                 marker: marker,
                 newWorkspace: newWorkspace,
                 newWindow: newWindow,
+                focusedCommandRouting: focusedCommandRouting,
                 tick: tick + 1
             )
         }
@@ -1365,7 +1407,7 @@ enum SelfTest {
             finish(.environment, "erstes Fenster wurde nie Key-Window (Umgebungsproblem, kein Routing-Fehler)")
         }
         if tick % 10 == 9 {
-            NSApp.activate(ignoringOtherApps: true)
+            activateApplication(ignoringOtherApps: true)
             originalWindow.makeKeyAndOrderFront(nil)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
@@ -1498,7 +1540,8 @@ enum SelfTest {
                     + "des Hintergrundfensters")
             }
             if Workspace.shared === original {
-                finish(true, "⌘N/Fokus/⌘T korrekt; ⌘W schließt letzten Tab samt Fenster")
+                finish(true, "⌘W schließt Suchmaske und Hilfe; ⌘N/Fokus/⌘T korrekt; "
+                    + "⌘W schließt letzten Tab samt Fenster")
             }
         }
         if tick >= 100 {
@@ -1578,7 +1621,7 @@ enum SelfTest {
         firstWorkspace.scope = .file
         secondWorkspace.scope = .file
 
-        NSApp.activate(ignoringOtherApps: true)
+        activateApplication(ignoringOtherApps: true)
         MainActor.assumeIsolated {
             let firstPanel = SearchPanelController(workspace: firstWorkspace)
             let secondPanel = SearchPanelController(workspace: secondWorkspace)
@@ -1781,7 +1824,7 @@ enum SelfTest {
         frontWorkspace.editorReloadNonce += 1
         backWorkspace.editorReloadNonce += 1
 
-        NSApp.activate(ignoringOtherApps: true)
+        activateApplication(ignoringOtherApps: true)
         pollBackgroundScrollEditors(frontWindow: frontWindow,
                                     backWorkspace: backWorkspace,
                                     backWindow: backWindow)
@@ -1845,7 +1888,7 @@ enum SelfTest {
             finish(false, "hinterer Editor wurde vor dem Treffer-Sprung neu aufgebaut")
         }
 
-        NSApp.activate(ignoringOtherApps: true)
+        activateApplication(ignoringOtherApps: true)
         backWindow.makeKeyAndOrderFront(nil)
         let acceptedFirstResponder = backWindow.makeFirstResponder(backTV)
         if backTV.selectionManager.textSelections.isEmpty {
@@ -2128,7 +2171,7 @@ enum SelfTest {
         // App nach vorn holen UND Fenster key machen — CMD+W routet nur an
         // das vordere Key-Window. Ohne aktive App lief das Event früher
         // gelegentlich ins Leere (Mit-Ursache der Flakiness).
-        NSApp.activate(ignoringOtherApps: true)
+        activateApplication(ignoringOtherApps: true)
         searchWindow.makeKeyAndOrderFront(nil)
 
         // NICHT blind nach fixem Delay posten: Unter macOS 14 (kooperative
@@ -2177,7 +2220,7 @@ enum SelfTest {
         // Alle ~10 Ticks erneut um Aktivierung bitten — einzelne Aufrufe
         // verpuffen unter kooperativer Aktivierung gelegentlich.
         if tick % 10 == 9 {
-            NSApp.activate(ignoringOtherApps: true)
+            activateApplication(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
@@ -2191,13 +2234,95 @@ enum SelfTest {
     private static func pollForClose(_ window: NSWindow, tick: Int = 0) {
         let maxTicks = 50            // 50 × 30 ms ≈ 1,5 s Beobachtungsfenster
         if !window.isVisible {
-            finish(true, "Suchmaske nach CMD+W geschlossen (Tick \(tick))")
+            runCmdWHelpPhase()
+            return
         }
         if tick >= maxTicks {
             finish(false, "Suchmaske nach CMD+W über \(maxTicks) Ticks noch sichtbar")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
             pollForClose(window, tick: tick + 1)
+        }
+    }
+
+    /// Zweite `cmdw`-Phase: Ein echtes ⌘W muss das vordere Hilfe-Fenster
+    /// schließen, ohne die Dokument-Tabs dahinter zu verändern. Danach folgt
+    /// im selben fokuspflichtigen Prozess das fensterübergreifende Routing.
+    private static func runCmdWHelpPhase() {
+        guard let workspace = Workspace.shared else {
+            finish(false, "kein Dokument-Workspace für den Hilfe-⌘W-Test")
+        }
+        while workspace.tabs.count < 2 { workspace.openNewTab() }
+        let tabSnapshot = workspace.tabs.map { "\($0.id.uuidString)|\($0.content)" }
+        MainActor.assumeIsolated { HelpWindow.show() }
+        guard let helpWindow = NSApp.windows.first(where: HelpWindow.isHelpWindow) else {
+            finish(false, "Hilfe-Fenster für den ⌘W-Test nicht auffindbar")
+        }
+        helpWindow.makeKeyAndOrderFront(nil)
+        pollForCmdWHelpKey(
+            helpWindow,
+            workspace: workspace,
+            tabSnapshot: tabSnapshot
+        )
+    }
+
+    private static func pollForCmdWHelpKey(
+        _ helpWindow: NSWindow,
+        workspace: Workspace,
+        tabSnapshot: [String],
+        tick: Int = 0
+    ) {
+        if helpWindow.isKeyWindow {
+            postCmd("w", keyCode: 13, windowNumber: helpWindow.windowNumber)
+            pollForCmdWHelpClose(
+                helpWindow,
+                workspace: workspace,
+                tabSnapshot: tabSnapshot
+            )
+            return
+        }
+        if tick >= 270 {
+            finish(.environment, "Hilfe-Fenster wurde nie Key-Window für ⌘W "
+                + "(Umgebungsproblem)")
+        }
+        if tick % 10 == 9 {
+            activateApplication(ignoringOtherApps: true)
+            helpWindow.makeKeyAndOrderFront(nil)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            pollForCmdWHelpKey(
+                helpWindow,
+                workspace: workspace,
+                tabSnapshot: tabSnapshot,
+                tick: tick + 1
+            )
+        }
+    }
+
+    private static func pollForCmdWHelpClose(
+        _ helpWindow: NSWindow,
+        workspace: Workspace,
+        tabSnapshot: [String],
+        tick: Int = 0
+    ) {
+        if !helpWindow.isVisible {
+            let currentTabs = workspace.tabs.map { "\($0.id.uuidString)|\($0.content)" }
+            guard currentTabs == tabSnapshot else {
+                finish(false, "⌘W an der Hilfe veränderte einen Dokument-Tab")
+            }
+            runNewWindowTest(focusedCommandRouting: true)
+            return
+        }
+        if tick >= 50 {
+            finish(false, "⌘W ließ das Hilfe-Fenster offen")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            pollForCmdWHelpClose(
+                helpWindow,
+                workspace: workspace,
+                tabSnapshot: tabSnapshot,
+                tick: tick + 1
+            )
         }
     }
 
@@ -2337,7 +2462,7 @@ enum SelfTest {
             finish(false, "Suchfenster nicht gefunden")
         }
         searchWindow.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        activateApplication(ignoringOtherApps: true)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             guard let root = searchWindow.contentView else {
@@ -2485,8 +2610,6 @@ enum SelfTest {
         ws.scope = .project
         ws.findPattern = "ALT"
         ws.useRegex = false
-        searchWindow.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
 
         // Die Konfigurationsänderungen oben dürfen erst auslaufen; danach
         // injizieren wir bewusst eine vollständige alte Trefferbasis.
@@ -6468,7 +6591,7 @@ enum SelfTest {
         // App nach vorn + Hauptfenster key — wie im echten Bedienfall, wenn
         // der Nutzer einen Treffer anspringt. Ohne aktives Key-Window legt
         // CodeEditSourceEditor keine sichtbare Selektion an.
-        NSApp.activate(ignoringOtherApps: true)
+        activateApplication(ignoringOtherApps: true)
         mainWindow.makeKeyAndOrderFront(nil)
 
         // Vorzeilen bewusst unterschiedlich lang + Umlaut/Emoji weit oben.
@@ -6591,7 +6714,7 @@ enum SelfTest {
         }), let root = mainWindow.contentView else {
             finish(false, "kein Hauptfenster gefunden")
         }
-        NSApp.activate(ignoringOtherApps: true)
+        activateApplication(ignoringOtherApps: true)
         mainWindow.makeKeyAndOrderFront(nil)
 
         // Mehrere SEHR lange Zeilen (deutlich breiter als jedes Testfenster) —
@@ -10629,7 +10752,7 @@ enum SelfTest {
     private static func runReplaceAllTestBody(
         ws: Workspace, mainWindow: NSWindow, root: NSView
     ) {
-        NSApp.activate(ignoringOtherApps: true)
+        activateApplication(ignoringOtherApps: true)
         mainWindow.makeKeyAndOrderFront(nil)
 
         // Exakt der Präsentations-Demo-Inhalt („Nachname, Vorname" je Zeile),
@@ -10746,7 +10869,7 @@ enum SelfTest {
             $0.frameAutosaveName == SearchWindow.frameAutosaveName
         }) else { finish(false, "Suchfenster nicht gefunden") }
         searchWindow.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        activateApplication(ignoringOtherApps: true)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             guard let root = searchWindow.contentView else {
@@ -10892,7 +11015,7 @@ enum SelfTest {
                 guard let searchWin = NSApp.windows.first(where: {
                     $0.frameAutosaveName == SearchWindow.frameAutosaveName && $0.isVisible
                 }) else { finish(false, "keine sichtbare Suchmaske") }
-                NSApp.activate(ignoringOtherApps: true)
+                activateApplication(ignoringOtherApps: true)
                 searchWin.makeKeyAndOrderFront(nil)
 
                 ws.scope = .file
@@ -11089,7 +11212,7 @@ enum SelfTest {
         }), let root = mainWindow.contentView else {
             finish(false, "kein Hauptfenster gefunden")
         }
-        NSApp.activate(ignoringOtherApps: true)
+        activateApplication(ignoringOtherApps: true)
         mainWindow.makeKeyAndOrderFront(nil)
 
         // 2500 Zeilen, jede mit einem eindeutigen „ende"-Treffer.
@@ -11224,7 +11347,7 @@ enum SelfTest {
         }), let root = mainWindow.contentView else {
             finish(false, "kein Hauptfenster gefunden")
         }
-        NSApp.activate(ignoringOtherApps: true)
+        activateApplication(ignoringOtherApps: true)
         mainWindow.makeKeyAndOrderFront(nil)
         ws.setSoftWrapEnabled(false)
 
@@ -11297,7 +11420,7 @@ enum SelfTest {
         }), let root = mainWindow.contentView else {
             finish(false, "kein Hauptfenster gefunden")
         }
-        NSApp.activate(ignoringOtherApps: true)
+        activateApplication(ignoringOtherApps: true)
         mainWindow.makeKeyAndOrderFront(nil)
 
         // 41000 SEHR LANGE Zeilen (~280 Zeichen, wie Daniels echte 4D-Log mit
@@ -11379,7 +11502,7 @@ enum SelfTest {
         }), let root = mainWindow.contentView else {
             finish(false, "kein Hauptfenster gefunden")
         }
-        NSApp.activate(ignoringOtherApps: true)
+        activateApplication(ignoringOtherApps: true)
         mainWindow.makeKeyAndOrderFront(nil)
 
         let tmp = FileManager.default.temporaryDirectory
@@ -11609,7 +11732,7 @@ enum SelfTest {
         }), let root = mainWindow.contentView else {
             finish(false, "kein Hauptfenster gefunden")
         }
-        NSApp.activate(ignoringOtherApps: true)
+        activateApplication(ignoringOtherApps: true)
         mainWindow.makeKeyAndOrderFront(nil)
 
         // Gleich lange Zeilen (Monospace) → saubere Spalten.
@@ -12305,7 +12428,7 @@ enum SelfTest {
                                              root: NSView, base: URL, outside: URL,
                                              window: NSWindow, tick: Int) {
         let maxTicks = 40    // 10 s
-        NSApp.activate(ignoringOtherApps: true)
+        activateApplication(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(tv)
         if MainActor.assumeIsolated({ MarkdownAssist.handlePasteCommand() }) {
@@ -12642,8 +12765,9 @@ enum SelfTest {
     /// (b) Das Hilfe-Fenster rendert echte Überschriften (DOM-Beobachtung
     ///     in der WKWebView, analog zum `markdown`-Selbsttest).
     /// (c) „Hilfe öffnen bei Anker X“ scrollt real zum Abschnitt.
-    /// (d) ⌘W bei vorderer Hilfe schließt nur dieses Fenster; mindestens
-    ///     zwei Hintergrund-Dokument-Tabs bleiben exakt unverändert.
+    /// (d) Gezieltes Schließen der Hilfe lässt mindestens zwei
+    ///     Hintergrund-Dokument-Tabs exakt unverändert. Das echte ⌘W-Routing
+    ///     prüft der fokuspflichtige Sammeltest `cmdw`.
     private static func runHelpTest() {
         testLabel = "help"
         guard HelpContent.markdown(languageCode: "de") != nil,
@@ -12692,11 +12816,11 @@ enum SelfTest {
             let y = (value as? Double) ?? Double(value as? Int ?? 0)
             if y > 50 {
                 guard let helpWindow = NSApp.windows.first(where: HelpWindow.isHelpWindow) else {
-                    finish(false, "(d) Hilfe-Fenster für ⌘W nicht auffindbar")
+                    finish(false, "(d) Hilfe-Fenster zum Schließen nicht auffindbar")
                 }
-                helpWindow.makeKeyAndOrderFront(nil)
-                pollHelpKeyThenClose(helpWindow, workspace: workspace,
-                                     tabSnapshot: tabSnapshot, anchorY: y)
+                MainActor.assumeIsolated { HelpWindow.close() }
+                pollHelpClosed(helpWindow, workspace: workspace,
+                               tabSnapshot: tabSnapshot, anchorY: y)
                 return
             }
             if tick >= 20 {
@@ -12709,39 +12833,20 @@ enum SelfTest {
         }
     }
 
-    private static func pollHelpKeyThenClose(_ helpWindow: NSWindow, workspace: Workspace,
-                                             tabSnapshot: [String], anchorY: Double,
-                                             tick: Int = 0) {
-        if helpWindow.isKeyWindow {
-            postCmd("w", keyCode: 13, windowNumber: helpWindow.windowNumber)
-            pollHelpClosed(helpWindow, workspace: workspace, tabSnapshot: tabSnapshot,
-                            anchorY: anchorY)
-            return
-        }
-        if tick >= 100 {
-            finish(.environment, "Umgebungsproblem: Hilfe-Fenster wurde nicht "
-                + "Key-Window für ⌘W")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollHelpKeyThenClose(helpWindow, workspace: workspace, tabSnapshot: tabSnapshot,
-                                 anchorY: anchorY, tick: tick + 1)
-        }
-    }
-
     private static func pollHelpClosed(_ helpWindow: NSWindow, workspace: Workspace,
                                        tabSnapshot: [String], anchorY: Double,
                                        tick: Int = 0) {
         let currentTabs = workspace.tabs.map { "\($0.id.uuidString)|\($0.content)" }
         if !helpWindow.isVisible {
             guard currentTabs == tabSnapshot, workspace.tabs.count >= 2 else {
-                finish(false, "(d) ⌘W an der Hilfe veränderte einen Hintergrund-Tab")
+                finish(false, "(d) Schließen der Hilfe veränderte einen Hintergrund-Tab")
             }
             finish(true, "Hilfe aus dem Bundle gerendert "
                 + "(\(HelpSection.allCases.count)+ Abschnitte), Anker-Sprung (y=\(Int(anchorY))); "
-                + "⌘W schließt nur die Hilfe, zwei Dokument-Tabs bleiben erhalten")
+                + "gezieltes Schließen lässt zwei Dokument-Tabs erhalten")
         }
         if tick >= 100 {
-            finish(false, "(d) ⌘W ließ das vordere Hilfe-Fenster offen")
+            finish(false, "(d) gezieltes Schließen ließ das Hilfe-Fenster offen")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
             pollHelpClosed(helpWindow, workspace: workspace, tabSnapshot: tabSnapshot,
@@ -13597,7 +13702,7 @@ enum SelfTest {
             }
             return
         }
-        NSApp.activate(ignoringOtherApps: true)
+        activateApplication(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         let originalCode = textView.string
         // Selbsttests laufen auf der Main-Queue; die Zusicherung entspricht
@@ -16238,7 +16343,7 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: base)
             finish(false, "Push-Flächen für primary und github liegen nicht nebeneinander")
         }
-        NSApp.activate(ignoringOtherApps: true)
+        activateApplication(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         guard window.isKeyWindow else {
             if tick >= 120 {
@@ -16353,7 +16458,7 @@ enum SelfTest {
             markerView(id: "gitPrimaryPush-github", in: $0)
         }
         if let window, !window.isKeyWindow {
-            NSApp.activate(ignoringOtherApps: true)
+            activateApplication(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
         }
         let ready = !ws.gitOperationsAreBusy

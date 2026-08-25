@@ -140,6 +140,26 @@ struct SelfTestOutcomeTests {
         ) == nil)
     }
 
+    @Test("Nur ausdrücklich freigegebene Selbsttests dürfen die App aktivieren")
+    func activationPolicy() {
+        #expect(SelfTestActivationPolicy.allowsActivation(
+            isSelfTestRun: false,
+            environment: [:]
+        ))
+        #expect(SelfTestActivationPolicy.allowsActivation(
+            isSelfTestRun: true,
+            environment: [:]
+        ))
+        #expect(!SelfTestActivationPolicy.allowsActivation(
+            isSelfTestRun: true,
+            environment: ["FASTRA_SELFTEST_ALLOW_ACTIVATION": "0"]
+        ))
+        #expect(SelfTestActivationPolicy.allowsActivation(
+            isSelfTestRun: true,
+            environment: ["FASTRA_SELFTEST_ALLOW_ACTIVATION": "1"]
+        ))
+    }
+
     @Test("Frühere 4D-Fehler bleiben in Status und Diagnose erhalten")
     func recordedFourDFailureWins() {
         let result = SelfTestOutcome.resolving(
@@ -294,10 +314,13 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         #expect(damagedPrefix.output.contains("Protokollfehler"))
     }
 
-    @Test("⌘N-Willkommenstest startet ohne LaunchServices und Vordergrundaktivierung")
-    func welcomeNewUsesDirectBackgroundLaunch() throws {
+    @Test(
+        "Direktstarts erhalten die passende Aktivierungserlaubnis ohne LaunchServices",
+        arguments: ["welcomenew", "newwindow", "projectinput", "help", "bgscroll"]
+    )
+    func backgroundWindowTestsUseDirectLaunch(testName: String) throws {
         let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("fastra-welcomenew-routing-\(UUID().uuidString)")
+            .appendingPathComponent("fastra-background-routing-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let lock = root.appendingPathComponent("gui.lock")
         let fakeApp = root.appendingPathComponent("Fastra.app")
@@ -323,8 +346,20 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         try infoData.write(to: fakeInfo)
         try """
         #!/bin/bash
-        printf '%s\n' 'SELFTEST-RESULT v=1 test=welcomenew status=PASS' >&2
-        printf '%s\n' 'SELFTEST welcomenew: PASS — Hintergrundstart' >&2
+        test_name=''
+        while [ "$#" -gt 0 ]; do
+          if [ "$1" = -selftest ] && [ "$#" -ge 2 ]; then
+            test_name="$2"
+            break
+          fi
+          shift
+        done
+        [ -n "$test_name" ] || exit 86
+        expected_activation=0
+        [ "$test_name" = bgscroll ] && expected_activation=1
+        [ "${FASTRA_SELFTEST_ALLOW_ACTIVATION:-}" = "$expected_activation" ] || exit 87
+        printf 'SELFTEST-RESULT v=1 test=%s status=PASS\n' "$test_name" >&2
+        printf 'SELFTEST %s: PASS — Hintergrundstart\n' "$test_name" >&2
         """.write(to: fakeBinary, atomically: true, encoding: .utf8)
         try """
         #!/bin/bash
@@ -341,7 +376,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
 
         let result = try runPerformanceTool(
-            "/bin/bash", arguments: [runner.path, "welcomenew"], environment: [
+            "/bin/bash", arguments: [runner.path, testName], environment: [
                 "PATH": isolatedPath,
                 "FASTRA_GUI_LOCK_DIR": lock.path,
                 "FASTRA_SELFTEST_APP_BIN": fakeBinary.path,
@@ -353,8 +388,16 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
             ]
         )
-        #expect(result.status == 0, "Hintergrundstart: \(result.output)")
+        #expect(result.status == 0, "Hintergrundstart \(testName): \(result.output)")
         #expect(!FileManager.default.fileExists(atPath: openProbe.path))
+    }
+
+    @Test("Der gebündelte ⌘W-Test erhält eine ausreichende Runner-Frist")
+    func combinedCmdWTestHasExtendedTimeout() throws {
+        let runner = performanceToolsDirectory.deletingLastPathComponent()
+            .appendingPathComponent("selftest.sh")
+        let source = try String(contentsOf: runner, encoding: .utf8)
+        #expect(source.contains("cmdw)  echo 120 ;;"))
     }
 
     @Test("Fertiger Fokustest wartet nicht mehr auf die Aktivierung")
@@ -389,15 +432,21 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         try """
         #!/bin/bash
         errfile=''
+        activation_allowed=0
         while [ "$#" -gt 0 ]; do
           case "$1" in
             --stderr) errfile="$2"; shift 2 ;;
+            --env)
+              [ "$2" = 'FASTRA_SELFTEST_ALLOW_ACTIVATION=1' ] && activation_allowed=1
+              shift 2
+              ;;
             *) shift ;;
           esac
         done
+        [ "$activation_allowed" -eq 1 ] || exit 88
         [ -n "$errfile" ] || exit 89
-        printf '%s\n' 'SELFTEST-RESULT v=1 test=newwindow status=PASS' > "$errfile"
-        printf '%s\n' 'SELFTEST newwindow: PASS — früh fertig' >> "$errfile"
+        printf '%s\n' 'SELFTEST-RESULT v=1 test=cmdw status=PASS' > "$errfile"
+        printf '%s\n' 'SELFTEST cmdw: PASS — früh fertig' >> "$errfile"
         """.write(to: fakeOpen, atomically: true, encoding: .utf8)
         try "#!/bin/bash\nexit 0\n"
             .write(to: fakeLSRegister, atomically: true, encoding: .utf8)
@@ -420,7 +469,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         )
 
         let result = try runPerformanceTool(
-            "/bin/bash", arguments: [runner.path, "newwindow"], environment: [
+            "/bin/bash", arguments: [runner.path, "cmdw"], environment: [
                 "PATH": isolatedPath,
                 "FASTRA_GUI_LOCK_DIR": lock.path,
                 "FASTRA_SELFTEST_APP_BIN": fakeBinary.path,

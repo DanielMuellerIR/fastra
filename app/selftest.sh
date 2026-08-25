@@ -18,14 +18,13 @@
 #      fensterlos markierten Tests zu. Die ausgelassenen Tests werden als
 #      übersprungen ausgewiesen und erzwingen Exit 2; ein unvollständiger
 #      Lauf darf nie als bestanden gelten.
-#   4. Die Tests `cmdw`, `newwindow`, `completion4d`, `projectinput` und
-#      `help` brauchen ECHTEN Fenster-Fokus. macOS 26 verweigert
-#      einem im Hintergrund gestarteten Prozess die Selbst-Aktivierung
-#      (kooperative Aktivierung) — der Runner holt die App deshalb von
-#      außen per System Events nach vorn. Arbeitet gleichzeitig jemand
-#      aktiv am Mac, holt sich dessen App den Fokus sofort zurück → der
-#      Test meldet dann einen Umgebungs-FAIL („Umgebungsproblem"), keinen
-#      Funktionsfehler. Der Runner weist das gesondert aus (Exit-Code 2).
+#   4. Nur `cmdw` und `completion4d` brauchen die externe Aktivierung über
+#      LaunchServices und System Events. `newwindow`, `projectinput` und
+#      `help` laufen mit echten Fenstern, aber garantiert ohne globale
+#      Aktivierung im Hintergrund. Andere Direktstarts behalten vorerst ihr
+#      bisheriges Aktivierungsverhalten. Arbeitet während eines extern
+#      aktivierten Tests jemand am Mac, kann dessen App den Fokus zurückholen;
+#      der Test meldet dann einen Umgebungsfehler und der Runner Exit-Code 2.
 #
 # Aufruf:
 #   ./selftest.sh                 # alle Tests
@@ -73,11 +72,14 @@ fi
 ALL_TESTS=(windows newwindow welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions projectinput tabswitch tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge dirtyundo emojisplit emojipaste emojipreview tabscroll typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader footerfit windowheight mdformat sidebarfilter sidebarstate githistory filediff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide markdownimport filemodes selsearch wildcard openscope loadperf contrast cmdw)
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
 WINDOWLESS_TESTS=(search project projectperf localization markdownimport updates git gitactions filemodes selsearch wildcard openscope tool4dlsp macro4dengine)
-# Nur diese Tests brauchen echten Vordergrundfokus. `welcomenew` adressiert
-# sein bekanntes Fenster dagegen über die Fenster-ID und läuft direkt im
-# Hintergrund. So öffnet der Runner nicht unnötig eine aktive App und wartet
-# auch nicht auf System Events.
-FOCUS_REQUIRED_TESTS=(cmdw newwindow completion4d projectinput help)
+# Nur diese Tests brauchen echten Vordergrundfokus. `newwindow`,
+# `projectinput` und `help` bedienen ihre Fenster dagegen direkt im
+# Testprozess und laufen wie `welcomenew` im Hintergrund.
+FOCUS_REQUIRED_TESTS=(cmdw completion4d)
+# Diese Fensterläufe sind so gebaut, dass sie ihre AppKit-Objekte direkt
+# bedienen. Der Runner sperrt für sie auch produktive Aktivierungshelfer,
+# damit sie die gerade benutzte App nicht verdrängen.
+BACKGROUND_ACTIVATION_BLOCKED_TESTS=(newwindow welcomenew projectinput help aboutshot)
 # Diese Tests starten das konfigurierte App-Bundle über LaunchServices. Für sie
 # reicht ein vorhandenes separates Binary nicht: Der Bundle-Pfad muss ebenfalls
 # auf genau diesen Teststand zeigen.
@@ -103,6 +105,7 @@ TIMEOUT_SECS=60
 timeout_for_test() {
     case "$1" in
         print) echo 240 ;;
+        cmdw)  echo 120 ;;
         *)     echo "$TIMEOUT_SECS" ;;
     esac
 }
@@ -1123,6 +1126,10 @@ for t in "${TESTS[@]}"; do
     fi
     cleanup_finished="$(now_milliseconds)"
     errfile="$(mktemp "$FASTRA_TEST_TMPDIR/$safe_test_name.stderr.XXXXXX")"
+    selftest_activation=1
+    if array_contains_exactly "$t" "${BACKGROUND_ACTIVATION_BLOCKED_TESTS[@]}"; then
+        selftest_activation=0
+    fi
 
     launch_started="$(now_milliseconds)"
     launch_mode="direct"
@@ -1147,6 +1154,7 @@ for t in "${TESTS[@]}"; do
             --env "FASTRA_SELFTEST_DEFAULTS_SUITE=$SELFTEST_DEFAULTS_SUITE" \
             --env "FASTRA_TEST_DEFAULTS_REGISTRY=$FASTRA_TEST_DEFAULTS_REGISTRY" \
             --env "FASTRA_SELFTEST_PASTEBOARD_DIR=$SELFTEST_PASTEBOARD_DIR" \
+            --env "FASTRA_SELFTEST_ALLOW_ACTIVATION=0" \
             "$coldopen_fixture_file" \
             --args -ApplePersistenceIgnoreState YES; then
             emit_selftest_result "$t" "ENV"
@@ -1160,10 +1168,8 @@ for t in "${TESTS[@]}"; do
     elif array_contains_exactly "$t" "${FOCUS_REQUIRED_TESTS[@]}"; then
         launch_mode="launchservices"
         CURRENT_LAUNCH_MODE="launchservices"
-        # Diese Tests prüfen echte Tastatur- oder Mausbedienung (bei
-        # `completion4d` ⌃Leertaste, Pfeil und Klick; bei `projectinput`
-        # die Eingabe ins native Filterfeld) und brauchen daher
-        # Fokus → via `open` starten und von außen aktivieren. Der
+        # Diese Tests prüfen echte Tastatur- oder Mausbedienung und brauchen
+        # daher Fokus → via `open` starten und von außen aktivieren. Der
         # gemeinsame Aufräumpfad `kill_leftovers` beendet die Test-App nach
         # Ergebnis UND Timeout sofort, damit kein Fenster sichtbar bleibt.
         # starten (LaunchServices) und von außen aktivieren.
@@ -1175,6 +1181,7 @@ for t in "${TESTS[@]}"; do
             --env "FASTRA_SELFTEST_DEFAULTS_SUITE=$SELFTEST_DEFAULTS_SUITE" \
             --env "FASTRA_TEST_DEFAULTS_REGISTRY=$FASTRA_TEST_DEFAULTS_REGISTRY" \
             --env "FASTRA_SELFTEST_PASTEBOARD_DIR=$SELFTEST_PASTEBOARD_DIR" \
+            --env "FASTRA_SELFTEST_ALLOW_ACTIVATION=1" \
             --args -selftest "$t" -ApplePersistenceIgnoreState YES; then
             emit_selftest_result "$t" "ENV"
             echo "SELFTEST $t: Umgebungsproblem — LaunchServices-Start fehlgeschlagen"
@@ -1187,7 +1194,8 @@ for t in "${TESTS[@]}"; do
         activate_app "$errfile"
         remember_bundle_pids
     else
-        # Alle anderen Tests laufen ohne echten Fokus → Binary direkt.
+        # Alle anderen Tests starten das Binary direkt. Nur die ausdrücklich
+        # hintergrundfähigen Namen bekommen dabei ein Aktivierungsverbot.
         FASTRA_TEST_PENDING_BUNDLE="$APP_BIN_BUNDLE_CANONICAL"
         if ! TMPDIR="$FASTRA_TEST_TMPDIR/" \
         CFFIXED_USER_HOME="$FASTRA_TEST_CF_HOME" \
@@ -1196,6 +1204,7 @@ for t in "${TESTS[@]}"; do
         FASTRA_SELFTEST_DEFAULTS_SUITE="$SELFTEST_DEFAULTS_SUITE" \
         FASTRA_TEST_DEFAULTS_REGISTRY="$FASTRA_TEST_DEFAULTS_REGISTRY" \
         FASTRA_SELFTEST_PASTEBOARD_DIR="$SELFTEST_PASTEBOARD_DIR" \
+        FASTRA_SELFTEST_ALLOW_ACTIVATION="$selftest_activation" \
         fastra_test_start_new_session "$APP_BIN_ABSOLUTE" \
             -selftest "$t" -ApplePersistenceIgnoreState YES \
             >/dev/null 2>"$errfile"; then

@@ -58,7 +58,7 @@ final class SearchPanelController {
         guard let win = window else { return }
         ensureOnScreen(win)
         win.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: false)
+        SelfTest.activateApplication(ignoringOtherApps: false)
     }
 
     /// Sicherheits-Netz gegen ein autogespeichertes Frame, das vollständig
