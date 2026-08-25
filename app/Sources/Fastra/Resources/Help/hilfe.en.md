@@ -106,9 +106,15 @@ are limited to 1 MB; invalid entries are skipped.
 
 - “Replace” replaces only the active match and moves on.
 - “Replace All · N” (⌘Return) replaces every match in the scope.
+- If the match count exceeds the visible limit, “Replace All” stays disabled.
+  Refine the search term until the complete match set is visible.
+- If the match set in the “Open” scope contains a read-only tab, “Replace All”
+  also stays disabled. Fastra never silently skips a visible match.
 - “Preview changes” shows every affected line as a before/after diff
   prior to replacing. What gets applied is **exactly** the match set you
-  saw — that is a safety guarantee.
+  saw — that is a safety guarantee. In very long documents Fastra trims
+  unchanged context, never a change line without warning; if even the display
+  limit cannot hold every change, Apply remains disabled.
 - In folder/project scope Fastra rechecks every file against the visible
   preview before the first write. Changed files and affected tabs with unsaved
   edits block the whole operation. Planning, backup and writing run in the

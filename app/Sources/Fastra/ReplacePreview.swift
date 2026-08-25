@@ -37,6 +37,12 @@ enum ReplacePreview {
         let totalRows: Int
         let changedRows: Int
         var truncated: Bool { rows.count < totalRows }
+        var visibleChangedRows: Int {
+            rows.reduce(0) { $0 + ($1.kind == .unchanged ? 0 : 1) }
+        }
+        /// Apply darf nur laufen, wenn jede geänderte Zeile in der Vorschau
+        /// enthalten ist. Ausgeblendeter unveränderter Kontext ist zulässig.
+        var allChangedRowsVisible: Bool { visibleChangedRows == changedRows }
         static let empty = SideBySideResult(rows: [], totalRows: 0, changedRows: 0)
     }
 
@@ -203,8 +209,8 @@ enum ReplacePreview {
             }
             all.append(row)
         }
-        return SideBySideResult(rows: Array(all.prefix(maxRows)), totalRows: all.count,
-                                changedRows: changedRows)
+        return SideBySideResult(rows: rowsPrioritizingChanges(all, maxRows: maxRows),
+                                totalRows: all.count, changedRows: changedRows)
     }
 
     // MARK: - Intern
@@ -235,6 +241,41 @@ enum ReplacePreview {
         }
         if endedWithTerminator { lines.append("") }
         return lines
+    }
+
+    /// Begrenzt die Anzeige, ohne eine weit unten liegende Änderung hinter
+    /// tausenden unveränderten Anfangszeilen zu verstecken. Zuerst kommen alle
+    /// Änderungszeilen in die Auswahl; freie Plätze werden anschließend mit
+    /// möglichst nahem Kontext vor und nach den Änderungen gefüllt. Sind mehr
+    /// Änderungen als Plätze vorhanden, enthält die Vorschau nur den ersten
+    /// Teil der Änderungen und `allChangedRowsVisible` sperrt Apply.
+    private static func rowsPrioritizingChanges(
+        _ rows: [SideBySideRow], maxRows: Int
+    ) -> [SideBySideRow] {
+        let limit = max(0, maxRows)
+        guard rows.count > limit else { return rows }
+        guard limit > 0 else { return [] }
+
+        let changedIndices = rows.indices.filter { rows[$0].kind != .unchanged }
+        guard !changedIndices.isEmpty else { return Array(rows.prefix(limit)) }
+
+        var selected = Set(changedIndices.prefix(limit))
+        if changedIndices.count <= limit {
+            var distance = 1
+            while selected.count < limit && distance < rows.count {
+                for changedIndex in changedIndices {
+                    for candidate in [changedIndex - distance, changedIndex + distance]
+                    where rows.indices.contains(candidate) {
+                        selected.insert(candidate)
+                        if selected.count == limit { break }
+                    }
+                    if selected.count == limit { break }
+                }
+                distance += 1
+            }
+        }
+
+        return selected.sorted().map { rows[$0] }
     }
 
     /// Schneidet einen abschließenden Zeilen-Terminator (\n, \r, \r\n) vom

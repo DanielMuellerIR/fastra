@@ -4867,6 +4867,15 @@ final class Workspace: ObservableObject {
                 pf.matches.map { NavMatch(id: $0.id, url: pf.url, match: $0) }
             }
         }
+        // Datei- und Geöffnet-Treffer bleiben während des 120-ms-Debounce
+        // sichtbar, damit die Liste beim Tippen nicht flackert. Sobald der
+        // SearchRunner ihre Optionsbindung entzieht, dürfen Klick, Return,
+        // Chevron und ⌘G diese alte Trefferbasis aber nicht mehr verwenden.
+        // Erst der abgeschlossene Neulauf bindet die Liste wieder an genau
+        // die aktuellen Optionen.
+        guard visibleBufferResultsOptions == currentSearchOptions else {
+            return []
+        }
         if scope == .open {
             return openResults.flatMap { th in
                 th.matches.map { NavMatch(id: $0.id, url: nil, tabID: th.id, match: $0) }
@@ -5234,20 +5243,36 @@ final class Workspace: ObservableObject {
     var canApplyAllInActiveBuffer: Bool {
         activeTab?.isEditableTextDocument == true
             && bufferTotalMatches > 0 && searchError == nil
+            && !bufferResultsWereCapped
+            && bufferMatches.count == bufferTotalMatches
             && visibleBufferResultsOptions == currentSearchOptions
     }
 
-    /// Freigabe für „Alle ersetzen“ im Geöffnet-Bereich. Suchtreffer in
-    /// read-only Git-Ansichten bleiben sichtbar und navigierbar, geben aber
-    /// keinen Schreibbefehl frei, wenn kein betroffener editierbarer Tab
-    /// existiert.
+    /// `true`, sobald die sichtbare Geöffnet-Trefferbasis mindestens einen
+    /// schreibgeschützten Tab enthält. Die Maske erklärt damit sichtbar,
+    /// warum „Alle ersetzen“ gesperrt bleibt.
+    var openResultsContainReadOnlyTabs: Bool {
+        let matchingTabIDs = Set(openResults.map(\.id))
+        return tabs.contains {
+            matchingTabIDs.contains($0.id) && !$0.isEditableTextDocument
+        }
+    }
+
+    /// Freigabe für „Alle ersetzen“ im Geöffnet-Bereich. Die sichtbare
+    /// Trefferbasis muss vollständig schreibbar sein: Ein Treffer in einer
+    /// read-only Git-Ansicht darf nicht bloß übersprungen werden, denn dann
+    /// würde Apply auf weniger Treffer wirken als die Vorschau zeigt.
     var canApplyAllInOpenTabs: Bool {
         guard openTotalMatches > 0, searchError == nil,
+              !openResultsWereCapped,
+              openResults.reduce(0, { $0 + $1.matches.count }) == openTotalMatches,
               visibleBufferResultsOptions == currentSearchOptions else {
             return false
         }
         let matchingTabIDs = Set(openResults.map(\.id))
-        return tabs.contains { matchingTabIDs.contains($0.id) && $0.isEditableTextDocument }
+        return !matchingTabIDs.isEmpty && matchingTabIDs.allSatisfy { id in
+            tabs.first(where: { $0.id == id })?.isEditableTextDocument == true
+        }
     }
 
     var canReplaceActiveSearchMatch: Bool {
@@ -5279,8 +5304,9 @@ final class Workspace: ObservableObject {
         recordSearchHistory()
         let text = activeTabContent.wrappedValue
         // Voll-Replace über den ganzen Text (bzw. die eingefrorene Auswahl bei
-        // „Nur in Auswahl") — ersetzt ALLE Treffer, auch die jenseits des
-        // Listen-Caps (sonst blieben gekappte Treffer stehen).
+        // „Nur in Auswahl"). Der Guard oben verlangt eine vollständige
+        // Trefferliste; damit entspricht die angewendete Menge exakt der
+        // sichtbaren Vorschau und enthält keine Treffer jenseits des Caps.
         guard let replaced = BufferSearch.replaceAll(in: text, options: currentSearchOptions,
                                                      searchRange: activeSearchRange),
               replaced != text else { return false }
@@ -5480,11 +5506,15 @@ final class Workspace: ObservableObject {
     /// Trefferliste als LF-getrennten String ins Clipboard kopieren —
     /// schneller Direktweg neben dem konfigurierbaren Extrahieren-Dialog.
     /// Im Folder-Scope werden Treffer aus allen Dateien zusammengezogen.
-    func copyHitsToClipboard() {
+    func copyHitsToClipboard(_ pasteboard: NSPasteboard = .general) {
         let texts = navMatches.map(\.match.matchText)
+        // Während ein neuer Suchlauf noch aussteht, bleibt die alte Liste
+        // zur Orientierung sichtbar, `navMatches` ist aber absichtlich leer.
+        // Ein Klick darf in diesem Zustand das Clipboard nicht leeren.
+        guard !texts.isEmpty else { return }
         let joined = texts.joined(separator: "\n")
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(joined, forType: .string)
+        pasteboard.clearContents()
+        pasteboard.setString(joined, forType: .string)
     }
 
     /// BBEdit „Extract" (Handbuch 16.0.1, S. 168/193): alle Treffer in ein

@@ -9,6 +9,52 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.112.1] — 2026-08-25
+
+### Behoben
+
+- **„Alle ersetzen“ wirkt nur auf eine vollständig sichtbare Trefferbasis.**
+  Datei- und Geöffnet-Suche materialisieren höchstens 2.000 Treffer, zeigten
+  aber die wahre höhere Gesamtzahl an. „Alle ersetzen“ berechnete anschließend
+  alle Ersetzungen neu und änderte dadurch auch Treffer jenseits der sichtbaren
+  Vorschau. Bei einer gekürzten Liste bleibt der Befehl jetzt gesperrt, bis ein
+  genauerer Suchbegriff alle Treffer sichtbar macht. Enthält die Geöffnet-
+  Vorschau einen schreibgeschützten Tab, sperrt Fastra den gesamten Befehl,
+  statt nur die editierbaren Treffer stillschweigend zu ändern.
+- **Eine neue Suche sperrt die Navigation zur alten Trefferliste sofort.**
+  Während des 120-ms-Debounce und des anschließenden Hintergrundlaufs blieb die
+  vorige Datei-/Geöffnet-Liste absichtlich sichtbar. Klick, Return, Chevron und
+  ⌘G konnten diese bereits entwerteten Treffer trotzdem noch anspringen. Die
+  Liste darf zur flackerfreien Orientierung stehen bleiben, liefert aber erst
+  nach einem abgeschlossenen Lauf mit den aktuellen Optionen wieder
+  Navigationsziele.
+- **Eine veraltete Trefferbasis verändert die Zwischenablage nicht mehr.**
+  Während der neue Suchlauf noch ausstand, konnten die sichtbaren Kopieren- und
+  Extrahieren-Schaltflächen auf der bereits entwerteten Liste arbeiten. Beide
+  bleiben jetzt bis zum aktuellen Ergebnis gesperrt; der Kopierpfad schützt die
+  vorhandene Zwischenablage zusätzlich direkt.
+- **Lange Änderungsvorschauen zeigen die eigentlichen Änderungen.** Bei mehr
+  als 5.000 ausgerichteten Dokumentzeilen kappte Fastra bisher stumpf am
+  Anfang; ein später Treffer konnte unsichtbar bleiben, obwohl „Alle ersetzen“
+  aktiv war. Die Vorschau behält jetzt zuerst sämtliche Änderungszeilen und
+  füllt nur freie Plätze mit nahem Kontext. Passen selbst die Änderungen nicht
+  vollständig ins Limit, bleibt Apply gesperrt.
+- **Ein Projektwechsel übernimmt keinen Seitenleistenzustand des vorigen
+  Projekts.** Gemeinsame Scroll-Schlüssel öffneten den neuen Dateibaum, die
+  Änderungen oder den Graphen an der alten Position. Stand beim Wechsel ein
+  anderer Seitenleisten-Tab vorn, konnte außerdem das alte Filterergebnis bis
+  zum nächsten Scan erhalten bleiben. Projektwechsel leeren jetzt Positionen
+  und Filterergebnis gemeinsam mit dem Filtertext.
+
+### Tests
+
+- Sieben neue Regressionstests für veraltete Datei-/Geöffnet-Navigation,
+  gekürzte oder teilweise schreibgeschützte Apply-Vorschauen und den Schutz
+  der Zwischenablage sowie eine späte und eine übervolle Dokumentvorschau. Die
+  Navigations- und die späte Vorschauprüfung waren vor der Korrektur rot. Die
+  Navigationsprüfung zeigte: Die physische Liste blieb wie beabsichtigt stehen,
+  wurde aber weiter als Navigationsziel geliefert.
+
 ## [v1.112.0] — 2026-08-24
 
 ### Neu

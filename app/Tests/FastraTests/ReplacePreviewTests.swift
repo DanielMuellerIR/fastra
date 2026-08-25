@@ -186,4 +186,38 @@ func preview_sideBySideTruncation() {
     #expect(result.totalRows == 3)
     #expect(result.changedRows == 1)
     #expect(result.truncated)
+    #expect(result.allChangedRowsVisible)
+    #expect(result.rows.contains { $0.kind == .changed && $0.before == "zwei" })
+}
+
+@Test("Side-by-side-Diff zeigt eine späte Änderung trotz Zeilenlimit")
+func preview_sideBySidePrioritizesLateChange() {
+    let unchanged = (1...5_100).map { "Zeile \($0)" }
+    let text = (unchanged + ["foo am Ende"]).joined(separator: "\n")
+    let found = matches(in: text, find: "foo", replace: "bar")
+
+    let result = ReplacePreview.buildSideBySide(
+        text: text, matches: found, maxRows: 12
+    )
+
+    #expect(result.changedRows == 1)
+    #expect(result.allChangedRowsVisible)
+    #expect(result.rows.contains {
+        $0.kind == .changed && $0.before == "foo am Ende" && $0.after == "bar am Ende"
+    }, "Das Zeilenlimit darf die eigentliche Änderung nicht hinter Kontext verstecken")
+}
+
+@Test("Side-by-side-Diff kennzeichnet zu viele Änderungszeilen als unvollständig")
+func preview_sideBySideRejectsHiddenChanges() {
+    let text = (1...5).map { "foo \($0)" }.joined(separator: "\n")
+    let found = matches(in: text, find: "foo", replace: "bar")
+
+    let result = ReplacePreview.buildSideBySide(
+        text: text, matches: found, maxRows: 3
+    )
+
+    #expect(result.changedRows == 5)
+    #expect(result.visibleChangedRows == 3)
+    #expect(!result.allChangedRowsVisible)
+    #expect(result.rows.allSatisfy { $0.kind == .changed })
 }

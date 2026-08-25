@@ -125,6 +125,54 @@ func projectFilterChangeInvalidatesVisiblePreviewImmediately() async throws {
     #expect(!previewConflictWasShown)
 }
 
+// Datei- und Geöffnet-Treffer bleiben während des 120-ms-Debounce bewusst in
+// der Liste stehen. Sie dürfen in diesem Fenster aber nicht mehr navigierbar
+// sein: Klick, Return, Chevron oder ⌘G würden sonst mit dem alten Muster in
+// eine Trefferbasis springen, die `SearchRunner` bereits entwertet hat.
+@Test("Datei- und Geöffnet-Navigation sperren eine veraltete Trefferbasis sofort")
+@MainActor
+func bufferInputChangeInvalidatesNavigationImmediately() throws {
+    for scope in [Workspace.SearchScope.file, .open] {
+        let suiteName = "fastra-runner-stale-nav-\(scope)-\(UUID().uuidString)"
+        let defaults = testSuiteDefaults(named: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let workspace = Workspace(defaults: defaults)
+        workspace.scope = scope
+        workspace.findPattern = "ALT"
+        workspace.showSearchDialog = true
+        let options = workspace.currentSearchOptions
+        let match = try #require(BufferSearch.find(
+            in: "vor ALT nach", options: options
+        ).matches.first)
+        if scope == .open {
+            workspace.openResults = [OpenTabsSearch.TabHits(
+                id: workspace.tabs[0].id,
+                title: workspace.tabs[0].title,
+                matches: [match],
+                totalMatches: 1
+            )]
+            workspace.openTotalMatches = 1
+        } else {
+            workspace.bufferMatches = [match]
+            workspace.bufferTotalMatches = 1
+        }
+        workspace.visibleBufferResultsOptions = options
+        #expect(workspace.navMatches.count == 1)
+
+        // Der Combine-Sicherheitspfad läuft synchron beim Tastendruck und
+        // entzieht der alten Liste ihre Optionsbindung vor dem Neulauf.
+        workspace.findPattern = "NEU"
+        #expect(workspace.visibleBufferResultsOptions == nil)
+        if scope == .open {
+            #expect(workspace.openResults.count == 1)
+        } else {
+            #expect(workspace.bufferMatches.count == 1)
+        }
+        #expect(workspace.navMatches.isEmpty)
+    }
+}
+
 @Test("Ordner-Treffer bleibt beim Öffnen seiner Datei vollständig erhalten")
 @MainActor
 func folderPreviewSurvivesOpeningMatchedFile() async throws {

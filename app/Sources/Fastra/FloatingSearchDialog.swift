@@ -969,7 +969,29 @@ struct FloatingSearchDialog: View {
                         .foregroundColor(.orange)
                     Text(verbatim: L10n.string(workspace.scope.isFolderLike
                          ? "Trefferliste auf 10.000 gekappt — Suchbegriff verfeinern."
-                         : "Trefferliste gekappt — Zähler zeigt die wahre Gesamtzahl."))
+                         : "Trefferliste gekappt — „Alle ersetzen“ bleibt gesperrt, bis alle Treffer sichtbar sind."))
+                        .fastraFont(size: 11)
+                        .foregroundColor(.orange)
+                        .lineLimit(2)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.orange.opacity(0.08))
+                )
+            }
+
+            // Im Geöffnet-Scope bleibt die Vorschau vollständig sichtbar,
+            // auch wenn ein Treffer aus einer schreibgeschützten Git-Ansicht
+            // stammt. Da Apply diesen Treffer nicht ändern könnte, sperrt die
+            // Maske die gesamte Aktion und erklärt die Sicherheitsgrenze.
+            if workspace.scope == .open && workspace.openResultsContainReadOnlyTabs {
+                HStack(spacing: 6) {
+                    Image(systemName: "lock.fill")
+                        .foregroundColor(.orange)
+                    Text("Treffer in schreibgeschützten Tabs — „Alle ersetzen“ bleibt gesperrt.")
                         .fastraFont(size: 11)
                         .foregroundColor(.orange)
                         .lineLimit(2)
@@ -986,7 +1008,8 @@ struct FloatingSearchDialog: View {
             // Cap-Hinweis im Buffer-Scope: nur die ersten N von vielen Treffern
             // sind als Liste materialisiert. Der Header zeigt die echte
             // Gesamtzahl; hier steht ehrlich, wie viele davon gelistet sind.
-            // „Alle ersetzen" wirkt trotzdem auf ALLE Treffer (Voll-Replace).
+            // „Alle ersetzen" bleibt bis zu einer vollständigen sichtbaren
+            // Trefferbasis gesperrt (Produktinvariante Vorschau vor Apply).
             if !workspace.scope.isFolderLike && workspace.bufferResultsWereCapped {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -1193,7 +1216,7 @@ struct FloatingSearchDialog: View {
     /// die ersten N markiert sind.
     private var bufferCapHint: String {
         var text = L10n.format(
-            "Erste %ld von %ld Treffern gelistet — Suchbegriff verfeinern. „Alle ersetzen“ erfasst dennoch alle.",
+            "Erste %ld von %ld Treffern gelistet — Suchbegriff verfeinern. „Alle ersetzen“ bleibt gesperrt, bis alle Treffer sichtbar sind.",
             workspace.bufferMatches.count, workspace.bufferTotalMatches
         )
         if workspace.scope == .file {
@@ -1324,6 +1347,7 @@ struct FloatingSearchDialog: View {
                 workspace.copyHitsToClipboard()
             }
             .controlSize(.small)
+            .disabled(workspace.navMatches.isEmpty)
             .help("Alle gefundenen Treffer schnell als LF-getrennte Liste in die Zwischenablage kopieren.")
 
             // BBEdit „Extract" (Handbuch S. 168/193): Treffer in ein neues
@@ -1333,6 +1357,7 @@ struct FloatingSearchDialog: View {
                 showExtractionDialog = true
             }
             .controlSize(.small)
+            .disabled(workspace.navMatches.isEmpty)
             .help("Extrahieren mit Trennzeichen, Ziel, Quoting, Duplikatfilter und optionaler Ersetzung konfigurieren.")
 
             Divider().frame(height: 14)

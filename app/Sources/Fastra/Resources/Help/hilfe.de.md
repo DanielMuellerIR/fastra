@@ -111,9 +111,18 @@ Importdateien sind auf 1 MB begrenzt; ungültige Einträge werden übersprungen.
 
 - „Ersetzen“ ersetzt nur den aktiven Treffer und springt weiter.
 - „Alle ersetzen · N“ (⌘Return) ersetzt alle Treffer des Suchbereichs.
+- Überschreitet die Trefferzahl die sichtbare Obergrenze, bleibt „Alle
+  ersetzen“ gesperrt. Verfeinere dann den Suchbegriff, bis die vollständige
+  Trefferbasis sichtbar ist.
+- Enthält die Trefferbasis im Bereich „Geöffnet“ einen schreibgeschützten Tab,
+  bleibt „Alle ersetzen“ ebenfalls gesperrt. Fastra überspringt keinen
+  sichtbaren Treffer stillschweigend.
 - „Vorschau der Änderungen“ zeigt vor dem Ersetzen jede betroffene Zeile
   als Vorher/Nachher-Diff. Angewendet wird **exakt** die angezeigte
-  Trefferbasis — das ist eine Sicherheitsgarantie.
+  Trefferbasis — das ist eine Sicherheitsgarantie. In sehr langen Dokumenten
+  kürzt Fastra dafür unveränderten Kontext, nie unbemerkt eine Änderungszeile;
+  reicht selbst das Anzeigelimit nicht für alle Änderungen, bleibt Apply
+  gesperrt.
 - Im Ordner-/Projekt-Bereich prüft Fastra vor dem ersten Schreiben noch einmal
   alle Dateien gegen die sichtbare Vorschau. Geänderte Dateien und betroffene
   Tabs mit ungespeicherten Änderungen blockieren den gesamten Vorgang. Planung,

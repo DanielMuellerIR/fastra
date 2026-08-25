@@ -7,6 +7,7 @@
 
 import Testing
 import Foundation
+import AppKit
 @testable import Fastra
 
 // MARK: - Hilfen
@@ -103,6 +104,10 @@ private func makeWorkspace(tabs tabContents: [(String, String)]) -> Workspace {
 @Test("navMatches trägt im Geöffnet-Scope die Ziel-Tab-ID")
 func workspace_navMatchesCarryTabID() {
     let ws = makeWorkspace(tabs: [("a.txt", "foo"), ("b.txt", "foo")])
+    ws.findPattern = plainFoo.find
+    ws.replacePattern = plainFoo.replace
+    ws.useRegex = plainFoo.isRegex
+    ws.caseSensitive = plainFoo.caseSensitive
     // Ergebnis manuell setzen (der SearchRunner läuft async — hier zählt
     // nur das Mapping openResults → navMatches).
     let r = OpenTabsSearch.find(
@@ -111,6 +116,7 @@ func workspace_navMatchesCarryTabID() {
         options: plainFoo)
     ws.openResults = r.perTab
     ws.openTotalMatches = r.totalMatches
+    ws.visibleBufferResultsOptions = plainFoo
     let nav = ws.navMatches
     #expect(nav.count == 2)
     #expect(nav[0].tabID == ws.tabs[0].id)
@@ -146,6 +152,34 @@ func workspace_applyAllInOpenTabs() {
     #expect(ws.tabs[2].isDirty == true)
 }
 
+@Test("Alle ersetzen sperrt Treffer jenseits der sichtbaren Geöffnet-Vorschau")
+func workspace_applyAllInOpenTabsRejectsCappedPreview() {
+    let original = Array(repeating: "foo", count: BufferSearch.defaultMaxMatches + 1)
+        .joined(separator: " ")
+    let ws = makeWorkspace(tabs: [("viele.txt", original)])
+    ws.findPattern = "foo"
+    ws.replacePattern = "X"
+    ws.useRegex = false
+    ws.caseSensitive = true
+    let result = OpenTabsSearch.find(
+        tabs: [OpenTabsSearch.TabInput(
+            id: ws.tabs[0].id, title: ws.tabs[0].title, content: original
+        )],
+        options: ws.currentSearchOptions,
+        maxTotal: BufferSearch.defaultMaxMatches
+    )
+    #expect(result.wasCapped)
+    ws.openResults = result.perTab
+    ws.openTotalMatches = result.totalMatches
+    ws.openResultsWereCapped = result.wasCapped
+    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+
+    #expect(!ws.canApplyAllInOpenTabs)
+    #expect(ws.applyAllInOpenTabs() == 0)
+    #expect(ws.tabs[0].content == original,
+            "Der nicht sichtbare 2.001. Treffer darf nicht ohne Vorschau ersetzt werden")
+}
+
 @Test("applyAllInOpenTabs ohne Treffer-Stand tut nichts")
 func workspace_applyAllGuard() {
     let ws = makeWorkspace(tabs: [("a.txt", "foo")])
@@ -168,6 +202,7 @@ func workspace_extractInOpenScope() {
         options: ws.currentSearchOptions)
     ws.openResults = r.perTab
     ws.openTotalMatches = r.totalMatches
+    ws.visibleBufferResultsOptions = ws.currentSearchOptions
     #expect(ws.extractHitsToNewTab() == true)
     #expect(ws.tabs.last?.content == "foo eins\nfoo zwei\n")
 }
@@ -179,8 +214,18 @@ func workspace_applyAllInOpenTabs_refusesStalePreview() {
     ws.replacePattern = "X"
     ws.useRegex = false
     ws.caseSensitive = true
-    ws.openTotalMatches = 1
+    let result = OpenTabsSearch.find(
+        tabs: ws.tabs.map {
+            OpenTabsSearch.TabInput(id: $0.id, title: $0.title,
+                                    content: $0.content)
+        }, options: ws.currentSearchOptions
+    )
+    ws.openResults = result.perTab
+    ws.openTotalMatches = result.totalMatches
+    ws.openResultsWereCapped = result.wasCapped
     ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    #expect(ws.canApplyAllInOpenTabs,
+            "Der Test braucht vor der Eingabeänderung eine echte freigegebene Vorschau")
 
     // Muster geändert, Neulauf noch nicht gelaufen → die sichtbare
     // Trefferzahl gehört zum alten Muster und gibt nichts frei.
@@ -189,8 +234,8 @@ func workspace_applyAllInOpenTabs_refusesStalePreview() {
     #expect(ws.tabs[0].content == "foo bar")
 }
 
-@Test("Geöffnet-Ersetzen überspringt read-only Git-Vorversionen")
-func workspace_openReplaceOnlyChangesEditableTabs() {
+@Test("Geöffnet-Ersetzen sperrt eine teilweise schreibgeschützte Trefferbasis")
+func workspace_openReplaceRejectsReadOnlyMatches() {
     let ws = makeWorkspace(tabs: [("edit.txt", "foo"), ("HEAD:gone.txt", "foo")])
     ws.tabs[1].readOnlyReason = "Git-Vorversion"
     ws.tabs[1].gitSnapshotRequest = GitFileSnapshotRequest(
@@ -210,12 +255,39 @@ func workspace_openReplaceOnlyChangesEditableTabs() {
     ws.openTotalMatches = result.totalMatches
     ws.visibleBufferResultsOptions = ws.currentSearchOptions
 
-    #expect(ws.canApplyAllInOpenTabs)
-    #expect(ws.applyAllInOpenTabs() == 1)
-    #expect(ws.tabs[0].content == "X")
-    #expect(ws.tabs[0].isDirty)
+    #expect(ws.openResultsContainReadOnlyTabs)
+    #expect(!ws.canApplyAllInOpenTabs)
+    #expect(ws.applyAllInOpenTabs() == 0)
+    #expect(ws.tabs[0].content == "foo")
+    #expect(!ws.tabs[0].isDirty)
     #expect(ws.tabs[1].content == "foo")
     #expect(!ws.tabs[1].isDirty)
+}
+
+@Test("Kopieren lässt die Zwischenablage bei veralteter Trefferbasis unverändert")
+func workspace_copyHitsRefusesStalePreview() {
+    let ws = makeWorkspace(tabs: [("a.txt", "foo")])
+    ws.findPattern = "foo"
+    ws.useRegex = false
+    ws.caseSensitive = true
+    let result = OpenTabsSearch.find(
+        tabs: ws.tabs.map {
+            OpenTabsSearch.TabInput(id: $0.id, title: $0.title,
+                                    content: $0.content)
+        }, options: ws.currentSearchOptions
+    )
+    ws.openResults = result.perTab
+    ws.openTotalMatches = result.totalMatches
+    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+
+    let pasteboard = NSPasteboard(name: .init("fastra.test.copy-stale.\(UUID().uuidString)"))
+    pasteboard.clearContents()
+    pasteboard.setString("behalten", forType: .string)
+    ws.findPattern = "bar"
+
+    #expect(ws.navMatches.isEmpty)
+    ws.copyHitsToClipboard(pasteboard)
+    #expect(pasteboard.string(forType: .string) == "behalten")
 }
 
 @Test("Einzel-Ersetzen im Geöffnet-Scope ändert den gewählten Ziel-Tab")

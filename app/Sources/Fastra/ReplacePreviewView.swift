@@ -11,15 +11,18 @@ struct ReplacePreviewView: View {
     /// Obergrenze angezeigter Zeilen — bei mehr erscheint ein Hinweis.
     private let maxRows = 5_000
 
-    private var result: ReplacePreview.SideBySideResult {
-        ReplacePreview.buildSideBySide(text: workspace.activeTab?.content ?? "",
-                                       matches: workspace.bufferMatches,
-                                       maxRows: maxRows)
-    }
-
     var body: some View {
-        VStack(spacing: 0) {
-            header
+        // SwiftUI wertet berechnete Unteransichten innerhalb eines Body-Laufs
+        // mehrfach aus. Der vollständige Dokument-Diff ist teuer; deshalb
+        // genau einmal pro Body-Aufbau berechnen und an Header/Footer
+        // weiterreichen, statt ihn bei jeder `result`-Abfrage neu zu bauen.
+        let result = ReplacePreview.buildSideBySide(
+            text: workspace.activeTab?.content ?? "",
+            matches: workspace.bufferMatches,
+            maxRows: maxRows
+        )
+        return VStack(spacing: 0) {
+            header(result: result)
             Divider().opacity(0.3)
             if result.rows.isEmpty {
                 emptyState
@@ -34,23 +37,29 @@ struct ReplacePreviewView: View {
                     }
                 }
                 if result.truncated {
-                    Text(verbatim: L10n.format(
-                        "… und %ld weitere ausgerichtete Zeilen (Anzeige auf %ld begrenzt).",
-                        result.totalRows - result.rows.count, maxRows
-                    ))
+                    Text(verbatim: result.allChangedRowsVisible
+                         ? L10n.format(
+                            "Alle Änderungen sichtbar (%ld); %ld unveränderte Kontextzeilen ausgeblendet.",
+                            result.changedRows, result.totalRows - result.rows.count
+                         )
+                         : L10n.format(
+                            "Nur %ld von %ld Änderungen sichtbar — „Alle ersetzen“ bleibt gesperrt.",
+                            result.visibleChangedRows, result.changedRows
+                         ))
                         .fastraFont(.small)
-                        .foregroundColor(Theme.textSecondary)
+                        .foregroundColor(result.allChangedRowsVisible
+                                         ? Theme.textSecondary : .orange)
                         .padding(.vertical, 6)
                 }
             }
             Divider().opacity(0.4)
-            footer
+            footer(result: result)
         }
         .frame(width: 880, height: 560)
         .background(Theme.surfaceBase)
     }
 
-    private var header: some View {
+    private func header(result: ReplacePreview.SideBySideResult) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "eye.fill")
                 .foregroundColor(Theme.accentReadable)
@@ -62,7 +71,7 @@ struct ReplacePreviewView: View {
                     .foregroundColor(Theme.textSecondary)
             }
             Spacer()
-            Text(summaryText)
+            Text(summaryText(for: result))
                 .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
         }
@@ -71,7 +80,7 @@ struct ReplacePreviewView: View {
         .background(Theme.surfaceSand.opacity(0.5))
     }
 
-    private var summaryText: String {
+    private func summaryText(for result: ReplacePreview.SideBySideResult) -> String {
         let n = result.changedRows
         if n == 0 { return L10n.string("Keine Änderungen") }
         return n == 1 ? L10n.string("1 geänderte Zeile")
@@ -111,7 +120,7 @@ struct ReplacePreviewView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var footer: some View {
+    private func footer(result: ReplacePreview.SideBySideResult) -> some View {
         HStack {
             Button("Schließen") { workspace.livePreview = false }
                 .keyboardShortcut(.cancelAction)
@@ -127,12 +136,12 @@ struct ReplacePreviewView: View {
                 }
             }
             .keyboardShortcut(.defaultAction)
-            // Zwei Gründe zu sperren: Ohne Zeilen gibt es nichts zu ersetzen,
-            // und kurz nach einem Tastendruck gehören die noch sichtbaren
-            // Zeilen zum VORIGEN Muster. Der Workspace lehnt den zweiten Fall
-            // ab; ohne diese Kopplung blieb der Knopf trotzdem aktiv und der
-            // Klick folgenlos (Review 2026-08-06).
-            .disabled(result.rows.isEmpty || !workspace.canApplyAllInActiveBuffer)
+            // Ohne Zeilen gibt es nichts zu ersetzen. Bei mehr Änderungen als
+            // Vorschauplätze sperrt `allChangedRowsVisible` außerdem jede
+            // unsichtbare Anwendung. Der Workspace-Guard schützt zusätzlich
+            // die Optionsbindung und eine gekappte Trefferliste.
+            .disabled(result.rows.isEmpty || !result.allChangedRowsVisible
+                      || !workspace.canApplyAllInActiveBuffer)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

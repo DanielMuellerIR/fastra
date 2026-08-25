@@ -153,7 +153,10 @@
 "Text" = "Text";
 "Texteditor mit besonderen Suchen-&-Ersetzen-Fähigkeiten" = "A text editor with exceptional find-and-replace tools";
 "Treffer extrahieren" = "Extract Matches";
+"Treffer in schreibgeschützten Tabs — „Alle ersetzen“ bleibt gesperrt." = "Matches in read-only tabs — Replace All remains disabled.";
 "Treffer kopieren" = "Copy Matches";
+"Alle Änderungen sichtbar (%ld); %ld unveränderte Kontextzeilen ausgeblendet." = "All changes are visible (%ld); %ld unchanged context lines are hidden.";
+"Nur %ld von %ld Änderungen sichtbar — „Alle ersetzen“ bleibt gesperrt." = "Only %ld of %ld changes are visible — Replace All remains disabled.";
 "Trennzeichen" = "Separator";
 "Umbenennen…" = "Rename…";
 "VORSCHAU" = "PREVIEW";
@@ -448,7 +451,6 @@
 "Rückgängig abgelehnt" = "Undo Rejected";
 "Rückgängig teilweise fehlgeschlagen" = "Undo Partially Failed";
 "%@\n\nDer bereits gespeicherte Fortschritt kann mit Rückgängig fortgesetzt werden." = "%@\n\nThe persisted progress can be continued with Undo.";
-"… und %ld weitere ausgerichtete Zeilen (Anzeige auf %ld begrenzt)." = "… and %ld more aligned lines (display limited to %ld).";
 "1 geänderte Zeile" = "1 Changed Line";
 "%ld geänderte Zeilen" = "%ld Changed Lines";
 "Ersetzen hat ein ∗ mehr als Suchen — das überzählige ∗ bleibt leer." = "Replace contains one more ∗ than Find—the extra ∗ remains empty.";
@@ -456,7 +458,7 @@
 "… und %ld weitere geänderte Zeilen — „Vorschau der Änderungen\" zeigt alle." = "… and %ld more changed lines—Preview Changes shows all of them.";
 "Treffer (%ld)" = "Matches (%ld)";
 "Trefferliste auf 10.000 gekappt — Suchbegriff verfeinern." = "Match list limited to 10,000—refine the search term.";
-"Trefferliste gekappt — Zähler zeigt die wahre Gesamtzahl." = "Match list limited—the counter shows the true total.";
+"Trefferliste gekappt — „Alle ersetzen“ bleibt gesperrt, bis alle Treffer sichtbar sind." = "Match list limited—Replace All stays disabled until every match is visible.";
 "Aktiver Buffer" = "Active Document";
 "Suchausdruck eingeben…" = "Enter a search expression…";
 "Das aktive Datei-Set enthält keine vorhandenen Pfade." = "The active file set contains no existing paths.";
@@ -470,7 +472,7 @@
 "Detail · %@ · %@" = "Detail · %@ · %@";
 "Gruppe %ld ins Ersetzen-Feld übernehmen — Pille dorthin ziehen oder einfach klicken (fügt $%ld ein)." = "Add group %ld to the Replace field—drag the pill there or click it (inserts $%ld).";
 "Platzhalter %ld (der %ld. Stern ∗) ins Ersetzen-Feld übernehmen — Pille dorthin ziehen oder einfach klicken (fügt $%ld ein)." = "Add wildcard %ld (the %ldth star ∗) to the Replace field—drag the pill there or click it (inserts $%ld).";
-"Erste %ld von %ld Treffern gelistet — Suchbegriff verfeinern. „Alle ersetzen“ erfasst dennoch alle." = "Showing the first %ld of %ld matches—refine the search term. Replace All still processes every match.";
+"Erste %ld von %ld Treffern gelistet — Suchbegriff verfeinern. „Alle ersetzen“ bleibt gesperrt, bis alle Treffer sichtbar sind." = "Showing the first %ld of %ld matches—refine the search term. Replace All stays disabled until every match is visible.";
 "%@ (%ld)" = "%@ (%ld)";
 "Die ausgewählten Ordner jetzt durchsuchen. Ab %ld Zeichen läuft die Ordner-Suche live beim Tippen mit; Klick oder Return erzwingen sie auch bei kürzeren Suchausdrücken und ohne Wartezeit." = "Search the selected folders now. From %ld characters onward, folder search runs live while typing; clicking or pressing Return also searches shorter expressions immediately.";
 "Gruppe %ld" = "Group %ld";

@@ -267,6 +267,32 @@ func applyAll_refusesPreviewFromAnEarlierPattern() {
     #expect(ws.activeTabContent.wrappedValue == "fXX fXX")
 }
 
+@Test("Alle ersetzen sperrt Treffer jenseits der sichtbaren Datei-Vorschau")
+@MainActor
+func applyAll_refusesCappedFilePreview() {
+    let original = Array(repeating: "foo", count: BufferSearch.defaultMaxMatches + 1)
+        .joined(separator: " ")
+    let ws = makeWorkspace(content: original)
+    ws.scope = .file
+    ws.useRegex = false
+    ws.findPattern = "foo"
+    ws.replacePattern = "X"
+
+    let preview = BufferSearch.find(in: original, options: ws.currentSearchOptions)
+    #expect(preview.wasCapped)
+    #expect(preview.matches.count == BufferSearch.defaultMaxMatches)
+    #expect(preview.totalMatches == BufferSearch.defaultMaxMatches + 1)
+    ws.bufferMatches = preview.matches
+    ws.bufferTotalMatches = preview.totalMatches
+    ws.bufferResultsWereCapped = preview.wasCapped
+    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+
+    #expect(!ws.canApplyAllInActiveBuffer)
+    #expect(!ws.applyAllInActiveBuffer())
+    #expect(ws.activeTabContent.wrappedValue == original,
+            "Der nicht sichtbare 2.001. Treffer darf nicht ohne Vorschau ersetzt werden")
+}
+
 @Test("Einzel-Ersetzen läuft nicht auf einem Treffer aus einem alten Lauf")
 @MainActor
 func replaceActiveMatch_refusesPreviewFromAnEarlierPattern() {
