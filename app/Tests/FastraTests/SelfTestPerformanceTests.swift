@@ -71,8 +71,371 @@ private func pathIgnoringForeignFastraProcess(in root: URL) throws -> String {
     return bin.path + ":" + oldPath
 }
 
+/// Startet den echten Selbsttest-Runner gegen ein minimales Ersatz-Binary,
+/// das nur die vorgegebenen Ergebniszeilen schreibt. So prüfen die Tests die
+/// Shell-Auswertung einschließlich Sandbox und Exit-Priorität, ohne ein
+/// App-Fenster zu öffnen.
+private func runSelfTestResultFixture(_ payload: String) throws
+    -> PerformanceToolResult {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fastra-selftest-result-\(UUID().uuidString)")
+    let sandboxParent = root.appendingPathComponent("sandboxes")
+    let lock = root.appendingPathComponent("gui.lock")
+    let fakeApp = root.appendingPathComponent("Fastra")
+    let runner = performanceToolsDirectory.deletingLastPathComponent()
+        .appendingPathComponent("selftest.sh")
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    try FileManager.default.createDirectory(
+        at: sandboxParent, withIntermediateDirectories: true
+    )
+    try """
+    #!/bin/bash
+    printf '%s\n' "$FASTRA_TEST_RESULT_PAYLOAD" >&2
+    """.write(to: fakeApp, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes(
+        [.posixPermissions: 0o755], ofItemAtPath: fakeApp.path
+    )
+    let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
+    return try runPerformanceTool(
+        "/bin/bash", arguments: [runner.path, "search"], environment: [
+            "PATH": isolatedPath,
+            "FASTRA_GUI_LOCK_DIR": lock.path,
+            "FASTRA_SELFTEST_APP_BIN": fakeApp.path,
+            "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+            "FASTRA_TEST_RESULT_PAYLOAD": payload,
+        ]
+    )
+}
+
+@Suite("Typisierte Selbsttest-Ergebnisse")
+struct SelfTestOutcomeTests {
+    @Test("Protokollstatus und Priorität sind eindeutig")
+    func protocolStatusAndPriority() {
+        #expect(SelfTestOutcome.pass.protocolStatus == "PASS")
+        #expect(SelfTestOutcome.skip.protocolStatus == "SKIP")
+        #expect(SelfTestOutcome.environment.protocolStatus == "ENV")
+        #expect(SelfTestOutcome.fail.protocolStatus == "FAIL")
+        #expect(max(SelfTestOutcome.pass, .environment) == .environment)
+        #expect(max(SelfTestOutcome.environment, .fail) == .fail)
+    }
+
+    @Test("Fokusverlust und First-Responder-Fehler bleiben getrennt")
+    func focusOutcome() {
+        var responderCalls = 0
+        let lostWindow = SelfTestFocusRouting.outcome(
+            isKeyWindow: false,
+            makeFirstResponder: {
+                responderCalls += 1
+                return true
+            }
+        )
+        #expect(lostWindow == .environment)
+        #expect(responderCalls == 0)
+        #expect(SelfTestFocusRouting.outcome(
+            isKeyWindow: true, makeFirstResponder: { false }
+        ) == .fail)
+        #expect(SelfTestFocusRouting.outcome(
+            isKeyWindow: true, makeFirstResponder: { true }
+        ) == nil)
+    }
+
+    @Test("Frühere 4D-Fehler bleiben in Status und Diagnose erhalten")
+    func recordedFourDFailureWins() {
+        let result = SelfTestOutcome.resolving(
+            recordedFailures: ["Auto-Popup blieb aus"],
+            requestedOutcome: .environment,
+            message: "Fokus ging später verloren"
+        )
+        #expect(result.outcome == .fail)
+        #expect(result.message.contains("Auto-Popup blieb aus"))
+        #expect(result.message.contains("Fokus ging später verloren"))
+
+        let alreadyJoined = SelfTestOutcome.resolving(
+            recordedFailures: ["erster", "zweiter"],
+            requestedOutcome: .fail,
+            message: "erster; zweiter"
+        )
+        #expect(alreadyJoined.message == "erster; zweiter")
+    }
+
+    @Test("Zwischenablage-Zähler trennt Fremdeingriff vom Testfehler")
+    func pasteboardCountMismatchOutcome() {
+        #expect(SelfTestPasteboardMutationRouting.unexpectedCountOutcome(
+            contentMatchesExpected: false
+        ) == .environment)
+        #expect(SelfTestPasteboardMutationRouting.unexpectedCountOutcome(
+            contentMatchesExpected: true
+        ) == .fail)
+        #expect(SelfTestPasteboardMutationRouting.unexpectedCountOutcome(
+            contentMatchesExpected: nil
+        ) == .fail)
+    }
+
+    @Test("Nur externer Markdown-Fixturefehler ist Umgebung")
+    func markdownFixtureOutcome() {
+        #expect(SelfTestFixtureOutcome.markdownImport(
+            for: MarkdownImportFixtureError.png
+        ) == .fail)
+        #expect(SelfTestFixtureOutcome.markdownImport(
+            for: CocoaError(.fileWriteNoPermission)
+        ) == .environment)
+    }
+}
+
 @Suite("Lokale Selbsttest-Performance", .serialized)
 struct SerialRunnerIntegrationSelfTestPerformanceTests {
+    @Test("Maschinenstatus bestimmt Ergebnis ohne mehrdeutige Textsuche")
+    func structuredSelfTestResultStatusWins() throws {
+        let realFailure = try runSelfTestResultFixture("""
+        SELFTEST-RESULT v=1 test=search status=FAIL
+        SELFTEST search: FAIL — echter Fehler; Umgebungsproblem nur als Zusatzdiagnose
+        """)
+        #expect(realFailure.status == 1, "Maschinen-FAIL: \(realFailure.output)")
+        #expect(realFailure.output.contains("echte FAILs: 1"))
+        #expect(realFailure.output.contains("Umgebungs-FAILs: 0"))
+        #expect(realFailure.output.components(separatedBy:
+            "SELFTEST-RESULT v=1 test=search status=FAIL").count - 1 == 1)
+
+        let environment = try runSelfTestResultFixture("""
+        SELFTEST-RESULT v=1 test=search status=ENV
+        SELFTEST search: FAIL — Fokus ging verloren
+        """)
+        #expect(environment.status == 2, "Umgebungsstatus: \(environment.output)")
+        #expect(environment.output.contains("echte FAILs: 0"))
+        #expect(environment.output.contains("Umgebungs-FAILs: 1"))
+        #expect(environment.output.components(separatedBy:
+            "SELFTEST-RESULT v=1 test=search status=ENV").count - 1 == 1)
+
+        let skipped = try runSelfTestResultFixture("""
+        SELFTEST-RESULT v=1 test=search status=SKIP
+        SELFTEST search: SKIP — optionale Stufe nicht verfügbar
+        """)
+        #expect(skipped.status == 2, "Übersprungener Test: \(skipped.output)")
+        #expect(skipped.output.contains("übersprungen: 1"))
+        #expect(skipped.output.components(separatedBy:
+            "SELFTEST-RESULT v=1 test=search status=SKIP").count - 1 == 1)
+
+        let machinePass = try runSelfTestResultFixture("""
+        SELFTEST-RESULT v=1 test=search status=PASS
+        SELFTEST search: FAIL — widersprüchliche alte Begleitzeile
+        """)
+        #expect(machinePass.status == 0, "Maschinen-PASS: \(machinePass.output)")
+        #expect(machinePass.output.contains("PASS: 1"))
+        #expect(machinePass.output.components(separatedBy:
+            "SELFTEST-RESULT v=1 test=search status=PASS").count - 1 == 1)
+
+        let legacy = try runSelfTestResultFixture(
+            "SELFTEST search: PASS — altes Bundle"
+        )
+        #expect(legacy.status == 0, "Altbundle: \(legacy.output)")
+        #expect(legacy.output.components(separatedBy:
+            "SELFTEST-RESULT v=1 test=search status=PASS").count - 1 == 1)
+    }
+
+    @Test("Mehrere Maschinenstatus werden mit Fehlerpriorität zusammengeführt")
+    func structuredSelfTestResultUsesHighestPriority() throws {
+        let result = try runSelfTestResultFixture("""
+        SELFTEST-RESULT v=1 test=search status=PASS
+        SELFTEST-RESULT v=1 test=search status=SKIP
+        SELFTEST-RESULT v=1 test=search status=ENV
+        SELFTEST-RESULT v=1 test=search status=FAIL
+        SELFTEST search: PASS — lesbare Zeile ist nicht maßgeblich
+        """)
+        #expect(result.status == 1, "Priorität: \(result.output)")
+        #expect(result.output.components(separatedBy:
+            "SELFTEST-RESULT v=1 test=search status=FAIL").count - 1 == 1)
+        #expect(result.output.contains("echte FAILs: 1"))
+    }
+
+    @Test("Altbundle-Parser akzeptiert PASS nur an der Statusposition")
+    func legacySelfTestResultValidatesPrefixAndPosition() throws {
+        let embeddedPass = try runSelfTestResultFixture(
+            "SELFTEST search: FAIL — erwartet SELFTEST search: PASS"
+        )
+        #expect(embeddedPass.status == 1, "Diagnosetext: \(embeddedPass.output)")
+
+        let wrongTest = try runSelfTestResultFixture(
+            "SELFTEST project: PASS — falscher Testname"
+        )
+        #expect(wrongTest.status == 1, "Testname: \(wrongTest.output)")
+
+        let environment = try runSelfTestResultFixture(
+            "SELFTEST search: FAIL — Umgebungsproblem: Fokus fehlt"
+        )
+        #expect(environment.status == 2, "Umgebung: \(environment.output)")
+    }
+
+    @Test("Beschädigter Maschinenstatus fällt nie auf eine alte PASS-Zeile zurück")
+    func malformedStructuredSelfTestResultFailsClosed() throws {
+        let malformed = try runSelfTestResultFixture("""
+        SELFTEST-RESULT v=2 test=search status=MAYBE
+        SELFTEST search: PASS — alte Begleitzeile
+        """)
+        #expect(malformed.status == 1, "Protokollfehler: \(malformed.output)")
+        #expect(malformed.output.contains("Protokollfehler"))
+        #expect(malformed.output.contains("echte FAILs: 1"))
+
+        let missingStatusField = try runSelfTestResultFixture("""
+        SELFTEST-RESULT v=1 test=search FAIL
+        SELFTEST search: PASS — alte Begleitzeile
+        """)
+        #expect(
+            missingStatusField.status == 1,
+            "Fehlender Statusschlüssel: \(missingStatusField.output)"
+        )
+        #expect(missingStatusField.output.contains("Protokollfehler"))
+
+        let damagedPrefix = try runSelfTestResultFixture("""
+        SELFTEST-RESULTX v=1 test=search status=PASS
+        SELFTEST search: PASS — alte Begleitzeile
+        """)
+        #expect(damagedPrefix.status == 1, "Präfixfehler: \(damagedPrefix.output)")
+        #expect(damagedPrefix.output.contains("Protokollfehler"))
+    }
+
+    @Test("⌘N-Willkommenstest startet ohne LaunchServices und Vordergrundaktivierung")
+    func welcomeNewUsesDirectBackgroundLaunch() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-welcomenew-routing-\(UUID().uuidString)")
+        let sandboxParent = root.appendingPathComponent("sandboxes")
+        let lock = root.appendingPathComponent("gui.lock")
+        let fakeApp = root.appendingPathComponent("Fastra.app")
+        let fakeBinary = fakeApp.appendingPathComponent("Contents/MacOS/Fastra")
+        let fakeInfo = fakeApp.appendingPathComponent("Contents/Info.plist")
+        let fakeOpen = root.appendingPathComponent("open")
+        let fakeLSRegister = root.appendingPathComponent("lsregister")
+        let openProbe = root.appendingPathComponent("open-called")
+        let runner = performanceToolsDirectory.deletingLastPathComponent()
+            .appendingPathComponent("selftest.sh")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        for directory in [sandboxParent, fakeBinary.deletingLastPathComponent()] {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+        }
+        let infoData = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "de.dm0.fastra"],
+            format: .xml,
+            options: 0
+        )
+        try infoData.write(to: fakeInfo)
+        try """
+        #!/bin/bash
+        printf '%s\n' 'SELFTEST-RESULT v=1 test=welcomenew status=PASS' >&2
+        printf '%s\n' 'SELFTEST welcomenew: PASS — Hintergrundstart' >&2
+        """.write(to: fakeBinary, atomically: true, encoding: .utf8)
+        try """
+        #!/bin/bash
+        touch "$FASTRA_TEST_OPEN_PROBE"
+        exit 88
+        """.write(to: fakeOpen, atomically: true, encoding: .utf8)
+        try "#!/bin/bash\nexit 0\n"
+            .write(to: fakeLSRegister, atomically: true, encoding: .utf8)
+        for executable in [fakeBinary, fakeOpen, fakeLSRegister] {
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o755], ofItemAtPath: executable.path
+            )
+        }
+        let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
+
+        let result = try runPerformanceTool(
+            "/bin/bash", arguments: [runner.path, "welcomenew"], environment: [
+                "PATH": isolatedPath,
+                "FASTRA_GUI_LOCK_DIR": lock.path,
+                "FASTRA_SELFTEST_APP_BIN": fakeBinary.path,
+                "FASTRA_SELFTEST_APP_BUNDLE": fakeApp.path,
+                "FASTRA_SELFTEST_TEST_CONSOLE_UNLOCKED": "1",
+                "FASTRA_TEST_LSREGISTER": fakeLSRegister.path,
+                "FASTRA_TEST_OPEN_COMMAND": fakeOpen.path,
+                "FASTRA_TEST_OPEN_PROBE": openProbe.path,
+                "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+            ]
+        )
+        #expect(result.status == 0, "Hintergrundstart: \(result.output)")
+        #expect(!FileManager.default.fileExists(atPath: openProbe.path))
+    }
+
+    @Test("Fertiger Fokustest wartet nicht mehr auf die Aktivierung")
+    func finishedForegroundSelftestSkipsActivationDelay() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-focus-result-\(UUID().uuidString)")
+        let sandboxParent = root.appendingPathComponent("sandboxes")
+        let lock = root.appendingPathComponent("gui.lock")
+        let fakeApp = root.appendingPathComponent("Fastra.app")
+        let fakeBinary = fakeApp.appendingPathComponent("Contents/MacOS/Fastra")
+        let fakeInfo = fakeApp.appendingPathComponent("Contents/Info.plist")
+        let fakeOpen = root.appendingPathComponent("open")
+        let fakeLSRegister = root.appendingPathComponent("lsregister")
+        let sleepProbe = root.appendingPathComponent("activation-sleep")
+        let runner = performanceToolsDirectory.deletingLastPathComponent()
+            .appendingPathComponent("selftest.sh")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        for directory in [sandboxParent, fakeBinary.deletingLastPathComponent()] {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+        }
+        let infoData = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "de.dm0.fastra"],
+            format: .xml,
+            options: 0
+        )
+        try infoData.write(to: fakeInfo)
+        try "#!/bin/bash\nexit 90\n"
+            .write(to: fakeBinary, atomically: true, encoding: .utf8)
+        try """
+        #!/bin/bash
+        errfile=''
+        while [ "$#" -gt 0 ]; do
+          case "$1" in
+            --stderr) errfile="$2"; shift 2 ;;
+            *) shift ;;
+          esac
+        done
+        [ -n "$errfile" ] || exit 89
+        printf '%s\n' 'SELFTEST-RESULT v=1 test=newwindow status=PASS' > "$errfile"
+        printf '%s\n' 'SELFTEST newwindow: PASS — früh fertig' >> "$errfile"
+        """.write(to: fakeOpen, atomically: true, encoding: .utf8)
+        try "#!/bin/bash\nexit 0\n"
+            .write(to: fakeLSRegister, atomically: true, encoding: .utf8)
+        for executable in [fakeBinary, fakeOpen, fakeLSRegister] {
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o755], ofItemAtPath: executable.path
+            )
+        }
+        let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
+        let fakeSleep = root.appendingPathComponent("bin/sleep")
+        try """
+        #!/bin/bash
+        if [ "${1:-}" = 1 ]; then
+          touch "$FASTRA_TEST_ACTIVATION_SLEEP_PROBE"
+        fi
+        exec /bin/sleep "$@"
+        """.write(to: fakeSleep, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: fakeSleep.path
+        )
+
+        let result = try runPerformanceTool(
+            "/bin/bash", arguments: [runner.path, "newwindow"], environment: [
+                "PATH": isolatedPath,
+                "FASTRA_GUI_LOCK_DIR": lock.path,
+                "FASTRA_SELFTEST_APP_BIN": fakeBinary.path,
+                "FASTRA_SELFTEST_APP_BUNDLE": fakeApp.path,
+                "FASTRA_SELFTEST_TEST_CONSOLE_UNLOCKED": "1",
+                "FASTRA_TEST_ACTIVATION_SLEEP_PROBE": sleepProbe.path,
+                "FASTRA_TEST_LSREGISTER": fakeLSRegister.path,
+                "FASTRA_TEST_OPEN_COMMAND": fakeOpen.path,
+                "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+            ]
+        )
+        #expect(result.status == 0, "Frühes Ergebnis: \(result.output)")
+        #expect(!FileManager.default.fileExists(atPath: sleepProbe.path))
+    }
+
     @Test("Fehlende Bildschirmfreigabe startet kein Aufnahme-Werkzeug")
     func deniedScreenCaptureUsesOnlyFallback() {
         var systemCalls = 0

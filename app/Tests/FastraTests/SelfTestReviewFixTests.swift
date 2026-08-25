@@ -119,6 +119,15 @@ func pasteboardRestorePathsCheckOwnership() throws {
         hat; vor der Bestätigung müssen Items, Typen und Daten vollständig dem \
         erwarteten Testinhalt entsprechen.
         """)
+    #expect(note.contains("actualItems.map { $0 == expectedItems }"), """
+        Bei unerwartetem Zähler muss der aktuelle Inhalt entscheiden: Fremder
+        Inhalt ist Umgebung, erwarteter Testinhalt mit falschem Zähler ein
+        echter Fehler.
+        """)
+    #expect(note.contains("abandonSelfTestPasteboardBackup()"), """
+        Nach einem belegten Fremdeingriff darf `finish` die alte Sicherung
+        weder wiederherstellen noch den Umgebungsstatus zu FAIL hochstufen.
+        """)
     #expect(note.contains("persistSelfTestPasteboardBackup(backup)"), """
         Erst die geprüfte Änderung darf das Crash-Journal als automatisch \
         wiederherstellbar bestätigen.

@@ -43,6 +43,81 @@ enum SelfTestCaptureRouting {
     }
 }
 
+/// Maschinenlesbares Ergebnis eines In-App-Selbsttests. Die Reihenfolge
+/// bestimmt, welches Ergebnis gewinnt, wenn beim Aufräumen noch ein Fehler
+/// hinzukommt: Ein Funktionsfehler darf nie als Skip oder Umgebungsproblem
+/// erscheinen.
+enum SelfTestOutcome: Int, Comparable {
+    case pass = 0
+    case skip = 1
+    case environment = 2
+    case fail = 3
+
+    static func < (lhs: SelfTestOutcome, rhs: SelfTestOutcome) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+
+    var protocolStatus: String {
+        switch self {
+        case .pass: "PASS"
+        case .skip: "SKIP"
+        case .environment: "ENV"
+        case .fail: "FAIL"
+        }
+    }
+
+    /// Verknüpft einen späteren Abschlussgrund mit bereits beobachteten
+    /// Funktionsfehlern. Die Fehler bleiben sowohl im Status als auch in der
+    /// Diagnose sichtbar; ein späterer Fokusverlust darf sie nicht verdecken.
+    static func resolving(
+        recordedFailures: [String],
+        requestedOutcome: SelfTestOutcome,
+        message: String
+    ) -> (outcome: SelfTestOutcome, message: String) {
+        guard !recordedFailures.isEmpty else {
+            return (requestedOutcome, message)
+        }
+        let recordedMessage = recordedFailures.joined(separator: "; ")
+        return (
+            .fail,
+            message == recordedMessage ? message : recordedMessage + "; " + message
+        )
+    }
+}
+
+/// Trennt einen von außen verlorenen Fensterfokus von einem Editor, der im
+/// weiterhin aktiven Fenster den First-Responder-Status ablehnt. Nur der erste
+/// Fall ist ein Umgebungsproblem.
+enum SelfTestFocusRouting {
+    static func outcome(
+        isKeyWindow: Bool,
+        makeFirstResponder: () -> Bool
+    ) -> SelfTestOutcome? {
+        guard isKeyWindow else { return .environment }
+        return makeFirstResponder() ? nil : .fail
+    }
+}
+
+/// Ein abweichender Zähler zusammen mit fremdem Inhalt belegt einen externen
+/// Zwischenablagezugriff. Bleibt dagegen genau der erwartete Testinhalt liegen
+/// oder ist er nicht lesbar, hat der Test seinen eigenen Schreibvorgang nicht
+/// wie vereinbart ausgeführt.
+enum SelfTestPasteboardMutationRouting {
+    static func unexpectedCountOutcome(
+        contentMatchesExpected: Bool?
+    ) -> SelfTestOutcome {
+        contentMatchesExpected == false ? .environment : .fail
+    }
+}
+
+enum MarkdownImportFixtureError: Error { case png }
+
+enum SelfTestFixtureOutcome {
+    static func markdownImport(for error: Error) -> SelfTestOutcome {
+        error is MarkdownImportFixtureError ? .fail : .environment
+    }
+}
+
 enum SelfTest {
     /// Pro Selbsttest-Prozess genau eine isolierte Defaults-Suite. Mehrere
     /// Dokumentfenster müssen dieselbe Suite teilen; würde jeder Aufruf sie
@@ -1235,7 +1310,7 @@ enum SelfTest {
 
         if tick >= 100 {
             if !newWindow.isKeyWindow {
-                finish(false, "⌘N-Fenster wurde nie Key-Window (Umgebungsproblem)")
+                finish(.environment, "⌘N-Fenster wurde nie Key-Window (Umgebungsproblem)")
             }
             finish(false, "⌘N-Fenster hat keinen fokussierten Editor "
                 + "(Editor=\(editor != nil), FirstResponder="
@@ -1287,7 +1362,7 @@ enum SelfTest {
             return
         }
         if tick >= 100 {
-            finish(false, "erstes Fenster wurde nie Key-Window (Umgebungsproblem, kein Routing-Fehler)")
+            finish(.environment, "erstes Fenster wurde nie Key-Window (Umgebungsproblem, kein Routing-Fehler)")
         }
         if tick % 10 == 9 {
             NSApp.activate(ignoringOtherApps: true)
@@ -1374,7 +1449,7 @@ enum SelfTest {
             return
         }
         if tick >= 100 {
-            finish(false, "zweites Fenster wurde nie wieder Key-Window (Umgebungsproblem, kein Routing-Fehler)")
+            finish(.environment, "zweites Fenster wurde nie wieder Key-Window (Umgebungsproblem, kein Routing-Fehler)")
         }
         if tick % 10 == 9 {
             newWindow.makeKeyAndOrderFront(nil)
@@ -1992,16 +2067,21 @@ enum SelfTest {
     private static var testStartedNanoseconds = DispatchTime.now().uptimeNanoseconds
 
     private static func finish(_ ok: Bool, _ msg: String) -> Never {
-        var finalOK = ok
+        finish(ok ? .pass : .fail, msg)
+    }
+
+    private static func finish(_ outcome: SelfTestOutcome, _ msg: String) -> Never {
+        var finalOutcome = outcome
         var finalMessage = msg
         switch finishSelfTestPasteboardMutation() {
         case .none, .restored:
             break
         case .keptNewerContent:
+            finalOutcome = max(finalOutcome, .environment)
             finalMessage += " (Zwischenablage inzwischen anderweitig beschrieben — "
                 + "neuerer Inhalt behalten)"
         case .failed(let error):
-            finalOK = false
+            finalOutcome = max(finalOutcome, .fail)
             finalMessage += " — Zwischenablage nicht zurückgegeben (\(error))"
         }
         if let windowRoutingFixtureDirectory {
@@ -2019,9 +2099,10 @@ enum SelfTest {
         let elapsed = DispatchTime.now().uptimeNanoseconds - testStartedNanoseconds
         let appMilliseconds = elapsed / 1_000_000
         let output = "SELFTEST-METRIC test=\(testLabel) app_ms=\(appMilliseconds)\n"
-            + "SELFTEST \(testLabel): \(finalOK ? "PASS" : "FAIL") — \(finalMessage)\n"
+            + "SELFTEST-RESULT v=1 test=\(testLabel) status=\(finalOutcome.protocolStatus)\n"
+            + "SELFTEST \(testLabel): \(finalOutcome.protocolStatus) — \(finalMessage)\n"
         FileHandle.standardError.write(Data(output.utf8))
-        exit(finalOK ? 0 : 1)
+        exit(finalOutcome == .pass ? 0 : 1)
     }
 
     /// CMD+W bei vorderer Suchmaske → Maske schließt sich.
@@ -2088,7 +2169,7 @@ enum SelfTest {
             let keyDesc = NSApp.keyWindow.map {
                 "[\(type(of: $0))] \"\($0.title)\" autosave=\"\($0.frameAutosaveName)\""
             } ?? "keins"
-            finish(false, "Aktivierung fehlgeschlagen — Suchmaske wurde nie Key-Window "
+            finish(.environment, "Aktivierung fehlgeschlagen — Suchmaske wurde nie Key-Window "
                 + "(Umgebungsproblem, kein CMD+W-Funktionsfehler; "
                 + "NSApp.isActive=\(NSApp.isActive), keyWindow=\(keyDesc), "
                 + "panel: visible=\(window.isVisible) canBecomeKey=\(window.canBecomeKey))")
@@ -4756,7 +4837,7 @@ enum SelfTest {
             // diesen Fokus, wäre ein fehlendes Popup kein Produktbefund.
             guard mainWindow.isKeyWindow else {
                 if tick >= 120 {
-                    finishFourDCompletionTest(state, ok: false,
+                    finishFourDCompletionTest(state, outcome: .environment,
                                               message: "Umgebungsproblem: 4D-Editor wurde nicht Key-Window")
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -4880,7 +4961,7 @@ enum SelfTest {
         state: FourDCompletionTestState
     ) {
         guard mainWindow.isKeyWindow else {
-            finishFourDCompletionTest(state, ok: false,
+            finishFourDCompletionTest(state, outcome: .environment,
                                       message: "Umgebungsproblem: Fokus vor ⌃Leertaste verloren")
         }
         guard mainWindow.makeFirstResponder(textView) else {
@@ -4911,7 +4992,7 @@ enum SelfTest {
         tick: Int = 0
     ) {
         guard mainWindow.isKeyWindow else {
-            finishFourDCompletionTest(state, ok: false,
+            finishFourDCompletionTest(state, outcome: .environment,
                                       message: "Umgebungsproblem: Fokus während ⌃Leertaste verloren")
         }
         if let popup = fourDCompletionWindow(attachedTo: mainWindow),
@@ -4948,7 +5029,7 @@ enum SelfTest {
         state: FourDCompletionTestState
     ) {
         guard mainWindow.isKeyWindow else {
-            finishFourDCompletionTest(state, ok: false,
+            finishFourDCompletionTest(state, outcome: .environment,
                                       message: "Umgebungsproblem: Fokus vor Pfeiltaste verloren")
         }
         guard table.selectedRow == 0 else {
@@ -5001,7 +5082,7 @@ enum SelfTest {
         state: FourDCompletionTestState
     ) {
         guard mainWindow.isKeyWindow else {
-            finishFourDCompletionTest(state, ok: false,
+            finishFourDCompletionTest(state, outcome: .environment,
                                       message: "Umgebungsproblem: Fokus vor Mausklick verloren")
         }
         let targetRow = table.selectedRow == 0 ? 1 : 0
@@ -5106,10 +5187,15 @@ enum SelfTest {
             }
             return
         }
-        guard mainWindow.isKeyWindow, mainWindow.makeFirstResponder(textView) else {
+        if let outcome = SelfTestFocusRouting.outcome(
+            isKeyWindow: mainWindow.isKeyWindow,
+            makeFirstResponder: { mainWindow.makeFirstResponder(textView) }
+        ) {
             finishFourDCompletionTest(
-                state, ok: false,
-                message: "Umgebungsproblem: Fokus vor Component-Typeahead verloren"
+                state, outcome: outcome,
+                message: outcome == .environment
+                    ? "Umgebungsproblem: Fokus vor Component-Typeahead verloren"
+                    : "4D-Editor wurde vor Component-Typeahead nicht First Responder"
             )
         }
         textView.selectionManager.setSelectedRange(
@@ -5245,9 +5331,16 @@ enum SelfTest {
             finishFourDCompletionTest(state, ok: false,
                                       message: "Editor-TextView für Ein-Zeichen-Phase nicht gefunden")
         }
-        guard mainWindow.isKeyWindow, mainWindow.makeFirstResponder(textView) else {
-            finishFourDCompletionTest(state, ok: false,
-                                      message: "Umgebungsproblem: Fokus vor Ein-Zeichen-Phase verloren")
+        if let outcome = SelfTestFocusRouting.outcome(
+            isKeyWindow: mainWindow.isKeyWindow,
+            makeFirstResponder: { mainWindow.makeFirstResponder(textView) }
+        ) {
+            finishFourDCompletionTest(
+                state, outcome: outcome,
+                message: outcome == .environment
+                    ? "Umgebungsproblem: Fokus vor Ein-Zeichen-Phase verloren"
+                    : "4D-Editor wurde vor Ein-Zeichen-Phase nicht First Responder"
+            )
         }
         // Ein noch offenes Popup der Komponenten-Phase zuerst schließen —
         // sonst gilt legitim die Ein-Zeichen-Filterung des OFFENEN Fensters
@@ -5365,9 +5458,16 @@ enum SelfTest {
         textView: TextView,
         state: FourDCompletionTestState
     ) {
-        guard mainWindow.isKeyWindow, mainWindow.makeFirstResponder(textView) else {
-            finishFourDCompletionTest(state, ok: false,
-                                      message: "Umgebungsproblem: Fokus vor Kommentar-Phase verloren")
+        if let outcome = SelfTestFocusRouting.outcome(
+            isKeyWindow: mainWindow.isKeyWindow,
+            makeFirstResponder: { mainWindow.makeFirstResponder(textView) }
+        ) {
+            finishFourDCompletionTest(
+                state, outcome: outcome,
+                message: outcome == .environment
+                    ? "Umgebungsproblem: Fokus vor Kommentar-Phase verloren"
+                    : "4D-Editor wurde vor Kommentar-Phase nicht First Responder"
+            )
         }
         textView.selectionManager.setSelectedRange(
             NSRange(location: (textView.string as NSString).length, length: 0)
@@ -5515,10 +5615,25 @@ enum SelfTest {
         ok: Bool,
         message: String
     ) -> Never {
+        finishFourDCompletionTest(
+            state, outcome: ok ? .pass : .fail, message: message
+        )
+    }
+
+    private static func finishFourDCompletionTest(
+        _ state: FourDCompletionTestState,
+        outcome: SelfTestOutcome,
+        message: String
+    ) -> Never {
         Workspace.shared?.closeProject()
         NSApp.appearance = nil
         try? FileManager.default.removeItem(at: state.projectRoot)
-        finish(ok, message)
+        let resolved = SelfTestOutcome.resolving(
+            recordedFailures: state.failures,
+            requestedOutcome: outcome,
+            message: message
+        )
+        finish(resolved.outcome, resolved.message)
     }
 
     // MARK: - 4D-Highlighting (Etappe 4 Wunschpaket 2026-07)
@@ -7797,11 +7912,25 @@ enum SelfTest {
         guard var backup = selfTestPasteboardBackup else { return }
         let actual = NSPasteboard.general.changeCount
         guard actual == backup.ownedChangeCount else {
+            let actualItems = try? capturePasteboardItems()
+            let outcome = SelfTestPasteboardMutationRouting
+                .unexpectedCountOutcome(
+                    contentMatchesExpected: actualItems.map { $0 == expectedItems }
+                )
+            if outcome == .environment {
+                // Ein fremder Inhalt ist neuer als unsere Sicherung. Der Test
+                // gibt den Besitz auf, damit `finish` ihn nicht zurückschreibt.
+                abandonSelfTestPasteboardBackup()
+            }
             throw NSError(
-                domain: "FastraSelfTestPasteboard", code: 5,
+                domain: "FastraSelfTestPasteboard",
+                code: outcome == .environment ? 5 : 10,
                 userInfo: [NSLocalizedDescriptionKey:
-                    "Umgebungsproblem: Zwischenablage änderte sich nicht genau einmal "
-                    + "(erwartet \(backup.ownedChangeCount), erhalten \(actual))"]
+                    outcome == .environment
+                        ? "Umgebungsproblem: Zwischenablage wurde während des Tests benutzt"
+                        : "Teständerung der Zwischenablage verwendete einen unerwarteten "
+                            + "Zählerschritt (erwartet \(backup.ownedChangeCount), "
+                            + "erhalten \(actual))"]
             )
         }
         guard try capturePasteboardItems() == expectedItems else {
@@ -7814,6 +7943,13 @@ enum SelfTest {
         backup.mutationConfirmed = true
         try persistSelfTestPasteboardBackup(backup)
         selfTestPasteboardBackup = backup
+    }
+
+    private static func abandonSelfTestPasteboardBackup() {
+        selfTestPasteboardBackup = nil
+        if let url = selfTestPasteboardBackupURL {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     /// Ersetzt die allgemeine Zwischenablage mit genau EINER AppKit-
@@ -7859,7 +7995,7 @@ enum SelfTest {
 
     private static func prepareSelfTestPasteboardMutationOrFinish() {
         do { try prepareSelfTestPasteboardMutation() }
-        catch { finish(false, error.localizedDescription) }
+        catch { finish(selfTestPasteboardOutcome(for: error), error.localizedDescription) }
     }
 
     private static func noteSelfTestPasteboardMutationOrFinish(
@@ -7869,9 +8005,18 @@ enum SelfTest {
             try noteSelfTestPasteboardMutation(expectedItems: expectedItems)
         }
         catch {
-            finish(false, "Zwischenablage-Sicherung konnte nicht fortgeschrieben werden: "
-                   + error.localizedDescription)
+            finish(
+                selfTestPasteboardOutcome(for: error),
+                "Zwischenablage-Sicherung konnte nicht fortgeschrieben werden: "
+                    + error.localizedDescription
+            )
         }
+    }
+
+    private static func selfTestPasteboardOutcome(for error: Error) -> SelfTestOutcome {
+        let error = error as NSError
+        guard error.domain == "FastraSelfTestPasteboard" else { return .fail }
+        return error.code == 1 || error.code == 5 ? .environment : .fail
     }
 
     private enum SelfTestPasteboardCleanup {
@@ -8736,6 +8881,7 @@ enum SelfTest {
     /// erweitert die Auswahl über das Emoji.
     private static func runTypeScrollTest() {
         testLabel = "typescroll"
+        typeScrollEnvironmentNotes = []
         guard let ws = Workspace.shared,
               let window = mainWindowForAXChecks(),
               let root = window.contentView else {
@@ -8801,6 +8947,10 @@ enum SelfTest {
     /// Datei erneut (Daniels Repro-Ablauf 2026-07-24: ⌘N, dann ⌘O derselben
     /// Datei, während das erste Fenster sie im Hintergrund offen behält).
     private static var typeScrollFixtureURL: URL?
+    /// Unvollständige Prüfbedingungen bleiben getrennt von echten
+    /// Funktionsfehlern. `finishTypeScroll` lässt einen vorhandenen echten
+    /// Fehler immer gewinnen.
+    private static var typeScrollEnvironmentNotes: [String] = []
 
     private static func pollTypeScrollReloaded(
         window: NSWindow, root: NSView, url: URL, expectedText: String, tick: Int
@@ -8927,7 +9077,9 @@ enum SelfTest {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             if typeScrollCaretVisible(textView) {
-                failures.append("Umgebungsproblem: manuelles Wegscrollen wirkte nicht")
+                typeScrollEnvironmentNotes.append(
+                    "manuelles Wegscrollen wirkte nicht"
+                )
             }
             textView.insertText("x")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
@@ -9061,17 +9213,19 @@ enum SelfTest {
         guard let window = textView.window,
               let before = typeScrollCapture(window: window) else {
             // Ohne Aufnahme keine Pixel-Aussage; die übrigen Stufen zählen.
-            finishTypeScroll(failures: failures,
-                             note: "; Pixel-Stufe übersprungen "
-                               + "(Umgebungsproblem: keine Bildschirmaufnahme)")
+            typeScrollEnvironmentNotes.append(
+                "Pixel-Stufe übersprungen: keine Bildschirmaufnahme"
+            )
+            finishTypeScroll(failures: failures, note: "")
             return
         }
         textView.insertText("PIXELPROBE", replacementRange: NSRange(location: NSNotFound, length: 0))
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             guard let after = typeScrollCapture(window: window) else {
-                finishTypeScroll(failures: failures,
-                                 note: "; Pixel-Stufe abgebrochen "
-                                   + "(Umgebungsproblem: keine Bildschirmaufnahme)")
+                typeScrollEnvironmentNotes.append(
+                    "Pixel-Stufe abgebrochen: keine Bildschirmaufnahme"
+                )
+                finishTypeScroll(failures: failures, note: "")
                 return
             }
             if before == after {
@@ -9095,9 +9249,10 @@ enum SelfTest {
                   !SearchWindow.isSearchWindow($0) && $0.isVisible
                       && WorkspaceWindowRegistry.workspace(for: $0) != nil
               }) else {
-            finishTypeScroll(failures: failures,
-                             note: note + "; Zweitfenster-Stufe übersprungen "
-                               + "(Ausgangszustand fehlt)")
+            finishTypeScroll(
+                failures: failures + ["Zweitfenster-Stufe: Ausgangszustand fehlt"],
+                note: note
+            )
             return
         }
         firstWindow.makeKeyAndOrderFront(nil)
@@ -9178,11 +9333,25 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: url)
             typeScrollFixtureURL = nil
         }
-        finish(failures.isEmpty,
-               failures.isEmpty
-               ? "Tippen scrollt den Cursor sichtbar und zeichnet sichtbar; "
-                 + "Emoji sofort ausgelegt; Shift+← erweitert über Emojis" + note
-               : failures.joined(separator: " ;; ") + note)
+        let environmentNote = typeScrollEnvironmentNotes.isEmpty
+            ? ""
+            : "; unvollständig: " + typeScrollEnvironmentNotes.joined(separator: " ;; ")
+        let outcome: SelfTestOutcome
+        if !failures.isEmpty {
+            outcome = .fail
+        } else if !typeScrollEnvironmentNotes.isEmpty {
+            outcome = .environment
+        } else {
+            outcome = .pass
+        }
+        finish(
+            outcome,
+            failures.isEmpty
+                ? "Tippen scrollt den Cursor sichtbar und zeichnet sichtbar; "
+                    + "Emoji sofort ausgelegt; Shift+← erweitert über Emojis"
+                    + note + environmentNote
+                : failures.joined(separator: " ;; ") + note + environmentNote
+        )
     }
 
     // MARK: - -selftest emojisplit
@@ -10800,7 +10969,7 @@ enum SelfTest {
                     "[\(type(of: $0))] \"\($0.title)\""
                 } ?? "keins"
                 guard NSApp.isActive else {
-                    finish(false, "Umgebungsproblem: Fastra ist nach Treffer "
+                    finish(.environment, "Umgebungsproblem: Fastra ist nach Treffer "
                            + "\(expectedIndex) nicht mehr aktiv — eine andere App "
                            + "hat den Fokus geholt (keyWindow=\(keyDesc)). "
                            + "Test auf einem unbenutzten Mac wiederholen.")
@@ -12101,7 +12270,7 @@ enum SelfTest {
             try "Begleittext".write(to: outside.appendingPathComponent("begleit.txt"),
                                     atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "Umgebungsproblem: (setup) Fixtures nicht schreibbar: \(error.localizedDescription)")
+            finish(.environment, "Umgebungsproblem: (setup) Fixtures nicht schreibbar: \(error.localizedDescription)")
         }
 
         ws.loadFile(at: doc) { ok in
@@ -12550,7 +12719,7 @@ enum SelfTest {
             return
         }
         if tick >= 100 {
-            finish(false, "Umgebungsproblem: Hilfe-Fenster wurde nicht "
+            finish(.environment, "Umgebungsproblem: Hilfe-Fenster wurde nicht "
                 + "Key-Window für ⌘W")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
@@ -12829,7 +12998,7 @@ enum SelfTest {
             try "KOPFTEST".write(to: project.appendingPathComponent("notiz.txt"),
                                  atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "Umgebungsproblem: (setup) Testprojekt nicht anlegbar: \(error.localizedDescription)")
+            finish(.environment, "Umgebungsproblem: (setup) Testprojekt nicht anlegbar: \(error.localizedDescription)")
         }
         ws.openProject(at: project)
         ws.loadFile(at: project.appendingPathComponent("notiz.txt")) { ok in
@@ -12907,7 +13076,7 @@ enum SelfTest {
             try fm.createDirectory(at: base, withIntermediateDirectories: true)
             try "Zeile 1\nZeile 2\n".write(to: doc, atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "Umgebungsproblem: (setup) Fixture nicht schreibbar: \(error.localizedDescription)")
+            finish(.environment, "Umgebungsproblem: (setup) Fixture nicht schreibbar: \(error.localizedDescription)")
         }
         ws.loadFile(at: doc) { ok in
             guard ok else {
@@ -12968,11 +13137,11 @@ enum SelfTest {
             finish(false, "kein Hauptfenster gefunden")
         }
         guard let screen = window.screen ?? NSScreen.main else {
-            finish(false, "Umgebungsproblem: kein Bildschirm ermittelbar")
+            finish(.environment, "Umgebungsproblem: kein Bildschirm ermittelbar")
         }
         let suiteName = "fastra-windowheight-\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
-            finish(false, "Umgebungsproblem: (setup) eigene Defaults-Suite nicht anlegbar")
+            finish(.environment, "Umgebungsproblem: (setup) eigene Defaults-Suite nicht anlegbar")
         }
         defaults.removePersistentDomain(forName: suiteName)
         // Beim zentralen Aufräumer anmelden: Jeder Abschluss dieses Tests geht
@@ -12983,7 +13152,7 @@ enum SelfTest {
         // Das `defer` bleibt trotzdem stehen: Es greift, sollte der Test
         // irgendwann regulär zurückkehren.
         guard TestDefaultsPurge.register(suiteName) else {
-            finish(false, "Umgebungsproblem: Test-Preferences-Suite nicht registrierbar")
+            finish(.environment, "Umgebungsproblem: Test-Preferences-Suite nicht registrierbar")
         }
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
@@ -12994,7 +13163,7 @@ enum SelfTest {
                           width: MainWindowSizing.defaultWidth, height: 420)
         window.setFrame(flat, display: true)
         guard abs(window.frame.height - 420) < 1 else {
-            finish(false, "Umgebungsproblem: Fenster nimmt die Testgröße nicht an "
+            finish(.environment, "Umgebungsproblem: Fenster nimmt die Testgröße nicht an "
                 + "(\(window.frame.height) pt)")
         }
 
@@ -13060,7 +13229,7 @@ enum SelfTest {
             try "# Protokoll\n\nErster Absatz.\n".write(to: doc, atomically: true,
                                                         encoding: .utf8)
         } catch {
-            finish(false, "Umgebungsproblem: (setup) Fixture nicht schreibbar: \(error.localizedDescription)")
+            finish(.environment, "Umgebungsproblem: (setup) Fixture nicht schreibbar: \(error.localizedDescription)")
         }
         ws.loadFile(at: doc) { ok in
             guard ok else {
@@ -13154,7 +13323,7 @@ enum SelfTest {
             try "C".write(to: project.appendingPathComponent("sub/drei-treffer.txt"),
                           atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "Umgebungsproblem: (setup) Testprojekt nicht anlegbar: \(error.localizedDescription)")
+            finish(.environment, "Umgebungsproblem: (setup) Testprojekt nicht anlegbar: \(error.localizedDescription)")
         }
         ws.openProject(at: project)
         pollSidebarFilterBaseline(ws, base: base, tick: 0)
@@ -13249,16 +13418,16 @@ enum SelfTest {
     private static func runTool4DLSPIntegrationTest() {
         testLabel = "tool4dlsp"
         guard let tool = Tool4DAssist.installedTool() else {
-            finish(false, "Umgebungsproblem: tool4d ist nicht installiert — Integrations-Selbsttest übersprungen")
+            finish(.environment, "Umgebungsproblem: tool4d ist nicht installiert — Integrations-Selbsttest übersprungen")
         }
         let environment = ProcessInfo.processInfo.environment
         guard let rawRoot = environment["FASTRA_TOOL4D_TEST_PROJECT"],
               !rawRoot.isEmpty else {
-            finish(false, "Umgebungsproblem: tool4d ist vorhanden, aber FASTRA_TOOL4D_TEST_PROJECT verweist auf keine sichere Projektkopie")
+            finish(.environment, "Umgebungsproblem: tool4d ist vorhanden, aber FASTRA_TOOL4D_TEST_PROJECT verweist auf keine sichere Projektkopie")
         }
         let root = URL(fileURLWithPath: rawRoot).canonicalFileURL
         guard Tool4DProjectLocator.projectFile(in: root) != nil else {
-            finish(false, "Umgebungsproblem: FASTRA_TOOL4D_TEST_PROJECT enthält keine .4DProject-Datei")
+            finish(.environment, "Umgebungsproblem: FASTRA_TOOL4D_TEST_PROJECT enthält keine .4DProject-Datei")
         }
         let document: URL?
         if let rawDocument = environment["FASTRA_TOOL4D_TEST_DOCUMENT"], !rawDocument.isEmpty {
@@ -13284,7 +13453,7 @@ enum SelfTest {
         }
         guard let document,
               let text = try? String(contentsOf: document, encoding: .utf8) else {
-            finish(false, "Umgebungsproblem: sichere 4D-Testmethode fehlt oder ist nicht UTF-8 lesbar")
+            finish(.environment, "Umgebungsproblem: sichere 4D-Testmethode fehlt oder ist nicht UTF-8 lesbar")
         }
 
         let validation = Tool4DLSPValidation()
@@ -13315,14 +13484,14 @@ enum SelfTest {
         let env = ProcessInfo.processInfo.environment
         guard let engineRoot = env["FASTRA_MACRO_ENGINE_PROJECT"],
               !engineRoot.isEmpty else {
-            finish(false, "Umgebungsproblem: FASTRA_MACRO_ENGINE_PROJECT ist nicht gesetzt (Wurzel des MacroRun-Engine-Projekts)")
+            finish(.environment, "Umgebungsproblem: FASTRA_MACRO_ENGINE_PROJECT ist nicht gesetzt (Wurzel des MacroRun-Engine-Projekts)")
         }
         guard let projectFile = FourDMacroEngine.engineProjectFile(
             root: URL(fileURLWithPath: engineRoot)) else {
-            finish(false, "Umgebungsproblem: keine .4DProject-Datei unter \(engineRoot)")
+            finish(.environment, "Umgebungsproblem: keine .4DProject-Datei unter \(engineRoot)")
         }
         guard let tool = Tool4DAssist.installedTool() else {
-            finish(false, "Umgebungsproblem: kein installiertes tool4d gefunden")
+            finish(.environment, "Umgebungsproblem: kein installiertes tool4d gefunden")
         }
         // Untokenisierter, var-basierter Methodencode: genau die Form, die
         // die Engine nach dem Detokenisieren übergibt. Klassische
@@ -13391,7 +13560,7 @@ enum SelfTest {
             try xml.write(to: macrosDir.appendingPathComponent("fixture.xml"),
                           atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "Umgebungsproblem: (setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
+            finish(.environment, "Umgebungsproblem: (setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
         }
         ws.loadFile(at: document) { ok in
             guard ok else {
@@ -13487,7 +13656,7 @@ enum SelfTest {
             try "$x:=1".write(to: first, atomically: true, encoding: .utf8)
             try "$y:=2".write(to: second, atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "Umgebungsproblem: (setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
+            finish(.environment, "Umgebungsproblem: (setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
         }
         ws.loadFile(at: first) { ok in
             guard ok else {
@@ -13611,7 +13780,7 @@ enum SelfTest {
             try "# Ziel\n".write(to: markdownTarget, atomically: true,
                                  encoding: .utf8)
         } catch {
-            finish(false, "Umgebungsproblem: (setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
+            finish(.environment, "Umgebungsproblem: (setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
         }
         ws.loadFile(at: caller) { ok in
             guard ok else {
@@ -13765,7 +13934,7 @@ enum SelfTest {
             try "// Methode hinten\n".write(to: backTarget, atomically: true,
                                             encoding: .utf8)
         } catch {
-            finish(false, "Umgebungsproblem: (setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
+            finish(.environment, "Umgebungsproblem: (setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
         }
         let secondWorkspace = MainActor.assumeIsolated {
             DocumentWindowController.openNewDocument(defaults: workspaceDefaults())
@@ -13987,7 +14156,7 @@ enum SelfTest {
             try rightLines.joined(separator: "\n")
                 .write(to: rightURL, atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "Umgebungsproblem: (setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
+            finish(.environment, "Umgebungsproblem: (setup) Fixtures nicht anlegbar: \(error.localizedDescription)")
         }
         // ── (a) Dialog öffnen — erscheint ein echtes Sheet? ────────────────
         ws.showCompareFilesDialog = true
@@ -14137,7 +14306,7 @@ enum SelfTest {
             try "PROJEKTTEST-B".write(to: repo.appendingPathComponent("sub/b.txt"),
                                       atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "Umgebungsproblem: (setup) Testprojekt nicht anlegbar: \(error)")
+            finish(.environment, "Umgebungsproblem: (setup) Testprojekt nicht anlegbar: \(error)")
         }
 
         // ── (a) Willkommens-Bedingung ─────────────────────────────────────
@@ -14308,7 +14477,7 @@ enum SelfTest {
             // Funktionsfehler — gleiche Klassifizierung wie bei `tool4dlsp`
             // (Roadmap „Bekannte Fehler", 2026-07-30): Der Runner zählt die
             // Zeile damit als Exit 2 statt als echten FAIL.
-            finish(false, "Umgebungsproblem: FASTRA_PROJECT_PERF_ROOT fehlt oder ist kein Ordner")
+            finish(.environment, "Umgebungsproblem: FASTRA_PROJECT_PERF_ROOT fehlt oder ist kein Ordner")
         }
         let exclusions = [".json", "userPreferences.*", "DerivedData"]
         let matcher = PathExclusion.Matcher(patterns: exclusions, relativeTo: root)
@@ -14439,14 +14608,19 @@ enum SelfTest {
     /// einen zusätzlichen Ladepfad-Fix.
     private static func runProjectOpenPerformanceTest() {
         testLabel = "projectopenperf"
-        guard let ws = Workspace.shared,
-              let root = projectPerformanceRoot(),
-              let mainWindow = NSApp.windows.first(where: {
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace fehlt")
+        }
+        guard let root = projectPerformanceRoot() else {
+            finish(.environment, "Umgebungsproblem: FASTRA_PROJECT_PERF_ROOT "
+                   + "fehlt oder ist kein Ordner")
+        }
+        guard let mainWindow = NSApp.windows.first(where: {
                   $0.frameAutosaveName != SearchWindow.frameAutosaveName
                       && $0.contentView != nil && $0.isVisible
               }),
               let view = mainWindow.contentView else {
-            finish(false, "Workspace, Fenster oder FASTRA_PROJECT_PERF_ROOT fehlt")
+            finish(false, "sichtbares Hauptfenster mit contentView fehlt")
         }
         let file = root.appendingPathComponent("Project/Sources/folders.json")
             .canonicalFileURL
@@ -14533,7 +14707,7 @@ enum SelfTest {
             // Genau der „git fehlt"-Pfad: keine Git-Anzeige. Als PASS werten,
             // weil das gewünschte Verhalten ist (still weg) — aber sichtbar
             // machen, dass der echte Repo-Teil übersprungen wurde.
-            finish(true, "git nicht verfügbar — Git-UI bleibt still weg (erwartetes Verhalten)")
+            finish(.skip, "git nicht verfügbar — Git-UI bleibt still weg (erwartetes Verhalten)")
         }
 
         let fm = FileManager.default
@@ -14547,7 +14721,7 @@ enum SelfTest {
             try "tief".write(to: repo.appendingPathComponent("sub/deep.txt"),
                              atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "Umgebungsproblem: (setup) Temp-Repo nicht anlegbar: \(error)")
+            finish(.environment, "Umgebungsproblem: (setup) Temp-Repo nicht anlegbar: \(error)")
         }
 
         // git init + Erst-Commit über GitRunner selbst (seriell verkettet).
@@ -14714,7 +14888,7 @@ enum SelfTest {
         }
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
         guard GitRunner.isAvailable else {
-            finish(true, "git nicht verfügbar — Git-Ansicht bleibt erwartungsgemäß verborgen")
+            finish(.skip, "git nicht verfügbar — Git-Ansicht bleibt erwartungsgemäß verborgen")
         }
         Workspace.presentGitDialogs = false
 
@@ -14877,7 +15051,7 @@ enum SelfTest {
         testLabel = "githistory"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
         guard GitRunner.isAvailable else {
-            finish(true, "git nicht verfügbar — Verlaufsansicht bleibt erwartungsgemäß verborgen")
+            finish(.skip, "git nicht verfügbar — Verlaufsansicht bleibt erwartungsgemäß verborgen")
         }
         Workspace.presentGitDialogs = false
 
@@ -15061,7 +15235,7 @@ enum SelfTest {
         testLabel = "sidebarstate"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
         guard GitRunner.isAvailable else {
-            finish(true, "git nicht verfügbar — der Tab-Umschalter erscheint erwartungsgemäß nicht")
+            finish(.skip, "git nicht verfügbar — der Tab-Umschalter erscheint erwartungsgemäß nicht")
         }
         Workspace.presentGitDialogs = false
 
@@ -15227,7 +15401,7 @@ enum SelfTest {
         }
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
         guard GitRunner.isAvailable else {
-            finish(true, "git nicht verfügbar — Git-Ansicht bleibt erwartungsgemäß verborgen")
+            finish(.skip, "git nicht verfügbar — Git-Ansicht bleibt erwartungsgemäß verborgen")
         }
         Workspace.presentGitDialogs = false
 
@@ -15395,7 +15569,7 @@ enum SelfTest {
         }
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
         guard GitRunner.isAvailable else {
-            finish(true, "git nicht verfügbar — Git-Ansicht bleibt erwartungsgemäß verborgen")
+            finish(.skip, "git nicht verfügbar — Git-Ansicht bleibt erwartungsgemäß verborgen")
         }
         Workspace.presentGitDialogs = false
 
@@ -15921,7 +16095,7 @@ enum SelfTest {
         }
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
         guard GitRunner.isAvailable else {
-            finish(true, "git nicht verfügbar — Git-Ansicht bleibt erwartungsgemäß verborgen")
+            finish(.skip, "git nicht verfügbar — Git-Ansicht bleibt erwartungsgemäß verborgen")
         }
         Workspace.presentGitDialogs = false
 
@@ -16322,7 +16496,7 @@ enum SelfTest {
         testLabel = "gitactions"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
         guard GitRunner.isAvailable else {
-            finish(true, "git nicht verfügbar — Aktionen bleiben still weg (erwartet)")
+            finish(.skip, "git nicht verfügbar — Aktionen bleiben still weg (erwartet)")
         }
         // Fehler-Dialoge unterdrücken, damit ein unerwarteter Fehler den Lauf
         // nicht an einem modalen NSAlert aufhängt.
@@ -17263,7 +17437,7 @@ enum SelfTest {
                 .write(to: repo.appendingPathComponent("js/app.js"),
                        atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "Umgebungsproblem: (setup) Temp-Projekt nicht anlegbar: \(error)")
+            finish(.environment, "Umgebungsproblem: (setup) Temp-Projekt nicht anlegbar: \(error)")
         }
         ws.openProject(at: repo)
         ws.loadFile(at: repo.appendingPathComponent("index.html")) { ok in
@@ -17303,7 +17477,7 @@ enum SelfTest {
         let original = "    ziel\n"
         do { try original.write(to: url, atomically: true, encoding: .utf8) }
         catch {
-            finishPasteIndent(false, "Umgebungsproblem: (setup) Fixture nicht schreibbar: \(error.localizedDescription)")
+            finishPasteIndent(.environment, "Umgebungsproblem: (setup) Fixture nicht schreibbar: \(error.localizedDescription)")
         }
         ws.loadFile(at: url) { ok in
             try? FileManager.default.removeItem(at: url)
@@ -17349,7 +17523,13 @@ enum SelfTest {
     /// Behält den sprechenden Abschlussnamen des Tests; die zentrale
     /// `finish`-Funktion gibt die Zwischenablage für alle Selbsttests zurück.
     private static func finishPasteIndent(_ ok: Bool, _ message: String) -> Never {
-        finish(ok, message)
+        finishPasteIndent(ok ? .pass : .fail, message)
+    }
+
+    private static func finishPasteIndent(
+        _ outcome: SelfTestOutcome, _ message: String
+    ) -> Never {
+        finish(outcome, message)
     }
 
     private static func runMarkdownImageWatchTest() {
@@ -17374,7 +17554,7 @@ enum SelfTest {
             try "# Bildwechsel\n\n![Wechselbild](wechsel.png)\n"
                 .write(to: file, atomically: true, encoding: .utf8)
         } catch {
-            finish(false, "Umgebungsproblem: (setup) Fixtures nicht schreibbar: \(error.localizedDescription)")
+            finish(.environment, "Umgebungsproblem: (setup) Fixtures nicht schreibbar: \(error.localizedDescription)")
         }
         workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         ws.loadFile(at: file) { ok in
@@ -18190,7 +18370,7 @@ enum SelfTest {
             finish(false, "Launch-Fixture FASTRA_SIDEBAR=changes fehlt")
         }
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
-        guard GitRunner.isAvailable else { finish(false, "git nicht verfügbar") }
+        guard GitRunner.isAvailable else { finish(.environment, "git nicht verfügbar") }
         let fm = FileManager.default
         let repo = fm.temporaryDirectory.appendingPathComponent("Webseite")
         do {
@@ -18309,7 +18489,7 @@ enum SelfTest {
     private static func runGraphShot() {
         testLabel = "graphshot"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
-        guard GitRunner.isAvailable else { finish(false, "git nicht verfügbar") }
+        guard GitRunner.isAvailable else { finish(.environment, "git nicht verfügbar") }
         let fm = FileManager.default
         let repo = fm.temporaryDirectory.appendingPathComponent("GraphDemo")
         try? fm.removeItem(at: repo)
@@ -18359,7 +18539,7 @@ enum SelfTest {
     private static func runGitHistoryShot() {
         testLabel = "historyshot"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
-        guard GitRunner.isAvailable else { finish(false, "git nicht verfügbar") }
+        guard GitRunner.isAvailable else { finish(.environment, "git nicht verfügbar") }
         let fm = FileManager.default
         let repo = fm.temporaryDirectory.appendingPathComponent("HistoryDemo")
         try? fm.removeItem(at: repo)
@@ -19096,12 +19276,12 @@ enum SelfTest {
     private static func runMarkdownImportTest() {
         testLabel = "markdownimport"
         guard MarkdownImportTool.locate() != nil else {
-            finish(false, "Umgebungsproblem: poormans-text ist nicht installiert "
+            finish(.environment, "Umgebungsproblem: poormans-text ist nicht installiert "
                 + "(oder \(MarkdownImportTool.overrideEnvironmentKey) zeigt ins Leere)")
         }
         MarkdownImportService.shared.withCatalog { catalog in
             guard let catalog else {
-                finish(false, "Umgebungsproblem: dieser poormans-text-Stand kennt "
+                finish(.environment, "Umgebungsproblem: dieser poormans-text-Stand kennt "
                     + "--formats nicht — Werkzeug aktualisieren")
             }
             checkMarkdownImportCatalog(catalog)
@@ -19110,7 +19290,7 @@ enum SelfTest {
 
     private static func checkMarkdownImportCatalog(_ catalog: MarkdownImportCatalog) {
         guard let rtf = catalog.availableFormat(forExtension: "rtf") else {
-            finish(false, "Katalog meldet RTF nicht als benutzbar — Pandoc installiert?")
+            finish(.environment, "Katalog meldet RTF nicht als benutzbar — Pandoc installiert?")
         }
         guard !rtf.isPackage else {
             finish(false, "RTF darf kein Ordner-Paket sein")
@@ -19134,7 +19314,10 @@ enum SelfTest {
         do {
             base = try makeMarkdownImportFixtures()
         } catch {
-            finish(false, "Fixtures nicht erzeugbar: \(error.localizedDescription)")
+            finish(
+                SelfTestFixtureOutcome.markdownImport(for: error),
+                "Fixtures nicht erzeugbar: \(error.localizedDescription)"
+            )
         }
         convertPlainMarkdownImportFixture(in: base)
     }
@@ -19166,8 +19349,6 @@ enum SelfTest {
             .write(to: base.appendingPathComponent("MitBild.rtf"), options: .atomic)
         return base
     }
-
-    private enum MarkdownImportFixtureError: Error { case png }
 
     private static func markdownImportPNG() -> Data? {
         guard let rep = NSBitmapImageRep(
@@ -19274,13 +19455,13 @@ enum SelfTest {
             try Data(#"{\rtf1\ansi Inhalt eines RTFD-Pakets.}"#.utf8)
                 .write(to: package.appendingPathComponent("TXT.rtf"), options: .atomic)
         } catch {
-            finishMarkdownImport(base, false, "RTFD-Fixture nicht erzeugbar")
+            finishMarkdownImport(base, .environment, "RTFD-Fixture nicht erzeugbar")
         }
 
         // Der Katalog muss das Paket als Paket erkennen — sonst landet es im
         // Ordnerzweig und wird als Projekt geöffnet.
         guard let workspace = Workspace.shared else {
-            finishMarkdownImport(base, false, "Umgebungsproblem: kein Workspace")
+            finishMarkdownImport(base, false, "Workspace fehlt")
         }
         guard let format = workspace.markdownImportPackageFormat(at: package) else {
             finishMarkdownImport(base, false,
@@ -19345,8 +19526,14 @@ enum SelfTest {
     }
 
     private static func finishMarkdownImport(_ base: URL, _ ok: Bool, _ message: String) -> Never {
+        finishMarkdownImport(base, ok ? .pass : .fail, message)
+    }
+
+    private static func finishMarkdownImport(
+        _ base: URL, _ outcome: SelfTestOutcome, _ message: String
+    ) -> Never {
         try? FileManager.default.removeItem(at: base)
-        finish(ok, message)
+        finish(outcome, message)
     }
 
     // MARK: - Drucken

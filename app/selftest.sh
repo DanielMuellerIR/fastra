@@ -18,8 +18,8 @@
 #      fensterlos markierten Tests zu. Die ausgelassenen Tests werden als
 #      übersprungen ausgewiesen und erzwingen Exit 2; ein unvollständiger
 #      Lauf darf nie als bestanden gelten.
-#   4. Die Tests `cmdw`, `newwindow`, `welcomenew`, `completion4d`,
-#      `projectinput` und `help` brauchen ECHTEN Fenster-Fokus. macOS 26 verweigert
+#   4. Die Tests `cmdw`, `newwindow`, `completion4d`, `projectinput` und
+#      `help` brauchen ECHTEN Fenster-Fokus. macOS 26 verweigert
 #      einem im Hintergrund gestarteten Prozess die Selbst-Aktivierung
 #      (kooperative Aktivierung) — der Runner holt die App deshalb von
 #      außen per System Events nach vorn. Arbeitet gleichzeitig jemand
@@ -36,8 +36,9 @@
 #   1 = mindestens ein ECHTER FAIL (Funktionsfehler)
 #   2 = kein echter FAIL, aber mindestens ein Umgebungs-FAIL/SKIP
 #
-# Pro Test gibt der Runner die originale `SELFTEST <name>: PASS/FAIL`-Zeile
-# der App weiter; am Ende steht eine Zusammenfassung.
+# Pro Test wertet der Runner `SELFTEST-RESULT v=1 …` aus und gibt zusätzlich
+# die lesbare `SELFTEST <name>: …`-Zeile weiter. Alte Bundles ohne
+# Maschinenzeile bleiben über den bisherigen Parser kompatibel.
 
 set -u
 umask 077
@@ -72,10 +73,25 @@ fi
 ALL_TESTS=(windows newwindow welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions projectinput tabswitch tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge dirtyundo emojisplit emojipaste emojipreview tabscroll typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader footerfit windowheight mdformat sidebarfilter sidebarstate githistory filediff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide markdownimport filemodes selsearch wildcard openscope loadperf contrast cmdw)
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
 WINDOWLESS_TESTS=(search project projectperf localization markdownimport updates git gitactions filemodes selsearch wildcard openscope tool4dlsp macro4dengine)
+# Nur diese Tests brauchen echten Vordergrundfokus. `welcomenew` adressiert
+# sein bekanntes Fenster dagegen über die Fenster-ID und läuft direkt im
+# Hintergrund. So öffnet der Runner nicht unnötig eine aktive App und wartet
+# auch nicht auf System Events.
+FOCUS_REQUIRED_TESTS=(cmdw newwindow completion4d projectinput help)
 # Diese Tests starten das konfigurierte App-Bundle über LaunchServices. Für sie
 # reicht ein vorhandenes separates Binary nicht: Der Bundle-Pfad muss ebenfalls
 # auf genau diesen Teststand zeigen.
-LAUNCH_SERVICES_TESTS=(coldopen coldopenoff cmdw newwindow welcomenew completion4d projectinput help)
+LAUNCH_SERVICES_TESTS=(coldopen coldopenoff "${FOCUS_REQUIRED_TESTS[@]}")
+
+array_contains_exactly() {
+    local needle="$1"
+    local candidate=""
+    shift
+    for candidate in "$@"; do
+        [ "$candidate" = "$needle" ] && return 0
+    done
+    return 1
+}
 # Pro Test max. Wartezeit in Sekunden, bis die SELFTEST-Zeile da sein muss.
 # (Fenster-Polling im Test selbst: bis 15 s; plus Puffer für App-Start.)
 TIMEOUT_SECS=60
@@ -464,9 +480,19 @@ current_app_pid() {
 # nachgeholt. Best effort: bei aktiv benutztem Desktop gewinnt der
 # Nutzer-Fokus trotzdem.
 activate_app() {
+    local errfile="$1"
     local target_pid=""
     for _ in 1 2 3 4 5 6 7 8; do
+        # Schnelle Fehler oder Ergebnisse können schon während des
+        # LaunchServices-Starts vorliegen. Dann darf der Runner weder weiter
+        # warten noch den Fokus nachträglich anfordern.
+        if grep -q '^SELFTEST ' "$errfile" 2>/dev/null; then
+            return 0
+        fi
         sleep 1
+        if grep -q '^SELFTEST ' "$errfile" 2>/dev/null; then
+            return 0
+        fi
         if [[ ! "$target_pid" =~ ^[0-9]+$ ]]; then
             remember_bundle_pids
             target_pid="$(current_app_pid)"
@@ -947,6 +973,96 @@ prune_selftest_evidence
 
 # ── Testlauf ─────────────────────────────────────────────────────────────
 
+# Liest das versionierte Ergebnisprotokoll der App. Sobald mindestens eine
+# `SELFTEST-RESULT`-Zeile vorhanden ist, ist sie verbindlich: Unbekannte
+# Versionen, Statuswerte, Testnamen oder beschädigte Zeilen werden zu einem
+# echten Fehler. Nur alte Bundles ohne Maschinenzeile benutzen weiterhin die
+# bisherige Begleitzeile.
+SELFTEST_RESULT_STATUS=""
+SELFTEST_PROTOCOL_ERROR=""
+classify_selftest_result() {
+    local expected_test="$1"
+    local errfile="$2"
+    local legacy_line="$3"
+    local structured_line=""
+    local candidate=""
+    local candidate_rank=-1
+    local highest_rank=-1
+    local saw_structured=0
+    local field1=""
+    local field2=""
+    local field3=""
+    local field4=""
+    local extra=""
+    SELFTEST_RESULT_STATUS=""
+    SELFTEST_PROTOCOL_ERROR=""
+
+    while IFS= read -r structured_line; do
+        [ -n "$structured_line" ] || continue
+        saw_structured=1
+        # Die vier Felder enthalten absichtlich keine freien Texte. `read`
+        # vermeidet dabei sowohl Dateinamen-Expansion als auch eine Änderung
+        # der Positionsparameter unter macOS-Bash 3.2.
+        field1=""; field2=""; field3=""; field4=""; extra=""
+        IFS=' ' read -r field1 field2 field3 field4 extra <<< "$structured_line"
+        if [ -n "$extra" ] \
+           || [ "$field1" != "SELFTEST-RESULT" ] \
+           || [ "$field2" != "v=1" ] \
+           || [ "$field3" != "test=$expected_test" ] \
+           || [[ "$field4" != status=* ]]; then
+            SELFTEST_PROTOCOL_ERROR="ungültige Ergebniszeile: $structured_line"
+            continue
+        fi
+        candidate="${field4#status=}"
+        case "$candidate" in
+            PASS) candidate_rank=0 ;;
+            SKIP) candidate_rank=1 ;;
+            ENV)  candidate_rank=2 ;;
+            FAIL) candidate_rank=3 ;;
+            *)
+                SELFTEST_PROTOCOL_ERROR="unbekannter Status in: $structured_line"
+                continue
+                ;;
+        esac
+        if [ "$candidate_rank" -gt "$highest_rank" ]; then
+            highest_rank="$candidate_rank"
+        fi
+    done < <(grep '^SELFTEST-RESULT' "$errfile" 2>/dev/null || true)
+
+    if [ -n "$SELFTEST_PROTOCOL_ERROR" ]; then
+        SELFTEST_RESULT_STATUS="FAIL"
+        return
+    fi
+    if [ "$saw_structured" -eq 1 ]; then
+        case "$highest_rank" in
+            0) SELFTEST_RESULT_STATUS="PASS" ;;
+            1) SELFTEST_RESULT_STATUS="SKIP" ;;
+            2) SELFTEST_RESULT_STATUS="ENV" ;;
+            3) SELFTEST_RESULT_STATUS="FAIL" ;;
+            *)
+                SELFTEST_RESULT_STATUS="FAIL"
+                SELFTEST_PROTOCOL_ERROR="Ergebniszeile enthält keinen gültigen Status"
+                ;;
+        esac
+        return
+    fi
+
+    # Kompatibilität mit bereits installierten Bundles vor Protokollversion 1.
+    if [[ "$legacy_line" == "SELFTEST $expected_test: PASS"* ]]; then
+        SELFTEST_RESULT_STATUS="PASS"
+    elif [[ "$legacy_line" == "SELFTEST $expected_test: SKIP"* ]]; then
+        SELFTEST_RESULT_STATUS="SKIP"
+    elif [[ "$legacy_line" == "SELFTEST $expected_test: "*"Umgebungsproblem"* ]]; then
+        SELFTEST_RESULT_STATUS="ENV"
+    else
+        SELFTEST_RESULT_STATUS="FAIL"
+    fi
+}
+
+emit_selftest_result() {
+    printf 'SELFTEST-RESULT v=1 test=%s status=%s\n' "$1" "$2"
+}
+
 pass_count=0
 real_fail_count=0
 env_fail_count=0
@@ -978,6 +1094,7 @@ PERFORMANCE_CONFIGURATION="${PERFORMANCE_BUILD}-mixed-macos${OS_MAJOR}"
 # prüfen, sonst gilt "${arr[@]}" als unbound.
 if [[ ${#SKIPPED_TESTS[@]} -gt 0 ]]; then
     for t in "${SKIPPED_TESTS[@]}"; do
+        emit_selftest_result "$t" "SKIP"
         echo "SELFTEST $t: SKIP — Bildschirm gesperrt (Umgebungsproblem)"
         summary+="⚠ $t (übersprungen: Bildschirm gesperrt)\n"
         skip_count=$((skip_count + 1))
@@ -990,12 +1107,14 @@ for t in "${TESTS[@]}"; do
     [ -n "$safe_test_name" ] || safe_test_name="unknown"
     iteration_started="$(now_milliseconds)"
     if ! kill_leftovers; then
+        emit_selftest_result "$t" "ENV"
         echo "SELFTEST $t: Umgebungsproblem — vorheriger Testprozess läuft weiter"
         summary+="⚠ $t (Aufräumen fehlgeschlagen)\n"
         env_fail_count=$((env_fail_count + 1))
         break
     fi
     if ! restore_selftest_pasteboard; then
+        emit_selftest_result "$t" "ENV"
         echo "SELFTEST $t: Umgebungsproblem — Zwischenablage konnte nicht zurückgegeben werden"
         summary+="⚠ $t (Zwischenablage-Aufräumen fehlgeschlagen)\n"
         env_fail_count=$((env_fail_count + 1))
@@ -1030,6 +1149,7 @@ for t in "${TESTS[@]}"; do
             --env "FASTRA_SELFTEST_PASTEBOARD_DIR=$SELFTEST_PASTEBOARD_DIR" \
             "$coldopen_fixture_file" \
             --args -ApplePersistenceIgnoreState YES; then
+            emit_selftest_result "$t" "ENV"
             echo "SELFTEST $t: Umgebungsproblem — LaunchServices-Start fehlgeschlagen"
             summary+="⚠ $t (Start fehlgeschlagen)\n"
             env_fail_count=$((env_fail_count + 1))
@@ -1037,7 +1157,7 @@ for t in "${TESTS[@]}"; do
         fi
         track_started_app_bundle "$APP_BUNDLE_CANONICAL"
         remember_bundle_pids
-    elif [[ "$t" == "cmdw" || "$t" == "newwindow" || "$t" == "welcomenew" || "$t" == "completion4d" || "$t" == "projectinput" || "$t" == "help" ]]; then
+    elif array_contains_exactly "$t" "${FOCUS_REQUIRED_TESTS[@]}"; then
         launch_mode="launchservices"
         CURRENT_LAUNCH_MODE="launchservices"
         # Diese Tests prüfen echte Tastatur- oder Mausbedienung (bei
@@ -1056,6 +1176,7 @@ for t in "${TESTS[@]}"; do
             --env "FASTRA_TEST_DEFAULTS_REGISTRY=$FASTRA_TEST_DEFAULTS_REGISTRY" \
             --env "FASTRA_SELFTEST_PASTEBOARD_DIR=$SELFTEST_PASTEBOARD_DIR" \
             --args -selftest "$t" -ApplePersistenceIgnoreState YES; then
+            emit_selftest_result "$t" "ENV"
             echo "SELFTEST $t: Umgebungsproblem — LaunchServices-Start fehlgeschlagen"
             summary+="⚠ $t (Start fehlgeschlagen)\n"
             env_fail_count=$((env_fail_count + 1))
@@ -1063,7 +1184,7 @@ for t in "${TESTS[@]}"; do
         fi
         track_started_app_bundle "$APP_BUNDLE_CANONICAL"
         remember_bundle_pids
-        activate_app
+        activate_app "$errfile"
         remember_bundle_pids
     else
         # Alle anderen Tests laufen ohne echten Fokus → Binary direkt.
@@ -1078,6 +1199,7 @@ for t in "${TESTS[@]}"; do
         fastra_test_start_new_session "$APP_BIN_ABSOLUTE" \
             -selftest "$t" -ApplePersistenceIgnoreState YES \
             >/dev/null 2>"$errfile"; then
+            emit_selftest_result "$t" "ENV"
             echo "SELFTEST $t: Umgebungsproblem — Testprozess ließ sich nicht sicher starten"
             summary+="⚠ $t (Start fehlgeschlagen)\n"
             env_fail_count=$((env_fail_count + 1))
@@ -1086,6 +1208,7 @@ for t in "${TESTS[@]}"; do
         track_started_app_bundle_for_executable "$APP_BIN_ABSOLUTE"
         track_started_pid "$FASTRA_TEST_STARTED_PID"
         if ! fastra_test_adopt_started_session; then
+            emit_selftest_result "$t" "ENV"
             echo "SELFTEST $t: Umgebungsproblem — Prozessübernahme fehlgeschlagen"
             summary+="⚠ $t (Startübernahme fehlgeschlagen)\n"
             env_fail_count=$((env_fail_count + 1))
@@ -1101,10 +1224,12 @@ for t in "${TESTS[@]}"; do
         if [ "$wait_result" -eq 3 ]; then
             # Früher Tod des Testprozesses: sofort und mit echtem Exit-Code
             # gemeldet, statt die restliche Frist blind abzuwarten.
+            emit_selftest_result "$t" "FAIL"
             echo "SELFTEST $t: FAIL — Testprozess endete vorzeitig ohne Ergebnis-Zeile (Exit ${WAIT_FOR_RESULT_EXIT:-unbekannt})"
             summary+="✗ $t (vorzeitig beendet, Exit ${WAIT_FOR_RESULT_EXIT:-?})\n"
             fail_kind="CRASH"
         else
+            emit_selftest_result "$t" "FAIL"
             echo "SELFTEST $t: FAIL — keine Ergebnis-Zeile binnen ${test_timeout_secs}s (Runner-Timeout)"
             summary+="✗ $t (Timeout)\n"
             fail_kind="TIMEOUT"
@@ -1140,32 +1265,42 @@ for t in "${TESTS[@]}"; do
     result_finished="$(now_milliseconds)"
     app_ms="$(sed -n 's/^SELFTEST-METRIC test=[^ ]* app_ms=\([0-9][0-9]*\)$/\1/p' "$errfile" | tail -1)"
     app_ms="${app_ms:--1}"
-    echo "$line"
+    classify_selftest_result "$t" "$errfile" "$line"
+    performance_status="$SELFTEST_RESULT_STATUS"
+    if [ -n "$SELFTEST_PROTOCOL_ERROR" ]; then
+        emit_selftest_result "$t" "FAIL"
+        echo "SELFTEST $t: FAIL — Protokollfehler: $SELFTEST_PROTOCOL_ERROR"
+    else
+        # Der Runner gibt genau einen kanonischen Maschinenstatus weiter. Das
+        # gilt auch für alte Bundles, deren Begleitzeile noch ausgewertet wird.
+        emit_selftest_result "$t" "$performance_status"
+        echo "$line"
+    fi
 
-    if [[ "$line" == *": PASS"* ]]; then
-        pass_count=$((pass_count + 1))
-        summary+="✓ $t\n"
-        rm -f -- "$errfile"
-    elif [[ "$line" == *"Umgebungsproblem"* ]]; then
-        # Vom Test selbst als Umgebungsproblem ausgewiesen (z.B. Fokus
-        # wurde vom aktiv arbeitenden Nutzer zurückgeholt) — gesondert
-        # zählen, damit echte Funktionsfehler nicht untergehen.
-        env_fail_count=$((env_fail_count + 1))
-        summary+="⚠ $t (Umgebung)\n"
-        rm -f -- "$errfile"
-    else
-        real_fail_count=$((real_fail_count + 1))
-        summary+="✗ $t\n"
-        preserve_selftest_error "$errfile" "$safe_test_name" \
-            || SELFTEST_CLEANUP_FAILED=1
-    fi
-    if [[ "$line" == *": PASS"* ]]; then
-        performance_status="PASS"
-    elif [[ "$line" == *"Umgebungsproblem"* ]]; then
-        performance_status="ENV"
-    else
-        performance_status="FAIL"
-    fi
+    case "$performance_status" in
+        PASS)
+            pass_count=$((pass_count + 1))
+            summary+="✓ $t\n"
+            rm -f -- "$errfile"
+            ;;
+        SKIP)
+            skip_count=$((skip_count + 1))
+            summary+="⚠ $t (übersprungen)\n"
+            rm -f -- "$errfile"
+            ;;
+        ENV)
+            env_fail_count=$((env_fail_count + 1))
+            summary+="⚠ $t (Umgebung)\n"
+            rm -f -- "$errfile"
+            ;;
+        *)
+            performance_status="FAIL"
+            real_fail_count=$((real_fail_count + 1))
+            summary+="✗ $t\n"
+            preserve_selftest_error "$errfile" "$safe_test_name" \
+                || SELFTEST_CLEANUP_FAILED=1
+            ;;
+    esac
     cleanup_ms=$((cleanup_finished - iteration_started))
     launch_ms=$((result_finished - launch_started))
     total_ms=$((result_finished - iteration_started))
