@@ -1402,6 +1402,8 @@
 "Seite %ld" = "Page %ld";
 "Abschnitt %ld von %ld" = "Section %ld of %ld";
 "Drucken nicht möglich" = "Cannot Print";
+"Der Druckauftrag ist fehlgeschlagen." = "The print job failed.";
+"Die PDF-Datei konnte nicht geschrieben werden." = "The PDF file could not be written.";
 "Kein Dokument zum Drucken." = "No document to print.";
 "Dieses Dokument enthält keinen druckbaren Text." = "This document contains no printable text.";
 "Die Hex-Ansicht hat noch keinen Abschnitt geladen." = "The hex view has not loaded a section yet.";
@@ -1411,6 +1413,9 @@
 "Formeln oder Diagramme sind noch nicht vollständig gerendert. Der Ausdruck kann an diesen Stellen unfertig aussehen." = "Formulas or diagrams are not fully rendered yet. The printout may look unfinished in those places.";
 "Trotzdem drucken" = "Print Anyway";
 "Die Vorschau wurde nicht rechtzeitig fertig gerendert." = "The preview did not finish rendering in time.";
+"Die Druckvorschau konnte nicht rechtzeitig vorbereitet werden." = "The print preview could not be prepared in time.";
+"Der Webprozess für die Druckvorschau wurde beendet." = "The web process for the print preview terminated.";
+"Die Druckvorschau konnte nicht geprüft werden: %@" = "The print preview could not be checked: %@";
 "Drucken" = "Printing";
 "Zeilennummern drucken" = "Print line numbers";
 "Kopf- und Fußzeile drucken" = "Print header and footer";

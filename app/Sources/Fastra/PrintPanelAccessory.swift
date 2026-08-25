@@ -5,7 +5,7 @@
 // Druckabnahme). Eine Änderung wirkt dreifach:
 //   1. Sie steht sofort im `NSPrintInfo`-Dictionary des laufenden Auftrags —
 //      `PrintDocumentTextView` liest seine Optionen bei JEDER Seitenaufteilung
-//      frisch von dort (siehe `resolvedPrintOptions`), die Dialog-Vorschau
+//      frisch von dort (siehe `refreshDialogOptions`), die Dialog-Vorschau
 //      paginiert also live neu.
 //   2. Sie wird in den Einstellungen gespeichert (`PrintPreferences`) — Dialog
 //      und Einstellungsfenster bleiben dieselbe eine Quelle, der nächste

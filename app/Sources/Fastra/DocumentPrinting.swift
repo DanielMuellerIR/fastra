@@ -31,6 +31,21 @@ enum PrintOutcome: Equatable {
     case failed(String)
 }
 
+/// Übersetzt AppKits mehrdeutiges Bool-Ergebnis in eine verständliche
+/// Rückmeldung. `false` bedeutet laut AppKit entweder Abbruch ODER Fehler;
+/// nur `jobDisposition == .cancel` weist den bewussten Abbruch aus.
+@MainActor
+enum PrintOperationOutcome {
+    static func resolve(success: Bool, printInfo: NSPrintInfo) -> PrintOutcome {
+        guard !success else { return .printed }
+        guard printInfo.jobDisposition != .cancel else { return .cancelled }
+        if printInfo.jobDisposition == .save {
+            return .failed(L10n.string("Die PDF-Datei konnte nicht geschrieben werden."))
+        }
+        return .failed(L10n.string("Der Druckauftrag ist fehlgeschlagen."))
+    }
+}
+
 @MainActor
 enum DocumentPrinting {
 
@@ -85,9 +100,14 @@ enum DocumentPrinting {
                     window: NSWindow?,
                     savingTo: URL? = nil,
                     completion: @escaping (PrintOutcome) -> Void = { _ in }) {
+        // EIN Abschlussweg für synchrone und asynchrone Fehler. Insbesondere
+        // WebKit-Fehler kamen vorher nur in der standardmäßig leeren Completion
+        // an und blieben beim normalen Menübefehl unsichtbar.
+        let deliver: (PrintOutcome) -> Void = { [weak window] outcome in
+            report(outcome, window: window, completion: completion)
+        }
         guard let tab = workspace.activeTab else {
-            report(.failed(L10n.string("Kein Dokument zum Drucken.")),
-                   window: window, completion: completion)
+            deliver(.failed(L10n.string("Kein Dokument zum Drucken.")))
             return
         }
         let defaults = workspace.preferencesStore
@@ -99,24 +119,24 @@ enum DocumentPrinting {
         case .source:
             printSourceText(tab: tab, workspace: workspace, printInfo: printInfo,
                             defaults: defaults, window: window, savingTo: savingTo,
-                            completion: completion)
+                            completion: deliver)
         case .hexDump:
             printHexDump(tab: tab, workspace: workspace, printInfo: printInfo,
                          defaults: defaults, window: window, savingTo: savingTo,
-                         completion: completion)
+                         completion: deliver)
         case .markdownPreview:
             printMarkdownPreview(tab: tab, printInfo: printInfo,
                                  defaults: defaults, jobTitle: jobTitle,
                                  window: window, savingTo: savingTo,
-                                 completion: completion)
+                                 completion: deliver)
         case .image:
             printImage(tab: tab, workspace: workspace, printInfo: printInfo,
                        defaults: defaults, window: window, savingTo: savingTo,
-                       completion: completion)
+                       completion: deliver)
         case .pdf:
             printPDF(tab: tab, workspace: workspace, printInfo: printInfo,
                      jobTitle: jobTitle, window: window, savingTo: savingTo,
-                     completion: completion)
+                     completion: deliver)
         }
     }
 
@@ -180,8 +200,8 @@ enum DocumentPrinting {
         let section = workspace.visiblePrintPage(for: tab)
         let text = tab.content.isEmpty ? (section?.text ?? "") : tab.content
         guard !text.isEmpty else {
-            report(.failed(L10n.string("Dieses Dokument enthält keinen druckbaren Text.")),
-                   window: window, completion: completion)
+            completion(.failed(L10n.string(
+                "Dieses Dokument enthält keinen druckbaren Text.")))
             return
         }
         // Erst nach einer möglichen Rückfrage bauen: Schon das Aufbauen teilt
@@ -282,8 +302,8 @@ enum DocumentPrinting {
                                      completion: @escaping (PrintOutcome) -> Void) {
         guard let section = workspace.visiblePrintPage(for: tab),
               !section.text.isEmpty else {
-            report(.failed(L10n.string("Die Hex-Ansicht hat noch keinen Abschnitt geladen.")),
-                   window: window, completion: completion)
+            completion(.failed(L10n.string(
+                "Die Hex-Ansicht hat noch keinen Abschnitt geladen.")))
             return
         }
         let operation = makeTextPrintOperation(
@@ -463,8 +483,7 @@ enum DocumentPrinting {
                                              savingTo: URL?,
                                              completion: @escaping (PrintOutcome) -> Void) {
         guard !tab.content.isEmpty else {
-            report(.failed(L10n.string("Diese Markdown-Datei ist noch leer.")),
-                   window: window, completion: completion)
+            completion(.failed(L10n.string("Diese Markdown-Datei ist noch leer.")))
             return
         }
         let job = MarkdownPrintJob(printInfo: printInfo, targetWindow: window,
@@ -499,8 +518,8 @@ enum DocumentPrinting {
               let snapshot = workspace.visiblePreviewSnapshot(for: tab),
               case .image(let image) = snapshot.content,
               image.size.width > 0, image.size.height > 0 else {
-            report(.failed(L10n.string("Die Bildvorschau ist noch nicht geladen.")),
-                   window: window, completion: completion)
+            completion(.failed(L10n.string(
+                "Die Bildvorschau ist noch nicht geladen.")))
             return
         }
         let title = tab.title
@@ -543,8 +562,8 @@ enum DocumentPrinting {
         guard let snapshot = workspace.visiblePreviewSnapshot(for: tab),
               case .pdf(let document) = snapshot.content,
               document.pageCount > 0 else {
-            report(.failed(L10n.string("Die PDF-Vorschau ist noch nicht geladen.")),
-                   window: window, completion: completion)
+            completion(.failed(L10n.string(
+                "Die PDF-Vorschau ist noch nicht geladen.")))
             return
         }
         // PDFKit druckt das Dokument selbst — Seitengröße, Drehung und
@@ -555,8 +574,7 @@ enum DocumentPrinting {
             for: printInfo, scalingMode: .pageScaleDownToFit,
             autoRotate: true
         ) else {
-            report(.failed(L10n.string("Dieses PDF ist nicht lesbar.")),
-                   window: window, completion: completion)
+            completion(.failed(L10n.string("Dieses PDF ist nicht lesbar.")))
             return
         }
         operation.jobTitle = jobTitle
@@ -585,7 +603,8 @@ enum DocumentPrinting {
         }
         guard let window else {
             let ok = operation.run()
-            completion(ok ? .printed : .cancelled)
+            completion(PrintOperationOutcome.resolve(
+                success: ok, printInfo: operation.printInfo))
             return
         }
         PrintCompletionRelay.run(operation, in: window, completion: completion)
@@ -627,11 +646,12 @@ enum DocumentPrinting {
 /// `WKWindowVisibilityObserver` ab, weil der Abbau der Druck-WebView aus diesem
 /// fremden Thread lief. Von außen sah das wie ein hängender Druckauftrag aus —
 /// der Prozess war einfach weg.
-private final class PrintCompletionRelay: NSObject {
-    private static var active: [PrintCompletionRelay] = []
+final class PrintCompletionRelay: NSObject, @unchecked Sendable {
+    @MainActor private static var active: [PrintCompletionRelay] = []
     private let completion: (PrintOutcome) -> Void
+    @MainActor private var isFinished = false
 
-    private init(completion: @escaping (PrintOutcome) -> Void) {
+    init(completion: @escaping (PrintOutcome) -> Void) {
         self.completion = completion
     }
 
@@ -653,9 +673,19 @@ private final class PrintCompletionRelay: NSObject {
     private func printOperationDidRun(_ operation: NSPrintOperation,
                                       success: Bool,
                                       contextInfo: UnsafeMutableRawPointer?) {
-        let outcome: PrintOutcome = success ? .printed : .cancelled
+        complete(operation: operation, success: success)
+    }
+
+    /// AppKit ruft diesen Einstieg aus dem Druck-Thread auf. Der getrennte
+    /// Helfer macht denselben Threadwechsel und den Genau-einmal-Wächter ohne
+    /// einen echten Systemdialog prüfbar.
+    func complete(operation: NSPrintOperation, success: Bool) {
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
+                guard !self.isFinished else { return }
+                self.isFinished = true
+                let outcome = PrintOperationOutcome.resolve(
+                    success: success, printInfo: operation.printInfo)
                 self.completion(outcome)
                 PrintCompletionRelay.active.removeAll { $0 === self }
             }
@@ -940,6 +970,15 @@ enum PrintPageDecoration {
 /// aussehen als das, was der Nutzer neben dem Editor sieht.
 @MainActor
 final class MarkdownPrintJob: NSObject, WKNavigationDelegate {
+    typealias PrintExecutor = @MainActor (
+        NSPrintOperation, NSWindow, URL?, @escaping (PrintOutcome) -> Void
+    ) -> Void
+
+    /// Gesamtfrist ab dem Start. Die bestehende Acht-Sekunden-Frist beginnt
+    /// erst NACH einer fertigen Navigation; ohne diese zweite Grenze hielten
+    /// ein festhängender Renderer oder Webprozess den Auftrag unbegrenzt.
+    private static let preparationTimeout: Duration = .seconds(30)
+
     /// Solange ein Auftrag läuft, hält ihn diese Liste am Leben — sonst
     /// verschwände er samt WebView, bevor das Dokument geladen ist.
     private static var active: [MarkdownPrintJob] = []
@@ -948,20 +987,33 @@ final class MarkdownPrintJob: NSObject, WKNavigationDelegate {
     private let hostWindow: OffscreenPrintWindow
     private let assetHandler = MarkdownPreviewSchemeHandler()
     private let printInfo: NSPrintInfo
-    private let targetWindow: NSWindow?
+    private weak var targetWindow: NSWindow?
+    private let hadTargetWindow: Bool
     private let savingTo: URL?
     private let jobTitle: String
     private let completion: (PrintOutcome) -> Void
+    private let executePrint: PrintExecutor
     private let contentSize: NSSize
     private var isFinished = false
+    private var hasStartedPrinting = false
+    private var observesTargetWindow = false
+    private var preparationTimeoutTask: Task<Void, Never>?
 
     init(printInfo: NSPrintInfo, targetWindow: NSWindow?, savingTo: URL?,
-         jobTitle: String, completion: @escaping (PrintOutcome) -> Void) {
+         jobTitle: String, completion: @escaping (PrintOutcome) -> Void,
+         executePrint: @escaping PrintExecutor = { operation, window, savingTo,
+                                                   completion in
+             DocumentPrinting.execute(operation, window: window,
+                                      savingTo: savingTo,
+                                      completion: completion)
+         }) {
         self.printInfo = printInfo
         self.targetWindow = targetWindow
+        self.hadTargetWindow = targetWindow != nil
         self.savingTo = savingTo
         self.jobTitle = jobTitle
         self.completion = completion
+        self.executePrint = executePrint
         self.contentSize = DocumentPrinting.contentSize(of: printInfo)
 
         let configuration = WKWebViewConfiguration()
@@ -984,6 +1036,15 @@ final class MarkdownPrintJob: NSObject, WKNavigationDelegate {
         )
         super.init()
         webView.navigationDelegate = self
+        if let targetWindow {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(targetWindowWillClose(_:)),
+                name: NSWindow.willCloseNotification,
+                object: targetWindow
+            )
+            observesTargetWindow = true
+        }
         hostWindow.isReleasedWhenClosed = false
         hostWindow.hasShadow = false
         hostWindow.ignoresMouseEvents = true
@@ -1001,6 +1062,11 @@ final class MarkdownPrintJob: NSObject, WKNavigationDelegate {
     func start(markdown: String, documentURL: URL?, fontName: String,
                fontSize: CGFloat) {
         MarkdownPrintJob.active.append(self)
+        preparationTimeoutTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: MarkdownPrintJob.preparationTimeout)
+            guard !Task.isCancelled else { return }
+            self?.preparationDidTimeOut()
+        }
         // Rendern kostet einen cmark-Durchlauf und je Bild einen
         // Dateisystemzugriff — beides gehört nicht auf den Main-Thread.
         DispatchQueue.global(qos: .userInitiated).async {
@@ -1012,7 +1078,7 @@ final class MarkdownPrintJob: NSObject, WKNavigationDelegate {
                 darkMode: false, purpose: .print
             )
             DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
+                guard let self, !self.isFinished else { return }
                 self.assetHandler.setImageURLs(fragment.imageURLs)
                 self.webView.loadHTMLString(html, baseURL: nil)
             }
@@ -1025,7 +1091,24 @@ final class MarkdownPrintJob: NSObject, WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!,
                  withError error: Error) {
+        guard !hasStartedPrinting else { return }
         finish(.failed(error.localizedDescription))
+    }
+
+    func webView(_ webView: WKWebView,
+                 didFailProvisionalNavigation navigation: WKNavigation!,
+                 withError error: Error) {
+        guard !hasStartedPrinting else { return }
+        finish(.failed(error.localizedDescription))
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        // Ab Druckbeginn besitzt AppKit den Auftrag. Sein Relay ist dann der
+        // einzige Abschlussweg; ein spätes WebKit-Signal darf WebView und
+        // Hostfenster nicht unter dem laufenden NSPrintOperation abbauen.
+        guard !hasStartedPrinting else { return }
+        finish(.failed(L10n.string(
+            "Der Webprozess für die Druckvorschau wurde beendet.")))
     }
 
     /// Formeln (KaTeX), Diagramme (Mermaid) und Code-Einfärbung entstehen erst
@@ -1033,8 +1116,14 @@ final class MarkdownPrintJob: NSObject, WKNavigationDelegate {
     private func waitForEnhancement(tick: Int) {
         webView.evaluateJavaScript(
             "document.documentElement.getAttribute('data-fastra-enhanced') === '1'"
-        ) { [weak self] value, _ in
+        ) { [weak self] value, error in
             guard let self, !self.isFinished else { return }
+            if let error {
+                self.finish(.failed(L10n.format(
+                    "Die Druckvorschau konnte nicht geprüft werden: %@",
+                    error.localizedDescription)))
+                return
+            }
             if (value as? Bool) == true {
                 // NICHT direkt aus dieser Closure drucken: Sie ist eine
                 // WebKit-Rückmeldung. Der Druckvorgang von WebKit dreht selbst
@@ -1057,6 +1146,7 @@ final class MarkdownPrintJob: NSObject, WKNavigationDelegate {
     }
 
     private func confirmUnfinishedRender() {
+        cancelPreparationTimeout()
         // Ohne Dialogweg (Selbsttest, Druck in eine Datei) gilt der Auftrag
         // als gescheitert: Ein unfertiger Ausdruck darf nicht als Erfolg
         // durchgehen.
@@ -1080,33 +1170,83 @@ final class MarkdownPrintJob: NSObject, WKNavigationDelegate {
                 self.finish(.cancelled)
             }
         }
-        if let targetWindow {
+        if hadTargetWindow {
+            guard let targetWindow else {
+                finish(.cancelled)
+                return
+            }
             alert.beginSheetModal(for: targetWindow, completionHandler: proceed)
         } else {
             proceed(alert.runModal())
         }
     }
 
-    private func startPrinting() {
+    func startPrinting() {
         guard !isFinished else { return }
+        let printWindow: NSWindow
+        if hadTargetWindow {
+            guard let targetWindow else {
+                finish(.cancelled)
+                return
+            }
+            printWindow = targetWindow
+        } else {
+            printWindow = hostWindow
+        }
+        hasStartedPrinting = true
+        cancelPreparationTimeout()
+        stopObservingTargetWindow()
+        // Ab hier meldet ausschließlich der Druckauftrag seinen Abschluss.
+        // Bereits eingereihte Delegate-Aufrufe schützt zusätzlich der
+        // `hasStartedPrinting`-Wächter in den Fehlerpfaden oben.
+        webView.navigationDelegate = nil
         let operation = webView.printOperation(with: printInfo)
         operation.jobTitle = jobTitle
         // WebKit bricht die Seite an der Breite dieser View um.
         operation.view?.frame = NSRect(origin: .zero, size: contentSize)
-        DocumentPrinting.execute(operation, window: targetWindow ?? hostWindow,
-                                 savingTo: savingTo) { [weak self] outcome in
+        executePrint(operation, printWindow, savingTo) { [weak self] outcome in
             self?.finish(outcome)
         }
+    }
+
+    /// Abschluss der Gesamtfrist; eigener Einstieg für den deterministischen
+    /// Regressionstest, damit der Test nicht 30 Sekunden warten muss.
+    func preparationDidTimeOut() {
+        guard !isFinished, !hasStartedPrinting else { return }
+        finish(.failed(L10n.string(
+            "Die Druckvorschau konnte nicht rechtzeitig vorbereitet werden.")))
+    }
+
+    @objc private func targetWindowWillClose(_ notification: Notification) {
+        guard !hasStartedPrinting else { return }
+        finish(.cancelled)
+    }
+
+    private func cancelPreparationTimeout() {
+        preparationTimeoutTask?.cancel()
+        preparationTimeoutTask = nil
+    }
+
+    private func stopObservingTargetWindow() {
+        guard observesTargetWindow else { return }
+        NotificationCenter.default.removeObserver(
+            self, name: NSWindow.willCloseNotification, object: nil)
+        observesTargetWindow = false
     }
 
     private func finish(_ outcome: PrintOutcome) {
         guard !isFinished else { return }
         isFinished = true
+        let deliveredOutcome: PrintOutcome =
+            hadTargetWindow && targetWindow == nil ? .cancelled : outcome
+        cancelPreparationTimeout()
+        stopObservingTargetWindow()
         webView.navigationDelegate = nil
+        webView.stopLoading()
         hostWindow.contentView = nil
         hostWindow.close()
-        completion(outcome)
         MarkdownPrintJob.active.removeAll { $0 === self }
+        completion(deliveredOutcome)
     }
 }
 

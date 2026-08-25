@@ -349,11 +349,10 @@ enum PrintTextFit {
 
 // MARK: - Einstellungen
 
-/// Druckeinstellungen. Sie liegen in den Einstellungen und nicht im
-/// Systemdialog: Ein eigenes Zubehörfeld im Druckfenster müsste die
-/// Seitenaufteilung bei jeder Änderung neu rechnen, und genau daran scheitern
-/// solche Felder in der Praxis. Persistent gemerkte Werte sind zudem
-/// nachvollziehbar — sie stehen sichtbar an einer Stelle.
+/// Druckeinstellungen. Das Einstellungsfenster und das Zubehörfeld des
+/// Systemdialogs schreiben dieselben persistenten Werte. Der laufende Auftrag
+/// hält seine Dialogwerte zusätzlich im eigenen `NSPrintInfo` fest, damit
+/// Seitenvorschau und gespeicherter Ausgangszustand nicht auseinanderlaufen.
 enum PrintPreferences {
     enum Keys {
         static let lineNumbers = "print.lineNumbers"

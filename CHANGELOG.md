@@ -9,6 +9,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.112.9] — 2026-08-26
+
+### Behoben
+
+- **Markdown-Druckaufträge enden auch bei WebKit- und Fensterfehlern
+  verlässlich.** Provisorische Navigationsfehler, ein beendeter Webprozess und
+  eine insgesamt festhängende Vorbereitung liefern jetzt einen sichtbaren
+  Fehler statt WebView und Fenster unbegrenzt festzuhalten. Schließt der Nutzer
+  das Ursprungsfenster während der Vorbereitung, bricht Fastra den daran
+  gebundenen Auftrag genau einmal ab und öffnet kein Druckblatt am geschlossenen
+  Fenster.
+- **Druckfehler gelten nicht mehr als Nutzerabbruch.** Fastra unterscheidet die
+  ausdrückliche Cancel-Disposition des Systemdialogs von einem fehlgeschlagenen
+  Spool- oder PDF-Speicherauftrag und zeigt den Fehler im normalen Menüweg an.
+
 ## [v1.112.8] — 2026-08-26
 
 ### Behoben

@@ -9,7 +9,39 @@
 import AppKit
 import Foundation
 import Testing
+import WebKit
 @testable import Fastra
+
+/// `NSPrintOperation` und Relay werden absichtlich aus einer fremden Queue
+/// angestoßen. Die Hülle verspricht nur für diesen Test, dass beide bis zum
+/// Abschluss leben; AppKit selbst liefert denselben Rückruf aus seinem
+/// Druck-Thread.
+private final class PrintRelayInvocation: @unchecked Sendable {
+    let relay: PrintCompletionRelay
+    let operation: NSPrintOperation
+
+    init(relay: PrintCompletionRelay, operation: NSPrintOperation) {
+        self.relay = relay
+        self.operation = operation
+    }
+
+    func deliverTwice() {
+        relay.complete(operation: operation, success: false)
+        relay.complete(operation: operation, success: true)
+    }
+}
+
+/// Stabiler Behälter für Freigabeprüfungen. Ein lokales `weak var` erzeugt
+/// unter Swift 6 die irreführende WeakMutability-Warnung, obwohl gerade das
+/// automatische Nullen die geprüfte Mutation ist.
+@MainActor
+private final class WeakMarkdownPrintJobReference {
+    weak var value: MarkdownPrintJob?
+
+    init(_ value: MarkdownPrintJob?) {
+        self.value = value
+    }
+}
 
 // MARK: - Was ist druckbar
 
@@ -615,5 +647,207 @@ struct PrintDialogOptionTests {
         operation.printInfo.dictionary()[PrintDialogOption.lineNumbers] = true
         #expect(view.knowsPageRange(&range))
         #expect(view.textStorage?.string == numbered)
+    }
+}
+
+// MARK: - Abschluss und Fehlerpfade des echten Druckauftrags
+
+@Suite("Abschluss eines Druckauftrags")
+struct PrintOperationCompletionTests {
+
+    @MainActor
+    @Test("Nur die Cancel-Disposition ist ein Nutzerabbruch")
+    func cancellationIsDistinctFromFailure() {
+        let info = NSPrintInfo()
+        info.jobDisposition = .cancel
+        #expect(PrintOperationOutcome.resolve(success: false, printInfo: info)
+                == .cancelled)
+
+        info.jobDisposition = .save
+        guard case .failed = PrintOperationOutcome.resolve(
+            success: false, printInfo: info) else {
+            Issue.record("fehlgeschlagenes PDF-Speichern wurde nicht als Fehler erkannt")
+            return
+        }
+
+        info.jobDisposition = .spool
+        guard case .failed = PrintOperationOutcome.resolve(
+            success: false, printInfo: info) else {
+            Issue.record("Spoolerfehler wurde nicht als Fehler erkannt")
+            return
+        }
+        #expect(PrintOperationOutcome.resolve(success: true, printInfo: info)
+                == .printed)
+    }
+
+    @MainActor
+    @Test("Der Relay-Abschluss wechselt auf Main und läuft genau einmal")
+    func relayReturnsToMainExactlyOnce() async {
+        let info = NSPrintInfo()
+        info.jobDisposition = .save
+        let operation = NSPrintOperation(
+            view: NSView(frame: NSRect(x: 0, y: 0, width: 20, height: 20)),
+            printInfo: info)
+        var outcomes: [PrintOutcome] = []
+        var allOnMain = true
+        let relay = PrintCompletionRelay { outcome in
+            outcomes.append(outcome)
+            allOnMain = allOnMain && Thread.isMainThread
+        }
+        let invocation = PrintRelayInvocation(relay: relay, operation: operation)
+
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                invocation.deliverTwice()
+                // Von derselben Queue nach beiden Relay-Blöcken eingereiht:
+                // Beim Fortsetzen ist die Main-Queue sicher bis hier geleert.
+                DispatchQueue.main.async { continuation.resume() }
+            }
+        }
+
+        #expect(outcomes.count == 1)
+        guard let outcome = outcomes.first else { return }
+        guard case .failed = outcome else {
+            Issue.record("fehlgeschlagener Save-Auftrag ergab \(outcome)")
+            return
+        }
+        #expect(allOnMain)
+    }
+}
+
+// MARK: - Lebenszyklus der Markdown-Druckvorbereitung
+
+@Suite("Markdown-Druckauftrag")
+struct MarkdownPrintJobLifecycleTests {
+
+    @MainActor
+    private func makeJob(targetWindow: NSWindow? = nil,
+                         outcomes: @escaping (PrintOutcome) -> Void)
+        -> MarkdownPrintJob {
+        MarkdownPrintJob(
+            printInfo: NSPrintInfo(), targetWindow: targetWindow,
+            savingTo: URL(fileURLWithPath: "/tmp/fastra-print-lifecycle.pdf"),
+            jobTitle: "Lebenszyklus", completion: outcomes)
+    }
+
+    @MainActor
+    @Test("Ein provisorischer Navigationsfehler beendet und löst den Job")
+    func provisionalNavigationFailureFinishes() {
+        var outcomes: [PrintOutcome] = []
+        var job: MarkdownPrintJob? = makeJob { outcomes.append($0) }
+        let weakJob = WeakMarkdownPrintJobReference(job)
+        job?.start(markdown: "# Probe", documentURL: nil,
+                   fontName: PreviewFonts.systemName, fontSize: 11)
+        let error = NSError(domain: NSURLErrorDomain,
+                            code: NSURLErrorCannotLoadFromNetwork)
+        job?.webView(WKWebView(), didFailProvisionalNavigation: nil,
+                     withError: error)
+        // Ein zweites WebKit-Endsignal darf die Completion nicht wiederholen.
+        job?.webViewWebContentProcessDidTerminate(WKWebView())
+        #expect(outcomes.count == 1)
+        guard let outcome = outcomes.first, case .failed = outcome else {
+            Issue.record("provisorischer Navigationsfehler blieb ohne Fehlerausgang")
+            return
+        }
+        job = nil
+        let retainedAfterFinish = weakJob.value
+        #expect(retainedAfterFinish == nil)
+    }
+
+    @MainActor
+    @Test("Ein beendeter Webprozess beendet und löst den Job")
+    func webProcessTerminationFinishes() {
+        var outcomes: [PrintOutcome] = []
+        var job: MarkdownPrintJob? = makeJob { outcomes.append($0) }
+        let weakJob = WeakMarkdownPrintJobReference(job)
+        job?.start(markdown: "# Probe", documentURL: nil,
+                   fontName: PreviewFonts.systemName, fontSize: 11)
+        job?.webViewWebContentProcessDidTerminate(WKWebView())
+        #expect(outcomes.count == 1)
+        guard let outcome = outcomes.first, case .failed = outcome else {
+            Issue.record("beendeter Webprozess blieb ohne Fehlerausgang")
+            return
+        }
+        job = nil
+        let retainedAfterFinish = weakJob.value
+        #expect(retainedAfterFinish == nil)
+    }
+
+    @MainActor
+    @Test("Die Gesamtfrist beendet einen festhängenden Vorbereitungsweg")
+    func preparationTimeoutFinishesExactlyOnce() {
+        var outcomes: [PrintOutcome] = []
+        var job: MarkdownPrintJob? = makeJob { outcomes.append($0) }
+        let weakJob = WeakMarkdownPrintJobReference(job)
+        job?.start(markdown: "# Probe", documentURL: nil,
+                   fontName: PreviewFonts.systemName, fontSize: 11)
+        job?.preparationDidTimeOut()
+        job?.preparationDidTimeOut()
+        #expect(outcomes.count == 1)
+        guard let outcome = outcomes.first, case .failed = outcome else {
+            Issue.record("Vorbereitungsfrist blieb ohne Fehlerausgang")
+            return
+        }
+        job = nil
+        let retainedAfterFinish = weakJob.value
+        #expect(retainedAfterFinish == nil)
+    }
+
+    @MainActor
+    @Test("Schließen des Ursprungsfensters bricht die Vorbereitung ab")
+    func closingTargetWindowCancelsExactlyOnce() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 300, height: 200),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        var outcomes: [PrintOutcome] = []
+        var job: MarkdownPrintJob? = makeJob(targetWindow: window) {
+            outcomes.append($0)
+        }
+        let weakJob = WeakMarkdownPrintJobReference(job)
+        job?.start(markdown: "# Probe", documentURL: nil,
+                   fontName: PreviewFonts.systemName, fontSize: 11)
+        window.close()
+        job?.preparationDidTimeOut()
+        #expect(outcomes == [.cancelled])
+        job = nil
+        let retainedAfterFinish = weakJob.value
+        #expect(retainedAfterFinish == nil)
+    }
+
+    @MainActor
+    @Test("Ein spätes WebKit-Endsignal wartet auf den Druckabschluss")
+    func webProcessTerminationAfterPrintingWaitsForRelay() throws {
+        var outcomes: [PrintOutcome] = []
+        var printCompletion: ((PrintOutcome) -> Void)?
+        var executorCalls = 0
+        var job: MarkdownPrintJob? = MarkdownPrintJob(
+            printInfo: NSPrintInfo(), targetWindow: nil,
+            savingTo: URL(fileURLWithPath: "/tmp/fastra-print-lifecycle.pdf"),
+            jobTitle: "Lebenszyklus",
+            completion: { outcomes.append($0) },
+            executePrint: { _, _, _, completion in
+                executorCalls += 1
+                printCompletion = completion
+            }
+        )
+        let weakJob = WeakMarkdownPrintJobReference(job)
+        job?.start(markdown: "# Probe", documentURL: nil,
+                   fontName: PreviewFonts.systemName, fontSize: 11)
+        job?.startPrinting()
+        #expect(executorCalls == 1)
+
+        // Dieses Signal kann WebKit noch nach dem Erzeugen der
+        // NSPrintOperation zustellen. Es darf den Auftrag nicht vorzeitig
+        // abschließen oder dessen WebView abbauen.
+        job?.webViewWebContentProcessDidTerminate(WKWebView())
+        #expect(outcomes.isEmpty)
+        job = nil
+        #expect(weakJob.value != nil)
+
+        let completion = try #require(printCompletion)
+        completion(.failed("Druckfehler"))
+        #expect(outcomes == [.failed("Druckfehler")])
+        #expect(weakJob.value == nil)
     }
 }
