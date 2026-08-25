@@ -2,13 +2,10 @@
   "schema_version": 1,
   "project": "Fastra",
   "campaign": {
-    "id": "20260815T165221406979+0200",
-    "token_budget": 5000000,
-    "status": "complete",
-    "started_at": "2026-08-15T16:52:21+02:00",
-    "tokens_spent": 2486268,
-    "finished_at": "2026-08-15T19:07:49+02:00",
-    "finish_reason": "all-current"
+    "id": "20260825T163605228103+0200",
+    "token_budget": 8000000,
+    "status": "active",
+    "started_at": "2026-08-25T16:36:05+02:00"
   },
   "campaign_history": [
     {
@@ -19,6 +16,15 @@
       "tokens_spent": 3072618,
       "finished_at": "2026-08-15T16:25:51+02:00",
       "finish_reason": "budget-reached"
+    },
+    {
+      "id": "20260815T165221406979+0200",
+      "token_budget": 5000000,
+      "status": "complete",
+      "started_at": "2026-08-15T16:52:21+02:00",
+      "tokens_spent": 2486268,
+      "finished_at": "2026-08-15T19:07:49+02:00",
+      "finish_reason": "all-current"
     }
   ],
   "scope": {
@@ -121,12 +127,14 @@
         "app/Tests/FastraTests/SearchRunnerTests.swift",
         "app/Tests/FastraTests/SelectionSearchTests.swift",
         "app/Tests/FastraTests/WildcardPatternTests.swift",
-        "app/Tests/FastraTests/WildcardWiringTests.swift"
+        "app/Tests/FastraTests/WildcardWiringTests.swift",
+        "app/Sources/Fastra/SearchMatchSelection.swift",
+        "app/Tests/FastraTests/SearchMatchSelectionTests.swift"
       ],
       "risk": "critical",
       "priority": 1,
       "reason": "Trefferbasis, Vorschau und Apply bilden die zentrale Sicherheitsgrenze des Produkts.",
-      "state": "completed",
+      "state": "pending",
       "last_run": {
         "campaign_id": "20260815T165221406979+0200",
         "completed_at": "2026-08-15T16:54:24+02:00",
@@ -139,7 +147,11 @@
         "tests": [
           "Übernahme: build.sh Exit 0 einschließlich Portabilitätsprüfung; 1870 nicht blockierte Tests mit zwei lastabhängigen Git-Ausreißern, beide isoliert Exit 0. Bereichsgezielt: Geöffnet-Einzel-Ersetzen und beide Mehrfenster-Persistenztests, 3/3 grün, Exit 0."
         ]
-      }
+      },
+      "pending_paths": [
+        "app/Sources/Fastra/SearchMatchSelection.swift",
+        "app/Tests/FastraTests/SearchMatchSelectionTests.swift"
+      ]
     },
     {
       "id": "file-io-document-safety",
@@ -153,12 +165,13 @@
         "app/Tests/FastraTests/FileLoaderTests.swift",
         "app/Tests/FastraTests/FileReadReviewFixTests.swift",
         "app/Tests/FastraTests/HexEditingTests.swift",
-        "app/Tests/FastraTests/PagedFileTests.swift"
+        "app/Tests/FastraTests/PagedFileTests.swift",
+        "app/Sources/Fastra/ExternalChangeInspector.swift"
       ],
       "risk": "critical",
       "priority": 2,
       "reason": "Dateiladen, Platten-Snapshots, große Dateien und Hex-Pfade entscheiden über Datenintegrität und Speichergrenzen.",
-      "state": "completed",
+      "state": "pending",
       "last_run": {
         "campaign_id": "20260815T134823378515+0200",
         "completed_at": "2026-08-15T14:31:33+02:00",
@@ -171,7 +184,10 @@
         "tests": [
           "Fail-before: der Fremdänderungs-Test zeigte stilles Überschreiben. Danach 61 Bereichstests grün; build.sh einschließlich Portabilitätsprüfung, Lokalisierungs- und Hilfe-Audit grün. 1852 Unit-Tests liefen mit einem lastabhängigen Git-Push-Ausreißer, der isoliert in 1,732 s bestand. Fenster-Selbsttests blockiert durch eine bereits laufende installierte Nutzerinstanz."
         ]
-      }
+      },
+      "pending_paths": [
+        "app/Sources/Fastra/ExternalChangeInspector.swift"
+      ]
     },
     {
       "id": "git-execution-mutations",
@@ -343,12 +359,13 @@
         "app/Tests/FastraTests/SoftWrapProfileStoreTests.swift",
         "app/Tests/FastraTests/TextLayoutManagerStaleOffsetTests.swift",
         "app/Tests/FastraTests/TextLinePrepareForDisplayClampTests.swift",
-        "app/Tests/FastraTests/ViewModeRoutingTests.swift"
+        "app/Tests/FastraTests/ViewModeRoutingTests.swift",
+        "app/Tests/FastraTests/StaleSelectionPivotTests.swift"
       ],
       "risk": "high",
       "priority": 6,
       "reason": "AppKit-/CodeEdit-Integration, Auswahl, Umbruch und Layout enthalten mehrere dokumentierte Absturz- und Koordinatenfallen.",
-      "state": "completed",
+      "state": "pending",
       "last_run": {
         "campaign_id": "20260815T165221406979+0200",
         "completed_at": "2026-08-15T16:59:10+02:00",
@@ -361,7 +378,10 @@
         "tests": [
           "Markdown-Erstnutzung adressiert nur den auslösenden Workspace: 1/1 grün, Exit 0; window-targeting-audit.sh PASS, Exit 0; Übernahme-build.sh einschließlich realer Portabilitätsprüfung Exit 0."
         ]
-      }
+      },
+      "pending_paths": [
+        "app/Tests/FastraTests/StaleSelectionPivotTests.swift"
+      ]
     },
     {
       "id": "markdown-render-import",
@@ -438,12 +458,14 @@
         "app/Tests/FastraTests/GitGraphTests.swift",
         "app/Tests/FastraTests/GitLogDiffTests.swift",
         "app/Tests/FastraTests/GitSideBySideDiffTests.swift",
-        "app/Tests/FastraTests/TabComparisonSelectionTests.swift"
+        "app/Tests/FastraTests/TabComparisonSelectionTests.swift",
+        "app/Sources/Fastra/GitFileHistory.swift",
+        "app/Tests/FastraTests/GitFileHistoryTests.swift"
       ],
       "risk": "high",
       "priority": 8,
       "reason": "Diff-, Verlauf- und Konfliktansichten müssen große und mehrdeutige Git-Zustände korrekt und verständlich darstellen.",
-      "state": "completed",
+      "state": "pending",
       "last_run": {
         "campaign_id": "20260815T134823378515+0200",
         "completed_at": "2026-08-15T16:10:12+02:00",
@@ -456,7 +478,11 @@
         "tests": [
           "Fail-first: crlfDoesNotCreatePhantomRows meldete 5 statt 3 Zeilen und 4 Issues; nach Fix grün. build.sh grün; 138 Bereichstests einschließlich realer temporärer Git-Repositories grün; localization-audit und verify-portable-app grün. Gesamtsuite: 1.885 Tests, 10 Issues: fünf erwartete SelfTestPerformance-Issues wegen laufender installierter Fastra-App (selftest.sh Exit 2) sowie zwei unter Gesamtauslastung abgelaufene reale Git-Tests; beide isoliert grün (0,801 s / 0,544 s). Hilfe in DE/EN geprüft, keine Textänderung nötig; help-audit --release grün."
         ]
-      }
+      },
+      "pending_paths": [
+        "app/Sources/Fastra/GitFileHistory.swift",
+        "app/Tests/FastraTests/GitFileHistoryTests.swift"
+      ]
     },
     {
       "id": "app-lifecycle-window-commands",
@@ -522,7 +548,7 @@
       "risk": "high",
       "priority": 10,
       "reason": "Projektbaum, Dateiwächter und externe Terminalübergabe verbinden Dateisystemereignisse mit sichtbarem Zustand.",
-      "state": "completed",
+      "state": "pending",
       "last_run": {
         "campaign_id": "20260815T165221406979+0200",
         "completed_at": "2026-08-15T17:22:10+02:00",
@@ -540,6 +566,21 @@
           "./localization-audit.sh und ./help-audit.sh: bestanden."
         ]
       }
+    },
+    {
+      "id": "four-d-macros",
+      "paths": [
+        "app/Sources/Fastra/FourDMacroAssist.swift",
+        "app/Sources/Fastra/FourDMacroDiscovery.swift",
+        "app/Sources/Fastra/FourDMacroEngine.swift",
+        "app/Sources/Fastra/FourDMacroPreviewSheet.swift",
+        "app/Sources/Fastra/FourDMacros.swift",
+        "app/Tests/FastraTests/FourDMacroTests.swift"
+      ],
+      "risk": "high",
+      "priority": 11,
+      "reason": "4D-Makros verbinden Katalogerkennung, externe Prozesse und temporäre Dateien mit zwingender Diff-Vorschau und nativer Apply-Semantik.",
+      "state": "pending"
     },
     {
       "id": "four-d-tooling",
@@ -570,12 +611,13 @@
         "app/Tests/FastraTests/JSONSchemaLiteTests.swift",
         "app/Tests/FastraTests/Tool4DDiscoveryTests.swift",
         "app/Tests/FastraTests/Tool4DLSPTests.swift",
-        "app/tools/generate-4d-symbols.py"
+        "app/tools/generate-4d-symbols.py",
+        "app/Sources/Fastra/FourDProjectIndexController.swift"
       ],
       "risk": "high",
       "priority": 11,
       "reason": "4D-Parser, Indizes, LSP und Archive verarbeiten komplexe fremde Projektinhalte und erzeugte Symbolbestände.",
-      "state": "completed",
+      "state": "pending",
       "last_run": {
         "campaign_id": "20260815T165221406979+0200",
         "completed_at": "2026-08-15T17:38:46+02:00",
@@ -591,7 +633,23 @@
           "build.sh: bestanden einschließlich Fenster-Zielaudit, Signatur und portabler Ordnersuche",
           "localization-audit.sh: bestanden"
         ]
-      }
+      },
+      "pending_paths": [
+        "app/Sources/Fastra/FourDProjectIndexController.swift"
+      ]
+    },
+    {
+      "id": "document-printing",
+      "paths": [
+        "app/Sources/Fastra/DocumentPrinting.swift",
+        "app/Sources/Fastra/PrintPanelAccessory.swift",
+        "app/Sources/Fastra/PrintSetup.swift",
+        "app/Tests/FastraTests/PrintingTests.swift"
+      ],
+      "risk": "high",
+      "priority": 12,
+      "reason": "Druckpfade verbinden Nutzerinhalte mit AppKit/WebKit, asynchronen modalen Rückrufen und dauerhaftem Ausgabeformat.",
+      "state": "pending"
     },
     {
       "id": "test-harness-performance",
@@ -618,12 +676,13 @@
         "app/tools/selftest-performance.py",
         "app/tools/soak-process-state.sh",
         "app/tools/test-process-tree.sh",
-        "app/tools/test-sandbox.sh"
+        "app/tools/test-sandbox.sh",
+        "app/Tests/FastraTests/UnitTestRunnerTests.swift"
       ],
       "risk": "high",
       "priority": 12,
       "reason": "Selbsttest-, Soak- und Sandbox-Infrastruktur liefert den Beweis für Änderungen und muss Umgebungsfehler ehrlich trennen.",
-      "state": "completed",
+      "state": "pending",
       "last_run": {
         "campaign_id": "20260815T165221406979+0200",
         "completed_at": "2026-08-15T17:51:53+02:00",
@@ -638,7 +697,10 @@
           "./build.sh: passed einschließlich Fensterziel-Audit, Signatur und portabler Ordnersuche",
           "./localization-audit.sh: passed; Shell-Syntax, JSON-Fixtures und Performance-Selbsttest: passed"
         ]
-      }
+      },
+      "pending_paths": [
+        "app/Tests/FastraTests/UnitTestRunnerTests.swift"
+      ]
     },
     {
       "id": "text-operations-formatting",
@@ -680,6 +742,42 @@
       }
     },
     {
+      "id": "ui-components",
+      "paths": [
+        "app/Sources/Fastra/DropHandling.swift",
+        "app/Sources/Fastra/ResizableDivider.swift",
+        "app/Sources/Fastra/SplitterSizing.swift",
+        "app/Sources/Fastra/StatusBarView.swift",
+        "app/Tests/FastraTests/PromptTextFieldTests.swift",
+        "app/Tests/FastraTests/SplitterSizingTests.swift",
+        "app/Sources/Fastra/SidebarScrollMemory.swift",
+        "app/Tests/FastraTests/SidebarScrollMemoryTests.swift"
+      ],
+      "risk": "medium",
+      "priority": 13,
+      "reason": "Gemeinsame SwiftUI/AppKit-Helfer tragen Layout-, Interaktions- und wiederherstellbaren Seitenleistenzustand über mehrere Ansichten.",
+      "state": "pending",
+      "last_run": {
+        "campaign_id": "20260815T165221406979+0200",
+        "completed_at": "2026-08-15T19:03:37+02:00",
+        "observed_head": "7162b2522b81c76eaf6badc07d2a678292127fba",
+        "content_sha256": "e21edf00be513bbb61b0aed521b6bec7686add6c51d8aef8df6b0525e55fdc96",
+        "file_count": 6,
+        "review": "full",
+        "outcome": "reviewed-clean",
+        "summary": "Drop-Filter, Splitterberechnung und -Geste, Statusleiste sowie Prompt-Testgrenzen vollständig geprüft; Fensterzielwahl und regulärer-Datei-Lader bleiben korrekt, keine lohnende Änderung",
+        "tests": [
+          "Splitter/PromptTextField/DropHandling/FooterLogic: 34/34 passed",
+          "window-targeting-audit.sh: passed",
+          "build.sh einschließlich Portabilitätsprüfung: passed"
+        ]
+      },
+      "pending_paths": [
+        "app/Sources/Fastra/SidebarScrollMemory.swift",
+        "app/Tests/FastraTests/SidebarScrollMemoryTests.swift"
+      ]
+    },
+    {
       "id": "language-format-lint",
       "paths": [
         "app/Sources/Fastra/DocumentFormat.swift",
@@ -697,12 +795,14 @@
         "app/Tests/FastraTests/LanguageDetectionTests.swift",
         "app/Tests/FastraTests/LanguageMenuTests.swift",
         "app/Tests/FastraTests/LintMinifyTests.swift",
-        "app/Tests/FastraTests/SavePanelFormatTests.swift"
+        "app/Tests/FastraTests/SavePanelFormatTests.swift",
+        "app/Sources/Fastra/DocumentLanguageDetector.swift",
+        "app/Tests/FastraTests/DocumentLanguageDetectorTests.swift"
       ],
       "risk": "medium",
       "priority": 14,
       "reason": "Format-, Sprach-, Lint- und Speicheroptionen bestimmen Interpretation und Ausgabe von Dokumenten.",
-      "state": "completed",
+      "state": "pending",
       "last_run": {
         "campaign_id": "20260815T165221406979+0200",
         "completed_at": "2026-08-15T18:05:02+02:00",
@@ -717,7 +817,11 @@
           "./build.sh: passed einschließlich Fensterziel-Audit, Signatur und portabler Ordnersuche",
           "./localization-audit.sh und ./help-audit.sh: passed"
         ]
-      }
+      },
+      "pending_paths": [
+        "app/Sources/Fastra/DocumentLanguageDetector.swift",
+        "app/Tests/FastraTests/DocumentLanguageDetectorTests.swift"
+      ]
     },
     {
       "id": "preferences-help-localization",
@@ -851,46 +955,16 @@
           "build.sh einschließlich Portabilitätsprüfung: passed"
         ]
       }
-    },
-    {
-      "id": "ui-components",
-      "paths": [
-        "app/Sources/Fastra/DropHandling.swift",
-        "app/Sources/Fastra/ResizableDivider.swift",
-        "app/Sources/Fastra/SplitterSizing.swift",
-        "app/Sources/Fastra/StatusBarView.swift",
-        "app/Tests/FastraTests/PromptTextFieldTests.swift",
-        "app/Tests/FastraTests/SplitterSizingTests.swift"
-      ],
-      "risk": "low",
-      "priority": 19,
-      "reason": "Kleine wiederverwendbare UI-Komponenten tragen Layout- und Interaktionszustand.",
-      "state": "completed",
-      "last_run": {
-        "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T19:03:37+02:00",
-        "observed_head": "7162b2522b81c76eaf6badc07d2a678292127fba",
-        "content_sha256": "e21edf00be513bbb61b0aed521b6bec7686add6c51d8aef8df6b0525e55fdc96",
-        "file_count": 6,
-        "review": "full",
-        "outcome": "reviewed-clean",
-        "summary": "Drop-Filter, Splitterberechnung und -Geste, Statusleiste sowie Prompt-Testgrenzen vollständig geprüft; Fensterzielwahl und regulärer-Datei-Lader bleiben korrekt, keine lohnende Änderung",
-        "tests": [
-          "Splitter/PromptTextField/DropHandling/FooterLogic: 34/34 passed",
-          "window-targeting-audit.sh: passed",
-          "build.sh einschließlich Portabilitätsprüfung: passed"
-        ]
-      }
     }
   ],
   "architecture": {
-    "campaign_id": "20260815T134823378515+0200",
-    "recorded_at": "2026-08-15T13:48:25+02:00",
-    "observed_head": "28ff5eb1ffbba92bb48158c2e23ab7495fcb3db3",
-    "summary": "SwiftUI/AppKit-Ansichten binden je Fenster an einen Main-Thread-Workspace; reine Such-, Format-, Diff- und Parserkerne sowie Hintergrunddienste kapseln rechen- und E/A-lastige Arbeit. Das Modell trägt die Produktinvarianten, doch Workspace.swift bündelt mit mehr als 5.000 Zeilen Dokument-, Such-, Git-, Persistenz- und UI-Koordination.",
-    "paradigm": "Pragmatisches MVVM mit zentralem Fenster-Workspace und ereignisgetriebenen asynchronen Diensten",
+    "campaign_id": "20260825T163605228103+0200",
+    "recorded_at": "2026-08-25T16:42:35+02:00",
+    "observed_head": "18fe76b24168c387b1e5fe10985cffb82d135826",
+    "summary": "SwiftUI/AppKit-Views binden je Fenster an Workspace als ViewModel; reine Such-, Format-, Diff- und Parserkerne sowie Hintergrunddienste kapseln Rechen- und E/A-Arbeit. Neue Controller für Spracherkennung, externe Änderungen, 4D-Indizes und Trefferauswahl verbessern Grenzen, doch Workspace.swift koordiniert mit 5.633 Zeilen, 88 @Published-Deklarationen und 167 Methoden weiterhin Dokumente, Suche, Git, Persistenz und UI.",
+    "paradigm": "Pragmatisches MVVM mit je Fenster zentralem Workspace und ereignisgetriebenen asynchronen Diensten",
     "fit": "gespannt",
-    "recommendation": "Verantwortungen bereichsweise aus Workspace und großen UI-Dateien in vorhandene Dienste und reine Funktionen verschieben; keinen Paradigmenwechsel beginnen und Vorschau-, Main-Thread- sowie Dateisicherheitsgrenzen erhalten."
+    "recommendation": "Verantwortungen bereichsweise aus Workspace und großen UI-/Testdateien in vorhandene Dienste und reine Funktionen verschieben; keinen Paradigmenwechsel beginnen und Vorschau-, Main-Thread- sowie Dateisicherheitsgrenzen erhalten."
   },
   "themes": [
     {
