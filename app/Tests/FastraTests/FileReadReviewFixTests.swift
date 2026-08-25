@@ -104,6 +104,8 @@ func fileReadFix_loaderSnapshotMatchesContent() throws {
     // Die Identität ist die des Ziels — ein Snapshot des Link-Eintrags würde
     // beim Speichern gegen die falsche Inode vergleichen.
     #expect(snapshot.identity == FileIdentity(url: target))
+    #expect(loaded.externalObservation.matches(snapshot: snapshot),
+            "Plattenbeobachtung und Inhalt müssen vom selben Deskriptor stammen")
 }
 
 @Test("FileLoader: umgebogener Symlink kann die Editiergrenze nicht umgehen")

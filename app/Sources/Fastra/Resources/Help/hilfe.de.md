@@ -885,7 +885,9 @@ lädt den neuen Plattenstand still. Das gilt auch, wenn ein Fremdwerkzeug das
 Änderungsdatum beibehält oder auf einen älteren Wert setzt. Beim Speichern
 fragt Fastra ebenfalls ausdrücklich nach. Eine weitere Änderung unmittelbar
 vor dem Schreibvorgang bricht das Speichern immer ab, statt den Plattenstand
-still zu überschreiben.
+still zu überschreiben. Verschwindet eine vollständig geladene Textdatei oder
+wird sie unlesbar, markiert Fastra die im Tab verbliebene Kopie als
+ungespeichert; sie lässt sich dadurch nicht ohne Rückfrage schließen.
 
 ## Fenster und Tabs
 

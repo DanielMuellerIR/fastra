@@ -22,10 +22,7 @@ struct ExternalFileObservation: Equatable, Hashable, Sendable {
     let statusChangeSeconds: Int64
     let statusChangeNanoseconds: Int64
 
-    init?(url: URL) {
-        guard let opened = try? FileSnapshot.openRegularFile(at: url) else { return nil }
-        defer { Darwin.close(opened.descriptor) }
-        let info = opened.stat
+    init(fileStat info: stat) {
         device = UInt64(info.st_dev)
         inode = UInt64(info.st_ino)
         byteCount = Int64(info.st_size)
@@ -33,6 +30,22 @@ struct ExternalFileObservation: Equatable, Hashable, Sendable {
         modificationNanoseconds = Int64(info.st_mtimespec.tv_nsec)
         statusChangeSeconds = Int64(info.st_ctimespec.tv_sec)
         statusChangeNanoseconds = Int64(info.st_ctimespec.tv_nsec)
+    }
+
+    init?(url: URL) {
+        guard let opened = try? FileSnapshot.openRegularFile(at: url) else { return nil }
+        defer { Darwin.close(opened.descriptor) }
+        self.init(fileStat: opened.stat)
+    }
+
+    /// Prüft, ob Beobachtung und Inhalts-Snapshot vom selben geöffneten
+    /// Dateiobjekt stammen. Die Zeitstempel besitzt `FileSnapshot` bewusst
+    /// nicht; Identität und Bytezahl reichen für diese Kopplungsprüfung.
+    func matches(snapshot: FileSnapshot) -> Bool {
+        guard let identity = snapshot.identity else { return false }
+        return device == identity.volumeNumber
+            && inode == identity.fileNumber
+            && byteCount == Int64(snapshot.byteCount)
     }
 }
 
@@ -134,7 +147,10 @@ final class ExternalChangeInspector: @unchecked Sendable {
                 documentID: request.documentID,
                 url: request.url,
                 observation: after,
-                stableSnapshot: before == after ? snapshot : nil,
+                stableSnapshot: snapshot.flatMap { candidate in
+                    before == after && after?.matches(snapshot: candidate) == true
+                        ? candidate : nil
+                },
                 wasDirty: request.isDirty
             )
 

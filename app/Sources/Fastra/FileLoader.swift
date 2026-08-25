@@ -47,6 +47,10 @@ enum FileLoader {
         /// Exakte Byte-/Identitätsbasis dieses Ladevorgangs. Nur editierbare,
         /// vollständig geladene Dateien besitzen einen Save-Snapshot.
         let diskSnapshot: FileSnapshot?
+        /// Platten-Fingerabdruck desselben geöffneten Dateiobjekts wie Inhalt
+        /// und Snapshot. Der Workspace darf den Pfad nach dem Laden nicht
+        /// erneut öffnen: Dort könnte inzwischen schon ein Austausch liegen.
+        let externalObservation: ExternalFileObservation
     }
 
     /// Fehler, den `load(url:)` werfen kann.
@@ -135,6 +139,7 @@ enum FileLoader {
         // Dateien wäre umgangen (Review 2026-08-10).
         defer { close(opened.descriptor) }
         let fileSize = UInt64(max(0, opened.stat.st_size))
+        let openedObservation = ExternalFileObservation(fileStat: opened.stat)
         let handle = FileHandle(fileDescriptor: opened.descriptor, closeOnDealloc: false)
         let probe: Data
         do {
@@ -158,9 +163,11 @@ enum FileLoader {
                 return LoadedFile(content: "", encoding: bodyEncoding, bom: probeBOM,
                                   lineEnding: .lf, displayMode: .chunkedText,
                                   fileSize: fileSize,
-                                  diskSnapshot: nil)
+                                  diskSnapshot: nil,
+                                  externalObservation: openedObservation)
             }
-            let read: (data: Data, snapshot: FileSnapshot)
+            let read: (data: Data, snapshot: FileSnapshot,
+                       observation: ExternalFileObservation)
             do {
                 read = try readAll(descriptor: opened.descriptor,
                                    openedAs: opened.stat,
@@ -181,7 +188,8 @@ enum FileLoader {
             return LoadedFile(content: s, encoding: exactEncoding, bom: bom,
                               lineEnding: LineEnding.detect(in: s),
                               displayMode: .text, fileSize: fileSize,
-                              diskSnapshot: read.snapshot)
+                              diskSnapshot: read.snapshot,
+                              externalObservation: read.observation)
         }
 
         // Ohne BOM sind UTF-16-Text und beliebige 16-Bit-Binärdaten nicht
@@ -193,7 +201,8 @@ enum FileLoader {
         if probe.contains(0) && !bomEncodingAllowsNUL(probeBOMEncoding) {
             return LoadedFile(content: "", encoding: .utf8, bom: Data(), lineEnding: .lf,
                               displayMode: .hex, fileSize: fileSize,
-                              diskSnapshot: nil)
+                              diskSnapshot: nil,
+                              externalObservation: openedObservation)
         }
         if fileSize > largeFileThreshold {
             // Die 8-KiB-Probe allein reicht nicht: Binärdaten können erst weit
@@ -206,16 +215,19 @@ enum FileLoader {
                 return LoadedFile(content: "", encoding: .utf8, bom: Data(),
                                   lineEnding: .lf, displayMode: .hex,
                                   fileSize: fileSize,
-                                  diskSnapshot: nil)
+                                  diskSnapshot: nil,
+                                  externalObservation: openedObservation)
             }
             return LoadedFile(content: "",
                               encoding: probeBOMEncoding ?? .utf8,
                               bom: probeBOM, lineEnding: .lf,
                               displayMode: .chunkedText, fileSize: fileSize,
-                              diskSnapshot: nil)
+                              diskSnapshot: nil,
+                              externalObservation: openedObservation)
         }
 
-        let read: (data: Data, snapshot: FileSnapshot)
+        let read: (data: Data, snapshot: FileSnapshot,
+                   observation: ExternalFileObservation)
         do {
             read = try readAll(descriptor: opened.descriptor,
                                openedAs: opened.stat,
@@ -235,7 +247,8 @@ enum FileLoader {
             return LoadedFile(content: "", encoding: .utf8, bom: Data(),
                               lineEnding: .lf, displayMode: .hex,
                               fileSize: fileSize,
-                              diskSnapshot: nil)
+                              diskSnapshot: nil,
+                              externalObservation: read.observation)
         }
         let payload = Data(data.dropFirst(bom.count))
         let detected: (String, String.Encoding)?
@@ -257,7 +270,8 @@ enum FileLoader {
         return LoadedFile(content: raw, encoding: detectedEncoding, bom: bom,
                           lineEnding: ending, displayMode: .text,
                           fileSize: fileSize,
-                          diskSnapshot: read.snapshot)
+                          diskSnapshot: read.snapshot,
+                          externalObservation: read.observation)
     }
 
     /// Kodiert den Editorinhalt mit exakt derselben BOM-Entscheidung wie beim
@@ -313,7 +327,8 @@ enum FileLoader {
     private static func readAll(descriptor: Int32, openedAs before: stat,
                                 byteLimit: UInt64,
                                 isCancelled: () -> Bool = { false }) throws
-        -> (data: Data, snapshot: FileSnapshot) {
+        -> (data: Data, snapshot: FileSnapshot,
+            observation: ExternalFileObservation) {
         let limit = min(byteLimit, FileSnapshot.maximumReadBytes)
         guard before.st_size >= 0, UInt64(before.st_size) <= limit else {
             throw FileSnapshotReadError.tooLarge(byteCount: UInt64(max(0, before.st_size)))
@@ -350,7 +365,11 @@ enum FileLoader {
               before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec else {
             throw FileSnapshotReadError.changedDuringRead
         }
-        return (data, FileSnapshot(data: data, identity: FileIdentity(stat: after)))
+        return (
+            data,
+            FileSnapshot(data: data, identity: FileIdentity(stat: after)),
+            ExternalFileObservation(fileStat: after)
+        )
     }
 
     /// Sucht ab `offset` bis EOF nach einem Nullbyte, ohne die Datei komplett

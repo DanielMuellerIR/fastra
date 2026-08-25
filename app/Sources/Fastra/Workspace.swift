@@ -138,6 +138,11 @@ struct EditorTab: Identifiable, Hashable {
     /// weiterhin als Überschreibkonflikt erkennen.
     var externalFileObservation: ExternalFileObservation?
     var externalContentSnapshot: FileSnapshot?
+    /// `true`, wenn der zuletzt gebundene Pfad nicht mehr als reguläre Datei
+    /// gelesen werden konnte. Ein vollständig geladener Text bleibt dann als
+    /// dirty Tab geschützt, bis derselbe Platteninhalt sicher zurückkehrt oder
+    /// der Nutzer ihn ausdrücklich speichert beziehungsweise neu lädt.
+    var externalFileUnavailable: Bool
     /// Art eines Git-Text-Tabs (Etappe 2): `.log` / `.diff` / `.commit`.
     /// `nil` = normale, editierbare Datei. Git-Tabs sind read-only, haben
     /// `url == nil` und werden nicht gespeichert.
@@ -249,6 +254,7 @@ struct EditorTab: Identifiable, Hashable {
         // auf dem Main-Thread einschmuggeln (Lade-Platzhalter entstehen dort).
         self.externalFileObservation = nil
         self.externalContentSnapshot = diskSnapshot
+        self.externalFileUnavailable = false
         self.gitKind = gitKind
         self.gitDiffRequest = gitDiffRequest
         self.gitDiffDocument = gitDiffDocument
@@ -285,12 +291,24 @@ struct EditorTab: Identifiable, Hashable {
     /// Merkt den Plattenstand für den nächsten Aktivierungs-Check. Der
     /// schreibende Konfliktschutz (`diskSnapshot`) bleibt davon unabhängig.
     mutating func recordExternalFileObservation(
-        at url: URL,
         snapshot: FileSnapshot?,
-        observation: ExternalFileObservation? = nil
+        observation: ExternalFileObservation?
     ) {
-        externalFileObservation = observation ?? ExternalFileObservation(url: url)
+        externalFileObservation = observation
         externalContentSnapshot = snapshot
+        externalFileUnavailable = false
+    }
+
+    /// Bewahrt die letzte vollständig geladene Textfassung, wenn der Pfad
+    /// gelöscht, unlesbar oder kein reguläres Dateiobjekt mehr ist. Hex- und
+    /// Abschnittsansichten besitzen keinen speicherbaren Vollinhalt und dürfen
+    /// deshalb nicht fälschlich als leerer, dirty Editor angeboten werden.
+    mutating func protectContentAfterExternalFileBecameUnavailable() {
+        externalFileObservation = nil
+        externalFileUnavailable = true
+        if displayMode == .text, diskSnapshot != nil, isEditableTextDocument {
+            isDirty = true
+        }
     }
 
     /// `true`, wenn der aktuelle Stand exakt dem gespeicherten entspricht.
@@ -2114,7 +2132,8 @@ final class Workspace: ObservableObject {
                     self.tabs[i].isLoading  = false
                     self.tabs[i].diskSnapshot = loaded.diskSnapshot
                     self.tabs[i].recordExternalFileObservation(
-                        at: url, snapshot: loaded.diskSnapshot
+                        snapshot: loaded.diskSnapshot,
+                        observation: loaded.externalObservation
                     )
                     // Neuer Plattenstand = neue Basis für den Punkt im Tab.
                     self.tabs[i].recordSavedContentBaseline()
@@ -2194,8 +2213,7 @@ final class Workspace: ObservableObject {
                         self.checkExternalChanges(only: inspection.tabID)
                     }
                 }
-                guard let after = inspection.observation,
-                      let idx = self.tabs.firstIndex(where: {
+                guard let idx = self.tabs.firstIndex(where: {
                           $0.id == inspection.tabID
                               && $0.documentID == inspection.documentID
                       }),
@@ -2204,10 +2222,21 @@ final class Workspace: ObservableObject {
                       // die URL bei unveränderter Dokument-Identität. Ein
                       // Befund zum alten Pfad darf dann weder Dialog noch
                       // Reload am neu gebundenen Tab auslösen.
-                      self.tabs[idx].url == inspection.url,
-                      after != self.tabs[idx].externalFileObservation else {
+                      self.tabs[idx].url == inspection.url else {
                     return
                 }
+
+                // Ein verschwundener, unlesbarer oder nicht mehr regulärer
+                // Pfad ist gerade bei einem zuvor sauberen Tab gefährlich:
+                // Ohne Schutz könnte der Nutzer die letzte geladene Kopie
+                // ohne Rückfrage schließen. Nur vollständige Textinhalte
+                // werden dabei dirty; Hex-/Abschnittsansichten besitzen keine
+                // speicherbare Vollfassung.
+                guard let after = inspection.observation else {
+                    self.tabs[idx].protectContentAfterExternalFileBecameUnavailable()
+                    return
+                }
+                guard after != self.tabs[idx].externalFileObservation else { return }
 
                 // Hat sich der Dirty-Zustand seit dem Start der Prüfung
                 // geändert, passt die damalige Lese-Entscheidung nicht mehr
@@ -2230,10 +2259,17 @@ final class Workspace: ObservableObject {
                    observedContent.hasSameContent(as: stableSnapshot) {
                     // Nur Metadaten oder Dateiidentität haben sich
                     // geändert. Das ist kein sichtbarer Fremdinhalt.
+                    let wasUnavailable = self.tabs[idx].externalFileUnavailable
                     self.tabs[idx].recordExternalFileObservation(
-                        at: inspection.url, snapshot: stableSnapshot,
+                        snapshot: stableSnapshot,
                         observation: after
                     )
+                    // Ein Schutzpunkt wegen vorübergehend verschwundener Datei
+                    // darf nur dann wieder weg, wenn der Editorinhalt seitdem
+                    // unverändert auf seiner gespeicherten Basis steht.
+                    if wasUnavailable && self.tabs[idx].matchesSavedContentBaseline {
+                        self.tabs[idx].isDirty = false
+                    }
                     return
                 }
 
@@ -2245,7 +2281,6 @@ final class Workspace: ObservableObject {
                         // `diskSnapshot` bleibt absichtlich alt, damit ein
                         // späteres Speichern weiterhin gesondert warnt.
                         self.tabs[idx].recordExternalFileObservation(
-                            at: inspection.url,
                             snapshot: inspection.stableSnapshot,
                             observation: after
                         )
@@ -2310,7 +2345,8 @@ final class Workspace: ObservableObject {
                     self.tabs[i].isLoading  = false
                     self.tabs[i].diskSnapshot = loaded.diskSnapshot
                     self.tabs[i].recordExternalFileObservation(
-                        at: url, snapshot: loaded.diskSnapshot
+                        snapshot: loaded.diskSnapshot,
+                        observation: loaded.externalObservation
                     )
                     // Neuer Plattenstand = neue Basis für den Punkt im Tab.
                     self.tabs[i].recordSavedContentBaseline()
@@ -2319,6 +2355,9 @@ final class Workspace: ObservableObject {
                     // Datenverlust; Spinner aus. Kein Alert im Auto-Pfad —
                     // ein App-Wechsel darf keine Modal-Kaskade auslösen.
                     self.tabs[i].isLoading = false
+                    if self.tabs[i].url == url {
+                        self.tabs[i].protectContentAfterExternalFileBecameUnavailable()
+                    }
                 }
             }
         }
@@ -2829,7 +2868,8 @@ final class Workspace: ObservableObject {
                     loadedTab.fileSize = loaded.fileSize
                     loadedTab.diskSnapshot = loaded.diskSnapshot
                     loadedTab.recordExternalFileObservation(
-                        at: url, snapshot: loaded.diskSnapshot
+                        snapshot: loaded.diskSnapshot,
+                        observation: loaded.externalObservation
                     )
                     loadedTab.isDirty = false
                     // Früher manuell gewähltes Format dieser Datei zurückholen,
@@ -3101,7 +3141,7 @@ final class Workspace: ObservableObject {
                 if let currentIndex = tabs.firstIndex(where: { $0.id == tab.id }) {
                     tabs[currentIndex].diskSnapshot = writtenSnapshot
                     tabs[currentIndex].recordExternalFileObservation(
-                        at: url, snapshot: writtenSnapshot
+                        snapshot: writtenSnapshot, observation: nil
                     )
                     tabs[currentIndex].isDirty = true
                 }
@@ -3116,7 +3156,7 @@ final class Workspace: ObservableObject {
             // App-Wechsel auf die selbst geschriebene Datei an.
             tabs[finalIndex].diskSnapshot = writtenSnapshot
             tabs[finalIndex].recordExternalFileObservation(
-                at: url, snapshot: writtenSnapshot
+                snapshot: writtenSnapshot, observation: nil
             )
             // Gespeicherter Stand = neue Basis: Rückgängig bis genau hierher
             // lässt den Punkt im Tab wieder verschwinden.
@@ -3747,7 +3787,7 @@ final class Workspace: ObservableObject {
             tabs[index].title = newURL.lastPathComponent
             tabs[index].path = newURL.deletingLastPathComponent().path
             tabs[index].recordExternalFileObservation(
-                at: newURL, snapshot: tabs[index].diskSnapshot
+                snapshot: tabs[index].diskSnapshot, observation: nil
             )
         }
     }
@@ -5203,7 +5243,8 @@ final class Workspace: ObservableObject {
                         self.tabs[idx].fileSize = loaded.fileSize
                         self.tabs[idx].diskSnapshot = loaded.diskSnapshot
                         self.tabs[idx].recordExternalFileObservation(
-                            at: url, snapshot: loaded.diskSnapshot
+                            snapshot: loaded.diskSnapshot,
+                            observation: loaded.externalObservation
                         )
                         self.tabs[idx].isDirty    = false
                         self.tabs[idx].isLoading  = false
@@ -5219,6 +5260,9 @@ final class Workspace: ObservableObject {
                         // aber alten Inhalt NICHT löschen (besser veralteter
                         // Inhalt als leere Anzeige).
                         self.tabs[idx].isLoading = false
+                        if self.tabs[idx].url == url {
+                            self.tabs[idx].protectContentAfterExternalFileBecameUnavailable()
+                        }
                     }
                 }
             }

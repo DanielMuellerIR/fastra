@@ -835,7 +835,9 @@ the tab has unsaved edits; a clean tab reloads the new on-disk version silently.
 This also works when an external tool preserves the modification date or sets
 it to an older value. Saving likewise asks for explicit confirmation. A
 further change immediately before the write always cancels the save instead
-of silently overwriting the on-disk version.
+of silently overwriting the on-disk version. If a fully loaded text file
+disappears or becomes unreadable, Fastra marks the remaining tab copy as
+unsaved so it cannot be closed without confirmation.
 
 ## Windows and Tabs
 

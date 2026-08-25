@@ -9,6 +9,34 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.112.3] — 2026-08-25
+
+### Behoben
+
+- **Die letzte geladene Kopie einer extern gelöschten oder unlesbaren Datei
+  bleibt vor stillem Schließen geschützt.** Ein zuvor sauberer Text-Tab erhält
+  jetzt einen Änderungspunkt, solange sein Pfad nicht mehr als reguläre Datei
+  gelesen werden kann. Kehrt exakt der gespeicherte Inhalt zurück, verschwindet
+  der reine Schutzpunkt wieder; eine zwischenzeitliche lokale Bearbeitung
+  bleibt dagegen ungespeichert markiert.
+- **Laden und Fremdänderungs-Erkennung beziehen sich auf dasselbe
+  Dateiobjekt.** Ein atomarer Austausch zwischen dem Hintergrund-Read und der
+  Main-Thread-Completion konnte bisher den neuen Inode neben dem alten Inhalt
+  als bereits bekannten Stand speichern. Eine folgende Prüfung übersah die
+  Änderung dann. Inhalt, Snapshot und Platten-Fingerabdruck entstehen jetzt am
+  selben geöffneten Deskriptor.
+- **Die Stabilitätsprüfung akzeptiert keinen Snapshot eines anderen Inodes.**
+  Der Inspector koppelt den gelesenen Hash jetzt ausdrücklich an Volume,
+  Dateiidentität und Bytezahl seiner Vorher-/Nachher-Beobachtung.
+
+### Tests
+
+- Vier neue Regressionen prüfen den verschwundenen und wiederkehrenden Pfad,
+  lokale Bearbeitung währenddessen, einen Austausch zwischen Loader und
+  Completion sowie die Inode-Kopplung des Inspectors. Die drei Fehlerfälle
+  waren vor der Korrektur auf Weemac rot; der erweiterte Bereichslauf bestand
+  anschließend mit 73 Tests.
+
 ## [v1.112.2] — 2026-08-25
 
 ### Behoben

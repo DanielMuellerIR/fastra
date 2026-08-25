@@ -155,6 +155,32 @@ func externalChangeInspector_readsDifferentSizeForDirtyTab() async throws {
     #expect(result?.stableSnapshot != nil)
 }
 
+@Test("Inspector koppelt Snapshot an das vorher und nachher beobachtete Dateiobjekt")
+@MainActor
+func externalChangeInspector_rejectsSnapshotFromDifferentFile() async throws {
+    let observedURL = try writeTmpUTF8("beobachtet\n")
+    let foreignURL = try writeTmpUTF8("fremd      \n")
+    defer {
+        try? FileManager.default.removeItem(at: observedURL)
+        try? FileManager.default.removeItem(at: foreignURL)
+    }
+    let foreignSnapshot = try FileSnapshot.readSnapshotOnly(from: foreignURL)
+    let inspector = ExternalChangeInspector(snapshotReader: { _ in foreignSnapshot })
+    let request = ExternalChangeInspector.Request(
+        tabID: UUID(), documentID: UUID(), url: observedURL,
+        knownObservation: nil,
+        observedByteCount: Data("beobachtet\n".utf8).count,
+        isDirty: false
+    )
+    var result: ExternalChangeInspector.Inspection?
+
+    #expect(inspector.inspect(request) { result = $0 })
+    #expect(await waitUntil { result != nil })
+    #expect(result?.observation != nil)
+    #expect(result?.stableSnapshot == nil,
+            "Ein Snapshot eines anderen Inodes darf nicht als stabiler Stand gelten")
+}
+
 @Test("Inspector startet je Tab höchstens eine parallele Prüfung")
 @MainActor
 func externalChangeInspector_coalescesConcurrentRequestForTab() async throws {
@@ -218,8 +244,8 @@ func workspace_externalInspectionRejectsReusedTabResult() async throws {
         diskSnapshot: FileSnapshot(data: secondData, at: secondURL)
     )
     replacement.recordExternalFileObservation(
-        at: secondURL,
-        snapshot: replacement.diskSnapshot
+        snapshot: replacement.diskSnapshot,
+        observation: ExternalFileObservation(url: secondURL)
     )
     ws.tabs[idx] = replacement
     ws.activeTabID = reusedTabID
@@ -248,6 +274,55 @@ func workspace_loadSetsBaseline() async throws {
     let ws = await loadedWorkspace(url)
     let tab = ws.tabs.first { $0.url == url }
     #expect(tab?.externalFileObservation != nil)
+}
+
+@Test("Extern verschwundene Datei schützt die letzte Tab-Kopie vor stillem Schließen")
+@MainActor
+func workspace_missingFileProtectsAndRecoversCleanTab() async throws {
+    let original = "letzte vorhandene Kopie\n"
+    let url = try writeTmpUTF8(original)
+    defer { try? FileManager.default.removeItem(at: url) }
+    let ws = await loadedWorkspace(url)
+    let idx = try #require(ws.tabs.firstIndex { $0.url == url })
+
+    try FileManager.default.removeItem(at: url)
+    ws.checkExternalChanges()
+
+    #expect(await waitUntil(timeout: 1) { ws.tabs[idx].isDirty },
+            "Ohne erreichbare Plattendatei muss der Tab beim Schließen nachfragen")
+    #expect(ws.tabs[idx].content == original)
+
+    // Kehrt exakt derselbe Inhalt zurück, war der Punkt nur ein Schutz gegen
+    // Verlust. Er darf wieder verschwinden, solange niemand lokal editiert hat.
+    try original.write(to: url, atomically: true, encoding: .utf8)
+    ws.checkExternalChanges()
+    #expect(await waitUntil { !ws.tabs[idx].isDirty })
+    #expect(ws.tabs[idx].content == original)
+}
+
+@Test("Lokale Änderung während fehlender Datei bleibt bei Rückkehr geschützt")
+@MainActor
+func workspace_missingFileRecoveryKeepsLocalEditDirty() async throws {
+    let original = "Plattenstand\n"
+    let local = "lokal weiterbearbeitet\n"
+    let url = try writeTmpUTF8(original)
+    defer { try? FileManager.default.removeItem(at: url) }
+    let ws = await loadedWorkspace(url)
+    let idx = try #require(ws.tabs.firstIndex { $0.url == url })
+
+    try FileManager.default.removeItem(at: url)
+    ws.checkExternalChanges()
+    #expect(await waitUntil { ws.tabs[idx].isDirty })
+
+    ws.tabs[idx].content = local
+    ws.tabs[idx].isDirty = true
+    try original.write(to: url, atomically: true, encoding: .utf8)
+    ws.checkExternalChanges()
+    #expect(await waitUntil { ws.tabs[idx].externalFileObservation != nil })
+
+    #expect(ws.tabs[idx].content == local)
+    #expect(ws.tabs[idx].isDirty,
+            "Nur der unveränderte gespeicherte Inhalt darf den Schutzpunkt entfernen")
 }
 
 @Test("Extern geändert + Tab sauber → stiller Reload mit neuem Inhalt")
@@ -417,7 +492,8 @@ func workspace_staleInspectionDoesNotHitReboundTab() async throws {
     ws.tabs[idx].url = secondURL
     ws.tabs[idx].title = secondURL.lastPathComponent
     ws.tabs[idx].recordExternalFileObservation(
-        at: secondURL, snapshot: ws.tabs[idx].diskSnapshot
+        snapshot: ws.tabs[idx].diskSnapshot,
+        observation: ExternalFileObservation(url: secondURL)
     )
 
     reader.releaseFirstRead()
@@ -844,6 +920,38 @@ func workspace_reloadGenerationProtectsNewerContent() async throws {
 
     #expect(ws.tabs[idx].content == "neuere Editoränderung\n")
     #expect(!ws.tabs[idx].isLoading)
+}
+
+@Test("Reload merkt die Observation desselben Dateiobjekts wie Inhalt und Snapshot")
+@MainActor
+func workspace_reloadObservationCannotSkipLaterAtomicReplacement() async throws {
+    let url = try writeTmpUTF8("ursprünglich\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let ws = await loadedWorkspace(url)
+    let idx = try #require(ws.tabs.firstIndex { $0.url == url })
+
+    let firstReloadText = "erster Fremdstand\n"
+    try firstReloadText.write(to: url, atomically: true, encoding: .utf8)
+    let delayedResult = try FileLoader.load(url: url)
+    let gate = DispatchSemaphore(value: 0)
+    ws.reloadFileLoader = { _ in
+        gate.wait()
+        return delayedResult
+    }
+
+    ws.reloadTabFromDisk(id: ws.tabs[idx].id)
+    let finalText = "später atomar ersetzter Fremdstand\n"
+    try finalText.write(to: url, atomically: true, encoding: .utf8)
+    gate.signal()
+    #expect(await waitForContent(ws, idx: idx, expected: firstReloadText))
+
+    // Der nächste Check muss den Austausch sehen. Würde die Completion die
+    // Observation erneut am Pfad öffnen, hätte sie hier schon den finalen
+    // Inode neben den alten Inhalt/Snapshot gelegt und der Check bliebe still.
+    ws.reloadFileLoader = { try FileLoader.load(url: $0) }
+    ws.checkExternalChanges()
+    #expect(await waitForContent(ws, idx: idx, expected: finalText))
+    #expect(!ws.tabs[idx].isDirty)
 }
 
 @Test("Manuelles Reload überschreibt keine neuere Tab-Generation")
