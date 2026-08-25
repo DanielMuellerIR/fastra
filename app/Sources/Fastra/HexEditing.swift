@@ -5,6 +5,7 @@
 // direkt in die Datei geschrieben, sondern erst als Offsets gesammelt,
 // sichtbar vorgeprüft und dann in einem atomaren Schritt gespeichert.
 
+import CryptoKit
 import Darwin
 import Foundation
 
@@ -59,7 +60,8 @@ enum HexEditing {
     /// Nachbardatei und ersetzt das Original erst nach vollständiger Prüfung.
     /// Ändert ein anderes Programm zwischen Vorschau und Speichern auch nur
     /// einen geplanten Offset, bleibt die vorhandene Datei unangetastet.
-    static func save(_ changes: [HexByteChange], to url: URL) throws {
+    static func save(_ changes: [HexByteChange], to url: URL,
+                     beforeAtomicReplace: ((URL) throws -> Void)? = nil) throws {
         guard !changes.isEmpty else { return }
         let planned = changes.sorted { $0.offset < $1.offset }
         for pair in zip(planned, planned.dropFirst()) {
@@ -93,6 +95,8 @@ enum HexEditing {
 
         let input = FileHandle(fileDescriptor: opened.descriptor, closeOnDealloc: false)
         let expectedSize = UInt64(opened.stat.st_size)
+        var originalHasher = SHA256()
+        var replacementHasher = SHA256()
         var copied: UInt64 = 0
         var changeIndex = 0
         while copied < expectedSize {
@@ -100,6 +104,7 @@ enum HexEditing {
             guard var chunk = try input.read(upToCount: requested), !chunk.isEmpty else {
                 throw SaveError.fileChanged
             }
+            originalHasher.update(data: chunk)
             let chunkEnd = copied + UInt64(chunk.count)
             while changeIndex < planned.count, planned[changeIndex].offset < chunkEnd {
                 let change = planned[changeIndex]
@@ -110,6 +115,7 @@ enum HexEditing {
                 chunk[index] = change.newValue
                 changeIndex += 1
             }
+            replacementHasher.update(data: chunk)
             try writeAll(chunk, to: temporaryDescriptor)
             copied = chunkEnd
         }
@@ -120,26 +126,48 @@ enum HexEditing {
         var after = stat()
         guard fstat(opened.descriptor, &after) == 0 else { throw currentPOSIXError() }
         guard sameFileVersion(opened.stat, after) else { throw SaveError.fileChanged }
+        let expectedSnapshot = FileSnapshot(
+            sha256: digestHex(originalHasher.finalize()),
+            byteCount: Int(copied),
+            identity: FileIdentity(stat: after))
+        let replacementSnapshot = FileSnapshot(
+            sha256: digestHex(replacementHasher.finalize()),
+            byteCount: Int(copied), identity: nil)
         guard fsync(temporaryDescriptor) == 0 else { throw currentPOSIXError() }
         guard Darwin.close(temporaryDescriptor) == 0 else { throw currentPOSIXError() }
         temporaryIsOpen = false
 
         var coordinationError: NSError?
         var writeError: Error?
+        var preserveTemporaryForRecovery = false
         let coordinator = NSFileCoordinator(filePresenter: nil)
-        coordinator.coordinate(writingItemAt: url, options: .forReplacing,
+        coordinator.coordinate(writingItemAt: url, options: [],
                                error: &coordinationError) { coordinatedURL in
             do {
-                // Kurz vor dem Replace muss derselbe Pfad noch auf genau die
-                // Datei zeigen, deren Bytes oben geprüft wurden.
-                let current = try FileSnapshot.openRegularFile(at: coordinatedURL)
-                defer { Darwin.close(current.descriptor) }
-                guard sameFileVersion(opened.stat, current.stat) else {
+                guard coordinatedURL.standardizedFileURL.path
+                        == url.standardizedFileURL.path else {
                     throw SaveError.fileChanged
                 }
-                _ = try FileManager.default.replaceItemAt(
-                    coordinatedURL, withItemAt: temporaryURL)
-                temporaryExists = false
+                do {
+                    _ = try AtomicFileCommit.replaceExisting(
+                        at: coordinatedURL,
+                        withPreparedFile: temporaryURL,
+                        expecting: expectedSnapshot,
+                        replacementContent: replacementSnapshot,
+                        verifiedTargetStat: after,
+                        beforeSwap: beforeAtomicReplace)
+                    temporaryExists = false
+                } catch let failure as AtomicFileCommit.Failure {
+                    preserveTemporaryForRecovery =
+                        failure.mustPreservePreparedPath
+                    if preserveTemporaryForRecovery { temporaryExists = false }
+                    switch failure {
+                    case .conflictUnchanged, .conflictRolledBack:
+                        throw SaveError.fileChanged
+                    case .unsupportedAtomicSwap, .recoveryRequired:
+                        throw failure
+                    }
+                }
             } catch {
                 writeError = error
             }
@@ -156,6 +184,10 @@ enum HexEditing {
             && lhs.st_mtimespec.tv_nsec == rhs.st_mtimespec.tv_nsec
             && lhs.st_ctimespec.tv_sec == rhs.st_ctimespec.tv_sec
             && lhs.st_ctimespec.tv_nsec == rhs.st_ctimespec.tv_nsec
+    }
+
+    private static func digestHex(_ digest: SHA256.Digest) -> String {
+        digest.map { String(format: "%02x", $0) }.joined()
     }
 
     private static func writeAll(_ data: Data, to descriptor: Int32) throws {

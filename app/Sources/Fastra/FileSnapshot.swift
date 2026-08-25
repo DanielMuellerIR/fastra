@@ -59,7 +59,7 @@ struct FileSnapshot: Codable, Equatable, Hashable, Sendable {
 
     /// Für den streamenden Reader unten: Hash und Größe sind dort schon
     /// fertig berechnet, ohne dass die Bytes je gesammelt vorlagen.
-    private init(sha256: String, byteCount: Int, identity: FileIdentity?) {
+    init(sha256: String, byteCount: Int, identity: FileIdentity?) {
         self.sha256 = sha256
         self.byteCount = byteCount
         self.identity = identity
@@ -152,8 +152,22 @@ struct FileSnapshot: Codable, Equatable, Hashable, Sendable {
         let (descriptor, before) = try openRegularFile(at: url)
         defer { close(descriptor) }
 
+        return try readSnapshotOnly(descriptor: descriptor, fileStat: before,
+                                    byteLimit: byteLimit)
+    }
+
+    /// Bildet den Snapshot aus einem bereits geöffneten, regulären
+    /// Dateiobjekt. Der Aufrufer behält den Deskriptor und kann dadurch genau
+    /// diese Version bis zu einem anschließenden atomaren Tausch festhalten.
+    static func readSnapshotOnly(descriptor: Int32, fileStat before: stat,
+                                 byteLimit: UInt64 = maximumReadBytes) throws
+        -> FileSnapshot {
+
         guard before.st_size >= 0, UInt64(before.st_size) <= byteLimit else {
             throw FileSnapshotReadError.tooLarge(byteCount: UInt64(max(0, before.st_size)))
+        }
+        guard lseek(descriptor, 0, SEEK_SET) >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
         let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: false)
         var hasher = SHA256()

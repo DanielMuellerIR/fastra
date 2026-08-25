@@ -3016,6 +3016,10 @@ final class Workspace: ObservableObject {
     var saveConflictConfirmHandler: (String) -> Bool = Workspace.defaultSaveConflictConfirmation
     /// Deterministischer Testpunkt nach Temp-Write, aber vor Koordination.
     var saveBeforeCoordinateHandler: ((URL) -> Void)? = nil
+    /// Testpunkt nach der letzten Zielprüfung, unmittelbar vor dem Austausch.
+    /// Der produktive Pfad setzt ihn nie; Regressionstests treffen damit die
+    /// sonst nur wenige Instruktionen breite Fremdänderungs-Lücke.
+    var saveBeforeAtomicReplaceHandler: ((URL) -> Void)? = nil
     var saveSafetyWarningHandler: (String, String) -> Void = { title, text in
         NSAlert.runWarning(title: title, text: text)
     }
@@ -3096,7 +3100,10 @@ final class Workspace: ObservableObject {
             // Replace/Create-Schritt.
             let tmpURL = url.deletingLastPathComponent().appendingPathComponent(
                 ".fastra-save-\(UUID().uuidString).tmp")
-            defer { try? fm.removeItem(at: tmpURL) }
+            var preserveTemporaryForRecovery = false
+            defer {
+                if !preserveTemporaryForRecovery { try? fm.removeItem(at: tmpURL) }
+            }
             try out.write(to: tmpURL, options: .atomic)
             saveBeforeCoordinateHandler?(url)
             guard tabStillMatches() else { throw CoordinatedSaveError.tabChanged }
@@ -3106,18 +3113,39 @@ final class Workspace: ObservableObject {
             var writtenSnapshot: FileSnapshot?
             let coordinator = NSFileCoordinator(filePresenter: nil)
             let finalExpectedState = expectedTargetState ?? observedState
-            let coordinationOptions: NSFileCoordinator.WritingOptions = targetExists
-                ? .forReplacing : []
+            // Laut Foundation ist `.forReplacing` ausdrücklich nur für ein
+            // fachlich anderes Ziel (Save As), nicht für einen Safe-Save des
+            // bestehenden Dokuments über Temp-Datei plus Rename.
+            let coordinationOptions: NSFileCoordinator.WritingOptions = sameDocument
+                ? [] : .forReplacing
             coordinator.coordinate(writingItemAt: url, options: coordinationOptions,
                                    error: &coordinationError) { coordinatedURL in
                 do {
+                    guard coordinatedURL.standardizedFileURL.path
+                            == url.standardizedFileURL.path else {
+                        throw CoordinatedSaveError.targetChanged
+                    }
                     switch finalExpectedState {
                     case .present(let expectedBeforeWrite):
-                        let immediatelyBefore = try FileSnapshot.read(from: coordinatedURL)
-                        guard immediatelyBefore.snapshot == expectedBeforeWrite else {
-                            throw CoordinatedSaveError.targetChanged
+                        do {
+                            writtenSnapshot = try AtomicFileCommit.replaceExisting(
+                                at: coordinatedURL,
+                                withPreparedFile: tmpURL,
+                                expecting: expectedBeforeWrite,
+                                replacementContent: FileSnapshot(
+                                    data: out, identity: nil),
+                                beforeSwap: { target in
+                                    self.saveBeforeAtomicReplaceHandler?(target)
+                                })
+                        } catch let failure as AtomicFileCommit.Failure {
+                            preserveTemporaryForRecovery = failure.mustPreservePreparedPath
+                            switch failure {
+                            case .conflictUnchanged, .conflictRolledBack:
+                                throw CoordinatedSaveError.targetChanged
+                            case .unsupportedAtomicSwap, .recoveryRequired:
+                                throw failure
+                            }
                         }
-                        _ = try fm.replaceItemAt(coordinatedURL, withItemAt: tmpURL)
                     case .absent:
                         guard !fm.fileExists(atPath: coordinatedURL.path) else {
                             throw CoordinatedSaveError.targetChanged
@@ -3126,8 +3154,8 @@ final class Workspace: ObservableObject {
                         // dem Check doch noch ein Ziel, schlägt es fehl, statt
                         // den fremden Stand zu überschreiben.
                         try fm.moveItem(at: tmpURL, to: coordinatedURL)
+                        writtenSnapshot = FileSnapshot(data: out, at: coordinatedURL)
                     }
-                    writtenSnapshot = FileSnapshot(data: out, at: coordinatedURL)
                 } catch {
                     writeError = error
                 }

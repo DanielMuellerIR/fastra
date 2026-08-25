@@ -256,7 +256,10 @@ jede geplante Byte-Änderung und fragt ein zweites Mal. Vor dem atomaren
 Speichern prüft Fastra die angezeigten Altwerte erneut. Hat ein anderes Programm
 eines dieser Bytes inzwischen geändert, bricht Fastra ab und lässt die Datei
 sowie die sichtbare Änderungsliste unangetastet. Auch sehr große Binärdateien
-werden dabei nur abschnittsweise im Hintergrund verarbeitet.
+werden dabei nur abschnittsweise im Hintergrund verarbeitet. Fastra hält den
+beim atomaren Austausch tatsächlich verdrängten Stand bis zur Nachprüfung
+erreichbar. Unterstützt ein Datenträger diesen sicheren Austausch nicht, wird
+die Datei nicht geändert.
 
 ## Markdown
 
@@ -885,9 +888,18 @@ lädt den neuen Plattenstand still. Das gilt auch, wenn ein Fremdwerkzeug das
 Änderungsdatum beibehält oder auf einen älteren Wert setzt. Beim Speichern
 fragt Fastra ebenfalls ausdrücklich nach. Eine weitere Änderung unmittelbar
 vor dem Schreibvorgang bricht das Speichern immer ab, statt den Plattenstand
-still zu überschreiben. Verschwindet eine vollständig geladene Textdatei oder
-wird sie unlesbar, markiert Fastra die im Tab verbliebene Kopie als
-ungespeichert; sie lässt sich dadurch nicht ohne Rückfrage schließen.
+still zu überschreiben. Dafür bleibt der beim atomaren Austausch tatsächlich
+verdrängte Stand bis zur Nachprüfung erhalten und wird bei einem eindeutig
+erkannten Konflikt zurückgetauscht. Unterstützt der Datenträger keinen sicheren
+atomaren Austausch, verweigert Fastra den Schreibvorgang. Verändert ein anderes
+Programm während der Nachprüfung erneut einen der beteiligten Pfade, erhält
+Fastra die erreichbaren Fassungen und löscht keinen der beteiligten Pfade; die
+Warnung nennt sie zur manuellen Klärung. Ein fremder Prozess, der eine bereits
+geöffnete alte Fassung zugleich weiter beschreibt, lässt sich durch einen
+macOS-Namenstausch nicht sperren.
+Verschwindet eine vollständig geladene Textdatei oder wird sie unlesbar,
+markiert Fastra die im Tab verbliebene Kopie als ungespeichert; sie lässt sich
+dadurch nicht ohne Rückfrage schließen.
 
 ## Fenster und Tabs
 

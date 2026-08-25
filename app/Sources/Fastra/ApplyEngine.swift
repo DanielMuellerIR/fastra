@@ -191,6 +191,7 @@ struct ApplyTransaction {
         shouldCancel: @escaping @Sendable () -> Bool = { false },
         progress: (Progress) -> Void = { _ in },
         beforePreflight: (() throws -> Void)? = nil,
+        beforeAtomicReplace: ((URL) throws -> Void)? = nil,
         atomicReplace: ((Data, URL, URL) throws -> Void)? = nil,
         manifestWriter: ((ApplySession) throws -> Void)? = nil
     ) throws -> ApplySession {
@@ -198,7 +199,9 @@ struct ApplyTransaction {
             transaction: self, backupRoot: backupRoot,
             cleanupOlderThan: cleanupOlderThan,
             shouldCancel: shouldCancel, progress: progress,
-            beforePreflight: beforePreflight, atomicReplace: atomicReplace,
+            beforePreflight: beforePreflight,
+            beforeAtomicReplace: beforeAtomicReplace,
+            atomicReplace: atomicReplace,
             manifestWriter: manifestWriter)
     }
 }
@@ -526,16 +529,16 @@ enum ApplyEngine {
 // Die Schreibseite des Gates. Drei harte Garantien:
 //
 //  1. **Pro Datei atomar.** Wir schreiben zuerst eine Temp-Datei und
-//     ersetzen die Original-Datei über `FileManager.replaceItemAt(_:withItemAt:)`.
-//     Stirbt der Prozess mittendrin, ist die Original-Datei entweder
-//     vollständig alt oder vollständig neu. Niemals halb beschrieben.
+//     tauschen sie über `AtomicFileCommit` gegen die Original-Datei.
+//     Jeder erreichbare Stand enthält dadurch vollständige Bytes; der
+//     verdrängte Stand bleibt bis zur abschließenden Prüfung erhalten.
 //  2. **Vor jedem Apply ein Backup.** Die Original-Bytes jeder zu
 //     verändernden Datei wandern VOR dem Schreibvorgang in einen
 //     zentralen Backup-Ordner (default: `~/Library/Application Support/Fastra/undo/<session>/`).
 //     Schlägt der Backup-Schritt fehl, wird nichts geschrieben.
 //  3. **Bit-exaktes Undo.** Eine `ApplySession` weiß, welche Original-Datei
 //     wohin gesichert wurde. `undo(_:)` spielt die Backups bit-genau über
-//     `replaceItemAt` zurück (ebenfalls atomar pro Datei).
+//     denselben atomaren Austausch zurück.
 //
 // Was NICHT garantiert wird: dass eine Folge-Datei-Schreibung in einem
 // Multi-File-Apply scheitert, nachdem frühere bereits durch sind. Das ist
@@ -677,6 +680,7 @@ extension ApplyEngine {
         shouldCancel: @escaping @Sendable () -> Bool,
         progress: (ApplyTransaction.Progress) -> Void,
         beforePreflight: (() throws -> Void)? = nil,
+        beforeAtomicReplace: ((URL) throws -> Void)? = nil,
         atomicReplace: ((Data, URL, URL) throws -> Void)? = nil,
         manifestWriter: ((ApplySession) throws -> Void)? = nil
     ) throws -> ApplySession {
@@ -875,25 +879,60 @@ extension ApplyEngine {
 
             let temporaryURL = temporarySiblingURL(for: item.url, purpose: "apply")
             var replacementAttempted = false
+            var preserveTemporaryForRecovery = false
             do {
                 try newBytes.write(to: temporaryURL, options: .atomic)
                 let applied = try coordinateReplacing(item.url) { coordinatedURL in
-                    let current = try FileSnapshot.read(from: coordinatedURL)
-                    guard current.snapshot == item.expectedSnapshot else {
+                    guard coordinatedURL.standardizedFileURL.path
+                            == item.url.standardizedFileURL.path else {
                         throw ApplyError.conflict(L10n.format(
-                            "„%@“ wurde während des Apply geändert.",
+                            "„%@“ wurde während des Apply umbenannt.",
                             item.url.lastPathComponent))
                     }
-                    // Ab hier kann ein Fehler nicht beweisen, dass das Ziel
-                    // unverändert blieb: Ein Replace darf schreiben und erst
-                    // danach fehlschlagen. Das pending-Journal bleibt dann
-                    // zwingend für Recovery/Undo erhalten.
-                    replacementAttempted = true
                     if let atomicReplace {
+                        let current = try FileSnapshot.read(from: coordinatedURL)
+                        guard current.snapshot == item.expectedSnapshot else {
+                            throw ApplyError.conflict(L10n.format(
+                                "„%@“ wurde während des Apply geändert.",
+                                item.url.lastPathComponent))
+                        }
+                        try beforeAtomicReplace?(coordinatedURL)
+                        // Der injizierte Testpfad kann nach einer Nebenwirkung
+                        // werfen. Dann bleibt `pending` wie bisher erhalten.
+                        replacementAttempted = true
                         try atomicReplace(newBytes, coordinatedURL, temporaryURL)
                     } else {
-                        try replacePreparedTemporaryFile(at: coordinatedURL,
-                                                         temporaryURL: temporaryURL)
+                        replacementAttempted = true
+                        do {
+                            _ = try AtomicFileCommit.replaceExisting(
+                                at: coordinatedURL,
+                                withPreparedFile: temporaryURL,
+                                expecting: item.expectedSnapshot,
+                                replacementContent: expectedApplied,
+                                beforeSwap: beforeAtomicReplace)
+                        } catch let failure as AtomicFileCommit.Failure {
+                            preserveTemporaryForRecovery =
+                                failure.mustPreservePreparedPath
+                            switch failure {
+                            case .conflictUnchanged, .conflictRolledBack:
+                                replacementAttempted = false
+                                throw ApplyError.conflict(L10n.format(
+                                    "„%@“ wurde während des Apply geändert.",
+                                    item.url.lastPathComponent))
+                            case .unsupportedAtomicSwap:
+                                replacementAttempted = false
+                                throw ApplyError.conflict(
+                                    failure.localizedDescription)
+                            case .recoveryRequired:
+                                throw failure
+                            }
+                        } catch {
+                            // Alle untypisierten Fehler verlassen den
+                            // Committer entweder vor dem Swap oder nach einem
+                            // vollständig geprüften Rücktausch.
+                            replacementAttempted = false
+                            throw error
+                        }
                     }
                     let verified = try FileSnapshot.read(from: coordinatedURL)
                     guard verified.data == newBytes else {
@@ -916,7 +955,9 @@ extension ApplyEngine {
                     phase: .applied, completedFiles: index + 1,
                     totalFiles: total, fileName: item.url.lastPathComponent))
             } catch {
-                try? FileManager.default.removeItem(at: temporaryURL)
+                if !preserveTemporaryForRecovery {
+                    try? FileManager.default.removeItem(at: temporaryURL)
+                }
                 if !replacementAttempted {
                     session = beforePending
                     try? persist(session)
@@ -1017,6 +1058,7 @@ extension ApplyEngine {
     /// Hash-Check warnt, wenn das Backup beschädigt ist.
     @discardableResult
     static func undo(_ session: ApplySession,
+                     beforeAtomicReplace: ((URL) throws -> Void)? = nil,
                      atomicReplace: ((Data, URL, URL) throws -> Void)? = nil,
                      manifestWriter: ((ApplySession) throws -> Void)? = nil) throws -> ApplySession {
         guard session.schemaVersion == ApplySession.currentSchemaVersion,
@@ -1119,9 +1161,18 @@ extension ApplyEngine {
 
         for index in prepared {
             let entry = working.entries[index]
+            guard let appliedSnapshot = entry.appliedSnapshot else {
+                throw ApplyError.legacySession(L10n.string(
+                    "Diese Rückgängig-Session verwendet ein nicht kompatibles Sicherheitsformat und wird deshalb nicht automatisch angewendet."))
+            }
             let target = URL(fileURLWithPath: entry.originalPath)
             let tmp = temporarySiblingURL(for: target, purpose: "undo")
-            defer { try? FileManager.default.removeItem(at: tmp) }
+            var preserveTemporaryForRecovery = false
+            defer {
+                if !preserveTemporaryForRecovery {
+                    try? FileManager.default.removeItem(at: tmp)
+                }
+            }
             do {
                 // Backup erst JETZT lesen (eine Datei nach der anderen) und
                 // den Hash erneut prüfen: Zwischen Prüf- und Schreibphase
@@ -1138,16 +1189,45 @@ extension ApplyEngine {
                 try backupBytes.write(to: tmp, options: .atomic)
                 var replaceCompleted = false
                 try coordinateReplacing(target) { coordinatedURL in
-                    let current = try FileSnapshot.read(from: coordinatedURL)
-                    guard current.snapshot == entry.appliedSnapshot else {
+                    guard coordinatedURL.standardizedFileURL.path
+                            == target.standardizedFileURL.path else {
                         throw ApplyError.undoConflict(L10n.format(
-                            "„%@“ wurde während Rückgängig geändert.", target.lastPathComponent))
+                            "„%@“ wurde während Rückgängig umbenannt.",
+                            target.lastPathComponent))
                     }
                     if let atomicReplace {
+                        let current = try FileSnapshot.read(from: coordinatedURL)
+                        guard current.snapshot == entry.appliedSnapshot else {
+                            throw ApplyError.undoConflict(L10n.format(
+                                "„%@“ wurde während Rückgängig geändert.",
+                                target.lastPathComponent))
+                        }
+                        try beforeAtomicReplace?(coordinatedURL)
                         try atomicReplace(backupBytes, coordinatedURL, tmp)
                     } else {
-                        try replacePreparedTemporaryFile(at: coordinatedURL,
-                                                         temporaryURL: tmp)
+                        do {
+                            _ = try AtomicFileCommit.replaceExisting(
+                                at: coordinatedURL,
+                                withPreparedFile: tmp,
+                                expecting: appliedSnapshot,
+                                replacementContent: FileSnapshot(
+                                    data: backupBytes, identity: nil),
+                                beforeSwap: beforeAtomicReplace)
+                        } catch let failure as AtomicFileCommit.Failure {
+                            preserveTemporaryForRecovery =
+                                failure.mustPreservePreparedPath
+                            switch failure {
+                            case .conflictUnchanged, .conflictRolledBack:
+                                throw ApplyError.undoConflict(L10n.format(
+                                    "„%@“ wurde während Rückgängig geändert.",
+                                    target.lastPathComponent))
+                            case .unsupportedAtomicSwap:
+                                throw ApplyError.undoConflict(
+                                    failure.localizedDescription)
+                            case .recoveryRequired:
+                                throw failure
+                            }
+                        }
                     }
                     replaceCompleted = true
                 }
@@ -1230,14 +1310,9 @@ extension ApplyEngine {
         return try JSONDecoder().decode(ApplySession.self, from: data)
     }
 
-    private static func replacePreparedTemporaryFile(at target: URL,
-                                                     temporaryURL: URL) throws {
-        _ = try FileManager.default.replaceItemAt(target, withItemAt: temporaryURL)
-    }
-
-    /// Sibling statt Session-Temp: `replaceItemAt` bleibt damit auch dann auf
-    /// einem Volume, wenn Application Support und Ziel auf verschiedenen
-    /// Datenträgern liegen.
+    /// Sibling statt Session-Temp: Der atomare Austausch bleibt damit auch
+    /// dann auf einem Volume, wenn Application Support und Ziel auf
+    /// verschiedenen Datenträgern liegen.
     private static func temporarySiblingURL(for target: URL,
                                             purpose: String) -> URL {
         target.deletingLastPathComponent().appendingPathComponent(
@@ -1249,7 +1324,7 @@ extension ApplyEngine {
         let coordinator = NSFileCoordinator(filePresenter: nil)
         var coordinationError: NSError?
         var result: Result<T, Error>?
-        coordinator.coordinate(writingItemAt: target, options: .forReplacing,
+        coordinator.coordinate(writingItemAt: target, options: [],
                                error: &coordinationError) { coordinatedURL in
             result = Result { try operation(coordinatedURL) }
         }

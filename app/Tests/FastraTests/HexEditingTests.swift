@@ -68,6 +68,32 @@ struct HexEditingTests {
         #expect(session.hasChanges)
     }
 
+    @Test("Fremd-Replace nach dem letzten Hex-Preflight bleibt erhalten")
+    func saveForeignReplaceAfterFinalPreflightIsPreserved() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "fastra-hex-commit-race-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory,
+                                                withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("target.bin")
+        try Data([0, 1, 2, 3]).write(to: url)
+        let changes = [HexByteChange(offset: 1, oldValue: 1, newValue: 0xFE)]
+        let external = Data([9, 1, 2, 3])
+        var hookCalls = 0
+
+        #expect(throws: HexEditing.SaveError.self) {
+            try HexEditing.save(changes, to: url, beforeAtomicReplace: { target in
+                hookCalls += 1
+                try external.write(to: target, options: .atomic)
+            })
+        }
+        #expect(hookCalls == 1)
+        #expect(try Data(contentsOf: url) == external)
+        let siblings = try FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil)
+        #expect(!siblings.contains { $0.lastPathComponent.hasPrefix(".fastra-hex-") })
+    }
+
     @Test("Speichern erhält die Zugriffsrechte der Datei")
     @MainActor func sessionPreservesPermissions() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

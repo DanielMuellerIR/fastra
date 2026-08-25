@@ -844,6 +844,34 @@ func workspace_saveAsTargetAppearingBeforeCoordinateIsPreserved() throws {
     #expect(ws.tabs[0].isDirty)
 }
 
+@Test("Fremd-Replace nach dem letzten Save-Preflight bleibt erhalten")
+@MainActor
+func workspace_saveForeignReplaceAfterFinalPreflightIsPreserved() async throws {
+    let url = try writeTmpUTF8("geladen\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let ws = await loadedWorkspace(url)
+    let index = try #require(ws.tabs.firstIndex { $0.url == url })
+    ws.tabs[index].content = "lokal\n"
+    ws.tabs[index].isDirty = true
+    ws.saveSafetyWarningHandler = { _, _ in }
+    let external = Data("extern im Commit-Fenster\n".utf8)
+    var hookCalls = 0
+    ws.saveBeforeAtomicReplaceHandler = { coordinatedURL in
+        hookCalls += 1
+        try? external.write(to: coordinatedURL, options: .atomic)
+    }
+
+    #expect(!ws.write(tab: ws.tabs[index], to: url))
+    #expect(hookCalls == 1)
+    #expect(try Data(contentsOf: url) == external)
+    #expect(ws.tabs[index].content == "lokal\n")
+    #expect(ws.tabs[index].isDirty)
+    let siblings = try FileManager.default.contentsOfDirectory(
+        at: url.deletingLastPathComponent(),
+        includingPropertiesForKeys: nil)
+    #expect(!siblings.contains { $0.lastPathComponent.hasPrefix(".fastra-save-") })
+}
+
 @Test("Save-As ersetzt kein Ziel, das erst nach der Panel-Validierung entsteht")
 @MainActor
 func workspace_saveAsTargetAppearingAfterPanelValidationIsPreserved() throws {

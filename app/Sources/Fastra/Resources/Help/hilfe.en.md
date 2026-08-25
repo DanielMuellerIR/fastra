@@ -241,7 +241,9 @@ second time. Before the atomic save, Fastra checks the displayed old values
 again. If another program has changed any of those bytes in the meantime,
 Fastra stops and leaves both the file and the visible change list untouched.
 Even very large binary files are processed in bounded chunks in the
-background.
+background. Fastra keeps the version actually displaced by the atomic exchange
+reachable until the final verification. If a volume does not support this safe
+exchange, the file is not changed.
 
 ## Markdown
 
@@ -835,9 +837,17 @@ the tab has unsaved edits; a clean tab reloads the new on-disk version silently.
 This also works when an external tool preserves the modification date or sets
 it to an older value. Saving likewise asks for explicit confirmation. A
 further change immediately before the write always cancels the save instead
-of silently overwriting the on-disk version. If a fully loaded text file
-disappears or becomes unreadable, Fastra marks the remaining tab copy as
-unsaved so it cannot be closed without confirmation.
+of silently overwriting the on-disk version. The version actually displaced by
+the atomic exchange remains available until the final verification and is
+swapped back when Fastra can identify the conflict unambiguously. Fastra
+refuses the write if the volume does not support a safe atomic exchange. If
+another program changes one of the participating paths again during final
+verification, Fastra keeps the reachable versions, deletes neither path, and
+names them in the warning for manual resolution. A separate process that keeps
+writing to an already open old file cannot be locked out by a macOS name
+exchange. If a fully loaded text file disappears or becomes unreadable, Fastra
+marks the remaining tab copy as unsaved so it cannot be closed without
+confirmation.
 
 ## Windows and Tabs
 

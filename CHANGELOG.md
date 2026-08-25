@@ -9,6 +9,32 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.112.4] — 2026-08-25
+
+### Behoben
+
+- **Eine Fremdänderung im letzten Augenblick vor dem Dateiaustausch bleibt
+  erhalten.** Speichern, Apply, Rückgängig und Hex hielten bisher nach ihrer
+  abschließenden Inhaltsprüfung kein fest gebundenes Dateiobjekt bis zum
+  Replace. Ein anderes Programm konnte in dieser schmalen Lücke einen neuen
+  Stand einwechseln, den Fastra anschließend überschrieb. Alle vier Pfade
+  verwenden jetzt denselben deskriptorgebundenen Namenstausch: Der tatsächlich
+  verdrängte Stand bleibt bis zur Nachprüfung unter dem temporären Namen
+  erhalten und wird bei einem erkannten Konflikt zurückgetauscht.
+- **Der sichere Schreibpfad bricht auf Volumes ohne atomaren Namenstausch ab.**
+  Fastra fällt nicht auf einen ungeschützten Replace zurück. Kann ein Konflikt
+  wegen einer weiteren gleichzeitigen Änderung nicht eindeutig zurückgesetzt
+  werden, löscht Fastra keinen der beteiligten Pfade automatisch.
+
+### Tests
+
+- Vier Regressionen belegen für Speichern, Apply, Rückgängig und Hex, dass ein
+  atomar eingewechselter Fremdstand im letzten Commit-Fenster nicht verloren
+  geht; diese vier Fälle waren mit dem alten Replace-Pfad auf Weemac rot.
+  Weitere direkte Tests prüfen einen In-place-Write mit zurückgesetztem
+  Änderungsdatum, die Hashbindung der vorbereiteten Datei, Hardlinks,
+  Metadaten, Aufräumen sowie das Apply-Journal bei einem Fehler vor dem Tausch.
+
 ## [v1.112.3] — 2026-08-25
 
 ### Behoben

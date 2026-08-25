@@ -435,12 +435,16 @@
 "Diese betroffenen Tabs enthalten ungespeicherte Änderungen oder werden noch geladen:\n\n• %@\n\nSpeichere oder schließe sie und prüfe danach die Vorschau erneut." = "These affected tabs have unsaved changes or are still loading:\n\n• %@\n\nSave or close them, then review the preview again.";
 "„%@“ wurde seit der Vorschau geändert. Es wurde nichts verändert." = "‘%@’ changed after the preview. Nothing was changed.";
 "„%@“ wurde während des Apply geändert." = "‘%@’ changed while Apply was running.";
+"„%@“ wurde während des Apply umbenannt." = "‘%@’ was renamed while Apply was running.";
 "„%@“ wurde nach dem Apply geändert. Rückgängig wurde abgebrochen." = "‘%@’ changed after Apply. Undo was canceled.";
 "„%@“ wurde während Rückgängig geändert." = "‘%@’ changed while Undo was running.";
+"„%@“ wurde während Rückgängig umbenannt." = "‘%@’ was renamed while Undo was running.";
 "Speichern würde den neueren Plattenstand überschreiben. Prüfe die Änderungen oder speichere nur nach bewusster Bestätigung." = "Saving would overwrite the newer on-disk version. Review the changes, or save only after explicitly confirming.";
 "Trotzdem speichern" = "Save Anyway";
 "Speichern abgebrochen" = "Save Canceled";
 "Die Datei wurde während des Speicherns erneut geändert. Der Plattenstand blieb erhalten." = "The file changed again while saving. The on-disk version was preserved.";
+"Der Datenträger unterstützt keinen sicheren atomaren Dateiaustausch. Die Datei wurde nicht geändert." = "The volume does not support safe atomic file exchange. The file was not changed.";
+"Der Dateiaustausch konnte nach einer gleichzeitigen Fremdänderung nicht sicher zurückgesetzt werden. Prüfe „%@“ und „%@“; Fastra löscht in diesem Zustand keinen der beiden Pfade." = "The file exchange could not be safely rolled back after a concurrent external change. Check “%@” and “%@”; Fastra does not delete either path in this state.";
 "Die sichtbare Vorschau ist gekürzt. Verfeinere die Suche, bis alle Treffer sichtbar sind, bevor du Änderungen anwendest." = "The visible preview is truncated. Refine the search until every match is visible before applying changes.";
 "Dateien oder Suchoptionen haben sich seit der sichtbaren Vorschau geändert. Starte die Suche erneut; es wurde nichts verändert." = "Files or search options changed after the visible preview. Run the search again; nothing was changed.";
 "Die berechnete Änderung stimmt nicht mehr mit der sichtbaren Vorschau überein. Starte die Suche erneut; es wurde nichts verändert." = "The calculated change no longer matches the visible preview. Run the search again; nothing was changed.";

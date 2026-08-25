@@ -734,6 +734,37 @@ func apply_partialSessionExcludesNeverWrittenTargets() throws {
             "Nie angewendete Ziele dürfen nicht in Undo geraten")
 }
 
+@Test("Apply verwirft pending nach einem Fehler vor dem atomaren Tausch")
+func apply_preSwapFailureExcludesNeverWrittenTarget() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "fastra-apply-pre-swap-failure-\(UUID().uuidString)", isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: directory,
+                                            withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let target = directory.appendingPathComponent("target.txt")
+    let original = Data("foo\n".utf8)
+    try original.write(to: target)
+    let transaction = try makeTransaction(files: [target])
+
+    do {
+        _ = try transaction.execute(
+            backupRoot: backups, cleanupOlderThan: nil,
+            beforeAtomicReplace: { _ in throw ApplyTestFailure.injected })
+        Issue.record("Der injizierte Fehler vor dem Swap hätte Apply abbrechen müssen")
+    } catch ApplyError.backupFailed {
+        Issue.record("Der Commit-Fehler darf nicht als Backup-Fehler erscheinen")
+    } catch ApplyError.writeFailed(let partial, _) {
+        #expect(partial.entries.isEmpty)
+    }
+
+    #expect(try Data(contentsOf: target) == original)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: backups.path).isEmpty)
+}
+
 @Test("Crash-Fenster nach Replace bleibt als pending manifestiert und rückgängig")
 func apply_manifestFailureAfterReplaceRecoversPendingEntry() throws {
     let dir = FileManager.default.temporaryDirectory
@@ -1109,6 +1140,82 @@ func transactionGlobalPreflightRejectsLateConflict() throws {
     #expect(try Data(contentsOf: first) == Data("foo one".utf8))
     #expect(try Data(contentsOf: second) == external)
     #expect(try FileManager.default.contentsOfDirectory(atPath: backups.path).isEmpty)
+}
+
+@Test("Fremd-Replace nach dem letzten Apply-Preflight bleibt erhalten")
+func transactionForeignReplaceAfterPerFilePreflightIsPreserved() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "fastra-apply-commit-race-\(UUID().uuidString)", isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: directory,
+                                            withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let target = directory.appendingPathComponent("target.txt")
+    try Data("foo\n".utf8).write(to: target)
+    let transaction = try makeTransaction(files: [target])
+    let external = Data("extern im Commit-Fenster\n".utf8)
+    var hookCalls = 0
+
+    do {
+        _ = try transaction.execute(
+            backupRoot: backups, cleanupOlderThan: nil,
+            beforeAtomicReplace: { coordinatedURL in
+                hookCalls += 1
+                try external.write(to: coordinatedURL, options: .atomic)
+            })
+        Issue.record("Der Fremd-Replace hätte Apply abbrechen müssen")
+    } catch ApplyError.conflict {
+        // Erwartet: Der Committer hat den verdrängten Fremdstand restauriert.
+    }
+
+    #expect(hookCalls == 1)
+    #expect(try Data(contentsOf: target) == external)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: backups.path).isEmpty)
+    let siblings = try FileManager.default.contentsOfDirectory(
+        at: directory, includingPropertiesForKeys: nil)
+    #expect(!siblings.contains { $0.lastPathComponent.contains(".fastra-apply-") })
+}
+
+@Test("Fremd-Replace nach dem letzten Undo-Preflight bleibt erhalten")
+func undoForeignReplaceAfterPerFilePreflightIsPreserved() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "fastra-undo-commit-race-\(UUID().uuidString)", isDirectory: true)
+    let backups = try makeBackupRoot()
+    try FileManager.default.createDirectory(at: directory,
+                                            withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let target = directory.appendingPathComponent("target.txt")
+    try Data("foo\n".utf8).write(to: target)
+    let session = try makeTransaction(files: [target]).execute(
+        backupRoot: backups, cleanupOlderThan: nil)
+    let external = Data("extern vor Undo-Commit\n".utf8)
+    var hookCalls = 0
+
+    do {
+        _ = try ApplyEngine.undo(
+            session,
+            beforeAtomicReplace: { coordinatedURL in
+                hookCalls += 1
+                try external.write(to: coordinatedURL, options: .atomic)
+            })
+        Issue.record("Der Fremd-Replace hätte Undo abbrechen müssen")
+    } catch ApplyError.undoConflict {
+        // Erwartet: Der Committer hat den verdrängten Fremdstand restauriert.
+    }
+
+    #expect(hookCalls == 1)
+    #expect(try Data(contentsOf: target) == external)
+    let persisted = try ApplyEngine.loadSession(at: session.sessionDirectory)
+    #expect(persisted.entries.map(\.state) == [.applied])
+    let siblings = try FileManager.default.contentsOfDirectory(
+        at: directory, includingPropertiesForKeys: nil)
+    #expect(!siblings.contains { $0.lastPathComponent.contains(".fastra-undo-") })
 }
 
 @Test("Globaler Preflight prüft auch die wirkungslosen Eingaben")
