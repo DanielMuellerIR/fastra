@@ -52,6 +52,7 @@ final class SearchRunner {
     /// eine fertige Ordnersuche beim Öffnen ihres Treffers nicht verwerfen.
     enum SearchInput {
         case options
+        case activeTab
         case activeDocument
         case scope
         case folderSources
@@ -63,6 +64,11 @@ final class SearchRunner {
         switch input {
         case .options, .scope:
             return true
+        case .activeTab:
+            // Der aktive Tab ändert nur die Datei-Suche. „Geöffnet" umfasst
+            // ohnehin alle Tabs; ein Treffer-Sprung über eine Tabgrenze darf
+            // dort weder neu suchen noch seinen flachen Index verwerfen.
+            return scope == .file
         case .activeDocument:
             return scope == .file || scope == .open
         case .folderSources:
@@ -91,7 +97,7 @@ final class SearchRunner {
             // „Nur in Auswahl" (K3) umschalten → Buffer-Suche neu laufen
             // lassen (anderer Such-Bereich).
             workspace.$searchInSelectionOnly.dropFirst().map { _ in SearchInput.activeDocument }.eraseToAnyPublisher(),
-            workspace.$activeTabID.dropFirst().map { _ in SearchInput.activeDocument }.eraseToAnyPublisher(),
+            workspace.$activeTabID.dropFirst().map { _ in SearchInput.activeTab }.eraseToAnyPublisher(),
             workspace.$tabs.dropFirst().map { _ in SearchInput.activeDocument }.eraseToAnyPublisher(),
             workspace.$scope.dropFirst().map { _ in SearchInput.scope }.eraseToAnyPublisher(),
             workspace.$recentSearchFolders.dropFirst().map { _ in SearchInput.folderSources }.eraseToAnyPublisher(),
@@ -291,18 +297,16 @@ final class SearchRunner {
     }
 
     /// Unmittelbare Invalidierung vor beiden Debounce-Stufen.
-    private func searchInputsDidChange(_ input: SearchInput) {
+    private func searchInputsDidChange(_: SearchInput) {
         guard let ws = workspace else { return }
         cancelPendingWork()
-        // Muster, Optionen, Scope oder Quellen: Die navigierbare Trefferbasis
-        // ist weg, offene Sprungaufträge mit ihr. Ein Dokumentwechsel
-        // dagegen IST im Datei-/Geöffnet-Scope der Sprung selbst: Die
-        // Navigation zieht ihre Nummer, aktiviert den Ziel-Tab (Trigger
-        // `activeDocument`) und postet einen Tick später — würde der Tabwechsel
-        // entwerten, käme kein Geöffnet-Sprung in einen anderen Tab mehr an.
-        // Im Ordner-/Projekt-Scope filtert `inputAffectsSearch` diesen Input
-        // ohnehin aus; der Lade-Tab einer Funddatei erreicht diese Stelle nie.
-        Self.clearFolderPreview(ws, invalidatingJumps: input != .activeDocument)
+        // Muster, Optionen, Inhalt, Scope oder Quellen: Die navigierbare
+        // Trefferbasis ist weg, offene Sprungaufträge mit ihr. Ein reiner
+        // Tabwechsel im Geöffnet-Scope erreicht diesen Pfad nicht: Er ändert
+        // die über alle Tabs gebildete Trefferbasis nicht und wird bereits in
+        // `inputAffectsSearch` ausgefiltert. So behält ein Sprung über eine
+        // Tabgrenze seinen Index und erzeugt keinen redundanten Suchlauf.
+        Self.clearFolderPreview(ws, invalidatingJumps: true)
         // Die sichtbaren Buffer-/Geöffnet-Treffer bleiben absichtlich stehen
         // (sonst blinkte die Trefferzahl bei jedem Tastendruck auf 0), ihre
         // Freigabe für „Alle ersetzen" gilt aber ab sofort nicht mehr: Sie

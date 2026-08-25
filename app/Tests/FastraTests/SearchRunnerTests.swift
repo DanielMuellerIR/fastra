@@ -57,6 +57,11 @@ func searchInputsAreScopeSpecific() {
         #expect(SearchRunner.inputAffectsSearch(.options, in: scope))
         #expect(SearchRunner.inputAffectsSearch(.scope, in: scope))
     }
+    #expect(SearchRunner.inputAffectsSearch(.activeTab, in: .file))
+    #expect(!SearchRunner.inputAffectsSearch(.activeTab, in: .open))
+    #expect(!SearchRunner.inputAffectsSearch(.activeTab, in: .folder))
+    #expect(!SearchRunner.inputAffectsSearch(.activeTab, in: .project))
+
     #expect(SearchRunner.inputAffectsSearch(.activeDocument, in: .file))
     #expect(SearchRunner.inputAffectsSearch(.activeDocument, in: .open))
     #expect(!SearchRunner.inputAffectsSearch(.activeDocument, in: .folder))

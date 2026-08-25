@@ -9,6 +9,28 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.112.2] — 2026-08-25
+
+### Behoben
+
+- **Treffernavigation über mehrere offene Tabs behält ihre Position.** Beim
+  Sprung in einen anderen Tab setzte der Suchlauf den flachen Trefferindex
+  während des Tabwechsels auf null. Der Editor erreichte zwar das richtige
+  Ziel, die Trefferliste blieb aber beim ersten Fund; der nächste ⌘G-Sprung
+  lief deshalb von der falschen Stelle weiter. Ein navigationsbedingter
+  Tabwechsel erhält den Index jetzt bis zur bestätigten Zielauswahl.
+- **Vor/Zurück startet nach einer verkürzten Trefferliste beim sichtbaren
+  Treffer.** War der gespeicherte Index bereits außerhalb der neuen Liste,
+  berechnete Fastra die nächste Position noch aus diesem alten Wert. Die
+  Navigation verwendet jetzt den bereits auf die aktuelle Liste geklemmten
+  Ausgangstreffer.
+
+### Tests
+
+- Neue Regressionen bilden den synchronen Tabwechsel im Workspace und
+  geklemmte Vor-/Zurück-Navigation mit und ohne Wrap-around ab. Beide waren vor
+  der Korrektur auf Weemac rot.
+
 ## [v1.112.1] — 2026-08-25
 
 ### Behoben

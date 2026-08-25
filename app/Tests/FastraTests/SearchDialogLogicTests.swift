@@ -347,9 +347,9 @@ func patternChangeInvalidatesPendingFolderMatchJump() async throws {
 }
 
 // Gegenprobe: Im Geöffnet-Scope ist der Tabwechsel Teil der Navigation. Er
-// löst den Trigger `activeDocument` aus und darf den gerade gezogenen
-// Sprungauftrag NICHT entwerten — sonst käme kein Sprung in einen anderen
-// Tab mehr an.
+// ändert die Trefferbasis des Geöffnet-Scope nicht und darf deshalb weder
+// einen neuen Suchlauf auslösen noch den gerade gezogenen Sprungauftrag
+// entwerten — sonst käme kein Sprung in einen anderen Tab mehr an.
 @MainActor
 @Test("Ein Tabwechsel der Navigation entwertet den eigenen Sprungauftrag nicht")
 func navigationTabSwitchKeepsOwnMatchJump() {
@@ -364,10 +364,17 @@ func navigationTabSwitchKeepsOwnMatchJump() {
     workspace.activeTabID = workspace.tabs[0].id
     workspace.scope = .open
     workspace.showSearchDialog = true
+    workspace.activeMatchIndex = 1
 
     let jumpGeneration = workspace.beginMatchJump()
     workspace.selectTab(id: workspace.tabs[1].id)
     #expect(workspace.isCurrentMatchJump(jumpGeneration))
+    #expect(workspace.activeMatchIndex == 1,
+            "Der Tabwechsel darf den noch nicht bestätigten flachen Trefferindex nicht löschen")
+    #expect(MatchJumpCommit.index(
+        previous: 1, current: workspace.activeMatchIndex,
+        next: 2, posted: true
+    ) == 2, "Der erfolgreiche Sprung muss seinen gewählten Index übernehmen können")
 
     // Ein neues Muster entwertet dagegen auch hier.
     workspace.findPattern = "TREFFER"

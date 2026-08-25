@@ -57,6 +57,33 @@ func searchMatchSelectionMovesWithExistingSemantics() {
         action: .move(.next, wrapAround: false)
     )
     #expect(clamped.state == .selected(index: 2, matchID: targets[2].id))
+    #expect(clamped.output == .activate(targets[2]))
+}
+
+@Test("Vor/Zurück rechnet nach einer Listenverkürzung vom geklemmten Treffer")
+func searchMatchSelectionMovesFromReconciledIndex() {
+    let targets = selectionTargets()
+
+    let previous = SearchMatchSelection.transition(
+        activeIndex: 7, matches: targets,
+        action: .move(.previous, wrapAround: false)
+    )
+    #expect(previous.state == .selected(index: 1, matchID: targets[1].id))
+    #expect(previous.output == .activate(targets[1]))
+
+    let wrappedPrevious = SearchMatchSelection.transition(
+        activeIndex: -4, matches: targets,
+        action: .move(.previous, wrapAround: true)
+    )
+    #expect(wrappedPrevious.state == .selected(index: 2, matchID: targets[2].id))
+    #expect(wrappedPrevious.output == .activate(targets[2]))
+
+    let wrappedAfterMaximum = SearchMatchSelection.transition(
+        activeIndex: .max, matches: targets,
+        action: .move(.next, wrapAround: true)
+    )
+    #expect(wrappedAfterMaximum.state == .selected(index: 0, matchID: targets[0].id))
+    #expect(wrappedAfterMaximum.output == .activate(targets[0]))
 }
 
 @Test("Veralteter Treffer erzeugt aus einer ersetzten Liste keinen Sprung")
@@ -89,6 +116,39 @@ func emptyAndReplacedSearchResultsReconcileSelection() {
     #expect(reconciled.state == .selected(index: 0, matchID: replacement[0].id))
     #expect(SearchMatchSelection.target(for: reconciled.state, in: replacement)
             == replacement[0])
+}
+
+@Test("Erster Treffer und leere Aktionen liefern vollständige Zustände")
+func firstAndEmptySearchMatchActionsAreExplicit() {
+    let targets = selectionTargets()
+    let first = SearchMatchSelection.transition(
+        activeIndex: 2, matches: targets, action: .first
+    )
+    #expect(first.state == .selected(index: 0, matchID: targets[0].id))
+    #expect(first.output == .activate(targets[0]))
+
+    for action in [
+        SearchMatchSelection.Action.select(matchID: UUID()),
+        .move(.next, wrapAround: true),
+        .first,
+    ] {
+        let empty = SearchMatchSelection.transition(
+            activeIndex: 7, matches: [], action: action
+        )
+        #expect(empty.state == .empty)
+        #expect(empty.output == .none)
+    }
+}
+
+@Test("Auswahlzustand akzeptiert am gleichen Index keinen Ersatztreffer")
+func selectionStateRejectsReplacementAtSameIndex() {
+    let oldTargets = selectionTargets()
+    let replacement = selectionTargets()
+    let oldState = SearchMatchSelection.transition(
+        activeIndex: 1, matches: oldTargets, action: .reconcile
+    ).state
+
+    #expect(SearchMatchSelection.target(for: oldState, in: replacement) == nil)
 }
 
 @Test("Tabwechsel verwendet ausschließlich die Ziel-ID der aktuellen Geöffnet-Liste")

@@ -81,7 +81,11 @@ enum SearchMatchSelection {
             guard !matches.isEmpty else {
                 return Transition(state: .empty, output: .none)
             }
-            var next = activeIndex + direction.offset
+            // Die Liste kann seit dem letzten UI-Schritt geschrumpft sein.
+            // `current` enthält bereits den dafür geklemmten Index; vom alten
+            // Rohwert aus zu rechnen würde Wrap-around verfälschen und könnte
+            // bei Int.max sogar überlaufen.
+            var next = current.index + direction.offset
             if wrapAround {
                 next = ((next % matches.count) + matches.count) % matches.count
             } else {
