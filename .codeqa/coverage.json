@@ -134,24 +134,20 @@
       "risk": "critical",
       "priority": 1,
       "reason": "Trefferbasis, Vorschau und Apply bilden die zentrale Sicherheitsgrenze des Produkts.",
-      "state": "pending",
+      "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T16:54:24+02:00",
-        "observed_head": "69011ce29a28a6578b2be67cbb51434a53e723ed",
-        "content_sha256": "3afc136ced053276720b28cf115aebf17b19f5f39eb1c8caa7e470ea4045304a",
-        "file_count": 41,
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-25T18:21:10+02:00",
+        "observed_head": "929911d722bf9574c1de657ce8198789484bf885",
+        "content_sha256": "48f8261e076915f13e646d32d3c3e4b72363d81cb8afa8536cc84a892900aa86",
+        "file_count": 43,
         "review": "delta-plus-boundaries",
-        "outcome": "reviewed-clean",
-        "summary": "Änderungen seit dem Full-Review vollständig geprüft: Geöffnet-Einzel-Ersetzen hält Trefferbasis und asynchrones Weitersuchen zusammen; Suchordner und Suchverlauf führen vor Mutationen den jüngsten gemeinsamen Defaults-Stand zusammen. Workspace- und UI-Grenzen sowie projektweite direkte Mutationspfade geprüft; kein neuer Fehler oder sinnvoller Vereinfachungsbedarf belegt.",
+        "outcome": "improved",
+        "summary": "Delta und heutige Grenzen von Suchlauf, Auswahl, Navigation, Vorschau und Apply geprüft. Geöffnet-Sprünge über Tabgrenzen behalten ihren flachen Trefferindex, weil reine Aktiv-Tab-Wechsel die über alle Tabs gebildete Trefferbasis nicht mehr invalidieren oder redundant neu berechnen. Vor/Zurück rechnet nach Listenwechseln vom geklemmten Zustand; Int-Grenzwerte überlaufen nicht. Fehlende Zustandsmaschinenfälle wurden direkt abgedeckt.",
         "tests": [
-          "Übernahme: build.sh Exit 0 einschließlich Portabilitätsprüfung; 1870 nicht blockierte Tests mit zwei lastabhängigen Git-Ausreißern, beide isoliert Exit 0. Bereichsgezielt: Geöffnet-Einzel-Ersetzen und beide Mehrfenster-Persistenztests, 3/3 grün, Exit 0."
+          "Weemac: fail-before SearchMatchSelection-Reconciliation 4 Erwartungen rot; Workspace-Tabwechsel 2 Erwartungen rot. Danach 5 gezielte Regressionen grün; build.sh einschließlich Portabilitätsprüfung grün; 2003 schnelle Tests/72 Suites grün; 96 serielle Integrationstests/11 Suites grün; Lokalisierungs-Audit 392/827/1432 grün."
         ]
-      },
-      "pending_paths": [
-        "app/Sources/Fastra/SearchMatchSelection.swift",
-        "app/Tests/FastraTests/SearchMatchSelectionTests.swift"
-      ]
+      }
     },
     {
       "id": "file-io-document-safety",
@@ -1056,6 +1052,43 @@
           "Fensterloser Regressionstest prüft Workspace-Objekt des Senders und weist einen zweiten Workspace ab; fokussiert grün, Vollsuite neuer Test grün."
         ]
       }
+    },
+    {
+      "id": "replace-preview-off-main",
+      "summary": "Die große Vorher/Nachher-Vorschau berechnet vollständigen After-Text, Zeilenarrays und CollectionDifference weiterhin synchron im SwiftUI-Body; nach der Sofortkonsolidierung auf einen Lauf pro Body muss die Berechnung revisionsgebunden, abbrechbar und speicherbegrenzt in den Hintergrund.",
+      "evidence": [
+        "app/Sources/Fastra/ReplacePreviewView.swift",
+        "app/Sources/Fastra/ReplacePreview.swift"
+      ],
+      "priority": 1,
+      "state": "pending",
+      "noted_at": "2026-08-25T16:54:58+02:00",
+      "campaign_id": "20260825T163605228103+0200"
+    },
+    {
+      "id": "main-thread-file-identity",
+      "summary": "Treffer-Sprung und Ordner-Apply kanonisieren Datei-URLs über Dateisystem-Metadaten auf dem Main-Thread; stabile Datei-/Dokumentidentitäten sollen bereits im Hintergrundlauf entstehen und UI-Guards rein im Speicher vergleichen.",
+      "evidence": [
+        "app/Sources/Fastra/BufferSearch.swift",
+        "app/Sources/Fastra/Workspace.swift"
+      ],
+      "priority": 2,
+      "state": "pending",
+      "noted_at": "2026-08-25T16:54:58+02:00",
+      "campaign_id": "20260825T163605228103+0200"
+    },
+    {
+      "id": "compiled-search-plan",
+      "summary": "FolderSearch, BufferSearch und ApplyTransaction kompilieren dasselbe Suchmuster mehrfach pro Datei/Eingabe; ein unveränderlicher SearchPlan soll Regex und Replacement-Template einmal pro Lauf vorbereiten und semantisch identisch wiederverwenden.",
+      "evidence": [
+        "app/Sources/Fastra/FolderSearch.swift",
+        "app/Sources/Fastra/BufferSearch.swift",
+        "app/Sources/Fastra/ApplyEngine.swift"
+      ],
+      "priority": 3,
+      "state": "pending",
+      "noted_at": "2026-08-25T16:54:59+02:00",
+      "campaign_id": "20260825T163605228103+0200"
     }
   ]
 }
