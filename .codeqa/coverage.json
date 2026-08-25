@@ -150,6 +150,52 @@
       }
     },
     {
+      "id": "test-harness-performance",
+      "paths": [
+        "app/Sources/Fastra/SelfTest.swift",
+        "app/Sources/Fastra/SoakTest.swift",
+        "app/Sources/Fastra/TestDefaultsPurge.swift",
+        "app/Tests/FastraTests/SelfTestLaunchTests.swift",
+        "app/Tests/FastraTests/SelfTestPerformanceTests.swift",
+        "app/Tests/FastraTests/SelfTestReviewFixTests.swift",
+        "app/Tests/FastraTests/Support/Fixtures/FourDTheme/dark.json",
+        "app/Tests/FastraTests/Support/Fixtures/FourDTheme/light.json",
+        "app/Tests/FastraTests/Support/TestCorpus.swift",
+        "app/Tests/FastraTests/TestDefaultsJanitorTests.swift",
+        "app/Tests/FastraTests/TestSuiteDefaults.swift",
+        "app/Tests/FastraTests/TestWaiting.swift",
+        "app/performance-baseline.sh",
+        "app/prepare-manual-menu-test.sh",
+        "app/screenshot-run.sh",
+        "app/selftest.sh",
+        "app/soak-test.sh",
+        "app/test.sh",
+        "app/tools/gui-test-lock.sh",
+        "app/tools/selftest-performance.py",
+        "app/tools/soak-process-state.sh",
+        "app/tools/test-process-tree.sh",
+        "app/tools/test-sandbox.sh",
+        "app/Tests/FastraTests/UnitTestRunnerTests.swift"
+      ],
+      "risk": "critical",
+      "priority": 1,
+      "reason": "Selbsttest-, Soak- und Sandbox-Infrastruktur liefert den Beweis für Änderungen. Der aktuelle Textparser kann echte Funktionsfehler als Umgebung maskieren; Fokussteuerung entscheidet, ob Fenstertests im Hintergrund belastbar laufen.",
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-25T19:44:32+02:00",
+        "observed_head": "e8e59884372d829e77e2f7f025dd9a7085c3da17",
+        "content_sha256": "28e1aeadf0044f8197c972dd8d3930962cd57869c6e0593b31f53d3c10e57368",
+        "file_count": 24,
+        "review": "delta-plus-boundaries",
+        "outcome": "improved",
+        "summary": "Selbsttests liefern typisierte maschinenlesbare Ergebnisse; nur fünf echte Fokusfälle aktivieren die App. Der Unit-Runner trennt schnelle und serielle Tests, schneidet Aufruferfilter phasengerecht, priorisiert Funktionsfehler vor Umgebungsproblemen und beendet abgebrochene Wartehelfer sofort.",
+        "tests": [
+          "Weemac: ./test.sh vollständig grün (2009 schnelle Tests/73 Suites + 104 serielle Tests/11 Suites, 0 Umgebungsfehler, Exit 0); 7 gezielte Runner-/Cancellation-Regressionen grün; echter Doppel-Named-Group-Filterlauf 5+0 Tests, Exit 0; windowless Selbsttests search/openscope/selsearch/wildcard grün; build.sh und localization-audit.sh grün."
+        ]
+      }
+    },
+    {
       "id": "file-io-document-safety",
       "paths": [
         "app/Sources/Fastra/FileLoader.swift",
@@ -646,57 +692,6 @@
       "priority": 12,
       "reason": "Druckpfade verbinden Nutzerinhalte mit AppKit/WebKit, asynchronen modalen Rückrufen und dauerhaftem Ausgabeformat.",
       "state": "pending"
-    },
-    {
-      "id": "test-harness-performance",
-      "paths": [
-        "app/Sources/Fastra/SelfTest.swift",
-        "app/Sources/Fastra/SoakTest.swift",
-        "app/Sources/Fastra/TestDefaultsPurge.swift",
-        "app/Tests/FastraTests/SelfTestLaunchTests.swift",
-        "app/Tests/FastraTests/SelfTestPerformanceTests.swift",
-        "app/Tests/FastraTests/SelfTestReviewFixTests.swift",
-        "app/Tests/FastraTests/Support/Fixtures/FourDTheme/dark.json",
-        "app/Tests/FastraTests/Support/Fixtures/FourDTheme/light.json",
-        "app/Tests/FastraTests/Support/TestCorpus.swift",
-        "app/Tests/FastraTests/TestDefaultsJanitorTests.swift",
-        "app/Tests/FastraTests/TestSuiteDefaults.swift",
-        "app/Tests/FastraTests/TestWaiting.swift",
-        "app/performance-baseline.sh",
-        "app/prepare-manual-menu-test.sh",
-        "app/screenshot-run.sh",
-        "app/selftest.sh",
-        "app/soak-test.sh",
-        "app/test.sh",
-        "app/tools/gui-test-lock.sh",
-        "app/tools/selftest-performance.py",
-        "app/tools/soak-process-state.sh",
-        "app/tools/test-process-tree.sh",
-        "app/tools/test-sandbox.sh",
-        "app/Tests/FastraTests/UnitTestRunnerTests.swift"
-      ],
-      "risk": "high",
-      "priority": 12,
-      "reason": "Selbsttest-, Soak- und Sandbox-Infrastruktur liefert den Beweis für Änderungen und muss Umgebungsfehler ehrlich trennen.",
-      "state": "pending",
-      "last_run": {
-        "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T17:51:53+02:00",
-        "observed_head": "13ec6a5953bac1832ec0fcd7fb12f5d5287fd2c7",
-        "content_sha256": "8c51cb4d16a5cdaec30425d001266049f006cc3e3e4e29d72f3df8c910129ed6",
-        "file_count": 23,
-        "review": "full",
-        "outcome": "improved",
-        "summary": "Soak-Fixtures lösen Symlinks sicher auf; Mehrfenster-Aktionen folgen CommandTargeting; Runner-Fixtures bleiben neben einer laufenden Produkt-App isoliert",
-        "tests": [
-          "./test.sh --filter SelfTestPerformanceTests|SelfTestReviewFixTests|SelfTestLaunchTests|TestDefaultsJanitorTests: 39 passed",
-          "./build.sh: passed einschließlich Fensterziel-Audit, Signatur und portabler Ordnersuche",
-          "./localization-audit.sh: passed; Shell-Syntax, JSON-Fixtures und Performance-Selbsttest: passed"
-        ]
-      },
-      "pending_paths": [
-        "app/Tests/FastraTests/UnitTestRunnerTests.swift"
-      ]
     },
     {
       "id": "text-operations-formatting",
