@@ -355,15 +355,15 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-25T23:26:23+02:00",
-        "observed_head": "a9b5882045e452133f8ef8d984d018a225f0b94c",
-        "content_sha256": "492106d91aa3100db5b41b32ab4cd1bba4431d3758fa3175f4d745ea42b5d364",
+        "completed_at": "2026-08-25T23:42:46+02:00",
+        "observed_head": "c0d3929584b6c7cd8a195856a956bae200f5e282",
+        "content_sha256": "8b6f5be2caad8064f2df483db2a4ed698a6ac39425a6676be0f9c1382d916a55",
         "file_count": 20,
         "review": "delta-plus-boundaries",
-        "outcome": "improved",
-        "summary": "Version 1.112.6/213 kennzeichnet die korrigierten Kontextbindungen eindeutig; Paket-Build und Portabilitätsprüfung blieben grün.",
+        "outcome": "reviewed-clean",
+        "summary": "Delta bestand ausschließlich aus dem konsistenten Versionsstand 1.112.7/214 in Info.plist und CHANGELOG für die verifizierte 4D-Fehlerbehebung; Bundle-Bau-, Signatur-, Portabilitäts- und Versionspfade blieben unverändert.",
         "tests": [
-          "Weemac: app/build.sh einschließlich window-targeting-audit und verify-portable-app.sh grün; app/test.sh 2063+104 grün."
+          "Weemac: app/build.sh PASS einschließlich Audits, Bundle-Bau und Portabilitätsgate; app/test.sh PASS mit 2170 Tests in beiden Phasen, environment_errors=0."
         ]
       }
     },
@@ -646,26 +646,20 @@
       "risk": "high",
       "priority": 11,
       "reason": "4D-Parser, Indizes, LSP und Archive verarbeiten komplexe fremde Projektinhalte und erzeugte Symbolbestände.",
-      "state": "pending",
+      "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T17:38:46+02:00",
-        "observed_head": "8aca77c5e99271c2cb2cb18229204160884ebdd6",
-        "content_sha256": "e1a7d5ad4544181d5330a90a9ab272c906bd0b3d421719e53ef7b42bc36ac530",
-        "file_count": 27,
-        "review": "full",
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-25T23:42:36+02:00",
+        "observed_head": "c0d3929584b6c7cd8a195856a956bae200f5e282",
+        "content_sha256": "2e3bb69b885ddd6b9133db5883ded048d4d5c565d5dcb380afd2fe0fabd53d44",
+        "file_count": 28,
+        "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Sechs belegte Schutzfehler behoben: Tool4D-Abbruch hält den Lauf bis zum Prozessstopp, ZIP-Verschlüsselung wird abgewiesen, 4D-Token bleiben im Dokument, JSON-Schema vergleicht Typen exakt, klassische Parameternummern und Methodendateien sind begrenzt.",
+        "summary": "FourDProjectIndexController bündelt Dateisystemereignisse während eines nicht abbrechbaren synchronen Scans zu genau einem Folgescan und veröffentlicht keinen gemischten Zwischenstand; FourDTokenTransform schützt Date-/Time-Typdeklarationen vor gelernten Befehlssuffixen; Swift-6-Sendable-Warnung des Standardscanners beseitigt; Subagent-Grenzreview ohne Restfund.",
         "tests": [
-          "6 neue Regressionstests: vor der Änderung fehlgeschlagen, danach bestanden",
-          "P11-Bereichstest: 153 Tests in 3 Suiten bestanden",
-          "build.sh: bestanden einschließlich Fenster-Zielaudit, Signatur und portabler Ordnersuche",
-          "localization-audit.sh: bestanden"
+          "Weemac: app/build.sh PASS einschließlich Portabilitätsgate; app/test.sh PASS mit 2066 parallelen Tests in 75 Suites und 104 seriellen Integrationstests in 11 Suites, environment_errors=0; gezielte 4D-Controller-/Token-Tests PASS."
         ]
-      },
-      "pending_paths": [
-        "app/Sources/Fastra/FourDProjectIndexController.swift"
-      ]
+      }
     },
     {
       "id": "document-printing",
