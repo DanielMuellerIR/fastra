@@ -261,6 +261,18 @@ beim atomaren Austausch tatsächlich verdrängten Stand bis zur Nachprüfung
 erreichbar. Unterstützt ein Datenträger diesen sicheren Austausch nicht, wird
 die Datei nicht geändert.
 
+Offene Byte-Änderungen gehören zum Dokument: Sie bleiben beim Tabwechsel
+erhalten, machen einen flüchtigen Vorschau-Tab dauerhaft und lassen sich mit
+**⌘Z** und **⇧⌘Z** rückgängig machen beziehungsweise wiederholen. Bis zum
+Speichern oder Verwerfen bleibt das Dokument in der Hex-Ansicht; gleichzeitige
+ungespeicherte Text- und Bytefassungen sind dadurch ausgeschlossen. Schließen,
+Beenden und **Sichern** führen zuerst zurück zur Änderungsvorschau. Ein
+Fremdstand auf der Festplatte wird nicht automatisch über offene
+Byte-Änderungen geladen. **Sichern unter…** ist für die Hex-Ansicht derzeit
+nicht verfügbar; die Vorschau speichert ausschließlich in die geöffnete Datei.
+Ein Datei- oder Ordnerpfad mit offenen Byte-Änderungen lässt sich über Fastras
+Dateibaum erst nach dem Speichern oder Verwerfen in den Papierkorb legen.
+
 ## Markdown
 
 Bei Markdown-Dokumenten zeigt die geteilte Ansicht rechts die gerenderte

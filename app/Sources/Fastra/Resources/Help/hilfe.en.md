@@ -245,6 +245,17 @@ background. Fastra keeps the version actually displaced by the atomic exchange
 reachable until the final verification. If a volume does not support this safe
 exchange, the file is not changed.
 
+Pending byte changes belong to the document: they survive tab switches, make a
+temporary preview tab permanent, and support **⌘Z** and **⇧⌘Z** for undo and
+redo. The document stays in Hex view until those changes are saved or discarded,
+preventing separate unsaved text and byte versions of the same file. Closing,
+quitting, and **Save** first return to the change preview. Fastra does not
+automatically reload an external on-disk version over pending byte changes.
+**Save As…** is not currently available in Hex view; the preview saves only to
+the open file. A file or folder path with pending byte changes can only be moved
+to the Trash through Fastra's file tree after those changes are saved or
+discarded.
+
 ## Markdown
 
 For Markdown documents the split view renders a live preview on the right —
