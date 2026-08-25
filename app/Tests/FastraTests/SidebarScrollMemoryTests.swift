@@ -37,12 +37,22 @@ func scrollMemory_clampsNegative() {
     #expect(memory.offset(for: "fileTree") == 0)
 }
 
-@Test("Vergessen entfernt einen Eintrag")
-func scrollMemory_forget() {
+@Test("Leeren wirft alle Einträge weg")
+func scrollMemory_removeAll() {
+    // Der Projektwechsel leert den ganzen Speicher: Die Schlüssel sind über
+    // Projekte hinweg dieselben (Review-Fund 2026-08-25).
     let memory = SidebarScrollMemory()
     memory.record(50, for: "gitGraph:a.txt")
-    memory.forget("gitGraph:a.txt")
+    memory.record(240, for: "fileTree")
+    memory.removeAll()
     #expect(memory.offset(for: "gitGraph:a.txt") == nil)
+    #expect(memory.offset(for: "fileTree") == nil)
+    // Auch die Altersliste muss leer sein — sonst zählte ein Geisterschlüssel
+    // weiter gegen die Kapazität.
+    for index in 0..<SidebarScrollMemory.capacity {
+        memory.record(CGFloat(index), for: "neu-\(index)")
+    }
+    #expect(memory.offset(for: "neu-0") == 0)
 }
 
 @Test("Der Speicher wächst nicht unbegrenzt")

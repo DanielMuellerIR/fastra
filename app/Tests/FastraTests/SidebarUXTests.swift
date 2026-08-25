@@ -177,6 +177,44 @@ func loadFile_keepsExplicitProjectForNonGitFile() async throws {
     #expect(ws.tabs.contains { $0.url == file.canonicalFileURL })
 }
 
+// MARK: - Projektwechsel räumt den Seitenleisten-Zustand
+
+@Test("Projektwechsel leert gemerkte Scrollposition und Filterergebnis",
+      .timeLimit(.minutes(1)))
+@MainActor
+func openProject_clearsSidebarPositionAndFilterResult() throws {
+    // Review-Fund 2026-08-25: Die Scroll-Schlüssel (`fileTree`, `gitChanges`,
+    // `gitGraph`) sind über alle Projekte hinweg dieselben, und das
+    // Filterergebnis lebt am Workspace. Ohne Leerung öffnete ein neues Projekt
+    // mitten im Baum des alten — und ein erneut getippter, gleicher Filtertext
+    // galt kurzzeitig mit den Pfaden des alten Projekts als beantwortet.
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let ersteWurzel = try makeTmpDirectory("projekt-a")
+    let zweiteWurzel = try makeTmpDirectory("projekt-b")
+    defer {
+        try? FileManager.default.removeItem(at: ersteWurzel)
+        try? FileManager.default.removeItem(at: zweiteWurzel)
+    }
+
+    let ws = Workspace(defaults: defaults)
+    ws.openProject(at: ersteWurzel)
+    ws.sidebarScrollMemory.record(820, for: "fileTree")
+    ws.sidebarScrollMemory.record(300, for: "gitChanges")
+    ws.fileTreeFilterQuery = "test"
+    ws.fileTreeFilterResult = FileTreeFilterResult(
+        query: "test", matchingFiles: [ersteWurzel.path + "/alt.txt"],
+        expandedDirectories: [ersteWurzel.path], matchCount: 1,
+        totalFileCount: 1, truncated: false)
+
+    ws.openProject(at: zweiteWurzel)
+
+    #expect(ws.sidebarScrollMemory.offset(for: "fileTree") == nil)
+    #expect(ws.sidebarScrollMemory.offset(for: "gitChanges") == nil)
+    #expect(ws.fileTreeFilterQuery == "")
+    #expect(ws.fileTreeFilterResult == nil)
+}
+
 @Test("Implizites Elternordner-Öffnen schließt fremde offene Tabs NICHT",
       .timeLimit(.minutes(1)))
 @MainActor

@@ -3562,6 +3562,17 @@ final class Workspace: ObservableObject {
         selectedFileTreeFolder = nil
         sidebarNotice = nil
         fileTreeFilterQuery = ""
+        // Auch das ERGEBNIS des Filters, nicht nur der Suchtext: Steht beim
+        // Wechsel der Graph-Tab vorn, existiert `FileTreeSidebar` gar nicht und
+        // kann es über seinen `onChange`-Pfad nicht wegräumen. Tippt der Nutzer
+        // im neuen Projekt denselben Filtertext, galten sonst die Pfade des
+        // alten Projekts als Treffer, bis der neue Scan fertig war
+        // (Review-Fund 2026-08-25).
+        fileTreeFilterResult = nil
+        // Die Scroll-Schlüssel der Seitenleiste sind projektübergreifend
+        // dieselben. Ohne Leerung öffnete das neue Projekt an der Position des
+        // alten (Review-Fund 2026-08-25).
+        sidebarScrollMemory.removeAll()
         // Wurden ausschließlich saubere Dateien eines anderen Projekts
         // geschlossen, braucht das neue Projekt wieder einen Editor-Tab.
         if tabs.isEmpty {

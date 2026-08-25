@@ -39,9 +39,18 @@ final class SidebarScrollMemory {
         }
     }
 
-    func forget(_ key: String) {
-        offsets.removeValue(forKey: key)
-        order.removeAll { $0 == key }
+    /// Wirft alle gemerkten Positionen weg.
+    ///
+    /// Nötig beim Projektwechsel: Die Schlüssel sind über alle Projekte hinweg
+    /// dieselben (`fileTree`, `gitChanges`, `gitGraph` und je Datei ein
+    /// Verlaufsschlüssel). Ohne Leerung öffnete ein neues Projekt an der
+    /// Position, die im vorigen zuletzt galt — mitten im Dateibaum, in den
+    /// Änderungen oder im Commit-Verlauf (Review-Fund 2026-08-25). Vorher gab
+    /// es hier ein `forget(_:)` für einen einzelnen Schlüssel; es hatte im
+    /// Produktcode nie einen Aufrufer.
+    func removeAll() {
+        offsets.removeAll()
+        order.removeAll()
     }
 }
 
