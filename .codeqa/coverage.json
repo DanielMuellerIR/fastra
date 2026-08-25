@@ -355,15 +355,15 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-25T23:42:46+02:00",
-        "observed_head": "c0d3929584b6c7cd8a195856a956bae200f5e282",
-        "content_sha256": "8b6f5be2caad8064f2df483db2a4ed698a6ac39425a6676be0f9c1382d916a55",
+        "completed_at": "2026-08-26T00:37:11+02:00",
+        "observed_head": "697767d186f12ae8f335b7e605ae13d004c49020",
+        "content_sha256": "d39d6e4b662f4d8efe1befc587f908325712e1b2b950977b642e1c7e67944b6a",
         "file_count": 20,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Delta bestand ausschließlich aus dem konsistenten Versionsstand 1.112.7/214 in Info.plist und CHANGELOG für die verifizierte 4D-Fehlerbehebung; Bundle-Bau-, Signatur-, Portabilitäts- und Versionspfade blieben unverändert.",
+        "summary": "Versions-, Build- und Änderungsmetadaten des Makro-Fixes auf Konsistenz und Paketierbarkeit geprüft; keine zusätzliche Änderung am Buildpfad erforderlich.",
         "tests": [
-          "Weemac: app/build.sh PASS einschließlich Audits, Bundle-Bau und Portabilitätsgate; app/test.sh PASS mit 2170 Tests in beiden Phasen, environment_errors=0."
+          "Weemac: app/build.sh inklusive verify-portable-app PASS; git diff --check PASS"
         ]
       }
     },
@@ -609,7 +609,20 @@
       "risk": "high",
       "priority": 11,
       "reason": "4D-Makros verbinden Katalogerkennung, externe Prozesse und temporäre Dateien mit zwingender Diff-Vorschau und nativer Apply-Semantik.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-26T00:35:57+02:00",
+        "observed_head": "697767d186f12ae8f335b7e605ae13d004c49020",
+        "content_sha256": "559fd81a6f0e32e0c7e09fe9e87d265189d3d4e8d210e32dcf2f1f526e607662",
+        "file_count": 6,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Makroausführung vollständig an Dokument, Projekt und Ursprungsfenster gebunden; asynchroner Preflight und begrenzter Katalogcache entlasten den Main-Thread; XML-Budgets und deskriptorgebundene, exklusive Watch-Transaktion sichern fremde Quellen und tool4d-Lebenszyklus; zwei unabhängige Finalreviews ohne offene Befunde.",
+        "tests": [
+          "Test-Mac: app/build.sh inklusive Portabilität PASS; app/test.sh --filter FourDMacro 55 PASS/0 FAIL; Apply-Konkurrenztest PASS; localization-audit.sh PASS; Entwicklungsrepo: help-audit.sh PASS; git diff --check PASS"
+        ]
+      }
     },
     {
       "id": "four-d-tooling",
@@ -649,15 +662,15 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-25T23:42:36+02:00",
-        "observed_head": "c0d3929584b6c7cd8a195856a956bae200f5e282",
-        "content_sha256": "2e3bb69b885ddd6b9133db5883ded048d4d5c565d5dcb380afd2fe0fabd53d44",
+        "completed_at": "2026-08-26T00:37:10+02:00",
+        "observed_head": "697767d186f12ae8f335b7e605ae13d004c49020",
+        "content_sha256": "dfe1bf1afdbbaddcdffdefdd264a7626080dff7a830f3df8bb7a664db31e84be",
         "file_count": 28,
         "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "FourDProjectIndexController bündelt Dateisystemereignisse während eines nicht abbrechbaren synchronen Scans zu genau einem Folgescan und veröffentlicht keinen gemischten Zwischenstand; FourDTokenTransform schützt Date-/Time-Typdeklarationen vor gelernten Befehlssuffixen; Swift-6-Sendable-Warnung des Standardscanners beseitigt; Subagent-Grenzreview ohne Restfund.",
+        "summary": "Delta aus der Makrohärtung geprüft: Tool4DDiscovery vermeidet wiederholte globale Suchen und liefert dieselbe priorisierte Kandidatensemantik; Aufrufer- und Fehlergrenzen wurden im Makro-Vollreview mit zwei unabhängigen Reviews kontrolliert.",
         "tests": [
-          "Weemac: app/build.sh PASS einschließlich Portabilitätsgate; app/test.sh PASS mit 2066 parallelen Tests in 75 Suites und 104 seriellen Integrationstests in 11 Suites, environment_errors=0; gezielte 4D-Controller-/Token-Tests PASS."
+          "Weemac: app/build.sh PASS; app/test.sh --filter FourDMacro 55 PASS/0 FAIL; localization-audit.sh PASS; git diff --check PASS"
         ]
       }
     },
@@ -826,15 +839,15 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-25T23:26:24+02:00",
-        "observed_head": "a9b5882045e452133f8ef8d984d018a225f0b94c",
-        "content_sha256": "50a31c5a68daa1f85a320ae17ec1ea1af6e09f3a2f5663e69bcc7a285bfa27ec",
+        "completed_at": "2026-08-26T00:37:11+02:00",
+        "observed_head": "697767d186f12ae8f335b7e605ae13d004c49020",
+        "content_sha256": "d39b2f1ad5d306d719226b1bfe0af95c34ba99583680784f2fe25be28b27148e",
         "file_count": 21,
         "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Der neue Vergleichsfehler ist vollständig deutsch/englisch lokalisiert; Hilfe-Inhalt und Review-Marker sind bis zum Produktcommit geprüft.",
+        "summary": "Neue Makrofehler und Ablaufgrenzen vollständig in Deutsch und Englisch ergänzt; Hilfe auf die geänderte Makrosemantik geprüft und Marker auf den Implementierungsstand fortgeschrieben.",
         "tests": [
-          "Weemac: localization-audit 395 SwiftUI-Strings, 846 L10n-Literale und 1457 englische Übersetzungen grün; help-audit --release grün."
+          "Test-Mac: localization-audit.sh PASS; Entwicklungsrepo: help-audit.sh PASS; app/build.sh PASS"
         ]
       }
     },
