@@ -685,7 +685,20 @@
       "risk": "high",
       "priority": 12,
       "reason": "Druckpfade verbinden Nutzerinhalte mit AppKit/WebKit, asynchronen modalen Rückrufen und dauerhaftem Ausgabeformat.",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-26T01:11:49+02:00",
+        "observed_head": "6d07afbe94f9cf573ea7f978e9a40df77875d88c",
+        "content_sha256": "1fa494cccaaf4de571b24bc134b3921bb35d5cbce3270fca31978399b4723521",
+        "file_count": 4,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Asynchrone Markdown-Druckaufträge schließen bei WebKit-, Fenster- und Timeoutfehlern genau einmal; Druckfehler bleiben von Nutzerabbruch unterscheidbar, und späte WebKit-Signale bauen laufende AppKit-Aufträge nicht mehr ab.",
+        "tests": [
+          "Weemac: build.sh PASS inklusive Fenster-Zielaudit und Portabilität; test.sh 2087+104 PASS, 0 Fehler/Umgebungsfehler; gezielt 43 Drucktests PASS; localization-audit PASS."
+        ]
+      }
     },
     {
       "id": "text-operations-formatting",
