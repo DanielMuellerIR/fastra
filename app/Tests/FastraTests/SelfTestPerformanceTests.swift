@@ -423,6 +423,77 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         #expect(selfTestSource.contains("{ runWindowsDump() }"))
     }
 
+    @Test("Fensterlose Startguards warten auf Zustand statt feste Sekunden")
+    func windowlessStartGuardsUseReadinessPolling() throws {
+        let source = try String(
+            contentsOf: performanceToolsDirectory.deletingLastPathComponent()
+                .appendingPathComponent("Sources/Fastra/SelfTest.swift"),
+            encoding: .utf8
+        )
+        let runFunction = try #require(source.range(of: "static func runIfRequested()"))
+        let switchRange = try #require(source.range(
+            of: "        switch name {",
+            range: runFunction.upperBound..<source.endIndex
+        ))
+        let dispatchSource = source[switchRange.upperBound...]
+        func caseBody(_ testName: String) throws -> Substring {
+            let marker = "        case \"\(testName)\":"
+            let start = try #require(dispatchSource.range(of: marker))
+            let tail = dispatchSource[start.upperBound...]
+            let end = ["\n        case ", "\n        default:"]
+                .compactMap { tail.range(of: $0)?.lowerBound }
+                .min() ?? tail.endIndex
+            return tail[..<end]
+        }
+        for testName in [
+            "filemodes", "search", "project", "git", "gitactions",
+            "openscope", "selsearch", "wildcard",
+        ] {
+            let body = try caseBody(testName)
+            #expect(body.contains("waitForWorkspace"))
+            #expect(!body.contains("asyncAfter"))
+        }
+        for testName in ["macro4dengine", "tool4dlsp", "markdownimport", "localization"] {
+            let body = try caseBody(testName)
+            #expect(body.contains("DispatchQueue.main.async"))
+            #expect(!body.contains("asyncAfter"))
+        }
+        for testName in ["sessionrestore", "coldopen", "coldopenoff", "replaceall", "windows"] {
+            let body = try caseBody(testName)
+            #expect(body.contains("DispatchQueue.main.async"))
+            #expect(!body.contains("waitForMainWindow"))
+            #expect(!body.contains("asyncAfter"))
+        }
+        let aboutBody = try caseBody("aboutshot")
+        #expect(aboutBody.contains("Task { @MainActor in runAboutShot() }"))
+        #expect(!aboutBody.contains("waitForMainWindow"))
+
+        let updatesBody = try caseBody("updates")
+        #expect(updatesBody.contains("waitForUpdatesMenu()"))
+        #expect(!updatesBody.contains("asyncAfter"))
+        let updatesHelperStart = try #require(source.range(
+            of: "    private static func waitForUpdatesMenu(tick: Int = 0)"
+        ))
+        let updatesHelperTail = source[updatesHelperStart.lowerBound...]
+        let updatesHelperEnd = try #require(updatesHelperTail.range(
+            of: "\n    /// Pollt (max. ~15 s"
+        ))
+        let updatesHelper = updatesHelperTail[..<updatesHelperEnd.lowerBound]
+        #expect(updatesHelper.contains("item.action == #selector"))
+        #expect(updatesHelper.contains("item.target is SPUStandardUpdaterController"))
+        #expect(updatesHelper.contains("if tick >= 100"))
+        #expect(updatesHelper.contains("runUpdatesTest()"))
+        #expect(updatesHelper.contains("deadline: .now() + 0.05"))
+        #expect(updatesHelper.contains("waitForUpdatesMenu(tick: tick + 1)"))
+
+        // `loadperf` misst Main-Thread-Lücken. Seine bisherige Startpause darf
+        // erst entfallen, wenn ein eigener stabiler Heartbeat-Guard existiert.
+        let loadPerformanceBody = try caseBody("loadperf")
+        #expect(loadPerformanceBody.contains(
+            "DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runLoadPerfTest() }"
+        ))
+    }
+
     @Test("Fertiger Fokustest wartet nicht mehr auf die Aktivierung")
     func finishedForegroundSelftestSkipsActivationDelay() throws {
         let root = FileManager.default.temporaryDirectory

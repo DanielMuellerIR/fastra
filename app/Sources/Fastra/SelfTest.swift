@@ -525,9 +525,9 @@ enum SelfTest {
         case "findbar":   waitForMainWindow { runFindBarTest() }
         case "newwindow": waitForMainWindow { runNewWindowTest() }
         case "welcomenew": waitForMainWindow { runWelcomeNewTabTest() }
-        case "sessionrestore": waitForMainWindow { runSessionRestoreTest() }
-        case "coldopen": waitForMainWindow { runColdOpenTest(restoreEnabled: true) }
-        case "coldopenoff": waitForMainWindow { runColdOpenTest(restoreEnabled: false) }
+        case "sessionrestore": DispatchQueue.main.async { runSessionRestoreTest() }
+        case "coldopen": DispatchQueue.main.async { runColdOpenTest(restoreEnabled: true) }
+        case "coldopenoff": DispatchQueue.main.async { runColdOpenTest(restoreEnabled: false) }
         case "multisearch": waitForMainWindow { runMultiWindowSearchJumpTest() }
         case "bgscroll": waitForMainWindow { runBackgroundScrollTest() }
         case "cmdw":      waitForMainWindow { openSearchThen { runCmdWTest() } }
@@ -577,7 +577,7 @@ enum SelfTest {
         case "comment4d": waitForMainWindow { runFourDCommentEditTest() }
         case "sighelp4d": waitForMainWindow { runFourDSignatureHelpTest() }
         case "sighelpshot": waitForMainWindow { runFourDSignatureHelpShot() }
-        case "replaceall": waitForMainWindow { runReplaceAllTest() }
+        case "replaceall": DispatchQueue.main.async { runReplaceAllTest() }
         case "pilldrop":  waitForMainWindow { openSearchThen { runPillDropTest() } }
         case "navmatch":  waitForMainWindow { openSearchThen { runNavMatchTest() } }
         case "scrolljump": waitForMainWindow { runScrollJumpTest() }
@@ -598,10 +598,9 @@ enum SelfTest {
         case "githistory": waitForMainWindow { runGitHistoryTest() }
         case "filediff": waitForMainWindow { runFileDiffTest() }
         case "macro4d": waitForMainWindow { runFourDMacroSelfTest() }
-        case "macro4dengine":
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runFourDMacroEngineTest() }
+        case "macro4dengine": DispatchQueue.main.async { runFourDMacroEngineTest() }
         case "tool4dhint": waitForMainWindow { runTool4DHintTest() }
-        case "tool4dlsp": DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        case "tool4dlsp": DispatchQueue.main.async {
             runTool4DLSPIntegrationTest()
         }
         case "gototarget": waitForMainWindow { runGoToTargetTest() }
@@ -616,15 +615,15 @@ enum SelfTest {
         case "filemodes":
             // Fensterlos — echte Dateien durch den Workspace-Ladepfad routen:
             // Null-Bytes → Hex, große Textdatei → abschnittsweise.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runFileModesTest() }
+            waitForWorkspace { runFileModesTest() }
         case "search":
-            // Fensterlos — braucht nur Workspace + SearchRunner. Die
-            // Engine ist nach fixer Anlaufzeit sicher initialisiert.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runSearchTest() }
+            // Fensterlos — braucht nur Workspace + den in dessen Initializer
+            // vollständig erzeugten SearchRunner.
+            waitForWorkspace { runSearchTest() }
         case "project":
             // Fensterlos — Projekt- & Git-Ausbau Etappe 1 (Willkommen-
             // Bedingung, Projekt öffnen, Dateibaum, Repo-Erkennung).
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runProjectTest() }
+            waitForWorkspace { runProjectTest() }
         case "projectperf":
             // Bewusst nicht in ALL_TESTS: benötigt einen ausdrücklich per
             // FASTRA_PROJECT_PERF_ROOT übergebenen, nur gelesenen Realbestand.
@@ -639,24 +638,25 @@ enum SelfTest {
         case "markdownimport":
             // Fensterlos — echte Umwandlung über das installierte
             // `poormans-text`: Formatkatalog, flache Datei, Ordner mit Bildern
-            // und Kollisionsschutz an echten Dateien.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runMarkdownImportTest() }
+            // und Kollisionsschutz an echten Dateien. Der Katalogabruf wartet
+            // selbst auf den schon gestarteten Hintergrundprozess.
+            DispatchQueue.main.async { runMarkdownImportTest() }
         case "localization":
             // Fensterlos — prüft zusätzlich zum Unit-Test das fertig gepackte
             // Haupt-App-Bundle. Genau dort sucht SwiftUI statische Schlüssel.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runLocalizationTest() }
+            DispatchQueue.main.async { runLocalizationTest() }
         case "updates":
-            // Fensterlos — prüft die echte App-Menüleiste erst nach SwiftUIs
-            // spätem Menü-Wiederaufbau sowie Sparkles Bundle-Konfiguration.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { runUpdatesTest() }
+            // Fensterlos — SwiftUI baut die App-Menüleiste spät um. Der Test
+            // wartet auf den echten Menüpunkt samt fertigem Target und Action.
+            waitForUpdatesMenu()
         case "git":
             // Fensterlos — Git-Status end-to-end (Etappe 2): echtes Temp-Repo,
             // Datei-Zustände, Branch, Ordner-Rollup, dialogfreie git-Auflösung.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runGitTest() }
+            waitForWorkspace { runGitTest() }
         case "gitactions":
             // Fensterlos — kuratierte Git-Aktionen end-to-end mit bare-Remote
             // (Push/Pull-FF/Amend/Switch/Pickaxe), Etappe 2 Schritt 4.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runGitActionsTest() }
+            waitForWorkspace { runGitActionsTest() }
         case "gitstagefolder":
             // Echter Fensterklick auf den Hover-Knopf einer von Git
             // zusammengefassten unversionierten Ordnerzeile.
@@ -675,16 +675,16 @@ enum SelfTest {
         case "openscope":
             // Fensterlos — Such-Scope „Geöffnet" end-to-end über Workspace +
             // SearchRunner (Multi-Tab-Suche + Alle-ersetzen über alle Tabs).
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runOpenScopeTest() }
+            waitForWorkspace { runOpenScopeTest() }
         case "selsearch":
             // Fensterlos — „Nur in Auswahl" (K3) end-to-end über Workspace +
             // SearchRunner (eingefrorene Selektions-Range begrenzt die Suche).
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runSelSearchTest() }
+            waitForWorkspace { runSelSearchTest() }
         case "wildcard":
             // Fensterlos — Platzhalter-Suche `*` (Feature J) end-to-end über
             // Workspace + SearchRunner (RegEx aus, Mini-Schalter wechselt
             // Platzhalter ⇄ literal).
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runWildcardTest() }
+            waitForWorkspace { runWildcardTest() }
         case "loadperf":
             // Misst den vollständigen Workspace-/Editor-Ladepfad. Ohne
             // Vorgabe erzeugt der Test eine synthetische 4,36-MB-Megazeile.
@@ -733,9 +733,7 @@ enum SelfTest {
         case "aboutshot":
             // Diagnose: Über-Dialog für die visuelle Kontrolle von Icon,
             // Wortmarke, Version und Textabständen.
-            waitForMainWindow {
-                Task { @MainActor in runAboutShot() }
-            }
+            Task { @MainActor in runAboutShot() }
         case "markdownshot":
             // Diagnose: Markdown-Datei mit integrierter Rich-Text-Vorschau.
             // Dient der visuellen Kontrolle von Chrome, Splitter und Typografie.
@@ -754,7 +752,7 @@ enum SelfTest {
             // mit echtem Branch/Merge-Repo fürs fenstergezielte Capture (Phase 3).
             // Setzt FASTRA_SIDEBAR=graph voraus (Seitenleisten-Vorwahl).
             waitForMainWindow { runGraphShot() }
-        case "windows":   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { runWindowsDump() }
+        case "windows": DispatchQueue.main.async { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
                 + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabvisibility, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, mdimagewatch, mdindent, mddropcursor, pasteindent, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitmultidiscard, gitstickyheader, diffwide, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, macro4d, macro4dengine, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
@@ -763,10 +761,7 @@ enum SelfTest {
 
     private static func runUpdatesTest() {
         testLabel = "updates"
-        guard let appMenu = NSApp.mainMenu?.items.first?.submenu,
-              let item = appMenu.items.first(where: {
-                  $0.identifier == NSUserInterfaceItemIdentifier("Fastra.CheckForUpdates")
-              }) else {
+        guard let item = updatesMenuItem() else {
             finish(false, "Sparkle-Menüpunkt fehlt im echten App-Menü")
         }
         guard item.action == #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
@@ -790,6 +785,50 @@ enum SelfTest {
     }
 
     // MARK: - Fenster-Polling (statt fixem Start-Guard)
+
+    /// Fensterlose Workspace-Tests brauchen keinen pauschalen Startpuffer.
+    /// `Workspace.init` erzeugt den SearchRunner vollständig, bevor es
+    /// `Workspace.shared` setzt. Deshalb ist dieser Hook die überprüfbare
+    /// Bereitschaftsgrenze für alle Tests, die nur das Modell treiben.
+    private static func waitForWorkspace(tick: Int = 0, then body: @escaping () -> Void) {
+        if Workspace.shared != nil {
+            body()
+            return
+        }
+        if tick >= 300 {
+            finish(false, "Workspace.shared blieb binnen 15 s nil")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            waitForWorkspace(tick: tick + 1, then: body)
+        }
+    }
+
+    private static func updatesMenuItem() -> NSMenuItem? {
+        NSApp.mainMenu?.items.first?.submenu?.items.first {
+            $0.identifier == NSUserInterfaceItemIdentifier("Fastra.CheckForUpdates")
+        }
+    }
+
+    /// `scheduleUpdateMenuInstallation` läuft nach dem SwiftUI-Scene-Aufbau.
+    /// Ein fester Fünf-Sekunden-Puffer wartet auf schnellen Macs fast immer
+    /// grundlos. ID, Target und Action bilden zusammen den fertigen Zustand;
+    /// bei einem echten Fehler liefert `runUpdatesTest` nach spätestens fünf
+    /// Sekunden weiter die präzise Diagnose.
+    private static func waitForUpdatesMenu(tick: Int = 0) {
+        if let item = updatesMenuItem(),
+           item.action == #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+           item.target is SPUStandardUpdaterController {
+            runUpdatesTest()
+            return
+        }
+        if tick >= 100 {
+            runUpdatesTest()
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            waitForUpdatesMenu(tick: tick + 1)
+        }
+    }
 
     /// Pollt (max. ~15 s, 50-ms-Takt), bis ein SICHTBARES Hauptfenster
     /// existiert, lässt die UI dann 0,5 s setteln und ruft `body`.
