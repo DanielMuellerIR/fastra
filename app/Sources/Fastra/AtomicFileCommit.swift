@@ -165,6 +165,32 @@ enum AtomicFileCommit {
                                            displaced: preparedURL)
         }
 
+        // Nach `rename` besitzt unsere vorbereitete Inode eine neue ctime.
+        // Diesen unveränderten Stand binden wir VOR dem Test-Hook. Er ist die
+        // einzige sichere Rücktauschbasis; eine spätere Momentaufnahme könnte
+        // bereits die Version eines gleichzeitigen Fremd-Writes festhalten.
+        var preparedRollbackVersion = stat()
+        do {
+            guard fstat(preparedFD, &preparedRollbackVersion) == 0 else {
+                throw currentPOSIXError()
+            }
+            let preparedAtPath = try childStat(directoryFD, targetName)
+            let installedSnapshot = try FileSnapshot.readSnapshotOnly(
+                descriptor: preparedFD, fileStat: preparedRollbackVersion,
+                byteLimit: UInt64(replacementContent.byteCount))
+            guard sameIdentity(preparedAtPath, preparedRollbackVersion),
+                  sameVersion(preparedAtPath, preparedRollbackVersion),
+                  sameVersionAcrossRename(preparedBefore, preparedRollbackVersion),
+                  installedSnapshot.hasSameContent(as: replacementContent) else {
+                throw Failure.recoveryRequired(target: targetURL,
+                                               displaced: preparedURL)
+            }
+        } catch {
+            throw Failure.recoveryRequired(target: targetURL,
+                                           displaced: preparedURL)
+        }
+        var canRollbackPrepared = true
+
         // Ab hier enthält der Temp-Name den tatsächlich verdrängten Zielstand.
         // Jede Validierungs- oder Metadatenpanne versucht zuerst den gebundenen
         // Rücktausch. Nur wenn dessen Vorbedingungen nicht mehr gelten, müssen
@@ -181,7 +207,8 @@ enum AtomicFileCommit {
             let displacedAtPath = try childStat(directoryFD, preparedName)
 
             let installedPrepared = sameIdentity(targetAtPath, preparedAfterSwap)
-                && sameVersionAcrossRename(preparedBefore, preparedAfterSwap)
+                && sameVersion(preparedRollbackVersion, preparedAfterSwap)
+                && sameVersion(targetAtPath, preparedAfterSwap)
             let displacedWasExpected = sameIdentity(displacedAtPath, targetBefore)
                 && sameIdentity(displacedAtPath, displacedAfterSwap)
 
@@ -193,6 +220,10 @@ enum AtomicFileCommit {
             // übernehmen. Eine ACL-/Xattr-Änderung vor dem Tausch geht damit
             // nicht aufgrund eines früheren Kopierzeitpunkts verloren.
             let displacedBeforeMetadata = displacedAfterSwap
+            // `fcopyfile` kann Metadaten teilweise schreiben und dann
+            // scheitern. Während dieses Fensters gibt es keine belegte eigene
+            // Version, die Fastra gefahrlos zurücktauschen und löschen dürfte.
+            canRollbackPrepared = false
             guard fcopyfile(targetFD, preparedFD, nil,
                             UInt32(COPYFILE_METADATA)) == 0 else {
                 throw currentPOSIXError()
@@ -224,8 +255,12 @@ enum AtomicFileCommit {
             let installedSnapshot = try FileSnapshot.readSnapshotOnly(
                 descriptor: preparedFD, fileStat: preparedAfterMetadata,
                 byteLimit: UInt64(replacementContent.byteCount))
-            guard displacedSnapshot == expected,
-                  installedSnapshot.hasSameContent(as: replacementContent) else {
+            guard installedSnapshot.hasSameContent(as: replacementContent) else {
+                throw Failure.conflictRolledBack
+            }
+            preparedRollbackVersion = preparedAfterMetadata
+            canRollbackPrepared = true
+            guard displacedSnapshot == expected else {
                 throw Failure.conflictRolledBack
             }
 
@@ -254,12 +289,18 @@ enum AtomicFileCommit {
                 identity: FileIdentity(stat: preparedFinal))
         } catch let failure as Failure {
             if case .recoveryRequired = failure { throw failure }
+            guard canRollbackPrepared else {
+                throw Failure.recoveryRequired(target: targetURL,
+                                               displaced: preparedURL)
+            }
             do {
                 try rollbackSwap(
                     directoryFD: directoryFD,
                     targetName: targetName,
                     preparedName: preparedName,
                     preparedFD: preparedFD,
+                    expectedPreparedVersion: preparedRollbackVersion,
+                    replacementContent: replacementContent,
                     flags: flags,
                     targetURL: targetURL,
                     preparedURL: preparedURL)
@@ -268,12 +309,18 @@ enum AtomicFileCommit {
             }
             throw failure
         } catch {
+            guard canRollbackPrepared else {
+                throw Failure.recoveryRequired(target: targetURL,
+                                               displaced: preparedURL)
+            }
             do {
                 try rollbackSwap(
                     directoryFD: directoryFD,
                     targetName: targetName,
                     preparedName: preparedName,
                     preparedFD: preparedFD,
+                    expectedPreparedVersion: preparedRollbackVersion,
+                    replacementContent: replacementContent,
                     flags: flags,
                     targetURL: targetURL,
                     preparedURL: preparedURL)
@@ -289,12 +336,20 @@ enum AtomicFileCommit {
         targetName: String,
         preparedName: String,
         preparedFD: Int32,
+        expectedPreparedVersion: stat,
+        replacementContent: FileSnapshot,
         flags: UInt32,
         targetURL: URL,
         preparedURL: URL
     ) throws {
         var preparedVersion = stat()
-        guard fstat(preparedFD, &preparedVersion) == 0 else {
+        guard fstat(preparedFD, &preparedVersion) == 0,
+              sameVersion(expectedPreparedVersion, preparedVersion),
+              preparedVersion.st_size == off_t(replacementContent.byteCount),
+              let preparedSnapshot = try? FileSnapshot.readSnapshotOnly(
+                descriptor: preparedFD, fileStat: preparedVersion,
+                byteLimit: UInt64(replacementContent.byteCount)),
+              preparedSnapshot.hasSameContent(as: replacementContent) else {
             throw Failure.recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
@@ -353,7 +408,8 @@ enum AtomicFileCommit {
               sameIdentity(restoredTarget, displacedVersion),
               sameVersionAcrossRename(displacedVersion, restoredTarget),
               sameIdentity(restoredPrepared, preparedAfterRollback),
-              sameVersionAcrossRename(preparedVersion, preparedAfterRollback),
+              sameVersionAcrossRename(expectedPreparedVersion,
+                                      preparedAfterRollback),
               unlinkat(directoryFD, preparedName, 0) == 0 else {
             throw Failure.recoveryRequired(target: targetURL,
                                            displaced: preparedURL)

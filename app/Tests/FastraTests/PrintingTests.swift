@@ -795,7 +795,7 @@ struct MarkdownPrintJobLifecycleTests {
 
     @MainActor
     @Test("Schließen des Ursprungsfensters bricht die Vorbereitung ab")
-    func closingTargetWindowCancelsExactlyOnce() {
+    func closingTargetWindowCancelsExactlyOnce() async {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 300, height: 200),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -811,8 +811,13 @@ struct MarkdownPrintJobLifecycleTests {
         job?.preparationDidTimeOut()
         #expect(outcomes == [.cancelled])
         job = nil
-        let retainedAfterFinish = weakJob.value
-        #expect(retainedAfterFinish == nil)
+        // WebKit oder NotificationCenter darf die letzte interne Referenz bis
+        // zum nächsten Main-RunLoop-Durchlauf halten. Eine dauerhaft lebende
+        // Referenz bleibt dagegen ein echter Fehler.
+        let releasedAfterFinish = await waitUntil(timeout: 1) {
+            weakJob.value == nil
+        }
+        #expect(releasedAfterFinish)
     }
 
     @MainActor

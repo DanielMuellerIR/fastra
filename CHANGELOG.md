@@ -9,6 +9,27 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.112.10] — 2026-08-26
+
+### Behoben
+
+- **Gleichzeitige Fremdänderungen bleiben beim atomaren Speichern erhalten.**
+  Fastra bindet die eigene Ersatzdatei unmittelbar nach dem Namenstausch an
+  ihre geprüfte Inode-Version. Ändert ein anderer Prozess diese Inode danach,
+  tauscht oder löscht Fastra sie nicht als vermeintlich eigenen Stand; Ziel und
+  verdrängte Ausgangsdatei bleiben zur sicheren Klärung erhalten.
+- **Große 4D-Methoden werden ohne quadratische Präfixkopien
+  rücktokenisiert.** Fastra bestimmt `var`- und `#DECLARE`-Typpositionen in
+  einem Vorwärtslauf und erledigt die Rücktokenisierung des tool4d-Ergebnisses
+  vollständig im Hintergrund, bevor es die Diff-Vorschau aufbaut.
+- **Fremde 4D-Makrokataloge begrenzen jetzt auch ihre Bausteine.** Pro Quelle
+  und Katalog gelten feste Grenzen für Literale und Platzhalter; der Cache
+  rechnet auch Makro- und Bausteinobjekte in sein Speichergewicht ein.
+- **Bestätigte Fremdstände großer und binärer Dateien werden nach dem letzten
+  verworfenen Hex-Edit geladen.** Eine eigene Generation erkennt den neueren
+  Plattenstand auch dann, wenn die Datei absichtlich keinen vollständigen
+  Inhaltssnapshot besitzt.
+
 ## [v1.112.9] — 2026-08-26
 
 ### Behoben

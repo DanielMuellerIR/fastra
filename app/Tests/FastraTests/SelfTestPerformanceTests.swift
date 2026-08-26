@@ -203,6 +203,42 @@ struct SelfTestOutcomeTests {
     }
 }
 
+@Suite("Selbsttest-Runner-Skips")
+struct SelfTestRunnerSkipTests {
+    @Test("Vollständig übersprungener Fensterlauf schreibt beide Ergebnisformate")
+    func lockedWindowOnlyRunEmitsStructuredSkip() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-selftest-locked-\(UUID().uuidString)")
+        let sandboxParent = root.appendingPathComponent("sandboxes")
+        let fakeApp = root.appendingPathComponent("Fastra")
+        let runner = performanceToolsDirectory.deletingLastPathComponent()
+            .appendingPathComponent("selftest.sh")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(
+            at: sandboxParent, withIntermediateDirectories: true
+        )
+        try "#!/bin/bash\nexit 91\n".write(
+            to: fakeApp, atomically: true, encoding: .utf8
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: fakeApp.path
+        )
+
+        let result = try runPerformanceTool(
+            "/bin/bash", arguments: [runner.path, "findbar"], environment: [
+                "FASTRA_SELFTEST_APP_BIN": fakeApp.path,
+                "FASTRA_SELFTEST_TEST_CONSOLE_LOCKED": "1",
+                "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+            ]
+        )
+
+        #expect(result.status == 2, "Runner-Ausgabe: \(result.output)")
+        #expect(result.output.components(separatedBy:
+            "SELFTEST-RESULT v=1 test=findbar status=SKIP").count - 1 == 1)
+        #expect(result.output.contains("SELFTEST findbar: SKIP"))
+    }
+}
+
 @Suite("Lokale Selbsttest-Performance", .serialized)
 struct SerialRunnerIntegrationSelfTestPerformanceTests {
     @Test("Maschinenstatus bestimmt Ergebnis ohne mehrdeutige Textsuche")

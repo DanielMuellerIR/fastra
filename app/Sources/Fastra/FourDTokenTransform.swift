@@ -44,6 +44,7 @@ enum FourDTokenTransform {
     static func tokenizeCommands(_ text: String) -> String {
         let tokens = FourDTokenizer.tokenize(text)
         let original = text as NSString
+        let declarationTypes = declarationTypeLocations(tokens, in: original)
         let result = NSMutableString(string: text)
         for token in tokens.reversed() where token.kind == .command {
             let value = original.substring(with: token.range)
@@ -51,7 +52,7 @@ enum FourDTokenTransform {
             // `Date` und `Time` sind zugleich Befehle und Typen. In einer
             // Deklaration darf aus `var $d : Date` deshalb nie `Date:C102`
             // werden.
-            guard !isDeclarationType(token, in: original) else { continue }
+            guard !declarationTypes.contains(token.range.location) else { continue }
             guard let number = FourDSymbols
                 .commandDetails[value.lowercased()]?.number else { continue }
             result.insert(":C\(number)", at: NSMaxRange(token.range))
@@ -108,6 +109,7 @@ enum FourDTokenTransform {
     static func retokenize(_ text: String, learned: [String: String]) -> String {
         let tokens = FourDTokenizer.tokenize(text)
         let original = text as NSString
+        let declarationTypes = declarationTypeLocations(tokens, in: original)
         let result = NSMutableString(string: text)
         // Längster Name zuerst: Sind `MyConst` UND `MyConst Extra` gelernt,
         // gehört das Suffix am gemeinsamen Start dem vollständigen Symbol.
@@ -134,7 +136,7 @@ enum FourDTokenTransform {
             // Ein aus einem Befehlsvorkommen gelerntes Suffix darf denselben
             // Namen nicht in einer Typdeklaration tokenisieren (`Date` und
             // `Time` sind zugleich 4D-Befehle und Typen).
-            guard !isDeclarationType(token, in: original) else { continue }
+            guard !declarationTypes.contains(token.range.location) else { continue }
             if let match = learnedMatch(at: token.range.location,
                                         tokenValue: value,
                                         in: original,
@@ -184,18 +186,51 @@ enum FourDTokenTransform {
         return nil
     }
 
-    /// Erkennt die Typposition in `var … : Typ` und `#DECLARE(… : Typ)`.
-    /// Nur der Text derselben Zeile vor dem Token zählt; Strings und
-    /// Kommentare erreichen diese Funktion nicht als Befehls-Token.
-    private static func isDeclarationType(_ token: FourDTokenizer.Token,
-                                          in text: NSString) -> Bool {
-        guard token.range.location > 0 else { return false }
-        let prefix = text.substring(to: token.range.location)
-        let line = prefix.components(separatedBy: .newlines).last ?? ""
-        return line.range(
-            of: #"(?i)(?:\bvar\b|#declare\b)[^\r\n]*:\s*$"#,
-            options: .regularExpression
-        ) != nil
+    private static let declarationKeywordPattern = try! NSRegularExpression(
+        pattern: #"(?i)\bvar\b|#declare\b"#
+    )
+
+    /// Bestimmt alle Typpositionen in einem Vorwärtslauf über Text und Tokens.
+    /// Der frühere Einzeltest kopierte für JEDES Token den gesamten Präfix und
+    /// zerlegte ihn in Zeilen; große Methoden wurden dadurch quadratisch.
+    private static func declarationTypeLocations(
+        _ tokens: [FourDTokenizer.Token], in text: NSString
+    ) -> Set<Int> {
+        var result = Set<Int>()
+        var lineStart = 0
+        var lineEnd = 0
+        var keywordLocation: Int?
+        let whitespace = CharacterSet.whitespaces
+        let source = text as String
+
+        for token in tokens {
+            let location = token.range.location
+            guard location >= 0, location <= text.length else { continue }
+            if location >= lineEnd {
+                var contentsEnd = 0
+                text.getLineStart(
+                    &lineStart, end: &lineEnd, contentsEnd: &contentsEnd,
+                    for: NSRange(location: location, length: 0)
+                )
+                let lineRange = NSRange(
+                    location: lineStart, length: max(0, contentsEnd - lineStart)
+                )
+                keywordLocation = declarationKeywordPattern.firstMatch(
+                    in: source, range: lineRange
+                )?.range.location
+            }
+            guard let keywordLocation, keywordLocation < location else { continue }
+            var cursor = location
+            while cursor > lineStart,
+                  let scalar = UnicodeScalar(text.character(at: cursor - 1)),
+                  whitespace.contains(scalar) {
+                cursor -= 1
+            }
+            guard cursor > lineStart,
+                  text.character(at: cursor - 1) == 0x3A else { continue }
+            result.insert(location)
+        }
+        return result
     }
 
     // MARK: - Adapter für das „Text"-Menü (Selektion bzw. ganze Datei)

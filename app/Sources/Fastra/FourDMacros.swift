@@ -115,11 +115,21 @@ enum FourDMacroXML {
         let sourceBytes: Int
         let macroCount: Int
         let textUTF16Units: Int
+        let partCount: Int
+
+        init(sourceBytes: Int, macroCount: Int, textUTF16Units: Int,
+             partCount: Int = 131_072) {
+            self.sourceBytes = sourceBytes
+            self.macroCount = macroCount
+            self.textUTF16Units = textUTF16Units
+            self.partCount = partCount
+        }
 
         static let catalog = Limits(
             sourceBytes: 8 * 1024 * 1024,
             macroCount: 4_096,
-            textUTF16Units: 4 * 1024 * 1024
+            textUTF16Units: 4 * 1024 * 1024,
+            partCount: 131_072
         )
     }
 
@@ -489,6 +499,7 @@ private final class FourDMacroCollector: NSObject, XMLParserDelegate {
     private(set) var exceededBudget = false
     private var textUTF16Units = 0
     private var seenMacroCount = 0
+    private var seenPartCount = 0
 
     /// Die gerade offenen Elemente. Über die Tiefe unterscheidet sich das
     /// umschließende `<text>`-Element vom gleichnamigen Platzhalter `<text/>`
@@ -559,7 +570,7 @@ private final class FourDMacroCollector: NSObject, XMLParserDelegate {
             currentMethodCall = ""
             return
         }
-        appendPlaceholder(elementName, attributes: attributeDict)
+        appendPlaceholder(elementName, attributes: attributeDict, parser: parser)
     }
 
     func parser(_ parser: XMLParser, didEndElement elementName: String,
@@ -570,7 +581,7 @@ private final class FourDMacroCollector: NSObject, XMLParserDelegate {
         } else if textContainerDepth == depth, elementName == "text" {
             textContainerDepth = nil
         } else if elementName == "macro" {
-            finishMacro()
+            finishMacro(parser)
         }
         if !openElements.isEmpty { openElements.removeLast() }
     }
@@ -608,9 +619,10 @@ private final class FourDMacroCollector: NSObject, XMLParserDelegate {
         methodDepth = nil
     }
 
-    private func finishMacro() {
+    private func finishMacro(_ parser: XMLParser) {
         guard let rawName = currentRawName else { return }
-        flushLiteral()
+        flushLiteral(parser)
+        guard !exceededBudget else { return }
         let trimmedName = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         let isSeparator = trimmedName == "-"
         let split = isSeparator
@@ -640,7 +652,8 @@ private final class FourDMacroCollector: NSObject, XMLParserDelegate {
     /// selbst kennt Fastra nicht. Das Makro gilt dadurch als nicht ausführbar
     /// (siehe `capability`), statt still unvollständigen Text einzusetzen.
     private func appendPlaceholder(_ elementName: String,
-                                   attributes: [String: String]) {
+                                   attributes: [String: String],
+                                   parser: XMLParser) {
         let part: FourDMacroTextPart
         switch elementName {
         case "caret": part = .caret
@@ -659,8 +672,8 @@ private final class FourDMacroCollector: NSObject, XMLParserDelegate {
             }
             return
         }
-        flushLiteral()
-        currentParts.append(part)
+        flushLiteral(parser)
+        appendPart(part, parser: parser)
     }
 
     /// Fehlendes Format = 4D-Standard 0. Ein nicht numerischer Wert bleibt als
@@ -673,10 +686,22 @@ private final class FourDMacroCollector: NSObject, XMLParserDelegate {
     /// Gesammelten Text als einen Baustein ablegen. So entsteht pro
     /// zusammenhängendem Textstück genau ein `.literal`, auch wenn
     /// `XMLParser` es in mehreren Häppchen liefert.
-    private func flushLiteral() {
+    private func flushLiteral(_ parser: XMLParser) {
         guard !pendingLiteral.isEmpty else { return }
-        currentParts.append(.literal(pendingLiteral))
+        appendPart(.literal(pendingLiteral), parser: parser)
         pendingLiteral = ""
+    }
+
+    /// Auch null Zeichen lange Platzhalter besitzen Array- und Enum-Speicher.
+    /// Die Textgrenze allein begrenzt diese Struktur deshalb nicht.
+    private func appendPart(_ part: FourDMacroTextPart, parser: XMLParser) {
+        guard seenPartCount < limits.partCount else {
+            exceededBudget = true
+            parser.abortParsing()
+            return
+        }
+        seenPartCount += 1
+        currentParts.append(part)
     }
 }
 

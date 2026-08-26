@@ -688,14 +688,15 @@ differently. A menu item's tooltip identifies its source (component, user
 macro folder, or 4D version), so identically named macros remain distinguishable.
 
 Fastra reads at most 8 MiB from each macro XML file and accepts at most 4,096
-macros per source. The complete catalog is limited to 256 sources, 8,192 macros,
-and 8 million units of internal text length (roughly 8 million characters for
-simple text); a source outside those limits is not added to the menu. When
-switching between method folders in the same project, Fastra
-reuses unchanged sources from a file-fingerprint cache instead of parsing their
-XML again. The cache retains at most eight catalogs and 16 million units of
-internal text length in total; standalone files share the same global macro
-sources within it.
+macros, 4 Mi (4,194,304) UTF-16 text units, and 131,072 stored parts such as literals
+or placeholders per source. The complete catalog is limited to 256 sources,
+8,192 macros, 8 Mi (8,388,608) UTF-16 text units, and 262,144 parts; a source outside
+those limits is not added to the menu. When switching between method folders
+in the same project, Fastra reuses unchanged sources from a file-fingerprint
+cache instead of parsing their XML again. The cache retains at most eight
+catalogs and 16 Mi (16,777,216) weighted units in total; every macro and part counts in
+addition to its text. Standalone files share the same global macro sources
+within it.
 
 **The completion family** (`MAO_MethodeKomplettierenNeu` and its variants)
 runs headless through tool4d against an engine project providing the

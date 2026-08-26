@@ -203,6 +203,7 @@ RUNNER_DEFERRED_SIGNAL=""
 console_locked() {
     # Rein technische Runner-Integrationstests dürfen nicht vom zufälligen
     # Sperrstatus des Test-Macs abhängen. Produktläufe setzen diesen Hook nie.
+    [ "${FASTRA_SELFTEST_TEST_CONSOLE_LOCKED:-0}" = "1" ] && return 0
     [ "${FASTRA_SELFTEST_TEST_CONSOLE_UNLOCKED:-0}" = "1" ] && return 1
     ioreg -n Root -d1 2>/dev/null | grep -q '"IOConsoleLocked" = Yes'
 }
@@ -232,6 +233,10 @@ if console_locked; then
     done
     if [[ ${#FILTERED[@]} -eq 0 ]]; then
         echo "  Keiner der angeforderten Tests ist fensterlos. Abbruch (Exit 2)."
+        for t in "${SKIPPED_TESTS[@]}"; do
+            printf 'SELFTEST-RESULT v=1 test=%s status=SKIP\n' "$t"
+            printf 'SELFTEST %s: SKIP — Bildschirm ist gesperrt\n' "$t"
+        done
         exit 2
     fi
     echo "  Es läuft nur: ${FILTERED[*]}"

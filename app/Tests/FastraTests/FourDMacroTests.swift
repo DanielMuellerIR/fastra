@@ -182,6 +182,9 @@ func macroParserBudgetsAreHardLimits() {
         + String(repeating: "</x>", count: 300)
         + "</text></macro></macros>"
     ).utf8)
+    let manyParts = Data(
+        "<macros><macro name=\"A\"><text><caret/><selection/><caret/></text></macro></macros>".utf8
+    )
 
     #expect(FourDMacroXML.parse(
         data: one, sourceLabel: "bytes.xml",
@@ -207,6 +210,11 @@ func macroParserBudgetsAreHardLimits() {
         data: deeplyNested, sourceLabel: "nested-elements.xml",
         limits: .init(sourceBytes: deeplyNested.count, macroCount: 10,
                       textUTF16Units: 100)
+    ).isEmpty)
+    #expect(FourDMacroXML.parse(
+        data: manyParts, sourceLabel: "parts.xml",
+        limits: .init(sourceBytes: manyParts.count, macroCount: 10,
+                      textUTF16Units: 100, partCount: 2)
     ).isEmpty)
 }
 
@@ -405,6 +413,34 @@ func macroCatalogCacheIsBoundedLRU() throws {
     )
     #expect(!oldest.cacheHit)
     #expect(newest.cacheHit)
+}
+
+@Test("Makro-Katalogcache berechnet auch strukturelle Platzhalter")
+func macroCatalogCacheWeightsStructuralParts() throws {
+    let scratch = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let sourceURL = scratch.appendingPathComponent("Macros.xml")
+    let placeholders = String(repeating: "<caret/>", count: 32)
+    try writeFile(
+        sourceURL,
+        "<macros><macro name=\"X\"><text>\(placeholders)</text></macro></macros>"
+    )
+    let source = FourDMacroSource(url: sourceURL, origin: .userLibrary)
+    let cache = FourDMacroCatalogCache(
+        maximumEntryCount: 2, maximumTextUTF16Units: 128
+    )
+    let key = "parts-weight:\(UUID().uuidString)"
+
+    let first = FourDMacroCatalogLoader.load(
+        sources: [source], cacheKey: key, force: false, cache: cache
+    )
+    let second = FourDMacroCatalogLoader.load(
+        sources: [source], cacheKey: key, force: false, cache: cache
+    )
+
+    #expect(!first.cacheHit)
+    #expect(!second.cacheHit,
+            "Viele Platzhalter dürfen nicht als nahezu gewichtsloser Cacheeintrag gelten")
 }
 
 @Test("Fundorte: Komponenten (v20 und v21), dependencies.json, Benutzerordner und 4D.app")
@@ -780,6 +816,23 @@ func commandTokenizationSkipsDeclarationTypes() {
     #expect(tokenized.contains("$value : Date)"))
     #expect(tokenized.contains("$result : Time\n"))
     #expect(tokenized.contains("Date:C102("))
+}
+
+@Test("Viele 4D-Deklarationen behalten ihre Typen ohne wiederholte Präfixkopien")
+func commandTokenizationHandlesLargeDeclarationFiles() {
+    let declarations = (0..<4_096).map { index in
+        "var $date\(index) : Date\nvar $time\(index) : Time"
+    }.joined(separator: "\n")
+    let source = declarations + "\nDate(\"2026-08-26\")"
+    let tokenized = FourDTokenTransform.tokenizeCommands(source)
+    let retokenized = FourDTokenTransform.retokenize(
+        source, learned: ["date": ":C102", "time": ":C179"]
+    )
+
+    #expect(!tokenized.contains(": Date:C102"))
+    #expect(!tokenized.contains(": Time:C179"))
+    #expect(tokenized.hasSuffix("Date:C102(\"2026-08-26\")"))
+    #expect(retokenized == tokenized)
 }
 
 @Test("Unbekannte Platzhalter werden vor leerem Inhalt erklärt — auch im Methodenaufruf")

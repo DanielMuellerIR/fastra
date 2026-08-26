@@ -186,6 +186,12 @@ struct EditorTab: Identifiable, Hashable {
     /// weiterhin als Überschreibkonflikt erkennen.
     var externalFileObservation: ExternalFileObservation?
     var externalContentSnapshot: FileSnapshot?
+    /// Erhöht sich, wenn der Nutzer einen fremden Inhaltsstand ausdrücklich
+    /// behält. Anders als ein Snapshot funktioniert die Generation auch für
+    /// große und binäre Tabs, die absichtlich keinen Vollinhalt hashen.
+    private(set) var externalContentGeneration: UInt64
+    /// Generation, deren Bytes die Ansicht zuletzt wirklich geladen hat.
+    private(set) var displayedExternalContentGeneration: UInt64
     /// `true`, wenn der zuletzt gebundene Pfad nicht mehr als reguläre Datei
     /// gelesen werden konnte. Ein vollständig geladener Text bleibt dann als
     /// dirty Tab geschützt, bis derselbe Platteninhalt sicher zurückkehrt oder
@@ -304,6 +310,8 @@ struct EditorTab: Identifiable, Hashable {
         // auf dem Main-Thread einschmuggeln (Lade-Platzhalter entstehen dort).
         self.externalFileObservation = nil
         self.externalContentSnapshot = diskSnapshot
+        self.externalContentGeneration = 0
+        self.displayedExternalContentGeneration = 0
         self.externalFileUnavailable = false
         self.gitKind = gitKind
         self.gitDiffRequest = gitDiffRequest
@@ -349,8 +357,14 @@ struct EditorTab: Identifiable, Hashable {
     /// schreibende Konfliktschutz (`diskSnapshot`) bleibt davon unabhängig.
     mutating func recordExternalFileObservation(
         snapshot: FileSnapshot?,
-        observation: ExternalFileObservation?
+        observation: ExternalFileObservation?,
+        contentChangeAccepted: Bool = false,
+        contentLoaded: Bool = false
     ) {
+        if contentChangeAccepted { externalContentGeneration &+= 1 }
+        if contentLoaded {
+            displayedExternalContentGeneration = externalContentGeneration
+        }
         externalFileObservation = observation
         externalContentSnapshot = snapshot
         externalFileUnavailable = false
@@ -2390,7 +2404,8 @@ final class Workspace: ObservableObject {
                     self.tabs[i].diskSnapshot = loaded.diskSnapshot
                     self.tabs[i].recordExternalFileObservation(
                         snapshot: loaded.diskSnapshot,
-                        observation: loaded.externalObservation
+                        observation: loaded.externalObservation,
+                        contentLoaded: true
                     )
                     // Neuer Plattenstand = neue Basis für den Punkt im Tab.
                     self.tabs[i].recordSavedContentBaseline()
@@ -2539,7 +2554,8 @@ final class Workspace: ObservableObject {
                         // späteres Speichern weiterhin gesondert warnt.
                         self.tabs[idx].recordExternalFileObservation(
                             snapshot: inspection.stableSnapshot,
-                            observation: after
+                            observation: after,
+                            contentChangeAccepted: true
                         )
                     }
                 } else {
@@ -2606,7 +2622,8 @@ final class Workspace: ObservableObject {
                     self.tabs[i].diskSnapshot = loaded.diskSnapshot
                     self.tabs[i].recordExternalFileObservation(
                         snapshot: loaded.diskSnapshot,
-                        observation: loaded.externalObservation
+                        observation: loaded.externalObservation,
+                        contentLoaded: true
                     )
                     // Neuer Plattenstand = neue Basis für den Punkt im Tab.
                     self.tabs[i].recordSavedContentBaseline()
@@ -3135,7 +3152,8 @@ final class Workspace: ObservableObject {
                     loadedTab.diskSnapshot = loaded.diskSnapshot
                     loadedTab.recordExternalFileObservation(
                         snapshot: loaded.diskSnapshot,
-                        observation: loaded.externalObservation
+                        observation: loaded.externalObservation,
+                        contentLoaded: true
                     )
                     loadedTab.isDirty = false
                     // Früher manuell gewähltes Format dieser Datei zurückholen,
@@ -3480,7 +3498,8 @@ final class Workspace: ObservableObject {
             tabs[finalIndex].diskSnapshot = writtenSnapshot
             tabs[finalIndex].fileSize = UInt64(writtenSnapshot.byteCount)
             tabs[finalIndex].recordExternalFileObservation(
-                snapshot: writtenSnapshot, observation: nil
+                snapshot: writtenSnapshot, observation: nil,
+                contentLoaded: true
             )
             // Gespeicherter Stand = neue Basis: Rückgängig bis genau hierher
             // lässt den Punkt im Tab wieder verschwinden.
@@ -4068,7 +4087,9 @@ final class Workspace: ObservableObject {
     /// wechseln; sonst wäre ein sauberer Tab weiterhin an alte Bytes gebunden.
     private func reloadAcceptedExternalStateAfterDiscardingHexChanges(tabID: UUID) {
         guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
-        let acceptedContentDiffers = switch (
+        let acceptedGenerationDiffers = tab.externalContentGeneration
+            != tab.displayedExternalContentGeneration
+        let acceptedSnapshotDiffers = switch (
             tab.diskSnapshot, tab.externalContentSnapshot
         ) {
         case let (old?, accepted?):
@@ -4082,7 +4103,8 @@ final class Workspace: ObservableObject {
         // bereits als dirty Rettungskopie geschützt. Ein erneuter, sicher
         // scheiternder Read würde nur kurz den Zugriff darauf blockieren.
         if tab.isDirty { return }
-        guard tab.externalFileUnavailable || acceptedContentDiffers else { return }
+        guard tab.externalFileUnavailable || acceptedGenerationDiffers
+                || acceptedSnapshotDiffers else { return }
         reloadTabFromDisk(id: tabID)
     }
 
@@ -6138,7 +6160,8 @@ final class Workspace: ObservableObject {
                         self.tabs[idx].diskSnapshot = loaded.diskSnapshot
                         self.tabs[idx].recordExternalFileObservation(
                             snapshot: loaded.diskSnapshot,
-                            observation: loaded.externalObservation
+                            observation: loaded.externalObservation,
+                            contentLoaded: true
                         )
                         self.tabs[idx].isDirty    = false
                         self.tabs[idx].isLoading  = false

@@ -727,15 +727,17 @@ werden. Der Tooltip eines Menüeintrags nennt seine Quelle (Komponente,
 benutzereigener Makroordner oder 4D-Version), damit gleichnamige Makros
 unterscheidbar bleiben.
 
-Fastra liest höchstens 8 MiB je Makro-XML und übernimmt höchstens 4096 Makros
-je Quelle. Der gesamte Katalog ist auf 256 Quellen, 8192 Makros und 8 Millionen
-Einheiten interner Textlänge begrenzt (bei einfachem Text etwa 8 Millionen
-Zeichen); eine Quelle außerhalb dieser Grenzen wird nicht in das Menü
-aufgenommen. Beim Wechsel zwischen Methodenordnern desselben
-Projekts verwendet Fastra unveränderte Quellen aus einem Dateifingerabdruck-
-Cache, statt ihre XML erneut zu parsen. Der Cache hält höchstens acht Kataloge
-und insgesamt 16 Millionen Einheiten interner Textlänge; Standalone-Dateien
-teilen darin die identischen globalen Makroquellen.
+Fastra liest höchstens 8 MiB je Makro-XML und übernimmt je Quelle höchstens
+4096 Makros, 4 Mi (4.194.304) UTF-16-Texteinheiten und 131.072 gespeicherte
+Bausteine wie Literale oder Platzhalter. Der gesamte Katalog ist auf 256
+Quellen, 8192 Makros, 8 Mi (8.388.608) UTF-16-Texteinheiten und 262.144 Bausteine
+begrenzt; eine Quelle außerhalb dieser Grenzen wird nicht in das Menü
+aufgenommen. Beim Wechsel zwischen Methodenordnern desselben Projekts verwendet
+Fastra unveränderte Quellen aus einem Dateifingerabdruck-Cache, statt ihre XML
+erneut zu parsen. Der Cache hält höchstens acht Kataloge und insgesamt 16
+Mi (16.777.216) gewichtete Einheiten; neben dem Text zählen dabei jedes Makro und
+jeder Baustein mit. Standalone-Dateien teilen darin die identischen globalen
+Makroquellen.
 
 **Die Komplettieren-Familie** (`MAO_MethodeKomplettierenNeu` samt ihrer
 Varianten) läuft headless über tool4d gegen ein Engine-Projekt, das die

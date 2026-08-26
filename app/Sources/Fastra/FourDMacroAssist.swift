@@ -168,6 +168,7 @@ enum FourDMacroCatalogLoader {
     static let maximumSourceCount = 256
     static let maximumCatalogMacros = 8_192
     static let maximumCatalogTextUTF16Units = 8 * 1024 * 1024
+    static let maximumCatalogPartCount = 262_144
     static let maximumCachedCatalogCount =
         FourDMacroCatalogCache.defaultMaximumEntryCount
 
@@ -234,6 +235,19 @@ enum FourDMacroCatalogLoader {
         }
     }
 
+    /// Näherungsgewicht des tatsächlich gehaltenen Objektgraphen. Ein Makro
+    /// und jeder Baustein kosten auch ohne Text Speicher; deshalb zählen feste
+    /// Einheiten zusätzlich zu allen gespeicherten Zeichenketten.
+    private static func retainedCacheWeight(in macros: [FourDMacro]) -> Int {
+        let textWeight = retainedTextUTF16Units(in: macros)
+        return macros.reduce(into: textWeight) { total, macro in
+            total += 16
+            total += (macro.id as NSString).length
+            total += (macro.unknownPlaceholder as NSString?)?.length ?? 0
+            total += macro.textParts.count * 8
+        }
+    }
+
     static func load(sources allSources: [FourDMacroSource], cacheKey: String,
                      force: Bool,
                      cache: FourDMacroCatalogCache = .shared) -> Result {
@@ -249,17 +263,23 @@ enum FourDMacroCatalogLoader {
         var parsedMacros: [FourDMacro] = []
         var storedFingerprints: [FourDMacroSourceFingerprint] = []
         var retainedText = 0
+        var retainedParts = 0
+        var retainedWeight = 0
         for source in sources {
             guard parsedMacros.count < maximumCatalogMacros,
                   retainedText < maximumCatalogTextUTF16Units,
+                  retainedParts < maximumCatalogPartCount,
                   let opened = open(source, readData: true),
                   let data = opened.data else { continue }
             let remainingMacros = maximumCatalogMacros - parsedMacros.count
+            let remainingParts = maximumCatalogPartCount - retainedParts
             let limits = FourDMacroXML.Limits(
                 sourceBytes: FourDMacroXML.Limits.catalog.sourceBytes,
                 macroCount: min(FourDMacroXML.Limits.catalog.macroCount,
                                 remainingMacros),
-                textUTF16Units: FourDMacroXML.Limits.catalog.textUTF16Units
+                textUTF16Units: FourDMacroXML.Limits.catalog.textUTF16Units,
+                partCount: min(FourDMacroXML.Limits.catalog.partCount,
+                               remainingParts)
             )
             let sourceMacros = FourDMacroXML.parse(
                 data: data,
@@ -268,11 +288,15 @@ enum FourDMacroCatalogLoader {
                 limits: limits
             )
             let sourceText = retainedTextUTF16Units(in: sourceMacros)
+            let sourceParts = sourceMacros.reduce(0) { $0 + $1.textParts.count }
             guard retainedText + sourceText <= maximumCatalogTextUTF16Units else {
                 break
             }
+            guard retainedParts + sourceParts <= maximumCatalogPartCount else { break }
             parsedMacros.append(contentsOf: sourceMacros)
             retainedText += sourceText
+            retainedParts += sourceParts
+            retainedWeight += retainedCacheWeight(in: sourceMacros)
             storedFingerprints.append(opened.fingerprint)
         }
         // Nur einen vollständigen, in derselben Reihenfolge gelesenen
@@ -281,7 +305,7 @@ enum FourDMacroCatalogLoader {
         if storedFingerprints == currentFingerprints {
             cache.store(
                 parsedMacros, for: cacheKey,
-                fingerprints: storedFingerprints, weight: retainedText
+                fingerprints: storedFingerprints, weight: retainedWeight
             )
         }
         return Result(macros: parsedMacros, cacheHit: false)
@@ -693,20 +717,30 @@ extension Workspace {
                     text: L10n.string("Keine Änderungen — die Methode ist bereits vollständig."),
                     lease: lease)
             case .changed(let newCode):
-                let retokenized = FourDTokenTransform.retokenize(newCode,
-                                                                 learned: learned)
-                guard retokenized != originalText else {
-                    self.fourDMacroEngineBusy = false
-                    self.presentFourDMacroWarning(
-                        title: L10n.format("Makro „%@“", macroName),
-                        text: L10n.string("Keine Änderungen — die Methode ist bereits vollständig."),
-                        lease: lease)
-                    return
+                Task { [weak self] in
+                    let retokenized = await Task.detached(
+                        priority: .userInitiated
+                    ) {
+                        FourDTokenTransform.retokenize(newCode, learned: learned)
+                    }.value
+                    guard let self else { return }
+                    guard lease.isCurrent(in: self) else {
+                        self.fourDMacroEngineBusy = false
+                        return
+                    }
+                    guard retokenized != originalText else {
+                        self.fourDMacroEngineBusy = false
+                        self.presentFourDMacroWarning(
+                            title: L10n.format("Makro „%@“", macroName),
+                            text: L10n.string("Keine Änderungen — die Methode ist bereits vollständig."),
+                            lease: lease)
+                        return
+                    }
+                    self.presentFourDMacroPreview(
+                        macroName: macroName, lease: lease,
+                        original: originalText, result: retokenized
+                    )
                 }
-                self.presentFourDMacroPreview(macroName: macroName,
-                                              lease: lease,
-                                              original: originalText,
-                                              result: retokenized)
             }
             }
         }

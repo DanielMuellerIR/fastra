@@ -100,8 +100,8 @@ struct AtomicFileCommitTests {
         #expect(!FileManager.default.fileExists(atPath: prepared.path))
     }
 
-    @Test("Gleich große Manipulation der vorbereiteten Datei wird zurückgetauscht")
-    func preparedFileTamperingIsRolledBack() throws {
+    @Test("Gleich große Manipulation der vorbereiteten Datei bleibt zur Recovery erhalten")
+    func preparedFileTamperingRequiresRecovery() throws {
         let directory = try makeDirectory("prepared-tamper")
         defer { try? FileManager.default.removeItem(at: directory) }
         let target = directory.appendingPathComponent("target.txt")
@@ -129,12 +129,62 @@ struct AtomicFileCommitTests {
                         [.modificationDate: preparedDate], ofItemAtPath: prepared.path)
                 })
             Issue.record("Die manipulierte Nachbardatei hätte abgelehnt werden müssen")
-        } catch AtomicFileCommit.Failure.conflictRolledBack {
-            // Erwartet: Der Altstand wurde nach der Hash-Abweichung restauriert.
+        } catch let failure as AtomicFileCommit.Failure {
+            guard case .recoveryRequired = failure else {
+                Issue.record("Erwartet war recoveryRequired, erhalten: \(failure)")
+                return
+            }
         }
 
-        #expect(try Data(contentsOf: target) == original)
-        #expect(!FileManager.default.fileExists(atPath: prepared.path))
+        #expect(try Data(contentsOf: target) == tampered)
+        #expect(try Data(contentsOf: prepared) == original)
+    }
+
+    @Test("In-place-Fremdwrite am installierten Ersatz bleibt zur Recovery erhalten")
+    func installedReplacementTamperingRequiresRecovery() throws {
+        let directory = try makeDirectory("installed-in-place")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let original = Data("original\n".utf8)
+        let replacement = Data("replacement\n".utf8)
+        let external = Data("external!!!\n".utf8)
+        #expect(replacement.count == external.count)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+
+        do {
+            _ = try AtomicFileCommit.replaceExisting(
+                at: target,
+                withPreparedFile: prepared,
+                expecting: expected,
+                replacementContent: FileSnapshot(data: replacement, identity: nil),
+                afterSwap: { installed, _ in
+                    let replacementDate = try #require(
+                        FileManager.default.attributesOfItem(
+                            atPath: installed.path
+                        )[.modificationDate] as? Date
+                    )
+                    try writeInPlace(external, to: installed)
+                    try FileManager.default.setAttributes(
+                        [.modificationDate: replacementDate],
+                        ofItemAtPath: installed.path
+                    )
+                }
+            )
+            Issue.record("Der fremd veränderte Ersatz hätte Recovery verlangen müssen")
+        } catch let failure as AtomicFileCommit.Failure {
+            guard case .recoveryRequired = failure else {
+                Issue.record("Erwartet war recoveryRequired, erhalten: \(failure)")
+                return
+            }
+        }
+
+        #expect(try Data(contentsOf: target) == external,
+                "Fastra darf die fremd veränderte installierte Inode nicht zurücktauschen")
+        #expect(try Data(contentsOf: prepared) == original,
+                "Der verdrängte Ausgangsstand muss daneben erhalten bleiben")
     }
 
     @Test("Ziel und Nachbardatei dürfen nicht dieselbe Inode sein")

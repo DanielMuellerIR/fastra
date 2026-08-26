@@ -541,6 +541,41 @@ struct HexEditLifecycleTests {
         #expect(!workspace.tabs[0].hasUnsavedChanges)
     }
 
+    @Test("Snapshotloser Hex-Tab lädt den bestätigten Fremdstand")
+    @MainActor func snapshotlessHexTabReloadsAcceptedExternalState() async throws {
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-hex-snapshotless-\(UUID().uuidString).bin")
+            .canonicalFileURL
+        try Data([0x10, 0x20, 0x30, 0x40]).write(to: file, options: .atomic)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let workspace = makeWorkspace()
+        var tab = EditorTab(
+            title: file.lastPathComponent,
+            path: file.deletingLastPathComponent().path,
+            url: file, displayMode: .hex, diskSnapshot: nil, viewMode: .hex
+        )
+        tab.hexEditSession = editedSession()
+        tab.recordExternalFileObservation(
+            snapshot: nil, observation: nil, contentChangeAccepted: true
+        )
+        workspace.tabs = [tab]
+        workspace.activeTabID = tab.id
+        let calls = HexReloadCallCounter()
+        workspace.reloadFileLoader = { url in
+            calls.increment()
+            return try FileLoader.load(url: url)
+        }
+
+        workspace.discardHexChanges(HexEditActionContext(tab: tab))
+
+        #expect(await waitUntil {
+            calls.value == 1 && !workspace.tabs[0].isLoading
+        })
+        #expect(workspace.tabs[0].externalContentGeneration
+                == workspace.tabs[0].displayedExternalContentGeneration)
+        #expect(!workspace.tabs[0].hasUnsavedChanges)
+    }
+
     @Test("Hex-Eingabe bis zum Original lädt den bestätigten Fremdstand")
     @MainActor func editingBackToOriginalReloadsAcceptedExternalState() async throws {
         let file = FileManager.default.temporaryDirectory
