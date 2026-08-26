@@ -184,8 +184,18 @@ if [[ "$APP_BUNDLE_BIN_ABSOLUTE" != "$APP_BIN_ABSOLUTE" ]]; then
     APP_PROCESS_PATTERNS+=("^$(escape_process_pattern "$APP_BUNDLE_BIN_ABSOLUTE")([[:space:]]|$)")
 fi
 STARTED_PIDS=()
+STARTED_PID_TOKENS=()
 STARTED_APP_BUNDLES=()
 CURRENT_TEST_NAME=""
+# Der System-Events-Helfer ist ein eigenes Kind des Runners. Ein Signal darf
+# ihn nicht nach dem Runner-Abbruch weiterlaufen und später noch den Fokus
+# ändern lassen. PID und Startzeit-Token bleiben deshalb bis zum `wait`
+# sichtbar für beide Cleanup-Traps.
+ACTIVATION_PID=""
+ACTIVATION_PID_TOKEN=""
+ACTIVATION_STARTING=0
+TRACKED_PID_BOOKING=0
+RUNNER_DEFERRED_SIGNAL=""
 
 # Gesperrter Bildschirm? Dann sind alle fensterbasierten Tests Umgebungs-
 # rauschen (siehe ../docs/BUILD-AND-TEST.md, Umgebungs-Falle 2). Nur `search` ist dann
@@ -239,7 +249,46 @@ NEEDS_GUI_LOCK=1
 # nicht zurück; solche Starts werden ergänzend über den exakten Bundle-Pfad
 # gefunden.
 track_started_pid() {
-    STARTED_PIDS+=("$1")
+    local pid="$1"
+    local token
+    token="$(fastra_test_pid_token "$pid")"
+    [ -n "$token" ] || return 1
+    append_tracked_pid "$pid" "$token"
+}
+
+# PID und Startzeit liegen aus Bash-3.2-Kompatibilitätsgründen in parallelen
+# Arrays. Ein Signal darf den Runner nie zwischen beiden Anhängen beobachten:
+# Der Trap merkt es während dieser Paarbuchung vor und räumt erst danach auf.
+append_tracked_pid() {
+    local pid="$1"
+    local token="$2"
+    local remember_group="${3:-0}"
+    TRACKED_PID_BOOKING=1
+    STARTED_PIDS+=("$pid")
+    if [ -n "${FASTRA_TEST_TRACKED_PID_PRETOKEN_HOOK:-}" ]; then
+        "$FASTRA_TEST_TRACKED_PID_PRETOKEN_HOOK" "$pid"
+    fi
+    STARTED_PID_TOKENS+=("$token")
+    # LaunchServices kann zwischen PID-Buchung und Prozessgruppen-Erfassung ein
+    # Signal liefern. Die Gruppe gehört deshalb noch zur selben atomaren
+    # Buchung: Erst wenn auch sie feststeht, darf der vorgemerkte Cleanup laufen.
+    if [ "$remember_group" -eq 1 ]; then
+        fastra_test_root_was_started_by_runner "$pid" \
+            || fastra_test_remember_process_group "$pid" \
+            || true
+    fi
+    TRACKED_PID_BOOKING=0
+    run_deferred_runner_signal
+}
+
+# Eine gemerkte PID gehört nur so lange diesem Lauf, wie auch ihre beim
+# Erfassen gespeicherte Startzeit übereinstimmt. Der Binary-Pfad allein reicht
+# nach einer PID-Wiederverwendung nicht als Besitzbeleg.
+tracked_pid_is_owned() {
+    local pid="$1"
+    local index="$2"
+    local token="${STARTED_PID_TOKENS[$index]:-}"
+    [ -n "$token" ] && fastra_test_pid_matches_token "$pid" "$token"
 }
 
 # LaunchServices nur für Bundles aufräumen, die dieser Runner nachweislich
@@ -268,7 +317,7 @@ track_started_app_bundle_for_executable() {
 }
 
 remember_bundle_pids() {
-    local pattern pid command existing already_tracked
+    local pattern pid command existing already_tracked token
     for pattern in "${APP_PROCESS_PATTERNS[@]}"; do
         while IFS= read -r pid; do
             if [[ "$pid" =~ ^[0-9]+$ ]]; then
@@ -293,10 +342,9 @@ remember_bundle_pids() {
                     done
                 fi
                 [ "$already_tracked" -eq 0 ] || continue
-                STARTED_PIDS+=("$pid")
-                fastra_test_root_was_started_by_runner "$pid" \
-                    || fastra_test_remember_process_group "$pid" \
-                    || true
+                token="$(fastra_test_pid_token "$pid")"
+                [ -n "$token" ] || continue
+                append_tracked_pid "$pid" "$token" 1
             fi
         done < <(pgrep -f "$pattern" 2>/dev/null || true)
     done
@@ -317,7 +365,7 @@ pid_matches_configured_bundle() {
 
 kill_leftovers() {
     local launch_scan_ticks="${1:-2}"
-    local pid scan found
+    local pid scan found index
     local app_targets=()
     # LaunchServices liefert die PID nicht atomar mit `open`. Ein Signal kann
     # deshalb zwischen dem Start und dem ersten normalen Ergebnis-Poll
@@ -329,12 +377,16 @@ kill_leftovers() {
             remember_bundle_pids
             found=0
             if [ "${#STARTED_PIDS[@]}" -gt 0 ]; then
-                for pid in "${STARTED_PIDS[@]}"; do
-                    if pid_matches_configured_bundle "$pid" \
-                       || fastra_test_root_was_started_by_runner "$pid"; then
+                index=0
+                while [ "$index" -lt "${#STARTED_PIDS[@]}" ]; do
+                    pid="${STARTED_PIDS[$index]}"
+                    if tracked_pid_is_owned "$pid" "$index" \
+                       && { pid_matches_configured_bundle "$pid" \
+                            || fastra_test_root_was_started_by_runner "$pid"; }; then
                         found=1
                         break
                     fi
+                    index=$((index + 1))
                 done
             fi
             [ "$found" -eq 1 ] && break
@@ -345,14 +397,19 @@ kill_leftovers() {
     # macOS liefert bash 3.2: Dort gilt ein LEERES Array unter `set -u` bei
     # `"${arr[@]}"` als unbound. Die Längenabfrage umgeht das gefahrlos.
     if [ "${#STARTED_PIDS[@]}" -gt 0 ]; then
-        for pid in "${STARTED_PIDS[@]}"; do
+        index=0
+        while [ "$index" -lt "${#STARTED_PIDS[@]}" ]; do
+            pid="${STARTED_PIDS[$index]}"
             # Zwischen Ergebniszeile und Cleanup kann die App bereits enden
             # und macOS die Nummer neu vergeben. Vor dem Signal deshalb den
-            # Prozesspfad noch einmal gegen genau dieses Test-Bundle prüfen.
-            if pid_matches_configured_bundle "$pid" \
-               || fastra_test_root_was_started_by_runner "$pid"; then
+            # Starttoken UND Prozesspfad noch einmal gegen genau dieses
+            # Test-Bundle prüfen.
+            if tracked_pid_is_owned "$pid" "$index" \
+               && { pid_matches_configured_bundle "$pid" \
+                    || fastra_test_root_was_started_by_runner "$pid"; }; then
                 app_targets+=("$pid")
             fi
+            index=$((index + 1))
         done
     fi
     local had_pending=0
@@ -366,6 +423,7 @@ kill_leftovers() {
     fi
     if [ "${#app_targets[@]}" -eq 0 ]; then
         STARTED_PIDS=()
+        STARTED_PID_TOKENS=()
         return 0
     fi
     if ! terminate_fastra_test_process_trees "${app_targets[@]}"; then
@@ -379,13 +437,16 @@ kill_leftovers() {
         fastra_test_discard_pending_session || return 1
     fi
     STARTED_PIDS=()
+    STARTED_PID_TOKENS=()
 }
 
 # Wartet, bis die SELFTEST-Zeile in $1 auftaucht oder das Timeout reißt.
 # $2: Frist in Sekunden (Standard: TIMEOUT_SECS; siehe timeout_for_test).
 # Rückgabe: 0 = Ergebnis da; 1 = Timeout; 3 = der direkt gestartete
 # Testprozess endete vorzeitig ohne Ergebnis-Zeile — sein Exit-Code steht
-# dann in WAIT_FOR_RESULT_EXIT.
+# dann in WAIT_FOR_RESULT_EXIT; 4 = der zuvor exakt erfasste
+# LaunchServices-Prozess endete vorzeitig. Dessen Exit-Code kann der Runner
+# nicht abfragen, weil `open` statt des App-Prozesses sein Kind ist.
 WAIT_FOR_RESULT_EXIT=""
 wait_for_result() {
     local errfile="$1"
@@ -400,6 +461,30 @@ wait_for_result() {
         fi
         if grep -q '^SELFTEST ' "$errfile" 2>/dev/null; then
             return 0
+        fi
+        if [ "${CURRENT_LAUNCH_MODE:-direct}" = "launchservices" ] \
+           && [ "${#STARTED_PIDS[@]}" -gt 0 ]; then
+            local launch_pid launch_is_live=0 launch_index=0
+            while [ "$launch_index" -lt "${#STARTED_PIDS[@]}" ]; do
+                launch_pid="${STARTED_PIDS[$launch_index]}"
+                if tracked_pid_is_owned "$launch_pid" "$launch_index" \
+                   && fastra_test_pid_is_live "$launch_pid" \
+                   && { pid_matches_configured_bundle "$launch_pid" \
+                        || fastra_test_root_was_started_by_runner "$launch_pid"; }; then
+                    launch_is_live=1
+                    break
+                fi
+                launch_index=$((launch_index + 1))
+            done
+            if [ "$launch_is_live" -eq 0 ]; then
+                # Die App schreibt Maschinen- und Begleitzeile in einem
+                # gemeinsamen Block. Trotzdem nach dem beobachteten Ende ein
+                # letztes Mal lesen, bevor der Prozessabbruch gewinnt.
+                if grep -q '^SELFTEST ' "$errfile" 2>/dev/null; then
+                    return 0
+                fi
+                return 4
+            fi
         fi
         # Ein direkt gestarteter Testprozess ist unser eigenes Kind: Bis zum
         # `wait` bleibt er als Zombie stehen, seine PID kann also nicht neu
@@ -431,6 +516,89 @@ now_milliseconds() {
     /usr/bin/perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000'
 }
 
+activation_process_is_owned() {
+    local pid="$1"
+    local token="$2"
+    local parent=""
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+    if [ -n "$token" ]; then
+        fastra_test_pid_matches_token "$pid" "$token"
+        return $?
+    fi
+    # Direkt nach dem Fork kann `ps` den Startzeit-Token noch nicht liefern.
+    # Bis zum `wait` kann die Kind-PID nicht wiederverwendet werden; in diesem
+    # kurzen Fenster ist die unveränderte Eltern-PID deshalb der sichere Beleg.
+    parent=$(ps -p "$pid" -o ppid= 2>/dev/null | tr -d ' ' || true)
+    [ "$parent" = "$$" ]
+}
+
+clear_activation_process() {
+    ACTIVATION_PID=""
+    ACTIVATION_PID_TOKEN=""
+}
+
+# Bash stellt ein Signal zwischen dem Fork eines Hintergrundprozesses und der
+# folgenden `$!`-Zuweisung zu. In diesem winzigen Fenster ist der Helfer noch
+# nicht in den Cleanup-Globals gebucht. Der Trap merkt das Signal deshalb vor
+# und lässt `activate_once` erst PID und Starttoken übernehmen; unmittelbar
+# danach läuft der normale Signal-Cleanup.
+run_deferred_runner_signal() {
+    local signal="${RUNNER_DEFERRED_SIGNAL:-}"
+    if [ -n "$signal" ] \
+       && [ "${ACTIVATION_STARTING:-0}" -eq 0 ] \
+       && [ "${TRACKED_PID_BOOKING:-0}" -eq 0 ]; then
+        RUNNER_DEFERRED_SIGNAL=""
+        cleanup_on_signal "$signal"
+    fi
+}
+
+handle_runner_signal() {
+    local signal="$1"
+    if [ "${ACTIVATION_STARTING:-0}" -eq 1 ] \
+       || [ "${TRACKED_PID_BOOKING:-0}" -eq 1 ]; then
+        RUNNER_DEFERRED_SIGNAL="$signal"
+        return 0
+    fi
+    cleanup_on_signal "$signal"
+}
+
+terminate_activation_process() {
+    local pid="${ACTIVATION_PID:-}"
+    local token="${ACTIVATION_PID_TOKEN:-}"
+    local tick=0
+    [ -n "$pid" ] || return 0
+    if ! activation_process_is_owned "$pid" "$token"; then
+        # Ein bereits beendetes eigenes Kind nur noch einsammeln. Eine lebende
+        # PID mit abweichender Identität gehört dagegen nicht mehr dem Runner.
+        if ! fastra_test_pid_is_live "$pid"; then
+            wait "$pid" 2>/dev/null || true
+            clear_activation_process
+            return 0
+        fi
+        echo "✗ Aktivierungsprozess hat eine fremde PID-Identität; kein Signal gesendet." >&2
+        clear_activation_process
+        return 1
+    fi
+    kill -TERM "$pid" 2>/dev/null || true
+    while [ "$tick" -lt 20 ] \
+          && fastra_test_pid_is_live "$pid" \
+          && activation_process_is_owned "$pid" "$token"; do
+        sleep 0.05
+        tick=$((tick + 1))
+    done
+    if fastra_test_pid_is_live "$pid" \
+       && activation_process_is_owned "$pid" "$token"; then
+        kill -KILL "$pid" 2>/dev/null || true
+    fi
+    wait "$pid" 2>/dev/null || true
+    if fastra_test_pid_is_live "$pid" \
+       && activation_process_is_owned "$pid" "$token"; then
+        clear_activation_process
+        return 1
+    fi
+    clear_activation_process
+}
+
 # Ein einzelner System-Events-Versuch mit harter Wanduhr-Schranke.
 #
 # Ohne Automation-Freigabe (typisch in einer ssh-Sitzung oder einem
@@ -452,21 +620,35 @@ now_milliseconds() {
 # sinnvoll), 2 = keine Antwort in der Frist (Freigabe fehlt, Aufgeben).
 activate_once() {
     local target_pid="$1"
+    local pid=""
+    ACTIVATION_STARTING=1
     osascript -e 'with timeout of 3 seconds' \
               -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $target_pid) to true" \
               -e 'end timeout' >/dev/null 2>&1 &
-    local pid=$!
+    pid=$!
+    # Der Hook liegt absichtlich nach dem Fork, aber vor der globalen
+    # PID-Buchung. Nur der Integrationstest setzt ihn, um das Signalrennen
+    # deterministisch statt per Zufall zu treffen.
+    if [ -n "${FASTRA_TEST_ACTIVATION_PREBOOK_HOOK:-}" ]; then
+        "$FASTRA_TEST_ACTIVATION_PREBOOK_HOOK" "$pid"
+    fi
+    ACTIVATION_PID="$pid"
+    ACTIVATION_PID_TOKEN="$(fastra_test_pid_token "$ACTIVATION_PID")"
+    ACTIVATION_STARTING=0
+    run_deferred_runner_signal
     local waited=0
+    local status=0
     while [[ $waited -lt $ACTIVATE_TIMEOUT_SECS ]]; do
-        if ! kill -0 "$pid" 2>/dev/null; then
+        if ! fastra_test_pid_is_live "$pid"; then
             wait "$pid"
-            return $?
+            status=$?
+            clear_activation_process
+            return "$status"
         fi
         sleep 1
         waited=$((waited + 1))
     done
-    kill -9 "$pid" 2>/dev/null
-    wait "$pid" 2>/dev/null
+    terminate_activation_process || true
     return 2
 }
 
@@ -475,7 +657,9 @@ activate_once() {
 # Prozess dieser Runde darin stehen.
 current_app_pid() {
     if [ "${#STARTED_PIDS[@]}" -gt 0 ]; then
-        printf '%s\n' "${STARTED_PIDS[${#STARTED_PIDS[@]} - 1]}"
+        local index=$((${#STARTED_PIDS[@]} - 1))
+        local pid="${STARTED_PIDS[$index]}"
+        tracked_pid_is_owned "$pid" "$index" && printf '%s\n' "$pid"
     fi
 }
 
@@ -573,7 +757,18 @@ restore_selftest_pasteboard() {
     track_started_app_bundle_for_executable "$APP_BIN_ABSOLUTE"
     # Gehört ab jetzt zum Runner. Scheitert seine Terminierung, kann der
     # allgemeine Aufräumpfad dieselbe PID samt Starttoken erneut versuchen.
-    track_started_pid "$pid"
+    if [ "${FASTRA_SELFTEST_TEST_HELPER_TRACK_FAILURE:-0}" = "1" ] \
+       || ! track_started_pid "$pid"; then
+        SELFTEST_PROCESS_CLEANUP_BLOCKED=1
+        # Noch nicht übernehmen: Der atomare Pending-Handshake besitzt PID,
+        # Starttoken und Prozessgruppe weiterhin. `kill_leftovers` beendet ihn
+        # über genau diesen Pending-Beleg; `discard` allein würde nur die
+        # Buchhaltung löschen und den Prozess weiterlaufen lassen.
+        if kill_leftovers; then
+            SELFTEST_PROCESS_CLEANUP_BLOCKED=0
+        fi
+        return 1
+    fi
     fastra_test_adopt_started_session || {
         SELFTEST_PROCESS_CLEANUP_BLOCKED=1
         return 1
@@ -803,6 +998,11 @@ cleanup_on_exit() {
     local performance_copy=""
     trap - EXIT INT TERM
     local process_cleanup_failed=0
+    if ! terminate_activation_process; then
+        SELFTEST_CLEANUP_FAILED=1
+        process_cleanup_failed=1
+        keep_sandbox=1
+    fi
     if ! kill_leftovers; then
         SELFTEST_CLEANUP_FAILED=1
         process_cleanup_failed=1
@@ -906,6 +1106,11 @@ cleanup_on_signal() {
     local keep_sandbox=0
     local cleanup_failed=0
     local process_cleanup_failed=0
+    if ! terminate_activation_process; then
+        cleanup_failed=1
+        process_cleanup_failed=1
+        keep_sandbox=1
+    fi
     # LaunchServices kann nach `open` mehrere Sekunden bis zur sichtbaren PID
     # brauchen. Der Signalpfad wartet bounded bis zu derselben 8-s-Frist wie
     # die Aktivierung, damit keine spät gestartete Test-App entkommt.
@@ -961,8 +1166,8 @@ cleanup_on_signal() {
 }
 
 trap cleanup_on_exit EXIT
-trap 'cleanup_on_signal INT' INT
-trap 'cleanup_on_signal TERM' TERM
+trap 'handle_runner_signal INT' INT
+trap 'handle_runner_signal TERM' TERM
 
 if [[ $NEEDS_GUI_LOCK -eq 1 ]]; then
     acquire_fastra_gui_test_lock || exit 2
@@ -1220,7 +1425,13 @@ for t in "${TESTS[@]}"; do
             break
         fi
         track_started_app_bundle_for_executable "$APP_BIN_ABSOLUTE"
-        track_started_pid "$FASTRA_TEST_STARTED_PID"
+        if ! track_started_pid "$FASTRA_TEST_STARTED_PID"; then
+            emit_selftest_result "$t" "ENV"
+            echo "SELFTEST $t: Umgebungsproblem — Startidentität konnte nicht gesichert werden"
+            summary+="⚠ $t (Startidentität fehlt)\n"
+            env_fail_count=$((env_fail_count + 1))
+            break
+        fi
         if ! fastra_test_adopt_started_session; then
             emit_selftest_result "$t" "ENV"
             echo "SELFTEST $t: Umgebungsproblem — Prozessübernahme fehlgeschlagen"
@@ -1241,6 +1452,14 @@ for t in "${TESTS[@]}"; do
             emit_selftest_result "$t" "FAIL"
             echo "SELFTEST $t: FAIL — Testprozess endete vorzeitig ohne Ergebnis-Zeile (Exit ${WAIT_FOR_RESULT_EXIT:-unbekannt})"
             summary+="✗ $t (vorzeitig beendet, Exit ${WAIT_FOR_RESULT_EXIT:-?})\n"
+            fail_kind="CRASH"
+        elif [ "$wait_result" -eq 4 ]; then
+            # LaunchServices ist Elternprozess der App; der Runner kennt
+            # deshalb keinen Exit-Code. Prozessidentität und frühes Ende sind
+            # dennoch belegt und dürfen nicht als Wanduhr-Timeout erscheinen.
+            emit_selftest_result "$t" "FAIL"
+            echo "SELFTEST $t: FAIL — LaunchServices-Testprozess endete vorzeitig ohne Ergebnis-Zeile"
+            summary+="✗ $t (LaunchServices-Prozess vorzeitig beendet)\n"
             fail_kind="CRASH"
         else
             emit_selftest_result "$t" "FAIL"
