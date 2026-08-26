@@ -69,7 +69,9 @@ if [[ "$APP_BUNDLE" == /* ]]; then
 else
     APP_BUNDLE_FOR_OPEN="$(pwd)/$APP_BUNDLE"
 fi
-ALL_TESTS=(windows newwindow welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions projectinput tabswitch tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge dirtyundo emojisplit emojipaste emojipreview tabscroll typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader footerfit windowheight mdformat sidebarfilter sidebarstate githistory filediff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide markdownimport filemodes selsearch wildcard openscope loadperf contrast cmdw)
+ALL_TESTS=(newwindow welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions projectinput tabswitch tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge dirtyundo emojisplit emojipaste emojipreview tabscroll typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader footerfit windowheight mdformat sidebarfilter sidebarstate githistory filediff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide markdownimport filemodes selsearch wildcard openscope loadperf contrast cmdw)
+# `windows` bleibt als gezielter Diagnosemodus verfügbar, prüft aber keine
+# Produktfunktion und startet deshalb nicht mehr in jedem Standardlauf.
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
 WINDOWLESS_TESTS=(search project projectperf localization markdownimport updates git gitactions filemodes selsearch wildcard openscope tool4dlsp macro4dengine)
 # Nur diese Tests brauchen echten Vordergrundfokus. `newwindow`,
@@ -492,16 +494,15 @@ activate_app() {
         if grep -q '^SELFTEST ' "$errfile" 2>/dev/null; then
             return 0
         fi
-        sleep 1
-        if grep -q '^SELFTEST ' "$errfile" 2>/dev/null; then
-            return 0
-        fi
         if [[ ! "$target_pid" =~ ^[0-9]+$ ]]; then
             remember_bundle_pids
             target_pid="$(current_app_pid)"
         fi
         if [[ ! "$target_pid" =~ ^[0-9]+$ ]]; then
-            # Prozess noch nicht da — nächster Versuch.
+            # Prozess noch nicht da — erst LaunchServices Zeit geben, dann
+            # erneut nachsehen. Ohne diese Pause liefen alle Versuche durch,
+            # bevor der Prozess überhaupt entstehen konnte.
+            sleep 1
             continue
         fi
         activate_once "$target_pid"
@@ -518,6 +519,10 @@ activate_app() {
                 return 1
                 ;;
         esac
+        # Nur ein noch nicht auffindbarer Prozess oder ein regulär
+        # fehlgeschlagener Aktivierungsversuch braucht eine Pause. Die schon
+        # vor dem Aufruf gemerkte PID darf sofort aktiviert werden.
+        sleep 1
     done
     if [[ ! "$target_pid" =~ ^[0-9]+$ ]]; then
         echo "  (Test-Bundle ist nicht als Prozess auffindbar — Aktivierung" \

@@ -400,6 +400,29 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         #expect(source.contains("cmdw)  echo 120 ;;"))
     }
 
+    @Test("Reiner Fenster-Dump bleibt ein gezielter Diagnosemodus")
+    func windowDumpIsNotPartOfStandardRun() throws {
+        let appDirectory = performanceToolsDirectory.deletingLastPathComponent()
+        let runnerSource = try String(
+            contentsOf: appDirectory.appendingPathComponent("selftest.sh"),
+            encoding: .utf8
+        )
+        let allTestsLine = try #require(
+            runnerSource.split(whereSeparator: \.isNewline)
+                .first { $0.hasPrefix("ALL_TESTS=(") }
+        )
+        #expect(!allTestsLine.split(whereSeparator: { $0 == " " || $0 == "(" || $0 == ")" })
+            .contains("windows"))
+
+        let selfTestSource = try String(
+            contentsOf: appDirectory
+                .appendingPathComponent("Sources/Fastra/SelfTest.swift"),
+            encoding: .utf8
+        )
+        #expect(selfTestSource.contains("case \"windows\":"))
+        #expect(selfTestSource.contains("{ runWindowsDump() }"))
+    }
+
     @Test("Fertiger Fokustest wartet nicht mehr auf die Aktivierung")
     func finishedForegroundSelftestSkipsActivationDelay() throws {
         let root = FileManager.default.temporaryDirectory
@@ -485,6 +508,187 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         #expect(!FileManager.default.fileExists(atPath: sleepProbe.path))
     }
 
+    @Test(
+        "Fokustest-Prozess wird sofort oder nach belegter Sichtbarkeit aktiviert",
+        arguments: [false, true]
+    )
+    func knownForegroundProcessIsActivatedImmediately(delayedLaunch: Bool) throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-focus-immediate-\(UUID().uuidString)")
+        let sandboxParent = root.appendingPathComponent("sandboxes")
+        let lock = root.appendingPathComponent("gui.lock")
+        let fakeApp = root.appendingPathComponent("Fastra.app")
+        let fakeBinary = fakeApp.appendingPathComponent("Contents/MacOS/Fastra")
+        let fakeSource = root.appendingPathComponent("focus-app.c")
+        let fakeInfo = fakeApp.appendingPathComponent("Contents/Info.plist")
+        let fakeOpen = root.appendingPathComponent("open")
+        let fakeLSRegister = root.appendingPathComponent("lsregister")
+        let activationProbe = root.appendingPathComponent("activated")
+        let childReady = root.appendingPathComponent("child-ready")
+        let childPIDFile = root.appendingPathComponent("child.pid")
+        let prematureSleep = root.appendingPathComponent("premature-sleep")
+        let runner = performanceToolsDirectory.deletingLastPathComponent()
+            .appendingPathComponent("selftest.sh")
+        var cleanupBinaryPath: String?
+        defer {
+            if let pidText = try? String(
+                contentsOf: childPIDFile, encoding: .utf8
+            ).trimmingCharacters(in: .whitespacesAndNewlines),
+               let pid = Int32(pidText), kill(pid, 0) == 0,
+               let command = try? runPerformanceTool(
+                   "/bin/ps", arguments: ["-p", "\(pid)", "-o", "command="]
+               ), command.output.contains(cleanupBinaryPath ?? fakeBinary.path) {
+                kill(pid, SIGKILL)
+                for _ in 0..<100 where kill(pid, 0) == 0 { usleep(10_000) }
+            }
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        for directory in [sandboxParent, fakeBinary.deletingLastPathComponent()] {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+        }
+        let infoData = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "de.dm0.fastra"],
+            format: .xml,
+            options: 0
+        )
+        try infoData.write(to: fakeInfo)
+        try """
+        #include <stdio.h>
+        #include <stdlib.h>
+        #include <unistd.h>
+        int main(void) {
+            const char *ready = getenv("FASTRA_TEST_CHILD_READY");
+            const char *activation = getenv("FASTRA_TEST_ACTIVATION_PROBE");
+            if (ready == NULL || activation == NULL) return 85;
+            FILE *marker = fopen(ready, "w");
+            if (marker == NULL) return 86;
+            fclose(marker);
+            int ticks = 0;
+            while (access(activation, F_OK) != 0) {
+                if (++ticks >= 300) {
+                    fprintf(stderr, "SELFTEST-RESULT v=1 test=cmdw status=FAIL\\n");
+                    fprintf(stderr, "SELFTEST cmdw: FAIL - Aktivierung blieb aus\\n");
+                    fflush(stderr);
+                    return 87;
+                }
+                usleep(10000);
+            }
+            fprintf(stderr, "SELFTEST-RESULT v=1 test=cmdw status=PASS\\n");
+            fprintf(stderr, "SELFTEST cmdw: PASS - sofort aktiviert\\n");
+            fflush(stderr);
+            return 0;
+        }
+        """.write(to: fakeSource, atomically: true, encoding: .utf8)
+        let compile = try runPerformanceTool(
+            "/usr/bin/clang", arguments: [fakeSource.path, "-o", fakeBinary.path]
+        )
+        try #require(compile.status == 0, "Fake-App-Kompilierung: \(compile.output)")
+        try """
+        #!/bin/bash
+        errfile=''
+        while [ "$#" -gt 0 ]; do
+          case "$1" in
+            --stderr) errfile="$2"; shift 2 ;;
+            --args) shift; break ;;
+            *) shift ;;
+          esac
+        done
+        [ -n "$errfile" ] || exit 88
+        start_child() {
+          "$FASTRA_TEST_FAKE_BINARY" "$@" > /dev/null 2> "$errfile" &
+          child_pid=$!
+          printf '%s\n' "$child_pid" > "$FASTRA_TEST_CHILD_PID"
+          attempt=0
+          while [ "$attempt" -lt 100 ]; do
+            if [ -e "$FASTRA_TEST_CHILD_READY" ]; then
+              disown "$child_pid" 2>/dev/null || true
+              return 0
+            fi
+            /bin/sleep 0.02
+            attempt=$((attempt + 1))
+          done
+          kill -KILL "$child_pid" 2>/dev/null || true
+          wait "$child_pid" 2>/dev/null || true
+          return 89
+        }
+        if [ "${FASTRA_TEST_DELAYED_LAUNCH:-0}" = 1 ]; then
+          (
+            /bin/sleep 0.2
+            start_child "$@"
+          ) &
+          launcher_pid=$!
+          disown "$launcher_pid" 2>/dev/null || true
+          exit 0
+        fi
+        start_child "$@"
+        """.write(to: fakeOpen, atomically: true, encoding: .utf8)
+        try "#!/bin/bash\nexit 0\n"
+            .write(to: fakeLSRegister, atomically: true, encoding: .utf8)
+        for executable in [fakeOpen, fakeLSRegister] {
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o755], ofItemAtPath: executable.path
+            )
+        }
+        let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
+        let fakeOsascript = root.appendingPathComponent("bin/osascript")
+        let fakeSleep = root.appendingPathComponent("bin/sleep")
+        try "#!/bin/bash\n: > \"$FASTRA_TEST_ACTIVATION_PROBE\"\n"
+            .write(to: fakeOsascript, atomically: true, encoding: .utf8)
+        try """
+        #!/bin/bash
+        if [ "${1:-}" = 1 ] && [ ! -e "$FASTRA_TEST_CHILD_READY" ]; then
+          printf 'waited\n' >> "$FASTRA_TEST_PREMATURE_SLEEP_PROBE"
+        fi
+        exec /bin/sleep "$@"
+        """.write(to: fakeSleep, atomically: true, encoding: .utf8)
+        for executable in [fakeOsascript, fakeSleep] {
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o755], ofItemAtPath: executable.path
+            )
+        }
+
+        let canonicalFakeApp = try #require(canonicalPath(for: fakeApp))
+        let canonicalFakeBinary = canonicalFakeApp + "/Contents/MacOS/Fastra"
+        cleanupBinaryPath = canonicalFakeBinary
+        let result = try runPerformanceTool(
+            "/bin/bash", arguments: [runner.path, "cmdw"], environment: [
+                "PATH": isolatedPath,
+                "FASTRA_GUI_LOCK_DIR": lock.path,
+                "FASTRA_SELFTEST_APP_BIN": fakeBinary.path,
+                "FASTRA_SELFTEST_APP_BUNDLE": fakeApp.path,
+                "FASTRA_SELFTEST_TEST_CONSOLE_UNLOCKED": "1",
+                "FASTRA_TEST_ACTIVATION_PROBE": activationProbe.path,
+                "FASTRA_TEST_CHILD_READY": childReady.path,
+                "FASTRA_TEST_CHILD_PID": childPIDFile.path,
+                "FASTRA_TEST_DELAYED_LAUNCH": delayedLaunch ? "1" : "0",
+                "FASTRA_TEST_FAKE_BINARY": canonicalFakeBinary,
+                "FASTRA_TEST_LSREGISTER": fakeLSRegister.path,
+                "FASTRA_TEST_OPEN_COMMAND": fakeOpen.path,
+                "FASTRA_TEST_PREMATURE_SLEEP_PROBE": prematureSleep.path,
+                "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+            ]
+        )
+        #expect(result.status == 0, "Sofortige Aktivierung: \(result.output)")
+        #expect(FileManager.default.fileExists(atPath: activationProbe.path))
+        let waits = ((try? String(
+            contentsOf: prematureSleep, encoding: .utf8
+        )) ?? "").split(whereSeparator: \.isNewline).count
+        if delayedLaunch {
+            // Der App-Prozess entsteht erst nach Rückkehr von `open`: Der
+            // Missing-PID-Zweig muss warten und anschließend erneut suchen.
+            // Ein `continue` ohne Pause ließe die Mach-O-Fixture nach drei
+            // Sekunden mit dem strukturierten FAIL enden.
+            #expect(waits >= 1)
+        } else {
+            // Die schon vor `activate_app` gemerkte PID darf ohne die frühere
+            // pauschale Anfangssekunde aktiviert werden.
+            #expect(waits == 0)
+        }
+    }
+
     @Test("Fehlende Bildschirmfreigabe startet kein Aufnahme-Werkzeug")
     func deniedScreenCaptureUsesOnlyFallback() {
         var systemCalls = 0
@@ -554,6 +758,85 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             ]
         )
         #expect(result.status == 0, "Sichere Soak-Kopie: \(result.output)")
+    }
+
+    @Test("Defaults-Registry wird vor dem Nachlauf stabil dedupliziert")
+    func defaultsRegistryIsDeduplicatedBeforeCleanup() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-defaults-dedup-\(UUID().uuidString)")
+        let registry = root.appendingPathComponent("registry.txt")
+        let deduplicated = root.appendingPathComponent("deduplicated.txt")
+        let helper = performanceToolsDirectory.appendingPathComponent("test-sandbox.sh")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(
+            at: root, withIntermediateDirectories: false
+        )
+        let first = "FastraTests.DedupFirst.\(UUID().uuidString)"
+        let second = "FastraTests.DedupSecond.\(UUID().uuidString)"
+        let repeated = Array(repeating: [first, first, second], count: 100)
+            .flatMap { $0 }
+            .joined(separator: "\n") + "\n   \n"
+        try repeated.write(to: registry, atomically: true, encoding: .utf8)
+        FileManager.default.createFile(atPath: deduplicated.path, contents: nil)
+
+        let script = """
+        set -u
+        . "$1"
+        FASTRA_TEST_SANDBOX="$2"
+        deduplicate_fastra_test_defaults_registry "$3" "$4"
+        """
+        let result = try runPerformanceTool(
+            "/bin/bash",
+            arguments: [
+                "-c", script, "defaults-dedup", helper.path, root.path,
+                registry.path, deduplicated.path,
+            ]
+        )
+        #expect(result.status == 0, "Registry-Deduplizierung: \(result.output)")
+        let lines = try String(contentsOf: deduplicated, encoding: .utf8)
+            .split(whereSeparator: \.isNewline)
+            .map(String.init)
+        #expect(lines == [first, second, "   "])
+    }
+
+    @Test("Beschädigte Defaults-Registry bleibt beim Nachlauf fail-closed")
+    func unsafeDefaultsRegistryStillFailsCleanup() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-defaults-unsafe-\(UUID().uuidString)")
+        let fixedHome = root.appendingPathComponent("fixed-home")
+        let preferences = root.appendingPathComponent("preferences")
+        let realPreferences = root.appendingPathComponent("real-preferences")
+        let registry = root.appendingPathComponent("registry.txt")
+        let helper = performanceToolsDirectory.appendingPathComponent("test-sandbox.sh")
+        defer { try? FileManager.default.removeItem(at: root) }
+        for directory in [root, fixedHome, preferences, realPreferences] {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+        }
+        try "   \n".write(to: registry, atomically: true, encoding: .utf8)
+
+        let script = """
+        set -u
+        . "$1"
+        FASTRA_TEST_SANDBOX="$2"
+        FASTRA_TEST_CF_HOME="$3"
+        FASTRA_TEST_PREFERENCES_DIRECTORY="$4"
+        FASTRA_TEST_REAL_PREFERENCES_DIRECTORY="$5"
+        if purge_fastra_registered_test_defaults "$6"; then
+          exit 91
+        fi
+        """
+        let result = try runPerformanceTool(
+            "/bin/bash",
+            arguments: [
+                "-c", script, "defaults-unsafe", helper.path, root.path,
+                fixedHome.path, preferences.path, realPreferences.path,
+                registry.path,
+            ]
+        )
+        #expect(result.status == 0, "Unsichere Registry: \(result.output)")
+        #expect(result.output.contains("unsichere Preferences-Domain"))
     }
 
     @Test("LaunchServices-Abmeldung schützt installierte und fremde Bundles")

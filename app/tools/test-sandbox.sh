@@ -163,6 +163,22 @@ fastra_test_defaults_domain_is_safe() {
     [[ "$domain" =~ [0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12} ]]
 }
 
+# Jeder Selbsttest-Prozess registriert dieselbe Runner-Suite erneut. Vor den
+# mehreren Nachläufen genügt jeder exakte Domainname einmal; die Reihenfolge
+# bleibt für verständliche Diagnosen erhalten.
+deduplicate_fastra_test_defaults_registry() {
+    local registry="$1"
+    local destination="$2"
+    [ -f "$registry" ] && [ ! -L "$registry" ] || return 2
+    [ -f "$destination" ] && [ ! -L "$destination" ] || return 2
+    case "$registry" in "$FASTRA_TEST_SANDBOX"/*) ;; *) return 2 ;; esac
+    case "$destination" in "$FASTRA_TEST_SANDBOX"/*) ;; *) return 2 ;; esac
+    # Nur wirklich leere Zeilen verwerfen. Leerraum oder andere beschädigte
+    # Namen müssen den nachfolgenden Sicherheitscheck weiterhin rot machen.
+    /usr/bin/awk 'length($0) && !seen[$0]++ { print }' \
+        "$registry" > "$destination"
+}
+
 # Der App-/xctest-Prozess leert seine UserDefaults-Suiten selbst. cfprefsd
 # legt beim Prozessende jedoch gelegentlich nochmals eine leere 42-Byte-Plist
 # an. Erst der äußere Runner kann diese letzte Schreibbewegung sicher abwarten
@@ -171,7 +187,7 @@ purge_fastra_registered_test_defaults() {
     local registry="$1"
     local preferences="${FASTRA_TEST_PREFERENCES_DIRECTORY:-}"
     local real_preferences="${FASTRA_TEST_REAL_PREFERENCES_DIRECTORY:-$HOME/Library/Preferences}"
-    local domain plist real_plist owner failed=0 pass
+    local domain plist real_plist owner failed=0 pass deduplicated_registry
     [ -f "$registry" ] || return 0
     case "$registry" in "$FASTRA_TEST_SANDBOX"/*) ;; *) return 2 ;; esac
     # Der Nachlauf gehört in dieselbe CFFIXED_USER_HOME-Sandbox wie der
@@ -183,6 +199,13 @@ purge_fastra_registered_test_defaults() {
         [ -n "${FASTRA_TEST_CF_HOME:-}" ] || return 2
         preferences="$FASTRA_TEST_CF_HOME/Library/Preferences"
     fi
+
+    deduplicated_registry="$(mktemp \
+        "$FASTRA_TEST_SANDBOX/defaults-registry-deduplicated.XXXXXX")" \
+        || return 2
+    deduplicate_fastra_test_defaults_registry \
+        "$registry" "$deduplicated_registry" || return 2
+    registry="$deduplicated_registry"
 
     # cfprefsd kann eine bereits geleerte 42-Byte-Plist erst NACH dem Ende des
     # App-Prozesses zurückschreiben. Drei gezielte Durchgänge mit insgesamt
