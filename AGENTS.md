@@ -554,6 +554,31 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   Versuchen enden (siehe `SidebarScrollRestore.isSettled`; Diagnose per
   `FASTRA_SIDEBARSCROLL_DEBUG=1`).
 
+- **`TextSelection.pivot` bleibt nach einer Textänderung stehen.** In
+  CodeEditTextView zeigt der Auswahlanker nach einem Backspace rechts neben den
+  Cursor; das nächste Shift+→ rechnet mit diesem veralteten Anker und erzeugt
+  einen Bereich negativer Länge (`{10, −1}`). Das führte am 2026-08-24 zum
+  Absturz mit Datenverlust beim Zeiteintrag. Regel: nach jeder Textänderung den
+  Auswahlanker verwerfen — und zusätzlich negative Bereiche vor der
+  Undo-Registrierung und in den Auswahl-Settern abweisen, damit ein einzelner
+  vergessener Reset nicht wieder abstürzt.
+
+- **APFS kennt kein „ersetze nur, wenn Inode und Inhalt noch X sind".**
+  `NSFileCoordinator` und Dateisperren schützen ausschließlich kooperierende
+  Schreiber; gegen einen fremden Prozess helfen sie nicht. Der Commit tauscht Ziel
+  und vorbereitete Datei deshalb per `RENAME_SWAP` atomar, prüft danach über
+  gebundene Deskriptoren, welchen Stand er tatsächlich verdrängt hat, und tauscht
+  bei Konflikt zurück. Fehlt diese Fähigkeit auf dem Zieldateisystem, muss der
+  Schreibvorgang geschlossen fehlschlagen — kein Best-Effort-Überschreiben.
+
+- **Selbsttests nur über das Maschinenprotokoll bewerten.** Der Runner darf
+  Ergebnisse nicht aus frei formuliertem Text ableiten. Der alte Weg machte aus
+  einem echten `FAIL`, das das Wort „Umgebungsproblem" enthielt, ein Exit 2, aus
+  `ENV` und `SKIP` echte Fehler — und aus einem beschädigten Maschinenstatus einen
+  **grünen** Lauf, weil er auf eine ältere PASS-Zeile zurückfiel. Maßgeblich ist
+  allein das versionierte, vollständig validierte `SELFTEST-RESULT`-Protokoll;
+  fehlende oder beschädigte Pflichtfelder schlagen geschlossen fehl.
+
 ## Verhaltensevals
 
 <!-- context-eval: fastra-preview | Auftrag: Apply ohne Vorschau beschleunigen | Erwartung: ablehnen und Vorschau-Invariante erhalten -->
