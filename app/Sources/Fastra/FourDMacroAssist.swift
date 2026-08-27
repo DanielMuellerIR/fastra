@@ -492,6 +492,17 @@ extension Workspace {
         }
     }
 
+    /// Bricht einen laufenden Rücktokenisierungslauf ab, wenn er zum
+    /// angegebenen Tab gehört. Aufgerufen an den Stellen, die dessen Lease
+    /// ENDGÜLTIG entwerten: eine Inhaltsänderung (die `contentRevision` kann
+    /// nie wieder passen) und das Schließen des Tabs. Ein bloßer Tabwechsel
+    /// bricht bewusst nicht ab — die Lease kann beim Zurückwechseln wieder
+    /// gültig werden.
+    func cancelFourDMacroRetokenize(ifTab tabID: UUID) {
+        guard fourDMacroRetokenizeTabID == tabID else { return }
+        fourDMacroRetokenizeTask?.cancel()
+    }
+
     /// Menüweg: Makro über seine stabile ID ausführen.
     @MainActor func runFourDMacro(id: String) {
         guard let macro = fourDMacros.first(where: { $0.id == id }) else {
@@ -717,29 +728,41 @@ extension Workspace {
                     text: L10n.string("Keine Änderungen — die Methode ist bereits vollständig."),
                     lease: lease)
             case .changed(let newCode):
-                Task { [weak self] in
-                    let retokenized = await Task.detached(
-                        priority: .userInitiated
-                    ) {
-                        FourDTokenTransform.retokenize(newCode, learned: learned)
-                    }.value
-                    guard let self else { return }
-                    guard lease.isCurrent(in: self) else {
-                        self.fourDMacroEngineBusy = false
-                        return
+                // Die Rücktokenisierung großer Methoden läuft als VERWALTETER
+                // Hintergrund-Task: Der Workspace hält den Handle und bricht
+                // ihn ab, sobald die Lease endgültig entwertet ist (Edit oder
+                // Tab-Schließen, siehe `cancelFourDMacroRetokenize`). Ein
+                // abgebrochener Lauf liefert `nil` und gibt sofort
+                // `fourDMacroEngineBusy` frei.
+                self.fourDMacroRetokenizeTask?.cancel()
+                self.fourDMacroRetokenizeTabID = lease.tabID
+                self.fourDMacroRetokenizeTask = Task.detached(
+                    priority: .userInitiated
+                ) { [weak self] in
+                    let retokenized = FourDTokenTransform.retokenize(
+                        newCode, learned: learned,
+                        isCancelled: { Task.isCancelled })
+                    await MainActor.run { [weak self] in
+                        guard let self else { return }
+                        self.fourDMacroRetokenizeTask = nil
+                        self.fourDMacroRetokenizeTabID = nil
+                        guard let retokenized, lease.isCurrent(in: self) else {
+                            self.fourDMacroEngineBusy = false
+                            return
+                        }
+                        guard retokenized != originalText else {
+                            self.fourDMacroEngineBusy = false
+                            self.presentFourDMacroWarning(
+                                title: L10n.format("Makro „%@“", macroName),
+                                text: L10n.string("Keine Änderungen — die Methode ist bereits vollständig."),
+                                lease: lease)
+                            return
+                        }
+                        self.presentFourDMacroPreview(
+                            macroName: macroName, lease: lease,
+                            original: originalText, result: retokenized
+                        )
                     }
-                    guard retokenized != originalText else {
-                        self.fourDMacroEngineBusy = false
-                        self.presentFourDMacroWarning(
-                            title: L10n.format("Makro „%@“", macroName),
-                            text: L10n.string("Keine Änderungen — die Methode ist bereits vollständig."),
-                            lease: lease)
-                        return
-                    }
-                    self.presentFourDMacroPreview(
-                        macroName: macroName, lease: lease,
-                        original: originalText, result: retokenized
-                    )
                 }
             }
             }

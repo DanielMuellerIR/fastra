@@ -101,20 +101,32 @@ enum FourDMacroDiscovery {
                              homeDirectory: URL,
                              applicationDirectories: [URL],
                              fileManager: FileManager = .default,
-                             preferredLanguages: [String] = Locale.preferredLanguages)
+                             preferredLanguages: [String] = Locale.preferredLanguages,
+                             maximumSourceCount: Int
+                                = FourDMacroCatalogLoader.maximumSourceCount)
         -> [FourDMacroSource] {
         var sources: [FourDMacroSource] = []
         var seenPaths = Set<String>()
+        // Das Quellenbudget gilt schon HIER: Ein fremder Makro-Ordner mit
+        // sehr vielen Einträgen darf nicht erst beim späteren Laden gekürzt
+        // werden, nachdem die Discovery bereits alles materialisiert und
+        // sortiert hat.
+        var remaining = max(0, maximumSourceCount)
 
         func add(_ url: URL, origin: FourDMacroSource.Origin) {
+            guard remaining > 0 else { return }
             guard seenPaths.insert(url.canonicalFileURL.path).inserted else { return }
             sources.append(FourDMacroSource(url: url, origin: origin))
+            remaining -= 1
         }
 
         if let projectRoot {
             for (name, container) in componentContainers(in: projectRoot,
                                                          fileManager: fileManager) {
-                for file in macroFiles(inComponent: container, fileManager: fileManager) {
+                guard remaining > 0 else { break }
+                for file in macroFiles(inComponent: container,
+                                       fileManager: fileManager,
+                                       limit: remaining) {
                     add(file, origin: .component(name: name))
                 }
             }
@@ -123,7 +135,8 @@ enum FourDMacroDiscovery {
         let userDirectory = homeDirectory
             .appendingPathComponent("Library/Application Support/4D/Macros v2",
                                     isDirectory: true)
-        for file in xmlFiles(in: userDirectory, fileManager: fileManager) {
+        for file in xmlFiles(in: userDirectory, fileManager: fileManager,
+                             limit: remaining) {
             add(file, origin: .userLibrary)
         }
 
@@ -217,26 +230,52 @@ enum FourDMacroDiscovery {
             .absoluteURL.standardizedFileURL
     }
 
-    /// Makro-Dateien einer Komponente, beide Lagen (v20 und v21).
+    /// Makro-Dateien einer Komponente, beide Lagen (v20 und v21), je Lage
+    /// höchstens `limit` Dateien.
     private static func macroFiles(inComponent container: URL,
-                                   fileManager: FileManager) -> [URL] {
+                                   fileManager: FileManager,
+                                   limit: Int) -> [URL] {
         macroDirectoryPaths.flatMap { relativePath in
             xmlFiles(in: container.appendingPathComponent(relativePath, isDirectory: true),
-                     fileManager: fileManager)
+                     fileManager: fileManager, limit: limit)
         }
     }
 
-    /// Alle `*.xml` eines Ordners, alphabetisch. Ein fehlender oder
-    /// unlesbarer Ordner liefert eine leere Liste.
-    private static func xmlFiles(in directory: URL, fileManager: FileManager) -> [URL] {
-        guard let entries = try? fileManager.contentsOfDirectory(
+    /// Höchstens die `limit` alphabetisch ersten `*.xml` eines Ordners. Ein
+    /// fehlender oder unlesbarer Ordner liefert eine leere Liste. Der Ordner
+    /// wird lazy aufgezählt und nur eine begrenzte Auswahl gehalten und
+    /// sortiert: Ein fremder Ordner mit sehr vielen Einträgen kann so weder
+    /// Speicher noch Sortieraufwand jenseits des Quellenbudgets erzeugen.
+    private static func xmlFiles(in directory: URL, fileManager: FileManager,
+                                 limit: Int) -> [URL] {
+        guard limit > 0 else { return [] }
+        guard let enumerator = fileManager.enumerator(
             at: directory, includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
+            options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants],
+            errorHandler: { _, _ in true }
         ) else { return [] }
-        return entries
-            .filter { $0.pathExtension.lowercased() == "xml" }
-            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent)
-                == .orderedAscending }
+        let ascending = { (lhs: URL, rhs: URL) in
+            lhs.lastPathComponent.localizedStandardCompare(rhs.lastPathComponent)
+                == .orderedAscending
+        }
+        // Auswahl der alphabetisch kleinsten Namen: Kandidaten sammeln und
+        // bei doppelter Budgetgröße auf die `limit` ersten eindampfen —
+        // O(n log limit) statt einer Sortierung aller Einträge.
+        let compactionThreshold = limit >= Int.max / 2 ? Int.max : limit * 2
+        var selected: [URL] = []
+        for case let entry as URL in enumerator
+        where entry.pathExtension.lowercased() == "xml" {
+            selected.append(entry)
+            if selected.count >= compactionThreshold {
+                selected.sort(by: ascending)
+                selected.removeLast(selected.count - limit)
+            }
+        }
+        selected.sort(by: ascending)
+        if selected.count > limit {
+            selected.removeLast(selected.count - limit)
+        }
+        return selected
     }
 
     // MARK: - 4D.app

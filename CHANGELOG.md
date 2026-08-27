@@ -9,6 +9,34 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.112.11] — 2026-08-27
+
+### Behoben
+
+- **Der letzte Aufräumschritt des atomaren Speicherns löscht nur noch den
+  nachweislich eigenen Stand.** Statt eines bedingungslosen `unlinkat` auf den
+  fremd erreichbaren Temp-Namen beansprucht ein atomares Rename den Eintrag
+  zuerst unter einem zufälligen privaten Namen; erst nach bestätigter Bindung
+  an die bereits verifizierte Inode wird gelöscht. Ein im letzten Moment fremd
+  ersetzter Stand wird zurückgestellt und als Konflikt zur Klärung gemeldet.
+  Beim Rücktausch wird der eigene Ersatzinhalt nach dem Tausch zusätzlich am
+  gebundenen Deskriptor erneut gehasht, weil die Versionsprüfung die vom
+  Rename geänderte ctime ausblenden muss.
+- **Das 256-Quellen-Budget der 4D-Makros gilt schon während der Suche.** Ein
+  fremder „Macros v2“-Ordner mit sehr vielen Einträgen wird begrenzt und lazy
+  aufgezählt; je Fundort werden höchstens die alphabetisch ersten Dateien im
+  Rahmen des Restbudgets gehalten und sortiert, statt alle Einträge zu
+  materialisieren und erst beim Laden zu kürzen.
+- **Wiederholte `<method_name/>`-Tags zählen aufs Textbudget je
+  Makro-Quelle.** Der normalisierte Ersatztext (14 UTF-16-Einheiten je Tag)
+  wird über dieselbe Budgetbuchung erfasst wie normaler Zeichentext; eine
+  Quelle oberhalb der dokumentierten Grenze fällt vollständig heraus.
+- **Ein entwerteter 4D-Makro-Rücktokenisierungslauf bricht ab.** Der
+  Hintergrund-Task wird im Workspace verwaltet und bei Inhaltsänderung oder
+  Tab-Schließen abgebrochen, statt wertlos weiterzurechnen und die Makro-Sperre
+  bis zum Ende zu halten; gelernte Token-Suffixe werden über einen Index nach
+  erstem Wort gesucht statt linear über alle gelernten Namen je Token.
+
 ## [v1.112.10] — 2026-08-26
 
 ### Behoben

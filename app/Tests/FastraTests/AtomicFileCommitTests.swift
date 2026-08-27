@@ -187,6 +187,47 @@ struct AtomicFileCommitTests {
                 "Der verdrängte Ausgangsstand muss daneben erhalten bleiben")
     }
 
+    @Test("Fremd ersetzter Temp-Name im Aufräumfenster bleibt erhalten")
+    func foreignReplacementInCleanupWindowIsPreserved() throws {
+        let directory = try makeDirectory("cleanup-window")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let original = Data("original\n".utf8)
+        let replacement = Data("replacement\n".utf8)
+        let foreign = Data("fremdstand\n".utf8)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+
+        do {
+            _ = try AtomicFileCommit.replaceExisting(
+                at: target,
+                withPreparedFile: prepared,
+                expecting: expected,
+                replacementContent: FileSnapshot(data: replacement, identity: nil),
+                beforeCleanup: { _, displaced in
+                    // Simulierter Fremdprozess: ersetzt den Temp-Namen GENAU
+                    // zwischen der letzten Prüfung und dem Löschen durch einen
+                    // eigenen neuen Stand. Vorher löschte `unlinkat` diesen
+                    // Namen bedingungslos — der Fremdstand war weg.
+                    try FileManager.default.removeItem(at: displaced)
+                    try foreign.write(to: displaced)
+                })
+            Issue.record("Der fremd ersetzte Temp-Name hätte Recovery verlangen müssen")
+        } catch let failure as AtomicFileCommit.Failure {
+            guard case .recoveryRequired = failure else {
+                Issue.record("Erwartet war recoveryRequired, erhalten: \(failure)")
+                return
+            }
+        }
+
+        #expect(try Data(contentsOf: target) == replacement,
+                "Der bereits verifizierte Tausch selbst bleibt bestehen")
+        #expect(try Data(contentsOf: prepared) == foreign,
+                "Der fremde Stand darf beim Aufräumen nicht gelöscht werden")
+    }
+
     @Test("Ziel und Nachbardatei dürfen nicht dieselbe Inode sein")
     func hardLinkedPreparedFileIsRejected() throws {
         let directory = try makeDirectory("hardlink")

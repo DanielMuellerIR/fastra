@@ -218,6 +218,35 @@ func macroParserBudgetsAreHardLimits() {
     ).isEmpty)
 }
 
+@Test("Textbudget zählt auch den Ersatztext wiederholter <method_name/>-Tags")
+func macroMethodNameTagsCountAgainstTextBudget() {
+    // Jedes leere Tag wird zur 14 UTF-16-Einheiten langen Zeichenkette
+    // `<method_name/>` normalisiert und gehalten — ohne Buchung ließe sich
+    // die Textgrenze mit beliebig vielen Tags unterlaufen.
+    let tagCount = 6
+    let placeholderUnits = ("<method_name/>" as NSString).length
+    let xml = "<macros><macro name=\"A\"><text><method>"
+        + String(repeating: "<method_name/>", count: tagCount)
+        + "</method></text></macro></macros>"
+    let data = Data(xml.utf8)
+
+    // Genau an der Grenze bleibt das Makro vollständig erhalten …
+    let atLimit = FourDMacroXML.parse(
+        data: data, sourceLabel: "methodname.xml",
+        limits: .init(sourceBytes: data.count, macroCount: 10,
+                      textUTF16Units: tagCount * placeholderUnits)
+    )
+    #expect(atLimit.count == 1)
+    #expect(atLimit.first?.methodCall
+            == String(repeating: "<method_name/>", count: tagCount))
+    // … eine Einheit darunter greift die harte Grenze für die ganze Quelle.
+    #expect(FourDMacroXML.parse(
+        data: data, sourceLabel: "methodname.xml",
+        limits: .init(sourceBytes: data.count, macroCount: 10,
+                      textUTF16Units: tagCount * placeholderUnits - 1)
+    ).isEmpty)
+}
+
 // MARK: - Einstufung
 
 @Test("Einstufung: alle vier Komplettieren-Varianten")
@@ -518,6 +547,45 @@ func macroSourcesWithoutProject() throws {
     #expect(leer.isEmpty)
 }
 
+@Test("Fundorte: Das Quellenbudget begrenzt schon die Discovery")
+func macroSourcesHonorSourceBudget() throws {
+    let scratch = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let home = scratch.appendingPathComponent("home")
+    // Mehr als das Doppelte des Budgets, damit auch das zwischenzeitliche
+    // Eindampfen der begrenzten Auswahl durchlaufen wird.
+    for number in 1...9 {
+        try writeFile(home.appendingPathComponent(
+            "Library/Application Support/4D/Macros v2/m\(number).xml"))
+    }
+
+    let limited = FourDMacroDiscovery.macroSources(
+        projectRoot: nil, homeDirectory: home, applicationDirectories: [],
+        preferredLanguages: ["de"], maximumSourceCount: 4
+    )
+    // Es gewinnen die alphabetisch ersten Dateien — dieselben, die vor der
+    // Budgetierung nach dem vollständigen Sortieren vorn gestanden hätten.
+    #expect(limited.map(\.url.lastPathComponent)
+            == ["m1.xml", "m2.xml", "m3.xml", "m4.xml"])
+
+    // Komponentenquellen verbrauchen das Budget VOR dem Benutzerordner:
+    // Die Prioritätsreihenfolge der Fundorte bleibt erhalten.
+    let root = scratch.appendingPathComponent("MeinProjekt")
+    try writeFile(root.appendingPathComponent("Project/App.4DProject"))
+    for number in 1...3 {
+        try writeFile(root.appendingPathComponent(
+            "Components/Komponente.4dbase/Macros v2/k\(number).xml"))
+    }
+    let prioritized = FourDMacroDiscovery.macroSources(
+        projectRoot: root, homeDirectory: home, applicationDirectories: [],
+        preferredLanguages: ["de"], maximumSourceCount: 2
+    )
+    #expect(prioritized.map(\.url.lastPathComponent) == ["k1.xml", "k2.xml"])
+    #expect(prioritized.allSatisfy {
+        $0.origin == .component(name: "Komponente")
+    })
+}
+
 @Test("4D.app: Sprachwahl folgt der Systemreihenfolge, sonst dem ersten lproj")
 func macroApplicationLanguageChoice() throws {
     let scratch = try makeMacroScratch()
@@ -679,6 +747,21 @@ struct FourDMacroRenderingTests {
         #expect(restored == original)
         #expect(!restored.contains(":K92:3:K91:2"))
         #expect(!restored.contains(":K91:2:K92:3"))
+    }
+
+    @Test("Abgebrochene Rücktokenisierung liefert kein Teilergebnis")
+    func retokenizeCancellationStopsWithoutPartialResult() {
+        let text = "ALERT(\"a\")\nALERT(\"b\")\nALERT(\"c\")"
+        // Nicht abgebrochen: identisch zur öffentlichen Variante.
+        #expect(FourDTokenTransform.retokenize(
+            text, learned: [:], isCancelled: { false })
+            == FourDTokenTransform.retokenize(text, learned: [:]))
+        // Abbruch mitten in der Tokenschleife: `nil` statt halber Suffixe.
+        var checks = 0
+        let cancelled = FourDTokenTransform.retokenize(
+            text, learned: [:],
+            isCancelled: { checks += 1; return checks > 1 })
+        #expect(cancelled == nil)
     }
 
     @Test("Engine-Status: OK, UNVERAENDERT und FEHLER werden korrekt gelesen")

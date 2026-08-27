@@ -107,6 +107,16 @@ enum FourDTokenTransform {
     /// gelerntes Suffix bleiben unverändert (ehrliche Grenze wie beim
     /// Menübefehl „Befehls-Token ergänzen").
     static func retokenize(_ text: String, learned: [String: String]) -> String {
+        retokenize(text, learned: learned, isCancelled: { false }) ?? text
+    }
+
+    /// Abbruchfähige Variante für verwaltete Hintergrund-Tasks: liefert
+    /// `nil`, sobald `isCancelled` wahr wird — ein Teilergebnis wäre falsch
+    /// und wird verworfen. Geprüft wird je Token der Planungsschleife; die
+    /// vorgelagerte Tokenisierung selbst läuft nicht abbrechbar durch.
+    static func retokenize(_ text: String, learned: [String: String],
+                           isCancelled: () -> Bool) -> String? {
+        guard !isCancelled() else { return nil }
         let tokens = FourDTokenizer.tokenize(text)
         let original = text as NSString
         let declarationTypes = declarationTypeLocations(tokens, in: original)
@@ -120,6 +130,19 @@ enum FourDTokenTransform {
         learnedNames.sort {
             $0.length == $1.length ? $0.name < $1.name : $0.length > $1.length
         }
+        // Kandidaten nach ihrem ERSTEN WORT indexieren: `learnedMatch`
+        // verlangt, dass der gelernte Name mit dem Tokentext beginnt, und der
+        // Tokenizer beendet ein Token nie mitten in einem Wort. Ein Treffer
+        // teilt deshalb immer das erste Wort mit dem Token. Statt für jedes
+        // Token ALLE gelernten Namen linear zu prüfen (Tokens × Namen,
+        // quadratisch), wird nur der kleine passende Eimer durchsucht; die
+        // Sortierung „längster zuerst" bleibt innerhalb jedes Eimers erhalten.
+        var candidatesByFirstWord:
+            [Substring: [(name: String, length: Int, suffix: String)]] = [:]
+        for candidate in learnedNames {
+            let firstWord = candidate.name.prefix(while: { $0 != " " })
+            candidatesByFirstWord[firstWord, default: []].append(candidate)
+        }
         // Erst planen, dann anwenden. Ein gelernter mehrwortiger Name deckt
         // die Folge-Tokens mit ab: Für `Future Tail` liefert der Tokenizer
         // ohne Suffix zwei Namen (`Future` und `Tail`). Sind BEIDE gelernt,
@@ -130,6 +153,7 @@ enum FourDTokenTransform {
         var insertions: [(at: Int, suffix: String)] = []
         var claimedUntil = 0
         for token in tokens where retokenizableKinds.contains(token.kind) {
+            guard !isCancelled() else { return nil }
             guard token.range.location >= claimedUntil else { continue }
             let value = original.substring(with: token.range)
             guard !value.contains(":") else { continue }   // schon tokenisiert
@@ -137,10 +161,13 @@ enum FourDTokenTransform {
             // Namen nicht in einer Typdeklaration tokenisieren (`Date` und
             // `Time` sind zugleich 4D-Befehle und Typen).
             guard !declarationTypes.contains(token.range.location) else { continue }
+            let tokenName = value.lowercased()
+            let firstWord = tokenName.prefix(while: { $0 != " " })
             if let match = learnedMatch(at: token.range.location,
-                                        tokenValue: value,
+                                        tokenName: tokenName,
                                         in: original,
-                                        candidates: learnedNames) {
+                                        candidates: candidatesByFirstWord[firstWord]
+                                            ?? []) {
                 let end = token.range.location + match.length
                 insertions.append((end, match.suffix))
                 claimedUntil = end
@@ -161,13 +188,14 @@ enum FourDTokenTransform {
     /// Vollständiger gelernter Name am Tokenanfang. Der Tokenizer kennt einen
     /// unbekannten mehrwortigen Namen ohne Suffix nur bis zum ersten Wort;
     /// die gelernte Symbolmenge liefert hier die fehlende Grenze nach.
+    /// `tokenName` ist der bereits kleingeschriebene Tokentext; `candidates`
+    /// ist der vorgefilterte Eimer gleichen ersten Wortes (siehe `retokenize`).
     private static func learnedMatch(
         at location: Int,
-        tokenValue: String,
+        tokenName: String,
         in text: NSString,
         candidates: [(name: String, length: Int, suffix: String)]
     ) -> (length: Int, suffix: String)? {
-        let tokenName = tokenValue.lowercased()
         for candidate in candidates
         where candidate.name.hasPrefix(tokenName)
             && location + candidate.length <= text.length {

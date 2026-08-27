@@ -47,8 +47,8 @@ enum AtomicFileCommit {
     /// Tauscht eine fertig geschriebene Nachbardatei gegen ein vorhandenes
     /// Ziel. `replacementContent` beschreibt die Bytes der Nachbardatei; ihre
     /// Identität entsteht erst beim Öffnen im gebundenen Elternverzeichnis.
-    /// `beforeSwap` und `afterSwap` sind ausschließlich deterministische
-    /// Testpunkte; der Produktpfad übergibt sie nie.
+    /// `beforeSwap`, `afterSwap` und `beforeCleanup` sind ausschließlich
+    /// deterministische Testpunkte; der Produktpfad übergibt sie nie.
     static func replaceExisting(
         at targetURL: URL,
         withPreparedFile preparedURL: URL,
@@ -56,7 +56,8 @@ enum AtomicFileCommit {
         replacementContent: FileSnapshot,
         verifiedTargetStat: stat? = nil,
         beforeSwap: ((URL) throws -> Void)? = nil,
-        afterSwap: ((URL, URL) throws -> Void)? = nil
+        afterSwap: ((URL, URL) throws -> Void)? = nil,
+        beforeCleanup: ((URL, URL) throws -> Void)? = nil
     ) throws -> FileSnapshot {
         let targetDirectory = targetURL.deletingLastPathComponent().standardizedFileURL
         let preparedDirectory = preparedURL.deletingLastPathComponent().standardizedFileURL
@@ -277,11 +278,16 @@ enum AtomicFileCommit {
                 throw Failure.conflictRolledBack
             }
 
-            // Erst nach belegtem Erfolg verschwindet die alte Fassung.
-            guard unlinkat(directoryFD, preparedName, 0) == 0 else {
-                throw Failure.recoveryRequired(target: targetURL,
-                                               displaced: preparedURL)
-            }
+            // Erst nach belegtem Erfolg verschwindet die alte Fassung — und
+            // auch dann nur, wenn der Temp-Name nachweislich noch auf die am
+            // Deskriptor verifizierte verdrängte Inode zeigt (siehe
+            // `unlinkVerifiedChild`). Ein im letzten Moment fremd ersetzter
+            // Stand bleibt erhalten und wird als Recovery gemeldet.
+            try beforeCleanup?(targetURL, preparedURL)
+            try unlinkVerifiedChild(
+                directoryFD: directoryFD, name: preparedName,
+                verifiedFD: targetFD,
+                targetURL: targetURL, preparedURL: preparedURL)
             _ = fsync(directoryFD)
             return FileSnapshot(
                 sha256: replacementContent.sha256,
@@ -409,12 +415,95 @@ enum AtomicFileCommit {
               sameVersionAcrossRename(displacedVersion, restoredTarget),
               sameIdentity(restoredPrepared, preparedAfterRollback),
               sameVersionAcrossRename(expectedPreparedVersion,
-                                      preparedAfterRollback),
-              unlinkat(directoryFD, preparedName, 0) == 0 else {
+                                      preparedAfterRollback) else {
             throw Failure.recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
+        // `sameVersionAcrossRename` blendet die vom Rücktausch selbst
+        // geänderte ctime bewusst aus; ein Fremd-Write über einen offenen
+        // Deskriptor mit zurückgesetzter mtime wäre daran nicht erkennbar.
+        // Deshalb wird der Inhalt der eigenen Ersatz-Inode nach dem
+        // Rücktausch am weiterhin gebundenen Deskriptor erneut gehasht,
+        // bevor ihr Name verschwindet.
+        guard let rolledBackSnapshot = try? FileSnapshot.readSnapshotOnly(
+                descriptor: preparedFD, fileStat: preparedAfterRollback,
+                byteLimit: UInt64(replacementContent.byteCount)),
+              rolledBackSnapshot.hasSameContent(as: replacementContent) else {
+            throw Failure.recoveryRequired(target: targetURL,
+                                           displaced: preparedURL)
+        }
+        try unlinkVerifiedChild(
+            directoryFD: directoryFD, name: preparedName,
+            verifiedFD: preparedFD,
+            targetURL: targetURL, preparedURL: preparedURL)
         guard fsync(directoryFD) == 0 else { throw currentPOSIXError() }
+    }
+
+    /// Löscht den Verzeichniseintrag `name` nur, wenn er nachweislich auf die
+    /// bereits am Deskriptor `verifiedFD` verifizierte Inode zeigt. POSIX
+    /// kennt kein „unlink genau diese Inode": Ein bloßes fstatat-plus-unlinkat
+    /// ließe ein Fenster, in dem ein Fremdprozess den Namen ersetzt und sein
+    /// Stand mitgelöscht würde. Deshalb beansprucht zuerst ein atomares
+    /// Rename den Eintrag unter einem zufälligen privaten Namen; DANACH wird
+    /// die Bindung geprüft: Zeigt der beanspruchte Eintrag auf die
+    /// verifizierte Inode, wird der private Name gelöscht. Zeigt er auf einen
+    /// Fremdstand, wird dieser unter seinem ursprünglichen Namen
+    /// zurückgestellt (oder, falls der schon neu belegt ist, unter dem
+    /// privaten Namen erhalten) und `recoveryRequired` gemeldet.
+    ///
+    /// Ehrliche Restgrenze: Zwischen Prüfung und Löschen des PRIVATEN Namens
+    /// bleibt ein theoretisches Fenster. Es ist aber nur für einen Prozess
+    /// erreichbar, der das Verzeichnis aktiv nach dem zufälligen Namen
+    /// absucht und ihn gezielt ersetzt — kein regulär gleichzeitig
+    /// schreibender Prozess verwendet diesen Namen.
+    private static func unlinkVerifiedChild(
+        directoryFD: Int32,
+        name: String,
+        verifiedFD: Int32,
+        targetURL: URL,
+        preparedURL: URL
+    ) throws {
+        var verified = stat()
+        guard fstat(verifiedFD, &verified) == 0 else {
+            throw Failure.recoveryRequired(target: targetURL,
+                                           displaced: preparedURL)
+        }
+        let claimName = ".fastra-cleanup-" + UUID().uuidString
+        // `RENAME_EXCL`: Der private Name darf nichts überschreiben.
+        let claimFlags = UInt32(RENAME_EXCL)
+            | UInt32(RENAME_NOFOLLOW_ANY)
+            | UInt32(RENAME_RESOLVE_BENEATH)
+        guard renameatx_np(directoryFD, name,
+                           directoryFD, claimName, claimFlags) == 0 else {
+            throw Failure.recoveryRequired(target: targetURL,
+                                           displaced: preparedURL)
+        }
+        let claimed: stat
+        do {
+            claimed = try childStat(directoryFD, claimName)
+        } catch {
+            throw Failure.recoveryRequired(target: targetURL,
+                                           displaced: preparedURL)
+        }
+        let claimURL = targetURL.deletingLastPathComponent()
+            .appendingPathComponent(claimName)
+        guard sameIdentity(claimed, verified) else {
+            // Ein Fremdprozess hat den Namen im letzten Moment ersetzt: Sein
+            // Stand wird zurückgestellt statt gelöscht. Schlägt auch das
+            // fehl (Name inzwischen neu belegt), bleibt er unter dem
+            // privaten Namen erreichbar und wird im Fehler benannt.
+            guard renameatx_np(directoryFD, claimName,
+                               directoryFD, name, claimFlags) == 0 else {
+                throw Failure.recoveryRequired(target: targetURL,
+                                               displaced: claimURL)
+            }
+            throw Failure.recoveryRequired(target: targetURL,
+                                           displaced: preparedURL)
+        }
+        guard unlinkat(directoryFD, claimName, 0) == 0 else {
+            throw Failure.recoveryRequired(target: targetURL,
+                                           displaced: claimURL)
+        }
     }
 
     private static func childStat(_ directoryFD: Int32,

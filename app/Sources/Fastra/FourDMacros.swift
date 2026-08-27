@@ -551,7 +551,13 @@ private final class FourDMacroCollector: NSObject, XMLParserDelegate {
         // Bedeutung ist <method_name/>, das als Zeichenkette erhalten bleibt.
         if methodDepth != nil {
             if elementName == "method_name" {
-                currentMethodCall? += "<method_name/>"
+                // Auch der normalisierte Ersatztext ist gehaltener Text und
+                // wird aufs Textbudget gebucht. Sonst umgingen beliebig viele
+                // leere Tags die dokumentierte Grenze je Quelle.
+                let placeholder = "<method_name/>"
+                guard charge(textUnits: (placeholder as NSString).length,
+                             parser: parser) else { return }
+                currentMethodCall? += placeholder
             } else if currentUnknownPlaceholder == nil {
                 // Auch im Methodenaufruf darf ein unbekanntes Tag nicht still
                 // verschwinden und dadurch die Argumentbedeutung ändern.
@@ -587,12 +593,8 @@ private final class FourDMacroCollector: NSObject, XMLParserDelegate {
     }
 
     func parser(_ parser: XMLParser, foundCharacters string: String) {
-        textUTF16Units += (string as NSString).length
-        guard textUTF16Units <= limits.textUTF16Units else {
-            exceededBudget = true
-            parser.abortParsing()
-            return
-        }
+        guard charge(textUnits: (string as NSString).length,
+                     parser: parser) else { return }
         if methodDepth != nil {
             currentMethodCall? += string
         } else if textContainerDepth != nil {
@@ -690,6 +692,20 @@ private final class FourDMacroCollector: NSObject, XMLParserDelegate {
         guard !pendingLiteral.isEmpty else { return }
         appendPart(.literal(pendingLiteral), parser: parser)
         pendingLiteral = ""
+    }
+
+    /// Bucht `units` UTF-16-Einheiten aufs gemeinsame Textbudget der Quelle.
+    /// `false` heißt: Grenze überschritten, das Parsen wurde abgebrochen.
+    /// Über diese EINE Stelle laufen echter Zeichentext (`foundCharacters`)
+    /// UND normalisierter Ersatztext wie `<method_name/>`.
+    private func charge(textUnits units: Int, parser: XMLParser) -> Bool {
+        textUTF16Units += units
+        guard textUTF16Units <= limits.textUTF16Units else {
+            exceededBudget = true
+            parser.abortParsing()
+            return false
+        }
+        return true
     }
 
     /// Auch null Zeichen lange Platzhalter besitzen Array- und Enum-Speicher.

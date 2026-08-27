@@ -772,6 +772,13 @@ final class Workspace: ObservableObject {
     /// `true`, während ein tool4d-Makrolauf dieses Fensters läuft. Sperrt
     /// Menüeinträge und Shortcuts gegen parallele Läufe desselben Puffers.
     @Published var fourDMacroEngineBusy = false
+    /// Laufende Rücktokenisierung des Engine-Ergebnisses samt Tab ihrer
+    /// Lease. Verwaltet statt losgelöst: Eine Inhaltsänderung oder das
+    /// Schließen des Tabs entwertet die Lease endgültig — der Lauf wird dann
+    /// abgebrochen, statt wertlos weiterzurechnen und `fourDMacroEngineBusy`
+    /// bis zum Ende zu halten. (Pflege lebt in `FourDMacroAssist.swift`.)
+    var fourDMacroRetokenizeTask: Task<Void, Never>?
+    var fourDMacroRetokenizeTabID: UUID?
     /// Zuletzt angeforderter, noch von keinem Editor verarbeiteter
     /// Treffer-Sprung. Die Sprung-Notification kann in eine Editor-
     /// Neuerzeugung fallen und verpuffen; der frisch eingehängte Editor
@@ -1797,6 +1804,9 @@ final class Workspace: ObservableObject {
                     // der nächste einfache Klick ungesicherte Arbeit ersetzen.
                     self.tabs[idx].isPreview = false
                     self.tabs[idx].content = newValue
+                    // Eine Inhaltsänderung entwertet die Lease eines noch
+                    // laufenden Makro-Rücktokenisierungslaufs endgültig.
+                    self.cancelFourDMacroRetokenize(ifTab: tabID)
                     // Punkt im Tab folgt dem Vergleich mit dem gespeicherten
                     // Stand: Er erscheint bei der ersten echten Abweichung und
                     // verschwindet wieder, wenn z. B. Rückgängig den Inhalt
@@ -2096,6 +2106,9 @@ final class Workspace: ObservableObject {
         documentLanguageDetector.cancel(tabID: id, documentID: tabs[idx].documentID)
         cancelGitDiffLoad(tabID: id)
         cancelGitSnapshotLoad(tabID: id)
+        // Ein geschlossener Tab kann die Lease eines laufenden
+        // Makro-Rücktokenisierungslaufs nie wieder erfüllen.
+        cancelFourDMacroRetokenize(ifTab: id)
         if hexSavePreviewRequestTabID == id { hexSavePreviewRequestTabID = nil }
         tabs.remove(at: idx)
         recentlyActiveTabIDs.removeAll { $0 == id }
