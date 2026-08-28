@@ -96,6 +96,16 @@ array_contains_exactly() {
     done
     return 1
 }
+
+emit_selftest_result() {
+    printf 'SELFTEST-RESULT v=1 test=%s status=%s\n' "$1" "$2"
+}
+
+emit_locked_screen_skip() {
+    emit_selftest_result "$1" "SKIP"
+    echo "SELFTEST $1: SKIP — Bildschirm gesperrt (Umgebungsproblem)"
+}
+
 # Pro Test max. Wartezeit in Sekunden, bis die SELFTEST-Zeile da sein muss.
 # (Fenster-Polling im Test selbst: bis 15 s; plus Puffer für App-Start.)
 TIMEOUT_SECS=60
@@ -127,7 +137,6 @@ else
     STANDARD_RUN=1
     TESTS=("${ALL_TESTS[@]}")
 fi
-
 if [[ ! -x "$APP_BIN" ]]; then
     echo "✗ Kein Debug-Build gefunden ($APP_BIN). Erst ./build.sh laufen lassen." >&2
     exit 2
@@ -231,12 +240,19 @@ if console_locked; then
             SKIPPED_TESTS+=("$t")
         fi
     done
+    # Der Runner-Test stellt hier den Gegenfall ohne ausgelassene Tests her.
+    # So prüft er gezielt die leere Skip-Liste unter macOS-bash 3.2.
+    if [[ "${FASTRA_SELFTEST_TEST_EMPTY_SKIPPED:-0}" == "1" ]]; then
+        FILTERED=()
+        SKIPPED_TESTS=()
+    fi
     if [[ ${#FILTERED[@]} -eq 0 ]]; then
         echo "  Keiner der angeforderten Tests ist fensterlos. Abbruch (Exit 2)."
-        for t in "${SKIPPED_TESTS[@]}"; do
-            printf 'SELFTEST-RESULT v=1 test=%s status=SKIP\n' "$t"
-            printf 'SELFTEST %s: SKIP — Bildschirm ist gesperrt\n' "$t"
-        done
+        if [[ ${#SKIPPED_TESTS[@]} -gt 0 ]]; then
+            for t in "${SKIPPED_TESTS[@]}"; do
+                emit_locked_screen_skip "$t"
+            done
+        fi
         exit 2
     fi
     echo "  Es läuft nur: ${FILTERED[*]}"
@@ -1277,10 +1293,6 @@ classify_selftest_result() {
     fi
 }
 
-emit_selftest_result() {
-    printf 'SELFTEST-RESULT v=1 test=%s status=%s\n' "$1" "$2"
-}
-
 pass_count=0
 real_fail_count=0
 env_fail_count=0
@@ -1312,8 +1324,7 @@ PERFORMANCE_CONFIGURATION="${PERFORMANCE_BUILD}-mixed-macos${OS_MAJOR}"
 # prüfen, sonst gilt "${arr[@]}" als unbound.
 if [[ ${#SKIPPED_TESTS[@]} -gt 0 ]]; then
     for t in "${SKIPPED_TESTS[@]}"; do
-        emit_selftest_result "$t" "SKIP"
-        echo "SELFTEST $t: SKIP — Bildschirm gesperrt (Umgebungsproblem)"
+        emit_locked_screen_skip "$t"
         summary+="⚠ $t (übersprungen: Bildschirm gesperrt)\n"
         skip_count=$((skip_count + 1))
     done

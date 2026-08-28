@@ -9,6 +9,29 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.112.12] — 2026-08-28
+
+### Behoben
+
+- **Ein folgenlos abgelehnter Metadaten-Schritt beim atomaren Speichern wird
+  sauber zurückgetauscht.** Fastra entscheidet den Rücktausch wieder anhand der
+  gebundenen Inode-Version und des Ersatzinhalts: Eine tatsächliche teilweise
+  Metadatenänderung bleibt wegen ihrer geänderten `ctime` weiterhin als
+  Recovery-Fall erhalten, ein Fehler ohne Dateiwirkung dagegen nicht. Die reine
+  Inode-Bindung liest den vollständigen Ersatzinhalt nicht mehr ein drittes Mal.
+- **Die gesamte Nachbearbeitung eines 4D-Makro-Ergebnisses ist abbrechbar.**
+  Schon der Tokenizer reagiert während großer Methoden auf einen Abbruch;
+  Rücktokenisierung und Diff teilen einen vom Workspace verwalteten Task. Eine
+  Inhaltsänderung sowie Tab-, Fenster- oder Workspace-Abbau geben die
+  Makro-Sperre unmittelbar frei und verwerfen verspätete Ergebnisse.
+- **Makro-Katalogbudgets werden in einem statt drei Durchläufen je Quelle
+  gemessen.** Cachegrenzen heißen im Code nun entsprechend ihrer tatsächlichen
+  Bedeutung Gewicht statt Textmenge; Regressionstests belegen sowohl die
+  Verdrängung bausteinreicher als auch den Cachetreffer kleiner Kataloge.
+- **Der Selbsttest-Runner behandelt auch leere Skip-Arrays unter macOS-bash 3.2
+  sicher.** Vollständig übersprungene Fensterläufe verwenden an beiden
+  Ausgabestellen dasselbe maschinenlesbare und lesbare Ergebnisformat.
+
 ## [v1.112.11] — 2026-08-27
 
 ### Behoben

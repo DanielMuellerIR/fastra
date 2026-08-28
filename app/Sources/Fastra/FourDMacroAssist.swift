@@ -103,7 +103,7 @@ struct FourDMacroSourceFingerprint: Hashable {
 final class FourDMacroCatalogCache: @unchecked Sendable {
     static let shared = FourDMacroCatalogCache()
     static let defaultMaximumEntryCount = 8
-    static let defaultMaximumTextUTF16Units = 16 * 1024 * 1024
+    static let defaultMaximumWeight = 16 * 1024 * 1024
 
     private struct Entry {
         let fingerprints: [FourDMacroSourceFingerprint]
@@ -117,12 +117,12 @@ final class FourDMacroCatalogCache: @unchecked Sendable {
     private var totalWeight = 0
     private var accessCounter: UInt64 = 0
     private let maximumEntryCount: Int
-    private let maximumTextUTF16Units: Int
+    private let maximumWeight: Int
 
     init(maximumEntryCount: Int = defaultMaximumEntryCount,
-         maximumTextUTF16Units: Int = defaultMaximumTextUTF16Units) {
+         maximumWeight: Int = defaultMaximumWeight) {
         self.maximumEntryCount = max(1, maximumEntryCount)
-        self.maximumTextUTF16Units = max(0, maximumTextUTF16Units)
+        self.maximumWeight = max(0, maximumWeight)
     }
 
     func macros(for key: String,
@@ -147,13 +147,13 @@ final class FourDMacroCatalogCache: @unchecked Sendable {
             if let replaced = entries.removeValue(forKey: key) {
                 totalWeight -= replaced.weight
             }
-            guard weight <= maximumTextUTF16Units else { return }
+            guard weight <= maximumWeight else { return }
             accessCounter &+= 1
             entries[key] = Entry(fingerprints: fingerprints, macros: macros,
                                  weight: weight, lastAccess: accessCounter)
             totalWeight += weight
             while entries.count > maximumEntryCount
-                    || totalWeight > maximumTextUTF16Units,
+                    || totalWeight > maximumWeight,
                   let oldest = entries.min(by: {
                       $0.value.lastAccess < $1.value.lastAccess
                   }) {
@@ -222,30 +222,39 @@ enum FourDMacroCatalogLoader {
         return OpenedSource(data: data, fingerprint: fingerprint)
     }
 
-    private static func retainedTextUTF16Units(in macros: [FourDMacro]) -> Int {
-        macros.reduce(into: 0) { total, macro in
-            total += (macro.displayName as NSString).length
-            total += (macro.sourceLabel as NSString).length
-            total += (macro.methodCall as NSString?)?.length ?? 0
+    struct RetainedCatalogMeasurements: Equatable {
+        var textUTF16Units = 0
+        var partCount = 0
+        var cacheWeight = 0
+        var visitedMacroCount = 0
+    }
+
+    /// Liefert alle drei Katalogbudgets in EINEM Durchlauf. `visitedMacroCount`
+    /// macht diese Zusage im Regressionstest messbar; die Quelle wird nicht
+    /// getrennt für Text, Bausteine und Cachegewicht erneut durchlaufen.
+    static func retainedMeasurements(
+        in macros: [FourDMacro]
+    ) -> RetainedCatalogMeasurements {
+        var measurements = RetainedCatalogMeasurements()
+        for macro in macros {
+            measurements.visitedMacroCount += 1
+            measurements.textUTF16Units += (macro.displayName as NSString).length
+            measurements.textUTF16Units += (macro.sourceLabel as NSString).length
+            measurements.textUTF16Units += (macro.methodCall as NSString?)?.length ?? 0
+            measurements.cacheWeight += 16
+            measurements.cacheWeight += (macro.id as NSString).length
+            measurements.cacheWeight +=
+                (macro.unknownPlaceholder as NSString?)?.length ?? 0
+            measurements.partCount += macro.textParts.count
+            measurements.cacheWeight += macro.textParts.count * 8
             for part in macro.textParts {
                 if case .literal(let text) = part {
-                    total += (text as NSString).length
+                    measurements.textUTF16Units += (text as NSString).length
                 }
             }
         }
-    }
-
-    /// Näherungsgewicht des tatsächlich gehaltenen Objektgraphen. Ein Makro
-    /// und jeder Baustein kosten auch ohne Text Speicher; deshalb zählen feste
-    /// Einheiten zusätzlich zu allen gespeicherten Zeichenketten.
-    private static func retainedCacheWeight(in macros: [FourDMacro]) -> Int {
-        let textWeight = retainedTextUTF16Units(in: macros)
-        return macros.reduce(into: textWeight) { total, macro in
-            total += 16
-            total += (macro.id as NSString).length
-            total += (macro.unknownPlaceholder as NSString?)?.length ?? 0
-            total += macro.textParts.count * 8
-        }
+        measurements.cacheWeight += measurements.textUTF16Units
+        return measurements
     }
 
     static func load(sources allSources: [FourDMacroSource], cacheKey: String,
@@ -287,16 +296,17 @@ enum FourDMacroCatalogLoader {
                 sourceKey: opened.fingerprint.path,
                 limits: limits
             )
-            let sourceText = retainedTextUTF16Units(in: sourceMacros)
-            let sourceParts = sourceMacros.reduce(0) { $0 + $1.textParts.count }
-            guard retainedText + sourceText <= maximumCatalogTextUTF16Units else {
+            let measurements = retainedMeasurements(in: sourceMacros)
+            guard retainedText + measurements.textUTF16Units
+                    <= maximumCatalogTextUTF16Units else {
                 break
             }
-            guard retainedParts + sourceParts <= maximumCatalogPartCount else { break }
+            guard retainedParts + measurements.partCount
+                    <= maximumCatalogPartCount else { break }
             parsedMacros.append(contentsOf: sourceMacros)
-            retainedText += sourceText
-            retainedParts += sourceParts
-            retainedWeight += retainedCacheWeight(in: sourceMacros)
+            retainedText += measurements.textUTF16Units
+            retainedParts += measurements.partCount
+            retainedWeight += measurements.cacheWeight
             storedFingerprints.append(opened.fingerprint)
         }
         // Nur einen vollständigen, in derselben Reihenfolge gelesenen
@@ -492,15 +502,22 @@ extension Workspace {
         }
     }
 
-    /// Bricht einen laufenden Rücktokenisierungslauf ab, wenn er zum
-    /// angegebenen Tab gehört. Aufgerufen an den Stellen, die dessen Lease
-    /// ENDGÜLTIG entwerten: eine Inhaltsänderung (die `contentRevision` kann
-    /// nie wieder passen) und das Schließen des Tabs. Ein bloßer Tabwechsel
-    /// bricht bewusst nicht ab — die Lease kann beim Zurückwechseln wieder
-    /// gültig werden.
-    func cancelFourDMacroRetokenize(ifTab tabID: UUID) {
-        guard fourDMacroRetokenizeTabID == tabID else { return }
-        fourDMacroRetokenizeTask?.cancel()
+    /// Bricht Rücktokenisierung oder Diff eines Makro-Ergebnisses ab, wenn die
+    /// Nachbearbeitung zum angegebenen Tab gehört. Inhaltsänderung, Tab- und
+    /// Fensterschließung entwerten die Lease endgültig; ein bloßer Tabwechsel
+    /// nicht. Die Makro-Sperre wird unmittelbar frei, auch wenn eine bereits
+    /// laufende synchrone Diff-Operation erst danach aus ihrem Task zurückkehrt.
+    func cancelFourDMacroPostprocessing(ifTab tabID: UUID? = nil) {
+        if let tabID, fourDMacroPostprocessTabID != tabID { return }
+        fourDMacroPostprocessTask?.cancel()
+        clearFourDMacroPostprocessing()
+    }
+
+    private func clearFourDMacroPostprocessing() {
+        fourDMacroPostprocessTask = nil
+        fourDMacroPostprocessTabID = nil
+        fourDMacroPostprocessID = nil
+        fourDMacroEngineBusy = false
     }
 
     /// Menüweg: Makro über seine stabile ID ausführen.
@@ -728,75 +745,96 @@ extension Workspace {
                     text: L10n.string("Keine Änderungen — die Methode ist bereits vollständig."),
                     lease: lease)
             case .changed(let newCode):
-                // Die Rücktokenisierung großer Methoden läuft als VERWALTETER
-                // Hintergrund-Task: Der Workspace hält den Handle und bricht
-                // ihn ab, sobald die Lease endgültig entwertet ist (Edit oder
-                // Tab-Schließen, siehe `cancelFourDMacroRetokenize`). Ein
-                // abgebrochener Lauf liefert `nil` und gibt sofort
-                // `fourDMacroEngineBusy` frei.
-                self.fourDMacroRetokenizeTask?.cancel()
-                self.fourDMacroRetokenizeTabID = lease.tabID
-                self.fourDMacroRetokenizeTask = Task.detached(
-                    priority: .userInitiated
-                ) { [weak self] in
-                    let retokenized = FourDTokenTransform.retokenize(
-                        newCode, learned: learned,
-                        isCancelled: { Task.isCancelled })
-                    await MainActor.run { [weak self] in
-                        guard let self else { return }
-                        self.fourDMacroRetokenizeTask = nil
-                        self.fourDMacroRetokenizeTabID = nil
-                        guard let retokenized, lease.isCurrent(in: self) else {
-                            self.fourDMacroEngineBusy = false
-                            return
-                        }
-                        guard retokenized != originalText else {
-                            self.fourDMacroEngineBusy = false
-                            self.presentFourDMacroWarning(
-                                title: L10n.format("Makro „%@“", macroName),
-                                text: L10n.string("Keine Änderungen — die Methode ist bereits vollständig."),
-                                lease: lease)
-                            return
-                        }
-                        self.presentFourDMacroPreview(
-                            macroName: macroName, lease: lease,
-                            original: originalText, result: retokenized
-                        )
-                    }
-                }
+                self.startFourDMacroPostprocessing(
+                    newCode: newCode, learned: learned,
+                    originalText: originalText, macroName: macroName,
+                    lease: lease)
             }
             }
         }
     }
 
-    /// Baut den Diff „aktueller Puffer → Makro-Ergebnis" im Hintergrund und
-    /// zeigt danach das Vorschau-Sheet.
-    @MainActor private func presentFourDMacroPreview(
+    /// Rücktokenisiert das Engine-Ergebnis und baut anschließend den Diff im
+    /// selben verwalteten Task. `buildDiff` ist nur für den deterministischen
+    /// Abbruchtest injizierbar; der Produktpfad nutzt die echte Berechnung.
+    @MainActor func startFourDMacroPostprocessing(
+        newCode: String, learned: [String: String], originalText: String,
         macroName: String, lease: FourDMacroExecutionLease,
-        original: String, result: String
+        buildDiff: @escaping (FileDiffRequest) -> FileDiffDocument = {
+            Workspace.computeFileDiffDocument(request: $0)
+        }
     ) {
-        let request = FileDiffRequest(
-            left: .text(original, name: L10n.string("Aktueller Stand")),
-            right: .text(result, name: L10n.format("Ergebnis von „%@“", macroName)),
-            options: FileDiffOptions()
-        )
-        Task.detached(priority: .userInitiated) {
-            let document = Workspace.computeFileDiffDocument(request: request)
+        // Inhaltsänderung, Tab- oder Fensterschluss brechen diesen Handle ab
+        // und geben die Makro-Sperre sofort frei; ein später Rücklauf darf
+        // keinen Nachfolger abräumen.
+        cancelFourDMacroPostprocessing()
+        fourDMacroEngineBusy = true
+        let postprocessID = UUID()
+        fourDMacroPostprocessID = postprocessID
+        fourDMacroPostprocessTabID = lease.tabID
+        let currentName = L10n.string("Aktueller Stand")
+        let resultName = L10n.format("Ergebnis von „%@“", macroName)
+        let unchangedTitle = L10n.format("Makro „%@“", macroName)
+        let unchangedText = L10n.string(
+            "Keine Änderungen — die Methode ist bereits vollständig.")
+        let discardedTitle = L10n.string("Makro-Vorschau verworfen")
+        let discardedText = L10n.string(
+            "Das Dokument wurde während des Makrolaufs geändert. Führe das Makro erneut aus.")
+        fourDMacroPostprocessTask = Task.detached(
+            priority: .userInitiated
+        ) { [weak self] in
+            let retokenized = FourDTokenTransform.retokenize(
+                newCode, learned: learned,
+                isCancelled: { Task.isCancelled })
+            guard let retokenized, !Task.isCancelled else {
+                await MainActor.run { [weak self] in
+                    guard let self,
+                          self.fourDMacroPostprocessID == postprocessID else {
+                        return
+                    }
+                    self.clearFourDMacroPostprocessing()
+                }
+                return
+            }
+            guard retokenized != originalText else {
+                await MainActor.run { [weak self] in
+                    guard let self,
+                          self.fourDMacroPostprocessID == postprocessID else {
+                        return
+                    }
+                    self.clearFourDMacroPostprocessing()
+                    guard lease.isCurrent(in: self) else { return }
+                    self.presentFourDMacroWarning(
+                        title: unchangedTitle, text: unchangedText,
+                        lease: lease)
+                }
+                return
+            }
+            let request = FileDiffRequest(
+                left: .text(originalText, name: currentName),
+                right: .text(retokenized, name: resultName),
+                options: FileDiffOptions()
+            )
+            let document = buildDiff(request)
+            guard !Task.isCancelled else { return }
             await MainActor.run { [weak self] in
-                guard let self else { return }
-                self.fourDMacroEngineBusy = false
+                guard let self,
+                      self.fourDMacroPostprocessID == postprocessID else {
+                    return
+                }
+                self.clearFourDMacroPostprocessing()
                 // Veraltete Grundlage? Dann keine Vorschau mehr anbieten —
-                // Anwenden würde ohnehin an der Lease-Prüfung scheitern.
+                // Anwenden würde an der Lease scheitern.
                 guard lease.isCurrent(in: self) else {
                     self.presentFourDMacroWarning(
-                        title: L10n.string("Makro-Vorschau verworfen"),
-                        text: L10n.string("Das Dokument wurde während des Makrolaufs geändert. Führe das Makro erneut aus."),
+                        title: discardedTitle, text: discardedText,
                         lease: lease)
                     return
                 }
                 self.fourDMacroPreview = FourDMacroPreviewState(
-                    macroName: macroName, lease: lease, resultText: result,
-                    request: request, document: document)
+                    macroName: macroName, lease: lease,
+                    resultText: retokenized, request: request,
+                    document: document)
             }
         }
     }

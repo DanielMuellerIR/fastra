@@ -456,7 +456,7 @@ func macroCatalogCacheWeightsStructuralParts() throws {
     )
     let source = FourDMacroSource(url: sourceURL, origin: .userLibrary)
     let cache = FourDMacroCatalogCache(
-        maximumEntryCount: 2, maximumTextUTF16Units: 128
+        maximumEntryCount: 2, maximumWeight: 128
     )
     let key = "parts-weight:\(UUID().uuidString)"
 
@@ -470,6 +470,50 @@ func macroCatalogCacheWeightsStructuralParts() throws {
     #expect(!first.cacheHit)
     #expect(!second.cacheHit,
             "Viele Platzhalter dürfen nicht als nahezu gewichtsloser Cacheeintrag gelten")
+
+    let compactURL = scratch.appendingPathComponent("Compact.xml")
+    try writeFile(
+        compactURL,
+        "<macros><macro name=\"Y\"><text><caret/>x</text></macro></macros>"
+    )
+    let compact = FourDMacroSource(url: compactURL, origin: .userLibrary)
+    let compactCache = FourDMacroCatalogCache(
+        maximumEntryCount: 2, maximumWeight: 4_096
+    )
+    let compactKey = "parts-compact:\(UUID().uuidString)"
+    let compactFirst = FourDMacroCatalogLoader.load(
+        sources: [compact], cacheKey: compactKey, force: false,
+        cache: compactCache
+    )
+    let compactSecond = FourDMacroCatalogLoader.load(
+        sources: [compact], cacheKey: compactKey, force: false,
+        cache: compactCache
+    )
+    #expect(!compactFirst.cacheHit)
+    #expect(compactSecond.cacheHit,
+            "Wenige Bausteine müssen als regulärer Katalogeintrag im Cache bleiben")
+}
+
+@Test("Katalogbudgets werden in genau einem Makrodurchlauf gemessen")
+func macroCatalogMeasurementsVisitEachMacroOnce() {
+    let xml = """
+    <macros>
+      <macro name="A"><text>eins<caret/></text></macro>
+      <macro name="B"><text><selection/>zwei</text></macro>
+    </macros>
+    """
+    let macros = FourDMacroXML.parse(
+        data: Data(xml.utf8), sourceLabel: "measurements.xml"
+    )
+    let measurements = FourDMacroCatalogLoader.retainedMeasurements(in: macros)
+
+    #expect(macros.count == 2)
+    #expect(measurements.visitedMacroCount == macros.count)
+    #expect(measurements.partCount == macros.reduce(0) {
+        $0 + $1.textParts.count
+    })
+    #expect(measurements.textUTF16Units > 0)
+    #expect(measurements.cacheWeight > measurements.textUTF16Units)
 }
 
 @Test("Fundorte: Komponenten (v20 und v21), dependencies.json, Benutzerordner und 4D.app")
@@ -751,17 +795,20 @@ struct FourDMacroRenderingTests {
 
     @Test("Abgebrochene Rücktokenisierung liefert kein Teilergebnis")
     func retokenizeCancellationStopsWithoutPartialResult() {
-        let text = "ALERT(\"a\")\nALERT(\"b\")\nALERT(\"c\")"
+        let text = "//" + String(repeating: "a", count: 20_000)
         // Nicht abgebrochen: identisch zur öffentlichen Variante.
         #expect(FourDTokenTransform.retokenize(
             text, learned: [:], isCancelled: { false })
             == FourDTokenTransform.retokenize(text, learned: [:]))
-        // Abbruch mitten in der Tokenschleife: `nil` statt halber Suffixe.
+        // Der reine Kommentar erzeugt kein rücktokenisierbares Token. Nur ein
+        // Abbruch IM Tokenizer kann den Lauf deshalb stoppen; die spätere
+        // Planungsschleife wird bei diesem Fixture nie betreten.
         var checks = 0
         let cancelled = FourDTokenTransform.retokenize(
             text, learned: [:],
-            isCancelled: { checks += 1; return checks > 1 })
+            isCancelled: { checks += 1; return checks > 4 })
         #expect(cancelled == nil)
+        #expect(checks > 4)
     }
 
     @Test("Engine-Status: OK, UNVERAENDERT und FEHLER werden korrekt gelesen")
@@ -903,15 +950,35 @@ func commandTokenizationSkipsDeclarationTypes() {
 
 @Test("Viele 4D-Deklarationen behalten ihre Typen ohne wiederholte Präfixkopien")
 func commandTokenizationHandlesLargeDeclarationFiles() {
-    let declarations = (0..<4_096).map { index in
-        "var $date\(index) : Date\nvar $time\(index) : Time"
-    }.joined(separator: "\n")
-    let source = declarations + "\nDate(\"2026-08-26\")"
-    let tokenized = FourDTokenTransform.tokenizeCommands(source)
+    func source(declarationPairs: Int) -> String {
+        let declarations = (0..<declarationPairs).map { index in
+            "var $date\(index) : Date\nvar $time\(index) : Time"
+        }.joined(separator: "\n")
+        return declarations + "\nDate(\"2026-08-26\")"
+    }
+    func threadCPUSeconds(for source: String) -> Double {
+        var before = timespec()
+        var after = timespec()
+        #expect(clock_gettime(CLOCK_THREAD_CPUTIME_ID, &before) == 0)
+        _ = FourDTokenTransform.tokenizeCommands(source)
+        #expect(clock_gettime(CLOCK_THREAD_CPUTIME_ID, &after) == 0)
+        let seconds = Double(after.tv_sec - before.tv_sec)
+        let nanoseconds = Double(after.tv_nsec - before.tv_nsec) / 1_000_000_000
+        return seconds + nanoseconds
+    }
+
+    let smallSource = source(declarationPairs: 1_024)
+    let largeSource = source(declarationPairs: 4_096)
+    _ = FourDTokenTransform.tokenizeCommands(source(declarationPairs: 32))
+    let smallCPU = threadCPUSeconds(for: smallSource)
+    let largeCPU = threadCPUSeconds(for: largeSource)
+    let tokenized = FourDTokenTransform.tokenizeCommands(largeSource)
     let retokenized = FourDTokenTransform.retokenize(
-        source, learned: ["date": ":C102", "time": ":C179"]
+        largeSource, learned: ["date": ":C102", "time": ":C179"]
     )
 
+    #expect(largeCPU <= smallCPU * 8 + 0.02,
+            "Vierfache Eingabe darf nicht wieder annähernd quadratische CPU-Zeit brauchen (klein: \(smallCPU)s, groß: \(largeCPU)s)")
     #expect(!tokenized.contains(": Date:C102"))
     #expect(!tokenized.contains(": Time:C179"))
     #expect(tokenized.hasSuffix("Date:C102(\"2026-08-26\")"))
@@ -1188,6 +1255,136 @@ func macroEngineQueuedRunCanCancelBeforeStart() async {
         ) { continuation.resume(returning: $0) }
     }
     #expect(result == .cancelledBeforeStart)
+}
+
+@Test("Fensterschließen bricht die gesamte Makro-Nachbearbeitung ab")
+@MainActor
+func macroPostprocessingStopsWhenWindowCloses() throws {
+    let suite = "fastra-test-macro-window-close-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let workspace = Workspace(defaults: defaults)
+    let probe = try startBlockingMacroDiff(in: workspace, keepSecondTab: false)
+    #expect(probe.diffStarted.wait(timeout: .now() + 2) == .success)
+
+    #expect(workspace.prepareToCloseWindow())
+
+    #expect(probe.diffCancelled.wait(timeout: .now() + 2) == .success)
+    #expect(workspace.fourDMacroPostprocessTask == nil)
+    #expect(!workspace.fourDMacroEngineBusy)
+    #expect(workspace.fourDMacroPreview == nil)
+}
+
+@Test("Tab-Schließen gibt die Makro-Sperre auch während des Diffs frei")
+@MainActor
+func macroPostprocessingStopsWhenTabCloses() throws {
+    let suite = "fastra-test-macro-tab-close-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let workspace = Workspace(defaults: defaults)
+    let probe = try startBlockingMacroDiff(in: workspace, keepSecondTab: true)
+    #expect(probe.diffStarted.wait(timeout: .now() + 2) == .success)
+
+    workspace.closeTab(id: probe.activeTabID)
+
+    #expect(probe.diffCancelled.wait(timeout: .now() + 2) == .success)
+    let retainedTabID = try #require(probe.retainedTabID)
+    #expect(workspace.tabs.map(\.id) == [retainedTabID])
+    #expect(workspace.fourDMacroPostprocessTask == nil)
+    #expect(!workspace.fourDMacroEngineBusy)
+    #expect(workspace.fourDMacroPreview == nil)
+}
+
+@MainActor
+private func startBlockingMacroDiff(
+    in workspace: Workspace, keepSecondTab: Bool
+) throws -> (
+    activeTabID: UUID, retainedTabID: UUID?,
+    diffStarted: DispatchSemaphore, diffCancelled: DispatchSemaphore
+) {
+    let activeURL = URL(fileURLWithPath: "/tmp/fastra-macro-diff-active.4dm")
+    let activeTab = EditorTab(
+        title: activeURL.lastPathComponent,
+        path: activeURL.deletingLastPathComponent().path,
+        url: activeURL, content: "vorher"
+    )
+    let retainedTab = keepSecondTab ? Workspace.makeScratchTab() : nil
+    workspace.tabs = [activeTab] + [retainedTab].compactMap { $0 }
+    workspace.activeTabID = activeTab.id
+    let lease = try #require(FourDMacroExecutionLease(
+        tab: activeTab, projectRoot: workspace.projectURL,
+        projectGeneration: workspace.projectGeneration
+    ))
+    let diffStarted = DispatchSemaphore(value: 0)
+    let diffCancelled = DispatchSemaphore(value: 0)
+    workspace.startFourDMacroPostprocessing(
+        newCode: "nachher", learned: [:], originalText: "vorher",
+        macroName: "Probe", lease: lease,
+        buildDiff: { request in
+            diffStarted.signal()
+            while !Task.isCancelled {
+                Thread.sleep(forTimeInterval: 0.001)
+            }
+            diffCancelled.signal()
+            return Workspace.computeFileDiffDocument(request: request)
+        }
+    )
+    return (activeTab.id, retainedTab?.id, diffStarted, diffCancelled)
+}
+
+@Test("Workspace-Abbau lässt keinen Makro-Task weiterrechnen")
+@MainActor
+func macroPostprocessingStopsOnWorkspaceDeinit() {
+    let suite = "fastra-test-macro-deinit-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let (reference, probe) = workspaceWithMacroCancellationProbe(defaults: defaults)
+
+    // Der appweite Dokumentkontext beobachtet absichtlich den zuletzt aktiven
+    // Workspace. Erst ein Fensterwechsel löst diese Beobachtung; danach ist
+    // der im Helfer erzeugte Workspace nicht mehr stark besessen. Der Helfer
+    // verhindert zugleich, dass Swift eine lokale Referenz bis zum Testende
+    // verlängert und damit die ARC-Prüfung verfälscht.
+    let otherWorkspace = Workspace(defaults: defaults)
+    ActiveDocumentContext.shared.activate(otherWorkspace)
+
+    #expect(reference.workspace == nil)
+    #expect(probe.cancelled.wait(timeout: .now() + 10) == .success)
+}
+
+private final class WeakMacroWorkspaceReference {
+    weak var workspace: Workspace?
+
+    init(_ workspace: Workspace) {
+        self.workspace = workspace
+    }
+}
+
+@MainActor
+private func workspaceWithMacroCancellationProbe(
+    defaults: UserDefaults
+) -> (WeakMacroWorkspaceReference, (
+    task: Task<Void, Never>, cancelled: DispatchSemaphore
+)) {
+    let workspace = Workspace(defaults: defaults)
+    let probe = macroCancellationProbe()
+    workspace.fourDMacroPostprocessTask = probe.task
+    workspace.fourDMacroPostprocessTabID = workspace.tabs[0].id
+    workspace.fourDMacroPostprocessID = UUID()
+    return (WeakMacroWorkspaceReference(workspace), probe)
+}
+
+private func macroCancellationProbe() -> (
+    task: Task<Void, Never>, cancelled: DispatchSemaphore
+) {
+    let cancelled = DispatchSemaphore(value: 0)
+    let task = Task.detached {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(1))
+        }
+        cancelled.signal()
+    }
+    return (task, cancelled)
 }
 
 @Test("Watch-Transaktion legt eine Datei beiseite und stellt sie wieder her")

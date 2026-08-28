@@ -112,12 +112,15 @@ enum FourDTokenTransform {
 
     /// Abbruchfähige Variante für verwaltete Hintergrund-Tasks: liefert
     /// `nil`, sobald `isCancelled` wahr wird — ein Teilergebnis wäre falsch
-    /// und wird verworfen. Geprüft wird je Token der Planungsschleife; die
-    /// vorgelagerte Tokenisierung selbst läuft nicht abbrechbar durch.
+    /// und wird verworfen. Tokenisierung und Planung prüfen beide während
+    /// ihrer linearen Durchläufe, damit auch ein Abbruch in einer sehr großen
+    /// Methode die Makro-Sperre zeitnah freigibt.
     static func retokenize(_ text: String, learned: [String: String],
                            isCancelled: () -> Bool) -> String? {
         guard !isCancelled() else { return nil }
-        let tokens = FourDTokenizer.tokenize(text)
+        guard let tokens = FourDTokenizer.tokenize(
+            text, isCancelled: isCancelled
+        ) else { return nil }
         let original = text as NSString
         let declarationTypes = declarationTypeLocations(tokens, in: original)
         let result = NSMutableString(string: text)

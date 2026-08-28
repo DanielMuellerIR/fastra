@@ -772,13 +772,14 @@ final class Workspace: ObservableObject {
     /// `true`, während ein tool4d-Makrolauf dieses Fensters läuft. Sperrt
     /// Menüeinträge und Shortcuts gegen parallele Läufe desselben Puffers.
     @Published var fourDMacroEngineBusy = false
-    /// Laufende Rücktokenisierung des Engine-Ergebnisses samt Tab ihrer
-    /// Lease. Verwaltet statt losgelöst: Eine Inhaltsänderung oder das
-    /// Schließen des Tabs entwertet die Lease endgültig — der Lauf wird dann
-    /// abgebrochen, statt wertlos weiterzurechnen und `fourDMacroEngineBusy`
-    /// bis zum Ende zu halten. (Pflege lebt in `FourDMacroAssist.swift`.)
-    var fourDMacroRetokenizeTask: Task<Void, Never>?
-    var fourDMacroRetokenizeTabID: UUID?
+    /// Laufende Nachbearbeitung des Engine-Ergebnisses: Rücktokenisierung UND
+    /// Diff-Berechnung samt Tab ihrer Lease. Eine Inhaltsänderung, Tab- oder
+    /// Fensterschließung entwertet die Lease endgültig und gibt die Makro-Sperre
+    /// sofort frei. Die ID verhindert, dass ein spät endender abgebrochener Task
+    /// den Handle seines Nachfolgers löscht. (Pflege in `FourDMacroAssist.swift`.)
+    var fourDMacroPostprocessTask: Task<Void, Never>?
+    var fourDMacroPostprocessTabID: UUID?
+    var fourDMacroPostprocessID: UUID?
     /// Zuletzt angeforderter, noch von keinem Editor verarbeiteter
     /// Treffer-Sprung. Die Sprung-Notification kann in eine Editor-
     /// Neuerzeugung fallen und verpuffen; der frisch eingehängte Editor
@@ -1536,6 +1537,13 @@ final class Workspace: ObservableObject {
         NotificationCenter.default.post(name: .fastraWorkspaceReady, object: nil)
     }
 
+    deinit {
+        // Zusätzliche Dokumentfenster geben ihren Workspace beim Schließen
+        // frei. Ein noch rechnender Makro-Task darf diese Lebenszeit nicht
+        // überdauern; `Task.cancel()` ist threadsicher und fasst kein UI an.
+        fourDMacroPostprocessTask?.cancel()
+    }
+
     var activeTab: EditorTab? {
         tabs.first(where: { $0.id == activeTabID }) ?? tabs.first
     }
@@ -1755,6 +1763,7 @@ final class Workspace: ObservableObject {
     /// denselben sicheren Fallback verwenden, wenn sämtliche gespeicherten
     /// Dateien während des asynchronen Ladens verschwinden.
     func enterWelcomeState() {
+        cancelFourDMacroPostprocessing()
         showSearchDialog = false
         livePreview = false
         showCompareFilesDialog = false
@@ -1804,9 +1813,9 @@ final class Workspace: ObservableObject {
                     // der nächste einfache Klick ungesicherte Arbeit ersetzen.
                     self.tabs[idx].isPreview = false
                     self.tabs[idx].content = newValue
-                    // Eine Inhaltsänderung entwertet die Lease eines noch
-                    // laufenden Makro-Rücktokenisierungslaufs endgültig.
-                    self.cancelFourDMacroRetokenize(ifTab: tabID)
+                    // Eine Inhaltsänderung entwertet die Lease der gesamten
+                    // Makro-Nachbearbeitung (Rücktokenisierung und Diff).
+                    self.cancelFourDMacroPostprocessing(ifTab: tabID)
                     // Punkt im Tab folgt dem Vergleich mit dem gespeicherten
                     // Stand: Er erscheint bei der ersten echten Abweichung und
                     // verschwindet wieder, wenn z. B. Rückgängig den Inhalt
@@ -2106,9 +2115,9 @@ final class Workspace: ObservableObject {
         documentLanguageDetector.cancel(tabID: id, documentID: tabs[idx].documentID)
         cancelGitDiffLoad(tabID: id)
         cancelGitSnapshotLoad(tabID: id)
-        // Ein geschlossener Tab kann die Lease eines laufenden
-        // Makro-Rücktokenisierungslaufs nie wieder erfüllen.
-        cancelFourDMacroRetokenize(ifTab: id)
+        // Ein geschlossener Tab kann die Lease einer laufenden
+        // Makro-Nachbearbeitung nie wieder erfüllen.
+        cancelFourDMacroPostprocessing(ifTab: id)
         if hexSavePreviewRequestTabID == id { hexSavePreviewRequestTabID = nil }
         tabs.remove(at: idx)
         recentlyActiveTabIDs.removeAll { $0 == id }
@@ -2168,6 +2177,7 @@ final class Workspace: ObservableObject {
         cancelAllGitDiffLoads()
         cancelAllGitSnapshotLoads()
         cancelAllPreviewLoads()
+        cancelFourDMacroPostprocessing()
         hexSavePreviewRequestTabID = nil
         tabs.removeAll()
         recentlyActiveTabIDs.removeAll()
@@ -2211,6 +2221,7 @@ final class Workspace: ObservableObject {
             }
             cancelGitDiffLoad(tabID: removedID)
             cancelGitSnapshotLoad(tabID: removedID)
+            cancelFourDMacroPostprocessing(ifTab: removedID)
         }
         if let requested = hexSavePreviewRequestTabID, requested != id {
             hexSavePreviewRequestTabID = nil

@@ -121,8 +121,28 @@ enum FourDTokenizer {
     static func tokenize(_ text: String,
                          projectMethodNames: Set<String> = [],
                          componentMethodNames: Set<String> = []) -> [Token] {
+        tokenize(
+            text,
+            projectMethodNames: projectMethodNames,
+            componentMethodNames: componentMethodNames,
+            isCancelled: { false }
+        ) ?? []
+    }
+
+    /// Abbruchfähige Variante für große Hintergrundläufe. Sie prüft schon
+    /// beim Aufbau des UTF-16-Puffers und in langen Kommentar-, String- und
+    /// Namensläufen; `nil` bedeutet, dass kein Teilergebnis verwendet werden darf.
+    static func tokenize(_ text: String,
+                         projectMethodNames: Set<String> = [],
+                         componentMethodNames: Set<String> = [],
+                         isCancelled: () -> Bool) -> [Token]? {
+        guard !isCancelled() else { return nil }
         var tokens: [Token] = []
-        let scalars = Array(text.utf16)
+        var scalars: [UInt16] = []
+        for codeUnit in text.utf16 {
+            if scalars.count & 0xFFF == 0, isCancelled() { return nil }
+            scalars.append(codeUnit)
+        }
         let count = scalars.count
         var index = 0
         // Obergrenze der Longest-Prefix-Suche: die längste Phrase, die
@@ -149,13 +169,17 @@ enum FourDTokenizer {
         }
 
         while index < count {
+            if index & 0xFFF == 0, isCancelled() { return nil }
             guard let char = utf16Char(index) else { index += 1; continue }
 
             // ── Kommentare ────────────────────────────────────────────────
             if char == "/", let next = utf16Char(index + 1) {
                 if next == "/" {
                     let start = index
-                    while index < count, utf16Char(index) != "\n" { index += 1 }
+                    while index < count, utf16Char(index) != "\n" {
+                        if index & 0xFFF == 0, isCancelled() { return nil }
+                        index += 1
+                    }
                     tokens.append(Token(range: NSRange(location: start,
                                                        length: index - start),
                                         kind: .comment))
@@ -166,6 +190,7 @@ enum FourDTokenizer {
                     let start = index
                     index += 2
                     while index < count {
+                        if index & 0xFFF == 0, isCancelled() { return nil }
                         if utf16Char(index) == "*", utf16Char(index + 1) == "/" {
                             index += 2
                             break
@@ -185,6 +210,7 @@ enum FourDTokenizer {
                 let start = index
                 index += 1
                 while index < count {
+                    if index & 0xFFF == 0, isCancelled() { return nil }
                     let c = utf16Char(index)
                     if c == "\\" {
                         // Ein Schluss-Backslash ohne Folgezeichen darf den
@@ -207,7 +233,10 @@ enum FourDTokenizer {
 
             // ── Tabellenreferenz [Name] ───────────────────────────────────
             if char == "[" {
-                if let close = findTableClose(scalars: scalars, from: index + 1) {
+                if let close = findTableClose(
+                    scalars: scalars, from: index + 1,
+                    isCancelled: isCancelled
+                ) {
                     tokens.append(Token(range: NSRange(location: index,
                                                        length: close - index + 1),
                                         kind: .table))
@@ -215,6 +244,7 @@ enum FourDTokenizer {
                     expectsField = true
                     continue
                 }
+                if isCancelled() { return nil }
             }
 
             // ── Interprozess-Variable <>name ──────────────────────────────
@@ -222,7 +252,11 @@ enum FourDTokenizer {
                let first = utf16Char(index + 2), isWordStart(first) {
                 let start = index
                 index += 2
-                index = consumeSpacedName(scalars: scalars, from: index)
+                guard let end = consumeSpacedName(
+                    scalars: scalars, from: index,
+                    isCancelled: isCancelled
+                ) else { return nil }
+                index = end
                 tokens.append(Token(range: NSRange(location: start,
                                                    length: index - start),
                                     kind: .interprocessVariable))
@@ -235,7 +269,11 @@ enum FourDTokenizer {
                isWordStart(next) || next.isNumber {
                 let start = index
                 index += 1
-                index = consumeSpacedName(scalars: scalars, from: index)
+                guard let end = consumeSpacedName(
+                    scalars: scalars, from: index,
+                    isCancelled: isCancelled
+                ) else { return nil }
+                index = end
                 tokens.append(Token(range: NSRange(location: start,
                                                    length: index - start),
                                     kind: .localVariable))
@@ -246,17 +284,22 @@ enum FourDTokenizer {
             // ── Wörter/Phrasen (Befehle, Konstanten, Keywords, Variablen) ─
             if isWordStart(char) || char.isNumber {
                 let start = index
-                let phraseEnd = consumeSpacedName(scalars: scalars, from: index)
+                guard let phraseEnd = consumeSpacedName(
+                    scalars: scalars, from: index,
+                    isCancelled: isCancelled
+                ) else { return nil }
                 if let token = classifyPhrase(text: text, scalars: scalars,
                                               start: start, phraseEnd: phraseEnd,
                                               expectsField: expectsField,
                                               afterDot: afterDot,
                                               projectMethodNames: projectMethodNames,
                                               componentMethodNames: componentMethodNames,
-                                              maximumWords: maximumWords) {
+                                              maximumWords: maximumWords,
+                                              isCancelled: isCancelled) {
                     tokens.append(token)
                     index = token.range.location + token.range.length
                 } else {
+                    if isCancelled() { return nil }
                     // Member ohne Klammer → bewusst ohne Capture (plain).
                     index = phraseEnd
                 }
@@ -291,7 +334,8 @@ enum FourDTokenizer {
                                        afterDot: Bool,
                                        projectMethodNames: Set<String>,
                                        componentMethodNames: Set<String>,
-                                       maximumWords: Int) -> Token? {
+                                       maximumWords: Int,
+                                       isCancelled: () -> Bool) -> Token? {
 
         // Wortgrenzen der Phrase für die Longest-Prefix-Versuche. Bewusst auf
         // `maximumWords` begrenzt — die Wortzahl des längsten überhaupt
@@ -303,6 +347,7 @@ enum FourDTokenizer {
         var i = start
         var lastWasSpace = true
         while i < phraseEnd, boundaries.count < maximumWords {
+            if i & 0xFFF == 0, isCancelled() { return nil }
             let c = Character(Unicode.Scalar(scalars[i])!)
             if c == " " {
                 if !lastWasSpace { boundaries.append(i) }
@@ -335,6 +380,7 @@ enum FourDTokenizer {
 
         // Longest-Prefix: erst Befehle, dann Konstanten, dann Keywords.
         for end in boundaries.reversed() {
+            if isCancelled() { return nil }
             let phrase = substring(text, start, end)
             let lowered = Substring(phrase)
             if commandTable.contains(lowered) {
@@ -391,6 +437,7 @@ enum FourDTokenizer {
         // Die längste passende Phrase gewinnt, damit auch Namen mit Leerraum
         // funktionieren. Die Menge ist bereits kleingeschrieben aufgebaut.
         for end in boundaries.reversed() {
+            if isCancelled() { return nil }
             let candidate = substring(text, start, end)
             if projectMethodNames.contains(candidate.lowercased()) {
                 return Token(range: NSRange(location: start, length: end - start),
@@ -401,6 +448,7 @@ enum FourDTokenizer {
         // Component-Methoden folgen bewusst NACH Projektmethoden: Bei einer
         // Namenskollision bleibt die bestehende Produktentscheidung erhalten.
         for end in boundaries.reversed() {
+            if isCancelled() { return nil }
             let candidate = substring(text, start, end)
             if componentMethodNames.contains(candidate.lowercased()) {
                 return Token(range: NSRange(location: start, length: end - start),
@@ -459,10 +507,14 @@ enum FourDTokenizer {
     /// zwischen Wörtern (4D-Namen dürfen Leerzeichen enthalten; Befehle und
     /// Konstanten sind mehrwortig). Endet vor doppeltem Leerzeichen,
     /// Zeilenende oder Nicht-Wortzeichen.
-    private static func consumeSpacedName(scalars: [UInt16], from: Int) -> Int {
+    private static func consumeSpacedName(
+        scalars: [UInt16], from: Int,
+        isCancelled: () -> Bool
+    ) -> Int? {
         var i = from
         var lastNonSpace = from
         while i < scalars.count {
+            if i & 0xFFF == 0, isCancelled() { return nil }
             guard let c = Unicode.Scalar(scalars[i]).map(Character.init) else { break }
             if isWordChar(c) {
                 i += 1
@@ -484,10 +536,14 @@ enum FourDTokenizer {
 
     /// Tabellenreferenz: `]` auf derselben Zeile suchen; Inhalt muss wie ein
     /// Name aussehen (sonst ist `[` ein Kollektions-Literal o. Ä.).
-    private static func findTableClose(scalars: [UInt16], from: Int) -> Int? {
+    private static func findTableClose(
+        scalars: [UInt16], from: Int,
+        isCancelled: () -> Bool
+    ) -> Int? {
         var i = from
         var sawWordChar = false
         while i < scalars.count {
+            if i & 0xFFF == 0, isCancelled() { return nil }
             guard let c = Unicode.Scalar(scalars[i]).map(Character.init) else { return nil }
             if c == "]" { return sawWordChar ? i : nil }
             if c == "\n" { return nil }

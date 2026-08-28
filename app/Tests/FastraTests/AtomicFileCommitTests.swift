@@ -58,6 +58,75 @@ struct AtomicFileCommitTests {
                 == extendedAttributeValue)
     }
 
+    @Test("Erfolgreicher Tausch liest den Ersatzinhalt nur zweimal vollständig")
+    func successfulSwapAvoidsRedundantPreparedContentRead() throws {
+        let directory = try makeDirectory("content-read-count")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let original = Data(repeating: 0x41, count: 64 * 1024)
+        let replacement = Data(repeating: 0x42, count: 64 * 1024)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        var preparedContentReads = 0
+
+        _ = try AtomicFileCommit.replaceExisting(
+            at: target,
+            withPreparedFile: prepared,
+            expecting: expected,
+            replacementContent: FileSnapshot(data: replacement, identity: nil),
+            preparedSnapshotReader: { descriptor, info, limit in
+                preparedContentReads += 1
+                return try FileSnapshot.readSnapshotOnly(
+                    descriptor: descriptor, fileStat: info, byteLimit: limit)
+            })
+
+        #expect(preparedContentReads == 2,
+                "Vorprüfung und Abschluss brauchen je einen Vollscan; die reine Inode-Bindung keinen dritten")
+        #expect(try Data(contentsOf: target) == replacement)
+    }
+
+    @Test("Folgenlos gescheiterte Metadatenkopie tauscht den Ausgangsstand zurück")
+    func metadataCopyFailureWithoutMutationRollsBackCleanly() throws {
+        let directory = try makeDirectory("metadata-copy-failure")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let original = Data("original\n".utf8)
+        let replacement = Data("replacement\n".utf8)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+
+        do {
+            _ = try AtomicFileCommit.replaceExisting(
+                at: target,
+                withPreparedFile: prepared,
+                expecting: expected,
+                replacementContent: FileSnapshot(data: replacement, identity: nil),
+                copyDisplacedMetadata: { _, _ in
+                    // Simuliert einen Datenträger, der die Metadaten ablehnt,
+                    // ohne die vorbereitete Inode vorher teilweise zu ändern.
+                    errno = EACCES
+                    return -1
+                })
+            Issue.record("Die abgelehnte Metadatenkopie hätte fehlschlagen müssen")
+        } catch let failure as AtomicFileCommit.Failure {
+            if case .recoveryRequired = failure {
+                Issue.record("Ein folgenloser Fehler darf keine manuelle Recovery verlangen")
+            } else {
+                Issue.record("Erwartet war der ursprüngliche POSIX-Fehler, erhalten: \(failure)")
+            }
+        } catch let error as POSIXError {
+            #expect(error.code == .EACCES)
+        }
+
+        #expect(try Data(contentsOf: target) == original)
+        #expect(!FileManager.default.fileExists(atPath: prepared.path),
+                "Die eigene Ersatzdatei muss nach dem sicheren Rücktausch verschwinden")
+    }
+
     @Test("In-place-Fremdwrite im Commit-Fenster wird zurückgetauscht")
     func inPlaceWriteAfterPreflightIsRolledBack() throws {
         let directory = try makeDirectory("in-place")
