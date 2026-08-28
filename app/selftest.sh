@@ -271,8 +271,22 @@ NEEDS_GUI_LOCK=1
 # gefunden.
 track_started_pid() {
     local pid="$1"
-    local token
+    local token index=0
     token="$(fastra_test_pid_token "$pid")"
+    # `fastra_test_start_new_session` hat die Identität bereits vor dem
+    # Freigeben des Handshakes gesichert. Ein sehr kurzes Ersatz-Binary kann
+    # danach enden, bevor dieser zweite Aufruf von `ps` läuft. Dann die schon
+    # gebundene Identität übernehmen; eine später wiederverwendete PID passt
+    # wegen des alten Starttokens weiterhin nicht.
+    if [ -z "$token" ]; then
+        while [ "$index" -lt "${#FASTRA_TEST_STARTED_ROOTS[@]}" ]; do
+            if [ "${FASTRA_TEST_STARTED_ROOTS[$index]}" = "$pid" ]; then
+                token="${FASTRA_TEST_STARTED_TOKENS[$index]}"
+                break
+            fi
+            index=$((index + 1))
+        done
+    fi
     [ -n "$token" ] || return 1
     append_tracked_pid "$pid" "$token"
 }

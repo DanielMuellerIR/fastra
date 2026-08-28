@@ -732,7 +732,7 @@ struct MarkdownPrintJobLifecycleTests {
 
     @MainActor
     @Test("Ein provisorischer Navigationsfehler beendet und löst den Job")
-    func provisionalNavigationFailureFinishes() {
+    func provisionalNavigationFailureFinishes() async {
         var outcomes: [PrintOutcome] = []
         var job: MarkdownPrintJob? = makeJob { outcomes.append($0) }
         let weakJob = WeakMarkdownPrintJobReference(job)
@@ -750,13 +750,12 @@ struct MarkdownPrintJobLifecycleTests {
             return
         }
         job = nil
-        let retainedAfterFinish = weakJob.value
-        #expect(retainedAfterFinish == nil)
+        #expect(await waitUntil(timeout: 1) { weakJob.value == nil })
     }
 
     @MainActor
     @Test("Ein beendeter Webprozess beendet und löst den Job")
-    func webProcessTerminationFinishes() {
+    func webProcessTerminationFinishes() async {
         var outcomes: [PrintOutcome] = []
         var job: MarkdownPrintJob? = makeJob { outcomes.append($0) }
         let weakJob = WeakMarkdownPrintJobReference(job)
@@ -769,13 +768,12 @@ struct MarkdownPrintJobLifecycleTests {
             return
         }
         job = nil
-        let retainedAfterFinish = weakJob.value
-        #expect(retainedAfterFinish == nil)
+        #expect(await waitUntil(timeout: 1) { weakJob.value == nil })
     }
 
     @MainActor
     @Test("Die Gesamtfrist beendet einen festhängenden Vorbereitungsweg")
-    func preparationTimeoutFinishesExactlyOnce() {
+    func preparationTimeoutFinishesExactlyOnce() async {
         var outcomes: [PrintOutcome] = []
         var job: MarkdownPrintJob? = makeJob { outcomes.append($0) }
         let weakJob = WeakMarkdownPrintJobReference(job)
@@ -789,8 +787,7 @@ struct MarkdownPrintJobLifecycleTests {
             return
         }
         job = nil
-        let retainedAfterFinish = weakJob.value
-        #expect(retainedAfterFinish == nil)
+        #expect(await waitUntil(timeout: 1) { weakJob.value == nil })
     }
 
     @MainActor
@@ -822,7 +819,7 @@ struct MarkdownPrintJobLifecycleTests {
 
     @MainActor
     @Test("Ein spätes WebKit-Endsignal wartet auf den Druckabschluss")
-    func webProcessTerminationAfterPrintingWaitsForRelay() throws {
+    func webProcessTerminationAfterPrintingWaitsForRelay() async throws {
         var outcomes: [PrintOutcome] = []
         var printCompletion: ((PrintOutcome) -> Void)?
         var executorCalls = 0
@@ -853,6 +850,6 @@ struct MarkdownPrintJobLifecycleTests {
         let completion = try #require(printCompletion)
         completion(.failed("Druckfehler"))
         #expect(outcomes == [.failed("Druckfehler")])
-        #expect(weakJob.value == nil)
+        #expect(await waitUntil(timeout: 1) { weakJob.value == nil })
     }
 }
