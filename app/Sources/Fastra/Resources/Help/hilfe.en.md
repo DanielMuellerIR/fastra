@@ -93,7 +93,10 @@ character. It is enabled only while regex is off and the search expression
 contains at least one `*`.
 
 **Regex:** The regex switch enables regular expressions (ICU syntax, as
-in `NSRegularExpression`). Capture groups appear as pills as well.
+in `NSRegularExpression`). It is off when the app starts — new searches
+run as plain-text or wildcard searches until you deliberately enable
+regex; regex patterns and the element picker turn the mode on
+automatically. Capture groups appear as pills as well.
 “From example…” derives a pattern from a before/after example; examples with a
 literal `*` are ambiguous and are not accepted. Under “Manage Patterns…” you
 can save custom regex patterns and import or export them as JSON. Import files

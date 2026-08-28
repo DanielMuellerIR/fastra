@@ -97,7 +97,10 @@ Schalter „∗ wörtlich“ behandelt `*` als normales Zeichen. Er ist nur akti
 wenn RegEx aus ist und der Suchausdruck mindestens ein `*` enthält.
 
 **RegEx:** Der RegEx-Schalter aktiviert reguläre Ausdrücke
-(ICU-Syntax, wie `NSRegularExpression`). Capture-Gruppen erscheinen
+(ICU-Syntax, wie `NSRegularExpression`). Beim App-Start ist er
+ausgeschaltet — neue Suchen laufen als Klartext- bzw. Platzhalter-Suche,
+bis du RegEx bewusst einschaltest; RegEx-Vorlagen und der Element-Picker
+aktivieren den Modus automatisch. Capture-Gruppen erscheinen
 ebenfalls als Pillen. „Aus Beispiel…“ leitet ein Muster aus einem
 Vorher/Nachher-Beispiel ab; Beispiele mit einem wörtlichen `*` sind dabei
 mehrdeutig und werden nicht übernommen. Unter „Vorlagen verwalten…“ kannst du

@@ -9,6 +9,37 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.0] — 2026-08-28
+
+### Geändert
+
+- **Neue Suchen starten im Klartext-Modus; RegEx ist ein bewusster
+  Opt-in.** Der RegEx-Schalter stand seit der Demo-Phase beim App-Start
+  immer auf „an“ — eine Klartext-Suche mit Sonderzeichen fand dann
+  scheinbar grundlos nichts (Testerin-Befund 2026-08-28). Der schon damals
+  dokumentierte Ziel-Default „RegEx aus“ gilt jetzt: Wer RegEx kennt,
+  schaltet es ein; RegEx-Vorlagen und der Element-Picker aktivieren den
+  Modus weiterhin automatisch.
+
+### Behoben
+
+- **Tippen in eine Rechteckauswahl zerreißt die Zeilen nicht mehr.** Beim
+  Ersetzen mehrerer nicht-leerer Bereiche (ein Bereich pro Rechteckzeile)
+  verrechnete der Editor die Verschiebung der übrigen Cursor — jeder tiefere
+  Cursor sammelte den Fehler aller vorigen Ersetzungen auf und stand danach
+  mitten in seiner Zeile; jeder weitere Tastendruck fügte dort ein
+  (Testerin-Befund 2026-08-28). Die Cursor bleiben jetzt hinter ihrer
+  jeweiligen Ersetzung; Regressionstests decken Tippen, Rechteck-Backspace
+  und wiederholtes Einrücken ab.
+- **Kein Absturz mehr beim Zeichnen veralteter Suchtreffer-Markierungen.**
+  Schrumpfte das Dokument nach einer Live-Suche (etwa durch Rechteck-Backspace
+  über alle Zeilen), zeigten die statisch gemerkten Treffer-Bereiche hinter
+  das Dokumentende; der nächste Zeichenzyklus brach die App mit einer
+  NSRange-Exception ab (Crash-Report 2026-08-28, SIGTRAP in
+  `_crashOnException`). Der Zeichenpfad kappt Bereiche jetzt an den
+  Dokumentgrenzen, und ein Edit räumt die Live-Trefferanzeige sofort —
+  die gedrosselte Suche zeichnet sie danach mit frischen Bereichen neu.
+
 ## [v1.112.12] — 2026-08-28
 
 ### Behoben

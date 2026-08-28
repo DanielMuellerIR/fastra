@@ -84,6 +84,34 @@ enum SearchEmphasis {
         return dialogOpen && viewMode == .text
     }
 
+    /// Räumt die Live-Trefferanzeige SOFORT beim ersten Textedit. Die
+    /// Markierungen speichern ihre Bereiche statisch; nach einem Edit sind
+    /// sie veraltet und zeichnen an falschen Stellen — bei einem
+    /// geschrumpften Dokument sogar hinter dem Dokumentende (sichtbares
+    /// „Chaos“ und Absturzursache im Crash-Report vom 2026-08-28). Der
+    /// Beobachter läuft synchron auf dem Edit-Thread (Main), also garantiert
+    /// VOR dem nächsten Zeichenzyklus; die gedrosselte Live-Suche setzt die
+    /// Markierungen danach mit frischen Bereichen neu.
+    final class EditGuard {
+        private var token: NSObjectProtocol?
+
+        init(textView: TextView) {
+            token = NotificationCenter.default.addObserver(
+                forName: TextView.textDidChangeNotification,
+                object: textView, queue: nil
+            ) { [weak textView] _ in
+                guard let textView else { return }
+                textView.emphasisManager?.removeEmphases(
+                    for: SearchEmphasis.groupID
+                )
+            }
+        }
+
+        deinit {
+            if let token { NotificationCenter.default.removeObserver(token) }
+        }
+    }
+
     /// Flache, helle Markierung im Stil der System-Suchhervorhebung.
     /// `.outline(fill:)` statt `.standard`, weil der Standard-Stil pro Layer
     /// eine Pop-Animation und einen Schatten mitbringt — bei bis zu 2 000

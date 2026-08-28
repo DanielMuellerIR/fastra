@@ -1371,6 +1371,7 @@ struct EditorView: View {
     }
 
     private static var emphasisScrollRelayKey: UInt8 = 0
+    private static var emphasisEditGuardKey: UInt8 = 0
     private static var markdownSourceClickRelayKey: UInt8 = 0
     private static var visibleJumpScrollStateKey: UInt8 = 0
 
@@ -1419,6 +1420,15 @@ struct EditorView: View {
               let clipView = textView.enclosingScrollView?.contentView else { return }
         let relay = SearchEmphasisScrollRelay(clipView: clipView, workspace: workspace)
         objc_setAssociatedObject(textView, &emphasisScrollRelayKey, relay,
+                                 .OBJC_ASSOCIATION_RETAIN)
+    }
+
+    /// Hängt (einmal pro TextView-Instanz) den Edit-Wächter an, der veraltete
+    /// Treffer-Markierungen beim ersten Textedit synchron räumt.
+    private static func installEmphasisEditGuard(on textView: CodeEditTextView.TextView) {
+        guard objc_getAssociatedObject(textView, &emphasisEditGuardKey) == nil else { return }
+        let guardian = SearchEmphasis.EditGuard(textView: textView)
+        objc_setAssociatedObject(textView, &emphasisEditGuardKey, guardian,
                                  .OBJC_ASSOCIATION_RETAIN)
     }
 
@@ -1484,6 +1494,10 @@ struct EditorView: View {
             // dann gedrosselt nach (sonst blieben Treffer unter dem sichtbaren
             // Bereich dauerhaft unmarkiert).
             installEmphasisScrollRelay(on: textView, workspace: workspace)
+            // Der Edit-Wächter räumt diese Markierungen beim ersten Textedit
+            // sofort wieder — sie wären veraltet und zeichneten an falschen
+            // Stellen (Absturzursache im Crash-Report vom 2026-08-28).
+            installEmphasisEditGuard(on: textView)
             manager.addEmphases(SearchEmphasis.makeEmphases(for: safeRanges),
                                 for: SearchEmphasis.groupID)
         }

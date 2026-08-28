@@ -934,11 +934,15 @@ final class Workspace: ObservableObject {
     // MARK: - Such-Optionen (Suchmasken-Konzept B.5)
     //
     // Default-Haltung: RegEx aus. Fastra ist „ein Editor mit RegEx-
-    // Superkraft", nicht „ein RegEx-Tool, das auch suchen kann".
-    // Beim ersten Öffnen dieses Prototyps starten wir trotzdem mit
-    // RegEx=an, damit die Demo-Highlights direkt sichtbar sind —
-    // sobald die echte Logik kommt, wechselt der Default auf `false`.
-    @Published var useRegex: Bool = true {
+    // Superkraft", nicht „ein RegEx-Tool, das auch suchen kann". Wer RegEx
+    // kennt, schaltet es bewusst ein; wer es nicht kennt, bekommt mit
+    // Klartext- und Stern-Suche das erwartbare Verhalten (Testerin-Befund
+    // 2026-08-28: Klartext-Suche fand mit aktivem RegEx nichts). Der alte
+    // Prototyp-Startwert `true` stammte aus der Demo-Phase und sollte laut
+    // damaligem Kommentar mit der echten Suchlogik auf `false` wechseln —
+    // das holt dieser Default nach. RegEx-Vorlagen und der Element-Picker
+    // schalten den Modus weiterhin selbst ein.
+    @Published var useRegex: Bool = false {
         didSet { disableWildcardLiteralOptionIfUnavailable() }
     }
     @Published var caseSensitive: Bool = false

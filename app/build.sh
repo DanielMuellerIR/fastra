@@ -6117,6 +6117,132 @@ if [ "$STALE_PIVOT_PATCH_CHANGED" -eq 1 ]; then
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4z15. CodeEditTextView — falsches Cursor-Delta beim ERSETZEN nicht-leerer
+# Bereiche zerriss beim Tippen in eine Rechteckauswahl die Zeilen.
+#
+# Beleg: Testerin-Befund 2026-08-28 (gleiche Sitzung wie Crash-Report
+# EFD87C70-8440-4AA9-9D92-24E87E27B802). `didReplaceCharacters` verschiebt
+# nach jedem Teil-Edit die übrigen Cursor. Upstream nahm dabei für eine
+# Ersetzung (range.length > 0, replacementLength > 0) die VOLLE
+# Einfügelänge als Delta statt der Differenz aus Einfüge- und gelöschter
+# Länge. Bei einer Mehrfachersetzung — Tippen in eine Rechteckauswahl, ein
+# Bereich pro Zeile, absteigend abgearbeitet — sammelt jeder weiter oben
+# platzierte Cursor den Fehler aller unter ihm liegenden Ersetzungen auf und
+# steht danach mitten in seiner Zeile (oder hinter dem Dokumentende); jeder
+# weitere Tastendruck fügt dort ein und „sprengt“ die Zeilen sichtbar.
+# Regression: Tests/FastraTests/ColumnTypingDriftTests.swift; am 2026-08-28
+# gegen den unkorrigierten Stand rot belegt (Cursor [1, 7, 16] statt
+# [1, 6, 11] nach einem Tastendruck auf drei Rechteckzeilen).
+CURSOR_DELTA_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: echte Verschiebung auch beim ERSETZEN' \
+    "$CETV_SELUPDATE" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (Cursor-Delta beim Ersetzen nicht-leerer Bereiche)"
+  chmod u+w "$CETV_SELUPDATE"
+  /usr/bin/python3 - "$CETV_SELUPDATE" <<'PYEOF'
+import sys
+
+update_path = sys.argv[1]
+update_src = open(update_path).read()
+
+old_delta = '''        let delta = replacementLength == 0 ? -range.length : replacementLength'''
+new_delta = '''        // Fastra-Patch: echte Verschiebung auch beim ERSETZEN. Upstream nahm
+        // bei einer Ersetzung (geloeschte Laenge > 0 UND Einfuegelaenge > 0)
+        // die volle Einfuegelaenge als Delta statt der Differenz. Beim Tippen
+        // in eine Rechteckauswahl (ein Bereich pro Zeile) sammelte dadurch
+        // jeder nachfolgende Cursor den Fehler aller vorigen Ersetzungen auf
+        // und stand mitten in seiner Zeile — weiteres Tippen zerriss die
+        // Zeilen (Testerin-Befund 2026-08-28). Die Differenz deckt alle
+        // Faelle ab: reines Loeschen (-range.length), reines Einfuegen
+        // (+replacementLength) und Ersetzen (Differenz).
+        let delta = replacementLength - range.length'''
+if old_delta not in update_src:
+    raise SystemExit(
+        f"{update_path}: didReplaceCharacters-Delta hat sich geaendert — Patch 4z15 pruefen"
+    )
+update_src = update_src.replace(old_delta, new_delta, 1)
+
+open(update_path, "w").write(update_src)
+PYEOF
+  CURSOR_DELTA_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: echte Verschiebung auch beim ERSETZEN' "$CETV_SELUPDATE"; then
+  echo "✗ FEHLER: Cursor-Delta-Patch (4z15) hat NICHT gegriffen." >&2
+  exit 1
+fi
+
+# 4z16. CodeEditTextView — ungekappter Bereich im Zeichenpfad: Absturz beim
+# Zeichnen veralteter Suchtreffer-Markierungen nach geschrumpftem Dokument.
+#
+# Beleg: Crash-Report EFD87C70-8440-4AA9-9D92-24E87E27B802 (2026-08-28,
+# SIGTRAP in AppKits `_crashOnException`, Stack: TextView.draw →
+# EmphasisManager.updateLayerBackgrounds → roundedPathForRange → rectsFor).
+# Die Emphasis-Markierungen speichern ihre Bereiche statisch; schrumpft das
+# Dokument danach (Rechteck-Backspace über alle Zeilen), zeigt ein gemerkter
+# Bereich hinter das Dokumentende. `roundedPathForRange` berechnet zwar einen
+# gekappten Bereich (validRange), reicht dann aber das ORIGINAL an
+# `rectsFor(range:)` weiter, und dessen `rangeOfComposedCharacterSequence`
+# wirft eine NSRangeException. Der Clamp sitzt deshalb in `rectsFor(range:)`
+# selbst und schützt alle Aufrufer (Emphasis-Pfad, Unterstreichungen, Drag).
+# Regression: Tests/FastraTests/EmphasisStaleRangeTests.swift; am 2026-08-28
+# gegen den unkorrigierten Stand rot belegt (uncaught NSRangeException
+# „The index 54 is invalid“, identischer Stack wie im Crash-Report).
+CETV_LAYOUT_PUBLIC="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextLayoutManager/TextLayoutManager+Public.swift"
+RECTSFOR_CLAMP_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: Bereich an den echten Dokumentgrenzen kappen' \
+    "$CETV_LAYOUT_PUBLIC" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (rectsFor kappt Bereiche am Dokumentende)"
+  chmod u+w "$CETV_LAYOUT_PUBLIC"
+  /usr/bin/python3 - "$CETV_LAYOUT_PUBLIC" <<'PYEOF'
+import sys
+
+layout_path = sys.argv[1]
+layout_src = open(layout_path).read()
+
+old_rects = '''    public func rectsFor(range: NSRange) -> [CGRect] {
+        return linesInRange(range).flatMap { self.rectsFor(range: range, in: $0) }
+    }'''
+new_rects = '''    public func rectsFor(range: NSRange) -> [CGRect] {
+        // Fastra-Patch: Bereich an den echten Dokumentgrenzen kappen. Die
+        // Emphasis-Markierungen der Suche speichern ihre Bereiche statisch;
+        // schrumpft das Dokument danach, zeigt ein gemerkter Bereich hinter
+        // das Ende, und rangeOfComposedCharacterSequence warf beim naechsten
+        // Zeichnen eine NSRangeException — Absturz in AppKits
+        // _crashOnException (Crash-Report 2026-08-28). roundedPathForRange
+        // kappte zwar bereits (validRange), reichte aber das Original weiter;
+        // der Clamp hier schuetzt zusaetzlich alle uebrigen Aufrufer.
+        let documentBounds = NSRange(location: 0, length: textStorage?.length ?? 0)
+        guard let clamped = range.intersection(documentBounds), clamped.length > 0 else {
+            return []
+        }
+        return linesInRange(clamped).flatMap { self.rectsFor(range: clamped, in: $0) }
+    }'''
+if old_rects not in layout_src:
+    raise SystemExit(
+        f"{layout_path}: rectsFor(range:) hat sich geaendert — Patch 4z16 pruefen"
+    )
+layout_src = layout_src.replace(old_rects, new_rects, 1)
+
+open(layout_path, "w").write(layout_src)
+PYEOF
+  RECTSFOR_CLAMP_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: Bereich an den echten Dokumentgrenzen kappen' \
+    "$CETV_LAYOUT_PUBLIC"; then
+  echo "✗ FEHLER: rectsFor-Clamp-Patch (4z16) hat NICHT gegriffen." >&2
+  exit 1
+fi
+
+if [ "$CURSOR_DELTA_PATCH_CHANGED" -eq 1 ] || [ "$RECTSFOR_CLAMP_PATCH_CHANGED" -eq 1 ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml
 
