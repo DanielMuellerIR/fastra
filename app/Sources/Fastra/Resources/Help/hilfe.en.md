@@ -703,7 +703,9 @@ runs headless through tool4d against an engine project providing the
 `MacroRun` startup method; its folder is set in Settings under “4D”. The
 result always appears as a diff preview first; “Apply” is a single undo step
 and only takes effect while the document still matches the previewed state
-exactly. Token suffixes (`:C41`, `:K5:70`) are preserved: Fastra detokenizes
+exactly. Editing the content or closing the tab or window cancels retokenizing
+and diff construction; the macro command becomes available again immediately.
+Token suffixes (`:C41`, `:K5:70`) are preserved: Fastra detokenizes
 before the run and restores the suffixes from the original. `00_DM_Info` and
 `Compiler_*` methods are deliberately excluded from completion.
 

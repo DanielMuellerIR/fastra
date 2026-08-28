@@ -745,6 +745,9 @@ Startup-Methode `MacroRun` mitbringt; dessen Ordner steht in den
 Einstellungen unter „4D“. Das Ergebnis erscheint immer zuerst als
 Diff-Vorschau; „Anwenden“ ist ein einzelner Undo-Schritt und wirkt nur,
 solange das Dokument noch exakt dem Stand der Vorschau entspricht.
+Eine Inhaltsänderung sowie das Schließen des Tabs oder Fensters bricht die
+Rücktokenisierung und den Diff-Aufbau ab; der Makrobefehl wird dabei sofort
+wieder freigegeben.
 Token-Suffixe (`:C41`, `:K5:70`) bleiben dabei erhalten: Fastra
 detokenisiert vor dem Lauf und stellt die Suffixe aus dem Original wieder
 her. `00_DM_Info` und `Compiler_*`-Methoden sind vom Komplettieren bewusst
