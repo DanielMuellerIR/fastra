@@ -251,12 +251,36 @@ hdiutil create -size 200m -fs HFS+ -volname "$VOL_NAME" -ov -quiet "$RW_DMG"
 # gehängtes Volume nicht mehr als `disk "<Name>"`, und das AppleScript unten
 # scheiterte mit Fehler -1728 (nachgemessen 2026-08-28: privater Mountpunkt
 # → `exists disk "Fastra"` = false, Standardort → true). Der Wächter oben
-# stellt sicher, dass /Volumes/$VOL_NAME frei ist. Ohne Layout (headless,
-# --no-finder-layout oder belegter Name) bleibt der private Mountpunkt —
-# er verhindert dort Kollisionen mit bereits geöffneten DMGs.
+# stellt sicher, dass /Volumes/$VOL_NAME frei ist. Wohin hdiutil tatsächlich
+# gemountet hat, wird aus dessen -plist-Ausgabe GELESEN statt angenommen:
+# Taucht zwischen Wächter und Attach doch ein fremdes Fastra-Volume auf,
+# weicht hdiutil auf „Fastra 1" aus — mit einem angenommenen Pfad liefe die
+# Inhaltskopie dann in das fremde Volume. Bei unerwartetem Mountpunkt wird
+# nur das dekorative Layout übersprungen; kopiert und ausgehängt wird immer
+# der echte eigene Mountpunkt. Ohne Layout (headless, --no-finder-layout
+# oder belegter Name) bleibt der private Mountpunkt — er verhindert dort
+# Kollisionen mit bereits geöffneten DMGs.
 if [ "$FINDER_LAYOUT" = "1" ]; then
-  MOUNT_DIR="/Volumes/$VOL_NAME"
-  hdiutil attach -readwrite -noverify -noautoopen -quiet "$RW_DMG"
+  ATTACH_PLIST="$(hdiutil attach -readwrite -noverify -noautoopen -plist "$RW_DMG")"
+  ACTUAL_MOUNT="$(printf '%s' "$ATTACH_PLIST" | /usr/bin/python3 -c '
+import plistlib, sys
+data = plistlib.loads(sys.stdin.buffer.read())
+for entity in data.get("system-entities", []):
+    mount_point = entity.get("mount-point")
+    if mount_point:
+        print(mount_point)
+        break
+')"
+  if [ -z "$ACTUAL_MOUNT" ]; then
+    echo "✗ FEHLER: hdiutil attach lieferte keinen Mountpunkt." >&2
+    exit 1
+  fi
+  MOUNT_DIR="$ACTUAL_MOUNT"
+  if [ "$ACTUAL_MOUNT" != "/Volumes/$VOL_NAME" ]; then
+    echo "   ⚠ Volume hängt unerwartet unter $ACTUAL_MOUNT."
+    echo "     Finder-Layout wird übersprungen; DMG bleibt voll funktionsfähig."
+    FINDER_LAYOUT=0
+  fi
 else
   hdiutil attach -readwrite -noverify -noautoopen -quiet \
     -mountpoint "$MOUNT_DIR" "$RW_DMG"

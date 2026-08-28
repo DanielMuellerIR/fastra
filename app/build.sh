@@ -6234,7 +6234,60 @@ if ! grep -q 'Fastra-Patch: Bereich an den echten Dokumentgrenzen kappen' \
   exit 1
 fi
 
-if [ "$CURSOR_DELTA_PATCH_CHANGED" -eq 1 ] || [ "$RECTSFOR_CLAMP_PATCH_CHANGED" -eq 1 ]; then
+# 4z17. CodeEditTextView — Kurzschluss-Auswertung ließ bei Mehrfach-Cursorn
+# nur EINE Cursor-View pro Update-Durchlauf entstehen.
+#
+# Beleg: Tester-Nachbefund 2026-08-28 zu v1.113.0. Nach Tippen in eine
+# Rechteckauswahl (13 Cursor auf einmal) blinkte nur in den ersten Zeilen ein
+# Cursor; vereinzelt stand eine View zusätzlich an veralteter Position. In
+# `updateSelectionViews` stand `didUpdate = didUpdate || reposition…` — das
+# `||` wertet die rechte Seite nur aus, solange links false ist. Nach der
+# ersten erzeugten View wurde `repositionCursorSelection` für alle übrigen
+# Selektionen desselben Durchlaufs gar nicht mehr aufgerufen. Beim normalen
+# Mehrfach-Cursor (ein Klick = eine neue Selektion pro Aufruf) fällt das nie
+# auf; erst eine BULK-Änderung zeigt es. Regression:
+# Tests/FastraTests/ColumnCursorViewTests.swift; am 2026-08-28 gegen den
+# unkorrigierten Stand rot belegt (nur 1 von 13 Views, jeder weitere
+# Durchlauf erzeugte genau eine mehr).
+CETV_SELMGR_MAIN="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextSelectionManager/TextSelectionManager.swift"
+CURSOR_VIEWS_PATCH_CHANGED=0
+if ! grep -q 'Fastra-Patch: jede Selektion repositionieren' \
+    "$CETV_SELMGR_MAIN" 2>/dev/null; then
+  echo "→ Patche CodeEditTextView (Cursor-Views aller Selektionen aktualisieren)"
+  chmod u+w "$CETV_SELMGR_MAIN"
+  /usr/bin/python3 - "$CETV_SELMGR_MAIN" <<'PYEOF'
+import sys
+
+selmgr_path = sys.argv[1]
+selmgr_src = open(selmgr_path).read()
+
+old_update = '''            if textSelection.range.isEmpty {
+                didUpdate = didUpdate || repositionCursorSelection(textSelection: textSelection)'''
+new_update = '''            if textSelection.range.isEmpty {
+                // Fastra-Patch: jede Selektion repositionieren. Das
+                // Kurzschluss-|| rief reposition… nach der ersten erzeugten
+                // View nicht mehr auf — bei einer Bulk-Auswahländerung
+                // (Tippen in eine Rechteckauswahl) fehlten dadurch fast alle
+                // Cursor-Views (Tester-Nachbefund 2026-08-28).
+                didUpdate = repositionCursorSelection(textSelection: textSelection) || didUpdate'''
+if old_update not in selmgr_src:
+    raise SystemExit(
+        f"{selmgr_path}: updateSelectionViews hat sich geaendert — Patch 4z17 pruefen"
+    )
+selmgr_src = selmgr_src.replace(old_update, new_update, 1)
+
+open(selmgr_path, "w").write(selmgr_src)
+PYEOF
+  CURSOR_VIEWS_PATCH_CHANGED=1
+fi
+
+if ! grep -q 'Fastra-Patch: jede Selektion repositionieren' "$CETV_SELMGR_MAIN"; then
+  echo "✗ FEHLER: Cursor-View-Patch (4z17) hat NICHT gegriffen." >&2
+  exit 1
+fi
+
+if [ "$CURSOR_DELTA_PATCH_CHANGED" -eq 1 ] || [ "$RECTSFOR_CLAMP_PATCH_CHANGED" -eq 1 ] \
+   || [ "$CURSOR_VIEWS_PATCH_CHANGED" -eq 1 ]; then
   rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
   rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
         .build/*/release/Modules/CodeEditTextView.swiftmodule

@@ -116,6 +116,15 @@ struct BuildInstallationPolicyTests {
         #expect(script.contains("VERIFY_MOUNT=\"$DMG_STAGING/verify\""))
         #expect(!script.contains("MOUNT_DIR=\"/Volumes/$VOL_NAME\""))
         #expect(!script.contains("Altes Volume von früherem Lauf aushängen"))
+        // Nur der Finder-Layout-Schritt hängt am Standardort unter /Volumes
+        // (macOS 26.6 registriert private Mountpunkte nicht mehr als
+        // Finder-Disk). Der echte Mountpunkt wird dabei aus der
+        // hdiutil-plist-Ausgabe GELESEN statt angenommen, und bei einem
+        // unerwarteten Pfad (fremdes gleichnamiges Volume kam dazwischen)
+        // wird das Layout übersprungen — kopiert wird nie in ein fremdes
+        // Volume.
+        #expect(script.contains("hdiutil attach -readwrite -noverify -noautoopen -plist"))
+        #expect(script.contains("if [ \"$ACTUAL_MOUNT\" != \"/Volumes/$VOL_NAME\" ]"))
     }
 
     @Test("Appcast signiert nur ein geprüftes und zur Version passendes DMG")

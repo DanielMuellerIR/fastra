@@ -9,6 +9,19 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.1] — 2026-08-28
+
+### Behoben
+
+- **Nach Tippen in eine Rechteckauswahl blinkt in jeder Zeile ein Cursor.**
+  Bisher bekam bei einer Auswahländerung mit vielen Cursorn auf einmal nur
+  eine Selektion pro Aktualisierungslauf ihre Cursor-Anzeige — nach dem
+  Tippen in ein Rechteck fehlten dadurch fast alle Cursor, vereinzelt stand
+  einer an veralteter Position; die Texteingabe selbst war korrekt
+  (Tester-Nachbefund 2026-08-28 zu v1.113.0). Ursache war eine
+  Kurzschluss-Auswertung in der Cursor-View-Aktualisierung des Editors;
+  jetzt wird jede Selektion in jedem Lauf positioniert.
+
 ## [v1.113.0] — 2026-08-28
 
 ### Geändert
