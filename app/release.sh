@@ -237,18 +237,30 @@ tiffutil -cathidpicheck "$DMG_STAGING/DmgBg_1x.png" "$DMG_STAGING/DmgBg_2x.png" 
 
 # b) Beschreibbares DMG erzeugen und mounten. Die Größe (200m) ist bewusst
 #    großzügig — beim Konvertieren (Schritt e) wird ohnehin auf die echte
-#    Größe komprimiert. Der private Mountpunkt verhindert Kollisionen mit
-#    bereits geöffneten DMGs. Finder adressiert Volumes allerdings per Namen;
-#    ist dort bereits ein Fastra-Volume sichtbar, überspringen wir deshalb nur
-#    das dekorative Finder-Layout und lassen das fremde Volume unangetastet.
+#    Größe komprimiert. Finder adressiert Volumes per Namen; ist bereits ein
+#    Fastra-Volume sichtbar, überspringen wir deshalb nur das dekorative
+#    Finder-Layout und lassen das fremde Volume unangetastet.
 if [ "$FINDER_LAYOUT" = "1" ] && [ -e "/Volumes/$VOL_NAME" ]; then
   echo "   ⚠ Ein anderes Volume namens $VOL_NAME ist bereits geöffnet."
   echo "     Finder-Layout wird zum Schutz dieses Volumes übersprungen."
   FINDER_LAYOUT=0
 fi
 hdiutil create -size 200m -fs HFS+ -volname "$VOL_NAME" -ov -quiet "$RW_DMG"
-hdiutil attach -readwrite -noverify -noautoopen -quiet \
-  -mountpoint "$MOUNT_DIR" "$RW_DMG"
+# Fürs Finder-Layout MUSS das Volume am Standardort unter /Volumes hängen:
+# Seit macOS 26.6 registriert der Finder ein an einen privaten Mountpunkt
+# gehängtes Volume nicht mehr als `disk "<Name>"`, und das AppleScript unten
+# scheiterte mit Fehler -1728 (nachgemessen 2026-08-28: privater Mountpunkt
+# → `exists disk "Fastra"` = false, Standardort → true). Der Wächter oben
+# stellt sicher, dass /Volumes/$VOL_NAME frei ist. Ohne Layout (headless,
+# --no-finder-layout oder belegter Name) bleibt der private Mountpunkt —
+# er verhindert dort Kollisionen mit bereits geöffneten DMGs.
+if [ "$FINDER_LAYOUT" = "1" ]; then
+  MOUNT_DIR="/Volumes/$VOL_NAME"
+  hdiutil attach -readwrite -noverify -noautoopen -quiet "$RW_DMG"
+else
+  hdiutil attach -readwrite -noverify -noautoopen -quiet \
+    -mountpoint "$MOUNT_DIR" "$RW_DMG"
+fi
 
 # c) Inhalt aufs Volume: App-Bundle (cp -R: Bundle-Struktur vollständig),
 #    Symlink auf /Applications als Drag-&-Drop-Installationsziel und das
