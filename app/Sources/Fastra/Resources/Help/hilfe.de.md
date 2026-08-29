@@ -260,6 +260,14 @@ als eine Ansicht bietet:
   Fastra jeden überholten Leseauftrag; nur der zuletzt gewählte Abschnitt wird
   weiter geladen.
 
+Für die automatische Einordnung einer sehr großen Datei liest Fastra höchstens
+die ersten 1 MiB plus bis zu drei Randbytes eines dort begonnenen UTF-8-Zeichens.
+Die Startzeit wächst dadurch nicht mit der gesamten Dateigröße. Passt ein
+späterer Abschnitt nicht zum erkannten Encoding, meldet die Ansicht den Fehler,
+statt Ersatzzeichen einzusetzen. Über den Umschalter bleibt der gespeicherte
+Stand dann als Hex sichtbar; ein bekanntes Text-Encoding lässt sich mit
+**Encoding-Chip → Neu öffnen mit Encoding** ausdrücklich wählen.
+
 Ändert ein anderes Programm die Datei genau während Fastra einen Abschnitt
 liest, verwirft Fastra den Abschnitt vollständig, statt alte Metadaten mit
 neuen Bytes zu mischen. **Ablage → Von Festplatte neu laden** übernimmt danach

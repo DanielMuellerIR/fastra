@@ -245,6 +245,14 @@ offers more than one view:
   move quickly between sections, Fastra stops every superseded read; only the
   most recently selected section continues loading.
 
+To classify a very large file automatically, Fastra reads at most the first
+1 MiB plus up to three boundary bytes that complete a UTF-8 character started
+there. Startup time therefore does not grow with the complete file size. If a
+later section does not match the detected encoding, the view reports the error
+instead of inserting replacement characters. The switcher still exposes the
+saved bytes in Hex; choose a known text encoding explicitly with
+**encoding chip → Reopen with Encoding**.
+
 If another program changes the file while Fastra is reading a section, Fastra
 discards the complete section instead of mixing old metadata with new bytes.
 Use **File → Reload from Disk** to adopt the new on-disk version, including a
