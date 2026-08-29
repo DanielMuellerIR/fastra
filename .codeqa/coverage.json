@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3124452
+    "tokens_spent": 3134433
   },
   "campaign_history": [
     {
@@ -674,16 +674,16 @@
       "reason": "4D-Parser, Indizes, LSP und Archive verarbeiten komplexe fremde Projektinhalte und erzeugte Symbolbestände.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-26T00:37:10+02:00",
-        "observed_head": "697767d186f12ae8f335b7e605ae13d004c49020",
-        "content_sha256": "dfe1bf1afdbbaddcdffdefdd264a7626080dff7a830f3df8bb7a664db31e84be",
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T21:33:16+02:00",
+        "observed_head": "ef27b0f18461fc89fb4c6e297576d57d04a62123",
+        "content_sha256": "20dc3261f9b24633a9dbf63f684546bd81edfbc14e226f8cae6536096389086a",
         "file_count": 28,
         "review": "delta-plus-boundaries",
-        "outcome": "improved",
-        "summary": "Delta aus der Makrohärtung geprüft: Tool4DDiscovery vermeidet wiederholte globale Suchen und liefert dieselbe priorisierte Kandidatensemantik; Aufrufer- und Fehlergrenzen wurden im Makro-Vollreview mit zwei unabhängigen Reviews kontrolliert.",
+        "outcome": "reviewed-clean",
+        "summary": "Seit dem letzten Lauf ist keine der 28 Tooling-Dateien inhaltlich geändert. Parser, Indizes, Symboltransformation, Archive, Discovery, LSP-Prozesslebenszyklus und Projektindex-Controller erneut über die gemeinsame 4D-/tool4d-Suite bestätigt; kein Befund.",
         "tests": [
-          "Weemac: app/build.sh PASS; app/test.sh --filter FourDMacro 55 PASS/0 FAIL; localization-audit.sh PASS; git diff --check PASS"
+          "swift test --filter 'FourD|Tool4D|JSONSchemaLite': 221 Tests grün; vollständige Suite am unveränderten Produktstand zuvor grün."
         ]
       }
     },
