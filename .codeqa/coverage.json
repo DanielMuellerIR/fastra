@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3065207
+    "tokens_spent": 3106630
   },
   "campaign_history": [
     {
@@ -420,25 +420,20 @@
       "risk": "high",
       "priority": 6,
       "reason": "AppKit-/CodeEdit-Integration, Auswahl, Umbruch und Layout enthalten mehrere dokumentierte Absturz- und Koordinatenfallen.",
-      "state": "pending",
+      "state": "completed",
       "last_run": {
-        "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-25T23:26:23+02:00",
-        "observed_head": "a9b5882045e452133f8ef8d984d018a225f0b94c",
-        "content_sha256": "42ff9938d0a0a77c8d1dd873624ef66c8b2c37cec289180d826d1604f39ed60b",
-        "file_count": 33,
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T21:31:36+02:00",
+        "observed_head": "00fdd1caa2a05f33a1f1e577aa7e5e28ea177699",
+        "content_sha256": "d80d860747ea84b87e77ee66522fcd2d6ca390bebd404e2b1b7b7a8ef3cf0d1a",
+        "file_count": 36,
         "review": "delta-plus-boundaries",
-        "outcome": "improved",
-        "summary": "Asynchrone tool4d-Diagnosen binden Discovery, LSP-Antwort, Alarm und Sprung an Dokumentidentität, kanonische Pfade, Inhaltsrevision und Projektgeneration; der bestehende Auswahlanker-Regressionspfad ist abgedeckt.",
+        "outcome": "reviewed-clean",
+        "summary": "EditorView-Delta sowie die drei neuen Rechteckauswahl-/Cursor-/Emphasis-Regressionsdateien vollständig geprüft; angrenzende SearchEmphasis-Aktualitäts- und EditGuard-Grenzen sowie die drei build.sh-Checkout-Patches einbezogen. Die Auswahlverschiebung verwendet die echte Längendifferenz, jede Cursor-Selektion wird ohne Kurzschluss aktualisiert, veraltete Zeichenbereiche werden gekappt und Live-Markierungen beim Edit synchron entfernt. Kein weiterer Befund.",
         "tests": [
-          "Weemac: tool4DLintLease-Regressionstest und vollständiges app/test.sh mit 2063+104 Tests grün; unabhängiger Nachreview ohne weiteren Fund."
+          "Sechs gezielte Regressionen grün: Rechteck-Tippen, Backspace und wiederholtes Tippen; Cursor-View pro Zeile samt Geometrie; rectsFor/roundedPath-Clamp; veraltete Emphasis nach Dokumentschrumpfung; synchroner EditGuard. Vollständige Suite am unveränderten Produktstand: 2149 Swift-Testing + 115 XCTest grün."
         ]
-      },
-      "pending_paths": [
-        "app/Tests/FastraTests/ColumnCursorViewTests.swift",
-        "app/Tests/FastraTests/ColumnTypingDriftTests.swift",
-        "app/Tests/FastraTests/EmphasisStaleRangeTests.swift"
-      ]
+      }
     },
     {
       "id": "markdown-render-import",
