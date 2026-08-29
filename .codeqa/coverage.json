@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 751113
+    "tokens_spent": 1189891
   },
   "campaign_history": [
     {
@@ -1078,9 +1078,19 @@
         "app/Sources/Fastra/ReplacePreview.swift"
       ],
       "priority": 1,
-      "state": "pending",
+      "state": "completed",
       "noted_at": "2026-08-25T16:54:58+02:00",
-      "campaign_id": "20260825T163605228103+0200"
+      "campaign_id": "20260825T163605228103+0200",
+      "started_at": "2026-08-29T18:57:22+02:00",
+      "completed": {
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T19:19:26+02:00",
+        "observed_head": "0745e31966da69242a47f93b6201e624e98f5d10",
+        "summary": "Die vollständige Ersetzungsvorschau erzeugt Nachher-Text und Zeilen-Diff jetzt in einem abbrechbaren Hintergrundtask. Dokument-ID, Inhaltsrevision und exakte Treffer-IDs verhindern die Übernahme überholter Ergebnisse; feste Grenzen von 32 MiB je Text, 200.000 Zeilen je Seite und 30.000 unterschiedlichen Diff-Zeilen sperren Apply sichtbar statt eine Teilvorschau freizugeben.",
+        "tests": [
+          "Rotbeleg: ReplacePreview-Tests kompilierten vor der Implementierung wegen fehlender Outcome-/Limit-/Modelltypen nicht (Exit 1). Grün: ./test.sh --filter ReplacePreview 22/22; ./build.sh inklusive portable App; ./test.sh 2239/2239; ./localization-audit.sh; ./selftest.sh localization; ./help-audit.sh --release; git diff --check."
+        ]
+      }
     },
     {
       "id": "main-thread-file-identity",
