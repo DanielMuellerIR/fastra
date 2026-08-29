@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 292760
+    "tokens_spent": 465827
   },
   "campaign_history": [
     {
@@ -192,16 +192,16 @@
       "reason": "Selbsttest-, Soak- und Sandbox-Infrastruktur liefert den Beweis für Änderungen. Der aktuelle Textparser kann echte Funktionsfehler als Umgebung maskieren; Fokussteuerung entscheidet, ob Fenstertests im Hintergrund belastbar laufen.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-25T23:08:29+02:00",
-        "observed_head": "ec15e86db63927185f3f1a0607dfa0e4d4dfa630",
-        "content_sha256": "300b5be4a480277996c15756dbdd3a82d40a4ecf28a1b4c42dd953e6e9cc3ca5",
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T18:37:55+02:00",
+        "observed_head": "d9cc0ff7d36b39a2c95e10a8c0c01a6893d52fe5",
+        "content_sha256": "4199ce3a463973d45ea1c544fc7831cbee6294a0590c4ace62697939365cccc4",
         "file_count": 25,
         "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Neue Abbruchtests und der bereits geprüfte monotone Wartehelfer sichern Testabbrüche unter Fremdlast; die neue Testdatei ist dem Bereich zugeordnet.",
+        "summary": "Runner-Cleanup behält eine beim Start gebundene Prozessgruppe auch dann als Ziel, wenn ihr Test-Gruppenleiter vor der Ergebniszeile endet; TERM-resistente Kinder werden beendet, während der Root-Crash weiterhin als echter Fehler zählt. Reale Regression vor dem Fix mit aktivem Kindprozess belegt.",
         "tests": [
-          "Weemac: app/test.sh vollständig grün (2059 schnelle Tests, 104 serielle Integrationstests, 0 Umgebungsfehler)."
+          "Regression vor Fix rot (Kindzustand S), danach PASS; vollständige Runner-Suite PASS (47 Tests); bash -n PASS; ./test.sh PASS (2116 schnelle + 115 serielle Tests, 0 Umgebungsfehler); git diff --check PASS"
         ]
       }
     },
