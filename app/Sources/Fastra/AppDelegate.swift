@@ -163,6 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Zähler des Nutzers nicht).
         DonationPrompt.recordLaunch(defaults: SelfTest.workspaceDefaults())
         SelfTest.runIfRequested()
+        Self.scheduleAtomicCommitRecoveryInspection()
 
         // Sobald der Workspace bereit ist (Notification aus `Workspace.init`),
         // beim Kaltstart gepufferte Finder-/CLI-Open-URLs ausliefern (K1).
@@ -434,6 +435,123 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openFilesInbox.finishLaunching()
             deliverPendingOpenFiles()
             Self.normalizeWindowHeightsOnce()
+        }
+    }
+
+    /// Prüft das kleine Recovery-Verzeichnis außerhalb des Main-Threads.
+    /// Dateisystemzugriffe dürfen weder SwiftUIs ersten Fensteraufbau noch die
+    /// Sitzungswiederherstellung blockieren. Selbsttests rufen den Store mit
+    /// eigenem Verzeichnis direkt auf und bekommen keinen modalen Startdialog.
+    private static func scheduleAtomicCommitRecoveryInspection() {
+        guard !SelfTest.isSelfTestRun else { return }
+        DispatchQueue.global(qos: .utility).async {
+            let store = AtomicCommitRecovery.Store.standard
+            do {
+                let pending = try store.inspectPending(includeActiveProcesses: false)
+                guard !pending.isEmpty else { return }
+                DispatchQueue.main.async {
+                    presentAtomicCommitRecovery(
+                        pending, journalDirectory: store.directoryURL)
+                }
+            } catch {
+                let detail = error.localizedDescription
+                DispatchQueue.main.async {
+                    presentAtomicCommitRecoveryFailure(
+                        detail: detail, journalDirectory: store.directoryURL)
+                }
+            }
+        }
+    }
+
+    /// Baut die konkrete Pfadliste getrennt von NSAlert, damit Unit-Tests die
+    /// Nutzerinformation ohne Fenster und ohne Finder-Fokus prüfen können.
+    static func atomicCommitRecoveryText(
+        _ inspections: [AtomicCommitRecovery.Inspection],
+        journalDirectory: URL
+    ) -> String {
+        let shown = inspections.prefix(8).map { inspection -> String in
+            let additionalPath = inspection.additionalURL.map {
+                L10n.format("\nWeiterer Pfad: %@", $0.path)
+            } ?? ""
+            switch inspection.state {
+            case .beforeExchange:
+                return L10n.format(
+                    "Der Namenstausch hat noch nicht stattgefunden.\nZiel: %@\nVorbereitete Fassung: %@",
+                    inspection.targetURL?.path ?? L10n.string("nicht erreichbar"),
+                    inspection.preparedURL?.path ?? L10n.string("nicht erreichbar"))
+                    + additionalPath
+            case .afterExchange:
+                return L10n.format(
+                    "Der Namenstausch hat stattgefunden; die Abschlussprüfung wurde unterbrochen.\nZiel: %@\nVerdrängte Fassung: %@",
+                    inspection.targetURL?.path ?? L10n.string("nicht erreichbar"),
+                    inspection.preparedURL?.path ?? L10n.string("nicht erreichbar"))
+                    + additionalPath
+            case .changed:
+                return L10n.format(
+                    "Die erreichbaren Pfade weichen inzwischen vom Recovery-Journal ab.\nZiel: %@\nZweite Fassung: %@",
+                    inspection.targetURL?.path ?? L10n.string("nicht erreichbar"),
+                    inspection.preparedURL?.path ?? L10n.string("nicht erreichbar"))
+                    + additionalPath
+            case .missingTarget:
+                return L10n.format(
+                    "Der Zielpfad fehlt.\nZiel: %@\nZweite Fassung: %@",
+                    inspection.targetURL?.path ?? L10n.string("nicht erreichbar"),
+                    inspection.preparedURL?.path ?? L10n.string("nicht erreichbar"))
+                    + additionalPath
+            case .invalidJournal:
+                return L10n.format(
+                    "Ein Recovery-Journal ist beschädigt oder stammt aus einem unbekannten Format: %@",
+                    inspection.journalURL.path) + additionalPath
+            }
+        }
+        var blocks = Array(shown)
+        if inspections.count > shown.count {
+            blocks.append(L10n.format(
+                "%@ weitere Recovery-Einträge liegen unter %@.",
+                String(inspections.count - shown.count), journalDirectory.path))
+        }
+        blocks.append(L10n.format(
+            "Fastra hat keine der genannten Fassungen gelöscht. Prüfe beide Pfade und entferne danach die nicht benötigte zweite Fassung. Das Recovery-Journal liegt unter %@.",
+            journalDirectory.path))
+        return blocks.joined(separator: "\n\n")
+    }
+
+    @MainActor
+    private static func presentAtomicCommitRecovery(
+        _ inspections: [AtomicCommitRecovery.Inspection],
+        journalDirectory: URL
+    ) {
+        let alert = NSAlert()
+        alert.messageText = L10n.string("Unterbrochener Dateiaustausch")
+        alert.informativeText = atomicCommitRecoveryText(
+            inspections, journalDirectory: journalDirectory)
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.string("OK"))
+        alert.addButton(withTitle: L10n.string("Im Finder zeigen"))
+        if alert.runModal() == .alertSecondButtonReturn {
+            let reachableFiles = inspections.flatMap {
+                [$0.preparedURL, $0.additionalURL].compactMap { $0 }
+            }
+            NSWorkspace.shared.activateFileViewerSelecting(
+                reachableFiles.isEmpty ? [journalDirectory] : reachableFiles)
+        }
+    }
+
+    @MainActor
+    private static func presentAtomicCommitRecoveryFailure(
+        detail: String,
+        journalDirectory: URL
+    ) {
+        let alert = NSAlert()
+        alert.messageText = L10n.string("Recovery-Journal konnte nicht geprüft werden")
+        alert.informativeText = L10n.format(
+            "Fastra hat das Recovery-Verzeichnis nicht verändert. Prüfe %@.\n\n%@",
+            journalDirectory.path, detail)
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.string("OK"))
+        alert.addButton(withTitle: L10n.string("Im Finder zeigen"))
+        if alert.runModal() == .alertSecondButtonReturn {
+            NSWorkspace.shared.activateFileViewerSelecting([journalDirectory])
         }
     }
 

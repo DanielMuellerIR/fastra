@@ -5,6 +5,387 @@ import Testing
 
 @Suite("Atomarer Datei-Commit")
 struct AtomicFileCommitTests {
+    @Test("Der Nachprüfungszeitraum besitzt ein dauerhaftes Recovery-Journal")
+    func postSwapWindowHasDurableRecoveryJournal() throws {
+        let directory = try makeDirectory("journal-window")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let recoveryDirectory = directory.appendingPathComponent(
+            "recovery-journal", isDirectory: true)
+        let recoveryStore = AtomicCommitRecovery.Store(
+            directoryURL: recoveryDirectory)
+        let original = Data("original\n".utf8)
+        let replacement = Data("replacement\n".utf8)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+
+        _ = try AtomicFileCommit.replaceExisting(
+            at: target,
+            withPreparedFile: prepared,
+            expecting: expected,
+            replacementContent: FileSnapshot(data: replacement, identity: nil),
+            recoveryStore: recoveryStore,
+            afterSwap: { installed, displaced in
+                let pending = try recoveryStore.inspectPending()
+                #expect(pending.count == 1)
+                let item = try #require(pending.first)
+                #expect(item.state == .afterExchange)
+                #expect(item.targetURL == installed)
+                #expect(item.preparedURL == displaced)
+                #expect(FileManager.default.fileExists(atPath: item.journalURL.path),
+                        "Der Journal-Eintrag muss vor der Nachprüfung synchronisiert vorliegen")
+                #expect(try fileStat(recoveryDirectory).st_mode & mode_t(0o777)
+                        == mode_t(0o700))
+                #expect(try fileStat(item.journalURL).st_mode & mode_t(0o777)
+                        == mode_t(0o600))
+            })
+
+        #expect(try recoveryStore.inspectPending().isEmpty,
+                "Erst der vollständig geprüfte Commit darf sein Journal entfernen")
+        #expect(try Data(contentsOf: target) == replacement)
+    }
+
+    @Test("Ein beim Tausch abgebrochener Prozess hinterlässt eine eindeutige Zuordnung")
+    func interruptedExchangeRemainsDiscoverableAfterRestart() throws {
+        let directory = try makeDirectory("journal-restart")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let recoveryStore = AtomicCommitRecovery.Store(
+            directoryURL: directory.appendingPathComponent(
+                "recovery-journal", isDirectory: true))
+        let original = Data("original\n".utf8)
+        let replacement = Data("replacement\n".utf8)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        let replacementSnapshot = FileSnapshot(data: replacement, identity: nil)
+        let targetStat = try fileStat(target)
+        let preparedStat = try fileStat(prepared)
+
+        _ = try recoveryStore.begin(
+            targetURL: target,
+            preparedURL: prepared,
+            targetStat: targetStat,
+            preparedStat: preparedStat,
+            expectedContent: expected,
+            replacementContent: replacementSnapshot)
+        try exchangeNames(target: target, prepared: prepared)
+
+        // Eine neue Store-Instanz bildet den nächsten App-Start ab: Der
+        // Prozessspeicher des schreibenden Laufs steht nicht mehr zur Verfügung.
+        let restartedStore = AtomicCommitRecovery.Store(
+            directoryURL: recoveryStore.directoryURL)
+        let pending = try restartedStore.inspectPending()
+        #expect(pending.count == 1)
+        let item = try #require(pending.first)
+        #expect(item.state == .afterExchange)
+        #expect(item.targetURL == target)
+        #expect(item.preparedURL == prepared)
+        #expect(try Data(contentsOf: target) == replacement)
+        #expect(try Data(contentsOf: prepared) == original)
+        let warning = AppDelegate.atomicCommitRecoveryText(
+            pending, journalDirectory: restartedStore.directoryURL)
+        #expect(warning.contains(target.path))
+        #expect(warning.contains(prepared.path))
+        #expect(warning.contains(restartedStore.directoryURL.path))
+    }
+
+    @Test("Ein In-place-Write nach dem Abbruch gilt nicht als unveränderter Tausch")
+    func changedContentAfterInterruptedExchangeIsReported() throws {
+        let directory = try makeDirectory("journal-content-change")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let recoveryStore = testRecoveryStore(in: directory)
+        let original = Data("original\n".utf8)
+        let replacement = Data("replacement\n".utf8)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        _ = try recoveryStore.begin(
+            targetURL: target,
+            preparedURL: prepared,
+            targetStat: fileStat(target),
+            preparedStat: fileStat(prepared),
+            expectedContent: FileSnapshot.readSnapshotOnly(from: target),
+            replacementContent: FileSnapshot(data: replacement, identity: nil))
+        try exchangeNames(target: target, prepared: prepared)
+        try writeInPlace(Data("REPLACEMENT\n".utf8), to: target)
+
+        let pending = try recoveryStore.inspectPending()
+        #expect(pending.count == 1)
+        #expect(pending.first?.state == .changed)
+        #expect(try Data(contentsOf: prepared) == original)
+    }
+
+    @Test("Der Journal-gebundene Cleanup-Name bleibt nach einem Abbruch auffindbar")
+    func interruptedCleanupClaimRemainsDiscoverable() throws {
+        let directory = try makeDirectory("journal-cleanup")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let recoveryStore = AtomicCommitRecovery.Store(
+            directoryURL: directory.appendingPathComponent(
+                "recovery-journal", isDirectory: true))
+        let original = Data("original\n".utf8)
+        let replacement = Data("replacement\n".utf8)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        let handle = try recoveryStore.begin(
+            targetURL: target,
+            preparedURL: prepared,
+            targetStat: fileStat(target),
+            preparedStat: fileStat(prepared),
+            expectedContent: expected,
+            replacementContent: FileSnapshot(data: replacement, identity: nil))
+        let claimed = directory.appendingPathComponent(handle.cleanupName)
+        try FileManager.default.moveItem(at: prepared, to: claimed)
+
+        let pending = try recoveryStore.inspectPending()
+        #expect(pending.count == 1)
+        let item = try #require(pending.first)
+        #expect(item.state == .beforeExchange)
+        #expect(item.preparedURL == claimed)
+        #expect(try Data(contentsOf: claimed) == replacement)
+    }
+
+    @Test("Ein fremder Dateityp am Temp-Pfad verwirft das Journal nicht")
+    func foreignSecondaryPathTypeKeepsJournal() throws {
+        let directory = try makeDirectory("journal-foreign-type")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let recoveryStore = AtomicCommitRecovery.Store(
+            directoryURL: directory.appendingPathComponent(
+                "recovery-journal", isDirectory: true))
+        let original = Data("original\n".utf8)
+        let replacement = Data("replacement\n".utf8)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        _ = try recoveryStore.begin(
+            targetURL: target,
+            preparedURL: prepared,
+            targetStat: fileStat(target),
+            preparedStat: fileStat(prepared),
+            expectedContent: expected,
+            replacementContent: FileSnapshot(data: replacement, identity: nil))
+        try FileManager.default.removeItem(at: prepared)
+        try FileManager.default.createSymbolicLink(
+            at: prepared, withDestinationURL: target)
+
+        let pending = try recoveryStore.inspectPending()
+        let item = try #require(pending.first)
+        #expect(pending.count == 1)
+        #expect(item.state == .changed)
+        #expect(item.preparedURL == prepared)
+        #expect(FileManager.default.fileExists(atPath: item.journalURL.path),
+                "Ein Symlink darf nicht wie ein sicher bereinigter zweiter Pfad gelten")
+    }
+
+    @Test("Ein bereits bereinigter Tausch entfernt nur sein veraltetes Journal")
+    func missingSecondaryPathPrunesStaleJournal() throws {
+        let directory = try makeDirectory("journal-stale")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let recoveryStore = AtomicCommitRecovery.Store(
+            directoryURL: directory.appendingPathComponent(
+                "recovery-journal", isDirectory: true))
+        let original = Data("original\n".utf8)
+        let replacement = Data("replacement\n".utf8)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        _ = try recoveryStore.begin(
+            targetURL: target,
+            preparedURL: prepared,
+            targetStat: fileStat(target),
+            preparedStat: fileStat(prepared),
+            expectedContent: expected,
+            replacementContent: FileSnapshot(data: replacement, identity: nil))
+        try FileManager.default.removeItem(at: prepared)
+
+        #expect(try recoveryStore.inspectPending().isEmpty)
+        let remaining = try FileManager.default.contentsOfDirectory(
+            atPath: recoveryStore.directoryURL.path)
+        #expect(!remaining.contains { $0.hasSuffix(".json") })
+        #expect(try Data(contentsOf: target) == original,
+                "Die Journal-Bereinigung darf den Zielpfad nicht verändern")
+    }
+
+    @Test("Fehlen Ziel und zweite Fassung, bleibt das letzte Journal erhalten")
+    func missingTargetAndSecondaryKeepJournal() throws {
+        let directory = try makeDirectory("journal-all-missing")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let recoveryStore = testRecoveryStore(in: directory)
+        let original = Data("original\n".utf8)
+        let replacement = Data("replacement\n".utf8)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        _ = try recoveryStore.begin(
+            targetURL: target,
+            preparedURL: prepared,
+            targetStat: fileStat(target),
+            preparedStat: fileStat(prepared),
+            expectedContent: FileSnapshot.readSnapshotOnly(from: target),
+            replacementContent: FileSnapshot(data: replacement, identity: nil))
+        try FileManager.default.removeItem(at: target)
+        try FileManager.default.removeItem(at: prepared)
+
+        let pending = try recoveryStore.inspectPending()
+        let item = try #require(pending.first)
+        #expect(pending.count == 1)
+        #expect(item.state == .missingTarget)
+        #expect(item.preparedURL == nil)
+        #expect(FileManager.default.fileExists(atPath: item.journalURL.path))
+    }
+
+    @Test("Ein fremder Zielstand ohne zweite Fassung verwirft das Journal nicht")
+    func foreignTargetWithoutSecondaryKeepsJournal() throws {
+        let directory = try makeDirectory("journal-foreign-target")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let recoveryStore = testRecoveryStore(in: directory)
+        let original = Data("original\n".utf8)
+        let replacement = Data("replacement\n".utf8)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        _ = try recoveryStore.begin(
+            targetURL: target,
+            preparedURL: prepared,
+            targetStat: fileStat(target),
+            preparedStat: fileStat(prepared),
+            expectedContent: FileSnapshot.readSnapshotOnly(from: target),
+            replacementContent: FileSnapshot(data: replacement, identity: nil))
+        try FileManager.default.removeItem(at: prepared)
+        try FileManager.default.removeItem(at: target)
+        try Data("fremd\n".utf8).write(to: target)
+
+        let pending = try recoveryStore.inspectPending()
+        let item = try #require(pending.first)
+        #expect(pending.count == 1)
+        #expect(item.state == .changed)
+        #expect(item.preparedURL == nil)
+        #expect(FileManager.default.fileExists(atPath: item.journalURL.path))
+    }
+
+    @Test("Ein beschädigtes Journal bleibt sichtbar und unangetastet")
+    func corruptJournalIsReportedAndPreserved() throws {
+        let directory = try makeDirectory("journal-corrupt")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let recoveryDirectory = directory.appendingPathComponent(
+            "recovery-journal", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: recoveryDirectory, withIntermediateDirectories: true)
+        let journal = recoveryDirectory.appendingPathComponent(
+            "00000000-0000-0000-0000-000000000000.json")
+        try Data("kein json".utf8).write(to: journal)
+        let recoveryStore = AtomicCommitRecovery.Store(
+            directoryURL: recoveryDirectory)
+
+        let pending = try recoveryStore.inspectPending()
+        let item = try #require(pending.first)
+        #expect(pending.count == 1)
+        #expect(item.state == .invalidJournal)
+        #expect(item.journalURL == journal)
+        #expect(try Data(contentsOf: journal) == Data("kein json".utf8))
+    }
+
+    @Test("Die Startprüfung meldet kein Journal eines noch laufenden Prozesses")
+    func activeProcessJournalIsIgnoredByStartupInspection() throws {
+        let directory = try makeDirectory("journal-active-process")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let recoveryStore = AtomicCommitRecovery.Store(
+            directoryURL: directory.appendingPathComponent(
+                "recovery-journal", isDirectory: true))
+        let original = Data("original\n".utf8)
+        let replacement = Data("replacement\n".utf8)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        _ = try recoveryStore.begin(
+            targetURL: target,
+            preparedURL: prepared,
+            targetStat: fileStat(target),
+            preparedStat: fileStat(prepared),
+            expectedContent: expected,
+            replacementContent: FileSnapshot(data: replacement, identity: nil))
+
+        #expect(try recoveryStore.inspectPending(
+            includeActiveProcesses: false).isEmpty)
+        #expect(try recoveryStore.inspectPending().count == 1,
+                "Gezielte Diagnose muss auch Journale des Testprozesses lesen können")
+    }
+
+    @Test("Eine wiedervergebene PID gilt nicht als Besitzer eines alten Journals")
+    func reusedProcessIDDoesNotHideJournal() throws {
+        let directory = try makeDirectory("journal-reused-pid")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let recoveryDirectory = directory.appendingPathComponent(
+            "recovery-journal", isDirectory: true)
+        let writerStore = AtomicCommitRecovery.Store(
+            directoryURL: recoveryDirectory,
+            processStartToken: { _ in 111 })
+        let replacement = Data("replacement\n".utf8)
+        try Data("original\n".utf8).write(to: target)
+        try replacement.write(to: prepared)
+        _ = try writerStore.begin(
+            targetURL: target,
+            preparedURL: prepared,
+            targetStat: fileStat(target),
+            preparedStat: fileStat(prepared),
+            expectedContent: FileSnapshot.readSnapshotOnly(from: target),
+            replacementContent: FileSnapshot(data: replacement, identity: nil))
+
+        let restartedStore = AtomicCommitRecovery.Store(
+            directoryURL: recoveryDirectory,
+            processStartToken: { _ in 222 })
+        #expect(try restartedStore.inspectPending(
+            includeActiveProcesses: false).count == 1)
+    }
+
+    @Test("Ein nicht schreibbares Journal stoppt den Commit vor dem Namenstausch")
+    func journalFailureLeavesTargetUnchanged() throws {
+        let directory = try makeDirectory("journal-failure")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let recoveryPath = directory.appendingPathComponent("keine-map")
+        let original = Data("original\n".utf8)
+        let replacement = Data("replacement\n".utf8)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        // Eine reguläre Datei kann nicht als Journal-Verzeichnis dienen.
+        try Data("belegt".utf8).write(to: recoveryPath)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        var reachedSwapHook = false
+
+        #expect(throws: (any Error).self) {
+            _ = try AtomicFileCommit.replaceExisting(
+                at: target,
+                withPreparedFile: prepared,
+                expecting: expected,
+                replacementContent: FileSnapshot(data: replacement, identity: nil),
+                recoveryStore: AtomicCommitRecovery.Store(
+                    directoryURL: recoveryPath),
+                beforeSwap: { _ in reachedSwapHook = true })
+        }
+        #expect(!reachedSwapHook)
+        #expect(try Data(contentsOf: target) == original)
+        #expect(try Data(contentsOf: prepared) == replacement)
+    }
+
     @Test("Erfolgreicher Tausch erhält Metadaten und entfernt den Altstand")
     func successfulSwapPreservesMetadataAndCleansUp() throws {
         let directory = try makeDirectory("success")
@@ -34,6 +415,7 @@ struct AtomicFileCommitTests {
             withPreparedFile: prepared,
             expecting: expected,
             replacementContent: FileSnapshot(data: replacement, identity: nil),
+            recoveryStore: testRecoveryStore(in: directory),
             afterSwap: { installed, _ in
                 let attributes = try FileManager.default.attributesOfItem(
                     atPath: installed.path)
@@ -76,6 +458,7 @@ struct AtomicFileCommitTests {
             withPreparedFile: prepared,
             expecting: expected,
             replacementContent: FileSnapshot(data: replacement, identity: nil),
+            recoveryStore: testRecoveryStore(in: directory),
             preparedSnapshotReader: { descriptor, info, limit in
                 preparedContentReads += 1
                 return try FileSnapshot.readSnapshotOnly(
@@ -105,6 +488,7 @@ struct AtomicFileCommitTests {
                 withPreparedFile: prepared,
                 expecting: expected,
                 replacementContent: FileSnapshot(data: replacement, identity: nil),
+                recoveryStore: testRecoveryStore(in: directory),
                 copyDisplacedMetadata: { _, _ in
                     // Simuliert einen Datenträger, der die Metadaten ablehnt,
                     // ohne die vorbereitete Inode vorher teilweise zu ändern.
@@ -151,6 +535,7 @@ struct AtomicFileCommitTests {
                 withPreparedFile: prepared,
                 expecting: expected,
                 replacementContent: FileSnapshot(data: replacement, identity: nil),
+                recoveryStore: testRecoveryStore(in: directory),
                 beforeSwap: { url in
                     try writeInPlace(external, to: url)
                     try FileManager.default.setAttributes(
@@ -192,6 +577,7 @@ struct AtomicFileCommitTests {
                 withPreparedFile: prepared,
                 expecting: expected,
                 replacementContent: FileSnapshot(data: replacement, identity: nil),
+                recoveryStore: testRecoveryStore(in: directory),
                 beforeSwap: { _ in
                     try writeInPlace(tampered, to: prepared)
                     try FileManager.default.setAttributes(
@@ -229,6 +615,7 @@ struct AtomicFileCommitTests {
                 withPreparedFile: prepared,
                 expecting: expected,
                 replacementContent: FileSnapshot(data: replacement, identity: nil),
+                recoveryStore: testRecoveryStore(in: directory),
                 afterSwap: { installed, _ in
                     let replacementDate = try #require(
                         FileManager.default.attributesOfItem(
@@ -275,6 +662,7 @@ struct AtomicFileCommitTests {
                 withPreparedFile: prepared,
                 expecting: expected,
                 replacementContent: FileSnapshot(data: replacement, identity: nil),
+                recoveryStore: testRecoveryStore(in: directory),
                 beforeCleanup: { _, displaced in
                     // Simulierter Fremdprozess: ersetzt den Temp-Namen GENAU
                     // zwischen der letzten Prüfung und dem Löschen durch einen
@@ -317,6 +705,7 @@ struct AtomicFileCommitTests {
                 withPreparedFile: prepared,
                 expecting: expected,
                 replacementContent: FileSnapshot(data: replacement, identity: nil),
+                recoveryStore: testRecoveryStore(in: directory),
                 beforeCleanup: { _, displaced in
                     // Simulierter Fremdprozess mit offenem Deskriptor:
                     // schreibt in DIESELBE verdrängte Inode, ohne den Namen
@@ -358,7 +747,8 @@ struct AtomicFileCommitTests {
                 at: target,
                 withPreparedFile: prepared,
                 expecting: expected,
-                replacementContent: FileSnapshot(data: original, identity: nil))
+                replacementContent: FileSnapshot(data: original, identity: nil),
+                recoveryStore: testRecoveryStore(in: directory))
         }
         #expect(try Data(contentsOf: target) == original)
         #expect(FileIdentity(url: target) == FileIdentity(url: prepared))
@@ -375,6 +765,7 @@ struct AtomicFileCommitTests {
         try original.write(to: target)
         try replacement.write(to: prepared)
         let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        let recoveryStore = testRecoveryStore(in: directory)
 
         do {
             _ = try AtomicFileCommit.replaceExisting(
@@ -382,6 +773,7 @@ struct AtomicFileCommitTests {
                 withPreparedFile: prepared,
                 expecting: expected,
                 replacementContent: FileSnapshot(data: replacement, identity: nil),
+                recoveryStore: recoveryStore,
                 afterSwap: { installed, _ in
                     try FileManager.default.removeItem(at: installed)
                 })
@@ -399,6 +791,9 @@ struct AtomicFileCommitTests {
         #expect(!FileManager.default.fileExists(atPath: target.path))
         #expect(try Data(contentsOf: prepared) == original,
                 "Der erreichbare Altstand darf bei unklarer Recovery nicht gelöscht werden")
+        let pending = try recoveryStore.inspectPending()
+        #expect(pending.count == 1)
+        #expect(pending.first?.state == .missingTarget)
     }
 
     private func makeDirectory(_ suffix: String) throws -> URL {
@@ -425,6 +820,34 @@ struct AtomicFileCommitTests {
             }
         }
         guard fsync(descriptor) == 0 else { throw currentPOSIXError() }
+    }
+
+    private func fileStat(_ url: URL) throws -> stat {
+        var info = stat()
+        guard lstat(url.path, &info) == 0 else { throw currentPOSIXError() }
+        return info
+    }
+
+    private func testRecoveryStore(in directory: URL) -> AtomicCommitRecovery.Store {
+        AtomicCommitRecovery.Store(directoryURL: directory.appendingPathComponent(
+            "recovery-journal", isDirectory: true))
+    }
+
+    private func exchangeNames(target: URL, prepared: URL) throws {
+        let directory = target.deletingLastPathComponent()
+        let descriptor = Darwin.open(
+            directory.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+        guard descriptor >= 0 else { throw currentPOSIXError() }
+        defer { Darwin.close(descriptor) }
+        let flags = UInt32(RENAME_SWAP)
+            | UInt32(RENAME_NOFOLLOW_ANY)
+            | UInt32(RENAME_RESOLVE_BENEATH)
+        guard renameatx_np(
+            descriptor, prepared.lastPathComponent,
+            descriptor, target.lastPathComponent, flags) == 0,
+              fsync(descriptor) == 0 else {
+            throw currentPOSIXError()
+        }
     }
 
     private func setExtendedAttribute(_ data: Data, named name: String,

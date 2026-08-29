@@ -51,13 +51,15 @@ enum AtomicFileCommit {
     /// Identität entsteht erst beim Öffnen im gebundenen Elternverzeichnis.
     /// `beforeSwap`, `afterSwap`, `beforeCleanup`, `copyDisplacedMetadata`
     /// und `preparedSnapshotReader` sind ausschließlich deterministische
-    /// Testpunkte; der Produktpfad übergibt sie nie.
+    /// Testpunkte; der Produktpfad übergibt sie nie. `recoveryStore` ist nur
+    /// austauschbar, damit Tests kein benutzerweites Journal verwenden.
     static func replaceExisting(
         at targetURL: URL,
         withPreparedFile preparedURL: URL,
         expecting expected: FileSnapshot,
         replacementContent: FileSnapshot,
         verifiedTargetStat: stat? = nil,
+        recoveryStore: AtomicCommitRecovery.Store = .standard,
         beforeSwap: ((URL) throws -> Void)? = nil,
         afterSwap: ((URL, URL) throws -> Void)? = nil,
         beforeCleanup: ((URL, URL) throws -> Void)? = nil,
@@ -155,6 +157,24 @@ enum AtomicFileCommit {
         }
         try synchronizeFile(preparedFD)
 
+        // Ab diesem Punkt könnte der nächste Schritt die beiden Namen
+        // tauschen. Die Zuordnung muss deshalb VOR dem Test-Hook und vor
+        // RENAME_SWAP auf einem anderen, synchronisierten Datenträgerpfad
+        // stehen. Ein Journalfehler lässt das Ziel unverändert.
+        let recoveryHandle = try recoveryStore.begin(
+            targetURL: targetURL,
+            preparedURL: preparedURL,
+            targetStat: targetBefore,
+            preparedStat: preparedBefore,
+            expectedContent: expected,
+            replacementContent: replacementContent)
+        var shouldFinishRecoveryJournal = true
+        defer {
+            if shouldFinishRecoveryJournal {
+                try? recoveryStore.finish(recoveryHandle)
+            }
+        }
+
         try beforeSwap?(targetURL)
 
         let flags = UInt32(RENAME_SWAP)
@@ -171,6 +191,7 @@ enum AtomicFileCommit {
         // später verschwindet. Der langsame Sync liegt bewusst VOR der letzten
         // Identitätsprüfung, damit danach kein breites Unlink-Rennfenster bleibt.
         guard fsync(directoryFD) == 0 else {
+            shouldFinishRecoveryJournal = false
             throw Failure.recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
@@ -196,6 +217,7 @@ enum AtomicFileCommit {
                                                displaced: preparedURL)
             }
         } catch {
+            shouldFinishRecoveryJournal = false
             throw Failure.recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
@@ -290,16 +312,35 @@ enum AtomicFileCommit {
             try beforeCleanup?(targetURL, preparedURL)
             try unlinkVerifiedChild(
                 directoryFD: directoryFD, name: preparedName,
+                claimName: recoveryHandle.cleanupName,
                 verifiedFD: targetFD,
                 verifiedVersion: displacedFinal,
                 targetURL: targetURL, preparedURL: preparedURL)
-            _ = fsync(directoryFD)
+            if fsync(directoryFD) == 0 {
+                do {
+                    try recoveryStore.finish(recoveryHandle)
+                    shouldFinishRecoveryJournal = false
+                } catch {
+                    // Der Commit ist abgeschlossen. Ein stehen gebliebenes
+                    // Journal wird beim nächsten Start als bereits bereinigter
+                    // Tausch erkannt; ein Journalfehler darf den gespeicherten
+                    // Stand nicht nachträglich als fehlgeschlagen ausgeben.
+                }
+            } else {
+                // Ob das Unlink nach einem Stromausfall sichtbar bleibt, ist
+                // ohne Verzeichnis-Sync offen. Das Journal muss beide Fälle
+                // beim nächsten Start abbilden.
+                shouldFinishRecoveryJournal = false
+            }
             return FileSnapshot(
                 sha256: replacementContent.sha256,
                 byteCount: replacementContent.byteCount,
                 identity: FileIdentity(stat: preparedFinal))
         } catch let failure as Failure {
-            if case .recoveryRequired = failure { throw failure }
+            if case .recoveryRequired = failure {
+                shouldFinishRecoveryJournal = false
+                throw failure
+            }
             do {
                 try rollbackSwap(
                     directoryFD: directoryFD,
@@ -310,9 +351,11 @@ enum AtomicFileCommit {
                     replacementContent: replacementContent,
                     preparedSnapshotReader: readPreparedSnapshot,
                     flags: flags,
+                    cleanupName: recoveryHandle.cleanupName,
                     targetURL: targetURL,
                     preparedURL: preparedURL)
             } catch let recovery as Failure {
+                shouldFinishRecoveryJournal = false
                 throw recovery
             }
             throw failure
@@ -327,9 +370,11 @@ enum AtomicFileCommit {
                     replacementContent: replacementContent,
                     preparedSnapshotReader: readPreparedSnapshot,
                     flags: flags,
+                    cleanupName: recoveryHandle.cleanupName,
                     targetURL: targetURL,
                     preparedURL: preparedURL)
             } catch let recovery as Failure {
+                shouldFinishRecoveryJournal = false
                 throw recovery
             }
             throw error
@@ -345,6 +390,7 @@ enum AtomicFileCommit {
         replacementContent: FileSnapshot,
         preparedSnapshotReader: PreparedSnapshotReader,
         flags: UInt32,
+        cleanupName: String,
         targetURL: URL,
         preparedURL: URL
     ) throws {
@@ -434,10 +480,14 @@ enum AtomicFileCommit {
         }
         try unlinkVerifiedChild(
             directoryFD: directoryFD, name: preparedName,
+            claimName: cleanupName,
             verifiedFD: preparedFD,
             verifiedVersion: preparedAfterRollback,
             targetURL: targetURL, preparedURL: preparedURL)
-        guard fsync(directoryFD) == 0 else { throw currentPOSIXError() }
+        guard fsync(directoryFD) == 0 else {
+            throw Failure.recoveryRequired(target: targetURL,
+                                           displaced: preparedURL)
+        }
     }
 
     /// Löscht den Verzeichniseintrag `name` nur, wenn er nachweislich noch auf
@@ -446,12 +496,15 @@ enum AtomicFileCommit {
     /// kennt kein „unlink genau diese Inode": Ein bloßes fstatat-plus-unlinkat
     /// ließe ein Fenster, in dem ein Fremdprozess den Namen ersetzt und sein
     /// Stand mitgelöscht würde. Deshalb beansprucht zuerst ein atomares
-    /// Rename den Eintrag unter einem zufälligen privaten Namen; DANACH wird
+    /// Rename den Eintrag unter dem im Recovery-Journal gebundenen privaten
+    /// Namen; DANACH wird
     /// die Bindung geprüft: Zeigt der beanspruchte Eintrag auf die
     /// verifizierte Inode, wird der private Name gelöscht. Zeigt er auf einen
     /// Fremdstand, wird dieser unter seinem ursprünglichen Namen
     /// zurückgestellt (oder, falls der schon neu belegt ist, unter dem
-    /// privaten Namen erhalten) und `recoveryRequired` gemeldet.
+    /// privaten Namen erhalten) und `recoveryRequired` gemeldet. Der Name ist
+    /// nicht bloß zufällig: Nach einem Prozessabbruch findet der nächste
+    /// Start ihn über denselben Journal-Eintrag wieder.
     ///
     /// `verifiedVersion` bindet dabei nicht nur die Identität, sondern den
     /// zuletzt geprüften VERSIONSSTAND: Ein Fremdprozess mit offenem
@@ -462,7 +515,7 @@ enum AtomicFileCommit {
     ///
     /// Ehrliche Restgrenzen: Zwischen Prüfung und Löschen des PRIVATEN Namens
     /// bleibt ein theoretisches Fenster. Es ist aber nur für einen Prozess
-    /// erreichbar, der das Verzeichnis aktiv nach dem zufälligen Namen
+    /// erreichbar, der das Verzeichnis aktiv nach dem privaten Namen
     /// absucht und ihn gezielt ersetzt — kein regulär gleichzeitig
     /// schreibender Prozess verwendet diesen Namen. Und wie beim Rollback
     /// (siehe dort) bliebe ein gleich großer In-place-Write mit
@@ -470,6 +523,7 @@ enum AtomicFileCommit {
     private static func unlinkVerifiedChild(
         directoryFD: Int32,
         name: String,
+        claimName: String,
         verifiedFD: Int32,
         verifiedVersion: stat,
         targetURL: URL,
@@ -481,7 +535,6 @@ enum AtomicFileCommit {
             throw Failure.recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
-        let claimName = ".fastra-cleanup-" + UUID().uuidString
         // `RENAME_EXCL`: Der private Name darf nichts überschreiben.
         let claimFlags = UInt32(RENAME_EXCL)
             | UInt32(RENAME_NOFOLLOW_ANY)
@@ -491,15 +544,15 @@ enum AtomicFileCommit {
             throw Failure.recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
+        let claimURL = targetURL.deletingLastPathComponent()
+            .appendingPathComponent(claimName)
         let claimed: stat
         do {
             claimed = try childStat(directoryFD, claimName)
         } catch {
             throw Failure.recoveryRequired(target: targetURL,
-                                           displaced: preparedURL)
+                                           displaced: claimURL)
         }
-        let claimURL = targetURL.deletingLastPathComponent()
-            .appendingPathComponent(claimName)
         // `sameVersionAcrossRename` statt `sameVersion`: Das Beanspruchen
         // selbst hat die ctime der Inode gerade geändert; alle übrigen
         // Versionsfelder müssen dem verifizierten Stand entsprechen.

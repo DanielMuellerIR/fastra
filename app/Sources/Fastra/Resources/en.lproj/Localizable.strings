@@ -1530,3 +1530,17 @@
 "Eine andere Dateioperation verändert bereits mindestens eine Zieldatei. Warte auf ihren Abschluss und prüfe danach die Vorschau erneut." = "Another file operation is already changing at least one target file. Wait for it to finish, then review the preview again.";
 "Eine andere Dateioperation verändert bereits mindestens eine Zieldatei. Warte auf ihren Abschluss und versuche Rückgängig danach erneut." = "Another file operation is already changing at least one target file. Wait for it to finish, then try Undo again.";
 "Der Hex-Speicherzustand hat sich unerwartet geändert. Die Byteänderungen bleiben erhalten." = "The Hex save state changed unexpectedly. The byte changes have been preserved.";
+
+/* Dauerhaftes Journal für unterbrochene atomare Datei-Commits (v1.113.8) */
+"nicht erreichbar" = "unavailable";
+"Unterbrochener Dateiaustausch" = "Interrupted File Exchange";
+"Recovery-Journal konnte nicht geprüft werden" = "Could Not Check Recovery Journal";
+"Der Namenstausch hat noch nicht stattgefunden.\nZiel: %@\nVorbereitete Fassung: %@" = "The name exchange has not taken place yet.\nTarget: %@\nPrepared version: %@";
+"Der Namenstausch hat stattgefunden; die Abschlussprüfung wurde unterbrochen.\nZiel: %@\nVerdrängte Fassung: %@" = "The name exchange took place, but final verification was interrupted.\nTarget: %@\nDisplaced version: %@";
+"Die erreichbaren Pfade weichen inzwischen vom Recovery-Journal ab.\nZiel: %@\nZweite Fassung: %@" = "The reachable paths now differ from the recovery journal.\nTarget: %@\nSecond version: %@";
+"Der Zielpfad fehlt.\nZiel: %@\nZweite Fassung: %@" = "The target path is missing.\nTarget: %@\nSecond version: %@";
+"Ein Recovery-Journal ist beschädigt oder stammt aus einem unbekannten Format: %@" = "A recovery journal is damaged or uses an unknown format: %@";
+"\nWeiterer Pfad: %@" = "\nAdditional path: %@";
+"%@ weitere Recovery-Einträge liegen unter %@." = "%@ additional recovery entries are stored under %@.";
+"Fastra hat keine der genannten Fassungen gelöscht. Prüfe beide Pfade und entferne danach die nicht benötigte zweite Fassung. Das Recovery-Journal liegt unter %@." = "Fastra did not delete any of the listed versions. Check both paths, then remove the second version you do not need. The recovery journal is stored under %@.";
+"Fastra hat das Recovery-Verzeichnis nicht verändert. Prüfe %@.\n\n%@" = "Fastra did not change the recovery directory. Check %@.\n\n%@";

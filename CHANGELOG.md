@@ -9,6 +9,17 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.8] — 2026-08-29
+
+### Behoben
+
+- **Ein Prozess- oder Stromausfall lässt keinen anonymen Dateistand aus einem
+  atomaren Speichervorgang zurück.** Fastra synchronisiert vor jedem Namenstausch
+  ein Recovery-Journal mit Ziel, Temp-Pfad, Cleanup-Pfad, Dateiidentitäten und
+  Inhaltsprüfsummen. Der nächste App-Start ordnet unveränderte Fassungen zu,
+  nennt ihre tatsächlichen Pfade und löscht bei einem unklaren Stand keine
+  davon.
+
 ## [v1.113.7] — 2026-08-29
 
 ### Behoben
