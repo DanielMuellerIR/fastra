@@ -9,6 +9,16 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.7] — 2026-08-29
+
+### Behoben
+
+- **Sehr große Dateien öffnen ohne einen versteckten Scan bis zum Dateiende.**
+  Fastra begrenzt die automatische Binär- und Encoding-Erkennung auf die ersten
+  1 MiB plus höchstens drei UTF-8-Randbytes. CP1252 und Latin-1 bleiben dabei
+  mit ihrem tatsächlichen Encoding abschnittsweise lesbar; ein an der Grenze
+  geteilter UTF-8-Skalar wird nicht als Legacy-Encoding fehlgedeutet.
+
 ## [v1.113.6] — 2026-08-29
 
 ### Behoben

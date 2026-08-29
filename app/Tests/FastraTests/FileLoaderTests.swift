@@ -177,6 +177,35 @@ func fileLoader_detectsWindows1252C1Characters() throws {
                                    lineEnding: loaded.lineEnding) == original)
 }
 
+@Test("FileLoader: große CP1252- und Latin-1-Dateien erhalten ihr Encoding")
+func fileLoader_largeLegacyTextUsesStrictlyReadableEncoding() throws {
+    let variants: [(String, String.Encoding)] = [
+        (String(repeating: "Preis 10 € – „Test“\n", count: 4), .windowsCP1252),
+        (String(repeating: "café déjà vu\n", count: 4), .isoLatin1),
+    ]
+
+    for (text, encoding) in variants {
+        let original = try #require(text.data(using: encoding))
+        let url = try writeTmp(Array(original))
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let loaded = try FileLoader.load(url: url, largeFileThreshold: 16)
+        #expect(loaded.displayMode == .chunkedText)
+        #expect(loaded.encoding == encoding)
+
+        let pageSize = 17
+        let pageCount = TextFilePageReader.pageCount(
+            totalBytes: UInt64(original.count), bomCount: 0, pageSize: pageSize)
+        let reconstructed = try (0..<pageCount).map {
+            try TextFilePageReader.read(
+                url: url, totalBytes: UInt64(original.count), pageSize: pageSize,
+                pageIndex: $0, encoding: loaded.encoding, bom: Data()).text
+        }.joined()
+        #expect(reconstructed == text,
+                "Das vom Loader gemeldete Encoding muss jede Seite streng dekodieren")
+    }
+}
+
 @Test("FileLoader: BOM-loses UTF-16 braucht eine ausdrückliche Encoding-Wahl")
 func fileLoader_bomlessUTF16RequiresExplicitReopen() throws {
     let text = "Alpha\nBeta 😀\n"
@@ -443,6 +472,100 @@ func fileLoader_largeText_opensChunked() throws {
     #expect(result.displayMode == .chunkedText)
     #expect(result.content.isEmpty)
     #expect(result.fileSize == 26)
+}
+
+@Test("FileLoader: Großdatei-Klassifikation liest höchstens 1 MiB plus UTF-8-Rand")
+func fileLoader_largeClassificationIsBoundedAndInjectable() throws {
+    let size: UInt64 = 4 * 1024 * 1024
+    let url = try writeTmpRepeatedByteFile(size: size)
+    defer { try? FileManager.default.removeItem(at: url) }
+    var readCalls = 0
+    var bytesRead = 0
+
+    let loaded = try FileLoader.load(
+        url: url, largeFileThreshold: 1,
+        probeReader: { handle, count in
+            readCalls += 1
+            let data = try handle.read(upToCount: count) ?? Data()
+            bytesRead += data.count
+            return data
+        })
+
+    #expect(loaded.displayMode == .chunkedText)
+    #expect(readCalls > 1,
+            "Probe und begrenzter Folge-Scan müssen denselben testbaren Reader nutzen")
+    #expect(bytesRead <= FileLoader.largeFileClassificationByteLimit + 3,
+            "Die erste Ansicht darf nicht von der vollständigen Dateigröße abhängen")
+}
+
+@Test("FileLoader: UTF-8-Skalar über der 1-MiB-Grenze bleibt UTF-8")
+func fileLoader_largeClassificationCompletesBoundaryScalar() throws {
+    var bytes = Data(
+        repeating: 0x61,
+        count: FileLoader.largeFileClassificationByteLimit - 1)
+    bytes.append(contentsOf: "😀".utf8)
+    bytes.append(Data(repeating: 0x62, count: 16))
+    let url = try writeTmp(Array(bytes))
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    let loaded = try FileLoader.load(url: url, largeFileThreshold: 1)
+
+    #expect(loaded.displayMode == .chunkedText)
+    #expect(loaded.encoding == .utf8,
+            "Drei Randbytes müssen den am Leselimit begonnenen Skalar vervollständigen")
+}
+
+@Test("FileLoader: Abbruch im letzten Klassifikations-Read verwirft das Ergebnis")
+func fileLoader_largeClassificationChecksCancellationAfterFinalRead() throws {
+    let url = try writeTmp(Array(repeating: 0x41, count: 16 * 1024))
+    defer { try? FileManager.default.removeItem(at: url) }
+    var readCalls = 0
+    var cancelled = false
+
+    do {
+        _ = try FileLoader.load(
+            url: url, largeFileThreshold: 1,
+            isCancelled: { cancelled },
+            probeReader: { handle, count in
+                readCalls += 1
+                let data = try handle.read(upToCount: count) ?? Data()
+                if readCalls == 2 { cancelled = true }
+                return data
+            })
+        Issue.record("Der letzte überholte Klassifikations-Read wurde veröffentlicht")
+    } catch FileLoader.LoadError.cancelled {
+        #expect(readCalls == 2)
+    } catch {
+        Issue.record("Unerwarteter Fehler: \(error)")
+    }
+}
+
+@Test("FileLoader: Fremdwrite während Großdatei-Klassifikation verwirft die Probe")
+func fileLoader_largeClassificationRejectsConcurrentWrite() throws {
+    let url = try writeTmp(Array(repeating: 0x41, count: 16 * 1024))
+    defer { try? FileManager.default.removeItem(at: url) }
+    var readCalls = 0
+
+    do {
+        _ = try FileLoader.load(
+            url: url, largeFileThreshold: 1,
+            probeReader: { handle, count in
+                readCalls += 1
+                let data = try handle.read(upToCount: count) ?? Data()
+                if readCalls == 2 {
+                    let writer = try FileHandle(forWritingTo: url)
+                    try writer.seek(toOffset: 0)
+                    try writer.write(contentsOf: Data([0x42]))
+                    try writer.close()
+                }
+                return data
+            })
+        Issue.record("Eine während der Probe geänderte Dateiversion wurde veröffentlicht")
+    } catch FileLoader.LoadError.unreadable {
+        #expect(readCalls == 2)
+    } catch {
+        Issue.record("Unerwarteter Fehler: \(error)")
+    }
 }
 
 @Test("FileLoader: ungültiges UTF-8 ohne BOM wirft LoadError.unreadable")

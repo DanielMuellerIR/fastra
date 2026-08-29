@@ -91,10 +91,15 @@ enum FileLoader {
     /// - Throws: `LoadError.unreadable`, wenn keine Dekodierung gelang.
     static let largeFileThreshold: UInt64 = 32 * 1024 * 1024
     static let binaryProbeSize = 8 * 1024
-    /// Obergrenze des zusätzlichen Binär-Scans für große BOM-lose Dateien.
-    /// Der Scan hält immer nur diesen Abschnitt im Speicher und bricht beim
-    /// ersten Nullbyte ab.
+    /// Größe eines Leseabschnitts der begrenzten Großdatei-Klassifikation.
+    /// Die Gesamtgrenze steht getrennt in `largeFileClassificationByteLimit`.
     static let binaryScanChunkSize = 256 * 1024
+    /// Höchstens so viele Anfangsbytes bestimmen bei einer großen Datei
+    /// Binärroute und BOM-loses Encoding. Drei zusätzliche Bytes dürfen einen
+    /// an der Grenze begonnenen UTF-8-Skalar vervollständigen. Damit hängt die
+    /// erste sichtbare Seite nicht von der Gesamtgröße einer 20-GB-Datei ab.
+    static let largeFileClassificationByteLimit = 1024 * 1024
+    private static let utf8ClassificationLookahead = 3
 
     static func load(url: URL, forcedEncoding: String.Encoding? = nil,
                      largeFileThreshold: UInt64 = largeFileThreshold,
@@ -205,21 +210,40 @@ enum FileLoader {
                               externalObservation: openedObservation)
         }
         if fileSize > largeFileThreshold {
-            // Die 8-KiB-Probe allein reicht nicht: Binärdaten können erst weit
-            // hinter dem Anfang ein Nullbyte enthalten. Ohne BOM scannen wir
-            // deshalb den Rest abschnittsweise. BOM-markiertes UTF-16 bleibt
-            // erlaubt; dort sind Nullbytes erwartbarer Bestandteil des Texts.
-            if !bomEncodingAllowsNUL(probeBOMEncoding),
-               try containsNUL(handle: handle, startingAt: UInt64(probe.count),
-                               isCancelled: isCancelled) {
+            // Eine BOM legt das Encoding fest. Bei UTF-16/32 sind Nullbytes
+            // erwartbar; dafür ist keine weitere Inhaltsklassifikation nötig.
+            if bomEncodingAllowsNUL(probeBOMEncoding) {
+                return LoadedFile(content: "",
+                                  encoding: probeBOMEncoding ?? .utf8,
+                                  bom: probeBOM, lineEnding: .lf,
+                                  displayMode: .chunkedText, fileSize: fileSize,
+                                  diskSnapshot: nil,
+                                  externalObservation: openedObservation)
+            }
+
+            // Der frühere Nachscan lief bis EOF und verzögerte damit die erste
+            // Seite proportional zur GESAMTEN Dateigröße. Eine feste 1-MiB-
+            // Anfangsprobe hält die Klassifikation begrenzt. Spätere Abschnitte
+            // dekodiert der Seitenreader weiterhin streng; über den sichtbaren
+            // Ansichtsumschalter bleibt Hex jederzeit erreichbar.
+            let sample = try largeFileClassificationSample(
+                handle: handle, initialProbe: probe, fileSize: fileSize,
+                openedAs: opened.stat, isCancelled: isCancelled,
+                reader: probeReader)
+            if sample.data.contains(0) {
                 return LoadedFile(content: "", encoding: .utf8, bom: Data(),
                                   lineEnding: .lf, displayMode: .hex,
                                   fileSize: fileSize,
                                   diskSnapshot: nil,
                                   externalObservation: openedObservation)
             }
+            guard let encoding = probeBOMEncoding
+                    ?? detectedLargeFileEncoding(sample: sample,
+                                                 bomCount: probeBOM.count) else {
+                throw LoadError.unreadable
+            }
             return LoadedFile(content: "",
-                              encoding: probeBOMEncoding ?? .utf8,
+                              encoding: encoding,
                               bom: probeBOM, lineEnding: .lf,
                               displayMode: .chunkedText, fileSize: fileSize,
                               diskSnapshot: nil,
@@ -368,29 +392,91 @@ enum FileLoader {
         )
     }
 
-    /// Sucht ab `offset` bis EOF nach einem Nullbyte, ohne die Datei komplett
-    /// einzulesen. Diese synchrone Hilfsfunktion darf wie `load` nur aus dem
-    /// Hintergrund aufgerufen werden.
-    ///
-    /// `handle` ist bewusst der bereits offene Deskriptor des Ladevorgangs und
-    /// kein Pfad: Nur so urteilt der Nachscan über dieselbe Datei, deren Typ
-    /// und Größe vorher geprüft wurden. Ein zweites Öffnen könnte inzwischen
-    /// auf ein anderes Ziel zeigen.
-    private static func containsNUL(handle: FileHandle, startingAt offset: UInt64,
-                                    isCancelled: () -> Bool = { false }) throws -> Bool {
+    private struct LargeFileClassificationSample {
+        let data: Data
+        /// Grenze ohne die höchstens drei UTF-8-Vorausschaubytes.
+        let nominalByteCount: Int
+        let reachesEOF: Bool
+    }
+
+    /// Liest eine feste Anfangsprobe über denselben injizierbaren Reader wie
+    /// den 8-KiB-Einstieg. So bleiben Fehler, Abbruch und die harte I/O-Grenze
+    /// deterministisch testbar; kein versteckter zweiter Dateileser umgeht sie.
+    private static func largeFileClassificationSample(
+        handle: FileHandle,
+        initialProbe: Data,
+        fileSize: UInt64,
+        openedAs: stat,
+        isCancelled: () -> Bool,
+        reader: (FileHandle, Int) throws -> Data
+    ) throws -> LargeFileClassificationSample {
+        let nominal = Int(min(fileSize, UInt64(largeFileClassificationByteLimit)))
+        let target = Int(min(
+            fileSize,
+            UInt64(largeFileClassificationByteLimit + utf8ClassificationLookahead)))
+        var data = Data(initialProbe.prefix(target))
+
         do {
-            try handle.seek(toOffset: offset)
-            while true {
+            try handle.seek(toOffset: UInt64(data.count))
+            while data.count < target {
                 guard !isCancelled() else { throw LoadError.cancelled }
-                let chunk = try handle.read(upToCount: binaryScanChunkSize) ?? Data()
-                if chunk.isEmpty { return false }
-                if chunk.contains(0) { return true }
+                let requested = min(binaryScanChunkSize, target - data.count)
+                let chunk = try reader(handle, requested)
+                // `fstat` meldete beim Öffnen noch mehr Bytes. Ein vorzeitiges
+                // EOF ist daher eine Fremdänderung, kein gültiges Teilmuster.
+                guard !chunk.isEmpty else { throw LoadError.unreadable }
+                data.append(chunk.prefix(requested))
+            }
+            // Auch der letzte Read kann das Signal setzen und dabei exakt die
+            // Zielgröße liefern. Ohne Schlussprüfung würde gerade dieser
+            // überholte Auftrag noch ein scheinbar gültiges Ergebnis liefern.
+            guard !isCancelled() else { throw LoadError.cancelled }
+            var after = stat()
+            guard fstat(handle.fileDescriptor, &after) == 0,
+                  FileSnapshot.describesSameOpenedVersion(openedAs, after) else {
+                // Probe und `externalObservation` müssen denselben stabilen
+                // Plattenstand beschreiben. Ein In-place-Write während der
+                // Klassifikation macht die komplette Entscheidung ungültig.
+                throw LoadError.unreadable
             }
         } catch LoadError.cancelled {
             throw LoadError.cancelled
+        } catch LoadError.unreadable {
+            throw LoadError.unreadable
         } catch {
             throw LoadError.unreadable
         }
+        return LargeFileClassificationSample(
+            data: data, nominalByteCount: nominal,
+            reachesEOF: UInt64(data.count) == fileSize)
+    }
+
+    /// Bestimmt das Encoding aus der begrenzten Anfangsprobe. Bei einem
+    /// gekappten UTF-8-Muster werden bis zu drei bereits gelesene Randbytes
+    /// einbezogen, damit ein geteilter Mehrbyte-Skalar nicht fälschlich als
+    /// Latin-1 gilt. Legacy-Encodings nutzen dieselbe zentrale Heuristik wie
+    /// kleine Dateien, Ordnersuche und Apply.
+    private static func detectedLargeFileEncoding(
+        sample: LargeFileClassificationSample,
+        bomCount: Int
+    ) -> String.Encoding? {
+        let droppedBOM = min(bomCount, sample.data.count)
+        let payload = Data(sample.data.dropFirst(droppedBOM))
+        let nominalPayloadCount = max(0, sample.nominalByteCount - droppedBOM)
+
+        if sample.reachesEOF {
+            return ApplyEngine.decode(payload: payload, bomEncoding: nil)?.1
+        }
+        let lastCandidate = min(
+            payload.count,
+            nominalPayloadCount + utf8ClassificationLookahead)
+        if nominalPayloadCount <= lastCandidate {
+            for end in nominalPayloadCount...lastCandidate
+            where String(data: payload.prefix(end), encoding: .utf8) != nil {
+                return .utf8
+            }
+        }
+        return ApplyEngine.decode(payload: payload, bomEncoding: nil)?.1
     }
 
 }
