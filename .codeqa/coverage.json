@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3195651
+    "tokens_spent": 3206476
   },
   "campaign_history": [
     {
@@ -146,15 +146,15 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T18:25:15+02:00",
-        "observed_head": "ce1309c8df919d0bcac24946d885c7c2bbf42c03",
-        "content_sha256": "ae49e776d2f162b2370fcf871beb3ae7baa910cbc80598d4d7d387e48bff6723",
+        "completed_at": "2026-08-29T21:35:34+02:00",
+        "observed_head": "35b62e661dfb466f6237959504ec14f2ee703604",
+        "content_sha256": "b2fd7a5c06b53f9bf1534901d7d8ea7ec3eac3c50ae314a260616b1c9186aa38",
         "file_count": 43,
         "review": "delta-plus-boundaries",
-        "outcome": "improved",
-        "summary": "Inline-Ersetzungsvorschau im Geöffnet-Bereich an Treffer des aktiven Tabs gebunden; veraltete Debounce-Ergebnisse über die vorhandene Optionsbindung gesperrt; Regressionstest ergänzt und Produktversion auf 1.113.3 erhöht.",
+        "outcome": "reviewed-clean",
+        "summary": "Seit dem letzten P1-Lauf ist keine der 43 Such-, Vorschau- oder Apply-Dateien inhaltlich geändert. Trefferbasis, Aktuellkeitsbindung, Vorschau und atomare Apply-/Undo-Grenzen erneut durch den breiten Suchfilter bestätigt; kein Befund.",
         "tests": [
-          "./build.sh PASS einschließlich Portabilitätsprüfung; ./test.sh PASS (2116 schnelle + 114 serielle Tests); ./localization-audit.sh PASS; SearchEmphasis/ReplacePreview/Suchpfad-Filter PASS (271 Tests); plutil und git diff --check PASS"
+          "swift test --filter 'Apply|Search|ReplacePreview|Wildcard|Regex|GroupBuilder|GroupRemoval|HitExtraction': 415 Tests grün; vollständige Suite am unveränderten Produktstand zuvor grün."
         ]
       }
     },
