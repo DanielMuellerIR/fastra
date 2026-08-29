@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 1397633
+    "tokens_spent": 1679349
   },
   "campaign_history": [
     {
@@ -1193,9 +1193,19 @@
         "app/Sources/Fastra/PagedFileView.swift"
       ],
       "priority": 2,
-      "state": "pending",
+      "state": "completed",
       "noted_at": "2026-08-25T20:00:49+02:00",
-      "campaign_id": "20260825T163605228103+0200"
+      "campaign_id": "20260825T163605228103+0200",
+      "started_at": "2026-08-29T19:35:27+02:00",
+      "completed": {
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T19:59:00+02:00",
+        "observed_head": "8da3720ff750aaacf13dc542f3490aed37d9985f",
+        "summary": "Große Dateien klassifiziert FileLoader nun aus einer festen Anfangsprobe von 1 MiB plus höchstens drei UTF-8-Randbytes statt durch einen Scan bis EOF. BOM-lose CP1252- und Latin-1-Dateien behalten das vom strengen Seitenreader benötigte Encoding, geteilte UTF-8-Skalare bleiben UTF-8; Probe, Abbruch und Dateiversion sind an denselben injizierten Reader und geöffneten Deskriptor gebunden. Version 1.113.7 und deutsch/englische Hilfe dokumentieren die sichtbare Grenze sowie Hex- und Encoding-Ausweichwege.",
+        "tests": [
+          "Rotbeleg: FileLoader-Tests meldeten vor der Implementierung UTF-8 statt CP1252 und einen versteckten EOF-Scan. Grün: FileLoader 27/27; ./build.sh inklusive Fensterziel-Audit und Portabilitätsprüfung; ./localization-audit.sh; ./selftest.sh localization; finale ./test.sh 2132 schnelle + 115 serielle Tests, 0 Umgebungsfehler; ./help-audit.sh --release; plutil und git diff --check."
+        ]
+      }
     },
     {
       "id": "paged-read-cancellation",
