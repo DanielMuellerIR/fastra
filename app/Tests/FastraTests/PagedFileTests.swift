@@ -236,6 +236,26 @@ struct PagedFileTests {
         #expect(model.data == Data(16..<24))
     }
 
+    @Test("Standardmodell lehnt eine seit dem Öffnen gewachsene Datei verständlich ab")
+    @MainActor
+    func defaultModelRejectsChangedTotalSize() async throws {
+        let url = try temporaryPageFile(Data(repeating: 0x41, count: 16))
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        // Das Modell trägt noch die beim Öffnen erfassten acht Bytes, der
+        // Reader sieht bereits 16. Damit belegt der Test sowohl die Bindung
+        // der erwarteten Gesamtgröße im Standard-Reader als auch den
+        // sichtbaren, lokalisierten Fehlerweg.
+        let model = FilePageModel(url: url, totalBytes: 8, pageSize: 8)
+        for _ in 0..<100 where model.completedLoadCount < 1 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(model.data.isEmpty)
+        #expect(model.errorMessage == L10n.string(
+            "Die Datei wurde während des Lesens geändert. Lade sie über „Ablage“ > „Von Festplatte neu laden“ erneut."))
+    }
+
     @Test("Auch eine inhaltsgleiche Nachbarseite meldet einen abgeschlossenen Ladevorgang")
     @MainActor
     func identicalNeighborPageCompletesLoad() async throws {
