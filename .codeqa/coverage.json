@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3917285
+    "tokens_spent": 3928833
   },
   "campaign_history": [
     {
@@ -367,15 +367,17 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T21:59:29+02:00",
-        "observed_head": "08f969b399be84204b894280b41fb14bede7d3eb",
-        "content_sha256": "39e68d524474f92d921e6a5cf0041d0e697683045528207df216f93085f88c77",
+        "completed_at": "2026-08-29T22:17:08+02:00",
+        "observed_head": "de769c7ab2478e18b3f17624c7d56a3b3cf0f57a",
+        "content_sha256": "a392963f90b6cc863fe60fc0a04399585716867eec138826772b3488ce79eb01",
         "file_count": 20,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Seit dem letzten Build-/Paketreview änderten sich ausschließlich CFBundleShortVersionString von 1.113.11 auf 1.113.12 und CFBundleVersion von 231 auf 232. Beide Werte entsprechen dem neuen Changelog-Eintrag; Paket-, Signatur-, Installations- und Release-Mechanismen blieben unverändert.",
+        "summary": "Das Paket-Delta besteht ausschließlich aus den zusammengehörigen Versionsschritten 1.113.12/232 auf 1.113.14/234. Quell-Plist, gebautes App-Bundle und die beiden datierten Changelog-Einträge stimmen überein; Build-, Signatur- und Portabilitätsprüfungen waren bereits für das aktuelle Bundle grün.",
         "tests": [
-          "plutil -lint app/Info.plist grün; Version 1.113.12/Build 232 und Changelog-Eintrag abgeglichen; build.sh einschließlich Fenster-Audit, Bundle-Signatur und Portabilitätsprüfung grün; help-audit.sh und git diff --check grün."
+          "plutil -lint app/Info.plist: grün; Quell- und Bundle-Plist melden 1.113.14 (Build 234)",
+          "./build.sh: grün einschließlich CodeEdit-Patches, Signaturprüfung und verify-portable-app.sh",
+          "CHANGELOG.md: v1.113.13 und v1.113.14 jeweils datiert und passend zur sichtbaren Änderung"
         ]
       }
     },
