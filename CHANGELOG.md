@@ -9,6 +9,18 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.3] — 2026-08-29
+
+### Behoben
+
+- **Die Inline-Ersetzungsvorschau funktioniert auch im Bereich „Geöffnet“
+  und zeigt nie den alten Debounce-Stand.** Der Bereich speichert seine
+  Treffer pro offenem Tab, während die Vorschau bisher nur die dort
+  absichtlich leere Datei-Trefferliste las. Sie löst ihre Quelle jetzt über
+  den aktiven Tab auf und verlangt dieselbe aktuelle Optionsbindung wie
+  Navigation und „Alle ersetzen“; nach Tippen oder einem Optionswechsel
+  verschwindet der alte Vorschauinhalt bis zum frischen Suchergebnis.
+
 ## [v1.113.2] — 2026-08-29
 
 Sechs Fixes aus dem Code-Review vom 2026-08-29; der siebte Fund

@@ -876,16 +876,26 @@ struct FloatingSearchDialog: View {
     /// Feedback (Produktprinzip „Vorschau ist das Produkt"). Nur in den Buffer-
     /// Scopes (Datei/Geöffnet — der Ordner-Scope hat keinen einzelnen aktiven
     /// Buffer), nur wenn ein Ersetzen-Text getippt ist UND es Treffer gibt;
-    /// sonst leer → im Normalfall kein Layout-Sprung. `replacePattern` ist ein
-    /// Such-Trigger (SearchRunner) → die `replacedText` der Treffer sind beim
-    /// Tippen frisch, die Vorschau also korrekt.
+    /// sonst leer → im Normalfall kein Layout-Sprung. Die Quelle bindet Treffer
+    /// an die aktuellen Suchoptionen und im „Geöffnet"-Scope an den aktiven Tab;
+    /// der alte Debounce-Stand darf dadurch nie als neue Vorschau erscheinen.
     @ViewBuilder
     private var livePreviewStrip: some View {
         if !workspace.scope.isFolderLike,
            !workspace.replacePattern.isEmpty,
-           !workspace.bufferMatches.isEmpty {
+           let source = SearchEmphasis.currentSource(
+               scope: workspace.scope,
+               activeTab: workspace.activeTab,
+               bufferMatches: workspace.bufferMatches,
+               bufferTotalMatches: workspace.bufferTotalMatches,
+               folderResults: workspace.folderResults,
+               openResults: workspace.openResults,
+               visibleBufferResultsOptions: workspace.visibleBufferResultsOptions,
+               currentOptions: workspace.currentSearchOptions
+           ),
+           !source.matches.isEmpty {
             let preview = ReplacePreview.build(text: workspace.activeTab?.content ?? "",
-                                               matches: workspace.bufferMatches,
+                                               matches: source.matches,
                                                maxRows: livePreviewMaxRows)
             // Treffer, deren Ersetzung == Original (z.B. Suchen == Ersetzen),
             // liefern keine Zeilen → dann zeigen wir nichts.

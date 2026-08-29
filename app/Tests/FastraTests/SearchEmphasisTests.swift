@@ -165,6 +165,39 @@ func bufferResultsAreCurrent_requiresMatchingOptions() {
         scope: .project, visibleBufferResultsOptions: nil, currentOptions: fresh))
 }
 
+@MainActor
+@Test("currentSource: Geöffnet-Vorschau bindet aktiven Tab und Optionsstand")
+func currentSource_openUsesActiveTabAndCurrentOptions() {
+    let options = SearchOptions(find: "FUND", replace: "NEU", isRegex: false)
+    let first = EditorTab(title: "Eins", path: "—", content: "FUND")
+    let second = EditorTab(title: "Zwei", path: "—", content: "FUND")
+    let match = BufferSearch.find(in: second.content, options: options).matches[0]
+    let results = [
+        OpenTabsSearch.TabHits(id: first.id, title: first.title,
+                               matches: [], totalMatches: 0),
+        OpenTabsSearch.TabHits(id: second.id, title: second.title,
+                               matches: [match], totalMatches: 1),
+    ]
+
+    let current = SearchEmphasis.currentSource(
+        scope: .open, activeTab: second,
+        bufferMatches: [], bufferTotalMatches: 0,
+        folderResults: [], openResults: results,
+        visibleBufferResultsOptions: options, currentOptions: options
+    )
+    #expect(current == .init(matches: [match], totalMatches: 1))
+
+    // Der SearchRunner entzieht diese Freigabe synchron beim ersten Edit
+    // oder Optionswechsel; die alte Trefferliste bleibt nur zur ruhigen
+    // Anzeige stehen und darf keine neue Vorschau mehr speisen.
+    #expect(SearchEmphasis.currentSource(
+        scope: .open, activeTab: second,
+        bufferMatches: [], bufferTotalMatches: 0,
+        folderResults: [], openResults: results,
+        visibleBufferResultsOptions: nil, currentOptions: options
+    ) == nil)
+}
+
 @Test("cap: entspricht dem Materialisierungs-Cap der Buffer-Suche")
 func cap_matchesBufferSearch() {
     // Bewusste Kopplung: mehr als die materialisierten Treffer könnten gar

@@ -106,6 +106,37 @@ enum SearchEmphasis {
         }
     }
 
+    /// Liefert nur eine zur aktuellen Suchbasis gehörende Trefferquelle.
+    /// Die Inline-Vorschau nutzt denselben Datei-/Tab-Bezug wie die
+    /// Editor-Markierung: Im „Geöffnet"-Scope stammen Treffer aus
+    /// `openResults`, nicht aus der dort absichtlich leeren Buffer-Liste.
+    /// Während des Tipp-Debounce bleibt die alte Liste zwar sichtbar, ihre
+    /// entfallene Optionsfreigabe sperrt sie hier aber als Vorschauquelle.
+    static func currentSource(
+        scope: Workspace.SearchScope,
+        activeTab: EditorTab?,
+        bufferMatches: [BufferSearch.Match],
+        bufferTotalMatches: Int,
+        folderResults: [FolderSearch.PerFileResult],
+        openResults: [OpenTabsSearch.TabHits],
+        visibleBufferResultsOptions: SearchOptions?,
+        currentOptions: SearchOptions
+    ) -> Source? {
+        guard bufferResultsAreCurrent(
+            scope: scope,
+            visibleBufferResultsOptions: visibleBufferResultsOptions,
+            currentOptions: currentOptions
+        ) else { return nil }
+        return source(
+            scope: scope,
+            activeTab: activeTab,
+            bufferMatches: bufferMatches,
+            bufferTotalMatches: bufferTotalMatches,
+            folderResults: folderResults,
+            openResults: openResults
+        )
+    }
+
     /// Räumt die Live-Trefferanzeige SOFORT beim ersten Textedit. Die
     /// Markierungen speichern ihre Bereiche statisch; nach einem Edit sind
     /// sie veraltet und zeichnen an falschen Stellen — bei einem
