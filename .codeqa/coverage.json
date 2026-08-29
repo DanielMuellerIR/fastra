@@ -1,11 +1,12 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "project": "Fastra",
   "campaign": {
-    "id": "20260825T163605228103+0200",
-    "token_budget": 8000000,
+    "id": "20260829T181404893486+0200",
+    "token_budget": 5000000,
     "status": "active",
-    "started_at": "2026-08-25T16:36:05+02:00"
+    "started_at": "2026-08-29T18:14:04+02:00",
+    "tokens_spent": 292760
   },
   "campaign_history": [
     {
@@ -25,6 +26,14 @@
       "tokens_spent": 2486268,
       "finished_at": "2026-08-15T19:07:49+02:00",
       "finish_reason": "all-current"
+    },
+    {
+      "id": "20260825T163605228103+0200",
+      "token_budget": 8000000,
+      "status": "paused",
+      "started_at": "2026-08-25T16:36:05+02:00",
+      "finished_at": "2026-08-29T18:14:00+02:00",
+      "finish_reason": "user-stopped"
     }
   ],
   "scope": {
@@ -136,16 +145,16 @@
       "reason": "Trefferbasis, Vorschau und Apply bilden die zentrale Sicherheitsgrenze des Produkts.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-25T23:08:28+02:00",
-        "observed_head": "ec15e86db63927185f3f1a0607dfa0e4d4dfa630",
-        "content_sha256": "8bdcd59b6aa3b84beb53bd57a277eaea004cba5a8d2ae25ce899ecf0ff4966f3",
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T18:25:15+02:00",
+        "observed_head": "ce1309c8df919d0bcac24946d885c7c2bbf42c03",
+        "content_sha256": "ae49e776d2f162b2370fcf871beb3ae7baa910cbc80598d4d7d387e48bff6723",
         "file_count": 43,
         "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Hex-Aktionskontexte frieren die Vorschauidentität ein; veraltete Einzel- und Konfliktaktionen werden vor jeder Mutation verworfen.",
+        "summary": "Inline-Ersetzungsvorschau im Geöffnet-Bereich an Treffer des aktiven Tabs gebunden; veraltete Debounce-Ergebnisse über die vorhandene Optionsbindung gesperrt; Regressionstest ergänzt und Produktversion auf 1.113.3 erhöht.",
         "tests": [
-          "Weemac: app/test.sh vollständig grün (2059 schnelle Tests, 104 serielle Integrationstests, 0 Umgebungsfehler)."
+          "./build.sh PASS einschließlich Portabilitätsprüfung; ./test.sh PASS (2116 schnelle + 114 serielle Tests); ./localization-audit.sh PASS; SearchEmphasis/ReplacePreview/Suchpfad-Filter PASS (271 Tests); plutil und git diff --check PASS"
         ]
       }
     },
@@ -402,12 +411,15 @@
         "app/Tests/FastraTests/TextLayoutManagerStaleOffsetTests.swift",
         "app/Tests/FastraTests/TextLinePrepareForDisplayClampTests.swift",
         "app/Tests/FastraTests/ViewModeRoutingTests.swift",
-        "app/Tests/FastraTests/StaleSelectionPivotTests.swift"
+        "app/Tests/FastraTests/StaleSelectionPivotTests.swift",
+        "app/Tests/FastraTests/ColumnCursorViewTests.swift",
+        "app/Tests/FastraTests/ColumnTypingDriftTests.swift",
+        "app/Tests/FastraTests/EmphasisStaleRangeTests.swift"
       ],
       "risk": "high",
       "priority": 6,
       "reason": "AppKit-/CodeEdit-Integration, Auswahl, Umbruch und Layout enthalten mehrere dokumentierte Absturz- und Koordinatenfallen.",
-      "state": "completed",
+      "state": "pending",
       "last_run": {
         "campaign_id": "20260825T163605228103+0200",
         "completed_at": "2026-08-25T23:26:23+02:00",
@@ -420,7 +432,12 @@
         "tests": [
           "Weemac: tool4DLintLease-Regressionstest und vollständiges app/test.sh mit 2063+104 Tests grün; unabhängiger Nachreview ohne weiteren Fund."
         ]
-      }
+      },
+      "pending_paths": [
+        "app/Tests/FastraTests/ColumnCursorViewTests.swift",
+        "app/Tests/FastraTests/ColumnTypingDriftTests.swift",
+        "app/Tests/FastraTests/EmphasisStaleRangeTests.swift"
+      ]
     },
     {
       "id": "markdown-render-import",
@@ -954,10 +971,10 @@
     }
   ],
   "architecture": {
-    "campaign_id": "20260825T163605228103+0200",
-    "recorded_at": "2026-08-25T16:42:35+02:00",
-    "observed_head": "18fe76b24168c387b1e5fe10985cffb82d135826",
-    "summary": "SwiftUI/AppKit-Views binden je Fenster an Workspace als ViewModel; reine Such-, Format-, Diff- und Parserkerne sowie Hintergrunddienste kapseln Rechen- und E/A-Arbeit. Neue Controller für Spracherkennung, externe Änderungen, 4D-Indizes und Trefferauswahl verbessern Grenzen, doch Workspace.swift koordiniert mit 5.633 Zeilen, 88 @Published-Deklarationen und 167 Methoden weiterhin Dokumente, Suche, Git, Persistenz und UI.",
+    "campaign_id": "20260829T181404893486+0200",
+    "recorded_at": "2026-08-29T18:14:34+02:00",
+    "observed_head": "c9058afd7baf597a0f1046da817d14ae58385e5b",
+    "summary": "SwiftUI/AppKit-Views binden je Fenster an Workspace als ViewModel; reine Such-, Format-, Diff- und Parserkerne sowie Hintergrunddienste kapseln Rechen- und E/A-Arbeit. Das Paradigma passt weiterhin, doch Workspace.swift koordiniert mit 6672 Zeilen weiterhin Dokumente, Suche, Git, Persistenz und UI; SelfTest.swift bündelt zusätzlich 20308 Zeilen Teststeuerung.",
     "paradigm": "Pragmatisches MVVM mit je Fenster zentralem Workspace und ereignisgetriebenen asynchronen Diensten",
     "fit": "gespannt",
     "recommendation": "Verantwortungen bereichsweise aus Workspace und großen UI-/Testdateien in vorhandene Dienste und reine Funktionen verschieben; keinen Paradigmenwechsel beginnen und Vorschau-, Main-Thread- sowie Dateisicherheitsgrenzen erhalten."
