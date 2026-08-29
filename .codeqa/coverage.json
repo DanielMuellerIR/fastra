@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3608260
+    "tokens_spent": 3908367
   },
   "campaign_history": [
     {
@@ -807,26 +807,24 @@
       "risk": "medium",
       "priority": 14,
       "reason": "Format-, Sprach-, Lint- und Speicheroptionen bestimmen Interpretation und Ausgabe von Dokumenten.",
-      "state": "pending",
+      "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T18:05:02+02:00",
-        "observed_head": "5089cba10405f46b731e5edc5e16b7097e3287a1",
-        "content_sha256": "b6848124240d985fe7871b727c084141bc5bff33387ecbb57d37e2932f598841",
-        "file_count": 16,
-        "review": "full",
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T22:16:02+02:00",
+        "observed_head": "b629dde5b0099d7a0bfdde692cb75d95799cb4f1",
+        "content_sha256": "ba8877596ad4e9fa1290931aed9198888bb513e4924d37ebc9fdd5429d3448b8",
+        "file_count": 18,
+        "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Gleich lange Inhaltswechsel lösen die Spracherkennung erneut aus; JSON-Fehlerpositionen zählen LF, CRLF und CR korrekt",
+        "summary": "Die isolierte Dokument-Spracherkennung, Trigger- und Hysterese-Logik sowie angrenzenden Format- und Lint-Pfade wurden gegen den letzten Lauf geprüft. Analyseproben sind jetzt an einer gültigen UTF-8-Skalargrenze auf 64 KiB begrenzt und behalten ihre Vollständigkeitsinformation. Ergebnisse tragen zusätzlich die Inhaltsgeneration; direkt geänderte Puffer verwerfen alte Analysen, und verworfene Ergebnisse drosseln keine Ersatzanalyse.",
         "tests": [
-          "./test.sh --filter DocumentFormat|DocumentFormatter|DocumentKind|FooterLogic|LanguageDetection|LanguageMenu|LintMinify|SavePanelFormat: 89 passed",
-          "./build.sh: passed einschließlich Fensterziel-Audit, Signatur und portabler Ordnersuche",
-          "./localization-audit.sh und ./help-audit.sh: passed"
+          "Regression Unicode-Probe: vor dem Fix 131073 statt höchstens 65536 UTF-8-Bytes, danach begrenzt und vollständigkeitsbewusst",
+          "Regression direkte Modellmutation: vor dem Fix altes JSON-Ergebnis übernommen, danach wegen contentRevision verworfen und Ersatzanalyse nicht gedrosselt",
+          "./test.sh --filter DocumentFormat|DocumentFormatter|DocumentKind|FooterLogic|LanguageDetection|LanguageMenu|LintMinify|SavePanelFormat|DocumentLanguageDetector: 103 Tests grün",
+          "./build.sh: grün einschließlich Fensterziel-Audit, Signatur und portabler App",
+          "./localization-audit.sh, ./help-audit.sh, ./public-history-audit.sh, plutil -lint und git diff --check: grün"
         ]
-      },
-      "pending_paths": [
-        "app/Sources/Fastra/DocumentLanguageDetector.swift",
-        "app/Tests/FastraTests/DocumentLanguageDetectorTests.swift"
-      ]
+      }
     },
     {
       "id": "preferences-help-localization",
