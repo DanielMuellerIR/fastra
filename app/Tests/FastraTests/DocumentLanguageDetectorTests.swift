@@ -60,6 +60,11 @@ private final class DetectionRecorder: @unchecked Sendable {
     func append(_ result: DocumentLanguageDetector.DetectionResult) {
         lock.withLock { storage.append(result) }
     }
+
+    func record(_ result: DocumentLanguageDetector.DetectionResult) -> Bool {
+        append(result)
+        return true
+    }
 }
 
 private final class AnalyzerProbe: @unchecked Sendable {
@@ -90,6 +95,7 @@ private func detectorRequest(
     .init(
         tabID: tabID,
         documentID: documentID,
+        contentRevision: 0,
         oldLength: oldLength,
         newLength: content.count,
         content: content
@@ -110,7 +116,7 @@ struct DocumentLanguageDetectorTests {
         )
         let request = detectorRequest(content: "ein kurzer Satz")
 
-        detector.schedule(request) { recorder.append($0) }
+        detector.schedule(request) { recorder.record($0) }
         #expect(delays.count == 1)
 
         detector.cancel(tabID: request.tabID, documentID: request.documentID)
@@ -134,7 +140,7 @@ struct DocumentLanguageDetectorTests {
             content: #"{"name":"Fastra","version":183,"active":true}"#
         )
 
-        detector.schedule(request) { recorder.append($0) }
+        detector.schedule(request) { recorder.record($0) }
         background.runAll()
         #expect(delivery.count == 1, "Analyse muss vor der Cancellation fertig sein")
 
@@ -166,8 +172,8 @@ struct DocumentLanguageDetectorTests {
             content: "<!DOCTYPE html><html><body>neu</body></html>"
         )
 
-        detector.schedule(first) { recorder.append($0) }
-        detector.schedule(second) { recorder.append($0) }
+        detector.schedule(first) { recorder.record($0) }
+        detector.schedule(second) { recorder.record($0) }
         background.runAll()
         delivery.runAll()
 
@@ -210,6 +216,47 @@ struct DocumentLanguageDetectorTests {
         #expect(workspace.tabs[0].contentDetectedFormat == nil)
     }
 
+    @Test("Direkte Modellmutation verwirft die Analyse des alten Inhalts")
+    @MainActor
+    func directModelMutationRejectsStaleContent() {
+        let background = ManualWorkScheduler()
+        let delays = ManualDelayScheduler()
+        let delivery = ManualWorkScheduler()
+        let detector = DocumentLanguageDetector(
+            scheduleWork: background.schedule,
+            scheduleDelayedWork: delays.schedule,
+            deliverResult: delivery.schedule
+        )
+        let suite = "fastra-detector-revision-\(UUID().uuidString)"
+        let defaults = testSuiteDefaults(named: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let workspace = Workspace(
+            defaults: defaults,
+            documentLanguageDetector: detector
+        )
+        let tab = EditorTab(title: Workspace.untitledBaseName, path: "—")
+        workspace.tabs = [tab]
+        workspace.activeTabID = tab.id
+
+        workspace.activeTabContent.wrappedValue =
+            #"{"name":"alt","version":183,"active":true}"#
+        #expect(background.count == 1)
+
+        // Mehrtab-Ersetzen und einige Hilfspfade schreiben direkt ins Modell.
+        // Dieselben IDs bleiben dabei erhalten, nur die Inhaltsgeneration
+        // ändert sich. Das alte JSON-Ergebnis darf dann nicht mehr gelten.
+        workspace.tabs[0].content =
+            "<!DOCTYPE html><html><body>neu</body></html>"
+        background.runAll()
+        delivery.runAll()
+
+        #expect(workspace.tabs[0].contentDetectedLanguage == nil)
+        #expect(workspace.tabs[0].contentDetectedFormat == nil)
+
+        workspace.activeTabContent.wrappedValue += "x"
+        #expect(delays.count == 1, "Verworfenes Ergebnis darf nicht drosseln")
+    }
+
     @Test("Zwei Fenster besitzen unabhängige laufende Arbeiten")
     @MainActor
     func multipleWindowsDoNotShareDetectionState() {
@@ -241,8 +288,8 @@ struct DocumentLanguageDetectorTests {
             content: "<!DOCTYPE html><html><body>second</body></html>"
         )
 
-        firstDetector.schedule(first) { firstResults.append($0) }
-        secondDetector.schedule(second) { secondResults.append($0) }
+        firstDetector.schedule(first) { firstResults.record($0) }
+        secondDetector.schedule(second) { secondResults.record($0) }
         firstDetector.cancel(tabID: tabID, documentID: documentID)
         background.runAll()
         delivery.runAll()
@@ -268,7 +315,7 @@ struct DocumentLanguageDetectorTests {
             count: ContentLanguageDetection.analysisUTF8ByteLimit
         )
 
-        detector.schedule(detectorRequest(content: content)) { _ in }
+        detector.schedule(detectorRequest(content: content)) { _ in true }
         background.runAll()
         delivery.runAll()
 
@@ -297,7 +344,7 @@ struct DocumentLanguageDetectorTests {
             count: ContentLanguageDetection.analysisUTF8ByteLimit
         )
 
-        detector.schedule(detectorRequest(content: content)) { _ in }
+        detector.schedule(detectorRequest(content: content)) { _ in true }
         delays.runAll()
         background.runAll()
         delivery.runAll()
@@ -325,7 +372,7 @@ struct DocumentLanguageDetectorTests {
             tabID: tabID,
             documentID: documentID,
             content: firstContent
-        )) { _ in }
+        )) { _ in true }
         background.runAll()
         delivery.runAll()
 
@@ -334,7 +381,7 @@ struct DocumentLanguageDetectorTests {
             documentID: documentID,
             oldLength: firstContent.count,
             content: firstContent + "y"
-        )) { _ in }
+        )) { _ in true }
 
         #expect(background.count == 0)
         #expect(probe.analyzedLengths == [100])
@@ -360,7 +407,7 @@ struct DocumentLanguageDetectorTests {
         // Hintergrund-Scheduler liegen (noch kein Ergebnis geliefert).
         detector.schedule(detectorRequest(
             tabID: tabID, documentID: documentID, content: bigContent
-        )) { recorder.append($0) }
+        )) { recorder.record($0) }
         #expect(background.count == 1)
 
         // Die kleine Folgeänderung verwirft die laufende Analyse. Sie darf
@@ -369,7 +416,7 @@ struct DocumentLanguageDetectorTests {
         detector.schedule(detectorRequest(
             tabID: tabID, documentID: documentID,
             oldLength: bigContent.count, content: bigContent + "y"
-        )) { recorder.append($0) }
+        )) { recorder.record($0) }
         #expect(delays.count == 1, "Ersatzanalyse muss eingeplant sein")
 
         background.runAll()   // verworfene alte Analyse läuft ins Leere
@@ -394,7 +441,7 @@ struct DocumentLanguageDetectorTests {
         )
         let request = detectorRequest(content: "ein kurzer Satz")
 
-        detector.schedule(request) { recorder.append($0) }
+        detector.schedule(request) { recorder.record($0) }
         #expect(delays.count == 1)
         detector.cancel(tabID: request.tabID, documentID: request.documentID)
 
@@ -416,6 +463,7 @@ struct DocumentLanguageDetectorTests {
                 content: #"{"main":true,"version":183,"count":1}"#
             )) { _ in
                 continuation.resume(returning: Thread.isMainThread)
+                return true
             }
         }
 

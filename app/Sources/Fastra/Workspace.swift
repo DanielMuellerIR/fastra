@@ -3734,6 +3734,7 @@ final class Workspace: ObservableObject {
         let request = DocumentLanguageDetector.Request(
             tabID: tab.id,
             documentID: tab.documentID,
+            contentRevision: tab.contentRevision,
             oldLength: oldLength,
             newLength: newLength,
             content: tab.content
@@ -3743,7 +3744,8 @@ final class Workspace: ObservableObject {
                   let i = self.tabs.firstIndex(where: {
                       $0.id == result.tabID && $0.documentID == result.documentID
                   }),
-                  Self.isEligibleForContentDetection(self.tabs[i]) else { return }
+                  self.tabs[i].contentRevision == result.contentRevision,
+                  Self.isEligibleForContentDetection(self.tabs[i]) else { return false }
 
             let format = result.analysis.format
             let detectedLanguage = format.map(Self.grammarForDetectedFormat)
@@ -3752,10 +3754,12 @@ final class Workspace: ObservableObject {
             // erkannt) lässt eine bestehende Erkennung stehen.
             let current = self.tabs[i].contentDetectedLanguage
             let currentFormat = self.tabs[i].contentDetectedFormat
-            guard let detectedLanguage,
-                  detectedLanguage != current || format != currentFormat else { return }
-            self.tabs[i].contentDetectedLanguage = detectedLanguage
-            self.tabs[i].contentDetectedFormat = format
+            if let detectedLanguage,
+               detectedLanguage != current || format != currentFormat {
+                self.tabs[i].contentDetectedLanguage = detectedLanguage
+                self.tabs[i].contentDetectedFormat = format
+            }
+            return true
         }
     }
 

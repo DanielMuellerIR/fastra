@@ -9,6 +9,16 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.14] — 2026-08-29
+
+### Behoben
+
+- **Eine verspätete Spracherkennung überschreibt nicht mehr den Stand eines
+  inzwischen direkt geänderten Puffers.** Neben Tab und Dokument bindet Fastra
+  jedes Analyseergebnis jetzt an die genaue Inhaltsgeneration. Das schützt
+  besonders ungespeicherte, endungslose Tabs, die „Alle ersetzen“ außerhalb
+  des aktiven Editor-Bindings verändert.
+
 ## [v1.113.13] — 2026-08-29
 
 ### Behoben

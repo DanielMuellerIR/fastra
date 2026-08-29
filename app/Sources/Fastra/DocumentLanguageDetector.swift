@@ -21,7 +21,10 @@ final class DocumentLanguageDetector: @unchecked Sendable {
     typealias Scheduler = (@escaping @Sendable () -> Void) -> Void
     typealias DelayedScheduler = (TimeInterval, DispatchWorkItem) -> Void
     typealias Analyzer = @Sendable (ContentLanguageDetection.AnalysisSample) -> Analysis
-    typealias ResultHandler = @MainActor @Sendable (DetectionResult) -> Void
+    /// `true` bedeutet, dass der Workspace das Ergebnis noch derselben
+    /// Inhaltsgeneration zuordnen konnte. Nur dann darf diese Analyse spätere
+    /// Kleinständerungen drosseln.
+    typealias ResultHandler = @MainActor @Sendable (DetectionResult) -> Bool
 
     /// Schmaler Auftrag aus dem Workspace. `content` ist ein
     /// Copy-on-write-Snapshot und wird hier noch nicht kopiert; erst die
@@ -29,6 +32,7 @@ final class DocumentLanguageDetector: @unchecked Sendable {
     struct Request: Sendable {
         let tabID: UUID
         let documentID: UUID
+        let contentRevision: UInt64
         let oldLength: Int
         let newLength: Int
         let content: String
@@ -43,11 +47,13 @@ final class DocumentLanguageDetector: @unchecked Sendable {
         let fallbackLanguage: CodeLanguage?
     }
 
-    /// Identitätsgebundenes Ergebnis. Der Workspace prüft beide Kennungen
-    /// unmittelbar vor jeder Modellmutation nochmals gegen seinen Tab.
+    /// Identitäts- und revisionsgebundenes Ergebnis. Der Workspace prüft alle
+    /// drei Werte unmittelbar vor jeder Modellmutation nochmals gegen seinen
+    /// Tab.
     struct DetectionResult: @unchecked Sendable {
         let tabID: UUID
         let documentID: UUID
+        let contentRevision: UInt64
         let analysis: Analysis
     }
 
@@ -65,11 +71,11 @@ final class DocumentLanguageDetector: @unchecked Sendable {
     private struct State {
         var documentID: UUID
         var generation: UInt64
-        /// Länge der letzten ERFOLGREICH gelieferten Analyse. Sie wird erst
-        /// bei der Ergebnisübernahme fortgeschrieben: Würde schon der Start
+        /// Länge der letzten ERFOLGREICH übernommenen Analyse. Sie wird erst
+        /// nach der Ergebnisübernahme fortgeschrieben: Würde schon der Start
         /// zählen, könnte eine abgebrochene Analyse eine kleine Folgeänderung
         /// als „zu klein" erscheinen lassen — und die Erkennung bliebe auf
-        /// einem nie gelieferten Stand hängen.
+        /// einem nie übernommenen Stand hängen.
         var lastAnalyzedLength: Int?
         var delayedWork: DispatchWorkItem?
         /// Der Auftrag eines wartenden Debounce-Laufs liegt im State, nicht
@@ -252,6 +258,7 @@ final class DocumentLanguageDetector: @unchecked Sendable {
         let sample = ContentLanguageDetection.analysisSample(from: request.content)
         let tabID = request.tabID
         let documentID = request.documentID
+        let contentRevision = request.contentRevision
         let analyzedLength = request.newLength
 
         let analyze = self.analyze
@@ -263,28 +270,40 @@ final class DocumentLanguageDetector: @unchecked Sendable {
             let result = DetectionResult(
                 tabID: tabID,
                 documentID: documentID,
+                contentRevision: contentRevision,
                 analysis: analysis
             )
             deliverResult { [weak self] in
                 dispatchPrecondition(condition: .onQueue(.main))
                 guard let self, !cancellation.isCancelled else { return }
                 let shouldDeliver = self.stateLock.withLock {
-                    guard var current = self.states[tabID],
+                    guard let current = self.states[tabID],
                           current.documentID == documentID,
                           current.generation == generation,
                           current.analysisCancellation === cancellation else {
                         return false
                     }
-                    current.analysisCancellation = nil
-                    // Erst die tatsächlich gelieferte Analyse zählt als
-                    // Drosselungs-Basis für künftige Änderungen.
-                    current.lastAnalyzedLength = analyzedLength
-                    self.states[tabID] = current
                     return true
                 }
-                guard shouldDeliver else { return }
-                MainActor.assumeIsolated {
+                guard shouldDeliver, !cancellation.isCancelled else { return }
+                let accepted = MainActor.assumeIsolated {
                     onResult(result)
+                }
+                self.stateLock.withLock {
+                    guard var current = self.states[tabID],
+                          current.documentID == documentID,
+                          current.generation == generation,
+                          current.analysisCancellation === cancellation else {
+                        return
+                    }
+                    current.analysisCancellation = nil
+                    // Eine Analyse eines inzwischen direkt veränderten
+                    // Puffers wurde zwar berechnet, aber nicht übernommen.
+                    // Sie darf eine spätere Ersatzanalyse nicht drosseln.
+                    if accepted {
+                        current.lastAnalyzedLength = analyzedLength
+                    }
+                    self.states[tabID] = current
                 }
             }
         }
