@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3009540
+    "tokens_spent": 3065207
   },
   "campaign_history": [
     {
@@ -364,16 +364,16 @@
       "reason": "Build-Patches, portable Ressourcen, Signierung und Veröffentlichung schützen die ausgelieferte App und öffentliche Historie.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-26T00:37:11+02:00",
-        "observed_head": "697767d186f12ae8f335b7e605ae13d004c49020",
-        "content_sha256": "d39d6e4b662f4d8efe1befc587f908325712e1b2b950977b642e1c7e67944b6a",
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T21:30:14+02:00",
+        "observed_head": "d82fe807dce7b003d8967a75bd247a884e388fa4",
+        "content_sha256": "bbd4f961d97cc36cd4bc2bb047e8749a1943088e7234e7b0728701f01685d71a",
         "file_count": 20,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Versions-, Build- und Änderungsmetadaten des Makro-Fixes auf Konsistenz und Paketierbarkeit geprüft; keine zusätzliche Änderung am Buildpfad erforderlich.",
+        "summary": "Änderungen an Info.plist, build.sh, release.sh und BuildInstallationPolicyTests vollständig geprüft. Die drei Checkout-Patches besitzen genaue Upstream-Anker, Nachprüfungen und gezielte Cache-Invalidierung. Der Release-Mount übernimmt Geräteidentität und tatsächlichen Mountpunkt aus hdiutil -plist; Kopie, reguläres Detach und EXIT-Trap können dadurch kein später gleichnamig gemountetes Fremdvolume treffen. Keine neue Abweichung gefunden.",
         "tests": [
-          "Weemac: app/build.sh inklusive verify-portable-app PASS; git diff --check PASS"
+          "bash -n app/release.sh app/build.sh; synthetische hdiutil-Plist: /dev/disk93s2 und /Volumes/Fastra 1 korrekt gelesen; swift test --filter BuildInstallationPolicyTests: 8/8 grün. Zusätzlich gelten Build, vollständige Suite (2149 Swift-Testing + 115 XCTest), localization-audit, portable-app, selftest, help-audit und public-history-audit vom unveränderten Produktstand."
         ]
       }
     },
