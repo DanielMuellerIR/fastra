@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3404371
+    "tokens_spent": 3429291
   },
   "campaign_history": [
     {
@@ -560,16 +560,16 @@
       "reason": "Fensterziel, Befehlsrouting und App-Lebenszyklus dürfen bei mehreren Dokumentfenstern keinen fremden Workspace treffen.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-25T23:08:10+02:00",
-        "observed_head": "ec15e86db63927185f3f1a0607dfa0e4d4dfa630",
-        "content_sha256": "fe5f093710a560be2173d447efe5da14b3decc35ae1052d2abe4c6d3b2225946",
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T21:48:20+02:00",
+        "observed_head": "f985682b3eee323d17b962b1c9d32fe8994d8971",
+        "content_sha256": "7f59dac2c0e11b0c98b621fec088a26fab0856b126def5f3baa975b6481157b7",
         "file_count": 19,
         "review": "delta-plus-boundaries",
-        "outcome": "improved",
-        "summary": "Schließen, Beenden, Home und Fensterrouting erkennen dokumentgebundene Hex-Änderungen und bestätigen oder verwerfen sie am richtigen Workspace.",
+        "outcome": "reviewed-clean",
+        "summary": "Drei seit dem letzten Lauf entstandene Änderungen vollständig geprüft: Produktfenster aktivieren sich über die selbsttestbewusste Richtlinie; die App-Startprüfung liest Recovery-Journale auf einer Utility-Queue, blendet Einträge lebender Besitzer aus und zeigt Pfade ohne automatische Löschung; verzögerte Ordner-Treffer-Sprünge verlangen kanonische URL plus Such-Snapshot. Zugehörige Store-, Workspace- und Benachrichtigungsgrenzen mitgeprüft; kein weiterer Befund.",
         "tests": [
-          "Weemac: 36 HexEditLifecycleTests und vollständiges app/test.sh grün; window-targeting-audit grün."
+          "test.sh mit AtomicFileCommit, SelfTestOutcome, SelfTestRunnerSkip, MainWindowSizing, WindowTargeting und SearchDialogLogic: 68 Tests in 6 Suiten grün; window-targeting-audit.sh und git diff --check grün; build.sh am aktuellen Bundle zuvor grün."
         ]
       }
     },
