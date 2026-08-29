@@ -9,6 +9,15 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.6] — 2026-08-29
+
+### Behoben
+
+- **Schnelle Abschnittswechsel lassen keine überholten Datei-Lesevorgänge mehr
+  im Hintergrund weiterlaufen.** Die Hex- und Großdateiansicht beendet den
+  vorherigen Task beim nächsten Slider-Schritt; Byte- und Textreader prüfen den
+  Abbruch vor Öffnen, Seek, Read, Schlussprüfung und Dekodierung.
+
 ## [v1.113.5] — 2026-08-29
 
 ### Behoben

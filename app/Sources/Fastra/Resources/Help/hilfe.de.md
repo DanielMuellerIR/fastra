@@ -256,7 +256,9 @@ als eine Ansicht bietet:
 - **Hex** — der gespeicherte Stand der Datei als Hexdump; ungespeicherte
   Änderungen des Text-Tabs sind dort nicht enthalten. Binärdateien
   öffnen direkt in der Hex-Ansicht, sehr große Textdateien in einer
-  abschnittsweisen Ansicht.
+  abschnittsweisen Ansicht. Beim schnellen Wechsel zwischen Abschnitten beendet
+  Fastra jeden überholten Leseauftrag; nur der zuletzt gewählte Abschnitt wird
+  weiter geladen.
 
 Ändert ein anderes Programm die Datei genau während Fastra einen Abschnitt
 liest, verwirft Fastra den Abschnitt vollständig, statt alte Metadaten mit

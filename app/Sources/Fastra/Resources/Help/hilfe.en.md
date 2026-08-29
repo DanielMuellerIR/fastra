@@ -241,7 +241,9 @@ offers more than one view:
 - **Preview** — rendered Markdown, images, PDFs, and SVGs.
 - **Hex** — the saved on-disk state of the file as a hex dump; unsaved
   changes of the text tab are not included there. Binary files open
-  directly in the hex view, very large text files in a chunked view.
+  directly in the hex view, very large text files in a chunked view. When you
+  move quickly between sections, Fastra stops every superseded read; only the
+  most recently selected section continues loading.
 
 If another program changes the file while Fastra is reading a section, Fastra
 discards the complete section instead of mixing old metadata with new bytes.

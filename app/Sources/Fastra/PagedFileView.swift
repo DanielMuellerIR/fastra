@@ -2,6 +2,16 @@ import SwiftUI
 import Darwin
 import Foundation
 
+/// Gemeinsamer kooperativer Abbruchpunkt der Seitenreader. Ein verworfener
+/// Slider-Auftrag soll nicht nur sein Ergebnis verlieren, sondern vor dem
+/// nächsten Seek/Read tatsächlich enden.
+@inline(__always)
+private func checkPageReadCancellation(
+    _ shouldCancel: @Sendable () -> Bool
+) throws {
+    if shouldCancel() { throw CancellationError() }
+}
+
 /// Begrenzter Byte-Reader für die Hex-Ansicht. Er öffnet wie `FileLoader`
 /// nichtblockierend und prüft den Typ am Deskriptor; ein nachträglich auf FIFO,
 /// Socket oder Gerät umgebogener Pfad kann den Hintergrund-Task daher nicht
@@ -9,10 +19,13 @@ import Foundation
 enum FilePageReader {
     static func read(url: URL, offset: UInt64, count: Int,
                      expectedTotalBytes: UInt64? = nil,
-                     beforeFinalStat: (() throws -> Void)? = nil) throws -> Data {
+                     beforeFinalStat: (() throws -> Void)? = nil,
+                     shouldCancel: @Sendable () -> Bool = { false }) throws -> Data {
+        try checkPageReadCancellation(shouldCancel)
         guard count >= 0 else { throw CocoaError(.fileReadCorruptFile) }
         let opened = try FileSnapshot.openRegularFile(at: url)
         defer { Darwin.close(opened.descriptor) }
+        try checkPageReadCancellation(shouldCancel)
         guard opened.stat.st_size >= 0 else {
             throw FileSnapshotReadError.changedDuringRead
         }
@@ -27,6 +40,7 @@ enum FilePageReader {
         var result = Data()
         result.reserveCapacity(count)
         while result.count < count {
+            try checkPageReadCancellation(shouldCancel)
             let remaining = count - result.count
             guard let chunk = try handle.read(upToCount: remaining), !chunk.isEmpty else {
                 // Der beim Öffnen noch vorhandene Bereich ist inzwischen
@@ -38,7 +52,9 @@ enum FilePageReader {
         }
         // Der Hook hält die Änderung zwischen Read und Schlussprüfung in
         // Regressionstests deterministisch. Produktaufrufe übergeben nichts.
+        try checkPageReadCancellation(shouldCancel)
         try beforeFinalStat?()
+        try checkPageReadCancellation(shouldCancel)
         var after = stat()
         guard fstat(opened.descriptor, &after) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
@@ -65,7 +81,9 @@ private func pagedFileReadErrorDescription(_ error: Error) -> String {
 /// die vorherige `Data` vollständig; Speicherbedarf bleibt damit unabhängig
 /// von der Dateigröße begrenzt.
 final class FilePageModel: ObservableObject {
-    typealias Reader = @Sendable (URL, UInt64, Int) throws -> Data
+    typealias Reader = @Sendable (
+        URL, UInt64, Int, @Sendable () -> Bool
+    ) throws -> Data
 
     @Published private(set) var pageIndex = 0
     @Published private(set) var data = Data()
@@ -83,6 +101,7 @@ final class FilePageModel: ObservableObject {
     let pageSize: Int
     private let reader: Reader
     private var loadGeneration = 0
+    private var loadTask: Task<Void, Never>?
 
     var pageCount: Int {
         max(1, Int((totalBytes + UInt64(pageSize) - 1) / UInt64(pageSize)))
@@ -94,15 +113,16 @@ final class FilePageModel: ObservableObject {
         self.totalBytes = totalBytes
         self.pageSize = pageSize
         // Der Standard-Reader bindet die beim Öffnen erfasste Gesamtgröße.
-        // Test-Reader behalten die kleine Drei-Argument-Schnittstelle.
-        self.reader = reader ?? { url, offset, count in
+        self.reader = reader ?? { url, offset, count, shouldCancel in
             try FilePageReader.read(url: url, offset: offset, count: count,
-                                    expectedTotalBytes: totalBytes)
+                                    expectedTotalBytes: totalBytes,
+                                    shouldCancel: shouldCancel)
         }
         load(page: 0)
     }
 
     func load(page requestedPage: Int) {
+        loadTask?.cancel()
         let page = min(max(requestedPage, 0), pageCount - 1)
         pageIndex = page
         isLoading = true
@@ -122,13 +142,15 @@ final class FilePageModel: ObservableObject {
         loadGeneration &+= 1
         let generation = loadGeneration
 
-        Task.detached(priority: .userInitiated) { [weak self] in
+        let task = Task.detached(priority: .userInitiated) { [weak self] in
             let result: Result<Data, Error> = Result {
-                try reader(url, offset, count)
+                try reader(url, offset, count, { Task.isCancelled })
             }
+            guard !Task.isCancelled else { return }
             await MainActor.run { [weak self] in
                 guard let self, self.pageIndex == page,
                       self.loadGeneration == generation else { return }
+                self.loadTask = nil
                 self.isLoading = false
                 switch result {
                 case .success(let data):
@@ -144,6 +166,11 @@ final class FilePageModel: ObservableObject {
                 self.completedLoadCount &+= 1
             }
         }
+        loadTask = task
+    }
+
+    deinit {
+        loadTask?.cancel()
     }
 }
 
@@ -169,8 +196,10 @@ enum TextFilePageReader {
     static func read(url: URL, totalBytes: UInt64, pageSize: Int,
                      pageIndex: Int, encoding: String.Encoding,
                      bom: Data,
-                     beforeFinalStat: (() throws -> Void)? = nil) throws
+                     beforeFinalStat: (() throws -> Void)? = nil,
+                     shouldCancel: @Sendable () -> Bool = { false }) throws
         -> DecodedTextFilePage {
+        try checkPageReadCancellation(shouldCancel)
         guard pageSize > 0 else { throw CocoaError(.fileReadCorruptFile) }
         let bomCount = min(totalBytes, UInt64(bom.count))
         let payloadBytes = totalBytes - bomCount
@@ -182,6 +211,7 @@ enum TextFilePageReader {
 
         let opened = try FileSnapshot.openRegularFile(at: url)
         defer { Darwin.close(opened.descriptor) }
+        try checkPageReadCancellation(shouldCancel)
         guard opened.stat.st_size >= 0,
               UInt64(opened.stat.st_size) == totalBytes else {
             throw FileSnapshotReadError.changedDuringRead
@@ -189,16 +219,19 @@ enum TextFilePageReader {
         let handle = FileHandle(fileDescriptor: opened.descriptor, closeOnDealloc: false)
         let start = try alignedBoundary(nominalStart, payloadBytes: payloadBytes,
                                         bomCount: bomCount, encoding: encoding,
-                                        handle: handle)
+                                        handle: handle, shouldCancel: shouldCancel)
         let end = try alignedBoundary(nominalEnd, payloadBytes: payloadBytes,
                                       bomCount: bomCount, encoding: encoding,
-                                      handle: handle)
+                                      handle: handle, shouldCancel: shouldCancel)
         guard start <= end, end - start <= UInt64(pageSize + 4) else {
             throw CocoaError(.fileReadCorruptFile)
         }
         let data = try readExactly(handle: handle, offset: bomCount + start,
-                                   count: Int(end - start))
+                                   count: Int(end - start),
+                                   shouldCancel: shouldCancel)
+        try checkPageReadCancellation(shouldCancel)
         try beforeFinalStat?()
+        try checkPageReadCancellation(shouldCancel)
         var after = stat()
         guard fstat(opened.descriptor, &after) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
@@ -206,6 +239,7 @@ enum TextFilePageReader {
         guard FileSnapshot.describesSameOpenedVersion(opened.stat, after) else {
             throw FileSnapshotReadError.changedDuringRead
         }
+        try checkPageReadCancellation(shouldCancel)
         guard let text = String(data: data, encoding: encoding) else {
             // Kein Lossy-Fallback: Ein beschädigter oder falsch gewählter
             // Abschnitt muss sichtbar fehlschlagen, nicht U+FFFD erfinden.
@@ -220,7 +254,9 @@ enum TextFilePageReader {
     /// zur Folgeseite und alle Seiten lassen sich ohne Verlust rekonstruieren.
     private static func alignedBoundary(_ nominal: UInt64, payloadBytes: UInt64,
                                         bomCount: UInt64, encoding: String.Encoding,
-                                        handle: FileHandle) throws -> UInt64 {
+                                        handle: FileHandle,
+                                        shouldCancel: @Sendable () -> Bool) throws -> UInt64 {
+        try checkPageReadCancellation(shouldCancel)
         guard nominal > 0, nominal < payloadBytes else { return nominal }
         if encoding == .utf8 {
             var boundary = nominal
@@ -228,13 +264,16 @@ enum TextFilePageReader {
             // beschädigte Daten deuten und dürfen keine unbeschränkte
             // rückwärts laufende Seek-Schleife auslösen.
             for _ in 0..<3 where boundary > 0 {
+                try checkPageReadCancellation(shouldCancel)
                 let byte = try readExactly(handle: handle,
-                                           offset: bomCount + boundary, count: 1)[0]
+                                           offset: bomCount + boundary, count: 1,
+                                           shouldCancel: shouldCancel)[0]
                 guard byte & 0b1100_0000 == 0b1000_0000 else { return boundary }
                 boundary -= 1
             }
             let first = try readExactly(handle: handle,
-                                        offset: bomCount + boundary, count: 1)[0]
+                                        offset: bomCount + boundary, count: 1,
+                                        shouldCancel: shouldCancel)[0]
             guard first & 0b1100_0000 != 0b1000_0000 else {
                 throw CocoaError(.fileReadCorruptFile)
             }
@@ -245,9 +284,11 @@ enum TextFilePageReader {
             var boundary = nominal - nominal % 2
             guard boundary >= 2, boundary + 2 <= payloadBytes else { return boundary }
             let previous = try codeUnit(handle: handle, payloadOffset: boundary - 2,
-                                        bomCount: bomCount, encoding: encoding)
+                                        bomCount: bomCount, encoding: encoding,
+                                        shouldCancel: shouldCancel)
             let next = try codeUnit(handle: handle, payloadOffset: boundary,
-                                    bomCount: bomCount, encoding: encoding)
+                                    bomCount: bomCount, encoding: encoding,
+                                    shouldCancel: shouldCancel)
             if (0xD800...0xDBFF).contains(previous),
                (0xDC00...0xDFFF).contains(next) {
                 boundary -= 2
@@ -266,9 +307,11 @@ enum TextFilePageReader {
     }
 
     private static func codeUnit(handle: FileHandle, payloadOffset: UInt64,
-                                 bomCount: UInt64, encoding: String.Encoding) throws -> UInt16 {
+                                 bomCount: UInt64, encoding: String.Encoding,
+                                 shouldCancel: @Sendable () -> Bool) throws -> UInt16 {
         let bytes = try readExactly(handle: handle,
-                                    offset: bomCount + payloadOffset, count: 2)
+                                    offset: bomCount + payloadOffset, count: 2,
+                                    shouldCancel: shouldCancel)
         if encoding == .utf16BigEndian {
             return UInt16(bytes[0]) << 8 | UInt16(bytes[1])
         }
@@ -276,11 +319,14 @@ enum TextFilePageReader {
     }
 
     private static func readExactly(handle: FileHandle, offset: UInt64,
-                                    count: Int) throws -> Data {
+                                    count: Int,
+                                    shouldCancel: @Sendable () -> Bool) throws -> Data {
+        try checkPageReadCancellation(shouldCancel)
         try handle.seek(toOffset: offset)
         var result = Data()
         result.reserveCapacity(count)
         while result.count < count {
+            try checkPageReadCancellation(shouldCancel)
             let remaining = count - result.count
             guard let chunk = try handle.read(upToCount: remaining), !chunk.isEmpty else {
                 throw CocoaError(.fileReadCorruptFile)
@@ -293,6 +339,11 @@ enum TextFilePageReader {
 
 /// Asynchrones UI-Modell über dem begrenzten, encoding-sicheren Reader.
 final class TextFilePageModel: ObservableObject {
+    typealias Reader = @Sendable (
+        URL, UInt64, Int, Int, String.Encoding, Data,
+        @Sendable () -> Bool
+    ) throws -> DecodedTextFilePage
+
     @Published private(set) var pageIndex = 0
     @Published private(set) var text = ""
     @Published private(set) var errorMessage: String?
@@ -305,7 +356,9 @@ final class TextFilePageModel: ObservableObject {
     let pageSize: Int
     let encoding: String.Encoding
     let bom: Data
+    private let reader: Reader
     private var loadGeneration = 0
+    private var loadTask: Task<Void, Never>?
 
     var pageCount: Int {
         TextFilePageReader.pageCount(totalBytes: totalBytes, bomCount: bom.count,
@@ -313,16 +366,24 @@ final class TextFilePageModel: ObservableObject {
     }
 
     init(url: URL, totalBytes: UInt64, pageSize: Int,
-         encoding: String.Encoding, bom: Data) {
+         encoding: String.Encoding, bom: Data, reader: Reader? = nil) {
         self.url = url
         self.totalBytes = totalBytes
         self.pageSize = pageSize
         self.encoding = encoding
         self.bom = bom
+        self.reader = reader ?? {
+            url, totalBytes, pageSize, pageIndex, encoding, bom, shouldCancel in
+            try TextFilePageReader.read(
+                url: url, totalBytes: totalBytes, pageSize: pageSize,
+                pageIndex: pageIndex, encoding: encoding, bom: bom,
+                shouldCancel: shouldCancel)
+        }
         load(page: 0)
     }
 
     func load(page requestedPage: Int) {
+        loadTask?.cancel()
         let page = min(max(requestedPage, 0), pageCount - 1)
         pageIndex = page
         isLoading = true
@@ -336,19 +397,20 @@ final class TextFilePageModel: ObservableObject {
         let pageSize = self.pageSize
         let encoding = self.encoding
         let bom = self.bom
+        let reader = self.reader
         loadGeneration &+= 1
         let generation = loadGeneration
 
-        Task.detached(priority: .userInitiated) { [weak self] in
+        let task = Task.detached(priority: .userInitiated) { [weak self] in
             let result = Result {
-                try TextFilePageReader.read(
-                    url: url, totalBytes: totalBytes, pageSize: pageSize,
-                    pageIndex: page, encoding: encoding, bom: bom
-                )
+                try reader(url, totalBytes, pageSize, page, encoding, bom,
+                           { Task.isCancelled })
             }
+            guard !Task.isCancelled else { return }
             await MainActor.run { [weak self] in
                 guard let self, self.pageIndex == page,
                       self.loadGeneration == generation else { return }
+                self.loadTask = nil
                 self.isLoading = false
                 switch result {
                 case .success(let page): self.text = page.text
@@ -359,6 +421,11 @@ final class TextFilePageModel: ObservableObject {
                 self.completedLoadCount &+= 1
             }
         }
+        loadTask = task
+    }
+
+    deinit {
+        loadTask?.cancel()
     }
 }
 

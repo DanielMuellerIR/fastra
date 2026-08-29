@@ -9,30 +9,39 @@ private let textPageSize = 256 * 1024
 /// bleibt stehen, bis ein neuerer Seite-0-Aufruf sein Ergebnis veröffentlicht
 /// hat. So bildet der Test die Folge 0 → 1 → 0 deterministisch nach.
 private final class SequencedPageReader: @unchecked Sendable {
-    let firstStarted = DispatchSemaphore(value: 0)
-    let secondStarted = DispatchSemaphore(value: 0)
-    let thirdStarted = DispatchSemaphore(value: 0)
     let releaseFirst = DispatchSemaphore(value: 0)
-    let firstFinished = DispatchSemaphore(value: 0)
     private let lock = NSLock()
     private var invocation = 0
+    private var firstFinished = false
 
-    func read(url: URL, offset: UInt64, count: Int) throws -> Data {
+    var startedCalls: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return invocation
+    }
+
+    var didFinishFirst: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return firstFinished
+    }
+
+    func read(url: URL, offset: UInt64, count: Int,
+              shouldCancel: @Sendable () -> Bool) throws -> Data {
         lock.lock()
         invocation += 1
         let current = invocation
         lock.unlock()
         switch current {
         case 1:
-            firstStarted.signal()
             releaseFirst.wait()
-            firstFinished.signal()
+            lock.lock()
+            firstFinished = true
+            lock.unlock()
             return Data(repeating: 0x11, count: count)
         case 2:
-            secondStarted.signal()
             return Data(repeating: 0x22, count: count)
         default:
-            thirdStarted.signal()
             return Data(repeating: 0x33, count: count)
         }
     }
@@ -45,7 +54,8 @@ private final class GateablePageReader: @unchecked Sendable {
     private let lock = NSLock()
     private var invocation = 0
 
-    func read(url: URL, offset: UInt64, count: Int) throws -> Data {
+    func read(url: URL, offset: UInt64, count: Int,
+              shouldCancel: @Sendable () -> Bool) throws -> Data {
         lock.lock()
         invocation += 1
         let current = invocation
@@ -62,13 +72,74 @@ private final class FailingSecondPageReader: @unchecked Sendable {
     private let lock = NSLock()
     private var invocation = 0
 
-    func read(url: URL, offset: UInt64, count: Int) throws -> Data {
+    func read(url: URL, offset: UInt64, count: Int,
+              shouldCancel: @Sendable () -> Bool) throws -> Data {
         lock.lock()
         invocation += 1
         let current = invocation
         lock.unlock()
         if current == 1 { return Data(repeating: 0xAA, count: count) }
         throw CocoaError(.fileReadUnknown)
+    }
+}
+
+/// Hält den ersten Reader-Aufruf kooperativ fest. Erst das Abbruchsignal des
+/// Modells beendet ihn; der zweite Aufruf liefert sofort die aktuelle Seite.
+/// Damit unterscheidet der Test echtes Beenden von bloßem Ergebnis-Verwerfen.
+private final class CooperativePageReader: @unchecked Sendable {
+    private let lock = NSLock()
+    private var invocation = 0
+    private var firstDidStart = false
+    private var firstDidCancel = false
+
+    var startedFirstRead: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return firstDidStart
+    }
+
+    var cancelledFirstRead: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return firstDidCancel
+    }
+
+    private func begin(_ shouldCancel: @Sendable () -> Bool) throws -> Int {
+        lock.lock()
+        invocation += 1
+        let current = invocation
+        lock.unlock()
+        guard current == 1 else { return current }
+
+        lock.lock()
+        firstDidStart = true
+        lock.unlock()
+        while !shouldCancel() {
+            Thread.sleep(forTimeInterval: 0.001)
+        }
+        lock.lock()
+        firstDidCancel = true
+        lock.unlock()
+        throw CancellationError()
+    }
+
+    func readBytes(
+        url: URL, offset: UInt64, count: Int,
+        shouldCancel: @Sendable () -> Bool
+    ) throws -> Data {
+        _ = try begin(shouldCancel)
+        return Data(repeating: 0xCC, count: count)
+    }
+
+    func readText(
+        url: URL, totalBytes: UInt64, pageSize: Int, pageIndex: Int,
+        encoding: String.Encoding, bom: Data,
+        shouldCancel: @Sendable () -> Bool
+    ) throws -> DecodedTextFilePage {
+        _ = try begin(shouldCancel)
+        let start = UInt64(pageIndex * pageSize)
+        let end = min(totalBytes, start + UInt64(pageSize))
+        return DecodedTextFilePage(text: "aktuell", fileRange: start..<end)
     }
 }
 
@@ -124,6 +195,60 @@ private func writeLargeUTF16File(encoding: String.Encoding, bom: Data) throws ->
 
 @Suite("Hex- und Abschnittsansicht")
 struct PagedFileTests {
+    @Test("Byte- und Textreader beachten einen Abbruch vor dem Dateiöffnen")
+    func pageReadersStopBeforeOpeningWhenCancelled() {
+        let missing = URL(fileURLWithPath: "/tmp/fastra-cancelled-page-does-not-exist")
+
+        #expect(throws: CancellationError.self) {
+            try FilePageReader.read(
+                url: missing, offset: 0, count: 1,
+                shouldCancel: { true })
+        }
+        #expect(throws: CancellationError.self) {
+            try TextFilePageReader.read(
+                url: missing, totalBytes: 1, pageSize: 1,
+                pageIndex: 0, encoding: .utf8, bom: Data(),
+                shouldCancel: { true })
+        }
+    }
+
+    @Test("Byte-Seitenwechsel beendet den überholten Hintergrund-Read")
+    @MainActor
+    func bytePageSwitchCancelsSupersededRead() async throws {
+        let reader = CooperativePageReader()
+        let model = FilePageModel(
+            url: URL(fileURLWithPath: "/tmp/fastra-controlled-byte-page"),
+            totalBytes: 8, pageSize: 4,
+            reader: { try reader.readBytes(
+                url: $0, offset: $1, count: $2, shouldCancel: $3) })
+        #expect(await waitUntil { reader.startedFirstRead })
+
+        model.load(page: 1)
+        #expect(await waitUntil { reader.cancelledFirstRead })
+        #expect(await waitUntil { model.completedLoadCount == 1 })
+        #expect(model.pageIndex == 1)
+        #expect(model.data == Data(repeating: 0xCC, count: 4))
+    }
+
+    @Test("Text-Seitenwechsel beendet den überholten Hintergrund-Read")
+    @MainActor
+    func textPageSwitchCancelsSupersededRead() async throws {
+        let reader = CooperativePageReader()
+        let model = TextFilePageModel(
+            url: URL(fileURLWithPath: "/tmp/fastra-controlled-text-page"),
+            totalBytes: 8, pageSize: 4, encoding: .utf8, bom: Data(),
+            reader: { try reader.readText(
+                url: $0, totalBytes: $1, pageSize: $2, pageIndex: $3,
+                encoding: $4, bom: $5, shouldCancel: $6) })
+        #expect(await waitUntil { reader.startedFirstRead })
+
+        model.load(page: 1)
+        #expect(await waitUntil { reader.cancelledFirstRead })
+        #expect(await waitUntil { model.completedLoadCount == 1 })
+        #expect(model.pageIndex == 1)
+        #expect(model.text == "aktuell")
+    }
+
     @Test("Byte- und Textseiten weisen FIFO ab, statt beim Öffnen zu blockieren")
     func pageReadersRejectFIFO() throws {
         let url = FileManager.default.temporaryDirectory
@@ -197,13 +322,15 @@ struct PagedFileTests {
         let reader = SequencedPageReader()
         let model = FilePageModel(
             url: URL(fileURLWithPath: "/tmp/fastra-controlled-page"),
-            totalBytes: 8, pageSize: 4, reader: reader.read)
-        #expect(reader.firstStarted.wait(timeout: .now() + 5) == .success)
+            totalBytes: 8, pageSize: 4,
+            reader: { try reader.read(
+                url: $0, offset: $1, count: $2, shouldCancel: $3) })
+        #expect(await waitUntil { reader.startedCalls >= 1 })
 
         model.load(page: 1)
-        #expect(reader.secondStarted.wait(timeout: .now() + 5) == .success)
+        #expect(await waitUntil { reader.startedCalls >= 2 })
         model.load(page: 0)
-        #expect(reader.thirdStarted.wait(timeout: .now() + 5) == .success)
+        #expect(await waitUntil { reader.startedCalls >= 3 })
 
         for _ in 0..<100 where model.data != Data(repeating: 0x33, count: 4) {
             try await Task.sleep(for: .milliseconds(10))
@@ -211,7 +338,7 @@ struct PagedFileTests {
         #expect(model.data == Data(repeating: 0x33, count: 4))
 
         reader.releaseFirst.signal()
-        #expect(reader.firstFinished.wait(timeout: .now() + 5) == .success)
+        #expect(await waitUntil { reader.didFinishFirst })
         for _ in 0..<20 { await Task.yield() }
         #expect(model.data == Data(repeating: 0x33, count: 4))
     }
@@ -292,7 +419,9 @@ struct PagedFileTests {
         let reader = FailingSecondPageReader()
         let model = FilePageModel(
             url: URL(fileURLWithPath: "/tmp/fastra-failing-page"),
-            totalBytes: 8, pageSize: 4, reader: reader.read)
+            totalBytes: 8, pageSize: 4,
+            reader: { try reader.read(
+                url: $0, offset: $1, count: $2, shouldCancel: $3) })
         for _ in 0..<100 where model.completedLoadCount < 1 {
             try await Task.sleep(for: .milliseconds(10))
         }
@@ -315,7 +444,9 @@ struct PagedFileTests {
         let reader = GateablePageReader()
         let model = FilePageModel(
             url: URL(fileURLWithPath: "/tmp/fastra-slow-page"),
-            totalBytes: 8, pageSize: 4, reader: reader.read)
+            totalBytes: 8, pageSize: 4,
+            reader: { try reader.read(
+                url: $0, offset: $1, count: $2, shouldCancel: $3) })
         for _ in 0..<100 where model.completedLoadCount < 1 {
             try await Task.sleep(for: .milliseconds(10))
         }
