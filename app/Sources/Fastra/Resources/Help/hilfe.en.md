@@ -117,7 +117,12 @@ are limited to 1 MB; invalid entries are skipped.
   prior to replacing. What gets applied is **exactly** the match set you
   saw — that is a safety guarantee. In very long documents Fastra trims
   unchanged context, never a change line without warning; if even the display
-  limit cannot hold every change, Apply remains disabled.
+  limit cannot hold every change, Apply remains disabled. Fastra calculates the
+  full diff in a cancellable background task and binds it to that exact document
+  and match generation. The before and after text are limited to 32 MiB each,
+  either side to 200,000 lines, and the actually differing middle section to
+  30,000 lines. If a request exceeds a limit, the preview explains it and
+  Replace All remains disabled.
 - In folder/project scope Fastra rechecks every file against the visible
   preview before the first write. Changed files and affected tabs with unsaved
   edits block the whole operation. Planning, backup and writing run in the

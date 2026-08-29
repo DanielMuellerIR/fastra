@@ -1,5 +1,115 @@
 import SwiftUI
 
+/// Lebenszyklus der vollständigen Ersetzungsvorschau. Das Modell kopiert nur
+/// unveränderliche String-/Treffer-Snapshots aus dem Workspace und berechnet
+/// sie außerhalb des Main-Threads. Dokumentgeneration plus exakte Treffer-IDs
+/// verhindern, dass ein verspäteter alter Lauf im Sheet sichtbar wird.
+@MainActor
+final class ReplacePreviewModel: ObservableObject {
+    struct Version: Hashable, Sendable {
+        let documentID: UUID
+        let contentRevision: UInt64
+        let matchIDs: [UUID]
+    }
+
+    struct Request: Sendable {
+        let version: Version
+        let text: String
+        let matches: [BufferSearch.Match]
+    }
+
+    enum State: Equatable {
+        case idle
+        case loading
+        case result(ReplacePreview.SideBySideResult)
+        case limitation(ReplacePreview.SideBySideLimitation)
+    }
+
+    typealias Builder = @Sendable (
+        String, [BufferSearch.Match], Int, @Sendable () -> Bool
+    ) -> ReplacePreview.SideBySideOutcome
+
+    @Published private(set) var state: State = .idle
+    private(set) var completedVersion: Version?
+    var result: ReplacePreview.SideBySideResult? {
+        guard case .result(let result) = state else { return nil }
+        return result
+    }
+
+    private let builder: Builder
+    private var requestedVersion: Version?
+    private var generation: UInt64 = 0
+    private var workTask: Task<ReplacePreview.SideBySideOutcome, Never>?
+    private var completionTask: Task<Void, Never>?
+
+    init(builder: @escaping Builder = { text, matches, maxRows, shouldCancel in
+        ReplacePreview.buildSideBySide(
+            text: text, matches: matches, maxRows: maxRows,
+            shouldCancel: shouldCancel)
+    }) {
+        self.builder = builder
+    }
+
+    func load(_ request: Request, maxRows: Int = 5_000) {
+        // Eine andere Workspace-Aktualisierung darf denselben Auftrag nicht neu
+        // starten. Sowohl ein laufender als auch ein fertiger Stand bleibt.
+        guard requestedVersion != request.version else { return }
+        cancelTasks()
+        generation &+= 1
+        let expectedGeneration = generation
+        requestedVersion = request.version
+        completedVersion = nil
+        state = .loading
+
+        let builder = self.builder
+        let work = Task.detached(priority: .userInitiated) {
+            builder(request.text, request.matches, maxRows, { Task.isCancelled })
+        }
+        workTask = work
+        completionTask = Task { [weak self] in
+            let outcome = await work.value
+            guard !Task.isCancelled, let self,
+                  self.generation == expectedGeneration,
+                  self.requestedVersion == request.version else { return }
+            self.workTask = nil
+            self.completionTask = nil
+            switch outcome {
+            case .result(let result):
+                self.completedVersion = request.version
+                self.state = .result(result)
+            case .limitation(let limitation):
+                self.completedVersion = request.version
+                self.state = .limitation(limitation)
+            case .cancelled:
+                // Ein freiwillig beendeter aktueller Lauf besitzt kein
+                // anzeigbares Teilergebnis und darf Apply nicht freigeben.
+                self.completedVersion = nil
+                self.state = .idle
+            }
+        }
+    }
+
+    func cancel() {
+        cancelTasks()
+        generation &+= 1
+        requestedVersion = nil
+        completedVersion = nil
+        state = .idle
+    }
+
+    private func cancelTasks() {
+        workTask?.cancel()
+        completionTask?.cancel()
+        workTask = nil
+        completionTask = nil
+    }
+
+    deinit {
+        workTask?.cancel()
+        completionTask?.cancel()
+    }
+}
+
 /// Vorher/Nachher-Vorschau der Ersetzungen (v0.10) — die „Vorschau der
 /// Änderungen" aus der Suchmaske. Wird als Sheet über dem Hauptfenster gezeigt
 /// (an `workspace.livePreview` gekoppelt) und liest die ECHTEN Treffer des
@@ -7,26 +117,42 @@ import SwiftUI
 /// No-Op-Button, dessen Flag niemand auswertete (Daniel-Befund 2026-06-23).
 struct ReplacePreviewView: View {
     @EnvironmentObject var workspace: Workspace
+    @StateObject private var model = ReplacePreviewModel()
 
     /// Obergrenze angezeigter Zeilen — bei mehr erscheint ein Hinweis.
     private let maxRows = 5_000
 
+    /// Nur eine nachweislich aktuelle Datei-Trefferbasis darf gerechnet
+    /// werden. Während SearchRunner nach Tippen oder Tabwechsel neu sucht,
+    /// setzt er `visibleBufferResultsOptions` synchron auf `nil`; das Sheet
+    /// zeigt dann einen Spinner statt alte Treffer mit neuem Text zu mischen.
+    private var currentRequest: ReplacePreviewModel.Request? {
+        guard workspace.scope == .file,
+              workspace.visibleBufferResultsOptions == workspace.currentSearchOptions,
+              let tab = workspace.activeTab else { return nil }
+        return ReplacePreviewModel.Request(
+            version: .init(
+                documentID: tab.documentID,
+                contentRevision: tab.contentRevision,
+                matchIDs: workspace.bufferMatches.map(\.id)),
+            text: tab.content,
+            matches: workspace.bufferMatches)
+    }
+
     var body: some View {
-        // SwiftUI wertet berechnete Unteransichten innerhalb eines Body-Laufs
-        // mehrfach aus. Der vollständige Dokument-Diff ist teuer; deshalb
-        // genau einmal pro Body-Aufbau berechnen und an Header/Footer
-        // weiterreichen, statt ihn bei jeder `result`-Abfrage neu zu bauen.
-        let result = ReplacePreview.buildSideBySide(
-            text: workspace.activeTab?.content ?? "",
-            matches: workspace.bufferMatches,
-            maxRows: maxRows
-        )
+        let request = currentRequest
+        let state = displayedState(for: request)
         return VStack(spacing: 0) {
-            header(result: result)
+            header(state: state)
             Divider().opacity(0.3)
-            if result.rows.isEmpty {
+            switch state {
+            case .idle, .loading:
+                loadingState
+            case .limitation(let limitation):
+                limitationState(limitation)
+            case .result(let result) where result.rows.isEmpty:
                 emptyState
-            } else {
+            case .result(let result):
                 columnHeader
                 Divider().opacity(0.3)
                 ScrollView {
@@ -53,13 +179,41 @@ struct ReplacePreviewView: View {
                 }
             }
             Divider().opacity(0.4)
-            footer(result: result)
+            footer(result: readyResult(for: request))
         }
         .frame(width: 880, height: 560)
         .background(Theme.surfaceBase)
+        .onAppear { updateModel(with: request) }
+        .onChange(of: request?.version) { _, _ in
+            updateModel(with: currentRequest)
+        }
+        .onDisappear { model.cancel() }
     }
 
-    private func header(result: ReplacePreview.SideBySideResult) -> some View {
+    private func displayedState(
+        for request: ReplacePreviewModel.Request?
+    ) -> ReplacePreviewModel.State {
+        guard let request,
+              model.completedVersion == request.version else { return .loading }
+        return model.state
+    }
+
+    private func readyResult(
+        for request: ReplacePreviewModel.Request?
+    ) -> ReplacePreview.SideBySideResult? {
+        guard let request, model.completedVersion == request.version else { return nil }
+        return model.result
+    }
+
+    private func updateModel(with request: ReplacePreviewModel.Request?) {
+        if let request {
+            model.load(request, maxRows: maxRows)
+        } else {
+            model.cancel()
+        }
+    }
+
+    private func header(state: ReplacePreviewModel.State) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "eye.fill")
                 .foregroundColor(Theme.accentReadable)
@@ -71,7 +225,7 @@ struct ReplacePreviewView: View {
                     .foregroundColor(Theme.textSecondary)
             }
             Spacer()
-            Text(summaryText(for: result))
+            Text(summaryText(for: state))
                 .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
         }
@@ -80,11 +234,68 @@ struct ReplacePreviewView: View {
         .background(Theme.surfaceSand.opacity(0.5))
     }
 
-    private func summaryText(for result: ReplacePreview.SideBySideResult) -> String {
+    private func summaryText(for state: ReplacePreviewModel.State) -> String {
+        guard case .result(let result) = state else {
+            switch state {
+            case .limitation: return L10n.string("Vorschau nicht berechnet")
+            case .idle, .loading: return L10n.string("Vorschau wird berechnet…")
+            case .result: return ""
+            }
+        }
         let n = result.changedRows
         if n == 0 { return L10n.string("Keine Änderungen") }
         return n == 1 ? L10n.string("1 geänderte Zeile")
             : L10n.format("%ld geänderte Zeilen", n)
+    }
+
+    private var loadingState: some View {
+        VStack(spacing: 10) {
+            Spacer()
+            ProgressView()
+                .controlSize(.regular)
+            Text("Vorschau wird berechnet…")
+                .fastraFont(.headline)
+                .foregroundColor(Theme.textSecondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func limitationState(
+        _ limitation: ReplacePreview.SideBySideLimitation
+    ) -> some View {
+        let explanation: String = switch limitation {
+        case .tooLarge(let maximumBytes):
+            L10n.format(
+                "Vorher- oder Nachher-Text überschreitet die Vorschaugrenze von %ld MiB. Kürze das Dokument oder den Ersetzen-Text.",
+                maximumBytes / (1024 * 1024))
+        case .tooManyLines(let maximumLines):
+            L10n.format(
+                "Das Dokument überschreitet die Vorschaugrenze von %ld Zeilen.",
+                maximumLines)
+        case .tooDifferent(let maximumLines):
+            L10n.format(
+                "Der unterschiedliche Bereich überschreitet die Rechengrenze von %ld Zeilen.",
+                maximumLines)
+        }
+        return VStack(spacing: 10) {
+            Spacer()
+            Image(systemName: "exclamationmark.triangle")
+                .fastraFont(size: 28)
+                .foregroundColor(.orange)
+            Text("Vorschau zu groß")
+                .fastraFont(.headline)
+            Text(verbatim: explanation)
+                .fastraFont(.small)
+                .foregroundColor(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 520)
+            Text("„Alle ersetzen“ bleibt gesperrt.")
+                .fastraFont(.small)
+                .foregroundColor(.orange)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var columnHeader: some View {
@@ -120,7 +331,7 @@ struct ReplacePreviewView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func footer(result: ReplacePreview.SideBySideResult) -> some View {
+    private func footer(result: ReplacePreview.SideBySideResult?) -> some View {
         HStack {
             Button("Schließen") { workspace.livePreview = false }
                 .keyboardShortcut(.cancelAction)
@@ -140,7 +351,8 @@ struct ReplacePreviewView: View {
             // Vorschauplätze sperrt `allChangedRowsVisible` außerdem jede
             // unsichtbare Anwendung. Der Workspace-Guard schützt zusätzlich
             // die Optionsbindung und eine gekappte Trefferliste.
-            .disabled(result.rows.isEmpty || !result.allChangedRowsVisible
+            .disabled(result?.rows.isEmpty != false
+                      || result?.allChangedRowsVisible != true
                       || !workspace.canApplyAllInActiveBuffer)
         }
         .padding(.horizontal, 16)

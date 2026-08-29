@@ -157,6 +157,7 @@
 "Treffer kopieren" = "Copy Matches";
 "Alle Änderungen sichtbar (%ld); %ld unveränderte Kontextzeilen ausgeblendet." = "All changes are visible (%ld); %ld unchanged context lines are hidden.";
 "Nur %ld von %ld Änderungen sichtbar — „Alle ersetzen“ bleibt gesperrt." = "Only %ld of %ld changes are visible — Replace All remains disabled.";
+"„Alle ersetzen“ bleibt gesperrt." = "Replace All remains disabled.";
 "Trennzeichen" = "Separator";
 "Umbenennen…" = "Rename…";
 "VORSCHAU" = "PREVIEW";
@@ -166,8 +167,14 @@
 "Verlauf löschen" = "Clear History";
 "Von Festplatte neu laden" = "Reload from Disk";
 "Vorher" = "Before";
+"Vorher- oder Nachher-Text überschreitet die Vorschaugrenze von %ld MiB. Kürze das Dokument oder den Ersetzen-Text." = "The before or after text exceeds the %ld MiB preview limit. Shorten the document or replacement text.";
 "Vorheriger Treffer (⇧⌘G)" = "Previous Match (⇧⌘G)";
 "Voriger" = "Previous";
+"Vorschau nicht berechnet" = "Preview not calculated";
+"Vorschau wird berechnet…" = "Calculating preview…";
+"Vorschau zu groß" = "Preview too large";
+"Das Dokument überschreitet die Vorschaugrenze von %ld Zeilen." = "The document exceeds the preview limit of %ld lines.";
+"Der unterschiedliche Bereich überschreitet die Rechengrenze von %ld Zeilen." = "The differing section exceeds the calculation limit of %ld lines.";
 "Vorlage" = "Template";
 "Vorschau der Änderungen" = "Preview Changes";
 "Wrap-around" = "Wrap Around";

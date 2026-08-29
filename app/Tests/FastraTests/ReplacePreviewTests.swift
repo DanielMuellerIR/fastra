@@ -11,6 +11,18 @@ private func matches(in text: String, find: String, replace: String,
     return BufferSearch.find(in: text, options: opts).matches
 }
 
+private func sideBySideResult(
+    _ outcome: ReplacePreview.SideBySideOutcome,
+    sourceLocation: SourceLocation = #_sourceLocation
+) -> ReplacePreview.SideBySideResult? {
+    guard case .result(let result) = outcome else {
+        Issue.record("Vollständiges Vorschauergebnis erwartet, erhalten: \(outcome)",
+                     sourceLocation: sourceLocation)
+        return nil
+    }
+    return result
+}
+
 @Test("Eine einfache Ersetzung → eine geänderte Zeile, before/after korrekt")
 func preview_singleReplacement() {
     let text = "alpha\nbeta\ngamma"
@@ -151,7 +163,9 @@ func preview_staleMatchesMixed() {
 func preview_sideBySideMultilineAlignment() {
     let text = "a\nMARK\nz"
     let found = matches(in: text, find: "MARK", replace: "x\ny")
-    let result = ReplacePreview.buildSideBySide(text: text, matches: found)
+    guard let result = sideBySideResult(
+        ReplacePreview.buildSideBySide(text: text, matches: found)
+    ) else { return }
 
     #expect(result.changedRows == 2)
     #expect(result.rows.map(\.kind) == [.unchanged, .changed, .added, .unchanged])
@@ -167,7 +181,9 @@ func preview_sideBySideMultilineAlignment() {
 func preview_sideBySideCRLFLineNumbers() {
     let text = "alpha\r\nfoo\r\nomega"
     let found = matches(in: text, find: "foo", replace: "bar")
-    let result = ReplacePreview.buildSideBySide(text: text, matches: found)
+    guard let result = sideBySideResult(
+        ReplacePreview.buildSideBySide(text: text, matches: found)
+    ) else { return }
 
     #expect(result.totalRows == 3)
     #expect(result.changedRows == 1)
@@ -181,7 +197,9 @@ func preview_sideBySideCRLFLineNumbers() {
 func preview_sideBySideTruncation() {
     let text = "eins\nzwei\ndrei"
     let found = matches(in: text, find: "zwei", replace: "ZWEI")
-    let result = ReplacePreview.buildSideBySide(text: text, matches: found, maxRows: 2)
+    guard let result = sideBySideResult(
+        ReplacePreview.buildSideBySide(text: text, matches: found, maxRows: 2)
+    ) else { return }
     #expect(result.rows.count == 2)
     #expect(result.totalRows == 3)
     #expect(result.changedRows == 1)
@@ -196,9 +214,9 @@ func preview_sideBySidePrioritizesLateChange() {
     let text = (unchanged + ["foo am Ende"]).joined(separator: "\n")
     let found = matches(in: text, find: "foo", replace: "bar")
 
-    let result = ReplacePreview.buildSideBySide(
+    guard let result = sideBySideResult(ReplacePreview.buildSideBySide(
         text: text, matches: found, maxRows: 12
-    )
+    )) else { return }
 
     #expect(result.changedRows == 1)
     #expect(result.allChangedRowsVisible)
@@ -212,12 +230,153 @@ func preview_sideBySideRejectsHiddenChanges() {
     let text = (1...5).map { "foo \($0)" }.joined(separator: "\n")
     let found = matches(in: text, find: "foo", replace: "bar")
 
-    let result = ReplacePreview.buildSideBySide(
+    guard let result = sideBySideResult(ReplacePreview.buildSideBySide(
         text: text, matches: found, maxRows: 3
-    )
+    )) else { return }
 
     #expect(result.changedRows == 5)
     #expect(result.visibleChangedRows == 3)
     #expect(!result.allChangedRowsVisible)
     #expect(result.rows.allSatisfy { $0.kind == .changed })
+}
+
+@Test("Side-by-side-Diff bricht einen überholten Lauf kooperativ ab")
+func preview_sideBySideCancellation() {
+    let text = "foo\nbar"
+    let found = matches(in: text, find: "foo", replace: "FOO")
+    let outcome = ReplacePreview.buildSideBySide(
+        text: text, matches: found, shouldCancel: { true }
+    )
+    #expect(outcome == .cancelled)
+}
+
+@Test("Side-by-side-Diff lehnt einen zu großen Nachher-Text ehrlich ab")
+func preview_sideBySideOutputLimit() {
+    let text = "foo"
+    let found = matches(in: text, find: "foo", replace: "123456")
+    let limits = ReplacePreview.SideBySideLimits(
+        maximumTextBytes: 5, maximumLineCount: 10,
+        maximumDiffInputLines: 10)
+
+    let outcome = ReplacePreview.buildSideBySide(
+        text: text, matches: found, limits: limits
+    )
+
+    #expect(outcome == .limitation(.tooLarge(maximumBytes: 5)))
+}
+
+@Test("Side-by-side-Diff begrenzt den unterschiedlichen Myers-Mittelteil")
+func preview_sideBySideDifferenceLimit() {
+    let text = "a\nb\nc"
+    let found = matches(in: text, find: "a\nb\nc", replace: "x\ny\nz",
+                        isRegex: false)
+    let limits = ReplacePreview.SideBySideLimits(
+        maximumTextBytes: 100, maximumLineCount: 10,
+        maximumDiffInputLines: 5)
+
+    let outcome = ReplacePreview.buildSideBySide(
+        text: text, matches: found, limits: limits
+    )
+
+    #expect(outcome == .limitation(.tooDifferent(maximumLines: 5)))
+}
+
+@Test("Side-by-side-Diff lehnt zu viele logische Zeilen vollständig ab")
+func preview_sideBySideLineLimit() {
+    let text = "a\nb"
+    let found = matches(in: text, find: "b", replace: "b\nc")
+    let limits = ReplacePreview.SideBySideLimits(
+        maximumTextBytes: 100, maximumLineCount: 2,
+        maximumDiffInputLines: 10)
+
+    let outcome = ReplacePreview.buildSideBySide(
+        text: text, matches: found, limits: limits
+    )
+
+    #expect(outcome == .limitation(.tooManyLines(maximumLines: 2)))
+}
+
+private final class SequencedPreviewBuilder: @unchecked Sendable {
+    let releaseFirst = DispatchSemaphore(value: 0)
+
+    private let lock = NSLock()
+    private var callCount = 0
+    private var firstFinished = false
+    private var ranOnMainThread = false
+
+    var startedCalls: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return callCount
+    }
+
+    var didFinishFirst: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return firstFinished
+    }
+
+    var anyCallRanOnMainThread: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return ranOnMainThread
+    }
+
+    func build(
+        text: String, matches: [BufferSearch.Match], maxRows: Int,
+        shouldCancel: @Sendable () -> Bool
+    ) -> ReplacePreview.SideBySideOutcome {
+        lock.lock()
+        callCount += 1
+        let call = callCount
+        ranOnMainThread = ranOnMainThread || Thread.isMainThread
+        lock.unlock()
+
+        if call == 1 {
+            releaseFirst.wait()
+            lock.lock()
+            firstFinished = true
+            lock.unlock()
+        }
+        let row = ReplacePreview.SideBySideRow(
+            id: 0, beforeLine: 1, afterLine: 1,
+            before: text, after: text.uppercased(), kind: .changed)
+        return .result(ReplacePreview.SideBySideResult(
+            rows: [row], totalRows: 1, changedRows: 1))
+    }
+}
+
+@Test("Vorschau-Modell verwirft die späte Antwort eines überholten Laufs")
+@MainActor
+func previewModel_discardsStaleCompletion() async throws {
+    let builder = SequencedPreviewBuilder()
+    let model = ReplacePreviewModel { text, matches, maxRows, shouldCancel in
+        builder.build(text: text, matches: matches, maxRows: maxRows,
+                      shouldCancel: shouldCancel)
+    }
+    let documentID = UUID()
+    let old = ReplacePreviewModel.Request(
+        version: .init(documentID: documentID, contentRevision: 1,
+                       matchIDs: []),
+        text: "alt", matches: [])
+    let current = ReplacePreviewModel.Request(
+        version: .init(documentID: documentID, contentRevision: 2,
+                       matchIDs: []),
+        text: "neu", matches: [])
+    defer { builder.releaseFirst.signal() }
+
+    model.load(old)
+    #expect(await waitUntil { builder.startedCalls >= 1 })
+    model.load(current)
+    #expect(await waitUntil { builder.startedCalls >= 2 })
+    #expect(await waitUntil {
+        model.result?.rows.first?.after == "NEU"
+    })
+
+    builder.releaseFirst.signal()
+    #expect(await waitUntil { builder.didFinishFirst })
+    for _ in 0..<20 { await Task.yield() }
+    #expect(model.result?.rows.first?.after == "NEU")
+    #expect(!builder.anyCallRanOnMainThread,
+            "Auch der injizierte Builder muss außerhalb des UI-Threads laufen")
 }

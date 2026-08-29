@@ -9,6 +9,18 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.5] — 2026-08-29
+
+### Behoben
+
+- **Die vollständige Ersetzungsvorschau blockiert bei großen Dokumenten nicht
+  mehr die Oberfläche.** Fastra berechnet Nachher-Text und Zeilen-Diff jetzt
+  abbrechbar im Hintergrund und übernimmt nur das Ergebnis derselben Dokument-
+  und Treffergeneration. Feste Grenzen für Textgröße, Zeilenzahl und den
+  unterschiedlichen Diff-Mittelteil verhindern unkontrollierten Speicher- oder
+  Rechenaufwand; bei Überschreitung erklärt das Sheet die Grenze und lässt
+  „Alle ersetzen“ gesperrt.
+
 ## [v1.113.4] — 2026-08-29
 
 ### Behoben

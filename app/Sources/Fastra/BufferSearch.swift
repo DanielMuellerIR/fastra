@@ -13,7 +13,7 @@ enum BufferSearch {
     /// Ein einzelner Treffer im Buffer. `range` ist NSRange (UTF-16-
     /// Offsets, wie sie auch der CodeEdit-Editor verwendet), damit wir
     /// später ohne Rechnerei in die Cursor-Sprung-Logik fließen können.
-    struct Match: Identifiable, Equatable {
+    struct Match: Identifiable, Equatable, Sendable {
         let id = UUID()
         let range: NSRange
         /// 1-basierte Zeilennummer der Treffer-Anfangs-Position.

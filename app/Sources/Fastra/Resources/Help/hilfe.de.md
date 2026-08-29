@@ -125,7 +125,12 @@ Importdateien sind auf 1 MB begrenzt; ungültige Einträge werden übersprungen.
   Trefferbasis — das ist eine Sicherheitsgarantie. In sehr langen Dokumenten
   kürzt Fastra dafür unveränderten Kontext, nie unbemerkt eine Änderungszeile;
   reicht selbst das Anzeigelimit nicht für alle Änderungen, bleibt Apply
-  gesperrt.
+  gesperrt. Den vollständigen Diff berechnet Fastra abbrechbar im Hintergrund
+  und bindet ihn an genau diese Dokument- und Treffergeneration. Vorher- und
+  Nachher-Text sind auf je 32 MiB, jede Seite auf 200.000 Zeilen und der
+  tatsächlich unterschiedliche Diff-Mittelteil auf 30.000 Zeilen begrenzt.
+  Überschreitet ein Auftrag eine Grenze, erklärt die Vorschau sie sichtbar und
+  „Alle ersetzen“ bleibt gesperrt.
 - Im Ordner-/Projekt-Bereich prüft Fastra vor dem ersten Schreiben noch einmal
   alle Dateien gegen die sichtbare Vorschau. Geänderte Dateien und betroffene
   Tabs mit ungespeicherten Änderungen blockieren den gesamten Vorgang. Planung,

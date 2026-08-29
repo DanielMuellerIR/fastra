@@ -19,11 +19,11 @@ import Foundation
 
 enum ReplacePreview {
 
-    enum SideKind: Equatable {
+    enum SideKind: Equatable, Sendable {
         case unchanged, changed, removed, added
     }
 
-    struct SideBySideRow: Identifiable, Equatable {
+    struct SideBySideRow: Identifiable, Equatable, Sendable {
         let id: Int
         let beforeLine: Int?
         let afterLine: Int?
@@ -32,7 +32,7 @@ enum ReplacePreview {
         let kind: SideKind
     }
 
-    struct SideBySideResult: Equatable {
+    struct SideBySideResult: Equatable, Sendable {
         let rows: [SideBySideRow]
         let totalRows: Int
         let changedRows: Int
@@ -44,6 +44,39 @@ enum ReplacePreview {
         /// enthalten ist. Ausgeblendeter unveränderter Kontext ist zulässig.
         var allChangedRowsVisible: Bool { visibleChangedRows == changedRows }
         static let empty = SideBySideResult(rows: [], totalRows: 0, changedRows: 0)
+    }
+
+    /// Harte Rechengrenzen des vollständigen Dokument-Diffs. Anders als
+    /// `maxRows` begrenzen sie nicht bloß die Anzeige, sondern lehnen einen
+    /// Auftrag sichtbar ab: Ein nur teilweise berechneter Diff dürfte Apply
+    /// niemals als vollständige Vorschau freigeben.
+    struct SideBySideLimits: Equatable, Sendable {
+        let maximumTextBytes: Int
+        let maximumLineCount: Int
+        let maximumDiffInputLines: Int
+
+        /// Die Textgrenze entspricht der Volllade-Grenze editierbarer Dateien.
+        /// Der Zeilen- und Myers-Mittelteil folgen den bewährten Grenzen des
+        /// Datei-Vergleichs (`FileDiff`).
+        static let standard = SideBySideLimits(
+            maximumTextBytes: Int(FileLoader.largeFileThreshold),
+            maximumLineCount: FileDiff.maximumLineCount,
+            maximumDiffInputLines: FileDiff.maximumDiffInputLines)
+    }
+
+    enum SideBySideLimitation: Equatable, Sendable {
+        case tooLarge(maximumBytes: Int)
+        case tooManyLines(maximumLines: Int)
+        case tooDifferent(maximumLines: Int)
+    }
+
+    /// Vollständiges Ergebnis, erklärte Grenze oder kooperativer Abbruch.
+    /// `cancelled` wird nie als Nutzerfehler gezeigt: Das Modell verwirft den
+    /// überholten Lauf und startet für die neue Dokumentgeneration neu.
+    enum SideBySideOutcome: Equatable, Sendable {
+        case result(SideBySideResult)
+        case limitation(SideBySideLimitation)
+        case cancelled
     }
 
     /// Eine betroffene Zeile mit Original- und Ersetzungs-Fassung.
@@ -129,37 +162,132 @@ enum ReplacePreview {
     /// über alle Treffer hinweg; anschließend richtet `CollectionDifference`
     /// eingefügte und entfernte Zeilen aus. Damit bleiben auch mehrzeilige
     /// Ersetzungen korrekt — anders als bei der kompakten Inline-Vorschau.
-    static func buildSideBySide(text: String, matches: [BufferSearch.Match],
-                                maxRows: Int = 5_000) -> SideBySideResult {
+    static func buildSideBySide(
+        text: String,
+        matches: [BufferSearch.Match],
+        maxRows: Int = 5_000,
+        limits: SideBySideLimits = .standard,
+        shouldCancel: @Sendable () -> Bool = { false }
+    ) -> SideBySideOutcome {
+        guard !shouldCancel() else { return .cancelled }
         let ns = text as NSString
         let valid = matches
             .filter { $0.range.location >= 0 && NSMaxRange($0.range) <= ns.length }
             .sorted { $0.range.location < $1.range.location }
-        guard !valid.isEmpty else { return .empty }
+        guard !shouldCancel() else { return .cancelled }
+        guard !valid.isEmpty else { return .result(.empty) }
+        guard text.utf8.count <= limits.maximumTextBytes else {
+            return .limitation(.tooLarge(maximumBytes: limits.maximumTextBytes))
+        }
 
         var after = ""
+        after.reserveCapacity(min(text.utf8.count, limits.maximumTextBytes))
+        var afterByteCount = 0
         var cursor = 0
-        for match in valid where match.range.location >= cursor {
-            if match.range.location > cursor {
-                after += ns.substring(with: NSRange(location: cursor,
-                                                    length: match.range.location - cursor))
+
+        /// Prüft die Nachher-Größe VOR dem Anhängen. Dadurch erzeugt selbst
+        /// ein riesiger Ersetzen-Text keinen kurzzeitig unbegrenzten String.
+        func appendWithinLimit(_ piece: String) -> Bool {
+            let pieceBytes = piece.utf8.count
+            guard pieceBytes <= limits.maximumTextBytes - afterByteCount else {
+                return false
             }
-            after += match.replacedText
+            after.append(contentsOf: piece)
+            afterByteCount += pieceBytes
+            return true
+        }
+
+        for match in valid where match.range.location >= cursor {
+            guard !shouldCancel() else { return .cancelled }
+            if match.range.location > cursor {
+                let unchanged = ns.substring(with: NSRange(
+                    location: cursor, length: match.range.location - cursor))
+                guard appendWithinLimit(unchanged) else {
+                    return .limitation(.tooLarge(
+                        maximumBytes: limits.maximumTextBytes))
+                }
+            }
+            guard appendWithinLimit(match.replacedText) else {
+                return .limitation(.tooLarge(maximumBytes: limits.maximumTextBytes))
+            }
             cursor = NSMaxRange(match.range)
         }
         if cursor < ns.length {
-            after += ns.substring(from: cursor)
+            guard appendWithinLimit(ns.substring(from: cursor)) else {
+                return .limitation(.tooLarge(maximumBytes: limits.maximumTextBytes))
+            }
+        }
+        guard !shouldCancel() else { return .cancelled }
+
+        let beforeLines: [String]
+        switch logicalLines(in: text, maximum: limits.maximumLineCount,
+                            shouldCancel: shouldCancel) {
+        case .lines(let lines): beforeLines = lines
+        case .tooMany:
+            return .limitation(.tooManyLines(maximumLines: limits.maximumLineCount))
+        case .cancelled: return .cancelled
+        }
+        let afterLines: [String]
+        switch logicalLines(in: after, maximum: limits.maximumLineCount,
+                            shouldCancel: shouldCancel) {
+        case .lines(let lines): afterLines = lines
+        case .tooMany:
+            return .limitation(.tooManyLines(maximumLines: limits.maximumLineCount))
+        case .cancelled: return .cancelled
         }
 
-        let beforeLines = logicalLines(in: text)
-        let afterLines = logicalLines(in: after)
-        let difference = afterLines.difference(from: beforeLines)
+        // Gleiche Zeilen erhalten denselben kleinen Integer. Danach zieht der
+        // Lauf den gemeinsamen Anfang und das gemeinsame Ende ab; der nicht
+        // abbrechbare Myers-Schritt bleibt dadurch auf den wirklich
+        // unterschiedlichen, hart begrenzten Mittelteil beschränkt.
+        var aliasByLine: [String: Int] = [:]
+        func aliases(for lines: [String]) -> [Int]? {
+            var aliases: [Int] = []
+            aliases.reserveCapacity(lines.count)
+            for (index, line) in lines.enumerated() {
+                if index.isMultiple(of: 256), shouldCancel() { return nil }
+                if let alias = aliasByLine[line] {
+                    aliases.append(alias)
+                } else {
+                    let alias = aliasByLine.count
+                    aliasByLine[line] = alias
+                    aliases.append(alias)
+                }
+            }
+            return aliases
+        }
+        guard let beforeAliases = aliases(for: beforeLines),
+              let afterAliases = aliases(for: afterLines) else {
+            return .cancelled
+        }
+        var prefix = 0
+        while prefix < min(beforeAliases.count, afterAliases.count),
+              beforeAliases[prefix] == afterAliases[prefix] {
+            if prefix.isMultiple(of: 1024), shouldCancel() { return .cancelled }
+            prefix += 1
+        }
+        var suffix = 0
+        while suffix < min(beforeAliases.count, afterAliases.count) - prefix,
+              beforeAliases[beforeAliases.count - 1 - suffix]
+                == afterAliases[afterAliases.count - 1 - suffix] {
+            if suffix.isMultiple(of: 1024), shouldCancel() { return .cancelled }
+            suffix += 1
+        }
+        let beforeMid = beforeAliases[prefix..<(beforeAliases.count - suffix)]
+        let afterMid = afterAliases[prefix..<(afterAliases.count - suffix)]
+        guard beforeMid.count + afterMid.count <= limits.maximumDiffInputLines else {
+            return .limitation(.tooDifferent(
+                maximumLines: limits.maximumDiffInputLines))
+        }
+        guard !shouldCancel() else { return .cancelled }
+        let difference = Array(afterMid).difference(from: Array(beforeMid))
+        guard !shouldCancel() else { return .cancelled }
         var removed = Set<Int>()
         var inserted = Set<Int>()
         for change in difference {
             switch change {
-            case .remove(let offset, _, _): removed.insert(offset)
-            case .insert(let offset, _, _): inserted.insert(offset)
+            case .remove(let offset, _, _): removed.insert(prefix + offset)
+            case .insert(let offset, _, _): inserted.insert(prefix + offset)
             }
         }
 
@@ -168,6 +296,7 @@ enum ReplacePreview {
         var afterIndex = 0
         var changedRows = 0
         while beforeIndex < beforeLines.count || afterIndex < afterLines.count {
+            if all.count.isMultiple(of: 256), shouldCancel() { return .cancelled }
             let isRemoved = beforeIndex < beforeLines.count && removed.contains(beforeIndex)
             let isInserted = afterIndex < afterLines.count && inserted.contains(afterIndex)
             let row: SideBySideRow
@@ -209,8 +338,10 @@ enum ReplacePreview {
             }
             all.append(row)
         }
-        return SideBySideResult(rows: rowsPrioritizingChanges(all, maxRows: maxRows),
-                                totalRows: all.count, changedRows: changedRows)
+        guard !shouldCancel() else { return .cancelled }
+        return .result(SideBySideResult(
+            rows: rowsPrioritizingChanges(all, maxRows: maxRows),
+            totalRows: all.count, changedRows: changedRows))
     }
 
     // MARK: - Intern
@@ -220,14 +351,28 @@ enum ReplacePreview {
     /// BEIDEN Zeichen und erfindet dadurch zwischen echten Windows-Zeilen je
     /// eine Leerzeile. `getLineStart` behandelt CRLF dagegen als gemeinsamen
     /// Terminator und erhält eine abschließende leere Zeile ausdrücklich.
-    private static func logicalLines(in text: String) -> [String] {
+    private enum LogicalLinesResult {
+        case lines([String])
+        case tooMany
+        case cancelled
+    }
+
+    private static func logicalLines(
+        in text: String,
+        maximum: Int,
+        shouldCancel: @Sendable () -> Bool
+    ) -> LogicalLinesResult {
         let ns = text as NSString
-        guard ns.length > 0 else { return [""] }
+        guard ns.length > 0 else { return .lines([""]) }
 
         var lines: [String] = []
         var index = 0
         var endedWithTerminator = false
         while index < ns.length {
+            if lines.count.isMultiple(of: 256), shouldCancel() {
+                return .cancelled
+            }
+            guard lines.count < maximum else { return .tooMany }
             var end = NSNotFound
             var contentsEnd = NSNotFound
             ns.getLineStart(nil, end: &end, contentsEnd: &contentsEnd,
@@ -239,8 +384,11 @@ enum ReplacePreview {
             endedWithTerminator = contentsEnd < end
             index = end
         }
-        if endedWithTerminator { lines.append("") }
-        return lines
+        if endedWithTerminator {
+            guard lines.count < maximum else { return .tooMany }
+            lines.append("")
+        }
+        return .lines(lines)
     }
 
     /// Begrenzt die Anzeige, ohne eine weit unten liegende Änderung hinter
