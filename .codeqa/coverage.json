@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 465827
+    "tokens_spent": 751113
   },
   "campaign_history": [
     {
@@ -228,16 +228,16 @@
       "reason": "Dateiladen, Platten-Snapshots, große Dateien und Hex-Pfade entscheiden über Datenintegrität und Speichergrenzen.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-25T23:08:29+02:00",
-        "observed_head": "ec15e86db63927185f3f1a0607dfa0e4d4dfa630",
-        "content_sha256": "7b6582575531e8398541cf88bc76a3a2a60f41e72439a37723fe95ab960a2f10",
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T18:56:27+02:00",
+        "observed_head": "03524005aeb0746c377868202c89da0cd7e01fb4",
+        "content_sha256": "bda1796e9f53864d09cd175e0326c3f9c7a59b0dc6c132fcefa5edc16e21e303",
         "file_count": 14,
         "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Hex-Änderungen leben dokumentgebunden, speichern atomar, schützen Snapshot und Aktionskontext und bewahren Dirty-Zustand über Ansichtswechsel; neue Commit- und Lifecycle-Dateien sind dem Bereich zugeordnet.",
+        "summary": "Delta und Sicherheitsgrenzen von FileLoader, Snapshot-, Hex-, Abschnitts- und atomarem Schreibpfad geprüft. Abschnittsreader binden nun die erwartete Gesamtgröße und verwerfen verkürzte, gewachsene oder gleich lang in-place geänderte Dateiseiten vollständig; der gemeinsame Versionsvergleich wurde konsolidiert. Das bekannte startübergreifende Atomic-Commit-Recovery bleibt als eigener P2-Schwerpunkt offen.",
         "tests": [
-          "Weemac: app/build.sh inklusive Portable-Gate grün; 36 HexEditLifecycleTests und vollständiges app/test.sh mit 2059+104 Tests grün."
+          "Vorher roter PagedFile-Test: Hex gab 4/8 Bytes als Erfolg zurück, Text nur Cocoa-Fehler; danach PagedFileTests 15/15 PASS einschließlich Modellbindung und lokalisiertem Fehlerweg. build.sh mit Fenster-Ziel-Audit und Portabilitätsgate PASS; test.sh 2118 schnelle + 115 serielle Tests PASS, 0 Umgebungsfehler; localization-audit und help-audit --release PASS."
         ]
       }
     },
@@ -1161,9 +1161,19 @@
         "app/Sources/Fastra/FileSnapshot.swift"
       ],
       "priority": 1,
-      "state": "pending",
+      "state": "completed",
       "noted_at": "2026-08-25T20:00:49+02:00",
-      "campaign_id": "20260825T163605228103+0200"
+      "campaign_id": "20260825T163605228103+0200",
+      "started_at": "2026-08-29T18:55:01+02:00",
+      "completed": {
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T18:56:15+02:00",
+        "observed_head": "03524005aeb0746c377868202c89da0cd7e01fb4",
+        "summary": "Hex- und Textseiten binden die beim Öffnen erwartete Gesamtgröße und vergleichen nach allen Seeks und Reads Gerät, Inode, Größe, mtime und ctime erneut; verkürzte, gewachsene oder gleich lang in-place geänderte Seiten werden vollständig verworfen und mit einem lokalisierten Reload-Hinweis erklärt.",
+        "tests": [
+          "PagedFileTests: 15/15 PASS einschließlich verkürzter, gewachsener und deterministisch gleich lang geänderter Datei; build.sh samt Portabilitätsgate PASS; vollständiges test.sh vor dem ergänzten Modelltest 2118 schnelle plus 115 serielle Tests PASS; localization-audit PASS."
+        ]
+      }
     },
     {
       "id": "large-file-classification",
