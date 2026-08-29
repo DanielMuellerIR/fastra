@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 1679349
+    "tokens_spent": 2515249
   },
   "campaign_history": [
     {
@@ -1237,9 +1237,19 @@
         "app/Sources/Fastra/HexEditing.swift"
       ],
       "priority": 2,
-      "state": "pending",
+      "state": "completed",
       "noted_at": "2026-08-25T20:47:33+02:00",
-      "campaign_id": "20260825T163605228103+0200"
+      "campaign_id": "20260825T163605228103+0200",
+      "started_at": "2026-08-29T19:59:32+02:00",
+      "completed": {
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T20:47:10+02:00",
+        "observed_head": "85cccd86c38e049cf41001285cf405e96664b4d2",
+        "summary": "Befund behoben: RENAME_SWAP und der anschließende Cleanup konnten bei Prozess- oder Stromausfall zwei Fassungen ohne dauerhafte Zuordnung beziehungsweise einen anonymen Cleanup-Namen hinterlassen. Ein vor dem Tausch synchronisiertes, auf PID plus Prozessstart, Pfade, Identitäten, Größen und SHA-256 gebundenes Journal macht beide Fassungen nach einem Neustart auffindbar; unklare, fremde, fehlende oder beschädigte Zustände bleiben unangetastet und werden mit konkreten Pfaden gemeldet. Journale verschwinden erst nach belegtem Cleanup samt Verzeichnis-Sync.",
+        "tests": [
+          "./build.sh PASS; ./test.sh: 2144 Tests/78 Suiten plus 115 serielle Tests/11 Suiten, beide Phasen PASS, Exit 0; AtomicFileCommitTests 22/22 PASS; localization-audit PASS; verify-portable-app PASS; selftest localization PASS; git diff --check und Info.plist-Lint PASS; echtes Recovery-Verzeichnis 0 Testartefakte."
+        ]
+      }
     }
   ]
 }
