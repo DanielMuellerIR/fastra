@@ -7,10 +7,21 @@ import Foundation
 /// Socket oder Gerät umgebogener Pfad kann den Hintergrund-Task daher nicht
 /// dauerhaft festhalten.
 enum FilePageReader {
-    static func read(url: URL, offset: UInt64, count: Int) throws -> Data {
+    static func read(url: URL, offset: UInt64, count: Int,
+                     expectedTotalBytes: UInt64? = nil,
+                     beforeFinalStat: (() throws -> Void)? = nil) throws -> Data {
         guard count >= 0 else { throw CocoaError(.fileReadCorruptFile) }
         let opened = try FileSnapshot.openRegularFile(at: url)
         defer { Darwin.close(opened.descriptor) }
+        guard opened.stat.st_size >= 0 else {
+            throw FileSnapshotReadError.changedDuringRead
+        }
+        let openedBytes = UInt64(opened.stat.st_size)
+        guard expectedTotalBytes == nil || expectedTotalBytes == openedBytes,
+              offset <= openedBytes,
+              UInt64(count) <= openedBytes - offset else {
+            throw FileSnapshotReadError.changedDuringRead
+        }
         let handle = FileHandle(fileDescriptor: opened.descriptor, closeOnDealloc: false)
         try handle.seek(toOffset: offset)
         var result = Data()
@@ -18,12 +29,36 @@ enum FilePageReader {
         while result.count < count {
             let remaining = count - result.count
             guard let chunk = try handle.read(upToCount: remaining), !chunk.isEmpty else {
-                break
+                // Der beim Öffnen noch vorhandene Bereich ist inzwischen
+                // kürzer geworden. Einen Teilabschnitt als Erfolg zu zeigen
+                // würde alte Seitenmetadaten mit neuen Bytes vermischen.
+                throw FileSnapshotReadError.changedDuringRead
             }
             result.append(chunk)
         }
+        // Der Hook hält die Änderung zwischen Read und Schlussprüfung in
+        // Regressionstests deterministisch. Produktaufrufe übergeben nichts.
+        try beforeFinalStat?()
+        var after = stat()
+        guard fstat(opened.descriptor, &after) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        guard FileSnapshot.describesSameOpenedVersion(opened.stat, after) else {
+            throw FileSnapshotReadError.changedDuringRead
+        }
         return result
     }
+}
+
+/// Meldet eine erkannte Fremdänderung verständlich; andere Systemfehler
+/// behalten ihre von macOS lokalisierte Beschreibung.
+private func pagedFileReadErrorDescription(_ error: Error) -> String {
+    if let snapshotError = error as? FileSnapshotReadError,
+       case .changedDuringRead = snapshotError {
+        return L10n.string(
+            "Die Datei wurde während des Lesens geändert. Lade sie über „Ablage“ > „Von Festplatte neu laden“ erneut.")
+    }
+    return error.localizedDescription
 }
 
 /// Lädt genau eine Seite einer Datei in den Speicher. Seitenwechsel ersetzen
@@ -54,14 +89,16 @@ final class FilePageModel: ObservableObject {
     }
     var offset: UInt64 { UInt64(pageIndex) * UInt64(pageSize) }
 
-    init(url: URL, totalBytes: UInt64, pageSize: Int,
-         reader: @escaping Reader = { url, offset, count in
-             try FilePageReader.read(url: url, offset: offset, count: count)
-         }) {
+    init(url: URL, totalBytes: UInt64, pageSize: Int, reader: Reader? = nil) {
         self.url = url
         self.totalBytes = totalBytes
         self.pageSize = pageSize
-        self.reader = reader
+        // Der Standard-Reader bindet die beim Öffnen erfasste Gesamtgröße.
+        // Test-Reader behalten die kleine Drei-Argument-Schnittstelle.
+        self.reader = reader ?? { url, offset, count in
+            try FilePageReader.read(url: url, offset: offset, count: count,
+                                    expectedTotalBytes: totalBytes)
+        }
         load(page: 0)
     }
 
@@ -102,7 +139,7 @@ final class FilePageModel: ObservableObject {
                     // „Drucken" gäbe weiter den alten Abschnitt aus
                     // (Reviewfund 2026-08-18).
                     self.data = Data()
-                    self.errorMessage = error.localizedDescription
+                    self.errorMessage = pagedFileReadErrorDescription(error)
                 }
                 self.completedLoadCount &+= 1
             }
@@ -131,7 +168,9 @@ enum TextFilePageReader {
 
     static func read(url: URL, totalBytes: UInt64, pageSize: Int,
                      pageIndex: Int, encoding: String.Encoding,
-                     bom: Data) throws -> DecodedTextFilePage {
+                     bom: Data,
+                     beforeFinalStat: (() throws -> Void)? = nil) throws
+        -> DecodedTextFilePage {
         guard pageSize > 0 else { throw CocoaError(.fileReadCorruptFile) }
         let bomCount = min(totalBytes, UInt64(bom.count))
         let payloadBytes = totalBytes - bomCount
@@ -143,6 +182,10 @@ enum TextFilePageReader {
 
         let opened = try FileSnapshot.openRegularFile(at: url)
         defer { Darwin.close(opened.descriptor) }
+        guard opened.stat.st_size >= 0,
+              UInt64(opened.stat.st_size) == totalBytes else {
+            throw FileSnapshotReadError.changedDuringRead
+        }
         let handle = FileHandle(fileDescriptor: opened.descriptor, closeOnDealloc: false)
         let start = try alignedBoundary(nominalStart, payloadBytes: payloadBytes,
                                         bomCount: bomCount, encoding: encoding,
@@ -155,6 +198,14 @@ enum TextFilePageReader {
         }
         let data = try readExactly(handle: handle, offset: bomCount + start,
                                    count: Int(end - start))
+        try beforeFinalStat?()
+        var after = stat()
+        guard fstat(opened.descriptor, &after) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        guard FileSnapshot.describesSameOpenedVersion(opened.stat, after) else {
+            throw FileSnapshotReadError.changedDuringRead
+        }
         guard let text = String(data: data, encoding: encoding) else {
             // Kein Lossy-Fallback: Ein beschädigter oder falsch gewählter
             // Abschnitt muss sichtbar fehlschlagen, nicht U+FFFD erfinden.
@@ -303,7 +354,7 @@ final class TextFilePageModel: ObservableObject {
                 case .success(let page): self.text = page.text
                 case .failure(let error):
                     self.text = ""
-                    self.errorMessage = error.localizedDescription
+                    self.errorMessage = pagedFileReadErrorDescription(error)
                 }
                 self.completedLoadCount &+= 1
             }

@@ -253,6 +253,11 @@ als eine Ansicht bietet:
   öffnen direkt in der Hex-Ansicht, sehr große Textdateien in einer
   abschnittsweisen Ansicht.
 
+Ändert ein anderes Programm die Datei genau während Fastra einen Abschnitt
+liest, verwirft Fastra den Abschnitt vollständig, statt alte Metadaten mit
+neuen Bytes zu mischen. **Ablage → Von Festplatte neu laden** übernimmt danach
+den neuen Plattenstand samt geänderter Dateigröße.
+
 Die Hex-Ansicht ist zunächst schreibgeschützt. **Bearbeiten erlauben** schaltet
 die Eingabe erst nach einer Warnung frei; **Vorschau & Speichern…** zeigt danach
 jede geplante Byte-Änderung und fragt ein zweites Mal. Vor dem atomaren

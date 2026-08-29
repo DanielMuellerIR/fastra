@@ -9,6 +9,17 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.4] — 2026-08-29
+
+### Behoben
+
+- **Abschnittsansichten zeigen nach einem gleichzeitigen Fremdwrite keine
+  unvollständigen oder gemischten Dateiseiten mehr.** Hex- und große
+  Textdateien binden jeden Read an die beim Öffnen erfasste Dateigröße und
+  vergleichen danach Inode, Größe sowie Änderungszeiten erneut. Eine
+  Verkürzung oder ein gleich langer In-place-Write verwirft den gesamten
+  Abschnitt mit einem Hinweis auf „Von Festplatte neu laden“.
+
 ## [v1.113.3] — 2026-08-29
 
 ### Behoben

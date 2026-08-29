@@ -358,11 +358,7 @@ enum FileLoader {
         // Größe und Zeitstempel schon: Wurde IN die Datei geschrieben, während
         // wir lasen, passen Probe, Inhalt und Snapshot zu keinem einzigen
         // Plattenstand — dann lieber gar kein Ergebnis.
-        guard before.st_size == after.st_size,
-              before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec,
-              before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec,
-              before.st_ctimespec.tv_sec == after.st_ctimespec.tv_sec,
-              before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec else {
+        guard FileSnapshot.describesSameOpenedVersion(before, after) else {
             throw FileSnapshotReadError.changedDuringRead
         }
         return (

@@ -238,6 +238,11 @@ offers more than one view:
   changes of the text tab are not included there. Binary files open
   directly in the hex view, very large text files in a chunked view.
 
+If another program changes the file while Fastra is reading a section, Fastra
+discards the complete section instead of mixing old metadata with new bytes.
+Use **File → Reload from Disk** to adopt the new on-disk version, including a
+changed file size.
+
 The hex view starts read-only. **Allow Editing** enables input only after a
 warning; **Preview & Save…** then shows every planned byte change and asks a
 second time. Before the atomic save, Fastra checks the displayed old values

@@ -97,6 +97,20 @@ struct FileSnapshot: Codable, Equatable, Hashable, Sendable {
         return (descriptor, info)
     }
 
+    /// Vergleicht die Version eines bereits geöffneten Dateiobjekts vor und
+    /// nach einem Lesevorgang. Größe allein reicht nicht: Ein anderes Programm
+    /// kann gleich viele Bytes direkt in dieselbe Inode schreiben. Änderungs-
+    /// und Statuszeit erkennen auch diesen Fall.
+    static func describesSameOpenedVersion(_ before: stat, _ after: stat) -> Bool {
+        before.st_dev == after.st_dev
+            && before.st_ino == after.st_ino
+            && before.st_size == after.st_size
+            && before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec
+            && before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec
+            && before.st_ctimespec.tv_sec == after.st_ctimespec.tv_sec
+            && before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec
+    }
+
     static func read(from url: URL,
                      byteLimit: UInt64 = maximumReadBytes) throws
         -> (data: Data, snapshot: FileSnapshot) {
@@ -128,13 +142,7 @@ struct FileSnapshot: Codable, Equatable, Hashable, Sendable {
         guard fstat(descriptor, &after) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
-        guard before.st_dev == after.st_dev,
-              before.st_ino == after.st_ino,
-              before.st_size == after.st_size,
-              before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec,
-              before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec,
-              before.st_ctimespec.tv_sec == after.st_ctimespec.tv_sec,
-              before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec else {
+        guard describesSameOpenedVersion(before, after) else {
             throw FileSnapshotReadError.changedDuringRead
         }
         return (data, FileSnapshot(data: data, identity: FileIdentity(stat: after)))
@@ -187,13 +195,7 @@ struct FileSnapshot: Codable, Equatable, Hashable, Sendable {
         guard fstat(descriptor, &after) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
-        guard before.st_dev == after.st_dev,
-              before.st_ino == after.st_ino,
-              before.st_size == after.st_size,
-              before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec,
-              before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec,
-              before.st_ctimespec.tv_sec == after.st_ctimespec.tv_sec,
-              before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec else {
+        guard describesSameOpenedVersion(before, after) else {
             throw FileSnapshotReadError.changedDuringRead
         }
         let digest = hasher.finalize().map { String(format: "%02x", $0) }.joined()

@@ -443,6 +443,7 @@
 "Trotzdem speichern" = "Save Anyway";
 "Speichern abgebrochen" = "Save Canceled";
 "Die Datei wurde während des Speicherns erneut geändert. Der Plattenstand blieb erhalten." = "The file changed again while saving. The on-disk version was preserved.";
+"Die Datei wurde während des Lesens geändert. Lade sie über „Ablage“ > „Von Festplatte neu laden“ erneut." = "The file changed while it was being read. Reload it with File > Reload from Disk.";
 "Der Datenträger unterstützt keinen sicheren atomaren Dateiaustausch. Die Datei wurde nicht geändert." = "The volume does not support safe atomic file exchange. The file was not changed.";
 "Der Dateiaustausch konnte nach einer gleichzeitigen Fremdänderung nicht sicher zurückgesetzt werden. Prüfe „%@“ und „%@“; Fastra löscht in diesem Zustand keinen der beiden Pfade." = "The file exchange could not be safely rolled back after a concurrent external change. Check “%@” and “%@”; Fastra does not delete either path in this state.";
 "Die sichtbare Vorschau ist gekürzt. Verfeinere die Suche, bis alle Treffer sichtbar sind, bevor du Änderungen anwendest." = "The visible preview is truncated. Refine the search until every match is visible before applying changes.";

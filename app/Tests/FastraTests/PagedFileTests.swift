@@ -79,6 +79,20 @@ private func temporaryPageFile(_ data: Data) throws -> URL {
     return url
 }
 
+/// Überschreibt dieselbe Inode mit gleich vielen Bytes und setzt ein sicher
+/// anderes Änderungsdatum. Damit prüft der Test nicht bloß eine Größenänderung.
+private func overwritePageFileInPlace(_ url: URL, with data: Data,
+                                      modificationTime: TimeInterval) throws {
+    let handle = try FileHandle(forWritingTo: url)
+    defer { try? handle.close() }
+    try handle.seek(toOffset: 0)
+    try handle.write(contentsOf: data)
+    try handle.synchronize()
+    try FileManager.default.setAttributes(
+        [.modificationDate: Date(timeIntervalSince1970: modificationTime)],
+        ofItemAtPath: url.path)
+}
+
 private func decodedPages(url: URL, data: Data, encoding: String.Encoding,
                           bom: Data) throws -> [DecodedTextFilePage] {
     let count = TextFilePageReader.pageCount(
@@ -124,6 +138,56 @@ struct PagedFileTests {
             try TextFilePageReader.read(
                 url: url, totalBytes: 16, pageSize: 16,
                 pageIndex: 0, encoding: .utf8, bom: Data())
+        }
+    }
+
+    @Test("Verkürzte Byte- und Textdateien liefern keinen unvollständigen Abschnitt")
+    func shortenedFilesFailAsChangedDuringRead() throws {
+        let url = try temporaryPageFile(Data(repeating: 0x41, count: 4))
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        // Beide Modelle berechnen die erwartete Seitenlänge aus der beim
+        // Öffnen erfassten Dateigröße. Kürzt ein anderes Programm die Datei
+        // vor dem Hintergrund-Read, darf Fastra weder vier Bytes als
+        // angeblich vollständige Acht-Byte-Seite anzeigen noch den Fall als
+        // bloßes Encoding-Problem melden.
+        #expect(throws: FileSnapshotReadError.self) {
+            try FilePageReader.read(url: url, offset: 0, count: 8)
+        }
+        #expect(throws: FileSnapshotReadError.self) {
+            try TextFilePageReader.read(
+                url: url, totalBytes: 8, pageSize: 8,
+                pageIndex: 0, encoding: .utf8, bom: Data())
+        }
+    }
+
+    @Test("Gleich langer Fremdwrite während des Reads verwirft beide Abschnitte")
+    func sameLengthChangesDuringReadAreRejected() throws {
+        let byteURL = try temporaryPageFile(Data(repeating: 0x41, count: 8))
+        let textURL = try temporaryPageFile(Data(repeating: 0x61, count: 8))
+        defer {
+            try? FileManager.default.removeItem(at: byteURL)
+            try? FileManager.default.removeItem(at: textURL)
+        }
+
+        #expect(throws: FileSnapshotReadError.self) {
+            try FilePageReader.read(
+                url: byteURL, offset: 0, count: 8, expectedTotalBytes: 8,
+                beforeFinalStat: {
+                    try overwritePageFileInPlace(
+                        byteURL, with: Data(repeating: 0x42, count: 8),
+                        modificationTime: 1)
+                })
+        }
+        #expect(throws: FileSnapshotReadError.self) {
+            try TextFilePageReader.read(
+                url: textURL, totalBytes: 8, pageSize: 8,
+                pageIndex: 0, encoding: .utf8, bom: Data(),
+                beforeFinalStat: {
+                    try overwritePageFileInPlace(
+                        textURL, with: Data(repeating: 0x62, count: 8),
+                        modificationTime: 2)
+                })
         }
     }
 
