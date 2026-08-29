@@ -591,10 +591,22 @@ final class SearchRunner {
         ws.visibleBufferResultsOptions = nil
         ws.folderNeedsSearch = false
 
-        // Pattern vor dem Async-Lauf validieren — roter Streifen sofort,
-        // statt erst nach dem (potenziell langen) Folder-Lauf.
-        if let msg = SearchRunner.validationError(for: options) {
-            ws.searchError = msg
+        guard !options.isEmpty else {
+            ws.searchError = nil
+            ws.folderResults = []
+            ws.folderTotalMatches = 0
+            ws.folderResultsWereCapped = false
+            ws.folderSearching = false
+            return
+        }
+        // Der Plan validiert das Pattern sofort und wandert anschließend
+        // unverändert in den Hintergrundlauf. So bleibt die Fehlermeldung
+        // direkt sichtbar, ohne dort ein zweites Mal zu kompilieren.
+        let searchPlan: SearchPlan
+        do {
+            searchPlan = try SearchPlan(options: options)
+        } catch {
+            ws.searchError = (error as NSError).localizedDescription
             ws.folderResults = []
             ws.folderTotalMatches = 0
             ws.folderResultsWereCapped = false
@@ -611,7 +623,7 @@ final class SearchRunner {
         ws.folderNeedsSearch = false
         ws.searchError = nil
         folderTask = Task.detached(priority: .userInitiated) { [weak self, weak ws] in
-            let result = FolderSearch.find(in: urls, filter: filter, options: options,
+            let result = FolderSearch.find(in: urls, filter: filter, plan: searchPlan,
                                            excludedPatterns: exclusions,
                                            relativeTo: projectRoot,
                                            shouldCancel: { Task.isCancelled })

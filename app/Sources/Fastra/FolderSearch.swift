@@ -147,15 +147,36 @@ enum FolderSearch {
                      maxTotalMatches: Int = 10_000,
                      shouldCancel: @escaping @Sendable () -> Bool = { false }) -> Result {
         guard !options.isEmpty, !shouldCancel() else { return .empty }
-
-        // Pattern einmal kompilieren — wenn syntaktisch ungültig, bricht
-        // das Ergebnis sauber mit einer Meldung ab.
         do {
-            _ = try ApplyEngine.buildRegex(options)
+            return find(
+                in: folders, filter: filter,
+                plan: try SearchPlan(options: options),
+                excludedPatterns: excludedPatterns,
+                relativeTo: projectRoot,
+                maxResultsPerFile: maxResultsPerFile,
+                maxTotalMatches: maxTotalMatches,
+                shouldCancel: shouldCancel
+            )
         } catch {
             let msg = (error as NSError).localizedDescription
             return Result(perFile: [], invalidPatternMessage: msg, wasCapped: false)
         }
+    }
+
+    /// Ordnersuche mit einem bereits kompilierten Plan. Der SearchRunner
+    /// validiert damit einmal und reicht genau denselben Wert an den
+    /// Hintergrundlauf weiter; direkte Engine-Aufrufer verwenden weiterhin
+    /// den bequemen `options`-Wrapper.
+    static func find(in folders: [URL],
+                     filter: FileTypeFilter,
+                     plan searchPlan: SearchPlan,
+                     excludedPatterns: [String] = [],
+                     relativeTo projectRoot: URL? = nil,
+                     maxResultsPerFile: Int = 5000,
+                     maxTotalMatches: Int = 10_000,
+                     shouldCancel: @escaping @Sendable () -> Bool = { false }) -> Result {
+        let options = searchPlan.options
+        guard !options.isEmpty, !shouldCancel() else { return .empty }
 
         var perFile: [PerFileResult] = []
         // Laufende Summe aller Treffer über alle Dateien. Sobald der
@@ -194,7 +215,7 @@ enum FolderSearch {
                       passesFilter(url: folder, filter: filter),
                       seenFiles.insert(canonical.path).inserted else { continue }
                 let result = autoreleasepool {
-                    searchOneFile(at: canonical, options: options,
+                    searchOneFile(at: canonical, plan: searchPlan,
                                   maxMatches: min(maxResultsPerFile,
                                                   maxTotalMatches - totalSoFar),
                                   shouldCancel: shouldCancel)
@@ -268,7 +289,7 @@ enum FolderSearch {
                 // langen detached Task bis zum Laufende liegen; auf realen
                 // Projekten wächst der Resident-Speicher dann pro Datei.
                 let result = autoreleasepool {
-                    searchOneFile(at: canonical, options: options,
+                    searchOneFile(at: canonical, plan: searchPlan,
                                   maxMatches: effectivePerFile,
                                   shouldCancel: shouldCancel)
                 }
@@ -390,6 +411,22 @@ enum FolderSearch {
                               options: SearchOptions,
                               maxMatches: Int = 5000,
                               shouldCancel: () -> Bool = { false }) -> PerFileResult {
+        guard let plan = try? SearchPlan(options: options) else {
+            return PerFileResult(url: url, matches: [], totalMatches: 0,
+                                 skipped: nil, snapshot: nil,
+                                 searchOptions: options)
+        }
+        return searchOneFile(at: url, plan: plan, maxMatches: maxMatches,
+                             shouldCancel: shouldCancel)
+    }
+
+    /// Einzeldateipfad eines bereits vorbereiteten Ordnerlaufs. Der äußere
+    /// `find`-Aufruf reicht denselben Plan für jede Datei herein.
+    static func searchOneFile(at url: URL,
+                              plan: SearchPlan,
+                              maxMatches: Int = 5000,
+                              shouldCancel: () -> Bool = { false }) -> PerFileResult {
+        let options = plan.options
         if shouldCancel() {
             return PerFileResult(url: url, matches: [], totalMatches: 0,
                                  skipped: nil, snapshot: nil,
@@ -431,7 +468,7 @@ enum FolderSearch {
         // Pro-Datei-Cap direkt an find() geben — sonst griffe dort der
         // niedrigere Default-Cap und schnitte Treffer unter den vom Ordner-
         // Lauf vorgesehenen Rest-bis-Gesamtcap. `prefix` bleibt als Gürtel.
-        let search = BufferSearch.find(in: decoded.0, options: options,
+        let search = BufferSearch.find(in: decoded.0, plan: plan,
                                        maxMatches: maxMatches,
                                        shouldCancel: shouldCancel)
         let capped = Array(search.matches.prefix(maxMatches))

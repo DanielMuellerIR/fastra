@@ -55,6 +55,14 @@ func find_invalidPattern() {
     #expect(r.perTab.isEmpty)
 }
 
+@Test("Ohne offene Tabs bleibt auch ein ungültiges Pattern ein leeres Ergebnis")
+func find_invalidPatternWithoutInputsStaysEmpty() {
+    let r = OpenTabsSearch.find(
+        tabs: [], options: SearchOptions(find: "(", replace: "")
+    )
+    #expect(r == .empty)
+}
+
 @Test("Gesamt-Cap gilt über alle Tabs, gezählt wird trotzdem alles")
 func find_totalCapAcrossTabs() {
     // 3 Tabs à 4 Treffer, Cap 6 → 6 materialisiert, 12 gezählt, capped.

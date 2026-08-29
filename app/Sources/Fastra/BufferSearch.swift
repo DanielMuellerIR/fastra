@@ -123,10 +123,12 @@ enum BufferSearch {
                      searchRange: NSRange? = nil,
                      shouldCancel: () -> Bool = { false }) -> SearchResult {
         guard !options.isEmpty else { return .empty }
-
-        let regex: NSRegularExpression
         do {
-            regex = try ApplyEngine.buildRegex(options)
+            return find(
+                in: text, plan: try SearchPlan(options: options),
+                maxMatches: maxMatches, searchRange: searchRange,
+                shouldCancel: shouldCancel
+            )
         } catch {
             // Mensch-lesbare Erklärung. NSRegularExpression-Errors liefern
             // selbst schon einen Beschreibungstext; wir reichen ihn durch.
@@ -134,6 +136,17 @@ enum BufferSearch {
             return SearchResult(matches: [], totalMatches: 0,
                                 wasCapped: false, invalidPatternMessage: msg)
         }
+    }
+
+    /// Variante für einen bereits vorbereiteten Lauf. Mehrdatei- und
+    /// Mehrtab-Suchen bauen den `SearchPlan` einmal und rufen diese Funktion
+    /// für jede Eingabe auf; die Suchsemantik bleibt exakt dieselbe wie beim
+    /// bequemen `options`-Wrapper oben.
+    static func find(in text: String, plan: SearchPlan,
+                     maxMatches: Int = defaultMaxMatches,
+                     searchRange: NSRange? = nil,
+                     shouldCancel: () -> Bool = { false }) -> SearchResult {
+        guard !plan.options.isEmpty else { return .empty }
 
         if shouldCancel() { return .empty }
         let ns = text as NSString
@@ -144,11 +157,8 @@ enum BufferSearch {
                                                  shouldCancel: shouldCancel) else {
             return .empty
         }
-        // Template einmal bestimmen — im Plain-Text-Modus escapt
-        // `replacementTemplate` `$`/`\`, damit sie literal eingesetzt
-        // werden (gleicher Pfad wie ApplyEngine, eine Wahrheit).
-        let template = ApplyEngine.replacementTemplate(for: options)
-
+        // RegEx und Ersetzungstemplate liegen bereits im Plan; ab hier fällt
+        // nur noch die textspezifische Zeilen- und Trefferarbeit an.
         var matches: [Match] = []
         matches.reserveCapacity(min(maxMatches, 1024))
         var total = 0
@@ -164,8 +174,8 @@ enum BufferSearch {
         // `.reportProgress` sorgt auch bei riesigen Texten OHNE Treffer für
         // regelmäßige Callbacks. Ohne diese Option könnte nur bei gefundenen
         // Treffern abgebrochen werden und ein No-Match-Scan liefe zu Ende.
-        regex.enumerateMatches(in: text, options: [.reportProgress],
-                               range: scanRange) { result, _, stop in
+        plan.regex.enumerateMatches(in: text, options: [.reportProgress],
+                                    range: scanRange) { result, _, stop in
             if shouldCancel() {
                 cancelled = true
                 stop.pointee = true
@@ -191,8 +201,10 @@ enum BufferSearch {
                 // Über CaseTemplate statt direkt: unterstützt BBEdits
                 // \U/\L/\u/\l/\E im Ersetzungsmuster (Fast Path ohne
                 // Operatoren = unverändert NSRegularExpression).
-                let replacedText = CaseTemplate.replacement(for: result, in: text,
-                                                            regex: regex, template: template)
+                let replacedText = CaseTemplate.replacement(
+                    for: result, in: text, regex: plan.regex,
+                    template: plan.replacementTemplate
+                )
                 matches.append(Match(range: r, line: line, column: column,
                                      matchText: matchText, lineRemainder: lineRemainder,
                                      replacedText: replacedText))
@@ -217,22 +229,31 @@ enum BufferSearch {
     static func replaceAll(in text: String, options: SearchOptions,
                            searchRange: NSRange? = nil) -> String? {
         guard !options.isEmpty else { return nil }
-        guard let regex = try? ApplyEngine.buildRegex(options) else { return nil }
+        guard let plan = try? SearchPlan(options: options) else { return nil }
+        return replaceAll(in: text, plan: plan, searchRange: searchRange)
+    }
+
+    /// `replaceAll` mit einem für den gesamten Lauf vorbereiteten Plan.
+    /// Besonders der Geöffnet-Scope verwendet ihn über alle Tabs hinweg.
+    static func replaceAll(in text: String, plan: SearchPlan,
+                           searchRange: NSRange? = nil) -> String? {
+        guard !plan.options.isEmpty else { return nil }
         let ns = text as NSString
-        let template = ApplyEngine.replacementTemplate(for: options)
         let fullRange = NSRange(location: 0, length: ns.length)
         let scanRange = searchRange.map { NSIntersectionRange($0, fullRange) } ?? fullRange
         // Case-Operatoren (\U/\L/…) kann `stringByReplacingMatches` nicht
         // deuten — dann selbst enumerieren + zusammensetzen. Ohne Operatoren
         // bleibt der schnelle Original-Pfad.
-        if CaseTemplate.containsOperators(template) {
-            return CaseTemplate.replaceAllAssembling(in: text, regex: regex,
-                                                     template: template, range: scanRange)
+        if CaseTemplate.containsOperators(plan.replacementTemplate) {
+            return CaseTemplate.replaceAllAssembling(
+                in: text, regex: plan.regex,
+                template: plan.replacementTemplate, range: scanRange
+            )
         }
-        return regex.stringByReplacingMatches(
+        return plan.regex.stringByReplacingMatches(
             in: text, options: [],
             range: scanRange,
-            withTemplate: template)
+            withTemplate: plan.replacementTemplate)
     }
 
     // MARK: - Zeilen-/Spalten-Berechnung

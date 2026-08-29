@@ -53,7 +53,21 @@ enum OpenTabsSearch {
     static func find(tabs: [TabInput], options: SearchOptions,
                      maxTotal: Int = BufferSearch.defaultMaxMatches,
                      shouldCancel: () -> Bool = { false }) -> Result {
-        guard !options.isEmpty else { return .empty }
+        // Ohne Eingaben gab der bisherige Mehrtab-Pfad auch bei einem
+        // ungültigen Muster ein leeres Ergebnis zurück. Diesen Vertrag
+        // bewahren wir, bevor der gemeinsame Plan entsteht.
+        guard !options.isEmpty, !tabs.isEmpty, !shouldCancel() else {
+            return .empty
+        }
+        let plan: SearchPlan
+        do {
+            plan = try SearchPlan(options: options)
+        } catch {
+            return Result(
+                perTab: [], totalMatches: 0, wasCapped: false,
+                invalidPatternMessage: (error as NSError).localizedDescription
+            )
+        }
 
         var perTab: [TabHits] = []
         var total = 0
@@ -63,15 +77,9 @@ enum OpenTabsSearch {
             // Budget: was vom Gesamt-Cap noch übrig ist. 0 ist erlaubt —
             // dann zählt BufferSearch nur noch (materialisiert nichts mehr).
             let budget = max(0, maxTotal - materialized)
-            let r = BufferSearch.find(in: tab.content, options: options,
+            let r = BufferSearch.find(in: tab.content, plan: plan,
                                       maxMatches: budget,
                                       shouldCancel: shouldCancel)
-            // Ungültiges Pattern ist tab-unabhängig → sofort mit der
-            // Fehlermeldung raus (roter Streifen in der Maske).
-            if let msg = r.invalidPatternMessage {
-                return Result(perTab: [], totalMatches: 0,
-                              wasCapped: false, invalidPatternMessage: msg)
-            }
             guard r.totalMatches > 0 else { continue }
             perTab.append(TabHits(id: tab.id, title: tab.title,
                                   matches: r.matches, totalMatches: r.totalMatches))
@@ -88,9 +96,11 @@ enum OpenTabsSearch {
     /// wendet das Dictionary dann aufs Tab-Array an (dirty-Markierung,
     /// Editor-Reload). Rein in-memory, kein Disk-Write (Speichern via ⌘S).
     static func replaceAll(tabs: [TabInput], options: SearchOptions) -> [UUID: String] {
+        guard !options.isEmpty,
+              let plan = try? SearchPlan(options: options) else { return [:] }
         var changed: [UUID: String] = [:]
         for tab in tabs {
-            guard let replaced = BufferSearch.replaceAll(in: tab.content, options: options),
+            guard let replaced = BufferSearch.replaceAll(in: tab.content, plan: plan),
                   replaced != tab.content else { continue }
             changed[tab.id] = replaced
         }

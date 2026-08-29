@@ -608,6 +608,27 @@ func folderSearch_recursiveResultCarriesCanonicalURL() throws {
             "Der UI-Guard braucht die im Worker gelesene Dateibasis")
 }
 
+@Test("Vorbereiteter SearchPlan gilt unverändert für alle Dateien eines Ordnerlaufs")
+func folderSearch_reusesPreparedPlanAcrossFiles() throws {
+    let c = try FolderCorpus()
+    try c.write("first.txt", "ring, The")
+    try c.write("second.txt", "book, the", in: "nested")
+    let options = SearchOptions(
+        find: "*, the", replace: "The *",
+        isRegex: false, caseSensitive: false
+    )
+    let plan = try SearchPlan(options: options)
+
+    let result = FolderSearch.find(
+        in: [c.root], filter: .knownText, plan: plan
+    )
+
+    #expect(result.totalMatches == 2)
+    #expect(result.filesWithMatches.flatMap(\.matches).map(\.replacedText).sorted()
+            == ["The book", "The ring"])
+    #expect(result.filesWithMatches.allSatisfy { $0.searchOptions == options })
+}
+
 @Test("Überlappende Datei-Set-Wurzeln liefern jede Datei nur einmal")
 func folderSearch_deduplicatesOverlappingRoots() throws {
     let c = try FolderCorpus()

@@ -9,6 +9,17 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.10] — 2026-08-29
+
+### Verbessert
+
+- **Suchen über viele Dateien oder geöffnete Tabs bereiten das Suchmuster nur
+  noch einmal pro Lauf vor.** Ordnersuche, Geöffnet-Suche, Vorschau und
+  Mehrdatei-Apply verwenden denselben unveränderlichen RegEx- und
+  Ersetzungsplan für alle Eingaben. Die Treffer- und Ersetzungssemantik bleibt
+  unverändert; große Eingabemengen vermeiden die bisherige Kompilierarbeit pro
+  Datei oder Tab.
+
 ## [v1.113.9] — 2026-08-29
 
 ### Behoben

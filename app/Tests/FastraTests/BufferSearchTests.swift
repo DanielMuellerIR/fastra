@@ -444,3 +444,30 @@ func replaceAll_emptyPatternNil() {
     let r = BufferSearch.replaceAll(in: "egal", options: SearchOptions(find: "", replace: "x"))
     #expect(r == nil)
 }
+
+// MARK: - Vorbereiteter Mehrfachlauf
+
+@Test("Ein SearchPlan liefert in mehreren Buffern und beim Ersetzen dieselbe Wildcard-Semantik")
+func searchPlan_reusesWildcardSemantics() throws {
+    let options = SearchOptions(
+        find: "*, the", replace: "The *",
+        isRegex: false, caseSensitive: false
+    )
+    let plan = try SearchPlan(options: options)
+
+    let first = BufferSearch.find(in: "ring, The", plan: plan)
+    let second = BufferSearch.find(in: "book, the", plan: plan)
+    let replaced = BufferSearch.replaceAll(in: "ring, The\nbook, the", plan: plan)
+
+    #expect(plan.options == options)
+    #expect(first.matches.map(\.replacedText) == ["The ring"])
+    #expect(second.matches.map(\.replacedText) == ["The book"])
+    #expect(replaced == "The ring\nThe book")
+}
+
+@Test("Ein ungültiges RegEx lässt keinen SearchPlan entstehen")
+func searchPlan_rejectsInvalidRegex() {
+    #expect(throws: (any Error).self) {
+        try SearchPlan(options: SearchOptions(find: "(", replace: "x"))
+    }
+}

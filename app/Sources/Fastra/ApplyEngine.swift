@@ -28,7 +28,7 @@ import Foundation
 
 /// Such-/Ersetzen-Eingaben für die Engine. Bewusst frei vom Workspace-
 /// Modell — die Engine soll auch aus Tests und CLI heraus aufrufbar sein.
-struct SearchOptions: Equatable {
+struct SearchOptions: Equatable, Sendable {
     /// Roh-Eingabe aus dem Find-Feld. Bei `isRegex == false` wird
     /// dieser String wie ein literaler Text behandelt.
     let find: String
@@ -68,6 +68,35 @@ struct SearchOptions: Equatable {
     /// Source of Truth für Such- UND Ersetz-Seite (Feature J Schritt 2).
     var usesWildcard: Bool {
         !isRegex && !treatWildcardLiterally && WildcardPattern.containsWildcard(find)
+    }
+}
+
+/// Ein für genau einen Suchlauf vorbereiteter, unveränderlicher Plan.
+///
+/// Ordner-, Geöffnet- und Apply-Läufe reichen dieselbe Instanz an alle
+/// Dateien beziehungsweise Tabs weiter. Dadurch entstehen das reguläre
+/// Ausdrucksmuster und das Ersetzungstemplate einmal pro Lauf statt einmal
+/// pro Eingabe. `NSRegularExpression` ist nach dem Initialisieren
+/// unveränderlich; die Sendable-Zusage betrifft ausschließlich dieses
+/// kontrollierte Teilen des fertig gebauten Foundation-Objekts.
+struct SearchPlan: @unchecked Sendable {
+    let options: SearchOptions
+    let regex: NSRegularExpression
+    let replacementTemplate: String
+
+    init(options: SearchOptions) throws {
+        self.options = options
+        // Im Wildcard-Modus liefert eine Übersetzung sowohl das RegEx-Muster
+        // als auch die Zahl der Ersetzungsgruppen. Ohne diesen gemeinsamen
+        // Wert würde selbst ein einzelner SearchPlan die Suchseite zweimal
+        // übersetzen.
+        let wildcard = options.usesWildcard
+            ? WildcardPattern.compileFind(options.find)
+            : nil
+        regex = try ApplyEngine.buildRegex(options, wildcard: wildcard)
+        replacementTemplate = ApplyEngine.replacementTemplate(
+            for: options, wildcard: wildcard
+        )
     }
 }
 
@@ -216,9 +245,9 @@ enum ApplyEngine {
         guard !options.isEmpty else {
             return ReplacePlan(files: [], options: options)
         }
-        let regex: NSRegularExpression
+        let searchPlan: SearchPlan
         do {
-            regex = try buildRegex(options)
+            searchPlan = try SearchPlan(options: options)
         } catch {
             // Ungültiges Pattern → alle Dateien als „skipped" mit Grund;
             // so steht es im Plan und kein Apply läuft je los.
@@ -240,7 +269,7 @@ enum ApplyEngine {
                                          matches: [], skipped: .unreadable)
             }
             return planSingle(url: url, data: read.data, snapshot: read.snapshot,
-                              regex: regex, options: options)
+                              searchPlan: searchPlan)
         }
         return ReplacePlan(files: planned, options: options)
     }
@@ -249,9 +278,9 @@ enum ApplyEngine {
     /// ist die Sicherheitsbrücke zwischen sichtbarer Ordnersuche und Apply.
     static func plan(inputs: [ReplacePlanInput], options: SearchOptions) -> ReplacePlan {
         guard !options.isEmpty else { return ReplacePlan(files: [], options: options) }
-        let regex: NSRegularExpression
+        let searchPlan: SearchPlan
         do {
-            regex = try buildRegex(options)
+            searchPlan = try SearchPlan(options: options)
         } catch {
             return ReplacePlan(files: inputs.map { input in
                 PlannedFileChange(url: input.url, originalSnapshot: input.snapshot,
@@ -262,7 +291,7 @@ enum ApplyEngine {
         }
         return ReplacePlan(files: inputs.map {
             planSingle(url: $0.url, data: $0.data, snapshot: $0.snapshot,
-                       regex: regex, options: options)
+                       searchPlan: searchPlan)
         }, options: options)
     }
 
@@ -271,12 +300,11 @@ enum ApplyEngine {
     private static func planSingle(url: URL,
                                    data: Data,
                                    snapshot: FileSnapshot,
-                                   regex: NSRegularExpression,
-                                   options: SearchOptions) -> PlannedFileChange {
+                                   searchPlan: SearchPlan) -> PlannedFileChange {
         // Der normale Dry-Run besitzt kein Abbruchsignal. Der transaktionale
         // Pfad darunter verwendet dieselbe Logik mit einem echten Signal.
         planSingleCancellable(url: url, data: data, snapshot: snapshot,
-                              regex: regex, options: options,
+                              searchPlan: searchPlan,
                               shouldCancel: { false })!
     }
 
@@ -287,8 +315,7 @@ enum ApplyEngine {
         url: URL,
         data: Data,
         snapshot: FileSnapshot,
-        regex: NSRegularExpression,
-        options: SearchOptions,
+        searchPlan: SearchPlan,
         shouldCancel: @escaping () -> Bool
     ) -> PlannedFileChange? {
         if shouldCancel() { return nil }
@@ -330,10 +357,9 @@ enum ApplyEngine {
         assembled.reserveCapacity(text.count)
         var cursor = 0
         var cancelled = false
-        // Template einmal bestimmen (Plain-Text-Modus escapt `$`/`\`).
-        let template = replacementTemplate(for: options)
-        regex.enumerateMatches(in: text, options: [.reportProgress],
-                               range: full) { result, _, stop in
+        // RegEx und Template stammen aus dem einmal vorbereiteten Laufplan.
+        searchPlan.regex.enumerateMatches(in: text, options: [.reportProgress],
+                                          range: full) { result, _, stop in
             if shouldCancel() {
                 cancelled = true
                 stop.pointee = true
@@ -350,8 +376,10 @@ enum ApplyEngine {
             // Über CaseTemplate statt direkt: unterstützt BBEdits
             // \U/\L/\u/\l/\E im Ersetzungsmuster (Fast Path ohne
             // Operatoren = unverändert NSRegularExpression).
-            let after = CaseTemplate.replacement(for: result, in: text,
-                                                 regex: regex, template: template)
+            let after = CaseTemplate.replacement(
+                for: result, in: text, regex: searchPlan.regex,
+                template: searchPlan.replacementTemplate
+            )
             assembled.append(after)
             matches.append(PlannedMatch(range: r, before: before, after: after))
             cursor = r.location + r.length
@@ -386,19 +414,13 @@ enum ApplyEngine {
     /// Datei und reicht Cancellation bis in die RegEx-Enumeration durch.
     private static func planTransactionInput(
         _ input: ReplacePlanInput,
-        options: SearchOptions,
+        searchPlan: SearchPlan,
         shouldCancel: @escaping () -> Bool
     ) throws -> PlannedFileChange {
         if shouldCancel() { throw ApplyError.cancelled }
-        let regex: NSRegularExpression
-        do {
-            regex = try buildRegex(options)
-        } catch {
-            throw ApplyError.planNotApplyable((error as NSError).localizedDescription)
-        }
         guard let file = planSingleCancellable(
             url: input.url, data: input.data, snapshot: input.snapshot,
-            regex: regex, options: options, shouldCancel: shouldCancel
+            searchPlan: searchPlan, shouldCancel: shouldCancel
         ) else {
             throw ApplyError.cancelled
         }
@@ -411,6 +433,13 @@ enum ApplyEngine {
     /// `wholeWord` und der Plain-Text-Modus werden auf RegEx-Ebene umgesetzt,
     /// damit es nur einen Matching-Pfad gibt.
     static func buildRegex(_ options: SearchOptions) throws -> NSRegularExpression {
+        try buildRegex(options, wildcard: nil)
+    }
+
+    fileprivate static func buildRegex(
+        _ options: SearchOptions,
+        wildcard preparedWildcard: WildcardPattern.Compiled?
+    ) throws -> NSRegularExpression {
         var pattern: String
         if options.isRegex {
             pattern = options.find
@@ -420,7 +449,8 @@ enum ApplyEngine {
             // `.dotMatchesLineSeparators` setzen wir BEWUSST NICHT → `.` matcht
             // kein `\n`, der Einzelstern bleibt zeilenweise; nur der
             // Doppelstern fängt über Zeilenumbrüche (via \s\S-Klasse).
-            pattern = WildcardPattern.compileFind(options.find).regexPattern
+            pattern = (preparedWildcard
+                ?? WildcardPattern.compileFind(options.find)).regexPattern
         } else {
             // Plain-Text → vollständig escapen, sodass Sonderzeichen
             // wie `.` `*` `(` literal gemeint sind.
@@ -443,6 +473,13 @@ enum ApplyEngine {
     /// (leerer) Backref auf Gruppe 5 gedeutet — der Vertrag in
     /// `SearchOptions.replace` verlangt aber literale Ersetzung.
     static func replacementTemplate(for options: SearchOptions) -> String {
+        replacementTemplate(for: options, wildcard: nil)
+    }
+
+    fileprivate static func replacementTemplate(
+        for options: SearchOptions,
+        wildcard preparedWildcard: WildcardPattern.Compiled?
+    ) -> String {
         if options.isRegex { return options.replace }
         // Platzhalter-Modus (Feature J): N-tes `*` im Ersetzen → `$N`. Greift
         // NUR, wenn die Such-Seite Platzhalter nutzt (gleiche Bedingung), damit
@@ -450,7 +487,8 @@ enum ApplyEngine {
         if options.usesWildcard {
             // Die Zahl der Such-Sterne grenzt gültige Pillen-Verweise ein:
             // `$1` bis `$N` bleiben Rückreferenzen, andere Dollar-Texte literal.
-            let wildcard = WildcardPattern.compileFind(options.find)
+            let wildcard = preparedWildcard
+                ?? WildcardPattern.compileFind(options.find)
             return WildcardPattern.compileReplace(
                 options.replace,
                 captureCount: wildcard.starCount
@@ -695,6 +733,12 @@ extension ApplyEngine {
             throw ApplyError.planNotApplyable(L10n.string("Der Apply-Auftrag ist leer."))
         }
         if shouldCancel() { throw ApplyError.cancelled }
+        let searchPlan: SearchPlan
+        do {
+            searchPlan = try SearchPlan(options: transaction.options)
+        } catch {
+            throw ApplyError.planNotApplyable((error as NSError).localizedDescription)
+        }
 
         let root = backupRoot ?? defaultBackupRoot
         if let maxAge = cleanupOlderThan {
@@ -755,7 +799,7 @@ extension ApplyEngine {
             let file = try planTransactionInput(
                 ReplacePlanInput(url: input.url, data: current.data,
                                  snapshot: current.snapshot),
-                options: transaction.options, shouldCancel: shouldCancel)
+                searchPlan: searchPlan, shouldCancel: shouldCancel)
             guard file.skipped == nil else {
                 throw ApplyError.planNotApplyable(L10n.format(
                     "„%@“ kann nicht auf der sichtbaren Vorschau-Basis ersetzt werden.",
