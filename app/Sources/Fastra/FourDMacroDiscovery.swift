@@ -59,6 +59,10 @@ enum FourDMacroDiscovery {
     /// Die beiden Lagen, in denen ein Komponenten-Bundle seinen Makro-Ordner
     /// haben kann: bis 4D v20 direkt, ab v21 unter `Contents`.
     private static let macroDirectoryPaths = ["Macros v2", "Contents/Macros v2"]
+    /// Auch die Projekt-Abhängigkeitsliste ist fremder Dateiinhalt. Dieselbe
+    /// Grenze wie für eine Makro-XML verhindert, dass die Discovery eine
+    /// beliebig große JSON-Datei vollständig in den Speicher lädt.
+    static let maximumDependenciesJSONBytes = 8 * 1024 * 1024
 
     // MARK: - Projektwurzel
 
@@ -120,7 +124,7 @@ enum FourDMacroDiscovery {
             remaining -= 1
         }
 
-        if let projectRoot {
+        if let projectRoot, remaining > 0 {
             for (name, container) in componentContainers(in: projectRoot,
                                                          fileManager: fileManager) {
                 guard remaining > 0 else { break }
@@ -132,21 +136,29 @@ enum FourDMacroDiscovery {
             }
         }
 
-        let userDirectory = homeDirectory
-            .appendingPathComponent("Library/Application Support/4D/Macros v2",
-                                    isDirectory: true)
-        for file in xmlFiles(in: userDirectory, fileManager: fileManager,
-                             limit: remaining) {
-            add(file, origin: .userLibrary)
+        if remaining > 0 {
+            let userDirectory = homeDirectory
+                .appendingPathComponent("Library/Application Support/4D/Macros v2",
+                                        isDirectory: true)
+            for file in xmlFiles(in: userDirectory, fileManager: fileManager,
+                                 limit: remaining) {
+                add(file, origin: .userLibrary)
+            }
         }
 
-        let bundles = fourDApplicationBundles(in: applicationDirectories,
-                                              fileManager: fileManager)
-        if let choice = highestVersionBundle(bundles),
-           let file = applicationMacrosFile(inBundle: choice.url,
-                                            preferredLanguages: preferredLanguages,
-                                            fileManager: fileManager) {
-            add(file, origin: .fourDApplication(version: choice.version))
+        // Sobald höher priorisierte Fundorte das Budget verbraucht haben,
+        // darf die reine Ergebnisgrenze nicht noch einen nutzlosen Scan der
+        // Programme-Ordner auslösen.
+        if remaining > 0 {
+            let bundles = fourDApplicationBundles(
+                in: applicationDirectories, fileManager: fileManager)
+            if let choice = highestVersionBundle(bundles),
+               let file = applicationMacrosFile(
+                    inBundle: choice.url,
+                    preferredLanguages: preferredLanguages,
+                    fileManager: fileManager) {
+                add(file, origin: .fourDApplication(version: choice.version))
+            }
         }
 
         return sources
@@ -192,12 +204,33 @@ enum FourDMacroDiscovery {
     /// Interessant ist hier nur ein Eintrag mit einem Feld „path": Er zeigt
     /// auf eine Komponente außerhalb des `Components`-Ordners. Alles andere
     /// (etwa Abhängigkeiten aus einem Repository) hat lokal keinen Pfad.
-    static func declaredDependencies(in projectRoot: URL,
-                                     fileManager: FileManager) -> [(name: String, url: URL)] {
+    static func declaredDependencies(
+        in projectRoot: URL,
+        fileManager: FileManager,
+        maximumBytes: Int = maximumDependenciesJSONBytes
+    ) -> [(name: String, url: URL)] {
         let file = projectRoot
             .appendingPathComponent("Project/Sources/dependencies.json")
-        guard fileManager.fileExists(atPath: file.path),
-              let data = try? Data(contentsOf: file),
+        guard maximumBytes >= 0, maximumBytes < Int.max,
+              fileManager.fileExists(atPath: file.path),
+              let handle = try? FileHandle(forReadingFrom: file) else { return [] }
+        defer { try? handle.close() }
+        // In kleinen Blöcken bis höchstens Grenze + 1 lesen. `read(upToCount:)`
+        // darf weniger als angefordert liefern; ein einzelner Read wäre daher
+        // kein harter Beleg, dass hinter einem gültigen JSON-Präfix nichts mehr
+        // folgt.
+        var data = Data()
+        do {
+            while data.count <= maximumBytes {
+                let remaining = maximumBytes + 1 - data.count
+                guard let chunk = try handle.read(upToCount: min(64 * 1024, remaining)),
+                      !chunk.isEmpty else { break }
+                data.append(chunk)
+            }
+        } catch {
+            return []
+        }
+        guard data.count <= maximumBytes,
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let dependencies = root["dependencies"] as? [String: Any] else { return [] }
         var result: [(name: String, url: URL)] = []

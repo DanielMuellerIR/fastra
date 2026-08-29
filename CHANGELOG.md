@@ -9,6 +9,16 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.12] — 2026-08-29
+
+### Verbessert
+
+- **Das 4D-Makro-Quellenlimit beendet die Suche jetzt am letzten benötigten
+  Fundort.** Sind die höchstens 256 Quellen bereits durch höher priorisierte
+  Projektkomponenten belegt, durchsucht Fastra nicht mehr zusätzlich die
+  Benutzer- und Programme-Ordner. Die verknüpfte `dependencies.json` wird
+  außerdem wie eine Makro-XML auf höchstens 8 MiB begrenzt.
+
 ## [v1.113.11] — 2026-08-29
 
 ### Behoben

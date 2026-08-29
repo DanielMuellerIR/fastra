@@ -735,7 +735,8 @@ selbst laden würde — bezogen auf das 4D-Projekt der offenen Datei:
 
 - in den Komponenten des Projekts (`Components/….4dbase/Macros v2`,
   ab 4D v21 `….4dbase/Contents/Macros v2`, zusätzlich über
-  `Project/Sources/dependencies.json` verknüpfte Pakete),
+  `Project/Sources/dependencies.json` verknüpfte Pakete; Fastra liest aus
+  dieser Abhängigkeitsliste höchstens 8 MiB),
 - benutzerweit unter `~/Library/Application Support/4D/Macros v2`,
 - in der installierten 4D.app selbst (sprachabhängige `Macros.xml`; bei
   mehreren Versionen gewinnt die höchste).

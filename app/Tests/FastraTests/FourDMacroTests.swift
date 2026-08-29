@@ -630,6 +630,83 @@ func macroSourcesHonorSourceBudget() throws {
     })
 }
 
+/// Zeichnet die nicht rekursiven Verzeichniszugriffe der Discovery auf. Der
+/// Test prüft damit nicht nur die Ergebniszahl, sondern ob nach verbrauchtem
+/// Quellenbudget tatsächlich keine nachrangigen Fundorte mehr gelesen werden.
+private final class RecordingMacroFileManager: FileManager {
+    private(set) var readDirectories: [URL] = []
+
+    override func contentsOfDirectory(
+        at url: URL,
+        includingPropertiesForKeys keys: [URLResourceKey]?,
+        options mask: DirectoryEnumerationOptions = []
+    ) throws -> [URL] {
+        readDirectories.append(url.standardizedFileURL)
+        return try super.contentsOfDirectory(
+            at: url, includingPropertiesForKeys: keys, options: mask)
+    }
+}
+
+@Test("Ein verbrauchtes Makro-Quellenbudget überspringt nachrangige Fundorte")
+func macroSourcesStopDiscoveryAfterSourceBudget() throws {
+    let scratch = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let project = scratch.appendingPathComponent("Projekt")
+    try writeFile(project.appendingPathComponent(
+        "Components/Komponente.4dbase/Macros v2/a.xml"))
+    let applications = scratch.appendingPathComponent("Applications")
+    try FileManager.default.createDirectory(
+        at: applications, withIntermediateDirectories: true)
+    let fileManager = RecordingMacroFileManager()
+
+    let limited = FourDMacroDiscovery.macroSources(
+        projectRoot: project, homeDirectory: scratch,
+        applicationDirectories: [applications], fileManager: fileManager,
+        preferredLanguages: ["de"], maximumSourceCount: 1
+    )
+
+    #expect(limited.map(\.url.lastPathComponent) == ["a.xml"])
+    #expect(!fileManager.readDirectories.contains(applications.standardizedFileURL),
+            "Nach dem Komponentenfund darf kein nutzloser Programme-Scan folgen")
+
+    let zeroBudgetFileManager = RecordingMacroFileManager()
+    let empty = FourDMacroDiscovery.macroSources(
+        projectRoot: project, homeDirectory: scratch,
+        applicationDirectories: [applications], fileManager: zeroBudgetFileManager,
+        preferredLanguages: ["de"], maximumSourceCount: 0
+    )
+    #expect(empty.isEmpty)
+    #expect(zeroBudgetFileManager.readDirectories.isEmpty,
+            "Ein Nullbudget darf keinen Fundort öffnen")
+}
+
+@Test("dependencies.json besitzt eine harte Lesegrenze")
+func macroDependenciesJSONReadIsBounded() throws {
+    let scratch = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let project = scratch.appendingPathComponent("Projekt")
+    let json = """
+    {"dependencies":{"Extern":{"path":"../Extern/Komponente.4dbase"}}}
+    """
+    // Das Leerzeichen hinter dem vollständigen JSON macht den Grenzfall
+    // messbar: Wer nur `maximumBytes` liest, sähe ein gültiges Präfix und
+    // könnte die tatsächlich zu große Datei fälschlich akzeptieren.
+    let storedJSON = json + " "
+    let data = Data(storedJSON.utf8)
+    try writeFile(
+        project.appendingPathComponent("Project/Sources/dependencies.json"),
+        storedJSON)
+
+    let accepted = FourDMacroDiscovery.declaredDependencies(
+        in: project, fileManager: .default, maximumBytes: data.count)
+    let rejected = FourDMacroDiscovery.declaredDependencies(
+        in: project, fileManager: .default, maximumBytes: data.count - 1)
+
+    #expect(accepted.map(\.name) == ["Extern"])
+    #expect(rejected.isEmpty,
+            "Schon ein Byte über der Grenze darf nicht vollständig geparst werden")
+}
+
 @Test("4D.app: Sprachwahl folgt der Systemreihenfolge, sonst dem ersten lproj")
 func macroApplicationLanguageChoice() throws {
     let scratch = try makeMacroScratch()

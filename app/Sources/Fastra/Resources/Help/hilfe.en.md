@@ -696,7 +696,8 @@ load, relative to the 4D project of the open file:
 
 - in the project's components (`Components/….4dbase/Macros v2`, from 4D v21
   `….4dbase/Contents/Macros v2`, plus packages linked via
-  `Project/Sources/dependencies.json`),
+  `Project/Sources/dependencies.json`; Fastra reads at most 8 MiB from this
+  dependency list),
 - per user under `~/Library/Application Support/4D/Macros v2`,
 - in the installed 4D.app itself (language-specific `Macros.xml`; with
   several versions the highest wins).
