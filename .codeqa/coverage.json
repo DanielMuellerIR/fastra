@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 2959681
+    "tokens_spent": 2990676
   },
   "campaign_history": [
     {
@@ -227,23 +227,20 @@
       "risk": "critical",
       "priority": 2,
       "reason": "Dateiladen, Platten-Snapshots, große Dateien und Hex-Pfade entscheiden über Datenintegrität und Speichergrenzen.",
-      "state": "pending",
+      "state": "completed",
       "last_run": {
         "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T18:56:27+02:00",
-        "observed_head": "03524005aeb0746c377868202c89da0cd7e01fb4",
-        "content_sha256": "bda1796e9f53864d09cd175e0326c3f9c7a59b0dc6c132fcefa5edc16e21e303",
-        "file_count": 14,
+        "completed_at": "2026-08-29T21:26:08+02:00",
+        "observed_head": "fe4f1896dfbfd2e1e50cc0d3f0533fbd548da250",
+        "content_sha256": "430119def770bea8bdeb7a9310fbcd1bc201e52114aa07675ff4423f086b2e87",
+        "file_count": 15,
         "review": "delta-plus-boundaries",
-        "outcome": "improved",
-        "summary": "Delta und Sicherheitsgrenzen von FileLoader, Snapshot-, Hex-, Abschnitts- und atomarem Schreibpfad geprüft. Abschnittsreader binden nun die erwartete Gesamtgröße und verwerfen verkürzte, gewachsene oder gleich lang in-place geänderte Dateiseiten vollständig; der gemeinsame Versionsvergleich wurde konsolidiert. Das bekannte startübergreifende Atomic-Commit-Recovery bleibt als eigener P2-Schwerpunkt offen.",
+        "outcome": "reviewed-clean",
+        "summary": "Den neu hinzugekommenen AtomicCommitRecovery-Pfad vollständig sowie seine Grenzen zu AtomicFileCommit, App-Start und FileSnapshot geprüft. Journalanlage, O_NOFOLLOW-Pfade, Datei- und Verzeichnis-Synchronisierung, Prozessstart-Identität, Inhalts-/Inode-Bindung und fail-closed Erhalt unklarer Stände sind konsistent; kein weiterer Codefund.",
         "tests": [
-          "Vorher roter PagedFile-Test: Hex gab 4/8 Bytes als Erfolg zurück, Text nur Cocoa-Fehler; danach PagedFileTests 15/15 PASS einschließlich Modellbindung und lokalisiertem Fehlerweg. build.sh mit Fenster-Ziel-Audit und Portabilitätsgate PASS; test.sh 2118 schnelle + 115 serielle Tests PASS, 0 Umgebungsfehler; localization-audit und help-audit --release PASS."
+          "Gezielt AtomicFileCommitTests: 22 Tests/1 Suite PASS; vorheriger vollständiger Lauf am selben Produktstand: 2149 Tests/78 Suites + 115 Tests/11 Suites PASS, Exit 0; Standard-Recovery-Verzeichnis enthält 0 offene JSON-Journale; git diff --check PASS."
         ]
-      },
-      "pending_paths": [
-        "app/Sources/Fastra/AtomicCommitRecovery.swift"
-      ]
+      }
     },
     {
       "id": "git-execution-mutations",
