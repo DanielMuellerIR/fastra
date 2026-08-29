@@ -3,6 +3,7 @@
 // Tests für die gemerkten Scrollpositionen der Seitenleisten-Listen: den
 // Speicher selbst und die reine Rechnung der Wiederherstellung.
 
+import AppKit
 import Foundation
 import Testing
 @testable import Fastra
@@ -128,4 +129,41 @@ func scrollRestore_stopsAfterMaximumAttempts() {
     // beendet die Versuchsgrenze die Schleife.
     #expect(SidebarScrollRestore.isSettled(target: 900, achieved: 200,
                                            attempt: 12, maximumAttempts: 12))
+}
+
+@MainActor
+@Test("Frühes Layout überschreibt das noch nicht wiederhergestellte Ziel nicht")
+func scrollProbe_suppressesRecordingBeforeDeferredRestore() {
+    let memory = SidebarScrollMemory()
+    memory.record(400, for: "fileTree")
+
+    let document = NSView(frame: NSRect(x: 0, y: 0, width: 200, height: 1_000))
+    let probe = SidebarScrollProbeView(frame: .zero)
+    probe.configure(key: "fileTree", memory: memory)
+    document.addSubview(probe)
+
+    let scrollView = NSScrollView(
+        frame: NSRect(x: 0, y: 0, width: 200, height: 100)
+    )
+    scrollView.documentView = document
+    let window = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+        styleMask: [.borderless], backing: .buffered, defer: false
+    )
+    window.isReleasedWhenClosed = false
+    window.contentView = scrollView
+    defer { window.close() }
+
+    // `viewDidMoveToWindow` hat den Observer installiert, sein verzögerter
+    // Restore-Block kann im laufenden Main-Actor-Durchlauf aber noch nicht
+    // gelaufen sein. Genau in diesem Fenster meldet AppKit beim Aufbau eine
+    // Bounds-Änderung an Position 0.
+    #expect(probe.window === window)
+    scrollView.contentView.scroll(to: .zero)
+    NotificationCenter.default.post(
+        name: NSView.boundsDidChangeNotification,
+        object: scrollView.contentView
+    )
+
+    #expect(memory.offset(for: "fileTree") == 400)
 }

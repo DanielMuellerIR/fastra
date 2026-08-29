@@ -125,6 +125,13 @@ final class SidebarScrollProbeView: NSView {
             stopObserving()
             return
         }
+        // Den Schutz VOR dem Observer setzen: Zwischen `startObserving()`
+        // und dem absichtlich verzögerten `beginRestore()` kann AppKit schon
+        // eine Bounds-Änderung für die frisch montierte ScrollView melden.
+        // Ohne diesen frühen Wächter schrieb die Meldung Position 0 in den
+        // Speicher und löschte genau das Ziel, das der nächste Main-Loop-
+        // Durchlauf wiederherstellen sollte (CodeQA 2026-08-29).
+        isRestoring = (memory?.offset(for: key) ?? 0) > 0
         startObserving()
         // Erst im nächsten Durchlauf: Direkt im Aufbau steht die Dokumenthöhe
         // der noch leeren LazyVStack fest bei null, jedes Ziel wäre auf null
@@ -161,6 +168,11 @@ final class SidebarScrollProbeView: NSView {
 
     private func beginRestore() {
         guard let memory, let target = memory.offset(for: key), target > 0 else {
+            // Der gespeicherte Wert kann zwischen Montage und diesem
+            // verzögerten Einstieg entfernt worden sein, etwa beim
+            // Projektwechsel. Dann darf der Observer wieder regulär
+            // Nutzerbewegungen aufzeichnen.
+            isRestoring = false
             scrollDebug("\(key): nichts wiederherzustellen "
                 + "(gemerkt=\(memory?.offset(for: key).map { Int($0) }.map(String.init) ?? "nil"))")
             return

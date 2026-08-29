@@ -9,6 +9,16 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.11] — 2026-08-29
+
+### Behoben
+
+- **Seitenleisten stellen ihre Scrollposition auch bei einer frühen
+  Layoutmeldung zuverlässig wieder her.** Der AppKit-Beobachter unterdrückt
+  Aufbaupositionen jetzt bereits vor dem verzögerten Wiederherstellungslauf;
+  ein kurzer Wechsel zu Änderungen oder Verlauf setzt einen weit nach unten
+  gescrollten Dateibaum dadurch nicht mehr auf den Anfang zurück.
+
 ## [v1.113.10] — 2026-08-29
 
 ### Verbessert
