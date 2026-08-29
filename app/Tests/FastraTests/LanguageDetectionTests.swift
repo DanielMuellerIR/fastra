@@ -18,6 +18,21 @@ private func synchronousDocumentLanguageDetector() -> DocumentLanguageDetector {
     )
 }
 
+@Test("Analyseprobe begrenzt UTF-8-Bytes und merkt abgeschnittenen Inhalt")
+func analysisSampleUsesUTF8ByteBoundary() {
+    let exact = String(
+        repeating: "x", count: Detection.analysisUTF8ByteLimit
+    )
+    let exactSample = Detection.analysisSample(from: exact)
+    #expect(exactSample.text == exact)
+    #expect(exactSample.isComplete)
+
+    let oversized = exact + "ä"
+    let oversizedSample = Detection.analysisSample(from: oversized)
+    #expect(oversizedSample.text.utf8.count == Detection.analysisUTF8ByteLimit)
+    #expect(!oversizedSample.isComplete)
+}
+
 // MARK: - Positivfälle (hohe Konfidenz)
 
 @Test("JSON: vollständiges Objekt wird erkannt")

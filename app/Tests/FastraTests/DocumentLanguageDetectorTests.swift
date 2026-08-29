@@ -65,11 +65,18 @@ private final class DetectionRecorder: @unchecked Sendable {
 private final class AnalyzerProbe: @unchecked Sendable {
     private let lock = NSLock()
     private var lengths: [Int] = []
+    private var utf8Lengths: [Int] = []
 
     var analyzedLengths: [Int] { lock.withLock { lengths } }
+    var analyzedUTF8Lengths: [Int] { lock.withLock { utf8Lengths } }
 
-    func analyze(_ sample: String) -> DocumentLanguageDetector.Analysis {
-        lock.withLock { lengths.append(sample.count) }
+    func analyze(
+        _ sample: ContentLanguageDetection.AnalysisSample
+    ) -> DocumentLanguageDetector.Analysis {
+        lock.withLock {
+            lengths.append(sample.text.count)
+            utf8Lengths.append(sample.text.utf8.count)
+        }
         return .init(format: .json, fallbackLanguage: nil)
     }
 }
@@ -103,7 +110,7 @@ struct DocumentLanguageDetectorTests {
         )
         let request = detectorRequest(content: "ein kurzer Satz")
 
-        detector.schedule(request, onResult: recorder.append)
+        detector.schedule(request) { recorder.append($0) }
         #expect(delays.count == 1)
 
         detector.cancel(tabID: request.tabID, documentID: request.documentID)
@@ -127,7 +134,7 @@ struct DocumentLanguageDetectorTests {
             content: #"{"name":"Fastra","version":183,"active":true}"#
         )
 
-        detector.schedule(request, onResult: recorder.append)
+        detector.schedule(request) { recorder.append($0) }
         background.runAll()
         #expect(delivery.count == 1, "Analyse muss vor der Cancellation fertig sein")
 
@@ -159,8 +166,8 @@ struct DocumentLanguageDetectorTests {
             content: "<!DOCTYPE html><html><body>neu</body></html>"
         )
 
-        detector.schedule(first, onResult: recorder.append)
-        detector.schedule(second, onResult: recorder.append)
+        detector.schedule(first) { recorder.append($0) }
+        detector.schedule(second) { recorder.append($0) }
         background.runAll()
         delivery.runAll()
 
@@ -234,8 +241,8 @@ struct DocumentLanguageDetectorTests {
             content: "<!DOCTYPE html><html><body>second</body></html>"
         )
 
-        firstDetector.schedule(first, onResult: firstResults.append)
-        secondDetector.schedule(second, onResult: secondResults.append)
+        firstDetector.schedule(first) { firstResults.append($0) }
+        secondDetector.schedule(second) { secondResults.append($0) }
         firstDetector.cancel(tabID: tabID, documentID: documentID)
         background.runAll()
         delivery.runAll()
@@ -254,19 +261,50 @@ struct DocumentLanguageDetectorTests {
         let detector = DocumentLanguageDetector(
             scheduleWork: background.schedule,
             deliverResult: delivery.schedule,
-            analyze: probe.analyze
+            analyze: { probe.analyze($0) }
         )
         let content = String(
             repeating: "0123456789abcdef",
-            count: ContentLanguageDetection.analysisCharacterLimit
+            count: ContentLanguageDetection.analysisUTF8ByteLimit
         )
 
         detector.schedule(detectorRequest(content: content)) { _ in }
         background.runAll()
         delivery.runAll()
 
-        #expect(content.count > ContentLanguageDetection.analysisCharacterLimit)
-        #expect(probe.analyzedLengths == [ContentLanguageDetection.analysisCharacterLimit])
+        #expect(content.count > ContentLanguageDetection.analysisUTF8ByteLimit)
+        #expect(probe.analyzedLengths == [ContentLanguageDetection.analysisUTF8ByteLimit])
+    }
+
+    @Test("Auch ein einzelnes sehr großes Graphem bleibt als Probe bytebegrenzt")
+    @MainActor
+    func oversizedGraphemeIsByteBoundedBeforeAnalysis() {
+        let background = ManualWorkScheduler()
+        let delays = ManualDelayScheduler()
+        let delivery = ManualWorkScheduler()
+        let probe = AnalyzerProbe()
+        let detector = DocumentLanguageDetector(
+            scheduleWork: background.schedule,
+            scheduleDelayedWork: delays.schedule,
+            deliverResult: delivery.schedule,
+            analyze: { probe.analyze($0) }
+        )
+        // Ein Basiszeichen mit vielen kombinierenden Akzenten zählt für
+        // `String.prefix` als EIN Zeichen, umfasst aber weit mehr als 64 KiB.
+        // Die Analysegrenze muss Bytes begrenzen, nicht Graphemcluster.
+        let content = "a" + String(
+            repeating: "\u{0301}",
+            count: ContentLanguageDetection.analysisUTF8ByteLimit
+        )
+
+        detector.schedule(detectorRequest(content: content)) { _ in }
+        delays.runAll()
+        background.runAll()
+        delivery.runAll()
+
+        #expect(content.count == 1)
+        #expect(content.utf8.count > ContentLanguageDetection.analysisUTF8ByteLimit)
+        #expect(probe.analyzedUTF8Lengths == [ContentLanguageDetection.analysisUTF8ByteLimit - 1])
     }
 
     @Test("Die zuletzt analysierte Länge drosselt kleine Folgeänderungen")
@@ -278,7 +316,7 @@ struct DocumentLanguageDetectorTests {
         let detector = DocumentLanguageDetector(
             scheduleWork: background.schedule,
             deliverResult: delivery.schedule,
-            analyze: probe.analyze
+            analyze: { probe.analyze($0) }
         )
         let tabID = UUID()
         let documentID = UUID()
@@ -322,7 +360,7 @@ struct DocumentLanguageDetectorTests {
         // Hintergrund-Scheduler liegen (noch kein Ergebnis geliefert).
         detector.schedule(detectorRequest(
             tabID: tabID, documentID: documentID, content: bigContent
-        ), onResult: recorder.append)
+        )) { recorder.append($0) }
         #expect(background.count == 1)
 
         // Die kleine Folgeänderung verwirft die laufende Analyse. Sie darf
@@ -331,7 +369,7 @@ struct DocumentLanguageDetectorTests {
         detector.schedule(detectorRequest(
             tabID: tabID, documentID: documentID,
             oldLength: bigContent.count, content: bigContent + "y"
-        ), onResult: recorder.append)
+        )) { recorder.append($0) }
         #expect(delays.count == 1, "Ersatzanalyse muss eingeplant sein")
 
         background.runAll()   // verworfene alte Analyse läuft ins Leere
@@ -352,11 +390,11 @@ struct DocumentLanguageDetectorTests {
         let detector = DocumentLanguageDetector(
             scheduleWork: background.schedule,
             scheduleDelayedWork: delays.schedule,
-            analyze: probe.analyze
+            analyze: { probe.analyze($0) }
         )
         let request = detectorRequest(content: "ein kurzer Satz")
 
-        detector.schedule(request, onResult: recorder.append)
+        detector.schedule(request) { recorder.append($0) }
         #expect(delays.count == 1)
         detector.cancel(tabID: request.tabID, documentID: request.documentID)
 

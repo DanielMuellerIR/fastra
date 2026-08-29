@@ -502,9 +502,9 @@ startest Fastra danach neu.
 ## Sprachen und Syntaxfarben
 
 Fastra erkennt die Sprache an der Dateiendung, bei endungslosen Dateien
-am Inhalt. Der Sprach-Chip in der Fußzeile öffnet das Sprachmenü: Die
-manuelle Wahl gewinnt immer vor der Automatik, „Automatisch“ kehrt zu
-ihr zurück.
+am Inhalt. Für die Inhaltserkennung liest Fastra höchstens die ersten 64 KiB
+UTF-8. Der Sprach-Chip in der Fußzeile öffnet das Sprachmenü: Die manuelle
+Wahl gewinnt immer vor der Automatik, „Automatisch“ kehrt zu ihr zurück.
 
 Die manuelle Wahl merkt sich Fastra **für diese Datei**. Beim nächsten
 Öffnen erscheint sie wieder in diesem Format — das ist vor allem für

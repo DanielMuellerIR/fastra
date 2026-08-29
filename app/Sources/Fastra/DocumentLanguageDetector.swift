@@ -20,7 +20,7 @@ import CodeEditLanguages
 final class DocumentLanguageDetector: @unchecked Sendable {
     typealias Scheduler = (@escaping @Sendable () -> Void) -> Void
     typealias DelayedScheduler = (TimeInterval, DispatchWorkItem) -> Void
-    typealias Analyzer = @Sendable (String) -> Analysis
+    typealias Analyzer = @Sendable (ContentLanguageDetection.AnalysisSample) -> Analysis
     typealias ResultHandler = @MainActor @Sendable (DetectionResult) -> Void
 
     /// Schmaler Auftrag aus dem Workspace. `content` ist ein
@@ -246,10 +246,10 @@ final class DocumentLanguageDetector: @unchecked Sendable {
 
         // Erst jetzt Material erzeugen: Bei verworfenen Debounce-Aufträgen
         // wurde damit auch keine 64-KiB-Probe kopiert. Der vollständige
-        // Snapshot wird nie an den Hintergrund-Parser weitergegeben.
-        let sample = String(
-            request.content.prefix(ContentLanguageDetection.analysisCharacterLimit)
-        )
+        // Snapshot wird nie an den Hintergrund-Parser weitergegeben. Die
+        // Begrenzung zählt UTF-8-Bytes; ein riesiger Graphemcluster kann sie
+        // daher nicht umgehen.
+        let sample = ContentLanguageDetection.analysisSample(from: request.content)
         let tabID = request.tabID
         let documentID = request.documentID
         let analyzedLength = request.newLength
@@ -293,7 +293,9 @@ final class DocumentLanguageDetector: @unchecked Sendable {
     /// Inhaltliche Erkennung bleibt dieselbe wie zuvor im Workspace. Diese
     /// Funktion kennt keine Tabs und keine Produktprioritäten; sie analysiert
     /// ausschließlich die bereits begrenzte Probe.
-    private static func analyzeContent(_ sample: String) -> Analysis {
+    private static func analyzeContent(
+        _ sample: ContentLanguageDetection.AnalysisSample
+    ) -> Analysis {
         let format = ContentLanguageDetection.detect(in: sample)
         guard format == nil else {
             return Analysis(format: format, fallbackLanguage: nil)
@@ -302,7 +304,7 @@ final class DocumentLanguageDetector: @unchecked Sendable {
         let fallback = CodeLanguage.detectLanguageFrom(
             // Bewusst ohne Endung: Es zählt allein der Inhalt.
             url: URL(fileURLWithPath: "unbenannt"),
-            prefixBuffer: String(sample.prefix(512)),
+            prefixBuffer: String(sample.text.prefix(512)),
             suffixBuffer: nil
         )
         return Analysis(

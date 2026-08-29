@@ -9,6 +9,17 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.13] — 2026-08-29
+
+### Behoben
+
+- **Die Inhaltserkennung hält ihre 64-KiB-Grenze auch bei komplexem Unicode
+  ein.** Die Probe endungsloser, ungespeicherter Dokumente wird jetzt an einer
+  gültigen UTF-8-Skalargrenze abgeschnitten. Ein einzelner Graphemcluster aus
+  sehr vielen Kombinationszeichen kann dadurch nicht mehr weit mehr Inhalt als
+  vorgesehen in die Hintergrundanalyse tragen; der Detektor weiß außerdem, ob
+  die Probe das vollständige Dokument enthält.
+
 ## [v1.113.12] — 2026-08-29
 
 ### Verbessert

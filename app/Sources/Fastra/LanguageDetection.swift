@@ -13,9 +13,19 @@ import Foundation
 
 enum ContentLanguageDetection {
 
-    /// Analysiert höchstens die ersten ~64 KB — mehr braucht keine der
-    /// Heuristiken, und riesige Einfügungen dürfen nie teuer werden.
-    static let analysisCharacterLimit = 64 * 1024
+    /// Analysiert höchstens die ersten 64 KiB UTF-8 — mehr braucht keine der
+    /// Heuristiken, und ein einzelner riesiger Graphemcluster darf die Grenze
+    /// ebenso wenig umgehen wie ein langer ASCII-Text.
+    static let analysisUTF8ByteLimit = 64 * 1024
+
+    /// Begrenzte Parser-Eingabe samt Information, ob sie das vollständige
+    /// Dokument enthält. Der zweite Wert ist für strenge Ganzdokument-Parser
+    /// wichtig: Eine abgeschnittene XML-Probe darf nicht als vollständiges,
+    /// aber ungültiges Dokument fehlgedeutet werden.
+    struct AnalysisSample: Equatable, Sendable {
+        let text: String
+        let isComplete: Bool
+    }
 
     /// Ab dieser Zeichenzahl in EINER Änderung gilt sie als Block-Einfügung
     /// (Paste/Drop) → sofort analysieren statt zu warten.
@@ -70,16 +80,45 @@ enum ContentLanguageDetection {
 
     // MARK: - Erkennung (pure)
 
-    /// Konservative Format-Erkennung über den Textanfang (max. ~64 KB).
+    /// Baut eine echte Bytegrenze auf einer UTF-8-Skalargrenze. Ein Swift-
+    /// `Character` kann aus beliebig vielen kombinierenden Skalaren bestehen;
+    /// `String.prefix(64 * 1024)` wäre deshalb keine Speichergrenze.
+    static func analysisSample(from fullText: String) -> AnalysisSample {
+        let utf8 = fullText.utf8
+        guard utf8.count > analysisUTF8ByteLimit else {
+            return AnalysisSample(text: fullText, isComplete: true)
+        }
+
+        var end = utf8.index(
+            utf8.startIndex, offsetBy: analysisUTF8ByteLimit
+        )
+        // UTF-8-Skalare belegen höchstens vier Bytes. Deshalb läuft diese
+        // Schleife höchstens drei Schritte zurück und niemals durch das
+        // möglicherweise sehr große letzte Graphem.
+        while end.samePosition(in: fullText.unicodeScalars) == nil {
+            end = utf8.index(before: end)
+        }
+        return AnalysisSample(
+            text: String(decoding: utf8[..<end], as: UTF8.self),
+            isComplete: false
+        )
+    }
+
+    /// Konservative Format-Erkennung über den Textanfang (max. 64 KiB).
     /// `nil` = keine Heuristik war sich sicher → Tab bleibt Plaintext.
     static func detect(in fullText: String) -> Format? {
-        let text = String(fullText.prefix(analysisCharacterLimit))
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        detect(in: analysisSample(from: fullText))
+    }
+
+    /// Fassung für den asynchronen Dokument-Detektor: Er erzeugt die Probe
+    /// noch vor dem Scheduler, damit der Worker nie den Volltext festhält.
+    static func detect(in sample: AnalysisSample) -> Format? {
+        let trimmed = sample.text.trimmingCharacters(in: .whitespacesAndNewlines)
         // Sehr kurze Schnipsel liefern keine hohe Konfidenz.
         guard trimmed.count >= 8 else { return nil }
 
         if let structured = detectStructured(trimmed: trimmed,
-                                             isComplete: fullText.count <= analysisCharacterLimit) {
+                                             isComplete: sample.isComplete) {
             return structured
         }
 

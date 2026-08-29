@@ -478,9 +478,9 @@ prompt — explains what is missing. You can install Pandoc in Terminal with
 ## Languages and Syntax Colors
 
 Fastra detects the language from the file extension, and for files
-without one, from the content. The language chip in the footer opens the
-language menu: a manual choice always beats the automatics;
-“Automatic” returns to them.
+without one, from the content. Content detection reads no more than the first
+64 KiB of UTF-8. The language chip in the footer opens the language menu: a
+manual choice always beats the automatics; “Automatic” returns to them.
 
 Fastra remembers a manual choice **per file**. The next time you open that
 file it comes back in the same format — which matters most for files without
