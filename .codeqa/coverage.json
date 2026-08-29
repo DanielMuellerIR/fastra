@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3592679
+    "tokens_spent": 3608260
   },
   "campaign_history": [
     {
@@ -365,15 +365,15 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T21:46:46+02:00",
-        "observed_head": "fc552d97d9822cff6e369ce21d5439fa41663af2",
-        "content_sha256": "fe9fa1ec88078ee38ad83d3e6c268ae90556b038eacd5687289c36c71d8f86a1",
+        "completed_at": "2026-08-29T21:59:29+02:00",
+        "observed_head": "08f969b399be84204b894280b41fb14bede7d3eb",
+        "content_sha256": "39e68d524474f92d921e6a5cf0041d0e697683045528207df216f93085f88c77",
         "file_count": 20,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Seit dem letzten Build-/Paketreview änderten sich ausschließlich CFBundleShortVersionString von 1.113.10 auf 1.113.11 und CFBundleVersion von 230 auf 231. Beide Werte entsprechen dem neuen Changelog-Eintrag; Paket-, Signatur-, Installations- und Release-Mechanismen blieben unverändert.",
+        "summary": "Seit dem letzten Build-/Paketreview änderten sich ausschließlich CFBundleShortVersionString von 1.113.11 auf 1.113.12 und CFBundleVersion von 231 auf 232. Beide Werte entsprechen dem neuen Changelog-Eintrag; Paket-, Signatur-, Installations- und Release-Mechanismen blieben unverändert.",
         "tests": [
-          "plutil -lint app/Info.plist grün; Version 1.113.11/Build 231 und Changelog-Eintrag abgeglichen; build.sh inklusive Portabilitätsprüfung am aktuellen Bundle zuvor grün; help-audit.sh und git diff --check grün."
+          "plutil -lint app/Info.plist grün; Version 1.113.12/Build 232 und Changelog-Eintrag abgeglichen; build.sh einschließlich Fenster-Audit, Bundle-Signatur und Portabilitätsprüfung grün; help-audit.sh und git diff --check grün."
         ]
       }
     },
