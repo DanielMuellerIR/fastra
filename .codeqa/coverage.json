@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3928833
+    "tokens_spent": 3963697
   },
   "campaign_history": [
     {
@@ -860,16 +860,19 @@
       "reason": "Einstellungen, Ressourcen, Hilfe und Lokalisierung müssen vollständig und aus dem gepackten Bundle verfügbar bleiben.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-26T00:37:11+02:00",
-        "observed_head": "697767d186f12ae8f335b7e605ae13d004c49020",
-        "content_sha256": "d39b2f1ad5d306d719226b1bfe0af95c34ba99583680784f2fe25be28b27148e",
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T22:18:03+02:00",
+        "observed_head": "1212c87273088cf041e612977ab70ee3ab8f6519",
+        "content_sha256": "e046d64df56256ff3622f919f1a3e431ec016b69a139b5adadbde5bf6e6218cd",
         "file_count": 21,
         "review": "delta-plus-boundaries",
-        "outcome": "improved",
-        "summary": "Neue Makrofehler und Ablaufgrenzen vollständig in Deutsch und Englisch ergänzt; Hilfe auf die geänderte Makrosemantik geprüft und Marker auf den Implementierungsstand fortgeschrieben.",
+        "outcome": "reviewed-clean",
+        "summary": "Die vier geänderten Hilfe-/Lokalisierungsdateien wurden vollständig gegen ihre Produktgrenzen geprüft. Vorschau-, Großdatei-, Spracherkennungs-, 4D-Makro- und Recovery-Zahlen entsprechen den jeweiligen Konstanten und Zustandsgrenzen. Die HelpWindow-Aktivierungsumleitung endet im normalen App-Lauf unverändert bei NSApp.activate und unterdrückt Fokus nur im ausdrücklich hintergrundfähigen Selbsttest. Deutsche und englische Hilfe sowie neue L10n-Schlüssel sind vollständig; keine weitere Änderung nötig.",
         "tests": [
-          "Test-Mac: localization-audit.sh PASS; Entwicklungsrepo: help-audit.sh PASS; app/build.sh PASS"
+          "./localization-audit.sh: PASS mit 398 SwiftUI-, 869 literalen L10n-Schlüsseln und 1482 englischen Einträgen",
+          "./help-audit.sh: PASS bis Produktcommit 170ae9a998ff",
+          "./public-history-audit.sh und git diff --check: PASS",
+          "./build.sh: aktuelles v1.113.14-Bundle grün einschließlich gepackter Ressourcen und Portabilität"
         ]
       }
     },
