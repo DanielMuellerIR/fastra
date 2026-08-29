@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 2771166
+    "tokens_spent": 2959681
   },
   "campaign_history": [
     {
@@ -1127,9 +1127,19 @@
         "app/Sources/Fastra/ApplyEngine.swift"
       ],
       "priority": 3,
-      "state": "pending",
+      "state": "completed",
       "noted_at": "2026-08-25T16:54:59+02:00",
-      "campaign_id": "20260825T163605228103+0200"
+      "campaign_id": "20260825T163605228103+0200",
+      "started_at": "2026-08-29T21:04:36+02:00",
+      "completed": {
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T21:24:03+02:00",
+        "observed_head": "e2c19f198a3a4508b68fceacae13b7c0d99efc6c",
+        "summary": "Ein unveränderlicher SearchPlan bereitet RegEx und Ersetzungstemplate gemeinsam vor; im Wildcard-Modus wird auch die Suchübersetzung nur einmal gebaut. FolderSearch, OpenTabsSearch, BufferSearch und ApplyTransaction reichen denselben Plan über alle Dateien beziehungsweise Tabs eines Laufs weiter, während kompatible Einmal-Wrapper erhalten bleiben.",
+        "tests": [
+          "app/build.sh PASS; gezielt BufferSearch|FolderSearch|OpenTabsSearch|ApplySafety|WildcardPattern|CaseTemplate|SearchRunner: 211 Tests PASS; erster Vollauf: 2148/2149 schnelle Tests, ein lastabhängiger fremder Makro-Deinit-Test rot, isoliert 1/1 in 0,015 s PASS; vollständiger Wiederholungslauf: 2149 Tests/78 Suites + 115 Tests/11 Suites PASS, Exit 0; localization-audit, verify-portable-app, selftest localization, help-audit --release, git diff --check und Info.plist-Lint PASS."
+        ]
+      }
     },
     {
       "id": "atomic-commit-preflight",
