@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3115708
+    "tokens_spent": 3124452
   },
   "campaign_history": [
     {
@@ -624,16 +624,16 @@
       "reason": "4D-Makros verbinden Katalogerkennung, externe Prozesse und temporäre Dateien mit zwingender Diff-Vorschau und nativer Apply-Semantik.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-26T00:35:57+02:00",
-        "observed_head": "697767d186f12ae8f335b7e605ae13d004c49020",
-        "content_sha256": "559fd81a6f0e32e0c7e09fe9e87d265189d3d4e8d210e32dcf2f1f526e607662",
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T21:32:43+02:00",
+        "observed_head": "b93a5b30fd9e56dafa8d15992657206c9e203d40",
+        "content_sha256": "37ec657806771491c25c3181c0977878d3eb050f5d0d9e3a5c0578e31ad2225e",
         "file_count": 6,
-        "review": "full",
-        "outcome": "improved",
-        "summary": "Makroausführung vollständig an Dokument, Projekt und Ursprungsfenster gebunden; asynchroner Preflight und begrenzter Katalogcache entlasten den Main-Thread; XML-Budgets und deskriptorgebundene, exklusive Watch-Transaktion sichern fremde Quellen und tool4d-Lebenszyklus; zwei unabhängige Finalreviews ohne offene Befunde.",
+        "review": "delta-plus-boundaries",
+        "outcome": "reviewed-clean",
+        "summary": "Seit dem vollständigen Makro-Review ist keine der sechs Bereichsdateien inhaltlich geändert. Dokument-/Projekt-Leases, Vorschaupflicht, Watch-Transaktion, Parserbudgets und Katalogcache erneut durch die vollständige Makro-Testsuite bestätigt; kein Befund.",
         "tests": [
-          "Test-Mac: app/build.sh inklusive Portabilität PASS; app/test.sh --filter FourDMacro 55 PASS/0 FAIL; Apply-Konkurrenztest PASS; localization-audit.sh PASS; Entwicklungsrepo: help-audit.sh PASS; git diff --check PASS"
+          "swift test --filter FourDMacro: 66 Tests grün; vollständige Suite am unveränderten Produktstand zuvor grün."
         ]
       }
     },
