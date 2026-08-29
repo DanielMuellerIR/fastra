@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 2990676
+    "tokens_spent": 3009540
   },
   "campaign_history": [
     {
@@ -322,16 +322,16 @@
       "reason": "Fenstergebundener Dokumentzustand, Persistenz und Wiederherstellung koordinieren zahlreiche asynchrone Produktpfade.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-25T23:08:29+02:00",
-        "observed_head": "ec15e86db63927185f3f1a0607dfa0e4d4dfa630",
-        "content_sha256": "f98faf9bf9b0e77b465cfe6df34208ffa9fa323396ba51179970a1586d5eb33e",
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T21:27:17+02:00",
+        "observed_head": "e4a4e61b476bd80f2e79ec501e113cdde0cf8a31",
+        "content_sha256": "e0ce29e5465716c8d64d469bd6dc00aac41127acdddebec47d860de3fd96ae1d",
         "file_count": 23,
         "review": "delta-plus-boundaries",
-        "outcome": "improved",
-        "summary": "Workspace besitzt Hex-Sitzung, Dirty-Schutz, Aktionskontexte, Reload- und Mehrfenster-Invalidierung; direkte Byte-Edits veröffentlichen genau eine Zustandsänderung.",
+        "outcome": "reviewed-clean",
+        "summary": "Seit dem letzten Bereichslauf änderte sich nur Workspace.swift. Delta und Grenzen geprüft: akzeptierte externe Inhalte besitzen eine snapshotunabhängige Generation, erfolgreiche Ladevorgänge markieren exakt die angezeigte Generation; Makro-Engine und Nachbearbeitung sind an Lauf-, Tab- und Dokumentidentitäten gebunden und werden bei direkten sowie Binding-basierten Inhaltsänderungen, Tab-/Fensterschluss und Home-Wechsel entwertet; kanonische Datei- und Navigationswerte bleiben an die asynchronen Completion-Guards gebunden. Kein neuer Fund.",
         "tests": [
-          "Weemac: 36 HexEditLifecycleTests sowie vollständiges app/test.sh (2059+104) grün."
+          "Vollständiger Lauf am selben Produktstand: 2149 Tests/78 Suites + 115 Tests/11 Suites PASS, Exit 0; darin ExternalChangeTests, HexEditLifecycleTests, WorkspaceLoad/SessionRestoration/WorkspaceParallelStress und FourDMacroTests grün. Gezielte Such-/Workspace-Grenzen zuvor 211 Tests PASS; git diff --check PASS."
         ]
       }
     },
