@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3429291
+    "tokens_spent": 3587094
   },
   "campaign_history": [
     {
@@ -624,16 +624,16 @@
       "reason": "4D-Makros verbinden Katalogerkennung, externe Prozesse und temporäre Dateien mit zwingender Diff-Vorschau und nativer Apply-Semantik.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-26T00:35:57+02:00",
-        "observed_head": "697767d186f12ae8f335b7e605ae13d004c49020",
-        "content_sha256": "559fd81a6f0e32e0c7e09fe9e87d265189d3d4e8d210e32dcf2f1f526e607662",
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T21:56:47+02:00",
+        "observed_head": "4efc7abc8fb3a0a70bd9c38928cbd4b1d6090e23",
+        "content_sha256": "35f23f6f06b22e4942ea08b425b7e40917b5797c3b8da99f1f5ae639f3c3d8dd",
         "file_count": 6,
-        "review": "full",
+        "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Makroausführung vollständig an Dokument, Projekt und Ursprungsfenster gebunden; asynchroner Preflight und begrenzter Katalogcache entlasten den Main-Thread; XML-Budgets und deskriptorgebundene, exklusive Watch-Transaktion sichern fremde Quellen und tool4d-Lebenszyklus; zwei unabhängige Finalreviews ohne offene Befunde.",
+        "summary": "Vier seit dem Vollreview entstandene Makro-Änderungen einschließlich Parser-/Katalogbudgets, verwalteter Rücktokenisierung und Diff-Nachbearbeitung, Engine-Lauf-IDs, Watch-Transaktion sowie Workspace-Abbruchgrenzen vollständig geprüft. Zusätzlich beendet die Discovery nach ausgeschöpftem Quellenbudget nachrangige Fundort-Scans und liest dependencies.json blockweise bis höchstens 8 MiB; Version 1.113.12, Hilfe und Regressionstests ergänzt.",
         "tests": [
-          "Test-Mac: app/build.sh inklusive Portabilität PASS; app/test.sh --filter FourDMacro 55 PASS/0 FAIL; Apply-Konkurrenztest PASS; localization-audit.sh PASS; Entwicklungsrepo: help-audit.sh PASS; git diff --check PASS"
+          "build.sh zweimal grün einschließlich Fenster-Audit, Bundle-Signatur und Portabilitätsprüfung; vollständiger FourDMacro-Filter mit 68 Tests grün, danach beide neuen Grenztests erneut grün; localization-audit.sh, plutil, help-audit.sh, public-history-audit.sh und git diff --check grün."
         ]
       }
     },
