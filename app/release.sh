@@ -205,14 +205,46 @@ mkdir -p "$MOUNT_DIR" "$VERIFY_MOUNT"
 
 # Beide Mountpunkte gehören ausschließlich diesem Lauf. Der eine EXIT-Trap
 # räumt sie auch bei Fehlern oder Signalen auf, ohne ein gleichnamiges Volume
-# eines Nutzers anzufassen.
+# eines Nutzers anzufassen. Das eigene RW-Volume wird dafür über seine beim
+# Attach gemerkte GERÄTEIDENTITÄT (dev-entry, z. B. /dev/disk4) ausgehängt,
+# nicht über den Mountpfad: Im Finder-Layout-Fall ist der Pfad
+# /Volumes/Fastra, und den kann nach dem eigenen Detach — etwa während der
+# minutenlangen Notarisierung — ein fremdes gleichnamiges Volume neu belegen;
+# ein Pfad-Detach im Trap würde dann dieses fremde Volume auswerfen
+# (Review 2026-08-29). ATTACHED_DEV ist nur zwischen eigenem Attach und
+# erfolgreichem eigenem Detach gesetzt. VERIFY_MOUNT bleibt ein Pfad-Detach:
+# Dieser Mountpunkt liegt privat im einmaligen Staging-Verzeichnis und kann
+# nicht mit einem fremden Volume kollidieren.
+ATTACHED_DEV=""
 cleanup_release() {
   local status=$?
   trap - EXIT
   hdiutil detach "$VERIFY_MOUNT" -quiet 2>/dev/null || true
-  hdiutil detach "$MOUNT_DIR" -quiet 2>/dev/null || true
+  if [ -n "$ATTACHED_DEV" ]; then
+    hdiutil detach "$ATTACHED_DEV" -quiet 2>/dev/null \
+      || hdiutil detach -force "$ATTACHED_DEV" 2>/dev/null || true
+  fi
   rm -rf "$DMG_STAGING"
   exit "$status"
+}
+
+# Liest aus der -plist-Ausgabe von `hdiutil attach` die Geräteidentität und
+# den Mountpunkt des gemounteten Dateisystems (zwei Zeilen: dev-entry,
+# mount-point). Bevorzugt wird der Eintrag MIT Mountpunkt; als Rückfall dient
+# der erste dev-entry, damit der Trap das Volume auch dann kennt, wenn die
+# Mountpunkt-Auswertung leer bleibt.
+fastra_attach_info() {
+  /usr/bin/python3 -c '
+import plistlib, sys
+data = plistlib.loads(sys.stdin.buffer.read())
+entities = data.get("system-entities", [])
+mounted = next((e for e in entities if e.get("mount-point")), None)
+dev = (mounted or {}).get("dev-entry", "")
+if not dev:
+    dev = next((e.get("dev-entry", "") for e in entities if e.get("dev-entry")), "")
+print(dev)
+print((mounted or {}).get("mount-point", ""))
+'
 }
 trap cleanup_release EXIT
 trap 'exit 129' HUP
@@ -262,15 +294,12 @@ hdiutil create -size 200m -fs HFS+ -volname "$VOL_NAME" -ov -quiet "$RW_DMG"
 # Kollisionen mit bereits geöffneten DMGs.
 if [ "$FINDER_LAYOUT" = "1" ]; then
   ATTACH_PLIST="$(hdiutil attach -readwrite -noverify -noautoopen -plist "$RW_DMG")"
-  ACTUAL_MOUNT="$(printf '%s' "$ATTACH_PLIST" | /usr/bin/python3 -c '
-import plistlib, sys
-data = plistlib.loads(sys.stdin.buffer.read())
-for entity in data.get("system-entities", []):
-    mount_point = entity.get("mount-point")
-    if mount_point:
-        print(mount_point)
-        break
-')"
+  ATTACH_INFO="$(printf '%s' "$ATTACH_PLIST" | fastra_attach_info)"
+  # Geräteidentität ZUERST übernehmen: Selbst wenn der Mountpunkt unten leer
+  # bleibt, kennt der EXIT-Trap damit das schon gemountete eigene Volume und
+  # lässt es nicht hängen.
+  ATTACHED_DEV="$(printf '%s\n' "$ATTACH_INFO" | sed -n 1p)"
+  ACTUAL_MOUNT="$(printf '%s\n' "$ATTACH_INFO" | sed -n 2p)"
   if [ -z "$ACTUAL_MOUNT" ]; then
     echo "✗ FEHLER: hdiutil attach lieferte keinen Mountpunkt." >&2
     exit 1
@@ -282,8 +311,17 @@ for entity in data.get("system-entities", []):
     FINDER_LAYOUT=0
   fi
 else
-  hdiutil attach -readwrite -noverify -noautoopen -quiet \
-    -mountpoint "$MOUNT_DIR" "$RW_DMG"
+  # -plist statt -quiet: Auch am privaten Mountpunkt braucht der EXIT-Trap
+  # die Geräteidentität; die Plist-Ausgabe wird eingefangen und bleibt damit
+  # genauso still wie vorher.
+  ATTACH_PLIST="$(hdiutil attach -readwrite -noverify -noautoopen -plist \
+    -mountpoint "$MOUNT_DIR" "$RW_DMG")"
+  ATTACHED_DEV="$(printf '%s' "$ATTACH_PLIST" | fastra_attach_info | sed -n 1p)"
+fi
+if [ -z "$ATTACHED_DEV" ]; then
+  echo "✗ FEHLER: hdiutil attach lieferte keine Geräteidentität (dev-entry)." >&2
+  echo "  Das RW-Volume von $RW_DMG ggf. von Hand aushängen." >&2
+  exit 1
 fi
 
 # c) Inhalt aufs Volume: App-Bundle (cp -R: Bundle-Struktur vollständig),
@@ -381,7 +419,11 @@ fi
 #    zlib-level=9 = maximale Kompression. Das kurze sleep gibt dem Finder
 #    Zeit, die .DS_Store fertig zu schreiben, bevor ausgehängt wird.
 sleep 2
-hdiutil detach "$MOUNT_DIR" -quiet || hdiutil detach -force "$MOUNT_DIR"
+# Detach über die Geräteidentität (nicht den Pfad) und den gemerkten Zustand
+# löschen: Ab jetzt darf der EXIT-Trap kein Volume mehr anfassen — ein später
+# unter demselben Namen erscheinendes Volume gehört jemand anderem.
+hdiutil detach "$ATTACHED_DEV" -quiet || hdiutil detach -force "$ATTACHED_DEV"
+ATTACHED_DEV=""
 hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -quiet -o "$DMG_PATH"
 
 echo "   ✔ DMG gebaut: $DMG_PATH"

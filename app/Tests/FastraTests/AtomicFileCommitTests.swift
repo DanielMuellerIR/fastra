@@ -297,6 +297,51 @@ struct AtomicFileCommitTests {
                 "Der fremde Stand darf beim Aufräumen nicht gelöscht werden")
     }
 
+    @Test("In-place-Fremdwrite in die verdrängte Inode im Aufräumfenster bleibt erhalten")
+    func inPlaceWriteIntoDisplacedInodeInCleanupWindowIsPreserved() throws {
+        let directory = try makeDirectory("cleanup-in-place")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let original = Data("original\n".utf8)
+        let replacement = Data("replacement\n".utf8)
+        let foreign = Data("fremdstand\n".utf8)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        var displacedIdentityInHook: FileIdentity?
+
+        do {
+            _ = try AtomicFileCommit.replaceExisting(
+                at: target,
+                withPreparedFile: prepared,
+                expecting: expected,
+                replacementContent: FileSnapshot(data: replacement, identity: nil),
+                beforeCleanup: { _, displaced in
+                    // Simulierter Fremdprozess mit offenem Deskriptor:
+                    // schreibt in DIESELBE verdrängte Inode, ohne den Namen
+                    // zu ersetzen. Gerät und Inode bleiben gleich — die
+                    // reine Identitätsprüfung sah darin keinen Konflikt und
+                    // löschte den frischen Fremdstand mit (Review 2026-08-29).
+                    displacedIdentityInHook = FileIdentity(url: displaced)
+                    try writeInPlace(foreign, to: displaced)
+                })
+            Issue.record("Der In-place-Fremdwrite hätte Recovery verlangen müssen")
+        } catch let failure as AtomicFileCommit.Failure {
+            guard case .recoveryRequired = failure else {
+                Issue.record("Erwartet war recoveryRequired, erhalten: \(failure)")
+                return
+            }
+        }
+
+        #expect(FileIdentity(url: prepared) == displacedIdentityInHook,
+                "Der Test muss in-place schreiben, nicht den Namen ersetzen")
+        #expect(try Data(contentsOf: target) == replacement,
+                "Der bereits verifizierte Tausch selbst bleibt bestehen")
+        #expect(try Data(contentsOf: prepared) == foreign,
+                "Der In-place-Fremdstand darf beim Aufräumen nicht gelöscht werden")
+    }
+
     @Test("Ziel und Nachbardatei dürfen nicht dieselbe Inode sein")
     func hardLinkedPreparedFileIsRejected() throws {
         let directory = try makeDirectory("hardlink")

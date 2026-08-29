@@ -84,6 +84,28 @@ enum SearchEmphasis {
         return dialogOpen && viewMode == .text
     }
 
+    /// Aktualitätsbedingung der RAM-Trefferbasis (pure, unit-testbar): Nach
+    /// einem Edit oder Tabwechsel lässt der SearchRunner die Datei-/Geöffnet-
+    /// Treffer absichtlich stehen (keine blinkende Trefferzahl), entzieht
+    /// ihnen aber sofort die Freigabe (`visibleBufferResultsOptions = nil`).
+    /// Ein verzögertes Nachzeichnen — Scroll-Relay, Editor-Remount — darf
+    /// solche Bereiche dann nicht erneut zeichnen: Sie gehören zum alten
+    /// Textstand und lägen im neuen Text an falschen Stellen
+    /// (Review 2026-08-29). Ordner-/Projekt-Treffer sichert `source` bereits
+    /// über Dirty-Zustand und Datei-Snapshot.
+    static func bufferResultsAreCurrent(
+        scope: Workspace.SearchScope,
+        visibleBufferResultsOptions: SearchOptions?,
+        currentOptions: SearchOptions
+    ) -> Bool {
+        switch scope {
+        case .file, .open:
+            return visibleBufferResultsOptions == currentOptions
+        case .folder, .project:
+            return true
+        }
+    }
+
     /// Räumt die Live-Trefferanzeige SOFORT beim ersten Textedit. Die
     /// Markierungen speichern ihre Bereiche statisch; nach einem Edit sind
     /// sie veraltet und zeichnen an falschen Stellen — bei einem

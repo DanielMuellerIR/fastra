@@ -517,6 +517,31 @@ extension Workspace {
         fourDMacroPostprocessTask = nil
         fourDMacroPostprocessTabID = nil
         fourDMacroPostprocessID = nil
+        // Auch ein noch laufender Engine-Lauf (Preflight/tool4d) verliert
+        // damit seine Freigabe: Seine verspätete Completion darf die hier
+        // freigegebene Sperre eines späteren Laufs nicht erneut löschen.
+        fourDMacroEngineRunID = nil
+        fourDMacroEngineBusy = false
+    }
+
+    /// Registriert einen neuen Engine-Lauf (Preflight + tool4d-Prozess) und
+    /// setzt die gemeinsame Makro-Sperre. Freigeben dürfen sie nur die
+    /// Completions GENAU dieses Laufs über `releaseFourDMacroEngineLock`.
+    @discardableResult
+    @MainActor func beginFourDMacroEngineRun() -> UUID {
+        let runID = UUID()
+        fourDMacroEngineRunID = runID
+        fourDMacroEngineBusy = true
+        return runID
+    }
+
+    /// Gibt die Makro-Sperre frei, sofern `runID` noch der aktuell
+    /// registrierte Engine-Lauf ist. Eine verspätete Completion eines schon
+    /// abgeräumten Laufs (Home, Fensterschluss) läuft dagegen ins Leere und
+    /// kann die Sperre eines neueren Laufs nicht löschen (Review 2026-08-29).
+    @MainActor func releaseFourDMacroEngineLock(runID: UUID) {
+        guard fourDMacroEngineRunID == runID else { return }
+        fourDMacroEngineRunID = nil
         fourDMacroEngineBusy = false
     }
 
@@ -632,7 +657,7 @@ extension Workspace {
         let originalText = textView.string
         let macroName = macro.displayName
 
-        fourDMacroEngineBusy = true
+        let engineRunID = beginFourDMacroEngineRun()
         // Projektdatei, tool4d-Discovery und Tokenanalyse greifen auf das
         // Dateisystem beziehungsweise den vollständigen Dokumenttext zu. Sie
         // laufen gemeinsam im Hintergrund; vor jeder UI-Aktion gilt die Lease.
@@ -650,12 +675,16 @@ extension Workspace {
             let detokenized = FourDTokenTransform.detokenize(originalText)
             await MainActor.run { [weak self] in
                 guard let self else { return }
+                // Wurde dieser Lauf inzwischen abgeräumt (Home,
+                // Fensterschluss), gehört die Sperre einem Nachfolger —
+                // weder freigeben noch fortfahren.
+                guard self.fourDMacroEngineRunID == engineRunID else { return }
                 guard lease.isCurrent(in: self) else {
-                    self.fourDMacroEngineBusy = false
+                    self.releaseFourDMacroEngineLock(runID: engineRunID)
                     return
                 }
                 guard let projectFile else {
-                    self.fourDMacroEngineBusy = false
+                    self.releaseFourDMacroEngineLock(runID: engineRunID)
                     self.presentFourDMacroWarning(
                         title: L10n.string("Engine-Projekt nicht gefunden"),
                         text: L10n.format("Unter %@ liegt keine .4DProject-Datei (erwartet in „Project/“). Prüfe den Pfad in den Einstellungen unter „4D“.", engineRootPath),
@@ -665,7 +694,7 @@ extension Workspace {
                 // Ein eingetragener, aber unbrauchbarer Pfad darf nicht still
                 // auf eine andere automatisch gefundene Version fallen.
                 if let pathProblem {
-                    self.fourDMacroEngineBusy = false
+                    self.releaseFourDMacroEngineLock(runID: engineRunID)
                     self.presentFourDMacroWarning(
                         title: L10n.string("Eingetragenes tool4d ist nicht nutzbar"),
                         text: L10n.format("%@\n\nPrüfe den Pfad in den Einstellungen unter „4D“ oder leere das Feld, damit Fastra selbst sucht.",
@@ -674,7 +703,7 @@ extension Workspace {
                     return
                 }
                 guard let tool else {
-                    self.fourDMacroEngineBusy = false
+                    self.releaseFourDMacroEngineLock(runID: engineRunID)
                     // Das bereits bekannte Ergebnis anzeigen; `runFinder()`
                     // würde dieselben Fundorte ein zweites Mal durchsuchen.
                     if let window = lease.originWindow(in: self) {
@@ -687,7 +716,8 @@ extension Workspace {
                     projectFile: projectFile, detokenized: detokenized,
                     learned: learned, variant: variant,
                     methodName: methodName, macroName: macroName,
-                    originalText: originalText, lease: lease
+                    originalText: originalText, lease: lease,
+                    engineRunID: engineRunID
                 )
             }
         }
@@ -703,7 +733,8 @@ extension Workspace {
         detokenized: String, learned: [String: String],
         variant: FourDKomplettierenVariant, methodName: String,
         macroName: String, originalText: String,
-        lease: FourDMacroExecutionLease
+        lease: FourDMacroExecutionLease,
+        engineRunID: UUID
     ) {
         FourDMacroEngine.run(
             tool4d: tool.executableURL,
@@ -726,25 +757,34 @@ extension Workspace {
             // (`FourDMacroEngine.run`); dem Compiler wird das hier zugesichert.
             MainActor.assumeIsolated {
             guard let self else { return }
+            // Nur die Completion des noch registrierten Laufs darf die
+            // gemeinsame Sperre anfassen; eine verspätete Completion eines
+            // abgeräumten Laufs würde sonst die Sperre eines Nachfolgers
+            // löschen (Review 2026-08-29).
+            guard self.fourDMacroEngineRunID == engineRunID else { return }
             guard lease.isCurrent(in: self) else {
-                self.fourDMacroEngineBusy = false
+                self.releaseFourDMacroEngineLock(runID: engineRunID)
                 return
             }
             switch result {
             case .cancelledBeforeStart:
-                self.fourDMacroEngineBusy = false
+                self.releaseFourDMacroEngineLock(runID: engineRunID)
             case .failed(let text):
-                self.fourDMacroEngineBusy = false
+                self.releaseFourDMacroEngineLock(runID: engineRunID)
                 self.presentFourDMacroWarning(
                     title: L10n.format("Makro „%@“ fehlgeschlagen", macroName),
                     text: text, lease: lease)
             case .unchanged:
-                self.fourDMacroEngineBusy = false
+                self.releaseFourDMacroEngineLock(runID: engineRunID)
                 self.presentFourDMacroWarning(
                     title: L10n.format("Makro „%@“", macroName),
                     text: L10n.string("Keine Änderungen — die Methode ist bereits vollständig."),
                     lease: lease)
             case .changed(let newCode):
+                // Übergabe an die Nachbearbeitung: Der Engine-Lauf ist
+                // beendet, die Sperre wechselt nahtlos an den
+                // Postprocess-Zustand (`startFourDMacroPostprocessing`).
+                self.fourDMacroEngineRunID = nil
                 self.startFourDMacroPostprocessing(
                     newCode: newCode, learned: learned,
                     originalText: originalText, macroName: macroName,

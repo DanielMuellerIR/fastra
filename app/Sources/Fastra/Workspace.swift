@@ -780,6 +780,14 @@ final class Workspace: ObservableObject {
     var fourDMacroPostprocessTask: Task<Void, Never>?
     var fourDMacroPostprocessTabID: UUID?
     var fourDMacroPostprocessID: UUID?
+    /// Identität des laufenden Engine-Laufs (Preflight + tool4d-Prozess),
+    /// VOR der Nachbearbeitung. Nur die Completions genau dieses Laufs dürfen
+    /// die gemeinsame Sperre `fourDMacroEngineBusy` freigeben: Gibt Home oder
+    /// Fensterschluss die Sperre vorzeitig frei und startet danach ein neuer
+    /// Lauf, darf die verspätete Completion des alten Laufs die Sperre des
+    /// Nachfolgers nicht löschen (Review 2026-08-29). (Pflege in
+    /// `FourDMacroAssist.swift`.)
+    var fourDMacroEngineRunID: UUID?
     /// Zuletzt angeforderter, noch von keinem Editor verarbeiteter
     /// Treffer-Sprung. Die Sprung-Notification kann in eine Editor-
     /// Neuerzeugung fallen und verpuffen; der frisch eingehängte Editor
@@ -6339,6 +6347,12 @@ final class Workspace: ObservableObject {
             guard let newContent = changed[tabs[idx].id] else { continue }
             tabs[idx].content = newContent
             tabs[idx].isDirty = true
+            // Direkte Modellmutation läuft am `activeTabContent`-Binding (und
+            // damit an dessen Makro-Abbruch) vorbei. Eine Inhaltsänderung
+            // entwertet die Lease der Makro-Nachbearbeitung aber genauso wie
+            // normales Tippen — sonst blieben Diff-Task und Makro-Sperre bis
+            // zum Rechenende aktiv (Review 2026-08-29).
+            cancelFourDMacroPostprocessing(ifTab: tabs[idx].id)
         }
         editorReloadNonce += 1
         // SearchRunner sucht durch die tabs-Änderung automatisch neu.
@@ -6435,6 +6449,10 @@ final class Workspace: ObservableObject {
         pendingOpenReplaceNavigation = (currentSearchOptions, activeMatchIndex)
         tabs[tabIndex].content = replaced
         tabs[tabIndex].isDirty = true
+        // Wie in `applyAllInOpenTabs`: Die direkte Modellmutation muss die
+        // Makro-Nachbearbeitung dieses Tabs selbst abbrechen — sie umgeht
+        // das `activeTabContent`-Binding (Review 2026-08-29).
+        cancelFourDMacroPostprocessing(ifTab: tabID)
         if activeTabID != tabID { selectTab(id: tabID) }
         editorReloadNonce += 1
     }

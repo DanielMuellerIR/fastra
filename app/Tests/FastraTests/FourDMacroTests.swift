@@ -1332,6 +1332,75 @@ private func startBlockingMacroDiff(
     return (activeTab.id, retainedTab?.id, diffStarted, diffCancelled)
 }
 
+@Test("Eine verspätete Engine-Completion löscht die Sperre eines neueren Laufs nicht")
+@MainActor
+func staleEngineCompletionKeepsNewerRunLock() {
+    let suite = "fastra-test-macro-stale-engine-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let workspace = Workspace(defaults: defaults)
+
+    // Erster Lauf: Preflight/tool4d laufen, noch KEIN Postprocess-Task.
+    let firstRun = workspace.beginFourDMacroEngineRun()
+    #expect(workspace.fourDMacroEngineBusy)
+
+    // Home räumt den Fensterzustand ab und gibt die Sperre frei — der erste
+    // Lauf rechnet im Hintergrund aber noch weiter.
+    workspace.enterWelcomeState()
+    #expect(!workspace.fourDMacroEngineBusy)
+
+    // Der Nutzer öffnet eine neue 4D-Datei und startet einen zweiten Lauf.
+    let secondRun = workspace.beginFourDMacroEngineRun()
+    #expect(workspace.fourDMacroEngineBusy)
+
+    // Die verspätete Completion des ERSTEN Laufs darf die Sperre des
+    // zweiten nicht löschen — sonst könnte ein dritter Lauf parallel starten
+    // (Review 2026-08-29).
+    workspace.releaseFourDMacroEngineLock(runID: firstRun)
+    #expect(workspace.fourDMacroEngineBusy)
+
+    // Nur die eigene Completion des zweiten Laufs gibt die Sperre frei.
+    workspace.releaseFourDMacroEngineLock(runID: secondRun)
+    #expect(!workspace.fourDMacroEngineBusy)
+}
+
+@Test("„Alle ersetzen“ im Geöffnet-Scope bricht die Makro-Nachbearbeitung ab")
+@MainActor
+func openReplaceAllCancelsMacroPostprocessing() throws {
+    let suite = "fastra-test-macro-open-replace-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let workspace = Workspace(defaults: defaults)
+    let probe = try startBlockingMacroDiff(in: workspace, keepSecondTab: false)
+    #expect(probe.diffStarted.wait(timeout: .now() + 2) == .success)
+
+    // Sichtbare Geöffnet-Trefferbasis wie nach einem fertigen Suchlauf —
+    // „vorher" ist genau der Inhalt des Makro-Tabs aus dem Diff-Helfer.
+    workspace.scope = .open
+    workspace.findPattern = "vorher"
+    workspace.replacePattern = "nachher"
+    workspace.useRegex = false
+    let inputs = workspace.tabs.map {
+        OpenTabsSearch.TabInput(id: $0.id, title: $0.title, content: $0.content)
+    }
+    let found = OpenTabsSearch.find(tabs: inputs,
+                                    options: workspace.currentSearchOptions)
+    workspace.openResults = found.perTab
+    workspace.openTotalMatches = found.totalMatches
+    workspace.openResultsWereCapped = found.wasCapped
+    workspace.visibleBufferResultsOptions = workspace.currentSearchOptions
+
+    // Die programmgesteuerte Inhaltsänderung läuft am Editor-Binding vorbei;
+    // sie muss die Nachbearbeitung des Makro-Tabs trotzdem sofort abbrechen
+    // (Review 2026-08-29).
+    #expect(workspace.applyAllInOpenTabs() == 1)
+
+    #expect(probe.diffCancelled.wait(timeout: .now() + 2) == .success)
+    #expect(workspace.fourDMacroPostprocessTask == nil)
+    #expect(!workspace.fourDMacroEngineBusy)
+    #expect(workspace.fourDMacroPreview == nil)
+}
+
 @Test("Workspace-Abbau lässt keinen Makro-Task weiterrechnen")
 @MainActor
 func macroPostprocessingStopsOnWorkspaceDeinit() {

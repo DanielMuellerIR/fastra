@@ -127,6 +127,93 @@ struct BuildInstallationPolicyTests {
         #expect(script.contains("if [ \"$ACTUAL_MOUNT\" != \"/Volumes/$VOL_NAME\" ]"))
     }
 
+    @Test("Release-Trap hängt nur die eigene Geräteidentität aus")
+    func releaseTrapDetachesOnlyOwnDeviceIdentity() throws {
+        let script = try String(
+            contentsOf: appDirectory.appendingPathComponent("release.sh"),
+            encoding: .utf8
+        )
+
+        // Statischer Wächter: Das eigene RW-Volume wird nirgends mehr über
+        // seinen Mountpfad ausgehängt. Der Pfad /Volumes/Fastra kann nach dem
+        // eigenen Detach (z. B. während der Notarisierung) von einem fremden
+        // gleichnamigen Volume neu belegt sein — nur die beim Attach gemerkte
+        // Geräteidentität bezeichnet sicher das eigene Volume.
+        #expect(!script.contains("hdiutil detach \"$MOUNT_DIR\""))
+        #expect(script.contains("hdiutil detach \"$ATTACHED_DEV\""))
+
+        // Funktionale Prüfung mit kontrolliertem hdiutil-Ersatz: Der ECHTE
+        // Trap-Code aus release.sh läuft gegen ein protokollierendes
+        // Fake-hdiutil, einmal mit gemerkter Geräteidentität und einmal ohne
+        // (Zustand nach erfolgreichem eigenem Detach).
+        let withDevice = try runReleaseCleanupTrap(attachedDevice: "/dev/disk93")
+        #expect(withDevice.contains { $0.contains("/dev/disk93") })
+        #expect(!withDevice.contains { $0.contains("/Volumes/Fastra") },
+                "Der Trap darf nie über den wiederbelegbaren Finder-Pfad aushängen")
+
+        let afterOwnDetach = try runReleaseCleanupTrap(attachedDevice: "")
+        #expect(!afterOwnDetach.contains { $0.contains("/dev/") },
+                "Ohne gemerkte Identität darf der Trap kein Volume mehr anfassen")
+        #expect(!afterOwnDetach.contains { $0.contains("/Volumes/Fastra") })
+    }
+
+    /// Führt die unveränderte `cleanup_release`-Funktion aus release.sh in
+    /// einer Sandbox aus, in der ein Fake-`hdiutil` alle Aufrufe protokolliert.
+    /// Liefert die protokollierten hdiutil-Aufrufzeilen.
+    private func runReleaseCleanupTrap(attachedDevice: String) throws -> [String] {
+        let sandbox = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "fastra-release-trap-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: sandbox,
+                                                withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+
+        let log = sandbox.appendingPathComponent("hdiutil.log")
+        let fakeHdiutil = sandbox.appendingPathComponent("hdiutil")
+        try """
+        #!/bin/bash
+        echo "$@" >> "\(log.path)"
+        exit 0
+        """.write(to: fakeHdiutil, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: fakeHdiutil.path)
+
+        // Der Harness lädt NUR die Trap-Funktion aus dem echten Skript und
+        // ruft sie mit dem Zustand des Release-Laufs auf (Finder-Layout-Fall:
+        // MOUNT_DIR zeigt auf /Volumes/Fastra).
+        let harness = sandbox.appendingPathComponent("harness.sh")
+        try """
+        #!/bin/bash
+        set -u
+        eval "$(/usr/bin/sed -n '/^cleanup_release()/,/^}/p' "$1")"
+        DMG_STAGING="$3/staging"
+        mkdir -p "$DMG_STAGING"
+        VERIFY_MOUNT="$DMG_STAGING/verify"
+        MOUNT_DIR="/Volumes/Fastra"
+        ATTACHED_DEV="$2"
+        cleanup_release
+        """.write(to: harness, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: harness.path)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [
+            harness.path,
+            appDirectory.appendingPathComponent("release.sh").path,
+            attachedDevice,
+            sandbox.path,
+        ]
+        var environment = ProcessInfo.processInfo.environment
+        environment["PATH"] = "\(sandbox.path):/usr/bin:/bin"
+        process.environment = environment
+        try process.run()
+        process.waitUntilExit()
+        #expect(process.terminationStatus == 0)
+
+        let logged = (try? String(contentsOf: log, encoding: .utf8)) ?? ""
+        return logged.split(separator: "\n").map(String.init)
+    }
+
     @Test("Appcast signiert nur ein geprüftes und zur Version passendes DMG")
     func appcastVerifiesReleaseBeforeSigning() throws {
         let workflow = try String(

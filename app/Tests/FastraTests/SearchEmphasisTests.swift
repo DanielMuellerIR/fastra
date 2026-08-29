@@ -135,6 +135,36 @@ func source_openUsesActiveTab() {
     ) == .init(matches: [], totalMatches: 4))
 }
 
+@Test("bufferResultsAreCurrent: Datei/Geöffnet nur mit gültiger Freigabe")
+func bufferResultsAreCurrent_requiresMatchingOptions() {
+    let fresh = SearchOptions(find: "FUND", replace: "", isRegex: false)
+    let stale = SearchOptions(find: "ALT", replace: "", isRegex: false)
+
+    // Frische Treffer (Freigabe passt zu den aktuellen Optionen) zeichnen.
+    #expect(SearchEmphasis.bufferResultsAreCurrent(
+        scope: .file, visibleBufferResultsOptions: fresh, currentOptions: fresh))
+    #expect(SearchEmphasis.bufferResultsAreCurrent(
+        scope: .open, visibleBufferResultsOptions: fresh, currentOptions: fresh))
+
+    // Nach einem Edit entzieht der SearchRunner die Freigabe (`nil`) — ein
+    // verzögerter Scroll-Relay darf die stehengebliebenen alten Bereiche
+    // dann nicht erneut zeichnen (Review 2026-08-29).
+    #expect(!SearchEmphasis.bufferResultsAreCurrent(
+        scope: .file, visibleBufferResultsOptions: nil, currentOptions: fresh))
+    #expect(!SearchEmphasis.bufferResultsAreCurrent(
+        scope: .open, visibleBufferResultsOptions: nil, currentOptions: fresh))
+
+    // Auch eine Freigabe zu ANDEREN Optionen (altes Muster) zählt nicht.
+    #expect(!SearchEmphasis.bufferResultsAreCurrent(
+        scope: .file, visibleBufferResultsOptions: stale, currentOptions: fresh))
+
+    // Ordner-/Projekt-Treffer sichert `source` über Dirty + Datei-Snapshot.
+    #expect(SearchEmphasis.bufferResultsAreCurrent(
+        scope: .folder, visibleBufferResultsOptions: nil, currentOptions: fresh))
+    #expect(SearchEmphasis.bufferResultsAreCurrent(
+        scope: .project, visibleBufferResultsOptions: nil, currentOptions: fresh))
+}
+
 @Test("cap: entspricht dem Materialisierungs-Cap der Buffer-Suche")
 func cap_matchesBufferSearch() {
     // Bewusste Kopplung: mehr als die materialisierten Treffer könnten gar

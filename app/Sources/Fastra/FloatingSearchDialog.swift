@@ -567,17 +567,22 @@ struct FloatingSearchDialog: View {
             // Element-Picker [+]: öffnet ein Popover mit RegEx-Bausteinen,
             // kategorisiert (Anker / Zeichenklassen / Quantifizierer /
             // Gruppen). Auswahl hängt den Token ans Find-Pattern an.
+            // Im Klartext-Modus bleibt der Knopf bedienbar und schaltet den
+            // RegEx-Modus beim Öffnen automatisch ein (wie die
+            // RegEx-Vorlagen; dokumentiertes Verhalten seit dem
+            // Klartext-Default in v1.113.0): Ein eingefügtes RegEx-Element
+            // ergibt nur im RegEx-Modus das versprochene Verhalten.
             Button {
+                if !workspace.useRegex { workspace.useRegex = true }
                 showElementPicker = true
             } label: {
                 Image(systemName: "plus.circle")
                     .fastraFont(size: 14, weight: .regular)
                     // Dunkelgrau statt Gelb — gelb auf weiß war zu undeutlich.
-                    .foregroundColor(workspace.useRegex ? Theme.textPrimary : Theme.textSecondary.opacity(0.4))
+                    .foregroundColor(Theme.textPrimary)
             }
             .buttonStyle(.plain)
-            .disabled(!workspace.useRegex)
-            .help("RegEx-Element einfügen — Zeichenklassen, Quantifizierer, Anker, Gruppen. Nur aktiv, wenn der RegEx-Schalter an ist.")
+            .help("RegEx-Element einfügen — Zeichenklassen, Quantifizierer, Anker, Gruppen. Schaltet den RegEx-Modus automatisch ein.")
             .popover(isPresented: $showElementPicker, arrowEdge: .bottom) {
                 ElementPickerView { element in
                     // Caret-genau ins Find-Feld einfügen (seit v0.7 über

@@ -113,7 +113,7 @@
 "Push" = "Push";
 "Quoting" = "Quoting";
 "RegEx" = "Regex";
-"RegEx-Element einfügen — Zeichenklassen, Quantifizierer, Anker, Gruppen. Nur aktiv, wenn der RegEx-Schalter an ist." = "Insert a regex element—character classes, quantifiers, anchors, or groups. Available only when Regex is enabled.";
+"RegEx-Element einfügen — Zeichenklassen, Quantifizierer, Anker, Gruppen. Schaltet den RegEx-Modus automatisch ein." = "Insert a regex element—character classes, quantifiers, anchors, or groups. Turns regex mode on automatically.";
 "Rückgängig" = "Undo";
 "Schließen" = "Close";
 "Sel" = "Sel";

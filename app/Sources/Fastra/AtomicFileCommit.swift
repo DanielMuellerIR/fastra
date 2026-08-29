@@ -291,6 +291,7 @@ enum AtomicFileCommit {
             try unlinkVerifiedChild(
                 directoryFD: directoryFD, name: preparedName,
                 verifiedFD: targetFD,
+                verifiedVersion: displacedFinal,
                 targetURL: targetURL, preparedURL: preparedURL)
             _ = fsync(directoryFD)
             return FileSnapshot(
@@ -434,12 +435,14 @@ enum AtomicFileCommit {
         try unlinkVerifiedChild(
             directoryFD: directoryFD, name: preparedName,
             verifiedFD: preparedFD,
+            verifiedVersion: preparedAfterRollback,
             targetURL: targetURL, preparedURL: preparedURL)
         guard fsync(directoryFD) == 0 else { throw currentPOSIXError() }
     }
 
-    /// Löscht den Verzeichniseintrag `name` nur, wenn er nachweislich auf die
-    /// bereits am Deskriptor `verifiedFD` verifizierte Inode zeigt. POSIX
+    /// Löscht den Verzeichniseintrag `name` nur, wenn er nachweislich noch auf
+    /// den bereits verifizierten Stand `verifiedVersion` der am Deskriptor
+    /// `verifiedFD` gebundenen Inode zeigt. POSIX
     /// kennt kein „unlink genau diese Inode": Ein bloßes fstatat-plus-unlinkat
     /// ließe ein Fenster, in dem ein Fremdprozess den Namen ersetzt und sein
     /// Stand mitgelöscht würde. Deshalb beansprucht zuerst ein atomares
@@ -450,20 +453,31 @@ enum AtomicFileCommit {
     /// zurückgestellt (oder, falls der schon neu belegt ist, unter dem
     /// privaten Namen erhalten) und `recoveryRequired` gemeldet.
     ///
-    /// Ehrliche Restgrenze: Zwischen Prüfung und Löschen des PRIVATEN Namens
+    /// `verifiedVersion` bindet dabei nicht nur die Identität, sondern den
+    /// zuletzt geprüften VERSIONSSTAND: Ein Fremdprozess mit offenem
+    /// Deskriptor kann in-place in die verdrängte Inode schreiben — Gerät
+    /// und Inode bleiben dann gleich, und eine reine Identitätsprüfung
+    /// löschte seinen Stand mit (Review 2026-08-29). Jede Abweichung von
+    /// Größe oder mtime stellt den Namen deshalb zurück statt zu löschen.
+    ///
+    /// Ehrliche Restgrenzen: Zwischen Prüfung und Löschen des PRIVATEN Namens
     /// bleibt ein theoretisches Fenster. Es ist aber nur für einen Prozess
     /// erreichbar, der das Verzeichnis aktiv nach dem zufälligen Namen
     /// absucht und ihn gezielt ersetzt — kein regulär gleichzeitig
-    /// schreibender Prozess verwendet diesen Namen.
+    /// schreibender Prozess verwendet diesen Namen. Und wie beim Rollback
+    /// (siehe dort) bliebe ein gleich großer In-place-Write mit
+    /// zurückgesetzter mtime an den stat-Feldern unerkennbar.
     private static func unlinkVerifiedChild(
         directoryFD: Int32,
         name: String,
         verifiedFD: Int32,
+        verifiedVersion: stat,
         targetURL: URL,
         preparedURL: URL
     ) throws {
         var verified = stat()
-        guard fstat(verifiedFD, &verified) == 0 else {
+        guard fstat(verifiedFD, &verified) == 0,
+              sameVersion(verifiedVersion, verified) else {
             throw Failure.recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
@@ -486,8 +500,13 @@ enum AtomicFileCommit {
         }
         let claimURL = targetURL.deletingLastPathComponent()
             .appendingPathComponent(claimName)
-        guard sameIdentity(claimed, verified) else {
-            // Ein Fremdprozess hat den Namen im letzten Moment ersetzt: Sein
+        // `sameVersionAcrossRename` statt `sameVersion`: Das Beanspruchen
+        // selbst hat die ctime der Inode gerade geändert; alle übrigen
+        // Versionsfelder müssen dem verifizierten Stand entsprechen.
+        guard sameIdentity(claimed, verified),
+              sameVersionAcrossRename(verified, claimed) else {
+            // Ein Fremdprozess hat den Namen im letzten Moment ersetzt oder
+            // in-place in die verdrängte Inode geschrieben: Sein
             // Stand wird zurückgestellt statt gelöscht. Schlägt auch das
             // fehl (Name inzwischen neu belegt), bleibt er unter dem
             // privaten Namen erreichbar und wird im Fehler benannt.

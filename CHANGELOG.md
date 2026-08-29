@@ -9,6 +9,56 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.2] — 2026-08-29
+
+Sechs Fixes aus dem Code-Review vom 2026-08-29; der siebte Fund
+(Abbruchsignal durch die Diff-Pipeline) steht als eigene Etappe in der
+ROADMAP.
+
+### Behoben
+
+- **Der Element-Picker ist wieder ohne vorheriges RegEx-Einschalten
+  erreichbar.** Seit dem Klartext-Default (v1.113.0) war sein Knopf bei
+  ausgeschaltetem RegEx deaktiviert — die dokumentierte automatische
+  Aktivierung („der Element-Picker schaltet den Modus selbst ein") fehlte im
+  UI. Der Knopf bleibt jetzt im Klartext-Modus bedienbar und schaltet den
+  RegEx-Modus beim Öffnen automatisch ein, wie es die RegEx-Vorlagen schon
+  tun und Hilfe/Changelog es beschreiben.
+- **Ein verzögertes Nachzeichnen malt keine veralteten Suchtreffer mehr.**
+  Nach einem Edit blieben die Datei-/Geöffnet-Treffer absichtlich im Modell
+  stehen (keine blinkende Trefferzahl); der gedrosselte Scroll-Relay und ein
+  Editor-Remount zeichneten diese alten Bereiche aber bis zum Ende des
+  neuen Suchlaufs erneut — an Positionen des alten Textstands. Die
+  Live-Anzeige verlangt jetzt dieselbe Freigabe wie „Alle ersetzen"
+  (Trefferbasis gehört zu den aktuellen Suchoptionen).
+- **Eine verspätete tool4d-Completion kann die Makro-Sperre eines neueren
+  Laufs nicht mehr löschen.** Nach Home oder Fensterschluss lief der alte
+  Engine-Lauf im Hintergrund weiter; seine Completion setzte die gemeinsame
+  Sperre zurück und erlaubte damit einen weiteren parallelen Lauf desselben
+  Fensters. Engine-Läufe tragen jetzt eine Lauf-Identität, und nur die
+  Completion des aktuell registrierten Laufs darf die Sperre freigeben.
+- **„Ersetzen"/„Alle ersetzen" im Geöffnet-Bereich bricht die
+  Makro-Nachbearbeitung des betroffenen Tabs ab.** Die programmgesteuerte
+  Inhaltsänderung lief am Editor-Binding und damit an dessen Makro-Abbruch
+  vorbei; Diff-Berechnung und Makro-Sperre blieben bis zum Rechenende
+  aktiv, obwohl dieselbe Änderung beim Tippen sofort abbricht.
+- **Ein In-place-Fremdwrite im letzten Aufräumfenster des atomaren
+  Speicherns bleibt erhalten.** Schrieb ein Fremdprozess über einen offenen
+  Deskriptor in die verdrängte Inode, nachdem deren Inhalt zuletzt geprüft
+  war, bestand der unveränderte Gerät/Inode-Vergleich und das Aufräumen
+  löschte den fremden Stand mit. Das Löschen ist jetzt an den zuletzt
+  verifizierten Versionsstand (Größe, mtime) gebunden; bei Abweichung wird
+  der Name zurückgestellt und Recovery gemeldet.
+- **Der Release-Lauf kann kein fremdes „Fastra"-Volume mehr auswerfen.** Der
+  EXIT-Trap von `release.sh` hängte das RW-Volume über seinen Mountpfad aus;
+  nach dem eigenen Detach konnte während der minutenlangen Notarisierung ein
+  fremdes gleichnamiges Volume denselben Pfad belegen und wurde dann vom
+  Trap ausgeworfen — und ein früher Fehler in der Mountpunkt-Auswertung ließ
+  das eigene Volume hängen. Aufgeräumt wird jetzt ausschließlich über die
+  beim Attach gemerkte Geräteidentität (dev-entry), die nach dem eigenen
+  Detach gelöscht wird; ein Test führt den echten Trap-Code gegen ein
+  protokollierendes Fake-hdiutil aus.
+
 ## [v1.113.1] — 2026-08-28
 
 ### Behoben

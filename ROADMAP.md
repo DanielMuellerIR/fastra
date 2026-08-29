@@ -101,6 +101,19 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   Makro eine code-übergebende Variante wie beim Komplettieren. Ebenfalls
   offen: ein warmer tool4d-Prozess, falls die Kaltstartzeit (real ~3 s) im
   Alltag stört. Herkunft: Idee #28 in `theplan/ideen.md`.
+  - **Abbruchsignal durch die Diff-Pipeline** (Review 2026-08-29): Der
+    verwaltete Makro-Task ruft `buildDiff` synchron auf und prüft
+    `Task.isCancelled` erst danach; `Workspace.computeFileDiffDocument` und
+    `FileDiff.compare` kennen kein Abbruchsignal (nur der kooperative
+    Test-Dummy in `FourDMacroTests` bricht selbst ab). Nach Edit, Tab- oder
+    Fensterschluss wird das Ergebnis zwar verworfen und die Makro-Sperre
+    freigegeben, der alte rechen- und speicherintensive Diff läuft aber zu
+    Ende und belegt parallel zu neuen Läufen Ressourcen. Ein echter Fix muss
+    das Signal durch Laden, Zeilenaufbereitung, Myers-Diff (Foundations
+    `CollectionDifference` ist als Einzelaufruf nicht unterbrechbar — der
+    Kern bräuchte eine eigene, abbrechbare Diff-Schleife) und
+    Ergebnisaufbau reichen und den echten Produktpfad testen — zu groß für
+    einen chirurgischen Fix, deshalb hier als eigene Etappe notiert.
 
 ## Kleine offene Ideen
 

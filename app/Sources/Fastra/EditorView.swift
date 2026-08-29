@@ -1472,6 +1472,14 @@ struct EditorView: View {
             guard SearchEmphasis.shouldShow(scope: workspace.scope,
                                             dialogOpen: workspace.showSearchDialog,
                                             viewMode: workspace.activeViewMode) else { return }
+            // Veraltete RAM-Treffer (nach Edit oder Tabwechsel) nicht erneut
+            // zeichnen: Der Edit-Wächter hat sie synchron geräumt, und erst
+            // der frische Suchlauf gibt neue Bereiche frei (siehe
+            // `SearchEmphasis.bufferResultsAreCurrent`).
+            guard SearchEmphasis.bufferResultsAreCurrent(
+                scope: workspace.scope,
+                visibleBufferResultsOptions: workspace.visibleBufferResultsOptions,
+                currentOptions: workspace.currentSearchOptions) else { return }
             guard let source = SearchEmphasis.source(
                 scope: workspace.scope,
                 activeTab: workspace.activeTab,
