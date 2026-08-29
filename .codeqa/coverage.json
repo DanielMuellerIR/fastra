@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 2515249
+    "tokens_spent": 2771166
   },
   "campaign_history": [
     {
@@ -221,12 +221,13 @@
         "app/Sources/Fastra/ExternalChangeInspector.swift",
         "app/Sources/Fastra/AtomicFileCommit.swift",
         "app/Tests/FastraTests/AtomicFileCommitTests.swift",
-        "app/Tests/FastraTests/HexEditLifecycleTests.swift"
+        "app/Tests/FastraTests/HexEditLifecycleTests.swift",
+        "app/Sources/Fastra/AtomicCommitRecovery.swift"
       ],
       "risk": "critical",
       "priority": 2,
       "reason": "Dateiladen, Platten-Snapshots, große Dateien und Hex-Pfade entscheiden über Datenintegrität und Speichergrenzen.",
-      "state": "completed",
+      "state": "pending",
       "last_run": {
         "campaign_id": "20260829T181404893486+0200",
         "completed_at": "2026-08-29T18:56:27+02:00",
@@ -239,7 +240,10 @@
         "tests": [
           "Vorher roter PagedFile-Test: Hex gab 4/8 Bytes als Erfolg zurück, Text nur Cocoa-Fehler; danach PagedFileTests 15/15 PASS einschließlich Modellbindung und lokalisiertem Fehlerweg. build.sh mit Fenster-Ziel-Audit und Portabilitätsgate PASS; test.sh 2118 schnelle + 115 serielle Tests PASS, 0 Umgebungsfehler; localization-audit und help-audit --release PASS."
         ]
-      }
+      },
+      "pending_paths": [
+        "app/Sources/Fastra/AtomicCommitRecovery.swift"
+      ]
     },
     {
       "id": "git-execution-mutations",
@@ -1100,9 +1104,19 @@
         "app/Sources/Fastra/Workspace.swift"
       ],
       "priority": 2,
-      "state": "pending",
+      "state": "completed",
       "noted_at": "2026-08-25T16:54:58+02:00",
-      "campaign_id": "20260825T163605228103+0200"
+      "campaign_id": "20260825T163605228103+0200",
+      "started_at": "2026-08-29T20:48:13+02:00",
+      "completed": {
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T21:04:04+02:00",
+        "observed_head": "61f00b7e7a3b8a526125ee7131fbed5653be18c9",
+        "summary": "FolderSearch kanonisiert rekursive Treffer im Hintergrund und trägt den gelesenen FileSnapshot bis in die Navigation. Verzögerte Ordner-Sprünge vergleichen URL, Snapshot, Lade- und Dirty-Zustand nur im Speicher; Apply, Undo, Hex-Save und Tab-Reload verwenden die bereits kanonischen Pfade ohne Metadaten-I/O auf dem Main-Thread.",
+        "tests": [
+          "app/build.sh PASS; gezielt SearchDialogLogicTests|FolderSearchTests|ExternalChangeTests|HexEditLifecycleTests: 123 Tests PASS; app/test.sh: 2145 Tests/78 Suites + 115 Tests/11 Suites PASS, Exit 0; localization-audit PASS; verify-portable-app PASS; selftest localization PASS; help-audit --release PASS; git diff --check und Info.plist-Lint PASS."
+        ]
+      }
     },
     {
       "id": "compiled-search-plan",
