@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3397812
+    "tokens_spent": 3404371
   },
   "campaign_history": [
     {
@@ -365,15 +365,15 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T21:30:14+02:00",
-        "observed_head": "d82fe807dce7b003d8967a75bd247a884e388fa4",
-        "content_sha256": "bbd4f961d97cc36cd4bc2bb047e8749a1943088e7234e7b0728701f01685d71a",
+        "completed_at": "2026-08-29T21:46:46+02:00",
+        "observed_head": "fc552d97d9822cff6e369ce21d5439fa41663af2",
+        "content_sha256": "fe9fa1ec88078ee38ad83d3e6c268ae90556b038eacd5687289c36c71d8f86a1",
         "file_count": 20,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Änderungen an Info.plist, build.sh, release.sh und BuildInstallationPolicyTests vollständig geprüft. Die drei Checkout-Patches besitzen genaue Upstream-Anker, Nachprüfungen und gezielte Cache-Invalidierung. Der Release-Mount übernimmt Geräteidentität und tatsächlichen Mountpunkt aus hdiutil -plist; Kopie, reguläres Detach und EXIT-Trap können dadurch kein später gleichnamig gemountetes Fremdvolume treffen. Keine neue Abweichung gefunden.",
+        "summary": "Seit dem letzten Build-/Paketreview änderten sich ausschließlich CFBundleShortVersionString von 1.113.10 auf 1.113.11 und CFBundleVersion von 230 auf 231. Beide Werte entsprechen dem neuen Changelog-Eintrag; Paket-, Signatur-, Installations- und Release-Mechanismen blieben unverändert.",
         "tests": [
-          "bash -n app/release.sh app/build.sh; synthetische hdiutil-Plist: /dev/disk93s2 und /Volumes/Fastra 1 korrekt gelesen; swift test --filter BuildInstallationPolicyTests: 8/8 grün. Zusätzlich gelten Build, vollständige Suite (2149 Swift-Testing + 115 XCTest), localization-audit, portable-app, selftest, help-audit und public-history-audit vom unveränderten Produktstand."
+          "plutil -lint app/Info.plist grün; Version 1.113.11/Build 231 und Changelog-Eintrag abgeglichen; build.sh inklusive Portabilitätsprüfung am aktuellen Bundle zuvor grün; help-audit.sh und git diff --check grün."
         ]
       }
     },
