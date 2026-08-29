@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3305529
+    "tokens_spent": 3397812
   },
   "campaign_history": [
     {
@@ -146,15 +146,15 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T21:35:34+02:00",
-        "observed_head": "35b62e661dfb466f6237959504ec14f2ee703604",
+        "completed_at": "2026-08-29T21:46:12+02:00",
+        "observed_head": "24acd62ca5e09473e0c74b8ecd50441b4d3888d3",
         "content_sha256": "b2fd7a5c06b53f9bf1534901d7d8ea7ec3eac3c50ae314a260616b1c9186aa38",
         "file_count": 43,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Seit dem letzten P1-Lauf ist keine der 43 Such-, Vorschau- oder Apply-Dateien inhaltlich geändert. Trefferbasis, Aktuellkeitsbindung, Vorschau und atomare Apply-/Undo-Grenzen erneut durch den breiten Suchfilter bestätigt; kein Befund.",
+        "summary": "Drei seit dem P1-Lauf entstandene Änderungen vollständig als gemeinsames Delta geprüft: revisionsgebundene Hintergrundvorschau sperrt Apply bis zum vollständigen Ergebnis, kanonische Ordner-Treffer tragen ihre Such-Snapshots bis zum verzögerten Sprung, und SearchPlan teilt RegEx samt Ersetzungstemplate semantisch identisch über Datei-, Ordner-, Geöffnet- und Transaktionspfade. Aufrufergrenzen in ContentView und Workspace mitgeprüft; kein weiterer Befund.",
         "tests": [
-          "swift test --filter 'Apply|Search|ReplacePreview|Wildcard|Regex|GroupBuilder|GroupRemoval|HitExtraction': 415 Tests grün; vollständige Suite am unveränderten Produktstand zuvor grün."
+          "Breiter Such-/Apply-Filter mit 415 Tests grün; vollständige Suite mit 2149 Swift-Testing- und 115 XCTest-Tests am selben Produktcode grün; build.sh inklusive Portabilitätsprüfung auf dem aktuellen Bundle grün; git diff --check und Coverage-Validierung grün."
         ]
       }
     },
@@ -560,16 +560,16 @@
       "reason": "Fensterziel, Befehlsrouting und App-Lebenszyklus dürfen bei mehreren Dokumentfenstern keinen fremden Workspace treffen.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T21:32:13+02:00",
-        "observed_head": "83e144fdfabc6d2f3b1f4db83a27209a403c2476",
-        "content_sha256": "7f59dac2c0e11b0c98b621fec088a26fab0856b126def5f3baa975b6481157b7",
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-25T23:08:10+02:00",
+        "observed_head": "ec15e86db63927185f3f1a0607dfa0e4d4dfa630",
+        "content_sha256": "fe5f093710a560be2173d447efe5da14b3decc35ae1052d2abe4c6d3b2225946",
         "file_count": 19,
         "review": "delta-plus-boundaries",
-        "outcome": "reviewed-clean",
-        "summary": "Seit dem letzten Bereichslauf ist keine der 19 zugeordneten Dateien inhaltlich geändert. Fensterziel-, Befehlsrouting-, Startzustands- und Fenstergrößengrenzen erneut über Audit und gezielte Tests bestätigt; kein Befund.",
+        "outcome": "improved",
+        "summary": "Schließen, Beenden, Home und Fensterrouting erkennen dokumentgebundene Hex-Änderungen und bestätigen oder verwerfen sie am richtigen Workspace.",
         "tests": [
-          "window-targeting-audit.sh: PASS; sieben zugeordnete Testsuiten mit 70 Tests grün; vollständige Suite am unveränderten Produktstand zuvor grün."
+          "Weemac: 36 HexEditLifecycleTests und vollständiges app/test.sh grün; window-targeting-audit grün."
         ]
       }
     },
@@ -624,16 +624,16 @@
       "reason": "4D-Makros verbinden Katalogerkennung, externe Prozesse und temporäre Dateien mit zwingender Diff-Vorschau und nativer Apply-Semantik.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T21:32:43+02:00",
-        "observed_head": "b93a5b30fd9e56dafa8d15992657206c9e203d40",
-        "content_sha256": "37ec657806771491c25c3181c0977878d3eb050f5d0d9e3a5c0578e31ad2225e",
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-26T00:35:57+02:00",
+        "observed_head": "697767d186f12ae8f335b7e605ae13d004c49020",
+        "content_sha256": "559fd81a6f0e32e0c7e09fe9e87d265189d3d4e8d210e32dcf2f1f526e607662",
         "file_count": 6,
-        "review": "delta-plus-boundaries",
-        "outcome": "reviewed-clean",
-        "summary": "Seit dem vollständigen Makro-Review ist keine der sechs Bereichsdateien inhaltlich geändert. Dokument-/Projekt-Leases, Vorschaupflicht, Watch-Transaktion, Parserbudgets und Katalogcache erneut durch die vollständige Makro-Testsuite bestätigt; kein Befund.",
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Makroausführung vollständig an Dokument, Projekt und Ursprungsfenster gebunden; asynchroner Preflight und begrenzter Katalogcache entlasten den Main-Thread; XML-Budgets und deskriptorgebundene, exklusive Watch-Transaktion sichern fremde Quellen und tool4d-Lebenszyklus; zwei unabhängige Finalreviews ohne offene Befunde.",
         "tests": [
-          "swift test --filter FourDMacro: 66 Tests grün; vollständige Suite am unveränderten Produktstand zuvor grün."
+          "Test-Mac: app/build.sh inklusive Portabilität PASS; app/test.sh --filter FourDMacro 55 PASS/0 FAIL; Apply-Konkurrenztest PASS; localization-audit.sh PASS; Entwicklungsrepo: help-audit.sh PASS; git diff --check PASS"
         ]
       }
     },
@@ -674,16 +674,16 @@
       "reason": "4D-Parser, Indizes, LSP und Archive verarbeiten komplexe fremde Projektinhalte und erzeugte Symbolbestände.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T21:33:16+02:00",
-        "observed_head": "ef27b0f18461fc89fb4c6e297576d57d04a62123",
-        "content_sha256": "20dc3261f9b24633a9dbf63f684546bd81edfbc14e226f8cae6536096389086a",
+        "campaign_id": "20260825T163605228103+0200",
+        "completed_at": "2026-08-26T00:37:10+02:00",
+        "observed_head": "697767d186f12ae8f335b7e605ae13d004c49020",
+        "content_sha256": "dfe1bf1afdbbaddcdffdefdd264a7626080dff7a830f3df8bb7a664db31e84be",
         "file_count": 28,
         "review": "delta-plus-boundaries",
-        "outcome": "reviewed-clean",
-        "summary": "Seit dem letzten Lauf ist keine der 28 Tooling-Dateien inhaltlich geändert. Parser, Indizes, Symboltransformation, Archive, Discovery, LSP-Prozesslebenszyklus und Projektindex-Controller erneut über die gemeinsame 4D-/tool4d-Suite bestätigt; kein Befund.",
+        "outcome": "improved",
+        "summary": "Delta aus der Makrohärtung geprüft: Tool4DDiscovery vermeidet wiederholte globale Suchen und liefert dieselbe priorisierte Kandidatensemantik; Aufrufer- und Fehlergrenzen wurden im Makro-Vollreview mit zwei unabhängigen Reviews kontrolliert.",
         "tests": [
-          "swift test --filter 'FourD|Tool4D|JSONSchemaLite': 221 Tests grün; vollständige Suite am unveränderten Produktstand zuvor grün."
+          "Weemac: app/build.sh PASS; app/test.sh --filter FourDMacro 55 PASS/0 FAIL; localization-audit.sh PASS; git diff --check PASS"
         ]
       }
     },
