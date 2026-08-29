@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3908367
+    "tokens_spent": 3917285
   },
   "campaign_history": [
     {
@@ -323,15 +323,17 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T21:27:17+02:00",
-        "observed_head": "e4a4e61b476bd80f2e79ec501e113cdde0cf8a31",
-        "content_sha256": "e0ce29e5465716c8d64d469bd6dc00aac41127acdddebec47d860de3fd96ae1d",
+        "completed_at": "2026-08-29T22:16:38+02:00",
+        "observed_head": "392a54281929cc186f22ff29d283b8451c089104",
+        "content_sha256": "5172b3a0d9e1fec4bb5ec69bd2fb196c2717f74c89d7b5c49b9cede6b507346e",
         "file_count": 23,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Seit dem letzten Bereichslauf änderte sich nur Workspace.swift. Delta und Grenzen geprüft: akzeptierte externe Inhalte besitzen eine snapshotunabhängige Generation, erfolgreiche Ladevorgänge markieren exakt die angezeigte Generation; Makro-Engine und Nachbearbeitung sind an Lauf-, Tab- und Dokumentidentitäten gebunden und werden bei direkten sowie Binding-basierten Inhaltsänderungen, Tab-/Fensterschluss und Home-Wechsel entwertet; kanonische Datei- und Navigationswerte bleiben an die asynchronen Completion-Guards gebunden. Kein neuer Fund.",
+        "summary": "Das einzige Delta bindet den Workspace-Auftrag und die Ergebnisübernahme der Inhaltsanalyse an EditorTab.contentRevision. Die Generation steigt im Property-Observer bei jeder direkten Inhaltszuweisung; Tab- und Dokumentidentität, Erkennungs-Eignung und Inhaltsgeneration werden gemeinsam unmittelbar vor der Modellmutation geprüft. Das Delta ist durch den Befund und die Tests des Sprachbereichs bereits abgedeckt; keine weitere Änderung nötig.",
         "tests": [
-          "Vollständiger Lauf am selben Produktstand: 2149 Tests/78 Suites + 115 Tests/11 Suites PASS, Exit 0; darin ExternalChangeTests, HexEditLifecycleTests, WorkspaceLoad/SessionRestoration/WorkspaceParallelStress und FourDMacroTests grün. Gezielte Such-/Workspace-Grenzen zuvor 211 Tests PASS; git diff --check PASS."
+          "DocumentLanguageDetectorTests.directModelMutationRejectsStaleContent: alter Inhalt wird verworfen, Folgeänderung bleibt analysefähig",
+          "./test.sh mit Workspace-nahen Dokument-/Sprach-/Formatfiltern: 103 Tests grün",
+          "./build.sh: grün einschließlich Fensterziel-Audit, Signatur und portabler App"
         ]
       }
     },
