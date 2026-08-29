@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3134433
+    "tokens_spent": 3195651
   },
   "campaign_history": [
     {
@@ -700,16 +700,16 @@
       "reason": "Druckpfade verbinden Nutzerinhalte mit AppKit/WebKit, asynchronen modalen Rückrufen und dauerhaftem Ausgabeformat.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-26T01:11:49+02:00",
-        "observed_head": "6d07afbe94f9cf573ea7f978e9a40df77875d88c",
-        "content_sha256": "1fa494cccaaf4de571b24bc134b3921bb35d5cbce3270fca31978399b4723521",
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T21:34:59+02:00",
+        "observed_head": "534607ccb943110201296bed62de660a7f3eba5b",
+        "content_sha256": "ecd4629e1ee44ab7cf9981da4ec9a20908476f39071879bba971dd099ec23c44",
         "file_count": 4,
         "review": "full",
-        "outcome": "improved",
-        "summary": "Asynchrone Markdown-Druckaufträge schließen bei WebKit-, Fenster- und Timeoutfehlern genau einmal; Druckfehler bleiben von Nutzerabbruch unterscheidbar, und späte WebKit-Signale bauen laufende AppKit-Aufträge nicht mehr ab.",
+        "outcome": "reviewed-clean",
+        "summary": "Alle 2687 Zeilen des Druckbereichs vollständig geprüft. Zielrouting, sichtbare Snapshot-Bindung, Text-Paginierung, Druckdialogoptionen, WebKit-Vorbereitung, 30-s-Gesamtfrist, Übergabe an AppKit und fremd-threadiger Relay-Abschluss bleiben konsistent und genau-einmal geschützt. Das Testdelta wartet lediglich kontrolliert auf verzögerte WebKit-/NotificationCenter-Freigaben und erhält die Leckprüfung. Kein weiterer Befund.",
         "tests": [
-          "Weemac: build.sh PASS inklusive Fenster-Zielaudit und Portabilität; test.sh 2087+104 PASS, 0 Fehler/Umgebungsfehler; gezielt 43 Drucktests PASS; localization-audit PASS."
+          "swift test --filter Printing: 43 Tests in 14 Suiten grün; vollständige Suite am unveränderten Produktstand zuvor grün."
         ]
       }
     },
