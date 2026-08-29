@@ -256,6 +256,11 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
 
 ## Bekannte technische Fallen
 
+- Ergebnis-Flags nicht per `flag = flag || funktion()` sammeln: Das `||` wertet
+  die rechte Seite nach dem ersten `true` nicht mehr aus, und die Funktion läuft
+  für die restlichen Elemente gar nicht — so fehlten in `updateSelectionViews`
+  die Positionierungsaufrufe für alle weiteren Cursor einer Rechteckauswahl
+  (behoben in 5a934ac). Erst aufrufen, dann verodern.
 - **Der `.build`-Pfad in `Contents/MacOS/Fastra` bleibt bewusst stehen.** SwiftPM
   kompiliert in den Zugriff auf `Bundle.module` den Build-Zeit-Pfad des
   Ressourcen-Bundles als Zeichenkette ein. Das ist kein Debug-Symbol, `strip -S`
