@@ -190,7 +190,7 @@ func matchJumpUpdatesReadOnlySnapshotView() {
 }
 
 @MainActor
-@Test("Verzögerter Treffer-Sprung prüft Dokument-ID und kanonische Datei-URL")
+@Test("Verzögerter Treffer-Sprung prüft Dokument-ID, URL und Such-Snapshot")
 func delayedMatchJumpUsesDocumentIdentity() throws {
     let suite = "fastra-search-target-\(UUID().uuidString)"
     let defaults = testSuiteDefaults(named: suite)
@@ -202,15 +202,29 @@ func delayedMatchJumpUsesDocumentIdentity() throws {
     let url = URL(fileURLWithPath: "/tmp").appendingPathComponent(fileName)
     try Data().write(to: url)
     defer { try? FileManager.default.removeItem(at: url) }
-    workspace.tabs[0].url = url
+    let canonicalURL = url.canonicalFileURL
+    let snapshot = try FileSnapshot.readSnapshotOnly(from: canonicalURL)
+    workspace.tabs[0].url = canonicalURL
+    workspace.tabs[0].diskSnapshot = snapshot
 
     #expect(MatchJumpTarget.document(documentID).isActive(in: workspace))
     #expect(!MatchJumpTarget.document(tabID).isActive(in: workspace))
-    #expect(MatchJumpTarget.url(URL(
-        fileURLWithPath: "/private/tmp/\(fileName)"
-    )).isActive(in: workspace))
-    #expect(!MatchJumpTarget.url(url.appendingPathExtension("fremd"))
-        .isActive(in: workspace))
+    #expect(MatchJumpTarget.file(
+        url: canonicalURL, snapshot: snapshot
+    ).isActive(in: workspace))
+    workspace.tabs[0].isDirty = true
+    #expect(!MatchJumpTarget.file(
+        url: canonicalURL, snapshot: snapshot
+    ).isActive(in: workspace))
+    workspace.tabs[0].isDirty = false
+    #expect(!MatchJumpTarget.file(
+        url: canonicalURL.appendingPathExtension("fremd"), snapshot: snapshot
+    ).isActive(in: workspace))
+    workspace.tabs[0].diskSnapshot = FileSnapshot(
+        data: Data("anderer Stand".utf8), identity: snapshot.identity)
+    #expect(!MatchJumpTarget.file(
+        url: canonicalURL, snapshot: snapshot
+    ).isActive(in: workspace))
 }
 
 @MainActor
@@ -302,6 +316,8 @@ func patternChangeInvalidatesPendingFolderMatchJump() async throws {
         .appendingPathComponent("fastra-stale-jump-\(UUID().uuidString).txt")
     try content.write(to: url, atomically: true, encoding: .utf8)
     defer { try? FileManager.default.removeItem(at: url) }
+    let canonicalURL = url.canonicalFileURL
+    let snapshot = try FileSnapshot.readSnapshotOnly(from: canonicalURL)
     let found = BufferSearch.find(
         in: content,
         options: SearchOptions(find: "TREFFER", replace: "", isRegex: false)
@@ -313,11 +329,12 @@ func patternChangeInvalidatesPendingFolderMatchJump() async throws {
     let nextIndex = 1
     let jumpGeneration = workspace.beginMatchJump()
     let capture = MatchJumpPostCapture()
-    workspace.loadFile(at: url) { ok in
+    workspace.loadFile(atCanonicalURL: canonicalURL) { ok in
         #expect(ok, "Die Funddatei muss sich laden lassen")
         DispatchQueue.main.async {
             let didPost = NotificationCenter.default.postMatchJump(
-                found[1], for: workspace, requiring: .url(url),
+                found[1], for: workspace,
+                requiring: .file(url: canonicalURL, snapshot: snapshot),
                 generation: jumpGeneration
             )
             if let index = MatchJumpCommit.index(

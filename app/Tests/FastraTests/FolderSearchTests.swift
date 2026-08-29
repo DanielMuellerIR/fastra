@@ -592,6 +592,22 @@ func folderSearch_directFileRoot() throws {
     #expect(result.filesWithMatches.first?.url == file.canonicalFileURL)
 }
 
+@Test("Rekursive Ordnersuche veröffentlicht bereits die kanonische Datei-URL")
+func folderSearch_recursiveResultCarriesCanonicalURL() throws {
+    let c = try FolderCorpus()
+    let file = try c.write("nested.txt", "KANONISCH", in: "Unterordner")
+
+    let result = FolderSearch.find(
+        in: [c.root], filter: .knownText,
+        options: SearchOptions(find: "KANONISCH", replace: "", isRegex: false)
+    )
+
+    let found = try #require(result.filesWithMatches.first)
+    #expect(found.url == file.canonicalFileURL)
+    #expect(found.snapshot?.identity != nil,
+            "Der UI-Guard braucht die im Worker gelesene Dateibasis")
+}
+
 @Test("Überlappende Datei-Set-Wurzeln liefern jede Datei nur einmal")
 func folderSearch_deduplicatesOverlappingRoots() throws {
     let c = try FolderCorpus()

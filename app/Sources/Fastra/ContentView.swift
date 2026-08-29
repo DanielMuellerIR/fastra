@@ -272,6 +272,10 @@ struct ContentView: View {
             action: action
         )
         guard case .activate(let target) = transition.output else { return }
+        // Ein Ordner-Treffer ohne seinen im Worker gelesenen Snapshot besitzt
+        // keine belastbare Navigationsbasis. Er darf weder eine Datei öffnen
+        // noch auf den inzwischen möglicherweise anderen Inhalt springen.
+        guard target.url == nil || target.fileSnapshot != nil else { return }
         // Diskrete Such-Aktion → ins Such-History-Popup aufnehmen (K4).
         workspace.recordSearchHistory()
         let previousIndex = workspace.activeMatchIndex
@@ -302,14 +306,17 @@ struct ContentView: View {
                 )
                 commitIndexIfPosted(posted)
             }
-        } else if let url = target.url, workspace.activeTab?.url != url {
+        } else if let url = target.url,
+                  let snapshot = target.fileSnapshot,
+                  workspace.activeTab?.url != url {
             // Datei asynchron laden — Editor-Sprung erst in der Completion,
             // damit der Tab mit fertigem Inhalt existiert (Race vermieden).
-            workspace.loadFile(at: url) { ok in
+            workspace.loadFile(atCanonicalURL: url) { ok in
                 guard ok else { return }
                 DispatchQueue.main.async {
                     let posted = NotificationCenter.default.postMatchJump(
-                        target.match, for: workspace, requiring: .url(url),
+                        target.match, for: workspace,
+                        requiring: .file(url: url, snapshot: snapshot),
                         generation: jumpGeneration
                     )
                     commitIndexIfPosted(posted)
@@ -323,10 +330,17 @@ struct ContentView: View {
             // Der Dokument-ID-Guard bindet den Sprung trotzdem an den jetzt
             // aktiven Tab; ein späterer Scrollauftrag verdrängt über seine
             // Generation lediglich den vorherigen Scroll, nicht die Auswahl.
-            let activeDocumentID = workspace.activeDocumentID
+            let requiredTarget: MatchJumpTarget?
+            if let url = target.url, let snapshot = target.fileSnapshot {
+                requiredTarget = .file(url: url, snapshot: snapshot)
+            } else {
+                requiredTarget = workspace.activeDocumentID.map {
+                    MatchJumpTarget.document($0)
+                }
+            }
             let posted = NotificationCenter.default.postMatchJump(
                 target.match, for: workspace,
-                requiring: activeDocumentID.map { MatchJumpTarget.document($0) },
+                requiring: requiredTarget,
                 generation: jumpGeneration)
             commitIndexIfPosted(posted)
         }

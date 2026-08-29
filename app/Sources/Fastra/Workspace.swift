@@ -2971,7 +2971,20 @@ final class Workspace: ObservableObject {
         // `/private/var/…`. Ohne Normalisierung scheitern Tab-Dedup und
         // Aktiv-Markierung im Projektbaum an `/var` ≠ `/private/var`
         // (Befund Screenshot 2026-07-12).
-        let url = url.canonicalFileURL
+        loadFile(atCanonicalURL: url.canonicalFileURL,
+                 preview: preview,
+                 expectedGitContext: expectedGitContext,
+                 acceptance: acceptance,
+                 completion: completion)
+    }
+
+    /// Variante für Pfade, die ein Hintergrundlauf bereits über
+    /// `canonicalPathKey` aufgelöst hat. Ordner-Treffer verwenden sie, damit
+    /// ihr Klick auf dem Main-Thread keine zweite Metadatenabfrage ausführt.
+    func loadFile(atCanonicalURL url: URL, preview: Bool = false,
+                  expectedGitContext: GitActionContext? = nil,
+                  acceptance: FileLoadAcceptance? = nil,
+                  completion: ((Bool) -> Void)? = nil) {
         // Ein Restore-Ladevorgang kann bereits entwertet sein, bevor er hier
         // startet. Dann weder einen vorhandenen Tab aktivieren noch einen
         // Platzhalter veröffentlichen.
@@ -3978,7 +3991,7 @@ final class Workspace: ObservableObject {
         hexSaveMutationOperations[operation.id] = HexSaveMutationOperation(
             id: mutationID, tabID: context.tabID,
             documentID: context.documentID,
-            path: url.canonicalFileURL.path, workspaces: workspaces
+            path: url.standardizedFileURL.path, workspaces: workspaces
         )
         noteFileMutationChange(in: workspaces)
         return operation
@@ -3994,7 +4007,7 @@ final class Workspace: ObservableObject {
         defer { finishHexSaveMutation(mutation) }
         guard let idx = tabs.firstIndex(where: {
             $0.id == tabID && $0.documentID == mutation.documentID
-                && $0.url?.canonicalFileURL.path == mutation.path
+                && $0.url?.standardizedFileURL.path == mutation.path
         }) else {
             return false
         }
@@ -4023,7 +4036,7 @@ final class Workspace: ObservableObject {
         defer { finishHexSaveMutation(mutation) }
         guard let idx = tabs.firstIndex(where: {
             $0.id == tabID && $0.documentID == mutation.documentID
-                && $0.url?.canonicalFileURL.path == mutation.path
+                && $0.url?.standardizedFileURL.path == mutation.path
         }) else { return }
         tabs[idx].updateHexEditSession {
             $0.markSaveFailed(operation, message: message)
@@ -5722,14 +5735,20 @@ final class Workspace: ObservableObject {
     struct NavMatch: Identifiable, Equatable {
         let id: UUID
         let url: URL?
+        /// Exakte Dateibasis eines Ordner-Treffers. Zusammen mit der bereits
+        /// im Such-Worker kanonisierten URL bindet sie einen verzögerten
+        /// Sprung an genau den sichtbaren Plattenstand, ohne Main-Thread-I/O.
+        let fileSnapshot: FileSnapshot?
         /// Ziel-Tab im Geöffnet-Scope: Die Navigation aktiviert diesen Tab
         /// statt eine Datei zu laden (auch ungespeicherte Tabs erreichbar).
         let tabID: UUID?
         let match: BufferSearch.Match
 
-        init(id: UUID, url: URL?, tabID: UUID? = nil, match: BufferSearch.Match) {
+        init(id: UUID, url: URL?, fileSnapshot: FileSnapshot? = nil,
+             tabID: UUID? = nil, match: BufferSearch.Match) {
             self.id = id
             self.url = url
+            self.fileSnapshot = fileSnapshot
             self.tabID = tabID
             self.match = match
         }
@@ -5742,7 +5761,10 @@ final class Workspace: ObservableObject {
             // zukünftiger Refactor das physische Leeren einmal verzögert.
             guard !folderSearching, !folderNeedsSearch else { return [] }
             return folderResults.flatMap { pf in
-                pf.matches.map { NavMatch(id: $0.id, url: pf.url, match: $0) }
+                pf.matches.map {
+                    NavMatch(id: $0.id, url: pf.url,
+                             fileSnapshot: pf.snapshot, match: $0)
+                }
             }
         }
         // Datei- und Geöffnet-Treffer bleiben während des 120-ms-Debounce
@@ -5806,11 +5828,14 @@ final class Workspace: ObservableObject {
     private func blockedTabsForFileMutation(
         urls: [URL], workspaces: [Workspace]
     ) -> [(workspace: Workspace, tab: EditorTab)] {
-        let targetPaths = Set(urls.map { $0.canonicalFileURL.path })
+        // Ordnersuche und Dateilader veröffentlichen bereits kanonische URLs.
+        // Hier bleibt nur eine lexikalische Normalisierung; anders als
+        // `canonicalFileURL` fragt sie keine Dateisystem-Metadaten ab.
+        let targetPaths = Set(urls.map { $0.standardizedFileURL.path })
         return workspaces.flatMap { workspace in
             workspace.tabs.compactMap { tab in
                 guard let url = tab.url,
-                      targetPaths.contains(url.canonicalFileURL.path),
+                      targetPaths.contains(url.standardizedFileURL.path),
                       tab.hasUnsavedChanges || tab.isLoading else { return nil }
                 return (workspace, tab)
             }
@@ -5839,10 +5864,10 @@ final class Workspace: ObservableObject {
     /// trotzdem sofort übernehmen; ein App-Aktivierungswechsel findet bei
     /// zwei gleichzeitig sichtbaren Fastra-Fenstern nicht statt.
     func handleHexWrite(at url: URL) {
-        let path = url.canonicalFileURL.path
+        let path = url.standardizedFileURL.path
         for workspace in fileTreeMutationWorkspaces() {
             if workspace.folderResults.contains(where: {
-                $0.url.canonicalFileURL.path == path
+                $0.url.standardizedFileURL.path == path
             }) {
                 // Der Hex-Save ist eine eigene Plattenmutation. Tabänderungen
                 // starten im Ordner-Scope absichtlich keine neue Suche; die
@@ -5850,7 +5875,7 @@ final class Workspace: ObservableObject {
                 workspace.searchRunner?.folderResultsBecameStale()
             }
             let dirtyIDs = workspace.tabs.compactMap { tab -> UUID? in
-                guard tab.url?.canonicalFileURL.path == path,
+                guard tab.url?.standardizedFileURL.path == path,
                       tab.hasUnsavedChanges else { return nil }
                 return tab.id
             }
@@ -6133,13 +6158,13 @@ final class Workspace: ObservableObject {
     }
 
     func reloadOpenTabs(for changedURLs: [URL]) {
-        let changed = Set(changedURLs.map { $0.canonicalFileURL.path })
+        let changed = Set(changedURLs.map { $0.standardizedFileURL.path })
         // Snapshot der zu reloadenden Tab-IDs + URLs aufnehmen — die
         // Schleife muss nicht auf dem aktuellen `tabs`-Array laufen.
         let toReload: [(id: UUID, url: URL, contentRevision: UInt64,
                        diskSnapshot: FileSnapshot?)] = tabs.compactMap { tab in
             guard let url = tab.url,
-                  changed.contains(url.canonicalFileURL.path) else { return nil }
+                  changed.contains(url.standardizedFileURL.path) else { return nil }
             // Ein Dirty-/Ladezustand darf weder hier noch in der Completion
             // automatisch verworfen werden.
             guard !tab.hasUnsavedChanges, !tab.isLoading else { return nil }

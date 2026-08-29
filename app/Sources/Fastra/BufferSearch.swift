@@ -412,15 +412,20 @@ enum MatchJumpTarget {
     /// wiederverwendeter Vorschau-Tab behält seine Tab-ID, nicht aber diese
     /// Identität.
     case document(UUID)
-    /// Eine Datei, die der Aufrufer gerade geöffnet hat.
-    case url(URL)
+    /// Eine Datei aus einer abgeschlossenen Ordnersuche. URL und Snapshot
+    /// entstanden im Hintergrundlauf; der spätere UI-Guard vergleicht deshalb
+    /// nur Werte im Speicher und berührt weder Pfadmetadaten noch Dateibytes.
+    case file(url: URL, snapshot: FileSnapshot)
 
     func isActive(in workspace: Workspace) -> Bool {
         switch self {
         case .document(let id):
             return workspace.activeDocumentID == id
-        case .url(let url):
-            return workspace.activeTab?.url?.canonicalFileURL == url.canonicalFileURL
+        case .file(let url, let snapshot):
+            return workspace.activeTab?.url == url
+                && workspace.activeTab?.diskSnapshot == snapshot
+                && workspace.activeTab?.hasUnsavedChanges == false
+                && workspace.activeTab?.isLoading == false
         }
     }
 }

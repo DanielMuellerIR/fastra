@@ -9,6 +9,17 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.9] — 2026-08-29
+
+### Behoben
+
+- **Ordner-Treffer springen nicht mehr in einen inzwischen abweichenden
+  Dokumentstand.** Die Suche liefert kanonische Datei-URLs und den gelesenen
+  Snapshot aus dem Hintergrundlauf mit. Trefferklick, Ordner-Apply,
+  Rückgängig und anschließendes Tab-Nachladen vergleichen diese Werte auf dem
+  Main-Thread nur noch im Speicher. Ein atomar ersetzter, noch ladender oder
+  ungespeichert bearbeiteter Ziel-Tab erhält keinen veralteten Sprung.
+
 ## [v1.113.8] — 2026-08-29
 
 ### Behoben

@@ -248,7 +248,12 @@ enum FolderSearch {
                 // bisherigen FileManager-Pfad durchsuchbar. Der Cache prüft
                 // jeden Elternordner höchstens einmal pro Suchwurzel.
                 guard !packageCache.contains(url) else { continue }
-                guard seenFiles.insert(url.canonicalFileURL.path).inserted else { continue }
+                // Die Dateisystemauflösung gehört zum ohnehin abgekoppelten
+                // Suchlauf. Das veröffentlichte Ergebnis trägt anschließend
+                // schon die stabile URL; Navigation und Apply müssen sie auf
+                // dem Main-Thread nur noch als Wert vergleichen.
+                let canonical = url.canonicalFileURL
+                guard seenFiles.insert(canonical.path).inserted else { continue }
 
                 // Datei durchsuchen. Der effektive Pro-Datei-Cap ist das
                 // Minimum aus `maxResultsPerFile` und dem noch verfügbaren
@@ -263,7 +268,7 @@ enum FolderSearch {
                 // langen detached Task bis zum Laufende liegen; auf realen
                 // Projekten wächst der Resident-Speicher dann pro Datei.
                 let result = autoreleasepool {
-                    searchOneFile(at: url, options: options,
+                    searchOneFile(at: canonical, options: options,
                                   maxMatches: effectivePerFile,
                                   shouldCancel: shouldCancel)
                 }

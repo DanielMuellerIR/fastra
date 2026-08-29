@@ -1289,6 +1289,7 @@ struct FloatingSearchDialog: View {
             action: .select(matchID: matchID)
         )
         guard case .activate(let target) = transition.output else { return }
+        guard target.url == nil || target.fileSnapshot != nil else { return }
 
         let previousIndex = workspace.activeMatchIndex
         let nextIndex = transition.state.index
@@ -1320,15 +1321,16 @@ struct FloatingSearchDialog: View {
             }
             return
         }
-        if let url = target.url {
+        if let url = target.url, let snapshot = target.fileSnapshot {
             // Tab öffnen oder aktivieren — asynchron. Editor-Sprung erst in
             // der Completion, nachdem der Tab vollständig geladen ist
             // (Race vermieden: postMatchJump braucht den fertigen Inhalt).
-            workspace.loadFile(at: url) { ok in
+            workspace.loadFile(atCanonicalURL: url) { ok in
                 guard ok else { return }
                 DispatchQueue.main.async {
                     let posted = NotificationCenter.default.postMatchJump(
-                        target.match, for: workspace, requiring: .url(url),
+                        target.match, for: workspace,
+                        requiring: .file(url: url, snapshot: snapshot),
                         generation: jumpGeneration
                     )
                     commitIndexIfPosted(posted)
