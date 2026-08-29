@@ -892,7 +892,22 @@ another program changes one of the participating paths again during final
 verification, Fastra keeps the reachable versions, deletes neither path, and
 names them in the warning for manual resolution. A separate process that keeps
 writing to an already open old file cannot be locked out by a macOS name
-exchange. If a fully loaded text file disappears or becomes unreadable, Fastra
+exchange.
+
+Before every such name exchange, Fastra also synchronizes a small recovery
+journal under `~/Library/Application Support/Fastra/atomic-commit-recovery/`.
+If the process or Mac stops between the exchange and final verification, the
+next app launch maps the target, prepared version, and any private cleanup path
+by their file identities and content checksums. Fastra names the paths that are
+actually reachable and does not delete either version while the state is
+unclear. This applies to
+normal saves, Hex saves, Folder Apply, and its Undo step. A journal with no
+second reachable version is removed at launch only when the target still
+contains one of the two file identities recorded in it. If the target is also
+missing or now contains a foreign file, the journal remains as a record of the
+interrupted operation.
+
+If a fully loaded text file disappears or becomes unreadable, Fastra
 marks the remaining tab copy as unsaved so it cannot be closed without
 confirmation.
 

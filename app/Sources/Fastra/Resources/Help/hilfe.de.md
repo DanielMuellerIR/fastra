@@ -947,6 +947,20 @@ Fastra die erreichbaren Fassungen und löscht keinen der beteiligten Pfade; die
 Warnung nennt sie zur manuellen Klärung. Ein fremder Prozess, der eine bereits
 geöffnete alte Fassung zugleich weiter beschreibt, lässt sich durch einen
 macOS-Namenstausch nicht sperren.
+
+Vor jedem solchen Namenstausch synchronisiert Fastra außerdem ein kleines
+Recovery-Journal unter `~/Library/Application Support/Fastra/atomic-commit-recovery/`.
+Endet der Prozess oder der Mac zwischen Tausch und Abschlussprüfung, ordnet der
+nächste App-Start Ziel, vorbereitete Fassung und gegebenenfalls den privaten
+Cleanup-Pfad anhand ihrer Dateiidentitäten und Inhaltsprüfsummen zu. Fastra
+nennt die tatsächlich erreichbaren Pfade und löscht bei einem unklaren Stand
+keine Fassung. Das gilt
+gemeinsam für normales Speichern, Hex-Speichern, Ordner-Apply und dessen
+Rückgängig-Schritt. Ein Journal ohne zweite erreichbare Fassung wird beim Start
+nur entfernt, wenn am Ziel noch eine der beiden darin gebundenen
+Dateiidentitäten liegt. Fehlt auch das Ziel oder liegt dort inzwischen eine
+fremde Datei, bleibt das Journal als Hinweis erhalten.
+
 Verschwindet eine vollständig geladene Textdatei oder wird sie unlesbar,
 markiert Fastra die im Tab verbliebene Kopie als ungespeichert; sie lässt sich
 dadurch nicht ohne Rückfrage schließen.
