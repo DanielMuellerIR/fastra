@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 1189891
+    "tokens_spent": 1397633
   },
   "campaign_history": [
     {
@@ -1204,9 +1204,19 @@
         "app/Sources/Fastra/PagedFileView.swift"
       ],
       "priority": 2,
-      "state": "pending",
+      "state": "completed",
       "noted_at": "2026-08-25T20:00:50+02:00",
-      "campaign_id": "20260825T163605228103+0200"
+      "campaign_id": "20260825T163605228103+0200",
+      "started_at": "2026-08-29T19:20:54+02:00",
+      "completed": {
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T19:35:08+02:00",
+        "observed_head": "5f960439a6fecb7556b6937c5f650d7641036018",
+        "summary": "FilePageModel und TextFilePageModel besitzen jetzt je genau einen gespeicherten Lade-Task, brechen ihn beim nächsten Seitenauftrag und beim Abbau ab und veröffentlichen weiterhin nur dieselbe Generation. Byte- und Textreader übernehmen das Task-Abbruchsignal und prüfen es vor Öffnen, Seek, jedem Read, Schlussprüfung und Dekodierung; schnelle Slider-Bewegungen lassen damit keine Kette überholter Datei-I/O weiterlaufen.",
+        "tests": [
+          "Rotbeleg: ./test.sh --filter PagedFileTests scheiterte vor der Implementierung an fehlenden shouldCancel-Schnittstellen und fehlender Text-Reader-Injektion (Exit 1). Grün: PagedFileTests 18/18; ./build.sh inklusive Portabilitätsprüfung; ./localization-audit.sh; ./selftest.sh localization; ./test.sh 2242/2242; ./help-audit.sh --release; git diff --check; plutil -lint app/Info.plist."
+        ]
+      }
     },
     {
       "id": "atomic-commit-crash-recovery",
