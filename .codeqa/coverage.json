@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3587094
+    "tokens_spent": 3592679
   },
   "campaign_history": [
     {
@@ -674,16 +674,16 @@
       "reason": "4D-Parser, Indizes, LSP und Archive verarbeiten komplexe fremde Projektinhalte und erzeugte Symbolbestände.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260825T163605228103+0200",
-        "completed_at": "2026-08-26T00:37:10+02:00",
-        "observed_head": "697767d186f12ae8f335b7e605ae13d004c49020",
-        "content_sha256": "dfe1bf1afdbbaddcdffdefdd264a7626080dff7a830f3df8bb7a664db31e84be",
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T21:58:02+02:00",
+        "observed_head": "1896fd9042a3ce9b34540cdfbc95e8786e8dbc15",
+        "content_sha256": "20dc3261f9b24633a9dbf63f684546bd81edfbc14e226f8cae6536096389086a",
         "file_count": 28,
         "review": "delta-plus-boundaries",
-        "outcome": "improved",
-        "summary": "Delta aus der Makrohärtung geprüft: Tool4DDiscovery vermeidet wiederholte globale Suchen und liefert dieselbe priorisierte Kandidatensemantik; Aufrufer- und Fehlergrenzen wurden im Makro-Vollreview mit zwei unabhängigen Reviews kontrolliert.",
+        "outcome": "reviewed-clean",
+        "summary": "Das tatsächliche Tooling-Delta beschränkt sich auf FourDTokenTransform und FourDTokenizer: Deklarationstypen werden linear vorermittelt, gelernte Symbolnamen nach erstem Wort indexiert, und Rücktokenisierung samt langen UTF-16-, Kommentar-, String-, Tabellen- und Namensläufen ist kooperativ abbrechbar. Aufrufer- und Makro-Nachbearbeitungsgrenzen mitgeprüft; Parser, Indizes, Archive, Discovery und LSP blieben gegenüber dem letzten Tooling-Lauf unverändert. Kein weiterer Befund.",
         "tests": [
-          "Weemac: app/build.sh PASS; app/test.sh --filter FourDMacro 55 PASS/0 FAIL; localization-audit.sh PASS; git diff --check PASS"
+          "Gemeinsamer FourD-/Tool4D-/JSONSchemaLite-Filter mit 221 Tests grün; vollständiger FourDMacro-Filter mit 68 Tests auf dem aktuellen Build grün; build.sh einschließlich Portabilitätsprüfung, Coverage-Validierung und git diff --check grün."
         ]
       }
     },
