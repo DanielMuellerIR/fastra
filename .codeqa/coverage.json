@@ -6,7 +6,7 @@
     "token_budget": 5000000,
     "status": "active",
     "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3206476
+    "tokens_spent": 3305529
   },
   "campaign_history": [
     {
@@ -767,26 +767,20 @@
       "risk": "medium",
       "priority": 13,
       "reason": "Gemeinsame SwiftUI/AppKit-Helfer tragen Layout-, Interaktions- und wiederherstellbaren Seitenleistenzustand über mehrere Ansichten.",
-      "state": "pending",
+      "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T165221406979+0200",
-        "completed_at": "2026-08-15T19:03:37+02:00",
-        "observed_head": "7162b2522b81c76eaf6badc07d2a678292127fba",
-        "content_sha256": "e21edf00be513bbb61b0aed521b6bec7686add6c51d8aef8df6b0525e55fdc96",
-        "file_count": 6,
-        "review": "full",
-        "outcome": "reviewed-clean",
-        "summary": "Drop-Filter, Splitterberechnung und -Geste, Statusleiste sowie Prompt-Testgrenzen vollständig geprüft; Fensterzielwahl und regulärer-Datei-Lader bleiben korrekt, keine lohnende Änderung",
+        "campaign_id": "20260829T181404893486+0200",
+        "completed_at": "2026-08-29T21:39:55+02:00",
+        "observed_head": "c38b43b1c797f2ff70e96eef706c28c7c6020516",
+        "content_sha256": "59ac6ec8f1c1d90e9cea26304e9edaab0a3bcdc4eb3992db741f3185f39006a1",
+        "file_count": 8,
+        "review": "delta-plus-boundaries",
+        "outcome": "improved",
+        "summary": "Neue SidebarScrollMemory-Implementierung, Tests, drei Einbaupunkte, Projektwechsel-Reset und StatusBar-Delta geprüft. Befund behoben: Zwischen Observer-Installation und verzögertem Restore konnte eine frühe Bounds-Meldung Position 0 speichern und das Wiederherstellungsziel löschen. Der Probe-Wächter unterdrückt Aufbauereignisse nun schon vor dem Observer; bei inzwischen entferntem Ziel gibt beginRestore ihn wieder frei. Version 1.113.11/231, Changelog und Hilfe-Marker aktualisiert.",
         "tests": [
-          "Splitter/PromptTextField/DropHandling/FooterLogic: 34/34 passed",
-          "window-targeting-audit.sh: passed",
-          "build.sh einschließlich Portabilitätsprüfung: passed"
+          "app/build.sh inklusive Fensterziel- und Portabilitätsprüfung PASS; app/test.sh --filter SidebarScrollMemory: 13 Tests grün, darunter AppKit-Regression für frühe Bounds-Meldung; localization-audit, plutil, help-audit, public-history-audit und git diff --check PASS."
         ]
-      },
-      "pending_paths": [
-        "app/Sources/Fastra/SidebarScrollMemory.swift",
-        "app/Tests/FastraTests/SidebarScrollMemoryTests.swift"
-      ]
+      }
     },
     {
       "id": "language-format-lint",
