@@ -1914,6 +1914,87 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         #expect(result.status == 0, "Prozessbaum-Helfer: \(result.output)")
     }
 
+    @Test("Runner räumt Kindprozess auch nach frühem Ende des Gruppenleiters auf")
+    func runnerCleansDescendantAfterRootExit() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-dead-root-cleanup-\(UUID().uuidString)")
+        let sandboxParent = root.appendingPathComponent("sandboxes")
+        let lock = root.appendingPathComponent("gui.lock")
+        let fakeApp = root.appendingPathComponent("Fastra")
+        let fakeSource = root.appendingPathComponent("dead-root.c")
+        let childPIDFile = root.appendingPathComponent("child.pid")
+        let runner = performanceToolsDirectory.deletingLastPathComponent()
+            .appendingPathComponent("selftest.sh")
+        defer {
+            if let text = try? String(contentsOf: childPIDFile, encoding: .utf8),
+               let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)),
+               kill(pid, 0) == 0,
+               let command = try? runPerformanceTool(
+                   "/bin/ps", arguments: ["-p", "\(pid)", "-o", "command="]
+               ), command.output.contains(fakeApp.path) {
+                kill(pid, SIGKILL)
+                for _ in 0..<100 where kill(pid, 0) == 0 { usleep(10_000) }
+            }
+            try? FileManager.default.removeItem(at: root)
+        }
+        try FileManager.default.createDirectory(
+            at: sandboxParent, withIntermediateDirectories: true
+        )
+        try """
+        #include <signal.h>
+        #include <stdio.h>
+        #include <stdlib.h>
+        #include <unistd.h>
+
+        int main(void) {
+            const char *pid_path = getenv("FASTRA_TEST_CHILD_PID");
+            if (pid_path == NULL) return 84;
+            pid_t child = fork();
+            if (child < 0) return 85;
+            if (child == 0) {
+                signal(SIGHUP, SIG_IGN);
+                signal(SIGTERM, SIG_IGN);
+                for (;;) pause();
+            }
+            FILE *handle = fopen(pid_path, "w");
+            if (handle == NULL) return 86;
+            fprintf(handle, "%d\\n", child);
+            fflush(handle);
+            fsync(fileno(handle));
+            fclose(handle);
+            return 73;
+        }
+        """.write(to: fakeSource, atomically: true, encoding: .utf8)
+        let compile = try runPerformanceTool(
+            "/usr/bin/clang", arguments: [fakeSource.path, "-o", fakeApp.path]
+        )
+        try #require(compile.status == 0, "Fake-App-Kompilierung: \(compile.output)")
+        let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
+
+        let result = try runPerformanceTool(
+            "/bin/bash", arguments: [runner.path, "search"], environment: [
+                "PATH": isolatedPath,
+                "FASTRA_GUI_LOCK_DIR": lock.path,
+                "FASTRA_SELFTEST_APP_BIN": fakeApp.path,
+                "FASTRA_TEST_CHILD_PID": childPIDFile.path,
+                "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+            ]
+        )
+        #expect(result.status == 1, "Frühes Root-Ende: \(result.output)")
+        #expect(result.output.contains("Testprozess endete vorzeitig"))
+        let childPID = try #require(Int32(try String(
+            contentsOf: childPIDFile, encoding: .utf8
+        ).trimmingCharacters(in: .whitespacesAndNewlines)))
+        let state = try runPerformanceTool(
+            "/bin/ps", arguments: ["-p", "\(childPID)", "-o", "stat="]
+        ).output.trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(state.isEmpty || state.hasPrefix("Z"),
+                "Kind des beendeten Gruppenleiters blieb aktiv: \(state)")
+        #expect(try FileManager.default.contentsOfDirectory(
+            atPath: sandboxParent.path
+        ).isEmpty)
+    }
+
     @Test("Signal nach Prozessfreigabe räumt auch vor der Übernahme auf")
     func pendingProcessStartRemainsOwnedUntilAdoption() throws {
         let root = FileManager.default.temporaryDirectory

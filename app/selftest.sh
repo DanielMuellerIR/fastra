@@ -326,6 +326,33 @@ tracked_pid_is_owned() {
     [ -n "$token" ] && fastra_test_pid_matches_token "$pid" "$token"
 }
 
+# Ein Testprozess kann enden, nachdem er einen Kindprozess in seiner eigenen
+# Prozessgruppe gestartet hat. Die Root-PID ist dann nicht mehr live, die beim
+# Start gebundene Gruppe gehört aber weiterhin diesem Runner. Ohne diesen
+# zweiten Besitzbeleg würde `kill_leftovers` die Root aus seiner Zielliste
+# entfernen, bevor der Prozessbaum-Helfer die verwaisten Kinder erreicht.
+tracked_process_tree_is_owned() {
+    local pid="$1"
+    local index="$2"
+    local started_index=0
+    local group=""
+    if tracked_pid_is_owned "$pid" "$index" \
+       && { pid_matches_configured_bundle "$pid" \
+            || fastra_test_root_was_started_by_runner "$pid"; }; then
+        return 0
+    fi
+    while [ "$started_index" -lt "${#FASTRA_TEST_STARTED_ROOTS[@]}" ]; do
+        if [ "${FASTRA_TEST_STARTED_ROOTS[$started_index]}" = "$pid" ]; then
+            group="${FASTRA_TEST_STARTED_GROUPS[$started_index]}"
+            [ -n "$group" ] \
+                && fastra_test_started_group_is_owned "$group" \
+                && return 0
+        fi
+        started_index=$((started_index + 1))
+    done
+    return 1
+}
+
 # LaunchServices nur für Bundles aufräumen, die dieser Runner nachweislich
 # gestartet hat. Direktstarts können absichtlich aus einem anderen Bundle als
 # APP_BUNDLE stammen; deshalb wird der Pfad aus dem echten Executable gewonnen.
@@ -415,9 +442,7 @@ kill_leftovers() {
                 index=0
                 while [ "$index" -lt "${#STARTED_PIDS[@]}" ]; do
                     pid="${STARTED_PIDS[$index]}"
-                    if tracked_pid_is_owned "$pid" "$index" \
-                       && { pid_matches_configured_bundle "$pid" \
-                            || fastra_test_root_was_started_by_runner "$pid"; }; then
+                    if tracked_process_tree_is_owned "$pid" "$index"; then
                         found=1
                         break
                     fi
@@ -437,11 +462,10 @@ kill_leftovers() {
             pid="${STARTED_PIDS[$index]}"
             # Zwischen Ergebniszeile und Cleanup kann die App bereits enden
             # und macOS die Nummer neu vergeben. Vor dem Signal deshalb den
-            # Starttoken UND Prozesspfad noch einmal gegen genau dieses
-            # Test-Bundle prüfen.
-            if tracked_pid_is_owned "$pid" "$index" \
-               && { pid_matches_configured_bundle "$pid" \
-                    || fastra_test_root_was_started_by_runner "$pid"; }; then
+            # Starttoken und Prozesspfad beziehungsweise die beim Start
+            # gebundene, noch lebende Prozessgruppe erneut prüfen. So bleibt
+            # ein Kind erreichbar, dessen Gruppenleiter bereits geendet hat.
+            if tracked_process_tree_is_owned "$pid" "$index"; then
                 app_targets+=("$pid")
             fi
             index=$((index + 1))
