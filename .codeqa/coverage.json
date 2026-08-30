@@ -2,12 +2,11 @@
   "schema_version": 2,
   "project": "Fastra",
   "campaign": {
-    "id": "20260829T181404893486+0200",
-    "token_budget": 5000000,
+    "id": "20260830T101751514507+0200",
+    "token_budget": 3000000,
     "status": "complete",
-    "started_at": "2026-08-29T18:14:04+02:00",
-    "tokens_spent": 3971370,
-    "finished_at": "2026-08-29T22:18:29+02:00",
+    "started_at": "2026-08-30T10:17:51+02:00",
+    "finished_at": "2026-08-30T10:38:15+02:00",
     "finish_reason": "all-current"
   },
   "campaign_history": [
@@ -36,6 +35,15 @@
       "started_at": "2026-08-25T16:36:05+02:00",
       "finished_at": "2026-08-29T18:14:00+02:00",
       "finish_reason": "user-stopped"
+    },
+    {
+      "id": "20260829T181404893486+0200",
+      "token_budget": 5000000,
+      "status": "complete",
+      "started_at": "2026-08-29T18:14:04+02:00",
+      "tokens_spent": 3971370,
+      "finished_at": "2026-08-29T22:18:29+02:00",
+      "finish_reason": "all-current"
     }
   ],
   "scope": {
@@ -147,16 +155,16 @@
       "reason": "Trefferbasis, Vorschau und Apply bilden die zentrale Sicherheitsgrenze des Produkts.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T21:46:12+02:00",
-        "observed_head": "24acd62ca5e09473e0c74b8ecd50441b4d3888d3",
-        "content_sha256": "b2fd7a5c06b53f9bf1534901d7d8ea7ec3eac3c50ae314a260616b1c9186aa38",
+        "campaign_id": "20260830T101751514507+0200",
+        "completed_at": "2026-08-30T10:26:42+02:00",
+        "observed_head": "cb4dfa29ab6584cb445ecf1db8e0769d52d760b4",
+        "content_sha256": "e1f449c69b5b193dd6412deac3315b3de29748b0be49dd6eabac56ac3b5c890a",
         "file_count": 43,
         "review": "delta-plus-boundaries",
-        "outcome": "reviewed-clean",
-        "summary": "Drei seit dem P1-Lauf entstandene Änderungen vollständig als gemeinsames Delta geprüft: revisionsgebundene Hintergrundvorschau sperrt Apply bis zum vollständigen Ergebnis, kanonische Ordner-Treffer tragen ihre Such-Snapshots bis zum verzögerten Sprung, und SearchPlan teilt RegEx samt Ersetzungstemplate semantisch identisch über Datei-, Ordner-, Geöffnet- und Transaktionspfade. Aufrufergrenzen in ContentView und Workspace mitgeprüft; kein weiterer Befund.",
+        "outcome": "improved",
+        "summary": "Nacht-Review-Delta für Apply, Suche und revisionsgebundene Vorschau samt Aufrufergrenzen geprüft. Dabei eine Lücke in der Diff-Serialisierung gefunden und behoben: gekappte oder abgebrochene Zwischenaufträge lösen einen noch laufenden nicht kooperativen Myers-Diff nicht mehr aus der Warteschlange.",
         "tests": [
-          "Breiter Such-/Apply-Filter mit 415 Tests grün; vollständige Suite mit 2149 Swift-Testing- und 115 XCTest-Tests am selben Produktcode grün; build.sh inklusive Portabilitätsprüfung auf dem aktuellen Bundle grün; git diff --check und Coverage-Validierung grün."
+          "./build.sh einschließlich Portabilitätsprüfung grün; gezielter Regressionstest für laufend→gekappt→vollständig grün; vollständiges ./test.sh mit 2163 parallelen und 115 seriellen Tests grün; git diff --check grün."
         ]
       }
     },
@@ -194,16 +202,16 @@
       "reason": "Selbsttest-, Soak- und Sandbox-Infrastruktur liefert den Beweis für Änderungen. Der aktuelle Textparser kann echte Funktionsfehler als Umgebung maskieren; Fokussteuerung entscheidet, ob Fenstertests im Hintergrund belastbar laufen.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T18:37:55+02:00",
-        "observed_head": "d9cc0ff7d36b39a2c95e10a8c0c01a6893d52fe5",
-        "content_sha256": "4199ce3a463973d45ea1c544fc7831cbee6294a0590c4ace62697939365cccc4",
+        "campaign_id": "20260830T101751514507+0200",
+        "completed_at": "2026-08-30T10:37:59+02:00",
+        "observed_head": "e795cfb9e34020a72a812f6622054d81697c9bcd",
+        "content_sha256": "86eef2d715902d9673f8d48d81c81e55791da1f906cfdb51fd8983d1e9a2db68",
         "file_count": 25,
         "review": "delta-plus-boundaries",
-        "outcome": "improved",
-        "summary": "Runner-Cleanup behält eine beim Start gebundene Prozessgruppe auch dann als Ziel, wenn ihr Test-Gruppenleiter vor der Ergebniszeile endet; TERM-resistente Kinder werden beendet, während der Root-Crash weiterhin als echter Fehler zählt. Reale Regression vor dem Fix mit aktivem Kindprozess belegt.",
+        "outcome": "reviewed-clean",
+        "summary": "Fokus-Retry und Selbsttest-Wartebedingung gegen reale First-Responder-Wechsel geprüft; keine weitere Abweichung gefunden.",
         "tests": [
-          "Regression vor Fix rot (Kindzustand S), danach PASS; vollständige Runner-Suite PASS (47 Tests); bash -n PASS; ./test.sh PASS (2116 schnelle + 115 serielle Tests, 0 Umgebungsfehler); git diff --check PASS"
+          "./test.sh: 2166 parallele und 115 serielle Tests bestanden; navmatch zusätzlich 5/5 isoliert bestanden."
         ]
       }
     },
@@ -231,16 +239,16 @@
       "reason": "Dateiladen, Platten-Snapshots, große Dateien und Hex-Pfade entscheiden über Datenintegrität und Speichergrenzen.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T21:26:08+02:00",
-        "observed_head": "fe4f1896dfbfd2e1e50cc0d3f0533fbd548da250",
-        "content_sha256": "430119def770bea8bdeb7a9310fbcd1bc201e52114aa07675ff4423f086b2e87",
+        "campaign_id": "20260830T101751514507+0200",
+        "completed_at": "2026-08-30T10:38:00+02:00",
+        "observed_head": "e795cfb9e34020a72a812f6622054d81697c9bcd",
+        "content_sha256": "1907760e3a2b20d4742b4e35080b8a97a7ebc4cbca34f85e694b9d3bd3e532ca",
         "file_count": 15,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Den neu hinzugekommenen AtomicCommitRecovery-Pfad vollständig sowie seine Grenzen zu AtomicFileCommit, App-Start und FileSnapshot geprüft. Journalanlage, O_NOFOLLOW-Pfade, Datei- und Verzeichnis-Synchronisierung, Prozessstart-Identität, Inhalts-/Inode-Bindung und fail-closed Erhalt unklarer Stände sind konsistent; kein weiterer Codefund.",
+        "summary": "PID-/Startzeit-gebundene Recovery-Fragmente einschließlich Verzeichnisdeskriptor, Dateitypprüfung und begrenzter Bereinigung an den Sicherheitsgrenzen geprüft.",
         "tests": [
-          "Gezielt AtomicFileCommitTests: 22 Tests/1 Suite PASS; vorheriger vollständiger Lauf am selben Produktstand: 2149 Tests/78 Suites + 115 Tests/11 Suites PASS, Exit 0; Standard-Recovery-Verzeichnis enthält 0 offene JSON-Journale; git diff --check PASS."
+          "./test.sh vollständig grün; gezielte AtomicCommitRecovery-Tests im vollständigen Lauf enthalten."
         ]
       }
     },
@@ -324,18 +332,16 @@
       "reason": "Fenstergebundener Dokumentzustand, Persistenz und Wiederherstellung koordinieren zahlreiche asynchrone Produktpfade.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T22:16:38+02:00",
-        "observed_head": "392a54281929cc186f22ff29d283b8451c089104",
-        "content_sha256": "5172b3a0d9e1fec4bb5ec69bd2fb196c2717f74c89d7b5c49b9cede6b507346e",
+        "campaign_id": "20260830T101751514507+0200",
+        "completed_at": "2026-08-30T10:38:00+02:00",
+        "observed_head": "e795cfb9e34020a72a812f6622054d81697c9bcd",
+        "content_sha256": "1dae94383177553886bf9755b23f8c0031a847c6a2f2a11234656bb9d0278319",
         "file_count": 23,
         "review": "delta-plus-boundaries",
-        "outcome": "reviewed-clean",
-        "summary": "Das einzige Delta bindet den Workspace-Auftrag und die Ergebnisübernahme der Inhaltsanalyse an EditorTab.contentRevision. Die Generation steigt im Property-Observer bei jeder direkten Inhaltszuweisung; Tab- und Dokumentidentität, Erkennungs-Eignung und Inhaltsgeneration werden gemeinsam unmittelbar vor der Modellmutation geprüft. Das Delta ist durch den Befund und die Tests des Sprachbereichs bereits abgedeckt; keine weitere Änderung nötig.",
+        "outcome": "improved",
+        "summary": "Vor Aktivierung eines vorhandenen Tabs wird der aktuelle Platten-Snapshot asynchron erneut geprüft; ein zwischen Suche und Öffnen ersetztes Dokument wird abgewiesen.",
         "tests": [
-          "DocumentLanguageDetectorTests.directModelMutationRejectsStaleContent: alter Inhalt wird verworfen, Folgeänderung bleibt analysefähig",
-          "./test.sh mit Workspace-nahen Dokument-/Sprach-/Formatfiltern: 103 Tests grün",
-          "./build.sh: grün einschließlich Fensterziel-Audit, Signatur und portabler App"
+          "Neue WorkspaceLoad-Regression bestanden; ./test.sh vollständig grün."
         ]
       }
     },
@@ -368,18 +374,16 @@
       "reason": "Build-Patches, portable Ressourcen, Signierung und Veröffentlichung schützen die ausgelieferte App und öffentliche Historie.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T22:17:08+02:00",
-        "observed_head": "de769c7ab2478e18b3f17624c7d56a3b3cf0f57a",
-        "content_sha256": "a392963f90b6cc863fe60fc0a04399585716867eec138826772b3488ce79eb01",
+        "campaign_id": "20260830T101751514507+0200",
+        "completed_at": "2026-08-30T10:38:00+02:00",
+        "observed_head": "e795cfb9e34020a72a812f6622054d81697c9bcd",
+        "content_sha256": "ad04b68ca7bc76786f5c23046b09a86422a0219f811c867f8b46cdc044bf31f6",
         "file_count": 20,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Das Paket-Delta besteht ausschließlich aus den zusammengehörigen Versionsschritten 1.113.12/232 auf 1.113.14/234. Quell-Plist, gebautes App-Bundle und die beiden datierten Changelog-Einträge stimmen überein; Build-, Signatur- und Portabilitätsprüfungen waren bereits für das aktuelle Bundle grün.",
+        "summary": "DMG-Gerätezuordnung, Versionsstand 1.113.17 und Build-/Paketgrenzen geprüft; keine weitere Abweichung gefunden.",
         "tests": [
-          "plutil -lint app/Info.plist: grün; Quell- und Bundle-Plist melden 1.113.14 (Build 234)",
-          "./build.sh: grün einschließlich CodeEdit-Patches, Signaturprüfung und verify-portable-app.sh",
-          "CHANGELOG.md: v1.113.13 und v1.113.14 jeweils datiert und passend zur sichtbaren Änderung"
+          "./build.sh und ./verify-portable-app.sh bestanden."
         ]
       }
     },
@@ -428,16 +432,16 @@
       "reason": "AppKit-/CodeEdit-Integration, Auswahl, Umbruch und Layout enthalten mehrere dokumentierte Absturz- und Koordinatenfallen.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T21:31:36+02:00",
-        "observed_head": "00fdd1caa2a05f33a1f1e577aa7e5e28ea177699",
-        "content_sha256": "d80d860747ea84b87e77ee66522fcd2d6ca390bebd404e2b1b7b7a8ef3cf0d1a",
+        "campaign_id": "20260830T101751514507+0200",
+        "completed_at": "2026-08-30T10:38:00+02:00",
+        "observed_head": "e795cfb9e34020a72a812f6622054d81697c9bcd",
+        "content_sha256": "3013fded35d7d2a882c34ce29b2573960ae76f7a5f87112aa37f964cd40bf754",
         "file_count": 36,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "EditorView-Delta sowie die drei neuen Rechteckauswahl-/Cursor-/Emphasis-Regressionsdateien vollständig geprüft; angrenzende SearchEmphasis-Aktualitäts- und EditGuard-Grenzen sowie die drei build.sh-Checkout-Patches einbezogen. Die Auswahlverschiebung verwendet die echte Längendifferenz, jede Cursor-Selektion wird ohne Kurzschluss aktualisiert, veraltete Zeichenbereiche werden gekappt und Live-Markierungen beim Edit synchron entfernt. Kein weiterer Befund.",
+        "summary": "Fensterrahmen- und Cursorinitialisierung für Hintergrundfenster an den AppKit-Grenzen geprüft; keine weitere Abweichung gefunden.",
         "tests": [
-          "Sechs gezielte Regressionen grün: Rechteck-Tippen, Backspace und wiederholtes Tippen; Cursor-View pro Zeile samt Geometrie; rectsFor/roundedPath-Clamp; veraltete Emphasis nach Dokumentschrumpfung; synchroner EditGuard. Vollständige Suite am unveränderten Produktstand: 2149 Swift-Testing + 115 XCTest grün."
+          "./build.sh sowie ./test.sh vollständig grün; newwindow-Selbsttest bestanden."
         ]
       }
     },
@@ -566,16 +570,16 @@
       "reason": "Fensterziel, Befehlsrouting und App-Lebenszyklus dürfen bei mehreren Dokumentfenstern keinen fremden Workspace treffen.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T21:48:20+02:00",
-        "observed_head": "f985682b3eee323d17b962b1c9d32fe8994d8971",
-        "content_sha256": "7f59dac2c0e11b0c98b621fec088a26fab0856b126def5f3baa975b6481157b7",
+        "campaign_id": "20260830T101751514507+0200",
+        "completed_at": "2026-08-30T10:38:01+02:00",
+        "observed_head": "e795cfb9e34020a72a812f6622054d81697c9bcd",
+        "content_sha256": "738a18b278a0c6a09b966d98b70efb8c15a2e69f92faa61eef60213608807a71",
         "file_count": 19,
         "review": "delta-plus-boundaries",
-        "outcome": "reviewed-clean",
-        "summary": "Drei seit dem letzten Lauf entstandene Änderungen vollständig geprüft: Produktfenster aktivieren sich über die selbsttestbewusste Richtlinie; die App-Startprüfung liest Recovery-Journale auf einer Utility-Queue, blendet Einträge lebender Besitzer aus und zeigt Pfade ohne automatische Löschung; verzögerte Ordner-Treffer-Sprünge verlangen kanonische URL plus Such-Snapshot. Zugehörige Store-, Workspace- und Benachrichtigungsgrenzen mitgeprüft; kein weiterer Befund.",
+        "outcome": "improved",
+        "summary": "Ordner-Treffersprünge laufen auch für den bereits aktiven Tab durch die asynchrone Snapshot-Prüfung und binden anschließend denselben Workspace und Tabzustand.",
         "tests": [
-          "test.sh mit AtomicFileCommit, SelfTestOutcome, SelfTestRunnerSkip, MainWindowSizing, WindowTargeting und SearchDialogLogic: 68 Tests in 6 Suiten grün; window-targeting-audit.sh und git diff --check grün; build.sh am aktuellen Bundle zuvor grün."
+          "Neue WorkspaceLoad-Regression bestanden; ./test.sh vollständig grün."
         ]
       }
     },
@@ -630,16 +634,16 @@
       "reason": "4D-Makros verbinden Katalogerkennung, externe Prozesse und temporäre Dateien mit zwingender Diff-Vorschau und nativer Apply-Semantik.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T21:56:47+02:00",
-        "observed_head": "4efc7abc8fb3a0a70bd9c38928cbd4b1d6090e23",
-        "content_sha256": "35f23f6f06b22e4942ea08b425b7e40917b5797c3b8da99f1f5ae639f3c3d8dd",
+        "campaign_id": "20260830T101751514507+0200",
+        "completed_at": "2026-08-30T10:38:01+02:00",
+        "observed_head": "e795cfb9e34020a72a812f6622054d81697c9bcd",
+        "content_sha256": "010ea1f3e4df20446c7de69c4f1e8906116526d7e2ca2d26758f37da4a5ae6ec",
         "file_count": 6,
         "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Vier seit dem Vollreview entstandene Makro-Änderungen einschließlich Parser-/Katalogbudgets, verwalteter Rücktokenisierung und Diff-Nachbearbeitung, Engine-Lauf-IDs, Watch-Transaktion sowie Workspace-Abbruchgrenzen vollständig geprüft. Zusätzlich beendet die Discovery nach ausgeschöpftem Quellenbudget nachrangige Fundort-Scans und liest dependencies.json blockweise bis höchstens 8 MiB; Version 1.113.12, Hilfe und Regressionstests ergänzt.",
+        "summary": "Das gemeinsame Limit zählt nun Verzeichniseinträge statt Komponenten und gilt auch für App-Bundles sowie Sprachverzeichnisse, ohne spätere gültige Komponenten nach einer leeren Quelle auszublenden.",
         "tests": [
-          "build.sh zweimal grün einschließlich Fenster-Audit, Bundle-Signatur und Portabilitätsprüfung; vollständiger FourDMacro-Filter mit 68 Tests grün, danach beide neuen Grenztests erneut grün; localization-audit.sh, plutil, help-audit.sh, public-history-audit.sh und git diff --check grün."
+          "Zwei neue FourDMacro-Regressionen bestanden; ./test.sh vollständig grün."
         ]
       }
     },
@@ -815,20 +819,16 @@
       "reason": "Format-, Sprach-, Lint- und Speicheroptionen bestimmen Interpretation und Ausgabe von Dokumenten.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T22:16:02+02:00",
-        "observed_head": "b629dde5b0099d7a0bfdde692cb75d95799cb4f1",
-        "content_sha256": "ba8877596ad4e9fa1290931aed9198888bb513e4924d37ebc9fdd5429d3448b8",
+        "campaign_id": "20260830T101751514507+0200",
+        "completed_at": "2026-08-30T10:38:01+02:00",
+        "observed_head": "e795cfb9e34020a72a812f6622054d81697c9bcd",
+        "content_sha256": "6e904540276b280f0350ebe73c00e17e598274f2347dc21df2d1dd8271ffb7d4",
         "file_count": 18,
         "review": "delta-plus-boundaries",
-        "outcome": "improved",
-        "summary": "Die isolierte Dokument-Spracherkennung, Trigger- und Hysterese-Logik sowie angrenzenden Format- und Lint-Pfade wurden gegen den letzten Lauf geprüft. Analyseproben sind jetzt an einer gültigen UTF-8-Skalargrenze auf 64 KiB begrenzt und behalten ihre Vollständigkeitsinformation. Ergebnisse tragen zusätzlich die Inhaltsgeneration; direkt geänderte Puffer verwerfen alte Analysen, und verworfene Ergebnisse drosseln keine Ersatzanalyse.",
+        "outcome": "reviewed-clean",
+        "summary": "Erzwungene Spracherkennung nach direkter Ersetzung samt Formatter-/Lint-Auslösern und Revisionsschutz geprüft; keine weitere Abweichung gefunden.",
         "tests": [
-          "Regression Unicode-Probe: vor dem Fix 131073 statt höchstens 65536 UTF-8-Bytes, danach begrenzt und vollständigkeitsbewusst",
-          "Regression direkte Modellmutation: vor dem Fix altes JSON-Ergebnis übernommen, danach wegen contentRevision verworfen und Ersatzanalyse nicht gedrosselt",
-          "./test.sh --filter DocumentFormat|DocumentFormatter|DocumentKind|FooterLogic|LanguageDetection|LanguageMenu|LintMinify|SavePanelFormat|DocumentLanguageDetector: 103 Tests grün",
-          "./build.sh: grün einschließlich Fensterziel-Audit, Signatur und portabler App",
-          "./localization-audit.sh, ./help-audit.sh, ./public-history-audit.sh, plutil -lint und git diff --check: grün"
+          "./test.sh vollständig grün; localization-audit.sh bestanden."
         ]
       }
     },
@@ -862,19 +862,16 @@
       "reason": "Einstellungen, Ressourcen, Hilfe und Lokalisierung müssen vollständig und aus dem gepackten Bundle verfügbar bleiben.",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T181404893486+0200",
-        "completed_at": "2026-08-29T22:18:03+02:00",
-        "observed_head": "1212c87273088cf041e612977ab70ee3ab8f6519",
-        "content_sha256": "e046d64df56256ff3622f919f1a3e431ec016b69a139b5adadbde5bf6e6218cd",
+        "campaign_id": "20260830T101751514507+0200",
+        "completed_at": "2026-08-30T10:38:01+02:00",
+        "observed_head": "e795cfb9e34020a72a812f6622054d81697c9bcd",
+        "content_sha256": "65d19350c74dcb1dd8c2882d8e45c184641bf25bca3be0f91d347a33ed944cae",
         "file_count": 21,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Die vier geänderten Hilfe-/Lokalisierungsdateien wurden vollständig gegen ihre Produktgrenzen geprüft. Vorschau-, Großdatei-, Spracherkennungs-, 4D-Makro- und Recovery-Zahlen entsprechen den jeweiligen Konstanten und Zustandsgrenzen. Die HelpWindow-Aktivierungsumleitung endet im normalen App-Lauf unverändert bei NSApp.activate und unterdrückt Fokus nur im ausdrücklich hintergrundfähigen Selbsttest. Deutsche und englische Hilfe sowie neue L10n-Schlüssel sind vollständig; keine weitere Änderung nötig.",
+        "summary": "Geänderte Nutzersprache in Hilfe, deutschen und englischen Strings sowie Help-Marker bis zum Fix-Commit geprüft.",
         "tests": [
-          "./localization-audit.sh: PASS mit 398 SwiftUI-, 869 literalen L10n-Schlüsseln und 1482 englischen Einträgen",
-          "./help-audit.sh: PASS bis Produktcommit 170ae9a998ff",
-          "./public-history-audit.sh und git diff --check: PASS",
-          "./build.sh: aktuelles v1.113.14-Bundle grün einschließlich gepackter Ressourcen und Portabilität"
+          "./help-audit.sh --release und ./localization-audit.sh bestanden."
         ]
       }
     },
@@ -968,13 +965,13 @@
     }
   ],
   "architecture": {
-    "campaign_id": "20260829T181404893486+0200",
-    "recorded_at": "2026-08-29T18:14:34+02:00",
-    "observed_head": "c9058afd7baf597a0f1046da817d14ae58385e5b",
-    "summary": "SwiftUI/AppKit-Views binden je Fenster an Workspace als ViewModel; reine Such-, Format-, Diff- und Parserkerne sowie Hintergrunddienste kapseln Rechen- und E/A-Arbeit. Das Paradigma passt weiterhin, doch Workspace.swift koordiniert mit 6672 Zeilen weiterhin Dokumente, Suche, Git, Persistenz und UI; SelfTest.swift bündelt zusätzlich 20308 Zeilen Teststeuerung.",
-    "paradigm": "Pragmatisches MVVM mit je Fenster zentralem Workspace und ereignisgetriebenen asynchronen Diensten",
+    "campaign_id": "20260830T101751514507+0200",
+    "recorded_at": "2026-08-30T10:38:08+02:00",
+    "observed_head": "e795cfb9e34020a72a812f6622054d81697c9bcd",
+    "summary": "SwiftUI/AppKit-Views binden je Fenster an Workspace als ViewModel; reine Such-, Format-, Diff- und Parserkerne sowie Hintergrunddienste kapseln Rechen- und E/A-Arbeit. Das Paradigma passt weiterhin, doch Workspace.swift koordiniert mit 6672 Zeilen Dokumente, Suche, Git, Persistenz und UI; SelfTest.swift bündelt zusätzlich 20308 Zeilen Teststeuerung.",
+    "paradigm": "SwiftUI/AppKit mit fenstergebundenem Workspace-ViewModel und reinen Such-, Diff-, Format- und Parserkernen",
     "fit": "gespannt",
-    "recommendation": "Verantwortungen bereichsweise aus Workspace und großen UI-/Testdateien in vorhandene Dienste und reine Funktionen verschieben; keinen Paradigmenwechsel beginnen und Vorschau-, Main-Thread- sowie Dateisicherheitsgrenzen erhalten."
+    "recommendation": "Workspace-Verantwortungen bei künftigen Änderungen entlang vorhandener Dienste weiter herauslösen; SelfTest-Szenarien nach Produktbereichen teilen, ohne die gemeinsame Runner-Sandbox zu duplizieren."
   },
   "themes": [
     {
