@@ -709,6 +709,52 @@ func macroSourcesHonorDirectoryEntryBudgetInsideComponents() throws {
             "Der Komponenten-Eintrag verbraucht das letzte Arbeitsbudget vor dem XML-Scan")
 }
 
+@Test("Quellenlimit kappt nicht die Suche nach der ersten brauchbaren Komponente")
+func macroSourcesSearchPastEmptyComponentsWithinEntryBudget() throws {
+    let scratch = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let project = scratch.appendingPathComponent("Projekt")
+    try FileManager.default.createDirectory(
+        at: project.appendingPathComponent("Components/A.4dbase"),
+        withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+        at: project.appendingPathComponent("Components/B.4dbase"),
+        withIntermediateDirectories: true)
+    try writeFile(project.appendingPathComponent(
+        "Components/C.4dbase/Macros v2/c.xml"))
+
+    let sources = FourDMacroDiscovery.macroSources(
+        projectRoot: project, homeDirectory: scratch,
+        applicationDirectories: [], preferredLanguages: ["de"],
+        maximumSourceCount: 1, maximumDirectoryEntryCount: 10)
+
+    #expect(sources.map(\.url.lastPathComponent) == ["c.xml"])
+}
+
+@Test("Eintragsbudget gilt auch für die Suche in Programme-Ordnern")
+func macroSourcesHonorDirectoryEntryBudgetInApplications() throws {
+    let scratch = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let applications = scratch.appendingPathComponent("Applications")
+    try makeFourDBundle(
+        at: applications.appendingPathComponent("4D v21/4D.app"),
+        version: "21.1", languages: ["de"])
+
+    let exhausted = FourDMacroDiscovery.macroSources(
+        projectRoot: nil, homeDirectory: scratch,
+        applicationDirectories: [applications], preferredLanguages: ["de"],
+        maximumSourceCount: 1, maximumDirectoryEntryCount: 1)
+    #expect(exhausted.isEmpty)
+
+    let sufficient = FourDMacroDiscovery.macroSources(
+        projectRoot: nil, homeDirectory: scratch,
+        applicationDirectories: [applications], preferredLanguages: ["de"],
+        maximumSourceCount: 1, maximumDirectoryEntryCount: 3)
+    #expect(sufficient.map(\.origin) == [
+        .fourDApplication(version: "21.1")
+    ])
+}
+
 @Test("dependencies.json besitzt eine harte Lesegrenze")
 func macroDependenciesJSONReadIsBounded() throws {
     let scratch = try makeMacroScratch()

@@ -9,6 +9,17 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.17] — 2026-08-30
+
+### Behoben
+
+- **Ordner-Treffer prüfen auch bei bereits geöffneten Dateien den aktuellen
+  Plattenstand.** Ein noch nicht zugestelltes Fremdänderungs-Ereignis kann
+  dadurch keinen veralteten Treffer-Sprung mehr freigeben.
+- **Das Makro-Quellenlimit beendet die Komponentensuche nicht mehr vor einer
+  späteren brauchbaren Komponente.** Das gemeinsame Eintragsbudget begrenzt
+  zugleich auch die Suche in Programme- und Sprachordnern.
+
 ## [v1.113.16] — 2026-08-30
 
 ### Behoben

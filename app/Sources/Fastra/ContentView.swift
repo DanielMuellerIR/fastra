@@ -307,10 +307,11 @@ struct ContentView: View {
                 commitIndexIfPosted(posted)
             }
         } else if let url = target.url,
-                  let snapshot = target.fileSnapshot,
-                  workspace.activeTab?.url != url {
-            // Datei asynchron laden — Editor-Sprung erst in der Completion,
-            // damit der Tab mit fertigem Inhalt existiert (Race vermieden).
+                  let snapshot = target.fileSnapshot {
+            // Datei laden oder einen offenen Tab gegen den aktuellen
+            // Plattenstand prüfen. Auch der bereits aktive Tab durchläuft
+            // diesen Pfad, damit ein noch nicht zugestelltes Fremdänderungs-
+            // Ereignis keinen veralteten Ordner-Sprung freigibt.
             workspace.loadFile(
                 atCanonicalURL: url,
                 expectedDiskSnapshot: snapshot,

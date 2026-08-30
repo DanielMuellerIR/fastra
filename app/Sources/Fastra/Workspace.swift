@@ -2960,7 +2960,8 @@ final class Workspace: ObservableObject {
     ///   der Workspace während des Ladens verschwindet (Fenster geschlossen).
     ///
     /// Ablauf:
-    /// 1. Dedup: Datei schon offen → aktiv schalten, completion(true) sofort.
+    /// 1. Dedup: Datei schon offen → im Ordnerfall den Platten-Snapshot im
+    ///    Hintergrund prüfen, danach erst aktiv schalten und zurückmelden.
     /// 2. Platzhalter-Tab anlegen (`isLoading = true`), activeTabID setzen.
     /// 3. Hintergrund-Task (Task.detached) → `FileLoader.load(url:)`.
     /// 4. Zurück auf Main: Generation + Tab-Existenz prüfen, Inhalt setzen,
@@ -3011,6 +3012,37 @@ final class Workspace: ObservableObject {
                     completion?(false)
                     return
                 }
+                let existingID = existing.id
+                // `diskSnapshot` beschreibt den zuletzt geladenen Stand des
+                // Tabs. Ein Fremdprogramm kann den Pfad danach ersetzt haben,
+                // bevor der Dateiwächter reagiert. Deshalb den aktuellen
+                // Plattenstand im Hintergrund erneut hashen und erst danach
+                // den bereits offenen Tab aktivieren.
+                Task.detached(priority: .userInitiated) { [weak self] in
+                    let currentDiskSnapshot = try? FileSnapshot.readSnapshotOnly(
+                        from: url, byteLimit: FileLoader.largeFileThreshold)
+                    await MainActor.run { [weak self] in
+                        guard let self,
+                              acceptance?.acceptsResult() != false,
+                              currentDiskSnapshot == expectedDiskSnapshot,
+                              let currentIndex = self.tabs.firstIndex(where: {
+                                  $0.id == existingID && $0.url == url
+                              }),
+                              !self.tabs[currentIndex].hasUnsavedChanges,
+                              !self.tabs[currentIndex].isLoading,
+                              self.tabs[currentIndex].diskSnapshot
+                                  == expectedDiskSnapshot else {
+                            completion?(false)
+                            return
+                        }
+                        if !preview { self.tabs[currentIndex].isPreview = false }
+                        self.activeTabID = existingID
+                        self.noteRecentFile(url)
+                        self.synchronizeProjectWithActiveTabIfNeeded()
+                        completion?(true)
+                    }
+                }
+                return
             }
             // Ein Doppelklick folgt in der Änderungen-Liste auf den bereits
             // ausgeführten Einzelklick. Er findet denselben Tab und steckt ihn

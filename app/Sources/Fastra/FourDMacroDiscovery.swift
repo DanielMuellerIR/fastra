@@ -134,7 +134,7 @@ enum FourDMacroDiscovery {
         if let projectRoot, remaining > 0, remainingEntries > 0 {
             for (name, container) in componentContainers(
                 in: projectRoot, fileManager: fileManager,
-                limit: remaining, entryBudget: &remainingEntries
+                limit: remainingEntries, entryBudget: &remainingEntries
             ) {
                 guard remaining > 0 else { break }
                 for file in macroFiles(inComponent: container,
@@ -160,14 +160,17 @@ enum FourDMacroDiscovery {
         // Sobald höher priorisierte Fundorte das Budget verbraucht haben,
         // darf die reine Ergebnisgrenze nicht noch einen nutzlosen Scan der
         // Programme-Ordner auslösen.
-        if remaining > 0 {
+        if remaining > 0, remainingEntries > 0 {
             let bundles = fourDApplicationBundles(
-                in: applicationDirectories, fileManager: fileManager)
+                in: applicationDirectories, fileManager: fileManager,
+                entryBudget: &remainingEntries)
             if let choice = highestVersionBundle(bundles),
+               remainingEntries > 0,
                let file = applicationMacrosFile(
                     inBundle: choice.url,
                     preferredLanguages: preferredLanguages,
-                    fileManager: fileManager) {
+                    fileManager: fileManager,
+                    entryBudget: &remainingEntries) {
                 add(file, origin: .fourDApplication(version: choice.version))
             }
         }
@@ -395,14 +398,25 @@ enum FourDMacroDiscovery {
     /// andere oder gar keine Makros mit.
     static func fourDApplicationBundles(in directories: [URL],
                                         fileManager: FileManager) -> [URL] {
+        var entryBudget = Int.max
+        return fourDApplicationBundles(
+            in: directories, fileManager: fileManager,
+            entryBudget: &entryBudget)
+    }
+
+    private static func fourDApplicationBundles(
+        in directories: [URL],
+        fileManager: FileManager,
+        entryBudget: inout Int
+    ) -> [URL] {
         var found: [URL] = []
         var seenPaths = Set<String>()
 
         func scan(_ directory: URL, depth: Int) {
-            guard depth <= 2, let entries = try? fileManager.contentsOfDirectory(
-                at: directory, includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            ) else { return }
+            guard depth <= 2, entryBudget > 0 else { return }
+            let entries = boundedDirectoryEntries(
+                in: directory, fileManager: fileManager,
+                entryBudget: &entryBudget)
             for entry in entries {
                 if entry.lastPathComponent.lowercased() == "4d.app" {
                     if seenPaths.insert(entry.canonicalFileURL.path).inserted {
@@ -457,11 +471,22 @@ enum FourDMacroDiscovery {
     static func applicationMacrosFile(inBundle bundle: URL,
                                       preferredLanguages: [String],
                                       fileManager: FileManager) -> URL? {
+        var entryBudget = Int.max
+        return applicationMacrosFile(
+            inBundle: bundle, preferredLanguages: preferredLanguages,
+            fileManager: fileManager, entryBudget: &entryBudget)
+    }
+
+    private static func applicationMacrosFile(
+        inBundle bundle: URL,
+        preferredLanguages: [String],
+        fileManager: FileManager,
+        entryBudget: inout Int
+    ) -> URL? {
         let resources = bundle.appendingPathComponent("Contents/Resources", isDirectory: true)
-        guard let entries = try? fileManager.contentsOfDirectory(
-            at: resources, includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
-        ) else { return nil }
+        let entries = boundedDirectoryEntries(
+            in: resources, fileManager: fileManager,
+            entryBudget: &entryBudget)
         let languageDirectories = entries.filter {
             $0.pathExtension.lowercased() == "lproj"
         }
