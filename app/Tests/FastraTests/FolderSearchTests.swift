@@ -473,6 +473,25 @@ func find_totalCap_usesTrueCountAcrossFiles() throws {
     #expect(r.perFile.first?.matches.count == 3)
 }
 
+@Test("Ordnersuche meldet Dateien über der navigierbaren Editorgrenze als zu groß")
+func folderSearchRejectsFilesThatOnlyChunkedEditorCouldOpen() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "fastra-folder-large-\(UUID().uuidString).txt")
+    FileManager.default.createFile(atPath: url.path, contents: Data("Nadel".utf8))
+    defer { try? FileManager.default.removeItem(at: url) }
+    let handle = try FileHandle(forWritingTo: url)
+    try handle.truncate(atOffset: FileLoader.largeFileThreshold + 1)
+    try handle.close()
+
+    let result = FolderSearch.searchOneFile(
+        at: url,
+        options: SearchOptions(find: "Nadel", replace: "", isRegex: false))
+
+    #expect(result.skipped == .tooLarge)
+    #expect(result.matches.isEmpty)
+    #expect(result.snapshot == nil)
+}
+
 @Test("Projekt-Globs schließen Ordner rekursiv und Dateimuster aus")
 func folderSearch_projectExclusions() throws {
     let c = try FolderCorpus()

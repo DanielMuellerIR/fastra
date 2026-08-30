@@ -9,6 +9,46 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.15] — 2026-08-30
+
+### Behoben
+
+- **Die Ersetzungsvorschau zeigt keine unvollständige Trefferbasis mehr als
+  vollständigen Dokumentvergleich.** Gekappte Treffer werden verständlich
+  erklärt; schnell aufeinanderfolgende, nicht kooperativ abbrechbare
+  Diff-Berechnungen laufen außerdem nacheinander statt gleichzeitig.
+- **Ordner-Treffer öffnen nur noch den exakt durchsuchten Dateistand.** Fastra
+  prüft den Snapshot vor dem Aktivieren oder Veröffentlichen des Tabs, verwirft
+  überholte Sprünge und fordert sichtbar zu einer neuen Suche auf. Dateien
+  oberhalb der 32-MiB-Grenze des navigierbaren Editors werden bereits bei der
+  Suche mit dem zutreffenden Grund übersprungen.
+- **Direkte Ersetzungen in geöffneten Tabs erkennen einen vollständigen
+  Formatwechsel sofort.** Damit aktualisieren sich Sprache und Dokumentformat
+  auch dann, wenn alter und neuer Inhalt fast gleich lang sind.
+- **Abgebrochene Recovery-Journal-Schreibvorgänge hinterlassen keine
+  namenlosen Reste mehr.** Temporäre Journale tragen Prozess und Startkennung;
+  Fastra entfernt beim nächsten Start ausschließlich Fragmente nachweislich
+  beendeter Besitzer.
+- **Der Release-Bau hängt keine wiederverwendete Gerätenummer aus.** Unmittelbar
+  vor jedem DMG-Detach prüft das Skript, ob das Gerät weiterhin zum eigenen
+  beschreibbaren Image gehört.
+- **Ein zusätzliches Dokumentfenster behält auch bei einem Start im Hintergrund
+  Größe und Einfügepunkt.** Die Rahmenkorrektur hängt nicht mehr von einem
+  ausbleibenden Key-Window-Ereignis ab; der Editor legt seinen ersten Cursor
+  an, ohne dafür einem anderen Fenster den Tastaturfokus zu nehmen.
+- **Ein schnelles zweites Return in der Suchmaske springt zuverlässig zum
+  nächsten Treffer.** Fastra wiederholt den Fokuswechsel vom Suchfeld zur
+  Trefferliste, falls SwiftUI den ersten Fokuswunsch vor dem Layout verwirft.
+
+### Verbessert
+
+- **Die 4D-Makrosuche begrenzt nun auch die geprüften Verzeichniseinträge.** Ein
+  gemeinsames Budget von 4096 Einträgen schützt Projekt-, Komponenten- und
+  Makroordner, bevor ein gültiger XML-Katalog gefunden wird.
+- **Trefferhervorhebung in der Ordnersuche fragt auf dem UI-Thread keine
+  Dateimetadaten mehr ab.** Bereits kanonische Ergebnis-URLs werden nur noch
+  rein lexikalisch standardisiert.
+
 ## [v1.113.14] — 2026-08-29
 
 ### Behoben

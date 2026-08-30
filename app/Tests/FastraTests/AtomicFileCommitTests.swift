@@ -355,6 +355,42 @@ struct AtomicFileCommitTests {
             includeActiveProcesses: false).count == 1)
     }
 
+    @Test("Startprüfung entfernt nur Schreibfragmente beendeter Besitzer")
+    func startupRemovesOnlyDeadWritingFragments() throws {
+        let directory = try makeDirectory("journal-writing-fragments")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let recoveryDirectory = directory.appendingPathComponent(
+            "recovery-journal", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: recoveryDirectory, withIntermediateDirectories: true)
+        let active = recoveryDirectory.appendingPathComponent(
+            "\(UUID().uuidString.lowercased()).json.writing.111.7001")
+        let dead = recoveryDirectory.appendingPathComponent(
+            "\(UUID().uuidString.lowercased()).json.writing.222.7002")
+        let reused = recoveryDirectory.appendingPathComponent(
+            "\(UUID().uuidString.lowercased()).json.writing.333.7003")
+        let malformed = recoveryDirectory.appendingPathComponent("alt.json.writing")
+        for file in [active, dead, reused, malformed] {
+            try Data("teilweise".utf8).write(to: file)
+        }
+        let store = AtomicCommitRecovery.Store(
+            directoryURL: recoveryDirectory,
+            processStartToken: { pid in
+                switch pid {
+                case 111: return 7001       // derselbe Besitzer lebt
+                case 333: return 9003       // PID wurde wiedervergeben
+                default: return nil         // Besitzer existiert nicht mehr
+                }
+            })
+
+        #expect(try store.inspectPending().isEmpty)
+        #expect(FileManager.default.fileExists(atPath: active.path))
+        #expect(!FileManager.default.fileExists(atPath: dead.path))
+        #expect(!FileManager.default.fileExists(atPath: reused.path))
+        #expect(FileManager.default.fileExists(atPath: malformed.path),
+                "Ein ungebundener Fremdname bleibt zur Diagnose unangetastet")
+    }
+
     @Test("Ein nicht schreibbares Journal stoppt den Commit vor dem Namenstausch")
     func journalFailureLeavesTargetUnchanged() throws {
         let directory = try makeDirectory("journal-failure")

@@ -270,3 +270,63 @@ func wsLoad_discardedPlaceholderKeepsUserChosenActiveTab() async throws {
     #expect(ws.activeTabID == tabA.id,
             "Die bewusst gewählte Registerkarte darf nicht ersetzt werden")
 }
+
+@Test("Ordner-Treffer aktiviert keinen dirty Tab mit derselben Datei")
+@MainActor
+func wsLoad_expectedSnapshotRejectsDirtyOpenTabBeforeActivation() async throws {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let ws = Workspace(defaults: defaults)
+    let url = try writeTmpUTF8("Suchstand\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    var firstLoad: Bool? = nil
+    ws.loadFile(at: url) { firstLoad = $0 }
+    #expect(await waitUntil { firstLoad != nil })
+    #expect(firstLoad == true)
+    let canonical = url.canonicalFileURL
+    let fileIndex = try #require(ws.tabs.firstIndex(where: { $0.url == canonical }))
+    let expected = try #require(ws.tabs[fileIndex].diskSnapshot)
+    ws.tabs[fileIndex].content = "ungesicherte Änderung\n"
+    ws.tabs[fileIndex].isDirty = true
+    let other = EditorTab(title: Workspace.untitledBaseName, path: "—")
+    ws.tabs.append(other)
+    ws.activeTabID = other.id
+
+    var accepted: Bool? = nil
+    ws.loadFile(
+        atCanonicalURL: canonical,
+        expectedDiskSnapshot: expected
+    ) { accepted = $0 }
+
+    #expect(accepted == false)
+    #expect(ws.activeTabID == other.id)
+    #expect(ws.tabs[fileIndex].content == "ungesicherte Änderung\n")
+}
+
+@Test("Ordner-Treffer veröffentlicht keinen seit der Suche geänderten Dateistand")
+@MainActor
+func wsLoad_expectedSnapshotRejectsChangedDiskBeforePublishing() async throws {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let ws = Workspace(defaults: defaults)
+    let url = try writeTmpUTF8("Suchstand\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let canonical = url.canonicalFileURL
+    let expected = try FileSnapshot.read(from: canonical).snapshot
+    try Data("neuer Plattenstand\n".utf8).write(to: canonical, options: .atomic)
+    let previousActive = try #require(ws.activeTabID)
+
+    var accepted: Bool? = nil
+    ws.loadFile(
+        atCanonicalURL: canonical,
+        expectedDiskSnapshot: expected
+    ) { accepted = $0 }
+
+    #expect(ws.activeTabID == previousActive,
+            "Der Ladeplatzhalter darf vor dem Snapshot-Abgleich nicht aktiv werden")
+    #expect(await waitUntil(timeout: 30) { accepted != nil })
+    #expect(accepted == false)
+    #expect(ws.activeTabID == previousActive)
+    #expect(!ws.tabs.contains(where: { $0.url == canonical }))
+}

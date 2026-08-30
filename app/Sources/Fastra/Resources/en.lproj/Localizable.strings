@@ -175,6 +175,7 @@
 "Vorschau zu groß" = "Preview too large";
 "Das Dokument überschreitet die Vorschaugrenze von %ld Zeilen." = "The document exceeds the preview limit of %ld lines.";
 "Der unterschiedliche Bereich überschreitet die Rechengrenze von %ld Zeilen." = "The differing section exceeds the calculation limit of %ld lines.";
+"Die Suche zeigt nur %ld von %ld Treffern. Verfeinere die Suche, damit die Vorschau jede Ersetzung enthält." = "The search shows only %ld of %ld matches. Refine the search so the preview contains every replacement.";
 "Vorlage" = "Template";
 "Vorschau der Änderungen" = "Preview Changes";
 "Wrap-around" = "Wrap Around";
@@ -469,6 +470,7 @@
 "Ersetzen hat %ld ∗ mehr als Suchen — die überzähligen bleiben leer." = "Replace contains %ld more ∗ wildcards than Find—the extra wildcards remain empty.";
 "… und %ld weitere geänderte Zeilen — „Vorschau der Änderungen\" zeigt alle." = "… and %ld more changed lines—Preview Changes shows all of them.";
 "Treffer (%ld)" = "Matches (%ld)";
+"Die Datei hat sich seit der Suche geändert. Bitte erneut suchen." = "The file has changed since the search. Please search again.";
 "Trefferliste auf 10.000 gekappt — Suchbegriff verfeinern." = "Match list limited to 10,000—refine the search term.";
 "Trefferliste gekappt — „Alle ersetzen“ bleibt gesperrt, bis alle Treffer sichtbar sind." = "Match list limited—Replace All stays disabled until every match is visible.";
 "Aktiver Buffer" = "Active Document";

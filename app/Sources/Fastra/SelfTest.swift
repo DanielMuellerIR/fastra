@@ -11087,7 +11087,7 @@ enum SelfTest {
             findField.insertNewline(nil)
             pollNavSelection(ws, tv: tv, searchWindow: searchWindow,
                              originalText: originalText, expectedIndex: 0,
-                             thenPressReturnInList: true)
+                             thenPressReturnInList: true, findField: findField)
             return
         }
         if tick >= maxTicks {
@@ -11106,6 +11106,7 @@ enum SelfTest {
     private static func pollNavSelection(_ ws: Workspace, tv: TextView,
                                          searchWindow: NSWindow, originalText: String,
                                          expectedIndex: Int, thenPressReturnInList: Bool,
+                                         findField: RegexFieldTextView? = nil,
                                          tick: Int = 0) {
         let maxTicks = 60   // ~1,8 s
         let editorText = tv.string as NSString
@@ -11147,12 +11148,13 @@ enum SelfTest {
                 finish(false, "(navmatch) Dokumenttext wurde durch Return verändert")
             }
             if thenPressReturnInList {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    postKey("\r", keyCode: 36, windowNumber: searchWindow.windowNumber)
-                    pollNavSelection(ws, tv: tv, searchWindow: searchWindow,
-                                     originalText: originalText, expectedIndex: 1,
-                                     thenPressReturnInList: false)
+                guard let findField else {
+                    finish(false, "(navmatch) Referenz auf das Suchfeld fehlt")
                 }
+                pollNavListFocusThenReturn(
+                    ws, tv: tv, searchWindow: searchWindow,
+                    originalText: originalText, findField: findField
+                )
                 return
             }
             finish(true, "Return im Suchfeld fokussiert Treffer 1; zweites Return "
@@ -11165,7 +11167,43 @@ enum SelfTest {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
             pollNavSelection(ws, tv: tv, searchWindow: searchWindow,
                              originalText: originalText, expectedIndex: expectedIndex,
-                             thenPressReturnInList: thenPressReturnInList, tick: tick + 1)
+                             thenPressReturnInList: thenPressReturnInList,
+                             findField: findField, tick: tick + 1)
+        }
+    }
+
+    /// Wartet auf den echten Fokuswechsel aus dem Suchfeld, bevor der Test das
+    /// zweite Return sendet. SwiftUI setzt `@FocusState` erst nach einem
+    /// variablen Layoutlauf um; eine feste 100-ms-Pause schickte das Event
+    /// unter Last gelegentlich noch einmal ans Suchfeld und prüfte damit einen
+    /// zweiten „ersten Treffer“ statt Return in der Trefferliste.
+    private static func pollNavListFocusThenReturn(
+        _ ws: Workspace,
+        tv: TextView,
+        searchWindow: NSWindow,
+        originalText: String,
+        findField: RegexFieldTextView,
+        tick: Int = 0
+    ) {
+        let maxTicks = 100
+        if let responder = searchWindow.firstResponder, responder !== findField {
+            postKey("\r", keyCode: 36, windowNumber: searchWindow.windowNumber)
+            pollNavSelection(
+                ws, tv: tv, searchWindow: searchWindow,
+                originalText: originalText, expectedIndex: 1,
+                thenPressReturnInList: false
+            )
+            return
+        }
+        if tick >= maxTicks {
+            finish(false, "(navmatch) Trefferliste übernahm den Fokus nicht "
+                + "(FirstResponder=\(String(describing: searchWindow.firstResponder)))")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            pollNavListFocusThenReturn(
+                ws, tv: tv, searchWindow: searchWindow,
+                originalText: originalText, findField: findField, tick: tick + 1
+            )
         }
     }
 

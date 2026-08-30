@@ -1540,21 +1540,23 @@ struct EditorView: View {
                     textView.fastraClearExternalDrop()
                 }
             }
-            // Nur fokussieren, wenn das Hauptfenster Key ist — sonst (offene
-            // Suchmaske vorne) würden wir der Maske den Tastaturfokus klauen.
-            guard mainWindow.isKeyWindow else { return }
-            guard mainWindow.makeFirstResponder(tv) else { return }
             // Eine frisch montierte CodeEdit-TextView kann noch keine
             // Textselektion besitzen. Dann ist sie zwar First Responder, aber
-            // `paste(_:)` hat keinen Einfügepunkt und verwirft ein sofortiges
-            // ⌘V. Nur in diesem leeren Initialzustand den Cursor an Position 0
-            // anlegen; bestehende Cursor und Selektionen bleiben unangetastet.
+            // `paste(_:)` hat keinen Einfügepunkt und verwirft später das erste
+            // ⌘V. Den Einfügepunkt auch in einem Hintergrundfenster anlegen:
+            // Beim späteren Aktivieren erscheint der Editor nicht erneut und
+            // `.onAppear` bekäme sonst keine zweite Gelegenheit. Das setzt nur
+            // den Editorzustand und stiehlt keinem anderen Fenster den Fokus.
             if let textView = tv as? CodeEditTextView.TextView,
                textView.selectionManager.textSelections.isEmpty {
                 textView.selectionManager.setSelectedRange(
                     NSRange(location: 0, length: 0)
                 )
             }
+            // Nur fokussieren, wenn das Hauptfenster Key ist — sonst (offene
+            // Suchmaske vorne) würden wir der Maske den Tastaturfokus klauen.
+            guard mainWindow.isKeyWindow else { return }
+            guard mainWindow.makeFirstResponder(tv) else { return }
         }
     }
 

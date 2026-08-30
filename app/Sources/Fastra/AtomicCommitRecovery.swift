@@ -154,7 +154,13 @@ enum AtomicCommitRecovery {
             )
             let data = try JSONEncoder.recoveryEncoder.encode(record)
             let name = journalName(for: id)
-            let writingName = name + ".writing"
+            // Ein abgebrochener Prozess führt seinen Besitzer bereits im
+            // temporären Namen. Der nächste Start kann das Fragment dadurch
+            // sicher von einem noch laufenden Schreiber unterscheiden, selbst
+            // wenn der JSON-Inhalt noch leer oder nur teilweise geschrieben ist.
+            let writingName = writingName(
+                for: id, ownerProcessID: record.ownerProcessID,
+                ownerProcessStartToken: record.ownerProcessStartToken)
             let directoryFD = try openDirectory()
             defer { Darwin.close(directoryFD) }
             let journalFD = openat(
@@ -222,14 +228,14 @@ enum AtomicCommitRecovery {
             }
             guard isDirectory(directoryInfo) else { throw POSIXError(.ENOTDIR) }
             let names = try FileManager.default.contentsOfDirectory(
-                atPath: directoryURL.path)
-                .filter { $0.hasSuffix(".json") }
-                .sorted()
+                atPath: directoryURL.path).sorted()
             let directoryFD = try openDirectory()
             defer { Darwin.close(directoryFD) }
+            try removeDeadWritingFragments(
+                named: names, directoryFD: directoryFD)
             var inspections: [Inspection] = []
 
-            for name in names {
+            for name in names where name.hasSuffix(".json") {
                 let journalURL = directoryURL.appendingPathComponent(name)
                 let data: Data
                 do {
@@ -460,6 +466,60 @@ enum AtomicCommitRecovery {
             return data
         }
 
+        /// Entfernt nur reguläre Fragmente, deren im Namen gebundener Prozess
+        /// nachweislich nicht mehr mit derselben Startkennung existiert. Der
+        /// `unlinkat`-Pfad bleibt am bereits geprüften Verzeichnisdeskriptor;
+        /// ein zwischenzeitlich umgebogener Verzeichnispfad ist wirkungslos.
+        private func removeDeadWritingFragments(
+            named names: [String], directoryFD: Int32
+        ) throws {
+            var removedAny = false
+            for name in names {
+                guard let owner = writingOwner(from: name),
+                      processStartToken(owner.pid) != owner.startToken else {
+                    continue
+                }
+                var info = stat()
+                guard fstatat(
+                    directoryFD, name, &info, AT_SYMLINK_NOFOLLOW
+                ) == 0 else {
+                    if errno == ENOENT { continue }
+                    throw currentPOSIXError()
+                }
+                // Fremde Symlinks, Ordner und Geräte bleiben zur Diagnose
+                // unangetastet; nur unsere 0600-Schreibdatei ist entfernbar.
+                guard isRegular(info) else { continue }
+                if unlinkat(directoryFD, name, 0) == 0 {
+                    removedAny = true
+                } else if errno != ENOENT {
+                    throw currentPOSIXError()
+                }
+            }
+            if removedAny, fsync(directoryFD) != 0 {
+                throw currentPOSIXError()
+            }
+        }
+
+        private func writingOwner(from name: String)
+            -> (pid: pid_t, startToken: UInt64)? {
+            let marker = ".json.writing."
+            guard let markerRange = name.range(of: marker),
+                  markerRange.upperBound < name.endIndex,
+                  UUID(uuidString: String(name[..<markerRange.lowerBound])) != nil
+            else { return nil }
+            let ownerParts = name[markerRange.upperBound...].split(
+                separator: ".", omittingEmptySubsequences: false)
+            guard ownerParts.count == 2,
+                  let pid = pid_t(ownerParts[0]), pid > 0,
+                  let startToken = UInt64(ownerParts[1]),
+                  name == writingName(
+                    for: UUID(uuidString: String(name[..<markerRange.lowerBound]))!,
+                    ownerProcessID: pid,
+                    ownerProcessStartToken: startToken)
+            else { return nil }
+            return (pid, startToken)
+        }
+
         private func validatedPaths(_ record: Record)
             -> (target: URL, prepared: URL, cleanup: URL)? {
             let target = URL(fileURLWithPath: record.targetPath).standardizedFileURL
@@ -570,6 +630,14 @@ enum AtomicCommitRecovery {
 
     private static func journalName(for id: UUID) -> String {
         id.uuidString.lowercased() + ".json"
+    }
+
+    private static func writingName(
+        for id: UUID,
+        ownerProcessID: pid_t,
+        ownerProcessStartToken: UInt64
+    ) -> String {
+        journalName(for: id) + ".writing.\(ownerProcessID).\(ownerProcessStartToken)"
     }
 
     private static func isRegular(_ info: stat) -> Bool {

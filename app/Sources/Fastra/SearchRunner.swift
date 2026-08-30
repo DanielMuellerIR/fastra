@@ -359,6 +359,7 @@ final class SearchRunner {
     /// Einzel-Ersetzen).
     func rerun() {
         guard let ws = workspace else { return }
+        ws.folderNavigationNotice = nil
 
         // Laufende Folder- UND Buffer-Suche + armierten Live-Timer immer
         // abbrechen — entweder weil der Scope wechselt oder weil sich die
@@ -575,6 +576,7 @@ final class SearchRunner {
     /// und bricht eine schon laufende Suche ab.
     func runFolderSearch() {
         guard let ws = workspace, ws.scope.isFolderLike else { return }
+        ws.folderNavigationNotice = nil
         cancelPendingWork()
         Self.clearFolderPreview(ws, invalidatingJumps: true)
         folderRunID &+= 1

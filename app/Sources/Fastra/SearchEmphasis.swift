@@ -55,10 +55,13 @@ enum SearchEmphasis {
             return Source(matches: result.matches, totalMatches: result.totalMatches)
         case .folder, .project:
             guard !activeTab.isDirty,
-                  let url = activeTab.url?.canonicalFileURL,
+                  let url = activeTab.url?.standardizedFileURL,
                   let snapshot = activeTab.diskSnapshot,
                   let result = folderResults.first(where: {
-                      $0.url.canonicalFileURL == url && $0.snapshot == snapshot
+                      // Ordnersuche und Datei-Lader liefern bereits kanonische
+                      // URLs. Die reine Standardisierung vermeidet deshalb
+                      // eine Dateisystemabfrage pro Ergebnis auf dem Main-Thread.
+                      $0.url.standardizedFileURL == url && $0.snapshot == snapshot
                   }) else {
                 return nil
             }

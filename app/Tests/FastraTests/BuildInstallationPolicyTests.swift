@@ -141,6 +141,7 @@ struct BuildInstallationPolicyTests {
         // Geräteidentität bezeichnet sicher das eigene Volume.
         #expect(!script.contains("hdiutil detach \"$MOUNT_DIR\""))
         #expect(script.contains("hdiutil detach \"$ATTACHED_DEV\""))
+        #expect(script.contains("hdiutil info -plist"))
 
         // Funktionale Prüfung mit kontrolliertem hdiutil-Ersatz: Der ECHTE
         // Trap-Code aus release.sh läuft gegen ein protokollierendes
@@ -155,12 +156,20 @@ struct BuildInstallationPolicyTests {
         #expect(!afterOwnDetach.contains { $0.contains("/dev/") },
                 "Ohne gemerkte Identität darf der Trap kein Volume mehr anfassen")
         #expect(!afterOwnDetach.contains { $0.contains("/Volumes/Fastra") })
+
+        let reusedDevice = try runReleaseCleanupTrap(
+            attachedDevice: "/dev/disk93", imageBelongsToDevice: false)
+        #expect(!reusedDevice.contains { $0.contains("detach /dev/disk93") },
+                "Eine wiedervergebene Gerätenummer darf nie ausgehängt werden")
     }
 
     /// Führt die unveränderte `cleanup_release`-Funktion aus release.sh in
     /// einer Sandbox aus, in der ein Fake-`hdiutil` alle Aufrufe protokolliert.
     /// Liefert die protokollierten hdiutil-Aufrufzeilen.
-    private func runReleaseCleanupTrap(attachedDevice: String) throws -> [String] {
+    private func runReleaseCleanupTrap(
+        attachedDevice: String,
+        imageBelongsToDevice: Bool = true
+    ) throws -> [String] {
         let sandbox = FileManager.default.temporaryDirectory.appendingPathComponent(
             "fastra-release-trap-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: sandbox,
@@ -169,9 +178,23 @@ struct BuildInstallationPolicyTests {
 
         let log = sandbox.appendingPathComponent("hdiutil.log")
         let fakeHdiutil = sandbox.appendingPathComponent("hdiutil")
+        let reportedImage = imageBelongsToDevice
+            ? sandbox.appendingPathComponent("fastra_rw.dmg").path
+            : sandbox.appendingPathComponent("foreign.dmg").path
         try """
         #!/bin/bash
         echo "$@" >> "\(log.path)"
+        if [ "$1" = "info" ]; then
+          cat <<'PLIST'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict><key>images</key><array><dict>
+        <key>image-path</key><string>\(reportedImage)</string>
+        <key>system-entities</key><array><dict>
+        <key>dev-entry</key><string>/dev/disk93</string>
+        </dict></array></dict></array></dict></plist>
+        PLIST
+        fi
         exit 0
         """.write(to: fakeHdiutil, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes(
@@ -184,11 +207,14 @@ struct BuildInstallationPolicyTests {
         try """
         #!/bin/bash
         set -u
+        eval "$(/usr/bin/sed -n '/^fastra_attached_device_belongs_to_rw_image()/,/^}/p' "$1")"
+        eval "$(/usr/bin/sed -n '/^fastra_detach_attached_rw_image()/,/^}/p' "$1")"
         eval "$(/usr/bin/sed -n '/^cleanup_release()/,/^}/p' "$1")"
         DMG_STAGING="$3/staging"
         mkdir -p "$DMG_STAGING"
         VERIFY_MOUNT="$DMG_STAGING/verify"
         MOUNT_DIR="/Volumes/Fastra"
+        RW_DMG="$3/fastra_rw.dmg"
         ATTACHED_DEV="$2"
         cleanup_release
         """.write(to: harness, atomically: true, encoding: .utf8)

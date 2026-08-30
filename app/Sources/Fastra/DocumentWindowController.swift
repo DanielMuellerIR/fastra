@@ -353,6 +353,11 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         let controller = DocumentWindowController(defaults: defaults)
         openControllers[ObjectIdentifier(controller.window)] = controller
         controller.window.makeKeyAndOrderFront(nil)
+        // `windowDidBecomeKey` ist nicht garantiert, wenn die App während des
+        // Aufrufs im Hintergrund liegt. Die Einmal-Wiederherstellung deshalb
+        // wie beim Sitzungs-Restore ausdrücklich anstoßen; der Guard macht den
+        // späteren Delegate-Aufruf zum sicheren No-op.
+        controller.restoreFrameAfterFirstSwiftUILayout()
         // Ins „Fenster"-Menü aufnehmen. Per AppKit erzeugte Fenster tauchen dort
         // sonst nicht auf — bei mehreren Fenstern war nur das SwiftUI-Startfenster
         // gelistet (Daniel-Befund 2026-07-12). Den Titel hält AppKit danach

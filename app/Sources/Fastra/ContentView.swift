@@ -311,8 +311,19 @@ struct ContentView: View {
                   workspace.activeTab?.url != url {
             // Datei asynchron laden — Editor-Sprung erst in der Completion,
             // damit der Tab mit fertigem Inhalt existiert (Race vermieden).
-            workspace.loadFile(atCanonicalURL: url) { ok in
-                guard ok else { return }
+            workspace.loadFile(
+                atCanonicalURL: url,
+                expectedDiskSnapshot: snapshot,
+                acceptance: FileLoadAcceptance {
+                    workspace.isCurrentMatchJump(jumpGeneration)
+                }
+            ) { ok in
+                guard ok else {
+                    if workspace.isCurrentMatchJump(jumpGeneration) {
+                        workspace.folderMatchNavigationBecameStale()
+                    }
+                    return
+                }
                 DispatchQueue.main.async {
                     let posted = NotificationCenter.default.postMatchJump(
                         target.match, for: workspace,
@@ -320,6 +331,9 @@ struct ContentView: View {
                         generation: jumpGeneration
                     )
                     commitIndexIfPosted(posted)
+                    if !posted, workspace.isCurrentMatchJump(jumpGeneration) {
+                        workspace.folderMatchNavigationBecameStale()
+                    }
                 }
             }
         } else {
@@ -343,6 +357,10 @@ struct ContentView: View {
                 requiring: requiredTarget,
                 generation: jumpGeneration)
             commitIndexIfPosted(posted)
+            if !posted, target.url != nil,
+               workspace.isCurrentMatchJump(jumpGeneration) {
+                workspace.folderMatchNavigationBecameStale()
+            }
         }
     }
 }

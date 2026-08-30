@@ -63,6 +63,10 @@ enum FourDMacroDiscovery {
     /// Grenze wie für eine Makro-XML verhindert, dass die Discovery eine
     /// beliebig große JSON-Datei vollständig in den Speicher lädt.
     static let maximumDependenciesJSONBytes = 8 * 1024 * 1024
+    /// Gemeinsames Arbeitsbudget für fremde Projekt- und Makroverzeichnisse.
+    /// Das Quellenlimit allein genügt nicht: Bis zum ersten XML-Treffer können
+    /// beliebig viele ungeeignete Einträge liegen.
+    static let maximumDirectoryEntryCount = 4_096
 
     // MARK: - Projektwurzel
 
@@ -107,7 +111,9 @@ enum FourDMacroDiscovery {
                              fileManager: FileManager = .default,
                              preferredLanguages: [String] = Locale.preferredLanguages,
                              maximumSourceCount: Int
-                                = FourDMacroCatalogLoader.maximumSourceCount)
+                                = FourDMacroCatalogLoader.maximumSourceCount,
+                             maximumDirectoryEntryCount: Int
+                                = maximumDirectoryEntryCount)
         -> [FourDMacroSource] {
         var sources: [FourDMacroSource] = []
         var seenPaths = Set<String>()
@@ -116,6 +122,7 @@ enum FourDMacroDiscovery {
         // werden, nachdem die Discovery bereits alles materialisiert und
         // sortiert hat.
         var remaining = max(0, maximumSourceCount)
+        var remainingEntries = max(0, maximumDirectoryEntryCount)
 
         func add(_ url: URL, origin: FourDMacroSource.Origin) {
             guard remaining > 0 else { return }
@@ -124,24 +131,28 @@ enum FourDMacroDiscovery {
             remaining -= 1
         }
 
-        if let projectRoot, remaining > 0 {
-            for (name, container) in componentContainers(in: projectRoot,
-                                                         fileManager: fileManager) {
+        if let projectRoot, remaining > 0, remainingEntries > 0 {
+            for (name, container) in componentContainers(
+                in: projectRoot, fileManager: fileManager,
+                limit: remaining, entryBudget: &remainingEntries
+            ) {
                 guard remaining > 0 else { break }
                 for file in macroFiles(inComponent: container,
                                        fileManager: fileManager,
-                                       limit: remaining) {
+                                       limit: remaining,
+                                       entryBudget: &remainingEntries) {
                     add(file, origin: .component(name: name))
                 }
             }
         }
 
-        if remaining > 0 {
+        if remaining > 0, remainingEntries > 0 {
             let userDirectory = homeDirectory
                 .appendingPathComponent("Library/Application Support/4D/Macros v2",
                                         isDirectory: true)
             for file in xmlFiles(in: userDirectory, fileManager: fileManager,
-                                 limit: remaining) {
+                                 limit: remaining,
+                                 entryBudget: &remainingEntries) {
                 add(file, origin: .userLibrary)
             }
         }
@@ -171,10 +182,23 @@ enum FourDMacroDiscovery {
     /// `Components`/`components` und die per `dependencies.json` eingebundenen.
     static func componentContainers(in projectRoot: URL,
                                     fileManager: FileManager) -> [(name: String, url: URL)] {
+        var entryBudget = Int.max
+        return componentContainers(
+            in: projectRoot, fileManager: fileManager,
+            limit: Int.max, entryBudget: &entryBudget)
+    }
+
+    private static func componentContainers(
+        in projectRoot: URL,
+        fileManager: FileManager,
+        limit: Int,
+        entryBudget: inout Int
+    ) -> [(name: String, url: URL)] {
         var result: [(name: String, url: URL)] = []
         var seenPaths = Set<String>()
 
         func add(name: String, url: URL) {
+            guard result.count < limit else { return }
             guard seenPaths.insert(url.canonicalFileURL.path).inserted else { return }
             result.append((name, url))
         }
@@ -183,18 +207,24 @@ enum FourDMacroDiscovery {
         // insensitiven Dateisystem ist es derselbe — der Pfadvergleich in
         // `add` verhindert dann doppelte Einträge.
         for directoryName in ["Components", "components"] {
+            guard result.count < limit, entryBudget > 0 else { break }
             let directory = projectRoot.appendingPathComponent(directoryName, isDirectory: true)
-            guard let entries = try? fileManager.contentsOfDirectory(
-                at: directory, includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            ) else { continue }
+            let entries = boundedDirectoryEntries(
+                in: directory, fileManager: fileManager,
+                entryBudget: &entryBudget)
             for entry in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
             where entry.pathExtension.lowercased() == "4dbase" {
                 add(name: entry.deletingPathExtension().lastPathComponent, url: entry)
+                if result.count == limit { break }
             }
         }
 
-        for dependency in declaredDependencies(in: projectRoot, fileManager: fileManager) {
+        guard result.count < limit, entryBudget > 0 else { return result }
+        for dependency in declaredDependencies(
+            in: projectRoot, fileManager: fileManager,
+            maximumCount: limit - result.count,
+            entryBudget: &entryBudget
+        ) {
             add(name: dependency.name, url: dependency.url)
         }
         return result
@@ -208,6 +238,20 @@ enum FourDMacroDiscovery {
         in projectRoot: URL,
         fileManager: FileManager,
         maximumBytes: Int = maximumDependenciesJSONBytes
+    ) -> [(name: String, url: URL)] {
+        var entryBudget = Int.max
+        return declaredDependencies(
+            in: projectRoot, fileManager: fileManager,
+            maximumBytes: maximumBytes, maximumCount: Int.max,
+            entryBudget: &entryBudget)
+    }
+
+    private static func declaredDependencies(
+        in projectRoot: URL,
+        fileManager: FileManager,
+        maximumBytes: Int = maximumDependenciesJSONBytes,
+        maximumCount: Int,
+        entryBudget: inout Int
     ) -> [(name: String, url: URL)] {
         let file = projectRoot
             .appendingPathComponent("Project/Sources/dependencies.json")
@@ -237,6 +281,8 @@ enum FourDMacroDiscovery {
         // Ein JSON-Objekt hat keine feste Reihenfolge; alphabetisch sortiert
         // ist das Ergebnis über Programmstarts hinweg gleich.
         for name in dependencies.keys.sorted() {
+            guard entryBudget > 0, result.count < maximumCount else { break }
+            entryBudget -= 1
             guard let entry = dependencies[name] as? [String: Any],
                   let path = entry["path"] as? String, !path.isEmpty else { continue }
             result.append((name, resolve(path: path, relativeTo: projectRoot)))
@@ -267,11 +313,17 @@ enum FourDMacroDiscovery {
     /// höchstens `limit` Dateien.
     private static func macroFiles(inComponent container: URL,
                                    fileManager: FileManager,
-                                   limit: Int) -> [URL] {
-        macroDirectoryPaths.flatMap { relativePath in
-            xmlFiles(in: container.appendingPathComponent(relativePath, isDirectory: true),
-                     fileManager: fileManager, limit: limit)
+                                   limit: Int,
+                                   entryBudget: inout Int) -> [URL] {
+        var result: [URL] = []
+        for relativePath in macroDirectoryPaths {
+            guard result.count < limit, entryBudget > 0 else { break }
+            result.append(contentsOf: xmlFiles(
+                in: container.appendingPathComponent(relativePath, isDirectory: true),
+                fileManager: fileManager, limit: limit - result.count,
+                entryBudget: &entryBudget))
         }
+        return result
     }
 
     /// Höchstens die `limit` alphabetisch ersten `*.xml` eines Ordners. Ein
@@ -280,8 +332,9 @@ enum FourDMacroDiscovery {
     /// sortiert: Ein fremder Ordner mit sehr vielen Einträgen kann so weder
     /// Speicher noch Sortieraufwand jenseits des Quellenbudgets erzeugen.
     private static func xmlFiles(in directory: URL, fileManager: FileManager,
-                                 limit: Int) -> [URL] {
-        guard limit > 0 else { return [] }
+                                 limit: Int,
+                                 entryBudget: inout Int) -> [URL] {
+        guard limit > 0, entryBudget > 0 else { return [] }
         guard let enumerator = fileManager.enumerator(
             at: directory, includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants],
@@ -296,8 +349,9 @@ enum FourDMacroDiscovery {
         // O(n log limit) statt einer Sortierung aller Einträge.
         let compactionThreshold = limit >= Int.max / 2 ? Int.max : limit * 2
         var selected: [URL] = []
-        for case let entry as URL in enumerator
-        where entry.pathExtension.lowercased() == "xml" {
+        while entryBudget > 0, let entry = enumerator.nextObject() as? URL {
+            entryBudget -= 1
+            guard entry.pathExtension.lowercased() == "xml" else { continue }
             selected.append(entry)
             if selected.count >= compactionThreshold {
                 selected.sort(by: ascending)
@@ -309,6 +363,27 @@ enum FourDMacroDiscovery {
             selected.removeLast(selected.count - limit)
         }
         return selected
+    }
+
+    /// Zählt höchstens das noch verfügbare Arbeitsbudget aus einem fremden
+    /// Ordner auf. Anders als `contentsOfDirectory` materialisiert dieser
+    /// Pfad nicht zuerst das komplette Verzeichnis.
+    private static func boundedDirectoryEntries(
+        in directory: URL,
+        fileManager: FileManager,
+        entryBudget: inout Int
+    ) -> [URL] {
+        guard entryBudget > 0,
+              let enumerator = fileManager.enumerator(
+                at: directory, includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants],
+                errorHandler: { _, _ in true }) else { return [] }
+        var entries: [URL] = []
+        while entryBudget > 0, let entry = enumerator.nextObject() as? URL {
+            entryBudget -= 1
+            entries.append(entry)
+        }
+        return entries
     }
 
     // MARK: - 4D.app

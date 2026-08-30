@@ -83,6 +83,12 @@ below the input field. When you change the search term, file type, or
 exclusions, Fastra removes the old results immediately; navigation, preview,
 and “Replace All” become available again only for the new result.
 
+Folder and project searches skip files larger than 32 MiB because Fastra can
+open them only in sections rather than as a fully navigable text editor. If a
+result file changed after the search, or if its already-open tab contains
+unsaved edits, Fastra does not activate it: the old result list is discarded
+and a notice asks you to search again.
+
 **Wildcards:** With regex mode off, `*` matches any text **within a
 line**, `**` also matches **across line breaks**. Every wildcard
 automatically becomes a capture group: the pills (`$1`, `$2` …) below
@@ -122,7 +128,9 @@ are limited to 1 MB; invalid entries are skipped.
   and match generation. The before and after text are limited to 32 MiB each,
   either side to 200,000 lines, and the actually differing middle section to
   30,000 lines. If a request exceeds a limit, the preview explains it and
-  Replace All remains disabled.
+  Replace All remains disabled. A search capped at 2,000 matches also appears
+  in the sheet as its own explained limit instead of a seemingly complete
+  preview.
 - In folder/project scope Fastra rechecks every file against the visible
   preview before the first write. Changed files and affected tabs with unsaved
   edits block the whole operation. Planning, backup and writing run in the
@@ -711,7 +719,8 @@ number or placeholder tag is explained instead of being silently substituted
 differently. A menu item's tooltip identifies its source (component, user
 macro folder, or 4D version), so identically named macros remain distinguishable.
 
-Fastra reads at most 8 MiB from each macro XML file and accepts at most 4,096
+Fastra reads at most 8 MiB from each macro XML file and examines at most 4,096
+directory entries per catalog pass. It accepts at most 4,096
 macros, 4 Mi (4,194,304) UTF-16 text units, and 131,072 stored parts such as literals
 or placeholders per source. The complete catalog is limited to 256 sources,
 8,192 macros, 8 Mi (8,388,608) UTF-16 text units, and 262,144 parts; a source outside

@@ -87,6 +87,12 @@ angezeigt. Änderst du Suchbegriff, Dateityp oder Ausschlüsse, entfernt Fastra
 die alte Trefferliste sofort; Navigation, Vorschau und „Alle ersetzen“ werden
 erst mit dem Ergebnis des neuen Laufs wieder aktiv.
 
+Ordner- und Projekt-Suchen überspringen Dateien über 32 MiB, weil Fastra sie
+nur abschnittsweise statt als vollständig navigierbaren Texteditor öffnet. Hat
+sich eine Funddatei seit dem Suchlauf geändert oder enthält ihr bereits
+geöffneter Tab ungesicherte Änderungen, aktiviert Fastra sie nicht: Die alte
+Trefferliste wird verworfen und ein Hinweis fordert zum erneuten Suchen auf.
+
 **Platzhalter (Wildcards):** Ohne RegEx-Modus steht `*` für beliebigen
 Text **innerhalb einer Zeile**, `**` auch **über Zeilengrenzen hinweg**.
 Jeder Platzhalter wird automatisch zu einer Capture-Gruppe: Die Pillen
@@ -130,7 +136,9 @@ Importdateien sind auf 1 MB begrenzt; ungültige Einträge werden übersprungen.
   Nachher-Text sind auf je 32 MiB, jede Seite auf 200.000 Zeilen und der
   tatsächlich unterschiedliche Diff-Mittelteil auf 30.000 Zeilen begrenzt.
   Überschreitet ein Auftrag eine Grenze, erklärt die Vorschau sie sichtbar und
-  „Alle ersetzen“ bleibt gesperrt.
+  „Alle ersetzen“ bleibt gesperrt. Auch eine auf 2.000 Treffer gekappte Suche
+  erscheint im Sheet als eigene erklärte Grenze statt als scheinbar
+  vollständige Vorschau.
 - Im Ordner-/Projekt-Bereich prüft Fastra vor dem ersten Schreiben noch einmal
   alle Dateien gegen die sichtbare Vorschau. Geänderte Dateien und betroffene
   Tabs mit ungespeicherten Änderungen blockieren den gesamten Vorgang. Planung,
@@ -751,7 +759,8 @@ werden. Der Tooltip eines Menüeintrags nennt seine Quelle (Komponente,
 benutzereigener Makroordner oder 4D-Version), damit gleichnamige Makros
 unterscheidbar bleiben.
 
-Fastra liest höchstens 8 MiB je Makro-XML und übernimmt je Quelle höchstens
+Fastra liest höchstens 8 MiB je Makro-XML und prüft pro Kataloglauf höchstens
+4.096 Verzeichniseinträge. Es übernimmt je Quelle höchstens
 4096 Makros, 4 Mi (4.194.304) UTF-16-Texteinheiten und 131.072 gespeicherte
 Bausteine wie Literale oder Platzhalter. Der gesamte Katalog ist auf 256
 Quellen, 8192 Makros, 8 Mi (8.388.608) UTF-16-Texteinheiten und 262.144 Bausteine

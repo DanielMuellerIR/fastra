@@ -645,6 +645,7 @@ private final class RecordingMacroFileManager: FileManager {
         return try super.contentsOfDirectory(
             at: url, includingPropertiesForKeys: keys, options: mask)
     }
+
 }
 
 @Test("Ein verbrauchtes Makro-Quellenbudget überspringt nachrangige Fundorte")
@@ -678,6 +679,34 @@ func macroSourcesStopDiscoveryAfterSourceBudget() throws {
     #expect(empty.isEmpty)
     #expect(zeroBudgetFileManager.readDirectories.isEmpty,
             "Ein Nullbudget darf keinen Fundort öffnen")
+}
+
+@Test("Komponenten-Discovery hält Eintragsbudget und überspringt zweite Makrolage")
+func macroSourcesHonorDirectoryEntryBudgetInsideComponents() throws {
+    let scratch = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let project = scratch.appendingPathComponent("Projekt")
+    let component = project.appendingPathComponent(
+        "Components/Komponente.4dbase", isDirectory: true)
+    try writeFile(component.appendingPathComponent("Macros v2/a.xml"))
+    try writeFile(component.appendingPathComponent("Contents/Macros v2/b.xml"))
+
+    let sourceLimitedManager = RecordingMacroFileManager()
+    let one = FourDMacroDiscovery.macroSources(
+        projectRoot: project, homeDirectory: scratch,
+        applicationDirectories: [], fileManager: sourceLimitedManager,
+        preferredLanguages: ["de"], maximumSourceCount: 1,
+        maximumDirectoryEntryCount: 10)
+    #expect(one.map(\.url.lastPathComponent) == ["a.xml"])
+
+    let entryLimitedManager = RecordingMacroFileManager()
+    let none = FourDMacroDiscovery.macroSources(
+        projectRoot: project, homeDirectory: scratch,
+        applicationDirectories: [], fileManager: entryLimitedManager,
+        preferredLanguages: ["de"], maximumSourceCount: 10,
+        maximumDirectoryEntryCount: 1)
+    #expect(none.isEmpty,
+            "Der Komponenten-Eintrag verbraucht das letzte Arbeitsbudget vor dem XML-Scan")
 }
 
 @Test("dependencies.json besitzt eine harte Lesegrenze")

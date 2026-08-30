@@ -434,7 +434,13 @@ enum FolderSearch {
         }
         let read: (data: Data, snapshot: FileSnapshot)
         do {
-            read = try FileSnapshot.read(from: url)
+            // Treffer müssen anschließend im normalen Texteditor navigierbar
+            // sein. Dessen Volllade-Grenze ist daher auch die Suchgrenze;
+            // Dateien zwischen 32 und 256 MiB erschienen früher als Treffer,
+            // ließen sich aber nur abschnittsweise und damit nie am Treffer
+            // öffnen.
+            read = try FileSnapshot.read(
+                from: url, byteLimit: FileLoader.largeFileThreshold)
         } catch FileSnapshotReadError.tooLarge {
             // Bewusst eigener Grund statt „unlesbar": Die Datei existiert und
             // wäre lesbar, sie ist nur größer als die Speicher-Grenze.

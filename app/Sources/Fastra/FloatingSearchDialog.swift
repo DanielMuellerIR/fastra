@@ -542,7 +542,7 @@ struct FloatingSearchDialog: View {
                         // Treffer. Danach gehört der Tastaturfokus der Liste,
                         // nicht dem im Hintergrund sichtbaren Dokumenteditor.
                         postNavigation(.fastraGotoFirstMatch)
-                        DispatchQueue.main.async { hitListFocused = true }
+                        requestHitListFocusAfterSubmit()
                     } else {
                         NSSound.beep()
                     }
@@ -595,6 +595,27 @@ struct FloatingSearchDialog: View {
             // Such-Verlauf (K4): Uhr-Popup mit den letzten Find-/Replace-
             // Paaren. Auswahl füllt beide Felder (BBEdit „Search History").
             searchHistoryMenu
+        }
+    }
+
+    /// Übergibt Return und Pfeiltasten nach dem ersten Suchfeld-Return an die
+    /// Trefferliste. Ein einzelnes `@FocusState = true` kann vor dem nächsten
+    /// SwiftUI-Layout verpuffen; das Suchfeld bleibt dann First Responder und
+    /// ein schnelles zweites Return springt erneut zum ersten Treffer. Solange
+    /// AppKit das Suchfeld noch als First Responder meldet, setzt der nächste
+    /// Main-Loop-Durchlauf den Fokuswunsch deshalb erneut.
+    private func requestHitListFocusAfterSubmit(attempt: Int = 0) {
+        hitListFocused = true
+        guard attempt < 20 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            guard let findField = findFieldController.textView,
+                  findField.window?.firstResponder === findField else { return }
+            // Ein unveränderter `true`-Wert löst keinen neuen Fokuslauf aus.
+            // Das kurze Zurücksetzen macht den nächsten Versuch beobachtbar.
+            hitListFocused = false
+            DispatchQueue.main.async {
+                requestHitListFocusAfterSubmit(attempt: attempt + 1)
+            }
         }
     }
 
@@ -972,6 +993,24 @@ struct FloatingSearchDialog: View {
                 )
             }
 
+            if let notice = workspace.folderNavigationNotice {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise.circle.fill")
+                        .foregroundColor(.orange)
+                    Text(notice)
+                        .fastraFont(size: 11)
+                        .foregroundColor(.orange)
+                        .lineLimit(2)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.orange.opacity(0.08))
+                )
+            }
+
             // Cap-Hinweis: Trefferliste wurde durch den Gesamt-Cap abgeschnitten.
             // Erscheint NUR im Ordner-Scope und NUR wenn der Cap tatsächlich
             // ausgelöst hat — stilles Abschneiden ist schlechter UX.
@@ -1325,8 +1364,19 @@ struct FloatingSearchDialog: View {
             // Tab öffnen oder aktivieren — asynchron. Editor-Sprung erst in
             // der Completion, nachdem der Tab vollständig geladen ist
             // (Race vermieden: postMatchJump braucht den fertigen Inhalt).
-            workspace.loadFile(atCanonicalURL: url) { ok in
-                guard ok else { return }
+            workspace.loadFile(
+                atCanonicalURL: url,
+                expectedDiskSnapshot: snapshot,
+                acceptance: FileLoadAcceptance {
+                    workspace.isCurrentMatchJump(jumpGeneration)
+                }
+            ) { ok in
+                guard ok else {
+                    if workspace.isCurrentMatchJump(jumpGeneration) {
+                        workspace.folderMatchNavigationBecameStale()
+                    }
+                    return
+                }
                 DispatchQueue.main.async {
                     let posted = NotificationCenter.default.postMatchJump(
                         target.match, for: workspace,
@@ -1334,6 +1384,9 @@ struct FloatingSearchDialog: View {
                         generation: jumpGeneration
                     )
                     commitIndexIfPosted(posted)
+                    if !posted, workspace.isCurrentMatchJump(jumpGeneration) {
+                        workspace.folderMatchNavigationBecameStale()
+                    }
                 }
             }
             return

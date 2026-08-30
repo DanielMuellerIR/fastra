@@ -10,6 +10,17 @@ final class ReplacePreviewModel: ObservableObject {
         let documentID: UUID
         let contentRevision: UInt64
         let matchIDs: [UUID]
+        let totalMatches: Int
+        let matchesWereCapped: Bool
+
+        init(documentID: UUID, contentRevision: UInt64, matchIDs: [UUID],
+             totalMatches: Int? = nil, matchesWereCapped: Bool = false) {
+            self.documentID = documentID
+            self.contentRevision = contentRevision
+            self.matchIDs = matchIDs
+            self.totalMatches = totalMatches ?? matchIDs.count
+            self.matchesWereCapped = matchesWereCapped
+        }
     }
 
     struct Request: Sendable {
@@ -54,6 +65,7 @@ final class ReplacePreviewModel: ObservableObject {
         // Eine andere Workspace-Aktualisierung darf denselben Auftrag nicht neu
         // starten. Sowohl ein laufender als auch ein fertiger Stand bleibt.
         guard requestedVersion != request.version else { return }
+        let previousWork = workTask
         cancelTasks()
         generation &+= 1
         let expectedGeneration = generation
@@ -61,9 +73,27 @@ final class ReplacePreviewModel: ObservableObject {
         completedVersion = nil
         state = .loading
 
+        // Eine gekappte Trefferliste ist keine vollständige Grundlage für den
+        // Dokument-Diff. Diesen Zustand erklärt das Sheet sichtbar, statt die
+        // Teilmenge als „alle Ersetzungen“ auszugeben.
+        if request.version.matchesWereCapped
+            || request.matches.count != request.version.totalMatches {
+            completedVersion = request.version
+            state = .limitation(.incompleteMatchSet(
+                visibleMatches: request.matches.count,
+                totalMatches: request.version.totalMatches))
+            return
+        }
+
         let builder = self.builder
         let work = Task.detached(priority: .userInitiated) {
-            builder(request.text, request.matches, maxRows, { Task.isCancelled })
+            () -> ReplacePreview.SideBySideOutcome in
+            // `CollectionDifference` im vorigen Auftrag ist nicht kooperativ
+            // abbrechbar. Der Nachfolger wartet deshalb auf dessen Ende; so
+            // laufen bei schnellem Tippen nie mehrere teure Myers-Diffs nebenher.
+            if let previousWork { _ = await previousWork.value }
+            guard !Task.isCancelled else { return .cancelled }
+            return builder(request.text, request.matches, maxRows, { Task.isCancelled })
         }
         workTask = work
         completionTask = Task { [weak self] in
@@ -134,7 +164,9 @@ struct ReplacePreviewView: View {
             version: .init(
                 documentID: tab.documentID,
                 contentRevision: tab.contentRevision,
-                matchIDs: workspace.bufferMatches.map(\.id)),
+                matchIDs: workspace.bufferMatches.map(\.id),
+                totalMatches: workspace.bufferTotalMatches,
+                matchesWereCapped: workspace.bufferResultsWereCapped),
             text: tab.content,
             matches: workspace.bufferMatches)
     }
@@ -277,6 +309,10 @@ struct ReplacePreviewView: View {
             L10n.format(
                 "Der unterschiedliche Bereich überschreitet die Rechengrenze von %ld Zeilen.",
                 maximumLines)
+        case .incompleteMatchSet(let visibleMatches, let totalMatches):
+            L10n.format(
+                "Die Suche zeigt nur %ld von %ld Treffern. Verfeinere die Suche, damit die Vorschau jede Ersetzung enthält.",
+                visibleMatches, totalMatches)
         }
         return VStack(spacing: 10) {
             Spacer()

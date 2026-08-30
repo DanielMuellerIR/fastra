@@ -346,7 +346,7 @@ private final class SequencedPreviewBuilder: @unchecked Sendable {
     }
 }
 
-@Test("Vorschau-Modell verwirft die späte Antwort eines überholten Laufs")
+@Test("Vorschau-Modell serialisiert einen nicht kooperativ abbrechbaren alten Lauf")
 @MainActor
 func previewModel_discardsStaleCompletion() async throws {
     let builder = SequencedPreviewBuilder()
@@ -368,15 +368,36 @@ func previewModel_discardsStaleCompletion() async throws {
     model.load(old)
     #expect(await waitUntil { builder.startedCalls >= 1 })
     model.load(current)
-    #expect(await waitUntil { builder.startedCalls >= 2 })
-    #expect(await waitUntil {
-        model.result?.rows.first?.after == "NEU"
-    })
+    for _ in 0..<50 { await Task.yield() }
+    #expect(builder.startedCalls == 1,
+            "Der neue Myers-Diff darf nicht neben dem alten laufen")
 
     builder.releaseFirst.signal()
     #expect(await waitUntil { builder.didFinishFirst })
-    for _ in 0..<20 { await Task.yield() }
+    #expect(await waitUntil { builder.startedCalls >= 2 })
+    #expect(await waitUntil { model.result?.rows.first?.after == "NEU" })
     #expect(model.result?.rows.first?.after == "NEU")
     #expect(!builder.anyCallRanOnMainThread,
             "Auch der injizierte Builder muss außerhalb des UI-Threads laufen")
+}
+
+@Test("Vorschau-Modell erklärt eine gekappte Trefferbasis und startet keinen Diff")
+@MainActor
+func previewModel_rejectsCappedMatchSet() {
+    let builder = SequencedPreviewBuilder()
+    let model = ReplacePreviewModel { text, matches, maxRows, shouldCancel in
+        builder.build(text: text, matches: matches, maxRows: maxRows,
+                      shouldCancel: shouldCancel)
+    }
+    let request = ReplacePreviewModel.Request(
+        version: .init(documentID: UUID(), contentRevision: 1,
+                       matchIDs: [], totalMatches: 3,
+                       matchesWereCapped: true),
+        text: "drei Treffer", matches: [])
+
+    model.load(request)
+
+    #expect(model.state == .limitation(.incompleteMatchSet(
+        visibleMatches: 0, totalMatches: 3)))
+    #expect(builder.startedCalls == 0)
 }

@@ -1167,6 +1167,9 @@ final class Workspace: ObservableObject {
     /// Die Maske zeigt dann einen dezenten Hinweis-Streifen, damit der
     /// Nutzer NICHT still-trunkierte Ergebnisse für vollständig hält.
     @Published var folderResultsWereCapped: Bool = false
+    /// Verständlicher Hinweis nach einem abgewiesenen Treffer-Sprung. Das ist
+    /// kein Syntaxfehler und sperrt deshalb den erneuten Suchlauf nicht.
+    @Published var folderNavigationNotice: String? = nil
     /// Planung/Backup/Apply einer bestätigten Ordner-Vorschau laufen im
     /// Hintergrund. Der Suchdialog zeigt Status und eine Abbruchaktion.
     @Published var folderApplying: Bool = false
@@ -2947,6 +2950,9 @@ final class Workspace: ObservableObject {
     /// - Parameter url: Datei-URL; muss eine reguläre Datei sein.
     /// - Parameter acceptance: Optionale Bindung an einen Aufruferzustand.
     ///   Wird sie ungültig, verwirft Fastra den noch laufenden Ladevorgang.
+    /// - Parameter expectedDiskSnapshot: Bindet einen Ordner-Treffer an genau
+    ///   den beim Suchlauf gelesenen Plattenstand. Ein geänderter oder bereits
+    ///   dirty geöffneter Tab wird weder aktiviert noch veröffentlicht.
     /// - Parameter completion: Optionaler Callback, der auf dem Main-Thread
     ///   aufgerufen wird. `true` = Inhalt steht im Tab (Datei war schon offen
     ///   oder Laden erfolgreich). `false` = Laden fehlgeschlagen, Platzhalter
@@ -2963,6 +2969,7 @@ final class Workspace: ObservableObject {
     ///    wiederherstellen, completion(false).
     func loadFile(at url: URL, preview: Bool = false,
                   expectedGitContext: GitActionContext? = nil,
+                  expectedDiskSnapshot: FileSnapshot? = nil,
                   acceptance: FileLoadAcceptance? = nil,
                   completion: ((Bool) -> Void)? = nil) {
         // URL-Form vereinheitlichen: dieselbe Datei kommt je nach Quelle in
@@ -2974,6 +2981,7 @@ final class Workspace: ObservableObject {
         loadFile(atCanonicalURL: url.canonicalFileURL,
                  preview: preview,
                  expectedGitContext: expectedGitContext,
+                 expectedDiskSnapshot: expectedDiskSnapshot,
                  acceptance: acceptance,
                  completion: completion)
     }
@@ -2983,6 +2991,7 @@ final class Workspace: ObservableObject {
     /// ihr Klick auf dem Main-Thread keine zweite Metadatenabfrage ausführt.
     func loadFile(atCanonicalURL url: URL, preview: Bool = false,
                   expectedGitContext: GitActionContext? = nil,
+                  expectedDiskSnapshot: FileSnapshot? = nil,
                   acceptance: FileLoadAcceptance? = nil,
                   completion: ((Bool) -> Void)? = nil) {
         // Ein Restore-Ladevorgang kann bereits entwertet sein, bevor er hier
@@ -2995,6 +3004,14 @@ final class Workspace: ObservableObject {
         // ── (1) Dedup ──────────────────────────────────────────────────────
         // Wenn die Datei schon als Tab offen ist, nur aktivieren — kein zweiter Tab.
         if let existingIdx = tabs.firstIndex(where: { $0.url == url }) {
+            if let expectedDiskSnapshot {
+                let existing = tabs[existingIdx]
+                guard !existing.hasUnsavedChanges, !existing.isLoading,
+                      existing.diskSnapshot == expectedDiskSnapshot else {
+                    completion?(false)
+                    return
+                }
+            }
             // Ein Doppelklick folgt in der Änderungen-Liste auf den bereits
             // ausgeführten Einzelklick. Er findet denselben Tab und steckt ihn
             // fest, statt einen zweiten zu öffnen.
@@ -3047,7 +3064,13 @@ final class Workspace: ObservableObject {
         } else {
             tabs.append(placeholder)
         }
-        activeTabID = placeholder.id
+        // Ein Ordner-Treffer wird erst nach dem Snapshot-Abgleich aktiviert.
+        // Bis der Hintergrund-Read fertig ist, bleibt das bisherige Dokument
+        // sichtbar und kann nicht durch eine veraltete Treffbasis verdrängt
+        // werden.
+        if expectedDiskSnapshot == nil {
+            activeTabID = placeholder.id
+        }
 
         // ── (3) Generation hochzählen ─────────────────────────────────────
         // Ermöglicht es, einen abgebrochenen Load zu erkennen (Tab schon
@@ -3187,6 +3210,12 @@ final class Workspace: ObservableObject {
                         report(false)
                         return
                     }
+                    guard expectedDiskSnapshot == nil
+                            || loaded.diskSnapshot == expectedDiskSnapshot else {
+                        discardPlaceholder()
+                        report(false)
+                        return
+                    }
                     // Den fertigen Tab lokal aufbauen und erst einmalig
                     // publizieren. Feldweise Zuweisungen an `tabs[idx]`
                     // lösten vorher für ein einziges Laden mehr als zehn
@@ -3221,6 +3250,9 @@ final class Workspace: ObservableObject {
                         loadedTabs,
                         keeping: tabID
                     )
+                    if expectedDiskSnapshot != nil {
+                        self.activeTabID = tabID
+                    }
                     self.noteRecentFile(url)
                     self.synchronizeProjectWithActiveTabIfNeeded()
                     report(true)
@@ -3727,7 +3759,10 @@ final class Workspace: ObservableObject {
     /// Übergibt nur die mechanischen Eingaben an den Detector. Der Workspace
     /// entscheidet weiterhin vor dem Start über die Eignung und unmittelbar
     /// vor dem Anwenden über Dokumentidentität und manuelle Vorrangregeln.
-    func scheduleLanguageDetection(tabID: UUID, oldLength: Int, newLength: Int) {
+    func scheduleLanguageDetection(
+        tabID: UUID, oldLength: Int, newLength: Int,
+        forceAnalysis: Bool = false
+    ) {
         guard let idx = tabs.firstIndex(where: { $0.id == tabID }),
               Self.isEligibleForContentDetection(tabs[idx]) else { return }
         let tab = tabs[idx]
@@ -3737,7 +3772,8 @@ final class Workspace: ObservableObject {
             contentRevision: tab.contentRevision,
             oldLength: oldLength,
             newLength: newLength,
-            content: tab.content
+            content: tab.content,
+            forceAnalysis: forceAnalysis
         )
         documentLanguageDetector.schedule(request) { [weak self] result in
             guard let self,
@@ -6374,6 +6410,7 @@ final class Workspace: ObservableObject {
         guard !changed.isEmpty else { return 0 }
         for idx in tabs.indices {
             guard let newContent = changed[tabs[idx].id] else { continue }
+            let oldLength = tabs[idx].content.count
             tabs[idx].content = newContent
             tabs[idx].isDirty = true
             // Direkte Modellmutation läuft am `activeTabContent`-Binding (und
@@ -6382,6 +6419,11 @@ final class Workspace: ObservableObject {
             // normales Tippen — sonst blieben Diff-Task und Makro-Sperre bis
             // zum Rechenende aktiv (Review 2026-08-29).
             cancelFourDMacroPostprocessing(ifTab: tabs[idx].id)
+            scheduleLanguageDetection(
+                tabID: tabs[idx].id,
+                oldLength: oldLength,
+                newLength: newContent.count,
+                forceAnalysis: true)
         }
         editorReloadNonce += 1
         // SearchRunner sucht durch die tabs-Änderung automatisch neu.
@@ -6482,6 +6524,9 @@ final class Workspace: ObservableObject {
         // Makro-Nachbearbeitung dieses Tabs selbst abbrechen — sie umgeht
         // das `activeTabContent`-Binding (Review 2026-08-29).
         cancelFourDMacroPostprocessing(ifTab: tabID)
+        scheduleLanguageDetection(
+            tabID: tabID, oldLength: text.count, newLength: replaced.count,
+            forceAnalysis: true)
         if activeTabID != tabID { selectTab(id: tabID) }
         editorReloadNonce += 1
     }
@@ -6539,6 +6584,14 @@ final class Workspace: ObservableObject {
     func runFolderSearchNow() {
         recordSearchHistory()
         searchRunner?.runFolderSearch()
+    }
+
+    /// Verwirft eine Ordner-Trefferbasis, deren Datei sich seit dem Suchlauf
+    /// geändert hat, und erklärt den nötigen neuen Suchlauf.
+    func folderMatchNavigationBecameStale() {
+        searchRunner?.folderResultsBecameStale()
+        folderNavigationNotice = L10n.string(
+            "Die Datei hat sich seit der Suche geändert. Bitte erneut suchen.")
     }
 
     /// Trefferliste als LF-getrennten String ins Clipboard kopieren —

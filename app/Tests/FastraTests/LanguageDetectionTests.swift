@@ -255,6 +255,54 @@ func workspace_detectsAfterBulkInsert() throws {
     #expect(ws.activeDocumentFormat.id == .grammar(.json))
 }
 
+@Test("Direkte Ersetzungen im Geöffnet-Scope erkennen das neue Dokumentformat")
+@MainActor
+func workspace_openReplacementsRescheduleLanguageDetection() throws {
+    let json = #"{"name":"Fastra","enabled":true,"count":21}"#
+    let html = "<!DOCTYPE html><html><body>Fastra</body></html>"
+
+    func preparedWorkspace(_ suffix: String) -> (Workspace, UserDefaults, String) {
+        let suite = "fastra-langdetect-open-replace-\(suffix)-\(UUID().uuidString)"
+        let defaults = testSuiteDefaults(named: suite)
+        let workspace = Workspace(
+            defaults: defaults,
+            documentLanguageDetector: synchronousDocumentLanguageDetector())
+        let tab = EditorTab(
+            title: Workspace.untitledBaseName, path: "—", content: json)
+        workspace.tabs = [tab]
+        workspace.activeTabID = tab.id
+        workspace.scope = .open
+        workspace.scheduleLanguageDetection(
+            tabID: tab.id, oldLength: 0, newLength: json.count)
+        workspace.findPattern = json
+        workspace.replacePattern = html
+        workspace.useRegex = false
+        workspace.caseSensitive = true
+        let found = OpenTabsSearch.find(
+            tabs: [OpenTabsSearch.TabInput(
+                id: tab.id, title: tab.title, content: tab.content)],
+            options: workspace.currentSearchOptions)
+        workspace.openResults = found.perTab
+        workspace.openTotalMatches = found.totalMatches
+        workspace.visibleBufferResultsOptions = workspace.currentSearchOptions
+        return (workspace, defaults, suite)
+    }
+
+    let (allWorkspace, allDefaults, allSuite) = preparedWorkspace("all")
+    defer { allDefaults.removePersistentDomain(forName: allSuite) }
+    #expect(allWorkspace.tabs[0].contentDetectedFormat == .json)
+    #expect(allWorkspace.applyAllInOpenTabs() == 1)
+    #expect(allWorkspace.tabs[0].content == html)
+    #expect(allWorkspace.tabs[0].contentDetectedFormat == .html)
+
+    let (singleWorkspace, singleDefaults, singleSuite) = preparedWorkspace("single")
+    defer { singleDefaults.removePersistentDomain(forName: singleSuite) }
+    #expect(singleWorkspace.tabs[0].contentDetectedFormat == .json)
+    singleWorkspace.replaceActiveMatch()
+    #expect(singleWorkspace.tabs[0].content == html)
+    #expect(singleWorkspace.tabs[0].contentDetectedFormat == .html)
+}
+
 @Test("Shebang-Inhalt nutzt die Upstream-Erkennung (bash)")
 @MainActor
 func workspace_detectsShebang() throws {

@@ -216,13 +216,53 @@ mkdir -p "$MOUNT_DIR" "$VERIFY_MOUNT"
 # Dieser Mountpunkt liegt privat im einmaligen Staging-Verzeichnis und kann
 # nicht mit einem fremden Volume kollidieren.
 ATTACHED_DEV=""
+
+# Prüft unmittelbar vor dem Detach, dass die gemerkte Gerätenummer weiterhin
+# zum eigenen RW-Image gehört. Gerätenummern werden vom Kernel wiederverwendet;
+# die beim Attach gespeicherte Nummer allein ist daher keine dauerhafte
+# Identität (Review 2026-08-30).
+fastra_attached_device_belongs_to_rw_image() {
+  [ -n "$ATTACHED_DEV" ] || return 1
+  hdiutil info -plist 2>/dev/null | \
+    FASTRA_ATTACHED_DEV="$ATTACHED_DEV" FASTRA_RW_DMG="$RW_DMG" \
+    /usr/bin/python3 -c '
+import os, plistlib, sys
+try:
+    data = plistlib.loads(sys.stdin.buffer.read())
+except Exception:
+    raise SystemExit(1)
+expected_device = os.environ["FASTRA_ATTACHED_DEV"]
+expected_image = os.path.realpath(os.environ["FASTRA_RW_DMG"])
+for image in data.get("images", []):
+    image_path = image.get("image-path", "")
+    if not image_path or os.path.realpath(image_path) != expected_image:
+        continue
+    if any(entity.get("dev-entry") == expected_device
+           for entity in image.get("system-entities", [])):
+        raise SystemExit(0)
+raise SystemExit(1)
+'
+}
+
+fastra_detach_attached_rw_image() {
+  [ -n "$ATTACHED_DEV" ] || return 0
+  if ! fastra_attached_device_belongs_to_rw_image; then
+    # Das eigene Image ist nicht mehr unter dieser Gerätenummer erreichbar.
+    # Den wiederverwendeten Namen keinesfalls an hdiutil detach weitergeben.
+    ATTACHED_DEV=""
+    return 1
+  fi
+  hdiutil detach "$ATTACHED_DEV" -quiet \
+    || hdiutil detach -force "$ATTACHED_DEV"
+  ATTACHED_DEV=""
+}
+
 cleanup_release() {
   local status=$?
   trap - EXIT
   hdiutil detach "$VERIFY_MOUNT" -quiet 2>/dev/null || true
   if [ -n "$ATTACHED_DEV" ]; then
-    hdiutil detach "$ATTACHED_DEV" -quiet 2>/dev/null \
-      || hdiutil detach -force "$ATTACHED_DEV" 2>/dev/null || true
+    fastra_detach_attached_rw_image 2>/dev/null || true
   fi
   rm -rf "$DMG_STAGING"
   exit "$status"
@@ -422,8 +462,10 @@ sleep 2
 # Detach über die Geräteidentität (nicht den Pfad) und den gemerkten Zustand
 # löschen: Ab jetzt darf der EXIT-Trap kein Volume mehr anfassen — ein später
 # unter demselben Namen erscheinendes Volume gehört jemand anderem.
-hdiutil detach "$ATTACHED_DEV" -quiet || hdiutil detach -force "$ATTACHED_DEV"
-ATTACHED_DEV=""
+if ! fastra_detach_attached_rw_image; then
+  echo "FEHLER: Das gemerkte DMG-Gerät gehört nicht mehr zum eigenen RW-Image." >&2
+  exit 1
+fi
 hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -quiet -o "$DMG_PATH"
 
 echo "   ✔ DMG gebaut: $DMG_PATH"

@@ -36,6 +36,22 @@ final class DocumentLanguageDetector: @unchecked Sendable {
         let oldLength: Int
         let newLength: Int
         let content: String
+        /// Programmatische Ganzdokument-Ersetzungen können bei fast gleicher
+        /// Länge trotzdem das Format vollständig wechseln. Sie umgehen die
+        /// Tipp-Drossel und verlangen deshalb sofort eine neue Analyse.
+        let forceAnalysis: Bool
+
+        init(tabID: UUID, documentID: UUID, contentRevision: UInt64,
+             oldLength: Int, newLength: Int, content: String,
+             forceAnalysis: Bool = false) {
+            self.tabID = tabID
+            self.documentID = documentID
+            self.contentRevision = contentRevision
+            self.oldLength = oldLength
+            self.newLength = newLength
+            self.content = content
+            self.forceAnalysis = forceAnalysis
+        }
     }
 
     /// Reines Analyseergebnis ohne Workspace- oder Editorentscheidung.
@@ -142,11 +158,12 @@ final class DocumentLanguageDetector: @unchecked Sendable {
 
             nextGeneration &+= 1
             let generation = nextGeneration
-            let trigger = ContentLanguageDetection.trigger(
-                oldLength: request.oldLength,
-                newLength: request.newLength,
-                lastAnalyzedLength: lastAnalyzedLength
-            )
+            let trigger: ContentLanguageDetection.Trigger = request.forceAnalysis
+                ? .immediate
+                : ContentLanguageDetection.trigger(
+                    oldLength: request.oldLength,
+                    newLength: request.newLength,
+                    lastAnalyzedLength: lastAnalyzedLength)
             var updated = State(
                 documentID: request.documentID,
                 generation: generation,

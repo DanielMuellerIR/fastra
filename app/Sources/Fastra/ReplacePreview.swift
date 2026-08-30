@@ -68,6 +68,9 @@ enum ReplacePreview {
         case tooLarge(maximumBytes: Int)
         case tooManyLines(maximumLines: Int)
         case tooDifferent(maximumLines: Int)
+        /// Die Suche hat nicht alle Treffer materialisiert. Ein Diff aus der
+        /// gekappten Teilmenge wäre keine vollständige Apply-Vorschau.
+        case incompleteMatchSet(visibleMatches: Int, totalMatches: Int)
     }
 
     /// Vollständiges Ergebnis, erklärte Grenze oder kooperativer Abbruch.
