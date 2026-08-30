@@ -401,3 +401,42 @@ func previewModel_rejectsCappedMatchSet() {
         visibleMatches: 0, totalMatches: 3)))
     #expect(builder.startedCalls == 0)
 }
+
+@Test("Gekappter Zwischenauftrag unterbricht die Diff-Serialisierung nicht")
+@MainActor
+func previewModel_keepsSerializationAcrossCappedRequest() async {
+    let builder = SequencedPreviewBuilder()
+    let model = ReplacePreviewModel { text, matches, maxRows, shouldCancel in
+        builder.build(text: text, matches: matches, maxRows: maxRows,
+                      shouldCancel: shouldCancel)
+    }
+    let documentID = UUID()
+    let old = ReplacePreviewModel.Request(
+        version: .init(documentID: documentID, contentRevision: 1,
+                       matchIDs: []),
+        text: "alt", matches: [])
+    let capped = ReplacePreviewModel.Request(
+        version: .init(documentID: documentID, contentRevision: 2,
+                       matchIDs: [], totalMatches: 1,
+                       matchesWereCapped: true),
+        text: "unvollständig", matches: [])
+    let current = ReplacePreviewModel.Request(
+        version: .init(documentID: documentID, contentRevision: 3,
+                       matchIDs: []),
+        text: "neu", matches: [])
+    defer { builder.releaseFirst.signal() }
+
+    model.load(old)
+    #expect(await waitUntil { builder.startedCalls >= 1 })
+    model.load(capped)
+    #expect(model.state == .limitation(.incompleteMatchSet(
+        visibleMatches: 0, totalMatches: 1)))
+    model.load(current)
+    for _ in 0..<50 { await Task.yield() }
+    #expect(builder.startedCalls == 1,
+            "Der Zwischenauftrag darf den alten Myers-Diff nicht aus der Kette lösen")
+
+    builder.releaseFirst.signal()
+    #expect(await waitUntil { builder.startedCalls >= 2 })
+    #expect(await waitUntil { model.result?.rows.first?.after == "NEU" })
+}

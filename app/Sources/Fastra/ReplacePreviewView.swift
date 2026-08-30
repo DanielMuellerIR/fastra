@@ -52,6 +52,7 @@ final class ReplacePreviewModel: ObservableObject {
     private var generation: UInt64 = 0
     private var workTask: Task<ReplacePreview.SideBySideOutcome, Never>?
     private var completionTask: Task<Void, Never>?
+    private var serializationTail: Task<Void, Never>?
 
     init(builder: @escaping Builder = { text, matches, maxRows, shouldCancel in
         ReplacePreview.buildSideBySide(
@@ -65,7 +66,7 @@ final class ReplacePreviewModel: ObservableObject {
         // Eine andere Workspace-Aktualisierung darf denselben Auftrag nicht neu
         // starten. Sowohl ein laufender als auch ein fertiger Stand bleibt.
         guard requestedVersion != request.version else { return }
-        let previousWork = workTask
+        let previousTail = serializationTail
         cancelTasks()
         generation &+= 1
         let expectedGeneration = generation
@@ -91,10 +92,14 @@ final class ReplacePreviewModel: ObservableObject {
             // `CollectionDifference` im vorigen Auftrag ist nicht kooperativ
             // abbrechbar. Der Nachfolger wartet deshalb auf dessen Ende; so
             // laufen bei schnellem Tippen nie mehrere teure Myers-Diffs nebenher.
-            if let previousWork { _ = await previousWork.value }
+            if let previousTail { await previousTail.value }
             guard !Task.isCancelled else { return .cancelled }
             return builder(request.text, request.matches, maxRows, { Task.isCancelled })
         }
+        // Die Kette bleibt auch dann erhalten, wenn ein gekappter Auftrag oder
+        // `cancel()` den sichtbaren aktuellen Auftrag verwirft. Ein späterer
+        // vollständiger Diff wartet weiterhin auf den nicht kooperativen Lauf.
+        serializationTail = Task.detached { _ = await work.value }
         workTask = work
         completionTask = Task { [weak self] in
             let outcome = await work.value

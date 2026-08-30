@@ -9,6 +9,15 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.16] — 2026-08-30
+
+### Behoben
+
+- **Schnell wechselnde Ersetzungsvorschauen bleiben auch über einen gekappten
+  Zwischenstand hinweg serialisiert.** Ein noch laufender, nicht kooperativ
+  abbrechbarer Diff endet jetzt sicher, bevor der nächste vollständige Diff
+  beginnt.
+
 ## [v1.113.15] — 2026-08-30
 
 ### Behoben
