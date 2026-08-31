@@ -252,8 +252,15 @@ fastra_detach_attached_rw_image() {
     ATTACHED_DEV=""
     return 1
   fi
-  hdiutil detach "$ATTACHED_DEV" -quiet \
-    || hdiutil detach -force "$ATTACHED_DEV"
+  # Beide Aushängeversuche fehlgeschlagen → sichtbar scheitern. Der Aufrufer
+  # (Zeile „if ! fastra_detach_attached_rw_image") würde sonst ein weiterhin
+  # eingehängtes RW-Image konvertieren. `ATTACHED_DEV` bleibt dabei absichtlich
+  # gesetzt: Nur so kennt der EXIT-Trap das Gerät noch und kann das
+  # zurückgebliebene Mount beim Abbruch weiter aufzuräumen versuchen.
+  if ! hdiutil detach "$ATTACHED_DEV" -quiet \
+    && ! hdiutil detach -force "$ATTACHED_DEV"; then
+    return 1
+  fi
   ATTACHED_DEV=""
 }
 

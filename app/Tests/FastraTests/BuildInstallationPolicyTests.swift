@@ -163,6 +163,98 @@ struct BuildInstallationPolicyTests {
                 "Eine wiedervergebene Gerätenummer darf nie ausgehängt werden")
     }
 
+    @Test("Doppelt fehlgeschlagenes Aushängen scheitert sichtbar und vergisst das Gerät nicht")
+    func releaseDetachReportsDoubleFailure() throws {
+        // Fake-hdiutil: `info` bestätigt das eigene Image, aber BEIDE
+        // Detach-Versuche (normal und -force) schlagen fehl. Vor der Korrektur
+        // lieferte die Funktion trotzdem Status 0 und leerte ATTACHED_DEV —
+        // der Release-Lauf konvertierte dann ein noch eingehängtes RW-Image,
+        // und der EXIT-Trap kannte das Gerät nicht mehr.
+        let result = try runReleaseDetach(detachSucceeds: false)
+        #expect(result.status != 0,
+                "Doppelter Detach-Fehler muss die Funktion ungleich null beenden")
+        #expect(result.attachedDevice == "/dev/disk93",
+                "Nach dem Fehlschlag muss der EXIT-Trap das Gerät weiter kennen")
+
+        // Gegenprobe: Ein erfolgreiches Aushängen liefert 0 und leert den
+        // gemerkten Zustand wie bisher.
+        let success = try runReleaseDetach(detachSucceeds: true)
+        #expect(success.status == 0)
+        #expect(success.attachedDevice.isEmpty)
+    }
+
+    /// Führt die unveränderte `fastra_detach_attached_rw_image`-Funktion aus
+    /// release.sh gegen ein Fake-`hdiutil` aus, dessen Detach wahlweise
+    /// gelingt oder fehlschlägt. Liefert Exit-Status der Funktion und den
+    /// danach gemerkten `ATTACHED_DEV`.
+    private func runReleaseDetach(
+        detachSucceeds: Bool
+    ) throws -> (status: Int32, attachedDevice: String) {
+        let sandbox = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "fastra-release-detach-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: sandbox,
+                                                withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+
+        let fakeHdiutil = sandbox.appendingPathComponent("hdiutil")
+        let reportedImage = sandbox.appendingPathComponent("fastra_rw.dmg").path
+        try """
+        #!/bin/bash
+        if [ "$1" = "info" ]; then
+          cat <<'PLIST'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict><key>images</key><array><dict>
+        <key>image-path</key><string>\(reportedImage)</string>
+        <key>system-entities</key><array><dict>
+        <key>dev-entry</key><string>/dev/disk93</string>
+        </dict></array></dict></array></dict></plist>
+        PLIST
+          exit 0
+        fi
+        exit \(detachSucceeds ? 0 : 1)
+        """.write(to: fakeHdiutil, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: fakeHdiutil.path)
+
+        // Der Harness lädt nur die Detach-Funktionen aus dem echten Skript,
+        // ruft sie mit gemerkter Geräteidentität auf und meldet Status sowie
+        // verbleibenden Zustand über eine Ergebnisdatei zurück.
+        let resultFile = sandbox.appendingPathComponent("result")
+        let harness = sandbox.appendingPathComponent("harness.sh")
+        try """
+        #!/bin/bash
+        set -u
+        eval "$(/usr/bin/sed -n '/^fastra_attached_device_belongs_to_rw_image()/,/^}/p' "$1")"
+        eval "$(/usr/bin/sed -n '/^fastra_detach_attached_rw_image()/,/^}/p' "$1")"
+        RW_DMG="\(reportedImage)"
+        ATTACHED_DEV="/dev/disk93"
+        if fastra_detach_attached_rw_image; then rc=0; else rc=$?; fi
+        printf '%s\\n%s\\n' "$rc" "$ATTACHED_DEV" > "\(resultFile.path)"
+        """.write(to: harness, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: harness.path)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [
+            harness.path,
+            appDirectory.appendingPathComponent("release.sh").path,
+        ]
+        var environment = ProcessInfo.processInfo.environment
+        environment["PATH"] = "\(sandbox.path):/usr/bin:/bin"
+        process.environment = environment
+        try process.run()
+        process.waitUntilExit()
+        #expect(process.terminationStatus == 0)
+
+        let lines = (try String(contentsOf: resultFile, encoding: .utf8))
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+        return (Int32(lines.first ?? "") ?? -1,
+                lines.count > 1 ? lines[1] : "")
+    }
+
     /// Führt die unveränderte `cleanup_release`-Funktion aus release.sh in
     /// einer Sandbox aus, in der ein Fake-`hdiutil` alle Aufrufe protokolliert.
     /// Liefert die protokollierten hdiutil-Aufrufzeilen.

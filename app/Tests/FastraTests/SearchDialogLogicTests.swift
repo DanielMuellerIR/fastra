@@ -329,8 +329,8 @@ func patternChangeInvalidatesPendingFolderMatchJump() async throws {
     let nextIndex = 1
     let jumpGeneration = workspace.beginMatchJump()
     let capture = MatchJumpPostCapture()
-    workspace.loadFile(atCanonicalURL: canonicalURL) { ok in
-        #expect(ok, "Die Funddatei muss sich laden lassen")
+    workspace.loadFile(atCanonicalURL: canonicalURL) { outcome in
+        #expect(outcome == .opened, "Die Funddatei muss sich laden lassen")
         DispatchQueue.main.async {
             let didPost = NotificationCenter.default.postMatchJump(
                 found[1], for: workspace,
@@ -418,4 +418,76 @@ func fileViewIdentityIncludesBothInputs() {
     #expect(original != EditorView.fileViewIdentity(
         tabID: firstID, url: firstURL, diskSnapshot: secondSnapshot
     ))
+}
+
+// Befund Review 2026-08-31: Seit auch ein bereits aktiver Ordner-Treffer zur
+// Snapshot-Prüfung durch das asynchrone `loadFile` läuft, wird
+// `activeMatchIndex` erst in dessen Completion fortgeschrieben. Mehrere
+// schnelle ⌘G-/Pfeil-Eingaben berechneten deshalb alle denselben Nachfolger
+// aus dem alten Index und bewegten die Auswahl nur um EINEN Treffer. Die
+// Navigation merkt ihr Ziel jetzt synchron vor.
+@MainActor
+@Test("Schnelle Folge-Navigationen rechnen vom vorgemerkten Ziel weiter")
+func matchNavigationBaseIndexUsesPendingTarget() {
+    let suite = "fastra-nav-pending-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let workspace = Workspace(defaults: defaults)
+    workspace.activeMatchIndex = 0
+
+    // Solange der Auftrag läuft, ist sein Ziel die Basis der nächsten Eingabe.
+    let first = workspace.beginMatchJump()
+    workspace.noteMatchNavigationTarget(index: 3, generation: first)
+    #expect(workspace.matchNavigationBaseIndex == 3)
+
+    // Eine neuere Navigation entwertet die alte Vormerkung sofort …
+    let second = workspace.beginMatchJump()
+    #expect(workspace.matchNavigationBaseIndex == 0)
+    // … und eine veraltete Generation kann nichts mehr vormerken.
+    workspace.noteMatchNavigationTarget(index: 7, generation: first)
+    #expect(workspace.matchNavigationBaseIndex == 0)
+
+    workspace.noteMatchNavigationTarget(index: 5, generation: second)
+    #expect(workspace.matchNavigationBaseIndex == 5)
+
+    // Der Abschluss des Auftrags räumt die Vormerkung ab; danach zählt wieder
+    // der bestätigte Index.
+    workspace.resolveMatchNavigationTarget(generation: second)
+    #expect(workspace.matchNavigationBaseIndex == 0)
+}
+
+// Befund Review 2026-08-31: Jedes abgelehnte `loadFile`-Ergebnis galt als
+// veraltete Trefferbasis. Ein zweiter Sprung während des ersten Ladens
+// löschte damit korrekte Ordnerergebnisse; ein ungesicherter Tab erzwang
+// eine neue Suche, die den Pufferkonflikt nicht lösen kann.
+@MainActor
+@Test("Nur der Plattenstand-Konflikt entwertet die Ordner-Trefferbasis")
+func folderMatchLoadDenialDistinguishesReasons() {
+    let suite = "fastra-nav-denial-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let workspace = Workspace(defaults: defaults)
+    let generation = workspace.beginMatchJump()
+
+    // Laufende Ladevorgänge und entwertete Aufträge lassen alles unberührt.
+    workspace.handleFolderMatchLoadDenial(.busyLoading, jumpGeneration: generation)
+    workspace.handleFolderMatchLoadDenial(.cancelled, jumpGeneration: generation)
+    #expect(workspace.folderNavigationNotice == nil)
+
+    // Ein ungesicherter Tab bekommt seinen eigenen Hinweis — nicht die
+    // „erneut suchen"-Meldung, die den Konflikt gar nicht lösen würde.
+    workspace.handleFolderMatchLoadDenial(.unsavedChanges, jumpGeneration: generation)
+    #expect(workspace.folderNavigationNotice == L10n.string(
+        "Die Funddatei ist mit ungesicherten Änderungen geöffnet. Tab zuerst speichern oder schließen, dann erneut springen."))
+
+    // Erst der echte Snapshot-Konflikt erklärt die Basis für veraltet.
+    workspace.handleFolderMatchLoadDenial(.staleSnapshot, jumpGeneration: generation)
+    #expect(workspace.folderNavigationNotice == L10n.string(
+        "Die Datei hat sich seit der Suche geändert. Bitte erneut suchen."))
+
+    // Eine veraltete Sprunggeneration darf gar nichts mehr melden.
+    workspace.folderNavigationNotice = nil
+    _ = workspace.beginMatchJump()
+    workspace.handleFolderMatchLoadDenial(.staleSnapshot, jumpGeneration: generation)
+    #expect(workspace.folderNavigationNotice == nil)
 }

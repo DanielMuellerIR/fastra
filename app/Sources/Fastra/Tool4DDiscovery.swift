@@ -187,11 +187,21 @@ enum Tool4DDiscovery {
         return nil
     }
 
+    /// Eine echte Info.plist ist wenige KiB groß; die Grenze ist bewusst
+    /// großzügig und schützt trotzdem davor, dass eine fremde Riesendatei an
+    /// dieser Stelle vollständig in den Speicher geladen wird.
+    static let maximumInfoPlistBytes = 4 * 1024 * 1024
+
     /// Version eines tool4d.app-Bundles aus dessen Info.plist — reines
-    /// Datei-Lesen, KEIN Programmstart.
+    /// Datei-Lesen, KEIN Programmstart. Über den gemeinsamen vorsichtigen
+    /// Lesepfad: nicht blockierend, nur reguläre Dateien, feste Obergrenze.
+    /// `Data(contentsOf:)` lüde vorher eine übergroße oder als FIFO
+    /// untergeschobene „Info.plist" ungebremst bzw. hinge dort fest
+    /// (Review 2026-08-31).
     static func bundleVersion(appURL: URL) -> String? {
         let plist = appURL.appendingPathComponent("Contents/Info.plist")
-        guard let data = try? Data(contentsOf: plist),
+        guard let data = BoundedFileReading.openRegularFile(
+                at: plist, maximumBytes: maximumInfoPlistBytes, readData: true)?.data,
               let values = try? PropertyListSerialization.propertyList(
                 from: data, options: [], format: nil
               ) as? [String: Any] else { return nil }

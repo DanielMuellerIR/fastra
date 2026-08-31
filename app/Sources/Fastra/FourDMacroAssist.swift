@@ -190,36 +190,26 @@ enum FourDMacroCatalogLoader {
         let fingerprint: FourDMacroSourceFingerprint
     }
 
-    /// Öffnet nur reguläre Dateien und liest höchstens `sourceBytes + 1`
-    /// Bytes. Die Grenze bleibt dadurch auch erhalten, wenn eine Datei nach
-    /// dem ersten Größencheck noch wächst.
+    /// Öffnet nur reguläre Dateien und liest höchstens `sourceBytes` Bytes.
+    /// Der gemeinsame Lesepfad (`BoundedFileReading`) öffnet nicht blockierend:
+    /// Eine als `*.xml` gefundene FIFO hielt vorher schon das `open` und damit
+    /// den gesamten seriellen Kataloglauf fest (Review 2026-08-31).
     private static func open(_ source: FourDMacroSource, readData: Bool,
                              limits: FourDMacroXML.Limits = .catalog) -> OpenedSource? {
-        let resolved = source.url.resolvingSymlinksInPath()
-        let descriptor = Darwin.open(resolved.path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
-        guard descriptor >= 0 else { return nil }
-        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
-        defer { try? handle.close() }
-
-        var info = stat()
-        guard fstat(descriptor, &info) == 0,
-              (info.st_mode & S_IFMT) == S_IFREG,
-              info.st_size >= 0,
-              info.st_size <= limits.sourceBytes else { return nil }
+        guard let file = BoundedFileReading.openRegularFile(
+            at: source.url, maximumBytes: limits.sourceBytes, readData: readData
+        ) else { return nil }
         let label = source.origin.displayLabel(fileName: source.url.lastPathComponent)
         let fingerprint = FourDMacroSourceFingerprint(
             sourceLabel: label,
-            path: resolved.path,
-            device: UInt64(info.st_dev),
-            inode: UInt64(info.st_ino),
-            size: Int64(info.st_size),
-            modifiedSeconds: Int64(info.st_mtimespec.tv_sec),
-            modifiedNanoseconds: Int64(info.st_mtimespec.tv_nsec)
+            path: file.resolvedPath,
+            device: UInt64(file.info.st_dev),
+            inode: UInt64(file.info.st_ino),
+            size: Int64(file.info.st_size),
+            modifiedSeconds: Int64(file.info.st_mtimespec.tv_sec),
+            modifiedNanoseconds: Int64(file.info.st_mtimespec.tv_nsec)
         )
-        guard readData else { return OpenedSource(data: nil, fingerprint: fingerprint) }
-        guard let data = try? handle.read(upToCount: limits.sourceBytes + 1),
-              data.count <= limits.sourceBytes else { return nil }
-        return OpenedSource(data: data, fingerprint: fingerprint)
+        return OpenedSource(data: file.data, fingerprint: fingerprint)
     }
 
     struct RetainedCatalogMeasurements: Equatable {
@@ -468,7 +458,15 @@ extension Workspace {
         fourDMacroScanGeneration = generation
         let document = url
         Task.detached(priority: .utility) { [weak self] in
-            let root = FourDMacroDiscovery.projectRoot(forDocument: document)
+            // EIN gemeinsames Arbeitsbudget für den gesamten Kataloglauf:
+            // Schon die Suche nach der Projektwurzel verbraucht davon, die
+            // anschließende Quellensuche bekommt nur den Rest. Ein riesiger
+            // fremder `Project`-Ordner kann die Grenze so nicht mehr vor der
+            // eigentlichen Makrosuche umgehen (Review 2026-08-31).
+            var entryBudget = FourDMacroDiscovery.maximumDirectoryEntryCount
+            let root = FourDMacroDiscovery.projectRoot(
+                forDocument: document, fileManager: .default,
+                entryBudget: &entryBudget)
             let cacheKey = FourDMacroCatalogLoader.cacheKey(projectRoot: root)
             let home = FileManager.default.homeDirectoryForCurrentUser
             let sources = FourDMacroDiscovery.macroSources(
@@ -482,7 +480,8 @@ extension Workspace {
                     home.appendingPathComponent("4D"),
                     URL(fileURLWithPath: "/Applications"),
                     home.appendingPathComponent("Applications"),
-                ]
+                ],
+                maximumDirectoryEntryCount: entryBudget
             )
             let parsed = FourDMacroCatalogLoader.load(
                 sources: sources, cacheKey: cacheKey, force: force

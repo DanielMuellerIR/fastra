@@ -1179,6 +1179,21 @@ struct FloatingSearchDialog: View {
                     break
                 }
             }
+            // Zusätzlich zu `onMoveCommand`: Der Listenfokus landet in AppKit
+            // auf der NSOutlineView der `List`, und die verarbeitet
+            // Pfeiltasten selbst, ohne den Move-Command des Containers zu
+            // erreichen — die Pfeilnavigation war damit wirkungslos, verdeckt
+            // vom fensterweiten Return-Shortcut des „Nächster"-Buttons
+            // (Review 2026-08-31, navmatch-Selbsttest). `onKeyPress` greift
+            // in der SwiftUI-Ereigniskette vor der AppKit-Zustellung.
+            .onKeyPress(.downArrow) {
+                postNavigation(.fastraGotoNextMatch)
+                return .handled
+            }
+            .onKeyPress(.upArrow) {
+                postNavigation(.fastraGotoPreviousMatch)
+                return .handled
+            }
             .onKeyPress(.return) {
                 postNavigation(.fastraGotoNextMatch)
                 return .handled
@@ -1350,7 +1365,15 @@ struct FloatingSearchDialog: View {
             guard let documentID = workspace.tabs.first(where: { $0.id == tabID })?.documentID
             else { return }
             if workspace.activeTabID != tabID { workspace.selectTab(id: tabID) }
+            // Ziel synchron vormerken: Ein direkt folgendes ⌘G rechnet vom
+            // geklickten Treffer weiter, nicht vom noch nicht bestätigten
+            // alten Index (Review 2026-08-31, wie navigateMatch).
+            workspace.noteMatchNavigationTarget(index: nextIndex,
+                                                generation: jumpGeneration)
             DispatchQueue.main.async {
+                defer {
+                    workspace.resolveMatchNavigationTarget(generation: jumpGeneration)
+                }
                 let posted = NotificationCenter.default.postMatchJump(
                     target.match, for: workspace,
                     requiring: .document(documentID),
@@ -1364,20 +1387,28 @@ struct FloatingSearchDialog: View {
             // Tab öffnen oder aktivieren — asynchron. Editor-Sprung erst in
             // der Completion, nachdem der Tab vollständig geladen ist
             // (Race vermieden: postMatchJump braucht den fertigen Inhalt).
+            workspace.noteMatchNavigationTarget(index: nextIndex,
+                                                generation: jumpGeneration)
             workspace.loadFile(
                 atCanonicalURL: url,
                 expectedDiskSnapshot: snapshot,
                 acceptance: FileLoadAcceptance {
                     workspace.isCurrentMatchJump(jumpGeneration)
                 }
-            ) { ok in
-                guard ok else {
-                    if workspace.isCurrentMatchJump(jumpGeneration) {
-                        workspace.folderMatchNavigationBecameStale()
-                    }
+            ) { outcome in
+                guard outcome.isOpened else {
+                    workspace.resolveMatchNavigationTarget(generation: jumpGeneration)
+                    // Nur ein echter Plattenstand-Konflikt entwertet die
+                    // Trefferbasis; laufende Ladevorgänge und ungesicherte
+                    // Tabs werden getrennt behandelt (Review 2026-08-31).
+                    workspace.handleFolderMatchLoadDenial(outcome,
+                                                          jumpGeneration: jumpGeneration)
                     return
                 }
                 DispatchQueue.main.async {
+                    defer {
+                        workspace.resolveMatchNavigationTarget(generation: jumpGeneration)
+                    }
                     let posted = NotificationCenter.default.postMatchJump(
                         target.match, for: workspace,
                         requiring: .file(url: url, snapshot: snapshot),

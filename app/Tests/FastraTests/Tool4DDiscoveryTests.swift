@@ -202,6 +202,35 @@ func locateNothing() throws {
     #expect(finding == nil)
 }
 
+@Test("Info.plist-Version liest nur reguläre Dateien in fester Größe")
+func bundleVersionRejectsFIFOAndOversizedPlist() throws {
+    let scratch = try makeScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+
+    // Eine FIFO als Info.plist: Ein blockierendes `Data(contentsOf:)` bzw.
+    // `open` wartete hier unbegrenzt auf einen Schreiber und hielt den
+    // Katalog-Task fest (Review 2026-08-31). Der nicht blockierende Lesepfad
+    // kehrt sofort mit `nil` zurück.
+    let fifoApp = scratch.appendingPathComponent("fifo/4D.app", isDirectory: true)
+    let fifoContents = fifoApp.appendingPathComponent("Contents", isDirectory: true)
+    try FileManager.default.createDirectory(at: fifoContents,
+                                            withIntermediateDirectories: true)
+    try #require(mkfifo(fifoContents.appendingPathComponent("Info.plist").path,
+                        0o644) == 0)
+    #expect(Tool4DDiscovery.bundleVersion(appURL: fifoApp) == nil)
+
+    // Eine übergroße „Info.plist" bleibt draußen, statt vollständig in den
+    // Speicher geladen zu werden.
+    let hugeApp = scratch.appendingPathComponent("huge/4D.app", isDirectory: true)
+    let hugeContents = hugeApp.appendingPathComponent("Contents", isDirectory: true)
+    try FileManager.default.createDirectory(at: hugeContents,
+                                            withIntermediateDirectories: true)
+    let oversized = Data(repeating: UInt8(ascii: " "),
+                         count: Tool4DDiscovery.maximumInfoPlistBytes + 1)
+    try oversized.write(to: hugeContents.appendingPathComponent("Info.plist"))
+    #expect(Tool4DDiscovery.bundleVersion(appURL: hugeApp) == nil)
+}
+
 @Test("Version aus Bundle-Pfad eines PATH-Binaries im tool4d.app")
 func versionFromExecutableInsideBundle() throws {
     let scratch = try makeScratch()

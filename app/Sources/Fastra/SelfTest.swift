@@ -11157,12 +11157,13 @@ enum SelfTest {
                 )
                 return
             }
-            finish(true, "Return im Suchfeld fokussiert Treffer 1; zweites Return "
-                + "springt zu Treffer 2; Suchmaske bleibt Key, Editor unverändert")
+            finish(true, "Return im Suchfeld fokussiert Treffer 1; Pfeil-runter in der "
+                + "Trefferliste springt zu Treffer 2; Suchmaske bleibt Key, Editor unverändert")
         }
         if tick >= maxTicks {
-            finish(false, "(navmatch) \"nächster Treffer\" erzeugte über \(maxTicks) Ticks KEINE "
-                + "Editor-Selektion (selectedRange=\(sel)) — Navigation aus der Suchmaske wirkungslos")
+            finish(false, "(navmatch) Treffer \(expectedIndex) wurde über \(maxTicks) Ticks nicht "
+                + "aktiv-selektiert (activeMatchIndex=\(ws.activeMatchIndex), "
+                + "selectedRange=\(sel)) — Navigation aus der Suchmaske wirkungslos")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
             pollNavSelection(ws, tv: tv, searchWindow: searchWindow,
@@ -11172,11 +11173,19 @@ enum SelfTest {
         }
     }
 
-    /// Wartet auf den echten Fokuswechsel aus dem Suchfeld, bevor der Test das
-    /// zweite Return sendet. SwiftUI setzt `@FocusState` erst nach einem
+    /// Wartet auf den echten Fokuswechsel aus dem Suchfeld, bevor der Test die
+    /// Listen-Navigation prüft. SwiftUI setzt `@FocusState` erst nach einem
     /// variablen Layoutlauf um; eine feste 100-ms-Pause schickte das Event
     /// unter Last gelegentlich noch einmal ans Suchfeld und prüfte damit einen
-    /// zweiten „ersten Treffer“ statt Return in der Trefferliste.
+    /// zweiten „ersten Treffer“ statt Navigation in der Trefferliste.
+    ///
+    /// Geprüft wird mit PFEIL-RUNTER statt Return: Der Button „Nächster"
+    /// besitzt in Nicht-Ordner-Bereichen einen fensterweiten Return-Shortcut
+    /// und würde ein Return auch OHNE Listenfokus zum zweiten Treffer
+    /// weiterreichen — der Test bestünde dann trotz defekter Fokusübergabe.
+    /// Pfeiltasten verarbeitet ausschließlich die fokussierte Trefferliste
+    /// (`onMoveCommand`); bleibt der Sprung aus, ist der Listenfokus wirklich
+    /// defekt (Review 2026-08-31).
     private static func pollNavListFocusThenReturn(
         _ ws: Workspace,
         tv: TextView,
@@ -11187,7 +11196,7 @@ enum SelfTest {
     ) {
         let maxTicks = 100
         if let responder = searchWindow.firstResponder, responder !== findField {
-            postKey("\r", keyCode: 36, windowNumber: searchWindow.windowNumber)
+            postKey("\u{F701}", keyCode: 125, windowNumber: searchWindow.windowNumber)
             pollNavSelection(
                 ws, tv: tv, searchWindow: searchWindow,
                 originalText: originalText, expectedIndex: 1,

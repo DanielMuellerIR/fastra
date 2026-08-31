@@ -54,11 +54,36 @@ struct FourDMacroSource: Equatable {
     }
 }
 
+/// Testnaht der Discovery-Verzeichnisaufzählung: `FileManager.enumerator(at:)`
+/// ist eine nicht überschreibbare Swift-Extension — ein Test-FileManager kann
+/// die lazy Aufzählung deshalb nicht per Override beobachten. Die Discovery
+/// meldet die geöffnete Wurzel stattdessen an jeden FileManager, der dieses
+/// Protokoll annimmt (Review 2026-08-31). Produktiv nimmt es niemand an; der
+/// Cast kostet dann nur einen Typvergleich.
+protocol MacroDirectoryEnumerationObserving {
+    func noteDirectoryEnumeration(at url: URL)
+}
+
 enum FourDMacroDiscovery {
 
     /// Die beiden Lagen, in denen ein Komponenten-Bundle seinen Makro-Ordner
     /// haben kann: bis 4D v20 direkt, ab v21 unter `Contents`.
     private static let macroDirectoryPaths = ["Macros v2", "Contents/Macros v2"]
+
+    /// Zentrale Erzeugung ALLER Discovery-Enumeratoren — immer nicht
+    /// rekursiv, ohne versteckte Dateien und fehlertolerant. Nur hier wird
+    /// die Testnaht bedient; ein zusätzlicher direkter `enumerator(at:)`-
+    /// Aufruf wäre für die Budget-Tests unsichtbar.
+    private static func directoryEnumerator(
+        at url: URL, fileManager: FileManager
+    ) -> FileManager.DirectoryEnumerator? {
+        (fileManager as? MacroDirectoryEnumerationObserving)?
+            .noteDirectoryEnumeration(at: url)
+        return fileManager.enumerator(
+            at: url, includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants],
+            errorHandler: { _, _ in true })
+    }
     /// Auch die Projekt-Abhängigkeitsliste ist fremder Dateiinhalt. Dieselbe
     /// Grenze wie für eine Makro-XML verhindert, dass die Discovery eine
     /// beliebig große JSON-Datei vollständig in den Speicher lädt.
@@ -77,9 +102,23 @@ enum FourDMacroDiscovery {
     /// geprüft: Wer so tief liegt, gehört nicht mehr zum Projekt.
     static func projectRoot(forDocument url: URL,
                             fileManager: FileManager = .default) -> URL? {
+        var entryBudget = maximumDirectoryEntryCount
+        return projectRoot(forDocument: url, fileManager: fileManager,
+                           entryBudget: &entryBudget)
+    }
+
+    /// Variante mit geteiltem Arbeitsbudget: Der Kataloglauf gibt dasselbe
+    /// Budget anschließend an `macroSources` weiter, damit schon die Suche
+    /// nach der Projektwurzel in sehr großen fremden `Project`-Ordnern nicht
+    /// unbegrenzt Einträge materialisiert (Review 2026-08-31).
+    static func projectRoot(forDocument url: URL,
+                            fileManager: FileManager,
+                            entryBudget: inout Int) -> URL? {
         var current = url.deletingLastPathComponent()
         for _ in 0..<8 {
-            if containsProjectFile(current, fileManager: fileManager) { return current }
+            guard entryBudget > 0 else { return nil }
+            if containsProjectFile(current, fileManager: fileManager,
+                                   entryBudget: &entryBudget) { return current }
             let parent = current.deletingLastPathComponent()
             if parent.path == current.path { break }
             current = parent
@@ -88,14 +127,22 @@ enum FourDMacroDiscovery {
     }
 
     /// `<Ordner>/Project/*.4DProject` — nur direkt in `Project`, nicht tiefer.
+    /// Lazy über den Enumerator statt `contentsOfDirectory`: Der Ordner wird
+    /// nur bis zum ersten Treffer bzw. bis zum verbrauchten Budget gelesen,
+    /// ein riesiger fremder `Project`-Ordner also nie komplett materialisiert.
     private static func containsProjectFile(_ directory: URL,
-                                            fileManager: FileManager) -> Bool {
+                                            fileManager: FileManager,
+                                            entryBudget: inout Int) -> Bool {
         let projectDirectory = directory.appendingPathComponent("Project", isDirectory: true)
-        guard let entries = try? fileManager.contentsOfDirectory(
-            at: projectDirectory, includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
-        ) else { return false }
-        return entries.contains { $0.pathExtension.lowercased() == "4dproject" }
+        guard entryBudget > 0,
+              let enumerator = directoryEnumerator(
+                at: projectDirectory, fileManager: fileManager
+              ) else { return false }
+        while entryBudget > 0, let entry = enumerator.nextObject() as? URL {
+            entryBudget -= 1
+            if entry.pathExtension.lowercased() == "4dproject" { return true }
+        }
+        return false
     }
 
     // MARK: - Fundorte
@@ -258,27 +305,17 @@ enum FourDMacroDiscovery {
     ) -> [(name: String, url: URL)] {
         let file = projectRoot
             .appendingPathComponent("Project/Sources/dependencies.json")
-        guard maximumBytes >= 0, maximumBytes < Int.max,
-              fileManager.fileExists(atPath: file.path),
-              let handle = try? FileHandle(forReadingFrom: file) else { return [] }
-        defer { try? handle.close() }
-        // In kleinen Blöcken bis höchstens Grenze + 1 lesen. `read(upToCount:)`
-        // darf weniger als angefordert liefern; ein einzelner Read wäre daher
-        // kein harter Beleg, dass hinter einem gültigen JSON-Präfix nichts mehr
-        // folgt.
-        var data = Data()
-        do {
-            while data.count <= maximumBytes {
-                let remaining = maximumBytes + 1 - data.count
-                guard let chunk = try handle.read(upToCount: min(64 * 1024, remaining)),
-                      !chunk.isEmpty else { break }
-                data.append(chunk)
-            }
-        } catch {
+        // Über den gemeinsamen vorsichtigen Lesepfad: nicht blockierend
+        // öffnen und nur eine reguläre Datei akzeptieren. Ein blockierendes
+        // `FileHandle(forReadingFrom:)` hing vorher schon beim Öffnen einer
+        // als `dependencies.json` untergeschobenen FIFO — noch vor der
+        // Größenprüfung (Review 2026-08-31).
+        guard fileManager.fileExists(atPath: file.path),
+              let data = BoundedFileReading.openRegularFile(
+                at: file, maximumBytes: maximumBytes, readData: true)?.data else {
             return []
         }
-        guard data.count <= maximumBytes,
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let dependencies = root["dependencies"] as? [String: Any] else { return [] }
         var result: [(name: String, url: URL)] = []
         // Ein JSON-Objekt hat keine feste Reihenfolge; alphabetisch sortiert
@@ -338,10 +375,8 @@ enum FourDMacroDiscovery {
                                  limit: Int,
                                  entryBudget: inout Int) -> [URL] {
         guard limit > 0, entryBudget > 0 else { return [] }
-        guard let enumerator = fileManager.enumerator(
-            at: directory, includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants],
-            errorHandler: { _, _ in true }
+        guard let enumerator = directoryEnumerator(
+            at: directory, fileManager: fileManager
         ) else { return [] }
         let ascending = { (lhs: URL, rhs: URL) in
             lhs.lastPathComponent.localizedStandardCompare(rhs.lastPathComponent)
@@ -377,10 +412,8 @@ enum FourDMacroDiscovery {
         entryBudget: inout Int
     ) -> [URL] {
         guard entryBudget > 0,
-              let enumerator = fileManager.enumerator(
-                at: directory, includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants],
-                errorHandler: { _, _ in true }) else { return [] }
+              let enumerator = directoryEnumerator(
+                at: directory, fileManager: fileManager) else { return [] }
         var entries: [URL] = []
         while entryBudget > 0, let entry = enumerator.nextObject() as? URL {
             entryBudget -= 1

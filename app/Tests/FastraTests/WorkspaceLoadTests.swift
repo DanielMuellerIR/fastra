@@ -293,13 +293,16 @@ func wsLoad_expectedSnapshotRejectsDirtyOpenTabBeforeActivation() async throws {
     ws.tabs.append(other)
     ws.activeTabID = other.id
 
-    var accepted: Bool? = nil
+    var outcome: FileLoadOutcome? = nil
     ws.loadFile(
         atCanonicalURL: canonical,
         expectedDiskSnapshot: expected
-    ) { accepted = $0 }
+    ) { outcome = $0 }
 
-    #expect(accepted == false)
+    // Typisiert: Ein dirty Tab ist KEIN Beleg für eine veraltete
+    // Trefferbasis — die Navigation zeigt dafür einen eigenen Hinweis
+    // (Review 2026-08-31).
+    #expect(outcome == .unsavedChanges)
     #expect(ws.activeTabID == other.id)
     #expect(ws.tabs[fileIndex].content == "ungesicherte Änderung\n")
 }
@@ -317,16 +320,16 @@ func wsLoad_expectedSnapshotRejectsChangedDiskBeforePublishing() async throws {
     try Data("neuer Plattenstand\n".utf8).write(to: canonical, options: .atomic)
     let previousActive = try #require(ws.activeTabID)
 
-    var accepted: Bool? = nil
+    var outcome: FileLoadOutcome? = nil
     ws.loadFile(
         atCanonicalURL: canonical,
         expectedDiskSnapshot: expected
-    ) { accepted = $0 }
+    ) { outcome = $0 }
 
     #expect(ws.activeTabID == previousActive,
             "Der Ladeplatzhalter darf vor dem Snapshot-Abgleich nicht aktiv werden")
-    #expect(await waitUntil(timeout: 30) { accepted != nil })
-    #expect(accepted == false)
+    #expect(await waitUntil(timeout: 30) { outcome != nil })
+    #expect(outcome == .staleSnapshot)
     #expect(ws.activeTabID == previousActive)
     #expect(!ws.tabs.contains(where: { $0.url == canonical }))
 }
@@ -352,15 +355,44 @@ func wsLoad_expectedSnapshotRechecksCleanOpenTabBeforeActivation() async throws 
     ws.activeTabID = other.id
     try Data("neuer Plattenstand\n".utf8).write(to: canonical, options: .atomic)
 
-    var accepted: Bool? = nil
+    var outcome: FileLoadOutcome? = nil
     ws.loadFile(
         atCanonicalURL: canonical,
         expectedDiskSnapshot: expected
-    ) { accepted = $0 }
+    ) { outcome = $0 }
 
     #expect(ws.activeTabID == other.id)
-    #expect(await waitUntil { accepted != nil })
-    #expect(accepted == false)
+    #expect(await waitUntil { outcome != nil })
+    #expect(outcome == .staleSnapshot)
     #expect(ws.activeTabID == other.id)
     #expect(ws.tabs[fileIndex].content == "Suchstand\n")
+}
+
+@Test("Ordner-Treffer meldet einen noch ladenden Tab getrennt vom Snapshot-Konflikt")
+@MainActor
+func wsLoad_expectedSnapshotReportsBusyLoadingTab() async throws {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let ws = Workspace(defaults: defaults)
+    let url = try writeTmpUTF8("Suchstand\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    var firstLoad: Bool? = nil
+    ws.loadFile(at: url) { firstLoad = $0 }
+    #expect(await waitUntil { firstLoad != nil })
+    let canonical = url.canonicalFileURL
+    let fileIndex = try #require(ws.tabs.firstIndex(where: { $0.url == canonical }))
+    let expected = try #require(ws.tabs[fileIndex].diskSnapshot)
+    // Zustand „ein früherer Auftrag lädt noch": Der zweite Sprung darf die
+    // gültige Trefferbasis dann NICHT als veraltet melden (Review 2026-08-31).
+    ws.tabs[fileIndex].isLoading = true
+
+    var outcome: FileLoadOutcome? = nil
+    ws.loadFile(
+        atCanonicalURL: canonical,
+        expectedDiskSnapshot: expected
+    ) { outcome = $0 }
+
+    #expect(outcome == .busyLoading)
+    ws.tabs[fileIndex].isLoading = false
 }

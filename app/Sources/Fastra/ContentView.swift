@@ -266,8 +266,14 @@ struct ContentView: View {
     /// `.first`; Chevron, Pfeiltasten und ⌘G verwenden `.move`.
     private func navigateMatch(action: SearchMatchSelection.Action) {
         let matches = workspace.navMatches
+        // Basis ist der VORGEMERKTE Index einer noch laufenden Navigation,
+        // nicht nur der bestätigte: `activeMatchIndex` wird bei Ordner-
+        // Treffern erst in der asynchronen Snapshot-Completion fortgeschrieben.
+        // Mehrere schnelle ⌘G-/Pfeil-Eingaben berechneten sonst alle denselben
+        // Nachfolger aus dem alten Index und bewegten die Auswahl nur um
+        // EINEN Treffer (Review 2026-08-31).
         let transition = SearchMatchSelection.transition(
-            activeIndex: workspace.activeMatchIndex,
+            activeIndex: workspace.matchNavigationBaseIndex,
             matches: matches,
             action: action
         )
@@ -298,7 +304,12 @@ struct ContentView: View {
             guard let documentID = workspace.tabs.first(where: { $0.id == tabID })?.documentID
             else { return }
             if workspace.activeTabID != tabID { workspace.selectTab(id: tabID) }
+            workspace.noteMatchNavigationTarget(index: nextIndex,
+                                                generation: jumpGeneration)
             DispatchQueue.main.async {
+                defer {
+                    workspace.resolveMatchNavigationTarget(generation: jumpGeneration)
+                }
                 let posted = NotificationCenter.default.postMatchJump(
                     target.match, for: workspace,
                     requiring: .document(documentID),
@@ -312,20 +323,25 @@ struct ContentView: View {
             // Plattenstand prüfen. Auch der bereits aktive Tab durchläuft
             // diesen Pfad, damit ein noch nicht zugestelltes Fremdänderungs-
             // Ereignis keinen veralteten Ordner-Sprung freigibt.
+            workspace.noteMatchNavigationTarget(index: nextIndex,
+                                                generation: jumpGeneration)
             workspace.loadFile(
                 atCanonicalURL: url,
                 expectedDiskSnapshot: snapshot,
                 acceptance: FileLoadAcceptance {
                     workspace.isCurrentMatchJump(jumpGeneration)
                 }
-            ) { ok in
-                guard ok else {
-                    if workspace.isCurrentMatchJump(jumpGeneration) {
-                        workspace.folderMatchNavigationBecameStale()
-                    }
+            ) { outcome in
+                guard outcome.isOpened else {
+                    workspace.resolveMatchNavigationTarget(generation: jumpGeneration)
+                    workspace.handleFolderMatchLoadDenial(outcome,
+                                                          jumpGeneration: jumpGeneration)
                     return
                 }
                 DispatchQueue.main.async {
+                    defer {
+                        workspace.resolveMatchNavigationTarget(generation: jumpGeneration)
+                    }
                     let posted = NotificationCenter.default.postMatchJump(
                         target.match, for: workspace,
                         requiring: .file(url: url, snapshot: snapshot),

@@ -85,9 +85,10 @@ and “Replace All” become available again only for the new result.
 
 Folder and project searches skip files larger than 32 MiB because Fastra can
 open them only in sections rather than as a fully navigable text editor. If a
-result file changed after the search, or if its already-open tab contains
-unsaved edits, Fastra does not activate it: the old result list is discarded
-and a notice asks you to search again.
+result file changed after the search, Fastra does not activate it: the old
+result list is discarded and a notice asks you to search again. If the result
+file is open with unsaved edits instead, the result list stays — a notice
+explains that its tab must be saved or closed first.
 
 **Wildcards:** With regex mode off, `*` matches any text **within a
 line**, `**` also matches **across line breaks**. Every wildcard

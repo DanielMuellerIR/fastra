@@ -630,10 +630,15 @@ func macroSourcesHonorSourceBudget() throws {
     })
 }
 
-/// Zeichnet die nicht rekursiven Verzeichniszugriffe der Discovery auf. Der
-/// Test prüft damit nicht nur die Ergebniszahl, sondern ob nach verbrauchtem
-/// Quellenbudget tatsächlich keine nachrangigen Fundorte mehr gelesen werden.
-private final class RecordingMacroFileManager: FileManager {
+/// Zeichnet die Verzeichniszugriffe der Discovery auf. Der Test prüft damit
+/// nicht nur die Ergebniszahl, sondern ob nach verbrauchtem Quellenbudget
+/// tatsächlich keine nachrangigen Fundorte mehr gelesen werden. Die Discovery
+/// zählt Ordner lazy über `enumerator(at:)` auf — das ist eine NICHT
+/// überschreibbare Swift-Extension, deshalb beobachtet der Doppelgänger die
+/// geöffneten Wurzeln über die Testnaht `MacroDirectoryEnumerationObserving`
+/// statt über einen wirkungslosen Override (Review 2026-08-31).
+private final class RecordingMacroFileManager: FileManager,
+                                               MacroDirectoryEnumerationObserving {
     private(set) var readDirectories: [URL] = []
 
     override func contentsOfDirectory(
@@ -646,6 +651,11 @@ private final class RecordingMacroFileManager: FileManager {
             at: url, includingPropertiesForKeys: keys, options: mask)
     }
 
+    // Aufgezeichnet wird die geöffnete WURZEL, nicht jeder Eintrag: Genau
+    // sie beantwortet die Frage „wurde dieser Fundort noch gelesen?".
+    func noteDirectoryEnumeration(at url: URL) {
+        readDirectories.append(url.standardizedFileURL)
+    }
 }
 
 @Test("Ein verbrauchtes Makro-Quellenbudget überspringt nachrangige Fundorte")
@@ -780,6 +790,76 @@ func macroDependenciesJSONReadIsBounded() throws {
     #expect(accepted.map(\.name) == ["Extern"])
     #expect(rejected.isEmpty,
             "Schon ein Byte über der Grenze darf nicht vollständig geparst werden")
+}
+
+@Test("Eine FIFO als dependencies.json blockiert die Discovery nicht")
+func macroDependenciesFIFOIsRejectedWithoutBlocking() throws {
+    let scratch = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let project = scratch.appendingPathComponent("Projekt")
+    let sources = project.appendingPathComponent("Project/Sources", isDirectory: true)
+    try FileManager.default.createDirectory(at: sources,
+                                            withIntermediateDirectories: true)
+    // Eine benannte Pipe OHNE Schreiber: Ein blockierendes `open` wartete
+    // hier unbegrenzt — der Katalog-Task hing dauerhaft fest
+    // (Review 2026-08-31). Mit dem nicht blockierenden Lesepfad kehrt der
+    // Aufruf sofort mit leerem Ergebnis zurück.
+    let fifo = sources.appendingPathComponent("dependencies.json")
+    try #require(mkfifo(fifo.path, 0o644) == 0)
+
+    let dependencies = FourDMacroDiscovery.declaredDependencies(
+        in: project, fileManager: .default)
+    #expect(dependencies.isEmpty)
+}
+
+@Test("Eine FIFO als Makro-XML blockiert den Kataloglauf nicht")
+func macroCatalogFIFOSourceIsSkippedWithoutBlocking() throws {
+    let scratch = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let fifo = scratch.appendingPathComponent("Macros.xml")
+    try #require(mkfifo(fifo.path, 0o644) == 0)
+    // Eine echte Quelle daneben belegt, dass der Lauf die ungeeignete Quelle
+    // nur überspringt statt abzubrechen.
+    let realURL = scratch.appendingPathComponent("Echt.xml")
+    try writeFile(realURL,
+                  "<macros><macro name=\"Echt\"><text>1</text></macro></macros>")
+
+    let result = FourDMacroCatalogLoader.load(
+        sources: [
+            FourDMacroSource(url: fifo, origin: .userLibrary),
+            FourDMacroSource(url: realURL, origin: .userLibrary),
+        ],
+        cacheKey: "test:\(UUID().uuidString)", force: true,
+        cache: FourDMacroCatalogCache()
+    )
+    #expect(result.macros.map(\.displayName) == ["Echt"])
+}
+
+@Test("Projektwurzel-Suche hält das geteilte Eintragsbudget ein")
+func projectRootHonorsSharedEntryBudget() throws {
+    let scratch = try makeMacroScratch()
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let root = scratch.appendingPathComponent("MeinProjekt")
+    try writeFile(root.appendingPathComponent("Project/App.4DProject"))
+    let document = root.appendingPathComponent("Project/Sources/Methode.4dm")
+
+    // Erschöpftes Budget: kein einziger Verzeichniseintrag wird mehr gelesen,
+    // die Wurzel bleibt unerkannt — statt eines unbegrenzten Scans fremder
+    // `Project`-Ordner (Review 2026-08-31).
+    var exhausted = 0
+    #expect(FourDMacroDiscovery.projectRoot(
+        forDocument: document, fileManager: .default,
+        entryBudget: &exhausted) == nil)
+
+    // Mit Budget wird die Wurzel gefunden UND der Verbrauch ist am
+    // verbleibenden Budget ablesbar — dieselbe Zahl bekommt anschließend
+    // `macroSources` als Rest.
+    var shared = FourDMacroDiscovery.maximumDirectoryEntryCount
+    let found = FourDMacroDiscovery.projectRoot(
+        forDocument: document, fileManager: .default, entryBudget: &shared)
+    #expect(found?.path == root.path)
+    #expect(shared < FourDMacroDiscovery.maximumDirectoryEntryCount,
+            "Die Wurzelsuche muss ihr Arbeitspensum vom geteilten Budget abbuchen")
 }
 
 @Test("4D.app: Sprachwahl folgt der Systemreihenfolge, sonst dem ersten lproj")

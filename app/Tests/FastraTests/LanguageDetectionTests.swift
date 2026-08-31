@@ -350,3 +350,63 @@ func workspace_manualOverrideStopsAutomatic() async throws {
     #expect(ws.tabs[0].contentDetectedLanguage == nil)
     #expect(ws.tabs[0].languageOverride == .swift)
 }
+
+// Befund Review 2026-08-31: Die dateibezogenen Ersetzungen schrieben über das
+// `activeTabContent`-Binding, dessen Setter nur die GEDROSSELTE Tipp-Erkennung
+// plant. Ersetzte der Nutzer den gesamten Inhalt durch ein anderes Format
+// ähnlicher Länge, lieferte die Drossel `.none` — Sprache und Hervorhebung
+// blieben beim alten Format. Beide Pfade erzwingen die Analyse jetzt wie der
+// Geöffnet-Bereich.
+@Test("Dateibezogene Ersetzungen erkennen das neue Dokumentformat")
+@MainActor
+func workspace_bufferReplacementsForceLanguageDetection() throws {
+    let json = #"{"name":"Fastra","enabled":true,"count":21}"#
+    let html = "<!DOCTYPE html><html><body>Fastra21</body></html>"
+    // Vorbedingung des Regressionsfalls: kleine Längenänderung ungleich null.
+    // Nur dafür lieferte die Tipp-Drossel `.none`; bei größerem Unterschied
+    // hätte auch der ungezwungene Weg analysiert.
+    let delta = abs(html.count - json.count)
+    try #require(delta > 0 && delta < Detection.substantialChangeThreshold)
+
+    func preparedWorkspace(_ suffix: String) -> (Workspace, UserDefaults, String) {
+        let suite = "fastra-langdetect-buffer-replace-\(suffix)-\(UUID().uuidString)"
+        let defaults = testSuiteDefaults(named: suite)
+        let workspace = Workspace(
+            defaults: defaults,
+            documentLanguageDetector: synchronousDocumentLanguageDetector())
+        let tab = EditorTab(
+            title: Workspace.untitledBaseName, path: "—", content: json)
+        workspace.tabs = [tab]
+        workspace.activeTabID = tab.id
+        workspace.scope = .file
+        workspace.scheduleLanguageDetection(
+            tabID: tab.id, oldLength: 0, newLength: json.count)
+        workspace.findPattern = json
+        workspace.replacePattern = html
+        workspace.useRegex = false
+        workspace.caseSensitive = true
+        let found = BufferSearch.find(
+            in: json, options: workspace.currentSearchOptions)
+        workspace.bufferMatches = found.matches
+        workspace.bufferTotalMatches = found.totalMatches
+        workspace.bufferResultsWereCapped = found.wasCapped
+        workspace.visibleBufferResultsOptions = workspace.currentSearchOptions
+        return (workspace, defaults, suite)
+    }
+
+    // „Alle ersetzen" im Datei-Scope.
+    let (allWorkspace, allDefaults, allSuite) = preparedWorkspace("all")
+    defer { allDefaults.removePersistentDomain(forName: allSuite) }
+    #expect(allWorkspace.tabs[0].contentDetectedFormat == .json)
+    #expect(allWorkspace.applyAllInActiveBuffer())
+    #expect(allWorkspace.tabs[0].content == html)
+    #expect(allWorkspace.tabs[0].contentDetectedFormat == .html)
+
+    // Einzel-Ersetzen des aktiven Treffers.
+    let (singleWorkspace, singleDefaults, singleSuite) = preparedWorkspace("single")
+    defer { singleDefaults.removePersistentDomain(forName: singleSuite) }
+    #expect(singleWorkspace.tabs[0].contentDetectedFormat == .json)
+    singleWorkspace.replaceActiveMatch()
+    #expect(singleWorkspace.tabs[0].content == html)
+    #expect(singleWorkspace.tabs[0].contentDetectedFormat == .html)
+}

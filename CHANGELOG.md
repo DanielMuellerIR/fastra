@@ -9,6 +9,36 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.18] — 2026-08-31
+
+### Behoben
+
+- **Mehrere schnelle ⌘G-/Pfeil-Eingaben bewegen die Ordner-Treffer-Auswahl
+  jetzt um je einen Treffer weiter.** Die Navigation merkt ihr Ziel synchron
+  vor, statt jeden Nachfolger aus dem erst asynchron bestätigten Index zu
+  berechnen.
+- **Die Pfeiltasten navigieren in der fokussierten Trefferliste wieder.** Die
+  Listenansicht verarbeitete Pfeiltasten intern, ohne die Treffer-Navigation
+  auszulösen; verdeckt wurde das vom Return-Kürzel des „Nächster"-Buttons.
+  Der `navmatch`-Selbsttest prüft die Listennavigation jetzt mit Pfeil-runter,
+  sodass der Button-Shortcut den Sprung nicht mehr ersatzweise liefern kann.
+- **Nur ein echter Plattenstand-Konflikt verwirft die Ordner-Trefferbasis.**
+  Ein Sprung in eine noch ladende Funddatei lässt die gültigen Ergebnisse
+  stehen; eine mit ungesicherten Änderungen geöffnete Funddatei bekommt einen
+  eigenen Hinweis statt der wirkungslosen Aufforderung, erneut zu suchen.
+- **Ersetzungen im Datei-Bereich aktualisieren die erkannte Sprache auch bei
+  ähnlich langem neuen Inhalt.** „Alle ersetzen" und Einzel-Ersetzen erzwingen
+  die Inhaltserkennung jetzt wie der Geöffnet-Bereich; zugleich entfällt die
+  unnötige Längenberechnung für Tabs ohne Inhaltserkennung.
+- **Die 4D-Makro-Discovery kann nicht mehr an untergeschobenen
+  Spezialdateien hängen bleiben.** Makro-XMLs, `dependencies.json` und
+  Info.plists werden nicht blockierend geöffnet, nur als reguläre Dateien
+  akzeptiert und in fester Größe gelesen; auch die Projektwurzel-Suche hält
+  jetzt das gemeinsame Eintragsbudget ein.
+- **Der Release-Lauf bricht sichtbar ab, wenn das RW-Image nicht aushängbar
+  ist.** Vorher konvertierte er das weiter eingehängte Image und der
+  Aufräum-Trap kannte das Gerät nicht mehr.
+
 ## [v1.113.17] — 2026-08-30
 
 ### Behoben

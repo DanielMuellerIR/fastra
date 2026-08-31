@@ -559,6 +559,31 @@ struct FileLoadAcceptance: @unchecked Sendable {
     }
 }
 
+/// Typisiertes Ergebnis eines snapshot-gebundenen Ladeauftrags. Die
+/// Treffer-Navigation muss unterscheiden, WARUM ein Auftrag nicht ausgeführt
+/// wurde: Nur ein echter Plattenstand-Konflikt entwertet die
+/// Ordner-Trefferbasis. Vorher galt jedes `false` als „veraltet" — ein
+/// zweiter Sprung während des ersten Ladens löschte damit korrekte
+/// Ordnerergebnisse, und ein ungesicherter Tab erzwang eine neue Suche, die
+/// den Pufferkonflikt gar nicht lösen kann (Review 2026-08-31).
+enum FileLoadOutcome: Equatable {
+    /// Datei geladen bzw. der passende Tab aktiviert.
+    case opened
+    /// Der Plattenstand entspricht nicht mehr dem erwarteten Snapshot.
+    case staleSnapshot
+    /// Der Ziel-Tab lädt gerade noch (ein früherer Auftrag läuft).
+    case busyLoading
+    /// Der Ziel-Tab enthält ungesicherte Änderungen.
+    case unsavedChanges
+    /// Der Auftrag wurde durch einen neueren entwertet oder abgebrochen
+    /// (Acceptance, Generation, geschlossener Tab, Kontextwechsel).
+    case cancelled
+    /// Datei nicht lesbar oder Ladefehler.
+    case failed
+
+    var isOpened: Bool { self == .opened }
+}
+
 /// Prozessweite Pfadsperre für Dateioperationen, die einen Plattenstand
 /// außerhalb eines einzelnen Dokumentfensters verändern. Neue Fenster fragen
 /// denselben Zustand ab und können deshalb nicht zwischen Start und Abschluss
@@ -818,6 +843,41 @@ final class Workspace: ObservableObject {
     /// `true`, solange `generation` der zuletzt angemeldete Auftrag ist.
     func isCurrentMatchJump(_ generation: Int) -> Bool {
         generation == matchJumpGeneration
+    }
+
+    /// Zielindex des zuletzt angemeldeten, noch nicht abgeschlossenen
+    /// Navigationsauftrags. `activeMatchIndex` wird bei Ordner-Treffern erst
+    /// in der asynchronen Snapshot-/Lade-Completion fortgeschrieben; ohne
+    /// diese Vormerkung berechneten mehrere schnelle ⌘G-/Pfeil-Eingaben alle
+    /// denselben Nachfolger aus dem alten Index und bewegten die Auswahl nur
+    /// um EINEN Treffer (Review 2026-08-31). Gültig nur, solange seine
+    /// Generation die aktuelle ist; jede neue Navigation oder Entwertung
+    /// macht ihn damit automatisch bedeutungslos.
+    private var pendingMatchNavigation: (generation: Int, index: Int)?
+
+    /// Basisindex für die NÄCHSTE Navigationseingabe: das noch ausstehende
+    /// Ziel der laufenden Navigation, sonst der bestätigte aktive Index.
+    var matchNavigationBaseIndex: Int {
+        if let pending = pendingMatchNavigation,
+           isCurrentMatchJump(pending.generation) {
+            return pending.index
+        }
+        return activeMatchIndex
+    }
+
+    /// Merkt das Ziel eines gerade angemeldeten asynchronen Sprungauftrags
+    /// synchron vor — im selben Main-Thread-Durchlauf wie `beginMatchJump`.
+    func noteMatchNavigationTarget(index: Int, generation: Int) {
+        guard isCurrentMatchJump(generation) else { return }
+        pendingMatchNavigation = (generation, index)
+    }
+
+    /// Räumt die Vormerkung ab, sobald der Auftrag abgeschlossen ist —
+    /// gleich ob erfolgreich, verworfen oder gescheitert. Eine fremde
+    /// (neuere) Vormerkung bleibt unberührt.
+    func resolveMatchNavigationTarget(generation: Int) {
+        guard pendingMatchNavigation?.generation == generation else { return }
+        pendingMatchNavigation = nil
     }
 
     /// Entwertet alle offenen Sprungaufträge, ohne einen neuen anzumelden.
@@ -2984,22 +3044,27 @@ final class Workspace: ObservableObject {
                  expectedGitContext: expectedGitContext,
                  expectedDiskSnapshot: expectedDiskSnapshot,
                  acceptance: acceptance,
-                 completion: completion)
+                 outcome: completion.map { completion in
+                     { completion($0.isOpened) }
+                 })
     }
 
     /// Variante für Pfade, die ein Hintergrundlauf bereits über
     /// `canonicalPathKey` aufgelöst hat. Ordner-Treffer verwenden sie, damit
     /// ihr Klick auf dem Main-Thread keine zweite Metadatenabfrage ausführt.
+    /// Meldet ein TYPISIERTES Ergebnis: Die Treffer-Navigation behandelt nur
+    /// den echten Snapshot-Konflikt als veraltete Trefferbasis, nicht jeden
+    /// abgelehnten Auftrag (Review 2026-08-31).
     func loadFile(atCanonicalURL url: URL, preview: Bool = false,
                   expectedGitContext: GitActionContext? = nil,
                   expectedDiskSnapshot: FileSnapshot? = nil,
                   acceptance: FileLoadAcceptance? = nil,
-                  completion: ((Bool) -> Void)? = nil) {
+                  outcome: ((FileLoadOutcome) -> Void)? = nil) {
         // Ein Restore-Ladevorgang kann bereits entwertet sein, bevor er hier
         // startet. Dann weder einen vorhandenen Tab aktivieren noch einen
         // Platzhalter veröffentlichen.
         guard acceptance?.acceptsResult() != false else {
-            completion?(false)
+            outcome?(.cancelled)
             return
         }
         // ── (1) Dedup ──────────────────────────────────────────────────────
@@ -3007,9 +3072,19 @@ final class Workspace: ObservableObject {
         if let existingIdx = tabs.firstIndex(where: { $0.url == url }) {
             if let expectedDiskSnapshot {
                 let existing = tabs[existingIdx]
-                guard !existing.hasUnsavedChanges, !existing.isLoading,
-                      existing.diskSnapshot == expectedDiskSnapshot else {
-                    completion?(false)
+                // Die Gründe getrennt melden: Ein noch ladender oder
+                // ungesichert geänderter Tab ist KEIN Beleg für eine
+                // veraltete Trefferbasis.
+                if existing.hasUnsavedChanges {
+                    outcome?(.unsavedChanges)
+                    return
+                }
+                if existing.isLoading {
+                    outcome?(.busyLoading)
+                    return
+                }
+                guard existing.diskSnapshot == expectedDiskSnapshot else {
+                    outcome?(.staleSnapshot)
                     return
                 }
                 let existingID = existing.id
@@ -3022,24 +3097,40 @@ final class Workspace: ObservableObject {
                     let currentDiskSnapshot = try? FileSnapshot.readSnapshotOnly(
                         from: url, byteLimit: FileLoader.largeFileThreshold)
                     await MainActor.run { [weak self] in
-                        guard let self,
-                              acceptance?.acceptsResult() != false,
-                              currentDiskSnapshot == expectedDiskSnapshot,
-                              let currentIndex = self.tabs.firstIndex(where: {
-                                  $0.id == existingID && $0.url == url
-                              }),
-                              !self.tabs[currentIndex].hasUnsavedChanges,
-                              !self.tabs[currentIndex].isLoading,
-                              self.tabs[currentIndex].diskSnapshot
-                                  == expectedDiskSnapshot else {
-                            completion?(false)
+                        guard let self, acceptance?.acceptsResult() != false else {
+                            outcome?(.cancelled)
+                            return
+                        }
+                        guard currentDiskSnapshot == expectedDiskSnapshot else {
+                            outcome?(.staleSnapshot)
+                            return
+                        }
+                        guard let currentIndex = self.tabs.firstIndex(where: {
+                            $0.id == existingID && $0.url == url
+                        }) else {
+                            // Der Tab wurde während des Hintergrund-Hashs
+                            // geschlossen — der Auftrag ist gegenstandslos.
+                            outcome?(.cancelled)
+                            return
+                        }
+                        if self.tabs[currentIndex].hasUnsavedChanges {
+                            outcome?(.unsavedChanges)
+                            return
+                        }
+                        if self.tabs[currentIndex].isLoading {
+                            outcome?(.busyLoading)
+                            return
+                        }
+                        guard self.tabs[currentIndex].diskSnapshot
+                                == expectedDiskSnapshot else {
+                            outcome?(.staleSnapshot)
                             return
                         }
                         if !preview { self.tabs[currentIndex].isPreview = false }
                         self.activeTabID = existingID
                         self.noteRecentFile(url)
                         self.synchronizeProjectWithActiveTabIfNeeded()
-                        completion?(true)
+                        outcome?(.opened)
                     }
                 }
                 return
@@ -3051,7 +3142,7 @@ final class Workspace: ObservableObject {
             activeTabID = tabs[existingIdx].id
             noteRecentFile(url)
             synchronizeProjectWithActiveTabIfNeeded()
-            completion?(true)
+            outcome?(.opened)
             return
         }
 
@@ -3138,12 +3229,12 @@ final class Workspace: ObservableObject {
                 // `report` ist einmalig; das `defer` fängt jeden Rückweg ab,
                 // auf dem sonst gar nichts gemeldet würde.
                 var didReport = false
-                func report(_ success: Bool) {
+                func report(_ result: FileLoadOutcome) {
                     guard !didReport else { return }
                     didReport = true
-                    completion?(success)
+                    outcome?(result)
                 }
-                defer { report(false) }
+                defer { report(.failed) }
 
                 guard let self else { return }
 
@@ -3189,7 +3280,7 @@ final class Workspace: ObservableObject {
                     if !self.tabs.contains(where: { $0.id == tabID }) {
                         self.loadGeneration.removeValue(forKey: tabID)
                     }
-                    report(false)
+                    report(.cancelled)
                     return
                 }
 
@@ -3201,7 +3292,7 @@ final class Workspace: ObservableObject {
                 guard acceptance?.acceptsResult() != false else {
                     self.loadGeneration.removeValue(forKey: tabID)
                     discardPlaceholder()
-                    report(false)
+                    report(.cancelled)
                     return
                 }
 
@@ -3226,7 +3317,7 @@ final class Workspace: ObservableObject {
                     } else if !self.tabs.contains(where: { $0.id == self.activeTabID }) {
                         self.activeTabID = self.tabs.first?.id
                     }
-                    report(false)
+                    report(.cancelled)
                     return
                 }
 
@@ -3239,13 +3330,13 @@ final class Workspace: ObservableObject {
                     // SourceEditor NEU → makeNSViewController läuft mit
                     // fertigem Inhalt (CESE-Falle umgangen).
                     guard let idx = self.tabs.firstIndex(where: { $0.id == tabID }) else {
-                        report(false)
+                        report(.cancelled)
                         return
                     }
                     guard expectedDiskSnapshot == nil
                             || loaded.diskSnapshot == expectedDiskSnapshot else {
                         discardPlaceholder()
-                        report(false)
+                        report(.staleSnapshot)
                         return
                     }
                     // Den fertigen Tab lokal aufbauen und erst einmalig
@@ -3287,7 +3378,7 @@ final class Workspace: ObservableObject {
                     }
                     self.noteRecentFile(url)
                     self.synchronizeProjectWithActiveTabIfNeeded()
-                    report(true)
+                    report(.opened)
 
                 case .failure(let error):
                     // ── Fehler ────────────────────────────────────────────
@@ -3297,11 +3388,13 @@ final class Workspace: ObservableObject {
                     if case FileLoader.LoadError.cancelled = error {
                         // Der nächste Vorschauklick ist bereits sichtbar; der
                         // alte Hintergrundlauf endet absichtlich geräuschlos.
-                    } else {
-                        NSSound.beep()
+                        discardPlaceholder()
+                        report(.cancelled)
+                        return
                     }
+                    NSSound.beep()
                     discardPlaceholder()
-                    report(false)
+                    report(.failed)
                 }
             }
         }
@@ -6412,6 +6505,13 @@ final class Workspace: ObservableObject {
         // in die TextView). Ohne das wirkt „Alle ersetzen" folgenlos, obwohl
         // das Modell korrekt ersetzt wurde (siehe `editorReloadNonce`).
         editorReloadNonce += 1
+        // Wie im Geöffnet-Pfad: Eine programmgesteuerte Ganzersetzung kann
+        // das Format bei fast gleicher Länge komplett wechseln. Die vom
+        // Binding-Setter angestoßene Erkennung würde so einen Fall über die
+        // Tipp-Drossel verschlucken — deshalb ausdrücklich erzwingen
+        // (Review 2026-08-31).
+        forceLanguageDetectionAfterProgrammaticReplace(
+            oldText: text, newText: replaced)
         // „Nur in Auswahl": eingefrorene Range um die Gesamt-Längenänderung
         // aller ersetzten Treffer mitführen, damit der (async) Re-Find des
         // SearchRunners den richtigen Bereich nimmt.
@@ -6442,7 +6542,14 @@ final class Workspace: ObservableObject {
         guard !changed.isEmpty else { return 0 }
         for idx in tabs.indices {
             guard let newContent = changed[tabs[idx].id] else { continue }
-            let oldLength = tabs[idx].content.count
+            // Eignung VOR den Längen bestimmen: `String.count` läuft linear
+            // über alle Graphemcluster und blockierte hier den Main-Thread
+            // auch für gespeicherte große Dateien, die an der
+            // Inhaltserkennung gar nicht teilnehmen (Review 2026-08-31).
+            // Die Eignung hängt nicht vom Inhalt ab und ändert sich durch die
+            // Ersetzung nicht.
+            let needsLanguageLengths = Self.isEligibleForContentDetection(tabs[idx])
+            let oldLength = needsLanguageLengths ? tabs[idx].content.count : 0
             tabs[idx].content = newContent
             tabs[idx].isDirty = true
             // Direkte Modellmutation läuft am `activeTabContent`-Binding (und
@@ -6451,11 +6558,13 @@ final class Workspace: ObservableObject {
             // normales Tippen — sonst blieben Diff-Task und Makro-Sperre bis
             // zum Rechenende aktiv (Review 2026-08-29).
             cancelFourDMacroPostprocessing(ifTab: tabs[idx].id)
-            scheduleLanguageDetection(
-                tabID: tabs[idx].id,
-                oldLength: oldLength,
-                newLength: newContent.count,
-                forceAnalysis: true)
+            if needsLanguageLengths {
+                scheduleLanguageDetection(
+                    tabID: tabs[idx].id,
+                    oldLength: oldLength,
+                    newLength: newContent.count,
+                    forceAnalysis: true)
+            }
         }
         editorReloadNonce += 1
         // SearchRunner sucht durch die tabs-Änderung automatisch neu.
@@ -6492,6 +6601,11 @@ final class Workspace: ObservableObject {
         // Der Treffer-Sprung unten läuft async (`focusEditorForVisibleJump`)
         // und greift den frisch erzeugten Editor → bleibt sichtbar.
         editorReloadNonce += 1
+        // Auch das Einzel-Ersetzen ist eine programmgesteuerte Ersetzung und
+        // muss die Tipp-Drossel der Inhaltserkennung umgehen (siehe
+        // applyAllInActiveBuffer, Review 2026-08-31).
+        forceLanguageDetectionAfterProgrammaticReplace(
+            oldText: text, newText: replaced)
 
         // „Nur in Auswahl": eingefrorene Range um die Längenänderung des
         // ersetzten Treffers mitführen, BEVOR der Re-Find unten sie nutzt
@@ -6550,17 +6664,41 @@ final class Workspace: ObservableObject {
         // Vor der @Published-Array-Mutation setzen: Sie stößt synchron die
         // Invalidierung und verzögert danach den asynchronen Neulauf an.
         pendingOpenReplaceNavigation = (currentSearchOptions, activeMatchIndex)
+        // Eignung VOR den Längen bestimmen — `String.count` ist linear und
+        // für ungeeignete (z. B. gespeicherte große) Tabs reine Main-Thread-
+        // Verschwendung (Review 2026-08-31, wie in applyAllInOpenTabs).
+        let needsLanguageLengths = Self.isEligibleForContentDetection(tabs[tabIndex])
         tabs[tabIndex].content = replaced
         tabs[tabIndex].isDirty = true
         // Wie in `applyAllInOpenTabs`: Die direkte Modellmutation muss die
         // Makro-Nachbearbeitung dieses Tabs selbst abbrechen — sie umgeht
         // das `activeTabContent`-Binding (Review 2026-08-29).
         cancelFourDMacroPostprocessing(ifTab: tabID)
-        scheduleLanguageDetection(
-            tabID: tabID, oldLength: text.count, newLength: replaced.count,
-            forceAnalysis: true)
+        if needsLanguageLengths {
+            scheduleLanguageDetection(
+                tabID: tabID, oldLength: text.count, newLength: replaced.count,
+                forceAnalysis: true)
+        }
         if activeTabID != tabID { selectTab(id: tabID) }
         editorReloadNonce += 1
+    }
+
+    /// Erzwingt die Inhaltsspracherkennung nach einer programmgesteuerten
+    /// Ersetzung im aktiven Tab. Der Setter von `activeTabContent` plant nur
+    /// die gedrosselte Tipp-Erkennung; ersetzt eine Aktion den gesamten
+    /// Inhalt durch ein anderes Format ähnlicher Länge, lieferte die Drossel
+    /// `.none` und Sprache samt Syntaxhervorhebung blieben beim alten Format
+    /// (Review 2026-08-31). Längen werden nur für geeignete Tabs gezählt.
+    private func forceLanguageDetectionAfterProgrammaticReplace(
+        oldText: String, newText: String
+    ) {
+        guard let idx = activeTabIndex,
+              Self.isEligibleForContentDetection(tabs[idx]) else { return }
+        scheduleLanguageDetection(
+            tabID: tabs[idx].id,
+            oldLength: oldText.count,
+            newLength: newText.count,
+            forceAnalysis: true)
     }
 
     /// Wird ausschließlich von der erfolgreichen Geöffnet-Suche aufgerufen.
@@ -6624,6 +6762,34 @@ final class Workspace: ObservableObject {
         searchRunner?.folderResultsBecameStale()
         folderNavigationNotice = L10n.string(
             "Die Datei hat sich seit der Suche geändert. Bitte erneut suchen.")
+    }
+
+    /// Erklärt, warum der Sprung zu einem Ordner-Treffer gerade nicht
+    /// ausgeführt wird, OHNE die weiterhin gültige Trefferbasis zu verwerfen:
+    /// Der offene Tab der Funddatei enthält ungesicherte Änderungen, und eine
+    /// neue Suche würde diesen Konflikt nicht lösen (Review 2026-08-31).
+    func folderMatchNavigationBlockedByUnsavedChanges() {
+        folderNavigationNotice = L10n.string(
+            "Die Funddatei ist mit ungesicherten Änderungen geöffnet. Tab zuerst speichern oder schließen, dann erneut springen.")
+    }
+
+    /// Gemeinsame Reaktion der Treffer-Navigation (ContentView und
+    /// Suchmaske) auf einen abgelehnten Ladeauftrag: Nur der echte
+    /// Plattenstand-Konflikt (und eine nicht mehr lesbare Datei) entwertet
+    /// die Trefferbasis. Ein noch laufender Ladevorgang oder ein entwerteter
+    /// Auftrag lässt die gültigen Ordnerergebnisse unangetastet
+    /// (Review 2026-08-31).
+    func handleFolderMatchLoadDenial(_ outcome: FileLoadOutcome,
+                                     jumpGeneration: Int) {
+        guard isCurrentMatchJump(jumpGeneration) else { return }
+        switch outcome {
+        case .staleSnapshot, .failed:
+            folderMatchNavigationBecameStale()
+        case .unsavedChanges:
+            folderMatchNavigationBlockedByUnsavedChanges()
+        case .busyLoading, .cancelled, .opened:
+            break
+        }
     }
 
     /// Trefferliste als LF-getrennten String ins Clipboard kopieren —

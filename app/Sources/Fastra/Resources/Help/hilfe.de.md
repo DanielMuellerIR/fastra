@@ -89,9 +89,11 @@ erst mit dem Ergebnis des neuen Laufs wieder aktiv.
 
 Ordner- und Projekt-Suchen überspringen Dateien über 32 MiB, weil Fastra sie
 nur abschnittsweise statt als vollständig navigierbaren Texteditor öffnet. Hat
-sich eine Funddatei seit dem Suchlauf geändert oder enthält ihr bereits
-geöffneter Tab ungesicherte Änderungen, aktiviert Fastra sie nicht: Die alte
-Trefferliste wird verworfen und ein Hinweis fordert zum erneuten Suchen auf.
+sich eine Funddatei seit dem Suchlauf geändert, aktiviert Fastra sie nicht:
+Die alte Trefferliste wird verworfen und ein Hinweis fordert zum erneuten
+Suchen auf. Ist die Funddatei dagegen mit ungesicherten Änderungen geöffnet,
+bleibt die Trefferliste stehen — ein Hinweis erklärt, dass ihr Tab zuerst
+gespeichert oder geschlossen werden muss.
 
 **Platzhalter (Wildcards):** Ohne RegEx-Modus steht `*` für beliebigen
 Text **innerhalb einer Zeile**, `**` auch **über Zeilengrenzen hinweg**.
