@@ -177,9 +177,6 @@ struct MainWindowTitleBridge: NSViewRepresentable {
         }
         private weak var observedWindow: NSWindow?
         private var keyObserver: NSObjectProtocol?
-        /// Zuletzt in das „Fenster"-Menü geschriebener Titel — verhindert
-        /// wiederholtes Neusetzen desselben Eintrags (siehe `applyMetadataToWindow`).
-        private var lastWindowsMenuTitle: String?
 
         init(metadata: MainWindowTitleMetadata, workspace: Workspace,
              chromeHeight: CGFloat) {
@@ -225,6 +222,10 @@ struct MainWindowTitleBridge: NSViewRepresentable {
                 if let workspace = self?.workspace {
                     Workspace.shared = workspace
                 }
+                // Das Häkchen im „Fenster"-Menü folgt dem Schlüsselfenster —
+                // wie bei AppKits eigenen Einträgen, die unsere Untermenü-
+                // Einträge ersetzen.
+                WindowsMenuTabs.shared.noteKeyWindowChanged()
             }
             if window.isKeyWindow, let workspace {
                 Workspace.shared = workspace
@@ -258,29 +259,36 @@ struct MainWindowTitleBridge: NSViewRepresentable {
             window.representedURL = metadata.representedURL
             window.title = metadata.title
             window.isDocumentEdited = metadata.isDocumentEdited
-            // Dieses per NSHostingController gehostete Fenster verlässlich ins
-            // „Fenster"-Menü aufnehmen. Für das SwiftUI-Startfenster fehlte der
-            // Eintrag bisher ganz — das Menü blieb leer, obwohl das Fenster mit
-            // seinen Tabs offen war (Daniel-Befund 2026-07-20). `changeWindowsItem`
-            // fügt HINZU oder aktualisiert nur; die bereits per `addWindowsItem`
-            // eingetragenen ⌘N-/wiederhergestellten Fenster bekommen dadurch
-            // keinen Doppel-Eintrag, sondern nur ihren Titel nachgeführt.
-            // Nur bei ECHTER Titeländerung ins Menü schreiben. Häufiges,
-            // unnötiges Neusetzen während des Starts kann verhindern, dass AppKit
-            // seine Standard-Fensterbefehle (Füllen, Zentriert, …) rechtzeitig
-            // ergänzt — das Menü war beim ersten Öffnen unvollständig und erst
-            // beim zweiten korrekt (Daniel-Befund 2026-07-20).
-            if !SearchWindow.isSearchWindow(window), lastWindowsMenuTitle != metadata.title {
-                lastWindowsMenuTitle = metadata.title
-                NSApp.changeWindowsItem(window, title: metadata.title, filename: false)
-                // Zusätzlich den eigenen Tab-Untermenü-Eintrag dieses Fensters
-                // anlegen bzw. seinen Titel nachführen (Daniel-Wunsch
-                // 2026-09-01, Ersatz der „GEÖFFNET"-Seitenleisten-Liste).
-                if let workspace {
-                    WindowsMenuTabs.shared.updateItem(for: window,
-                                                      workspace: workspace,
-                                                      title: metadata.title)
+            // Der Fenster-Eintrag eines Dokumentfensters ist seit v1.117.1
+            // ausschließlich unser eigener Tab-Untermenü-Eintrag
+            // (`WindowsMenuTabs`). AppKits automatischer Eintrag bleibt per
+            // `isExcludedFromWindowsMenu` draußen — vorher standen beide mit
+            // demselben Titel im Menü (Daniel-Befund 2026-09-01). Das frühere
+            // `NSApp.changeWindowsItem` (Befund 2026-07-20: SwiftUI-Fenster
+            // fehlte ganz) ist damit ersetzt.
+            //
+            // `updateItem` läuft bewusst bei JEDEM Apply, nicht nur bei
+            // Titeländerung: Beim Sitzungsstart existiert das „Fenster"-Menü
+            // noch nicht (`NSApp.windowsMenu == nil`) — ein nur an
+            // Titeländerungen gebundener Aufbau kam danach nie wieder zum
+            // Zug, und die wiederhergestellte Sitzung zeigte gar keinen
+            // Untermenü-Eintrag (zweite Hälfte desselben Befunds). Der Aufruf
+            // ist idempotent und billig.
+            if !SearchWindow.isSearchWindow(window), let workspace {
+                if !window.isExcludedFromWindowsMenu {
+                    window.isExcludedFromWindowsMenu = true
                 }
+                // AppKit kann seinen eigenen Eintrag schon VOR dem Setzen der
+                // Ausnahme angelegt haben (wiederhergestellte Fenster beim
+                // Start) — die Ausnahme verhindert nur künftige Einträge,
+                // entfernt aber keine bestehenden. Deshalb bei jedem Apply
+                // mit abräumen; ohne vorhandenen Eintrag ist der Aufruf
+                // wirkungslos, und den eigenen Untermenü-Eintrag kennt
+                // AppKits Fensterverwaltung nicht.
+                NSApp.removeWindowsItem(window)
+                WindowsMenuTabs.shared.updateItem(for: window,
+                                                  workspace: workspace,
+                                                  title: metadata.title)
             }
             // Codex-artiger Fensteraufbau: SwiftUI zeichnet den Chrome bis
             // hinter die native Titelleiste. Die Ampelknöpfe bleiben echte

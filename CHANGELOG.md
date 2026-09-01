@@ -9,6 +9,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.117.1] — 2026-09-01
+
+### Behoben
+
+- **Die Tab-Untermenüs im Fenster-Menü erscheinen jetzt auch in
+  wiederhergestellten Sitzungen.** Beim App-Start existiert das
+  Fenster-Menü noch nicht; der Aufbau war an Titeländerungen gebunden und
+  kam danach nie wieder zum Zug — das Menü zeigte nur AppKits einfachen
+  Fenster-Eintrag ohne Tabs. Der Aufbau läuft jetzt bei jedem
+  Fenster-Update und versucht es beim Start erneut, bis das Menü da ist.
+- **Dokumentfenster stehen nicht mehr doppelt im Fenster-Menü.** AppKits
+  automatischer Eintrag entfällt zugunsten des Tab-Untermenü-Eintrags;
+  das Häkchen am Schlüsselfenster übernimmt der eigene Eintrag. Der
+  `sessionrestore`-Selbsttest prüft beides am echten Startpfad.
+
 ## [v1.117.0] — 2026-09-01
 
 ### Neu

@@ -66,7 +66,21 @@ final class WindowsMenuTabs: NSObject, NSMenuDelegate {
     /// nach. Aufrufer ist `MainWindowTitleBridge` — dort ist der Titel schon
     /// Willkommens-bewusst („Fastra v… <Datum>" ohne echte Datei).
     func updateItem(for window: NSWindow, workspace: Workspace, title: String) {
-        guard let menu = NSApp.windowsMenu else { return }
+        guard let menu = NSApp.windowsMenu else {
+            // Beim App-Start (besonders mit Sitzungswiederherstellung)
+            // existiert das „Fenster"-Menü noch nicht. Kurz später erneut
+            // versuchen — die schwachen Referenzen lassen ein inzwischen
+            // geschlossenes Fenster einfach fallen (Daniel-Befund 2026-09-01:
+            // ohne diesen Retry blieb der Eintrag in der wiederhergestellten
+            // Sitzung dauerhaft aus).
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                [weak window, weak workspace] in
+                guard let window, let workspace else { return }
+                self.updateItem(for: window, workspace: workspace,
+                                title: window.title)
+            }
+            return
+        }
         let key = ObjectIdentifier(window)
         let item: NSMenuItem
         if let existing = items[key] {
@@ -89,6 +103,18 @@ final class WindowsMenuTabs: NSObject, NSMenuDelegate {
         item.representedObject = Context(window: window, workspace: workspace)
         item.title = title
         item.submenu?.title = title
+        // Häkchen wie bei AppKits eigenen Fenster-Einträgen: am
+        // Schlüsselfenster (unsere Einträge ersetzen die AppKit-Einträge,
+        // siehe `isExcludedFromWindowsMenu` in `MainWindowTitleBridge`).
+        item.state = window.isKeyWindow ? .on : .off
+    }
+
+    /// Führt die Häkchen nach einem Schlüsselfenster-Wechsel nach.
+    func noteKeyWindowChanged() {
+        for item in items.values {
+            guard let context = item.representedObject as? Context else { continue }
+            item.state = context.window?.isKeyWindow == true ? .on : .off
+        }
     }
 
     /// Entfernt den Eintrag eines geschlossenen Fensters (Aufrufer:

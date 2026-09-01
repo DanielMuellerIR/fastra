@@ -1153,8 +1153,37 @@ enum SelfTest {
                 try? FileManager.default.removeItem(at: directory)
                 finish(false, "ein unbenannter Tab wurde fälschlich wiederhergestellt")
             }
+            // Fenster-Menü nach der Wiederherstellung: pro Fenster genau
+            // unser Tab-Untermenü-Eintrag, kein doppelter AppKit-Eintrag.
+            // Genau dieser Startpfad war am 2026-09-01 kaputt: Beim ersten
+            // Titelsetzen existiert `NSApp.windowsMenu` noch nicht, und ein
+            // nur an Titeländerungen gebundener Aufbau kam nie wieder zum
+            // Zug — das Menü zeigte nur AppKits eigenen Eintrag ohne Tabs.
+            let submenuCounts = MainActor.assumeIsolated { () -> [Int] in
+                (NSApp.windowsMenu?.items ?? []).compactMap { item -> Int? in
+                    guard let submenu = item.submenu else { return nil }
+                    submenu.delegate?.menuNeedsUpdate?(submenu)
+                    return submenu.items.count
+                }
+            }
+            guard submenuCounts.contains(2), submenuCounts.contains(1) else {
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "Fenster-Menü ohne Tab-Untermenüs nach der "
+                    + "Wiederherstellung (Untermenü-Größen: \(submenuCounts))")
+            }
+            let duplicatePlainEntries = MainActor.assumeIsolated { () -> [String] in
+                (NSApp.windowsMenu?.items ?? [])
+                    .filter { $0.submenu == nil && ["eins.txt", "drei.txt"].contains($0.title) }
+                    .map(\.title)
+            }
+            guard duplicatePlainEntries.isEmpty else {
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "Fenster-Menü führt Dokumentfenster doppelt "
+                    + "(AppKit-Eintrag ohne Untermenü: \(duplicatePlainEntries))")
+            }
             try? FileManager.default.removeItem(at: directory)
-            finish(true, "zwei Fenster, drei gespeicherte Tabs, Projekt und aktiver Tab wiederhergestellt")
+            finish(true, "zwei Fenster, drei gespeicherte Tabs, Projekt, aktiver Tab "
+                + "und Tab-Untermenüs im Fenster-Menü wiederhergestellt")
         }
         if tick >= 200 {
             try? FileManager.default.removeItem(at: directory)
