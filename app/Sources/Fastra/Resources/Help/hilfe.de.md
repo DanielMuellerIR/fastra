@@ -835,10 +835,12 @@ Dateiaktionen; bei einem noch ungesicherten Tab sind unpassende Punkte
 deaktiviert. Die Seitenleiste lässt sich auf breiten Fenstern bis 760 Punkte
 aufziehen, damit lange Pfade lesbar bleiben.
 
-**Dateien filtern:** Das Filterfeld über dem Dateibaum filtert live nach
-Dateinamen (Teilstring, Groß-/Kleinschreibung egal — bewusst kein
-Fuzzy-Matching). Treffer erscheinen mit aufgeklappten Elternordnern,
-alles andere ist ausgeblendet; der Zähler zeigt „N von M Dateien“.
+**Dateien filtern:** Das kompakte Filterfeld rechts neben dem Projektnamen
+filtert live nach Dateinamen (Teilstring, Groß-/Kleinschreibung egal —
+bewusst kein Fuzzy-Matching); eine breiter gezogene Seitenleiste gibt ihm
+mehr Platz. Treffer erscheinen mit aufgeklappten Elternordnern,
+alles andere ist ausgeblendet; der Zähler über dem Baum zeigt
+„N von M Dateien“.
 Escape oder das X leeren den Filter und stellen den vorigen
 Aufklappzustand wieder her. Der Filter durchsucht nur NAMEN — für
 Inhalte gibt es „In Ordnern suchen…“ (⇧⌘F, auch als Link am leeren
@@ -856,8 +858,11 @@ Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**. Der
 (jede Datei einmal gezählt, bereitgestellt oder nicht). Sie ist damit auch
 sichtbar, während der Dateien- oder Graph-Tab offen ist. Im Einzelnen:
 
-- Branch-Zeile mit Branch-Wechsel, Fetch und eigenem Ahead/Behind-Stand für
-  jeden Remote. Im Graph unterscheiden Form und Farbe lokale Branches von
+- Branch-Bereich in zwei Zeilen: oben Branch-Wechsel und der eigene
+  Ahead/Behind-Stand für jeden Remote, darunter die Aktions-Knöpfe (Verlauf,
+  Diff, Git-Aktionen, Fetch, Pull, Neu einlesen). Jeder Knopf erklärt sich
+  per Tooltip — auch, solange er wegen eines laufenden Git-Vorgangs
+  deaktiviert ist. Im Graph unterscheiden Form und Farbe lokale Branches von
   Remote-Branches; jeder Remote behält seine Farbe.
 - **Änderungen:** Dateien bereitstellen/entnehmen, verwerfen und direkt
   committen. Nach einem lokalen Commit wird der Commit-Knopf zum Push-Knopf:

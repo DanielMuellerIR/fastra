@@ -349,7 +349,10 @@ struct GitChangesView: View {
                     workspace.gitCommit(message: workspace.commitMessage)
                 }
                 .keyboardShortcut(.return, modifiers: .command)
-                .help("Bereitgestellte Änderungen committen (nichts bereitgestellt → alles)")
+                // fastraHelp statt .help: Der Tooltip muss den Knopf auch
+                // erklären, solange er wegen eines laufenden Git-Vorgangs
+                // deaktiviert ist.
+                .fastraHelp(L10n.string("Bereitgestellte Änderungen committen (nichts bereitgestellt → alles)"))
 
             case .push(let targets):
                 LazyVGrid(
@@ -439,10 +442,12 @@ struct GitChangesView: View {
             }
         }
         .disabled(workspace.gitOperationsAreBusy || phase == .running)
-        .help(phase == .running
-              ? L10n.format("Push zu %@ läuft …", target.remote)
-              : L10n.format("Lokale Commits ausdrücklich zu %@ übertragen: %@",
-                            target.remote, target.displayAddress))
+        // fastraHelp statt .help: gerade der deaktivierte Zustand („läuft …")
+        // braucht die Erklärung.
+        .fastraHelp(phase == .running
+                    ? L10n.format("Push zu %@ läuft …", target.remote)
+                    : L10n.format("Lokale Commits ausdrücklich zu %@ übertragen: %@",
+                                  target.remote, target.displayAddress))
         .accessibilityLabel(L10n.format("Push zu %@, Ziel %@",
                                         target.remote, target.displayAddress))
         .accessibilityValue(phase == .running
@@ -826,7 +831,9 @@ private struct GitChangeRow: View {
             }
         }
         .disabled(!change.isPathActionable)
-        .help(help)
+        // fastraHelp statt .help: auch für nicht bedienbare Pfade soll der
+        // Tooltip erklären, was der Knopf täte.
+        .fastraHelp(help)
     }
 
     /// Öffnet die Arbeitsdatei beziehungsweise bei einer Löschung die

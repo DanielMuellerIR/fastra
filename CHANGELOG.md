@@ -9,6 +9,24 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.115.0] — 2026-09-01
+
+### Geändert
+
+- **Der Branch-Bereich der Seitenleiste hat jetzt zwei Zeilen.** Oben stehen
+  Branch-Wechsler und Remote-Vergleich, darunter die Aktions-Knöpfe mit mehr
+  Abstand und Platz für künftige weitere Knöpfe. Eine einzige Zeile war schon
+  bei kurzen Branch-Namen voll und bei langen nie ausreichend.
+- **Das Filterfeld „Dateien filtern“ sitzt jetzt kompakt rechts neben dem
+  Projektnamen.** Es bleibt bewusst schmal und wächst mit einer breiter
+  gezogenen Seitenleiste; die Zählerzeile „N von M Dateien“ erscheint
+  weiterhin über dem Baum. Das Schließen-X der Kopfzeile entfällt — es bot
+  keinen Vorteil, „Projektansicht schließen“ bleibt im Rechtsklickmenü.
+- **Tooltips erscheinen jetzt auch auf deaktivierten Knöpfen.** SwiftUI
+  unterdrückt Tooltips deaktivierter Bedienelemente; eine AppKit-Brücke
+  (`fastraHelp`) zeigt sie trotzdem — gerade ein ausgegrauter Bild-Knopf
+  (Pull, Fetch, Commit, Push) muss erklären, was er täte.
+
 ## [v1.114.0] — 2026-09-01
 
 ### Geändert

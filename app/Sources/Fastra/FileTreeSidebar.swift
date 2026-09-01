@@ -56,168 +56,187 @@ struct FileTreeSidebar: View {
                                     includeFinderReveal: false,
                                     onMutation: handleTreeMutation)
                     .environmentObject(workspace)
+            } accessory: {
+                // Kompaktes Filterfeld am rechten Rand der Kopfzeile
+                // (Daniel 2026-09-01) — es ersetzt dort das frühere
+                // Schließen-X und wächst mit einer breiteren Seitenleiste.
+                filterFieldCompact
             }
 
-            // Branch-Zeile (Etappe 2): nur sichtbar, wenn das Projekt ein
-            // Git-Repo ist und git verfügbar (sonst still weg). Zeigt Branch,
-            // Ahead/Behind und einen dezenten Auffrisch-Knopf.
+            // Branch-Bereich (Etappe 2): nur sichtbar, wenn das Projekt ein
+            // Git-Repo ist und git verfügbar (sonst still weg). Seit
+            // 2026-09-01 zwei Zeilen (Daniel-Wunsch): oben Branch samt
+            // Remote-Vergleich, darunter die Aktions-Knöpfe mit mehr Abstand —
+            // eine Zeile war schon bei kurzen Branch-Namen voll, bei langen
+            // passte sie nie.
             if let status = workspace.gitStatus {
-                HStack(spacing: 5) {
-                    Image(systemName: "arrow.triangle.branch")
-                        .fastraFont(size: 10)
-                        .foregroundColor(Theme.accentReadable)
-                    Menu {
-                        ForEach(workspace.gitBranches) { candidate in
-                            Button {
-                                workspace.gitSwitchBranch(candidate.name)
-                            } label: {
-                                if candidate.isCurrent {
-                                    Label(candidate.name, systemImage: "checkmark")
-                                } else {
-                                    Text(candidate.name)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.triangle.branch")
+                            .fastraFont(size: 10)
+                            .foregroundColor(Theme.accentReadable)
+                        Menu {
+                            ForEach(workspace.gitBranches) { candidate in
+                                Button {
+                                    workspace.gitSwitchBranch(candidate.name)
+                                } label: {
+                                    if candidate.isCurrent {
+                                        Label(candidate.name, systemImage: "checkmark")
+                                    } else {
+                                        Text(candidate.name)
+                                    }
                                 }
+                                .disabled(candidate.isCurrent)
                             }
-                            .disabled(candidate.isCurrent)
-                        }
-                        if workspace.gitBranches.isEmpty {
-                            Button("Keine lokalen Branches") { }.disabled(true)
-                        }
-                    } label: {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(status.branch ?? L10n.string("Detached HEAD"))
-                                .fastraFont(.small)
-                                .foregroundColor(Theme.textPrimary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Text(status.upstream ?? L10n.string("Kein Upstream"))
-                                .fastraFont(size: 9)
-                                .foregroundColor(Theme.textSecondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.visible)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .help("Lokalen Branch auswählen")
-                    .disabled(workspace.gitOperationsAreBusy)
-                    if !relevantRemoteTrackingStates.isEmpty {
-                        TimelineView(.periodic(from: .now, by: 60)) { context in
-                            VStack(alignment: .trailing, spacing: 1) {
-                                ForEach(Self.visibleRemoteComparisons(
-                                    relevantRemoteTrackingStates
-                                )) { state in
-                                    Text("\(state.remote) \(state.compactCounts)")
-                                        .fastraFont(size: 9, design: .monospaced)
-                                        .foregroundColor(Self.remoteColor(state.remote))
-                                        .lineLimit(1)
-                                }
-                                let additional = Self.additionalRemoteComparisonCount(
-                                    relevantRemoteTrackingStates
-                                )
-                                if additional > 0 {
-                                    Text(L10n.format(
-                                        "+%ld weitere",
-                                        additional
-                                    ))
+                            if workspace.gitBranches.isEmpty {
+                                Button("Keine lokalen Branches") { }.disabled(true)
+                            }
+                        } label: {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(status.branch ?? L10n.string("Detached HEAD"))
+                                    .fastraFont(.small)
+                                    .foregroundColor(Theme.textPrimary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Text(status.upstream ?? L10n.string("Kein Upstream"))
                                     .fastraFont(size: 9)
                                     .foregroundColor(Theme.textSecondary)
-                                }
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
                             }
-                            .help(Self.remoteComparisonDescription(
-                                relevantRemoteTrackingStates,
-                                fetch: workspace.gitRepositorySnapshot?.fetch,
-                                now: context.date
-                            ))
-                            .accessibilityLabel(Self.remoteComparisonText(
-                                relevantRemoteTrackingStates
-                            ))
-                            .accessibilityHint("Der Vergleich nutzt den zuletzt abgerufenen Remote-Tracking-Stand. Der Server kann bereits neuer sein.")
                         }
-                    } else if status.ahead > 0 || status.behind > 0 {
-                        Text(Self.aheadBehindText(status))
-                            .fastraFont(size: 9)
-                            .foregroundColor(Theme.textSecondary)
-                            .lineLimit(2)
-                    }
-                    Spacer(minLength: 0)
-                    // Verlauf öffnen (git log --graph als read-only-Tab).
-                    Button {
-                        workspace.openGitLog()
-                    } label: {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .fastraFont(size: 10)
-                            .foregroundColor(Theme.textSecondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Verlauf anzeigen (git log)")
-                    .accessibilityLabel("Git-Verlauf anzeigen")
-                    .accessibilityHint("Öffnet den Commit-Verlauf als schreibgeschützten Tab.")
-                    // Diff öffnen (git diff HEAD als read-only-Tab). Nur sinnvoll,
-                    // wenn es überhaupt Änderungen gibt — sonst gedimmt lassen,
-                    // aber klickbar (zeigt dann „keine Änderungen").
-                    Button {
-                        workspace.openGitDiff()
-                    } label: {
-                        Image(systemName: "plusminus")
-                            .fastraFont(size: 10)
-                            .foregroundColor(status.entries.isEmpty ? Theme.textSecondary.opacity(0.5) : Theme.textSecondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Änderungen anzeigen (git diff)")
-                    .accessibilityLabel("Git-Änderungen anzeigen")
-                    .accessibilityHint("Öffnet den aktuellen Git-Diff als schreibgeschützten Tab.")
-                    // Aktions-Menü (Commit/Push/Pull + pfiffige Varianten).
-                    // Die dezenten Hilfe-Texte hängen als Tooltip an jedem Punkt.
-                    Menu {
-                        gitActionMenuItems
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .fastraFont(size: 10)
-                            .foregroundColor(Theme.textSecondary)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .help("Git-Aktionen")
-                    .accessibilityLabel("Git-Aktionen")
-                    .accessibilityHint("Öffnet weitere sichere Git-Befehle.")
-                    // Remotes können außerhalb Fastras geändert werden. Jeder
-                    // bewusste Menüaufruf liest sie deshalb neu; der aktuelle
-                    // Stand bleibt bis zur asynchronen Antwort sichtbar.
-                    .simultaneousGesture(TapGesture().onEnded {
-                        workspace.refreshGitPushTarget()
-                    })
-
-                    TimelineView(.periodic(from: .now, by: 60)) { context in
-                        fetchControl(now: context.date)
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.visible)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .disabled(workspace.gitOperationsAreBusy)
+                        // fastraHelp statt .help: der Tooltip muss auch erklären,
+                        // was der Knopf tut, während Git beschäftigt (deaktiviert) ist.
+                        .fastraHelp(L10n.string("Lokalen Branch auswählen"))
+                        Spacer(minLength: 0)
+                        if !relevantRemoteTrackingStates.isEmpty {
+                            TimelineView(.periodic(from: .now, by: 60)) { context in
+                                VStack(alignment: .trailing, spacing: 1) {
+                                    ForEach(Self.visibleRemoteComparisons(
+                                        relevantRemoteTrackingStates
+                                    )) { state in
+                                        Text("\(state.remote) \(state.compactCounts)")
+                                            .fastraFont(size: 9, design: .monospaced)
+                                            .foregroundColor(Self.remoteColor(state.remote))
+                                            .lineLimit(1)
+                                    }
+                                    let additional = Self.additionalRemoteComparisonCount(
+                                        relevantRemoteTrackingStates
+                                    )
+                                    if additional > 0 {
+                                        Text(L10n.format(
+                                            "+%ld weitere",
+                                            additional
+                                        ))
+                                        .fastraFont(size: 9)
+                                        .foregroundColor(Theme.textSecondary)
+                                    }
+                                }
+                                .help(Self.remoteComparisonDescription(
+                                    relevantRemoteTrackingStates,
+                                    fetch: workspace.gitRepositorySnapshot?.fetch,
+                                    now: context.date
+                                ))
+                                .accessibilityLabel(Self.remoteComparisonText(
+                                    relevantRemoteTrackingStates
+                                ))
+                                .accessibilityHint("Der Vergleich nutzt den zuletzt abgerufenen Remote-Tracking-Stand. Der Server kann bereits neuer sein.")
+                            }
+                        } else if status.ahead > 0 || status.behind > 0 {
+                            Text(Self.aheadBehindText(status))
+                                .fastraFont(size: 9)
+                                .foregroundColor(Theme.textSecondary)
+                                .lineLimit(2)
+                        }
                     }
 
-                    Button {
-                        workspace.gitPull()
-                    } label: {
-                        Image(systemName: "arrow.down.to.line")
-                            .fastraFont(size: 10)
-                            .foregroundColor(Theme.textSecondary)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(workspace.gitOperationsAreBusy)
-                    .help(L10n.format("Entfernte Commits mit %@ einbinden",
-                                      workspace.gitPullStrategyName))
-                    .accessibilityLabel("Pull")
-                    .accessibilityHint("Prüft Upstream, lokale Änderungen und laufende Git-Vorgänge vor dem Pull.")
+                    // Zweite Zeile: alle Aktions-Knöpfe, rechtsbündig wie bisher,
+                    // aber mit Luft zwischen den Symbolen und Platz für künftige
+                    // weitere Knöpfe.
+                    HStack(spacing: 10) {
+                        Spacer(minLength: 0)
+                        // Verlauf öffnen (git log --graph als read-only-Tab).
+                        Button {
+                            workspace.openGitLog()
+                        } label: {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .fastraFont(size: 10)
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                        .buttonStyle(.plain)
+                        .fastraHelp(L10n.string("Verlauf anzeigen (git log)"))
+                        .accessibilityLabel("Git-Verlauf anzeigen")
+                        .accessibilityHint("Öffnet den Commit-Verlauf als schreibgeschützten Tab.")
+                        // Diff öffnen (git diff HEAD als read-only-Tab). Nur sinnvoll,
+                        // wenn es überhaupt Änderungen gibt — sonst gedimmt lassen,
+                        // aber klickbar (zeigt dann „keine Änderungen").
+                        Button {
+                            workspace.openGitDiff()
+                        } label: {
+                            Image(systemName: "plusminus")
+                                .fastraFont(size: 10)
+                                .foregroundColor(status.entries.isEmpty ? Theme.textSecondary.opacity(0.5) : Theme.textSecondary)
+                        }
+                        .buttonStyle(.plain)
+                        .fastraHelp(L10n.string("Änderungen anzeigen (git diff)"))
+                        .accessibilityLabel("Git-Änderungen anzeigen")
+                        .accessibilityHint("Öffnet den aktuellen Git-Diff als schreibgeschützten Tab.")
+                        // Aktions-Menü (Commit/Push/Pull + pfiffige Varianten).
+                        // Die dezenten Hilfe-Texte hängen als Tooltip an jedem Punkt.
+                        Menu {
+                            gitActionMenuItems
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                                .fastraFont(size: 10)
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        .fastraHelp(L10n.string("Git-Aktionen"))
+                        .accessibilityLabel("Git-Aktionen")
+                        .accessibilityHint("Öffnet weitere sichere Git-Befehle.")
+                        // Remotes können außerhalb Fastras geändert werden. Jeder
+                        // bewusste Menüaufruf liest sie deshalb neu; der aktuelle
+                        // Stand bleibt bis zur asynchronen Antwort sichtbar.
+                        .simultaneousGesture(TapGesture().onEnded {
+                            workspace.refreshGitPushTarget()
+                        })
 
-                    Button {
-                        workspace.refreshGitStatus()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .fastraFont(size: 9, weight: .semibold)
-                            .foregroundColor(Theme.textSecondary)
+                        TimelineView(.periodic(from: .now, by: 60)) { context in
+                            fetchControl(now: context.date)
+                        }
+
+                        Button {
+                            workspace.gitPull()
+                        } label: {
+                            Image(systemName: "arrow.down.to.line")
+                                .fastraFont(size: 10)
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(workspace.gitOperationsAreBusy)
+                        .fastraHelp(L10n.format("Entfernte Commits mit %@ einbinden",
+                                                workspace.gitPullStrategyName))
+                        .accessibilityLabel("Pull")
+                        .accessibilityHint("Prüft Upstream, lokale Änderungen und laufende Git-Vorgänge vor dem Pull.")
+
+                        Button {
+                            workspace.refreshGitStatus()
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .fastraFont(size: 9, weight: .semibold)
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                        .buttonStyle(.plain)
+                        .fastraHelp(L10n.string("Git-Status neu einlesen"))
+                        .accessibilityLabel("Git-Status neu einlesen")
+                        .accessibilityHint("Liest Branch, Änderungen und Vorgangsstatus erneut aus Git.")
                     }
-                    .buttonStyle(.plain)
-                    .help("Git-Status neu einlesen")
-                    .accessibilityLabel("Git-Status neu einlesen")
-                    .accessibilityHint("Liest Branch, Änderungen und Vorgangsstatus erneut aus Git.")
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 6)
@@ -248,12 +267,11 @@ struct FileTreeSidebar: View {
                     .accessibilityIdentifier("sidebarNotice")
             }
 
-            // Dateinamens-Filter (Etappe 3 Wunschpaket 2026-07c). Bewusst ein
-            // DAUERHAFT sichtbares kompaktes Feld statt einer ausklappbaren
-            // Lupe: zentrale Funktionen müssen sichtbar und mit der Maus
-            // erreichbar sein (Produktregel) — ein verstecktes Feld würde
-            // schlicht nicht gefunden, und die Seitenleiste hat den Platz.
-            filterField
+            // Dateinamens-Filter (Etappe 3 Wunschpaket 2026-07c): Das dauerhaft
+            // sichtbare Feld sitzt seit 2026-09-01 rechts in der Kopfzeile
+            // (`filterFieldCompact` im Header-Accessory). Hier bleibt nur die
+            // Zählerzeile während einer aktiven Filterung.
+            filterStatusLine
 
             if let result = workspace.fileTreeFilterResult, result.matchCount == 0,
                !workspace.fileTreeFilterQuery.isEmpty {
@@ -349,64 +367,70 @@ struct FileTreeSidebar: View {
         return result
     }
 
-    private var filterField: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 5) {
-                Image(systemName: "magnifyingglass")
-                    .fastraFont(size: 10)
-                    .foregroundColor(Theme.textSecondary)
-                TextField(L10n.string("Dateien filtern"),
-                          text: $workspace.fileTreeFilterQuery)
-                    .textFieldStyle(.plain)
-                    .fastraFont(.small)
-                    .foregroundColor(Theme.textPrimary)
-                    // Escape leert den Filter — der Baum zeigt danach wieder
-                    // seinen alten Aufklappzustand (der blieb unangetastet).
-                    .onExitCommand { workspace.fileTreeFilterQuery = "" }
-                    .help("Filtert den Dateibaum nach Dateinamen (Teilstring, Groß-/Kleinschreibung egal). Inhalte durchsucht „In Ordnern suchen…“ (⇧⌘F).")
-                if !workspace.fileTreeFilterQuery.isEmpty {
-                    Button {
-                        workspace.fileTreeFilterQuery = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .fastraFont(size: 10)
-                            .foregroundColor(Theme.textSecondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Filter leeren (Escape)")
-                    .accessibilityLabel("Filter leeren")
+    /// Kompaktes Filterfeld am rechten Rand der Kopfzeile (Daniel 2026-09-01).
+    /// Bewusst schmal gehalten; eine breiter gezogene Seitenleiste gibt ihm
+    /// bis zur Obergrenze mehr Platz, den Rest der Zeile behält der
+    /// Projektname.
+    private var filterFieldCompact: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "magnifyingglass")
+                .fastraFont(size: 10)
+                .foregroundColor(Theme.textSecondary)
+            TextField(L10n.string("Dateien filtern"),
+                      text: $workspace.fileTreeFilterQuery)
+                .textFieldStyle(.plain)
+                .fastraFont(.small)
+                .foregroundColor(Theme.textPrimary)
+                // Escape leert den Filter — der Baum zeigt danach wieder
+                // seinen alten Aufklappzustand (der blieb unangetastet).
+                .onExitCommand { workspace.fileTreeFilterQuery = "" }
+                .help("Filtert den Dateibaum nach Dateinamen (Teilstring, Groß-/Kleinschreibung egal). Inhalte durchsucht „In Ordnern suchen…“ (⇧⌘F).")
+            if !workspace.fileTreeFilterQuery.isEmpty {
+                Button {
+                    workspace.fileTreeFilterQuery = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .fastraFont(size: 10)
+                        .foregroundColor(Theme.textSecondary)
                 }
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(Theme.surfaceBase)
-            .clipShape(RoundedRectangle(cornerRadius: 5))
-            .overlay(RoundedRectangle(cornerRadius: 5)
-                .strokeBorder(Theme.stroke, lineWidth: 1))
-
-            // Zähler „N von M Dateien" + sichtbare Kappungs-Warnung.
-            if let result = activeFilterResult {
-                Text(result.truncated
-                     ? L10n.format("%ld von %ld Dateien — nur die ersten %ld geprüft",
-                                   result.matchCount, result.totalFileCount,
-                                   FileTreeFilter.maximumScannedFiles)
-                     : L10n.format("%ld von %ld Dateien",
-                                   result.matchCount, result.totalFileCount))
-                    .fastraFont(size: 9)
-                    .foregroundColor(Theme.textSecondary)
-                    .padding(.leading, 2)
-                    .accessibilityLabel(L10n.format("%ld von %ld Dateien",
-                                                    result.matchCount,
-                                                    result.totalFileCount))
-                    // Selbsttest `sidebarfilter` liest hier den ECHT
-                    // gerenderten Zählerstand ab.
-                    .background(SelfTestMarker(
-                        id: "sidebarFilterState-n\(result.matchCount)-m\(result.totalFileCount)"
-                    ).frame(width: 0, height: 0))
+                .buttonStyle(.plain)
+                .help("Filter leeren (Escape)")
+                .accessibilityLabel("Filter leeren")
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.bottom, 6)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(Theme.surfaceBase)
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .overlay(RoundedRectangle(cornerRadius: 5)
+            .strokeBorder(Theme.stroke, lineWidth: 1))
+        .frame(minWidth: 60, maxWidth: 220)
+    }
+
+    /// Zähler „N von M Dateien" + sichtbare Kappungs-Warnung. Erscheint nur
+    /// während einer aktiven Filterung — das Feld selbst sitzt seit dem Umzug
+    /// in die Kopfzeile (`filterFieldCompact`).
+    @ViewBuilder private var filterStatusLine: some View {
+        if let result = activeFilterResult {
+            Text(result.truncated
+                 ? L10n.format("%ld von %ld Dateien — nur die ersten %ld geprüft",
+                               result.matchCount, result.totalFileCount,
+                               FileTreeFilter.maximumScannedFiles)
+                 : L10n.format("%ld von %ld Dateien",
+                               result.matchCount, result.totalFileCount))
+                .fastraFont(size: 9)
+                .foregroundColor(Theme.textSecondary)
+                .accessibilityLabel(L10n.format("%ld von %ld Dateien",
+                                                result.matchCount,
+                                                result.totalFileCount))
+                // Selbsttest `sidebarfilter` liest hier den ECHT
+                // gerenderten Zählerstand ab.
+                .background(SelfTestMarker(
+                    id: "sidebarFilterState-n\(result.matchCount)-m\(result.totalFileCount)"
+                ).frame(width: 0, height: 0))
+                .padding(.horizontal, 14)
+                .padding(.bottom, 4)
+        }
     }
 
     @ViewBuilder

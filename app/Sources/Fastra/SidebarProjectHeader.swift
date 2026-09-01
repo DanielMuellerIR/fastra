@@ -163,22 +163,35 @@ final class SiblingFolderMenuPresenter: NSObject {
     }
 }
 
-/// Kopfzeile der Projekt-Seitenleiste: Ordnername + Schließen-X.
+/// Kopfzeile der Projekt-Seitenleiste: Ordnername links, rechts ein optionales
+/// Zubehör (der Dateien-Tab legt dort sein kompaktes Filterfeld hin).
 /// `extraMenu` erlaubt dem Dateien-Tab, sein Vollmenü (Neue Datei/Ordner,
-/// Terminal) unter die gemeinsamen Punkte zu hängen.
-struct SidebarProjectHeader<ExtraMenu: View>: View {
+/// Terminal) unter die gemeinsamen Punkte zu hängen. Das frühere Schließen-X
+/// ist entfallen (Daniel 2026-09-01: kein Vorteil, der Platz gehört dem
+/// Filterfeld); „Projektansicht schließen“ bleibt im Rechtsklickmenü.
+struct SidebarProjectHeader<ExtraMenu: View, Accessory: View>: View {
     let rootURL: URL
     @ViewBuilder var extraMenu: () -> ExtraMenu
+    @ViewBuilder var accessory: () -> Accessory
     @EnvironmentObject var workspace: Workspace
 
-    /// Bequemer Aufruf ohne Zusatzmenü (Änderungen-/Graph-Tab).
-    init(rootURL: URL) where ExtraMenu == EmptyView {
-        self.init(rootURL: rootURL, extraMenu: { EmptyView() })
+    /// Bequemer Aufruf ohne Zusatzmenü und Zubehör (Änderungen-/Graph-Tab).
+    init(rootURL: URL) where ExtraMenu == EmptyView, Accessory == EmptyView {
+        self.init(rootURL: rootURL, extraMenu: { EmptyView() },
+                  accessory: { EmptyView() })
     }
 
-    init(rootURL: URL, @ViewBuilder extraMenu: @escaping () -> ExtraMenu) {
+    init(rootURL: URL, @ViewBuilder extraMenu: @escaping () -> ExtraMenu)
+        where Accessory == EmptyView {
+        self.init(rootURL: rootURL, extraMenu: extraMenu,
+                  accessory: { EmptyView() })
+    }
+
+    init(rootURL: URL, @ViewBuilder extraMenu: @escaping () -> ExtraMenu,
+         @ViewBuilder accessory: @escaping () -> Accessory) {
         self.rootURL = rootURL
         self.extraMenu = extraMenu
+        self.accessory = accessory
     }
 
     var body: some View {
@@ -188,6 +201,13 @@ struct SidebarProjectHeader<ExtraMenu: View>: View {
                 .tracking(0.6)
                 .foregroundColor(Theme.textSecondary)
                 .lineLimit(1)
+                .truncationMode(.tail)
+                // Der Name behält Vorrang vor dem Zubehör: Mit niedriger
+                // Priorität fraß das gierige Filterfeld die ganze Zeile und
+                // der Projektname verschwand vollständig (Sichtprüfung
+                // 2026-09-01). Erst wenn das Zubehör auf seiner Mindestbreite
+                // ist, wird der Name gekürzt.
+                .layoutPriority(1)
                 // Voller Pfad als Tooltip — der Name allein ist oft mehrdeutig.
                 .help(Text(verbatim: rootURL.path))
                 .accessibilityLabel(L10n.format("Projektordner %@", rootURL.lastPathComponent))
@@ -202,18 +222,8 @@ struct SidebarProjectHeader<ExtraMenu: View>: View {
                         )
                     }
                 )
-            Spacer(minLength: 0)
-            Button {
-                workspace.closeProject()
-            } label: {
-                Image(systemName: "xmark")
-                    .fastraFont(size: 9, weight: .semibold)
-                    .foregroundColor(Theme.textSecondary)
-            }
-            .buttonStyle(.plain)
-            .help("Projektansicht schließen")
-            .accessibilityLabel("Projektansicht schließen")
-            .accessibilityHint("Blendet die Projekt-Seitenleiste aus. Offene Tabs bleiben erhalten.")
+            Spacer(minLength: 8)
+            accessory()
         }
         .padding(.horizontal, 14)
         .padding(.top, 14)

@@ -788,10 +788,11 @@ tab's right-click menu contains the same file actions; options that need a file
 stay disabled on an unsaved tab. On wide windows, the sidebar can be expanded
 to 760 points so long paths remain readable.
 
-**Filtering files:** The filter field above the file tree filters live
-by file name (substring, case-insensitive — deliberately no fuzzy
-matching). Matches appear with their parent folders expanded; everything
-else is hidden, and the counter shows “N of M files”. Escape or the X
+**Filtering files:** The compact filter field to the right of the project
+name filters live by file name (substring, case-insensitive — deliberately
+no fuzzy matching); a wider sidebar gives it more room. Matches appear
+with their parent folders expanded; everything else is hidden, and the
+counter above the tree shows “N of M files”. Escape or the X
 clears the filter and restores the previous expansion state. The filter
 only searches NAMES — for contents, use “Find in Folders…” (⇧⌘F, also
 offered as a link when the filter finds nothing).
@@ -808,9 +809,12 @@ a small number: the count of files with changes (each file counted once,
 staged or not). That keeps it visible even while the Files or Graph tab is
 open. In detail:
 
-- Branch row with branch switching, fetch, and separate ahead/behind counts for
-  every remote. In the graph, shape and colour distinguish local branches from
-  remote branches, and each remote keeps its colour.
+- Branch area in two rows: branch switching and the separate ahead/behind
+  counts for every remote on top, the action buttons below (history, diff,
+  Git actions, fetch, pull, refresh). Every button explains itself with a
+  tooltip — even while it is disabled during a running Git operation. In
+  the graph, shape and colour distinguish local branches from remote
+  branches, and each remote keeps its colour.
 - **Changes:** stage/unstage files, discard, and commit right from the
   sidebar. After a local commit, the Commit button becomes a Push button:
   every locally configured remote gets its own fully clickable surface with

@@ -726,6 +726,10 @@ enum SelfTest {
             // Diagnose: gescrollte Änderungen-Liste für die Sichtprüfung des
             // festgepinnten Abschnittskopfs.
             waitForMainWindow { runGitStickyShot() }
+        case "filesgitshot":
+            // Diagnose: Dateien-Tab eines Git-Projekts — Sichtprüfung von
+            // Kopfzeile (Name + Filterfeld) und zweizeiligem Branch-Bereich.
+            waitForMainWindow { runFilesGitShot() }
         case "diffwideshot":
             // Diagnose: zweispaltiger Diff mit überlangen Zeilen — belegt die
             // Spaltengrenze visuell.
@@ -13108,6 +13112,15 @@ enum SelfTest {
         return view.subviews.contains { markerViewExists(id: id, in: $0) }
     }
 
+    /// Sucht eine `fastraHelp`-Tooltip-Overlay-NSView mit nicht-leerem
+    /// AppKit-`toolTip` im Fensterbaum. Belegt, dass die Tooltip-Brücke für
+    /// (auch deaktivierte) Bedienelemente wirklich montiert ist.
+    private static func fastraTooltipExists(in view: NSView) -> Bool {
+        if String(describing: type(of: view)).contains("PassthroughView"),
+           let tip = view.toolTip, !tip.isEmpty { return true }
+        return view.subviews.contains { fastraTooltipExists(in: $0) }
+    }
+
     /// Sichtbares Hauptfenster (nicht der Suchdialog) für AX-Prüfungen.
     private static func mainWindowForAXChecks() -> NSWindow? {
         let candidates = NSApp.windows.filter {
@@ -15651,6 +15664,10 @@ enum SelfTest {
               // Dateien als Badge — bei genau 60 geänderten Dateien muss dort
               // „60" stehen (der Marker trägt die angezeigte Zahl im Namen).
               markerView(id: "sidebarChangesBadge-60", in: content) != nil,
+              // Seit 1.115.0 tragen (auch deaktivierbare) Knöpfe ihre
+              // Tooltips über die AppKit-Overlay-Brücke; mindestens der
+              // Commit-Knopf dieser Ansicht muss so einen Tooltip montieren.
+              fastraTooltipExists(in: content),
               (ws.gitStatus?.unstagedChanges.count ?? 0) >= 60 else {
             if tick >= 120 {
                 try? FileManager.default.removeItem(at: base)
@@ -17536,6 +17553,61 @@ enum SelfTest {
         if let scroll { scrollGitChangesList(scroll, by: 400) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             dumpMainWindowThenExit(prefix: "GITSTICKYSHOT-WINDOW")
+        }
+    }
+
+    /// Diagnose (`-selftest filesgitshot`): Öffnet ein frisches Git-Projekt im
+    /// Dateien-Tab und gibt die Fenster-Nummer für `screencapture -l` aus —
+    /// Sichtprüfung der Kopfzeile (Projektname + kompaktes Filterfeld) und des
+    /// zweizeiligen Branch-Bereichs (Daniel-Wunschpaket 2026-09-01).
+    private static func runFilesGitShot() {
+        testLabel = "filesgitshot"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        guard GitRunner.isAvailable else { finish(.environment, "git nicht verfügbar") }
+        Workspace.presentGitDialogs = false
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-filesgitshot-\(UUID().uuidString)")
+        let repo = base.appendingPathComponent("Webseite")
+        do {
+            try fm.createDirectory(at: repo.appendingPathComponent("styles"),
+                                   withIntermediateDirectories: true)
+            try "<!doctype html>\n".write(
+                to: repo.appendingPathComponent("index.html"),
+                atomically: true, encoding: .utf8)
+            try "body{margin:0}\n".write(
+                to: repo.appendingPathComponent("styles/main.css"),
+                atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "(setup) \(error.localizedDescription)")
+        }
+        runGitSequence([["init", "-b", "main"], ["config", "user.email", "t@t"],
+                        ["config", "user.name", "T"], ["add", "-A"],
+                        ["commit", "-m", "init"]], in: repo) { ok, error in
+            guard ok else { finish(false, "(setup git) \(error)") }
+            // Eine offene Änderung, damit Diff-Knopf und Änderungen-Badge
+            // im Bild etwas zu zeigen haben.
+            try? "<!doctype html>\n<h1>Hallo</h1>\n".write(
+                to: repo.appendingPathComponent("index.html"),
+                atomically: true, encoding: .utf8)
+            DispatchQueue.main.async {
+                ws.openProject(at: repo)
+                pollFilesGitShot(ws, tick: 0)
+            }
+        }
+    }
+
+    private static func pollFilesGitShot(_ ws: Workspace, tick: Int) {
+        // Warten, bis Branch-Zeile (gitStatus) und Baum wirklich da sind.
+        guard ws.gitStatus != nil, mainWindowForAXChecks() != nil else {
+            if tick >= 120 { finish(false, "(filesgitshot) Git-Status/Fenster nicht bereit") }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollFilesGitShot(ws, tick: tick + 1)
+            }
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            dumpMainWindowThenExit(prefix: "FILESGITSHOT-WINDOW")
         }
     }
 
