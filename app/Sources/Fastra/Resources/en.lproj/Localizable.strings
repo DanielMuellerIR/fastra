@@ -2,6 +2,7 @@
 
 "(kein Verlauf)" = "(no history)";
 "(keine)" = "(none)";
+"(keine Tabs)" = "(no tabs)";
 "Abbrechen" = "Cancel";
 "Aktives Datei-Set löschen" = "Delete active file set";
 "Aktuelle Änderungen in den letzten Commit aufnehmen, Botschaft bleibt (git commit --amend --no-edit)." = "Add current changes to the last commit while keeping its message (git commit --amend --no-edit).";

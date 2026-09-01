@@ -950,6 +950,13 @@ Switching tabs keeps each tab's insertion point **and** its visible section:
 switching back shows the text exactly where you left it. A deliberate jump — a
 search hit or ⌘J — takes precedence and scrolls to the target as usual.
 
+The **Window menu** additionally carries one submenu per document window with
+all of its open tabs (the active one shows a checkmark, unsaved ones the dirty
+dot). A click brings the window to the front and selects the tab — the
+quickest way to a tab in another window. The former “OPEN” list in the sidebar
+is gone in exchange: it kept growing with every tab and eventually crowded out
+the file tree.
+
 After opening or closing a document and on every tab switch, the tab bar scrolls
 until the active tab is fully visible. Between those changes, a horizontal
 position you chose manually is left untouched. The tab's right-click menu also

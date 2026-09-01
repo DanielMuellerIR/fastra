@@ -59,6 +59,15 @@ enum WorkspaceWindowRegistry {
     /// geschlossenes Fenster darf dagegen niemals wieder auftauchen.
     static func unregister(_ window: NSWindow) {
         workspaces.removeObject(forKey: window)
+        // Den Tab-Untermenü-Eintrag des Fensters mit abbauen. Register/
+        // Unregister laufen bereits auf dem Main-Thread (SwiftUI-Update bzw.
+        // Notification-Queue .main); der Dispatch deckt nur den Fall ab, dass
+        // ein künftiger Aufrufer von woanders kommt.
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { WindowsMenuTabs.shared.removeItem(for: window) }
+        } else {
+            DispatchQueue.main.async { WindowsMenuTabs.shared.removeItem(for: window) }
+        }
         let identifier = ObjectIdentifier(window)
         if let observer = closeObservers.removeValue(forKey: identifier) {
             NotificationCenter.default.removeObserver(observer)
@@ -264,6 +273,14 @@ struct MainWindowTitleBridge: NSViewRepresentable {
             if !SearchWindow.isSearchWindow(window), lastWindowsMenuTitle != metadata.title {
                 lastWindowsMenuTitle = metadata.title
                 NSApp.changeWindowsItem(window, title: metadata.title, filename: false)
+                // Zusätzlich den eigenen Tab-Untermenü-Eintrag dieses Fensters
+                // anlegen bzw. seinen Titel nachführen (Daniel-Wunsch
+                // 2026-09-01, Ersatz der „GEÖFFNET"-Seitenleisten-Liste).
+                if let workspace {
+                    WindowsMenuTabs.shared.updateItem(for: window,
+                                                      workspace: workspace,
+                                                      title: metadata.title)
+                }
             }
             // Codex-artiger Fensteraufbau: SwiftUI zeichnet den Chrome bis
             // hinter die native Titelleiste. Die Ampelknöpfe bleiben echte

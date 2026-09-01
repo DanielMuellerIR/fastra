@@ -272,40 +272,21 @@ struct FloatingSearchDialog: View {
                 Spacer()
             }
 
-            VStack(spacing: 2) {
-                ForEach(workspace.recentSearchFolders) { entry in
-                    HStack(spacing: 6) {
-                        Toggle("", isOn: Binding(
-                            get: {
-                                workspace.recentSearchFolders
-                                    .first(where: { $0.path == entry.path })?.enabled
-                                    ?? entry.enabled
-                            },
-                            set: { enabled in
-                                workspace.setSearchFolderEnabled(path: entry.path,
-                                                                 enabled: enabled)
-                            }
-                        ))
-                            .toggleStyle(.checkbox)
-                            .labelsHidden()
-                        Text(entry.path)
-                            .fastraFont(size: 11, design: .monospaced)
-                            .foregroundColor(Theme.textPrimary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer()
-                        Button {
-                            workspace.removeSearchFolder(path: entry.path)
-                        } label: {
-                            Image(systemName: "minus.circle")
-                                .fastraFont(size: 11)
-                                .foregroundColor(Theme.textSecondary.opacity(0.6))
-                        }
-                        .buttonStyle(.plain)
-                        .help("Diesen Ordner aus der Liste entfernen.")
+            // Gleiche Fehlerklasse wie die entfernte „GEÖFFNET"-Liste
+            // (Befund 2026-09-01): Diese Liste wächst mit jedem hinzugefügten
+            // Ordner unbegrenzt und würde den fest bemessenen Suchdialog
+            // irgendwann sprengen. Ab acht Einträgen scrollt sie deshalb in
+            // fester Höhe; darunter bleibt sie wie bisher kompakt ohne
+            // Leerraum (eine ScrollView beansprucht ihre Maximalhöhe auch
+            // bei wenigen Zeilen).
+            Group {
+                if workspace.recentSearchFolders.count > 7 {
+                    ScrollView(.vertical) {
+                        folderEntryRows
                     }
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 2)
+                    .frame(height: 168 * uiScale)
+                } else {
+                    folderEntryRows
                 }
             }
             .padding(8)
@@ -332,6 +313,48 @@ struct FloatingSearchDialog: View {
                 .help("„Bekannte Textformate\" ignoriert Binärdateien automatisch. „Alle Dateien\" sucht überall — Binärdateien werden trotzdem übersprungen, kein Crash.")
 
                 Spacer()
+            }
+        }
+    }
+
+    /// Die eigentlichen Ordnerzeilen der „Zuletzt verwendete Ordner"-Liste —
+    /// ausgelagert, damit die kurze und die scrollende Fassung dieselben
+    /// Zeilen verwenden.
+    private var folderEntryRows: some View {
+        VStack(spacing: 2) {
+            ForEach(workspace.recentSearchFolders) { entry in
+                HStack(spacing: 6) {
+                    Toggle("", isOn: Binding(
+                        get: {
+                            workspace.recentSearchFolders
+                                .first(where: { $0.path == entry.path })?.enabled
+                                ?? entry.enabled
+                        },
+                        set: { enabled in
+                            workspace.setSearchFolderEnabled(path: entry.path,
+                                                             enabled: enabled)
+                        }
+                    ))
+                        .toggleStyle(.checkbox)
+                        .labelsHidden()
+                    Text(entry.path)
+                        .fastraFont(size: 11, design: .monospaced)
+                        .foregroundColor(Theme.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    Button {
+                        workspace.removeSearchFolder(path: entry.path)
+                    } label: {
+                        Image(systemName: "minus.circle")
+                            .fastraFont(size: 11)
+                            .foregroundColor(Theme.textSecondary.opacity(0.6))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Diesen Ordner aus der Liste entfernen.")
+                }
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
             }
         }
     }

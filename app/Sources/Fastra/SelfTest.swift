@@ -594,6 +594,7 @@ enum SelfTest {
         case "windowheight": waitForMainWindow { runWindowHeightTest() }
         case "mdformat": waitForMainWindow { runMarkdownFormatSwitchTest() }
         case "sidebarfilter": waitForMainWindow { runSidebarFilterTest() }
+        case "tabflood": waitForMainWindow { runTabFloodTest() }
         case "sidebarstate": waitForMainWindow { runSidebarStateTest() }
         case "githistory": waitForMainWindow { runGitHistoryTest() }
         case "filediff": waitForMainWindow { runFileDiffTest() }
@@ -759,7 +760,7 @@ enum SelfTest {
         case "windows": DispatchQueue.main.async { runWindowsDump() }
         default:
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabvisibility, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, mdimagewatch, mdindent, mddropcursor, pasteindent, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitmultidiscard, gitstickyheader, diffwide, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, searchmark, macro4d, macro4dengine, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabvisibility, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, mdimagewatch, mdindent, mddropcursor, pasteindent, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitmultidiscard, gitstickyheader, diffwide, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, tabflood, searchmark, macro4d, macro4dengine, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
         }
     }
 
@@ -13610,6 +13611,119 @@ enum SelfTest {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             pollSidebarFilterRestored(base: base, tick: tick + 1)
         }
+    }
+
+    // MARK: - Selbsttest tabflood (Layout-Invariante, 2026-09-01)
+
+    /// Regressionstest zum Befund vom 2026-09-01: Die frühere „GEÖFFNET"-
+    /// Liste wuchs als ungebremster `ForEach` mit jedem offenen Tab und
+    /// drückte erst den Dateibaum, dann Tab-Leiste und Seitenleisten-Kopf aus
+    /// dem sichtbaren Fenster. Die Invariante ist allgemein: Feste
+    /// Seitenleisten-Elemente (Kopf oben, „Datei öffnen…"-Knopf unten)
+    /// müssen auch mit VIELEN offenen Tabs im sichtbaren Fensterbereich
+    /// bleiben. Der Test öffnet ein Projekt, flutet das Fenster mit 40 Tabs
+    /// und prüft danach die tatsächliche Geometrie beider Marker.
+    private static func runTabFloodTest() {
+        testLabel = "tabflood"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-tabflood-\(UUID().uuidString)")
+        let project = base.appendingPathComponent("projekt")
+        do {
+            try fm.createDirectory(at: project, withIntermediateDirectories: true)
+            try "A\n".write(to: project.appendingPathComponent("eins.txt"),
+                            atomically: true, encoding: .utf8)
+        } catch {
+            finish(.environment, "Umgebungsproblem: (setup) Testprojekt nicht anlegbar: \(error.localizedDescription)")
+        }
+        ws.openProject(at: project)
+        pollTabFloodReady(ws, base: base, tick: 0)
+    }
+
+    private static func pollTabFloodReady(_ ws: Workspace, base: URL, tick: Int) {
+        guard let content = mainWindowForAXChecks()?.contentView,
+              markerViewExists(id: "sidebarProjectHeader", in: content),
+              markerViewExists(id: "sidebarOpenFileButton", in: content) else {
+            if tick >= 40 {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Seitenleiste nach 10 s nicht bereit")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                pollTabFloodReady(ws, base: base, tick: tick + 1)
+            }
+            return
+        }
+        // Fluten: 40 zusätzliche Tabs — deutlich mehr, als je in die
+        // Fensterhöhe passen würden.
+        for _ in 0..<40 { ws.openNewTab() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            verifyTabFloodGeometry(ws, base: base)
+        }
+    }
+
+    private static func verifyTabFloodGeometry(_ ws: Workspace, base: URL) {
+        defer { try? FileManager.default.removeItem(at: base) }
+        guard ws.tabs.count >= 40 else {
+            finish(false, "Nur \(ws.tabs.count) Tabs offen — Fluten fehlgeschlagen")
+        }
+        guard let window = mainWindowForAXChecks(),
+              let content = window.contentView,
+              let header = markerView(id: "sidebarProjectHeader", in: content),
+              let openButton = markerView(id: "sidebarOpenFileButton", in: content) else {
+            finish(false, "Marker nach dem Fluten verschwunden — Seitenleisten-Chrome "
+                + "wurde von den Tabs aus dem Layout gedrängt")
+        }
+        window.layoutIfNeeded()
+        // Die Marker sind 0-Punkt-Views im Zentrum ihres Elements; ihr
+        // Ursprung in Content-Koordinaten muss im sichtbaren Bereich liegen.
+        let bounds = content.bounds.insetBy(dx: -1, dy: -1)
+        let headerPoint = header.convert(NSPoint.zero, to: content)
+        let buttonPoint = openButton.convert(NSPoint.zero, to: content)
+        guard bounds.contains(headerPoint) else {
+            finish(false, "Seitenleisten-Kopf liegt außerhalb des Fensters "
+                + "(y=\(Int(headerPoint.y)) bei Höhe \(Int(content.bounds.height))) — "
+                + "wachsender Inhalt verdrängt das feste Chrome")
+        }
+        guard bounds.contains(buttonPoint) else {
+            finish(false, "„Datei öffnen…\u{201C}-Knopf liegt außerhalb des Fensters "
+                + "(y=\(Int(buttonPoint.y)) bei Höhe \(Int(content.bounds.height))) — "
+                + "wachsender Inhalt verdrängt das feste Chrome")
+        }
+        // Ersatzweg statt der Liste: Das Fenster-Menü muss pro Fenster ein
+        // Untermenü mit allen Tabs führen — hier also eines mit mindestens
+        // den 40 gefluteten Einträgen. Die Untermenüs füllen sich erst beim
+        // Öffnen über ihren `NSMenuDelegate`; der Test ruft denselben
+        // Delegate-Weg direkt (`update()` allein validiert nur bestehende
+        // Einträge und füllt NICHT — nachgemessen am 2026-09-01).
+        let tabSubmenuCount = NSApp.windowsMenu?.items
+            .compactMap { item -> Int? in
+                guard let submenu = item.submenu else { return nil }
+                submenu.delegate?.menuNeedsUpdate?(submenu)
+                return submenu.items.count
+            }
+            .max() ?? 0
+        guard tabSubmenuCount >= 40 else {
+            func dumpMenu(_ menu: NSMenu, depth: Int) -> String {
+                guard depth < 3 else { return "" }
+                return menu.items.map {
+                    "\($0.title.isEmpty ? "(leer)" : $0.title)"
+                        + ($0.submenu.map {
+                            " ▸\($0.items.count)[\(dumpMenu($0, depth: depth + 1))]"
+                        } ?? "")
+                }.joined(separator: " | ")
+            }
+            let dump = NSApp.mainMenu.map { dumpMenu($0, depth: 0) } ?? "kein Menü"
+            finish(false, "Tab-Untermenü im Fenster-Menü fehlt oder ist "
+                + "unvollständig (größtes Untermenü: \(tabSubmenuCount) Einträge, "
+                + "erwartet ≥ 40; Hauptmenü: \(dump))")
+        }
+        finish(true, "40 Tabs geflutet: Kopf (y=\(Int(headerPoint.y))) und "
+            + "„Datei öffnen…\u{201C}-Knopf (y=\(Int(buttonPoint.y))) bleiben im "
+            + "sichtbaren Bereich (Höhe \(Int(content.bounds.height))); "
+            + "Fenster-Menü führt das Tab-Untermenü mit \(tabSubmenuCount) Einträgen")
     }
 
     // MARK: - Selbsttests tool4d (Wunschpaket 2026-07c)

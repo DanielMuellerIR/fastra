@@ -1850,13 +1850,15 @@ struct EditorView: View {
         }
     }
 
-    /// Bisheriger Seitenleisten-Inhalt: Projekt-Dateibaum (falls geladen) plus
-    /// die „GEÖFFNET"-Liste der offenen Tabs.
+    /// Seitenleisten-Inhalt des Dateien-Tabs: der Projekt-Dateibaum (falls
+    /// geladen) plus der „Datei öffnen…"-Knopf unten. Die frühere
+    /// „GEÖFFNET"-Liste der offenen Tabs ist entfernt (Daniel 2026-09-01):
+    /// Sie wuchs als ungebremster `ForEach` mit jedem Tab weiter, verdrängte
+    /// erst den Dateibaum und drückte schließlich Tab-Leiste und Kopf aus dem
+    /// Fenster. Tabs erreichbar bleiben sie über die Tab-Leiste und die neuen
+    /// Tab-Untermenüs im „Fenster"-Menü.
     private var filesSidebar: some View {
         VStack(alignment: .leading, spacing: 1) {
-            // Projekt geladen → hierarchischer Dateibaum oben, er bekommt
-            // den flexiblen Platz; die „GEÖFFNET"-Liste rückt kompakt nach
-            // unten. Ohne Projekt bleibt die Seitenleiste wie bisher.
             if let projectURL = workspace.projectURL {
                 FileTreeSidebar(rootURL: projectURL)
                     .frame(maxHeight: .infinity)
@@ -1867,26 +1869,10 @@ struct EditorView: View {
                     // Projekt (der Wächter bekäme neue Dateien im neuen
                     // Projekt nie mit).
                     .id(projectURL)
-                Divider().opacity(0.3)
-            }
-
-            Text("GEÖFFNET")
-                .fastraFont(size: 10, weight: .semibold)
-                .tracking(0.6)
-                .foregroundColor(Theme.textSecondary)
-                .padding(.horizontal, 14)
-                .padding(.top, 14)
-                .padding(.bottom, 6)
-
-            ForEach(workspace.tabs) { tab in
-                FileRow(tab: tab, isActive: tab.id == workspace.activeTab?.id)
-                    .contentShape(Rectangle())
-                    .onTapGesture { workspace.selectTab(id: tab.id) }
-            }
-
-            if workspace.projectURL == nil {
+            } else {
                 Spacer()
             }
+            Divider().opacity(0.3)
 
             Button {
                 workspace.openFile()
@@ -1900,6 +1886,12 @@ struct EditorView: View {
             }
             .buttonStyle(.plain)
             .help("Datei oder Ordner öffnen (⌘O)")
+            // Für den `tabflood`-Selbsttest: Der Knopf ist das unterste feste
+            // Element der Seitenleiste — bleibt sein Marker im sichtbaren
+            // Fensterbereich, hat kein wachsender Inhalt das Layout gesprengt.
+            .background {
+                SelfTestMarker(id: "sidebarOpenFileButton").frame(width: 0, height: 0)
+            }
         }
     }
 }
@@ -1982,41 +1974,6 @@ private struct SidebarModePicker: View {
         changeCount == 1
             ? L10n.string("1 geänderte Datei")
             : L10n.format("%ld geänderte Dateien", changeCount)
-    }
-}
-
-private struct FileRow: View {
-    let tab: EditorTab
-    let isActive: Bool
-
-    var body: some View {
-        HStack(spacing: 6) {
-            // accentReadable statt accent: kleines Icon auf hellem Hintergrund
-            // braucht ausreichend Kontrast (~4,0:1 statt ~1,4:1 mit Goldgelb).
-            Image(systemName: "doc")
-                .foregroundColor(isActive ? Theme.accentReadable : Theme.textSecondary)
-                .fastraFont(size: 11)
-            Text(verbatim: tab.title)
-                .fastraFont(.small)
-                .foregroundColor(isActive ? Theme.textPrimary : Theme.textSecondary)
-                .lineLimit(1)
-            if tab.hasUnsavedChanges {
-                // Dirty-Punkt: accentReadable statt accent — kleines
-                // Zeichen auf hellem Grund braucht besseren Kontrast.
-                Text("•")
-                    .fastraFont(.small)
-                    .foregroundColor(Theme.accentReadable)
-            }
-            Spacer()
-            if tab.hits > 0 {
-                Text("\(tab.hits)")
-                    .fastraFont(size: 10, design: .monospaced)
-                    .foregroundColor(Theme.textSecondary)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 4)
-        .background(isActive ? Theme.surfaceRaised : Color.clear)
     }
 }
 

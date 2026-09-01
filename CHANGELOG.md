@@ -9,6 +9,29 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.116.0] — 2026-09-01
+
+### Behoben
+
+- **Viele offene Tabs sprengten das Seitenleisten-Layout.** Die
+  „GEÖFFNET“-Liste wuchs als ungebremste Liste mit jedem Tab weiter,
+  verdrängte erst den Dateibaum und drückte schließlich Tab-Leiste und
+  Fensterkopf aus dem sichtbaren Bereich. Die Liste ist ersatzlos entfernt;
+  der neue Fenster-Selbsttest `tabflood` prüft die Layout-Invariante mit
+  40 Tabs (feste Seitenleisten-Elemente bleiben sichtbar).
+- **Gleiche Fehlerklasse im Suchdialog vorsorglich behoben:** Die Liste
+  „Zuletzt verwendete Ordner“ wächst mit jedem hinzugefügten Ordner
+  unbegrenzt und hätte den fest bemessenen Dialog genauso gesprengt. Ab
+  acht Einträgen scrollt sie jetzt in fester Höhe.
+
+### Neu
+
+- **Das Fenster-Menü zeigt pro Dokumentfenster ein Untermenü mit allen
+  offenen Tabs.** Der aktive Tab trägt ein Häkchen, ungespeicherte den
+  Dirty-Punkt; ein Klick holt das Fenster nach vorn und wählt den Tab. Das
+  schließt die Lücke der entfernten Seitenleisten-Liste — besonders über
+  Fenstergrenzen hinweg.
+
 ## [v1.115.0] — 2026-09-01
 
 ### Geändert

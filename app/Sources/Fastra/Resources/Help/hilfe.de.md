@@ -1008,6 +1008,13 @@ sichtbaren Ausschnitt: Beim Zurückwechseln steht der Text wieder genau so da
 wie beim Verlassen. Ein gezielter Sprung — Suchtreffer oder ⌘J — hat dabei
 Vorrang und scrollt wie gewohnt zum Ziel.
 
+Das **Fenster-Menü** führt zusätzlich pro Dokumentfenster ein Untermenü mit
+allen offenen Tabs (der aktive trägt ein Häkchen, ungespeicherte den
+Dirty-Punkt). Ein Klick holt das Fenster nach vorn und wählt den Tab — der
+schnellste Weg zu einem Tab in einem anderen Fenster. Die frühere
+„GEÖFFNET“-Liste der Seitenleiste ist dafür entfallen: Sie wuchs mit jedem
+Tab weiter und verdrängte bei vielen Tabs den Dateibaum.
+
 Nach dem Öffnen oder Schließen eines Dokuments und bei jedem Tabwechsel scrollt
 die Tab-Leiste so, dass der aktive Tab vollständig sichtbar ist. Dazwischen
 bleibt eine von Hand gewählte horizontale Scrollposition unangetastet. Das
