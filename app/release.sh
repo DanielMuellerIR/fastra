@@ -250,6 +250,7 @@ fastra_detach_attached_rw_image() {
     # Das eigene Image ist nicht mehr unter dieser Gerätenummer erreichbar.
     # Den wiederverwendeten Namen keinesfalls an hdiutil detach weitergeben.
     ATTACHED_DEV=""
+    echo "FEHLER: Das gemerkte DMG-Gerät gehört nicht mehr zum eigenen RW-Image." >&2
     return 1
   fi
   # Beide Aushängeversuche fehlgeschlagen → sichtbar scheitern. Der Aufrufer
@@ -259,6 +260,7 @@ fastra_detach_attached_rw_image() {
   # zurückgebliebene Mount beim Abbruch weiter aufzuräumen versuchen.
   if ! hdiutil detach "$ATTACHED_DEV" -quiet \
     && ! hdiutil detach -force "$ATTACHED_DEV"; then
+    echo "FEHLER: Das eigene RW-Image konnte nicht ausgehängt werden. Prüfe offene Zugriffe und den Mount-Status." >&2
     return 1
   fi
   ATTACHED_DEV=""
@@ -470,7 +472,6 @@ sleep 2
 # löschen: Ab jetzt darf der EXIT-Trap kein Volume mehr anfassen — ein später
 # unter demselben Namen erscheinendes Volume gehört jemand anderem.
 if ! fastra_detach_attached_rw_image; then
-  echo "FEHLER: Das gemerkte DMG-Gerät gehört nicht mehr zum eigenen RW-Image." >&2
   exit 1
 fi
 hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -quiet -o "$DMG_PATH"

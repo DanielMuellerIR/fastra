@@ -28,6 +28,19 @@ private func writeTmpUTF8(_ content: String) throws -> URL {
     return url.canonicalFileURL
 }
 
+/// Thread-sicherer Zähler für die injizierte Hintergrund-Ladennaht. Der Test
+/// liest ihn auf Main, während `initialFileLoader` ihn im detached Task erhöht.
+private final class WorkspaceLoadCallCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int { lock.withLock { count } }
+
+    func increment() {
+        lock.withLock { count += 1 }
+    }
+}
+
 // MARK: - Tests: Normaler Ladevorgang
 
 @Test("loadFile: Platzhalter-Tab isLoading = true sofort nach dem Aufruf")
@@ -395,4 +408,139 @@ func wsLoad_expectedSnapshotReportsBusyLoadingTab() async throws {
 
     #expect(outcome == .busyLoading)
     ws.tabs[fileIndex].isLoading = false
+}
+
+// Befund Review 2026-09-01: Der erste Sprung in eine noch ungeöffnete
+// Funddatei legte einen Platzhalter an. Ein direkt folgender Treffer derselben
+// Datei bekam nur `.busyLoading`, entwertete aber zugleich die Acceptance des
+// ersten Reads; dessen Completion verwarf daraufhin den Platzhalter. Damit ging
+// gerade der neueste Treffer verloren. Der Read wird hier deterministisch
+// angehalten, sodass kein Scheduler-Rennen den Ablauf verdecken kann.
+@Test("Zwei schnelle Ordner-Treffer derselben neuen Datei teilen den Read und führen den neuesten Sprung aus")
+@MainActor
+func wsLoad_folderMatchCoalescesLatestRequestForSameFile() async throws {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let ws = Workspace(defaults: defaults)
+    let content = "eins TREFFER zwei TREFFER\n"
+    let url = try writeTmpUTF8(content)
+    defer { try? FileManager.default.removeItem(at: url) }
+    let loaded = try FileLoader.load(url: url)
+    let expected = try #require(loaded.diskSnapshot)
+    let matches = BufferSearch.find(
+        in: content,
+        options: SearchOptions(find: "TREFFER", replace: "", isRegex: false)
+    ).matches
+    #expect(matches.count == 2)
+
+    let started = DispatchSemaphore(value: 0)
+    let mayFinish = DispatchSemaphore(value: 0)
+    let calls = WorkspaceLoadCallCounter()
+    ws.initialFileLoader = { _ in
+        calls.increment()
+        started.signal()
+        mayFinish.wait()
+        return loaded
+    }
+
+    var firstOutcome: FileLoadOutcome?
+    let firstGeneration = ws.beginMatchJump()
+    ws.noteMatchNavigationTarget(index: 0, generation: firstGeneration)
+    ws.loadFolderMatchFile(
+        atCanonicalURL: url,
+        expectedDiskSnapshot: expected,
+        jumpGeneration: firstGeneration
+    ) { firstOutcome = $0 }
+    #expect(await waitUntil {
+        started.wait(timeout: .now()) == .success
+    }, "Der kontrollierte Dateiread muss begonnen haben")
+
+    var secondOutcome: FileLoadOutcome?
+    var secondPosted: Bool?
+    let secondGeneration = ws.beginMatchJump()
+    ws.noteMatchNavigationTarget(index: 1, generation: secondGeneration)
+    ws.loadFolderMatchFile(
+        atCanonicalURL: url,
+        expectedDiskSnapshot: expected,
+        jumpGeneration: secondGeneration
+    ) { outcome in
+        secondOutcome = outcome
+        guard outcome == .opened else { return }
+        secondPosted = NotificationCenter.default.postMatchJump(
+            matches[1], for: ws,
+            requiring: .file(url: url, snapshot: expected),
+            generation: secondGeneration
+        )
+    }
+
+    #expect(firstOutcome == .cancelled,
+            "Der ältere logische Auftrag muss sofort abgeschlossen werden")
+    #expect(calls.value == 1,
+            "Beide Treffer derselben Datei dürfen nur einen physischen Read starten")
+    mayFinish.signal()
+
+    #expect(await waitUntil { secondOutcome != nil })
+    #expect(secondOutcome == .opened)
+    #expect(secondPosted == true)
+    #expect(ws.pendingEditorJump?.range == matches[1].range,
+            "Nach dem gemeinsamen Read muss ausschließlich der neueste Treffer springen")
+    #expect(ws.tabs.filter { $0.url == url }.count == 1)
+}
+
+@Test("Ein neuer erfolgreicher Ordner-Sprung löscht den Hinweis des vorherigen Dirty-Tabs")
+@MainActor
+func wsLoad_successfulFolderMatchClearsPreviousUnsavedNotice() async throws {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let ws = Workspace(defaults: defaults)
+    let dirtyURL = try writeTmpUTF8("alter Suchstand\n")
+    let cleanURL = try writeTmpUTF8("anderer Treffer\n")
+    defer {
+        try? FileManager.default.removeItem(at: dirtyURL)
+        try? FileManager.default.removeItem(at: cleanURL)
+    }
+
+    var openedDirty: Bool?
+    ws.loadFile(at: dirtyURL) { openedDirty = $0 }
+    #expect(await waitUntil { openedDirty != nil })
+    #expect(openedDirty == true)
+    let dirtyIndex = try #require(ws.tabs.firstIndex(where: { $0.url == dirtyURL }))
+    let dirtySnapshot = try #require(ws.tabs[dirtyIndex].diskSnapshot)
+    ws.tabs[dirtyIndex].content += "ungesichert\n"
+    ws.tabs[dirtyIndex].isDirty = true
+
+    let dirtyGeneration = ws.beginMatchJump()
+    ws.loadFolderMatchFile(
+        atCanonicalURL: dirtyURL,
+        expectedDiskSnapshot: dirtySnapshot,
+        jumpGeneration: dirtyGeneration
+    ) { outcome in
+        if outcome != .opened {
+            ws.handleFolderMatchLoadDenial(outcome,
+                                           jumpGeneration: dirtyGeneration)
+        }
+    }
+    #expect(ws.folderNavigationNotice == L10n.string(
+        "Die Funddatei ist mit ungesicherten Änderungen geöffnet. Ohne Speichern schließen und erneut springen – oder speichern und danach erneut suchen."))
+
+    let cleanSnapshot = try FileSnapshot.readSnapshotOnly(from: cleanURL)
+    var cleanOutcome: FileLoadOutcome?
+    let cleanGeneration = ws.beginMatchJump()
+    ws.loadFolderMatchFile(
+        atCanonicalURL: cleanURL,
+        expectedDiskSnapshot: cleanSnapshot,
+        jumpGeneration: cleanGeneration
+    ) { outcome in
+        cleanOutcome = outcome
+        if outcome != .opened {
+            ws.handleFolderMatchLoadDenial(outcome,
+                                           jumpGeneration: cleanGeneration)
+        }
+    }
+
+    #expect(ws.folderNavigationNotice == nil,
+            "Schon der neue Versuch darf den alten Dirty-Hinweis nicht weiter anzeigen")
+    #expect(await waitUntil { cleanOutcome != nil })
+    #expect(cleanOutcome == .opened)
+    #expect(ws.folderNavigationNotice == nil)
 }

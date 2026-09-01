@@ -471,7 +471,7 @@
 "… und %ld weitere geänderte Zeilen — „Vorschau der Änderungen\" zeigt alle." = "… and %ld more changed lines—Preview Changes shows all of them.";
 "Treffer (%ld)" = "Matches (%ld)";
 "Die Datei hat sich seit der Suche geändert. Bitte erneut suchen." = "The file has changed since the search. Please search again.";
-"Die Funddatei ist mit ungesicherten Änderungen geöffnet. Tab zuerst speichern oder schließen, dann erneut springen." = "The matched file is open with unsaved changes. Save or close its tab first, then jump again.";
+"Die Funddatei ist mit ungesicherten Änderungen geöffnet. Ohne Speichern schließen und erneut springen – oder speichern und danach erneut suchen." = "The matched file is open with unsaved changes. Close it without saving, then jump again—or save it and search again.";
 "Trefferliste auf 10.000 gekappt — Suchbegriff verfeinern." = "Match list limited to 10,000—refine the search term.";
 "Trefferliste gekappt — „Alle ersetzen“ bleibt gesperrt, bis alle Treffer sichtbar sind." = "Match list limited—Replace All stays disabled until every match is visible.";
 "Aktiver Buffer" = "Active Document";

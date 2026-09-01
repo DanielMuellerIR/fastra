@@ -478,7 +478,7 @@ func folderMatchLoadDenialDistinguishesReasons() {
     // „erneut suchen"-Meldung, die den Konflikt gar nicht lösen würde.
     workspace.handleFolderMatchLoadDenial(.unsavedChanges, jumpGeneration: generation)
     #expect(workspace.folderNavigationNotice == L10n.string(
-        "Die Funddatei ist mit ungesicherten Änderungen geöffnet. Tab zuerst speichern oder schließen, dann erneut springen."))
+        "Die Funddatei ist mit ungesicherten Änderungen geöffnet. Ohne Speichern schließen und erneut springen – oder speichern und danach erneut suchen."))
 
     // Erst der echte Snapshot-Konflikt erklärt die Basis für veraltet.
     workspace.handleFolderMatchLoadDenial(.staleSnapshot, jumpGeneration: generation)

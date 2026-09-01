@@ -1106,6 +1106,23 @@ final class Workspace: ObservableObject {
     /// Aktuellste Lade-Generation pro Tab-UUID. Pattern analog zu
     /// `statsGeneration` in `recomputeDocumentStats`.
     private var loadGeneration: [UUID: Int] = [:]
+    /// Testnaht für das erste, nicht-flüchtige Laden einer Datei. Der
+    /// Produktionspfad bleibt `FileLoader.load`; Tests können den Read
+    /// kontrolliert anhalten und so zwei echte Folgeaufträge reproduzieren,
+    /// ohne auf Dateigröße oder Scheduler-Timing zu vertrauen.
+    var initialFileLoader: @Sendable (URL) throws -> FileLoader.LoadedFile = {
+        try FileLoader.load(url: $0)
+    }
+    /// Neuester logischer Ordner-Sprung, der auf den physischen Read dieser
+    /// Datei wartet. Zwei schnelle Treffer derselben anfangs ungeöffneten
+    /// Datei teilen sich dadurch EINEN Read; nur das jüngste Ziel wird nach
+    /// dessen Abschluss ausgeführt (Review 2026-09-01).
+    private struct PendingFolderMatchFileLoad {
+        let generation: Int
+        let expectedDiskSnapshot: FileSnapshot
+        let outcome: (FileLoadOutcome) -> Void
+    }
+    private var pendingFolderMatchFileLoads: [String: PendingFolderMatchFileLoad] = [:]
     /// Kooperative Abbruchsignale ausschließlich für flüchtige Dateivorschauen.
     /// Ein neuer Klick beendet den alten Read an der nächsten Abschnittsgrenze,
     /// statt mehrere große Dateien parallel bis zum Ende einzulesen.
@@ -3005,6 +3022,78 @@ final class Workspace: ObservableObject {
         }
     }
 
+    /// Lädt eine Ordner-Funddatei und bindet den physischen Read an den
+    /// NEUESTEN Sprung derselben URL. Der erste Sprung darf seinen laufenden
+    /// Platzhalter nicht mehr verwerfen, wenn unmittelbar danach ein zweiter
+    /// Treffer derselben Datei gewählt wird: Dessen Generation und Completion
+    /// ersetzen den alten Wartenden, während der Read weiterläuft.
+    func loadFolderMatchFile(atCanonicalURL url: URL,
+                             expectedDiskSnapshot: FileSnapshot,
+                             jumpGeneration: Int,
+                             outcome: @escaping (FileLoadOutcome) -> Void) {
+        // Ein Hinweis erklärt immer nur den LETZTEN Versuch. Ohne dieses
+        // zentrale Löschen blieb eine Dirty-Ablehnung auch nach einem
+        // erfolgreichen Sprung zu einer anderen Datei sichtbar.
+        folderNavigationNotice = nil
+        guard isCurrentMatchJump(jumpGeneration) else {
+            outcome(.cancelled)
+            return
+        }
+
+        let key = url.path
+        let request = PendingFolderMatchFileLoad(
+            generation: jumpGeneration,
+            expectedDiskSnapshot: expectedDiskSnapshot,
+            outcome: outcome
+        )
+        if let previous = pendingFolderMatchFileLoads.updateValue(request,
+                                                                   forKey: key) {
+            // Der ältere UI-Auftrag ist abgeschlossen, der physische Read
+            // bleibt bestehen. Seine Completion prüft beim Eintreffen den
+            // inzwischen aktualisierten Eintrag und bedient nur den neuesten.
+            previous.outcome(.cancelled)
+            return
+        }
+
+        loadFile(
+            atCanonicalURL: url,
+            expectedDiskSnapshot: expectedDiskSnapshot,
+            acceptance: FileLoadAcceptance { [weak self] in
+                guard let self,
+                      let latest = self.pendingFolderMatchFileLoads[key]
+                else { return false }
+                return self.isCurrentMatchJump(latest.generation)
+                    && latest.expectedDiskSnapshot == expectedDiskSnapshot
+            }
+        ) { [weak self] physicalOutcome in
+            guard let self,
+                  let latest = self.pendingFolderMatchFileLoads.removeValue(forKey: key)
+            else {
+                outcome(.cancelled)
+                return
+            }
+
+            // Stammt der neueste Auftrag bereits aus einer neuen Suche mit
+            // anderem Snapshot, konnte der alte Read ihn nicht erfüllen. Nach
+            // dem verworfenen Platzhalter startet derselbe logische Auftrag
+            // deshalb einmal frisch auf seiner eigenen Basis.
+            guard latest.expectedDiskSnapshot == expectedDiskSnapshot else {
+                self.loadFolderMatchFile(
+                    atCanonicalURL: url,
+                    expectedDiskSnapshot: latest.expectedDiskSnapshot,
+                    jumpGeneration: latest.generation,
+                    outcome: latest.outcome
+                )
+                return
+            }
+            guard self.isCurrentMatchJump(latest.generation) else {
+                latest.outcome(.cancelled)
+                return
+            }
+            latest.outcome(physicalOutcome)
+        }
+    }
+
     /// Lädt eine Datei asynchron in einen neuen Tab und kehrt sofort zurück.
     ///
     /// - Parameter url: Datei-URL; muss eine reguläre Datei sein.
@@ -3208,13 +3297,17 @@ final class Workspace: ObservableObject {
 
         // ── (4) Hintergrund-Task starten ──────────────────────────────────
         // [weak self]: Workspace darf verschwinden (z.B. Preview), ohne Leak.
+        let initialFileLoader = initialFileLoader
         Task.detached(priority: .userInitiated) { [weak self] in
             // I/O im Hintergrund — blockiert NICHT den Main-Thread.
             let loadResult = Result {
-                try FileLoader.load(
-                    url: url,
-                    isCancelled: { previewCancellation?.isCancelled == true }
-                )
+                if let previewCancellation {
+                    return try FileLoader.load(
+                        url: url,
+                        isCancelled: { previewCancellation.isCancelled }
+                    )
+                }
+                return try initialFileLoader(url)
             }
 
             // Zurück auf den Main-Thread für alle UI-/Model-Mutationen.
@@ -6770,7 +6863,7 @@ final class Workspace: ObservableObject {
     /// neue Suche würde diesen Konflikt nicht lösen (Review 2026-08-31).
     func folderMatchNavigationBlockedByUnsavedChanges() {
         folderNavigationNotice = L10n.string(
-            "Die Funddatei ist mit ungesicherten Änderungen geöffnet. Tab zuerst speichern oder schließen, dann erneut springen.")
+            "Die Funddatei ist mit ungesicherten Änderungen geöffnet. Ohne Speichern schließen und erneut springen – oder speichern und danach erneut suchen.")
     }
 
     /// Gemeinsame Reaktion der Treffer-Navigation (ContentView und

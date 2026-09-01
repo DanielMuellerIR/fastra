@@ -9,6 +9,22 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.113.19] — 2026-09-01
+
+### Behoben
+
+- **Schnelle Folge-Sprünge zu Treffern derselben noch ungeöffneten Datei
+  führen jetzt den neuesten Sprung aus.** Beide Aufträge teilen den laufenden
+  Dateiread, statt dass der zweite Sprung dessen Platzhalter entwertet und
+  anschließend selbst verloren geht.
+- **Hinweise zu ungesicherten Funddateien verschwinden beim nächsten
+  erfolgreichen Sprung und nennen die zwei wirksamen Abläufe.** Ohne Speichern
+  schließen erlaubt den erneuten Sprung; nach dem Speichern ist wegen des
+  geänderten Plattenstands eine neue Suche nötig.
+- **Der Release-Lauf unterscheidet einen Gerätewechsel von einem blockierten
+  eigenen DMG-Mount.** Beide Abbrüche nennen jetzt die tatsächliche Ursache,
+  statt jeden Detach-Fehler als fremd gewordene Geräteidentität zu melden.
+
 ## [v1.113.18] — 2026-08-31
 
 ### Behoben

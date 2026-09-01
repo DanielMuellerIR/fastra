@@ -92,8 +92,9 @@ nur abschnittsweise statt als vollständig navigierbaren Texteditor öffnet. Hat
 sich eine Funddatei seit dem Suchlauf geändert, aktiviert Fastra sie nicht:
 Die alte Trefferliste wird verworfen und ein Hinweis fordert zum erneuten
 Suchen auf. Ist die Funddatei dagegen mit ungesicherten Änderungen geöffnet,
-bleibt die Trefferliste stehen — ein Hinweis erklärt, dass ihr Tab zuerst
-gespeichert oder geschlossen werden muss.
+bleibt die Trefferliste stehen. Du kannst den Tab ohne Speichern schließen und
+erneut springen. Wenn du die Änderungen speicherst, gehört die Datei nicht mehr
+zur sichtbaren Trefferbasis; suche danach erneut.
 
 **Platzhalter (Wildcards):** Ohne RegEx-Modus steht `*` für beliebigen
 Text **innerhalb einer Zeile**, `**` auch **über Zeilengrenzen hinweg**.

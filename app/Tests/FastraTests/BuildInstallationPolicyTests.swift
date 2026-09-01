@@ -163,8 +163,8 @@ struct BuildInstallationPolicyTests {
                 "Eine wiedervergebene Gerätenummer darf nie ausgehängt werden")
     }
 
-    @Test("Doppelt fehlgeschlagenes Aushängen scheitert sichtbar und vergisst das Gerät nicht")
-    func releaseDetachReportsDoubleFailure() throws {
+    @Test("Release unterscheidet Gerätewechsel und fehlgeschlagenes Aushängen")
+    func releaseDetachReportsConcreteFailureReason() throws {
         // Fake-hdiutil: `info` bestätigt das eigene Image, aber BEIDE
         // Detach-Versuche (normal und -force) schlagen fehl. Vor der Korrektur
         // lieferte die Funktion trotzdem Status 0 und leerte ATTACHED_DEV —
@@ -175,12 +175,26 @@ struct BuildInstallationPolicyTests {
                 "Doppelter Detach-Fehler muss die Funktion ungleich null beenden")
         #expect(result.attachedDevice == "/dev/disk93",
                 "Nach dem Fehlschlag muss der EXIT-Trap das Gerät weiter kennen")
+        #expect(result.error.contains("konnte nicht ausgehängt werden"))
+        #expect(!result.error.contains("gehört nicht mehr"),
+                "Ein blockierter eigener Mount darf nicht als Gerätewechsel erscheinen")
+
+        // Andere Ursache: Die Gerätenummer gehört inzwischen zu einem
+        // fremden Image. Dann darf kein Detach stattfinden und der gemerkte
+        // Name muss vor dem EXIT-Trap verschwinden.
+        let reused = try runReleaseDetach(
+            detachSucceeds: true, imageBelongsToDevice: false)
+        #expect(reused.status != 0)
+        #expect(reused.attachedDevice.isEmpty)
+        #expect(reused.error.contains("gehört nicht mehr zum eigenen RW-Image"))
+        #expect(!reused.error.contains("konnte nicht ausgehängt werden"))
 
         // Gegenprobe: Ein erfolgreiches Aushängen liefert 0 und leert den
         // gemerkten Zustand wie bisher.
         let success = try runReleaseDetach(detachSucceeds: true)
         #expect(success.status == 0)
         #expect(success.attachedDevice.isEmpty)
+        #expect(success.error.isEmpty)
     }
 
     /// Führt die unveränderte `fastra_detach_attached_rw_image`-Funktion aus
@@ -188,8 +202,9 @@ struct BuildInstallationPolicyTests {
     /// gelingt oder fehlschlägt. Liefert Exit-Status der Funktion und den
     /// danach gemerkten `ATTACHED_DEV`.
     private func runReleaseDetach(
-        detachSucceeds: Bool
-    ) throws -> (status: Int32, attachedDevice: String) {
+        detachSucceeds: Bool,
+        imageBelongsToDevice: Bool = true
+    ) throws -> (status: Int32, attachedDevice: String, error: String) {
         let sandbox = FileManager.default.temporaryDirectory.appendingPathComponent(
             "fastra-release-detach-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: sandbox,
@@ -197,7 +212,9 @@ struct BuildInstallationPolicyTests {
         defer { try? FileManager.default.removeItem(at: sandbox) }
 
         let fakeHdiutil = sandbox.appendingPathComponent("hdiutil")
-        let reportedImage = sandbox.appendingPathComponent("fastra_rw.dmg").path
+        let reportedImage = sandbox.appendingPathComponent(
+            imageBelongsToDevice ? "fastra_rw.dmg" : "foreign.dmg").path
+        let expectedImage = sandbox.appendingPathComponent("fastra_rw.dmg").path
         try """
         #!/bin/bash
         if [ "$1" = "info" ]; then
@@ -227,7 +244,7 @@ struct BuildInstallationPolicyTests {
         set -u
         eval "$(/usr/bin/sed -n '/^fastra_attached_device_belongs_to_rw_image()/,/^}/p' "$1")"
         eval "$(/usr/bin/sed -n '/^fastra_detach_attached_rw_image()/,/^}/p' "$1")"
-        RW_DMG="\(reportedImage)"
+        RW_DMG="\(expectedImage)"
         ATTACHED_DEV="/dev/disk93"
         if fastra_detach_attached_rw_image; then rc=0; else rc=$?; fi
         printf '%s\\n%s\\n' "$rc" "$ATTACHED_DEV" > "\(resultFile.path)"
@@ -244,15 +261,22 @@ struct BuildInstallationPolicyTests {
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = "\(sandbox.path):/usr/bin:/bin"
         process.environment = environment
+        let errorPipe = Pipe()
+        process.standardError = errorPipe
         try process.run()
         process.waitUntilExit()
         #expect(process.terminationStatus == 0)
+        let error = String(
+            data: errorPipe.fileHandleForReading.readDataToEndOfFile(),
+            encoding: .utf8
+        ) ?? ""
 
         let lines = (try String(contentsOf: resultFile, encoding: .utf8))
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)
         return (Int32(lines.first ?? "") ?? -1,
-                lines.count > 1 ? lines[1] : "")
+                lines.count > 1 ? lines[1] : "",
+                error)
     }
 
     /// Führt die unveränderte `cleanup_release`-Funktion aus release.sh in

@@ -1389,12 +1389,10 @@ struct FloatingSearchDialog: View {
             // (Race vermieden: postMatchJump braucht den fertigen Inhalt).
             workspace.noteMatchNavigationTarget(index: nextIndex,
                                                 generation: jumpGeneration)
-            workspace.loadFile(
+            workspace.loadFolderMatchFile(
                 atCanonicalURL: url,
                 expectedDiskSnapshot: snapshot,
-                acceptance: FileLoadAcceptance {
-                    workspace.isCurrentMatchJump(jumpGeneration)
-                }
+                jumpGeneration: jumpGeneration
             ) { outcome in
                 guard outcome.isOpened else {
                     workspace.resolveMatchNavigationTarget(generation: jumpGeneration)

@@ -325,12 +325,10 @@ struct ContentView: View {
             // Ereignis keinen veralteten Ordner-Sprung freigibt.
             workspace.noteMatchNavigationTarget(index: nextIndex,
                                                 generation: jumpGeneration)
-            workspace.loadFile(
+            workspace.loadFolderMatchFile(
                 atCanonicalURL: url,
                 expectedDiskSnapshot: snapshot,
-                acceptance: FileLoadAcceptance {
-                    workspace.isCurrentMatchJump(jumpGeneration)
-                }
+                jumpGeneration: jumpGeneration
             ) { outcome in
                 guard outcome.isOpened else {
                     workspace.resolveMatchNavigationTarget(generation: jumpGeneration)

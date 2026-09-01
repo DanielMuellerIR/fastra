@@ -88,7 +88,9 @@ open them only in sections rather than as a fully navigable text editor. If a
 result file changed after the search, Fastra does not activate it: the old
 result list is discarded and a notice asks you to search again. If the result
 file is open with unsaved edits instead, the result list stays — a notice
-explains that its tab must be saved or closed first.
+explains the two valid paths. Close the tab without saving, then jump again. If
+you save the edits, the file no longer matches the visible result basis; search
+again afterward.
 
 **Wildcards:** With regex mode off, `*` matches any text **within a
 line**, `**` also matches **across line breaks**. Every wildcard
