@@ -1797,12 +1797,27 @@ struct EditorView: View {
         availableModes.contains(workspace.sidebarMode) ? workspace.sidebarMode : .files
     }
 
+    /// Anzahl der Dateien mit Änderungen (Index und Working Tree zusammen,
+    /// jede Datei nur einmal gezählt). Sie erscheint als Badge direkt auf dem
+    /// Änderungen-Tab, damit man sie auch vom Dateien- oder Graph-Tab aus
+    /// sieht (Daniel-Wunsch 2026-09-01).
+    private var changedFileCount: Int {
+        guard let status = workspace.gitStatus else { return 0 }
+        // `rawPath` statt Anzeigename: kollisionsfrei auch bei Umbenennungen
+        // und Nicht-UTF-8-Pfaden. Eine Datei, die sowohl bereitgestellte als
+        // auch offene Änderungen hat, zählt nur einmal.
+        var paths = Set(status.stagedChanges.map(\.rawPath))
+        paths.formUnion(status.unstagedChanges.map(\.rawPath))
+        return paths.count
+    }
+
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Umschalter nur zeigen, wenn es überhaupt etwas umzuschalten gibt.
             if availableModes.count > 1 {
                 SidebarModePicker(modes: availableModes,
-                                  selection: $workspace.sidebarMode)
+                                  selection: $workspace.sidebarMode,
+                                  changeCount: changedFileCount)
                 Divider().opacity(0.3)
             }
 
@@ -1893,6 +1908,9 @@ struct EditorView: View {
 private struct SidebarModePicker: View {
     let modes: [SidebarMode]
     @Binding var selection: SidebarMode
+    /// Anzahl der Dateien mit Änderungen — als Badge auf dem Änderungen-Tab,
+    /// damit sie von jedem Seitenleisten-Tab aus sichtbar bleibt.
+    let changeCount: Int
 
     var body: some View {
         HStack(spacing: 2) {
@@ -1915,14 +1933,55 @@ private struct SidebarModePicker: View {
                             RoundedRectangle(cornerRadius: 5, style: .continuous)
                                 .fill(selection == mode ? Theme.surfaceRaised : Color.clear)
                         )
+                        .overlay(alignment: .topTrailing) {
+                            // Zähler-Badge nur auf dem Änderungen-Tab und nur,
+                            // wenn es Änderungen gibt. Gestaltung wie die
+                            // frühere Kapsel im Abschnittskopf.
+                            if mode == .changes, changeCount > 0 {
+                                Text("\(changeCount)")
+                                    .fastraFont(size: 8, weight: .semibold,
+                                                design: .monospaced)
+                                    .foregroundColor(Theme.textSecondary)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .background(Capsule().fill(Theme.surfaceSand))
+                                    // Die Kapsel behält ihre Idealbreite,
+                                    // statt bei dreistelligen Zahlen zu einem
+                                    // Strich gequetscht zu werden.
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .padding(.top, 1)
+                                    .padding(.trailing, 3)
+                                    // Die Badge ist reine Anzeige — der Klick
+                                    // gehört weiterhin dem ganzen Tab-Knopf.
+                                    .allowsHitTesting(false)
+                                    // Macht die angezeigte Zahl für Fenster-
+                                    // Selbsttests beobachtbar (gitstickyheader).
+                                    .background {
+                                        SelfTestMarker(id: "sidebarChangesBadge-\(changeCount)")
+                                    }
+                            }
+                        }
                 }
                 .buttonStyle(.plain)
-                .help(L10n.string(mode.rawValue))
+                .help(mode == .changes && changeCount > 0
+                      ? "\(L10n.string(mode.rawValue)) — \(badgeDescription)"
+                      : L10n.string(mode.rawValue))
                 .accessibilityLabel(Text(L10n.string(mode.rawValue)))
+                .accessibilityValue(mode == .changes && changeCount > 0
+                                    ? Text(badgeDescription)
+                                    : Text(verbatim: ""))
             }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
+    }
+
+    /// Lesbare Beschreibung der Badge-Zahl für Tooltip und VoiceOver,
+    /// mit korrektem Singular („1 geänderte Datei“).
+    private var badgeDescription: String {
+        changeCount == 1
+            ? L10n.string("1 geänderte Datei")
+            : L10n.format("%ld geänderte Dateien", changeCount)
     }
 }
 

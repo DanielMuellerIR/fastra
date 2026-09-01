@@ -111,7 +111,7 @@ struct GitChangesView: View {
                                 changeRows(staged, section: .staged,
                                            expandedFolders: $expandedStagedFolders)
                             } header: {
-                                sectionHeader("BEREITGESTELLT", count: staged.count,
+                                sectionHeader("BEREITGESTELLT",
                                               markerID: "gitSectionHeader-staged",
                                               actions: [layoutAction,
                                     HeaderAction(icon: "minus",
@@ -130,7 +130,7 @@ struct GitChangesView: View {
                                 // dauerhaft sichtbar: Gesamt-Diff, alles
                                 // verwerfen, alles bereitstellen
                                 // (Daniel-Wunsch 2026-07-30).
-                                sectionHeader("ÄNDERUNGEN", count: unstaged.count,
+                                sectionHeader("ÄNDERUNGEN",
                                               markerID: "gitSectionHeader-unstaged",
                                               actions: unstagedHeaderActions)
                             }
@@ -484,10 +484,14 @@ struct GitChangesView: View {
         }
     }
 
-    /// Abschnitts-Kopf mit Titel, Anzahl-Badge und Sammel-Aktionen rechts.
+    /// Abschnitts-Kopf mit Titel und Sammel-Aktionen rechts. Die Anzahl der
+    /// geänderten Dateien steht seit 1.114.0 nicht mehr hier, sondern als
+    /// Badge auf dem Änderungen-Tab der Seitenleiste — dort ist sie auch
+    /// sichtbar, wenn gerade der Dateien- oder Graph-Tab offen ist
+    /// (Daniel-Wunsch 2026-09-01).
     /// Er bleibt beim Scrollen oben stehen und braucht deshalb einen deckenden
     /// Hintergrund — sonst schienen die durchlaufenden Dateizeilen hindurch.
-    private func sectionHeader(_ title: String, count: Int,
+    private func sectionHeader(_ title: String,
                                markerID: String,
                                actions: [HeaderAction]) -> some View {
         HStack(spacing: 6) {
@@ -502,16 +506,6 @@ struct GitChangesView: View {
                 // Idealbreite und schnitt stattdessen den letzten Knopf ab.
                 .truncationMode(.tail)
                 .layoutPriority(-1)
-            Text("\(count)")
-                .fastraFont(size: 9, weight: .semibold, design: .monospaced)
-                .foregroundColor(Theme.textSecondary)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1)
-                .background(Capsule().fill(Theme.surfaceSand))
-                // Seit dem dritten Knopf im Kopf ist der Platz knapp: Ohne
-                // eigene Idealbreite quetschte SwiftUI zuerst diese Zahl —
-                // bei 60 Änderungen war sie nur noch ein Strich.
-                .fixedSize(horizontal: true, vertical: false)
             Spacer(minLength: 0)
             // `enumerated`, weil die Aktionen keine eigene Identität brauchen:
             // die Liste ist klein, konstant und pro Abschnitt fest verdrahtet.

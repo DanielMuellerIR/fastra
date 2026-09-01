@@ -15647,10 +15647,14 @@ enum SelfTest {
               let content = window.contentView,
               let header = markerView(id: "gitSectionHeader-unstaged", in: content),
               let discard = markerView(id: "gitHeaderDiscardAll", in: content),
+              // Seit 1.114.0 zeigt der Änderungen-Tab die Anzahl geänderter
+              // Dateien als Badge — bei genau 60 geänderten Dateien muss dort
+              // „60" stehen (der Marker trägt die angezeigte Zahl im Namen).
+              markerView(id: "sidebarChangesBadge-60", in: content) != nil,
               (ws.gitStatus?.unstagedChanges.count ?? 0) >= 60 else {
             if tick >= 120 {
                 try? FileManager.default.removeItem(at: base)
-                finish(false, "Abschnittskopf oder Knopf fehlt "
+                finish(false, "Abschnittskopf, Knopf oder Tab-Badge fehlt "
                     + "(Änderungen: \(ws.gitStatus?.unstagedChanges.count ?? 0))")
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {

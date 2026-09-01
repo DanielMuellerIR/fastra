@@ -851,7 +851,10 @@ jeder Liste stehen beim Zurückwechseln wieder so da wie vorher.
 ## Git
 
 Ist das Projekt ein Git-Repository (und `git` installiert), zeigt die
-Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**:
+Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**. Der
+Änderungen-Tab trägt eine kleine Zahl: die Anzahl der Dateien mit Änderungen
+(jede Datei einmal gezählt, bereitgestellt oder nicht). Sie ist damit auch
+sichtbar, während der Dateien- oder Graph-Tab offen ist. Im Einzelnen:
 
 - Branch-Zeile mit Branch-Wechsel, Fetch und eigenem Ahead/Behind-Stand für
   jeden Remote. Im Graph unterscheiden Form und Farbe lokale Branches von

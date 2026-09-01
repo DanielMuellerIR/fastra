@@ -1204,6 +1204,8 @@
 "Filter leeren (Escape)" = "Clear filter (Escape)";
 "Filter leeren" = "Clear filter";
 "%ld von %ld Dateien" = "%ld of %ld files";
+"1 geänderte Datei" = "1 changed file";
+"%ld geänderte Dateien" = "%ld changed files";
 "%ld von %ld Dateien — nur die ersten %ld geprüft" = "%ld of %ld files — only the first %ld checked";
 "Keine Dateinamen passen zu „%@“." = "No file names match “%@”.";
 "Im Inhalt suchen…" = "Search in contents…";

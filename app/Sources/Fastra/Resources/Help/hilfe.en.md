@@ -803,7 +803,10 @@ scroll position are all back in place when you switch back.
 ## Git
 
 If the project is a Git repository (and `git` is installed), the sidebar
-additionally shows the **Changes** and **Graph** tabs:
+additionally shows the **Changes** and **Graph** tabs. The Changes tab carries
+a small number: the count of files with changes (each file counted once,
+staged or not). That keeps it visible even while the Files or Graph tab is
+open. In detail:
 
 - Branch row with branch switching, fetch, and separate ahead/behind counts for
   every remote. In the graph, shape and colour distinguish local branches from

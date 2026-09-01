@@ -9,6 +9,17 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.114.0] — 2026-09-01
+
+### Geändert
+
+- **Die Anzahl geänderter Dateien steht jetzt als Badge direkt auf dem
+  Änderungen-Tab der Seitenleiste.** So ist sie auch sichtbar, während der
+  Dateien- oder Graph-Tab offen ist. Die Zahl zählt jede Datei einmal, egal ob
+  ihre Änderung bereitgestellt ist oder nicht; Tooltip und VoiceOver nennen sie
+  ausgeschrieben. Die bisherigen Zähler-Kapseln in den Abschnittsköpfen
+  „BEREITGESTELLT“ und „ÄNDERUNGEN“ entfallen dafür.
+
 ## [v1.113.19] — 2026-09-01
 
 ### Behoben
