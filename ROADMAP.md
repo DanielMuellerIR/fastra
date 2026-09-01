@@ -117,19 +117,6 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Kleine offene Ideen
 
-- **Layout-Invarianten in den Soak-Test übernehmen (Befund 2026-09-01):**
-  Die „GEÖFFNET“-Liste sprengte mit vielen Tabs das Seitenleisten-Layout,
-  und keiner der über 80 Selbsttests bemerkte es — sie bauen kleine
-  Miniwelten mit wenigen Tabs, und Marker-Prüfungen belegen nur Existenz im
-  View-Baum, nicht sichtbare Geometrie. Der neue `tabflood`-Selbsttest
-  prüft die Invariante „festes Seitenleisten-Chrome bleibt im sichtbaren
-  Fensterbereich“ jetzt gezielt mit 40 Tabs. Offen: dieselbe geometrische
-  Invariante (Kopf, Tab-Leiste, unterer Knopf sichtbar) als
-  Nach-jeder-Aktion-Prüfung in `app/soak-test.sh` aufnehmen, damit auch
-  Kombinationen jenseits fester Testszenarien sie messen — plus eine kurze
-  Durchsicht aller Seitenleisten-/Fußzeilen-`ForEach`s darauf, dass
-  unbegrenzt wachsende Inhalte immer in einer ScrollView liegen.
-
 - **Live-Ordnersuche unter drei Zeichen sichtbarer machen (Tester-Feedback
   2026-08-28):** Der Hinweis „Mindestens 3 Zeichen … — oder ‚Suchen‘ klicken“
   wurde im Test überlesen; die Testerin hielt kurze Suchbegriffe für nicht

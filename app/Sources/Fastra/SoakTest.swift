@@ -136,6 +136,51 @@ enum SoakTest {
         checkDirtyFlagMatchesDisk()
         checkPreviewBelongsToItsWindow()
         checkSelectionsWithinText()
+        checkFixedChromeVisible()
+    }
+
+    /// (10) Wachsender Inhalt darf das feste Seitenleisten-Chrome nicht aus
+    /// dem sichtbaren Fensterbereich drängen. Befund 2026-09-01: Die frühere
+    /// „GEÖFFNET"-Liste schob mit jedem offenen Tab erst den Dateibaum, dann
+    /// Tab-Leiste und Fensterkopf aus dem Fenster — und keine
+    /// Existenzprüfung bemerkte es, weil verdrängte Views im View-Baum
+    /// weiterleben. Geprüft wird deshalb die tatsächliche Geometrie: Liegt
+    /// ein vorhandener Chrome-Marker außerhalb des Content-Bereichs, ist das
+    /// ein Befund. Fehlt er (Seitenleiste zu, kein Projekt), gilt die
+    /// Invariante als unberührt. Der gezielte Einzelfall läuft zusätzlich im
+    /// `tabflood`-Selbsttest mit 40 gefluteten Tabs.
+    private static func checkFixedChromeVisible() {
+        for window in documentWindows() {
+            guard let content = window.contentView else { continue }
+            for markerID in ["sidebarProjectHeader", "sidebarOpenFileButton"] {
+                guard let marker = chromeMarkerView(id: markerID, in: content) else {
+                    continue
+                }
+                // Die Marker sind 0-Punkt-Views im Zentrum ihres Elements;
+                // ihr Ursprung in Content-Koordinaten muss im sichtbaren
+                // Bereich liegen.
+                let point = marker.convert(NSPoint.zero, to: content)
+                let bounds = content.bounds.insetBy(dx: -1, dy: -1)
+                if !bounds.contains(point) {
+                    record("Festes Seitenleisten-Chrome bleibt sichtbar",
+                           "\(window.title): Marker \(markerID) liegt bei "
+                           + "(\(Int(point.x)), \(Int(point.y))) außerhalb des "
+                           + "Content-Bereichs \(Int(content.bounds.width))×"
+                           + "\(Int(content.bounds.height)) — wachsender Inhalt "
+                           + "verdrängt das feste Chrome")
+                }
+            }
+        }
+    }
+
+    /// Sucht eine `SelfTestMarker`-NSView per Accessibility-Identifier —
+    /// dieselbe Mechanik wie in den Fenster-Selbsttests.
+    private static func chromeMarkerView(id: String, in view: NSView) -> NSView? {
+        if view.accessibilityIdentifier() == id { return view }
+        for subview in view.subviews {
+            if let found = chromeMarkerView(id: id, in: subview) { return found }
+        }
+        return nil
     }
 
     /// (9) Die Auswahl eines Editors liegt immer innerhalb seines Textes.
