@@ -229,8 +229,70 @@ private extension TabBarView {
             }
             .buttonStyle(.plain)
             .help("Neuer Tab (⌘T)")
-            .padding(.trailing, 8)
+
+            tabCountMenu
+                .padding(.trailing, 8)
         }
+    }
+
+    /// Tab-Übersicht neben der Leiste (Daniel-Wunsch 2026-09-01): Die Kapsel
+    /// zeigt die Anzahl der offenen Tabs DIESES Fensters; ein Klick öffnet
+    /// ein Menü mit allen Tabs zum direkten Springen. Nützlich, sobald die
+    /// scrollende Leiste nicht mehr alle Tabs gleichzeitig zeigt.
+    private var tabCountMenu: some View {
+        Menu {
+            ForEach(workspace.tabs) { tab in
+                Button {
+                    workspace.selectTab(id: tab.id)
+                } label: {
+                    // Gleiche Beschriftung wie die Tab-Untermenüs im
+                    // Fenster-Menü: Häkchen am aktiven Tab, Dirty-Punkt an
+                    // ungesicherten.
+                    if tab.id == workspace.activeTabID {
+                        Label(WindowTabsMenuModel.rowTitle(
+                            title: tab.title,
+                            hasUnsavedChanges: tab.hasUnsavedChanges
+                        ), systemImage: "checkmark")
+                    } else {
+                        Text(WindowTabsMenuModel.rowTitle(
+                            title: tab.title,
+                            hasUnsavedChanges: tab.hasUnsavedChanges
+                        ))
+                    }
+                }
+            }
+        } label: {
+            Text("\(workspace.tabs.count)")
+                .fastraFont(size: 10, weight: .semibold, design: .monospaced)
+                .foregroundColor(Theme.textSecondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Theme.surfaceSand))
+                // Idealbreite halten, damit dreistellige Zahlen nicht zu
+                // einem Strich gequetscht werden (gleiche Falle wie bei der
+                // Änderungen-Badge der Seitenleiste).
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(tabCountDescription)
+        .accessibilityLabel(tabCountDescription)
+        .accessibilityHint("Öffnet ein Menü mit allen Tabs dieses Fensters zum direkten Wechseln.")
+        // Macht die angezeigte Zahl für Fenster-Selbsttests beobachtbar
+        // (tabflood prüft nach dem Fluten den Stand „41").
+        .background {
+            SelfTestMarker(id: "tabCountButton-\(workspace.tabs.count)")
+                .frame(width: 0, height: 0)
+        }
+    }
+
+    /// Lesbare Beschreibung für Tooltip und VoiceOver, mit korrektem
+    /// Singular („1 offener Tab").
+    private var tabCountDescription: String {
+        workspace.tabs.count == 1
+            ? L10n.string("1 offener Tab — zum Tab springen")
+            : L10n.format("%ld offene Tabs — zum Tab springen", workspace.tabs.count)
     }
 
     /// Nur ein echter Dokumentwechsel beziehungsweise eine geänderte

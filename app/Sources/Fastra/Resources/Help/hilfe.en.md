@@ -950,7 +950,10 @@ Switching tabs keeps each tab's insertion point **and** its visible section:
 switching back shows the text exactly where you left it. A deliberate jump — a
 search hit or ⌘J — takes precedence and scrolls to the target as usual.
 
-The **Window menu** additionally carries one submenu per document window with
+To the right of the tab bar, a **counter button** shows how many tabs the
+window has open; a click opens a menu with all tabs for jumping directly —
+useful once the scrolling bar no longer shows all of them at once. The
+**Window menu** additionally carries one submenu per document window with
 all of its open tabs (the active one shows a checkmark, unsaved ones the dirty
 dot). A click brings the window to the front and selects the tab — the
 quickest way to a tab in another window. The former “OPEN” list in the sidebar

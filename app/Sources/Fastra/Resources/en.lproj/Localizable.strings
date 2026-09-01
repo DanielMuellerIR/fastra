@@ -3,6 +3,9 @@
 "(kein Verlauf)" = "(no history)";
 "(keine)" = "(none)";
 "(keine Tabs)" = "(no tabs)";
+"1 offener Tab — zum Tab springen" = "1 open tab — jump to a tab";
+"%ld offene Tabs — zum Tab springen" = "%ld open tabs — jump to a tab";
+"Öffnet ein Menü mit allen Tabs dieses Fensters zum direkten Wechseln." = "Opens a menu with all tabs of this window for switching directly.";
 "Abbrechen" = "Cancel";
 "Aktives Datei-Set löschen" = "Delete active file set";
 "Aktuelle Änderungen in den letzten Commit aufnehmen, Botschaft bleibt (git commit --amend --no-edit)." = "Add current changes to the last commit while keeping its message (git commit --amend --no-edit).";

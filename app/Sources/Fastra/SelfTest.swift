@@ -13705,6 +13705,13 @@ enum SelfTest {
                 return submenu.items.count
             }
             .max() ?? 0
+        // Der Tab-Zähler-Knopf neben der Tab-Leiste muss den gefluteten
+        // Stand zeigen (40 neue Tabs + der Start-Tab = 41; der Marker trägt
+        // die angezeigte Zahl im Namen).
+        guard markerView(id: "tabCountButton-\(ws.tabs.count)", in: content) != nil else {
+            finish(false, "Tab-Zähler-Knopf fehlt oder zeigt nicht "
+                + "\(ws.tabs.count) Tabs")
+        }
         guard tabSubmenuCount >= 40 else {
             func dumpMenu(_ menu: NSMenu, depth: Int) -> String {
                 guard depth < 3 else { return "" }

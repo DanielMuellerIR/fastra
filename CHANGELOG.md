@@ -9,6 +9,15 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.117.0] — 2026-09-01
+
+### Neu
+
+- **Ein Zähler-Knopf neben der Tab-Leiste zeigt die Anzahl der offenen Tabs
+  des Fensters.** Ein Klick öffnet ein Menü mit allen Tabs (aktiver mit
+  Häkchen, ungespeicherte mit Dirty-Punkt) zum direkten Springen — nützlich,
+  sobald die scrollende Leiste nicht mehr alle Tabs gleichzeitig zeigt.
+
 ## [v1.116.0] — 2026-09-01
 
 ### Behoben
