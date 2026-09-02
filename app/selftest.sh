@@ -82,6 +82,16 @@ FOCUS_REQUIRED_TESTS=(cmdw completion4d)
 # bedienen. Der Runner sperrt für sie auch produktive Aktivierungshelfer,
 # damit sie die gerade benutzte App nicht verdrängen.
 BACKGROUND_ACTIVATION_BLOCKED_TESTS=(newwindow welcomenew projectinput help aboutshot)
+# Weitere Namen ohne App-Aktivierung kann der Aufrufer per Umgebungsvariable
+# nachreichen, etwa für einen Lauf neben einem arbeitenden Nutzer:
+#   FASTRA_SELFTEST_NO_ACTIVATION="tabflood sessionrestore" ./selftest.sh tabflood
+# Gilt nur für direkt gestartete Tests; `FOCUS_REQUIRED_TESTS` brauchen die
+# Aktivierung und ignorieren die Liste. Ein Test, der ohne Aktivierung
+# nicht auskommt, meldet dann einen Umgebungsfehler statt eines Erfolgs.
+if [[ -n "${FASTRA_SELFTEST_NO_ACTIVATION:-}" ]]; then
+    read -r -a extra_no_activation_tests <<< "$FASTRA_SELFTEST_NO_ACTIVATION"
+    BACKGROUND_ACTIVATION_BLOCKED_TESTS+=("${extra_no_activation_tests[@]}")
+fi
 # Diese Tests starten das konfigurierte App-Bundle über LaunchServices. Für sie
 # reicht ein vorhandenes separates Binary nicht: Der Bundle-Pfad muss ebenfalls
 # auf genau diesen Teststand zeigen.

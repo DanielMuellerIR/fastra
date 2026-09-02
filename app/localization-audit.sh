@@ -7,6 +7,12 @@ cd "$(dirname "$0")"
 tmp="$(mktemp -d /tmp/fastra-localization.XXXXXX)"
 trap 'rm -rf "$tmp"' EXIT
 
+# Fehlt ripgrep im PATH (nicht jeder Mac hat es installiert), das im Repo
+# mitgelieferte Binary nehmen — dasselbe, das die App selbst ausliefert.
+if ! command -v rg >/dev/null 2>&1; then
+  path=("$PWD/Sources/Fastra/Resources/ripgrep" $path)
+fi
+
 sources=("${(@f)$(rg --files Sources/Fastra -g '*.swift')}")
 xcrun xcstringstool extract --SwiftUI --legacy-localizable-strings \
   --modern-localizable-strings --output-format xcstrings \
