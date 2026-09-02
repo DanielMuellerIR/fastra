@@ -901,13 +901,16 @@ sichtbar, während der Dateien- oder Graph-Tab offen ist. Im Einzelnen:
   zwischen der kompakten flachen Liste und einem aufklappbaren Baum um. Der
   Baum verwendet dieselben Ordner-Symbole und Aufklapp-Henkel wie der
   Dateien-Reiter. Die Wahl bleibt für den nächsten Start erhalten.
-- **Dateien schnell ansehen:** Einfachklick öffnet einen kursiv beschrifteten
-  Vorschau-Tab; der nächste Einfachklick ersetzt ihn. Doppelklick macht den Tab
-  dauerhaft, ebenso die erste Texteingabe. Gelöschte Dateien sind in der Liste
-  durchgestrichen. Ein Klick öffnet ihre letzte Git-Version in einem
-  schreibgeschützten Editor; roter Tabtitel und Schloss zeigen den Zustand,
-  ein Schreibversuch erklärt ihn direkt an der Einfügemarke. Der Diff bleibt
-  über „Änderungen anzeigen (Diff)“ im Kontextmenü erreichbar.
+- **Änderungen schnell durchsehen:** Einfachklick zeigt den Diff der Zeile in
+  einem kursiv beschrifteten Vorschau-Tab; der nächste Einfachklick ersetzt
+  ihn. Doppelklick öffnet die Datei selbst als dauerhaften Tab und nimmt dabei
+  den Platz der Diff-Vorschau ein. Die erste Texteingabe macht einen
+  Vorschau-Tab ebenfalls dauerhaft. „Datei öffnen“ und „Änderungen anzeigen
+  (Diff)“ im Kontextmenü öffnen jeweils einen dauerhaften Tab. Gelöschte
+  Dateien sind in der Liste durchgestrichen; ein Doppelklick öffnet ihre letzte
+  Git-Version in einem schreibgeschützten Editor. Roter Tabtitel und Schloss
+  zeigen den Zustand, ein Schreibversuch erklärt ihn direkt an der
+  Einfügemarke.
 - **Sammel-Knöpfe im Abschnittskopf „ÄNDERUNGEN“:** Gesamt-Diff aller
   offenen Änderungen in der zweispaltigen Ansicht öffnen, alle Änderungen
   verwerfen, alles bereitstellen. Im Kopf „BEREITGESTELLT“ steht der Knopf,

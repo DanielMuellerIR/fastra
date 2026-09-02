@@ -716,7 +716,7 @@ private struct GitChangeRow: View {
         .help(isDirectorySummary
               ? L10n.string("Git fasst diesen unversionierten Ordner zusammen; Datei-Vorschau ist nicht verfügbar.")
               : change.isPathActionable
-              ? L10n.format("Einfachklick: Vorschau, Doppelklick: Tab dauerhaft öffnen — %@", change.path)
+              ? L10n.format("Einfachklick: Diff als Vorschau, Doppelklick: Datei öffnen — %@", change.path)
               : L10n.string("Dieser Dateipfad ist kein gültiges UTF-8. Fastra zeigt ihn nur an und führt keine Dateiaktion aus."))
     }
 
@@ -731,8 +731,12 @@ private struct GitChangeRow: View {
 
     /// Ein Handler für alle Zeilenklicks. Modifier und Klickzahl kommen aus
     /// dem auslösenden Event: Shift/Cmd markieren nur (wie in macOS-Listen),
-    /// der Einzelklick öffnet sofort den gemeinsamen Vorschau-Tab und ein
-    /// Doppelklick steckt genau diesen Tab dauerhaft fest.
+    /// der Einzelklick zeigt den Diff dieser Zeile im gemeinsamen
+    /// Vorschau-Tab, und ein Doppelklick öffnet die Datei selbst dauerhaft —
+    /// sie übernimmt dabei den Platz der Diff-Vorschau, die sein erster Klick
+    /// angelegt hat (Produktentscheidung 2026-09-02: erst der Diff, die Datei
+    /// nur auf ausdrücklichen Wunsch). Ein zusammengefasster Ordner hat keine
+    /// Datei; sein Klick markiert nur.
     private func handleRowClick() {
         let event = NSApp.currentEvent
         let flags = event?.modifierFlags
@@ -760,7 +764,11 @@ private struct GitChangeRow: View {
         guard flags.isEmpty else { return }
         onSelectPlain()
         guard change.isPathActionable, !isDirectorySummary else { return }
-        openFile(preview: clickCount < 2)
+        if clickCount >= 2 {
+            openFile(preview: false)
+        } else {
+            openDiff(preview: true)
+        }
     }
 
     /// Hover-Aktionen: Verwerfen/Bereitstellen (unstaged) bzw. Unstage (staged).
@@ -851,8 +859,10 @@ private struct GitChangeRow: View {
                                     preview: preview)
     }
 
-    /// Zeigt genau den Diff des Abschnitts, in dem diese Zeile steht.
-    private func openDiff() {
-        workspace.openGitChangeDiff(change: change, staged: section == .staged)
+    /// Zeigt genau den Diff des Abschnitts, in dem diese Zeile steht — aus
+    /// dem Kontextmenü als dauerhaften Tab, beim Einzelklick als Vorschau.
+    private func openDiff(preview: Bool = false) {
+        workspace.openGitChangeDiff(change: change, staged: section == .staged,
+                                    preview: preview)
     }
 }

@@ -82,6 +82,20 @@ struct GitDiffRequest: Hashable, Identifiable {
                                              stderrBytes: 512 * 1024)
 }
 
+extension GitDiffRequest.Source {
+    /// Der Dateipfad, wenn der Diff aus einer Zeile der Änderungen-Liste
+    /// stammt (Index, Working-Tree oder unversioniert). Gesamt- und
+    /// Commit-Diffs gehören zu keiner Zeile und liefern `nil`.
+    var changeListPath: String? {
+        switch self {
+        case .staged(let path), .unstaged(let path), .untracked(let path):
+            return path
+        case .workingTree, .commit:
+            return nil
+        }
+    }
+}
+
 private extension GitDiffRequest.Source {
     var stableIdentity: String {
         switch self {

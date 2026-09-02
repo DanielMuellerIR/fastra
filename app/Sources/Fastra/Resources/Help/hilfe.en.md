@@ -851,13 +851,14 @@ open. In detail:
   switches between the compact flat list and an expandable tree. The tree uses
   the same folder symbols and disclosure controls as the Files tab. Fastra
   remembers the choice for the next launch.
-- **Quick file inspection:** a single click opens an italic temporary preview
-  tab; the next single click replaces it. A double click keeps the tab open,
-  as does the first edit. Deleted files are struck through in the list. A click
-  opens their previous Git version in a read-only editor; a red tab title and
-  lock show the state, and an edit attempt explains it right at the insertion
-  point. The diff remains available through “Show Changes (Diff)” in the
-  context menu.
+- **Quick change review:** a single click shows the row’s diff in an italic
+  temporary preview tab; the next single click replaces it. A double click
+  opens the file itself as a permanent tab, taking the place of the diff
+  preview. The first edit also makes a preview tab permanent. “Open File” and
+  “Show Changes (Diff)” in the context menu each open a permanent tab. Deleted
+  files are struck through in the list; a double click opens their previous
+  Git version in a read-only editor. A red tab title and lock show the state,
+  and an edit attempt explains it right at the insertion point.
 - **Bulk buttons in the “CHANGES” section header:** open a combined diff of
   all open changes in the two-column view, discard all changes, stage
   everything. The “STAGED” header has the button that unstages everything.

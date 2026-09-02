@@ -9,6 +9,28 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.118.0] — 2026-09-02
+
+### Geändert
+
+- **Einfachklick in der Änderungen-Liste zeigt den Diff, Doppelklick öffnet
+  die Datei.** Bisher öffnete der Einfachklick die Datei als Vorschau und der
+  Diff war nur über das Kontextmenü erreichbar. Jetzt landet der Diff der
+  Zeile im kursiv beschrifteten Vorschau-Tab, den der nächste Einfachklick
+  wiederverwendet; der Doppelklick öffnet die Datei dauerhaft und übernimmt
+  dabei den Tabplatz der Diff-Vorschau, statt sie daneben stehen zu lassen.
+  „Änderungen anzeigen (Diff)“ und „Datei öffnen“ im Kontextmenü öffnen
+  weiterhin dauerhafte Tabs; für gelöschte Dateien lädt der Doppelklick die
+  letzte Git-Version schreibgeschützt. Die Hilfe beschreibt das neue
+  Verhalten in beiden Sprachen (Produktentscheidung 2026-09-02).
+
+### Qualitätssicherung
+
+- Zwei neue Unit-Tests belegen die Vorschau-Semantik des Diff-Tabs und die
+  Platzübernahme durch den Doppelklick; der Fenster-Selbsttest
+  `gitmultidiscard` klickt nun doppelt und prüft, dass keine Diff-Vorschau
+  verwaist.
+
 ## [v1.117.2] — 2026-09-02
 
 Nacht-Review vom 2026-09-02 abgearbeitet (acht Funde, alle behoben).

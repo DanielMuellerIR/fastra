@@ -698,3 +698,90 @@ private func waitForDiffState(_ description: String, timeout: Duration = .second
     Issue.record(Comment(rawValue: description))
     throw DiffStateTimeout()
 }
+
+// MARK: - Einzel- und Doppelklick in der Änderungen-Liste (2026-09-02)
+
+// MainActor: treibt einen Workspace (Begründung an makeDiffWorkspace).
+@MainActor
+@Test("Einzelklick-Diff ist eine Vorschau, die der nächste Einzelklick ersetzt")
+func changeListDiffPreviewIsReplacedByNextPreview() async throws {
+    guard GitRunner.isAvailable else { return }
+    let (_, workspace, defaults, suite, _) = try await makeDiffWorkspace()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let a = GitChange(path: "a.txt", staged: nil, unstaged: .modified)
+    let b = GitChange(path: "b.txt", staged: nil, unstaged: .modified)
+
+    workspace.openGitChangeDiff(change: a, staged: false, preview: true)
+    let first = try #require(workspace.tabs.first(where: { $0.gitDiffRequest != nil }))
+    #expect(first.isPreview)
+    #expect(first.gitDiffRequest?.source == .unstaged(path: "a.txt"))
+    #expect(workspace.activeTabID == first.id)
+
+    // Der nächste Einzelklick nimmt denselben Tabplatz — die Leiste springt nicht.
+    workspace.openGitChangeDiff(change: b, staged: false, preview: true)
+    let diffTabs = workspace.tabs.filter { $0.gitDiffRequest != nil }
+    #expect(diffTabs.count == 1)
+    #expect(diffTabs.first?.id == first.id)
+    #expect(diffTabs.first?.gitDiffRequest?.source == .unstaged(path: "b.txt"))
+    #expect(diffTabs.first?.isPreview == true)
+
+    // Kontextmenü „Änderungen anzeigen (Diff)“: derselbe Diff ohne
+    // Vorschau-Absicht steckt den vorhandenen Tab fest statt zu duplizieren.
+    workspace.openGitChangeDiff(change: b, staged: false)
+    #expect(workspace.tabs.filter { $0.gitDiffRequest != nil }.count == 1)
+    #expect(workspace.tabs.first(where: { $0.id == first.id })?.isPreview == false)
+
+    // Ein festgesteckter Diff bleibt neben der nächsten Vorschau stehen.
+    workspace.openGitChangeDiff(change: a, staged: false, preview: true)
+    #expect(workspace.tabs.filter { $0.gitDiffRequest != nil }.count == 2)
+}
+
+// MainActor: treibt einen Workspace (Begründung an makeDiffWorkspace).
+@MainActor
+@Test("Doppelklick-Datei übernimmt den Platz der eigenen Diff-Vorschau")
+func changeListPinnedFileSupersedesOwnDiffPreview() async throws {
+    guard GitRunner.isAvailable else { return }
+    let (_, workspace, defaults, suite, repo) = try await makeDiffWorkspace()
+    defer {
+        defaults.removePersistentDomain(forName: suite)
+        try? FileManager.default.removeItem(at: repo)
+    }
+    try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+    let aURL = repo.appendingPathComponent("a.txt")
+    try "a\n".write(to: aURL, atomically: true, encoding: .utf8)
+    let a = GitChange(path: "a.txt", staged: nil, unstaged: .modified)
+    let b = GitChange(path: "b.txt", staged: nil, unstaged: .modified)
+
+    // Erster Klick des Doppelklicks: der Diff als Vorschau.
+    workspace.openGitChangeDiff(change: a, staged: false, preview: true)
+    let previewID = try #require(
+        workspace.tabs.first(where: { $0.gitDiffRequest != nil })?.id
+    )
+    // Zweiter Klick: die Datei dauerhaft — am selben Platz, die Vorschau ist weg.
+    workspace.openGitChangeFile(change: a, staged: false, preview: false)
+    #expect(!workspace.tabs.contains(where: { $0.gitDiffRequest != nil }))
+    let fileTab = try #require(
+        workspace.tabs.first(where: { $0.url == aURL.canonicalFileURL })
+    )
+    #expect(fileTab.id == previewID)
+    #expect(fileTab.isPreview == false)
+    await waitUntil {
+        workspace.tabs.first(where: { $0.id == previewID })?.isLoading == false
+    }
+
+    // Die Vorschau einer ANDEREN Datei bleibt beim dauerhaften Öffnen stehen.
+    workspace.openGitChangeDiff(change: b, staged: false, preview: true)
+    workspace.openGitChangeFile(change: a, staged: false, preview: false)
+    #expect(workspace.tabs.contains(where: {
+        $0.gitDiffRequest?.source == .unstaged(path: "b.txt") && $0.isPreview
+    }))
+    #expect(workspace.tabs.filter { $0.url == aURL.canonicalFileURL }.count == 1)
+
+    // War die Datei schon offen, wird sie nur aktiviert — ihre eigene
+    // Diff-Vorschau darf trotzdem nicht verwaist stehen bleiben.
+    workspace.openGitChangeDiff(change: a, staged: false, preview: true)
+    workspace.openGitChangeFile(change: a, staged: false, preview: false)
+    #expect(!workspace.tabs.contains(where: { $0.gitDiffRequest != nil }))
+    #expect(workspace.tabs.filter { $0.url == aURL.canonicalFileURL }.count == 1)
+    #expect(workspace.activeTab?.url == aURL.canonicalFileURL)
+}

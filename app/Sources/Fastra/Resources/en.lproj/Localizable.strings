@@ -767,7 +767,7 @@
 "Die letzte Git-Version ist zu groß für die vollständige Textvorschau." = "The previous Git version is too large for the complete text preview.";
 "Die Git-Vorschau wurde wegen eines Projektwechsels beendet." = "The Git preview was stopped because the project changed.";
 "Diese Datei wurde gelöscht. Fastra zeigt die letzte Git-Version schreibgeschützt." = "This file was deleted. Fastra is showing the previous Git version as read-only.";
-"Einfachklick: Vorschau, Doppelklick: Tab dauerhaft öffnen — %@" = "Single-click: preview; double-click: keep tab open — %@";
+"Einfachklick: Diff als Vorschau, Doppelklick: Datei öffnen — %@" = "Single-click: diff as preview; double-click: open file — %@";
 "Git fasst diesen unversionierten Ordner zusammen; Datei-Vorschau ist nicht verfügbar." = "Git summarizes this untracked folder; file preview is unavailable.";
 "Diff ist zu groß" = "Diff Is Too Large";
 "Diff konnte nicht gelesen werden" = "Diff Could Not Be Read";

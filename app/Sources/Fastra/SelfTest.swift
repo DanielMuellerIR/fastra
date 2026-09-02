@@ -16099,8 +16099,9 @@ enum SelfTest {
     }
 
     /// Vor der Mehrfachauswahl prüft derselbe echte Fensterlauf den gemeldeten
-    /// Löschfall: Ein Klick darf weder piepen noch einen sinnlosen Diff zeigen,
-    /// sondern muss die Index-Fassung als auswählbaren read-only Tab laden.
+    /// Löschfall: Ein Doppelklick darf nicht piepen, sondern muss die
+    /// Index-Fassung als auswählbaren read-only Tab laden — dauerhaft, und
+    /// anstelle der Diff-Vorschau, die sein erster Klick angelegt hat.
     private static func runGitDeletedPreviewCheck(
         _ ws: Workspace, base: URL, repo: URL, deletedHash: Int,
         rowHashes: (first: Int, last: Int)
@@ -16114,9 +16115,14 @@ enum SelfTest {
         window.layoutIfNeeded()
         let point = marker.convert(
             NSPoint(x: marker.bounds.midX, y: marker.bounds.midY), to: nil)
-        guard sendMouseClick(at: point, in: window, modifiers: [], viaApp: true) else {
+        // Ein echter Doppelklick besteht aus zwei Klickpaaren; das zweite
+        // trägt clickCount 2. Der erste öffnet die Diff-Vorschau, der zweite
+        // ersetzt sie durch die Datei.
+        guard sendMouseClick(at: point, in: window, modifiers: [], viaApp: true),
+              sendMouseClick(at: point, in: window, modifiers: [], viaApp: true,
+                             clickCount: 2) else {
             try? FileManager.default.removeItem(at: base)
-            finish(false, "Klick auf die gelöschte Dateizeile nicht erzeugbar")
+            finish(false, "Doppelklick auf die gelöschte Dateizeile nicht erzeugbar")
         }
         pollGitDeletedPreview(ws, base: base, repo: repo,
                               rowHashes: rowHashes, tick: 0)
@@ -16131,10 +16137,16 @@ enum SelfTest {
         } == true
         if let tab = ws.activeTab, !tab.isLoading,
            tab.gitSnapshotRequest?.path == "m-deleted.txt", editorVisible {
-            guard tab.content == "Original M\n", tab.isPreview,
+            guard tab.content == "Original M\n", !tab.isPreview,
                   tab.readOnlyReason != nil else {
                 try? FileManager.default.removeItem(at: base)
-                finish(false, "Gelöschte Datei wurde nicht als richtige read-only Vorschau geladen")
+                finish(false, "Gelöschte Datei wurde nicht als dauerhafter read-only Tab geladen")
+            }
+            guard !ws.tabs.contains(where: {
+                $0.gitDiffRequest?.source.changeListPath == "m-deleted.txt"
+            }) else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Die Diff-Vorschau des ersten Klicks blieb neben dem read-only Tab stehen")
             }
             performGitMultiDiscardClicks(ws, base: base, repo: repo,
                                          rowHashes: rowHashes, step: 0)
@@ -16301,8 +16313,9 @@ enum SelfTest {
     }
 
     /// Nachspiel zum Klickpfad-Umbau (Zeilen-Button statt Tap-Gesten): Der
-    /// Einzelklick aus Schritt 1 muss die M-Datei als Vorschau geöffnet haben.
-    /// Der Doppelklick auf die verbliebene z-Zeile ersetzt diese Vorschau und
+    /// Einzelklick aus Schritt 1 muss den Diff der M-Datei als Vorschau
+    /// geöffnet haben. Der Doppelklick auf die verbliebene z-Zeile ersetzt
+    /// diese Vorschau (erst durch den z-Diff, dann durch die Datei) und
     /// steckt genau den neuen Datei-Tab dauerhaft fest.
     private static func runGitMultiDiscardDoubleClick(base: URL, repo: URL) {
         guard let ws = Workspace.shared, let window = mainWindowForAXChecks(),
@@ -16310,13 +16323,12 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: base)
             finish(false, "Fenster für die Doppelklick-Prüfung verschwunden")
         }
-        let aURL = repo.appendingPathComponent("a-modified.txt")
         guard ws.tabs.contains(where: {
-            $0.url?.standardizedFileURL == aURL.standardizedFileURL
+            $0.gitDiffRequest?.source.changeListPath == "a-modified.txt"
                 && $0.isPreview
         }) else {
             try? FileManager.default.removeItem(at: base)
-            finish(false, "Der Einzelklick auf die M-Zeile öffnete keinen Vorschau-Tab")
+            finish(false, "Der Einzelklick auf die M-Zeile öffnete keine Diff-Vorschau")
         }
         guard let zChange = ws.gitStatus?.unstagedChanges.first(where: {
             $0.path == "z-untracked.txt"
@@ -16346,24 +16358,24 @@ enum SelfTest {
         let zTabs = ws.tabs.filter {
             $0.url?.standardizedFileURL == zURL.standardizedFileURL
         }
-        let diffTabOpen = ws.tabs.contains {
-            $0.gitKind == .diff && $0.title.hasSuffix("z-untracked.txt")
-        }
-        if diffTabOpen {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Der Doppelklick öffnete noch den alten Diff-Pfad")
-        }
         if zTabs.count == 1, zTabs[0].isLoading == false {
             guard zTabs[0].isPreview == false else {
                 try? FileManager.default.removeItem(at: base)
                 finish(false, "Der Doppelklick ließ den Datei-Tab nur als Vorschau offen")
             }
-            let aURL = repo.appendingPathComponent("a-modified.txt")
+            // Der erste Klick des Doppelklicks öffnete den z-Diff als
+            // Vorschau; die Datei muss genau diesen Platz übernommen haben.
             guard !ws.tabs.contains(where: {
-                $0.url?.standardizedFileURL == aURL.standardizedFileURL
+                $0.gitDiffRequest?.source.changeListPath == "z-untracked.txt"
             }) else {
                 try? FileManager.default.removeItem(at: base)
-                finish(false, "Die neue Vorschau ersetzte den vorherigen Vorschau-Tab nicht")
+                finish(false, "Die Diff-Vorschau des ersten Klicks blieb neben dem Datei-Tab stehen")
+            }
+            guard !ws.tabs.contains(where: {
+                $0.gitDiffRequest?.source.changeListPath == "a-modified.txt"
+            }) else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Die neue Vorschau ersetzte die vorherige Diff-Vorschau nicht")
             }
             runGitMultiDiscardHeaderPhase(ws, base: base, repo: repo)
             return
@@ -16446,8 +16458,9 @@ enum SelfTest {
                 finish(true, "Klick + Shift-Klick markieren den Bereich, Cmd-Klick "
                     + "nimmt die untracked Zeile heraus, Verwerfen setzt genau die "
                     + "zwei getrackten Dateien in einem Zug zurück; Einzelklick "
-                    + "öffnet die Datei, Doppelklick nur den Diff; die Kopf-Knöpfe "
-                    + "öffnen den Gesamt-Diff und verwerfen den Rest der Sektion")
+                    + "zeigt den Diff als Vorschau, Doppelklick öffnet die Datei an "
+                    + "dessen Platz; die Kopf-Knöpfe öffnen den Gesamt-Diff und "
+                    + "verwerfen den Rest der Sektion")
             }
             if tick >= 140 {
                 try? FileManager.default.removeItem(at: base)
