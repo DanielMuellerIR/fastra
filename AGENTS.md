@@ -306,6 +306,23 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   `NSApp.currentEvent` NICHT. Liest der geklickte Code Modifier oder
   Klickzahl daraus, muss der Test die Events mit `NSApp.postEvent` in die
   echte Event-Queue legen (`sendMouseClick(..., viaApp: true)`).
+- **SwiftUI-`List` verschluckt Pfeiltasten.** Die zugrunde liegende
+  `NSOutlineView` verarbeitet Auf-/Abwärtspfeil selbst, `onMoveCommand` feuert
+  nie. Pfeilnavigation in der Suchmaske deshalb über
+  `onKeyPress(.upArrow)`/`onKeyPress(.downArrow)` behandeln; der Selbsttest
+  muss echte Pfeiltasten senden — ein Return-Shortcut auf „Nächster" hatte den
+  Ausfall verdeckt (2026-08-31).
+- **Fenstermenü-Einträge nur über das echte Menü testen.** Ein Test, der den
+  internen Untermenü-Callback direkt aufruft, belegt nicht, dass der Eintrag im
+  macOS-Fenstermenü erscheint — genau so entstand ein falsch positiver Test.
+  Der Test öffnet das Fenstermenü und wechselt über einen Eintrag den Tab
+  (2026-09-01).
+- **`NSApp.windowsMenu` existiert beim ersten Fenster-Update noch nicht.** Ein
+  Menü-Aufbau, der nur bei Titeländerungen läuft, verpufft beim Start am
+  fehlenden Menü und kommt nie wieder. `WindowsMenuTabs.updateItem` läuft
+  deshalb idempotent erneut, bis das Menü da ist; wiederhergestellte Fenster
+  brauchen zusätzlich das Entfernen der von AppKit bereits angelegten
+  Standardeinträge (v1.117.1, 2026-09-01).
 - **Ein weggescrollter Tab behält seine NSView.** Sein Marker liegt dann
   außerhalb der sichtbaren Tab-Leiste, und ein daraus berechneter
   synthetischer Klick landet auf einem ganz anderen Bedienelement. Am
