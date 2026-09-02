@@ -887,8 +887,8 @@ sichtbar, während der Dateien- oder Graph-Tab offen ist. Im Einzelnen:
   einzelnen Remote nicht lesen, bleiben die anderen Push-Ziele benutzbar und
   die echte Git-Meldung erscheint als Hinweis.
 - **Mehrere Dateien auf einen Schlag:** In der Dateiliste markiert ein Klick
-  eine Zeile und öffnet sie als vorläufige Vorschau, ⇧-Klick markiert den
-  Bereich bis dorthin und ⌘-Klick einzelne Zeilen
+  eine Zeile und zeigt ihren Diff als vorläufige Vorschau, ⇧-Klick markiert
+  den Bereich bis dorthin und ⌘-Klick einzelne Zeilen
   zusätzlich oder wieder ab. Markierte Zeilen sind farbig hinterlegt. Eine
   Aktion auf einer markierten Zeile — Verwerfen, Bereitstellen oder
   Entnehmen, per Knopf oder Kontextmenü — wirkt dann auf die ganze Auswahl;

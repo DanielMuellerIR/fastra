@@ -3292,6 +3292,14 @@ final class Workspace: ObservableObject {
         // Ermöglicht es, einen abgebrochenen Load zu erkennen (Tab schon
         // gelöscht, oder inzwischen ein neuerer Load für dieselbe ID gestartet).
         let tabID = placeholder.id
+        // Die Dokument-ID ist die eigentliche Ladeidentität: Ein recycelter
+        // Vorschauplatz behält seine Tab-ID, bekommt aber mit jedem neuen
+        // Inhalt eine frische Dokument-ID. Die Generation allein reicht nicht
+        // — sie wird nach jedem abgeschlossenen Laden aus dem Wörterbuch
+        // entfernt und beginnt für denselben Platz wieder bei 1, sodass ein
+        // sehr später alter Read dieselbe Nummer tragen kann wie der gerade
+        // laufende (Review 2026-09-02).
+        let placeholderDocumentID = placeholder.documentID
         let generation = (loadGeneration[tabID] ?? 0) + 1
         loadGeneration[tabID] = generation
         let previewCancellation = preview ? PreviewLoadCancellation() : nil
@@ -3365,9 +3373,14 @@ final class Workspace: ObservableObject {
                 // ── Generation-Guard ──────────────────────────────────────
                 // Wenn der Tab inzwischen geschlossen wurde (`loadGeneration`
                 // hat keine Eintrags-ID mehr) ODER eine neue Generation für
-                // diese ID gestartet wurde → dieses Ergebnis verwerfen.
+                // diese ID gestartet wurde ODER unter dieser Tab-ID inzwischen
+                // ein anderes Dokument liegt (recycelter Vorschauplatz mit
+                // neuer Dokument-ID oder URL) → dieses Ergebnis verwerfen.
                 guard self.loadGeneration[tabID] == generation,
-                      self.tabs.contains(where: { $0.id == tabID }) else {
+                      self.tabs.contains(where: {
+                          $0.id == tabID && $0.documentID == placeholderDocumentID
+                              && $0.url == url
+                      }) else {
                     // Platzhalter kann weg sein (Nutzer hat Tab während des
                     // Ladens geschlossen) — kein Fehler, einfach still beenden.
                     // Aufräumen: Ist der Tab weg, kommt seine UUID nie wieder
@@ -3426,7 +3439,9 @@ final class Workspace: ObservableObject {
                     // isLoading-Kippen → `.id(activeTab.id)` erzeugt den
                     // SourceEditor NEU → makeNSViewController läuft mit
                     // fertigem Inhalt (CESE-Falle umgangen).
-                    guard let idx = self.tabs.firstIndex(where: { $0.id == tabID }) else {
+                    guard let idx = self.tabs.firstIndex(where: {
+                        $0.id == tabID && $0.documentID == placeholderDocumentID
+                    }) else {
                         report(.cancelled)
                         return
                     }
@@ -5574,7 +5589,14 @@ final class Workspace: ObservableObject {
             $0.isPreview && !$0.hasUnsavedChanges
         }) else { return nil }
         let id = tabs[index].id
-        loadGeneration.removeValue(forKey: id)
+        // Einen noch laufenden Datei-Read dieses Platzes entwerten, ohne den
+        // Zähler auf einen wiederverwendbaren Anfangswert zurückzusetzen:
+        // Nach `removeValue` bekäme der nächste `loadFile` desselben Platzes
+        // wieder Generation 1 — genau die Nummer, mit der ein alter, noch
+        // nicht zugestellter Read unterwegs sein kann. Der landete dann mit
+        // dem Inhalt der zuvor angeklickten Datei im Tab der neuen (Review
+        // 2026-09-02). Hochzählen entwertet ihn und hält die Folge lückenlos.
+        loadGeneration[id] = (loadGeneration[id] ?? 0) + 1
         previewLoadCancellations.removeValue(forKey: id)?.cancel()
         documentLanguageDetector.cancel(tabID: id)
         cancelGitDiffLoad(tabID: id)

@@ -26,7 +26,9 @@ enum WindowTabsMenuModel {
 /// Die Einträge selbst entstehen und verschwinden mit ihren Fenstern
 /// (`MainWindowTitleBridge` meldet Titel, die Registry das Schließen); ihre
 /// Tab-Listen füllen sich erst beim Öffnen über `menuNeedsUpdate` — so gibt
-/// es keine laufenden Abonnements auf jede Tab-Änderung.
+/// es keine laufenden Abonnements auf jede Tab-Änderung. Tauscht SwiftUI
+/// oder macOS die Instanz des „Fenster"-Menüs, zieht der `AppDelegate` die
+/// Einträge über `synchronizeWithCurrentWindowsMenu` sofort um.
 @MainActor
 final class WindowsMenuTabs: NSObject, NSMenuDelegate {
     static let shared = WindowsMenuTabs()
@@ -58,9 +60,17 @@ final class WindowsMenuTabs: NSObject, NSMenuDelegate {
     }
 
     private var items: [ObjectIdentifier: NSMenuItem] = [:]
+    /// Reihenfolge der Einträge, wie sie angelegt wurden. Das Wörterbuch
+    /// allein reicht nicht: Swift sichert für `items.values` keine
+    /// Reihenfolge zu, und beim Umzug in ein neu aufgebautes Menü standen
+    /// die Fenster sonst in zufälliger Folge (Review 2026-09-02).
+    private var order: [ObjectIdentifier] = []
     /// Trennlinie unter dem Tab-Abschnitt — nur vorhanden, solange es
     /// mindestens einen Eintrag gibt.
     private var sectionSeparator: NSMenuItem?
+    /// Wächter gegen einen Rücksprung mitten im Umzug (siehe
+    /// `adoptMenuIfChanged`).
+    private var isAdoptingMenu = false
 
     /// Legt den Eintrag eines Dokumentfensters an bzw. führt seinen Titel
     /// nach. Aufrufer ist `MainWindowTitleBridge` — dort ist der Titel schon
@@ -99,9 +109,10 @@ final class WindowsMenuTabs: NSObject, NSMenuDelegate {
             submenu.delegate = self
             item.submenu = submenu
             items[key] = item
+            order.append(key)
             // Abschnitt am Menüanfang: erst alle Fenster-Einträge, dann die
             // Trennlinie zu AppKits Standardpunkten.
-            menu.insertItem(item, at: min(items.count - 1, menu.items.count))
+            menu.insertItem(item, at: min(order.count - 1, menu.items.count))
             if sectionSeparator == nil {
                 let separator = NSMenuItem.separator()
                 sectionSeparator = separator
@@ -117,6 +128,18 @@ final class WindowsMenuTabs: NSObject, NSMenuDelegate {
         item.state = window.isKeyWindow ? .on : .off
     }
 
+    /// Bindet alle verwalteten Einträge an das AKTUELLE „Fenster"-Menü. Der
+    /// `AppDelegate` ruft das bei jeder Menüänderung und App-Aktivierung —
+    /// den Stellen, an denen SwiftUI oder macOS die Menüinstanz getauscht
+    /// haben kann. Vorher zog nur das nächste Titel-Update der
+    /// `MainWindowTitleBridge` um, und das kommt nach einem Neuaufbau nicht
+    /// garantiert: Bis dahin fehlten alle Tab-Untermenüs, obwohl die
+    /// Dokumentfenster offen waren (Review 2026-09-02).
+    func synchronizeWithCurrentWindowsMenu() {
+        guard let menu = NSApp.windowsMenu else { return }
+        adoptMenuIfChanged(menu)
+    }
+
     /// SwiftUI baut das App-Menü nach dem Start noch einmal neu (siehe
     /// `AppDelegate`, Sparkle-/Soft-Wrap-Eintrag). Wechselt dabei die Instanz
     /// des „Fenster"-Menüs, hingen die schon angelegten Einträge am alten,
@@ -124,22 +147,38 @@ final class WindowsMenuTabs: NSObject, NSMenuDelegate {
     /// legte nichts neu an — das Tab-Untermenü war dann vollständig weg
     /// (Review 2026-09-02). Deshalb alle verwalteten Einträge samt Trenner in
     /// das neue Menü umziehen, in der bisherigen Reihenfolge am Anfang.
-    private func adoptMenuIfChanged(_ menu: NSMenu) {
-        let stale = items.values.filter { $0.menu != nil && $0.menu !== menu }
-        guard !stale.isEmpty
-                || (sectionSeparator?.menu != nil && sectionSeparator?.menu !== menu)
-        else { return }
-        var movedCount = 0
-        for item in items.values {
-            guard let oldMenu = item.menu, oldMenu !== menu else { continue }
-            oldMenu.removeItem(item)
-            menu.insertItem(item, at: min(movedCount, menu.items.count))
-            movedCount += 1
+    ///
+    /// Ein Eintrag ohne Menü zählt ebenfalls als umzugspflichtig: Gibt AppKit
+    /// das alte Menü frei, steht `menu` an seinen Einträgen auf nil — sie
+    /// hängen dann nirgends mehr. Der Abschnitt wird als Ganzes neu gelegt
+    /// (erst alle heraus, dann in `order` wieder hinein), damit auch ein halb
+    /// umgezogener Zustand — ein Eintrag schon im neuen Menü, die übrigen
+    /// noch im alten — in der ursprünglichen Reihenfolge endet. Intern statt
+    /// privat, damit der Unit-Test den Neuaufbau ohne Bridge-Update
+    /// nachstellen kann.
+    func adoptMenuIfChanged(_ menu: NSMenu) {
+        let managed = order.compactMap { items[$0] }
+        let displaced = managed.contains { $0.menu !== menu }
+            || (sectionSeparator.map { $0.menu !== menu } ?? false)
+        guard displaced, !isAdoptingMenu else { return }
+        // `insertItem` löst `NSMenu.didAddItemNotification` synchron aus;
+        // der `AppDelegate` bündelt seine Reaktion zwar per Dispatch, aber
+        // der Wächter hält auch einen synchronen Rücksprung mitten im Umzug
+        // ab — der würde die restlichen Einträge in eigener Zählung vor die
+        // schon umgezogenen setzen.
+        isAdoptingMenu = true
+        defer { isAdoptingMenu = false }
+        for item in managed {
+            item.menu?.removeItem(item)
         }
-        if let separator = sectionSeparator, let oldMenu = separator.menu,
-           oldMenu !== menu {
-            oldMenu.removeItem(separator)
-            menu.insertItem(separator, at: min(items.count, menu.items.count))
+        if let separator = sectionSeparator {
+            separator.menu?.removeItem(separator)
+        }
+        for (position, item) in managed.enumerated() {
+            menu.insertItem(item, at: min(position, menu.items.count))
+        }
+        if let separator = sectionSeparator, !managed.isEmpty {
+            menu.insertItem(separator, at: min(managed.count, menu.items.count))
         }
     }
 
@@ -154,9 +193,11 @@ final class WindowsMenuTabs: NSObject, NSMenuDelegate {
     /// Entfernt den Eintrag eines geschlossenen Fensters (Aufrufer:
     /// `WorkspaceWindowRegistry.unregister`).
     func removeItem(for window: NSWindow) {
-        guard let item = items.removeValue(forKey: ObjectIdentifier(window)) else {
+        let key = ObjectIdentifier(window)
+        guard let item = items.removeValue(forKey: key) else {
             return
         }
+        order.removeAll { $0 == key }
         item.menu?.removeItem(item)
         if items.isEmpty, let separator = sectionSeparator {
             separator.menu?.removeItem(separator)

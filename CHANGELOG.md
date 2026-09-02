@@ -9,6 +9,38 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.118.1] — 2026-09-02
+
+Nacht-Review vom 2026-09-02 abgearbeitet (vier Funde, alle behoben).
+
+### Behoben
+
+- **Ein verspäteter Vorschau-Read landet nicht mehr im recycelten Tabplatz
+  einer anderen Datei.** Beim schnellen Durchsehen der Änderungen-Liste —
+  Datei, dann Diff, dann wieder Datei — setzte die Diff-Vorschau die
+  Lade-Generation des wiederverwendeten Platzes zurück; die nächste Datei
+  bekam dieselbe Nummer wie der noch laufende Read der ersten, und dessen
+  Inhalt konnte unter Titel und Pfad der neuen Datei erscheinen (oder deren
+  Platzhalter verwerfen). Die Generation wird beim Recyceln jetzt
+  hochgezählt, und `loadFile` bindet jede Übernahme zusätzlich an
+  Dokument-ID und URL des eigenen Platzhalters. Regressionstest mit drei
+  Klicks ohne Freigabe des Main-Threads.
+- **Die Tab-Untermenüs im Fenster-Menü überleben einen Menü-Neuaufbau auch
+  ohne späteres Titel-Update.** Der Umzug in die neue Menü-Instanz lief
+  bisher nur beim nächsten Update der Fenster-Titelbrücke; bis dahin
+  fehlte die Fenster- und Tab-Navigation. Der `AppDelegate` stößt den
+  Abgleich jetzt bei jeder Menüänderung und App-Aktivierung an — gebündelt
+  wie der Sparkle- und der Soft-Wrap-Eintrag. Einträge, deren altes Menü
+  AppKit bereits freigegeben hat, ziehen ebenfalls um.
+- **Nach dem Umzug stehen die Fenster in ihrer bisherigen Reihenfolge.** Die
+  Einträge lagen in einem Wörterbuch ohne zugesicherte Reihenfolge; ein
+  eigenes Reihenfolge-Array hält jetzt die Anlage-Reihenfolge, auch bei
+  einem halb umgezogenen Abschnitt. Der Test vergleicht die vollständige
+  Titelfolge statt einer Menge.
+- **Hilfe:** Der Absatz „Mehrere Dateien auf einen Schlag" beschrieb den
+  Einfachklick noch als Datei-Vorschau; er zeigt seit v1.118.0 den Diff.
+  In beiden Sprachen berichtigt.
+
 ## [v1.118.0] — 2026-09-02
 
 ### Geändert

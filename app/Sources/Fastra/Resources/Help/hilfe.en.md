@@ -837,9 +837,9 @@ open. In detail:
   ambiguous and stop with an explanation. If only one remote cannot be read,
   the other push targets remain available and the actual Git message appears
   as a warning.
-- **Several files at once:** in the file list, a click selects one row,
-  opens it as a temporary preview, ⇧-click selects the range up to it, and
-  ⌘-click adds or removes
+- **Several files at once:** in the file list, a click selects one row and
+  shows its diff as a temporary preview, ⇧-click selects the range up to
+  it, and ⌘-click adds or removes
   individual rows. Selected rows have a colored background. An action on a
   selected row — discard, stage, or unstage, via button or context menu —
   then applies to the whole selection; the context menu states the count.

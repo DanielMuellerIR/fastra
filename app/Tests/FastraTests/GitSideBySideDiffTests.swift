@@ -785,3 +785,54 @@ func changeListPinnedFileSupersedesOwnDiffPreview() async throws {
     #expect(workspace.tabs.filter { $0.url == aURL.canonicalFileURL }.count == 1)
     #expect(workspace.activeTab?.url == aURL.canonicalFileURL)
 }
+
+// MainActor: treibt einen Workspace (Begründung an makeDiffWorkspace).
+@MainActor
+@Test("Verspäteter Vorschau-Read landet nicht im recycelten Platz einer anderen Datei")
+func changeListRecycledPreviewSlotRejectsStaleFileRead() async throws {
+    // Review 2026-09-02: Datei A als Vorschau anklicken, sofort eine
+    // Diff-Zeile (recycelt den Platz und setzte die Lade-Generation zurück),
+    // dann Datei B in denselben Platz. B bekam wieder Generation 1 — dieselbe
+    // Nummer wie der noch laufende Read von A. Kam der jetzt an, prüfte
+    // `loadFile` nur Tab-ID und Generation und schrieb A's Inhalt unter B's
+    // Titel in den Tab (oder verwarf beim Abbruch B's Platzhalter).
+    guard GitRunner.isAvailable else { return }
+    let (_, workspace, defaults, suite, repo) = try await makeDiffWorkspace()
+    defer {
+        defaults.removePersistentDomain(forName: suite)
+        try? FileManager.default.removeItem(at: repo)
+    }
+    try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+    let aURL = repo.appendingPathComponent("a.txt")
+    let bURL = repo.appendingPathComponent("b.txt")
+    try "inhalt-a\n".write(to: aURL, atomically: true, encoding: .utf8)
+    try "inhalt-b\n".write(to: bURL, atomically: true, encoding: .utf8)
+    let diffRow = GitChange(path: "c.txt", staged: nil, unstaged: .modified)
+
+    // Alle drei Klicks OHNE den Main-Actor freizugeben: So ist sicher, dass
+    // A's Rückmeldung erst nach dem dritten Klick zugestellt wird — genau
+    // die Reihenfolge, die im Produkt beim schnellen Durchsehen entsteht.
+    var aDone = false
+    var bResult: Bool?
+    workspace.loadFile(at: aURL, preview: true) { _ in aDone = true }
+    let slotID = try #require(
+        workspace.tabs.first(where: { $0.url == aURL.canonicalFileURL })?.id
+    )
+    workspace.openGitChangeDiff(change: diffRow, staged: false, preview: true)
+    #expect(workspace.tabs.first(where: { $0.id == slotID })?.gitDiffRequest != nil,
+            "Die Diff-Vorschau übernimmt den Platz der Dateivorschau")
+    workspace.loadFile(at: bURL, preview: true) { bResult = $0 }
+    #expect(workspace.tabs.first(where: { $0.id == slotID })?.url
+            == bURL.canonicalFileURL)
+
+    #expect(await waitUntil { aDone && bResult != nil })
+    #expect(bResult == true, "B's Ladevorgang darf nicht als abgebrochen enden")
+    let slot = try #require(workspace.tabs.first(where: { $0.id == slotID }),
+                            "B's Platzhalter darf nicht verworfen worden sein")
+    #expect(slot.url == bURL.canonicalFileURL)
+    #expect(slot.content == "inhalt-b\n",
+            "Der Tab zeigt B — nicht den verspäteten Inhalt von A")
+    #expect(slot.isLoading == false)
+    #expect(workspace.tabs.filter { $0.url == bURL.canonicalFileURL }.count == 1)
+    #expect(!workspace.tabs.contains(where: { $0.content == "inhalt-a\n" }))
+}

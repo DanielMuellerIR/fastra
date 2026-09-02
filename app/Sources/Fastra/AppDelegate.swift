@@ -112,6 +112,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var updateMenuInstallScheduled = false
     /// Gleiches Coalescing für den checkbaren Soft-Wrap-Menüpunkt.
     private var softWrapMenuSyncScheduled = false
+    /// Gleiches Coalescing für den Umzug der Tab-Untermenüs in ein neu
+    /// aufgebautes „Fenster"-Menü (`WindowsMenuTabs`).
+    private var windowsMenuTabsSyncScheduled = false
 
     /// Hält den Local-Event-Monitor am Leben — sonst wird er deinitialisiert.
     private var keyMonitor: Any?
@@ -397,6 +400,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.purgeFindMenuItems()
             self?.scheduleUpdateMenuInstallation()
             self?.scheduleSoftWrapMenuSynchronization()
+            self?.scheduleWindowsMenuTabsSynchronization()
         }
 
         // Ab jetzt mitschreiben, welche Fenster der Nutzer SELBST zieht. Das
@@ -572,6 +576,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Spätere Aktivierungen reparieren einen von macOS neu aufgebauten Block.
         scheduleUpdateMenuInstallation()
         scheduleSoftWrapMenuSynchronization()
+        scheduleWindowsMenuTabsSynchronization()
     }
 
     /// Baut den nativen Update-Menüpunkt. Sparkle selbst bleibt das Target,
@@ -621,6 +626,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let appMenu = NSApp.mainMenu?.items.first?.submenu,
                   let updaterController = self.updaterController else { return }
             Self.synchronizeUpdateMenuItem(in: appMenu, target: updaterController)
+        }
+    }
+
+    /// Zieht die Tab-Untermenü-Einträge in ein neu aufgebautes „Fenster"-Menü
+    /// um. Bis zum Review 2026-09-02 passierte das nur beim nächsten
+    /// Titel-Update der `MainWindowTitleBridge` — nach einem Menü-Neuaufbau
+    /// kommt das nicht garantiert, und die Fenster-/Tab-Navigation fehlte
+    /// bis dahin. Gebündelt wie die Nachbarn: Die Benachrichtigung kommt für
+    /// jeden eingefügten Menüpunkt einzeln, und der Umzug fügt selbst Punkte
+    /// ein — ein synchroner Aufruf liefe in sich selbst hinein.
+    private func scheduleWindowsMenuTabsSynchronization() {
+        guard !windowsMenuTabsSyncScheduled else { return }
+        windowsMenuTabsSyncScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.windowsMenuTabsSyncScheduled = false
+            WindowsMenuTabs.shared.synchronizeWithCurrentWindowsMenu()
         }
     }
 
