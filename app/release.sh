@@ -221,16 +221,23 @@ ATTACHED_DEV=""
 # zum eigenen RW-Image gehört. Gerätenummern werden vom Kernel wiederverwendet;
 # die beim Attach gespeicherte Nummer allein ist daher keine dauerhafte
 # Identität (Review 2026-08-30).
+#
+# Drei Ergebnisse (Review 2026-09-02): 0 = eigenes Gerät, 1 = nachweislich
+# fremdes Gerät, 2 = Prüfung nicht möglich (hdiutil-Fehler, unlesbare Plist).
+# Der Aufrufer darf ATTACHED_DEV nur bei 1 vergessen; bei 2 ist das Image
+# vermutlich noch eingehängt, und der EXIT-Trap braucht die Kennung weiter.
 fastra_attached_device_belongs_to_rw_image() {
   [ -n "$ATTACHED_DEV" ] || return 1
-  hdiutil info -plist 2>/dev/null | \
+  local info_plist
+  info_plist="$(hdiutil info -plist 2>/dev/null)" || return 2
+  printf '%s' "$info_plist" | \
     FASTRA_ATTACHED_DEV="$ATTACHED_DEV" FASTRA_RW_DMG="$RW_DMG" \
     /usr/bin/python3 -c '
 import os, plistlib, sys
 try:
     data = plistlib.loads(sys.stdin.buffer.read())
 except Exception:
-    raise SystemExit(1)
+    raise SystemExit(2)
 expected_device = os.environ["FASTRA_ATTACHED_DEV"]
 expected_image = os.path.realpath(os.environ["FASTRA_RW_DMG"])
 for image in data.get("images", []):
@@ -246,13 +253,24 @@ raise SystemExit(1)
 
 fastra_detach_attached_rw_image() {
   [ -n "$ATTACHED_DEV" ] || return 0
-  if ! fastra_attached_device_belongs_to_rw_image; then
-    # Das eigene Image ist nicht mehr unter dieser Gerätenummer erreichbar.
-    # Den wiederverwendeten Namen keinesfalls an hdiutil detach weitergeben.
-    ATTACHED_DEV=""
-    echo "FEHLER: Das gemerkte DMG-Gerät gehört nicht mehr zum eigenen RW-Image." >&2
-    return 1
-  fi
+  local ownership=0
+  fastra_attached_device_belongs_to_rw_image || ownership=$?
+  case "$ownership" in
+    0) ;;
+    1)
+      # Das eigene Image ist nicht mehr unter dieser Gerätenummer erreichbar.
+      # Den wiederverwendeten Namen keinesfalls an hdiutil detach weitergeben.
+      ATTACHED_DEV=""
+      echo "FEHLER: Das gemerkte DMG-Gerät gehört nicht mehr zum eigenen RW-Image." >&2
+      return 1
+      ;;
+    *)
+      # Prüfung fehlgeschlagen, kein Urteil über das Gerät. ATTACHED_DEV
+      # bleibt gesetzt: Der EXIT-Trap versucht das Aushängen später erneut.
+      echo "FEHLER: Der Mount-Status des eigenen RW-Images ließ sich nicht prüfen (hdiutil info). Kein Detach." >&2
+      return 1
+      ;;
+  esac
   # Beide Aushängeversuche fehlgeschlagen → sichtbar scheitern. Der Aufrufer
   # (Zeile „if ! fastra_detach_attached_rw_image") würde sonst ein weiterhin
   # eingehängtes RW-Image konvertieren. `ATTACHED_DEV` bleibt dabei absichtlich

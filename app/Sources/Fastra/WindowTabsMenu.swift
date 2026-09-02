@@ -81,6 +81,14 @@ final class WindowsMenuTabs: NSObject, NSMenuDelegate {
             }
             return
         }
+        updateItem(for: window, workspace: workspace, title: title, in: menu)
+    }
+
+    /// Kern von `updateItem`, mit dem Zielmenü als Parameter — so lässt sich
+    /// ein Menü-Neuaufbau ohne `NSApp` im Unit-Test nachstellen.
+    func updateItem(for window: NSWindow, workspace: Workspace, title: String,
+                    in menu: NSMenu) {
+        adoptMenuIfChanged(menu)
         let key = ObjectIdentifier(window)
         let item: NSMenuItem
         if let existing = items[key] {
@@ -107,6 +115,32 @@ final class WindowsMenuTabs: NSObject, NSMenuDelegate {
         // Schlüsselfenster (unsere Einträge ersetzen die AppKit-Einträge,
         // siehe `isExcludedFromWindowsMenu` in `MainWindowTitleBridge`).
         item.state = window.isKeyWindow ? .on : .off
+    }
+
+    /// SwiftUI baut das App-Menü nach dem Start noch einmal neu (siehe
+    /// `AppDelegate`, Sparkle-/Soft-Wrap-Eintrag). Wechselt dabei die Instanz
+    /// des „Fenster"-Menüs, hingen die schon angelegten Einträge am alten,
+    /// nicht mehr sichtbaren Menü, und `updateItem` fand sie im Cache und
+    /// legte nichts neu an — das Tab-Untermenü war dann vollständig weg
+    /// (Review 2026-09-02). Deshalb alle verwalteten Einträge samt Trenner in
+    /// das neue Menü umziehen, in der bisherigen Reihenfolge am Anfang.
+    private func adoptMenuIfChanged(_ menu: NSMenu) {
+        let stale = items.values.filter { $0.menu != nil && $0.menu !== menu }
+        guard !stale.isEmpty
+                || (sectionSeparator?.menu != nil && sectionSeparator?.menu !== menu)
+        else { return }
+        var movedCount = 0
+        for item in items.values {
+            guard let oldMenu = item.menu, oldMenu !== menu else { continue }
+            oldMenu.removeItem(item)
+            menu.insertItem(item, at: min(movedCount, menu.items.count))
+            movedCount += 1
+        }
+        if let separator = sectionSeparator, let oldMenu = separator.menu,
+           oldMenu !== menu {
+            oldMenu.removeItem(separator)
+            menu.insertItem(separator, at: min(items.count, menu.items.count))
+        }
     }
 
     /// Führt die Häkchen nach einem Schlüsselfenster-Wechsel nach.

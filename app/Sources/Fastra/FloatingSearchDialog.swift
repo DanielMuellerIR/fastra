@@ -282,11 +282,13 @@ struct FloatingSearchDialog: View {
             Group {
                 if workspace.recentSearchFolders.count > 7 {
                     ScrollView(.vertical) {
-                        folderEntryRows
+                        // Lazy: Nur sichtbare Zeilen werden gebaut — die
+                        // Liste ist unbegrenzt (Review 2026-09-02).
+                        LazyVStack(spacing: 2) { folderEntryRows }
                     }
                     .frame(height: 168 * uiScale)
                 } else {
-                    folderEntryRows
+                    VStack(spacing: 2) { folderEntryRows }
                 }
             }
             .padding(8)
@@ -318,44 +320,42 @@ struct FloatingSearchDialog: View {
     }
 
     /// Die eigentlichen Ordnerzeilen der „Zuletzt verwendete Ordner"-Liste —
-    /// ausgelagert, damit die kurze und die scrollende Fassung dieselben
-    /// Zeilen verwenden.
+    /// ausgelagert, damit die kurze (VStack) und die scrollende Fassung
+    /// (LazyVStack) dieselben Zeilen verwenden.
     private var folderEntryRows: some View {
-        VStack(spacing: 2) {
-            ForEach(workspace.recentSearchFolders) { entry in
-                HStack(spacing: 6) {
-                    Toggle("", isOn: Binding(
-                        get: {
-                            workspace.recentSearchFolders
-                                .first(where: { $0.path == entry.path })?.enabled
-                                ?? entry.enabled
-                        },
-                        set: { enabled in
-                            workspace.setSearchFolderEnabled(path: entry.path,
-                                                             enabled: enabled)
-                        }
-                    ))
-                        .toggleStyle(.checkbox)
-                        .labelsHidden()
-                    Text(entry.path)
-                        .fastraFont(size: 11, design: .monospaced)
-                        .foregroundColor(Theme.textPrimary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer()
-                    Button {
-                        workspace.removeSearchFolder(path: entry.path)
-                    } label: {
-                        Image(systemName: "minus.circle")
-                            .fastraFont(size: 11)
-                            .foregroundColor(Theme.textSecondary.opacity(0.6))
+        // Einmal pro Darstellung ein Index Pfad → Häkchen, statt in jedem
+        // Toggle-Getter das ganze Array zu durchsuchen (n² Vergleiche bei
+        // n Einträgen, Review 2026-09-02).
+        let enabledByPath = SearchFolderEntry.enabledByPath(workspace.recentSearchFolders)
+        return ForEach(workspace.recentSearchFolders) { entry in
+            HStack(spacing: 6) {
+                Toggle("", isOn: Binding(
+                    get: { enabledByPath[entry.path] ?? entry.enabled },
+                    set: { enabled in
+                        workspace.setSearchFolderEnabled(path: entry.path,
+                                                         enabled: enabled)
                     }
-                    .buttonStyle(.plain)
-                    .help("Diesen Ordner aus der Liste entfernen.")
+                ))
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+                Text(entry.path)
+                    .fastraFont(size: 11, design: .monospaced)
+                    .foregroundColor(Theme.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+                Button {
+                    workspace.removeSearchFolder(path: entry.path)
+                } label: {
+                    Image(systemName: "minus.circle")
+                        .fastraFont(size: 11)
+                        .foregroundColor(Theme.textSecondary.opacity(0.6))
                 }
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
+                .buttonStyle(.plain)
+                .help("Diesen Ordner aus der Liste entfernen.")
             }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
         }
     }
 

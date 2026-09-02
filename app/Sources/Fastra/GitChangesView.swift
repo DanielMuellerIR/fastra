@@ -768,16 +768,17 @@ private struct GitChangeRow: View {
     @ViewBuilder private var actionButtons: some View {
         switch section {
         case .unstaged:
-            iconButton("arrow.uturn.backward", help: "Änderungen verwerfen",
+            iconButton("arrow.uturn.backward",
+                       help: L10n.string("Änderungen verwerfen"),
                        markerID: "gitDiscardAction-\(change.rawPath.hashValue)") {
                 workspace.gitDiscard(changes: actionTargets())
             }
-            iconButton("plus", help: "Änderungen bereitstellen",
+            iconButton("plus", help: L10n.string("Änderungen bereitstellen"),
                        markerID: "gitStageAction-\(change.rawPath.hashValue)") {
                 workspace.gitStage(paths: actionTargets().compactMap(\.actionPath))
             }
         case .staged:
-            iconButton("minus", help: "Aus Bereitstellung nehmen") {
+            iconButton("minus", help: L10n.string("Aus Bereitstellung nehmen")) {
                 workspace.gitUnstage(paths: actionTargets().compactMap(\.actionPath))
             }
         }
@@ -832,8 +833,13 @@ private struct GitChangeRow: View {
         }
         .disabled(!change.isPathActionable)
         // fastraHelp statt .help: auch für nicht bedienbare Pfade soll der
-        // Tooltip erklären, was der Knopf täte.
+        // Tooltip erklären, was der Knopf täte. Das Overlay setzt nur den
+        // AppKit-Tooltip, keinen Accessibility-Text — VoiceOver bekäme sonst
+        // nur den Symbolnamen und könnte die drei Aktionen nicht
+        // unterscheiden (Review 2026-09-02). Der Tooltip-Text ist zugleich
+        // die Beschriftung.
         .fastraHelp(help)
+        .accessibilityLabel(Text(verbatim: help))
     }
 
     /// Öffnet die Arbeitsdatei beziehungsweise bei einer Löschung die

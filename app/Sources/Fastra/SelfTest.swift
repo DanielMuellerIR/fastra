@@ -2177,6 +2177,12 @@ enum SelfTest {
     /// Testordner des `print`-Selbsttests — `finish` räumt ihn in jedem
     /// Ausgang auf (Erfolg, Fehler, Abbruch).
     private static var printFixtureDirectory: URL?
+    /// Testprojekt des tabflood-Selbsttests. Wird in `finish` entfernt: Ein
+    /// `defer` in der Prüfmethode lief nie, weil `finish` per `exit()` endet
+    /// und den Swift-Stack nicht abwickelt — jeder direkte `-selftest
+    /// tabflood`-Lauf ließ ein `fastra-tabflood-*`-Verzeichnis zurück
+    /// (Review 2026-09-02).
+    private static var tabFloodFixtureDirectory: URL?
 
 
     private static var testLabel = "findbar"
@@ -2211,6 +2217,10 @@ enum SelfTest {
         if let printFixtureDirectory {
             try? FileManager.default.removeItem(at: printFixtureDirectory)
             self.printFixtureDirectory = nil
+        }
+        if let tabFloodFixtureDirectory {
+            try? FileManager.default.removeItem(at: tabFloodFixtureDirectory)
+            self.tabFloodFixtureDirectory = nil
         }
         let elapsed = DispatchTime.now().uptimeNanoseconds - testStartedNanoseconds
         let appMilliseconds = elapsed / 1_000_000
@@ -13660,6 +13670,7 @@ enum SelfTest {
         let fm = FileManager.default
         let base = fm.temporaryDirectory
             .appendingPathComponent("fastra-tabflood-\(UUID().uuidString)")
+        tabFloodFixtureDirectory = base
         let project = base.appendingPathComponent("projekt")
         do {
             try fm.createDirectory(at: project, withIntermediateDirectories: true)
@@ -13694,7 +13705,7 @@ enum SelfTest {
     }
 
     private static func verifyTabFloodGeometry(_ ws: Workspace, base: URL) {
-        defer { try? FileManager.default.removeItem(at: base) }
+        // Aufräumen von `base` übernimmt `finish` (tabFloodFixtureDirectory).
         guard ws.tabs.count >= 40 else {
             finish(false, "Nur \(ws.tabs.count) Tabs offen — Fluten fehlgeschlagen")
         }

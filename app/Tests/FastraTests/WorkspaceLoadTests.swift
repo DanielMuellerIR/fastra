@@ -544,3 +544,82 @@ func wsLoad_successfulFolderMatchClearsPreviousUnsavedNotice() async throws {
     #expect(cleanOutcome == .opened)
     #expect(ws.folderNavigationNotice == nil)
 }
+
+@Test("Ein veralteter Folgeauftrag löscht den Hinweis des neuesten Sprungs nicht")
+@MainActor
+func wsLoad_staleRecursiveFolderMatchKeepsNewestNotice() async throws {
+    // Drei überlappende Aufträge (Review 2026-09-02):
+    //   A  liest die Funddatei, der Read wird künstlich angehalten.
+    //   A' springt zur selben Datei mit einem ANDEREN Snapshot — ersetzt den
+    //      wartenden Auftrag; die Read-Completion startet dafür später einen
+    //      Folgeauftrag B mit A's Generation.
+    //   C  springt zu einer dirty geöffneten Datei und setzt den Hinweis.
+    // Läuft A's Read danach aus, darf der veraltete Folgeauftrag B den
+    // Hinweis von C nicht löschen — vorher stand das Löschen VOR dem
+    // Generations-Guard.
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let ws = Workspace(defaults: defaults)
+    let content = "eins TREFFER\n"
+    let url = try writeTmpUTF8(content)
+    let dirtyURL = try writeTmpUTF8("alter Suchstand\n")
+    defer {
+        try? FileManager.default.removeItem(at: url)
+        try? FileManager.default.removeItem(at: dirtyURL)
+    }
+    let loaded = try FileLoader.load(url: url)
+    let snapshotA = try #require(loaded.diskSnapshot)
+    // Zweiter, abweichender Snapshot derselben Datei — als hätte ein neuer
+    // Suchlauf die Datei in geändertem Zustand gelesen.
+    try (content + "zwei\n").write(to: url, atomically: true, encoding: .utf8)
+    let snapshotAPrime = try FileSnapshot.readSnapshotOnly(from: url)
+    #expect(snapshotA != snapshotAPrime)
+
+    // Dirty-Tab für Auftrag C vorbereiten.
+    var openedDirty: Bool?
+    ws.loadFile(at: dirtyURL) { openedDirty = $0 }
+    #expect(await waitUntil { openedDirty != nil })
+    let dirtyIndex = try #require(ws.tabs.firstIndex(where: { $0.url == dirtyURL }))
+    let dirtySnapshot = try #require(ws.tabs[dirtyIndex].diskSnapshot)
+    ws.tabs[dirtyIndex].content += "ungesichert\n"
+    ws.tabs[dirtyIndex].isDirty = true
+
+    let started = DispatchSemaphore(value: 0)
+    let mayFinish = DispatchSemaphore(value: 0)
+    ws.initialFileLoader = { _ in
+        started.signal()
+        mayFinish.wait()
+        return loaded
+    }
+
+    var outcomeA: FileLoadOutcome?
+    let generationA = ws.beginMatchJump()
+    ws.loadFolderMatchFile(atCanonicalURL: url, expectedDiskSnapshot: snapshotA,
+                           jumpGeneration: generationA) { outcomeA = $0 }
+    #expect(await waitUntil { started.wait(timeout: .now()) == .success })
+
+    var outcomeAPrime: FileLoadOutcome?
+    let generationAPrime = ws.beginMatchJump()
+    ws.loadFolderMatchFile(atCanonicalURL: url, expectedDiskSnapshot: snapshotAPrime,
+                           jumpGeneration: generationAPrime) { outcomeAPrime = $0 }
+    #expect(outcomeA == .cancelled)
+
+    let generationC = ws.beginMatchJump()
+    ws.loadFolderMatchFile(atCanonicalURL: dirtyURL, expectedDiskSnapshot: dirtySnapshot,
+                           jumpGeneration: generationC) { outcome in
+        if outcome != .opened {
+            ws.handleFolderMatchLoadDenial(outcome, jumpGeneration: generationC)
+        }
+    }
+    let unsavedNotice = L10n.string(
+        "Die Funddatei ist mit ungesicherten Änderungen geöffnet. Ohne Speichern schließen und erneut springen – oder speichern und danach erneut suchen.")
+    #expect(ws.folderNavigationNotice == unsavedNotice)
+
+    // A's Read ausläufen lassen → Folgeauftrag B (Generation A') startet und
+    // muss als veraltet abgewiesen werden, ohne den Hinweis anzufassen.
+    mayFinish.signal()
+    #expect(await waitUntil { outcomeAPrime != nil })
+    #expect(outcomeAPrime == .cancelled)
+    #expect(ws.folderNavigationNotice == unsavedNotice,
+            "Der Hinweis des neuesten Sprungs muss den Abschluss älterer Aufträge überleben")
+}

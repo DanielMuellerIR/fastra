@@ -197,13 +197,43 @@ struct BuildInstallationPolicyTests {
         #expect(success.error.isEmpty)
     }
 
+    @Test("Release behält die Gerätekennung, wenn die Mount-Prüfung selbst scheitert")
+    func releaseDetachKeepsDeviceWhenOwnershipCheckFails() throws {
+        // Vor der Korrektur (Review 2026-09-02) lieferte die Zugehörigkeits-
+        // prüfung bei einem hdiutil-Fehler oder einer unlesbaren Plist
+        // denselben Status wie bei einem nachweislich fremden Gerät. Der
+        // Aufrufer vergaß dann ATTACHED_DEV, und der EXIT-Trap konnte das
+        // tatsächlich noch eingehängte RW-Image nicht mehr aushängen.
+        for behavior in [FakeInfoBehavior.commandFails, .unreadablePlist] {
+            let result = try runReleaseDetach(detachSucceeds: true, info: behavior)
+            #expect(result.status != 0,
+                    "Ohne Urteil über das Gerät darf kein Detach als Erfolg gelten (\(behavior))")
+            #expect(result.attachedDevice == "/dev/disk93",
+                    "Ein Prüffehler ist kein Gerätewechsel — die Kennung muss bleiben (\(behavior))")
+            #expect(result.error.contains("ließ sich nicht prüfen"), "\(behavior)")
+            #expect(!result.error.contains("gehört nicht mehr"),
+                    "Ein Prüffehler darf nicht als Gerätewechsel gemeldet werden (\(behavior))")
+        }
+    }
+
     /// Führt die unveränderte `fastra_detach_attached_rw_image`-Funktion aus
     /// release.sh gegen ein Fake-`hdiutil` aus, dessen Detach wahlweise
     /// gelingt oder fehlschlägt. Liefert Exit-Status der Funktion und den
     /// danach gemerkten `ATTACHED_DEV`.
+    /// Verhalten des Fake-`hdiutil info` im Detach-Harness.
+    private enum FakeInfoBehavior {
+        /// Liefert eine gültige Plist mit dem gemeldeten Image.
+        case reportsImage
+        /// `hdiutil info` scheitert (Exit 1, keine Ausgabe).
+        case commandFails
+        /// `hdiutil info` liefert Text, der keine Plist ist.
+        case unreadablePlist
+    }
+
     private func runReleaseDetach(
         detachSucceeds: Bool,
-        imageBelongsToDevice: Bool = true
+        imageBelongsToDevice: Bool = true,
+        info: FakeInfoBehavior = .reportsImage
     ) throws -> (status: Int32, attachedDevice: String, error: String) {
         let sandbox = FileManager.default.temporaryDirectory.appendingPathComponent(
             "fastra-release-detach-\(UUID().uuidString)", isDirectory: true)
@@ -215,9 +245,16 @@ struct BuildInstallationPolicyTests {
         let reportedImage = sandbox.appendingPathComponent(
             imageBelongsToDevice ? "fastra_rw.dmg" : "foreign.dmg").path
         let expectedImage = sandbox.appendingPathComponent("fastra_rw.dmg").path
+        let infoPrelude: String
+        switch info {
+        case .reportsImage: infoPrelude = ""
+        case .commandFails: infoPrelude = "  exit 1"
+        case .unreadablePlist: infoPrelude = "  echo 'kaputt'; exit 0"
+        }
         try """
         #!/bin/bash
         if [ "$1" = "info" ]; then
+        \(infoPrelude)
           cat <<'PLIST'
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

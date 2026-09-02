@@ -358,14 +358,12 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         // wie beim Sitzungs-Restore ausdrücklich anstoßen; der Guard macht den
         // späteren Delegate-Aufruf zum sicheren No-op.
         controller.restoreFrameAfterFirstSwiftUILayout()
-        // Ins „Fenster"-Menü aufnehmen. Per AppKit erzeugte Fenster tauchen dort
-        // sonst nicht auf — bei mehreren Fenstern war nur das SwiftUI-Startfenster
-        // gelistet (Daniel-Befund 2026-07-12). Den Titel hält AppKit danach
-        // automatisch synchron zu `window.title`; `removeWindowsItem` räumt beim
-        // Schließen wieder auf.
-        NSApp.addWindowsItem(controller.window,
-                             title: controller.window.title,
-                             filename: false)
+        // Kein `NSApp.addWindowsItem` mehr: Den „Fenster"-Menü-Eintrag pflegt
+        // seit v1.117.1 ausschließlich `WindowsMenuTabs` über
+        // `MainWindowTitleBridge` (Tab-Untermenü). Der frühere AppKit-Eintrag
+        // (Daniel-Befund 2026-07-12: AppKit-Fenster fehlten im Menü) stand
+        // sonst bis zum ersten Bridge-Update doppelt im Menü
+        // (Review 2026-09-02).
         Workspace.shared = controller.workspace
         return controller.workspace
     }
@@ -388,9 +386,7 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         controller.workspace.restore(state, completion: completion)
         controller.window.orderFront(nil)
         controller.restoreFrameAfterFirstSwiftUILayout()
-        NSApp.addWindowsItem(controller.window,
-                             title: controller.window.title,
-                             filename: false)
+        // Fenster-Menü: siehe `openNewDocument` — nur `WindowsMenuTabs`.
         return controller.workspace
     }
 
@@ -420,6 +416,9 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         workspace.showSearchDialog = false
         WorkspaceWindowRegistry.unregister(window)
+        // Sicherheitsnetz, kein Registrierungsweg: Sollte AppKit vor dem
+        // ersten Bridge-Update doch einen eigenen Eintrag angelegt haben,
+        // verschwindet er hier; ohne Eintrag ist der Aufruf wirkungslos.
         NSApp.removeWindowsItem(window)
         Self.openControllers.removeValue(forKey: ObjectIdentifier(window))
     }

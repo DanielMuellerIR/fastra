@@ -9,6 +9,47 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.117.2] — 2026-09-02
+
+Nacht-Review vom 2026-09-02 abgearbeitet (acht Funde, alle behoben).
+
+### Behoben
+
+- **Die Tab-Untermenüs überleben einen Neuaufbau des Fenster-Menüs.** SwiftUI
+  baut das App-Menü nach dem Start noch einmal neu; wechselte dabei die
+  Menü-Instanz, blieben die Einträge am alten, unsichtbaren Menü hängen.
+  `WindowsMenuTabs` zieht sie jetzt samt Trenner um. Die frühere doppelte
+  Registrierung über `NSApp.addWindowsItem` in `DocumentWindowController`
+  entfällt; das Menü pflegt nur noch ein Weg.
+- **VoiceOver kündigt die Git-Symbolknöpfe als „Änderungen bereitstellen“,
+  „Aus Bereitstellung nehmen“ und „Änderungen verwerfen“ an.** Der
+  Tooltip-Overlay setzt keinen Accessibility-Text; die Knöpfe tragen jetzt
+  eine eigene Beschriftung. Die Tooltips dieser drei Knöpfe waren außerdem
+  nicht lokalisiert.
+- **Der deaktivierte Fetch-Knopf zeigt seinen Tooltip.** Er nutzt jetzt wie
+  die anderen Git-Knöpfe `fastraHelp` statt `.help`, das auf deaktivierten
+  Bedienelementen nichts anzeigt.
+- **Ein veralteter Ordner-Sprung löscht den Hinweis des neuesten Sprungs
+  nicht mehr.** Der Folgeauftrag, den `loadFolderMatchFile` für einen
+  geänderten Snapshot startet, räumte `folderNavigationNotice` ab, bevor der
+  Generations-Guard ihn verwarf. Löschen steht jetzt hinter dem Guard;
+  Regressionstest mit drei überlappenden Aufträgen.
+- **`release.sh` vergisst die DMG-Gerätekennung nicht mehr bei einem
+  Prüffehler.** Die Zugehörigkeitsprüfung unterscheidet jetzt eigenes
+  Gerät, nachweislich fremdes Gerät und gescheiterte Prüfung
+  (`hdiutil info`-Fehler, unlesbare Plist); nur der zweite Fall leert
+  `ATTACHED_DEV`. Vorher konnte der Exit-Trap ein noch eingehängtes Image
+  nicht mehr aushängen.
+- **Der tabflood-Selbsttest hinterlässt kein Testverzeichnis mehr.** Sein
+  `defer` lief nie, weil `finish` per `exit()` endet; das Verzeichnis räumt
+  jetzt `finish` selbst auf.
+
+### Geändert
+
+- **Die Ordnerliste des Suchdialogs baut im Scroll-Zweig nur sichtbare Zeilen
+  auf** (`LazyVStack`) und schlägt das Häkchen je Zeile in einem einmal
+  gebauten Index nach statt per Suche über das ganze Array.
+
 ## [v1.117.1] — 2026-09-01
 
 ### Behoben

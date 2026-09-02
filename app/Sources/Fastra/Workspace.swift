@@ -3031,14 +3031,18 @@ final class Workspace: ObservableObject {
                              expectedDiskSnapshot: FileSnapshot,
                              jumpGeneration: Int,
                              outcome: @escaping (FileLoadOutcome) -> Void) {
-        // Ein Hinweis erklärt immer nur den LETZTEN Versuch. Ohne dieses
-        // zentrale Löschen blieb eine Dirty-Ablehnung auch nach einem
-        // erfolgreichen Sprung zu einer anderen Datei sichtbar.
-        folderNavigationNotice = nil
         guard isCurrentMatchJump(jumpGeneration) else {
             outcome(.cancelled)
             return
         }
+        // Ein Hinweis erklärt immer nur den LETZTEN Versuch. Ohne dieses
+        // zentrale Löschen blieb eine Dirty-Ablehnung auch nach einem
+        // erfolgreichen Sprung zu einer anderen Datei sichtbar. Das Löschen
+        // steht bewusst HINTER dem Generations-Guard: Ein veralteter Auftrag
+        // — etwa der Folgeauftrag, den die Read-Completion unten für einen
+        // inzwischen geänderten Snapshot startet — darf den Hinweis eines
+        // neueren Sprungs nicht mehr anfassen (Review 2026-09-02).
+        folderNavigationNotice = nil
 
         let key = url.path
         let request = PendingFolderMatchFileLoad(
@@ -6965,6 +6969,18 @@ struct SearchFolderEntry: Identifiable, Hashable, Codable {
         self.id = id
         self.path = path
         self.enabled = enabled
+    }
+
+    /// Index Pfad → Häkchen für die Ordnerliste des Suchdialogs: ein
+    /// Durchlauf statt einer Suche pro Zeile. Bei doppelten Pfaden gewinnt
+    /// der erste Eintrag — dieselbe Reihenfolge, die auch die Liste zeigt.
+    static func enabledByPath(_ entries: [SearchFolderEntry]) -> [String: Bool] {
+        var index: [String: Bool] = [:]
+        index.reserveCapacity(entries.count)
+        for entry in entries where index[entry.path] == nil {
+            index[entry.path] = entry.enabled
+        }
+        return index
     }
 
     init(from decoder: Decoder) throws {

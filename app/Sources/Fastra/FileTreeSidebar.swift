@@ -579,7 +579,10 @@ struct FileTreeSidebar: View {
             }
             .buttonStyle(.plain)
             .disabled(workspace.gitOperationsAreBusy)
-            .help(Self.fetchDescription(workspace.gitRepositorySnapshot?.fetch, now: now))
+            // fastraHelp statt .help: Der Knopf ist gerade dann deaktiviert,
+            // wenn eine andere Git-Operation läuft — und genau dann soll der
+            // Tooltip den Fetch-Stand erklären (Review 2026-09-02).
+            .fastraHelp(Self.fetchDescription(workspace.gitRepositorySnapshot?.fetch, now: now))
             .accessibilityLabel(workspace.gitRepositorySnapshot?.fetch.error == nil
                                 ? "Remote-Änderungen abrufen" : "Fetch erneut versuchen")
             .accessibilityValue(Self.fetchDescription(

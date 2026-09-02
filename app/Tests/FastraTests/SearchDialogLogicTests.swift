@@ -491,3 +491,31 @@ func folderMatchLoadDenialDistinguishesReasons() {
     workspace.handleFolderMatchLoadDenial(.staleSnapshot, jumpGeneration: generation)
     #expect(workspace.folderNavigationNotice == nil)
 }
+
+@Suite("Suchdialog: Index der Ordner-Häkchen")
+struct SearchFolderEnabledIndexTests {
+    @Test("Der Index liefert je Pfad das Häkchen des ersten Eintrags")
+    func enabledByPathPrefersFirstEntry() {
+        // Der Suchdialog bildet diesen Index einmal je Darstellung, statt in
+        // jedem Toggle das ganze Array zu durchsuchen (Review 2026-09-02).
+        let entries = [
+            SearchFolderEntry(path: "/a", enabled: true),
+            SearchFolderEntry(path: "/b", enabled: false),
+            SearchFolderEntry(path: "/a", enabled: false),
+        ]
+        let index = SearchFolderEntry.enabledByPath(entries)
+        #expect(index == ["/a": true, "/b": false])
+        #expect(SearchFolderEntry.enabledByPath([]).isEmpty)
+    }
+
+    @Test("Eine große Verlaufsliste wird in einem Durchlauf indiziert")
+    func enabledByPathHandlesLargeHistory() {
+        let entries = (0..<20_000).map {
+            SearchFolderEntry(path: "/ordner/\($0)", enabled: $0.isMultiple(of: 2))
+        }
+        let index = SearchFolderEntry.enabledByPath(entries)
+        #expect(index.count == entries.count)
+        #expect(index["/ordner/0"] == true)
+        #expect(index["/ordner/19999"] == false)
+    }
+}
