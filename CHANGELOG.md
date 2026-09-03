@@ -9,6 +9,22 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.118.2] — 2026-09-03
+
+Nacht-Review vom 2026-09-03 abgearbeitet (ein Fund, behoben).
+
+### Behoben
+
+- **Eine Datei, die während ihres ersten Ladens in der Seitenleiste
+  umbenannt wird, bleibt nicht mehr dauerhaft im Ladezustand.** Die
+  Umbenennung hängte den Lade-Platzhalter auf den neuen Pfad um; der
+  laufende Read kam mit der alten URL zurück, `loadFile` verwarf ihn und
+  ließ Spinner, Lade-Generation und Platzhalter stehen — ein erneutes Öffnen
+  fand nur den ladenden Tab. Erkennt der Read jetzt seinen eigenen
+  Platzhalter unter einer anderen URL, startet er sich für den neuen Pfad
+  neu und meldet erst dessen Ergebnis. Regressionstest mit angehaltenem Read
+  und Umbenennung dazwischen.
+
 ## [v1.118.1] — 2026-09-02
 
 Nacht-Review vom 2026-09-02 abgearbeitet (vier Funde, alle behoben).

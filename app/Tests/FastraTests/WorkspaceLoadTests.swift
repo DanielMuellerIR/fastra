@@ -623,3 +623,72 @@ func wsLoad_staleRecursiveFolderMatchKeepsNewestNotice() async throws {
     #expect(ws.folderNavigationNotice == unsavedNotice,
             "Der Hinweis des neuesten Sprungs muss den Abschluss älterer Aufträge überleben")
 }
+
+@Test("Umbenennen während des ersten Reads lädt den Platzhalter unter dem neuen Pfad fertig")
+@MainActor
+func wsLoad_renameDuringInitialReadRestartsLoadForNewPath() async throws {
+    // Review 2026-09-03: `handleFileTreeMoveLocally` hängt den Lade-
+    // Platzhalter auf den neuen Pfad um; der laufende Read kam mit der alten
+    // URL zurück, wurde verworfen und ließ den Tab dauerhaft im Ladezustand.
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let ws = Workspace(defaults: defaults)
+    let original = try writeTmpUTF8("Inhalt vor dem Umbenennen\n")
+    let renamed = original.deletingLastPathComponent()
+        .appendingPathComponent("fastra-wsload-renamed-\(UUID().uuidString).txt")
+        .canonicalFileURL
+    defer {
+        try? FileManager.default.removeItem(at: original)
+        try? FileManager.default.removeItem(at: renamed)
+    }
+
+    // Der erste Read hält an, bis der Test die Umbenennung erledigt hat. Die
+    // gelesenen URLs zeigen, dass danach ein zweiter Read am NEUEN Pfad läuft.
+    let started = DispatchSemaphore(value: 0)
+    let mayFinish = DispatchSemaphore(value: 0)
+    let readURLs = WorkspaceLoadURLRecorder()
+    ws.initialFileLoader = { url in
+        readURLs.append(url)
+        if readURLs.count == 1 {
+            started.signal()
+            mayFinish.wait()
+        }
+        return try FileLoader.load(url: url)
+    }
+
+    var outcome: FileLoadOutcome?
+    ws.loadFile(atCanonicalURL: original) { outcome = $0 }
+    #expect(await waitUntil { started.wait(timeout: .now()) == .success })
+    let tabID = try #require(ws.tabs.first(where: { $0.url == original })?.id)
+
+    // Umbenennen wie die Seitenleiste: erst die Platte, dann die Tabs.
+    try FileManager.default.moveItem(at: original, to: renamed)
+    ws.handleFileTreeMove(from: original, to: renamed)
+    #expect(ws.tabs.first(where: { $0.id == tabID })?.url == renamed)
+    #expect(outcome == nil, "Vor Abschluss des Reads darf nichts gemeldet werden")
+
+    mayFinish.signal()
+    #expect(await waitUntil { outcome != nil })
+    #expect(outcome == .opened)
+    let tab = try #require(ws.tabs.first(where: { $0.id == tabID }))
+    #expect(!tab.isLoading, "Der umbenannte Tab darf nicht im Ladezustand hängen bleiben")
+    #expect(tab.url == renamed)
+    #expect(tab.content == "Inhalt vor dem Umbenennen\n")
+    #expect(readURLs.urls == [original, renamed],
+            "Nach der Umbenennung muss genau ein zweiter Read am neuen Pfad laufen")
+    #expect(ws.tabs.filter { $0.id == tabID }.count == 1)
+}
+
+/// Thread-sicherer Mitschnitt der gelesenen Pfade; der Test liest ihn auf
+/// Main, während `initialFileLoader` ihn im detached Task füllt.
+private final class WorkspaceLoadURLRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [URL] = []
+
+    var urls: [URL] { lock.withLock { recorded } }
+    var count: Int { lock.withLock { recorded.count } }
+
+    func append(_ url: URL) {
+        lock.withLock { recorded.append(url) }
+    }
+}

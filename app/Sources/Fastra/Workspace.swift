@@ -3308,6 +3308,26 @@ final class Workspace: ObservableObject {
         }
 
         // ── (4) Hintergrund-Task starten ──────────────────────────────────
+        startInitialFileRead(
+            url: url, tabID: tabID, placeholderDocumentID: placeholderDocumentID,
+            generation: generation, previewCancellation: previewCancellation,
+            expectedDiskSnapshot: expectedDiskSnapshot, acceptance: acceptance,
+            expectedGitContext: expectedGitContext,
+            previousActiveTabID: previousActiveTabID, outcome: outcome
+        )
+    }
+
+    /// Schritt (4) von `loadFile`: liest `url` im Hintergrund und schreibt das
+    /// Ergebnis in den Platzhalter `tabID`. Eigene Methode, weil der Read sich
+    /// selbst neu starten muss, wenn die Seitenleiste den Platzhalter während
+    /// des Lesens umbenennt (`handleFileTreeMoveLocally`, Review 2026-09-03).
+    private func startInitialFileRead(
+        url: URL, tabID: UUID, placeholderDocumentID: UUID, generation: Int,
+        previewCancellation: PreviewLoadCancellation?,
+        expectedDiskSnapshot: FileSnapshot?, acceptance: FileLoadAcceptance?,
+        expectedGitContext: GitActionContext?, previousActiveTabID: UUID?,
+        outcome: ((FileLoadOutcome) -> Void)?
+    ) {
         // [weak self]: Workspace darf verschwinden (z.B. Preview), ohne Leak.
         let initialFileLoader = initialFileLoader
         Task.detached(priority: .userInitiated) { [weak self] in
@@ -3375,11 +3395,10 @@ final class Workspace: ObservableObject {
                 // hat keine Eintrags-ID mehr) ODER eine neue Generation für
                 // diese ID gestartet wurde ODER unter dieser Tab-ID inzwischen
                 // ein anderes Dokument liegt (recycelter Vorschauplatz mit
-                // neuer Dokument-ID oder URL) → dieses Ergebnis verwerfen.
+                // neuer Dokument-ID) → dieses Ergebnis verwerfen.
                 guard self.loadGeneration[tabID] == generation,
-                      self.tabs.contains(where: {
+                      let placeholderIndex = self.tabs.firstIndex(where: {
                           $0.id == tabID && $0.documentID == placeholderDocumentID
-                              && $0.url == url
                       }) else {
                     // Platzhalter kann weg sein (Nutzer hat Tab während des
                     // Ladens geschlossen) — kein Fehler, einfach still beenden.
@@ -3391,6 +3410,37 @@ final class Workspace: ObservableObject {
                         self.loadGeneration.removeValue(forKey: tabID)
                     }
                     report(.cancelled)
+                    return
+                }
+
+                // ── Während des Ladens umbenannt ──────────────────────────
+                // Derselbe Platzhalter (Tab- und Dokument-ID unverändert,
+                // Generation noch unsere) trägt eine andere URL: Die
+                // Seitenleiste hat die Datei während des Reads umbenannt
+                // (`handleFileTreeMoveLocally`). Das Ergebnis stammt vom
+                // alten Pfad und wird nicht übernommen. Den Platzhalter
+                // einfach zu verwerfen oder still liegen zu lassen wäre aber
+                // falsch: Er bliebe unter dem neuen Pfad für immer im
+                // Ladezustand, und ein erneutes Öffnen fände nur den
+                // ladenden Tab (Review 2026-09-03). Deshalb denselben Auftrag
+                // mit neuer Generation für den neuen Pfad noch einmal
+                // starten; die Rückmeldung an den Aufrufer übernimmt der
+                // neue Read — deswegen hier ausdrücklich nichts melden.
+                if let movedURL = self.tabs[placeholderIndex].url, movedURL != url {
+                    let nextGeneration = generation + 1
+                    self.loadGeneration[tabID] = nextGeneration
+                    self.startInitialFileRead(
+                        url: movedURL, tabID: tabID,
+                        placeholderDocumentID: placeholderDocumentID,
+                        generation: nextGeneration,
+                        previewCancellation: previewCancellation,
+                        expectedDiskSnapshot: expectedDiskSnapshot,
+                        acceptance: acceptance,
+                        expectedGitContext: expectedGitContext,
+                        previousActiveTabID: previousActiveTabID,
+                        outcome: outcome
+                    )
+                    didReport = true
                     return
                 }
 
