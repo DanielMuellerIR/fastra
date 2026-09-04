@@ -9,6 +9,46 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.118.5] — 2026-09-04
+
+Zwei Befunde aus dem Arbeitsbetrieb mit v1.117.2 (2026-09-04), beide auf
+dieselbe Wurzel zurückgeführt und mit einem Selbsttest belegt.
+
+### Behoben
+
+- **Der rote Schließen-Knopf des Hauptfensters löst die Tabs jetzt wie ⌘W
+  auf.** SwiftUI stellt für das Startfenster seinen eigenen Fenster-Delegate;
+  der rote Knopf schloss das Fenster deshalb an Fastra vorbei — ohne Rückfrage
+  bei ungesicherten Änderungen und ohne die Tabs zu entfernen. Der Workspace
+  behielt alle Tabs, und sobald macOS dieselbe Szene wieder anzeigte
+  (Finder-Doppelklick, Dock-Klick), standen sie wieder da. Das wieder
+  angezeigte Fenster hatte zudem seinen Eintrag in der Fenster-Registry beim
+  Schließen verloren und bekam ihn nicht zurück: Es zählte nicht mehr als
+  Dokumentfenster, und eine per Doppelklick geöffnete Datei erschien in ZWEI
+  Fenstern unterschiedlicher Größe — einmal im wieder angezeigten Hauptfenster
+  mit dem alten Tab, einmal in einem neuen Fenster. Der Knopf fragt jetzt wie
+  ⌘W nach, fährt den Workspace in den Willkommens-Zustand und schließt dann;
+  ein wieder angezeigtes Fenster meldet sich beim Schlüsselfenster-Wechsel
+  erneut in der Registry an.
+- **⌘S ohne eindeutiges Zieldokument ist nicht mehr lautlos.** Fehlte dem
+  Vorderfenster die Registry-Zuordnung (derselbe Verlust wie oben), verpuffte
+  „Speichern" ohne Ton, Dialog oder Änderung am Punkt — die Datei blieb
+  ungespeichert, und die Änderungen waren nach dem Neustart weg. Jetzt ertönt
+  der Systemton wie bei ⌘W; die Wiederanmeldung oben beseitigt die Ursache,
+  der Rückfall über die Titelbrücke aus v1.118.3 bleibt als zweites Netz.
+
+### Qualitätssicherung
+
+- Neuer Fenster-Selbsttest `finderreopen`: Datei im Hauptfenster öffnen,
+  ungesichert per rotem Knopf schließen (Rückfrage muss kommen, „Abbrechen"
+  lässt das Fenster stehen), dann ohne Sichern schließen, das Öffnen-Ereignis
+  wie nach einem Finder-Doppelklick an SwiftUIs App-Delegate zustellen und die
+  Fenster zählen; danach alle Fenster schließen und den Dock-Klick zustellen.
+  Gegen v1.117.2 ausgeführt zeigte der Test die Datei in zwei Fenstern
+  (1100×1308 und 1496×900) und das wieder angezeigte Hauptfenster ohne
+  Registry-Eintrag; auf diesem Stand läuft er grün. Der Test braucht keine
+  App-Aktivierung.
+
 ## [v1.118.4] — 2026-09-04
 
 Nacht-Review vom 2026-09-04 abgearbeitet (ein Fund, behoben).

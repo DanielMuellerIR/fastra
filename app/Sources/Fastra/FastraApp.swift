@@ -321,9 +321,21 @@ struct FastraApp: App {
             // bereits vergeben (siehe Kommentar bei „Über Fastra").
             Group {
                 CommandGroup(replacing: .saveItem) {
-                    Button("Speichern") { commandWorkspace?.saveActiveTab() }
+                    // Ohne eindeutiges Zieldokument darf ⌘S nicht lautlos
+                    // verpuffen: Der Nutzer sieht den Änderungspunkt, drückt
+                    // ⌘S, und nichts passiert — so blieb am 2026-09-04 eine
+                    // Datei ungespeichert, ohne dass irgendetwas darauf
+                    // hinwies. Der Systemton sagt wenigstens „nicht
+                    // angekommen", wie bei ⌘W.
+                    Button("Speichern") {
+                        guard let commandWorkspace else { NSSound.beep(); return }
+                        commandWorkspace.saveActiveTab()
+                    }
                         .keyboardShortcut("s", modifiers: .command)
-                    Button("Speichern unter…") { commandWorkspace?.saveActiveTabAs() }
+                    Button("Speichern unter…") {
+                        guard let commandWorkspace else { NSSound.beep(); return }
+                        commandWorkspace.saveActiveTabAs()
+                    }
                         .keyboardShortcut("s", modifiers: [.command, .shift])
                 }
                 // Drucken (mit Papierformat). Eigene View, damit die Punkte

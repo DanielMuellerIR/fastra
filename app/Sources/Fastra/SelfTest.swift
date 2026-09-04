@@ -524,6 +524,7 @@ enum SelfTest {
         switch name {
         case "findbar":   waitForMainWindow { runFindBarTest() }
         case "newwindow": waitForMainWindow { runNewWindowTest() }
+        case "finderreopen": waitForMainWindow { runFinderReopenTest() }
         case "welcomenew": waitForMainWindow { runWelcomeNewTabTest() }
         case "sessionrestore": DispatchQueue.main.async { runSessionRestoreTest() }
         case "coldopen": DispatchQueue.main.async { runColdOpenTest(restoreEnabled: true) }
@@ -999,6 +1000,214 @@ enum SelfTest {
     /// Führt den ECHTEN Menüpunkt mit ⌘N aus und prüft danach zwei Dinge, die
     /// ein reiner Unit-Test nicht sehen kann: Es erscheint ein zweites Fenster,
     /// und dessen neuer Workspace teilt seinen Inhalt nicht mit dem ersten.
+    // MARK: - Finder-Öffnen nach rotem Schließen-Knopf (Befund 2026-09-04)
+
+    /// Nachstellung des Befunds vom 2026-09-04 (v1.117.2): Eine Markdown-
+    /// Datei war im Hauptfenster offen, der Nutzer schloss alle Fenster und
+    /// öffnete dieselbe Datei per Finder-Doppelklick erneut — sie erschien in
+    /// ZWEI Fenstern unterschiedlicher Größe. Der Test fährt genau diesen
+    /// Weg, aber ohne Finder: Das Öffnen-Ereignis (`odoc`) und das
+    /// Reopen-Ereignis (`rapp`, Dock-Klick) gehen an `NSApp.delegate` — an
+    /// SwiftUIs Delegate, wie AppKit es nach dem Apple-Event auch tut. Eine
+    /// App-Aktivierung braucht der Test nicht.
+    private static func runFinderReopenTest() {
+        guard let original = Workspace.shared else {
+            finish(false, "kein aktiver Ausgangs-Workspace")
+        }
+        guard let mainWindow = NSApp.windows.first(where: {
+            $0.frameAutosaveName != SearchWindow.frameAutosaveName && $0.isVisible
+        }) else {
+            finish(false, "kein sichtbares Hauptfenster")
+        }
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-selftest-finderreopen-\(getpid())")
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try "# Wieder geöffnet\n\nInhalt.\n".write(
+                to: folder.appendingPathComponent("Notiz.md"), atomically: true, encoding: .utf8)
+        } catch {
+            finish(false, "Fixture fehlt: \(error.localizedDescription)")
+        }
+        windowRoutingFixtureDirectory = folder
+        // Erst NACH dem Anlegen kanonisieren: `/var` wird sonst nicht zu
+        // `/private/var` aufgelöst, und der Vergleich mit dem Tab schlägt fehl.
+        let file = folder.appendingPathComponent("Notiz.md").canonicalFileURL
+
+        guard let closeButton = mainWindow.standardWindowButton(.closeButton) else {
+            finish(false, "Hauptfenster hat keinen Schließen-Knopf")
+        }
+        // Derselbe Ladeweg wie beim Öffnen per Finder; die Completion sagt,
+        // wann der Tab wirklich steht.
+        original.loadFile(at: file) { ok in
+            guard ok, let index = original.tabs.firstIndex(where: {
+                $0.url?.canonicalFileURL.path == file.path
+            }) else {
+                finish(false, "Datei kam nicht im Hauptfenster an (ok=\(ok), Tabs: "
+                    + "\(original.tabs.map { $0.url?.path ?? "–" }))")
+            }
+            // Erste Probe: ungesicherte Änderung plus roter Knopf. Der Knopf
+            // muss dieselbe Rückfrage stellen wie ⌘W; „Abbrechen" lässt das
+            // Fenster stehen. Ohne Umleitung schloss SwiftUI ungefragt.
+            original.tabs[index].content += "\nungesichert"
+            original.tabs[index].isDirty = true
+            var confirmations = 0
+            let defaultHandler = original.confirmCloseHandler
+            original.confirmCloseHandler = { _ in
+                confirmations += 1
+                return .cancel
+            }
+            closeButton.performClick(nil)
+            var problems: [String] = []
+            if confirmations != 1 || !mainWindow.isVisible {
+                problems.append("roter Knopf bei ungesichertem Tab: Rückfragen=\(confirmations), "
+                    + "Fenster sichtbar=\(mainWindow.isVisible) (erwartet 1 und sichtbar)")
+            }
+            // Zweite Probe: „Nicht sichern" — jetzt darf das Fenster zu.
+            original.confirmCloseHandler = { _ in .dontSave }
+            closeButton.performClick(nil)
+            original.confirmCloseHandler = defaultHandler
+            waitUntilSelfTest(tick: 0, limit: 100, failure: "Hauptfenster schloss nicht "
+                + "(\(problems.joined(separator: "; ")))") {
+                !mainWindow.isVisible
+            } then: {
+                // Ein geschlossenes Fenster darf seine Datei nicht behalten —
+                // sonst bringt es sie beim nächsten Anzeigen ungefragt zurück.
+                // Der Befund wird gesammelt, nicht sofort gemeldet: Die
+                // folgenden Phasen zeigen, welche sichtbare Folge er hat.
+                let leftover = original.tabs.compactMap { $0.url?.lastPathComponent }
+                if !original.isWelcomeScreen
+                    || original.tabs.contains(where: { $0.url?.canonicalFileURL.path == file.path }) {
+                    problems.append("geschlossenes Hauptfenster behielt seine Tabs: "
+                        + "\(leftover), Willkommen=\(original.isWelcomeScreen)")
+                }
+                print("finderreopen: Delegate des Hauptfensters = "
+                    + "\(mainWindow.delegate.map { String(describing: type(of: $0)) } ?? "nil")")
+                deliverExternalEvent(eventID: AEEventID(kAEOpenDocuments), fileURL: file)
+                waitUntilSelfTest(tick: 0, limit: 100,
+                                  failure: "Öffnen-Ereignis zeigte die Datei in keinem Fenster") {
+                    documentWindows(showing: file).count >= 1
+                } then: {
+                    // Ein wieder angezeigtes Hauptfenster muss in der Registry
+                    // stehen — der Rückfall über die Titelbrücke (v1.118.3)
+                    // ist eine Reparatur, keine Registrierung. Ohne Eintrag
+                    // zählte das Fenster in v1.117.2 nicht als Dokumentfenster,
+                    // und die Datei bekam ein zweites Fenster.
+                    let registered = WorkspaceWindowRegistry.registeredWindows()
+                        .contains { $0 === mainWindow }
+                    print("finderreopen: Hauptfenster sichtbar=\(mainWindow.isVisible) "
+                        + "registriert=\(registered)")
+                    if mainWindow.isVisible, !registered {
+                        problems.append("wieder angezeigtes Hauptfenster fehlt in der Fenster-Registry")
+                    }
+                    // Ein zweites Fenster kann erst nach dem ersten erscheinen
+                    // (SwiftUI zeigt seine Szene asynchron). Bewusst warten.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        let showing = documentWindows(showing: file)
+                        if showing.count != 1 {
+                            problems.append("Öffnen-Ereignis zeigte die Datei in "
+                                + "\(showing.count) Fenstern (Größen: "
+                                + "\(showing.map { "\(Int($0.frame.width))×\(Int($0.frame.height))" }))")
+                        }
+                        verifyReopenWithoutWindows(file: file, showingWindows: showing,
+                                                   problems: problems)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Zweite Hälfte: Alle Fenster zu, dann Dock-Klick (`rapp`). Danach darf
+    /// genau EIN Dokumentfenster stehen — nicht eines von AppKit und eines von
+    /// SwiftUI.
+    private static func verifyReopenWithoutWindows(
+        file: URL, showingWindows: [NSWindow], problems: [String]
+    ) {
+        var problems = problems
+        for window in MainActor.assumeIsolated({ DocumentWindowController.visibleDocumentWindows() }) {
+            if let workspace = WorkspaceWindowRegistry.workspace(for: window) {
+                workspace.tabs.indices.forEach { workspace.tabs[$0].isDirty = false }
+            }
+            window.performClose(nil)
+        }
+        waitUntilSelfTest(tick: 0, limit: 100, failure: "Dateifenster schlossen nicht") {
+            MainActor.assumeIsolated { DocumentWindowController.visibleDocumentWindows().isEmpty }
+        } then: {
+            deliverExternalEvent(eventID: AEEventID(kAEReopenApplication), fileURL: nil)
+            waitUntilSelfTest(tick: 0, limit: 100, failure: "Reopen zeigte kein Fenster") {
+                MainActor.assumeIsolated { !DocumentWindowController.visibleDocumentWindows().isEmpty }
+            } then: {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    let windows = MainActor.assumeIsolated {
+                        DocumentWindowController.visibleDocumentWindows()
+                    }
+                    if windows.count != 1 {
+                        problems.append("Reopen ohne Fenster zeigte \(windows.count) Fenster (Größen: "
+                            + "\(windows.map { "\(Int($0.frame.width))×\(Int($0.frame.height))" }))")
+                    }
+                    guard problems.isEmpty else {
+                        finish(false, problems.joined(separator: "; "))
+                    }
+                    finish(true, "Datei nach rotem Schließen genau einmal wieder geöffnet, "
+                        + "Reopen ohne Fenster zeigt genau ein Fenster")
+                }
+            }
+        }
+    }
+
+    /// Alle sichtbaren Dokumentfenster, deren Workspace die Datei zeigt.
+    private static func documentWindows(showing file: URL) -> [NSWindow] {
+        MainActor.assumeIsolated {
+            DocumentWindowController.visibleDocumentWindows().filter { window in
+                WorkspaceWindowRegistry.workspace(for: window)?.tabs
+                    .contains { $0.url?.canonicalFileURL.path == file.path } ?? false
+            }
+        }
+    }
+
+    /// Stellt das Ereignis so zu, wie AppKit es nach einem Apple-Event von
+    /// Finder (`odoc`) oder Dock (`rapp`) tut: an `NSApp.delegate`. Das ist
+    /// SwiftUIs eigener App-Delegate, der zuerst sein Szenenfenster für das
+    /// externe Ereignis aktiviert und danach an den `AppDelegate` von Fastra
+    /// weiterreicht — genau diese Reihenfolge erzeugte das doppelte Fenster.
+    ///
+    /// Ein echtes Apple-Event an den eigenen Prozess taugt dafür nicht: Vom
+    /// Main-Thread gesendet läuft es in errAETimeout (-1712), von einem
+    /// Hintergrund-Thread aus stellt der Apple-Event-Manager es direkt in
+    /// diesem Thread zu, und AppKit stürzt beim Fensteraufbau ab.
+    private static func deliverExternalEvent(eventID: AEEventID, fileURL: URL?) {
+        guard let delegate = NSApp.delegate else {
+            finish(false, "NSApp.delegate fehlt")
+        }
+        if let fileURL {
+            guard delegate.responds(to: #selector(NSApplicationDelegate.application(_:open:))) else {
+                finish(false, "App-Delegate beantwortet application(_:open:) nicht")
+            }
+            delegate.application?(NSApp, open: [fileURL])
+        } else {
+            guard delegate.responds(to: #selector(
+                NSApplicationDelegate.applicationShouldHandleReopen(_:hasVisibleWindows:)
+            )) else {
+                finish(false, "App-Delegate beantwortet applicationShouldHandleReopen nicht")
+            }
+            _ = delegate.applicationShouldHandleReopen?(NSApp, hasVisibleWindows: false)
+        }
+        _ = eventID
+    }
+
+    /// Kleines Polling für diesen Test: 50-ms-Takt bis `condition` gilt,
+    /// sonst nach `limit` Takten ehrlicher FAIL.
+    private static func waitUntilSelfTest(
+        tick: Int, limit: Int, failure: String,
+        condition: @escaping () -> Bool, then body: @escaping () -> Void
+    ) {
+        if condition() { body(); return }
+        if tick >= limit { finish(false, failure) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            waitUntilSelfTest(tick: tick + 1, limit: limit, failure: failure,
+                              condition: condition, then: body)
+        }
+    }
+
     private static func runNewWindowTest(focusedCommandRouting: Bool = false) {
         guard let original = Workspace.shared else {
             finish(false, "kein aktiver Ausgangs-Workspace")

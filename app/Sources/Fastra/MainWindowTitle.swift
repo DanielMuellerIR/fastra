@@ -265,6 +265,17 @@ struct MainWindowTitleBridge: NSViewRepresentable {
                 if let workspace = self?.workspace {
                     Workspace.shared = workspace
                 }
+                // Ein per rotem Knopf geschlossenes SwiftUI-Hauptfenster hat
+                // seinen Registry-Eintrag beim `willClose` verloren. Zeigt
+                // SwiftUI dieselbe Szene später wieder an (Finder-Doppelklick,
+                // Dock-Klick), wandert die Brücke NICHT erneut ins Fenster —
+                // `viewDidMoveToWindow` bleibt aus. Der Schlüsselfenster-
+                // Wechsel ist dann der verlässliche Moment, den Eintrag samt
+                // Schließen-Handler neu zu setzen. Ohne ihn zählte das wieder
+                // sichtbare Fenster in v1.117.2 nicht als Dokumentfenster, und
+                // eine per Finder geöffnete Datei bekam ein zweites Fenster
+                // (Befund 2026-09-04). Der Aufruf ist idempotent.
+                self?.applyMetadataToWindow()
                 // Ein Schlüsselfenster-Wechsel ist zugleich der erste sichere
                 // Zeitpunkt, an dem SwiftUIs endgültiges Startfenster sichtbar
                 // ist. Der vollständige Abgleich entfernt deshalb auch einen
@@ -301,6 +312,7 @@ struct MainWindowTitleBridge: NSViewRepresentable {
                 if window.isKeyWindow {
                     Workspace.shared = workspace
                 }
+                routeCloseButtonThroughWorkspace(window)
             }
 
             // AppKit kann aus der URL vorübergehend selbst einen Titel bilden.
@@ -367,6 +379,41 @@ struct MainWindowTitleBridge: NSViewRepresentable {
             DispatchQueue.main.async { [weak self] in
                 self?.positionTrafficLights()
             }
+        }
+
+        /// Der rote Schließen-Knopf des SwiftUI-Hauptfensters läuft an
+        /// Fastra vorbei: SwiftUI stellt den Fenster-Delegate selbst, und sein
+        /// `windowShouldClose` kennt weder ungesicherte Tabs noch
+        /// `prepareToCloseWindow`. Das Fenster verschwand deshalb mit ALLEN
+        /// Tabs im Workspace — ungefragt auch bei ungesicherten Änderungen —
+        /// und brachte dieselben Tabs zurück, sobald SwiftUI die Szene wieder
+        /// anzeigte: Eine danach per Finder geöffnete Datei stand doppelt da
+        /// (Befund 2026-09-04, v1.117.2). Zusätzliche Fenster haben mit
+        /// `DocumentWindowController` einen eigenen Delegate und brauchen die
+        /// Umleitung nicht; das Suchfenster ist kein Dokumentfenster.
+        private func routeCloseButtonThroughWorkspace(_ window: NSWindow) {
+            guard !SearchWindow.isSearchWindow(window),
+                  !(window.delegate is DocumentWindowController),
+                  let button = window.standardWindowButton(.closeButton) else {
+                return
+            }
+            guard button.target !== self else { return }
+            button.target = self
+            button.action = #selector(closeButtonPressed(_:))
+        }
+
+        /// Roter Knopf: erst dieselbe Tab-Auflösung wie ⌘W (Rückfrage bei
+        /// ungesicherten Änderungen, danach Willkommens-Zustand), dann
+        /// `close()` — derselbe Weg wie `closeWindowHandler` bei ⌘W. NICHT
+        /// `performClose(_:)`: Das simuliert den Klick auf den Schließen-Knopf
+        /// und riefe diese Methode endlos erneut auf (Stapelüberlauf,
+        /// gesehen 2026-09-04 im `finderreopen`-Selbsttest).
+        @objc private func closeButtonPressed(_ sender: Any?) {
+            guard let window else { return }
+            if let workspace {
+                guard workspace.prepareToCloseWindow() else { return }
+            }
+            window.close()
         }
 
         private func positionTrafficLights() {

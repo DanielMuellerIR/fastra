@@ -593,6 +593,29 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   bei Konflikt zurück. Fehlt diese Fähigkeit auf dem Zieldateisystem, muss der
   Schreibvorgang geschlossen fehlschlagen — kein Best-Effort-Überschreiben.
 
+- **Der rote Schließen-Knopf des SwiftUI-Hauptfensters gehört SwiftUI.**
+  Das Startfenster (`Window`-Szene) hat SwiftUIs eigenen `NSWindowDelegate`
+  (`AppKitWindowController`); ein `windowShouldClose` von Fastra läuft dort
+  nie. Der Knopf schloss das Fenster deshalb ohne Rückfrage und ließ alle
+  Tabs im Workspace stehen — beim nächsten Anzeigen der Szene kamen sie
+  zurück (Befund 2026-09-04). Die Titelbrücke hängt den Knopf darum auf
+  `prepareToCloseWindow` plus `close()` um
+  (`WindowMetadataView.routeCloseButtonThroughWorkspace`). Im Handler NIE
+  `performClose(_:)` rufen: Es simuliert den Klick auf genau diesen Knopf und
+  ruft den Handler endlos erneut auf (Stapelüberlauf im Selbsttest).
+- **SwiftUIs App-Delegate bearbeitet ein Öffnen-Ereignis VOR dem eigenen.**
+  Nach `odoc` (Finder-Doppelklick) zeigt `AppWindowsController.open` erst das
+  Szenenfenster samt seiner alten Tabs wieder an und reicht dann an Fastras
+  `application(_:open:)` weiter. Ein so wieder angezeigtes Fenster durchläuft
+  `viewDidMoveToWindow` NICHT erneut; sein beim `willClose` gelöschter
+  Registry-Eintrag blieb weg, es zählte nicht als Dokumentfenster, und die
+  Datei bekam ein zweites Fenster anderer Größe. Die Brücke registriert
+  deshalb bei jedem `didBecomeKey` erneut. Für Selbsttests: Ein Apple-Event an
+  den eigenen Prozess läuft vom Main-Thread in errAETimeout (-1712) und wird
+  von einem Hintergrund-Thread direkt DORT zugestellt (AppKit-Absturz beim
+  Fensteraufbau). `odoc`/`rapp` deshalb über `NSApp.delegate` zustellen —
+  das ist SwiftUIs Delegate, derselbe Weg wie nach dem echten Ereignis
+  (`finderreopen`).
 - **Selbsttests nur über das Maschinenprotokoll bewerten.** Der Runner darf
   Ergebnisse nicht aus frei formuliertem Text ableiten. Der alte Weg machte aus
   einem echten `FAIL`, das das Wort „Umgebungsproblem" enthielt, ein Exit 2, aus
