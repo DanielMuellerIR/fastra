@@ -9,6 +9,26 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.118.4] — 2026-09-04
+
+Nacht-Review vom 2026-09-04 abgearbeitet (ein Fund, behoben).
+
+### Behoben
+
+- **Ein Trefferklick auf eine Funddatei bekommt nach deren Umbenennung nicht
+  mehr das Ergebnis der umbenannten Datei gemeldet.** Ein wartender
+  Ordner-Sprung liegt unter dem Pfad seiner Funddatei. Benannte die
+  Seitenleiste die Datei während des Ladens um, las derselbe Lesevorgang
+  anschließend den neuen Pfad zu Ende — rechnete aber weiterhin den Wartenden
+  des alten Pfads ab. Klickte man den noch sichtbaren Treffer des alten Pfads
+  erneut, meldete Fastra diesem neuesten Auftrag „geöffnet", obwohl seine
+  eigene Datei nie gelesen worden war; der Sprung fiel danach am
+  URL-Abgleich aus, und der Cursor landete nirgends. Der Lesevorgang gibt
+  seine Zuständigkeit für den alten Pfad jetzt ab, sobald ihn eine
+  Umbenennung umhängt, und der wartende Sprung bekommt einen eigenen
+  Lesevorgang auf seinem eigenen Pfad. Der umbenannte Tab lädt davon
+  unberührt fertig.
+
 ## [v1.118.3] — 2026-09-03
 
 ### Behoben

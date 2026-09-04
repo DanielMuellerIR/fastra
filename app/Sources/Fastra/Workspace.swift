@@ -1123,6 +1123,13 @@ final class Workspace: ObservableObject {
         let outcome: (FileLoadOutcome) -> Void
     }
     private var pendingFolderMatchFileLoads: [String: PendingFolderMatchFileLoad] = [:]
+    /// Der physische Read, der den wartenden Sprung dieses Pfades gerade
+    /// bedient. Der Schlüssel allein reicht dafür nicht: Benennt die
+    /// Seitenleiste die Datei während des Lesens um, liest DERSELBE Read ab
+    /// dann einen ANDEREN Pfad zu Ende. Ohne diese Kennung rechnete seine
+    /// Completion trotzdem den Wartenden des alten Pfads ab und meldete ihm
+    /// das Ergebnis der umbenannten Datei (Review 2026-09-04).
+    private var folderMatchReadTokens: [String: UUID] = [:]
     /// Kooperative Abbruchsignale ausschließlich für flüchtige Dateivorschauen.
     /// Ein neuer Klick beendet den alten Read an der nächsten Abschnittsgrenze,
     /// statt mehrere große Dateien parallel bis zum Ende einzulesen.
@@ -3059,19 +3066,35 @@ final class Workspace: ObservableObject {
             return
         }
 
+        // Kennung genau dieses physischen Reads. Nur solange sie unter dem
+        // Pfad eingetragen ist, gehört der Read zu diesem Schlüssel.
+        let readToken = UUID()
+        folderMatchReadTokens[key] = readToken
+
         loadFile(
             atCanonicalURL: url,
             expectedDiskSnapshot: expectedDiskSnapshot,
             acceptance: FileLoadAcceptance { [weak self] in
                 guard let self,
+                      self.folderMatchReadTokens[key] == readToken,
                       let latest = self.pendingFolderMatchFileLoads[key]
                 else { return false }
                 return self.isCurrentMatchJump(latest.generation)
                     && latest.expectedDiskSnapshot == expectedDiskSnapshot
-            }
+            },
+            folderMatchReadToken: readToken
         ) { [weak self] physicalOutcome in
-            guard let self,
-                  let latest = self.pendingFolderMatchFileLoads.removeValue(forKey: key)
+            guard let self else {
+                outcome(.cancelled)
+                return
+            }
+            // Wurde der Read inzwischen auf einen anderen Pfad umgehängt, hat
+            // `releaseFolderMatchRead` den Wartenden bereits an einen eigenen
+            // Read übergeben. Hier darf dann nichts mehr gemeldet werden —
+            // sonst bekäme derselbe logische Auftrag zwei Ergebnisse.
+            guard self.folderMatchReadTokens[key] == readToken else { return }
+            self.folderMatchReadTokens.removeValue(forKey: key)
+            guard let latest = self.pendingFolderMatchFileLoads.removeValue(forKey: key)
             else {
                 outcome(.cancelled)
                 return
@@ -3096,6 +3119,27 @@ final class Workspace: ObservableObject {
             }
             latest.outcome(physicalOutcome)
         }
+    }
+
+    /// Gibt den Pfad `url` durch den Read mit der Kennung `token` frei, weil
+    /// dieser Read ab jetzt eine umbenannte Datei unter einem ANDEREN Pfad
+    /// liest. Ein Ordner-Sprung, der noch auf `url` wartet, darf sein Ergebnis
+    /// nicht mehr von ihm bekommen: Er bekäme den Inhalt einer anderen Datei
+    /// als geöffnet gemeldet, und der URL-Guard der Treffer-Navigation könnte
+    /// den Sprung danach nicht mehr ausführen. Der Wartende bekommt deshalb
+    /// einen eigenen Read auf seinem eigenen Pfad (Review 2026-09-04).
+    private func releaseFolderMatchRead(token: UUID, forPathOf url: URL) {
+        let key = url.path
+        guard folderMatchReadTokens[key] == token else { return }
+        folderMatchReadTokens.removeValue(forKey: key)
+        guard let waiting = pendingFolderMatchFileLoads.removeValue(forKey: key)
+        else { return }
+        loadFolderMatchFile(
+            atCanonicalURL: url,
+            expectedDiskSnapshot: waiting.expectedDiskSnapshot,
+            jumpGeneration: waiting.generation,
+            outcome: waiting.outcome
+        )
     }
 
     /// Lädt eine Datei asynchron in einen neuen Tab und kehrt sofort zurück.
@@ -3148,10 +3192,15 @@ final class Workspace: ObservableObject {
     /// Meldet ein TYPISIERTES Ergebnis: Die Treffer-Navigation behandelt nur
     /// den echten Snapshot-Konflikt als veraltete Trefferbasis, nicht jeden
     /// abgelehnten Auftrag (Review 2026-08-31).
+    /// - Parameter folderMatchReadToken: Nur von `loadFolderMatchFile` gesetzt.
+    ///   Kennzeichnet den Read als Bediener des wartenden Ordner-Sprungs unter
+    ///   diesem Pfad, damit er die Zuständigkeit abgeben kann, sobald ihn eine
+    ///   Umbenennung auf einen anderen Pfad umhängt.
     func loadFile(atCanonicalURL url: URL, preview: Bool = false,
                   expectedGitContext: GitActionContext? = nil,
                   expectedDiskSnapshot: FileSnapshot? = nil,
                   acceptance: FileLoadAcceptance? = nil,
+                  folderMatchReadToken: UUID? = nil,
                   outcome: ((FileLoadOutcome) -> Void)? = nil) {
         // Ein Restore-Ladevorgang kann bereits entwertet sein, bevor er hier
         // startet. Dann weder einen vorhandenen Tab aktivieren noch einen
@@ -3313,7 +3362,8 @@ final class Workspace: ObservableObject {
             generation: generation, previewCancellation: previewCancellation,
             expectedDiskSnapshot: expectedDiskSnapshot, acceptance: acceptance,
             expectedGitContext: expectedGitContext,
-            previousActiveTabID: previousActiveTabID, outcome: outcome
+            previousActiveTabID: previousActiveTabID,
+            folderMatchReadToken: folderMatchReadToken, outcome: outcome
         )
     }
 
@@ -3326,6 +3376,7 @@ final class Workspace: ObservableObject {
         previewCancellation: PreviewLoadCancellation?,
         expectedDiskSnapshot: FileSnapshot?, acceptance: FileLoadAcceptance?,
         expectedGitContext: GitActionContext?, previousActiveTabID: UUID?,
+        folderMatchReadToken: UUID?,
         outcome: ((FileLoadOutcome) -> Void)?
     ) {
         // [weak self]: Workspace darf verschwinden (z.B. Preview), ohne Leak.
@@ -3427,6 +3478,20 @@ final class Workspace: ObservableObject {
                 // starten; die Rückmeldung an den Aufrufer übernimmt der
                 // neue Read — deswegen hier ausdrücklich nichts melden.
                 if let movedURL = self.tabs[placeholderIndex].url, movedURL != url {
+                    // Ab hier liest dieser Read einen anderen Pfad. Einen
+                    // Ordner-Sprung, der noch auf den alten wartet, dürfte er
+                    // dann nicht mehr bedienen — der bekommt seinen eigenen
+                    // Read (Review 2026-09-04). Mit der Zuständigkeit fällt
+                    // auch die Gültigkeitsprüfung des Sprungs weg: Sie hängt
+                    // am freigegebenen Wartenden und würde den umbenannten
+                    // Platzhalter sonst als entwertet verwerfen. Ein Read mit
+                    // Sprung-Kennung hat keine andere Bindung.
+                    var movedAcceptance = acceptance
+                    if let folderMatchReadToken {
+                        self.releaseFolderMatchRead(token: folderMatchReadToken,
+                                                    forPathOf: url)
+                        movedAcceptance = nil
+                    }
                     let nextGeneration = generation + 1
                     self.loadGeneration[tabID] = nextGeneration
                     self.startInitialFileRead(
@@ -3435,9 +3500,10 @@ final class Workspace: ObservableObject {
                         generation: nextGeneration,
                         previewCancellation: previewCancellation,
                         expectedDiskSnapshot: expectedDiskSnapshot,
-                        acceptance: acceptance,
+                        acceptance: movedAcceptance,
                         expectedGitContext: expectedGitContext,
                         previousActiveTabID: previousActiveTabID,
+                        folderMatchReadToken: nil,
                         outcome: outcome
                     )
                     didReport = true

@@ -692,3 +692,91 @@ private final class WorkspaceLoadURLRecorder: @unchecked Sendable {
         lock.withLock { recorded.append(url) }
     }
 }
+
+@Test("Der auf den neuen Pfad umgehängte Read bedient keinen Ordner-Sprung des alten Pfads")
+@MainActor
+func wsLoad_renamedReadDoesNotServeFolderMatchJumpOfOldPath() async throws {
+    // Review 2026-09-04: Ein wartender Ordner-Sprung liegt unter dem PFAD der
+    // Funddatei. Benennt die Seitenleiste die Datei während des Reads um,
+    // startet derselbe Read unter dem neuen Pfad neu — trägt aber weiterhin
+    // die Completion, die den Wartenden des ALTEN Pfads abrechnet. Klickt der
+    // Nutzer den noch sichtbaren Treffer des alten Pfads erneut, bekam dieser
+    // neueste Auftrag deshalb das Ergebnis der UMBENANNTEN Datei gemeldet:
+    // `.opened`, obwohl seine eigene Datei nie gelesen wurde. Der
+    // anschließende URL-Guard der Treffer-Navigation kann damit nicht
+    // springen, und der Nutzer landet nirgends.
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let ws = Workspace(defaults: defaults)
+    let original = try writeTmpUTF8("Inhalt vor dem Umbenennen\n")
+    let renamed = original.deletingLastPathComponent()
+        .appendingPathComponent("fastra-wsload-renamed-\(UUID().uuidString).txt")
+        .canonicalFileURL
+    defer {
+        try? FileManager.default.removeItem(at: original)
+        try? FileManager.default.removeItem(at: renamed)
+    }
+    let snapshot = try FileSnapshot.readSnapshotOnly(from: original)
+
+    // Nur der ERSTE Read hält an; er deckt die Umbenennung und den zweiten
+    // Trefferklick ab. Alle weiteren Reads laufen normal durch.
+    let started = DispatchSemaphore(value: 0)
+    let mayFinish = DispatchSemaphore(value: 0)
+    let readURLs = WorkspaceLoadURLRecorder()
+    ws.initialFileLoader = { url in
+        readURLs.append(url)
+        if readURLs.count == 1 {
+            started.signal()
+            mayFinish.wait()
+        }
+        return try FileLoader.load(url: url)
+    }
+
+    var firstOutcome: FileLoadOutcome?
+    let firstGeneration = ws.beginMatchJump()
+    ws.loadFolderMatchFile(atCanonicalURL: original,
+                           expectedDiskSnapshot: snapshot,
+                           jumpGeneration: firstGeneration) { firstOutcome = $0 }
+    #expect(await waitUntil { started.wait(timeout: .now()) == .success },
+            "Der kontrollierte Dateiread muss begonnen haben")
+    let placeholderID = try #require(ws.tabs.first(where: { $0.url == original })?.id)
+
+    // Umbenennen wie die Seitenleiste: erst die Platte, dann die Tabs.
+    try FileManager.default.moveItem(at: original, to: renamed)
+    ws.handleFileTreeMove(from: original, to: renamed)
+    #expect(ws.tabs.first(where: { $0.id == placeholderID })?.url == renamed)
+
+    // Zweiter Klick auf den noch sichtbaren Treffer des ALTEN Pfads.
+    var secondOutcome: FileLoadOutcome?
+    let secondGeneration = ws.beginMatchJump()
+    ws.loadFolderMatchFile(atCanonicalURL: original,
+                           expectedDiskSnapshot: snapshot,
+                           jumpGeneration: secondGeneration) { secondOutcome = $0 }
+    #expect(firstOutcome == .cancelled,
+            "Der ältere logische Auftrag muss durch den neueren abgelöst werden")
+
+    mayFinish.signal()
+    #expect(await waitUntil { secondOutcome != nil })
+
+    // Der neueste Auftrag zeigt auf den alten Pfad; dort liegt seit der
+    // Umbenennung nichts mehr. Er muss das melden statt den Erfolg der
+    // umbenannten Datei zu übernehmen.
+    #expect(secondOutcome == .failed,
+            "Der Sprung zum alten Pfad darf nicht das Ergebnis der umbenannten Datei bekommen")
+    #expect(readURLs.urls.contains(original),
+            "Der neueste Auftrag braucht einen eigenen Read auf seinem eigenen Pfad")
+    #expect(readURLs.urls.contains(renamed),
+            "Der umgehängte Read muss den neuen Pfad zu Ende lesen")
+
+    // Der umbenannte Platzhalter darf davon unberührt fertig laden.
+    #expect(await waitUntil {
+        ws.tabs.first(where: { $0.id == placeholderID })?.isLoading == false
+    }, "Der umbenannte Tab muss den Ladezustand verlassen")
+    let renamedTab = try #require(ws.tabs.first(where: { $0.id == placeholderID }))
+    #expect(renamedTab.url == renamed)
+    #expect(renamedTab.content == "Inhalt vor dem Umbenennen\n")
+    // Genau eine Meldung je logischem Auftrag: ein zweiter Aufruf derselben
+    // Completion würde den bereits gesetzten Wert überschreiben.
+    #expect(ws.tabs.filter { $0.url == original }.isEmpty,
+            "Für den verschwundenen alten Pfad darf kein Platzhalter zurückbleiben")
+}
