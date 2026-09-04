@@ -27,7 +27,7 @@ enum AppInfo {
     }
 }
 
-/// Schwache Zuordnung eines AppKit-Fensters zu seinem Dokument-Workspace.
+/// Zuordnung eines AppKit-Fensters zu seinem Dokument-Workspace.
 /// AppDelegate fragt sie bei jedem `didBecomeKey` ab; damit folgen globale
 /// Commands auch dann zuverlässig dem Vorderfenster, wenn SwiftUI seine
 /// unsichtbare Metadaten-Brücke zwischenzeitlich neu erzeugt.
@@ -50,7 +50,21 @@ enum WorkspaceWindowRegistry {
     }
 
     static func workspace(for window: NSWindow) -> Workspace? {
-        workspaces.object(forKey: window)
+        if let workspace = workspaces.object(forKey: window) {
+            return workspace
+        }
+        // Ein sichtbares SwiftUI-Dokument trägt seine Titelbrücke weiterhin
+        // im View-Baum. Ist nur die Registry-Verknüpfung verloren gegangen,
+        // stellt die Brücke Registry, Schließen-Handler und Fenster-Menü in
+        // einem Schritt wieder her. Fremde Fenster enthalten keine Brücke.
+        // Eine gerade geschlossene, bereits ausgeblendete SwiftUI-Hierarchie
+        // kann noch kurz im Fenster hängen. Sie darf sich nach dem
+        // `willClose`-Unregister nicht selbst wieder anmelden und dabei ihren
+        // Fenster-Menü-Eintrag als Leiche zurückbringen.
+        guard window.isVisible, Thread.isMainThread else { return nil }
+        return MainActor.assumeIsolated {
+            MainWindowTitleBridge.restoreWindowBinding(for: window)
+        }
     }
 
     /// Entfernt wirklich geschlossene Fenster aus der Registry. Das ist für
@@ -149,6 +163,35 @@ struct MainWindowTitleBridge: NSViewRepresentable {
     let workspace: Workspace
     let chromeHeight: CGFloat
 
+    /// Stellt eine verlorene Zuordnung aus der noch montierten SwiftUI-
+    /// Titelbrücke wieder her. Das ist der sichere Rückfall für ein sichtbares
+    /// Dokumentfenster: Fenster und Workspace stammen aus derselben View-
+    /// Hierarchie, nicht aus globalem Fokuszustand.
+    @MainActor
+    static func restoreWindowBinding(for window: NSWindow) -> Workspace? {
+        guard let contentView = window.contentView,
+              let metadataView = descendantMetadataView(in: contentView),
+              metadataView.window === window,
+              let workspace = metadataView.workspace else {
+            return nil
+        }
+        metadataView.applyMetadataToWindow()
+        return workspace
+    }
+
+    @MainActor
+    private static func descendantMetadataView(in view: NSView) -> WindowMetadataView? {
+        if let metadataView = view as? WindowMetadataView {
+            return metadataView
+        }
+        for subview in view.subviews {
+            if let metadataView = descendantMetadataView(in: subview) {
+                return metadataView
+            }
+        }
+        return nil
+    }
+
     func makeNSView(context: Context) -> WindowMetadataView {
         WindowMetadataView(metadata: metadata, workspace: workspace,
                            chromeHeight: chromeHeight)
@@ -222,13 +265,19 @@ struct MainWindowTitleBridge: NSViewRepresentable {
                 if let workspace = self?.workspace {
                     Workspace.shared = workspace
                 }
-                // Das Häkchen im „Fenster"-Menü folgt dem Schlüsselfenster —
-                // wie bei AppKits eigenen Einträgen, die unsere Untermenü-
-                // Einträge ersetzen.
-                WindowsMenuTabs.shared.noteKeyWindowChanged()
+                // Ein Schlüsselfenster-Wechsel ist zugleich der erste sichere
+                // Zeitpunkt, an dem SwiftUIs endgültiges Startfenster sichtbar
+                // ist. Der vollständige Abgleich entfernt deshalb auch einen
+                // Eintrag eines kurzlebigen Startfensters; nur die Häkchen
+                // nachzuführen ließ beim Kaltstart zwei gleichnamige
+                // Untermenüs stehen.
+                WindowsMenuTabs.shared.synchronizeWithCurrentWindowsMenu()
             }
             if window.isKeyWindow, let workspace {
                 Workspace.shared = workspace
+                // `didBecomeKey` kann bereits vor dem Einhängen der Brücke
+                // gelaufen sein. Auch dann den Kaltstart-Abgleich ausführen.
+                WindowsMenuTabs.shared.synchronizeWithCurrentWindowsMenu()
             }
         }
 

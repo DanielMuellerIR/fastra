@@ -137,6 +137,36 @@ final class WindowsMenuTabs: NSObject, NSMenuDelegate {
     /// Dokumentfenster offen waren (Review 2026-09-02).
     func synchronizeWithCurrentWindowsMenu() {
         guard let menu = NSApp.windowsMenu else { return }
+        let bindings = DocumentWindowController.visibleDocumentWindows().compactMap {
+            window -> (window: NSWindow, workspace: Workspace)? in
+            guard let workspace = WorkspaceWindowRegistry.workspace(for: window) else {
+                return nil
+            }
+            return (window, workspace)
+        }
+        synchronize(bindings, in: menu)
+    }
+
+    /// Baut neben dem Menü-Umzug auch fehlende Fenstereinträge wieder auf.
+    /// Das ist getrennt injizierbar, damit ein Test den beobachteten Zustand
+    /// „Fenster sichtbar, Eintrag verloren" ohne globale NSApp-Zustände prüft.
+    func synchronize(
+        _ bindings: [(window: NSWindow, workspace: Workspace)],
+        in menu: NSMenu
+    ) {
+        let visibleKeys = Set(bindings.map { ObjectIdentifier($0.window) })
+        // Ein Fenster kann bereits unsichtbar sein, bevor AppKits
+        // `willClose`-Aufräumweg seinen Menüeintrag erreicht. Der Abgleich
+        // bekommt die vollständige sichtbare Fensterliste und entfernt solche
+        // Leichen deshalb selbst. Sonst standen beim nächsten Wiederaufbau
+        // zwei Dokument-Untermenüs für nur ein sichtbares Fenster.
+        for key in order where !visibleKeys.contains(key) {
+            removeItem(forKey: key)
+        }
+        for binding in bindings {
+            updateItem(for: binding.window, workspace: binding.workspace,
+                       title: binding.window.title, in: menu)
+        }
         adoptMenuIfChanged(menu)
     }
 
@@ -182,18 +212,13 @@ final class WindowsMenuTabs: NSObject, NSMenuDelegate {
         }
     }
 
-    /// Führt die Häkchen nach einem Schlüsselfenster-Wechsel nach.
-    func noteKeyWindowChanged() {
-        for item in items.values {
-            guard let context = item.representedObject as? Context else { continue }
-            item.state = context.window?.isKeyWindow == true ? .on : .off
-        }
-    }
-
     /// Entfernt den Eintrag eines geschlossenen Fensters (Aufrufer:
     /// `WorkspaceWindowRegistry.unregister`).
     func removeItem(for window: NSWindow) {
-        let key = ObjectIdentifier(window)
+        removeItem(forKey: ObjectIdentifier(window))
+    }
+
+    private func removeItem(forKey key: ObjectIdentifier) {
         guard let item = items.removeValue(forKey: key) else {
             return
         }

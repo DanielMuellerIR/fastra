@@ -1613,8 +1613,11 @@ enum SelfTest {
                     + "des Hintergrundfensters")
             }
             if Workspace.shared === original {
-                finish(true, "⌘W schließt Suchmaske und Hilfe; ⌘N/Fokus/⌘T korrekt; "
-                    + "⌘W schließt letzten Tab samt Fenster")
+                verifyPrimaryWindowRecoveryAndClose(
+                    workspace: original,
+                    window: originalWindow
+                )
+                return
             }
         }
         if tick >= 100 {
@@ -1630,6 +1633,151 @@ enum SelfTest {
                 closedWindow: closedWindow,
                 tick: tick + 1
             )
+        }
+    }
+
+    /// Letzte Phase des Mehrfenster-⌘W-Tests: Der bisherige Test schloss nur
+    /// das zusätzliche AppKit-Fenster. Der Live-Fehler vom 2026-09-03 betraf
+    /// dagegen das ursprüngliche SwiftUI-Hauptfenster, nachdem alle anderen
+    /// Fenster geschlossen waren. Wir entfernen dessen zentrale Zuordnung
+    /// gezielt, lassen Fenster-Menü und Tastaturrouting sie aus der weiterhin
+    /// montierten Titelbrücke reparieren und schließen dann per echtem ⌘W.
+    private static func verifyPrimaryWindowRecoveryAndClose(
+        workspace: Workspace,
+        window: NSWindow
+    ) {
+        guard window.isVisible, window.isKeyWindow else {
+            finish(.environment, "ursprüngliches Fenster wurde nach dem Schließen "
+                + "des Zweitfensters nicht Key-Window")
+        }
+
+        exerciseMarkdownImageUndo(workspace: workspace, window: window)
+
+        let recovery: (Bool, Int, Int?) = MainActor.assumeIsolated {
+            WorkspaceWindowRegistry.unregister(window)
+            WindowsMenuTabs.shared.synchronizeWithCurrentWindowsMenu()
+            let workspaceWasRestored = WorkspaceWindowRegistry.workspace(for: window) === workspace
+            let windowEntries = (NSApp.windowsMenu?.items ?? []).filter {
+                $0.submenu?.delegate === WindowsMenuTabs.shared
+            }
+            guard windowEntries.count == 1, let submenu = windowEntries[0].submenu else {
+                return (workspaceWasRestored, windowEntries.count, nil)
+            }
+            WindowsMenuTabs.shared.menuNeedsUpdate(submenu)
+            return (workspaceWasRestored, windowEntries.count, submenu.items.count)
+        }
+        guard recovery.0 else {
+            finish(false, "sichtbares Hauptfenster reparierte seine verlorene "
+                + "Workspace-Zuordnung nicht")
+        }
+        guard recovery.1 == 1 else {
+            finish(false, "Fenster-Menü baute den verlorenen Eintrag des "
+                + "verbliebenen Hauptfensters nicht wieder auf "
+                + "(Dokument-Untermenüs: \(recovery.1))")
+        }
+        guard recovery.2 == workspace.tabs.count else {
+            finish(false, "wiederhergestelltes Fenster-Untermenü enthält "
+                + "\(recovery.2 ?? -1) statt \(workspace.tabs.count) Tabs")
+        }
+
+        // Ein einzelner sauberer Tab bildet den gemeldeten Endzustand. Die
+        // älteren Testschritte haben mehrere Tabs nur für ihre Schutzproben
+        // angelegt; sie sind synthetisch und dürfen hier ohne Dialog weg.
+        guard let remainingID = workspace.activeTabID else {
+            finish(false, "Hauptfenster besitzt vor dem letzten ⌘W keinen aktiven Tab")
+        }
+        for index in workspace.tabs.indices {
+            workspace.tabs[index].isDirty = false
+        }
+        workspace.closeOtherTabs(keeping: remainingID)
+        guard workspace.tabs.count == 1 else {
+            finish(false, "Hauptfenster ließ sich nicht auf einen Test-Tab reduzieren")
+        }
+
+        // Zweite Verlustprobe: Diesmal muss der echte Tastaturweg die Bindung
+        // noch während desselben Events reparieren und genau dieses Fenster
+        // schließen. Ohne Fix fällt das Event ins SwiftUI-Menü und endet mit
+        // dem vom Nutzer gehörten Systemton.
+        WorkspaceWindowRegistry.unregister(window)
+        postCmd("w", keyCode: 13, windowNumber: window.windowNumber)
+        pollForPrimaryWindowClose(window)
+    }
+
+    /// Bild-Link, Text und die von Fastra kopierte Datei gemeinsam
+    /// zurücknehmen — derselbe Ablauf, der dem Live-Fehler unmittelbar
+    /// vorausging. Die Datei läuft durch die echte Undo-Nebenwirkung; danach
+    /// müssen Fensterbindung und Schließen-Handler unverändert vorhanden sein.
+    private static func exerciseMarkdownImageUndo(
+        workspace: Workspace,
+        window: NSWindow
+    ) {
+        guard let root = window.contentView,
+              let textView = editorTextView(in: root) as? TextView,
+              textView.string.isEmpty else {
+            finish(false, "kein leerer Editor für die Markdown-Bild-Undo-Probe")
+        }
+        let fixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-cmdw-image-undo-\(getpid())", isDirectory: true)
+        let documentDirectory = fixture.appendingPathComponent("dokument", isDirectory: true)
+        let document = documentDirectory.appendingPathComponent("Notizen.md")
+        let source = fixture.appendingPathComponent("quelle.png")
+        do {
+            try FileManager.default.createDirectory(
+                at: documentDirectory, withIntermediateDirectories: true
+            )
+            try "".write(to: document, atomically: true, encoding: .utf8)
+            try writeSolidPNG(to: source, width: 8, height: 8)
+            let stored = try MarkdownImageStore.storeImageFile(
+                source, documentURL: document
+            )
+            textView.replaceCharacters(in: NSRange(location: 0, length: 0),
+                                       with: stored.link)
+            MainActor.assumeIsolated {
+                MarkdownImageUndo.register(
+                    textView: textView, insertion: stored.link,
+                    storedImages: [stored]
+                )
+            }
+            textView.undoManager?.endUndoGrouping()
+            let end = (textView.string as NSString).length
+            textView.replaceCharacters(in: NSRange(location: end, length: 0),
+                                       with: "\nText danach")
+            textView.undoManager?.endUndoGrouping()
+
+            var undoCount = 0
+            while !textView.string.isEmpty,
+                  textView.undoManager?.canUndo == true,
+                  undoCount < 4 {
+                textView.undoManager?.undo()
+                undoCount += 1
+            }
+            guard textView.string.isEmpty,
+                  !FileManager.default.fileExists(atPath: stored.fileURL.path),
+                  WorkspaceWindowRegistry.workspace(for: window) === workspace,
+                  workspace.closeWindowHandler != nil else {
+                try? FileManager.default.removeItem(at: fixture)
+                finish(false, "Markdown-Bild-Undo beschädigte Text-, Datei- oder Fensterzustand")
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: fixture)
+            finish(false, "Markdown-Bild-Undo-Fixture scheiterte: \(error.localizedDescription)")
+        }
+        try? FileManager.default.removeItem(at: fixture)
+    }
+
+    private static func pollForPrimaryWindowClose(
+        _ window: NSWindow,
+        tick: Int = 0
+    ) {
+        if !window.isVisible {
+            finish(true, "⌘W schließt Suchmaske, Hilfe, Zweitfenster und das "
+                + "Hauptfenster nach Bild-Undo; Fensterbindung und -Menü repariert")
+        }
+        if tick >= 100 {
+            finish(false, "⌘W schloss das wieder angebundene Hauptfenster nicht")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            pollForPrimaryWindowClose(window, tick: tick + 1)
         }
     }
 

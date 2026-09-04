@@ -169,4 +169,54 @@ struct WindowTabsMenuRebuildTests {
         menus.adoptMenuIfChanged(newMenu)
         #expect(newMenu.items.map(\.title) == ["A", "B", "", "Minimieren"])
     }
+
+    @Test("Der Abgleich baut einen verlorenen Eintrag wieder auf")
+    func synchronizationRebuildsMissingEntry() {
+        // Live-Befund 2026-09-03: Das Dokumentfenster war sichtbar, sein
+        // Eintrag im Fenster-Menü aber vollständig verschwunden. Ein reiner
+        // Umzug vorhandener NSMenuItems kann diesen Zustand nicht reparieren.
+        let suite = "fastra-tests-windowtabsmenu-rebuild-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let workspace = Workspace(defaults: defaults)
+        let window = Self.makeWindow()
+        window.title = "Dokument.txt"
+        let menus = WindowsMenuTabs()
+        let menu = NSMenu(title: "Fenster")
+
+        menus.updateItem(for: window, workspace: workspace,
+                         title: window.title, in: menu)
+        menus.removeItem(for: window)
+        #expect(menu.items.isEmpty)
+
+        menus.synchronize([(window, workspace)], in: menu)
+
+        #expect(menu.items.count == 2)
+        #expect(menu.items[0].title == "Dokument.txt")
+        #expect(menu.items[0].submenu != nil)
+        #expect(menu.items[1].isSeparatorItem)
+    }
+
+    @Test("Der Abgleich entfernt Einträge bereits ausgeblendeter Fenster")
+    func synchronizationRemovesClosedWindowEntry() {
+        let suite = "fastra-tests-windowtabsmenu-prune-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let workspace = Workspace(defaults: defaults)
+        let visibleWindow = Self.makeWindow()
+        visibleWindow.title = "Sichtbar.txt"
+        let closedWindow = Self.makeWindow()
+        closedWindow.title = "Geschlossen.txt"
+        let menus = WindowsMenuTabs()
+        let menu = NSMenu(title: "Fenster")
+
+        menus.synchronize(
+            [(visibleWindow, workspace), (closedWindow, workspace)],
+            in: menu
+        )
+        menus.synchronize([(visibleWindow, workspace)], in: menu)
+
+        #expect(menu.items.map(\.title) == ["Sichtbar.txt", ""])
+        #expect(menu.items[1].isSeparatorItem)
+    }
 }

@@ -9,6 +9,25 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.118.3] — 2026-09-03
+
+### Behoben
+
+- **Ein verbliebenes Dokumentfenster verliert nach Mehrfensterbetrieb weder
+  `⌘W` noch seinen Eintrag im Fenster-Menü.** Ein sichtbares Fenster konnte
+  ohne Eintrag in der zentralen Workspace-Zuordnung zurückbleiben. Dann fand
+  der Tastaturweg kein sicheres Zieldokument und quittierte `⌘W` nur mit dem
+  Systemton; die weiterhin montierte Titelbrücke wurde nicht zur Reparatur
+  herangezogen. Die Registry stellt diese Zuordnung samt Schließen-Handler
+  nun aus der Titelbrücke wieder her. Der Fenster-Menü-Abgleich baut außerdem
+  vollständig verlorene Einträge neu auf und entfernt Einträge bereits
+  ausgeblendeter Fenster, statt nur vorhandene Punkte in eine neue
+  Menüinstanz zu verschieben. Der echte Mehrfenster-Selbsttest nimmt zuvor
+  denselben Ablauf aus Bildablage, Texteingabe und wiederholtem Rückgängig:
+  Die erzeugte Bilddatei verschwindet dabei weiterhin absichtlich, ohne die
+  Fensterbindung zu beschädigen; anschließend schließen Fenster und `⌘W`
+  korrekt.
+
 ## [v1.118.2] — 2026-09-03
 
 Nacht-Review vom 2026-09-03 abgearbeitet (ein Fund, behoben).
