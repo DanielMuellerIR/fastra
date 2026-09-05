@@ -795,12 +795,15 @@ extension Workspace {
 
     /// Rücktokenisiert das Engine-Ergebnis und baut anschließend den Diff im
     /// selben verwalteten Task. `buildDiff` ist nur für den deterministischen
-    /// Abbruchtest injizierbar; der Produktpfad nutzt die echte Berechnung.
+    /// Abbruchtest injizierbar; der Produktpfad nutzt die echte, abbrechbare
+    /// Berechnung — `Task.cancel()` beendet damit auch einen laufenden Diff
+    /// und nicht erst die Veröffentlichung seines Ergebnisses.
     @MainActor func startFourDMacroPostprocessing(
         newCode: String, learned: [String: String], originalText: String,
         macroName: String, lease: FourDMacroExecutionLease,
-        buildDiff: @escaping (FileDiffRequest) -> FileDiffDocument = {
-            Workspace.computeFileDiffDocument(request: $0)
+        buildDiff: @escaping (FileDiffRequest) throws -> FileDiffDocument = {
+            try Workspace.computeFileDiffDocument(
+                request: $0, isCancelled: { Task.isCancelled })
         }
     ) {
         // Inhaltsänderung, Tab- oder Fensterschluss brechen diesen Handle ab
@@ -854,8 +857,11 @@ extension Workspace {
                 right: .text(retokenized, name: resultName),
                 options: FileDiffOptions()
             )
-            let document = buildDiff(request)
-            guard !Task.isCancelled else { return }
+            // Abbruch kommt als `CancellationError`: dann gibt es kein
+            // Dokument, und der Abbruchpfad hat den Zustand schon geräumt.
+            guard let document = try? buildDiff(request), !Task.isCancelled else {
+                return
+            }
             await MainActor.run { [weak self] in
                 guard let self,
                       self.fourDMacroPostprocessID == postprocessID else {

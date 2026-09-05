@@ -9,6 +9,41 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.120.0] — 2026-09-05
+
+### Geändert
+
+- Ein Datei-, Makro- oder externer Vergleich endet jetzt wirklich, sobald
+  sein Ergebnis niemanden mehr erreicht: Tab- oder Fensterschluss, eine neue
+  Anfrage für denselben Vergleich und der Abbau eines Fensters brechen die
+  laufende Berechnung ab. Vorher wurde nur das Ergebnis verworfen, der
+  Vergleich rechnete zu Ende und belegte neben neuen Läufen Rechenzeit und
+  Speicher. Das Abbruchsignal reicht durch Dateilesen, Zeilenzerlegung,
+  Diff-Kern, Zeilen-Ausrichtung und Blockbildung; ein abgebrochener
+  Vergleich liefert nie ein Teilergebnis.
+- Der Diff-Kern ist jetzt eine eigene, abbrechbare Umsetzung desselben
+  Linear-Space-Myers-Algorithmus, den Foundations `CollectionDifference`
+  verwendet. Zeilen-Ausrichtung und Differenzen-Liste bleiben deshalb für
+  identische Eingaben unverändert; die Grenze von 30.000 Zeilen
+  Unterschiedsbereich bleibt bestehen.
+
+### Qualitätssicherung
+
+- Der eigene Kern wird gegen `CollectionDifference` mit 420 Zufallsfolgen
+  und Randfällen auf identische Änderungen geprüft; eine Stichprobe aller
+  Prüfpunkte belegt den Abbruch in jeder Phase ohne Teilergebnis.
+- Workspace-, Makro- und Fenstertests belegen Abbruch bei Tab-Schluss,
+  Fensterschluss, neuer Anfrage und Workspace-Abbau; die Verwaltung wächst
+  über wiederholte Abbrüche nicht.
+- Messung am Budget-Maximum (2 × 15.000 vollständig verschiedene Zeilen,
+  Release-Build): vollständiger Vergleich 0,90 s, davon der Kern allein
+  0,86 s gegenüber 2,50 s für `CollectionDifference` auf denselben Folgen;
+  Rückkehr 0,8 ms nach dem Abbruch bei 10 %, 50 % und 90 % der Laufzeit;
+  Spitzenspeicher des Prozesses stieg dabei um 6 MiB. Im Debug-Build
+  braucht derselbe Vergleich 27 s (Kern 26,9 s, Foundation 2,5 s) — die
+  Standardbibliothek ist auch dort optimiert übersetzt. Die Messung läuft
+  nur mit `FASTRA_DIFF_MEASURE=1`.
+
 ## [v1.119.0] — 2026-09-05
 
 ### Neu

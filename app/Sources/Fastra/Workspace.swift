@@ -1328,6 +1328,8 @@ final class Workspace: ObservableObject {
     private let terminalOpener: TerminalOpening
     private let terminalDirectoryResolver: TerminalDirectoryResolving
     private let gitPreviewLoads = GitPreviewLoads()
+    /// Laufende Datei-Vergleiche dieses Fensters (je Tab höchstens einer).
+    let fileDiffComputations = FileDiffComputations()
     /// Laufender Verlaufs-Lauf EINER Datei plus seine Generation. Eine
     /// überholte Antwort darf die inzwischen gewählte Datei nicht überschreiben.
     private var gitFileHistoryLease: GitOperationLease?
@@ -2200,6 +2202,9 @@ final class Workspace: ObservableObject {
         loadGeneration.removeValue(forKey: id)
         documentLanguageDetector.cancel(tabID: id, documentID: tabs[idx].documentID)
         gitPreviewLoads.cancel(tabID: id)
+        // Ein geschlossener Vergleichs-Tab braucht sein Ergebnis nicht mehr —
+        // die Berechnung endet, statt im Hintergrund weiterzurechnen.
+        fileDiffComputations.cancel(tabID: id)
         // Ein geschlossener Tab kann die Lease einer laufenden
         // Makro-Nachbearbeitung nie wieder erfüllen.
         cancelFourDMacroPostprocessing(ifTab: id)
@@ -2261,6 +2266,7 @@ final class Workspace: ObservableObject {
         }
         gitPreviewLoads.cancelAll()
         cancelAllPreviewLoads()
+        fileDiffComputations.cancelAll()
         cancelFourDMacroPostprocessing()
         hexSavePreviewRequestTabID = nil
         tabs.removeAll()
@@ -2304,6 +2310,7 @@ final class Workspace: ObservableObject {
                 )
             }
             gitPreviewLoads.cancel(tabID: removedID)
+            fileDiffComputations.cancel(tabID: removedID)
             cancelFourDMacroPostprocessing(ifTab: removedID)
         }
         if let requested = hexSavePreviewRequestTabID, requested != id {
@@ -5021,6 +5028,7 @@ final class Workspace: ObservableObject {
                 tabID: id, documentID: tabs[index].documentID
             )
             gitPreviewLoads.cancel(tabID: id)
+            fileDiffComputations.cancel(tabID: id)
             recentlyActiveTabIDs.removeAll { $0 == id }
             if comparisonTabID == id { comparisonTabID = nil }
             tabs.remove(at: index)
@@ -5691,7 +5699,20 @@ final class Workspace: ObservableObject {
     /// Hintergrund. Ein inhaltlich gleicher Vergleich (Seiten + Optionen)
     /// verwendet seinen bestehenden Tab wieder und rechnet frisch — der
     /// Plattenstand kann sich geändert haben, und Tabs sollen nicht stapeln.
-    func openFileDiffTab(request: FileDiffRequest) {
+    ///
+    /// Die Berechnung läuft als verwalteter Task (`fileDiffComputations`):
+    /// Tab-/Fensterschluss und eine neue Anfrage für denselben Tab brechen
+    /// sie wirklich ab — Laden, Zeilenaufbereitung, Diff-Kern und
+    /// Ergebnisaufbau prüfen das Signal. Ein abgebrochener Vergleich
+    /// veröffentlicht nie ein Teilergebnis. `compute` ist nur für den
+    /// deterministischen Abbruchtest injizierbar.
+    func openFileDiffTab(
+        request: FileDiffRequest,
+        compute: @escaping (FileDiffRequest) throws -> FileDiffDocument = {
+            try Workspace.computeFileDiffDocument(
+                request: $0, isCancelled: { Task.isCancelled })
+        }
+    ) {
         let title = L10n.format("Diff: %@ ↔ %@", request.left.name, request.right.name)
         let tabID: UUID
         if let idx = tabs.firstIndex(where: {
@@ -5710,14 +5731,23 @@ final class Workspace: ObservableObject {
         activeTabID = tabID
         guard let idx = tabs.firstIndex(where: { $0.id == tabID }) else { return }
         let generation = tabs[idx].fileDiffLoadGeneration
+        let ticket = fileDiffComputations.begin(tabID: tabID)
 
         // Laden + Diffen im Hintergrund — blockiert nie den Main-Thread.
-        // [weak self]: Fenster darf während der Rechnung schließen.
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let document = Workspace.computeFileDiffDocument(request: request)
+        // [weak self]: Fenster darf während der Rechnung schließen; der
+        // Helfer bricht den Task dann in seinem deinit ab.
+        let task = Task.detached(priority: .userInitiated) { [weak self] in
+            // Abbruch kommt als `CancellationError` zurück: dann gibt es
+            // kein Dokument, das irgendwo landen könnte.
+            guard let document = try? compute(request), !Task.isCancelled else {
+                return
+            }
             await MainActor.run { [weak self] in
-                guard let self,
-                      let idx = self.tabs.firstIndex(where: { $0.id == tabID }),
+                guard let self, self.fileDiffComputations.isCurrent(ticket) else {
+                    return
+                }
+                self.fileDiffComputations.finish(ticket)
+                guard let idx = self.tabs.firstIndex(where: { $0.id == tabID }),
                       self.tabs[idx].fileDiffLoadGeneration == generation,
                       self.tabs[idx].fileDiffRequest?.id == request.id else {
                     // Tab geschlossen oder inzwischen neu berechnet — dieses
@@ -5727,21 +5757,42 @@ final class Workspace: ObservableObject {
                 self.tabs[idx].fileDiffDocument = document
             }
         }
+        fileDiffComputations.attach(task, to: ticket)
+    }
+
+    /// Wie `computeFileDiffDocument(request:isCancelled:)`, aber ohne
+    /// Abbruchquelle — für Tests und synchrone Aufrufer.
+    nonisolated static func computeFileDiffDocument(request: FileDiffRequest)
+        -> FileDiffDocument {
+        do {
+            return try computeFileDiffDocument(request: request, isCancelled: { false })
+        } catch {
+            // Wirft nur bei gemeldetem Abbruch — mit einer Quelle, die nie
+            // `true` liefert, ist das unerreichbar.
+            preconditionFailure("Datei-Vergleich ohne Abbruchquelle darf nicht werfen: \(error)")
+        }
     }
 
     /// Lädt beide Seiten und berechnet den Diff. Läuft auf einem
     /// Hintergrund-Task; nutzt dieselben Grenzen wie das normale Datei-
     /// Öffnen (Binär-Erkennung, 32-MiB-Schwelle) und meldet sie verständlich
     /// statt still zu verfälschen.
-    nonisolated static func computeFileDiffDocument(request: FileDiffRequest)
-        -> FileDiffDocument {
-        func loadSide(_ side: FileDiffSide, role: FileDiffSideRole)
+    ///
+    /// `isCancelled` reicht bis in `FileLoader.load` (beendet auch einen
+    /// laufenden Dateilesevorgang) und in jede Phase von `FileDiff.compare`.
+    /// Ein gemeldeter Abbruch kommt als `CancellationError` zurück — nie als
+    /// „unlesbar" getarnt und nie als halbes Dokument.
+    nonisolated static func computeFileDiffDocument(
+        request: FileDiffRequest, isCancelled: () -> Bool
+    ) throws -> FileDiffDocument {
+        func loadSide(_ side: FileDiffSide, role: FileDiffSideRole) throws
             -> Swift.Result<String, FileDiffLimitation> {
+            if isCancelled() { throw CancellationError() }
             // Ungespeicherter Editor-Inhalt liegt schon vor — nichts laden.
             if let text = side.text { return .success(text) }
             guard let url = side.url else { return .failure(.unreadable(side: role)) }
             do {
-                let loaded = try FileLoader.load(url: url)
+                let loaded = try FileLoader.load(url: url, isCancelled: isCancelled)
                 switch loaded.displayMode {
                 case .hex:
                     return .failure(.binary(side: role))
@@ -5752,18 +5803,22 @@ final class Workspace: ObservableObject {
                 case .text:
                     return .success(loaded.content)
                 }
+            } catch FileLoader.LoadError.cancelled {
+                throw CancellationError()
             } catch {
                 return .failure(.unreadable(side: role))
             }
         }
-        switch (loadSide(request.left, role: .left), loadSide(request.right, role: .right)) {
+        switch (try loadSide(request.left, role: .left),
+                try loadSide(request.right, role: .right)) {
         case (.failure(let limitation), _):
             return .failure(limitation)
         case (_, .failure(let limitation)):
             return .failure(limitation)
         case (.success(let left), .success(let right)):
-            switch FileDiff.compare(left: left, right: right,
-                                    options: request.options) {
+            switch try FileDiff.compare(left: left, right: right,
+                                        options: request.options,
+                                        isCancelled: isCancelled) {
             case .result(let result): return .success(result)
             case .limitation(let limitation): return .failure(limitation)
             }

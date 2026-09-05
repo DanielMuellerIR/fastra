@@ -6,8 +6,9 @@
 // zu einer eigenständigen, voll testbaren Komponente: zwei Strings + Optionen
 // hinein, ausgerichtete Zeilenpaare (unchanged/changed/removed/added) mit
 // Intraline-Bereichen plus eine Differenzen-Liste (Blöcke) heraus.
-// Funktioniert komplett OHNE Git — Basis ist Foundations
-// `CollectionDifference` (Myers-Diff), wie schon in der Ersetzungs-Vorschau.
+// Funktioniert komplett OHNE Git — Basis ist der eigene, abbrechbare
+// Myers-Diff in `MyersDiff.swift` (derselbe Algorithmus wie Foundations
+// `CollectionDifference`, das die Ersetzungs-Vorschau weiter nutzt).
 //
 // Ehrliche Grenzen statt stiller Kappung: zu große oder zu unterschiedliche
 // Eingaben liefern eine verständliche `FileDiffLimitation`, die die Ansicht
@@ -224,13 +225,43 @@ enum FileDiff {
 
     // MARK: - Vergleich
 
+    /// Vergleicht zwei Texte zeilenweise ohne Abbruchquelle — für Tests und
+    /// Aufrufer, die ohnehin synchron auf das Ergebnis warten. Der
+    /// Produktpfad nutzt die abbrechbare Fassung darunter.
+    static func compare(left: String, right: String,
+                        options: FileDiffOptions = FileDiffOptions()) -> Outcome {
+        do {
+            return try compare(left: left, right: right, options: options,
+                               isCancelled: { false })
+        } catch {
+            // Der Kern wirft ausschließlich bei gemeldetem Abbruch — mit
+            // einer Quelle, die nie `true` liefert, ist das unerreichbar.
+            preconditionFailure("FileDiff.compare ohne Abbruchquelle darf nicht werfen: \(error)")
+        }
+    }
+
+    /// Alle paar Zeilen einmal nachfragen, ob abgebrochen wurde: oft genug
+    /// für eine Reaktion im Millisekundenbereich, selten genug, dass die
+    /// Abfrage in Messungen nicht auffällt.
+    static let cancellationCheckStride = 2_048
+
     /// Vergleicht zwei Texte zeilenweise. Reine Funktion ohne UI — die
     /// Berechnung gehört auf einen Hintergrund-Task (kann bei großen Dateien
     /// spürbar dauern), das Ergebnis zurück auf den Main-Thread.
+    ///
+    /// `isCancelled` wird in JEDER Phase befragt: Zeilenzerlegung,
+    /// Schlüsselbildung, Myers-Diff, Zeilen-Ausrichtung und Blockbildung.
+    /// Meldet es `true`, wirft der Vergleich `CancellationError` — es gibt
+    /// nie ein halbes Ergebnis, das eine Ansicht für vollständig halten
+    /// könnte (Produktinvariante).
     static func compare(left: String, right: String,
-                        options: FileDiffOptions = FileDiffOptions()) -> Outcome {
-        let leftLines = logicalLines(in: left)
-        let rightLines = logicalLines(in: right)
+                        options: FileDiffOptions = FileDiffOptions(),
+                        isCancelled: () -> Bool) throws -> Outcome {
+        func checkCancellation() throws {
+            if isCancelled() { throw CancellationError() }
+        }
+        let leftLines = try logicalLines(in: left, isCancelled: isCancelled)
+        let rightLines = try logicalLines(in: right, isCancelled: isCancelled)
         guard leftLines.count <= maximumLineCount else {
             return .limitation(.tooManyLines(side: .left, limit: maximumLineCount))
         }
@@ -239,10 +270,14 @@ enum FileDiff {
         }
 
         // Vergleichs-Schlüssel je Zeile (Optionen); Anzeige bleibt Original.
-        let leftKeys = leftLines.map { options.normalizedKey(for: $0) }
-        let rightKeys = rightLines.map { options.normalizedKey(for: $0) }
-        let leftBlank = leftLines.map(isBlank)
-        let rightBlank = rightLines.map(isBlank)
+        let leftKeys = try mapCancellable(leftLines, isCancelled: isCancelled) {
+            options.normalizedKey(for: $0)
+        }
+        let rightKeys = try mapCancellable(rightLines, isCancelled: isCancelled) {
+            options.normalizedKey(for: $0)
+        }
+        let leftBlank = try mapCancellable(leftLines, isCancelled: isCancelled, isBlank)
+        let rightBlank = try mapCancellable(rightLines, isCancelled: isCancelled, isBlank)
 
         // Bei „Leerzeilen ignorieren" nehmen Leerzeilen NICHT am Diff teil —
         // sie werden später als ignorierte Zeilen wieder eingefügt.
@@ -266,8 +301,13 @@ enum FileDiff {
             aliasByKey[key] = next
             return next
         }
-        let leftAliases = leftIndex.map { alias(leftKeys[$0]) }
-        let rightAliases = rightIndex.map { alias(rightKeys[$0]) }
+        let leftAliases = try mapCancellable(leftIndex, isCancelled: isCancelled) {
+            alias(leftKeys[$0])
+        }
+        let rightAliases = try mapCancellable(rightIndex, isCancelled: isCancelled) {
+            alias(rightKeys[$0])
+        }
+        try checkCancellation()
 
         // Gemeinsamen Anfang und gemeinsames Ende abziehen — der teure Diff
         // läuft nur über den tatsächlich unterschiedlichen Mittelteil.
@@ -288,30 +328,51 @@ enum FileDiff {
             return .limitation(.tooDifferent(limit: maximumDiffInputLines))
         }
 
-        // Myers-Diff über den Mittelteil. Offsets sind relativ zum Mittelteil
-        // → plus `prefix` ergibt den Index in der Diff-Teilnehmer-Folge,
-        // `leftIndex`/`rightIndex` mappen zurück auf Original-Zeilen.
+        // Myers-Diff über den Mittelteil (eigener, abbrechbarer Kern mit
+        // demselben Algorithmus wie Foundation). Offsets sind relativ zum
+        // Mittelteil → plus `prefix` ergibt den Index in der Diff-Teilnehmer-
+        // Folge, `leftIndex`/`rightIndex` mappen zurück auf Original-Zeilen.
+        guard let changes = MyersDiff.changes(from: Array(leftMid), to: Array(rightMid),
+                                              isCancelled: isCancelled) else {
+            throw CancellationError()
+        }
         var removedLeft = Set<Int>()    // Original-Zeilenindizes links
         var insertedRight = Set<Int>()  // Original-Zeilenindizes rechts
-        let difference = Array(rightMid).difference(from: Array(leftMid))
-        for change in difference {
-            switch change {
-            case .remove(let offset, _, _):
-                removedLeft.insert(leftIndex[prefix + offset])
-            case .insert(let offset, _, _):
-                insertedRight.insert(rightIndex[prefix + offset])
-            }
+        removedLeft.reserveCapacity(changes.removedOffsets.count)
+        insertedRight.reserveCapacity(changes.insertedOffsets.count)
+        for offset in changes.removedOffsets {
+            removedLeft.insert(leftIndex[prefix + offset])
         }
+        for offset in changes.insertedOffsets {
+            insertedRight.insert(rightIndex[prefix + offset])
+        }
+        try checkCancellation()
 
-        let rows = alignedRows(
+        let rows = try alignedRows(
             leftLines: leftLines, rightLines: rightLines,
             leftBlank: leftBlank, rightBlank: rightBlank,
             removedLeft: removedLeft, insertedRight: insertedRight,
-            options: options
+            options: options, isCancelled: isCancelled
         )
-        return .result(Result(rows: rows, blocks: blocks(for: rows),
+        let blocks = try blocks(for: rows, isCancelled: isCancelled)
+        return .result(Result(rows: rows, blocks: blocks,
                               leftLineCount: leftLines.count,
                               rightLineCount: rightLines.count))
+    }
+
+    /// `map` mit Abbruchprüfung alle `cancellationCheckStride` Elemente.
+    private static func mapCancellable<T, U>(
+        _ elements: [T], isCancelled: () -> Bool, _ transform: (T) -> U
+    ) throws -> [U] {
+        var result: [U] = []
+        result.reserveCapacity(elements.count)
+        for (index, element) in elements.enumerated() {
+            if index % cancellationCheckStride == 0, isCancelled() {
+                throw CancellationError()
+            }
+            result.append(transform(element))
+        }
+        return result
     }
 
     /// Leerzeile = leer oder nur Leerraum (Basis der Option
@@ -324,7 +385,8 @@ enum FileDiff {
     /// `NSString.getLineStart` versteht LF, CR, CRLF und die Unicode-
     /// Zeilentrenner. Ein abschließender Terminator erzeugt ausdrücklich eine
     /// letzte Leerzeile, damit dieser Dateiunterschied sichtbar bleibt.
-    private static func logicalLines(in text: String) -> [String] {
+    private static func logicalLines(in text: String,
+                                     isCancelled: () -> Bool) throws -> [String] {
         let ns = text as NSString
         guard ns.length > 0 else { return [""] }
 
@@ -332,6 +394,9 @@ enum FileDiff {
         var index = 0
         var endedWithTerminator = false
         while index < ns.length {
+            if lines.count % cancellationCheckStride == 0, isCancelled() {
+                throw CancellationError()
+            }
             var end = NSNotFound
             var contentsEnd = NSNotFound
             ns.getLineStart(nil, end: &end, contentsEnd: &contentsEnd,
@@ -358,13 +423,16 @@ enum FileDiff {
         leftLines: [String], rightLines: [String],
         leftBlank: [Bool], rightBlank: [Bool],
         removedLeft: Set<Int>, insertedRight: Set<Int>,
-        options: FileDiffOptions
-    ) -> [Row] {
+        options: FileDiffOptions, isCancelled: () -> Bool
+    ) throws -> [Row] {
         var rows: [Row] = []
         var i = 0
         var j = 0
         let leftCount = leftLines.count
         let rightCount = rightLines.count
+        // Jede Runde der Schleife erzeugt mindestens eine Zeile; die Abbruch-
+        // prüfung an der Zeilenzahl trifft deshalb regelmäßig.
+        var nextCancellationCheck = 0
 
         // Ignorierte Leerzeilen nehmen nicht am Diff teil; sie tauchen hier
         // als eigene, NICHT als Unterschied gezählte Zeilen wieder auf.
@@ -376,6 +444,10 @@ enum FileDiff {
         }
 
         while i < leftCount || j < rightCount {
+            if rows.count >= nextCancellationCheck {
+                if isCancelled() { throw CancellationError() }
+                nextCancellationCheck = rows.count + cancellationCheckStride
+            }
             // Ignorierte Leerzeilen zuerst — wo beide Seiten gerade eine
             // haben, teilen sie sich eine Anzeigezeile.
             if i < leftCount, isIgnoredLeft(i) {
@@ -474,6 +546,13 @@ enum FileDiff {
     /// Fasst aufeinanderfolgende veränderte Zeilen zu Blöcken zusammen —
     /// die Einträge der Differenzen-Liste unter dem Diff (BBEdit-Vorbild).
     static func blocks(for rows: [Row]) -> [Block] {
+        // Ohne Abbruchquelle wirft die abbrechbare Fassung nie.
+        (try? blocks(for: rows, isCancelled: { false })) ?? []
+    }
+
+    /// Wie `blocks(for:)`, prüft aber alle `cancellationCheckStride` Zeilen
+    /// die Abbruchquelle und wirft dann `CancellationError`.
+    static func blocks(for rows: [Row], isCancelled: () -> Bool) throws -> [Block] {
         var blocks: [Block] = []
         var runStart: Int? = nil
 
@@ -501,6 +580,9 @@ enum FileDiff {
         }
 
         for (index, row) in rows.enumerated() {
+            if index % cancellationCheckStride == 0, isCancelled() {
+                throw CancellationError()
+            }
             if row.kind == .unchanged {
                 flush(upTo: index)
             } else if runStart == nil {

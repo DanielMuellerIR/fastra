@@ -200,7 +200,10 @@ der aktive Tab ist links vorbelegt.
   extrem große Dateien erklären sich mit einer verständlichen Meldung
   statt eines irreführenden Diffs.
 
-Der Vergleich zeigt nur an — er ändert nie Dateien.
+Der Vergleich zeigt nur an — er ändert nie Dateien. Schließt du den
+Vergleichs-Tab oder das Fenster, während er noch rechnet, endet die
+Berechnung sofort; ein erneuter Vergleich derselben Dateien ersetzt eine
+noch laufende Berechnung statt neben ihr zu laufen.
 
 ## Text-Transformationen
 

@@ -188,7 +188,10 @@ pre-fills the left side.
   large files explain themselves with a clear message instead of a
   misleading diff.
 
-The comparison only displays — it never changes files.
+The comparison only displays — it never changes files. Closing the
+comparison tab or the window while it is still computing stops the
+computation immediately; comparing the same files again replaces a
+computation that is still running instead of running alongside it.
 
 ## Text Transformations
 

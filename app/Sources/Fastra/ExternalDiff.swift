@@ -51,7 +51,15 @@ final class ExternalDiffService {
 final class ExternalDiffModel: ObservableObject {
     let request: FileDiffRequest
     @Published var document: FileDiffDocument?
-    init(_ request: DiffWireRequest) {
+    /// Die laufende Berechnung; das Fenster bricht sie beim Schließen ab.
+    private var computation: Task<Void, Never>?
+
+    /// `compute` ist nur für den deterministischen Abbruchtest injizierbar.
+    init(_ request: DiffWireRequest,
+         compute: @escaping (FileDiffRequest) throws -> FileDiffDocument = {
+             try Workspace.computeFileDiffDocument(
+                 request: $0, isCancelled: { Task.isCancelled })
+         }) {
         self.request = FileDiffRequest(
             left: FileDiffSide(name: request.leftLabel, path: request.leftPath,
                                url: URL(fileURLWithPath: request.leftPath), text: nil),
@@ -59,11 +67,23 @@ final class ExternalDiffModel: ObservableObject {
                                 url: URL(fileURLWithPath: request.rightPath), text: nil),
             options: FileDiffOptions())
         let diffRequest = self.request
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let document = Workspace.computeFileDiffDocument(request: diffRequest)
+        computation = Task.detached(priority: .userInitiated) { [weak self] in
+            // Abbruch kommt als `CancellationError` — kein Dokument, das noch
+            // in ein geschlossenes Fenster fallen könnte.
+            guard let document = try? compute(diffRequest), !Task.isCancelled else {
+                return
+            }
             await MainActor.run { [weak self] in self?.document = document }
         }
     }
+
+    /// Beendet die Berechnung; ein geschlossenes Fenster zeigt nichts mehr.
+    func cancel() {
+        computation?.cancel()
+        computation = nil
+    }
+
+    deinit { computation?.cancel() }
 }
 
 /// Das externe Fenster enthält denselben FileDiffView wie ein interner Tab.
@@ -118,6 +138,7 @@ final class ExternalDiffWindow: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        model.cancel()
         Self.controllers.removeValue(forKey: requestID)
     }
 
