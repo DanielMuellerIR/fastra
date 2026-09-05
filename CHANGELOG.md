@@ -9,6 +9,27 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.118.6] — 2026-09-05
+
+### Behoben
+
+- Die Ordner- und Projektsuche erklärt direkt beim hervorgehobenen
+  Suchen-Knopf, dass auch ein oder zwei Zeichen per Klick oder Return gesucht
+  werden können. Nach einem abgeschlossenen Lauf ohne Treffer meldet die
+  Suchmaske den Abschluss; sie fordert nicht erneut zur Kurzsuche auf.
+  Veraltete Ergebnisse erhalten einen eigenen Hinweis.
+- Ein noch wartender Live-Auslöser verwirft keine unmittelbar zuvor per Klick
+  oder Return gestartete Ordnersuche mehr. Neue Sucheingaben entwerten die
+  vorherigen Ergebnisse weiterhin sofort.
+
+### Qualitätssicherung
+
+- Ein Regressionstest prüft manuelle Kurzsuchen mit einem und zwei Zeichen
+  sowie ohne Treffer über die Live-Verzögerung hinweg. Der Fenster-Selbsttest
+  `searchoptions` prüft Maus und Return bei Mindestbreite sowie die Hinweise
+  für abgeschlossene Suchen, veraltete Ergebnisse, leere Eingaben und fehlende
+  Suchordner.
+
 ## [v1.118.5] — 2026-09-04
 
 Zwei Befunde aus dem Arbeitsbetrieb mit v1.117.2 (2026-09-04), beide auf

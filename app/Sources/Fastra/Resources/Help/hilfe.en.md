@@ -69,9 +69,16 @@ project scope only while the open tab still matches the searched file version.
 - **File** — the active tab.
 - **Open** — all open tabs (including unsaved ones).
 - **Folder** — the enabled folders on disk. Live search starts at
-  3 characters; “Search” or Return forces it at any time.
+  3 characters; “Find” or Return starts it immediately.
 - **Project** — the project folder, narrowed down by file sets and
   exclude patterns.
+
+You can search for **one or two characters** in folders and projects:
+click **Find** or press Return in the search field. While a manual start is
+pending, Fastra highlights the existing button and shows the instruction
+right above it. A completed search without matches reports “No matches in
+the searched folders.” A separate notice identifies results that need to be
+refreshed after files change.
 
 **Project exclusions:** Separate multiple patterns with commas. A simple dot
 suffix such as `.json` is shorthand for `*.json`; explicit globs such as

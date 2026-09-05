@@ -1553,3 +1553,6 @@
 "%@ weitere Recovery-Einträge liegen unter %@." = "%@ additional recovery entries are stored under %@.";
 "Fastra hat keine der genannten Fassungen gelöscht. Prüfe beide Pfade und entferne danach die nicht benötigte zweite Fassung. Das Recovery-Journal liegt unter %@." = "Fastra did not delete any of the listed versions. Check both paths, then remove the second version you do not need. The recovery journal is stored under %@.";
 "Fastra hat das Recovery-Verzeichnis nicht verändert. Prüfe %@.\n\n%@" = "Fastra did not change the recovery directory. Check %@.\n\n%@";
+
+"Auch 1–2 Zeichen sind suchbar: „Suchen“ klicken oder Return drücken." = "You can search for 1–2 characters: click Find or press Return.";
+"Die Dateien wurden geändert. Erneut suchen, um aktuelle Treffer zu sehen." = "The files have changed. Search again to see current matches.";

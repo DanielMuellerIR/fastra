@@ -1122,6 +1122,7 @@ struct FloatingSearchDialog: View {
                     // Leerer Zustand: nur der Hinweis (kein List-Chrome), volle
                     // Breite/Höhe, damit die dunkle Box gefüllt wirkt.
                     Text(emptyHint)
+                        .background(SelfTestMarker(id: "searchEmptyHint-\(emptyHint)"))
                         .fastraFont(size: 11)
                         .foregroundColor(Theme.textSecondary)
                         .padding(.horizontal, 8)
@@ -1329,10 +1330,13 @@ struct FloatingSearchDialog: View {
                     ? L10n.string("Das aktive Datei-Set enthält keine vorhandenen Pfade.")
                     : L10n.string("Kein Ordner ausgewählt. Mindestens einen aktivieren.")
             }
+            if workspace.folderResultsAreStale {
+                return L10n.string("Die Dateien wurden geändert. Erneut suchen, um aktuelle Treffer zu sehen.")
+            }
             // Unter der Live-Mindestlänge sucht der Ordner-Scope nicht
             // automatisch (Freeze-Schutz bei kurzen Pattern, siehe
             // SearchRunner.shouldRunFolderLive) — Hinweis statt „Keine Treffer.".
-            if !SearchRunner.shouldRunFolderLive(for: workspace.findPattern) {
+            if workspace.folderNeedsSearch && !SearchRunner.shouldRunFolderLive(for: workspace.findPattern) {
                 return L10n.format("Mindestens %ld Zeichen für die Live-Ordner-Suche — oder „Suchen“ klicken.", SearchRunner.minFolderLiveChars)
             }
             // Ab Mindestlänge wird live gesucht; ist noch nichts da (z.B.
@@ -1727,6 +1731,14 @@ struct FloatingSearchDialog: View {
     // schließt die Maske bzw. ersetzt.
     private var actionRow: some View {
         VStack(spacing: 8) {
+            if workspace.waitingForShortFolderSearch {
+                Text("Auch 1–2 Zeichen sind suchbar: „Suchen“ klicken oder Return drücken.")
+                    .background(SelfTestMarker(id: "shortFolderSearchPrompt"))
+                    .font(.callout)
+                    .foregroundStyle(Color.accentColor)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             // --- Zeile 1 · Such-Cluster: reines Navigieren durch die
             // Treffer, OHNE zu ersetzen. Deckt den „nur suchen"-Fall ab,
             // der bisher im Footer fehlte. Wiederverwendet die bestehende
@@ -1738,8 +1750,12 @@ struct FloatingSearchDialog: View {
                 // Schwelle) bzw. lösen sofort aus, ohne aufs Debounce zu warten.
                 if workspace.scope.isFolderLike {
                     Button("Suchen") { workspace.runFolderSearchNow() }
+                        .background(SelfTestMarker(id: "folderSearchButton"))
                         .keyboardShortcut(.return, modifiers: [])
                         .buttonStyle(.bordered)
+                        .tint(workspace.waitingForShortFolderSearch ? Color.accentColor : nil)
+                        .overlay(RoundedRectangle(cornerRadius: 5)
+                            .stroke(workspace.waitingForShortFolderSearch ? Color.accentColor : .clear, lineWidth: 2))
                         .disabled(workspace.findPattern.isEmpty
                                   || workspace.activeMultiFileSearchURLs.isEmpty)
                         .help(L10n.format("Die ausgewählten Ordner jetzt durchsuchen. Ab %ld Zeichen läuft die Ordner-Suche live beim Tippen mit; Klick oder Return erzwingen sie auch bei kürzeren Suchausdrücken und ohne Wartezeit.", SearchRunner.minFolderLiveChars))

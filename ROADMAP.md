@@ -117,13 +117,6 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 ## Kleine offene Ideen
 
-- **Live-Ordnersuche unter drei Zeichen sichtbarer machen (Tester-Feedback
-  2026-08-28):** Der Hinweis „Mindestens 3 Zeichen … — oder ‚Suchen‘ klicken“
-  wurde im Test überlesen; die Testerin hielt kurze Suchbegriffe für nicht
-  suchbar. Idee: Solange der Hinweis gilt, den Suchen-Knopf optisch
-  hervorheben (er erzwingt die Suche auch mit kürzeren Ausdrücken). Noch
-  nicht entschieden.
-
 - **Druck-Ausbau (beauftragt 2026-08-18, aus der manuellen Druckabnahme):**
   Der Schalter-Teil ist mit v1.102.0 erledigt (Kopf-/Fußzeile und
   Zeilennummern direkt im Systemdruckdialog). Offen bleibt allein:

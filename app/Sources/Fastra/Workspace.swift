@@ -1246,6 +1246,15 @@ final class Workspace: ObservableObject {
     /// „Keine Treffer." den Hinweis, „Suchen" zu klicken / Return zu
     /// drücken. Wird vom `SearchRunner` gesetzt/gelöscht.
     @Published var folderNeedsSearch: Bool = false
+    /// Eigene Dateischreibvorgänge verlangen einen neuen, ausdrücklich gestarteten Lauf.
+    @Published var folderResultsAreStale = false
+
+    var waitingForShortFolderSearch: Bool {
+        scope.isFolderLike && folderNeedsSearch && !folderSearching
+            && !findPattern.isEmpty && !activeMultiFileSearchURLs.isEmpty
+            && searchError == nil && !folderResultsAreStale
+            && !SearchRunner.shouldRunFolderLive(for: findPattern)
+    }
     /// `true`, wenn der letzte Ordner-Such-Lauf durch den Gesamt-Cap
     /// (`FolderSearch.find maxTotalMatches`) vorzeitig abgebrochen wurde.
     /// Die Maske zeigt dann einen dezenten Hinweis-Streifen, damit der

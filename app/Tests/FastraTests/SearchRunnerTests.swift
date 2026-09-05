@@ -402,3 +402,36 @@ func validationError_plainTextNeverInvalid() {
     let opts = SearchOptions(find: "[unbalanced", replace: "x", isRegex: false)
     #expect(SearchRunner.validationError(for: opts) == nil)
 }
+
+@Test("Manuelle Kurzsuche überlebt einen wartenden Live-Auslöser")
+@MainActor
+func manualShortFolderSearchSurvivesDebounce() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try "abc".write(to: root.appendingPathComponent("sample.txt"), atomically: true, encoding: .utf8)
+    let ws = Workspace(defaults: testSuiteDefaults(named: "fastra-short-search-\(UUID().uuidString)"))
+    ws.showSearchDialog = true
+    ws.scope = .folder
+    ws.recentSearchFolders = [SearchFolderEntry(path: root.path, enabled: true)]
+    ws.useRegex = false
+    ws.findPattern = "abc"
+    await waitForWorkspace(ws) { !ws.folderSearching && ws.folderTotalMatches == 1 }
+    for pattern in ["a", "ab", "zz"] {
+        ws.findPattern = pattern
+        ws.runFolderSearchNow()
+        // Den zuvor geplanten 120-ms-Auslöser tatsächlich zustellen lassen.
+        try await Task.sleep(nanoseconds: 300_000_000)
+        await waitForWorkspace(ws) { !ws.folderSearching }
+        #expect(!ws.folderNeedsSearch)
+        #expect(!ws.waitingForShortFolderSearch)
+        #expect(ws.folderTotalMatches == (pattern == "zz" ? 0 : 1))
+    }
+    ws.findPattern = "b"
+    #expect(ws.folderNeedsSearch)
+    ws.findPattern = ""
+    #expect(!ws.waitingForShortFolderSearch)
+    ws.findPattern = "x"
+    ws.recentSearchFolders = []
+    #expect(!ws.waitingForShortFolderSearch)
+}

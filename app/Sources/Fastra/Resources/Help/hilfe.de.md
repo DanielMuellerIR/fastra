@@ -76,6 +76,13 @@ ungeändert zur durchsuchten Dateifassung passt.
 - **Projekt** — der Projektordner, eingeschränkt über Datei-Sets und
   Ausschlussmuster.
 
+Auch **ein oder zwei Zeichen** lassen sich in Ordnern und Projekten suchen:
+Klicke auf **Suchen** oder drücke Return im Suchfeld. Solange der manuelle
+Start aussteht, hebt Fastra den vorhandenen Knopf hervor und zeigt direkt
+darüber die Aufforderung. Nach einem Lauf ohne Treffer meldet die Maske
+„Keine Treffer in den durchsuchten Ordnern.“ Ein eigener Hinweis unterscheidet
+davon Ergebnisse, die nach Dateiänderungen erneut gesucht werden müssen.
+
 **Projekt-Ausschlüsse:** Mehrere Muster werden durch Kommas getrennt. Ein
 einfaches Punkt-Suffix wie `.json` ist die Kurzform für `*.json`; ausdrückliche
 Globs wie `userPreferences.*`, `foo?.txt` und `**` bleiben unverändert.

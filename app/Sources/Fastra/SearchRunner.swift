@@ -23,6 +23,22 @@ final class SearchRunner {
     /// Task direkt vor `cancel()` fertig wird und sein Main-Actor-Update erst
     /// nach dem neuen Lauf zustellt.
     private var folderRunID = 0
+    /// Ein manueller Start entwertet bereits wartende Live-Auslöser.
+    private let explicitSearchLock = NSLock()
+    private var explicitSearchGeneration = 0
+
+    private func currentExplicitSearchGeneration() -> Int {
+        explicitSearchLock.lock()
+        defer { explicitSearchLock.unlock() }
+        return explicitSearchGeneration
+    }
+
+    private func invalidatePendingLiveTrigger() {
+        // Combine kann Testeingaben auf fremden Threads zustellen.
+        explicitSearchLock.lock()
+        explicitSearchGeneration &+= 1
+        explicitSearchLock.unlock()
+    }
     /// Aktive Buffer-Suche (Datei-/Geöffnet-Scope). Läuft async, damit ein
     /// großer Buffer + kurzes Pattern den Main-Thread NIE blockiert; wird
     /// beim nächsten Tastendruck/Toggle abgebrochen (kein Auflaufen veralteter
@@ -153,11 +169,15 @@ final class SearchRunner {
             .store(in: &bag)
 
         triggerStream
+            .map { [weak self] _ in self?.currentExplicitSearchGeneration() }
             // 120 ms ist knapp genug fürs Tipp-Gefühl, lang genug, damit
             // selbst auf großen Buffern nicht jede Taste ein Re-Search
             // anstößt. Bei Bedarf später konfigurierbar machen.
             .debounce(for: .milliseconds(120), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in self?.rerun() }
+            .sink { [weak self] generation in
+                guard let self, generation == self.currentExplicitSearchGeneration() else { return }
+                self.rerun()
+            }
             .store(in: &bag)
 
         // Öffnen der Maske startet genau einen Lauf mit den aktuellen
@@ -277,6 +297,7 @@ final class SearchRunner {
     /// weiß, dass die Aufträge weiterhin gültig sind.
     private static func clearFolderPreview(_ ws: Workspace,
                                            invalidatingJumps: Bool) {
+        ws.folderResultsAreStale = false
         ws.folderResults = []
         ws.folderTotalMatches = 0
         ws.folderResultsWereCapped = false
@@ -347,6 +368,7 @@ final class SearchRunner {
         Self.clearFolderPreview(ws, invalidatingJumps: true)
         ws.folderSearching = false
         ws.folderNeedsSearch = true
+        ws.folderResultsAreStale = true
     }
 
     /// Reagiert auf einen Live-Trigger (Tippen, Options-Toggle, Tab- oder
@@ -577,6 +599,7 @@ final class SearchRunner {
     func runFolderSearch() {
         guard let ws = workspace, ws.scope.isFolderLike else { return }
         ws.folderNavigationNotice = nil
+        invalidatePendingLiveTrigger()
         cancelPendingWork()
         Self.clearFolderPreview(ws, invalidatingJumps: true)
         folderRunID &+= 1

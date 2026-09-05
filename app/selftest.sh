@@ -69,6 +69,14 @@ if [[ "$APP_BUNDLE" == /* ]]; then
 else
     APP_BUNDLE_FOR_OPEN="$(pwd)/$APP_BUNDLE"
 fi
+# Explizite Sprache gilt nur für den Testprozess, nie für Nutzer-Einstellungen.
+SELFTEST_LANGUAGE_ARGS=()
+case "${FASTRA_SELFTEST_LANGUAGE:-}" in
+    "") ;;
+    de|en) SELFTEST_LANGUAGE_ARGS=(-AppleLanguages "($FASTRA_SELFTEST_LANGUAGE)") ;;
+    *) echo "Selbsttest-Sprache muss de oder en sein." >&2; exit 2 ;;
+esac
+
 ALL_TESTS=(newwindow finderreopen welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions projectinput tabswitch tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge dirtyundo emojisplit emojipaste emojipreview tabscroll typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader footerfit windowheight mdformat sidebarfilter sidebarstate tabflood githistory filediff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide markdownimport filemodes selsearch wildcard openscope loadperf contrast cmdw)
 # `windows` bleibt als gezielter Diagnosemodus verfügbar, prüft aber keine
 # Produktfunktion und startet deshalb nicht mehr in jedem Standardlauf.
@@ -1456,7 +1464,7 @@ for t in "${TESTS[@]}"; do
             --env "FASTRA_TEST_DEFAULTS_REGISTRY=$FASTRA_TEST_DEFAULTS_REGISTRY" \
             --env "FASTRA_SELFTEST_PASTEBOARD_DIR=$SELFTEST_PASTEBOARD_DIR" \
             --env "FASTRA_SELFTEST_ALLOW_ACTIVATION=1" \
-            --args -selftest "$t" -ApplePersistenceIgnoreState YES; then
+            --args -selftest "$t" -ApplePersistenceIgnoreState YES ${SELFTEST_LANGUAGE_ARGS[@]+"${SELFTEST_LANGUAGE_ARGS[@]}"}; then
             emit_selftest_result "$t" "ENV"
             echo "SELFTEST $t: Umgebungsproblem — LaunchServices-Start fehlgeschlagen"
             summary+="⚠ $t (Start fehlgeschlagen)\n"
@@ -1480,7 +1488,7 @@ for t in "${TESTS[@]}"; do
         FASTRA_SELFTEST_PASTEBOARD_DIR="$SELFTEST_PASTEBOARD_DIR" \
         FASTRA_SELFTEST_ALLOW_ACTIVATION="$selftest_activation" \
         fastra_test_start_new_session "$APP_BIN_ABSOLUTE" \
-            -selftest "$t" -ApplePersistenceIgnoreState YES \
+            -selftest "$t" -ApplePersistenceIgnoreState YES ${SELFTEST_LANGUAGE_ARGS[@]+"${SELFTEST_LANGUAGE_ARGS[@]}"} \
             >/dev/null 2>"$errfile"; then
             emit_selftest_result "$t" "ENV"
             echo "SELFTEST $t: Umgebungsproblem — Testprozess ließ sich nicht sicher starten"

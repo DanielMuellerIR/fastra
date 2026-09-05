@@ -2568,6 +2568,7 @@ enum SelfTest {
     private static var tabFloodFixtureDirectory: URL?
 
 
+    private static var shortSearchFixtureDirectory: URL?
     private static var testLabel = "findbar"
     private static var testStartedNanoseconds = DispatchTime.now().uptimeNanoseconds
 
@@ -2576,6 +2577,10 @@ enum SelfTest {
     }
 
     private static func finish(_ outcome: SelfTestOutcome, _ msg: String) -> Never {
+        if let shortSearchFixtureDirectory {
+            try? FileManager.default.removeItem(at: shortSearchFixtureDirectory)
+            self.shortSearchFixtureDirectory = nil
+        }
         var finalOutcome = outcome
         var finalMessage = msg
         switch finishSelfTestPasteboardMutation() {
@@ -3032,14 +3037,152 @@ enum SelfTest {
                                                tick: Int = 0) {
         if markerView(id: "wildcardLiteralOption-disabled-off", in: root) != nil,
            !ws.treatWildcardLiterally {
-            finish(true, "Mindesthöhe ≥450; Optionen zweizeilig/linksbündig; "
-                + "∗ wörtlich dauerhaft sichtbar, zustandsabhängig aktiv und abgewählt")
+            runShortFolderSearchOptionsTest(ws, root: root)
+            return
         }
         if tick >= 40 {
             finish(false, "∗ wörtlich blieb nach Entfernen des Sterns aktiv/gewählt")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             pollSearchOptionsReset(ws, root: root, tick: tick + 1)
+        }
+    }
+
+    /// Die Kurzsuche muss über die sichtbaren Bedienelemente funktionieren.
+    /// Die Mindestbreite wird selbst gesetzt, nicht aus einem früheren Test geerbt.
+    private static func runShortFolderSearchOptionsTest(_ ws: Workspace, root: NSView) {
+        guard let window = root.window else { finish(false, "Suchfenster fehlt") }
+        var size = window.contentLayoutRect.size
+        size.width = window.contentMinSize.width
+        size.height = max(size.height, window.contentMinSize.height)
+        window.setContentSize(size)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-short-search-\(UUID().uuidString)")
+        shortSearchFixtureDirectory = directory
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try "a ab\n".write(to: directory.appendingPathComponent("sample.txt"),
+                               atomically: true, encoding: .utf8)
+        } catch { finish(false, "Kurzsuch-Fixture: \(error.localizedDescription)") }
+        ws.scope = .folder
+        ws.recentSearchFolders = [SearchFolderEntry(path: directory.path, enabled: true)]
+        ws.fileTypeFilter = .knownText
+        ws.useRegex = false
+        ws.wholeWord = false
+        ws.findPattern = "a"
+        pollShortSearchStep("Aufforderung für ein Zeichen", ready: {
+            ws.waitingForShortFolderSearch
+                && markerView(id: "shortFolderSearchPrompt", in: root) != nil
+        }) {
+            // Der Scope-Wechsel animiert alte und neue SwiftUI-Flächen kurz
+            // gleichzeitig. Erst auslaufen lassen, dann neu messen und klicken.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                root.layoutSubtreeIfNeeded()
+                guard let button = markerView(id: "folderSearchButton", in: root),
+                      let prompt = markerView(id: "shortFolderSearchPrompt", in: root) else {
+                    finish(false, "Suchen-Knopf oder Kurzsuch-Hinweis fehlt")
+                }
+                // Beide Flächen müssen bei der kleinsten Fensterbreite vollständig
+                // sichtbar bleiben; sonst wäre der Klick nur zufällig erfolgreich.
+                for view in [button, prompt] {
+                    let rect = view.convert(view.bounds, to: root)
+                    guard rect.width > 0, rect.height > 0,
+                          root.bounds.insetBy(dx: -1, dy: -1).contains(rect) else {
+                        finish(false, "Kurzsuch-Bedienelement bei Mindestbreite abgeschnitten: \(rect)")
+                    }
+                }
+                if let destination = ProcessInfo.processInfo.environment["FASTRA_SHORT_SEARCH_SCREENSHOT"] {
+                    guard let bitmap = root.bitmapImageRepForCachingDisplay(in: root.bounds) else {
+                        finish(false, "Suchfenster konnte nicht aufgenommen werden")
+                    }
+                    root.cacheDisplay(in: root.bounds, to: bitmap)
+                    guard let png = bitmap.representation(using: .png, properties: [:]) else {
+                        finish(false, "Suchfenster-PNG konnte nicht erzeugt werden")
+                    }
+                    do { try png.write(to: URL(fileURLWithPath: destination), options: .atomic) }
+                    catch { finish(false, "Suchfenster-PNG konnte nicht gespeichert werden") }
+                }
+                let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil)
+                guard sendMouseClick(at: point, in: window, modifiers: []) else {
+                    finish(false, "Mausklick auf Suchen nicht zustellbar")
+                }
+                pollShortSearchStep("Maus-Suche mit einem Zeichen", ready: {
+                    !ws.folderSearching && !ws.folderNeedsSearch && ws.folderTotalMatches == 2
+                        && markerView(id: "shortFolderSearchPrompt", in: root) == nil
+                }) {
+                    runShortSearchReturn(ws, root: root, pattern: "ab", expectedMatches: 1) {
+                        runShortSearchReturn(ws, root: root, pattern: "zz", expectedMatches: 0) {
+                            verifyShortSearchEmptyStates(ws, root: root)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static func runShortSearchReturn(_ ws: Workspace, root: NSView,
+                                            pattern: String, expectedMatches: Int,
+                                            completion: @escaping () -> Void) {
+        var fields: [NSView] = []
+        collectTypeableFields(in: root, into: &fields)
+        guard let field = fields.compactMap({ $0 as? RegexFieldTextView }).first(where: {
+            $0.accessibilityIdentifier() == "fastra.findField"
+        }), let window = root.window, window.makeFirstResponder(field) else {
+            finish(false, "Suchfeld für Return nicht fokussierbar")
+        }
+        // Echte Texteingabe mit sofortigem Return: der noch wartende Live-
+        // Debounce darf den ausdrücklich gestarteten Lauf nicht zurücksetzen.
+        field.setSelectedRange(NSRange(location: 0, length: field.string.utf16.count))
+        field.insertText(pattern, replacementRange: field.selectedRange())
+        field.insertNewline(nil)
+        // Frühestens nach dem 120-ms-Debounce prüfen, auch wenn die winzige
+        // Fixture schneller fertig ist. Sonst bliebe der Rücksetzfehler unsichtbar.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            pollShortSearchStep("Return-Suche \(pattern)", ready: {
+                ws.findPattern == pattern && !ws.folderSearching && !ws.folderNeedsSearch
+                    && ws.folderTotalMatches == expectedMatches
+                    && markerView(id: "shortFolderSearchPrompt", in: root) == nil
+            }, completion: completion)
+        }
+    }
+
+    private static func verifyShortSearchEmptyStates(_ ws: Workspace, root: NSView) {
+        func hintVisible(_ text: String) -> Bool {
+            markerView(id: "searchEmptyHint-\(L10n.string(text))", in: root) != nil
+        }
+        pollShortSearchStep("Abgeschlossene Kurzsuche ohne Treffer", ready: {
+            hintVisible("Keine Treffer in den durchsuchten Ordnern.")
+        }) {
+            ws.folderMatchNavigationBecameStale()
+            pollShortSearchStep("Veraltete Ergebnisse", ready: {
+                hintVisible("Die Dateien wurden geändert. Erneut suchen, um aktuelle Treffer zu sehen.")
+                    && markerView(id: "shortFolderSearchPrompt", in: root) == nil
+            }) {
+                ws.findPattern = ""
+                pollShortSearchStep("Leere Eingabe", ready: {
+                    hintVisible("Suchausdruck eingeben…") && !ws.waitingForShortFolderSearch
+                }) {
+                    ws.recentSearchFolders = []
+                    ws.findPattern = "a"
+                    pollShortSearchStep("Fehlende Suchwurzel", ready: {
+                        hintVisible("Kein Ordner ausgewählt. Mindestens einen aktivieren.")
+                            && !ws.waitingForShortFolderSearch
+                    }) {
+                        finish(true, "Optionen zweizeilig/linksbündig; Kurzsuche per Maus und Return "
+                            + "bei Mindestbreite; Abschluss-, Leer-, Wurzel- und Veraltet-Hinweise korrekt")
+                    }
+                }
+            }
+        }
+    }
+
+    private static func pollShortSearchStep(_ label: String, tick: Int = 0,
+                                           ready: @escaping () -> Bool,
+                                           completion: @escaping () -> Void) {
+        if ready() { completion(); return }
+        if tick >= 100 { finish(false, "Kurzsuche: \(label) nicht erreicht") }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pollShortSearchStep(label, tick: tick + 1, ready: ready, completion: completion)
         }
     }
 
