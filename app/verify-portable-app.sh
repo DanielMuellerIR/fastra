@@ -35,6 +35,12 @@ if [[ ! -x "$APP_BIN" || ! -d "$BUILD_RESOURCE_DIR" ]]; then
     exit 1
 fi
 
+if [[ ! -x "$APP/Contents/Helpers/fastra-diff" ]] \
+   || ! "$APP/Contents/Helpers/fastra-diff" --capabilities --json > /dev/null; then
+    echo "Portabilitätsprüfung: fastra-diff fehlt oder funktioniert nicht." >&2
+    exit 1
+fi
+
 HIDDEN_DIR=""
 ERR_FILE=""
 MOVED_BUNDLES=()

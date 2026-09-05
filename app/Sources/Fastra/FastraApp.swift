@@ -218,6 +218,7 @@ struct FastraApp: App {
                 // rechts Text und stand im Freeze-Verdacht (Daniel 2026-07-12).
                 Toggle("Minimap anzeigen", isOn: $showMinimap)
                 Toggle("Seitenleiste anzeigen", isOn: $showSidebar)
+                    .disabled(activeDocumentContext.workspace == nil)
                 Toggle("Markdown-Vorschau rechts anzeigen", isOn: $showMarkdownPreview)
                 .keyboardShortcut("m", modifiers: [.command, .shift])
             }
@@ -292,6 +293,8 @@ struct FastraApp: App {
                     // schließen (gleiches Verhalten wie der Event-Monitor).
                     if HelpWindow.isHelpWindow(NSApp.keyWindow) {
                         HelpWindow.close()
+                    } else if ExternalDiffWindow.isExternalDiffWindow(NSApp.keyWindow) {
+                        NSApp.keyWindow?.performClose(nil)
                     } else if AboutWindow.isAboutWindow(NSApp.keyWindow) {
                         NSApp.keyWindow?.performClose(nil)
                     } else if SettingsWindowConfiguration.isSettingsWindow(
@@ -332,11 +335,13 @@ struct FastraApp: App {
                         commandWorkspace.saveActiveTab()
                     }
                         .keyboardShortcut("s", modifiers: .command)
+                        .disabled(activeDocumentContext.workspace == nil)
                     Button("Speichern unter…") {
                         guard let commandWorkspace else { NSSound.beep(); return }
                         commandWorkspace.saveActiveTabAs()
                     }
                         .keyboardShortcut("s", modifiers: [.command, .shift])
+                        .disabled(activeDocumentContext.workspace == nil)
                 }
                 // Drucken (mit Papierformat). Eigene View, damit die Punkte
                 // dem aktiven Tab folgen: Ob ein Dokument druckbar ist und

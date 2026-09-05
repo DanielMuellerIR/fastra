@@ -47,12 +47,17 @@ enum WindowTargeting {
         /// noch nicht registriertes Vorderfenster darf niemals bewirken, dass
         /// ein Dokumentfenster im Hintergrund getroffen wird.
         let allowsDocumentFallback: Bool
+        /// Ein Vergleich ohne Editor sperrt auch ohne aktives Key-Window
+        /// den Rückfall auf ein dahinter liegendes Dokument.
+        let blocksInactiveDocumentFallback: Bool
 
         init(isDocumentWindow: Bool, isKey: Bool,
-             allowsDocumentFallback: Bool = false) {
+             allowsDocumentFallback: Bool = false,
+             blocksInactiveDocumentFallback: Bool = false) {
             self.isDocumentWindow = isDocumentWindow
             self.isKey = isKey
             self.allowsDocumentFallback = allowsDocumentFallback
+            self.blocksInactiveDocumentFallback = blocksInactiveDocumentFallback
         }
     }
 
@@ -71,6 +76,8 @@ enum WindowTargeting {
         if let keyed = candidates.firstIndex(where: \.isKey) {
             if candidates[keyed].isDocumentWindow { return keyed }
             guard candidates[keyed].allowsDocumentFallback else { return nil }
+        } else if candidates.first?.blocksInactiveDocumentFallback == true {
+            return nil
         }
         return candidates.firstIndex(where: { $0.isDocumentWindow })
     }
@@ -84,11 +91,13 @@ enum CommandTargeting {
 
     /// Dokumentfenster, das ein globaler Befehl trifft.
     static func targetDocumentWindow() -> NSWindow? {
-        let windows = orderedWindows()
+        let windows = orderedWindows().filter(\.isVisible)
         let candidates = windows.map {
             WindowTargeting.Candidate(isDocumentWindow: isDocumentWindow($0),
                                       isKey: $0.isKeyWindow,
-                                      allowsDocumentFallback: SearchWindow.isSearchWindow($0))
+                                      allowsDocumentFallback: SearchWindow.isSearchWindow($0),
+                                      blocksInactiveDocumentFallback:
+                                        ExternalDiffWindow.isExternalDiffWindow($0))
         }
         guard let index = WindowTargeting.targetIndex(in: candidates) else { return nil }
         return windows[index]

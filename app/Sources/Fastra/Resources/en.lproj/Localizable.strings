@@ -1558,3 +1558,5 @@
 "Die Dateien wurden geändert. Erneut suchen, um aktuelle Treffer zu sehen." = "The files have changed. Search again to see current matches.";
 
 "Prüft das gewählte Format: JSON-/XML-Syntax oder 4D-Struktur mit Zeile und Spalte." = "Checks the selected format: JSON/XML syntax or 4D structure, with line and column.";
+
+"Schreibgeschützter Vergleich" = "Read-only comparison";

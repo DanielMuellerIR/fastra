@@ -16,6 +16,7 @@
 // gepostet, nicht über die Systemsteuerung simuliert.
 
 import AppKit
+import FastraDiffProtocol
 import CoreGraphics
 import Darwin
 import PDFKit
@@ -252,7 +253,7 @@ enum SelfTest {
         default: sidebar = nil
         }
         if let sidebar { setEnvironment("FASTRA_SIDEBAR", sidebar) }
-        if name == "sessionrestore" {
+        if name == "sessionrestore" || name == "externaldiffcold" {
             prepareSessionRestoreFixture()
         } else if name == "coldopen" || name == "coldopenoff" {
             prepareColdOpenFixture(restoreEnabled: name == "coldopen")
@@ -599,6 +600,8 @@ enum SelfTest {
         case "sidebarstate": waitForMainWindow { runSidebarStateTest() }
         case "githistory": waitForMainWindow { runGitHistoryTest() }
         case "filediff": waitForMainWindow { runFileDiffTest() }
+        case "externaldiff": waitForMainWindow { MainActor.assumeIsolated { runExternalDiffTest() } }
+        case "externaldiffcold": waitForMainWindow { MainActor.assumeIsolated { pollExternalDiffCold(tick: 0) } }
         case "macro4d": waitForMainWindow { runFourDMacroSelfTest() }
         case "macro4dengine": DispatchQueue.main.async { runFourDMacroEngineTest() }
         case "tool4dhint": waitForMainWindow { runTool4DHintTest() }
@@ -15010,6 +15013,187 @@ enum SelfTest {
             if let found = markerView(id: id, in: sub) { return found }
         }
         return nil
+    }
+
+    /// Der separate CLI-Runner startet diese App ausschließlich durch den
+    /// gebündelten Helfer. So belegt der Test den echten LaunchServices-Kaltstart.
+    @MainActor
+    private static func pollExternalDiffCold(tick: Int) {
+        testLabel = "externaldiffcold"
+        let windows = ExternalDiffWindow.openWindows
+        let expected = Int(ProcessInfo.processInfo.environment["FASTRA_DIFF_COLD_COUNT"] ?? "1") ?? 1
+        let ready = windows.count == expected && windows.allSatisfy { controller in
+            controller.model.document?.result?.blocks.count == 1
+                && controller.window.contentView.map { markerViewExists(id: "diffState-b1-c0", in: $0) } == true
+        }
+        // Mindestens eine Sekunde beobachten, damit unmittelbar doppelte
+        // Zustellungen nicht erst nach dem erfolgreichen Test sichtbar werden.
+        if (!ready || tick < 10) && tick < 150 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { pollExternalDiffCold(tick: tick + 1) }
+            return
+        }
+        let active = NSApp.isActive
+        let key = windows.contains { $0.window.isKeyWindow }
+        var passed = ready
+        if let directory = ProcessInfo.processInfo.environment["FASTRA_DIFF_COLD_SCREENSHOTS"] {
+            // Aufnahmen aus den tatsächlich gezeichneten Fenster-Layern. Dafür
+            // ist keine neue Bildschirmaufnahme-Berechtigung erforderlich.
+            let root = URL(fileURLWithPath: directory, isDirectory: true)
+            let normal = DocumentWindowController.visibleDocumentWindows().first
+            if let diff = windows.first, let normal,
+               let diffImage = typeScrollLayerSnapshot(window: diff.window),
+               let normalImage = typeScrollLayerSnapshot(window: normal) {
+                do {
+                    try diffImage.write(to: root.appendingPathComponent("external-diff.png"))
+                    try normalImage.write(to: root.appendingPathComponent("normal-window.png"))
+                } catch { passed = false }
+            } else { passed = false }
+            passed = passed && active && key
+        }
+        for controller in windows {
+            controller.window.makeKeyAndOrderFront(nil)
+            passed = passed && CommandTargeting.targetWorkspace() == nil
+            passed = passed && CommandTargeting.targetEditorTextView() == nil
+        }
+        if let path = ProcessInfo.processInfo.environment["FASTRA_DIFF_COLD_RESULT"] {
+            let result = "SELFTEST-RESULT v=1 test=externaldiffcold status=\(passed ? "PASS" : "FAIL")\n"
+                + "windows=\(windows.count) rendered=\(ready) writableTarget=false\n"
+                + "active=\(active) key=\(key)\n"
+            do { try result.write(toFile: path, atomically: true, encoding: .utf8) }
+            catch { finish(false, "Kaltstart-Testbericht konnte nicht geschrieben werden") }
+        }
+        NSApp.hide(nil)
+        for controller in windows { controller.window.close() }
+        finish(passed, "Kaltstart über Helfer: \(windows.count) Diff-Fenster, erwartet \(expected)")
+    }
+
+    /// Echte Helferprozesse und Mach-Nachrichten, danach gerenderte Fenster
+    /// und unveränderte Quelldateien prüfen. Der Runner isoliert Preferences.
+    @MainActor
+    private static func runExternalDiffTest() {
+        testLabel = "externaldiff"
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("external-diff-\(UUID())")
+        let left = root.appendingPathComponent("-ä links.txt")
+        let right = root.appendingPathComponent("右 rechts.txt")
+        let before = Data("eins\nalt\ndrei\n".utf8)
+        let after = Data("eins\nneu\ndrei\n".utf8)
+        do {
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            try before.write(to: left)
+            try after.write(to: right)
+        } catch { finish(.environment, "Fixture-Dateien nicht anlegbar") }
+        let defaults = workspaceDefaults()
+        let sidebarBefore = defaults.object(forKey: "editor.sidebarVisible") as? Bool
+        let normalWindows = DocumentWindowController.visibleDocumentWindows()
+        let normalFrames = normalWindows.map(\.frame)
+        let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/fastra-diff")
+        let endpoint = DiffProtocol.endpoint(bundleIdentifier: Bundle.main.bundleIdentifier!)
+        DispatchQueue.global(qos: .userInitiated).async {
+            var errors: [String] = []
+            // Ein normaler Helferaufruf an eine bereits laufende Instanz.
+            let process = Process()
+            process.executableURL = helper
+            process.arguments = ["--read-only", "--left-label", "Links α", "--right-label", "Rechts β",
+                                 "--", left.path, right.path]
+            let output = Pipe(), error = Pipe()
+            process.standardOutput = output
+            process.standardError = error
+            do {
+                try process.run()
+                let ended = DispatchSemaphore(value: 0)
+                process.terminationHandler = { _ in ended.signal() }
+                if process.isRunning && ended.wait(timeout: .now() + 13) == .timedOut {
+                    process.terminate()
+                    errors.append("Helfer überschreitet seine Frist")
+                }
+                process.waitUntilExit()
+                if process.terminationStatus != 0 || !output.fileHandleForReading.readDataToEndOfFile().isEmpty
+                    || !error.fileHandleForReading.readDataToEndOfFile().isEmpty {
+                    errors.append("Helfer bestätigt nicht still mit Exit 0")
+                }
+            } catch { errors.append("Helfer konnte nicht ausgeführt werden") }
+            let invocation = try! DiffInvocation.parse(["--read-only", "--focus-diff", "--", left.path, right.path], directory: root)!
+            let requests = (0..<3).map { _ in DiffWireRequest(invocation) }
+            // Jeder Auftrag kommt dreimal, auch gleichzeitig. Der Server muss
+            // daraus genau drei weitere Fenster machen, niemals neun.
+            let lock = NSLock()
+            DispatchQueue.concurrentPerform(iterations: 9) { index in
+                let data = try! JSONEncoder().encode(requests[index % 3])
+                var reply: DiffWireReply?
+                let deadline = Date().addingTimeInterval(5)
+                repeat {
+                    reply = DiffMessageClient.send(data, to: endpoint, timeout: 0.25)
+                } while reply == nil && Date() < deadline
+                if reply?.code != 0 { lock.withLock { errors.append("Gleichzeitiger Auftrag nicht bestätigt") } }
+            }
+            // Gleiche ID mit verändertem Inhalt sowie abgelaufene und fremde
+            // Protokolle dürfen keine weiteren Fenster erzeugen.
+            var changed = requests[0]
+            changed.leftLabel = "anderer Inhalt"
+            var expired = DiffWireRequest(invocation)
+            expired.deadline = 0
+            var unsupported = DiffWireRequest(invocation)
+            unsupported.version = 2
+            for (request, expected): (DiffWireRequest, Int32) in [(changed, 6), (expired, 6), (unsupported, 4)] {
+                let reply = DiffMessageClient.send(try! JSONEncoder().encode(request), to: endpoint, timeout: 1)
+                if reply?.code != expected { errors.append("Ablehnung hat falschen Exit-Code") }
+            }
+            let failures = errors
+            DispatchQueue.main.async {
+                pollExternalDiff(root: root, left: left, right: right, before: before, after: after,
+                                 sidebarBefore: sidebarBefore, normalWindows: normalWindows,
+                                 normalFrames: normalFrames, errors: failures, tick: 0)
+            }
+        }
+    }
+
+    @MainActor
+    private static func pollExternalDiff(root: URL, left: URL, right: URL, before: Data, after: Data,
+                                         sidebarBefore: Bool?, normalWindows: [NSWindow],
+                                         normalFrames: [NSRect], errors: [String], tick: Int) {
+        let windows = ExternalDiffWindow.openWindows
+        let ready = windows.count == 4 && windows.allSatisfy { controller in
+            controller.model.document?.result?.blocks.count == 1
+                && controller.window.contentView.map { markerViewExists(id: "diffState-b1-c0", in: $0) } == true
+        }
+        if !ready && tick < 80 && errors.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                pollExternalDiff(root: root, left: left, right: right, before: before, after: after,
+                                 sidebarBefore: sidebarBefore, normalWindows: normalWindows,
+                                 normalFrames: normalFrames, errors: errors, tick: tick + 1)
+            }
+            return
+        }
+        var failures = errors
+        if !ready { failures.append("Erwartet: vier echte Fenster mit je einem gerenderten Unterschied; vorhanden: \(windows.count)") }
+        if !windows.contains(where: { $0.model.request.left.name == "Links α" && $0.model.request.right.name == "Rechts β" }) {
+            failures.append("Labels fehlen")
+        }
+        for controller in windows {
+            controller.window.makeKeyAndOrderFront(nil)
+            if CommandTargeting.targetWorkspace() != nil || CommandTargeting.targetEditorTextView() != nil {
+                failures.append("Externes Fenster besitzt ein schreibbares Dokumentziel")
+                continue
+            }
+            // Dieselben globalen Menübefehle wie beim Nutzer: Speichern darf
+            // keinen fremden Workspace erreichen; der native Responder ebenfalls nicht.
+            CommandTargeting.targetWorkspace()?.saveActiveTab()
+            _ = NSApp.sendAction(Selector(("saveDocument:")), to: nil, from: nil)
+        }
+        if (try? Data(contentsOf: left)) != before || (try? Data(contentsOf: right)) != after {
+            failures.append("Quelldateien verändert")
+        }
+        if workspaceDefaults().object(forKey: "editor.sidebarVisible") as? Bool != sidebarBefore {
+            failures.append("Globale Seitenleisteneinstellung verändert")
+        }
+        if normalWindows.map(\.frame) != normalFrames || normalWindows.contains(where: { !$0.isVisible }) {
+            failures.append("Normale Fenster verändert")
+        }
+        for controller in windows { controller.window.close() }
+        try? FileManager.default.removeItem(at: root)
+        finish(failures.isEmpty, failures.isEmpty
+               ? "Helfer still bestätigt; 3×3 IPC-Aufträge erzeugen drei Fenster; vier Diffs gerendert; Labels, Schreibschutz, globale Seitenleiste und andere Fenster geprüft"
+               : failures.joined(separator: "; "))
     }
 
     /// Prüft den git-losen Datei-Vergleich im ECHTEN Fenster:

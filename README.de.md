@@ -86,6 +86,9 @@ Capture Groups.
   Tabs lassen sich frei wählen, ein bearbeiteter Tab auch mit seiner Fassung
   auf der Platte vergleichen. Shift-Klick auf einen zweiten Tab wählt beide
   Dokumente für den Schnellweg vor.
+  Andere Programme öffnen über den mitgelieferten
+  [Helfer `fastra-diff`](docs/EXTERNAL-DIFF.md) einen schreibgeschützten
+  Vergleich mit eigenen Seitennamen in einem separaten Fenster.
 - **Rechteckauswahl unter Soft Wrap** bleibt auf logischen Textzeilen;
   Spalten-Copy/Paste, Tippen, Löschen, Transformationen und „Spalte einfügen“
   sind jeweils eine widerrufbare Aktion.

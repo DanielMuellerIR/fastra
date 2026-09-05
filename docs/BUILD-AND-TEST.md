@@ -735,3 +735,13 @@ Nach größeren Funktionspaketen ergänzt der gelegentliche, reale
 [Menüvolltest](MANUAL-MENU-FULL-TEST.md) diese kurze Pflichtprüfung. Seine
 wegwerfbare Test-App besitzt eine eigene Bundle-ID und bleibt im Projekt-Root;
 er wird nur nach ausdrücklicher Freigabe des Nutzer-Desktops ausgeführt.
+
+## Externer Dateivergleich
+
+Der reguläre Build erzeugt zusätzlich `Contents/Helpers/fastra-diff` und
+signiert den Helfer vor dem äußeren Bundle. Die Portabilitätsprüfung prüft
+Ausführbarkeit und Fähigkeitserkennung. Der Vertrag und die beiden gezielten
+Integrationstests stehen in [EXTERNAL-DIFF.md](EXTERNAL-DIFF.md).
+`./selftest.sh externaldiff` läuft im Hintergrund gegen die laufende Test-App;
+`./external-diff-test.sh` prüft echte LaunchServices-Kaltstarts mit isolierten
+Bundle-Kopien unter `.build` und öffnet dafür kurz eigene Testfenster.

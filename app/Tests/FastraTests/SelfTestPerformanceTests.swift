@@ -2500,6 +2500,17 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             )
         }
         try Data("bundle bleibt erhalten".utf8).write(to: bundleFile)
+        // Das portable Bundle enthält inzwischen auch den nativen Diff-Helfer.
+        // Diese Fixture bildet nur dessen fensterlosen Startvertrag nach.
+        let fakeHelper = fakeApp.appendingPathComponent("Contents/Helpers/fastra-diff")
+        try FileManager.default.createDirectory(at: fakeHelper.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try """
+        #!/bin/bash
+        [ "$#" = 2 ] && [ "$1" = --capabilities ] && [ "$2" = --json ] || exit 2
+        printf '%s\n' '{"protocol":1}'
+        """.write(to: fakeHelper, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fakeHelper.path)
         let infoData = try PropertyListSerialization.data(
             fromPropertyList: ["CFBundleIdentifier": "de.dm0.fastra"],
             format: .xml,

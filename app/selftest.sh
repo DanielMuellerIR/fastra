@@ -77,7 +77,7 @@ case "${FASTRA_SELFTEST_LANGUAGE:-}" in
     *) echo "Selbsttest-Sprache muss de oder en sein." >&2; exit 2 ;;
 esac
 
-ALL_TESTS=(newwindow finderreopen welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions projectinput tabswitch tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge dirtyundo emojisplit emojipaste emojipreview tabscroll typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader footerfit windowheight mdformat sidebarfilter sidebarstate tabflood githistory filediff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide markdownimport filemodes selsearch wildcard openscope loadperf contrast cmdw)
+ALL_TESTS=(newwindow finderreopen welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions projectinput tabswitch tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge dirtyundo emojisplit emojipaste emojipreview tabscroll typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader footerfit windowheight mdformat sidebarfilter sidebarstate tabflood githistory filediff externaldiff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide markdownimport filemodes selsearch wildcard openscope loadperf contrast cmdw)
 # `windows` bleibt als gezielter Diagnosemodus verfügbar, prüft aber keine
 # Produktfunktion und startet deshalb nicht mehr in jedem Standardlauf.
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
@@ -89,7 +89,7 @@ FOCUS_REQUIRED_TESTS=(cmdw completion4d)
 # Diese Fensterläufe sind so gebaut, dass sie ihre AppKit-Objekte direkt
 # bedienen. Der Runner sperrt für sie auch produktive Aktivierungshelfer,
 # damit sie die gerade benutzte App nicht verdrängen.
-BACKGROUND_ACTIVATION_BLOCKED_TESTS=(newwindow finderreopen welcomenew projectinput help aboutshot)
+BACKGROUND_ACTIVATION_BLOCKED_TESTS=(externaldiff newwindow finderreopen welcomenew projectinput help aboutshot)
 # Weitere Namen ohne App-Aktivierung kann der Aufrufer per Umgebungsvariable
 # nachreichen, etwa für einen Lauf neben einem arbeitenden Nutzer:
 #   FASTRA_SELFTEST_NO_ACTIVATION="tabflood sessionrestore" ./selftest.sh tabflood

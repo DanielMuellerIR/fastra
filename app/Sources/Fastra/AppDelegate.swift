@@ -432,6 +432,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // einmalige Höhenkorrektur würde sonst gegen den Restore
                 // arbeiten.
                 Self.normalizeWindowHeightsOnce()
+                Self.startExternalDiffService()
             }
         } else {
             // Sollte SwiftUI seinen Workspace ausnahmsweise erst im nächsten
@@ -439,6 +440,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openFilesInbox.finishLaunching()
             deliverPendingOpenFiles()
             Self.normalizeWindowHeightsOnce()
+            Self.startExternalDiffService()
+        }
+    }
+
+    /// Erst nach dem Restore bereit melden: Dessen abschließendes Aktivieren
+    /// des Hauptfensters darf einem bereits angenommenen Diff nicht den Fokus nehmen.
+    private static func startExternalDiffService() {
+        if !SelfTest.isSelfTestRun || SelfTest.requestedTest?.hasPrefix("externaldiff") == true {
+            ExternalDiffService.shared.start()
         }
     }
 

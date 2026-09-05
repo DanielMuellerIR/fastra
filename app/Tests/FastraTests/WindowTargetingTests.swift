@@ -72,6 +72,15 @@ struct WindowTargetingTests {
         Candidate(isDocumentWindow: false, isKey: key)
     }
 
+    @Test("Externes Vergleichsfenster sperrt den Dokumentrückfall auch bei inaktiver App")
+    func externalDiffBlocksInactiveFallback() {
+        let comparison = Candidate(isDocumentWindow: false, isKey: false,
+                                   blocksInactiveDocumentFallback: true)
+        #expect(WindowTargeting.targetIndex(in: [comparison, document()]) == nil)
+        #expect(WindowTargeting.targetIndex(in: [document(), comparison]) == 0)
+        #expect(WindowTargeting.targetIndex(in: [comparison, document(key: true)]) == 1)
+    }
+
     @Test("Ohne Fenster gibt es kein Ziel")
     func noWindowsNoTarget() {
         #expect(WindowTargeting.targetIndex(in: []) == nil)

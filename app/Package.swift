@@ -6,7 +6,8 @@ let package = Package(
     defaultLocalization: "de",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "Fastra", targets: ["Fastra"])
+        .executable(name: "Fastra", targets: ["Fastra"]),
+        .executable(name: "fastra-diff", targets: ["FastraDiffCLI"])
     ],
     dependencies: [
         .package(url: "https://github.com/CodeEditApp/CodeEditSourceEditor", from: "0.15.0"),
@@ -37,6 +38,8 @@ let package = Package(
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.4"),
     ],
     targets: [
+        .target(name: "FastraDiffProtocol"),
+        .executableTarget(name: "FastraDiffCLI", dependencies: ["FastraDiffProtocol"]),
         // Kleine lokale cmark-Inline-Erweiterung für `==Textmarker==`.
         // Sie nutzt die öffentliche Extension-API und verändert den gepinnten
         // Dependency-Checkout nicht.
@@ -52,6 +55,7 @@ let package = Package(
             name: "Fastra",
             dependencies: [
                 "FastraMarkdownMark",
+                "FastraDiffProtocol",
                 .product(name: "CodeEditSourceEditor", package: "CodeEditSourceEditor"),
                 .product(name: "CodeEditLanguages",    package: "CodeEditLanguages"),
                 .product(name: "CodeEditTextView",     package: "CodeEditTextView"),
@@ -80,7 +84,7 @@ let package = Package(
         ),
         .testTarget(
             name: "FastraTests",
-            dependencies: ["Fastra"],
+            dependencies: ["Fastra", "FastraDiffProtocol"],
             resources: [
                 .copy("Support/Fixtures/FourDTheme")
             ]

@@ -48,7 +48,7 @@ fi
 if [ "$STRIP_OPTION" = "--keep-debug-symbols" ]; then
   echo "→ Debug-Bundle: Debug-Symbole bleiben erhalten"
 else
-  for eigene in "$APP/Contents/MacOS/"*; do
+  for eigene in "$APP/Contents/MacOS/"* "$APP/Contents/Helpers/"*; do
     [ -f "$eigene" ] || continue
     if file -b "$eigene" | grep -q 'Mach-O'; then
       strip -S "$eigene"
@@ -77,5 +77,7 @@ do
   codesign "${SIGN_ARGS[@]}" "$target"
 done
 
+[ -x "$APP/Contents/Helpers/fastra-diff" ] || { echo "fastra-diff fehlt oder ist nicht ausführbar." >&2; exit 1; }
+codesign "${SIGN_ARGS[@]}" "$APP/Contents/Helpers/fastra-diff"
 codesign "${SIGN_ARGS[@]}" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"

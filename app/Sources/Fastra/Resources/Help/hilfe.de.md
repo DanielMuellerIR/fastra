@@ -1094,3 +1094,23 @@ Ein Shift-Klick auf einen zweiten normalen Text-Tab markiert beide für den
 Dateivergleich, ohne den aktuellen Tab umzuschalten. Der aktuelle Tab bleibt
 stärker, der zweite schwächer hervorgehoben; ein normaler Klick beendet die
 Paar-Auswahl.
+
+## Fastra aus anderen Programmen als Vergleich öffnen
+
+Ab Version 1.119.0 enthält Fastra den Helfer
+`/Applications/Fastra.app/Contents/Helpers/fastra-diff`. Beispiel:
+
+```sh
+/Applications/Fastra.app/Contents/Helpers/fastra-diff --read-only --focus-diff --left-label "Original" --right-label "Änderung" -- "/pfad/links.txt" "/pfad/rechts.txt"
+```
+
+Die beiden Dateipfade stehen nach `--`. Jeder Aufruf öffnet ein eigenes
+schreibgeschütztes Vergleichsfenster ohne Projektseitenleiste. Die normalen
+Fenster und ihre Seitenleisteneinstellung bleiben erhalten. `--focus-diff`
+aktiviert den Vergleich. Ohne Labels erscheinen die Dateinamen.
+
+Exit-Code 0 bestätigt die Annahme; der Helfer wartet nicht auf das Schließen.
+Nach spätestens zehn Sekunden endet die Übergabe mit Erfolg oder Fehler.
+`--capabilities --json` liefert die unterstützten Fähigkeiten ohne App-Start.
+Der vollständige Aufruf- und Fehlervertrag steht im Repository unter
+`docs/EXTERNAL-DIFF.md`.

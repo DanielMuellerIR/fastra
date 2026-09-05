@@ -82,6 +82,8 @@ token highlighting, curated patterns, and guided capture groups.
 - **Compare files side by side**: Choose any two saved files or open tabs, or
   compare an edited tab with its version on disk. Shift-clicking a companion
   tab preselects both documents for the quick path.
+  Other programs can open a read-only comparison with custom labels through
+  the bundled [`fastra-diff` helper](docs/EXTERNAL-DIFF.md).
 - **Column selection under Soft Wrap** stays on logical text lines; column
   copy/paste, typing, deletion, transformations, and Paste Column are each
   undoable as one action.

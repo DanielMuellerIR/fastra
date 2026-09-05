@@ -9,6 +9,28 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.119.0] — 2026-09-05
+
+### Neu
+
+- Andere Programme können Fastra über `Contents/Helpers/fastra-diff` als
+  Dateivergleich starten. Pro Aufruf entsteht ein eigenes Vergleichsfenster
+  mit frei wählbaren Seitennamen und sichtbarem Schreibschutz.
+- Der Helfer bestätigt die lokale Übergabe an eine laufende oder über
+  LaunchServices gestartete Instanz. Request-IDs verhindern doppelte Fenster
+  bei wiederholter Zustellung; eine feste Frist begrenzt das Warten.
+- `--capabilities --json` beschreibt Protokollversion und Fähigkeiten ohne
+  App-Start. Argumente, Dateifehler, unbekannte Optionen, Startfehler und
+  Übergabefehler besitzen getrennte Exit-Codes. Der öffentliche Vertrag steht
+  in `docs/EXTERNAL-DIFF.md`.
+
+### Qualitätssicherung
+
+- Parser- und Transporttests sowie echte Helfer- und Fensterprüfungen decken
+  Kaltstart, laufende Instanzen, parallele und wiederholte Aufträge ab.
+- Der reguläre Build verpackt und signiert den ausführbaren Helfer;
+  die Portabilitätsprüfung führt seine Fähigkeitserkennung aus.
+
 ## [v1.118.9] — 2026-09-05
 
 ### Verbessert

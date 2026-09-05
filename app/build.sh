@@ -6325,6 +6325,9 @@ mkdir -p "$APP/Contents/Resources"
 mkdir -p "$APP/Contents/Frameworks"
 cp ".build/$CONFIG/Fastra" "$APP/Contents/MacOS/Fastra"
 cp Info.plist "$APP/Contents/Info.plist"
+mkdir -p "$APP/Contents/Helpers"
+cp ".build/$CONFIG/fastra-diff" "$APP/Contents/Helpers/fastra-diff"
+chmod 755 "$APP/Contents/Helpers/fastra-diff"
 
 # App-Icon auf Bundle-Ebene. Info.plist verweist via CFBundleIconFile
 # auf "AppIcon" → Contents/Resources/AppIcon.icns. Ohne diese Datei
