@@ -20763,9 +20763,85 @@ enum SelfTest {
                         || text.contains(PrintDecoration.footerRight(page: 1, of: nil)) else {
                     finish(false, "Fußzeile ohne Seitenzahl")
                 }
-                runPrintMarkdownPart(ws: ws, base: base)
+                runPrintSyntaxColorPart(ws: ws, base: base)
             }
         }
+    }
+
+    /// Syntaxfarben (Folgeauftrag 2026-09-05): Ein mehrseitiger Swift-Quelltext
+    /// druckt echte Tokenfarben auf JEDER Seite — auch auf der zweiten, die im
+    /// Editor nie sichtbar war. Mit ausgeschalteter Einstellung bleibt derselbe
+    /// Ausdruck einfarbig, und Text, Seitenzahl und Kopfzeile bleiben gleich.
+    private static func runPrintSyntaxColorPart(ws: Workspace, base: URL) {
+        let swift = base.appendingPathComponent("farben.swift")
+        let code = (1...400).map {
+            "let wert\($0) = \"Text \($0)\" // Kommentar \($0)"
+        }.joined(separator: "\n")
+        do { try code.write(to: swift, atomically: true, encoding: .utf8) }
+        catch { finish(false, "Swift-Fixture nicht schreibbar") }
+        let defaults = ws.preferencesStore
+        defaults.set(true, forKey: PrintPreferences.Keys.syntaxColors)
+        ws.loadFile(at: swift) { ok in
+            guard ok else { finish(false, "loadFile (Swift) schlug fehl") }
+            printToPDF(target: .source, ws: ws, base: base, name: "farben") { colored, coloredText in
+                guard colored.pageCount >= 2 else {
+                    finish(false, "400 Swift-Zeilen ergeben nur \(colored.pageCount) Seite(n)")
+                }
+                for page in 0..<colored.pageCount
+                where !pageHasPixel(colored, page: page, matching: isSaturatedColor) {
+                    finish(false, "Seite \(page + 1) des Farbausdrucks trägt keine Tokenfarbe")
+                }
+                guard coloredText.contains("wert400"), coloredText.contains("farben.swift") else {
+                    finish(false, "letzte Swift-Zeile oder Kopfzeile fehlt im Farbausdruck")
+                }
+                defaults.set(false, forKey: PrintPreferences.Keys.syntaxColors)
+                printToPDF(target: .source, ws: ws, base: base, name: "farben-einfarbig") { mono, monoText in
+                    defaults.set(true, forKey: PrintPreferences.Keys.syntaxColors)
+                    guard mono.pageCount == colored.pageCount else {
+                        finish(false, "einfarbiger Ausdruck hat \(mono.pageCount) statt "
+                               + "\(colored.pageCount) Seiten")
+                    }
+                    for page in 0..<mono.pageCount
+                    where pageHasPixel(mono, page: page, matching: isSaturatedColor) {
+                        finish(false, "Seite \(page + 1) des einfarbigen Ausdrucks trägt Farbe")
+                    }
+                    guard monoText == coloredText else {
+                        finish(false, "Farben verändern den gedruckten Text")
+                    }
+                    runPrintMarkdownPart(ws: ws, base: base)
+                }
+            }
+        }
+    }
+
+    /// Eine Tokenfarbe ist bunt (Rot-, Grün- oder Blauanteil weichen deutlich
+    /// voneinander ab); Schwarz, Weiß und Grau sind es nicht.
+    private static func isSaturatedColor(_ color: NSColor) -> Bool {
+        guard let rgb = color.usingColorSpace(.sRGB) else { return false }
+        let channels = [rgb.redComponent, rgb.greenComponent, rgb.blueComponent]
+        return (channels.max() ?? 0) - (channels.min() ?? 0) > 0.2
+    }
+
+    /// Rendert eine Seite als Bitmap und sucht in einem dichten Raster nach
+    /// einem Pixel, das die Bedingung erfüllt. Dicht, weil Glyphen nur wenige
+    /// Pixel hoch sind und ein grobes Raster sie verfehlen kann.
+    private static func pageHasPixel(
+        _ pdf: PDFDocument, page index: Int, matching predicate: (NSColor) -> Bool
+    ) -> Bool {
+        guard let page = pdf.page(at: index) else { return false }
+        let bounds = page.bounds(for: .mediaBox)
+        guard bounds.width > 0, bounds.height > 0 else { return false }
+        let image = page.thumbnail(of: bounds.size, for: .mediaBox)
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff) else { return false }
+        for y in stride(from: 0, to: rep.pixelsHigh, by: 3) {
+            for x in stride(from: 0, to: rep.pixelsWide, by: 3) {
+                if let color = rep.colorAt(x: x, y: y), predicate(color) {
+                    return true
+                }
+            }
+        }
+        return false
     }
 
     /// Markdown: erst die gerenderte Vorschau, dann derselbe Text als
@@ -21239,8 +21315,9 @@ enum SelfTest {
                        + "mit Fastra-Optionen (Kopf-/Fußzeile, Zeilennummern) "
                        + "— gefunden: " + texts.joined(separator: " / "))
             }
-            finish(true, "mehrseitiger Quelltext mit Kopf-/Fußzeile, gerenderte "
-                   + "Markdown-Vorschau (Formel + Diagramm), Markdown-Quelltext, "
+            finish(true, "mehrseitiger Quelltext mit Kopf-/Fußzeile, Syntaxfarben "
+                   + "auf jeder Seite eines Swift-Ausdrucks (einfarbig per Einstellung), "
+                   + "gerenderte Markdown-Vorschau (Formel + Diagramm), Markdown-Quelltext, "
                    + "Hex-Abzug ohne Umbruch (\(hexPages) Seiten), Bild- und "
                    + "PDF-Ausdruck im PDF geprüft (Bild bleibt nach "
                    + "Platten-Ersetzung der sichtbare Stand); großer Text fragt "

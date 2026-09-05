@@ -115,11 +115,11 @@ Erledigte Arbeit und historische Entscheidungen stehen in
 
 - **Druck-Ausbau (beauftragt 2026-08-18, aus der manuellen Druckabnahme):**
   Der Schalter-Teil ist mit v1.102.0 erledigt (Kopf-/Fußzeile und
-  Zeilennummern direkt im Systemdruckdialog). Offen bleibt allein:
-  - **Syntaxfarben im Quelltext-Ausdruck:** Der Farbausdruck ist jetzt
-    ausdrücklich gewünscht. Vor der Umsetzung am echten Code erheben, wie die
-    Editor-Einfärbung für den Druck wiederverwendet werden kann (heller
-    Farbsatz auf Papier, unabhängig vom Bildschirm-Thema).
+  Zeilennummern direkt im Systemdruckdialog). Die Syntaxfarben im
+  Quelltext-Ausdruck sind mit v1.121.0 umgesetzt (`PrintSyntaxHighlighting`:
+  Editor-Analyse auf einer unsichtbaren Textquelle, heller Farbsatz,
+  Schalter in Einstellungen und Druckdialog). Damit ist der Druck-Ausbau
+  abgeschlossen.
 
 - **Drucken: weiterhin bewusst gezogene Grenzen** (v1.100.0):
   - Die **gerenderte Markdown-Vorschau hat keine Kopf- und Fußzeile**. Diese

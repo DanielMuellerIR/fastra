@@ -20,6 +20,7 @@
 // unten setzt jede Seitengrenze deshalb auf eine echte Zeilengrenze.
 
 import AppKit
+import CodeEditSourceEditor
 import PDFKit
 import WebKit
 
@@ -206,25 +207,40 @@ enum DocumentPrinting {
         }
         // Erst nach einer möglichen Rückfrage bauen: Schon das Aufbauen teilt
         // den Text in Seiten und ist bei sehr großen Dokumenten der teure
-        // Schritt.
+        // Schritt. Davor liefert die Syntaxanalyse die Farbbereiche für den
+        // ganzen Text (nicht nur den sichtbaren Ausschnitt); sie läuft
+        // asynchron, der Main-Thread bleibt frei.
+        let format = DocumentFormatResolver.resolve(tab: tab)
+        let theme = PrintSyntaxHighlighting.printTheme(for: format)
+        let printedText = PrintSyntaxHighlighting.normalizedText(text)
+        let methodIndex = workspace.fourDMethodIndexSnapshot
         let start = {
-            let operation = makeTextPrintOperation(
-                text: text,
-                printInfo: printInfo,
-                defaults: defaults,
-                jobTitle: tab.title,
-                headerLeft: PrintDecoration.headerLeft(title: tab.title,
-                                                       section: section),
-                footerLeft: PrintDecoration.footerLeft(path: tab.url?.path)
-            )
-            // WICHTIG: `operation.printInfo` ist eine KOPIE des übergebenen
-            // PrintInfo. Das Zubehörfeld muss auf die Kopie schreiben — nur
-            // sie liest die Seitenaufteilung des laufenden Auftrags.
-            execute(operation, window: window, savingTo: savingTo,
-                    accessory: PrintOptionsAccessoryController(
-                        printInfo: operation.printInfo, defaults: defaults,
-                        offersLineNumbers: true),
-                    completion: completion)
+            PrintSyntaxHighlighting.analyze(
+                text: printedText, format: format, fourDMethodIndex: methodIndex
+            ) { outcome in
+                var highlights: [HighlightRange] = []
+                if case .colored(let ranges) = outcome { highlights = ranges }
+                let operation = makeTextPrintOperation(
+                    text: text,
+                    printInfo: printInfo,
+                    defaults: defaults,
+                    jobTitle: tab.title,
+                    headerLeft: PrintDecoration.headerLeft(title: tab.title,
+                                                           section: section),
+                    footerLeft: PrintDecoration.footerLeft(path: tab.url?.path),
+                    highlights: highlights,
+                    theme: theme
+                )
+                // WICHTIG: `operation.printInfo` ist eine KOPIE des übergebenen
+                // PrintInfo. Das Zubehörfeld muss auf die Kopie schreiben — nur
+                // sie liest die Seitenaufteilung des laufenden Auftrags.
+                execute(operation, window: window, savingTo: savingTo,
+                        accessory: PrintOptionsAccessoryController(
+                            printInfo: operation.printInfo, defaults: defaults,
+                            offersLineNumbers: true,
+                            offersSyntaxColors: !highlights.isEmpty),
+                        completion: completion)
+            }
         }
         confirmLargePrintIfNeeded(text: text, printInfo: printInfo,
                                   defaults: defaults, window: window,
@@ -338,7 +354,9 @@ enum DocumentPrinting {
                                        headerLeft: String,
                                        footerLeft: String,
                                        forcesLineNumbersOff: Bool = false,
-                                       fixedColumns: Int? = nil)
+                                       fixedColumns: Int? = nil,
+                                       highlights: [HighlightRange] = [],
+                                       theme: EditorTheme? = nil)
         -> NSPrintOperation {
         let desired = PrintPreferences.fontSize(defaults)
         var font = printFont(size: CGFloat(desired), defaults: defaults)
@@ -366,8 +384,17 @@ enum DocumentPrinting {
         printInfo.dictionary()[PrintDialogOption.headerFooter] =
             PrintPreferences.showsHeaderFooter(defaults)
         printInfo.dictionary()[PrintDialogOption.lineNumbers] = showsLineNumbers
+        // Syntaxfarben nur, wenn die Analyse welche geliefert hat UND die
+        // Einstellung sie will; die Checkbox im Dialog kann beides umschalten.
+        let showsSyntaxColors = !highlights.isEmpty
+            && PrintPreferences.showsSyntaxColors(defaults)
+        if !highlights.isEmpty {
+            printInfo.dictionary()[PrintDialogOption.syntaxColors] = showsSyntaxColors
+        }
         let attributed = attributedText(text, font: font,
-                                        showsLineNumbers: showsLineNumbers)
+                                        showsLineNumbers: showsLineNumbers,
+                                        highlights: showsSyntaxColors ? highlights : [],
+                                        theme: theme)
         let content = contentSize(of: printInfo)
 
         // TextKit 1 mit ausdrücklich erzeugtem Container: Seine Breite ist
@@ -404,6 +431,9 @@ enum DocumentPrinting {
         view.baseFont = font
         view.lineNumbersAllowed = !forcesLineNumbersOff
         view.currentShowsLineNumbers = showsLineNumbers
+        view.highlights = highlights
+        view.printTheme = theme
+        view.currentShowsSyntaxColors = showsSyntaxColors
         view.isEditable = false
         view.isSelectable = false
         view.drawsBackground = false
@@ -435,13 +465,19 @@ enum DocumentPrinting {
         return .monospacedSystemFont(ofSize: size, weight: .regular)
     }
 
-    /// Text mit optionaler Zeilennummernspalte.
+    /// Text mit optionaler Zeilennummernspalte und optionalen Syntaxfarben.
     ///
     /// Die Nummer steht als Text am Zeilenanfang. Umgebrochene Fortsetzungen
     /// rücken über `headIndent` genau um die Spaltenbreite ein — dadurch bleibt
     /// der Text auch bei langen Zeilen als Block lesbar.
+    ///
+    /// `highlights` sind Bereiche im normalisierten Drucktext
+    /// (`PrintSyntaxHighlighting.normalizedText`); sie werden zeilenweise auf
+    /// die Positionen hinter der Nummernspalte übertragen.
     static func attributedText(_ text: String, font: NSFont,
-                               showsLineNumbers: Bool) -> NSAttributedString {
+                               showsLineNumbers: Bool,
+                               highlights: [HighlightRange] = [],
+                               theme: EditorTheme? = nil) -> NSAttributedString {
         let lines = PrintLineNumbers.lines(of: text)
         let digits = PrintLineNumbers.digits(forLineCount: lines.count)
         let characterWidth = ("0" as NSString)
@@ -456,6 +492,13 @@ enum DocumentPrinting {
                 * CGFloat(digits + PrintLineNumbers.gap)
         }
         let result = NSMutableAttributedString()
+        // Startpositionen jeder Zeile im Ergebnis (hinter der Nummernspalte)
+        // und im normalisierten Quelltext — die Brücke für die Farbbereiche.
+        var lineOffsets: [Int] = []
+        var sourceOffsets: [Int] = []
+        lineOffsets.reserveCapacity(lines.count)
+        sourceOffsets.reserveCapacity(lines.count)
+        var sourceOffset = 0
         for (offset, line) in lines.enumerated() {
             if showsLineNumbers {
                 result.append(NSAttributedString(
@@ -464,11 +507,20 @@ enum DocumentPrinting {
                                  .paragraphStyle: paragraph]
                 ))
             }
+            lineOffsets.append(result.length)
+            sourceOffsets.append(sourceOffset)
             result.append(NSAttributedString(
                 string: line + "\n",
                 attributes: [.font: font, .foregroundColor: NSColor.black,
                              .paragraphStyle: paragraph]
             ))
+            sourceOffset += (line as NSString).length + 1
+        }
+        if let theme, !highlights.isEmpty {
+            PrintSyntaxHighlighting.apply(highlights, theme: theme, font: font,
+                                          to: result, lines: lines,
+                                          lineOffsets: lineOffsets,
+                                          sourceOffsets: sourceOffsets)
         }
         return result
     }
@@ -719,6 +771,12 @@ final class PrintDocumentTextView: NSTextView {
     var baseFont = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
     var lineNumbersAllowed = true
     var currentShowsLineNumbers = false
+    // Farbbereiche der Syntaxanalyse (leer = nichts einzufärben) und der
+    // helle Druck-Farbsatz; `currentShowsSyntaxColors` hält fest, ob der
+    // Text-Storage sie gerade trägt.
+    var highlights: [HighlightRange] = []
+    var printTheme: EditorTheme?
+    var currentShowsSyntaxColors = false
 
     /// Ergebnis der eigenen Seitenaufteilung.
     private var pageRects: [NSRect] = []
@@ -735,14 +793,26 @@ final class PrintDocumentTextView: NSTextView {
     /// verändern den Inhalt und damit die Seitenaufteilung; die Kopf-/Fußzeile
     /// wird beim Zeichnen der Seitenränder frisch gelesen.
     private func refreshDialogOptions() {
-        guard lineNumbersAllowed,
-              let wanted = PrintDialogOption.value(
-                  PrintDialogOption.lineNumbers,
-                  in: NSPrintOperation.current?.printInfo),
-              wanted != currentShowsLineNumbers else { return }
+        let printInfo = NSPrintOperation.current?.printInfo
+        var wantedLineNumbers = currentShowsLineNumbers
+        if lineNumbersAllowed,
+           let wanted = PrintDialogOption.value(PrintDialogOption.lineNumbers,
+                                                in: printInfo) {
+            wantedLineNumbers = wanted
+        }
+        var wantedSyntaxColors = currentShowsSyntaxColors
+        if !highlights.isEmpty,
+           let wanted = PrintDialogOption.value(PrintDialogOption.syntaxColors,
+                                                in: printInfo) {
+            wantedSyntaxColors = wanted
+        }
+        guard wantedLineNumbers != currentShowsLineNumbers
+                || wantedSyntaxColors != currentShowsSyntaxColors else { return }
         textStorage?.setAttributedString(DocumentPrinting.attributedText(
-            rawText, font: baseFont, showsLineNumbers: wanted))
-        currentShowsLineNumbers = wanted
+            rawText, font: baseFont, showsLineNumbers: wantedLineNumbers,
+            highlights: wantedSyntaxColors ? highlights : [], theme: printTheme))
+        currentShowsLineNumbers = wantedLineNumbers
+        currentShowsSyntaxColors = wantedSyntaxColors
     }
 
     override func rectForPage(_ page: Int) -> NSRect {

@@ -26,6 +26,7 @@ import AppKit
 enum PrintDialogOption {
     static let headerFooter = NSPrintInfo.AttributeKey(rawValue: "FastraPrintHeaderFooter")
     static let lineNumbers = NSPrintInfo.AttributeKey(rawValue: "FastraPrintLineNumbers")
+    static let syntaxColors = NSPrintInfo.AttributeKey(rawValue: "FastraPrintSyntaxColors")
 
     /// Liest eine Bool-Option aus einem PrintInfo; `nil`, wenn nie gesetzt.
     static func value(_ key: NSPrintInfo.AttributeKey,
@@ -44,21 +45,30 @@ final class PrintOptionsAccessoryController: NSViewController, NSPrintPanelAcces
     /// Bild- und Hex-Ausdruck haben keine Zeilennummern-Option; die Checkbox
     /// entfällt dort ganz, statt wirkungslos anwählbar zu sein.
     private let offersLineNumbers: Bool
+    /// Syntaxfarben gibt es nur, wenn die Analyse des Quelltexts Farbbereiche
+    /// geliefert hat — reiner Text und Hex-Abzug zeigen die Checkbox nicht.
+    private let offersSyntaxColors: Bool
 
     /// KVO-fähig für die Vorschau-Beobachtung des Druckdialogs.
     @objc dynamic private(set) var headerFooterEnabled: Bool
     @objc dynamic private(set) var lineNumbersEnabled: Bool
+    @objc dynamic private(set) var syntaxColorsEnabled: Bool
 
-    init(printInfo: NSPrintInfo, defaults: UserDefaults, offersLineNumbers: Bool) {
+    init(printInfo: NSPrintInfo, defaults: UserDefaults, offersLineNumbers: Bool,
+         offersSyntaxColors: Bool = false) {
         self.printInfo = printInfo
         self.defaults = defaults
         self.offersLineNumbers = offersLineNumbers
+        self.offersSyntaxColors = offersSyntaxColors
         self.headerFooterEnabled =
             PrintDialogOption.value(PrintDialogOption.headerFooter, in: printInfo)
             ?? PrintPreferences.showsHeaderFooter(defaults)
         self.lineNumbersEnabled =
             PrintDialogOption.value(PrintDialogOption.lineNumbers, in: printInfo)
             ?? PrintPreferences.showsLineNumbers(defaults)
+        self.syntaxColorsEnabled =
+            PrintDialogOption.value(PrintDialogOption.syntaxColors, in: printInfo)
+            ?? PrintPreferences.showsSyntaxColors(defaults)
         super.init(nibName: nil, bundle: nil)
         // Eigenname, bewusst unübersetzt: beschriftet den Options-Abschnitt
         // im Druckdialog.
@@ -83,6 +93,14 @@ final class PrintOptionsAccessoryController: NSViewController, NSPrintPanelAcces
             lineNumbersButton.state = lineNumbersEnabled ? .on : .off
             buttons.append(lineNumbersButton)
         }
+        if offersSyntaxColors {
+            let syntaxColorsButton = NSButton(
+                checkboxWithTitle: L10n.string("Syntaxfarben drucken"),
+                target: self, action: #selector(toggleSyntaxColors(_:))
+            )
+            syntaxColorsButton.state = syntaxColorsEnabled ? .on : .off
+            buttons.append(syntaxColorsButton)
+        }
         let stack = NSStackView(views: buttons)
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -99,6 +117,10 @@ final class PrintOptionsAccessoryController: NSViewController, NSPrintPanelAcces
         setLineNumbers(sender.state == .on)
     }
 
+    @objc private func toggleSyntaxColors(_ sender: NSButton) {
+        setSyntaxColors(sender.state == .on)
+    }
+
     /// Auch für Tests direkt aufrufbar — gleiche Wirkung wie der Klick.
     func setHeaderFooter(_ enabled: Bool) {
         headerFooterEnabled = enabled
@@ -110,6 +132,12 @@ final class PrintOptionsAccessoryController: NSViewController, NSPrintPanelAcces
         lineNumbersEnabled = enabled
         printInfo.dictionary()[PrintDialogOption.lineNumbers] = enabled
         defaults.set(enabled, forKey: PrintPreferences.Keys.lineNumbers)
+    }
+
+    func setSyntaxColors(_ enabled: Bool) {
+        syntaxColorsEnabled = enabled
+        printInfo.dictionary()[PrintDialogOption.syntaxColors] = enabled
+        defaults.set(enabled, forKey: PrintPreferences.Keys.syntaxColors)
     }
 
     // MARK: - NSPrintPanelAccessorizing
@@ -127,10 +155,17 @@ final class PrintOptionsAccessoryController: NSViewController, NSPrintPanelAcces
                     ? L10n.string("Ein") : L10n.string("Aus"),
             ])
         }
+        if offersSyntaxColors {
+            items.append([
+                .itemName: L10n.string("Syntaxfarben drucken"),
+                .itemDescription: syntaxColorsEnabled
+                    ? L10n.string("Ein") : L10n.string("Aus"),
+            ])
+        }
         return items
     }
 
     func keyPathsForValuesAffectingPreview() -> Set<String> {
-        ["headerFooterEnabled", "lineNumbersEnabled"]
+        ["headerFooterEnabled", "lineNumbersEnabled", "syntaxColorsEnabled"]
     }
 }

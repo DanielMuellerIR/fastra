@@ -31,6 +31,8 @@ struct SettingsView: View {
     private var printLineNumbers = PrintPreferences.defaultLineNumbers
     @AppStorage(PrintPreferences.Keys.headerFooter, store: SelfTest.workspaceDefaults())
     private var printHeaderFooter = PrintPreferences.defaultHeaderFooter
+    @AppStorage(PrintPreferences.Keys.syntaxColors, store: SelfTest.workspaceDefaults())
+    private var printSyntaxColors = PrintPreferences.defaultSyntaxColors
     @AppStorage(PrintPreferences.Keys.fontSize, store: SelfTest.workspaceDefaults())
     private var printFontSize = PrintPreferences.defaultFontSize
     @AppStorage(GitPreferencesStore.Keys.decision, store: SelfTest.workspaceDefaults())
@@ -184,12 +186,13 @@ struct SettingsView: View {
             Section("Drucken") {
                 Toggle("Zeilennummern drucken", isOn: $printLineNumbers)
                 Toggle("Kopf- und Fußzeile drucken", isOn: $printHeaderFooter)
+                Toggle("Syntaxfarben drucken", isOn: $printSyntaxColors)
                 Stepper(L10n.format("Schriftgröße im Ausdruck: %ld pt",
                                     Int(printFontSize.rounded())),
                         value: $printFontSize,
                         in: PrintPreferences.fontSizeRange,
                         step: 1)
-                Text("Die Schriftgröße gilt für Quelltext, Hex-Abzüge und die gedruckte Markdown-Vorschau. Zeilennummern gibt es nur beim Quelltext; Kopf- und Fußzeile tragen Quelltext-, Hex- und Bildausdrucke. Papiergröße und Ausrichtung stehen unter „Datei → Papierformat“.")
+                Text("Die Schriftgröße gilt für Quelltext, Hex-Abzüge und die gedruckte Markdown-Vorschau. Zeilennummern und Syntaxfarben gibt es nur beim Quelltext; die Farben folgen dem hellen Editor-Farbsatz der Sprache, unabhängig vom Erscheinungsbild. Kopf- und Fußzeile tragen Quelltext-, Hex- und Bildausdrucke. Papiergröße und Ausrichtung stehen unter „Datei → Papierformat“.")
                     .fastraFont(.small)
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

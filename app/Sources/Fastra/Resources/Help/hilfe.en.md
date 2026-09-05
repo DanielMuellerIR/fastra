@@ -23,8 +23,12 @@ in the name field.
 ⌘P prints **what you currently see**. Which version that is depends on the
 active view:
 
-- The editor prints the source text with line numbers. Long lines wrap and their
-  continuation is indented under the text; nothing is cut off.
+- The editor prints the source text with line numbers and syntax colors. The
+  colors come from the same analysis as in the editor, cover the whole
+  document, and always use the language's light color set with black body
+  text — regardless of whether the screen is light or dark. Plain text stays
+  monochrome. Overlong lines wrap and the continuation is indented under the
+  text; nothing is cut off.
 - If the Markdown preview sits next to the editor, ⌘P prints the **rendered**
   version with tables, formulas and diagrams — in content exactly what the
   preview shows; the print font size comes from **Settings → Printing**, not
@@ -43,9 +47,9 @@ menu item names the one ⌘P will take.
 
 The header carries document name and date, the footer the file path and
 “Page n of m”. A page break always falls between two lines, never inside one.
-Line numbers and the header/footer can be toggled right in the print dialog
-(the “Fastra” section); the preview follows immediately, and the choice is
-remembered for the next print job. The same switches plus the print font size
+Line numbers, the header/footer, and syntax colors can be toggled right in
+the print dialog (the “Fastra” section); the preview follows immediately, and
+the choice is remembered for the next print job. The same switches plus the print font size
 live in **Settings → Printing**; **File → Page Setup…** (⇧⌘P) sets paper size
 and orientation.
 

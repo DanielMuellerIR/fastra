@@ -608,7 +608,7 @@ struct PrintDialogOptionTests {
         #expect(withoutLineNumbers.localizedSummaryItems().count == 1)
         // Die Vorschau beobachtet beide Schalter.
         #expect(accessory.keyPathsForValuesAffectingPreview()
-                == ["headerFooterEnabled", "lineNumbersEnabled"])
+                == ["headerFooterEnabled", "lineNumbersEnabled", "syntaxColorsEnabled"])
     }
 
     @MainActor

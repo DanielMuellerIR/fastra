@@ -1435,9 +1435,10 @@
 "Die Druckvorschau konnte nicht geprüft werden: %@" = "The print preview could not be checked: %@";
 "Drucken" = "Printing";
 "Zeilennummern drucken" = "Print line numbers";
+"Syntaxfarben drucken" = "Print syntax colors";
 "Kopf- und Fußzeile drucken" = "Print header and footer";
 "Schriftgröße im Ausdruck: %ld pt" = "Print font size: %ld pt";
-"Die Schriftgröße gilt für Quelltext, Hex-Abzüge und die gedruckte Markdown-Vorschau. Zeilennummern gibt es nur beim Quelltext; Kopf- und Fußzeile tragen Quelltext-, Hex- und Bildausdrucke. Papiergröße und Ausrichtung stehen unter „Datei → Papierformat“." = "The font size applies to source text, hex dumps and the printed Markdown preview. Line numbers exist only for source text; header and footer appear on source, hex and image printouts. Paper size and orientation are under “File → Page Setup”.";
+"Die Schriftgröße gilt für Quelltext, Hex-Abzüge und die gedruckte Markdown-Vorschau. Zeilennummern und Syntaxfarben gibt es nur beim Quelltext; die Farben folgen dem hellen Editor-Farbsatz der Sprache, unabhängig vom Erscheinungsbild. Kopf- und Fußzeile tragen Quelltext-, Hex- und Bildausdrucke. Papiergröße und Ausrichtung stehen unter „Datei → Papierformat“." = "The font size applies to source text, hex dumps, and the printed Markdown preview. Line numbers and syntax colors are available for source text only; the colors follow the language's light editor color set regardless of the appearance. Header and footer appear on source, hex, and image printouts. Paper size and orientation are set under “File → Page Setup”.";
 "Die Bildvorschau ist noch nicht geladen." = "The image preview has not finished loading yet.";
 "Die PDF-Vorschau ist noch nicht geladen." = "The PDF preview has not finished loading yet.";
 "Großer Ausdruck" = "Large Printout";

@@ -23,9 +23,12 @@ Eine beliebige eigene Endung kannst du weiterhin direkt im Namensfeld eingeben.
 ⌘P druckt, **was du gerade siehst**. Welche Fassung das ist, hängt an der
 aktiven Ansicht:
 
-- Der Editor druckt den Quelltext mit Zeilennummern. Zu lange Zeilen werden
-  umgebrochen und die Fortsetzung rückt unter den Text ein; abgeschnitten wird
-  nichts.
+- Der Editor druckt den Quelltext mit Zeilennummern und Syntaxfarben. Die
+  Farben kommen aus derselben Analyse wie im Editor, gelten für das ganze
+  Dokument und verwenden immer den hellen Farbsatz der Sprache mit schwarzem
+  Grundtext — unabhängig davon, ob der Bildschirm hell oder dunkel ist.
+  Reiner Text bleibt einfarbig. Zu lange Zeilen werden umgebrochen und die
+  Fortsetzung rückt unter den Text ein; abgeschnitten wird nichts.
 - Steht die Markdown-Vorschau neben dem Editor, druckt ⌘P die **gerenderte**
   Fassung mit Tabellen, Formeln und Diagrammen — inhaltlich genau das Bild
   der Vorschau; die Schriftgröße des Ausdrucks kommt aus
@@ -45,9 +48,9 @@ Fassung anbietet, nennt der Menüpunkt die Fassung mit, die ⌘P nimmt.
 
 Kopf- und Fußzeile tragen Dokumentname und Datum oben, Dateipfad und
 „Seite n von m“ unten. Ein Seitenumbruch liegt immer zwischen zwei Zeilen, nie
-mitten in einer. Zeilennummern und Kopf-/Fußzeile lassen sich direkt im
-Druckdialog umschalten (Abschnitt „Fastra“); die Vorschau folgt sofort, und
-die Wahl wird für den nächsten Ausdruck gemerkt. Dieselben Schalter und die
+mitten in einer. Zeilennummern, Kopf-/Fußzeile und Syntaxfarben lassen sich
+direkt im Druckdialog umschalten (Abschnitt „Fastra“); die Vorschau folgt
+sofort, und die Wahl wird für den nächsten Ausdruck gemerkt. Dieselben Schalter und die
 Schriftgröße des Ausdrucks stehen in **Einstellungen → Drucken**;
 **Datei → Papierformat…** (⇧⌘P) bestimmt Papiergröße und Ausrichtung.
 

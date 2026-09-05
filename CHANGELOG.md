@@ -9,6 +9,36 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.121.0] — 2026-09-06
+
+### Neu
+
+- Der Quelltext-Ausdruck trägt Syntaxfarben. Fastra färbt dafür das ganze
+  Dokument mit derselben Analyse wie der Editor ein (tree-sitter bzw. der
+  4D-Tokenizer), nicht nur den sichtbaren Ausschnitt, und verwendet immer
+  den hellen Farbsatz der Sprache mit schwarzem Grundtext — unabhängig vom
+  Erscheinungsbild des Bildschirms und ohne Auswahl- oder Suchmarkierung.
+  Text, Zeilennummern, Kopf-/Fußzeile und Seitenumbrüche bleiben gegenüber
+  dem einfarbigen Ausdruck unverändert.
+- „Syntaxfarben drucken“ lässt sich in den Einstellungen und direkt im
+  Druckdialog umschalten; die Checkbox erscheint nur, wenn der Text Farben
+  hat. Reiner Text, Hex-Abzüge und Dokumente über 2.000.000 Zeichen drucken
+  weiter einfarbig; liefert die Analyse binnen 10 s keine Antwort, startet der
+  Ausdruck ohne Farben statt zu warten.
+
+### Qualitätssicherung
+
+- Unit-Tests prüfen Farbsatz, Capture-Zuordnung, die Übertragung der
+  Farbbereiche hinter die Zeilennummernspalte (CRLF, Blockkommentar über
+  Zeilen, fett/kursiv), die Einfärbung bis zur letzten Zeile eines
+  600-Zeilen-Dokuments, 4D-Tokenizer und Dialog-Option. Messung: ein
+  1-MB-Swift-Dokument (18.000 Zeilen) ist im Debug-Build in 2,2–2,4 s
+  analysiert.
+- Der `print`-Selbsttest druckt einen 400-zeiligen Swift-Quelltext und prüft
+  auf jeder PDF-Seite echte Tokenfarben; derselbe Ausdruck mit
+  ausgeschalteter Einstellung ist auf jeder Seite farblos, bei gleichem Text
+  und gleicher Seitenzahl.
+
 ## [v1.120.0] — 2026-09-05
 
 ### Geändert

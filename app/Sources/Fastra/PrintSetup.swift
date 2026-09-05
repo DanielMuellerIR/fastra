@@ -358,10 +358,12 @@ enum PrintPreferences {
         static let lineNumbers = "print.lineNumbers"
         static let headerFooter = "print.headerFooter"
         static let fontSize = "print.fontSize"
+        static let syntaxColors = "print.syntaxColors"
     }
 
     static let defaultLineNumbers = true
     static let defaultHeaderFooter = true
+    static let defaultSyntaxColors = true
     static let defaultFontSize = 10.0
     static let fontSizeRange: ClosedRange<Double> = 6...18
 
@@ -376,6 +378,12 @@ enum PrintPreferences {
     static func showsHeaderFooter(_ defaults: UserDefaults) -> Bool {
         defaults.object(forKey: Keys.headerFooter) == nil
             ? defaultHeaderFooter : defaults.bool(forKey: Keys.headerFooter)
+    }
+
+    /// Syntaxfarben im Quelltext-Ausdruck (Folgeauftrag 2026-09-05).
+    static func showsSyntaxColors(_ defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: Keys.syntaxColors) == nil
+            ? defaultSyntaxColors : defaults.bool(forKey: Keys.syntaxColors)
     }
 
     /// Schriftgröße des Ausdrucks in Punkt, auf einen sinnvollen Bereich
