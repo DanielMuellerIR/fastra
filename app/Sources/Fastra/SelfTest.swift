@@ -1014,10 +1014,19 @@ enum SelfTest {
         guard let original = Workspace.shared else {
             finish(false, "kein aktiver Ausgangs-Workspace")
         }
-        guard let mainWindow = NSApp.windows.first(where: {
-            $0.frameAutosaveName != SearchWindow.frameAutosaveName && $0.isVisible
+        // Fenster und Workspace gehören zusammen: Das Fenster kommt über
+        // denselben Registry-Weg wie im Produkt (`CommandTargeting`), nicht
+        // aus `NSApp.windows` — die Liste ist nicht nach Vordergrund
+        // sortiert, und bei zwei Dokumentfenstern hätte der Test sonst den
+        // roten Knopf eines Fensters gedrückt, dessen Tabs in einem anderen
+        // Workspace liegen (Review-Fund 2026-09-05).
+        guard let mainWindow = MainActor.assumeIsolated({
+            CommandTargeting.documentWindow(for: original)
         }) else {
-            finish(false, "kein sichtbares Hauptfenster")
+            finish(false, "kein sichtbares Dokumentfenster zum Ausgangs-Workspace")
+        }
+        guard WorkspaceWindowRegistry.workspace(for: mainWindow) === original else {
+            finish(false, "Hauptfenster und Ausgangs-Workspace gehören nicht zusammen")
         }
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("fastra-selftest-finderreopen-\(getpid())")
@@ -1082,7 +1091,7 @@ enum SelfTest {
                 }
                 print("finderreopen: Delegate des Hauptfensters = "
                     + "\(mainWindow.delegate.map { String(describing: type(of: $0)) } ?? "nil")")
-                deliverExternalEvent(eventID: AEEventID(kAEOpenDocuments), fileURL: file)
+                deliverOpenDocumentsEvent(for: file)
                 waitUntilSelfTest(tick: 0, limit: 100,
                                   failure: "Öffnen-Ereignis zeigte die Datei in keinem Fenster") {
                     documentWindows(showing: file).count >= 1
@@ -1108,8 +1117,7 @@ enum SelfTest {
                                 + "\(showing.count) Fenstern (Größen: "
                                 + "\(showing.map { "\(Int($0.frame.width))×\(Int($0.frame.height))" }))")
                         }
-                        verifyReopenWithoutWindows(file: file, showingWindows: showing,
-                                                   problems: problems)
+                        verifyReopenWithoutWindows(file: file, problems: problems)
                     }
                 }
             }
@@ -1118,10 +1126,10 @@ enum SelfTest {
 
     /// Zweite Hälfte: Alle Fenster zu, dann Dock-Klick (`rapp`). Danach darf
     /// genau EIN Dokumentfenster stehen — nicht eines von AppKit und eines von
-    /// SwiftUI.
-    private static func verifyReopenWithoutWindows(
-        file: URL, showingWindows: [NSWindow], problems: [String]
-    ) {
+    /// SwiftUI — und die zuvor geschlossene Datei darf darin nicht ungefragt
+    /// wieder auftauchen: Genau das war in v1.117.2 die sichtbare Folge der
+    /// stehen gebliebenen Tabs.
+    private static func verifyReopenWithoutWindows(file: URL, problems: [String]) {
         var problems = problems
         for window in MainActor.assumeIsolated({ DocumentWindowController.visibleDocumentWindows() }) {
             if let workspace = WorkspaceWindowRegistry.workspace(for: window) {
@@ -1132,7 +1140,7 @@ enum SelfTest {
         waitUntilSelfTest(tick: 0, limit: 100, failure: "Dateifenster schlossen nicht") {
             MainActor.assumeIsolated { DocumentWindowController.visibleDocumentWindows().isEmpty }
         } then: {
-            deliverExternalEvent(eventID: AEEventID(kAEReopenApplication), fileURL: nil)
+            deliverReopenEvent()
             waitUntilSelfTest(tick: 0, limit: 100, failure: "Reopen zeigte kein Fenster") {
                 MainActor.assumeIsolated { !DocumentWindowController.visibleDocumentWindows().isEmpty }
             } then: {
@@ -1143,6 +1151,11 @@ enum SelfTest {
                     if windows.count != 1 {
                         problems.append("Reopen ohne Fenster zeigte \(windows.count) Fenster (Größen: "
                             + "\(windows.map { "\(Int($0.frame.width))×\(Int($0.frame.height))" }))")
+                    }
+                    let resurrected = documentWindows(showing: file)
+                    if !resurrected.isEmpty {
+                        problems.append("Reopen ohne Fenster brachte die geschlossene Datei "
+                            + "\(file.lastPathComponent) in \(resurrected.count) Fenster(n) zurück")
                     }
                     guard problems.isEmpty else {
                         finish(false, problems.joined(separator: "; "))
@@ -1164,34 +1177,47 @@ enum SelfTest {
         }
     }
 
-    /// Stellt das Ereignis so zu, wie AppKit es nach einem Apple-Event von
-    /// Finder (`odoc`) oder Dock (`rapp`) tut: an `NSApp.delegate`. Das ist
-    /// SwiftUIs eigener App-Delegate, der zuerst sein Szenenfenster für das
-    /// externe Ereignis aktiviert und danach an den `AppDelegate` von Fastra
-    /// weiterreicht — genau diese Reihenfolge erzeugte das doppelte Fenster.
+    /// Stellt ein externes Ereignis so zu, wie AppKit es nach einem
+    /// Apple-Event von Finder (`odoc`) oder Dock (`rapp`) tut: an
+    /// `NSApp.delegate`. Das ist SwiftUIs eigener App-Delegate, der zuerst
+    /// sein Szenenfenster für das externe Ereignis aktiviert und danach an den
+    /// `AppDelegate` von Fastra weiterreicht — genau diese Reihenfolge
+    /// erzeugte das doppelte Fenster.
     ///
     /// Ein echtes Apple-Event an den eigenen Prozess taugt dafür nicht: Vom
     /// Main-Thread gesendet läuft es in errAETimeout (-1712), von einem
     /// Hintergrund-Thread aus stellt der Apple-Event-Manager es direkt in
     /// diesem Thread zu, und AppKit stürzt beim Fensteraufbau ab.
-    private static func deliverExternalEvent(eventID: AEEventID, fileURL: URL?) {
+    ///
+    /// Die beiden Ereignisse sind bewusst getrennte Funktionen: Eine
+    /// gemeinsame Hilfsfunktion mit Event-ID-Parameter hatte die ID gar nicht
+    /// ausgewertet und nur nach „Datei-URL vorhanden?" entschieden
+    /// (Review-Fund 2026-09-05).
+    private static func externalEventDelegate() -> NSApplicationDelegate {
         guard let delegate = NSApp.delegate else {
             finish(false, "NSApp.delegate fehlt")
         }
-        if let fileURL {
-            guard delegate.responds(to: #selector(NSApplicationDelegate.application(_:open:))) else {
-                finish(false, "App-Delegate beantwortet application(_:open:) nicht")
-            }
-            delegate.application?(NSApp, open: [fileURL])
-        } else {
-            guard delegate.responds(to: #selector(
-                NSApplicationDelegate.applicationShouldHandleReopen(_:hasVisibleWindows:)
-            )) else {
-                finish(false, "App-Delegate beantwortet applicationShouldHandleReopen nicht")
-            }
-            _ = delegate.applicationShouldHandleReopen?(NSApp, hasVisibleWindows: false)
+        return delegate
+    }
+
+    /// `odoc`: Finder-Doppelklick auf eine Datei.
+    private static func deliverOpenDocumentsEvent(for fileURL: URL) {
+        let delegate = externalEventDelegate()
+        guard delegate.responds(to: #selector(NSApplicationDelegate.application(_:open:))) else {
+            finish(false, "App-Delegate beantwortet application(_:open:) nicht")
         }
-        _ = eventID
+        delegate.application?(NSApp, open: [fileURL])
+    }
+
+    /// `rapp`: Dock-Klick ohne sichtbares Fenster.
+    private static func deliverReopenEvent() {
+        let delegate = externalEventDelegate()
+        guard delegate.responds(to: #selector(
+            NSApplicationDelegate.applicationShouldHandleReopen(_:hasVisibleWindows:)
+        )) else {
+            finish(false, "App-Delegate beantwortet applicationShouldHandleReopen nicht")
+        }
+        _ = delegate.applicationShouldHandleReopen?(NSApp, hasVisibleWindows: false)
     }
 
     /// Kleines Polling für diesen Test: 50-ms-Takt bis `condition` gilt,
