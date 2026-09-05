@@ -9,6 +9,27 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.118.9] — 2026-09-05
+
+### Verbessert
+
+- Die Textsuche bestimmt Zeilennummern fortlaufend bis zum jeweiligen
+  angezeigten Treffer. Ohne Treffer und bei einer kleinen Auswahl am
+  Dokumentanfang entfällt der bisherige vollständige Zeilenindex.
+- Mehrere Treffer derselben Zeile verwenden die zuletzt bestimmten
+  Zeilengrenzen für ihren Vorschaukontext. Eine Messreihe mit einer
+  16,5-MiB-Einzelzeile sinkt dadurch von 39,12 auf 0,884 Sekunden Median.
+  Eingaben, Messumfang und Grenzen stehen in `docs/SEARCH-PERFORMANCE.md`.
+
+### Qualitätssicherung
+
+- Regressionen vergleichen UTF-16-Positionen, CR/LF/CRLF und Unicode-Umbrüche,
+  Nullbreitentreffer, Auswahlgrenzen und Vorschaukontext mit der bisherigen
+  Zeilenberechnung. Trefferlimits und Apply-Verhalten bleiben unverändert.
+- Ein optionaler fensterloser Messmodus trennt bei Ordnersuchen Enumeration,
+  Dateisuche und Zeit bis zur ersten Datei. Er läuft nur auf ausdrücklich
+  übergebenen lokalen Eingaben.
+
 ## [v1.118.8] — 2026-09-05
 
 ### Behoben

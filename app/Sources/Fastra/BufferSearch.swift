@@ -150,13 +150,18 @@ enum BufferSearch {
 
         if shouldCancel() { return .empty }
         let ns = text as NSString
-        // Zeilen-Start-Offsets EINMAL einsammeln (CR/LF/CRLF-bewusst); pro
-        // Treffer dann via Binärsuche die Zeilen-/Spalten-Position bestimmen.
-        // So bleibt der Aufruf auch bei vielen Treffern in großen Dateien schnell.
-        guard let lineStarts = collectLineStarts(in: ns,
-                                                 shouldCancel: shouldCancel) else {
-            return .empty
-        }
+        // RegEx liefert aufsteigende Positionen. Wir zählen Zeilen nur bis
+        // zum jeweils angezeigten Treffer, statt vorab das ganze Dokument
+        // zu indizieren. Ohne Treffer entfällt die Zeilenarbeit vollständig.
+        var line = 1
+        var lineStart = 0
+        var nextLineStart = 0
+        // Nur die zuletzt abgefragte Restzeile merken. NSString bestimmt
+        // ihre echten Grenzen einschließlich CRLF; die nächste Zeile beginnt
+        // genau am exklusiven Ende und erzwingt deshalb eine neue Abfrage.
+        var remainderLineStart = NSNotFound
+        var remainderLineEnd = NSNotFound
+        var remainderContentEnd = NSNotFound
         // RegEx und Ersetzungstemplate liegen bereits im Plan; ab hier fällt
         // nur noch die textspezifische Zeilen- und Trefferarbeit an.
         var matches: [Match] = []
@@ -187,15 +192,40 @@ enum BufferSearch {
             // (Substring, Replacement-Template) entfällt für den Rest.
             if matches.count < maxMatches {
                 let r = result.range
-                let (line, column) = lineColumn(forOffset: r.location, lineStarts: lineStarts)
+                while nextLineStart <= r.location {
+                    if line & 0x3FF == 0, shouldCancel() {
+                        cancelled = true
+                        stop.pointee = true
+                        return
+                    }
+                    if nextLineStart > 0 {
+                        lineStart = nextLineStart
+                        line += 1
+                    }
+                    var end = NSNotFound
+                    ns.getLineStart(nil, end: &end, contentsEnd: nil,
+                                    for: NSRange(location: lineStart, length: 0))
+                    // Wie collectLineStarts zählt ein abschließender Umbruch
+                    // keine zusätzliche leere Zeile für den Treffer am EOF.
+                    nextLineStart = end > lineStart && end < ns.length ? end : Int.max
+                }
+                let column = r.location - lineStart + 1
                 let matchText = ns.substring(with: r)
                 // Kontext endet am Inhaltsende der Zeile, also VOR CR/LF.
                 // Bei mehrzeiligen Treffern zählt die Zeile des Trefferendes:
                 // Genau dort setzt der sichtbare Rest nach dem Treffer an.
                 let afterMatch = NSMaxRange(r)
-                var contentEnd = afterMatch
-                ns.getLineStart(nil, end: nil, contentsEnd: &contentEnd,
-                                for: NSRange(location: afterMatch, length: 0))
+                if remainderLineStart == NSNotFound
+                    || afterMatch < remainderLineStart
+                    || afterMatch >= remainderLineEnd {
+                    remainderLineStart = afterMatch
+                    remainderLineEnd = afterMatch
+                    remainderContentEnd = afterMatch
+                    ns.getLineStart(&remainderLineStart, end: &remainderLineEnd,
+                                    contentsEnd: &remainderContentEnd,
+                                    for: NSRange(location: afterMatch, length: 0))
+                }
+                let contentEnd = remainderContentEnd
                 let lineRemainder = Self.lineRemainder(in: ns, from: afterMatch,
                                                        to: contentEnd)
                 // Über CaseTemplate statt direkt: unterstützt BBEdits

@@ -14,6 +14,23 @@ import Foundation
 
 enum FolderSearch {
 
+    /// Optionale Messwerte eines synchronen Diagnoselaufs; kein globaler Zustand.
+    final class Diagnostics {
+        let started = ProcessInfo.processInfo.systemUptime
+        var enumerationSeconds: Double = 0
+        var fileSearchSeconds: Double = 0
+        var firstFileSearchSeconds: Double?
+        var candidateCount = 0
+        var searchedFiles = 0
+
+        func beginFile() -> Double {
+            let now = ProcessInfo.processInfo.systemUptime
+            if firstFileSearchSeconds == nil { firstFileSearchSeconds = now - started }
+            searchedFiles += 1
+            return now
+        }
+    }
+
     // MARK: - Datenmodell
 
     /// Warum eine Datei nicht in die Suche eingegangen ist. Sichtbar
@@ -174,6 +191,7 @@ enum FolderSearch {
                      relativeTo projectRoot: URL? = nil,
                      maxResultsPerFile: Int = 5000,
                      maxTotalMatches: Int = 10_000,
+                     diagnostics: Diagnostics? = nil,
                      shouldCancel: @escaping @Sendable () -> Bool = { false }) -> Result {
         let options = searchPlan.options
         guard !options.isEmpty, !shouldCancel() else { return .empty }
@@ -214,12 +232,14 @@ enum FolderSearch {
                 guard !exclusionMatcher.matches(folder),
                       passesFilter(url: folder, filter: filter),
                       seenFiles.insert(canonical.path).inserted else { continue }
+                let fileStarted = diagnostics?.beginFile()
                 let result = autoreleasepool {
                     searchOneFile(at: canonical, plan: searchPlan,
                                   maxMatches: min(maxResultsPerFile,
                                                   maxTotalMatches - totalSoFar),
                                   shouldCancel: shouldCancel)
                 }
+                if let fileStarted { diagnostics?.fileSearchSeconds += ProcessInfo.processInfo.systemUptime - fileStarted }
                 if shouldCancel() { return .empty }
                 if result.skipped != nil || !result.matches.isEmpty { perFile.append(result) }
                 totalSoFar += result.totalMatches
@@ -233,6 +253,7 @@ enum FolderSearch {
             // zurückfallen. Timeout, Abbruch oder gekürzte Ausgabe sind KEINE
             // vollständige Dateiliste und werden deshalb sichtbar gemeldet.
             let urls: [URL]
+            let enumerationStarted = diagnostics.map { _ in ProcessInfo.processInfo.systemUptime }
             do {
                 urls = try RipgrepFileEnumerator.files(in: folder,
                                                        excludedPatterns: excludedPatterns,
@@ -255,6 +276,10 @@ enum FolderSearch {
                         "Die Ordnersuche konnte die Dateiliste nicht vollständig lesen: %@",
                         error.localizedDescription),
                     wasCapped: false)
+            }
+            if let enumerationStarted {
+                diagnostics?.enumerationSeconds += ProcessInfo.processInfo.systemUptime - enumerationStarted
+                diagnostics?.candidateCount += urls.count
             }
             var packageCache = PackageMembershipCache(root: folder)
             for url in urls {
@@ -288,11 +313,13 @@ enum FolderSearch {
                 // Objective-C-Objekte. Ohne lokalen Pool bleiben sie in einem
                 // langen detached Task bis zum Laufende liegen; auf realen
                 // Projekten wächst der Resident-Speicher dann pro Datei.
+                let fileStarted = diagnostics?.beginFile()
                 let result = autoreleasepool {
                     searchOneFile(at: canonical, plan: searchPlan,
                                   maxMatches: effectivePerFile,
                                   shouldCancel: shouldCancel)
                 }
+                if let fileStarted { diagnostics?.fileSearchSeconds += ProcessInfo.processInfo.systemUptime - fileStarted }
                 if shouldCancel() { return .empty }
 
                 // Nur Dateien aufnehmen, die entweder Treffer ODER einen

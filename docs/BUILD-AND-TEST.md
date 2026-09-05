@@ -598,6 +598,10 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
 
 ### Lokale Laufzeit-Baselines je Mac
 
+Gezielte Engine- und Ordnersuchmessungen einschließlich des optionalen Modus
+`searchperf` sind in [SEARCH-PERFORMANCE.md](SEARCH-PERFORMANCE.md) dokumentiert.
+Sie ersetzen keine vollständige Laufzeit-Baseline.
+
 Die Vergleichsmessung umfasst nicht nur die Zeit im Testkörper, sondern trennt
 Aufräumen, App-Start bis Ergebnis, die von der App gemeldete Laufzeit und den
 gesamten Test. Sie bleibt bewusst lokal unter

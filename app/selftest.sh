@@ -81,7 +81,7 @@ ALL_TESTS=(newwindow finderreopen welcomenew sessionrestore coldopen coldopenoff
 # `windows` bleibt als gezielter Diagnosemodus verfügbar, prüft aber keine
 # Produktfunktion und startet deshalb nicht mehr in jedem Standardlauf.
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
-WINDOWLESS_TESTS=(search project projectperf localization markdownimport updates git gitactions filemodes selsearch wildcard openscope tool4dlsp macro4dengine)
+WINDOWLESS_TESTS=(search searchperf project projectperf localization markdownimport updates git gitactions filemodes selsearch wildcard openscope tool4dlsp macro4dengine)
 # Nur diese Tests brauchen echten Vordergrundfokus. `newwindow`,
 # `projectinput` und `help` bedienen ihre Fenster dagegen direkt im
 # Testprozess und laufen wie `welcomenew` im Hintergrund.

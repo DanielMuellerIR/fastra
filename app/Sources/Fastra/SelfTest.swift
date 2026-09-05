@@ -626,6 +626,12 @@ enum SelfTest {
             // Fensterlos — Projekt- & Git-Ausbau Etappe 1 (Willkommen-
             // Bedingung, Projekt öffnen, Dateibaum, Repo-Erkennung).
             waitForWorkspace { runProjectTest() }
+        case "searchperf":
+            testLabel = "searchperf"
+            DispatchQueue.global(qos: .userInitiated).async {
+                do { finish(true, try SearchPerformanceProbe.run()) }
+                catch { finish(false, "Suchmessung fehlgeschlagen: \(error.localizedDescription)") }
+            }
         case "projectperf":
             // Bewusst nicht in ALL_TESTS: benötigt einen ausdrücklich per
             // FASTRA_PROJECT_PERF_ROOT übergebenen, nur gelesenen Realbestand.
