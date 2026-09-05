@@ -32,7 +32,8 @@ struct Tool4DLintLease: Equatable {
     let contentRevision: UInt64
 
     init?(tab: EditorTab, projectRoot: URL, projectGeneration: UInt64) {
-        guard let documentURL = tab.url else { return nil }
+        guard DocumentLintMode.resolve(tab: tab)?.canUseTool4D(for: tab) == true,
+              let documentURL = tab.url else { return nil }
         self.tabID = tab.id
         self.documentID = tab.documentID
         self.documentURL = documentURL.canonicalFileURL
@@ -42,7 +43,8 @@ struct Tool4DLintLease: Equatable {
     }
 
     func isCurrent(in workspace: Workspace) -> Bool {
-        guard workspace.projectGeneration == projectGeneration,
+        guard workspace.activeDocumentLintMode == .fourD,
+              workspace.projectGeneration == projectGeneration,
               workspace.projectURL?.canonicalFileURL == projectRoot,
               let tab = workspace.activeTab else { return false }
         return tab.id == tabID
@@ -492,8 +494,8 @@ final class EditorContextMenu: NSObject {
                               action: #selector(lintDocument(_:)),
                               keyEquivalent: "")
         lint.target = self
-        lint.toolTip = L10n.string("Prüft JSON oder XML auf Syntaxfehler und nennt Zeile und Spalte.")
-        lint.isEnabled = menuWorkspace?.activeDocumentLintingExtension != nil
+        lint.toolTip = L10n.string("Prüft das gewählte Format: JSON-/XML-Syntax oder 4D-Struktur mit Zeile und Spalte.")
+        lint.isEnabled = menuWorkspace?.activeDocumentLintMode != nil
 
         let minify = NSMenuItem(title: L10n.string("Dokument minifizieren"),
                                 action: #selector(minifyDocument(_:)),
@@ -763,12 +765,12 @@ final class EditorContextMenu: NSObject {
         // Workspace GENAU DIESES Editors (siehe `format`).
         guard let workspace = workspace(forEditor: textView),
               let tab = workspace.activeTab,
-              let fileExtension = workspace.activeDocumentLintingExtension else {
+              let mode = workspace.activeDocumentLintMode else {
             NSSound.beep()
             return
         }
         let text = textView.string
-        if fileExtension.lowercased() == "4dm", tab.url != nil,
+        if mode.canUseTool4D(for: tab),
            let projectRoot = workspace.projectURL,
            let lease = Tool4DLintLease(
                tab: tab,
@@ -776,12 +778,11 @@ final class EditorContextMenu: NSObject {
                projectGeneration: workspace.projectGeneration
            ) {
             findTool4DForLinting(
-                text: text, workspace: workspace, lease: lease,
-                fileExtension: fileExtension
+                text: text, workspace: workspace, lease: lease
             )
             return
         }
-        presentLintResult(DocumentLinter.lint(text, fileExtension: fileExtension),
+        presentLintResult(DocumentLinter.lint(text, mode: mode),
                           text: text, workspace: workspace)
     }
 
@@ -790,8 +791,7 @@ final class EditorContextMenu: NSObject {
     /// einer sichtbaren Meldung prüft der Main-Thread sie erneut gegen Tab
     /// und Projektgeneration, damit ein spätes Ergebnis nie falsch landet.
     private func findTool4DForLinting(
-        text: String, workspace: Workspace, lease: Tool4DLintLease,
-        fileExtension: String
+        text: String, workspace: Workspace, lease: Tool4DLintLease
     ) {
         let canonicalRoot = lease.projectRoot
         let canonicalDocument = lease.documentURL
@@ -823,7 +823,7 @@ final class EditorContextMenu: NSObject {
                     )
                 } else {
                     self.presentLintResult(
-                        DocumentLinter.lint(text, fileExtension: fileExtension),
+                        DocumentLinter.lint(text, mode: .fourD),
                         text: text, workspace: workspace
                     )
                 }

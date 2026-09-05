@@ -1689,15 +1689,12 @@ final class Workspace: ObservableObject {
         return DocumentFormatter.supports(formatID: formatID) ? formatID : nil
     }
 
-    /// Dateiendung für den Linter, aber nur bei einem wirklich editierbaren,
+    /// Effektiver Prüfmodus, aber nur bei einem wirklich editierbaren,
     /// vollständig geladenen Textdokument. Damit versprechen Menü und
     /// Kontextmenü keine Aktion in Git-Vorversionen ohne Editorinstanz.
-    var activeDocumentLintingExtension: String? {
+    var activeDocumentLintMode: DocumentLintMode? {
         guard let tab = activeTab, textEditingIsAllowed(for: tab) else { return nil }
-        let fileExtension = tab.url?.pathExtension
-            ?? (tab.title as NSString).pathExtension
-        return DocumentLinter.supports(fileExtension: fileExtension)
-            ? fileExtension : nil
+        return DocumentLintMode.resolve(tab: tab)
     }
 
     /// Zeigt der aktive Tab ein Markdown-Dokument? Gemeinsame Antwort für

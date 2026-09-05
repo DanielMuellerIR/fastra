@@ -228,9 +228,18 @@ error position), and **Minify Document**. Formatting and minifying follow the
 `xsl`, `xslt`, and `plist`; after manually choosing **JSON** or **XML** in the
 language chip, the commands also work in a `.txt` file or an unsaved tab.
 Large formatting and minification jobs run in the background and are applied
-only while the document and selection remain unchanged. Validation continues
-to follow the file extension and additionally covers `svg` and the 4D
-container files.
+only while the document and selection remain unchanged. **Validate Document**
+also follows the effective format: **JSON** enables validation in a `.txt`
+file, while **Plain Text** disables it even in a `.json` file. XML detected
+in a document without an extension and SVG are checked as XML. Read-only
+special views do not offer validation.
+
+With **JSON** as the effective format, a `.4dform` file retains its additional
+form-schema validation, including after manually selecting JSON. A different
+selected format takes precedence over the extension. **4D** enables local
+structure hints even without a `.4dm` extension; only saved `.4dm` methods in
+an open 4D project can additionally use tool4d. Switching away from 4D discards
+pending tool4d results.
 
 ## Go to Target
 

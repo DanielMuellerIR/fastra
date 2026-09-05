@@ -28,28 +28,30 @@ enum DocumentLinter {
         case unsupported
     }
 
-    /// Prüft den Text nach Dateiendung. Gleiche Format-Zuständigkeit wie
-    /// der Formatter (JSON bzw. XML-artige inkl. plist); `.4dm`-Methoden
-    /// bekommen die heuristischen Struktur-Hinweise.
+    /// Adapter für Prüfungen ohne Tab; die Oberfläche übergibt den bereits
+    /// aufgelösten Modus und kann dadurch keine andere Prüfung als angeboten starten.
     static func lint(_ text: String, fileExtension: String?) -> LintResult {
-        switch (fileExtension ?? "").lowercased() {
-        case "json", "4dproject":
+        guard let mode = DocumentLintMode.forFileExtension(fileExtension) else { return .unsupported }
+        return lint(text, mode: mode)
+    }
+
+    static func lint(_ text: String, mode: DocumentLintMode) -> LintResult {
+        switch mode {
+        case .json:
             return lintJSON(text)
-        case "4dform":
+        case .fourDForm:
             // Erst die JSON-Syntax, dann das gebündelte Formular-Schema
             // (Etappe 6 Wunschpaket 2026-07c).
             let json = lintJSON(text)
             guard case .valid = json else { return json }
             return lintFormSchema(text)
-        case "xml", "xsd", "xsl", "xslt", "plist", "svg", "4dcatalog", "4dsettings":
+        case .xml:
             return lintXML(text)
-        case "4dm":
+        case .fourD:
             if let issue = FourDStructureCheck.check(text) {
                 return .hint(issue)
             }
             return .hintFree
-        default:
-            return .unsupported
         }
     }
 
@@ -91,10 +93,7 @@ enum DocumentLinter {
     }
 
     static func supports(fileExtension: String?) -> Bool {
-        if case .unsupported = lint("", fileExtension: fileExtension) {
-            return false
-        }
-        return true
+        DocumentLintMode.forFileExtension(fileExtension) != nil
     }
 
     // MARK: - JSON

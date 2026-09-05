@@ -242,9 +242,18 @@ und Minifizieren folgen dem **effektiven Dokumentformat**: Automatisch werden
 manuellen Wahl von **JSON** oder **XML** im Sprach-Chip funktionieren die
 Befehle auch in einer `.txt`-Datei oder einem ungespeicherten Tab. Große
 Formatierungen und Minifizierungen laufen im Hintergrund und werden nur
-übernommen, solange Dokument und Auswahl unverändert sind. Die Prüfung folgt
-weiterhin der Dateiendung und unterstützt zusätzlich `svg` und die
-4D-Containerdateien.
+übernommen, solange Dokument und Auswahl unverändert sind. Auch **Dokument
+prüfen** folgt der effektiven Formatwahl: **JSON** aktiviert die Prüfung in
+einer `.txt`-Datei, **Reiner Text** deaktiviert sie auch in einer `.json`-Datei.
+Endungslos erkanntes XML und SVG werden als XML geprüft. Schreibgeschützte
+Sonderansichten bieten die Prüfung nicht an.
+
+Bei effektivem **JSON** behält eine `.4dform`-Datei zusätzlich ihre
+Formular-Schema-Prüfung, auch nach manueller Wahl von JSON. Ein anderes
+gewähltes Format gewinnt vor der Endung. **4D** aktiviert die lokalen
+Strukturhinweise auch ohne `.4dm`-Endung; nur gespeicherte `.4dm`-Methoden in
+einem geöffneten 4D-Projekt können zusätzlich tool4d nutzen. Ein Wechsel weg
+von 4D verwirft noch ausstehende tool4d-Ergebnisse.
 
 ## Gehe zum Ziel
 

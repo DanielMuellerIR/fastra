@@ -444,7 +444,7 @@ struct FastraApp: App {
                     NotificationCenter.default.post(name: .fastraLintDocument,
                                                     object: nil)
                 }
-                .disabled(commandWorkspace?.activeDocumentLintingExtension == nil)
+                .disabled(commandWorkspace?.activeDocumentLintMode == nil)
                 Button("Dokument minifizieren") {
                     guard commandWorkspace != nil else { return }
                     NotificationCenter.default.post(name: .fastraMinifyDocument,

@@ -247,7 +247,7 @@ enum DocumentFormatResolver {
             return format(for: CustomLanguageRegistry.fourD)
         case "4dproject", "4dform":
             return format(for: CodeLanguage.json)
-        case "xml", "xsd", "xsl", "xslt", "plist", "4dcatalog", "4dsettings":
+        case "xml", "xsd", "xsl", "xslt", "plist", "svg", "4dcatalog", "4dsettings":
             return xmlFormat
         case "csv":
             return csvFormat

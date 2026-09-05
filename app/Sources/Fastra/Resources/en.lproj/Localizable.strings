@@ -1556,3 +1556,5 @@
 
 "Auch 1–2 Zeichen sind suchbar: „Suchen“ klicken oder Return drücken." = "You can search for 1–2 characters: click Find or press Return.";
 "Die Dateien wurden geändert. Erneut suchen, um aktuelle Treffer zu sehen." = "The files have changed. Search again to see current matches.";
+
+"Prüft das gewählte Format: JSON-/XML-Syntax oder 4D-Struktur mit Zeile und Spalte." = "Checks the selected format: JSON/XML syntax or 4D structure, with line and column.";

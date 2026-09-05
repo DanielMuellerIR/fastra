@@ -110,6 +110,18 @@ func tool4DLintLeaseRejectsStaleDocumentState() throws {
     ))
     #expect(lease.isCurrent(in: workspace))
 
+    // Die Formatwahl kann sich ohne Inhaltsrevision ändern. Ein alter
+    // tool4d-Auftrag darf danach weder eine Diagnose noch einen Fallback zeigen.
+    workspace.tabs[0].languageOverride = .json
+    #expect(!lease.isCurrent(in: workspace))
+    workspace.tabs[0].languageOverride = .default
+    #expect(!lease.isCurrent(in: workspace))
+    workspace.tabs[0].languageOverride = nil
+    #expect(lease.isCurrent(in: workspace))
+    workspace.tabs[0].readOnlyReason = "Nur lesen"
+    #expect(!lease.isCurrent(in: workspace))
+    workspace.tabs[0].readOnlyReason = nil
+
     workspace.tabs[0].content = "ALERT(\"neu\")"
     #expect(!lease.isCurrent(in: workspace))
 

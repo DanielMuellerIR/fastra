@@ -9,6 +9,26 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.118.7] — 2026-09-05
+
+### Behoben
+
+- „Dokument prüfen“ folgt wie Formatieren der effektiven Formatwahl:
+  Manuelles JSON aktiviert die Prüfung auch in Textdateien; „Reiner Text“
+  deaktiviert sie auf JSON-Dateien. Auch endungslos erkanntes XML und SVG
+  werden als XML geprüft. Menüangebot und ausgeführter Prüfmodus verwenden
+  dieselbe typisierte Auflösung; die Fähigkeitenabfrage führt keinen Parser aus.
+- Bei JSON als effektivem Format behalten `.4dform`-Dateien ihre zusätzliche
+  Schema-Prüfung. Gewähltes 4D aktiviert Strukturhinweise unabhängig von der
+  Endung; tool4d bleibt gespeicherten `.4dm`-Methoden vorbehalten. Ein späteres
+  tool4d-Ergebnis wird nach einem Wechsel zu einem anderen Format verworfen.
+
+### Qualitätssicherung
+
+- Die Formatmatrix prüft manuelle Wahl, Inhaltserkennung, SVG/XML-Sonderendungen,
+  Formular-Schema, 4D-Strukturhinweise und schreibgeschützte Sonderansichten.
+  Der bestehende tool4d-Test erfasst zusätzlich Format- und Schreibschutzwechsel.
+
 ## [v1.118.6] — 2026-09-05
 
 ### Behoben

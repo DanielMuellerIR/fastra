@@ -76,10 +76,10 @@ struct DocumentFormatterTests {
         #expect(result?.replacement.contains(#""blob" : "AAAA""#) == true)
 
         workspace.tabs[0].title = "daten.json"
-        #expect(workspace.activeDocumentLintingExtension == "json")
+        #expect(workspace.activeDocumentLintMode == .json)
         workspace.tabs[0].readOnlyReason = "Git-Vorversion"
         #expect(workspace.activeDocumentFormattingID == nil)
-        #expect(workspace.activeDocumentLintingExtension == nil)
+        #expect(workspace.activeDocumentLintMode == nil)
     }
 
 }
