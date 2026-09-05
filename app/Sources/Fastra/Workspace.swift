@@ -202,19 +202,22 @@ struct EditorTab: Identifiable, Hashable {
     /// `url == nil` und werden nicht gespeichert.
     var gitKind: GitTabKind?
     /// Strukturierter Side-by-side-Diff. `nil` bei normalen Dateien sowie beim
-    /// kompatiblen Unified-Fallback für Verlauf/Commit-Metadaten.
-    var gitDiffRequest: GitDiffRequest?
-    var gitDiffDocument: GitDiffDocument?
+    /// kompatiblen Unified-Fallback für Verlauf/Commit-Metadaten. Auftrag und
+    /// Dokument hängen zusammen (`DiffTabState.swift`).
+    var gitDiff: GitDiffTabState?
     /// Auftrag eines Datei-Vergleichs-Tabs (Etappe 1 Wunschpaket 2026-07c).
     /// `nil` = normaler Tab. Vergleichs-Tabs sind wie Git-Tabs read-only,
-    /// haben `url == nil` und werden nicht gespeichert.
-    var fileDiffRequest: FileDiffRequest?
-    /// Fertig berechneter Vergleich (Ergebnis ODER erklärte Grenze).
-    /// `nil` = Berechnung läuft noch (Ansicht zeigt einen Spinner).
-    var fileDiffDocument: FileDiffDocument?
-    /// Jede Neuberechnung desselben Vergleichs-Tabs erhöht diesen Wert.
-    /// Nur die Completion derselben Generation darf den Tab noch verändern
-    var fileDiffLoadGeneration: UInt64
+    /// haben `url == nil` und werden nicht gespeichert. Ergebnis und
+    /// Generation hängen am Auftrag (`FileDiffTabState`).
+    var fileDiff: FileDiffTabState?
+
+    /// Nur-Lese-Sichten für die vielen Prüfstellen („ist das ein Vergleich?").
+    var gitDiffRequest: GitDiffRequest? { gitDiff?.request }
+    var gitDiffDocument: GitDiffDocument? { gitDiff?.document }
+    var fileDiffRequest: FileDiffRequest? { fileDiff?.request }
+    /// Fertig berechneter Vergleich (Ergebnis ODER erklärte Grenze);
+    /// `nil` = Berechnung läuft noch oder kein Vergleichs-Tab.
+    var fileDiffDocument: FileDiffDocument? { fileDiff?.document }
     /// Vom Nutzer gewählte Ansicht (Text/Vorschau/Hex, Etappe 2 Wunschpaket
     /// 2026-07). `nil` = automatischer Standard nach Dateityp
     /// (`ViewModeRouting.defaultMode`). Nicht persistiert.
@@ -272,11 +275,8 @@ struct EditorTab: Identifiable, Hashable {
         gitSnapshotRequest: GitFileSnapshotRequest? = nil,
         diskSnapshot: FileSnapshot? = nil,
         gitKind: GitTabKind? = nil,
-        gitDiffRequest: GitDiffRequest? = nil,
-        gitDiffDocument: GitDiffDocument? = nil,
-        fileDiffRequest: FileDiffRequest? = nil,
-        fileDiffDocument: FileDiffDocument? = nil,
-        fileDiffLoadGeneration: UInt64 = 0,
+        gitDiff: GitDiffTabState? = nil,
+        fileDiff: FileDiffTabState? = nil,
         viewMode: EditorViewMode? = nil
     ) {
         self.id = id
@@ -309,11 +309,8 @@ struct EditorTab: Identifiable, Hashable {
         self.displayedExternalContentGeneration = 0
         self.externalFileUnavailable = false
         self.gitKind = gitKind
-        self.gitDiffRequest = gitDiffRequest
-        self.gitDiffDocument = gitDiffDocument
-        self.fileDiffRequest = fileDiffRequest
-        self.fileDiffDocument = fileDiffDocument
-        self.fileDiffLoadGeneration = fileDiffLoadGeneration
+        self.gitDiff = gitDiff
+        self.fileDiff = fileDiff
         self.viewMode = viewMode
         // Frische Tabs starten mit ihrem Anfangsinhalt als gespeicherter
         // Basis. Ein bereits geänderter Tab (isDirty) kennt seinen
@@ -5644,7 +5641,7 @@ final class Workspace: ObservableObject {
             let slot = preview ? claimReplaceablePreviewSlot() : nil
             let tab = EditorTab(id: slot?.id ?? UUID(), title: title, path: "Git",
                                 isPreview: preview, gitKind: .diff,
-                                gitDiffRequest: request, gitDiffDocument: nil)
+                                gitDiff: GitDiffTabState(request: request))
             if let slot {
                 tabs[slot.index] = tab
                 index = slot.index
@@ -5654,7 +5651,7 @@ final class Workspace: ObservableObject {
             }
         }
         tabs[index].title = title
-        if existingTabID == nil { tabs[index].gitDiffDocument = nil }
+        if existingTabID == nil { tabs[index].gitDiff?.document = nil }
         let tabID = tabs[index].id
         if activate { activeTabID = tabID }
         return tabs[index]
@@ -5690,7 +5687,9 @@ final class Workspace: ObservableObject {
                                   document: GitDiffDocument) {
         tabs[index].title = title
         tabs[index].content = content
-        tabs[index].gitDiffDocument = document
+        // Ohne Auftrag gibt es keinen Platz für ein Dokument — genau die
+        // Kombination, die der gebündelte Typ ausschließt.
+        tabs[index].gitDiff?.document = document
     }
 
     // MARK: - Datei-Vergleich (Etappe 1 Wunschpaket 2026-07c)
@@ -5717,20 +5716,18 @@ final class Workspace: ObservableObject {
         let tabID: UUID
         if let idx = tabs.firstIndex(where: {
             $0.fileDiffRequest?.matches(request) == true
-        }) {
-            tabs[idx].fileDiffRequest = request
-            tabs[idx].fileDiffDocument = nil
-            tabs[idx].fileDiffLoadGeneration &+= 1
+        }), let previous = tabs[idx].fileDiff {
+            tabs[idx].fileDiff = previous.restarted(with: request)
             tabID = tabs[idx].id
         } else {
             let tab = EditorTab(title: title, path: L10n.string("Vergleich"),
-                                fileDiffRequest: request)
+                                fileDiff: FileDiffTabState(request: request))
             tabs.append(tab)
             tabID = tab.id
         }
         activeTabID = tabID
-        guard let idx = tabs.firstIndex(where: { $0.id == tabID }) else { return }
-        let generation = tabs[idx].fileDiffLoadGeneration
+        guard let idx = tabs.firstIndex(where: { $0.id == tabID }),
+              let generation = tabs[idx].fileDiff?.loadGeneration else { return }
         let ticket = fileDiffComputations.begin(tabID: tabID)
 
         // Laden + Diffen im Hintergrund — blockiert nie den Main-Thread.
@@ -5748,13 +5745,14 @@ final class Workspace: ObservableObject {
                 }
                 self.fileDiffComputations.finish(ticket)
                 guard let idx = self.tabs.firstIndex(where: { $0.id == tabID }),
-                      self.tabs[idx].fileDiffLoadGeneration == generation,
-                      self.tabs[idx].fileDiffRequest?.id == request.id else {
+                      let state = self.tabs[idx].fileDiff,
+                      state.loadGeneration == generation,
+                      state.request.id == request.id else {
                     // Tab geschlossen oder inzwischen neu berechnet — dieses
                     // Ergebnis verwerfen (kein Fehler).
                     return
                 }
-                self.tabs[idx].fileDiffDocument = document
+                self.tabs[idx].fileDiff?.document = document
             }
         }
         fileDiffComputations.attach(task, to: ticket)

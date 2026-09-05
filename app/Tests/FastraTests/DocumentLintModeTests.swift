@@ -114,7 +114,8 @@ struct DocumentLintModeTests {
         tabs.append(tab)
         tab = base
         let side = FileDiffSide(name: "daten.json", path: nil, url: nil, text: "{}")
-        tab.fileDiffRequest = FileDiffRequest(left: side, right: side, options: FileDiffOptions())
+        tab.fileDiff = FileDiffTabState(
+            request: FileDiffRequest(left: side, right: side, options: FileDiffOptions()))
         tabs.append(tab)
         let ws = workspace(with: base)
         #expect(ws.activeDocumentLintMode == .json)

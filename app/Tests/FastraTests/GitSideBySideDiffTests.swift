@@ -356,8 +356,9 @@ func sideBySideProjectSwitchDropsStaleTab() {
     let request = GitDiffRequest(repositoryPath: "/repo-a",
                                  source: .unstaged(path: "a.txt"))
     let tab = EditorTab(title: "Git-Diff", path: "Git", gitKind: .diff,
-                        gitDiffRequest: request,
-                        gitDiffDocument: GitDiffDocument(files: [], limitation: nil))
+                        gitDiff: GitDiffTabState(
+                            request: request,
+                            document: GitDiffDocument(files: [], limitation: nil)))
     #expect(Workspace.tabsAfterOpeningProject([tab], root: URL(fileURLWithPath: "/repo-b"))
         .isEmpty)
 }

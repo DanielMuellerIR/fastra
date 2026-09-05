@@ -9,6 +9,15 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+### Intern
+
+- `EditorTab` bündelt die Felder eines Datei-Vergleichs (Auftrag, Ergebnis,
+  Generation) in `FileDiffTabState` und die eines strukturierten Git-Diffs
+  (Auftrag, Dokument) in `GitDiffTabState`. Ein Ergebnis ohne Auftrag ist
+  damit beim Kompilieren ausgeschlossen; Ansichten, Wiederherstellung und
+  Vorschauplatz-Wiederverwendung lesen weiter dieselben Nur-Lese-Sichten.
+  Kein Verhaltens- und kein Versionssprung.
+
 ## [v1.121.0] — 2026-09-06
 
 ### Neu
