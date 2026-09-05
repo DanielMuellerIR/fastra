@@ -874,7 +874,9 @@ open. In detail:
   “Show Changes (Diff)” in the context menu each open a permanent tab. Deleted
   files are struck through in the list; a double click opens their previous
   Git version in a read-only editor. A red tab title and lock show the state,
-  and an edit attempt explains it right at the insertion point.
+  and an edit attempt explains it right at the insertion point. Closing or
+  switching the project ends an ongoing Git preview with a notice. Completed
+  previews remain readable when the project is closed.
 - **Bulk buttons in the “CHANGES” section header:** open a combined diff of
   all open changes in the two-column view, discard all changes, stage
   everything. The “STAGED” header has the button that unstages everything.

@@ -926,7 +926,9 @@ sichtbar, während der Dateien- oder Graph-Tab offen ist. Im Einzelnen:
   Dateien sind in der Liste durchgestrichen; ein Doppelklick öffnet ihre letzte
   Git-Version in einem schreibgeschützten Editor. Roter Tabtitel und Schloss
   zeigen den Zustand, ein Schreibversuch erklärt ihn direkt an der
-  Einfügemarke.
+  Einfügemarke. Wird das Projekt geschlossen oder gewechselt, endet eine
+  noch laufende Git-Vorschau mit einem Hinweis. Bereits abgeschlossene
+  Vorschauen bleiben beim Schließen des Projekts lesbar.
 - **Sammel-Knöpfe im Abschnittskopf „ÄNDERUNGEN“:** Gesamt-Diff aller
   offenen Änderungen in der zweispaltigen Ansicht öffnen, alle Änderungen
   verwerfen, alles bereitstellen. Im Kopf „BEREITGESTELLT“ steht der Knopf,

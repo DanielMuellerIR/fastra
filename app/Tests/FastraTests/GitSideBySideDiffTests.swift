@@ -505,15 +505,18 @@ private final class ControlledDiffExecutor: GitCommandExecuting {
         return cancellation
     }
     func complete(_ index: Int, result: GitResult) {
+        complete(index, outcome: .completed(result))
+    }
+    func complete(_ index: Int, outcome: GitExecutionOutcome) {
         let completion = lock.withLock { calls[index].completion }
-        completion(.completed(result))
+        completion(outcome)
     }
 }
 
 // `@MainActor` für Aufbau und Lifecycle-Tests: Sie treiben einen Workspace,
 // dessen Diff- und Store-Completions per `DispatchQueue.main.async`
 // zurückkommen und dabei auch EINFACHE (nicht-`@Published`) Instanzvariablen
-// anfassen (Tab-Liste, Diff-Ladegenerationen). Von einem eigenen Test-Thread
+// anfassen (Tab-Liste, Git-Vorschauaufträge). Von einem eigenen Test-Thread
 // aus wäre das dieselbe Absturzklasse, die am 2026-08-09 in
 // GitConflictAndAdvancedTests als SIGSEGV belegt wurde (siehe dort und
 // AGENTS.md, „Bekannte technische Fallen"). Die Parser- und Request-Tests
@@ -835,4 +838,183 @@ func changeListRecycledPreviewSlotRejectsStaleFileRead() async throws {
     #expect(slot.isLoading == false)
     #expect(workspace.tabs.filter { $0.url == bURL.canonicalFileURL }.count == 1)
     #expect(!workspace.tabs.contains(where: { $0.content == "inhalt-a\n" }))
+}
+
+// MARK: - Gemeinsamer Lifecycle von Blob- und Diff-Vorschauen
+
+@MainActor
+private func openControlledGitPreview(_ workspace: Workspace, path: String = "a.txt",
+                                      snapshot: Bool) {
+    let change = GitChange(path: path, staged: nil,
+                           unstaged: snapshot ? .deleted : .modified)
+    if snapshot {
+        workspace.openGitChangeFile(change: change, staged: false, preview: true)
+    } else {
+        workspace.openGitChangeDiff(change: change, staged: false, preview: true)
+    }
+}
+
+private func controlledPreviewResult(_ marker: String, snapshot: Bool) -> GitResult {
+    gitResult(snapshot ? marker : normalPatch.replacingOccurrences(of: "neu value", with: marker))
+}
+
+private func previewHasFinished(_ tab: EditorTab, snapshot: Bool) -> Bool {
+    !tab.isLoading && (snapshot || tab.gitDiffDocument != nil)
+}
+
+@MainActor
+@Test("Projekt-Schließen beendet auch die erste noch ungeladene Git-Vorschau", arguments: [false, true])
+func projectCloseFinishesInitialGitPreview(snapshot: Bool) async throws {
+    guard GitRunner.isAvailable else { return }
+    let (executor, workspace, defaults, suite, _) = try await makeDiffWorkspace()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    openControlledGitPreview(workspace, snapshot: snapshot)
+    let original = try #require(workspace.activeTab)
+    #expect(!previewHasFinished(original, snapshot: snapshot))
+    workspace.closeProject()
+    let tab = try #require(workspace.tabs.first(where: { $0.id == original.id }))
+    #expect(executor.isCancelled(5))
+    #expect(previewHasFinished(tab, snapshot: snapshot))
+    let message = L10n.string("Die Git-Vorschau wurde wegen eines Projektwechsels beendet.")
+    #expect(tab.content == message)
+    // Kein Prozess-Callback ist für das Abschalten des Spinners nötig.
+    executor.complete(5, result: controlledPreviewResult("ALTES_ERGEBNIS", snapshot: snapshot))
+    await drainMainQueue()
+    #expect(workspace.tabs.first(where: { $0.id == original.id })?.content == message)
+}
+
+@MainActor
+@Test("Impliziter Projektwechsel beendet behaltene Git-Vorschauen", arguments: [false, true])
+func projectChangeFinishesRetainedGitPreview(snapshot: Bool) async throws {
+    guard GitRunner.isAvailable else { return }
+    let (executor, workspace, defaults, suite, repo) = try await makeDiffWorkspace()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    openControlledGitPreview(workspace, snapshot: snapshot)
+    let original = try #require(workspace.activeTab)
+    workspace.openProject(at: repo.appendingPathComponent("anderes-projekt"), keepingUnrelatedTabs: true)
+    #expect(executor.isCancelled(5))
+    let retained = try #require(workspace.tabs.first(where: { $0.id == original.id }))
+    #expect(previewHasFinished(retained, snapshot: snapshot))
+    #expect(retained.content == L10n.string("Die Git-Vorschau wurde wegen eines Projektwechsels beendet."))
+    executor.complete(5, result: controlledPreviewResult("ALTES_PROJEKT", snapshot: snapshot))
+    await drainMainQueue()
+    #expect(workspace.tabs.first(where: { $0.id == original.id })?.content == retained.content)
+    workspace.closeProject()
+}
+
+@MainActor
+@Test("Geschlossene Blob- und Diff-Vorschauen bleiben trotz wartender Completion geschlossen", arguments: [false, true])
+func closedGitPreviewRejectsQueuedCompletion(snapshot: Bool) async throws {
+    guard GitRunner.isAvailable else { return }
+    let (executor, workspace, defaults, suite, _) = try await makeDiffWorkspace()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    openControlledGitPreview(workspace, snapshot: snapshot)
+    let original = try #require(workspace.activeTab)
+    // Der Prozess ist bereits fertig; sein UI-Callback wartet noch auf Main.
+    executor.complete(5, result: controlledPreviewResult("ZU_SPAET", snapshot: snapshot))
+    workspace.closeTab(id: original.id)
+    await drainMainQueue()
+    #expect(!workspace.tabs.contains(where: { $0.id == original.id }))
+}
+
+@MainActor
+@Test("A–B–A am selben Vorschauplatz macht eine alte A-Antwort nicht wieder gültig", arguments: [false, true])
+func reusedGitPreviewRejectsSameRequestABA(snapshot: Bool) async throws {
+    guard GitRunner.isAvailable else { return }
+    let (executor, workspace, defaults, suite, _) = try await makeDiffWorkspace()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    openControlledGitPreview(workspace, snapshot: snapshot)
+    let first = try #require(workspace.activeTab)
+    executor.complete(5, result: controlledPreviewResult("ALTES_A", snapshot: snapshot))
+    // Kein Main-Actor-Yield zwischen den Klicks: Die erste A-Completion
+    // trifft wirklich erst nach dem zweiten A-Auftrag ein.
+    openControlledGitPreview(workspace, path: "b.txt", snapshot: snapshot)
+    openControlledGitPreview(workspace, snapshot: snapshot)
+    let newest = try #require(workspace.activeTab)
+    #expect(newest.id == first.id)
+    #expect(newest.documentID != first.documentID)
+    #expect(executor.count == 7)
+    #expect(executor.isCancelled(6))
+    await drainMainQueue()
+    #expect(workspace.activeTab?.content.contains("ALTES_A") == false)
+    #expect(!previewHasFinished(try #require(workspace.activeTab), snapshot: snapshot))
+    executor.complete(6, result: controlledPreviewResult("ALTES_B", snapshot: snapshot))
+    try await waitForDiffState("Neues A wurde nach Abbruch von B nicht gestartet") { executor.count == 8 }
+    executor.complete(7, result: controlledPreviewResult("NEUES_A", snapshot: snapshot))
+    try await waitForDiffState("Neues A wurde nicht angezeigt") {
+        workspace.activeTab?.content.contains("NEUES_A") == true
+    }
+    #expect(previewHasFinished(try #require(workspace.activeTab), snapshot: snapshot))
+    #expect(workspace.activeTab?.content.contains("ALTES_B") == false)
+}
+
+@MainActor
+@Test("Zweiter gleicher Git-Auftrag gewinnt auch ohne neue Dokumentidentität", arguments: [false, true])
+func repeatedGitPreviewRequestRejectsOlderCompletion(snapshot: Bool) async throws {
+    guard GitRunner.isAvailable else { return }
+    let (executor, workspace, defaults, suite, _) = try await makeDiffWorkspace()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    openControlledGitPreview(workspace, snapshot: snapshot)
+    let original = try #require(workspace.activeTab)
+    executor.complete(5, result: controlledPreviewResult("VORHER", snapshot: snapshot))
+    if snapshot { workspace.refreshOpenGitSnapshotTabs() }
+    else { workspace.refreshOpenGitDiffTabs() }
+    #expect(workspace.activeTab?.documentID == original.documentID)
+    #expect(executor.count == 7)
+    await drainMainQueue()
+    #expect(workspace.activeTab?.content.contains("VORHER") == false)
+    executor.complete(6, result: controlledPreviewResult("NACHHER", snapshot: snapshot))
+    try await waitForDiffState("Zweiter gleicher Git-Auftrag wurde nicht angezeigt") {
+        workspace.activeTab?.content.contains("NACHHER") == true
+    }
+    #expect(previewHasFinished(try #require(workspace.activeTab), snapshot: snapshot))
+}
+
+@MainActor
+@Test("Git-Vorschau beendet Laden bei Prozessfehler und Abbruch", arguments: [false, true])
+func gitPreviewFailureAndCancellationEndLoading(snapshot: Bool) async throws {
+    guard GitRunner.isAvailable else { return }
+    let (executor, workspace, defaults, suite, _) = try await makeDiffWorkspace()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let outcomes: [GitExecutionOutcome] = [
+        .completed(GitResult(exitCode: 128, stdout: "", stderr: "fatal: fixture rejected")),
+        .startFailed(.launchFailed("fixture launch failed")), .cancelled,
+    ]
+    for (offset, outcome) in outcomes.enumerated() {
+        openControlledGitPreview(workspace, snapshot: snapshot)
+        #expect(executor.count == 6 + offset)
+        executor.complete(5 + offset, outcome: outcome)
+        try await waitForDiffState("Git-Fehler oder Abbruch lässt Ladeanzeige stehen") {
+            workspace.activeTab.map { previewHasFinished($0, snapshot: snapshot) } == true
+        }
+        #expect(workspace.activeTab?.content.isEmpty == false)
+        if offset == 0 && !snapshot {
+            #expect(workspace.activeTab?.content.contains("fatal: fixture rejected") == true)
+        }
+    }
+}
+
+@MainActor
+@Test("Das Abbrechen einer Git-Vorschau beendet keine Vorschau eines anderen Fensters", arguments: [false, true])
+func gitPreviewCancellationIsWindowLocal(snapshot: Bool) async throws {
+    guard GitRunner.isAvailable else { return }
+    let (firstExecutor, first, firstDefaults, firstSuite, _) = try await makeDiffWorkspace()
+    let (secondExecutor, second, secondDefaults, secondSuite, _) = try await makeDiffWorkspace()
+    defer {
+        firstDefaults.removePersistentDomain(forName: firstSuite)
+        secondDefaults.removePersistentDomain(forName: secondSuite)
+    }
+    openControlledGitPreview(first, snapshot: snapshot)
+    openControlledGitPreview(second, snapshot: snapshot)
+    first.closeProject()
+    #expect(firstExecutor.isCancelled(5))
+    #expect(!secondExecutor.isCancelled(5))
+    secondExecutor.complete(5, result: controlledPreviewResult("ZWEITES_FENSTER", snapshot: snapshot))
+    try await waitForDiffState("Die zweite Vorschau wurde durch das erste Fenster entwertet") {
+        second.activeTab?.content.contains("ZWEITES_FENSTER") == true
+    }
+    #expect(previewHasFinished(try #require(second.activeTab), snapshot: snapshot))
+    firstExecutor.complete(5, result: controlledPreviewResult("ERSTES_FENSTER_ALT", snapshot: snapshot))
+    await drainMainQueue()
+    #expect(first.activeTab?.content.contains("ERSTES_FENSTER_ALT") == false)
 }

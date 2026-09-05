@@ -9,6 +9,25 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ## [Unreleased]
 
+## [v1.118.8] — 2026-09-05
+
+### Behoben
+
+- Beim Schließen oder Wechseln eines Projekts beendet Fastra noch laufende
+  Git-Vorschauen sofort mit einer Erklärung. Insbesondere die erste noch
+  ungeladene Diff-Vorschau bleibt nicht mehr mit einer Ladeanzeige stehen,
+  wenn ihr abgebrochener Prozess keine verwertbare Antwort mehr liefert.
+- Blob- und Diff-Vorschauen verwenden einen gemeinsamen fensterlokalen
+  Auftragshelfer. Jeder Lauf erhält eine eindeutige Identität, gebunden an
+  Tab, Dokument, Anfrage und Projektstand. Ein alter Lauf kann dadurch auch
+  nach A–B–A-Wechseln im selben Vorschauplatz kein Ergebnis mehr übernehmen.
+
+### Qualitätssicherung
+
+- Kontrollierte Git-Prozessantworten prüfen Schließen, Projektwechsel,
+  wiederverwendete Vorschauplätze, wiederholte Anfragen, Fehler und Abbruch
+  für Blob- und Diff-Vorschauen sowie die Unabhängigkeit zweier Fenster.
+
 ## [v1.118.7] — 2026-09-05
 
 ### Behoben

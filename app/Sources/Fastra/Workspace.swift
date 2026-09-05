@@ -205,9 +205,6 @@ struct EditorTab: Identifiable, Hashable {
     /// kompatiblen Unified-Fallback für Verlauf/Commit-Metadaten.
     var gitDiffRequest: GitDiffRequest?
     var gitDiffDocument: GitDiffDocument?
-    /// Jede neue Ladung desselben Diff-Tabs erhöht diesen Wert. Nur die
-    /// Completion derselben Generation darf den Tab noch verändern.
-    var gitDiffLoadGeneration: UInt64
     /// Auftrag eines Datei-Vergleichs-Tabs (Etappe 1 Wunschpaket 2026-07c).
     /// `nil` = normaler Tab. Vergleichs-Tabs sind wie Git-Tabs read-only,
     /// haben `url == nil` und werden nicht gespeichert.
@@ -217,7 +214,6 @@ struct EditorTab: Identifiable, Hashable {
     var fileDiffDocument: FileDiffDocument?
     /// Jede Neuberechnung desselben Vergleichs-Tabs erhöht diesen Wert.
     /// Nur die Completion derselben Generation darf den Tab noch verändern
-    /// (gleiches Muster wie `gitDiffLoadGeneration`).
     var fileDiffLoadGeneration: UInt64
     /// Vom Nutzer gewählte Ansicht (Text/Vorschau/Hex, Etappe 2 Wunschpaket
     /// 2026-07). `nil` = automatischer Standard nach Dateityp
@@ -278,7 +274,6 @@ struct EditorTab: Identifiable, Hashable {
         gitKind: GitTabKind? = nil,
         gitDiffRequest: GitDiffRequest? = nil,
         gitDiffDocument: GitDiffDocument? = nil,
-        gitDiffLoadGeneration: UInt64 = 0,
         fileDiffRequest: FileDiffRequest? = nil,
         fileDiffDocument: FileDiffDocument? = nil,
         fileDiffLoadGeneration: UInt64 = 0,
@@ -316,7 +311,6 @@ struct EditorTab: Identifiable, Hashable {
         self.gitKind = gitKind
         self.gitDiffRequest = gitDiffRequest
         self.gitDiffDocument = gitDiffDocument
-        self.gitDiffLoadGeneration = gitDiffLoadGeneration
         self.fileDiffRequest = fileDiffRequest
         self.fileDiffDocument = fileDiffDocument
         self.fileDiffLoadGeneration = fileDiffLoadGeneration
@@ -502,17 +496,6 @@ enum CloseConfirmation {
     case save        // sichern, dann schließen
     case dontSave    // ohne Sichern schließen (Änderungen verwerfen)
     case cancel      // Schließen abbrechen, Tab bleibt offen
-}
-
-private struct GitDiffLoadLease {
-    let generation: UInt64
-    let lease: GitCancelling
-}
-
-private struct GitSnapshotLoadLease {
-    let generation: UInt64
-    let request: GitFileSnapshotRequest
-    let lease: GitCancelling
 }
 
 /// Kleines threadsicheres Signal zwischen Main-Actor und synchronem
@@ -1344,13 +1327,11 @@ final class Workspace: ObservableObject {
     private let gitAutoFetchController: GitAutoFetchController?
     private let terminalOpener: TerminalOpening
     private let terminalDirectoryResolver: TerminalDirectoryResolving
-    private var gitDiffLoadLeases: [UUID: GitDiffLoadLease] = [:]
+    private let gitPreviewLoads = GitPreviewLoads()
     /// Laufender Verlaufs-Lauf EINER Datei plus seine Generation. Eine
     /// überholte Antwort darf die inzwischen gewählte Datei nicht überschreiben.
     private var gitFileHistoryLease: GitOperationLease?
     private var gitFileHistoryGeneration: UInt64 = 0
-    private var gitSnapshotLoadLeases: [UUID: GitSnapshotLoadLease] = [:]
-    private var gitSnapshotLoadGenerations: [UUID: UInt64] = [:]
     private var gitIdentityResolution: GitCancelling?
     /// Reiner Anzeige-Refresh der Remote-Flächen. Er darf eine bereits vom
     /// Nutzer gestartete Push-Prüfung nicht abbrechen.
@@ -2218,8 +2199,7 @@ final class Workspace: ObservableObject {
         previewLoadCancellations.removeValue(forKey: id)?.cancel()
         loadGeneration.removeValue(forKey: id)
         documentLanguageDetector.cancel(tabID: id, documentID: tabs[idx].documentID)
-        cancelGitDiffLoad(tabID: id)
-        cancelGitSnapshotLoad(tabID: id)
+        gitPreviewLoads.cancel(tabID: id)
         // Ein geschlossener Tab kann die Lease einer laufenden
         // Makro-Nachbearbeitung nie wieder erfüllen.
         cancelFourDMacroPostprocessing(ifTab: id)
@@ -2279,8 +2259,7 @@ final class Workspace: ObservableObject {
                 return false
             }
         }
-        cancelAllGitDiffLoads()
-        cancelAllGitSnapshotLoads()
+        gitPreviewLoads.cancelAll()
         cancelAllPreviewLoads()
         cancelFourDMacroPostprocessing()
         hexSavePreviewRequestTabID = nil
@@ -2324,8 +2303,7 @@ final class Workspace: ObservableObject {
                     tabID: removedID, documentID: removedTab.documentID
                 )
             }
-            cancelGitDiffLoad(tabID: removedID)
-            cancelGitSnapshotLoad(tabID: removedID)
+            gitPreviewLoads.cancel(tabID: removedID)
             cancelFourDMacroPostprocessing(ifTab: removedID)
         }
         if let requested = hexSavePreviewRequestTabID, requested != id {
@@ -3327,8 +3305,7 @@ final class Workspace: ObservableObject {
             // Derselbe Tab-Platz bleibt erhalten; dadurch springt die Leiste
             // beim raschen Durchsehen vieler Dateien nicht nach links/rechts.
             documentLanguageDetector.cancel(tabID: placeholder.id)
-            cancelGitDiffLoad(tabID: placeholder.id)
-            cancelGitSnapshotLoad(tabID: placeholder.id)
+            gitPreviewLoads.cancel(tabID: placeholder.id)
             previewLoadCancellations.removeValue(forKey: placeholder.id)?.cancel()
             comparisonTabID = nil
             tabs[replaceablePreviewIndex] = placeholder
@@ -4628,8 +4605,7 @@ final class Workspace: ObservableObject {
         let url = url.canonicalFileURL
         NotificationCenter.default.post(name: .fastraProjectContextWillChange, object: self)
         fourDProjectIndexController.stop()
-        cancelAllGitDiffLoads()
-        cancelAllGitSnapshotLoads()
+        cancelGitPreviewsForProjectChange()
         cancelAllPreviewLoads()
         let previousActive = activeTabID
         if !keepingUnrelatedTabs {
@@ -4770,8 +4746,7 @@ final class Workspace: ObservableObject {
         sidebarNotice = nil
         projectGeneration &+= 1
         fourDMethodIndexSnapshot = .empty
-        cancelAllGitDiffLoads()
-        cancelAllGitSnapshotLoads()
+        cancelGitPreviewsForProjectChange()
         cancelAllPreviewLoads()
         gitIdentityResolution?.cancel()
         gitIdentityResolution = nil
@@ -5045,8 +5020,7 @@ final class Workspace: ObservableObject {
             documentLanguageDetector.cancel(
                 tabID: id, documentID: tabs[index].documentID
             )
-            cancelGitDiffLoad(tabID: id)
-            cancelGitSnapshotLoad(tabID: id)
+            gitPreviewLoads.cancel(tabID: id)
             recentlyActiveTabIDs.removeAll { $0 == id }
             if comparisonTabID == id { comparisonTabID = nil }
             tabs.remove(at: index)
@@ -5446,9 +5420,8 @@ final class Workspace: ObservableObject {
                                           request: GitFileSnapshotRequest,
                                           context: GitActionContext) {
         guard let initialIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
-        cancelGitSnapshotLoad(tabID: tabID)
-        let generation = (gitSnapshotLoadGenerations[tabID] ?? 0) &+ 1
-        gitSnapshotLoadGenerations[tabID] = generation
+        let ticket = gitPreviewLoads.begin(tab: tabs[initialIndex],
+                                           request: .snapshot(request), context: context)
         tabs[initialIndex].isLoading = true
         let operation = GitOperationRequest(
             repository: context.root,
@@ -5460,21 +5433,8 @@ final class Workspace: ObservableObject {
         let lease = gitOperationsCoordinator.perform(operation) { [weak self] outcome in
             DispatchQueue.main.async {
                 guard let self else { return }
-                guard self.gitSnapshotLoadGenerations[tabID] == generation else { return }
-                defer { self.clearGitSnapshotLoad(tabID: tabID,
-                                                  generation: generation) }
-                guard let index = self.tabs.firstIndex(where: { $0.id == tabID }),
-                      self.tabs[index].gitSnapshotRequest == request else { return }
-                guard context.isCurrent(in: self) else {
-                    // Projektwechsel storniert die Operation. Der Tab darf
-                    // trotzdem nicht als ewiger Lade-Spinner stehen bleiben.
-                    self.tabs[index].isLoading = false
-                    self.tabs[index].content = L10n.string(
-                        "Die Git-Vorschau wurde wegen eines Projektwechsels beendet."
-                    )
-                    self.tabs[index].recordSavedContentBaseline()
-                    return
-                }
+                defer { self.gitPreviewLoads.finish(ticket) }
+                guard let index = self.gitPreviewLoads.currentIndex(for: ticket, in: self) else { return }
                 defer { self.tabs[index].isLoading = false }
                 guard case .completed(let result) = outcome, result.exitCode == 0 else {
                     self.tabs[index].content = Self.gitExecutionFailureText(outcome)
@@ -5511,9 +5471,7 @@ final class Workspace: ObservableObject {
                 self.tabs[index].recordSavedContentBaseline()
             }
         }
-        gitSnapshotLoadLeases[tabID] = GitSnapshotLoadLease(
-            generation: generation, request: request, lease: lease
-        )
+        gitPreviewLoads.attach(lease, to: ticket)
     }
 
     /// Öffnet einen einzelnen Commit (`git show <hash>`) als read-only-Tab —
@@ -5565,21 +5523,19 @@ final class Workspace: ObservableObject {
         guard let context = currentGitActionContext, GitRunner.isAvailable,
               request.repositoryPath
                 == GitOperationRequest.canonicalRepositoryPath(context.root) else { return }
-        guard let load = prepareGitDiffTab(request: request, title: title,
+        guard let tab = prepareGitDiffTab(request: request, title: title,
                                            activate: activate,
                                            existingTabID: existingTabID,
                                            preview: preview) else { return }
+        let ticket = gitPreviewLoads.begin(tab: tab, request: .diff(request), context: context)
         let operation = GitOperationRequest(repository: context.root, kind: .diffRead,
                                             arguments: request.arguments,
                                             outputLimit: GitDiffRequest.outputLimit)
         let lease = gitOperationsCoordinator.perform(operation) { [weak self] outcome in
             DispatchQueue.main.async {
-                guard let self, context.isCurrent(in: self) else { return }
-                guard let index = self.tabs.firstIndex(where: { $0.id == load.tabID }),
-                      self.tabs[index].gitDiffRequest == request,
-                      self.tabs[index].gitDiffLoadGeneration == load.generation else { return }
-                defer { self.clearGitDiffLoad(tabID: load.tabID,
-                                              generation: load.generation) }
+                guard let self else { return }
+                defer { self.gitPreviewLoads.finish(ticket) }
+                guard let index = self.gitPreviewLoads.currentIndex(for: ticket, in: self) else { return }
                 guard case .completed(let result) = outcome else {
                     let message = Self.gitExecutionFailureText(outcome)
                         ?? L10n.string("git-Aufruf fehlgeschlagen.")
@@ -5605,8 +5561,7 @@ final class Workspace: ObservableObject {
                                       document: document)
             }
         }
-        gitDiffLoadLeases[load.tabID] = GitDiffLoadLease(generation: load.generation,
-                                                         lease: lease)
+        gitPreviewLoads.attach(lease, to: ticket)
     }
 
     /// Kern für alle Git-Text-Tabs: git asynchron ausführen und das Ergebnis in
@@ -5667,7 +5622,7 @@ final class Workspace: ObservableObject {
     private func prepareGitDiffTab(request: GitDiffRequest, title: String,
                                    activate: Bool, existingTabID: UUID?,
                                    preview: Bool = false)
-        -> (tabID: UUID, generation: UInt64)? {
+        -> EditorTab? {
         let index: Int
         if let existingTabID {
             guard let found = tabs.firstIndex(where: {
@@ -5690,14 +5645,11 @@ final class Workspace: ObservableObject {
                 index = tabs.count - 1
             }
         }
-        tabs[index].gitDiffLoadGeneration &+= 1
         tabs[index].title = title
         if existingTabID == nil { tabs[index].gitDiffDocument = nil }
         let tabID = tabs[index].id
-        let generation = tabs[index].gitDiffLoadGeneration
-        cancelGitDiffLoad(tabID: tabID)
         if activate { activeTabID = tabID }
-        return (tabID, generation)
+        return tabs[index]
     }
 
     /// Sucht den flüchtigen Vorschau-Tab, den der nächste Einzelklick der
@@ -5721,8 +5673,7 @@ final class Workspace: ObservableObject {
         loadGeneration[id] = (loadGeneration[id] ?? 0) + 1
         previewLoadCancellations.removeValue(forKey: id)?.cancel()
         documentLanguageDetector.cancel(tabID: id)
-        cancelGitDiffLoad(tabID: id)
-        cancelGitSnapshotLoad(tabID: id)
+        gitPreviewLoads.cancel(tabID: id)
         comparisonTabID = nil
         return (index, id)
     }
@@ -5732,11 +5683,6 @@ final class Workspace: ObservableObject {
         tabs[index].title = title
         tabs[index].content = content
         tabs[index].gitDiffDocument = document
-    }
-
-    private func clearGitDiffLoad(tabID: UUID, generation: UInt64) {
-        guard gitDiffLoadLeases[tabID]?.generation == generation else { return }
-        gitDiffLoadLeases.removeValue(forKey: tabID)
     }
 
     // MARK: - Datei-Vergleich (Etappe 1 Wunschpaket 2026-07c)
@@ -5855,38 +5801,29 @@ final class Workspace: ObservableObject {
         openFileDiffTab(request: request)
     }
 
-    private func cancelGitDiffLoad(tabID: UUID) {
-        gitDiffLoadLeases.removeValue(forKey: tabID)?.lease.cancel()
-    }
-
-    private func cancelAllGitDiffLoads() {
-        let leases = gitDiffLoadLeases.values.map(\.lease)
-        gitDiffLoadLeases.removeAll()
-        leases.forEach { $0.cancel() }
-    }
-
-    private func cancelGitSnapshotLoad(tabID: UUID) {
-        gitSnapshotLoadLeases.removeValue(forKey: tabID)?.lease.cancel()
-    }
-
-    private func cancelAllGitSnapshotLoads() {
-        let leases = gitSnapshotLoadLeases.values.map(\.lease)
-        gitSnapshotLoadLeases.removeAll()
-        leases.forEach { $0.cancel() }
+    /// Projekt-Schließen lässt Tabs stehen. Die Ladeanzeige muss deshalb
+    /// sofort enden, unabhängig davon, ob der abgebrochene Prozess noch antwortet.
+    private func cancelGitPreviewsForProjectChange() {
+        let tickets = gitPreviewLoads.cancelAll()
+        let message = L10n.string("Die Git-Vorschau wurde wegen eines Projektwechsels beendet.")
+        for ticket in tickets {
+            guard let index = tabs.firstIndex(where: ticket.matches) else { continue }
+            tabs[index].isLoading = false
+            switch ticket.request {
+            case .diff:
+                updateGitDiffTab(index: index, title: tabs[index].title, content: message,
+                                 document: GitDiffDocument(files: [], limitation: .malformed(message)))
+            case .snapshot:
+                tabs[index].content = message
+                tabs[index].recordSavedContentBaseline()
+            }
+        }
     }
 
     private func cancelAllPreviewLoads() {
         let cancellations = previewLoadCancellations.values
         previewLoadCancellations.removeAll()
         cancellations.forEach { $0.cancel() }
-    }
-
-    private func clearGitSnapshotLoad(tabID: UUID, generation: UInt64) {
-        guard gitSnapshotLoadGenerations[tabID] == generation else { return }
-        gitSnapshotLoadGenerations.removeValue(forKey: tabID)
-        if gitSnapshotLoadLeases[tabID]?.generation == generation {
-            gitSnapshotLoadLeases.removeValue(forKey: tabID)
-        }
     }
 
     /// Aktualisiert alle offenen Arbeitsbaum-/Index-Diffs dieses Projekts, ohne
