@@ -766,6 +766,9 @@
 "Die letzte Git-Version ist binär oder verwendet eine nicht unterstützte Zeichenkodierung." = "The previous Git version is binary or uses an unsupported text encoding.";
 "Die letzte Git-Version ist zu groß für die vollständige Textvorschau." = "The previous Git version is too large for the complete text preview.";
 "Die Git-Vorschau wurde wegen eines Projektwechsels beendet." = "The Git preview was stopped because the project changed.";
+"Vorschau beendet" = "Preview stopped";
+"Der Vergleich ist fehlgeschlagen" = "The comparison failed";
+"Fastra konnte den Vergleich nicht abschließen: %@ Vergleiche erneut; bleibt der Fehler, melde ihn bitte." = "Fastra could not complete the comparison: %@ Compare again; if the error persists, please report it.";
 "Diese Datei wurde gelöscht. Fastra zeigt die letzte Git-Version schreibgeschützt." = "This file was deleted. Fastra is showing the previous Git version as read-only.";
 "Einfachklick: Diff als Vorschau, Doppelklick: Datei öffnen — %@" = "Single-click: diff as preview; double-click: open file — %@";
 "Git fasst diesen unversionierten Ordner zusammen; Datei-Vorschau ist nicht verfügbar." = "Git summarizes this untracked folder; file preview is unavailable.";
@@ -1555,7 +1558,7 @@
 "Fastra hat keine der genannten Fassungen gelöscht. Prüfe beide Pfade und entferne danach die nicht benötigte zweite Fassung. Das Recovery-Journal liegt unter %@." = "Fastra did not delete any of the listed versions. Check both paths, then remove the second version you do not need. The recovery journal is stored under %@.";
 "Fastra hat das Recovery-Verzeichnis nicht verändert. Prüfe %@.\n\n%@" = "Fastra did not change the recovery directory. Check %@.\n\n%@";
 
-"Auch 1–2 Zeichen sind suchbar: „Suchen“ klicken oder Return drücken." = "You can search for 1–2 characters: click Find or press Return.";
+"Auch 1–%ld Zeichen sind suchbar: „Suchen“ klicken oder Return drücken." = "You can search for 1–%ld characters: click Find or press Return.";
 "Die Dateien wurden geändert. Erneut suchen, um aktuelle Treffer zu sehen." = "The files have changed. Search again to see current matches.";
 
 "Prüft das gewählte Format: JSON-/XML-Syntax oder 4D-Struktur mit Zeile und Spalte." = "Checks the selected format: JSON/XML syntax or 4D structure, with line and column.";

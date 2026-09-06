@@ -133,8 +133,15 @@ def main():
                 report = result_path.read_text()
                 assert report.startswith("SELFTEST-RESULT v=1 test=externaldiffcold status=PASS\n"), report
                 assert "windows=%s rendered=true" % count in report, report
+                if count == 1:
+                    # `--focus-diff` verspricht „aktiviert Fastra" — auch im
+                    # Standardlauf messen, nicht nur mit Aufnahmen. Auf einem
+                    # gesperrten Bildschirm kann macOS die Aktivierung
+                    # verweigern; das ist dann ein Umgebungsproblem, kein
+                    # grüner Lauf.
+                    assert "active=true key=true" in report, (
+                        "Fokusbeleg fehlt (Bildschirm gesperrt oder Aktivierung verweigert?):\n" + report)
                 if options.visual and count == 1:
-                    assert "active=true key=true" in report, report
                     (options.visual / "external-diff-visual.txt").write_text(report)
                     assert (options.visual / "external-diff.png").is_file()
                     assert (options.visual / "normal-window.png").is_file()

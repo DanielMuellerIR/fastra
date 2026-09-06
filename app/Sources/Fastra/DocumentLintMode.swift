@@ -29,14 +29,11 @@ enum DocumentLintMode: Equatable, Sendable {
 
     /// Adapter für Aufrufer, die ausschließlich eine Dateiendung besitzen,
     /// etwa Format-Fixtures. Die Oberfläche verwendet immer `resolve(tab:)`.
+    /// Bewusst KEINE eigene Endungstabelle: Der Adapter baut einen
+    /// unbenannten Tab mit dieser Endung und fragt denselben Resolver wie die
+    /// Oberfläche — so können die beiden Zuordnungen nicht auseinanderlaufen.
     static func forFileExtension(_ fileExtension: String?) -> DocumentLintMode? {
-        switch (fileExtension ?? "").lowercased() {
-        case "json", "4dproject": return .json
-        case "4dform": return .fourDForm
-        case "xml", "xsd", "xsl", "xslt", "plist", "svg", "4dcatalog", "4dsettings":
-            return .xml
-        case "4dm": return .fourD
-        default: return nil
-        }
+        guard let fileExtension, !fileExtension.isEmpty else { return nil }
+        return resolve(tab: EditorTab(title: "datei.\(fileExtension)", path: "—"))
     }
 }

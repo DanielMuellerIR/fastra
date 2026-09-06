@@ -140,6 +140,10 @@ enum FileDiffLimitation: Hashable, Error {
     /// Bereich als das Rechenbudget erlaubt (Myers-Diff ist im schlechtesten
     /// Fall quadratisch — wir lehnen ehrlich ab, statt minutenlang zu rechnen).
     case tooDifferent(limit: Int)
+    /// Die Berechnung ist mit einem unerwarteten Fehler abgebrochen. Der
+    /// Text ist die Systembeschreibung des Fehlers — besser als ein Tab, der
+    /// für immer lädt.
+    case failed(message: String)
 }
 
 enum FileDiff {
@@ -546,8 +550,15 @@ enum FileDiff {
     /// Fasst aufeinanderfolgende veränderte Zeilen zu Blöcken zusammen —
     /// die Einträge der Differenzen-Liste unter dem Diff (BBEdit-Vorbild).
     static func blocks(for rows: [Row]) -> [Block] {
-        // Ohne Abbruchquelle wirft die abbrechbare Fassung nie.
-        (try? blocks(for: rows, isCancelled: { false })) ?? []
+        do {
+            return try blocks(for: rows, isCancelled: { false })
+        } catch {
+            // Wie `compare(left:right:options:)`: Der Kern wirft nur bei
+            // gemeldetem Abbruch — mit einer Quelle, die nie `true` liefert,
+            // ist das unerreichbar. Ein stilles `[]` würde eine vorhandene
+            // Differenz verschweigen.
+            preconditionFailure("FileDiff.blocks ohne Abbruchquelle darf nicht werfen: \(error)")
+        }
     }
 
     /// Wie `blocks(for:)`, prüft aber alle `cancellationCheckStride` Zeilen

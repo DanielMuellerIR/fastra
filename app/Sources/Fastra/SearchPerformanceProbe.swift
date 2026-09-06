@@ -12,11 +12,24 @@ enum SearchPerformanceProbe {
         let limit: Int
     }
 
+    /// Fehlende Aufrufparameter, benannt statt als „Datei fehlt" getarnt.
+    struct ConfigurationError: LocalizedError {
+        let missing: [String]
+        var errorDescription: String? {
+            "Umgebungsvariable(n) nicht gesetzt: " + missing.joined(separator: ", ")
+                + " — FASTRA_SEARCH_PERF_INPUT zeigt auf die JSON-Konfiguration, "
+                + "FASTRA_SEARCH_PERF_OUTPUT auf die Ergebnisdatei."
+        }
+    }
+
     static func run() throws -> String {
         let environment = ProcessInfo.processInfo.environment
-        guard let input = environment["FASTRA_SEARCH_PERF_INPUT"],
+        let missing = ["FASTRA_SEARCH_PERF_INPUT", "FASTRA_SEARCH_PERF_OUTPUT"]
+            .filter { environment[$0] == nil }
+        guard missing.isEmpty,
+              let input = environment["FASTRA_SEARCH_PERF_INPUT"],
               let output = environment["FASTRA_SEARCH_PERF_OUTPUT"] else {
-            throw CocoaError(.fileReadNoSuchFile)
+            throw ConfigurationError(missing: missing)
         }
         let configuration = try JSONDecoder().decode(Configuration.self,
             from: Data(contentsOf: URL(fileURLWithPath: input)))

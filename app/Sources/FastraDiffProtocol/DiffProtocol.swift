@@ -84,6 +84,17 @@ public struct DiffWireRequest: Codable, Equatable {
     public var readOnly: Bool
     public var focusDiff: Bool
 
+    /// Die Wire-Felder in genau dieser Schreibweise. Öffentlich und
+    /// aufzählbar, damit die App ihre Strikt-Prüfung („keine unbekannten
+    /// Felder") daraus ableitet, statt die Liste per Hand zu spiegeln.
+    public enum CodingKeys: String, CodingKey, CaseIterable {
+        case version, id, deadline, leftPath, rightPath, leftLabel, rightLabel, readOnly, focusDiff
+    }
+
+    /// Alle Feldnamen einer gültigen Anfrage — jede Nachricht muss genau
+    /// diese Menge tragen, nicht mehr und nicht weniger.
+    public static var wireKeys: Set<String> { Set(CodingKeys.allCases.map(\.rawValue)) }
+
     public init(_ invocation: DiffInvocation, now: Date = Date()) {
         version = DiffProtocol.version
         id = UUID()
@@ -141,6 +152,13 @@ public final class DiffMessageServer {
             guard bytes.count <= DiffProtocol.maximumMessageSize else { return nil }
             return Unmanaged.passRetained(server.handler(bytes) as CFData)
         }, &context, &shouldFree)
+        // Ist der Name in einem ANDEREN Prozess vergeben, liefert CF `nil`.
+        // Ist er im EIGENEN Prozess schon registriert, liefert CF den
+        // vorhandenen Port zurück und setzt `shouldFree` — der gehört dann
+        // dem anderen Server samt dessen Handler; wir dürfen ihn weder
+        // benutzen noch im `deinit` invalidieren. Beides zählt als „nicht
+        // am Lauschen".
+        if shouldFree.boolValue { port = nil }
         if let port { CFMessagePortSetDispatchQueue(port, queue) }
     }
     public var isListening: Bool { port != nil }

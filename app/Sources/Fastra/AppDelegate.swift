@@ -448,9 +448,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// des Hauptfensters darf einem bereits angenommenen Diff nicht den Fokus nehmen.
     private static func startExternalDiffService() {
         if !SelfTest.isSelfTestRun || SelfTest.requestedTest?.hasPrefix("externaldiff") == true {
+            externalDiffServiceRequested = true
             ExternalDiffService.shared.start()
         }
     }
+
+    /// Erst `true`, wenn der Restore den Dienst freigegeben hat. Vorher darf
+    /// auch ein Aktivieren den Port nicht öffnen (siehe oben).
+    private static var externalDiffServiceRequested = false
 
     /// Prüft das kleine Recovery-Verzeichnis außerhalb des Main-Threads.
     /// Dateisystemzugriffe dürfen weder SwiftUIs ersten Fensteraufbau noch die
@@ -587,6 +592,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scheduleUpdateMenuInstallation()
         scheduleSoftWrapMenuSynchronization()
         scheduleWindowsMenuTabsSynchronization()
+        // War der Diff-Endpunkt beim Start von einer zweiten Instanz belegt,
+        // übernimmt diese Instanz ihn beim nächsten Aktivieren (idempotent).
+        if Self.externalDiffServiceRequested { Self.startExternalDiffService() }
     }
 
     /// Baut den nativen Update-Menüpunkt. Sparkle selbst bleibt das Target,

@@ -897,6 +897,13 @@ func projectChangeFinishesRetainedGitPreview(snapshot: Bool) async throws {
     let retained = try #require(workspace.tabs.first(where: { $0.id == original.id }))
     #expect(previewHasFinished(retained, snapshot: snapshot))
     #expect(retained.content == L10n.string("Die Git-Vorschau wurde wegen eines Projektwechsels beendet."))
+    if !snapshot {
+        // Bewusstes Ende, kein Lesefehler: Die Ansicht darf nicht „Diff
+        // konnte nicht gelesen werden" über die Erklärung schreiben.
+        let limitation = try #require(retained.gitDiff?.document?.limitation)
+        #expect(limitation == .cancelled(retained.content))
+        #expect(limitation.title == L10n.string("Vorschau beendet"))
+    }
     executor.complete(5, result: controlledPreviewResult("ALTES_PROJEKT", snapshot: snapshot))
     await drainMainQueue()
     #expect(workspace.tabs.first(where: { $0.id == original.id })?.content == retained.content)

@@ -1732,7 +1732,10 @@ struct FloatingSearchDialog: View {
     private var actionRow: some View {
         VStack(spacing: 8) {
             if workspace.waitingForShortFolderSearch {
-                Text("Auch 1–2 Zeichen sind suchbar: „Suchen“ klicken oder Return drücken.")
+                // Zahl aus derselben Konstante wie der Nachbarhinweis, damit
+                // eine geänderte Mindestlänge den Text nicht falsch macht.
+                Text(verbatim: L10n.format("Auch 1–%ld Zeichen sind suchbar: „Suchen“ klicken oder Return drücken.",
+                                           SearchRunner.minFolderLiveChars - 1))
                     .background(SelfTestMarker(id: "shortFolderSearchPrompt"))
                     .font(.callout)
                     .foregroundStyle(Color.accentColor)

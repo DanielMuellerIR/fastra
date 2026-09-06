@@ -247,6 +247,8 @@ struct FileDiffView: View {
             return L10n.format("„%@“ hat zu viele Zeilen für den Vergleich", sideName(side))
         case .tooDifferent:
             return L10n.string("Die Dateien unterscheiden sich zu stark")
+        case .failed:
+            return L10n.string("Der Vergleich ist fehlgeschlagen")
         }
     }
 
@@ -262,6 +264,8 @@ struct FileDiffView: View {
             return L10n.format("Der Vergleich verarbeitet bis zu %ld Zeilen je Datei. Teile die Datei auf oder vergleiche Ausschnitte.", limit)
         case .tooDifferent(let limit):
             return L10n.format("Nach Abzug gleicher Anfangs- und Endzeilen bleiben mehr als %ld unterschiedliche Zeilen — das übersteigt das Rechenbudget des zeilengenauen Vergleichs. Ein Ergebnis würde Minuten dauern oder unvollständig sein.", limit)
+        case .failed(let message):
+            return L10n.format("Fastra konnte den Vergleich nicht abschließen: %@ Vergleiche erneut; bleibt der Fehler, melde ihn bitte.", message)
         }
     }
 }

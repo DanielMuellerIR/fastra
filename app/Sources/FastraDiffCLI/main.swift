@@ -24,7 +24,7 @@ func run() throws {
     }
     let endpoint = DiffProtocol.endpoint(bundleIdentifier: identifier)
     let stopAt = ProcessInfo.processInfo.systemUptime + max(0, request.deadline - Date().timeIntervalSince1970)
-    var launchRequested = DiffMessageClient.isAvailable(endpoint)
+    var launchRequested = false
     var launchFailed = false
     while ProcessInfo.processInfo.systemUptime < stopAt {
         let remaining = stopAt - ProcessInfo.processInfo.systemUptime
@@ -42,7 +42,11 @@ func run() throws {
             }
             return
         }
-        if !launchRequested {
+        // Fehlt der Endpunkt JETZT — beim ersten Blick oder weil sich die App
+        // zwischen zwei Versuchen beendet hat —, wird genau einmal gestartet.
+        // Ein einmaliger Blick vor der Schleife hätte den zweiten Fall
+        // verpasst und zehn Sekunden ins Leere gesendet.
+        if !launchRequested && !DiffMessageClient.isAvailable(endpoint) {
             launchRequested = true
             let configuration = NSWorkspace.OpenConfiguration()
             configuration.activates = false

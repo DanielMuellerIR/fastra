@@ -27,8 +27,11 @@ active view:
   colors come from the same analysis as in the editor, cover the whole
   document, and always use the language's light color set with black body
   text — regardless of whether the screen is light or dark. Plain text stays
-  monochrome. Overlong lines wrap and the continuation is indented under the
-  text; nothing is cut off.
+  monochrome. Two limits: from two million characters on, Fastra prints
+  without colors, and if the analysis does not finish within ten seconds the
+  print job also starts monochrome — in both cases the color option is
+  missing from the print dialog. Overlong lines wrap and the continuation is
+  indented under the text; nothing is cut off.
 - If the Markdown preview sits next to the editor, ⌘P prints the **rendered**
   version with tables, formulas and diagrams — in content exactly what the
   preview shows; the print font size comes from **Settings → Printing**, not

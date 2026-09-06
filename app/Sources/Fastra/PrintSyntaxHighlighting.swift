@@ -89,6 +89,9 @@ enum PrintSyntaxHighlighting {
         let textView: TextView
         let provider: any HighlightProviding
         var finished = false
+        /// Die laufende Frist; `finish` entwertet sie, damit sie diese
+        /// Analyse nicht länger am Leben hält als nötig.
+        var deadline: DispatchWorkItem?
 
         init(textView: TextView, provider: any HighlightProviding) {
             self.textView = textView
@@ -97,10 +100,15 @@ enum PrintSyntaxHighlighting {
     }
 
     /// Färbt `text` (bereits normalisiert, siehe `normalizedText`) für das
-    /// Format ein. Läuft asynchron: tree-sitter parst auf seinem eigenen
-    /// Executor, die Antwort kommt auf dem Main-Thread. Der Aufrufer bekommt
-    /// genau EINE Rückmeldung — auch wenn Analyse und Frist gleichzeitig
-    /// enden.
+    /// Format ein. Der Aufrufer bekommt genau EINE Rückmeldung — auch wenn
+    /// Analyse und Frist gleichzeitig enden.
+    ///
+    /// Nur teilweise asynchron: Bei tree-sitter-Grammatiken parst der Client
+    /// auf seinem eigenen Executor und antwortet später auf Main. Der Aufbau
+    /// der Textquelle (`TextView(string:)`, bis zur Obergrenze) läuft aber
+    /// synchron auf Main, und der 4D-Provider tokenisiert vollständig
+    /// synchron — seine `completion` kommt noch innerhalb dieses Aufrufs. Bei
+    /// 4D-Dateien nahe der Obergrenze steht die Oberfläche deshalb so lange.
     @MainActor
     static func analyze(text: String, format: DocumentFormat,
                         fourDMethodIndex: FourDMethodIndexSnapshot,
@@ -140,6 +148,8 @@ enum PrintSyntaxHighlighting {
         func finish(_ outcome: Outcome) {
             guard !analysis.finished else { return }
             analysis.finished = true
+            analysis.deadline?.cancel()
+            analysis.deadline = nil
             completion(outcome)
         }
         provider.queryHighlightsFor(
@@ -153,9 +163,13 @@ enum PrintSyntaxHighlighting {
                 finish(.plain)
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
-            finish(.timedOut)
-        }
+        // Als abbrechbarer Arbeitsblock: Nach einer rechtzeitigen Antwort
+        // würde die Frist-Closure sonst `analysis` (TextView mit bis zu zwei
+        // Millionen Zeichen, Provider, Syntaxbaum) volle zehn Sekunden
+        // festhalten — nach jedem Druckdialog erneut.
+        let deadline = DispatchWorkItem { finish(.timedOut) }
+        analysis.deadline = deadline
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: deadline)
     }
 
     /// Färbt einen bereits aufgebauten Drucktext ein.
@@ -183,30 +197,38 @@ enum PrintSyntaxHighlighting {
             return styled
         }
 
+        // Sweep über die nach Startposition sortierten Bereiche: `next` ist
+        // der erste noch nie betrachtete Bereich, `active` hält die Indizes
+        // aller begonnenen, noch nicht beendeten. Ein einzelner langer
+        // Bereich (Markdown-Codeblock, ganzer Doc-Kommentar) mit tausenden
+        // kürzeren dahinter blockiert so keinen Zeiger mehr — vorher lief
+        // jede Zeile des Blocks erneut über alle inneren Bereiche.
         var next = 0
+        var active: [Int] = []
         for (index, line) in lines.enumerated() {
             let lineStart = sourceOffsets[index]
             let lineEnd = lineStart + (line as NSString).length
             // Bereiche, die vor dieser Zeile enden, sind erledigt.
+            active.removeAll { highlights[$0].range.upperBound <= lineStart }
+            // Bereiche, die in oder vor dieser Zeile beginnen, kommen dazu.
             while next < highlights.count,
-                  highlights[next].range.upperBound <= lineStart {
+                  highlights[next].range.location < lineEnd {
+                if highlights[next].range.upperBound > lineStart {
+                    active.append(next)
+                }
                 next += 1
             }
-            var cursor = next
-            while cursor < highlights.count,
-                  highlights[cursor].range.location < lineEnd {
-                let range = highlights[cursor].range
+            for item in active {
+                let range = highlights[item].range
                 let start = max(range.location, lineStart)
                 let end = min(range.upperBound, lineEnd)
-                if end > start {
-                    let attribute = attribute(for: highlights[cursor].capture, in: theme)
-                    result.addAttributes(
-                        [.foregroundColor: attribute.color, .font: styledFont(attribute)],
-                        range: NSRange(location: lineOffsets[index] + (start - lineStart),
-                                       length: end - start)
-                    )
-                }
-                cursor += 1
+                guard end > start else { continue }
+                let attribute = attribute(for: highlights[item].capture, in: theme)
+                result.addAttributes(
+                    [.foregroundColor: attribute.color, .font: styledFont(attribute)],
+                    range: NSRange(location: lineOffsets[index] + (start - lineStart),
+                                   length: end - start)
+                )
             }
         }
     }

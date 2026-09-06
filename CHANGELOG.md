@@ -7,6 +7,58 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.122.1] — 2026-09-06
+
+Abarbeitung des Code-Reviews zu 1.118.6–1.122.0 (16 Funde).
+
+### Behoben
+
+- „Home“/Willkommen bricht laufende Datei-Vergleiche jetzt wirklich ab, wie
+  Tab- und Fensterschluss; vorher rechnete der Vergleich bis zum Ende weiter
+  und verwarf erst dann das Ergebnis.
+- Externer Dateivergleich: Läuft eine zweite Fastra-Instanz mit derselben
+  Bundle-ID, behält die Instanz ohne Port kein totes Server-Objekt mehr,
+  sondern protokolliert den Konflikt und übernimmt den Endpunkt beim nächsten
+  Aktivieren. Der Helfer `fastra-diff` startet die App auch dann, wenn der
+  Endpunkt erst während der Wartezeit verschwindet, statt zehn Sekunden ins
+  Leere zu senden.
+- Ein Datei-Vergleich, dessen Berechnung mit einem anderen Fehler als dem
+  Abbruch endet, zeigt diesen Fehler im Tab und lässt den Spinner nicht
+  stehen (intern und im externen Fenster).
+- Eine durch Projektwechsel beendete Git-Vorschau trägt den Titel „Vorschau
+  beendet“ statt „Diff konnte nicht gelesen werden“.
+- Syntaxfarben im Druck: Das Übertragen der Farbbereiche auf die Druckzeilen
+  ist bei einem langen Bereich mit vielen inneren Bereichen (Markdown-
+  Codeblock, Doc-Kommentar) nicht mehr quadratisch; die Frist hält nach einer
+  rechtzeitigen Antwort die Analyse (Textquelle, Syntaxbaum) nicht mehr zehn
+  Sekunden im Speicher.
+- Suchmaske: Der Hinweis „Auch 1–2 Zeichen sind suchbar“ leitet die Zahl aus
+  derselben Konstante ab wie der Nachbarhinweis.
+- Suchmessung ohne `FASTRA_SEARCH_PERF_INPUT`/`FASTRA_SEARCH_PERF_OUTPUT`
+  nennt die fehlenden Variablen statt „Datei existiert nicht“.
+- Hilfe (de/en): Grenze von zwei Millionen Zeichen und der Zehn-Sekunden-
+  Rückfall auf einfarbigen Druck sind dokumentiert.
+
+### Qualitätssicherung
+
+- Neue Unit-Tests: Home bricht alle Vergleiche ab; ein fremder Fehler wird
+  angezeigt; verschachtelte Farbbereiche im Druck (innen gewinnt, linear);
+  Diff-Endpunkt headless (Feldmenge aus dem Protokoll, Idempotenz, Frist
+  verstreicht bei belegtem Main-Thread, vergebener Portname); Fehlertext der
+  Suchmessung.
+- `external-diff-test.py` prüft die versprochene Aktivierung (`--focus-diff`)
+  auch im Standardlauf, nicht nur mit Aufnahmen.
+
+### Intern
+
+- `DiffWireRequest.wireKeys` ersetzt die per Hand gespiegelte Feldliste in der
+  App; `ExternalDiffService` bekommt Endpunkt und Öffnen-Schritt injiziert.
+- `DocumentLintMode.forFileExtension` fragt den Format-Resolver statt eine
+  zweite Endungstabelle zu pflegen. `FileDiff.blocks(for:)` behandelt den
+  unerreichbaren Wurf wie `compare` mit `preconditionFailure` statt stiller
+  leerer Liste. Kommentare zur Druck-Analyse sagen jetzt ehrlich, dass
+  Textaufbau und 4D-Tokenizer synchron auf Main laufen.
+
 ## [v1.122.0] — 2026-09-06
 
 ### Geändert

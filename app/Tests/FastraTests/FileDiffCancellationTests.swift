@@ -318,6 +318,51 @@ func closingWindowCancelsAllComputations() {
     #expect(workspace.fileDiffComputations.activeCount == 0)
 }
 
+@Test("Workspace: Home/Willkommen bricht alle Vergleiche ab")
+@MainActor
+func returnToWelcomeCancelsAllComputations() {
+    let suite = "fastra-test-diff-cancel-welcome-\(UUID().uuidString)"
+    let (workspace, defaults) = makeWorkspace(suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let computes = [BlockingCompute(), BlockingCompute()]
+    for compute in computes {
+        workspace.openFileDiffTab(request: probeRequest(), compute: compute.run)
+        #expect(compute.started.wait(timeout: .now() + 2) == .success)
+    }
+    #expect(workspace.fileDiffComputations.activeCount == 2)
+
+    // Vergleichs-Tabs sind nie „ungesichert" — kein Rückfrage-Handler nötig.
+    #expect(workspace.returnToWelcome())
+    #expect(workspace.isWelcomeScreen)
+
+    for compute in computes {
+        #expect(compute.cancelled.wait(timeout: .now() + 2) == .success)
+    }
+    #expect(workspace.fileDiffComputations.activeCount == 0)
+}
+
+private struct ProbeFailure: LocalizedError {
+    var errorDescription: String? { "Probe-Fehler" }
+}
+
+@Test("Workspace: ein anderer Fehler als Abbruch wird angezeigt, nicht verschluckt")
+@MainActor
+func failingComputationShowsErrorInsteadOfSpinner() async throws {
+    let suite = "fastra-test-diff-failure-\(UUID().uuidString)"
+    let (workspace, defaults) = makeWorkspace(suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let request = probeRequest()
+    workspace.openFileDiffTab(request: request) { _ in throw ProbeFailure() }
+    let tabID = try #require(workspace.tabs.first(where: { $0.fileDiffRequest?.id == request.id })?.id)
+
+    #expect(await waitUntil { workspace.tabs.first(where: { $0.id == tabID })?.fileDiffDocument != nil })
+    let document = try #require(workspace.tabs.first(where: { $0.id == tabID })?.fileDiffDocument)
+    #expect(document.result == nil)
+    #expect(document.limitation == .failed(message: "Probe-Fehler"))
+    // Das Ticket ist abgeschlossen — kein Zombie in der Verwaltung.
+    #expect(workspace.fileDiffComputations.activeCount == 0)
+}
+
 @Test("Workspace: ein abgebrochener Vergleich veröffentlicht nie ein Dokument")
 @MainActor
 func cancelledComputationNeverPublishes() async throws {

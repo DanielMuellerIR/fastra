@@ -27,8 +27,11 @@ aktiven Ansicht:
   Farben kommen aus derselben Analyse wie im Editor, gelten für das ganze
   Dokument und verwenden immer den hellen Farbsatz der Sprache mit schwarzem
   Grundtext — unabhängig davon, ob der Bildschirm hell oder dunkel ist.
-  Reiner Text bleibt einfarbig. Zu lange Zeilen werden umgebrochen und die
-  Fortsetzung rückt unter den Text ein; abgeschnitten wird nichts.
+  Reiner Text bleibt einfarbig. Zwei Grenzen: Ab zwei Millionen Zeichen
+  druckt Fastra ohne Farben, und liefert die Analyse nicht binnen zehn
+  Sekunden, startet der Ausdruck ebenfalls einfarbig — in beiden Fällen
+  fehlt die Farboption im Druckdialog. Zu lange Zeilen werden umgebrochen
+  und die Fortsetzung rückt unter den Text ein; abgeschnitten wird nichts.
 - Steht die Markdown-Vorschau neben dem Editor, druckt ⌘P die **gerenderte**
   Fassung mit Tabellen, Formeln und Diagrammen — inhaltlich genau das Bild
   der Vorschau; die Schriftgröße des Ausdrucks kommt aus

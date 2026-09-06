@@ -208,8 +208,9 @@ enum DocumentPrinting {
         // Erst nach einer möglichen Rückfrage bauen: Schon das Aufbauen teilt
         // den Text in Seiten und ist bei sehr großen Dokumenten der teure
         // Schritt. Davor liefert die Syntaxanalyse die Farbbereiche für den
-        // ganzen Text (nicht nur den sichtbaren Ausschnitt); sie läuft
-        // asynchron, der Main-Thread bleibt frei.
+        // ganzen Text (nicht nur den sichtbaren Ausschnitt). Bei tree-sitter-
+        // Sprachen antwortet sie asynchron; Textaufbau und der 4D-Tokenizer
+        // laufen dagegen synchron auf Main (siehe `analyze`).
         let format = DocumentFormatResolver.resolve(tab: tab)
         let theme = PrintSyntaxHighlighting.printTheme(for: format)
         let printedText = PrintSyntaxHighlighting.normalizedText(text)

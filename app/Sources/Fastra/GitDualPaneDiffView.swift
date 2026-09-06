@@ -278,6 +278,8 @@ struct GitDualPaneDiffView: View {
 
     private func limitationIcon(_ limitation: GitDiffLimitation) -> String {
         if case .binary = limitation { return "doc.badge.ellipsis" }
+        // Ein bewusstes Ende ist keine Warnung.
+        if case .cancelled = limitation { return "stop.circle" }
         return "exclamationmark.triangle"
     }
 }

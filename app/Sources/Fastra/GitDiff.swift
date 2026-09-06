@@ -130,6 +130,9 @@ enum GitDiffLimitation: Hashable {
     case lineTooLong(limit: Int)
     case tooManyHunks(limit: Int)
     case malformed(String)
+    /// Fastra hat die Vorschau selbst beendet (Projektwechsel) — kein Fehler
+    /// im Diff, deshalb ein neutraler Titel.
+    case cancelled(String)
 
     var title: String {
         switch self {
@@ -141,6 +144,7 @@ enum GitDiffLimitation: Hashable {
         case .lineTooLong: return L10n.string("Diff-Zeile ist zu lang")
         case .tooManyHunks: return L10n.string("Zu viele Änderungsblöcke")
         case .malformed: return L10n.string("Diff konnte nicht gelesen werden")
+        case .cancelled: return L10n.string("Vorschau beendet")
         }
     }
 
@@ -163,6 +167,8 @@ enum GitDiffLimitation: Hashable {
         case .tooManyHunks(let limit):
             return L10n.format("Der Diff enthält mehr als %ld Änderungsblöcke. Fastra begrenzt die Darstellung, statt tausende UI-Elemente anzulegen.", limit)
         case .malformed(let details):
+            return details
+        case .cancelled(let details):
             return details
         }
     }

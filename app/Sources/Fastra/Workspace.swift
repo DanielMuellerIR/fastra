@@ -1860,6 +1860,10 @@ final class Workspace: ObservableObject {
         closeProject()
         loadGeneration.removeAll()
         documentLanguageDetector.cancelAll()
+        // Laufende Datei-Vergleiche gehören zu den Tabs, die gleich
+        // verschwinden: wirklich abbrechen, statt sie bis zum Ende rechnen
+        // zu lassen und erst dann das Ergebnis zu verwerfen.
+        fileDiffComputations.cancelAll()
 
         let scratch = Self.makeScratchTab()
         hexSavePreviewRequestTabID = nil
@@ -5735,10 +5739,19 @@ final class Workspace: ObservableObject {
         // Helfer bricht den Task dann in seinem deinit ab.
         let task = Task.detached(priority: .userInitiated) { [weak self] in
             // Abbruch kommt als `CancellationError` zurück: dann gibt es
-            // kein Dokument, das irgendwo landen könnte.
-            guard let document = try? compute(request), !Task.isCancelled else {
+            // kein Dokument, das irgendwo landen könnte. Jeder ANDERE Fehler
+            // wird als Vergleichsfehler angezeigt, statt den Tab dauerhaft im
+            // Ladezustand zu lassen (heute wirft der Kern nur den Abbruch;
+            // eine injizierte oder erweiterte Berechnung darf mehr).
+            let document: FileDiffDocument
+            do {
+                document = try compute(request)
+            } catch is CancellationError {
                 return
+            } catch {
+                document = .failure(.failed(message: error.localizedDescription))
             }
+            guard !Task.isCancelled else { return }
             await MainActor.run { [weak self] in
                 guard let self, self.fileDiffComputations.isCurrent(ticket) else {
                     return
@@ -5864,8 +5877,10 @@ final class Workspace: ObservableObject {
             tabs[index].isLoading = false
             switch ticket.request {
             case .diff:
+                // Kein Lesefehler, sondern ein bewusstes Ende — der Titel
+                // darf deshalb nicht „konnte nicht gelesen werden" lauten.
                 updateGitDiffTab(index: index, title: tabs[index].title, content: message,
-                                 document: GitDiffDocument(files: [], limitation: .malformed(message)))
+                                 document: GitDiffDocument(files: [], limitation: .cancelled(message)))
             case .snapshot:
                 tabs[index].content = message
                 tabs[index].recordSavedContentBaseline()

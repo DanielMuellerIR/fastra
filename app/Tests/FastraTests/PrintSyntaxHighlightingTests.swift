@@ -124,6 +124,43 @@ struct PrintSyntaxHighlightingTests {
         #expect(NSFontManager.shared.traits(of: commentFont).contains(.italicFontMask))
     }
 
+    @Test("Ein langer Bereich mit vielen inneren Bereichen: innen gewinnt, Laufzeit bleibt linear")
+    @MainActor
+    func nestedRangesSweep() {
+        // Ein Markdown-Codeblock oder Doc-Kommentar: EIN Bereich über alle
+        // Zeilen, darin pro Zeile ein kurzer Bereich. Der alte Zwei-Zeiger-
+        // Durchlauf blieb am äußeren Bereich hängen und lief pro Zeile über
+        // alle inneren — quadratisch.
+        let lineCount = 10_000
+        let line = "let x = 1"          // 9 Zeichen, `let` = 0..<3
+        let text = Array(repeating: line, count: lineCount).joined(separator: "\n")
+        let stride = (line as NSString).length + 1
+        var highlights = [HighlightRange(range: NSRange(location: 0, length: (text as NSString).length),
+                                         capture: .comment)]
+        for index in 0..<lineCount {
+            highlights.append(HighlightRange(range: NSRange(location: index * stride, length: 3),
+                                             capture: .keyword))
+        }
+        let theme = PrintSyntaxHighlighting.printTheme(for: swiftFormat())
+        let font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
+        let started = ProcessInfo.processInfo.systemUptime
+        let printed = DocumentPrinting.attributedText(
+            text, font: font, showsLineNumbers: false, highlights: highlights, theme: theme)
+        let elapsed = ProcessInfo.processInfo.systemUptime - started
+        func color(at offset: Int) -> NSColor? {
+            printed.attribute(.foregroundColor, at: offset, effectiveRange: nil) as? NSColor
+        }
+        // Erste, mittlere und letzte Zeile: `let` in Schlüsselwortfarbe, der
+        // Rest in Kommentarfarbe (der äußere Bereich gilt bis zum Ende).
+        for index in [0, lineCount / 2, lineCount - 1] {
+            #expect(color(at: index * stride) == theme.keywords.color, "Zeile \(index + 1): innen gewinnt")
+            #expect(color(at: index * stride + 4) == theme.comments.color, "Zeile \(index + 1): außen gilt")
+        }
+        // Großzügige Schranke: linear liegt das im Millisekundenbereich,
+        // quadratisch (50 Mio. Durchläufe) im Sekundenbereich.
+        #expect(elapsed < 5, "Einfärben von \(lineCount) verschachtelten Zeilen dauerte \(elapsed) s")
+    }
+
     @Test("Ohne Farbbereiche bleibt der Ausdruck einfarbig wie bisher")
     @MainActor
     func withoutHighlightsStaysMonochrome() {
