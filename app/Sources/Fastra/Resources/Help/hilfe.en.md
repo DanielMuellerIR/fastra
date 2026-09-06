@@ -795,6 +795,11 @@ become valid again so stale source positions cannot trigger a jump.
 
 ## Project and Sidebar
 
+Without an open folder or repository there is no sidebar — not on the
+welcome screen and not with further tabs. It appears as soon as a project is
+open; the toggle in the window chrome and “Show Sidebar” then hide or show
+it without rebuilding the file tree.
+
 When you open a single file, the sidebar automatically shows the
 matching folder — if the file lives in a Git repository, its root
 folder. With tabs from different Git repositories, this context always follows the

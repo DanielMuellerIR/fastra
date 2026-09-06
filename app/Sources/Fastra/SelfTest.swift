@@ -597,6 +597,7 @@ enum SelfTest {
         case "mdformat": waitForMainWindow { runMarkdownFormatSwitchTest() }
         case "sidebarfilter": waitForMainWindow { runSidebarFilterTest() }
         case "tabflood": waitForMainWindow { runTabFloodTest() }
+        case "sidebartoggle": waitForMainWindow { runSidebarToggleTest() }
         case "sidebarstate": waitForMainWindow { runSidebarStateTest() }
         case "githistory": waitForMainWindow { runGitHistoryTest() }
         case "filediff": waitForMainWindow { runFileDiffTest() }
@@ -14197,6 +14198,184 @@ enum SelfTest {
     /// müssen auch mit VIELEN offenen Tabs im sichtbaren Fensterbereich
     /// bleiben. Der Test öffnet ein Projekt, flutet das Fenster mit 40 Tabs
     /// und prüft danach die tatsächliche Geometrie beider Marker.
+    // MARK: - Seitenleiste: ohne Projekt keine, Umschalten schnell und ohne Wachstum
+
+    /// Änderungswunsch 2026-09-06: Auf dem Willkommensbildschirm und ohne
+    /// geöffneten Ordner/Repo gibt es keine Seitenleiste (auch mit weiteren
+    /// Tabs nicht). Mit Projekt erscheint sie; das Aus-/Einblenden baut den
+    /// Dateibaum nicht neu auf, bleibt schnell und lässt den Speicher über
+    /// hunderte Umschaltungen nicht wachsen.
+    private static var sidebarToggleFixtureDirectory: URL?
+
+    private static func runSidebarToggleTest() {
+        testLabel = "sidebartoggle"
+        guard let ws = Workspace.shared else {
+            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
+        }
+        guard let content = mainWindowForAXChecks()?.contentView else {
+            finish(false, "kein Hauptfenster")
+        }
+        let defaults = SelfTest.workspaceDefaults()
+        defaults.set(true, forKey: "editor.sidebarVisible")
+        ws.enterWelcomeState()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            guard ws.isWelcomeScreen, ws.projectURL == nil else {
+                finish(false, "Willkommenszustand nicht erreicht")
+            }
+            guard !markerViewExists(id: "sidebarVisibleMarker", in: content),
+                  !markerViewExists(id: "sidebarOpenFileButton", in: content) else {
+                finish(false, "Willkommensbildschirm ohne Projekt zeigt eine Seitenleiste")
+            }
+            // Weitere Tabs ohne Projekt: weiterhin keine Seitenleiste.
+            ws.openNewTab()
+            ws.openNewTab()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                guard ws.tabs.count >= 3 else { finish(false, "Tabs nicht angelegt") }
+                guard !markerViewExists(id: "sidebarVisibleMarker", in: content),
+                      !markerViewExists(id: "sidebarOpenFileButton", in: content) else {
+                    finish(false, "ohne Projekt zeigt ein Fenster mit mehreren Tabs eine Seitenleiste")
+                }
+                let base = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("fastra-sidebartoggle-\(UUID().uuidString)")
+                sidebarToggleFixtureDirectory = base
+                let project = base.appendingPathComponent("projekt")
+                do {
+                    try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+                    for index in 1...12 {
+                        try "Zeile \(index)\n".write(
+                            to: project.appendingPathComponent("datei-\(index).txt"),
+                            atomically: true, encoding: .utf8)
+                    }
+                } catch {
+                    finish(.environment, "Umgebungsproblem: (setup) Testprojekt nicht anlegbar: \(error.localizedDescription)")
+                }
+                ws.openProject(at: project)
+                pollSidebarToggleReady(ws, content: content, defaults: defaults, base: base, tick: 0)
+            }
+        }
+    }
+
+    private static func pollSidebarToggleReady(_ ws: Workspace, content: NSView,
+                                               defaults: UserDefaults, base: URL, tick: Int) {
+        guard markerViewExists(id: "sidebarVisibleMarker", in: content),
+              let header = markerView(id: "sidebarProjectHeader", in: content) else {
+            if tick >= 40 {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Seitenleiste erscheint nach Projektöffnung nicht binnen 10 s")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                pollSidebarToggleReady(ws, content: content, defaults: defaults, base: base, tick: tick + 1)
+            }
+            return
+        }
+        // Identität des Projektkopfs: Bleibt sie über alle Umschaltungen
+        // gleich, wurde die Seitenleiste nie neu aufgebaut.
+        let headerIdentity = ObjectIdentifier(header)
+        let state = SidebarToggleMeasurement(headerIdentity: headerIdentity)
+        runSidebarToggleCycle(ws, content: content, defaults: defaults, base: base,
+                              state: state, cycle: 0, hiding: true, startedAt: ContinuousClock.now,
+                              tick: 0)
+    }
+
+    private final class SidebarToggleMeasurement {
+        let headerIdentity: ObjectIdentifier
+        var latenciesMs: [Double] = []
+        var footprintAfterWarmup: UInt64 = 0
+        static let cycles = 300
+        static let warmupCycles = 20
+        init(headerIdentity: ObjectIdentifier) { self.headerIdentity = headerIdentity }
+    }
+
+    /// Ein halber Zyklus: Schalter setzen und warten, bis die Ansicht folgt.
+    /// Gemessen wird die Zeit vom Setzen bis zur sichtbaren Wirkung.
+    private static func runSidebarToggleCycle(_ ws: Workspace, content: NSView,
+                                              defaults: UserDefaults, base: URL,
+                                              state: SidebarToggleMeasurement, cycle: Int,
+                                              hiding: Bool, startedAt: ContinuousClock.Instant,
+                                              tick: Int) {
+        if tick == 0 {
+            defaults.set(!hiding, forKey: "editor.sidebarVisible")
+        }
+        let visible = markerViewExists(id: "sidebarVisibleMarker", in: content)
+        let settled = hiding ? !visible : visible
+        guard settled else {
+            guard tick < 400 else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Seitenleiste folgt dem Schalter nach 2 s nicht (Zyklus \(cycle), \(hiding ? "ausblenden" : "einblenden"))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.005) {
+                runSidebarToggleCycle(ws, content: content, defaults: defaults, base: base,
+                                      state: state, cycle: cycle, hiding: hiding,
+                                      startedAt: startedAt, tick: tick + 1)
+            }
+            return
+        }
+        let elapsed = startedAt.duration(to: ContinuousClock.now)
+        state.latenciesMs.append(Double(elapsed.components.seconds) * 1000
+                                 + Double(elapsed.components.attoseconds) / 1e15)
+        if !hiding {
+            // Der Projektkopf muss derselbe AppKit-Knoten geblieben sein —
+            // sonst wurde die Seitenleiste doch neu aufgebaut.
+            guard let header = markerView(id: "sidebarProjectHeader", in: content),
+                  ObjectIdentifier(header) == state.headerIdentity else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Seitenleiste wurde beim Einblenden neu aufgebaut (Zyklus \(cycle))")
+            }
+            let nextCycle = cycle + 1
+            if nextCycle == SidebarToggleMeasurement.warmupCycles {
+                state.footprintAfterWarmup = physicalFootprint()
+            }
+            if nextCycle >= SidebarToggleMeasurement.cycles {
+                finishSidebarToggleTest(ws, defaults: defaults, base: base, state: state)
+                return
+            }
+            runSidebarToggleCycle(ws, content: content, defaults: defaults, base: base,
+                                  state: state, cycle: nextCycle, hiding: true,
+                                  startedAt: ContinuousClock.now, tick: 0)
+        } else {
+            runSidebarToggleCycle(ws, content: content, defaults: defaults, base: base,
+                                  state: state, cycle: cycle, hiding: false,
+                                  startedAt: ContinuousClock.now, tick: 0)
+        }
+    }
+
+    private static func finishSidebarToggleTest(_ ws: Workspace, defaults: UserDefaults,
+                                                base: URL, state: SidebarToggleMeasurement) {
+        let footprintEnd = physicalFootprint()
+        let growthMiB = (Double(footprintEnd) - Double(state.footprintAfterWarmup)) / 1_048_576
+        let sorted = state.latenciesMs.sorted()
+        let mean = sorted.reduce(0, +) / Double(max(1, sorted.count))
+        let p95 = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
+        let maximum = sorted.last ?? 0
+        defaults.set(true, forKey: "editor.sidebarVisible")
+        try? FileManager.default.removeItem(at: base)
+        NSLog("PERFORMANCE sidebartoggle cycles=%d mean_ms=%.2f p95_ms=%.2f max_ms=%.2f footprint_growth_mib=%.2f",
+              SidebarToggleMeasurement.cycles, mean, p95, maximum, growthMiB)
+        // Grobe Grenzen: Ein Neuaufbau je Umschaltung läge weit darüber, ein
+        // Leck wüchse über 280 Zyklen um zweistellige MiB.
+        guard mean < 100 else {
+            finish(false, String(format: "Umschalten dauert im Mittel %.1f ms (Grenze 100 ms)", mean))
+        }
+        guard growthMiB < 12 else {
+            finish(false, String(format: "Speicher wuchs über %d Umschaltzyklen um %.1f MiB",
+                                 SidebarToggleMeasurement.cycles - SidebarToggleMeasurement.warmupCycles,
+                                 growthMiB))
+        }
+        finish(true, String(format: "Willkommen und weitere Tabs ohne Projekt zeigen keine Seitenleiste; mit Projekt erscheint sie; %d Umschaltzyklen ohne Neuaufbau, im Mittel %.1f ms (p95 %.1f ms, max %.1f ms), Speicher %+.1f MiB nach Aufwärmphase",
+                            SidebarToggleMeasurement.cycles, mean, p95, maximum, growthMiB))
+    }
+
+    /// Aktueller physischer Speicherbedarf des Prozesses (Bytes).
+    private static func physicalFootprint() -> UInt64 {
+        var usage = rusage_info_v4()
+        let result = withUnsafeMutablePointer(to: &usage) {
+            $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
+                proc_pid_rusage(getpid(), RUSAGE_INFO_V4, $0)
+            }
+        }
+        return result == 0 ? usage.ri_phys_footprint : 0
+    }
+
     private static func runTabFloodTest() {
         testLabel = "tabflood"
         guard let ws = Workspace.shared else {

@@ -151,6 +151,14 @@ struct EditorView: View {
     private let editorMinWidth: CGFloat = 240
     private let markdownPreviewMinWidth: CGFloat = 260
 
+    /// Ein Ordner oder Repo ist offen — nur dann gibt es die Seitenleiste.
+    private var hasProject: Bool { workspace.projectURL != nil }
+
+    /// Sichtbar = Projekt offen UND Nutzerschalter an.
+    private var sidebarVisible: Bool {
+        SidebarVisibility.isVisible(userWantsSidebar: showSidebar, hasProject: hasProject)
+    }
+
     /// Gemessene Breite des gesamten Editor-Fensterinhalts (Seitenleiste,
     /// Editor, Vorschau und die Splitter dazwischen). Erst damit lässt sich
     /// ausrechnen, wie breit die Vorschau höchstens werden darf.
@@ -165,7 +173,12 @@ struct EditorView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            if showSidebar {
+            // Ohne Projekt hängt keine Seitenleiste im Fenster (auch nicht auf
+            // dem Willkommensbildschirm mit seiner eigenen Marke). Mit Projekt
+            // bleibt sie eingehängt und wird beim Ausblenden nur auf Breite 0
+            // gezogen — Umschalten baut den Dateibaum nicht neu auf
+            // (`SidebarVisibility`, Änderungswunsch 2026-09-06).
+            if SidebarVisibility.isMounted(hasProject: hasProject) {
                 VStack(spacing: 0) {
                     // Wie in Codex gehört die Marke zur Seitenleiste, nicht zu
                     // einem fensterbreiten zweiten Header. Rechts kann der
@@ -178,14 +191,29 @@ struct EditorView: View {
                 // Breite kommt aus der persistenten Einstellung; per Splitter
                 // ziehbar (siehe `sidebarSplitter`). Klemmen schützt vor einer
                 // gespeicherten Un-Breite (z.B. 0) aus einer früheren Version.
+                // Der Inhalt behält beim Ausblenden seine volle Breite und wird
+                // nur abgeschnitten — so gibt es keinen Neuumbruch des Baums.
                 .frame(width: effectiveSidebarWidth)
                 .frame(maxHeight: .infinity)
                 .background(Theme.surfaceBase)
+                .frame(width: sidebarVisible ? effectiveSidebarWidth : 0, alignment: .leading)
+                .clipped()
+                .opacity(sidebarVisible ? 1 : 0)
+                .allowsHitTesting(sidebarVisible)
+                .accessibilityHidden(!sidebarVisible)
                 // AppKit-Editor und Vorschau besitzen kräftige Idealgrößen.
                 // Die linke Navigation bleibt dennoch stets am Fensterrand.
                 .layoutPriority(2)
+                // Für Selbsttests: Marker nur, solange die Leiste sichtbar ist.
+                .background {
+                    if sidebarVisible {
+                        SelfTestMarker(id: "sidebarVisibleMarker").frame(width: 0, height: 0)
+                    }
+                }
 
-                sidebarSplitter
+                if sidebarVisible {
+                    sidebarSplitter
+                }
             }
 
             // Der echte CodeEdit-Editor ist bei Markdown selbst Drag-Ziel.
@@ -471,7 +499,7 @@ struct EditorView: View {
 
     /// Aktuell wirksame Breite der Seitenleiste inklusive ihres Splitters.
     private var sidebarOccupiedWidth: CGFloat {
-        guard showSidebar else { return 0 }
+        guard sidebarVisible else { return 0 }
         return effectiveSidebarWidth + ResizableDivider.thickness
     }
 

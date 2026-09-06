@@ -840,6 +840,11 @@ Quellpositionen keinen Sprung auslösen.
 
 ## Projekt und Seitenleiste
 
+Ohne geöffneten Ordner oder Repo gibt es keine Seitenleiste — weder auf dem
+Willkommensbildschirm noch bei weiteren Tabs. Sie erscheint, sobald ein
+Projekt offen ist; der Umschalter im Fenster-Chrome und „Seitenleiste
+anzeigen“ blenden sie dann aus und ein, ohne den Dateibaum neu aufzubauen.
+
 Beim Öffnen einer Einzeldatei zeigt die Seitenleiste automatisch den
 passenden Ordner — liegt die Datei in einem Git-Repository, dessen
 Wurzelordner. Bei offenen Tabs aus verschiedenen Git-Repositories folgt dieser

@@ -19,6 +19,13 @@ struct TabBarView: View {
 
     @State private var contentWidth: CGFloat = 0
 
+    /// Dieselbe Regel wie in `EditorView`: Ohne Projekt keine Seitenleiste,
+    /// also auch kein Vorlauf in Seitenleistenbreite und kein Umschalter.
+    private var hasProject: Bool { workspace.projectURL != nil }
+    private var sidebarVisible: Bool {
+        SidebarVisibility.isVisible(userWantsSidebar: showSidebar, hasProject: hasProject)
+    }
+
     // Die Seitenleisten-Breite liegt pro Fenster auf dem `workspace`, damit der
     // Titelleisten-Vorlauf exakt mit der Seitenleiste darunter fluchtet und der
     // Splitter nur dieses Fenster verändert (Daniel-Befund 2026-07-20).
@@ -55,7 +62,7 @@ struct TabBarView: View {
         HStack(spacing: 0) {
             titlebarLeadingControls
 
-            if showSidebar {
+            if sidebarVisible {
                 chromeDivider
             }
 
@@ -84,16 +91,20 @@ struct TabBarView: View {
             .help("Zum Willkommensbildschirm")
             .accessibilityLabel("Zum Willkommensbildschirm")
             .accessibilityHint("Schließt den aktuellen Arbeitsbereich sicher und zeigt Willkommen.")
-            Button { showSidebar.toggle() } label: {
-                titlebarIcon("sidebar.left", active: !showSidebar)
+            if SidebarVisibility.offersToggle(hasProject: hasProject) {
+                Button { showSidebar.toggle() } label: {
+                    titlebarIcon("sidebar.left", active: !showSidebar)
+                }
+                .buttonStyle(.plain)
+                .help(showSidebar ? "Seitenleiste ausblenden" : "Seitenleiste einblenden")
+                .padding(.trailing, 8)
+            } else {
+                Spacer(minLength: 8)
             }
-            .buttonStyle(.plain)
-            .help(showSidebar ? "Seitenleiste ausblenden" : "Seitenleiste einblenden")
-            .padding(.trailing, 8)
         }
-        .frame(width: showSidebar ? effectiveSidebarWidth : 180)
+        .frame(width: sidebarVisible ? effectiveSidebarWidth : 180)
         .frame(maxHeight: .infinity)
-        .background(showSidebar ? Theme.surfaceBase : Theme.surfaceRaised)
+        .background(sidebarVisible ? Theme.surfaceBase : Theme.surfaceRaised)
     }
 
     /// Rechter Schalter für die integrierte Markdown-Vorschau. Bei normalen

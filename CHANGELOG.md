@@ -7,7 +7,24 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
-## [Unreleased]
+## [v1.122.0] — 2026-09-06
+
+### Geändert
+
+- Ohne geöffneten Ordner oder Repo zeigt ein Fenster keine linke
+  Seitenleiste mehr — weder auf dem Willkommensbildschirm, wo die Marke sonst
+  zweimal nebeneinander stand, noch bei weiteren Tabs ohne Projekt. Der
+  Umschalter im Fenster-Chrome erscheint erst mit Projekt; „Seitenleiste
+  anzeigen“ gilt dann wie bisher.
+- Ein-/Ausblenden der Seitenleiste baut den Dateibaum nicht mehr neu auf:
+  Die Leiste bleibt eingehängt und wird nur auf Breite 0 gezogen.
+
+### Qualitätssicherung
+
+- Neuer Selbsttest `sidebartoggle`: Willkommen und mehrere Tabs ohne Projekt
+  ohne Seitenleiste, mit Projekt sichtbar; 300 Umschaltzyklen mit Prüfung,
+  dass der Projektkopf derselbe AppKit-Knoten bleibt, Messung von Dauer je
+  Umschaltung und Speicherwachstum nach einer Aufwärmphase.
 
 ### Intern
 
