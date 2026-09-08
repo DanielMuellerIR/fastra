@@ -9630,7 +9630,10 @@ enum SelfTest {
         ws.markdownPreviewWidth = 332.3515625
         workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         window.setContentSize(NSSize(width: 1100, height: 800))
-        let text = rightEdgeFixtureContent()
+        // Die kurze Umbruch-Fixture passt bei breitem Editor vollständig ins
+        // Fenster. Mehr Text schafft einen echten Scrollbereich; beginDragScroll
+        // prüft diese Vorbedingung zusätzlich an der tatsächlichen Geometrie.
+        let text = String(repeating: rightEdgeFixtureContent(), count: 4)
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(
                 "fastra-dragscroll-\(UUID().uuidString)", isDirectory: true
@@ -9686,6 +9689,12 @@ enum SelfTest {
     private static func beginDragScroll(
         textView: TextView, scrollView: NSScrollView, window: NSWindow
     ) {
+        let visibleHeight = scrollView.documentVisibleRect.height
+        guard textView.frame.height > visibleHeight else {
+            finish(false, "Drag-Fixture ist nicht scrollbar "
+                   + "(Text-Höhe=\(textView.frame.height), sichtbar=\(visibleHeight), "
+                   + "Breite=\(textView.frame.width), Zeichen=\(textView.string.utf16.count))")
+        }
         guard let startRect = textView.layoutManager.rectForOffset(10) else {
             finish(false, "Startzeichen ohne Rechteck")
         }
@@ -9761,7 +9770,8 @@ enum SelfTest {
             guard visible.minY > initialTop else {
                 finish(false, "Editor scrollte beim Drag über den unteren "
                     + "Rand nicht mit (Viewport weiter bei y=\(visible.minY), "
-                    + "Auswahl \(range))")
+                    + "Auswahl \(range), App aktiv=\(NSApp.isActive), "
+                    + "Fenster key=\(window.isKeyWindow))")
             }
             guard let edge = textView.layoutManager.rectForOffset(
                 NSMaxRange(range)
