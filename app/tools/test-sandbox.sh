@@ -206,6 +206,10 @@ purge_fastra_registered_test_defaults() {
     deduplicate_fastra_test_defaults_registry \
         "$registry" "$deduplicated_registry" || return 2
     registry="$deduplicated_registry"
+    # Ohne registrierte Domain gibt es nach dem Prozessende nichts mehr zu
+    # beobachten. Erst nach der geprüften Deduplizierung entscheiden: Eine
+    # beschädigte oder nur aus Leerraum bestehende Registry bleibt ein Fehler.
+    [ -s "$registry" ] || return 0
 
     # cfprefsd kann eine bereits geleerte 42-Byte-Plist erst NACH dem Ende des
     # App-Prozesses zurückschreiben. Drei gezielte Durchgänge mit insgesamt

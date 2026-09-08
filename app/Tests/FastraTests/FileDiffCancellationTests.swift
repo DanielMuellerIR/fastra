@@ -405,7 +405,7 @@ private func workspaceWithBlockingDiff(defaults: UserDefaults)
 
 @Test("Workspace-Abbau lässt keinen Vergleich weiterrechnen")
 @MainActor
-func workspaceDeinitCancelsComputation() {
+func workspaceDeinitCancelsComputation() async {
     let suite = "fastra-test-diff-cancel-deinit-\(UUID().uuidString)"
     let defaults = testSuiteDefaults(named: suite)
     defer { defaults.removePersistentDomain(forName: suite) }
@@ -417,7 +417,9 @@ func workspaceDeinitCancelsComputation() {
     let otherWorkspace = Workspace(defaults: defaults)
     ActiveDocumentContext.shared.activate(otherWorkspace)
 
-    #expect(reference.workspace == nil)
+    // Noch eingereihte Rückmeldungen dürfen vor der Freigabe auf Main
+    // abschließen. Eine dauerhafte Referenz bleibt nach der Frist ein Fehler.
+    #expect(await waitUntil { reference.workspace == nil })
     #expect(compute.cancelled.wait(timeout: .now() + 10) == .success)
 }
 
@@ -590,4 +592,25 @@ private final class ManagedAtomicFlag: @unchecked Sendable {
     private var value = false
     func set() { lock.lock(); value = true; lock.unlock() }
     func isSet() -> Bool { lock.lock(); defer { lock.unlock() }; return value }
+}
+
+@Test("Abbruch während eines zusammenhängenden Ausrichtungsblocks", arguments: [0, 1, 2])
+func cancellationInsideAlignedBlock(kind: Int) {
+    // Alle drei inneren Schleifen: gepaarte Änderungen, nur entfernte und
+    // nur eingefügte Zeilen. Die äußere Schleife läuft jeweils nur einmal.
+    let left = kind == 2 ? [] : ["alt eins", "alt zwei", "alt drei"]
+    let right = kind == 1 ? [] : ["neu eins", "neu zwei", "neu drei"]
+    var checks = 0
+    #expect(throws: CancellationError.self) {
+        _ = try FileDiff.alignedRows(
+            leftLines: left, rightLines: right,
+            leftBlank: left.map { _ in false }, rightBlank: right.map { _ in false },
+            removedLeft: Set(left.indices), insertedRight: Set(right.indices),
+            options: FileDiffOptions(), isCancelled: {
+                checks += 1
+                return checks == 2
+            }
+        )
+    }
+    #expect(checks == 2)
 }

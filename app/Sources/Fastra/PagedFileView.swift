@@ -240,7 +240,7 @@ enum TextFilePageReader {
             throw FileSnapshotReadError.changedDuringRead
         }
         try checkPageReadCancellation(shouldCancel)
-        guard let text = String(data: data, encoding: encoding) else {
+        guard let text = ApplyEngine.decode(payload: data, encoding: encoding) else {
             // Kein Lossy-Fallback: Ein beschädigter oder falsch gewählter
             // Abschnitt muss sichtbar fehlschlagen, nicht U+FFFD erfinden.
             throw CocoaError(.fileReadInapplicableStringEncoding)

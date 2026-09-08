@@ -6,8 +6,8 @@
 // würde ein kaputtes Pattern erzeugen.
 //
 // WICHTIG — Unabhängigkeit vom Tokenizer:
-// Der echte `RegexTokenizer` entsteht parallel und wird hier BEWUSST NICHT
-// benutzt. Stattdessen konstruieren diese Tests die `RegexTokenization` mit
+// Die folgenden Unit-Fixtures verwenden den echten `RegexTokenizer` bewusst
+// nicht; der Integrationstest zur Referenzverschiebung prüft ihn zusätzlich. Stattdessen konstruieren diese Tests die `RegexTokenization` mit
 // einem kleinen Hand-Tokenizer (`HandTok`) von Hand. Das macht die Tests
 // unabhängig vom Tokenizer-Stand UND dokumentiert zugleich das exakte
 // Token-Format, das GroupBuilder erwartet (flach, sortiert, lückenlos).
@@ -57,16 +57,16 @@ private enum HandTok {
         //    Eine öffnende Klammer ist fangend, wenn ihr Delimiter-Text `(`
         //    oder `(?<name>` ist (nicht `(?:`/`(?=`/...).
         var groups: [CaptureGroupInfo] = []
-        var stack: [(openIndex: Int, capturing: Bool)] = []
+        var stack: [(openIndex: Int, number: Int?)] = []
         var number = 0
         for (i, t) in tokens.enumerated() where t.kind == .groupDelimiter {
             if t.text.hasPrefix("(") && !t.text.contains(")") {
                 let capturing = isCapturingOpen(t.text)
-                stack.append((i, capturing))
+                if capturing { number += 1 }
+                stack.append((i, capturing ? number : nil))
             } else if t.text.contains(")") {
                 guard let open = stack.popLast() else { continue }
-                if open.capturing {
-                    number += 1
+                if let groupNumber = open.number {
                     let openTok = tokens[open.openIndex]
                     let closeTok = t
                     let groupStart = openTok.range.location
@@ -74,16 +74,15 @@ private enum HandTok {
                     let innerStart = openTok.range.location + openTok.range.length
                     let innerEnd = closeTok.range.location
                     groups.append(CaptureGroupInfo(
-                        number: number,
+                        number: groupNumber,
                         name: groupName(openTok.text),
                         range: NSRange(location: groupStart, length: groupEnd - groupStart),
                         innerRange: NSRange(location: innerStart, length: innerEnd - innerStart)))
                 }
             }
         }
-        // Gruppen sind nach öffnender Klammer nummeriert — aber wir haben sie
-        // beim SCHLIEßEN angehängt. Für stabile Reihenfolge nach `number`
-        // sortieren (NSRegularExpression-Konvention).
+        // Die Nummer entsteht beim Öffnen, die Range erst beim Schließen.
+        // Nach Nummer sortieren, damit äußere Gruppen vor ihren inneren stehen.
         groups.sort { $0.number < $1.number }
 
         return RegexTokenization(tokens: tokens, groups: groups, hasErrors: false)
@@ -430,6 +429,42 @@ func shift_noBackrefs() {
     #expect(GroupBuilder.shiftBackreferencesUp(in: "Preis: 5 EUR", atOrAbove: 1) == "Preis: 5 EUR")
 }
 
+@Test("Neue Gruppe erhält die Ersetzung nach einem literalen Backslash")
+func proposal_preservesReferenceAfterLiteralBackslash() throws {
+    let pattern = "(a)b(c)"
+    let replacement = #"\\$2"#
+    let proposal = try #require(GroupBuilder.propose(
+        selection: NSRange(location: 1, length: 1),
+        pattern: pattern, tokenization: RegexTokenizer.tokenize(pattern),
+        matchText: "abc", replacement: replacement, caseSensitive: true))
+    #expect(proposal.newPattern == "(a)(b)(c)")
+    #expect(proposal.rewrittenReplacement == #"\\$3"#)
+    let regex = try NSRegularExpression(pattern: proposal.newPattern)
+    let result = regex.stringByReplacingMatches(
+        in: "abc", range: NSRange(location: 0, length: 3),
+        withTemplate: proposal.rewrittenReplacement)
+    #expect(result == #"\c"#)
+}
+
+@Test("Referenzverschiebung berücksichtigt gerade und ungerade Backslash-Zahlen",
+      arguments: 0...4)
+func shift_backslashParity(_ count: Int) {
+    let prefix = String(repeating: "\\", count: count)
+    let shifted = GroupBuilder.shiftBackreferencesUp(in: prefix + "$2", atOrAbove: 2)
+    #expect(shifted == prefix + (count.isMultiple(of: 2) ? "$3" : "$2"))
+    // Das Entfernen der zuvor eingefügten Gruppe muss dieselben Referenzen
+    // erkennen und das ursprüngliche Template wiederherstellen.
+    #expect(GroupRemoval.shiftReferencesDown(in: shifted, above: 2) == prefix + "$2")
+}
+
+@Test("Nicht verschiebbare Gruppennummern bleiben ohne Überlauf erhalten")
+func shift_unrepresentableReferencesStayUnchanged() {
+    for input in ["$\(Int.max)", "$999999999999999999999999999999", "$²", "$٠"] {
+        #expect(GroupBuilder.shiftBackreferencesUp(in: input, atOrAbove: 1) == input)
+    }
+    #expect(GroupBuilder.shiftBackreferencesUp(in: "$01 $0", atOrAbove: 2) == "$01 $0")
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // MARK: - Sonderfälle: Emoji, caseSensitive, nicht zuordenbar
 // ─────────────────────────────────────────────────────────────────────────
@@ -500,20 +535,34 @@ func notMappable() {
     #expect(prop == nil)
 }
 
-@Test("Selektion außerhalb jeden Beitrags → nil (keine Unit schneidet)")
-func selectionOutsideAnyContribution() {
-    let tok = HandTok.emailTok
-    let text = "anna@test.de"   // Länge 12
-    // Selektion komplett hinter dem Text (location 12, length 0 wäre Cursor
-    // am Ende; wir nehmen einen klar leeren Bereich location 12 len 0 →
-    // Cursor am Ende von „de" → snappt auf „de". Stattdessen testen wir eine
-    // Selektion, die NUR über einen Anker läge — hier gibt es keinen, also
-    // prüfen wir eine 0-Längen-Selektion am Stringende, die noch auf die
-    // letzte Unit „de" snappt.)
+@Test("Cursor am Textende wählt den letzten Beitrag")
+func selectionAtEndChoosesLastContribution() {
     let prop = GroupBuilder.propose(selection: NSRange(location: 12, length: 0),
-                                    pattern: "(\\w+)@(\\w+)\\.de", tokenization: tok,
-                                    matchText: text, replacement: "", caseSensitive: false)
-    // Cursor am Ende von „de" (Index 12 == Ende von Unit „de" 10..12) →
-    // snappt auf „de".
+                                    pattern: "(\\w+)@(\\w+)\\.de", tokenization: HandTok.emailTok,
+                                    matchText: "anna@test.de", replacement: "", caseSensitive: false)
     #expect(prop?.snappedMatchRange == NSRange(location: 10, length: 2))
+}
+
+@Test("Selektion hinter allen Beiträgen liefert keinen Gruppenvorschlag",
+      arguments: [NSRange(location: 13, length: 0), NSRange(location: 13, length: 2)])
+func selectionOutsideAnyContribution(_ selection: NSRange) {
+    #expect(GroupBuilder.propose(selection: selection,
+        pattern: "(\\w+)@(\\w+)\\.de", tokenization: HandTok.emailTok,
+        matchText: "anna@test.de", replacement: "", caseSensitive: false) == nil)
+}
+
+@Test("Verschachtelte bestehende Gruppe behält ihre äußere Nummer")
+func proposal_nestedExistingGroup() throws {
+    let pattern = "((a)b)c"
+    let tokens = HandTok.tokenize(pattern, [
+        p("(", .groupDelimiter), p("(", .groupDelimiter), p("a", .literal),
+        p(")", .groupDelimiter), p("b", .literal), p(")", .groupDelimiter), p("c", .literal),
+    ])
+    let proposal = try #require(GroupBuilder.propose(
+        selection: NSRange(location: 0, length: 2), pattern: pattern,
+        tokenization: tokens, matchText: "abc", replacement: "$1 $2", caseSensitive: true))
+    #expect(proposal.isAlreadyGroup)
+    #expect(proposal.newGroupNumber == 1)
+    #expect(proposal.newPattern == pattern)
+    #expect(proposal.rewrittenReplacement == "$1 $2")
 }

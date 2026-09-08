@@ -8,11 +8,6 @@ private let unitTestRunnerURL = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent()   // app
     .appendingPathComponent("test.sh")
 
-private struct UnitTestRunnerResult {
-    let status: Int32
-    let output: String
-}
-
 private final class UnitTestRunnerFixture {
     let root: URL
     let sandboxParent: URL
@@ -114,12 +109,10 @@ private final class UnitTestRunnerFixture {
     func run(arguments: [String] = [], mode: String = "statuses",
              firstStatus: Int = 0, secondStatus: Int = 0,
              sandboxParent overrideSandboxParent: URL? = nil) throws
-        -> UnitTestRunnerResult {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = [unitTestRunnerURL.path] + arguments
+        -> TestProcessResult {
         let oldPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
-        process.environment = ProcessInfo.processInfo.environment.merging([
+        return try runTestProcess("/bin/bash", arguments: [unitTestRunnerURL.path] + arguments,
+                                  environment: [
             "PATH": binaryDirectory.path + ":" + oldPath,
             "FASTRA_TEST_SANDBOX_PARENT": (overrideSandboxParent ?? sandboxParent).path,
             "FASTRA_TEST_PROBE": probe.path,
@@ -128,17 +121,7 @@ private final class UnitTestRunnerFixture {
             "FASTRA_TEST_FAKE_MODE": mode,
             "FASTRA_TEST_STATUS_1": String(firstStatus),
             "FASTRA_TEST_STATUS_2": String(secondStatus),
-        ], uniquingKeysWith: { _, new in new })
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        try process.run()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return UnitTestRunnerResult(
-            status: process.terminationStatus,
-            output: String(decoding: data, as: UTF8.self)
-        )
+        ])
     }
 
     func calls() throws -> [(tmp: String, cf: String, arguments: [String])] {

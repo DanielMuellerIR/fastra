@@ -195,52 +195,13 @@ enum GroupBuilder {
     /// * `$12` ist Gruppe 12 (gesamte Ziffernfolge), NICHT `$1` + „2".
     ///
     /// - Parameter atOrAbove: ab dieser Gruppennummer (inkl.) wird verschoben.
-    // codereview-ok: `\$`-Escaping wird hier (Zeilenanfang der while-Schleife) UND in GroupRemoval.scanReferences äquivalent respektiert — literales $N wird nicht verschoben (2026-07-06)
     static func shiftBackreferencesUp(in replacement: String, atOrAbove: Int) -> String {
-        // Wir gehen Skalar für Skalar durch und bauen das Ergebnis neu auf.
-        // `chars` als Array, damit wir mit Indizes vor-/zurückschauen können.
-        let chars = Array(replacement)
-        var out = String()
-        out.reserveCapacity(replacement.count)
-
-        var k = 0
-        while k < chars.count {
-            let c = chars[k]
-
-            // Escapter Dollar `\$`: Backslash + Dollar wörtlich übernehmen,
-            // KEIN Backref. (Ein einzelnes `\` vor irgendwas anderem ebenfalls
-            // unverändert weiterreichen — wir interpretieren nur `\$`.)
-            if c == "\\", k + 1 < chars.count, chars[k + 1] == "$" {
-                out.append("\\")
-                out.append("$")
-                k += 2
-                continue
-            }
-
-            // Kandidat für einen Backref `$<Ziffern>`.
-            if c == "$", k + 1 < chars.count, chars[k + 1].isNumber {
-                // Gesamte folgende Ziffernfolge einsammeln (greedy) —
-                // `$12` ist Gruppe 12, nicht `$1`+„2".
-                var d = k + 1
-                var digits = String()
-                while d < chars.count, chars[d].isNumber {
-                    digits.append(chars[d])
-                    d += 1
-                }
-                let n = Int(digits) ?? 0
-                // $0 bleibt; sonst ggf. anheben.
-                let shifted = (n != 0 && n >= atOrAbove) ? n + 1 : n
-                out.append("$")
-                out.append(String(shifted))
-                k = d
-                continue
-            }
-
-            // Alles andere unverändert.
-            out.append(c)
-            k += 1
+        ReplacementReferences.rewrite(in: replacement) { number in
+            // Eine nicht darstellbare nächste Nummer ist keine gültige Gruppe.
+            // Solche Eingaben erhalten wir, statt einen Integer-Überlauf auszulösen.
+            guard number > 0, number >= atOrAbove, number < Int.max else { return nil }
+            return number + 1
         }
-        return out
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -663,7 +624,7 @@ enum GroupBuilder {
             if selection.length == 0 {
                 // Leere Selektion: Cursor in [mStart, mEnd] INKLUSIVE Rändern.
                 // (Cursor genau an einer Token-Grenze → wir nehmen die Unit,
-                // in der er liegt; bei Grenze gewinnt die LINKE, s.u.)
+                // in der er liegt; bei Grenze gewinnt die RECHTE, s.u.)
                 if selStart >= mStart && selStart <= mEnd {
                     hits.append(idx)
                 }

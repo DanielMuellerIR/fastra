@@ -418,34 +418,26 @@ func find_totalCap_doesNotTriggerBelowCap() throws {
     #expect(r.totalMatches == 5)
 }
 
-@Test("Gesamt-Cap bricht dateiübergreifend ab: 3 Dateien à 5 Treffer, Cap 7 → Gesamt ≤ 7")
-func find_totalCap_breaksAcrossFiles() throws {
-    // Jede Datei hat genau 5 Treffer. Cap = 7. Nach Datei 1 (5) + einem
-    // Teil von Datei 2 (2) oder nach Datei 1 + Datei 2 (10 > 7) muss die
-    // Enumeration abbrechen. Der Gesamt-Cap ist dateiweise — sobald nach
-    // dem Einlesen einer Datei totalSoFar >= cap, bricht die Schleife ab.
-    // Bei cap 7: Datei 1 liefert 5, addiert → 5 < 7; Datei 2 liefert 5,
-    // addiert → 10 >= 7 → capped. Ergebnis: perFile hat ≤ 3 Dateien,
-    // totalMatches ≤ 10 (per-file-cap 5000, 2 volle Dateien à 5 = 10).
+@Test("Gesamt-Cap zeigt sieben Treffer aus zwei vollständig gezählten Dateien",
+      arguments: [false, true])
+func find_totalCap_breaksAcrossFiles(_ directFiles: Bool) throws {
     let c = try FolderCorpus()
-    // Feste Namen erzwingen stabile Enumerationsreihenfolge (alphabetisch).
-    try c.write("a.txt", "foo foo foo foo foo")  // 5 Treffer
-    try c.write("b.txt", "foo foo foo foo foo")  // 5 Treffer
-    try c.write("c.txt", "foo foo foo foo foo")  // 5 Treffer (wird evtl. nie gelesen)
-    let r = FolderSearch.find(in: [c.root], filter: .knownText,
+    let files = try ["a.txt", "b.txt", "c.txt"].map {
+        try c.write($0, "foo foo foo foo foo")
+    }
+    // Gleicher Vertrag für einen Ordner und ein Set einzelner Dateien.
+    // Die letzte gelesene Datei wird vollständig gezählt, ihre sichtbare
+    // Liste erhält aber nur die zwei noch verfügbaren Plätze.
+    let r = FolderSearch.find(in: directFiles ? files : [c.root], filter: .knownText,
                               options: SearchOptions(find: "foo", replace: "X",
                                                      isRegex: false),
                               maxResultsPerFile: 5000,
                               maxTotalMatches: 7)
-    // Cap muss ausgelöst haben.
-    #expect(r.wasCapped == true)
-    // Nicht alle drei Dateien konnten vollständig gezählt werden:
-    // totalMatches ≤ 10 (maximal 2 Dateien à 5 — dritte wird nie angefangen
-    // oder auch der letzte Lauf bricht bei ≥ cap ab).
-    #expect(r.totalMatches <= 10)
-    // Mindestens eine Datei muss enthalten sein (sonst wäre das Ergebnis leer,
-    // was bedeuten würde, die Suche hätte gar nicht stattgefunden).
-    #expect(r.filesWithMatches.count >= 1)
+    #expect(r.wasCapped)
+    #expect(r.totalMatches == 10)
+    #expect(r.filesWithMatches.count == 2)
+    #expect(r.filesWithMatches.map { $0.matches.count } == [5, 2])
+    #expect(r.filesWithMatches.allSatisfy { $0.totalMatches == 5 })
 }
 
 @Test("Gesamt-Cap zählt den WAHREN Per-Datei-Count, nicht die gekappte Liste (Review 2026-07-03)")
@@ -652,11 +644,23 @@ func folderSearch_reusesPreparedPlanAcrossFiles() throws {
 func folderSearch_deduplicatesOverlappingRoots() throws {
     let c = try FolderCorpus()
     let sources = c.root.appendingPathComponent("Sources")
-    try c.write("main.swift", "EINMAL", in: "Sources")
+    let file = try c.write("main.swift", "EINMAL", in: "Sources")
     let result = FolderSearch.find(
-        in: [c.root, sources], filter: .knownText,
+        in: [c.root, sources, file], filter: .knownText,
         options: SearchOptions(find: "EINMAL", replace: "", isRegex: false)
     )
     #expect(result.totalMatches == 1)
     #expect(result.filesWithMatches.count == 1)
+}
+
+@Test("Paketinhalt bleibt rekursiv verborgen, aber als explizite Datei suchbar")
+func folderSearch_explicitFileDoesNotInheritPackageExclusion() throws {
+    let c = try FolderCorpus()
+    let file = try c.write("source.txt", "NADEL", in: "Fixture.app/Contents")
+    let options = SearchOptions(find: "NADEL", replace: "", isRegex: false)
+    let recursive = FolderSearch.find(in: [c.root], filter: .knownText, options: options)
+    #expect(recursive.filesWithMatches.isEmpty)
+    let explicit = FolderSearch.find(in: [file], filter: .knownText, options: options)
+    #expect(explicit.totalMatches == 1)
+    #expect(explicit.filesWithMatches.first?.url == file.canonicalFileURL)
 }

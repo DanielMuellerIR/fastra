@@ -790,9 +790,9 @@ final class PrintDocumentTextView: NSTextView {
     }
 
     /// Übernimmt die im Druckdialog umgeschalteten Optionen des LAUFENDEN
-    /// Auftrags (siehe PrintPanelAccessory.swift). Nur die Zeilennummern
-    /// verändern den Inhalt und damit die Seitenaufteilung; die Kopf-/Fußzeile
-    /// wird beim Zeichnen der Seitenränder frisch gelesen.
+    /// Auftrags (siehe PrintPanelAccessory.swift). Zeilennummern und Syntax-
+    /// attribute verändern den Textaufbau und gegebenenfalls die Aufteilung;
+    /// die Kopf-/Fußzeile wird beim Zeichnen der Seitenränder frisch gelesen.
     private func refreshDialogOptions() {
         let printInfo = NSPrintOperation.current?.printInfo
         var wantedLineNumbers = currentShowsLineNumbers

@@ -115,14 +115,28 @@ if [ "$FIXTURES_ONLY" -eq 1 ]; then
   unset FASTRA_SOAK_RTFD FASTRA_SOAK_MD_DIR FASTRA_SOAK_4D_PROJECT
 fi
 
-APP=".build/debug/Fastra.app"
-BINARY="$APP/Contents/MacOS/Fastra"
-if [ ! -x "$BINARY" ]; then
-  echo "SOAK: Umgebungsfehler — $BINARY fehlt. Erst ./build.sh ausführen." >&2
-  exit 2
-fi
-BINARY_ABSOLUTE="$(cd "$(dirname "$BINARY")" && printf '%s/%s\n' "$(pwd -P)" "$(basename "$BINARY")")"
-APP_BUNDLE_CANONICAL="$(cd "$APP" && pwd -P)"
+# Pfadvariablen wie beim kurzen Runner. Für Direktstarts ist das Binary
+# maßgeblich; das Cleanup darf nicht ein separat angegebenes anderes Bundle
+# abmelden. Der Standard bleibt der lokale Debug-Build.
+configure_soak_app() {
+  local bundle="${FASTRA_SELFTEST_APP_BUNDLE:-.build/debug/Fastra.app}"
+  local binary="${FASTRA_SELFTEST_APP_BIN:-$bundle/Contents/MacOS/Fastra}"
+  if [ ! -x "$binary" ]; then
+    echo "SOAK: Umgebungsfehler — $binary fehlt. App-Pfad prüfen oder ./build.sh ausführen." >&2
+    return 2
+  fi
+  BINARY="$(cd "$(dirname "$binary")" && printf '%s/%s\n' "$(pwd -P)" "$(basename "$binary")")" || return 2
+  case "$BINARY" in
+    */Contents/MacOS/Fastra)
+      APP_BUNDLE_CANONICAL="${BINARY%/Contents/MacOS/Fastra}"
+      ;;
+    *)
+      echo "SOAK: Umgebungsfehler — das Test-Binary muss in Contents/MacOS/Fastra eines App-Bundles liegen." >&2
+      return 2
+      ;;
+  esac
+}
+configure_soak_app || exit 2
 
 SOAK_PRODUCT_DEFAULTS_DOMAIN="de.dm0.fastra"
 SOAK_PRODUCT_DEFAULTS_BACKUP=""
@@ -270,11 +284,15 @@ early_cleanup() {
   local failed=0
   trap - EXIT INT TERM
   if [[ "${FASTRA_TEST_PENDING_PID:-}" =~ ^[0-9]+$ ]]; then
-    terminate_fastra_test_process_trees "$FASTRA_TEST_PENDING_PID" || failed=1
-    wait "$FASTRA_TEST_PENDING_PID" 2>/dev/null || true
+    cleanup_soak_process "$FASTRA_TEST_PENDING_PID" || failed=1
   fi
   release_fastra_gui_test_lock || failed=1
-  release_fastra_test_sandbox || failed=1
+  if [ "$SOAK_PROCESS_CLEANUP_BLOCKED" -eq 0 ]; then
+    release_fastra_test_sandbox || failed=1
+  else
+    echo "SOAK: private Sandbox bleibt wegen ungeklärtem Prozessende erhalten:" >&2
+    echo "  $FASTRA_TEST_SANDBOX" >&2
+  fi
   if [ "$failed" -eq 1 ] && [ "$original_status" -eq 0 ]; then
     echo "SOAK: frühes Aufräumen blieb unvollständig." >&2
     exit 2
@@ -334,12 +352,9 @@ cleanup() {
   fi
   if [ "${#cleanup_targets[@]}" -gt 0 ]; then
     for cleanup_pid in "${cleanup_targets[@]}"; do
-      if ! terminate_fastra_test_process_trees "$cleanup_pid"; then
-        cleanup_failed=1
-        remember_soak_cleanup_failure "$cleanup_pid"
-        SOAK_PROCESS_CLEANUP_BLOCKED=1
-      fi
-      wait "$cleanup_pid" 2>/dev/null || true
+      # Derselbe Helfer wie beim Phasenende: Nach fehlgeschlagenem Abbruch
+      # nicht warten, sondern den Prozess für den Recovery-Pfad behalten.
+      cleanup_soak_process "$cleanup_pid" || cleanup_failed=1
     done
   fi
   if [ "$process_cleanup_failed" -eq 0 ] \
@@ -745,20 +760,26 @@ run_phase() {
   echo "   Phase $phase beendet (Status $status, ${waited}s)"
   tail -2 "$WORK_DIR/phase-$phase.out" | sed 's/^/   /'
   local phase_failed=0
-  # Jeder von null verschiedene Status ist ein gescheiterter Phasenlauf. Falls
-  # `finish(false)` vor dem regulären Bericht beendet hat, die letzte
-  # SELFTEST-Zeile als synthetischen Befund festhalten.
+  # Exit 2 ist Umgebung. Ein echter Befund dieser Phase behält auch dann
+  # Vorrang. Fehlt der reguläre Bericht, bleibt die letzte Abschlusszeile als
+  # synthetischer Eintrag mit der passenden Kategorie erhalten.
   if [ "$status" -ne 0 ]; then
     phase_failed=1
     KEEP_EVIDENCE=1
-    local findings_after detail
+    local findings_after detail prefix=SOAK-BEFUND
     findings_after=$(grep -c '^SOAK-BEFUND' "$LOG" 2>/dev/null)
     findings_after=${findings_after:-0}
-    if [ "$findings_after" -eq "$findings_before" ]; then
+    if [ "$status" -eq 2 ] && [ "$findings_after" -eq "$findings_before" ]; then
+      phase_failed=2
+      prefix=SOAK-UMGEBUNG
+    fi
+    if [ "$findings_after" -eq "$findings_before" ] \
+       && { [ "$prefix" = SOAK-BEFUND ] \
+            || ! grep -q "^SOAK-UMGEBUNG phase=$phase " "$LOG"; }; then
       detail=$(grep '^SELFTEST ' "$WORK_DIR/phase-$phase.out" 2>/dev/null | tail -1)
       detail=${detail:-"Exit-Status $status ohne SELFTEST-Abschlusszeile"}
-      printf 'SOAK-BEFUND phase=%s aktion=? invariante=Phase endet kontrolliert detail=%s\n' \
-        "$phase" "$detail" >> "$LOG"
+      printf '%s phase=%s aktion=? invariante=Phase endet kontrolliert detail=%s\n' \
+        "$prefix" "$phase" "$detail" >> "$LOG"
     fi
   fi
   # Ein Status 125 heißt: Der alte Prozessbaum kann noch leben. In dieser
@@ -777,13 +798,24 @@ run_phase() {
   return "$phase_failed"
 }
 
+run_counted_phase() {
+  local status=0
+  run_phase "$@" || status=$?
+  case "$status" in
+    0) ;;
+    2) ENVIRONMENT_PHASES=$((ENVIRONMENT_PHASES + 1)) ;;
+    *) PHASES_FAILED=$((PHASES_FAILED + 1)) ;;
+  esac
+}
+
 PHASES_FAILED=0
+ENVIRONMENT_PHASES=0
 KEEP_EVIDENCE=0
-run_phase 1 "Dokumente anlegen, drei Fenster öffnen, arbeiten" || PHASES_FAILED=$((PHASES_FAILED + 1))
+run_counted_phase 1 "Dokumente anlegen, drei Fenster öffnen, arbeiten"
 soak_followup_is_safe || exit 1
-run_phase 2 "nach Neustart: Sitzung prüfen und weiterarbeiten"  || PHASES_FAILED=$((PHASES_FAILED + 1))
+run_counted_phase 2 "nach Neustart: Sitzung prüfen und weiterarbeiten"
 soak_followup_is_safe || exit 1
-run_phase 3 "nach zweitem Neustart: abschließende Runde"        || PHASES_FAILED=$((PHASES_FAILED + 1))
+run_counted_phase 3 "nach zweitem Neustart: abschließende Runde"
 
 echo
 echo "────────────────────────────────────────────────────────────"
@@ -794,43 +826,58 @@ FINDINGS=$(grep -c "^SOAK-BEFUND" "$LOG" 2>/dev/null | head -1)
 FINDINGS=${FINDINGS:-0}
 ACTIONS=$(awk -F'aktionen=' '/^SOAK-ZUSAMMENFASSUNG/{split($2,a," "); s+=a[1]} END{print s+0}' "$LOG")
 
-# Ein Lauf, dessen Phasen gar nicht durchliefen, darf NIE grün melden. Der
-# erste Probelauf tat genau das: Alle drei Phasen brachen sofort ab, und das
-# Skript meldete trotzdem „SOAK OK". Ein Test, der bei kaputtem Aufbau Erfolg
-# meldet, ist schlimmer als keiner.
-if [ "$PHASES_FAILED" -gt 0 ]; then
-  KEEP_EVIDENCE=1
-  echo "SOAK FAIL — $PHASES_FAILED von 3 Phasen sind nicht durchgelaufen." >&2
-  echo "Ausgaben der Phasen:" >&2
-  for phase in 1 2 3; do
-    echo "  ── Phase $phase ──" >&2
-    tail -3 "$WORK_DIR/phase-$phase.out" 2>/dev/null | sed 's/^/    /' >&2
-  done
-  if [ "$FINDINGS" -gt 0 ]; then
-    echo "Befunde im Report-Log: $FINDINGS" >&2
-    grep '^SOAK-BEFUND' "$LOG" | sed 's/^/  /' >&2
+check_soak_result() {
+  # Ein Lauf, dessen Phasen gar nicht durchliefen, darf NIE grün melden. Der
+  # erste Probelauf tat genau das: Alle drei Phasen brachen sofort ab, und das
+  # Skript meldete trotzdem „SOAK OK". Ein Test, der bei kaputtem Aufbau Erfolg
+  # meldet, ist schlimmer als keiner.
+  if [ "$PHASES_FAILED" -gt 0 ]; then
+    KEEP_EVIDENCE=1
+    echo "SOAK FAIL — $PHASES_FAILED von 3 Phasen sind nicht durchgelaufen." >&2
+    echo "Ausgaben der Phasen:" >&2
+    for phase in 1 2 3; do
+      echo "  ── Phase $phase ──" >&2
+      tail -3 "$WORK_DIR/phase-$phase.out" 2>/dev/null | sed 's/^/    /' >&2
+    done
+    if [ "$FINDINGS" -gt 0 ]; then
+      echo "Befunde im Report-Log: $FINDINGS" >&2
+      grep '^SOAK-BEFUND' "$LOG" | sed 's/^/  /' >&2
+    fi
+    return 1
   fi
-  exit 1
-fi
 
-# Ebenso wertlos: Alle Phasen laufen, aber es wurde nichts geprüft.
-if [ "$ACTIONS" -eq 0 ]; then
-  KEEP_EVIDENCE=1
-  echo "SOAK FAIL — kein einziger Prüfschritt ausgeführt. Der Testaufbau" >&2
-  echo "greift nicht; ein grünes Ergebnis wäre hier bedeutungslos." >&2
-  exit 1
-fi
+  if [ "$FINDINGS" -gt 0 ]; then
+    KEEP_EVIDENCE=1
+    echo "SOAK FAIL — $FINDINGS Invarianten-Verstoß(e) bei $ACTIONS Aktionen:"
+    echo
+    grep "^SOAK-BEFUND" "$LOG" | sed 's/^/  /'
+    echo
+    echo "Jede Zeile nennt Phase, die AUSLÖSENDE Aktion und die verletzte"
+    echo "Invariante. Bei Zustandsfehlern ist die Aktion die wichtigste Spur."
+    return 1
+  fi
 
-if [ "$FINDINGS" -gt 0 ]; then
-  KEEP_EVIDENCE=1
-  echo "SOAK FAIL — $FINDINGS Invarianten-Verstoß(e) bei $ACTIONS Aktionen:"
-  echo
-  grep "^SOAK-BEFUND" "$LOG" | sed 's/^/  /'
-  echo
-  echo "Jede Zeile nennt Phase, die AUSLÖSENDE Aktion und die verletzte"
-  echo "Invariante. Bei Zustandsfehlern ist die Aktion die wichtigste Spur."
-  exit 1
-fi
+  if [ "$ENVIRONMENT_PHASES" -gt 0 ]; then
+    KEEP_EVIDENCE=1
+    echo "SOAK ENV — $ENVIRONMENT_PHASES von 3 Phasen durch Umgebung unvollständig." >&2
+    grep '^SOAK-UMGEBUNG' "$LOG" | sed 's/^/  /' >&2
+    return 2
+  fi
+
+  # Ebenso wertlos: Alle Phasen laufen, aber es wurde nichts geprüft.
+  if [ "$ACTIONS" -eq 0 ]; then
+    KEEP_EVIDENCE=1
+    echo "SOAK FAIL — kein einziger Prüfschritt ausgeführt. Der Testaufbau" >&2
+    echo "greift nicht; ein grünes Ergebnis wäre hier bedeutungslos." >&2
+    return 1
+  fi
+
+  return 0
+}
+
+check_soak_result
+result=$?
+[ "$result" -eq 0 ] || exit "$result"
 
 SOAK_FINISHED_MS=$(/usr/bin/perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000')
 SOAK_PROFILE="fixtures-only"

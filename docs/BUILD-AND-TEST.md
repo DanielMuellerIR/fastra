@@ -396,6 +396,14 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   Lauf vollständig. Weitergereichte `--filter`-Ausdrücke werden mit dem
   jeweiligen Phasenmarker geschnitten. Swift 6.3 vereinigt mehrere Filter
   ansonsten und würde schnelle Zieltests in der seriellen Phase erneut starten.
+- CLI-Fixtures verwenden `Tests/FastraTests/Support/TestProcess.swift`.
+  Der gemeinsame Helfer begrenzt Prozessende und Ausgabe auf standardmäßig
+  120 Sekunden. Nach Überschreitung wirft er einen Fehler samt bisheriger
+  Ausgabe, sendet TERM an verifizierte Mitglieder seiner eigenen Prozessgruppe
+  und nach 0,5 Sekunden KILL. Die Prüfung wartet auch auf geerbte Ausgabepipes;
+  ein früh beendeter Elternprozess kann den Test dadurch nicht hängen lassen.
+  Absichtlich in neue Sitzungen abgesetzte Kinder bleiben Aufgabe der jeweiligen
+  Fixture und ihrer eigenen Aufräumlogik.
 - **Maschinenlesbarer Abschluss:** Jede Phase meldet eine
   `FASTRA_TEST_PHASE`-Zeile, der Gesamtlauf eine `FASTRA_TEST_SUMMARY`-Zeile.
   Funktionsfehler ergeben Exit 1 und behalten Vorrang, falls danach zusätzlich
@@ -422,6 +430,18 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   Das Skript braucht `rg`; fehlt ripgrep im PATH (nicht jeder Mac hat es
   installiert), nimmt es das im Repo mitgelieferte Binary unter
   `app/Sources/Fastra/Resources/ripgrep` (seit 2026-09-02).
+- **README-Aufnahmen:** `./screenshot-run.sh [all|de|en] [all|search]` verwendet
+  den gemeinsamen Selbsttest-Runner mit GUI-Sperre, Test-Sandbox und begrenztem
+  Prozess-Cleanup. `search` erzeugt nur die beiden Suchmasken. Die Sprachwahl
+  setzt auch die Beispieldaten; Light Mode gilt ausschließlich im Testprozess.
+  `FASTRA_SELFTEST_SCREENSHOT_DIR` wählt bei Bedarf ein anderes Zielverzeichnis,
+  sonst entstehen die Dateien unter `screenshots/` im Projekt-Root. Die normale
+  Binary-Auswahl über `FASTRA_SELFTEST_APP_BIN` gilt auch für diese Aufnahmen;
+  für eine installierte App auf deren `Contents/MacOS/Fastra` zeigen. Ein gesperrter
+  Bildschirm oder fehlende Aufnahmeberechtigung ergibt Exit 2; das Werkzeug
+  fordert keine neue Berechtigung an. Die Fensteraufnahme verwendet
+  `screencapture -x` ohne Kameraton und ersetzt ein vorhandenes Bild erst nach
+  erfolgreicher Aufnahme. Danach beide Sprachfassungen visuell prüfen.
 - **Markdown-Umwandlung:** `./selftest.sh markdownimport` läuft fensterlos gegen
   das echte `poormans-text`: Formatkatalog (RTF als Datei, RTFD als Paket),
   Zwischenspeicher, eine Umwandlung ohne Bilder, eine mit eingebettetem PNG und
@@ -544,6 +564,11 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
    Berechtigungsproblemen unterscheidbar. Einrichtung je Test-Mac: notarisiert
    installieren, Berechtigungen einmal setzen, dann ein Kontrolllauf ohne
    neue Dialoge.
+   Auch `soak-test.sh` übernimmt diese beiden Variablen. Ist nur das Bundle
+   gesetzt, verwendet es dessen `Contents/MacOS/Fastra`; ein ausdrücklich
+   gesetztes Binary hat Vorrang. Für Direktstart, Messung und Aufräumen wird
+   dessen tatsächlicher Bundle-Pfad verwendet. Ohne Vorgabe bleibt der lokale
+   Debug-Build der Standard. Die Pfadauswahl ersetzt keine Notarisierungsprüfung.
    `-selftest projectinput` öffnet die echte Projekt-Suchmaske, betippt das
    native Ausschlussfeld und verlangt noch im selben Main-Thread-Umlauf eine
    leere Treffer-, Navigations- und Apply-Basis. Der Test misst zusätzlich die
@@ -643,12 +668,27 @@ keiner gespeichert wurde, der letzte älter als sieben Tage ist oder seitdem
 mindestens 20 relevante App-Commits hinzugekommen sind. Unterschiedliche
 Rundenzahlen und Fixture-Profile werden getrennt gespeichert; Rohzeiten solcher
 Konfigurationen sind nicht direkt vergleichbar.
+Jede Dauertest-Phase muss mindestens eine Arbeitsrunde ausführen und prüfen.
+Reine Zustandsprüfungen nach einem Neustart erfüllen diese Bedingung nicht.
+`SOAK-ZUSAMMENFASSUNG` nennt die abgeschlossenen Runden im Feld `runden`;
+das historische Feld `aktionen` umfasst zusätzlich solche Zustandsprüfungen.
+Fokusprobleme stehen als `SOAK-UMGEBUNG` im Protokoll; ein ausschließlich
+dadurch unvollständiger Lauf endet mit Exit 2 und speichert keine erfolgreiche
+Performance-Baseline. Echte Invarianten-Verstöße behalten auch bei späterem
+Fokusverlust Exit 1. Die Zusammenfassung zählt Umgebungsprobleme im Feld
+`umgebung` getrennt von `befunde`.
 
 Alle In-App-Selbsttests und der Dauertest verwenden einen gemeinsamen, pro
 Nutzer maschinenweiten Lock. Damit können zwei Worktrees ihre App-Prozesse und
 den Fensterfokus nicht mehr gegenseitig verfälschen. Ein zweiter Runner endet
 als Umgebungsfehler (Exit 2); reine `./test.sh`-Läufe bleiben davon unabhängig.
 Ein nachweislich verwaister Lock wird beim nächsten Start übernommen.
+Die Besitzerprüfung, Übernahme und Freigabe laufen unter einer kurzen
+`flock`-Sperre des Betriebssystems. Dafür bleibt eine leere Datei mit dem
+Suffix `.guard` neben dem Lock-Verzeichnis bestehen. Sie darf während möglicher
+Runner-Starts nicht gelöscht werden: Sonst könnten zwei Prozesse verschiedene
+Dateien sperren. Nach einem Prozessabbruch gibt macOS die Sperre selbst frei;
+der Inhalt dieser Datei ist kein Hinweis auf einen laufenden Test.
 
 `./test.sh`, `selftest.sh`, `soak-test.sh` und die beiden vom Build gestarteten
 Portabilitäts-Selbsttests geben jedem Lauf außerdem ein eigenes `TMPDIR` und ein
@@ -745,3 +785,20 @@ Integrationstests stehen in [EXTERNAL-DIFF.md](EXTERNAL-DIFF.md).
 `./selftest.sh externaldiff` läuft im Hintergrund gegen die laufende Test-App;
 `./external-diff-test.sh` prüft echte LaunchServices-Kaltstarts mit isolierten
 Bundle-Kopien unter `.build` und öffnet dafür kurz eigene Testfenster.
+
+### Gezielte Negativproben für Fokus-Timeouts
+
+Diese Aufrufe prüfen die Einstufung realer AppKit-Zustände und erwarten
+ausdrücklich Exit 2 mit `ENV`, keinen grünen Produkttest:
+
+```bash
+FASTRA_SELFTEST_NO_ACTIVATION="multisearch bgscroll" ./selftest.sh multisearch bgscroll
+FASTRA_SELFTEST_DEACTIVATE_BEFORE_BGSCROLL_SWITCH=1 ./selftest.sh bgscroll
+```
+
+Der erste Aufruf sperrt die Aktivierung bereits beim Start. Der zweite
+braucht eine freigegebene GUI-Sitzung: Nach der normalen aktiven Vorbereitung
+blendet die Test-App sich vor dem Fensterwechsel aus. Erst wenn AppKit den
+verlorenen Fokus bestätigt, läuft der unveränderte Fenster-Timeout. Eine
+fehlgeschlagene Vorbereitung der Probe bleibt `FAIL`. Ohne die Variable
+bleibt der normale bgscroll-Test unverändert.

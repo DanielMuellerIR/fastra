@@ -16,10 +16,12 @@ func incrementalSearchPositions(separator: String) {
             let result = BufferSearch.find(in: text, options: options, searchRange: range)
             #expect(!result.matches.isEmpty)
             for match in result.matches {
-                let expected = BufferSearch.lineColumn(forOffset: match.range.location,
-                                                       lineStarts: starts)
-                #expect(match.line == expected.line)
-                #expect(match.column == expected.column)
+                // Der vollständige Index ist die unabhängige Gegenrechnung
+                // zur fortlaufenden Suche; eine zweite Produktions-Suchroutine
+                // ist für diese kleine Fixture nicht nötig.
+                let index = starts.lastIndex { $0 <= match.range.location }!
+                #expect(match.line == index + 1)
+                #expect(match.column == match.range.location - starts[index] + 1)
                 #expect(match.range.length == 0)
             }
         }

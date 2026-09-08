@@ -221,65 +221,47 @@ enum FolderSearch {
             guard fm.fileExists(atPath: folder.path, isDirectory: &rootIsDirectory) else {
                 continue
             }
-            // Datei-Sets dürfen neben Ordnern auch einzelne Dateien enthalten.
-            if !rootIsDirectory.boolValue {
-                // Symlinks sofort auf das echte Ziel auflösen: Treffer und ein
-                // späteres Apply arbeiten dann am kanonischen Pfad. Ein
-                // atomarer Austausch auf der LINK-URL würde sonst den Link
-                // selbst durch eine reguläre Datei ersetzen, statt das Ziel zu
-                // ändern (Review 2026-08-02).
-                let canonical = folder.canonicalFileURL
-                guard !exclusionMatcher.matches(folder),
-                      passesFilter(url: folder, filter: filter),
-                      seenFiles.insert(canonical.path).inserted else { continue }
-                let fileStarted = diagnostics?.beginFile()
-                let result = autoreleasepool {
-                    searchOneFile(at: canonical, plan: searchPlan,
-                                  maxMatches: min(maxResultsPerFile,
-                                                  maxTotalMatches - totalSoFar),
-                                  shouldCancel: shouldCancel)
-                }
-                if let fileStarted { diagnostics?.fileSearchSeconds += ProcessInfo.processInfo.systemUptime - fileStarted }
-                if shouldCancel() { return .empty }
-                if result.skipped != nil || !result.matches.isEmpty { perFile.append(result) }
-                totalSoFar += result.totalMatches
-                if totalSoFar >= maxTotalMatches { capped = true; break outerLoop }
-                continue
-            }
-            // `rg --files` ist hier der schnelle Standardpfad. Er liefert
-            // nullgetrennte Dateinamen und respektiert dank `--no-ignore`
-            // bewusst NICHT .gitignore — exakt wie die frühere Rekursion.
-            // Nur ein echter Start-/Ressourcenfehler darf auf FileManager
-            // zurückfallen. Timeout, Abbruch oder gekürzte Ausgabe sind KEINE
-            // vollständige Dateiliste und werden deshalb sichtbar gemeldet.
+            // Einzelne Datei und Ordner liefern Kandidaten für denselben
+            // Suchpfad: Dateibasis, Abbruch und Treffergrenzen dürfen nicht
+            // davon abhängen, wie eine Datei in das Such-Set gelangt ist.
             let urls: [URL]
-            let enumerationStarted = diagnostics.map { _ in ProcessInfo.processInfo.systemUptime }
-            do {
-                urls = try RipgrepFileEnumerator.files(in: folder,
-                                                       excludedPatterns: excludedPatterns,
-                                                       shouldCancel: shouldCancel)
-            } catch RipgrepFileEnumerator.Failure.unavailable {
+            if !rootIsDirectory.boolValue {
+                urls = [folder]
+            } else {
+                // `rg --files` ist hier der schnelle Standardpfad. Er liefert
+                // nullgetrennte Dateinamen und respektiert dank `--no-ignore`
+                // bewusst NICHT .gitignore — exakt wie die frühere Rekursion.
+                // Nur ein echter Start-/Ressourcenfehler darf auf FileManager
+                // zurückfallen. Timeout, Abbruch oder gekürzte Ausgabe sind KEINE
+                // vollständige Dateiliste und werden deshalb sichtbar gemeldet.
+                let enumerationStarted = diagnostics.map { _ in ProcessInfo.processInfo.systemUptime }
                 do {
-                    urls = try legacyFileURLs(in: folder,
-                                              shouldCancel: shouldCancel)
-                } catch {
+                    urls = try RipgrepFileEnumerator.files(in: folder,
+                                                           excludedPatterns: excludedPatterns,
+                                                           shouldCancel: shouldCancel)
+                } catch RipgrepFileEnumerator.Failure.unavailable {
+                    do {
+                        urls = try legacyFileURLs(in: folder,
+                                                  shouldCancel: shouldCancel)
+                    } catch {
+                        return .empty
+                    }
+                } catch RipgrepFileEnumerator.Failure.cancelled {
                     return .empty
+                } catch let failure as RipgrepFileEnumerator.Failure {
+                    return failedEnumerationResult(failure)
+                } catch {
+                    return Result(
+                        perFile: [],
+                        invalidPatternMessage: L10n.format(
+                            "Die Ordnersuche konnte die Dateiliste nicht vollständig lesen: %@",
+                            error.localizedDescription),
+                        wasCapped: false)
                 }
-            } catch RipgrepFileEnumerator.Failure.cancelled {
-                return .empty
-            } catch let failure as RipgrepFileEnumerator.Failure {
-                return failedEnumerationResult(failure)
-            } catch {
-                return Result(
-                    perFile: [],
-                    invalidPatternMessage: L10n.format(
-                        "Die Ordnersuche konnte die Dateiliste nicht vollständig lesen: %@",
-                        error.localizedDescription),
-                    wasCapped: false)
-            }
-            if let enumerationStarted {
-                diagnostics?.enumerationSeconds += ProcessInfo.processInfo.systemUptime - enumerationStarted
-                diagnostics?.candidateCount += urls.count
+                if let enumerationStarted {
+                    diagnostics?.enumerationSeconds += ProcessInfo.processInfo.systemUptime - enumerationStarted
+                    diagnostics?.candidateCount += urls.count
+                }
             }
             var packageCache = PackageMembershipCache(root: folder)
             for url in urls {
@@ -293,20 +275,21 @@ enum FolderSearch {
                 // würden etwa `.app`- oder `.bundle`-Inhalte anders als im
                 // bisherigen FileManager-Pfad durchsuchbar. Der Cache prüft
                 // jeden Elternordner höchstens einmal pro Suchwurzel.
-                guard !packageCache.contains(url) else { continue }
+                guard !rootIsDirectory.boolValue || !packageCache.contains(url) else { continue }
                 // Die Dateisystemauflösung gehört zum ohnehin abgekoppelten
                 // Suchlauf. Das veröffentlichte Ergebnis trägt anschließend
                 // schon die stabile URL; Navigation und Apply müssen sie auf
                 // dem Main-Thread nur noch als Wert vergleichen.
+                // Ein späterer atomarer Austausch trifft damit das echte Ziel
+                // und ersetzt keinen Symlink durch eine reguläre Datei.
                 let canonical = url.canonicalFileURL
                 guard seenFiles.insert(canonical.path).inserted else { continue }
 
                 // Datei durchsuchen. Der effektive Pro-Datei-Cap ist das
                 // Minimum aus `maxResultsPerFile` und dem noch verfügbaren
-                // Rest bis zum Gesamt-Cap — so wird die Datei nie über den
-                // Gesamt-Cap hinaus gelesen (vermeidet unnötige Arbeit UND
-                // stellt sicher, dass totalMatches nach dem Cap-Abbruch
-                // tatsächlich ≤ maxTotalMatches ist).
+                // Rest bis zum Gesamt-Cap. Das begrenzt die sichtbaren
+                // Treffer; die Datei wird trotzdem vollständig gezählt,
+                // weshalb totalMatches über maxTotalMatches liegen kann.
                 let remaining = maxTotalMatches - totalSoFar
                 let effectivePerFile = min(maxResultsPerFile, remaining)
                 // Foundation/FileHandle erzeugt beim Lesen temporäre

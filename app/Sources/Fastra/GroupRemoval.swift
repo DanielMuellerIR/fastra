@@ -97,7 +97,7 @@ enum GroupRemoval {
     /// Ziffernfolgen (`$12` referenziert Gruppe 12, nicht Gruppe 1).
     static func references(_ replacement: String, group number: Int) -> Bool {
         var found = false
-        scanReferences(in: replacement) { refNumber, _ in
+        ReplacementReferences.scan(in: replacement) { refNumber, _ in
             if refNumber == number { found = true }
         }
         return found
@@ -106,57 +106,8 @@ enum GroupRemoval {
     /// Schiebt alle `$N`-Referenzen mit N > `above` um eins herunter.
     /// `$0` (ganzer Treffer) und Referenzen ≤ `above` bleiben unverändert.
     static func shiftReferencesDown(in replacement: String, above: Int) -> String {
-        var result = ""
-        var lastEnd = replacement.startIndex
-        scanReferences(in: replacement) { refNumber, range in
-            result += replacement[lastEnd..<range.lowerBound]
-            if refNumber > above {
-                result += "$\(refNumber - 1)"
-            } else {
-                result += replacement[range]
-            }
-            lastEnd = range.upperBound
-        }
-        result += replacement[lastEnd...]
-        return result
-    }
-
-    /// Läuft über das Replace-Template und ruft `handler` für jede echte
-    /// `$N`-Referenz auf (Range inklusive `$`). Escape-Regeln des
-    /// NSRegularExpression-Templates: `\$` ist ein literales Dollar,
-    /// `\\` ein literaler Backslash.
-    private static func scanReferences(in replacement: String,
-                                       _ handler: (Int, Range<String.Index>) -> Void) {
-        var index = replacement.startIndex
-        var escaped = false
-        while index < replacement.endIndex {
-            let ch = replacement[index]
-            if escaped {
-                // Das Zeichen nach einem Backslash ist immer literal.
-                escaped = false
-                index = replacement.index(after: index)
-                continue
-            }
-            if ch == "\\" {
-                escaped = true
-                index = replacement.index(after: index)
-                continue
-            }
-            if ch == "$" {
-                // Maximale Ziffernfolge nach dem $ einsammeln.
-                var digitsEnd = replacement.index(after: index)
-                while digitsEnd < replacement.endIndex,
-                      replacement[digitsEnd].isNumber {
-                    digitsEnd = replacement.index(after: digitsEnd)
-                }
-                if digitsEnd > replacement.index(after: index),
-                   let number = Int(replacement[replacement.index(after: index)..<digitsEnd]) {
-                    handler(number, index..<digitsEnd)
-                    index = digitsEnd
-                    continue
-                }
-            }
-            index = replacement.index(after: index)
+        ReplacementReferences.rewrite(in: replacement) { number in
+            number > above ? number - 1 : nil
         }
     }
 }

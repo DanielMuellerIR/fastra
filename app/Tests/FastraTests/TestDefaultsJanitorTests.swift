@@ -2,56 +2,9 @@ import Foundation
 import Testing
 @testable import Fastra
 
-// Viele Tests legen pro Lauf eigene UserDefaults-Suiten mit UUID-Namen an
-// (z. B. "Fastra-DiffLifecycle-<UUID>"). `removePersistentDomain` leert die
-// Suite zwar, aber cfprefsd lässt die dann leere Plist-Datei in
-// ~/Library/Preferences häufig liegen. Über Monate sammeln sich so tausende
-// tote Domains in `defaults domains` an (Befund 2026-07-25: über 8000 Stück).
-// Der Janitor unten räumt diese Reste bei jedem vollen `swift test` auf und
-// hält den Bestand damit dauerhaft klein.
-
-enum TestDefaultsJanitor {
-    /// UUID-Suffix, wie `UUID().uuidString` es erzeugt (Großbuchstaben).
-    private static let uuidPattern =
-        "[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}"
-
-    /// Nur Namen anfassen, die eindeutig aus unseren Tests stammen: bekanntes
-    /// Präfix UND UUID am Ende. Echte App-Domains (io.github.fastra…) haben
-    /// nie ein UUID-Suffix und bleiben dadurch garantiert unberührt.
-    private static let stalePattern =
-        "^(Fastra-|fastra-|ff-|fastra\\.tests\\.)[A-Za-z0-9._-]*" + uuidPattern + "$"
-
-    /// Löscht verwaiste Test-Suiten aus früheren Läufen. Gelöscht wird nur,
-    /// was dem Muster oben entspricht und älter als eine Stunde ist — so
-    /// behalten parallel laufende Testprozesse ihre noch aktiven Suiten.
-    /// Rückgabe: Anzahl der entfernten Domains.
-    @discardableResult
-    static func purgeStaleDomains(olderThan age: TimeInterval = 3600,
-                                  preferencesDirectory: URL? = nil) throws -> Int {
-        let preferences = TestDefaultsPurge.resolvedPreferencesDirectory(
-            explicit: preferencesDirectory)
-        let regex = try NSRegularExpression(pattern: stalePattern)
-        let cutoff = Date().addingTimeInterval(-age)
-        var removed = 0
-        let entries = try FileManager.default.contentsOfDirectory(
-            at: preferences, includingPropertiesForKeys: [.contentModificationDateKey],
-            options: [.skipsHiddenFiles])
-        for url in entries where url.pathExtension == "plist" {
-            let name = url.deletingPathExtension().lastPathComponent
-            let range = NSRange(name.startIndex..., in: name)
-            guard regex.firstMatch(in: name, range: range) != nil else { continue }
-            let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
-                .contentModificationDate ?? .distantPast
-            guard modified < cutoff else { continue }
-            // Erst die Suite über cfprefsd leeren, dann die Datei entfernen.
-            // Das Löschen darf still scheitern (z. B. Rennen mit cfprefsd);
-            // der nächste Lauf räumt den Rest auf.
-            UserDefaults.standard.removePersistentDomain(forName: name)
-            if (try? FileManager.default.removeItem(at: url)) != nil { removed += 1 }
-        }
-        return removed
-    }
-}
+// Preferences haben genau einen Aufräumkern: TestDefaultsPurge. Die Tests
+// hier prüfen ihn an eigenen Verzeichnissen; TestSuiteDefaults übernimmt
+// den echten Abschluss einmalig über atexit statt über einen assertfreien Test.
 
 // Dieselbe Klasse Rückstand, andere Quelle: Der SIGKILL-Pfad-Test in
 // `Tool4DLSPTests` startet bewusst einen Kindprozess, der SIGTERM blockiert und
@@ -158,7 +111,7 @@ enum TestFixtureProcessJanitor {
 
 @Test("Janitor beendet verwaiste Fixture-Prozesse, verschont frische",
       .timeLimit(.minutes(1)))
-func janitorPurgesOnlyStaleFixtureProcesses() throws {
+func serialRunnerIntegrationJanitorPurgesOnlyStaleFixtureProcesses() throws {
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("fastra-fixture-janitor-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -174,6 +127,7 @@ func janitorPurgesOnlyStaleFixtureProcesses() throws {
     let fixture = """
     #!/bin/sh
     trap '' TERM
+    : > "$0.ready"
     while :; do /bin/sleep 1; done
     """
     func makeScript(uuid: String) throws -> URL {
@@ -196,11 +150,11 @@ func janitorPurgesOnlyStaleFixtureProcesses() throws {
     // scheinbarer Hänger des Tests selbst).
     func launch(_ script: URL) throws -> pid_t {
         var actions: posix_spawn_file_actions_t?
-        posix_spawn_file_actions_init(&actions)
+        try #require(posix_spawn_file_actions_init(&actions) == 0)
         defer { posix_spawn_file_actions_destroy(&actions) }
         for descriptor in [STDOUT_FILENO, STDERR_FILENO] {
-            posix_spawn_file_actions_addopen(&actions, descriptor, "/dev/null",
-                                             O_WRONLY, 0)
+            try #require(posix_spawn_file_actions_addopen(
+                &actions, descriptor, "/dev/null", O_WRONLY, 0) == 0)
         }
         var pid: pid_t = 0
         let spawned = script.path.withCString { executable -> Int32 in
@@ -208,7 +162,10 @@ func janitorPurgesOnlyStaleFixtureProcesses() throws {
             defer { argv.forEach { free($0) } }
             return posix_spawn(&pid, executable, &actions, nil, &argv, environ)
         }
-        #expect(spawned == 0, "Fixture konnte nicht gestartet werden (errno \(spawned))")
+        // Eine fehlgeschlagene Erzeugung lässt pid bei 0. Diese Zahl darf
+        // niemals an kill gehen: Sie bezeichnet die gesamte Prozessgruppe.
+        try #require(spawned == 0 && pid > 0,
+                     "Fixture konnte nicht gestartet werden (errno \(spawned))")
         return pid
     }
 
@@ -216,42 +173,55 @@ func janitorPurgesOnlyStaleFixtureProcesses() throws {
     /// Prozess laufen, auch für den, den der Janitor eigentlich killen soll:
     /// Scheitert der Janitor, darf der Rest nicht als verwaister Prozess
     /// zurückbleiben — sonst wird aus einem roten Test wieder ein Hänger.
-    func terminate(_ pid: pid_t) {
-        kill(pid, SIGKILL)
+    func terminate(_ pid: inout pid_t?) {
+        // Solange das Kind noch nicht abgeholt ist, kann seine PID nicht
+        // neu vergeben werden. Bereits abgeholte Kinder werden nie signalisiert.
+        guard stillRunning(&pid), let child = pid else { return }
+        kill(child, SIGKILL)
         var ignored: Int32 = 0
-        waitpid(pid, &ignored, 0)
+        while waitpid(child, &ignored, 0) == -1 && errno == EINTR {}
+        pid = nil
     }
 
     /// `true`, solange der Kindprozess noch nicht beendet ist. Über `WNOHANG`,
     /// damit hier nichts blockieren kann.
-    func stillRunning(_ pid: pid_t) -> Bool {
+    func stillRunning(_ pid: inout pid_t?) -> Bool {
+        guard let child = pid else { return false }
         var status: Int32 = 0
-        return waitpid(pid, &status, WNOHANG) == 0
+        var result: pid_t
+        repeat {
+            result = waitpid(child, &status, WNOHANG)
+        } while result == -1 && errno == EINTR
+        if result == 0 { return true }
+        if result == child || (result == -1 && errno == ECHILD) { pid = nil }
+        return false
     }
 
     let stale = try makeScript(uuid: UUID().uuidString)
-    let stalePID = try launch(stale)
+    var stalePID: pid_t? = try launch(stale)
+    defer { terminate(&stalePID) }
     try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -7200)],
                                           ofItemAtPath: stale.path)
     let fresh = try makeScript(uuid: UUID().uuidString)
-    let freshPID = try launch(fresh)
-    // BEIDE aufräumen, unabhängig vom Ergebnis. Ein zweiter `terminate` auf
-    // einen längst abgeholten Prozess ist harmlos (kill schlägt fehl, waitpid
-    // liefert -1).
-    defer {
-        terminate(freshPID)
-        terminate(stalePID)
-    }
+    var freshPID: pid_t? = try launch(fresh)
+    // Jeden erfolgreichen Start sofort absichern, auch wenn schon der
+    // Aufbau der zweiten Fixture wirft. Abgeholte PIDs werden oben verworfen.
+    defer { terminate(&freshPID) }
 
+    // Erst nach der installierten Trap signalisieren. Ein fester Zeitabstand
+    // beweist unter Last nicht, dass die Shell schon so weit gekommen ist.
+    for script in [stale, fresh] {
+        let ready = script.appendingPathExtension("ready")
+        for _ in 0..<100 where !FileManager.default.fileExists(atPath: ready.path) {
+            usleep(10_000)
+        }
+        try #require(FileManager.default.fileExists(atPath: ready.path),
+                     "Fixture hat ihre TERM-Trap nicht rechtzeitig eingerichtet")
+    }
     // Belegen, dass SIGTERM hier NICHT genügt — sonst wäre die Kernaussage des
     // Janitors (SIGKILL ist Pflicht) nicht geprüft, sondern nur behauptet.
-    kill(stalePID, SIGTERM)
-    var termSurvived = false
-    for _ in 0..<20 where stillRunning(stalePID) {
-        usleep(20_000)
-        termSurvived = true
-    }
-    #expect(termSurvived, "Fixture muss SIGTERM überleben")
+    #expect(kill(try #require(stalePID), SIGTERM) == 0)
+    #expect(stillRunning(&stalePID), "Fixture muss SIGTERM überleben")
 
     #expect(try TestFixtureProcessJanitor.purgeStaleFixtures(in: directory)
             == .init(scriptsRemoved: 1, processesKilled: 1))
@@ -267,7 +237,12 @@ func janitorPurgesOnlyStaleFixtureProcesses() throws {
     var staleStatus: Int32 = 0
     var reaped = false
     for _ in 0..<250 where !reaped {          // höchstens 5 s
-        if waitpid(stalePID, &staleStatus, WNOHANG) == stalePID { reaped = true; break }
+        guard let child = stalePID else { break }
+        if waitpid(child, &staleStatus, WNOHANG) == child {
+            stalePID = nil
+            reaped = true
+            break
+        }
         usleep(20_000)
     }
     #expect(reaped, "Der alte Fixture-Prozess muss beendet und abholbar sein")
@@ -275,7 +250,7 @@ func janitorPurgesOnlyStaleFixtureProcesses() throws {
         #expect(staleStatus & 0x7f == SIGKILL,
                 "Die TERM-blockierende Fixture darf nur per SIGKILL enden")
     }
-    #expect(stillRunning(freshPID), "Frischer Prozess muss weiterlaufen")
+    #expect(stillRunning(&freshPID), "Frischer Prozess muss weiterlaufen")
 }
 
 @Test("Aufräumlauf: verwaiste Fixture-Prozesse früherer Läufe beenden")
@@ -293,7 +268,7 @@ func janitorPurgesOnlyStaleTestDomains() throws {
         at: preferences, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: preferences) }
     let uuid = UUID().uuidString
-    let staleName = "fastra-janitor-selftest-\(uuid)"
+    let staleName = "FastraTests.Janitor.\(uuid.lowercased()).probe"
     let staleURL = preferences.appendingPathComponent(staleName + ".plist")
     // Eine künstlich gealterte Test-Domain-Plist direkt anlegen …
     try Data("bplist-fake".utf8).write(to: staleURL)
@@ -303,21 +278,31 @@ func janitorPurgesOnlyStaleTestDomains() throws {
     let freshName = "fastra-janitor-fresh-\(UUID().uuidString)"
     let freshURL = preferences.appendingPathComponent(freshName + ".plist")
     try Data("bplist-fake".utf8).write(to: freshURL)
+    let foreignURL = preferences.appendingPathComponent("org.example.\(uuid).plist")
+    let fixedURL = preferences.appendingPathComponent("Fastra-feste-suite.plist")
+    let protectedContents = Data("fremder Bestand".utf8)
+    for url in [foreignURL, fixedURL] {
+        try protectedContents.write(to: url)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSinceNow: -7200)],
+            ofItemAtPath: url.path)
+    }
+    // Auch eine reine CFPreferences-Löschung kann verzögert eine leere Plist
+    // erzeugen. Den zufälligen eigenen Namen deshalb dem äußeren Runner melden.
+    try #require(TestDefaultsPurge.register(staleName))
     defer { try? FileManager.default.removeItem(at: freshURL) }
     defer { try? FileManager.default.removeItem(at: staleURL) }
 
-    try TestDefaultsJanitor.purgeStaleDomains(preferencesDirectory: preferences)
+    #expect(TestDefaultsPurge.purgeStale(preferencesDirectory: preferences) == 1)
 
     #expect(!FileManager.default.fileExists(atPath: staleURL.path),
             "Alte Test-Domain muss entfernt werden")
     #expect(FileManager.default.fileExists(atPath: freshURL.path),
             "Frische Domain (möglicher Parallel-Lauf) muss erhalten bleiben")
-}
-
-@Test("Aufräumlauf: verwaiste Test-Domains früherer Läufe entfernen")
-func purgeStaleTestDefaultsDomains() throws {
-    // Kein Assert auf eine Mindestzahl: Auf einem sauberen System ist 0 korrekt.
-    try TestDefaultsJanitor.purgeStaleDomains()
+    for url in [foreignURL, fixedURL] {
+        #expect(try Data(contentsOf: url) == protectedContents,
+                "Alte fremde und nicht eindeutig zugeordnete Domains bleiben unverändert")
+    }
 }
 
 @Test("TestDefaultsPurge erkennt nur UUID-Testdomains und entfernt Registriertes")

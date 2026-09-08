@@ -20,6 +20,7 @@ import io
 
 VERSION = 1
 MAX_RUNS = 20
+COMMAND_TIMEOUT_SECONDS = 5
 MAX_CORRUPT_FILES = 3
 LONG_MAX_AGE_DAYS = 7
 LONG_MAX_RELEVANT_COMMITS = 20
@@ -35,18 +36,23 @@ RELEVANT_PATHS = [
 ]
 
 
-def run_text(arguments: list[str]) -> str:
+def run_command(arguments: list[str]) -> subprocess.CompletedProcess[str] | None:
+    """Kurze lokale Abfragen begrenzen, ohne rohe Systemausgaben offenzulegen."""
     try:
-        result = subprocess.run(
+        return subprocess.run(
             arguments,
-            check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
+            timeout=COMMAND_TIMEOUT_SECONDS,
         )
-        return result.stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return ""
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def run_text(arguments: list[str]) -> str:
+    result = run_command(arguments)
+    return result.stdout.strip() if result is not None and result.returncode == 0 else ""
 
 
 def machine_key() -> str:
@@ -341,15 +347,7 @@ def newest_long_run(data: dict) -> dict | None:
 
 
 def git_result(repository: str, arguments: list[str]) -> subprocess.CompletedProcess[str] | None:
-    try:
-        return subprocess.run(
-            ["git", "-C", repository, *arguments],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
-    except OSError:
-        return None
+    return run_command(["git", "-C", repository, *arguments])
 
 
 def report_long_status(data: dict, repository: str) -> None:
@@ -368,17 +366,27 @@ def report_long_status(data: dict, repository: str) -> None:
 
     head = latest.get("head", "")
     ancestor = git_result(repository, ["merge-base", "--is-ancestor", head, "HEAD"])
-    if ancestor is None or ancestor.returncode != 0:
+    if ancestor is None or ancestor.returncode not in (0, 1):
+        print("PERFORMANCE-WARN Die Historie konnte nicht geprüft werden.")
+        return
+    if ancestor.returncode == 1:
         print("PERFORMANCE-WARN Der letzte Langlauf gehört nicht zur aktuellen Historie.")
         return
     count = git_result(
         repository,
         ["rev-list", "--count", f"{head}..HEAD", "--", *RELEVANT_PATHS],
     )
+    # Fehlende oder beschädigte Git-Ausgabe ist kein Beleg für null Änderungen.
+    # Die Warnung bleibt wie die übrigen Baseline-Hinweise rein informativ.
     try:
-        relevant = int(count.stdout.strip()) if count and count.returncode == 0 else 0
+        if count is None or count.returncode != 0:
+            raise ValueError("Git-Abfrage fehlgeschlagen")
+        relevant = int(count.stdout.strip())
+        if relevant < 0:
+            raise ValueError("Negative Commit-Anzahl")
     except ValueError:
-        relevant = 0
+        print("PERFORMANCE-WARN Der Änderungsabstand konnte nicht bestimmt werden.")
+        return
     if relevant >= LONG_MAX_RELEVANT_COMMITS:
         print(
             f"PERFORMANCE-WARN Seit dem letzten Langlauf gab es {relevant} relevante Änderungen."

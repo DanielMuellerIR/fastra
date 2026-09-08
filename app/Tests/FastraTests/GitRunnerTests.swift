@@ -436,7 +436,12 @@ func gitRunner_descendantPipeDoesNotBlockCompletion() async throws {
     defer { try? FileManager.default.removeItem(at: directory) }
     let pidFile = directory.appendingPathComponent("child.pid")
     let script = try temporaryExecutable("""
-    /bin/sleep 30 &
+    if [[ "$1" == child ]]; then
+      zmodload zsh/zselect || exit 1
+      zselect -t 3000
+      exit 0
+    fi
+    "$0" child &
     print -r -- "$!" > "$1"
     exit 0
     """)
@@ -452,7 +457,10 @@ func gitRunner_descendantPipeDoesNotBlockCompletion() async throws {
     let pidText = try String(contentsOf: pidFile, encoding: .utf8)
         .trimmingCharacters(in: .whitespacesAndNewlines)
     let childPID = try #require(pid_t(pidText))
-    defer { Darwin.kill(childPID, SIGKILL) }
+    // Der Kindprozess behält den zufälligen Skriptpfad in seiner Kommandozeile.
+    // zselect wartet 30 Sekunden ohne weiteren Kindprozess. Der Notausgang
+    // prüft Pfad und Startidentität, statt eine bereits neu vergebene PID zu töten.
+    defer { stopTestFixtureProcess(childPID, marker: script.path) }
     var disappeared = false
     for _ in 0..<500 {
         if Darwin.kill(childPID, 0) != 0 && errno == ESRCH {

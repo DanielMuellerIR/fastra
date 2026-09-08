@@ -163,6 +163,10 @@ enum PrintSyntaxHighlighting {
                 finish(.plain)
             }
         }
+        // Der 4D-Provider antwortet synchron. Eine nachträglich eingetragene
+        // Frist würde sich über `finish` selbst halten: Der bereits fertige
+        // Abschluss löscht `deadline` bei einem zweiten Aufruf nicht mehr.
+        guard !analysis.finished else { return }
         // Als abbrechbarer Arbeitsblock: Nach einer rechtzeitigen Antwort
         // würde die Frist-Closure sonst `analysis` (TextView mit bis zu zwei
         // Millionen Zeichen, Provider, Syntaxbaum) volle zehn Sekunden

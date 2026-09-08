@@ -983,7 +983,9 @@ Die Fußzeile zeigt Encoding und Zeilenende des aktiven Tabs:
 - **Zeilenenden-Chip:** wählt LF, CRLF oder CR — die Umstellung wirkt
   beim nächsten Speichern.
 
-UTF-32-Dateien mit BOM werden in beiden Byte-Reihenfolgen erkannt. Bei
+UTF-32-Dateien mit BOM werden in beiden Byte-Reihenfolgen erkannt. Passt der
+Inhalt nicht zur BOM oder endet er mit einer unvollständigen UTF-16-/UTF-32-
+Codeeinheit, meldet Fastra einen Lesefehler. Bei
 BOM-freien älteren Textdateien unterscheidet Fastra Windows-1252-Zeichen wie
 typografische Anführungszeichen und das Eurozeichen von Latin-1. Erkennt
 Fastra das Format nicht sicher, bleibt die Datei unverändert.

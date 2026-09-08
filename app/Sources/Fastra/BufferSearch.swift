@@ -300,21 +300,13 @@ enum BufferSearch {
     /// liefen so tausende Editor-Zeilen in wenige „Zeilen" zusammen → falsche
     /// Zeilennummern in der Trefferliste und ein ins Leere zielender Sprung.
     static func collectLineStarts(in ns: NSString) -> [Int] {
-        collectLineStarts(in: ns, shouldCancel: { false }) ?? [0]
-    }
-
-    /// Abbrechbare Variante für die Live-Suche. Die öffentliche Hilfsfunktion
-    /// oben bleibt total, weil Cursor-/Sprungberechnungen kein Abbruchsignal
-    /// besitzen und weiterhin immer eine gültige `[0, …]`-Liste brauchen.
-    private static func collectLineStarts(in ns: NSString,
-                                          shouldCancel: () -> Bool) -> [Int]? {
+        // Die Live-Suche zählt inzwischen direkt bis zum aktuellen Treffer.
+        // Diesen vollständigen Index brauchen nur noch Cursorberechnungen.
         var starts: [Int] = [0]
         let length = ns.length
         starts.reserveCapacity(length / 40)  // grobe Schätzung
         var index = 0
-        var inspectedLines = 0
         while index < length {
-            if inspectedLines & 0x3FF == 0, shouldCancel() { return nil }
             var end = NSNotFound
             ns.getLineStart(nil, end: &end, contentsEnd: nil,
                             for: NSRange(location: index, length: 0))
@@ -323,7 +315,6 @@ enum BufferSearch {
             if end == NSNotFound || end <= index { break }
             if end < length { starts.append(end) }
             index = end
-            inspectedLines += 1
         }
         return starts
     }
@@ -381,29 +372,9 @@ enum BufferSearch {
         return NSRange(location: offset, length: 0)
     }
 
-    /// `lineStarts` ist die sortierte Liste aller Zeilen-Start-Offsets
-    /// (`[0, …]`, siehe `collectLineStarts`). Via Binärsuche bestimmen wir
-    /// den größten Start ≤ `offset` — sein Index +1 ist die 1-basierte Zeile,
-    /// Spalte = Offset minus diesem Start +1 (UTF-16, konsistent mit dem Editor).
-    static func lineColumn(forOffset offset: Int, lineStarts: [Int]) -> (line: Int, column: Int) {
-        // Größter Index `idx` mit lineStarts[idx] <= offset.
-        var lo = 0
-        var hi = lineStarts.count
-        while lo < hi {
-            let mid = (lo + hi) / 2
-            if lineStarts[mid] <= offset {
-                lo = mid + 1
-            } else {
-                hi = mid
-            }
-        }
-        let idx = max(0, lo - 1)
-        return (idx + 1, offset - lineStarts[idx] + 1)
-    }
-
     /// Berechnet Zeile/Spalte des ENDES (exklusiv) eines Treffers aus dessen
     /// Start-Zeile/-Spalte und Treffer-Text. Spalten 1-basiert, UTF-16 —
-    /// konsistent mit `lineColumn`. Mehrzeilige Treffer (Treffer-Text enthält
+    /// konsistent mit der Suche. Mehrzeilige Treffer (Treffer-Text enthält
     /// `\n`) werden über mehrere Zeilen korrekt aufgelöst.
     ///
     /// Wird für den Editor-Sprung gebraucht: dort selektieren wir den Treffer

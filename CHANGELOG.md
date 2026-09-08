@@ -7,6 +7,43 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.122.5] — 2026-09-08
+
+### Behoben
+
+- Datei-Vergleiche beachten den Abbruch auch innerhalb eines großen
+  zusammenhängenden Änderungsblocks. Beim Schließen oder Ersetzen eines
+  Vergleichs wird dessen Zeilenhervorhebung nicht mehr bis zum Blockende
+  weiterberechnet.
+
+## [v1.122.4] — 2026-09-08
+
+### Behoben
+
+- Beschädigte Unicode-Dateien mit BOM werden beim Laden nicht mehr mit
+  einem anderen Encoding geöffnet. Unvollständige UTF-16-/UTF-32-Einheiten
+  am Dateiende werden beim Laden, Abschnittslesen und Planen von Ersetzungen
+  abgelehnt, statt ihre letzten Bytes still zu verwerfen.
+
+## [v1.122.3] — 2026-09-08
+
+### Behoben
+
+- Beim Definieren einer Capture-Gruppe bleiben Ersetzungsreferenzen nach
+  einem literalen Backslash auf ihre bisherige Gruppe bezogen. Einfügen und
+  Entfernen von Gruppen verwenden dafür dieselbe Referenzerkennung.
+- Zu große Gruppennummern im Ersetzen-Feld bleiben beim Definieren einer
+  Gruppe unverändert, statt einen Überlauf oder eine Ersetzung durch `$0`
+  auszulösen.
+
+## [v1.122.2] — 2026-09-08
+
+### Behoben
+
+- Die Syntaxanalyse für den 4D-Ausdruck gibt ihre Textquelle und ihren
+  Abschluss nach der synchronen Antwort wieder frei. Wiederholtes Drucken
+  hielt diese Objekte bisher dauerhaft im Speicher.
+
 ## [v1.122.1] — 2026-09-06
 
 Abarbeitung des Code-Reviews zu 1.118.6–1.122.0 (16 Funde).

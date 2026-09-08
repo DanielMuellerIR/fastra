@@ -219,15 +219,27 @@ func bundleVersionRejectsFIFOAndOversizedPlist() throws {
                         0o644) == 0)
     #expect(Tool4DDiscovery.bundleVersion(appURL: fifoApp) == nil)
 
-    // Eine übergroße „Info.plist" bleibt draußen, statt vollständig in den
-    // Speicher geladen zu werden.
+    // Eine gültige Plist direkt an der Grenze wird gelesen; ein zusätzliches
+    // Leerzeichen macht sie zu groß, ohne die Plist-Syntax zu beschädigen.
+    // Nur ungültiger Inhalt würde auch ohne Größenprüfung abgelehnt.
     let hugeApp = scratch.appendingPathComponent("huge/4D.app", isDirectory: true)
     let hugeContents = hugeApp.appendingPathComponent("Contents", isDirectory: true)
     try FileManager.default.createDirectory(at: hugeContents,
                                             withIntermediateDirectories: true)
-    let oversized = Data(repeating: UInt8(ascii: " "),
-                         count: Tool4DDiscovery.maximumInfoPlistBytes + 1)
-    try oversized.write(to: hugeContents.appendingPathComponent("Info.plist"))
+    var oversized = try PropertyListSerialization.data(
+        fromPropertyList: ["CFBundleShortVersionString": "21.1"],
+        format: .xml, options: 0)
+    oversized.append(Data(repeating: UInt8(ascii: " "),
+                         count: Tool4DDiscovery.maximumInfoPlistBytes - oversized.count))
+    let plistURL = hugeContents.appendingPathComponent("Info.plist")
+    try oversized.write(to: plistURL)
+    #expect(Tool4DDiscovery.bundleVersion(appURL: hugeApp) == "21.1")
+
+    oversized.append(UInt8(ascii: " "))
+    let parsed = try PropertyListSerialization.propertyList(
+        from: oversized, options: [], format: nil) as? [String: String]
+    #expect(parsed?["CFBundleShortVersionString"] == "21.1")
+    try oversized.write(to: plistURL)
     #expect(Tool4DDiscovery.bundleVersion(appURL: hugeApp) == nil)
 }
 

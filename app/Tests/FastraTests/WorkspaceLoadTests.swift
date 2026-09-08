@@ -186,40 +186,24 @@ func wsLoad_tabClosedBeforeCompletion() async throws {
 
     let ws = Workspace(defaults: defaults)
 
-    // Eine größere Datei erzeugen, damit der Hintergrund-Task etwas Zeit braucht.
-    // 500 KB sollten reichen, damit wir den Tab schließen können, bevor der
-    // Task fertig ist — auf schnellen Geräten ist das ein Race, deshalb auch
-    // der Generation-Guard-Test weiter unten.
-    let bigContent = String(repeating: "Eine Zeile mit etwas Text.\n", count: 20_000)
-    let url = try writeTmpUTF8(bigContent)
+    let url = try writeTmpUTF8("Datei wird vor der Lade-Completion geschlossen.\n")
     defer { try? FileManager.default.removeItem(at: url) }
 
-    var completionResult: Bool? = nil
-    ws.loadFile(at: url) { ok in completionResult = ok }
+    var completions: [Bool] = []
+    ws.loadFile(at: url) { completions.append($0) }
 
-    // Platzhalter-Tab sofort schließen (noch während isLoading = true).
-    if let idx = ws.tabs.firstIndex(where: { $0.url == url }) {
-        let tabID = ws.tabs[idx].id
-        ws.tabs.remove(at: idx)
-        // activeTabID korrigieren, falls der geschlossene Tab aktiv war.
-        if ws.activeTabID == tabID {
-            ws.activeTabID = ws.tabs.first?.id
-        }
-    }
+    // Laden und Schließen laufen bis zum ersten await im selben Main-Actor-
+    // Durchlauf. Die Completion kann hier noch nicht eingreifen; eine große
+    // Datei oder künstliche Verzögerung ist dafür nicht nötig.
+    let placeholder = try #require(ws.tabs.first(where: { $0.url == url }))
+    #expect(placeholder.isLoading)
+    ws.closeTab(id: placeholder.id)
 
-    // Auf Completion warten oder kurzen Timeout.
-    let deadline = Date().addingTimeInterval(5)
-    while completionResult == nil, Date() < deadline {
-        await Task.yield()
-    }
-
-    // Nach dem Schließen: kein Geister-Tab in der Liste.
-    #expect(ws.tabs.first(where: { $0.url == url }) == nil,
-            "Kein Geister-Tab nach Tab-Schließen vor Completion")
-    // Completion KANN false liefern (Tab weg → Guard) oder true (Race, Tab
-    // weg aber Task schrieb noch). Wichtiger: kein Absturz, kein Geister-Tab.
-    // completionResult darf nil geblieben sein (wenn Tab weg → Guard bricht ab).
-    // Wir prüfen nur: KEIN Geister-Tab existiert.
+    #expect(await waitUntil { !completions.isEmpty },
+            "Auch ein geschlossener Tab muss seinen Ladeauftrag abschließen")
+    #expect(completions == [false])
+    #expect(!ws.tabs.contains(where: { $0.url == url }),
+            "Die verspätete Completion darf den geschlossenen Tab nicht wiederherstellen")
 }
 
 // MARK: - Tests: Verworfener Platzhalter respektiert die aktuelle Tab-Wahl
@@ -732,11 +716,11 @@ func wsLoad_renamedReadDoesNotServeFolderMatchJumpOfOldPath() async throws {
         return try FileLoader.load(url: url)
     }
 
-    var firstOutcome: FileLoadOutcome?
+    var firstOutcomes: [FileLoadOutcome] = []
     let firstGeneration = ws.beginMatchJump()
     ws.loadFolderMatchFile(atCanonicalURL: original,
                            expectedDiskSnapshot: snapshot,
-                           jumpGeneration: firstGeneration) { firstOutcome = $0 }
+                           jumpGeneration: firstGeneration) { firstOutcomes.append($0) }
     #expect(await waitUntil { started.wait(timeout: .now()) == .success },
             "Der kontrollierte Dateiread muss begonnen haben")
     let placeholderID = try #require(ws.tabs.first(where: { $0.url == original })?.id)
@@ -747,21 +731,21 @@ func wsLoad_renamedReadDoesNotServeFolderMatchJumpOfOldPath() async throws {
     #expect(ws.tabs.first(where: { $0.id == placeholderID })?.url == renamed)
 
     // Zweiter Klick auf den noch sichtbaren Treffer des ALTEN Pfads.
-    var secondOutcome: FileLoadOutcome?
+    var secondOutcomes: [FileLoadOutcome] = []
     let secondGeneration = ws.beginMatchJump()
     ws.loadFolderMatchFile(atCanonicalURL: original,
                            expectedDiskSnapshot: snapshot,
-                           jumpGeneration: secondGeneration) { secondOutcome = $0 }
-    #expect(firstOutcome == .cancelled,
+                           jumpGeneration: secondGeneration) { secondOutcomes.append($0) }
+    #expect(firstOutcomes == [.cancelled],
             "Der ältere logische Auftrag muss durch den neueren abgelöst werden")
 
     mayFinish.signal()
-    #expect(await waitUntil { secondOutcome != nil })
+    #expect(await waitUntil { !secondOutcomes.isEmpty })
 
     // Der neueste Auftrag zeigt auf den alten Pfad; dort liegt seit der
     // Umbenennung nichts mehr. Er muss das melden statt den Erfolg der
     // umbenannten Datei zu übernehmen.
-    #expect(secondOutcome == .failed,
+    #expect(secondOutcomes == [.failed],
             "Der Sprung zum alten Pfad darf nicht das Ergebnis der umbenannten Datei bekommen")
     #expect(readURLs.urls.contains(original),
             "Der neueste Auftrag braucht einen eigenen Read auf seinem eigenen Pfad")
@@ -775,8 +759,10 @@ func wsLoad_renamedReadDoesNotServeFolderMatchJumpOfOldPath() async throws {
     let renamedTab = try #require(ws.tabs.first(where: { $0.id == placeholderID }))
     #expect(renamedTab.url == renamed)
     #expect(renamedTab.content == "Inhalt vor dem Umbenennen\n")
-    // Genau eine Meldung je logischem Auftrag: ein zweiter Aufruf derselben
-    // Completion würde den bereits gesetzten Wert überschreiben.
+    // Erst nach Abschluss beider Reads zählen: Auch die Completion des
+    // umbenannten Platzhalters darf keinen Auftrag ein zweites Mal melden.
+    #expect(firstOutcomes == [.cancelled])
+    #expect(secondOutcomes == [.failed])
     #expect(ws.tabs.filter { $0.url == original }.isEmpty,
             "Für den verschwundenen alten Pfad darf kein Platzhalter zurückbleiben")
 }

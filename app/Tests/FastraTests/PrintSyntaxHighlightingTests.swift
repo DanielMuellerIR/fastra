@@ -51,6 +51,37 @@ private func foregroundColors(in text: NSAttributedString) -> Set<NSColor> {
 @Suite("Syntaxfarben im Ausdruck")
 struct PrintSyntaxHighlightingTests {
 
+    @Test("Synchrone 4D-Druckanalyse gibt ihre Abschluss-Closure wieder frei")
+    @MainActor
+    func synchronousAnalysisReleasesCompletion() async {
+        // Das ausschließlich von der Completion gehaltene Objekt macht den
+        // Rückhaltezyklus sichtbar, ohne private Analyseobjekte offenzulegen.
+        weak var retainedByCompletion: NSObject?
+        var completions = 0
+        autoreleasepool {
+            let lifetime = NSObject()
+            retainedByCompletion = lifetime
+            PrintSyntaxHighlighting.analyze(
+                text: "If (True)\nEnd if", format: fourDFormat(),
+                fourDMethodIndex: .empty, timeout: 0
+            ) { [lifetime] outcome in
+                withExtendedLifetime(lifetime) {
+                    completions += 1
+                    guard case .colored(let ranges) = outcome else {
+                        Issue.record("4D-Analyse liefert keine Syntaxfarben")
+                        return
+                    }
+                    #expect(!ranges.isEmpty)
+                }
+            }
+            #expect(completions == 1, "4D antwortet bereits im Aufruf")
+        }
+        // Auch eine bereits fällige Frist darf weder die Completion halten
+        // noch ein zweites Ergebnis auslösen.
+        #expect(await waitUntil { retainedByCompletion == nil })
+        #expect(completions == 1)
+    }
+
     @Test("Der Druck-Farbsatz ist der helle Farbsatz mit schwarzem Grundtext")
     func printThemeIsLightWithBlackText() {
         let theme = PrintSyntaxHighlighting.printTheme(for: swiftFormat())
@@ -199,8 +230,8 @@ struct PrintSyntaxHighlightingTests {
         #expect(ranges.contains { $0.capture == .comment })
         #expect(ranges.contains { $0.capture == .keyword })
         #expect(ranges.contains { $0.capture == .string })
-        // Genau eine Rückmeldung — auch nach Ablauf der Frist keine zweite.
-        _ = await waitUntil(timeout: 0.2) { false }
+        // Bis zum abgeschlossenen Analyseergebnis genau eine Rückmeldung.
+        // Die lange Testfrist wird hier ausdrücklich nicht abgewartet.
         #expect(completions == 1)
 
         // Der fertige Drucktext trägt echte Tokenfarben bis in die letzte Zeile.
@@ -323,5 +354,50 @@ struct PrintSyntaxColorOptionTests {
         #expect(colors(true, highlights: highlights).contains(theme.keywords.color))
         #expect(!colors(false, highlights: highlights).contains(theme.keywords.color))
         #expect(!colors(true, highlights: []).contains(theme.keywords.color))
+    }
+
+    @Test("Farb- und Nummernschalter ändern den Text des laufenden Druckauftrags")
+    @MainActor
+    func togglesRebuildCurrentPrintOperation() throws {
+        let suite = "fastra-test-print-color-toggle-\(UUID().uuidString)"
+        let defaults = testSuiteDefaults(named: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let theme = PrintSyntaxHighlighting.printTheme(for: swiftFormat())
+        let operation = DocumentPrinting.makeTextPrintOperation(
+            text: "let a = 1\r\nlet b = 2", printInfo: NSPrintInfo(),
+            defaults: defaults, jobTitle: "Test", headerLeft: "", footerLeft: "",
+            highlights: [
+                HighlightRange(range: NSRange(location: 0, length: 3), capture: .keyword),
+                HighlightRange(range: NSRange(location: 10, length: 3), capture: .keyword)
+            ], theme: theme)
+        let view = try #require(operation.view as? PrintDocumentTextView)
+        let accessory = PrintOptionsAccessoryController(
+            printInfo: operation.printInfo, defaults: defaults,
+            offersLineNumbers: true, offersSyntaxColors: true)
+        let previousOperation = NSPrintOperation.current
+        NSPrintOperation.current = operation
+        defer { NSPrintOperation.current = previousOperation }
+
+        // Beide Schalter unabhängig und zusammen, einschließlich Rückkehr
+        // zum Anfang. Gemessen wird der echte Textspeicher nach Paginierung.
+        for (numbers, colors) in [(true, true), (true, false), (false, false),
+                                  (false, true), (true, true)] {
+            accessory.setLineNumbers(numbers)
+            accessory.setSyntaxColors(colors)
+            var pages = NSRange()
+            #expect(view.knowsPageRange(&pages))
+            #expect(pages.length > 0)
+            let printed = try #require(view.textStorage)
+            #expect(printed.string == (numbers
+                ? "  1  let a = 1\n  2  let b = 2\n"
+                : "let a = 1\nlet b = 2\n"))
+            let prefix = numbers ? 5 : 0
+            for offset in [prefix, (numbers ? 15 : 10) + prefix] {
+                #expect(printed.attribute(.foregroundColor, at: offset,
+                                           effectiveRange: nil) as? NSColor
+                    == (colors ? theme.keywords.color : .black))
+            }
+            #expect(foregroundColors(in: printed).contains(.gray) == numbers)
+        }
     }
 }

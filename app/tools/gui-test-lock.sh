@@ -6,6 +6,29 @@
 # verfälschen.
 FASTRA_GUI_LOCK_DIR="${FASTRA_GUI_LOCK_DIR:-/tmp/fastra-gui-tests-${UID}.lock}"
 FASTRA_GUI_LOCK_HELD=0
+FASTRA_GUI_LOCK_OWNER_PID=$$
+FASTRA_GUI_LOCK_TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+
+# Prüfung und Änderung eines verwaisten Besitzers bilden eine Einheit.
+# Die kurze Betriebssystem-Sperre verhindert, dass ein zweiter Runner dabei
+# schon die gerade neu geschriebene PID-Datei wieder entfernt.
+run_fastra_gui_lock_operation() {
+    FASTRA_GUI_LOCK_DIR="$FASTRA_GUI_LOCK_DIR" \
+        /usr/bin/python3 "$FASTRA_GUI_LOCK_TOOLS/gui-test-lock-guard.py" \
+        "$FASTRA_GUI_LOCK_DIR.guard" /bin/bash \
+        "$FASTRA_GUI_LOCK_TOOLS/gui-test-lock.sh" "$1" "$$"
+}
+
+acquire_fastra_gui_test_lock() {
+    run_fastra_gui_lock_operation acquire || return 2
+    FASTRA_GUI_LOCK_HELD=1
+}
+
+release_fastra_gui_test_lock() {
+    [ "$FASTRA_GUI_LOCK_HELD" -eq 1 ] || return 0
+    run_fastra_gui_lock_operation release || return 2
+    FASTRA_GUI_LOCK_HELD=0
+}
 
 fastra_gui_lock_pid_token() {
     ps -p "$1" -o lstart= 2>/dev/null | sed 's/^[[:space:]]*//' || true
@@ -13,12 +36,12 @@ fastra_gui_lock_pid_token() {
 
 write_fastra_gui_lock_owner() {
     local token
-    token=$(fastra_gui_lock_pid_token "$$")
+    token=$(fastra_gui_lock_pid_token "$FASTRA_GUI_LOCK_OWNER_PID")
     [ -n "$token" ] || return 2
-    printf '%s\n%s\n' "$$" "$token" > "$FASTRA_GUI_LOCK_DIR/pid"
+    printf '%s\n%s\n' "$FASTRA_GUI_LOCK_OWNER_PID" "$token" > "$FASTRA_GUI_LOCK_DIR/pid"
 }
 
-acquire_fastra_gui_test_lock() {
+acquire_fastra_gui_test_lock_guarded() {
     local owner=""
     local owner_token=""
     local directory_owner=""
@@ -31,7 +54,6 @@ acquire_fastra_gui_test_lock() {
             rmdir "$FASTRA_GUI_LOCK_DIR" 2>/dev/null || true
             return 2
         fi
-        FASTRA_GUI_LOCK_HELD=1
         return 0
     fi
 
@@ -84,21 +106,33 @@ acquire_fastra_gui_test_lock() {
         rmdir "$FASTRA_GUI_LOCK_DIR" 2>/dev/null || true
         return 2
     fi
-    FASTRA_GUI_LOCK_HELD=1
+    return 0
 }
 
-release_fastra_gui_test_lock() {
-    [ "$FASTRA_GUI_LOCK_HELD" -eq 1 ] || return 0
+release_fastra_gui_test_lock_guarded() {
     local owner=""
     local owner_token=""
     owner=$(sed -n '1p' "$FASTRA_GUI_LOCK_DIR/pid" 2>/dev/null || true)
     owner_token=$(sed -n '2p' "$FASTRA_GUI_LOCK_DIR/pid" 2>/dev/null || true)
-    if [ "$owner" != "$$" ] \
-       || [ "$owner_token" != "$(fastra_gui_lock_pid_token "$$")" ]; then
+    if [ "$owner" != "$FASTRA_GUI_LOCK_OWNER_PID" ] \
+       || [ "$owner_token" != "$(fastra_gui_lock_pid_token "$FASTRA_GUI_LOCK_OWNER_PID")" ]; then
         echo "✗ Fenster-Test-Sperre gehört beim Freigeben nicht mehr diesem Runner." >&2
         return 2
     fi
     rm -f -- "$FASTRA_GUI_LOCK_DIR/pid" 2>/dev/null || return 2
     rmdir "$FASTRA_GUI_LOCK_DIR" 2>/dev/null || return 2
-    FASTRA_GUI_LOCK_HELD=0
+    return 0
 }
+
+# Nur der Guard startet diese interne Variante als eigenes Skript. Die PID
+# gehört weiter dem aufrufenden Runner, nicht diesem kurzlebigen Helfer.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    FASTRA_GUI_LOCK_OWNER_PID="${2:-}"
+    [[ "$FASTRA_GUI_LOCK_OWNER_PID" =~ ^[0-9]+$ ]] || exit 2
+    case "${1:-}" in
+        acquire) acquire_fastra_gui_test_lock_guarded ;;
+        release) release_fastra_gui_test_lock_guarded ;;
+        *) exit 2 ;;
+    esac
+    exit $?
+fi

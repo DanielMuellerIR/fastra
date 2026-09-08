@@ -40,7 +40,7 @@ func wrap_longSentence() {
 }
 
 @Test("hardWrap: KEINE Ausgabezeile überschreitet die Spaltenbreite (Invariante)")
-func wrap_invariantEveryLineWithinColumn() {
+func wrap_invariantEveryLineWithinColumn() throws {
     let column = 12
     // Solange KEIN Wort (ggf. samt Einrückung) für sich breiter als column ist, MUSS jede
     // Ausgabezeile <= column bleiben — das ist die Kern-Garantie des Hard Wrap. Geprüft über
@@ -56,8 +56,9 @@ func wrap_invariantEveryLineWithinColumn() {
         "   one two three four five six\n      a b c d e f g h i j k l",
     ]
     for text in inputs {
-        guard let out = TextOperations.hardWrap(in: text, selection: whole, column: column)?.newText
-        else { continue }   // (sollte hier nie nil sein, aber defensiv)
+        let out = try #require(
+            TextOperations.hardWrap(in: text, selection: whole, column: column)?.newText,
+            "Jede Fixture überschreitet die Breite und muss tatsächlich umgebrochen werden")
         // Jede einzelne Ausgabezeile prüfen: ihre Grapheme-Anzahl muss <= column sein.
         for line in out.components(separatedBy: "\n") {
             #expect(line.count <= column, "Zeile überschreitet column: \"\(line)\" (\(line.count) > \(column))")

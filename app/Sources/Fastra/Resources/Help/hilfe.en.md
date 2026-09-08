@@ -928,7 +928,9 @@ The footer shows the encoding and line ending of the active tab:
 - **Line-ending chip:** choose LF, CRLF, or CR — the change takes
   effect on the next save.
 
-UTF-32 files with a BOM are recognized in both byte orders. For older text
+UTF-32 files with a BOM are recognized in both byte orders. If the contents
+do not match the BOM or end with an incomplete UTF-16/UTF-32 code unit,
+Fastra reports a read error. For older text
 files without a BOM, Fastra distinguishes Windows-1252 characters such as
 typographic quotes and the euro sign from Latin-1. If the format cannot be
 handled safely, the file stays unchanged.

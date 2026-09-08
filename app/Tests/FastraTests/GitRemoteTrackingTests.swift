@@ -108,13 +108,14 @@ struct GitRemoteTrackingTests {
 
     @Test("Remote-Farben bleiben über Prozesse hinweg deterministisch")
     func stableRemoteColors() {
-        let first = GitRemoteColorIndex.index(for: "origin", colorCount: 3)
-        #expect(first == GitRemoteColorIndex.index(for: "origin", colorCount: 3))
-        #expect(first >= 0 && first < 3)
-        let indices = Set(["origin", "github", "company", "backup"].map {
-            GitRemoteColorIndex.index(for: $0, colorCount: 3)
-        })
-        #expect(indices.count > 1)
+        // Zwei Aufrufe im selben Prozess würden auch mit Swifts zufällig
+        // initialisiertem Hasher übereinstimmen. Feste Erwartungen schützen
+        // die sichtbare Zuordnung über App-Starts hinweg, auch für UTF-8-Namen.
+        let expected = ["origin": 0, "github": 0, "company": 1,
+                        "backup": 0, "team/überblick": 0, "東京": 2]
+        for (remote, index) in expected {
+            #expect(GitRemoteColorIndex.index(for: remote, colorCount: 3) == index)
+        }
     }
 
     @Test("Vier Remotes bleiben sichtbar angekündigt und haben eigene Frische")

@@ -5,9 +5,9 @@
 // Ergebnis nach `workspace.bufferMatches` / `workspace.searchError`
 // zurück. Ein Objekt pro Workspace.
 //
-// Bewusst dünn gehalten: kein eigener Zustand außer dem Combine-
-// Subscription-Bag. Die Suchlogik selbst lebt pur in `BufferSearch`
-// und ist dort getestet.
+// Verwaltet die laufenden Suchaufträge und ihre Gültigkeit pro Fenster.
+// Die Suchlogik selbst liegt in BufferSearch, OpenTabsSearch und FolderSearch;
+// erst ein weiterhin aktueller Auftrag darf sein Ergebnis veröffentlichen.
 
 import Foundation
 import Combine

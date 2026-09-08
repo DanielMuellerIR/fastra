@@ -9,41 +9,12 @@ private let performanceToolsDirectory = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent()   // app
     .appendingPathComponent("tools")
 
-private struct PerformanceToolResult {
-    let status: Int32
-    let output: String
-}
-
 private func canonicalPath(for url: URL) -> String? {
     url.path.withCString { source in
         guard let resolved = realpath(source, nil) else { return nil }
         defer { free(resolved) }
         return String(cString: resolved)
     }
-}
-
-private func runPerformanceTool(_ executable: String,
-                                arguments: [String],
-                                environment: [String: String]? = nil) throws
-    -> PerformanceToolResult {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: executable)
-    process.arguments = arguments
-    if let environment {
-        process.environment = ProcessInfo.processInfo.environment.merging(
-            environment, uniquingKeysWith: { _, new in new }
-        )
-    }
-    let pipe = Pipe()
-    process.standardOutput = pipe
-    process.standardError = pipe
-    try process.run()
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    process.waitUntilExit()
-    return PerformanceToolResult(
-        status: process.terminationStatus,
-        output: String(decoding: data, as: UTF8.self)
-    )
 }
 
 /// Die Runner-Fixtures dürfen eine parallel benutzte Produkt-App nicht als
@@ -76,7 +47,7 @@ private func pathIgnoringForeignFastraProcess(in root: URL) throws -> String {
 /// Shell-Auswertung einschließlich Sandbox und Exit-Priorität, ohne ein
 /// App-Fenster zu öffnen.
 private func runSelfTestResultFixture(_ payload: String) throws
-    -> PerformanceToolResult {
+    -> TestProcessResult {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("fastra-selftest-result-\(UUID().uuidString)")
     let sandboxParent = root.appendingPathComponent("sandboxes")
@@ -97,7 +68,7 @@ private func runSelfTestResultFixture(_ payload: String) throws
         [.posixPermissions: 0o755], ofItemAtPath: fakeApp.path
     )
     let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
-    return try runPerformanceTool(
+    return try runTestProcess(
         "/bin/bash", arguments: [runner.path, "search"], environment: [
             "PATH": isolatedPath,
             "FASTRA_GUI_LOCK_DIR": lock.path,
@@ -224,7 +195,7 @@ struct SelfTestRunnerSkipTests {
             [.posixPermissions: 0o755], ofItemAtPath: fakeApp.path
         )
 
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [runner.path, "findbar"], environment: [
                 "FASTRA_SELFTEST_APP_BIN": fakeApp.path,
                 "FASTRA_SELFTEST_TEST_CONSOLE_LOCKED": "1",
@@ -259,7 +230,7 @@ struct SelfTestRunnerSkipTests {
             [.posixPermissions: 0o755], ofItemAtPath: fakeApp.path
         )
 
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [runner.path, "findbar"], environment: [
                 "FASTRA_SELFTEST_APP_BIN": fakeApp.path,
                 "FASTRA_SELFTEST_TEST_CONSOLE_LOCKED": "1",
@@ -324,43 +295,10 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         #expect(legacy.status == 0, "Altbundle: \(legacy.output)")
         #expect(legacy.output.components(separatedBy:
             "SELFTEST-RESULT v=1 test=search status=PASS").count - 1 == 1)
-    }
 
-    @Test("Mehrere Maschinenstatus werden mit Fehlerpriorität zusammengeführt")
-    func structuredSelfTestResultUsesHighestPriority() throws {
-        let result = try runSelfTestResultFixture("""
-        SELFTEST-RESULT v=1 test=search status=PASS
-        SELFTEST-RESULT v=1 test=search status=SKIP
-        SELFTEST-RESULT v=1 test=search status=ENV
-        SELFTEST-RESULT v=1 test=search status=FAIL
-        SELFTEST search: PASS — lesbare Zeile ist nicht maßgeblich
-        """)
-        #expect(result.status == 1, "Priorität: \(result.output)")
-        #expect(result.output.components(separatedBy:
-            "SELFTEST-RESULT v=1 test=search status=FAIL").count - 1 == 1)
-        #expect(result.output.contains("echte FAILs: 1"))
-    }
-
-    @Test("Altbundle-Parser akzeptiert PASS nur an der Statusposition")
-    func legacySelfTestResultValidatesPrefixAndPosition() throws {
-        let embeddedPass = try runSelfTestResultFixture(
-            "SELFTEST search: FAIL — erwartet SELFTEST search: PASS"
-        )
-        #expect(embeddedPass.status == 1, "Diagnosetext: \(embeddedPass.output)")
-
-        let wrongTest = try runSelfTestResultFixture(
-            "SELFTEST project: PASS — falscher Testname"
-        )
-        #expect(wrongTest.status == 1, "Testname: \(wrongTest.output)")
-
-        let environment = try runSelfTestResultFixture(
-            "SELFTEST search: FAIL — Umgebungsproblem: Fokus fehlt"
-        )
-        #expect(environment.status == 2, "Umgebung: \(environment.output)")
-    }
-
-    @Test("Beschädigter Maschinenstatus fällt nie auf eine alte PASS-Zeile zurück")
-    func malformedStructuredSelfTestResultFailsClosed() throws {
+        // Der reine Parser prüft die beschädigten Varianten. Ein vollständiger
+        // Lauf bleibt nötig, um den eigenen Diagnosezweig des Runners samt
+        // Exit-Code und kanonischem Maschinenstatus zu belegen.
         let malformed = try runSelfTestResultFixture("""
         SELFTEST-RESULT v=2 test=search status=MAYBE
         SELFTEST search: PASS — alte Begleitzeile
@@ -368,23 +306,8 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         #expect(malformed.status == 1, "Protokollfehler: \(malformed.output)")
         #expect(malformed.output.contains("Protokollfehler"))
         #expect(malformed.output.contains("echte FAILs: 1"))
-
-        let missingStatusField = try runSelfTestResultFixture("""
-        SELFTEST-RESULT v=1 test=search FAIL
-        SELFTEST search: PASS — alte Begleitzeile
-        """)
-        #expect(
-            missingStatusField.status == 1,
-            "Fehlender Statusschlüssel: \(missingStatusField.output)"
-        )
-        #expect(missingStatusField.output.contains("Protokollfehler"))
-
-        let damagedPrefix = try runSelfTestResultFixture("""
-        SELFTEST-RESULTX v=1 test=search status=PASS
-        SELFTEST search: PASS — alte Begleitzeile
-        """)
-        #expect(damagedPrefix.status == 1, "Präfixfehler: \(damagedPrefix.output)")
-        #expect(damagedPrefix.output.contains("Protokollfehler"))
+        #expect(malformed.output.components(separatedBy:
+            "SELFTEST-RESULT v=1 test=search status=FAIL").count - 1 == 1)
     }
 
     @Test(
@@ -450,7 +373,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         }
         let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
 
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [runner.path, testName], environment: [
                 "PATH": isolatedPath,
                 "FASTRA_GUI_LOCK_DIR": lock.path,
@@ -467,12 +390,27 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         #expect(!FileManager.default.fileExists(atPath: openProbe.path))
     }
 
-    @Test("Der gebündelte ⌘W-Test erhält eine ausreichende Runner-Frist")
-    func combinedCmdWTestHasExtendedTimeout() throws {
+    @Test("Runner-Fristen berücksichtigen lange Tests und den konfigurierten Standard")
+    func runnerTimeoutsRespectLongTestsAndDefault() throws {
         let runner = performanceToolsDirectory.deletingLastPathComponent()
             .appendingPathComponent("selftest.sh")
-        let source = try String(contentsOf: runner, encoding: .utf8)
-        #expect(source.contains("cmdw)  echo 120 ;;"))
+        let script = try shellFunction(named: "timeout_for_test", in: runner) + """
+
+        TIMEOUT_SECS=37
+        timeout_for_test cmdw
+        timeout_for_test print
+        timeout_for_test search
+        timeout_for_test leakscenario
+        """
+        let result = try runTestProcess("/bin/bash", arguments: ["-c", script])
+        #expect(result.status == 0, "Runner-Fristen: \(result.output)")
+        let fields = result.output.split(whereSeparator: \.isWhitespace)
+        try #require(fields.count == 4)
+        let limits = try fields.map { try #require(Int($0)) }
+        #expect(limits[0] >= 120)
+        #expect(limits[1] >= 240)
+        #expect(limits[2] == 37)
+        #expect(limits[3] >= 120)
     }
 
     @Test("Reiner Fenster-Dump bleibt ein gezielter Diagnosemodus")
@@ -498,19 +436,30 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         #expect(selfTestSource.contains("{ runWindowsDump() }"))
     }
 
-    @Test("LaunchServices-PIDs bleiben an ihre Startidentität gebunden")
-    func launchServicesPIDsRequireStoredStartTokens() throws {
-        let source = try String(
-            contentsOf: performanceToolsDirectory.deletingLastPathComponent()
-                .appendingPathComponent("selftest.sh"),
-            encoding: .utf8
-        )
-        #expect(source.contains("STARTED_PID_TOKENS=()"))
-        #expect(source.contains("tracked_pid_is_owned \"$pid\" \"$index\""))
-        #expect(source.contains(
-            "tracked_pid_is_owned \"$launch_pid\" \"$launch_index\""
-        ))
-        #expect(source.contains("STARTED_PID_TOKENS+=(\"$token\")"))
+    @Test("LaunchServices-Besitz verlangt die passende gespeicherte Startidentität")
+    func launchServicesOwnershipRejectsMissingOrMismatchedToken() throws {
+        let runner = performanceToolsDirectory.deletingLastPathComponent()
+            .appendingPathComponent("selftest.sh")
+        let script = try shellFunction(named: "tracked_pid_is_owned", in: runner) + #"""
+
+        set -u
+        . "$1"
+        # Die Shell selbst lebt während aller Abfragen. Nur der gespeicherte
+        # Beleg wechselt — so lässt sich Wiederverwendung ohne fremde PID prüfen.
+        current_token=$(fastra_test_pid_token "$$")
+        [ -n "$current_token" ] || exit 90
+        STARTED_PID_TOKENS=("frühere-startidentität" "$current_token")
+        tracked_pid_is_owned "$$" 1 || exit 91
+        ! tracked_pid_is_owned "$$" 0 || exit 92
+        ! tracked_pid_is_owned "$$" 2 || exit 93
+        STARTED_PID_TOKENS=()
+        ! tracked_pid_is_owned "$$" 0 || exit 94
+        """#
+        let result = try runTestProcess("/bin/bash", arguments: [
+            "-c", script, "ownership-fixture",
+            performanceToolsDirectory.appendingPathComponent("test-process-tree.sh").path,
+        ])
+        #expect(result.status == 0, "LaunchServices-Besitz: \(result.output)")
     }
 
     @Test("Fensterlose Startguards warten auf Zustand statt feste Sekunden")
@@ -652,7 +601,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             [.posixPermissions: 0o755], ofItemAtPath: fakeSleep.path
         )
 
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [runner.path, "cmdw"], environment: [
                 "PATH": isolatedPath,
                 "FASTRA_GUI_LOCK_DIR": lock.path,
@@ -695,12 +644,8 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             if let pidText = try? String(
                 contentsOf: childPIDFile, encoding: .utf8
             ).trimmingCharacters(in: .whitespacesAndNewlines),
-               let pid = Int32(pidText), kill(pid, 0) == 0,
-               let command = try? runPerformanceTool(
-                   "/bin/ps", arguments: ["-p", "\(pid)", "-o", "command="]
-               ), command.output.contains(cleanupBinaryPath ?? fakeBinary.path) {
-                kill(pid, SIGKILL)
-                for _ in 0..<100 where kill(pid, 0) == 0 { usleep(10_000) }
+               let pid = Int32(pidText) {
+                stopTestFixtureProcess(pid, marker: cleanupBinaryPath ?? fakeBinary.path)
             }
             try? FileManager.default.removeItem(at: root)
         }
@@ -743,7 +688,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             return 0;
         }
         """.write(to: fakeSource, atomically: true, encoding: .utf8)
-        let compile = try runPerformanceTool(
+        let compile = try runTestProcess(
             "/usr/bin/clang", arguments: [fakeSource.path, "-o", fakeBinary.path]
         )
         try #require(compile.status == 0, "Fake-App-Kompilierung: \(compile.output)")
@@ -814,7 +759,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         let canonicalFakeApp = try #require(canonicalPath(for: fakeApp))
         let canonicalFakeBinary = canonicalFakeApp + "/Contents/MacOS/Fastra"
         cleanupBinaryPath = canonicalFakeBinary
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [runner.path, "cmdw"], environment: [
                 "PATH": isolatedPath,
                 "FASTRA_GUI_LOCK_DIR": lock.path,
@@ -872,12 +817,8 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             if let pidText = try? String(
                 contentsOf: childPIDFile, encoding: .utf8
             ).trimmingCharacters(in: .whitespacesAndNewlines),
-               let pid = Int32(pidText), kill(pid, 0) == 0,
-               let command = try? runPerformanceTool(
-                   "/bin/ps", arguments: ["-p", "\(pid)", "-o", "command="]
-               ), command.output.contains(canonicalFakeBinary ?? fakeBinary.path) {
-                kill(pid, SIGKILL)
-                for _ in 0..<100 where kill(pid, 0) == 0 { usleep(10_000) }
+               let pid = Int32(pidText) {
+                stopTestFixtureProcess(pid, marker: canonicalFakeBinary ?? fakeBinary.path)
             }
             try? FileManager.default.removeItem(at: root)
         }
@@ -908,7 +849,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             return 73;
         }
         """.write(to: fakeSource, atomically: true, encoding: .utf8)
-        let compile = try runPerformanceTool(
+        let compile = try runTestProcess(
             "/usr/bin/clang", arguments: [fakeSource.path, "-o", fakeBinary.path]
         )
         try #require(compile.status == 0, "Fake-App-Kompilierung: \(compile.output)")
@@ -952,7 +893,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
         let canonicalFakeApp = try #require(canonicalPath(for: fakeApp))
         canonicalFakeBinary = canonicalFakeApp + "/Contents/MacOS/Fastra"
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [runner.path, "cmdw"], environment: [
                 "PATH": isolatedPath,
                 "FASTRA_GUI_LOCK_DIR": lock.path,
@@ -1004,26 +945,17 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         let activationPrebookHook = root.appendingPathComponent("activation-prebook-hook")
         let runner = performanceToolsDirectory.deletingLastPathComponent()
             .appendingPathComponent("selftest.sh")
-        let process = Process()
-        var childPID: Int32?
-        var activationPID: Int32?
         var canonicalFakeBinary: String?
         defer {
-            if process.isRunning {
-                kill(process.processIdentifier, SIGKILL)
-                process.waitUntilExit()
-            }
-            for (pid, marker) in [
-                (childPID, canonicalFakeBinary ?? fakeBinary.path),
-                (activationPID, fakeOpen.deletingLastPathComponent()
-                    .appendingPathComponent("bin/osascript").path),
+            // Die PID-Dateien gelten auch bei einem Throw vor dem Testergebnis.
+            // Der gemeinsame Helfer prüft zusätzlich Marker und Startidentität.
+            for (file, marker) in [
+                (childPIDFile, canonicalFakeBinary ?? fakeBinary.path),
+                (activationPIDFile, root.appendingPathComponent("bin/osascript").path),
             ] {
-                if let pid, kill(pid, 0) == 0,
-                   let command = try? runPerformanceTool(
-                       "/bin/ps", arguments: ["-p", "\(pid)", "-o", "command="]
-                   ), command.output.contains(marker) {
-                    kill(pid, SIGKILL)
-                    for _ in 0..<100 where kill(pid, 0) == 0 { usleep(10_000) }
+                if let text = try? String(contentsOf: file, encoding: .utf8),
+                   let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    stopTestFixtureProcess(pid, marker: marker)
                 }
             }
             try? FileManager.default.removeItem(at: root)
@@ -1056,7 +988,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             for (;;) pause();
         }
         """.write(to: fakeSource, atomically: true, encoding: .utf8)
-        let compile = try runPerformanceTool(
+        let compile = try runTestProcess(
             "/usr/bin/clang", arguments: [fakeSource.path, "-o", fakeBinary.path]
         )
         try #require(compile.status == 0, "Fake-App-Kompilierung: \(compile.output)")
@@ -1114,10 +1046,9 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
         let canonicalFakeApp = try #require(canonicalPath(for: fakeApp))
         canonicalFakeBinary = canonicalFakeApp + "/Contents/MacOS/Fastra"
-        let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = [runner.path, "cmdw"]
-        process.environment = ProcessInfo.processInfo.environment.merging([
+        // Der Hook löst das Signal selbst aus. Der äußere Test muss deshalb
+        // nur begrenzt auf Ende UND Ausgabe warten, ohne einen zweiten Poller.
+        let result = try runTestProcess("/bin/bash", arguments: [runner.path, "cmdw"], environment: [
             "PATH": isolatedPath,
             "FASTRA_GUI_LOCK_DIR": lock.path,
             "FASTRA_SELFTEST_APP_BIN": fakeBinary.path,
@@ -1133,41 +1064,20 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             "FASTRA_TEST_LSREGISTER": fakeLSRegister.path,
             "FASTRA_TEST_OPEN_COMMAND": fakeOpen.path,
             "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
-        ], uniquingKeysWith: { _, new in new })
-        process.standardOutput = pipe
-        process.standardError = pipe
-        try process.run()
+        ], timeout: 20)
 
-        let readyDeadline = Date().addingTimeInterval(5)
-        while (!FileManager.default.fileExists(atPath: activationPrebookReady.path)
-               || !FileManager.default.fileExists(atPath: activationReady.path)
-               || !FileManager.default.fileExists(atPath: childPIDFile.path)
-               || !FileManager.default.fileExists(atPath: activationPIDFile.path)),
-              Date() < readyDeadline {
-            usleep(20_000)
-        }
         try #require(FileManager.default.fileExists(atPath: activationPrebookReady.path))
         try #require(FileManager.default.fileExists(atPath: activationReady.path))
-        childPID = Int32(try String(
+        let childPID = try #require(Int32(try String(
             contentsOf: childPIDFile, encoding: .utf8
-        ).trimmingCharacters(in: .whitespacesAndNewlines))
-        activationPID = Int32(try String(
+        ).trimmingCharacters(in: .whitespacesAndNewlines)))
+        let activationPID = try #require(Int32(try String(
             contentsOf: activationPIDFile, encoding: .utf8
-        ).trimmingCharacters(in: .whitespacesAndNewlines))
-        try #require(childPID != nil && activationPID != nil)
+        ).trimmingCharacters(in: .whitespacesAndNewlines)))
 
-        let exitDeadline = Date().addingTimeInterval(15)
-        while process.isRunning, Date() < exitDeadline { usleep(20_000) }
-        let timedOut = process.isRunning
-        if timedOut { kill(process.processIdentifier, SIGKILL) }
-        process.waitUntilExit()
-        let output = String(
-            decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self
-        )
-        #expect(!timedOut, "Signal-Cleanup hing: \(output)")
-        #expect(process.terminationStatus != 0)
+        #expect(result.status != 0, "Signal muss den Runner beenden: \(result.output)")
         func processIsLive(_ pid: Int32) -> Bool {
-            guard let result = try? runPerformanceTool(
+            guard let result = try? runTestProcess(
                 "/bin/ps", arguments: ["-p", "\(pid)", "-o", "stat="]
             ), result.status == 0 else {
                 return false
@@ -1175,14 +1085,10 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             let state = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
             return !state.isEmpty && !state.hasPrefix("Z")
         }
-        if let activationPID {
-            #expect(!processIsLive(activationPID),
-                    "System-Events-Helfer blieb nach Runner-Signal aktiv")
-        }
-        if let childPID {
-            #expect(!processIsLive(childPID),
-                    "Fastra-Fixture blieb nach Runner-Signal aktiv")
-        }
+        #expect(!processIsLive(activationPID),
+                "System-Events-Helfer blieb nach Runner-Signal aktiv")
+        #expect(!processIsLive(childPID),
+                "Fastra-Fixture blieb nach Runner-Signal aktiv")
         #expect(try FileManager.default.contentsOfDirectory(
             atPath: sandboxParent.path
         ).isEmpty)
@@ -1192,35 +1098,56 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
     func deniedScreenCaptureUsesOnlyFallback() {
         var systemCalls = 0
         var fallbackCalls = 0
-        let denied: String? = SelfTestCaptureRouting.capture(
+        var denied: String?
+        SelfTestCaptureRouting.capture(
             screenCaptureAllowed: false,
-            systemCapture: {
+            systemCapture: { callback in
                 systemCalls += 1
-                return "system"
+                callback("system")
             },
             fallback: {
                 fallbackCalls += 1
                 return "fallback"
-            }
+            },
+            completion: { denied = $0 }
         )
         #expect(denied == "fallback")
         #expect(systemCalls == 0)
         #expect(fallbackCalls == 1)
 
-        let allowed: String? = SelfTestCaptureRouting.capture(
+        var allowed: String?
+        var pending: ((String?) -> Void)?
+        SelfTestCaptureRouting.capture(
             screenCaptureAllowed: true,
-            systemCapture: {
+            systemCapture: { callback in
                 systemCalls += 1
-                return "system"
+                pending = callback
             },
             fallback: {
                 fallbackCalls += 1
                 return "fallback"
-            }
+            },
+            completion: { allowed = $0 }
         )
+        // Die Aufnahme darf später antworten; bis dahin weder Abschluss noch Fallback.
+        #expect(allowed == nil)
+        #expect(fallbackCalls == 1)
+        pending?("system")
         #expect(allowed == "system")
         #expect(systemCalls == 1)
         #expect(fallbackCalls == 1)
+
+        var failedSystem: String?
+        SelfTestCaptureRouting.capture(
+            screenCaptureAllowed: true,
+            systemCapture: { callback in pending = callback },
+            fallback: { fallbackCalls += 1; return "fallback" },
+            completion: { failedSystem = $0 }
+        )
+        #expect(failedSystem == nil)
+        pending?(nil)
+        #expect(failedSystem == "fallback")
+        #expect(fallbackCalls == 2)
     }
 
     @Test("Soak-Kopie löst Links auf und lässt Originale unangetastet")
@@ -1249,7 +1176,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         printf 'sandbox\n' > "$3/linked.md"
         [ "$(cat "$4")" = original ] || exit 93
         """
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash",
             arguments: [
                 "-c", script, "soak-copy", helper.path, source.path,
@@ -1284,7 +1211,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         FASTRA_TEST_SANDBOX="$2"
         deduplicate_fastra_test_defaults_registry "$3" "$4"
         """
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash",
             arguments: [
                 "-c", script, "defaults-dedup", helper.path, root.path,
@@ -1296,6 +1223,54 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             .split(whereSeparator: \.isNewline)
             .map(String.init)
         #expect(lines == [first, second, "   "])
+    }
+
+    @Test("Nur registrierte Defaults brauchen einen Nachlauf", arguments: ["", "\n\n", "registered"])
+    func defaultsCleanupWaitsOnlyForRegisteredDomains(_ contents: String) throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fastra-defaults-observation-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let domain = "FastraTests.LateWrite.\(UUID().uuidString)"
+        let registry = root.appendingPathComponent("registry.txt")
+        try (contents == "registered" ? domain + "\n" : contents)
+            .write(to: registry, atomically: true, encoding: .utf8)
+        let script = #"""
+        set -eu
+        . "$1"
+        FASTRA_TEST_SANDBOX="$2"
+        FASTRA_TEST_CF_HOME="$2/cfhome"
+        FASTRA_TEST_PREFERENCES_DIRECTORY="$2/preferences"
+        FASTRA_TEST_REAL_PREFERENCES_DIRECTORY="$2/real-preferences"
+        mkdir -p "$FASTRA_TEST_CF_HOME" "$FASTRA_TEST_PREFERENCES_DIRECTORY" \
+          "$FASTRA_TEST_REAL_PREFERENCES_DIRECTORY"
+        domain="$3"
+        observation_count=0
+        # Eine verspätete Plist erscheint erst nach der ersten Bereinigung.
+        # Der kontrollierte Auslöser ersetzt ausschließlich die Wartezeit.
+        registered_mode="$4"
+        sleep() {
+          observation_count=$((observation_count + 1))
+          if [ "$registered_mode" = registered ] && [ "$observation_count" -eq 1 ]; then
+            : > "$FASTRA_TEST_PREFERENCES_DIRECTORY/$domain.plist"
+            : > "$FASTRA_TEST_REAL_PREFERENCES_DIRECTORY/$domain.plist"
+          fi
+        }
+        purge_fastra_registered_test_defaults "$2/registry.txt"
+        [ ! -e "$FASTRA_TEST_PREFERENCES_DIRECTORY/$domain.plist" ]
+        [ ! -e "$FASTRA_TEST_REAL_PREFERENCES_DIRECTORY/$domain.plist" ]
+        if [ "$registered_mode" = registered ]; then
+          [ "$observation_count" -gt 0 ]
+        else
+          [ "$observation_count" -eq 0 ]
+        fi
+        """#
+        let result = try runTestProcess("/bin/bash", arguments: [
+            "-c", script, "defaults-observation",
+            performanceToolsDirectory.appendingPathComponent("test-sandbox.sh").path,
+            root.path, domain, contents,
+        ])
+        #expect(result.status == 0, "Defaults-Nachlauf: \(result.output)")
     }
 
     @Test("Beschädigte Defaults-Registry bleibt beim Nachlauf fail-closed")
@@ -1326,7 +1301,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
           exit 91
         fi
         """
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash",
             arguments: [
                 "-c", script, "defaults-unsafe", helper.path, root.path,
@@ -1385,7 +1360,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         fastra_test_bundle_path_is_protected /Applications || exit 95
         [ ! -e "$3" ] || exit 96
         """
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash",
             arguments: [
                 "-c", script, "ls-safety", helper.path, fakeLSRegister.path,
@@ -1432,7 +1407,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             )
         }
 
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [runner.path, fakeApp.path, resources.path],
             environment: [
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
@@ -1486,7 +1461,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         }
         let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
 
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [runner.path, "search"], environment: [
                 "PATH": isolatedPath,
                 "FASTRA_GUI_LOCK_DIR": lock.path,
@@ -1518,7 +1493,6 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         let fakeOpen = root.appendingPathComponent("open")
         let fakeLSRegister = root.appendingPathComponent("lsregister")
         let childPIDFile = root.appendingPathComponent("child.pid")
-        let childCommandFile = root.appendingPathComponent("child-command.txt")
         let trackingHook = root.appendingPathComponent("tracking-hook")
         let trackingHookProbe = root.appendingPathComponent("tracking-hook-ran")
         let lateChildMarker = root.appendingPathComponent("late-child-spawned")
@@ -1529,7 +1503,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         var childProcessGroup: Int32?
         defer {
             if let childProcessGroup,
-               let processes = try? runPerformanceTool(
+               let processes = try? runTestProcess(
                    "/bin/ps", arguments: ["-axo", "pgid=,stat=,command="]
                ) {
                 let fixturePath = canonicalFakeBinary ?? fakeBinary.path
@@ -1549,7 +1523,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             if let pid = try? String(contentsOf: childPIDFile, encoding: .utf8)
                 .trimmingCharacters(in: .whitespacesAndNewlines),
                let childPID = Int32(pid), kill(childPID, 0) == 0,
-               let command = try? runPerformanceTool(
+               let command = try? runTestProcess(
                    "/bin/ps", arguments: ["-p", "\(childPID)", "-o", "command="]
                ), command.output.contains(canonicalFakeBinary ?? fakeBinary.path) {
                 kill(childPID, SIGKILL)
@@ -1602,7 +1576,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             for (;;) pause();
         }
         """.write(to: fakeSource, atomically: true, encoding: .utf8)
-        let compile = try runPerformanceTool(
+        let compile = try runTestProcess(
             "/usr/bin/clang", arguments: [fakeSource.path, "-o", fakeBinary.path]
         )
         try #require(compile.status == 0, "Fake-App-Kompilierung: \(compile.output)")
@@ -1613,11 +1587,10 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         printf '%s\n' "$child_pid" > "$FASTRA_TEST_CHILD_PID"
         child_ready=0
         for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-          child_command="$(ps eww -p "$child_pid" -o command= 2>/dev/null || true)"
+          child_command="$(ps -ww -p "$child_pid" -o command= 2>/dev/null || true)"
           child_group="$(ps -p "$child_pid" -o pgid= 2>/dev/null | tr -d ' ' || true)"
           if [[ "$child_command" == "$FASTRA_TEST_OPEN_APP/Contents/MacOS/Fastra -selftest cmdw "* ]] \
              && [ "$child_group" = "$child_pid" ]; then
-            printf '%s\n' "$child_command" > "$FASTRA_TEST_CHILD_COMMAND"
             child_ready=1
             break
           fi
@@ -1652,7 +1625,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
         let canonicalFakeApp = try #require(canonicalPath(for: fakeApp))
         canonicalFakeBinary = canonicalFakeApp + "/Contents/MacOS/Fastra"
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [runner.path, "cmdw"], environment: [
                 "PATH": isolatedPath,
                 "FASTRA_GUI_LOCK_DIR": lock.path,
@@ -1661,7 +1634,6 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
                 "FASTRA_TEST_OPEN_COMMAND": fakeOpen.path,
                 "FASTRA_TEST_OPEN_APP": canonicalFakeApp,
                 "FASTRA_TEST_CHILD_PID": childPIDFile.path,
-                "FASTRA_TEST_CHILD_COMMAND": childCommandFile.path,
                 "FASTRA_TEST_LATE_CHILD_MARKER": lateChildMarker.path,
                 "FASTRA_TEST_TRACKED_PID_PRETOKEN_HOOK": trackingHook.path,
                 "FASTRA_TEST_TRACKING_HOOK_PROBE": trackingHookProbe.path,
@@ -1683,12 +1655,9 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             FileManager.default.fileExists(atPath: trackingHookProbe.path),
             "PID/Token-Zwischenhook lief nicht: \(result.output)"
         )
-        let childCommand = (try? String(
-            contentsOf: childCommandFile, encoding: .utf8
-        )) ?? "<kein Prozessbeleg>"
         try #require(
             FileManager.default.fileExists(atPath: unregisterProbe.path),
-            "Runner-Ausgabe: \(result.output); Prozess: \(childCommand)"
+            "Runner-Ausgabe: \(result.output)"
         )
         let unregisterArguments = try String(
             contentsOf: unregisterProbe, encoding: .utf8
@@ -1705,7 +1674,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             Issue.record("LaunchServices-Kindprozess-PID ist ungültig")
             return
         }
-        let liveGroupMembers = try runPerformanceTool(
+        let liveGroupMembers = try runTestProcess(
             "/bin/ps", arguments: ["-axo", "pid=,pgid=,stat="]
         ).output.split(whereSeparator: \Character.isNewline).filter { line in
             let columns = line.split(whereSeparator: \Character.isWhitespace)
@@ -1739,7 +1708,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
           '/tmp/Fastra FASTRA_SELFTEST=coldopenoff ApplePersistenceIgnoreState=YES' coldopen \
           || exit 94
         """
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: ["-c", script, "test", helper.path]
         )
         #expect(result.status == 0, "Selbsttest-Prozesszuordnung: \(result.output)")
@@ -1776,7 +1745,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         )
         let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
 
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [runner.path, "search"], environment: [
                 "PATH": isolatedPath,
                 "FASTRA_GUI_LOCK_DIR": lock.path,
@@ -1808,10 +1777,8 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         defer {
             if let text = try? String(contentsOf: helperPIDFile, encoding: .utf8),
                let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)),
-               kill(pid, 0) == 0 {
-                kill(-pid, SIGKILL)
-                kill(pid, SIGKILL)
-                for _ in 0..<100 where kill(pid, 0) == 0 { usleep(10_000) }
+               pid > 1 {
+                stopTestFixtureProcess(pid, marker: fakeApp.path)
             }
             try? FileManager.default.removeItem(at: root)
         }
@@ -1834,7 +1801,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         )
         let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
 
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [runner.path, "search"], environment: [
                 "PATH": isolatedPath,
                 "FASTRA_GUI_LOCK_DIR": lock.path,
@@ -1848,7 +1815,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         let helperPID = try #require(Int32(try String(
             contentsOf: helperPIDFile, encoding: .utf8
         ).trimmingCharacters(in: .whitespacesAndNewlines)))
-        let state = try runPerformanceTool(
+        let state = try runTestProcess(
             "/bin/ps", arguments: ["-p", "\(helperPID)", "-o", "stat="]
         ).output.trimmingCharacters(in: .whitespacesAndNewlines)
         #expect(state.isEmpty || state.hasPrefix("Z"),
@@ -1908,7 +1875,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         ! fastra_test_group_is_live "$root_pid" || exit 95
         trap - EXIT
         """
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: ["-c", script, "test", helper.path, probe.path]
         )
         #expect(result.status == 0, "Prozessbaum-Helfer: \(result.output)")
@@ -1928,12 +1895,8 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         defer {
             if let text = try? String(contentsOf: childPIDFile, encoding: .utf8),
                let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)),
-               kill(pid, 0) == 0,
-               let command = try? runPerformanceTool(
-                   "/bin/ps", arguments: ["-p", "\(pid)", "-o", "command="]
-               ), command.output.contains(fakeApp.path) {
-                kill(pid, SIGKILL)
-                for _ in 0..<100 where kill(pid, 0) == 0 { usleep(10_000) }
+               pid > 1 {
+                stopTestFixtureProcess(pid, marker: fakeApp.path)
             }
             try? FileManager.default.removeItem(at: root)
         }
@@ -1965,13 +1928,13 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             return 73;
         }
         """.write(to: fakeSource, atomically: true, encoding: .utf8)
-        let compile = try runPerformanceTool(
+        let compile = try runTestProcess(
             "/usr/bin/clang", arguments: [fakeSource.path, "-o", fakeApp.path]
         )
         try #require(compile.status == 0, "Fake-App-Kompilierung: \(compile.output)")
         let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
 
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [runner.path, "search"], environment: [
                 "PATH": isolatedPath,
                 "FASTRA_GUI_LOCK_DIR": lock.path,
@@ -1985,7 +1948,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         let childPID = try #require(Int32(try String(
             contentsOf: childPIDFile, encoding: .utf8
         ).trimmingCharacters(in: .whitespacesAndNewlines)))
-        let state = try runPerformanceTool(
+        let state = try runTestProcess(
             "/bin/ps", arguments: ["-p", "\(childPID)", "-o", "stat="]
         ).output.trimmingCharacters(in: .whitespacesAndNewlines)
         #expect(state.isEmpty || state.hasPrefix("Z"),
@@ -2020,14 +1983,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             )).flatMap {
                 Int32($0.trimmingCharacters(in: .whitespacesAndNewlines))
             }
-            if let cleanupPID, kill(cleanupPID, 0) == 0,
-               let command = try? runPerformanceTool(
-                   "/bin/ps", arguments: ["-p", "\(cleanupPID)", "-o", "command="]
-               ), command.output.contains(marker.path) {
-                let group = getpgid(cleanupPID)
-                if group > 1 { kill(-group, SIGKILL) }
-                for _ in 0..<100 where kill(cleanupPID, 0) == 0 { usleep(10_000) }
-            }
+            if let cleanupPID { stopTestFixtureProcess(cleanupPID, marker: marker.path) }
             try? FileManager.default.removeItem(at: root)
         }
         try FileManager.default.createDirectory(
@@ -2144,7 +2100,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         fastra_test_discard_pending_session || exit 91
         exit 96
         """
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [
                 "-c", script, "discard-signal", helper.path,
                 temporaryDirectory.path, handshake.path, bin.path,
@@ -2170,13 +2126,8 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         defer {
             if let value = try? String(contentsOf: childPIDFile, encoding: .utf8),
                let pid = Int32(value.trimmingCharacters(in: .whitespacesAndNewlines)),
-               kill(pid, 0) == 0,
-               let command = try? runPerformanceTool(
-                   "/bin/ps", arguments: ["-p", "\(pid)", "-o", "command="]
-               ), command.output.contains(marker.path) {
-                let group = getpgid(pid)
-                if group > 1 { kill(-group, SIGKILL) }
-                for _ in 0..<100 where kill(pid, 0) == 0 { usleep(10_000) }
+               pid > 1 {
+                stopTestFixtureProcess(pid, marker: marker.path)
             }
             try? FileManager.default.removeItem(at: root)
         }
@@ -2217,7 +2168,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         adopt_soak_process "$SOAK_PHASE_PID" || exit 95
         exit 96
         """
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [
                 "-c", script, "soak-helper", helper.path, soakState.path,
                 temporaryDirectory.path, childPIDFile.path, marker.path, bin.path,
@@ -2255,13 +2206,8 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         defer {
             if let value = try? String(contentsOf: childPIDFile, encoding: .utf8),
                let pid = Int32(value.trimmingCharacters(in: .whitespacesAndNewlines)),
-               kill(pid, 0) == 0,
-               let command = try? runPerformanceTool(
-                   "/bin/ps", arguments: ["-p", "\(pid)", "-o", "command="]
-               ), command.output.contains(marker.path) {
-                let group = getpgid(pid)
-                if group > 1 { kill(-group, SIGKILL) }
-                for _ in 0..<100 where kill(pid, 0) == 0 { usleep(10_000) }
+               pid > 1 {
+                stopTestFixtureProcess(pid, marker: marker.path)
             }
             try? FileManager.default.removeItem(at: root)
         }
@@ -2296,7 +2242,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         ! soak_followup_is_safe || exit 97
         [ -z "$FASTRA_TEST_PENDING_PID" ] || exit 98
         """
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [
                 "-c", script, "soak-adopt", processHelper.path, soakState.path,
                 temporaryDirectory.path, childPIDFile.path, marker.path, bin.path,
@@ -2338,7 +2284,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         [ -z "$SOAK_PHASE_PID" ] || exit 99
         soak_followup_is_safe || exit 100
         """
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: ["-c", script, "soak-retry", soakState.path]
         )
         #expect(result.status == 0, "Soak-Exit-Retry: \(result.output)")
@@ -2366,7 +2312,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         terminate_fastra_test_process_trees "$foreign_pid" || exit 91
         kill -0 "$foreign_pid" 2>/dev/null || exit 92
         """
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: ["-c", script, "test", helper.path]
         )
         #expect(result.status == 0, "PID-Wiederverwendung: \(result.output)")
@@ -2424,7 +2370,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         )
 
         let oldPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [runner.path], environment: [
                 "PATH": bin.path + ":" + oldPath,
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
@@ -2480,7 +2426,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             if let contents = try? String(contentsOf: orphanPIDs, encoding: .utf8) {
                 for value in contents.split(whereSeparator: \Character.isNewline) {
                     guard let pid = pid_t(value),
-                          let details = try? runPerformanceTool(
+                          let details = try? runTestProcess(
                             "/bin/ps",
                             arguments: ["-p", "\(pid)", "-o", "pgid=,command="]
                           ),
@@ -2566,7 +2512,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             [.posixPermissions: 0o755], ofItemAtPath: fakeBinary.path
         )
 
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [runner.path, fakeApp.path, resources.path],
             environment: [
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
@@ -2647,7 +2593,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         )
 
         let oldPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/bin/bash", arguments: [runner.path], environment: [
                 "PATH": bin.path + ":" + oldPath,
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
@@ -2727,11 +2673,22 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         ).isEmpty)
     }
 
+    @Test("Performance-Status meldet ungeklärte Historie und begrenzt Hilfsprozesse")
+    func performanceStatusAndCommandLimits() throws {
+        let script = performanceToolsDirectory
+            .appendingPathComponent("tests/test_selftest_performance.py")
+        let result = try runTestProcess(
+            "/usr/bin/python3", arguments: [script.path]
+        )
+        #expect(result.status == 0, "Performance-Regressionen: \(result.output)")
+        #expect(result.output.contains("\nOK\n"), "Python-Prüflauf fehlt: \(result.output)")
+    }
+
     @Test("Messdatei ist atomar, begrenzt und ignoriert unqualifizierte Läufe")
     func performanceStorageSelfTest() throws {
         let script = performanceToolsDirectory
             .appendingPathComponent("selftest-performance.py")
-        let result = try runPerformanceTool(
+        let result = try runTestProcess(
             "/usr/bin/python3", arguments: [script.path, "self-test"]
         )
         #expect(result.status == 0)
@@ -2746,6 +2703,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         let script = performanceToolsDirectory.appendingPathComponent("gui-test-lock.sh")
         defer {
             try? FileManager.default.removeItem(at: directory)
+            try? FileManager.default.removeItem(at: directory.appendingPathExtension("guard"))
             try? FileManager.default.removeItem(at: release)
         }
 
@@ -2780,7 +2738,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             atPath: directory.appendingPathComponent("pid").path
         ))
 
-        let contender = try runPerformanceTool(
+        let contender = try runTestProcess(
             "/bin/bash",
             arguments: [
                 "-c",
@@ -2801,7 +2759,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         // irrtümlich als verwaist entfernen.
         try FileManager.default.createDirectory(at: directory,
                                                 withIntermediateDirectories: false)
-        let acquiring = try runPerformanceTool(
+        let acquiring = try runTestProcess(
             "/bin/bash",
             arguments: [
                 "-c",
@@ -2824,7 +2782,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             atomically: true,
             encoding: .utf8
         )
-        let recovery = try runPerformanceTool(
+        let recovery = try runTestProcess(
             "/bin/bash",
             arguments: [
                 "-c",
@@ -2835,6 +2793,132 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         )
         #expect(recovery.status == 0)
         #expect(!FileManager.default.fileExists(atPath: directory.path))
+    }
+
+    @Test("Zwei Übernehmer können eine verwaiste Fenster-Sperre nicht gleichzeitig besitzen")
+    func concurrentStaleGuiLockRecoveryHasOneOwner() throws {
+        let script = performanceToolsDirectory.appendingPathComponent("gui-test-lock.sh")
+        let result = try runTestProcess("/usr/bin/python3", arguments: ["-c", #"""
+        import os, pathlib, subprocess, sys, tempfile, time
+
+        def wait_for(path):
+            end = time.monotonic() + 10
+            while not path.exists():
+                if time.monotonic() >= end:
+                    raise RuntimeError("Fixture-Marker fehlt: " + path.name)
+                time.sleep(0.01)
+
+        with tempfile.TemporaryDirectory(prefix="fastra-lock-recovery-") as directory:
+            root = pathlib.Path(directory)
+            lock = root / "lock"
+            lock.mkdir()
+            (lock / "pid").write_text("999999999\nverwaist\n")
+            binary = root / "bin"
+            binary.mkdir()
+            ps = binary / "ps"
+            # A hat den alten Besitzer bereits gelesen. Vor dessen
+            # Lebendigkeitsprüfung darf B die Übernahme versuchen.
+            ps.write_text('''#!/bin/bash
+        if [ "$FASTRA_LOCK_ACTOR" = a ] && [ "${1:-}" = -p ] && [ "${2:-}" = 999999999 ]; then
+          : > "$FASTRA_LOCK_ROOT/paused"
+          for n in {1..1000}; do
+            [ ! -e "$FASTRA_LOCK_ROOT/resume" ] || break
+            /bin/sleep 0.01
+          done
+        fi
+        exec /bin/ps "$@"
+        ''')
+            ps.chmod(0o700)
+            command = '''
+        . "$1"
+        acquire_fastra_gui_test_lock
+        status=$?
+        printf '%s' "$status" > "$FASTRA_LOCK_ROOT/$FASTRA_LOCK_ACTOR-result"
+        if [ "$status" -eq 0 ]; then
+          for n in {1..1000}; do
+            [ ! -e "$FASTRA_LOCK_ROOT/done" ] || break
+            /bin/sleep 0.01
+          done
+          release_fastra_gui_test_lock || exit $?
+        fi
+        exit "$status"
+        '''
+            processes = []
+            try:
+                for actor in ["a", "b"]:
+                    environment = dict(os.environ, FASTRA_LOCK_ACTOR=actor,
+                        FASTRA_LOCK_ROOT=directory, FASTRA_GUI_LOCK_DIR=str(lock),
+                        PATH=str(binary) + ":" + os.environ.get("PATH", "/usr/bin:/bin"))
+                    processes.append(subprocess.Popen(["/bin/bash", "-c", command,
+                        "lock-fixture", sys.argv[1]], env=environment,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+                    wait_for(root / ("paused" if actor == "a" else "b-result"))
+                (root / "resume").touch()
+                wait_for(root / "a-result")
+                statuses = [(root / (actor + "-result")).read_text() for actor in ["a", "b"]]
+                assert statuses == ["0", "2"], "Gleichzeitiger Sperrenbesitz: " + repr(statuses)
+            finally:
+                (root / "resume").touch()
+                (root / "done").touch()
+                for process in processes:
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=5)
+            assert [p.returncode for p in processes] == [0, 2]
+            assert not lock.exists(), "Besitzer konnte seine Sperre nicht freigeben"
+        print("LOCK-RECOVERY PASS")
+        """#, script.path])
+        #expect(result.status == 0, "Sperren-Gegenprobe: \(result.output)")
+        #expect(result.output.contains("LOCK-RECOVERY PASS"))
+    }
+
+    @Test("Sperren-Guard bleibt beim Kindprozess und lehnt Symlinks ab")
+    func guiLockGuardSurvivesSupervisorAndRejectsSymlinks() throws {
+        let script = performanceToolsDirectory.appendingPathComponent("gui-test-lock-guard.py")
+        let result = try runTestProcess("/usr/bin/python3", arguments: ["-c", #"""
+        import pathlib, subprocess, sys, tempfile, time
+        with tempfile.TemporaryDirectory(prefix="fastra-guard-lifetime-") as directory:
+            root = pathlib.Path(directory)
+            gate = root / "lock.guard"
+            helper = ["/usr/bin/python3", sys.argv[1], str(gate)]
+            worker = '''
+        : > "$1/ready"
+        for n in {1..80}; do
+          [ ! -e "$1/done" ] || break
+          /bin/sleep 0.1
+        done
+        '''
+            holder = subprocess.Popen(helper + ["/bin/bash", "-c", worker, "guard-fixture", directory],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            try:
+                end = time.monotonic() + 5
+                while not (root / "ready").exists() and time.monotonic() < end:
+                    time.sleep(0.01)
+                assert (root / "ready").exists(), "Änderungsprozess nicht gestartet"
+                holder.kill()
+                holder.wait(timeout=2)
+                blocked = subprocess.run(helper + ["/usr/bin/true"], capture_output=True, timeout=3)
+                assert blocked.returncode == 2, "Sperre endet vor dem Änderungsprozess"
+            finally:
+                (root / "done").touch()
+                # Die geerbte Ausgabepipe schließt erst mit dem Kind. Die
+                # Fixture beendet sich zusätzlich selbst nach höchstens 8 s.
+                holder.communicate(timeout=10)
+            available = subprocess.run(helper + ["/usr/bin/true"], capture_output=True, timeout=3)
+            assert available.returncode == 0, "Sperre bleibt nach Prozessende hängen"
+            target = root / "sentinel"
+            target.write_text("unverändert")
+            link = root / "link"
+            link.symlink_to(target)
+            rejected = subprocess.run(["/usr/bin/python3", sys.argv[1], str(link),
+                "/usr/bin/true"], capture_output=True, timeout=3)
+            assert rejected.returncode == 2 and target.read_text() == "unverändert"
+        print("LOCK-GUARD PASS")
+        """#, script.path])
+        #expect(result.status == 0, "Guard-Gegenprobe: \(result.output)")
+        #expect(result.output.contains("LOCK-GUARD PASS"))
     }
 
     @Test("Abgewiesener Runner beendet den Prozess des Sperrenbesitzers nicht")
@@ -2890,7 +2974,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let pid = try #require(Int32(pidText))
 
-        let contender = try runPerformanceTool(
+        let contender = try runTestProcess(
             "/bin/bash",
             arguments: [runner.path, "search"],
             environment: [

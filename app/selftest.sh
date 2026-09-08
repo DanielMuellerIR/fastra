@@ -51,6 +51,8 @@ cd "$(dirname "$0")"
 . ./tools/test-sandbox.sh
 # shellcheck source=tools/test-process-tree.sh
 . ./tools/test-process-tree.sh
+# shellcheck source=tools/selftest-results.sh
+. ./tools/selftest-results.sh || exit 2
 
 if [[ "${1:-}" == "--performance-status" ]]; then
     /usr/bin/python3 ./tools/selftest-performance.py status \
@@ -136,6 +138,8 @@ timeout_for_test() {
     case "$1" in
         print) echo 240 ;;
         cmdw)  echo 120 ;;
+        # Die Diagnose hält nach dem Aufbau 60 s für den externen leaks-Aufruf offen.
+        leakscenario) echo 120 ;;
         *)     echo "$TIMEOUT_SECS" ;;
     esac
 }
@@ -155,6 +159,25 @@ else
     STANDARD_RUN=1
     TESTS=("${ALL_TESTS[@]}")
 fi
+# Screenshot-Diagnosen verwenden denselben isolierten Start und dasselbe
+# Cleanup. Nur ausdrücklich gewählte Shot-Namen dürfen Bilddateien schreiben.
+SCREENSHOT_DIR="${FASTRA_SELFTEST_SCREENSHOT_DIR:-}"
+if [[ -n "$SCREENSHOT_DIR" ]]; then
+    case "${FASTRA_SELFTEST_LANGUAGE:-}" in
+        de) screenshot_locale=de_DE ;;
+        en) screenshot_locale=en_US ;;
+        *) echo "Screenshot-Sprache muss de oder en sein." >&2; exit 2 ;;
+    esac
+    for requested_test in "${TESTS[@]}"; do
+        case "$requested_test" in
+            projectshot|wildcardshot|regexshot|gitshot|graphshot|historyshot) ;;
+            *) echo "Screenshot-Modus verlangt einen unterstützten Shot-Namen." >&2; exit 2 ;;
+        esac
+    done
+    SELFTEST_LANGUAGE_ARGS+=(-AppleLocale "$screenshot_locale" -app.appearance light)
+    export FASTRA_SCREENSHOT_LANGUAGE="$FASTRA_SELFTEST_LANGUAGE"
+fi
+
 if [[ ! -x "$APP_BIN" ]]; then
     echo "✗ Kein Debug-Build gefunden ($APP_BIN). Erst ./build.sh laufen lassen." >&2
     exit 2
@@ -1263,91 +1286,6 @@ prune_selftest_evidence
 
 # ── Testlauf ─────────────────────────────────────────────────────────────
 
-# Liest das versionierte Ergebnisprotokoll der App. Sobald mindestens eine
-# `SELFTEST-RESULT`-Zeile vorhanden ist, ist sie verbindlich: Unbekannte
-# Versionen, Statuswerte, Testnamen oder beschädigte Zeilen werden zu einem
-# echten Fehler. Nur alte Bundles ohne Maschinenzeile benutzen weiterhin die
-# bisherige Begleitzeile.
-SELFTEST_RESULT_STATUS=""
-SELFTEST_PROTOCOL_ERROR=""
-classify_selftest_result() {
-    local expected_test="$1"
-    local errfile="$2"
-    local legacy_line="$3"
-    local structured_line=""
-    local candidate=""
-    local candidate_rank=-1
-    local highest_rank=-1
-    local saw_structured=0
-    local field1=""
-    local field2=""
-    local field3=""
-    local field4=""
-    local extra=""
-    SELFTEST_RESULT_STATUS=""
-    SELFTEST_PROTOCOL_ERROR=""
-
-    while IFS= read -r structured_line; do
-        [ -n "$structured_line" ] || continue
-        saw_structured=1
-        # Die vier Felder enthalten absichtlich keine freien Texte. `read`
-        # vermeidet dabei sowohl Dateinamen-Expansion als auch eine Änderung
-        # der Positionsparameter unter macOS-Bash 3.2.
-        field1=""; field2=""; field3=""; field4=""; extra=""
-        IFS=' ' read -r field1 field2 field3 field4 extra <<< "$structured_line"
-        if [ -n "$extra" ] \
-           || [ "$field1" != "SELFTEST-RESULT" ] \
-           || [ "$field2" != "v=1" ] \
-           || [ "$field3" != "test=$expected_test" ] \
-           || [[ "$field4" != status=* ]]; then
-            SELFTEST_PROTOCOL_ERROR="ungültige Ergebniszeile: $structured_line"
-            continue
-        fi
-        candidate="${field4#status=}"
-        case "$candidate" in
-            PASS) candidate_rank=0 ;;
-            SKIP) candidate_rank=1 ;;
-            ENV)  candidate_rank=2 ;;
-            FAIL) candidate_rank=3 ;;
-            *)
-                SELFTEST_PROTOCOL_ERROR="unbekannter Status in: $structured_line"
-                continue
-                ;;
-        esac
-        if [ "$candidate_rank" -gt "$highest_rank" ]; then
-            highest_rank="$candidate_rank"
-        fi
-    done < <(grep '^SELFTEST-RESULT' "$errfile" 2>/dev/null || true)
-
-    if [ -n "$SELFTEST_PROTOCOL_ERROR" ]; then
-        SELFTEST_RESULT_STATUS="FAIL"
-        return
-    fi
-    if [ "$saw_structured" -eq 1 ]; then
-        case "$highest_rank" in
-            0) SELFTEST_RESULT_STATUS="PASS" ;;
-            1) SELFTEST_RESULT_STATUS="SKIP" ;;
-            2) SELFTEST_RESULT_STATUS="ENV" ;;
-            3) SELFTEST_RESULT_STATUS="FAIL" ;;
-            *)
-                SELFTEST_RESULT_STATUS="FAIL"
-                SELFTEST_PROTOCOL_ERROR="Ergebniszeile enthält keinen gültigen Status"
-                ;;
-        esac
-        return
-    fi
-
-    # Kompatibilität mit bereits installierten Bundles vor Protokollversion 1.
-    if [[ "$legacy_line" == "SELFTEST $expected_test: PASS"* ]]; then
-        SELFTEST_RESULT_STATUS="PASS"
-    elif [[ "$legacy_line" == "SELFTEST $expected_test: SKIP"* ]]; then
-        SELFTEST_RESULT_STATUS="SKIP"
-    elif [[ "$legacy_line" == "SELFTEST $expected_test: "*"Umgebungsproblem"* ]]; then
-        SELFTEST_RESULT_STATUS="ENV"
-    else
-        SELFTEST_RESULT_STATUS="FAIL"
-    fi
-}
 
 pass_count=0
 real_fail_count=0
@@ -1508,6 +1446,25 @@ for t in "${TESTS[@]}"; do
             emit_selftest_result "$t" "ENV"
             echo "SELFTEST $t: Umgebungsproblem — Prozessübernahme fehlgeschlagen"
             summary+="⚠ $t (Startübernahme fehlgeschlagen)\n"
+            env_fail_count=$((env_fail_count + 1))
+            break
+        fi
+    fi
+
+    if [[ -n "$SCREENSHOT_DIR" ]]; then
+        # Der Aufnahmehelfer gehört ebenfalls zur Prozessbuchhaltung. Ein
+        # Signal beendet damit App und Capture-Werkzeug über denselben Pfad.
+        screenshot_app_pid="$FASTRA_TEST_STARTED_PID"
+        if ! TMPDIR="$FASTRA_TEST_TMPDIR/" \
+            CFFIXED_USER_HOME="$FASTRA_TEST_CF_HOME" \
+            CFPREFERENCES_AVOID_DAEMON=1 HOME="$FASTRA_TEST_CF_HOME" \
+            fastra_test_start_new_session /usr/bin/python3 ./tools/selftest-screenshot.py \
+            "$errfile" "$t" "$FASTRA_SELFTEST_LANGUAGE" "$SCREENSHOT_DIR" "$screenshot_app_pid" \
+            >/dev/null 2>>"$errfile" \
+            || ! track_started_pid "$FASTRA_TEST_STARTED_PID" \
+            || ! fastra_test_adopt_started_session; then
+            emit_selftest_result "$t" "ENV"
+            echo "SELFTEST $t: ENV — Aufnahmehelfer konnte nicht sicher gestartet werden"
             env_fail_count=$((env_fail_count + 1))
             break
         fi

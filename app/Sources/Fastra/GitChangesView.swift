@@ -204,7 +204,7 @@ struct GitChangesView: View {
                 switch item {
                 case .folder(let folder, let depth):
                     GitChangeFolderRow(
-                        folder: folder, depth: depth,
+                        folder: folder, depth: depth, section: section,
                         isExpanded: expandedFolders.wrappedValue.contains(folder.path)
                     ) {
                         if expandedFolders.wrappedValue.contains(folder.path) {
@@ -572,6 +572,7 @@ struct GitChangesView: View {
 private struct GitChangeFolderRow: View {
     let folder: GitChangeTreeFolder
     let depth: Int
+    let section: GitChangeSection
     let isExpanded: Bool
     let onToggle: () -> Void
     @State private var hovering = false
@@ -602,6 +603,10 @@ private struct GitChangeFolderRow: View {
         .background(hovering ? Theme.surfaceRaised : Color.clear)
         .onHover { hovering = $0 }
         .help(folder.path)
+        .background {
+            SelfTestMarker(id: "gitChangeFolder-"
+                + (section == .staged ? "staged" : "unstaged") + "-" + folder.path)
+        }
     }
 }
 

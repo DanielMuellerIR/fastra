@@ -133,6 +133,8 @@ if [[ ${#MOVED_BUNDLES[@]} -eq 0 ]]; then
     exit 1
 fi
 
+# Diese Modell-/Ressourcenprüfungen dürfen auch beim SwiftUI-Aufbau keine
+# andere Anwendung aktivieren. Die Kindprozesse erhalten die Sperre ausdrücklich.
 # `localization` liest das Ressourcenbundle direkt. `search` geht zusätzlich
 # durch die echte Ordnersuche und startet den gebündelten ripgrep-Prozess. So
 # fällt auch ein einzelner vergessener `Bundle.module`-Zugriff auf, statt erst
@@ -150,6 +152,7 @@ for SELFTEST_NAME in localization search; do
     FASTRA_SELFTEST_DEFAULTS_SUITE="$PORTABLE_DEFAULTS_SUITE" \
     FASTRA_TEST_DEFAULTS_REGISTRY="$FASTRA_TEST_DEFAULTS_REGISTRY" \
     FASTRA_SELFTEST="$SELFTEST_NAME" \
+    FASTRA_SELFTEST_ALLOW_ACTIVATION=0 \
     fastra_test_start_new_session "$APP_BIN" -ApplePersistenceIgnoreState YES \
         >/dev/null 2>"$ERR_FILE"; then
         echo "✗ Portabilitätsprüfung: Selbsttest $SELFTEST_NAME ließ sich nicht sicher starten." >&2

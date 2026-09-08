@@ -61,13 +61,50 @@ enum SoakTest {
     }
 
     private(set) static var findings: [Finding] = []
+    private(set) static var environmentIssues: [Finding] = []
+    // Historischer Berichtszähler: umfasst auch Zustandsprüfungen ohne Aktion.
     private(set) static var actionsRun = 0
+    private(set) static var completedRounds = 0
     static var currentPhase = "—"
     private static var lastAction = "—"
+
+    /// Nur eine bestätigte eigene Kopie darf später in Testdokumente gelangen.
+    /// Der Sicherungsstand allein genügt nicht: Er enthält anfangs Fremdinhalt.
+    struct CopiedText {
+        let changeCount: Int
+        let text: String
+
+        func isCurrent(in pasteboard: NSPasteboard) -> Bool {
+            guard !text.isEmpty, pasteboard.changeCount == changeCount else {
+                return false
+            }
+            let currentText = pasteboard.string(forType: .string)
+            // Auch während des Lesens kann eine andere App kopieren.
+            return currentText == text && pasteboard.changeCount == changeCount
+        }
+    }
+
+    static var confirmedCopy: CopiedText?
 
     static func record(_ invariant: String, _ detail: String) {
         findings.append(Finding(phase: currentPhase, action: lastAction,
                                 invariant: invariant, detail: detail))
+    }
+
+    /// Fokusverlust ist Umgebung; fehlender Editoraufbau bleibt ein Fehler.
+    /// Bereits beobachtete Invarianten-Verstöße behalten immer Vorrang.
+    static func recordPreparationIssue(_ issue: ActionPreparationIssue) {
+        if case .focusUnavailable = issue {
+            environmentIssues.append(Finding(phase: currentPhase, action: lastAction,
+                invariant: issue.invariant, detail: issue.detail))
+        } else {
+            record(issue.invariant, issue.detail)
+        }
+    }
+
+    static var phaseOutcome: SelfTestOutcome {
+        if !findings.isEmpty { return .fail }
+        return environmentIssues.isEmpty ? .pass : .environment
     }
 
     /// Hinweis ins Lauf-Log (stderr) — bewusst KEIN Befund. Für optionale
@@ -133,7 +170,7 @@ enum SoakTest {
                                         expectedWindowCount: expectedWindowCount)
         checkWindowsMenuMatchesOpenWindows()
         checkEveryWindowHasWorkspace()
-        checkDirtyFlagMatchesDisk()
+        for window in documentWindows() { checkDirtyFlagMatchesDisk(window: window) }
         checkPreviewBelongsToItsWindow()
         checkSelectionsWithinText()
         checkFixedChromeVisible()
@@ -245,6 +282,33 @@ enum SoakTest {
         return range
     }
 
+    /// Der Modelltext allein kann eine verlorene Editor-Bindung verdecken.
+    /// Erst beide Zeichenfolgen vergleichen, dann mit der gewählten Kodierung,
+    /// BOM und Zeilenenden die tatsächlich zu speichernden Bytes bestimmen.
+    private static func encodedEditorContent(in window: NSWindow, tab: EditorTab) -> Data? {
+        guard let content = window.contentView,
+              let editor = descendantTextView(in: content) else {
+            record("Editor und Tabmodell stimmen überein", "\(window.title): Editor fehlt")
+            return nil
+        }
+        let shown = editor.string
+        // String-== setzt kanonisch äquivalente Unicode-Darstellungen gleich.
+        // Für die Bindung und ihre Zeichenpositionen müssen auch die Bytes passen.
+        guard shown.utf8.elementsEqual(tab.content.utf8) else {
+            record("Editor und Tabmodell stimmen überein",
+                   "\(window.title): unterschiedliche Zeichenfolgen "
+                   + "(Editor \(shown.utf8.count), Modell \(tab.content.utf8.count) UTF-8-Bytes)")
+            return nil
+        }
+        guard let bytes = FileLoader.encodedData(content: shown, encoding: tab.encoding,
+                                                 bom: tab.bom, lineEnding: tab.lineEnding) else {
+            record("Editorinhalt ist speicherbar",
+                   "\(window.title): Inhalt passt nicht in die gewählte Dateikodierung")
+            return nil
+        }
+        return bytes
+    }
+
     /// (5) Der Änderungspunkt im Tab sagt die Wahrheit: Er steht genau dann,
     /// wenn der Text im Fenster wirklich von der Datei auf Platte abweicht.
     ///
@@ -256,25 +320,23 @@ enum SoakTest {
     ///
     /// Geprüft wird nur, was vergleichbar ist: gespeicherte, fertig geladene
     /// Textdokumente ohne Sonderansicht.
-    private static func checkDirtyFlagMatchesDisk() {
-        for window in documentWindows() {
-            guard let workspace = WorkspaceWindowRegistry.workspace(for: window),
-                  let tab = workspace.activeTab,
-                  let url = tab.url,
-                  !tab.isLoading,
-                  tab.gitKind == nil,
-                  tab.fileDiffRequest == nil,
-                  tab.displayMode == .text,
-                  let data = try? Data(contentsOf: url),
-                  let onDisk = String(data: data, encoding: .utf8) else { continue }
-            let differs = tab.content != onDisk
-            if differs != tab.isDirty {
-                record("Änderungspunkt stimmt mit der Platte überein",
-                       "\(window.title): Punkt ist \(tab.isDirty ? "gesetzt" : "nicht gesetzt"), "
-                       + "der Text weicht aber \(differs ? "sehr wohl" : "nicht") "
-                       + "von der Datei ab (Fenster \(tab.content.count) Zeichen, "
-                       + "Platte \(onDisk.count) Zeichen)")
-            }
+    static func checkDirtyFlagMatchesDisk(window: NSWindow) {
+        guard let workspace = WorkspaceWindowRegistry.workspace(for: window),
+              let tab = workspace.activeTab,
+              let url = tab.url,
+              !tab.isLoading,
+              tab.gitKind == nil,
+              tab.fileDiffRequest == nil,
+              tab.displayMode == .text,
+              let onDisk = try? Data(contentsOf: url),
+              let expected = encodedEditorContent(in: window, tab: tab) else { return }
+        let differs = expected != onDisk
+        if differs != tab.isDirty {
+            record("Änderungspunkt stimmt mit der Platte überein",
+                   "\(window.title): Punkt ist \(tab.isDirty ? "gesetzt" : "nicht gesetzt"), "
+                   + "der Text weicht aber \(differs ? "sehr wohl" : "nicht") "
+                   + "von der Datei ab (Editor kodiert \(expected.count) Bytes, "
+                   + "Platte \(onDisk.count) Bytes)")
         }
     }
 
@@ -326,17 +388,17 @@ enum SoakTest {
                    "\(window.title): nach dem Sichern hat der Tab keine Datei")
             return
         }
-        guard let data = try? Data(contentsOf: url),
-              let onDisk = String(data: data, encoding: .utf8) else {
+        guard let onDisk = try? Data(contentsOf: url) else {
             record("Sichern schreibt den Fensterinhalt",
                    "\(window.title): \(url.lastPathComponent) ist nach dem "
                    + "Sichern nicht lesbar")
             return
         }
-        if onDisk != tab.content {
+        guard let expected = encodedEditorContent(in: window, tab: tab) else { return }
+        if onDisk != expected {
             record("Sichern schreibt den Fensterinhalt",
-                   "\(window.title): Platte hat \(onDisk.count) Zeichen, das "
-                   + "Fenster \(tab.content.count)")
+                   "\(window.title): gespeicherte Bytes unterscheiden sich vom Editor "
+                   + "(Platte \(onDisk.count), erwartet \(expected.count) Bytes)")
         }
         if tab.isDirty {
             record("Sichern schreibt den Fensterinhalt",
@@ -428,7 +490,7 @@ enum SoakTest {
     /// (2) Fenster entstehen und verschwinden nur, wenn die Aktion das
     /// vorsah. Findet „geschlossenes Fenster kommt zurück" und „ein
     /// Doppelklick öffnet zwei Fenster".
-    private static func checkNoWindowAppearedOrVanished(
+    static func checkNoWindowAppearedOrVanished(
         before: [ObjectIdentifier: WindowSnapshot],
         after: [ObjectIdentifier: WindowSnapshot],
         expectedWindowCount: Int?
@@ -440,7 +502,9 @@ enum SoakTest {
             return
         }
         guard expectedWindowCount == nil else { return }
-        if after.count != before.count {
+        // Gleiche Anzahl genügt nicht: Ein verlorenes Fenster kann im selben
+        // Durchlauf durch ein anderes ersetzt werden, sogar mit gleichem Titel.
+        if Set(after.keys) != Set(before.keys) {
             let neu = after.filter { before[$0.key] == nil }.values.map(\.title)
             let weg = before.filter { after[$0.key] == nil }.values.map(\.title)
             record("Keine ungefragten Fensteränderungen",
@@ -578,15 +642,57 @@ enum SoakTest {
         FileHandle.standardError.write(Data("SOAK-4D-DATEI: \(filePath)\n".utf8))
     }
 
-    /// Stellt VOR einer respondergebundenen Aktion die Fokuslage eines echten
-    /// Klicks her. `NSApp.activate` und `makeKeyAndOrderFront` werden von AppKit
-    /// nicht immer im selben Runloop-Durchlauf sichtbar; der Treiber wartet
-    /// deshalb begrenzt auf `true`, bevor er `startRound()` aufruft.
-    static func prepareFrontWindowForAction() -> Bool {
-        guard let window = documentWindows().first else { return false }
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-        return NSApp.isActive && window.isKeyWindow
+    struct ActionContext {
+        let window: NSWindow
+        let textView: TextView
+        let workspace: Workspace
+    }
+
+    enum ActionPreparationIssue: Error, Equatable {
+        case missingWindow, missingWorkspace, missingEditor
+        case focusUnavailable(String)
+
+        var invariant: String {
+            if case .focusUnavailable = self { return "Aktionsfenster erhält den Fokus" }
+            return "Arbeitsrunde hat Fenster, Workspace und Editor"
+        }
+
+        var detail: String {
+            switch self {
+            case .missingWindow: "Kein Dokumentfenster für die Arbeitsrunde vorhanden"
+            case .missingWorkspace: "Aktionsfenster hat keinen Workspace"
+            case .missingEditor: "Aktionsfenster hat keinen Editor"
+            case .focusUnavailable(let state): state
+            }
+        }
+    }
+
+    /// Vorbereitung und Ausführung benötigen dasselbe vollständige Ziel.
+    /// Fehlender Aufbau ist kein optionaler Aktions-Skip wie Sichern ohne Datei.
+    static func actionContext(in window: NSWindow?) -> Result<ActionContext, ActionPreparationIssue> {
+        guard let window else { return .failure(.missingWindow) }
+        guard let workspace = WorkspaceWindowRegistry.workspace(for: window) else {
+            return .failure(.missingWorkspace)
+        }
+        guard let content = window.contentView,
+              let textView = descendantTextView(in: content) else {
+            return .failure(.missingEditor)
+        }
+        return .success(ActionContext(window: window, textView: textView, workspace: workspace))
+    }
+
+    /// Wartet vor jeder Runde auf vollständigen Aufbau und Fokus. AppKit
+    /// übernimmt die Aktivierung asynchron; der Treiber versucht es deshalb
+    /// begrenzt erneut. Erst nil erlaubt den Start der eigentlichen Aktion.
+    static func prepareFrontWindowForAction() -> ActionPreparationIssue? {
+        switch actionContext(in: documentWindows().first) {
+        case .failure(let issue): return issue
+        case .success(let context):
+            NSApp.activate(ignoringOtherApps: true)
+            context.window.makeKeyAndOrderFront(nil)
+            return NSApp.isActive && context.window.isKeyWindow
+                ? nil : .focusUnavailable(frontWindowFocusState())
+        }
     }
 
     static func frontWindowFocusState() -> String {
@@ -602,11 +708,18 @@ enum SoakTest {
         target: NSWindow, label: String, pasteboardChangeCount: Int?,
         pasteboardExpectedString: String?
     )? {
-        guard let window = documentWindows().first,
-              let content = window.contentView,
-              let textView = descendantTextView(in: content),
-              let workspace = WorkspaceWindowRegistry.workspace(for: window)
-        else { return nil }
+        let context: ActionContext
+        switch actionContext(in: documentWindows().first) {
+        case .success(let ready): context = ready
+        case .failure(let issue):
+            // Auch ein zwischen Vorbereitung und Ausführung verlorenes Ziel
+            // darf nicht wie eine absichtlich übersprungene Aktion verschwinden.
+            record(issue.invariant, issue.detail)
+            return nil
+        }
+        let window = context.window
+        let textView = context.textView
+        let workspace = context.workspace
 
         // Ein Mensch bedient immer das vordere, aktive Fenster. Die direkte
         // Teststeuerung kann dagegen ein geordnetes Fenster erwischen, das
@@ -787,11 +900,11 @@ enum SoakTest {
             }
 
         case .paste:
-            // Nur mit Textinhalt in der Zwischenablage; Bild-Paste und
-            // Smart Paste (⇧⌘V, modale Fehlermeldung) bleiben bewusst außen
-            // vor. Der Einfügepunkt wird auf den gültigen Bereich geklemmt.
-            guard let clip = NSPasteboard.general.string(forType: .string),
-                  !clip.isEmpty else { return nil }
+            // Vor der ersten bestätigten Testkopie und nach fremden Kopien
+            // wird nichts eingefügt. Sonst könnte ein späteres Sichern private
+            // Zwischenablageinhalte in den Testdateien verewigen. Bild-Paste
+            // und Smart Paste (⇧⌘V) bleiben weiterhin außen vor.
+            guard confirmedCopy?.isCurrent(in: .general) == true else { return nil }
             let textBefore = textView.string
             _ = window.makeFirstResponder(textView)
             textView.selectionManager.setSelectedRange(
@@ -902,6 +1015,7 @@ enum SoakTest {
     /// Zweite Hälfte einer Runde: die Invarianten gegen den inzwischen
     /// gesetzten Zustand prüfen.
     static func finishRound(_ round: PendingRound) {
+        completedRounds += 1
         checkInvariants(action: round.label, before: round.before,
                         target: round.target, expectedWindowCount: nil)
         if round.action == .save {
@@ -947,25 +1061,41 @@ enum SoakTest {
         }
     }
 
+    /// Eine Zustandsprüfung nach dem Neustart ersetzt keine Arbeitsrunde.
+    /// Optionale Importaktionen zählen ebenfalls nicht als Abschluss der vom
+    /// Treiber angeforderten Runden. Der Phasenabschluss prüft das vor dem Log.
+    static func validateRoundCoverage() {
+        // Sind die Runden durch fehlenden Fokus verhindert worden, bleibt der
+        // Lauf unvollständig (ENV), wird aber nicht zusätzlich zum Produktfehler.
+        guard completedRounds == 0, environmentIssues.isEmpty else { return }
+        record("Dauertest führt Arbeitsrunden aus",
+               "Keine Aktion einer Arbeitsrunde wurde ausgeführt und geprüft "
+               + "(\(actionsRun) sonstige Zustandsprüfungen)")
+    }
+
     // MARK: - Bericht
 
     /// Maschinenlesbarer Abschluss für das Orchestrierungs-Skript.
     /// Eine Zeile je Befund, danach die Zusammenfassung.
     static func report() -> String {
         var lines: [String] = []
-        for finding in findings {
-            lines.append("SOAK-BEFUND phase=\(finding.phase) "
-                + "aktion=\(finding.action) invariante=\(finding.invariant) "
-                + "detail=\(finding.detail)")
+        for (prefix, entries) in [("SOAK-BEFUND", findings), ("SOAK-UMGEBUNG", environmentIssues)] {
+            for finding in entries {
+                lines.append("\(prefix) phase=\(finding.phase) "
+                    + "aktion=\(finding.action) invariante=\(finding.invariant) "
+                    + "detail=\(finding.detail)")
+            }
         }
         lines.append("SOAK-ZUSAMMENFASSUNG aktionen=\(actionsRun) "
-            + "befunde=\(findings.count)")
+            + "befunde=\(findings.count) runden=\(completedRounds) umgebung=\(environmentIssues.count)")
         return lines.joined(separator: "\n")
     }
 
     static func reset() {
         findings = []
+        environmentIssues = []
         actionsRun = 0
+        completedRounds = 0
         lastAction = "—"
         scrollForgiven.removeAll()
         scrollForgivenRoundsRemaining = 0
@@ -981,14 +1111,17 @@ enum SoakTest {
     // Arbeitsspeicher; `soak-test.sh` startet die Phasen nacheinander.
 
     /// Hängt die Befunde dieses Starts an das gemeinsame Protokoll an.
-    static func appendReport(to logURL: URL) {
+    /// Schreibfehler müssen die Phase scheitern lassen: Ein Bericht früherer
+    /// Phasen allein darf keinen scheinbar vollständigen Lauf belegen.
+    static func appendReport(to logURL: URL) throws {
         let text = report() + "\n"
-        if let handle = try? FileHandle(forWritingTo: logURL) {
+        if FileManager.default.fileExists(atPath: logURL.path) {
+            let handle = try FileHandle(forWritingTo: logURL)
             defer { try? handle.close() }
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: Data(text.utf8))
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data(text.utf8))
         } else {
-            try? text.write(to: logURL, atomically: true, encoding: .utf8)
+            try text.write(to: logURL, atomically: true, encoding: .utf8)
         }
     }
 

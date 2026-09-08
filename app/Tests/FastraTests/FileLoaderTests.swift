@@ -568,23 +568,36 @@ func fileLoader_largeClassificationRejectsConcurrentWrite() throws {
     }
 }
 
-@Test("FileLoader: ungültiges UTF-8 ohne BOM wirft LoadError.unreadable")
-func fileLoader_invalidUtf8_throws() throws {
-    // 0x80 allein ist kein gültiges UTF-8 (Continuation-Byte ohne Leading-Byte).
-    // Und kein anderes gängiges Encoding erkennt Foundation hier verlässlich.
-    // Latin-1-Bytes (0x80–0xFF) OHNE BOM könnten von Foundation als Mac-Roman
-    // oder Windows-1252 erkannt werden — Bytes jenseits 0x9F sind dort ungültig.
-    // Wir nutzen Bytes, die in keinem Standard-Encoding gültig sind.
-    let url = try writeTmp([0xFE, 0xFF, 0x00])   // Big-Endian-BOM, dann Null-Byte
+@Test("FileLoader: ungültiger Inhalt nach einer BOM erlaubt keinen Encoding-Fallback",
+      arguments: [
+        [UInt8](arrayLiteral: 0xEF, 0xBB, 0xBF, 0x80), // UTF-8: alleinstehendes Folgebyte
+        [UInt8](arrayLiteral: 0xFF, 0xFE, 0x41),       // UTF-16 LE: halbe Codeeinheit
+        [UInt8](arrayLiteral: 0xFE, 0xFF, 0x41),       // UTF-16 BE: halbe Codeeinheit
+        [UInt8](arrayLiteral: 0xFF, 0xFE, 0x00, 0x00, 0x41), // UTF-32 LE: ein statt vier Bytes
+        [UInt8](arrayLiteral: 0x00, 0x00, 0xFE, 0xFF, 0x41), // UTF-32 BE: ein statt vier Bytes
+      ])
+func fileLoader_malformedBOMPayloadIsUnreadable(_ bytes: [UInt8]) throws {
+    let url = try writeTmp(bytes)
     defer { try? FileManager.default.removeItem(at: url) }
-
-    // Entweder wird es geladen (Foundation interpretiert BOM als UTF-16 BE)
-    // oder es schlägt fehl — wir testen nur, dass KEIN Absturz passiert.
-    // (UTF-16 BE mit einem Null-Byte ist technisch möglich, deshalb kein
-    // hartes `#expect(throws:)` hier — der Test stellt sicher, dass keine
-    // unkontrollierte Exception entkommt.)
-    let _ = try? FileLoader.load(url: url)
-    // Kein Absturz = implizit PASS.
+    #expect(throws: FileLoader.LoadError.unreadable) {
+        try FileLoader.load(url: url)
+    }
+    let data = Data(bytes)
+    let (bom, markedEncoding) = ApplyEngine.detectBOM(in: data)
+    let encoding = try #require(markedEncoding)
+    #expect(throws: FileLoader.LoadError.unreadable) {
+        try FileLoader.load(url: url, forcedEncoding: encoding)
+    }
+    // Auch der letzte Abschnitt einer großen Datei darf keine halbe
+    // Codeeinheit verwerfen; kleine Testseiten reichen für denselben Pfad.
+    #expect(throws: CocoaError.self) {
+        try TextFilePageReader.read(url: url, totalBytes: UInt64(bytes.count),
+            pageSize: 16, pageIndex: 0, encoding: encoding, bom: bom)
+    }
+    let plan = ApplyEngine.plan(files: [url],
+        options: SearchOptions(find: "A", replace: "B", isRegex: false))
+    #expect(plan.files.first?.skipped == .undecodable)
+    #expect(try Data(contentsOf: url) == Data(bytes))
 }
 
 @Test("FileLoader: ersetzte Vorschau bricht kooperativ nach der Probe ab")

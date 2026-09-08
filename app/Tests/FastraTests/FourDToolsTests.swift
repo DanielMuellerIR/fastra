@@ -37,7 +37,7 @@ func completionPrefixBoundaries() {
 }
 
 @Test("Matching: Befehle (mit Signatur) vor Konstanten, case-tolerant")
-func completionMatching() {
+func completionMatching() throws {
     let matches = FourDCompletionLogic.matches(forPrefix: "alert")
     #expect(!matches.isEmpty)
     #expect(matches[0].name == "ALERT")
@@ -45,12 +45,15 @@ func completionMatching() {
     // Die Signatur stammt aus der generierten Symboltabelle.
     #expect(matches[0].signature?.contains("ALERT") == true)
 
-    // Konstanten erscheinen nach den Befehlen.
-    let mixed = FourDCompletionLogic.matches(forPrefix: "4D ")
-    if let firstConstant = mixed.firstIndex(where: { $0.isConstant }) {
-        let beforeFirstConstant = mixed[..<firstConstant].filter { $0.isConstant }
-        #expect(beforeFirstConstant.isEmpty)
-    }
+    // „al“ liefert mit ALERT und Align echte Treffer beider Kategorien.
+    // Vor dem ERSTEN Konstanteneintrag liegt definitionsgemäß nie eine
+    // Konstante. Erst der gesamte Rest belegt, dass kein Befehl nachfolgt.
+    let mixed = FourDCompletionLogic.matches(forPrefix: "al")
+    #expect(mixed.contains { $0.name == "ALERT" && !$0.isConstant })
+    #expect(mixed.contains { $0.name == "Align bottom" && $0.isConstant })
+    let firstConstant = try #require(mixed.firstIndex(where: { $0.isConstant }))
+    #expect(firstConstant > 0)
+    #expect(mixed[firstConstant...].allSatisfy { $0.isConstant })
 }
 
 @Test("Matching: Obergrenze und leeres Präfix")

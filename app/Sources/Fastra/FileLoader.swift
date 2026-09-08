@@ -187,7 +187,7 @@ enum FileLoader {
             let (bom, bomEncoding) = ApplyEngine.detectBOM(in: data)
             let payload = Data(data.dropFirst(bom.count))
             let exactEncoding = explicitBodyEncoding(enc, bomEncoding: bomEncoding)
-            guard let s = String(data: payload, encoding: exactEncoding) else {
+            guard let s = ApplyEngine.decode(payload: payload, encoding: exactEncoding) else {
                 throw LoadError.unreadable
             }
             return LoadedFile(content: s, encoding: exactEncoding, bom: bom,
@@ -275,16 +275,10 @@ enum FileLoader {
                               externalObservation: read.observation)
         }
         let payload = Data(data.dropFirst(bom.count))
-        let detected: (String, String.Encoding)?
-        if let bomEncoding, let value = String(data: payload, encoding: bomEncoding) {
-            detected = (value, bomEncoding)
-        } else if let value = String(data: payload, encoding: .utf8) {
-            detected = (value, .utf8)
-        } else {
-            // Dieselbe dokumentierte CP1252/Latin-1-Heuristik wie Folder-
-            // Suche und Apply, ausschließlich auf den stabil gelesenen Bytes.
-            detected = ApplyEngine.decode(payload: payload, bomEncoding: nil)
-        }
+        // Dieselbe Dekodierung wie Ordnersuche und Apply: Eine BOM legt das
+        // Encoding fest. Fehler danach erlauben keinen Einbyte-Fallback,
+        // der beim Speichern Inhalt und ursprüngliche BOM vermischen würde.
+        let detected = ApplyEngine.decode(payload: payload, bomEncoding: bomEncoding)
         guard let (raw, detectedEncoding) = detected else { throw LoadError.unreadable }
 
         // Zeilenenden erkennen: CRLF vor CR prüfen (CRLF enthält auch CR,

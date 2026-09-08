@@ -423,7 +423,7 @@ enum FileDiff {
     /// ignorierte Leerzeilen und Intraline-Hervorhebung: aufeinanderfolgende
     /// entfernte und eingefügte Zeilen werden paarweise als `.changed`
     /// ausgerichtet, Überhänge bleiben `.removed`/`.added`.
-    private static func alignedRows(
+    static func alignedRows(
         leftLines: [String], rightLines: [String],
         leftBlank: [Bool], rightBlank: [Bool],
         removedLeft: Set<Int>, insertedRight: Set<Int>,
@@ -512,8 +512,12 @@ enum FileDiff {
 
             // Entfernt+eingefügt paarweise als „geändert" ausrichten;
             // Überhänge bleiben einseitig.
+            // Ein einzelner Block kann tausende lange Zeilen enthalten.
+            // Deshalb auch innerhalb des Blocks abbrechen, bevor die nächste
+            // Zeile ausgerichtet oder ihre Zeichen hervorgehoben werden.
             let pairCount = min(removedRun.count, insertedRun.count)
             for k in 0..<pairCount {
+                if isCancelled() { throw CancellationError() }
                 let li = removedRun[k]
                 let rj = insertedRun[k]
                 let highlights = GitDiffParser.intraline(leftLines[li], rightLines[rj])
@@ -526,6 +530,7 @@ enum FileDiff {
                                 isIgnoredBlank: false))
             }
             for k in pairCount..<removedRun.count {
+                if isCancelled() { throw CancellationError() }
                 rows.append(Row(id: rows.count, beforeLine: removedRun[k] + 1,
                                 afterLine: nil, before: leftLines[removedRun[k]],
                                 after: nil, kind: .removed, beforeHighlight: nil,
@@ -533,6 +538,7 @@ enum FileDiff {
                                 isIgnoredBlank: false))
             }
             for k in pairCount..<insertedRun.count {
+                if isCancelled() { throw CancellationError() }
                 rows.append(Row(id: rows.count, beforeLine: nil,
                                 afterLine: insertedRun[k] + 1, before: nil,
                                 after: rightLines[insertedRun[k]], kind: .added,

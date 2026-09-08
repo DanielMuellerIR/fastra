@@ -346,7 +346,7 @@ func sessionWorkspaceRestoreSelectsActiveRepositoryContext() async throws {
 
 @Test("Restore lässt keinen leeren Start-Tab aufblitzen")
 @MainActor
-func sessionRestoreHasNoTransientScratchTab() throws {
+func sessionRestoreHasNoTransientScratchTab() async throws {
     let (defaults, suite) = sessionDefaults()
     defer { defaults.removePersistentDomain(forName: suite) }
     let first = try sessionFile("a.txt", content: "A")
@@ -370,13 +370,21 @@ func sessionRestoreHasNoTransientScratchTab() throws {
     // asynchronen Ladeabschlüsse können den Main-Actor bis zum ersten `await`
     // nicht betreten. So prüft der Test genau den Zustand, den SwiftUI im
     // ersten Frame zeichnen würde (Daniel-Befund 2026-07-20).
-    workspace.restore(state)
+    var finished = false
+    workspace.restore(state) { finished = true }
 
     #expect(!workspace.tabs.contains { $0.isPristineScratch },
             "Start-Tab darf beim Restore nicht kurz aufblitzen")
     #expect(!workspace.tabs.contains { $0.url == nil },
             "Kein leerer „Ohne Titel“-Tab neben den geladenen Dateien")
     #expect(workspace.tabs.count == 2)
+
+    // Die Fixture bleibt bis zum Ende der gestarteten Reads erhalten.
+    // Vorher löschte defer die Dateien schon nach der synchronen Prüfung;
+    // ein später Hintergrund-Read konnte dadurch einen Ladefehler auslösen.
+    #expect(await waitUntil { finished })
+    #expect(workspace.tabs.map(\.content) == ["A", "B"])
+    #expect(workspace.tabs.allSatisfy { !$0.isLoading })
 }
 
 @Test("Gespeicherter Fensterrahmen wird auf einen vorhandenen Monitor begrenzt")

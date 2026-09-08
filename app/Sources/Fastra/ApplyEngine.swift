@@ -529,13 +529,26 @@ enum ApplyEngine {
         return (Data(), nil)
     }
 
+    /// Foundation ignoriert bei UTF-16/32 unvollständige Codeeinheiten am
+    /// Dateiende. Vor der Dekodierung ablehnen, damit kein Byte still entfällt.
+    static func decode(payload: Data, encoding: String.Encoding) -> String? {
+        let width: Int
+        switch encoding {
+        case .utf16, .utf16LittleEndian, .utf16BigEndian: width = 2
+        case .utf32, .utf32LittleEndian, .utf32BigEndian: width = 4
+        default: width = 1
+        }
+        guard payload.count.isMultiple(of: width) else { return nil }
+        return String(data: payload, encoding: encoding)
+    }
+
     /// Versucht, die Nutzdaten in einen String zu dekodieren. Wenn eine
     /// BOM bekannt ist, hat deren Encoding Vorrang. Sonst gilt UTF-8 zuerst;
     /// definierte druckbare C1-Bytes wählen Windows-1252, alle übrigen
     /// Single-Byte-Daten fallen konservativ auf Latin-1 zurück.
     static func decode(payload: Data, bomEncoding: String.Encoding?) -> (String, String.Encoding)? {
         if let enc = bomEncoding {
-            guard let s = String(data: payload, encoding: enc) else { return nil }
+            guard let s = decode(payload: payload, encoding: enc) else { return nil }
             return (s, enc)
         }
         if let utf8 = String(data: payload, encoding: .utf8) {
