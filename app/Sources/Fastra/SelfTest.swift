@@ -10121,25 +10121,23 @@ enum SelfTest {
             NSRange(location: ns.length, length: 0)
         )
         textView.insertText("🤢", replacementRange: NSRange(location: NSNotFound, length: 0))
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+        // Die Cursorzeile muss das Emoji vollständig ausgelegt haben:
+        // Fragmente der Zeile decken die gesamte Zeilenlänge ab. Geprüft wird
+        // das in einer kurzen Warteschleife statt nach EINER festen Pause.
+        // Grund: Die feste Viertelsekunde maß nicht die Auslegung, sondern die
+        // Startlast. Direkt nach einem anderen Fenstertest brauchte derselbe
+        // Testprozess rund 8 s statt 1 s bis zur Prüfstelle, und die Zeile war
+        // dann noch nicht ausgelegt — der Test meldete „0 von 14", isoliert
+        // war er grün (belegt am 2026-09-09 mit `tabscroll typescroll`).
+        // Die Aussage bleibt dieselbe: Die Auslegung muss ohne weitere
+        // Eingabe von selbst vollständig werden.
+        typeScrollAwaitEmojiLayout(textView: textView, tick: 0) { layoutFailure in
+            var failures = failures
             let after = textView.string as NSString
             if !(after as String).hasSuffix("🤢") {
                 failures.append("Palette-Emoji fehlt im Text")
             }
-            // Die Cursorzeile muss das Emoji vollständig ausgelegt haben:
-            // Fragmente der Zeile decken die gesamte Zeilenlänge ab.
-            if let line = textView.layoutManager.textLineForOffset(after.length - 1) {
-                let covered = line.data.lineFragments.map(\.range.length)
-                    .reduce(0, +)
-                if covered < line.range.length - 1 {   // -1: Umbruchzeichen
-                    failures.append("Emoji-Zeile unvollständig ausgelegt: "
-                        + "\(covered) von \(line.range.length), "
-                        + "Zeile=\(line.range), sichtbar=\(textView.visibleRect), "
-                        + "Cursor sichtbar=\(typeScrollCaretVisible(textView)), "
-                        + "Fenster sichtbar=\(textView.window?.isVisible ?? false), "
-                        + "App aktiv=\(NSApp.isActive)")
-                }
-            }
+            if let layoutFailure { failures.append(layoutFailure) }
             // Zweites Emoji wie im Repro, dann Shift+← zweimal.
             textView.insertText("🤮", replacementRange: NSRange(location: NSNotFound, length: 0))
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
@@ -10159,6 +10157,49 @@ enum SelfTest {
                 }
                 typeScrollStagePixels(textView: textView, failures: failures)
             }
+        }
+    }
+
+    /// Wartet, bis die Cursorzeile vollständig ausgelegt ist. Liefert `nil`
+    /// bei Erfolg, sonst die fertige Fehlermeldung mit allen Messwerten.
+    /// 60 × 50 ms Frist: großzügig gegenüber Startlast, aber endlich — eine
+    /// wirklich unterbliebene Auslegung läuft weiter in den Fehler.
+    private static func typeScrollAwaitEmojiLayout(
+        textView: TextView, tick: Int,
+        completion: @escaping (String?) -> Void
+    ) {
+        let text = textView.string as NSString
+        guard text.length > 0,
+              let line = textView.layoutManager.textLineForOffset(text.length - 1)
+        else {
+            // Noch keine Zeile: weiter warten, nicht stillschweigend bestehen.
+            if tick >= 60 {
+                completion("Cursorzeile nach dem Emoji nicht auffindbar")
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                typeScrollAwaitEmojiLayout(textView: textView, tick: tick + 1,
+                                           completion: completion)
+            }
+            return
+        }
+        let covered = line.data.lineFragments.map(\.range.length).reduce(0, +)
+        if covered >= line.range.length - 1 {   // -1: Umbruchzeichen
+            completion(nil)
+            return
+        }
+        if tick >= 60 {
+            completion("Emoji-Zeile unvollständig ausgelegt: "
+                + "\(covered) von \(line.range.length), "
+                + "Zeile=\(line.range), sichtbar=\(textView.visibleRect), "
+                + "Cursor sichtbar=\(typeScrollCaretVisible(textView)), "
+                + "Fenster sichtbar=\(textView.window?.isVisible ?? false), "
+                + "App aktiv=\(NSApp.isActive)")
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            typeScrollAwaitEmojiLayout(textView: textView, tick: tick + 1,
+                                       completion: completion)
         }
     }
 
