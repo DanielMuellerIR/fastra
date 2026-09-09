@@ -188,6 +188,16 @@ pre-fills the left side.
   (“Lines 12–14 changed”, “Line 30 only on the left”). Clicking jumps
   there; ⌥↑/⌥↓ move to the previous/next difference.
 - **Long identical sections** are folded and can be expanded per section.
+- **Column width:** the divider between the two sides can be dragged—the
+  pointer turns into a resize arrow there. The left side gains room without
+  widening the window, and the right side gives up exactly that room. The
+  split applies to every comparison and survives restarts.
+- **Soft wrap:** the footer switch works here too and keeps a separate
+  setting for the comparison view, independent of the language of the files
+  being compared. Switched on, long text wraps inside its column (the
+  factory default). Switched off, every real line stays on one line; whatever
+  does not fit is cut off at the column edge and never reaches into the other
+  side. Together with the divider that lets you read more of one side.
 - **Compare Against Saved Version** compares the unsaved editor content
   of the active tab directly with the state on disk — handy before
   saving.
@@ -845,7 +855,11 @@ open. In detail:
   Git actions, fetch, pull, refresh). Every button explains itself with a
   tooltip — even while it is disabled during a running Git operation. In
   the graph, shape and colour distinguish local branches from remote
-  branches, and each remote keeps its colour.
+  branches, and each remote keeps its colour. When a second working tree of the
+  same repository (`git worktree`) already has a branch checked out, the picker
+  says so next to its name: Git allows the same branch in only one place at a
+  time. Fastra then offers to open that working tree as a project — the state
+  you are looking for is already there.
 - **Changes:** stage/unstage files, discard, and commit right from the
   sidebar. After a local commit, the Commit button becomes a Push button:
   every locally configured remote gets its own fully clickable surface with

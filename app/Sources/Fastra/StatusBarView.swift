@@ -343,7 +343,7 @@ struct StatusBarView: View {
     private var softWrapControlHelp: String {
         return L10n.format(
             "Soft Wrap für %@: %@. Hauptklick schaltet um; Pfeil oder Rechtsklick öffnet Optionen.",
-            workspace.activeDocumentFormat.displayName,
+            workspace.softWrapScopeName,
             workspace.softWrapEnabled ? L10n.string("Ein") : L10n.string("Aus")
         )
     }
@@ -359,6 +359,26 @@ struct StatusBarView: View {
                 Text(verbatim: softWrapStatusText)
             }
         }
+        // Ein Vergleich hat keinen Editor: Umbruchziel, Seitenlinie und
+        // Einrückungsprofil wirken dort auf nichts. Statt sie wirkungslos
+        // anzubieten, bleibt für den Diff nur der Schalter selbst stehen.
+        if !workspace.activeTabShowsDiff {
+            softWrapEditorOptions
+        }
+        Divider()
+        Button {
+            workspace.resetSoftWrapToFactoryDefault()
+        } label: {
+            Text(verbatim: L10n.format(
+                "Für %@ auf Werkseinstellung zurücksetzen",
+                workspace.softWrapScopeName
+            ))
+        }
+        .disabled(!workspace.softWrapHasOverride)
+    }
+
+    @ViewBuilder
+    private var softWrapEditorOptions: some View {
         Divider()
         Button {
             workspace.selectSoftWrapTarget(.window)
@@ -490,16 +510,6 @@ struct StatusBarView: View {
                 }
             }
         }
-        Divider()
-        Button {
-            workspace.resetSoftWrapToFactoryDefault()
-        } label: {
-            Text(verbatim: L10n.format(
-                "Für %@ auf Werkseinstellung zurücksetzen",
-                workspace.activeDocumentFormat.displayName
-            ))
-        }
-        .disabled(!workspace.softWrapHasOverride)
     }
 }
 

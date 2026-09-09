@@ -172,6 +172,9 @@ struct GitDualPaneDiffView: View {
     let request: GitDiffRequest
     let document: GitDiffDocument?
     let fallbackText: String
+    /// Umbruch in der Spalte oder echte, am Spaltenrand abgeschnittene
+    /// Zeilen — aus dem Soft-Wrap-Schalter der Fußzeile.
+    var softWrapEnabled: Bool = true
 
     @State private var expandedFolds: Set<String> = []
     @State private var currentEntry: Int? = nil
@@ -199,7 +202,8 @@ struct GitDualPaneDiffView: View {
                                                 expandedFolds: expandedFolds),
                     entries: GitDiffDisplay.entries(document: document),
                     expandedFolds: $expandedFolds,
-                    currentEntry: $currentEntry
+                    currentEntry: $currentEntry,
+                    softWrapEnabled: softWrapEnabled
                 ) {
                     toolbarLeading
                 }

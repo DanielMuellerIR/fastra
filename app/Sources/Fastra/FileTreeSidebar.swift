@@ -82,6 +82,17 @@ struct FileTreeSidebar: View {
                                 } label: {
                                     if candidate.isCurrent {
                                         Label(candidate.name, systemImage: "checkmark")
+                                    } else if candidate.blockingWorktree != nil {
+                                        // Sichtbar VOR dem Klick: Git kann
+                                        // denselben Branch nur an einer Stelle
+                                        // auschecken. Der Eintrag bleibt
+                                        // anklickbar — der gemerkte Stand kann
+                                        // veraltet sein, und die Absage
+                                        // erklärt dann den Weg zum anderen
+                                        // Arbeitsverzeichnis.
+                                        Label(L10n.format("%@ (anderes Arbeitsverzeichnis)",
+                                                          candidate.name),
+                                              systemImage: "arrow.up.forward.app")
                                     } else {
                                         Text(candidate.name)
                                     }

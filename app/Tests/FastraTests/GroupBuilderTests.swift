@@ -401,32 +401,34 @@ func proposal_alreadyGroup() {
 // MARK: - shiftBackreferencesUp (Schritt 5c, pur)
 // ─────────────────────────────────────────────────────────────────────────
 
-@Test("shift `$1 $2 $12` atOrAbove 2 → `$1 $3 $13`")
+@Test("shift `$1 $2 $12` atOrAbove 2 → `$1 $3 $13` (zwölf Gruppen)")
 func shift_basic() {
-    let out = GroupBuilder.shiftBackreferencesUp(in: "$1 $2 $12", atOrAbove: 2)
+    // `$12` ist nur bei mindestens zehn Gruppen zweistellig — deshalb hier
+    // groupCount 12 (siehe ReplacementReferencesTests).
+    let out = GroupBuilder.shiftBackreferencesUp(in: "$1 $2 $12", atOrAbove: 2, groupCount: 12)
     #expect(out == "$1 $3 $13")
 }
 
 @Test("shift: escapter `\\$2` bleibt, `$0` bleibt")
 func shift_escapedAndZero() {
-    #expect(GroupBuilder.shiftBackreferencesUp(in: "\\$2", atOrAbove: 1) == "\\$2")
-    #expect(GroupBuilder.shiftBackreferencesUp(in: "$0", atOrAbove: 1) == "$0")
+    #expect(GroupBuilder.shiftBackreferencesUp(in: "\\$2", atOrAbove: 1, groupCount: 3) == "\\$2")
+    #expect(GroupBuilder.shiftBackreferencesUp(in: "$0", atOrAbove: 1, groupCount: 3) == "$0")
     // Gemischt: $0 bleibt, $1 (>=1) wird $2, \$3 bleibt literal.
-    #expect(GroupBuilder.shiftBackreferencesUp(in: "$0-$1-\\$3", atOrAbove: 1) == "$0-$2-\\$3")
+    #expect(GroupBuilder.shiftBackreferencesUp(in: "$0-$1-\\$3", atOrAbove: 1, groupCount: 3) == "$0-$2-\\$3")
 }
 
 @Test("shift: zweistellige Nummern korrekt (`$12` ist Gruppe 12)")
 func shift_twoDigit() {
     // atOrAbove 12 → $12 wird $13, $11 bleibt.
-    #expect(GroupBuilder.shiftBackreferencesUp(in: "$11 $12", atOrAbove: 12) == "$11 $13")
+    #expect(GroupBuilder.shiftBackreferencesUp(in: "$11 $12", atOrAbove: 12, groupCount: 12) == "$11 $13")
     // atOrAbove 5 → beide >= 5 → +1.
-    #expect(GroupBuilder.shiftBackreferencesUp(in: "$11 $12", atOrAbove: 5) == "$12 $13")
+    #expect(GroupBuilder.shiftBackreferencesUp(in: "$11 $12", atOrAbove: 5, groupCount: 12) == "$12 $13")
 }
 
 @Test("shift: Text ohne Backrefs bleibt 1:1")
 func shift_noBackrefs() {
-    #expect(GroupBuilder.shiftBackreferencesUp(in: "hello world", atOrAbove: 1) == "hello world")
-    #expect(GroupBuilder.shiftBackreferencesUp(in: "Preis: 5 EUR", atOrAbove: 1) == "Preis: 5 EUR")
+    #expect(GroupBuilder.shiftBackreferencesUp(in: "hello world", atOrAbove: 1, groupCount: 2) == "hello world")
+    #expect(GroupBuilder.shiftBackreferencesUp(in: "Preis: 5 EUR", atOrAbove: 1, groupCount: 2) == "Preis: 5 EUR")
 }
 
 @Test("Neue Gruppe erhält die Ersetzung nach einem literalen Backslash")
@@ -450,19 +452,25 @@ func proposal_preservesReferenceAfterLiteralBackslash() throws {
       arguments: 0...4)
 func shift_backslashParity(_ count: Int) {
     let prefix = String(repeating: "\\", count: count)
-    let shifted = GroupBuilder.shiftBackreferencesUp(in: prefix + "$2", atOrAbove: 2)
+    let shifted = GroupBuilder.shiftBackreferencesUp(in: prefix + "$2", atOrAbove: 2, groupCount: 2)
     #expect(shifted == prefix + (count.isMultiple(of: 2) ? "$3" : "$2"))
     // Das Entfernen der zuvor eingefügten Gruppe muss dieselben Referenzen
     // erkennen und das ursprüngliche Template wiederherstellen.
-    #expect(GroupRemoval.shiftReferencesDown(in: shifted, above: 2) == prefix + "$2")
+    #expect(GroupRemoval.shiftReferencesDown(in: shifted, above: 2, groupCount: 3) == prefix + "$2")
 }
 
-@Test("Nicht verschiebbare Gruppennummern bleiben ohne Überlauf erhalten")
+@Test("Referenzen auf nicht vorhandene Gruppen bleiben unverändert")
 func shift_unrepresentableReferencesStayUnchanged() {
+    // Bei zwei Gruppen liest Foundation nur eine Ziffer: aus `$9223…` wird
+    // Gruppe 9 plus literaler Text. Gruppe 9 gibt es nicht — die Referenz
+    // zeigt ins Leere und bleibt deshalb stehen, statt den Text daneben zu
+    // verschieben. `$²` und `$٠` sind gar keine Referenzen.
     for input in ["$\(Int.max)", "$999999999999999999999999999999", "$²", "$٠"] {
-        #expect(GroupBuilder.shiftBackreferencesUp(in: input, atOrAbove: 1) == input)
+        #expect(GroupBuilder.shiftBackreferencesUp(in: input, atOrAbove: 1, groupCount: 2) == input)
     }
-    #expect(GroupBuilder.shiftBackreferencesUp(in: "$01 $0", atOrAbove: 2) == "$01 $0")
+    // Bei zehn Gruppen ist `$01` die Gruppe 1; sie liegt unter der Schwelle
+    // und behält ihre führende Null, weil das Budget zweistellig bleibt.
+    #expect(GroupBuilder.shiftBackreferencesUp(in: "$01 $0", atOrAbove: 2, groupCount: 10) == "$01 $0")
 }
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -91,8 +91,25 @@ struct DualPaneDiffView<Leading: View>: View {
     /// Gewählter Unterschied (Index in `entries`) — der Einbetter besitzt
     /// den Zustand (Selbsttest-Marker, Reconciliation bei Git-Reloads).
     @Binding var currentEntry: Int?
+    /// Bricht zu langer Text in seiner Spalte um? Kommt aus der Soft-Wrap-
+    /// Einstellung der Fußzeile. Aus heißt: echte Zeilen, am Spaltenrand
+    /// abgeschnitten — die linke Seite darf nie in die rechte ragen.
+    var softWrapEnabled: Bool = true
     /// Kopfzeilen-Inhalt links (Dateinamen bzw. Commit-Beschreibung).
     @ViewBuilder let leading: () -> Leading
+
+    /// Teilungsverhältnis des Splitters, gemerkt über Tabs und Neustarts
+    /// hinweg. `store:` ist Pflicht — ohne ihn läse ein Selbsttest die echten
+    /// Einstellungen des Nutzers (siehe AppStorageIsolationTests).
+    @AppStorage(DiffColumnLayout.splitRatioDefaultsKey,
+                store: SelfTest.workspaceDefaults())
+    private var splitRatio: Double = Double(DiffColumnLayout.defaultRatio)
+
+    /// Verhältnis beim Anfassen des Splitters. Der Zug rechnet gegen DIESEN
+    /// Wert statt gegen den laufend veränderten — sonst summierte sich die
+    /// Verschiebung mit jedem Ereignis auf.
+    @State private var dragStartRatio: Double? = nil
+    @State private var splitterHovered = false
 
     /// Nach einer bewussten Auswahl (Klick/Taste) darf die Scroll-Verfolgung
     /// sie nicht sofort wieder überschreiben: Das Zentrieren des Ziels lässt
@@ -113,22 +130,36 @@ struct DualPaneDiffView<Leading: View>: View {
                 Divider().opacity(0.6)
                 HStack(spacing: 0) {
                     GeometryReader { geometry in
-                        // Die Spaltenbreite steht fest, bevor die Zeilen
+                        // Die Spaltenbreiten stehen fest, bevor die Zeilen
                         // gebaut werden — beide Seiten und alle Zeilen nutzen
-                        // denselben Wert, sonst versetzte sich die Trennlinie.
-                        let column = DiffColumnLayout.columnWidth(
+                        // dieselben Werte, sonst versetzte sich die Trennlinie.
+                        let content = DiffColumnLayout.contentWidth(
                             availableWidth: geometry.size.width)
+                        let leadingColumn = DiffColumnLayout.leadingWidth(
+                            contentWidth: content, ratio: CGFloat(splitRatio))
+                        let trailingColumn = DiffColumnLayout.trailingWidth(
+                            contentWidth: content, ratio: CGFloat(splitRatio))
                         ScrollView([.vertical, .horizontal]) {
                             LazyVStack(alignment: .leading, spacing: 0) {
                                 ForEach(items) { item in
-                                    itemView(item, columnWidth: column)
+                                    itemView(item, leadingWidth: leadingColumn,
+                                             trailingWidth: trailingColumn,
+                                             contentWidth: content)
                                         .id(item.id)
                                 }
                             }
-                            .frame(minWidth: DiffColumnLayout
-                                        .rowWidth(columnWidth: column),
+                            .frame(minWidth: content,
                                    minHeight: geometry.size.height,
                                    alignment: .topLeading)
+                            // Der Griff liegt IM gescrollten Inhalt, nicht
+                            // über dem Sichtfenster: In einem schmalen Fenster
+                            // ist die Fläche breiter als der Ausschnitt, und
+                            // ein Griff am Sichtfenster stünde dann nicht mehr
+                            // auf der Spaltengrenze.
+                            .overlay(alignment: .topLeading) {
+                                splitter(contentWidth: content,
+                                         leadingWidth: leadingColumn)
+                            }
                         }
                         .coordinateSpace(name: "dualPaneDiffScroll")
                         .onPreferenceChange(DiffEntryOffsetsKey.self) { offsets in
@@ -319,15 +350,19 @@ struct DualPaneDiffView<Leading: View>: View {
     // MARK: Elemente
 
     private func itemView(_ item: DiffDisplayItem,
-                          columnWidth: CGFloat) -> some View {
+                          leadingWidth: CGFloat,
+                          trailingWidth: CGFloat,
+                          contentWidth: CGFloat) -> some View {
         // Dekorationszeilen (Dateikopf, Hunk, Lücke, Hinweis) spannen sich über
         // beide Spalten samt Trenner, damit ihr Hintergrund nicht mitten in der
         // Diff-Fläche endet.
-        let rowWidth = DiffColumnLayout.rowWidth(columnWidth: columnWidth)
+        let rowWidth = contentWidth
         return Group {
             switch item {
             case .row(let row):
-                alignedRow(row, columnWidth: columnWidth)
+                alignedRow(row, leadingWidth: leadingWidth,
+                           trailingWidth: trailingWidth,
+                           contentWidth: contentWidth)
             case .fold(let id, let count, let expanded):
                 Button {
                     if expanded { expandedFolds.remove(id) }
@@ -411,6 +446,42 @@ struct DualPaneDiffView<Leading: View>: View {
         }
     }
 
+    // MARK: Splitter
+
+    /// Ziehbarer Trenner zwischen beiden Spalten. Er verschiebt nur das
+    /// Teilungsverhältnis; die Zeilen rechnen im nächsten Layout mit den
+    /// neuen Breiten. Als AppKit-View statt SwiftUI-`DragGesture`: Eine
+    /// SwiftUI-Geste in einer ScrollView konkurriert mit deren eigener
+    /// Zieherkennung und reagiert im Fenster-Selbsttest nicht verlässlich
+    /// auf zugestellte Maus-Ereignisse (gleiche Lehre wie bei den
+    /// Änderungen-Zeilen, die deshalb Buttons sind).
+    private func splitter(contentWidth: CGFloat,
+                          leadingWidth: CGFloat) -> some View {
+        DiffSplitterHandle(contentWidth: contentWidth,
+                           ratio: splitRatio) { newRatio in
+            splitRatio = newRatio
+        }
+        .frame(width: DiffColumnLayout.splitterHitWidth)
+        .frame(maxHeight: .infinity)
+        .offset(x: DiffColumnLayout.splitterCenterX(contentWidth: contentWidth,
+                                                    ratio: CGFloat(splitRatio))
+                    - DiffColumnLayout.splitterHitWidth / 2)
+        .help("Trenner ziehen: verteilt die Breite zwischen linker und rechter Seite.")
+        .accessibilityLabel("Breite der Vergleichsspalten")
+        .accessibilityValue(L10n.format("Linke Seite %ld Prozent",
+                                        Int((splitRatio * 100).rounded())))
+        .accessibilityAdjustableAction { direction in
+            // VoiceOver-Bedienung: Der Trenner ist sonst nur mit der Maus
+            // erreichbar.
+            let step = 0.05
+            switch direction {
+            case .increment: splitRatio = min(1, splitRatio + step)
+            case .decrement: splitRatio = max(0, splitRatio - step)
+            @unknown default: break
+            }
+        }
+    }
+
     // MARK: Zeilen
 
     /// Gehört die Zeile zum gewählten Unterschied? (Hervorhebung)
@@ -423,7 +494,9 @@ struct DualPaneDiffView<Leading: View>: View {
     }
 
     private func alignedRow(_ row: DiffDisplayRow,
-                            columnWidth: CGFloat) -> some View {
+                            leadingWidth: CGFloat,
+                            trailingWidth: CGFloat,
+                            contentWidth: CGFloat) -> some View {
         let tallRow = row.beforeMissingFinalNewline || row.afterMissingFinalNewline
             || row.intralineWasLimited
         // `.top`: Bricht eine Seite über mehrere Zeilen um, bleiben beide
@@ -432,15 +505,14 @@ struct DualPaneDiffView<Leading: View>: View {
             cell(number: row.beforeNumber, text: row.before,
                  highlight: row.beforeHighlight, before: true, kind: row.kind,
                  missingFinalNewline: row.beforeMissingFinalNewline,
-                 width: columnWidth, rowID: row.id)
+                 width: leadingWidth, rowID: row.id)
             Divider().opacity(0.5)
             cell(number: row.afterNumber, text: row.after,
                  highlight: row.afterHighlight, before: false, kind: row.kind,
                  missingFinalNewline: row.afterMissingFinalNewline,
-                 width: columnWidth, rowID: row.id)
+                 width: trailingWidth, rowID: row.id)
         }
-        .frame(minWidth: DiffColumnLayout.rowWidth(columnWidth: columnWidth),
-               maxWidth: DiffColumnLayout.rowWidth(columnWidth: columnWidth),
+        .frame(minWidth: contentWidth, maxWidth: contentWidth,
                minHeight: tallRow ? 38 : 22, alignment: .leading)
         .overlay(alignment: .bottom) {
             if row.intralineWasLimited {
@@ -498,11 +570,17 @@ struct DualPaneDiffView<Leading: View>: View {
                     .fastraFont(.monoSmall)
                     .foregroundColor(textColor(before: before, kind: kind,
                                                sideEmpty: text == nil))
-                    // Zu langer Text bricht in seiner Spalte um, statt über die
-                    // Spaltengrenze hinaus gezeichnet zu werden (vorher
-                    // `fixedSize(horizontal: true)`). Umbruch statt Kürzung,
-                    // weil ein Diff das Zeilenende nicht verschweigen darf.
-                    .fixedSize(horizontal: false, vertical: true)
+                    // Mit Soft Wrap bricht zu langer Text in seiner Spalte um,
+                    // statt über die Spaltengrenze hinaus gezeichnet zu werden
+                    // (vorher `fixedSize(horizontal: true)`) — Umbruch statt
+                    // Kürzung, weil ein Diff das Zeilenende nicht verschweigen
+                    // darf. Ohne Soft Wrap steht die ECHTE Zeile da: eine
+                    // Textzeile in voller Idealbreite, die über die Spalte
+                    // hinausragt und dort vom `clipped()` der Zelle
+                    // abgeschnitten wird. Ohne diesen Schnitt zeichnete die
+                    // linke Seite wieder in die rechte hinein.
+                    .lineLimit(softWrapEnabled ? nil : 1)
+                    .fixedSize(horizontal: !softWrapEnabled, vertical: true)
                     .multilineTextAlignment(.leading)
                     .textSelection(.enabled)
                 Spacer(minLength: DiffColumnLayout.trailingGap)
@@ -520,6 +598,13 @@ struct DualPaneDiffView<Leading: View>: View {
         // Zeile, deren andere Seite über mehrere Zeilen umbricht.
         .frame(minWidth: width, maxWidth: width, minHeight: 22,
                maxHeight: .infinity, alignment: .topLeading)
+        // Schneidet ab, was ohne Soft Wrap über die Spalte hinausragt. Mit
+        // Soft Wrap gibt es nichts abzuschneiden; der Schnitt bleibt trotzdem
+        // stehen, weil er dann nur die Zellgrenze nachzieht.
+        // Schneidet ab, was ohne Soft Wrap über die Spalte hinausragt. Mit
+        // Soft Wrap gibt es nichts abzuschneiden; der Schnitt bleibt trotzdem
+        // stehen, weil er dann nur die Zellgrenze nachzieht.
+        .clipped()
         .background(cellBackground(before: before, kind: kind))
         .background {
             // Anker für den `diffwide`-Selbsttest: Er messt an diesen Frames,
@@ -596,5 +681,127 @@ struct DualPaneDiffView<Leading: View>: View {
         }
         .help("Übersicht der Unterschiede; die hervorgehobene Markierung ist der aktuelle.")
         .accessibilityLabel("Übersicht der Unterschiede")
+    }
+}
+
+
+// MARK: - Splitter-Griff (AppKit)
+
+/// Der eigentliche Greifbereich des Splitters. AppKit statt SwiftUI, weil
+/// diese View drei Dinge braucht, die eine SwiftUI-Geste hier nicht
+/// verlässlich liefert: den Größenänderungs-Zeiger über `resetCursorRects`,
+/// eine Zieherkennung, die nicht mit der umgebenden ScrollView um dasselbe
+/// Ereignis streitet, und Erreichbarkeit für synthetische Maus-Ereignisse im
+/// Fenster-Selbsttest.
+private struct DiffSplitterHandle: NSViewRepresentable {
+    let contentWidth: CGFloat
+    let ratio: Double
+    let onRatioChange: (Double) -> Void
+
+    func makeNSView(context: Context) -> HandleView {
+        let view = HandleView()
+        view.setAccessibilityIdentifier("diffSplitter")
+        view.apply(contentWidth: contentWidth, ratio: ratio,
+                   onRatioChange: onRatioChange)
+        return view
+    }
+
+    func updateNSView(_ nsView: HandleView, context: Context) {
+        nsView.apply(contentWidth: contentWidth, ratio: ratio,
+                     onRatioChange: onRatioChange)
+    }
+
+    final class HandleView: NSView {
+        private var contentWidth: CGFloat = 0
+        private var ratio: Double = Double(DiffColumnLayout.defaultRatio)
+        private var onRatioChange: (Double) -> Void = { _ in }
+        /// Zustand beim Anfassen. Der Zug rechnet gegen DIESE Werte, nicht
+        /// gegen die laufend aktualisierten — sonst summierte sich die
+        /// Verschiebung mit jedem Ereignis auf.
+        private var dragStartRatio: Double?
+        private var dragStartX: CGFloat = 0
+        private var dragStartContentWidth: CGFloat = 0
+        private var hovering = false
+        private var tracking: NSTrackingArea?
+
+        func apply(contentWidth: CGFloat, ratio: Double,
+                   onRatioChange: @escaping (Double) -> Void) {
+            self.contentWidth = contentWidth
+            self.ratio = ratio
+            self.onRatioChange = onRatioChange
+        }
+
+        override func resetCursorRects() {
+            addCursorRect(bounds, cursor: .resizeLeftRight)
+        }
+
+        /// Ein Klick in ein nicht aktives Fenster aktiviert es sonst nur und
+        /// wird verworfen. Für einen Trenner ist das falsch: Wer aus einem
+        /// anderen Fenster kommt und die Spaltenbreite verschieben will, soll
+        /// das im ersten Zug tun können. Ohne diese Zusage erreicht auch der
+        /// Fenster-Selbsttest den Griff nie (Befund 2026-09-09: `hitTest`
+        /// fand ihn, `mouseDown` lief trotzdem nicht).
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let tracking { removeTrackingArea(tracking) }
+            let area = NSTrackingArea(
+                rect: bounds,
+                options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                owner: self
+            )
+            addTrackingArea(area)
+            tracking = area
+        }
+
+        override func mouseEntered(with event: NSEvent) {
+            hovering = true
+            needsDisplay = true
+        }
+
+        override func mouseExited(with event: NSEvent) {
+            hovering = false
+            needsDisplay = true
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            dragStartRatio = ratio
+            dragStartX = event.locationInWindow.x
+            dragStartContentWidth = contentWidth
+            needsDisplay = true
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let dragStartRatio else { return }
+            // Fensterkoordinaten: unabhängig davon, wie weit die Fläche
+            // inzwischen gescrollt ist oder wie die View verschoben wurde.
+            let delta = event.locationInWindow.x - dragStartX
+            let startWidth = DiffColumnLayout.leadingWidth(
+                contentWidth: dragStartContentWidth,
+                ratio: CGFloat(dragStartRatio)
+            )
+            let updated = DiffColumnLayout.ratio(
+                forLeadingWidth: startWidth + delta,
+                contentWidth: dragStartContentWidth
+            )
+            onRatioChange(Double(updated))
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            dragStartRatio = nil
+            needsDisplay = true
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            // Unauffällig, solange niemand hinzeigt: Die Trennlinie zeichnen
+            // die Zeilen selbst. Beim Zeigen und Ziehen zeigt ein kräftiger
+            // Strich, wo der Trenner gerade steht.
+            guard hovering || dragStartRatio != nil else { return }
+            let line = NSRect(x: (bounds.width - 2) / 2, y: 0,
+                              width: 2, height: bounds.height)
+            NSColor.controlAccentColor.withAlphaComponent(0.75).setFill()
+            line.fill()
+        }
     }
 }

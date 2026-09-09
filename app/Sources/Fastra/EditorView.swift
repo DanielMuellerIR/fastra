@@ -582,7 +582,8 @@ struct EditorView: View {
                let request = tab.fileDiffRequest {
                 // Datei-Vergleichs-Tab (Etappe 1 Wunschpaket 2026-07c):
                 // read-only Dual-Pane-Diff ohne Git.
-                FileDiffView(request: request, document: tab.fileDiffDocument)
+                FileDiffView(request: request, document: tab.fileDiffDocument,
+                             softWrapEnabled: workspace.softWrapEnabled)
                     .id(tab.id)
             } else if let tab = workspace.activeTab,
                let request = tab.gitDiffRequest {
@@ -590,7 +591,8 @@ struct EditorView: View {
                 // (Etappe 2 Wunschpaket 2026-07c).
                 GitDualPaneDiffView(request: request,
                                     document: tab.gitDiffDocument,
-                                    fallbackText: tab.content)
+                                    fallbackText: tab.content,
+                                    softWrapEnabled: workspace.softWrapEnabled)
                     .id(tab.id)
             } else if let kind = workspace.activeTab?.gitKind {
                 // Git-Text-Tab (Etappe 2): read-only Verlauf/Diff statt CESE.

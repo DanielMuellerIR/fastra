@@ -12,6 +12,10 @@ struct FileDiffView: View {
     let request: FileDiffRequest
     /// `nil` = Berechnung läuft noch.
     let document: FileDiffDocument?
+    /// Umbruch in der Spalte oder echte, am Spaltenrand abgeschnittene
+    /// Zeilen. Im Hauptfenster kommt der Wert aus der Fußzeile; Fenster ohne
+    /// Fußzeile (externer Vergleich, 4D-Makro-Vorschau) behalten den Umbruch.
+    var softWrapEnabled: Bool = true
 
     @State private var expandedFolds: Set<String> = []
     /// Index des gewählten Unterschieds in `result.blocks`.
@@ -39,7 +43,8 @@ struct FileDiffView: View {
                     items: displayItems,
                     entries: listEntries,
                     expandedFolds: $expandedFolds,
-                    currentEntry: $currentBlock
+                    currentEntry: $currentBlock,
+                    softWrapEnabled: softWrapEnabled
                 ) {
                     toolbarLeading
                 }

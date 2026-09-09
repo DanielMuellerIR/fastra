@@ -7,6 +7,60 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.124.0] — 2026-09-09
+
+### Neu
+
+- Zwischen den beiden Seiten der Vergleichsansicht sitzt jetzt ein ziehbarer
+  Trenner. Wer links lange Zeilen liest, gibt der linken Seite mehr Platz,
+  ohne das Fenster zu verbreitern — die rechte gibt genau denselben Platz ab,
+  die Gesamtbreite bleibt. Der Mauszeiger wird über dem Trenner zum
+  Verschiebe-Pfeil; die Aufteilung gilt für alle Vergleiche und bleibt über
+  Neustarts erhalten. Keine Seite lässt sich unter 96 pt schieben, sonst wäre
+  der Trenner nicht mehr zu greifen.
+- Der Soft-Wrap-Schalter der Fußzeile wirkt jetzt auch auf die
+  Vergleichsansicht. Sie hat dafür ein eigenes Profil, unabhängig von der
+  Sprache der verglichenen Dateien: Ob man im Diff lieber umbricht oder die
+  echten Zeilen sieht, hängt an der Ansicht, nicht an der Dateiendung.
+  Werkstandard bleibt der bisherige Umbruch. Ausgeschaltet steht jede Zeile
+  einzeilig da; was nicht in die Spalte passt, wird am Spaltenrand
+  abgeschnitten und ragt nie in die andere Seite (belegt vom Selbsttest
+  `diffnowrap` an echten Bildpunkten — ohne den Schnitt tragen dort 13 % der
+  Bildpunkte der rechten Spalte fremde Schrift).
+
+## [v1.123.0] — 2026-09-09
+
+### Behoben
+
+- Die Branch-Auswahl weiß jetzt, welche Branches ein anderes
+  Arbeitsverzeichnis (`git worktree`) bereits ausgecheckt hat. Solche
+  Einträge sind im Menü als „(anderes Arbeitsverzeichnis)" markiert, und
+  scheitert der Wechsel daran, erklärt Fastra den Grund in Nutzersprache und
+  bietet an, dieses Verzeichnis als Projekt zu öffnen — dort liegt der
+  gesuchte Stand ja schon. Bisher zeigte der Dialog nur die git-Rohmeldung
+  „Schwerwiegend: '<branch>' wird bereits von Arbeitsverzeichnis in '…'
+  verwendet", die den Weg nach vorn verschweigt (im Arbeitsbetrieb gemeldet,
+  2026-09-09).
+- Info.plist und CHANGELOG nennen für 1.122.6 dasselbe Datum. Die Plist
+  datierte die Version auf den 2026-09-08, der CHANGELOG auf den 2026-09-09;
+  der mechanische Abgleich in `MainWindowTitleTests` war dadurch rot.
+
+## [v1.122.6] — 2026-09-09
+
+### Behoben
+
+- „Gruppe definieren" und „Gruppe löschen" lesen `$N` im Ersetzen-Feld jetzt
+  so, wie die Ersetzung sie später wirklich auswertet. Maßgeblich ist die
+  Anzahl der Klammergruppen: Bei weniger als zehn Gruppen ist `$12` die
+  Gruppe 1 gefolgt vom Literal „2", nicht die Gruppe 12. Bisher veränderte
+  „Gruppe definieren" dadurch unbeteiligten Ersetzungstext (aus `abc` wurde
+  `a3` statt `a2`), und „Gruppe löschen" gab eine tatsächlich referenzierte
+  Gruppe zum Löschen frei.
+- Eine Referenz, hinter der ein kombinierendes Zeichen oder eine
+  nicht-lateinische Ziffer steht (etwa `$2` plus Akzent), wird wieder als
+  Referenz erkannt. Sie wurde zuvor weder mitverschoben noch von der
+  Löschsperre geschützt.
+
 ## [v1.122.5] — 2026-09-08
 
 ### Behoben

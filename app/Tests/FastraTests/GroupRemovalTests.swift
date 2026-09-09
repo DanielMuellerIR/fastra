@@ -106,25 +106,30 @@ func remove_allowsShieldedAlternation() {
     #expect(result?.newPattern == "(a|b)")
 }
 
-@Test("references erkennt $N exakt — $12 ist nicht $1")
+@Test("references folgt der Ziffernregel von Foundation")
 func references_maximalDigits() {
-    #expect(GroupRemoval.references("$12", group: 12) == true)
-    #expect(GroupRemoval.references("$12", group: 1) == false)
-    #expect(GroupRemoval.references("a$3b", group: 3) == true)
-    #expect(GroupRemoval.references("kein Dollar", group: 1) == false)
+    // Ab zehn Gruppen ist `$12` zweistellig …
+    #expect(GroupRemoval.references("$12", group: 12, groupCount: 12) == true)
+    #expect(GroupRemoval.references("$12", group: 1, groupCount: 12) == false)
+    // … darunter liest Foundation nur eine Ziffer: Gruppe 1 plus Literal „2".
+    // Genau dieser Fall hatte das Löschen der referenzierten Gruppe erlaubt.
+    #expect(GroupRemoval.references("$12", group: 1, groupCount: 2) == true)
+    #expect(GroupRemoval.references("$12", group: 12, groupCount: 2) == false)
+    #expect(GroupRemoval.references("a$3b", group: 3, groupCount: 3) == true)
+    #expect(GroupRemoval.references("kein Dollar", group: 1, groupCount: 1) == false)
 }
 
 @Test("references ignoriert escapte Dollars")
 func references_ignoresEscaped() {
     // `\$1` ist ein literales „$1" im Ergebnis — keine Referenz.
-    #expect(GroupRemoval.references("\\$1", group: 1) == false)
+    #expect(GroupRemoval.references("\\$1", group: 1, groupCount: 1) == false)
     // `\\$1` = literaler Backslash + echte Referenz.
-    #expect(GroupRemoval.references("\\\\$1", group: 1) == true)
+    #expect(GroupRemoval.references("\\\\$1", group: 1, groupCount: 1) == true)
 }
 
 @Test("shiftReferencesDown schiebt nur Referenzen über der Schwelle")
 func shift_down() {
-    #expect(GroupRemoval.shiftReferencesDown(in: "$1 $2 $3", above: 1) == "$1 $1 $2")
-    #expect(GroupRemoval.shiftReferencesDown(in: "$12", above: 2) == "$11")
-    #expect(GroupRemoval.shiftReferencesDown(in: "$0 \\$5", above: 1) == "$0 \\$5")
+    #expect(GroupRemoval.shiftReferencesDown(in: "$1 $2 $3", above: 1, groupCount: 3) == "$1 $1 $2")
+    #expect(GroupRemoval.shiftReferencesDown(in: "$12", above: 2, groupCount: 12) == "$11")
+    #expect(GroupRemoval.shiftReferencesDown(in: "$0 \\$5", above: 1, groupCount: 5) == "$0 \\$5")
 }

@@ -44,7 +44,8 @@ enum GroupRemoval {
         }
 
         // Verweigerungs-Grund 1: Replace referenziert $number.
-        if references(replacement, group: number) { return nil }
+        if references(replacement, group: number,
+                      groupCount: tokenization.groups.count) { return nil }
 
         // Verweigerungs-Grund 2: Quantifier direkt hinter der Gruppe.
         let groupEnd = group.range.location + group.range.length
@@ -87,17 +88,21 @@ enum GroupRemoval {
 
         // Replace-Template: alle Referenzen ÜBER der gelöschten Nummer
         // eins herunterschieben.
-        let rewritten = shiftReferencesDown(in: replacement, above: number)
+        let rewritten = shiftReferencesDown(in: replacement, above: number,
+                                            groupCount: tokenization.groups.count)
 
         return Result(newPattern: newPattern, rewrittenReplacement: rewritten)
     }
 
     /// `true`, wenn das Replace-Template `$number` referenziert.
-    /// Berücksichtigt Escapes (`\$` ist KEINE Referenz) und maximale
-    /// Ziffernfolgen (`$12` referenziert Gruppe 12, nicht Gruppe 1).
-    static func references(_ replacement: String, group number: Int) -> Bool {
+    /// Berücksichtigt Escapes (`\$` ist KEINE Referenz) und die Ziffernregel
+    /// von Foundation: Wie viele Ziffern zur Nummer gehören, hängt von
+    /// `groupCount` ab — bei zwei Gruppen referenziert `$12` die Gruppe 1
+    /// und nicht die Gruppe 12.
+    static func references(_ replacement: String, group number: Int,
+                           groupCount: Int) -> Bool {
         var found = false
-        ReplacementReferences.scan(in: replacement) { refNumber, _ in
+        ReplacementReferences.scan(in: replacement, groupCount: groupCount) { refNumber, _ in
             if refNumber == number { found = true }
         }
         return found
@@ -105,9 +110,16 @@ enum GroupRemoval {
 
     /// Schiebt alle `$N`-Referenzen mit N > `above` um eins herunter.
     /// `$0` (ganzer Treffer) und Referenzen ≤ `above` bleiben unverändert.
-    static func shiftReferencesDown(in replacement: String, above: Int) -> String {
-        ReplacementReferences.rewrite(in: replacement) { number in
-            number > above ? number - 1 : nil
+    ///
+    /// - Parameter groupCount: fangende Gruppen im Pattern VOR dem Löschen;
+    ///   danach ist es genau eine weniger.
+    static func shiftReferencesDown(in replacement: String, above: Int,
+                                    groupCount: Int) -> String {
+        ReplacementReferences.rewrite(in: replacement,
+                                      groupCount: groupCount,
+                                      newGroupCount: max(groupCount - 1, 0)) { number in
+            // Referenzen auf nicht vorhandene Gruppen bleiben stehen.
+            number > above && number <= groupCount ? number - 1 : nil
         }
     }
 }

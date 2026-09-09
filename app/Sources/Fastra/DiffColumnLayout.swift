@@ -8,11 +8,12 @@ import CoreGraphics
 /// Fensterbreite war, wurde über die Spaltengrenze hinaus gezeichnet und
 /// überschrieb die andere Seite (Daniel-Befund 2026-07-30 am Gesamt-Diff).
 ///
-/// Beide Spalten sind jetzt gleich breit und teilen sich die sichtbare Fläche;
-/// zu langer Text bricht INNERHALB seiner Spalte um. Damit bleiben immer beide
-/// Seiten nebeneinander sichtbar, die Trennlinie ist über alle Zeilen gerade,
-/// und es geht kein Zeichen verloren — eine Kürzung mit „…" hätte im Diff
-/// gerade das Zeilenende verschwiegen, auf das es oft ankommt.
+/// Beide Spalten teilen sich seither die sichtbare Fläche, und die Trennlinie
+/// ist über alle Zeilen gerade. Seit 2026-09-09 ist die Teilung nicht mehr
+/// starr halbe-halbe, sondern ein vom Nutzer gezogenes Verhältnis: Wer links
+/// lange Zeilen liest, gibt der linken Seite mehr Platz, ohne das Fenster zu
+/// verbreitern. Die Rechnung liegt bewusst hier und nicht in der Ansicht —
+/// so ist sie ohne Fenster prüfbar.
 enum DiffColumnLayout {
     /// Breite der Zeilennummern-Spalte innerhalb einer Zelle.
     static let numberWidth: CGFloat = 44
@@ -22,20 +23,69 @@ enum DiffColumnLayout {
     static let cellPadding: CGFloat = 5
     /// Freiraum am Textende, damit das letzte Zeichen nicht am Trenner klebt.
     static let trailingGap: CGFloat = 8
+    /// Breite der Trennlinie zwischen beiden Spalten.
+    static let dividerWidth: CGFloat = 1
     /// Untergrenze wie bisher — ein schmales Fenster soll die Spalten nicht
     /// unlesbar zusammenquetschen, dann wird die Fläche horizontal scrollbar.
     static let minimumColumnWidth: CGFloat = 459
+    /// Untergrenze EINER Spalte beim Ziehen des Splitters. Sie ist bewusst
+    /// viel kleiner als `minimumColumnWidth`: Wer den Trenner selbst zieht,
+    /// will eine Seite absichtlich schmal machen — sie darf nur nicht ganz
+    /// verschwinden, sonst wäre der Trenner nicht mehr zurückzuholen.
+    static let minimumPaneWidth: CGFloat = 96
+    /// Werksteilung: exakt halbe-halbe wie vor dem Splitter.
+    static let defaultRatio: CGFloat = 0.5
+    /// Schlüssel der gemerkten Teilung. Sie gilt bewusst für ALLE Vergleiche:
+    /// Wer sich die Aufteilung einmal eingestellt hat, will sie im nächsten
+    /// Diff wiederfinden, nicht je Tab neu ziehen.
+    static let splitRatioDefaultsKey = "diff.splitRatio"
+    /// Greifbreite des Splitters. Eine 1 pt schmale Linie träfe man nicht.
+    static let splitterHitWidth: CGFloat = 9
 
-    /// Breite EINER Spalte: die Hälfte der sichtbaren Fläche (der 1 pt breite
-    /// Trenner geht vorher ab), mindestens aber die Untergrenze.
-    static func columnWidth(availableWidth: CGFloat) -> CGFloat {
-        max((availableWidth - 1) / 2, minimumColumnWidth)
+    /// Gesamtbreite der Diff-Fläche: die sichtbare Breite, mindestens aber
+    /// zwei Spalten Untergrenze plus Trenner. Darunter scrollt die Fläche
+    /// horizontal, statt die Spalten weiter zu quetschen.
+    static func contentWidth(availableWidth: CGFloat) -> CGFloat {
+        max(availableWidth, minimumColumnWidth * 2 + dividerWidth)
     }
 
-    /// Gesamtbreite einer Diff-Zeile: beide Spalten plus Trenner. Auch die
-    /// Dekorationszeilen (Dateikopf, Hunk, Lücke, Hinweis) nutzen sie, damit
-    /// ihr Hintergrund nicht mitten in der Fläche endet.
-    static func rowWidth(columnWidth: CGFloat) -> CGFloat {
-        columnWidth * 2 + 1
+    /// Für die Spalten verfügbare Breite (Gesamtfläche ohne Trenner).
+    static func usableWidth(contentWidth: CGFloat) -> CGFloat {
+        max(0, contentWidth - dividerWidth)
+    }
+
+    /// Breite der LINKEN Spalte bei gegebenem Teilungsverhältnis.
+    /// Bewusst ungerundet: Bei `defaultRatio` müssen beide Seiten auf den
+    /// Punkt gleich breit sein, sonst stünde die Trennlinie schief.
+    static func leadingWidth(contentWidth: CGFloat, ratio: CGFloat) -> CGFloat {
+        let usable = usableWidth(contentWidth: contentWidth)
+        // Zu schmal für zwei Mindestspalten: dann bleibt nur die Halbierung.
+        guard usable > minimumPaneWidth * 2 else { return usable / 2 }
+        let raw = usable * min(max(ratio, 0), 1)
+        return min(max(raw, minimumPaneWidth), usable - minimumPaneWidth)
+    }
+
+    /// Breite der RECHTEN Spalte — der Rest, damit beide Spalten plus Trenner
+    /// exakt die Gesamtfläche ergeben und rechts kein Streifen frei bleibt.
+    static func trailingWidth(contentWidth: CGFloat, ratio: CGFloat) -> CGFloat {
+        usableWidth(contentWidth: contentWidth)
+            - leadingWidth(contentWidth: contentWidth, ratio: ratio)
+    }
+
+    /// Verhältnis aus einer gezogenen absoluten Splitter-Position. Nur auf
+    /// 0…1 begrenzt; die Mindestbreite einer Spalte setzt erst `leadingWidth`
+    /// durch. So merkt sich der gespeicherte Wert einen Zug bis an den Rand,
+    /// und ein breiteres Fenster gibt der Seite später wieder mehr Platz.
+    static func ratio(forLeadingWidth width: CGFloat,
+                      contentWidth: CGFloat) -> CGFloat {
+        let usable = usableWidth(contentWidth: contentWidth)
+        guard usable > 0 else { return defaultRatio }
+        return min(max(width / usable, 0), 1)
+    }
+
+    /// Mitte der Trennlinie in Flächenkoordinaten — Zeichen- und Greifpunkt
+    /// des Splitters.
+    static func splitterCenterX(contentWidth: CGFloat, ratio: CGFloat) -> CGFloat {
+        leadingWidth(contentWidth: contentWidth, ratio: ratio) + dividerWidth / 2
     }
 }

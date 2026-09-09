@@ -80,8 +80,11 @@ struct DocumentFormatTests {
 
     @Test("Alle eingebauten Formate liegen in der spezifizierten Default-Klasse")
     func factoryDefaults() {
+        // `.diff` ist kein Dateiformat, sondern die Vergleichsansicht. Sie
+        // brach schon immer um; der Werkstandard hält das fest.
         let expectedOn: Set<DocumentFormatID> = [
-            .plainText, .grammar(.json), .grammar(.markdown), .grammar(.html), .xml,
+            .plainText, .grammar(.json), .grammar(.markdown), .grammar(.html),
+            .xml, .diff,
         ]
         let actualOn = Set(
             SoftWrapFactoryDefaults.classes.compactMap { id, defaultClass in

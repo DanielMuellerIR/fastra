@@ -1374,6 +1374,11 @@ final class Workspace: ObservableObject {
     var gitMutationConfirmationHandler: (GitMutationConfirmation) -> Bool = Workspace.defaultGitMutationConfirmation
     var gitIdentityPromptHandler: (GitIdentitySnapshot?) -> GitIdentityConfiguration? = Workspace.defaultGitIdentityPrompt
     var gitBranchNamePromptHandler: (String?) -> String? = Workspace.defaultGitBranchNamePrompt
+    /// Absage eines Branch-Wechsels, den ein anderes Arbeitsverzeichnis
+    /// blockiert. Rückgabe `true`: Der Nutzer will dieses Verzeichnis als
+    /// Projekt öffnen. In Selbsttests ersetzbar, damit kein modaler Dialog
+    /// den Lauf anhält.
+    var gitBranchWorktreeBlockHandler: (GitBranchWorktreeBlock) -> Bool = Workspace.defaultGitBranchWorktreeBlock
 
     /// Schwache Referenz auf den Workspace des gerade aktiven Dokumentfensters.
     /// Die In-App-Selbsttests verwenden denselben Hook. Seit mehrere
@@ -1688,9 +1693,30 @@ final class Workspace: ObservableObject {
         return MarkdownFormat.isMarkdown(format: activeDocumentFormat)
     }
 
+    /// Zeigt der aktive Tab einen Vergleich (Datei-Diff oder Git-Diff)?
+    /// Die zweispaltige Ansicht hat kein Dateiformat — ihre Soft-Wrap-Wahl
+    /// gehört deshalb an die ANSICHT und nicht an die Sprache der beiden
+    /// verglichenen Dateien.
+    var activeTabShowsDiff: Bool {
+        guard let tab = activeTab else { return false }
+        return tab.fileDiffRequest != nil || tab.gitDiffRequest != nil
+    }
+
+    /// Profil, das der Soft-Wrap-Schalter der Fußzeile gerade bedient.
+    var softWrapScopeFormatID: DocumentFormatID {
+        activeTabShowsDiff ? .diff : activeDocumentFormat.id
+    }
+
+    /// Name dieses Profils für Tooltip und Menü.
+    var softWrapScopeName: String {
+        activeTabShowsDiff
+            ? L10n.string("Vergleich")
+            : activeDocumentFormat.displayName
+    }
+
     /// Gespeicherte Formatwahl für das aktive effektive Dokumentformat.
     var configuredSoftWrapEnabled: Bool {
-        softWrapProfiles.isEnabled(for: activeDocumentFormat.id)
+        softWrapProfiles.isEnabled(for: softWrapScopeFormatID)
     }
 
     var softWrapEnabled: Bool {
@@ -1698,7 +1724,7 @@ final class Workspace: ObservableObject {
     }
 
     var softWrapHasOverride: Bool {
-        softWrapProfiles.hasOverride(for: activeDocumentFormat.id)
+        softWrapProfiles.hasOverride(for: softWrapScopeFormatID)
     }
 
     var softWrapTarget: SoftWrapTarget {
@@ -1727,11 +1753,11 @@ final class Workspace: ObservableObject {
     }
 
     func setSoftWrapEnabled(_ enabled: Bool) {
-        softWrapProfiles.setEnabled(enabled, for: activeDocumentFormat.id)
+        softWrapProfiles.setEnabled(enabled, for: softWrapScopeFormatID)
     }
 
     func toggleSoftWrap() {
-        softWrapProfiles.toggle(for: activeDocumentFormat.id)
+        softWrapProfiles.toggle(for: softWrapScopeFormatID)
     }
 
     func selectSoftWrapTarget(_ target: SoftWrapTarget) {
@@ -1755,7 +1781,7 @@ final class Workspace: ObservableObject {
     }
 
     func resetSoftWrapToFactoryDefault() {
-        softWrapProfiles.resetToFactoryDefault(for: activeDocumentFormat.id)
+        softWrapProfiles.resetToFactoryDefault(for: softWrapScopeFormatID)
     }
 
     // MARK: - Einrückungsprofil (Etappe 4, Beschluss 2026-07-19)

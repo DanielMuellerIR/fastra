@@ -199,6 +199,18 @@ der aktive Tab ist links vorbelegt.
   dorthin; ⌥↑/⌥↓ wandern zum vorigen/nächsten Unterschied.
 - **Lange gleiche Abschnitte** sind eingeklappt und lassen sich pro
   Abschnitt einblenden.
+- **Spaltenbreite:** Der Trenner zwischen beiden Seiten lässt sich ziehen —
+  der Mauszeiger wird dort zum Verschiebe-Pfeil. Die linke Seite bekommt so
+  mehr Platz, ohne dass das Fenster breiter werden muss; die rechte gibt
+  genau diesen Platz ab. Die Aufteilung gilt für alle Vergleiche und bleibt
+  über Neustarts erhalten.
+- **Soft Wrap:** Der Schalter in der Fußzeile wirkt auch hier und hat für die
+  Vergleichsansicht eine eigene Einstellung, unabhängig von der Sprache der
+  verglichenen Dateien. Eingeschaltet bricht zu langer Text in seiner Spalte
+  um (Werkstandard). Ausgeschaltet steht jede echte Zeile einzeilig da; was
+  nicht in die Spalte passt, wird am Spaltenrand abgeschnitten und ragt nie
+  in die andere Seite. Zusammen mit dem Trenner lässt sich so mehr von einer
+  Seite lesen.
 - **Mit gespeicherter Fassung vergleichen** vergleicht den ungespeicherten
   Editor-Inhalt des aktiven Tabs direkt mit dem Stand auf der Platte —
   praktisch vor dem Speichern.
@@ -893,7 +905,11 @@ sichtbar, während der Dateien- oder Graph-Tab offen ist. Im Einzelnen:
   Diff, Git-Aktionen, Fetch, Pull, Neu einlesen). Jeder Knopf erklärt sich
   per Tooltip — auch, solange er wegen eines laufenden Git-Vorgangs
   deaktiviert ist. Im Graph unterscheiden Form und Farbe lokale Branches von
-  Remote-Branches; jeder Remote behält seine Farbe.
+  Remote-Branches; jeder Remote behält seine Farbe. Hat ein zweites
+  Arbeitsverzeichnis desselben Repositorys (`git worktree`) einen Branch schon
+  ausgecheckt, steht das im Auswahlmenü hinter seinem Namen: Git lässt denselben
+  Branch nur an einer Stelle gleichzeitig zu. Fastra bietet dann an, dieses
+  Verzeichnis als Projekt zu öffnen — der gesuchte Stand liegt dort schon.
 - **Änderungen:** Dateien bereitstellen/entnehmen, verwerfen und direkt
   committen. Nach einem lokalen Commit wird der Commit-Knopf zum Push-Knopf:
   Jeder lokal konfigurierte Remote erhält eine eigene vollständig klickbare

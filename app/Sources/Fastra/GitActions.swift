@@ -1353,13 +1353,61 @@ extension Workspace {
         // nach einem externen Wechsel noch den alten Branch enthalten; darauf
         // zu guard-en würde dann genau den gewünschten Wechsel verschlucken.
         guard gitBranches.first(where: { $0.isCurrent })?.name != name else { return }
-        runGitAction(["switch", name], label: "Branch-Wechsel", then: {
+        // Ob der Wechsel erlaubt ist, entscheidet weiterhin git selbst: Ein
+        // fremdes Arbeitsverzeichnis kann seit dem letzten Einlesen entfernt
+        // worden sein, und ein Vorab-Block aus dem gemerkten Stand würde dann
+        // einen gültigen Wechsel verschlucken. Die gemerkte Belegung dient nur
+        // dazu, die Absage in Nutzersprache zu erklären statt in git-Rohtext.
+        let blockingWorktree = gitBranches.first { $0.name == name }?.blockingWorktree
+        runGitAction(["switch", name], label: "Branch-Wechsel",
+                     refreshOnFailure: true,
+                     failureHandler: { [weak self] _ in
+                         guard let self, let blockingWorktree else { return false }
+                         self.presentBranchWorktreeBlock(branch: name,
+                                                         worktree: blockingWorktree)
+                         return true
+                     }, then: {
             [weak self] _ in
             guard let self else { return }
             self.recordGitSuccess(L10n.format("Branch „%@“ aktiv", name))
             self.refreshGitRepositoryFully()
             self.refreshOpenGitViews()
         })
+    }
+
+    /// Erklärt die einzige Absage, die git beim Branch-Wechsel strukturell
+    /// erzwingt: Derselbe Branch darf nur in EINEM Arbeitsverzeichnis
+    /// ausgecheckt sein. Statt der git-Rohmeldung („Schwerwiegend: ‘x’ wird
+    /// bereits von Arbeitsverzeichnis in ‘…’ verwendet“) nennt Fastra den Weg
+    /// nach vorn: Das andere Arbeitsverzeichnis enthält den gesuchten Stand
+    /// bereits und lässt sich direkt als Projekt öffnen.
+    func presentBranchWorktreeBlock(branch: String, worktree: String) {
+        let block = GitBranchWorktreeBlock(
+            branch: branch, worktree: worktree,
+            worktreeExists: FileManager.default.fileExists(atPath: worktree)
+        )
+        guard gitBranchWorktreeBlockHandler(block) else { return }
+        openProject(at: URL(fileURLWithPath: worktree))
+    }
+
+    /// Produktpfad der Absage. Rückgabe `true`: Der Nutzer will das andere
+    /// Arbeitsverzeichnis als Projekt öffnen.
+    static func defaultGitBranchWorktreeBlock(_ block: GitBranchWorktreeBlock) -> Bool {
+        guard presentGitDialogs else {
+            FileHandle.standardError.write(
+                Data("GIT-ERROR [Branch-Wechsel]: \(block.informativeText)\n".utf8)
+            )
+            return false
+        }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.string("Branch-Wechsel nicht möglich")
+        alert.informativeText = block.informativeText
+        if block.worktreeExists {
+            alert.addButton(withTitle: L10n.string("Arbeitsverzeichnis öffnen"))
+        }
+        alert.addButton(withTitle: L10n.string("Abbrechen"))
+        return block.worktreeExists && alert.runModal() == .alertFirstButtonReturn
     }
 
     /// Pickaxe-Suche (`git log -S<text>`): findet die Commits, die eine

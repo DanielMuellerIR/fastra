@@ -1564,3 +1564,21 @@
 "Prüft das gewählte Format: JSON-/XML-Syntax oder 4D-Struktur mit Zeile und Spalte." = "Checks the selected format: JSON/XML syntax or 4D structure, with line and column.";
 
 "Schreibgeschützter Vergleich" = "Read-only comparison";
+
+"Branch-Wechsel nicht möglich" = "Cannot Switch Branch";
+
+"Der Branch „%@“ ist bereits im Arbeitsverzeichnis „%@“ ausgecheckt. Git lässt denselben Branch nur an einer Stelle gleichzeitig zu." = "Branch ‘%@’ is already checked out in the working tree at ‘%@’. Git allows the same branch in only one place at a time.";
+
+"Du kannst dieses Arbeitsverzeichnis als Projekt öffnen — der gesuchte Stand liegt dort schon." = "You can open that working tree as a project—the state you are looking for is already there.";
+
+"Der Ordner existiert nicht mehr. Melde ihn mit „git worktree prune“ ab, danach ist der Branch wieder frei." = "The folder no longer exists. Deregister it with ‘git worktree prune’ to free the branch again.";
+
+"Arbeitsverzeichnis öffnen" = "Open Working Tree";
+
+"%@ (anderes Arbeitsverzeichnis)" = "%@ (other working tree)";
+
+"Breite der Vergleichsspalten" = "Comparison column width";
+
+"Linke Seite %ld Prozent" = "Left side %ld percent";
+
+"Trenner ziehen: verteilt die Breite zwischen linker und rechter Seite." = "Drag the divider to share the width between the left and right side.";

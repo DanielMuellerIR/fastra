@@ -15,6 +15,11 @@ struct DocumentFormatID: RawRepresentable, Hashable, Codable, Identifiable {
     static let fourD = DocumentFormatID(rawValue: "4d")
     static let xml = DocumentFormatID(rawValue: "xml")
     static let csv = DocumentFormatID(rawValue: "csv")
+    /// Kein Dateiformat, sondern die zweispaltige Vergleichsansicht. Sie
+    /// braucht ein eigenes Soft-Wrap-Profil: Ob der Nutzer im Diff lieber
+    /// umbricht oder die echten Zeilen sehen will, hängt an der Ansicht, nicht
+    /// an der Sprache der verglichenen Dateien.
+    static let diff = DocumentFormatID(rawValue: "diff")
 
     /// Eigene, bewusst festgelegte IDs für alle CodeEdit-Sprachen. Ein neuer
     /// Enum-Fall macht den Switch nicht mehr vollständig und erzwingt damit
@@ -122,6 +127,8 @@ enum SoftWrapFactoryDefaults {
         .grammar(.yaml): .off,
         .xml: .on,
         .csv: .off,
+        // Der Diff brach bisher immer um; das bleibt der Werkstandard.
+        .diff: .on,
     ]
 
     static func isEnabled(for formatID: DocumentFormatID) -> Bool {
@@ -135,7 +142,7 @@ enum SoftWrapFactoryDefaults {
 enum DocumentFormatResolver {
     /// Formate, die nicht als eigenständige CodeEdit-Grammatik auswählbar
     /// sind, aber ein eigenes Profil brauchen.
-    static let additionalProfileIDs: Set<DocumentFormatID> = [.xml, .csv]
+    static let additionalProfileIDs: Set<DocumentFormatID> = [.xml, .csv, .diff]
 
     /// Liefert die Formatidentität eines Menüeintrags. Diese Menge bildet mit
     /// `additionalProfileIDs` die verbindliche Vollständigkeitsbasis der

@@ -738,6 +738,14 @@ enum SelfTest {
             // Geometrie der zweispaltigen Diff-Ansicht: gleich breite Spalten,
             // Umbruch statt Überlauf bei sehr langen Zeilen.
             waitForMainWindow { runDiffWideTest() }
+        case "diffnowrap":
+            // Soft Wrap AUS im Vergleich: echte einzeilige Zeilen, die am
+            // Spaltenrand abgeschnitten werden statt in die andere Seite zu
+            // ragen.
+            waitForMainWindow { runDiffNoWrapTest() }
+        case "diffsplit":
+            // Ziehbarer Trenner zwischen den beiden Vergleichsspalten.
+            waitForMainWindow { runDiffSplitTest() }
         case "gitstickyshot":
             // Diagnose: gescrollte Änderungen-Liste für die Sichtprüfung des
             // festgepinnten Abschnittskopfs.
@@ -18497,8 +18505,80 @@ enum SelfTest {
                                             done(onMain && feedback)
                                         }
                                     },
-                                    next: { gitActionsPickaxe(ws, repo: repo, bare: bare, base: base, fm: fm) })
+                                    next: { gitActionsWorktreeBlock(ws, repo: repo, bare: bare, base: base, fm: fm) })
                       })
+        }
+    }
+
+    /// WORKTREE-SPERRE: Ein zweites Arbeitsverzeichnis checkt einen Branch aus.
+    /// Git verbietet denselben Branch danach im Hauptverzeichnis (Exit 128).
+    /// Fastra muss diese Absage kennen, sie in Nutzersprache erklären und den
+    /// Weg zum anderen Verzeichnis anbieten — statt die git-Rohmeldung
+    /// „Schwerwiegend: … wird bereits von Arbeitsverzeichnis … verwendet" zu
+    /// zeigen. Realer Bedienfall aus dem Arbeitsbetrieb (2026-09-09).
+    private static func gitActionsWorktreeBlock(_ ws: Workspace, repo: URL, bare: URL,
+                                                base: URL, fm: FileManager) {
+        let linked = base.appendingPathComponent("zweitkopie")
+        runGitSequence([["worktree", "add", "-q", "-b", "belegt", linked.path, "main"]],
+                       in: repo) { ok, e in
+            guard ok else { try? fm.removeItem(at: base); finish(false, "(worktree-setup) \(e)") }
+            ws.refreshGitBranches()
+            pollUntil(maxTicks: 300, base: base, fm: fm, label: "worktree-branchliste",
+                      cond: {
+                          ws.gitBranches.first { $0.name == "belegt" }?
+                              .blockingWorktree != nil
+                      },
+                      next: {
+                          var block: GitBranchWorktreeBlock?
+                          ws.gitBranchWorktreeBlockHandler = { seen in
+                              block = seen
+                              // `false`: Das andere Verzeichnis NICHT öffnen —
+                              // der Projektwechsel würde die restlichen Stufen
+                              // dieses Laufs entwerten.
+                              return false
+                          }
+                          gitActionsWhenIdle(ws, base: base, fm: fm, label: "worktree-idle") {
+                              ws.gitSwitchBranch("belegt")
+                          }
+                          pollUntil(maxTicks: 300, base: base, fm: fm, label: "worktree-absage",
+                                    cond: { block != nil },
+                                    next: {
+                                        gitActionsWorktreeBlockVerdict(
+                                            ws, block: block, repo: repo, bare: bare,
+                                            base: base, fm: fm, linked: linked
+                                        )
+                                    })
+                      })
+        }
+    }
+
+    /// Bewertet die Absage getrennt von der Warteschleife: richtiger Branch,
+    /// richtiges Verzeichnis, und das Hauptverzeichnis steht unverändert auf
+    /// `main` — ein Wechsel darf hier gerade NICHT stattgefunden haben.
+    private static func gitActionsWorktreeBlockVerdict(
+        _ ws: Workspace, block: GitBranchWorktreeBlock?, repo: URL, bare: URL,
+        base: URL, fm: FileManager, linked: URL
+    ) {
+        guard let block, block.branch == "belegt",
+              URL(fileURLWithPath: block.worktree).resolvingSymlinksInPath().path
+                  == linked.resolvingSymlinksInPath().path,
+              block.worktreeExists,
+              block.informativeText.contains(block.worktree) else {
+            ws.gitBranchWorktreeBlockHandler = Workspace.defaultGitBranchWorktreeBlock
+            try? fm.removeItem(at: base)
+            finish(false, "(worktree-absage) unerwartet: \(String(describing: block))")
+        }
+        ws.gitBranchWorktreeBlockHandler = Workspace.defaultGitBranchWorktreeBlock
+        GitRunner.run(["branch", "--show-current"], in: repo) { r in
+            let current = r?.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard current == "main" else {
+                try? fm.removeItem(at: base)
+                finish(false, "(worktree-absage) Branch ist \(current ?? "nil") statt main")
+            }
+            runGitSequence([["worktree", "remove", linked.path]], in: repo) { ok, e in
+                guard ok else { try? fm.removeItem(at: base); finish(false, "(worktree-abbau) \(e)") }
+                gitActionsPickaxe(ws, repo: repo, bare: bare, base: base, fm: fm)
+            }
         }
     }
 
@@ -18540,10 +18620,47 @@ enum SelfTest {
                           }
                       },
                       next: {
-                          try? fm.removeItem(at: base)
-                          finish(true, "Git-Aktionen: Push (ahead→0), Pull-FF (Remote-Datei da), "
-                              + "Amend (Datei in Commit, Zahl gleich), Branch-Liste + Auswahl, "
-                              + "Pickaxe, Push ohne Upstream-Änderung ok")
+                          gitActionsWorktreeOpen(ws, repo: repo, base: base, fm: fm)
+                      })
+        }
+    }
+
+    /// WORKTREE ÖFFNEN: Die Absage bietet an, das blockierende
+    /// Arbeitsverzeichnis als Projekt zu öffnen — dort liegt der gesuchte
+    /// Stand ja bereits. Diese Stufe belegt, dass der Knopf das auch tut; sie
+    /// steht am Ende, weil sie das Projekt des Laufs bewusst wechselt.
+    private static func gitActionsWorktreeOpen(_ ws: Workspace, repo: URL,
+                                               base: URL, fm: FileManager) {
+        let linked = base.appendingPathComponent("oeffnen")
+        runGitSequence([["worktree", "add", "-q", "-b", "zumOeffnen", linked.path, "main"]],
+                       in: repo) { ok, e in
+            guard ok else { try? fm.removeItem(at: base); finish(false, "(worktree-open-setup) \(e)") }
+            ws.refreshGitBranches()
+            pollUntil(maxTicks: 300, base: base, fm: fm, label: "worktree-open-liste",
+                      cond: {
+                          ws.gitBranches.first { $0.name == "zumOeffnen" }?
+                              .blockingWorktree != nil
+                      },
+                      next: {
+                          // `true`: Der Nutzer wählt „Arbeitsverzeichnis öffnen".
+                          ws.gitBranchWorktreeBlockHandler = { _ in true }
+                          gitActionsWhenIdle(ws, base: base, fm: fm, label: "worktree-open-idle") {
+                              ws.gitSwitchBranch("zumOeffnen")
+                          }
+                          let target = linked.resolvingSymlinksInPath().path
+                          pollUntil(maxTicks: 300, base: base, fm: fm, label: "worktree-open",
+                                    cond: {
+                                        ws.projectURL?.resolvingSymlinksInPath().path == target
+                                    },
+                                    next: {
+                                        ws.gitBranchWorktreeBlockHandler =
+                                            Workspace.defaultGitBranchWorktreeBlock
+                                        try? fm.removeItem(at: base)
+                                        finish(true, "Git-Aktionen: Push (ahead→0), Pull-FF (Remote-Datei da), "
+                                            + "Amend (Datei in Commit, Zahl gleich), Branch-Liste + Auswahl, "
+                                            + "Worktree-Sperre erklärt statt git-Rohtext und öffnet das "
+                                            + "blockierende Verzeichnis, Pickaxe, Push ohne Upstream-Änderung ok")
+                                    })
                       })
         }
     }
@@ -19170,6 +19287,376 @@ enum SelfTest {
         finish(true, "Spalten je \(Int(left.width)) pt breit und gleich hoch; "
             + "die ~900 Zeichen lange Zeile bricht auf \(Int(left.height)) pt "
             + "Höhe in ihrer Spalte um, statt über die Grenze zu laufen")
+    }
+
+    // MARK: - Vergleich: Soft Wrap aus und ziehbarer Trenner
+
+    /// Legt einen Vergleich an, in dem NUR die linke Seite eine sehr lange
+    /// Zeile hat. Die rechte Seite derselben Zeile ist kurz — nur so ist
+    /// später messbar, ob links etwas in die rechte Spalte hineinragt.
+    private static func makeDiffOverflowFixture(label: String)
+        -> (base: URL, left: URL, right: URL)? {
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("fastra-\(label)-\(UUID().uuidString)")
+        let longLeft = "ALT " + String(repeating: "links-links-links ", count: 60)
+        var leftLines = (1...8).map { "gemeinsame zeile \($0)" }
+        var rightLines = leftLines
+        leftLines[3] = longLeft
+        rightLines[3] = "NEU kurz"
+        let leftURL = base.appendingPathComponent("links.txt")
+        let rightURL = base.appendingPathComponent("rechts.txt")
+        do {
+            try fm.createDirectory(at: base, withIntermediateDirectories: true)
+            try leftLines.joined(separator: "\n")
+                .write(to: leftURL, atomically: true, encoding: .utf8)
+            try rightLines.joined(separator: "\n")
+                .write(to: rightURL, atomically: true, encoding: .utf8)
+        } catch {
+            return nil
+        }
+        return (base, leftURL, rightURL)
+    }
+
+    /// Sammelt die gerenderten Zell-Paare der Diff-Zeilen samt ihren Frames im
+    /// Fensterinhalt. Gemeinsame Messbasis von `diffwide`, `diffnowrap` und
+    /// `diffsplit`.
+    private static func diffCellPairs(in content: NSView)
+        -> [(ordinal: Int, before: CGRect, after: CGRect)] {
+        content.window?.layoutIfNeeded()
+        var pairs: [(ordinal: Int, before: CGRect, after: CGRect)] = []
+        for ordinal in 0...20 {
+            guard let before = markerView(id: "diffCell-before-row-\(ordinal)",
+                                          in: content),
+                  let after = markerView(id: "diffCell-after-row-\(ordinal)",
+                                         in: content) else { continue }
+            let beforeFrame = before.convert(before.bounds, to: content)
+            let afterFrame = after.convert(after.bounds, to: content)
+            guard beforeFrame.width > 0, afterFrame.width > 0 else { continue }
+            pairs.append((ordinal, beforeFrame, afterFrame))
+        }
+        return pairs
+    }
+
+    /// Anteil der Bildpunkte in einem Ausschnitt, die NICHT die dort
+    /// vorherrschende Farbe tragen.
+    ///
+    /// Auf „dunkle Punkte" zu zählen wäre zu grob: Übergelaufener Text der
+    /// linken Seite liegt UNTER dem halbdurchlässigen Hintergrund der rechten
+    /// Zelle und ist dadurch blass, aber unübersehbar da (belegt am
+    /// 2026-09-09 an einer Aufnahme des Fehlerbilds). Ein leerer Zellbereich
+    /// ist dagegen einfarbig — jede Abweichung von der häufigsten Farbe ist
+    /// also Schrift.
+    static func diffForeignPixelFraction(_ bitmap: NSBitmapImageRep,
+                                         tolerance: CGFloat = 0.03) -> Double {
+        var histogram: [Int: Int] = [:]
+        var colors: [(CGFloat, CGFloat, CGFloat)] = []
+        colors.reserveCapacity(bitmap.pixelsWide * bitmap.pixelsHigh)
+        for y in 0..<bitmap.pixelsHigh {
+            for x in 0..<bitmap.pixelsWide {
+                guard let color = bitmap.colorAt(x: x, y: y)?
+                        .usingColorSpace(.sRGB) else { continue }
+                let rgb = (color.redComponent, color.greenComponent,
+                           color.blueComponent)
+                colors.append(rgb)
+                // 5 Bit je Kanal: fasst Kantenglättung derselben Fläche
+                // zusammen, trennt aber Schrift vom Hintergrund.
+                let key = (Int(rgb.0 * 31) << 10) | (Int(rgb.1 * 31) << 5)
+                    | Int(rgb.2 * 31)
+                histogram[key, default: 0] += 1
+            }
+        }
+        guard !colors.isEmpty,
+              let dominantKey = histogram.max(by: { $0.value < $1.value })?.key
+        else { return 0 }
+        let dominant = (CGFloat((dominantKey >> 10) & 31) / 31,
+                        CGFloat((dominantKey >> 5) & 31) / 31,
+                        CGFloat(dominantKey & 31) / 31)
+        let foreign = colors.filter { rgb in
+            abs(rgb.0 - dominant.0) > tolerance
+                || abs(rgb.1 - dominant.1) > tolerance
+                || abs(rgb.2 - dominant.2) > tolerance
+        }
+        return Double(foreign.count) / Double(colors.count)
+    }
+
+    /// Soft Wrap AUS: Der Vergleich zeigt die ECHTEN Zeilen (einzeilig hoch),
+    /// und was nicht in die Spalte passt, wird abgeschnitten statt in die
+    /// andere Seite gezeichnet (Daniel-Wunsch 2026-09-09). Gemessen wird
+    /// beides: die Zeilenhöhe an den Zell-Frames und die Schrift im rechten
+    /// Spaltenbereich an echten Bildpunkten.
+    private static func runDiffNoWrapTest() {
+        testLabel = "diffnowrap"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        guard let fixture = makeDiffOverflowFixture(label: "diffnowrap") else {
+            finish(false, "(setup) Vergleichsdateien nicht anlegbar")
+        }
+        ws.openFileDiffTab(request: FileDiffRequest(
+            left: .file(fixture.left), right: .file(fixture.right),
+            options: FileDiffOptions()
+        ))
+        // Erst mit Umbruch (Werkstandard) messen, dann ohne — nur der
+        // Vergleich beider Zustände belegt, dass der Schalter wirkt.
+        pollDiffNoWrap(ws, base: fixture.base, phase: 0, longOrdinal: -1,
+                       wrappedHeight: 0, tick: 0)
+    }
+
+    /// `longOrdinal` ist die in Phase 0 ermittelte Zeilennummer der überlangen
+    /// linken Zeile. Ohne sie wäre sie in Phase 1 nicht mehr auffindbar: OHNE
+    /// Umbruch sind alle Zeilen gleich hoch, und „die höchste Zeile" trifft
+    /// dann irgendeine — der Test maß so eine harmlose Zeile mit leerer
+    /// rechter Seite und bestand auch ohne Beschneidung (Befund 2026-09-09).
+    private static func pollDiffNoWrap(_ ws: Workspace, base: URL, phase: Int,
+                                       longOrdinal: Int,
+                                       wrappedHeight: CGFloat, tick: Int) {
+        guard let window = mainWindowForAXChecks(), let content = window.contentView else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Hauptfenster nicht erreichbar")
+        }
+        let pairs = diffCellPairs(in: content)
+        guard pairs.count >= 2,
+              let tallest = pairs.max(by: { $0.before.height < $1.before.height }),
+              let shortest = pairs.min(by: { $0.before.height < $1.before.height })
+        else {
+            if tick >= 100 {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Zell-Marker fehlen (gefunden: \(pairs.count))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollDiffNoWrap(ws, base: base, phase: phase,
+                               longOrdinal: longOrdinal,
+                               wrappedHeight: wrappedHeight, tick: tick + 1)
+            }
+            return
+        }
+
+        if phase == 0 {
+            // Phase 0: Werkstandard — die lange Zeile muss umbrechen.
+            guard tallest.before.height > shortest.before.height * 2 else {
+                if tick >= 100 {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Mit Soft Wrap bricht die lange Zeile nicht um "
+                        + "(\(Int(tallest.before.height)) pt)")
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    pollDiffNoWrap(ws, base: base, phase: 0, longOrdinal: -1,
+                                   wrappedHeight: 0, tick: tick + 1)
+                }
+                return
+            }
+            let height = tallest.before.height
+            let ordinal = tallest.ordinal
+            guard ws.activeTabShowsDiff else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Der Vergleichs-Tab ist nicht aktiv — der "
+                    + "Soft-Wrap-Schalter der Fußzeile träfe das falsche Profil")
+            }
+            // Genau der Weg der Fußzeile (und des Ansicht-Menüs): Der
+            // Schalter dort ruft `toggleSoftWrap()`.
+            ws.toggleSoftWrap()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollDiffNoWrap(ws, base: base, phase: 1, longOrdinal: ordinal,
+                               wrappedHeight: height, tick: 0)
+            }
+            return
+        }
+
+        // Phase 1: ohne Umbruch sind ALLE Zeilen gleich einzeilig hoch.
+        guard let long = pairs.first(where: { $0.ordinal == longOrdinal }),
+              long.before.height < wrappedHeight / 2 else {
+            if tick >= 100 {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Ohne Soft Wrap bleibt die lange Zeile "
+                    + "\(Int(tallest.before.height)) pt hoch (mit Umbruch: "
+                    + "\(Int(wrappedHeight)) pt) — der Schalter wirkt nicht")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollDiffNoWrap(ws, base: base, phase: 1, longOrdinal: longOrdinal,
+                               wrappedHeight: wrappedHeight, tick: tick + 1)
+            }
+            return
+        }
+        finishDiffNoWrap(ws, base: base, content: content,
+                         wrappedHeight: wrappedHeight, row: long)
+    }
+
+    /// Der eigentliche Befund: Ragt die linke Seite in die rechte Spalte?
+    /// Gemessen an echten Bildpunkten rechts der kurzen rechten Zeile.
+    private static func finishDiffNoWrap(
+        _ ws: Workspace, base: URL, content: NSView, wrappedHeight: CGFloat,
+        row: (ordinal: Int, before: CGRect, after: CGRect)
+    ) {
+        defer {
+            // Das Profil ist persistent — der Testlauf darf keinen veränderten
+            // Stand hinterlassen.
+            ws.setSoftWrapEnabled(true)
+            try? FileManager.default.removeItem(at: base)
+        }
+        // Messfenster: rechte Spalte ab deutlich hinter dem kurzen Text
+        // („NEU kurz" ist ~60 pt breit) bis kurz vor ihr Ende.
+        let probe = CGRect(x: row.after.minX + 160, y: row.after.minY,
+                           width: max(0, row.after.width - 180),
+                           height: row.after.height)
+        guard probe.width > 40, content.bounds.contains(probe) else {
+            finish(.environment, "Fenster zu schmal für die Bildpunktprobe "
+                + "(\(Int(probe.width)) pt)")
+        }
+        guard let bitmap = content.bitmapImageRepForCachingDisplay(in: probe) else {
+            finish(false, "Bildausschnitt der rechten Spalte nicht erzeugbar")
+        }
+        content.cacheDisplay(in: probe, to: bitmap)
+        let foreign = diffForeignPixelFraction(bitmap)
+        // Der Bereich zeigt nur den Zellhintergrund. Etwas Rauschen durch
+        // Kantenglättung ist erlaubt; übergelaufener Text färbt hier ein
+        // Vielfaches davon ein.
+        guard foreign < 0.02 else {
+            finish(false, "Die linke Seite ragt in die rechte Spalte: "
+                + "\(Int(foreign * 100)) % der Bildpunkte im rechten "
+                + "Spaltenbereich tragen fremde Schrift")
+        }
+        finish(true, "Soft Wrap aus: lange Zeile von \(Int(wrappedHeight)) pt "
+            + "auf \(Int(row.before.height)) pt (einzeilig), und im rechten "
+            + "Spaltenbereich weichen nur \(String(format: "%.2f", foreign * 100)) % "
+            + "der Bildpunkte vom Hintergrund ab — links wird abgeschnitten "
+            + "statt hinüberzuzeichnen")
+    }
+
+    /// Ziehbarer Trenner: Ein Zug nach rechts verbreitert die linke Seite um
+    /// genau diesen Weg, die rechte schrumpft um denselben Betrag, und die
+    /// Gesamtbreite bleibt.
+    private static func runDiffSplitTest() {
+        testLabel = "diffsplit"
+        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
+        guard let fixture = makeDiffOverflowFixture(label: "diffsplit") else {
+            finish(false, "(setup) Vergleichsdateien nicht anlegbar")
+        }
+        ws.openFileDiffTab(request: FileDiffRequest(
+            left: .file(fixture.left), right: .file(fixture.right),
+            options: FileDiffOptions()
+        ))
+        pollDiffSplit(ws, base: fixture.base, tick: 0)
+    }
+
+    private static func pollDiffSplit(_ ws: Workspace, base: URL, tick: Int) {
+        guard let window = mainWindowForAXChecks(), let content = window.contentView else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Hauptfenster nicht erreichbar")
+        }
+        let pairs = diffCellPairs(in: content)
+        guard let row = pairs.first,
+              let handle = markerView(id: "diffSplitter", in: content) else {
+            if tick >= 100 {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Zellen oder Splitter-Griff fehlen im Fensterbaum "
+                    + "(Zeilen: \(pairs.count), Griff: "
+                    + "\(markerView(id: "diffSplitter", in: content) != nil))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollDiffSplit(ws, base: base, tick: tick + 1)
+            }
+            return
+        }
+        let beforeLeft = row.before.width
+        let beforeRight = row.after.width
+        let handleFrame = handle.convert(handle.bounds, to: content)
+        // Der Griff ist dokumenthoch; angefasst wird er auf Höhe der ersten
+        // Zeile, damit der Punkt sicher im sichtbaren Bereich liegt.
+        let grab = NSPoint(x: handleFrame.midX, y: row.before.midY)
+        guard handleFrame.insetBy(dx: -1, dy: 0).contains(grab) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Greifpunkt \(grab) liegt nicht im Griff \(handleFrame)")
+        }
+        // Messung und Klick im selben Main-Thread-Durchlauf: `sendEvent`
+        // stellt synchron zu, ein Nachlayout kann sich nicht dazwischen
+        // schieben (siehe AGENTS.md zu `armSingleShiftClick`).
+        let distance: CGFloat = 120
+        let startInWindow = content.convert(grab, to: nil)
+        let endInWindow = NSPoint(x: startInWindow.x + distance, y: startInWindow.y)
+        guard sendSplitterDrag(from: startInWindow, to: endInWindow, in: window) else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Zieh-Ereignisse nicht erzeugbar")
+        }
+        pollDiffSplitResult(ws, base: base, beforeLeft: beforeLeft,
+                            beforeRight: beforeRight, distance: distance, tick: 0)
+    }
+
+    /// Maus-Zug auf dem Splitter: Down, mehrere Zwischenschritte, Up. Der
+    /// Griff ist eine AppKit-View, `sendEvent` erreicht sie direkt.
+    private static func sendSplitterDrag(from start: NSPoint, to end: NSPoint,
+                                         in window: NSWindow) -> Bool {
+        let time = ProcessInfo.processInfo.systemUptime
+        func event(_ type: NSEvent.EventType, _ point: NSPoint,
+                   _ offset: Double, _ number: Int) -> NSEvent? {
+            NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
+                               timestamp: time + offset,
+                               windowNumber: window.windowNumber, context: nil,
+                               eventNumber: number, clickCount: 1,
+                               pressure: type == .leftMouseUp ? 0 : 1)
+        }
+        guard let down = event(.leftMouseDown, start, 0, 0) else { return false }
+        window.sendEvent(down)
+        for step in 1...4 {
+            let fraction = CGFloat(step) / 4
+            let point = NSPoint(x: start.x + (end.x - start.x) * fraction, y: start.y)
+            guard let drag = event(.leftMouseDragged, point,
+                                   0.01 * Double(step), step) else { return false }
+            window.sendEvent(drag)
+        }
+        guard let up = event(.leftMouseUp, end, 0.06, 9) else { return false }
+        window.sendEvent(up)
+        return true
+    }
+
+    private static func pollDiffSplitResult(_ ws: Workspace, base: URL,
+                                            beforeLeft: CGFloat,
+                                            beforeRight: CGFloat,
+                                            distance: CGFloat, tick: Int) {
+        guard let window = mainWindowForAXChecks(), let content = window.contentView else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Hauptfenster nicht erreichbar")
+        }
+        let pairs = diffCellPairs(in: content)
+        guard let row = pairs.first else {
+            try? FileManager.default.removeItem(at: base)
+            finish(false, "Diff-Zeilen verschwunden")
+        }
+        let afterLeft = row.before.width
+        let afterRight = row.after.width
+        if abs(afterLeft - beforeLeft - distance) > 2 {
+            if tick >= 60 {
+                defer { try? FileManager.default.removeItem(at: base) }
+                finish(false, "Der Trenner folgte dem Zug nicht: links "
+                    + "\(Int(beforeLeft)) → \(Int(afterLeft)) pt statt "
+                    + "\(Int(beforeLeft + distance)) pt")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                pollDiffSplitResult(ws, base: base, beforeLeft: beforeLeft,
+                                    beforeRight: beforeRight,
+                                    distance: distance, tick: tick + 1)
+            }
+            return
+        }
+        defer {
+            // Die Teilung ist persistent: den Werkstand wiederherstellen.
+            SelfTest.workspaceDefaults()
+                .removeObject(forKey: DiffColumnLayout.splitRatioDefaultsKey)
+            try? FileManager.default.removeItem(at: base)
+        }
+        // Die rechte Seite gibt exakt den Platz ab, den die linke gewinnt —
+        // sonst bliebe rechts ein Streifen frei oder die Fläche wüchse.
+        guard abs((beforeLeft + beforeRight) - (afterLeft + afterRight)) < 2 else {
+            finish(false, "Die Gesamtbreite änderte sich beim Ziehen: "
+                + "\(Int(beforeLeft + beforeRight)) → "
+                + "\(Int(afterLeft + afterRight)) pt")
+        }
+        guard abs(beforeRight - afterRight - distance) <= 2 else {
+            finish(false, "Die rechte Seite gab \(Int(beforeRight - afterRight)) pt "
+                + "ab statt \(Int(distance)) pt")
+        }
+        finish(true, "Trenner um \(Int(distance)) pt gezogen: links "
+            + "\(Int(beforeLeft)) → \(Int(afterLeft)) pt, rechts "
+            + "\(Int(beforeRight)) → \(Int(afterRight)) pt, Gesamtbreite "
+            + "unverändert")
     }
 
     /// Diagnose (`-selftest gitstickyshot`): Änderungen-Liste mit 60 Dateien,

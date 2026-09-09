@@ -176,7 +176,9 @@ enum GroupBuilder {
 
         // Schritt 5c: Replace-Template anheben — alle `$N` mit N >= neuer
         // Nummer werden N+1, weil ab hier eine fangende Klammer dazukommt.
-        let rewritten = shiftBackreferencesUp(in: replacement, atOrAbove: newGroupNumber)
+        let rewritten = shiftBackreferencesUp(in: replacement,
+                                              atOrAbove: newGroupNumber,
+                                              groupCount: tokenization.groups.count)
 
         return Proposal(snappedMatchRange: snappedMatchRange,
                         newPattern: newPattern,
@@ -192,14 +194,25 @@ enum GroupBuilder {
     /// * `$0` (der ganze Match) bleibt IMMER unverändert.
     /// * `\$` ist ein escapter Dollar (literaler `$`) und wird NICHT als
     ///   Backref gewertet — bleibt unangetastet.
-    /// * `$12` ist Gruppe 12 (gesamte Ziffernfolge), NICHT `$1` + „2".
+    /// * Wie viele Ziffern zur Nummer gehören, hängt von `groupCount` ab:
+    ///   `$12` ist bei zwei Gruppen Gruppe 1 gefolgt vom Literal „2", erst
+    ///   ab zehn Gruppen wirklich Gruppe 12 (siehe ReplacementReferences).
     ///
-    /// - Parameter atOrAbove: ab dieser Gruppennummer (inkl.) wird verschoben.
-    static func shiftBackreferencesUp(in replacement: String, atOrAbove: Int) -> String {
-        ReplacementReferences.rewrite(in: replacement) { number in
-            // Eine nicht darstellbare nächste Nummer ist keine gültige Gruppe.
-            // Solche Eingaben erhalten wir, statt einen Integer-Überlauf auszulösen.
-            guard number > 0, number >= atOrAbove, number < Int.max else { return nil }
+    /// - Parameters:
+    ///   - atOrAbove: ab dieser Gruppennummer (inkl.) wird verschoben.
+    ///   - groupCount: fangende Gruppen im Pattern VOR dem Einfügen. Danach
+    ///     ist es genau eine mehr — beim Sprung von 9 auf 10 Gruppen ändert
+    ///     das die Schreibweise der Referenzen.
+    static func shiftBackreferencesUp(in replacement: String,
+                                      atOrAbove: Int,
+                                      groupCount: Int) -> String {
+        ReplacementReferences.rewrite(in: replacement,
+                                      groupCount: groupCount,
+                                      newGroupCount: groupCount + 1) { number in
+            // Eine Referenz auf eine nicht vorhandene Gruppe zeigt ins Leere.
+            // Sie bleibt unangetastet — Verschieben würde nur den literalen
+            // Text daneben verändern, ohne etwas zu reparieren.
+            guard number > 0, number <= groupCount, number >= atOrAbove else { return nil }
             return number + 1
         }
     }
